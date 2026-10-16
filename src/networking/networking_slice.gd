@@ -1590,7 +1590,7 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 			# here, so persisting it made health a restart-proof cheat (see
 			# PlayerRegistry.record_hp). Phase 38 — a peer's health IS durable
 			# now, but only from the number the host resolved itself
-			# (record_simulated_hp, via game_root._on_player_damaged); the
+			# (record_simulated_hp, via combat_wiring._on_player_damaged); the
 			# declared half still has no door. Position is the other half the
 			# host retains, and only so a reconnect can resume from it.
 			# Phase 130 — the host decides immobilization itself: a held peer's report is dropped

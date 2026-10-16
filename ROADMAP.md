@@ -152,7 +152,7 @@ issue number where the criterion used to be.
 | 129 | Combat status effects: burn, paralysis, knockback, knockdown and stagger | Done | [history](docs/roadmap-history/phases-99-129.md) |
 | 130 | Host authority sweep: status effects, waystones and research points | In review | below |
 | 131 | Internationalization: translated UI and keyed host messages | In review | below |
-| 132 | One wiring module per system: `game_root` keeps the boot paths | Planned | below |
+| 132 | One wiring module per system: `game_root` keeps the boot paths | In review | below |
 | 133 | The test suite splits by system and runs by filter | Planned | below |
 | 134 | A bot plays: playtest report and downloadable builds | Planned | below |
 | 135 | A WAN profile: latency, loss and bandwidth in the two-client harness | Planned | below |
@@ -290,12 +290,12 @@ references it needs. Behaviour does not change.
   of `game_root.gd`.
 
 **Acceptance criteria:**
-- [ ] `wc -l src/core/game_root.gd` is under 1,200.
-- [ ] Suite (audit): `game_root.gd` contains no `GameBus.<signal>.connect` outside the wiring-module
+- [x] `wc -l src/core/game_root.gd` is under 1,200.
+- [x] Suite (audit): `game_root.gd` contains no `GameBus.<signal>.connect` outside the wiring-module
   list, and every `*_wiring.gd` is constructed exactly once on each boot path.
-- [ ] Suite: building and freeing a full root on each boot role leaves no connected handler behind
+- [x] Suite: wiring then unwiring a root on each boot role (and the late colonization connect) leaves no connected handler behind
   (`unwire` disconnects everything `wire` connected) and no orphan nodes.
-- [ ] Suite green on both boot paths with the same assertion count as before the move (no test
+- [x] Suite green on both boot paths with the same assertion count as before the move (no test
   removed), harness green, `--server` and `--quit-after-boot` boots log their ready lines.
 
 ---

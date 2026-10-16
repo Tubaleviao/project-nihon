@@ -50,6 +50,27 @@ const NetHarness       := preload("res://src/tests/net_harness.gd")
 const SpawnFinder      := preload("res://src/world/spawn_finder.gd")
 const ColonizationMap  := preload("res://src/world/colonization_map.gd")
 const WorldClock       := preload("res://src/world/world_clock.gd")
+const BootWiring := preload("res://src/core/boot_wiring.gd")
+const CombatWiring := preload("res://src/battle/combat_wiring.gd")
+const WeatherWiring := preload("res://src/world/weather_wiring.gd")
+const WaystoneWiring := preload("res://src/world/waystone_wiring.gd")
+const CraftingWiring := preload("res://src/crafting/crafting_wiring.gd")
+const CharacterWiring := preload("res://src/character/character_wiring.gd")
+const PeerWiring := preload("res://src/networking/peer_wiring.gd")
+const SnapshotWiring := preload("res://src/persistence/snapshot_wiring.gd")
+const PersistenceWiring := preload("res://src/persistence/persistence_wiring.gd")
+
+## Phase 132 — per-system wiring modules (see `src/core/wiring.gd`), wired in this fixed order.
+var _wirings: Array = []
+var _boot_wiring := BootWiring.new()
+var _combat_wiring := CombatWiring.new()
+var _weather_wiring := WeatherWiring.new()
+var _waystone_wiring := WaystoneWiring.new()
+var _crafting_wiring := CraftingWiring.new()
+var _character_wiring := CharacterWiring.new()
+var _peer_wiring := PeerWiring.new()
+var _snapshot_wiring := SnapshotWiring.new()
+var _persistence_wiring := PersistenceWiring.new()
 
 var _terrain:     TerrainSlice
 var _voxel:       VoxelSlice
@@ -108,7 +129,7 @@ var _snapshot_pending: bool = false
 var _pending_host_boot: bool = false
 
 ## Phase 42 review — true while a CLIENT join is waiting for the same first ring (see
-## `_on_world_snapshot_received` / `_finish_client_boot`). The client has no boot tail to
+## `_snapshot_wiring._on_world_snapshot_received` / `_finish_client_boot`). The client has no boot tail to
 ## run, so it is a separate flag rather than a mode on the host one: all it holds is the
 ## loading screen and the movement freeze, and all it does at the end is release both.
 var _pending_client_boot: bool = false
@@ -139,7 +160,7 @@ var _host_boot_wait_elapsed: float = 0.0
 var _client_boot_wait_elapsed: float = 0.0
 
 ## Phase 39 — which side of the two-client network harness this boot drives ("" for a
-## normal boot). Set by `_parse_network_args`; see `_run_net_harness`.
+## normal boot). Set by `_boot_wiring._parse_network_args`; see `_run_net_harness`.
 var _net_harness_role: String = ""
 
 ## Phase 53 — how settled each region is; new-player spawns keep away from the settled ones.
@@ -159,7 +180,7 @@ var _friend_code_arg: String = ""
 var _local_spawn: Variant = null
 ## Phase 53 — client: the respawn point was taken from the first snapshot's own position.
 var _client_respawn_point_set: bool = false
-## Phase 87 — how many times `_saved_local_position` has run; a test reads it to prove a placement
+## Phase 87 — how many times `_persistence_wiring._saved_local_position` has run; a test reads it to prove a placement
 ## reads the record once.
 var _saved_position_reads: int = 0
 ## True when the local player's record carried a saved position at boot (a returning player).
@@ -204,10 +225,16 @@ const MAX_HANDSHAKE_RETRIES := 3
 var _handshake_elapsed: float = 0.0
 var _handshake_retries: int = 0
 
+## Phase 132 — wiring modules know their root from construction (the suite builds roots without `_ready`).
+func _init() -> void:
+	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _crafting_wiring, _character_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring]
+	for w in _wirings:
+		w.root = self
+
 func _ready() -> void:
 	# Phase 36 — the role flags are read FIRST, because they decide whether the
 	# automated suite runs on this boot (see should_run_tests).
-	_parse_network_args()
+	_boot_wiring._parse_network_args()
 	# Phase 131 — saved language, else the OS locale, else English.
 	LocaleSettings.apply_startup()
 	# Phase 42 review pass 3 — and whether this boot quits itself once its world is up
@@ -228,7 +255,7 @@ func _ready() -> void:
 		_run_tests()
 
 	# Phase 33 — intercept the quit so records are written first.
-	_install_quit_guard()
+	_boot_wiring._install_quit_guard()
 
 	_terrain     = TerrainSlice.new()
 	_voxel       = VoxelSlice.new()
@@ -264,9 +291,9 @@ func _ready() -> void:
 	# Phase 129 — status effects live on the host; the battle slice rolls them and the AI honours them.
 	_status = StatusEffects.new()
 	_battle.status_effects = _status
-	_battle.now_fn = Callable(self, "_status_now")
+	_battle.now_fn = Callable(_combat_wiring, "_status_now")
 	_creature_ai.status_effects = _status
-	_creature_ai.now_fn = Callable(self, "_status_now")
+	_creature_ai.now_fn = Callable(_combat_wiring, "_status_now")
 	# Phase 128 — weather is a pure function of the seed, the biome and the clock.
 	_weather.clock    = _clock
 	_weather.seed_of  = Callable(_terrain, "get_world_seed")
@@ -287,8 +314,8 @@ func _ready() -> void:
 	_creature_ai.battle_slice   = _battle
 	# Phase 36 — creature AI targets the nearest of ALL players, so it needs the
 	# targets this integration layer alone can assemble: the local body plus every
-	# connected peer's last recorded position (see _player_targets).
-	_creature_ai.player_targets = Callable(self, "_player_targets")
+	# connected peer's last recorded position (see _peer_wiring._player_targets).
+	_creature_ai.player_targets = Callable(_peer_wiring, "_player_targets")
 
 	# Wire crafting + station cross-references before add_child so their _ready()
 	# methods see the correct dependencies if they ever emit signals during init.
@@ -373,7 +400,7 @@ func _ready() -> void:
 	# online set). Both checks fail closed when unwired.
 	_networking.tree_slice      = _tree
 	_networking.player_registry = _registry
-	_networking.peer_held = _peer_is_held
+	_networking.peer_held = _peer_wiring._peer_is_held
 	# Phase 85 — chat and admin commands act on the registry's players, the local body and pack,
 	# and reach a remote player through the networking slice's host → peer doors. A headless
 	# server builds no box.
@@ -383,18 +410,11 @@ func _ready() -> void:
 	_chat.networking       = _networking
 	_chat.weather_slice    = _weather
 	_player.weather_slice  = _weather
-	GameBus.weather_overrides_synced.connect(_on_weather_overrides_synced)
-	GameBus.knockback_requested.connect(_on_knockback_requested)
-	GameBus.player_died.connect(_on_status_player_died)
-	GameBus.player_teleport.connect(_on_player_teleport)
 	# Phase 125 — waystone travel reuses the exact admin teleport door.
 	_waystones.station_slice = _station
 	_waystones.registry      = _registry
 	_waystones.teleporter    = Callable(_chat, "teleport_player")
-	_waystones.position_of   = Callable(self, "_waystone_player_pos")
-	GameBus.waystone_travel_resolved.connect(_on_waystone_travel_resolved)
-	GameBus.station_placed.connect(_on_station_placed_exact)
-	GameBus.waystones_synced.connect(_on_waystones_synced)
+	_waystones.position_of   = Callable(_waystone_wiring, "_waystone_player_pos")
 	if not _is_server:
 		_ui.inventory_slice       = _inventory
 		_ui.character_slice       = _character
@@ -523,48 +543,9 @@ func _ready() -> void:
 		add_child(_loading_screen)
 
 	# Bus listeners for integration-layer logging.
-	GameBus.chunk_ready.connect(_on_chunk_ready)
-	GameBus.combat_round_resolved.connect(_on_combat_resolved)
-	GameBus.combat_round_requested.connect(_on_combat_round_requested)
-	GameBus.save_completed.connect(_on_save_completed)
-	GameBus.load_completed.connect(_on_load_completed)
-	GameBus.creature_died.connect(_on_creature_died)
-	GameBus.creature_spawned.connect(_on_creature_spawned)
-	GameBus.loot_dropped.connect(_on_loot_dropped)
-	GameBus.item_picked_up.connect(_on_item_picked_up)
-	GameBus.player_state_changed.connect(_on_player_state_changed)
-	GameBus.inventory_full.connect(_on_inventory_full)
-	GameBus.character_spawned.connect(_on_character_spawned)
-	GameBus.craft_resolved.connect(_on_craft_resolved)
-	GameBus.repair_resolved.connect(_on_repair_resolved)
-	GameBus.profession_unlocked.connect(_on_profession_unlocked)
-	GameBus.research_resolved.connect(_on_research_resolved)
-	GameBus.research_points_synced.connect(_on_research_points_synced)
-	GameBus.resource_gathered.connect(_on_resource_gathered)
-	GameBus.tame_resolved.connect(_on_tame_resolved)
-	GameBus.technology_unlocked.connect(_on_technology_unlocked)
-	GameBus.own_state_synced.connect(_on_own_state_synced)
-	GameBus.equipment_revoked.connect(_on_equipment_revoked)
-	GameBus.block_mined.connect(_on_block_mined)
-	GameBus.block_placed.connect(_on_block_placed)
-	GameBus.player_damaged.connect(_on_player_damaged)
-	GameBus.player_died.connect(_on_player_died)
-	GameBus.player_respawned.connect(_on_player_respawned)
-	GameBus.trade_completed.connect(_on_trade_completed)
-	GameBus.peer_connected.connect(_on_peer_connected)
-	GameBus.peer_disconnected.connect(_on_peer_disconnected)
-	GameBus.player_joined.connect(_on_player_joined)
-	GameBus.player_identity_assigned.connect(_on_player_identity_assigned)
-	GameBus.remote_player_state.connect(_on_remote_player_state)
-	GameBus.character_appearance_changed.connect(_on_character_appearance_changed)
-	GameBus.peer_equipment_synced.connect(_character.set_peer_equipment)
-	GameBus.peer_equipment_evicted.connect(_character.evict_peer_equipment)
-	GameBus.remote_player_state.connect(_on_remote_avatar_state)
-	GameBus.peer_equipment_evicted.connect(_remove_remote_avatar)
-	GameBus.world_snapshot_received.connect(_on_world_snapshot_received)
-	GameBus.world_clock_received.connect(_on_world_clock_received)
-	multiplayer.connection_failed.connect(_on_connection_failed)
-	multiplayer.server_disconnected.connect(_on_server_disconnected)
+	for w in _wirings:
+		w.wire(self)
+
 
 	# Lighting — a directional "sun" plus soft ambient sky fill. Skipped on a
 	# headless server (no renderer to light).
@@ -589,7 +570,7 @@ func _ready() -> void:
 		add_child(env)
 
 	# Verify GameData entries load cleanly.
-	_check_game_data()
+	_boot_wiring._check_game_data()
 
 	# Boot terrain — creatures are spawned by CreatureSlice._ready() via GameData.
 	# Phase 39 — the two-client network harness boots in place of the world boot: it is
@@ -684,74 +665,19 @@ static func net_harness_role(args: Array) -> String:
 	var role := str(args[i + 1])
 	return role if role == "host" or role == "client" else ""
 
-## Parse `--client [addr]` from OS user args to determine network role. Defaults
-## to host (authoritative single-player) when no args are present. A malformed
-## address is rejected with a warning and falls back to localhost.
-func _parse_network_args() -> void:
-	var args := OS.get_cmdline_user_args()
-	for i in range(args.size()):
-		if args[i] == "--server":
-			_is_server = true
-		if args[i] == "--client":
-			_is_client = true
-			if i + 1 < args.size() and not str(args[i + 1]).begins_with("--"):
-				var addr := str(args[i + 1])
-				if _valid_host_address(addr):
-					_host_address = addr
-				else:
-					Diag.warn("[Networking] invalid --client address '%s' — using 127.0.0.1" % addr)
-					_host_address = "127.0.0.1"
-	for i in range(args.size()):
-		if args[i] == "--friend" and i + 1 < args.size():
-			_friend_code_arg = str(args[i + 1])
-	# Phase 39 — the harness role decides the network role too: `--net-harness host` is
-	# the dedicated server half of the pair and `--net-harness client` the joining half,
-	# so the driver names one side rather than having to keep two arguments consistent.
-	var harness_role := net_harness_role(args)
-	if harness_role == "host":
-		_is_server = true
-	elif harness_role == "client":
-		_is_client = true
-	_net_harness_role = harness_role
-
-## Phase 33 — save-on-shutdown. `auto_accept_quit = false` turns the window
-## manager's close request into a notification this node answers by writing the
-## world + player records and only then quitting. Only the authoritative roles
-## own state worth writing, so a client keeps the default behaviour.
-##
-## A headless server has no window, and Godot 4.7 delivers NO notification for
-## SIGTERM — the process is simply killed (verified with a probe; see the Phase
-## 33 implementation notes in docs/roadmap-history/phases-33-38.md). That case is covered by the autosave
-## interval plus the shutdown-request file polled in _tick_save_lifecycle().
-func _install_quit_guard() -> void:
-	if not _is_client:
-		get_tree().auto_accept_quit = false
-
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST:
 		print("[Server] window close requested — saving before quit")
 		if _minimap != null and _minimap.revealed_dir != "" and _minimap.is_revealed_loaded():
 			_minimap.save_revealed()
-		_save_everything(true)
+		_persistence_wiring._save_everything(true)
 		# The write is threaded, so quitting here would race it: block until it lands.
-		_flush_save()
+		_persistence_wiring._flush_save()
 		get_tree().quit()
-
-## True when `addr` is a literal IP or a plain hostname (no scheme, path, or
-## whitespace). Rejects empty and obviously malformed values so a bad --client
-## argument fails loudly instead of silently joining 127.0.0.1.
-func _valid_host_address(addr: String) -> bool:
-	if addr.is_empty():
-		return false
-	if addr.contains("://") or addr.contains("/") or addr.contains(" ") or addr.contains("	"):
-		return false
-	var re := RegEx.new()
-	re.compile("^[A-Za-z0-9][A-Za-z0-9.:-]*$")
-	return re.search(addr) != null
-
-# ---------------------------------------------------------------------------
-# World boot
-# ---------------------------------------------------------------------------
+	elif what == NOTIFICATION_PREDELETE:
+		# Wired once in `_ready`: unwire at free time, so a reparent keeps the handlers.
+		for w in _wirings:
+			w.unwire()
 
 ## Set true to enable verbose craft-fail logging and the demo station/craft
 ## sequence in _boot_host(). False keeps boot output minimal in production.
@@ -806,17 +732,17 @@ func _boot_host() -> void:
 	_loading_screen.begin()
 	# Phase 42 review pass 11 — `_boot_server` armed the ring around the PRE-SPAWN body,
 	# which is the origin chunk. A host who logged off elsewhere is moved there by
-	# `_restore_local_player` only in the tail, AFTER the gate opened, onto chunks nobody
+	# `_persistence_wiring._restore_local_player` only in the tail, AFTER the gate opened, onto chunks nobody
 	# had dispatched. Place the (now frozen) body at the saved position first and re-arm
 	# the ring and the window around it; the origin chunks still queued fall outside the
 	# window and are dropped by the drain.
-	var saved_pos: Variant = _saved_local_position()
+	var saved_pos: Variant = _persistence_wiring._saved_local_position()
 	if saved_pos == null:
 		# Phase 53 — a first boot: the same placement a joining peer gets.
-		saved_pos = _first_boot_spawn()
+		saved_pos = _peer_wiring._first_boot_spawn()
 	if saved_pos != null:
-		_place_local_player(saved_pos)
-		_lift_out_of_ground()
+		_persistence_wiring._place_local_player(saved_pos)
+		_persistence_wiring._lift_out_of_ground()
 		_chunk_manager.build_first_ring(_chunk_manager.player_chunk())
 		_chunk_manager.refresh()
 	_host_boot_wait_elapsed = 0.0
@@ -865,7 +791,7 @@ func _quit_after_boot_if_asked(role: String) -> void:
 	print("[World] %s boot complete — quitting (%s)" % [role, QUIT_AFTER_BOOT_ARG])
 	get_tree().quit()
 
-## Phase 42 review — the CLIENT's first-ring gate (see `_on_world_snapshot_received`).
+## Phase 42 review — the CLIENT's first-ring gate (see `_snapshot_wiring._on_world_snapshot_received`).
 ## The client has no boot tail: its body already holds the snapshot position, so the only
 ## work is to drop the loading screen and release the movement freeze that stopped the
 ## body falling through ground that had not been built yet. Same timeout rule as the host,
@@ -874,7 +800,7 @@ func _finish_client_boot() -> void:
 	_pending_client_boot = false
 	_client_boot_done = true
 	# Phase 42 review pass 3 — this runs on BOTH paths: the waiting one (which showed the
-	# screen) and the ALREADY-READY early return in `_on_world_snapshot_received` (which
+	# screen) and the ALREADY-READY early return in `_snapshot_wiring._on_world_snapshot_received` (which
 	# did not). Only the first one ever held the player, so ask the screen whether
 	# anything was actually shown instead of announcing a release that never happened —
 	# a client whose ring was built before the snapshot arrived saw no bar and was never
@@ -916,8 +842,8 @@ func _finish_host_boot() -> void:
 	# Player spawn — above the terrain surface so it doesn't spawn embedded in
 	# (and fall through) the collision mesh.
 	# Phase 53 — a first boot lands on habitable land away from colonized regions (see
-	# `_first_boot_spawn`); a saved player is put back by `_restore_local_player` below.
-	var first_spawn: Variant = _first_boot_spawn()
+	# `_peer_wiring._first_boot_spawn`); a saved player is put back by `_persistence_wiring._restore_local_player` below.
+	var first_spawn: Variant = _peer_wiring._first_boot_spawn()
 	var spawn_pos: Vector3 = first_spawn if first_spawn != null else TerrainSlice.spawn_point(_terrain.get_height_at(WorldShape.SPAWN_CENTER) + 1.0)
 	var spawn_xz := Vector2(spawn_pos.x, spawn_pos.z)
 	var ground_h := spawn_pos.y - 1.0
@@ -928,7 +854,7 @@ func _finish_host_boot() -> void:
 	# Phase 33 — the local player's own record (position / HP / technologies) is
 	# restored on top of the spawn point, so a restart puts the player back where
 	# they logged off instead of at the world origin.
-	_restore_local_player()
+	_persistence_wiring._restore_local_player()
 
 	# Chunk streaming (Phase 17) — the authoritative half above streamed the
 	# window around the origin, so re-centre it on the spawn point. VoxelSlice
@@ -943,7 +869,7 @@ func _finish_host_boot() -> void:
 	# exercise the appearance pipeline end to end. Phase 33 — the avatar is
 	# rebuilt from the appearance recipe in the loaded player record when there
 	# is one, so a restart keeps the character you were playing, not a default.
-	var player_char := _restore_or_create_player_character(_player.get_position())
+	var player_char := _persistence_wiring._restore_or_create_player_character(_player.get_position())
 	_character.create_character("BoarRider", Vector3(spawn_xz.x - 3.0, ground_h + 1.0, spawn_xz.y))
 	_character.set_player_character(player_char)
 	# Phase 59 — the avatar wears the rig when the manifest lists one; otherwise (or when
@@ -953,7 +879,7 @@ func _finish_host_boot() -> void:
 		_character.attach_default_rig(player_char)
 	# Phase 47 — the avatar exists only now, so the recorded worn set is applied here
 	# (the restore above runs before there is a character to wear it).
-	_apply_local_equipment(_registry.get_record(_registry.local_player_id).get("equipment", {}) if not _registry.local_player_id.is_empty() else {})
+	_character_wiring._apply_local_equipment(_registry.get_record(_registry.local_player_id).get("equipment", {}) if not _registry.local_player_id.is_empty() else {})
 	if _ui != null and not _registry.local_player_id.is_empty():
 		_ui.set_own_handle(_registry.public_handle(_registry.local_player_id))
 
@@ -1033,7 +959,7 @@ func _finish_host_boot() -> void:
 	# on top of the legacy slot file above. The slot file is the single-file
 	# sample the client-side path and the older tests use; the server records are
 	# what an authoritative boot loads.
-	_save_everything(false)
+	_persistence_wiring._save_everything(false)
 
 	# Phase 42 review pass 3 — the tail is the boot's own definition of "done" (see
 	# QUIT_AFTER_BOOT_ARG). A CI boot asks to exit HERE rather than being cut off by a
@@ -1077,7 +1003,7 @@ func _boot_client() -> void:
 ##      exists again,
 ##   4. open the host socket.
 func _boot_server() -> void:
-	_load_world_records()
+	_persistence_wiring._load_world_records()
 	# Phase 52 — voxel edits stream in by region around every window (the local player's
 	# and each connected peer's) instead of loading from the world record up front.
 	_chunk_manager.region_streamer = RegionStreamer.new(_persistence.region_store, _voxel)
@@ -1097,250 +1023,8 @@ func _boot_server() -> void:
 	# then appends the wider band behind them (it skips what is already `_pending`).
 	_chunk_manager.build_first_ring(_chunk_manager.player_chunk())
 	_chunk_manager.refresh()
-	_apply_loaded_creature_state()
+	_persistence_wiring._apply_loaded_creature_state()
 	_networking.host(_networking.DEFAULT_PORT, _networking.DEFAULT_MAX_CLIENTS)
-
-## Phase 33 — host: an identity was bound (first join, or a reconnect). The peer's
-## own inventory is now known, so register it as that peer's trade/market party (the
-## party id the client's "player" self-reference resolves to) and send its world
-## snapshot.
-##
-## The snapshot is sent HERE, on the handshake, and NOT also on `peer_connected`.
-## It used to be sent twice — once on connect, once on join — so every reconnecting
-## client paid for a full world snapshot twice, and the FIRST one was the worse of
-## the two: it was built before the peer's identity was resolved, so it carried no
-## own-record and was immediately replaced. One snapshot, with the identity in hand.
-func _on_player_joined(peer_id: int, player_id: String, reconnected: bool) -> void:
-	if _is_client:
-		return
-	_networking.send_peer_equipment_to(peer_id)
-	var inv = _registry.get_inventory(player_id)
-	if inv != null:
-		_trade.set_party_inventory(player_id, inv)
-		_market.set_party_inventory(player_id, inv)
-	# Phase 34 — the peer's technology tree is part of its record, so hand it to the
-	# slice before the snapshot goes out: a reconnecting peer resumes its own
-	# "researching"/"unlocked" statuses (and the research timer for a status restored
-	# mid-research), and a first join gets a seeded, all-locked tree.
-	var tech: Variant = _registry.get_record(player_id).get("technology", {})
-	if tech is Dictionary:
-		_technology.apply_statuses(tech, player_id)
-	# Phase 35 — the peer's taming flags and companion bindings ride the same
-	# record: a reconnecting peer keeps its `wolfBondHolder` flag and its tamed
-	# wolf (re-bound to the creature instance when that instance is resident).
-	_taming.apply_record(_registry.get_record(player_id), player_id)
-	_professions.apply_record(_registry.get_record(player_id), player_id)
-	_restore_status_effects(player_id, player_id)
-	print("[Server] %s player '%s' as %s" % ["reconnected" if reconnected else "joined", player_id, "peer_%d" % peer_id])
-	_chat.announce_joined(player_id)
-	# Phase 52 — the peer's window opens NOW, so the regions around its saved position are
-	# resident (and its snapshot carries their edits) before the snapshot is built.
-	_chunk_manager.set_peer_center(peer_id, _peer_window_chunk(peer_id), true)
-	_chunk_manager.refresh(false)
-	_networking.send_snapshot(peer_id, _build_snapshot(peer_id))
-
-## Phase 33 — host: a connection came up. There is deliberately nothing to send yet:
-## the peer's identity has not been resolved, so a snapshot here would carry no
-## own-record and would have to be replaced by the handshake snapshot (see
-## _on_player_joined). Kept as the single place to note when a peer appears.
-func _on_peer_connected(_peer_id: int) -> void:
-	pass
-
-## Phase 53 — the local (host / offline) player's placement on a boot with no saved position:
-## the friend named by `--friend` if any, else habitable land away from colonized regions. Cached,
-## so the boot and its tail agree. null when a saved position exists or nothing qualifies.
-func _first_boot_spawn() -> Variant:
-	if _saved_local_position() != null:
-		return null
-	if _local_spawn == null:
-		var placed := _place_new_player(_registry.local_player_id, _friend_code_arg)
-		if placed.has("position"):
-			_local_spawn = placed["position"]
-			_colonization.note_home(Vector2i(floori(_local_spawn.x / TerrainSlice.CHUNK_METERS), floori(_local_spawn.z / TerrainSlice.CHUNK_METERS)))
-			if not str(placed.get("message", "")).is_empty():
-				print("[Spawn] %s" % placed["message"])  # a catalog key, shown to remote peers in their locale
-	return _local_spawn
-
-## Phase 53 — where a NEW player lands: beside the friend whose handle they gave, else on habitable
-## land far from every colonized region. Returns { position, source, message } (empty when the
-## world has no qualifying spot, and the caller keeps its old default).
-func _place_new_player(player_id: String, friend_code: String) -> Dictionary:
-	var height_fn := func(p: Vector2) -> float: return _terrain.get_height_at(p)
-	var world_seed := _terrain.get_world_seed()
-	var message := ""
-	var source := "search"
-	if friend_code != "":
-		var friend_pos: Variant = _friend_position(friend_code)
-		if friend_pos != null:
-			var radius := float(SpawnFinder.rule()["friend_radius"])
-			var near: Variant = SpawnFinder.find_near(world_seed, player_id, Vector2(friend_pos.x, friend_pos.z), radius, height_fn)
-			if near != null:
-				_colonization.note_home(Vector2i(floori(near.x / TerrainSlice.CHUNK_METERS), floori(near.z / TerrainSlice.CHUNK_METERS)))
-				return { "position": near, "source": "friend", "message": "" }
-			message = "spawn.no_safe_ground"
-		else:
-			message = "spawn.unknown_friend"
-		source = "friend_unknown"
-	var found: Variant = SpawnFinder.find_new(world_seed, player_id, _colonization, height_fn, Time.get_unix_time_from_system())
-	if found == null:
-		return {}
-	_colonization.note_home(Vector2i(floori(found.x / TerrainSlice.CHUNK_METERS), floori(found.z / TerrainSlice.CHUNK_METERS)))
-	return { "position": found, "source": source, "message": message }
-
-## The live position of the player behind `handle`: the local player's body, else the registry.
-func _friend_position(handle: String) -> Variant:
-	if _registry.public_handle(_registry.local_player_id) == handle and _player != null:
-		return _player.get_position()
-	return _registry.friend_position(handle)
-
-## The saved position of an OFFLINE player behind `handle`, found by hashing the ids of the
-## records on disk. null when no record matches.
-func _locate_friend_on_disk(handle: String) -> Variant:
-	for pid in _persistence.list_player_records():
-		if _registry.public_handle(str(pid)) != handle:
-			continue
-		var rec := _persistence.load_player(str(pid))
-		var arr: Variant = rec.get("position", [])
-		if arr is Array and (arr as Array).size() >= 3:
-			return Vector3(float(arr[0]), float(arr[1]), float(arr[2]))
-	return null
-
-## Phase 122 — presence is noted at the exact chunk of `wp` (`{chunk, local}`), not a float32 position.
-func _note_presence(wp: Dictionary) -> void:
-	_colonization.note_presence(wp["chunk"], Time.get_unix_time_from_system())
-
-## Phase 122 — a peer's last known position as an exact `{chunk, local}`: the exact record when the
-## peer reported one, else the float position promoted.
-func _peer_exact_pos(peer_id: int) -> Dictionary:
-	var exact: Dictionary = _networking.get_last_known_exact(peer_id)
-	if not exact.is_empty() and WorldPos.is_plausible_pos(exact):
-		return exact
-	var p := _networking.get_last_known_state(peer_id)
-	return WorldPos.from_world(p.x, p.y, p.z)
-
-func _on_block_changed_colonization(_action: String, position: Vector3, _normal: Vector3, _material: String) -> void:
-	_colonization.note_edited_chunk(Vector2i(floori(position.x / TerrainSlice.CHUNK_METERS), floori(position.z / TerrainSlice.CHUNK_METERS)))
-
-## Phase 33 — client: the host told us which record we are. Cache the id so the
-## next connection can claim it, and read our own state out of it.
-func _on_player_identity_assigned(player_id: String) -> void:
-	if not _is_client or player_id.is_empty():
-		return
-	_persistence.save_client_identity(player_id)
-	if _ui != null:
-		_ui.set_own_handle(_networking.claimed_handle)
-	print("[Client] identity assigned: %s" % player_id)
-
-## Phase 33 — host: a connection dropped. Write the player's record before the
-## transport mapping is discarded; the record stays on DISK (and is re-loaded
-## lazily on the reconnect claim), so the same player_id reconnects to the same
-## inventory, position, and HP.
-##
-## The in-memory record and the player's inventory node are then RELEASED
-## (`evict_player`): keeping them was what made the registry grow with every peer
-## that had ever connected. Order matters — fold, write, unbind, then evict — so
-## the durable copy is complete before the only reference to the live one goes.
-## The party bindings in trade/market are dropped with it: they hold a raw node
-## reference, and a freed node is not null.
-func _on_peer_disconnected(peer_id: int) -> void:
-	_remove_remote_avatar(peer_id)
-	_character.forget_peer(peer_id)
-	if _is_client:
-		return
-	_chunk_manager.clear_peer_center(peer_id)
-	var player_id := _registry.get_player_id(peer_id)
-	if player_id.is_empty():
-		return
-	_fold_last_known_state(peer_id, player_id)
-	_refresh_status_records()
-	if _status != null:
-		_status.clear(player_id)
-		_status.take_dirty()
-	_persistence.save_player(player_id, _registry.get_player_data(player_id))
-	_registry.unbind_peer(peer_id)
-	# A stale AOI cell for a peer_id ENet may hand to the next connection would
-	# suppress that peer's very first re-scoped snapshot.
-	_peer_aoi_regions.erase(peer_id)
-	_peer_records_msec.erase(peer_id)
-	_trade.clear_party_inventory(player_id)
-	_market.clear_party_inventory(player_id)
-	_registry.evict_player(player_id)
-	# Phase 37 — and the taming slice's per-player mirrors (flags, companion bindings,
-	# cooldowns) go with it. They are the same kind of memory: the durable copy is the
-	# record just written, so a server that has seen a thousand tamers no longer holds
-	# a thousand tables for the rest of the session, and a reconnect re-applies the
-	# record it claims (see _on_player_joined).
-	_taming.forget_player_id(player_id)
-	_professions.forget_player_id(player_id)
-	GameBus.player_left.emit(player_id)
-
-## Fold everything the host knows about a LIVE remote peer into its registry record:
-## its last-reported position.
-##
-## Position is guarded by has_last_known_state() — get_last_known_state() answers
-## Vector3.ZERO for BOTH "at the origin" and "never reported", so writing it
-## unconditionally would reset a returning player's record to the world origin
-## from a peer that connected but never sent a state packet.
-##
-## HP is not folded EITHER — but for the opposite reason to before Phase 38. The HP
-## this host holds for a remote peer is now its OWN simulation of that body
-## (`PlayerRegistry.record_simulated_hp`, written the moment the host resolves a
-## creature's round against it), not a value read back out of the wire's movement
-## packets, so there is nothing left to fold: the record is already current. What is
-## still refused at every door is the peer's DECLARED hp — `_route_c2h` ignores the
-## `hp` that rides `player_moved` and `PlayerRegistry.record_hp` refuses a remote id —
-## because that is a claim about a body this process cannot check. Only the local
-## player's live body and the host's own hit resolution may write a record's health.
-func _fold_last_known_state(peer_id: int, player_id: String) -> void:
-	if _networking.has_last_known_state(peer_id):
-		# Phase 86 — the exact position when the peer reported one; the float Vector3 otherwise.
-		var exact: Dictionary = _networking.get_last_known_exact(peer_id)
-		# Phase 97 — an exact position that is not a plausible wire position (a chunk past the pole row)
-		# is not persisted; the record keeps its previous position.
-		if not exact.is_empty() and not WorldPos.is_plausible_pos(exact):
-			return
-		if exact.is_empty():
-			_registry.record_position(player_id, _networking.get_last_known_state(peer_id))
-		else:
-			_registry.record_world_pos(player_id, exact)
-
-## Phase 33 — fold every ONLINE remote peer's last-known position into its record.
-## This runs on every autosave, not only at disconnect: a peer whose process
-## is KILLED (or whose host is) never reaches _on_peer_disconnected, so the durable
-## record would otherwise still hold whatever was loaded from disk — a returning
-## player resurrected at the world origin. The autosave interval is now the bound
-## on how much of a remote peer's live position a hard kill can lose. (Its HP needs no
-## folding — the host's own simulated value is written when the hit is resolved; see
-## _fold_last_known_state.)
-func _snapshot_remote_players() -> void:
-	for peer_id in _networking.get_last_known_states():
-		var player_id := _registry.get_player_id(int(peer_id))
-		if player_id.is_empty():
-			continue
-		_fold_last_known_state(int(peer_id), player_id)
-		if _networking.has_last_known_state(int(peer_id)):
-			_note_presence(_peer_exact_pos(int(peer_id)))
-
-## Phase 36 — every player CreatureAI can place on this machine, as
-## { target_id: Vector3 }: the local body under the id "player" (the defender id
-## `combat_round_requested` has always used for it) plus each connected peer's last
-## recorded position, under its player id.
-##
-## A peer that has never reported a position is deliberately NOT included: aiming a
-## creature at the world origin would be worse than not seeing that peer at all. The
-## position is the host's own evidence of where the peer is (recorded from the
-## peer's movement packets — see NetworkingSlice.remember_player_state), not a claim
-## from the client.
-func _player_targets() -> Dictionary:
-	var out := {}
-	if _player != null:
-		out["player"] = _player.get_position()
-	for peer_id in _networking.get_last_known_states():
-		var player_id := _registry.get_player_id(int(peer_id))
-		if player_id.is_empty():
-			continue
-		out[player_id] = _networking.get_last_known_state(int(peer_id))
-	return out
 
 ## Phase 66 — client: the other players inside our AOI, as character instances.
 ## { peer_id: instance_id }. A peer's replicated gear lands on its instance (bound through
@@ -1349,41 +1033,10 @@ func _player_targets() -> Dictionary:
 ## disconnecting frees the body, and re-entry builds a fresh one the host's resend dresses.
 var _remote_avatars: Dictionary = {}
 
-func _on_remote_avatar_state(peer_id: int, position: Vector3) -> void:
-	if not _is_client or peer_id == multiplayer.get_unique_id():
-		return
-	var iid: String = str(_remote_avatars.get(peer_id, ""))
-	if iid != "" and _character.set_character_position(iid, position):
-		return
-	iid = _character.create_character("TravellerHuman", position)
-	if iid == "":
-		return
-	_remote_avatars[peer_id] = iid
-	_character.bind_peer_character(peer_id, iid)
-	# The avatar IS this peer now; the PlayerSlice capsule ghost would draw it a second time.
-	_player.set_ghost_suppressed(peer_id, true)
-
 ## A remote avatar is dropped only once it is this far away, a margin PAST the host's AOI
 ## edge. The host stops reporting a peer at exactly AOI_RADIUS, so pruning at the same radius
 ## made an avatar standing on the edge flicker (dropped, re-created by the next report).
 const REMOTE_AVATAR_PRUNE_RADIUS := NetworkingSlice.AOI_RADIUS + 16.0
-
-## A peer with nothing worn is never sent an evict, so a body that has drifted out of range
-## is dropped here as well (the host stops reporting its state once it leaves our AOI).
-func _prune_remote_avatars() -> void:
-	if _remote_avatars.is_empty() or _player == null:
-		return
-	var here: Vector3 = _player.get_position()
-	for peer_id in _remote_avatars.keys():
-		var at: Variant = _character.get_character_position(str(_remote_avatars[peer_id]))
-		if at is Vector3 and (at as Vector3).distance_to(here) > REMOTE_AVATAR_PRUNE_RADIUS:
-			_remove_remote_avatar(int(peer_id))
-
-func _remove_remote_avatar(peer_id: int) -> void:
-	if _remote_avatars.has(peer_id):
-		_character.remove_character(str(_remote_avatars[peer_id]))
-		_remote_avatars.erase(peer_id)
-		_player.set_ghost_suppressed(peer_id, false)
 
 ## Phase 29 — a client's movement may carry it into a new area of interest.
 ## When the AOI grid cell changes, re-send a scoped snapshot so the client gains
@@ -1396,75 +1049,9 @@ static func _is_plausible_position(p: Vector3) -> bool:
 	return is_finite(p.x) and is_finite(p.y) and is_finite(p.z) \
 		and absf(p.x) <= MAX_CLAIMED_COORD and absf(p.y) <= MAX_CLAIMED_COORD and absf(p.z) <= MAX_CLAIMED_COORD
 
-func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
-	if _is_client:
-		return
-	# A non-finite or absurd claim is dropped before ANY consumer reads it (the region lookup
-	# below included); a planet is far smaller than MAX_CLAIMED_COORD.
-	if not _is_plausible_position(position):
-		return
-	var region: Vector2i = _networking.aoi_region(position)
-	if _peer_aoi_regions.get(peer_id, null) == region:
-		return
-	# Phase 109 — a re-scope carries generation records, and a snapshot without them is never resent
-	# for that crossing, so inside the interval the whole re-scope waits for the next state packet.
-	if Time.get_ticks_msec() - int(_peer_records_msec.get(peer_id, -RECORDS_RESCOPE_INTERVAL_MSEC)) < RECORDS_RESCOPE_INTERVAL_MSEC:
-		return
-	_peer_aoi_regions[peer_id] = region
-	# Phase 62 — re-centre the peer's window and make the regions around the new position
-	# resident BEFORE the snapshot is built, as the join path does: a teleport into a region
-	# with stored edits must carry those edits in the re-scope snapshot. The re-centre is
-	# rate-limited and clamped (`set_peer_center`), so this cannot be used to flood reads.
-	# When the window could not reach the target yet (refused or clamped) the snapshot would
-	# miss the destination's edits: forget the crossing so the next state packet retries it.
-	if _chunk_manager != null and _registry.get_player_id(peer_id) != "":
-		var target: Vector2i = _chunk_manager.world_to_chunk(Vector2(position.x, position.z))
-		if _chunk_manager.set_peer_center(peer_id, target):
-			_chunk_manager.refresh(false)
-		# The window centre is stored wrapped past the seam; compare like with like. A move that was
-		# refused or clamped builds no snapshot (it would miss the destination's edits): the crossing is
-		# forgotten and the next state packet retries it once the window has caught up.
-		if _chunk_manager.peer_center(peer_id) != TerrainSlice.wrap_chunk(target):
-			_peer_aoi_regions.erase(peer_id)
-			return
-	# Phase 33 — world/entity data only: the peer's own record is NOT re-sent, or
-	# the client would re-apply a stale position/HP/inventory on every region
-	# crossing (the record is written at load and at disconnect, not per frame).
-	# The crossing position is passed explicitly: this handler may run before the
-	# networking slice's own handler has recorded it, so get_aoi_center() can be stale.
-	_networking.send_snapshot(peer_id, _build_snapshot(peer_id, false, position, false))
-
 ## Phase 52 — seconds between re-centring the connected peers' streaming windows.
 const PEER_WINDOW_INTERVAL := 0.5
 var _peer_window_elapsed := 0.0
-
-## The chunk a peer's window is centred on: its last reported position, else the position
-## its record holds (a joining peer has not sent a state packet yet).
-func _peer_window_chunk(peer_id: int) -> Vector2i:
-	if _networking.has_last_known_state(peer_id):
-		# Phase 97 — the exact chunk when the peer reported one; the float32 Vector3 only as fallback.
-		# (The slice only stores an exact position that decoded and validated, so it is trusted here.)
-		var exact: Dictionary = _networking.get_last_known_exact(peer_id)
-		if not exact.is_empty():
-			return exact["chunk"]
-		var p: Vector3 = _networking.get_last_known_state(peer_id)
-		return _chunk_manager.world_to_chunk(Vector2(p.x, p.z))
-	var player_id := _registry.get_player_id(peer_id)
-	if player_id.is_empty():
-		return _chunk_manager.player_chunk()
-	return _registry.get_world_pos(player_id)["chunk"]
-
-## Phase 52 — keep one streaming window per connected peer, so creatures, trees and edit
-## validation run around every player and not only near the server's own body. Throttled:
-## a window moves by whole chunks, so twice a second is ample.
-func _sync_peer_windows(delta: float) -> void:
-	_peer_window_elapsed += delta
-	if _peer_window_elapsed < PEER_WINDOW_INTERVAL:
-		return
-	_peer_window_elapsed = 0.0
-	for peer_id in _registry.get_peer_ids():
-		if int(peer_id) > 0:
-			_chunk_manager.sync_peer_center(int(peer_id), _peer_window_chunk(int(peer_id)))
 
 ## Phase 80 — the origin rebase runs at the START of the physics step (the root is earlier in
 ## the tree than the player body, so its `_physics_process` fires first): no slice's movement
@@ -1474,7 +1061,7 @@ func _physics_process(_delta: float) -> void:
 	if _rebase != null and _player != null and _player.has_method("get_scene_position"):
 		var scene_pos: Vector3 = _player.get_scene_position()
 		_rebase.tick(scene_pos, _player.get_world_pos()["chunk"])
-		_fold_local_player()
+		_peer_wiring._fold_local_player()
 
 ## Phase 91 — the planet is a globe: a player who walks over a pole or round the antimeridian is
 ## folded back onto the canonical planet (`TerrainSlice.fold_world_pos`), landing where the globe
@@ -1490,68 +1077,9 @@ var _fold_standins_since_msec := -1
 ## Flipped by every pole crossing of the local player: the sun's azimuth turns half a turn with it.
 var _sun_turned := false
 
-func _fold_local_player() -> void:
-	if not _player.has_method("fold_to"):
-		return
-	_expire_fold_standins()
-	if _player.ground_hold:
-		_release_fold_hold()
-		return
-	var fold := TerrainSlice.fold_world_pos(_player.get_world_pos())
-	if not fold["folded"]:
-		return
-	var pos: Dictionary = fold["pos"]
-	var turned: bool = fold["turned"]
-	var before: Vector3 = _player.get_scene_position()
-	var standins: Array = _voxel.detach_standins() if _voxel != null else []
-	var ring: Node3D = _distant.detach_ring() if _distant != null and _distant.has_method("detach_ring") else null
-	if _chunk_manager != null:
-		_chunk_manager.restream()
-	_rebase.rebase_to(pos["chunk"])
-	_player.fold_to(pos, turned)
-	if turned:
-		_sun_turned = not _sun_turned
-	var xform := TerrainSlice.fold_scene_transform(before, _player.get_scene_position(), turned)
-	if ring != null:
-		ring.transform = xform * ring.transform
-	if _voxel != null:
-		_voxel.adopt_standins(standins, xform)
-		_fold_standins_since_msec = Time.get_ticks_msec()
-	if _chunk_manager != null:
-		# Queue the folded window now, and drop the stand-ins it does not cover: nothing rebuilds them.
-		_chunk_manager.refresh(false)
-		if _voxel != null:
-			_voxel.prune_standins(func(c: Vector2i) -> bool: return _chunk_manager.chunk_ref_count(c) > 0)
-		if _voxel == null or not _voxel.has_standin(pos["chunk"]):
-			_player.ground_hold = true
-			_fold_hold_extended = false
-			_fold_hold_since_msec = Time.get_ticks_msec()
-
-func _expire_fold_standins() -> void:
-	if _voxel == null or _voxel.standin_count() == 0:
-		return
-	if Time.get_ticks_msec() - _fold_standins_since_msec > FOLD_STANDIN_MAX_MSEC:
-		_voxel.release_standins()
-
 ## Phase 119 — count of holds that timed out with the chunk still unbuilt (the window is re-queued first).
 var fold_hold_retries := 0
 var _fold_hold_extended := false
-
-func _release_fold_hold() -> void:
-	var waited := Time.get_ticks_msec() - _fold_hold_since_msec
-	if _chunk_manager.is_chunk_built(_player.get_world_pos()["chunk"]):
-		_fold_hold_extended = false
-		_player.ground_hold = false
-	elif waited > FOLD_HOLD_MAX_MSEC:
-		# A stalled build is retried once and the hold extended once; then it is given up so it cannot pin the player.
-		fold_hold_retries += 1
-		_chunk_manager.refresh(false)
-		if not _fold_hold_extended:
-			_fold_hold_extended = true
-			_fold_hold_since_msec = Time.get_ticks_msec()
-			return
-		_fold_hold_extended = false
-		_player.ground_hold = false
 
 func _process(delta: float) -> void:
 	# Phase 42 — complete a host boot whose first ring has finished building. It has
@@ -1563,18 +1091,18 @@ func _process(delta: float) -> void:
 	# a joining client holds the loading screen until its own first ring's ground exists.
 	_tick_pending_client_boot(delta)
 
-	_tick_world_clock(delta)
-	_sync_player_avatar(delta)
+	_weather_wiring._tick_world_clock(delta)
+	_peer_wiring._sync_player_avatar(delta)
 	if _distant != null and _player != null and _chunk_manager != null:
 		_distant.world_seed = _terrain.get_world_seed()
 		var pp := _player.get_position()
 		_distant.rebuild(Vector2(pp.x, pp.z), _chunk_manager.stream_radius())
 	if _is_client:
-		_prune_remote_avatars()
+		_peer_wiring._prune_remote_avatars()
 	if not _is_client and _player != null:
 		# Phase 48 — the host avatar's AOI membership drives peer-equipment sends.
 		_networking.set_host_position(_player.get_position())
-		_sync_peer_windows(delta)
+		_peer_wiring._sync_peer_windows(delta)
 	# Distance-driven LOD (Phase 23) — evaluate each character's world distance
 	# to the player each frame and swap fine detail / the impostor billboard in
 	# and out. No-op until characters exist and on clients (no spawned visuals).
@@ -1583,576 +1111,22 @@ func _process(delta: float) -> void:
 	# Phase 33 — settle a COMPLETED save worker before the lifecycle tick can
 	# start another one: a failed write is then reported within a frame instead of
 	# at the start of the next autosave, and its dirty chunks go back immediately.
-	_poll_save_completion()
+	_persistence_wiring._poll_save_completion()
 
 	# Phase 33 — authoritative save lifecycle: the autosave interval plus the
 	# shutdown-request poll (each on its own cadence). Must run before the
 	# snapshot-pending early return.
-	_tick_save_lifecycle(delta)
+	_persistence_wiring._tick_save_lifecycle(delta)
 
 	if not _snapshot_pending:
 		return
-	_tick_client_handshake(delta)
+	_peer_wiring._tick_client_handshake(delta)
 
 ## Fog density at visibility factor 0 (Godot units: 0.02 is dense within ~100 m).
 const WEATHER_FOG_DENSITY := 0.03
 
-## Phase 54 — advance the clock, tick it to clients (host), and drive the sun, the season tint
-## and the HUD line (anything with a renderer). A server runs no renderer, so it only advances,
-## saves and ticks.
-func _tick_world_clock(delta: float) -> void:
-	_clock.advance(delta)
-	if not _is_client:
-		_weather.tick()
-		_status_tick_elapsed += delta
-		if _status_tick_elapsed >= STATUS_TICK_SECONDS:
-			_status_tick_elapsed = 0.0
-			tick_status_effects()
-	if not _is_client and _networking != null and _networking.is_host():
-		_clock_tick_elapsed += delta
-		if _clock_tick_elapsed >= clock_tick_seconds:
-			_clock_tick_elapsed = 0.0
-			clock_ticks_sent += 1
-			_networking.broadcast_world_clock(_clock.time_days)
-	if _is_server or _player == null:
-		return
-	var ppos: Vector3 = _player.get_position()
-	var lat: float = TerrainSlice.latitude_at(ppos.z)
-	_apply_sun(lat, _night_speed_at(ppos))
-	_apply_season_look(lat)
-	var chunk: Vector2i = _player.get_world_pos()["chunk"]
-	var weather_state := _weather.update_local(chunk)
-	_apply_weather_look(weather_state)
-	var text := _clock.text_for(lat)
-	if weather_state != "clear":
-		text += " · " + weather_state.replace("_", " ").capitalize()
-	if text != _last_clock_text:
-		_last_clock_text = text
-		if _minimap != null:
-			_minimap.clock_text = text
-			_minimap.queue_redraw()
-
-## Phase 128 — thicken the fog as the state's `visibilityFactor` falls (a client with a renderer only).
-func _apply_weather_look(state: String) -> void:
-	var env_node := get_node_or_null("Environment") as WorldEnvironment
-	if env_node == null or env_node.environment == null:
-		return
-	var vis: float = _weather.visibility_factor(state)
-	var env := env_node.environment
-	env.fog_enabled = vis < 1.0
-	env.fog_density = (1.0 - vis) * WEATHER_FOG_DENSITY
-	# Follow the sky: ambient energy runs 0.08 (night) to 0.5 (day) in `_apply_sun`.
-	var daylight := clampf((env.ambient_light_energy - 0.08) / 0.42, 0.0, 1.0)
-	env.fog_light_color = Color(0.02, 0.03, 0.08).lerp(Color(0.62, 0.66, 0.72), daylight)
-
-## Phase 128 — the host's override table changed: a host sends it to every client, a client adopts it.
-func _on_weather_overrides_synced(overrides: Array) -> void:
-	if _is_client:
-		_weather.apply_view(overrides)
-	elif _networking != null and _networking.is_host():
-		_networking.broadcast_weather_overrides(overrides)
-
-func _on_world_clock_received(host_days: float) -> void:
-	if not _is_client:
-		return
-	clock_ticks_received += 1
-	_clock.apply_host_time(host_days)
-
-## The sun follows the clock: elevation from latitude, declination and the hour of day; azimuth
-## swings east to west with the hour angle. It dims and warms toward the horizon and the sky
-## and ambient light fall with it at night. `night_speed` is the `dayNightSpeed` of the biome the
-## player stands in (1 follows the clock, 0 stays at dusk — see `WorldClock.biome_daylight`).
-func _apply_sun(lat: float, night_speed: float = 1.0) -> void:
-	var sun := get_node_or_null("Sun") as DirectionalLight3D
-	if sun == null:
-		return
-	var elev: float = _clock.sun_elevation_at(lat)
-	var daylight: float = WorldClock.biome_daylight(WorldClock.daylight_level(elev), night_speed)
-	var hour: float = WorldClock.hour_angle_deg(WorldClock.day_phase(_clock.time_days))
-	sun.rotation_degrees = Vector3(-clampf(elev, 2.0, 90.0), 90.0 + hour + (180.0 if _sun_turned else 0.0), 0.0)
-	sun.light_energy = 1.4 * daylight
-	sun.visible = elev > -6.0
-	var low: float = clampf(1.0 - elev / 40.0, 0.0, 1.0)
-	sun.light_color = Color(1.0, 0.95, 0.85).lerp(Color(1.0, 0.6, 0.35), low * low)
-	var env_node := get_node_or_null("Environment") as WorldEnvironment
-	if env_node != null and env_node.environment != null:
-		env_node.environment.background_color = Color(0.02, 0.03, 0.08).lerp(Color(0.45, 0.62, 0.85), daylight)
-		env_node.environment.ambient_light_energy = lerpf(0.08, 0.5, daylight)
-
-## `dayNightSpeed` of the biome under `ppos` (1.0 when it declares none, or the biome is unknown).
-func _night_speed_at(ppos: Vector3) -> float:
-	if _terrain == null:
-		return 1.0
-	var chunk := Vector2i(floori(ppos.x / TerrainSlice.CHUNK_METERS), floori(ppos.z / TerrainSlice.CHUNK_METERS))
-	var biome: Variant = GameData.BIOMES.get(_terrain.get_biome_at_chunk(chunk), null)
-	if biome == null or biome.get("dayNightSpeed") == null:
-		return 1.0
-	return float(biome.get("dayNightSpeed"))
-
 ## Warmth the season tints were last computed for (NAN before the first apply).
 var _season_warmth: float = NAN
-
-## Season look: every biome gets its own tint for the season at this latitude (snow-white where
-## that biome's seasonal temperature is below freezing), and each chunk wears its own biome's
-## tint — a freezing biome whitens its own chunks and not its temperate neighbours.
-func _apply_season_look(lat: float) -> void:
-	var w: float = _clock.warmth_at(lat)
-	if is_equal_approx(w, _season_warmth):
-		return   # the tints are a pure function of warmth: nothing to recompute or re-apply
-	_season_warmth = w
-	var tints: Dictionary = {}
-	for key in GameData.BIOMES:
-		tints[key] = WorldClock.season_look(GameData.BIOMES[key], w)
-	_voxel.set_season_tints(tints)
-
-## Client-side: wait for the host's world snapshot, re-presenting the join intent
-## while it does not arrive. The handshake is the only route to an identity and a
-## world, and it used to be fire-and-forget: one lost join_intent — or one lost
-## snapshot — left a fully connected client with nothing and no way to ask again.
-## Each retry re-sends the intent (a fresh seq, so the host's dedup passes it) and
-## the host re-answers an already-bound peer (see
-## PlayerRegistry.resolve_identity), so the retry re-delivers the snapshot.
-func _tick_client_handshake(delta: float) -> void:
-	_snapshot_elapsed += delta
-	_handshake_elapsed += delta
-	if _handshake_elapsed >= HANDSHAKE_RETRY_SECS and _handshake_retries < MAX_HANDSHAKE_RETRIES:
-		_handshake_elapsed = 0.0
-		_handshake_retries += 1
-		Diag.warn("[Networking] no world snapshot after %.1fs — re-presenting join intent (retry %d/%d)" % [
-			HANDSHAKE_RETRY_SECS, _handshake_retries, MAX_HANDSHAKE_RETRIES])
-		_networking.request_handshake()
-	if _snapshot_elapsed >= SNAPSHOT_TIMEOUT:
-		Diag.error("[Networking] world snapshot timed out after %.1fs — giving up" % SNAPSHOT_TIMEOUT)
-		_snapshot_pending = false
-
-## Drive the player's visual avatar from the real player controller every
-## frame — position/facing, locomotion state, and approximate foot IK
-## (characters.md §37). Only the host currently spawns character visuals
-## (_boot_host), so this is a no-op on clients until one exists.
-func _sync_player_avatar(delta: float) -> void:
-	var player_char: String = _character.get_player_character()
-	if player_char == "":
-		return
-	var vel: Vector3 = _player.get_velocity()
-	var pos: Vector3 = _player.get_position()
-	# The avatar's feet are driven by the surface the BODY actually stands on: the
-	# voxel columns carry the collision (layer 2) and are quantised to
-	# STEP_HEIGHT, so sampling `_terrain`'s raw noise heightmap floated the visual
-	# avatar off its own collision surface by up to a step. The voxel sampler is
-	# the same function the collision is built from.
-	#
-	# Phase 41 — it is a function of the body's own Y as well: a column's TOP is
-	# the ROOF of a tunnel, so a column-top sampler would stand the avatar on the
-	# ceiling it is walking under. The body's Y is closed over per frame.
-	var foot_sampler := func(xz: Vector2) -> float:
-		return _voxel.sample_support_height_at(xz, pos.y)
-	_character.sync_player_avatar(
-		player_char,
-		pos,
-		Vector3(vel.x, 0.0, vel.z),
-		vel.y,
-		_player.is_grounded(),
-		delta,
-		foot_sampler,
-		_player.get_scene_position()
-	)
-
-func _on_connection_failed() -> void:
-	if not _is_client:
-		return
-	Diag.error("[Networking] connection to host failed")
-	_snapshot_pending = false
-
-func _on_server_disconnected() -> void:
-	if not _is_client:
-		return
-	Diag.error("[Networking] disconnected from host")
-	_snapshot_pending = false
-
-## Host-side: serialize authoritative world state for a connecting client,
-## AOI-scoped (Phase 29) — only entities within the peer's area of interest are
-## sent, so the initial payload scales with local density, not world population.
-##
-## Phase 33 — the inventory half is the CONNECTING PEER's own record, not the
-## host's: inventory is per-player now, and shipping the host's contents would
-## hand every client the host's items.
-##
-## `include_own_record` is TRUE only for the join/reconnect snapshot. The record is
-## a durability artifact, not a live feed (see
-## PersistenceSlice.snapshot_carries_own_record), and the client applies whatever
-## it receives as authoritative — so carrying a stale record on an AOI re-scope
-## would teleport the client to its last-saved position and roll its inventory and
-## technology back to that instant.
-func _build_snapshot(peer_id: int, include_own_record: bool = true,
-		aoi_center_override: Variant = null, full_edits_override: Variant = null) -> Dictionary:
-	# Every AOI test below reads the SAME centre: the override when a re-scope names the
-	# crossing position (the networking slice may not have recorded it yet), else the peer's
-	# last known one.
-	var aoi_center: Vector3 = _networking.get_aoi_center(peer_id)
-	var aoi_exact: Dictionary
-	if aoi_center_override is Vector3:
-		aoi_center = aoi_center_override
-		aoi_exact = WorldPos.from_world(aoi_center.x, aoi_center.y, aoi_center.z)
-	elif _networking.has_last_known_state(peer_id):
-		aoi_exact = _peer_exact_pos(peer_id)
-	else:
-		aoi_exact = WorldPos.from_world(aoi_center.x, aoi_center.y, aoi_center.z)
-	var players := {}
-	# Phase 122 — scoped on exact positions, so a far-from-origin peer sees who is really near.
-	if NetworkingSlice.within_aoi_exact(aoi_exact, _player.get_world_pos()):
-		players[str(multiplayer.get_unique_id())] = WorldPos.pos_to_wire(_player.get_world_pos())
-	# Phase 19 — include last-known remote player states so a rejoining client
-	# resumes from its last authoritative position after a disconnect.
-	var last_known := _networking.get_last_known_states()
-	for pid in last_known:
-		var last_pos: Vector3 = last_known[pid]
-		var last_exact := _peer_exact_pos(int(pid))
-		if NetworkingSlice.within_aoi_exact(aoi_exact, last_exact):
-			players[str(pid)] = WorldPos.pos_to_wire(last_exact) if _networking.get_last_known_exact(int(pid)) == last_exact else WorldPos.to_wire(last_pos)
-	var player_id := _registry.get_player_id(peer_id)
-	# A join/reconnect snapshot (own record included) carries the full edit manifest: the
-	# peer's real position may be unknown (AOI centre defaults to spawn). Re-scopes send
-	# only the edits within EDITS_SCOPE_RADIUS and name that scope. The two are separate
-	# decisions that happen to coincide today, so the manifest scope has its own parameter.
-	var full_edits: bool = include_own_record if not (full_edits_override is bool) else full_edits_override
-	var snapshot := {
-		# Phase 41 — the world's SEED, not its heightmaps: the client regenerates
-		# the host's terrain from the same noise field instead of receiving every
-		# column of every loaded chunk. It is the world's identity, so it is small,
-		# exact, and the only thing that has to travel.
-		"seed":      _terrain.get_world_seed(),
-		# Phase 54 — the host's clock, so the client starts in step and only slews afterwards.
-		"clock":     _clock.to_data(),
-		# Phase 128 — the host's weather overrides; the weather itself is computed from the seed.
-		"weather":   _weather.to_data(),
-		# Phase 49 — only the edits of chunks inside the peer's AOI, with the scope named so
-		# the client keeps what it holds outside it.
-		"edits":     (_voxel.get_chunk_manifest() if full_edits
-				else _voxel.get_chunk_manifest_in_radius(aoi_center, NetworkingSlice.EDITS_SCOPE_RADIUS)),
-		"creatures": _scoped_creatures(aoi_center),
-		"stations":  _station.get_station_data(),
-		"players":   players,
-	}
-	# Phase 36/38 — the social/economy state the snapshot carries is redacted the same
-	# way the deltas are (the listings' sellers, the trades' parties and the proposals'
-	# authors/voters reach a client as public handles, never as the player ids those
-	# records are claimed by), and it travels under exactly the keys the receiving side
-	# walks to adopt its OWN handle — `NetworkingSlice.IDENTIFIED_STATE_KEYS`. Iterating
-	# that one list is what keeps the two halves from drifting: three literals here and
-	# the constant there were two places to update, and the failure mode was a blob a
-	# client would adopt but nobody would redact.
-	snapshot.merge(_networking.redact_social_state(_social_state()))
-	_add_generation_records(snapshot, peer_id, aoi_center)
-	if not full_edits:
-		snapshot["edits_aoi"] = [aoi_center.x, aoi_center.z, NetworkingSlice.EDITS_SCOPE_RADIUS]
-	# The peer's own record exists only once the host resolved its identity, and it
-	# is shipped only on the handshake snapshot — an AOI re-scope omits the keys
-	# entirely, so the client keeps the state it already holds.
-	if PersistenceSlice.snapshot_carries_own_record(include_own_record, player_id):
-		snapshot.merge(_snapshot_own_record(player_id))
-	return snapshot
-
-## The peer's own record as the handshake snapshot carries it (`inventory`, `technology`, `flags`,
-## `companions`, `equipment`, `player` and, when one is recorded, the original `spawn`).
-func _snapshot_own_record(player_id: String) -> Dictionary:
-	var own := _registry.get_player_data(player_id)
-	var snapshot := {}
-	snapshot["inventory"] = own.get("inventory", {})
-	snapshot["inventory_durability"] = own.get("inventory_durability", {})
-	snapshot["technology"] = own.get("technology", {})
-	# Phase 35 — taming flags (`wolfBondHolder`) and the companion bindings are
-	# part of the peer's own record, so they ride the same own-record payload.
-	snapshot["flags"] = own.get("flags", {})
-	snapshot["companions"] = own.get("companions", [])
-	snapshot["professions"] = own.get("professions", {})
-	snapshot["waystones"] = own.get("waystones", [])
-	# Phase 47 — the worn set rides the own-record payload too.
-	snapshot["equipment"] = own.get("equipment", {})
-	# The stored exact {chunk, local} goes out as stored, no float round trip (Phase 78); a legacy
-	# float-array record is re-encoded, and a record with no position stays empty so the client
-	# leaves its spawn alone.
-	var own_pos = PlayerRegistry.snapshot_position(own)
-	snapshot["player"] = { "position": own_pos, "hp": own.get("hp", -1.0) }
-	# Phase 66 — the original spawn point, so a reconnecting client respawns there and not
-	# where it happened to be standing when it rejoined.
-	if own.has("spawn"):
-		snapshot["player"]["spawn"] = own["spawn"]
-	return snapshot
-
-## Phase 109 — the generation records of the chunks in the peer's streamed window plus its first ring.
-## The scope is named (`gen_scope`) so the client knows which part of its table the packet speaks for.
-## Re-scopes are rate-limited by `_on_remote_player_state`, which defers the whole crossing rather than
-## sending it without records.
-func _add_generation_records(snapshot: Dictionary, peer_id: int, aoi_center: Vector3) -> void:
-	if _chunk_manager == null:
-		return
-	var now := Time.get_ticks_msec()
-	var center: Vector2i = _chunk_manager.world_to_chunk(Vector2(aoi_center.x, aoi_center.z))
-	var radius: int = _chunk_manager.stream_radius() + ChunkManager.FIRST_RING_RADIUS
-	var found := ChunkRecordSync.records_in_window(center, radius)
-	if bool(found["truncated"]):
-		Diag.warn("GameRoot: generation records for peer %d truncated at the %d-record packet cap" % [peer_id, ChunkRecordSync.PACKET_CAP])
-	snapshot["gen_scope"] = [center.x, center.y, radius]   # always named: a client prunes to it
-	_peer_records_msec[peer_id] = now   # the window was served, records or not: the re-scope interval counts from here
-	if (found["records"] as Dictionary).is_empty():
-		return   # no records to attach
-	snapshot["gen_records"] = found["records"]
-
-## Phase 38 — the replicated social/economy state, keyed by the names the wire uses
-## (`NetworkingSlice.IDENTIFIED_STATE_KEYS`).
-##
-## One mapping, so the snapshot needs no literals of its own: a fourth social slice is
-## added HERE and its key added to that constant, and both the redaction the snapshot
-## does and the identity walk the receiving client does pick it up. The three keys are
-## still named in exactly one place each — this table says where the data lives, the
-## constant says which blobs carry identities.
-func _social_state() -> Dictionary:
-	return {
-		"market":     _market.get_market_data(),
-		"governance": _proposal.get_governance_data(),
-		"trade":      _trade.get_trade_data(),
-	}
-
-## Phase 29 — the creature subset of the snapshot, filtered to the joining
-## peer's AOI so a client seeds only the population it can actually see.
-func _scoped_creatures(aoi_center: Vector3) -> Array:
-	var out: Array = []
-	for c in _creature.get_snapshot_creatures():
-		var pos := WorldPos.from_wire(c.get("position", []))
-		if NetworkingSlice.within_aoi(aoi_center, pos):
-			out.append(c)
-	return out
-
-## Client: put the body where the snapshot's `player` record says (exactly, via a rebase, when the
-## position is a `{chunk, local}` record) and restore its HP. Anything but a dictionary is ignored.
-func _place_from_snapshot(own: Variant) -> void:
-	if own is Dictionary:
-		var arr = own.get("position", [])
-		if WorldPos.is_wire(arr):
-			if arr is Dictionary and _rebase != null:
-				# Exact placement: rebase to the target chunk, then land on its small local offset.
-				var l: Array = arr["local"]
-				var exact := WorldPos.normalized({"chunk": WorldPos.wire_chunk(arr),
-					"local": Vector3(float(l[0]), float(l[1]), float(l[2]))})
-				exact = PlayerRegistry.canonical_world_pos(exact)   # Phase 122 — a row past the pole folds first
-				_rebase.rebase_to(exact["chunk"])
-				_player.place_at_world_pos(exact)
-			else:
-				_player.spawn_at(WorldPos.from_wire(arr))
-			if not _client_respawn_point_set:
-				# Only the first snapshot carries the placement; later AOI re-scoped snapshots
-				# carry wherever the player has since walked, which is not a spawn point.
-				_player.set_respawn_world_pos(client_respawn_point(own, _player.get_world_pos()))
-				_client_respawn_point_set = true
-		elif (arr is Array and not (arr as Array).is_empty()) or arr is Dictionary:
-			# Phase 122 — a position that is not a valid wire position (forged, corrupt or from a newer
-			# build) spawns the body at the spawn point instead of leaving it wherever it booted.
-			Diag.warn("GameRoot: snapshot position refused; spawning at the spawn point")
-			if _rebase != null:
-				_rebase.rebase_to(Vector2i.ZERO)
-			_player.place_at_world_pos(WorldPos.from_world(WorldShape.SPAWN_CENTER.x, _terrain.get_height_at(WorldShape.SPAWN_CENTER) + 1.0, WorldShape.SPAWN_CENTER.y))
-		var hp := float(own.get("hp", -1.0))
-		if hp >= 0.0:
-			_player.set_hp(hp)
-
-## Client-side: apply the host's world snapshot and begin rendering.
-func _on_world_snapshot_received(data: Dictionary) -> void:
-	if not _is_client:
-		return
-	if data.has("seed"):
-		# Phase 41 — adopt the host's world seed BEFORE anything is streamed (a
-		# chunk built from this machine's own random seed would be a different
-		# world, and every voxel edit the host sends would land elsewhere).
-		_terrain.set_world_seed(int(data["seed"]))
-	if data.has("clock"):
-		_clock.from_data(data["clock"])
-	if data.has("weather"):
-		_weather.apply_view(data["weather"])
-	# Phase 109 — the host's generation records, BEFORE `_chunk_manager.start()` below builds from them;
-	# a malformed one is dropped, anything past the packet cap is refused.
-	if data.has("gen_records") or data.has("gen_scope"):
-		var rev_before := ChunkRecords.content_revision()
-		# Phase 114 — the table is pruned to the host's scope first, so it never outgrows one window.
-		var pruned: Array = []
-		if data.has("gen_scope"):
-			ChunkRecordSync.prune_to_scope(data["gen_scope"], pruned)
-			_tree.set_clear_scope(data["gen_scope"])   # Phase 126 — the clear range is the scope's radius
-		var gen_result := ChunkRecordSync.apply(data.get("gen_records", {}))
-		if ChunkRecords.content_revision() != rev_before:
-			_tree.resync_recorded_chunks()   # Phase 110 — a record may carry a budget or cleared trees
-		# A record that arrives after its chunk was built (a re-scope) changes the ground: rebuild it.
-		# A pruned record means its loaded chunk now draws from the generator: rebuild that too.
-		if _chunk_manager != null:
-			var rebuilt := {}
-			for c in gen_result["changed"] + pruned:
-				if not rebuilt.has(c) and _chunk_manager.is_chunk_built(c):
-					rebuilt[c] = true
-					_chunk_manager.request_rebuild(c)
-		if int(gen_result["dropped"]) > 0 or int(gen_result["refused"]) > 0:
-			Diag.warn("GameRoot: generation records: %d applied, %d dropped, %d refused" % [
-				int(gen_result["applied"]), int(gen_result["dropped"]), int(gen_result["refused"])])
-	if data.has("edits") and data["edits"] is Dictionary:
-		var scope: Variant = data.get("edits_aoi", null)
-		if scope is Array and scope.size() >= 3:
-			_voxel.apply_scoped_chunk_manifest(data["edits"],
-				Vector3(float(scope[0]), 0.0, float(scope[1])), float(scope[2]))
-		else:
-			_voxel.apply_chunk_manifest(data["edits"])
-	# Phase 33 — stations and the client's OWN record (position / HP /
-	# technologies). Stations are world data, so a client mirrors the host's set.
-	if data.has("stations") and data["stations"] is Array:
-		_station.apply_station_data(data["stations"])
-	if data.has("technology") and data["technology"] is Dictionary:
-		# A client has no registry identity: its own tree is the only one it holds,
-		# which is the "" bucket resolve_player() falls back to.
-		_technology.apply_statuses(data["technology"], _registry.local_player_id)
-	if data.has("flags") or data.has("companions"):
-		# Phase 35 — the peer's own taming record, same "" bucket rule as above.
-		_taming.apply_record({
-			"flags":      data.get("flags", {}),
-			"companions": data.get("companions", []),
-		}, _registry.local_player_id)
-	if data.has("professions"):
-		_professions.apply_record({ "professions": data["professions"] }, _registry.local_player_id)
-	if data.has("waystones") and data["waystones"] is Array:
-		_waystones.apply_view(data["waystones"])
-		GameBus.waystones_synced.emit(_registry.local_player_id, data["waystones"])
-	if data.get("waystone_result", null) is Dictionary:
-		var res: Dictionary = data["waystone_result"]
-		GameBus.waystone_travel_resolved.emit(_registry.local_player_id, bool(res.get("ok", false)), str(res.get("reason", "")).left(32))
-	if data.has("equipment") and data["equipment"] is Dictionary:
-		# A client builds no avatar at boot, so the first snapshot creates it; without
-		# one there is nothing to wear the set, to show in the Character window, or to
-		# forward equipment intents from.
-		if _character.get_player_character() == "":
-			var client_char: String = _character.create_character("TravellerHuman", _player.get_position())
-			_character.set_player_character(client_char)
-			_character.attach_default_rig(client_char)
-		_apply_local_equipment(data["equipment"])
-	_place_from_snapshot(data.get("player", {}))
-	if data.has("creatures") and data["creatures"] is Array:
-		_creature.apply_snapshot_creatures(data["creatures"])
-	if data.has("inventory") and data["inventory"] is Dictionary:
-		_inventory.replace_contents(data["inventory"], data.get("inventory_durability", {}))
-	if data.has("market") and data["market"] is Dictionary:
-		_market.apply_market_data(data["market"])
-	if data.has("governance") and data["governance"] is Dictionary:
-		_proposal.apply_governance_data(data["governance"])
-	if data.has("trade") and data["trade"] is Dictionary:
-		_trade.apply_trade_data(data["trade"])
-	if data.has("players") and data["players"] is Dictionary:
-		for pid in data["players"]:
-			var pos = data["players"][pid]
-			if WorldPos.is_wire(pos):
-				GameBus.remote_player_state.emit(int(pid), WorldPos.from_wire(pos))
-	# Phase 41 — the client streams its OWN chunks now, from the seed above and
-	# around the position the snapshot just restored, because the snapshot no
-	# longer carries heightmaps to build them from. TREES need no placement payload
-	# for it: `TreeSlice.spawn_for_chunk` derives every tree from the chunk
-	# coordinate on either side, and only a tree's chopped/standing STATE is
-	# replicated. CREATURES are the host's to place — the snapshot still carries
-	# them (`apply_snapshot_creatures`, above), because `CreatureSlice.spawn_for_chunk`
-	# refuses to run on a non-authoritative slice.
-	_chunk_manager.start()
-	# Phase 42 review — the CLIENT arms the same first-ring gate the host does, instead of
-	# placing the body from the snapshot into a world whose ground is still being built on
-	# a worker. The body is spawned from the snapshot ABOVE (so `player_chunk()` names the
-	# ground it will stand on and the streaming window centres on it), and it is held still
-	# by the loading screen's freeze until the ring is built (see `PlayerSlice`).
-	_chunk_manager.build_first_ring(_chunk_manager.player_chunk())
-	_chunk_manager.refresh()
-	_snapshot_pending = false
-	# Phase 42 review pass 11 — a re-scope snapshot (the join is already released, or its
-	# wait is still running) keeps the ring's head start above but never (re)starts the
-	# wait: that popped the loading screen mid-game and reset a running wait's timeout.
-	if _client_boot_done or _pending_client_boot:
-		return
-	if _chunk_manager.is_first_ring_ready():
-		_finish_client_boot()
-		return
-	_loading_screen.begin()
-	_client_boot_wait_elapsed = 0.0
-	_pending_client_boot = true
-
-# ---------------------------------------------------------------------------
-# Phase 33 — authoritative persistence lifecycle
-# ---------------------------------------------------------------------------
-
-## Accumulate the autosave timer and honour a shutdown request. Authoritative
-## roles only: a client neither loads a world nor writes one — its state arrives
-## in the host's AOI-scoped snapshot (Phase 29).
-##
-## The shutdown-request file is polled on its OWN cadence (`shutdownPollSeconds`,
-## seconds by default), NOT on the autosave tick: it used to be gated behind
-## `autosaveIntervalSeconds` (300 s), so a restart request sat unread for up to
-## five minutes. An orchestrator that writes the request and sigkills after a
-## short grace period therefore killed the server before it saved, losing up to a
-## full autosave interval per restart. It is still not a per-frame
-## `FileAccess.file_exists()` (the file is written at most once), so the separate
-## short cadence keeps the "don't stat every frame" fix while bounding the
-## shutdown latency to `shutdownPollSeconds` instead of the autosave interval.
-func _tick_save_lifecycle(delta: float) -> void:
-	if _is_client:
-		return
-	_shutdown_poll_elapsed += delta
-	if PersistenceSlice.poll_due(_shutdown_poll_elapsed, _persistence.shutdown_poll_interval):
-		_shutdown_poll_elapsed = 0.0
-		if FileAccess.file_exists(_persistence.shutdown_request_path):
-			print("[Server] shutdown requested — saving before quit")
-			_save_everything(true)
-			_flush_save()
-			DirAccess.remove_absolute(_persistence.shutdown_request_path)
-			get_tree().quit()
-			return
-	_autosave_elapsed += delta
-	if not PersistenceSlice.autosave_due(_autosave_elapsed, _persistence.autosave_interval):
-		return
-	_autosave_elapsed = 0.0
-	_save_everything(true)
-
-## Write the world record plus one record per player. `incremental` merges only the
-## dirty chunk manifests into the record already on disk, so a periodic autosave does
-## not re-serialize every loaded chunk.
-##
-## Authoritative roles only — this is the single choke point for every caller
-## (boot, autosave, window close, shutdown request). A client owns no world and no
-## records: it holds a cached player_id and receives its state from the host, so
-## writing here would drop a client-side `world.json` into `user://saves/server/`
-## that a later host boot would load as authoritative (client state, no world).
-## `_notification()` runs on a client too — `auto_accept_quit` only decides whether
-## the engine also quits, not whether the notification is delivered.
-##
-## The write itself runs on a worker thread (see _start_save_thread): this function
-## only COLLECTS the payload, which is the part that reads live slice state and so
-## has to happen on the main thread. Callers that must not outrun their write
-## (shutdown) call _flush_save() afterwards.
-func _save_everything(incremental: bool) -> void:
-	if _is_client:
-		return
-	_reap_save_thread()
-	_snapshot_local_player()
-	_snapshot_remote_players()
-	_start_save_thread(_collect_save_job(incremental))
-
-## Fold the local player's LIVE state into its registry record before a write.
-func _snapshot_local_player() -> void:
-	var pid := _registry.local_player_id
-	if pid.is_empty():
-		return
-	_registry.record_world_pos(pid, _player.get_world_pos())
-	_note_presence(_player.get_world_pos())
-	_registry.record_hp(pid, _player.get_hp())
-	_registry.record_technology(pid, _technology.get_statuses(pid))
-	# Phase 35 — the live taming flags and companion bindings ride the same record.
-	_taming.sync_record(pid)
-	_professions.sync_record(pid)
-	# Appearance is part of the identity ("owning their inventory, HP, position,
-	# and appearance"): the character's recipe is stored, not its visual nodes.
-	var char_id := _character.get_player_character()
-	if char_id != "":
-		_registry.record_appearance(pid, _character.get_appearance(char_id))
-		# Phase 47 — the worn set is its own record key (the Character window's source).
-		_registry.record_equipment(pid, _character.get_equipment_set(char_id))
 
 ## Phase 47 — make the local avatar wear a recorded set. The `_applying_equipment`
 ## guard keeps the restore from echoing back out as a fresh intent.
@@ -2160,74 +1134,6 @@ var _applying_equipment: bool = false
 ## Worn set this client last matched against the host (what it has already sent actions for);
 ## an appearance change that leaves gear alone sends nothing.
 var _last_sent_equipment: Dictionary = {}
-func _apply_local_equipment(worn: Variant) -> void:
-	var char_id: String = _character.get_player_character()
-	if char_id == "" or not (worn is Dictionary):
-		return
-	if _is_client:
-		# The host's record is the only worn set: the avatar shows exactly that, an empty
-		# record included (gear an appearance recipe lists but the host never granted is not
-		# worn). Nothing is reported back; the client only ever sends equip actions.
-		_apply_host_equipment(worn)
-		return
-	# An empty record (fresh player, or a pre-Phase-47 save with no worn set) carries no
-	# information: the avatar keeps the gear its appearance recipe gave it, and that
-	# set becomes the record instead of stripping the avatar bare.
-	if not (worn as Dictionary).is_empty():
-		_applying_equipment = true
-		_character.apply_equipment_set(char_id, worn)
-		_applying_equipment = false
-	elif not _registry.local_player_id.is_empty():
-		_registry.record_equipment(_registry.local_player_id, _character.get_equipment_set(char_id))
-
-## Phase 48 — the host force-cleared worn slots (an item left the bag). Unlike
-## `_apply_local_equipment` an EMPTY set is meaningful here and strips the avatar. The
-## de-dup baseline is reset to the applied set so re-wearing the item is sent again.
-func _apply_host_equipment(worn: Dictionary) -> void:
-	var char_id: String = _character.get_player_character()
-	if char_id == "":
-		return
-	_applying_equipment = true
-	_character.apply_equipment_set(char_id, worn)
-	_applying_equipment = false
-	_last_sent_equipment = _character.get_equipment_set(char_id).duplicate()
-
-## Listen host: its own bag lost a worn item; the record is already cleared, the avatar
-## is not. A remote owner is told by the networking slice instead.
-func _on_equipment_revoked(player_id: String, worn: Dictionary) -> void:
-	if _is_client or player_id.is_empty() or player_id != _registry.local_player_id:
-		return
-	_apply_host_equipment(worn)
-
-## Phase 47 — the local avatar's gear changed. A host records it; a client turns the change
-## into one equip / unequip ACTION per differing slot (the host validates each against the
-## fabric and the bag, applies it to its own record and replicates it to nearby peers).
-func _on_character_appearance_changed(instance_id: String, _appearance: Dictionary) -> void:
-	if _applying_equipment or instance_id != _character.get_player_character():
-		return
-	var worn: Dictionary = _character.get_equipment_set(instance_id)
-	if _is_client:
-		for action in EquipmentRules.diff_actions(_last_sent_equipment, worn):
-			GameBus.equip_intent.emit("", str(action["slot"]), str(action["item"]))
-		_last_sent_equipment = worn.duplicate()
-	elif not _registry.local_player_id.is_empty():
-		_registry.record_equipment(_registry.local_player_id, worn)
-
-# ---------------------------------------------------------------------------
-# Phase 33 — the off-thread save
-# ---------------------------------------------------------------------------
-#
-# Serializing the world record is expensive (every loaded chunk manifest, every
-# creature, every station) and it used to run inline inside _process on the
-# autosave tick, so one frame in every `autosaveIntervalSeconds` stalled on JSON
-# encode + file write. The record is now written by a `Thread`.
-#
-# Only the WRITE moved. Building the payload still happens on the main thread,
-# because that is the half that reads live slice state (voxel edits, stations,
-# creatures, inventories) and touching nodes from a worker is not safe. What the
-# worker gets is a deep copy of plain data, so nothing it reads can be mutated
-# underneath it.
-
 ## In-flight save worker, or null. Only one is ever pending: a new save reaps the
 ## previous one first, so two writers can never interleave on the same files.
 var _save_thread: Thread = null
@@ -2236,115 +1142,6 @@ var _save_thread: Thread = null
 ## the counts the completion line reports. Kept as a bundle because the completion
 ## happens later than the collection and must not read live slice state again.
 var _save_summary: Dictionary = {}
-
-func _collect_save_job(incremental: bool) -> Dictionary:
-	var manifest := _voxel.get_save_manifest()
-	var dirty := _voxel.get_dirty_chunk_keys()
-	# An incremental save carries ONLY the dirty chunk manifests; save_world() then
-	# merges them into the record already on disk. The rest of the world (stations,
-	# creatures) is small and always rewritten.
-	if incremental:
-		manifest = PersistenceSlice.dirty_chunk_subset(manifest, dirty)
-	else:
-		# A full save still carries the empty-edit-set marker for a dirty chunk whose edits
-		# compacted away, so its stale entry is erased from the region file.
-		for key in dirty:
-			if not manifest.has(str(key)):
-				manifest[str(key)] = { "edits": {} }
-	var creatures := _creature.get_snapshot_creatures()
-	var stations := _station.get_station_data()
-	var world := {
-		"version":         PersistenceSlice.WORLD_FORMAT_VERSION,
-		"timestamp":       Time.get_unix_time_from_system(),
-		"local_player_id": _registry.local_player_id,
-		# Phase 41 — the world's seed rides the WORLD record, not a player record:
-		# two players in one world must regenerate the same ground, and a reload
-		# that picked a fresh seed would land every saved edit on a different hill.
-		"seed":            _terrain.get_world_seed(),
-		"worldgenVersion": _worldgen_stamp,
-		"worldgenFingerprint": _worldgen_fp_stamp if _worldgen_fp_stamp >= 0 else TerrainSlice.worldgen_fingerprint(),
-		"chunks":          manifest,
-		"stations":        stations,
-		"station_next_id": _station.next_id(),
-		"waystone_exact":  _waystones.exact_data() if _waystones != null else {},
-		"creatures":       creatures,
-		"colonization":    _colonization.to_data(),
-		"clock":           _clock.to_data(),
-		"weather":         _weather.to_data() if _weather != null else [],
-	}
-	# NOTE: no `dirty_chunks` key. It used to ride the record, but nothing ever read
-	# it back — dirty tracking lives in memory (VoxelSlice) and is reset by the save
-	# that consumed it, so writing the list to disk only made the record bigger.
-	var players := {}
-	# ONLINE players only (see PlayerRegistry.get_online_player_ids): an offline
-	# player's record is already durable and cannot have changed since it was
-	# written, so rewriting every long-gone player on every autosave was pure churn —
-	# the write cost grew with the number of players who had EVER joined.
-	_refresh_status_records()
-	for pid in _registry.get_online_player_ids():
-		var player_id := str(pid)
-		players[player_id] = _registry.get_player_data(player_id)
-	# The clear happens HERE, on the main thread, in the same synchronous step that
-	# read the dirty set: an edit made while the worker writes re-marks its chunk and
-	# is carried by the next save. Clearing after the write landed would need a
-	# second, racy bookkeeping pass; clearing before it but on failure re-marking is
-	# exact in both directions.
-	_voxel.clear_dirty_chunk_keys(dirty)
-	_voxel.begin_inflight_chunks(dirty)
-	_save_summary = {
-		"dirty":       dirty,
-		"incremental": incremental,
-		"chunks":      manifest.size(),
-		"creatures":   creatures.size(),
-		"stations":    stations.size(),
-		"players":     players.size(),
-	}
-	return { "world": world, "incremental": incremental, "players": players }
-
-func _start_save_thread(job: Dictionary) -> void:
-	# Deep-copied before it crosses the thread boundary: the payload holds references
-	# into live records (positions, appearance, technology), and the worker must not
-	# be able to read state the main thread is still writing.
-	job = job.duplicate(true)
-	_save_thread = Thread.new()
-	var err := _save_thread.start(_persistence.write_job.bind(job))
-	if err != OK:
-		# No thread available (or the OS refused one). Fall back to writing inline:
-		# a stalled frame beats a save that never happened.
-		Diag.error("[Server] save thread failed to start (%s) — saving inline" % error_string(err))
-		_save_thread = null
-		_finish_save(_persistence.write_job(job))
-		return
-	print("[Server] world save started (threaded)")
-
-## Wait for the in-flight write, report it, and settle the dirty-chunk bookkeeping.
-## Exactly one place reads the worker's result, so the success and failure paths
-## cannot drift. Runs on the main thread (Thread.wait_to_finish blocks, which is why
-## only the shutdown paths call it directly).
-func _reap_save_thread() -> void:
-	if _save_thread == null:
-		return
-	_finish_save(int(_save_thread.wait_to_finish()))
-	_save_thread = null
-
-## Reap the save worker as soon as it has FINISHED, without blocking.
-##
-## Before this, the only reaper was `_reap_save_thread()` at the START of the next
-## `_save_everything()`, so a failed write was discovered up to one whole autosave
-## interval late — and the chunks it had serialized had already been cleared from
-## the dirty set at collection time. In that window the edits looked saved and
-## were not, and a process that died inside it lost them with no error reported.
-## `Thread.is_alive()` is false the moment the worker returns, so this costs one
-## bool per frame and reuses the same single reaper (no second result path).
-func _poll_save_completion() -> void:
-	if _save_thread == null or _save_thread.is_alive():
-		return
-	_reap_save_thread()
-
-## Block until the in-flight write has landed. Shutdown (window close, the polled
-## shutdown-request file, process exit) must not outrun its own save.
-func _flush_save() -> void:
-	_reap_save_thread()
 
 ## Which of a failed save's chunks go back into the dirty set: just the ones whose region could
 ## not be written. When no region failed (the global record or a player file did) the chunk
@@ -2358,93 +1155,14 @@ static func _chunks_to_remark(dirty: Array, failed: Array) -> Array:
 			out.append(key)
 	return out
 
-func _finish_save(result: int) -> void:
-	_voxel.end_inflight_chunks(_save_summary.get("dirty", []))
-	if result != OK:
-		Diag.error("[Server] world save failed — %s" % error_string(result))
-		GameBus.world_save_failed.emit(error_string(result))
-		# The dirty set was cleared when the payload was collected, so a failed write
-		# has to put its chunks back or the next save would skip them.
-		_voxel.mark_dirty_chunks(_chunks_to_remark(_save_summary.get("dirty", []), _persistence.failed_chunk_keys()))
-		_save_summary = {}
-		return
-	print("[Server] world saved (%s) — %d chunk manifest(s), %d creature(s), %d station(s), %d player record(s)" % [
-		"incremental" if bool(_save_summary.get("incremental", false)) else "full",
-		int(_save_summary.get("chunks", 0)),
-		int(_save_summary.get("creatures", 0)),
-		int(_save_summary.get("stations", 0)),
-		int(_save_summary.get("players", 0)),
-	])
-	_save_summary = {}
-	GameBus.world_saved.emit()
-
-## A pending save must not be dropped when the process goes away (a `--quit` boot
-## exits long before the autosave interval). `Thread` also has to be waited for
-## before it is freed, so this is both the correctness and the lifecycle hook.
+## A pending save must not be dropped when the process goes away (a `--quit` boot exits long
+## before the autosave interval); the `Thread` must also be waited for before it is freed.
 func _exit_tree() -> void:
-	_flush_save()
+	_persistence_wiring._flush_save()
 	# The chunk manager's own exit stood down while the save thread ran; its records go out now.
 	if _chunk_manager != null and is_instance_valid(_chunk_manager):
 		_chunk_manager.flush_records_final()
 		ChunkRecords.clear()
-
-## Bind the local (authoritative) player's identity and inventory. The id comes
-## from the world record when a previous process minted one, so identity is as
-## persistent as the world; otherwise a fresh id is minted here. Binding the
-## game's own `_inventory` is what makes the local player's inventory per-player
-## without touching any existing call site.
-func _bind_local_identity() -> void:
-	var pid := str(_loaded_world.get("local_player_id", ""))
-	if pid.is_empty():
-		pid = _registry.mint_player_id()
-	_registry.set_local_player(pid, _inventory)
-
-## Rebuild the local avatar from the appearance recipe in the saved player
-## record, or create the default appearance when the record has none (a fresh
-## world). Returns the character instance id.
-func _restore_or_create_player_character(pos: Vector3) -> String:
-	var pid := _registry.local_player_id
-	var appearance: Variant = _registry.get_record(pid).get("appearance", {}) if not pid.is_empty() else {}
-	if appearance is Dictionary and not (appearance as Dictionary).is_empty():
-		var restored: String = _character.create_character_from_recipe(appearance, pos)
-		if restored != "":
-			return restored
-	return _character.create_character("TravellerHuman", pos)
-
-## Restore the local player's position, HP, and technologies from its record.
-## Called AFTER the spawn point is set, so the record wins over the spawn.
-func _restore_local_player() -> void:
-	var pid := _registry.local_player_id
-	if pid.is_empty():
-		return
-	var rec := _registry.get_record(pid)
-	var saved_pos: Variant = _saved_local_position()
-	_local_player_returning = saved_pos != null
-	if saved_pos != null:
-		_place_local_player(saved_pos)
-	# Phase 66 — a respawn goes to the ORIGINAL spawn point: the recorded one, else (a record from
-	# before the field existed) the saved position; a fresh player's placement is recorded now.
-	var spawn: Variant = respawn_point_for(rec)
-	if spawn != null:
-		_player.set_respawn_world_pos(_lifted_world_pos(spawn))
-	else:
-		_record_first_spawn(pid)
-	var hp := float(rec.get("hp", -1.0))
-	if hp >= 0.0:
-		_player.set_hp(hp)
-	var tech: Variant = rec.get("technology", {})
-	if tech is Dictionary and not (tech as Dictionary).is_empty():
-		_technology.apply_statuses(tech, pid)
-	# Phase 35 — the local player's taming flags and companion bindings.
-	_taming.apply_record(rec, pid)
-	_professions.apply_record(rec, pid)
-	# Phase 47 — and the worn set.
-	_apply_local_equipment(rec.get("equipment", {}))
-
-## Phase 98 — a fresh player's placement becomes its spawn, from the body's exact `{chunk, local}`
-## (the float32 `respawn_point` is metres off far from the origin).
-func _record_first_spawn(pid: String) -> void:
-	_registry.record_spawn_world_pos(pid, _player.get_world_pos())
 
 ## Phase 66 — the respawn point a player RECORD implies, as an exact `{chunk, local}` (Phase 87): its
 ## original spawn, else (a record from before the field existed) its saved position, else null (a
@@ -2470,677 +1188,11 @@ static func client_respawn_point(own: Dictionary, standing: Dictionary) -> Dicti
 		return PlayerRegistry.canonical_world_pos(WorldPos.from_world(v.x, v.y, v.z))
 	return standing
 
-## `wp`, lifted onto the surface above it when it lies inside the ground (see `_lifted_out_of_ground`);
-## only `local.y` changes, so the chunk and the horizontal offset stay exact.
-func _lifted_world_pos(wp: Dictionary) -> Dictionary:
-	var chunk: Vector2i = wp["chunk"]
-	var local: Vector3 = wp["local"]
-	var world := Vector3(chunk.x * WorldPos.CHUNK_METERS + local.x, local.y, chunk.y * WorldPos.CHUNK_METERS + local.z)
-	var lifted := _lifted_out_of_ground(world)
-	if lifted == world:
-		return wp
-	return {"chunk": chunk, "local": Vector3(local.x, lifted.y, local.z)}
-
-## The local player's recorded position, or null when there is no identity or the
-## record carries none. Read by the host boot (to arm the first ring where the player
-## will stand) and by `_restore_local_player`.
-func _saved_local_position() -> Variant:
-	_saved_position_reads += 1
-	var pid := _registry.local_player_id
-	if pid.is_empty():
-		return null
-	var arr = _registry.get_record(pid).get("position", [])
-	if arr is Array and (arr as Array).size() >= 3:
-		var pos := Vector3(float(arr[0]), float(arr[1]), float(arr[2]))
-		# A brand-new record is created at the exact origin (`ensure_player`), which is inside the
-		# ground: it is "never placed", not a saved position, so the first-boot spawn still runs.
-		if pos == Vector3.ZERO:
-			return null
-		return pos
-	return null
-
-## Phase 85 — an admin teleport: land the local body at the world position `pos`, rebasing the scene
-## first so a far target lands on a small float32 (the same door a saved position uses).
-func _on_player_teleport(pos: Dictionary) -> void:
-	if _player == null or not (pos.get("chunk") is Vector2i and pos.get("local") is Vector3):
-		return
-	if _rebase != null:
-		_rebase.rebase_to(pos["chunk"])
-		_player.place_at_world_pos(pos)
-	else:
-		_player.spawn_at(WorldPos.to_scene(pos, Vector2i.ZERO))
-
-## Phase 78 — put the local player at `pos`. A saved position is placed from the record's exact
-## `{chunk, local}` (rebasing the scene first, so the body lands on a small float32), not from the
-## quantised double `position`; a position with no saved record (a first-boot spawn) and a headless
-## server, which has no rebase driver, place by world position. So the record WINS over `pos`
-## whenever one exists and a rebase driver is present; `pos` is used otherwise. The record is read
-## once per placement.
-func _place_local_player(pos: Vector3) -> void:
-	var pid := _registry.local_player_id
-	var saved: Variant = _saved_local_position()
-	if _rebase != null and not pid.is_empty() and saved != null:
-		var wp := _registry.get_world_pos(pid)
-		_rebase.rebase_to(wp["chunk"])
-		_player.place_at_world_pos(wp)
-	else:
-		_player.spawn_at(pos)
-
-## A restored body that sits inside solid ground (a record saved while the player was stuck, or one
-## written before the terrain changed) is lifted onto the surface above it; a body in open air, in
-## a tunnel or a cave is left alone.
-func _lift_out_of_ground() -> void:
-	if _player == null:
-		return
-	var pos := _player.get_position()
-	var lifted := _lifted_out_of_ground(pos)
-	if lifted != pos:
-		Diag.warn("GameRoot: position %s is inside the ground — lifted to %.2f" % [pos, lifted.y])
-		_player.spawn_at(lifted)
-
-## `pos`, or the surface above it when it lies inside (or under) the solid ground of its column.
-func _lifted_out_of_ground(pos: Vector3) -> Vector3:
-	if _voxel == null:
-		return pos
-	var runs: Array = _voxel.get_column_runs_at(Vector2(pos.x, pos.z))
-	if runs.is_empty():
-		return pos
-	var inside := pos.y < float(runs[0]["bottom"])
-	for run in runs:
-		if pos.y > float(run["bottom"]) and pos.y < float(run["top"]):
-			inside = true
-	return Vector3(pos.x, float(runs[-1]["top"]) + 0.1, pos.z) if inside else pos
-
-## A respawn lands on the recorded spawn point; one recorded inside the ground (by the old
-## origin-spawn bug) is lifted too.
-func _lift_after_respawn() -> void:
-	if _player != null and not _player.respawn_world_pos.is_empty():
-		var wp := _player.get_world_pos()
-		var lifted := _lifted_world_pos(wp)
-		if lifted != wp:
-			_player.place_at_world_pos(lifted)
-		return
-	_lift_out_of_ground()
-
-## Read the world record and the LOCAL player's record off disk. A missing world
-## record is NOT an error — a server with no save boots a fresh world.
-##
-## Chunk manifests and stations are applied here (pure data). The creature state
-## is applied by _apply_loaded_creature_state() AFTER chunk streaming, because
-## spawn_for_chunk() builds fresh instance records.
-##
-## Only the local player's record is read at boot. Every OTHER record on disk used
-## to be loaded here too, and the registry never evicts — so a server that had seen
-## a thousand players held a thousand records, their inventories and all, in memory
-## for the whole session, whether or not any of them ever came back. A record is now
-## brought in on demand: the registry is given a reader (set_record_loader) and pulls
-## one in the first time a peer CLAIMS it (a reconnect). That is the only moment a
-## remote record is needed.
-## Phase 71 — keep the loaded record's original stamp when re-saving (a new world takes the
-## running one), and tell the bus when that stamp is not the running generator's.
-func _note_worldgen_version() -> void:
-	_worldgen_stamp = PersistenceSlice.worldgen_stamp_for_save(_loaded_world, TerrainSlice.WORLDGEN_VERSION)
-	if PersistenceSlice.check_worldgen_version(_loaded_world, TerrainSlice.WORLDGEN_VERSION):
-		GameBus.worldgen_version_mismatch.emit(_worldgen_stamp, TerrainSlice.WORLDGEN_VERSION)
-	var running_fp := TerrainSlice.worldgen_fingerprint()
-	_worldgen_fp_stamp = PersistenceSlice.fingerprint_stamp_for_save(_loaded_world, running_fp)
-	if PersistenceSlice.check_worldgen_fingerprint(_loaded_world, running_fp):
-		GameBus.worldgen_fingerprint_mismatch.emit(_worldgen_fp_stamp, running_fp)
-		# The stamp keeps the world's original fingerprint, so the mismatch is reported on every load
-		# until the world is regenerated (the records, not the stamp, keep old land stable).
-
-## Phase 114 — generation records never outlive the world they describe.
-func _forget_world_records() -> void:
-	ChunkRecords.clear()
-
-func _load_world_records() -> void:
-	# Phase 52 — the GLOBAL record only; a Phase 51 monolithic record is split into region
-	# files by this read, and the edits themselves stream in by region.
-	_loaded_world = _persistence.load_world_record()
-	_forget_world_records()
-	_note_worldgen_version()
-	_bind_local_identity()
-	# Lazy reader for every other player's record (see the docstring above).
-	_registry.set_record_loader(_persistence.load_player)
-	_registry.set_spawn_placer(_place_new_player)
-	_registry.set_friend_locator(_locate_friend_on_disk)
-	_colonization.from_data(_loaded_world.get("colonization", {}))
-	_clock.from_data(_loaded_world.get("clock", {}))
-	_weather.from_data(_loaded_world.get("weather", []))
-	_colonization.seed_from_regions(_persistence.region_store.list_regions())
-	if not GameBus.block_changed.is_connected(_on_block_changed_colonization):
-		GameBus.block_changed.connect(_on_block_changed_colonization)
-	if _loaded_world.is_empty():
-		print("[Server] no world record at %s — booting a fresh world" % _persistence.world_path())
-	else:
-		# Phase 41 — adopt the recorded world seed BEFORE any chunk is built or any
-		# edit is migrated: the ground a save was written against is the ground a
-		# reload must regenerate, and the migration of a pre-Phase-41 edit needs
-		# the tile's natural height, which comes from this noise field.
-		var recorded_seed: Variant = _loaded_world.get("seed", null)
-		if recorded_seed != null:
-			_terrain.set_world_seed(int(recorded_seed))
-			print("[Server] world seed %d restored from the world record" % int(recorded_seed))
-		else:
-			print("[Server] world record carries no seed (format %d) — adopting the fresh seed %d" % [
-				int(_loaded_world.get("version", PersistenceSlice.LEGACY_WORLD_FORMAT_VERSION)),
-				_terrain.get_world_seed()])
-		_station.apply_station_data(_loaded_world.get("stations", []))
-		_station.restore_next_id(int(_loaded_world.get("station_next_id", 0)))
-		if _waystones != null:
-			_waystones.apply_exact_data(_loaded_world.get("waystone_exact", {}))
-		print("[Server] world loaded from %s" % _persistence.world_path())
-	# A failed region migration hands the record back WITH its chunks: apply them and mark
-	# them dirty so the next save writes them to regions instead of dropping them. Phase 61 —
-	# applied AFTER the world seed is restored above: a pre-Phase-41 height migrates against
-	# the tile's natural run, which comes from that seed.
-	var legacy_chunks: Variant = _loaded_world.get("chunks", null)
-	if legacy_chunks is Dictionary and not (legacy_chunks as Dictionary).is_empty():
-		_voxel.apply_chunk_manifest(legacy_chunks)
-		_voxel.mark_dirty_chunks((legacy_chunks as Dictionary).keys())
-	# The local player's record: position, HP, inventory (with per-instance
-	# durability), and technology. It lands in the game's own slices because
-	# _bind_local_identity() ran first.
-	_load_local_player_record()
-
-func _load_local_player_record() -> void:
-	var pid := _registry.local_player_id
-	if pid.is_empty():
-		return
-	var record := _persistence.load_player(pid)
-	if record.is_empty():
-		return
-	_registry.apply_player_data(pid, record)
-	print("[Server] restored the local player record '%s'" % pid)
-
-## Re-apply the recorded creature state (state, HP, and the wall-clock respawn
-## deadline) over the population chunk streaming just spawned. `apply_recorded_…`
-## (not the client's `apply_snapshot_creatures`) so a record for a chunk outside
-## the current view window is skipped instead of fabricating an instance.
-func _apply_loaded_creature_state() -> void:
-	var creatures: Variant = _loaded_world.get("creatures", [])
-	if not (creatures is Array) or (creatures as Array).is_empty():
-		return
-	_creature.apply_recorded_creature_states(creatures)
-
-# ---------------------------------------------------------------------------
-# Bus listeners
-# ---------------------------------------------------------------------------
-
-func _on_chunk_ready(_chunk_pos: Vector2i, _heightmap: Array) -> void:
-	pass
-
-func _on_combat_resolved(_result: Dictionary) -> void:
-	pass
-
-## Drive the player avatar's attack animation whenever the player attacks.
-func _on_combat_round_requested(attacker_id: String, _defender_id: String) -> void:
-	if attacker_id == "player" and _character.get_player_character() != "":
-		GameBus.character_attack_requested.emit(_character.get_player_character())
-
-func _on_creature_died(_entity_id: String, _position: Vector3, _killer_id: String) -> void:
-	pass
-
-func _on_creature_spawned(_instance_id: String, _creature_id: String, _position: Vector3) -> void:
-	pass
-
-func _on_loot_dropped(_pickup_id: String, _item_id: String, _position: Vector3, _quantity: int) -> void:
-	pass
-
-func _on_item_picked_up(_item_id: String, _quantity: int) -> void:
-	pass
-
-func _on_player_state_changed(_payload: Dictionary) -> void:
-	pass   # logged by PlayerSlice; suppress repetitive output here
-
 ## A refused pickup or mining yield used to be silent, which read as "picking up is broken".
 const PACK_FULL_NOTICE_MSEC := 3000   ## at most one notice this often, so a held click does not spam
 var _pack_full_notice_msec := -PACK_FULL_NOTICE_MSEC
-
-func _on_inventory_full() -> void:
-	if _is_server or _registry == null or _registry.local_player_id.is_empty():
-		return
-	var now := Time.get_ticks_msec()
-	if now - _pack_full_notice_msec < PACK_FULL_NOTICE_MSEC:
-		return
-	_pack_full_notice_msec = now
-	GameBus.system_message.emit("chat.pack_full", [], _registry.local_player_id)
-
-func _on_character_spawned(_instance_id: String, _skeleton_id: String, _position: Vector3) -> void:
-	pass
-
-## Phase 34 — a craft the host resolved for a REMOTE peer changed that peer's own
-## record. Its client only ever mirrors its own state from a snapshot, so without
-## this push it would keep showing the pre-craft inventory until the next AOI
-## re-scope or reconnect. Scoped to that peer; the local player is already live
-## here. (Craft got the same fix as the two new actions: it had the identical gap.)
-func _on_craft_resolved(result: Dictionary) -> void:
-	# Phase 118 — a void burst FAILED the craft but consumed the input and may have set a
-	# flag, so the crafter's record changed: push it like a success would.
-	if result.get("reason", "") == "void_burst":
-		_sync_peer_own_state(result, true)
-		return
-	_sync_peer_own_state(result)
-
-## Phase 34 — the repair half of the same rule.
-func _on_repair_resolved(result: Dictionary) -> void:
-	_sync_peer_own_state(result)
-
-## Phase 34 — research: fold the researcher's new statuses into its record first, so
-## the durable copy and the copy pushed to its client cannot diverge, then push.
-func _on_research_resolved(result: Dictionary) -> void:
-	if _is_client:
-		return
-	var pid := str(result.get("player_id", ""))
-	if pid != "":
-		_registry.record_technology(pid, _technology.get_statuses(pid))
-	_sync_peer_own_state(result)
-
-## Phase 124 — a research-point balance changed on the host. Fold it into the player's
-## record (so a save carries it) and push it to the OWNER's peer alone: points are private
-## to the player, so unlike a world delta this is never broadcast. The local player is live
-## here already, and a client never reaches this (it only mirrors the balance).
-func _on_research_points_synced(player_id: String, _points: int) -> void:
-	if _is_client or player_id == "":
-		return
-	_registry.record_technology(player_id, _technology.get_statuses(player_id))
-	if player_id == _registry.local_player_id:
-		return
-	var peer := _registry.get_peer_id(player_id)
-	if peer == 0:
-		return
-	_networking.send_own_state(peer, { "technology": _technology.get_statuses(player_id) })
-
-## Phase 125 — where the host believes a player stands, as an exact `{chunk, local}`: the live body for the
-## local player, the peer's last reported position for a remote one. A peer that has not reported yet is
-## nowhere: the saved record is where it logged out, not where it stands.
-func _waystone_player_pos(player_id: String) -> Dictionary:
-	if player_id == _registry.local_player_id and _player != null:
-		return _player.get_world_pos()
-	var peer := _registry.get_peer_id(player_id)
-	if peer != 0:
-		return _networking.get_last_known_exact(peer)
-	return {}
-
-## Phase 125 — a player's attunements changed on the host: save them on the record and push them to
-## the owner's peer alone. The local player is live here already.
-func _on_waystones_synced(player_id: String, station_ids: Array) -> void:
-	if _is_client:
-		return
-	if player_id == _registry.local_player_id or player_id == "":
-		return
-	var peer := _registry.get_peer_id(player_id)
-	if peer != 0:
-		_networking.send_own_state(peer, { "waystones": station_ids })
-
-## Phase 125 — the host resolved a travel intent: tell the owner's peer, which shows a refusal.
-func _on_waystone_travel_resolved(player_id: String, ok: bool, reason: String) -> void:
-	if _is_client or player_id == "" or player_id == _registry.local_player_id:
-		return
-	var peer := _registry.get_peer_id(player_id)
-	if peer != 0:
-		_networking.send_own_state(peer, { "waystone_result": { "ok": ok, "reason": reason } })
-
-## Phase 124 — the host resolved a gather: pay the fabric's `gather` research points.
-func _on_resource_gathered(player_id: String, _material: String, quantity: int) -> void:
-	if _is_client:
-		return
-	var pid := player_id if player_id != "" else _registry.local_player_id
-	# Scaled by the quantity, then held by the balance ceiling and the per-window cap.
-	_technology.grant_points(pid, "gather", _technology.points_for("gather") * clampi(quantity, 0, 64))
-
-## Phase 118 — an unlock the host resolved for a REMOTE peer changed its record's
-## professions; push the owner's copy (the local player is live here already).
-func _on_profession_unlocked(player_id: String, _profession: String) -> void:
-	_sync_peer_own_state({ "success": true, "player_id": player_id })
-
-func _on_technology_unlocked(_tech_id: String, _player_id: String) -> void:
-	pass
-
-## Phase 35 — a tame the host resolved for a REMOTE peer granted that peer a flag
-## (e.g. `wolfBondHolder`) and possibly bound a companion, both of which live on its
-## record. Fold the new flags and companions into the record first, so the durable
-## copy and the copy pushed to its client cannot diverge, then push.
-func _on_tame_resolved(result: Dictionary) -> void:
-	if _is_client:
-		return
-	var pid := str(result.get("player_id", ""))
-	if pid != "":
-		_taming.sync_record(pid)
-	_sync_peer_own_state(result)
-
-## Host → the peer whose own record just changed. Nothing to do for a local player
-## (its state is already live in this process) and nothing to send for a failed
-## action (nothing changed).
-func _sync_peer_own_state(result: Dictionary, changed_anyway: bool = false) -> void:
-	if _is_client:
-		return
-	if not bool(result.get("success", false)) and not changed_anyway:
-		return
-	var pid := str(result.get("player_id", ""))
-	if pid == "" or pid == _registry.local_player_id:
-		return
-	var peer := _registry.get_peer_id(pid)
-	if peer == 0:
-		return
-	_networking.send_own_state(peer, _own_state_payload(pid))
-
-## The slice of `player_id`'s record its own client mirrors: inventory contents with
-## per-instance durability, plus its technology statuses. Position and HP are
-## deliberately absent — they are host-simulated and ride the normal player-state
-## path, and re-sending a stored position here would teleport the peer back to it.
-func _own_state_payload(player_id: String) -> Dictionary:
-	var own := _registry.get_player_data(player_id)
-	return {
-		"inventory": own.get("inventory", {}),
-		"inventory_durability": own.get("inventory_durability", {}),
-		"technology": own.get("technology", {}),
-		"flags": own.get("flags", {}),
-		"companions": own.get("companions", []),
-		"professions": own.get("professions", {}),
-	}
-
-## Client-side: the host changed our own record while acting on our behalf (a craft,
-## repair, or research we asked for). Applied exactly like the like-named keys of the
-## join snapshot.
-func _on_own_state_synced(data: Dictionary) -> void:
-	if not _is_client:
-		return
-	if data.has("equipment") and data["equipment"] is Dictionary:
-		# Phase 70 — a correction that answers an action older than the newest one sent
-		# would wipe the newer item; the newer action's own reply sets the record.
-		var answers: int = int(data.get("equipment_seq", _networking.equip_seq_sent()))
-		if answers >= _networking.equip_seq_sent():
-			_apply_host_equipment(data["equipment"])
-	if data.has("inventory") and data["inventory"] is Dictionary:
-		_inventory.replace_contents(data["inventory"], data.get("inventory_durability", {}))
-	if data.has("technology") and data["technology"] is Dictionary:
-		_technology.apply_statuses(data["technology"], _registry.local_player_id)
-	if data.has("flags") or data.has("companions"):
-		# Phase 35 — the same own-state route carries the taming flags and the
-		# companion bindings a host resolved on our behalf.
-		_taming.apply_record({
-			"flags":      data.get("flags", {}),
-			"companions": data.get("companions", []),
-		}, _registry.local_player_id)
-	if data.has("professions"):
-		_professions.apply_record({ "professions": data["professions"] }, _registry.local_player_id)
-	if data.has("waystones") and data["waystones"] is Array:
-		_waystones.apply_view(data["waystones"])
-		GameBus.waystones_synced.emit(_registry.local_player_id, data["waystones"])
-	if data.get("waystone_result", null) is Dictionary:
-		var res: Dictionary = data["waystone_result"]
-		GameBus.waystone_travel_resolved.emit(_registry.local_player_id, bool(res.get("ok", false)), str(res.get("reason", "")).left(32))
-
-func _on_trade_completed(_completed: Dictionary) -> void:
-	pass
-
-func _on_block_mined(_material: String, _quantity: int, _position: Vector3) -> void:
-	pass
-
-func _on_block_placed(_material: String, _position: Vector3) -> void:
-	pass
-
-## Phase 37/38 — a combat round landed on a player. The damage is applied by the machine
-## that SIMULATES that body: the local body in-process (PlayerSlice listens to this
-## signal itself), and a remote peer's body HERE, on the host.
-##
-## This is the other half of routing rounds by target id (CreatureAI emits the round
-## against whoever the creature engaged): the host owns the authoritative simulation and
-## therefore knows a creature struck a peer.
-##
-## Phase 38 — the host no longer takes the peer's word for the outcome. The Phase 37 pass
-## forwarded the round and left the peer's HP to the peer's own client, which meant a
-## client that simply ignored the packet was unkillable: the host had resolved the round
-## itself and then discarded the only evidence it had, and the peer's health reset to
-## whatever its client said on the next reconnect or restart. The host now applies the
-## hit to its OWN simulation of that peer's health first (`record_simulated_hp`), which
-## rides the peer's durable record, and THEN sends the round on as a display update. A
-## client that drops it diverges from a truth it does not hold, instead of being the
-## truth.
-##
-## The peer's DECLARED hp is still never believed — `_route_c2h` ignores the `hp` its
-## `player_moved` packets carry, and `PlayerRegistry.record_hp` refuses a remote id. Only
-## a number this process resolved itself is persisted (see
-## `PlayerRegistry.simulated_hp_after_hit`).
-##
-## The local body is skipped: its damage is already applied in-process by PlayerSlice
-## (this signal is emitted by BattleSlice, which PlayerSlice itself listens to), and
-## there is no peer to send it to.
-func _on_player_damaged(damage: float, attacker_id: String, target_id: String) -> void:
-	if _is_client:
-		return
-	if target_id == "" or target_id == "player" or target_id == _registry.local_player_id:
-		return
-	var peer := _registry.get_peer_id(target_id)
-	if peer == 0:
-		return   # an offline or unknown target: nobody is simulating that body
-	# The host's own resolution: a body it has never modelled starts at full health
-	# (an unmodelled body has no evidence behind it, and the peer's word is not
-	# evidence — see PlayerRegistry.simulated_hp_after_hit), then the hit lands on the
-	# number this process holds.
-	var simulated := PlayerRegistry.simulated_hp_after_hit(
-		_registry.get_hp(target_id), damage, PlayerSlice.MAX_HP)
-	_registry.record_simulated_hp(target_id, simulated)
-	_networking.send_player_damaged(peer, damage, attacker_id)
-	# Phase 129 — a downed body loses every effect.
-	if _status != null and PlayerRegistry.is_downed(simulated):
-		_status.clear(target_id)
-		for t in _status.take_dirty():
-			_push_status_effects(str(t), _status_now())
 
 ## Seconds between status-effect ticks: damage over time arrives in 0.25 s slices, not one packet a frame.
 const STATUS_TICK_SECONDS := 0.25
 ## Status effects keep a hit's shove this tall (m) when walking onto higher ground.
 const KNOCKBACK_STEP_UP := 0.6
-
-func _status_now() -> float:
-	return float(status_clock.call()) if status_clock.is_valid() else float(Time.get_ticks_msec()) / 1000.0
-
-## The chunk a status target stands in: the local body, else the peer's recorded position.
-func _status_chunk(target_id: String) -> Vector2i:
-	if target_id == "player":
-		return _player.get_world_pos()["chunk"]
-	return PlayerRegistry.world_pos_of(_registry.get_record(target_id))["chunk"]
-
-## Phase 129 — host: advance every effect. Damage over time goes through the same host path a creature
-## hit takes (`player_damaged` → simulated peer HP), never a client's word; a burn under a weather
-## state the table lists in `extinguishedBy` ends.
-func tick_status_effects() -> void:
-	if _status == null or _is_client:
-		return
-	var now := _status_now()
-	var weather_of := func(target_id: String) -> String:
-		return _weather.weather_at(_status_chunk(target_id), _weather.current_hour())
-	for ev in _status.tick(now, weather_of):
-		var target: String = ev["target_id"]
-		if BattleSlice.is_player_target(target):
-			GameBus.player_damaged.emit(float(ev["damage"]), "status:" + str(ev["effect"]), target)
-	for target in _status.take_dirty():
-		_push_status_effects(str(target), now)
-
-## Send `target`'s effect list to that player ALONE and keep it on the record.
-func _push_status_effects(target: String, now: float) -> void:
-	var effects := _status.active(target, now)
-	if target == "player":
-		GameBus.status_effects_synced.emit("player", effects)
-		_registry.record_status_effects(_registry.local_player_id, effects)
-		return
-	var peer := _registry.get_peer_id(target)
-	_registry.record_status_effects(target, effects)
-	if peer != 0 and _networking != null:
-		_networking.send_status_effects(peer, effects)
-
-## Write every live target's remaining time onto its record before a save reads it.
-func _refresh_status_records() -> void:
-	if _status == null or _is_client:
-		return
-	var now := _status_now()
-	for target in _status.targets():
-		var pid: String = _registry.local_player_id if target == "player" else str(target)
-		if not pid.is_empty():
-			_registry.record_status_effects(pid, _status.active(target, now))
-
-## Restore a player's saved effects (a join or boot) and tell its body.
-func _restore_status_effects(target: String, player_id: String) -> void:
-	if _status == null or _is_client:
-		return
-	var now := _status_now()
-	_status.from_data(target, _registry.get_status_effects(player_id), now)
-	for t in _status.take_dirty():
-		_push_status_effects(str(t), now)
-
-func _on_status_player_died(_position: Vector3, _killer_id: String) -> void:
-	if _status != null and not _is_client:
-		_status.clear("player")
-		for t in _status.take_dirty():
-			_push_status_effects(str(t), _status_now())
-
-## Phase 130 — record a waystone's exact `{chunk, local}` at placement: the placer's exact position plus
-## the small offset to the stone, so a stone placed far from the origin is not a float32 `Vector3`.
-func _on_station_placed_exact(station_id: String, type: String, position: Vector3) -> void:
-	if _is_client or _waystones == null or _player == null or type != _waystones.station_type():
-		return
-	var here: Dictionary = _player.get_world_pos()
-	_waystones.note_exact(station_id, WorldPos.normalized({
-		"chunk": here["chunk"],
-		"local": (here["local"] as Vector3) + (position - _player.get_position()),
-	}))
-
-## Phase 130 — true while the host's own status state holds `peer` (paralysis, knockdown).
-func _peer_is_held(peer: int) -> bool:
-	if _status == null or _is_client:
-		return false
-	var pid := _networking.get_player_id(peer)
-	return pid != "" and _status.is_immobilized(pid, _status_now())
-
-## Phase 129 — host: push `target_id` away from `attacker_id`, clamped to walkable ground.
-func _on_knockback_requested(target_id: String, attacker_id: String, tiles: int) -> void:
-	if _is_client:
-		return
-	var src := Vector3.ZERO
-	var found := false
-	for inst in _creature.get_all_instances():
-		if inst["instance_id"] == attacker_id:
-			src = inst["position"]
-			found = true
-			break
-	if not found:
-		return
-	var peer := 0
-	var pos: Vector3
-	if target_id == "player":
-		pos = _player.get_position()
-	else:
-		peer = _registry.get_peer_id(target_id)
-		if peer == 0 or not _networking.has_last_known_state(peer):
-			return   # a peer that never reported has no position to push from (it reads as the origin)
-		pos = _networking.get_last_known_state(peer)
-	var walkable := func(probe: Vector3) -> bool:
-		return _voxel.get_voxel_height_at(Vector2(probe.x, probe.z)) <= probe.y + KNOCKBACK_STEP_UP
-	var spot := StatusEffects.knockback_target(pos, src, tiles, TerrainSlice.TILE_SIZE, walkable)
-	if spot == pos:
-		return
-	spot.y = maxf(spot.y, _voxel.get_voxel_height_at(Vector2(spot.x, spot.z)))
-	if peer == 0:
-		_player.spawn_at(spot)
-	else:
-		_networking.send_teleport(peer, WorldPos.from_world(spot.x, spot.y, spot.z))
-
-func _on_player_died(_position: Vector3, _killer_id: String) -> void:
-	if _character.get_player_character() != "":
-		GameBus.character_death_requested.emit(_character.get_player_character())
-
-func _on_player_respawned(_position: Vector3) -> void:
-	# The death pose is terminal until reset: without this the avatar lies down for good after a respawn.
-	if _character.get_player_character() != "":
-		_character.reset_locomotion(_character.get_player_character())
-	# Phase 87 — put the body on the exact spawn after rebasing the scene onto its chunk, so a player
-	# who died far from the spawn does not land on a quantised far-from-origin float32.
-	if _player != null and _rebase != null and not _player.respawn_world_pos.is_empty():
-		_rebase.rebase_to(_player.respawn_world_pos["chunk"])
-		_player.place_at_world_pos(_player.respawn_world_pos)
-	_lift_after_respawn()
-
-func _on_save_completed(_slot: int) -> void:
-	# NOTHING to reset here. The legacy slot file is a single-file sample (the
-	# boot/client record), not the authoritative world record, so writing it does
-	# NOT make the chunk manifests durable — only an authoritative world save does,
-	# and that save clears the keys it serialized itself (see `_collect_save_job`;
-	# the clear has to happen where the payload is read, because the write is off
-	# the main thread). Clearing here would silently drop the edits made before the
-	# slot write from the next world save.
-	pass
-
-func _on_load_completed(_slot: int, data: Dictionary) -> void:
-	if data.has("inventory") and data["inventory"] is Dictionary:
-		# A MISSING `inventory_durability` key is the intentional old-save signal:
-		# saves written before per-instance durability carried no per-instance
-		# wear, so `replace_contents` correctly grants fresh (pristine) durable
-		# instances rather than resurrecting stale local wear.
-		_inventory.replace_contents(data["inventory"], data.get("inventory_durability", {}))
-	var world: Dictionary = data.get("world", {})
-	if world.has("chunks"):
-		_voxel.apply_chunk_manifest(world["chunks"])
-	elif world.has("voxel_edits"):
-		_voxel.apply_edits(world["voxel_edits"], world.get("voxel_materials", {}))
-	if data.has("technology"):
-		_technology.apply_statuses(data["technology"], _registry.local_player_id)
-	# Phase 33 — the snapshot carries the player's own record: position is set
-	# FIRST (spawn_at), then HP, so the restored body sits where the record says.
-	var player_data: Variant = data.get("player", {})
-	if player_data is Dictionary and not _is_client:
-		var arr = player_data.get("position", [])
-		if arr is Array and (arr as Array).size() >= 3:
-			_player.spawn_at(Vector3(float(arr[0]), float(arr[1]), float(arr[2])))
-			_lift_out_of_ground()
-		var hp := float(player_data.get("hp", -1.0))
-		if hp >= 0.0:
-			_player.set_hp(hp)
-		# Phase 129 — the saved effects; a legacy snapshot has none.
-		if _status != null:
-			_status.from_data("player", player_data.get("status_effects", []), _status_now())
-			for t in _status.take_dirty():
-				_push_status_effects(str(t), _status_now())
-	if data.has("market"):
-		_market.apply_market_data(data["market"])
-	if data.has("governance"):
-		var gov: Variant = data["governance"]
-		if gov is Dictionary:
-			_proposal.apply_governance_data(gov)
-		elif gov is Array:
-			# Backward compat: older saves stored only the decisions log.
-			_proposal.apply_decisions_log(gov)
-	if data.has("trade"):
-		var saved_trade: Variant = data["trade"]
-		if saved_trade is Dictionary:
-			_trade.apply_trade_data(saved_trade)
-
-# ---------------------------------------------------------------------------
-# GameData smoke test
-# ---------------------------------------------------------------------------
-
-func _check_game_data() -> void:
-	var registries := {
-		"APPEARANCES":  GameData.APPEARANCES,
-		"BIOMES":       GameData.BIOMES,
-		"CREATURES":    GameData.CREATURES,
-		"DECISIONS":    GameData.DECISIONS,
-		"ITEMS":        GameData.ITEMS,
-		"LOOTS":        GameData.LOOTS,
-		"MATERIALS":    GameData.MATERIALS,
-		"PALETTES":     GameData.PALETTES,
-		"PLAYERS":      GameData.PLAYERS,
-		"PROFESSIONS":  GameData.PROFESSIONS,
-		"RECIPES":      GameData.RECIPES,
-		"SKELETONS":    GameData.SKELETONS,
-		"SKILLS":       GameData.SKILLS,
-		"SYSTEMS":      GameData.SYSTEMS,
-		"TECHNOLOGIES": GameData.TECHNOLOGIES,
-		"WORLD_SYSTEMS":GameData.WORLD_SYSTEMS,
-	}
-	for reg_name in registries:
-		var reg: Dictionary = registries[reg_name]
-		for key in reg:
-			if reg[key] == null:
-				Diag.error("%s → %s FAILED" % [reg_name, key])

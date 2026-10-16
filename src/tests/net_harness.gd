@@ -330,7 +330,7 @@ func run(root: Node, role: String) -> void:
 		_root._registry.set_spawn_placer(func(player_id: String, code: String) -> Dictionary:
 			if code == "":
 				return { "position": RENDEZVOUS, "source": "search", "message": "" }
-			return _root._place_new_player(player_id, code))
+			return _root._peer_wiring._place_new_player(player_id, code))
 		# Booting adopts the seed of any world record on disk, which silently replaces the
 		# pinned one; a run on the wrong seed would fail for an unrelated reason.
 		if int(_root._terrain.get_world_seed()) != _pinned_seed:
@@ -1262,9 +1262,9 @@ func _step_status_effect() -> void:
 		var t0: float = float(Time.get_ticks_msec()) / 1000.0
 		_root.status_clock = func() -> float: return t0
 		_root._status.apply(owner_pid, "heat_burn", t0)
-		_root.tick_status_effects()
+		_root._combat_wiring.tick_status_effects()
 		_root.status_clock = func() -> float: return t0 + 2.0
-		_root.tick_status_effects()
+		_root._combat_wiring.tick_status_effects()
 		_root.status_clock = Callable()
 		var _ok: bool = await _await_until(func(): return true, 1.0)
 		var hp_after: float = _root._registry.get_hp(owner_pid)
@@ -1289,12 +1289,12 @@ func _step_paralysis_holds() -> void:
 			_report("paralysis_holds", "fail", "no_owner_or_state-peer%d" % _bound_peer)
 			return
 		var base: Vector3 = net.get_last_known_state(_bound_peer)
-		_root._status.apply(owner_pid, "paralysis", _root._status_now())
-		_root.tick_status_effects()
+		_root._status.apply(owner_pid, "paralysis", _root._combat_wiring._status_now())
+		_root._combat_wiring.tick_status_effects()
 		await _await_until(func(): return false, 1.5)
 		var held: bool = net.get_last_known_state(_bound_peer).distance_to(base) < 0.5
 		_root._status.clear(owner_pid)
-		_root.tick_status_effects()
+		_root._combat_wiring.tick_status_effects()
 		_report("paralysis_holds", verdict(held, true), "held" if held else "moved-%.1fm" % net.get_last_known_state(_bound_peer).distance_to(base))
 		return
 	var seen: bool = await _await_until(func(): return _paralysis_seen, STEP_TIMEOUT_SECS)
@@ -1381,7 +1381,7 @@ func _step_chunk_record_synced() -> void:
 			_report("chunk_record_synced", "fail", "no_peer")
 			return
 		_root._peer_records_msec.erase(peer)
-		_root._networking.send_snapshot(peer, _root._build_snapshot(peer, false, RENDEZVOUS, false))
+		_root._networking.send_snapshot(peer, _root._snapshot_wiring._build_snapshot(peer, false, RENDEZVOUS, false))
 		_report("chunk_record_synced", verdict(true, true), _record_detail(rec))
 		return
 	# The client may already hold the record its own terrain generated for this chunk, so presence is
@@ -1482,7 +1482,7 @@ func _step_frontier_record_synced() -> void:
 			_report("frontier_record_synced", "fail", "no_peer")
 			return
 		_root._peer_records_msec.erase(peer)
-		_root._networking.send_snapshot(peer, _root._build_snapshot(peer, false, RENDEZVOUS, false))
+		_root._networking.send_snapshot(peer, _root._snapshot_wiring._build_snapshot(peer, false, RENDEZVOUS, false))
 		_report("frontier_record_synced", verdict(true, true), _record_detail(rec))
 		return
 	if is_nan(shared[0]) or is_nan(shared[1]):

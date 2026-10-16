@@ -274,7 +274,7 @@ func _tick_instance(iid: String, inst: Dictionary, player_pos: Vector3, delta: f
 					# nothing at all. The id the round carries is the one the battle slice
 					# routes on: the literal "player" for this machine's own body, or the
 					# peer's player id, which the host forwards to that peer's own client as
-					# a damage event (see GameRoot._on_player_damaged) — the machine that
+					# a damage event (see CombatWiring._on_player_damaged) — the machine that
 					# simulates that body is the one that applies the hit, because the host
 					# holds no verifiable HP for a peer (PlayerRegistry.record_hp).
 					GameBus.combat_round_requested.emit(iid, target_id)
