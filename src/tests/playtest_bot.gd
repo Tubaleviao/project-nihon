@@ -31,6 +31,7 @@ const OUT_DIR := "res://playtest"
 const HITCH_MS := 50.0        ## a frame over this is a hitch (counted, not a failure)
 const HARD_FRAME_MS := 2000.0 ## a frame over this fails the run
 const STEP_TIMEOUT_SECS := 60.0 ## wall clock for a WHOLE step, not for one wait inside it
+const STREAM_TIMEOUT_SECS := 300.0 ## the stream step builds 20 chunks one hop at a time; software rendering is slow
 const WARMUP_FRAMES := 3     ## the first frames of a step (shader compile, first upload) are not recorded
 const BOOT_TIMEOUT_SECS := 120.0
 const WATCHDOG_SLACK_SECS := 60.0 ## whole-run budget = boot + every step's timeout + this
@@ -52,6 +53,9 @@ var _steps_done: Array = []   ## finished step records, for the watchdog's parti
 
 static func requested(args: Array) -> bool:
 	return ARG in args
+
+static func _step_timeout(step: String) -> float:
+	return STREAM_TIMEOUT_SECS if step == "stream" else STEP_TIMEOUT_SECS
 
 static func step_names() -> Array:
 	return ["walk", "stream", "mine", "gather", "craft", "place", "fight", "travel"]
@@ -157,7 +161,9 @@ func run(root: Node) -> void:
 	_root = root
 	# A step body that hits a script error aborts its coroutine and would leave the process
 	# running with no verdict; the watchdog writes what exists and quits.
-	var budget := BOOT_TIMEOUT_SECS + STEP_TIMEOUT_SECS * float(step_names().size()) + WATCHDOG_SLACK_SECS
+	var budget := BOOT_TIMEOUT_SECS + WATCHDOG_SLACK_SECS
+	for name in step_names():
+		budget += _step_timeout(name)
 	get_tree().create_timer(budget).timeout.connect(_on_watchdog)
 	print("[Playtest] waiting for the world boot")
 	var booted: bool = await _until(func(): return _root._player != null and not _root._chunk_manager._first_ring.is_empty() and _root._chunk_manager.is_first_ring_ready() \
@@ -203,7 +209,7 @@ func _run_step(step: String) -> Dictionary:
 	_frames = []
 	_chunk_builds = 0
 	_skip_frames = WARMUP_FRAMES
-	_step_deadline_ms = Time.get_ticks_msec() + int(STEP_TIMEOUT_SECS * 1000.0)
+	_step_deadline_ms = Time.get_ticks_msec() + int(_step_timeout(step) * 1000.0)
 	_recording = true
 	var result: Array = await call("_step_" + step)
 	_recording = false
@@ -273,7 +279,7 @@ func _step_stream() -> Array:
 	for i in range(1, STREAM_CHUNKS + 1):
 		var spot := WorldPos.normalized({ "chunk": (home["chunk"] as Vector2i) + Vector2i(i, 0), "local": home["local"] })
 		GameBus.player_teleport.emit(spot)
-		var built: bool = await _until(func(): return _root._chunk_manager.is_chunk_built(spot["chunk"]), STEP_TIMEOUT_SECS)
+		var built: bool = await _until(func(): return _root._chunk_manager.is_chunk_built(spot["chunk"]), STREAM_TIMEOUT_SECS)
 		if not built:
 			return [false, "chunk %d east never built" % i]
 		await _until(func(): return false, 0.1)
