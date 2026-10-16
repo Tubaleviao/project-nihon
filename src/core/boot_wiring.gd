@@ -3,6 +3,7 @@ extends "res://src/core/wiring.gd"
 ## Moved out of game_root.gd; `root` is the GameRoot that owns the slices.
 
 const Diag := preload("res://src/core/diag.gd")
+const PlaytestBot := preload("res://src/tests/playtest_bot.gd")
 
 ## Parse `--client [addr]` from OS user args to determine network role. Defaults
 ## to host (authoritative single-player) when no args are present. A malformed
@@ -87,3 +88,12 @@ func _check_game_data() -> void:
 		for key in reg:
 			if reg[key] == null:
 				Diag.error("%s → %s FAILED" % [reg_name, key])
+
+## Phase 134 — `--playtest-bot`: a scripted bot plays the rendered listen host, then quits the process.
+func _start_playtest_bot() -> void:
+	if not PlaytestBot.requested(OS.get_cmdline_user_args()) or root._is_client or root._is_server:
+		return
+	var bot := PlaytestBot.new()
+	bot.name = "PlaytestBot"
+	root.add_child(bot)
+	bot.run(root)

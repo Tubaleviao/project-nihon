@@ -34,6 +34,12 @@ tools/build_pck.sh                                          # build assets.pck f
 $GODOT --headless --path . --quit -- --run-tests --test-filter=worldgen
 ```
 
+Playtest bot (Phase 134): `--playtest-bot` boots a rendered listen host and plays walk, stream, mine, gather, craft, place, fight and travel, writing `playtest/report.{json,md}` and a PNG per step. Needs a display (CI uses `xvfb-run`); under `--headless` it runs but skips screenshots. Exits 1 on a step failure or a frame over 2 s.
+
+```bash
+$GODOT --headless --path . -- --playtest-bot
+```
+
 ## Architecture
 
 **Fabric-first.** Gameplay systems are modeled in `fabric/` (JS: constitution, gameplay, world) before any GDScript. `npm run generate` emits `.tres`/`.gd` resources into `godot/` (read via the `GameData` autoload), `bible/` and `wiki/`. Never hand-edit `godot/`, `bible/`, `wiki/`, `newel.ir-snapshot.json` or `newel.manifest.json`; change `fabric/` and regenerate.
