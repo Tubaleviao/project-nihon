@@ -147,8 +147,9 @@ func get_settlement(id: String) -> Dictionary:
 	return (_settlements.get(id, {}) as Dictionary).duplicate(true)
 
 func settlement_of(player_id: String) -> String:
+	var pid := _pid(player_id)
 	for id: String in ids():
-		if (_settlements[id]["members"] as Dictionary).has(player_id):
+		if (_settlements[id]["members"] as Dictionary).has(pid):
 			return id
 	return ""
 

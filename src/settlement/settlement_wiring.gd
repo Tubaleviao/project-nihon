@@ -3,6 +3,7 @@ extends "res://src/core/wiring.gd"
 ## `root` is the GameRoot that owns the slices.
 
 const SettlementSlice := preload("res://src/settlement/settlement_slice.gd")
+const I18n := preload("res://src/core/i18n.gd")
 
 ## Seconds between host sweeps (grow, abandon, decay, activity, view pushes).
 const TICK_SEC := 0.5
@@ -49,7 +50,7 @@ func _on_station_placed(station_id: String, type: String, position: Vector3) -> 
 	if root._is_client or root._settlements == null or type != str(root._settlements.rules()["hearthStation"]):
 		return
 	var pid: String = root._registry.local_player_id
-	var why: String = root._settlements.found(pid, "Settlement %d" % (root._settlements.count() + 1), Vector2(position.x, position.z), false)
+	var why: String = root._settlements.found(pid, I18n.t("settlement.default_name", [root._settlements.count() + 1]), Vector2(position.x, position.z), false)
 	if why != "" and root._station != null:
 		root._station.remove_station(station_id)
 

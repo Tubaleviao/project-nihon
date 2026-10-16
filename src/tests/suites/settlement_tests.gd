@@ -106,6 +106,7 @@ func _test_settlement_edit_guard() -> void:
 	assert_true(st.placement_blocker("forge", Vector3(15.5, 2.0, 10.5), "p2") != "", "an outsider's station inside the claim is refused")
 	assert_eq(st.placement_blocker("forge", Vector3(15.5, 2.0, 10.5), "p1"), "", "the founder's station is fine")
 	assert_true(st.placement_blocker("hearth", Vector3(100.5, 2.0, 10.5), "p2") != "", "a hearth near a settlement is refused")
+	assert_true(st.placement_blocker("hearth", Vector3(5000.5, 2.0, 10.5), "p1") != "", "a member's second hearth is refused, so its item is never lost")
 	assert_eq(st.placement_item("hearth"), "Hearth", "placing a hearth costs a Hearth")
 	assert_true(st.placeable_station_types().has("hearth"), "the hearth is a placeable station type")
 	st.free()

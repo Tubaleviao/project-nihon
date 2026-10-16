@@ -166,6 +166,9 @@ func placement_blocker(type: String, position: Vector3, player_id: String = "") 
 	if settlement_slice != null and type == str(settlement_slice.rules()["hearthStation"]) \
 			and settlement_slice.founding_blocker(Vector2(position.x, position.z)) != "":
 		return "too close to a settlement"
+	if settlement_slice != null and type == str(settlement_slice.rules()["hearthStation"]) \
+			and settlement_slice.settlement_of(player_id) != "":
+		return "already in a settlement"
 	for id in _stations:
 		var other: Vector3 = _stations[id]["position"]
 		# Compare on the x/z plane: the same cell at another height still collides.
