@@ -332,6 +332,7 @@ static func shape_height_in(snap: Dictionary, seed_v: int, x: float, z: float, w
 ## Phase 120 — fill the static caches `polar_ground` reads (circumference, polar rows) on the calling
 ## (main) thread, so no worker is the first to resolve them.
 static func warm_polar_caches() -> void:
+	WorldShape.warm()
 	circumference_chunks()
 	polar_chunks()
 

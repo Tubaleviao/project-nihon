@@ -16,25 +16,35 @@ const TREE_CLEAR_DROP_M := 4.0
 
 const EPS := 0.000001
 
-## Runs after settling. `granular` is a Callable(material: String) -> bool. `floor_y` is the world floor
-## a run with nothing below it lands on. Input runs may be unsorted; the result is sorted bottom → top
-## with touching runs of the same material merged. Settling a settled column returns it unchanged.
-static func settle_column(spans: Array, granular: Callable, floor_y: float = -96.0) -> Array:
+## Sort the runs bottom → top and walk them once: each entry is `{ bottom, top, material, to_bottom }`
+## where `to_bottom` is where the run rests (its own bottom unless it is granular with air below it).
+## `settle_column` and `moves` both read this one walk, so they cannot drift apart.
+static func _walk(spans: Array, granular: Callable, floor_y: float) -> Array:
 	var sorted: Array = []
 	for run in spans:
 		sorted.append({ "bottom": float(run["bottom"]), "top": float(run["top"]), "material": str(run.get("material", "")) })
 	sorted.sort_custom(func(a, b): return float(a["bottom"]) < float(b["bottom"]))
-	var out: Array = []
 	var support := floor_y
 	for run in sorted:
 		var bottom: float = run["bottom"]
-		var top: float = run["top"]
 		var material: String = run["material"]
+		var to_bottom := bottom
 		if material != "" and bool(granular.call(material)) and bottom > support + EPS:
-			var drop := bottom - support
-			bottom -= drop
-			top -= drop
-		support = maxf(support, top)
+			to_bottom = support
+		run["to_bottom"] = to_bottom
+		support = maxf(support, float(run["top"]) - (bottom - to_bottom))
+	return sorted
+
+## Runs after settling. `granular` is a Callable(material: String) -> bool. `floor_y` is the world floor
+## a run with nothing below it lands on. Input runs may be unsorted; the result is sorted bottom → top
+## with touching runs of the same material merged. Settling a settled column returns it unchanged.
+static func settle_column(spans: Array, granular: Callable, floor_y: float = -96.0) -> Array:
+	var out: Array = []
+	for run in _walk(spans, granular, floor_y):
+		var drop: float = float(run["bottom"]) - float(run["to_bottom"])
+		var bottom: float = run["to_bottom"]
+		var top: float = float(run["top"]) - drop
+		var material: String = run["material"]
 		if not out.is_empty():
 			var prev: Dictionary = out[-1]
 			if str(prev["material"]) == material and bottom <= float(prev["top"]) + EPS:
@@ -46,21 +56,10 @@ static func settle_column(spans: Array, granular: Callable, floor_y: float = -96
 ## The moves between a column and its settled form: one `{ material, from_bottom, from_top, to_bottom }`
 ## per run that fell. Empty when the column is already settled.
 static func moves(spans: Array, granular: Callable, floor_y: float = -96.0) -> Array:
-	var sorted: Array = []
-	for run in spans:
-		sorted.append({ "bottom": float(run["bottom"]), "top": float(run["top"]), "material": str(run.get("material", "")) })
-	sorted.sort_custom(func(a, b): return float(a["bottom"]) < float(b["bottom"]))
 	var out: Array = []
-	var support := floor_y
-	for run in sorted:
-		var bottom: float = run["bottom"]
-		var top: float = run["top"]
-		var material: String = run["material"]
-		var to_bottom := bottom
-		if material != "" and bool(granular.call(material)) and bottom > support + EPS:
-			to_bottom = support
-			out.append({ "material": material, "from_bottom": bottom, "from_top": top, "to_bottom": to_bottom })
-		support = maxf(support, top - (bottom - to_bottom))
+	for run in _walk(spans, granular, floor_y):
+		if float(run["to_bottom"]) < float(run["bottom"]):
+			out.append({ "material": run["material"], "from_bottom": run["bottom"], "from_top": run["top"], "to_bottom": run["to_bottom"] })
 	return out
 
 

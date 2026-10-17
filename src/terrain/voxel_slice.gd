@@ -2137,6 +2137,7 @@ func apply_chunk_manifest(manifest: Dictionary) -> void:
 			for key in chunk_data["materials"]:
 				materials[key] = chunk_data["materials"][key]
 	apply_edits(edits, materials)
+	_settle_requeue_loaded(edits.keys())
 
 ## Phase 52 — ADD a region's edits to the log without disturbing the rest of it. The
 ## streaming counterpart of `apply_chunk_manifest` (which replaces the whole log): a region
@@ -2175,6 +2176,7 @@ func apply_region_chunks(manifest: Dictionary) -> void:
 	for key in incoming:
 		next[key] = incoming[key]
 	_commit_edits(next, incoming.keys())
+	_settle_requeue_loaded(incoming.keys())
 
 ## Phase 52 — drop the resident edits of the chunks in `chunk_keys` ("cx,cz") that are NOT
 ## dirty, so a region that left every window stops costing memory. A dirty chunk keeps its
@@ -3055,6 +3057,15 @@ func _settle_note(tile: Vector2i) -> void:
 	if is_authoritative:
 		_settle.push_edit(tile)
 
+## Phase 149 — the settle queue is not stored: every edited column read from disk is queued again, and a
+## settled column costs one no-op visit. That covers the columns that were queued or parked when the
+## world was saved, so a quit before the sand finished falling leaves nothing floating after the reload.
+func _settle_requeue_loaded(tile_keys: Array) -> void:
+	if not is_authoritative:
+		return
+	for key in tile_keys:
+		_settle.push(_key_to_tile(str(key)))
+
 ## True when the fabric marks `material` granular (`granular` on the generated material resource).
 static func is_granular(material: String) -> bool:
 	var res: Variant = GameData.MATERIALS.get(material)
@@ -3114,6 +3125,8 @@ func _apply_settle(position: Vector3, normal: Vector3, material: String) -> Dict
 	var height := from_top - from_bottom
 	if height <= 0.0 or to_bottom >= from_bottom or to_bottom < BEDROCK_DEPTH or from_top > MAX_HEIGHT or material == "":
 		return { "applied": false }
+	if not is_granular(material):
+		return { "applied": false }   # only loose ground falls: a rock run never moves
 	var tile := _world_to_tile(Vector2(position.x, position.z))
 	_append_edit(tile, { "op": "remove", "bottom": from_bottom, "top": from_top })
 	_append_edit(tile, { "op": "add", "bottom": to_bottom, "top": to_bottom + height, "material": material })

@@ -2611,12 +2611,10 @@ func _test_p138_txn_foreign_journal() -> void:
 	assert_eq(SaveTxn121.commit(ops, journal, Callable(), [other]), ERR_BUSY, "commit defers while another journal is live")
 	assert_eq(FileAccess.get_file_as_string(target + SaveTxn121.BAK_EXT), "only-old-copy", ".bak kept")
 	assert_eq(FileAccess.get_file_as_string(target), "live", "target untouched")
-	assert_false(FileAccess.file_exists(tmp), "staged tmp discarded")
-	# Without the foreign journal the stale .bak is cleared and the commit lands.
+	assert_true(FileAccess.file_exists(tmp), "ERR_BUSY keeps the staged tmp for a retry")
+	assert_eq(FileAccess.get_file_as_string(tmp), "new", "staged content intact")
+	# Without the foreign journal the stale .bak is cleared and the same ops commit.
 	DirAccess.remove_absolute(other)
-	var f2 := FileAccess.open(tmp, FileAccess.WRITE)
-	f2.store_string("new")
-	f2.close()
 	assert_eq(SaveTxn121.commit(ops, journal, Callable(), [other]), OK, "commit lands once the other journal is gone")
 	assert_eq(FileAccess.get_file_as_string(target), "new", "new content live")
 	for n in DirAccess.get_files_at(dir):

@@ -964,9 +964,9 @@ func _animate_limbs(inst: Dictionary, phase: float, amplitude: float) -> void:
 	if knee_r != null:
 		knee_r.rotation.x = -amplitude * (KNEE_BEND_BASE + KNEE_BEND_PEAK * fwd_r)
 	if elbow_l != null:
-		elbow_l.rotation.x = amplitude * (ELBOW_BEND_BASE + ELBOW_BEND_PEAK * maxf(0.0, -sin(phase)))
+		elbow_l.rotation.x = amplitude * (ELBOW_BEND_BASE + ELBOW_BEND_PEAK * fwd_r)
 	if elbow_r != null:
-		elbow_r.rotation.x = amplitude * (ELBOW_BEND_BASE + ELBOW_BEND_PEAK * maxf(0.0, sin(phase)))
+		elbow_r.rotation.x = amplitude * (ELBOW_BEND_BASE + ELBOW_BEND_PEAK * fwd_l)
 
 ## Bone names of the instance's skeleton (ordered, parents first).
 func get_skeleton_bone_names(instance_id: String) -> Array:
