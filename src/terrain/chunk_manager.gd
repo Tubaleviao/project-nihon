@@ -101,6 +101,7 @@ const DEFAULT_VIEW_DISTANCE := 3       # Chebyshev radius, in chunks
 ## freed'`, and a crash. A static call through this constant touches no node at all,
 ## and the lambda's captured value keeps the script resource alive for the task.
 const VoxelBuilder := preload("res://src/terrain/voxel_slice.gd")
+const NativeBuilder := preload("res://src/terrain/native_builder.gd")
 
 ## Phase 42 — how far BEYOND the view ring a chunk is still queued and kept. The
 ## streamed window is `view_distance + prefetch_distance`: the load ring leads the
@@ -997,8 +998,7 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 	var revision: int = int(voxel_slice.chunk_revision(chunk_pos))
 	var result: Array = [null]
 	var task_id := WorkerThreadPool.add_task(
-		func(): result[0] = VoxelBuilder.build_chunk_arrays(chunk_pos, heightmap,
-			VoxelBuilder.build_runs(chunk_pos, heightmap, gathered), true),
+		func(): result[0] = NativeBuilder.build_chunk(chunk_pos, heightmap, gathered),
 		false, "chunk build %s" % key)
 	_builds[task_id] = {
 		"chunk":     chunk_pos,
@@ -1028,7 +1028,7 @@ func _dispatch_worker_noise_build(chunk_pos: Vector2i, key: String) -> void:
 		var hm: Array = cached if not cached.is_empty() else TerrainSlice.heightmap_for(chunk_pos, seed_v, noise)
 		VoxelBuilder.fill_seam_strips(chunk_pos, gathered, seed_v, noise)
 		result[1] = hm
-		result[0] = VoxelBuilder.build_chunk_arrays(chunk_pos, hm, VoxelBuilder.build_runs(chunk_pos, hm, gathered), true)
+		result[0] = NativeBuilder.build_chunk(chunk_pos, hm, gathered)
 	# A low-priority task may only use `low_priority_thread_ratio` of the pool (0.3 by default: three or
 	# four threads on most machines, which is what really capped the build rate), so the catch-up
 	# dispatches at high priority and can use every worker.

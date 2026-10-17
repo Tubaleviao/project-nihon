@@ -13,6 +13,7 @@ func register() -> void:
 	_run_test("stream: a restream bursts the build cap until the window is rebuilt", _test_stream_fold_catchup)
 	_run_test("fold: a creature and a tree keep id, state and place across a pole fold", _test_fold_carries_contents)
 	_run_test("fold: the fold image of a position is an involution over a pole and a lap", _test_fold_like_involution)
+	_run_test("native: the loader falls back to GDScript and builds the same chunk", _test_native_fallback_same_build)
 
 ## Rows a player can reach: the equator, mid latitudes, the ice shelf, the pole's snow field, past
 ## the pole (the fold slack) and the antimeridian's blend band.
@@ -287,3 +288,21 @@ func _test_fold_like_involution() -> void:
 	assert_true(absf(back.z - p.z) < 2.0, "on the same row")
 	var lapped := TerrainSlice.fold_world_vec_like(p, false, 1)
 	assert_true(absf(lapped.z - p.z) < 2.0 and lapped.y == p.y, "a lap fold leaves Z and Y")
+
+const NativeBuilder := preload("res://src/terrain/native_builder.gd")
+
+func _test_native_fallback_same_build() -> void:
+	NativeBuilder.force_fallback = true
+	assert_true(NativeBuilder.backend() == "gdscript", "forced fallback reports gdscript")
+	var t := TerrainSlice.new()
+	add_child(t)
+	t.set_world_seed(4242)
+	var noise := FastNoiseLite.new()
+	var c := Vector2i(3, 2)
+	var hm: Array = TerrainSlice.heightmap_for(c, 4242, noise)
+	var VB := preload("res://src/terrain/voxel_slice.gd")
+	var want: Dictionary = VB.build_chunk_arrays(c, hm, VB.build_runs(c, hm, {}), true)
+	var got: Dictionary = NativeBuilder.build_chunk(c, hm, {})
+	assert_true(got == want, "fallback equals the GDScript reference")
+	NativeBuilder.force_fallback = false
+	t.free()
