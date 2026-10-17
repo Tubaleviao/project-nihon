@@ -729,7 +729,7 @@ with no code change.
   render. Judging how they look is a human check, so it is filed as an issue, not a criterion.
 
 **Acceptance criteria:**
-- [ ] Fabric: every creature names a `skeleton`, and `validate` rejects a creature with an unknown
+- [x] Fabric: every creature names a `skeleton`, and `validate` rejects a creature with an unknown
   family. Generated `.tres` files carry the field.
 - [ ] Suite: for every creature in `GameData.CREATURES`, the public model parses, its `Skeleton3D`
   bones match the fabric skeleton of its family, and its `AnimationPlayer` has all seven clips.
