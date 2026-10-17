@@ -526,6 +526,7 @@ class PlayerPosSpy:
 ## dispatch (see `_dispatch_build`'s early return, which the older rigs rely on).
 func _make_chunk_build_rig() -> Dictionary:
 	var cm := ChunkManager.new()
+	cm.pump_budget_msec = 0   # the suite has no frame: the time bound has its own test (stubbed clock)
 	add_child(cm)
 	var terrain := TerrainSlice.new()
 	add_child(terrain)
