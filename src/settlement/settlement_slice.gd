@@ -69,6 +69,8 @@ var position_of: Callable = Callable()
 ##         status, abandoned_at, stock {item: n}, taken {pid: {day, n}} }
 var _settlements: Dictionary = {}
 var _next_id: int = 1
+## id -> whole metres of an abandoned claim last announced to clients (Phase 147).
+var _decay_pushed: Dictionary = {}
 var _last_intent: Dictionary = {}
 ## Client view: what the host last sent.
 var _view: Dictionary = {}
@@ -493,12 +495,20 @@ func tick(now: float) -> bool:
 		if status == "abandoned":
 			if claim_radius(id) <= 0.0:
 				_settlements.erase(id)   # the land is free again
+				_decay_pushed.erase(id)
 				changed = true
+			else:
+				# Phase 147 — a decaying claim shrinks without any other event: push it once per metre lost.
+				var whole := floorf(claim_radius(id))
+				if float(_decay_pushed.get(id, -1.0)) != whole:
+					_decay_pushed[id] = whole
+					changed = true
 			continue
 		if now - float(s["last_active"]) >= float(r["abandonAfterDays"]) * DAY_SEC:
 			s["abandoned_radius"] = claim_radius(id)
 			s["status"] = "abandoned"
 			s["abandoned_at"] = now
+			_decay_pushed[id] = floorf(claim_radius(id))
 			changed = true
 			continue
 		var tier := tier_for(id, now)

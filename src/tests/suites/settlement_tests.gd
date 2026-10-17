@@ -18,6 +18,7 @@ func register() -> void:
 	_run_test("settlement: edit_blocker is a pure preview, activity is noted after a success", _test_settlement_preview_pure)
 	_run_test("settlement: hearth placement needs and consumes its item", _test_settlement_hearth_item)
 	_run_test("settlement: far from the origin the hearth keeps its exact position", _test_settlement_exact_far)
+	_run_test("settlement: a decaying claim announces its shrinking radius", _test_settlement_decay_push)
 	_run_test("settlement: from_data keeps ids unique and defaults last_active to now", _test_settlement_load_ids)
 
 func _rig() -> Dictionary:
@@ -414,4 +415,16 @@ func _test_settlement_exact_far() -> void:
 	assert_eq(got["chunk"], ex["chunk"], "same chunk")
 	assert_true((got["local"] as Vector3).distance_to(ex["local"]) < 0.01, "within 1 cm")
 	back.free()
+	_free_rig(rig)
+
+func _test_settlement_decay_push() -> void:
+	var rig := _rig()
+	var s: SettlementSlice = rig["s"]
+	var now: Array = rig["now"]
+	_found(rig)
+	now[0] += float(s.rules()["abandonAfterDays"]) * SettlementSlice.DAY_SEC + 1.0
+	assert_true(s.tick(now[0]), "the claim is abandoned")
+	assert_false(s.tick(now[0]), "an unchanged radius is not re-announced")
+	now[0] += SettlementSlice.DAY_SEC
+	assert_true(s.tick(now[0]), "a day of decay changes the radius and is announced")
 	_free_rig(rig)
