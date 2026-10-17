@@ -175,6 +175,13 @@ issue number where the criterion used to be.
 | 152 | Item models and icons from one generator | Planned | below |
 | 153 | Items in the world: equipment, held tools and icons everywhere | Planned | below |
 | 154 | Split the biggest slices | Planned | below |
+| 155 | Animation tempo: looping clips, stride-matched walk and snappier transitions | Planned | below |
+| 156 | Idle, attack and hit clips for everyone, on every swing | Planned | below |
+| 157 | Deaths that read as deaths: a push, a fall and a body that stays | Planned | below |
+| 158 | Gestures in the fabric: sit, lie down, wave and friends | Planned | below |
+| 159 | Gestures at runtime: a gesture wheel, chat commands and synced poses | Planned | below |
+| 160 | Harvesting in the fabric: tools, the Skinning skill, carcass weight and carry | Planned | below |
+| 161 | Harvesting at runtime: work the body, carry it home | Planned | below |
 
 ---
 
@@ -554,7 +561,345 @@ wiring. This phase does the same for the slices, with no change in behaviour.
 
 ---
 
+## Phase 155 — Animation tempo: looping clips, stride-matched walk and snappier transitions
+
+**Goal:** the game looks slow, and the walk is broken. Holding a move key makes the avatar stretch
+its left leg toward the move direction and glide with it held there. The cause is in the clips, not
+the input: the runtime glTF import leaves every clip at `Animation.LOOP_NONE` (only `death` is set
+explicitly, in `CreatureVisuals`, and nothing sets the others), and `tools/gen_placeholder_glb.py`
+keys `walk` and `run` so that both the first and last keys are "left leg forward". So one stride
+plays, the clip stops on its last key, and the body slides with the left leg out. The same happens
+to `idle`, `run` and `fall`, and to every creature model from Phase 143. This phase fixes the loop,
+matches the stride to the ground speed and tightens the timings so movement reads as quick.
+
+**Newel dependency:** NO.
+
+**Depends on:** none.
+
+**Deliverables:**
+- One place sets clip loop modes for every rig, player and creature: `RigTree.prepare_library(player)`
+  (new), called by `CharacterSlice.attach_rig` and `CreatureVisuals._template`. `idle`, `walk`,
+  `run` and `fall` get `LOOP_LINEAR`; `land`, `attack`, `death` and any one-shot clip (Phases
+  156–159) get `LOOP_NONE`. The loop table lives in `RigTree` next to `node_for_state`, so a new clip
+  must be listed there.
+- Stride-matched playback: the locomotion blend space plays at a time scale of
+  `ground_speed / clip_stride_m`, where each clip's stride length (metres per cycle) is a constant
+  in `RigTree` (and a per-creature value read from the creature model, defaulting by skeleton). Feet
+  stop sliding, and a faster character visibly steps faster instead of gliding.
+- `RigTree.drive` stops calling `travel()` on every tick when the node has not changed (the
+  creature path already does this). Re-travelling to the same node restarts nothing today, but the
+  call is per frame per avatar and hides real transition bugs.
+- Transition cross-fades: each state machine transition gets an explicit `xfade_time` (locomotion
+  0.12 s, into attack 0.05 s, into death 0.08 s, out of land 0.1 s), instead of the engine default
+  of 0, which pops between poses.
+- Tempo pass: `Locomotion.ATTACK_DURATION` matches the attack clip length (one source: the clip's
+  length when a rig is attached, the constant otherwise), `LAND_DURATION` drops to 0.18 s, and the
+  creature speed smoothing (`lerpf(..., delta * 8.0)`) is raised so a creature stops and starts
+  without a visible lag. The procedural box-body walk (`ANIM_FREQ`) uses the same stride constant
+  as the rig, so both paths step at the same rate.
+- `tools/gen_placeholder_glb.py`: the `walk`/`run` clips (player and every creature gait) are keyed
+  as one closed cycle (the last key equals the first, and the clip length equals that key time), so
+  a looped clip has no hitch at the seam. The private repo's `build_player_rig.py` gets the same
+  rule (separate PR in `project-nihon-assets`).
+
+**Acceptance criteria:**
+- [ ] Suite: after `attach_rig`, the player rig's `idle`, `walk`, `run` and `fall` clips are
+  `LOOP_LINEAR` and `land`, `attack` and `death` are `LOOP_NONE`. Same for every creature model in
+  `assets/manifest.json`.
+- [ ] Suite: a test that advances an `AnimationPlayer` on the `walk` clip by 3 clip lengths (by
+  `advance()`, no frames) reads `Leg_L`'s pose at three different phases and gets three different
+  rotations (fails today: the clip holds its last key).
+- [ ] Suite: every placeholder loop clip's last key equals its first, for every joint
+  (`gen_placeholder_glb.py --check` in CI).
+- [ ] Suite: at walk speed and at run speed, the blend space time scale times the clip stride equals
+  the ground speed within 5%.
+- [ ] Suite: `RigTree.drive` called twice with the same state issues one `travel()` (counted with a
+  fake playback object).
+- [ ] Suite: every transition in `build_tree` has a non-zero `xfade_time`.
+- [ ] Playtest bot: the `walk` step records the left and right foot heights over 2 s of held
+  movement and asserts each foot spends between 30% and 70% of the time in front of the other
+  (fails today: the left foot is in front almost the whole time).
+- [ ] Suite green on both boot paths.
+
+---
+
+## Phase 156 — Idle, attack and hit clips for everyone, on every swing
+
+**Goal:** an avatar standing still looks frozen, and an attack shows no motion. The `idle` clip moves
+the chest and arms by 2–5°, which is invisible at game distance. The `attack` clip exists, but
+`CombatWiring` triggers it only for the local player and only when a combat round is *requested*,
+so remote players and creatures never swing, and repeated hits in one round do not swing again. This
+phase gives every body a visible idle, a swing on every hit and a flinch when hit.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 155.
+
+**Deliverables:**
+- Idle: the placeholder `idle` clip becomes a visible breathing and weight-shift loop (chest ±6°,
+  hips sway, head turn, about 3 s), plus one or two idle variants (`idle_look`, `idle_stretch`) that
+  play once after the body has been idle for 6–12 s (a seeded random from the instance id, so tests
+  are deterministic). Creature skeletons get the same treatment: quadruped head bob and tail sway,
+  bird preen, serpent coil.
+- Attack on every swing: the host's per-hit combat event (`combat_resolved` or the hit event it
+  already broadcasts) drives the attacker's attack animation for **any** attacker id — the local
+  player, a remote peer's avatar and a creature model. Remote clients get it from the existing
+  synced combat result, so no new wire message is needed if the result already carries the attacker;
+  otherwise one compact field is added and validated on the host.
+- Attack variants by what is held: `attack_unarmed` (punch), `attack_1h` (overhead/side swing,
+  alternating), `attack_tool` (the same swing used for mining and gathering, so `mine` and `gather`
+  also animate). The variant is picked from the main-hand equipment category; a missing clip falls
+  back to `attack` (the existing warn-once rule).
+- Hit reaction: `hit` (a short flinch, 0.25 s, additive over locomotion through a OneShot node) on
+  `player_damaged` and on creature damage. Knockback and stagger (Phase 129) play a longer `stagger`
+  clip.
+- Placeholder clips for all of the above in `tools/gen_placeholder_glb.py` (player and every
+  creature skeleton), listed in `assets/manifest.json`. The private repo gets matching keys (Placeholder
+  rule, separate PR in `project-nihon-assets`).
+
+**Acceptance criteria:**
+- [ ] Suite: a creature's hit on the player plays `attack*` on that creature's model and `hit` on
+  the player rig (read from the tree's playback / OneShot state after the bus event, no frames).
+- [ ] Suite: a remote peer's attack, delivered as the synced combat result, plays an attack clip on
+  that peer's avatar on another client (harness step `peer_attack_animated`).
+- [ ] Suite: three hits in one round trigger three attack one-shots (fails today: one).
+- [ ] Suite: the attack variant follows the main hand: empty → `attack_unarmed`, a sword →
+  `attack_1h`, a pick → `attack_tool`; mining a block also triggers `attack_tool`.
+- [ ] Suite: the idle variant plays after the seeded delay and never while moving.
+- [ ] Suite: every rig in the manifest has `idle`, `hit` and at least one attack clip, and every
+  placeholder clip's peak joint rotation is at least 10° (so a clip cannot be "present but
+  invisible").
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 157 — Deaths that read as deaths: a push, a fall and a body that stays
+
+**Goal:** when a creature or a player dies, it lies down calmly, as if going to sleep. A death should
+look like the hit that caused it: the body is thrown back a little from the killer, falls, and
+settles. The body should also stay in the world long enough to be harvested (Phase 161), instead of
+vanishing after `CORPSE_SECONDS` (8 s).
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 155. Uses Phase 129's knockback helper.
+
+**Deliverables:**
+- Host-decided death push: when the host resolves a killing blow it computes a short throw
+  (0.5–1.5 m, scaled by the killing hit's damage relative to max HP and by the attacker/target
+  size ratio) away from the killer, landing on a walkable spot found by
+  `StatusEffects.knockback_target`. The landing position is part of the death event
+  (`creature_died` / `player_died` gain `landing: Vector3` — the host value, never the client's).
+  The body's authoritative position becomes the landing spot.
+- Client-side fall: the visual body travels from its position to `landing` over about 0.35 s on a
+  short arc (no physics ragdoll, so the headless server stays deterministic), while the death clip
+  plays. Two or more death variants per skeleton, picked by the hit direction relative to the
+  body's facing: `death_back` (thrown backwards), `death_forward` (falls on its face), `death_side`.
+  A missing variant falls back to `death`.
+- The death clip ends in a pose that lies on the ground (the rig's lowest point at ground height
+  within 5 cm), so a corpse does not float or sink.
+- Corpse lifetime: creature corpses stay until harvested or until `corpseSeconds` (fabric value,
+  Phase 160) elapses, instead of the hard-coded 8 s. Until Phase 161 lands, the old loot drop still
+  happens on death, so nothing is lost in between.
+- Player death uses the same push and variants. Respawn resets the rig as today.
+
+**Acceptance criteria:**
+- [ ] Suite: a killing blow from the west puts the creature's landing spot east of where it stood, at
+  a distance in [0.5, 1.5] m, on a walkable tile; a killing blow against a wall lands it short of the
+  wall (never inside a solid voxel).
+- [ ] Suite: the landing spot is computed on the host only. A client-reported landing in a
+  `creature_died`-shaped message is ignored (trust boundary).
+- [ ] Suite: a hit from behind the target picks `death_forward`, from the front `death_back`, from
+  the side `death_side`.
+- [ ] Suite: after the death clip's last key, the lowest bone of every placeholder rig is within
+  5 cm of the ground plane.
+- [ ] Harness: a creature killed on the host lands at the same `landing` position on the client.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 158 — Gestures in the fabric: sit, lie down, wave and friends
+
+**Goal:** players cannot sit, lie down or make any gesture, so a group of players standing together
+looks like mannequins. This phase models gestures in the fabric so the list, their rules and their
+animation names have one source. It is the fabric half of Phase 159 (separate PR, per CLAUDE.md).
+
+**Newel dependency:** NO (new entities with existing field types).
+
+**Depends on:** none.
+
+**Deliverables:**
+- `fabric/gameplay/gestures.js` (new) — a `Gesture` entity per gesture: `Sit`, `SitGround`,
+  `LieDown`, `Wave`, `Point`, `Bow`, `Cheer`, `Shrug`, `Clap`, `Kneel`. Fields: `clip` (rig clip
+  name), `kind` (`pose`: held until cancelled, or `oneShot`), `cancelOnMove` and `cancelOnDamage`
+  (bool), `requiresGround` (bool), `restRegen` (a multiplier for HP/stamina regeneration while held,
+  1.0 for none; sitting and lying give a small bonus, which makes them useful as well as social),
+  `chatCommand` (`/sit`, `/lie`, `/wave`, …), and a translation key for its name.
+- `validate` rejects a gesture with an unknown `kind`, a duplicate `chatCommand`, or a
+  `restRegen` below 1.0.
+- Generated `godot/` resources carry the gestures. `npm run generate` and `check-drift` are clean.
+- `locale/` catalogs: the gesture names in `en` and `pt_BR`.
+
+**Acceptance criteria:**
+- [ ] `pnpm validate` passes, and fails on a fixture gesture with `kind: 'dance-party'` and on two
+  gestures sharing `/sit`.
+- [ ] Suite: `GameData` lists every gesture with its clip and chat command.
+- [ ] Suite: every gesture name key exists in both the `en` and `pt_BR` catalogs.
+- [ ] `check-drift` clean.
+
+---
+
+## Phase 159 — Gestures at runtime: a gesture wheel, chat commands and synced poses
+
+**Goal:** play the Phase 158 gestures in game, for the local player and as seen by everyone nearby.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phases 155, 158.
+
+**Deliverables:**
+- `src/character/gesture_slice.gd` (new) with `gesture_wiring.gd`: a `gesture_intent(gesture_id)`
+  goes to the host, which validates it (known id, the player alive, grounded when `requiresGround`,
+  rate-limited like chat) and broadcasts `gesture_synced(player_id, gesture_id)` to the player's
+  AOI. A late joiner sees a held pose (sitting players stay seated).
+- Cancel rules from the fabric: moving cancels a `cancelOnMove` pose (the stand-up plays as a
+  0.3 s transition, not a pop), damage cancels a `cancelOnDamage` pose, death cancels everything.
+  Cancellation is decided on the host and synced.
+- `restRegen` applies on the host while a pose is held.
+- Input: a gesture wheel on a key (default `G`, rebindable) built from the fabric list, and the
+  `chatCommand` of each gesture in chat (`/sit`, `/wave`, …) through `ChatCommands`. All labels
+  through `tr()`.
+- Rig: `RigTree` gets a `Gesture` node (pose loops, one-shots return to locomotion). Sitting on a
+  placed station or block edge snaps to its top face (sit height read from the target), otherwise
+  sits on the ground.
+- Placeholder clips for every gesture on the player rig in `tools/gen_placeholder_glb.py`, keyed in
+  the manifest, and matching keys in the private repo (separate PR).
+
+**Acceptance criteria:**
+- [ ] Suite: a `/sit` from the local player plays `sit` on the rig; a movement intent afterwards
+  cancels it and returns to locomotion.
+- [ ] Suite: the host refuses an unknown gesture id, a gesture from a dead player and gestures over
+  the rate limit (trust boundary), and a client cannot cancel another player's pose.
+- [ ] Suite: a damage event cancels `LieDown` and does not cancel `Wave` if the fabric says so.
+- [ ] Suite: HP regeneration while `Sit` is held equals the base rate times `restRegen`.
+- [ ] Harness step `gesture_synced`: a peer's `/sit` is seen seated on the other client, and a
+  client that joins afterwards also sees it seated.
+- [ ] Suite: every gesture in `GameData` has a clip on the placeholder player rig.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 160 — Harvesting in the fabric: tools, the Skinning skill, carcass weight and carry
+
+**Goal:** today a dead creature drops its finished resources at once (`LootSlice._on_creature_died`
+rolls the `drops` table). It should be a body that a player works: a skinning knife takes the pelt
+and meat, a hammer or bone saw takes the bones, and a better skinner gets more and better material.
+A player without the tool can carry the body somewhere else, if it is light enough for them. This
+phase models all of that in the fabric. It is the fabric half of Phase 161 (separate PR, per
+CLAUDE.md).
+
+**Newel dependency:** NO (new fields and entities with existing types).
+
+**Depends on:** none.
+
+**Deliverables:**
+- Harvest tables replace drop tables: each creature's `drops` entry gains a `tool` (a harvest tool
+  category: `knife`, `bonetool`, `none` for things picked straight off the body, like feathers) and
+  a `skill` (`Skinning` for all of today's creatures). Quantity becomes skill-scaled: `minQty` at
+  level 0 rising to `maxQty` at the cap, with `chance` also rising with level. The loot docs and the
+  wiki describe the new table.
+- Items: `SkinningKnife` and `BoneSaw` (with recipes and technology gates that fit the existing
+  tree), each with a `harvestTool` category. Existing tools may also qualify (an axe as a poor
+  `bonetool`) through an `efficiency` value below 1.0.
+- A `Skinning` skill (new `fabric/gameplay/skills/survival.js`, or in `exploration.js`): levels,
+  the XP a harvest grants, and the bonus per level. The skill entity says how level maps to yield and
+  quality.
+- Resource quality: raw creature materials (`*_hide`, `*_pelt`, `*_meat`, `*_bone`, …) get a
+  `quality` grade (`poor`, `common`, `fine`, `prime`) chosen by Skinning level and tool efficiency.
+  The grade is item data (an instance property, like durability), not a new item id per grade, so
+  recipes keep working. Where a recipe should care about grade, that is a later phase.
+- Carcass and carry: each creature gets `carcassMassKg` and `corpseSeconds`. The player gets a
+  `carryCapacityKg` (base value in `fabric/gameplay/player.js`). There is no strength attribute yet,
+  so capacity is a fixed base plus a bonus from a skill or worn gear (a pack frame or yoke item, to be
+  decided in the PR). Carrying a body over half the capacity slows walking. Bodies over the capacity
+  can be dragged (slower) or not moved at all (bison, large void creatures), as the fabric says per
+  creature.
+- `validate` rejects a harvest entry whose tool category no item provides, a creature without
+  `carcassMassKg`, and a quality table that does not cover every level.
+- Generated resources updated. `npm run generate` and `check-drift` are clean.
+
+**Acceptance criteria:**
+- [ ] `pnpm validate` passes, and fails on a fixture harvest entry with `tool: 'spoon'` and on a
+  creature without `carcassMassKg`.
+- [ ] Suite: `GameData` lists, for each creature, its harvest entries with tool and skill; every
+  creature that had a drop table keeps at least the same items.
+- [ ] Suite: `SkinningKnife` and `BoneSaw` exist, are craftable and carry their `harvestTool`.
+- [ ] Suite: the Skinning yield and quality tables are monotonic in level (a higher level never
+  gives less).
+- [ ] `check-drift` clean.
+
+---
+
+## Phase 161 — Harvesting at runtime: work the body, carry it home
+
+**Goal:** turn the Phase 160 model into play. A kill leaves a body. The player harvests it with the
+right tool, gets yields and quality from their Skinning level, or picks the body up and carries it.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phases 156 (the tool swing), 157 (the body stays), 160.
+
+**Deliverables:**
+- `src/loot/carcass_slice.gd` (new) with wiring: on `creature_died` the host creates a carcass
+  record (creature type, landing position, the remaining harvest entries, owner/killer, expiry from
+  `corpseSeconds`) instead of rolling the drop table. Carcasses are host-owned, synced to the AOI,
+  bounded per region (oldest decays first) and saved with the region so a body left at the camp
+  survives a restart until it expires.
+- Harvest: `harvest_intent(carcass_id)` checked on the host — in range, the player's main hand
+  provides a tool category that some remaining entry needs (no tool → only `none` entries). A timed
+  action (the `attack_tool` or a `harvest` kneel clip loops while it runs, cancelled by moving or
+  damage). On completion the host rolls quantity and quality from the player's Skinning level and
+  the tool's efficiency, puts the items in the inventory (or on the ground when full), removes those
+  entries from the carcass, uses tool durability, and grants Skinning XP. A carcass with nothing left
+  is removed.
+- A minimal per-player skill level store for Skinning (host-owned, persisted on the player record).
+  If a general skill-progression system lands first, this uses it instead.
+- Carry: `carry_intent(carcass_id)` succeeds when `carcassMassKg` is within the player's
+  `carryCapacityKg` (or drag rules allow it). While carrying, the body is attached to a back or
+  shoulder socket (or dragged behind for drag), the player cannot attack or harvest, walk speed is
+  reduced per the fabric, a `carry` locomotion layer plays, and `drop_intent` places the body where
+  the player stands. Death drops the body. The host owns the carcass position at all times.
+- UI: the carcass shows a prompt with what can be harvested with the current tool and what is
+  missing ("needs a knife"), all through `tr()` in `en` and `pt_BR`.
+- `LootSlice` keeps spawning world pickups for player-dropped items. Its death path goes away.
+- The playtest bot's `fight` step is extended: kill, harvest with a knife, check the inventory.
+
+**Acceptance criteria:**
+- [ ] Suite: a kill creates a carcass and no immediate pickups.
+- [ ] Suite: harvesting with a knife yields the knife entries only; the bone entries stay until a
+  `bonetool` harvests them; with an empty hand only `none` entries come out.
+- [ ] Suite: at Skinning 0 and at the cap, the same seeded harvest gives the table's min and max
+  quantity and the lowest and highest grade; harvesting grants XP and wears the tool.
+- [ ] Suite: the host refuses a harvest out of range, with a tool the player does not hold, on a
+  carcass that is already empty, and a carry over capacity (trust boundary).
+- [ ] Suite: carrying sets the walk speed multiplier from the fabric, blocks attack and harvest, and
+  dropping the carcass places it at the player's position; dying while carrying drops it.
+- [ ] Suite: a carcass expires after `corpseSeconds`, and a region saved with a carcass restores it.
+- [ ] Harness step `carcass_synced`: a carcass harvested on the host loses those entries on the
+  client, and a carried carcass follows the carrier on the other client.
+- [ ] Playtest bot: the `fight` step ends with the harvested items in the inventory.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
 ## Deferred (in priority order)
+
+- **Character attributes (strength and friends)** — Phase 160 gives carry capacity a fixed base plus
+  gear/skill bonuses because there is no attribute system. A strength attribute that feeds carry
+  capacity, drag rules and melee knockback would replace that base.
+- **Physics ragdolls** — Phase 157 animates deaths with a host-chosen landing spot and authored
+  clips, so the headless server stays deterministic. A client-only ragdoll blend on top of that is a
+  later polish.
 
 - **Localized fabric content** — entity names and descriptions (items, creatures, skills,
   technologies) translated through catalogs generated by Newel (`../newel/ROADMAP.md` Phase 15),
