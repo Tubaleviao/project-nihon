@@ -1,0 +1,233 @@
+{
+  "generator": 1,
+  "maxTris": 300,
+  "archetypeBounds": {
+    "axe": [
+      0.1,
+      0.8,
+      0.4
+    ],
+    "block": [
+      0.34,
+      0.34,
+      0.34
+    ],
+    "bow": [
+      0.1,
+      1.15,
+      0.35
+    ],
+    "chestplate": [
+      0.7,
+      0.6,
+      0.35
+    ],
+    "cloak": [
+      0.7,
+      0.9,
+      0.2
+    ],
+    "dust": [
+      0.3,
+      0.14,
+      0.3
+    ],
+    "hearth": [
+      0.7,
+      0.3,
+      0.7
+    ],
+    "helmet": [
+      0.4,
+      0.4,
+      0.4
+    ],
+    "ingot": [
+      0.3,
+      0.12,
+      0.16
+    ],
+    "longsword": [
+      0.22,
+      1.15,
+      0.1
+    ],
+    "orb": [
+      0.25,
+      0.3,
+      0.25
+    ],
+    "pick": [
+      0.12,
+      0.8,
+      0.6
+    ],
+    "plank": [
+      0.14,
+      0.06,
+      0.6
+    ],
+    "potion": [
+      0.18,
+      0.3,
+      0.18
+    ],
+    "rations": [
+      0.22,
+      0.12,
+      0.18
+    ],
+    "shard": [
+      0.2,
+      0.34,
+      0.2
+    ],
+    "shield": [
+      0.6,
+      0.6,
+      0.12
+    ],
+    "sword": [
+      0.2,
+      0.75,
+      0.08
+    ],
+    "tablet": [
+      0.34,
+      0.44,
+      0.1
+    ],
+    "waystone": [
+      0.5,
+      1.2,
+      0.4
+    ]
+  },
+  "items": {
+    "AethermiteBow": {
+      "archetype": "bow",
+      "scale": 1,
+      "hash": "6f7eb2915673570a"
+    },
+    "AethermiteDust": {
+      "archetype": "dust",
+      "scale": 1,
+      "hash": "5b7128159b66a65d"
+    },
+    "AethermiteShard": {
+      "archetype": "shard",
+      "scale": 1,
+      "hash": "1027716aaa3372c3"
+    },
+    "AlchemyPotion": {
+      "archetype": "potion",
+      "scale": 1,
+      "hash": "ab808dde5ee126ce"
+    },
+    "AshiteBlock": {
+      "archetype": "block",
+      "scale": 1,
+      "hash": "5a18c5c56f279612"
+    },
+    "CarpenterAxe": {
+      "archetype": "axe",
+      "scale": 1,
+      "hash": "8289389542f31c32"
+    },
+    "DuskfiberCloak": {
+      "archetype": "cloak",
+      "scale": 1,
+      "hash": "28461ce36c3c9fd9"
+    },
+    "EnchantedAethermiteShard": {
+      "archetype": "shard",
+      "scale": 1,
+      "hash": "8bf1d2e9e2d4cc4b"
+    },
+    "FerriteHelmet": {
+      "archetype": "helmet",
+      "scale": 1,
+      "hash": "3f97005867f03112"
+    },
+    "FerriteIngot": {
+      "archetype": "ingot",
+      "scale": 1,
+      "hash": "1d697c38d9381ab1"
+    },
+    "FerritePick": {
+      "archetype": "pick",
+      "scale": 1,
+      "hash": "2cf26e46e59ae1d8"
+    },
+    "FerriteShield": {
+      "archetype": "shield",
+      "scale": 1,
+      "hash": "0e4d49643f617b5e"
+    },
+    "FerriteShortSword": {
+      "archetype": "sword",
+      "scale": 1,
+      "hash": "e017069f03629e69"
+    },
+    "FieldRations": {
+      "archetype": "rations",
+      "scale": 1,
+      "hash": "a9bafcbc6d891ac0"
+    },
+    "Hearth": {
+      "archetype": "hearth",
+      "scale": 1,
+      "hash": "ff6eedf70934f444"
+    },
+    "LumenfiteOrb": {
+      "archetype": "orb",
+      "scale": 1,
+      "hash": "2464a132d10b133d"
+    },
+    "RefinedVoiditeShard": {
+      "archetype": "shard",
+      "scale": 1,
+      "hash": "9ede4c39bef63b99"
+    },
+    "ThornwoodPlank": {
+      "archetype": "plank",
+      "scale": 1,
+      "hash": "6dc4e5c06a8f9433"
+    },
+    "VeilsteelChestplate": {
+      "archetype": "chestplate",
+      "scale": 1,
+      "hash": "8283281f308b201a"
+    },
+    "VeilsteelIngot": {
+      "archetype": "ingot",
+      "scale": 1,
+      "hash": "e6c738a2628bba08"
+    },
+    "VeilsteelLongsword": {
+      "archetype": "longsword",
+      "scale": 1,
+      "hash": "3fd35b6097f716ac"
+    },
+    "VeilsteelPick": {
+      "archetype": "pick",
+      "scale": 1,
+      "hash": "b33f31254e8386c1"
+    },
+    "VoidRuneTablet": {
+      "archetype": "tablet",
+      "scale": 1,
+      "hash": "4caab0811aec1312"
+    },
+    "VoiditeEdge": {
+      "archetype": "sword",
+      "scale": 1,
+      "hash": "46a91c6c88cef188"
+    },
+    "Waystone": {
+      "archetype": "waystone",
+      "scale": 1,
+      "hash": "cb463f757dd8d14d"
+    }
+  }
+}

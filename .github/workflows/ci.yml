@@ -167,6 +167,13 @@ jobs:
       - name: Check the item-shape validation rejects bad shapes
         run: node tools/check_item_shapes.js
 
+      - name: Check the item art is current and the generator is deterministic
+        run: |
+          python3 tools/gen_item_assets.py --check
+          python3 tools/gen_item_assets.py --out /tmp/items-a
+          python3 tools/gen_item_assets.py --out /tmp/items-b
+          diff -r /tmp/items-a /tmp/items-b
+
       - name: Check the status-effect table validation rejects bad tables
         run: node tools/check_combat.js
 
