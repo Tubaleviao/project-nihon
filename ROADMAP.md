@@ -154,7 +154,7 @@ issue number where the criterion used to be.
 | 131 | Internationalization: translated UI and keyed host messages | In review | below |
 | 132 | One wiring module per system: `game_root` keeps the boot paths | In review | below |
 | 133 | The test suite splits by system and runs by filter | In review | below |
-| 134 | A bot plays: playtest report and downloadable builds | In review | below |
+| 134 | A bot plays: playtest report and downloadable builds | Done | below |
 | 135 | A WAN profile: latency, loss and bandwidth in the two-client harness | In review | below |
 | 136 | Creatures walk on the ground and around obstacles | In review | below |
 | 137 | Loose ground settles: sand and soil fall when undermined | In review | below |
@@ -366,13 +366,13 @@ report, not a gate, except for hard failures.
 - #133 and #134 updated with a link to the artifact and the remaining human-only checks.
 
 **Acceptance criteria:**
-- [ ] CI: the playtest job passes, every bot step reaches its expected state, and the artifact holds
+- [x] CI: the playtest job passes, every bot step reaches its expected state, and the artifact holds
   `report.json`, `report.md` and one screenshot per step.
 - [x] Suite: the report builder computes percentiles and hitch counts correctly from a fixed list of
   frame times; a step timeout marks the step and the run failed.
-- [ ] CI: the job fails on a hard failure (crash, step timeout, any frame over 2 s) and not on
+- [x] CI: the job fails on a hard failure (crash, step timeout, any frame over 2 s) and not on
   slower-than-target percentiles.
-- [ ] CI on `main`: the Linux and Windows exports succeed and are uploaded.
+- [x] CI on `main`: the Linux and Windows exports succeed and are uploaded.
 
 ---
 

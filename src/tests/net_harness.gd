@@ -795,7 +795,9 @@ func _step_admin_teleport() -> void:
 const WAYSTONE_GAP_M := 80.0
 func _step_waystone_travel() -> void:
 	# The client was just sent home by the step before: let its reports settle so the stone sits where it stands.
-	await _await_settle(3.0)
+	# Scaled with the link: on a slow link the host's last known position lags the teleport by seconds, and a
+	# stone placed at the stale spot is out of reach of the client forever.
+	await _await_settle(3.0 * _time_scale)
 	if _role == "host":
 		var target := _bound_id()
 		var peer := _peer_id()
