@@ -808,7 +808,7 @@ across instead.
   re-keyed to their new chunk and scene transform instead of being dropped.
 
 **Acceptance criteria:**
-- [ ] Suite: a creature and a tree in the window keep their ids, state and world position across a
+- [x] Suite: a creature and a tree in the window keep their ids, state and world position across a
   fold, and nothing is despawned or respawned.
 - [ ] Harness: two clients cross a pole together and see the same creatures with the same ids; a
   third client that does not cross sees those creatures unmoved.
