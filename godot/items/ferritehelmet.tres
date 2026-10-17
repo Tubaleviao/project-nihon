@@ -9,6 +9,7 @@ condition = 0
 weight = 2.1
 rarity = 0
 stackable = false
+shape = {"archetype":"helmet","parts":{"shell":"Ferrite","trim":"Ferrite"},"scale":1}
 durability = 120
 repair = {"station":"forge","materials":[{"item":"FerriteIngot","quantity":1}],"skillGuards":[{"skill":"Smithing","tier":"novice"}]}
 equipmentSlot = "Head"

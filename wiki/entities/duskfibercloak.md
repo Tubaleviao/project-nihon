@@ -19,6 +19,7 @@ Hooded cloak woven from duskfiber bast. Provides minimal physical protection but
 | weight | decimal | kg |
 | rarity | `common`, `uncommon`, `rare`, `epic`, `legendary` |  |
 | stackable | boolean | Always false for armour pieces |
+| shape | json | Item shape: archetype, material per named part, and uniform scale (Phase 151) |
 | durability | integer | Remaining durability points before condition degrades |
 | repair | json | Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier). |
 | equipmentSlot | string | Equipment slot — what is equipped (§6) |

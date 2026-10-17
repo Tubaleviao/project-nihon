@@ -16,6 +16,7 @@ A refined aethermite shard that has been fully imbued at an arcane forge. Emits 
 | `weight` | decimal | yes | kg per shard |
 | `rarity` | enum (`common`, `uncommon`, `rare`, `epic`, `legendary`) | yes |  |
 | `stackable` | boolean | yes | True; stacks up to 10 per slot |
+| `shape` | json | yes | Item shape: archetype, material per named part, and uniform scale (Phase 151) |
 | `durability` | integer | yes | Charge level; 0 means the shard is spent |
 
 ## Relations

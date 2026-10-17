@@ -9,6 +9,7 @@ condition = 0
 weight = 1.4
 rarity = 0
 stackable = false
+shape = {"archetype":"sword","parts":{"blade":"Ferrite","grip":"Thornwood"},"scale":1}
 durability = 100
 repair = {"station":"forge","materials":[{"item":"FerriteIngot","quantity":1}],"skillGuards":[{"skill":"Smithing","tier":"novice"}]}
 state_machine_field = "condition"

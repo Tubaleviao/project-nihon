@@ -9,6 +9,7 @@ condition = 0
 weight = 20.0
 rarity = 1
 stackable = false
+shape = {"archetype":"hearth","parts":{"base":"Ferrite","fuel":"Thornwood"},"scale":1}
 durability = 500
 state_machine_field = "condition"
 initial_state = "pristine"

@@ -19,6 +19,7 @@ Raw aethermite refined into a crystalline shard at an arcane forge. The solid fo
 | weight | decimal | kg per shard |
 | rarity | `common`, `uncommon`, `rare`, `epic`, `legendary` |  |
 | stackable | boolean | True; stacks up to 20 per slot |
+| shape | json | Item shape: archetype, material per named part, and uniform scale (Phase 151) |
 | durability | integer | Crystal integrity; shatters under standard forge temperatures — must be processed in an arcane forge |
 
 ## Related

@@ -19,6 +19,7 @@ Jagged single-edged blade carved from a stabilised voidite shard. The only weapo
 | weight | decimal | kg |
 | rarity | `common`, `uncommon`, `rare`, `epic`, `legendary` |  |
 | stackable | boolean | Always false for weapons |
+| shape | json | Item shape: archetype, material per named part, and uniform scale (Phase 151) |
 | durability | integer | Remaining durability points before condition degrades |
 
 ## Related

@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:172153cde7ddee90e2eab5515e75da5abedf36a845229a0e17abb65989d521f8",
+  "schemaHash": "sha256:4eefd46981336317e7b6eec1b020cfbc730aad2a2f9e87067d4ef78506eecf80",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -11522,6 +11522,22 @@
             "pii": false,
             "defaultValue": false
           },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "pick",
+              "parts": {
+                "head": "Ferrite",
+                "handle": "Thornwood"
+              },
+              "scale": 1
+            }
+          },
           "durability": {
             "name": "durability",
             "type": "integer",
@@ -11751,6 +11767,22 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": false
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "pick",
+              "parts": {
+                "head": "Veilsteel",
+                "handle": "Thornwood"
+              },
+              "scale": 1
+            }
           },
           "durability": {
             "name": "durability",
@@ -11986,6 +12018,22 @@
             "pii": false,
             "defaultValue": false
           },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "axe",
+              "parts": {
+                "head": "Ferrite",
+                "handle": "Thornwood"
+              },
+              "scale": 1
+            }
+          },
           "durability": {
             "name": "durability",
             "type": "integer",
@@ -12217,6 +12265,22 @@
             "pii": false,
             "defaultValue": false
           },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "sword",
+              "parts": {
+                "blade": "Ferrite",
+                "grip": "Thornwood"
+              },
+              "scale": 1
+            }
+          },
           "durability": {
             "name": "durability",
             "type": "integer",
@@ -12432,6 +12496,22 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": false
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "longsword",
+              "parts": {
+                "blade": "Veilsteel",
+                "grip": "Ashite"
+              },
+              "scale": 1
+            }
           },
           "durability": {
             "name": "durability",
@@ -12775,6 +12855,23 @@
             "pii": false,
             "defaultValue": false
           },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "bow",
+              "parts": {
+                "limb": "Thornwood",
+                "grip": "Duskfiber",
+                "tip": "Aethermite"
+              },
+              "scale": 1
+            }
+          },
           "durability": {
             "name": "durability",
             "type": "integer",
@@ -13009,6 +13106,22 @@
             "pii": false,
             "defaultValue": false
           },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "sword",
+              "parts": {
+                "blade": "Voidite",
+                "grip": "Duskfiber"
+              },
+              "scale": 1
+            }
+          },
           "durability": {
             "name": "durability",
             "type": "integer",
@@ -13205,6 +13318,22 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": false
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "helmet",
+              "parts": {
+                "shell": "Ferrite",
+                "trim": "Ferrite"
+              },
+              "scale": 1
+            }
           },
           "durability": {
             "name": "durability",
@@ -13535,6 +13664,22 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": false
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "chestplate",
+              "parts": {
+                "plate": "Veilsteel",
+                "under": "Ferrite"
+              },
+              "scale": 1
+            }
           },
           "durability": {
             "name": "durability",
@@ -13884,6 +14029,22 @@
             "pii": false,
             "defaultValue": false
           },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "cloak",
+              "parts": {
+                "body": "Duskfiber",
+                "trim": "Duskfiber"
+              },
+              "scale": 1
+            }
+          },
           "durability": {
             "name": "durability",
             "type": "integer",
@@ -14215,6 +14376,22 @@
             "pii": false,
             "defaultValue": false
           },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "shield",
+              "parts": {
+                "face": "Ferrite",
+                "rim": "Ferrite"
+              },
+              "scale": 1
+            }
+          },
           "durability": {
             "name": "durability",
             "type": "integer",
@@ -14543,6 +14720,22 @@
             "pii": false,
             "defaultValue": true
           },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "rations",
+              "parts": {
+                "body": "Grass",
+                "wrap": "Duskfiber"
+              },
+              "scale": 1
+            }
+          },
           "durability": {
             "name": "durability",
             "type": "integer",
@@ -14691,6 +14884,22 @@
             "pii": false,
             "defaultValue": true
           },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "potion",
+              "parts": {
+                "glass": "Sand",
+                "liquid": "Aethermite"
+              },
+              "scale": 1
+            }
+          },
           "durability": {
             "name": "durability",
             "type": "integer",
@@ -14838,6 +15047,21 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": true
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "ingot",
+              "parts": {
+                "body": "Ferrite"
+              },
+              "scale": 1
+            }
           },
           "durability": {
             "name": "durability",
@@ -15028,6 +15252,21 @@
             "pii": false,
             "defaultValue": true
           },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "ingot",
+              "parts": {
+                "body": "Veilsteel"
+              },
+              "scale": 1
+            }
+          },
           "durability": {
             "name": "durability",
             "type": "integer",
@@ -15216,6 +15455,21 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": true
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "plank",
+              "parts": {
+                "body": "Thornwood"
+              },
+              "scale": 1
+            }
           },
           "durability": {
             "name": "durability",
@@ -15406,6 +15660,22 @@
             "pii": false,
             "defaultValue": false
           },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "waystone",
+              "parts": {
+                "stone": "Ashite",
+                "glyph": "Thornwood"
+              },
+              "scale": 1
+            }
+          },
           "durability": {
             "name": "durability",
             "type": "integer",
@@ -15595,6 +15865,21 @@
             "pii": false,
             "defaultValue": true
           },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "dust",
+              "parts": {
+                "body": "Aethermite"
+              },
+              "scale": 1
+            }
+          },
           "durability": {
             "name": "durability",
             "type": "integer",
@@ -15744,6 +16029,21 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": true
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "shard",
+              "parts": {
+                "body": "Aethermite"
+              },
+              "scale": 1
+            }
           },
           "durability": {
             "name": "durability",
@@ -15895,6 +16195,21 @@
             "pii": false,
             "defaultValue": true
           },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "shard",
+              "parts": {
+                "body": "Voidite"
+              },
+              "scale": 1
+            }
+          },
           "durability": {
             "name": "durability",
             "type": "integer",
@@ -16044,6 +16359,21 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": true
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "block",
+              "parts": {
+                "body": "Ashite"
+              },
+              "scale": 1
+            }
           },
           "durability": {
             "name": "durability",
@@ -16233,6 +16563,21 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": true
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "shard",
+              "parts": {
+                "body": "Aethermite"
+              },
+              "scale": 1
+            }
           },
           "durability": {
             "name": "durability",
@@ -16426,6 +16771,22 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": false
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "tablet",
+              "parts": {
+                "slab": "Ashite",
+                "rune": "Voidite"
+              },
+              "scale": 1
+            }
           },
           "durability": {
             "name": "durability",
@@ -16623,6 +16984,22 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": true
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "orb",
+              "parts": {
+                "core": "Lumenfite",
+                "frame": "Ferrite"
+              },
+              "scale": 1
+            }
           },
           "durability": {
             "name": "durability",
@@ -20436,6 +20813,22 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": false
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "hearth",
+              "parts": {
+                "base": "Ferrite",
+                "fuel": "Thornwood"
+              },
+              "scale": 1
+            }
           },
           "durability": {
             "name": "durability",

@@ -16,6 +16,7 @@ A polished lumenfite sphere charged with stored magical energy by an Arcanist. S
 | `weight` | decimal | yes | kg per orb |
 | `rarity` | enum (`common`, `uncommon`, `rare`, `epic`, `legendary`) | yes |  |
 | `stackable` | boolean | yes | True; stacks up to 5 per slot |
+| `shape` | json | yes | Item shape: archetype, material per named part, and uniform scale (Phase 151) |
 | `durability` | integer | yes | Charge; depletes with use |
 
 ## Relations

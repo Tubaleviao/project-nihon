@@ -9,6 +9,7 @@ condition = 0
 weight = 1.8
 rarity = 2
 stackable = false
+shape = {"archetype":"sword","parts":{"blade":"Voidite","grip":"Duskfiber"},"scale":1}
 durability = 120
 state_machine_field = "condition"
 initial_state = "pristine"

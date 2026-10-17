@@ -16,6 +16,7 @@ Fine powder ground from raw aethermite ore at an arcane forge. Used as an enchan
 | `weight` | decimal | yes | kg per unit |
 | `rarity` | enum (`common`, `uncommon`, `rare`, `epic`, `legendary`) | yes |  |
 | `stackable` | boolean | yes | True; stacks up to 99 per slot |
+| `shape` | json | yes | Item shape: archetype, material per named part, and uniform scale (Phase 151) |
 | `durability` | integer | yes | Magical potency; dissipates if stored poorly |
 
 ## Relations

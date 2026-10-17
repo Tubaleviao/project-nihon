@@ -1,4 +1,4 @@
-const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine, repairData } = require('./shared')
+const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine, repairData, itemShape } = require('./shared')
 
 module.exports = {
 
@@ -15,6 +15,7 @@ module.exports = {
       weight:    { type: 'decimal', description: 'kg; affects carry capacity', defaultValue: 2.8 },
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'common' },
       stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory', defaultValue: false },
+      shape: itemShape({ archetype: 'pick', parts: { head: 'Ferrite', handle: 'Thornwood' } }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 80 },
       toolType:   { type: 'string', description: 'Tool class — the action this tool performs. "pick" mines, "axe" chops.', defaultValue: 'pick' },
       repair: repairData({
@@ -58,6 +59,7 @@ module.exports = {
       weight:    { type: 'decimal', description: 'kg; affects carry capacity', defaultValue: 4.5 },
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'uncommon' },
       stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory', defaultValue: false },
+      shape: itemShape({ archetype: 'pick', parts: { head: 'Veilsteel', handle: 'Thornwood' } }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 160 },
       toolType:   { type: 'string', description: 'Tool class — the action this tool performs. "pick" mines, "axe" chops.', defaultValue: 'pick' },
       repair: repairData({
@@ -104,6 +106,7 @@ module.exports = {
       weight:    { type: 'decimal', description: 'kg; affects carry capacity', defaultValue: 2.3 },
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'common' },
       stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory', defaultValue: false },
+      shape: itemShape({ archetype: 'axe', parts: { head: 'Ferrite', handle: 'Thornwood' } }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 90 },
       toolType:   { type: 'string', description: 'Tool class — the action this tool performs. "pick" mines, "axe" chops.', defaultValue: 'axe' },
       repair: repairData({

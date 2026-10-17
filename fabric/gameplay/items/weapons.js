@@ -1,4 +1,4 @@
-const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine, equipmentVisualFields, repairData } = require('./shared')
+const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine, equipmentVisualFields, repairData, itemShape } = require('./shared')
 
 module.exports = {
 
@@ -15,6 +15,7 @@ module.exports = {
       weight:    { type: 'decimal', description: 'kg', defaultValue: 1.4 },
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'common' },
       stackable: { type: 'boolean', description: 'Always false for weapons', defaultValue: false },
+      shape: itemShape({ archetype: 'sword', parts: { blade: 'Ferrite', grip: 'Thornwood' } }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 100 },
       repair: repairData({
         station: 'forge',
@@ -56,6 +57,7 @@ module.exports = {
       weight:    { type: 'decimal', description: 'kg', defaultValue: 4.2 },
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'uncommon' },
       stackable: { type: 'boolean', description: 'Always false for weapons', defaultValue: false },
+      shape: itemShape({ archetype: 'longsword', parts: { blade: 'Veilsteel', grip: 'Ashite' } }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 200 },
       repair: repairData({
         station: 'master forge',
@@ -112,6 +114,7 @@ module.exports = {
       weight:    { type: 'decimal', description: 'kg', defaultValue: 0.9 },
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'uncommon' },
       stackable: { type: 'boolean', description: 'Always false for weapons', defaultValue: false },
+      shape: itemShape({ archetype: 'bow', parts: { limb: 'Thornwood', grip: 'Duskfiber', tip: 'Aethermite' } }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 150 },
       repair: repairData({
         station: 'arcane forge',
@@ -159,6 +162,7 @@ module.exports = {
       weight:    { type: 'decimal', description: 'kg', defaultValue: 1.8 },
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'rare' },
       stackable: { type: 'boolean', description: 'Always false for weapons', defaultValue: false },
+      shape: itemShape({ archetype: 'sword', parts: { blade: 'Voidite', grip: 'Duskfiber' } }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 120 },
     },
     relations: {

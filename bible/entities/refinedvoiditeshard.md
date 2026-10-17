@@ -16,6 +16,7 @@ Raw voidite stabilised in a forge into a crystalline shard. The input of void ru
 | `weight` | decimal | yes | kg per shard |
 | `rarity` | enum (`common`, `uncommon`, `rare`, `epic`, `legendary`) | yes |  |
 | `stackable` | boolean | yes | True; stacks up to 20 per slot |
+| `shape` | json | yes | Item shape: archetype, material per named part, and uniform scale (Phase 151) |
 | `durability` | integer | yes | Crystal integrity |
 
 ## Relations

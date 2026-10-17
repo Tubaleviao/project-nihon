@@ -9,6 +9,7 @@ condition = 0
 weight = 0.1
 rarity = 2
 stackable = true
+shape = {"archetype":"shard","parts":{"body":"Voidite"},"scale":1}
 durability = 80
 state_machine_field = "condition"
 initial_state = "pristine"

@@ -16,6 +16,7 @@ Sealed glass flask containing an Alchemist-brewed reagent. The specific effect d
 | `weight` | decimal | yes | kg per flask |
 | `rarity` | enum (`common`, `uncommon`, `rare`, `epic`, `legendary`) | yes |  |
 | `stackable` | boolean | yes | True; stacks up to 10 per slot |
+| `shape` | json | yes | Item shape: archetype, material per named part, and uniform scale (Phase 151) |
 | `durability` | integer | yes | Potency; degrades as the potion ages |
 
 ### State machine

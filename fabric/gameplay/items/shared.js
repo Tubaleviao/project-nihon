@@ -80,4 +80,6 @@ function equipmentVisualFields({ slot, deformationMode, masks, hideRegions, atta
   }
 }
 
-module.exports = { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine, consumableStateMachine, equipmentVisualFields, repairData }
+const { itemShape } = require('./shape')
+
+module.exports = { itemShape, defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine, consumableStateMachine, equipmentVisualFields, repairData }

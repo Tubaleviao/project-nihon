@@ -4,6 +4,7 @@ extends "res://src/tests/test_support.gd"
 
 func register() -> void:
 	_run_test("research points: ceiling, window cap and one sync per craft", _test_phase130_research_caps)
+	_run_test("items: every item has a fabric shape",         _test_item_shapes_in_gamedata)
 	_run_test("inventory: pickup adds item",                  _test_inventory_pickup_adds)
 	_run_test("inventory: drop reduces quantity",             _test_inventory_drop)
 	_run_test("inventory: over-drop returns false",           _test_inventory_over_drop)
@@ -217,6 +218,26 @@ func _test_inventory_slot_count() -> void:
 	inv._try_pickup("p4", "wolf_pelt",   1)   # stack merge
 	assert_eq(inv.get_total_slots_used(), 3, "stacking same item doesn't add a slot")
 	inv.free()
+
+func _test_item_shapes_in_gamedata() -> void:
+	# Phase 151 — each item carries an archetype, a material per part and a scale.
+	const ARCHETYPES := ["pick", "axe", "sword", "longsword", "bow", "shield", "helmet", "chestplate",
+		"cloak", "ingot", "shard", "dust", "plank", "block", "orb", "tablet", "potion", "rations",
+		"hearth", "waystone"]
+	assert_eq(GameData.ITEMS.size(), 25, "GameData.ITEMS holds 25 items")
+	for item_id in GameData.ITEMS:
+		var shape: Dictionary = GameData.ITEMS[item_id].shape
+		assert_true(not shape.is_empty(), "%s has a shape" % item_id)
+		assert_true(shape.get("archetype", "") in ARCHETYPES, "%s archetype is in the closed list" % item_id)
+		var parts: Dictionary = shape.get("parts", {})
+		assert_true(not parts.is_empty(), "%s shape names its parts" % item_id)
+		for part in parts:
+			assert_true(GameData.MATERIALS.has(parts[part]), "%s.%s names a real material" % [item_id, part])
+		assert_true(float(shape.get("scale", 0.0)) > 0.0, "%s scale is positive" % item_id)
+	assert_eq(GameData.ITEMS["FerritePick"].shape.archetype, "pick", "FerritePick is a pick")
+	assert_eq(GameData.ITEMS["Hearth"].shape.archetype, "hearth", "Hearth has a shape")
+	assert_eq(GameData.ITEMS["Waystone"].shape.archetype, "waystone", "Waystone has a shape")
+
 
 func _test_inventory_weights_from_gamedata() -> void:
 	var inv := InventorySlice.new()

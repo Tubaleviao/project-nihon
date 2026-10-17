@@ -1,4 +1,4 @@
-const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine, equipmentVisualFields, repairData } = require('./shared')
+const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine, equipmentVisualFields, repairData, itemShape } = require('./shared')
 
 module.exports = {
 
@@ -15,6 +15,7 @@ module.exports = {
       weight:    { type: 'decimal', description: 'kg', defaultValue: 2.1 },
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'common' },
       stackable: { type: 'boolean', description: 'Always false for armour pieces', defaultValue: false },
+      shape: itemShape({ archetype: 'helmet', parts: { shell: 'Ferrite', trim: 'Ferrite' } }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 120 },
       repair: repairData({
         station: 'forge',
@@ -65,6 +66,7 @@ module.exports = {
       weight:    { type: 'decimal', description: 'kg', defaultValue: 9.8 },
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'uncommon' },
       stackable: { type: 'boolean', description: 'Always false for armour pieces', defaultValue: false },
+      shape: itemShape({ archetype: 'chestplate', parts: { plate: 'Veilsteel', under: 'Ferrite' } }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 250 },
       repair: repairData({
         station: 'master forge',
@@ -122,6 +124,7 @@ module.exports = {
       weight:    { type: 'decimal', description: 'kg', defaultValue: 0.6 },
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'uncommon' },
       stackable: { type: 'boolean', description: 'Always false for armour pieces', defaultValue: false },
+      shape: itemShape({ archetype: 'cloak', parts: { body: 'Duskfiber', trim: 'Duskfiber' } }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 80 },
       repair: repairData({
         station: 'carpentry bench',
@@ -175,6 +178,7 @@ module.exports = {
       weight:    { type: 'decimal', description: 'kg', defaultValue: 5.5 },
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'common' },
       stackable: { type: 'boolean', description: 'Always false for shields', defaultValue: false },
+      shape: itemShape({ archetype: 'shield', parts: { face: 'Ferrite', rim: 'Ferrite' } }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 180 },
       repair: repairData({
         station: 'forge',

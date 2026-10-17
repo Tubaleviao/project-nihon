@@ -19,6 +19,7 @@ A stone-ringed fire pit that founds a settlement when placed on free land. It is
 | weight | decimal | kg per hearth |
 | rarity | `common`, `uncommon`, `rare`, `epic`, `legendary` |  |
 | stackable | boolean | False; one hearth per slot |
+| shape | json | Item shape: archetype, material per named part, and uniform scale (Phase 151) |
 | durability | integer | Structural integrity |
 
 ## Related

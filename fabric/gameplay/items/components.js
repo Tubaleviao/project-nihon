@@ -1,4 +1,4 @@
-const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine, consumableStateMachine } = require('./shared')
+const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine, consumableStateMachine, itemShape } = require('./shared')
 
 module.exports = {
 
@@ -15,6 +15,7 @@ module.exports = {
       weight:    { type: 'decimal', description: 'kg per ingot', defaultValue: 1.0 },
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'common' },
       stackable: { type: 'boolean', description: 'True; stacks up to 50 per slot', defaultValue: true },
+      shape: itemShape({ archetype: 'ingot', parts: { body: 'Ferrite' } }),
       durability: { type: 'integer', description: 'Structural integrity; degrades only under deliberate stress', defaultValue: 200 },
     },
     relations: {
@@ -48,6 +49,7 @@ module.exports = {
       weight:    { type: 'decimal', description: 'kg per stone', defaultValue: 12.0 },
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'uncommon' },
       stackable: { type: 'boolean', description: 'False; one stone per slot', defaultValue: false },
+      shape: itemShape({ archetype: 'waystone', parts: { stone: 'Ashite', glyph: 'Thornwood' } }),
       durability: { type: 'integer', description: 'Structural integrity', defaultValue: 400 },
     },
     relations: {
@@ -81,6 +83,7 @@ module.exports = {
       weight:    { type: 'decimal', description: 'kg per plank', defaultValue: 0.7 },
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'common' },
       stackable: { type: 'boolean', description: 'True; stacks up to 30 per slot', defaultValue: true },
+      shape: itemShape({ archetype: 'plank', parts: { body: 'Thornwood' } }),
       durability: { type: 'integer', description: 'Structural integrity', defaultValue: 150 },
     },
     relations: {
@@ -114,6 +117,7 @@ module.exports = {
       weight:    { type: 'decimal', description: 'kg per unit', defaultValue: 0.02 },
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'uncommon' },
       stackable: { type: 'boolean', description: 'True; stacks up to 99 per slot', defaultValue: true },
+      shape: itemShape({ archetype: 'dust', parts: { body: 'Aethermite' } }),
       durability: { type: 'integer', description: 'Magical potency; dissipates if stored poorly', defaultValue: 80 },
     },
     relations: {
@@ -142,6 +146,7 @@ module.exports = {
       weight:    { type: 'decimal', description: 'kg per ingot', defaultValue: 1.4 },
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'uncommon' },
       stackable: { type: 'boolean', description: 'True; stacks up to 30 per slot', defaultValue: true },
+      shape: itemShape({ archetype: 'ingot', parts: { body: 'Veilsteel' } }),
       durability: { type: 'integer', description: 'Structural integrity; degrades only under deliberate stress', defaultValue: 200 },
     },
     relations: {
@@ -176,6 +181,7 @@ module.exports = {
       weight:    { type: 'decimal', description: 'kg per shard', defaultValue: 0.08 },
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'uncommon' },
       stackable: { type: 'boolean', description: 'True; stacks up to 20 per slot', defaultValue: true },
+      shape: itemShape({ archetype: 'shard', parts: { body: 'Aethermite' } }),
       durability: { type: 'integer', description: 'Crystal integrity; shatters under standard forge temperatures — must be processed in an arcane forge', defaultValue: 60 },
     },
     relations: {
@@ -205,6 +211,7 @@ module.exports = {
       weight:    { type: 'decimal', description: 'kg per block', defaultValue: 3.5 },
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'common' },
       stackable: { type: 'boolean', description: 'True; stacks up to 20 per slot', defaultValue: true },
+      shape: itemShape({ archetype: 'block', parts: { body: 'Ashite' } }),
       durability: { type: 'integer', description: 'Structural integrity', defaultValue: 300 },
     },
     relations: {
@@ -239,6 +246,7 @@ module.exports = {
       weight:    { type: 'decimal', description: 'kg per shard', defaultValue: 0.1 },
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'rare' },
       stackable: { type: 'boolean', description: 'True; stacks up to 20 per slot', defaultValue: true },
+      shape: itemShape({ archetype: 'shard', parts: { body: 'Voidite' } }),
       durability: { type: 'integer', description: 'Crystal integrity', defaultValue: 80 },
     },
     relations: {

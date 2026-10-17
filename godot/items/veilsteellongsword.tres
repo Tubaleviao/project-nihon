@@ -9,6 +9,7 @@ condition = 0
 weight = 4.2
 rarity = 1
 stackable = false
+shape = {"archetype":"longsword","parts":{"blade":"Veilsteel","grip":"Ashite"},"scale":1}
 durability = 200
 repair = {"station":"master forge","materials":[{"item":"VeilsteelIngot","quantity":1}],"skillGuards":[{"skill":"Smithing","tier":"journeyman"}]}
 equipmentSlot = "MainHand"
