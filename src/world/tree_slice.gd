@@ -542,6 +542,8 @@ func trees_in_chunk(chunk_pos: Vector2i) -> Array:
 ## Phase 140 — `(player_id, xz: Vector2) -> String`: a non-empty reason refuses a chop inside a claim
 ## the actor may not build in (the host's settlement claim rule). Unset: no claims.
 var claim_guard: Callable = Callable()
+## Phase 147 — `(player_id, xz: Vector2)`: called after an edit at that point succeeded (claim activity).
+var claim_touch: Callable = Callable()
 
 func chop_tree(tree_id: String, player_id: String = "") -> Dictionary:
 	if not is_authoritative:
@@ -574,6 +576,8 @@ func chop_tree(tree_id: String, player_id: String = "") -> Dictionary:
 			return _fail("no_inventory")
 	_push_inventory(player_id)
 	_set_chopped(tree_id)
+	if claim_touch.is_valid():
+		claim_touch.call(player_id, Vector2(tpos.x, tpos.z))
 	return { "success": true, "wood": wood, "quantity": CHOP_YIELD, "reason": "" }
 
 ## The inventory a chop by `player_id` resolves against: that player's own pack from

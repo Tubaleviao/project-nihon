@@ -23,6 +23,9 @@ func make_slice(ctx: GameRoot) -> Node:
 	root._voxel.claim_guard = Callable(slice, "edit_blocker")
 	root._station.claim_guard = Callable(slice, "edit_blocker")
 	root._tree.claim_guard = Callable(slice, "edit_blocker")
+	root._voxel.claim_touch = Callable(slice, "note_edit")
+	root._station.claim_touch = Callable(slice, "note_edit")
+	root._tree.claim_touch = Callable(slice, "note_edit")
 	root._station.settlement_slice = slice
 	root._technology.settlement_slice = slice
 	return slice

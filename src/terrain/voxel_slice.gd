@@ -1521,6 +1521,12 @@ func get_heightmaps() -> Dictionary:
 ## Phase 140 — `(player_id, xz: Vector2) -> String`: a non-empty reason refuses an edit at that ground point
 ## (the host's settlement claim rule). Unset: no claims.
 var claim_guard: Callable = Callable()
+## Phase 147 — `(player_id, xz: Vector2)`: called after an edit at that point succeeded (claim activity).
+var claim_touch: Callable = Callable()
+
+func _claim_touched(player_id: String, probe: Dictionary) -> void:
+	if claim_touch.is_valid():
+		claim_touch.call(player_id, probe["xz"])
 
 func _claim_refused(player_id: String, probe: Dictionary) -> bool:
 	return claim_guard.is_valid() and str(claim_guard.call(player_id, probe["xz"])) != ""
@@ -1575,6 +1581,7 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: Str
 			GameBus.inventory_full.emit()
 	_push_inventory(player_id)
 
+	_claim_touched(player_id, probe)
 	var pos := Vector3(world_pos.x, float(span["top"]), world_pos.z)
 	GameBus.block_mined.emit(material, quantity, pos)
 	# Phase 124 — only a natural yield that reached the pack counts as gathering; a
@@ -1713,6 +1720,7 @@ func place_block(world_pos: Vector3, normal: Vector3, material: String = "", pla
 	_rebuild_chunk_at_tile(tile)
 	_push_inventory(player_id)
 
+	_claim_touched(player_id, probe)
 	var pos := Vector3(probe["xz"].x, float(span["top"]), probe["xz"].y)
 	GameBus.block_placed.emit(chosen, pos)
 	GameBus.block_edit_resolved.emit(tile, float(span["top"]))

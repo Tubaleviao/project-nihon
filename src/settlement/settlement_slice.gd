@@ -438,7 +438,7 @@ func _push_inventory(pid: String) -> void:
 # ── edits ────────────────────────────────────────────────────────────────
 
 ## "" when `player_id` may mine or place at ground point `xz`; else a reason. Land outside every claim is
-## free; inside one, only a member whose role has `build` may edit.
+## free; inside one, only a member whose role has `build` may edit. A pure query: it never touches state.
 func edit_blocker(player_id: String, xz: Vector2) -> String:
 	var id := claim_at(xz)
 	if id == "":
@@ -446,8 +446,14 @@ func edit_blocker(player_id: String, xz: Vector2) -> String:
 	var role := role_of(_pid(player_id), id)
 	if role == "" or not bool(role_rules(role)["build"]):
 		return "no_permission"
-	_touch(id)
 	return ""
+
+## Phase 147 — an edit at ground point `xz` succeeded: the claim it touched counts as active.
+## `edit_blocker` stays a pure query (the placement preview calls it), so activity is noted here.
+func note_edit(_player_id: String, xz: Vector2) -> void:
+	var id := claim_at(xz)
+	if id != "":
+		_touch(id)
 
 # ── lifecycle ────────────────────────────────────────────────────────────
 
@@ -556,6 +562,7 @@ func from_data(data: Variant) -> void:
 	if not (data is Dictionary):
 		return
 	_next_id = maxi(1, int((data as Dictionary).get("next_id", 1)))
+	var load_now := float(now_sec.call())
 	var raw: Variant = (data as Dictionary).get("settlements", {})
 	if not (raw is Dictionary):
 		return
@@ -591,11 +598,14 @@ func from_data(data: Variant) -> void:
 		_settlements[str(id).left(64)] = {
 			"id": str(id).left(64), "name": str(s.get("name", "")).left(MAX_NAME), "founder": str(s.get("founder", "")).left(64),
 			"members": members, "invites": invites, "created": float(s.get("created", 0.0)),
-			"last_active": float(s.get("last_active", 0.0)), "hx": float(s.get("hx", 0.0)), "hz": float(s.get("hz", 0.0)),
+			"last_active": float(s.get("last_active", load_now)), "hx": float(s.get("hx", 0.0)), "hz": float(s.get("hz", 0.0)),
 			"status": status if (TIER_ORDER + ["abandoned"]).has(status) else "founded",
 			"abandoned_at": float(s.get("abandoned_at", 0.0)), "abandoned_radius": float(s.get("abandoned_radius", 0.0)),
 			"stock": stock, "taken": taken,
 		}
+		var suffix := str(id).get_slice("_", 1)
+		if str(id).begins_with("settlement_") and suffix.is_valid_int():
+			_next_id = maxi(_next_id, int(suffix) + 1)
 
 # ── views ────────────────────────────────────────────────────────────────
 

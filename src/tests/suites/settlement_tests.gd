@@ -15,6 +15,9 @@ func register() -> void:
 	_run_test("settlement: research draws from the stockpile", _test_settlement_research)
 	_run_test("settlement: a client intent binds the connection's player", _test_settlement_wire)
 	_run_test("settlement: claims count toward colonization", _test_settlement_colonization)
+	_run_test("settlement: edit_blocker is a pure preview, activity is noted after a success", _test_settlement_preview_pure)
+	_run_test("settlement: hearth placement needs and consumes its item", _test_settlement_hearth_item)
+	_run_test("settlement: from_data keeps ids unique and defaults last_active to now", _test_settlement_load_ids)
 
 func _rig() -> Dictionary:
 	var reg := PlayerRegistry.new()
@@ -347,3 +350,49 @@ func _test_settlement_colonization() -> void:
 	map.set_settlements([])
 	assert_eq(map.score(Vector2i(0, 0)), 0.0, "the count is replaced, not accumulated")
 	assert_eq(map.to_data()["regions"].size(), 0, "settlements are not persisted on the map")
+
+func _test_settlement_preview_pure() -> void:
+	var rig := _rig()
+	var s: SettlementSlice = rig["s"]
+	var now: Array = rig["now"]
+	_found(rig)
+	var before: Dictionary = s.to_data().duplicate(true)
+	now[0] += 5000.0
+	assert_eq(s.edit_blocker("p1", Vector2(20.0, 10.0)), "", "the founder may edit")
+	assert_eq(s.edit_blocker("p2", Vector2(20.0, 10.0)), "no_permission", "an outsider may not")
+	assert_eq(s.to_data(), before, "previews leave last_active and claim state unchanged")
+	# A successful edit through the voxel slice notes activity; a refused one does not.
+	var v := _make_voxel()
+	v.is_authoritative = true
+	v.player_registry = rig["reg"]
+	v.claim_guard = Callable(s, "edit_blocker")
+	v.claim_touch = Callable(s, "note_edit")
+	var last := float(s.to_data()["settlements"]["settlement_1"]["last_active"])
+	assert_false(bool(v.mine_block(Vector3(10.5, 2.0, 10.5), Vector3.UP, "p2")["success"]), "outsider refused")
+	assert_eq(float(s.to_data()["settlements"]["settlement_1"]["last_active"]), last, "a refused edit is not activity")
+	assert_true(bool(v.mine_block(Vector3(10.5, 2.0, 10.5), Vector3.UP, "p1")["success"]), "founder mines")
+	assert_eq(float(s.to_data()["settlements"]["settlement_1"]["last_active"]), now[0], "a successful edit is activity")
+	v.free()
+	_free_rig(rig)
+
+func _test_settlement_hearth_item() -> void:
+	var rig := _rig()
+	var s: SettlementSlice = rig["s"]
+	var st := StationSlice.new()
+	add_child(st)
+	st.settlement_slice = s
+	var inv: Node = rig["reg"].get_inventory("p1")
+	assert_eq(st.try_place_station("hearth", Vector3(10.5, 2.0, 10.5), inv, "p1"), "", "no Hearth item: refused")
+	_give(rig, "p1", "Hearth", 1)
+	assert_true(st.try_place_station("hearth", Vector3(10.5, 2.0, 10.5), inv, "p1") != "", "with the item the hearth is placed")
+	assert_eq(inv.get_item_count("Hearth"), 0, "and one item is removed")
+	st.free()
+	_free_rig(rig)
+
+func _test_settlement_load_ids() -> void:
+	var rig := _rig()
+	var s: SettlementSlice = rig["s"]
+	s.from_data({ "next_id": 1, "settlements": { "settlement_7": { "members": { "p1": "founder" }, "hx": 1.0, "hz": 2.0 } } })
+	assert_eq(float(s.to_data()["settlements"]["settlement_7"]["last_active"]), rig["now"][0], "a missing last_active is now")
+	assert_eq(int(s.to_data()["next_id"]), 8, "next_id stays above every loaded id")
+	_free_rig(rig)

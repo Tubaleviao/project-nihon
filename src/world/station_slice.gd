@@ -37,6 +37,8 @@ var _stations: Dictionary = {}
 
 ## Phase 140 — settlement claim guard (`(player_id, xz) -> String`) and the slice that knows the hearth rule.
 var claim_guard: Callable = Callable()
+## Phase 147 — `(player_id, xz: Vector2)`: called after an edit at that point succeeded (claim activity).
+var claim_touch: Callable = Callable()
 var settlement_slice: Node = null
 
 ## Phase 63: the scene-origin offset a client rebase has applied to every marker (see `shift_scene`).
@@ -188,7 +190,10 @@ func try_place_station(type: String, position: Vector3, inventory: Node = null, 
 	if item != "":
 		if inventory == null or not inventory.has_method("consume_items") or not inventory.consume_items({ item: 1 }):
 			return ""
-	return place_station(type, pos)
+	var placed := place_station(type, pos)
+	if placed != "" and claim_touch.is_valid():
+		claim_touch.call(player_id, Vector2(pos.x, pos.z))
+	return placed
 
 ## The item one placement of a `type` station consumes, or "" for a free placement (the fabric's
 ## `WaystoneTravel.placementItem` for the waystone type; forges and benches stay free).
