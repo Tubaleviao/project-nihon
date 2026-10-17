@@ -378,10 +378,8 @@ def build_glb(built) -> bytes:
         "scene": 0,
         "scenes": [{"nodes": [0]}],
         "nodes": [{"name": "Item", "children": [1, 2]}, {"name": "Model", "mesh": 0}, {"name": "grip"}],
-        "materials": [{"name": "item", "pbrMetallicRoughness": {"baseColorFactor": [1, 1, 1, 1], "metallicFactor": 0.0,
-                                                                  "roughnessFactor": 0.9}}],
         "meshes": [{"name": "Item", "primitives": [{"attributes": {"POSITION": 0, "NORMAL": 1, "COLOR_0": 2},
-                                                     "indices": 3, "material": 0, "mode": 4}]}],
+                                                     "indices": 3, "mode": 4}]}],
         "buffers": [{"byteLength": len(blob.data)}],
         "bufferViews": blob.views,
         "accessors": [
@@ -473,6 +471,8 @@ def render_icon(built) -> bytes:
             best = max(counts.items(), key=lambda kv: (kv[1], kv[0]))[0]
             img[y][x] = best[0]
             mats[best[1]] = mats.get(best[1], 0) + 1
+    if not mats:
+        raise ValueError("icon has no block with 50% coverage; shape too thin")
     dominant = max(mats.items(), key=lambda kv: (kv[1], kv[0]))[0]
     edge = ramp(dominant)[0]
     out = [row[:] for row in img]
@@ -561,11 +561,11 @@ def write(items: dict, root: Path) -> None:
     if (root / MANIFEST).exists():
         (root / MANIFEST).write_text(manifest_text(items, root))
     keep = {f"{i}.glb.raw" for i in items} | {LOCK_NAME}
-    for stale in (root / MODEL_DIR).glob("*"):
+    for stale in (root / MODEL_DIR).glob("*.glb.raw"):
         if stale.name not in keep:
             stale.unlink()
     keep = {f"{i}.png.raw" for i in items}
-    for stale in (root / ICON_DIR).glob("*"):
+    for stale in (root / ICON_DIR).glob("*.png.raw"):
         if stale.name not in keep:
             stale.unlink()
     print(f"wrote {len(items)} item models and icons under {root}")
@@ -583,10 +583,11 @@ def check(items: dict) -> int:
                 problems.append(f"{LOCK_NAME} is stale for {i}")
         if lock.get("archetypeBounds") != want["archetypeBounds"] or lock.get("generator") != want["generator"]:
             problems.append(f"{LOCK_NAME} bounds or generator version differ")
-    for i in items:
-        for rel in (MODEL_DIR / f"{i}.glb.raw", ICON_DIR / f"{i}.png.raw"):
-            if not (ROOT / rel).exists():
-                problems.append(f"missing {rel}")
+    for rel, data in outputs(items).items():
+        if not (ROOT / rel).exists():
+            problems.append(f"missing {rel}")
+        elif (ROOT / rel).read_bytes() != data:
+            problems.append(f"{rel} differs from the generator output")
     for d, suffix in ((MODEL_DIR, ".glb.raw"), (ICON_DIR, ".png.raw")):
         for f in sorted((ROOT / d).glob("*" + suffix)):
             if f.name[: -len(suffix)] not in items:

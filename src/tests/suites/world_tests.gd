@@ -740,6 +740,9 @@ func _test_asset_load_mesh_and_animation() -> void:
 	assert_true(mesh != null and mesh.get_surface_count() > 0, "load_mesh returns a real Mesh")
 	var lib := AssetOverlay.load_animation_library("models/placeholder_rig.glb.raw")
 	assert_true(lib.has_animation("idle"), "load_animation_library returns the idle clip")
+	var item := AssetOverlay.load_mesh("models/items/FerritePick.glb.raw")
+	var mat := item.surface_get_material(0) as BaseMaterial3D if item != null else null
+	assert_true(mat != null and mat.vertex_color_use_as_albedo, "item model colours (COLOR_0) are drawn as albedo")
 
 ## Issue #112 — the public placeholder rig IS the avatar a fresh clone renders:
 ## `game_root._finish_host_boot` calls `CharacterSlice.attach_default_rig`, which
