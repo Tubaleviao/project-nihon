@@ -1614,20 +1614,20 @@ func _test_worldgen_fingerprint_game_root() -> void:
 	var cb := func(saved: int, current: int) -> void: seen.append([saved, current])
 	GameBus.worldgen_fingerprint_mismatch.connect(cb)
 	gr._loaded_world = {}
-	gr._persistence_wiring._note_worldgen_version()
+	gr._persistence_wiring.note_worldgen_version()
 	assert_true(seen.is_empty(), "a new world raises none")
 	assert_eq(gr._worldgen_fp_stamp, running, "and takes the running fingerprint")
 	gr._loaded_world = { "worldgenVersion": TerrainSlice.WORLDGEN_VERSION }
-	gr._persistence_wiring._note_worldgen_version()
+	gr._persistence_wiring.note_worldgen_version()
 	assert_true(seen.is_empty(), "an unstamped record raises none")
 	assert_eq(gr._worldgen_fp_stamp, running, "and is stamped for the next save")
 	gr._loaded_world = { "worldgenVersion": TerrainSlice.WORLDGEN_VERSION, "worldgenFingerprint": running + 1 }
-	gr._persistence_wiring._note_worldgen_version()
+	gr._persistence_wiring.note_worldgen_version()
 	assert_eq(seen, [[running + 1, running]], "a differing record raises exactly once")
 	assert_eq(gr._worldgen_fp_stamp, running, "and the stamp is refreshed, so the next save silences it")
 	seen.clear()
 	gr._loaded_world = { "worldgenVersion": TerrainSlice.WORLDGEN_VERSION, "worldgenFingerprint": gr._worldgen_fp_stamp }
-	gr._persistence_wiring._note_worldgen_version()
+	gr._persistence_wiring.note_worldgen_version()
 	assert_true(seen.is_empty(), "Phase 138: the world as saved after the notice raises none on the next load")
 	GameBus.worldgen_fingerprint_mismatch.disconnect(cb)
 	gr.free()
@@ -1682,7 +1682,7 @@ func _test_worldgen_fingerprint_notice() -> void:
 	var gr: Node = root_script.new()
 	var running := TerrainSlice.worldgen_fingerprint()
 	gr._loaded_world = { "worldgenVersion": TerrainSlice.WORLDGEN_VERSION, "worldgenFingerprint": running + 1 }
-	gr._persistence_wiring._note_worldgen_version()
+	gr._persistence_wiring.note_worldgen_version()
 	GameBus.worldgen_fingerprint_mismatch.disconnect(ui._on_worldgen_fingerprint_mismatch)
 	assert_true(ui.toast_shown().contains("parameters changed"), "the notice reaches the HUD toast")
 	assert_eq(gr._worldgen_fp_stamp, running, "the stamp is refreshed after the one notice")
@@ -1690,7 +1690,7 @@ func _test_worldgen_fingerprint_notice() -> void:
 	var cb := func(saved: int, current: int) -> void: seen.append([saved, current])
 	GameBus.worldgen_fingerprint_mismatch.connect(cb)
 	gr._loaded_world = { "worldgenVersion": TerrainSlice.WORLDGEN_VERSION, "worldgenFingerprint": gr._worldgen_fp_stamp }
-	gr._persistence_wiring._note_worldgen_version()
+	gr._persistence_wiring.note_worldgen_version()
 	GameBus.worldgen_fingerprint_mismatch.disconnect(cb)
 	assert_true(seen.is_empty(), "the next load of that world, saved after the notice, reports nothing")
 	ui.free()
@@ -2054,7 +2054,7 @@ func _test_phase122_snapshot_fallback_and_clamp() -> void:
 	gr._rebase.rebase_to(Vector2i(600000, 40))
 	body.place_at_world_pos({ "chunk": Vector2i(600000, 40), "local": Vector3(1.0, 20.0, 1.0) })
 	# A wire-shaped but invalid position (a chunk far past the pole) spawns the body at the spawn point.
-	gr._snapshot_wiring._place_from_snapshot({ "position": { "chunk": [0, 99999999], "local": [1.0, 2.0, 3.0] } })
+	gr._snapshot_wiring.place_from_snapshot({ "position": { "chunk": [0, 99999999], "local": [1.0, 2.0, 3.0] } })
 	var landed := body.get_world_pos()
 	assert_eq(landed["chunk"], Vector2i.ZERO, "a bad snapshot position rebases to the spawn chunk")
 	var spawn: Vector3 = landed["local"]
@@ -2265,11 +2265,11 @@ func _test_clock_sun_biome_daylight() -> void:
 		root._clock.time_days = float(phase)
 		var elev: float = root._clock.sun_elevation_at(lat)
 		var d: float = WorldClock.daylight_level(elev)
-		root._weather_wiring._apply_sun(lat, 0.0)
+		root._weather_wiring.apply_sun(lat, 0.0)
 		assert_true(absf(sun.light_energy - 1.4 * WorldClock.biome_daylight(d, 0.0)) < 1e-6,
 			"night speed 0: sun energy is biome_daylight(d, 0) at day phase %s" % phase)
 		assert_true(absf(sun.light_energy - 0.7) < 1e-6, "night speed 0 stays at dusk energy")
-		root._weather_wiring._apply_sun(lat, 1.0)
+		root._weather_wiring.apply_sun(lat, 1.0)
 		assert_true(absf(sun.light_energy - 1.4 * d) < 1e-6,
 			"night speed 1 follows the clock at day phase %s" % phase)
 	root.free()

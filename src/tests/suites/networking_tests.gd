@@ -6,6 +6,7 @@ func register() -> void:
 	_run_test("wire: positions travel as chunk + local; old float arrays still read", _test_wire_chunk_local)
 	_run_test("wire: one validator for dictionaries and records", _test_one_wire_validator)
 	_run_test("wiring: game_root owns no bus connects",       _test_wiring_audit)
+	_run_test("wiring: connect_bus is idempotent",            _test_wiring_connect_idempotent)
 	_run_test("wiring: unwire leaves no handler behind",      _test_wiring_unwire)
 	_run_test("game_root: worldgen stamp wiring on load",     _test_worldgen_stamp_game_root_wiring)
 	_run_test("game_root: implausible peer positions dropped",  _test_remote_state_plausibility)
@@ -153,10 +154,10 @@ func _test_wiring_audit() -> void:
 	assert_true(rx.search(src) == null, "game_root.gd has no GameBus connect outside a wiring module")
 	assert_true(src.count("\n") < 1200, "game_root.gd is under 1,200 lines")
 	var modules := 0
-	for dir_name in ["battle", "character", "core", "crafting", "networking", "persistence", "settlement", "world"]:
+	for dir_name in DirAccess.get_directories_at("res://src"):
 		var dir := "res://src/%s" % dir_name
 		for f in DirAccess.get_files_at(dir):
-			if not f.ends_with("_wiring.gd"):
+			if not f.ends_with("_wiring.gd") or f == "wiring.gd":
 				continue
 			modules += 1
 			assert_true(src.contains("preload(\"%s/%s\")" % [dir, f]), "%s is preloaded by game_root" % f)
@@ -165,6 +166,25 @@ func _test_wiring_audit() -> void:
 	var root_script: GDScript = load("res://src/core/game_root.gd")
 	var gr: Node = root_script.new()
 	assert_eq(gr._wirings.size(), modules, "every wiring module is in the wire list")
+	gr.free()
+
+## Phase 150 — `connect_bus` is idempotent: wiring a module twice connects each signal once.
+func _test_wiring_connect_idempotent() -> void:
+	var root_script: GDScript = load("res://src/core/game_root.gd")
+	var gr: Node = root_script.new()
+	gr._character = CharacterSlice.new()
+	var before := _bus_connection_total()
+	var w = gr._combat_wiring
+	w.wire(gr)
+	var once: int = w.connection_count()
+	var on_bus := _bus_connection_total()
+	assert_true(once > 0, "the module connects its handlers")
+	w.wire(gr)
+	assert_eq(w.connection_count(), once, "a second wire adds no connection to the module")
+	assert_eq(_bus_connection_total(), on_bus, "a second wire adds no connection to the bus")
+	w.unwire()
+	assert_eq(_bus_connection_total(), before, "one unwire clears them all")
+	gr._character.free()
 	gr.free()
 
 ## Phase 132 — `unwire` disconnects exactly what `wire` connected, on each boot role, and a freed
@@ -184,7 +204,7 @@ func _test_wiring_unwire() -> void:
 		gr._peer_wiring.wire_colonization()
 		gr._peer_wiring.wire_colonization()   # idempotent
 		connected += 1
-		assert_true(connected > 40, "%s: the modules connect their handlers" % role)
+		assert_true(connected > 30, "%s: the modules connect their handlers" % role)
 		assert_eq(_bus_connection_total(), before + connected, "%s: every connection is on the bus" % role)
 		for w in gr._wirings:
 			w.unwire()
@@ -203,18 +223,18 @@ func _test_worldgen_stamp_game_root_wiring() -> void:
 	var cb := func(recorded: int, running: int) -> void: seen.append([recorded, running])
 	GameBus.worldgen_version_mismatch.connect(cb)
 	gr._loaded_world = {}
-	gr._persistence_wiring._note_worldgen_version()
+	gr._persistence_wiring.note_worldgen_version()
 	assert_true(seen.is_empty(), "a new world raises no mismatch")
 	assert_eq(gr._worldgen_stamp, TerrainSlice.WORLDGEN_VERSION, "and takes the running stamp")
 	gr._loaded_world = { "worldgenVersion": TerrainSlice.WORLDGEN_VERSION }
-	gr._persistence_wiring._note_worldgen_version()
+	gr._persistence_wiring.note_worldgen_version()
 	assert_true(seen.is_empty(), "a matching record raises none")
 	gr._loaded_world = { "seed": 7 }
-	gr._persistence_wiring._note_worldgen_version()
+	gr._persistence_wiring.note_worldgen_version()
 	assert_true(seen.is_empty(), "an unstamped record raises none")
 	assert_eq(gr._worldgen_stamp, TerrainSlice.WORLDGEN_VERSION, "and the next save stamps the running version")
 	gr._loaded_world = { "seed": 7, "worldgenVersion": TerrainSlice.WORLDGEN_VERSION - 1 }
-	gr._persistence_wiring._note_worldgen_version()
+	gr._persistence_wiring.note_worldgen_version()
 	assert_eq(seen, [[TerrainSlice.WORLDGEN_VERSION - 1, TerrainSlice.WORLDGEN_VERSION]], "an older stamp raises once")
 	assert_eq(gr._worldgen_stamp, TerrainSlice.WORLDGEN_VERSION - 1, "and the next save keeps that original stamp")
 	GameBus.worldgen_version_mismatch.disconnect(cb)
@@ -231,7 +251,7 @@ func _test_remote_state_plausibility() -> void:
 	assert_false(root_script._is_plausible_position(Vector3(1.0e9, 0.0, 0.0)), "a coordinate past the planet is dropped")
 	var gr: Node = root_script.new()
 	gr._is_client = false
-	gr._peer_wiring._on_remote_player_state(3, Vector3(NAN, 0.0, 0.0))
+	gr._peer_wiring.on_remote_player_state(3, Vector3(NAN, 0.0, 0.0))
 	assert_true(gr._peer_aoi_regions.is_empty(), "a rejected claim records no AOI region (and needs no networking slice)")
 	gr.free()
 
@@ -250,7 +270,7 @@ func _test_remote_peer_exact_position() -> void:
 	var gr: Node = (load("res://src/core/game_root.gd") as GDScript).new()
 	gr._networking = n
 	gr._registry = reg
-	gr._peer_wiring._fold_last_known_state(5, "p5")
+	gr._peer_wiring.fold_last_known_state(5, "p5")
 	var rec: Dictionary = JSON.parse_string(JSON.stringify(reg.get_record("p5")))
 	var reg2 := PlayerRegistry.new()
 	_own(reg2)
@@ -273,7 +293,7 @@ func _test_remote_peer_exact_position() -> void:
 	n._route_c2h(6, { "type": "player_moved", "position": [10.0, 2.0, -5.0] })
 	assert_eq(n.get_last_known_state(6), Vector3(10.0, 2.0, -5.0), "a legacy report records its Vector3")
 	assert_true(n.get_last_known_exact(6).is_empty(), "with no exact position")
-	gr._peer_wiring._fold_last_known_state(6, "p6")
+	gr._peer_wiring.fold_last_known_state(6, "p6")
 	assert_eq(reg.get_world_pos("p6")["chunk"], Vector2i(0, -1), "and the fold falls back to record_position")
 	gr.free()
 	n.free()
@@ -297,7 +317,7 @@ func _test_peer_exact_window_and_relay() -> void:
 	gr._networking = n
 	gr._registry = reg
 	gr._chunk_manager = cm
-	assert_eq(gr._peer_wiring._peer_window_chunk(5), chunk, "the window is centred on the exact chunk")
+	assert_eq(gr._peer_wiring.peer_window_chunk(5), chunk, "the window is centred on the exact chunk")
 	# The relay to the other clients carries the exact position. Each relay is asserted on its own: the
 	# first (peer 7 remembered at the origin, out of range, so nothing goes out) and the second (peer 7
 	# remembered beside the mover, so the exact position does), so one cannot stand in for the other.
@@ -309,10 +329,10 @@ func _test_peer_exact_window_and_relay() -> void:
 	var second := _relays_of_peer(n, 5)
 	_assert_relay_exact(second, chunk, local, "second relay")
 	# An exact position past the pole row is not folded; the record keeps its previous position.
-	gr._peer_wiring._fold_last_known_state(5, "p5")
+	gr._peer_wiring.fold_last_known_state(5, "p5")
 	assert_eq(reg.get_world_pos("p5")["chunk"], chunk, "a sane exact position is folded")
 	n._last_known_exact[5] = { "chunk": Vector2i(10, TerrainSlice.pole_chunks() + TerrainSlice.FOLD_MARGIN_CHUNKS + 5), "local": Vector3.ZERO }
-	gr._peer_wiring._fold_last_known_state(5, "p5")
+	gr._peer_wiring.fold_last_known_state(5, "p5")
 	assert_eq(reg.get_world_pos("p5")["chunk"], chunk, "an off-planet exact position leaves the record alone")
 	gr._chunk_manager = null
 	cm.free()
@@ -396,7 +416,7 @@ func _test_rescope_resent_when_clamped() -> void:
 	gr._registry = reg
 	gr._chunk_manager = cm
 	gr._is_client = false
-	gr._peer_wiring._on_remote_player_state(5, Vector3(64.0 * 40.0, 0.0, 0.0))
+	gr._peer_wiring.on_remote_player_state(5, Vector3(64.0 * 40.0, 0.0, 0.0))
 	var sent: Array = n.memory_transport().outbox.filter(func(o): return o["payload"].get("type") == "snapshot_chunk")
 	assert_true(sent.is_empty(), "a refused or clamped move builds and sends no snapshot")
 	assert_eq(stub.built, 0, "the snapshot builder was not even reached")

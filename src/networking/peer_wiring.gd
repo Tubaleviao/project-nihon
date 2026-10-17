@@ -11,17 +11,15 @@ const PlayerRegistry   := preload("res://src/persistence/player_registry.gd")
 const PlayerSlice      := preload("res://src/player/player_slice.gd")
 const SpawnFinder      := preload("res://src/world/spawn_finder.gd")
 
-func wire(ctx: GameRoot) -> void:
-	root = ctx
+func _connect_all() -> void:
 	if root.is_inside_tree():
 		connect_bus(root.multiplayer.connection_failed, _on_connection_failed)
 		connect_bus(root.multiplayer.server_disconnected, _on_server_disconnected)
-	connect_bus(GameBus.own_state_synced, _on_own_state_synced)
-	connect_bus(GameBus.peer_connected, _on_peer_connected)
+	connect_bus(GameBus.own_state_synced, on_own_state_synced)
 	connect_bus(GameBus.peer_disconnected, _on_peer_disconnected)
 	connect_bus(GameBus.player_joined, _on_player_joined)
 	connect_bus(GameBus.player_identity_assigned, _on_player_identity_assigned)
-	connect_bus(GameBus.remote_player_state, _on_remote_player_state)
+	connect_bus(GameBus.remote_player_state, on_remote_player_state)
 	connect_bus(GameBus.remote_player_state, _on_remote_avatar_state)
 	connect_bus(GameBus.peer_equipment_evicted, _remove_remote_avatar)
 
@@ -55,30 +53,23 @@ func _on_player_joined(peer_id: int, player_id: String, reconnected: bool) -> vo
 	# wolf (re-bound to the creature instance when that instance is resident).
 	root._taming.apply_record(root._registry.get_record(player_id), player_id)
 	root._professions.apply_record(root._registry.get_record(player_id), player_id)
-	root._combat_wiring._restore_status_effects(player_id, player_id)
+	root._combat_wiring.restore_status_effects(player_id, player_id)
 	print("[Server] %s player '%s' as %s" % ["reconnected" if reconnected else "joined", player_id, "peer_%d" % peer_id])
 	root._chat.announce_joined(player_id)
 	# Phase 52 — the peer's window opens NOW, so the regions around its saved position are
 	# resident (and its snapshot carries their edits) before the snapshot is built.
-	root._chunk_manager.set_peer_center(peer_id, _peer_window_chunk(peer_id), true)
+	root._chunk_manager.set_peer_center(peer_id, peer_window_chunk(peer_id), true)
 	root._chunk_manager.refresh(false)
-	root._networking.send_snapshot(peer_id, root._snapshot_wiring._build_snapshot(peer_id))
-
-## Phase 33 — host: a connection came up. There is deliberately nothing to send yet:
-## the peer's identity has not been resolved, so a snapshot here would carry no
-## own-record and would have to be replaced by the handshake snapshot (see
-## _on_player_joined). Kept as the single place to note when a peer appears.
-func _on_peer_connected(_peer_id: int) -> void:
-	pass
+	root._networking.send_snapshot(peer_id, root._snapshot_wiring.build_snapshot(peer_id))
 
 ## Phase 53 — the local (host / offline) player's placement on a boot with no saved position:
 ## the friend named by `--friend` if any, else habitable land away from colonized regions. Cached,
 ## so the boot and its tail agree. null when a saved position exists or nothing qualifies.
-func _first_boot_spawn() -> Variant:
-	if root._persistence_wiring._saved_local_position() != null:
+func first_boot_spawn() -> Variant:
+	if root._persistence_wiring.saved_local_position() != null:
 		return null
 	if root._local_spawn == null:
-		var placed := _place_new_player(root._registry.local_player_id, root._friend_code_arg)
+		var placed := place_new_player(root._registry.local_player_id, root._friend_code_arg)
 		if placed.has("position"):
 			root._local_spawn = placed["position"]
 			root._colonization.note_home(Vector2i(floori(root._local_spawn.x / TerrainSlice.CHUNK_METERS), floori(root._local_spawn.z / TerrainSlice.CHUNK_METERS)))
@@ -89,7 +80,7 @@ func _first_boot_spawn() -> Variant:
 ## Phase 53 — where a NEW player lands: beside the friend whose handle they gave, else on habitable
 ## land far from every colonized region. Returns { position, source, message } (empty when the
 ## world has no qualifying spot, and the caller keeps its old default).
-func _place_new_player(player_id: String, friend_code: String) -> Dictionary:
+func place_new_player(player_id: String, friend_code: String) -> Dictionary:
 	var height_fn := func(p: Vector2) -> float: return root._terrain.get_height_at(p)
 	var world_seed := root._terrain.get_world_seed()
 	var message := ""
@@ -120,7 +111,7 @@ func _friend_position(handle: String) -> Variant:
 
 ## The saved position of an OFFLINE player behind `handle`, found by hashing the ids of the
 ## records on disk. null when no record matches.
-func _locate_friend_on_disk(handle: String) -> Variant:
+func locate_friend_on_disk(handle: String) -> Variant:
 	for pid in root._persistence.list_player_records():
 		if root._registry.public_handle(str(pid)) != handle:
 			continue
@@ -131,12 +122,12 @@ func _locate_friend_on_disk(handle: String) -> Variant:
 	return null
 
 ## Phase 122 — presence is noted at the exact chunk of `wp` (`{chunk, local}`), not a float32 position.
-func _note_presence(wp: Dictionary) -> void:
+func note_presence(wp: Dictionary) -> void:
 	root._colonization.note_presence(wp["chunk"], Time.get_unix_time_from_system())
 
 ## Phase 122 — a peer's last known position as an exact `{chunk, local}`: the exact record when the
 ## peer reported one, else the float position promoted.
-func _peer_exact_pos(peer_id: int) -> Dictionary:
+func peer_exact_pos(peer_id: int) -> Dictionary:
 	var exact: Dictionary = root._networking.get_last_known_exact(peer_id)
 	if not exact.is_empty() and WorldPos.is_plausible_pos(exact):
 		return exact
@@ -181,8 +172,8 @@ func _on_peer_disconnected(peer_id: int) -> void:
 	var player_id := root._registry.get_player_id(peer_id)
 	if player_id.is_empty():
 		return
-	_fold_last_known_state(peer_id, player_id)
-	root._combat_wiring._refresh_status_records()
+	fold_last_known_state(peer_id, player_id)
+	root._combat_wiring.refresh_status_records()
 	if root._status != null:
 		root._status.clear(player_id)
 		root._status.take_dirty()
@@ -221,7 +212,7 @@ func _on_peer_disconnected(peer_id: int) -> void:
 ## `hp` that rides `player_moved` and `PlayerRegistry.record_hp` refuses a remote id —
 ## because that is a claim about a body this process cannot check. Only the local
 ## player's live body and the host's own hit resolution may write a record's health.
-func _fold_last_known_state(peer_id: int, player_id: String) -> void:
+func fold_last_known_state(peer_id: int, player_id: String) -> void:
 	if root._networking.has_last_known_state(peer_id):
 		# Phase 86 — the exact position when the peer reported one; the float Vector3 otherwise.
 		var exact: Dictionary = root._networking.get_last_known_exact(peer_id)
@@ -241,15 +232,15 @@ func _fold_last_known_state(peer_id: int, player_id: String) -> void:
 ## player resurrected at the world origin. The autosave interval is now the bound
 ## on how much of a remote peer's live position a hard kill can lose. (Its HP needs no
 ## folding — the host's own simulated value is written when the hit is resolved; see
-## _fold_last_known_state.)
-func _snapshot_remote_players() -> void:
+## fold_last_known_state.)
+func snapshot_remote_players() -> void:
 	for peer_id in root._networking.get_last_known_states():
 		var player_id := root._registry.get_player_id(int(peer_id))
 		if player_id.is_empty():
 			continue
-		_fold_last_known_state(int(peer_id), player_id)
+		fold_last_known_state(int(peer_id), player_id)
 		if root._networking.has_last_known_state(int(peer_id)):
-			_note_presence(_peer_exact_pos(int(peer_id)))
+			note_presence(peer_exact_pos(int(peer_id)))
 
 ## Phase 36 — every player CreatureAI can place on this machine, as
 ## { target_id: Vector3 }: the local body under the id "player" (the defender id
@@ -261,7 +252,7 @@ func _snapshot_remote_players() -> void:
 ## position is the host's own evidence of where the peer is (recorded from the
 ## peer's movement packets — see NetworkingSlice.remember_player_state), not a claim
 ## from the client.
-func _player_targets() -> Dictionary:
+func player_targets() -> Dictionary:
 	var out := {}
 	if root._player != null:
 		out["player"] = root._player.get_position()
@@ -288,7 +279,7 @@ func _on_remote_avatar_state(peer_id: int, position: Vector3) -> void:
 
 ## A peer with nothing worn is never sent an evict, so a body that has drifted out of range
 ## is dropped here as well (the host stops reporting its state once it leaves our AOI).
-func _prune_remote_avatars() -> void:
+func prune_remote_avatars() -> void:
 	if root._remote_avatars.is_empty() or root._player == null:
 		return
 	var here: Vector3 = root._player.get_position()
@@ -303,7 +294,7 @@ func _remove_remote_avatar(peer_id: int) -> void:
 		root._remote_avatars.erase(peer_id)
 		root._player.set_ghost_suppressed(peer_id, false)
 
-func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
+func on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	if root._is_client:
 		return
 	# A non-finite or absurd claim is dropped before ANY consumer reads it (the region lookup
@@ -339,11 +330,11 @@ func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	# crossing (the record is written at load and at disconnect, not per frame).
 	# The crossing position is passed explicitly: this handler may run before the
 	# networking slice's own handler has recorded it, so get_aoi_center() can be stale.
-	root._networking.send_snapshot(peer_id, root._snapshot_wiring._build_snapshot(peer_id, false, position, false))
+	root._networking.send_snapshot(peer_id, root._snapshot_wiring.build_snapshot(peer_id, false, position, false))
 
 ## The chunk a peer's window is centred on: its last reported position, else the position
 ## its record holds (a joining peer has not sent a state packet yet).
-func _peer_window_chunk(peer_id: int) -> Vector2i:
+func peer_window_chunk(peer_id: int) -> Vector2i:
 	if root._networking.has_last_known_state(peer_id):
 		# Phase 97 — the exact chunk when the peer reported one; the float32 Vector3 only as fallback.
 		# (The slice only stores an exact position that decoded and validated, so it is trusted here.)
@@ -360,16 +351,16 @@ func _peer_window_chunk(peer_id: int) -> Vector2i:
 ## Phase 52 — keep one streaming window per connected peer, so creatures, trees and edit
 ## validation run around every player and not only near the server's own body. Throttled:
 ## a window moves by whole chunks, so twice a second is ample.
-func _sync_peer_windows(delta: float) -> void:
+func sync_peer_windows(delta: float) -> void:
 	root._peer_window_elapsed += delta
 	if root._peer_window_elapsed < root.PEER_WINDOW_INTERVAL:
 		return
 	root._peer_window_elapsed = 0.0
 	for peer_id in root._registry.get_peer_ids():
 		if int(peer_id) > 0:
-			root._chunk_manager.sync_peer_center(int(peer_id), _peer_window_chunk(int(peer_id)))
+			root._chunk_manager.sync_peer_center(int(peer_id), peer_window_chunk(int(peer_id)))
 
-func _fold_local_player() -> void:
+func fold_local_player() -> void:
 	if not root._player.has_method("fold_to"):
 		return
 	_expire_fold_standins()
@@ -445,7 +436,7 @@ func _release_fold_hold() -> void:
 ## Each retry re-sends the intent (a fresh seq, so the host's dedup passes it) and
 ## the host re-answers an already-bound peer (see
 ## PlayerRegistry.resolve_identity), so the retry re-delivers the snapshot.
-func _tick_client_handshake(delta: float) -> void:
+func tick_client_handshake(delta: float) -> void:
 	root._snapshot_elapsed += delta
 	root._handshake_elapsed += delta
 	# Phase 135 — a delayed, capped link (`--net-profile`) stretches the deadlines by its round trip.
@@ -464,7 +455,7 @@ func _tick_client_handshake(delta: float) -> void:
 ## frame — position/facing, locomotion state, and approximate foot IK
 ## (characters.md §37). Only the host currently spawns character visuals
 ## (_boot_host), so this is a no-op on clients until one exists.
-func _sync_player_avatar(delta: float) -> void:
+func sync_player_avatar(delta: float) -> void:
 	var player_char: String = root._character.get_player_character()
 	if player_char == "":
 		return
@@ -507,7 +498,7 @@ func _on_server_disconnected() -> void:
 ## Host → the peer whose own record just changed. Nothing to do for a local player
 ## (its state is already live in this process) and nothing to send for a failed
 ## action (nothing changed).
-func _sync_peer_own_state(result: Dictionary, changed_anyway: bool = false) -> void:
+func sync_peer_own_state(result: Dictionary, changed_anyway: bool = false) -> void:
 	if root._is_client:
 		return
 	if not bool(result.get("success", false)) and not changed_anyway:
@@ -538,7 +529,7 @@ func _own_state_payload(player_id: String) -> Dictionary:
 ## Client-side: the host changed our own record while acting on our behalf (a craft,
 ## repair, or research we asked for). Applied exactly like the like-named keys of the
 ## join snapshot.
-func _on_own_state_synced(data: Dictionary) -> void:
+func on_own_state_synced(data: Dictionary) -> void:
 	if not root._is_client:
 		return
 	if data.has("equipment") and data["equipment"] is Dictionary:
@@ -546,7 +537,7 @@ func _on_own_state_synced(data: Dictionary) -> void:
 		# would wipe the newer item; the newer action's own reply sets the record.
 		var answers: int = int(data.get("equipment_seq", root._networking.equip_seq_sent()))
 		if answers >= root._networking.equip_seq_sent():
-			root._character_wiring._apply_host_equipment(data["equipment"])
+			root._character_wiring.apply_host_equipment(data["equipment"])
 	if data.has("inventory") and data["inventory"] is Dictionary:
 		root._inventory.replace_contents(data["inventory"], data.get("inventory_durability", {}))
 	if data.has("technology") and data["technology"] is Dictionary:
@@ -573,8 +564,8 @@ func _on_own_state_synced(data: Dictionary) -> void:
 		GameBus.settlement_resolved.emit(root._registry.local_player_id, str(sres.get("action", "")).left(16), bool(sres.get("ok", false)), str(sres.get("reason", "")).left(32))
 
 ## Phase 130 — true while the host's own status state holds `peer` (paralysis, knockdown).
-func _peer_is_held(peer: int) -> bool:
+func peer_is_held(peer: int) -> bool:
 	if root._status == null or root._is_client:
 		return false
 	var pid := root._networking.get_player_id(peer)
-	return pid != "" and root._status.is_immobilized(pid, root._combat_wiring._status_now())
+	return pid != "" and root._status.is_immobilized(pid, root._combat_wiring.status_now())

@@ -1725,7 +1725,7 @@ func place_block(world_pos: Vector3, normal: Vector3, material: String = "", pla
 ## This is the column's TOP, not the surface a body stands on: inside a tunnel the
 ## body's own Y decides which run holds it, which is what `sample_support_height_at`
 ## answers — and that is the read production uses for footing
-## (`peer_wiring._sync_player_avatar`). This accessor stays because it is how a
+## (`peer_wiring.sync_player_avatar`). This accessor stays because it is how a
 ## column's SHAPE is asserted (the suite), and because the pre-ceiling footing read
 ## it used to be is still what a caller outside a tunnel means.
 func get_voxel_height_at(world_pos: Vector2) -> float:

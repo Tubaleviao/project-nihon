@@ -273,6 +273,34 @@ jobs:
           path: playtest/
           if-no-files-found: warn
 
+  export-check:
+    name: Linux export (pull request)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        # No submodule: the export carries the committed placeholders only.
+
+      - name: Download Godot 4.7 and its export templates
+        run: |
+          mkdir -p /tmp/godot
+          curl -fsSL -o /tmp/godot/godot.zip \
+            https://github.com/godotengine/godot/releases/download/4.7-stable/Godot_v4.7-stable_linux.x86_64.zip
+          unzip -o /tmp/godot/godot.zip -d /tmp/godot
+          chmod +x /tmp/godot/Godot_v4.7-stable_linux.x86_64
+          curl -fsSL -o /tmp/godot/templates.tpz \
+            https://github.com/godotengine/godot/releases/download/4.7-stable/Godot_v4.7-stable_export_templates.tpz
+          mkdir -p ~/.local/share/godot/export_templates/4.7.stable
+          unzip -o /tmp/godot/templates.tpz -d /tmp/godot/templates
+          cp -r /tmp/godot/templates/templates/* ~/.local/share/godot/export_templates/4.7.stable/
+
+      - name: Export the Linux preset
+        run: |
+          mkdir -p build/linux
+          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --import || true
+          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --export-release "Linux" build/linux/nihon.x86_64
+          test -s build/linux/nihon.x86_64
+
   build:
     name: Linux and Windows exports
     needs: [godot-tests, server-boot, host-boot, fabric, net-harness, playtest]

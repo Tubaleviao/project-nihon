@@ -15,9 +15,8 @@ const PlayerRegistry   := preload("res://src/persistence/player_registry.gd")
 const PlayerSlice      := preload("res://src/player/player_slice.gd")
 const TreeSlice        := preload("res://src/world/tree_slice.gd")
 
-func wire(ctx: GameRoot) -> void:
-	root = ctx
-	connect_bus(GameBus.world_snapshot_received, _on_world_snapshot_received)
+func _connect_all() -> void:
+	connect_bus(GameBus.world_snapshot_received, on_world_snapshot_received)
 
 ## Host-side: serialize authoritative world state for a connecting client,
 ## AOI-scoped (Phase 29) — only entities within the peer's area of interest are
@@ -33,7 +32,7 @@ func wire(ctx: GameRoot) -> void:
 ## it receives as authoritative — so carrying a stale record on an AOI re-scope
 ## would teleport the client to its last-saved position and roll its inventory and
 ## technology back to that instant.
-func _build_snapshot(peer_id: int, include_own_record: bool = true,
+func build_snapshot(peer_id: int, include_own_record: bool = true,
 		aoi_center_override: Variant = null, full_edits_override: Variant = null) -> Dictionary:
 	# Every AOI test below reads the SAME centre: the override when a re-scope names the
 	# crossing position (the networking slice may not have recorded it yet), else the peer's
@@ -44,7 +43,7 @@ func _build_snapshot(peer_id: int, include_own_record: bool = true,
 		aoi_center = aoi_center_override
 		aoi_exact = WorldPos.from_world(aoi_center.x, aoi_center.y, aoi_center.z)
 	elif root._networking.has_last_known_state(peer_id):
-		aoi_exact = root._peer_wiring._peer_exact_pos(peer_id)
+		aoi_exact = root._peer_wiring.peer_exact_pos(peer_id)
 	else:
 		aoi_exact = WorldPos.from_world(aoi_center.x, aoi_center.y, aoi_center.z)
 	var players := {}
@@ -56,7 +55,7 @@ func _build_snapshot(peer_id: int, include_own_record: bool = true,
 	var last_known := root._networking.get_last_known_states()
 	for pid in last_known:
 		var last_pos: Vector3 = last_known[pid]
-		var last_exact := root._peer_wiring._peer_exact_pos(int(pid))
+		var last_exact := root._peer_wiring.peer_exact_pos(int(pid))
 		if NetworkingSlice.within_aoi_exact(aoi_exact, last_exact):
 			players[str(pid)] = WorldPos.pos_to_wire(last_exact) if root._networking.get_last_known_exact(int(pid)) == last_exact else WorldPos.to_wire(last_pos)
 	var player_id := root._registry.get_player_id(peer_id)
@@ -92,19 +91,19 @@ func _build_snapshot(peer_id: int, include_own_record: bool = true,
 	# the constant there were two places to update, and the failure mode was a blob a
 	# client would adopt but nobody would redact.
 	snapshot.merge(root._networking.redact_social_state(_social_state()))
-	_add_generation_records(snapshot, peer_id, aoi_center)
+	add_generation_records(snapshot, peer_id, aoi_center)
 	if not full_edits:
 		snapshot["edits_aoi"] = [aoi_center.x, aoi_center.z, NetworkingSlice.EDITS_SCOPE_RADIUS]
 	# The peer's own record exists only once the host resolved its identity, and it
 	# is shipped only on the handshake snapshot — an AOI re-scope omits the keys
 	# entirely, so the client keeps the state it already holds.
 	if PersistenceSlice.snapshot_carries_own_record(include_own_record, player_id):
-		snapshot.merge(_snapshot_own_record(player_id))
+		snapshot.merge(snapshot_own_record(player_id))
 	return snapshot
 
 ## The peer's own record as the handshake snapshot carries it (`inventory`, `technology`, `flags`,
 ## `companions`, `equipment`, `player` and, when one is recorded, the original `spawn`).
-func _snapshot_own_record(player_id: String) -> Dictionary:
+func snapshot_own_record(player_id: String) -> Dictionary:
 	var own := root._registry.get_player_data(player_id)
 	var snapshot := {}
 	snapshot["inventory"] = own.get("inventory", {})
@@ -133,7 +132,7 @@ func _snapshot_own_record(player_id: String) -> Dictionary:
 ## The scope is named (`gen_scope`) so the client knows which part of its table the packet speaks for.
 ## Re-scopes are rate-limited by `_on_remote_player_state`, which defers the whole crossing rather than
 ## sending it without records.
-func _add_generation_records(snapshot: Dictionary, peer_id: int, aoi_center: Vector3) -> void:
+func add_generation_records(snapshot: Dictionary, peer_id: int, aoi_center: Vector3) -> void:
 	if root._chunk_manager == null:
 		return
 	var now := Time.get_ticks_msec()
@@ -175,7 +174,7 @@ func _scoped_creatures(aoi_center: Vector3) -> Array:
 
 ## Client: put the body where the snapshot's `player` record says (exactly, via a rebase, when the
 ## position is a `{chunk, local}` record) and restore its HP. Anything but a dictionary is ignored.
-func _place_from_snapshot(own: Variant) -> void:
+func place_from_snapshot(own: Variant) -> void:
 	if own is Dictionary:
 		var arr = own.get("position", [])
 		if WorldPos.is_wire(arr):
@@ -206,7 +205,7 @@ func _place_from_snapshot(own: Variant) -> void:
 			root._player.set_hp(hp)
 
 ## Client-side: apply the host's world snapshot and begin rendering.
-func _on_world_snapshot_received(data: Dictionary) -> void:
+func on_world_snapshot_received(data: Dictionary) -> void:
 	if not root._is_client:
 		return
 	if data.has("seed"):
@@ -278,8 +277,8 @@ func _on_world_snapshot_received(data: Dictionary) -> void:
 			var client_char: String = root._character.create_character("TravellerHuman", root._player.get_position())
 			root._character.set_player_character(client_char)
 			root._character.attach_default_rig(client_char)
-		root._character_wiring._apply_local_equipment(data["equipment"])
-	_place_from_snapshot(data.get("player", {}))
+		root._character_wiring.apply_local_equipment(data["equipment"])
+	place_from_snapshot(data.get("player", {}))
 	if data.has("creatures") and data["creatures"] is Array:
 		root._creature.apply_snapshot_creatures(data["creatures"])
 	if data.has("inventory") and data["inventory"] is Dictionary:

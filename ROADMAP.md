@@ -170,7 +170,7 @@ issue number where the criterion used to be.
 | 147 | Review follow-ups I: trust boundary and far-from-origin precision | Done | [history](docs/roadmap-history/phases-147.md) |
 | 148 | Review follow-ups II: i18n leftovers | Done | [history](docs/roadmap-history/phases-148.md) |
 | 149 | Review follow-ups III: world, terrain and persistence | Done | [history](docs/roadmap-history/phases-149.md) |
-| 150 | Review follow-ups IV: wiring, harness and playtest bot | Planned | below |
+| 150 | Review follow-ups IV: wiring, harness and playtest bot | Done | [history](docs/roadmap-history/phases-150.md) |
 | 151 | Item shapes in the fabric | Planned | below |
 | 152 | Item models and icons from one generator | Planned | below |
 | 153 | Items in the world: equipment, held tools and icons everywhere | Planned | below |
@@ -208,44 +208,6 @@ issue number where the criterion used to be.
 
 
 
-## Phase 150 — Review follow-ups IV: wiring, harness and playtest bot
-
-**Goal:** the test tools are the project's eyes. Their review items (#355, #359, #361, #380)
-make them weaker than they look: the playtest bot changes slices directly instead of sending
-intents, the WAN profile mutes creature sync, and the wiring audit is brittle. This phase hardens
-them.
-
-**Newel dependency:** NO.
-
-**Depends on:** none.
-
-**Deliverables:**
-- #359: the playtest bot sends bus intents for place, craft, travel, fight and unlock, like a
-  player would. Teleports land on `terrain.get_height_at` + offset, and the frame-time check skips
-  the frames right after a teleport. A step's coroutine that crashes fails fast. The bot despawns
-  the creature it spawns. `/build/` and `/playtest/` are anchored in `.gitignore`. CI runs a Linux
-  export check on PRs.
-- #380: find and fix why the player body sat about 20 km below the terrain at the fight step in the
-  xvfb run. Remove the orphan section header in `creature_tests.gd`.
-- #361: the harness timeout multipliers come from `NetworkingSlice.link_time_scale()`. Under
-  `wan_bad`, creature deltas are throttled, not muted. `_drain_emulator` counts dropped packets
-  and the harness reports the count.
-- #355: `wiring.gd` gets a base `wire()` and a virtual `_connect_all()`. `connect_bus` is
-  idempotent. The no-op `pass` handlers are removed. Cross-module calls to `_private` methods
-  become public methods. String `Callable`s become method refs. The wiring audit globs its
-  directories.
-
-**Acceptance criteria:**
-- [ ] Suite: a static check finds no direct slice mutation in `playtest_bot.gd` (calls to
-  `try_place_station`, `craft`, `begin_research`, … go through the bus).
-- [ ] Playtest bot: every step passes in CI, and the fight step's player is within 2 m of the terrain
-  surface.
-- [ ] Harness: under `wan_bad`, at least one creature delta reaches the client, and the run report
-  shows the dropped-packet count.
-- [ ] Suite: calling `connect_bus` twice connects each signal once.
-- [ ] CI: a PR runs the Linux export.
-- [ ] Every in-scope item of #355, #359, #361 and #380 is ticked on its issue.
-- [ ] Suite green on both boot paths, harness green.
 
 ---
 
