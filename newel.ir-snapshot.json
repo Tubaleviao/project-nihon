@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:a5b76d111e1a017c5624013964b2b598ee461e0c3e14a2ae06ce28f8b560e36c",
+  "schemaHash": "sha256:95e49f5842b0d535130b6b147d5e7020c4e15ae804feb5e5b165599413bd95ae",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -20849,6 +20849,15 @@
             "pii": false,
             "defaultValue": 8
           },
+          "skeleton": {
+            "name": "skeleton",
+            "type": "string",
+            "description": "Skeleton family the creature model is rigged on (a SkeletonDefinition entity)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "QuadrupedSkeleton"
+          },
           "maxStepMetres": {
             "name": "maxStepMetres",
             "type": "decimal",
@@ -21334,6 +21343,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 12
+          },
+          "skeleton": {
+            "name": "skeleton",
+            "type": "string",
+            "description": "Skeleton family the creature model is rigged on (a SkeletonDefinition entity)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "QuadrupedSkeleton"
           },
           "maxStepMetres": {
             "name": "maxStepMetres",
@@ -21866,6 +21884,15 @@
             "pii": false,
             "defaultValue": 6
           },
+          "skeleton": {
+            "name": "skeleton",
+            "type": "string",
+            "description": "Skeleton family the creature model is rigged on (a SkeletonDefinition entity)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "QuadrupedSkeleton"
+          },
           "maxStepMetres": {
             "name": "maxStepMetres",
             "type": "decimal",
@@ -22360,6 +22387,15 @@
             "pii": false,
             "defaultValue": 8
           },
+          "skeleton": {
+            "name": "skeleton",
+            "type": "string",
+            "description": "Skeleton family the creature model is rigged on (a SkeletonDefinition entity)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "BirdSkeleton"
+          },
           "maxStepMetres": {
             "name": "maxStepMetres",
             "type": "decimal",
@@ -22818,6 +22854,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 6
+          },
+          "skeleton": {
+            "name": "skeleton",
+            "type": "string",
+            "description": "Skeleton family the creature model is rigged on (a SkeletonDefinition entity)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "SerpentSkeleton"
           },
           "maxStepMetres": {
             "name": "maxStepMetres",
@@ -23300,6 +23345,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 15
+          },
+          "skeleton": {
+            "name": "skeleton",
+            "type": "string",
+            "description": "Skeleton family the creature model is rigged on (a SkeletonDefinition entity)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "BirdSkeleton"
           },
           "maxStepMetres": {
             "name": "maxStepMetres",
@@ -23784,6 +23838,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 8
+          },
+          "skeleton": {
+            "name": "skeleton",
+            "type": "string",
+            "description": "Skeleton family the creature model is rigged on (a SkeletonDefinition entity)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "QuadrupedSkeleton"
           },
           "maxStepMetres": {
             "name": "maxStepMetres",
@@ -24296,6 +24359,15 @@
             "pii": false,
             "defaultValue": 15
           },
+          "skeleton": {
+            "name": "skeleton",
+            "type": "string",
+            "description": "Skeleton family the creature model is rigged on (a SkeletonDefinition entity)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "QuadrupedSkeleton"
+          },
           "maxStepMetres": {
             "name": "maxStepMetres",
             "type": "decimal",
@@ -24780,6 +24852,15 @@
             "pii": false,
             "defaultValue": 5
           },
+          "skeleton": {
+            "name": "skeleton",
+            "type": "string",
+            "description": "Skeleton family the creature model is rigged on (a SkeletonDefinition entity)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "SerpentSkeleton"
+          },
           "maxStepMetres": {
             "name": "maxStepMetres",
             "type": "decimal",
@@ -25263,6 +25344,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 20
+          },
+          "skeleton": {
+            "name": "skeleton",
+            "type": "string",
+            "description": "Skeleton family the creature model is rigged on (a SkeletonDefinition entity)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "QuadrupedSkeleton"
           },
           "maxStepMetres": {
             "name": "maxStepMetres",

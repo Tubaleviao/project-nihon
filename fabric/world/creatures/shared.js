@@ -136,4 +136,21 @@ function validatePathFields(creatures) {
   }
 }
 
-module.exports = { pathFields, validatePathFields, PATH_RADIUS_MAX, defineEntity, creatureStateMachine, creatureStateValues, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS, GROUP_BEHAVIORS, dropsData, tameData }
+// Skeleton family a creature's model is rigged on (Phase 143), consumed by CreatureVisuals. Spread into
+// a creature's `fields`. Each value names a SkeletonDefinition entity in gameplay/characters/skeletons.js.
+const CREATURE_SKELETONS = ['QuadrupedSkeleton', 'BirdSkeleton', 'SerpentSkeleton', 'HumanoidSkeleton']
+function skeletonField(family) {
+  return { type: 'string', description: 'Skeleton family the creature model is rigged on (a SkeletonDefinition entity)', defaultValue: family }
+}
+
+// Throws (failing `npm run validate`) when a creature lacks a skeleton or names an unknown one.
+function validateSkeletonFields(creatures, skeletons = CREATURE_SKELETONS) {
+  for (const [name, entity] of Object.entries(creatures)) {
+    const f = (entity && entity.fields) || {}
+    const v = f.skeleton && f.skeleton.defaultValue
+    if (!v) throw new Error(`${name}: creature must name a skeleton`)
+    if (!skeletons.includes(v)) throw new Error(`${name}: unknown skeleton '${v}' (expected one of ${skeletons.join(', ')})`)
+  }
+}
+
+module.exports = { skeletonField, validateSkeletonFields, CREATURE_SKELETONS, pathFields, validatePathFields, PATH_RADIUS_MAX, defineEntity, creatureStateMachine, creatureStateValues, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS, GROUP_BEHAVIORS, dropsData, tameData }

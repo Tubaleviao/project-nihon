@@ -18,6 +18,7 @@ A stout, bristle-furred boar that roots through the forest floor for tubers and 
 | `baseHp` | integer | yes | Hit points at tier baseline |
 | `baseDamage` | integer | yes | Damage per standard attack at tier baseline |
 | `alertRadius` | decimal | yes | Distance in metres at which creature enters alert state |
+| `skeleton` | string | yes | Skeleton family the creature model is rigged on (a SkeletonDefinition entity) |
 | `maxStepMetres` | decimal | yes | Tallest ledge in metres the creature climbs in one tile step; a taller step is routed around |
 | `canSwim` | boolean | yes | Whether the creature paths through water tiles (ground below sea level) |
 | `pathRadiusTiles` | integer | yes | Search radius in tiles of one path query |

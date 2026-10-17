@@ -374,7 +374,7 @@ func _step_place() -> Array:
 	var ok: bool = await _until(func(): return _placed.size() > before, STEP_TIMEOUT_SECS)
 	return [ok, "placed %s" % id]
 
-## Fight: a creature set down within reach loses HP to the player's melee round.
+## Fight: a creature set down within reach loses HP to the player's melee round and is drawn as a model.
 func _step_fight() -> Array:
 	var cid := ""
 	var best := -1.0
@@ -387,11 +387,29 @@ func _step_fight() -> Array:
 			cid = str(k)
 	if cid == "":
 		return [false, "no creature in GameData"]
+	# Placed in the creature slice's own frame, from the camera that draws it, so the model range check
+	# and the screenshot see the same distance whatever the scene origin or float32 rounding did to the body.
 	var p := _player_pos()
+	var ground: float = _root._terrain.get_height_at(Vector2(p.x, p.z))
+	if absf(p.y - ground) > 20.0:
+		# The body fell through unbuilt ground (the camera follows it); stand it back on the surface so
+		# the creature, which a surface-bound mover keeps on the terrain, lands within model range.
+		var here: Dictionary = _root._player.get_world_pos()
+		GameBus.player_teleport.emit({ "chunk": here["chunk"], "local": Vector3((here["local"] as Vector3).x, ground + 2.0, (here["local"] as Vector3).z) })
+		await _until(func(): return absf(_player_pos().y - ground) < 20.0, STEP_TIMEOUT_SECS)
+		await _until(func(): return false, 0.3)
+		p = _player_pos()
+	var cam := get_viewport().get_camera_3d()
+	if cam != null:
+		p = cam.global_position - _root._creature.scene_offset()
 	var iid: String = _root._creature._spawn(cid, Vector2i(9000, 9000), 0)
 	if iid == "":
 		return [false, "spawn refused"]
 	var y: float = _root._terrain.get_height_at(Vector2(p.x + FIGHT_RANGE_M, p.z))
+	# A body far from the terrain surface (fell, or ground not streamed yet) would put the target out of
+	# model range: keep the target at the camera's height then.
+	if cam != null and absf(y - p.y) > 20.0:
+		y = p.y - 1.5
 	_root._creature.set_instance_position(iid, Vector3(p.x + FIGHT_RANGE_M, y, p.z))
 	var rounds := 0
 	var ok := false
@@ -401,7 +419,24 @@ func _step_fight() -> Array:
 		await _until(func(): return false, 0.2)
 		var left: float = _root._battle.get_hp(iid)
 		ok = left >= 0.0 and left < float((GameData.CREATURES[cid] as Resource).get("baseHp"))
-	return [ok, "%s at %.0f hp after %d rounds" % [cid, _root._battle.get_hp(iid), rounds]]
+	# Phase 143: the screenshot that follows shows the target as a rigged model, not a box.
+	var modelled: bool = ok and await _until(func(): return _root._creature.has_model(iid), STEP_TIMEOUT_SECS)
+	var why := "drawn as a model" if modelled else "no model node (%s)" % _model_diag(iid)
+	return [ok and modelled, "%s at %.0f hp after %d rounds, %s" % [cid, _root._battle.get_hp(iid), rounds, why]]
+
+## Why a creature has no model: its record, the camera and the distance between them.
+func _model_diag(iid: String) -> String:
+	var inst: Variant = _root._creature._instances.get(iid, null)
+	var cam := get_viewport().get_camera_3d()
+	var parts: Array = ["camera %s" % ("yes" if cam != null else "none")]
+	parts.append("record %s" % ("yes" if inst != null else "none"))
+	var vis: Node3D = _root._creature.visuals()
+	if vis != null:
+		parts.append("models %d, warned %s" % [vis.models.size(), str(vis.warned_types.keys())])
+		if cam != null and inst != null:
+			parts.append("%.1f m from camera, state %s" % [(cam.global_position - vis.position).distance_to(inst["position"]), str(inst["state"])])
+			parts.append("camera %s, models node at %s, creature %s, player %s" % [str(cam.global_position), str(vis.position), str(inst["position"]), str(_player_pos())])
+	return ", ".join(parts)
 
 ## Travel: two attuned waystones, then the intent; the body must land at the second.
 func _step_travel() -> Array:

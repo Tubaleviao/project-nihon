@@ -11,6 +11,7 @@ aggressionLevel = 2
 baseHp = 800
 baseDamage = 60
 alertRadius = 5.0
+skeleton = "SerpentSkeleton"
 maxStepMetres = 0.75
 canSwim = false
 pathRadiusTiles = 24

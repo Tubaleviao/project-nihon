@@ -1,4 +1,4 @@
-const { defineEntity, creatureStateMachine, creatureStateValues, dropsData, pathFields, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS } = require('./shared')
+const { defineEntity, skeletonField, creatureStateMachine, creatureStateValues, dropsData, pathFields, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS } = require('./shared')
 
 module.exports = {
 
@@ -19,6 +19,7 @@ module.exports = {
       baseHp:         { type: 'integer', description: 'Hit points at tier baseline; very high', defaultValue: 800 },
       baseDamage:     { type: 'integer', description: 'Damage per strike at tier baseline; very high', defaultValue: 60 },
       alertRadius:    { type: 'decimal', description: 'Distance in metres at which creature enters alert state', defaultValue: 5.0 },
+      skeleton:       skeletonField('SerpentSkeleton'),
       ...pathFields(),
       attackRadius:   { type: 'decimal', description: 'Distance in metres at which creature begins attacking', defaultValue: 4.0 },
       fleeThreshold:  { type: 'decimal', description: 'HP fraction (0–1) below which creature flees', defaultValue: 0.15 },
@@ -108,6 +109,7 @@ module.exports = {
       baseHp:         { type: 'integer', description: 'Hit points at tier baseline; extreme value', defaultValue: 2000 },
       baseDamage:     { type: 'integer', description: 'Damage per slam at tier baseline; extreme value', defaultValue: 90 },
       alertRadius:    { type: 'decimal', description: 'Distance in metres at which creature detects and attacks; no alert phase', defaultValue: 20.0 },
+      skeleton:       skeletonField('QuadrupedSkeleton'),
       ...pathFields(),
       attackRadius:   { type: 'decimal', description: 'Distance in metres at which creature begins attacking', defaultValue: 6.0 },
       fleeThreshold:  { type: 'decimal', description: 'HP fraction (0–1) below which creature flees; 0 = never flees', defaultValue: 0.0 },

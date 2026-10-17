@@ -21,6 +21,7 @@ A massive serpentine entity born from void-rift energy given form. Its scales sh
 | baseHp | integer | Hit points at tier baseline; very high |
 | baseDamage | integer | Damage per strike at tier baseline; very high |
 | alertRadius | decimal | Distance in metres at which creature enters alert state |
+| skeleton | string | Skeleton family the creature model is rigged on (a SkeletonDefinition entity) |
 | maxStepMetres | decimal | Tallest ledge in metres the creature climbs in one tile step; a taller step is routed around |
 | canSwim | boolean | Whether the creature paths through water tiles (ground below sea level) |
 | pathRadiusTiles | integer | Search radius in tiles of one path query |

@@ -21,6 +21,7 @@ An ancient construct of crystallised voidite that guards the innermost rift boun
 | baseHp | integer | Hit points at tier baseline; extreme value |
 | baseDamage | integer | Damage per slam at tier baseline; extreme value |
 | alertRadius | decimal | Distance in metres at which creature detects and attacks; no alert phase |
+| skeleton | string | Skeleton family the creature model is rigged on (a SkeletonDefinition entity) |
 | maxStepMetres | decimal | Tallest ledge in metres the creature climbs in one tile step; a taller step is routed around |
 | canSwim | boolean | Whether the creature paths through water tiles (ground below sea level) |
 | pathRadiusTiles | integer | Search radius in tiles of one path query |

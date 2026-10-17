@@ -26,6 +26,8 @@ var _multimesh: MultiMesh
 var _use_color: bool = false
 var _free: Array[int] = []
 var _next: int = 0
+## Indices hidden since their last set_transform.
+var _hidden: Dictionary = {}
 
 ## Build the MultiMesh from a shared mesh. `use_color` enables per-instance
 ## colour (INSTANCE COLOR → vertex color, albedo via `vertex_color_use_as_albedo`).
@@ -65,6 +67,7 @@ func release(idx: int) -> void:
 	_free.append(idx)
 
 func set_transform(idx: int, t: Transform3D) -> void:
+	_hidden.erase(idx)
 	_multimesh.set_instance_transform(idx, t)
 
 func set_color(idx: int, c: Color) -> void:
@@ -74,7 +77,13 @@ func set_color(idx: int, c: Color) -> void:
 ## Hide an instance with a zero-scale transform (degenerate geometry is skipped
 ## by the renderer, so it draws nothing).
 func hide(idx: int) -> void:
+	_hidden[idx] = true
 	_multimesh.set_instance_transform(idx, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
+
+## False for a hidden (zero-scale) or released instance. Tracked here, not read back from the
+## MultiMesh (the headless dummy renderer does not store transforms).
+func is_shown(idx: int) -> bool:
+	return not _hidden.has(idx)
 
 func instance_count() -> int:
 	return _multimesh.instance_count

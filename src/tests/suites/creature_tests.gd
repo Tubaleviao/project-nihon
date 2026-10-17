@@ -9,6 +9,12 @@ func register() -> void:
 	_run_test("battle: kill emits creature_died signal",      _test_battle_kill_emits_death)
 	_run_test("battle: reset_hp restores state",              _test_battle_reset_hp)
 	_run_test("battle: resolves stats via creature_slice",    _test_battle_resolves_via_creature_slice)
+	_run_test("models: every creature names a skeleton and ships a matching rig", _test_models_rigs_match_fabric)
+	_run_test("models: range, hysteresis and the pool swap",    _test_models_range_hysteresis)
+	_run_test("models: a missing key keeps the box, warns once per type", _test_models_missing_key_warns_once)
+	_run_test("models: state-to-clip map and death does not loop", _test_models_clip_map)
+	_run_test("models: MAX_MODELS keeps the nearest",           _test_models_max_models_nearest)
+	_run_test("models: none are built without render_visuals",  _test_models_headless_builds_none)
 	_run_test("creature: spawns instances from GameData",     _test_creature_spawns_from_gamedata)
 	_run_test("creature: nearest_creature returns closest",   _test_creature_nearest)
 	_run_test("creature: death marks instance dead",          _test_creature_death_marks_dead)
@@ -2331,3 +2337,123 @@ func _test_taming_cooldown_mirror_pruned_in_place() -> void:
 # ---------------------------------------------------------------------------
 # Phase 39 — a downed body comes back (deliverable 1) + the two-client harness
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Phase 143 — creature models
+# ---------------------------------------------------------------------------
+
+const CreatureVisualsScript := preload("res://src/creature/creature_visuals.gd")
+
+## A rendered slice with `n` creatures of `cid` at x = 0, 10, 20... on the z = 0 line (client path).
+func _model_slice(cid: String, n: int) -> CreatureSlice:
+	var c := CreatureSlice.new()
+	add_child(c)
+	for i in n:
+		c.apply_creature_state("m%d" % i, cid, "idle", Vector3(i * 10.0, 0.0, 0.0), 10.0)
+	return c
+
+func _test_models_rigs_match_fabric() -> void:
+	assert_true(GameData.CREATURES.size() >= 10, "the roster is loaded")
+	for cid: String in GameData.CREATURES:
+		var res: Resource = GameData.CREATURES[cid]
+		var family: String = str(res.get("skeleton"))
+		assert_true(GameData.SKELETONS.has(family), "%s names a known skeleton (%s)" % [cid, family])
+		var root := AssetOverlay.load_rig_scene(AssetOverlayScript.creature_model_key(cid))
+		assert_true(root != null, "%s model parses" % cid)
+		if root == null or not GameData.SKELETONS.has(family):
+			if root != null:
+				root.free()
+			continue
+		var skeletons := root.find_children("*", "Skeleton3D", true, false)
+		assert_eq(skeletons.size(), 1, "%s has one Skeleton3D" % cid)
+		if skeletons.size() == 1:
+			var sk: Skeleton3D = skeletons[0]
+			for b in GameDataReader.json_field(GameData.SKELETONS[family], "bones", []):
+				assert_true(sk.find_bone(str(b["name"])) >= 0, "%s has bone %s of %s" % [cid, b["name"], family])
+		var ap := root.find_child("AnimationPlayer", true, false) as AnimationPlayer
+		assert_true(ap != null, "%s has an AnimationPlayer" % cid)
+		if ap != null:
+			for clip in ["idle", "walk", "run", "fall", "land", "attack", "death"]:
+				assert_true(ap.has_animation(clip), "%s has clip %s" % [cid, clip])
+		root.free()
+
+func _test_models_range_hysteresis() -> void:
+	var c := _model_slice("GraywolfPack", 1)
+	var v = c.visuals()
+	var mi: int = int(c._instances["m0"]["mi"])
+	var pool = c._pool
+	assert_true(pool.is_shown(mi), "a fresh creature draws as a box")
+	v.reselect(c._instances, Vector3(0, 0, CreatureVisualsScript.MODEL_RANGE_M - 1.0))
+	assert_true(c.has_model("m0"), "inside the range it has a model")
+	assert_false(pool.is_shown(mi), "and no pool box")
+	v.reselect(c._instances, Vector3(0, 0, CreatureVisualsScript.MODEL_RANGE_M + 2.0))
+	assert_true(c.has_model("m0"), "inside the hysteresis band the model stays")
+	v.reselect(c._instances, Vector3(0, 0, CreatureVisualsScript.MODEL_RANGE_M + CreatureVisualsScript.HYSTERESIS_M + 1.0))
+	assert_false(c.has_model("m0"), "past the band the model goes")
+	assert_true(pool.is_shown(mi), "and the box returns")
+	v.reselect(c._instances, Vector3(0, 0, CreatureVisualsScript.MODEL_RANGE_M + 2.0))
+	assert_false(c.has_model("m0"), "inside the band but without a model, none is attached")
+	c.set_instance_position("m0", Vector3(1, 0, 0))
+	v.reselect(c._instances, Vector3(0, 0, 5.0))
+	c.set_instance_position("m0", Vector3(2, 0, 0))
+	assert_false(pool.is_shown(mi), "a moving modelled creature does not bring its box back")
+	c.free()
+
+func _test_models_missing_key_warns_once() -> void:
+	var c := CreatureSlice.new()
+	add_child(c)
+	c.apply_creature_state("g0", "Ghost", "idle", Vector3.ZERO, 10.0)
+	c.apply_creature_state("g1", "Ghost", "idle", Vector3(2, 0, 0), 10.0)
+	var before := Diag.warn_count()
+	c.visuals().reselect(c._instances, Vector3.ZERO)
+	c.visuals().reselect(c._instances, Vector3.ZERO)
+	assert_false(c.has_model("g0"), "no model for a missing key")
+	assert_true(int(c._instances["g0"]["mi"]) >= 0 and c._pool.is_shown(int(c._instances["g0"]["mi"])), "it renders through the pool")
+	assert_eq(Diag.warn_count() - before, 1, "one warning per type, not per creature or pass")
+	c.free()
+
+func _test_models_clip_map() -> void:
+	var V := CreatureVisualsScript
+	for st: String in V.STATES:
+		for sp in [0.0, 1.0, 5.0]:
+			var clip: String = V.clip_name(st, sp)
+			assert_true(["idle", "walk", "run", "fall", "land", "attack", "death"].has(clip), "%s at %s maps to a shared clip (%s)" % [st, sp, clip])
+	assert_eq(V.clip_name("dead", 0.0), "death", "a dead creature plays death")
+	assert_eq(V.clip_name("dead", 6.0), "death", "even with residual speed")
+	assert_false(V.clip_loops("dead"), "death does not loop")
+	assert_true(V.clip_loops("idle"), "idle loops")
+	assert_eq(V.clip_name("fleeing", 0.0), "run", "fleeing runs")
+	assert_eq(V.clip_name("aggressive", 0.0), "attack", "a stationary aggressor attacks")
+	assert_eq(V.clip_name("idle", 1.0), "walk", "idle at walking speed walks")
+	# -Z forward model: facing +Z needs a half turn, facing -Z none.
+	assert_true(absf(V.yaw_for_direction(Vector3(0, 0, -1))) < 0.001, "-Z needs no turn")
+	assert_true(absf(absf(V.yaw_for_direction(Vector3(0, 0, 1))) - PI) < 0.001, "+Z needs a half turn")
+	var c := _model_slice("GraywolfPack", 1)
+	c.visuals().reselect(c._instances, Vector3.ZERO)
+	var tree: AnimationTree = c.visuals().models["m0"]["tree"]
+	var death := (tree.get_node(tree.anim_player) as AnimationPlayer).get_animation("death")
+	assert_eq(death.loop_mode, Animation.LOOP_NONE, "the death clip is set not to loop")
+	c.free()
+
+func _test_models_max_models_nearest() -> void:
+	var c := _model_slice("GraywolfPack", 8)
+	var v = c.visuals()
+	v.max_models = 3
+	v.reselect(c._instances, Vector3(-1.0, 0, 0))
+	assert_eq(v.models.size(), 3, "MAX_MODELS is respected")
+	for id in ["m0", "m1", "m2"]:
+		assert_true(c.has_model(id), "%s is among the nearest" % id)
+	assert_false(c.has_model("m3"), "a farther creature stays a box")
+	assert_eq(CreatureVisualsScript.select_ids([["a", 5.0], ["b", 1.0], ["c", 50.0]], {}, 40.0, 6.0, 5), ["b", "a"], "select_ids orders by distance and applies the range")
+	c.free()
+
+func _test_models_headless_builds_none() -> void:
+	var c := CreatureSlice.new()
+	c.render_visuals = false
+	add_child(c)
+	c.apply_creature_state("h0", "GraywolfPack", "idle", Vector3.ZERO, 10.0)
+	assert_true(c.visuals() == null, "no model node host without render_visuals")
+	assert_false(c.has_model("h0"), "no model")
+	c._process(0.1)
+	c.free()

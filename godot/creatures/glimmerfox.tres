@@ -11,6 +11,7 @@ aggressionLevel = 0
 baseHp = 20
 baseDamage = 2
 alertRadius = 8.0
+skeleton = "QuadrupedSkeleton"
 maxStepMetres = 0.75
 canSwim = false
 pathRadiusTiles = 24
