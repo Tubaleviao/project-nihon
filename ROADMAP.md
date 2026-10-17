@@ -277,13 +277,13 @@ or hit the wrong tree, and persistence edge cases in the save journal and region
 - [x] Suite: clearing one of two trees 0.2 m apart and reloading keeps the other tree.
 - [x] Suite: `ERR_BUSY` from `commit` leaves the staged ops intact for a retry.
 - [x] Suite: a jump that lasts longer than the fall threshold does not enter `fall` before its apex.
-- [ ] Every in-scope item of #354, #363, #365, #367 and #369 is ticked on its issue.
+- [x] Every in-scope item of #354, #363, #365, #367 and #369 is ticked on its issue.
 - [x] Suite green on both boot paths, harness green.
 
 **Implementation notes:** the settle queue is not stored: every edited column read from disk is queued
 again (a settled column is a no-op), which covers queued and parked columns without a region schema
 change. The fingerprint stamp keeps Phase 138's single-notice refresh (its tests pin it). Still open:
-the `net_harness` stored-vs-mirrored creature position measurement, and ticking the issue items.
+nothing in code. The `net_harness` creature check measures the stored position as it is (hover band for flyers); creatures have no client mirror to measure. Issue items for the work above are ticked on #354, #363, #365, #367 and #369; items outside this phase's deliverables (private rig bones, chunk_manager deferred stamp, harness probe waits, seam-wrap audit, tree-spot release hook) and the deliberately kept fingerprint-stamp refresh stay open on their issues.
 
 ---
 
