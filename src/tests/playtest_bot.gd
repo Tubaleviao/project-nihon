@@ -520,7 +520,13 @@ func _model_diag(iid: String) -> String:
 ## Travel: two waystones set down with the player's own keys, attuned, then the intent; the body must land at the second.
 func _step_travel() -> Array:
 	var stone: String = str(_root._waystones.station_type())
+	_key(KEY_W, true)   # clear of the bench and the forge the earlier steps set down
+	await _until(func(): return false, 1.5)
+	_key(KEY_W, false)
 	var before := _placed.size()
+	var item: String = _root._station.placement_item(stone)
+	if item != "":
+		_root._inventory.add_item(item, 2)   # each placement consumes one
 	if await _place_with_keys(stone) == 0:
 		return [false, "first waystone refused"]
 	var a: String = str(_placed[before][0])
