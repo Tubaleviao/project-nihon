@@ -8,6 +8,8 @@ func register() -> void:
 	_run_test("stream: the polar row memo and shelf shortcut change no height", _test_stream_polar_shortcuts_exact)
 	_run_test("stream: a deferred gather builds the same chunk as a full one", _test_stream_deferred_gather_same_build)
 	_run_test("stream: a dispatch generates no map on the main thread", _test_stream_dispatch_no_main_thread_noise)
+	_run_test("stream: a frame's pump stops at its time budget and bounds its applies", _test_stream_pump_budget)
+	_run_test("stream: the steady build cap defaults to the core count minus one", _test_stream_builds_in_flight_default)
 	_run_test("stream: a restream bursts the build cap until the window is rebuilt", _test_stream_fold_catchup)
 
 ## Rows a player can reach: the equator, mid latitudes, the ice shelf, the pole's snow field, past
@@ -133,6 +135,50 @@ func _test_stream_dispatch_no_main_thread_noise() -> void:
 	voxel.free()
 	terrain.free()
 	rig["player"].free()
+
+func _test_stream_pump_budget() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	# A stub clock that advances 1 ms per read, so a step's cost is deterministic.
+	var ticks := [0]
+	cm.pump_clock_usec = func() -> int:
+		var t: int = ticks[0]
+		ticks[0] = t + 1000
+		return t
+	cm.pump_budget_msec = 3
+	cm.loads_per_frame = 100
+	cm.max_builds_in_flight = 100
+	cm.view_distance = 2
+	cm.prefetch_distance = 0
+	cm.refresh()
+	var queued := cm._load_queue.size()
+	assert_true(queued > 3, "a window is queued")
+	cm.begin_pump()
+	cm._drain_load_queue()
+	assert_eq(cm._builds.size(), 3, "a frame dispatches until the 3 ms budget is spent, no further")
+	assert_eq(cm._load_queue.size(), queued - 3, "the rest stays queued for the next frame")
+	assert_true(cm.pump_spent_usec() <= 5000, "and the pump stopped within a step of the budget")
+	# Apply: only `applies_per_frame` finished builds land in one frame.
+	for task_id in cm._builds.keys():
+		while not WorkerThreadPool.is_task_completed(task_id):
+			OS.delay_msec(1)   # poll, never wait: waiting would consume the id the pump polls
+	cm.applies_per_frame = 2
+	cm.pump_budget_msec = 0
+	cm.begin_pump()
+	cm._apply_finished_builds()
+	assert_eq(cm._built.size(), 2, "one frame applies at most applies_per_frame builds")
+	cm.flush_builds()
+	cm.pump_budget_msec = 0
+	_wait_for_builds(cm)
+	cm.free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+func _test_stream_builds_in_flight_default() -> void:
+	var cm := ChunkManager.new()
+	assert_eq(cm.max_builds_in_flight, maxi(4, OS.get_processor_count() - 1), "the steady cap is every core but one, at least four")
+	cm.free()
 
 func _test_stream_fold_catchup() -> void:
 	var rig := _make_chunk_build_rig()

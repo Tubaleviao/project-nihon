@@ -679,7 +679,7 @@ world gets taller.
 **Acceptance criteria:**
 - [ ] Suite: native and GDScript builders give equal arrays for a fixed set of chunks (equator, ice,
   pole, antimeridian, edited chunk); the GDScript fallback is used when the extension is absent.
-- [ ] Suite: a frame's pump never spends over its time budget on dispatch + apply in a stubbed clock.
+- [x] Suite: a frame's pump never spends over its time budget on dispatch + apply in a stubbed clock.
 - [ ] Playtest bot: the `stream` step's chunk build rate at least doubles against the Phase 141 report,
   and no step reports a hitch over 50 ms.
 - [ ] Suite: a region read for a window move never runs on the main thread.
