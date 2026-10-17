@@ -7,7 +7,7 @@ title: "WaystonesAmendNoTeleportation"
 
 `decision`
 
-Amends NoTeleportation: waystones are the one sanctioned fast travel. A player must build and stock a waystone network, travel only between stones they are attuned to, and pay an item cost scaled by distance, so travel remains infrastructure and a cost, never free or arbitrary teleportation.
+Amends NoTeleportation: waystones are the one sanctioned fast travel. A player must build and stock a waystone network, travel only between stones they are attuned to, and pay an item cost scaled by distance, so travel remains infrastructure and a cost, never free or arbitrary teleportation. Placement policy for stations: a station whose fabric rule names a placement item (the waystone and the settlement hearth) consumes one from the placer on the host, so the network is built from crafted stones and cannot be spawned for free; workshop stations (forge, benches) are gated by skill and technology rather than an item and stay free to place.
 
 > Keep a planet that takes about 90 days to walk around navigable without making geography meaningless
 

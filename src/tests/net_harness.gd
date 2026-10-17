@@ -166,6 +166,7 @@ static func steps() -> Array:
 		{ "name": "weather_override",  "compare": true },
 		{ "name": "status_effect",     "compare": true },
 		{ "name": "paralysis_holds",   "compare": true },
+		{ "name": "station_needs_item", "compare": true },
 		{ "name": "inventory_owner",   "compare": true },
 		{ "name": "research_points_owner", "compare": true },
 		{ "name": "chat_relayed",      "compare": true },
@@ -386,6 +387,7 @@ func run(root: Node, role: String) -> void:
 	await _step_weather_override()
 	await _step_status_effect()
 	await _step_paralysis_holds()
+	await _step_station_needs_item()
 	await _step_inventory_owner()
 	await _step_research_points_owner()
 	await _step_chat_relayed()
@@ -1352,6 +1354,31 @@ func _step_paralysis_holds() -> void:
 			"hp": float(PlayerSlice.MAX_HP), "max_hp": float(PlayerSlice.MAX_HP) })
 		await _await_until(func(): return false, 0.1)
 	_report("paralysis_holds", verdict(true, true), "held")
+
+## Phase 147 — the host decides what a station costs: placing a waystone or a hearth from a pack that
+## does not hold the item is refused and creates no station, whatever the placer's client believes.
+## The client has nothing to send (a station is only ever placed by the host's rules), so it reports
+## the same token once the host has judged.
+func _step_station_needs_item() -> void:
+	if _role == "host":
+		var owner_pid := _bound_id()
+		var inv: Node = _root._registry.get_inventory(owner_pid) if owner_pid != "" else null
+		if inv == null:
+			_report("station_needs_item", "fail", "no_owner_inventory")
+			return
+		var before: int = _root._station.get_all_stations().size()
+		var spot: Vector3 = _root._player.get_position() + Vector3(40.0, 0.0, 40.0)
+		var refused := true
+		for type: String in [_root._waystones.station_type(), str(_root._settlements.rules()["hearthStation"])]:
+			if inv.get_item_count(_root._station.placement_item(type)) > 0:
+				continue   # the fixture never holds one; a holder would make this step meaningless
+			if _root._station.try_place_station(type, spot, inv, owner_pid) != "":
+				refused = false
+		var unchanged: bool = _root._station.get_all_stations().size() == before
+		_report("station_needs_item", verdict(refused and unchanged, true), "refused" if (refused and unchanged) else "placed_without_item")
+		return
+	await _await_settle(1.0)
+	_report("station_needs_item", verdict(true, true), "refused")
 
 ## Step 14 (Phase 53) — a new player given a friend code spawns beside that friend.
 ##

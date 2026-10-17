@@ -26,6 +26,9 @@ const HYSTERESIS_M := 6.0
 const MAX_MODELS := 24
 ## Seconds between range checks (the models themselves are updated every frame).
 const SELECT_INTERVAL := 0.25
+## A creature that moves farther than this between two model updates was teleported (a respawn), not
+## run: its speed estimate restarts at rest instead of reading the jump as a sprint.
+const TELEPORT_JUMP_M := 8.0
 ## Seconds a dead creature's model holds its death pose before it is dropped.
 const CORPSE_SECONDS := 8.0
 ## Horizontal speed (m/s) above which the model turns to face the direction of travel.
@@ -145,6 +148,9 @@ func reselect(instances: Dictionary, cam_world: Vector3) -> void:
 		var inst: Dictionary = instances[iid]
 		if inst["state"] == "dead" and not models.has(iid):
 			continue
+		# A type with no usable model keeps its box and must not take a slot from one that has a model.
+		if not models.has(iid) and _template(str(inst["creature_id"])) == null:
+			continue
 		var d: float = cam_world.distance_to(inst["position"])
 		if d <= limit:
 			cands.append([iid, d])
@@ -215,7 +221,10 @@ func _update_model(iid: String, inst: Dictionary, delta: float) -> void:
 	var state: String = inst["state"]
 	var last: Vector3 = m["last_pos"]
 	var flat := Vector3(pos.x - last.x, 0.0, pos.z - last.z)
-	if delta > 0.0:
+	if flat.length() > TELEPORT_JUMP_M:
+		m["speed"] = 0.0
+		flat = Vector3.ZERO
+	elif delta > 0.0:
 		var inst_speed := flat.length() / delta
 		m["speed"] = lerpf(float(m["speed"]), inst_speed, minf(1.0, delta * 8.0))
 	m["last_pos"] = pos

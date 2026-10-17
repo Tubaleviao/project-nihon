@@ -70,6 +70,8 @@ var position_of: Callable = Callable()
 var _settlements: Dictionary = {}
 var _next_id: int = 1
 var _last_intent: Dictionary = {}
+## id -> claim radius last announced for an abandoned (decaying) settlement.
+var _radius_pushed: Dictionary = {}
 ## Client view: what the host last sent.
 var _view: Dictionary = {}
 
@@ -170,6 +172,11 @@ static func xz_of_exact(pos: Dictionary) -> Vector2:
 	var l: Vector3 = pos["local"]
 	return Vector2(float(c.x) * WorldPos.CHUNK_METERS + l.x, float(c.y) * WorldPos.CHUNK_METERS + l.z)
 
+## The hearth's exact `{chunk, local}` (empty for a settlement founded without one).
+func hearth_exact(id: String) -> Dictionary:
+	var s: Dictionary = _settlements.get(id, {})
+	return WorldPos.pos_from_wire(s["hearth"]) if s.has("hearth") else {}
+
 func _hearth_xz(s: Dictionary) -> Vector2:
 	return Vector2(float(s["hx"]), float(s["hz"]))
 
@@ -214,8 +221,9 @@ func founding_blocker(xz: Vector2) -> String:
 	return ""
 
 ## Found a settlement for `player_id` at `xz`. `consume` takes the Hearth item from the pack (false when
-## the station placement already did).
-func found(player_id: String, sname: String, xz: Vector2, consume: bool = true) -> String:
+## the station placement already did). `exact` is the hearth's `{chunk, local}` when the caller has it:
+## `xz` is a float32 `Vector2`, coarse far from the origin, so the exact position is what is saved.
+func found(player_id: String, sname: String, xz: Vector2, consume: bool = true, exact: Dictionary = {}) -> String:
 	var pid := _pid(player_id)
 	if pid == "":
 		return "unknown_player"
@@ -241,6 +249,13 @@ func found(player_id: String, sname: String, xz: Vector2, consume: bool = true) 
 		"created": now, "last_active": now, "hx": xz.x, "hz": xz.y, "status": "founded",
 		"abandoned_at": 0.0, "abandoned_radius": 0.0, "stock": {}, "taken": {},
 	}
+	if WorldPos.is_plausible_pos(exact):
+		_settlements[id]["hearth"] = WorldPos.pos_to_wire(exact)
+		# Components stay doubles: a `Vector2` is float32 and would snap a far hearth to metres.
+		var c: Vector2i = exact["chunk"]
+		var l: Vector3 = exact["local"]
+		_settlements[id]["hx"] = float(c.x) * WorldPos.CHUNK_METERS + l.x
+		_settlements[id]["hz"] = float(c.y) * WorldPos.CHUNK_METERS + l.z
 	GameBus.settlements_changed.emit()
 	return ""
 
@@ -438,7 +453,8 @@ func _push_inventory(pid: String) -> void:
 # ── edits ────────────────────────────────────────────────────────────────
 
 ## "" when `player_id` may mine or place at ground point `xz`; else a reason. Land outside every claim is
-## free; inside one, only a member whose role has `build` may edit.
+## free; inside one, only a member whose role has `build` may edit. A pure query (the placement preview
+## asks it too): the edit itself is recorded by `note_edit` once it succeeded.
 func edit_blocker(player_id: String, xz: Vector2) -> String:
 	var id := claim_at(xz)
 	if id == "":
@@ -446,8 +462,13 @@ func edit_blocker(player_id: String, xz: Vector2) -> String:
 	var role := role_of(_pid(player_id), id)
 	if role == "" or not bool(role_rules(role)["build"]):
 		return "no_permission"
-	_touch(id)
 	return ""
+
+## A successful edit at `xz` by `player_id`: counts as activity for the claim it landed in.
+func note_edit(player_id: String, xz: Vector2) -> void:
+	var id := claim_at(xz)
+	if id != "" and edit_blocker(player_id, xz) == "":
+		_touch(id)
 
 # ── lifecycle ────────────────────────────────────────────────────────────
 
@@ -479,9 +500,14 @@ func tick(now: float) -> bool:
 		var s: Dictionary = _settlements[id]
 		var status := str(s["status"])
 		if status == "abandoned":
-			if claim_radius(id) <= 0.0:
+			var radius := claim_radius(id)
+			if radius <= 0.0:
 				_settlements.erase(id)   # the land is free again
+				_radius_pushed.erase(id)
 				changed = true
+			elif int(radius) != int(_radius_pushed.get(id, radius)):
+				changed = true   # the decaying claim shrank a whole metre: clients redraw it
+			_radius_pushed[id] = radius
 			continue
 		if now - float(s["last_active"]) >= float(r["abandonAfterDays"]) * DAY_SEC:
 			s["abandoned_radius"] = claim_radius(id)
@@ -556,6 +582,7 @@ func from_data(data: Variant) -> void:
 	if not (data is Dictionary):
 		return
 	_next_id = maxi(1, int((data as Dictionary).get("next_id", 1)))
+	_radius_pushed.clear()
 	var raw: Variant = (data as Dictionary).get("settlements", {})
 	if not (raw is Dictionary):
 		return
@@ -591,11 +618,16 @@ func from_data(data: Variant) -> void:
 		_settlements[str(id).left(64)] = {
 			"id": str(id).left(64), "name": str(s.get("name", "")).left(MAX_NAME), "founder": str(s.get("founder", "")).left(64),
 			"members": members, "invites": invites, "created": float(s.get("created", 0.0)),
-			"last_active": float(s.get("last_active", 0.0)), "hx": float(s.get("hx", 0.0)), "hz": float(s.get("hz", 0.0)),
+			"last_active": float(s.get("last_active", now_sec.call())), "hx": float(s.get("hx", 0.0)), "hz": float(s.get("hz", 0.0)),
 			"status": status if (TIER_ORDER + ["abandoned"]).has(status) else "founded",
 			"abandoned_at": float(s.get("abandoned_at", 0.0)), "abandoned_radius": float(s.get("abandoned_radius", 0.0)),
 			"stock": stock, "taken": taken,
 		}
+		if WorldPos.pos_from_wire(s.get("hearth", null)).size() > 0:
+			_settlements[str(id).left(64)]["hearth"] = (s["hearth"] as Dictionary).duplicate(true)
+		var suffix := str(id).trim_prefix("settlement_")
+		if suffix.is_valid_int():
+			_next_id = maxi(_next_id, int(suffix) + 1)   # never reuse a loaded id
 
 # ── views ────────────────────────────────────────────────────────────────
 

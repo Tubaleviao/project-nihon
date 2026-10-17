@@ -361,14 +361,15 @@ func note_craft(recipe_id: String, player_id: String = "") -> int:
 		amount += points_for("firstCraftOfRecipe")
 	if amount <= 0:
 		return 0   # a rule table that pays nothing leaves no marker and no sync
-	# The marker is written before the grant: the grant syncs and records a snapshot.
+	var granted := _earn(pid, amount)
+	if granted <= 0:
+		return 0   # nothing paid (window or ceiling full): the first-craft bonus stays available
+	# The marker is written after the grant is known but before it syncs: the sync records a snapshot.
 	if first:
 		if not _first_crafts.has(pid):
 			_first_crafts[pid] = {}
 		_first_crafts[pid][recipe_id] = true
-	var granted := _earn(pid, amount)
-	if granted > 0:
-		_set_points(pid, get_points(pid) + granted)
+	_set_points(pid, get_points(pid) + granted)
 	return granted
 
 func _set_points(player_id: String, points: int) -> void:
