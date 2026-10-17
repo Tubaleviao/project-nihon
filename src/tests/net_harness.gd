@@ -60,6 +60,7 @@ const I18n := preload("res://src/core/i18n.gd")
 const PlayerSlice := preload("res://src/player/player_slice.gd")
 const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 const NetworkingSlice := preload("res://src/networking/networking_slice.gd")
+const CreatureSlice := preload("res://src/creature/creature_slice.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const VoxelSlice := preload("res://src/terrain/voxel_slice.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
@@ -120,6 +121,8 @@ var _lines: Array = []
 ## True once any step of this side has reported `fail` — the run's verdict, which `_finish`
 ## turns into the process exit code (see there).
 var _failed: bool = false
+## Phase 150 — creature deltas this process saw on the bus (a client counts the ones the host sent it).
+var _creature_deltas: int = 0
 
 ## The peer id this process handshook with (0 until step 1 resolves it, and always 1 on the
 ## client side — the host is ENet peer 1 to its peers). Note that ENet REASSIGNS peer ids,
@@ -330,7 +333,8 @@ func run(root: Node, role: String) -> void:
 	_time_scale = _root._networking.link_time_scale()
 	print(format_line("profile", "ok", profile if profile != "" else "loopback"))
 	if _root._networking.emulator_bandwidth_kbps > 0.0:
-		_root._creature.broadcast_deltas = false
+		_root._creature.delta_interval = CreatureSlice.THROTTLED_SYNC_INTERVAL
+	GameBus.creature_state_changed.connect(func(_i: String, _c: String, _s: String, _p: Vector3) -> void: _creature_deltas += 1)
 	print(format_line("plan", "ok", plan_detail()))
 	if not _self_audit():
 		return
@@ -345,7 +349,7 @@ func run(root: Node, role: String) -> void:
 		_root._registry.set_spawn_placer(func(player_id: String, code: String) -> Dictionary:
 			if code == "":
 				return { "position": RENDEZVOUS, "source": "search", "message": "" }
-			return _root._peer_wiring._place_new_player(player_id, code))
+			return _root._peer_wiring.place_new_player(player_id, code))
 		# Booting adopts the seed of any world record on disk, which silently replaces the
 		# pinned one; a run on the wrong seed would fail for an unrelated reason.
 		if int(_root._terrain.get_world_seed()) != _pinned_seed:
@@ -417,7 +421,13 @@ func run(root: Node, role: String) -> void:
 ## but a CI wrapper (or a human) reaches for the exit code FIRST, and a failing scenario
 ## that reports success there is the wrong answer to give the cheapest question.
 func _finish() -> void:
-	print(format_line("link", "ok", "retransmits-%d" % int(_root._networking.emulator_retransmits)))
+	var capped: bool = _root._networking.emulator_bandwidth_kbps > 0.0
+	# Phase 150 — a throttled creature sync still has to reach the client: no delta at all on a capped link fails.
+	var starved: bool = capped and _role == "client" and _creature_deltas == 0
+	if starved:
+		_failed = true
+	print(format_line("link", "fail" if starved else "ok", "retransmits-%d dropped-%d creature_deltas-%d" % [
+		int(_root._networking.emulator_retransmits), int(_root._networking.emulator_dropped), _creature_deltas]))
 	print(format_line("done", "ok", _role))
 	get_tree().quit(1 if _failed else 0)
 
@@ -1335,7 +1345,7 @@ func _step_paralysis_holds() -> void:
 			_report("paralysis_holds", "fail", "no_owner_or_state-peer%d" % _bound_peer)
 			return
 		var base: Vector3 = net.get_last_known_state(_bound_peer)
-		_root._status.apply(owner_pid, "paralysis", _root._combat_wiring._status_now())
+		_root._status.apply(owner_pid, "paralysis", _root._combat_wiring.status_now())
 		_root._combat_wiring.tick_status_effects()
 		await _await_until(func(): return false, 1.5)
 		var held: bool = net.get_last_known_state(_bound_peer).distance_to(base) < 0.5
@@ -1460,7 +1470,7 @@ func _step_chunk_record_synced() -> void:
 			_report("chunk_record_synced", "fail", "no_peer")
 			return
 		_root._peer_records_msec.erase(peer)
-		_root._networking.send_snapshot(peer, _root._snapshot_wiring._build_snapshot(peer, false, RENDEZVOUS, false))
+		_root._networking.send_snapshot(peer, _root._snapshot_wiring.build_snapshot(peer, false, RENDEZVOUS, false))
 		await _await_link_drained()
 		_report("chunk_record_synced", verdict(true, true), _record_detail(rec))
 		return
@@ -1682,7 +1692,7 @@ func _step_frontier_record_synced() -> void:
 			_report("frontier_record_synced", "fail", "no_peer")
 			return
 		_root._peer_records_msec.erase(peer)
-		_root._networking.send_snapshot(peer, _root._snapshot_wiring._build_snapshot(peer, false, RENDEZVOUS, false))
+		_root._networking.send_snapshot(peer, _root._snapshot_wiring.build_snapshot(peer, false, RENDEZVOUS, false))
 		await _await_link_drained()
 		_report("frontier_record_synced", verdict(true, true), _record_detail(rec))
 		return

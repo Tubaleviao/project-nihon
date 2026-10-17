@@ -132,7 +132,7 @@ var _snapshot_pending: bool = false
 var _pending_host_boot: bool = false
 
 ## Phase 42 review — true while a CLIENT join is waiting for the same first ring (see
-## `_snapshot_wiring._on_world_snapshot_received` / `_finish_client_boot`). The client has no boot tail to
+## `_snapshot_wiring.on_world_snapshot_received` / `_finish_client_boot`). The client has no boot tail to
 ## run, so it is a separate flag rather than a mode on the host one: all it holds is the
 ## loading screen and the movement freeze, and all it does at the end is release both.
 var _pending_client_boot: bool = false
@@ -163,7 +163,7 @@ var _host_boot_wait_elapsed: float = 0.0
 var _client_boot_wait_elapsed: float = 0.0
 
 ## Phase 39 — which side of the two-client network harness this boot drives ("" for a
-## normal boot). Set by `_boot_wiring._parse_network_args`; see `_run_net_harness`.
+## normal boot). Set by `_boot_wiring.parse_network_args`; see `_run_net_harness`.
 var _net_harness_role: String = ""
 
 ## Phase 53 — how settled each region is; new-player spawns keep away from the settled ones.
@@ -183,7 +183,7 @@ var _friend_code_arg: String = ""
 var _local_spawn: Variant = null
 ## Phase 53 — client: the respawn point was taken from the first snapshot's own position.
 var _client_respawn_point_set: bool = false
-## Phase 87 — how many times `_persistence_wiring._saved_local_position` has run; a test reads it to prove a placement
+## Phase 87 — how many times `_persistence_wiring.saved_local_position` has run; a test reads it to prove a placement
 ## reads the record once.
 var _saved_position_reads: int = 0
 ## True when the local player's record carried a saved position at boot (a returning player).
@@ -237,7 +237,7 @@ func _init() -> void:
 func _ready() -> void:
 	# Phase 36 — the role flags are read FIRST, because they decide whether the
 	# automated suite runs on this boot (see should_run_tests).
-	_boot_wiring._parse_network_args()
+	_boot_wiring.parse_network_args()
 	# Phase 131 — saved language, else the OS locale, else English.
 	LocaleSettings.apply_startup()
 	# Phase 42 review pass 3 — and whether this boot quits itself once its world is up
@@ -258,7 +258,7 @@ func _ready() -> void:
 		_run_tests()
 
 	# Phase 33 — intercept the quit so records are written first.
-	_boot_wiring._install_quit_guard()
+	_boot_wiring.install_quit_guard()
 
 	_terrain     = TerrainSlice.new()
 	_voxel       = VoxelSlice.new()
@@ -295,18 +295,18 @@ func _ready() -> void:
 	# Phase 129 — status effects live on the host; the battle slice rolls them and the AI honours them.
 	_status = StatusEffects.new()
 	_battle.status_effects = _status
-	_battle.now_fn = Callable(_combat_wiring, "_status_now")
+	_battle.now_fn = _combat_wiring.status_now
 	_creature_ai.status_effects = _status
-	_creature_ai.now_fn = Callable(_combat_wiring, "_status_now")
+	_creature_ai.now_fn = _combat_wiring.status_now
 	# Phase 128 — weather is a pure function of the seed, the biome and the clock.
 	_weather.clock    = _clock
-	_weather.seed_of  = Callable(_terrain, "get_world_seed")
+	_weather.seed_of  = _terrain.get_world_seed
 	# The generator's biome, not the record-aware one: records are host-local, weather must match on every peer.
 	_weather.biome_of = func(chunk: Vector2i) -> String: return TerrainSlice.generated_biome_for_chunk(chunk, _terrain.get_world_seed())
 
 	# CreatureSlice stands spawns and walkers on the terrain and voxel surface; wire it before it enters the tree.
 	_creature.terrain_slice = _terrain
-	_creature.use_surface(_voxel, Callable(_chunk_manager, "is_chunk_built"))
+	_creature.use_surface(_voxel, _chunk_manager.is_chunk_built)
 	_creature.world_clock = _clock
 	# TreeSlice likewise stands its trees on the terrain surface.
 	_tree.terrain_slice = _terrain
@@ -318,8 +318,8 @@ func _ready() -> void:
 	_creature_ai.battle_slice   = _battle
 	# Phase 36 — creature AI targets the nearest of ALL players, so it needs the
 	# targets this integration layer alone can assemble: the local body plus every
-	# connected peer's last recorded position (see _peer_wiring._player_targets).
-	_creature_ai.player_targets = Callable(_peer_wiring, "_player_targets")
+	# connected peer's last recorded position (see _peer_wiring.player_targets).
+	_creature_ai.player_targets = _peer_wiring.player_targets
 
 	# Wire crafting + station cross-references before add_child so their _ready()
 	# methods see the correct dependencies if they ever emit signals during init.
@@ -396,15 +396,15 @@ func _ready() -> void:
 	_tree.player_registry     = _registry
 	_tree.voxel_slice         = _voxel
 	_tree.station_slice       = _station
-	_tree.record_writer       = Callable(_chunk_manager, "update_record")
-	_tree.frontier_ready      = Callable(_chunk_manager, "can_record_now")
+	_tree.record_writer       = _chunk_manager.update_record
+	_tree.frontier_ready      = _chunk_manager.can_record_now
 	# Phase 36 — the wire is policed with evidence the bus cannot carry: a tree chop
 	# intent names only a tree id (its position for the reach check comes from the tree
 	# slice) and a trade invite names a counterparty (resolved against the registry's
 	# online set). Both checks fail closed when unwired.
 	_networking.tree_slice      = _tree
 	_networking.player_registry = _registry
-	_networking.peer_held = _peer_wiring._peer_is_held
+	_networking.peer_held = _peer_wiring.peer_is_held
 	# Phase 85 — chat and admin commands act on the registry's players, the local body and pack,
 	# and reach a remote player through the networking slice's host → peer doors. A headless
 	# server builds no box.
@@ -570,7 +570,7 @@ func _ready() -> void:
 		add_child(env)
 
 	# Verify GameData entries load cleanly.
-	_boot_wiring._check_game_data()
+	_boot_wiring.check_game_data()
 
 	# Boot terrain — creatures are spawned by CreatureSlice._ready() via GameData.
 	# Phase 39 — the two-client network harness boots in place of the world boot: it is
@@ -581,7 +581,7 @@ func _ready() -> void:
 		return
 
 	_boot_world()
-	_boot_wiring._start_playtest_bot()
+	_boot_wiring.start_playtest_bot()
 
 ## Phase 39 — run the two-client network harness and let it end this process.
 ##
@@ -671,9 +671,9 @@ func _notification(what: int) -> void:
 		print("[Server] window close requested — saving before quit")
 		if _minimap != null and _minimap.revealed_dir != "" and _minimap.is_revealed_loaded():
 			_minimap.save_revealed()
-		_persistence_wiring._save_everything(true)
+		_persistence_wiring.save_everything(true)
 		# The write is threaded, so quitting here would race it: block until it lands.
-		_persistence_wiring._flush_save()
+		_persistence_wiring.flush_save()
 		get_tree().quit()
 	elif what == NOTIFICATION_PREDELETE:
 		# Wired once in `_ready`: unwire at free time, so a reparent keeps the handlers.
@@ -733,17 +733,17 @@ func _boot_host() -> void:
 	_loading_screen.begin()
 	# Phase 42 review pass 11 — `_boot_server` armed the ring around the PRE-SPAWN body,
 	# which is the origin chunk. A host who logged off elsewhere is moved there by
-	# `_persistence_wiring._restore_local_player` only in the tail, AFTER the gate opened, onto chunks nobody
+	# `_persistence_wiring.restore_local_player` only in the tail, AFTER the gate opened, onto chunks nobody
 	# had dispatched. Place the (now frozen) body at the saved position first and re-arm
 	# the ring and the window around it; the origin chunks still queued fall outside the
 	# window and are dropped by the drain.
-	var saved_pos: Variant = _persistence_wiring._saved_local_position()
+	var saved_pos: Variant = _persistence_wiring.saved_local_position()
 	if saved_pos == null:
 		# Phase 53 — a first boot: the same placement a joining peer gets.
-		saved_pos = _peer_wiring._first_boot_spawn()
+		saved_pos = _peer_wiring.first_boot_spawn()
 	if saved_pos != null:
-		_persistence_wiring._place_local_player(saved_pos)
-		_persistence_wiring._lift_out_of_ground()
+		_persistence_wiring.place_local_player(saved_pos)
+		_persistence_wiring.lift_out_of_ground()
 		_chunk_manager.build_first_ring(_chunk_manager.player_chunk())
 		_chunk_manager.refresh()
 	_host_boot_wait_elapsed = 0.0
@@ -792,7 +792,7 @@ func _quit_after_boot_if_asked(role: String) -> void:
 	print("[World] %s boot complete — quitting (%s)" % [role, QUIT_AFTER_BOOT_ARG])
 	get_tree().quit()
 
-## Phase 42 review — the CLIENT's first-ring gate (see `_snapshot_wiring._on_world_snapshot_received`).
+## Phase 42 review — the CLIENT's first-ring gate (see `_snapshot_wiring.on_world_snapshot_received`).
 ## The client has no boot tail: its body already holds the snapshot position, so the only
 ## work is to drop the loading screen and release the movement freeze that stopped the
 ## body falling through ground that had not been built yet. Same timeout rule as the host,
@@ -801,7 +801,7 @@ func _finish_client_boot() -> void:
 	_pending_client_boot = false
 	_client_boot_done = true
 	# Phase 42 review pass 3 — this runs on BOTH paths: the waiting one (which showed the
-	# screen) and the ALREADY-READY early return in `_snapshot_wiring._on_world_snapshot_received` (which
+	# screen) and the ALREADY-READY early return in `_snapshot_wiring.on_world_snapshot_received` (which
 	# did not). Only the first one ever held the player, so ask the screen whether
 	# anything was actually shown instead of announcing a release that never happened —
 	# a client whose ring was built before the snapshot arrived saw no bar and was never
@@ -843,8 +843,8 @@ func _finish_host_boot() -> void:
 	# Player spawn — above the terrain surface so it doesn't spawn embedded in
 	# (and fall through) the collision mesh.
 	# Phase 53 — a first boot lands on habitable land away from colonized regions (see
-	# `_peer_wiring._first_boot_spawn`); a saved player is put back by `_persistence_wiring._restore_local_player` below.
-	var first_spawn: Variant = _peer_wiring._first_boot_spawn()
+	# `_peer_wiring.first_boot_spawn`); a saved player is put back by `_persistence_wiring.restore_local_player` below.
+	var first_spawn: Variant = _peer_wiring.first_boot_spawn()
 	var spawn_pos: Vector3 = first_spawn if first_spawn != null else TerrainSlice.spawn_point(_terrain.get_height_at(WorldShape.SPAWN_CENTER) + 1.0)
 	var spawn_xz := Vector2(spawn_pos.x, spawn_pos.z)
 	var ground_h := spawn_pos.y - 1.0
@@ -855,7 +855,7 @@ func _finish_host_boot() -> void:
 	# Phase 33 — the local player's own record (position / HP / technologies) is
 	# restored on top of the spawn point, so a restart puts the player back where
 	# they logged off instead of at the world origin.
-	_persistence_wiring._restore_local_player()
+	_persistence_wiring.restore_local_player()
 
 	# Chunk streaming (Phase 17) — the authoritative half above streamed the
 	# window around the origin, so re-centre it on the spawn point. VoxelSlice
@@ -870,7 +870,7 @@ func _finish_host_boot() -> void:
 	# exercise the appearance pipeline end to end. Phase 33 — the avatar is
 	# rebuilt from the appearance recipe in the loaded player record when there
 	# is one, so a restart keeps the character you were playing, not a default.
-	var player_char := _persistence_wiring._restore_or_create_player_character(_player.get_position())
+	var player_char := _persistence_wiring.restore_or_create_player_character(_player.get_position())
 	_character.create_character("BoarRider", Vector3(spawn_xz.x - 3.0, ground_h + 1.0, spawn_xz.y))
 	_character.set_player_character(player_char)
 	# Phase 59 — the avatar wears the rig when the manifest lists one; otherwise (or when
@@ -880,7 +880,7 @@ func _finish_host_boot() -> void:
 		_character.attach_default_rig(player_char)
 	# Phase 47 — the avatar exists only now, so the recorded worn set is applied here
 	# (the restore above runs before there is a character to wear it).
-	_character_wiring._apply_local_equipment(_registry.get_record(_registry.local_player_id).get("equipment", {}) if not _registry.local_player_id.is_empty() else {})
+	_character_wiring.apply_local_equipment(_registry.get_record(_registry.local_player_id).get("equipment", {}) if not _registry.local_player_id.is_empty() else {})
 	if _ui != null and not _registry.local_player_id.is_empty():
 		_ui.set_own_handle(_registry.public_handle(_registry.local_player_id))
 
@@ -960,7 +960,7 @@ func _finish_host_boot() -> void:
 	# on top of the legacy slot file above. The slot file is the single-file
 	# sample the client-side path and the older tests use; the server records are
 	# what an authoritative boot loads.
-	_persistence_wiring._save_everything(false)
+	_persistence_wiring.save_everything(false)
 
 	# Phase 42 review pass 3 — the tail is the boot's own definition of "done" (see
 	# QUIT_AFTER_BOOT_ARG). A CI boot asks to exit HERE rather than being cut off by a
@@ -1004,7 +1004,7 @@ func _boot_client() -> void:
 ##      exists again,
 ##   4. open the host socket.
 func _boot_server() -> void:
-	_persistence_wiring._load_world_records()
+	_persistence_wiring.load_world_records()
 	# Phase 52 — voxel edits stream in by region around every window (the local player's
 	# and each connected peer's) instead of loading from the world record up front.
 	_chunk_manager.region_streamer = RegionStreamer.new(_persistence.region_store, _voxel, true)   # Phase 142: regions read on a worker
@@ -1024,7 +1024,7 @@ func _boot_server() -> void:
 	# then appends the wider band behind them (it skips what is already `_pending`).
 	_chunk_manager.build_first_ring(_chunk_manager.player_chunk())
 	_chunk_manager.refresh()
-	_persistence_wiring._apply_loaded_creature_state()
+	_persistence_wiring.apply_loaded_creature_state()
 	_networking.host(_networking.DEFAULT_PORT, _networking.DEFAULT_MAX_CLIENTS)
 
 ## Phase 66 — client: the other players inside our AOI, as character instances.
@@ -1062,7 +1062,7 @@ func _physics_process(_delta: float) -> void:
 	if _rebase != null and _player != null and _player.has_method("get_scene_position"):
 		var scene_pos: Vector3 = _player.get_scene_position()
 		_rebase.tick(scene_pos, _player.get_world_pos()["chunk"])
-		_peer_wiring._fold_local_player()
+		_peer_wiring.fold_local_player()
 
 ## Phase 91 — the planet is a globe: a player who walks over a pole or round the antimeridian is
 ## folded back onto the canonical planet (`TerrainSlice.fold_world_pos`), landing where the globe
@@ -1092,18 +1092,18 @@ func _process(delta: float) -> void:
 	# a joining client holds the loading screen until its own first ring's ground exists.
 	_tick_pending_client_boot(delta)
 
-	_weather_wiring._tick_world_clock(delta)
-	_peer_wiring._sync_player_avatar(delta)
+	_weather_wiring.tick_world_clock(delta)
+	_peer_wiring.sync_player_avatar(delta)
 	if _distant != null and _player != null and _chunk_manager != null:
 		_distant.world_seed = _terrain.get_world_seed()
 		var pp := _player.get_position()
 		_distant.rebuild(Vector2(pp.x, pp.z), _chunk_manager.stream_radius())
 	if _is_client:
-		_peer_wiring._prune_remote_avatars()
+		_peer_wiring.prune_remote_avatars()
 	if not _is_client and _player != null:
 		# Phase 48 — the host avatar's AOI membership drives peer-equipment sends.
 		_networking.set_host_position(_player.get_position())
-		_peer_wiring._sync_peer_windows(delta)
+		_peer_wiring.sync_peer_windows(delta)
 	# Distance-driven LOD (Phase 23) — evaluate each character's world distance
 	# to the player each frame and swap fine detail / the impostor billboard in
 	# and out. No-op until characters exist and on clients (no spawned visuals).
@@ -1112,16 +1112,16 @@ func _process(delta: float) -> void:
 	# Phase 33 — settle a COMPLETED save worker before the lifecycle tick can
 	# start another one: a failed write is then reported within a frame instead of
 	# at the start of the next autosave, and its dirty chunks go back immediately.
-	_persistence_wiring._poll_save_completion()
+	_persistence_wiring.poll_save_completion()
 
 	# Phase 33 — authoritative save lifecycle: the autosave interval plus the
 	# shutdown-request poll (each on its own cadence). Must run before the
 	# snapshot-pending early return.
-	_persistence_wiring._tick_save_lifecycle(delta)
+	_persistence_wiring.tick_save_lifecycle(delta)
 
 	if not _snapshot_pending:
 		return
-	_peer_wiring._tick_client_handshake(delta)
+	_peer_wiring.tick_client_handshake(delta)
 
 ## Fog density at visibility factor 0 (Godot units: 0.02 is dense within ~100 m).
 const WEATHER_FOG_DENSITY := 0.03
@@ -1159,7 +1159,7 @@ static func _chunks_to_remark(dirty: Array, failed: Array) -> Array:
 ## A pending save must not be dropped when the process goes away (a `--quit` boot exits long
 ## before the autosave interval); the `Thread` must also be waited for before it is freed.
 func _exit_tree() -> void:
-	_persistence_wiring._flush_save()
+	_persistence_wiring.flush_save()
 	# The chunk manager's own exit stood down while the save thread ran; its records go out now.
 	if _chunk_manager != null and is_instance_valid(_chunk_manager):
 		_chunk_manager.flush_records_final()

@@ -12,6 +12,7 @@ func register() -> void:
 	_run_test("playtest: report percentiles and hitch counts", _test_playtest_report_percentiles_and_hitches)
 	_run_test("playtest: step failure, hard frame and missing step fail the run", _test_playtest_report_verdicts)
 	_run_test("playtest: --playtest-bot is parsed", _test_playtest_bot_arg)
+	_run_test("playtest: the bot mutates no slice directly", _test_playtest_bot_uses_intents)
 	_run_test("playtest: markdown escapes free-text detail", _test_playtest_markdown_escapes_detail)
 
 func _test_runner_filter_parse_and_match() -> void:
@@ -107,6 +108,15 @@ func _test_playtest_report_verdicts() -> void:
 	assert_false(bool(Bot.build_report(missing)["ok"]), "a step that never ran fails the run")
 	var md: String = Bot.report_markdown(bad)
 	assert_true(md.contains("FAIL") and md.contains("| mine |"), "the markdown lists the failing step")
+
+## Phase 150 — the bot plays through the bus and the player's own keys: no direct slice mutation.
+func _test_playtest_bot_uses_intents() -> void:
+	var src := FileAccess.get_file_as_string("res://src/tests/playtest_bot.gd")
+	var rx := RegEx.new()
+	rx.compile("\\.(try_place_station|place_station|craft|begin_research|complete_research|note_exact)\\(")
+	var hits := rx.search_all(src)
+	assert_eq(hits.size(), 0, "playtest_bot.gd calls no direct mutation (found %s)" % str(hits.map(func(m): return m.get_string())))
+	assert_true(src.contains("GameBus.craft_requested.emit") and src.contains("GameBus.research_requested.emit"), "craft and research go through intents")
 
 func _test_playtest_bot_arg() -> void:
 	assert_true(Bot.requested(["--playtest-bot"]), "the flag asks for the bot")

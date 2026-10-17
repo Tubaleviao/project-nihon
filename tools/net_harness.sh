@@ -37,10 +37,14 @@ if [ -n "$NET_PROFILE" ]; then
   PROFILE_ARGS=(--net-profile "$NET_PROFILE")
   # A delayed link needs a longer deadline, in step with the per-step timeouts the two
   # processes scale by the profile's round trip (NetHarness._time_scale).
-  case "$NET_PROFILE" in
-    wan_bad) TIMEOUT_SECS=$(( TIMEOUT_SECS * 4 )) ;;
-    wan_br)  TIMEOUT_SECS=$(( TIMEOUT_SECS * 2 )) ;;
-  esac
+  # The scale is NetworkingSlice.profile_time_scale (tools/profile_scale.gd prints it), so a new
+  # profile in NET_PROFILES needs no edit here.
+  SCALE="$("$GODOT" --headless --path "$REPO_ROOT" -s tools/profile_scale.gd -- "$NET_PROFILE" 2>/dev/null | awk '/^PROFILE_SCALE/ {print $2}' | tail -n 1)"
+  if [ -z "$SCALE" ]; then
+    echo "::error::net-harness: could not read the time scale of profile '$NET_PROFILE'" >&2
+    exit 2
+  fi
+  TIMEOUT_SECS="$(awk -v t="$TIMEOUT_SECS" -v s="$SCALE" 'BEGIN { v = t * s; print (v == int(v)) ? v : int(v) + 1 }')"
 fi
 LOGDIR="${NET_HARNESS_LOGDIR:-$(mktemp -d)}"
 HOST_LOG="$LOGDIR/net-harness-host.log"

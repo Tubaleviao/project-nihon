@@ -243,9 +243,9 @@ func _test_p114_record_lifecycle() -> void:
 	# A world (re)load clears the table.
 	ChunkRecordsScript.set_record(Vector2i(1, 1), _sync_record(Vector2i(1, 1)))
 	var gr: Node = load("res://src/core/game_root.gd").new()
-	gr._persistence_wiring._forget_world_records()
+	gr._persistence_wiring.forget_world_records()
 	assert_true(ChunkRecordsScript.is_empty(), "a world load empties the table")
-	assert_true(FileAccess.get_file_as_string("res://src/persistence/persistence_wiring.gd").contains("_persistence.load_world_record()\n\t_forget_world_records()"), "and _load_world_records calls it right after reading the record")
+	assert_true(FileAccess.get_file_as_string("res://src/persistence/persistence_wiring.gd").contains("_persistence.load_world_record()\n\tforget_world_records()"), "and _load_world_records calls it right after reading the record")
 	gr.free()
 
 ## A chunk is not recorded while a region within BLEND_CHUNKS failed; it is recorded and rebuilt once
@@ -386,12 +386,12 @@ func _test_p114_cap_and_join_stamp() -> void:
 	var cm := ChunkManager.new()
 	gr._chunk_manager = cm
 	var snap := {}
-	gr._snapshot_wiring._add_generation_records(snap, 9, Vector3.ZERO)
+	gr._snapshot_wiring.add_generation_records(snap, 9, Vector3.ZERO)
 	assert_true(gr._peer_records_msec.has(9), "a snapshot without records still stamps the re-scope delay (window-rate-limited)")
 	assert_true(snap.has("gen_scope") and not snap.has("gen_records"), "but names its scope")
 	ChunkRecordsScript.set_record(Vector2i(0, 0), _sync_record(Vector2i(0, 0)))
 	var snap2 := {}
-	gr._snapshot_wiring._add_generation_records(snap2, 9, Vector3.ZERO)
+	gr._snapshot_wiring.add_generation_records(snap2, 9, Vector3.ZERO)
 	assert_true(gr._peer_records_msec.has(9) and snap2.has("gen_records"), "records sent: stamped")
 	cm.free()
 	gr.free()
@@ -2191,7 +2191,7 @@ func _test_first_boot_spawn_exact() -> void:
 	var gr: Node = (load("res://src/core/game_root.gd") as GDScript).new()
 	gr._player = player
 	gr._registry = reg
-	gr._persistence_wiring._record_first_spawn(pid)
+	gr._persistence_wiring.record_first_spawn(pid)
 	var spawn: Variant = reg.spawn_of(pid)
 	assert_true(spawn != null, "the spawn was recorded")
 	assert_eq(spawn["chunk"], chunk, "in the exact chunk")
@@ -2602,16 +2602,16 @@ func _test_p121_world_stamp_round_trip() -> void:
 	var seen: Array = []
 	var cb := func(recorded: int, running: int) -> void: seen.append([recorded, running])
 	GameBus.worldgen_version_mismatch.connect(cb)
-	gr._persistence_wiring._note_worldgen_version()
+	gr._persistence_wiring.note_worldgen_version()
 	seen.clear()
-	var job: Dictionary = gr._persistence_wiring._collect_save_job(false)
+	var job: Dictionary = gr._persistence_wiring.collect_save_job(false)
 	assert_eq(int(job["world"]["worldgenVersion"]), older, "the save job carries the loaded stamp")
 	assert_eq(int(job["world"]["worldgenFingerprint"]), TerrainSlice.worldgen_fingerprint(), "and the fingerprint stamp (refreshed to the running one by the single notice, Phase 138)")
 	assert_eq(slice.write_job(job), OK, "the job is written")
 	var record := slice.load_world_record()
 	assert_eq(PersistenceSlice.worldgen_version_of(record), older, "the stamp round-trips through the record")
 	gr._loaded_world = record
-	gr._persistence_wiring._note_worldgen_version()
+	gr._persistence_wiring.note_worldgen_version()
 	assert_eq(seen, [[older, TerrainSlice.WORLDGEN_VERSION]], "and loading it raises the mismatch signal once")
 	GameBus.worldgen_version_mismatch.disconnect(cb)
 	for n in [gr._terrain, gr._creature, gr._station]:

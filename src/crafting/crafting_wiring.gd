@@ -3,11 +3,7 @@ extends "res://src/core/wiring.gd"
 ## Moved out of game_root.gd; `root` is the GameRoot that owns the slices.
 
 
-func wire(ctx: GameRoot) -> void:
-	root = ctx
-	connect_bus(GameBus.chunk_ready, _on_chunk_ready)
-	connect_bus(GameBus.loot_dropped, _on_loot_dropped)
-	connect_bus(GameBus.item_picked_up, _on_item_picked_up)
+func _connect_all() -> void:
 	connect_bus(GameBus.inventory_full, _on_inventory_full)
 	connect_bus(GameBus.craft_resolved, _on_craft_resolved)
 	connect_bus(GameBus.repair_resolved, _on_repair_resolved)
@@ -16,19 +12,6 @@ func wire(ctx: GameRoot) -> void:
 	connect_bus(GameBus.research_points_synced, _on_research_points_synced)
 	connect_bus(GameBus.resource_gathered, _on_resource_gathered)
 	connect_bus(GameBus.tame_resolved, _on_tame_resolved)
-	connect_bus(GameBus.technology_unlocked, _on_technology_unlocked)
-	connect_bus(GameBus.block_mined, _on_block_mined)
-	connect_bus(GameBus.block_placed, _on_block_placed)
-	connect_bus(GameBus.trade_completed, _on_trade_completed)
-
-func _on_chunk_ready(_chunk_pos: Vector2i, _heightmap: Array) -> void:
-	pass
-
-func _on_loot_dropped(_pickup_id: String, _item_id: String, _position: Vector3, _quantity: int) -> void:
-	pass
-
-func _on_item_picked_up(_item_id: String, _quantity: int) -> void:
-	pass
 
 func _on_inventory_full() -> void:
 	if root._is_server or root._registry == null or root._registry.local_player_id.is_empty():
@@ -48,13 +31,13 @@ func _on_craft_resolved(result: Dictionary) -> void:
 	# Phase 118 — a void burst FAILED the craft but consumed the input and may have set a
 	# flag, so the crafter's record changed: push it like a success would.
 	if result.get("reason", "") == "void_burst":
-		root._peer_wiring._sync_peer_own_state(result, true)
+		root._peer_wiring.sync_peer_own_state(result, true)
 		return
-	root._peer_wiring._sync_peer_own_state(result)
+	root._peer_wiring.sync_peer_own_state(result)
 
 ## Phase 34 — the repair half of the same rule.
 func _on_repair_resolved(result: Dictionary) -> void:
-	root._peer_wiring._sync_peer_own_state(result)
+	root._peer_wiring.sync_peer_own_state(result)
 
 ## Phase 34 — research: fold the researcher's new statuses into its record first, so
 ## the durable copy and the copy pushed to its client cannot diverge, then push.
@@ -64,7 +47,7 @@ func _on_research_resolved(result: Dictionary) -> void:
 	var pid := str(result.get("player_id", ""))
 	if pid != "":
 		root._registry.record_technology(pid, root._technology.get_statuses(pid))
-	root._peer_wiring._sync_peer_own_state(result)
+	root._peer_wiring.sync_peer_own_state(result)
 
 ## Phase 124 — a research-point balance changed on the host. Fold it into the player's
 ## record (so a save carries it) and push it to the OWNER's peer alone: points are private
@@ -92,10 +75,7 @@ func _on_resource_gathered(player_id: String, _material: String, quantity: int) 
 ## Phase 118 — an unlock the host resolved for a REMOTE peer changed its record's
 ## professions; push the owner's copy (the local player is live here already).
 func _on_profession_unlocked(player_id: String, _profession: String) -> void:
-	root._peer_wiring._sync_peer_own_state({ "success": true, "player_id": player_id })
-
-func _on_technology_unlocked(_tech_id: String, _player_id: String) -> void:
-	pass
+	root._peer_wiring.sync_peer_own_state({ "success": true, "player_id": player_id })
 
 ## Phase 35 — a tame the host resolved for a REMOTE peer granted that peer a flag
 ## (e.g. `wolfBondHolder`) and possibly bound a companion, both of which live on its
@@ -107,13 +87,5 @@ func _on_tame_resolved(result: Dictionary) -> void:
 	var pid := str(result.get("player_id", ""))
 	if pid != "":
 		root._taming.sync_record(pid)
-	root._peer_wiring._sync_peer_own_state(result)
+	root._peer_wiring.sync_peer_own_state(result)
 
-func _on_trade_completed(_completed: Dictionary) -> void:
-	pass
-
-func _on_block_mined(_material: String, _quantity: int, _position: Vector3) -> void:
-	pass
-
-func _on_block_placed(_material: String, _position: Vector3) -> void:
-	pass

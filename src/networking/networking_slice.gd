@@ -193,15 +193,13 @@ var _next_snapshot_id: int = 0
 @export var emulator_retransmit: bool = false
 ## Phase 135 — how many lost packets were retransmitted instead of dropped (reported by the harness).
 var emulator_retransmits: int = 0
+## Phase 150 — packets the emulator dropped because their peer was gone or never connected. The harness reports it.
+var emulator_dropped: int = 0
 
 ## Phase 135 — named link profiles, the one table `--net-profile` and the harness read.
 ## `loopback` is the no-emulation default. Latency/jitter are ms added by each process to its outbound packets, loss a percentage.
-const NET_PROFILES := {
-	"loopback": { "latency_ms": 0.0, "jitter_ms": 0.0, "loss_rate": 0.0, "bandwidth_kbps": 0.0 },
-	"lan": { "latency_ms": 2.0, "jitter_ms": 1.0, "loss_rate": 0.0, "bandwidth_kbps": 0.0 },
-	"wan_br": { "latency_ms": 60.0, "jitter_ms": 15.0, "loss_rate": 1.0, "bandwidth_kbps": 0.0 },
-	"wan_bad": { "latency_ms": 200.0, "jitter_ms": 60.0, "loss_rate": 5.0, "bandwidth_kbps": 256.0 },
-}
+const NetProfiles := preload("res://src/networking/net_profiles.gd")
+const NET_PROFILES := NetProfiles.TABLE
 const NET_PROFILE_ARG := "--net-profile"
 ## Phase 135 — the profile this slice runs under ("" = none, emulator off).
 var net_profile: String = ""
@@ -376,14 +374,16 @@ func apply_profile(name: String) -> bool:
 ## Phase 135 — how much longer than loopback this slice's waits should be: one plus the profile's round
 ## trip over 250 ms (1.0 with no profile). The harness and the client handshake both scale by it.
 func link_time_scale() -> float:
-	return 1.0 + profile_rtt_ms(net_profile) / 250.0
+	return profile_time_scale(net_profile)
+
+## Phase 150 — the time scale of a named profile (1.0 for none or an unknown name). `tools/net_harness.sh`
+## reads it through `tools/profile_scale.gd`, so a new profile cannot be forgotten in the driver.
+static func profile_time_scale(name: String) -> float:
+	return NetProfiles.time_scale(name)
 
 ## Phase 135 — the profile's round-trip time in ms (worst case with jitter), 0 for an unknown name.
 static func profile_rtt_ms(name: String) -> float:
-	if not NET_PROFILES.has(name):
-		return 0.0
-	var p: Dictionary = NET_PROFILES[name]
-	return 2.0 * (float(p["latency_ms"]) + float(p["jitter_ms"]))
+	return NetProfiles.rtt_ms(name)
 
 ## Phase 19 — drain the emulator queue and (on clients) the jitter buffer.
 ## Eviction of stale last-known-states runs unconditionally (no ENet overhead).
@@ -1696,7 +1696,7 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 			# here, so persisting it made health a restart-proof cheat (see
 			# PlayerRegistry.record_hp). Phase 38 — a peer's health IS durable
 			# now, but only from the number the host resolved itself
-			# (record_simulated_hp, via combat_wiring._on_player_damaged); the
+			# (record_simulated_hp, via combat_wiring.on_player_damaged); the
 			# declared half still has no door. Position is the other half the
 			# host retains, and only so a reconnect can resume from it.
 			# Phase 130 — the host decides immobilization itself: a held peer's report is dropped
@@ -2217,9 +2217,11 @@ func _drain_emulator(now_ms: float = -1.0) -> void:
 			# a real wire; sending it would raise an RPC error per packet on every frame.
 			if msg is Dictionary and _peer_reachable(int(entry["peer_id"])):
 				_ensure_transport().send(int(entry["peer_id"]), msg)
-			elif _role == Role.HOST:
-				_link_free_at_ms.erase(int(entry["peer_id"]))
-				_ordered_at_ms.erase(int(entry["peer_id"]))
+			else:
+				emulator_dropped += 1
+				if _role == Role.HOST:
+					_link_free_at_ms.erase(int(entry["peer_id"]))
+					_ordered_at_ms.erase(int(entry["peer_id"]))
 			_pending.remove_at(i)
 		else:
 			i += 1

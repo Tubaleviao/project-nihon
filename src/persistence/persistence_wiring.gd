@@ -10,11 +10,11 @@ const ChunkRecords     := preload("res://src/terrain/chunk_records.gd")
 const PersistenceSlice := preload("res://src/persistence/persistence_slice.gd")
 const PlayerRegistry   := preload("res://src/persistence/player_registry.gd")
 
-func wire(ctx: GameRoot) -> void:
-	root = ctx
+func _connect_all() -> void:
 	connect_bus(GameBus.player_teleport, _on_player_teleport)
-	connect_bus(GameBus.save_completed, _on_save_completed)
 	connect_bus(GameBus.load_completed, _on_load_completed)
+	# `save_completed` is deliberately not handled: the slot file is a sample, not the world record, and
+	# the authoritative world save clears the manifest keys it serialized itself (`collect_save_job`).
 
 ## Accumulate the autosave timer and honour a shutdown request. Authoritative
 ## roles only: a client neither loads a world nor writes one — its state arrives
@@ -29,7 +29,7 @@ func wire(ctx: GameRoot) -> void:
 ## `FileAccess.file_exists()` (the file is written at most once), so the separate
 ## short cadence keeps the "don't stat every frame" fix while bounding the
 ## shutdown latency to `shutdownPollSeconds` instead of the autosave interval.
-func _tick_save_lifecycle(delta: float) -> void:
+func tick_save_lifecycle(delta: float) -> void:
 	if root._is_client:
 		return
 	root._shutdown_poll_elapsed += delta
@@ -37,8 +37,8 @@ func _tick_save_lifecycle(delta: float) -> void:
 		root._shutdown_poll_elapsed = 0.0
 		if FileAccess.file_exists(root._persistence.shutdown_request_path):
 			print("[Server] shutdown requested — saving before quit")
-			_save_everything(true)
-			_flush_save()
+			save_everything(true)
+			flush_save()
 			DirAccess.remove_absolute(root._persistence.shutdown_request_path)
 			root.get_tree().quit()
 			return
@@ -46,7 +46,7 @@ func _tick_save_lifecycle(delta: float) -> void:
 	if not PersistenceSlice.autosave_due(root._autosave_elapsed, root._persistence.autosave_interval):
 		return
 	root._autosave_elapsed = 0.0
-	_save_everything(true)
+	save_everything(true)
 
 ## Write the world record plus one record per player. `incremental` merges only the
 ## dirty chunk manifests into the record already on disk, so a periodic autosave does
@@ -63,14 +63,14 @@ func _tick_save_lifecycle(delta: float) -> void:
 ## The write itself runs on a worker thread (see _start_save_thread): this function
 ## only COLLECTS the payload, which is the part that reads live slice state and so
 ## has to happen on the main thread. Callers that must not outrun their write
-## (shutdown) call _flush_save() afterwards.
-func _save_everything(incremental: bool) -> void:
+## (shutdown) call flush_save() afterwards.
+func save_everything(incremental: bool) -> void:
 	if root._is_client:
 		return
 	_reap_save_thread()
 	_snapshot_local_player()
-	root._peer_wiring._snapshot_remote_players()
-	_start_save_thread(_collect_save_job(incremental))
+	root._peer_wiring.snapshot_remote_players()
+	_start_save_thread(collect_save_job(incremental))
 
 ## Fold the local player's LIVE state into its registry record before a write.
 func _snapshot_local_player() -> void:
@@ -78,7 +78,7 @@ func _snapshot_local_player() -> void:
 	if pid.is_empty():
 		return
 	root._registry.record_world_pos(pid, root._player.get_world_pos())
-	root._peer_wiring._note_presence(root._player.get_world_pos())
+	root._peer_wiring.note_presence(root._player.get_world_pos())
 	root._registry.record_hp(pid, root._player.get_hp())
 	root._registry.record_technology(pid, root._technology.get_statuses(pid))
 	# Phase 35 — the live taming flags and companion bindings ride the same record.
@@ -92,7 +92,7 @@ func _snapshot_local_player() -> void:
 		# Phase 47 — the worn set is its own record key (the Character window's source).
 		root._registry.record_equipment(pid, root._character.get_equipment_set(char_id))
 
-func _collect_save_job(incremental: bool) -> Dictionary:
+func collect_save_job(incremental: bool) -> Dictionary:
 	var manifest := root._voxel.get_save_manifest()
 	var dirty := root._voxel.get_dirty_chunk_keys()
 	# An incremental save carries ONLY the dirty chunk manifests; save_world() then
@@ -138,7 +138,7 @@ func _collect_save_job(incremental: bool) -> Dictionary:
 	# player's record is already durable and cannot have changed since it was
 	# written, so rewriting every long-gone player on every autosave was pure churn —
 	# the write cost grew with the number of players who had EVER joined.
-	root._combat_wiring._refresh_status_records()
+	root._combat_wiring.refresh_status_records()
 	for pid in root._registry.get_online_player_ids():
 		var player_id := str(pid)
 		players[player_id] = root._registry.get_player_data(player_id)
@@ -188,20 +188,20 @@ func _reap_save_thread() -> void:
 ## Reap the save worker as soon as it has FINISHED, without blocking.
 ##
 ## Before this, the only reaper was `_reap_save_thread()` at the START of the next
-## `_save_everything()`, so a failed write was discovered up to one whole autosave
+## `save_everything()`, so a failed write was discovered up to one whole autosave
 ## interval late — and the chunks it had serialized had already been cleared from
 ## the dirty set at collection time. In that window the edits looked saved and
 ## were not, and a process that died inside it lost them with no error reported.
 ## `Thread.is_alive()` is false the moment the worker returns, so this costs one
 ## bool per frame and reuses the same single reaper (no second result path).
-func _poll_save_completion() -> void:
+func poll_save_completion() -> void:
 	if root._save_thread == null or root._save_thread.is_alive():
 		return
 	_reap_save_thread()
 
 ## Block until the in-flight write has landed. Shutdown (window close, the polled
 ## shutdown-request file, process exit) must not outrun its own save.
-func _flush_save() -> void:
+func flush_save() -> void:
 	_reap_save_thread()
 
 func _finish_save(result: int) -> void:
@@ -238,7 +238,7 @@ func _bind_local_identity() -> void:
 ## Rebuild the local avatar from the appearance recipe in the saved player
 ## record, or create the default appearance when the record has none (a fresh
 ## world). Returns the character instance id.
-func _restore_or_create_player_character(pos: Vector3) -> String:
+func restore_or_create_player_character(pos: Vector3) -> String:
 	var pid := root._registry.local_player_id
 	var appearance: Variant = root._registry.get_record(pid).get("appearance", {}) if not pid.is_empty() else {}
 	if appearance is Dictionary and not (appearance as Dictionary).is_empty():
@@ -249,22 +249,22 @@ func _restore_or_create_player_character(pos: Vector3) -> String:
 
 ## Restore the local player's position, HP, and technologies from its record.
 ## Called AFTER the spawn point is set, so the record wins over the spawn.
-func _restore_local_player() -> void:
+func restore_local_player() -> void:
 	var pid := root._registry.local_player_id
 	if pid.is_empty():
 		return
 	var rec := root._registry.get_record(pid)
-	var saved_pos: Variant = _saved_local_position()
+	var saved_pos: Variant = saved_local_position()
 	root._local_player_returning = saved_pos != null
 	if saved_pos != null:
-		_place_local_player(saved_pos)
+		place_local_player(saved_pos)
 	# Phase 66 — a respawn goes to the ORIGINAL spawn point: the recorded one, else (a record from
 	# before the field existed) the saved position; a fresh player's placement is recorded now.
 	var spawn: Variant = root.respawn_point_for(rec)
 	if spawn != null:
 		root._player.set_respawn_world_pos(_lifted_world_pos(spawn))
 	else:
-		_record_first_spawn(pid)
+		record_first_spawn(pid)
 	var hp := float(rec.get("hp", -1.0))
 	if hp >= 0.0:
 		root._player.set_hp(hp)
@@ -275,11 +275,11 @@ func _restore_local_player() -> void:
 	root._taming.apply_record(rec, pid)
 	root._professions.apply_record(rec, pid)
 	# Phase 47 — and the worn set.
-	root._character_wiring._apply_local_equipment(rec.get("equipment", {}))
+	root._character_wiring.apply_local_equipment(rec.get("equipment", {}))
 
 ## Phase 98 — a fresh player's placement becomes its spawn, from the body's exact `{chunk, local}`
 ## (the float32 `respawn_point` is metres off far from the origin).
-func _record_first_spawn(pid: String) -> void:
+func record_first_spawn(pid: String) -> void:
 	root._registry.record_spawn_world_pos(pid, root._player.get_world_pos())
 
 ## `wp`, lifted onto the surface above it when it lies inside the ground (see `_lifted_out_of_ground`);
@@ -295,8 +295,8 @@ func _lifted_world_pos(wp: Dictionary) -> Dictionary:
 
 ## The local player's recorded position, or null when there is no identity or the
 ## record carries none. Read by the host boot (to arm the first ring where the player
-## will stand) and by `_restore_local_player`.
-func _saved_local_position() -> Variant:
+## will stand) and by `restore_local_player`.
+func saved_local_position() -> Variant:
 	root._saved_position_reads += 1
 	var pid := root._registry.local_player_id
 	if pid.is_empty():
@@ -328,9 +328,9 @@ func _on_player_teleport(pos: Dictionary) -> void:
 ## server, which has no rebase driver, place by world position. So the record WINS over `pos`
 ## whenever one exists and a rebase driver is present; `pos` is used otherwise. The record is read
 ## once per placement.
-func _place_local_player(pos: Vector3) -> void:
+func place_local_player(pos: Vector3) -> void:
 	var pid := root._registry.local_player_id
-	var saved: Variant = _saved_local_position()
+	var saved: Variant = saved_local_position()
 	if root._rebase != null and not pid.is_empty() and saved != null:
 		var wp := root._registry.get_world_pos(pid)
 		root._rebase.rebase_to(wp["chunk"])
@@ -341,7 +341,7 @@ func _place_local_player(pos: Vector3) -> void:
 ## A restored body that sits inside solid ground (a record saved while the player was stuck, or one
 ## written before the terrain changed) is lifted onto the surface above it; a body in open air, in
 ## a tunnel or a cave is left alone.
-func _lift_out_of_ground() -> void:
+func lift_out_of_ground() -> void:
 	if root._player == null:
 		return
 	var pos := root._player.get_position()
@@ -365,20 +365,20 @@ func _lifted_out_of_ground(pos: Vector3) -> Vector3:
 
 ## A respawn lands on the recorded spawn point; one recorded inside the ground (by the old
 ## origin-spawn bug) is lifted too.
-func _lift_after_respawn() -> void:
+func lift_after_respawn() -> void:
 	if root._player != null and not root._player.respawn_world_pos.is_empty():
 		var wp := root._player.get_world_pos()
 		var lifted := _lifted_world_pos(wp)
 		if lifted != wp:
 			root._player.place_at_world_pos(lifted)
 		return
-	_lift_out_of_ground()
+	lift_out_of_ground()
 
 ## Read the world record and the LOCAL player's record off disk. A missing world
 ## record is NOT an error — a server with no save boots a fresh world.
 ##
 ## Chunk manifests and stations are applied here (pure data). The creature state
-## is applied by _apply_loaded_creature_state() AFTER chunk streaming, because
+## is applied by apply_loaded_creature_state() AFTER chunk streaming, because
 ## spawn_for_chunk() builds fresh instance records.
 ##
 ## Only the local player's record is read at boot. Every OTHER record on disk used
@@ -390,7 +390,7 @@ func _lift_after_respawn() -> void:
 ## remote record is needed.
 ## Phase 71 — keep the loaded record's original stamp when re-saving (a new world takes the
 ## running one), and tell the bus when that stamp is not the running generator's.
-func _note_worldgen_version() -> void:
+func note_worldgen_version() -> void:
 	root._worldgen_stamp = PersistenceSlice.worldgen_stamp_for_save(root._loaded_world, TerrainSlice.WORLDGEN_VERSION)
 	if PersistenceSlice.check_worldgen_version(root._loaded_world, TerrainSlice.WORLDGEN_VERSION):
 		GameBus.worldgen_version_mismatch.emit(root._worldgen_stamp, TerrainSlice.WORLDGEN_VERSION)
@@ -403,20 +403,20 @@ func _note_worldgen_version() -> void:
 		root._worldgen_fp_stamp = running_fp
 
 ## Phase 114 — generation records never outlive the world they describe.
-func _forget_world_records() -> void:
+func forget_world_records() -> void:
 	ChunkRecords.clear()
 
-func _load_world_records() -> void:
+func load_world_records() -> void:
 	# Phase 52 — the GLOBAL record only; a Phase 51 monolithic record is split into region
 	# files by this read, and the edits themselves stream in by region.
 	root._loaded_world = root._persistence.load_world_record()
-	_forget_world_records()
-	_note_worldgen_version()
+	forget_world_records()
+	note_worldgen_version()
 	_bind_local_identity()
 	# Lazy reader for every other player's record (see the docstring above).
 	root._registry.set_record_loader(root._persistence.load_player)
-	root._registry.set_spawn_placer(root._peer_wiring._place_new_player)
-	root._registry.set_friend_locator(root._peer_wiring._locate_friend_on_disk)
+	root._registry.set_spawn_placer(root._peer_wiring.place_new_player)
+	root._registry.set_friend_locator(root._peer_wiring.locate_friend_on_disk)
 	root._colonization.from_data(root._loaded_world.get("colonization", {}))
 	root._clock.from_data(root._loaded_world.get("clock", {}))
 	root._weather.from_data(root._loaded_world.get("weather", []))
@@ -473,7 +473,7 @@ func _load_local_player_record() -> void:
 ## deadline) over the population chunk streaming just spawned. `apply_recorded_…`
 ## (not the client's `apply_snapshot_creatures`) so a record for a chunk outside
 ## the current view window is skipped instead of fabricating an instance.
-func _apply_loaded_creature_state() -> void:
+func apply_loaded_creature_state() -> void:
 	var creatures: Variant = root._loaded_world.get("creatures", [])
 	if not (creatures is Array) or (creatures as Array).is_empty():
 		return
@@ -482,16 +482,6 @@ func _apply_loaded_creature_state() -> void:
 # ---------------------------------------------------------------------------
 # Bus listeners
 # ---------------------------------------------------------------------------
-
-func _on_save_completed(_slot: int) -> void:
-	# NOTHING to reset here. The legacy slot file is a single-file sample (the
-	# boot/client record), not the authoritative world record, so writing it does
-	# NOT make the chunk manifests durable — only an authoritative world save does,
-	# and that save clears the keys it serialized itself (see `_collect_save_job`;
-	# the clear has to happen where the payload is read, because the write is off
-	# the main thread). Clearing here would silently drop the edits made before the
-	# slot write from the next world save.
-	pass
 
 func _on_load_completed(_slot: int, data: Dictionary) -> void:
 	if data.has("inventory") and data["inventory"] is Dictionary:
@@ -514,15 +504,15 @@ func _on_load_completed(_slot: int, data: Dictionary) -> void:
 		var arr = player_data.get("position", [])
 		if arr is Array and (arr as Array).size() >= 3:
 			root._player.spawn_at(Vector3(float(arr[0]), float(arr[1]), float(arr[2])))
-			_lift_out_of_ground()
+			lift_out_of_ground()
 		var hp := float(player_data.get("hp", -1.0))
 		if hp >= 0.0:
 			root._player.set_hp(hp)
 		# Phase 129 — the saved effects; a legacy snapshot has none.
 		if root._status != null:
-			root._status.from_data("player", player_data.get("status_effects", []), root._combat_wiring._status_now())
+			root._status.from_data("player", player_data.get("status_effects", []), root._combat_wiring.status_now())
 			for t in root._status.take_dirty():
-				root._combat_wiring._push_status_effects(str(t), root._combat_wiring._status_now())
+				root._combat_wiring.push_status_effects(str(t), root._combat_wiring.status_now())
 	if data.has("market"):
 		root._market.apply_market_data(data["market"])
 	if data.has("governance"):

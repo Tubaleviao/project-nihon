@@ -1220,7 +1220,7 @@ func _test_apply_local_equipment_paths() -> void:
 		var sent: Array = []
 		var on_action := func(_p: String, slot: String, item: String) -> void: sent.append([slot, item])
 		GameBus.equip_intent.connect(on_action)
-		gr._character_wiring._apply_local_equipment({})
+		gr._character_wiring.apply_local_equipment({})
 		GameBus.equip_intent.disconnect(on_action)
 		var tag := "client" if as_client else "host"
 		assert_true(sent.is_empty(), "%s: a restore sends no equip action" % tag)
@@ -1231,7 +1231,7 @@ func _test_apply_local_equipment_paths() -> void:
 			assert_eq(ch.get_equipment_set(iid).get("Chest", ""), "VeilsteelChestplate", "host: an empty record keeps the recipe's gear")
 			assert_eq(reg.get_equipment(reg.local_player_id).get("Chest", ""), "VeilsteelChestplate", "host: and records it")
 		# A recorded set is applied exactly.
-		gr._character_wiring._apply_local_equipment({ "Head": "FerriteHelmet" })
+		gr._character_wiring.apply_local_equipment({ "Head": "FerriteHelmet" })
 		assert_eq(ch.get_equipment_set(iid).get("Head", ""), "FerriteHelmet", "%s: a recorded set is worn" % tag)
 		gr.free()
 		ch.free()
@@ -1310,11 +1310,11 @@ func _test_equipment_stale_revoke_ignored() -> void:
 	assert_eq(net.equip_seq_sent(), 2, "each action advances the sequence")
 	ch.apply_equipment(iid, "Chest", "VeilsteelChestplate")
 	# Replies arrive in order: the revoke for #1 (host had no Chest yet), then the record for #2.
-	gr._peer_wiring._on_own_state_synced({ "equipment": {}, "equipment_seq": 1 })
+	gr._peer_wiring.on_own_state_synced({ "equipment": {}, "equipment_seq": 1 })
 	assert_eq(ch.get_equipment_set(iid).get("Chest", ""), "VeilsteelChestplate", "the older revoke is ignored")
-	gr._peer_wiring._on_own_state_synced({ "equipment": { "Chest": "VeilsteelChestplate" }, "equipment_seq": 2 })
+	gr._peer_wiring.on_own_state_synced({ "equipment": { "Chest": "VeilsteelChestplate" }, "equipment_seq": 2 })
 	assert_eq(ch.get_equipment_set(iid).get("Chest", ""), "VeilsteelChestplate", "the newer reply keeps the item")
-	gr._peer_wiring._on_own_state_synced({ "equipment": {}, "equipment_seq": 2 })
+	gr._peer_wiring.on_own_state_synced({ "equipment": {}, "equipment_seq": 2 })
 	assert_true(ch.get_equipment_set(iid).is_empty(), "a revoke answering the newest action is applied")
 	gr.free()
 	net.free()

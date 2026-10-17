@@ -414,10 +414,10 @@ func _test_chat_kill_peer_simulated_hp() -> void:
 	gr._is_client = false
 	gr._registry = reg
 	gr._networking = n
-	GameBus.player_damaged.connect(gr._combat_wiring._on_player_damaged)
+	GameBus.player_damaged.connect(gr._combat_wiring.on_player_damaged)
 	n.memory_transport().outbox.clear()
 	chat.handle_intent("/kill %s" % reg.public_handle(pid), "")
-	GameBus.player_damaged.disconnect(gr._combat_wiring._on_player_damaged)
+	GameBus.player_damaged.disconnect(gr._combat_wiring.on_player_damaged)
 	var hits: Array = n.memory_transport().outbox.filter(func(o): return o["payload"]["type"] == "player_damaged")
 	assert_eq(hits.size(), 1, "exactly one player_damaged goes out")
 	assert_eq(hits[0]["peer_id"], 7, "to that peer")
@@ -1693,11 +1693,11 @@ func _test_ui_worldgen_toast() -> void:
 	var root_script: GDScript = load("res://src/core/game_root.gd")
 	var gr: Node = root_script.new()
 	gr._loaded_world = { "seed": 7 }
-	gr._persistence_wiring._note_worldgen_version()
+	gr._persistence_wiring.note_worldgen_version()
 	assert_eq(ui.toast_shown(), "", "a pre-stamp save produces no toast")
 	gr._loaded_world = { "seed": 7, "worldgenVersion": TerrainSlice.WORLDGEN_VERSION - 1,
 		"worldgenFingerprint": TerrainSlice.worldgen_fingerprint() }
-	gr._persistence_wiring._note_worldgen_version()
+	gr._persistence_wiring.note_worldgen_version()
 	assert_true(ui.toast_shown().contains("generator v%d" % (TerrainSlice.WORLDGEN_VERSION - 1)), "a mismatch shows the toast")
 	assert_eq(ui.toast_queue().size(), 0, "exactly one")
 	ui.push_toast("World saved with generator v%d, running v%d: terrain may not match saved edits." % [TerrainSlice.WORLDGEN_VERSION - 1, TerrainSlice.WORLDGEN_VERSION])

@@ -474,7 +474,7 @@ func _service_path_queue() -> void:
 		var pos: Vector3 = creature_slice.get_instance_position(iid)
 		var from: Vector2i = creature_slice.tile_of(pos)
 		var goal: Vector2i = ai["path_want"]
-		var res := CreaturePath.search(from, goal, _path_rules(iid), Callable(creature_slice, "surface_at_tile"))
+		var res := CreaturePath.search(from, goal, _path_rules(iid), creature_slice.surface_at_tile)
 		path_searches_this_tick += 1
 		path_searches_total += 1
 		path_searches_peak = maxi(path_searches_peak, path_searches_this_tick)

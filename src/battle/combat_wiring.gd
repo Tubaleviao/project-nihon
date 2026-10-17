@@ -10,35 +10,18 @@ const PlayerRegistry   := preload("res://src/persistence/player_registry.gd")
 const PlayerSlice      := preload("res://src/player/player_slice.gd")
 const StatusEffects    := preload("res://src/battle/status_effects.gd")
 
-func wire(ctx: GameRoot) -> void:
-	root = ctx
+func _connect_all() -> void:
 	connect_bus(GameBus.knockback_requested, _on_knockback_requested)
 	connect_bus(GameBus.player_died, _on_status_player_died)
-	connect_bus(GameBus.combat_round_resolved, _on_combat_resolved)
 	connect_bus(GameBus.combat_round_requested, _on_combat_round_requested)
-	connect_bus(GameBus.creature_died, _on_creature_died)
-	connect_bus(GameBus.creature_spawned, _on_creature_spawned)
-	connect_bus(GameBus.player_state_changed, _on_player_state_changed)
-	connect_bus(GameBus.player_damaged, _on_player_damaged)
+	connect_bus(GameBus.player_damaged, on_player_damaged)
 	connect_bus(GameBus.player_died, _on_player_died)
 	connect_bus(GameBus.player_respawned, _on_player_respawned)
-
-func _on_combat_resolved(_result: Dictionary) -> void:
-	pass
 
 ## Drive the player avatar's attack animation whenever the player attacks.
 func _on_combat_round_requested(attacker_id: String, _defender_id: String) -> void:
 	if attacker_id == "player" and root._character.get_player_character() != "":
 		GameBus.character_attack_requested.emit(root._character.get_player_character())
-
-func _on_creature_died(_entity_id: String, _position: Vector3, _killer_id: String) -> void:
-	pass
-
-func _on_creature_spawned(_instance_id: String, _creature_id: String, _position: Vector3) -> void:
-	pass
-
-func _on_player_state_changed(_payload: Dictionary) -> void:
-	pass   # logged by PlayerSlice; suppress repetitive output here
 
 ## Phase 37/38 — a combat round landed on a player. The damage is applied by the machine
 ## that SIMULATES that body: the local body in-process (PlayerSlice listens to this
@@ -66,7 +49,7 @@ func _on_player_state_changed(_payload: Dictionary) -> void:
 ## The local body is skipped: its damage is already applied in-process by PlayerSlice
 ## (this signal is emitted by BattleSlice, which PlayerSlice itself listens to), and
 ## there is no peer to send it to.
-func _on_player_damaged(damage: float, attacker_id: String, target_id: String) -> void:
+func on_player_damaged(damage: float, attacker_id: String, target_id: String) -> void:
 	if root._is_client:
 		return
 	if target_id == "" or target_id == "player" or target_id == root._registry.local_player_id:
@@ -86,9 +69,9 @@ func _on_player_damaged(damage: float, attacker_id: String, target_id: String) -
 	if root._status != null and PlayerRegistry.is_downed(simulated):
 		root._status.clear(target_id)
 		for t in root._status.take_dirty():
-			_push_status_effects(str(t), _status_now())
+			push_status_effects(str(t), status_now())
 
-func _status_now() -> float:
+func status_now() -> float:
 	return float(root.status_clock.call()) if root.status_clock.is_valid() else float(Time.get_ticks_msec()) / 1000.0
 
 ## The chunk a status target stands in: the local body, else the peer's recorded position.
@@ -103,7 +86,7 @@ func _status_chunk(target_id: String) -> Vector2i:
 func tick_status_effects() -> void:
 	if root._status == null or root._is_client:
 		return
-	var now := _status_now()
+	var now := status_now()
 	var weather_of := func(target_id: String) -> String:
 		return root._weather.weather_at(_status_chunk(target_id), root._weather.current_hour())
 	for ev in root._status.tick(now, weather_of):
@@ -111,10 +94,10 @@ func tick_status_effects() -> void:
 		if BattleSlice.is_player_target(target):
 			GameBus.player_damaged.emit(float(ev["damage"]), "status:" + str(ev["effect"]), target)
 	for target in root._status.take_dirty():
-		_push_status_effects(str(target), now)
+		push_status_effects(str(target), now)
 
 ## Send `target`'s effect list to that player ALONE and keep it on the record.
-func _push_status_effects(target: String, now: float) -> void:
+func push_status_effects(target: String, now: float) -> void:
 	var effects := root._status.active(target, now)
 	if target == "player":
 		GameBus.status_effects_synced.emit("player", effects)
@@ -126,29 +109,29 @@ func _push_status_effects(target: String, now: float) -> void:
 		root._networking.send_status_effects(peer, effects)
 
 ## Write every live target's remaining time onto its record before a save reads it.
-func _refresh_status_records() -> void:
+func refresh_status_records() -> void:
 	if root._status == null or root._is_client:
 		return
-	var now := _status_now()
+	var now := status_now()
 	for target in root._status.targets():
 		var pid: String = root._registry.local_player_id if target == "player" else str(target)
 		if not pid.is_empty():
 			root._registry.record_status_effects(pid, root._status.active(target, now))
 
 ## Restore a player's saved effects (a join or boot) and tell its body.
-func _restore_status_effects(target: String, player_id: String) -> void:
+func restore_status_effects(target: String, player_id: String) -> void:
 	if root._status == null or root._is_client:
 		return
-	var now := _status_now()
+	var now := status_now()
 	root._status.from_data(target, root._registry.get_status_effects(player_id), now)
 	for t in root._status.take_dirty():
-		_push_status_effects(str(t), now)
+		push_status_effects(str(t), now)
 
 func _on_status_player_died(_position: Vector3, _killer_id: String) -> void:
 	if root._status != null and not root._is_client:
 		root._status.clear("player")
 		for t in root._status.take_dirty():
-			_push_status_effects(str(t), _status_now())
+			push_status_effects(str(t), status_now())
 
 ## Phase 129 — host: push `target_id` away from `attacker_id`, clamped to walkable ground.
 func _on_knockback_requested(target_id: String, attacker_id: String, tiles: int) -> void:
@@ -196,4 +179,4 @@ func _on_player_respawned(_position: Vector3) -> void:
 	if root._player != null and root._rebase != null and not root._player.respawn_world_pos.is_empty():
 		root._rebase.rebase_to(root._player.respawn_world_pos["chunk"])
 		root._player.place_at_world_pos(root._player.respawn_world_pos)
-	root._persistence_wiring._lift_after_respawn()
+	root._persistence_wiring.lift_after_respawn()

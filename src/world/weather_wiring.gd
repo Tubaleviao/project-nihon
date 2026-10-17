@@ -5,15 +5,14 @@ extends "res://src/core/wiring.gd"
 const TerrainSlice     := preload("res://src/terrain/terrain_slice.gd")
 const WorldClock       := preload("res://src/world/world_clock.gd")
 
-func wire(ctx: GameRoot) -> void:
-	root = ctx
+func _connect_all() -> void:
 	connect_bus(GameBus.weather_overrides_synced, _on_weather_overrides_synced)
 	connect_bus(GameBus.world_clock_received, _on_world_clock_received)
 
 ## Phase 54 — advance the clock, tick it to clients (host), and drive the sun, the season tint
 ## and the HUD line (anything with a renderer). A server runs no renderer, so it only advances,
 ## saves and ticks.
-func _tick_world_clock(delta: float) -> void:
+func tick_world_clock(delta: float) -> void:
 	root._clock.advance(delta)
 	root._settlement_wiring.tick(delta)
 	if not root._is_client:
@@ -32,7 +31,7 @@ func _tick_world_clock(delta: float) -> void:
 		return
 	var ppos: Vector3 = root._player.get_position()
 	var lat: float = TerrainSlice.latitude_at(ppos.z)
-	_apply_sun(lat, _night_speed_at(ppos))
+	apply_sun(lat, _night_speed_at(ppos))
 	_apply_season_look(lat)
 	var chunk: Vector2i = root._player.get_world_pos()["chunk"]
 	var weather_state := root._weather.update_local(chunk)
@@ -55,7 +54,7 @@ func _apply_weather_look(state: String) -> void:
 	var env := env_node.environment
 	env.fog_enabled = vis < 1.0
 	env.fog_density = (1.0 - vis) * root.WEATHER_FOG_DENSITY
-	# Follow the sky: ambient energy runs 0.08 (night) to 0.5 (day) in `_apply_sun`.
+	# Follow the sky: ambient energy runs 0.08 (night) to 0.5 (day) in `apply_sun`.
 	var daylight := clampf((env.ambient_light_energy - 0.08) / 0.42, 0.0, 1.0)
 	env.fog_light_color = Color(0.02, 0.03, 0.08).lerp(Color(0.62, 0.66, 0.72), daylight)
 
@@ -76,7 +75,7 @@ func _on_world_clock_received(host_days: float) -> void:
 ## swings east to west with the hour angle. It dims and warms toward the horizon and the sky
 ## and ambient light fall with it at night. `night_speed` is the `dayNightSpeed` of the biome the
 ## player stands in (1 follows the clock, 0 stays at dusk — see `WorldClock.biome_daylight`).
-func _apply_sun(lat: float, night_speed: float = 1.0) -> void:
+func apply_sun(lat: float, night_speed: float = 1.0) -> void:
 	var sun := root.get_node_or_null("Sun") as DirectionalLight3D
 	if sun == null:
 		return

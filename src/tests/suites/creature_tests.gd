@@ -1922,7 +1922,7 @@ func _test_exact_spawn_respawn() -> void:
 	gr._registry = reg
 	reg.local_player_id = pid
 	gr._saved_position_reads = 0
-	gr._persistence_wiring._place_local_player(Vector3(5.0, 5.0, 5.0))
+	gr._persistence_wiring.place_local_player(Vector3(5.0, 5.0, 5.0))
 	assert_eq(gr._saved_position_reads, 1, "a placement reads the saved position once")
 	assert_eq(player.get_world_pos()["chunk"], chunk + Vector2i(7, 0), "a saved record wins over pos")
 	var blank := PlayerRegistry.new()
@@ -1933,7 +1933,7 @@ func _test_exact_spawn_respawn() -> void:
 	gr._player = near
 	gr._rebase = RebaseDriver.new([near])
 	gr._registry = blank
-	gr._persistence_wiring._place_local_player(Vector3(5.0, 5.0, 5.0))
+	gr._persistence_wiring.place_local_player(Vector3(5.0, 5.0, 5.0))
 	assert_true(_wp_world(near.get_world_pos()).distance_to(Vector3(5.0, 5.0, 5.0)) < 0.01, "with no record the body goes to pos")
 	near.free()
 	player.free()
@@ -2335,11 +2335,6 @@ func _test_taming_cooldown_mirror_pruned_in_place() -> void:
 	rig["taming"].free()
 	rig["crafting"].free()
 	rig["registry"].free()
-
-# ---------------------------------------------------------------------------
-# Phase 39 — a downed body comes back (deliverable 1) + the two-client harness
-# ---------------------------------------------------------------------------
-
 
 # ---------------------------------------------------------------------------
 # Phase 143 — creature models

@@ -125,15 +125,16 @@ func _process(delta: float) -> void:
 			_deferred_accum = 0.0
 			_retry_deferred_packs()
 		_sync_accum += delta
-		if _sync_accum >= CREATURE_SYNC_INTERVAL:
+		if _sync_accum >= delta_interval:
 			_sync_accum = 0.0
-			if broadcast_deltas:
-				_broadcast_creature_states()
+			_broadcast_creature_states()
 
-## Phase 135 — false mutes the host's creature position deltas. The two-client harness turns it off under
-## a bandwidth-capped profile: wandering creatures alone exceed 256 kbit/s per client, so the link would
-## fall ever further behind and no step could converge.
-var broadcast_deltas := true
+## Phase 135/150 — seconds between creature delta broadcasts. The two-client harness raises it to
+## `THROTTLED_SYNC_INTERVAL` under a bandwidth-capped profile: at the full rate wandering creatures alone
+## exceed 256 kbit/s per client, so the link would fall ever further behind and no step could converge.
+## Deltas still flow, only rarely, so creature sync is exercised on a capped link.
+var delta_interval := CREATURE_SYNC_INTERVAL
+const THROTTLED_SYNC_INTERVAL := 2.0
 
 ## Return the instance_id of the nearest live creature within radius, or "".
 ## Routed through the spatial hash (Phase 28) so the scan is bounded by the
@@ -661,6 +662,20 @@ func prune_carried(covered: Callable) -> int:
 	if dropped > 0:
 		_invalidate_view()
 	return dropped
+
+## Phase 150 — remove one live instance outright (engaged or not), leaving no death record. For a body a
+## caller spawned for itself and is done with (the playtest bot's fight target).
+func despawn_instance(iid: String) -> void:
+	if not _instances.has(iid):
+		return
+	for chunk in _by_chunk.keys():
+		var held: Array = _by_chunk[chunk]
+		if held.has(iid):
+			held.erase(iid)
+			if held.is_empty():
+				_by_chunk.erase(chunk)
+	_release_instance(iid)
+	_invalidate_view()
 
 func _release_instance(iid: String) -> void:
 	var inst: Dictionary = _instances.get(iid, {})
