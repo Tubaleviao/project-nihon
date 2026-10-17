@@ -682,7 +682,7 @@ world gets taller.
 - [x] Suite: a frame's pump never spends over its time budget on dispatch + apply in a stubbed clock.
 - [ ] Playtest bot: the `stream` step's chunk build rate at least doubles against the Phase 141 report,
   and no step reports a hitch over 50 ms.
-- [ ] Suite: a region read for a window move never runs on the main thread.
+- [x] Suite: a region read for a window move never runs on the main thread.
 - [ ] Suite green on both boot paths, harness green.
 
 ---

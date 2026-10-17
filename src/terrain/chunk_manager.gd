@@ -392,6 +392,7 @@ func _process(_delta: float) -> void:
 	# the pool until shutdown (the same exit-134 leak `_exit_tree` now closes there).
 	begin_pump()
 	_apply_finished_builds()
+	_poll_region_reads()
 	flush_records()
 	if not _active:
 		return
@@ -612,6 +613,7 @@ func _drain_load_queue() -> void:
 	# candidate, so a drain of a full view ring paid ~49 of them to reach the same answer.
 	var centers := window_centers()
 	var radius := stream_radius()
+	var waiting := 0
 	while budget > 0:
 		if _pump_exhausted():
 			return   # the frame's main-thread budget is spent: the rest waits for the next one
@@ -639,6 +641,15 @@ func _drain_load_queue() -> void:
 		# it here clears that mark, so a chunk that leaves range and returns is queued
 		# again rather than left as a hole.
 		if not _within_windows(centers, radius, chunk):
+			continue
+		# Phase 142 — the chunk's regions read on a worker; it waits at the back of the queue
+		# until they land (a failed region does not hold it: see `regions_settled`).
+		if _reads_async() and not region_streamer.regions_settled(chunk, 1):
+			_pending[_chunk_key(chunk)] = true
+			_load_queue.append(chunk)
+			waiting += 1
+			if waiting > _load_queue.size():
+				return
 			continue
 		if not _loaded.has(_chunk_key(chunk)):
 			load_chunk(chunk)
@@ -760,6 +771,20 @@ func _retry_deferred_records() -> void:
 
 ## Make the regions `desired` chunks read resident, rebuild chunks whose records a read replaced, and
 ## retry the deferred records. Shared by `refresh` and `_retry_deferred_records`.
+## True when the streamer reads regions on a worker (a test stub may be anything).
+func _reads_async() -> bool:
+	return region_streamer != null and region_streamer.has_method("poll") and bool(region_streamer.async_reads)
+
+## Phase 142 — apply the region reads a worker finished since the last frame, and rebuild the
+## chunks whose generation records they replaced.
+func _poll_region_reads() -> void:
+	if not _reads_async():
+		return
+	var polled: Dictionary = region_streamer.poll()
+	if int(polled["loaded"]) > 0:
+		_rebuild_adopted(polled["adopted"])
+		_record_deferred()
+
 func _sync_wanted_regions(desired: Array) -> void:
 	var synced: Dictionary = region_streamer.sync(region_streamer.regions_for_chunks(desired, Frontier.BLEND_CHUNKS))
 	_rebuild_adopted(synced.get("adopted", []))
@@ -1227,6 +1252,8 @@ func _exit_tree() -> void:
 	for task_id in _builds.keys():
 		WorkerThreadPool.wait_for_task_completion(task_id)
 	_builds.clear()
+	if _reads_async():
+		region_streamer.flush_reads()   # an unawaited worker task aborts the pool at exit
 	# Phase 114 — records created this session reach the disk before the process goes (a blocked or
 	# backing-off flush is bypassed once: there is no next frame). The shared `ChunkRecords` table is
 	# not cleared here: `GameRoot` owns it, and a second manager must not wipe the first one's records.
