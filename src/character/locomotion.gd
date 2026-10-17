@@ -62,7 +62,11 @@ func update(speed: float, grounded: bool, velocity_y: float, delta: float) -> in
 	# longer than a step down (FALL_GRACE) or is fast (FALL_SPEED). Rising (a jump)
 	# keeps the previous ground state so a hop does not flicker to FALL.
 	if not grounded:
-		_airborne += delta
+		# Only the time spent descending counts: a long jump must not enter FALL at its apex.
+		if velocity_y < -0.1:
+			_airborne += delta
+		else:
+			_airborne = 0.0
 		if is_falling(_airborne, velocity_y):
 			_set_state(State.FALL)
 		return _state

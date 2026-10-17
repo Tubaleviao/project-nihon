@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:ff74a2f918034e533fe96c3d60060f1f56db883c97896e8a668d21a75350cc7c",
+  "schemaHash": "sha256:172153cde7ddee90e2eab5515e75da5abedf36a845229a0e17abb65989d521f8",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -20885,6 +20885,29 @@
             "pii": false,
             "defaultValue": 24
           },
+          "movement": {
+            "name": "movement",
+            "type": "enum",
+            "description": "ground snaps to the surface, flying holds hoverMetres above it, swimming stays in water",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "ground",
+              "flying",
+              "swimming"
+            ],
+            "pii": false,
+            "defaultValue": "ground"
+          },
+          "hoverMetres": {
+            "name": "hoverMetres",
+            "type": "decimal",
+            "description": "Height in metres above the surface a flying creature holds",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
+          },
           "attackRadius": {
             "name": "attackRadius",
             "type": "decimal",
@@ -21379,6 +21402,29 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 24
+          },
+          "movement": {
+            "name": "movement",
+            "type": "enum",
+            "description": "ground snaps to the surface, flying holds hoverMetres above it, swimming stays in water",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "ground",
+              "flying",
+              "swimming"
+            ],
+            "pii": false,
+            "defaultValue": "ground"
+          },
+          "hoverMetres": {
+            "name": "hoverMetres",
+            "type": "decimal",
+            "description": "Height in metres above the surface a flying creature holds",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
           },
           "attackRadius": {
             "name": "attackRadius",
@@ -21920,6 +21966,29 @@
             "pii": false,
             "defaultValue": 24
           },
+          "movement": {
+            "name": "movement",
+            "type": "enum",
+            "description": "ground snaps to the surface, flying holds hoverMetres above it, swimming stays in water",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "ground",
+              "flying",
+              "swimming"
+            ],
+            "pii": false,
+            "defaultValue": "ground"
+          },
+          "hoverMetres": {
+            "name": "hoverMetres",
+            "type": "decimal",
+            "description": "Height in metres above the surface a flying creature holds",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
+          },
           "attackRadius": {
             "name": "attackRadius",
             "type": "decimal",
@@ -22423,6 +22492,29 @@
             "pii": false,
             "defaultValue": 24
           },
+          "movement": {
+            "name": "movement",
+            "type": "enum",
+            "description": "ground snaps to the surface, flying holds hoverMetres above it, swimming stays in water",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "ground",
+              "flying",
+              "swimming"
+            ],
+            "pii": false,
+            "defaultValue": "flying"
+          },
+          "hoverMetres": {
+            "name": "hoverMetres",
+            "type": "decimal",
+            "description": "Height in metres above the surface a flying creature holds",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 2.5
+          },
           "attackRadius": {
             "name": "attackRadius",
             "type": "decimal",
@@ -22890,6 +22982,29 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 24
+          },
+          "movement": {
+            "name": "movement",
+            "type": "enum",
+            "description": "ground snaps to the surface, flying holds hoverMetres above it, swimming stays in water",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "ground",
+              "flying",
+              "swimming"
+            ],
+            "pii": false,
+            "defaultValue": "ground"
+          },
+          "hoverMetres": {
+            "name": "hoverMetres",
+            "type": "decimal",
+            "description": "Height in metres above the surface a flying creature holds",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
           },
           "attackRadius": {
             "name": "attackRadius",
@@ -23381,6 +23496,29 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 24
+          },
+          "movement": {
+            "name": "movement",
+            "type": "enum",
+            "description": "ground snaps to the surface, flying holds hoverMetres above it, swimming stays in water",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "ground",
+              "flying",
+              "swimming"
+            ],
+            "pii": false,
+            "defaultValue": "flying"
+          },
+          "hoverMetres": {
+            "name": "hoverMetres",
+            "type": "decimal",
+            "description": "Height in metres above the surface a flying creature holds",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 2.5
           },
           "attackRadius": {
             "name": "attackRadius",
@@ -23874,6 +24012,29 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 24
+          },
+          "movement": {
+            "name": "movement",
+            "type": "enum",
+            "description": "ground snaps to the surface, flying holds hoverMetres above it, swimming stays in water",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "ground",
+              "flying",
+              "swimming"
+            ],
+            "pii": false,
+            "defaultValue": "ground"
+          },
+          "hoverMetres": {
+            "name": "hoverMetres",
+            "type": "decimal",
+            "description": "Height in metres above the surface a flying creature holds",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
           },
           "attackRadius": {
             "name": "attackRadius",
@@ -24395,6 +24556,29 @@
             "pii": false,
             "defaultValue": 24
           },
+          "movement": {
+            "name": "movement",
+            "type": "enum",
+            "description": "ground snaps to the surface, flying holds hoverMetres above it, swimming stays in water",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "ground",
+              "flying",
+              "swimming"
+            ],
+            "pii": false,
+            "defaultValue": "ground"
+          },
+          "hoverMetres": {
+            "name": "hoverMetres",
+            "type": "decimal",
+            "description": "Height in metres above the surface a flying creature holds",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
+          },
           "attackRadius": {
             "name": "attackRadius",
             "type": "decimal",
@@ -24888,6 +25072,29 @@
             "pii": false,
             "defaultValue": 24
           },
+          "movement": {
+            "name": "movement",
+            "type": "enum",
+            "description": "ground snaps to the surface, flying holds hoverMetres above it, swimming stays in water",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "ground",
+              "flying",
+              "swimming"
+            ],
+            "pii": false,
+            "defaultValue": "ground"
+          },
+          "hoverMetres": {
+            "name": "hoverMetres",
+            "type": "decimal",
+            "description": "Height in metres above the surface a flying creature holds",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
+          },
           "attackRadius": {
             "name": "attackRadius",
             "type": "decimal",
@@ -25380,6 +25587,29 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 24
+          },
+          "movement": {
+            "name": "movement",
+            "type": "enum",
+            "description": "ground snaps to the surface, flying holds hoverMetres above it, swimming stays in water",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "ground",
+              "flying",
+              "swimming"
+            ],
+            "pii": false,
+            "defaultValue": "ground"
+          },
+          "hoverMetres": {
+            "name": "hoverMetres",
+            "type": "decimal",
+            "description": "Height in metres above the surface a flying creature holds",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
           },
           "attackRadius": {
             "name": "attackRadius",

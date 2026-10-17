@@ -278,6 +278,28 @@ func lap_tiles() -> int:
 func tile_size() -> float:
 	return _tile_size()
 
+## Phase 149 — fabric `movement` enum order (see `MOVEMENT_KINDS` in fabric/world/creatures/shared.js).
+const MOVE_GROUND := 0
+const MOVE_FLYING := 1
+const MOVE_SWIMMING := 2
+
+## How the creature occupies the world (a `MOVE_*` value); ground when unknown.
+func movement_of(instance_id: String) -> int:
+	var res: Resource = GameData.CREATURES.get(get_instance_creature_id(instance_id), null)
+	var kind: Variant = res.get("movement") if res != null else null
+	return int(kind) if kind != null else MOVE_GROUND
+
+## Height above the surface the instance holds: the fabric `hoverMetres` of a flyer, 0 for the rest.
+func hover_of(instance_id: String) -> float:
+	return hover_for_creature(get_instance_creature_id(instance_id))
+
+## `hover_of` for a fabric creature key (a spawn has no instance yet).
+static func hover_for_creature(creature_id: String) -> float:
+	var res: Resource = GameData.CREATURES.get(creature_id, null)
+	if res == null or int(res.get("movement")) != MOVE_FLYING:
+		return 0.0
+	return maxf(float(res.get("hoverMetres")), 0.0)
+
 ## The tile holding a world position.
 func tile_of(pos: Vector3) -> Vector2i:
 	var ts := _tile_size()
@@ -291,7 +313,7 @@ func set_instance_position(instance_id: String, pos: Vector3) -> void:
 	if voxel_slice != null:
 		var h := surface_at_tile(tile_of(pos))
 		if not is_nan(h):
-			pos.y = h
+			pos.y = h + hover_of(instance_id)   # a flyer keeps its hover band above the surface
 	_instances[instance_id]["position"] = pos
 	_spatial.update(instance_id, pos)
 	_place_box(instance_id, pos)
@@ -684,7 +706,7 @@ func _spawn(creature_id: String, chunk_pos: Vector2i, spawn_index: int = 0) -> S
 
 	# Sit the creature on the terrain surface instead of a fixed height.
 	if terrain_slice != null and terrain_slice.has_method("get_height_at"):
-		pos.y = terrain_slice.get_height_at(Vector2(pos.x, pos.z))
+		pos.y = terrain_slice.get_height_at(Vector2(pos.x, pos.z)) + hover_for_creature(creature_id)
 
 	var iid := _instance_id(chunk_pos, creature_id, spawn_index)
 

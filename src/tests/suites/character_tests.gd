@@ -145,6 +145,19 @@ func _test_locomotion_step_down_is_not_a_fall() -> void:
 	fast.update(0.0, false, -Locomotion.FALL_SPEED - 0.5, dt)
 	assert_eq(fast.get_state(), Locomotion.State.FALL, "a fast drop falls without waiting for the grace")
 	assert_false(Locomotion.is_falling(10.0, 1.0), "rising (a jump) never reads as falling")
+	# Phase 149 — a jump that outlasts the fall threshold does not enter FALL before its apex.
+	var jump := Locomotion.new()
+	jump.update(2.0, true, 0.0, dt)
+	var jt := 0.0
+	var jvy := 6.0
+	while jvy > 0.0:
+		jvy -= 9.8 * dt
+		jt += dt
+		jump.update(2.0, false, jvy, dt)
+		if jvy > 0.0:
+			assert_true(jump.get_state() != Locomotion.State.FALL, "rising never falls (%.2f s)" % jt)
+	assert_true(jt > Locomotion.FALL_GRACE, "the jump outlasts the fall grace (%.2f s)" % jt)
+	assert_true(jump.get_state() != Locomotion.State.FALL, "no FALL pose at the apex")
 
 ## The camera follows the body's height with exponential easing: a block step is spread
 ## over several frames (never overshooting, always converging), while the first frame and

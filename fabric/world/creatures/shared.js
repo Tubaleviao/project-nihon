@@ -112,12 +112,18 @@ function tameData(tame) {
 //   maxStepMetres    tallest ledge the creature climbs in one tile step (> 0)
 //   canSwim          the creature may path through water tiles (ground below sea level)
 //   pathRadiusTiles  search radius of one path query, in tiles (1..PATH_RADIUS_MAX)
+//   movement         how the creature occupies the world (Phase 149): ground (snapped to the surface),
+//                    flying (kept hoverMetres above it) or swimming
+//   hoverMetres      height above the surface a flyer holds (>= 0; 0 for the other kinds)
 const PATH_RADIUS_MAX = 64
-function pathFields({ maxStepMetres = 0.75, canSwim = false, pathRadiusTiles = 24 } = {}) {
+const MOVEMENT_KINDS = ['ground', 'flying', 'swimming']
+function pathFields({ maxStepMetres = 0.75, canSwim = false, pathRadiusTiles = 24, movement = 'ground', hoverMetres = 0 } = {}) {
   return {
     maxStepMetres:   { type: 'decimal', description: 'Tallest ledge in metres the creature climbs in one tile step; a taller step is routed around', defaultValue: maxStepMetres },
     canSwim:         { type: 'boolean', description: 'Whether the creature paths through water tiles (ground below sea level)', defaultValue: canSwim },
     pathRadiusTiles: { type: 'integer', description: 'Search radius in tiles of one path query', defaultValue: pathRadiusTiles },
+    movement:        { type: 'enum', values: MOVEMENT_KINDS, description: 'ground snaps to the surface, flying holds hoverMetres above it, swimming stays in water', defaultValue: movement },
+    hoverMetres:     { type: 'decimal', description: 'Height in metres above the surface a flying creature holds', defaultValue: hoverMetres },
   }
 }
 
@@ -132,6 +138,11 @@ function validatePathFields(creatures) {
     if (!Number.isInteger(radius) || radius < 1 || radius > PATH_RADIUS_MAX) {
       throw new Error(`${name}: pathRadiusTiles must be an integer in 1..${PATH_RADIUS_MAX} (got ${radius})`)
     }
+    const kind = f.movement.defaultValue
+    if (!MOVEMENT_KINDS.includes(kind)) throw new Error(`${name}: movement must be one of ${MOVEMENT_KINDS.join(', ')} (got ${kind})`)
+    const hover = f.hoverMetres.defaultValue
+    if (!(typeof hover === 'number' && hover >= 0)) throw new Error(`${name}: hoverMetres must be >= 0 (got ${hover})`)
+    if (kind === 'flying' && !(hover > 0)) throw new Error(`${name}: a flying creature needs hoverMetres > 0`)
     if (typeof f.canSwim.defaultValue !== 'boolean') throw new Error(`${name}: canSwim must be a boolean`)
   }
 }
@@ -153,4 +164,4 @@ function validateSkeletonFields(creatures, skeletons = CREATURE_SKELETONS) {
   }
 }
 
-module.exports = { skeletonField, validateSkeletonFields, CREATURE_SKELETONS, pathFields, validatePathFields, PATH_RADIUS_MAX, defineEntity, creatureStateMachine, creatureStateValues, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS, GROUP_BEHAVIORS, dropsData, tameData }
+module.exports = { skeletonField, validateSkeletonFields, CREATURE_SKELETONS, pathFields, validatePathFields, PATH_RADIUS_MAX, MOVEMENT_KINDS, defineEntity, creatureStateMachine, creatureStateValues, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS, GROUP_BEHAVIORS, dropsData, tameData }

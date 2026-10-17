@@ -30,11 +30,11 @@ static func commit(ops: Array, journal_path: String, fault: Callable = Callable(
 			foreign_journal = true
 	if foreign_journal and not FileAccess.file_exists(journal_path):
 		# Another transaction's journal is live: a `.bak` here may be its only old copy and the rename below
-		# would overwrite it. Refuse before touching anything; the save stays dirty and retries once it settled.
+		# would overwrite it. Refuse before touching anything; the staged ops are kept for a retry once it settled.
 		for op in ops:
 			if FileAccess.file_exists(str(op["path"]) + BAK_EXT):
+				# The staged ops stay intact (tmp files kept) so the caller can retry the same commit.
 				Diag.warn("SaveTxn: %s is held by another transaction's journal — commit deferred" % (str(op["path"]) + BAK_EXT))
-				discard(ops)
 				return ERR_BUSY
 	for op in ops:
 		# Without a journal any `.bak` here is a leftover of a finished commit (its cleanup failed):

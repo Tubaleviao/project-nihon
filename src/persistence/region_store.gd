@@ -589,8 +589,10 @@ func stage_chunks(chunks: Dictionary, deletions := true, ends_streaks := false) 
 	# its failure streak, so only consecutive failing saves count toward MAX_REGION_FAILURES. Only the world
 	# save passes `ends_streaks`: the generation-record flushes share this store with unrelated batches.
 	if ends_streaks:
+		# Phase 149 — only a region that reads back fine ended its streak: one this save did not write and
+		# that still cannot be read is as broken as before, so its count stands.
 		for rkey in region_failures.keys():
-			if not grouped.has(rkey):
+			if not grouped.has(rkey) and bool(read_region(region_from_key(str(rkey)), false)["ok"]):
 				region_failures.erase(rkey)
 	for rkey in grouped:
 		var region := region_from_key(str(rkey))

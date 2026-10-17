@@ -1216,17 +1216,16 @@ func _step_far_peers_simulated() -> void:
 		await _await_settle(1.0)
 	_report("far_peers_simulated", "ok", "far-window-simulated")
 
-## Phase 136 — how many creatures around `chunk` stand more than a centimetre off the host's voxel surface
-## after the slice places them (the position setter keeps the body on the column top).
+## Phase 136/149 — how many creatures around `chunk` are stored more than a centimetre off the host's voxel
+## surface (plus their fabric hover band for flyers). The stored position is measured as it is: it is not
+## re-set first, so a placement that skipped the surface snap is caught.
 func _creatures_off_surface(chunk: Vector2i) -> int:
 	var off := 0
 	for dx in range(-1, 2):
 		for dz in range(-1, 2):
 			for iid in (_root._creature._by_chunk.get(chunk + Vector2i(dx, dz), []) as Array):
-				var pos: Vector3 = _root._creature.get_instance_position(iid)
-				_root._creature.set_instance_position(iid, pos)
 				var placed: Vector3 = _root._creature.get_instance_position(iid)
-				var surface: float = _root._voxel.get_voxel_height_at(Vector2(placed.x, placed.z))
+				var surface: float = _root._voxel.get_voxel_height_at(Vector2(placed.x, placed.z)) + _root._creature.hover_of(iid)
 				if absf(placed.y - surface) > 0.01:
 					off += 1
 	return off

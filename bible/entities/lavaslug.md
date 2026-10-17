@@ -22,6 +22,8 @@ A slow-moving, magma-encrusted slug the size of a cart horse that grazes on ashi
 | `maxStepMetres` | decimal | yes | Tallest ledge in metres the creature climbs in one tile step; a taller step is routed around |
 | `canSwim` | boolean | yes | Whether the creature paths through water tiles (ground below sea level) |
 | `pathRadiusTiles` | integer | yes | Search radius in tiles of one path query |
+| `movement` | enum (`ground`, `flying`, `swimming`) | yes | ground snaps to the surface, flying holds hoverMetres above it, swimming stays in water |
+| `hoverMetres` | decimal | yes | Height in metres above the surface a flying creature holds |
 | `attackRadius` | decimal | yes | Distance in metres at which creature begins attacking |
 | `fleeThreshold` | decimal | yes | HP fraction (0–1) below which creature flees |
 | `respawnSeconds` | integer | yes | Seconds before a dead creature respawns |
