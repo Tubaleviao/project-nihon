@@ -70,7 +70,7 @@ func _on_station_placed(station_id: String, type: String, position: Vector3) -> 
 			"chunk": here["chunk"],
 			"local": (here["local"] as Vector3) + (position - root._player.get_position()),
 		})
-	var why: String = root._settlements.found(pid, I18n.t("settlement.default_name", [root._settlements.count() + 1]), Vector2(position.x, position.z), false, exact)
+	var why: String = root._settlements.found(pid, "", Vector2(position.x, position.z), false, exact, true)
 	if why != "" and root._station != null:
 		root._station.remove_station(station_id)
 

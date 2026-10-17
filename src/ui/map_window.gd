@@ -13,6 +13,7 @@ extends Control
 ## Drawing needs a canvas and does not run headless; the maths it relies on is in MapMath/MapTiles.
 
 const I18n := preload("res://src/core/i18n.gd")
+const SettlementSlice := preload("res://src/settlement/settlement_slice.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
 const MapMath := preload("res://src/ui/map_math.gd")
@@ -858,7 +859,7 @@ func _draw_claims(origin: Vector2) -> void:
 		var r: float = (edge["pos"] - centre["pos"]).length()
 		var col := Color(1.0, 0.6, 0.2, 0.9) if str(c["id"]) == mine else Color(0.9, 0.3, 0.3, 0.8)
 		draw_arc(origin + centre["pos"], maxf(r, 3.0), 0.0, TAU, 48, col, 2.0)
-		draw_string(ThemeDB.fallback_font, origin + centre["pos"] + Vector2(6, -6), str(c["name"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, col)
+		draw_string(ThemeDB.fallback_font, origin + centre["pos"] + Vector2(6, -6), SettlementSlice.display_name(c), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, col)
 
 func _draw_marker(origin: Vector2, m: Dictionary, label: String, fill: Color, text_col: Color) -> void:
 	var font := ThemeDB.fallback_font

@@ -794,7 +794,7 @@ func technology_rows() -> Array:
 			"status": status,
 			"can_research": _can_research(tid, status, data) and not short,
 			"points_cost": points_cost,
-			"reason": I18n.t("ui.needs_points", [points_cost]) if short else "",
+			"reason": "needs_points:%d" % points_cost if short else "",
 			"requires": data.get("requires", []),
 			"duration": int(data.get("researchDuration", 0)),
 			"cost": _fmt_entries(data.get("researchMaterials", [])),
@@ -1109,7 +1109,7 @@ func refresh_crafting() -> void:
 		if str(r.get("station", "")) != "":
 			line += "  @ %s" % r["station"]
 		var lbl := Label.new()
-		lbl.text = line + ("" if bool(r["can_craft"]) else "  (%s)" % r["reason"])
+		lbl.text = line + ("" if bool(r["can_craft"]) else "  (%s)" % I18n.reason_text(str(r["reason"])))
 		lbl.modulate = Color(1, 1, 1) if bool(r["can_craft"]) else Color(0.6, 0.6, 0.6)
 		hbox.add_child(lbl)
 		_crafting_box.add_child(hbox)
@@ -1136,7 +1136,7 @@ func refresh_crafting() -> void:
 				line += "  @ %s" % r["station"]
 			line += "  " + I18n.t("ui.needs", [r["materials"]])
 			var lbl := Label.new()
-			lbl.text = line + ("" if bool(r["can_repair"]) else "  (%s)" % r["reason"])
+			lbl.text = line + ("" if bool(r["can_repair"]) else "  (%s)" % I18n.reason_text(str(r["reason"])))
 			lbl.modulate = Color(1, 1, 1) if bool(r["can_repair"]) else Color(0.6, 0.6, 0.6)
 			hbox.add_child(lbl)
 			_crafting_box.add_child(hbox)
@@ -1166,7 +1166,7 @@ func refresh_technology() -> void:
 		var reqs: String = ", ".join(req_arr) if req_arr.size() > 0 else "—"
 		var line := I18n.t("ui.tech_line", [r["id"], r["status"], reqs, r["cost"], r["points_cost"], r["duration"]])
 		var lbl := Label.new()
-		lbl.text = line + ("  (%s)" % r["reason"] if str(r["reason"]) != "" else "")
+		lbl.text = line + ("  (%s)" % I18n.reason_text(str(r["reason"])) if str(r["reason"]) != "" else "")
 		hbox.add_child(lbl)
 		_technology_box.add_child(hbox)
 
@@ -1273,7 +1273,7 @@ func _on_repair_resolved(result: Dictionary) -> void:
 		if result.get("success", false):
 			_repair_feedback.text = I18n.t("ui.repaired", [result.get("item_id", "?")])
 		else:
-			_repair_feedback.text = "%s: %s" % [result.get("item_id", "?"), result.get("reason", "?")]
+			_repair_feedback.text = "%s: %s" % [result.get("item_id", "?"), I18n.reason_text(str(result.get("reason", "?")))]
 	refresh_crafting()
 	refresh_inventory()
 
@@ -1282,7 +1282,7 @@ func _on_research_resolved(result: Dictionary) -> void:
 		if result.get("success", false):
 			_technology_feedback.text = I18n.t("ui.researching", [result.get("tech_id", "?")])
 		else:
-			_technology_feedback.text = "%s: %s" % [result.get("tech_id", "?"), result.get("reason", "?")]
+			_technology_feedback.text = "%s: %s" % [result.get("tech_id", "?"), I18n.reason_text(str(result.get("reason", "?")))]
 	refresh_technology()
 
 func _on_research_points_synced(player_id: String, _points: int) -> void:
@@ -1404,7 +1404,7 @@ func _on_proposal_vote_pressed(proposal_id: String, verdict: String) -> void:
 		if result.get("success", true):
 			_proposal_feedback.text = I18n.t("proposal.voted")
 		else:
-			_proposal_feedback.text = I18n.t("proposal.vote_rejected", [result.get("reason", "?")])
+			_proposal_feedback.text = I18n.t("proposal.vote_rejected", [I18n.reason_text(str(result.get("reason", "?")))])
 	refresh_proposals()
 
 # ---------------------------------------------------------------------------

@@ -281,7 +281,7 @@ func _cmd_tp(speaker: String, args: Array) -> void:
 	if not _teleport(speaker, p["pos"]):
 		_unreachable(speaker)
 		return
-	_reply(speaker, "chat.teleported_xyz", [_fmt(p["world"])])
+	_reply(speaker, "chat.teleported_xyz", _coords(p["world"]))
 
 func _cmd_bring(speaker: String, args: Array) -> void:
 	if args.size() != 1:
@@ -485,8 +485,10 @@ func _resolve_speaker(player_id: String) -> String:
 		return player_id
 	return player_registry.local_player_id if player_registry != null else ""
 
-func _fmt(world: Array) -> String:
-	return "%.1f, %.1f, %.1f" % [world[0], world[1], world[2]]
+## Coordinates travel as numbers (rounded to the 0.1 m the line shows); each client formats them with
+## its own locale through `{0:1}` placeholders.
+func _coords(world: Array) -> Array:
+	return [snappedf(float(world[0]), 0.1), snappedf(float(world[1]), 0.1), snappedf(float(world[2]), 0.1)]
 
 func _post(channel: String, sender: String, text: String, target: String) -> void:
 	GameBus.chat_posted.emit(channel, sender, text, target)
@@ -502,8 +504,21 @@ func _say_system(key: String, args: Array, target: String) -> void:
 		clean.append(str(a).left(I18n.MAX_ARG_LEN) if a is String else a)
 	GameBus.system_message.emit(key, clean, target)
 
-## Host: tell everyone `player_id` is here.
+## A player reconnecting inside this window (seconds) is not announced again.
+const JOIN_ANNOUNCE_COOLDOWN := 60.0
+const MAX_JOIN_MEMO := 256
+## Test seam: monotonic seconds.
+var join_clock: Callable = func() -> float: return Time.get_ticks_msec() / 1000.0
+var _last_join_announce: Dictionary = {}   # player id -> join_clock() of the last announcement
+
+## Host: tell everyone `player_id` is here. A flapping connection announces once per cooldown.
 func announce_joined(player_id: String) -> void:
+	var now: float = float(join_clock.call())
+	if _last_join_announce.has(player_id) and now - float(_last_join_announce[player_id]) < JOIN_ANNOUNCE_COOLDOWN:
+		return
+	if _last_join_announce.size() >= MAX_JOIN_MEMO:
+		_last_join_announce.clear()
+	_last_join_announce[player_id] = now
 	_say_system("chat.player_joined", [_handle_of(player_id)], "")
 
 func _load_admins() -> void:

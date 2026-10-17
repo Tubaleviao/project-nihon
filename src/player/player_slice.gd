@@ -1104,7 +1104,7 @@ func _place_station() -> void:
 	if placed == "" and _station_label != null and station_slice.has_method("placement_blocker"):
 		var why: String = station_slice.placement_blocker(stype, station_slice.snap_to_grid(target))
 		if why != "":
-			_station_label.text += "  (%s)" % why
+			_station_label.text += "  (%s)" % I18n.reason_text(why)
 
 
 ## Where a station would go: on top of the aimed terrain block when the aimed
