@@ -174,6 +174,8 @@ var frontier_ready: Callable = Callable()
 ## Phase 116 — every chunk `spawn_for_chunk` has run for (and `despawn_for_chunk` has not undone), trees
 ## or not, so a late record resyncs chunks that grew none locally.
 var _spawned_chunks: Dictionary = {}
+## Phase 145 — chunks whose trees a fold re-keyed into them; the next `spawn_for_chunk` leaves them be.
+var _carried_chunks: Dictionary = {}
 ## Phase 126 — `_spawned_chunks` bucketed for `_near_loaded_chunk`: cell -> { chunk: true }, cells `_bucket_size` wide.
 var _spawn_buckets: Dictionary = {}
 var _bucket_size := 0
@@ -226,6 +228,11 @@ func spawn_for_chunk(chunk_pos: Vector2i) -> void:
 	if not _spawned_chunks.has(chunk_pos):
 		_spawned_chunks[chunk_pos] = true
 		_bucket_add(chunk_pos)
+	if _carried_chunks.has(chunk_pos):
+		# Phase 145 — a fold carried this chunk's trees across under their own ids: keep them as they are.
+		_carried_chunks.erase(chunk_pos)
+		_apply_pending_spots(chunk_pos)
+		return
 	var biome := _chunk_biome(chunk_pos)
 	var entry := tree_entry_for_biome(biome)
 	if entry.is_empty():
@@ -353,11 +360,66 @@ func despawn_for_chunk(chunk_pos: Vector2i) -> void:
 	var ids: Array = _by_chunk.get(chunk_pos, []) as Array
 	_by_chunk.erase(chunk_pos)
 	_spawned_chunks.erase(chunk_pos)
+	_carried_chunks.erase(chunk_pos)
 	_bucket_remove(chunk_pos)
 	# Phase 126 — a client keeps an unrecorded clear after the chunk unloads (no ghost tree on return); it
 	# goes once the host's record for the chunk arrives or the scope moves away (`set_clear_scope`).
 	for tid in ids:
 		_remove_tree(str(tid), true)
+
+## Phase 145 — a fold of the local player re-keys every held tree through the same fold
+## (`TerrainSlice.fold_world_pos_like`) instead of despawning it with the window. Id, species, state
+## and regrowth clock stay; position, tile and chunk are the fold's image. The new chunks are marked
+## carried, so `spawn_for_chunk` neither trims nor re-spawns them under their new keys. Call BEFORE
+## `ChunkManager.restream()` and `place_after_fold()` after the scene rebase.
+func fold_contents(turned: bool, pole_sign: int) -> void:
+	var span := float(_chunk_size()) * _tile_size()
+	_by_chunk.clear()
+	_spawned_chunks.clear()
+	_spawn_buckets.clear()
+	_carried_chunks.clear()
+	last_fold_ids = _trees.keys()
+	for tid in _trees:
+		var tree: Dictionary = _trees[tid]
+		var pos: Vector3 = TerrainSlice.fold_world_vec_like(tree["position"], turned, pole_sign)
+		tree["position"] = pos
+		tree["tile"] = Vector2i(floori(pos.x / _tile_size()), floori(pos.z / _tile_size()))
+		var chunk := Vector2i(floori(pos.x / span), floori(pos.z / span))
+		tree["chunk"] = chunk
+		if not _by_chunk.has(chunk):
+			_by_chunk[chunk] = []
+		(_by_chunk[chunk] as Array).append(tid)
+		_carried_chunks[chunk] = true
+
+## Put every carried tree's instance and trunk at its folded position (after the scene rebase).
+func place_after_fold() -> void:
+	for tid in _trees:
+		var tree: Dictionary = _trees[tid]
+		var pos: Vector3 = tree["position"]
+		if _pool != null and int(tree["mi"]) >= 0:
+			_pool.set_transform(int(tree["mi"]), _stump_transform(pos) if tree["state"] == "stump" else _visual_transform(pos))
+		var body: Variant = tree.get("body", null)
+		if body != null and is_instance_valid(body):
+			(body as Node3D).position = pos + _origin.value
+
+## Drop carried trees whose chunk the folded window does not cover (`covered(chunk)`).
+## Total released by `prune_carried` (the playtest bot tells these from a despawn).
+var fold_pruned := 0
+## The ids the latest `fold_contents` carried.
+var last_fold_ids: Array = []
+
+func prune_carried(covered: Callable) -> int:
+	var dropped := 0
+	for chunk in _by_chunk.keys():
+		if covered.call(chunk):
+			continue
+		for tid in (_by_chunk[chunk] as Array).duplicate():
+			_remove_tree(str(tid), true)
+			dropped += 1
+		_by_chunk.erase(chunk)
+		_carried_chunks.erase(chunk)
+	fold_pruned += dropped
+	return dropped
 
 ## Drop this chunk's trees whose spawn index is >= `budget` or cleared.
 func _trim_chunk_to(chunk_pos: Vector2i, budget: int, cleared: Dictionary = {}) -> void:
