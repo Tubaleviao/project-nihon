@@ -164,7 +164,7 @@ issue number where the criterion used to be.
 | 141 | Terrain streaming off the main thread: worker noise, seam strips, polar shortcuts, fold catch-up | Done | [history](docs/roadmap-history/phases-130-145.md) |
 | 142 | Terrain build throughput: a time-budgeted pump and worker region reads | Done | [history](docs/roadmap-history/phases-130-145.md) |
 | 143 | Creature models: rigged, animated creatures replace the tinted box | Done | [history](docs/roadmap-history/phases-130-145.md) |
-| 144 | A native chunk builder: GDExtension, CI binaries and a GDScript fallback | Planned | below |
+| 144 | A native chunk builder: GDExtension, CI binaries and a GDScript fallback | Merged | split into [Phase 166](#phase-166--native-builder-scaffold-gdextension-loader-fallback-ci-binaries-and-releases)–169 |
 | 145 | Fold contents: creatures and trees survive a polar fold | Done | [history](docs/roadmap-history/phases-130-145.md) |
 | 146 | Roadmap close-out: archive merged phases and keep the index honest | Done | [history](docs/roadmap-history/phases-130-145.md) |
 | 147 | Review follow-ups I: trust boundary and far-from-origin precision | Done | [history](docs/roadmap-history/phases-147.md) |
@@ -186,6 +186,11 @@ issue number where the criterion used to be.
 | 163 | Crowd performance: fix what the Phase 162 report names | Planned | below |
 | 164 | A round horizon: a circular distant ring, planet curvature and haze | Planned | below |
 | 165 | Mountains on the horizon: distant bands out to the visibility limit | Planned | below |
+| 166 | Native builder scaffold: GDExtension, loader, fallback, CI binaries and releases | Planned | below |
+| 167 | Native `heightmap_for` | Planned | below |
+| 168 | Native `build_runs` | Planned | below |
+| 169 | Native `build_chunk_arrays` and the speed target | Planned | below |
+| 170 | A compute-shader heightmap, if the native builder is still the bottleneck | Planned | below |
 
 ---
 
@@ -201,44 +206,6 @@ issue number where the criterion used to be.
 
 
 
-
-
-## Phase 144 — A native chunk builder: GDExtension, CI binaries and a GDScript fallback
-
-**Goal:** a chunk still costs a worker about 200 ms of GDScript (resolve + mesh arrays). Bigger
-mountains and a wider view make that worse. This phase moves the per-tile loops to native code
-before the world gets taller, without making the public build depend on a native binary.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phase 142.
-
-**Deliverables:**
-- `native/` — a GDExtension (C++, `godot-cpp` pinned to the project's Godot version) porting
-  `heightmap_for`, `build_runs` and `build_chunk_arrays`: climate, shape, ore and biome resolve with
-  bit-exact `FastNoiseLite` behaviour, and the greedy mesher with a deterministic output order (the
-  GDScript reference is changed first if its order depends on dictionary iteration).
-- The GDScript builder stays the reference. A loader picks the native builder when the extension
-  loads and falls back to GDScript otherwise, with one log line saying which is in use.
-- CI builds the extension for Linux x86_64, Windows x86_64 and macOS universal, and attaches the
-  binaries to the export builds and releases. Binaries are not committed to git or LFS. A platform
-  without a binary runs the GDScript fallback.
-- Port order: scaffold + loader + fallback first, then one pure function at a time, each with its
-  parity test, so every PR ships a working build.
-- Optional, measured first: a compute-shader heightmap path if the native builder is still the
-  bottleneck at a larger view distance.
-
-**Acceptance criteria:**
-- [ ] Suite: native and GDScript builders give equal arrays for a fixed set of chunks (equator, ice,
-  pole, antimeridian, edited chunk); the GDScript fallback is used when the extension is absent.
-- [ ] CI: the three platform binaries build, and an export without them boots on the fallback.
-- [ ] Playtest bot: the `stream` step's chunk build rate with the native builder is at least double
-  the GDScript fallback's on the same commit (so Phase 142's pump gains are not counted), and
-  `report.json` shows no step with a hitch over 50 ms (the bot does not fail on hitches, so this is
-  read from the report, not from the exit code).
-- [ ] Suite green on both boot paths, harness green.
-
----
 
 
 ## Phase 150 — Review follow-ups IV: wiring, harness and playtest bot
@@ -977,6 +944,146 @@ come in their own world-gen phases; this one makes whatever the shape holds visi
 - [ ] Playtest bot: a `far_peak` step stands 60 km from a known ridge on the default seed and finds
   rock or snow pixels above the skyline in its direction; the step reports frame time and fails over
   the existing hitch limit.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 166 — Native builder scaffold: GDExtension, loader, fallback, CI binaries and releases
+
+**Goal:** a chunk still costs a worker about 200 ms of GDScript (resolve + mesh arrays). Bigger
+mountains and a wider view make that worse. This phase moves the per-tile loops to native code
+before the world gets taller, without making the public build depend on a native binary.
+
+**Split (decided 2026-10-17).** Phase 144 is split into four steps, each one a whole PR with a
+working build: **166** scaffold, loader, fallback, CI binaries and releases; **167** `heightmap_for`;
+**168** `build_runs`; **169** `build_chunk_arrays` and the speed target. Each is a full roadmap step
+for the review rules: its PR closes every box in its own section. The optional compute-shader
+heightmap path is Phase 170.
+
+**Decisions that apply to Phases 166–169:**
+- **Noise:** native code calls Godot's own `FastNoiseLite` through `godot-cpp` (a `Ref<FastNoiseLite>`
+  configured exactly as the GDScript one). Do not vendor `FastNoiseLite.h`. Using the engine's class
+  makes noise bit-exact by construction, so parity failures always point at the ported logic.
+- **Binaries:** built by CI for Linux x86_64, Windows x86_64 and macOS universal. They are uploaded
+  as workflow artifacts on every run and attached to a GitHub Release when a `v*` tag is pushed.
+  Never committed to git or LFS. A platform without a binary runs the GDScript fallback.
+- **macOS:** unsigned universal binary plus a macOS export preset. No signing or notarization (that
+  needs an Apple developer account; tracked as a human issue if ever wanted).
+- **Verification of non-Linux builds is CI's job.** The Windows and macOS binaries are proven by the
+  PR's `windows-latest` / `macos-latest` CI jobs, not locally. A run on Linux builds and tests the
+  Linux binary locally (`g++` is installed; get SCons with `pipx install scons`), pushes, and
+  lets CI decide the other two. "Could not verify Windows/macOS here" is not a reason to skip or
+  block: push and read the CI result.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 142.
+
+**Deliverables:**
+- `native/` — a GDExtension (C++, `godot-cpp` pinned to the Godot 4.7 tag as a git submodule or a
+  pinned CI checkout, SConstruct, `.gdextension` file). It exposes a `NativeChunkBuilder` class
+  whose methods exist but are not yet used for any real chunk work (a `version()` call is enough).
+- The GDScript builder stays the reference. A loader picks the native builder when the extension
+  loads and falls back to GDScript otherwise, with one log line saying which is in use. A per-function
+  switch lets later steps route one function at a time through native code.
+- CI: a matrix job builds the extension on `ubuntu-latest` (Linux x86_64), `windows-latest` (Windows
+  x86_64) and `macos-latest` (macOS universal), with a cache for `godot-cpp`. The binaries are
+  uploaded as artifacts and bundled into the export builds (Linux, Windows, and a new macOS export
+  preset).
+- `.github/workflows/release.yml` (or a job in `ci.yml`) creates a GitHub Release on a `v*` tag and
+  attaches the three binaries and the export builds.
+- `.gitignore` keeps built binaries out of git.
+
+**Acceptance criteria:**
+- [ ] CI: the three platform binaries build in the PR's CI run.
+- [ ] Suite: with the extension present the loader reports native; with it absent the loader reports
+  the GDScript fallback and the game boots. Both paths are tested.
+- [ ] CI: an export without the binaries boots on the fallback.
+- [ ] A release workflow triggered by `v*` tags exists and passes `actionlint` in CI (pushing a real
+  tag is not required).
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 167 — Native `heightmap_for`
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 166.
+
+**Deliverables:**
+- `heightmap_for` ported to `NativeChunkBuilder`: climate, shape, ore and biome resolve, using the
+  engine's `FastNoiseLite` through `godot-cpp`.
+- The loader routes `heightmap_for` to native when the extension is present.
+
+**Acceptance criteria:**
+- [ ] Suite: native and GDScript `heightmap_for` give equal results for a fixed set of chunks
+  (equator, ice, pole, antimeridian, edited chunk). Skipped with one log line when the extension is
+  absent; CI runs it with the extension built.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 168 — Native `build_runs`
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 167.
+
+**Deliverables:**
+- `build_runs` ported to `NativeChunkBuilder`, routed through the loader.
+- If the GDScript reference's output order depends on dictionary iteration, the reference is made
+  deterministic first (in the same PR) so parity is defined.
+
+**Acceptance criteria:**
+- [ ] Suite: native and GDScript `build_runs` give equal output, same order, for the fixed chunk set.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 169 — Native `build_chunk_arrays` and the speed target
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 168.
+
+**Deliverables:**
+- `build_chunk_arrays` (the greedy mesher) ported to `NativeChunkBuilder` with a deterministic output
+  order, routed through the loader. The whole chunk build now runs native when the extension loads.
+- The playtest bot's `stream` step records the chunk build rate and which builder was used, and CI
+  runs the step once per builder on the same commit.
+
+**Acceptance criteria:**
+- [ ] Suite: native and GDScript builders give equal arrays for the fixed chunk set; the GDScript
+  fallback is used when the extension is absent.
+- [ ] Playtest bot (CI): the `stream` step's chunk build rate with the native builder is at least
+  double the GDScript fallback's on the same commit (so Phase 142's pump gains are not counted), and
+  `report.json` shows no step with a hitch over 50 ms (the bot does not fail on hitches, so this is
+  read from the report, not from the exit code).
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+
+## Phase 170 — A compute-shader heightmap, if the native builder is still the bottleneck
+
+**Goal:** moved out of Phase 144. Measure first; build only if the numbers ask for it.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 169, Phase 165.
+
+**Deliverables:**
+- A playtest-bot measurement at the largest default view distance (after Phase 165) that reports
+  where chunk build time goes with the native builder.
+- If `heightmap_for` is still over half of the build time: a compute-shader heightmap path with the
+  native builder as fallback. Otherwise: the measurement is recorded in this section and the phase
+  closes with no shader.
+
+**Acceptance criteria:**
+- [ ] Playtest bot (CI): the measurement is in `report.json`, and this section records the decision.
+- [ ] If a shader ships: suite parity with the native `heightmap_for` for the fixed chunk set, and a
+  machine without compute support uses the native/GDScript path.
 - [ ] Suite green on both boot paths, harness green.
 
 ---
