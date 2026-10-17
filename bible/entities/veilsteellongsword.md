@@ -16,6 +16,7 @@ Two-handed longsword of veilsteel. Heavy and slow but capable of cracking enchan
 | `weight` | decimal | yes | kg |
 | `rarity` | enum (`common`, `uncommon`, `rare`, `epic`, `legendary`) | yes |  |
 | `stackable` | boolean | yes | Always false for weapons |
+| `shape` | json | yes | Item shape: archetype, material per named part, and uniform scale (Phase 151) |
 | `durability` | integer | yes | Remaining durability points before condition degrades |
 | `repair` | json | yes | Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier). |
 | `equipmentSlot` | string | yes | Equipment slot — what is equipped (§6) |

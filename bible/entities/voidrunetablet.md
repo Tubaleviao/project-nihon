@@ -16,6 +16,7 @@ Flat voidite slab etched with stabilisation runes by a Void Smithing expert. Gra
 | `weight` | decimal | yes | kg per tablet |
 | `rarity` | enum (`common`, `uncommon`, `rare`, `epic`, `legendary`) | yes |  |
 | `stackable` | boolean | yes | False; each tablet is unique |
+| `shape` | json | yes | Item shape: archetype, material per named part, and uniform scale (Phase 151) |
 | `durability` | integer | yes | Rune integrity; corrupts under anti-magic fields |
 
 ## Relations

@@ -19,6 +19,7 @@ Felling axe with a weighted ferrite head and a duskfiber-wrapped thornwood handl
 | weight | decimal | kg; affects carry capacity |
 | rarity | `common`, `uncommon`, `rare`, `epic`, `legendary` |  |
 | stackable | boolean | Whether multiple instances stack in inventory |
+| shape | json | Item shape: archetype, material per named part, and uniform scale (Phase 151) |
 | durability | integer | Remaining durability points before condition degrades |
 | toolType | string | Tool class — the action this tool performs. "pick" mines, "axe" chops. |
 | repair | json | Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier). |

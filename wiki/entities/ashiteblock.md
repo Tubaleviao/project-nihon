@@ -19,6 +19,7 @@ Quarried ashite stone block cut to standard building dimensions. Dense volcanic 
 | weight | decimal | kg per block |
 | rarity | `common`, `uncommon`, `rare`, `epic`, `legendary` |  |
 | stackable | boolean | True; stacks up to 20 per slot |
+| shape | json | Item shape: archetype, material per named part, and uniform scale (Phase 151) |
 | durability | integer | Structural integrity |
 
 ## Related

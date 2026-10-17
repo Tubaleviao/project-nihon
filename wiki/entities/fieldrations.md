@@ -19,6 +19,7 @@ Dried grain-and-herb ration pack prepared from temperate grassland crops. Restor
 | weight | decimal | kg per unit |
 | rarity | `common`, `uncommon`, `rare`, `epic`, `legendary` |  |
 | stackable | boolean | True; stacks up to 20 per slot |
+| shape | json | Item shape: archetype, material per named part, and uniform scale (Phase 151) |
 | durability | integer | Freshness; hits 0 when spoiled |
 
 ## States

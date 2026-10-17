@@ -22,4 +22,5 @@ enum Condition {
 @export var weight: float
 @export var rarity: int
 @export var stackable: bool
+@export var shape: Dictionary
 @export var durability: int

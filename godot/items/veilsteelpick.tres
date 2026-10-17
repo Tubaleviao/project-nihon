@@ -9,6 +9,7 @@ condition = 0
 weight = 4.5
 rarity = 1
 stackable = false
+shape = {"archetype":"pick","parts":{"head":"Veilsteel","handle":"Thornwood"},"scale":1}
 durability = 160
 toolType = "pick"
 repair = {"station":"master forge","materials":[{"item":"VeilsteelIngot","quantity":1}],"skillGuards":[{"skill":"Smithing","tier":"journeyman"}]}

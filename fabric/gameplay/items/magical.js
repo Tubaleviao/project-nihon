@@ -1,4 +1,4 @@
-const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine } = require('./shared')
+const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine, itemShape } = require('./shared')
 
 module.exports = {
 
@@ -15,6 +15,7 @@ module.exports = {
       weight:    { type: 'decimal', description: 'kg per shard', defaultValue: 0.05 },
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'rare' },
       stackable: { type: 'boolean', description: 'True; stacks up to 10 per slot', defaultValue: true },
+      shape: itemShape({ archetype: 'shard', parts: { body: 'Aethermite' } }),
       durability: { type: 'integer', description: 'Charge level; 0 means the shard is spent', defaultValue: 50 },
     },
     relations: {
@@ -52,6 +53,7 @@ module.exports = {
       weight:    { type: 'decimal', description: 'kg per tablet', defaultValue: 0.4 },
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'epic' },
       stackable: { type: 'boolean', description: 'False; each tablet is unique', defaultValue: false },
+      shape: itemShape({ archetype: 'tablet', parts: { slab: 'Ashite', rune: 'Voidite' } }),
       durability: { type: 'integer', description: 'Rune integrity; corrupts under anti-magic fields', defaultValue: 200 },
     },
     relations: {
@@ -92,6 +94,7 @@ module.exports = {
       weight:    { type: 'decimal', description: 'kg per orb', defaultValue: 0.15 },
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'rare' },
       stackable: { type: 'boolean', description: 'True; stacks up to 5 per slot', defaultValue: true },
+      shape: itemShape({ archetype: 'orb', parts: { core: 'Lumenfite', frame: 'Ferrite' } }),
       durability: { type: 'integer', description: 'Charge; depletes with use', defaultValue: 150 },
     },
     relations: {

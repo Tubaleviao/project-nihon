@@ -16,6 +16,7 @@ A carved marker stone that anchors a fast-travel network. Placed as a waystone s
 | `weight` | decimal | yes | kg per stone |
 | `rarity` | enum (`common`, `uncommon`, `rare`, `epic`, `legendary`) | yes |  |
 | `stackable` | boolean | yes | False; one stone per slot |
+| `shape` | json | yes | Item shape: archetype, material per named part, and uniform scale (Phase 151) |
 | `durability` | integer | yes | Structural integrity |
 
 ## Relations

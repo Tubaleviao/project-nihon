@@ -9,6 +9,7 @@ condition = 0
 weight = 0.2
 rarity = 1
 stackable = true
+shape = {"archetype":"potion","parts":{"glass":"Sand","liquid":"Aethermite"},"scale":1}
 durability = 100
 state_machine_field = "condition"
 initial_state = "pristine"

@@ -16,6 +16,7 @@ Smelted ferrite bar ready for smithing. The most common crafting intermediate; u
 | `weight` | decimal | yes | kg per ingot |
 | `rarity` | enum (`common`, `uncommon`, `rare`, `epic`, `legendary`) | yes |  |
 | `stackable` | boolean | yes | True; stacks up to 50 per slot |
+| `shape` | json | yes | Item shape: archetype, material per named part, and uniform scale (Phase 151) |
 | `durability` | integer | yes | Structural integrity; degrades only under deliberate stress |
 
 ## Relations

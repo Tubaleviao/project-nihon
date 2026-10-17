@@ -19,6 +19,7 @@ Refined veilsteel bar alloyed in a master forge from ferrite ingots and an aethe
 | weight | decimal | kg per ingot |
 | rarity | `common`, `uncommon`, `rare`, `epic`, `legendary` |  |
 | stackable | boolean | True; stacks up to 30 per slot |
+| shape | json | Item shape: archetype, material per named part, and uniform scale (Phase 151) |
 | durability | integer | Structural integrity; degrades only under deliberate stress |
 
 ## Related

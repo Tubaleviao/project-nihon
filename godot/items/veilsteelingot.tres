@@ -9,6 +9,7 @@ condition = 0
 weight = 1.4
 rarity = 1
 stackable = true
+shape = {"archetype":"ingot","parts":{"body":"Veilsteel"},"scale":1}
 durability = 200
 state_machine_field = "condition"
 initial_state = "pristine"

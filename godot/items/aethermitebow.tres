@@ -9,6 +9,7 @@ condition = 0
 weight = 0.9
 rarity = 1
 stackable = false
+shape = {"archetype":"bow","parts":{"limb":"Thornwood","grip":"Duskfiber","tip":"Aethermite"},"scale":1}
 durability = 150
 repair = {"station":"arcane forge","materials":[{"item":"ThornwoodPlank","quantity":1},{"item":"AethermiteDust","quantity":1}],"skillGuards":[{"skill":"ArcaneForging","tier":"apprentice"}]}
 state_machine_field = "condition"

@@ -1,5 +1,5 @@
 const { defineEntity, recipeData } = require('./recipes/shared')
-const { RARITIES, DURABILITY_STATES, itemStateMachine } = require('./items/shared')
+const { RARITIES, DURABILITY_STATES, itemStateMachine, itemShape } = require('./items/shared')
 
 // Phase 139 — settlements. A player founds a settlement by placing a `Hearth`; the hearth claims land
 // around it, members share a `Stockpile`, and the claim grows with the settlement's tier. The runtime
@@ -118,6 +118,7 @@ module.exports = {
       weight:    { type: 'decimal', description: 'kg per hearth', defaultValue: 20.0 },
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'uncommon' },
       stackable: { type: 'boolean', description: 'False; one hearth per slot', defaultValue: false },
+      shape: itemShape({ archetype: 'hearth', parts: { base: 'Ferrite', fuel: 'Thornwood' } }),
       durability: { type: 'integer', description: 'Structural integrity', defaultValue: 500 },
     },
     relations: {

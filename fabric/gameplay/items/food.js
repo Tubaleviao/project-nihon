@@ -1,4 +1,4 @@
-const { defineEntity, RARITIES, DURABILITY_STATES, consumableStateMachine } = require('./shared')
+const { defineEntity, RARITIES, DURABILITY_STATES, consumableStateMachine, itemShape } = require('./shared')
 
 module.exports = {
 
@@ -15,6 +15,7 @@ module.exports = {
       weight:    { type: 'decimal', description: 'kg per unit', defaultValue: 0.3 },
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'common' },
       stackable: { type: 'boolean', description: 'True; stacks up to 20 per slot', defaultValue: true },
+      shape: itemShape({ archetype: 'rations', parts: { body: 'Grass', wrap: 'Duskfiber' } }),
       durability: { type: 'integer', description: 'Freshness; hits 0 when spoiled', defaultValue: 100 },
     },
     relations: {},
@@ -45,6 +46,7 @@ module.exports = {
       weight:    { type: 'decimal', description: 'kg per flask', defaultValue: 0.2 },
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'uncommon' },
       stackable: { type: 'boolean', description: 'True; stacks up to 10 per slot', defaultValue: true },
+      shape: itemShape({ archetype: 'potion', parts: { glass: 'Sand', liquid: 'Aethermite' } }),
       durability: { type: 'integer', description: 'Potency; degrades as the potion ages', defaultValue: 100 },
     },
     relations: {},

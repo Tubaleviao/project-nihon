@@ -9,6 +9,7 @@ condition = 0
 weight = 0.6
 rarity = 1
 stackable = false
+shape = {"archetype":"cloak","parts":{"body":"Duskfiber","trim":"Duskfiber"},"scale":1}
 durability = 80
 repair = {"station":"carpentry bench","materials":[{"item":"Duskfiber","quantity":2}],"skillGuards":[{"skill":"Carpentry","tier":"apprentice"}]}
 equipmentSlot = "Cape"

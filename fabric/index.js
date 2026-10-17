@@ -47,6 +47,12 @@ require('./world/creatures/shared').validateSkeletonFields(creatures)
 // Phase 137 — every biome's `surfaceMaterial` must declare whether it is `granular` (settles when undermined).
 require('./world/materials/granular').validateGranular(require('./world/biomes'), materials)
 
+// Phase 151 — every entity tagged `item` needs a shape: a known archetype, and a real material for each of its parts.
+{
+  const { validateShapes } = require('./gameplay/items/shape')
+  validateShapes({ ...items, Hearth: settlement.Hearth }, Object.keys(materials))
+}
+
 module.exports = defineFabric({
   meta: {
     name:        'project-nihon',
