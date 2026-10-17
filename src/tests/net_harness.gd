@@ -746,6 +746,7 @@ func _step_chat_relayed() -> void:
 func _step_join_line_localized() -> void:
 	var want := "entrou no mundo." if _role == "client" else "joined the world."
 	if _role == "host":
+		_root._chat._last_join_announce.clear()   # the handshake already announced it; the throttle would swallow this one
 		_root._chat.announce_joined(_bound_id())
 	var ok: bool = await _await_until(func(): return str(_chat_line("system", "key:chat.player_joined", "").get("text", "")).ends_with(want), _step_timeout())
 	_report("join_line_localized", verdict(ok, true), "rendered-in-own-locale" if ok else "not_localized")

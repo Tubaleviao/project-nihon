@@ -1292,9 +1292,12 @@ const P131_PLACEHOLDER := "{"
 
 func _p131_placeholders(text: String) -> Array:
 	var out: Array = []
-	for i in 8:
-		if text.contains("{%d}" % i):
-			out.append(i)
+	var rx := RegEx.create_from_string("\\{(\\d+)(?::\\d+)?\\}")
+	for m in rx.search_all(text):
+		var idx := m.get_string(1).to_int()
+		if not out.has(idx):
+			out.append(idx)
+	out.sort()
 	return out
 
 func _p131_scripts() -> Array:

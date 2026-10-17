@@ -21,6 +21,7 @@ extends Node
 ##   settlement_of(player_id) -> String                id of the settlement the player belongs to
 ##   tick(now)                                         grow, abandon, decay and free settlements
 
+const I18n := preload("res://src/core/i18n.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
@@ -69,6 +70,8 @@ var position_of: Callable = Callable()
 ##         status, abandoned_at, stock {item: n}, taken {pid: {day, n}} }
 var _settlements: Dictionary = {}
 var _next_id: int = 1
+## The next default-name number. Monotonic: it never falls when a settlement decays, so no two repeat.
+var _next_name: int = 1
 var _last_intent: Dictionary = {}
 ## id -> claim radius last announced for an abandoned (decaying) settlement.
 var _radius_pushed: Dictionary = {}
@@ -223,12 +226,14 @@ func founding_blocker(xz: Vector2) -> String:
 ## Found a settlement for `player_id` at `xz`. `consume` takes the Hearth item from the pack (false when
 ## the station placement already did). `exact` is the hearth's `{chunk, local}` when the caller has it:
 ## `xz` is a float32 `Vector2`, coarse far from the origin, so the exact position is what is saved.
-func found(player_id: String, sname: String, xz: Vector2, consume: bool = true, exact: Dictionary = {}) -> String:
+## `auto_name` gives the settlement no text name but a number (`name_n`) clients render as the localized
+## default name ("Settlement 3"); the host never renders text in its own locale.
+func found(player_id: String, sname: String, xz: Vector2, consume: bool = true, exact: Dictionary = {}, auto_name: bool = false) -> String:
 	var pid := _pid(player_id)
 	if pid == "":
 		return "unknown_player"
-	sname = sname.strip_edges().left(MAX_NAME)
-	if sname == "":
+	sname = "" if auto_name else sname.strip_edges().left(MAX_NAME)
+	if sname == "" and not auto_name:
 		return "bad_args"
 	if settlement_of(pid) != "":
 		return "already_member"
@@ -244,8 +249,12 @@ func found(player_id: String, sname: String, xz: Vector2, consume: bool = true, 
 	var now := float(now_sec.call())
 	var id := "settlement_%d" % _next_id
 	_next_id += 1
+	var name_n := 0
+	if auto_name:
+		name_n = _next_name
+		_next_name += 1
 	_settlements[id] = {
-		"id": id, "name": sname, "founder": pid, "members": { pid: "founder" }, "invites": {},
+		"id": id, "name": sname, "name_n": name_n, "founder": pid, "members": { pid: "founder" }, "invites": {},
 		"created": now, "last_active": now, "hx": xz.x, "hz": xz.y, "status": "founded",
 		"abandoned_at": 0.0, "abandoned_radius": 0.0, "stock": {}, "taken": {},
 	}
@@ -573,15 +582,17 @@ static func _qty(v: Variant) -> int:
 # ── persistence ──────────────────────────────────────────────────────────
 
 func to_data() -> Dictionary:
-	return { "next_id": _next_id, "settlements": _settlements.duplicate(true) }
+	return { "next_id": _next_id, "next_name": _next_name, "settlements": _settlements.duplicate(true) }
 
 ## Restore from a saved world record. Malformed entries are skipped; numbers are clamped.
 func from_data(data: Variant) -> void:
 	_settlements.clear()
 	_next_id = 1
+	_next_name = 1
 	if not (data is Dictionary):
 		return
 	_next_id = maxi(1, int((data as Dictionary).get("next_id", 1)))
+	_next_name = maxi(1, int((data as Dictionary).get("next_name", 1)))
 	_radius_pushed.clear()
 	var raw: Variant = (data as Dictionary).get("settlements", {})
 	if not (raw is Dictionary):
@@ -616,7 +627,7 @@ func from_data(data: Variant) -> void:
 		if members.is_empty() or not is_finite(float(s.get("hx", 0.0))) or not is_finite(float(s.get("hz", 0.0))):
 			continue
 		_settlements[str(id).left(64)] = {
-			"id": str(id).left(64), "name": str(s.get("name", "")).left(MAX_NAME), "founder": str(s.get("founder", "")).left(64),
+			"id": str(id).left(64), "name": str(s.get("name", "")).left(MAX_NAME), "name_n": clampi(int(s.get("name_n", 0)), 0, 1000000), "founder": str(s.get("founder", "")).left(64),
 			"members": members, "invites": invites, "created": float(s.get("created", 0.0)),
 			"last_active": float(s.get("last_active", now_sec.call())), "hx": float(s.get("hx", 0.0)), "hz": float(s.get("hz", 0.0)),
 			"status": status if (TIER_ORDER + ["abandoned"]).has(status) else "founded",
@@ -625,6 +636,7 @@ func from_data(data: Variant) -> void:
 		}
 		if WorldPos.pos_from_wire(s.get("hearth", null)).size() > 0:
 			_settlements[str(id).left(64)]["hearth"] = (s["hearth"] as Dictionary).duplicate(true)
+		_next_name = maxi(_next_name, int(_settlements[str(id).left(64)]["name_n"]) + 1)
 		var suffix := str(id).trim_prefix("settlement_")
 		if suffix.is_valid_int():
 			_next_id = maxi(_next_id, int(suffix) + 1)   # never reuse a loaded id
@@ -636,7 +648,7 @@ func public_claims() -> Array:
 	var out: Array = []
 	for id: String in ids():
 		var s: Dictionary = _settlements[id]
-		out.append({ "id": id, "name": str(s["name"]), "x": float(s["hx"]), "z": float(s["hz"]),
+		out.append({ "id": id, "name": str(s["name"]), "name_n": int(s["name_n"]), "x": float(s["hx"]), "z": float(s["hz"]),
 			"radius": claim_radius(id), "status": str(s["status"]) })
 	return out
 
@@ -652,8 +664,13 @@ func private_view(player_id: String) -> Dictionary:
 			"stock": stock_of(id), "capacity": capacity_stacks(id), "used": used_stacks(id) }
 	for sid: String in ids():
 		if (_settlements[sid]["invites"] as Dictionary).has(pid):
-			(out["invites"] as Array).append({ "id": sid, "name": str(_settlements[sid]["name"]) })
+			(out["invites"] as Array).append({ "id": sid, "name": str(_settlements[sid]["name"]), "name_n": int(_settlements[sid]["name_n"]) })
 	return out
+
+## A claim or invite entry's name in the active locale: its own text, or the numbered default.
+static func display_name(entry: Dictionary) -> String:
+	var n := int(entry.get("name_n", 0))
+	return I18n.t("settlement.default_name", [n]) if n > 0 else str(entry.get("name", ""))
 
 func apply_view(view: Variant) -> void:
 	_view = view if view is Dictionary else {}
