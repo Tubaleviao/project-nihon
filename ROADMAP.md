@@ -988,7 +988,7 @@ come in their own world-gen phases; this one makes whatever the shape holds visi
 - `src/terrain/distant_terrain.gd` (or a new `distant_bands.gd` beside it) — nested circular bands
   in the clipmap style: each band's cell is a multiple of the one inside it and it re-centres only
   when the player moves a whole cell of that band, so the far bands rebuild rarely. The outermost
-  radius is `horizon_distance(eye_h) + horizon_distance(WorldShape.max_height())` (≈ 90 km at the
+  radius is `horizon_distance(eye_h) + horizon_distance(WorldShape.max_height())` (≈ 85 km at the
   default 512 m), from `horizon.gd`. Bands beyond the near ring sample `WorldShape` only (no detail
   noise) and keep peaks: a band vertex takes the highest shape height in its cell, so a ridge never
   vanishes between two samples.
