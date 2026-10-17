@@ -374,7 +374,7 @@ func _step_place() -> Array:
 	var ok: bool = await _until(func(): return _placed.size() > before, STEP_TIMEOUT_SECS)
 	return [ok, "placed %s" % id]
 
-## Fight: a creature set down within reach loses HP to the player's melee round.
+## Fight: a creature set down within reach loses HP to the player's melee round and is drawn as a model.
 func _step_fight() -> Array:
 	var cid := ""
 	var best := -1.0
@@ -401,7 +401,9 @@ func _step_fight() -> Array:
 		await _until(func(): return false, 0.2)
 		var left: float = _root._battle.get_hp(iid)
 		ok = left >= 0.0 and left < float((GameData.CREATURES[cid] as Resource).get("baseHp"))
-	return [ok, "%s at %.0f hp after %d rounds" % [cid, _root._battle.get_hp(iid), rounds]]
+	# Phase 143: the screenshot that follows shows the target as a rigged model, not a box.
+	var modelled: bool = ok and await _until(func(): return _root._creature.has_model(iid), STEP_TIMEOUT_SECS)
+	return [ok and modelled, "%s at %.0f hp after %d rounds, %s" % [cid, _root._battle.get_hp(iid), rounds, "drawn as a model" if modelled else "no model node"]]
 
 ## Travel: two attuned waystones, then the intent; the body must land at the second.
 func _step_travel() -> Array:

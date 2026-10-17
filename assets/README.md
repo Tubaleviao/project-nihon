@@ -97,11 +97,15 @@ a single flat triangle, which left the player's own character invisible). It ren
 only for a manifest that lists no player rig, which the public one now always does.
 `models/creatures/GraywolfPack.glb.raw` is the same kind of skinned box rig on the fabric
 `QuadrupedSkeleton` bones, facing -Z like the private wolf (the fabric `restPose` puts the
-head at +Z; game code must reconcile the two before attaching creature models).
+head at +Z; `CreatureVisuals.yaw_for_direction` reconciles the two).
 The nine roster creatures reuse that wolf rig (boar, bison, fox, stalker, warden), or use a
 `BirdSkeleton` box rig (hawk, gargoyle) or a `SerpentSkeleton` box rig (void serpent, slug).
 Each creature entity names its family in the fabric `skeleton` field.
-Each rig carries idle, walk, run, fall, land, attack and death.
+Each rig carries idle, walk, run, fall, land, attack and death. The game attaches these models
+(`src/creature/creature_visuals.gd`): a creature within 40 m of the camera (at most 24, nearest first) is
+drawn as its model with the clips driven from its AI state and speed, the rest stay boxes in the shared
+pool, as does any creature whose model key is absent. Each type binds its own body sheets
+`textures/creatures/<Entity>{,_color_mask,_channel}.png.raw` through the character shader.
 Regenerate all of them with `python3 tools/gen_placeholder_glb.py`.
 
 ## Regenerating a placeholder
