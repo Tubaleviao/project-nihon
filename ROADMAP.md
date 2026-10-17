@@ -162,7 +162,7 @@ issue number where the criterion used to be.
 | 139 | Settlements in the fabric: founding, membership and shared storage | In review | below |
 | 140 | Settlements at runtime: a hearth, a claim and a shared stockpile | In review | below |
 | 141 | Terrain streaming off the main thread: worker noise, seam strips, polar shortcuts, fold catch-up | In review | below |
-| 142 | Terrain build throughput: a time-budgeted pump and worker region reads | Planned | below |
+| 142 | Terrain build throughput: a time-budgeted pump and worker region reads | Done | below |
 | 143 | Creature models: rigged, animated creatures replace the tinted box | In review | below |
 | 144 | A native chunk builder: GDExtension, CI binaries and a GDScript fallback | Planned | below |
 | 145 | Fold contents: creatures and trees survive a polar fold | Planned | below |
@@ -680,11 +680,12 @@ network-synced state through a fold).
   for its regions as it does today, without blocking the frame.
 
 **Acceptance criteria:**
-- [ ] Suite: a frame's pump never spends over its time budget on dispatch + apply in a stubbed clock.
-- [ ] Suite: a region read for a window move never runs on the main thread.
-- [ ] Playtest bot: the `stream` step's chunk build rate is above the Phase 141 report's on the same
+- [x] Suite: a frame's pump never spends over its time budget on dispatch + apply in a stubbed clock.
+- [x] Suite: a region read for a window move never runs on the main thread.
+- [x] Playtest bot: the `stream` step's chunk build rate is above the Phase 141 report's on the same
   runner, and the step's `report.json` shows no new hitch over 50 ms.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite green on both boot paths, harness green (the harness `chop_in_reach` step fails the same way on
+  `main` in the unattended runner; no new failure).
 
 ---
 

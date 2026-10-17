@@ -3,6 +3,7 @@ extends "res://src/tests/test_support.gd"
 
 
 func register() -> void:
+	_run_test("regions: an async read runs off the main thread and a chunk waits for it", _test_region_async_read_off_main)
 	_run_test("persistence: position saved as chunk + local, old saves migrate", _test_registry_world_pos)
 	_run_test("persistence: save then load round-trip",       _test_persistence_round_trip)
 	_run_test("persistence: worldgen stamp on a new world",   _test_worldgen_stamp_new_world)
@@ -2627,3 +2628,40 @@ func _test_p138_idle_save_ends_streaks() -> void:
 	store.region_failures["0,0"] = 2
 	store.end_all_failure_streaks()
 	assert_true(store.region_failures.is_empty(), "an idle save clears the streaks")
+
+
+## Phase 142 — a window move's region reads run on a worker, never the main thread; a chunk whose
+## region is still reading waits in the queue and builds once the read has landed.
+func _test_region_async_read_off_main() -> void:
+	var dir := _fresh_region_dir("test_p142_async")
+	var store: RegionStoreScript = RegionStoreScript.new(dir + "regions/")
+	var edit := { "edits": { "0,0": [{ "op": "remove", "bottom": 1.0, "top": 1.0 }] } }
+	assert_eq(store.save_region(Vector2i.ZERO, { "0,0": edit }), OK, "the origin region is on disk")
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var voxel: VoxelSlice = rig["voxel"]
+	var streamer = RegionStreamerScript.new(store, voxel)
+	streamer.async_reads = true
+	streamer.record_threads = true
+	cm.region_streamer = streamer
+	cm.view_distance = 0
+	cm.prefetch_distance = 0
+	cm.refresh()
+	assert_eq(voxel.edited_chunk_keys().size(), 0, "the move read nothing inline")
+	assert_false(streamer.regions_settled(Vector2i.ZERO, Frontier.BLEND_CHUNKS), "the chunk's region is still reading")
+	cm._drain_load_queue()
+	assert_false(cm._loaded.has("0,0"), "so the chunk waits in the queue and is not loaded")
+	assert_eq(cm._load_queue.size(), 1, "still queued")
+	streamer.flush_reads()
+	assert_true(voxel.edited_chunk_keys().has("0,0"), "the finished read applies its edits")
+	assert_true(streamer.regions_settled(Vector2i.ZERO, Frontier.BLEND_CHUNKS), "and the chunk may build")
+	assert_true(streamer.read_thread_ids.size() > 0, "a read ran")
+	for tid in streamer.read_thread_ids:
+		assert_true(int(tid) != OS.get_main_thread_id(), "and never on the main thread")
+	cm._drain_load_queue()
+	assert_true(cm._loaded.has("0,0"), "the chunk loads once its region is resident")
+	_wait_for_builds(cm)
+	cm.free()
+	voxel.free()
+	rig["terrain"].free()
+	rig["player"].free()

@@ -7,13 +7,26 @@ extends RefCounted
 ## any more. A server with a thousand edited regions on disk therefore holds only the
 ## ones around its players.
 ##
-## Region reads are synchronous file reads on the calling (main) thread: a region file is
-## the edits of one 32×32-chunk square, and a window crosses into a new region rarely.
+## Region reads are synchronous file reads on the calling thread by default (the suite, the
+## tools). Phase 142 — with `async_reads` set (the game) a missing region is read on a worker
+## task instead and `poll()` applies a finished read on the main thread, so a window move never
+## blocks the frame on the disk; `regions_settled` is what a chunk waits for before it builds.
 const RegionStore := preload("res://src/persistence/region_store.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
 
 var _store: RegionStore
+## Phase 142 — read missing regions on a worker (see the header). Off: `sync` reads inline.
+var async_reads := false
+## "rx,rz" -> worker task id of a read in flight; "rx,rz" -> its finished { "read": ... } result.
+var _reading: Dictionary = {}
+var _read_out: Dictionary = {}
+var _read_mutex := Mutex.new()
+## Thread ids that ran a region read (test hook: none may be the main thread under `async_reads`).
+var read_thread_ids: Array = []
+var record_threads := false   # off in the game: the list would grow with every read
+## The keys of the last `sync`'s wanted set: a read that finishes for a region no longer wanted is dropped.
+var _wanted_last: Dictionary = {}
 var _voxel: Object
 ## "rx,rz" -> true for every region read and still wanted.
 var _resident: Dictionary = {}
@@ -38,7 +51,8 @@ const STRANDED_RETRY_MAX_MSEC := 16000
 ## `STRANDED_RETRY_START_MSEC`, not at the delay an earlier one has grown to; a cleaned region is forgotten.
 var _stranded_wait: Dictionary = {}
 
-func _init(store: RegionStore, voxel: Object) -> void:
+func _init(store: RegionStore, voxel: Object, async: bool = false) -> void:
+	async_reads = async
 	_store = store
 	_voxel = voxel
 
@@ -88,6 +102,11 @@ func sync(wanted: Dictionary) -> Dictionary:
 	var released := 0
 	var failed := 0
 	var adopted: Array = []
+	_wanted_last = wanted
+	if async_reads:
+		var polled := poll()
+		loaded += int(polled["loaded"])
+		adopted.append_array(polled["adopted"])
 	for rkey in wanted:
 		if _resident.has(rkey):
 			continue
@@ -95,25 +114,17 @@ func sync(wanted: Dictionary) -> Dictionary:
 		if _backoff.has(rkey) and now < int(_backoff[rkey]["until"]):
 			failed += 1   # still backing off: no read, no log line
 			continue
+		if async_reads:
+			_start_read(str(rkey))
+			continue
 		var read := _store.read_region(RegionStore.region_from_key(str(rkey)))
 		if not bool(read["ok"]):
 			# Not resident: a later sync (the next window move) retries the read once the backoff
 			# has elapsed, instead of treating the region as loaded.
-			@warning_ignore("integer_division")
-			var delay := mini(int(_backoff.get(rkey, { "delay": BACKOFF_START_MSEC / 2 })["delay"]) * 2, BACKOFF_MAX_MSEC)
-			_backoff[rkey] = { "until": now + delay, "delay": delay }
+			_note_failure(str(rkey))
 			failed += 1
 			continue
-		_backoff.erase(rkey)
-		_voxel.apply_region_chunks(read["chunks"])
-		# Phase 108: the region's generation records (a newer generator's stay on disk, unread).
-		var readable: Dictionary = {}
-		for ckey in read["chunks"]:
-			var gen: Variant = (read["chunks"][ckey] as Dictionary).get("gen", null)
-			if not RegionStore.is_newer_gen(gen):
-				readable[ckey] = read["chunks"][ckey]
-		ChunkRecords.adopt_region(readable, adopted)
-		_resident[rkey] = true
+		_adopt_read(str(rkey), read, adopted)
 		loaded += 1
 	for rkey in _resident.keys():
 		if not wanted.has(rkey):
@@ -147,6 +158,95 @@ func sync(wanted: Dictionary) -> Dictionary:
 			if evicted_from[rkey]:
 				_stranded.erase(rkey)
 	return { "loaded": loaded, "released": released, "failed": failed, "adopted": adopted }
+
+## Apply a successful region read: its edits into the voxel log, its generation records into the table.
+func _adopt_read(rkey: String, read: Dictionary, adopted: Array) -> void:
+	_backoff.erase(rkey)
+	_voxel.apply_region_chunks(read["chunks"])
+	# Phase 108: the region's generation records (a newer generator's stay on disk, unread).
+	var readable: Dictionary = {}
+	for ckey in read["chunks"]:
+		var gen: Variant = (read["chunks"][ckey] as Dictionary).get("gen", null)
+		if not RegionStore.is_newer_gen(gen):
+			readable[ckey] = read["chunks"][ckey]
+	ChunkRecords.adopt_region(readable, adopted)
+	_resident[rkey] = true
+
+## Take (and forget) a finished worker read's result.
+func _take_read(rkey: String) -> Dictionary:
+	_read_mutex.lock()
+	var read: Dictionary = _read_out.get(rkey, { "ok": false, "chunks": {} })
+	_read_out.erase(rkey)
+	_read_mutex.unlock()
+	return read
+
+## Start (or grow) the backoff of a region whose read failed.
+func _note_failure(rkey: String) -> void:
+	var now: int = _now.call()
+	@warning_ignore("integer_division")
+	var delay := mini(int(_backoff.get(rkey, { "delay": BACKOFF_START_MSEC / 2 })["delay"]) * 2, BACKOFF_MAX_MSEC)
+	_backoff[rkey] = { "until": now + delay, "delay": delay }
+
+func _start_read(rkey: String) -> void:
+	if _reading.has(rkey):
+		return
+	_reading[rkey] = WorkerThreadPool.add_task(_read_task.bind(rkey), true, "region read " + rkey)
+
+## The worker body: only the file read runs here (`RegionStore.read_region` is safe off the main thread).
+func _read_task(rkey: String) -> void:
+	var read := _store.read_region(RegionStore.region_from_key(rkey))
+	_read_mutex.lock()
+	if record_threads:
+		read_thread_ids.append(OS.get_thread_caller_id())
+	_read_out[rkey] = read
+	_read_mutex.unlock()
+
+## Apply every finished worker read (main thread, never blocks: an unfinished task is left alone).
+## A read for a region no longer wanted is dropped; a failed one starts its backoff. Returns
+## { "loaded": n, "adopted": [chunk keys] } like `sync`.
+func poll() -> Dictionary:
+	var loaded := 0
+	var adopted: Array = []
+	for rkey in _reading.keys():
+		if not WorkerThreadPool.is_task_completed(_reading[rkey]):
+			continue
+		WorkerThreadPool.wait_for_task_completion(_reading[rkey])
+		_reading.erase(rkey)
+		var read := _take_read(rkey)
+		if not _wanted_last.has(rkey) or _resident.has(rkey):
+			continue
+		if not bool(read["ok"]):
+			_note_failure(rkey)
+			continue
+		_adopt_read(rkey, read, adopted)
+		loaded += 1
+	return { "loaded": loaded, "adopted": adopted }
+
+## True when every region `chunk` reads with `margin` is resident or has failed (backing off): a chunk
+## waits for a read in flight, but never for a region that will not read (it builds without it, as an
+## inline failure always did).
+func regions_settled(chunk: Vector2i, margin: int) -> bool:
+	if not async_reads:
+		return true
+	for rkey in regions_for_chunks([chunk], margin, margin):
+		if _resident.has(rkey):
+			continue
+		if _backoff.has(rkey) and not _reading.has(rkey):
+			continue
+		return false
+	return true
+
+## Block until every read in flight has finished and been applied (a test, a shutdown). Returns the
+## chunk keys whose records the reads adopted.
+func flush_reads() -> Array:
+	var adopted: Array = []
+	for rkey in _reading.keys():
+		WorkerThreadPool.wait_for_task_completion(_reading[rkey])
+		_reading.erase(rkey)
+		var read := _take_read(rkey)
+		if _wanted_last.has(rkey) and not _resident.has(rkey) and bool(read["ok"]):
+			_adopt_read(rkey, read, adopted)
+	return adopted
 
 ## Retry the stranded regions without a window move: a save may have cleaned their dirty
 ## chunks since. Cheap when nothing is stranded. Returns how many chunks were released.

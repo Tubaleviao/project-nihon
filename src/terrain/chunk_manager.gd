@@ -129,6 +129,19 @@ const DEFAULT_LOADS_PER_FRAME := 1
 ## keeps the pool available for other work; results are applied as they complete.
 const DEFAULT_MAX_BUILDS_IN_FLIGHT := 4
 
+## Phase 142 — the steady in-flight cap scales with the machine: every core but one (the main
+## thread's), never under the old fixed four.
+static func default_builds_in_flight() -> int:
+	return maxi(DEFAULT_MAX_BUILDS_IN_FLIGHT, OS.get_processor_count() - 1)
+
+## Phase 142 — main-thread time one frame's pump (dispatch + apply) may spend, in milliseconds,
+## and how many finished builds one frame applies. A frame always makes progress (one dispatch and
+## one apply are allowed even over budget, so a slow single step cannot starve the pump), but it
+## starts no further step once the budget is spent: a burst of finished builds or a long queue
+## spreads over frames instead of bunching into one hitch. `0` disables the time bound.
+const DEFAULT_PUMP_BUDGET_MSEC := 4
+const DEFAULT_APPLIES_PER_FRAME := 3
+
 ## Phase 49 — chunk unloads per `_process` tick. A crossing releases 9-17 chunks at once and
 ## each unload frees a mesh, a trimesh and the chunk's creatures and trees; spreading them
 ## over frames, like loads, removes that spike. `refresh()` itself still unloads everything
@@ -178,7 +191,34 @@ var loads_per_frame: int = DEFAULT_LOADS_PER_FRAME
 var unloads_per_frame: int = DEFAULT_UNLOADS_PER_FRAME
 
 ## Worker builds allowed in flight at once (see DEFAULT_MAX_BUILDS_IN_FLIGHT).
-var max_builds_in_flight: int = DEFAULT_MAX_BUILDS_IN_FLIGHT
+var max_builds_in_flight: int = default_builds_in_flight()
+
+## Phase 142 — see DEFAULT_PUMP_BUDGET_MSEC. `pump_clock_usec` is the clock the budget reads
+## (a stub in the suite).
+var pump_budget_msec: int = DEFAULT_PUMP_BUDGET_MSEC
+var applies_per_frame: int = DEFAULT_APPLIES_PER_FRAME
+var pump_clock_usec: Callable = Time.get_ticks_usec
+var _pump_start_usec: int = 0
+var _pump_steps: int = 0
+var _pump_open := false   # a drain called outside a frame (a test, a boot) is unbounded
+
+## Open a frame's pump: stamp its start so dispatch + apply share one budget.
+func begin_pump() -> void:
+	_pump_start_usec = int(pump_clock_usec.call())
+	_pump_steps = 0
+	_pump_open = true
+
+## Microseconds this frame's pump has spent so far.
+func pump_spent_usec() -> int:
+	return int(pump_clock_usec.call()) - _pump_start_usec
+
+## True when the frame's budget is gone (never before one step has run, so a frame progresses).
+func _pump_exhausted() -> bool:
+	return _pump_steps > 0 and _pump_over()
+
+## True when the open frame's time budget is gone (apply and dispatch each allow one step regardless).
+func _pump_over() -> bool:
+	return _pump_open and pump_budget_msec > 0 and pump_spent_usec() >= pump_budget_msec * 1000
 
 ## Phase 141 — the FOLD CATCH-UP. A fold over a pole or round the antimeridian (`restream`) rebuilds
 ## the whole window (81 chunks) while the stand-ins hold the old ground; at the steady cap of four
@@ -191,7 +231,7 @@ var max_builds_in_flight: int = DEFAULT_MAX_BUILDS_IN_FLIGHT
 ## (see `_dispatch_worker_noise_build`). The burst ends when nothing is queued or in flight.
 ## Overridable for tests.
 const DEFAULT_CATCHUP_LOADS_PER_FRAME := 3
-var catchup_builds_in_flight: int = maxi(DEFAULT_MAX_BUILDS_IN_FLIGHT, OS.get_processor_count() - 1)
+var catchup_builds_in_flight: int = default_builds_in_flight()
 var catchup_loads_per_frame: int = DEFAULT_CATCHUP_LOADS_PER_FRAME
 var _catchup := false
 
@@ -354,13 +394,15 @@ func _process(_delta: float) -> void:
 	# loaded, and while the poll sat behind the `_active` guard nothing applied it and
 	# nothing awaited it — the chunk was left without a mesh and the task's result sat in
 	# the pool until shutdown (the same exit-134 leak `_exit_tree` now closes there).
+	begin_pump()
 	_apply_finished_builds()
+	_poll_region_reads()
 	flush_records()
-	if not _active:
-		return
-	_drain_load_queue()
-	refresh(false)
-	_drain_unload_queue(unloads_per_frame)
+	if _active:
+		_drain_load_queue()
+		refresh(false)
+		_drain_unload_queue(unloads_per_frame)
+	_pump_open = false   # a drain outside a frame (a boot, a tool, a test) is unbounded again
 
 ## Begin automatic streaming (driven by _process). The first `refresh()` is what
 ## centres the window, so the caller places the player before calling it —
@@ -575,7 +617,10 @@ func _drain_load_queue() -> void:
 	# candidate, so a drain of a full view ring paid ~49 of them to reach the same answer.
 	var centers := window_centers()
 	var radius := stream_radius()
+	var waiting := 0
 	while budget > 0:
+		if _pump_exhausted():
+			return   # the frame's main-thread budget is spent: the rest waits for the next one
 		if _builds.size() >= build_cap():
 			return   # the pool is busy: leave the rest queued for a later frame
 		if not _rebuild_queue.is_empty():
@@ -586,6 +631,7 @@ func _drain_load_queue() -> void:
 			# current edit log when it streams back in).
 			if _loaded.has(rkey):
 				_dispatch_build(rebuild)
+				_pump_steps += 1
 				budget -= 1
 			continue
 		if _load_queue.is_empty():
@@ -600,8 +646,18 @@ func _drain_load_queue() -> void:
 		# again rather than left as a hole.
 		if not _within_windows(centers, radius, chunk):
 			continue
+		# Phase 142 — the chunk's regions read on a worker; it waits at the back of the queue
+		# until they land (a failed region does not hold it: see `regions_settled`).
+		if _reads_async() and not region_streamer.regions_settled(chunk, Frontier.BLEND_CHUNKS):
+			_pending[_chunk_key(chunk)] = true
+			_load_queue.append(chunk)
+			waiting += 1
+			if waiting > _load_queue.size():
+				return
+			continue
 		if not _loaded.has(_chunk_key(chunk)):
 			load_chunk(chunk)
+			_pump_steps += 1
 		budget -= 1
 
 ## Take a chunk into the streamed set, announce it, and dispatch its terrain build.
@@ -716,6 +772,20 @@ func _retry_deferred_records() -> void:
 	for k in _chunk_refs:
 		desired.append(_key_to_chunk(str(k)))
 	_sync_wanted_regions(desired)
+
+## True when the streamer reads regions on a worker (a test stub may be anything).
+func _reads_async() -> bool:
+	return region_streamer != null and region_streamer.has_method("poll") and bool(region_streamer.async_reads)
+
+## Phase 142 — apply the region reads a worker finished since the last frame, and rebuild the
+## chunks whose generation records they replaced.
+func _poll_region_reads() -> void:
+	if not _reads_async():
+		return
+	var polled: Dictionary = region_streamer.poll()
+	if int(polled["loaded"]) > 0:
+		_rebuild_adopted(polled["adopted"])
+		_record_deferred()
 
 ## Make the regions `desired` chunks read resident, rebuild chunks whose records a read replaced, and
 ## retry the deferred records. Shared by `refresh` and `_retry_deferred_records`.
@@ -1186,6 +1256,8 @@ func _exit_tree() -> void:
 	for task_id in _builds.keys():
 		WorkerThreadPool.wait_for_task_completion(task_id)
 	_builds.clear()
+	if _reads_async():
+		region_streamer.flush_reads()   # an unawaited worker task aborts the pool at exit
 	# Phase 114 — records created this session reach the disk before the process goes (a blocked or
 	# backing-off flush is bypassed once: there is no next frame). The shared `ChunkRecords` table is
 	# not cleared here: `GameRoot` owns it, and a second manager must not wipe the first one's records.
@@ -1218,10 +1290,14 @@ func flush_records_final() -> void:
 func _apply_finished_builds() -> void:
 	if _builds.is_empty():
 		return
+	var applied := 0
 	for task_id in _builds.keys():
 		if not WorkerThreadPool.is_task_completed(task_id):
 			continue
+		if applied >= maxi(applies_per_frame, 1) or (applied > 0 and _pump_over()):
+			return   # the rest stay finished in the table and apply next frame
 		_apply_build_entry(task_id)
+		applied += 1
 
 ## Apply every in-flight build NOW, blocking on each task. The frame path polls
 ## (`_apply_finished_builds`); this is the blocking variant for a caller that has no
