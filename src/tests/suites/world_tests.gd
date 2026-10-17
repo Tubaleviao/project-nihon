@@ -46,6 +46,7 @@ func register() -> void:
 	_run_test("asset: GraywolfPack placeholders have the quadruped contract", _test_asset_graywolfpack_placeholders)
 	_run_test("asset: roster creature placeholders have their skeleton contract", _test_asset_creature_roster_placeholders)
 	_run_test("asset: item mesh placeholders load with their sheets", _test_asset_item_mesh_placeholders)
+	_run_test("asset: every item has a model within budget and bounds", _test_asset_item_models)
 	_run_test("asset: missing model key warns and falls back",   _test_asset_missing_model_falls_back)
 	_run_test("asset: creature model key derived from entity name", _test_asset_creature_key)
 	_run_test("rig tree: every Locomotion.State maps to a node", _test_rig_tree_state_mapping_total)
@@ -979,24 +980,68 @@ func _test_asset_rig_root_names_and_fall_clip() -> void:
 			assert_true(distinct, "the serpent fall clip has at least two distinct keys")
 		serpent.free()
 
-## Issue #319: every item the production pack ships an icon for has a 32x32 RGBA
-## placeholder at the same `icons/items/<ItemId>.png.raw` key.
+## Issue #319 / Phase 152: every item in `GameData.ITEMS` has a 32x32 RGBA icon, drawn by
+## `tools/gen_item_assets.py`: transparent corners, real content, never the same pixels twice.
 func _test_asset_item_icon_placeholders() -> void:
-	var ids := ["AethermiteBow", "AethermiteDust", "AethermiteShard", "AlchemyPotion", "AshiteBlock",
-		"CarpenterAxe", "DuskfiberCloak", "EnchantedAethermiteShard", "FerriteHelmet", "FerriteIngot",
-		"FerritePick", "FerriteShield", "FerriteShortSword", "FieldRations", "LumenfiteOrb",
-		"RefinedVoiditeShard", "ThornwoodPlank", "VeilsteelChestplate", "VeilsteelIngot",
-		"VeilsteelLongsword", "VeilsteelPick", "VoiditeEdge", "VoidRuneTablet"]
-	for id in ids:
+	var seen := {}
+	for id: String in GameData.ITEMS:
 		var key := UiSlice.item_icon_key(id)
 		var path := "res://assets/" + key
 		assert_true(FileAccess.file_exists(path), "icon placeholder %s exists" % key)
 		var img := Image.new()
 		var err := img.load_png_from_buffer(FileAccess.get_file_as_bytes(path))
 		assert_eq(err, OK, "%s decodes as PNG" % key)
-		if err == OK:
-			assert_eq(img.get_size(), Vector2i(32, 32), "%s is 32x32" % key)
-			assert_eq(img.get_format(), Image.FORMAT_RGBA8, "%s is RGBA" % key)
+		if err != OK:
+			continue
+		assert_eq(img.get_size(), Vector2i(32, 32), "%s is 32x32" % key)
+		assert_eq(img.get_format(), Image.FORMAT_RGBA8, "%s is RGBA" % key)
+		for corner in [Vector2i(0, 0), Vector2i(31, 0), Vector2i(0, 31), Vector2i(31, 31)]:
+			assert_eq(img.get_pixelv(corner).a, 0.0, "%s corner %s is transparent" % [key, corner])
+		var opaque := 0
+		for y in 32:
+			for x in 32:
+				if img.get_pixel(x, y).a > 0.5:
+					opaque += 1
+		assert_true(opaque > 40, "%s has more than 40 opaque pixels (%d)" % [key, opaque])
+		var digest := img.get_data().hex_encode()
+		assert_false(seen.has(digest), "%s is not byte-identical to %s" % [key, seen.get(digest, "")])
+		seen[digest] = id
+
+## Phase 152: every item has a model that parses, has a `grip` node, stays within the triangle
+## budget and its archetype's bounds, and no file exists for an id that is not an item.
+func _test_asset_item_models() -> void:
+	var lock: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://assets/models/items/shapes.lock.json"))
+	var budget: int = lock["maxTris"]
+	for id: String in GameData.ITEMS:
+		var key := "models/items/%s.glb.raw" % id
+		assert_true(AssetOverlay.has_key("meshes", key), "%s model listed in the manifest" % id)
+		assert_true(lock["items"].has(id), "%s is in shapes.lock.json" % id)
+		var root := AssetOverlay.load_rig_scene(key)
+		assert_true(root != null, "%s model parses through AssetOverlay" % id)
+		if root == null:
+			continue
+		assert_true(root.find_child("grip", true, false) != null, "%s has a grip node" % id)
+		var parts: Array = []
+		_collect_mesh_instances(root, parts)
+		assert_eq(parts.size(), 1, "%s is one mesh" % id)
+		if parts.size() == 1 and lock["items"].has(id):
+			var mesh: Mesh = parts[0].mesh
+			var arrays := mesh.surface_get_arrays(0)
+			var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+			var tris := (indices.size() if indices.size() > 0 else (arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()) / 3
+			assert_true(tris > 0 and tris <= budget, "%s has %d tris (budget %d)" % [id, tris, budget])
+			var entry: Dictionary = lock["items"][id]
+			var b: Array = lock["archetypeBounds"][entry["archetype"]]
+			var size := mesh.get_aabb().size
+			var k: float = entry["scale"]
+			assert_true(size.x <= b[0] * k + 0.001 and size.y <= b[1] * k + 0.001 and size.z <= b[2] * k + 0.001,
+				"%s AABB %s fits %s bounds" % [id, size, entry["archetype"]])
+		root.free()
+	for dir_and_suffix in [["res://assets/models/items", ".glb.raw"], ["res://assets/icons/items", ".png.raw"]]:
+		for file in DirAccess.get_files_at(dir_and_suffix[0]):
+			if file.ends_with(dir_and_suffix[1]):
+				var id: String = file.trim_suffix(dir_and_suffix[1])
+				assert_true(GameData.ITEMS.has(id), "%s/%s is for an item" % [dir_and_suffix[0], file])
 
 ## Issue #318: `models/creatures/GraywolfPack.glb.raw` and its three textures stand in
 ## for the private wolf: a skin on the fabric QuadrupedSkeleton bones, a visible body, and
