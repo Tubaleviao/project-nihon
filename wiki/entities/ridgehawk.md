@@ -21,6 +21,7 @@ A keen-eyed raptor that nests on grassland ridges and hunts small game from alti
 | baseHp | integer | Hit points at tier baseline; low value |
 | baseDamage | integer | Damage per talon strike at tier baseline |
 | alertRadius | decimal | Distance in metres at which creature enters alert state |
+| skeleton | string | Skeleton family the creature model is rigged on (a SkeletonDefinition entity) |
 | maxStepMetres | decimal | Tallest ledge in metres the creature climbs in one tile step; a taller step is routed around |
 | canSwim | boolean | Whether the creature paths through water tiles (ground below sea level) |
 | pathRadiusTiles | integer | Search radius in tiles of one path query |

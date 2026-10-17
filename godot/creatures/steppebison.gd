@@ -54,6 +54,7 @@ enum State {
 @export var baseHp: int
 @export var baseDamage: int
 @export var alertRadius: float
+@export var skeleton: String
 @export var maxStepMetres: float
 @export var canSwim: bool
 @export var pathRadiusTiles: int

@@ -100,7 +100,7 @@ only for a manifest that lists no player rig, which the public one now always do
 head at +Z; game code must reconcile the two before attaching creature models).
 The nine roster creatures reuse that wolf rig (boar, bison, fox, stalker, warden), or use a
 `BirdSkeleton` box rig (hawk, gargoyle) or a `SerpentSkeleton` box rig (void serpent, slug).
-The fabric names no skeleton family on creature entities, so those families are an assumption.
+Each creature entity names its family in the fabric `skeleton` field.
 Each rig carries idle, walk, run, fall, land, attack and death.
 Regenerate all of them with `python3 tools/gen_placeholder_glb.py`.
 

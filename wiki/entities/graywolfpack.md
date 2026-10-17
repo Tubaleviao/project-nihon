@@ -21,6 +21,7 @@ A coordinated hunting pack of gray wolves that roam temperate forest edges and c
 | baseHp | integer | Hit points per wolf at tier baseline |
 | baseDamage | integer | Damage per bite at tier baseline |
 | alertRadius | decimal | Distance in metres at which creature enters alert state |
+| skeleton | string | Skeleton family the creature model is rigged on (a SkeletonDefinition entity) |
 | maxStepMetres | decimal | Tallest ledge in metres the creature climbs in one tile step; a taller step is routed around |
 | canSwim | boolean | Whether the creature paths through water tiles (ground below sea level) |
 | pathRadiusTiles | integer | Search radius in tiles of one path query |

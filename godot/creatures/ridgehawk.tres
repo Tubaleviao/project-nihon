@@ -11,6 +11,7 @@ aggressionLevel = 3
 baseHp = 25
 baseDamage = 5
 alertRadius = 8.0
+skeleton = "BirdSkeleton"
 maxStepMetres = 0.75
 canSwim = false
 pathRadiusTiles = 24
