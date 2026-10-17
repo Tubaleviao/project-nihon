@@ -387,7 +387,12 @@ func _step_fight() -> Array:
 			cid = str(k)
 	if cid == "":
 		return [false, "no creature in GameData"]
+	# Placed in the creature slice's own frame, from the camera that draws it, so the model range check
+	# and the screenshot see the same distance whatever the scene origin or float32 rounding did to the body.
 	var p := _player_pos()
+	var cam := get_viewport().get_camera_3d()
+	if cam != null:
+		p = cam.global_position - _root._creature.scene_offset()
 	var iid: String = _root._creature._spawn(cid, Vector2i(9000, 9000), 0)
 	if iid == "":
 		return [false, "spawn refused"]
@@ -417,6 +422,7 @@ func _model_diag(iid: String) -> String:
 		parts.append("models %d, warned %s" % [vis.models.size(), str(vis.warned_types.keys())])
 		if cam != null and inst != null:
 			parts.append("%.1f m from camera, state %s" % [(cam.global_position - vis.position).distance_to(inst["position"]), str(inst["state"])])
+			parts.append("camera %s, models node at %s, creature %s, player %s" % [str(cam.global_position), str(vis.position), str(inst["position"]), str(_player_pos())])
 	return ", ".join(parts)
 
 ## Travel: two attuned waystones, then the intent; the body must land at the second.
