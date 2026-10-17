@@ -182,6 +182,8 @@ issue number where the criterion used to be.
 | 159 | Gestures at runtime: a gesture wheel, chat commands and synced poses | Planned | below |
 | 160 | Harvesting in the fabric: tools, the Skinning skill, carcass weight and carry | Planned | below |
 | 161 | Harvesting at runtime: work the body, carry it home | Planned | below |
+| 162 | A round horizon: a circular distant ring, planet curvature and haze | Planned | below |
+| 163 | Mountains on the horizon: distant bands out to the visibility limit | Planned | below |
 
 ---
 
@@ -843,6 +845,115 @@ right tool, gets yields and quality from their Skinning level, or picks the body
 - [ ] Harness step `carcass_synced`: a carcass harvested on the host loses those entries on the
   client, and a carried carcass follows the carrier on the other client.
 - [ ] Playtest bot: the `fight` step ends with the harvested items in the inventory.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 162 — A round horizon: a circular distant ring, planet curvature and haze
+
+**Goal:** a playtest showed four "mountains" on the horizon of the flat spawn plain. They are the
+corners of the Phase 51 distant ring: it is a square (`RING_FACTOR` × the voxel window, about 1.1 km
+half-extent at the default view distance), so its outer edge is about 1.4 times farther at a corner
+than at a side, and from eye height the farther edge sits closer to the eye line and reads as a peak.
+Past the edge the sky colour (`BG_COLOR`) fills the gap. The world is a planet, so the horizon should
+be a level circle where the curved ground drops out of sight, with no mesh edge anywhere in view.
+This phase makes the ring round, bends it with the planet and fades the distance into a haze that
+matches the sky at the horizon. It changes rendering only: no world-gen output, no collision, no
+server work.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 51 (distant ring), Phase 63 (scene rebase), Phase 120 (ring build lifecycle).
+
+**Deliverables:**
+- `src/terrain/horizon.gd` (new, pure static): planet radius from `circumference_m` (R = C / 2π,
+  about 6,366 km), `curvature_drop(d)` = d² / 2R, `horizon_distance(eye_h)` = √(2R·eye_h + eye_h²),
+  and `visible_over_horizon(eye_h, target_h, d)` (a target of height h is in view while
+  d < horizon_distance(eye_h) + horizon_distance(h)). Used by the ring, the suite and Phase 163.
+- `src/terrain/distant_terrain.gd` — the lattice becomes polar: rings of cells whose radial step
+  grows with distance from the centre, out to an outer RADIUS (a circle), with the square voxel
+  window still cut out exactly as today (clipped strips and skirt kept). The outer radius is at
+  least the horizon distance for the camera's eye height, so the silhouette is always the curved
+  ground, never the mesh edge. Vertex count stays within today's budget (≤ 1.5 × the current mesh).
+- Ring material: a `ShaderMaterial` that lowers each vertex by `curvature_drop` of its horizontal
+  distance to the camera (vertex shader, so the ring needs no rebuild when the camera moves), with
+  vertex colours as today. The voxel window is not bent: at its edge (≈ 112 m) the drop is ≈ 1 mm.
+- `src/core/game_root.gd` — the environment switches from a flat `BG_COLOR` to a sky
+  (`ProceduralSkyMaterial` or a small sky shader) whose horizon and ground colours equal the haze
+  colour, plus depth fog with aerial perspective so the far ring fades into that colour. The weather
+  (`weather_wiring.gd`) keeps driving fog density on top of a clear-weather base, and the day/night
+  sun keeps driving the sky and haze colours together so they never disagree.
+- `src/player/player_slice.gd` — the camera's `far` is set from the ring's outer radius (with a
+  margin) instead of Godot's 4,000 m default.
+
+**Acceptance criteria:**
+- [ ] Suite: `horizon.gd` — `curvature_drop` at 1 km, 10 km and 100 km and `horizon_distance` at
+  1.7 m, 10 m and 500 m match the closed forms for the default circumference, and the
+  `visible_over_horizon` boundary sits where the two distances sum.
+- [ ] Suite: a built ring's outer silhouette is a circle: the horizontal distance of every outermost
+  vertex from the ring centre is within one outer cell of the radius in every direction (the four
+  corners of the old square are gone), and no vertex lies beyond it.
+- [ ] Suite: the outer radius is at least `horizon_distance` for the player's eye height at the
+  default and the maximum camera distance, and the camera's `far` is at least that radius.
+- [ ] Suite: the ring still leaves the voxel window's hole exact (the existing clip and skirt tests
+  pass on the polar lattice), carries no collision body, and the vertex count is within budget.
+- [ ] Suite: the ring shader's drop equals `curvature_drop` (the shader constant is read from
+  `horizon.gd`, not duplicated), and the sky's horizon colour equals the fog colour at noon, dusk
+  and night.
+- [ ] Playtest bot: a `horizon` step faces open sea from the nearest coast in four headings and
+  finds the skyline (the first non-sky row per column) flat to within 2 px across the frame.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 163 — Mountains on the horizon: distant bands out to the visibility limit
+
+**Goal:** a mountain should be seen from far away, as on Earth: a 500 m peak clears the horizon of
+a player standing on the plain from about 80 km. Phase 162's ring ends near the eye-height horizon
+(a few km), and the large-scale shape already has 400 m ridges (Phase 51, `ridgeAmplitude`), so
+anything tall beyond a few km is cut off today. This phase adds coarser bands outside the ring, out
+to the distance where the tallest terrain can still clear the horizon, so ranges rise over the
+curved ground from far away and stay put as the player walks. Taller and more varied mountains
+come in their own world-gen phases; this one makes whatever the shape holds visible from afar.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 162.
+
+**Deliverables:**
+- `src/terrain/distant_terrain.gd` (or a new `distant_bands.gd` beside it) — nested circular bands
+  in the clipmap style: each band's cell is a multiple of the one inside it and it re-centres only
+  when the player moves a whole cell of that band, so the far bands rebuild rarely. The outermost
+  radius is `horizon_distance(eye_h) + horizon_distance(WorldShape.max_height())` (≈ 90 km at the
+  default 512 m), from `horizon.gd`. Bands beyond the near ring sample `WorldShape` only (no detail
+  noise) and keep peaks: a band vertex takes the highest shape height in its cell, so a ridge never
+  vanishes between two samples.
+- Recorded chunks keep winning where they exist (the ring's `ChunkRecords` snapshot is used for the
+  near band; far bands read the plain shape, as `DistantTerrain` does today for unrecorded land).
+- The bands wrap at the antimeridian and fold over the poles like the ring (`seam_wrap.gd`), and
+  every build runs on a worker with the Phase 120 request lifecycle; a band swap never blocks a
+  frame.
+- Colours: rock and snow by altitude as today, so far ranges read as rock and white caps through
+  the Phase 162 haze; the bands use the same curvature shader as the ring.
+- Camera `far` follows the outermost radius; depth precision is checked at that range (Godot 4's
+  reverse-Z), and the bands sit `RING_DROP` below the ring so the seams between bands never
+  z-fight.
+
+**Acceptance criteria:**
+- [ ] Suite: the outermost band radius equals the closed form for the default eye height and the
+  fabric's `maxHeight`, and changes when `maxHeight` does.
+- [ ] Suite: on a fixture shape with a single 500 m peak, the peak's band vertex is within 5 m of
+  the peak height at 20 km, 50 km and 80 km, and `visible_over_horizon` agrees with whether the
+  vertex, after `curvature_drop`, is above the eye line.
+- [ ] Suite: walking one near-band cell rebuilds only the near band; a far band rebuilds only after
+  a whole far-band cell; no band build runs on the main thread.
+- [ ] Suite: bands across the antimeridian and past a pole match the shape sampled at the wrapped
+  position; adjacent bands share their boundary heights (no cracks) to within `RING_DROP`.
+- [ ] Suite: the bands carry no collision body, and the total distant vertex count stays within a
+  fixed budget at the default view distance.
+- [ ] Playtest bot: a `far_peak` step stands 60 km from a known ridge on the default seed and finds
+  rock or snow pixels above the skyline in its direction; the step reports frame time and fails over
+  the existing hitch limit.
 - [ ] Suite green on both boot paths, harness green.
 
 ---
