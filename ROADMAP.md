@@ -162,8 +162,10 @@ issue number where the criterion used to be.
 | 139 | Settlements in the fabric: founding, membership and shared storage | In review | below |
 | 140 | Settlements at runtime: a hearth, a claim and a shared stockpile | In review | below |
 | 141 | Terrain streaming off the main thread: worker noise, seam strips, polar shortcuts, fold catch-up | In review | below |
-| 142 | Terrain build throughput: a time-budgeted pump and a native chunk builder | Planned | below |
+| 142 | Terrain build throughput: a time-budgeted pump and worker region reads | Planned | below |
 | 143 | Creature models: rigged, animated creatures replace the tinted box | In review | below |
+| 144 | A native chunk builder: GDExtension, CI binaries and a GDScript fallback | Planned | below |
+| 145 | Fold contents: creatures and trees survive a polar fold | Planned | below |
 
 ---
 
@@ -647,14 +649,14 @@ rebuild after a fold.
 
 ---
 
-## Phase 142 — Terrain build throughput: a time-budgeted pump and a native chunk builder
+## Phase 142 — Terrain build throughput: a time-budgeted pump and worker region reads
 
-**Goal:** Phase 141 took the stall off the main thread, but a chunk still costs a worker about 200 ms
-of GDScript (resolve + mesh arrays), the steady pump dispatches one chunk per frame with four low
-priority tasks in flight, and every window crossing reads its regions from disk on the main thread.
-Bigger mountains (taller walls, more faces) and a wider view would make all of these worse. This phase
-makes the build rate scale with the machine and moves the per-tile loops to native code, before the
-world gets taller.
+**Goal:** Phase 141 took the stall off the main thread, but the steady pump dispatches one chunk per
+frame with four low priority tasks in flight, and every window crossing reads its regions from disk
+on the main thread. This phase makes the build rate scale with the machine and takes the region
+reads off the frame. The native chunk builder moved to Phase 144 and fold contents to Phase 145:
+both need decisions an unattended run should not make (binary build and hosting; re-keying
+network-synced state through a fold).
 
 **Newel dependency:** NO.
 
@@ -665,23 +667,11 @@ world gets taller.
   frame for dispatch + apply), not by a count; `max_builds_in_flight` defaults to the core count minus
   one, and the apply pass is bounded per frame so a burst of finished builds cannot bunch into one
   frame.
-- A native chunk builder (GDExtension, C++) for `heightmap_for`, `build_runs` and
-  `build_chunk_arrays`, with the GDScript builder kept as the reference: the suite builds the same
-  chunks through both and compares arrays, and the game falls back to GDScript when the extension is
-  missing (the public build must stay playable without a native binary for every platform).
 - `src/persistence/region_streamer.gd` — region reads for a window move go to a worker; a chunk waits
   for its regions as it does today, without blocking the frame.
-- Fold contents: creatures and trees in the window survive a fold instead of being despawned and
-  respawned with the rebuild.
-- Optional, measured first: a compute-shader heightmap path if the native builder is still the
-  bottleneck at a larger view distance.
 
 **Acceptance criteria:**
-- [ ] Suite: native and GDScript builders give equal arrays for a fixed set of chunks (equator, ice,
-  pole, antimeridian, edited chunk); the GDScript fallback is used when the extension is absent.
 - [ ] Suite: a frame's pump never spends over its time budget on dispatch + apply in a stubbed clock.
-- [ ] Playtest bot: the `stream` step's chunk build rate at least doubles against the Phase 141 report,
-  and no step reports a hitch over 50 ms.
 - [ ] Suite: a region read for a window move never runs on the main thread.
 - [ ] Suite green on both boot paths, harness green.
 
@@ -744,6 +734,68 @@ with no code change.
 - [x] Playtest bot: the `fight` step's screenshot is taken with the target creature drawn as a model
   (the bot asserts the creature has a model node), and no step reports a new hitch over 50 ms.
 - [x] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 144 — A native chunk builder: GDExtension, CI binaries and a GDScript fallback
+
+**Goal:** a chunk still costs a worker about 200 ms of GDScript (resolve + mesh arrays). Bigger
+mountains and a wider view make that worse. This phase moves the per-tile loops to native code
+before the world gets taller, without making the public build depend on a native binary.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 142.
+
+**Deliverables:**
+- `native/` — a GDExtension (C++, `godot-cpp` pinned to the project's Godot version) porting
+  `heightmap_for`, `build_runs` and `build_chunk_arrays`: climate, shape, ore and biome resolve with
+  bit-exact `FastNoiseLite` behaviour, and the greedy mesher with a deterministic output order (the
+  GDScript reference is changed first if its order depends on dictionary iteration).
+- The GDScript builder stays the reference. A loader picks the native builder when the extension
+  loads and falls back to GDScript otherwise, with one log line saying which is in use.
+- CI builds the extension for Linux x86_64, Windows x86_64 and macOS universal, and attaches the
+  binaries to the export builds and releases. Binaries are not committed to git or LFS. A platform
+  without a binary runs the GDScript fallback.
+- Port order: scaffold + loader + fallback first, then one pure function at a time, each with its
+  parity test, so every PR ships a working build.
+- Optional, measured first: a compute-shader heightmap path if the native builder is still the
+  bottleneck at a larger view distance.
+
+**Acceptance criteria:**
+- [ ] Suite: native and GDScript builders give equal arrays for a fixed set of chunks (equator, ice,
+  pole, antimeridian, edited chunk); the GDScript fallback is used when the extension is absent.
+- [ ] CI: the three platform binaries build, and an export without them boots on the fallback.
+- [ ] Playtest bot: the `stream` step's chunk build rate at least doubles against the Phase 141 report,
+  and no step reports a hitch over 50 ms.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 145 — Fold contents: creatures and trees survive a polar fold
+
+**Goal:** over a pole, `ChunkManager.restream()` rebuilds the window in a mirrored, turned frame, and
+the creatures and trees in it are despawned and respawned with the rebuild. They should carry
+across instead.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 141.
+
+**Deliverables:**
+- A design note first (in this phase's PR description): how `CreatureSlice` and `TreeSlice`
+  re-key what they hold through `fold_scene_transform`, and how the host stays authoritative. The
+  host re-keys and peers apply the same pure transform to synced state, so the wire carries no
+  extra positions and a client cannot move an entity by claiming a fold.
+- `src/creature/creature_slice.gd`, `src/world/tree_slice.gd` — on a fold, held entities are re-keyed to their
+  new chunk and scene transform instead of being dropped.
+
+**Acceptance criteria:**
+- [ ] Suite: a creature and a tree in the window keep their ids, state and world position across a
+  fold, and nothing is despawned or respawned.
+- [ ] Harness: two clients cross a pole together and see the same creatures with the same ids.
+- [ ] Playtest bot passes with the `pole` step.
+- [ ] Suite green on both boot paths, harness green.
 
 ---
 
