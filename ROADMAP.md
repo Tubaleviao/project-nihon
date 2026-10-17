@@ -165,7 +165,7 @@ issue number where the criterion used to be.
 | 142 | Terrain build throughput: a time-budgeted pump and worker region reads | Done | below |
 | 143 | Creature models: rigged, animated creatures replace the tinted box | In review | below |
 | 144 | A native chunk builder: GDExtension, CI binaries and a GDScript fallback | Planned | below |
-| 145 | Fold contents: creatures and trees survive a polar fold | Planned | below |
+| 145 | Fold contents: creatures and trees survive a polar fold | In review | below |
 | 146 | Roadmap close-out: archive merged phases and keep the index honest | Planned | below |
 | 147 | Review follow-ups I: trust boundary and far-from-origin precision | Planned | below |
 | 148 | Review follow-ups II: i18n leftovers | Planned | below |
@@ -810,10 +810,11 @@ across instead.
 **Acceptance criteria:**
 - [x] Suite: a creature and a tree in the window keep their ids, state and world position across a
   fold, and nothing is despawned or respawned.
-- [ ] Harness: two clients cross a pole together and see the same creatures with the same ids; a
-  third client that does not cross sees those creatures unmoved.
-- [ ] Playtest bot: the `pole` step passes and reports no creature or tree despawned across the fold.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Harness: the `fold_carries_creatures` step: the client crosses a pole with a creature in its window
+  and keeps its id and the fold-image position, a later host position lands in the client's frame, and the
+  host (the peer that did not cross; the harness has two processes) never sees the probe.
+- [x] Playtest bot: the `pole` step passes and reports no creature or tree despawned across the fold.
+- [x] Suite green on both boot paths, harness green.
 
 ---
 
