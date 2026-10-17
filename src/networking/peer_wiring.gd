@@ -382,11 +382,18 @@ func _fold_local_player() -> void:
 	var pos: Dictionary = fold["pos"]
 	var turned: bool = fold["turned"]
 	var before: Vector3 = root._player.get_scene_position()
+	var pole_sign := 1 if (root._player.get_world_pos()["chunk"] as Vector2i).y >= 0 else -1
+	# Phase 145 — what the window holds is carried across the fold, not despawned with it: re-keyed here
+	# on this peer's own view (the host's state stays canonical), placed once the scene has rebased.
+	root._creature.fold_contents(turned, pole_sign)
+	root._tree.fold_contents(turned, pole_sign)
 	var standins: Array = root._voxel.detach_standins() if root._voxel != null else []
 	var ring: Node3D = root._distant.detach_ring() if root._distant != null and root._distant.has_method("detach_ring") else null
 	if root._chunk_manager != null:
 		root._chunk_manager.restream()
 	root._rebase.rebase_to(pos["chunk"])
+	root._creature.place_after_fold()
+	root._tree.place_after_fold()
 	root._player.fold_to(pos, turned)
 	if turned:
 		root._sun_turned = not root._sun_turned
@@ -399,6 +406,9 @@ func _fold_local_player() -> void:
 	if root._chunk_manager != null:
 		# Queue the folded window now, and drop the stand-ins it does not cover: nothing rebuilds them.
 		root._chunk_manager.refresh(false)
+		var covered := func(c: Vector2i) -> bool: return root._chunk_manager.chunk_ref_count(c) > 0
+		root._creature.prune_carried(covered)
+		root._tree.prune_carried(covered)
 		if root._voxel != null:
 			root._voxel.prune_standins(func(c: Vector2i) -> bool: return root._chunk_manager.chunk_ref_count(c) > 0)
 		if root._voxel == null or not root._voxel.has_standin(pos["chunk"]):

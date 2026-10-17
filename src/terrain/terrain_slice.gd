@@ -529,6 +529,31 @@ static func fold_world_pos(wp: Dictionary, margin: int = FOLD_MARGIN_CHUNKS) -> 
 		pos = {"chunk": chunk + Vector2i(0, 1), "local": Vector3(local.x, local.y, local.z - CHUNK_METERS)}
 	return {"pos": pos, "folded": true, "turned": turned}
 
+## Phase 145 — the same fold applied to a position that did not trigger it: what a creature or a tree
+## held in the window becomes when the player's crossing re-keys the world. `turned` and `pole_sign`
+## (+1 north, -1 south) come from the player's own fold (`fold_world_pos` plus the sign of the row they
+## crossed from); `turned` false is the antimeridian lap. `wp` is a `{chunk, local}` position.
+static func fold_world_pos_like(wp: Dictionary, turned: bool, pole_sign: int) -> Dictionary:
+	var chunk: Vector2i = wp["chunk"]
+	var local: Vector3 = wp["local"]
+	if turned:
+		var p := pole_chunks() if pole_sign >= 0 else -pole_chunks()
+		@warning_ignore("integer_division")
+		chunk = Vector2i(chunk.x + circumference_chunks() / 2, 2 * p - chunk.y - 1)
+		local = Vector3(local.x, local.y, CHUNK_METERS - local.z)
+	chunk = wrap_chunk(chunk)
+	if local.z >= CHUNK_METERS:
+		return {"chunk": chunk + Vector2i(0, 1), "local": Vector3(local.x, local.y, local.z - CHUNK_METERS)}
+	return {"chunk": chunk, "local": local}
+
+## `fold_world_pos_like` for a world position in metres (the frame creature and tree records use).
+static func fold_world_vec_like(world: Vector3, turned: bool, pole_sign: int) -> Vector3:
+	var wp := fold_world_pos_like({"chunk": Vector2i(floori(world.x / CHUNK_METERS), floori(world.z / CHUNK_METERS)),
+			"local": Vector3(fposmod(world.x, CHUNK_METERS), world.y, fposmod(world.z, CHUNK_METERS))}, turned, pole_sign)
+	var c: Vector2i = wp["chunk"]
+	var l: Vector3 = wp["local"]
+	return Vector3(c.x * CHUNK_METERS + l.x, l.y, c.y * CHUNK_METERS + l.z)
+
 ## Phase 120 — the scene transform of a fold: it carries what the player saw before it to where the
 ## player stands after it, so the view does not change. `before` and `after` are the body's scene
 ## positions either side of the fold. A pole fold turns the player half a turn (`PlayerSlice.fold_to`),

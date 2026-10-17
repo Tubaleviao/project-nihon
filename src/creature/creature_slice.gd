@@ -569,6 +569,89 @@ func despawn_for_chunk(chunk_pos: Vector2i) -> void:
 		_by_chunk[chunk_pos] = kept
 	_invalidate_view()
 
+## Phase 145 — a polar or antimeridian fold of the local player: every held creature is re-keyed
+## through the same fold (`TerrainSlice.fold_world_pos_like`) instead of being despawned with the
+## window and respawned fresh. Id, state, hp, tame and respawn clock stay; the position, spawn point
+## and chunk are the fold's image of the old ones. Call BEFORE `ChunkManager.restream()` (so the old
+## chunk keys are empty when the window unloads) and `place_after_fold()` after the scene rebase.
+## `spawn_for_chunk` then counts a carried member against its new chunk's pack, so no duplicate spawns.
+## Host state stays canonical on the host: only the crossing peer calls this, on its own view.
+func fold_contents(turned: bool, pole_sign: int) -> void:
+	_deferred_packs.clear()
+	_by_chunk.clear()
+	last_fold_ids = _instances.keys()
+	for iid in _instances.keys():
+		var inst: Dictionary = _instances[iid]
+		var pos: Vector3 = TerrainSlice.fold_world_vec_like(inst["position"], turned, pole_sign)
+		inst["position"] = pos
+		inst["spawn_pos"] = TerrainSlice.fold_world_vec_like(inst["spawn_pos"], turned, pole_sign)
+		var chunk := Vector2i(floori(pos.x / TerrainSlice.CHUNK_METERS), floori(pos.z / TerrainSlice.CHUNK_METERS))
+		inst["chunk"] = chunk
+		if not _by_chunk.has(chunk):
+			_by_chunk[chunk] = []
+		(_by_chunk[chunk] as Array).append(iid)
+		_spatial.update(iid, pos)
+		if _last_broadcast.has(iid):
+			# The wire carries no fold: other peers keep the frame they have, so the carried
+			# creature is not re-sent as a move.
+			_last_broadcast[iid]["position"] = pos
+	if not is_authoritative:
+		# A client's later host deltas arrive in the host's frame: replay this fold on them.
+		_fold_log.append([turned, pole_sign])
+	_invalidate_view()
+
+## Folds this client has crossed, oldest first: [turned, pole_sign]. A host position (`apply_creature_state`)
+## is replayed through them so it lands in this peer's frame.
+var _fold_log: Array = []
+
+func _to_local_frame(pos: Vector3) -> Vector3:
+	for f in _fold_log:
+		pos = TerrainSlice.fold_world_vec_like(pos, bool(f[0]), int(f[1]))
+	return pos
+
+## Put every carried creature's body at its folded position (after the scene rebase moved the pool).
+func place_after_fold() -> void:
+	for iid in _instances:
+		var inst: Dictionary = _instances[iid]
+		if inst["state"] != "dead":
+			_place_box(iid, inst["position"])
+
+## Drop carried creatures whose chunk the folded window does not cover (`covered(chunk)`): nothing
+## would ever despawn them. Engaged ones go too; they belong to a chunk that is no longer streamed.
+## Total released by `prune_carried` (the playtest bot tells these from a despawn).
+var fold_pruned := 0
+## The ids the latest `fold_contents` carried.
+var last_fold_ids: Array = []
+
+func prune_carried(covered: Callable) -> int:
+	var dropped := 0
+	for chunk in _by_chunk.keys():
+		if covered.call(chunk):
+			continue
+		var held: Array = _by_chunk[chunk]
+		for iid in held:
+			if _instances.has(iid) and _instances[iid]["state"] == "dead":
+				_remember_death(iid, _instances[iid])
+			_release_instance(iid)
+			dropped += 1
+		_by_chunk.erase(chunk)
+	fold_pruned += dropped
+	if dropped > 0:
+		_invalidate_view()
+	return dropped
+
+func _release_instance(iid: String) -> void:
+	var inst: Dictionary = _instances.get(iid, {})
+	if inst.is_empty():
+		return
+	if _pool != null and inst.has("mi") and int(inst["mi"]) >= 0:
+		_pool.release(int(inst["mi"]))
+	if _visuals != null:
+		_visuals.detach_silently(iid)
+	_instances.erase(iid)
+	_last_broadcast.erase(iid)
+	_spatial.remove(iid)
+
 ## Keep a non-resident death record for `iid` from its live instance record. Only a
 ## still-pending death is worth keeping: a deadline that has already passed means the
 ## creature would come back alive, so remembering it would freeze a corpse forever.
@@ -843,6 +926,8 @@ func _on_creature_state_changed(instance_id: String, creature_id: String, state:
 ## existing deadline alone. Assigning the -1.0 default unconditionally wiped a dead
 ## instance's respawn_at on every delta, so the creature never came back.
 func apply_creature_state(instance_id: String, creature_id: String, state: String, position: Vector3, hp: float = -1.0, respawn_at: float = -1.0) -> void:
+	if not _fold_log.is_empty():
+		position = _to_local_frame(position)
 	if _instances.has(instance_id):
 		var inst: Dictionary = _instances[instance_id]
 		if creature_id != "":

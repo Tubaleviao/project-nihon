@@ -183,6 +183,7 @@ static func steps() -> Array:
 		{ "name": "spawn_near_friend", "compare": true },
 		{ "name": "chunk_record_synced", "compare": true },
 		{ "name": "frontier_record_synced", "compare": true },
+		{ "name": "fold_carries_creatures", "compare": true },
 	]
 
 ## The step names, comma-joined — the payload of the `plan` line the runner prints
@@ -402,6 +403,7 @@ func run(root: Node, role: String) -> void:
 	await _step_spawn_near_friend()
 	await _step_chunk_record_synced()
 	await _step_frontier_record_synced()
+	await _step_fold_carries_creatures()
 	_finish()
 
 ## End this process, with the run's own verdict carried in the exit code.
@@ -1671,6 +1673,30 @@ func _step_frontier_record_synced() -> void:
 		_report("frontier_record_synced", "fail", "no_frontier_record_received")
 		return
 	_report("frontier_record_synced", "ok", _record_detail(ChunkRecords.get_record(chunk)))
+
+## Phase 145 — a fold is local to the peer that crosses. The client crosses a pole with a creature in its
+## window: the creature keeps its id and lands at the fold's image, and a later host position for it (in the
+## host's frame) is replayed into the client's. The host, which did not cross, keeps its own creatures
+## where they are and never learns of the probe.
+func _step_fold_carries_creatures() -> void:
+	var iid := "creature_harness_fold_probe"
+	if _role == "host":
+		await _await_settle(2.0)
+		var ok: bool = not _root._creature._instances.has(iid)
+		_report("fold_carries_creatures", verdict(ok, true), "kept-and-host-unmoved" if ok else "host_saw_probe")
+		return
+	var pole_m := float(TerrainSlice.pole_chunks()) * TerrainSlice.CHUNK_METERS
+	var start := Vector3(100.5, 5.0, pole_m + 40.0)
+	_root._creature.apply_creature_state(iid, "ForestBoar", "idle", start)
+	_root._creature.fold_contents(true, 1)
+	var want := TerrainSlice.fold_world_vec_like(start, true, 1)
+	var pos: Vector3 = _root._creature.get_instance_position(iid)
+	var ok: bool = _root._creature._instances.has(iid) and pos.distance_to(want) < 0.01
+	var next := start + Vector3(2.0, 0.0, 0.0)
+	_root._creature.apply_creature_state(iid, "ForestBoar", "idle", next)
+	ok = ok and _root._creature.get_instance_position(iid).distance_to(TerrainSlice.fold_world_vec_like(next, true, 1)) < 0.01
+	_root._creature.prune_carried(func(_c): return false)
+	_report("fold_carries_creatures", verdict(ok, true), "kept-and-host-unmoved" if ok else "probe_not_carried")
 
 func _record_detail(rec: Dictionary) -> String:
 	var hs: Array = []

@@ -11,6 +11,8 @@ func register() -> void:
 	_run_test("stream: a frame's pump stops at its time budget and bounds its applies", _test_stream_pump_budget)
 	_run_test("stream: the steady build cap defaults to the core count minus one", _test_stream_builds_in_flight_default)
 	_run_test("stream: a restream bursts the build cap until the window is rebuilt", _test_stream_fold_catchup)
+	_run_test("fold: a creature and a tree keep id, state and place across a pole fold", _test_fold_carries_contents)
+	_run_test("fold: the fold image of a position is an involution over a pole and a lap", _test_fold_like_involution)
 
 ## Rows a player can reach: the equator, mid latitudes, the ice shelf, the pole's snow field, past
 ## the pole (the fold slack) and the antimeridian's blend band.
@@ -206,3 +208,82 @@ func _test_stream_fold_catchup() -> void:
 	rig["voxel"].free()
 	rig["terrain"].free()
 	rig["player"].free()
+
+
+## Phase 145 — a creature and a tree in the window are carried across a fold: same ids, same state, the
+## fold's image of their place, and the folded window's own spawn adds and removes nothing.
+func _test_fold_carries_contents() -> void:
+	var pole := TerrainSlice.pole_chunks()
+	var chunk := Vector2i(3, pole + 1)   # past the pole, as a window is a few chunks before the fold
+	var cs := CreatureSlice.new()
+	add_child(cs)
+	cs.spawn_for_chunk(chunk)
+	var ts := _make_tree_slice()
+	ts._spawn("Oak", "Wood", chunk, 0)
+	var iids: Array = cs._instances.keys()
+	assert_true(iids.size() > 0, "the chunk holds creatures")
+	var iid: String = iids[0]
+	cs._instances[iid]["hp"] = 7.0
+	cs._instances[iid]["tamed_by"] = "p1"
+	var before: Vector3 = cs._instances[iid]["position"]
+	var tree_before: Vector3 = ts._trees["tree_%d_%d_0" % [chunk.x, chunk.y]]["position"]
+	var count := cs._instances.size()
+	var spawned := [0]
+	var on_spawn := func(_i, _c, _p): spawned[0] += 1
+	GameBus.creature_spawned.connect(on_spawn)
+
+	cs.fold_contents(true, 1)
+	ts.fold_contents(true, 1)
+	assert_eq(spawned[0], 0, "the fold respawns nothing")
+
+	assert_true(cs._instances.has(iid), "the creature keeps its id")
+	assert_eq(cs._instances.size(), count, "and none is despawned")
+	assert_eq(float(cs._instances[iid]["hp"]), 7.0, "its hp")
+	assert_eq(cs._instances[iid]["tamed_by"], "p1", "and tame stay")
+	var after: Vector3 = cs._instances[iid]["position"]
+	assert_eq(after, TerrainSlice.fold_world_vec_like(before, true, 1), "its place is the fold's image")
+	var folded_chunk := Vector2i(floori(after.x / TerrainSlice.CHUNK_METERS), floori(after.z / TerrainSlice.CHUNK_METERS))
+	assert_eq(cs._instances[iid]["chunk"], folded_chunk, "filed under the chunk it now stands in")
+	assert_true((cs._by_chunk[folded_chunk] as Array).has(iid), "in the chunk index")
+	assert_true(cs.creatures_in_radius(after, 0.5).has(iid), "and in the spatial hash")
+	var tid := "tree_%d_%d_0" % [chunk.x, chunk.y]
+	assert_true(ts._trees.has(tid), "the tree keeps its id")
+	assert_eq(ts._trees[tid]["position"], TerrainSlice.fold_world_vec_like(tree_before, true, 1), "at the fold's image of its place")
+	assert_true(ts.index_is_consistent(), "with a consistent index")
+
+	# The folded window's own spawn: nothing is despawned or doubled.
+	var tree_count: int = ts._trees.size()
+	var tree_chunk: Vector2i = ts._trees[tid]["chunk"]
+	ts.spawn_for_chunk(tree_chunk)
+	assert_true(ts._trees.has(tid) and ts._trees.size() >= tree_count, "a folded chunk's spawn keeps the carried tree")
+	cs.spawn_for_chunk(folded_chunk)
+	assert_true(cs._instances.has(iid), "the creature survives its new chunk's spawn")
+	var same := 0
+	for other in cs._by_chunk[folded_chunk]:
+		if cs._instances[other]["creature_id"] == cs._instances[iid]["creature_id"]:
+			same += 1
+	assert_true(same <= int(GameData.CREATURES[cs._instances[iid]["creature_id"]].get("spawnCount")), "no species exceeds its pack")
+
+	# A carried entity outside the folded window goes.
+	assert_eq(cs.prune_carried(func(_c): return true), 0, "a covered window drops nothing")
+	assert_true(cs.prune_carried(func(_c): return false) >= 1, "an uncovered chunk's creatures are released")
+	assert_eq(cs._instances.size(), 0, "none left")
+	assert_true(ts.prune_carried(func(_c): return false) >= 1, "and its trees")
+	assert_true(ts.index_is_consistent(), "with a consistent index after the prune")
+
+	GameBus.creature_spawned.disconnect(on_spawn)
+	cs.free()
+	ts.free()
+
+## Phase 145 — folding twice over the same pole returns the position; a lap fold shifts X only.
+func _test_fold_like_involution() -> void:
+	var pole_m := float(TerrainSlice.pole_chunks()) * TerrainSlice.CHUNK_METERS
+	var p := Vector3(1234.5, 3.0, pole_m + 40.25)
+	var once := TerrainSlice.fold_world_vec_like(p, true, 1)
+	assert_true(absf(once.z - (pole_m - 40.25)) < 2.0, "a pole fold mirrors Z about the pole edge")
+	var back := TerrainSlice.fold_world_vec_like(once, true, 1)
+	assert_true(absf(back.x - p.x) < 2.0 or absf(absf(back.x - p.x) - float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS) < 2.0,
+		"folding back lands where it started, give or take a lap")
+	assert_true(absf(back.z - p.z) < 2.0, "on the same row")
+	var lapped := TerrainSlice.fold_world_vec_like(p, false, 1)
+	assert_true(absf(lapped.z - p.z) < 2.0 and lapped.y == p.y, "a lap fold leaves Z and Y")

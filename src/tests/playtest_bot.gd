@@ -470,12 +470,27 @@ func _step_pole() -> Array:
 	_chunk_builds = 0
 	_skip_frames = 0
 	var started := Time.get_ticks_msec()
+	# Phase 145 — what the window holds at the fold (`last_fold_ids`) must cross it: only the ones the
+	# folded window does not cover (`fold_pruned`) may go.
+	var pruned_before: int = _root._creature.fold_pruned + _root._tree.fold_pruned
 	GameBus.player_teleport.emit({ "chunk": Vector2i(x, row + 2), "local": Vector3(16.0, 0.0, 16.0) })
 	var folded: bool = await _until(func(): return absi((_root._player.get_world_pos()["chunk"] as Vector2i).y) < TerrainSlice.pole_chunks(), STEP_TIMEOUT_SECS)
 	if not folded:
 		return [false, "the body was never folded over the pole"]
 	var rebuilt: bool = await _until(func(): return _root._voxel.standin_count() == 0 and _window_settled(), STEP_TIMEOUT_SECS)
-	return [rebuilt, "folded, window rebuilt in %d ms" % (Time.get_ticks_msec() - started) if rebuilt else "folded window not rebuilt"]
+	var held_creatures: Array = _root._creature.last_fold_ids
+	var held_trees: Array = _root._tree.last_fold_ids
+	var lost := 0
+	for iid in held_creatures:
+		if not _root._creature._instances.has(iid):
+			lost += 1
+	for tid in held_trees:
+		if not _root._tree._trees.has(tid):
+			lost += 1
+	var despawned: int = lost - (_root._creature.fold_pruned + _root._tree.fold_pruned - pruned_before)
+	if despawned > 0:
+		return [false, "%d creatures or trees despawned across the fold" % despawned]
+	return [rebuilt, "folded, window rebuilt in %d ms, %d creatures and %d trees held, none despawned" % [Time.get_ticks_msec() - started, held_creatures.size(), held_trees.size()] if rebuilt else "folded window not rebuilt"]
 
 ## Nothing queued, deferred or in flight in the chunk manager.
 func _window_settled() -> bool:
