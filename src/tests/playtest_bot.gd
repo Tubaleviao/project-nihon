@@ -390,6 +390,15 @@ func _step_fight() -> Array:
 	# Placed in the creature slice's own frame, from the camera that draws it, so the model range check
 	# and the screenshot see the same distance whatever the scene origin or float32 rounding did to the body.
 	var p := _player_pos()
+	var ground: float = _root._terrain.get_height_at(Vector2(p.x, p.z))
+	if absf(p.y - ground) > 20.0:
+		# The body fell through unbuilt ground (the camera follows it); stand it back on the surface so
+		# the creature, which a surface-bound mover keeps on the terrain, lands within model range.
+		var here: Dictionary = _root._player.get_world_pos()
+		GameBus.player_teleport.emit({ "chunk": here["chunk"], "local": Vector3((here["local"] as Vector3).x, ground + 2.0, (here["local"] as Vector3).z) })
+		await _until(func(): return absf(_player_pos().y - ground) < 20.0, STEP_TIMEOUT_SECS)
+		await _until(func(): return false, 0.3)
+		p = _player_pos()
 	var cam := get_viewport().get_camera_3d()
 	if cam != null:
 		p = cam.global_position - _root._creature.scene_offset()
