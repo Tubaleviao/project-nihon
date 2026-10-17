@@ -403,7 +403,21 @@ func _step_fight() -> Array:
 		ok = left >= 0.0 and left < float((GameData.CREATURES[cid] as Resource).get("baseHp"))
 	# Phase 143: the screenshot that follows shows the target as a rigged model, not a box.
 	var modelled: bool = ok and await _until(func(): return _root._creature.has_model(iid), STEP_TIMEOUT_SECS)
-	return [ok and modelled, "%s at %.0f hp after %d rounds, %s" % [cid, _root._battle.get_hp(iid), rounds, "drawn as a model" if modelled else "no model node"]]
+	var why := "drawn as a model" if modelled else "no model node (%s)" % _model_diag(iid)
+	return [ok and modelled, "%s at %.0f hp after %d rounds, %s" % [cid, _root._battle.get_hp(iid), rounds, why]]
+
+## Why a creature has no model: its record, the camera and the distance between them.
+func _model_diag(iid: String) -> String:
+	var inst: Variant = _root._creature._instances.get(iid, null)
+	var cam := get_viewport().get_camera_3d()
+	var parts: Array = ["camera %s" % ("yes" if cam != null else "none")]
+	parts.append("record %s" % ("yes" if inst != null else "none"))
+	var vis: Node3D = _root._creature.visuals()
+	if vis != null:
+		parts.append("models %d, warned %s" % [vis.models.size(), str(vis.warned_types.keys())])
+		if cam != null and inst != null:
+			parts.append("%.1f m from camera, state %s" % [(cam.global_position - vis.position).distance_to(inst["position"]), str(inst["state"])])
+	return ", ".join(parts)
 
 ## Travel: two attuned waystones, then the intent; the body must land at the second.
 func _step_travel() -> Array:
