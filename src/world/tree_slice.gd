@@ -781,26 +781,51 @@ func _frontier_candidate(canon: Vector2i) -> Dictionary:
 	return rec
 
 ## Phase 138 — remember a clear circle for a chunk that cannot be recorded yet (host only).
-func _hold_spot(canon: Vector2i, p: Vector2, radius: float) -> void:
+## Phase 149 — a held trunk carries its spawn `index` and is matched by it, never by geometry, so a clear
+## cannot take a neighbour 0.2 m away; an indexed spot is also never evicted. A circle (index -1) is
+## matched by distance and is what the cap drops.
+func _hold_spot(canon: Vector2i, p: Vector2, radius: float, index: int = -1) -> void:
 	if not is_authoritative:
 		return
 	canon = TerrainSlice.wrap_chunk(canon)
 	var spots: Array = _pending_spots.get(canon, [])
 	for sp in spots:
-		if is_equal_approx(float(sp[0]), p.x) and is_equal_approx(float(sp[1]), p.y) and is_equal_approx(float(sp[2]), radius):
+		if is_equal_approx(float(sp[0]), p.x) and is_equal_approx(float(sp[1]), p.y) and is_equal_approx(float(sp[2]), radius) \
+				and _spot_index(sp) == index:
 			return
-	spots.append([p.x, p.y, radius])
+	spots.append([p.x, p.y, radius, index])
 	_pending_spots.erase(canon)   # re-inserted last: the most recently touched chunk goes last
 	_pending_spots[canon] = spots
 	_pending_spot_count += 1
 	while _pending_spot_count > PENDING_SPOTS_CAP and _pending_spots.size() > 1:
-		var oldest: Vector2i = _pending_spots.keys()[0]
-		if oldest == canon:
-			oldest = _pending_spots.keys()[1]
-		_forget_spots(oldest)
+		var oldest := Vector2i.ZERO
+		var found := false
+		for c in _pending_spots:
+			if c != canon and (_pending_spots[c] as Array).any(func(sp): return _spot_index(sp) < 0):
+				oldest = c
+				found = true
+				break
+		if not found:
+			break   # only persisted clears are left: they are never dropped
+		_forget_circles(oldest)
 		if not _spots_warned:
 			_spots_warned = true
 			Diag.warn("TreeSlice: %d unpinned clear spots held; the oldest chunk's were dropped" % PENDING_SPOTS_CAP)
+
+## Spawn index a held spot is pinned to, -1 for a plain circle.
+static func _spot_index(sp: Array) -> int:
+	return int(sp[3]) if sp.size() > 3 else -1
+
+## Drop a chunk's held circles, keeping its indexed (persisted) clears.
+func _forget_circles(canon: Vector2i) -> void:
+	if not _pending_spots.has(canon):
+		return
+	var kept: Array = (_pending_spots[canon] as Array).filter(func(sp): return _spot_index(sp) >= 0)
+	_pending_spot_count -= (_pending_spots[canon] as Array).size() - kept.size()
+	if kept.is_empty():
+		_pending_spots.erase(canon)
+	else:
+		_pending_spots[canon] = kept
 
 func _forget_spots(canon: Vector2i) -> void:
 	if _pending_spots.has(canon):
@@ -820,6 +845,11 @@ func _apply_pending_spots(chunk_pos: Vector2i) -> void:
 	for tid in _by_chunk.get(chunk_pos, []):
 		var tp: Vector3 = _trees[tid]["position"]
 		for sp in spots:
+			if _spot_index(sp) >= 0:
+				if int(_trees[tid]["index"]) == _spot_index(sp):
+					hit.append(tid)
+					break
+				continue
 			if Vector2(SeamWrap.delta_f(tp.x, float(sp[0]), wm), tp.z - float(sp[1])).length() <= float(sp[2]):
 				hit.append(tid)
 				break
@@ -845,8 +875,8 @@ func pending_spots_from_data(data: Variant) -> void:
 			continue
 		var canon := TerrainSlice.wrap_chunk(Vector2i(int(parts[0]), int(parts[1])))
 		for sp in data[k]:
-			if sp is Array and (sp as Array).size() == 3 and (sp as Array).all(func(v): return (typeof(v) == TYPE_INT or typeof(v) == TYPE_FLOAT) and is_finite(float(v))):
-				_hold_spot(canon, Vector2(float(sp[0]), float(sp[1])), clampf(float(sp[2]), 0.0, 64.0))
+			if sp is Array and ((sp as Array).size() == 3 or (sp as Array).size() == 4) and (sp as Array).all(func(v): return (typeof(v) == TYPE_INT or typeof(v) == TYPE_FLOAT) and is_finite(float(v))):
+				_hold_spot(canon, Vector2(float(sp[0]), float(sp[1])), clampf(float(sp[2]), 0.0, 64.0), clampi(_spot_index(sp), -1, RegionStore.GEN_TREE_MAX - 1))
 
 ## `stations` is the candidate list (`_stations_near_chunk`); omitted, every placed station is checked.
 ## Phase 126 — ground edited more than `CLEAR_DEPTH_M` below the tree's root (a deep mine) does not count,
@@ -921,7 +951,7 @@ func _record_cleared(chunk: Vector2i, index: int, spot := Vector2.INF) -> void:
 	# them until the chunk has a record; a client's are capped by recency. Phase 138 — and the host also
 	# holds the tree's spot (saved with the world), so a restart before the chunk is recorded keeps it cleared.
 	if is_authoritative and spot.is_finite():
-		_hold_spot(canon, spot, PENDING_SPOT_RADIUS_M)
+		_hold_spot(canon, spot, PENDING_SPOT_RADIUS_M, index)
 	var held: Dictionary = _cleared_local.get(canon, {})
 	_cleared_local.erase(canon)   # re-inserted last: the most recently touched chunk
 	if not held.has(index):

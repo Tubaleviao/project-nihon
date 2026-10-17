@@ -18,6 +18,7 @@ func register() -> void:
 	_run_test("settle: a column in an unloaded chunk waits for the chunk", _test_settle_unloaded_chunk)
 	_run_test("settle: a client edit queues nothing, a settle grants no item", _test_settle_client_and_items)
 	_run_test("settle: a client applies the host's settle and matches its column", _test_settle_client_sync)
+	_run_test("settle: a column queued at quit settles after a reload", _test_settle_reload_requeue)
 	_run_test("settle: a fall deeper than the tree clear depth clears trees", _test_settle_tree_clear)
 
 func _sand(bottom: float, top: float) -> Dictionary:
@@ -210,3 +211,23 @@ func _test_settle_tree_clear() -> void:
 	assert_eq(seen.size(), 1, "a fall deeper than CLEAR_DEPTH_M reports the ground edit once")
 	assert_eq(seen[0][0], deep, "on the fallen tile")
 	v.free()
+
+func _test_settle_reload_requeue() -> void:
+	var v := _make_voxel()
+	var tile := Vector2i(32, 32)
+	_stack_with_gap(v, tile, 2.0, 1.0, 1.0)
+	v._settle_note(tile)
+	assert_true(v.settle_pending() > 0, "the hanging column is queued")
+	# Save and quit before the queue runs: only the edits are stored.
+	var manifest := v.get_chunk_manifest()
+	v.free()
+	var w := _make_voxel()
+	w.apply_chunk_manifest(manifest)
+	assert_true(_loose_over_air(w.get_runs_at_tile(tile)), "the reloaded column still hangs")
+	assert_true(w.settle_pending() > 0, "the load queued it again")
+	var guard := 0
+	while w.settle_pending() > 0 and guard < 50:
+		w.settle_tick()
+		guard += 1
+	assert_false(_loose_over_air(w.get_runs_at_tile(tile)), "nothing floats once the queue drains")
+	w.free()

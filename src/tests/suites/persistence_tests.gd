@@ -40,6 +40,7 @@ func register() -> void:
 	_run_test("tree clears: an unloaded chunk beside recorded land pins the frontier record", _test_p126_frontier_clear)
 	_run_test("tree clears: a client keeps an unrecorded clear, range follows the scope", _test_p126_client_scope_and_ghost)
 	_run_test("tree clears: an unpinnable host clear survives a save/restart", _test_p138_unpinned_clear_restart)
+	_run_test("p149: a held clear spot is pinned by spawn index, not geometry", _test_p149_spot_by_index)
 	_run_test("tree clears: no frontier record is pinned for a circle that hits no tree", _test_p138_no_pin_without_hit)
 	_run_test("region store: a save with no chunks ends failure streaks", _test_p138_idle_save_ends_streaks)
 	_run_test("save txn: a live foreign journal keeps the .bak and defers the commit", _test_p138_txn_foreign_journal)
@@ -993,6 +994,40 @@ func _test_p138_unpinned_clear_restart() -> void:
 	t2.pending_spots_from_data({ "x,y": [[1, 2, 3]], "1,1": "junk", "2,2": [[1, 2], [NAN, 0, 1], ["a", 0, 1]] })
 	assert_eq(t2._pending_spots.size(), 0, "malformed saved spots are skipped")
 	t2.free()
+	rig["terrain"].free()
+	ChunkRecordsScript.clear()
+
+func _test_p149_spot_by_index() -> void:
+	var rig := _p126_host_rig()
+	var t: Node = rig["t"]
+	t.frontier_ready = func(_c: Vector2i) -> bool: return false
+	var chunk := _p138_tree_chunk(t, 2)
+	assert_true(chunk != Vector2i(-1000, 0), "a tree-growing chunk exists in the search window")
+	t.spawn_for_chunk(chunk)
+	var id0 := "tree_%d_%d_0" % [chunk.x, chunk.y]
+	var id1 := "tree_%d_%d_1" % [chunk.x, chunk.y]
+	assert_false(t.get_tree_record(id0).is_empty() or t.get_tree_record(id1).is_empty(), "both trees stand")
+	# Put tree 1 0.2 m from tree 0: inside the old 0.25 m trunk circle of tree 0.
+	var p0: Vector3 = t._trees[id0]["position"]
+	t._trees[id1]["position"] = p0 + Vector3(0.2, 0.0, 0.0)
+	t._hold_spot(chunk, Vector2(p0.x, p0.z), t.PENDING_SPOT_RADIUS_M, 0)
+	# The saved data round-trips the index.
+	var saved: Variant = JSON.parse_string(JSON.stringify(t.pending_spots_to_data()))
+	t._forget_spots(chunk)
+	t.pending_spots_from_data(saved)
+	assert_eq(t._spot_index(t._pending_spots[chunk][0]), 0, "the held spot keeps its spawn index")
+	t.frontier_ready = func(_c: Vector2i) -> bool: return true
+	assert_true(t._pin_frontier_record(chunk), "the chunk now has a record")
+	t._apply_pending_spots(chunk)
+	assert_true(t.get_tree_record(id0).is_empty(), "the cleared tree is gone")
+	assert_false(t.get_tree_record(id1).is_empty(), "its neighbour 0.2 m away stays")
+	# Past the cap the oldest chunk's circles go, but an indexed clear is never evicted.
+	t._hold_spot(Vector2i(900, 900), Vector2(1.0, 1.0), 0.25, 7)
+	for i in t.PENDING_SPOTS_CAP + 10:
+		t._hold_spot(Vector2i(901 + i % 50, 900), Vector2(float(i), 2.0), 3.0)
+	assert_true(t._pending_spots.has(Vector2i(900, 900)), "an indexed clear survives the eviction")
+	assert_true(t._pending_spot_count <= t.PENDING_SPOTS_CAP + 1, "the cap still holds")
+	t.free()
 	rig["terrain"].free()
 	ChunkRecordsScript.clear()
 

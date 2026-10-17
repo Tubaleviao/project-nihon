@@ -268,17 +268,22 @@ or hit the wrong tree, and persistence edge cases in the save journal and region
   its apex. The elbow bend follows the forward swing.
 
 **Acceptance criteria:**
-- [ ] Suite: undermine a sand column, save and quit before it settles, reload: the column finishes
+- [x] Suite: undermine a sand column, save and quit before it settles, reload: the column finishes
   settling and nothing floats.
-- [ ] Suite: a `flying` creature keeps its hover height across 100 AI ticks. A `ground` creature
+- [x] Suite: a `flying` creature keeps its hover height across 100 AI ticks. A `ground` creature
   stays on the surface.
-- [ ] Suite: a creature at the end of a partial path to a fixed goal retries within the retry
+- [x] Suite: a creature at the end of a partial path to a fixed goal retries within the retry
   interval.
-- [ ] Suite: clearing one of two trees 0.2 m apart and reloading keeps the other tree.
-- [ ] Suite: `ERR_BUSY` from `commit` leaves the staged ops intact for a retry.
-- [ ] Suite: a jump that lasts longer than the fall threshold does not enter `fall` before its apex.
+- [x] Suite: clearing one of two trees 0.2 m apart and reloading keeps the other tree.
+- [x] Suite: `ERR_BUSY` from `commit` leaves the staged ops intact for a retry.
+- [x] Suite: a jump that lasts longer than the fall threshold does not enter `fall` before its apex.
 - [ ] Every in-scope item of #354, #363, #365, #367 and #369 is ticked on its issue.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite green on both boot paths, harness green.
+
+**Implementation notes:** the settle queue is not stored: every edited column read from disk is queued
+again (a settled column is a no-op), which covers queued and parked columns without a region schema
+change. The fingerprint stamp keeps Phase 138's single-notice refresh (its tests pin it). Still open:
+the `net_harness` stored-vs-mirrored creature position measurement, and ticking the issue items.
 
 ---
 
