@@ -766,8 +766,9 @@ before the world gets taller, without making the public build depend on a native
 - [ ] Suite: native and GDScript builders give equal arrays for a fixed set of chunks (equator, ice,
   pole, antimeridian, edited chunk); the GDScript fallback is used when the extension is absent.
 - [ ] CI: the three platform binaries build, and an export without them boots on the fallback.
-- [ ] Playtest bot: the `stream` step's chunk build rate at least doubles against the Phase 141 report,
-  and no step reports a hitch over 50 ms.
+- [ ] Playtest bot: the `stream` step's chunk build rate with the native builder is at least double
+  the GDScript fallback's on the same commit (so Phase 142's pump gains are not counted), and no
+  step reports a hitch over 50 ms.
 - [ ] Suite green on both boot paths, harness green.
 
 ---
@@ -784,17 +785,21 @@ across instead.
 
 **Deliverables:**
 - A design note first (in this phase's PR description): how `CreatureSlice` and `TreeSlice`
-  re-key what they hold through `fold_scene_transform`, and how the host stays authoritative. The
-  host re-keys and peers apply the same pure transform to synced state, so the wire carries no
-  extra positions and a client cannot move an entity by claiming a fold.
-- `src/creature/creature_slice.gd`, `src/world/tree_slice.gd` — on a fold, held entities are re-keyed to their
-  new chunk and scene transform instead of being dropped.
+  re-key what they hold through `TerrainSlice.fold_scene_transform`, and how the host stays
+  authoritative. A fold is local to the peer that crosses (`_fold_local_player` in
+  `src/networking/peer_wiring.gd`), so the host's entity state stays in canonical world coordinates
+  and only the crossing peer re-keys its view of synced state with the same pure transform: the
+  wire carries no extra positions, other peers are unaffected, and a client cannot move an entity
+  by claiming a fold.
+- `src/creature/creature_slice.gd`, `src/world/tree_slice.gd` — on a fold, held entities are
+  re-keyed to their new chunk and scene transform instead of being dropped.
 
 **Acceptance criteria:**
 - [ ] Suite: a creature and a tree in the window keep their ids, state and world position across a
   fold, and nothing is despawned or respawned.
-- [ ] Harness: two clients cross a pole together and see the same creatures with the same ids.
-- [ ] Playtest bot passes with the `pole` step.
+- [ ] Harness: two clients cross a pole together and see the same creatures with the same ids; a
+  third client that does not cross sees those creatures unmoved.
+- [ ] Playtest bot: the `pole` step passes and reports no creature or tree despawned across the fold.
 - [ ] Suite green on both boot paths, harness green.
 
 ---
