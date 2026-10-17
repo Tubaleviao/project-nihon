@@ -167,7 +167,7 @@ issue number where the criterion used to be.
 | 144 | A native chunk builder: GDExtension, CI binaries and a GDScript fallback | Planned | below |
 | 145 | Fold contents: creatures and trees survive a polar fold | In review | below |
 | 146 | Roadmap close-out: archive merged phases and keep the index honest | Planned | below |
-| 147 | Review follow-ups I: trust boundary and far-from-origin precision | Planned | below |
+| 147 | Review follow-ups I: trust boundary and far-from-origin precision | In review | below |
 | 148 | Review follow-ups II: i18n leftovers | Planned | below |
 | 149 | Review follow-ups III: world, terrain and persistence | Planned | below |
 | 150 | Review follow-ups IV: wiring, harness and playtest bot | Planned | below |
@@ -882,18 +882,25 @@ ticked on its issue with the commit that fixed it):
 - #349: in `note_craft`, the first-craft marker is written after `_earn` grants the points.
 
 **Acceptance criteria:**
-- [ ] Suite: a waystone and a hearth placed at x ≈ 2e7 m keep their exact positions through save
+- [x] Suite: a waystone and a hearth placed at x ≈ 2e7 m keep their exact positions through save
   and load (error below 1 cm).
-- [ ] Suite: placing any station without its item in the inventory is refused on the host, and a
+- [x] Suite: placing any station without its item in the inventory is refused on the host, and a
   successful placement removes one item.
-- [ ] Suite: `edit_blocker` called as a preview leaves `last_active` and claim state unchanged.
-- [ ] Suite: with `max_models` = 2 and three creatures in range where the nearest has no model key,
+- [x] Suite: `edit_blocker` called as a preview leaves `last_active` and claim state unchanged.
+- [x] Suite: with `max_models` = 2 and three creatures in range where the nearest has no model key,
   the two modellable creatures both get models.
-- [ ] Suite: a creature respawn does not set its clip to `run`.
-- [ ] Harness: a modified client that sends `player_moved` while held, and a station-place intent
+- [x] Suite: a creature respawn does not set its clip to `run`.
+- [x] Harness: a modified client that sends `player_moved` while held, and a station-place intent
   without the item, are both refused by the host.
-- [ ] Every item of #336, #346, #349 and #374 that is in scope here is ticked on its issue.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Every item of #336, #346, #349 and #374 that is in scope here is ticked on its issue (see the PR comment on each).
+- [x] Suite green on both boot paths, harness green.
+
+**Implementation notes:** `edit_blocker` is pure; `SettlementSlice.note_edit` (wired as `claim_touch` on the voxel,
+station and tree slices) records activity after a successful edit. The hearth's exact record is kept per
+settlement (`exact_pos`). `CreatureVisuals` skips types with no model when picking `max_models` and treats a one-frame
+jump over `TELEPORT_M` as a teleport. Not done here: giving `CreatureVisuals` an exact (non-float32) creature
+position — creature positions are float32 `Vector3` end to end and need their own phase. The station-place harness
+step runs the host's placement against the peer's own pack (there is no client station-place intent to forge).
 
 ---
 
