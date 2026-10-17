@@ -19,11 +19,11 @@ func make_slice(ctx: GameRoot) -> Node:
 	root = ctx
 	var slice := SettlementSlice.new()
 	slice.registry = root._registry
-	slice.position_of = Callable(self, "player_xz")
+	slice.position_of = self.player_xz
 	slice.is_host = not root._is_client
-	root._voxel.claim_guard = Callable(slice, "edit_blocker")
-	root._station.claim_guard = Callable(slice, "edit_blocker")
-	root._tree.claim_guard = Callable(slice, "edit_blocker")
+	root._voxel.claim_guard = slice.edit_blocker
+	root._station.claim_guard = slice.edit_blocker
+	root._tree.claim_guard = slice.edit_blocker
 	root._station.settlement_slice = slice
 	root._technology.settlement_slice = slice
 	return slice
@@ -38,8 +38,7 @@ func _bind_ui() -> void:
 	ui.settlement_slice = root._settlements
 	ui.settlement_panel.settlement_slice = root._settlements
 
-func wire(ctx: GameRoot) -> void:
-	root = ctx
+func _connect_all() -> void:
 	connect_bus(GameBus.settlements_changed, _on_changed)
 	connect_bus(GameBus.settlement_resolved, _on_resolved)
 	connect_bus(GameBus.station_placed, _on_station_placed)

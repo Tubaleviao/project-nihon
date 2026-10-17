@@ -10,10 +10,19 @@ const GameRoot := preload("res://src/core/game_root.gd")
 var root: GameRoot = null
 var _connections: Array = []
 
+## Sets `root` and connects the module's handlers. A module overrides `_connect_all()`, not `wire`.
 func wire(ctx: GameRoot) -> void:
 	root = ctx
+	_connect_all()
 
+## Virtual: the module's `connect_bus(...)` calls.
+func _connect_all() -> void:
+	pass
+
+## Connects `handler` to `sig` once: a second call with the same pair is a no-op.
 func connect_bus(sig: Signal, handler: Callable) -> void:
+	if sig.is_connected(handler):
+		return
 	sig.connect(handler)
 	_connections.append([sig, handler])
 

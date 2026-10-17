@@ -748,7 +748,7 @@ static func simulated_hp_after_hit(current_hp: float, damage: float, max_hp: flo
 ## The counterpart to `record_hp`, and the split between them is the whole point. A
 ## remote peer's HP that arrives over the wire is client-declared and refused. HP the
 ## host RESOLVED ITSELF — a creature's combat round, opened against a peer the host was
-## already tracking (`combat_wiring._on_player_damaged`) — is the host's own evidence, the
+## already tracking (`combat_wiring.on_player_damaged`) — is the host's own evidence, the
 ## same standing as that peer's last-known position. Before this method existed there
 ## was nowhere to put it: Phase 37 forwarded the round to the peer's own client and let
 ## that client keep the number, so a modified client could ignore every hit and an

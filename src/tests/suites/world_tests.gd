@@ -189,7 +189,7 @@ func _test_waystone_result_reaches_client() -> void:
 	var seen: Array = []
 	var cb := func(pid: String, ok: bool, reason: String) -> void: seen.append([pid, ok, reason])
 	GameBus.waystone_travel_resolved.connect(cb)
-	gr._peer_wiring._on_own_state_synced({ "waystone_result": { "ok": false, "reason": "cooldown" } })
+	gr._peer_wiring.on_own_state_synced({ "waystone_result": { "ok": false, "reason": "cooldown" } })
 	GameBus.waystone_travel_resolved.disconnect(cb)
 	assert_eq(seen.size(), 1, "a refusal sent on the own-state channel reaches the client's bus")
 	assert_eq(seen[0], [reg.local_player_id, false, "cooldown"], "addressed to the local player with the host's reason")
@@ -1221,12 +1221,12 @@ func _test_exact_placement_paths() -> void:
 	gr._player = host_body
 	gr._rebase = RebaseDriver.new([host_body])
 	gr._registry = reg
-	gr._persistence_wiring._place_local_player(Vector3(5.0, 5.0, 5.0))
+	gr._persistence_wiring.place_local_player(Vector3(5.0, 5.0, 5.0))
 	var placed := host_body.get_world_pos()
 	assert_eq(placed["chunk"], chunk, "_place_local_player lands in the recorded chunk")
 	assert_true((placed["local"] as Vector3).distance_to(local) < 1e-3, "and on the recorded local within 1e-3 m")
 	# Door 2: the snapshot's own record carries the exact position through a JSON round trip.
-	var shipped: Dictionary = JSON.parse_string(JSON.stringify(gr._snapshot_wiring._snapshot_own_record(pid)))
+	var shipped: Dictionary = JSON.parse_string(JSON.stringify(gr._snapshot_wiring.snapshot_own_record(pid)))
 	assert_true(WorldPos.is_wire(shipped["player"]["position"]), "the snapshot's player position is a valid wire record")
 	assert_eq(WorldPos.wire_chunk(shipped["player"]["position"]), chunk, "naming the exact chunk")
 	# Door 3: a client places itself from that packet with a rebase, not a float detour.
@@ -1236,13 +1236,13 @@ func _test_exact_placement_paths() -> void:
 	var client: Node = root_script.new()
 	client._player = client_body
 	client._rebase = RebaseDriver.new([client_body])
-	client._snapshot_wiring._place_from_snapshot(shipped["player"])
+	client._snapshot_wiring.place_from_snapshot(shipped["player"])
 	var landed := client_body.get_world_pos()
 	assert_eq(landed["chunk"], chunk, "_place_from_snapshot rebases to the exact chunk")
 	assert_true((landed["local"] as Vector3).distance_to(local) < 1e-3, "and lands on the local within 1e-3 m")
 	assert_true(client._client_respawn_point_set, "the first snapshot sets the respawn point")
-	client._snapshot_wiring._place_from_snapshot("not a record")
-	client._snapshot_wiring._place_from_snapshot({ "position": "elsewhere" })
+	client._snapshot_wiring.place_from_snapshot("not a record")
+	client._snapshot_wiring.place_from_snapshot({ "position": "elsewhere" })
 	assert_eq(client_body.get_world_pos()["chunk"], chunk, "a malformed player record moves nobody")
 	client_body.free()
 	host_body.free()

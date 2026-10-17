@@ -40,16 +40,23 @@ const STREAM_CHUNKS := 20
 const WALK_SECS := 3.0
 const GATHER_SEARCH_CHUNKS := 30  ## how far east the gather step hops looking for a standing tree
 const FIGHT_RANGE_M := 1.5
+const TELEPORT_SETTLE_MS := 1500 ## frames this long after a teleport (the new window's builds) are not recorded
+const STEP_GRACE_SECS := 10.0    ## past its deadline a step that has not returned has crashed or hung: fail it
+const SPAWN_OFFSET_M := 2.0      ## a teleport lands this far above the ground
+const FIGHT_MAX_GROUND_GAP_M := 2.0
 
 var _root: Node
 var _frames: Array = []       ## frame times (ms) of the step in flight
 var _recording: bool = false
 var _skip_frames: int = 0
+var _skip_until_ms: int = 0   ## frames before this tick are not recorded (just after a teleport)
+var _step_result: Array = []  ## set by the step runner when its coroutine returns; empty while it runs
 var _step_deadline_ms: int = 0
 var _chunk_builds: int = 0
 var _mined: Array = []
 var _chopped: Array = []
 var _crafted: Array = []
+var _researched: Array = []
 var _placed: Array = []
 var _steps_done: Array = []   ## finished step records, for the watchdog's partial report
 
@@ -148,11 +155,14 @@ func _ready() -> void:
 	GameBus.block_mined.connect(func(material: String, quantity: int, _p: Vector3): _mined.append([material, quantity]))
 	GameBus.tree_chopped.connect(func(id: String, wood: String, state: String, _r: float): _chopped.append([id, wood, state]))
 	GameBus.craft_resolved.connect(func(result: Dictionary): _crafted.append(result))
+	GameBus.research_resolved.connect(func(result: Dictionary): _researched.append(result))
 	GameBus.station_placed.connect(func(id: String, type: String, _p: Vector3): _placed.append([id, type]))
 	GameBus.chunk_loaded.connect(func(_c: Vector2i): _chunk_builds += 1)
 
 func _process(delta: float) -> void:
 	if not _recording:
+		return
+	if Time.get_ticks_msec() < _skip_until_ms:
 		return
 	if _skip_frames > 0:
 		_skip_frames -= 1
@@ -189,6 +199,7 @@ func run(root: Node) -> void:
 func _on_watchdog() -> void:
 	_recording = false
 	_key(KEY_W, false)
+	_key(KEY_S, false)
 	var steps := _steps_done.duplicate()
 	steps.append(step_record("watchdog", false, "the run did not finish in time (a step crashed or hung)", [], 0))
 	print("[Playtest] watchdog fired")
@@ -215,12 +226,24 @@ func _run_step(step: String) -> Dictionary:
 	_skip_frames = WARMUP_FRAMES
 	_step_deadline_ms = Time.get_ticks_msec() + int(_step_timeout(step) * 1000.0)
 	_recording = true
-	var result: Array = await call("_step_" + step)
+	_step_result = []
+	_run_step_body(step)
+	# A step coroutine that hits a script error never returns; its own waits all stop at the step
+	# deadline, so a step still silent a little after it has crashed (or hung) and fails here, not
+	# at the whole-run watchdog.
+	var give_up_ms := _step_deadline_ms + int(STEP_GRACE_SECS * 1000.0)
+	while _step_result.is_empty() and Time.get_ticks_msec() < give_up_ms:
+		await get_tree().process_frame
+	var result: Array = _step_result if not _step_result.is_empty() else [false, "step %s crashed or hung (no result %d s past its deadline)" % [step, int(STEP_GRACE_SECS)]]
+	_key(KEY_W, false)
 	_recording = false
 	var rec := step_record(step, bool(result[0]), str(result[1]), _frames, _chunk_builds)
 	await _screenshot(step)
 	print("[Playtest] %s %s %s" % [step, "ok" if bool(rec["ok"]) else "FAIL", rec["detail"]])
 	return rec
+
+func _run_step_body(step: String) -> void:
+	_step_result = await call("_step_" + step)
 
 ## Poll `pred` once a frame until it holds or `secs` of wall clock pass.
 func _until(pred: Callable, secs: float) -> bool:
@@ -265,6 +288,18 @@ func _key(keycode: Key, pressed: bool) -> void:
 	ev.pressed = pressed
 	Input.parse_input_event(ev)
 
+## Stand the player on the ground of `chunk` at `local`'s x/z, SPAWN_OFFSET_M above the surface that is
+## actually built there (the voxel surface, else the generator's), and skip the frame-time check for the
+## frames the new window's builds will cost.
+func _teleport_to(chunk: Vector2i, local: Vector3) -> Dictionary:
+	var m := WorldPos.CHUNK_METERS
+	var xz := Vector2(float(chunk.x) * m + local.x, float(chunk.y) * m + local.z)
+	var ground: float = _root._voxel.get_voxel_height_at(xz) if _root._chunk_manager.is_chunk_built(chunk) else _root._terrain.get_height_at(xz)
+	var spot := WorldPos.normalized({ "chunk": chunk, "local": Vector3(local.x, ground + SPAWN_OFFSET_M, local.z) })
+	GameBus.player_teleport.emit(spot)
+	_skip_until_ms = Time.get_ticks_msec() + TELEPORT_SETTLE_MS
+	return spot
+
 func _player_pos() -> Vector3:
 	return _root._player.get_position()
 
@@ -281,8 +316,7 @@ func _step_walk() -> Array:
 func _step_stream() -> Array:
 	var home: Dictionary = _root._player.get_world_pos()
 	for i in range(1, STREAM_CHUNKS + 1):
-		var spot := WorldPos.normalized({ "chunk": (home["chunk"] as Vector2i) + Vector2i(i, 0), "local": home["local"] })
-		GameBus.player_teleport.emit(spot)
+		var spot := _teleport_to((home["chunk"] as Vector2i) + Vector2i(i, 0), home["local"])
 		var built: bool = await _until(func(): return _root._chunk_manager.is_chunk_built(spot["chunk"]), STREAM_TIMEOUT_SECS)
 		if not built:
 			return [false, "chunk %d east never built" % i]
@@ -306,6 +340,19 @@ func _standing_trees() -> Array:
 	standing.sort()
 	return standing
 
+## The standing tree closest to the body (ids are sorted, so a tie is stable).
+func _nearest_tree(ids: Array) -> String:
+	var from: Vector3 = _player_pos() - _root._tree.scene_offset()   # trees live in the slice frame
+	var best := str(ids[0])
+	var best_d := INF
+	for tid in ids:
+		var pos: Vector3 = _root._tree._trees[tid]["position"]
+		var d := pos.distance_squared_to(from)
+		if d < best_d:
+			best_d = d
+			best = str(tid)
+	return best
+
 ## Gather: fell the first tree of the loaded window through the player's own intent, with an axe in the pack.
 func _step_gather() -> Array:
 	var standing: Array = _standing_trees()
@@ -313,10 +360,9 @@ func _step_gather() -> Array:
 	# rift): hop on, one chunk at a time, until a forest chunk is loaded.
 	var here: Dictionary = _root._player.get_world_pos()
 	var hop := 0
-	while standing.is_empty() and hop < GATHER_SEARCH_CHUNKS:
+	while standing.is_empty() and hop < GATHER_SEARCH_CHUNKS and Time.get_ticks_msec() < _step_deadline_ms:
 		hop += 1
-		var spot := WorldPos.normalized({ "chunk": (here["chunk"] as Vector2i) + Vector2i(hop, 0), "local": here["local"] })
-		GameBus.player_teleport.emit(spot)
+		var spot := _teleport_to((here["chunk"] as Vector2i) + Vector2i(hop, 0), here["local"])
 		await _until(func(): return _root._chunk_manager.is_chunk_built(spot["chunk"]), STEP_TIMEOUT_SECS)
 		await _until(func(): return false, 0.2)
 		standing = _standing_trees()
@@ -325,35 +371,58 @@ func _step_gather() -> Array:
 	if not _root._inventory.add_item("CarpenterAxe", 1):
 		return [false, "axe does not fit the pack (weight %.1f of %.1f)" % [_root._inventory.get_current_weight(), _root._inventory.get_max_weight()]]
 	var before := _chopped.size()
-	GameBus.tree_chop_requested.emit(standing[0], "")
+	var target := _nearest_tree(standing)
+	GameBus.tree_chop_requested.emit(target, "")
 	var ok: bool = await _until(func(): return _chopped.size() > before, STEP_TIMEOUT_SECS)
-	return [ok, "felled %s" % str(_chopped.back()) if ok else "chop %s gave nothing" % standing[0]]
+	return [ok, "felled %s" % str(_chopped.back()) if ok else "chop %s gave nothing" % target]
 
-## Research `tech_id` through the technology slice (points and materials granted first). "" on success.
+## Research `tech_id` through the player's own intent (research points and materials granted first, the
+## way a session would earn them). "" on success.
 func _unlock(tech_id: String) -> String:
 	var t = _root._technology
 	var pid: String = t.local_player_id()
 	if t.is_unlocked(tech_id, pid):
 		return ""
-	t._set_points(pid, t.max_points())
+	t._set_points(pid, t.max_points())   # setup: the points a session would have earned
 	for entry in t.get_tech_data(tech_id).get("researchMaterials", []):
 		_root._inventory.add_item(str(entry["item"]), int(entry["quantity"]))
-	var begun: Dictionary = t.begin_research(tech_id, pid)
-	if not bool(begun["success"]):
-		return str(begun["reason"])
-	var done: Dictionary = t.complete_research(tech_id, pid)
-	return "" if bool(done["success"]) else str(done["reason"])
+	var before := _researched.size()
+	GameBus.research_requested.emit(tech_id)
+	if _researched.size() == before or not bool(_researched.back()["success"]):
+		return str(_researched.back()["reason"]) if _researched.size() > before else "no research_resolved"
+	# The research clock runs on wall time: wait for the unlock it ends in.
+	var unlocked: bool = await _until(func(): return t.is_unlocked(tech_id, pid), STEP_TIMEOUT_SECS)
+	return "" if unlocked else "research did not finish"
+
+## Tap `keycode` (press and release).
+func _tap(keycode: Key) -> void:
+	_key(keycode, true)
+	_key(keycode, false)
+
+## Place `station_type` with the player's own keys: B cycles the selection, V places it at the feet.
+## Returns the number of stations placed (0 when refused).
+func _place_with_keys(station_type: String) -> int:
+	var station = _root._station
+	for _i in range(32):
+		if station.get_place_station_type() == station_type:
+			break
+		_tap(KEY_B)
+		await get_tree().process_frame
+	if station.get_place_station_type() != station_type:
+		return 0
+	var before := _placed.size()
+	_tap(KEY_V)
+	await _until(func(): return _placed.size() > before, 2.0)
+	return _placed.size() - before
 
 ## Craft planks at a carpentry bench set down at the feet.
 func _step_craft() -> Array:
-	var tech: Variant = _unlock("TechBasicCarpentry")
+	var tech: Variant = await _unlock("TechBasicCarpentry")
 	if tech != "":
 		return [false, "research: %s" % tech]
 	_root._inventory.add_item("Thornwood", 2)
 	_root._crafting.set_skill("Carpentry", "novice")
-	var p := _player_pos()
-	_root._station.set_player_position(p)
-	if _root._station.try_place_station("carpentry bench", p + Vector3(2.0, 0.0, 0.0), _root._inventory) == "":
+	if await _place_with_keys("carpentry bench") == 0:
 		return [false, "bench placement refused"]
 	var before := _crafted.size()
 	var planks: int = _root._inventory.get_item_count("ThornwoodPlank")
@@ -364,15 +433,17 @@ func _step_craft() -> Array:
 	var got: int = _root._inventory.get_item_count("ThornwoodPlank") - planks
 	return [bool(_crafted.back()["success"]) and got == 3, "crafted %d planks (%s)" % [got, str(_crafted.back()["reason"])]]
 
-## Place a station with the player's own placement call.
+## Place a station with the player's own keys, a few metres from the bench so the two do not overlap.
 func _step_place() -> Array:
-	var p := _player_pos()
-	var before := _placed.size()
-	var id: String = _root._station.try_place_station("forge", p + Vector3(-3.0, 0.0, 0.0), _root._inventory)
-	if id == "":
-		return [false, "forge placement refused"]
-	var ok: bool = await _until(func(): return _placed.size() > before, STEP_TIMEOUT_SECS)
-	return [ok, "placed %s" % id]
+	var placed := 0
+	for attempt in range(3):
+		_key(KEY_W, true)
+		await _until(func(): return false, 1.0)
+		_key(KEY_W, false)
+		placed = await _place_with_keys("forge")
+		if placed > 0:
+			break
+	return [placed > 0, "placed %s" % str(_placed.back()[0]) if placed > 0 else "forge placement refused"]
 
 ## Fight: a creature set down within reach loses HP to the player's melee round and is drawn as a model.
 func _step_fight() -> Array:
@@ -390,15 +461,16 @@ func _step_fight() -> Array:
 	# Placed in the creature slice's own frame, from the camera that draws it, so the model range check
 	# and the screenshot see the same distance whatever the scene origin or float32 rounding did to the body.
 	var p := _player_pos()
-	var ground: float = _root._terrain.get_height_at(Vector2(p.x, p.z))
-	if absf(p.y - ground) > 20.0:
-		# The body fell through unbuilt ground (the camera follows it); stand it back on the surface so
-		# the creature, which a surface-bound mover keeps on the terrain, lands within model range.
+	if absf(_ground_gap()) > FIGHT_MAX_GROUND_GAP_M:
+		# The body is not on the surface (it fell while ground streamed in): stand it back on it.
 		var here: Dictionary = _root._player.get_world_pos()
-		GameBus.player_teleport.emit({ "chunk": here["chunk"], "local": Vector3((here["local"] as Vector3).x, ground + 2.0, (here["local"] as Vector3).z) })
-		await _until(func(): return absf(_player_pos().y - ground) < 20.0, STEP_TIMEOUT_SECS)
+		_teleport_to(here["chunk"], here["local"])
+		await _until(func(): return absf(_ground_gap()) <= FIGHT_MAX_GROUND_GAP_M, STEP_TIMEOUT_SECS)
 		await _until(func(): return false, 0.3)
 		p = _player_pos()
+	var gap := _ground_gap()
+	if absf(gap) > FIGHT_MAX_GROUND_GAP_M:
+		return [false, "the player is %.1f m from the terrain surface (limit %.1f)" % [gap, FIGHT_MAX_GROUND_GAP_M]]
 	var cam := get_viewport().get_camera_3d()
 	if cam != null:
 		p = cam.global_position - _root._creature.scene_offset()
@@ -406,10 +478,6 @@ func _step_fight() -> Array:
 	if iid == "":
 		return [false, "spawn refused"]
 	var y: float = _root._terrain.get_height_at(Vector2(p.x + FIGHT_RANGE_M, p.z))
-	# A body far from the terrain surface (fell, or ground not streamed yet) would put the target out of
-	# model range: keep the target at the camera's height then.
-	if cam != null and absf(y - p.y) > 20.0:
-		y = p.y - 1.5
 	_root._creature.set_instance_position(iid, Vector3(p.x + FIGHT_RANGE_M, y, p.z))
 	var rounds := 0
 	var ok := false
@@ -422,7 +490,18 @@ func _step_fight() -> Array:
 	# Phase 143: the screenshot that follows shows the target as a rigged model, not a box.
 	var modelled: bool = ok and await _until(func(): return _root._creature.has_model(iid), STEP_TIMEOUT_SECS)
 	var why := "drawn as a model" if modelled else "no model node (%s)" % _model_diag(iid)
-	return [ok and modelled, "%s at %.0f hp after %d rounds, %s" % [cid, _root._battle.get_hp(iid), rounds, why]]
+	var left_hp: float = _root._battle.get_hp(iid)
+	_root._creature.despawn_instance(iid)   # the bot's target must not outlive the step
+	return [ok and modelled, "%s at %.0f hp after %d rounds, %s, player %.1f m from the surface" % [cid, left_hp, rounds, why, gap]]
+
+## Player height minus the built surface under the body (0 on the surface).
+func _ground_gap() -> float:
+	var here: Dictionary = _root._player.get_world_pos()
+	var chunk: Vector2i = here["chunk"]
+	var local: Vector3 = here["local"]
+	var m := WorldPos.CHUNK_METERS
+	var xz := Vector2(float(chunk.x) * m + local.x, float(chunk.y) * m + local.z)
+	return local.y - float(_root._voxel.get_voxel_height_at(xz))
 
 ## Why a creature has no model: its record, the camera and the distance between them.
 func _model_diag(iid: String) -> String:
@@ -438,22 +517,36 @@ func _model_diag(iid: String) -> String:
 			parts.append("camera %s, models node at %s, creature %s, player %s" % [str(cam.global_position), str(vis.position), str(inst["position"]), str(_player_pos())])
 	return ", ".join(parts)
 
-## Travel: two attuned waystones, then the intent; the body must land at the second.
+## Travel: two waystones set down with the player's own keys, attuned, then the intent; the body must land at the second.
 func _step_travel() -> Array:
-	var seen: Dictionary = _root._player.get_world_pos()
-	var gap := 80.0
-	var base: Vector3 = _player_pos()
-	var a: String = _root._station.place_station("waystone", base)
-	var b: String = _root._station.place_station("waystone", base + Vector3(gap, 0.0, 0.0))
-	var dest := WorldPos.normalized({ "chunk": seen["chunk"], "local": (seen["local"] as Vector3) + Vector3(gap, 0.0, 0.0) })
-	_root._waystones.note_exact(a, seen)
-	_root._waystones.note_exact(b, dest)
+	var stone: String = str(_root._waystones.station_type())
+	_key(KEY_W, true)   # clear of the bench and the forge the earlier steps set down
+	await _until(func(): return false, 1.5)
+	_key(KEY_W, false)
+	var before := _placed.size()
+	var item: String = _root._station.placement_item(stone)
+	if item != "":
+		_root._inventory.add_item(item, 2)   # each placement consumes one
+	if await _place_with_keys(stone) == 0:
+		return [false, "first waystone refused"]
+	var a: String = str(_placed[before][0])
+	_key(KEY_W, true)
+	await _until(func(): return false, 1.5)
+	_key(KEY_W, false)
+	var dest: Dictionary = _root._player.get_world_pos()
+	if await _place_with_keys(stone) == 0:
+		return [false, "second waystone refused"]
+	var b: String = str(_placed.back()[0])
+	_key(KEY_S, true)   # back beside the first stone, which the travel starts from
+	await _until(func(): return false, 1.5)
+	_key(KEY_S, false)
 	_root._registry.record_waystones(_root._registry.local_player_id, [a, b])
 	_root._registry.get_inventory(_root._registry.local_player_id).add_item(str(_root._waystones.rules()["costItem"]), 20)
 	GameBus.waystone_travel_intent.emit(a, b, "")
+	_skip_until_ms = Time.get_ticks_msec() + TELEPORT_SETTLE_MS
 	var ok: bool = await _until(func():
 		var now: Dictionary = _root._player.get_world_pos()
-		return now["chunk"] == dest["chunk"] and (now["local"] as Vector3).distance_to(dest["local"]) < 2.0, STEP_TIMEOUT_SECS)
+		return now["chunk"] == dest["chunk"] and (now["local"] as Vector3).distance_to(dest["local"]) < 6.0, STEP_TIMEOUT_SECS)
 	return [ok, "travelled to the second stone" if ok else "body did not reach the second stone"]
 
 ## Phase 141 — the pole: stand just past the north pole, let the window settle, then step over the

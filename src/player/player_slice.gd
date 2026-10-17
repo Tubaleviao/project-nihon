@@ -505,7 +505,7 @@ func get_hp() -> float:
 ## and `_physics_process` ticking a timer that was never started, so it never came back.
 ## That is exactly the soft-lock a peer downed by a creature then handed its own zero on
 ## reconnect ended up in; it also covered the single-player case for free, because
-## `persistence_wiring._restore_local_player` and the load snapshot hand their saved zero to this
+## `persistence_wiring.restore_local_player` and the load snapshot hand their saved zero to this
 ## same method.
 ##
 ## It must START a countdown, not restart one: the guard below is what stops a REPEATED

@@ -8,11 +8,10 @@ const WorldPos := preload("res://src/terrain/world_pos.gd")
 func attach() -> void:
 	root._waystones.station_slice = root._station
 	root._waystones.registry      = root._registry
-	root._waystones.teleporter    = Callable(root._chat, "teleport_player")
-	root._waystones.position_of   = Callable(self, "_waystone_player_pos")
+	root._waystones.teleporter    = root._chat.teleport_player
+	root._waystones.position_of   = self._waystone_player_pos
 
-func wire(ctx: GameRoot) -> void:
-	root = ctx
+func _connect_all() -> void:
 	connect_bus(GameBus.waystone_travel_resolved, _on_waystone_travel_resolved)
 	connect_bus(GameBus.station_placed, _on_station_placed_exact)
 	connect_bus(GameBus.waystones_synced, _on_waystones_synced)
