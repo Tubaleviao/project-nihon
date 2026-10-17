@@ -673,6 +673,8 @@ network-synced state through a fold).
 **Acceptance criteria:**
 - [ ] Suite: a frame's pump never spends over its time budget on dispatch + apply in a stubbed clock.
 - [ ] Suite: a region read for a window move never runs on the main thread.
+- [ ] Playtest bot: the `stream` step's chunk build rate is above the Phase 141 report's on the same
+  runner, and the step's `report.json` shows no new hitch over 50 ms.
 - [ ] Suite green on both boot paths, harness green.
 
 ---
@@ -767,8 +769,9 @@ before the world gets taller, without making the public build depend on a native
   pole, antimeridian, edited chunk); the GDScript fallback is used when the extension is absent.
 - [ ] CI: the three platform binaries build, and an export without them boots on the fallback.
 - [ ] Playtest bot: the `stream` step's chunk build rate with the native builder is at least double
-  the GDScript fallback's on the same commit (so Phase 142's pump gains are not counted), and no
-  step reports a hitch over 50 ms.
+  the GDScript fallback's on the same commit (so Phase 142's pump gains are not counted), and
+  `report.json` shows no step with a hitch over 50 ms (the bot does not fail on hitches, so this is
+  read from the report, not from the exit code).
 - [ ] Suite green on both boot paths, harness green.
 
 ---
