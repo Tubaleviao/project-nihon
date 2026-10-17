@@ -12,6 +12,7 @@ func register() -> void:
 	_run_test("waystone: teleport door and chat leftovers",     _test_waystone_wire_and_chat_leftovers)
 	_run_test("waystone: map rename and limb notice",           _test_waystone_map_leftovers)
 	_run_test("waystone: placement consumes the item, ids are never reused", _test_phase130_waystone_placement)
+	_run_test("waystone: a stone at x ~ 2e7 keeps its exact position through save and load", _test_phase147_waystone_far_exact)
 	_run_test("waystone: refusals are throttled, a full list is refused early", _test_phase130_waystone_throttle_full)
 	_run_test("waystone: a seed change saves the old seed",     _test_minimap_seed_change_saves_old_seed)
 	_run_test("fabric: treeDensity stays inside the noisy bound", _test_p126_fabric_density_bound)
@@ -1292,3 +1293,17 @@ func _test_diag_warn_concurrent() -> void:
 	WorkerThreadPool.wait_for_group_task_completion(gid)
 	Diag.quiet = was_quiet
 	assert_eq(Diag.warn_count() - before, 4000, "four tasks of 1,000 warnings raise the count by exactly 4,000")
+
+func _test_phase147_waystone_far_exact() -> void:
+	var rig := _waystone_rig()
+	var st: StationSlice = rig["stations"]
+	var way: WaystoneSlice = rig["way"]
+	var id := st.place_station("waystone", Vector3(12.5, 1.0, 7.5))
+	var ex := { "chunk": Vector2i(625000, 4), "local": Vector3(12.5, 1.0, 7.5) }
+	way.note_exact(id, ex)
+	var saved: Variant = JSON.parse_string(JSON.stringify(way.exact_data()))
+	way.apply_exact_data(saved)
+	var got: Dictionary = way.exact_pos(id)
+	assert_eq(got["chunk"], ex["chunk"], "same chunk after reload")
+	assert_true((got["local"] as Vector3).distance_to(ex["local"]) < 0.01, "exact position within 1 cm")
+	_free_waystone_rig(rig)
