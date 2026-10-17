@@ -4,6 +4,7 @@ extends "res://src/core/wiring.gd"
 
 const SettlementSlice := preload("res://src/settlement/settlement_slice.gd")
 const I18n := preload("res://src/core/i18n.gd")
+const WorldPos := preload("res://src/terrain/world_pos.gd")
 
 ## Seconds between host sweeps (grow, abandon, decay, activity, view pushes).
 const TICK_SEC := 0.5
@@ -55,7 +56,15 @@ func _on_station_placed(station_id: String, type: String, position: Vector3) -> 
 	if root._is_client or root._settlements == null or type != str(root._settlements.rules()["hearthStation"]):
 		return
 	var pid: String = root._registry.local_player_id
-	var why: String = root._settlements.found(pid, I18n.t("settlement.default_name", [root._settlements.count() + 1]), Vector2(position.x, position.z), false)
+	# The hearth's exact position: the placer's exact position plus the small offset to the hearth.
+	var exact := {}
+	if root._player != null:
+		var here: Dictionary = root._player.get_world_pos()
+		exact = WorldPos.normalized({
+			"chunk": here["chunk"],
+			"local": (here["local"] as Vector3) + (position - root._player.get_position()),
+		})
+	var why: String = root._settlements.found(pid, I18n.t("settlement.default_name", [root._settlements.count() + 1]), Vector2(position.x, position.z), false, exact)
 	if why != "" and root._station != null:
 		root._station.remove_station(station_id)
 

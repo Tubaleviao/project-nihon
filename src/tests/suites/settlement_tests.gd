@@ -17,6 +17,7 @@ func register() -> void:
 	_run_test("settlement: claims count toward colonization", _test_settlement_colonization)
 	_run_test("settlement: edit_blocker is a pure preview, activity is noted after a success", _test_settlement_preview_pure)
 	_run_test("settlement: hearth placement needs and consumes its item", _test_settlement_hearth_item)
+	_run_test("settlement: far from the origin the hearth keeps its exact position", _test_settlement_exact_far)
 	_run_test("settlement: from_data keeps ids unique and defaults last_active to now", _test_settlement_load_ids)
 
 func _rig() -> Dictionary:
@@ -395,4 +396,22 @@ func _test_settlement_load_ids() -> void:
 	s.from_data({ "next_id": 1, "settlements": { "settlement_7": { "members": { "p1": "founder" }, "hx": 1.0, "hz": 2.0 } } })
 	assert_eq(float(s.to_data()["settlements"]["settlement_7"]["last_active"]), rig["now"][0], "a missing last_active is now")
 	assert_eq(int(s.to_data()["next_id"]), 8, "next_id stays above every loaded id")
+	_free_rig(rig)
+
+func _test_settlement_exact_far() -> void:
+	var rig := _rig()
+	var s: SettlementSlice = rig["s"]
+	_give(rig, "p1", "Hearth", 1)
+	var ex := { "chunk": Vector2i(625000, -3), "local": Vector3(12.34, 5.0, 7.89) }
+	assert_eq(s.found("p1", "Far", Vector2(2.0e7, -96.0), true, ex), "", "founded far from the origin")
+	var back := SettlementSlice.new()
+	back.registry = rig["reg"]
+	add_child(back)
+	back.now_sec = rig["s"].now_sec
+	back.from_data(JSON.parse_string(JSON.stringify(s.to_data())))
+	var got: Dictionary = back.exact_pos("settlement_1")
+	assert_false(got.is_empty(), "the exact record survives save and load")
+	assert_eq(got["chunk"], ex["chunk"], "same chunk")
+	assert_true((got["local"] as Vector3).distance_to(ex["local"]) < 0.01, "within 1 cm")
+	back.free()
 	_free_rig(rig)

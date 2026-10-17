@@ -215,7 +215,7 @@ func founding_blocker(xz: Vector2) -> String:
 
 ## Found a settlement for `player_id` at `xz`. `consume` takes the Hearth item from the pack (false when
 ## the station placement already did).
-func found(player_id: String, sname: String, xz: Vector2, consume: bool = true) -> String:
+func found(player_id: String, sname: String, xz: Vector2, consume: bool = true, exact: Dictionary = {}) -> String:
 	var pid := _pid(player_id)
 	if pid == "":
 		return "unknown_player"
@@ -240,9 +240,15 @@ func found(player_id: String, sname: String, xz: Vector2, consume: bool = true) 
 		"id": id, "name": sname, "founder": pid, "members": { pid: "founder" }, "invites": {},
 		"created": now, "last_active": now, "hx": xz.x, "hz": xz.y, "status": "founded",
 		"abandoned_at": 0.0, "abandoned_radius": 0.0, "stock": {}, "taken": {},
+		"exact": exact if WorldPos.is_plausible_pos(exact) else {},
 	}
 	GameBus.settlements_changed.emit()
 	return ""
+
+## Phase 147 — the hearth's exact `{chunk, local}` (empty when it was founded without one). `hx`/`hz` are
+## float32 `Vector2` components, too coarse far from the origin; this record is exact.
+func exact_pos(id: String) -> Dictionary:
+	return (_settlements[id].get("exact", {}) as Dictionary).duplicate(true) if _settlements.has(id) else {}
 
 # ── membership ───────────────────────────────────────────────────────────
 
@@ -553,7 +559,11 @@ static func _qty(v: Variant) -> int:
 # ── persistence ──────────────────────────────────────────────────────────
 
 func to_data() -> Dictionary:
-	return { "next_id": _next_id, "settlements": _settlements.duplicate(true) }
+	var out := _settlements.duplicate(true)
+	for id: String in out.keys():
+		var ex: Dictionary = out[id].get("exact", {})
+		out[id]["exact"] = WorldPos.pos_to_wire(ex) if not ex.is_empty() else {}
+	return { "next_id": _next_id, "settlements": out }
 
 ## Restore from a saved world record. Malformed entries are skipped; numbers are clamped.
 func from_data(data: Variant) -> void:
@@ -602,6 +612,7 @@ func from_data(data: Variant) -> void:
 			"status": status if (TIER_ORDER + ["abandoned"]).has(status) else "founded",
 			"abandoned_at": float(s.get("abandoned_at", 0.0)), "abandoned_radius": float(s.get("abandoned_radius", 0.0)),
 			"stock": stock, "taken": taken,
+			"exact": WorldPos.pos_from_wire(s.get("exact", null)),
 		}
 		var suffix := str(id).get_slice("_", 1)
 		if str(id).begins_with("settlement_") and suffix.is_valid_int():

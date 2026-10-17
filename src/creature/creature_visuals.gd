@@ -28,6 +28,9 @@ const MAX_MODELS := 24
 const SELECT_INTERVAL := 0.25
 ## Seconds a dead creature's model holds its death pose before it is dropped.
 const CORPSE_SECONDS := 8.0
+## A one-frame horizontal jump beyond this (m) is a teleport (respawn), never movement.
+const TELEPORT_M: float = 8.0
+
 ## Horizontal speed (m/s) above which the model turns to face the direction of travel.
 const FACE_SPEED := 0.3
 
@@ -145,6 +148,9 @@ func reselect(instances: Dictionary, cam_world: Vector3) -> void:
 		var inst: Dictionary = instances[iid]
 		if inst["state"] == "dead" and not models.has(iid):
 			continue
+		# A type with no usable model keeps its box and must not use up a `max_models` slot.
+		if not models.has(iid) and _template(str(inst["creature_id"])) == null:
+			continue
 		var d: float = cam_world.distance_to(inst["position"])
 		if d <= limit:
 			cands.append([iid, d])
@@ -215,7 +221,12 @@ func _update_model(iid: String, inst: Dictionary, delta: float) -> void:
 	var state: String = inst["state"]
 	var last: Vector3 = m["last_pos"]
 	var flat := Vector3(pos.x - last.x, 0.0, pos.z - last.z)
-	if delta > 0.0:
+	# A respawn (or any jump no creature can walk in one frame) is a teleport, not run speed.
+	var teleported := flat.length() > TELEPORT_M
+	if teleported:
+		flat = Vector3.ZERO
+		m["speed"] = 0.0
+	elif delta > 0.0:
 		var inst_speed := flat.length() / delta
 		m["speed"] = lerpf(float(m["speed"]), inst_speed, minf(1.0, delta * 8.0))
 	m["last_pos"] = pos

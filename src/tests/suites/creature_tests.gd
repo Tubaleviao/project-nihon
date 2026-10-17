@@ -14,6 +14,8 @@ func register() -> void:
 	_run_test("models: a missing key keeps the box, warns once per type", _test_models_missing_key_warns_once)
 	_run_test("models: state-to-clip map and death does not loop", _test_models_clip_map)
 	_run_test("models: MAX_MODELS keeps the nearest",           _test_models_max_models_nearest)
+	_run_test("models: a type without a model takes no slot",   _test_models_unmodelled_takes_no_slot)
+	_run_test("models: a respawn teleport is not run speed",    _test_models_respawn_not_run)
 	_run_test("models: none are built without render_visuals",  _test_models_headless_builds_none)
 	_run_test("creature: spawns instances from GameData",     _test_creature_spawns_from_gamedata)
 	_run_test("creature: nearest_creature returns closest",   _test_creature_nearest)
@@ -2456,4 +2458,31 @@ func _test_models_headless_builds_none() -> void:
 	assert_true(c.visuals() == null, "no model node host without render_visuals")
 	assert_false(c.has_model("h0"), "no model")
 	c._process(0.1)
+	c.free()
+
+func _test_models_unmodelled_takes_no_slot() -> void:
+	var c := _model_slice("GraywolfPack", 2)
+	var v = c.visuals()
+	v.max_models = 2
+	# The nearest creature has a type with no model key: it must not use up one of the two slots.
+	c.apply_creature_state("nomodel", "NoSuchBeast", "idle", Vector3(0.0, 0.0, -0.5), 10.0)
+	var was_quiet := Diag.quiet
+	Diag.quiet = true
+	v.reselect(c._instances, Vector3(0.0, 0.0, -1.0))
+	Diag.quiet = was_quiet
+	assert_false(c.has_model("nomodel"), "the unmodelled creature stays a box")
+	assert_true(c.has_model("m0") and c.has_model("m1"), "both modellable creatures get a model")
+	c.free()
+
+func _test_models_respawn_not_run() -> void:
+	var c := _model_slice("GraywolfPack", 1)
+	var v = c.visuals()
+	v.reselect(c._instances, Vector3(0, 0, 1.0))
+	assert_true(c.has_model("m0"), "modelled")
+	c._instances["m0"]["position"] = Vector3(0.0, 0.0, 0.0)
+	v._update_model("m0", c._instances["m0"], 0.1)
+	c._instances["m0"]["position"] = Vector3(300.0, 0.0, 300.0)
+	v._update_model("m0", c._instances["m0"], 0.1)
+	assert_true(float(v.models["m0"]["speed"]) < CreatureVisualsScript.FACE_SPEED, "a respawn jump leaves the measured speed near zero")
+	assert_eq(CreatureVisualsScript.clip_name("idle", float(v.models["m0"]["speed"])), "idle", "and the clip is not run")
 	c.free()
