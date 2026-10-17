@@ -99,6 +99,12 @@ static func rig_material(colors: Array) -> ShaderMaterial:
 		_refresh_palette(_rig_material, colors)
 	return _rig_material
 
+## A fresh rig-style ShaderMaterial for one creature type (Phase 143). The avatar's rig material is
+## shared and its three sheets are bound once, so a creature's own sheets need their own material;
+## the caller caches it per type and binds the sheets with `bind_rig_textures`.
+static func creature_material(colors: Array) -> ShaderMaterial:
+	return _make_material(colors)
+
 ## Bind the three body sheets on the rig material. Idempotent and write-free when the
 ## textures are already bound, so a rig attach does not rebind the same three.
 static func bind_rig_textures(mat: ShaderMaterial, detail: Texture2D, color_mask: Texture2D, channel: Texture2D) -> void:

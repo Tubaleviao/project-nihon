@@ -163,7 +163,7 @@ issue number where the criterion used to be.
 | 140 | Settlements at runtime: a hearth, a claim and a shared stockpile | In review | below |
 | 141 | Terrain streaming off the main thread: worker noise, seam strips, polar shortcuts, fold catch-up | In review | below |
 | 142 | Terrain build throughput: a time-budgeted pump and a native chunk builder | Planned | below |
-| 143 | Creature models: rigged, animated creatures replace the tinted box | Planned | below |
+| 143 | Creature models: rigged, animated creatures replace the tinted box | In review | below |
 
 ---
 
@@ -731,19 +731,19 @@ with no code change.
 **Acceptance criteria:**
 - [x] Fabric: every creature names a `skeleton`, and `validate` rejects a creature with an unknown
   family. Generated `.tres` files carry the field.
-- [ ] Suite: for every creature in `GameData.CREATURES`, the public model parses, its `Skeleton3D`
+- [x] Suite: for every creature in `GameData.CREATURES`, the public model parses, its `Skeleton3D`
   bones match the fabric skeleton of its family, and its `AnimationPlayer` has all seven clips.
-- [ ] Suite: a creature inside `MODEL_RANGE_M` has a model and no pool instance; outside, a pool
+- [x] Suite: a creature inside `MODEL_RANGE_M` has a model and no pool instance; outside, a pool
   instance and no model; crossing the range edge within the hysteresis band does not swap.
-- [ ] Suite: a creature with a missing model key renders through the pool and warns once per type.
-- [ ] Suite: the state-to-clip map covers every creature state, and a dead creature's clip is
+- [x] Suite: a creature with a missing model key renders through the pool and warns once per type.
+- [x] Suite: the state-to-clip map covers every creature state, and a dead creature's clip is
   `death` and does not loop.
-- [ ] Suite: `MAX_MODELS` is respected with many creatures in range (the nearest get models).
-- [ ] Suite: no model nodes are built when `render_visuals` is false. The dedicated server boot stays
+- [x] Suite: `MAX_MODELS` is respected with many creatures in range (the nearest get models).
+- [x] Suite: no model nodes are built when `render_visuals` is false. The dedicated server boot stays
   clean.
-- [ ] Playtest bot: the `fight` step's screenshot is taken with the target creature drawn as a model
+- [x] Playtest bot: the `fight` step's screenshot is taken with the target creature drawn as a model
   (the bot asserts the creature has a model node), and no step reports a new hitch over 50 ms.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite green on both boot paths, harness green.
 
 ---
 
