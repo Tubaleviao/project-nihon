@@ -167,6 +167,9 @@ jobs:
       - name: Check the status-effect table validation rejects bad tables
         run: node tools/check_combat.js
 
+      - name: Check the roadmap index matches the phase specs
+        run: node tools/check_roadmap.js
+
   net-harness:
     name: Two-client network harness (loopback ENet)
     runs-on: ubuntu-latest
