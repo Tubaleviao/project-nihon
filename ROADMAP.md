@@ -168,7 +168,7 @@ issue number where the criterion used to be.
 | 145 | Fold contents: creatures and trees survive a polar fold | Done | [history](docs/roadmap-history/phases-130-145.md) |
 | 146 | Roadmap close-out: archive merged phases and keep the index honest | Done | [history](docs/roadmap-history/phases-130-145.md) |
 | 147 | Review follow-ups I: trust boundary and far-from-origin precision | Done | [history](docs/roadmap-history/phases-147.md) |
-| 148 | Review follow-ups II: i18n leftovers | Planned | below |
+| 148 | Review follow-ups II: i18n leftovers | Done | [history](docs/roadmap-history/phases-148.md) |
 | 149 | Review follow-ups III: world, terrain and persistence | Planned | below |
 | 150 | Review follow-ups IV: wiring, harness and playtest bot | Planned | below |
 | 151 | Item shapes in the fabric | Planned | below |
@@ -182,8 +182,10 @@ issue number where the criterion used to be.
 | 159 | Gestures at runtime: a gesture wheel, chat commands and synced poses | Planned | below |
 | 160 | Harvesting in the fabric: tools, the Skinning skill, carcass weight and carry | Planned | below |
 | 161 | Harvesting at runtime: work the body, carry it home | Planned | below |
-| 162 | A round horizon: a circular distant ring, planet curvature and haze | Planned | below |
-| 163 | Mountains on the horizon: distant bands out to the visibility limit | Planned | below |
+| 162 | A crowd walks: a multi-player stress test and a bottleneck report | Planned | below |
+| 163 | Crowd performance: fix what the Phase 162 report names | Planned | below |
+| 164 | A round horizon: a circular distant ring, planet curvature and haze | Planned | below |
+| 165 | Mountains on the horizon: distant bands out to the visibility limit | Planned | below |
 
 ---
 
@@ -238,45 +240,6 @@ before the world gets taller, without making the public build depend on a native
 
 ---
 
-
-## Phase 148 — Review follow-ups II: i18n leftovers
-
-**Goal:** the i18n rule in the workspace CLAUDE.md says no hard-coded user-facing strings. Review
-issues list several that are still there: settlement refusal strings, raw `reason` codes in the
-craft, repair and research rows, the status-effect HUD line, coordinates formatted on the host, and
-settlement names rendered in the host's locale. This phase moves all of them to keys and params.
-
-**Newel dependency:** NO (item and creature *names* stay deferred under "Localized fabric content").
-
-**Depends on:** none.
-
-**Deliverables:**
-- #374: `StationSlice.placement_blocker` returns reason codes ("inside a settlement claim", "too
-  close to a settlement", "already in a settlement" become keys). A settlement's default name is
-  stored as key + params and rendered on the client. Its number comes from a monotonic counter.
-- #351: every `reason` code a slice can return to the UI has a catalog key in `en` and `pt_BR`.
-  `UiSlice` renders the key and never the raw code. `I18n.ensure_loaded` logs one error when the
-  catalog is missing or empty and stays unloaded so a later call retries. `fill` supports
-  multi-digit placeholders. Chat lines carry numbers as params and the client formats them with
-  its locale. Join lines are throttled per peer on reconnect.
-- #346: `PlayerSlice.status_line` builds the HUD text from effect keys.
-- A suite audit for hard-coded strings: no string literal is passed to a `Label.text`,
-  `Button.text`, `tooltip_text` or a chat/notice emit in `src/` outside `I18n`, except entries on an
-  explicit allow-list (debug-only overlays).
-
-**Acceptance criteria:**
-- [ ] Suite: every reason code returned by `placement_blocker`, the craft, repair and research paths
-  and the settlement paths has a key in every locale catalog.
-- [ ] Suite: with locale `pt_BR`, a chat line carrying the coordinates 1234.5 renders `1.234,5`; with
-  `en`, it renders `1,234.5`.
-- [ ] Suite: `fill("{10} {1}", ...)` replaces both placeholders.
-- [ ] Suite: the hard-coded-string audit passes and fails on a fixture file that sets
-  `label.text = "Hello"`.
-- [ ] Suite: catalogs have the same key set (existing check) after the new keys.
-- [ ] Every i18n item of #346, #351 and #374 is ticked on its issue.
-- [ ] Suite green on both boot paths, harness green.
-
----
 
 ## Phase 149 — Review follow-ups III: world, terrain and persistence
 
@@ -849,7 +812,108 @@ right tool, gets yields and quality from their Skinning level, or picks the body
 
 ---
 
-## Phase 162 — A round horizon: a circular distant ring, planet curvature and haze
+## Phase 162 — A crowd walks: a multi-player stress test and a bottleneck report
+
+**Goal:** every multiplayer gate runs one host and one client (Phase 39 harness, Phase 135 WAN
+profiles), and the playtest bot (Phase 134) plays alone. Nothing tells us what happens when 16, 64 or
+200 players walk around the same world: how long a host tick takes, how many bytes each peer gets,
+whether chunk streaming, AOI relays, peer windows or region reads fall behind, or what a client pays to
+draw a crowd. This phase adds a stress run that connects many scripted players over real sockets, walks
+them in fixed patterns, measures the host and a watching client, and writes a report that ranks the
+bottlenecks. The report is the input to Phase 163. Thresholds are a report, not a gate, except for hard
+failures.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 119, Phase 134, Phase 135, Phase 142.
+
+**Deliverables:**
+- `src/tests/stress_bots.gd` (new) — `--stress-bots <n>` user arg boots one headless process that
+  opens `n` light bot connections to a host (each its own ENet peer and player identity, no terrain,
+  no rendering, no slices beyond what the wire needs). Every bot sends the same movement intents and
+  position claims a real client sends, at the client's real rate, and answers what the host expects
+  of a client (window claims, acks), so the host cannot tell a bot from a player.
+- Walk patterns, seeded and repeatable: `cluster` (all bots inside one AOI around a shared spawn),
+  `spread` (bots walk away from spawn in different directions, each streaming its own window),
+  `cross` (bots repeatedly cross AOI cells and chunk borders), `pole` (a group walks across a polar
+  fold), and `churn` (bots join and leave every few seconds).
+- Host metrics, sampled per tick: tick time p50/p95/p99/max split by phase (networking poll, AOI and
+  relays, peer windows, creature AI, chunk records and region streaming, save), peers per AOI cell,
+  bytes and packets sent and received per peer per second, ENet queue depth, chunks dispatched and
+  waiting, region reads, memory and node count.
+- Watcher metrics: one full headless client (`--net-harness client` with a `--stress-watch` flag)
+  stands inside the crowd and records frame time, remote avatars shown, bytes received, apply time of
+  position relays and how far a relayed position lags the host.
+- `tools/stress.sh` (new) — boots a dedicated server, the bot process and the watcher; runs each
+  pattern at a ladder of crowd sizes (16, 32, 64, 128, 200) under `lan` and `wan_br`; stops a step
+  early when the host tick p95 passes a ceiling, and records the size where it happened.
+- `stress/report.json` and `stress/report.md` — per pattern and size the metrics above, the largest
+  size that met the budgets (host tick p95 ≤ 16 ms, ≤ 64 kbit/s down per peer, watcher frame p95 ≤
+  33 ms, relay lag ≤ 250 ms), and a ranked list of the hot spots: the tick phase whose cost grows
+  fastest with the crowd and the message types that take the most bytes.
+- `.github/workflows/ci.yml` — a `stress` job (main pushes and manual dispatch, not every PR) runs the
+  ladder up to 64 and uploads `stress/`; a manual run can pass a bigger ceiling.
+- A short note in `README.md` Testing on running the stress test locally.
+
+**Acceptance criteria:**
+- [ ] Suite: the report builder computes percentiles, per-phase tick shares and the per-peer byte
+  rate correctly from a fixed sample list; the hot-spot ranking orders a fixed set of growth curves
+  correctly; the largest passing size is the last size that met every budget.
+- [ ] Suite: a bot's intents and claims pass the host's validation and rate limits unchanged (the
+  same checks a real client's do), and a bot that sends a malformed claim is refused like a client.
+- [ ] Suite: two runs of a pattern with the same seed give the same bot paths.
+- [ ] CI: the `stress` job runs every pattern up to 64 bots under `lan`, uploads `report.json` and
+  `report.md`, and fails only on a hard failure (crash, a host or watcher frame over 2 s, a bot
+  dropped by the host without a reason, an orphaned peer record after `churn`).
+- [ ] CI: the report names a largest passing size per pattern and at least the top three hot spots.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 163 — Crowd performance: fix what the Phase 162 report names
+
+**Goal:** make the crowd sizes from Phase 162 cheaper. This phase is written before the measurements,
+so its deliverables are the hot spots the Phase 162 report ranks, worked top-down; the candidates below
+are what the code suggests today and are dropped or reordered when the report disagrees. The PR body
+records the report before and after each fix, so every change is justified by a number.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 162.
+
+**Deliverables:**
+- A `docs/perf/crowd-baseline.md` page: the Phase 162 report that this phase starts from (sizes, tick
+  phases, bytes per message type), committed so later runs have a fixed comparison.
+- Fixes for the top hot spots, each with a suite test that pins the cost it removed. Likely candidates:
+  - position relays: send only what changed, at a rate that drops with distance inside the AOI, and
+    batch every relay for one peer into one packet per tick instead of one per subject;
+  - AOI work: update a peer's AOI set when it changes cell, not every tick; keep per-cell subscriber
+    lists so a relay does not scan every peer;
+  - peer windows and region reads: share the window work for peers that stand in the same chunks,
+    so a cluster of players costs closer to one window than to n;
+  - creature AI and syncs: tick creatures near players, sleep the rest, and share path searches for
+    creatures chasing the same target;
+  - the watcher: pool remote avatars, cut their animation and nameplate cost by distance, and apply
+    relays in one pass per frame.
+- `tools/stress.sh` budgets move into one table, and CI fails when the largest passing size of any
+  pattern drops below the size recorded in the baseline.
+- `README.md` Testing: the crowd size the host supports today.
+
+**Acceptance criteria:**
+- [ ] CI `stress` job: under `lan`, the `cluster` and `cross` patterns meet every budget at 64 bots,
+  and no pattern's largest passing size is lower than in the baseline.
+- [ ] CI `stress` job: host tick p95 at 64 bots in `cluster` is at most half the baseline's, and
+  bytes down per peer in `cluster` at 64 bots is at most 60% of the baseline's.
+- [ ] Suite: each fix has a test that proves its saving on a fixed input (relays per tick, AOI
+  scans per tick, windows built per tick, creatures ticked per tick), and the existing sync, AOI and
+  creature tests stay green.
+- [ ] Suite: a relay batch decodes to the same positions as the per-subject relays; a distant peer
+  in the AOI still gets a relay at least once per second.
+- [ ] Harness green on loopback and under `wan_bad`; suite green on both boot paths.
+
+---
+
+## Phase 164 — A round horizon: a circular distant ring, planet curvature and haze
 
 **Goal:** a playtest showed four "mountains" on the horizon of the flat spawn plain. They are the
 corners of the Phase 51 distant ring: it is a square (`RING_FACTOR` × the voxel window, about 1.1 km
@@ -869,7 +933,7 @@ server work.
 - `src/terrain/horizon.gd` (new, pure static): planet radius from `circumference_m` (R = C / 2π,
   about 6,366 km), `curvature_drop(d)` = d² / 2R, `horizon_distance(eye_h)` = √(2R·eye_h + eye_h²),
   and `visible_over_horizon(eye_h, target_h, d)` (a target of height h is in view while
-  d < horizon_distance(eye_h) + horizon_distance(h)). Used by the ring, the suite and Phase 163.
+  d < horizon_distance(eye_h) + horizon_distance(h)). Used by the ring, the suite and Phase 165.
 - `src/terrain/distant_terrain.gd` — the lattice becomes polar: rings of cells whose radial step
   grows with distance from the centre, out to an outer RADIUS (a circle), with the square voxel
   window still cut out exactly as today (clipped strips and skirt kept). The outer radius is at
@@ -906,10 +970,10 @@ server work.
 
 ---
 
-## Phase 163 — Mountains on the horizon: distant bands out to the visibility limit
+## Phase 165 — Mountains on the horizon: distant bands out to the visibility limit
 
 **Goal:** a mountain should be seen from far away, as on Earth: a 500 m peak clears the horizon of
-a player standing on the plain from about 80 km. Phase 162's ring ends near the eye-height horizon
+a player standing on the plain from about 80 km. Phase 164's ring ends near the eye-height horizon
 (a few km), and the large-scale shape already has 400 m ridges (Phase 51, `ridgeAmplitude`), so
 anything tall beyond a few km is cut off today. This phase adds coarser bands outside the ring, out
 to the distance where the tallest terrain can still clear the horizon, so ranges rise over the
@@ -918,7 +982,7 @@ come in their own world-gen phases; this one makes whatever the shape holds visi
 
 **Newel dependency:** NO.
 
-**Depends on:** Phase 162.
+**Depends on:** Phase 164.
 
 **Deliverables:**
 - `src/terrain/distant_terrain.gd` (or a new `distant_bands.gd` beside it) — nested circular bands
@@ -934,7 +998,7 @@ come in their own world-gen phases; this one makes whatever the shape holds visi
   every build runs on a worker with the Phase 120 request lifecycle; a band swap never blocks a
   frame.
 - Colours: rock and snow by altitude as today, so far ranges read as rock and white caps through
-  the Phase 162 haze; the bands use the same curvature shader as the ring.
+  the Phase 164 haze; the bands use the same curvature shader as the ring.
 - Camera `far` follows the outermost radius; depth precision is checked at that range (Godot 4's
   reverse-Z), and the bands sit `RING_DROP` below the ring so the seams between bands never
   z-fight.

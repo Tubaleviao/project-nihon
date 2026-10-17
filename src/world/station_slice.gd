@@ -15,7 +15,7 @@ extends Node
 ##   place_station(type, position)      -> String    (station id; UNVALIDATED, trusted callers
 ##                                                    only — players go through try_place_station)
 ##   try_place_station(type, position)  -> String    (snaps to grid, refuses overlap; "" if refused)
-##   placement_blocker(type, position)  -> String    ("" when placeable, else the reason)
+##   placement_blocker(type, position)  -> String    ("" when placeable, else a reason code for I18n.reason_text)
 ##   snap_to_grid(position)             -> Vector3
 ##   show_preview(type, position) / hide_preview()   translucent placement ghost
 ##   remove_station(station_id)
@@ -154,26 +154,26 @@ const MIN_STATION_SPACING: float = 1.0
 func snap_to_grid(position: Vector3) -> Vector3:
 	return Vector3(floorf(position.x) + 0.5, position.y, floorf(position.z) + 0.5)
 
-## "" when a station of `type` may be placed at `position`, otherwise a short
-## reason. Fails closed on an empty/unknown type and on overlap with any placed
+## "" when a station of `type` may be placed at `position`, otherwise a reason
+## code (`reason.<code>` in the catalog, rendered by `I18n.reason_text`). Fails closed on an empty/unknown type and on overlap with any placed
 ## station. Used by try_place_station and by the placement preview.
 func placement_blocker(type: String, position: Vector3, player_id: String = "") -> String:
 	if type == "" or not placeable_station_types().has(type):
-		return "unknown station type"
+		return "unknown_station_type"
 	# Phase 140 — a station inside someone else's claim, or a hearth too close to another settlement.
 	if claim_guard.is_valid() and str(claim_guard.call(player_id, Vector2(position.x, position.z))) != "":
-		return "inside a settlement claim"
+		return "inside_claim"
 	if settlement_slice != null and type == str(settlement_slice.rules()["hearthStation"]) \
 			and settlement_slice.founding_blocker(Vector2(position.x, position.z)) != "":
-		return "too close to a settlement"
+		return "too_close_settlement"
 	if settlement_slice != null and type == str(settlement_slice.rules()["hearthStation"]) \
 			and settlement_slice.settlement_of(player_id) != "":
-		return "already in a settlement"
+		return "already_in_settlement"
 	for id in _stations:
 		var other: Vector3 = _stations[id]["position"]
 		# Compare on the x/z plane: the same cell at another height still collides.
 		if Vector2(other.x - position.x, other.z - position.z).length() < MIN_STATION_SPACING:
-			return "too close to %s" % id
+			return "too_close_station:%s" % id
 	return ""
 
 ## Validated placement: snaps to the grid, refuses on overlap. Returns the new

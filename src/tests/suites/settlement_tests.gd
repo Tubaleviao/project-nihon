@@ -19,6 +19,9 @@ func register() -> void:
 	_run_test("settlement: loading keeps ids unique and defaults last_active to now", _test_phase147_from_data)
 	_run_test("settlement: a decaying claim announces its shrinking radius", _test_phase147_decay_push)
 	_run_test("settlement: claims count toward colonization", _test_settlement_colonization)
+	_run_test("settlement: a default name is a number the client renders, from a monotonic counter", _test_phase148_default_name)
+	_run_test("station: placement refusals are reason codes with catalog text", _test_phase148_placement_codes)
+	_run_test("chat: a reconnect inside the cooldown is not announced twice", _test_phase148_join_throttle)
 
 func _rig() -> Dictionary:
 	var reg := PlayerRegistry.new()
@@ -416,3 +419,57 @@ func _test_phase147_decay_push() -> void:
 	assert_true(s.tick(rig["now"][0]), "a claim that shrank is announced so clients redraw it")
 	assert_false(s.tick(rig["now"][0]), "and only once")
 	_free_rig(rig)
+
+func _test_phase148_default_name() -> void:
+	var rig := _rig()
+	var s: SettlementSlice = rig["s"]
+	assert_eq(s.found("p1", "", Vector2(10.0, 10.0), false), "bad_args", "a blank manual name is still refused")
+	assert_eq(s.found("p1", "", Vector2(10.0, 10.0), false, {}, true), "", "an auto-named founding is accepted")
+	assert_eq(s.found("p3", "", Vector2(900.0, 900.0), false, {}, true), "", "a second one")
+	var claims: Array = s.public_claims()
+	assert_eq([claims[0]["name"], claims[0]["name_n"], claims[1]["name_n"]], ["", 1, 2], "stored as a number, no host-locale text")
+	TranslationServer.set_locale("pt_BR")
+	assert_eq(SettlementSlice.display_name(claims[1]), "Assentamento 2", "the client renders it in its locale")
+	TranslationServer.set_locale("en")
+	assert_eq(SettlementSlice.display_name(claims[1]), "Settlement 2", "and in English")
+	assert_eq(SettlementSlice.display_name({ "name": "Oak", "name_n": 0 }), "Oak", "a typed name is shown as typed")
+	# Losing a settlement never frees its number.
+	var data: Dictionary = s.to_data()
+	(data["settlements"] as Dictionary).erase("settlement_2")
+	s.from_data(data)
+	assert_eq(s.found("p3", "", Vector2(900.0, 900.0), false, {}, true), "", "founding again after the loss")
+	assert_eq(s.public_claims()[1]["name_n"], 3, "takes the next number, not the freed one")
+	_free_rig(rig)
+
+func _test_phase148_placement_codes() -> void:
+	var cats: Dictionary = I18nScript.parse_csv("res://locale/ui.csv")["catalog"]
+	var st := StationSlice.new()
+	add_child(st)
+	var codes: Array = [st.placement_blocker("", Vector3.ZERO), st.placement_blocker("no_such_station", Vector3.ZERO)]
+	var t: String = str(st.placeable_station_types()[0])
+	st.try_place_station(t, Vector3(2.5, 0.0, 2.5), null)
+	codes.append(st.placement_blocker(t, Vector3(2.5, 0.0, 2.5)))
+	for c in codes:
+		var key := "reason." + str(c).split(":")[0]
+		assert_true(c != "" and not str(c).contains(" "), "%s is a code, not prose" % c)
+		for loc in cats:
+			assert_true((cats[loc] as Dictionary).has(key), "%s has %s" % [loc, key])
+	st.free()
+
+func _test_phase148_join_throttle() -> void:
+	var chat := ChatSlice.new()
+	var clock := [0.0]
+	chat.join_clock = func() -> float: return clock[0]
+	var seen: Array = []
+	var cb := func(key: String, _args: Array, _target: String) -> void: seen.append(key)
+	GameBus.system_message.connect(cb)
+	chat.announce_joined("p1")
+	clock[0] = 5.0
+	chat.announce_joined("p1")
+	chat.announce_joined("p2")
+	assert_eq(seen.size(), 2, "p1 once and p2 once inside the cooldown")
+	clock[0] = 100.0
+	chat.announce_joined("p1")
+	assert_eq(seen.size(), 3, "announced again after the cooldown")
+	GameBus.system_message.disconnect(cb)
+	chat.free()

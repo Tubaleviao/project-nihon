@@ -22,7 +22,7 @@ chat.qty_range,Quantity must be 1–{0}.,A quantidade deve ser de 1 a {0}.
 chat.sender.server,Server,Servidor
 chat.slow_down,You are chatting too fast — slow down.,Você está falando rápido demais — devagar.
 chat.teleported_to,Teleported to {0}.,Teletransportado para {0}.
-chat.teleported_xyz,Teleported to {0}.,Teletransportado para {0}.
+chat.teleported_xyz,"Teleported to {0:1}, {1:1}, {2:1}.","Teletransportado para {0:1}, {1:1}, {2:1}."
 chat.unknown_command,Unknown command '/{0}'. Try /help.,Comando desconhecido '/{0}'. Tente /help.
 chat.unknown_item,Unknown item '{0}'.,Item desconhecido '{0}'.
 chat.unreachable,Could not teleport: {0} is not reachable.,Não foi possível teletransportar: {0} está inalcançável.
@@ -252,3 +252,39 @@ settlement.refused.unknown_action,Unknown action.,Ação desconhecida.
 settlement.refused.durable,Worn tools cannot be stored.,Ferramentas gastas não podem ser guardadas.
 settlement.join,Join,Entrar
 settlement.invited,Invited to: {0},Convite para: {0}
+reason.unknown,Refused ({0}).,Recusado ({0}).
+reason.unknown_recipe,Unknown recipe.,Receita desconhecida.
+reason.skill_requirement,Needs {0} at {1} tier.,Exige {0} no nível {1}.
+reason.requires_flag,Not unlocked yet ({0}).,Ainda não desbloqueado ({0}).
+reason.technology_locked,Technology locked ({0}).,Tecnologia bloqueada ({0}).
+reason.station_required,Needs a {0} station nearby.,Exige uma estação {0} por perto.
+reason.requires_profession,Needs the {0} profession.,Exige a profissão {0}.
+reason.no_inventory,No pack to use.,Sem mochila para usar.
+reason.missing_inputs,Missing ingredients.,Faltam ingredientes.
+reason.missing_goods,Missing goods.,Faltam mercadorias.
+reason.inventory_full,Pack is full.,Mochila cheia.
+reason.void_burst,A void burst struck.,Uma explosão do vazio atingiu.
+reason.already_pristine,Already pristine.,Já está perfeito.
+reason.no_item,You do not hold that item.,Você não tem esse item.
+reason.not_repairable,Cannot be repaired.,Não pode ser reparado.
+reason.unknown_technology,Unknown technology.,Tecnologia desconhecida.
+reason.already_unlocked,Already unlocked.,Já desbloqueado.
+reason.already_researching,Already being researched.,Já em pesquisa.
+reason.not_researching,Not being researched.,Não está em pesquisa.
+reason.prerequisite_locked,Needs {0} first.,Exige {0} antes.
+reason.insufficient_points,Not enough research points.,Pontos de pesquisa insuficientes.
+reason.no_settlement,Needs a settlement.,Exige um assentamento.
+reason.missing_materials,Missing materials.,Faltam materiais.
+reason.unknown_station_type,Unknown station type.,Tipo de estação desconhecido.
+reason.inside_claim,Inside a settlement claim.,Dentro da área de um assentamento.
+reason.too_close_settlement,Too close to a settlement.,Perto demais de um assentamento.
+reason.already_in_settlement,Already in a settlement.,Já está em um assentamento.
+reason.too_close_station,Too close to {0}.,Perto demais de {0}.
+reason.needs_points,needs {0} research points,precisa de {0} pontos de pesquisa
+reason.unknown_proposal,Unknown proposal.,Proposta desconhecida.
+reason.not_open,Voting is closed.,A votação está encerrada.
+reason.author_cannot_vote,The author cannot vote.,O autor não pode votar.
+reason.expired,The proposal expired.,A proposta expirou.
+reason.replacement_not_ratified,The replacement is not ratified.,A substituição não foi ratificada.
+reason.not_supersedable,It cannot be superseded.,Não pode ser substituída.
+reason.invalid_verdict,Invalid verdict.,Voto inválido.

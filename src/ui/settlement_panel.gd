@@ -4,6 +4,7 @@ extends VBoxContainer
 ## `I18n`. The slice's `view()` (the host's last push) is what it renders.
 
 const I18n := preload("res://src/core/i18n.gd")
+const SettlementSlice := preload("res://src/settlement/settlement_slice.gd")
 const REFRESH_SEC := 1.0
 
 var settlement_slice: Node = null
@@ -116,7 +117,7 @@ func refresh() -> void:
 	for c: Dictionary in view.get("claims", []):
 		if str(c.get("id", "")) == str(mine.get("id", "")):
 			claim = c
-	_status.text = I18n.t("settlement.status", [str(claim.get("name", "")), I18n.t("settlement.tier." + str(claim.get("status", "founded"))),
+	_status.text = I18n.t("settlement.status", [SettlementSlice.display_name(claim), I18n.t("settlement.tier." + str(claim.get("status", "founded"))),
 		I18n.t("settlement.role." + str(mine.get("role", "guest"))), int(float(claim.get("radius", 0.0)))])
 	var lines: Array = []
 	for pid: String in (mine.get("members", {}) as Dictionary):
@@ -136,7 +137,7 @@ func _render_invites(invites: Array) -> void:
 		if not inv is Dictionary:
 			continue
 		var b := Button.new()
-		b.text = "%s — %s" % [I18n.t("settlement.invited", [str((inv as Dictionary).get("name", ""))]), I18n.t("settlement.join")]
+		b.text = "%s — %s" % [I18n.t("settlement.invited", [SettlementSlice.display_name(inv as Dictionary)]), I18n.t("settlement.join")]
 		var sid := str((inv as Dictionary).get("id", ""))
 		b.pressed.connect(func() -> void: _send("join", { "id": sid }))
 		_invites.add_child(b)

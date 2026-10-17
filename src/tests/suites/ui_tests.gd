@@ -64,6 +64,11 @@ func register() -> void:
 	_run_test("ui: retiring 1,000 controls prunes the list a handful of times", _test_ui_retire_prunes_amortised)
 	_run_test("p131: catalogs share one key set, no empty cells",  _test_p131_catalog_keys)
 	_run_test("p131: no untranslated literal in UI assignments",   _test_p131_literal_audit)
+	_run_test("p148: the literal audit fails on a hard-coded fixture", _test_p148_audit_fixture)
+	_run_test("p148: every reason code has a catalog key",             _test_p148_reason_codes_have_keys)
+	_run_test("p148: reason codes render with params",             _test_p148_reason_text)
+	_run_test("p148: multi-digit and numeric placeholders",        _test_p148_number_placeholders)
+	_run_test("p148: a missing catalog logs once and retries",     _test_p148_catalog_retry)
 	_run_test("p131: locale switch, persistence, OS fallback",     _test_p131_locale_switch)
 	_run_test("p131: host system messages travel as key + args",   _test_p131_system_message)
 
@@ -1886,30 +1891,45 @@ func _test_p131_literal_audit() -> void:
 		assert_true(parts.size() == 3 and parts[2].strip_edges() != "", "allow-list entry has a reason: %s" % line)
 		if parts.size() == 3:
 			allow[parts[0].strip_edges() + "|" + parts[1].strip_edges()] = true
-	var rx := RegEx.create_from_string("\\.(text|tooltip_text|title|placeholder_text)\\s*=[^=]")
+	var bad: Array = []
+	for path in _p131_scripts():
+		bad.append_array(_p148_audit_source(path.trim_prefix("res://"), FileAccess.get_file_as_string(path), allow))
+	assert_eq(bad, [], "every literal assigned to a UI text property or passed to a toast or chat post goes through I18n.t or is allow-listed")
+
+## Phase 148 — the audit on one source text, so a fixture can prove it fails. Flags a literal with words
+## assigned to `.text` / `.tooltip_text` / `.title` / `.placeholder_text`, or passed to `push_toast(` or
+## `_post(` / `chat_posted.emit(` (the chat and notice emits), unless the line goes through I18n or is allow-listed.
+func _p148_audit_source(path: String, src: String, allow: Dictionary) -> Array:
+	var rx := RegEx.create_from_string("\\.(text|tooltip_text|title|placeholder_text)\\s*=[^=]|push_toast\\(|\\b_post\\(|chat_posted\\.emit\\(")
 	var lit := RegEx.create_from_string("\"(?:[^\"\\\\]|\\\\.)*\"")
 	var words := RegEx.create_from_string("[A-Za-z]{2,}")
 	var keyed := RegEx.create_from_string("(\\[|get\\(|has\\()\"[^\"]*\"")
 	var bad: Array = []
-	for path in _p131_scripts():
-		for raw in FileAccess.get_file_as_string(path).split("\n"):
-			var line: String = raw.strip_edges()
-			if line.begins_with("#") or rx.search(line) == null:
-				continue
-			var rhs := line.substr(line.find("=") + 1)
-			if rhs.contains("I18n.t(") or rhs.contains("tr("):
-				continue
-			# Dictionary keys (`row["quantity"]`, `get("reason", ...)`) are not text; only real literals count.
-			var has_words := false
-			for m in lit.search_all(keyed.sub(rhs, "", true)):
-				if words.search(m.get_string()) != null:
-					has_words = true
-			if not has_words:
-				continue
-			if allow.has(path.trim_prefix("res://") + "|" + line):
-				continue
-			bad.append(path.get_file() + ": " + line)
-	assert_eq(bad, [], "every literal assigned to a UI text property goes through I18n.t or is allow-listed")
+	for raw in src.split("\n"):
+		var line: String = raw.strip_edges()
+		if line.begins_with("#") or line.begins_with("func ") or rx.search(line) == null:
+			continue
+		var rhs := line.substr(line.find("=") + 1) if line.contains(".text") or line.contains("_text") or line.contains(".title") else line
+		if rhs.contains("I18n.t(") or rhs.contains("I18n.render(") or rhs.contains("tr("):
+			continue
+		# Dictionary keys (`row["quantity"]`, `get("reason", ...)`) are not text; only real literals count.
+		var has_words := false
+		for m in lit.search_all(keyed.sub(rhs, "", true)):
+			if words.search(m.get_string()) != null:
+				has_words = true
+		if not has_words:
+			continue
+		if allow.has(path + "|" + line):
+			continue
+		bad.append(path.get_file() + ": " + line)
+	return bad
+
+func _test_p148_audit_fixture() -> void:
+	var fixture := "func f():\n\tlabel.text = \"Hello\"\n\tpush_toast(\"Saved\")\n\tlabel.text = I18n.t(\"ui.craft\")\n\tpush_toast(I18n.t(\"ui.craft\"))\n\t_post(CHANNEL_CHAT, \"x\", \"Hi there\", \"\")\n"
+	var bad := _p148_audit_source("fixture.gd", fixture, {})
+	assert_eq(bad.size(), 3, "the audit flags a literal text assignment, a literal toast and a literal chat post")
+	assert_eq(_p148_audit_source("fixture.gd", "func f():\n\tlabel.text = I18n.t(\"ui.craft\")\n", {}), [], "and passes a translated one")
+	assert_eq(_p148_audit_source("fixture.gd", "label.text = \"Hello\"", { "fixture.gd|label.text = \"Hello\"": true }), [], "and honours the allow-list")
 
 func _test_p131_locale_switch() -> void:
 	_p131_with_settings(func() -> void:
@@ -2016,3 +2036,84 @@ func _test_p131_system_message() -> void:
 		assert_eq(ChatSlice._format_line(chat.lines().back()), "[color=#9fc7ff]Ana foi morto.[/color]", "and in Portuguese after the switch")
 		chat.free()
 	)
+
+# ── Phase 148 — i18n leftovers ───────────────────────────────────────────
+
+## Every `return "code"` / `"code"` literal handed to `pattern`'s capture in a source file.
+func _p148_codes(path: String, pattern: String) -> Array:
+	var out: Array = []
+	var rx := RegEx.create_from_string(pattern)
+	for m in rx.search_all(FileAccess.get_file_as_string(path)):
+		var code := m.get_string(1)
+		if code != "" and not out.has(code):
+			out.append(code)
+	return out
+
+func _test_p148_reason_codes_have_keys() -> void:
+	var cats: Dictionary = I18nScript.parse_csv("res://locale/ui.csv")["catalog"]
+	var codes: Array = []
+	# craft, repair and research paths
+	codes.append_array(_p148_codes("res://src/crafting/crafting_slice.gd", "(?:_fail|_repair_result|_result)\\([^\\n]*?\"([a-z_]+)(?::[^\"]*)?\"(?:, pid\\)|, player_id\\))"))
+	codes.append_array(["skill_requirement", "requires_flag", "requires_profession", "technology_locked", "station_required", "prerequisite_locked"])
+	codes.append_array(_p148_codes("res://src/technology/technology_slice.gd", "_result\\(tech_id, false, \"([a-z_]+)"))
+	codes.append_array(_p148_codes("res://src/inventory/inventory_slice.gd", "\"reason\": \"([a-z_]+)\""))
+	codes.append_array(_p148_codes("res://src/governance/proposal_slice.gd", "\"reason\": \"([a-z_]+)\""))
+	# placement
+	codes.append_array(_p148_codes("res://src/world/station_slice.gd", "return \"([a-z_]+)(?::%s)?\""))
+	for forbidden in ["forwarded", "rejected"]:
+		codes.erase(forbidden)
+	assert_true(codes.size() >= 25, "the scan found the reason codes (%d)" % codes.size())
+	for loc in cats:
+		for code in codes:
+			assert_true((cats[loc] as Dictionary).has("reason." + str(code)), "%s has reason.%s" % [loc, code])
+		assert_true((cats[loc] as Dictionary).has("reason.needs_points"), "%s has reason.needs_points" % loc)
+	# settlement paths
+	var settle: Array = _p148_codes("res://src/settlement/settlement_slice.gd", "return \"([a-z_]+)\"")
+	assert_true(settle.size() >= 15, "the scan found the settlement codes (%d)" % settle.size())
+	for loc in cats:
+		for code in settle:
+			assert_true((cats[loc] as Dictionary).has("settlement.refused." + str(code)), "%s has settlement.refused.%s" % [loc, code])
+
+func _test_p148_reason_text() -> void:
+	_p131_with_settings(func() -> void:
+		TranslationServer.set_locale("en")
+		assert_eq(I18nScript.reason_text("missing_inputs"), "Missing ingredients.", "a plain code")
+		assert_eq(I18nScript.reason_text("station_required:forge"), "Needs a forge station nearby.", "a code with a param")
+		assert_eq(I18nScript.reason_text("too_close_station:station_0"), "Too close to station_0.", "the placement overlap code")
+		assert_eq(I18nScript.reason_text("no_such_code_zz"), "Refused (no_such_code_zz).", "an unknown code never renders raw-empty")
+		TranslationServer.set_locale("pt_BR")
+		assert_eq(I18nScript.reason_text("inside_claim"), "Dentro da área de um assentamento.", "pt_BR renders the same code")
+	)
+
+func _test_p148_number_placeholders() -> void:
+	_p131_with_settings(func() -> void:
+		assert_eq(I18nScript.fill("{10} {1}", ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k"]), "k b", "multi-digit placeholders fill")
+		assert_eq(I18nScript.fill("{10} {1}", ["a", "b"]), "{10} b", "an out-of-range one stays literal")
+		TranslationServer.set_locale("pt_BR")
+		assert_eq(I18nScript.fill("{0:1}", [1234.5]), "1.234,5", "pt_BR groups with a dot and uses a decimal comma")
+		TranslationServer.set_locale("en")
+		assert_eq(I18nScript.fill("{0:1}", [1234.5]), "1,234.5", "en groups with a comma")
+		# A coordinates line travels as numbers and each locale formats them.
+		var m := I18nScript.sanitize_msg("chat.teleported_xyz", [1234.5, 2.0, -7.25])
+		assert_eq(I18nScript.render(m), "Teleported to 1,234.5, 2.0, -7.2.", "en chat line")
+		TranslationServer.set_locale("pt_BR")
+		assert_eq(I18nScript.render(m), "Teletransportado para 1.234,5, 2,0, -7,2.", "pt_BR chat line")
+	)
+
+func _test_p148_catalog_retry() -> void:
+	var old_path: String = I18nScript.catalog_path
+	var old_loaded: bool = I18nScript._loaded
+	var failures: int = I18nScript.load_failures
+	var quiet: bool = Diag.quiet
+	Diag.quiet = true
+	I18nScript._loaded = false
+	I18nScript.catalog_path = "res://locale/does_not_exist.csv"
+	I18nScript.ensure_loaded()
+	assert_eq(I18nScript.load_failures, failures + 1, "a missing catalog logs one error")
+	assert_false(I18nScript._loaded, "and stays unloaded")
+	I18nScript.catalog_path = old_path
+	I18nScript.ensure_loaded()
+	assert_true(I18nScript._loaded, "a later call retries and loads")
+	assert_eq(I18nScript.load_failures, failures + 1, "with no further error")
+	Diag.quiet = quiet
+	I18nScript._loaded = old_loaded

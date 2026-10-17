@@ -6,6 +6,7 @@ extends RefCounted
 ##
 ## Placeholders are positional and order-independent: `{0}`, `{1}` ... filled from `args`, so a
 ## translation may reorder them. A missing key renders as the key itself, never as an empty string.
+const Diag := preload("res://src/core/diag.gd")
 const CATALOG_PATH := "res://locale/ui.csv"
 const FALLBACK := "en"
 ## Wire limits for a host-originated message (key + args): bounded like any network input.
@@ -18,13 +19,23 @@ const UNKNOWN_KEY := "msg.unknown"
 static var _loaded: bool = false
 static var _catalog: Dictionary = {}   # locale -> { key -> text }
 static var _locales: Array = []
+## Where the catalog is read from; the suite points it at a missing file to prove the retry.
+static var catalog_path: String = CATALOG_PATH
+## How many times a load found no catalog (the suite reads it; each one also logs an error).
+static var load_failures: int = 0
 
-## Parse the CSV and register one `Translation` per locale column. Idempotent.
+## Parse the CSV and register one `Translation` per locale column. Idempotent once it succeeds. A
+## missing or empty catalog logs one error and leaves the class unloaded, so the next call retries
+## (every key would otherwise render raw and every host message would become `msg.unknown`).
 static func ensure_loaded() -> void:
 	if _loaded:
 		return
+	var parsed := parse_csv(catalog_path)
+	if (parsed["locales"] as Array).is_empty() or int(parsed["rows"]) == 0:
+		load_failures += 1
+		Diag.error("I18n: catalog %s is missing or empty — text renders as raw keys" % catalog_path)
+		return
 	_loaded = true
-	var parsed := parse_csv(CATALOG_PATH)
 	_catalog = parsed["catalog"]
 	_locales = parsed["locales"]
 	for loc in _locales:
@@ -79,21 +90,41 @@ static func t(key: String, args: Array = []) -> String:
 	ensure_loaded()
 	return fill(TranslationServer.translate(key), args)
 
+## `{N}` is argument N as text (any number of digits). `{N:D}` formats a numeric argument for the
+## active locale with D decimals (`{0:1}` renders 1234.5 as `1,234.5` in en and `1.234,5` in pt_BR),
+## so a host sends the raw number and each client formats it.
 static func fill(text: String, args: Array) -> String:
 	# One pass, so text injected by an argument (a handle, a waypoint name) is never re-scanned.
 	var out := ""
 	var i := 0
 	while i < text.length():
 		var c := text[i]
-		if c == "{" and i + 2 < text.length() and text[i + 2] == "}" and text[i + 1].is_valid_int():
-			var idx := text[i + 1].to_int()
-			if idx < args.size():
-				out += str(args[idx])
-				i += 3
-				continue
+		if c == "{":
+			var close := text.find("}", i + 1)
+			if close > i + 1 and close - i <= 8:
+				var parts := text.substr(i + 1, close - i - 1).split(":")
+				if parts.size() <= 2 and parts[0].is_valid_int() and (parts.size() == 1 or parts[1].is_valid_int()):
+					var idx := parts[0].to_int()
+					if idx >= 0 and idx < args.size():
+						var a: Variant = args[idx]
+						if parts.size() == 2 and (a is float or a is int):
+							out += number(float(a), parts[1].to_int())
+						else:
+							out += str(a)
+						i = close + 1
+						continue
 		out += c
 		i += 1
 	return out
+
+## A slice `reason` code (`missing_inputs`, `station_required:forge`) as text in the active locale:
+## the part before the first `:` picks the `reason.<code>` key and the rest are its `{0}`.. params.
+static func reason_text(code: String) -> String:
+	var parts := code.split(":")
+	var key := "reason." + parts[0]
+	if parts[0] == "" or not has_key(key):
+		return t("reason.unknown", [code])
+	return t(key, Array(parts.slice(1)))
 
 ## A host message as it travels: key + args, no rendered text.
 static func msg(key: String, args: Array = []) -> Dictionary:

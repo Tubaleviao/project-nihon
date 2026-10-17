@@ -568,7 +568,7 @@ func _test_station_placement_cost_and_overlap() -> void:
 		station.show_preview(t, Vector3(7.5, float(i), 7.5))
 	assert_eq(station.placeable_scan_count, 1, "twenty blocker checks and previews never rescan RECIPES/ITEMS")
 	assert_eq(station.try_place_station(t, Vector3(5.2, 9.0, 5.8)), "", "the same cell at another height collides")
-	assert_true(station.placement_blocker(t, Vector3(5.5, -3.0, 5.5)).begins_with("too close"), "and the reason says why")
+	assert_true(station.placement_blocker(t, Vector3(5.5, -3.0, 5.5)).begins_with("too_close_station"), "and the reason says why")
 	assert_true(station.try_place_station(t, Vector3(6.5, 0.0, 5.5)) != "", "the adjacent cell on x is free")
 	assert_true(station.try_place_station(t, Vector3(5.5, 0.0, 6.5)) != "", "the adjacent cell on z is free")
 	assert_eq(station.snap_to_grid(Vector3(-0.1, 2.0, 0.9)), Vector3(-0.5, 2.0, 0.5), "negative coordinates snap to their own cell")
@@ -609,7 +609,7 @@ func _test_player_station_placement() -> void:
 	assert_eq(station.get_all_stations().size(), 1, "V places a station at the aimed spot")
 	p._place_station()
 	assert_eq(station.get_all_stations().size(), 1, "a second V on the same cell places nothing")
-	assert_true(label.text.contains("too close"), "and the refusal reason shows on the station label")
+	assert_true(label.text.contains("Too close"), "and the refusal reason shows on the station label")
 	label.free()
 
 	# The ghost follows the target while the preview is on and input is allowed; while a menu
@@ -1772,7 +1772,7 @@ func _test_research_points_gather_and_ui() -> void:
 			forge = row
 	assert_eq(int(forge["points_cost"]), t.research_cost("TechAlchemy"), "a row carries the point cost")
 	assert_false(bool(forge["can_research"]), "short of points the button is disabled")
-	assert_true(str(forge["reason"]).contains("research points"), "with the reason")
+	assert_true(I18nScript.reason_text(str(forge["reason"])).contains("research points"), "with the reason")
 	t.grant_points("", "craft", 10)
 	for row in ui.technology_rows():
 		if row["id"] == "TechAlchemy":
