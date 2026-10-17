@@ -17,6 +17,8 @@ func register() -> void:
 	_run_test("path: a walled pocket stops at the expansion cap", _test_path_pocket_cap)
 	_run_test("path: the budget caps searches per tick and nobody starves", _test_path_budget_fairness)
 	_run_test("path: a chase across the X wrap takes the short way round", _test_path_seam_wrap)
+	_run_test("path: a flyer holds its hover band, a ground creature stays on the surface", _test_path_flyer_hover)
+	_run_test("path: a creature at the end of a partial path retries within the interval", _test_path_partial_retry)
 	_run_test("path: a changed column replans, an unloaded chunk freezes", _test_path_stale_and_freeze)
 
 func _flat_rules(extra: Dictionary = {}) -> Dictionary:
@@ -194,4 +196,48 @@ func _test_path_stale_and_freeze() -> void:
 	world["loaded"] = true
 	c.set_instance_position(iid, Vector3(1.5, 0.0, 8.5))
 	assert_eq(c.get_instance_position(iid).y, 0.0, "it stands on the column top")
+	_free_walker(w)
+
+func _test_path_flyer_hover() -> void:
+	var rolling := func(x: int, _z: int) -> float: return 0.25 * float(absi(x - 5))
+	var w := _make_walker(rolling)
+	var ai: CreatureAI = w["ai"]
+	var c: CreatureSlice = w["creature"]
+	var boar: String = w["ids"][0]
+	var hawk: String = c._spawn("RidgeHawk", Vector2i(0, 0), 0)
+	c.set_instance_position(hawk, Vector3(0.5, 0.0, 2.5))
+	ai.force_state(hawk, "aggressive")
+	var hover := CreatureSlice.hover_for_creature("RidgeHawk")
+	assert_true(hover > 0.0, "the fabric gives the hawk a hover height (%f)" % hover)
+	assert_eq(CreatureSlice.hover_for_creature("ForestBoar"), 0.0, "a ground creature has no hover band")
+	ai.player_targets = func() -> Dictionary: return { "player": Vector3(10.5, 1.25, 0.5) }
+	for i in 100:
+		ai._process(0.1)
+		var hp := c.get_instance_position(hawk)
+		var gp := c.get_instance_position(boar)
+		var hawk_ground: float = rolling.call(floori(hp.x), floori(hp.z))
+		var boar_ground: float = rolling.call(floori(gp.x), floori(gp.z))
+		assert_true(absf(hp.y - (hawk_ground + hover)) < 0.001, "tick %d: the hawk stays %f m above the surface" % [i, hover])
+		assert_true(absf(gp.y - boar_ground) < 0.001, "tick %d: the boar stays on the surface" % i)
+	_free_walker(w)
+
+func _test_path_partial_retry() -> void:
+	var world := { "water": true }
+	var h := func(x: int, _z: int) -> float: return -1.0 if world["water"] and x >= 8 else 0.0
+	var w := _make_walker(h)
+	var ai: CreatureAI = w["ai"]
+	var c: CreatureSlice = w["creature"]
+	var iid: String = w["ids"][0]
+	var goal := Vector3(10.5, 0.0, 0.5)
+	ai.player_targets = func() -> Dictionary: return { "player": goal }
+	for i in 150:
+		ai._process(0.1)
+	var stuck := c.get_instance_position(iid)
+	assert_true(stuck.x < 8.0, "the creature stops at the shore (%f)" % stuck.x)
+	assert_false(bool(ai._ai[iid].get("path_reached", true)), "its path is partial")
+	world["water"] = false   # the water drains without any block event: only the retry timer can notice
+	var ticks := ceili(CreatureAI.PATH_RETRY_SECONDS / 0.1) + 8
+	for i in ticks:
+		ai._process(0.1)
+	assert_true(c.get_instance_position(iid).distance_to(goal) < 2.0, "it reached the goal within the retry interval")
 	_free_walker(w)

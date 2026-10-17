@@ -67,6 +67,9 @@ const WorldShape := preload("res://src/terrain/world_shape.gd")
 const PATH_BUDGET_PER_TICK := 8
 ## A path is recomputed once its goal tile has moved more than this many tiles (Chebyshev).
 const PATH_REPATH_TILES := 2
+## Phase 149 — a creature stopped at the end of a partial path (the goal was out of reach) searches again
+## after this many seconds, so it does not stand there for good once a way opens.
+const PATH_RETRY_SECONDS := 2.0
 ## How far ahead of itself (metres) a fleeing creature aims.
 const FLEE_LEAD := 4.0
 ## Fabric defaults when a creature resource lacks the Phase 136 fields.
@@ -411,6 +414,11 @@ func _walk_path(iid: String, inst: Dictionary, target: Vector3, speed: float, de
 		# At the end of the path: walk the last stretch only when the goal was reached.
 		if bool(ai.get("path_reached", false)):
 			_step_toward(inst, iid, target, speed, delta)
+			return
+		ai["path_retry"] = float(ai.get("path_retry", 0.0)) + delta
+		if float(ai["path_retry"]) >= PATH_RETRY_SECONDS:
+			_clear_path(ai)   # clears the retry timer too
+			_request_path(iid, goal)
 		return
 	var wp: Vector2i = path[idx]
 	var dtx: int = SeamWrap.delta(wp.x, here.x, lap) if lap > 0 else wp.x - here.x
@@ -443,6 +451,7 @@ func _clear_path(ai: Dictionary) -> void:
 	ai["path_stale"] = false
 	ai["path_idx"] = 0
 	ai["path_reached"] = false
+	ai["path_retry"] = 0.0
 
 ## Queue a search to `goal` for `iid` (once) and run what the budget allows.
 func _request_path(iid: String, goal: Vector2i) -> void:

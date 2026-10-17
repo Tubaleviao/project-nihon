@@ -105,7 +105,7 @@ module.exports = {
       baseDamage:     { type: 'integer', description: 'Damage per claw strike at tier baseline', defaultValue: 35 },
       alertRadius:    { type: 'decimal', description: 'Distance in metres at which creature enters alert state', defaultValue: 15.0 },
       skeleton:       skeletonField('BirdSkeleton'),
-      ...pathFields(),
+      ...pathFields({ movement: 'flying', hoverMetres: 2.5 }),
       attackRadius:   { type: 'decimal', description: 'Distance in metres at which creature begins attacking', defaultValue: 4.0 },
       fleeThreshold:  { type: 'decimal', description: 'HP fraction (0–1) below which creature flees', defaultValue: 0.20 },
       respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 2400 },

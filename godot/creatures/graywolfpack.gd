@@ -17,6 +17,12 @@ enum AggressionLevel {
 	TERRITORIAL,
 }
 
+enum Movement {
+	GROUND,
+	FLYING,
+	SWIMMING,
+}
+
 enum Biome {
 	TEMPERATE_FOREST,
 	TEMPERATE_GRASSLAND,
@@ -58,6 +64,8 @@ enum State {
 @export var maxStepMetres: float
 @export var canSwim: bool
 @export var pathRadiusTiles: int
+@export var movement: int
+@export var hoverMetres: float
 @export var attackRadius: float
 @export var fleeThreshold: float
 @export var respawnSeconds: int

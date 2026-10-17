@@ -25,6 +25,8 @@ A stout, bristle-furred boar that roots through the forest floor for tubers and 
 | maxStepMetres | decimal | Tallest ledge in metres the creature climbs in one tile step; a taller step is routed around |
 | canSwim | boolean | Whether the creature paths through water tiles (ground below sea level) |
 | pathRadiusTiles | integer | Search radius in tiles of one path query |
+| movement | `ground`, `flying`, `swimming` | ground snaps to the surface, flying holds hoverMetres above it, swimming stays in water |
+| hoverMetres | decimal | Height in metres above the surface a flying creature holds |
 | attackRadius | decimal | Distance in metres at which creature begins attacking |
 | fleeThreshold | decimal | HP fraction (0–1) below which creature flees |
 | respawnSeconds | integer | Seconds before a dead creature respawns |
