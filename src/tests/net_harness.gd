@@ -183,6 +183,7 @@ static func steps() -> Array:
 		{ "name": "spawn_near_friend", "compare": true },
 		{ "name": "chunk_record_synced", "compare": true },
 		{ "name": "frontier_record_synced", "compare": true },
+		{ "name": "station_needs_item", "compare": true },
 		{ "name": "fold_carries_creatures", "compare": true },
 	]
 
@@ -403,6 +404,7 @@ func run(root: Node, role: String) -> void:
 	await _step_spawn_near_friend()
 	await _step_chunk_record_synced()
 	await _step_frontier_record_synced()
+	await _step_station_needs_item()
 	await _step_fold_carries_creatures()
 	_finish()
 
@@ -1678,6 +1680,25 @@ func _step_frontier_record_synced() -> void:
 ## window: the creature keeps its id and lands at the fold's image, and a later host position for it (in the
 ## host's frame) is replayed into the client's. The host, which did not cross, keeps its own creatures
 ## where they are and never learns of the probe.
+func _step_station_needs_item() -> void:
+	# Phase 147 — a station whose placement names an item is refused on the host for a player who lacks it,
+	# whatever the player's client claims. The host places against the bound peer's own pack.
+	if _role == "host":
+		var owner_pid := _bound_id()
+		var inv: Node = _root._registry.get_inventory(owner_pid) if owner_pid != "" else null
+		if inv == null:
+			_report("station_needs_item", "fail", "no_owner_pack")
+			return
+		var before_stations: int = _root._station.get_all_stations().size()
+		var id: String = _root._station.try_place_station("waystone", RENDEZVOUS + Vector3(40.0, 0.0, 40.0), inv, owner_pid)
+		var refused: bool = id == "" and _root._station.get_all_stations().size() == before_stations
+		await _await_settle(1.0)
+		_report("station_needs_item", verdict(refused, true), "refused" if refused else "placed_without_item")
+		return
+	await _await_settle(1.0)
+	var held: int = int(_root._inventory.get_contents().get("Waystone", 0))
+	_report("station_needs_item", verdict(held == 0, true), "refused" if held == 0 else "client_has_item")
+
 func _step_fold_carries_creatures() -> void:
 	var iid := "creature_harness_fold_probe"
 	if _role == "host":
