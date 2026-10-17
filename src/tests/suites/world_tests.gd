@@ -1049,6 +1049,8 @@ func _test_asset_creature_roster_placeholders() -> void:
 	}
 	for entity: String in roster:
 		var family: String = roster[entity][0]
+		assert_eq(str((GameData.CREATURES[entity] as Resource).get("skeleton")), family,
+			"%s: the fabric names the %s family its placeholder is rigged on" % [entity, family])
 		var size: int = roster[entity][1]
 		var key := AssetOverlayScript.creature_model_key(entity)
 		assert_true(AssetOverlay.has_key("meshes", key), "%s mesh listed" % entity)

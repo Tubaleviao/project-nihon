@@ -401,7 +401,11 @@ func _step_fight() -> Array:
 		await _until(func(): return false, 0.2)
 		var left: float = _root._battle.get_hp(iid)
 		ok = left >= 0.0 and left < float((GameData.CREATURES[cid] as Resource).get("baseHp"))
-	return [ok, "%s at %.0f hp after %d rounds" % [cid, _root._battle.get_hp(iid), rounds]]
+	# Phase 143 — the screenshot after this step shows the target as its rigged model, not a box.
+	_root._creature.update_models(_player_pos(), 0.0)
+	var modeled: bool = _root._creature.has_model(iid)
+	return [ok and modeled, "%s at %.0f hp after %d rounds, %s" % [cid, _root._battle.get_hp(iid), rounds,
+		"drawn as a model" if modeled else "NOT drawn as a model"]]
 
 ## Travel: two attuned waystones, then the intent; the body must land at the second.
 func _step_travel() -> Array:

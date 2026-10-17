@@ -163,7 +163,7 @@ issue number where the criterion used to be.
 | 140 | Settlements at runtime: a hearth, a claim and a shared stockpile | In review | below |
 | 141 | Terrain streaming off the main thread: worker noise, seam strips, polar shortcuts, fold catch-up | In review | below |
 | 142 | Terrain build throughput: a time-budgeted pump and a native chunk builder | Planned | below |
-| 143 | Creature models: rigged, animated creatures replace the tinted box | Planned | below |
+| 143 | Creature models: rigged, animated creatures replace the tinted box | In review | below |
 
 ---
 

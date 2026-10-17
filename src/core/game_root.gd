@@ -1104,10 +1104,10 @@ func _process(delta: float) -> void:
 		# Phase 48 — the host avatar's AOI membership drives peer-equipment sends.
 		_networking.set_host_position(_player.get_position())
 		_peer_wiring._sync_peer_windows(delta)
-	# Distance-driven LOD (Phase 23) — evaluate each character's world distance
-	# to the player each frame and swap fine detail / the impostor billboard in
-	# and out. No-op until characters exist and on clients (no spawned visuals).
+	# Distance-driven LOD (Phase 23): swap character detail / impostor by distance to the player. Phase 143:
+	# creatures near the player are drawn as rigged models, the rest as pool boxes (no-op on a server).
 	_character.update_lod(_player.get_position())
+	_creature.update_models(_player.get_position(), delta)
 
 	# Phase 33 — settle a COMPLETED save worker before the lifecycle tick can
 	# start another one: a failed write is then reported within a frame instead of

@@ -47,6 +47,7 @@ const SpawnRoll      := preload("res://src/world/spawn_roll.gd")
 const WorldClock     := preload("res://src/world/world_clock.gd")
 const TerrainSlice   := preload("res://src/terrain/terrain_slice.gd")
 const SeamWrap       := preload("res://src/terrain/seam_wrap.gd")
+const CreatureVisuals := preload("res://src/creature/creature_visuals.gd")
 
 ## Global cap on live instances (0 = unbounded). Host-only; see `set_population_cap`.
 var _population_cap: int = 0
@@ -84,6 +85,9 @@ var _spatial := SpatialHash.new()
 ## Shared MultiMesh pool for creature bodies; null when render_visuals is false
 ## (headless server) so the simulation runs with no visual nodes.
 var _pool: Node = null
+## Phase 143 — rigged models for the creatures near the viewer (see CreatureVisuals); null when
+## render_visuals is false. A modelled instance's record carries `modeled = true` and its box is hidden.
+var _visuals: CreatureVisuals = null
 ## When false (headless server), no pool is built and transform/colour writes
 ## are no-ops — the same data model drives a bare simulation.
 var render_visuals: bool = true
@@ -111,6 +115,7 @@ func _ready() -> void:
 	GameBus.creature_state_changed.connect(_on_creature_state_changed)
 	if render_visuals:
 		_build_pool()
+		_build_visuals()
 
 func _process(delta: float) -> void:
 	_tick_respawn()
@@ -289,8 +294,7 @@ func set_instance_position(instance_id: String, pos: Vector3) -> void:
 			pos.y = h
 	_instances[instance_id]["position"] = pos
 	_spatial.update(instance_id, pos)
-	if _pool != null and _instances[instance_id].has("mi"):
-		_pool.set_transform(int(_instances[instance_id]["mi"]), _visual_transform(pos))
+	_place_box(_instances[instance_id], pos)
 
 ## Return a snapshot of all active instances (for HUD / minimap use).
 ##
@@ -554,6 +558,8 @@ func despawn_for_chunk(chunk_pos: Vector2i) -> void:
 			_remember_death(iid, inst)
 		if _pool != null and inst.has("mi") and int(inst["mi"]) >= 0:
 			_pool.release(int(inst["mi"]))
+		if _visuals != null:
+			_visuals.release(iid)
 		_instances.erase(iid)
 		_last_broadcast.erase(iid)
 		_spatial.remove(iid)
@@ -794,8 +800,7 @@ func _tick_respawn() -> void:
 			inst["respawn_at"] = -1.0
 			inst["position"]   = inst["spawn_pos"]
 			_spatial.update(iid, inst["spawn_pos"])
-			if _pool != null and inst.has("mi") and int(inst["mi"]) >= 0:
-				_pool.set_transform(int(inst["mi"]), _visual_transform(inst["spawn_pos"]))
+			_place_box(inst, inst["spawn_pos"])
 			GameBus.creature_respawned.emit(iid, creature_id)
 	# Sweep non-resident death records whose deadline has passed: they no longer
 	# describe anything (the creature is due alive), and keeping them would grow the
@@ -853,7 +858,7 @@ func apply_creature_state(instance_id: String, creature_id: String, state: Strin
 			if state == "dead":
 				_pool.hide(int(inst["mi"]))
 			else:
-				_pool.set_transform(int(inst["mi"]), _visual_transform(position))
+				_place_box(inst, position)
 		return
 	# First sight: create a record + visual body without touching GameData counts.
 	# The creature_id is preserved from the host so the body gets the correct
@@ -949,6 +954,8 @@ func shift_scene(shift: Vector3) -> void:
 	_origin.value += shift
 	if _pool != null:
 		_pool.shift_scene(shift)
+	if _visuals != null:
+		_visuals.shift_scene(shift)
 
 func scene_offset() -> Vector3:
 	return _origin.value
@@ -977,15 +984,47 @@ func _visual_transform(pos: Vector3) -> Transform3D:
 	return Transform3D(Basis(), pos + Vector3(0.0, 0.5, 0.0))
 
 func _creature_color(creature_id: String) -> Color:
-	match creature_id:
-		"ForestBoar":     return Color(0.55, 0.35, 0.20)
-		"GraywolfPack":   return Color(0.42, 0.42, 0.48)
-		"SteppeBison":    return Color(0.60, 0.45, 0.25)
-		"RidgeHawk":      return Color(0.70, 0.55, 0.30)
-		"LavaSlug":       return Color(0.85, 0.25, 0.10)
-		"CinderGargoyle": return Color(0.30, 0.15, 0.10)
-		"GlimmerFox":     return Color(0.90, 0.80, 0.40)
-		"VeilStalker":    return Color(0.25, 0.20, 0.35)
-		"VoidSerpent":    return Color(0.10, 0.05, 0.25)
-		"RiftWarden":     return Color(0.50, 0.00, 0.50)
-		_:                return Color(0.80, 0.80, 0.80)
+	return CreatureVisuals.tint_for(creature_id)
+
+## Put an instance's box at `pos`, or keep it hidden while the creature is drawn as a model.
+func _place_box(inst: Dictionary, pos: Vector3) -> void:
+	if _pool == null or not inst.has("mi") or int(inst["mi"]) < 0:
+		return
+	if bool(inst.get("modeled", false)):
+		_pool.hide(int(inst["mi"]))
+	else:
+		_pool.set_transform(int(inst["mi"]), _visual_transform(pos))
+
+func _build_visuals() -> void:
+	_visuals = CreatureVisuals.new()
+	_visuals.name = "CreatureModels"
+	add_child(_visuals)
+
+# ---------------------------------------------------------------------------
+# Models (Phase 143)
+# ---------------------------------------------------------------------------
+
+## Give the creatures near `viewer` (a world position, the local player) their models and return
+## the rest to the box pool; place and animate every model. Called by game_root each frame. A
+## no-op without visuals (dedicated server, headless suite rigs built with render_visuals false).
+func update_models(viewer: Vector3, delta: float) -> void:
+	if _visuals == null:
+		return
+	var changed: Dictionary = _visuals.update(instances_view(), viewer, delta)
+	for iid in changed["added"]:
+		var inst: Dictionary = _instances[iid]
+		inst["modeled"] = true
+		_place_box(inst, inst["position"])
+	for iid in changed["removed"]:
+		var inst: Dictionary = _instances[iid]
+		inst.erase("modeled")
+		if inst["state"] != "dead":
+			_place_box(inst, inst["position"])
+
+## Whether `instance_id` is drawn as a model.
+func has_model(instance_id: String) -> bool:
+	return _visuals != null and _visuals.has_model(instance_id)
+
+## The model layer (null when render_visuals is false). Read-only use: tests and the playtest bot.
+func visuals() -> CreatureVisuals:
+	return _visuals

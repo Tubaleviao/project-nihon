@@ -577,15 +577,24 @@ def build_wolf_rig() -> bytes:
 # ---------------------------------------------------------------------------
 # The rest of the creature roster (phase A7 of project-nihon-assets)
 # ---------------------------------------------------------------------------
-# The fabric names no skeleton family on a creature entity; these families are assumed:
-# Quadruped (the wolf rig, reused) for ForestBoar, SteppeBison, GlimmerFox, VeilStalker and
-# RiftWarden, Bird for RidgeHawk and CinderGargoyle, Serpent for VoidSerpent and LavaSlug.
+# Each creature's rig family is its fabric `skeleton` field (Phase 143), read from the generated
+# `godot/creatures/<name>.tres`: QuadrupedSkeleton reuses the wolf rig, BirdSkeleton and
+# SerpentSkeleton get their own box rigs below.
 # Every rig carries the seven locomotion clips: idle, walk, run, fall, land, attack, death.
 
 CREATURES_DIR = OUT.parent / "creatures"
-QUADRUPED_CREATURES = ["ForestBoar", "SteppeBison", "GlimmerFox", "VeilStalker", "RiftWarden"]
-BIRD_CREATURES = ["RidgeHawk", "CinderGargoyle"]
-SERPENT_CREATURES = ["VoidSerpent", "LavaSlug"]
+CREATURE_TRES_DIR = SKELETON_TRES.parent.parent / "creatures"
+ROSTER = ["ForestBoar", "SteppeBison", "GlimmerFox", "VeilStalker", "RiftWarden",
+          "RidgeHawk", "CinderGargoyle", "VoidSerpent", "LavaSlug"]
+
+
+def creature_skeleton(name: str) -> str:
+    """The fabric `skeleton` family of creature `name`, read from its generated resource."""
+    text = (CREATURE_TRES_DIR / f"{name.lower()}.tres").read_text()
+    match = re.search(r'^skeleton = "([A-Za-z]+)"$', text, re.MULTILINE)
+    if match is None:
+        raise SystemExit(f"{name}: generated resource has no skeleton field (run npm run generate)")
+    return match.group(1)
 
 BIRD_TRES = SKELETON_TRES.parent / "birdskeleton.tres"
 SERPENT_TRES = SKELETON_TRES.parent / "serpentskeleton.tres"
@@ -670,10 +679,13 @@ def creature_rigs() -> dict:
     quad = build_wolf_rig()
     bird = build_skinned_rig(BIRD_TRES, "BirdSkeleton", BIRD_JOINTS, {}, BIRD_PARTS, BIRD_CLIPS, "BirdRig")
     serpent = build_skinned_rig(SERPENT_TRES, "SerpentSkeleton", SERPENT_JOINTS, {}, SERPENT_PARTS, SERPENT_CLIPS, "SerpentRig")
+    by_family = {"QuadrupedSkeleton": quad, "BirdSkeleton": bird, "SerpentSkeleton": serpent}
     rigs = {}
-    for names, data in ((QUADRUPED_CREATURES, quad), (BIRD_CREATURES, bird), (SERPENT_CREATURES, serpent)):
-        for name in names:
-            rigs[CREATURES_DIR / f"{name}.glb.raw"] = data
+    for name in ROSTER:
+        family = creature_skeleton(name)
+        if family not in by_family:
+            raise SystemExit(f"{name}: no placeholder rig for skeleton {family}")
+        rigs[CREATURES_DIR / f"{name}.glb.raw"] = by_family[family]
     return rigs
 
 

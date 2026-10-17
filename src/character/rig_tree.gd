@@ -87,3 +87,9 @@ static func drive(tree: AnimationTree, loco) -> void:
 	if playback != null:
 		playback.travel(node_for_state(loco.get_state()))
 	tree.set(BLEND_PARAM, loco.get_blend_weight())
+
+
+## Play one clip straight on `player` (Phase 143: creature rigs, which have no locomotion tree),
+## cross-fading over `blend` seconds. A clip the rig lacks plays idle instead and warns once.
+static func play_clip(player: AnimationPlayer, clip: String, blend: float = 0.15) -> void:
+	player.play(_resolve_clip(player, clip), blend)

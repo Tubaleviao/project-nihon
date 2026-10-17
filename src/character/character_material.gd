@@ -89,6 +89,11 @@ static func shared_material(colors: Array) -> ShaderMaterial:
 		_refresh_palette(_shared_material, colors)
 	return _shared_material
 
+## A new ShaderMaterial for one creature type's rig (Phase 143): each type binds its own body sheets
+## through `bind_rig_textures`, so types cannot share one resource the way avatars do.
+static func creature_material(colors: Array) -> ShaderMaterial:
+	return _make_material(colors)
+
 ## The single rig ShaderMaterial (built once). Its textures are bound by the caller
 ## (CharacterSlice.attach_rig) through `bind_rig_textures`; per-character colour is written
 ## per mesh with apply_instance, so two characters share this resource.
