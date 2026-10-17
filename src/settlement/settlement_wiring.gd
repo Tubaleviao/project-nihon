@@ -4,6 +4,7 @@ extends "res://src/core/wiring.gd"
 
 const SettlementSlice := preload("res://src/settlement/settlement_slice.gd")
 const I18n := preload("res://src/core/i18n.gd")
+const WorldPos := preload("res://src/terrain/world_pos.gd")
 
 ## Seconds between host sweeps (grow, abandon, decay, activity, view pushes).
 const TICK_SEC := 0.5
@@ -42,9 +43,17 @@ func wire(ctx: GameRoot) -> void:
 	connect_bus(GameBus.settlements_changed, _on_changed)
 	connect_bus(GameBus.settlement_resolved, _on_resolved)
 	connect_bus(GameBus.station_placed, _on_station_placed)
+	connect_bus(GameBus.block_changed, _on_block_changed)
 
 func _on_changed() -> void:
 	_dirty = true
+
+## A block edit that passed the claim guard counts as activity for the local player's claim (remote
+## players are covered by the standing-in-claim sweep in `tick`).
+func _on_block_changed(_action: String, position: Vector3, _normal: Vector3, _material: String) -> void:
+	if root._is_client or root._settlements == null:
+		return
+	root._settlements.note_edit(root._registry.local_player_id, Vector2(position.x, position.z))
 
 ## A hearth placed by the local player (host or listen host) founds a settlement there. The placement
 ## already took the Hearth item and `StationSlice` refused an occupied spot, so this only records it.
@@ -52,7 +61,16 @@ func _on_station_placed(station_id: String, type: String, position: Vector3) -> 
 	if root._is_client or root._settlements == null or type != str(root._settlements.rules()["hearthStation"]):
 		return
 	var pid: String = root._registry.local_player_id
-	var why: String = root._settlements.found(pid, I18n.t("settlement.default_name", [root._settlements.count() + 1]), Vector2(position.x, position.z), false)
+	# The exact hearth position: the placer's exact position plus the small offset to the hearth, never the
+	# float32 `Vector3` (as the waystone does).
+	var exact: Dictionary = {}
+	if root._player != null:
+		var here: Dictionary = root._player.get_world_pos()
+		exact = WorldPos.normalized({
+			"chunk": here["chunk"],
+			"local": (here["local"] as Vector3) + (position - root._player.get_position()),
+		})
+	var why: String = root._settlements.found(pid, I18n.t("settlement.default_name", [root._settlements.count() + 1]), Vector2(position.x, position.z), false, exact)
 	if why != "" and root._station != null:
 		root._station.remove_station(station_id)
 

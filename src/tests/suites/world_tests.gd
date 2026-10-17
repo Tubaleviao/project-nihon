@@ -12,6 +12,7 @@ func register() -> void:
 	_run_test("waystone: teleport door and chat leftovers",     _test_waystone_wire_and_chat_leftovers)
 	_run_test("waystone: map rename and limb notice",           _test_waystone_map_leftovers)
 	_run_test("waystone: placement consumes the item, ids are never reused", _test_phase130_waystone_placement)
+	_run_test("waystone: an exact position at x ~ 2e7 survives save and load", _test_phase147_waystone_exact_roundtrip)
 	_run_test("waystone: refusals are throttled, a full list is refused early", _test_phase130_waystone_throttle_full)
 	_run_test("waystone: a seed change saves the old seed",     _test_minimap_seed_change_saves_old_seed)
 	_run_test("fabric: treeDensity stays inside the noisy bound", _test_p126_fabric_density_bound)
@@ -1292,3 +1293,20 @@ func _test_diag_warn_concurrent() -> void:
 	WorkerThreadPool.wait_for_group_task_completion(gid)
 	Diag.quiet = was_quiet
 	assert_eq(Diag.warn_count() - before, 4000, "four tasks of 1,000 warnings raise the count by exactly 4,000")
+
+
+## Phase 147 — a stone placed near the far seam (x ~ 2e7 m) keeps its exact position through a save.
+func _test_phase147_waystone_exact_roundtrip() -> void:
+	var rig := _waystone_rig()
+	var way: WaystoneSlice = rig["way"]
+	var st: StationSlice = rig["stations"]
+	var far := { "chunk": Vector2i(int(2.0e7 / WorldPos.CHUNK_METERS), 5), "local": Vector3(7.3125, 12.5, 0.0625) }
+	var id := st.place_station("waystone", Vector3(0.5, 1.0, 0.5))
+	way.note_exact(id, far)
+	var saved := way.exact_data()
+	way.apply_exact_data({})
+	way.apply_exact_data(saved)
+	var back := way.exact_pos(id)
+	assert_eq(back["chunk"], far["chunk"], "the chunk survives the save")
+	assert_true((back["local"] as Vector3).distance_to(far["local"]) < 0.01, "the local offset is exact to under 1 cm")
+	_free_waystone_rig(rig)

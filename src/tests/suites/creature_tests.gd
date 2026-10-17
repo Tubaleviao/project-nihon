@@ -10,6 +10,8 @@ func register() -> void:
 	_run_test("battle: reset_hp restores state",              _test_battle_reset_hp)
 	_run_test("battle: resolves stats via creature_slice",    _test_battle_resolves_via_creature_slice)
 	_run_test("models: every creature names a skeleton and ships a matching rig", _test_models_rigs_match_fabric)
+	_run_test("models: a type without a model takes no slot from one that has it", _test_phase147_unmodelled_takes_no_slot)
+	_run_test("models: a respawn teleport does not play run", _test_phase147_respawn_not_run)
 	_run_test("models: range, hysteresis and the pool swap",    _test_models_range_hysteresis)
 	_run_test("models: a missing key keeps the box, warns once per type", _test_models_missing_key_warns_once)
 	_run_test("models: state-to-clip map and death does not loop", _test_models_clip_map)
@@ -2456,4 +2458,33 @@ func _test_models_headless_builds_none() -> void:
 	assert_true(c.visuals() == null, "no model node host without render_visuals")
 	assert_false(c.has_model("h0"), "no model")
 	c._process(0.1)
+	c.free()
+
+
+func _test_phase147_unmodelled_takes_no_slot() -> void:
+	var c := CreatureSlice.new()
+	add_child(c)
+	c.apply_creature_state("g0", "Ghost", "idle", Vector3(0, 0, 0), 10.0)
+	c.apply_creature_state("w1", "GraywolfPack", "idle", Vector3(5, 0, 0), 10.0)
+	c.apply_creature_state("w2", "GraywolfPack", "idle", Vector3(10, 0, 0), 10.0)
+	var v = c.visuals()
+	v.max_models = 2
+	var was_quiet := Diag.quiet
+	Diag.quiet = true
+	v.reselect(c._instances, Vector3(-1.0, 0, 0))
+	Diag.quiet = was_quiet
+	assert_false(c.has_model("g0"), "the nearest creature has no model key and keeps its box")
+	assert_true(c.has_model("w1") and c.has_model("w2"), "both modellable creatures still get one of the two slots")
+	c.free()
+
+func _test_phase147_respawn_not_run() -> void:
+	var c := _model_slice("GraywolfPack", 1)
+	var v = c.visuals()
+	v.reselect(c._instances, Vector3.ZERO)
+	assert_true(c.has_model("m0"), "the wolf has a model")
+	c.apply_creature_state("m0", "GraywolfPack", "idle", Vector3(400, 0, 300), 10.0)
+	v._update_model("m0", c._instances["m0"], 0.05)
+	var m: Dictionary = v.models["m0"]
+	assert_eq(float(m["speed"]), 0.0, "a jump to the respawn point is not a speed")
+	assert_true(int(m["loco"]) != CreatureVisualsScript.Locomotion.State.RUN, "so the clip is not run")
 	c.free()

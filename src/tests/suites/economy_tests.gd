@@ -74,6 +74,7 @@ func register() -> void:
 	_run_test("technology: client does not resolve research",  _test_technology_client_resolves_nothing)
 	_run_test("research points: too few refuse, enough spend exactly", _test_research_points_gate_and_spend)
 	_run_test("research points: host craft pays the crafter only, saves", _test_research_points_craft_grant_and_roundtrip)
+	_run_test("research points: a craft that grants nothing keeps the first-craft bonus", _test_phase147_first_craft_marker)
 	_run_test("research points: gather pays, UI rows show cost",  _test_research_points_gather_and_ui)
 	_run_test("research points: fabric rule table and costs",     _test_research_points_fabric_data)
 	_run_test("void burst: failed consume keeps the counter",   _test_void_failed_consume_keeps_counter)
@@ -2901,3 +2902,13 @@ func _test_craft_client_forwards_intent() -> void:
 # ---------------------------------------------------------------------------
 # Phase 34 — per-player repair and research
 # ---------------------------------------------------------------------------
+
+
+func _test_phase147_first_craft_marker() -> void:
+	var t := TechnologySlice.new()
+	add_child(t)
+	t.is_authoritative = true
+	t._note_earned("", t.window_room(""))   # the window is full: the next craft pays nothing
+	assert_eq(t.note_craft("RecipeFerriteIngot"), 0, "a full window grants nothing")
+	assert_false(t._first_crafts.has(""), "and the first-craft marker is not burned")
+	t.free()

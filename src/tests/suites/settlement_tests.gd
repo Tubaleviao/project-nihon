@@ -14,6 +14,10 @@ func register() -> void:
 	_run_test("settlement: intents resolve through the bus and refuse the unknown", _test_settlement_intents)
 	_run_test("settlement: research draws from the stockpile", _test_settlement_research)
 	_run_test("settlement: a client intent binds the connection's player", _test_settlement_wire)
+	_run_test("settlement: a hearth at x ~ 2e7 keeps its exact position through save and load", _test_phase147_hearth_exact)
+	_run_test("settlement: edit_blocker is a pure query, note_edit records the edit", _test_phase147_edit_blocker_pure)
+	_run_test("settlement: loading keeps ids unique and defaults last_active to now", _test_phase147_from_data)
+	_run_test("settlement: a decaying claim announces its shrinking radius", _test_phase147_decay_push)
 	_run_test("settlement: claims count toward colonization", _test_settlement_colonization)
 
 func _rig() -> Dictionary:
@@ -347,3 +351,68 @@ func _test_settlement_colonization() -> void:
 	map.set_settlements([])
 	assert_eq(map.score(Vector2i(0, 0)), 0.0, "the count is replaced, not accumulated")
 	assert_eq(map.to_data()["regions"].size(), 0, "settlements are not persisted on the map")
+
+
+func _test_phase147_hearth_exact() -> void:
+	var rig := _rig()
+	var s: SettlementSlice = rig["s"]
+	_give(rig, "p1", "Hearth", 1)
+	var far := { "chunk": Vector2i(int(2.0e7 / SettlementSlice.WorldPos.CHUNK_METERS), 5), "local": Vector3(7.3125, 12.5, 0.0625) }
+	assert_eq(s.found("p1", "Far", Vector2(2.0e7, 5.0), true, far), "", "a far hearth is founded")
+	var saved: Dictionary = s.to_data()
+	var fresh := SettlementSlice.new()
+	add_child(fresh)
+	fresh.from_data(saved)
+	var back: Dictionary = fresh.hearth_exact("settlement_1")
+	assert_eq(back["chunk"], far["chunk"], "the hearth chunk survives the save")
+	assert_true((back["local"] as Vector3).distance_to(far["local"]) < 0.01, "and its local offset is exact to under 1 cm")
+	var want: float = float(far["chunk"].x) * SettlementSlice.WorldPos.CHUNK_METERS + 7.3125
+	assert_true(absf(float(fresh.get_settlement("settlement_1")["hx"]) - want) < 0.01, "the claim centre is a double, not a float32")
+	fresh.free()
+	_free_rig(rig)
+
+func _test_phase147_edit_blocker_pure() -> void:
+	var rig := _rig()
+	var s: SettlementSlice = rig["s"]
+	_found(rig)
+	s.get_settlement("settlement_1")   # sanity: it exists
+	var t0: float = float(s._settlements["settlement_1"]["last_active"])
+	rig["now"][0] += 500.0
+	var changes := [0]
+	var on_change := func() -> void: changes[0] += 1
+	GameBus.settlements_changed.connect(on_change)
+	assert_eq(s.edit_blocker("p1", Vector2(20.0, 10.0)), "", "the founder may edit inside the claim")
+	assert_eq(s.edit_blocker("p2", Vector2(20.0, 10.0)), "no_permission", "an outsider is refused")
+	assert_eq(float(s._settlements["settlement_1"]["last_active"]), t0, "a preview leaves last_active alone")
+	assert_eq(changes[0], 0, "and emits nothing")
+	s.note_edit("p2", Vector2(20.0, 10.0))
+	assert_eq(float(s._settlements["settlement_1"]["last_active"]), t0, "a refused edit is not activity")
+	s.note_edit("p1", Vector2(20.0, 10.0))
+	assert_eq(float(s._settlements["settlement_1"]["last_active"]), t0 + 500.0, "a successful edit touches the claim")
+	GameBus.settlements_changed.disconnect(on_change)
+	_free_rig(rig)
+
+func _test_phase147_from_data() -> void:
+	var rig := _rig()
+	var s: SettlementSlice = rig["s"]
+	s.from_data({ "next_id": 1, "settlements": { "settlement_7": { "name": "Old", "founder": "p1", "members": { "p1": "founder" } } } })
+	assert_eq(s.count(), 1, "the entry loads")
+	assert_eq(float(s._settlements["settlement_7"]["last_active"]), float(rig["now"][0]), "a missing last_active defaults to now, not 0")
+	_give(rig, "p2", "Hearth", 1)
+	assert_eq(s.found("p2", "New", Vector2(5000.0, 0.0)), "", "a new settlement is founded")
+	assert_true(s.get_settlement("settlement_8").size() > 0 and s.get_settlement("settlement_7")["name"] == "Old", "the new id is above every loaded id")
+	_free_rig(rig)
+
+func _test_phase147_decay_push() -> void:
+	var rig := _rig()
+	var s: SettlementSlice = rig["s"]
+	_found(rig)
+	var day := SettlementSlice.DAY_SEC
+	var after: float = rig["now"][0] + float(s.rules()["abandonAfterDays"]) * day
+	rig["now"][0] = after
+	assert_true(s.tick(after), "abandoning is a change")
+	assert_false(s.tick(after), "an unchanged tick is quiet")
+	rig["now"][0] = after + 3.0 * day
+	assert_true(s.tick(rig["now"][0]), "a claim that shrank is announced so clients redraw it")
+	assert_false(s.tick(rig["now"][0]), "and only once")
+	_free_rig(rig)
