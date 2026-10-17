@@ -397,6 +397,10 @@ func _step_fight() -> Array:
 	if iid == "":
 		return [false, "spawn refused"]
 	var y: float = _root._terrain.get_height_at(Vector2(p.x + FIGHT_RANGE_M, p.z))
+	# A body far from the terrain surface (fell, or ground not streamed yet) would put the target out of
+	# model range: keep the target at the camera's height then.
+	if cam != null and absf(y - p.y) > 20.0:
+		y = p.y - 1.5
 	_root._creature.set_instance_position(iid, Vector3(p.x + FIGHT_RANGE_M, y, p.z))
 	var rounds := 0
 	var ok := false
