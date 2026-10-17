@@ -1007,7 +1007,7 @@ func _boot_server() -> void:
 	_persistence_wiring._load_world_records()
 	# Phase 52 — voxel edits stream in by region around every window (the local player's
 	# and each connected peer's) instead of loading from the world record up front.
-	_chunk_manager.region_streamer = RegionStreamer.new(_persistence.region_store, _voxel)
+	_chunk_manager.region_streamer = RegionStreamer.new(_persistence.region_store, _voxel, true)   # Phase 142: regions read on a worker
 	# Phase 108 — the host records each chunk it first streams in; never while a save is writing regions.
 	_chunk_manager.record_store = _persistence.region_store
 	_chunk_manager.records_flush_blocked = func() -> bool: return _save_thread != null
