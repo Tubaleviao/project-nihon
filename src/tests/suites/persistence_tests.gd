@@ -2642,18 +2642,19 @@ func _test_region_async_read_off_main() -> void:
 	var voxel: VoxelSlice = rig["voxel"]
 	var streamer = RegionStreamerScript.new(store, voxel)
 	streamer.async_reads = true
+	streamer.record_threads = true
 	cm.region_streamer = streamer
 	cm.view_distance = 0
 	cm.prefetch_distance = 0
 	cm.refresh()
 	assert_eq(voxel.edited_chunk_keys().size(), 0, "the move read nothing inline")
-	assert_false(streamer.regions_settled(Vector2i.ZERO, 1), "the chunk's region is still reading")
+	assert_false(streamer.regions_settled(Vector2i.ZERO, Frontier.BLEND_CHUNKS), "the chunk's region is still reading")
 	cm._drain_load_queue()
 	assert_false(cm._loaded.has("0,0"), "so the chunk waits in the queue and is not loaded")
 	assert_eq(cm._load_queue.size(), 1, "still queued")
 	streamer.flush_reads()
 	assert_true(voxel.edited_chunk_keys().has("0,0"), "the finished read applies its edits")
-	assert_true(streamer.regions_settled(Vector2i.ZERO, 1), "and the chunk may build")
+	assert_true(streamer.regions_settled(Vector2i.ZERO, Frontier.BLEND_CHUNKS), "and the chunk may build")
 	assert_true(streamer.read_thread_ids.size() > 0, "a read ran")
 	for tid in streamer.read_thread_ids:
 		assert_true(int(tid) != OS.get_main_thread_id(), "and never on the main thread")

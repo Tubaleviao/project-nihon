@@ -214,7 +214,11 @@ func pump_spent_usec() -> int:
 
 ## True when the frame's budget is gone (never before one step has run, so a frame progresses).
 func _pump_exhausted() -> bool:
-	return _pump_open and pump_budget_msec > 0 and _pump_steps > 0 and pump_spent_usec() >= pump_budget_msec * 1000
+	return _pump_steps > 0 and _pump_over()
+
+## True when the open frame's time budget is gone (apply and dispatch each allow one step regardless).
+func _pump_over() -> bool:
+	return _pump_open and pump_budget_msec > 0 and pump_spent_usec() >= pump_budget_msec * 1000
 
 ## Phase 141 — the FOLD CATCH-UP. A fold over a pole or round the antimeridian (`restream`) rebuilds
 ## the whole window (81 chunks) while the stand-ins hold the old ground; at the steady cap of four
@@ -394,11 +398,11 @@ func _process(_delta: float) -> void:
 	_apply_finished_builds()
 	_poll_region_reads()
 	flush_records()
-	if not _active:
-		return
-	_drain_load_queue()
-	refresh(false)
-	_drain_unload_queue(unloads_per_frame)
+	if _active:
+		_drain_load_queue()
+		refresh(false)
+		_drain_unload_queue(unloads_per_frame)
+	_pump_open = false   # a drain outside a frame (a boot, a tool, a test) is unbounded again
 
 ## Begin automatic streaming (driven by _process). The first `refresh()` is what
 ## centres the window, so the caller places the player before calling it —
@@ -644,7 +648,7 @@ func _drain_load_queue() -> void:
 			continue
 		# Phase 142 — the chunk's regions read on a worker; it waits at the back of the queue
 		# until they land (a failed region does not hold it: see `regions_settled`).
-		if _reads_async() and not region_streamer.regions_settled(chunk, 1):
+		if _reads_async() and not region_streamer.regions_settled(chunk, Frontier.BLEND_CHUNKS):
 			_pending[_chunk_key(chunk)] = true
 			_load_queue.append(chunk)
 			waiting += 1
@@ -769,8 +773,6 @@ func _retry_deferred_records() -> void:
 		desired.append(_key_to_chunk(str(k)))
 	_sync_wanted_regions(desired)
 
-## Make the regions `desired` chunks read resident, rebuild chunks whose records a read replaced, and
-## retry the deferred records. Shared by `refresh` and `_retry_deferred_records`.
 ## True when the streamer reads regions on a worker (a test stub may be anything).
 func _reads_async() -> bool:
 	return region_streamer != null and region_streamer.has_method("poll") and bool(region_streamer.async_reads)
@@ -785,6 +787,8 @@ func _poll_region_reads() -> void:
 		_rebuild_adopted(polled["adopted"])
 		_record_deferred()
 
+## Make the regions `desired` chunks read resident, rebuild chunks whose records a read replaced, and
+## retry the deferred records. Shared by `refresh` and `_retry_deferred_records`.
 func _sync_wanted_regions(desired: Array) -> void:
 	var synced: Dictionary = region_streamer.sync(region_streamer.regions_for_chunks(desired, Frontier.BLEND_CHUNKS))
 	_rebuild_adopted(synced.get("adopted", []))
@@ -1290,11 +1294,10 @@ func _apply_finished_builds() -> void:
 	for task_id in _builds.keys():
 		if not WorkerThreadPool.is_task_completed(task_id):
 			continue
-		if applied >= maxi(applies_per_frame, 1) or _pump_exhausted():
+		if applied >= maxi(applies_per_frame, 1) or (applied > 0 and _pump_over()):
 			return   # the rest stay finished in the table and apply next frame
 		_apply_build_entry(task_id)
 		applied += 1
-		_pump_steps += 1
 
 ## Apply every in-flight build NOW, blocking on each task. The frame path polls
 ## (`_apply_finished_builds`); this is the blocking variant for a caller that has no

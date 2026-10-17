@@ -24,6 +24,7 @@ var _read_out: Dictionary = {}
 var _read_mutex := Mutex.new()
 ## Thread ids that ran a region read (test hook: none may be the main thread under `async_reads`).
 var read_thread_ids: Array = []
+var record_threads := false   # off in the game: the list would grow with every read
 ## The keys of the last `sync`'s wanted set: a read that finishes for a region no longer wanted is dropped.
 var _wanted_last: Dictionary = {}
 var _voxel: Object
@@ -120,9 +121,7 @@ func sync(wanted: Dictionary) -> Dictionary:
 		if not bool(read["ok"]):
 			# Not resident: a later sync (the next window move) retries the read once the backoff
 			# has elapsed, instead of treating the region as loaded.
-			@warning_ignore("integer_division")
-			var delay := mini(int(_backoff.get(rkey, { "delay": BACKOFF_START_MSEC / 2 })["delay"]) * 2, BACKOFF_MAX_MSEC)
-			_backoff[rkey] = { "until": now + delay, "delay": delay }
+			_note_failure(str(rkey))
 			failed += 1
 			continue
 		_adopt_read(str(rkey), read, adopted)
@@ -173,16 +172,32 @@ func _adopt_read(rkey: String, read: Dictionary, adopted: Array) -> void:
 	ChunkRecords.adopt_region(readable, adopted)
 	_resident[rkey] = true
 
+## Take (and forget) a finished worker read's result.
+func _take_read(rkey: String) -> Dictionary:
+	_read_mutex.lock()
+	var read: Dictionary = _read_out.get(rkey, { "ok": false, "chunks": {} })
+	_read_out.erase(rkey)
+	_read_mutex.unlock()
+	return read
+
+## Start (or grow) the backoff of a region whose read failed.
+func _note_failure(rkey: String) -> void:
+	var now: int = _now.call()
+	@warning_ignore("integer_division")
+	var delay := mini(int(_backoff.get(rkey, { "delay": BACKOFF_START_MSEC / 2 })["delay"]) * 2, BACKOFF_MAX_MSEC)
+	_backoff[rkey] = { "until": now + delay, "delay": delay }
+
 func _start_read(rkey: String) -> void:
 	if _reading.has(rkey):
 		return
-	_reading[rkey] = WorkerThreadPool.add_task(_read_task.bind(rkey), false, "region read " + rkey)
+	_reading[rkey] = WorkerThreadPool.add_task(_read_task.bind(rkey), true, "region read " + rkey)
 
 ## The worker body: only the file read runs here (`RegionStore.read_region` is safe off the main thread).
 func _read_task(rkey: String) -> void:
 	var read := _store.read_region(RegionStore.region_from_key(rkey))
 	_read_mutex.lock()
-	read_thread_ids.append(OS.get_thread_caller_id())
+	if record_threads:
+		read_thread_ids.append(OS.get_thread_caller_id())
 	_read_out[rkey] = read
 	_read_mutex.unlock()
 
@@ -197,17 +212,11 @@ func poll() -> Dictionary:
 			continue
 		WorkerThreadPool.wait_for_task_completion(_reading[rkey])
 		_reading.erase(rkey)
-		_read_mutex.lock()
-		var read: Dictionary = _read_out.get(rkey, { "ok": false, "chunks": {} })
-		_read_out.erase(rkey)
-		_read_mutex.unlock()
+		var read := _take_read(rkey)
 		if not _wanted_last.has(rkey) or _resident.has(rkey):
 			continue
 		if not bool(read["ok"]):
-			var now: int = _now.call()
-			@warning_ignore("integer_division")
-			var delay := mini(int(_backoff.get(rkey, { "delay": BACKOFF_START_MSEC / 2 })["delay"]) * 2, BACKOFF_MAX_MSEC)
-			_backoff[rkey] = { "until": now + delay, "delay": delay }
+			_note_failure(rkey)
 			continue
 		_adopt_read(rkey, read, adopted)
 		loaded += 1
@@ -234,10 +243,7 @@ func flush_reads() -> Array:
 	for rkey in _reading.keys():
 		WorkerThreadPool.wait_for_task_completion(_reading[rkey])
 		_reading.erase(rkey)
-		_read_mutex.lock()
-		var read: Dictionary = _read_out.get(rkey, { "ok": false, "chunks": {} })
-		_read_out.erase(rkey)
-		_read_mutex.unlock()
+		var read := _take_read(rkey)
 		if _wanted_last.has(rkey) and not _resident.has(rkey) and bool(read["ok"]):
 			_adopt_read(rkey, read, adopted)
 	return adopted
