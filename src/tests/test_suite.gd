@@ -31,6 +31,10 @@ const SUITES: Array[String] = [
 ]
 ## A suite file may not outgrow this (Phase 133): split it by system instead.
 const MAX_SUITE_LINES := 3000
+## Phase 154 — no non-test `.gd` under `src/` is longer than this. Files named here are exempt;
+## the list is empty and stays that way (split the file instead).
+const MAX_SOURCE_LINES := 1500
+const SOURCE_LINE_ALLOW_LIST: Array = []
 const SUITE_DIR := "res://src/tests/suites"
 const FILTER_ARG := "--test-filter="
 
@@ -51,6 +55,22 @@ static func unregistered_tests(suite: Object, registered: Dictionary) -> Array:
 	return out
 
 ## `.gd` files in the suite directory that `SUITES` does not list.
+## Every `.gd` file under `dir` (recursive, `src/tests` excluded when `skip_tests`) with more than
+## `cap` lines and not in `allow`, as "path (lines)" strings.
+static func oversized_source_files(dir: String, cap: int, allow: Array, skip_tests: bool = true) -> Array:
+	var out: Array = []
+	for f in DirAccess.get_files_at(dir):
+		if not f.ends_with(".gd") or allow.has(f):
+			continue
+		var lines := FileAccess.get_file_as_string(dir.path_join(f)).split("\n").size()
+		if lines > cap:
+			out.append("%s (%d)" % [dir.path_join(f), lines])
+	for d in DirAccess.get_directories_at(dir):
+		if skip_tests and d == "tests":
+			continue
+		out.append_array(oversized_source_files(dir.path_join(d), cap, allow, skip_tests))
+	return out
+
 static func unlisted_suite_files() -> Array:
 	var out: Array = []
 	for f in DirAccess.get_files_at(SUITE_DIR):

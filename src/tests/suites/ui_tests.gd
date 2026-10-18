@@ -444,7 +444,7 @@ func _test_chat_no_direct_damage_door() -> void:
 		if dir.begins_with("res://src/tests"):
 			continue
 		for f in DirAccess.get_files_at(dir):
-			if not f.ends_with(".gd") or f in ["game_root.gd", "combat_wiring.gd", "networking_slice.gd"]:
+			if not f.ends_with(".gd") or f in ["game_root.gd", "combat_wiring.gd", "networking_slice.gd"] or f.begins_with("net_part_"):
 				continue
 			if FileAccess.get_file_as_string(dir + "/" + f).contains("send_player_damaged("):
 				offenders.append(f)

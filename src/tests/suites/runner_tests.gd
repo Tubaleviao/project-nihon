@@ -9,6 +9,7 @@ func register() -> void:
 	_run_test("runner: a filter that matches nothing fails loudly", _test_runner_empty_filter_fails)
 	_run_test("runner: an unregistered _test_* in a suite file is reported", _test_runner_unregistered_audit)
 	_run_test("runner: every suite file is listed and under the line cap", _test_runner_suite_files_listed_and_capped)
+	_run_test("runner: no source file under src/ is over the line cap", _test_runner_source_size_audit)
 	_run_test("playtest: report percentiles and hitch counts", _test_playtest_report_percentiles_and_hitches)
 	_run_test("playtest: step failure, hard frame and missing step fail the run", _test_playtest_report_verdicts)
 	_run_test("playtest: --playtest-bot is parsed", _test_playtest_bot_arg)
@@ -61,6 +62,21 @@ func _test_runner_suite_files_listed_and_capped() -> void:
 				continue
 			var lines := FileAccess.get_file_as_string(dir.path_join(f)).split("\n").size()
 			assert_true(lines <= Runner.MAX_SUITE_LINES, "%s/%s has %d lines (cap %d)" % [dir, f, lines, Runner.MAX_SUITE_LINES])
+
+# Phase 154 — the source size audit passes on the real tree and fails on an oversized fixture.
+func _test_runner_source_size_audit() -> void:
+	assert_eq(Runner.SOURCE_LINE_ALLOW_LIST, [], "the size allow-list is empty")
+	assert_eq(Runner.oversized_source_files("res://src", Runner.MAX_SOURCE_LINES, Runner.SOURCE_LINE_ALLOW_LIST), [], "no src/ file is over the cap")
+	var dir := "user://size_audit_fixture"
+	DirAccess.make_dir_recursive_absolute(dir)
+	var f := FileAccess.open(dir.path_join("big.gd"), FileAccess.WRITE)
+	f.store_string("\n".repeat(Runner.MAX_SOURCE_LINES + 5))
+	f.close()
+	var hits := Runner.oversized_source_files(dir, Runner.MAX_SOURCE_LINES, [])
+	assert_eq(hits.size(), 1, "a fixture over the cap is reported")
+	assert_eq(Runner.oversized_source_files(dir, Runner.MAX_SOURCE_LINES, ["big.gd"]), [], "an allow-listed file is skipped")
+	DirAccess.remove_absolute(dir.path_join("big.gd"))
+	DirAccess.remove_absolute(dir)
 
 # Phase 134 — the playtest bot's report maths.
 const Bot := preload("res://src/tests/playtest_bot.gd")

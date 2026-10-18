@@ -174,7 +174,7 @@ issue number where the criterion used to be.
 | 151 | Item shapes in the fabric | Done | [history](docs/roadmap-history/phases-151.md) |
 | 152 | Item models and icons from one generator | Done | [history](docs/roadmap-history/phases-152.md) |
 | 153 | Items in the world: equipment, held tools and icons everywhere | Planned | below |
-| 154 | Split the biggest slices | Planned | below |
+| 154 | Split the biggest slices | Done | [history](docs/roadmap-history/phases-154.md) |
 | 155 | Animation tempo: looping clips, stride-matched walk and snappier transitions | Planned | below |
 | 156 | Idle, attack and hit clips for everyone, on every swing | Planned | below |
 | 157 | Deaths that read as deaths: a push, a fall and a body that stays | Planned | below |
@@ -235,38 +235,6 @@ creatures.
 - [ ] Playtest bot: the `craft` step screenshot shows the crafted tool in hand (the bot asserts the
   hand socket holds a model node), and no step reports a new hitch over 50 ms.
 - [ ] Suite green on both boot paths, harness green.
-
----
-
-## Phase 154 — Split the biggest slices
-
-**Goal:** four files hold a large share of the game: `src/terrain/voxel_slice.gd` (~3.3k lines),
-`src/networking/networking_slice.gd` (~2.4k), `src/ui/ui_slice.gd` (~1.8k) and
-`src/character/character_slice.gd` (~1.8k). They mix several jobs, which makes reviews slow and
-merge conflicts common between the autopilot's parallel branches. Phase 132 already did this for
-wiring. This phase does the same for the slices, with no change in behaviour.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phases 147–150 (they touch the same files; split after, to avoid conflicts).
-
-**Deliverables:**
-- `voxel_slice.gd` → edit/authority, settle, mesh build and persistence modules. The slice stays the
-  public facade.
-- `networking_slice.gd` → transport/emulator, peer registry, intent validation and AOI/delta modules.
-- `ui_slice.gd` → one module per window (inventory, crafting, research, character, map), plus a
-  shared `item_rows` helper.
-- `character_slice.gd` → equipment, appearance/palette and limb animation modules.
-- One PR per slice. Each moves code without changing what it does, and the public API of the
-  slice is unchanged.
-- A suite size audit: no non-test `.gd` file under `src/` is over 1500 lines, apart from an
-  explicit allow-list that this phase empties.
-
-**Acceptance criteria:**
-- [ ] The four files are each at most 1500 lines, and the size audit passes with an empty allow-list.
-- [ ] The size audit fails on a fixture file over the limit.
-- [ ] No test file changes except import paths (a behaviour-preserving split).
-- [ ] Suite green on both boot paths, harness green, playtest bot green.
 
 ---
 
