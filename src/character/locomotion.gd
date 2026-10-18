@@ -42,12 +42,36 @@ var _speed: float = 0.0
 var _airborne: float = 0.0
 ## Attack hold time: the attack clip's length once a rig is attached, `ATTACK_DURATION` before.
 var attack_duration: float = ATTACK_DURATION
+## Bumped on every attack request, so a second swing while one plays restarts the clip instead of
+## merging into it; `attack_clip` names the variant the swing plays (see `RigTree.attack_clip_for`).
+var swing_serial: int = 0
+var attack_clip: String = "attack"
+## Bumped on every hit taken; `hit_clip` is `hit`, or `stagger` for a knockback.
+var hit_serial: int = 0
+var hit_clip: String = "hit"
+## Idle variants: after `idle_delay` seconds of standing still a variant plays once. The delay and
+## the variant come from a generator seeded per body, so a replay and a test see the same ones.
+const IDLE_DELAY_MIN := 6.0
+const IDLE_DELAY_MAX := 12.0
+const IDLE_VARIANTS := ["idle_look", "idle_stretch"]
+var idle_serial: int = 0
+var idle_clip: String = ""
+var idle_delay: float = IDLE_DELAY_MIN
+var _idle_for: float = 0.0
+var _idle_rng := RandomNumberGenerator.new()
+
+## Seed the idle-variant generator (the instance id's hash) and draw the first delay.
+func seed_idle(seed_value: int) -> void:
+	_idle_rng.seed = seed_value
+	idle_delay = _idle_rng.randf_range(IDLE_DELAY_MIN, IDLE_DELAY_MAX)
+	_idle_for = 0.0
 
 ## Advance the machine one tick. `speed` is horizontal speed (m/s), `grounded`
 ## whether the body is on the floor, `velocity_y` the vertical velocity (m/s,
 ## negative when falling). Returns the resulting State.
 func update(speed: float, grounded: bool, velocity_y: float, delta: float) -> int:
 	_speed = speed
+	_tick_idle(speed, grounded, delta)
 
 	# Death is terminal: no transition out.
 	if _state == State.DEATH:
@@ -83,6 +107,19 @@ func update(speed: float, grounded: bool, velocity_y: float, delta: float) -> in
 	_set_state(_ground_state(speed))
 	return _state
 
+## Count standing-still time and fire a variant once it passes the delay. Any movement, jump or
+## non-idle state restarts the count, so a variant never starts on a body that is moving.
+func _tick_idle(speed: float, grounded: bool, delta: float) -> void:
+	if _state != State.IDLE or speed >= WALK_SPEED or not grounded:
+		_idle_for = 0.0
+		return
+	_idle_for += delta
+	if _idle_for >= idle_delay:
+		_idle_for = 0.0
+		idle_clip = IDLE_VARIANTS[_idle_rng.randi() % IDLE_VARIANTS.size()]
+		idle_serial += 1
+		idle_delay = _idle_rng.randf_range(IDLE_DELAY_MIN, IDLE_DELAY_MAX)
+
 ## True when a body airborne for `airborne` seconds at vertical velocity `velocity_y`
 ## is falling rather than stepping down a block.
 static func is_falling(airborne: float, velocity_y: float) -> bool:
@@ -99,11 +136,21 @@ func _ground_state(speed: float) -> int:
 	return State.RUN
 
 ## Request the attack pose (ignored while dead).
-func trigger_attack() -> void:
+func trigger_attack(clip: String = "attack", duration: float = -1.0) -> void:
 	if _state == State.DEATH:
 		return
 	_set_state(State.ATTACK)
-	_timer = attack_duration
+	_timer = duration if duration > 0.0 else attack_duration
+	attack_clip = clip
+	swing_serial += 1
+
+## Request the hit flinch (a stagger for a knockback). Plays over whatever the body is doing, so the
+## state does not change; ignored while dead.
+func trigger_hit(stagger: bool = false) -> void:
+	if _state == State.DEATH:
+		return
+	hit_clip = "stagger" if stagger else "hit"
+	hit_serial += 1
 
 ## Request the death pose. Terminal until reset().
 func trigger_death() -> void:

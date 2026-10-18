@@ -93,6 +93,7 @@ func resolve_round(attacker_id: String, defender_id: String) -> Dictionary:
 			"defender_hp_remaining": -1.0,   # unknown — owned by PlayerSlice
 		}
 		GameBus.combat_round_resolved.emit(result_player)
+		GameBus.combat_hit_resolved.emit(attacker_id, defender_id, outcome, damage)
 		return result_player
 
 	# A CREATURE defender: this slice owns its hit points, initialising them on first
@@ -125,6 +126,7 @@ func resolve_round(attacker_id: String, defender_id: String) -> Dictionary:
 		"defender_hp_remaining": hp_remaining,
 	}
 	GameBus.combat_round_resolved.emit(result)
+	GameBus.combat_hit_resolved.emit(attacker_id, defender_id, outcome, damage)
 	return result
 
 func _now() -> float:

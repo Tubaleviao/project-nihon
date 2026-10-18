@@ -120,6 +120,45 @@ static func blend_for_speed(speed: float) -> float:
 	return 0.0
 
 
+## Play a swing on a modelled creature. `id` is an instance id, or a creature type when the round
+## named the type (the first modelled instance of it). False when no model answers to `id`.
+func trigger_attack(id: String) -> bool:
+	var iid := _model_for(id)
+	if iid == "":
+		return false
+	var m: Dictionary = models[iid]
+	var tree: AnimationTree = m["tree"]
+	RigTree.set_attack_clip(tree, RigTree.ATTACK_DEFAULT)
+	m["swing"] = int(m["swing"]) + 1
+	m["swing_left"] = _attack_length(m)
+	m["swings"] = int(m.get("swings", 0)) + 1
+	return true
+
+
+## Play the hit flinch on a modelled creature (see `trigger_attack` for `id`).
+func trigger_hit(id: String) -> bool:
+	var iid := _model_for(id)
+	if iid == "":
+		return false
+	return RigTree.fire_hit(models[iid]["tree"])
+
+
+func _attack_length(m: Dictionary) -> float:
+	var player := (m["node"] as Node).find_child("AnimationPlayer", true, false) as AnimationPlayer
+	if player != null and player.has_animation("attack"):
+		return player.get_animation("attack").length
+	return Locomotion.ATTACK_DURATION
+
+
+func _model_for(id: String) -> String:
+	if models.has(id):
+		return id
+	for iid in models:
+		if str((models[iid]["node"] as Node).get_meta("creature_id", "")) == id:
+			return iid
+	return ""
+
+
 func has_model(instance_id: String) -> bool:
 	return models.has(instance_id)
 
@@ -197,6 +236,7 @@ func attach(iid: String, inst: Dictionary) -> bool:
 	if node == null:
 		return false
 	node.name = "Model_%s" % iid.validate_node_name()
+	node.set_meta("creature_id", cid)
 	for m in node.find_children("*", "MeshInstance3D", true, false):
 		(m as MeshInstance3D).material_override = tpl["material"]
 		CharacterMaterial.apply_instance(m as GeometryInstance3D, tpl["index"])
@@ -209,7 +249,7 @@ func attach(iid: String, inst: Dictionary) -> bool:
 	var pos: Vector3 = inst["position"]
 	node.transform = Transform3D(Basis(), pos)
 	models[iid] = {"node": node, "tree": tree, "speed": 0.0, "last_pos": pos, "yaw": 0.0,
-		"loco": -1, "dead_at": -1.0, "state": str(inst["state"])}
+		"loco": -1, "dead_at": -1.0, "state": str(inst["state"]), "swing_left": 0.0, "swing": 0, "swing_seen": 0}
 	model_attached.emit(iid)
 	return true
 
@@ -268,6 +308,17 @@ func _update_model(iid: String, inst: Dictionary, delta: float) -> void:
 		m["dead_at"] = -1.0
 	var s := loco_state(state, float(m["speed"]))
 	var tree: AnimationTree = m["tree"]
+	# A swing holds the Attack node for its clip's length whatever the creature is doing, and a new one
+	# restarts it, so every hit of a round shows.
+	if float(m["swing_left"]) > 0.0 and state != "dead":
+		m["swing_left"] = float(m["swing_left"]) - delta
+		s = Locomotion.State.ATTACK
+	if int(m["swing"]) != int(m["swing_seen"]):
+		m["swing_seen"] = m["swing"]
+		var playback: Object = tree.get(RigTree.PLAYBACK_PARAM)
+		if state != "dead" and playback != null and tree.get_meta("travel_node", "") == "Attack":
+			playback.start("Attack")
+			tree.set_meta("swing_restarts", int(tree.get_meta("swing_restarts", 0)) + 1)
 	if s != int(m["loco"]):
 		m["loco"] = s
 		RigTree.travel_once(tree, tree.get(RigTree.PLAYBACK_PARAM), RigTree.node_for_state(s))
