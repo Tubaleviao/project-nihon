@@ -57,6 +57,8 @@ const WaystoneWiring := preload("res://src/world/waystone_wiring.gd")
 const SettlementWiring := preload("res://src/settlement/settlement_wiring.gd")
 const CraftingWiring := preload("res://src/crafting/crafting_wiring.gd")
 const CharacterWiring := preload("res://src/character/character_wiring.gd")
+const GestureWiring   := preload("res://src/character/gesture_wiring.gd")
+const GestureSlice    := preload("res://src/character/gesture_slice.gd")
 const PeerWiring := preload("res://src/networking/peer_wiring.gd")
 const SnapshotWiring := preload("res://src/persistence/snapshot_wiring.gd")
 const PersistenceWiring := preload("res://src/persistence/persistence_wiring.gd")
@@ -70,6 +72,7 @@ var _waystone_wiring := WaystoneWiring.new()
 var _settlement_wiring := SettlementWiring.new()
 var _crafting_wiring := CraftingWiring.new()
 var _character_wiring := CharacterWiring.new()
+var _gesture_wiring := GestureWiring.new()
 var _peer_wiring := PeerWiring.new()
 var _snapshot_wiring := SnapshotWiring.new()
 var _persistence_wiring := PersistenceWiring.new()
@@ -109,6 +112,7 @@ var _trade:       TradeSlice
 var _proposal:    ProposalSlice
 var _ui:          UiSlice
 var _chat:        ChatSlice
+var _gesture:     GestureSlice
 var _waystones:   WaystoneSlice
 var _settlements: Node
 var _weather:     WeatherSlice
@@ -230,7 +234,7 @@ var _handshake_retries: int = 0
 
 ## Phase 132 — wiring modules know their root from construction (the suite builds roots without `_ready`).
 func _init() -> void:
-	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _settlement_wiring, _crafting_wiring, _character_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring]
+	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _settlement_wiring, _crafting_wiring, _character_wiring, _gesture_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring]
 	for w in _wirings:
 		w.root = self
 
@@ -289,6 +293,7 @@ func _ready() -> void:
 	_proposal    = ProposalSlice.new()
 	_ui          = UiSlice.new()
 	_chat        = ChatSlice.new()
+	_gesture     = GestureSlice.new()
 	_waystones   = WaystoneSlice.new()
 	_settlements = _settlement_wiring.make_slice(self)
 	_weather     = WeatherSlice.new()
@@ -339,7 +344,7 @@ func _ready() -> void:
 	# The UI (Phase 14) is presentation only, so a headless dedicated server
 	# (Phase 27) keeps it out of the tree — its _ready() would otherwise build
 	# windows nothing can render or click.
-	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _registry, _player, _loot, _inventory, _character, _crafting, _technology, _taming, _professions, _station, _tree, _market, _trade, _proposal, _chat, _waystones, _settlements, _weather]
+	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _registry, _player, _loot, _inventory, _character, _crafting, _technology, _taming, _professions, _station, _tree, _market, _trade, _proposal, _chat, _gesture, _waystones, _settlements, _weather]
 	if not _is_server:
 		slices.append(_ui)
 	if not _is_server:

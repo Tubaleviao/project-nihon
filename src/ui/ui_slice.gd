@@ -45,10 +45,11 @@ const WINDOW_CHARACTER  := "character"
 const WINDOW_SKILLS     := "skills"
 const WINDOW_MAP        := "map"
 const WINDOW_SETTLEMENT := "settlement"
+const WINDOW_GESTURES  := "gestures"
 
 const WINDOW_KEYS := [
 	WINDOW_INVENTORY, WINDOW_TECHNOLOGY, WINDOW_CRAFTING,
-	WINDOW_TRADE, WINDOW_MARKET, WINDOW_PROPOSALS, WINDOW_CONTROLS, WINDOW_CHARACTER, WINDOW_SKILLS, WINDOW_MAP, WINDOW_SETTLEMENT,
+	WINDOW_TRADE, WINDOW_MARKET, WINDOW_PROPOSALS, WINDOW_CONTROLS, WINDOW_CHARACTER, WINDOW_SKILLS, WINDOW_MAP, WINDOW_SETTLEMENT, WINDOW_GESTURES,
 ]
 
 const MouseIconScript := preload("res://src/ui/mouse_icon.gd")
@@ -57,6 +58,7 @@ const HotbarScript := preload("res://src/ui/hotbar.gd")
 const WindowDockScript := preload("res://src/ui/window_dock.gd")
 const MapWindowScript := preload("res://src/ui/map_window.gd")
 const SettlementPanelScript := preload("res://src/ui/settlement_panel.gd")
+const GesturePanelScript := preload("res://src/ui/gesture_panel.gd")
 
 ## Pixels of a window that must stay reachable on every edge when dragged.
 const DRAG_VISIBLE_MARGIN := 48.0
@@ -204,6 +206,10 @@ func _input(event: InputEvent) -> void:
 		# `?` is matched on the character it produces: it is not Shift+/ on every layout.
 		if event.unicode == 63:
 			toggle_window(WINDOW_CONTROLS)
+			return
+		# Phase 159 — the gesture wheel (Q by default, rebindable).
+		if event.keycode == GesturePanelScript.key_code():
+			toggle_window(WINDOW_GESTURES)
 			return
 		match event.keycode:
 			KEY_I:
@@ -391,6 +397,8 @@ func _on_locale_changed(_locale: String) -> void:
 		if is_instance_valid(b["node"]):
 			(b["node"] as Control).set(b["prop"], I18n.t(b["key"]))
 	_refill_controls()
+	if _gesture_box != null:
+		GesturePanelScript.relabel(_gesture_box, GameData.GESTURES)
 	if hotbar != null:
 		hotbar.relocalize()
 	if window_dock != null:
@@ -1317,6 +1325,13 @@ static func language_button_text() -> String:
 
 func _on_language_pressed() -> void:
 	LocaleSettings.set_locale(LocaleSettings.next_locale(), GameBus)
+
+## Phase 159 — the gesture wheel window; a pick closes it. Labels re-render on a language change.
+var _gesture_box: Control = null
+
+func _build_gesture_content() -> Control:
+	_gesture_box = GesturePanelScript.build(GameData.GESTURES, func() -> void: toggle_window(WINDOW_GESTURES))
+	return _gesture_box
 
 func _build_controls_content() -> Control:
 	_controls_box = VBoxContainer.new()

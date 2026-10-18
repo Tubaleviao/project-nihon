@@ -6,10 +6,13 @@ extends RefCounted
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const I18n := preload("res://src/core/i18n.gd")
+const GestureRules := preload("res://src/character/gesture_rules.gd")
 const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 
 const WHERE_NAME := "where"
 const WHERE := "/" + WHERE_NAME
+## Phase 159 — the gesture commands (`/sit`, `/wave`, ...) come from the fabric; /help lists them as one line.
+const GESTURES_NAME := "gestures"
 
 ## Longest chat line accepted, in characters. The wire cap (`MAX_CLIENT_PACKET_BYTES`) is far above it.
 const MAX_MESSAGE_CHARS := 240
@@ -27,6 +30,7 @@ const USAGE := {
 	"help":    "chat.usage.help",
 	"players": "chat.usage.players",
 	WHERE_NAME: "chat.usage.where",
+	GESTURES_NAME: "chat.usage.gestures",
 	"say":     "chat.usage.say",
 	"tp":      "chat.usage.tp",
 	"bring":   "chat.usage.bring",
@@ -45,6 +49,11 @@ static func run(text: String, world_pos: Vector3) -> String:
 		WHERE:
 			return TerrainSlice.where_text(world_pos)
 	return ""
+
+## Phase 159 — the fabric gesture id a line like `/sit` starts ("" when it names none). Pure; the chat box
+## turns it into a `gesture_intent`, so a gesture never travels as chat text.
+static func gesture_id(text: String, table: Dictionary = GameData.GESTURES) -> String:
+	return GestureRules.id_for_command(text, table) if is_slash(text) else ""
 
 ## The command `text` names ("" when it names none): the one place the known commands are listed.
 static func _command_of(text: String) -> String:
@@ -90,6 +99,7 @@ static func help_lines(admin: bool) -> Array:
 	for name in PLAYER_COMMANDS:
 		lines.append(USAGE[name])
 	lines.append(USAGE[WHERE_NAME])
+	lines.append(USAGE[GESTURES_NAME])
 	if admin:
 		for name in ADMIN_COMMANDS:
 			lines.append(USAGE[name])

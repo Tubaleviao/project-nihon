@@ -3,6 +3,9 @@ extends RefCounted
 
 var sl: Node
 
+## Seconds a one-shot gesture plays when the rig has no clip to measure (the procedural body).
+const DEFAULT_GESTURE_SECONDS := 1.5
+
 func _init(slice: Node) -> void:
 	sl = slice
 
@@ -237,6 +240,38 @@ func trigger_attack(instance_id: String, clip: String = "") -> void:
 	var lengths: Dictionary = inst.get("swing_lengths", {})
 	var played: String = clip if lengths.has(clip) else sl.RigTree.ATTACK_DEFAULT
 	inst["locomotion"].trigger_attack(clip, float(lengths.get(played, -1.0)))
+
+## Phase 159 — see `CharacterSlice.trigger_gesture`.
+func trigger_gesture(instance_id: String, clip: String, hold: bool, seat_lift: float = 0.0) -> bool:
+	if not sl._instances.has(instance_id):
+		return false
+	var inst: Dictionary = sl._instances[instance_id]
+	var loco = inst["locomotion"]
+	if loco.get_state() == sl.Locomotion.State.DEATH:
+		return false
+	var lengths: Dictionary = inst["anim_tree"].get_meta("clip_lengths", {}) if inst.has("anim_tree") and is_instance_valid(inst["anim_tree"]) else {}
+	loco.trigger_gesture(clip, hold, float(lengths.get(clip, DEFAULT_GESTURE_SECONDS)))
+	inst["seat_lift"] = seat_lift
+	return true
+
+## Raise a seated body's root by its seat lift; any state but a gesture drops the lift.
+func apply_seat_lift(inst: Dictionary, root: Node3D) -> void:
+	if not inst["locomotion"].is_gesturing():
+		inst["seat_lift"] = 0.0
+	root.position.y += float(inst.get("seat_lift", 0.0))
+
+func end_gesture(instance_id: String) -> void:
+	if not sl._instances.has(instance_id):
+		return
+	var inst: Dictionary = sl._instances[instance_id]
+	inst["locomotion"].end_gesture()
+	inst["seat_lift"] = 0.0
+
+func gesture_clip_of(instance_id: String) -> String:
+	if not sl._instances.has(instance_id):
+		return ""
+	var loco = sl._instances[instance_id]["locomotion"]
+	return loco.gesture_clip if loco.is_gesturing() else ""
 
 ## The swing an instance plays by its main hand: bare hands punch, a tool (anything with a fabric
 ## `toolType`) uses the tool swing, any other held item swings one-handed.

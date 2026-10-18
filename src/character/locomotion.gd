@@ -18,6 +18,7 @@ enum State {
 	LAND,
 	ATTACK,
 	DEATH,
+	GESTURE,
 }
 
 ## Horizontal speed (m/s) at or above which the character is walking.
@@ -56,6 +57,10 @@ var hit_clip: String = "hit"
 const IDLE_DELAY_MIN := 6.0
 const IDLE_DELAY_MAX := 12.0
 const IDLE_VARIANTS := ["idle_look", "idle_stretch"]
+## Phase 159 — the gesture clip playing and whether it is a held pose; bumped per gesture started.
+var gesture_clip: String = ""
+var gesture_serial: int = 0
+var _gesture_hold: bool = false
 var idle_serial: int = 0
 var idle_clip: String = ""
 var idle_delay: float = IDLE_DELAY_MIN
@@ -78,6 +83,15 @@ func update(speed: float, grounded: bool, velocity_y: float, delta: float) -> in
 	# Death is terminal: no transition out.
 	if _state == State.DEATH:
 		return _state
+
+	# Phase 159 — a gesture holds until ended (a pose) or until its clip is over (a one-shot); a hit
+	# swing or a death replaces it, and `end_gesture` / moving (decided by the host) ends a pose.
+	if _state == State.GESTURE:
+		if _gesture_hold:
+			return _state
+		_timer -= delta
+		if _timer > 0.0:
+			return _state
 
 	# Attack and land are timed one-shots — hold them until their timer elapses,
 	# then fall through into normal locomotion.
@@ -145,6 +159,32 @@ func trigger_attack(clip: String = "attack", duration: float = -1.0) -> void:
 	_timer = duration if duration > 0.0 else attack_duration
 	attack_clip = clip
 	swing_serial += 1
+
+## Phase 159 — start a gesture: a held pose (`hold`) stays until `end_gesture`, a one-shot lasts
+## `duration` seconds and returns to locomotion. Bumps `gesture_serial` so a repeat restarts the clip.
+## Ignored while dead.
+func trigger_gesture(clip: String, hold: bool, duration: float = 1.0) -> void:
+	if _state == State.DEATH:
+		return
+	_set_state(State.GESTURE)
+	gesture_clip = clip
+	_gesture_hold = hold
+	_timer = duration
+	gesture_serial += 1
+
+## Phase 159 — leave a gesture for locomotion (the stand-up). A no-op outside one.
+func end_gesture() -> void:
+	if _state != State.GESTURE:
+		return
+	_gesture_hold = false
+	_timer = 0.0
+	_set_state(_ground_state(_speed))
+
+func is_gesturing() -> bool:
+	return _state == State.GESTURE
+
+func is_gesture_held() -> bool:
+	return _state == State.GESTURE and _gesture_hold
 
 ## Request the hit flinch (a stagger for a knockback). Plays over whatever the body is doing, so the
 ## state does not change; ignored while dead.

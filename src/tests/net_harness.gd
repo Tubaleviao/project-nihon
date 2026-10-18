@@ -190,6 +190,7 @@ static func steps() -> Array:
 		{ "name": "fold_carries_creatures", "compare": true },
 		{ "name": "peer_attack_animated", "compare": true },
 		{ "name": "death_landing_synced", "compare": true },
+		{ "name": "gesture_synced", "compare": true },
 	]
 
 ## The step names, comma-joined — the payload of the `plan` line the runner prints
@@ -414,6 +415,7 @@ func run(root: Node, role: String) -> void:
 	await _step_fold_carries_creatures()
 	await _step_peer_attack_animated()
 	await _step_death_landing_synced()
+	await _step_gesture_synced()
 	_finish()
 
 ## End this process, with the run's own verdict carried in the exit code.
@@ -1796,6 +1798,37 @@ func _step_peer_attack_animated() -> void:
 	var base: int = loco.swing_serial
 	var got: bool = await _await_until(func(): return loco.swing_serial > base, _step_timeout())
 	_report("peer_attack_animated", verdict(got, true), "synced" if got else "no_swing")
+
+## Phase 159 — a gesture the host accepts for the bound peer is seen seated on that peer's client, and a
+## pose the host's own body holds reaches the peer as it (re)joins: the host re-runs its join handler,
+## which tells the joiner the poses held inside its AOI. SitGround stands in for `/sit` (no seat to read).
+func _step_gesture_synced() -> void:
+	if _role == "host":
+		var peers: PackedInt32Array = _root.multiplayer.get_peers()
+		var pid: String = _root._networking.get_player_id(peers[0]) if peers.size() > 0 else ""
+		if pid == "":
+			_report("gesture_synced", "fail", "no_connected_peer")
+			return
+		await _await_settle(1.0)
+		GameBus.gesture_intent.emit("SitGround", pid)
+		await _await_settle(2.0)
+		var peer_seated: bool = _root._gesture.held_id(pid) == "SitGround"
+		# The host sits too, then the client "joins afterwards": the join handler hands it the host's pose.
+		GameBus.gesture_intent.emit("SitGround", "")
+		await _await_settle(0.5)
+		_root._gesture_wiring._on_player_joined(peers[0], pid, true)
+		await _await_settle(6.0)   # the client reads both poses before this process (the last step) exits
+		_report("gesture_synced", verdict(peer_seated, true), "seated" if peer_seated else "host_refused")
+		return
+	var ch: Node = _root._character
+	var iid: String = ch.get_player_character()
+	if iid == "":
+		_report("gesture_synced", "fail", "client_has_no_avatar")
+		return
+	var loco = ch._instances[iid]["locomotion"]
+	var own: bool = await _await_until(func(): return loco.is_gesture_held() and loco.gesture_clip == "sit_ground", _step_timeout())
+	var late: bool = await _await_until(func(): return _root._gesture_wiring._remote_poses.get(1, "") == "SitGround", _step_timeout())
+	_report("gesture_synced", verdict(own and late, true), "seated" if own and late else ("own_missing" if not own else "late_join_missing"))
 
 ## Phase 157 — a creature the host kills lands where the HOST decided, and the client sees the same spot.
 ## The host announces the death with its own landing (the value `BattleSlice` computes in play); the client
