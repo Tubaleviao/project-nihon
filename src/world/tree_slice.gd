@@ -865,8 +865,10 @@ func _apply_pending_spots(chunk_pos: Vector2i) -> void:
 ## #367 — ChunkManager recorded `canon` after its trees spawned: apply its held
 ## spots now instead of at the chunk's next spawn.
 func on_chunk_recorded(canon: Vector2i) -> void:
-	if _spawned_chunks.has(canon):
-		_apply_pending_spots(canon)
+	# A chunk loaded across the seam is keyed by the position it was loaded at, not the canonical one.
+	for chunk: Vector2i in _spawned_chunks.keys():
+		if chunk == canon or TerrainSlice.wrap_chunk(chunk) == canon:
+			_apply_pending_spots(chunk)
 
 ## The held spots as saveable data: { "cx,cz": [[x, z, radius], ...] }.
 func pending_spots_to_data() -> Dictionary:

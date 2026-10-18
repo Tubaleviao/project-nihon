@@ -75,8 +75,10 @@ function shapeProblems(entities, materialNames) {
         problems.push(`${name}: made of "${rel.target}" (hasOne ${rel.name}) but no part uses it; add it to a part or to unshown`)
       }
     }
+    const related = new Set(Object.values(ent.relations || {}).filter(r => r.kind === 'hasOne').map(r => r.target))
     for (const mat of unshown) {
       if (drawn.has(mat)) problems.push(`${name}: unshown "${mat}" is drawn by a part`)
+      if (!related.has(mat)) problems.push(`${name}: unshown "${mat}" is not a material this item is made of`)
     }
   }
   return problems

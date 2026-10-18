@@ -38,13 +38,13 @@ const INVITE_TTL_SEC := 7.0 * DAY_SEC
 const MAX_INTENT_ENTRIES := 256
 const MAX_SETTLEMENTS := 512
 const MAX_QTY := 10000
-const ACTIONS := ["found", "invite", "join", "role", "leave", "deposit", "withdraw"]
+const ACTIONS := ["found", "invite", "join", "role", "leave", "deposit", "withdraw", "uninvite"]
 const ROLES := ["founder", "elder", "member", "guest"]
 
 ## Every refusal code an action can return.
 const REASONS := ["unknown_player", "rate_limited", "bad_args", "no_hearth", "already_member", "too_close",
 	"too_many", "not_member", "no_permission", "unknown_settlement", "not_invited", "full", "bad_role",
-	"founder_locked", "not_in_claim", "no_stock", "over_limit", "no_inventory", "too_far", "unknown_action", "durable"]
+	"founder_locked", "not_in_claim", "no_stock", "over_limit", "no_inventory", "too_far", "unknown_action", "durable", "no_such_invite"]
 
 const DEFAULT_RULES := {
 	"hearthStation": "hearth", "hearthItem": "Hearth", "guildMaxSettlements": 1,
@@ -328,7 +328,7 @@ func uninvite(actor: String, target: String) -> String:
 		return "no_permission"
 	var s: Dictionary = _settlements[id]
 	if not (s["invites"] as Dictionary).has(target):
-		return "not_invited"
+		return "no_such_invite"
 	(s["invites"] as Dictionary).erase(target)
 	GameBus.settlements_changed.emit()
 	return ""

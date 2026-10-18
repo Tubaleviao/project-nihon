@@ -118,7 +118,7 @@ func player_xz(player_id: String) -> Variant:
 		return SettlementSlice.xz_of_exact(root._player.get_world_pos())
 	var peer: int = root._registry.get_peer_id(player_id)
 	if peer != 0:
-		var pos: Dictionary = root._networking.get_last_known_exact(peer)
+		var pos: Dictionary = root._networking.get_expected_exact(peer)
 		if not pos.is_empty():
 			return SettlementSlice.xz_of_exact(pos)
 	return null
