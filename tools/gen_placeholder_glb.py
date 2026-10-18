@@ -23,6 +23,7 @@ The node layout is deliberately FLAT (every part a direct child of the "Body" ro
 `RigTree.build_tree` needs an `AnimationPlayer`, not a skeleton, and a flat tree is what
 the suite's AABB check reads without walking parent transforms.
 """
+import sys
 import json
 import math
 import re
@@ -657,7 +658,7 @@ SERPENT_CLIPS = [
     ("idle", [0.0, 1.0, 2.0], {"Head": [(0, 0, 0), (0, 10, 0), (0, 0, 0)]}),
     ("walk", [0.0, 0.25, 0.5, 0.75, 1.0], _slither(15)),
     ("run", [0.0, 0.15, 0.3, 0.45, 0.6], _slither(25)),
-    ("fall", [0.0, 0.4, 0.8], {"Spine_2": [(10, 0, 0), (25, 0, 0), (35, 0, 0)]}),
+    ("fall", [0.0, 0.4, 0.8], {"Spine_2": [(10, 0, 0), (35, 0, 0), (10, 0, 0)]}),
     ("land", [0.0, 0.12, 0.25], {"Spine_2": [(10, 0, 0), (5, 0, 0), (0, 0, 0)]}),
     ("attack", [0.0, 0.15, 0.3, 0.5], {"Neck": [(0, 0, 0), (-30, 0, 0), (25, 0, 0), (0, 0, 0)],
                                         "Head": [(0, 0, 0), (-20, 0, 0), (15, 0, 0), (0, 0, 0)]}),
@@ -677,7 +678,34 @@ def creature_rigs() -> dict:
     return rigs
 
 
+LOOP_CLIPS = ("idle", "walk", "run", "fall")
+
+
+def check_loops() -> list:
+    """Problems found in the loop clips of every placeholder rig: a looped clip must end where it
+    starts, for every joint, or it hitches at the seam. Empty when all close."""
+    problems = []
+    rigs = {"player": PLAYER_CLIPS, "wolf": WOLF_CLIPS, "bird": BIRD_CLIPS, "serpent": SERPENT_CLIPS}
+    for rig, clips in rigs.items():
+        for name, times, joints in clips:
+            if name not in LOOP_CLIPS:
+                continue
+            if len(times) < 2 or times[-1] <= times[0]:
+                problems.append(f"{rig}/{name}: key times {times} do not span a cycle")
+            for joint, keys in joints.items():
+                if len(keys) != len(times):
+                    problems.append(f"{rig}/{name}/{joint}: {len(keys)} keys for {len(times)} times")
+                elif tuple(keys[0]) != tuple(keys[-1]):
+                    problems.append(f"{rig}/{name}/{joint}: last key {keys[-1]} != first {keys[0]}")
+    return problems
+
+
 if __name__ == "__main__":
+    if "--check" in sys.argv:
+        found = check_loops()
+        for line in found:
+            print(line)
+        sys.exit(1 if found else 0)
     outputs = {OUT: build(), PLAYER_OUT: build_player_rig(), WOLF_OUT: build_wolf_rig(), **creature_rigs()}
     for path, data in outputs.items():
         path.parent.mkdir(parents=True, exist_ok=True)

@@ -39,6 +39,8 @@ const BOOT_TIMEOUT_SECS := 120.0
 const WATCHDOG_SLACK_SECS := 60.0 ## whole-run budget = boot + every step's timeout + this
 const STREAM_CHUNKS := 20
 const WALK_SECS := 3.0
+const WALK_FOOT_SECS := 2.0   ## the walk step samples the feet over the last this many seconds
+const WALK_FOOT_MIN := 0.3    ## each foot is ahead of the other at least this share of the samples
 const GATHER_SEARCH_CHUNKS := 30  ## forest chunks the gather step will hop to at most
 const GATHER_SEARCH_RADIUS := 60  ## chunk rings around the body it scans for forest
 const FIGHT_RANGE_M := 1.5
@@ -306,14 +308,52 @@ func _teleport_to(chunk: Vector2i, local: Vector3) -> Dictionary:
 func _player_pos() -> Vector3:
 	return _root._player.get_position()
 
-## Hold W for a few seconds: the body must move.
+## Hold W for a few seconds: the body must move, and each foot must spend a fair share of the
+## last WALK_FOOT_SECS in front of the other (a clip stuck on its last key keeps one foot ahead).
 func _step_walk() -> Array:
 	var start := _player_pos()
+	var rig := _player_rig()
+	var skeleton: Skeleton3D = null
+	if rig != null:
+		skeleton = _first_skeleton(rig)
+	var foot_l := skeleton.find_bone("Foot_L") if skeleton != null else -1
+	var foot_r := skeleton.find_bone("Foot_R") if skeleton != null else -1
+	var samples: Array = []  # [left, right] foot positions in world space, per frame
 	_key(KEY_W, true)
-	await _until(func(): return false, WALK_SECS)
+	var t0 := Time.get_ticks_msec()
+	while float(Time.get_ticks_msec() - t0) / 1000.0 < WALK_SECS:
+		await get_tree().process_frame
+		if foot_l >= 0 and foot_r >= 0 and float(Time.get_ticks_msec() - t0) / 1000.0 >= WALK_SECS - WALK_FOOT_SECS:
+			samples.append([skeleton.to_global(skeleton.get_bone_global_pose(foot_l).origin),
+				skeleton.to_global(skeleton.get_bone_global_pose(foot_r).origin)])
 	_key(KEY_W, false)
-	var moved := Vector2(_player_pos().x - start.x, _player_pos().z - start.z).length()
-	return [moved > 1.0, "moved %.1f m" % moved]
+	var delta := Vector2(_player_pos().x - start.x, _player_pos().z - start.z)
+	var moved := delta.length()
+	var note := "moved %.1f m" % moved
+	var ok := moved > 1.0
+	if samples.size() >= 10 and moved > 1.0:
+		var dir := delta.normalized()
+		var left_ahead := 0
+		for pair in samples:
+			var l: Vector3 = pair[0]
+			var r: Vector3 = pair[1]
+			if Vector2(l.x - r.x, l.z - r.z).dot(dir) > 0.0:
+				left_ahead += 1
+		var frac := float(left_ahead) / float(samples.size())
+		note += ", left foot ahead %.0f%% of %d frames" % [frac * 100.0, samples.size()]
+		ok = ok and frac >= WALK_FOOT_MIN and frac <= 1.0 - WALK_FOOT_MIN
+	else:
+		note += ", no rig feet sampled"
+	return [ok, note]
+
+func _player_rig() -> Node:
+	var inst: Dictionary = _root._character._instances.get(_root._character.get_player_character(), {})
+	var rig: Variant = inst.get("rig_node", null)
+	return rig if rig is Node and is_instance_valid(rig) else null
+
+func _first_skeleton(n: Node) -> Skeleton3D:
+	var found := n.find_children("*", "Skeleton3D", true, false)
+	return found[0] as Skeleton3D if not found.is_empty() else null
 
 ## Hop 20 chunks east, waiting for the chunk under the body at every hop.
 func _step_stream() -> Array:

@@ -27,7 +27,7 @@ const RUN_SPEED := 3.0
 ## Seconds an attack pose holds before returning to the locomotion state.
 const ATTACK_DURATION := 0.5
 ## Seconds the landing pose holds before returning to the locomotion state.
-const LAND_DURATION := 0.25
+const LAND_DURATION := 0.18
 ## Seconds a body must be airborne and moving down before it reads as falling. Walking
 ## off a block drops the body for a fraction of a second; that is a step, not a fall, so
 ## the walk/run pose holds through it instead of flashing FALL and then LAND.
@@ -40,6 +40,8 @@ var _state: int = State.IDLE
 var _timer: float = 0.0
 var _speed: float = 0.0
 var _airborne: float = 0.0
+## Attack hold time: the attack clip's length once a rig is attached, `ATTACK_DURATION` before.
+var attack_duration: float = ATTACK_DURATION
 
 ## Advance the machine one tick. `speed` is horizontal speed (m/s), `grounded`
 ## whether the body is on the floor, `velocity_y` the vertical velocity (m/s,
@@ -101,7 +103,7 @@ func trigger_attack() -> void:
 	if _state == State.DEATH:
 		return
 	_set_state(State.ATTACK)
-	_timer = ATTACK_DURATION
+	_timer = attack_duration
 
 ## Request the death pose. Terminal until reset().
 func trigger_death() -> void:
@@ -113,6 +115,9 @@ func reset() -> void:
 	_set_state(State.IDLE)
 	_timer = 0.0
 	_airborne = 0.0
+
+func get_speed() -> float:
+	return _speed
 
 func get_state() -> int:
 	return _state

@@ -251,7 +251,7 @@ func _update_model(iid: String, inst: Dictionary, delta: float) -> void:
 		flat = Vector3.ZERO
 	elif delta > 0.0:
 		var inst_speed := flat.length() / delta
-		m["speed"] = lerpf(float(m["speed"]), inst_speed, minf(1.0, delta * 8.0))
+		m["speed"] = lerpf(float(m["speed"]), inst_speed, minf(1.0, delta * 14.0))
 	m["last_pos"] = pos
 	if flat.length() > 0.0 and float(m["speed"]) >= FACE_SPEED and state != "dead":
 		m["yaw"] = yaw_for_direction(flat.normalized())
@@ -270,10 +270,8 @@ func _update_model(iid: String, inst: Dictionary, delta: float) -> void:
 	var tree: AnimationTree = m["tree"]
 	if s != int(m["loco"]):
 		m["loco"] = s
-		var playback = tree.get(RigTree.PLAYBACK_PARAM)
-		if playback != null:
-			playback.travel(RigTree.node_for_state(s))
-	tree.set(RigTree.BLEND_PARAM, blend_for_speed(float(m["speed"])))
+		RigTree.travel_once(tree, tree.get(RigTree.PLAYBACK_PARAM), RigTree.node_for_state(s))
+	RigTree.apply_motion(tree, float(m["speed"]), blend_for_speed(float(m["speed"])))
 
 
 ## The packed rig and material for a creature type, built once. Null (with one warning per type)
@@ -295,11 +293,8 @@ func _template(cid: String) -> Variant:
 		root.free()
 		_warn_type(cid, "model %s has no AnimationPlayer" % key)
 		return null
-	# Death plays once and holds its last pose; the clip resource is shared by every instance.
-	for lib_name in player.get_animation_library_list():
-		var lib := player.get_animation_library(lib_name)
-		if lib.has_animation("death"):
-			lib.get_animation("death").loop_mode = Animation.LOOP_NONE
+	# Loop modes (death plays once and holds its last pose); the clip resources are shared by every instance.
+	RigTree.prepare_library(player)
 	var scene := PackedScene.new()
 	var err := scene.pack(root)
 	root.free()
