@@ -14,7 +14,6 @@ func _connect_all() -> void:
 ## saves and ticks.
 func tick_world_clock(delta: float) -> void:
 	root._clock.advance(delta)
-	root._settlement_wiring.tick(delta)
 	if not root._is_client:
 		root._weather.tick()
 		root._status_tick_elapsed += delta

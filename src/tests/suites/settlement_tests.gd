@@ -17,6 +17,11 @@ func register() -> void:
 	_run_test("settlement: a hearth at x ~ 2e7 keeps its exact position through save and load", _test_phase147_hearth_exact)
 	_run_test("settlement: edit_blocker is a pure query, note_edit records the edit", _test_phase147_edit_blocker_pure)
 	_run_test("settlement: a remote member's mine counts as claim activity", _test_remote_edit_is_activity)
+	_run_test("settlement: invites lapse and can be withdrawn", _test_invite_lapse_uninvite)
+	_run_test("settlement: a decayed claim frees its hearth station", _test_decay_frees_hearth)
+	_run_test("settlement: the rate limit is monotonic and forgets a player who left", _test_rate_limit_monotonic)
+	_run_test("settlement: an outsider's chop inside a claim is refused", _test_chop_claim_guard)
+	_run_test("settlement: the panel keeps its Join buttons while the invites are unchanged", _test_panel_invites_kept)
 	_run_test("settlement: loading keeps ids unique and defaults last_active to now", _test_phase147_from_data)
 	_run_test("settlement: a decaying claim announces its shrinking radius", _test_phase147_decay_push)
 	_run_test("settlement: claims count toward colonization", _test_settlement_colonization)
@@ -35,6 +40,7 @@ func _rig() -> Dictionary:
 	add_child(s)
 	var now := [1000000.0]
 	s.now_sec = func() -> float: return now[0]
+	s.mono_sec = func() -> float: return now[0]
 	var where := { "p1": Vector2(10.0, 10.0), "p2": Vector2(12.0, 10.0), "p3": Vector2(900.0, 900.0) }
 	s.position_of = func(pid: String) -> Variant: return where.get(pid, null)
 	return { "reg": reg, "s": s, "now": now, "where": where }
@@ -491,4 +497,99 @@ func _test_remote_edit_is_activity() -> void:
 	assert_true(bool(v.mine_block(Vector3(10.5, 2.0, 10.5), Vector3.UP, "p1")["success"]), "the remote founder mines")
 	assert_eq(float(s._settlements["settlement_1"]["last_active"]), t0 + 500.0, "the remote founder's edit touches the claim")
 	v.free()
+	_free_rig(rig)
+
+func _test_invite_lapse_uninvite() -> void:
+	var rig := _rig()
+	var s: SettlementSlice = rig["s"]
+	_found(rig)
+	assert_eq(s.invite("p1", "p2"), "", "p1 invites p2")
+	assert_eq(s.uninvite("p2", "p3"), "not_member", "an outsider withdraws nothing")
+	assert_eq(s.uninvite("p1", "p3"), "not_invited", "nor is an invite that was never made withdrawn")
+	assert_eq(s.uninvite("p1", "p2"), "", "the founder withdraws the invite")
+	assert_eq(s.join("p2", "settlement_1"), "not_invited", "a withdrawn invite cannot be accepted")
+	assert_eq(s.invite("p1", "p2"), "", "invited again")
+	rig["now"][0] += SettlementSlice.INVITE_TTL_SEC + 1.0
+	assert_eq(s.join("p2", "settlement_1"), "not_invited", "an invite past its lifetime lapses")
+	assert_eq(s.invite("p1", "p3"), "", "p3 is invited")
+	rig["now"][0] += SettlementSlice.INVITE_TTL_SEC + 1.0
+	s.tick(rig["now"][0])
+	assert_true((s._settlements["settlement_1"]["invites"] as Dictionary).is_empty(), "the tick sweeps lapsed invites, so they cannot fill the list")
+	var saved: Dictionary = s.to_data()
+	(saved["settlements"]["settlement_1"]["invites"] as Dictionary)["p3"] = true   # a pre-expiry record
+	s.from_data(saved)
+	assert_eq(s.join("p3", "settlement_1"), "", "a legacy invite loads with a fresh clock")
+	_free_rig(rig)
+
+func _test_decay_frees_hearth() -> void:
+	var rig := _rig()
+	var s: SettlementSlice = rig["s"]
+	_found(rig)
+	s.note_hearth_station("settlement_1", "station_7")
+	var released: Array = []
+	s.release_station = func(sid: String) -> void: released.append(sid)
+	var round_trip: Dictionary = s.to_data()
+	s.from_data(round_trip)
+	s.release_station = func(sid: String) -> void: released.append(sid)
+	assert_eq(str(s._settlements["settlement_1"].get("hearth_station", "")), "station_7", "the hearth station id survives a save")
+	var r: Dictionary = s.rules()
+	rig["now"][0] += float(r["abandonAfterDays"]) * SettlementSlice.DAY_SEC + 1.0
+	s.tick(rig["now"][0])
+	assert_eq(released, [], "abandoned but still decaying: the hearth stands")
+	rig["now"][0] += 1000.0 * SettlementSlice.DAY_SEC
+	s.tick(rig["now"][0])
+	assert_false(s._settlements.has("settlement_1"), "the claim decayed away")
+	assert_eq(released, ["station_7"], "and its hearth station was released with it")
+	_free_rig(rig)
+
+func _test_rate_limit_monotonic() -> void:
+	var rig := _rig()
+	var s: SettlementSlice = rig["s"]
+	var mono := [50.0]
+	s.mono_sec = func() -> float: return mono[0]
+	assert_eq(s._resolve("dance", {}, "p1"), "unknown_action", "the first intent passes the limiter")
+	rig["now"][0] -= 3600.0   # the wall clock jumps back an hour
+	mono[0] += SettlementSlice.INTENT_INTERVAL + 0.01
+	assert_eq(s._resolve("dance", {}, "p1"), "unknown_action", "a wall-clock jump does not lock the player out")
+	assert_eq(s._resolve("dance", {}, "p1"), "rate_limited", "while the monotonic clock still limits")
+	GameBus.player_left.emit("p1")
+	assert_false(s._last_intent.has("p1"), "a player who left is forgotten")
+	for i in SettlementSlice.MAX_INTENT_ENTRIES + 10:
+		s._last_intent["ghost_%d" % i] = 0.0
+	mono[0] += 1.0
+	s._resolve("dance", {}, "p2")
+	assert_true(s._last_intent.size() < SettlementSlice.MAX_INTENT_ENTRIES, "old entries are swept past the bound")
+	_free_rig(rig)
+
+func _test_chop_claim_guard() -> void:
+	var rig := _rig()
+	var s: SettlementSlice = rig["s"]
+	_found(rig)
+	var t := _make_tree_slice()
+	t.claim_guard = Callable(s, "edit_blocker")
+	t._spawn("Oak", "Wood", Vector2i(0, 0), 0)
+	var tid: String = t._trees.keys()[0]
+	t._trees[tid]["position"] = Vector3(12.0, 0.0, 10.0)
+	assert_eq(str(t.chop_tree(tid, "p2")["reason"]), "claimed", "an outsider cannot chop inside the claim")
+	assert_eq(str(t._trees[tid]["state"]), "standing", "and the tree stands")
+	assert_true(str(t.chop_tree(tid, "p1")["reason"]) != "claimed", "the founder is not refused by the claim")
+	t.free()
+	_free_rig(rig)
+
+func _test_panel_invites_kept() -> void:
+	var rig := _rig()
+	var s: SettlementSlice = rig["s"]
+	var panel = load("res://src/ui/settlement_panel.gd").new()
+	panel.settlement_slice = s
+	var invites := [{ "id": "settlement_1", "name": "Oak", "name_n": 1 }]
+	panel._render_invites(invites)
+	var first: Node = panel._invites.get_child(0)
+	panel._render_invites(invites.duplicate(true))
+	assert_eq(panel._invites.get_child_count(), 1, "one Join button")
+	assert_true(panel._invites.get_child(0) == first, "an unchanged refresh keeps the same button")
+	panel._render_invites([])
+	assert_eq(panel._invites.get_child_count(), 0, "a changed list rebuilds")
+	panel.free()
+	if is_instance_valid(first):
+		first.free()
 	_free_rig(rig)

@@ -25,6 +25,7 @@ func make_slice(ctx: GameRoot) -> Node:
 	if not root._is_client:
 		root._voxel.claim_activity = slice.note_edit
 	root._station.claim_guard = slice.edit_blocker
+	slice.release_station = root._station.remove_station
 	root._tree.claim_guard = slice.edit_blocker
 	root._station.settlement_slice = slice
 	root._technology.settlement_slice = slice
@@ -66,6 +67,8 @@ func _on_station_placed(station_id: String, type: String, position: Vector3) -> 
 	var why: String = root._settlements.found(pid, "", Vector2(position.x, position.z), false, exact, true)
 	if why != "" and root._station != null:
 		root._station.remove_station(station_id)
+	elif why == "":
+		root._settlements.note_hearth_station(root._settlements.settlement_of(pid), station_id)
 
 ## Tell the actor's peer how its intent went; the local player reads the bus directly.
 func _on_resolved(player_id: String, action: String, ok: bool, reason: String) -> void:

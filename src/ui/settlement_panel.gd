@@ -33,6 +33,7 @@ func _init() -> void:
 	_button("settlement.found", func() -> void: _send("found", { "name": _name_edit.text }))
 	_target_edit = _line("settlement.player_ph")
 	_button("settlement.invite", func() -> void: _send("invite", { "target": _target_edit.text }))
+	_button("settlement.uninvite", func() -> void: _send("uninvite", { "target": _target_edit.text }))
 	_role_pick = OptionButton.new()
 	for role: String in ["elder", "member", "guest"]:
 		_role_pick.add_item(I18n.t("settlement.role." + role))
@@ -128,8 +129,16 @@ func refresh() -> void:
 		items.append("%s ×%d" % [item, int(mine["stock"][item])])
 	_stock.text = I18n.t("settlement.stock", [int(mine.get("used", 0)), int(mine.get("capacity", 0)), ", ".join(items)])
 
+## What the invite buttons were last built from (the invites and the locale): a refresh that changes
+## neither keeps the buttons instead of rebuilding them.
+var _invites_key := ""
+
 ## One "Join" button per pending invite (empty once the player belongs to a settlement).
 func _render_invites(invites: Array) -> void:
+	var key := "%s|%s" % [TranslationServer.get_locale(), JSON.stringify(invites)]
+	if key == _invites_key:
+		return
+	_invites_key = key
 	for c: Node in _invites.get_children():
 		_invites.remove_child(c)
 		c.queue_free()

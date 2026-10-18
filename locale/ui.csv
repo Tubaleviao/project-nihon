@@ -206,6 +206,7 @@ settlement.item_ph,Item,Item
 settlement.qty_ph,Quantity,Quantidade
 settlement.found,Found here (needs a Hearth),Fundar aqui (exige uma Lareira)
 settlement.invite,Invite,Convidar
+settlement.uninvite,Withdraw invite,Retirar convite
 settlement.set_role,Set role,Definir papel
 settlement.leave,Leave,Sair
 settlement.deposit,Deposit,Depositar
@@ -224,6 +225,7 @@ settlement.tier.town,town,vila
 settlement.tier.abandoned,abandoned,abandonado
 settlement.ok.found,Settlement founded.,Assentamento fundado.
 settlement.ok.invite,Invitation sent.,Convite enviado.
+settlement.ok.uninvite,Invitation withdrawn.,Convite retirado.
 settlement.ok.join,You joined the settlement.,Você entrou no assentamento.
 settlement.ok.role,Role changed.,Papel alterado.
 settlement.ok.leave,You left the settlement.,Você saiu do assentamento.

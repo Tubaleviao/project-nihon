@@ -32,6 +32,10 @@ const STACK_SIZE := 100
 const INTENT_INTERVAL := 0.25
 const MAX_NAME := 32
 const MAX_MEMBERS := 64
+## An invite nobody accepted lapses after this long, so stale invites cannot fill the list for good.
+const INVITE_TTL_SEC := 7.0 * DAY_SEC
+## `_last_intent` entries are swept once it holds more than this many players.
+const MAX_INTENT_ENTRIES := 256
 const MAX_SETTLEMENTS := 512
 const MAX_QTY := 10000
 const ACTIONS := ["found", "invite", "join", "role", "leave", "deposit", "withdraw"]
@@ -63,11 +67,16 @@ const TIER_ORDER := ["founded", "growing", "town"]
 ## Set by game_root.
 var registry: Node = null
 var now_sec: Callable = func() -> float: return Time.get_unix_time_from_system()
+## Monotonic seconds for the intent rate limit (a wall-clock jump must not lock or free a player).
+var mono_sec: Callable = func() -> float: return Time.get_ticks_msec() / 1000.0
+## `(station_id) -> void`, set by the wiring: a decayed settlement's hearth station goes with it.
+var release_station: Callable = Callable()
 ## Test seam: `(player_id) -> Variant` the player's ground position as a `Vector2` of metres, or null.
 var position_of: Callable = Callable()
 
 ## id -> { id, name, founder, members {pid: role}, invites {pid: true}, created, last_active, hx, hz,
-##         status, abandoned_at, stock {item: n}, taken {pid: {day, n}} }
+##         status, abandoned_at, stock {item: n}, taken {pid: {day, n}}, hearth_station }
+## `invites` maps an invited player to the `now_sec` the invite was made (it lapses after INVITE_TTL_SEC).
 var _settlements: Dictionary = {}
 var _next_id: int = 1
 ## The next default-name number. Monotonic: it never falls when a settlement decays, so no two repeat.
@@ -80,16 +89,30 @@ var _view: Dictionary = {}
 
 func _ready() -> void:
 	GameBus.settlement_intent.connect(_on_intent)
+	GameBus.player_left.connect(forget_player)
+
+## A player left: their rate-limit entry goes with them.
+func forget_player(player_id: String) -> void:
+	_last_intent.erase(player_id)
 
 # ── rules ────────────────────────────────────────────────────────────────
 
+## The merged rule table, built once per fabric resource (claim_at and placement checks call this hot).
+## Callers must not mutate it.
+var _rules_cache: Dictionary = {}
+var _rules_source: Resource = null
+
 func rules() -> Dictionary:
-	var out: Dictionary = DEFAULT_RULES.duplicate(true)
 	var res: Resource = GameData.WORLD_SYSTEMS.get("Settlement", null)
+	if not _rules_cache.is_empty() and res == _rules_source:
+		return _rules_cache
+	var out: Dictionary = DEFAULT_RULES.duplicate(true)
 	if res != null:
 		var r: Variant = res.get("rules")
 		if r is Dictionary:
 			out.merge(r, true)
+	_rules_cache = out
+	_rules_source = res
 	return out
 
 func role_rules(role: String) -> Dictionary:
@@ -283,11 +306,42 @@ func invite(actor: String, target: String) -> String:
 	var s: Dictionary = _settlements[id]
 	if (s["members"] as Dictionary).has(target):
 		return "already_member"
+	_lapse_invites(s, float(now_sec.call()))
 	if (s["invites"] as Dictionary).size() >= MAX_MEMBERS:
 		return "full"
-	s["invites"][target] = true
+	s["invites"][target] = float(now_sec.call())
 	GameBus.settlements_changed.emit()
 	return ""
+
+## The station that is `id`'s hearth, released with it when the settlement decays away.
+func note_hearth_station(id: String, station_id: String) -> void:
+	if _settlements.has(id):
+		_settlements[id]["hearth_station"] = station_id
+
+## Withdraw `target`'s invite to the actor's settlement (anyone who may invite may withdraw one).
+func uninvite(actor: String, target: String) -> String:
+	var pid := _pid(actor)
+	var id := settlement_of(pid)
+	if id == "":
+		return "not_member"
+	if not bool(role_rules(role_of(pid, id))["invite"]):
+		return "no_permission"
+	var s: Dictionary = _settlements[id]
+	if not (s["invites"] as Dictionary).has(target):
+		return "not_invited"
+	(s["invites"] as Dictionary).erase(target)
+	GameBus.settlements_changed.emit()
+	return ""
+
+## Drop the invites of `s` older than INVITE_TTL_SEC. True when one lapsed.
+func _lapse_invites(s: Dictionary, now: float) -> bool:
+	var inv: Dictionary = s["invites"]
+	var lapsed := false
+	for p: String in inv.keys():
+		if now - float(inv[p]) >= INVITE_TTL_SEC:
+			inv.erase(p)
+			lapsed = true
+	return lapsed
 
 ## A player accepts an invite: they join as a `member`.
 func join(player_id: String, id: String) -> String:
@@ -297,6 +351,7 @@ func join(player_id: String, id: String) -> String:
 	if settlement_of(pid) != "":
 		return "already_member"
 	var s: Dictionary = _settlements[id]
+	_lapse_invites(s, float(now_sec.call()))
 	if not (s["invites"] as Dictionary).has(pid):
 		return "not_invited"
 	if (s["members"] as Dictionary).size() >= MAX_MEMBERS:
@@ -508,11 +563,17 @@ func tick(now: float) -> bool:
 	for id: String in ids():
 		var s: Dictionary = _settlements[id]
 		var status := str(s["status"])
+		if _lapse_invites(s, now):
+			changed = true
 		if status == "abandoned":
 			var radius := claim_radius(id)
 			if radius <= 0.0:
 				_settlements.erase(id)   # the land is free again
 				_radius_pushed.erase(id)
+				# Its hearth goes too, or a station would stand on free land owned by nobody.
+				var hearth_id := str(s.get("hearth_station", ""))
+				if hearth_id != "" and release_station.is_valid():
+					release_station.call(hearth_id)
 				changed = true
 			elif int(radius) != int(_radius_pushed.get(id, radius)):
 				changed = true   # the decaying claim shrank a whole metre: clients redraw it
@@ -548,10 +609,14 @@ func is_authoritative() -> bool:
 func _resolve(action: String, args: Dictionary, pid: String) -> String:
 	if pid == "":
 		return "unknown_player"
-	var now := float(now_sec.call())
+	var now := float(mono_sec.call())
 	if now - float(_last_intent.get(pid, -1.0e12)) < INTENT_INTERVAL:
 		return "rate_limited"
 	_last_intent[pid] = now
+	if _last_intent.size() > MAX_INTENT_ENTRIES:
+		for k: String in _last_intent.keys():
+			if now - float(_last_intent[k]) >= INTENT_INTERVAL:
+				_last_intent.erase(k)
 	match action:
 		"found":
 			var xz: Variant = _player_xz(pid)
@@ -560,6 +625,8 @@ func _resolve(action: String, args: Dictionary, pid: String) -> String:
 			return found(pid, str(args.get("name", "")), xz as Vector2, true)
 		"invite":
 			return invite(pid, str(args.get("target", "")))
+		"uninvite":
+			return uninvite(pid, str(args.get("target", "")).left(64))
 		"join":
 			return join(pid, str(args.get("id", "")).left(64))
 		"role":
@@ -616,8 +683,10 @@ func from_data(data: Variant) -> void:
 		var invites := {}
 		if s.get("invites", null) is Dictionary:
 			for p: Variant in (s["invites"] as Dictionary).keys():
+				var at: Variant = s["invites"][p]
 				if invites.size() < MAX_MEMBERS:
-					invites[str(p).left(64)] = true
+					# A legacy `true` (no time) starts its lapse clock at load.
+					invites[str(p).left(64)] = float(at) if (at is float or at is int) and is_finite(float(at)) else float(now_sec.call())
 		var taken := {}
 		if s.get("taken", null) is Dictionary:
 			for p: Variant in (s["taken"] as Dictionary).keys():
@@ -636,6 +705,8 @@ func from_data(data: Variant) -> void:
 		}
 		if WorldPos.pos_from_wire(s.get("hearth", null)).size() > 0:
 			_settlements[str(id).left(64)]["hearth"] = (s["hearth"] as Dictionary).duplicate(true)
+		if s.get("hearth_station", null) is String:
+			_settlements[str(id).left(64)]["hearth_station"] = str(s["hearth_station"]).left(64)
 		_next_name = maxi(_next_name, int(_settlements[str(id).left(64)]["name_n"]) + 1)
 		var suffix := str(id).trim_prefix("settlement_")
 		if suffix.is_valid_int():
