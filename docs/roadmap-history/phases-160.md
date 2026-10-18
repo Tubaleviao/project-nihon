@@ -63,8 +63,12 @@ CLAUDE.md).
   `HarvestRules.carryBonusPerSkinningLevelKg` per Skinning level. No pack-frame item yet.
 - Each creature has a `carryRule`: `carry` (within the base capacity), `drag` (up to capacity times
   `dragCapacityFactor`) or `immovable`; `validate` checks the mass fits the rule.
-- `SkinningKnife` and `BoneSaw` reuse the `sword` archetype at a smaller scale and are unlocked by
+- `SkinningKnife` and `BoneSaw` use new `knife` and `saw` item-shape archetypes and are unlocked by
   `TechBasicSmithing`.
+- Resource quality is the `Skinning.qualityCurve` table only; the per-instance grade field belongs to
+  the runtime item stack and is added in Phase 161.
+- Creature `corpseSeconds` also drives `CreatureVisuals.corpse_seconds()`, so dead models now stay 3-10
+  minutes instead of 8 s (that function was written to read the fabric value).
 - `node tools/check_harvest.js` (CI) proves the validator rejects a bad tool, a missing carcass mass,
   and tables that skip or fall with a level.
 

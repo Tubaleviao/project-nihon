@@ -105,7 +105,8 @@ function harvestProblems(data) {
   if (Array.isArray(s.yieldCurve) && s.yieldCurve.length === n && (s.yieldCurve[0] !== 0 || s.yieldCurve[s.levelCap] !== 1)) {
     problems.push('Skinning.yieldCurve must run from 0 at level 0 to 1 at the cap')
   }
-  if (Array.isArray(s.chanceCurve) && s.chanceCurve.some((c) => c < 0)) problems.push('Skinning.chanceCurve must not be negative')
+  if (Array.isArray(s.chanceCurve) && s.chanceCurve.some((c) => !(c >= 0 && c <= 1))) problems.push('Skinning.chanceCurve entries must be in [0, 1]')
+  if (Array.isArray(s.xpToLevel) && s.xpToLevel[0] !== 0) problems.push('Skinning.xpToLevel must start at 0 for level 0')
   if (!(s.xpPerHarvest > 0)) problems.push('Skinning.xpPerHarvest must be > 0')
 
   if (!(r.carrySlowAboveFraction > 0 && r.carrySlowAboveFraction <= 1)) problems.push('carrySlowAboveFraction must be in (0, 1]')
@@ -123,6 +124,7 @@ function harvestProblems(data) {
     if (!CARRY_RULES.includes(c.carryRule)) problems.push(`${name}: carryRule must be one of ${CARRY_RULES.join(', ')}, got "${c.carryRule}"`)
     else if (typeof c.carcassMassKg === 'number') {
       if (c.carryRule === 'carry' && c.carcassMassKg > baseCapacityKg) problems.push(`${name}: carryRule carry but ${c.carcassMassKg} kg exceeds the base capacity ${baseCapacityKg} kg`)
+      if (c.carryRule === 'drag' && c.carcassMassKg <= baseCapacityKg) problems.push(`${name}: carryRule drag but ${c.carcassMassKg} kg fits the base capacity ${baseCapacityKg} kg (use carry)`)
       if (c.carryRule === 'drag' && c.carcassMassKg > baseCapacityKg * r.dragCapacityFactor) problems.push(`${name}: carryRule drag but ${c.carcassMassKg} kg exceeds ${baseCapacityKg * r.dragCapacityFactor} kg`)
     }
     if (!Array.isArray(c.drops) || c.drops.length === 0) { problems.push(`${name}: creature has no harvest entries`); continue }

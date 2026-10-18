@@ -21,7 +21,6 @@ Short ferrite blade on a thornwood grip, ground for pelts and meat. Takes hide, 
 | stackable | boolean | Whether multiple instances stack in inventory |
 | shape | json | Item shape: archetype, material per named part, and uniform scale (Phase 151) |
 | durability | integer | Remaining durability points before condition degrades |
-| toolType | string | Tool class — the action this tool performs. "pick" mines, "axe" chops. |
 | harvestTool | string | Harvest tool category this item provides (Phase 160): knife or bonetool |
 | efficiency | decimal | How well it works that category, in (0, 1]; below 1.0 is a poor substitute |
 | repair | json | Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier). |

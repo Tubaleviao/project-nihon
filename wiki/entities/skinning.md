@@ -17,7 +17,7 @@ Working a creature body with a knife or bone tool. A higher level takes more fro
 | ----- | ---- | ----------- |
 | tier | `novice`, `apprentice`, `journeyman`, `expert`, `master` |  |
 | xpCurve | `linear`, `quadratic`, `exponential` | XP required per tier |
-| maxLevel | integer | Maximum XP level within a tier before tier advance is required |
+| maxLevel | integer | Maximum XP level within a tier before tier advance is required; the same as levelCap |
 | category | `combat`, `crafting`, `magic`, `exploration`, `social`, `survival` | Skill domain: survival |
 | levelCap | integer | Highest Skinning level; the tables below have one entry per level 0..levelCap |
 | xpPerHarvest | integer | Skinning XP a finished harvest grants |

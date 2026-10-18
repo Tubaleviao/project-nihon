@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:a262a08eb91188b617deced567bdd81a54508959c7f052c4865b2d59612f89cc",
+  "schemaHash": "sha256:f854dc7402f8215d589ed8246f53698772621e68bb12118571c994a5b4dd088e",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -10559,10 +10559,11 @@
           "maxLevel": {
             "name": "maxLevel",
             "type": "integer",
-            "description": "Maximum XP level within a tier before tier advance is required",
+            "description": "Maximum XP level within a tier before tier advance is required; the same as levelCap",
             "nullable": false,
             "primaryKey": false,
-            "pii": false
+            "pii": false,
+            "defaultValue": 10
           },
           "category": {
             "name": "category",
@@ -12578,15 +12579,6 @@
             "pii": false,
             "defaultValue": 60
           },
-          "toolType": {
-            "name": "toolType",
-            "type": "string",
-            "description": "Tool class — the action this tool performs. \"pick\" mines, \"axe\" chops.",
-            "nullable": false,
-            "primaryKey": false,
-            "pii": false,
-            "defaultValue": "knife"
-          },
           "harvestTool": {
             "name": "harvestTool",
             "type": "string",
@@ -12837,15 +12829,6 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 70
-          },
-          "toolType": {
-            "name": "toolType",
-            "type": "string",
-            "description": "Tool class — the action this tool performs. \"pick\" mines, \"axe\" chops.",
-            "nullable": false,
-            "primaryKey": false,
-            "pii": false,
-            "defaultValue": "bonetool"
           },
           "harvestTool": {
             "name": "harvestTool",
