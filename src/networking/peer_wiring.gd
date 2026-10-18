@@ -11,6 +11,13 @@ const PlayerRegistry   := preload("res://src/persistence/player_registry.gd")
 const PlayerSlice      := preload("res://src/player/player_slice.gd")
 const SpawnFinder      := preload("res://src/world/spawn_finder.gd")
 
+## Phase 66 — client: the other players inside our AOI, as character instances.
+## { peer_id: instance_id }. A peer's replicated gear lands on its instance (bound through
+## `bind_peer_character`), so what the host sends is applied to something visible. An
+## instance lives while the peer is inside AOI: leaving it (`peer_equipment_evicted`) or
+## disconnecting frees the body, and re-entry builds a fresh one the host's resend dresses.
+var _remote_avatars: Dictionary = {}
+
 func _connect_all() -> void:
 	if root.is_inside_tree():
 		connect_bus(root.multiplayer.connection_failed, _on_connection_failed)
@@ -266,13 +273,13 @@ func player_targets() -> Dictionary:
 func _on_remote_avatar_state(peer_id: int, position: Vector3) -> void:
 	if not root._is_client or peer_id == root.multiplayer.get_unique_id():
 		return
-	var iid: String = str(root._remote_avatars.get(peer_id, ""))
+	var iid: String = str(_remote_avatars.get(peer_id, ""))
 	if iid != "" and root._character.set_character_position(iid, position):
 		return
 	iid = root._character.create_character("TravellerHuman", position)
 	if iid == "":
 		return
-	root._remote_avatars[peer_id] = iid
+	_remote_avatars[peer_id] = iid
 	root._character.bind_peer_character(peer_id, iid)
 	# The avatar IS this peer now; the PlayerSlice capsule ghost would draw it a second time.
 	root._player.set_ghost_suppressed(peer_id, true)
@@ -280,18 +287,18 @@ func _on_remote_avatar_state(peer_id: int, position: Vector3) -> void:
 ## A peer with nothing worn is never sent an evict, so a body that has drifted out of range
 ## is dropped here as well (the host stops reporting its state once it leaves our AOI).
 func prune_remote_avatars() -> void:
-	if root._remote_avatars.is_empty() or root._player == null:
+	if _remote_avatars.is_empty() or root._player == null:
 		return
 	var here: Vector3 = root._player.get_position()
-	for peer_id in root._remote_avatars.keys():
-		var at: Variant = root._character.get_character_position(str(root._remote_avatars[peer_id]))
+	for peer_id in _remote_avatars.keys():
+		var at: Variant = root._character.get_character_position(str(_remote_avatars[peer_id]))
 		if at is Vector3 and (at as Vector3).distance_to(here) > root.REMOTE_AVATAR_PRUNE_RADIUS:
 			_remove_remote_avatar(int(peer_id))
 
 func _remove_remote_avatar(peer_id: int) -> void:
-	if root._remote_avatars.has(peer_id):
-		root._character.remove_character(str(root._remote_avatars[peer_id]))
-		root._remote_avatars.erase(peer_id)
+	if _remote_avatars.has(peer_id):
+		root._character.remove_character(str(_remote_avatars[peer_id]))
+		_remote_avatars.erase(peer_id)
 		root._player.set_ghost_suppressed(peer_id, false)
 
 func on_remote_player_state(peer_id: int, position: Vector3) -> void:
@@ -494,6 +501,8 @@ func _on_server_disconnected() -> void:
 		return
 	Diag.error("[Networking] disconnected from host")
 	root._snapshot_pending = false
+	if root._creature != null:
+		root._creature.reset_fold_log()
 
 ## Host → the peer whose own record just changed. Nothing to do for a local player
 ## (its state is already live in this process) and nothing to send for a failed
@@ -551,12 +560,7 @@ func on_own_state_synced(data: Dictionary) -> void:
 		}, root._registry.local_player_id)
 	if data.has("professions"):
 		root._professions.apply_record({ "professions": data["professions"] }, root._registry.local_player_id)
-	if data.has("waystones") and data["waystones"] is Array:
-		root._waystones.apply_view(data["waystones"])
-		GameBus.waystones_synced.emit(root._registry.local_player_id, data["waystones"])
-	if data.get("waystone_result", null) is Dictionary:
-		var res: Dictionary = data["waystone_result"]
-		GameBus.waystone_travel_resolved.emit(root._registry.local_player_id, bool(res.get("ok", false)), str(res.get("reason", "")).left(32))
+	root._waystone_wiring.apply_own_view(data)
 	if data.get("settlement_view", null) is Dictionary:
 		root._settlements.apply_view(data["settlement_view"])
 	if data.get("settlement_result", null) is Dictionary:

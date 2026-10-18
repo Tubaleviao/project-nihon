@@ -618,10 +618,32 @@ func fold_contents(turned: bool, pole_sign: int) -> void:
 			# The wire carries no fold: other peers keep the frame they have, so the carried
 			# creature is not re-sent as a move.
 			_last_broadcast[iid]["position"] = pos
+	# Held death records re-apply at their chunk's next spawn and are saved: keep them in the same frame.
+	for iid in _dead_state:
+		var rec: Dictionary = _dead_state[iid]
+		rec["position"] = WorldPos.to_wire(TerrainSlice.fold_world_vec_like(WorldPos.from_wire(rec["position"]), turned, pole_sign))
 	if not is_authoritative:
 		# A client's later host deltas arrive in the host's frame: replay this fold on them.
-		_fold_log.append([turned, pole_sign])
+		_log_fold(turned, pole_sign)
 	_invalidate_view()
+
+## Append a fold to `_fold_log`, kept minimal: a pole fold is its own inverse (crossing the same pole
+## back cancels it), and an antimeridian fold only wraps x, which every later fold does too.
+func _log_fold(turned: bool, pole_sign: int) -> void:
+	if not turned:
+		if _fold_log.is_empty():
+			_fold_log.append([false, pole_sign])
+		return
+	if not _fold_log.is_empty() and not bool(_fold_log.back()[0]):
+		_fold_log.pop_back()
+	if not _fold_log.is_empty() and bool(_fold_log.back()[0]) and int(_fold_log.back()[1]) == pole_sign:
+		_fold_log.pop_back()
+	else:
+		_fold_log.append([true, pole_sign])
+
+## A new session (the host connection ended) starts in the host's frame again: forget the folds.
+func reset_fold_log() -> void:
+	_fold_log.clear()
 
 ## Folds this client has crossed, oldest first: [turned, pole_sign]. A host position (`apply_creature_state`)
 ## is replayed through them so it lands in this peer's frame.

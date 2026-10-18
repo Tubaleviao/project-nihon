@@ -532,6 +532,9 @@ func remember_player_state(peer_id: int, position: Vector3, exact: Dictionary = 
 		_last_known_exact.erase(peer_id)
 	else:
 		_last_known_exact[peer_id] = exact
+		var pending: Variant = _teleport_pending.get(peer_id, null)
+		if pending is Dictionary and WorldPos.offset_between(pending["pos"], exact).length() <= TELEPORT_ARRIVED_M:
+			_teleport_pending.erase(peer_id)
 	_peer_spatial.update(peer_id, position)
 	_last_known_timestamps.erase(peer_id)
 
@@ -567,6 +570,7 @@ func _evict_stale_states() -> void:
 		if now_ms - float(_last_known_timestamps[pid]) > float(LAST_KNOWN_STATE_TTL_MS):
 			_last_known_states.erase(pid)
 			_last_known_exact.erase(pid)
+			_teleport_pending.erase(pid)
 			_last_known_timestamps.erase(pid)
 			_peer_spatial.remove(pid)
 
@@ -927,7 +931,28 @@ func send_teleport(peer_id: int, position: Dictionary) -> bool:
 		return false
 	if not _connected_peers().has(peer_id):
 		return false
-	return _deliver(peer_id, { "type": "teleport", "position": WorldPos.pos_to_wire(position) })
+	if not _deliver(peer_id, { "type": "teleport", "position": WorldPos.pos_to_wire(position) }):
+		return false
+	if position.get("chunk") is Vector2i and position.get("local") is Vector3:
+		_teleport_pending[peer_id] = { "pos": WorldPos.normalized(position), "msec": Time.get_ticks_msec() }
+	return true
+
+## Peer -> { pos, msec }: where the host last teleported the peer, until a report shows it there (or
+## TELEPORT_PENDING_MSEC passes). Reports already in flight still carry the old spot, so the last
+## report alone would place the peer where it was before the teleport.
+var _teleport_pending: Dictionary = {}
+const TELEPORT_PENDING_MSEC := 3000
+const TELEPORT_ARRIVED_M := 4.0
+
+## The peer's exact position as the host should judge it: the pending teleport target when one is
+## newer than its reports, else `get_last_known_exact`. The reports themselves are left untouched.
+func get_expected_exact(peer_id: int) -> Dictionary:
+	var pending: Variant = _teleport_pending.get(peer_id, null)
+	if pending is Dictionary:
+		if Time.get_ticks_msec() - int(pending["msec"]) <= TELEPORT_PENDING_MSEC:
+			return pending["pos"]
+		_teleport_pending.erase(peer_id)
+	return get_last_known_exact(peer_id)
 
 ## Phase 47 — client → host: one equip / unequip action on this machine's avatar (`item_key`
 ## "" unequips `slot`). Carries no identity: the host binds it to the connection and decides
@@ -2386,5 +2411,7 @@ func _on_peer_disconnected(id: int) -> void:
 	# the in-memory copy (PlayerRegistry.evict_player).
 	forget_player_id(id)
 	_forget_equipment_pairs(id)
+	if not _last_known_states.has(id):
+		_teleport_pending.erase(id)   # nothing will age it out otherwise
 	if _last_known_states.has(id):
 		_last_known_timestamps[id] = Time.get_ticks_msec()

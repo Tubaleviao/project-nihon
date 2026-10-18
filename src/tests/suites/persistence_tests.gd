@@ -41,6 +41,7 @@ func register() -> void:
 	_run_test("tree clears: a client keeps an unrecorded clear, range follows the scope", _test_p126_client_scope_and_ghost)
 	_run_test("tree clears: an unpinnable host clear survives a save/restart", _test_p138_unpinned_clear_restart)
 	_run_test("p149: a held clear spot is pinned by spawn index, not geometry", _test_p149_spot_by_index)
+	_run_test("tree clears: a held spot applies when the chunk is recorded, or by geometry with no writer", _test_held_spot_on_record)
 	_run_test("tree clears: no frontier record is pinned for a circle that hits no tree", _test_p138_no_pin_without_hit)
 	_run_test("region store: a save with no chunks ends failure streaks", _test_p138_idle_save_ends_streaks)
 	_run_test("save txn: a live foreign journal keeps the .bak and defers the commit", _test_p138_txn_foreign_journal)
@@ -268,6 +269,13 @@ func _test_p114_deferred_and_adopted() -> void:
 	assert_eq(cm.records_created, 0, "no record while a neighbouring region is down")
 	assert_eq(cm.deferred_record_count(), 1, "the chunk is remembered")
 	assert_false(ChunkRecordsScript.has_record(c), "and nothing is in the table")
+	cm.unload_chunk(c)
+	assert_eq(cm.deferred_record_count(), 0, "an unloaded chunk drops its deferral")
+	assert_false(cm._deferred_since.has(cm._chunk_key(c)), "and its warning clock")
+	cm.now_msec = func() -> int: return 12345
+	cm.load_chunk(c)
+	assert_eq(cm.deferred_record_count(), 1, "streamed back in, it is deferred again")
+	assert_eq(int(cm._deferred_since.get(cm._chunk_key(c), -1)), 12345, "on a fresh clock")
 	store.save_region(Vector2i.ZERO, {})
 	clock[0] += RegionStreamerScript114.BACKOFF_START_MSEC * 2
 	cm.track_rebuilds()
@@ -996,6 +1004,32 @@ func _test_p138_unpinned_clear_restart() -> void:
 	t2.free()
 	rig["terrain"].free()
 	ChunkRecordsScript.clear()
+
+func _test_held_spot_on_record() -> void:
+	var rig := _p126_host_rig()
+	var t: Node = rig["t"]
+	t.frontier_ready = func(_c: Vector2i) -> bool: return false
+	var chunk := _p138_tree_chunk(t, 2)
+	assert_true(chunk != Vector2i(-1000, 0), "a tree-growing chunk exists in the search window")
+	t.spawn_for_chunk(chunk)
+	var id0 := "tree_%d_%d_0" % [chunk.x, chunk.y]
+	t._hold_spot(chunk, Vector2.ZERO, t.PENDING_SPOT_RADIUS_M, 0)
+	t.frontier_ready = func(_c: Vector2i) -> bool: return true
+	assert_true(t._pin_frontier_record(chunk), "the chunk gets its record after its trees spawned")
+	t.on_chunk_recorded(chunk)
+	assert_true(t.get_tree_record(id0).is_empty(), "the held clear applies at once, not at the next spawn")
+	assert_false(t._pending_spots.has(chunk), "and the spot is released")
+	# No writer: nothing will ever record the chunk, so its held spot is applied on every spawn and kept.
+	ChunkRecordsScript.clear()
+	t.despawn_for_chunk(chunk)
+	t._cleared_local.clear()
+	t._cleared_total = 0
+	t.record_writer = Callable()
+	t._hold_spot(chunk, Vector2.ZERO, t.PENDING_SPOT_RADIUS_M, 0)
+	t.spawn_for_chunk(chunk)
+	assert_true(t.get_tree_record(id0).is_empty(), "with no writer the cleared tree is not a ghost")
+	assert_true(t._pending_spots.has(chunk), "and the spot stays for the next spawn")
+	_p126_free(rig)
 
 func _test_p149_spot_by_index() -> void:
 	var rig := _p126_host_rig()

@@ -422,12 +422,15 @@ func run(root: Node, role: String) -> void:
 ## that reports success there is the wrong answer to give the cheapest question.
 func _finish() -> void:
 	var capped: bool = _root._networking.emulator_bandwidth_kbps > 0.0
-	# Phase 150 — a throttled creature sync still has to reach the client: no delta at all on a capped link fails.
-	var starved: bool = capped and _role == "client" and _creature_deltas == 0
+	# Phase 150 — a throttled creature sync still has to run on a capped link: no delta at all fails.
+	# The host counts the deltas its broadcast emitted (sent), the client the ones it applied
+	# (received), so each side's number means something and either side can starve the run.
+	var starved: bool = capped and _creature_deltas == 0
 	if starved:
 		_failed = true
-	print(format_line("link", "fail" if starved else "ok", "retransmits-%d dropped-%d creature_deltas-%d" % [
-		int(_root._networking.emulator_retransmits), int(_root._networking.emulator_dropped), _creature_deltas]))
+	var deltas_kind := "received" if _role == "client" else "sent"
+	print(format_line("link", "fail" if starved else "ok", "retransmits-%d dropped-%d creature_deltas_%s-%d" % [
+		int(_root._networking.emulator_retransmits), int(_root._networking.emulator_dropped), deltas_kind, _creature_deltas]))
 	print(format_line("done", "ok", _role))
 	get_tree().quit(1 if _failed else 0)
 
@@ -828,6 +831,8 @@ func _step_waystone_travel() -> void:
 		var dest := { "chunk": seen["chunk"], "local": (seen["local"] as Vector3) + Vector3(WAYSTONE_GAP_M, 0.0, 0.0) }
 		_root._waystones.note_exact(b, WorldPos.normalized(dest))
 		_root._registry.record_waystones(target, [a, b])
+		# Push the list to the client as an attune would: it names the stones from this sync.
+		GameBus.waystones_synced.emit(target, _root._registry.get_waystones(target))
 		_root._registry.get_inventory(target).add_item(_root._waystones.rules()["costItem"], 5)
 		var want: Dictionary = WorldPos.normalized(dest)
 		var ok: bool = await _await_until(func():
@@ -837,11 +842,21 @@ func _step_waystone_travel() -> void:
 		_report("waystone_travel", verdict(ok, true), "travelled-to-second-stone" if ok else "no_travel")
 		return
 	var home: Dictionary = _root._player.get_world_pos()
+	# The two stones are the ones the host attuned this client to, read from the synced attunement list
+	# rather than assuming the host's station counter started at zero. The list is sorted as text, so the
+	# order of placement (first stone at the client, second 80 m on) comes from the id's number.
+	if not await _await_until(func(): return _root._waystones._view.size() >= 2, _step_timeout()):
+		_report("waystone_travel", "fail", "no_attunements_synced")
+		return
+	var ids: Array = (_root._waystones._view as Array).duplicate()
+	ids.sort_custom(func(x, y): return int(str(x).get_slice("_", 1)) < int(str(y).get_slice("_", 1)))
+	var from_id := str(ids[ids.size() - 2])
+	var to_id := str(ids[ids.size() - 1])
 	var before := _teleports_seen.size()
 	var tries := 0
 	var got: bool = false
 	while tries < int(_step_timeout()) and not got:
-		GameBus.waystone_travel_intent.emit("station_0", "station_1", "")
+		GameBus.waystone_travel_intent.emit(from_id, to_id, "")
 		tries += 1
 		got = await _await_until(func(): return _teleports_seen.size() > before, 1.0)
 	# The host checks the 80 m gap from its own record of the client; here the body must stand on the
@@ -1095,7 +1110,7 @@ func _step_reconnect_alive() -> void:
 		return
 	# Mirror `game_root._boot_client()` exactly, which the first join in `run()` already did:
 	# a client that has just joined is WAITING for its world snapshot, and that flag is what
-	# arms the client's own handshake retry (`_tick_client_handshake`). Without it the rejoin
+	# arms the client's own handshake retry (`PeerWiring.tick_client_handshake`). Without it the rejoin
 	# got exactly ONE join intent, sent before the new socket was up — the RPC then errors
 	# out ("multiplayer peer which is not connected") and there is no second attempt, which is
 	# a harness that does not drive the shipped client's boot path after all.
@@ -1645,11 +1660,24 @@ func _capture_spare_target() -> void:
 			_spare_target = _spare_tree()
 		_root._chat.submit(TREE_TARGET_PROBE + (_spare_target if found else "none"))
 		return
-	var heard: bool = await _await_until(func(): return not _chat_line("chat", TREE_TARGET_PROBE, "").is_empty(), _step_timeout() + CLIENT_LAG_SECS)
-	if heard:
-		var text := str(_chat_line("chat", TREE_TARGET_PROBE, "")["text"])
-		var named := text.substr(text.find(TREE_TARGET_PROBE) + TREE_TARGET_PROBE.length()).strip_edges()
-		_spare_target = "" if named == "none" else named
+	# The host only names the target once its own trees have loaded, which under CPU load can take most of a
+	# step timeout; wait a second round (scaled with the link) before giving up.
+	var probe_heard := func(): return not _chat_line("chat", TREE_TARGET_PROBE, "").is_empty()
+	var heard: bool = await _await_until(probe_heard, _step_timeout() + CLIENT_LAG_SECS * _time_scale)
+	if not heard:
+		print("net-harness: tree target probe not heard yet, waiting one more round")
+		heard = await _await_until(probe_heard, _step_timeout() + CLIENT_LAG_SECS * _time_scale)
+	if not heard:
+		push_error("net-harness: tree_cleared target not received (no '%s' chat line from the host)" % TREE_TARGET_PROBE)
+		return
+	var text := str(_chat_line("chat", TREE_TARGET_PROBE, "")["text"])
+	var named := text.substr(text.find(TREE_TARGET_PROBE) + TREE_TARGET_PROBE.length()).strip_edges()
+	if named == "none":
+		return
+	if not named.begins_with("tree_") or named.contains(" "):
+		push_error("net-harness: tree_cleared target not received: the host's probe named '%s'" % named.left(80))
+		return
+	_spare_target = named
 
 ## The in-reach tree with the greatest id, or "" when there are no more than `TARGETS_NEEDED` in reach.
 func _spare_tree() -> String:

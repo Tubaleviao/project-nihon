@@ -51,6 +51,9 @@ var max_models: int = MAX_MODELS
 var tint_of: Callable = Callable()
 var _select_accum: float = 0.0
 var _palette: Array = []
+## creature_id -> true: types seen by `reselect` (in the slice, out of model range) whose template is not
+## built yet. `tick` builds one per frame so a type's first model does not hitch the frame it comes in range.
+var _warm_queue: Dictionary = {}
 
 
 ## Pure: which instances hold a model. `cands` is [[instance_id, distance_m], ...], `current` maps the
@@ -133,6 +136,7 @@ func tick(instances: Dictionary, cam_world: Vector3, has_cam: bool, delta: float
 	if has_cam and _select_accum >= SELECT_INTERVAL:
 		_select_accum = 0.0
 		reselect(instances, cam_world)
+	prewarm_one()
 	for iid in models.keys():
 		if not instances.has(iid):
 			detach(iid)
@@ -148,12 +152,16 @@ func reselect(instances: Dictionary, cam_world: Vector3) -> void:
 		var inst: Dictionary = instances[iid]
 		if inst["state"] == "dead" and not models.has(iid):
 			continue
-		# A type with no usable model keeps its box and must not take a slot from one that has a model.
-		if not models.has(iid) and _template(str(inst["creature_id"])) == null:
-			continue
 		var d: float = cam_world.distance_to(inst["position"])
-		if d <= limit:
-			cands.append([iid, d])
+		var cid := str(inst["creature_id"])
+		if d > limit:
+			if not _templates.has(cid):
+				_warm_queue[cid] = true
+			continue
+		# A type with no usable model keeps its box and must not take a slot from one that has a model.
+		if not models.has(iid) and _template(cid) == null:
+			continue
+		cands.append([iid, d])
 	var keep := select_ids(cands, models, MODEL_RANGE_M, HYSTERESIS_M, max_models)
 	var keep_set := {}
 	for iid in keep:
@@ -164,6 +172,17 @@ func reselect(instances: Dictionary, cam_world: Vector3) -> void:
 	for iid in keep:
 		if not models.has(iid):
 			attach(iid, instances[iid])
+
+
+## Build at most one queued template (see `_warm_queue`). Returns the type built, or "" when none was due.
+func prewarm_one() -> String:
+	for cid in _warm_queue.keys():
+		_warm_queue.erase(cid)
+		if _templates.has(cid):
+			continue
+		_template(str(cid))
+		return str(cid)
+	return ""
 
 
 ## Give `iid` a model. False (the box stays) when its type has no usable model.
@@ -190,7 +209,7 @@ func attach(iid: String, inst: Dictionary) -> bool:
 	var pos: Vector3 = inst["position"]
 	node.transform = Transform3D(Basis(), pos)
 	models[iid] = {"node": node, "tree": tree, "speed": 0.0, "last_pos": pos, "yaw": 0.0,
-		"loco": -1, "dead_at": -1.0}
+		"loco": -1, "dead_at": -1.0, "state": str(inst["state"])}
 	model_attached.emit(iid)
 	return true
 
@@ -220,6 +239,12 @@ func _update_model(iid: String, inst: Dictionary, delta: float) -> void:
 	var pos: Vector3 = inst["position"]
 	var state: String = inst["state"]
 	var last: Vector3 = m["last_pos"]
+	if m["state"] == "dead" and state != "dead":
+		# Leaving death is a respawn: the body was put back at its spawn point, however near, so
+		# the move is not a run and the model does not turn toward it.
+		last = pos
+		m["speed"] = 0.0
+	m["state"] = state
 	var flat := Vector3(pos.x - last.x, 0.0, pos.z - last.z)
 	if flat.length() > TELEPORT_JUMP_M:
 		m["speed"] = 0.0

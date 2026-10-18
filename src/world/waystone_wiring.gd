@@ -16,6 +16,16 @@ func _connect_all() -> void:
 	connect_bus(GameBus.station_placed, _on_station_placed_exact)
 	connect_bus(GameBus.waystones_synced, _on_waystones_synced)
 
+## Client: the waystone half of the host's view of this player, from a join snapshot or an own-state
+## sync — the attunement list, and the result of the last travel intent (own-state syncs only).
+func apply_own_view(data: Dictionary) -> void:
+	if data.has("waystones") and data["waystones"] is Array:
+		root._waystones.apply_view(data["waystones"])
+		GameBus.waystones_synced.emit(root._registry.local_player_id, data["waystones"])
+	if data.get("waystone_result", null) is Dictionary:
+		var res: Dictionary = data["waystone_result"]
+		GameBus.waystone_travel_resolved.emit(root._registry.local_player_id, bool(res.get("ok", false)), str(res.get("reason", "")).left(32))
+
 ## Phase 125 — where the host believes a player stands, as an exact `{chunk, local}`: the live body for the
 ## local player, the peer's last reported position for a remote one. A peer that has not reported yet is
 ## nowhere: the saved record is where it logged out, not where it stands.
@@ -24,7 +34,12 @@ func _waystone_player_pos(player_id: String) -> Dictionary:
 		return root._player.get_world_pos()
 	var peer := root._registry.get_peer_id(player_id)
 	if peer != 0:
-		return root._networking.get_last_known_exact(peer)
+		var exact: Dictionary = root._networking.get_expected_exact(peer)
+		if exact.is_empty() and root._networking.has_last_known_state(peer):
+			# A legacy float-only report: coarse far from the origin, but better than refusing as too_far.
+			var v: Vector3 = root._networking.get_last_known_state(peer)
+			return WorldPos.from_world(v.x, v.y, v.z)
+		return exact
 	return {}
 
 ## Phase 125 — a player's attunements changed on the host: save them on the record and push them to

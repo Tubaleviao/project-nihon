@@ -50,9 +50,18 @@ points it needs are still granted directly (setup, no intent exists). Teleports 
 that is silent 10 s past its deadline fails with "crashed or hung". The harness driver reads the
 profile time scale from `tools/profile_scale.gd` (table in `src/networking/net_profiles.gd`). Under a
 bandwidth-capped profile `CreatureSlice.delta_interval` rises to 2 s instead of muting, and the client
-fails the run if it saw no creature delta; the `link` line reports `dropped-N` and `creature_deltas-N`.
+fails the run if it saw no creature delta; the `link` line reports `dropped-N` and
+`creature_deltas_received-N` (the host reports `creature_deltas_sent-N` and fails on zero too).
 Items of #355, #359, #361 and #380 outside the deliverables (moving module-only state off `game_root`,
 the extended unwire test, the respawn-teleport model reset, template pre-warm, float32 positions,
 unmodellable-type cap) stay open on their issues.
+
+**Root cause of the #380 fight-step gap:** before this phase the stream and gather steps hopped the
+player east with `player_teleport` carrying the *old* `local` unchanged, y included. A hop onto
+higher ground put the body inside the new chunk, below its collision surface, and with nothing under
+it the body fell for the rest of the run (y about -20 km by the fight step). `_teleport_to` now
+lands every hop at the surface plus 2 m, which removes the cause; the fight step's gap check and
+re-teleport stay as a guard so a new fall-through fails with a clear message instead of a far-off
+screenshot.
 
 ---

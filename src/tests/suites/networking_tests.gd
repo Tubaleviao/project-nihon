@@ -212,6 +212,22 @@ func _test_wiring_unwire() -> void:
 		assert_eq(_bus_connection_total(), before, "%s: unwire leaves no handler behind" % role)
 		gr._character.free()
 		gr.free()
+	# The production path: GameRoot wires every module in `_ready` and unwires them all from
+	# NOTIFICATION_PREDELETE, so freeing a wired root (no manual unwire) must leave the bus as it was.
+	for role in ["host", "client", "server"]:
+		var before := _bus_connection_total()
+		var gr: Node = root_script.new()
+		gr._is_server = role == "server"
+		gr._is_client = role == "client"
+		var ch := CharacterSlice.new()
+		gr._character = ch
+		for w in gr._wirings:
+			w.wire(gr)
+		gr._peer_wiring.wire_colonization()
+		assert_true(_bus_connection_total() > before, "%s: the wired root holds handlers" % role)
+		gr.free()
+		assert_eq(_bus_connection_total(), before, "%s: freeing the root unwires every module (PREDELETE)" % role)
+		ch.free()
 
 ## Phase 71 — the game_root half: loading a record sets the stamp the next save carries and
 ## raises the bus signal exactly when the record's generator is not the running one.
