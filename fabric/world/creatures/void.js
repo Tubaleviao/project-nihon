@@ -1,4 +1,5 @@
 const { defineEntity, skeletonField, creatureStateMachine, creatureStateValues, dropsData, pathFields, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS } = require('./shared')
+const { carcassFields } = require('../../gameplay/harvest')
 
 module.exports = {
 
@@ -28,10 +29,11 @@ module.exports = {
       spawnChance:    { type: 'decimal', description: 'Probability (0–1) that a chunk of this creature\'s biome rolls a pack at all', defaultValue: 0.6 },
       spawnDensity:   { type: 'decimal', description: 'Amplitude (0–1) of the seeded density noise that clusters and thins packs across the world', defaultValue: 0.5 },
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'VoidRift' },
+      ...carcassFields({ massKg: 120, corpseSeconds: 300, carryRule: 'drag' }),
       drops: dropsData([
-        { item: 'void_scale',        chance: 1.0,  minQty: 2, maxQty: 4 },
-        { item: 'void_serpent_fang', chance: 1.0,  minQty: 1, maxQty: 1 },
-        { item: 'phase_locked_core', chance: 0.25, minQty: 1, maxQty: 1 },
+        { item: 'void_scale',        chance: 1.0,  minQty: 2, maxQty: 4, tool: 'knife', skill: 'Skinning' },
+        { item: 'void_serpent_fang', chance: 1.0,  minQty: 1, maxQty: 1, tool: 'bonetool', skill: 'Skinning' },
+        { item: 'phase_locked_core', chance: 0.25, minQty: 1, maxQty: 1, tool: 'bonetool', skill: 'Skinning' },
       ]),
     },
     stateMachine: creatureStateMachine({ conditionalAlertSkip: true }),
@@ -118,10 +120,11 @@ module.exports = {
       spawnChance:    { type: 'decimal', description: 'Probability (0–1) that a chunk of this creature\'s biome rolls a pack at all; kept low so the warden stays rare', defaultValue: 0.05 },
       spawnDensity:   { type: 'decimal', description: 'Amplitude (0–1) of the seeded density noise that clusters and thins packs across the world', defaultValue: 0.5 },
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'VoidRift' },
+      ...carcassFields({ massKg: 900, corpseSeconds: 600, carryRule: 'immovable' }),
       drops: dropsData([
-        { item: 'rift_shard',        chance: 1.0,  minQty: 4, maxQty: 8 },
-        { item: 'void_core_crystal', chance: 1.0,  minQty: 1, maxQty: 1 },
-        { item: 'warden_sigil',      chance: 0.05, minQty: 1, maxQty: 1 },
+        { item: 'rift_shard',        chance: 1.0,  minQty: 4, maxQty: 8, tool: 'bonetool', skill: 'Skinning' },
+        { item: 'void_core_crystal', chance: 1.0,  minQty: 1, maxQty: 1, tool: 'bonetool', skill: 'Skinning' },
+        { item: 'warden_sigil',      chance: 0.05, minQty: 1, maxQty: 1, tool: 'none', skill: 'Skinning' },
       ]),
     },
     stateMachine: creatureStateMachine({ canFlee: false, skipAlert: true }),

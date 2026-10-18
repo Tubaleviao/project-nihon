@@ -34,7 +34,10 @@ A sleek, luminescent fox native to the Twilight Grove whose fur shifts in hue wi
 | spawnChance | decimal | Probability (0–1) that a chunk of this creature's biome rolls a pack at all |
 | spawnDensity | decimal | Amplitude (0–1) of the seeded density noise that clusters and thins packs across the world |
 | biome | `TemperateForest`, `TemperateGrassland`, `VolcanicBadlands`, `TwilightGrove`, `VoidRift`, `Ocean`, `Beach`, `Desert`, `Tundra`, `Alpine`, `Taiga`, `Savanna` | Biome this creature belongs to |
-| drops | json | Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system. |
+| carcassMassKg | decimal | Mass in kg of the body a kill leaves; compared with the carrier's carry capacity |
+| corpseSeconds | integer | Seconds the body stays in the world before it decays |
+| carryRule | `carry`, `drag`, `immovable` | \`carry\` (fits the carry capacity), \`drag\` (heavier, slower) or \`immovable\` |
+| drops | json | Structured harvest table: raw item key, base chance (0-1), quantity range [minQty, maxQty], the tool category that works it (knife, bonetool, none) and the scaling skill. Each entry is rolled independently per harvest. |
 | tame | json | Structured taming spec: result kind (companion / yield), bare-hands and skill requirements, the offered item consumed, the defeated-alpha gate, the granted player flag, shed items, cooldown (seconds) and whether a tamed instance respawns. |
 
 ## States

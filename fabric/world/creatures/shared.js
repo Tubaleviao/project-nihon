@@ -65,16 +65,18 @@ function creatureStateMachine({ canFlee = true, skipAlert = false, conditionalAl
   }
 }
 
-// Structured drop table consumed by LootSlice (src/loot/loot_slice.gd). The
-// `drop` behavior above carries the prose design bible; this json field is the
-// single source of truth for in-game loot rolls — item key (raw creature drop,
-// not a fabric entity), drop chance (0–1), and quantity range [minQty, maxQty].
-// Each entry is rolled independently on death.
+// Structured harvest table (Phase 160), formerly the drop table. The `drop` behavior above carries the
+// prose design bible; this json field is the single source of truth for what a body yields. Each entry:
+// { item, chance (0-1), minQty, maxQty, tool, skill } -- the raw item key (a creature material, not a
+// fabric entity), the base chance, the quantity range, the tool category that works it (`knife`,
+// `bonetool` or `none` for things picked straight off the body) and the skill that scales it
+// (`Skinning`). Quantity rises from minQty at level 0 to maxQty at the cap and chance rises with level;
+// see gameplay/harvest.js. Each entry is rolled independently per harvest.
 function dropsData(drops) {
   return {
     type: 'json',
     description:
-      'Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system.',
+      'Structured harvest table: raw item key, base chance (0-1), quantity range [minQty, maxQty], the tool category that works it (knife, bonetool, none) and the scaling skill. Each entry is rolled independently per harvest.',
     defaultValue: drops,
   }
 }

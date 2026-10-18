@@ -17,7 +17,7 @@ const item = (shape, relations) => ({ Fixture: { tags: ['item'], relations, fiel
 const madeOf = (target) => ({ [target.toLowerCase()]: { name: target.toLowerCase(), kind: 'hasOne', target } });
 
 const items = Object.fromEntries(Object.entries(fabric.entities).filter(([, e]) => (e.tags || []).includes('item')));
-expect('the shipped fabric has 25 items', Object.keys(items).length === 25 ? [] : ['count ' + Object.keys(items).length], null);
+expect('the shipped fabric has 27 items', Object.keys(items).length === 27 ? [] : ['count ' + Object.keys(items).length], null);
 expect('every shipped item has a valid shape', s.shapeProblems(items, materials), null);
 
 expect('a valid fixture passes', s.shapeProblems(item({ archetype: 'sword', parts: { blade: 'Ferrite', grip: 'Thornwood' } }), materials), null);

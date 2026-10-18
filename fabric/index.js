@@ -21,6 +21,7 @@ const economy      = require('./gameplay/economy')
 const player       = require('./gameplay/player')
 const loot         = require('./gameplay/loot')
 const gestures     = require('./gameplay/gestures')
+const harvest      = require('./gameplay/harvest')
 const persistence  = require('./gameplay/persistence')
 const skeletons    = require('./gameplay/characters/skeletons')
 const palettes     = require('./gameplay/characters/palettes')
@@ -50,6 +51,10 @@ require('./world/materials/granular').validateGranular(require('./world/biomes')
 
 // Phase 158 — the gesture table must be well formed (known kinds, unique chat commands, restRegen >= 1).
 gestures.validateGestures(gestures.gestureTable())
+
+// Phase 160 — every harvest entry must name a tool category some item provides and a real skill, every creature needs a
+// carcass mass, and the Skinning yield and quality tables must cover every level and never fall.
+harvest.validateHarvest(harvest.harvestData({ creatures, items, skills, player }))
 
 // Phase 151 — every entity tagged `item` needs a shape: a known archetype, and a real material for each of its parts.
 {
@@ -150,6 +155,7 @@ module.exports = defineFabric({
       Trade:           skills.Trade,
       Speechcraft:     skills.Speechcraft,
       Leadership:      skills.Leadership,
+      Skinning:        skills.Skinning,
     },
     // Gameplay — Professions
     {
@@ -167,6 +173,8 @@ module.exports = defineFabric({
       FerritePick:              items.FerritePick,
       VeilsteelPick:            items.VeilsteelPick,
       CarpenterAxe:             items.CarpenterAxe,
+      SkinningKnife:            items.SkinningKnife,
+      BoneSaw:                  items.BoneSaw,
       FerriteShortSword:        items.FerriteShortSword,
       VeilsteelLongsword:       items.VeilsteelLongsword,
       AethermiteBow:            items.AethermiteBow,
@@ -197,6 +205,8 @@ module.exports = defineFabric({
       RecipeVeilsteelIngot:            recipes.RecipeVeilsteelIngot,
       RecipeFerriteShortSword:         recipes.RecipeFerriteShortSword,
       RecipeFerritePick:               recipes.RecipeFerritePick,
+      RecipeSkinningKnife:             recipes.RecipeSkinningKnife,
+      RecipeBoneSaw:                   recipes.RecipeBoneSaw,
       RecipeVeilsteelLongsword:        recipes.RecipeVeilsteelLongsword,
       RecipeVeilsteelChestplate:       recipes.RecipeVeilsteelChestplate,
       RecipeHealthPotion:              recipes.RecipeHealthPotion,
@@ -264,6 +274,7 @@ module.exports = defineFabric({
     {
       LootTable:   loot.LootTable,
       DeathSignal: loot.DeathSignal,
+      HarvestRules: harvest.HarvestRules,
     },
     // Gameplay — Character system (skeletons, palette, appearance recipes)
     {

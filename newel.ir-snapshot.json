@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:9652dbab055ee09ede492a213802b14b69f7113e6e5dec3de1884b222705a5a7",
+  "schemaHash": "sha256:a262a08eb91188b617deced567bdd81a54508959c7f052c4865b2d59612f89cc",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -10514,6 +10514,276 @@
         "pii": [],
         "gdpr": {}
       },
+      "Skinning": {
+        "name": "Skinning",
+        "tags": [
+          "skill"
+        ],
+        "description": "Working a creature body with a knife or bone tool. A higher level takes more from the same body (quantity runs from the table's minimum at level 0 to its maximum at the cap), more reliably, and of better quality. It also lets a harvester carry heavier bodies.",
+        "goal": "Make a kill a body to work rather than a pile of finished drops, and reward practice with the knife",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "tier": {
+            "name": "tier",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "novice",
+              "apprentice",
+              "journeyman",
+              "expert",
+              "master"
+            ],
+            "pii": false
+          },
+          "xpCurve": {
+            "name": "xpCurve",
+            "type": "enum",
+            "description": "XP required per tier",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "linear",
+              "quadratic",
+              "exponential"
+            ],
+            "pii": false
+          },
+          "maxLevel": {
+            "name": "maxLevel",
+            "type": "integer",
+            "description": "Maximum XP level within a tier before tier advance is required",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "category": {
+            "name": "category",
+            "type": "enum",
+            "description": "Skill domain: survival",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "combat",
+              "crafting",
+              "magic",
+              "exploration",
+              "social",
+              "survival"
+            ],
+            "pii": false
+          },
+          "levelCap": {
+            "name": "levelCap",
+            "type": "integer",
+            "description": "Highest Skinning level; the tables below have one entry per level 0..levelCap",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 10
+          },
+          "xpPerHarvest": {
+            "name": "xpPerHarvest",
+            "type": "integer",
+            "description": "Skinning XP a finished harvest grants",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 10
+          },
+          "xpToLevel": {
+            "name": "xpToLevel",
+            "type": "json",
+            "description": "Cumulative XP needed to reach each level, index = level",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              0,
+              40,
+              160,
+              360,
+              640,
+              1000,
+              1440,
+              1960,
+              2560,
+              3240,
+              4000
+            ]
+          },
+          "yieldCurve": {
+            "name": "yieldCurve",
+            "type": "json",
+            "description": "Fraction 0..1 of the minQty..maxQty range a harvest reaches, index = effective level",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              0,
+              0.1,
+              0.2,
+              0.3,
+              0.4,
+              0.5,
+              0.6,
+              0.7,
+              0.8,
+              0.9,
+              1
+            ]
+          },
+          "chanceCurve": {
+            "name": "chanceCurve",
+            "type": "json",
+            "description": "Chance added to each entry (total capped at 1.0), index = effective level",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              0,
+              0.025,
+              0.05,
+              0.075,
+              0.1,
+              0.125,
+              0.15,
+              0.175,
+              0.2,
+              0.225,
+              0.25
+            ]
+          },
+          "qualityCurve": {
+            "name": "qualityCurve",
+            "type": "json",
+            "description": "Quality grade (poor, common, fine, prime) of raw creature materials, index = effective level",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "poor",
+              "poor",
+              "poor",
+              "common",
+              "common",
+              "common",
+              "fine",
+              "fine",
+              "fine",
+              "prime",
+              "prime"
+            ]
+          }
+        },
+        "relations": {},
+        "behaviors": {
+          "advanceTier": {
+            "name": "advanceTier",
+            "description": "Progress to the next mastery tier through accumulated skinning XP",
+            "rules": [
+              "XP threshold for the target tier must be met"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "harvest": {
+            "name": "harvest",
+            "description": "Work a creature body with the right tool",
+            "rules": [
+              "Effective level is floor(level * tool efficiency); it indexes yieldCurve, chanceCurve and qualityCurve",
+              "Quality is a property of the item instance, not a separate item id",
+              "A finished harvest grants xpPerHarvest"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "tier",
+          "initial": "novice",
+          "states": {
+            "novice": {
+              "name": "novice",
+              "description": "Entry-level practitioner; basic techniques only",
+              "terminal": false
+            },
+            "apprentice": {
+              "name": "apprentice",
+              "description": "Growing competence; intermediate techniques unlock",
+              "terminal": false
+            },
+            "journeyman": {
+              "name": "journeyman",
+              "description": "Solid practitioner; advanced techniques and profession gates open",
+              "terminal": false
+            },
+            "expert": {
+              "name": "expert",
+              "description": "Near-mastery; most advanced abilities available",
+              "terminal": false
+            },
+            "master": {
+              "name": "master",
+              "description": "Complete mastery; all abilities unlocked",
+              "terminal": true
+            }
+          },
+          "transitions": [
+            {
+              "from": "novice",
+              "to": "apprentice",
+              "trigger": "advanceTier",
+              "guards": [
+                "XP threshold for the target tier must be met"
+              ],
+              "effects": []
+            },
+            {
+              "from": "apprentice",
+              "to": "journeyman",
+              "trigger": "advanceTier",
+              "guards": [
+                "XP threshold for the target tier must be met"
+              ],
+              "effects": []
+            },
+            {
+              "from": "journeyman",
+              "to": "expert",
+              "trigger": "advanceTier",
+              "guards": [
+                "XP threshold for the target tier must be met"
+              ],
+              "effects": []
+            },
+            {
+              "from": "expert",
+              "to": "master",
+              "trigger": "advanceTier",
+              "guards": [
+                "XP threshold for the target tier must be met"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
       "Blacksmith": {
         "name": "Blacksmith",
         "tags": [
@@ -12052,6 +12322,24 @@
             "pii": false,
             "defaultValue": "axe"
           },
+          "harvestTool": {
+            "name": "harvestTool",
+            "type": "string",
+            "description": "Harvest tool category this item provides (Phase 160): knife or bonetool",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "bonetool"
+          },
+          "efficiency": {
+            "name": "efficiency",
+            "type": "decimal",
+            "description": "How well it works that category, in (0, 1]; below 1.0 is a poor substitute",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
           "repair": {
             "name": "repair",
             "type": "json",
@@ -12196,6 +12484,526 @@
               "trigger": "repair",
               "guards": [
                 "Repair costs one ferrite ingot; handle wrap (duskfiber) does not require replacement"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "SkinningKnife": {
+        "name": "SkinningKnife",
+        "tags": [
+          "item"
+        ],
+        "description": "Short ferrite blade on a thornwood grip, ground for pelts and meat. Takes hide, pelt and organs from a body; the knife category of the harvest tables.",
+        "goal": "Entry harvest tool; gates the knife entries of every creature body",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg; affects carry capacity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.4
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "common"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "Whether multiple instances stack in inventory",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "knife",
+              "parts": {
+                "blade": "Ferrite",
+                "grip": "Thornwood"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Remaining durability points before condition degrades",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 60
+          },
+          "toolType": {
+            "name": "toolType",
+            "type": "string",
+            "description": "Tool class — the action this tool performs. \"pick\" mines, \"axe\" chops.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "knife"
+          },
+          "harvestTool": {
+            "name": "harvestTool",
+            "type": "string",
+            "description": "Harvest tool category this item provides (Phase 160): knife or bonetool",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "knife"
+          },
+          "efficiency": {
+            "name": "efficiency",
+            "type": "decimal",
+            "description": "How well it works that category, in (0, 1]; below 1.0 is a poor substitute",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          },
+          "repair": {
+            "name": "repair",
+            "type": "json",
+            "description": "Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "station": "forge",
+              "materials": [
+                {
+                  "item": "FerriteIngot",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Smithing",
+                  "tier": "novice"
+                }
+              ]
+            }
+          }
+        },
+        "relations": {
+          "ferrite": {
+            "name": "ferrite",
+            "kind": "hasOne",
+            "target": "Ferrite"
+          },
+          "thornwood": {
+            "name": "thornwood",
+            "kind": "hasOne",
+            "target": "Thornwood"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "Reduce durability after each harvest",
+            "rules": [
+              "Each finished harvest consumes durability points"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Restore to pristine condition at a forge",
+            "rules": [
+              "Repair costs one ferrite ingot"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Each finished harvest consumes durability points"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Each finished harvest consumes durability points"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Each finished harvest consumes durability points"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Repair costs one ferrite ingot"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Repair costs one ferrite ingot"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Repair costs one ferrite ingot"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "BoneSaw": {
+        "name": "BoneSaw",
+        "tags": [
+          "item"
+        ],
+        "description": "Broad-backed ferrite saw on a thornwood grip. Cuts bone, tusk, horn and fang free of a body; the bonetool category of the harvest tables.",
+        "goal": "Second harvest tool; gates the bone entries of every creature body",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg; affects carry capacity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.9
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "common"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "Whether multiple instances stack in inventory",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "saw",
+              "parts": {
+                "blade": "Ferrite",
+                "grip": "Thornwood"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Remaining durability points before condition degrades",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 70
+          },
+          "toolType": {
+            "name": "toolType",
+            "type": "string",
+            "description": "Tool class — the action this tool performs. \"pick\" mines, \"axe\" chops.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "bonetool"
+          },
+          "harvestTool": {
+            "name": "harvestTool",
+            "type": "string",
+            "description": "Harvest tool category this item provides (Phase 160): knife or bonetool",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "bonetool"
+          },
+          "efficiency": {
+            "name": "efficiency",
+            "type": "decimal",
+            "description": "How well it works that category, in (0, 1]; below 1.0 is a poor substitute",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          },
+          "repair": {
+            "name": "repair",
+            "type": "json",
+            "description": "Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "station": "forge",
+              "materials": [
+                {
+                  "item": "FerriteIngot",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Smithing",
+                  "tier": "novice"
+                }
+              ]
+            }
+          }
+        },
+        "relations": {
+          "ferrite": {
+            "name": "ferrite",
+            "kind": "hasOne",
+            "target": "Ferrite"
+          },
+          "thornwood": {
+            "name": "thornwood",
+            "kind": "hasOne",
+            "target": "Thornwood"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "Reduce durability after each harvest",
+            "rules": [
+              "Each finished harvest consumes durability points"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Restore to pristine condition at a forge",
+            "rules": [
+              "Repair costs one ferrite ingot"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Each finished harvest consumes durability points"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Each finished harvest consumes durability points"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Each finished harvest consumes durability points"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Repair costs one ferrite ingot"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Repair costs one ferrite ingot"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Repair costs one ferrite ingot"
               ],
               "effects": []
             }
@@ -18451,6 +19259,220 @@
         "pii": [],
         "gdpr": {}
       },
+      "RecipeSkinningKnife": {
+        "name": "RecipeSkinningKnife",
+        "tags": [
+          "recipe"
+        ],
+        "description": "Craft a skinning knife from one ferrite ingot and one thornwood plank.",
+        "goal": "First harvest tool recipe; every hunter can make one early",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "domain": {
+            "name": "domain",
+            "type": "enum",
+            "description": "Crafting station required",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "smithing",
+              "alchemy",
+              "arcane",
+              "carpentry"
+            ],
+            "pii": false
+          },
+          "outputCount": {
+            "name": "outputCount",
+            "type": "integer",
+            "description": "Number of output items produced per craft",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "smithing",
+              "station": "forge",
+              "inputs": [
+                {
+                  "item": "FerriteIngot",
+                  "quantity": 1
+                },
+                {
+                  "item": "ThornwoodPlank",
+                  "quantity": 1
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "SkinningKnife",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Smithing",
+                  "tier": "novice"
+                }
+              ]
+            }
+          }
+        },
+        "relations": {
+          "inputFerriteIngot": {
+            "name": "inputFerriteIngot",
+            "kind": "hasOne",
+            "target": "FerriteIngot"
+          },
+          "inputThornwoodPlank": {
+            "name": "inputThornwoodPlank",
+            "kind": "hasOne",
+            "target": "ThornwoodPlank"
+          },
+          "output": {
+            "name": "output",
+            "kind": "hasOne",
+            "target": "SkinningKnife"
+          }
+        },
+        "behaviors": {
+          "craft": {
+            "name": "craft",
+            "description": "Forge the blade and fit the grip",
+            "rules": [
+              "Requires Smithing: Novice",
+              "Requires a functional forge"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "RecipeBoneSaw": {
+        "name": "RecipeBoneSaw",
+        "tags": [
+          "recipe"
+        ],
+        "description": "Craft a bone saw from two ferrite ingots and one thornwood plank.",
+        "goal": "Second harvest tool recipe; bones cost more metal than a knife",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "domain": {
+            "name": "domain",
+            "type": "enum",
+            "description": "Crafting station required",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "smithing",
+              "alchemy",
+              "arcane",
+              "carpentry"
+            ],
+            "pii": false
+          },
+          "outputCount": {
+            "name": "outputCount",
+            "type": "integer",
+            "description": "Number of output items produced per craft",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "smithing",
+              "station": "forge",
+              "inputs": [
+                {
+                  "item": "FerriteIngot",
+                  "quantity": 2
+                },
+                {
+                  "item": "ThornwoodPlank",
+                  "quantity": 1
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "BoneSaw",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Smithing",
+                  "tier": "novice"
+                }
+              ]
+            }
+          }
+        },
+        "relations": {
+          "inputFerriteIngot": {
+            "name": "inputFerriteIngot",
+            "kind": "hasOne",
+            "target": "FerriteIngot"
+          },
+          "inputThornwoodPlank": {
+            "name": "inputThornwoodPlank",
+            "kind": "hasOne",
+            "target": "ThornwoodPlank"
+          },
+          "output": {
+            "name": "output",
+            "kind": "hasOne",
+            "target": "BoneSaw"
+          }
+        },
+        "behaviors": {
+          "craft": {
+            "name": "craft",
+            "description": "Forge the blade and fit the grip",
+            "rules": [
+              "Requires Smithing: Novice",
+              "Requires a functional forge"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
       "RecipeVeilsteelLongsword": {
         "name": "RecipeVeilsteelLongsword",
         "tags": [
@@ -20107,7 +21129,9 @@
               "unlocks": [
                 "RecipeFerriteIngot",
                 "RecipeFerriteShortSword",
-                "RecipeFerritePick"
+                "RecipeFerritePick",
+                "RecipeSkinningKnife",
+                "RecipeBoneSaw"
               ],
               "requires": [],
               "researchDuration": 10,
@@ -20144,6 +21168,16 @@
             "name": "unlocksRecipeFerritePick",
             "kind": "hasOne",
             "target": "RecipeFerritePick"
+          },
+          "unlocksRecipeSkinningKnife": {
+            "name": "unlocksRecipeSkinningKnife",
+            "kind": "hasOne",
+            "target": "RecipeSkinningKnife"
+          },
+          "unlocksRecipeBoneSaw": {
+            "name": "unlocksRecipeBoneSaw",
+            "kind": "hasOne",
+            "target": "RecipeBoneSaw"
           }
         },
         "behaviors": {
@@ -22292,10 +23326,42 @@
               }
             ]
           },
+          "carcassMassKg": {
+            "name": "carcassMassKg",
+            "type": "decimal",
+            "description": "Mass in kg of the body a kill leaves; compared with the carrier's carry capacity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 90
+          },
+          "corpseSeconds": {
+            "name": "corpseSeconds",
+            "type": "integer",
+            "description": "Seconds the body stays in the world before it decays",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 300
+          },
+          "carryRule": {
+            "name": "carryRule",
+            "type": "enum",
+            "description": "`carry` (fits the carry capacity), `drag` (heavier, slower) or `immovable`",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "carry",
+              "drag",
+              "immovable"
+            ],
+            "pii": false,
+            "defaultValue": "drag"
+          },
           "drops": {
             "name": "drops",
             "type": "json",
-            "description": "Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system.",
+            "description": "Structured harvest table: raw item key, base chance (0-1), quantity range [minQty, maxQty], the tool category that works it (knife, bonetool, none) and the scaling skill. Each entry is rolled independently per harvest.",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -22304,19 +23370,25 @@
                 "item": "raw_boar_meat",
                 "chance": 1,
                 "minQty": 1,
-                "maxQty": 3
+                "maxQty": 3,
+                "tool": "knife",
+                "skill": "Skinning"
               },
               {
                 "item": "boar_hide",
                 "chance": 1,
                 "minQty": 1,
-                "maxQty": 1
+                "maxQty": 1,
+                "tool": "knife",
+                "skill": "Skinning"
               },
               {
                 "item": "boar_tusk",
                 "chance": 0.2,
                 "minQty": 1,
-                "maxQty": 1
+                "maxQty": 1,
+                "tool": "bonetool",
+                "skill": "Skinning"
               }
             ]
           }
@@ -22819,10 +23891,42 @@
             "pii": false,
             "defaultValue": 20
           },
+          "carcassMassKg": {
+            "name": "carcassMassKg",
+            "type": "decimal",
+            "description": "Mass in kg of the body a kill leaves; compared with the carrier's carry capacity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 35
+          },
+          "corpseSeconds": {
+            "name": "corpseSeconds",
+            "type": "integer",
+            "description": "Seconds the body stays in the world before it decays",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 300
+          },
+          "carryRule": {
+            "name": "carryRule",
+            "type": "enum",
+            "description": "`carry` (fits the carry capacity), `drag` (heavier, slower) or `immovable`",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "carry",
+              "drag",
+              "immovable"
+            ],
+            "pii": false,
+            "defaultValue": "carry"
+          },
           "drops": {
             "name": "drops",
             "type": "json",
-            "description": "Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system.",
+            "description": "Structured harvest table: raw item key, base chance (0-1), quantity range [minQty, maxQty], the tool category that works it (knife, bonetool, none) and the scaling skill. Each entry is rolled independently per harvest.",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -22831,19 +23935,25 @@
                 "item": "wolf_pelt",
                 "chance": 1,
                 "minQty": 1,
-                "maxQty": 1
+                "maxQty": 1,
+                "tool": "knife",
+                "skill": "Skinning"
               },
               {
                 "item": "wolf_fang",
                 "chance": 0.4,
                 "minQty": 0,
-                "maxQty": 1
+                "maxQty": 1,
+                "tool": "bonetool",
+                "skill": "Skinning"
               },
               {
                 "item": "alpha_wolf_fang",
                 "chance": 1,
                 "minQty": 1,
-                "maxQty": 1
+                "maxQty": 1,
+                "tool": "bonetool",
+                "skill": "Skinning"
               }
             ]
           },
@@ -23382,10 +24492,42 @@
             "pii": false,
             "defaultValue": 20
           },
+          "carcassMassKg": {
+            "name": "carcassMassKg",
+            "type": "decimal",
+            "description": "Mass in kg of the body a kill leaves; compared with the carrier's carry capacity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 600
+          },
+          "corpseSeconds": {
+            "name": "corpseSeconds",
+            "type": "integer",
+            "description": "Seconds the body stays in the world before it decays",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 600
+          },
+          "carryRule": {
+            "name": "carryRule",
+            "type": "enum",
+            "description": "`carry` (fits the carry capacity), `drag` (heavier, slower) or `immovable`",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "carry",
+              "drag",
+              "immovable"
+            ],
+            "pii": false,
+            "defaultValue": "immovable"
+          },
           "drops": {
             "name": "drops",
             "type": "json",
-            "description": "Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system.",
+            "description": "Structured harvest table: raw item key, base chance (0-1), quantity range [minQty, maxQty], the tool category that works it (knife, bonetool, none) and the scaling skill. Each entry is rolled independently per harvest.",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -23394,25 +24536,33 @@
                 "item": "bison_meat",
                 "chance": 1,
                 "minQty": 3,
-                "maxQty": 6
+                "maxQty": 6,
+                "tool": "knife",
+                "skill": "Skinning"
               },
               {
                 "item": "bison_hide",
                 "chance": 1,
                 "minQty": 2,
-                "maxQty": 2
+                "maxQty": 2,
+                "tool": "knife",
+                "skill": "Skinning"
               },
               {
                 "item": "bison_bone",
                 "chance": 1,
                 "minQty": 1,
-                "maxQty": 2
+                "maxQty": 2,
+                "tool": "bonetool",
+                "skill": "Skinning"
               },
               {
                 "item": "bison_horn",
                 "chance": 0.25,
                 "minQty": 1,
-                "maxQty": 1
+                "maxQty": 1,
+                "tool": "bonetool",
+                "skill": "Skinning"
               }
             ]
           }
@@ -23885,10 +25035,42 @@
             "pii": false,
             "defaultValue": "TemperateGrassland"
           },
+          "carcassMassKg": {
+            "name": "carcassMassKg",
+            "type": "decimal",
+            "description": "Mass in kg of the body a kill leaves; compared with the carrier's carry capacity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 3
+          },
+          "corpseSeconds": {
+            "name": "corpseSeconds",
+            "type": "integer",
+            "description": "Seconds the body stays in the world before it decays",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 180
+          },
+          "carryRule": {
+            "name": "carryRule",
+            "type": "enum",
+            "description": "`carry` (fits the carry capacity), `drag` (heavier, slower) or `immovable`",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "carry",
+              "drag",
+              "immovable"
+            ],
+            "pii": false,
+            "defaultValue": "carry"
+          },
           "drops": {
             "name": "drops",
             "type": "json",
-            "description": "Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system.",
+            "description": "Structured harvest table: raw item key, base chance (0-1), quantity range [minQty, maxQty], the tool category that works it (knife, bonetool, none) and the scaling skill. Each entry is rolled independently per harvest.",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -23897,13 +25079,17 @@
                 "item": "hawk_feather",
                 "chance": 1,
                 "minQty": 1,
-                "maxQty": 3
+                "maxQty": 3,
+                "tool": "none",
+                "skill": "Skinning"
               },
               {
                 "item": "hawk_talon",
                 "chance": 0.35,
                 "minQty": 1,
-                "maxQty": 1
+                "maxQty": 1,
+                "tool": "none",
+                "skill": "Skinning"
               }
             ]
           }
@@ -24390,10 +25576,42 @@
               }
             ]
           },
+          "carcassMassKg": {
+            "name": "carcassMassKg",
+            "type": "decimal",
+            "description": "Mass in kg of the body a kill leaves; compared with the carrier's carry capacity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 110
+          },
+          "corpseSeconds": {
+            "name": "corpseSeconds",
+            "type": "integer",
+            "description": "Seconds the body stays in the world before it decays",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 300
+          },
+          "carryRule": {
+            "name": "carryRule",
+            "type": "enum",
+            "description": "`carry` (fits the carry capacity), `drag` (heavier, slower) or `immovable`",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "carry",
+              "drag",
+              "immovable"
+            ],
+            "pii": false,
+            "defaultValue": "drag"
+          },
           "drops": {
             "name": "drops",
             "type": "json",
-            "description": "Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system.",
+            "description": "Structured harvest table: raw item key, base chance (0-1), quantity range [minQty, maxQty], the tool category that works it (knife, bonetool, none) and the scaling skill. Each entry is rolled independently per harvest.",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -24402,19 +25620,25 @@
                 "item": "slug_shell_shard",
                 "chance": 1,
                 "minQty": 2,
-                "maxQty": 4
+                "maxQty": 4,
+                "tool": "bonetool",
+                "skill": "Skinning"
               },
               {
                 "item": "superheated_slime_vial",
                 "chance": 1,
                 "minQty": 1,
-                "maxQty": 2
+                "maxQty": 2,
+                "tool": "knife",
+                "skill": "Skinning"
               },
               {
                 "item": "lava_core_organ",
                 "chance": 0.15,
                 "minQty": 1,
-                "maxQty": 1
+                "maxQty": 1,
+                "tool": "knife",
+                "skill": "Skinning"
               }
             ]
           }
@@ -24904,10 +26128,42 @@
               }
             ]
           },
+          "carcassMassKg": {
+            "name": "carcassMassKg",
+            "type": "decimal",
+            "description": "Mass in kg of the body a kill leaves; compared with the carrier's carry capacity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 400
+          },
+          "corpseSeconds": {
+            "name": "corpseSeconds",
+            "type": "integer",
+            "description": "Seconds the body stays in the world before it decays",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 600
+          },
+          "carryRule": {
+            "name": "carryRule",
+            "type": "enum",
+            "description": "`carry` (fits the carry capacity), `drag` (heavier, slower) or `immovable`",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "carry",
+              "drag",
+              "immovable"
+            ],
+            "pii": false,
+            "defaultValue": "immovable"
+          },
           "drops": {
             "name": "drops",
             "type": "json",
-            "description": "Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system.",
+            "description": "Structured harvest table: raw item key, base chance (0-1), quantity range [minQty, maxQty], the tool category that works it (knife, bonetool, none) and the scaling skill. Each entry is rolled independently per harvest.",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -24916,19 +26172,25 @@
                 "item": "gargoyle_wing_fragment",
                 "chance": 1,
                 "minQty": 1,
-                "maxQty": 2
+                "maxQty": 2,
+                "tool": "bonetool",
+                "skill": "Skinning"
               },
               {
                 "item": "petrified_binding_stone",
                 "chance": 1,
                 "minQty": 1,
-                "maxQty": 1
+                "maxQty": 1,
+                "tool": "bonetool",
+                "skill": "Skinning"
               },
               {
                 "item": "gargoyle_crest",
                 "chance": 0.1,
                 "minQty": 1,
-                "maxQty": 1
+                "maxQty": 1,
+                "tool": "bonetool",
+                "skill": "Skinning"
               }
             ]
           }
@@ -25406,10 +26668,42 @@
             "pii": false,
             "defaultValue": "TwilightGrove"
           },
+          "carcassMassKg": {
+            "name": "carcassMassKg",
+            "type": "decimal",
+            "description": "Mass in kg of the body a kill leaves; compared with the carrier's carry capacity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 8
+          },
+          "corpseSeconds": {
+            "name": "corpseSeconds",
+            "type": "integer",
+            "description": "Seconds the body stays in the world before it decays",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 300
+          },
+          "carryRule": {
+            "name": "carryRule",
+            "type": "enum",
+            "description": "`carry` (fits the carry capacity), `drag` (heavier, slower) or `immovable`",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "carry",
+              "drag",
+              "immovable"
+            ],
+            "pii": false,
+            "defaultValue": "carry"
+          },
           "drops": {
             "name": "drops",
             "type": "json",
-            "description": "Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system.",
+            "description": "Structured harvest table: raw item key, base chance (0-1), quantity range [minQty, maxQty], the tool category that works it (knife, bonetool, none) and the scaling skill. Each entry is rolled independently per harvest.",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -25418,13 +26712,17 @@
                 "item": "glimmer_pelt",
                 "chance": 1,
                 "minQty": 1,
-                "maxQty": 1
+                "maxQty": 1,
+                "tool": "knife",
+                "skill": "Skinning"
               },
               {
                 "item": "luminescent_reagent",
                 "chance": 1,
                 "minQty": 1,
-                "maxQty": 1
+                "maxQty": 1,
+                "tool": "none",
+                "skill": "Skinning"
               }
             ]
           },
@@ -25963,10 +27261,42 @@
               }
             ]
           },
+          "carcassMassKg": {
+            "name": "carcassMassKg",
+            "type": "decimal",
+            "description": "Mass in kg of the body a kill leaves; compared with the carrier's carry capacity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 60
+          },
+          "corpseSeconds": {
+            "name": "corpseSeconds",
+            "type": "integer",
+            "description": "Seconds the body stays in the world before it decays",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 300
+          },
+          "carryRule": {
+            "name": "carryRule",
+            "type": "enum",
+            "description": "`carry` (fits the carry capacity), `drag` (heavier, slower) or `immovable`",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "carry",
+              "drag",
+              "immovable"
+            ],
+            "pii": false,
+            "defaultValue": "drag"
+          },
           "drops": {
             "name": "drops",
             "type": "json",
-            "description": "Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system.",
+            "description": "Structured harvest table: raw item key, base chance (0-1), quantity range [minQty, maxQty], the tool category that works it (knife, bonetool, none) and the scaling skill. Each entry is rolled independently per harvest.",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -25975,19 +27305,25 @@
                 "item": "veilstalker_venom_sac",
                 "chance": 1,
                 "minQty": 1,
-                "maxQty": 1
+                "maxQty": 1,
+                "tool": "knife",
+                "skill": "Skinning"
               },
               {
                 "item": "shadow_phase_membrane",
                 "chance": 1,
                 "minQty": 1,
-                "maxQty": 1
+                "maxQty": 1,
+                "tool": "knife",
+                "skill": "Skinning"
               },
               {
                 "item": "crystallised_phase_shard",
                 "chance": 0.2,
                 "minQty": 1,
-                "maxQty": 1
+                "maxQty": 1,
+                "tool": "none",
+                "skill": "Skinning"
               }
             ]
           }
@@ -26465,10 +27801,42 @@
             "pii": false,
             "defaultValue": "VoidRift"
           },
+          "carcassMassKg": {
+            "name": "carcassMassKg",
+            "type": "decimal",
+            "description": "Mass in kg of the body a kill leaves; compared with the carrier's carry capacity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 120
+          },
+          "corpseSeconds": {
+            "name": "corpseSeconds",
+            "type": "integer",
+            "description": "Seconds the body stays in the world before it decays",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 300
+          },
+          "carryRule": {
+            "name": "carryRule",
+            "type": "enum",
+            "description": "`carry` (fits the carry capacity), `drag` (heavier, slower) or `immovable`",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "carry",
+              "drag",
+              "immovable"
+            ],
+            "pii": false,
+            "defaultValue": "drag"
+          },
           "drops": {
             "name": "drops",
             "type": "json",
-            "description": "Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system.",
+            "description": "Structured harvest table: raw item key, base chance (0-1), quantity range [minQty, maxQty], the tool category that works it (knife, bonetool, none) and the scaling skill. Each entry is rolled independently per harvest.",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -26477,19 +27845,25 @@
                 "item": "void_scale",
                 "chance": 1,
                 "minQty": 2,
-                "maxQty": 4
+                "maxQty": 4,
+                "tool": "knife",
+                "skill": "Skinning"
               },
               {
                 "item": "void_serpent_fang",
                 "chance": 1,
                 "minQty": 1,
-                "maxQty": 1
+                "maxQty": 1,
+                "tool": "bonetool",
+                "skill": "Skinning"
               },
               {
                 "item": "phase_locked_core",
                 "chance": 0.25,
                 "minQty": 1,
-                "maxQty": 1
+                "maxQty": 1,
+                "tool": "bonetool",
+                "skill": "Skinning"
               }
             ]
           }
@@ -26981,10 +28355,42 @@
             "pii": false,
             "defaultValue": "VoidRift"
           },
+          "carcassMassKg": {
+            "name": "carcassMassKg",
+            "type": "decimal",
+            "description": "Mass in kg of the body a kill leaves; compared with the carrier's carry capacity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 900
+          },
+          "corpseSeconds": {
+            "name": "corpseSeconds",
+            "type": "integer",
+            "description": "Seconds the body stays in the world before it decays",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 600
+          },
+          "carryRule": {
+            "name": "carryRule",
+            "type": "enum",
+            "description": "`carry` (fits the carry capacity), `drag` (heavier, slower) or `immovable`",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "carry",
+              "drag",
+              "immovable"
+            ],
+            "pii": false,
+            "defaultValue": "immovable"
+          },
           "drops": {
             "name": "drops",
             "type": "json",
-            "description": "Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system.",
+            "description": "Structured harvest table: raw item key, base chance (0-1), quantity range [minQty, maxQty], the tool category that works it (knife, bonetool, none) and the scaling skill. Each entry is rolled independently per harvest.",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -26993,19 +28399,25 @@
                 "item": "rift_shard",
                 "chance": 1,
                 "minQty": 4,
-                "maxQty": 8
+                "maxQty": 8,
+                "tool": "bonetool",
+                "skill": "Skinning"
               },
               {
                 "item": "void_core_crystal",
                 "chance": 1,
                 "minQty": 1,
-                "maxQty": 1
+                "maxQty": 1,
+                "tool": "bonetool",
+                "skill": "Skinning"
               },
               {
                 "item": "warden_sigil",
                 "chance": 0.05,
                 "minQty": 1,
-                "maxQty": 1
+                "maxQty": 1,
+                "tool": "none",
+                "skill": "Skinning"
               }
             ]
           }
@@ -27853,6 +29265,15 @@
             "pii": false,
             "defaultValue": 100
           },
+          "carryCapacityKg": {
+            "name": "carryCapacityKg",
+            "type": "decimal",
+            "description": "Base kg of creature body the character can carry; Skinning level adds to it (HarvestRules.carryBonusPerSkinningLevelKg)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 40
+          },
           "baseSpeed": {
             "name": "baseSpeed",
             "type": "decimal",
@@ -28233,7 +29654,7 @@
         "tags": [
           "loot"
         ],
-        "description": "Defines the rules that govern what items drop when a creature dies. Each entry specifies an item, a quantity range, and a drop chance. The LootTable is shared across all instances of a creature species; individual rolls are performed per kill by the loot system.",
+        "description": "Defines the rules that govern what items drop when a creature dies. Each creature's harvest table (its `drops` field, Phase 160) lists entries of item, quantity range, chance, the tool category that works the entry (knife, bonetool, none) and the scaling skill (Skinning); quantity and chance rise with Skinning level (see Skinning and HarvestRules). The LootTable is shared across all instances of a creature species; individual rolls are performed per kill by the loot system.",
         "goal": "Centralise drop rules in the design bible so balance changes are a single-source edit rather than scattered constants",
         "fields": {
           "id": {
@@ -28426,6 +29847,99 @@
             }
           }
         },
+        "pii": [],
+        "gdpr": {}
+      },
+      "HarvestRules": {
+        "name": "HarvestRules",
+        "tags": [
+          "harvest"
+        ],
+        "description": "Tuning for working and moving a creature body: how long a harvest takes, how close the harvester stands, how carrying and dragging slow the walk, and how many bodies a region keeps.",
+        "goal": "Keep harvest and carry numbers in the design bible so balance is a single-source edit",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "harvestSeconds": {
+            "name": "harvestSeconds",
+            "type": "decimal",
+            "description": "Seconds a harvest action runs; moving or taking damage cancels it",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 4
+          },
+          "harvestRangeMetres": {
+            "name": "harvestRangeMetres",
+            "type": "decimal",
+            "description": "Distance in metres within which the host accepts a harvest or carry intent",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 3
+          },
+          "carrySlowAboveFraction": {
+            "name": "carrySlowAboveFraction",
+            "type": "decimal",
+            "description": "Carrying a body heavier than this fraction of the capacity slows walking",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "carrySlowSpeedMultiplier": {
+            "name": "carrySlowSpeedMultiplier",
+            "type": "decimal",
+            "description": "Walk speed multiplier while carrying above carrySlowAboveFraction",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.7
+          },
+          "dragCapacityFactor": {
+            "name": "dragCapacityFactor",
+            "type": "decimal",
+            "description": "A `drag` body up to capacity times this factor can be dragged",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 3
+          },
+          "dragSpeedMultiplier": {
+            "name": "dragSpeedMultiplier",
+            "type": "decimal",
+            "description": "Walk speed multiplier while dragging a body",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "carryBonusPerSkinningLevelKg": {
+            "name": "carryBonusPerSkinningLevelKg",
+            "type": "decimal",
+            "description": "Extra carry capacity in kg per Skinning level (no strength attribute exists yet)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 2
+          },
+          "maxCarcassesPerRegion": {
+            "name": "maxCarcassesPerRegion",
+            "type": "integer",
+            "description": "Bodies a region keeps; the oldest decays first",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 24
+          }
+        },
+        "relations": {},
+        "behaviors": {},
         "pii": [],
         "gdpr": {}
       },

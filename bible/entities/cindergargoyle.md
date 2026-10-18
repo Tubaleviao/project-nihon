@@ -32,7 +32,10 @@ A winged, stone-skinned predator that nests in volcanic caldera walls. Awakens a
 | `spawnDensity` | decimal | yes | Amplitude (0–1) of the seeded density noise that clusters and thins packs across the world |
 | `biome` | enum (`TemperateForest`, `TemperateGrassland`, `VolcanicBadlands`, `TwilightGrove`, `VoidRift`, `Ocean`, `Beach`, `Desert`, `Tundra`, `Alpine`, `Taiga`, `Savanna`) | yes | Biome this creature belongs to |
 | `onHitEffects` | json | yes | Status effects a landed hit rolls: [{ effect, chance }] (Phase 129); each effect names a CombatSystem.statusEffects row |
-| `drops` | json | yes | Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system. |
+| `carcassMassKg` | decimal | yes | Mass in kg of the body a kill leaves; compared with the carrier's carry capacity |
+| `corpseSeconds` | integer | yes | Seconds the body stays in the world before it decays |
+| `carryRule` | enum (`carry`, `drag`, `immovable`) | yes | `carry` (fits the carry capacity), `drag` (heavier, slower) or `immovable` |
+| `drops` | json | yes | Structured harvest table: raw item key, base chance (0-1), quantity range [minQty, maxQty], the tool category that works it (knife, bonetool, none) and the scaling skill. Each entry is rolled independently per harvest. |
 
 ### State machine
 

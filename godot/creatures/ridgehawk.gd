@@ -38,6 +38,12 @@ enum Biome {
 	SAVANNA,
 }
 
+enum CarryRule {
+	CARRY,
+	DRAG,
+	IMMOVABLE,
+}
+
 enum State {
 	IDLE,
 	ALERT,
@@ -67,4 +73,7 @@ enum State {
 @export var spawnChance: float
 @export var spawnDensity: float
 @export var biome: int
+@export var carcassMassKg: float
+@export var corpseSeconds: int
+@export var carryRule: int
 @export var drops: Array

@@ -66,12 +66,17 @@ const GESTURES: Dictionary = {
 		"Wave": preload("res://godot/gestures/wave.tres")
 }
 
+const HARVESTS: Dictionary = {
+		"HarvestRules": preload("res://godot/harvests/harvestrules.tres")
+}
+
 const ITEMS: Dictionary = {
 		"AethermiteBow": preload("res://godot/items/aethermitebow.tres"),
 		"AethermiteDust": preload("res://godot/items/aethermitedust.tres"),
 		"AethermiteShard": preload("res://godot/items/aethermiteshard.tres"),
 		"AlchemyPotion": preload("res://godot/items/alchemypotion.tres"),
 		"AshiteBlock": preload("res://godot/items/ashiteblock.tres"),
+		"BoneSaw": preload("res://godot/items/bonesaw.tres"),
 		"CarpenterAxe": preload("res://godot/items/carpenteraxe.tres"),
 		"DuskfiberCloak": preload("res://godot/items/duskfibercloak.tres"),
 		"EnchantedAethermiteShard": preload("res://godot/items/enchantedaethermiteshard.tres"),
@@ -84,6 +89,7 @@ const ITEMS: Dictionary = {
 		"Hearth": preload("res://godot/items/hearth.tres"),
 		"LumenfiteOrb": preload("res://godot/items/lumenfiteorb.tres"),
 		"RefinedVoiditeShard": preload("res://godot/items/refinedvoiditeshard.tres"),
+		"SkinningKnife": preload("res://godot/items/skinningknife.tres"),
 		"ThornwoodPlank": preload("res://godot/items/thornwoodplank.tres"),
 		"VeilsteelChestplate": preload("res://godot/items/veilsteelchestplate.tres"),
 		"VeilsteelIngot": preload("res://godot/items/veilsteelingot.tres"),
@@ -136,6 +142,7 @@ const PROFESSIONS: Dictionary = {
 const RECIPES: Dictionary = {
 		"RecipeAethermiteBow": preload("res://godot/recipes/recipeaethermitebow.tres"),
 		"RecipeAshiteBlock": preload("res://godot/recipes/recipeashiteblock.tres"),
+		"RecipeBoneSaw": preload("res://godot/recipes/recipebonesaw.tres"),
 		"RecipeCarpenterAxe": preload("res://godot/recipes/recipecarpenteraxe.tres"),
 		"RecipeDuskfiberCloak": preload("res://godot/recipes/recipeduskfibercloak.tres"),
 		"RecipeEnchantedAethermiteShard": preload("res://godot/recipes/recipeenchantedaethermiteshard.tres"),
@@ -146,6 +153,7 @@ const RECIPES: Dictionary = {
 		"RecipeHearth": preload("res://godot/recipes/recipehearth.tres"),
 		"RecipeLumenfiteOrb": preload("res://godot/recipes/recipelumenfiteorb.tres"),
 		"RecipeRefinedVoiditeShard": preload("res://godot/recipes/reciperefinedvoiditeshard.tres"),
+		"RecipeSkinningKnife": preload("res://godot/recipes/recipeskinningknife.tres"),
 		"RecipeStaminaPotion": preload("res://godot/recipes/recipestaminapotion.tres"),
 		"RecipeThornwoodPlank": preload("res://godot/recipes/recipethornwoodplank.tres"),
 		"RecipeVeilsteelChestplate": preload("res://godot/recipes/recipeveilsteelchestplate.tres"),
@@ -176,6 +184,7 @@ const SKILLS: Dictionary = {
 		"Navigation": preload("res://godot/skills/navigation.tres"),
 		"RestorationMagic": preload("res://godot/skills/restorationmagic.tres"),
 		"Shieldcraft": preload("res://godot/skills/shieldcraft.tres"),
+		"Skinning": preload("res://godot/skills/skinning.tres"),
 		"Smithing": preload("res://godot/skills/smithing.tres"),
 		"Speechcraft": preload("res://godot/skills/speechcraft.tres"),
 		"Stealth": preload("res://godot/skills/stealth.tres"),

@@ -7,7 +7,7 @@ title: "LootTable"
 
 `loot`
 
-Defines the rules that govern what items drop when a creature dies. Each entry specifies an item, a quantity range, and a drop chance. The LootTable is shared across all instances of a creature species; individual rolls are performed per kill by the loot system.
+Defines the rules that govern what items drop when a creature dies. Each creature's harvest table (its `drops` field, Phase 160) lists entries of item, quantity range, chance, the tool category that works the entry (knife, bonetool, none) and the scaling skill (Skinning); quantity and chance rise with Skinning level (see Skinning and HarvestRules). The LootTable is shared across all instances of a creature species; individual rolls are performed per kill by the loot system.
 
 > Centralise drop rules in the design bible so balance changes are a single-source edit rather than scattered constants
 
