@@ -13,3 +13,6 @@ tools/pack_project/_overlay/
 .code-review-graph/
 /playtest/
 /build/
+
+__pycache__/
+*.pyc
