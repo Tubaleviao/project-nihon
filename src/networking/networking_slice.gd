@@ -983,6 +983,13 @@ func _on_inventory_synced(owner_id: String, contents: Dictionary, durabilities: 
 func _peer_for_inventory_owner(owner_id: String) -> int:
 	return _m1._peer_for_inventory_owner(owner_id)
 
+## Phase 156 — the longest key and the outcomes a `combat_hit` packet may carry.
+const COMBAT_KEY_MAX := 64
+const COMBAT_OUTCOMES := ["hit", "critical", "miss", "kill"]
+
+func send_combat_hit(attacker_key: String, defender_key: String, outcome: String, position: Vector3) -> void:
+	_m2.send_combat_hit(attacker_key, defender_key, outcome, position)
+
 func send_player_damaged(peer_id: int, damage: float, attacker_id: String) -> void:
 	_m2.send_player_damaged(peer_id, damage, attacker_id)
 

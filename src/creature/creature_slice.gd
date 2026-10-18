@@ -324,6 +324,14 @@ func set_instance_position(instance_id: String, pos: Vector3) -> void:
 ## A COPY, deliberately: every entry is a fresh dictionary. That is what a UI or a
 ## test wants (nobody can write through it), and it is also why it is NOT the per-frame
 ## accessor — see `instances_view()`.
+## Phase 156 — animate a swing / a flinch on a creature's model (an instance id, or its type). False
+## when no model answers (far away, a dedicated server, or a type that keeps its box).
+func trigger_attack_animation(id: String) -> bool:
+	return _visuals != null and _visuals.trigger_attack(id)
+
+func trigger_hit_animation(id: String) -> bool:
+	return _visuals != null and _visuals.trigger_hit(id)
+
 func get_all_instances() -> Array:
 	var out: Array = []
 	for iid in _instances:
@@ -887,7 +895,7 @@ func _biome_keys() -> Array:
 		return terrain_slice.BIOME_KEYS
 	return ["TemperateForest", "TemperateGrassland", "VolcanicBadlands", "TwilightGrove", "VoidRift", "Ocean", "Beach", "Desert", "Tundra", "Alpine", "Taiga", "Savanna"]
 
-func _on_creature_died(entity_id: String, _position: Vector3, _killer_id: String) -> void:
+func _on_creature_died(entity_id: String, _position: Vector3, _killer_id: String, landing: Vector3) -> void:
 	if entity_id == "player":
 		return
 	# entity_id may be either a fabric key or an instance_id.
@@ -901,6 +909,18 @@ func _on_creature_died(entity_id: String, _position: Vector3, _killer_id: String
 				var respawn_secs: float = float(res.get("respawnSeconds")) if res else 300.0
 				inst["state"]      = "dead"
 				inst["hp"]         = 0.0
+				# Phase 157 — the host's death push: the body's authoritative position becomes the landing.
+				# Only the instance the blow named moves (a type id matches every instance of it), and it
+				# goes through set_instance_position so the spatial index and the box follow.
+				if landing != Vector3.ZERO and iid == entity_id:
+					set_instance_position(iid, landing)
+					# A corpse rests on the ground: drop the flyer's hover band the move just added.
+					if hover_of(iid) > 0.0:
+						var rest: Vector3 = inst["position"]
+						rest.y = minf(rest.y, landing.y)
+						inst["position"] = rest
+						_spatial.update(iid, rest)
+						_place_box(iid, rest)
 				# WALL-CLOCK deadline (Phase 33) — a saved deadline must still mean
 				# the same moment in a new process, so this is Unix-epoch seconds,
 				# not process uptime.

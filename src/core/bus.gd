@@ -34,6 +34,16 @@ signal chunk_unloaded(chunk_pos: Vector2i)
 ## result : Dictionary  — { attacker, defender, damage, outcome }
 signal combat_round_resolved(result: Dictionary)
 
+## Phase 156 — emitted by BattleSlice once per resolved swing, a miss included, so every hit of a round
+## animates (`combat_round_resolved` carries one result per round). The ids are the round's own:
+## "player", a player id, a creature instance id or a creature type.
+## outcome : String — "hit", "critical", "miss" or "kill"
+signal combat_hit_resolved(attacker_id: String, defender_id: String, outcome: String, damage: float)
+
+## Phase 156 — client side: the host's `combat_hit_resolved`, delivered over the wire with its ids turned
+## into wire keys ("p:<peer id>" for a player, "c:<id>" for a creature). Animation only.
+signal combat_hit_synced(attacker_key: String, defender_key: String, outcome: String)
+
 ## Request a combat round (any system can fire this).
 ## attacker_id : String — entity key from GameData.CREATURES or "player"
 ## defender_id : String — entity key from GameData.CREATURES or "player"
@@ -242,7 +252,9 @@ signal resource_gathered(player_id: String, material: String, quantity: int)
 ## entity_id   : String   — creature key or "player"
 ## position    : Vector3  — world position of the death
 ## killer_id   : String   — entity_id of the killer ("" if environmental)
-signal creature_died(entity_id: String, position: Vector3, killer_id: String)
+## landing     : Vector3  — Phase 157: where the death push leaves the body, decided by the host
+##               (Vector3.ZERO when no push applies)
+signal creature_died(entity_id: String, position: Vector3, killer_id: String, landing: Vector3)
 
 ## Emitted by CreatureSlice when a new creature instance enters the world.
 ## instance_id : String   — unique runtime identifier for this instance
@@ -501,7 +513,8 @@ signal player_damaged(damage: float, attacker_id: String, target_id: String)
 ## Emitted by PlayerSlice when the player's HP reaches zero.
 ## position  : Vector3 — world position at time of death
 ## killer_id : String  — attacker entity_id ("" if environmental)
-signal player_died(position: Vector3, killer_id: String)
+## landing   : Vector3 — Phase 157: where the death push leaves the body (host value; ZERO = none)
+signal player_died(position: Vector3, killer_id: String, landing: Vector3)
 
 ## Emitted by PlayerSlice when the player dies and then respawns.
 signal player_respawned(position: Vector3)

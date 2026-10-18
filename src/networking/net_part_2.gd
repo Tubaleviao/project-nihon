@@ -121,6 +121,21 @@ func send_player_damaged(peer_id: int, damage: float, attacker_id: String) -> vo
 		"attacker_id": attacker_id,
 	})
 
+## Phase 156 — host → clients in range of `position`: one swing resolved, so each client can animate the
+## attacker and the target. Keys are "p:<peer id>" (a player; the host's own body is peer 1) or
+## "c:<creature id>"; nothing else rides along, so no identity or health leaves the host. Animation
+## only: a client never reads damage or outcome from it as game state.
+func send_combat_hit(attacker_key: String, defender_key: String, outcome: String, position: Vector3) -> void:
+	if sl._role != sl.Role.HOST:
+		sl.Diag.warn("NetworkingSlice: send_combat_hit called on non-host — dropped")
+		return
+	sl._broadcast_aoi({
+		"type": "combat_hit",
+		"a":    attacker_key,
+		"d":    defender_key,
+		"o":    outcome,
+	}, position)
+
 ## Phase 36 — per-peer client → host token bucket. `now_ms` is an argument (not a
 ## clock read) so the rule is testable without waiting: the same shape the
 ## emulator's `_sample_remote_state_at` uses. Returns true when a token was

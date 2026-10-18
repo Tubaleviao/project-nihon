@@ -636,7 +636,7 @@ func _random_waypoint(origin: Vector3) -> Vector3:
 func _on_creature_spawned(instance_id: String, _creature_id: String, position: Vector3) -> void:
 	_ensure_ai_record(instance_id, position)
 
-func _on_creature_died(entity_id: String, _position: Vector3, _killer_id: String) -> void:
+func _on_creature_died(entity_id: String, _position: Vector3, _killer_id: String, _landing: Vector3) -> void:
 	if _ai.has(entity_id):
 		_ai[entity_id]["state"] = "dead"
 

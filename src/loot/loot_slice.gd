@@ -73,7 +73,7 @@ func get_pickup(pickup_id: String) -> Dictionary:
 # Private
 # ---------------------------------------------------------------------------
 
-func _on_creature_died(entity_id: String, position: Vector3, _killer_id: String) -> void:
+func _on_creature_died(entity_id: String, position: Vector3, _killer_id: String, landing: Vector3) -> void:
 	if entity_id == "player":
 		return
 	# entity_id may be a creature instance_id; resolve to the fabric key for drop table lookup.
@@ -93,7 +93,7 @@ func _on_creature_died(entity_id: String, position: Vector3, _killer_id: String)
 			var qty: int = randi_range(int(entry.get("minQty", 1)), int(entry.get("maxQty", 1)))
 			if qty <= 0:
 				continue
-			spawn_pickup(item_id, qty, position)
+			spawn_pickup(item_id, qty, position if landing == Vector3.ZERO else landing)
 
 ## Put `quantity` of `item_id` on the ground at `position` and return its pickup id.
 ## `durabilities` (one per unit, worst first) is what the pickup hands back to whoever collects it,

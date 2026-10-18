@@ -12,6 +12,7 @@ extends Node3D
 ## The placeholder rigs face -Z (the Godot forward); the fabric `restPose` puts the head at +Z.
 ## `yaw_for_direction` is the one place that reconciles the two.
 
+const DeathPush := preload("res://src/battle/death_push.gd")
 const RigTree := preload("res://src/character/rig_tree.gd")
 const Locomotion := preload("res://src/character/locomotion.gd")
 const CharacterMaterial := preload("res://src/character/character_material.gd")
@@ -31,6 +32,9 @@ const SELECT_INTERVAL := 0.25
 const TELEPORT_JUMP_M := 8.0
 ## Seconds a dead creature's model holds its death pose before it is dropped.
 const CORPSE_SECONDS := 8.0
+## Phase 157 — seconds the body takes to travel from where it was struck to its landing, and the arc's height.
+const FALL_SECONDS := 0.35
+const FALL_ARC_M := 0.25
 ## Horizontal speed (m/s) above which the model turns to face the direction of travel.
 const FACE_SPEED := 0.3
 
@@ -72,6 +76,17 @@ static func select_ids(cands: Array, current: Dictionary, range_m: float, hyster
 			break
 		out.append(c[0])
 	return out
+
+
+## Pure: seconds a corpse's model stays. The fabric's `corpseSeconds` (Phase 160) when the creature
+## type has one, else CORPSE_SECONDS.
+static func corpse_seconds(creature_id: String) -> float:
+	var res: Resource = GameData.CREATURES.get(creature_id, null)
+	if res != null:
+		var v: Variant = res.get("corpseSeconds")
+		if v != null and float(v) > 0.0:
+			return float(v)
+	return CORPSE_SECONDS
 
 
 ## Pure: locomotion state for a creature AI state and horizontal speed (m/s).
@@ -118,6 +133,45 @@ static func blend_for_speed(speed: float) -> float:
 	if speed >= Locomotion.WALK_SPEED:
 		return 0.5
 	return 0.0
+
+
+## Play a swing on a modelled creature. `id` is an instance id, or a creature type when the round
+## named the type (the first modelled instance of it). False when no model answers to `id`.
+func trigger_attack(id: String) -> bool:
+	var iid := _model_for(id)
+	if iid == "":
+		return false
+	var m: Dictionary = models[iid]
+	var tree: AnimationTree = m["tree"]
+	RigTree.set_attack_clip(tree, RigTree.ATTACK_DEFAULT)
+	m["swing"] = int(m["swing"]) + 1
+	m["swing_left"] = _attack_length(m)
+	m["swings"] = int(m.get("swings", 0)) + 1
+	return true
+
+
+## Play the hit flinch on a modelled creature (see `trigger_attack` for `id`).
+func trigger_hit(id: String) -> bool:
+	var iid := _model_for(id)
+	if iid == "":
+		return false
+	return RigTree.fire_hit(models[iid]["tree"])
+
+
+func _attack_length(m: Dictionary) -> float:
+	var player := (m["node"] as Node).find_child("AnimationPlayer", true, false) as AnimationPlayer
+	if player != null and player.has_animation("attack"):
+		return player.get_animation("attack").length
+	return Locomotion.ATTACK_DURATION
+
+
+func _model_for(id: String) -> String:
+	if models.has(id):
+		return id
+	for iid in models:
+		if str((models[iid]["node"] as Node).get_meta("creature_id", "")) == id:
+			return iid
+	return ""
 
 
 func has_model(instance_id: String) -> bool:
@@ -197,6 +251,7 @@ func attach(iid: String, inst: Dictionary) -> bool:
 	if node == null:
 		return false
 	node.name = "Model_%s" % iid.validate_node_name()
+	node.set_meta("creature_id", cid)
 	for m in node.find_children("*", "MeshInstance3D", true, false):
 		(m as MeshInstance3D).material_override = tpl["material"]
 		CharacterMaterial.apply_instance(m as GeometryInstance3D, tpl["index"])
@@ -209,7 +264,7 @@ func attach(iid: String, inst: Dictionary) -> bool:
 	var pos: Vector3 = inst["position"]
 	node.transform = Transform3D(Basis(), pos)
 	models[iid] = {"node": node, "tree": tree, "speed": 0.0, "last_pos": pos, "yaw": 0.0,
-		"loco": -1, "dead_at": -1.0, "state": str(inst["state"])}
+		"loco": -1, "dead_at": -1.0, "fall_t": 1.0, "fall_from": pos, "corpse_s": corpse_seconds(cid), "state": str(inst["state"]), "swing_left": 0.0, "swing": 0, "swing_seen": 0}
 	model_attached.emit(iid)
 	return true
 
@@ -244,6 +299,7 @@ func _update_model(iid: String, inst: Dictionary, delta: float) -> void:
 		# the move is not a run and the model does not turn toward it.
 		last = pos
 		m["speed"] = 0.0
+	var prev_state: String = m["state"]
 	m["state"] = state
 	var flat := Vector3(pos.x - last.x, 0.0, pos.z - last.z)
 	if flat.length() > TELEPORT_JUMP_M:
@@ -256,18 +312,44 @@ func _update_model(iid: String, inst: Dictionary, delta: float) -> void:
 	if flat.length() > 0.0 and float(m["speed"]) >= FACE_SPEED and state != "dead":
 		m["yaw"] = yaw_for_direction(flat.normalized())
 	var node: Node3D = m["node"]
-	node.transform = Transform3D(Basis(Vector3.UP, float(m["yaw"])), pos)
+	if state == "dead" and prev_state != "dead":
+		# Phase 157 — struck dead: the body flies from where it stood to the host's landing spot, and the
+		# clip follows the hit (killer to body is the direction it travelled).
+		m["fall_from"] = node.position
+		m["fall_t"] = 0.0
+		var tree_d: AnimationTree = m["tree"]
+		# A displacement under the push's minimum is the creature's own motion, not a throw: plain `death`.
+		var thrown := pos - (m["fall_from"] as Vector3)
+		var hit_dir := thrown if Vector2(thrown.x, thrown.z).length() >= DeathPush.MIN_PUSH_M * 0.5 else Vector3.ZERO
+		RigTree.set_death_clip(tree_d, DeathPush.variant(hit_dir, float(m["yaw"])))
+	var draw_pos := pos
+	if float(m["fall_t"]) < FALL_SECONDS:
+		m["fall_t"] = float(m["fall_t"]) + delta
+		var u := clampf(float(m["fall_t"]) / FALL_SECONDS, 0.0, 1.0)
+		draw_pos = (m["fall_from"] as Vector3).lerp(pos, u) + Vector3(0.0, DeathPush.arc_height(u, FALL_ARC_M), 0.0)
+	node.transform = Transform3D(Basis(Vector3.UP, float(m["yaw"])), draw_pos)
 	if state == "dead":
 		if float(m["dead_at"]) < 0.0:
 			m["dead_at"] = 0.0
 		m["dead_at"] = float(m["dead_at"]) + delta
-		if float(m["dead_at"]) >= CORPSE_SECONDS:
+		if float(m["dead_at"]) >= float(m["corpse_s"]):
 			detach(iid)
 			return
 	else:
 		m["dead_at"] = -1.0
 	var s := loco_state(state, float(m["speed"]))
 	var tree: AnimationTree = m["tree"]
+	# A swing holds the Attack node for its clip's length whatever the creature is doing, and a new one
+	# restarts it, so every hit of a round shows.
+	if float(m["swing_left"]) > 0.0 and state != "dead":
+		m["swing_left"] = float(m["swing_left"]) - delta
+		s = Locomotion.State.ATTACK
+	if int(m["swing"]) != int(m["swing_seen"]):
+		m["swing_seen"] = m["swing"]
+		var playback: Object = tree.get(RigTree.PLAYBACK_PARAM)
+		if state != "dead" and playback != null and tree.get_meta("travel_node", "") == "Attack":
+			playback.start("Attack")
+			tree.set_meta("swing_restarts", int(tree.get_meta("swing_restarts", 0)) + 1)
 	if s != int(m["loco"]):
 		m["loco"] = s
 		RigTree.travel_once(tree, tree.get(RigTree.PLAYBACK_PARAM), RigTree.node_for_state(s))

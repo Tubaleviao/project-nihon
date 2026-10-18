@@ -348,9 +348,23 @@ def _stride(leg: float, arm: float, knee: list, elbow: list) -> dict:
 
 
 PLAYER_CLIPS = [
-    ("idle", [0.0, 1.0, 2.0], {
-        "Chest": [(0, 0, 0), (-2, 0, 0), (0, 0, 0)], "Head": [(0, 0, 0), (2, 0, 0), (0, 0, 0)],
-        "Arm_L": [(0, 0, -3), (0, 0, -5), (0, 0, -3)], "Arm_R": [(0, 0, 3), (0, 0, 5), (0, 0, 3)]}),
+    # A breathing and weight-shift loop: chest +-6 degrees, hips sway, a slow head turn (about 3 s).
+    ("idle", [0.0, 0.75, 1.5, 2.25, 3.0], {
+        "Chest": [(0, 0, 0), (-6, 0, 0), (0, 0, 0), (6, 0, 0), (0, 0, 0)],
+        "Hips": [(0, 0, 0), (0, 0, 4), (0, 0, 0), (0, 0, -4), (0, 0, 0)],
+        "Head": [(0, 0, 0), (0, 12, 0), (0, 0, 0), (0, -12, 0), (0, 0, 0)],
+        "Arm_L": [(0, 0, -3), (0, 0, -6), (0, 0, -3), (0, 0, -6), (0, 0, -3)],
+        "Arm_R": [(0, 0, 3), (0, 0, 6), (0, 0, 3), (0, 0, 6), (0, 0, 3)]}),
+    # Variants that play once after a long idle.
+    ("idle_look", [0.0, 0.6, 1.8, 2.4], {
+        "Head": [(0, 0, 0), (0, 35, 0), (0, -35, 0), (0, 0, 0)],
+        "Neck": [(0, 0, 0), (0, 15, 0), (0, -15, 0), (0, 0, 0)],
+        "Chest": [(0, 0, 0), (0, 8, 0), (0, -8, 0), (0, 0, 0)]}),
+    ("idle_stretch", [0.0, 0.8, 1.8, 2.6], {
+        "Arm_L": [(0, 0, 0), (0, 0, -150), (0, 0, -150), (0, 0, 0)],
+        "Arm_R": [(0, 0, 0), (0, 0, 150), (0, 0, 150), (0, 0, 0)],
+        "Chest": [(0, 0, 0), (-12, 0, 0), (-12, 0, 0), (0, 0, 0)],
+        "Head": [(0, 0, 0), (-15, 0, 0), (-15, 0, 0), (0, 0, 0)]}),
     ("walk", [0.0, 0.25, 0.5, 0.75, 1.0], _stride(25, 20, [5, 12, 20, 55, 5], [10, 20, 35, 20, 10])),
     ("run", [0.0, 0.15, 0.3, 0.45, 0.6], dict(_stride(45, 50, [15, 35, 30, 100, 15], [60, 75, 90, 75, 60]),
         Spine=[(-8, 0, 0)] * 5)),
@@ -368,6 +382,32 @@ PLAYER_CLIPS = [
         "Chest": [(0, 0, 0), (0, 15, 0), (-8, -15, 0), (0, 0, 0)],
         "Arm_R": [(0, 0, 0), (160, 0, 0), (40, 0, 0), (0, 0, 0)],
         "Arm_L": [(0, 0, 0), (-15, 0, 0), (15, 0, 0), (0, 0, 0)]}),
+    # Variants by what the main hand holds (the rig picks one; `attack` is the fallback).
+    ("attack_unarmed", [0.0, 0.1, 0.2, 0.4], {
+        "Chest": [(0, 0, 0), (0, 20, 0), (-6, -20, 0), (0, 0, 0)],
+        "Arm_R": [(0, 0, 0), (-40, 0, 0), (100, 0, 0), (0, 0, 0)],
+        "Forearm_R": [(0, 0, 0), (60, 0, 0), (5, 0, 0), (0, 0, 0)],
+        "Arm_L": [(0, 0, 0), (-20, 0, 0), (10, 0, 0), (0, 0, 0)]}),
+    ("attack_1h", [0.0, 0.15, 0.3, 0.5], {
+        "Chest": [(0, 0, 0), (0, 25, 0), (-10, -25, 0), (0, 0, 0)],
+        "Arm_R": [(0, 0, 0), (0, 0, 130), (60, 0, 20), (0, 0, 0)],
+        "Forearm_R": [(0, 0, 0), (50, 0, 0), (10, 0, 0), (0, 0, 0)],
+        "Arm_L": [(0, 0, 0), (-15, 0, 0), (15, 0, 0), (0, 0, 0)]}),
+    ("attack_tool", [0.0, 0.2, 0.35, 0.5], {
+        "Spine": [(0, 0, 0), (-12, 0, 0), (18, 0, 0), (0, 0, 0)],
+        "Arm_R": [(0, 0, 0), (170, 0, 0), (30, 0, 0), (0, 0, 0)],
+        "Arm_L": [(0, 0, 0), (150, 0, 0), (25, 0, 0), (0, 0, 0)],
+        "Forearm_R": [(0, 0, 0), (40, 0, 0), (10, 0, 0), (0, 0, 0)]}),
+    # A short flinch, played additively over locomotion; `stagger` is the longer knockback version.
+    ("hit", [0.0, 0.08, 0.25], {
+        "Spine": [(0, 0, 0), (-14, 0, 0), (0, 0, 0)],
+        "Head": [(0, 0, 0), (-12, 0, 0), (0, 0, 0)],
+        "Chest": [(0, 0, 0), (-8, 6, 0), (0, 0, 0)]}),
+    ("stagger", [0.0, 0.15, 0.5, 0.8], {
+        "Spine": [(0, 0, 0), (-25, 0, 0), (-10, 0, 0), (0, 0, 0)],
+        "Head": [(0, 0, 0), (-20, 0, 0), (-8, 0, 0), (0, 0, 0)],
+        "Arm_L": [(0, 0, 0), (0, 0, -40), (0, 0, -15), (0, 0, 0)],
+        "Arm_R": [(0, 0, 0), (0, 0, 40), (0, 0, 15), (0, 0, 0)]}),
     ("death", [0.0, 0.4, 1.2], {
         "Root": [(0, 0, 0), (30, 0, 0), (85, 0, 0)],
         "Arm_L": [(0, 0, 0), (0, 0, -30), (0, 0, -60)], "Arm_R": [(0, 0, 0), (0, 0, 30), (0, 0, 60)]}),
@@ -485,6 +525,17 @@ def build_skinned_rig(tres: Path, skin_name: str, joint_pos: dict, rest_rot: dic
             assert len(keys) == len(times), "clip %s: %d keys for %d times on %s" % (clip, len(keys), len(times), joint)
             # A figure-space turn D at the joint, on top of its rest: P^-1 D P R, with P the
             # parent's rest in figure space and R the joint's local rest.
+            if joint.endswith(":t"):
+                # A translation channel ("Root:t"): metres added to the joint's rest offset.
+                name = joint[:-2]
+                base = nodes[2 + index[name]]["translation"]
+                offsets = [c for key in keys for c in (round(base[i] + key[i], 6) for i in range(3))]
+                output = add(struct.pack("<%df" % len(offsets), *offsets), 0, 0, componentType=5126,
+                             count=len(times), type="VEC3")
+                samplers.append({"input": input_accessor, "output": output, "interpolation": "LINEAR"})
+                channels.append({"sampler": len(samplers) - 1,
+                                 "target": {"node": 2 + index[name], "path": "translation"}})
+                continue
             pw = world[bones[index[joint]][1]] if bones[index[joint]][1] else [0.0, 0.0, 0.0, 1.0]
             quats = [c for key in keys
                      for c in _quat_mul(_quat_mul(_quat_conj(pw), _quat_mul(_quat_euler(key), pw)), rest[joint])]
@@ -559,14 +610,22 @@ def _gait(swing: float) -> dict:
 
 
 WOLF_CLIPS = [
-    ("idle", [0.0, 1.0, 2.0], {"Head": [(0, 0, 0), (4, 0, 0), (0, 0, 0)], "Tail": [(0, 0, 0), (0, 10, 0), (0, 0, 0)]}),
+    # Head bob and tail sway.
+    ("idle", [0.0, 0.75, 1.5, 2.25, 3.0], {
+        "Head": [(0, 0, 0), (12, 0, 0), (0, 0, 0), (12, 0, 0), (0, 0, 0)],
+        "Tail": [(0, 0, 0), (0, 18, 0), (0, 0, 0), (0, -18, 0), (0, 0, 0)]}),
+    ("idle_look", [0.0, 0.6, 1.8, 2.4], {
+        "Head": [(0, 0, 0), (0, 40, 0), (0, -40, 0), (0, 0, 0)],
+        "Neck": [(0, 0, 0), (0, 15, 0), (0, -15, 0), (0, 0, 0)]}),
     ("walk", [0.0, 0.25, 0.5, 0.75, 1.0], _gait(20)),
     ("run", [0.0, 0.15, 0.3, 0.45, 0.6], dict(_gait(40), Spine=[(-6, 0, 0)] * 5)),
     ("fall", [0.0, 0.4, 0.8], {"Leg_FL": [(-30, 0, 0)] * 3, "Leg_FR": [(-30, 0, 0)] * 3,
                                 "Leg_BL": [(30, 0, 0)] * 3, "Leg_BR": [(30, 0, 0)] * 3}),
-    ("land", [0.0, 0.12, 0.25], {"Spine": [(10, 0, 0), (5, 0, 0), (0, 0, 0)]}),
+    ("land", [0.0, 0.12, 0.25], {"Spine": [(14, 0, 0), (7, 0, 0), (0, 0, 0)]}),
     ("attack", [0.0, 0.15, 0.3, 0.5], {"Head": [(0, 0, 0), (-25, 0, 0), (20, 0, 0), (0, 0, 0)],
                                         "Neck": [(0, 0, 0), (-15, 0, 0), (10, 0, 0), (0, 0, 0)]}),
+    ("hit", [0.0, 0.08, 0.25], {"Spine": [(0, 0, 0), (-14, 0, 0), (0, 0, 0)],
+                                "Head": [(0, 0, 0), (-18, 0, 0), (0, 0, 0)]}),
     ("death", [0.0, 0.4, 1.2], {"Root": [(0, 0, 0), (0, 0, 30), (0, 0, 85)]}),
 ]
 
@@ -615,16 +674,23 @@ BIRD_PARTS = [
 
 _FLAP = [0.0, 0.25, 0.5, 0.75, 1.0]
 BIRD_CLIPS = [
-    ("idle", [0.0, 1.0, 2.0], {"Head": [(0, 0, 0), (0, 8, 0), (0, 0, 0)]}),
+    # Preen: the head turns to each wing in turn.
+    ("idle", [0.0, 0.75, 1.5, 2.25, 3.0], {
+        "Head": [(0, 0, 0), (0, 30, 0), (0, 0, 0), (0, -30, 0), (0, 0, 0)],
+        "Wing_L": [(0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 12), (0, 0, 0)],
+        "Wing_R": [(0, 0, 0), (0, 0, -12), (0, 0, 0), (0, 0, 0), (0, 0, 0)]}),
+    ("idle_look", [0.0, 0.5, 1.5, 2.0], {"Head": [(0, 0, 0), (0, 45, 0), (0, -45, 0), (0, 0, 0)]}),
     ("walk", [0.0, 0.25, 0.5, 0.75, 1.0], {"Leg_L": [(20 * p, 0, 0) for p in (1, 0, -1, 0, 1)],
                                            "Leg_R": [(-20 * p, 0, 0) for p in (1, 0, -1, 0, 1)]}),
     ("run", [0.0, 0.15, 0.3, 0.45, 0.6], {"Leg_L": [(35 * p, 0, 0) for p in (1, 0, -1, 0, 1)],
                                           "Leg_R": [(-35 * p, 0, 0) for p in (1, 0, -1, 0, 1)]}),
     ("fall", _FLAP, {"Wing_L": [(0, 0, a) for a in (-40, 40, -40, 40, -40)],
                      "Wing_R": [(0, 0, -a) for a in (-40, 40, -40, 40, -40)]}),
-    ("land", [0.0, 0.12, 0.25], {"Spine": [(10, 0, 0), (5, 0, 0), (0, 0, 0)]}),
+    ("land", [0.0, 0.12, 0.25], {"Spine": [(14, 0, 0), (7, 0, 0), (0, 0, 0)]}),
     ("attack", [0.0, 0.15, 0.3, 0.5], {"Head": [(0, 0, 0), (-30, 0, 0), (20, 0, 0), (0, 0, 0)],
                                         "Neck": [(0, 0, 0), (-15, 0, 0), (10, 0, 0), (0, 0, 0)]}),
+    ("hit", [0.0, 0.08, 0.25], {"Spine": [(0, 0, 0), (-14, 0, 0), (0, 0, 0)],
+                                "Head": [(0, 0, 0), (-20, 0, 0), (0, 0, 0)]}),
     ("death", [0.0, 0.4, 1.2], {"Root": [(0, 0, 0), (0, 0, 30), (0, 0, 85)]}),
 ]
 
@@ -655,13 +721,19 @@ def _slither(amp: float) -> dict:
 
 
 SERPENT_CLIPS = [
-    ("idle", [0.0, 1.0, 2.0], {"Head": [(0, 0, 0), (0, 10, 0), (0, 0, 0)]}),
+    # A slow coil: the body sways and the head weaves.
+    ("idle", [0.0, 0.75, 1.5, 2.25, 3.0], dict(
+        _slither(12), Head=[(0, 0, 0), (0, 25, 0), (0, 0, 0), (0, -25, 0), (0, 0, 0)])),
+    ("idle_look", [0.0, 0.5, 1.5, 2.0], {"Head": [(0, 0, 0), (0, 40, 0), (0, -40, 0), (0, 0, 0)],
+                                         "Neck": [(0, 0, 0), (-15, 0, 0), (-15, 0, 0), (0, 0, 0)]}),
     ("walk", [0.0, 0.25, 0.5, 0.75, 1.0], _slither(15)),
     ("run", [0.0, 0.15, 0.3, 0.45, 0.6], _slither(25)),
     ("fall", [0.0, 0.4, 0.8], {"Spine_2": [(10, 0, 0), (35, 0, 0), (10, 0, 0)]}),
-    ("land", [0.0, 0.12, 0.25], {"Spine_2": [(10, 0, 0), (5, 0, 0), (0, 0, 0)]}),
+    ("land", [0.0, 0.12, 0.25], {"Spine_2": [(14, 0, 0), (7, 0, 0), (0, 0, 0)]}),
     ("attack", [0.0, 0.15, 0.3, 0.5], {"Neck": [(0, 0, 0), (-30, 0, 0), (25, 0, 0), (0, 0, 0)],
                                         "Head": [(0, 0, 0), (-20, 0, 0), (15, 0, 0), (0, 0, 0)]}),
+    ("hit", [0.0, 0.08, 0.25], {"Neck": [(0, 0, 0), (-18, 0, 0), (0, 0, 0)],
+                                "Head": [(0, 0, 0), (-20, 0, 0), (0, 0, 0)]}),
     ("death", [0.0, 0.4, 1.2], {"Root": [(0, 0, 0), (0, 0, 30), (0, 0, 85)]}),
 ]
 
@@ -678,15 +750,45 @@ def creature_rigs() -> dict:
     return rigs
 
 
+# Phase 157 — the death variants every rig carries, picked by the hit direction: `death_back` (thrown
+# backwards), `death_forward` (falls on its face), `death_side`. Each ends lying 85 degrees down with
+# Root lifted DEATH_LIFT_M, so the lowest bone rests within 5 cm of the ground instead of sinking.
+DEATH_LIFT_M = 0.045
+DEATH_TIMES = [0.0, 0.3, 0.9]
+
+
+def _death(axis: int, sign: float) -> dict:
+    keys = [(0, 0, 0), tuple(sign * 30 if i == axis else 0 for i in range(3)),
+            tuple(sign * 85 if i == axis else 0 for i in range(3))]
+    return {"Root": keys, "Root:t": [(0, 0, 0), (0, DEATH_LIFT_M / 2, 0), (0, DEATH_LIFT_M, 0)]}
+
+
+DEATH_VARIANTS = [("death_back", DEATH_TIMES, _death(0, 1)),
+                  ("death_forward", DEATH_TIMES, _death(0, -1)),
+                  ("death_side", DEATH_TIMES, _death(2, 1))]
+
+
+def _grounded_death(clips: list) -> None:
+    """Lift the plain `death` to rest on the ground too, then add the variants."""
+    for name, _times, channels in clips:
+        if name == "death":
+            channels["Root:t"] = [(0, 0, 0), (0, DEATH_LIFT_M / 2, 0), (0, DEATH_LIFT_M, 0)]
+    clips.extend(DEATH_VARIANTS)
+
+
+for _clips in (PLAYER_CLIPS, WOLF_CLIPS, BIRD_CLIPS, SERPENT_CLIPS):
+    _grounded_death(_clips)
+
 LOOP_CLIPS = ("idle", "walk", "run", "fall")
+MIN_PEAK_DEGREES = 10.0
+RIGS = lambda: {"player": PLAYER_CLIPS, "wolf": WOLF_CLIPS, "bird": BIRD_CLIPS, "serpent": SERPENT_CLIPS}
 
 
 def check_loops() -> list:
     """Problems found in the loop clips of every placeholder rig: a looped clip must end where it
     starts, for every joint, or it hitches at the seam. Empty when all close."""
     problems = []
-    rigs = {"player": PLAYER_CLIPS, "wolf": WOLF_CLIPS, "bird": BIRD_CLIPS, "serpent": SERPENT_CLIPS}
-    for rig, clips in rigs.items():
+    for rig, clips in RIGS().items():
         for name, times, joints in clips:
             if name not in LOOP_CLIPS:
                 continue
@@ -700,9 +802,20 @@ def check_loops() -> list:
     return problems
 
 
+def check_peaks() -> list:
+    """Clips whose largest joint rotation is under MIN_PEAK_DEGREES: present but invisible."""
+    problems = []
+    for rig, clips in RIGS().items():
+        for name, _times, joints in clips:
+            peak = max((abs(v) for joint, keys in joints.items() if not joint.endswith(":t") for key in keys for v in key), default=0.0)
+            if peak < MIN_PEAK_DEGREES:
+                problems.append(f"{rig}/{name}: peak rotation {peak} degrees is under {MIN_PEAK_DEGREES}")
+    return problems
+
+
 if __name__ == "__main__":
     if "--check" in sys.argv:
-        found = check_loops()
+        found = check_loops() + check_peaks()
         for line in found:
             print(line)
         sys.exit(1 if found else 0)

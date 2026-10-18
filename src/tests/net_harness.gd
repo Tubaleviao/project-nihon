@@ -188,6 +188,8 @@ static func steps() -> Array:
 		{ "name": "chunk_record_synced", "compare": true },
 		{ "name": "frontier_record_synced", "compare": true },
 		{ "name": "fold_carries_creatures", "compare": true },
+		{ "name": "peer_attack_animated", "compare": true },
+		{ "name": "death_landing_synced", "compare": true },
 	]
 
 ## The step names, comma-joined — the payload of the `plan` line the runner prints
@@ -410,6 +412,8 @@ func run(root: Node, role: String) -> void:
 	await _step_chunk_record_synced()
 	await _step_frontier_record_synced()
 	await _step_fold_carries_creatures()
+	await _step_peer_attack_animated()
+	await _step_death_landing_synced()
 	_finish()
 
 ## End this process, with the run's own verdict carried in the exit code.
@@ -1766,6 +1770,76 @@ func _step_fold_carries_creatures() -> void:
 	_root._creature.prune_carried(func(_c): return false)
 	_report("fold_carries_creatures", verdict(ok, true), "kept-and-host-unmoved" if ok else "probe_not_carried")
 
+## Phase 156 — a swing the host resolved for the bound peer reaches that peer's client as the synced combat
+## hit and plays an attack on the avatar that client draws for it (its own body, here). The host sends the
+## round's attacker as a player id; only the wire key ("p:<peer>") crosses.
+func _step_peer_attack_animated() -> void:
+	if _role == "host":
+		# The peer connected NOW: earlier steps reconnect, and the friend-code step joins a new identity.
+		var peers: PackedInt32Array = _root.multiplayer.get_peers()
+		var pid: String = _root._networking.get_player_id(peers[0]) if peers.size() > 0 else ""
+		if pid == "":
+			_report("peer_attack_animated", "fail", "no_connected_peer")
+			return
+		# Let the client read its baseline before the swing lands.
+		await _await_settle(1.0)
+		GameBus.combat_hit_resolved.emit(pid, "harness_dummy", "hit", 0.0)
+		await _await_settle(1.0)
+		_report("peer_attack_animated", verdict(true, true), "synced")
+		return
+	var ch: Node = _root._character
+	var iid: String = ch.get_player_character()
+	if iid == "":
+		_report("peer_attack_animated", "fail", "client_has_no_avatar")
+		return
+	var loco = ch._instances[iid]["locomotion"]
+	var base: int = loco.swing_serial
+	var got: bool = await _await_until(func(): return loco.swing_serial > base, _step_timeout())
+	_report("peer_attack_animated", verdict(got, true), "synced" if got else "no_swing")
+
+## Phase 157 — a creature the host kills lands where the HOST decided, and the client sees the same spot.
+## The host announces the death with its own landing (the value `BattleSlice` computes in play); the client
+## reads the creature dead at that position, never one it chose.
+const DEATH_PROBE_ID := "creature_harness_death_probe"
+## The host's push, east of where the probe stood. The harness peers stand ~2e7 m out, where float32 steps are 2 m, so the
+## probe is thrown a whole number of steps: the landing is then exact on both sides (play pushes 0.5..1.5 m).
+const DEATH_PROBE_PUSH := Vector3(8.0, 0.0, 0.0)
+
+func _step_death_landing_synced() -> void:
+	if _role == "host":
+		var peer := _peer_id()
+		if peer == 0 or not _root._networking.has_last_known_state(peer):
+			_report("death_landing_synced", "fail", "no_peer_position")
+			return
+		# Beside the peer, so the creature is inside its area of interest.
+		var from: Vector3 = _root._networking.get_last_known_state(peer) + Vector3(3.0, 0.0, 0.0)
+		_root._creature.apply_creature_state(DEATH_PROBE_ID, "ForestBoar", "idle", from)
+		# Let the client learn the creature standing before it dies.
+		await _await_settle(2.0)
+		GameBus.creature_died.emit(DEATH_PROBE_ID, from, "harness", from + DEATH_PROBE_PUSH)
+		await _await_settle(2.0)
+		# Flat distance: the slice sets the body's height from the surface under the landing spot.
+		var at: Vector3 = _root._creature.get_instance_position(DEATH_PROBE_ID)
+		var landed: bool = Vector2(at.x - from.x - DEATH_PROBE_PUSH.x, at.z - from.z - DEATH_PROBE_PUSH.z).length() < 0.01
+		_report("death_landing_synced", verdict(landed, true), "host-landed" if landed else "host_not_moved")
+		return
+	# The client saw the probe standing at `stood`, then dead exactly one push away from it.
+	var seen := {}
+	var got: bool = await _await_until(func():
+		var inst: Dictionary = _root._creature._instances.get(DEATH_PROBE_ID, {})
+		if inst.is_empty():
+			return false
+		if str(inst["state"]) != "dead":
+			seen["stood"] = inst["position"]
+			return false
+		if not seen.has("stood"):
+			return false
+		var moved: Vector3 = (inst["position"] as Vector3) - (seen["stood"] as Vector3)
+		return Vector2(moved.x - DEATH_PROBE_PUSH.x, moved.z - DEATH_PROBE_PUSH.z).length() < 0.02, _step_timeout())
+	var last: Dictionary = _root._creature._instances.get(DEATH_PROBE_ID, {})
+	_report("death_landing_synced", verdict(got, true), "host-landed" if got else "landing_not_synced-%s-%s" % [
+		str(last.get("state", "absent")), str(seen.get("stood", "never_stood"))])
+
 func _record_detail(rec: Dictionary) -> String:
 	var hs: Array = []
 	for h in rec["h"]:
@@ -1795,7 +1869,7 @@ func _on_chop_requested(tree_id: String, _player_id: String) -> void:
 ## already back" an honest assertion rather than a race with the clock.
 var _deaths: int = 0
 
-func _on_player_died(_position: Vector3, _killer_id: String) -> void:
+func _on_player_died(_position: Vector3, _killer_id: String, _landing: Vector3) -> void:
 	_deaths += 1
 
 ## The lowest token level seen for the peer while the rate-limit step waits. Sampled

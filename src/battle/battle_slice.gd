@@ -22,12 +22,20 @@ var creature_slice: Node = null
 ## seconds. Both are null/invalid outside a host, so a round there is plain damage.
 var status_effects: RefCounted = null
 var now_fn: Callable = Callable()
+## Phase 157 — the host's death push: `(entity_id) -> Vector3` for an attacker's world position (null
+## position vector = unknown) and `(Vector3) -> bool` for a walkable probe. Unset, a kill pushes nothing.
+var attacker_pos_fn: Callable = Callable()
+var walkable_fn: Callable = Callable()
+## `(Vector3) -> float`: ground height under a landing spot, so the body lies on the terrain.
+var ground_fn: Callable = Callable()
 ## Counts resolved rounds; the seed of the on-hit roll, so a replayed round rolls the same.
 var _round_seq: int = 0
 
 func _ready() -> void:
 	GameBus.combat_round_requested.connect(_on_combat_round_requested)
 	GameBus.creature_respawned.connect(_on_creature_respawned)
+
+const DeathPush := preload("res://src/battle/death_push.gd")
 
 ## Phase 37 — the registry's id-SHAPE predicate, preloaded for the player/creature
 ## split: it is a pure static check on a string, so no registry needs to be in the tree
@@ -93,6 +101,7 @@ func resolve_round(attacker_id: String, defender_id: String) -> Dictionary:
 			"defender_hp_remaining": -1.0,   # unknown — owned by PlayerSlice
 		}
 		GameBus.combat_round_resolved.emit(result_player)
+		GameBus.combat_hit_resolved.emit(attacker_id, defender_id, outcome, damage)
 		return result_player
 
 	# A CREATURE defender: this slice owns its hit points, initialising them on first
@@ -110,12 +119,16 @@ func resolve_round(attacker_id: String, defender_id: String) -> Dictionary:
 		outcome = "kill"
 		# Resolve world position from creature_slice for loot drop placement.
 		var death_pos := Vector3.ZERO
+		var pos_found := false
 		if creature_slice != null:
 			for inst in creature_slice.get_all_instances():
 				if inst["instance_id"] == defender_id or inst["creature_id"] == defender_id:
 					death_pos = inst["position"]
+					pos_found = true
 					break
-		GameBus.creature_died.emit(defender_id, death_pos, attacker_id)
+		# No resolved position, no push: a throw from the world origin would land somewhere unrelated.
+		var landing := death_landing(death_pos, attacker_id, damage, max_hp, size_ratio(attacker_id, max_hp)) if pos_found else Vector3.ZERO
+		GameBus.creature_died.emit(defender_id, death_pos, attacker_id, landing)
 
 	var result := {
 		"attacker": attacker_id,
@@ -125,7 +138,33 @@ func resolve_round(attacker_id: String, defender_id: String) -> Dictionary:
 		"defender_hp_remaining": hp_remaining,
 	}
 	GameBus.combat_round_resolved.emit(result)
+	GameBus.combat_hit_resolved.emit(attacker_id, defender_id, outcome, damage)
 	return result
+
+## Phase 157 — attacker/target size ratio for the death push. Creatures carry no size field, so the
+## base hit points stand in for body volume (cube root); an unknown attacker reads as 1.0.
+func size_ratio(attacker_id: String, target_hp: float) -> float:
+	var attacker_res := _lookup(attacker_id)
+	if attacker_res == null or target_hp <= 0.0:
+		return 1.0
+	var attacker_hp := float(_field(attacker_res, "baseHp", target_hp))
+	return pow(maxf(attacker_hp, 0.001) / target_hp, 1.0 / 3.0)
+
+## Phase 157 — where a killing blow leaves the body: pushed away from the attacker by `DeathPush`.
+## Host-side only (BattleSlice never runs a client's number); `Vector3.ZERO` when the attacker's position
+## is unknown, so the body stays where it fell.
+func death_landing(pos: Vector3, attacker_id: String, damage: float, max_hp: float, ratio: float = 1.0) -> Vector3:
+	if not attacker_pos_fn.is_valid():
+		return Vector3.ZERO
+	var src: Variant = attacker_pos_fn.call(attacker_id)
+	if not (src is Vector3):
+		return Vector3.ZERO
+	var spot := DeathPush.landing(pos, src as Vector3, damage, max_hp, ratio, walkable_fn)
+	if spot == pos:
+		return Vector3.ZERO
+	if ground_fn.is_valid():
+		spot.y = float(ground_fn.call(spot))   # the body rests on the ground it lands on, uphill or down
+	return spot
 
 func _now() -> float:
 	return float(now_fn.call()) if now_fn.is_valid() else 0.0
