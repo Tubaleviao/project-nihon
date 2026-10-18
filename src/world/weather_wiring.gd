@@ -5,6 +5,16 @@ extends "res://src/core/wiring.gd"
 const TerrainSlice     := preload("res://src/terrain/terrain_slice.gd")
 const WorldClock       := preload("res://src/world/world_clock.gd")
 
+## Phase 164 — the sky and the haze. The sky's horizon and ground colours ARE the haze (fog) colour, so
+## the far ring fades into the sky at the horizon with no edge; the sun drives both through
+## `apply_sky_look`, and weather only thickens the fog on top of the clear-weather base.
+const SKY_TOP_DAY := Color(0.3, 0.5, 0.82)
+const SKY_TOP_NIGHT := Color(0.01, 0.015, 0.04)
+const HAZE_DAY := Color(0.66, 0.74, 0.84)
+const HAZE_NIGHT := Color(0.02, 0.03, 0.08)
+const HAZE_DENSITY := 0.00015   ## clear-weather exponential fog: ~14% at 1 km, ~95% at 20 km
+const HAZE_AERIAL := 0.5        ## how much the fog takes its colour from the sky behind it
+
 ## Seconds since the host last ticked status effects / sent a world-clock tick (module-only state).
 var _status_tick_elapsed: float = 0.0
 var _clock_tick_elapsed: float = 0.0
@@ -49,17 +59,60 @@ func tick_world_clock(delta: float) -> void:
 			root._minimap.queue_redraw()
 
 ## Phase 128 — thicken the fog as the state's `visibilityFactor` falls (a client with a renderer only).
+## Phase 164 — on top of the clear-weather haze; the fog's colour stays the sky's (`apply_sky_look`).
 func _apply_weather_look(state: String) -> void:
 	var env_node := root.get_node_or_null("Environment") as WorldEnvironment
 	if env_node == null or env_node.environment == null:
 		return
-	var vis: float = root._weather.visibility_factor(state)
-	var env := env_node.environment
-	env.fog_enabled = vis < 1.0
-	env.fog_density = (1.0 - vis) * root.WEATHER_FOG_DENSITY
-	# Follow the sky: ambient energy runs 0.08 (night) to 0.5 (day) in `apply_sun`.
-	var daylight := clampf((env.ambient_light_energy - 0.08) / 0.42, 0.0, 1.0)
-	env.fog_light_color = Color(0.02, 0.03, 0.08).lerp(Color(0.62, 0.66, 0.72), daylight)
+	apply_weather_fog(env_node.environment, root._weather.visibility_factor(state), root.WEATHER_FOG_DENSITY)
+
+## Phase 164 — the fog for a weather `vis` (visibilityFactor, 1 = clear): the haze base plus the
+## weather's share, and in thick weather the sky is fogged too (with the same colour as its horizon).
+static func apply_weather_fog(env: Environment, vis: float, weather_density: float) -> void:
+	var v := clampf(vis, 0.0, 1.0)
+	env.fog_enabled = true
+	env.fog_density = HAZE_DENSITY + (1.0 - v) * weather_density
+	env.fog_sky_affect = 1.0 - v
+
+## Phase 164 — the haze colour at a `daylight` level (0 night .. 1 day).
+static func haze_color(daylight: float) -> Color:
+	return HAZE_NIGHT.lerp(HAZE_DAY, clampf(daylight, 0.0, 1.0))
+
+## Phase 164 — the renderer's environment: a procedural sky whose horizon and ground are the haze,
+## exponential fog over it with aerial perspective, and the ambient fill the sun scales.
+static func make_environment() -> Environment:
+	var env := Environment.new()
+	env.background_mode = Environment.BG_SKY
+	var sky := Sky.new()
+	sky.sky_material = ProceduralSkyMaterial.new()
+	env.sky = sky
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color(0.55, 0.6, 0.7)
+	env.ambient_light_energy = 0.5
+	env.fog_mode = Environment.FOG_MODE_EXPONENTIAL
+	env.fog_aerial_perspective = HAZE_AERIAL
+	apply_weather_fog(env, 1.0, 0.0)
+	apply_sky_look(env, 1.0)
+	return env
+
+## Phase 164 — the sky and the haze for a `daylight` level, set together so they never disagree: the
+## sky's horizon, ground horizon and ground bottom and the fog are one colour.
+static func apply_sky_look(env: Environment, daylight: float) -> void:
+	var haze := haze_color(daylight)
+	env.fog_light_color = haze
+	env.background_color = haze
+	var mat := env.sky.sky_material as ProceduralSkyMaterial if env.sky != null else null
+	if mat == null:
+		return
+	mat.sky_top_color = SKY_TOP_NIGHT.lerp(SKY_TOP_DAY, clampf(daylight, 0.0, 1.0))
+	mat.sky_horizon_color = haze
+	mat.ground_horizon_color = haze
+	mat.ground_bottom_color = haze
+
+## Phase 164 — the colour the sky shows at the horizon (null-safe: the background colour without a sky).
+static func sky_horizon_color(env: Environment) -> Color:
+	var mat := env.sky.sky_material as ProceduralSkyMaterial if env.sky != null else null
+	return mat.sky_horizon_color if mat != null else env.background_color
 
 ## Phase 128 — the host's override table changed: a host sends it to every client, a client adopts it.
 func _on_weather_overrides_synced(overrides: Array) -> void:
@@ -92,7 +145,7 @@ func apply_sun(lat: float, night_speed: float = 1.0) -> void:
 	sun.light_color = Color(1.0, 0.95, 0.85).lerp(Color(1.0, 0.6, 0.35), low * low)
 	var env_node := root.get_node_or_null("Environment") as WorldEnvironment
 	if env_node != null and env_node.environment != null:
-		env_node.environment.background_color = Color(0.02, 0.03, 0.08).lerp(Color(0.45, 0.62, 0.85), daylight)
+		apply_sky_look(env_node.environment, daylight)
 		env_node.environment.ambient_light_energy = lerpf(0.08, 0.5, daylight)
 
 ## `dayNightSpeed` of the biome under `ppos` (1.0 when it declares none, or the biome is unknown).
