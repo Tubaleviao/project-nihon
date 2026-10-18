@@ -1818,7 +1818,9 @@ func _step_death_landing_synced() -> void:
 		await _await_settle(2.0)
 		GameBus.creature_died.emit(DEATH_PROBE_ID, from, "harness", from + DEATH_PROBE_PUSH)
 		await _await_settle(2.0)
-		var landed: bool = _root._creature.get_instance_position(DEATH_PROBE_ID).distance_to(from + DEATH_PROBE_PUSH) < 0.01
+		# Flat distance: the slice sets the body's height from the surface under the landing spot.
+		var at: Vector3 = _root._creature.get_instance_position(DEATH_PROBE_ID)
+		var landed: bool = Vector2(at.x - from.x - DEATH_PROBE_PUSH.x, at.z - from.z - DEATH_PROBE_PUSH.z).length() < 0.01
 		_report("death_landing_synced", verdict(landed, true), "host-landed" if landed else "host_not_moved")
 		return
 	# The client saw the probe standing at `stood`, then dead exactly one push away from it.
@@ -1830,7 +1832,10 @@ func _step_death_landing_synced() -> void:
 		if str(inst["state"]) != "dead":
 			seen["stood"] = inst["position"]
 			return false
-		return seen.has("stood") and ((inst["position"] as Vector3) - (seen["stood"] as Vector3)).distance_to(DEATH_PROBE_PUSH) < 0.02, _step_timeout())
+		if not seen.has("stood"):
+			return false
+		var moved: Vector3 = (inst["position"] as Vector3) - (seen["stood"] as Vector3)
+		return Vector2(moved.x - DEATH_PROBE_PUSH.x, moved.z - DEATH_PROBE_PUSH.z).length() < 0.02, _step_timeout())
 	var last: Dictionary = _root._creature._instances.get(DEATH_PROBE_ID, {})
 	_report("death_landing_synced", verdict(got, true), "host-landed" if got else "landing_not_synced-%s-%s" % [
 		str(last.get("state", "absent")), str(seen.get("stood", "never_stood"))])
