@@ -1814,7 +1814,8 @@ func _step_gesture_synced() -> void:
 		await _await_settle(2.0)
 		var peer_seated: bool = _root._gesture.held_id(pid) == "SitGround"
 		# The host sits too, then the client "joins afterwards": the join handler hands it the host's pose.
-		GameBus.gesture_intent.emit("SitGround", "")
+		# The host's body has no floor under it in the harness, so its own ground check cannot be the subject here.
+		_root._gesture.request(_root._gesture_wiring._local_id(), "SitGround", true, true, _root._player.get_position())
 		await _await_settle(0.5)
 		_root._gesture_wiring._on_player_joined(peers[0], pid, true)
 		await _await_settle(6.0)   # the client reads both poses before this process (the last step) exits
