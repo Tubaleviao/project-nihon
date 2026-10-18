@@ -188,6 +188,7 @@ static func steps() -> Array:
 		{ "name": "chunk_record_synced", "compare": true },
 		{ "name": "frontier_record_synced", "compare": true },
 		{ "name": "fold_carries_creatures", "compare": true },
+		{ "name": "peer_attack_animated", "compare": true },
 	]
 
 ## The step names, comma-joined — the payload of the `plan` line the runner prints
@@ -410,6 +411,7 @@ func run(root: Node, role: String) -> void:
 	await _step_chunk_record_synced()
 	await _step_frontier_record_synced()
 	await _step_fold_carries_creatures()
+	await _step_peer_attack_animated()
 	_finish()
 
 ## End this process, with the run's own verdict carried in the exit code.
@@ -1765,6 +1767,33 @@ func _step_fold_carries_creatures() -> void:
 	ok = ok and _root._creature.get_instance_position(iid).distance_to(TerrainSlice.fold_world_vec_like(next, true, 1)) < 0.01
 	_root._creature.prune_carried(func(_c): return false)
 	_report("fold_carries_creatures", verdict(ok, true), "kept-and-host-unmoved" if ok else "probe_not_carried")
+
+## Phase 156 — a swing the host resolved for the bound peer reaches that peer's client as the synced combat
+## hit and plays an attack on the avatar that client draws for it (its own body, here). The host sends the
+## round's attacker as a player id; only the wire key ("p:<peer>") crosses.
+func _step_peer_attack_animated() -> void:
+	if _role == "host":
+		# The peer connected NOW: earlier steps reconnect, and the friend-code step joins a new identity.
+		var peers: PackedInt32Array = _root.multiplayer.get_peers()
+		var pid: String = _root._networking.get_player_id(peers[0]) if peers.size() > 0 else ""
+		if pid == "":
+			_report("peer_attack_animated", "fail", "no_connected_peer")
+			return
+		# Let the client read its baseline before the swing lands.
+		await _await_settle(1.0)
+		GameBus.combat_hit_resolved.emit(pid, "harness_dummy", "hit", 0.0)
+		await _await_settle(1.0)
+		_report("peer_attack_animated", verdict(true, true), "synced")
+		return
+	var ch: Node = _root._character
+	var iid: String = ch.get_player_character()
+	if iid == "":
+		_report("peer_attack_animated", "fail", "client_has_no_avatar")
+		return
+	var loco = ch._instances[iid]["locomotion"]
+	var base: int = loco.swing_serial
+	var got: bool = await _await_until(func(): return loco.swing_serial > base, _step_timeout())
+	_report("peer_attack_animated", verdict(got, true), "synced" if got else "no_swing")
 
 func _record_detail(rec: Dictionary) -> String:
 	var hs: Array = []

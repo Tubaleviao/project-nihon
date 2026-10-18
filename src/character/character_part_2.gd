@@ -225,3 +225,38 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 		"impostor":    impostor,
 		"limb_pivots": limb_pivots,
 	}
+
+## Play an attack swing on an instance. `clip` is the variant ("" for the one the main hand picks); the
+## hold time follows the clip that will actually play (a variant the rig lacks plays `attack`).
+func trigger_attack(instance_id: String, clip: String = "") -> void:
+	if not sl._instances.has(instance_id):
+		return
+	var inst: Dictionary = sl._instances[instance_id]
+	if clip == "":
+		clip = attack_clip_of(instance_id)
+	var lengths: Dictionary = inst.get("swing_lengths", {})
+	var played: String = clip if lengths.has(clip) else sl.RigTree.ATTACK_DEFAULT
+	inst["locomotion"].trigger_attack(clip, float(lengths.get(played, -1.0)))
+
+## The swing an instance plays by its main hand: bare hands punch, a tool (anything with a fabric
+## `toolType`) uses the tool swing, any other held item swings one-handed.
+func attack_clip_of(instance_id: String) -> String:
+	return sl.RigTree.attack_clip_for(str(sl.get_equipment_set(instance_id).get("MainHand", "")), GameData.ITEMS)
+
+func trigger_hit(instance_id: String, stagger: bool = false) -> void:
+	if sl._instances.has(instance_id):
+		sl._instances[instance_id]["locomotion"].trigger_hit(stagger)
+
+## The worn set of an instance as { slot: item_key } (empty for an unknown id).
+func get_equipment_set(instance_id: String) -> Dictionary:
+	var out: Dictionary = {}
+	if not sl._instances.has(instance_id):
+		return out
+	var eq: Dictionary = sl._instances[instance_id]["appearance"].get("equipment", {})
+	for slot in eq:
+		var entry: Variant = eq[slot]
+		if entry is Dictionary:
+			var item := str((entry as Dictionary).get("item", ""))
+			if item != "" and str((entry as Dictionary).get("state", "equipped")) == "equipped":
+				out[str(slot)] = item
+	return out

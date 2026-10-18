@@ -34,6 +34,16 @@ signal chunk_unloaded(chunk_pos: Vector2i)
 ## result : Dictionary  — { attacker, defender, damage, outcome }
 signal combat_round_resolved(result: Dictionary)
 
+## Phase 156 — emitted by BattleSlice once per resolved swing, a miss included, so every hit of a round
+## animates (`combat_round_resolved` carries one result per round). The ids are the round's own:
+## "player", a player id, a creature instance id or a creature type.
+## outcome : String — "hit", "critical", "miss" or "kill"
+signal combat_hit_resolved(attacker_id: String, defender_id: String, outcome: String, damage: float)
+
+## Phase 156 — client side: the host's `combat_hit_resolved`, delivered over the wire with its ids turned
+## into wire keys ("p:<peer id>" for a player, "c:<id>" for a creature). Animation only.
+signal combat_hit_synced(attacker_key: String, defender_key: String, outcome: String)
+
 ## Request a combat round (any system can fire this).
 ## attacker_id : String — entity key from GameData.CREATURES or "player"
 ## defender_id : String — entity key from GameData.CREATURES or "player"

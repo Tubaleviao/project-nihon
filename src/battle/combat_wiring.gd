@@ -9,19 +9,107 @@ const CreatureAI       := preload("res://src/creature/creature_ai.gd")
 const PlayerRegistry   := preload("res://src/persistence/player_registry.gd")
 const PlayerSlice      := preload("res://src/player/player_slice.gd")
 const StatusEffects    := preload("res://src/battle/status_effects.gd")
+const RigTree          := preload("res://src/character/rig_tree.gd")
 
 func _connect_all() -> void:
 	connect_bus(GameBus.knockback_requested, _on_knockback_requested)
 	connect_bus(GameBus.player_died, _on_status_player_died)
-	connect_bus(GameBus.combat_round_requested, _on_combat_round_requested)
+	connect_bus(GameBus.combat_hit_resolved, _on_combat_hit_resolved)
+	connect_bus(GameBus.combat_hit_synced, _on_combat_hit_synced)
+	connect_bus(GameBus.player_damaged, _on_local_player_damaged)
+	connect_bus(GameBus.block_mine_requested, _on_mine_swing)
 	connect_bus(GameBus.player_damaged, on_player_damaged)
 	connect_bus(GameBus.player_died, _on_player_died)
 	connect_bus(GameBus.player_respawned, _on_player_respawned)
 
-## Drive the player avatar's attack animation whenever the player attacks.
-func _on_combat_round_requested(attacker_id: String, _defender_id: String) -> void:
-	if attacker_id == "player" and root._character.get_player_character() != "":
-		GameBus.character_attack_requested.emit(root._character.get_player_character())
+## Phase 156 — one swing resolved on the host (a miss too): animate the attacker and the target here and
+## tell the clients in range. Ids become wire keys first, so both sides run the same animation path.
+func _on_combat_hit_resolved(attacker_id: String, defender_id: String, outcome: String, _damage: float) -> void:
+	if root._is_client:
+		return
+	var a_key := _wire_key(attacker_id)
+	var d_key := _wire_key(defender_id)
+	_animate_hit(a_key, d_key, outcome)
+	if root._networking != null:
+		root._networking.send_combat_hit(a_key, d_key, outcome, _event_position(a_key, d_key))
+
+## Client: the host's swing, animated on whatever bodies this client draws.
+func _on_combat_hit_synced(attacker_key: String, defender_key: String, outcome: String) -> void:
+	if root._is_client:
+		_animate_hit(attacker_key, defender_key, outcome)
+
+## The player's own mining swing (the tool swing), when the player strikes a block.
+func _on_mine_swing(_position: Vector3, _normal: Vector3, player_id: String, _exact: Dictionary) -> void:
+	if player_id != "" and player_id != "player":
+		return
+	var iid: String = root._character.get_player_character()
+	if iid != "":
+		root._character.trigger_attack(iid, RigTree.ATTACK_TOOL)
+
+## "p:<peer id>" for a player body (the host's own is peer 1), "c:<id>" for a creature.
+func _wire_key(id: String) -> String:
+	if id == "player" or id == root._registry.local_player_id:
+		return "p:1"
+	if BattleSlice.is_player_target(id):
+		return "p:%d" % root._registry.get_peer_id(id)
+	return "c:" + id
+
+## The character instance a wire key names on this machine ("" when it draws no avatar for it).
+func _character_for_key(key: String) -> String:
+	if not key.begins_with("p:"):
+		return ""
+	var peer := int(key.substr(2))
+	var local_peer: int = root.multiplayer.get_unique_id() if root._is_client and root.is_inside_tree() else 1
+	if peer == local_peer:
+		return root._character.get_player_character()
+	return root._character.get_peer_character(peer)
+
+func _animate_hit(a_key: String, d_key: String, outcome: String) -> void:
+	_swing(a_key)
+	# The local body flinches on `player_damaged` (which also covers burns and the like), so a hit on it
+	# is skipped here and nobody flinches twice.
+	var is_local_body := d_key.begins_with("p:") and _character_for_key(d_key) == root._character.get_player_character()
+	if outcome != "miss" and not is_local_body:
+		_flinch(d_key)
+
+## The local body took damage, from any source: flinch.
+func _on_local_player_damaged(_damage: float, _attacker_id: String, target_id: String) -> void:
+	if target_id != "" and target_id != "player" and target_id != root._registry.local_player_id:
+		return
+	var iid: String = root._character.get_player_character()
+	if iid != "":
+		root._character.trigger_hit(iid)
+
+func _swing(key: String) -> void:
+	if key.begins_with("c:"):
+		root._creature.trigger_attack_animation(key.substr(2))
+		return
+	var iid := _character_for_key(key)
+	if iid != "":
+		root._character.trigger_attack(iid)
+
+func _flinch(key: String) -> void:
+	if key.begins_with("c:"):
+		root._creature.trigger_hit_animation(key.substr(2))
+		return
+	var iid := _character_for_key(key)
+	if iid != "":
+		root._character.trigger_hit(iid)
+
+## Where a swing happened, for the packet's area of interest: the attacker's body, else the target's.
+func _event_position(a_key: String, d_key: String) -> Vector3:
+	for key in [a_key, d_key]:
+		if key.begins_with("c:"):
+			var at: Vector3 = root._creature.get_instance_position(key.substr(2))
+			if at != Vector3.ZERO:
+				return at
+		elif key.begins_with("p:"):
+			var peer := int(key.substr(2))
+			if peer == 1:
+				return root._player.get_position()
+			if root._networking.has_last_known_state(peer):
+				return root._networking.get_last_known_state(peer)
+	return Vector3.ZERO
 
 ## Phase 37/38 — a combat round landed on a player. The damage is applied by the machine
 ## that SIMULATES that body: the local body in-process (PlayerSlice listens to this

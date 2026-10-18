@@ -324,6 +324,14 @@ func set_instance_position(instance_id: String, pos: Vector3) -> void:
 ## A COPY, deliberately: every entry is a fresh dictionary. That is what a UI or a
 ## test wants (nobody can write through it), and it is also why it is NOT the per-frame
 ## accessor — see `instances_view()`.
+## Phase 156 — animate a swing / a flinch on a creature's model (an instance id, or its type). False
+## when no model answers (far away, a dedicated server, or a type that keeps its box).
+func trigger_attack_animation(id: String) -> bool:
+	return _visuals != null and _visuals.trigger_attack(id)
+
+func trigger_hit_animation(id: String) -> bool:
+	return _visuals != null and _visuals.trigger_hit(id)
+
 func get_all_instances() -> Array:
 	var out: Array = []
 	for iid in _instances:

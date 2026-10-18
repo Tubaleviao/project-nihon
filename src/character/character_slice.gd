@@ -187,6 +187,7 @@ func create_character_from_recipe(recipe: Dictionary, pos: Vector3) -> String:
 	root.position = pos + _origin.value
 	add_child(root)
 
+	built["locomotion"].seed_idle(iid.hash())
 	_instances[iid] = {
 		"appearance":  normalized,
 		"position":    pos,
@@ -503,17 +504,7 @@ func apply_equipment(instance_id: String, slot: String, item_key: String, state:
 
 ## The worn set of an instance as { slot: item_key } (empty for an unknown id).
 func get_equipment_set(instance_id: String) -> Dictionary:
-	var out: Dictionary = {}
-	if not _instances.has(instance_id):
-		return out
-	var eq: Dictionary = _instances[instance_id]["appearance"].get("equipment", {})
-	for slot in eq:
-		var entry: Variant = eq[slot]
-		if entry is Dictionary:
-			var item := str((entry as Dictionary).get("item", ""))
-			if item != "" and str((entry as Dictionary).get("state", "equipped")) == "equipped":
-				out[str(slot)] = item
-	return out
+	return _m2.get_equipment_set(instance_id)
 
 ## Phase 47 — the Character window's totals for an instance: the sum of the worn
 ## items' fabric values (`EquipmentRules.totals`), zeros for an empty or unknown set.
@@ -565,6 +556,10 @@ func peer_model_item(peer_id: int, slot: String) -> String:
 
 ## Bind a peer's character instance so replicated gear lands on it, applying any set
 ## already received.
+## The character instance bound to `peer_id` ("" when none).
+func get_peer_character(peer_id: int) -> String:
+	return str(_peer_characters.get(peer_id, ""))
+
 func bind_peer_character(peer_id: int, instance_id: String) -> void:
 	_peer_characters[peer_id] = instance_id
 	if _peer_equipment.has(peer_id):
@@ -671,6 +666,7 @@ func attach_rig(instance_id: String, rig_key: String) -> bool:
 	RigTree.prepare_library(player)
 	if player.has_animation("attack"):
 		inst["locomotion"].attack_duration = player.get_animation("attack").length
+	inst["swing_lengths"] = RigTree.swing_lengths(player)   # each variant holds ATTACK for its own length
 	var tree := RigTree.build_tree(player)
 	rig_root.add_child(tree)
 	tree.anim_player = tree.get_path_to(player)
@@ -736,11 +732,15 @@ func get_locomotion_state_name(instance_id: String) -> String:
 		return ""
 	return _instances[instance_id]["locomotion"].state_name()
 
-## Play the attack animation on an instance (transient ATTACK state).
-func trigger_attack(instance_id: String) -> void:
-	if not _instances.has(instance_id):
-		return
-	_instances[instance_id]["locomotion"].trigger_attack()
+## Play the attack animation on an instance; `clip` "" picks the variant for the main hand.
+func trigger_attack(instance_id: String, clip: String = "") -> void:
+	_m2.trigger_attack(instance_id, clip)
+
+func attack_clip_of(instance_id: String) -> String:
+	return _m2.attack_clip_of(instance_id)
+
+func trigger_hit(instance_id: String, stagger: bool = false) -> void:
+	_m2.trigger_hit(instance_id, stagger)
 
 ## Play the death animation on an instance (terminal DEATH state).
 func trigger_death(instance_id: String) -> void:

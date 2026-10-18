@@ -176,7 +176,7 @@ issue number where the criterion used to be.
 | 153 | Items in the world: equipment, held tools and icons everywhere | Done | [history](docs/roadmap-history/phases-153.md) |
 | 154 | Split the biggest slices | Done | [history](docs/roadmap-history/phases-154.md) |
 | 155 | Animation tempo: looping clips, stride-matched walk and snappier transitions | Done | [history](docs/roadmap-history/phases-155.md) |
-| 156 | Idle, attack and hit clips for everyone, on every swing | Planned | below |
+| 156 | Idle, attack and hit clips for everyone, on every swing | Done | [history](docs/roadmap-history/phases-156.md) |
 | 157 | Deaths that read as deaths: a push, a fall and a body that stays | Planned | below |
 | 158 | Gestures in the fabric: sit, lie down, wave and friends | Planned | below |
 | 159 | Gestures at runtime: a gesture wheel, chat commands and synced poses | Planned | below |
@@ -192,57 +192,6 @@ issue number where the criterion used to be.
 | 169 | Native `build_chunk_arrays` and the speed target | Planned | below |
 | 170 | A compute-shader heightmap, if the native builder is still the bottleneck | Planned | below |
 | 171 | Creatures in exact coordinates: no float32 metres far from the origin | Planned | below |
-
----
-
-## Phase 156 — Idle, attack and hit clips for everyone, on every swing
-
-**Goal:** an avatar standing still looks frozen, and an attack shows no motion. The `idle` clip moves
-the chest and arms by 2–5°, which is invisible at game distance. The `attack` clip exists, but
-`CombatWiring` triggers it only for the local player and only when a combat round is *requested*,
-so remote players and creatures never swing, and repeated hits in one round do not swing again. This
-phase gives every body a visible idle, a swing on every hit and a flinch when hit.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phase 155.
-
-**Deliverables:**
-- Idle: the placeholder `idle` clip becomes a visible breathing and weight-shift loop (chest ±6°,
-  hips sway, head turn, about 3 s), plus one or two idle variants (`idle_look`, `idle_stretch`) that
-  play once after the body has been idle for 6–12 s (a seeded random from the instance id, so tests
-  are deterministic). Creature skeletons get the same treatment: quadruped head bob and tail sway,
-  bird preen, serpent coil.
-- Attack on every swing: the host's per-hit combat event (today `GameBus.combat_round_resolved`
-  carries one result per round, so a per-hit signal such as `combat_hit_resolved` is added to
-  `src/core/bus.gd` in this phase) drives the attacker's attack animation for **any** attacker id — the local
-  player, a remote peer's avatar and a creature model. Remote clients get it from the existing
-  synced combat result, so no new wire message is needed if the result already carries the attacker;
-  otherwise one compact field is added and validated on the host.
-- Attack variants by what is held: `attack_unarmed` (punch), `attack_1h` (overhead/side swing,
-  alternating), `attack_tool` (the same swing used for mining and gathering, so `mine` and `gather`
-  also animate). The variant is picked from the main-hand equipment category; a missing clip falls
-  back to `attack` (the existing warn-once rule).
-- Hit reaction: `hit` (a short flinch, 0.25 s, additive over locomotion through a OneShot node) on
-  `player_damaged` and on creature damage. Knockback and stagger (Phase 129) play a longer `stagger`
-  clip.
-- Placeholder clips for all of the above in `tools/gen_placeholder_glb.py` (player and every
-  creature skeleton), listed in `assets/manifest.json`. The private repo gets matching keys (Placeholder
-  rule, separate PR in `project-nihon-assets`).
-
-**Acceptance criteria:**
-- [ ] Suite: a creature's hit on the player plays `attack*` on that creature's model and `hit` on
-  the player rig (read from the tree's playback / OneShot state after the bus event, no frames).
-- [ ] Suite: a remote peer's attack, delivered as the synced combat result, plays an attack clip on
-  that peer's avatar on another client (harness step `peer_attack_animated`).
-- [ ] Suite: three hits in one round trigger three attack one-shots (fails today: one).
-- [ ] Suite: the attack variant follows the main hand: empty → `attack_unarmed`, a sword →
-  `attack_1h`, a pick → `attack_tool`; mining a block also triggers `attack_tool`.
-- [ ] Suite: the idle variant plays after the seeded delay and never while moving.
-- [ ] Suite: every rig in the manifest has `idle`, `hit` and at least one attack clip, and every
-  placeholder clip's peak joint rotation is at least 10° (so a clip cannot be "present but
-  invisible").
-- [ ] Suite green on both boot paths, harness green.
 
 ---
 

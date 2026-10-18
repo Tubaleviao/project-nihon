@@ -239,6 +239,14 @@ func _route_h2c(payload: Dictionary) -> void:
 				str(payload.get("state", "")),
 				sl.WorldPos.packet_world(payload, sl._vec3(payload.get("position", [])))
 			)
+		"combat_hit":
+			# Phase 156 — animation only. An oversize key or an unknown outcome is dropped.
+			var a := str(payload.get("a", ""))
+			var d := str(payload.get("d", ""))
+			var o := str(payload.get("o", ""))
+			if sl._role == sl.Role.CLIENT and a.length() <= sl.COMBAT_KEY_MAX and d.length() <= sl.COMBAT_KEY_MAX \
+					and o in sl.COMBAT_OUTCOMES:
+				GameBus.combat_hit_synced.emit(a, d, o)
 		"remote_player_state":
 			sl._route_remote_player_state(payload)
 		"weather_overrides":
