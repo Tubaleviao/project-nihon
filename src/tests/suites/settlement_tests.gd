@@ -506,7 +506,7 @@ func _test_invite_lapse_uninvite() -> void:
 	assert_eq(s.invite("p1", "p2"), "", "p1 invites p2")
 	assert_eq(s.uninvite("p2", "p3"), "not_member", "an outsider withdraws nothing")
 	assert_eq(s.uninvite("p1", "p3"), "no_such_invite", "nor is an invite that was never made withdrawn")
-	assert_eq(s.uninvite("p1", "p2"), "", "the founder withdraws the invite")
+	assert_eq(s.uninvite("p1", " p2 "), "", "the founder withdraws the invite, padded name and all")
 	assert_eq(s.join("p2", "settlement_1"), "not_invited", "a withdrawn invite cannot be accepted")
 	assert_eq(s.invite("p1", "p2"), "", "invited again")
 	rig["now"][0] += SettlementSlice.INVITE_TTL_SEC + 1.0

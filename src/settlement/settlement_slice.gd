@@ -306,7 +306,8 @@ func invite(actor: String, target: String) -> String:
 	var s: Dictionary = _settlements[id]
 	if (s["members"] as Dictionary).has(target):
 		return "already_member"
-	_lapse_invites(s, float(now_sec.call()))
+	if _lapse_invites(s, float(now_sec.call())):
+		GameBus.settlements_changed.emit()
 	if (s["invites"] as Dictionary).size() >= MAX_MEMBERS:
 		return "full"
 	s["invites"][target] = float(now_sec.call())
@@ -326,7 +327,10 @@ func uninvite(actor: String, target: String) -> String:
 		return "not_member"
 	if not bool(role_rules(role_of(pid, id))["invite"]):
 		return "no_permission"
+	target = target.strip_edges().left(64)
 	var s: Dictionary = _settlements[id]
+	if _lapse_invites(s, float(now_sec.call())):
+		GameBus.settlements_changed.emit()
 	if not (s["invites"] as Dictionary).has(target):
 		return "no_such_invite"
 	(s["invites"] as Dictionary).erase(target)
@@ -351,7 +355,8 @@ func join(player_id: String, id: String) -> String:
 	if settlement_of(pid) != "":
 		return "already_member"
 	var s: Dictionary = _settlements[id]
-	_lapse_invites(s, float(now_sec.call()))
+	if _lapse_invites(s, float(now_sec.call())):
+		GameBus.settlements_changed.emit()   # the lapsed invite leaves the invitee's cached view
 	if not (s["invites"] as Dictionary).has(pid):
 		return "not_invited"
 	if (s["members"] as Dictionary).size() >= MAX_MEMBERS:

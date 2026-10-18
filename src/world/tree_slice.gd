@@ -846,6 +846,9 @@ func _apply_pending_spots(chunk_pos: Vector2i) -> void:
 	var spots: Array = _pending_spots[canon]
 	if recorded:
 		_forget_spots(canon)
+	_apply_spots_to(chunk_pos, spots)
+
+func _apply_spots_to(chunk_pos: Vector2i, spots: Array) -> void:
 	var wm := _lap_metres()
 	var hit: Array = []
 	for tid in _by_chunk.get(chunk_pos, []):
@@ -866,9 +869,18 @@ func _apply_pending_spots(chunk_pos: Vector2i) -> void:
 ## spots now instead of at the chunk's next spawn.
 func on_chunk_recorded(canon: Vector2i) -> void:
 	# A chunk loaded across the seam is keyed by the position it was loaded at, not the canonical one.
+	# Every resident alias gets the spots: the first would otherwise forget them for the rest.
+	if not is_authoritative or not _pending_spots.has(canon):
+		return
+	var recorded := ChunkRecords.has_record(canon)
+	if not recorded and record_writer.is_valid():
+		return
+	var spots: Array = _pending_spots[canon]
+	if recorded:
+		_forget_spots(canon)
 	for chunk: Vector2i in _spawned_chunks.keys():
 		if chunk == canon or TerrainSlice.wrap_chunk(chunk) == canon:
-			_apply_pending_spots(chunk)
+			_apply_spots_to(chunk, spots)
 
 ## The held spots as saveable data: { "cx,cz": [[x, z, radius], ...] }.
 func pending_spots_to_data() -> Dictionary:

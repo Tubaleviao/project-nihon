@@ -194,7 +194,7 @@ func _start(r: Request) -> void:
 	_control = BuildControl.new()
 	r.args["control"] = _control
 	_req.running = r
-	# #397 — the task is a STATIC function on the script, handed its own copy of the request: a task
+	# #397 — the task is a STATIC function on the script, handed the request args (never mutated on the main thread once running): a task
 	# bound to this node keeps the node locked while it runs, so freeing the ring mid-build failed
 	# ("Object is locked and can't be freed") and leaked it.
 	_task = WorkerThreadPool.add_task(Callable(get_script(), "_build_job").bind(r.args, _control))

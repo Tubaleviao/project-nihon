@@ -2411,5 +2411,7 @@ func _on_peer_disconnected(id: int) -> void:
 	# the in-memory copy (PlayerRegistry.evict_player).
 	forget_player_id(id)
 	_forget_equipment_pairs(id)
+	if not _last_known_states.has(id):
+		_teleport_pending.erase(id)   # nothing will age it out otherwise
 	if _last_known_states.has(id):
 		_last_known_timestamps[id] = Time.get_ticks_msec()
