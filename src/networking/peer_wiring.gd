@@ -494,6 +494,8 @@ func _on_server_disconnected() -> void:
 		return
 	Diag.error("[Networking] disconnected from host")
 	root._snapshot_pending = false
+	if root._creature != null:
+		root._creature.reset_fold_log()
 
 ## Host → the peer whose own record just changed. Nothing to do for a local player
 ## (its state is already live in this process) and nothing to send for a failed

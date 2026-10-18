@@ -53,6 +53,7 @@ var _exact: Dictionary = {}
 var _cooldown_until: Dictionary = {}   # player id -> seconds
 var _last_intent: Dictionary = {}      # player id -> seconds
 var _last_reply: Dictionary = {}       # player id -> seconds of the last refusal reply sent
+var _suppressed: Dictionary = {}       # player id -> refusals throttled since the last reply
 var _sweep_clock: float = 0.0
 ## Client view: the stones this machine's player is attuned to, as the host last said.
 var _view: Array = []
@@ -257,14 +258,20 @@ func _on_travel_intent(from_id: String, to_id: String, player_id: String) -> voi
 	# floods bad intents cannot make the host flood replies (or the log) back.
 	var now: float = now_sec.call()
 	if now - float(_last_reply.get(pid, -INF)) < INTENT_INTERVAL:
+		# Not answered and not logged one by one; the next logged refusal says how many were folded in.
+		_suppressed[pid] = int(_suppressed.get(pid, 0)) + 1
 		return
 	_last_reply[pid] = now
 	if _last_reply.size() > 1024:
 		for k in _last_reply.keys():
 			if now - float(_last_reply[k]) > 60.0:
 				_last_reply.erase(k)
-	if reason != "rate_limited":
-		Diag.warn("WaystoneSlice: travel %s -> %s for %s refused: %s" % [from_id, to_id, pid, reason])
+				_suppressed.erase(k)
+	var quiet := int(_suppressed.get(pid, 0))
+	_suppressed.erase(pid)
+	if reason != "rate_limited" or quiet > 0:
+		Diag.warn("WaystoneSlice: travel %s -> %s for %s refused: %s%s" % [from_id, to_id, pid, reason,
+			" (%d throttled refusals since the last one)" % quiet if quiet > 0 else ""])
 	GameBus.waystone_travel_resolved.emit(pid, false, reason)
 
 ## Client: remember the host's attunement list for the map.

@@ -13,6 +13,8 @@ func register() -> void:
 	_run_test("stream: a restream bursts the build cap until the window is rebuilt", _test_stream_fold_catchup)
 	_run_test("fold: a creature and a tree keep id, state and place across a pole fold", _test_fold_carries_contents)
 	_run_test("fold: the fold image of a position is an involution over a pole and a lap", _test_fold_like_involution)
+	_run_test("fold: a client replays two folds on host positions, the log stays minimal", _test_fold_log_replay)
+	_run_test("fold: held death records are folded with the window", _test_fold_dead_records)
 
 ## Rows a player can reach: the equator, mid latitudes, the ice shelf, the pole's snow field, past
 ## the pole (the fold slack) and the antimeridian's blend band.
@@ -287,3 +289,43 @@ func _test_fold_like_involution() -> void:
 	assert_true(absf(back.z - p.z) < 2.0, "on the same row")
 	var lapped := TerrainSlice.fold_world_vec_like(p, false, 1)
 	assert_true(absf(lapped.z - p.z) < 2.0 and lapped.y == p.y, "a lap fold leaves Z and Y")
+
+func _test_fold_log_replay() -> void:
+	var cs := CreatureSlice.new()
+	cs.is_authoritative = false
+	add_child(cs)
+	var pole_m := float(TerrainSlice.pole_chunks()) * TerrainSlice.CHUNK_METERS
+	var host := Vector3(100.5, 5.0, pole_m - 40.0)
+	cs.fold_contents(true, 1)
+	cs.fold_contents(true, -1)
+	assert_eq(cs._fold_log.size(), 2, "two different poles are two entries")
+	cs.apply_creature_state("c0", "ForestBoar", "idle", host)
+	var want := TerrainSlice.fold_world_vec_like(TerrainSlice.fold_world_vec_like(host, true, 1), true, -1)
+	assert_true(cs.get_instance_position("c0").distance_to(want) < 0.01, "a host position is replayed through both folds, oldest first")
+	cs.fold_contents(true, -1)
+	assert_eq(cs._fold_log.size(), 1, "crossing the same pole back cancels its entry")
+	cs.fold_contents(true, 1)
+	assert_true(cs._fold_log.is_empty(), "back in the host's frame, nothing is replayed")
+	cs.apply_creature_state("c0", "ForestBoar", "idle", host)
+	assert_true(cs.get_instance_position("c0").distance_to(host) < 0.01, "so a host position lands as sent")
+	cs.fold_contents(false, 1)
+	cs.fold_contents(false, 1)
+	assert_eq(cs._fold_log.size(), 1, "lap folds are logged once")
+	cs.fold_contents(true, 1)
+	assert_eq(cs._fold_log, [[true, 1]], "and absorbed by a pole fold, which wraps too")
+	cs.reset_fold_log()
+	assert_true(cs._fold_log.is_empty(), "a new session forgets the folds")
+	cs.free()
+
+func _test_fold_dead_records() -> void:
+	var cs := CreatureSlice.new()
+	add_child(cs)
+	var pole_m := float(TerrainSlice.pole_chunks()) * TerrainSlice.CHUNK_METERS
+	var at := Vector3(100.5, 5.0, pole_m + 40.0)
+	cs._hold_death_record("d0", { "state": "dead", "creature_id": "ForestBoar",
+		"respawn_at": Time.get_unix_time_from_system() + 600.0, "position": WorldPos.to_wire(at) })
+	assert_true(cs._dead_state.has("d0"), "the death is held")
+	cs.fold_contents(true, 1)
+	var got: Vector3 = WorldPos.from_wire(cs._dead_state["d0"]["position"])
+	assert_true(got.distance_to(TerrainSlice.fold_world_vec_like(at, true, 1)) < 0.01, "its position is the fold's image")
+	cs.free()
