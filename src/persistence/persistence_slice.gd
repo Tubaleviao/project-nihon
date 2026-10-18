@@ -123,6 +123,25 @@ static func fingerprint_stamp_for_save(loaded: Dictionary, running: int) -> int:
 	var recorded := worldgen_fingerprint_of(loaded)
 	return running if loaded.is_empty() or recorded < 0 else recorded
 
+## Most fingerprints a world record remembers.
+const MAX_FINGERPRINT_HISTORY := 16
+
+## The fingerprint history a save of `loaded` writes, oldest first: the loaded history (malformed entries
+## dropped), then the loaded stamp and `stamp` when each differs from the last entry, keeping the newest
+## MAX_FINGERPRINT_HISTORY. Refreshing the stamp after a notice no longer forgets what the world was
+## generated with, so a later revert or change can be traced.
+static func fingerprint_history(loaded: Dictionary, stamp: int) -> Array:
+	var out: Array = []
+	var raw: Variant = loaded.get("worldgenFingerprintHistory", [])
+	if raw is Array:
+		for v in raw:
+			if (v is int or v is float) and int(v) >= 0 and (out.is_empty() or int(out.back()) != int(v)):
+				out.append(int(v))
+	for fp in [worldgen_fingerprint_of(loaded), stamp]:
+		if fp >= 0 and (out.is_empty() or int(out.back()) != fp):
+			out.append(fp)
+	return out.slice(maxi(0, out.size() - MAX_FINGERPRINT_HISTORY))
+
 ## One warning when `record` carries a fingerprint other than `running`. An empty record or one
 ## without a fingerprint never mismatches. Returns whether it did.
 static func check_worldgen_fingerprint(record: Dictionary, running: int) -> bool:

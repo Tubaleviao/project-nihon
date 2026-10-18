@@ -1658,11 +1658,24 @@ func _capture_spare_target() -> void:
 			_spare_target = _spare_tree()
 		_root._chat.submit(TREE_TARGET_PROBE + (_spare_target if found else "none"))
 		return
-	var heard: bool = await _await_until(func(): return not _chat_line("chat", TREE_TARGET_PROBE, "").is_empty(), _step_timeout() + CLIENT_LAG_SECS)
-	if heard:
-		var text := str(_chat_line("chat", TREE_TARGET_PROBE, "")["text"])
-		var named := text.substr(text.find(TREE_TARGET_PROBE) + TREE_TARGET_PROBE.length()).strip_edges()
-		_spare_target = "" if named == "none" else named
+	# The host only names the target once its own trees have loaded, which under CPU load can take most of a
+	# step timeout; wait a second round (scaled with the link) before giving up.
+	var probe_heard := func(): return not _chat_line("chat", TREE_TARGET_PROBE, "").is_empty()
+	var heard: bool = await _await_until(probe_heard, _step_timeout() + CLIENT_LAG_SECS * _time_scale)
+	if not heard:
+		print("net-harness: tree target probe not heard yet, waiting one more round")
+		heard = await _await_until(probe_heard, _step_timeout() + CLIENT_LAG_SECS * _time_scale)
+	if not heard:
+		push_error("net-harness: tree_cleared target not received (no '%s' chat line from the host)" % TREE_TARGET_PROBE)
+		return
+	var text := str(_chat_line("chat", TREE_TARGET_PROBE, "")["text"])
+	var named := text.substr(text.find(TREE_TARGET_PROBE) + TREE_TARGET_PROBE.length()).strip_edges()
+	if named == "none":
+		return
+	if not named.begins_with("tree_") or named.contains(" "):
+		push_error("net-harness: tree_cleared target not received: the host's probe named '%s'" % named.left(80))
+		return
+	_spare_target = named
 
 ## The in-reach tree with the greatest id, or "" when there are no more than `TARGETS_NEEDED` in reach.
 func _spare_tree() -> String:

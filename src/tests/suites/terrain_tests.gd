@@ -1625,6 +1625,13 @@ func _test_worldgen_fingerprint_game_root() -> void:
 	gr._persistence_wiring.note_worldgen_version()
 	assert_eq(seen, [[running + 1, running]], "a differing record raises exactly once")
 	assert_eq(gr._worldgen_fp_stamp, running, "and the stamp is refreshed, so the next save silences it")
+	assert_eq(gr._worldgen_fp_history, [running + 1, running], "while the history keeps the fingerprint it was generated with")
+	var hist: Array = PersistenceSlice.fingerprint_history({ "worldgenFingerprintHistory": [1, "x", -3, 1, 2], "worldgenFingerprint": 2 }, 3)
+	assert_eq(hist, [1, 2, 3], "malformed and repeated entries are dropped, the new stamp appended")
+	var long: Array = []
+	for i in PersistenceSlice.MAX_FINGERPRINT_HISTORY + 5:
+		long.append(i)
+	assert_eq(PersistenceSlice.fingerprint_history({ "worldgenFingerprintHistory": long }, 999).size(), PersistenceSlice.MAX_FINGERPRINT_HISTORY, "the history is capped")
 	seen.clear()
 	gr._loaded_world = { "worldgenVersion": TerrainSlice.WORLDGEN_VERSION, "worldgenFingerprint": gr._worldgen_fp_stamp }
 	gr._persistence_wiring.note_worldgen_version()
@@ -1989,11 +1996,15 @@ func _test_p126_seam_wrap_module() -> void:
 					offenders.append(dir + "/" + f + ":" + probe)
 	assert_eq(offenders, [], "no module keeps its own copy of the seam helpers")
 	# Phase 138 — and no inline wrap of an X coordinate round the seam: `posmod(v + lap/2, lap) - lap/2` in
-	# any spelling is `SeamWrap.wrap_i` / `wrap_f`.
+	# any spelling is `SeamWrap.wrap_i` / `wrap_f`. #367: matched by shape, not by variable name — any
+	# posmod/fposmod on a line that also halves something — in every gameplay directory (tests aside).
 	var inline := RegEx.new()
-	inline.compile("posmod\\([^\\n]*\\+ *[A-Za-z_.()]*(circ|lap|half_w|\\bw\\b|\\bc\\b)[A-Za-z_.()]* *(\\* *0\\.5|/ *2)")
+	inline.compile("\\b(f?posmod)\\(.*(\\* *0\\.5\\b|/ *2(\\.0*)?\\b)")
 	var copies: Array = []
-	for dir in ["res://src/world", "res://src/terrain", "res://src/persistence", "res://src/core", "res://src/networking", "res://src/ui", "res://src/creature", "res://src/character"]:
+	for sub in DirAccess.get_directories_at("res://src"):
+		if sub == "tests":
+			continue
+		var dir := "res://src/" + sub
 		for f in DirAccess.get_files_at(dir):
 			if not f.ends_with(".gd") or f == "seam_wrap.gd":
 				continue

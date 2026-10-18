@@ -167,7 +167,7 @@ func stock_of(id: String) -> Dictionary:
 ## Ground metres between two points, the short way round the planet.
 static func dist_m(a: Vector2, b: Vector2) -> float:
 	var lap := float(TerrainSlice.circumference_chunks()) * WorldPos.CHUNK_METERS
-	var dx := fposmod(b.x - a.x + lap * 0.5, lap) - lap * 0.5
+	var dx := SeamWrap.wrap_f(b.x - a.x, lap)
 	return Vector2(dx, b.y - a.y).length()
 
 static func xz_of_exact(pos: Dictionary) -> Vector2:

@@ -714,6 +714,8 @@ func _record_generation(chunk_pos: Vector2i) -> void:
 	if ChunkRecords.set_record(canon, rec):
 		_pending_records[ChunkRecords.key_of(canon)] = { "gen": rec }
 		records_created += 1
+		if tree_slice != null and tree_slice.has_method("on_chunk_recorded"):
+			tree_slice.on_chunk_recorded(canon)
 
 ## Phase 126 — whether a record for `canon` can be made right now: the regions `Frontier` reads around it
 ## are resident (a world with no region streamer, as in an isolated rig, always can).
@@ -1485,6 +1487,10 @@ func unload_chunk(chunk_pos: Vector2i) -> void:
 	# and any queued rebuild go with it (it rebuilds from the edit log when it streams
 	# back in, see `request_rebuild`'s not-loaded branch).
 	_failed.erase(key)
+	# A deferred record belongs to this residency too: one that streams back in is deferred afresh, with
+	# a fresh warning clock, instead of inheriting a stale stamp (an instant warning, or none ever).
+	_deferred_records.erase(key)
+	_deferred_since.erase(key)
 	# The residency ends here: the contents are despawned below, so a chunk that streams
 	# back in repopulates (`_apply_build_entry`).
 	_contents_spawned.erase(key)

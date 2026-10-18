@@ -87,6 +87,8 @@ var _creature_ai: CreatureAI
 var _worldgen_stamp: int = TerrainSlice.WORLDGEN_VERSION
 ## Phase 106 — the fingerprint the next save writes; resolved when a record loads.
 var _worldgen_fp_stamp: int = -1
+## Every worldgen fingerprint this world was saved under, oldest first (see `PersistenceSlice.fingerprint_history`).
+var _worldgen_fp_history: Array = []
 var _networking:  NetworkingSlice
 var _persistence: PersistenceSlice
 var _registry:    PlayerRegistry

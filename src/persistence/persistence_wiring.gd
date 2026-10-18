@@ -118,6 +118,7 @@ func collect_save_job(incremental: bool) -> Dictionary:
 		"seed":            root._terrain.get_world_seed(),
 		"worldgenVersion": root._worldgen_stamp,
 		"worldgenFingerprint": root._worldgen_fp_stamp if root._worldgen_fp_stamp >= 0 else TerrainSlice.worldgen_fingerprint(),
+		"worldgenFingerprintHistory": root._worldgen_fp_history if not root._worldgen_fp_history.is_empty() else [TerrainSlice.worldgen_fingerprint()],
 		"chunks":          manifest,
 		"stations":        stations,
 		"station_next_id": root._station.next_id(),
@@ -401,6 +402,7 @@ func note_worldgen_version() -> void:
 		# Phase 138 — the notice is given once: the next save stamps the running fingerprint, so a later
 		# load of the same world is silent (the records, not the stamp, keep old land stable).
 		root._worldgen_fp_stamp = running_fp
+	root._worldgen_fp_history = PersistenceSlice.fingerprint_history(root._loaded_world, root._worldgen_fp_stamp)
 
 ## Phase 114 — generation records never outlive the world they describe.
 func forget_world_records() -> void:
