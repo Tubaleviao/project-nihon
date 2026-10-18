@@ -15,7 +15,7 @@ module.exports = {
       id:       { type: 'uuid', primaryKey: true },
       tier:     { type: 'enum', values: SKILL_TIERS },
       xpCurve:  { type: 'enum', values: ['linear', 'quadratic', 'exponential'], description: 'XP required per tier' },
-      maxLevel: { type: 'integer', description: 'Maximum XP level within a tier before tier advance is required' },
+      maxLevel: { type: 'integer', description: 'Maximum XP level within a tier before tier advance is required; the same as levelCap', defaultValue: SKINNING.levelCap },
       category: { type: 'enum', values: ['combat', 'crafting', 'magic', 'exploration', 'social', 'survival'], description: 'Skill domain: survival' },
       levelCap:     { type: 'integer', description: 'Highest Skinning level; the tables below have one entry per level 0..levelCap', defaultValue: SKINNING.levelCap },
       xpPerHarvest: { type: 'integer', description: 'Skinning XP a finished harvest grants', defaultValue: SKINNING.xpPerHarvest },

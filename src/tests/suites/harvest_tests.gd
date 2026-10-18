@@ -111,7 +111,7 @@ func _test_carcass_data() -> void:
 		assert_true(int(c.get("corpseSeconds")) > 0, "%s has a corpse time" % creature)
 		var rule_index := int(c.get("carryRule"))  # enum fields load as the value's index
 		assert_true(rule_index >= 0 and rule_index < CARRY_RULES.size(), "%s has a carry rule" % creature)
-		var rule: String = CARRY_RULES[clampi(rule_index, 0, CARRY_RULES.size() - 1)]
+		var rule: String = CARRY_RULES[rule_index]
 		if rule == "carry":
 			assert_true(mass <= capacity, "%s fits the base capacity" % creature)
 		elif rule == "drag":

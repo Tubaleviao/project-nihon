@@ -47,6 +47,27 @@ expect('a carry body over the capacity fails', harvest.harvestProblems(heavy), /
 const weak = fresh(); weak.tools.CarpenterAxe.efficiency = 1.5;
 expect('a tool efficiency above 1 fails', harvest.harvestProblems(weak), /CarpenterAxe\.efficiency/);
 
+const drag = fresh(); drag.creatures.ForestBoar.carcassMassKg = 10;
+expect('a drag body that fits the base capacity fails', harvest.harvestProblems(drag), /ForestBoar: carryRule drag but 10 kg fits/);
+
+const cs = fresh(); cs.creatures.ForestBoar.corpseSeconds = 0;
+expect('corpseSeconds 0 fails', harvest.harvestProblems(cs), /ForestBoar: corpseSeconds/);
+
+const rl = fresh(); rl.rules.harvestRangeMetres = 0;
+expect('a zero harvest range fails', harvest.harvestProblems(rl), /harvestRangeMetres/);
+
+const xp = fresh(); xp.skinning.xpToLevel[3] = xp.skinning.xpToLevel[2];
+expect('xpToLevel that does not rise fails', harvest.harvestProblems(xp), /xpToLevel falls at level 3/);
+
+const xp0 = fresh(); xp0.skinning.xpToLevel[0] = 5;
+expect('xpToLevel not starting at 0 fails', harvest.harvestProblems(xp0), /xpToLevel must start at 0/);
+
+const ch = fresh(); ch.skinning.chanceCurve[10] = 1.5;
+expect('a chance curve above 1 fails', harvest.harvestProblems(ch), /chanceCurve entries/);
+
+const cr = fresh(); cr.creatures.ForestBoar.carryRule = 'fly';
+expect('an unknown carry rule fails', harvest.harvestProblems(cr), /carryRule must be one of/);
+
 let threw = false;
 try { harvest.validateHarvest(spoon); } catch (e) { threw = true; }
 expect('validateHarvest throws on bad data', threw ? [] : ['did not throw'], null);

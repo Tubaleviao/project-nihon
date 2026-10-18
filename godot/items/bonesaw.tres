@@ -11,7 +11,6 @@ rarity = 0
 stackable = false
 shape = {"archetype":"saw","parts":{"blade":"Ferrite","grip":"Thornwood"},"scale":1}
 durability = 70
-toolType = "bonetool"
 harvestTool = "bonetool"
 efficiency = 1.0
 repair = {"station":"forge","materials":[{"item":"FerriteIngot","quantity":1}],"skillGuards":[{"skill":"Smithing","tier":"novice"}]}

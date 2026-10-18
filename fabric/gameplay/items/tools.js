@@ -151,7 +151,6 @@ module.exports = {
       stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory', defaultValue: false },
       shape: itemShape({ archetype: 'knife', parts: { blade: 'Ferrite', grip: 'Thornwood' } }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 60 },
-      toolType:   { type: 'string', description: 'Tool class — the action this tool performs. "pick" mines, "axe" chops.', defaultValue: 'knife' },
       harvestTool: { type: 'string', description: 'Harvest tool category this item provides (Phase 160): knife or bonetool', defaultValue: 'knife' },
       efficiency:  { type: 'decimal', description: 'How well it works that category, in (0, 1]; below 1.0 is a poor substitute', defaultValue: 1.0 },
       repair: repairData({
@@ -193,7 +192,6 @@ module.exports = {
       stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory', defaultValue: false },
       shape: itemShape({ archetype: 'saw', parts: { blade: 'Ferrite', grip: 'Thornwood' } }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 70 },
-      toolType:   { type: 'string', description: 'Tool class — the action this tool performs. "pick" mines, "axe" chops.', defaultValue: 'bonetool' },
       harvestTool: { type: 'string', description: 'Harvest tool category this item provides (Phase 160): knife or bonetool', defaultValue: 'bonetool' },
       efficiency:  { type: 'decimal', description: 'How well it works that category, in (0, 1]; below 1.0 is a poor substitute', defaultValue: 1.0 },
       repair: repairData({
