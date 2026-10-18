@@ -23,6 +23,8 @@ var seat_probe: Callable = Callable()
 ## Client: peer id -> gesture id still to show, and what is already on the avatar (instance id + gesture).
 var _remote_poses: Dictionary = {}
 var _applied: Dictionary = {}
+## Host: "viewer:subject" peer pairs already told about a held pose (the viewer had it in its AOI).
+var _entered: Dictionary = {}
 
 func _connect_all() -> void:
 	connect_bus(GameBus.gesture_intent, _on_gesture_intent)
@@ -131,11 +133,33 @@ func tick(delta: float) -> void:
 	var local := _local_id()
 	if root._player != null:
 		root._gesture.note_position(local, root._player.get_position())
+	_replay_to_entrants()
 	# restRegen: a held rest pose regains HP at the base rate times its multiplier (host-resolved).
 	for pid in root._gesture.held_poses():
 		var mult: float = root._gesture.regen_multiplier(str(pid))
 		if mult > 1.0:
 			_regen(str(pid), GestureRules.regen_amount(mult, delta))
+
+## A viewer that walks into range of a player who already holds a pose is told it once (the join handler
+## covers late joiners; this covers everyone else). A pair that leaves range is forgotten, so re-entry replays.
+func _replay_to_entrants() -> void:
+	var net: Variant = root._networking
+	if net == null or not net.is_host():
+		return
+	var held: Dictionary = root._gesture.held_poses()
+	var visible := {}   # "viewer:subject" -> { viewer, subject, pose }
+	for pid in held:
+		var subject := _peer_of(str(pid))
+		var at: Variant = _position_of(str(pid))
+		if subject == 0 or at == null:
+			continue
+		for viewer in net._connected_peers():
+			var v := int(viewer)
+			if v != subject and net.has_last_known_state(v) and net.in_aoi(v, at):
+				visible["%d:%d" % [v, subject]] = { "viewer": v, "subject": subject, "pose": held[pid] }
+	for key in GestureRules.new_pairs(visible, _entered):
+		net.send_peer_gestures_to(visible[key]["viewer"], { visible[key]["subject"]: visible[key]["pose"] })
+	_entered = visible
 
 func _regen(player_id: String, amount: float) -> void:
 	if _is_local(player_id):

@@ -16,6 +16,7 @@ func register() -> void:
 	_run_test("gesture: death cancels every pose and a one-shot replaces a pose", _test_death_and_replace)
 	_run_test("gesture: regeneration while Sit is held is the base rate times restRegen", _test_rest_regen)
 	_run_test("gesture: a pose for a peer waits for its avatar and a late joiner sees it seated", _test_peer_pose_waits_for_avatar)
+	_run_test("gesture: a viewer entering range of a held pose is replayed it once, and again after leaving", _test_new_pairs)
 	_run_test("gesture: every gesture has a clip on the placeholder player rig, listed in the loop table", _test_every_gesture_has_a_clip)
 	_run_test("gesture: locomotion holds a pose, ends a one-shot, and the Gesture node stands up in 0.3 s", _test_locomotion_and_tree)
 	_run_test("gesture: chat commands come from the fabric and never travel as chat", _test_chat_commands)
@@ -202,6 +203,19 @@ func _test_peer_pose_waits_for_avatar() -> void:
 	gr._is_client = false
 	f["ch"].remove_character(other)
 	_free_fixture(f)
+
+
+func _test_new_pairs() -> void:
+	var entered := {}
+	var visible := {"2:1": true}
+	assert_eq(GestureRules.new_pairs(visible, entered), ["2:1"], "a viewer in range for the first time is told")
+	entered = visible
+	assert_eq(GestureRules.new_pairs(visible, entered), [], "and not told again while it stays in range")
+	entered = visible
+	visible = {}
+	entered = visible
+	visible = {"2:1": true}
+	assert_eq(GestureRules.new_pairs(visible, entered), ["2:1"], "leaving then re-entering replays it")
 
 
 func _test_every_gesture_has_a_clip() -> void:

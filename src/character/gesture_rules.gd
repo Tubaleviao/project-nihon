@@ -84,3 +84,12 @@ static func seat_lift(feet_y: float, seat_top_y: float) -> float:
 ## HP regained over `delta` seconds at `multiplier` (1.0 when no pose is held).
 static func regen_amount(multiplier: float, delta: float) -> float:
 	return BASE_HP_REGEN_PER_S * maxf(multiplier, 1.0) * maxf(delta, 0.0)
+
+## Keys of `visible` (viewer/subject pairs in range now) that were not in `before`: the pairs that just
+## entered range and need the held pose replayed.
+static func new_pairs(visible: Dictionary, before: Dictionary) -> Array:
+	var out: Array = []
+	for key in visible:
+		if not before.has(key):
+			out.append(key)
+	return out
