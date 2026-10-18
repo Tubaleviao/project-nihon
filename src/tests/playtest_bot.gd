@@ -26,6 +26,7 @@ extends Node
 
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
+const WaystoneSlice := preload("res://src/world/waystone_slice.gd")
 
 const ARG := "--playtest-bot"
 const OUT_DIR := "res://playtest"
@@ -545,9 +546,14 @@ func _step_travel() -> Array:
 	if await _place_with_keys(stone) == 0:
 		return [false, "second waystone refused"]
 	var b: String = str(_placed.back()[0])
-	_key(KEY_S, true)   # back beside the first stone, which the travel starts from
-	await _until(func(): return false, 1.5)
-	_key(KEY_S, false)
+	# Back beside the first stone, which the travel starts from. Placed, not walked: a timed walk
+	# back can stop outside the attune radius and the host refuses the travel as too_far.
+	var home: Dictionary = _root._waystones.exact_pos(a)
+	_teleport_to(home["chunk"], home["local"])
+	var near: bool = await _until(func():
+		return WaystoneSlice.distance_m(_root._player.get_world_pos(), home) <= 1.0, STEP_TIMEOUT_SECS)
+	if not near:
+		return [false, "could not stand beside the first waystone"]
 	_root._registry.record_waystones(_root._registry.local_player_id, [a, b])
 	_root._registry.get_inventory(_root._registry.local_player_id).add_item(str(_root._waystones.rules()["costItem"]), 20)
 	GameBus.waystone_travel_intent.emit(a, b, "")
