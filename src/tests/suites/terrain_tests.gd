@@ -465,7 +465,7 @@ func _test_distant_ring() -> void:
 	var mesh: ArrayMesh = (d.get_child(0) as MeshInstance3D).mesh
 	var aabb := mesh.get_aabb()
 	assert_true(aabb.size.x > 1.8 * d.ring_half_m * 0.95, "the mesh spans the ring (%.0f m)" % aabb.size.x)
-	assert_true(aabb.size.x <= 2.0 * d.ring_half_m + 1.0, "and no further")
+	assert_true(aabb.size.x <= 2.0 * d.outer_radius_m + 1.0, "and no further than the outer circle (Phase 164)")
 	# The voxel window is a hole: no ring vertex lies strictly inside it (Phase 73: the whole window).
 	var verts: PackedVector3Array = mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
 	var inside := 0
@@ -575,13 +575,13 @@ func _test_distant_ring_abort() -> void:
 	var rows_after_abort: int = control.rows
 	assert_true(control.aborted, "leaving the tree raised the abort flag")
 	# The worker is joined by now: no row was started after the flag, bar the one in progress.
-	assert_true(rows_after_abort <= 2 * (DistantTerrainScript.GRID + 1) + 1, "the row counter is bounded")
+	assert_true(rows_after_abort <= DistantTerrainScript.build_rows() + 1, "the row counter is bounded")
 	# An unaborted build of the same ring reaches the full row count; the aborted one stopped earlier.
 	var half := DistantTerrainScript.ring_half_extent(3)
 	var win := (3.0 + 0.5) * DistantTerrainScript.CHUNK_METERS
 	var full := DistantTerrainScript.BuildControl.new()
 	DistantTerrainScript.build_mesh(11, 40000.0 * 1000.0, Vector2.ZERO, half, win, Vector2.ZERO, full)
-	assert_eq(full.rows, 2 * DistantTerrainScript.GRID + 1, "an unaborted build visits every row")
+	assert_eq(full.rows, DistantTerrainScript.build_rows(), "an unaborted build visits every row")
 	assert_true(rows_after_abort < full.rows, "the aborted build stopped strictly before the full row count")
 	OS.delay_msec(20)
 	assert_eq(control.rows, rows_after_abort, "no worker row runs after the node is gone")
@@ -594,7 +594,7 @@ func _test_distant_ring_unaborted_same() -> void:
 	var checked: ArrayMesh = DistantTerrainScript.build_mesh(5, 4.0e7, Vector2.ZERO, half, win, Vector2.ZERO, ctl)
 	assert_eq(hash(checked.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]),
 		hash(plain.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]), "same vertex hash with the check in place")
-	assert_eq(ctl.rows, 2 * DistantTerrainScript.GRID + 1, "every row was visited")
+	assert_eq(ctl.rows, DistantTerrainScript.build_rows(), "every row was visited")
 	var abort := DistantTerrainScript.BuildControl.new()
 	abort.aborted = true
 	assert_true(DistantTerrainScript.build_mesh(5, 4.0e7, Vector2.ZERO, half, win, Vector2.ZERO, abort) == null, "an aborted build returns no mesh")
@@ -703,8 +703,10 @@ func _test_distant_ring_vertex_hash() -> void:
 	var rc := Vector2(floorf(wc.x / cell) * cell, floorf(wc.y / cell) * cell)
 	var mesh: ArrayMesh = DistantTerrainScript.build_mesh(seed_v, w, rc, ring_half, half, wc)
 	var verts: PackedVector3Array = mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
-	assert_eq(verts.size(), 19908, "the ring for seed 7 has the recorded vertex count")
-	assert_eq(hash(verts), 391342816, "the ring for seed 7 has the recorded vertex hash")
+	# Phase 164 — the square lattice is unchanged (its vertices come first); the polar rings follow.
+	assert_eq(hash(verts.slice(0, 19908)), 391342816, "the square lattice for seed 7 has the recorded vertex hash")
+	assert_eq(verts.size(), 19908 + (DistantTerrainScript.POLAR_RINGS + 1) * 4 * DistantTerrainScript.GRID, "the ring for seed 7 has the recorded vertex count")
+	assert_eq(hash(verts), 904300238, "the ring for seed 7 has the recorded vertex hash")
 
 ## Phase 120 — a recorded chunk whose corners differ from the generator by 10 m is drawn at its recorded
 ## corners; its unrecorded neighbour stays on the plain generator.

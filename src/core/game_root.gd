@@ -567,13 +567,8 @@ func _ready() -> void:
 
 		var env := WorldEnvironment.new()
 		env.name = "Environment"
-		var environment := Environment.new()
-		environment.background_mode = Environment.BG_COLOR
-		environment.background_color = Color(0.45, 0.62, 0.85)
-		environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-		environment.ambient_light_color = Color(0.55, 0.6, 0.7)
-		environment.ambient_light_energy = 0.5
-		env.environment = environment
+		# Phase 164 — a sky whose horizon is the haze colour, with distance fog over the far ring.
+		env.environment = WeatherWiring.make_environment()
 		add_child(env)
 
 	# Verify GameData entries load cleanly.
@@ -1101,6 +1096,8 @@ func _process(delta: float) -> void:
 		_distant.world_seed = _terrain.get_world_seed()
 		var pp := _player.get_position()
 		_distant.rebuild(Vector2(pp.x, pp.z), _chunk_manager.stream_radius())
+		if _distant.outer_radius_m > 0.0 and not is_equal_approx(_player.view_far(), PlayerSlice.view_far_for(_distant.outer_radius_m)):
+			_player.set_view_far(_distant.outer_radius_m)
 	if _is_client:
 		_peer_wiring.prune_remote_avatars()
 	if not _is_client and _player != null:

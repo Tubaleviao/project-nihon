@@ -259,7 +259,7 @@ jobs:
           # non-zero on a hard failure (step timeout, any frame over 2 s). Slow percentiles
           # are a report, not a gate. A crash writes no report.json, which fails the check below.
           set +e
-          timeout 1200 xvfb-run -a -s "-screen 0 1280x720x24" \
+          timeout 1500 xvfb-run -a -s "-screen 0 1280x720x24" \
             /tmp/godot/Godot_v4.7-stable_linux.x86_64 --path . --rendering-driver opengl3 -- --playtest-bot \
             2>&1 | tee /tmp/playtest.log
           status=${PIPESTATUS[0]}
@@ -273,7 +273,7 @@ jobs:
             echo "::error::script/parse/compile errors present"
             exit 1
           fi
-          for step in walk stream mine gather craft place fight travel; do
+          for step in walk stream mine gather craft place fight travel horizon; do
             if [ ! -s "playtest/$step.png" ]; then
               echo "::error::missing screenshot for step $step"
               exit 1
