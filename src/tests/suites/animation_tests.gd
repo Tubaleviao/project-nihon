@@ -5,6 +5,8 @@ const RigTree := preload("res://src/character/rig_tree.gd")
 
 
 func register() -> void:
+	_run_test("gestures: GameData lists every gesture with its clip and chat command", _test_p158_gesture_data)
+	_run_test("gestures: every gesture name key is in both catalogs", _test_p158_gesture_catalog)
 	_run_test("animation: a creature's hit swings its model and flinches the player", _test_creature_hit_animates_both)
 	_run_test("animation: a synced swing animates a peer's avatar", _test_synced_swing_animates_peer)
 	_run_test("animation: three hits in one round are three swings", _test_three_hits_three_swings)
@@ -243,3 +245,30 @@ func _player_without_hit() -> AnimationPlayer:
 		lib.add_animation(clip, Animation.new())
 	p.add_animation_library("", lib)
 	return p
+
+
+func _test_p158_gesture_data() -> void:
+	var expected := {
+		"Sit": ["sit", "/sit"], "SitGround": ["sit_ground", "/sitground"], "LieDown": ["lie_down", "/lie"],
+		"Wave": ["wave", "/wave"], "Point": ["point", "/point"], "Bow": ["bow", "/bow"],
+		"Cheer": ["cheer", "/cheer"], "Shrug": ["shrug", "/shrug"], "Clap": ["clap", "/clap"],
+		"Kneel": ["kneel", "/kneel"],
+	}
+	assert_eq(GameData.GESTURES.size(), expected.size(), "ten gestures")
+	var seen_cmds := {}
+	for id in expected:
+		assert_true(GameData.GESTURES.has(id), "%s is listed" % id)
+		var g: Resource = GameData.GESTURES[id]
+		assert_eq([g.clip, g.chatCommand], expected[id], "%s clip and command" % id)
+		assert_false(seen_cmds.has(g.chatCommand), "%s command is unique" % id)
+		seen_cmds[g.chatCommand] = true
+		assert_true(g.restRegen >= 1.0, "%s restRegen is never below 1" % id)
+		assert_true(int(g.kind) in [0, 1], "%s has a known kind" % id)
+
+func _test_p158_gesture_catalog() -> void:
+	var cats: Dictionary = I18nScript.parse_csv("res://locale/ui.csv")["catalog"]
+	for id in GameData.GESTURES:
+		var key: String = GameData.GESTURES[id].nameKey
+		assert_true(key != "", "%s has a name key" % id)
+		for loc in cats:
+			assert_true((cats[loc] as Dictionary).has(key), "%s has %s" % [loc, key])

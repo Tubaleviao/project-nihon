@@ -1,0 +1,16 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/gestures/shrug.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+clip = "shrug"
+kind = 1
+cancelOnMove = false
+cancelOnDamage = false
+requiresGround = false
+restRegen = 1.0
+chatCommand = "/shrug"
+nameKey = "gesture.shrug"
+description = "Shrug."
+tags = ["gesture"]

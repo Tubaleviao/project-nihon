@@ -1,0 +1,16 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/gestures/sit.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+clip = "sit"
+kind = 0
+cancelOnMove = true
+cancelOnDamage = false
+requiresGround = true
+restRegen = 1.5
+chatCommand = "/sit"
+nameKey = "gesture.sit"
+description = "Sit on a seat-height surface or the ground edge; a small rest bonus."
+tags = ["gesture"]

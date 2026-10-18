@@ -77,6 +77,16 @@ dock.technology,Technology,Tecnologia
 dock.tip,Show or hide the window shortcuts,Mostra ou oculta os atalhos das janelas
 dock.trade,Trade,Troca
 dock.windows,Windows,Janelas
+gesture.bow,Bow,Reverência
+gesture.cheer,Cheer,Comemorar
+gesture.clap,Clap,Aplaudir
+gesture.kneel,Kneel,Ajoelhar
+gesture.lie_down,Lie down,Deitar
+gesture.point,Point,Apontar
+gesture.shrug,Shrug,Dar de ombros
+gesture.sit,Sit,Sentar
+gesture.sit_ground,Sit on the ground,Sentar no chão
+gesture.wave,Wave,Acenar
 hotbar.empty,"Empty box — pick things up, or drag an item or skill here",Caixa vazia — pegue coisas ou arraste um item ou habilidade para cá
 hotbar.fewer,Fewer boxes,Menos caixas
 hotbar.hint_block,{0}  ·  middle-click to place,{0}  ·  clique do meio para colocar

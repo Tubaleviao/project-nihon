@@ -1,0 +1,16 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/gestures/sitground.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+clip = "sit_ground"
+kind = 0
+cancelOnMove = true
+cancelOnDamage = false
+requiresGround = true
+restRegen = 1.5
+chatCommand = "/sitground"
+nameKey = "gesture.sit_ground"
+description = "Sit cross-legged on the ground; a small rest bonus."
+tags = ["gesture"]

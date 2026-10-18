@@ -56,6 +56,19 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [SettlementClaimAndDecay](entities/settlementclaimanddecay.md) — Settlements claim land around a Hearth, with a radius that only grows with tier
 - [WaystonesAmendNoTeleportation](entities/waystonesamendnoteleportation.md) — Amends NoTeleportation: waystones are the one sanctioned fast travel
 
+## Gesture
+
+- [Bow](entities/bow.md) — Bow politely
+- [Cheer](entities/cheer.md) — Raise both arms and cheer
+- [Clap](entities/clap.md) — Clap hands
+- [Kneel](entities/kneel.md) — Kneel on one knee
+- [LieDown](entities/liedown.md) — Lie down flat; the best rest bonus, and any hit gets you up
+- [Point](entities/point.md) — Point ahead
+- [Shrug](entities/shrug.md) — Shrug
+- [Sit](entities/sit.md) — Sit on a seat-height surface or the ground edge; a small rest bonus
+- [SitGround](entities/sitground.md) — Sit cross-legged on the ground; a small rest bonus
+- [Wave](entities/wave.md) — Wave a hand in greeting
+
 ## Item
 
 - [AethermiteBow](entities/aethermitebow.md) — Recurve bow with an aethermite-treated thornwood stave and duskfiber string

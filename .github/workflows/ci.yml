@@ -180,6 +180,9 @@ jobs:
       - name: Check the status-effect table validation rejects bad tables
         run: node tools/check_combat.js
 
+      - name: Check the gesture table validation rejects bad tables
+        run: node tools/check_gestures.js
+
       - name: Check the roadmap index matches the phase specs
         run: node tools/check_roadmap.js
 
