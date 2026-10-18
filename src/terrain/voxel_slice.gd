@@ -26,8 +26,8 @@ extends Node
 ##   collision_faces(chunk_pos, heightmap) -> PackedVector3Array
 ##   get_edits()                          -> Dictionary
 ##   apply_edits(edits, materials)        -> void
-##   legacy_edit_ops(height, base_top, materials) -> Array   (static, pure)
-##   runs_topping_at(runs, y)             -> Dictionary       (static, pure)
+##   VoxelRuns.legacy_edit_ops(height, base_top, materials) -> Array   (static, pure)
+##   VoxelRuns.runs_topping_at(runs, y)             -> Dictionary       (static, pure)
 ##   set_place_material / get_place_material / cycle_place_material
 ##   material_for_biome(biome, world_xz, depth, seed, depleted, veins) -> String
 ##   material_at(world_xz, depth)           -> String   (the ore field, this world)
@@ -105,13 +105,16 @@ const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
 const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 const Settle := preload("res://src/terrain/settle.gd")
+const VoxelConsts := preload("res://src/terrain/voxel_consts.gd")
+const VoxelMesh := preload("res://src/terrain/voxel_mesh.gd")
+const VoxelRuns := preload("res://src/terrain/voxel_runs.gd")
 const RegionStore := preload("res://src/persistence/region_store.gd")
 
 ## CHUNK_SIZE is defined once on TerrainSlice and accessed via terrain_slice.CHUNK_SIZE.
 ## The local alias below keeps internal uses readable without duplicating the value.
-const CHUNK_SIZE  := 64        # alias — authoritative copy lives in TerrainSlice
-const TILE_SIZE   := 0.5       # world units per tile (XZ) — half the former 1.0 size
-const STEP_HEIGHT := 0.125     # world units per quantised height step (smooth, walkable — no jumps)
+const CHUNK_SIZE := VoxelConsts.CHUNK_SIZE
+const TILE_SIZE := VoxelConsts.TILE_SIZE
+const STEP_HEIGHT := VoxelConsts.STEP_HEIGHT
 const BLEND_TILES := 4.0     # width of the dithered biome border band, in tiles (Phase 49)
 ## Phase 41 — the world's FLOOR. It replaces the old `MIN_HEIGHT := 0.0`, which was
 ## "bedrock" only in the sense that mining stopped at zero: the ground has real
@@ -124,8 +127,8 @@ const BLEND_TILES := 4.0     # width of the dithered biome border band, in tiles
 ## column is one run from here up, so a deeper floor costs nothing.)
 ## Phase 122 — 32 m below the lowest possible surface (was 8), so even the deepest ocean column keeps
 ## the full authored vein depth (`depthBand` max 16) above the floor.
-const BEDROCK_DEPTH := -96.0   # cannot mine below this — the world's floor
-const MAX_HEIGHT    := 640.0   # build cap — cannot place above this
+const BEDROCK_DEPTH := VoxelConsts.BEDROCK_DEPTH
+const MAX_HEIGHT := VoxelConsts.MAX_HEIGHT
 
 ## A tile's op list is COMPACTED once it grows past this many ops (see
 ## `_append_edit` / `_compact_ops`). Ops are an append-only log by design, so a
@@ -169,7 +172,7 @@ const MATERIAL_COLORS: Dictionary = {
 }
 
 ## Colour used for any material without an explicit entry above.
-const FALLBACK_TERRAIN_COLOR := Color(0.35, 0.60, 0.28)
+const FALLBACK_TERRAIN_COLOR := VoxelConsts.FALLBACK_TERRAIN_COLOR
 
 ## Small raised deposit geometry: purely VISUAL — a marker on a column whose top slice
 ## lies inside a LIVE vein (Phase 43; it was every tile a uniform roll called rare). The
@@ -1050,353 +1053,18 @@ static func _natural_top(heightmap: Array, chunk_pos: Vector2i, tx: int, tz: int
 static func _run_depth(run: Dictionary, surface: float) -> float:
 	return surface - (float(run["top"]) - STEP_HEIGHT * 0.5)
 
-## PURE chunk build — no node, no bus, no slice state, so it is legal to run on a
-## worker thread. Everything it touches arrives as an argument.
-##
-##   chunk_pos : the chunk to build
-##   heightmap : the chunk's own base heightmap
-##   resolved  : the resolve result from `collect_build_runs`, i.e.
-##               `{ "runs": <tile → runs table>, "deposits": [...] }`. A tile ABSENT from
-##               the runs table falls back to the NATURAL column derived from `heightmap`,
-##               which is what lets a caller holding only a map (the suite, a fresh probe)
-##               build a chunk with no slice state at all; a PRESENT but EMPTY list is the
-##               streamed world's UNKNOWN column. Phase 42 review pass 9 — the payload shape
-##               is now REQUIRED rather than sniffed: the old fallback was
-##               `resolved.get("runs", resolved)`, i.e. "does this dictionary happen to hold a
-##               key called runs?", which silently reinterpreted a bare runs table as a
-##               payload. Every caller in the tree passes a `collect_build_runs()` payload —
-##               the only bare tables were the `{}`-for-natural probes, now `{ "runs": {} }` —
-##               so the sniff is gone and an absent `runs` key reads as NO resolved columns,
-##               which is the natural-column fallback (see `_column_for_cell`).
-##
-## Returns `{ vertices, normals, colors, indices, collision, quad_count, cell_count }`
-## — the four arrays an ArrayMesh surface wants, plus the triangle soup the collision
-## uses, built from the SAME quads so what the player sees and what they stand on
-## cannot drift. `cell_count` is the faces a per-tile mesher would have emitted and
-## `quad_count` is what the merge left, so the merge's effect is a number, not a claim.
-##
-## Phase 42 review pass 8 — and the rare-vein deposit BOXES are emitted here too, as
-## `deposit_vertices` / `deposit_normals` / `deposit_colors` / `deposit_indices`. They are
-## GEOMETRY ONLY: they never enter `collision`, because a deposit is decoration the player
-## must not be able to stand on. Resolving the list is the main thread's job (it reads the
-## edit log); turning it into triangles is not, so this is where the boxes are built.
-##
-## STATIC on purpose: the per-chunk faces are the same for every world, so the builder
-## needs no instance state — and a worker task may hold no reference to a Node at all
-## (a task that outlives the tree would otherwise call into a freed slice). Callers
-## pass the script itself, not the wired slice (see ChunkManager.VoxelBuilder).
-##
-## The quads are GREEDY-MERGED: adjacent coplanar faces of one colour become a single
-## rectangle, so a chunk whose surface is largely uniform emits a handful of quads
-## instead of one per tile (4096 of them at TILE_SIZE 0.5). UVs are dropped with the
-## merge — the terrain's material is per-vertex colour with no texture, and a merged
-## rectangle has no per-tile UV mapping left to give.
-##
-## `local` builds every vertex relative to the chunk's own corner (the node is then placed at the corner,
-## see `build_chunk`): float32 vertices in absolute metres snap to whole metres a few million metres out.
-## The default keeps absolute coordinates, which is what the suite's seam probes read.
+## The pure greedy-merged build; the code lives in `VoxelMesh` (Phase 154), the signature is unchanged.
 static func build_chunk_arrays(chunk_pos: Vector2i, heightmap: Array, resolved: Dictionary, local: bool = false) -> Dictionary:
-	var corner_x := chunk_pos.x * CHUNK_SIZE * TILE_SIZE
-	var corner_z := chunk_pos.y * CHUNK_SIZE * TILE_SIZE
-	var origin_x := 0.0 if local else corner_x
-	var origin_z := 0.0 if local else corner_z
-	var runs: Dictionary = resolved.get("runs", {})
-	var deposits: Array = resolved.get("deposits", [])
+	return VoxelMesh.build_chunk_arrays(chunk_pos, heightmap, resolved, local)
 
-	# dir → emit-key → the group of tile cells that would emit the IDENTICAL face: the
-	# same direction, plane, vertical span and colour. Merging only ever happens INSIDE a
-	# group, which is what makes the key exactly the set of attributes a merged quad has
-	# to share (direction, geometry, material/colour). Nested per DIRECTION so the key
-	# itself fits: see `_group_cell` for why it is not one string any more.
-	var groups: Dictionary = {}
-
-	for tz in range(CHUNK_SIZE):
-		for tx in range(CHUNK_SIZE):
-			var col := _column_for_cell(chunk_pos, heightmap, runs, tx, tz)
-			if col.is_empty():
-				continue
-			for run in col:
-				var rbottom := float(run["bottom"])
-				var rtop := float(run["top"])
-				var color: Color = run.get("color", FALLBACK_TERRAIN_COLOR)
-
-				# Top face — only where nothing is solid directly above this run, so the
-				# natural ground under a placed block stays hidden (and a ledge under an
-				# overhang still shows).
-				if not runs_cover_y(col, rtop + STEP_HEIGHT * 0.5):
-					_group_cell(groups, "up", rtop, rtop, rtop, run.get("top_color", color), tx, tz)
-
-				# Underside face — the CEILING of a tunnel, or an overhang. The span below
-				# the run is empty per-column, which is the per-column reading of "a
-				# neighbour run ends above the local run". The base run never emits one:
-				# BEDROCK_DEPTH is the world's floor, not a gap.
-				if rbottom > BEDROCK_DEPTH and not runs_cover_y(col, rbottom - STEP_HEIGHT * 0.5):
-					_group_cell(groups, "down", rbottom, rbottom, rbottom, color, tx, tz)
-
-				# Side walls — every part of this run the neighbour does NOT fill.
-				# Subtracting per neighbour is what keeps a higher neighbour's own wall
-				# (it emits that one) from being drawn twice, and what lets a wall span a
-				# tunnel's height in one piece.
-				_wall_cells(groups, chunk_pos, heightmap, runs, tx, tz, run, color,
-					run.get("soil_color", color), rtop - float(run.get("soil_depth", 0.0)))
-
-	var vertices  := PackedVector3Array()
-	var normals   := PackedVector3Array()
-	var colors    := PackedColorArray()
-	var indices   := PackedInt32Array()
-	var collision := PackedVector3Array()
-	var quad_count := 0
-	# `cell_count` is the number of faces BEFORE the merge — i.e. exactly what the
-	# per-tile mesher emitted, one quad per tile per face. Kept in the result so the
-	# merge's effect is a number a test can assert and a reviewer can quote, rather
-	# than a claim in a comment.
-	var cell_count := 0
-	for dir in groups:
-		var buckets: Dictionary = groups[dir]
-		for key in buckets:
-			var g: Dictionary = buckets[key]
-			cell_count += g["cells"].size()
-			for rect in _merge_rects(g["cells"]):
-				quad_count += _emit_rect(vertices, normals, colors, indices, collision,
-					g, rect, origin_x, origin_z, corner_x - origin_x, corner_z - origin_z)
-	# The rare-vein deposit boxes (see the docstring): geometry only, never collision.
-	# Off the resolved list, so this half of the build is the worker's.
-	var deposit_vertices := PackedVector3Array()
-	var deposit_normals  := PackedVector3Array()
-	var deposit_colors   := PackedColorArray()
-	var deposit_indices  := PackedInt32Array()
-	for deposit in deposits:
-		MeshUtil.add_box_arrays(deposit_vertices, deposit_normals, deposit_colors, deposit_indices,
-			deposit["local_position"] if local else deposit["position"], deposit["size"], deposit["color"])
-	return {
-		"vertices":    vertices,
-		"normals":     normals,
-		"colors":      colors,
-		"indices":     indices,
-		"collision":   collision,
-		"quad_count":  quad_count,
-		"cell_count":  cell_count,
-		"deposit_vertices": deposit_vertices,
-		"deposit_normals":  deposit_normals,
-		"deposit_colors":   deposit_colors,
-		"deposit_indices":  deposit_indices,
-		"local":       local,
-	}
-
-## Queue this run's exposed side walls against all four neighbours. The NEIGHBOUR
-## column comes from the same table the builder was handed — an EMPTY list is the
-## UNKNOWN neighbour, so this side emits its whole facing wall (see `_neighbour_runs`
-## for why that is the order-independent choice).
-static func _wall_cells(groups: Dictionary, chunk_pos: Vector2i, heightmap: Array, runs: Dictionary, tx: int, tz: int, run: Dictionary, color: Color, soil_color: Color = Color.BLACK, soil_line: float = INF) -> void:
-	var dirs: Array = [
-		{ "dir": "north", "ntx": tx,     "ntz": tz - 1 },
-		{ "dir": "south", "ntx": tx,     "ntz": tz + 1 },
-		{ "dir": "west",  "ntx": tx - 1, "ntz": tz     },
-		{ "dir": "east",  "ntx": tx + 1, "ntz": tz     },
-	]
-	for d in dirs:
-		var dir := str(d["dir"])
-		var neighbour := _column_for_tile(chunk_pos, heightmap, runs, int(d["ntx"]), int(d["ntz"]))
-		for seg in subtract_runs(run, neighbour):
-			var bottom := float(seg["bottom"])
-			var top := float(seg["top"])
-			if top <= bottom:
-				continue
-			var plane := _wall_plane(chunk_pos, dir, tx, tz)
-			# Soil above the soil line, rock below it (soil_line is INF with no topsoil, so
-			# the whole wall is the run's colour).
-			if soil_line == INF or top <= soil_line:
-				_group_cell(groups, dir, plane, bottom, top, color, tx, tz)
-			elif bottom >= soil_line:
-				_group_cell(groups, dir, plane, bottom, top, soil_color, tx, tz)
-			else:
-				_group_cell(groups, dir, plane, bottom, soil_line, color, tx, tz)
-				_group_cell(groups, dir, plane, soil_line, top, soil_color, tx, tz)
-
-## The world coordinate a wall's plane sits at — its grouping coordinate, so two tiles'
-## walls only ever merge when they are actually coplanar.
-static func _wall_plane(chunk_pos: Vector2i, dir: String, tx: int, tz: int) -> float:
-	match dir:
-		"north": return chunk_pos.y * CHUNK_SIZE * TILE_SIZE + tz * TILE_SIZE
-		"south": return chunk_pos.y * CHUNK_SIZE * TILE_SIZE + (tz + 1) * TILE_SIZE
-		"west":  return chunk_pos.x * CHUNK_SIZE * TILE_SIZE + tx * TILE_SIZE
-	return chunk_pos.x * CHUNK_SIZE * TILE_SIZE + (tx + 1) * TILE_SIZE
-
-## Add one tile cell to the group of faces it would emit, inside its DIRECTION's bucket.
-## The key carries everything a merged quad has to share: plane, vertical span and colour.
-##
-## Phase 42 review pass 8 — this used to build a STRING key (`"%s|%.4f|%.4f|%.4f|%s"` plus
-## `Color.to_html`), i.e. three float formattings and a hex colour string per face cell —
-## roughly 25k throwaway strings for one 64×64 chunk, on the builder's own (worker) budget
-## and again on every edit rebuild. The key is now a `Vector4i` of the same four values
-## QUANTISED to 1/10000, which is exactly the precision `%.4f` kept, so the grouping is
-## identical — no span merges that did not merge before. The three GEOMETRY components fit
-## int32 by a wide margin: a wall plane is a multiple of TILE_SIZE 0.5 and bounded by the
-## world extent (|plane·10⁴| ≤ 4.1e7), and a run's span is bounded by
-## BEDROCK_DEPTH..MAX_HEIGHT (|y·10⁴| ≤ 6.4e6).
-##
-## Phase 42 review pass 9 — the fourth component does NOT fit, and the old comment claimed it
-## did ("`to_rgba32()` is an int32 by definition"): it is a packed uint32, so opaque white is
-## `4294967295`, while `Vector4i` keeps an int32 per component — the high bit is kept as the
-## SIGN (`-1` for that same white; measured on 4.7). The wrap is a BIJECTION (the component
-## reads back as `& 0xFFFFFFFF` == the packed value), so two distinct colours can never land
-## on one key and the grouping is exactly what the old string key grouped: what was wrong was
-## the comment, not the key. `_test_voxel_group_key_colour_band` pins both halves of that.
-##
-## The DIRECTION is the outer key rather than a fifth component, because a Vec4 runs out of
-## axes — and it must be in the key: an "up" face and a "down" face at the same plane and
-## span would otherwise merge into one quad with one direction, which is a missing floor or
-## a missing ceiling.
-static func _group_cell(groups: Dictionary, dir: String, plane: float, bottom: float, top: float, color: Color, tx: int, tz: int) -> void:
-	var buckets: Dictionary = groups.get(dir, {})
-	var key := Vector4i(roundi(plane * 10000.0), roundi(bottom * 10000.0),
-		roundi(top * 10000.0), color.to_rgba32())
-	var g: Dictionary = buckets.get(key, {})
-	if g.is_empty():
-		g = {
-			"dir": dir, "plane": plane, "bottom": bottom, "top": top,
-			"color": color, "cells": {},
-		}
-		buckets[key] = g
-		groups[dir] = buckets
-	g["cells"][tz * CHUNK_SIZE + tx] = true
-
-## A column read from the resolve table, falling back to the NATURAL column off the
-## chunk's own heightmap when the caller did not resolve it (see `build_chunk_arrays`).
-static func _column_for_cell(chunk_pos: Vector2i, heightmap: Array, runs: Dictionary, tx: int, tz: int) -> Array:
-	var key := _tile_key(Vector2i(chunk_pos.x * CHUNK_SIZE + tx, chunk_pos.y * CHUNK_SIZE + tz))
-	if runs.has(key):
-		return runs[key]
-	var top := _voxel_height(float(heightmap[tz * CHUNK_SIZE + tx]))
-	if top <= BEDROCK_DEPTH:
-		return []
-	return [{ "bottom": BEDROCK_DEPTH, "top": top, "material": "", "color": FALLBACK_TERRAIN_COLOR }]
-
-## A column for an arbitrary tile: inside the chunk it is `_column_for_cell` (with the
-## same natural fallback), outside it must be IN the table or it is the UNKNOWN
-## neighbour — an empty list, never a guess.
-static func _column_for_tile(chunk_pos: Vector2i, heightmap: Array, runs: Dictionary, tx: int, tz: int) -> Array:
-	if tx >= 0 and tx < CHUNK_SIZE and tz >= 0 and tz < CHUNK_SIZE:
-		return _column_for_cell(chunk_pos, heightmap, runs, tx, tz)
-	var key := _tile_key(Vector2i(chunk_pos.x * CHUNK_SIZE + tx, chunk_pos.y * CHUNK_SIZE + tz))
-	if runs.has(key):
-		return runs[key]
-	return []
-
-## Greedy-mesh one group's tile cells into the fewest rectangles: sweep the cells in
-## row-major order, take the widest run of cells on the current row, then extend that
-## strip downward while every cell below it still belongs to the group. Deterministic
-## (the sweep order is the tile index), so a chunk's arrays are reproducible — which is
-## what lets a test compare two builds of the same chunk.
-static func _merge_rects(cells: Dictionary) -> Array:
-	var out: Array = []
-	var used: Dictionary = {}
-	var order: Array = cells.keys()
-	order.sort()
-	for idx in order:
-		if used.has(idx):
-			continue
-		var tx: int = int(idx) % CHUNK_SIZE
-		@warning_ignore("integer_division")
-		var tz: int = (int(idx) - tx) / CHUNK_SIZE
-		var w := 1
-		while tx + w < CHUNK_SIZE and cells.has(tz * CHUNK_SIZE + tx + w) and not used.has(tz * CHUNK_SIZE + tx + w):
-			w += 1
-		var h := 1
-		while tz + h < CHUNK_SIZE:
-			var complete := true
-			for dx in range(w):
-				var probe := (tz + h) * CHUNK_SIZE + tx + dx
-				if not cells.has(probe) or used.has(probe):
-					complete = false
-					break
-			if not complete:
-				break
-			h += 1
-		for dz in range(h):
-			for dx in range(w):
-				used[(tz + dz) * CHUNK_SIZE + tx + dx] = true
-		out.append({ "tx": tx, "tz": tz, "w": w, "h": h })
-	return out
-
-## Emit one merged rectangle as two triangles, and the same two into the collision
-## soup. The winding matches the per-tile quads the merge replaces, so a face's normal
-## points where it always did (the material renders both faces regardless; this is for
-## lighting). Returns the number of quads emitted (always 1) so the caller can count.
-static func _emit_rect(vertices: PackedVector3Array, normals: PackedVector3Array, colors: PackedColorArray, indices: PackedInt32Array, collision: PackedVector3Array, g: Dictionary, rect: Dictionary, origin_x: float, origin_z: float, plane_dx: float = 0.0, plane_dz: float = 0.0) -> int:
-	var bottom := float(g["bottom"])
-	var top    := float(g["top"])
-	# A wall's plane is an absolute coordinate; a chunk-local build moves it by the corner (in double
-	# precision, so the result is small and exact) before it becomes a float32 vertex.
-	var plane  := float(g["plane"])
-	match str(g["dir"]):
-		"north", "south": plane -= plane_dz
-		"west", "east": plane -= plane_dx
-	var color: Color = g["color"]
-	var x0 := origin_x + int(rect["tx"]) * TILE_SIZE
-	var x1 := x0 + int(rect["w"]) * TILE_SIZE
-	var z0 := origin_z + int(rect["tz"]) * TILE_SIZE
-	var z1 := z0 + int(rect["h"]) * TILE_SIZE
-
-	var a := Vector3.ZERO
-	var b := Vector3.ZERO
-	var c := Vector3.ZERO
-	var d := Vector3.ZERO
-	var normal := Vector3.UP
-	match str(g["dir"]):
-		"up":   # horizontal: `plane` is the y both faces sit on
-			a = Vector3(x0, plane, z0); b = Vector3(x0, plane, z1)
-			c = Vector3(x1, plane, z1); d = Vector3(x1, plane, z0)
-		"down":
-			normal = Vector3.DOWN
-			a = Vector3(x0, plane, z0); b = Vector3(x1, plane, z0)
-			c = Vector3(x1, plane, z1); d = Vector3(x0, plane, z1)
-		"north":   # vertical walls: `plane` is the fixed x/z of the wall
-			normal = Vector3(0, 0, -1)
-			a = Vector3(x0, top, plane); b = Vector3(x1, top, plane)
-			c = Vector3(x1, bottom, plane); d = Vector3(x0, bottom, plane)
-		"south":
-			normal = Vector3(0, 0, 1)
-			a = Vector3(x1, top, plane); b = Vector3(x0, top, plane)
-			c = Vector3(x0, bottom, plane); d = Vector3(x1, bottom, plane)
-		"west":
-			normal = Vector3(-1, 0, 0)
-			a = Vector3(plane, top, z1); b = Vector3(plane, top, z0)
-			c = Vector3(plane, bottom, z0); d = Vector3(plane, bottom, z1)
-		_:
-			normal = Vector3(1, 0, 0)
-			a = Vector3(plane, top, z0); b = Vector3(plane, top, z1)
-			c = Vector3(plane, bottom, z1); d = Vector3(plane, bottom, z0)
-
-	var base := vertices.size()
-	vertices.append(a); normals.append(normal); colors.append(color)
-	vertices.append(b); normals.append(normal); colors.append(color)
-	vertices.append(c); normals.append(normal); colors.append(color)
-	vertices.append(d); normals.append(normal); colors.append(color)
-	indices.append(base); indices.append(base + 1); indices.append(base + 2)
-	indices.append(base); indices.append(base + 2); indices.append(base + 3)
-	collision.append(a); collision.append(b); collision.append(c)
-	collision.append(a); collision.append(c); collision.append(d)
-	return 1
-
-## Turn a `build_chunk_arrays()` result into the ArrayMesh a chunk node shows. Static
-## and pure: an empty result yields an empty mesh rather than a surface with no
-## triangles, which is what `add_surface_from_arrays` refuses.
 static func _mesh_from_arrays(arrays: Dictionary) -> ArrayMesh:
-	var mesh := ArrayMesh.new()
-	if arrays.is_empty():
-		return mesh
-	var verts: PackedVector3Array = arrays.get("vertices", PackedVector3Array())
-	if verts.is_empty():
-		return mesh
-	var surface: Array = []
-	surface.resize(Mesh.ARRAY_MAX)
-	surface[Mesh.ARRAY_VERTEX] = verts
-	surface[Mesh.ARRAY_NORMAL] = arrays["normals"]
-	surface[Mesh.ARRAY_COLOR]  = arrays["colors"]
-	surface[Mesh.ARRAY_INDEX]  = arrays["indices"]
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, surface)
-	return mesh
+	return VoxelMesh.mesh_from_arrays(arrays)
+
+static func _merge_rects(cells: Dictionary) -> Array:
+	return VoxelMesh.merge_rects(cells)
+
+static func _group_cell(groups: Dictionary, dir: String, plane: float, bottom: float, top: float, color: Color, a: int, b: int) -> void:
+	VoxelMesh.group_cell(groups, dir, plane, bottom, top, color, a, b)
 
 ## The collision triangle soup for one chunk: exactly the triangles the build emits.
 ## `build_chunk` taps the arrays it ALREADY has (one build per chunk, not two); this
@@ -1760,7 +1428,7 @@ func get_column_runs_at(world_xz: Vector2) -> Array:
 
 ## The resolved solid runs of one tile, bottom → top (see the class docstring).
 func get_runs_at_tile(tile: Vector2i) -> Array:
-	return apply_run_ops(_base_runs_for_tile(tile), _edits.get(_tile_key(tile), []))
+	return VoxelRuns.apply_run_ops(_base_runs_for_tile(tile), _edits.get(_tile_key(tile), []))
 
 ## Phase 110 — true when any tile within Chebyshev `radius` tiles of `tile` carries an edit.
 func has_edit_near(tile: Vector2i, radius: int) -> bool:
@@ -1873,7 +1541,7 @@ func _normalise_edit_table(edits: Dictionary, materials: Dictionary) -> Dictiona
 			continue
 		var tile := _key_to_tile(str(key))
 		var stack: Array = materials.get(key, [])
-		next[key] = legacy_edit_ops(legacy_height, _base_top_for_tile(tile), stack)
+		next[key] = VoxelRuns.legacy_edit_ops(legacy_height, _base_top_for_tile(tile), stack)
 	return next
 
 ## Phase 91 — a typed op list, with a leading `legacy` op (a bare pre-Phase-41 height the region
@@ -1899,7 +1567,7 @@ func _normalise_tile_ops(key: Variant, value: Array, materials: Dictionary) -> A
 			if is_nan(h):
 				Diag.warn("VoxelSlice.apply_edits: dropping an unreadable legacy height for '%s'" % str(key))
 				continue
-			migrated = legacy_edit_ops(h, _base_top_for_tile(_key_to_tile(str(key))), materials.get(key, []))
+			migrated = VoxelRuns.legacy_edit_ops(h, _base_top_for_tile(_key_to_tile(str(key))), materials.get(key, []))
 		else:
 			rest.append(op)
 	return migrated + _normalise_ops(rest)
@@ -2381,163 +2049,6 @@ static func vein_deposits_at(chunk_pos: Vector2i, heightmap: Array, cache: Dicti
 	return out
 
 # ---------------------------------------------------------------------------
-# Run algebra — the column model (Phase 41)
-# ---------------------------------------------------------------------------
-
-## Replay a tile's typed run edits over its natural runs. Pure (no node state), so
-## the column model is testable on its own — and it is the ONLY place edits turn
-## into geometry, shared by the mesher, the collision soup, the footing sampler and
-## the save manifest.
-static func apply_run_ops(runs: Array, ops: Array) -> Array:
-	var out: Array = []
-	for run in runs:
-		out.append({ "bottom": float(run["bottom"]), "top": float(run["top"]), "material": str(run.get("material", "")) })
-	for op in ops:
-		if not (op is Dictionary):
-			continue
-		var o: Dictionary = op
-		var bottom := float(o.get("bottom", 0.0))
-		var top := float(o.get("top", 0.0))
-		if top <= bottom:
-			continue
-		var kind := str(o.get("op", ""))
-		if kind == "add":
-			out = add_span(out, bottom, top, str(o.get("material", "")))
-		elif kind == "remove":
-			out = remove_span(out, bottom, top)
-		# An unknown kind is IGNORED, never treated as a remove: the two kinds are
-		# not symmetric (one fills, one carves), and defaulting to the carving one
-		# is how a corrupt edit list silently eats terrain (see `_normalise_ops`).
-	return out
-
-## Add a solid span, merging it with runs of the SAME material it touches or
-## overlaps. Material is part of a run's identity: a placed block stays its own run
-## above the natural ground, so the natural base keeps the biome's colour instead
-## of being repainted by whatever the player stacked on it.
-static func add_span(runs: Array, bottom: float, top: float, material: String) -> Array:
-	var out: Array = []
-	for run in runs:
-		out.append({ "bottom": float(run["bottom"]), "top": float(run["top"]), "material": str(run.get("material", "")) })
-	out.append({ "bottom": bottom, "top": top, "material": material })
-	out.sort_custom(func(a, b): return float(a["bottom"]) < float(b["bottom"]))
-	var merged: Array = []
-	for run in out:
-		if merged.is_empty():
-			merged.append(run)
-			continue
-		var prev: Dictionary = merged[-1]
-		var touches := float(run["bottom"]) <= float(prev["top"]) + 0.000001
-		if touches and str(prev["material"]) == str(run["material"]):
-			prev["top"] = maxf(float(prev["top"]), float(run["top"]))
-		else:
-			merged.append(run)
-	return merged
-
-## Carve a solid span OUT of the runs — the mining edit. Trims a run that
-## partially overlaps, drops one fully covered, and SPLITS one the span sits
-## strictly inside. That split is what a tunnel IS: a floor run and a roof run,
-## and mining either of them leaves the other alone.
-static func remove_span(runs: Array, bottom: float, top: float) -> Array:
-	var out: Array = []
-	for run in runs:
-		var rbottom := float(run["bottom"])
-		var rtop := float(run["top"])
-		var material := str(run.get("material", ""))
-		if top <= rbottom or bottom >= rtop:
-			out.append({ "bottom": rbottom, "top": rtop, "material": material })
-			continue
-		if rbottom < bottom:
-			out.append({ "bottom": rbottom, "top": bottom, "material": material })
-		if rtop > top:
-			out.append({ "bottom": top, "top": rtop, "material": material })
-	return out
-
-## The run whose TOP is the plane `y` (within half a step), or {} when no run tops
-## there. Phase 41 — a top-face hit names the run it LANDED on, not the column's
-## topmost one: a tunnel FLOOR keeps an exposed top face with the roof above it, so
-## "the topmost run" answers with the roof and carves (or stacks on) the wrong span
-## from a click on the floor. Falls back to the caller's reading when the y is not
-## on any run boundary (the boot demo passes the spawn plain's height, not the
-## target tile's), which is what keeps a misaligned y behaving as it did before.
-## Pure, so the resolution rule is testable on its own.
-static func runs_topping_at(runs: Array, y: float) -> Dictionary:
-	var best: Dictionary = {}
-	for run in runs:
-		if absf(float(run["top"]) - y) > STEP_HEIGHT * 0.5:
-			continue
-		if best.is_empty() or float(run["top"]) > float(best["top"]):
-			best = run
-	return best
-
-## True when any run covers the ordinate `y` (half-open [bottom, top]). The rule
-## the mesher asks before emitting a top or an underside face.
-static func runs_cover_y(runs: Array, y: float) -> bool:
-	for run in runs:
-		if float(run["bottom"]) - 0.000001 <= y and y < float(run["top"]) - 0.000001:
-			return true
-	return false
-
-## The parts of `run` that `others` do NOT fill, as [{ "bottom", "top" }]. Used to
-## build a wall face per neighbour from solidity difference, so a wall is emitted
-## exactly where this column has material the neighbour has not.
-static func subtract_runs(run: Dictionary, others: Array) -> Array:
-	var segments: Array = [{ "bottom": float(run["bottom"]), "top": float(run["top"]) }]
-	for other in others:
-		var ob := float(other["bottom"])
-		var ot := float(other["top"])
-		var next: Array = []
-		for seg in segments:
-			if ot <= float(seg["bottom"]) or ob >= float(seg["top"]):
-				next.append(seg)
-				continue
-			if float(seg["bottom"]) < ob:
-				next.append({ "bottom": float(seg["bottom"]), "top": ob })
-			if float(seg["top"]) > ot:
-				next.append({ "bottom": ot, "top": float(seg["top"]) })
-		segments = next
-	return segments
-
-## The typed run edits a pre-Phase-41 scalar height edit migrates to. An old edit
-## was an absolute quantised column TOP and the column it described is the single
-## run from BEDROCK_DEPTH up to that height — exactly what this pair of edits
-## resolves to against the tile's own natural run. `materials` is the legacy
-## per-tile stack of placed blocks: the natural run ends that many steps BELOW the
-## edited top, and each placed block becomes its own `add` span above it. Pure, so
-## the migration rule is testable on its own.
-##
-## The stack survives every case, including the re-rolled-seed one: an edit whose
-## top reaches further than `placed` steps above the CURRENT base top means the
-## ground itself moved under the save (a version-1 world re-rolls once), not that
-## the stack vanished — so the natural span is re-added up to the stack's own base
-## and the materials still sit on top of it, still theirs. Collapsing that case
-## into one anonymous span (the pre-review behaviour) repaints a re-rolled world's
-## player work as natural ground, which is the one thing this migration exists to
-## refuse to do.
-static func legacy_edit_ops(legacy_height: float, base_top: float, materials: Array = []) -> Array:
-	var placed := materials.size()
-	var natural_top := legacy_height - float(placed) * STEP_HEIGHT
-	# Nothing can sit above the edited top, so a legacy height with nothing
-	# stacked on it is one plain span (up to it, or down to it when the edit
-	# carved): the common shape, and the one that has to stay a single op.
-	if placed == 0:
-		if legacy_height >= base_top:
-			return [{ "op": "add", "bottom": base_top, "top": legacy_height, "material": "" }]
-		return [{ "op": "remove", "bottom": legacy_height, "top": base_top }]
-	var ops: Array = []
-	if natural_top > base_top:
-		ops.append({ "op": "add", "bottom": base_top, "top": natural_top, "material": "" })
-	elif natural_top < base_top:
-		ops.append({ "op": "remove", "bottom": natural_top, "top": base_top })
-	for k in range(placed):
-		ops.append({
-			"op":       "add",
-			"bottom":   natural_top + float(k) * STEP_HEIGHT,
-			"top":      natural_top + float(k + 1) * STEP_HEIGHT,
-			"material": str(materials[k]),
-		})
-	return ops
-
-# ---------------------------------------------------------------------------
 # Private
 # ---------------------------------------------------------------------------
 
@@ -2588,7 +2099,7 @@ static func _column_runs(heightmap: Array, chunk_pos: Vector2i, tx: int, tz: int
 	var base: Array = []
 	if top > BEDROCK_DEPTH:
 		base.append({ "bottom": BEDROCK_DEPTH, "top": top, "material": "" })
-	var runs := apply_run_ops(base, edits.get(key, []))
+	var runs := VoxelRuns.apply_run_ops(base, edits.get(key, []))
 	cache[key] = runs
 	return runs
 
@@ -2795,7 +2306,7 @@ func _mine_span(runs: Array, world_pos: Vector3, normal: Vector3) -> Dictionary:
 	if runs.is_empty():
 		return {}
 	if normal.y > 0.5:
-		var top_run: Dictionary = runs_topping_at(runs, world_pos.y)
+		var top_run: Dictionary = VoxelRuns.runs_topping_at(runs, world_pos.y)
 		if top_run.is_empty():
 			top_run = runs[-1]   # a y on no run boundary: the column's own surface
 		var top := float(top_run["top"])
@@ -2822,7 +2333,7 @@ func _mine_span(runs: Array, world_pos: Vector3, normal: Vector3) -> Dictionary:
 func _place_span(runs: Array, world_pos: Vector3, normal: Vector3) -> Dictionary:
 	var bottom := BEDROCK_DEPTH
 	if normal.y > 0.5:
-		var top_run: Dictionary = runs_topping_at(runs, world_pos.y)
+		var top_run: Dictionary = VoxelRuns.runs_topping_at(runs, world_pos.y)
 		if not top_run.is_empty():
 			bottom = float(top_run["top"])
 		elif not runs.is_empty():
@@ -2832,7 +2343,7 @@ func _place_span(runs: Array, world_pos: Vector3, normal: Vector3) -> Dictionary
 	var top := bottom + STEP_HEIGHT
 	if top > MAX_HEIGHT:
 		return {}
-	if runs_cover_y(runs, bottom + STEP_HEIGHT * 0.5):
+	if VoxelRuns.runs_cover_y(runs, bottom + STEP_HEIGHT * 0.5):
 		return {}   # the cell already holds material
 	return { "bottom": bottom, "top": top }
 
@@ -2935,7 +2446,7 @@ func _reindex_edits() -> void:
 func _compact_ops(tile: Vector2i) -> Array:
 	var current: Array = _edits.get(_tile_key(tile), [])
 	var base := _base_runs_for_tile(tile)
-	var runs := apply_run_ops(base, current)
+	var runs := VoxelRuns.apply_run_ops(base, current)
 	var ops: Array = []
 	if not _runs_equal(runs, base):
 		for run in base:
@@ -3154,14 +2665,12 @@ static func _tile_to_chunk(tile: Vector2i) -> Vector2i:
 	return Vector2i(floori(float(tile.x) / float(CHUNK_SIZE)), floori(float(tile.y) / float(CHUNK_SIZE)))
 
 static func _tile_key(tile: Vector2i) -> String:
-	# Phase 63: canonical across the seam, so an edit east of it is the edit west of it.
-	var t := canonical_tile(tile)
-	return "%d,%d" % [t.x, t.y]
+	return VoxelConsts.tile_key(tile)
 
-## Tile X wrapped into [-C*CHUNK_SIZE/2, C*CHUNK_SIZE/2) where C is the circumference in chunks.
+## Tile X wrapped across the seam; the code lives in `VoxelConsts` (Phase 154).
 static func canonical_tile(tile: Vector2i) -> Vector2i:
-	var w := TerrainSlice.circumference_chunks() * CHUNK_SIZE
-	return Vector2i(SeamWrap.wrap_i(tile.x, w), tile.y)
+	return VoxelConsts.canonical_tile(tile)
+
 
 ## Phase 42 review pass 9 — STATIC: the worker half of a build keys chunks too (`_neighbour_runs`).
 static func _chunk_key(chunk_pos: Vector2i) -> String:
