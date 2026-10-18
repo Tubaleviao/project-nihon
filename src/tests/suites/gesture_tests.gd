@@ -320,7 +320,9 @@ func _test_chat_commands() -> void:
 	assert_eq(seen, [["Sit", ""], ["Wave", ""]], "a typed command is a gesture_intent for the local player, not a chat line")
 	assert_true(ChatCommands.help_lines(false).has("chat.usage.gestures"), "/help lists the gestures")
 	assert_true(ChatCommands.is_command("/gestures") and ChatCommands.is_known("gestures"), "/gestures is a known command")
-	assert_true(ChatCommands.run("/gestures", Vector3.ZERO).contains("/sit"), "and answers with the gesture commands")
+	var listed := ChatCommands.run("/gestures", Vector3.ZERO)
+	assert_true(listed.contains("/sit"), "and answers with the gesture commands")
+	assert_false(listed.contains("//"), "each command carries one slash, not two")
 
 
 func _test_wheel_key() -> void:

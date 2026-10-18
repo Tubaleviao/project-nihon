@@ -54,7 +54,7 @@ static func run(text: String, world_pos: Vector3) -> String:
 			var cmds: Array = []
 			for word in GestureRules.commands(GameData.GESTURES):
 				if word != "":
-					cmds.append("/" + word)
+					cmds.append(word)   # the fabric stores it with its slash ("/sit")
 			return ", ".join(cmds)
 	return ""
 
