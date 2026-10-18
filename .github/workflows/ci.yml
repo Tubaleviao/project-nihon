@@ -23,6 +23,9 @@ jobs:
           unzip -o /tmp/godot/godot.zip -d /tmp/godot
           chmod +x /tmp/godot/Godot_v4.7-stable_linux.x86_64
 
+      - name: Placeholder loop clips close their cycle
+        run: python3 tools/gen_placeholder_glb.py --check
+
       - name: Run headless test suite
         run: |
           # --quit is mandatory: without it the headless main loop never exits.

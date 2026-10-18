@@ -73,7 +73,7 @@ const LOD_AUTO := 1
 ## defers real skeletal clips). `ANIM_FREQ` is the walk-phase advance in radians
 ## per metre travelled; `RUN_SWING_AMPLITUDE` is the peak limb-swing angle
 ## (radians) at full run. Idle (blend weight 0) resolves to the rest pose.
-const ANIM_FREQ := 7.0
+const ANIM_FREQ := TAU / RigTree.WALK_STRIDE_M
 const RUN_SWING_AMPLITUDE := 0.7
 ## Knee and elbow bend, as multiples of the swing amplitude: a base bend held through the
 ## whole stride plus a peak reached while the limb swings forward (the knee lifting the foot
@@ -668,6 +668,9 @@ func attach_rig(instance_id: String, rig_key: String) -> bool:
 			(child as Node3D).visible = false
 	root.add_child(rig_root)
 	_dress_rig(rig_root, inst["appearance"])
+	RigTree.prepare_library(player)
+	if player.has_animation("attack"):
+		inst["locomotion"].attack_duration = player.get_animation("attack").length
 	var tree := RigTree.build_tree(player)
 	rig_root.add_child(tree)
 	tree.anim_player = tree.get_path_to(player)

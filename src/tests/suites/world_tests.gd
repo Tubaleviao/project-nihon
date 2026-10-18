@@ -50,6 +50,11 @@ func register() -> void:
 	_run_test("asset: missing model key warns and falls back",   _test_asset_missing_model_falls_back)
 	_run_test("asset: creature model key derived from entity name", _test_asset_creature_key)
 	_run_test("rig tree: every Locomotion.State maps to a node", _test_rig_tree_state_mapping_total)
+	_run_test("rig tree: loop modes on the player rig and every creature model", _test_rig_tree_loop_modes)
+	_run_test("rig tree: the walk clip plays through its cycle", _test_rig_tree_walk_cycles)
+	_run_test("rig tree: time scale matches the stride to the ground speed", _test_rig_tree_stride_scale)
+	_run_test("rig tree: drive travels once per node change", _test_rig_tree_travel_once)
+	_run_test("rig tree: every transition cross-fades", _test_rig_tree_xfades)
 	_run_test("rig: attach_rig wires scene + tree, falls back on bad key", _test_attach_rig)
 	_run_test("placement: exact far positions survive place, snapshot and client placement", _test_exact_placement_paths)
 	_run_test("chunks: set_clock resets the self-heal and stranded-retry throttles", _test_chunk_set_clock_resets_throttles)
@@ -1378,3 +1383,117 @@ func _test_phase147_waystone_exact_roundtrip() -> void:
 	assert_eq(back["chunk"], far["chunk"], "the chunk survives the save")
 	assert_true((back["local"] as Vector3).distance_to(far["local"]) < 0.01, "the local offset is exact to under 1 cm")
 	_free_waystone_rig(rig)
+
+
+## Rigs under test: the player rig and every creature model the manifest lists. Each entry
+## is a freshly loaded scene root (the caller frees it).
+func _rig_scene_keys() -> Array:
+	var keys: Array = ["models/player_rig.glb.raw"]
+	var meshes: Dictionary = AssetOverlay.manifest().get("meshes", {})
+	for k in meshes:
+		if str(k).begins_with("models/creatures/") and str(k).ends_with(".glb.raw"):
+			keys.append(str(k))
+	return keys
+
+func _test_rig_tree_loop_modes() -> void:
+	const RigTree := preload("res://src/character/rig_tree.gd")
+	var rigs := 0
+	for key in _rig_scene_keys():
+		var root := AssetOverlay.load_rig_scene(key)
+		if root == null:
+			assert_true(false, "%s loads" % key)
+			continue
+		var player := root.find_child("AnimationPlayer", true, false) as AnimationPlayer
+		RigTree.prepare_library(player)
+		for clip in RigTree.LOOPING_CLIPS:
+			assert_eq(player.get_animation(clip).loop_mode, Animation.LOOP_LINEAR, "%s: %s loops" % [key, clip])
+		for clip in ["land", "attack", "death"]:
+			assert_eq(player.get_animation(clip).loop_mode, Animation.LOOP_NONE, "%s: %s plays once" % [key, clip])
+		rigs += 1
+		root.free()
+	assert_true(rigs >= 2, "the player rig and at least one creature model were checked (%d)" % rigs)
+	# attach_rig applies the table to the player rig.
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character_from_recipe({"skeleton": "HumanoidSkeleton"}, Vector3.ZERO)
+	assert_true(ch.attach_rig(iid, "models/placeholder_rig.glb.raw"), "the placeholder rig attaches")
+	var tree: AnimationTree = ch._instances[iid]["anim_tree"]
+	var anim_player := tree.get_node(tree.anim_player) as AnimationPlayer
+	assert_eq(anim_player.get_animation("walk").loop_mode, Animation.LOOP_LINEAR, "attach_rig loops walk")
+	assert_eq(anim_player.get_animation("attack").loop_mode, Animation.LOOP_NONE, "attach_rig does not loop attack")
+	assert_eq(ch._instances[iid]["locomotion"].attack_duration, anim_player.get_animation("attack").length,
+		"the attack hold time is the attack clip length")
+	ch.free()
+
+func _test_rig_tree_walk_cycles() -> void:
+	const RigTree := preload("res://src/character/rig_tree.gd")
+	var root := AssetOverlay.load_rig_scene("models/player_rig.glb.raw")
+	assert_true(root != null, "the player rig loads")
+	if root == null:
+		return
+	var player := root.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	RigTree.prepare_library(player)
+	var skeleton := root.find_children("*", "Skeleton3D", true, false)[0] as Skeleton3D
+	var bone := skeleton.find_bone("Leg_L")
+	var walk := player.get_animation("walk")
+	player.play("walk")
+	var seen: Array = []
+	for i in 3:
+		player.advance(walk.length * (0.25 + (0.0 if i == 0 else 1.0)))
+		seen.append(skeleton.get_bone_pose_rotation(bone))
+	player.advance(walk.length)  # a full extra cycle still runs
+	assert_true(player.is_playing(), "the walk clip is still playing after 3 clip lengths")
+	assert_false(seen[0].is_equal_approx(seen[1]) and seen[1].is_equal_approx(seen[2]),
+		"Leg_L is at different phases over three cycles' worth of time")
+	assert_false(seen[0].is_equal_approx(seen[1]), "Leg_L moves between quarter and 1.25 cycles")
+	root.free()
+
+func _test_rig_tree_stride_scale() -> void:
+	const RigTree := preload("res://src/character/rig_tree.gd")
+	const Loco := preload("res://src/character/locomotion.gd")
+	var speeds := Vector2(RigTree.WALK_STRIDE_M / RigTree.WALK_CYCLE_S, RigTree.RUN_STRIDE_M / RigTree.RUN_CYCLE_S)
+	for case in [[Loco.RUN_SPEED * 0.5 + 0.1, 0.5], [5.0, 1.0], [Loco.RUN_SPEED, 1.0]]:
+		var ground: float = case[0]
+		var blend := Loco.blend_curve(ground)
+		var scale := RigTree.time_scale(ground, blend if case[1] == 1.0 else 0.5, speeds)
+		var covered := speeds.x if case[1] == 0.5 else lerpf(speeds.x, speeds.y, clampf((blend - 0.5) * 2.0, 0.0, 1.0))
+		assert_true(absf(scale * covered - ground) <= ground * 0.05, "at %.1f m/s the clip covers the ground speed (scale %.2f)" % [ground, scale])
+	assert_eq(RigTree.time_scale(0.0, 0.0, speeds), 1.0, "standing keeps the idle clip at its own tempo")
+	# The procedural body steps at the same stride as the rig.
+	assert_true(absf(CharacterSlice.ANIM_FREQ - TAU / RigTree.WALK_STRIDE_M) < 0.0001, "ANIM_FREQ uses the rig stride")
+
+class _FakePlayback:
+	var travels: Array = []
+	func travel(node: String) -> void:
+		travels.append(node)
+
+func _test_rig_tree_travel_once() -> void:
+	const RigTree := preload("res://src/character/rig_tree.gd")
+	var holder := Node.new()
+	var fake := _FakePlayback.new()
+	assert_true(RigTree.travel_once(holder, fake, "Locomotion"), "the first travel is issued")
+	assert_false(RigTree.travel_once(holder, fake, "Locomotion"), "the same node again is not")
+	assert_true(RigTree.travel_once(holder, fake, "Attack"), "a new node is")
+	assert_eq(fake.travels, ["Locomotion", "Attack"], "two travels for three drives")
+	holder.free()
+
+func _test_rig_tree_xfades() -> void:
+	const RigTree := preload("res://src/character/rig_tree.gd")
+	var player := AnimationPlayer.new()
+	var tree := RigTree.build_tree(player)
+	var sm := tree.tree_root as AnimationNodeStateMachine
+	var n := sm.get_transition_count()
+	assert_true(n > 0, "the machine has transitions")
+	for i in n:
+		var from := str(sm.get_transition_from(i))
+		var to := str(sm.get_transition_to(i))
+		if from == "Start":
+			continue
+		var x := sm.get_transition(i).xfade_time
+		assert_true(x > 0.0, "%s -> %s cross-fades (%.2f s)" % [from, to, x])
+	assert_eq(RigTree.xfade_for("Locomotion", "Attack"), 0.05, "into attack")
+	assert_eq(RigTree.xfade_for("Locomotion", "Death"), 0.08, "into death")
+	assert_eq(RigTree.xfade_for("Land", "Locomotion"), 0.1, "out of land")
+	assert_eq(RigTree.xfade_for("Locomotion", "Fall"), 0.12, "locomotion")
+	tree.free()
+	player.free()
