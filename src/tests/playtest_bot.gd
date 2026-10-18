@@ -63,6 +63,7 @@ const HORIZON_HEADINGS := [-15.0, -5.0, 5.0, 15.0]   ## degrees either side of t
 const HORIZON_HALF_FOV := 60.0        ## rays are checked this far either side of each heading (the frame's half width)
 const HORIZON_RAY_STEP := 5.0         ## degrees between checked rays
 const HORIZON_RISE_MAX := 0.002       ## radians (~1 px): land may rise this far over the sea horizon (half the skyline limit)
+const HORIZON_STAND_TOLERANCE_M := 3.0   ## the body must stand within this far under the built coast ground
 const COAST_SEARCH_M := 4.0e6         ## the coast search marches this far from the body
 const COAST_BEARING_STEP := 11.25     ## degrees between marched bearings
 const COAST_MARCH_M := 2000.0         ## march step on the large-scale shape
@@ -697,7 +698,14 @@ func _step_horizon() -> Array:
 	var spot := _teleport_to(chunk, Vector3(spot_xz.x - float(chunk.x) * m, 0.0, spot_xz.y - float(chunk.y) * m))
 	if not await _until(func(): return _root._chunk_manager.is_chunk_built(spot["chunk"]), HORIZON_TIMEOUT_SECS):
 		return [false, "the coast chunk never built"]
+	# The body fell while the chunk's ground was missing (a coast far from the start has no collider at
+	# the teleport): put it back on the built ground, let it settle, and require it to stand there.
+	spot = _teleport_to(chunk, Vector3(spot_xz.x - float(chunk.x) * m, 0.0, spot_xz.y - float(chunk.y) * m))
 	await _until(func(): return false, 1.0)   # the body settles
+	var ground_y: float = _root._voxel.get_voxel_height_at(spot_xz)
+	var body_y: float = _player_pos().y
+	if body_y < ground_y - HORIZON_STAND_TOLERANCE_M:
+		return [false, "the body is %.1f m under the coast ground (fell through)" % (ground_y - body_y)]
 	# The ring on screen must be one built after the teleport, around the body (not the old one).
 	if not await _until(func(): return _ring_ready_at(rings_before), HORIZON_TIMEOUT_SECS):
 		return [false, "the distant ring never rebuilt at the coast"]
