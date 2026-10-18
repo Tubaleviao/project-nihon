@@ -39,7 +39,8 @@ const BOOT_TIMEOUT_SECS := 120.0
 const WATCHDOG_SLACK_SECS := 60.0 ## whole-run budget = boot + every step's timeout + this
 const STREAM_CHUNKS := 20
 const WALK_SECS := 3.0
-const GATHER_SEARCH_CHUNKS := 30  ## how far east the gather step hops looking for a standing tree
+const GATHER_SEARCH_CHUNKS := 30  ## forest chunks the gather step will hop to at most
+const GATHER_SEARCH_RADIUS := 60  ## chunk rings around the body it scans for forest
 const FIGHT_RANGE_M := 1.5
 const TELEPORT_SETTLE_MS := 1500 ## frames this long after a teleport (the new window's builds) are not recorded
 const STEP_GRACE_SECS := 10.0    ## past its deadline a step that has not returned has crashed or hung: fail it
@@ -355,16 +356,35 @@ func _nearest_tree(ids: Array) -> String:
 			best = str(tid)
 	return best
 
+## Chunks around `origin`, nearest ring first, whose biome grows trees (budget above zero).
+func _forest_chunks_near(origin: Vector2i) -> Array:
+	var found: Array = []
+	for r in range(1, GATHER_SEARCH_RADIUS + 1):
+		for dx in range(-r, r + 1):
+			for dy in range(-r, r + 1):
+				if maxi(absi(dx), absi(dy)) != r:
+					continue
+				var c := origin + Vector2i(dx, dy)
+				var canon := TerrainSlice.wrap_chunk(c)
+				if _root._tree.tree_count_for(canon, str(_root._terrain.get_biome_at_chunk(canon))) > 0:
+					found.append(c)
+		if found.size() >= GATHER_SEARCH_CHUNKS:
+			break
+	return found
+
 ## Gather: fell the first tree of the loaded window through the player's own intent, with an axe in the pack.
 func _step_gather() -> Array:
 	var standing: Array = _standing_trees()
-	# The stream step left the body wherever the 20th hop landed, which may be treeless (desert,
-	# rift): hop on, one chunk at a time, until a forest chunk is loaded.
+	# The stream step left the body wherever the 20th hop landed, and a first boot spawns at a
+	# time-dependent spot, so that may be desert, ice or sea. Look for a forest chunk on paper (the
+	# biome and the tree budget are pure functions of the chunk), ring by ring, and hop straight to it.
 	var here: Dictionary = _root._player.get_world_pos()
-	var hop := 0
-	while standing.is_empty() and hop < GATHER_SEARCH_CHUNKS and Time.get_ticks_msec() < _step_deadline_ms:
-		hop += 1
-		var spot := _teleport_to((here["chunk"] as Vector2i) + Vector2i(hop, 0), here["local"])
+	var tried := 0
+	for chunk in _forest_chunks_near(here["chunk"] as Vector2i):
+		if not standing.is_empty() or tried >= GATHER_SEARCH_CHUNKS or Time.get_ticks_msec() >= _step_deadline_ms:
+			break
+		tried += 1
+		var spot := _teleport_to(chunk, here["local"])
 		await _until(func(): return _root._chunk_manager.is_chunk_built(spot["chunk"]), STEP_TIMEOUT_SECS)
 		await _until(func(): return false, 0.2)
 		standing = _standing_trees()
@@ -433,7 +453,15 @@ func _step_craft() -> Array:
 	if not ok:
 		return [false, "no craft_resolved"]
 	var got: int = _root._inventory.get_item_count("ThornwoodPlank") - planks
-	return [bool(_crafted.back()["success"]) and got == 3, "crafted %d planks (%s)" % [got, str(_crafted.back()["reason"])]]
+	var detail := "crafted %d planks (%s)" % [got, str(_crafted.back()["reason"])]
+	# Phase 153: a held weapon is drawn from its model. No recipe yields a hand-held item, so the bot
+	# puts a weapon in hand (screenshotted with this step) and checks the hand socket's node.
+	var character: Node = _root._character
+	var iid: String = character.get_player_character()
+	var hand_ok: bool = iid != "" and character.apply_equipment(iid, "MainHand", "VeilsteelLongsword")
+	var node: Node = character.get_part_node(iid, "MainHand") if hand_ok else null
+	hand_ok = node != null and str(node.get_meta("item_model", "")) == "VeilsteelLongsword"
+	return [bool(_crafted.back()["success"]) and got == 3 and hand_ok, "%s; hand model %s" % [detail, "ok" if hand_ok else "MISSING"]]
 
 ## Place a station with the player's own keys, a few metres from the bench so the two do not overlap.
 func _step_place() -> Array:
@@ -538,11 +566,14 @@ func _step_travel() -> Array:
 	if await _place_with_keys(stone) == 0:
 		return [false, "second waystone refused"]
 	var b: String = str(_placed.back()[0])
-	# The travel starts from the first stone, so walk back inside its attune radius. Where the walk
-	# ends does not matter: arrival is measured against the second stone's own position below.
-	_key(KEY_S, true)
-	await _until(func(): return false, 1.5)
-	_key(KEY_S, false)
+	# Back beside the first stone, which the travel starts from. Placed, not walked: a timed walk
+	# back can stop outside the attune radius and the host refuses the travel as too_far.
+	var home: Dictionary = _root._waystones.exact_pos(a)
+	_teleport_to(home["chunk"], home["local"])
+	var near: bool = await _until(func():
+		return WaystoneSlice.distance_m(_root._player.get_world_pos(), home) <= 1.0, STEP_TIMEOUT_SECS)
+	if not near:
+		return [false, "could not stand beside the first waystone"]
 	_root._registry.record_waystones(_root._registry.local_player_id, [a, b])
 	_root._registry.get_inventory(_root._registry.local_player_id).add_item(str(_root._waystones.rules()["costItem"]), 20)
 	GameBus.waystone_travel_intent.emit(a, b, "")

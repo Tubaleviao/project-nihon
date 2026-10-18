@@ -1014,8 +1014,11 @@ func _step_equipment_delivered() -> void:
 	# previous step, and a dropped connection forgets the peer's stored set.
 	var got: bool = await _await_until(
 		func(): return _seen_peer_equipment.get(host_id, {}) == want, _step_timeout())
-	_report("equipment_delivered", verdict(got, true),
-		"delivered" if got else "not_delivered-%s" % str(_seen_peer_equipment.get(host_id, {})))
+	# Phase 153: the worn item draws as its model on this client's copy of the host's avatar.
+	var model_ok: bool = got and await _await_until(
+		func(): return _root._character.peer_model_item(host_id, slot) == item, _step_timeout())
+	_report("equipment_delivered", verdict(got and model_ok, true),
+		"delivered" if got and model_ok else ("no_model-%s" % _root._character.peer_model_item(host_id, slot) if got else "not_delivered-%s" % str(_seen_peer_equipment.get(host_id, {}))))
 
 ## Worn sets this client has been sent for other peers ({ peer_id: set }), noted as they arrive
 ## (connected at the start of `_step_equipment_recorded`, the step before the delivery one).

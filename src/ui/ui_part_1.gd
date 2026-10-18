@@ -96,6 +96,7 @@ func repair_rows() -> Array:
 			"can_repair": bool(check.get("success", false)),
 			"reason": str(check.get("reason", "")),
 			"station": str(spec.get("station", "")),
+			"icon_key": sl.item_icon_key(iid),
 			"materials": sl._fmt_entries(spec.get("materials", [])),
 		})
 	return rows

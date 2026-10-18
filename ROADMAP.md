@@ -173,7 +173,7 @@ issue number where the criterion used to be.
 | 150 | Review follow-ups IV: wiring, harness and playtest bot | Done | [history](docs/roadmap-history/phases-150.md) |
 | 151 | Item shapes in the fabric | Done | [history](docs/roadmap-history/phases-151.md) |
 | 152 | Item models and icons from one generator | Done | [history](docs/roadmap-history/phases-152.md) |
-| 153 | Items in the world: equipment, held tools and icons everywhere | Planned | below |
+| 153 | Items in the world: equipment, held tools and icons everywhere | Done | [history](docs/roadmap-history/phases-153.md) |
 | 154 | Split the biggest slices | Done | [history](docs/roadmap-history/phases-154.md) |
 | 155 | Animation tempo: looping clips, stride-matched walk and snappier transitions | Planned | below |
 | 156 | Idle, attack and hit clips for everyone, on every swing | Planned | below |
@@ -196,45 +196,6 @@ issue number where the criterion used to be.
 ---
 
 
-## Phase 153 — Items in the world: equipment, held tools and icons everywhere
-
-**Goal:** even with item models on disk, the game never loads them. `CharacterSlice._attach_equipment`
-always builds `_make_box(size, …)`, and a missing icon falls back to a text glyph. This phase draws
-every worn and held item with its model, and every item slot with its icon, as Phase 143 did for
-creatures.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phase 152.
-
-**Deliverables:**
-- `AssetOverlay.item_model_key(id)` → `models/items/<ItemId>.glb.raw`. `CharacterSlice`
-  loads it once per item type (cached like `CreatureVisuals._template`, off the main thread for the
-  first load) and attaches it at the equipment socket by its `grip` node. RIGID, SKINNED and HYBRID
-  modes keep today's socket rules. A missing or broken key keeps the box, with one warning per
-  item.
-- The equipment palette tint (Phase 22 `_equipment_base_index`, metal/emission channels) applies to
-  the model's materials, so Primary/Secondary/Accent still work.
-- Sheathed weapons hang from the hip socket using the model's long axis, not the box rotation hack.
-- Remote avatars (peer equipment replication, Phase 47) show the same models.
-- UI: inventory, hotbar, character window, craft/repair rows and trade windows all use
-  `UiSlice.item_icon_key`. The text-glyph fallback stays only for an id with no icon key.
-- Impostors and LOD (Phase 23): equipment beyond the model range stays a box or the impostor, so far
-  avatars cost the same as today.
-- The README GIFs are re-captured once items render (a human check, filed as an issue).
-
-**Acceptance criteria:**
-- [ ] Suite: equipping each equippable item attaches a node built from its model (not a `BoxMesh`)
-  at the slot's socket, and unequipping frees it.
-- [ ] Suite: an item with a missing model key attaches a box and warns once.
-- [ ] Suite: a peer's worn item renders as its model on another client (harness step
-  `equipment_recorded` extended to assert the model node).
-- [ ] Suite: every UI surface that shows an item resolves a texture for each item in
-  `GameData.ITEMS`. No glyph fallback is hit.
-- [ ] Suite: no item model nodes are built when `render_visuals` is false.
-- [ ] Playtest bot: the `craft` step screenshot shows the crafted tool in hand (the bot asserts the
-  hand socket holds a model node), and no step reports a new hitch over 50 ms.
-- [ ] Suite green on both boot paths, harness green.
 
 ---
 

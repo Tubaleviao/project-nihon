@@ -656,6 +656,7 @@ func crafting_rows() -> Array:
 			"can_craft": bool(check.get("success", false)),
 			"reason": str(check.get("reason", "")),
 			"station": str(recipe.get("station", "")),
+			"icon_key": _first_output_icon_key(recipe.get("outputs", [])),
 			"inputs": _fmt_entries(recipe.get("inputs", [])),
 			"outputs": _fmt_entries(recipe.get("outputs", [])),
 		})
@@ -678,6 +679,7 @@ func market_rows() -> Array:
 			"id": str(l["id"]),
 			"seller": str(l["seller"]),
 			"item_id": str(l["item_id"]),
+			"icon_key": item_icon_key(str(l["item_id"])),
 			"quantity": int(l["quantity"]),
 			"price": float(l["price"]),
 		})
@@ -974,6 +976,7 @@ func refresh_market() -> void:
 			btn.text = I18n.t("ui.buy")
 			btn.pressed.connect(_on_market_buy_pressed.bind(str(r["id"])))
 			hbox.add_child(btn)
+			_add_row_icon(hbox, str(r["icon_key"]))
 			var lbl := Label.new()
 			lbl.text = I18n.t("ui.listing", [r["id"], r["item_id"], r["quantity"], I18n.number(r["price"], 2), r["seller"]])
 			hbox.add_child(lbl)
@@ -1444,6 +1447,28 @@ func _build_proposals_content() -> Control:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+## Icon key of a recipe's first output item ("" when it has none).
+func _first_output_icon_key(outputs: Array) -> String:
+	for e in outputs:
+		var item := str(e.get("item", ""))
+		if item != "":
+			return item_icon_key(item)
+	return ""
+
+## Prepend a small item icon to a craft/repair/market row; a row whose item has no icon asset stays text-only.
+func _add_row_icon(hbox: HBoxContainer, key: String) -> void:
+	if key == "":
+		return
+	var tex: Texture2D = _load_item_icon(key)
+	if tex == null:
+		return
+	var rect := TextureRect.new()
+	rect.texture = tex
+	rect.custom_minimum_size = Vector2(24, 24)
+	rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	hbox.add_child(rect)
 
 func _fmt_entries(entries: Array) -> String:
 	var parts: Array = []

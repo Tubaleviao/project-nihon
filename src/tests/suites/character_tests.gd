@@ -37,6 +37,10 @@ func register() -> void:
 	_run_test("player: step-up climbs a rise, not a wall",     _test_player_step_up)
 	_run_test("character: equipment SKINNED vs RIGID",        _test_character_deformation_modes)
 	_run_test("character: apply/clear equipment",             _test_character_apply_clear_equipment)
+	_run_test("equipment: every item attaches its model, not a box", _test_equipment_item_models)
+	_run_test("equipment: a missing item model keeps the box and warns once", _test_equipment_missing_model_box)
+	_run_test("equipment: no item model nodes without render_visuals", _test_equipment_no_models_headless)
+	_run_test("equipment: sheathed model hangs along its long axis", _test_equipment_sheathed_long_axis)
 	_run_test("character: RIGID socket offset places mesh",   _test_character_rigid_socket_offset)
 	_run_test("character: non-humanoid rest pose feet at y=0", _test_nonhumanoid_rest_pose_feet_at_y0)
 	_run_test("character: non-humanoid socket at bone rest",   _test_nonhumanoid_socket_offset_from_bone)
@@ -765,6 +769,84 @@ func _test_character_apply_clear_equipment() -> void:
 	assert_eq(ch.get_equipment_deformation_mode(iid, "MainHand"), "", "slot empty after clear")
 	assert_false(ch.clear_equipment(iid, "MainHand"), "clearing empty slot returns false")
 	ch.free()
+
+func _equippable_items() -> Array:
+	var out: Array = []
+	for id in GameData.ITEMS:
+		if EquipmentRules.slot_of(str(id), GameData.ITEMS) != "":
+			out.append(str(id))
+	out.sort()
+	return out
+
+## Phase 153: each equippable item is a node built from its model at its slot's socket; unequip frees it.
+func _test_equipment_item_models() -> void:
+	var items := _equippable_items()
+	assert_true(items.size() > 0, "the fabric has equippable items")
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character_from_recipe({ "skeleton": "HumanoidSkeleton" }, Vector3.ZERO)
+	for item in items:
+		var slot := EquipmentRules.slot_of(item, GameData.ITEMS)
+		assert_true(ch.apply_equipment(iid, slot, item), "%s equipped" % item)
+		var node := ch.get_part_node(iid, slot) as MeshInstance3D
+		assert_true(node != null, "%s has a node" % item)
+		if node == null:
+			continue
+		assert_false(node.mesh is BoxMesh, "%s is not a box" % item)
+		assert_eq(str(node.get_meta("item_model", "")), item, "%s node is built from its model" % item)
+		assert_true(node.is_inside_tree(), "%s sits under the rig at its socket" % item)
+		assert_true(ch.clear_equipment(iid, slot), "%s unequipped" % item)
+		assert_true(not is_instance_valid(node) or node.is_queued_for_deletion(), "%s node is freed after unequip" % item)
+	ch.free()
+
+func _test_equipment_missing_model_box() -> void:
+	var item := "FerriteHelmet"
+	var slot := EquipmentRules.slot_of(item, GameData.ITEMS)
+	var saved: Variant = CharacterSlice._item_models.get(item, "unset")
+	CharacterSlice._item_models.erase(item)
+	CharacterSlice.warned_items.erase(item)
+	CharacterSlice._item_models[item] = null  # settled as missing
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid := ch.create_character_from_recipe({ "skeleton": "HumanoidSkeleton" }, Vector3.ZERO)
+	assert_true(ch.apply_equipment(iid, slot, item), "item equips without a model")
+	var node := ch.get_part_node(iid, slot) as MeshInstance3D
+	assert_true(node != null and node.mesh is BoxMesh, "a missing model keeps the box")
+	ch.free()
+	# The warning itself: an unknown key warns once, however often it is asked for.
+	var probe := CharacterSlice.new()
+	CharacterSlice._item_models.erase("NoSuchItem")
+	CharacterSlice.warned_items.erase("NoSuchItem")
+	assert_true(probe._item_model("NoSuchItem") == null, "unknown item has no model")
+	assert_true(CharacterSlice.warned_items.has("NoSuchItem"), "the miss warned")
+	CharacterSlice.warned_items["NoSuchItem"] = 1
+	assert_true(probe._item_model("NoSuchItem") == null, "second ask stays null")
+	assert_eq(CharacterSlice.warned_items["NoSuchItem"], 1, "no second warning")
+	probe.free()
+	CharacterSlice._item_models.erase("NoSuchItem")
+	CharacterSlice.warned_items.erase("NoSuchItem")
+	CharacterSlice.warned_items.erase(item)
+	if str(saved) == "unset":
+		CharacterSlice._item_models.erase(item)
+	else:
+		CharacterSlice._item_models[item] = saved
+
+func _test_equipment_no_models_headless() -> void:
+	var ch := CharacterSlice.new()
+	ch.render_visuals = false
+	add_child(ch)
+	var iid := ch.create_character_from_recipe({ "skeleton": "HumanoidSkeleton" }, Vector3.ZERO)
+	for item in _equippable_items():
+		var slot := EquipmentRules.slot_of(item, GameData.ITEMS)
+		ch.apply_equipment(iid, slot, item)
+		var node := ch.get_part_node(iid, slot) as MeshInstance3D
+		assert_true(node != null and not node.has_meta("item_model"), "%s builds no model node" % item)
+	ch.free()
+
+func _test_equipment_sheathed_long_axis() -> void:
+	assert_eq(CharacterSlice._long_axis(Vector3(0.05, 0.1, 0.9)), Vector3.AXIS_Z, "Z-long")
+	assert_eq(CharacterSlice._long_axis(Vector3(0.9, 0.1, 0.05)), Vector3.AXIS_X, "X-long")
+	assert_eq(CharacterSlice._long_axis(Vector3(0.1, 0.9, 0.05)), Vector3.AXIS_Y, "Y-long")
 
 func _test_character_rigid_socket_offset() -> void:
 	# Socket offsets place equipment in two spaces: RIGID in root space (mesh is

@@ -78,6 +78,7 @@ func refresh_crafting() -> void:
 		btn.disabled = not bool(r["can_craft"])
 		btn.pressed.connect(sl._on_craft_pressed.bind(str(r["id"])))
 		hbox.add_child(btn)
+		sl._add_row_icon(hbox, str(r["icon_key"]))
 		var line = "%s: %s → %s" % [r["id"], r["inputs"], r["outputs"]]
 		if str(r.get("station", "")) != "":
 			line += "  @ %s" % r["station"]
@@ -104,6 +105,7 @@ func refresh_crafting() -> void:
 			btn.disabled = not bool(r["can_repair"])
 			btn.pressed.connect(sl._on_repair_pressed.bind(str(r["id"])))
 			hbox.add_child(btn)
+			sl._add_row_icon(hbox, str(r["icon_key"]))
 			var line = str(r["id"])
 			if str(r.get("station", "")) != "":
 				line += "  @ %s" % r["station"]
