@@ -187,6 +187,12 @@ func sweep_attunements() -> void:
 	var stones := waystone_ids()
 	if stones.is_empty():
 		return
+	# Each stone's place is looked up once per sweep, not once per player; a player is only handed to
+	# `try_attune` for stones already inside the radius, so the per-pair work is one distance.
+	var placed: Array = []
+	for sid in stones:
+		placed.append([str(sid), exact_pos(str(sid))])
+	var radius := float(rules()["attuneRadius"])
 	for pid in registry.get_online_player_ids():
 		var player_id := str(pid)
 		var pos := _player_pos(player_id)
@@ -195,9 +201,9 @@ func sweep_attunements() -> void:
 		var have: Array = registry.get_waystones(player_id)
 		if have.size() >= registry.MAX_WAYSTONES:
 			continue
-		for sid in stones:
-			if not have.has(str(sid)):
-				try_attune(player_id, str(sid))
+		for entry in placed:
+			if not have.has(entry[0]) and distance_m(pos, entry[1]) <= radius:
+				try_attune(player_id, entry[0])
 
 ## Host: move `player_id` from the stone they stand at to another they are attuned to. Returns "" when
 ## the player was moved, else one of `REASONS`; the cost is paid only when the move happened.

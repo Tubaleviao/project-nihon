@@ -840,11 +840,21 @@ func _step_waystone_travel() -> void:
 		_report("waystone_travel", verdict(ok, true), "travelled-to-second-stone" if ok else "no_travel")
 		return
 	var home: Dictionary = _root._player.get_world_pos()
+	# The two stones are the ones the host attuned this client to, read from the synced attunement list
+	# rather than assuming the host's station counter started at zero. The list is sorted as text, so the
+	# order of placement (first stone at the client, second 80 m on) comes from the id's number.
+	if not await _await_until(func(): return _root._waystones._view.size() >= 2, _step_timeout()):
+		_report("waystone_travel", "fail", "no_attunements_synced")
+		return
+	var ids: Array = (_root._waystones._view as Array).duplicate()
+	ids.sort_custom(func(x, y): return int(str(x).get_slice("_", 1)) < int(str(y).get_slice("_", 1)))
+	var from_id := str(ids[ids.size() - 2])
+	var to_id := str(ids[ids.size() - 1])
 	var before := _teleports_seen.size()
 	var tries := 0
 	var got: bool = false
 	while tries < int(_step_timeout()) and not got:
-		GameBus.waystone_travel_intent.emit("station_0", "station_1", "")
+		GameBus.waystone_travel_intent.emit(from_id, to_id, "")
 		tries += 1
 		got = await _await_until(func(): return _teleports_seen.size() > before, 1.0)
 	# The host checks the 80 m gap from its own record of the client; here the body must stand on the

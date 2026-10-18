@@ -553,12 +553,7 @@ func on_own_state_synced(data: Dictionary) -> void:
 		}, root._registry.local_player_id)
 	if data.has("professions"):
 		root._professions.apply_record({ "professions": data["professions"] }, root._registry.local_player_id)
-	if data.has("waystones") and data["waystones"] is Array:
-		root._waystones.apply_view(data["waystones"])
-		GameBus.waystones_synced.emit(root._registry.local_player_id, data["waystones"])
-	if data.get("waystone_result", null) is Dictionary:
-		var res: Dictionary = data["waystone_result"]
-		GameBus.waystone_travel_resolved.emit(root._registry.local_player_id, bool(res.get("ok", false)), str(res.get("reason", "")).left(32))
+	root._waystone_wiring.apply_own_view(data)
 	if data.get("settlement_view", null) is Dictionary:
 		root._settlements.apply_view(data["settlement_view"])
 	if data.get("settlement_result", null) is Dictionary:
