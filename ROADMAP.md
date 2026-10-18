@@ -179,7 +179,7 @@ issue number where the criterion used to be.
 | 156 | Idle, attack and hit clips for everyone, on every swing | Done | [history](docs/roadmap-history/phases-156.md) |
 | 157 | Deaths that read as deaths: a push, a fall and a body that stays | Done | [history](docs/roadmap-history/phases-157.md) |
 | 158 | Gestures in the fabric: sit, lie down, wave and friends | Done | [history](docs/roadmap-history/phases-158.md) |
-| 159 | Gestures at runtime: a gesture wheel, chat commands and synced poses | Planned | below |
+| 159 | Gestures at runtime: a gesture wheel, chat commands and synced poses | Done | [history](docs/roadmap-history/phases-159.md) |
 | 160 | Harvesting in the fabric: tools, the Skinning skill, carcass weight and carry | Planned | below |
 | 161 | Harvesting at runtime: work the body, carry it home | Planned | below |
 | 162 | A crowd walks: a multi-player stress test and a bottleneck report | Planned | below |
@@ -192,46 +192,6 @@ issue number where the criterion used to be.
 | 169 | Native `build_chunk_arrays` and the speed target | Planned | below |
 | 170 | A compute-shader heightmap, if the native builder is still the bottleneck | Planned | below |
 | 171 | Creatures in exact coordinates: no float32 metres far from the origin | Planned | below |
-
----
-
-## Phase 159 — Gestures at runtime: a gesture wheel, chat commands and synced poses
-
-**Goal:** play the Phase 158 gestures in game, for the local player and as seen by everyone nearby.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phases 155, 158.
-
-**Deliverables:**
-- `src/character/gesture_slice.gd` (new) with `gesture_wiring.gd`: a `gesture_intent(gesture_id)`
-  goes to the host, which validates it (known id, the player alive, grounded when `requiresGround`,
-  rate-limited like chat) and broadcasts `gesture_synced(player_id, gesture_id)` to the player's
-  AOI. A late joiner sees a held pose (sitting players stay seated).
-- Cancel rules from the fabric: moving cancels a `cancelOnMove` pose (the stand-up plays as a
-  0.3 s transition, not a pop), damage cancels a `cancelOnDamage` pose, death cancels everything.
-  Cancellation is decided on the host and synced.
-- `restRegen` applies on the host while a pose is held.
-- Input: a gesture wheel on a key (default `G`, rebindable) built from the fabric list, and the
-  `chatCommand` of each gesture in chat (`/sit`, `/wave`, …) through `ChatCommands`. All labels
-  through `tr()`.
-- Rig: `RigTree` gets a `Gesture` node (pose loops, one-shots return to locomotion). Sitting on a
-  placed station or block edge snaps to its top face (sit height read from the target), otherwise
-  sits on the ground.
-- Placeholder clips for every gesture on the player rig in `tools/gen_placeholder_glb.py`, keyed in
-  the manifest, and matching keys in the private repo (separate PR).
-
-**Acceptance criteria:**
-- [ ] Suite: a `/sit` from the local player plays `sit` on the rig; a movement intent afterwards
-  cancels it and returns to locomotion.
-- [ ] Suite: the host refuses an unknown gesture id, a gesture from a dead player and gestures over
-  the rate limit (trust boundary), and a client cannot cancel another player's pose.
-- [ ] Suite: a damage event cancels `LieDown` and does not cancel `Wave` if the fabric says so.
-- [ ] Suite: HP regeneration while `Sit` is held equals the base rate times `restRegen`.
-- [ ] Harness step `gesture_synced`: a peer's `/sit` is seen seated on the other client, and a
-  client that joins afterwards also sees it seated.
-- [ ] Suite: every gesture in `GameData` has a clip on the placeholder player rig.
-- [ ] Suite green on both boot paths, harness green.
 
 ---
 

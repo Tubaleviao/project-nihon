@@ -6,10 +6,14 @@ extends RefCounted
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const I18n := preload("res://src/core/i18n.gd")
+const GestureRules := preload("res://src/character/gesture_rules.gd")
 const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 
 const WHERE_NAME := "where"
 const WHERE := "/" + WHERE_NAME
+## Phase 159 — the gesture commands (`/sit`, `/wave`, ...) come from the fabric; /help lists them as one line.
+const GESTURES_NAME := "gestures"
+const GESTURES := "/" + GESTURES_NAME
 
 ## Longest chat line accepted, in characters. The wire cap (`MAX_CLIENT_PACKET_BYTES`) is far above it.
 const MAX_MESSAGE_CHARS := 240
@@ -27,6 +31,7 @@ const USAGE := {
 	"help":    "chat.usage.help",
 	"players": "chat.usage.players",
 	WHERE_NAME: "chat.usage.where",
+	GESTURES_NAME: "chat.usage.gestures",
 	"say":     "chat.usage.say",
 	"tp":      "chat.usage.tp",
 	"bring":   "chat.usage.bring",
@@ -44,12 +49,24 @@ static func run(text: String, world_pos: Vector3) -> String:
 	match _command_of(text):
 		WHERE:
 			return TerrainSlice.where_text(world_pos)
+		GESTURES:
+			# The commands themselves (`/sit, /wave`) are the answer, so no prose needs translating.
+			var cmds: Array = []
+			for word in GestureRules.commands(GameData.GESTURES):
+				if word != "":
+					cmds.append(word)   # the fabric stores it with its slash ("/sit")
+			return ", ".join(cmds)
 	return ""
+
+## Phase 159 — the fabric gesture id a line like `/sit` starts ("" when it names none). Pure; the chat box
+## turns it into a `gesture_intent`, so a gesture never travels as chat text.
+static func gesture_id(text: String, table: Dictionary = GameData.GESTURES) -> String:
+	return GestureRules.id_for_command(text, table) if is_slash(text) else ""
 
 ## The command `text` names ("" when it names none): the one place the known commands are listed.
 static func _command_of(text: String) -> String:
 	var typed := text.strip_edges().to_lower()
-	return typed if typed in [WHERE] else ""
+	return typed if typed in [WHERE, GESTURES] else ""
 
 ## `text` with control characters dropped and the length capped; "" when nothing printable is left.
 static func sanitize(text: String) -> String:
@@ -82,7 +99,7 @@ static func is_admin_command(name: String) -> bool:
 	return name in ADMIN_COMMANDS
 
 static func is_known(name: String) -> bool:
-	return name in PLAYER_COMMANDS or name in ADMIN_COMMANDS or name == WHERE_NAME
+	return name in PLAYER_COMMANDS or name in ADMIN_COMMANDS or name == WHERE_NAME or name == GESTURES_NAME
 
 ## The `/help` usage keys for a caller; admins also see the admin set.
 static func help_lines(admin: bool) -> Array:
@@ -90,6 +107,7 @@ static func help_lines(admin: bool) -> Array:
 	for name in PLAYER_COMMANDS:
 		lines.append(USAGE[name])
 	lines.append(USAGE[WHERE_NAME])
+	lines.append(USAGE[GESTURES_NAME])
 	if admin:
 		for name in ADMIN_COMMANDS:
 			lines.append(USAGE[name])

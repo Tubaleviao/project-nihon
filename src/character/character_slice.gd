@@ -214,7 +214,7 @@ func set_character_position(instance_id: String, pos: Vector3) -> bool:
 		return false
 	var inst: Dictionary = _instances[instance_id]
 	inst["position"] = pos
-	(inst["root"] as Node3D).position = pos + _origin.value
+	(inst["root"] as Node3D).position = pos + _origin.value + Vector3(0.0, float(inst.get("seat_lift", 0.0)), 0.0)
 	return true
 
 ## Where an instance's body is, or null for an unknown instance.
@@ -835,6 +835,7 @@ func sync_player_avatar(
 	if scene_position is Vector3:
 		var sp: Vector3 = scene_position
 		root.position = Vector3(sp.x, ground_y + _origin.value.y, sp.z)
+	_m2.apply_seat_lift(inst, root)   # Phase 159 — a seated body rides the seat's height
 	root.set_meta("foot_ik_l", feet["foot_l"])
 	root.set_meta("foot_ik_r", feet["foot_r"])
 

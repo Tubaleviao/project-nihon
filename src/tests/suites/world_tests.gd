@@ -810,6 +810,8 @@ func _test_asset_placeholder_rig_is_a_body() -> void:
 		# Node names in the tree are the lowercase state names, so this is exactly what
 		# RigTree._resolve_clip looks up — one miss and the clone warns and plays idle.
 		for state in Locomotion.State.values():
+			if state == Locomotion.State.GESTURE:
+				continue   # Phase 159 — the Gesture node plays the clip of the gesture, checked per gesture
 			var clip: String = Locomotion.State.keys()[state].to_lower()
 			assert_true(player.has_animation(clip), "the placeholder rig ships the '%s' clip" % clip)
 		# Free the tree: it is a Node with no parent, and an orphan Node leaks to process
@@ -881,6 +883,8 @@ func _test_asset_player_rig_placeholder_contract() -> void:
 	assert_true(player != null, "the player rig carries an AnimationPlayer")
 	if player != null:
 		for state in Locomotion.State.values():
+			if state == Locomotion.State.GESTURE:
+				continue   # Phase 159 — the Gesture node plays the clip of the gesture, checked per gesture
 			var clip: String = Locomotion.State.keys()[state].to_lower()
 			assert_true(player.has_animation(clip), "the player rig ships the '%s' clip" % clip)
 	root.free()

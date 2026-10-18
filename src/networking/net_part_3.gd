@@ -256,6 +256,11 @@ func _route_h2c(payload: Dictionary) -> void:
 		"world_clock":
 			# Phase 54 — the host's clock sample; game_root's WorldClock slews to it.
 			GameBus.world_clock_received.emit(float(payload.get("days", 0.0)))
+		"gesture":
+			# Phase 159 — animation only: a peer id and a short gesture id ("" = stood up).
+			var g: Variant = payload.get("g", "")
+			if sl._role == sl.Role.CLIENT and g is String and (g as String).length() <= sl.GESTURE_ID_MAX:
+				GameBus.peer_gesture_synced.emit(int(payload.get("peer_id", 0)), g)
 		"peer_equipment_evict":
 			# Phase 48 — the peer left our AOI; drop what we stored for it.
 			GameBus.peer_equipment_evicted.emit(int(payload.get("peer_id", 0)))

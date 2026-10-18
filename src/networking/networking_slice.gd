@@ -76,6 +76,7 @@ extends Node
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const Diag := preload("res://src/core/diag.gd")
 const I18n := preload("res://src/core/i18n.gd")
+const GestureRules := preload("res://src/character/gesture_rules.gd")
 
 enum Role { OFFLINE, HOST, CLIENT }
 
@@ -315,6 +316,7 @@ func _ready() -> void:
 	# Phase 85 — chat lines travel client → host as an intent; the host's posts (chat, announcements,
 	# command replies) travel back.
 	GameBus.chat_intent.connect(_on_chat_intent)
+	GameBus.gesture_intent.connect(_on_gesture_intent)
 	GameBus.chat_posted.connect(_on_chat_posted)
 	GameBus.system_message.connect(_on_system_message)
 	# Phase 24 — social/economy replication.
@@ -572,6 +574,10 @@ func _ensure_transport() -> Transport:
 ## Peers the host would fan out to.
 func _connected_peers() -> Array:
 	return _ensure_transport().peers()
+
+## Public read of the peers the host fans out to (empty before a transport is up).
+func connected_peers() -> Array:
+	return _connected_peers()
 
 func _connected() -> bool:
 	return _ensure_transport().is_up()
@@ -986,6 +992,21 @@ func _peer_for_inventory_owner(owner_id: String) -> int:
 ## Phase 156 — the longest key and the outcomes a `combat_hit` packet may carry.
 const COMBAT_KEY_MAX := 64
 const COMBAT_OUTCOMES := ["hit", "critical", "miss", "kill"]
+
+## Phase 159 — the longest gesture id a packet may carry.
+const GESTURE_ID_MAX := GestureRules.MAX_ID_CHARS
+
+func send_gesture(subject_peer: int, gesture_id: String, position: Vector3) -> void:
+	_m2.send_gesture(subject_peer, gesture_id, position)
+
+func send_peer_gestures_to(peer_id: int, poses: Dictionary) -> void:
+	_m2.send_peer_gestures_to(peer_id, poses)
+
+## Phase 159 — client: forward a gesture action; the host binds it to the connection's player.
+func _on_gesture_intent(gesture_id: String, _player_id: String) -> void:
+	if _role != Role.CLIENT:
+		return
+	_broadcast({ "type": "gesture_intent", "g": gesture_id })
 
 func send_combat_hit(attacker_key: String, defender_key: String, outcome: String, position: Vector3) -> void:
 	_m2.send_combat_hit(attacker_key, defender_key, outcome, position)

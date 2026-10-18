@@ -28,6 +28,7 @@ chat.unknown_item,Unknown item '{0}'.,Item desconhecido '{0}'.
 chat.unreachable,Could not teleport: {0} is not reachable.,Não foi possível teletransportar: {0} está inalcançável.
 chat.usage.bring,/bring <player> — teleport a player to you,/bring <jogador> — traz um jogador até você
 chat.usage.give,/give <item> [quantity] [player] — create items,/give <item> [quantidade] [jogador] — cria itens
+chat.usage.gestures,"/sit, /wave … — gestures (Q key opens the wheel)","/sit, /wave … — gestos (a tecla Q abre a roda)"
 chat.usage.help,/help — list commands,/help — lista os comandos
 chat.usage.kill,/kill [player] — kill a player,/kill [jogador] — mata um jogador
 chat.usage.players,/players — who is online,/players — quem está online
@@ -200,6 +201,7 @@ waystone.unreachable,The journey failed; nothing was spent.,A jornada falhou; na
 win.character,Character (C),Personagem (C)
 win.controls,Controls (?),Controles (?)
 win.crafting,Crafting (H),Criação (H)
+win.gestures,Gestures (Q),Gestos (Q)
 win.inventory,Inventory,Inventário
 win.map,Map (M),Mapa (M)
 win.market,Market (P),Mercado (P)

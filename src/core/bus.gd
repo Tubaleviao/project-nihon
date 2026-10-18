@@ -704,6 +704,19 @@ signal peer_equipment_synced(peer_id: int, worn: Dictionary)
 ## Phase 48 — host → client: that peer left our AOI; forget its stored worn set.
 signal peer_equipment_evicted(peer_id: int)
 
+## Phase 159 — one gesture ACTION from a player: `gesture_id` is a fabric Gesture id, or "" to stand up
+## out of a held pose. CLIENT -> host: emitted with an empty player_id and forwarded; the host re-emits it
+## under the identity bound to that connection, so a client can only ever start or end its OWN gesture.
+signal gesture_intent(gesture_id: String, player_id: String)
+
+## Phase 159 — host: a player's gesture started (`gesture_id` set) or ended (""). Networking scopes it to
+## the peers whose area of interest holds that player.
+signal gesture_synced(player_id: String, gesture_id: String)
+
+## Phase 159 — client: the host says peer `peer_id` (this machine's own id included) now plays
+## `gesture_id`, or stood up (""). Animation only.
+signal peer_gesture_synced(peer_id: int, gesture_id: String)
+
 ## Emitted by TamingSlice with the outcome of a tame attempt.
 ## result : Dictionary — { instance_id, creature_id, success, reason, result,
 ##          player_id, flag, yields }
