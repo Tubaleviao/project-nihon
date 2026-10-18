@@ -75,6 +75,11 @@ func _test_runner_source_size_audit() -> void:
 	var hits := Runner.oversized_source_files(dir, Runner.MAX_SOURCE_LINES, [])
 	assert_eq(hits.size(), 1, "a fixture over the cap is reported")
 	assert_eq(Runner.oversized_source_files(dir, Runner.MAX_SOURCE_LINES, ["big.gd"]), [], "an allow-listed file is skipped")
+	# A file of exactly the cap (trailing newline included) is within it.
+	f = FileAccess.open(dir.path_join("big.gd"), FileAccess.WRITE)
+	f.store_string("x\n".repeat(Runner.MAX_SOURCE_LINES))
+	f.close()
+	assert_eq(Runner.oversized_source_files(dir, Runner.MAX_SOURCE_LINES, []), [], "a file of exactly the cap passes")
 	DirAccess.remove_absolute(dir.path_join("big.gd"))
 	DirAccess.remove_absolute(dir)
 

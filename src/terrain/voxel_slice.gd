@@ -186,11 +186,11 @@ const VEIN_DEPOSIT_HEIGHT := 0.22
 ## stays readable.
 const VEIN_DEPOSIT_INSET := 0.16
 
-## Active chunk containers keyed by "x,y" string.
 var _persist := VoxelPersist.new(self)
 var _edit := VoxelEdit.new(self)
 var _build := VoxelBuild.new(self)
 var _query := VoxelQuery.new(self)
+## Active chunk containers keyed by "x,y" string.
 var _chunks: Dictionary = {}
 ## Base heightmaps keyed by "x,y" string (the unedited noise terrain).
 var _heightmaps: Dictionary = {}

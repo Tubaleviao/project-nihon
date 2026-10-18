@@ -54,7 +54,6 @@ static func unregistered_tests(suite: Object, registered: Dictionary) -> Array:
 			out.append(method_name)
 	return out
 
-## `.gd` files in the suite directory that `SUITES` does not list.
 ## Every `.gd` file under `dir` (recursive, `src/tests` excluded when `skip_tests`) with more than
 ## `cap` lines and not in `allow`, as "path (lines)" strings.
 static func oversized_source_files(dir: String, cap: int, allow: Array, skip_tests: bool = true) -> Array:
@@ -62,7 +61,7 @@ static func oversized_source_files(dir: String, cap: int, allow: Array, skip_tes
 	for f in DirAccess.get_files_at(dir):
 		if not f.ends_with(".gd") or allow.has(f):
 			continue
-		var lines := FileAccess.get_file_as_string(dir.path_join(f)).split("\n").size()
+		var lines := FileAccess.get_file_as_string(dir.path_join(f)).trim_suffix("\n").split("\n").size()
 		if lines > cap:
 			out.append("%s (%d)" % [dir.path_join(f), lines])
 	for d in DirAccess.get_directories_at(dir):
@@ -71,6 +70,7 @@ static func oversized_source_files(dir: String, cap: int, allow: Array, skip_tes
 		out.append_array(oversized_source_files(dir.path_join(d), cap, allow, skip_tests))
 	return out
 
+## `.gd` files in the suite directory that `SUITES` does not list.
 static func unlisted_suite_files() -> Array:
 	var out: Array = []
 	for f in DirAccess.get_files_at(SUITE_DIR):

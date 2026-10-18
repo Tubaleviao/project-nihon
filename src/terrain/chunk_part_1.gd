@@ -1,6 +1,9 @@
 extends RefCounted
 ## Methods moved verbatim out of `chunk_manager.gd` (Phase 154). `sl` is the owning slice; each moved method keeps a forwarder there.
 
+## A worker task must not hold a Node, so the lambda below names the script constant, not `sl`.
+const VoxelBuilder := preload("res://src/terrain/voxel_slice.gd")
+
 var sl: Node
 
 func _init(slice: Node) -> void:
@@ -167,8 +170,8 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 	var revision: int = int(sl.voxel_slice.chunk_revision(chunk_pos))
 	var result: Array = [null]
 	var task_id = WorkerThreadPool.add_task(
-		func(): result[0] = sl.VoxelBuilder.build_chunk_arrays(chunk_pos, heightmap,
-			sl.VoxelBuilder.build_runs(chunk_pos, heightmap, gathered), true),
+		func(): result[0] = VoxelBuilder.build_chunk_arrays(chunk_pos, heightmap,
+			VoxelBuilder.build_runs(chunk_pos, heightmap, gathered), true),
 		false, "chunk build %s" % key)
 	sl._builds[task_id] = {
 		"chunk":     chunk_pos,

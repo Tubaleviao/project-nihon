@@ -108,12 +108,12 @@ const BODY_PROP_BOUNDS: Dictionary = {
 ## grid, so adjacent parts meet without an extent/position seam.
 const PROPORTION_STEP := 0.05
 
-## Instance record: { "appearance", "position", "root", "parts" }.
 const CharacterPart1 := preload("res://src/character/character_part_1.gd")
 const CharacterPart2 := preload("res://src/character/character_part_2.gd")
 var _m2 := CharacterPart2.new(self)
-
 var _m1 := CharacterPart1.new(self)
+
+## Instance record: { "appearance", "position", "root", "parts" }.
 
 var _instances: Dictionary = {}
 ## Static so ids stay globally unique across every CharacterSlice instance —

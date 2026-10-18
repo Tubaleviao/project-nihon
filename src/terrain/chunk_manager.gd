@@ -171,10 +171,10 @@ const FLUSH_MAX_ROUNDS := 16
 ## every frame. Overridable for tuning/tests.
 const DEFAULT_SELF_HEAL_INTERVAL := 5.0
 
-## Set by game_root before the slices enter the tree.
 const ChunkPart1 := preload("res://src/terrain/chunk_part_1.gd")
 var _m1 := ChunkPart1.new(self)
 
+## Set by game_root before the slices enter the tree.
 var terrain_slice: Node = null
 var voxel_slice: Node = null
 var player_slice: Node = null
