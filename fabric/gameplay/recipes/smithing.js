@@ -250,4 +250,66 @@ module.exports = {
     },
   }),
 
+  // ─── RecipeSkinningKnife ──────────────────────────────────────────
+  RecipeSkinningKnife: defineEntity({
+    tags: ['recipe'],
+    description: 'Craft a skinning knife from one ferrite ingot and one thornwood plank.',
+    goal: 'First harvest tool recipe; every hunter can make one early',
+    fields: {
+      id:     { type: 'uuid', primaryKey: true },
+      domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
+      outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
+      recipe: recipeData({
+        domain: 'smithing',
+        station: 'forge',
+        inputs: [{ item: 'FerriteIngot', quantity: 1 }, { item: 'ThornwoodPlank', quantity: 1 }],
+        outputs: [{ item: 'SkinningKnife', quantity: 1 }],
+        skillGuards: [{ skill: 'Smithing', tier: 'novice' }],
+      }),
+    },
+    relations: {
+      inputFerriteIngot: { name: 'inputFerriteIngot', kind: 'hasOne', target: 'FerriteIngot' },
+      inputThornwoodPlank: { name: 'inputThornwoodPlank', kind: 'hasOne', target: 'ThornwoodPlank' },
+      output: { name: 'output', kind: 'hasOne', target: 'SkinningKnife' },
+    },
+    behaviors: {
+      craft: {
+        description: 'Forge the blade and fit the grip',
+        rules: ['Requires Smithing: Novice', 'Requires a functional forge'],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
+  // ─── RecipeBoneSaw ────────────────────────────────────────────────
+  RecipeBoneSaw: defineEntity({
+    tags: ['recipe'],
+    description: 'Craft a bone saw from two ferrite ingots and one thornwood plank.',
+    goal: 'Second harvest tool recipe; bones cost more metal than a knife',
+    fields: {
+      id:     { type: 'uuid', primaryKey: true },
+      domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
+      outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
+      recipe: recipeData({
+        domain: 'smithing',
+        station: 'forge',
+        inputs: [{ item: 'FerriteIngot', quantity: 2 }, { item: 'ThornwoodPlank', quantity: 1 }],
+        outputs: [{ item: 'BoneSaw', quantity: 1 }],
+        skillGuards: [{ skill: 'Smithing', tier: 'novice' }],
+      }),
+    },
+    relations: {
+      inputFerriteIngot: { name: 'inputFerriteIngot', kind: 'hasOne', target: 'FerriteIngot' },
+      inputThornwoodPlank: { name: 'inputThornwoodPlank', kind: 'hasOne', target: 'ThornwoodPlank' },
+      output: { name: 'output', kind: 'hasOne', target: 'BoneSaw' },
+    },
+    behaviors: {
+      craft: {
+        description: 'Forge the blade and fit the grip',
+        rules: ['Requires Smithing: Novice', 'Requires a functional forge'],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
 }

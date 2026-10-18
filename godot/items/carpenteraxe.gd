@@ -25,4 +25,6 @@ enum Condition {
 @export var shape: Dictionary
 @export var durability: int
 @export var toolType: String
+@export var harvestTool: String
+@export var efficiency: float
 @export var repair: Dictionary

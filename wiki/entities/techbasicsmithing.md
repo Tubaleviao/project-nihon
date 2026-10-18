@@ -28,6 +28,8 @@ Foundational metalworking knowledge. Unlocks the forge structure, ferrite smelti
 | unlocksRecipeFerriteIngot | hasOne | [RecipeFerriteIngot](recipeferriteingot.md) |
 | unlocksRecipeFerriteShortSword | hasOne | [RecipeFerriteShortSword](recipeferriteshortsword.md) |
 | unlocksRecipeFerritePick | hasOne | [RecipeFerritePick](recipeferritepick.md) |
+| unlocksRecipeSkinningKnife | hasOne | [RecipeSkinningKnife](recipeskinningknife.md) |
+| unlocksRecipeBoneSaw | hasOne | [RecipeBoneSaw](recipebonesaw.md) |
 
 ## States
 

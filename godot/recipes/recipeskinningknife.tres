@@ -1,0 +1,12 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/recipes/recipeskinningknife.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+domain = 0
+outputCount = 0
+recipe = {"domain":"smithing","station":"forge","inputs":[{"item":"FerriteIngot","quantity":1},{"item":"ThornwoodPlank","quantity":1}],"outputs":[{"item":"SkinningKnife","quantity":1}],"skillGuards":[{"skill":"Smithing","tier":"novice"}]}
+description = "Craft a skinning knife from one ferrite ingot and one thornwood plank."
+tags = ["recipe"]

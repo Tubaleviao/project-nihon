@@ -1,0 +1,21 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/items/skinningknife.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+condition = 0
+weight = 0.4
+rarity = 0
+stackable = false
+shape = {"archetype":"knife","parts":{"blade":"Ferrite","grip":"Thornwood"},"scale":1}
+durability = 60
+toolType = "knife"
+harvestTool = "knife"
+efficiency = 1.0
+repair = {"station":"forge","materials":[{"item":"FerriteIngot","quantity":1}],"skillGuards":[{"skill":"Smithing","tier":"novice"}]}
+state_machine_field = "condition"
+initial_state = "pristine"
+description = "Short ferrite blade on a thornwood grip, ground for pelts and meat. Takes hide, pelt and organs from a body; the knife category of the harvest tables."
+tags = ["item"]

@@ -1,4 +1,5 @@
 const { defineEntity } = require('@newel/core')
+const { BASE_CARRY_CAPACITY_KG } = require('./harvest')
 
 const PLAYER_STATES = ['alive', 'dead', 'respawning']
 const INVENTORY_STATES = ['open', 'closed', 'full']
@@ -56,6 +57,7 @@ module.exports = {
       name:         { type: 'string', description: 'Display name chosen at character creation' },
       baseHp:       { type: 'integer', description: 'Maximum HP at current level/gear baseline', defaultValue: 100 },
       currentHp:    { type: 'integer', description: 'Current hit points; 0 triggers the die transition', defaultValue: 100 },
+      carryCapacityKg: { type: 'decimal', description: 'Base kg of creature body the character can carry; Skinning level adds to it (HarvestRules.carryBonusPerSkinningLevelKg)', defaultValue: BASE_CARRY_CAPACITY_KG },
       baseSpeed:    { type: 'decimal', description: 'Movement speed in tiles per second', defaultValue: 4.5 },
       positionX:    { type: 'decimal', description: 'World X coordinate (server-authoritative)', defaultValue: 0.0 },
       positionY:    { type: 'decimal', description: 'World Y coordinate (elevation)', defaultValue: 0.0 },

@@ -1,0 +1,17 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/harvests/harvestrules.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+harvestSeconds = 4.0
+harvestRangeMetres = 3.0
+carrySlowAboveFraction = 0.5
+carrySlowSpeedMultiplier = 0.7
+dragCapacityFactor = 3.0
+dragSpeedMultiplier = 0.5
+carryBonusPerSkinningLevelKg = 2.0
+maxCarcassesPerRegion = 24
+description = "Tuning for working and moving a creature body: how long a harvest takes, how close the harvester stands, how carrying and dragging slow the walk, and how many bodies a region keeps."
+tags = ["harvest"]

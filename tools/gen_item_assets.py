@@ -64,7 +64,7 @@ MATERIAL_COLORS = {
 # Archetype -> maximum AABB size (x, y, z) in metres at scale 1.
 ARCHETYPE_BOUNDS = {
     "pick": (0.12, 0.80, 0.60), "axe": (0.10, 0.80, 0.40), "sword": (0.20, 0.75, 0.08),
-    "longsword": (0.22, 1.15, 0.10), "bow": (0.10, 1.15, 0.35), "shield": (0.60, 0.60, 0.12),
+    "longsword": (0.22, 1.15, 0.10), "knife": (0.06, 0.40, 0.08), "saw": (0.10, 0.55, 0.14), "bow": (0.10, 1.15, 0.35), "shield": (0.60, 0.60, 0.12),
     "helmet": (0.40, 0.40, 0.40), "chestplate": (0.70, 0.60, 0.35), "cloak": (0.70, 0.90, 0.20),
     "ingot": (0.30, 0.12, 0.16), "shard": (0.20, 0.34, 0.20), "dust": (0.30, 0.14, 0.30),
     "plank": (0.14, 0.06, 0.60), "block": (0.34, 0.34, 0.34), "orb": (0.25, 0.30, 0.25),
@@ -228,6 +228,19 @@ def _blade_weapon(length):
     return build
 
 
+def _knife(rng):
+    return {"grip": cylinder(1, -0.08, 0.06, (0, 0), 0.02, n=6),
+            "blade": prism(1, 0.06, 0.26, (0, 0), (0.006, 0.025), (0.003, 0.004))}
+
+
+def _saw(rng):
+    teeth = []
+    for k in range(6):
+        teeth += prism(0, -0.005, 0.005, (0.12 + 0.06 * k, 0.05), (0.012, 0.008))
+    return {"grip": cylinder(1, -0.08, 0.06, (0, 0), 0.02, n=6),
+            "blade": prism(1, 0.06, 0.46, (0, 0), (0.006, 0.045), (0.005, 0.035)) + teeth}
+
+
 def _bow(rng):
     pts = [(0.08, 0.0), (0.28, 0.06), (0.5, 0.18)]
     limb = []
@@ -319,7 +332,8 @@ def _waystone(rng):
 
 
 ARCHETYPES = {
-    "pick": _pick, "axe": _axe, "sword": _blade_weapon(0.58), "longsword": _blade_weapon(0.9), "bow": _bow,
+    "pick": _pick, "axe": _axe, "sword": _blade_weapon(0.58), "longsword": _blade_weapon(0.9),
+    "knife": _knife, "saw": _saw, "bow": _bow,
     "shield": _shield, "helmet": _helmet, "chestplate": _chestplate, "cloak": _cloak, "ingot": _ingot,
     "shard": _shard, "dust": _dust, "plank": _plank, "block": _block, "orb": _orb, "tablet": _tablet,
     "potion": _potion, "rations": _rations, "hearth": _hearth, "waystone": _waystone,
