@@ -57,6 +57,7 @@ func register() -> void:
 	_run_test("ui: a world-version mismatch is one toast, a pre-stamp save none", _test_ui_worldgen_toast)
 	_run_test("map: M and the dock box toggle the Map window",  _test_map_window_key)
 	_run_test("map: waypoints sit on the game view's horizon",  _test_map_waypoint_horizon)
+	_run_test("ui: every item resolves an icon texture on every surface", _test_ui_every_item_has_icon)
 	_run_test("ui: crafting rows gate on technology",          _test_ui_crafting_rows_tech_gate)
 	_run_test("ui: technology rows report status + prereqs",   _test_ui_technology_rows_status)
 	_run_test("ui: the loading screen shows and hides",          _test_loading_screen_visibility)
@@ -869,6 +870,20 @@ func _test_ui_icon_key_and_intent() -> void:
 	assert_true(ui.dispatch_item_action("FerritePick", "repair"), "repair dispatches")
 	GameBus.repair_requested.disconnect(cb)
 	assert_eq(got, ["FerritePick"], "same intent the text UI emitted")
+	ui.free()
+
+## Phase 153: no glyph fallback is hit for any item, and the craft/repair/market rows carry the key.
+func _test_ui_every_item_has_icon() -> void:
+	var ui := _new_test_ui()
+	for id in GameData.ITEMS:
+		var key := UiSlice.item_icon_key(str(id))
+		assert_true(ui._load_item_icon(key) != null, "%s resolves an icon texture" % id)
+	var crafting := CraftingSlice.new()
+	ui.crafting_slice = crafting
+	for row in ui.crafting_rows():
+		assert_true(str(row["icon_key"]) != "" and ui._load_item_icon(str(row["icon_key"])) != null,
+			"%s output icon resolves" % row["id"])
+	crafting.free()
 	ui.free()
 
 func _test_ui_controls_panel() -> void:

@@ -161,6 +161,11 @@ static func creature_model_key(entity_name: String) -> String:
 	return "models/creatures/%s.glb.raw" % entity_name
 
 
+## Canonical key for an item model: `models/items/<ItemId>.glb.raw`.
+static func item_model_key(item_id: String) -> String:
+	return "models/items/%s.glb.raw" % item_id
+
+
 ## Parse a `.glb.raw` key into a scene root via GLTFDocument (bytes only —
 ## never `load()`). Null (with a warning) when missing or undecodable.
 func _load_gltf_scene(rel: String) -> Node:

@@ -329,10 +329,8 @@ func _ready() -> void:
 	# Headless server (Phase 27): creature + player presentation is skipped so
 	# the authoritative simulation runs with no visual nodes. Set BEFORE the
 	# slices enter the tree so their _ready() skips body/pool construction.
-	_creature.render_visuals = not _is_server
-	_player.render_visuals   = not _is_server
-	_tree.render_visuals     = not _is_server
-	_chat.render_visuals     = not _is_server
+	for presenter in [_creature, _player, _tree, _chat, _character]:
+		presenter.render_visuals = not _is_server
 
 	# The UI (Phase 14) is presentation only, so a headless dedicated server
 	# (Phase 27) keeps it out of the tree — its _ready() would otherwise build

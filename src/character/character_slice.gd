@@ -639,6 +639,15 @@ func evict_peer_equipment(peer_id: int) -> void:
 func get_peer_equipment(peer_id: int) -> Dictionary:
 	return (_peer_equipment.get(peer_id, {}) as Dictionary).duplicate()
 
+## Phase 153 — the item id of the model node worn by `peer_id` in `slot` ("" when the slot holds a
+## box, is empty, or the peer has no bound avatar).
+func peer_model_item(peer_id: int, slot: String) -> String:
+	var iid: String = str(_peer_characters.get(peer_id, ""))
+	if iid == "":
+		return ""
+	var node := get_part_node(iid, slot)
+	return str(node.get_meta("item_model", "")) if node != null else ""
+
 ## Bind a peer's character instance so replicated gear lands on it, applying any set
 ## already received.
 func bind_peer_character(peer_id: int, instance_id: String) -> void:
@@ -1510,13 +1519,29 @@ func _attach_equipment(rig, slot: String, entry: Dictionary, props: Dictionary) 
 	if mode != "RIGID":
 		offset = socket_pos - rig.get_bone_global_rest(rig.socket_to_bone(socket))
 	var size: Vector3 = _vec3(def.get("size", [0.3, 0.3, 0.3]))
-	var mesh := _make_box(size, _equipment_base_index(def, entry), _equipment_material_opts(def, entry))
+	var item_id: String = str(entry.get("item", ""))
+	var base_index := _equipment_base_index(def, entry)
+	var opts := _equipment_material_opts(def, entry)
+	var model: Mesh = _item_model(item_id) if render_visuals else null
+	var mesh: MeshInstance3D
+	if model != null:
+		# Phase 153: the item's own model (origin at its grip), tinted by the same palette pipeline.
+		mesh = MeshInstance3D.new()
+		mesh.mesh = model
+		_finish_part(mesh, base_index, opts)
+		mesh.set_meta("item_model", item_id)
+	else:
+		mesh = _make_box(size, base_index, opts)
 	mesh.name = "Eq_%s" % slot
 	# A weapon sheathed at a hip socket hangs vertically (blade-down) rather than
-	# pointing forward like an equipped weapon: rotate the placeholder box's long
-	# (Z) axis onto Y.
+	# pointing forward like an equipped weapon: turn the long axis (the model's
+	# AABB, or the placeholder box's Z) onto Y.
 	if socket.begins_with("socket_hip"):
-		mesh.rotation_degrees.x = 90.0
+		var long_axis := _long_axis(model.get_aabb().size if model != null else size)
+		if long_axis == Vector3.AXIS_Z:
+			mesh.rotation_degrees.x = 90.0
+		elif long_axis == Vector3.AXIS_X:
+			mesh.rotation_degrees.z = 90.0
 	rig.attach(socket, mesh, mode, offset)
 	# RIGID equipment does not follow a bone — only SKINNED/HYBRID do.
 	var bone: String = "" if mode == "RIGID" else rig.socket_to_bone(socket)
@@ -1528,6 +1553,36 @@ func _attach_equipment(rig, slot: String, entry: Dictionary, props: Dictionary) 
 		"item_id": str(entry.get("item", "")),
 		"def":     def,
 	}
+
+## Longest axis (Vector3.AXIS_*) of a size; Z wins ties, as the placeholder box's long axis is Z.
+static func _long_axis(size: Vector3) -> int:
+	if size.z >= size.x and size.z >= size.y:
+		return Vector3.AXIS_Z
+	return Vector3.AXIS_X if size.x > size.y else Vector3.AXIS_Y
+
+## item id -> Mesh, or null once its model is known missing or broken (settled, one warning per item).
+static var _item_models: Dictionary = {}
+## Item ids whose missing/broken model has already warned.
+static var warned_items: Dictionary = {}
+## False on the headless server: no item model nodes are built (the box stays, as before).
+var render_visuals: bool = true
+
+## The item's model mesh from `AssetOverlay.item_model_key`, loaded once per item type. Null (with
+## one warning per item) when the key is absent or does not parse; the caller keeps its box.
+func _item_model(item_id: String) -> Mesh:
+	if item_id == "":
+		return null
+	if _item_models.has(item_id):
+		return _item_models[item_id]
+	var mesh: Mesh = null
+	var key := AssetOverlay.item_model_key(item_id)
+	if AssetOverlay.has_key("meshes", key):
+		mesh = AssetOverlay.load_mesh(key)
+	if mesh == null and not warned_items.has(item_id):
+		warned_items[item_id] = true
+		Diag.warn("[Character] no usable model for item %s; using a box" % item_id)
+	_item_models[item_id] = mesh
+	return mesh
 
 ## Preferred torso bone to skin the body mesh to, in a family-agnostic order
 ## (humanoid/quadruped → Chest, bird → Spine, serpent → Spine_1, else Root).

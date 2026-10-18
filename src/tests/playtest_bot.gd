@@ -431,7 +431,15 @@ func _step_craft() -> Array:
 	if not ok:
 		return [false, "no craft_resolved"]
 	var got: int = _root._inventory.get_item_count("ThornwoodPlank") - planks
-	return [bool(_crafted.back()["success"]) and got == 3, "crafted %d planks (%s)" % [got, str(_crafted.back()["reason"])]]
+	var detail := "crafted %d planks (%s)" % [got, str(_crafted.back()["reason"])]
+	# Phase 153: a held weapon is drawn from its model. No recipe yields a hand-held item, so the bot
+	# puts a weapon in hand (screenshotted with this step) and checks the hand socket's node.
+	var character: Node = _root._character
+	var iid: String = character.get_player_character()
+	var hand_ok: bool = iid != "" and character.apply_equipment(iid, "MainHand", "VeilsteelLongsword")
+	var node: Node = character.get_part_node(iid, "MainHand") if hand_ok else null
+	hand_ok = node != null and str(node.get_meta("item_model", "")) == "VeilsteelLongsword"
+	return [bool(_crafted.back()["success"]) and got == 3 and hand_ok, "%s; hand model %s" % [detail, "ok" if hand_ok else "MISSING"]]
 
 ## Place a station with the player's own keys, a few metres from the bench so the two do not overlap.
 func _step_place() -> Array:
