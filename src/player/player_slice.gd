@@ -826,6 +826,11 @@ func fold_to(pos: Dictionary, turned: bool) -> void:
 	_vel = vel
 	_body.velocity = vel
 
+## Re-send the body's state now (a dead body does not tick, so a move made while down — the death
+## push — is otherwise never seen by peers).
+func sync_state_now() -> void:
+	_broadcast_state()
+
 func _broadcast_state() -> void:
 	if not render_visuals:
 		return

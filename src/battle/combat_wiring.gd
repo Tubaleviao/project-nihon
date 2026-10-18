@@ -298,6 +298,7 @@ func _on_player_died(death_pos: Vector3, killer_id: String, landing: Vector3) ->
 	# The host's death push is the body's authoritative position.
 	if landing != Vector3.ZERO and root._player != null and not root._is_client:
 		root._player.spawn_at(landing)
+		root._player.sync_state_now()   # a dead body does not tick: peers would keep the pre-push spot
 	var who: String = root._character.get_player_character()
 	if who == "":
 		return
