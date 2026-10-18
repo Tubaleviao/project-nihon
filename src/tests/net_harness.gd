@@ -1810,6 +1810,11 @@ func _step_gesture_synced() -> void:
 			_report("gesture_synced", "fail", "no_connected_peer")
 			return
 		await _await_settle(1.0)
+		# The host checks `requiresGround` against the terrain under the peer's last report; the harness
+		# client reports from a fixed height, so stand its recorded position on the ground first.
+		var seen: Vector3 = _root._networking.get_last_known_state(peers[0])
+		var floor_y: float = _root._voxel.get_voxel_height_at(Vector2(seen.x, seen.z))
+		_root._networking._last_known_states[peers[0]] = Vector3(seen.x, floor_y, seen.z)
 		GameBus.gesture_intent.emit("SitGround", pid)
 		await _await_settle(2.0)
 		var peer_seated: bool = _root._gesture.held_id(pid) == "SitGround"
