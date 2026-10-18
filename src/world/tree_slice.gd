@@ -589,7 +589,7 @@ func inventory_for(player_id: String) -> Node:
 
 ## Is `player_id` a player whose own client mirrors this inventory over the wire?
 ## False for `""` (this machine's own player) and for the local id, whose pack is live
-## in this process — the same test `PeerWiring._sync_peer_own_state` makes.
+## in this process — the same test `PeerWiring.sync_peer_own_state` makes.
 func _is_remote_actor(player_id: String) -> bool:
 	if player_id == "":
 		return false

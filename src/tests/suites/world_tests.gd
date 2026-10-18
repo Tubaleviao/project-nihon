@@ -1204,7 +1204,7 @@ func _test_attach_rig() -> void:
 
 ## Phase 115 (#258) — an exact far position survives all three placement doors: the host's own
 ## `_place_local_player`, the host's `_snapshot_own_record` (what `_build_snapshot` ships, through JSON) and
-## the client's `_place_from_snapshot` (what `_on_world_snapshot_received` calls), within 1e-3 m.
+## the client's `_place_from_snapshot` (what `SnapshotWiring.on_world_snapshot_received` calls), within 1e-3 m.
 func _test_exact_placement_paths() -> void:
 	var root_script: GDScript = load("res://src/core/game_root.gd")
 	var chunk := Vector2i(600000, 40)

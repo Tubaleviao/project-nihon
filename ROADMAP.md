@@ -195,23 +195,6 @@ issue number where the criterion used to be.
 ---
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
----
-
-
 ## Phase 152 — Item models and icons from one generator
 
 **Goal:** turn each item's shape into a low-poly model and a 32×32 icon drawn from that same model,
@@ -418,8 +401,9 @@ phase gives every body a visible idle, a swing on every hit and a flinch when hi
   play once after the body has been idle for 6–12 s (a seeded random from the instance id, so tests
   are deterministic). Creature skeletons get the same treatment: quadruped head bob and tail sway,
   bird preen, serpent coil.
-- Attack on every swing: the host's per-hit combat event (`combat_resolved` or the hit event it
-  already broadcasts) drives the attacker's attack animation for **any** attacker id — the local
+- Attack on every swing: the host's per-hit combat event (today `GameBus.combat_round_resolved`
+  carries one result per round, so a per-hit signal such as `combat_hit_resolved` is added to
+  `src/core/bus.gd` in this phase) drives the attacker's attack animation for **any** attacker id — the local
   player, a remote peer's avatar and a creature model. Remote clients get it from the existing
   synced combat result, so no new wire message is needed if the result already carries the attacker;
   otherwise one compact field is added and validated on the host.
@@ -459,7 +443,8 @@ vanishing after `CORPSE_SECONDS` (8 s).
 
 **Newel dependency:** NO.
 
-**Depends on:** Phase 155. Uses Phase 129's knockback helper.
+**Depends on:** Phase 155. Uses Phase 129's knockback helper. Reads `corpseSeconds` from Phase 160
+when it has landed; until then the corpse lifetime stays the `CORPSE_SECONDS` constant.
 
 **Deliverables:**
 - Host-decided death push: when the host resolves a killing blow it computes a short throw
@@ -468,6 +453,10 @@ vanishing after `CORPSE_SECONDS` (8 s).
   `StatusEffects.knockback_target`. The landing position is part of the death event
   (`creature_died` / `player_died` gain `landing: Vector3` — the host value, never the client's).
   The body's authoritative position becomes the landing spot.
+  The signature change touches every existing listener, updated in this phase:
+  `CreatureSlice._on_creature_died`, `CreatureAI._on_creature_died`, `LootSlice._on_creature_died`,
+  `CombatWiring._on_player_died` / `_on_status_player_died`, the emitters in
+  `BattleSlice` and `PlayerSlice._die`, and the suite tests that emit either signal.
 - Client-side fall: the visual body travels from its position to `landing` over about 0.35 s on a
   short arc (no physics ragdoll, so the headless server stays deterministic), while the death clip
   plays. Two or more death variants per skeleton, picked by the hit direction relative to the

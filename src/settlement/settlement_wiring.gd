@@ -22,6 +22,8 @@ func make_slice(ctx: GameRoot) -> Node:
 	slice.position_of = self.player_xz
 	slice.is_host = not root._is_client
 	root._voxel.claim_guard = slice.edit_blocker
+	if not root._is_client:
+		root._voxel.claim_activity = slice.note_edit
 	root._station.claim_guard = slice.edit_blocker
 	root._tree.claim_guard = slice.edit_blocker
 	root._station.settlement_slice = slice
@@ -42,17 +44,9 @@ func _connect_all() -> void:
 	connect_bus(GameBus.settlements_changed, _on_changed)
 	connect_bus(GameBus.settlement_resolved, _on_resolved)
 	connect_bus(GameBus.station_placed, _on_station_placed)
-	connect_bus(GameBus.block_changed, _on_block_changed)
 
 func _on_changed() -> void:
 	_dirty = true
-
-## A block edit that passed the claim guard counts as activity for the local player's claim (remote
-## players are covered by the standing-in-claim sweep in `tick`).
-func _on_block_changed(_action: String, position: Vector3, _normal: Vector3, _material: String) -> void:
-	if root._is_client or root._settlements == null:
-		return
-	root._settlements.note_edit(root._registry.local_player_id, Vector2(position.x, position.z))
 
 ## A hearth placed by the local player (host or listen host) founds a settlement there. The placement
 ## already took the Hearth item and `StationSlice` refused an occupied spot, so this only records it.

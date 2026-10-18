@@ -16,6 +16,7 @@ func register() -> void:
 	_run_test("settlement: a client intent binds the connection's player", _test_settlement_wire)
 	_run_test("settlement: a hearth at x ~ 2e7 keeps its exact position through save and load", _test_phase147_hearth_exact)
 	_run_test("settlement: edit_blocker is a pure query, note_edit records the edit", _test_phase147_edit_blocker_pure)
+	_run_test("settlement: a remote member's mine counts as claim activity", _test_remote_edit_is_activity)
 	_run_test("settlement: loading keeps ids unique and defaults last_active to now", _test_phase147_from_data)
 	_run_test("settlement: a decaying claim announces its shrinking radius", _test_phase147_decay_push)
 	_run_test("settlement: claims count toward colonization", _test_settlement_colonization)
@@ -473,3 +474,21 @@ func _test_phase148_join_throttle() -> void:
 	assert_eq(seen.size(), 3, "announced again after the cooldown")
 	GameBus.system_message.disconnect(cb)
 	chat.free()
+
+func _test_remote_edit_is_activity() -> void:
+	var rig := _rig()
+	var s: SettlementSlice = rig["s"]
+	_found(rig)   # p1 is a remote peer: the rig's local player is "host"
+	var t0: float = float(s._settlements["settlement_1"]["last_active"])
+	rig["now"][0] += 500.0
+	var v := _make_voxel()
+	v.is_authoritative = true
+	v.player_registry = rig["reg"]
+	v.claim_guard = Callable(s, "edit_blocker")
+	v.claim_activity = Callable(s, "note_edit")
+	assert_false(bool(v.mine_block(Vector3(10.5, 2.0, 10.5), Vector3.UP, "p2")["success"]), "an outsider's mine is refused")
+	assert_eq(float(s._settlements["settlement_1"]["last_active"]), t0, "so it is not activity")
+	assert_true(bool(v.mine_block(Vector3(10.5, 2.0, 10.5), Vector3.UP, "p1")["success"]), "the remote founder mines")
+	assert_eq(float(s._settlements["settlement_1"]["last_active"]), t0 + 500.0, "the remote founder's edit touches the claim")
+	v.free()
+	_free_rig(rig)

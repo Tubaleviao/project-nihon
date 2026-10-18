@@ -26,6 +26,7 @@ extends Node
 
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
+const WaystoneSlice := preload("res://src/world/waystone_slice.gd")
 
 const ARG := "--playtest-bot"
 const OUT_DIR := "res://playtest"
@@ -44,6 +45,7 @@ const TELEPORT_SETTLE_MS := 1500 ## frames this long after a teleport (the new w
 const STEP_GRACE_SECS := 10.0    ## past its deadline a step that has not returned has crashed or hung: fail it
 const SPAWN_OFFSET_M := 2.0      ## a teleport lands this far above the ground
 const FIGHT_MAX_GROUND_GAP_M := 2.0
+const ARRIVE_TOLERANCE_M := 2.0    ## travel lands the body on the destination stone, within this ground distance
 
 var _root: Node
 var _frames: Array = []       ## frame times (ms) of the step in flight
@@ -533,20 +535,23 @@ func _step_travel() -> Array:
 	_key(KEY_W, true)
 	await _until(func(): return false, 1.5)
 	_key(KEY_W, false)
-	var dest: Dictionary = _root._player.get_world_pos()
 	if await _place_with_keys(stone) == 0:
 		return [false, "second waystone refused"]
 	var b: String = str(_placed.back()[0])
-	_key(KEY_S, true)   # back beside the first stone, which the travel starts from
+	# The travel starts from the first stone, so walk back inside its attune radius. Where the walk
+	# ends does not matter: arrival is measured against the second stone's own position below.
+	_key(KEY_S, true)
 	await _until(func(): return false, 1.5)
 	_key(KEY_S, false)
 	_root._registry.record_waystones(_root._registry.local_player_id, [a, b])
 	_root._registry.get_inventory(_root._registry.local_player_id).add_item(str(_root._waystones.rules()["costItem"]), 20)
 	GameBus.waystone_travel_intent.emit(a, b, "")
 	_skip_until_ms = Time.get_ticks_msec() + TELEPORT_SETTLE_MS
+	var dest: Dictionary = _root._waystones.exact_pos(b)
+	# The host teleports the body onto the stone's exact position; ground distance (as the waystone
+	# rules measure it) ignores the body settling onto the terrain after the drop.
 	var ok: bool = await _until(func():
-		var now: Dictionary = _root._player.get_world_pos()
-		return now["chunk"] == dest["chunk"] and (now["local"] as Vector3).distance_to(dest["local"]) < 6.0, STEP_TIMEOUT_SECS)
+		return WaystoneSlice.distance_m(_root._player.get_world_pos(), dest) < ARRIVE_TOLERANCE_M, STEP_TIMEOUT_SECS)
 	return [ok, "travelled to the second stone" if ok else "body did not reach the second stone"]
 
 ## Phase 141 — the pole: stand just past the north pole, let the window settle, then step over the

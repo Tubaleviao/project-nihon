@@ -27,13 +27,20 @@ const ARCHETYPES = {
   waystone:   ['stone', 'glyph'],
 }
 
-// Shape field for an item entity: `shape: itemShape({ archetype, parts, scale })`.
-function itemShape({ archetype, parts, scale = 1 }) {
-  return {
+// Materials an item's `hasOne` relations name but its shape deliberately does not draw (e.g. an
+// axe's fibre lashing), keyed by the shape field. Kept off `defaultValue` so generated resources
+// do not change; only the validator reads it.
+const UNSHOWN = new WeakMap()
+
+// Shape field for an item entity: `shape: itemShape({ archetype, parts, scale, unshown })`.
+function itemShape({ archetype, parts, scale = 1, unshown = [] }) {
+  const field = {
     type: 'json',
     description: 'Item shape: archetype, material per named part, and uniform scale (Phase 151)',
     defaultValue: { archetype, parts, scale },
   }
+  UNSHOWN.set(field, unshown)
+  return field
 }
 
 // Returns a list of problems for every entity tagged `item`. `materialNames` is the set of
@@ -57,6 +64,19 @@ function shapeProblems(entities, materialNames) {
       const mat = given[part]
       if (mat === undefined) problems.push(`${name}: archetype "${shape.archetype}" part "${part}" has no material`)
       else if (!mats.has(mat)) problems.push(`${name}: parts.${part} names missing material "${mat}"`)
+    }
+    // A material the item is made of (a `hasOne` relation to a material) must be drawn by some
+    // part or listed in `unshown`, so a changed relation cannot drift from the shape.
+    const drawn = new Set(Object.values(given))
+    const unshown = UNSHOWN.get(field) || []
+    for (const rel of Object.values(ent.relations || {})) {
+      if (rel.kind !== 'hasOne' || !mats.has(rel.target)) continue
+      if (!drawn.has(rel.target) && !unshown.includes(rel.target)) {
+        problems.push(`${name}: made of "${rel.target}" (hasOne ${rel.name}) but no part uses it; add it to a part or to unshown`)
+      }
+    }
+    for (const mat of unshown) {
+      if (drawn.has(mat)) problems.push(`${name}: unshown "${mat}" is drawn by a part`)
     }
   }
   return problems

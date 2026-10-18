@@ -422,12 +422,15 @@ func run(root: Node, role: String) -> void:
 ## that reports success there is the wrong answer to give the cheapest question.
 func _finish() -> void:
 	var capped: bool = _root._networking.emulator_bandwidth_kbps > 0.0
-	# Phase 150 — a throttled creature sync still has to reach the client: no delta at all on a capped link fails.
-	var starved: bool = capped and _role == "client" and _creature_deltas == 0
+	# Phase 150 — a throttled creature sync still has to run on a capped link: no delta at all fails.
+	# The host counts the deltas its broadcast emitted (sent), the client the ones it applied
+	# (received), so each side's number means something and either side can starve the run.
+	var starved: bool = capped and _creature_deltas == 0
 	if starved:
 		_failed = true
-	print(format_line("link", "fail" if starved else "ok", "retransmits-%d dropped-%d creature_deltas-%d" % [
-		int(_root._networking.emulator_retransmits), int(_root._networking.emulator_dropped), _creature_deltas]))
+	var deltas_kind := "received" if _role == "client" else "sent"
+	print(format_line("link", "fail" if starved else "ok", "retransmits-%d dropped-%d creature_deltas_%s-%d" % [
+		int(_root._networking.emulator_retransmits), int(_root._networking.emulator_dropped), deltas_kind, _creature_deltas]))
 	print(format_line("done", "ok", _role))
 	get_tree().quit(1 if _failed else 0)
 
@@ -1095,7 +1098,7 @@ func _step_reconnect_alive() -> void:
 		return
 	# Mirror `game_root._boot_client()` exactly, which the first join in `run()` already did:
 	# a client that has just joined is WAITING for its world snapshot, and that flag is what
-	# arms the client's own handshake retry (`_tick_client_handshake`). Without it the rejoin
+	# arms the client's own handshake retry (`PeerWiring.tick_client_handshake`). Without it the rejoin
 	# got exactly ONE join intent, sent before the new socket was up — the RPC then errors
 	# out ("multiplayer peer which is not connected") and there is no second attempt, which is
 	# a harness that does not drive the shipped client's boot path after all.

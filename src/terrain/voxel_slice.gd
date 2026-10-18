@@ -1521,9 +1521,16 @@ func get_heightmaps() -> Dictionary:
 ## Phase 140 — `(player_id, xz: Vector2) -> String`: a non-empty reason refuses an edit at that ground point
 ## (the host's settlement claim rule). Unset: no claims.
 var claim_guard: Callable = Callable()
+## `(player_id, xz: Vector2) -> void`: told after every mine or place that succeeded, with the ACTOR's id
+## ("" for the local player), so the host counts a remote player's edit as activity for its claim.
+var claim_activity: Callable = Callable()
 
 func _claim_refused(player_id: String, probe: Dictionary) -> bool:
 	return claim_guard.is_valid() and str(claim_guard.call(player_id, probe["xz"])) != ""
+
+func _note_claim_activity(player_id: String, probe: Dictionary) -> void:
+	if claim_activity.is_valid():
+		claim_activity.call(player_id, probe["xz"])
 
 func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: String = "", exact: Dictionary = {}) -> Dictionary:
 	# Resolve the span BEFORE spending tool durability, so a blocked mine never
@@ -1584,6 +1591,7 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: Str
 	# Phase 138 — the span top, the same height `has_edit_near_at` judges on a reload, so live and reload agree.
 	GameBus.block_edit_resolved.emit(tile, float(span["top"]))
 	GameBus.block_changed.emit("mine", world_pos, normal, material)
+	_note_claim_activity(player_id, probe)
 	return { "success": true, "material": material, "quantity": quantity, "position": pos, "player_id": player_id }
 
 ## Phase 43 — what mining a NATURAL span of `tile` yields, off the ore field:
@@ -1717,6 +1725,7 @@ func place_block(world_pos: Vector3, normal: Vector3, material: String = "", pla
 	GameBus.block_placed.emit(chosen, pos)
 	GameBus.block_edit_resolved.emit(tile, float(span["top"]))
 	GameBus.block_changed.emit("place", world_pos, normal, chosen)
+	_note_claim_activity(player_id, probe)
 	return true
 
 ## Top of the column at a world XZ position — the highest solid run's top, or
@@ -1816,7 +1825,7 @@ func get_edits() -> Dictionary:
 ##
 ## Only the chunks whose edits actually CHANGED are rebuilt, and only the ones
 ## that are LOADED. Both halves are load-path hygiene this method needs because
-## it is also the RE-SCOPE path (`SnapshotWiring._on_world_snapshot_received`): a
+## it is also the RE-SCOPE path (`SnapshotWiring.on_world_snapshot_received`): a
 ## snapshot re-sends the manifest a client already applied — or one that differs
 ## in a chunk or two — and rebuilding every held chunk for that is a whole-frame
 ## stall per scope change. And a chunk that was streamed out has no mesh to
@@ -2698,7 +2707,7 @@ func inventory_for(player_id: String) -> Node:
 
 ## Is `player_id` a player whose own client mirrors this inventory over the wire? False
 ## for `""` (this machine's own player) and for the local id, whose pack is live in this
-## process and already in sync — the same test `PeerWiring._sync_peer_own_state` makes
+## process and already in sync — the same test `PeerWiring.sync_peer_own_state` makes
 ## before it sends. A slice with no registry (an isolated rig) answers true for any
 ## non-empty id: it cannot tell, and the sync signal is addressee-filtered anyway.
 func _is_remote_actor(player_id: String) -> bool:
