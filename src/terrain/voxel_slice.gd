@@ -105,6 +105,7 @@ const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
 const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 const Settle := preload("res://src/terrain/settle.gd")
+const VoxelPersist := preload("res://src/terrain/voxel_persist.gd")
 const VoxelConsts := preload("res://src/terrain/voxel_consts.gd")
 const VoxelMesh := preload("res://src/terrain/voxel_mesh.gd")
 const VoxelRuns := preload("res://src/terrain/voxel_runs.gd")
@@ -183,6 +184,7 @@ const VEIN_DEPOSIT_HEIGHT := 0.22
 const VEIN_DEPOSIT_INSET := 0.16
 
 ## Active chunk containers keyed by "x,y" string.
+var _persist := VoxelPersist.new(self)
 var _chunks: Dictionary = {}
 ## Base heightmaps keyed by "x,y" string (the unedited noise terrain).
 var _heightmaps: Dictionary = {}
@@ -1472,189 +1474,20 @@ func has_edits_near_chunk(chunk_pos: Vector2i, radius: int = 1) -> bool:
 				return true
 	return false
 
-## Dump voxel edits for persistence: { "gx,gz": [typed run edit, ...] }.
 func get_edits() -> Dictionary:
-	return _edits.duplicate(true)
+	return _persist.get_edits()
 
-## Restore voxel edits from a saved world snapshot and rebuild affected chunks.
-##
-## TOLERANT of both save shapes, deliberately: a value that is an Array is the
-## Phase 41 typed run edits and is adopted as-is, while a bare number (or a string
-## that parses as one) is a pre-Phase-41 absolute quantised height and is MIGRATED
-## (see `legacy_edit_ops`) against the tile's natural run — never dropped, because
-## a migration that "repairs" a world by discarding player work is worse than a
-## refusal. `materials` maps "gx,gz" → Array of material keys, the other half of
-## the legacy shape.
-##
-## A value that is NEITHER shape is not player work, it is unreadable: it is DROPPED
-## with a warning (`_legacy_height_of`) rather than cast into a height, because the
-## cast was not a refusal — `float()` answers 0.0 for an unparsable string, which
-## migrates the column to the world floor.
-##
-## Only the chunks whose edits actually CHANGED are rebuilt, and only the ones
-## that are LOADED. Both halves are load-path hygiene this method needs because
-## it is also the RE-SCOPE path (`SnapshotWiring.on_world_snapshot_received`): a
-## snapshot re-sends the manifest a client already applied — or one that differs
-## in a chunk or two — and rebuilding every held chunk for that is a whole-frame
-## stall per scope change. And a chunk that was streamed out has no mesh to
-## refresh: building it here would resurrect the node `ChunkManager` has already
-## streamed away, which it will then never unload again.
-##
-## A changed TILE names the chunks whose mesh reads it (`_touched_chunks`), not just
-## the chunk the tile sits in: a wall face is the difference against the NEIGHBOUR
-## column, so an edit on a chunk's edge leaves the neighbour's old wall standing — a
-## see-through slot or a ghost wall at the seam — until that chunk happens to
-## restream. `_rebuild_chunk_at_tile` has closed this since the Phase 41 review; this
-## is the same closure on the re-scope path, which was still rebuilding the tile's own
-## chunk alone.
-##
-## Phase 42 review pass 8 — and the rebuild now takes the SAME route as an edit:
-## `ChunkManager.request_rebuild` when a manager is wired, the synchronous `build_chunk`
-## otherwise. It used to always build synchronously, which both paid the whole build on the
-## main thread in the frame that applied a snapshot AND bumped the chunk's revision under
-## an in-flight worker build.
 func apply_edits(edits: Dictionary, materials: Dictionary = {}) -> void:
-	# A wholesale replace is the authority on depletion: evicted-chunk carry is stale.
-	_vein_carry = {}
-	_commit_edits(_normalise_edit_table(edits, materials))
+	_persist.apply_edits(edits, materials)
 
-## The normalising half of `apply_edits`: a typed op list is cleaned, a legacy height is
-## migrated against the tile's natural run, anything unreadable is dropped with a warning.
 func _normalise_edit_table(edits: Dictionary, materials: Dictionary) -> Dictionary:
-	var next: Dictionary = {}
-	for key in edits:
-		var value: Variant = edits[key]
-		if value is Array:
-			next[key] = _normalise_tile_ops(key, value, materials)
-			continue
-		# The LEGACY half: a bare number (or a numeric string) is a pre-Phase-41
-		# absolute quantised height, migrated against the tile's natural run. Any
-		# OTHER shape is DROPPED with a warning rather than cast — `float()` answers
-		# 0.0 for a string that is not a number, so a corrupt entry used to migrate
-		# into a height AT THE WORLD FLOOR (the column carved away), and a dict raised
-		# a runtime error on the load path. Dropping is the policy `_normalise_ops`
-		# already applies to an op whose kind this version cannot read.
-		var legacy_height := _legacy_height_of(value)
-		if is_nan(legacy_height):
-			Diag.warn("VoxelSlice.apply_edits: dropping an unrecognized edit for '%s' (%s)"
-				% [str(key), type_string(typeof(value))])
-			continue
-		var tile := _key_to_tile(str(key))
-		var stack: Array = materials.get(key, [])
-		next[key] = VoxelRuns.legacy_edit_ops(legacy_height, _base_top_for_tile(tile), stack)
-	return next
+	return _persist._normalise_edit_table(edits, materials)
 
-## Phase 91 — a typed op list, with a leading `legacy` op (a bare pre-Phase-41 height the region
-## store carried through a depletion overlay) migrated exactly as a bare number is, then the other
-## ops after it. A `legacy` op with an unreadable height is dropped with a warning.
 func _normalise_tile_ops(key: Variant, value: Array, materials: Dictionary) -> Array:
-	var has_legacy := false
-	for op in value:
-		if op is Dictionary and str(op.get("op", "")) == RegionStore.LEGACY_OP:
-			has_legacy = true
-			break
-	if not has_legacy:
-		return _normalise_ops(value)   # the hot path: no legacy op, no extra arrays
-	var rest: Array = []
-	var migrated: Array = []
-	var seen_legacy := false
-	for op in value:
-		if op is Dictionary and str(op.get("op", "")) == RegionStore.LEGACY_OP:
-			if seen_legacy:
-				continue
-			seen_legacy = true
-			var h := _legacy_height_of(op.get("height", null))
-			if is_nan(h):
-				Diag.warn("VoxelSlice.apply_edits: dropping an unreadable legacy height for '%s'" % str(key))
-				continue
-			migrated = VoxelRuns.legacy_edit_ops(h, _base_top_for_tile(_key_to_tile(str(key))), materials.get(key, []))
-		else:
-			rest.append(op)
-	return migrated + _normalise_ops(rest)
+	return _persist._normalise_tile_ops(key, value, materials)
 
-## The committing half of `apply_edits`: swap in `next` as the edit log and rebuild what
-## changed. `diff_keys` limits the change detection to those tile keys (the scoped re-scope
-## path knows nothing outside its disc moved); null compares the whole of both logs.
 func _commit_edits(next: Dictionary, diff_keys: Variant = null) -> void:
-	var previous: Dictionary = _edits
-	if diff_keys == null:
-		_partial_chunks.clear()   # the log is replaced wholesale: what it holds is the whole truth
-	# _dirty_chunks is NOT cleared here: dirty tracking is reset only by
-	# clear_dirty_chunks() after a successful save (called from PersistenceWiring._finish_save).
-	# Restored on-disk edits are not dirty — they were already persisted.
-	var touched: Dictionary = {}
-	var changed: Dictionary = {}   # chunks that own a changed tile (Phase 69: their seams)
-	var keys: Array = (diff_keys as Array) if diff_keys is Array else _union_keys(previous, next)
-	for key in keys:
-		if next.has(key):
-			if not _ops_equal(previous.get(key, null), next[key]):
-				_mark_touched_tile(touched, _key_to_tile(str(key)))
-				changed[_chunk_key(_tile_to_chunk(_key_to_tile(str(key))))] = true
-		elif previous.has(key):
-			_mark_touched_tile(touched, _key_to_tile(str(key)))
-			changed[_chunk_key(_tile_to_chunk(_key_to_tile(str(key))))] = true
-	var previous_taken: Dictionary = _vein_taken
-	_edits = next
-	# The read-side chunk index is re-derived with it (Phase 42 review pass 10): the log was
-	# replaced in one assignment, so the index is rebuilt rather than diffed.
-	_reindex_edits()
-	# Phase 69 — only the chunks that own a changed tile get a new revision (the re-index above
-	# rewrites every bucket, which must not look like an edit to the seam gate).
-	for ckey in changed:
-		_bump_chunk_rev(str(ckey))
-	# Phase 43 — a vein whose EXHAUSTION changed with the new log repaints across its whole
-	# blob, which is wider than the anchor tile the deplete op sits on (the only tile the
-	# diff above marks). A count that moved without crossing the reserve changes nothing
-	# visible, so it rebuilds nothing.
-	var vein_ids: Dictionary = previous_taken.duplicate()
-	vein_ids.merge(_vein_taken)
-	for id in vein_ids:
-		var vein := _vein_from_id(str(id))
-		if vein.is_empty():
-			continue
-		if OreField.is_live(vein, previous_taken) != OreField.is_live(vein, _vein_taken):
-			_rebuild_vein_chunks(vein)
-	# Phase 42 review pass 8 — this is the REBUILD half of the re-scope, and it goes through
-	# the manager exactly like an edit does (`_rebuild_chunk_at_tile`): `request_rebuild`
-	# dispatches the build to a WORKER (so a snapshot that changed a corner — three touched
-	# chunks — no longer rebuilds them all synchronously in the frame that applied it) and,
-	# more importantly, it SUPERSEDES a build already in flight for the chunk. The
-	# synchronous `build_chunk` this used to call bumped the chunk's revision on the main
-	# thread, which made an in-flight worker result stale (refused) while the worker's pool
-	# task was left to be awaited by nobody but the frame path — the mesh that landed was
-	# whichever one won the race. With no manager wired (the suite, a probe) the synchronous
-	# build stays, and only for a chunk that is LOADED.
-	#
-	# Phase 42 review pass 11 — the manager path is NOT gated on `_chunks`: a chunk whose
-	# FIRST build is still on a worker is in the manager's streamed set but not yet in
-	# `_chunks`, and that build read the pre-snapshot edit log. Skipping it attached a mesh
-	# without the snapshot's edits and nothing ever rebuilt it. `request_rebuild` supersedes
-	# the in-flight build and is itself a no-op for a chunk outside the streamed set.
-	for ckey in touched:
-		# `ckey` is a CHUNK key ("cx,cz"); the same "x,y" parse as a tile key reads it.
-		var chunk := _chunk_from_key(str(ckey))
-		if chunk_manager != null and chunk_manager.has_method("request_rebuild"):
-			chunk_manager.request_rebuild(chunk)
-			continue
-		if not _chunks.has(ckey) or not _heightmaps.has(ckey):
-			continue   # nothing to refresh: unloaded chunks rebuild when streamed in
-		build_chunk(chunk, _heightmaps[ckey])
-	# Phase 69 — edits that arrive after a chunk loaded reach the diagonal neighbour of a changed
-	# corner tile too; the edge neighbours were requested just above. Judged on the old AND the new
-	# ops, so removing a shaping edit (or turning it deplete-only) repairs the neighbour as well.
-	if chunk_manager != null and chunk_manager.has_method("request_rebuild"):
-		var diagonals: Dictionary = {}
-		for key in keys:
-			var tile := _key_to_tile(str(key))
-			var offs := _shaped_border_offsets(tile, previous.get(key, []), next.get(key, []))
-			if offs.size() < 3 or _ops_equal(previous.get(key, null), next.get(key, null)):
-				continue   # not a corner tile, or nothing moved
-			var dchunk: Vector2i = _tile_to_chunk(tile) + offs[2]
-			var dkey := _chunk_key(dchunk)
-			if not touched.has(dkey):
-				diagonals[dkey] = dchunk
-		for dkey in diagonals:
-			chunk_manager.request_rebuild(diagonals[dkey])
+	_persist._commit_edits(next, diff_keys)
 
 ## Phase 122 — the one place the seam gate is decided: the neighbour offsets `tile` sits against, or
 ## none when neither op list (the old and the new one; `seam_borders` passes one) can change a height.
@@ -1679,12 +1512,8 @@ static func _union_keys(a: Dictionary, b: Dictionary) -> Array:
 			keys.append(key)
 	return keys
 
-## Mark every chunk whose mesh reads `tile` — the tile's own chunk plus each
-## edge-adjacent one it sits on the edge of (see `_touched_chunks`) — as needing a
-## rebuild. The one place a tile-level change is turned into chunk-level work.
 func _mark_touched_tile(touched: Dictionary, tile: Vector2i) -> void:
-	for chunk in _touched_chunks(tile):
-		touched[_chunk_key(chunk)] = true
+	_persist._mark_touched_tile(touched, tile)
 
 ## True when two op lists describe exactly the same edits — the comparison a
 ## re-scope snapshot needs before it decides a chunk's mesh is already correct.
@@ -1714,28 +1543,11 @@ static func _ops_equal(a: Variant, b: Variant) -> bool:
 			return false
 	return true
 
-## Group voxel edits by chunk into a persistence manifest:
-##   { "cx,cz": { "edits": { "gx,gz": [typed run edit, ...] } } }
-## Only chunks with edits appear. Used by the world save snapshot so edits are
-## stored per-chunk and only dirty chunks need re-serialization.
 func get_chunk_manifest() -> Dictionary:
-	var manifest: Dictionary = {}
-	for key in _edits:
-		var chunk := _chunk_key(_tile_to_chunk(_key_to_tile(str(key))))
-		if not manifest.has(chunk):
-			manifest[chunk] = { "edits": {} }
-		manifest[chunk]["edits"][key] = _edits[key].duplicate(true)
-	return manifest
+	return _persist.get_chunk_manifest()
 
-## `get_chunk_manifest` for the SAVE: an entry of a chunk whose resident edits are partial
-## (`_partial_chunks`) carries `"merge": true`, so the region store overlays it on the stored
-## entry rather than replacing it (Phase 75). The wire snapshots use the plain manifest.
 func get_save_manifest() -> Dictionary:
-	var manifest := get_chunk_manifest()
-	for ckey in _partial_chunks:
-		if manifest.has(ckey):
-			manifest[ckey]["merge"] = true
-	return manifest
+	return _persist.get_save_manifest()
 
 ## True when chunk `chunk_pos`'s square overlaps the disc of `radius` around the world
 ## position `center` (XZ). Pure; the AOI scope of a re-scope snapshot's edits.
@@ -1746,48 +1558,11 @@ static func chunk_in_radius(chunk_pos: Vector2i, center: Vector3, radius: float)
 	var nz := clampf(center.z, min_corner.y, min_corner.y + size)
 	return Vector2(center.x - nx, center.z - nz).length() <= radius
 
-## Phase 49 — `get_chunk_manifest` restricted to chunks inside an area of interest, so a
-## re-scope snapshot ships the edits a peer can see instead of the whole world's. Walks the
-## chunk index (one parse per EDITED CHUNK, not per edit).
 func get_chunk_manifest_in_radius(center: Vector3, radius: float) -> Dictionary:
-	var manifest: Dictionary = {}
-	for ckey in _edits_by_chunk:
-		if not chunk_in_radius(_chunk_from_key(str(ckey)), center, radius):
-			continue
-		var edits: Dictionary = {}
-		for key in _edits_by_chunk[ckey]:
-			edits[key] = _edits[key].duplicate(true)
-		manifest[ckey] = { "edits": edits }
-	return manifest
+	return _persist.get_chunk_manifest_in_radius(center, radius)
 
-## Phase 49 — apply a manifest produced by `get_chunk_manifest_in_radius`. It is
-## authoritative only INSIDE its scope: edits this slice holds for chunks outside the
-## disc are kept untouched, because the host did not (and could not) restate them. Only the
-## in-scope buckets are replaced and only their tiles are diffed; the rest of the log is
-## neither re-normalised nor compared.
 func apply_scoped_chunk_manifest(manifest: Dictionary, center: Vector3, radius: float) -> void:
-	var next: Dictionary = _edits.duplicate()   # shallow: the out-of-scope op lists are shared
-	var diff_keys: Array = []
-	for ckey in _edits_by_chunk:
-		if chunk_in_radius(_chunk_from_key(str(ckey)), center, radius):
-			for key in _edits_by_chunk[ckey]:
-				next.erase(key)
-				diff_keys.append(key)
-	var edits: Dictionary = {}
-	var materials: Dictionary = {}
-	for ckey in manifest:
-		var chunk_data: Dictionary = manifest[ckey]
-		if chunk_data.has("edits"):
-			for key in chunk_data["edits"]:
-				edits[key] = chunk_data["edits"][key]
-		if chunk_data.has("materials"):
-			for key in chunk_data["materials"]:
-				materials[key] = chunk_data["materials"][key]
-	var incoming := _normalise_edit_table(edits, materials)
-	for key in incoming:
-		next[key] = incoming[key]
-		diff_keys.append(key)
-	_commit_edits(next, diff_keys)
+	_persist.apply_scoped_chunk_manifest(manifest, center, radius)
 
 ## Parse a "cx,cz" chunk key — the same "x,y" form as a tile key (`_key_to_tile`), which is
 ## the one parser.
@@ -1798,124 +1573,35 @@ static func _parse_xy(key: String) -> Vector2i:
 	var parts: PackedStringArray = key.split(",")
 	return Vector2i(int(parts[0]), int(parts[1]))
 
-## Restore voxel edits from a chunk manifest (see get_chunk_manifest). Flattens
-## the per-chunk grouping back into the global tile-keyed edit table. A manifest
-## written before Phase 41 also carries a per-chunk "materials" map; it is read and
-## handed to apply_edits for the legacy migration rather than ignored.
 func apply_chunk_manifest(manifest: Dictionary) -> void:
-	var edits: Dictionary = {}
-	var materials: Dictionary = {}
-	for ckey in manifest:
-		var chunk_data: Dictionary = manifest[ckey]
-		if chunk_data.has("edits"):
-			for key in chunk_data["edits"]:
-				edits[key] = chunk_data["edits"][key]
-		if chunk_data.has("materials"):
-			for key in chunk_data["materials"]:
-				materials[key] = chunk_data["materials"][key]
-	apply_edits(edits, materials)
-	_settle_requeue_loaded(edits.keys())
+	_persist.apply_chunk_manifest(manifest)
 
-## Phase 52 — ADD a region's edits to the log without disturbing the rest of it. The
-## streaming counterpart of `apply_chunk_manifest` (which replaces the whole log): a region
-## file is read when a window first needs it, and what it carries joins the edits already
-## resident. A chunk the log already holds is left alone — memory is at least as new as disk.
 func apply_region_chunks(manifest: Dictionary) -> void:
-	var edits: Dictionary = {}
-	var materials: Dictionary = {}
-	for ckey in manifest:
-		var rk := str(ckey)
-		var chunk_data: Dictionary = manifest[ckey]
-		if _partial_chunks.has(rk) and _edits_by_chunk.has(rk):
-			# Phase 75 — the resident ops are only the depletions written while the chunk was
-			# evicted: lay them over what the region file stores, and the chunk is whole again.
-			var resident: Dictionary = get_chunk_manifest().get(rk, { "edits": {} })
-			var whole: Dictionary = RegionStore.overlay_entry(chunk_data, resident)
-			for key in whole["edits"]:
-				edits[key] = whole["edits"][key]
-			if whole.has("materials"):
-				for key in whole["materials"]:
-					materials[key] = whole["materials"][key]
-			_partial_chunks.erase(rk)
-			continue
-		if _edits_by_chunk.has(rk) or _dirty_chunks.has(rk) or _inflight_chunks.has(rk):
-			continue
-		if chunk_data.has("edits"):
-			for key in chunk_data["edits"]:
-				edits[key] = chunk_data["edits"][key]
-		if chunk_data.has("materials"):
-			for key in chunk_data["materials"]:
-				materials[key] = chunk_data["materials"][key]
-	if edits.is_empty():
-		return
-	var incoming := _normalise_edit_table(edits, materials)
-	var next: Dictionary = _edits.duplicate()   # shallow: resident op lists are shared
-	for key in incoming:
-		next[key] = incoming[key]
-	_commit_edits(next, incoming.keys())
-	_settle_requeue_loaded(incoming.keys())
+	_persist.apply_region_chunks(manifest)
 
-## Phase 52 — drop the resident edits of the chunks in `chunk_keys` ("cx,cz") that are NOT
-## dirty, so a region that left every window stops costing memory. A dirty chunk keeps its
-## edits: they exist nowhere else until the next save carries them. Returns how many
-## chunks were released. Callers only name chunks outside every streamed window, so no
-## build is reading them.
 func evict_clean_chunks(chunk_keys: Array) -> int:
-	var released := 0
-	var next: Dictionary = _edits.duplicate()
-	for ckey in chunk_keys:
-		var k := str(ckey)
-		if _dirty_chunks.has(k) or _inflight_chunks.has(k) or not _edits_by_chunk.has(k):
-			continue
-		for key in _edits_by_chunk[k].keys():
-			for op in _edits.get(key, []):
-				if op is Dictionary and str(op.get("op", "")) == "deplete":
-					var vid := str(op["vein"])
-					_vein_carry[vid] = maxi(int(_vein_carry.get(vid, 0)), int(op["taken"]))
-			next.erase(key)
-		_partial_chunks.erase(k)
-		released += 1
-	if released > 0:
-		_edits = next
-		_reindex_edits()
-	return released
+	return _persist.evict_clean_chunks(chunk_keys)
 
-## The "cx,cz" keys of every chunk that currently has resident edits.
 func edited_chunk_keys() -> Array:
-	return _edits_by_chunk.keys()
+	return _persist.edited_chunk_keys()
 
-## Return the "cx,cz" keys of chunks modified since the last save/clear.
 func get_dirty_chunk_keys() -> Array:
-	return _dirty_chunks.keys()
+	return _persist.get_dirty_chunk_keys()
 
-## Clear the dirty-chunk tracking (call after a successful save).
 func clear_dirty_chunks() -> void:
-	_dirty_chunks.clear()
+	_persist.clear_dirty_chunks()
 
-## Remove exactly `keys` from the dirty set. The authoritative save runs the file
-## write on a worker thread, so the clear happens when the payload is COLLECTED
-## (main thread, atomically with reading it) rather than after the write lands. A
-## keyed clear is what makes that safe: an edit made while the write is in flight
-## marks its chunk dirty again and is carried by the next save, instead of being
-## swallowed by a blanket clear.
 func clear_dirty_chunk_keys(keys: Array) -> void:
-	for key in keys:
-		_dirty_chunks.erase(str(key))
+	_persist.clear_dirty_chunk_keys(keys)
 
-## Phase 52 — mark `keys` as being written (collected, not yet on disk) / as settled.
 func begin_inflight_chunks(keys: Array) -> void:
-	for key in keys:
-		_inflight_chunks[str(key)] = true
+	_persist.begin_inflight_chunks(keys)
 
 func end_inflight_chunks(keys: Array) -> void:
-	for key in keys:
-		_inflight_chunks.erase(str(key))
+	_persist.end_inflight_chunks(keys)
 
-## Re-mark `keys` dirty — the rollback for a save whose write failed, so a failed
-## write cannot lose the chunks it claimed to persist.
 func mark_dirty_chunks(keys: Array) -> void:
-	for key in keys:
-		_dirty_chunks[str(key)] = true
+	_persist.mark_dirty_chunks(keys)
 
 func set_place_material(material: String) -> void:
 	_place_material = material
