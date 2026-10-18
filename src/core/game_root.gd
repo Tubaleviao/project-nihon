@@ -296,6 +296,10 @@ func _ready() -> void:
 	_status = StatusEffects.new()
 	_battle.status_effects = _status
 	_battle.now_fn = _combat_wiring.status_now
+	_battle.attacker_pos_fn = _combat_wiring.death_attacker_pos
+	_battle.walkable_fn = _combat_wiring.death_walkable
+	_battle.ground_fn = _combat_wiring.death_ground
+	_player.death_landing_fn = _combat_wiring.player_death_landing
 	_creature_ai.status_effects = _status
 	_creature_ai.now_fn = _combat_wiring.status_now
 	# Phase 128 — weather is a pure function of the seed, the biome and the clock.

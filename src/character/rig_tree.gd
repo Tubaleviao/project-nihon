@@ -26,7 +26,7 @@ const SCALE_PARAM := "parameters/Locomotion/Scale/scale"
 ## listed in one of the two (the suite asserts the table covers every clip a rig ships).
 const LOOPING_CLIPS := ["idle", "walk", "run", "fall"]
 const ONE_SHOT_CLIPS := ["land", "attack", "attack_unarmed", "attack_1h", "attack_tool", "death", "hit",
-	"stagger", "idle_look", "idle_stretch", "sit", "lie_down", "wave"]
+	"stagger", "death_back", "death_forward", "death_side", "idle_look", "idle_stretch", "sit", "lie_down", "wave"]
 
 ## The swing a body plays by what its main hand holds; a rig missing one plays `attack`.
 const ATTACK_DEFAULT := "attack"
@@ -219,6 +219,7 @@ static func build_tree(player: AnimationPlayer) -> AnimationTree:
 	tree.set_meta("clips", clips)
 	tree.set_meta("loco_tree", loco_tree)
 	tree.set_meta("attack_node", sm.get_node("Attack"))
+	tree.set_meta("death_node", sm.get_node("Death"))
 	return tree
 
 
@@ -254,6 +255,18 @@ static func set_attack_clip(tree: Object, clip: String) -> String:
 	if node != null and clips.has(chosen):
 		node.animation = chosen
 	tree.set_meta("attack_clip", chosen)
+	return chosen
+
+
+## Phase 157 — point the Death node at the variant `clip`, falling back to `death` when the rig lacks it.
+## Returns the clip it settled on.
+static func set_death_clip(tree: Object, clip: String) -> String:
+	var clips: Dictionary = tree.get_meta("clips", {})
+	var chosen := clip if clips.has(clip) else "death"
+	var node: AnimationNodeAnimation = tree.get_meta("death_node", null)
+	if node != null and clips.has(chosen):
+		node.animation = chosen
+	tree.set_meta("death_clip", chosen)
 	return chosen
 
 
@@ -317,5 +330,7 @@ static func drive_shots(tree: Object, playback: Object, loco) -> void:
 static func drive(tree: AnimationTree, loco) -> void:
 	var playback: Object = tree.get(PLAYBACK_PARAM)
 	drive_shots(tree, playback, loco)
+	if loco.get_state() == Locomotion.State.DEATH and tree.get_meta("travel_node", "") != "Death":
+		set_death_clip(tree, loco.death_clip)
 	travel_once(tree, playback, node_for_state(loco.get_state()))
 	apply_motion(tree, loco.get_speed(), loco.get_blend_weight())

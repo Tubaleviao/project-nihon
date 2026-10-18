@@ -46,6 +46,8 @@ var attack_duration: float = ATTACK_DURATION
 ## merging into it; `attack_clip` names the variant the swing plays (see `RigTree.attack_clip_for`).
 var swing_serial: int = 0
 var attack_clip: String = "attack"
+## Phase 157 — the death variant the Death node plays (`death` when the hit had no direction).
+var death_clip: String = "death"
 ## Bumped on every hit taken; `hit_clip` is `hit`, or `stagger` for a knockback.
 var hit_serial: int = 0
 var hit_clip: String = "hit"
@@ -153,7 +155,8 @@ func trigger_hit(stagger: bool = false) -> void:
 	hit_serial += 1
 
 ## Request the death pose. Terminal until reset().
-func trigger_death() -> void:
+func trigger_death(clip: String = "death") -> void:
+	death_clip = clip
 	_set_state(State.DEATH)
 	_timer = 0.0
 

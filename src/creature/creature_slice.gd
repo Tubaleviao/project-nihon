@@ -895,7 +895,7 @@ func _biome_keys() -> Array:
 		return terrain_slice.BIOME_KEYS
 	return ["TemperateForest", "TemperateGrassland", "VolcanicBadlands", "TwilightGrove", "VoidRift", "Ocean", "Beach", "Desert", "Tundra", "Alpine", "Taiga", "Savanna"]
 
-func _on_creature_died(entity_id: String, _position: Vector3, _killer_id: String) -> void:
+func _on_creature_died(entity_id: String, _position: Vector3, _killer_id: String, landing: Vector3) -> void:
 	if entity_id == "player":
 		return
 	# entity_id may be either a fabric key or an instance_id.
@@ -909,6 +909,9 @@ func _on_creature_died(entity_id: String, _position: Vector3, _killer_id: String
 				var respawn_secs: float = float(res.get("respawnSeconds")) if res else 300.0
 				inst["state"]      = "dead"
 				inst["hp"]         = 0.0
+				# Phase 157 — the host's death push: the body's authoritative position becomes the landing.
+				if landing != Vector3.ZERO:
+					inst["position"] = landing
 				# WALL-CLOCK deadline (Phase 33) — a saved deadline must still mean
 				# the same moment in a new process, so this is Unix-epoch seconds,
 				# not process uptime.

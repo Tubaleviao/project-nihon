@@ -1501,7 +1501,7 @@ func _test_tree_shift_explicit_set() -> void:
 func _test_loot_shift_explicit_set() -> void:
 	var l := LootSlice.new()
 	add_child(l)
-	GameBus.creature_died.emit("ForestBoar", Vector3(10.0, 1.0, 5.0), "player")
+	GameBus.creature_died.emit("ForestBoar", Vector3(10.0, 1.0, 5.0), "player", Vector3.ZERO)
 	var ids: Array = l._pickups.keys()
 	assert_true(ids.size() >= 2, "a boar drops at least two pickups")
 	var extra := Node3D.new()

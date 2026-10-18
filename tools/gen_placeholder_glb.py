@@ -525,6 +525,17 @@ def build_skinned_rig(tres: Path, skin_name: str, joint_pos: dict, rest_rot: dic
             assert len(keys) == len(times), "clip %s: %d keys for %d times on %s" % (clip, len(keys), len(times), joint)
             # A figure-space turn D at the joint, on top of its rest: P^-1 D P R, with P the
             # parent's rest in figure space and R the joint's local rest.
+            if joint.endswith(":t"):
+                # A translation channel ("Root:t"): metres added to the joint's rest offset.
+                name = joint[:-2]
+                base = nodes[2 + index[name]]["translation"]
+                offsets = [c for key in keys for c in (round(base[i] + key[i], 6) for i in range(3))]
+                output = add(struct.pack("<%df" % len(offsets), *offsets), 0, 0, componentType=5126,
+                             count=len(times), type="VEC3")
+                samplers.append({"input": input_accessor, "output": output, "interpolation": "LINEAR"})
+                channels.append({"sampler": len(samplers) - 1,
+                                 "target": {"node": 2 + index[name], "path": "translation"}})
+                continue
             pw = world[bones[index[joint]][1]] if bones[index[joint]][1] else [0.0, 0.0, 0.0, 1.0]
             quats = [c for key in keys
                      for c in _quat_mul(_quat_mul(_quat_conj(pw), _quat_mul(_quat_euler(key), pw)), rest[joint])]
@@ -738,6 +749,35 @@ def creature_rigs() -> dict:
             rigs[CREATURES_DIR / f"{name}.glb.raw"] = data
     return rigs
 
+
+# Phase 157 — the death variants every rig carries, picked by the hit direction: `death_back` (thrown
+# backwards), `death_forward` (falls on its face), `death_side`. Each ends lying 85 degrees down with
+# Root lifted DEATH_LIFT_M, so the lowest bone rests within 5 cm of the ground instead of sinking.
+DEATH_LIFT_M = 0.045
+DEATH_TIMES = [0.0, 0.3, 0.9]
+
+
+def _death(axis: int, sign: float) -> dict:
+    keys = [(0, 0, 0), tuple(sign * 30 if i == axis else 0 for i in range(3)),
+            tuple(sign * 85 if i == axis else 0 for i in range(3))]
+    return {"Root": keys, "Root:t": [(0, 0, 0), (0, DEATH_LIFT_M / 2, 0), (0, DEATH_LIFT_M, 0)]}
+
+
+DEATH_VARIANTS = [("death_back", DEATH_TIMES, _death(0, 1)),
+                  ("death_forward", DEATH_TIMES, _death(0, -1)),
+                  ("death_side", DEATH_TIMES, _death(2, 1))]
+
+
+def _grounded_death(clips: list) -> None:
+    """Lift the plain `death` to rest on the ground too, then add the variants."""
+    for name, _times, channels in clips:
+        if name == "death":
+            channels["Root:t"] = [(0, 0, 0), (0, DEATH_LIFT_M / 2, 0), (0, DEATH_LIFT_M, 0)]
+    clips.extend(DEATH_VARIANTS)
+
+
+for _clips in (PLAYER_CLIPS, WOLF_CLIPS, BIRD_CLIPS, SERPENT_CLIPS):
+    _grounded_death(_clips)
 
 LOOP_CLIPS = ("idle", "walk", "run", "fall")
 MIN_PEAK_DEGREES = 10.0

@@ -743,10 +743,10 @@ func trigger_hit(instance_id: String, stagger: bool = false) -> void:
 	_m2.trigger_hit(instance_id, stagger)
 
 ## Play the death animation on an instance (terminal DEATH state).
-func trigger_death(instance_id: String) -> void:
+func trigger_death(instance_id: String, clip: String = "death") -> void:
 	if not _instances.has(instance_id):
 		return
-	_instances[instance_id]["locomotion"].trigger_death()
+	_instances[instance_id]["locomotion"].trigger_death(clip)
 
 ## Stand an instance back up after a death: DEATH is terminal until the locomotion is reset.
 func reset_locomotion(instance_id: String) -> void:

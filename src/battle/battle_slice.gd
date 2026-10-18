@@ -22,6 +22,12 @@ var creature_slice: Node = null
 ## seconds. Both are null/invalid outside a host, so a round there is plain damage.
 var status_effects: RefCounted = null
 var now_fn: Callable = Callable()
+## Phase 157 — the host's death push: `(entity_id) -> Vector3` for an attacker's world position (null
+## position vector = unknown) and `(Vector3) -> bool` for a walkable probe. Unset, a kill pushes nothing.
+var attacker_pos_fn: Callable = Callable()
+var walkable_fn: Callable = Callable()
+## `(Vector3) -> float`: ground height under a landing spot, so the body lies on the terrain.
+var ground_fn: Callable = Callable()
 ## Counts resolved rounds; the seed of the on-hit roll, so a replayed round rolls the same.
 var _round_seq: int = 0
 
@@ -116,7 +122,7 @@ func resolve_round(attacker_id: String, defender_id: String) -> Dictionary:
 				if inst["instance_id"] == defender_id or inst["creature_id"] == defender_id:
 					death_pos = inst["position"]
 					break
-		GameBus.creature_died.emit(defender_id, death_pos, attacker_id)
+		GameBus.creature_died.emit(defender_id, death_pos, attacker_id, death_landing(death_pos, attacker_id, damage, max_hp))
 
 	var result := {
 		"attacker": attacker_id,
@@ -128,6 +134,22 @@ func resolve_round(attacker_id: String, defender_id: String) -> Dictionary:
 	GameBus.combat_round_resolved.emit(result)
 	GameBus.combat_hit_resolved.emit(attacker_id, defender_id, outcome, damage)
 	return result
+
+## Phase 157 — where a killing blow leaves the body: pushed away from the attacker by `DeathPush`.
+## Host-side only (BattleSlice never runs a client's number); `Vector3.ZERO` when the attacker's position
+## is unknown, so the body stays where it fell.
+func death_landing(pos: Vector3, attacker_id: String, damage: float, max_hp: float) -> Vector3:
+	if not attacker_pos_fn.is_valid():
+		return Vector3.ZERO
+	var src: Variant = attacker_pos_fn.call(attacker_id)
+	if not (src is Vector3):
+		return Vector3.ZERO
+	var spot := DeathPush.landing(pos, src as Vector3, damage, max_hp, 1.0, walkable_fn)
+	if spot == pos:
+		return Vector3.ZERO
+	if ground_fn.is_valid():
+		spot.y = maxf(spot.y, float(ground_fn.call(spot)))
+	return spot
 
 func _now() -> float:
 	return float(now_fn.call()) if now_fn.is_valid() else 0.0

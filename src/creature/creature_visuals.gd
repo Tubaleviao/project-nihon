@@ -31,6 +31,9 @@ const SELECT_INTERVAL := 0.25
 const TELEPORT_JUMP_M := 8.0
 ## Seconds a dead creature's model holds its death pose before it is dropped.
 const CORPSE_SECONDS := 8.0
+## Phase 157 — seconds the body takes to travel from where it was struck to its landing, and the arc's height.
+const FALL_SECONDS := 0.35
+const FALL_ARC_M := 0.25
 ## Horizontal speed (m/s) above which the model turns to face the direction of travel.
 const FACE_SPEED := 0.3
 
@@ -72,6 +75,17 @@ static func select_ids(cands: Array, current: Dictionary, range_m: float, hyster
 			break
 		out.append(c[0])
 	return out
+
+
+## Pure: seconds a corpse's model stays. The fabric's `corpseSeconds` (Phase 160) when the creature
+## type has one, else CORPSE_SECONDS.
+static func corpse_seconds(creature_id: String) -> float:
+	var res: Resource = GameData.CREATURES.get(creature_id, null)
+	if res != null:
+		var v: Variant = res.get("corpseSeconds")
+		if v != null and float(v) > 0.0:
+			return float(v)
+	return CORPSE_SECONDS
 
 
 ## Pure: locomotion state for a creature AI state and horizontal speed (m/s).
@@ -249,7 +263,7 @@ func attach(iid: String, inst: Dictionary) -> bool:
 	var pos: Vector3 = inst["position"]
 	node.transform = Transform3D(Basis(), pos)
 	models[iid] = {"node": node, "tree": tree, "speed": 0.0, "last_pos": pos, "yaw": 0.0,
-		"loco": -1, "dead_at": -1.0, "state": str(inst["state"]), "swing_left": 0.0, "swing": 0, "swing_seen": 0}
+		"loco": -1, "dead_at": -1.0, "fall_t": 1.0, "fall_from": pos, "corpse_s": corpse_seconds(cid), "state": str(inst["state"]), "swing_left": 0.0, "swing": 0, "swing_seen": 0}
 	model_attached.emit(iid)
 	return true
 
@@ -284,6 +298,7 @@ func _update_model(iid: String, inst: Dictionary, delta: float) -> void:
 		# the move is not a run and the model does not turn toward it.
 		last = pos
 		m["speed"] = 0.0
+	var prev_state: String = m["state"]
 	m["state"] = state
 	var flat := Vector3(pos.x - last.x, 0.0, pos.z - last.z)
 	if flat.length() > TELEPORT_JUMP_M:
@@ -296,12 +311,24 @@ func _update_model(iid: String, inst: Dictionary, delta: float) -> void:
 	if flat.length() > 0.0 and float(m["speed"]) >= FACE_SPEED and state != "dead":
 		m["yaw"] = yaw_for_direction(flat.normalized())
 	var node: Node3D = m["node"]
-	node.transform = Transform3D(Basis(Vector3.UP, float(m["yaw"])), pos)
+	if state == "dead" and prev_state != "dead":
+		# Phase 157 — struck dead: the body flies from where it stood to the host's landing spot, and the
+		# clip follows the hit (killer to body is the direction it travelled).
+		m["fall_from"] = node.position
+		m["fall_t"] = 0.0
+		var tree_d: AnimationTree = m["tree"]
+		RigTree.set_death_clip(tree_d, DeathPush.variant(pos - (m["fall_from"] as Vector3), float(m["yaw"])))
+	var draw_pos := pos
+	if float(m["fall_t"]) < FALL_SECONDS:
+		m["fall_t"] = float(m["fall_t"]) + delta
+		var u := clampf(float(m["fall_t"]) / FALL_SECONDS, 0.0, 1.0)
+		draw_pos = (m["fall_from"] as Vector3).lerp(pos, u) + Vector3(0.0, DeathPush.arc_height(u, FALL_ARC_M), 0.0)
+	node.transform = Transform3D(Basis(Vector3.UP, float(m["yaw"])), draw_pos)
 	if state == "dead":
 		if float(m["dead_at"]) < 0.0:
 			m["dead_at"] = 0.0
 		m["dead_at"] = float(m["dead_at"]) + delta
-		if float(m["dead_at"]) >= CORPSE_SECONDS:
+		if float(m["dead_at"]) >= float(m["corpse_s"]):
 			detach(iid)
 			return
 	else:
