@@ -283,6 +283,7 @@ func _swap_in(mesh: ArrayMesh) -> void:
 	_mesh_inst.mesh = mesh
 	_mesh_inst.material_override = Horizon.curvature_material(circumference_m)
 	_mesh_inst.layers = 1 | RING_RENDER_LAYER
+	_mesh_inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_mesh_inst.position = _origin.value
 	add_child(_mesh_inst)
 
@@ -564,12 +565,19 @@ static func _add_polar(vertices: PackedVector3Array, colors: PackedColorArray, n
 			var b := base + k * n + (s + 1) % n
 			var c := base + (k + 1) * n + (s + 1) % n
 			var d := base + (k + 1) * n + s
-			indices.append_array([a, b, c, a, c, d])
+			indices.append(a)
+			indices.append(b)
+			indices.append(c)
+			indices.append(a)
+			indices.append(c)
+			indices.append(d)
 			var f := (vertices[c] - vertices[a]).cross(vertices[b] - vertices[a])
 			if f.y < 0.0:
 				f = -f
-			for v in [a, b, c, d]:
-				acc[v - base] += f
+			acc[a - base] += f
+			acc[b - base] += f
+			acc[c - base] += f
+			acc[d - base] += f
 	for v in acc:
 		var nv := v.normalized() if v.length_squared() > 0.0 else Vector3.UP
 		normals.append(nv)

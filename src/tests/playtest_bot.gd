@@ -178,11 +178,20 @@ static func report_markdown(report: Dictionary) -> String:
 ## not the key colour (the frame's height when the whole column is key).
 static func skyline_rows(img: Image, key: Color, tol: float = 0.08) -> Array:
 	var rows: Array = []
-	for x in img.get_width():
-		var row := img.get_height()
-		for y in img.get_height():
-			var c := img.get_pixel(x, y)
-			if absf(c.r - key.r) + absf(c.g - key.g) + absf(c.b - key.b) > tol * 3.0:
+	var fmt := img.duplicate() as Image
+	fmt.convert(Image.FORMAT_RGB8)
+	var data := fmt.get_data()
+	var w := fmt.get_width()
+	var h := fmt.get_height()
+	var limit := int(tol * 3.0 * 255.0)
+	var kr := int(roundf(key.r * 255.0))
+	var kg := int(roundf(key.g * 255.0))
+	var kb := int(roundf(key.b * 255.0))
+	for x in w:
+		var row := h
+		for y in h:
+			var i := (y * w + x) * 3
+			if absi(data[i] - kr) + absi(data[i + 1] - kg) + absi(data[i + 2] - kb) > limit:
 				row = y
 				break
 		rows.append(row)
@@ -706,6 +715,7 @@ func _step_horizon() -> Array:
 		cl.visible = false
 	var old_mask := cam.cull_mask
 	var old_pitch := arm.rotation_degrees.x
+	var old_yaw := pivot.global_rotation.y
 	cam.cull_mask = DistantTerrain.RING_RENDER_LAYER
 	cam.environment = keyed
 	arm.rotation_degrees.x = HORIZON_PITCH
@@ -729,6 +739,7 @@ func _step_horizon() -> Array:
 	cam.environment = null
 	cam.cull_mask = old_mask
 	arm.rotation_degrees.x = old_pitch
+	pivot.global_rotation.y = old_yaw
 	for pair in layers:
 		if is_instance_valid(pair[0]):
 			pair[0].visible = pair[1]
