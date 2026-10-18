@@ -831,6 +831,8 @@ func _step_waystone_travel() -> void:
 		var dest := { "chunk": seen["chunk"], "local": (seen["local"] as Vector3) + Vector3(WAYSTONE_GAP_M, 0.0, 0.0) }
 		_root._waystones.note_exact(b, WorldPos.normalized(dest))
 		_root._registry.record_waystones(target, [a, b])
+		# Push the list to the client as an attune would: it names the stones from this sync.
+		GameBus.waystones_synced.emit(target, _root._registry.get_waystones(target))
 		_root._registry.get_inventory(target).add_item(_root._waystones.rules()["costItem"], 5)
 		var want: Dictionary = WorldPos.normalized(dest)
 		var ok: bool = await _await_until(func():
