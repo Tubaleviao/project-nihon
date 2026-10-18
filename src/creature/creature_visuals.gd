@@ -317,7 +317,10 @@ func _update_model(iid: String, inst: Dictionary, delta: float) -> void:
 		m["fall_from"] = node.position
 		m["fall_t"] = 0.0
 		var tree_d: AnimationTree = m["tree"]
-		RigTree.set_death_clip(tree_d, DeathPush.variant(pos - (m["fall_from"] as Vector3), float(m["yaw"])))
+		# A displacement under the push's minimum is the creature's own motion, not a throw: plain `death`.
+		var thrown := pos - (m["fall_from"] as Vector3)
+		var hit_dir := thrown if Vector2(thrown.x, thrown.z).length() >= DeathPush.MIN_PUSH_M * 0.5 else Vector3.ZERO
+		RigTree.set_death_clip(tree_d, DeathPush.variant(hit_dir, float(m["yaw"])))
 	var draw_pos := pos
 	if float(m["fall_t"]) < FALL_SECONDS:
 		m["fall_t"] = float(m["fall_t"]) + delta

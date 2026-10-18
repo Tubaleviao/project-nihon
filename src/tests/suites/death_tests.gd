@@ -9,6 +9,7 @@ func register() -> void:
 	_run_test("death: a killing blow throws the body away from the killer, short of a wall", _test_push_direction_and_wall)
 	_run_test("death: the battle slice decides the landing and the creature takes it", _test_battle_landing_is_host_value)
 	_run_test("death: no client-reported landing exists to trust", _test_landing_is_host_only)
+	_run_test("death: a body lands on the ground below it, a bigger attacker throws further, no instance no push", _test_landing_ground_size_unresolved)
 	_run_test("death: the clip follows the hit direction", _test_variant_by_direction)
 	_run_test("death: every rig has the variants and ends lying on the ground", _test_rigs_end_grounded)
 	_run_test("death: a creature model falls to its landing and plays the variant", _test_visuals_fall_and_variant)
@@ -67,6 +68,35 @@ func _test_battle_landing_is_host_value() -> void:
 	assert_eq(cr.get_instance_position("w0"), landing, "the creature's authoritative position is the landing")
 	b.free()
 	cr.free()
+
+
+func _test_landing_ground_size_unresolved() -> void:
+	var b := BattleSlice.new()
+	add_child(b)
+	b.attacker_pos_fn = func(_id: String) -> Variant: return Vector3(5.0, 3.0, 0.0)
+	b.walkable_fn = Callable(self, "_flat_ground")
+	b.ground_fn = func(_p: Vector3) -> float: return 1.0
+	var spot := b.death_landing(Vector3(10.0, 3.0, 0.0), "player", 5.0, 10.0)
+	assert_true(spot != Vector3.ZERO, "the body is thrown")
+	assert_eq(spot.y, 1.0, "downhill, it rests on the lower ground rather than hovering at its old height")
+	var near := b.death_landing(Vector3(10.0, 3.0, 0.0), "player", 1.0, 100.0, 1.0).x - 10.0
+	var far := b.death_landing(Vector3(10.0, 3.0, 0.0), "player", 1.0, 100.0, 2.0).x - 10.0
+	assert_true(far > near, "a bigger attacker throws further (%.2f > %.2f)" % [far, near])
+	assert_eq(b.size_ratio("no_such_attacker", 50.0), 1.0, "an unknown attacker reads as even")
+	# A dying creature with no resolved instance is not thrown from the world origin.
+	var seen := {}
+	var on_died := func(_id: String, _pos: Vector3, _killer: String, landing: Vector3) -> void:
+		seen["landing"] = landing
+	GameBus.creature_died.connect(on_died)
+	b._hp_state["ghost"] = 0.01
+	seed(3)
+	for _i in range(200):
+		b.resolve_round("player", "ghost")
+		if seen.has("landing"):
+			break
+	GameBus.creature_died.disconnect(on_died)
+	assert_eq(seen.get("landing", Vector3.ONE), Vector3.ZERO, "no instance, no push")
+	b.free()
 
 
 func _test_landing_is_host_only() -> void:

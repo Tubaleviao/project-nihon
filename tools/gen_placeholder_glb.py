@@ -807,7 +807,7 @@ def check_peaks() -> list:
     problems = []
     for rig, clips in RIGS().items():
         for name, _times, joints in clips:
-            peak = max((abs(v) for keys in joints.values() for key in keys for v in key), default=0.0)
+            peak = max((abs(v) for joint, keys in joints.items() if not joint.endswith(":t") for key in keys for v in key), default=0.0)
             if peak < MIN_PEAK_DEGREES:
                 problems.append(f"{rig}/{name}: peak rotation {peak} degrees is under {MIN_PEAK_DEGREES}")
     return problems

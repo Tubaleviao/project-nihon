@@ -74,6 +74,10 @@ const VoxelSliceScript := preload("res://src/terrain/voxel_slice.gd")
 
 const MAX_HP := PlayerRules.MAX_HP
 
+## Phase 157 — `(killer_id, position, damage, max_hp) -> Vector3`: the host's death push, set by game_root.
+## Unset (or on a client) the body lands where it fell.
+var death_landing_fn: Callable = Callable()
+
 var _body:   CharacterBody3D
 var _camera: Camera3D
 var _pivot:  Node3D           # horizontal yaw pivot under _body
@@ -833,10 +837,6 @@ func _broadcast_state() -> void:
 	}
 	GameBus.player_state_changed.emit(payload)
 	GameBus.player_state_sync_requested.emit(payload)
-
-## Phase 157 — `(killer_id, position, damage, max_hp) -> Vector3`: the host's death push, set by game_root.
-## Unset (or on a client) the body lands where it fell.
-var death_landing_fn: Callable = Callable()
 
 func _die(killer_id: String = "", killing_damage: float = 0.0) -> void:
 	_alive = false

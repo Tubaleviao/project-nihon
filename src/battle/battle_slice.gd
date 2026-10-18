@@ -117,12 +117,16 @@ func resolve_round(attacker_id: String, defender_id: String) -> Dictionary:
 		outcome = "kill"
 		# Resolve world position from creature_slice for loot drop placement.
 		var death_pos := Vector3.ZERO
+		var pos_found := false
 		if creature_slice != null:
 			for inst in creature_slice.get_all_instances():
 				if inst["instance_id"] == defender_id or inst["creature_id"] == defender_id:
 					death_pos = inst["position"]
+					pos_found = true
 					break
-		GameBus.creature_died.emit(defender_id, death_pos, attacker_id, death_landing(death_pos, attacker_id, damage, max_hp))
+		# No resolved position, no push: a throw from the world origin would land somewhere unrelated.
+		var landing := death_landing(death_pos, attacker_id, damage, max_hp, size_ratio(attacker_id, max_hp)) if pos_found else Vector3.ZERO
+		GameBus.creature_died.emit(defender_id, death_pos, attacker_id, landing)
 
 	var result := {
 		"attacker": attacker_id,
@@ -135,20 +139,29 @@ func resolve_round(attacker_id: String, defender_id: String) -> Dictionary:
 	GameBus.combat_hit_resolved.emit(attacker_id, defender_id, outcome, damage)
 	return result
 
+## Phase 157 — attacker/target size ratio for the death push. Creatures carry no size field, so the
+## base hit points stand in for body volume (cube root); an unknown attacker reads as 1.0.
+func size_ratio(attacker_id: String, target_hp: float) -> float:
+	var attacker_res := _lookup(attacker_id)
+	if attacker_res == null or target_hp <= 0.0:
+		return 1.0
+	var attacker_hp := float(_field(attacker_res, "baseHp", target_hp))
+	return pow(maxf(attacker_hp, 0.001) / target_hp, 1.0 / 3.0)
+
 ## Phase 157 — where a killing blow leaves the body: pushed away from the attacker by `DeathPush`.
 ## Host-side only (BattleSlice never runs a client's number); `Vector3.ZERO` when the attacker's position
 ## is unknown, so the body stays where it fell.
-func death_landing(pos: Vector3, attacker_id: String, damage: float, max_hp: float) -> Vector3:
+func death_landing(pos: Vector3, attacker_id: String, damage: float, max_hp: float, ratio: float = 1.0) -> Vector3:
 	if not attacker_pos_fn.is_valid():
 		return Vector3.ZERO
 	var src: Variant = attacker_pos_fn.call(attacker_id)
 	if not (src is Vector3):
 		return Vector3.ZERO
-	var spot := DeathPush.landing(pos, src as Vector3, damage, max_hp, 1.0, walkable_fn)
+	var spot := DeathPush.landing(pos, src as Vector3, damage, max_hp, ratio, walkable_fn)
 	if spot == pos:
 		return Vector3.ZERO
 	if ground_fn.is_valid():
-		spot.y = maxf(spot.y, float(ground_fn.call(spot)))
+		spot.y = float(ground_fn.call(spot))   # the body rests on the ground it lands on, uphill or down
 	return spot
 
 func _now() -> float:

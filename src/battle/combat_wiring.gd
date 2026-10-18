@@ -149,10 +149,18 @@ func on_player_damaged(damage: float, attacker_id: String, target_id: String) ->
 	# (an unmodelled body has no evidence behind it, and the peer's word is not
 	# evidence — see PlayerRegistry.simulated_hp_after_hit), then the hit lands on the
 	# number this process holds.
+	var was_downed := PlayerRegistry.is_downed(root._registry.get_hp(target_id))
 	var simulated := PlayerRegistry.simulated_hp_after_hit(
 		root._registry.get_hp(target_id), damage, PlayerSlice.MAX_HP)
 	root._registry.record_simulated_hp(target_id, simulated)
 	root._networking.send_player_damaged(peer, damage, attacker_id)
+	# Phase 157 — the killing blow throws a peer's body like any other: the host picks the spot, the
+	# peer's client is teleported there.
+	if PlayerRegistry.is_downed(simulated) and not was_downed and root._networking.has_last_known_state(peer):
+		var pos: Vector3 = root._networking.get_last_known_state(peer)
+		var landing := player_death_landing(attacker_id, pos, damage, PlayerSlice.MAX_HP)
+		if landing != Vector3.ZERO:
+			root._networking.send_teleport(peer, WorldPos.from_world(landing.x, landing.y, landing.z))
 	# Phase 129 — a downed body loses every effect.
 	if root._status != null and PlayerRegistry.is_downed(simulated):
 		root._status.clear(target_id)
@@ -238,7 +246,7 @@ func death_attacker_pos(attacker_id: String) -> Variant:
 func player_death_landing(killer_id: String, pos: Vector3, damage: float, max_hp: float) -> Vector3:
 	if root._is_client or killer_id == "":
 		return Vector3.ZERO
-	return root._battle.death_landing(pos, killer_id, damage, max_hp)
+	return root._battle.death_landing(pos, killer_id, damage, max_hp, root._battle.size_ratio(killer_id, max_hp))
 
 ## Phase 157 — a body may land on ground it can step onto (the knockback rule).
 func death_walkable(probe: Vector3) -> bool:
@@ -289,8 +297,9 @@ func _on_player_died(death_pos: Vector3, killer_id: String, landing: Vector3) ->
 		return
 	# Phase 157 — the death variant follows the hit: killer to body, against the way the avatar faces.
 	var src: Variant = death_attacker_pos(killer_id) if killer_id != "" else null
-	if src is Vector3:
-		var clip := DeathPush.variant(death_pos - (src as Vector3), ((root._character._instances[who]["root"]) as Node3D).rotation.y)
+	var avatar: Variant = root._character._instances.get(who, {}).get("root")
+	if src is Vector3 and avatar is Node3D:
+		var clip := DeathPush.variant(death_pos - (src as Vector3), (avatar as Node3D).rotation.y)
 		if clip != DeathPush.DEATH_DEFAULT:
 			root._character.trigger_death(who, clip)
 			return
