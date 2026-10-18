@@ -42,22 +42,22 @@ server work.
   margin) instead of Godot's 4,000 m default.
 
 **Acceptance criteria:**
-- [ ] Suite: `horizon.gd` — `curvature_drop` at 1 km, 10 km and 100 km and `horizon_distance` at
+- [x] Suite: `horizon.gd` — `curvature_drop` at 1 km, 10 km and 100 km and `horizon_distance` at
   1.7 m, 10 m and 500 m match the closed forms for the default circumference, and the
   `visible_over_horizon` boundary sits where the two distances sum.
-- [ ] Suite: a built ring's outer silhouette is a circle: the horizontal distance of every outermost
+- [x] Suite: a built ring's outer silhouette is a circle: the horizontal distance of every outermost
   vertex from the ring centre is within one outer cell of the radius in every direction (the four
   corners of the old square are gone), and no vertex lies beyond it.
-- [ ] Suite: the outer radius is at least `horizon_distance` for the player's eye height at the
+- [x] Suite: the outer radius is at least `horizon_distance` for the player's eye height at the
   default and the maximum camera distance, and the camera's `far` is at least that radius.
-- [ ] Suite: the ring still leaves the voxel window's hole exact (the existing clip and skirt tests
+- [x] Suite: the ring still leaves the voxel window's hole exact (the existing clip and skirt tests
   pass on the polar lattice), carries no collision body, and the vertex count is within budget.
-- [ ] Suite: the ring shader's drop equals `curvature_drop` (the shader constant is read from
+- [x] Suite: the ring shader's drop equals `curvature_drop` (the shader constant is read from
   `horizon.gd`, not duplicated), and the sky's horizon colour equals the fog colour at noon, dusk
   and night.
-- [ ] Playtest bot: a `horizon` step faces open sea from the nearest coast in four headings and
+- [x] Playtest bot: a `horizon` step faces open sea from the nearest coast in four headings and
   finds the skyline (the first non-sky row per column) flat to within 2 px across the frame.
-- [ ] Suite green on both boot paths, harness green.
+- [x] Suite green on both boot paths, harness green.
 
 **Implementation notes:**
 - The square lattice of Phase 51 is kept unchanged as the inner part (its vertices, clipped strips
