@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:4eefd46981336317e7b6eec1b020cfbc730aad2a2f9e87067d4ef78506eecf80",
+  "schemaHash": "sha256:9652dbab055ee09ede492a213802b14b69f7113e6e5dec3de1884b222705a5a7",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -17134,6 +17134,906 @@
             }
           ]
         },
+        "pii": [],
+        "gdpr": {}
+      },
+      "Sit": {
+        "name": "Sit",
+        "tags": [
+          "gesture"
+        ],
+        "description": "Sit on a seat-height surface or the ground edge; a small rest bonus.",
+        "goal": "Let players look alive together: sit, lie down and signal each other",
+        "fields": {
+          "clip": {
+            "name": "clip",
+            "type": "string",
+            "description": "Rig clip name",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "sit"
+          },
+          "kind": {
+            "name": "kind",
+            "type": "enum",
+            "description": "`pose` (held until cancelled) or `oneShot`",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pose",
+              "oneShot"
+            ],
+            "pii": false,
+            "defaultValue": "pose"
+          },
+          "cancelOnMove": {
+            "name": "cancelOnMove",
+            "type": "boolean",
+            "description": "A movement intent ends the gesture",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "cancelOnDamage": {
+            "name": "cancelOnDamage",
+            "type": "boolean",
+            "description": "Taking damage ends the gesture",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "requiresGround": {
+            "name": "requiresGround",
+            "type": "boolean",
+            "description": "The player must stand on the ground to start it",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "restRegen": {
+            "name": "restRegen",
+            "type": "decimal",
+            "description": "HP/stamina regeneration multiplier while held (1.0 = none, never below)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1.5
+          },
+          "chatCommand": {
+            "name": "chatCommand",
+            "type": "string",
+            "description": "Slash command that starts the gesture",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "/sit"
+          },
+          "nameKey": {
+            "name": "nameKey",
+            "type": "string",
+            "description": "Translation key for the gesture name",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "gesture.sit"
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "SitGround": {
+        "name": "SitGround",
+        "tags": [
+          "gesture"
+        ],
+        "description": "Sit cross-legged on the ground; a small rest bonus.",
+        "goal": "Let players look alive together: sit, lie down and signal each other",
+        "fields": {
+          "clip": {
+            "name": "clip",
+            "type": "string",
+            "description": "Rig clip name",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "sit_ground"
+          },
+          "kind": {
+            "name": "kind",
+            "type": "enum",
+            "description": "`pose` (held until cancelled) or `oneShot`",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pose",
+              "oneShot"
+            ],
+            "pii": false,
+            "defaultValue": "pose"
+          },
+          "cancelOnMove": {
+            "name": "cancelOnMove",
+            "type": "boolean",
+            "description": "A movement intent ends the gesture",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "cancelOnDamage": {
+            "name": "cancelOnDamage",
+            "type": "boolean",
+            "description": "Taking damage ends the gesture",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "requiresGround": {
+            "name": "requiresGround",
+            "type": "boolean",
+            "description": "The player must stand on the ground to start it",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "restRegen": {
+            "name": "restRegen",
+            "type": "decimal",
+            "description": "HP/stamina regeneration multiplier while held (1.0 = none, never below)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1.5
+          },
+          "chatCommand": {
+            "name": "chatCommand",
+            "type": "string",
+            "description": "Slash command that starts the gesture",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "/sitground"
+          },
+          "nameKey": {
+            "name": "nameKey",
+            "type": "string",
+            "description": "Translation key for the gesture name",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "gesture.sit_ground"
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "LieDown": {
+        "name": "LieDown",
+        "tags": [
+          "gesture"
+        ],
+        "description": "Lie down flat; the best rest bonus, and any hit gets you up.",
+        "goal": "Let players look alive together: sit, lie down and signal each other",
+        "fields": {
+          "clip": {
+            "name": "clip",
+            "type": "string",
+            "description": "Rig clip name",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "lie_down"
+          },
+          "kind": {
+            "name": "kind",
+            "type": "enum",
+            "description": "`pose` (held until cancelled) or `oneShot`",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pose",
+              "oneShot"
+            ],
+            "pii": false,
+            "defaultValue": "pose"
+          },
+          "cancelOnMove": {
+            "name": "cancelOnMove",
+            "type": "boolean",
+            "description": "A movement intent ends the gesture",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "cancelOnDamage": {
+            "name": "cancelOnDamage",
+            "type": "boolean",
+            "description": "Taking damage ends the gesture",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "requiresGround": {
+            "name": "requiresGround",
+            "type": "boolean",
+            "description": "The player must stand on the ground to start it",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "restRegen": {
+            "name": "restRegen",
+            "type": "decimal",
+            "description": "HP/stamina regeneration multiplier while held (1.0 = none, never below)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 2
+          },
+          "chatCommand": {
+            "name": "chatCommand",
+            "type": "string",
+            "description": "Slash command that starts the gesture",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "/lie"
+          },
+          "nameKey": {
+            "name": "nameKey",
+            "type": "string",
+            "description": "Translation key for the gesture name",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "gesture.lie_down"
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "Wave": {
+        "name": "Wave",
+        "tags": [
+          "gesture"
+        ],
+        "description": "Wave a hand in greeting.",
+        "goal": "Let players look alive together: sit, lie down and signal each other",
+        "fields": {
+          "clip": {
+            "name": "clip",
+            "type": "string",
+            "description": "Rig clip name",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "wave"
+          },
+          "kind": {
+            "name": "kind",
+            "type": "enum",
+            "description": "`pose` (held until cancelled) or `oneShot`",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pose",
+              "oneShot"
+            ],
+            "pii": false,
+            "defaultValue": "oneShot"
+          },
+          "cancelOnMove": {
+            "name": "cancelOnMove",
+            "type": "boolean",
+            "description": "A movement intent ends the gesture",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "cancelOnDamage": {
+            "name": "cancelOnDamage",
+            "type": "boolean",
+            "description": "Taking damage ends the gesture",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "requiresGround": {
+            "name": "requiresGround",
+            "type": "boolean",
+            "description": "The player must stand on the ground to start it",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "restRegen": {
+            "name": "restRegen",
+            "type": "decimal",
+            "description": "HP/stamina regeneration multiplier while held (1.0 = none, never below)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          },
+          "chatCommand": {
+            "name": "chatCommand",
+            "type": "string",
+            "description": "Slash command that starts the gesture",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "/wave"
+          },
+          "nameKey": {
+            "name": "nameKey",
+            "type": "string",
+            "description": "Translation key for the gesture name",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "gesture.wave"
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "Point": {
+        "name": "Point",
+        "tags": [
+          "gesture"
+        ],
+        "description": "Point ahead.",
+        "goal": "Let players look alive together: sit, lie down and signal each other",
+        "fields": {
+          "clip": {
+            "name": "clip",
+            "type": "string",
+            "description": "Rig clip name",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "point"
+          },
+          "kind": {
+            "name": "kind",
+            "type": "enum",
+            "description": "`pose` (held until cancelled) or `oneShot`",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pose",
+              "oneShot"
+            ],
+            "pii": false,
+            "defaultValue": "oneShot"
+          },
+          "cancelOnMove": {
+            "name": "cancelOnMove",
+            "type": "boolean",
+            "description": "A movement intent ends the gesture",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "cancelOnDamage": {
+            "name": "cancelOnDamage",
+            "type": "boolean",
+            "description": "Taking damage ends the gesture",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "requiresGround": {
+            "name": "requiresGround",
+            "type": "boolean",
+            "description": "The player must stand on the ground to start it",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "restRegen": {
+            "name": "restRegen",
+            "type": "decimal",
+            "description": "HP/stamina regeneration multiplier while held (1.0 = none, never below)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          },
+          "chatCommand": {
+            "name": "chatCommand",
+            "type": "string",
+            "description": "Slash command that starts the gesture",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "/point"
+          },
+          "nameKey": {
+            "name": "nameKey",
+            "type": "string",
+            "description": "Translation key for the gesture name",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "gesture.point"
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "Bow": {
+        "name": "Bow",
+        "tags": [
+          "gesture"
+        ],
+        "description": "Bow politely.",
+        "goal": "Let players look alive together: sit, lie down and signal each other",
+        "fields": {
+          "clip": {
+            "name": "clip",
+            "type": "string",
+            "description": "Rig clip name",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "bow"
+          },
+          "kind": {
+            "name": "kind",
+            "type": "enum",
+            "description": "`pose` (held until cancelled) or `oneShot`",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pose",
+              "oneShot"
+            ],
+            "pii": false,
+            "defaultValue": "oneShot"
+          },
+          "cancelOnMove": {
+            "name": "cancelOnMove",
+            "type": "boolean",
+            "description": "A movement intent ends the gesture",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "cancelOnDamage": {
+            "name": "cancelOnDamage",
+            "type": "boolean",
+            "description": "Taking damage ends the gesture",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "requiresGround": {
+            "name": "requiresGround",
+            "type": "boolean",
+            "description": "The player must stand on the ground to start it",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "restRegen": {
+            "name": "restRegen",
+            "type": "decimal",
+            "description": "HP/stamina regeneration multiplier while held (1.0 = none, never below)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          },
+          "chatCommand": {
+            "name": "chatCommand",
+            "type": "string",
+            "description": "Slash command that starts the gesture",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "/bow"
+          },
+          "nameKey": {
+            "name": "nameKey",
+            "type": "string",
+            "description": "Translation key for the gesture name",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "gesture.bow"
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "Cheer": {
+        "name": "Cheer",
+        "tags": [
+          "gesture"
+        ],
+        "description": "Raise both arms and cheer.",
+        "goal": "Let players look alive together: sit, lie down and signal each other",
+        "fields": {
+          "clip": {
+            "name": "clip",
+            "type": "string",
+            "description": "Rig clip name",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "cheer"
+          },
+          "kind": {
+            "name": "kind",
+            "type": "enum",
+            "description": "`pose` (held until cancelled) or `oneShot`",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pose",
+              "oneShot"
+            ],
+            "pii": false,
+            "defaultValue": "oneShot"
+          },
+          "cancelOnMove": {
+            "name": "cancelOnMove",
+            "type": "boolean",
+            "description": "A movement intent ends the gesture",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "cancelOnDamage": {
+            "name": "cancelOnDamage",
+            "type": "boolean",
+            "description": "Taking damage ends the gesture",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "requiresGround": {
+            "name": "requiresGround",
+            "type": "boolean",
+            "description": "The player must stand on the ground to start it",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "restRegen": {
+            "name": "restRegen",
+            "type": "decimal",
+            "description": "HP/stamina regeneration multiplier while held (1.0 = none, never below)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          },
+          "chatCommand": {
+            "name": "chatCommand",
+            "type": "string",
+            "description": "Slash command that starts the gesture",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "/cheer"
+          },
+          "nameKey": {
+            "name": "nameKey",
+            "type": "string",
+            "description": "Translation key for the gesture name",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "gesture.cheer"
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "Shrug": {
+        "name": "Shrug",
+        "tags": [
+          "gesture"
+        ],
+        "description": "Shrug.",
+        "goal": "Let players look alive together: sit, lie down and signal each other",
+        "fields": {
+          "clip": {
+            "name": "clip",
+            "type": "string",
+            "description": "Rig clip name",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "shrug"
+          },
+          "kind": {
+            "name": "kind",
+            "type": "enum",
+            "description": "`pose` (held until cancelled) or `oneShot`",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pose",
+              "oneShot"
+            ],
+            "pii": false,
+            "defaultValue": "oneShot"
+          },
+          "cancelOnMove": {
+            "name": "cancelOnMove",
+            "type": "boolean",
+            "description": "A movement intent ends the gesture",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "cancelOnDamage": {
+            "name": "cancelOnDamage",
+            "type": "boolean",
+            "description": "Taking damage ends the gesture",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "requiresGround": {
+            "name": "requiresGround",
+            "type": "boolean",
+            "description": "The player must stand on the ground to start it",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "restRegen": {
+            "name": "restRegen",
+            "type": "decimal",
+            "description": "HP/stamina regeneration multiplier while held (1.0 = none, never below)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          },
+          "chatCommand": {
+            "name": "chatCommand",
+            "type": "string",
+            "description": "Slash command that starts the gesture",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "/shrug"
+          },
+          "nameKey": {
+            "name": "nameKey",
+            "type": "string",
+            "description": "Translation key for the gesture name",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "gesture.shrug"
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "Clap": {
+        "name": "Clap",
+        "tags": [
+          "gesture"
+        ],
+        "description": "Clap hands.",
+        "goal": "Let players look alive together: sit, lie down and signal each other",
+        "fields": {
+          "clip": {
+            "name": "clip",
+            "type": "string",
+            "description": "Rig clip name",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "clap"
+          },
+          "kind": {
+            "name": "kind",
+            "type": "enum",
+            "description": "`pose` (held until cancelled) or `oneShot`",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pose",
+              "oneShot"
+            ],
+            "pii": false,
+            "defaultValue": "oneShot"
+          },
+          "cancelOnMove": {
+            "name": "cancelOnMove",
+            "type": "boolean",
+            "description": "A movement intent ends the gesture",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "cancelOnDamage": {
+            "name": "cancelOnDamage",
+            "type": "boolean",
+            "description": "Taking damage ends the gesture",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "requiresGround": {
+            "name": "requiresGround",
+            "type": "boolean",
+            "description": "The player must stand on the ground to start it",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "restRegen": {
+            "name": "restRegen",
+            "type": "decimal",
+            "description": "HP/stamina regeneration multiplier while held (1.0 = none, never below)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          },
+          "chatCommand": {
+            "name": "chatCommand",
+            "type": "string",
+            "description": "Slash command that starts the gesture",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "/clap"
+          },
+          "nameKey": {
+            "name": "nameKey",
+            "type": "string",
+            "description": "Translation key for the gesture name",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "gesture.clap"
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "Kneel": {
+        "name": "Kneel",
+        "tags": [
+          "gesture"
+        ],
+        "description": "Kneel on one knee.",
+        "goal": "Let players look alive together: sit, lie down and signal each other",
+        "fields": {
+          "clip": {
+            "name": "clip",
+            "type": "string",
+            "description": "Rig clip name",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "kneel"
+          },
+          "kind": {
+            "name": "kind",
+            "type": "enum",
+            "description": "`pose` (held until cancelled) or `oneShot`",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pose",
+              "oneShot"
+            ],
+            "pii": false,
+            "defaultValue": "pose"
+          },
+          "cancelOnMove": {
+            "name": "cancelOnMove",
+            "type": "boolean",
+            "description": "A movement intent ends the gesture",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "cancelOnDamage": {
+            "name": "cancelOnDamage",
+            "type": "boolean",
+            "description": "Taking damage ends the gesture",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "requiresGround": {
+            "name": "requiresGround",
+            "type": "boolean",
+            "description": "The player must stand on the ground to start it",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "restRegen": {
+            "name": "restRegen",
+            "type": "decimal",
+            "description": "HP/stamina regeneration multiplier while held (1.0 = none, never below)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          },
+          "chatCommand": {
+            "name": "chatCommand",
+            "type": "string",
+            "description": "Slash command that starts the gesture",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "/kneel"
+          },
+          "nameKey": {
+            "name": "nameKey",
+            "type": "string",
+            "description": "Translation key for the gesture name",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "gesture.kneel"
+          }
+        },
+        "relations": {},
+        "behaviors": {},
         "pii": [],
         "gdpr": {}
       },

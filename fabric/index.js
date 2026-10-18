@@ -20,6 +20,7 @@ const combat       = require('./gameplay/combat')
 const economy      = require('./gameplay/economy')
 const player       = require('./gameplay/player')
 const loot         = require('./gameplay/loot')
+const gestures     = require('./gameplay/gestures')
 const persistence  = require('./gameplay/persistence')
 const skeletons    = require('./gameplay/characters/skeletons')
 const palettes     = require('./gameplay/characters/palettes')
@@ -46,6 +47,9 @@ require('./world/creatures/shared').validateSkeletonFields(creatures)
 
 // Phase 137 — every biome's `surfaceMaterial` must declare whether it is `granular` (settles when undermined).
 require('./world/materials/granular').validateGranular(require('./world/biomes'), materials)
+
+// Phase 158 — the gesture table must be well formed (known kinds, unique chat commands, restRegen >= 1).
+gestures.validateGestures(gestures.gestureTable())
 
 // Phase 151 — every entity tagged `item` needs a shape: a known archetype, and a real material for each of its parts.
 {
@@ -185,6 +189,8 @@ module.exports = defineFabric({
       VoidRuneTablet:           items.VoidRuneTablet,
       LumenfiteOrb:             items.LumenfiteOrb,
     },
+    // Gameplay — Gestures
+    gestures.GESTURES,
     // Gameplay — Recipes
     {
       RecipeFerriteIngot:              recipes.RecipeFerriteIngot,

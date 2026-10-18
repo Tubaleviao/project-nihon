@@ -53,6 +53,19 @@ const DECISIONS: Dictionary = {
 		"WaystonesAmendNoTeleportation": preload("res://godot/decisions/waystonesamendnoteleportation.tres")
 }
 
+const GESTURES: Dictionary = {
+		"Bow": preload("res://godot/gestures/bow.tres"),
+		"Cheer": preload("res://godot/gestures/cheer.tres"),
+		"Clap": preload("res://godot/gestures/clap.tres"),
+		"Kneel": preload("res://godot/gestures/kneel.tres"),
+		"LieDown": preload("res://godot/gestures/liedown.tres"),
+		"Point": preload("res://godot/gestures/point.tres"),
+		"Shrug": preload("res://godot/gestures/shrug.tres"),
+		"Sit": preload("res://godot/gestures/sit.tres"),
+		"SitGround": preload("res://godot/gestures/sitground.tres"),
+		"Wave": preload("res://godot/gestures/wave.tres")
+}
+
 const ITEMS: Dictionary = {
 		"AethermiteBow": preload("res://godot/items/aethermitebow.tres"),
 		"AethermiteDust": preload("res://godot/items/aethermitedust.tres"),

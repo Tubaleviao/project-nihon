@@ -1,0 +1,16 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/gestures/point.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+clip = "point"
+kind = 1
+cancelOnMove = false
+cancelOnDamage = false
+requiresGround = false
+restRegen = 1.0
+chatCommand = "/point"
+nameKey = "gesture.point"
+description = "Point ahead."
+tags = ["gesture"]

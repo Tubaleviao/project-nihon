@@ -1,0 +1,16 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/gestures/liedown.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+clip = "lie_down"
+kind = 0
+cancelOnMove = true
+cancelOnDamage = true
+requiresGround = true
+restRegen = 2.0
+chatCommand = "/lie"
+nameKey = "gesture.lie_down"
+description = "Lie down flat; the best rest bonus, and any hit gets you up."
+tags = ["gesture"]
