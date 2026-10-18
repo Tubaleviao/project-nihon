@@ -27,6 +27,10 @@ var _remote_poses: Dictionary = {}
 var _applied: Dictionary = {}
 ## Host: "viewer:subject" peer pairs already told about a held pose (the viewer had it in its AOI).
 var _entered: Dictionary = {}
+## Regen owed per player, applied once a second: each HP write broadcasts the body's state to peers.
+var _regen_owed: Dictionary = {}
+const REGEN_APPLY_INTERVAL := 1.0
+var _regen_clock: float = 0.0
 
 func _connect_all() -> void:
 	connect_bus(GameBus.gesture_intent, _on_gesture_intent)
@@ -164,10 +168,20 @@ func tick(delta: float) -> void:
 		root._gesture.note_position(local, root._player.get_position())
 	_replay_to_entrants()
 	# restRegen: a held rest pose regains HP at the base rate times its multiplier (host-resolved).
-	for pid in root._gesture.held_poses():
+	var held: Dictionary = root._gesture.held_poses()
+	for pid in _regen_owed.keys():
+		if not held.has(pid):
+			_regen_owed.erase(pid)
+	for pid in held:
 		var mult: float = root._gesture.regen_multiplier(str(pid))
 		if mult > 1.0:
-			_regen(str(pid), GestureRules.regen_amount(mult, delta))
+			_regen_owed[pid] = float(_regen_owed.get(pid, 0.0)) + GestureRules.regen_amount(mult, delta)
+	_regen_clock += delta
+	if _regen_clock >= REGEN_APPLY_INTERVAL:
+		_regen_clock = 0.0
+		for pid in _regen_owed:
+			_regen(str(pid), float(_regen_owed[pid]))
+		_regen_owed.clear()
 
 ## A viewer that walks into range of a player who already holds a pose is told it once (the join handler
 ## covers late joiners; this covers everyone else). A pair that leaves range is forgotten, so re-entry replays.
