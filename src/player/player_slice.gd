@@ -74,6 +74,10 @@ const VoxelSliceScript := preload("res://src/terrain/voxel_slice.gd")
 
 const MAX_HP := PlayerRules.MAX_HP
 
+## Phase 157 — `(killer_id, position, damage, max_hp) -> Vector3`: the host's death push, set by game_root.
+## Unset (or on a client) the body lands where it fell.
+var death_landing_fn: Callable = Callable()
+
 var _body:   CharacterBody3D
 var _camera: Camera3D
 var _pivot:  Node3D           # horizontal yaw pivot under _body
@@ -626,7 +630,7 @@ func take_damage(dmg: float, killer_id: String = "") -> void:
 	_update_hp_bar()
 	_broadcast_state()
 	if _hp <= 0.0 and _alive:
-		_die(killer_id)
+		_die(killer_id, dmg)
 
 # ---------------------------------------------------------------------------
 # Private
@@ -834,10 +838,13 @@ func _broadcast_state() -> void:
 	GameBus.player_state_changed.emit(payload)
 	GameBus.player_state_sync_requested.emit(payload)
 
-func _die(killer_id: String = "") -> void:
+func _die(killer_id: String = "", killing_damage: float = 0.0) -> void:
 	_alive = false
 	_respawn_timer = RESPAWN_DELAY
-	GameBus.player_died.emit(get_position(), killer_id)
+	var landing := Vector3.ZERO
+	if death_landing_fn.is_valid() and killing_damage > 0.0:
+		landing = death_landing_fn.call(killer_id, get_position(), killing_damage, MAX_HP)
+	GameBus.player_died.emit(get_position(), killer_id, landing)
 
 ## Phase 53 — where a respawn puts the body: the player's own spawn point (game_root sets it from
 ## the placement), not a fixed world coordinate that may now be open ocean.

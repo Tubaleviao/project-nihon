@@ -252,7 +252,9 @@ signal resource_gathered(player_id: String, material: String, quantity: int)
 ## entity_id   : String   — creature key or "player"
 ## position    : Vector3  — world position of the death
 ## killer_id   : String   — entity_id of the killer ("" if environmental)
-signal creature_died(entity_id: String, position: Vector3, killer_id: String)
+## landing     : Vector3  — Phase 157: where the death push leaves the body, decided by the host
+##               (Vector3.ZERO when no push applies)
+signal creature_died(entity_id: String, position: Vector3, killer_id: String, landing: Vector3)
 
 ## Emitted by CreatureSlice when a new creature instance enters the world.
 ## instance_id : String   — unique runtime identifier for this instance
@@ -511,7 +513,8 @@ signal player_damaged(damage: float, attacker_id: String, target_id: String)
 ## Emitted by PlayerSlice when the player's HP reaches zero.
 ## position  : Vector3 — world position at time of death
 ## killer_id : String  — attacker entity_id ("" if environmental)
-signal player_died(position: Vector3, killer_id: String)
+## landing   : Vector3 — Phase 157: where the death push leaves the body (host value; ZERO = none)
+signal player_died(position: Vector3, killer_id: String, landing: Vector3)
 
 ## Emitted by PlayerSlice when the player dies and then respawns.
 signal player_respawned(position: Vector3)

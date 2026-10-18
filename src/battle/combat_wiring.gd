@@ -2,6 +2,7 @@ extends "res://src/core/wiring.gd"
 ## Combat wiring (Phase 132) — Combat, creature events and status effects.
 ## Moved out of game_root.gd; `root` is the GameRoot that owns the slices.
 
+const DeathPush := preload("res://src/battle/death_push.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const TerrainSlice     := preload("res://src/terrain/terrain_slice.gd")
 const BattleSlice      := preload("res://src/battle/battle_slice.gd")
@@ -149,10 +150,18 @@ func on_player_damaged(damage: float, attacker_id: String, target_id: String) ->
 	# (an unmodelled body has no evidence behind it, and the peer's word is not
 	# evidence — see PlayerRegistry.simulated_hp_after_hit), then the hit lands on the
 	# number this process holds.
+	var was_downed := PlayerRegistry.is_downed(root._registry.get_hp(target_id))
 	var simulated := PlayerRegistry.simulated_hp_after_hit(
 		root._registry.get_hp(target_id), damage, PlayerSlice.MAX_HP)
 	root._registry.record_simulated_hp(target_id, simulated)
 	root._networking.send_player_damaged(peer, damage, attacker_id)
+	# Phase 157 — the killing blow throws a peer's body like any other: the host picks the spot, the
+	# peer's client is teleported there.
+	if PlayerRegistry.is_downed(simulated) and not was_downed and root._networking.has_last_known_state(peer):
+		var pos: Vector3 = root._networking.get_last_known_state(peer)
+		var landing := player_death_landing(attacker_id, pos, damage, PlayerSlice.MAX_HP)
+		if landing != Vector3.ZERO:
+			root._networking.send_teleport(peer, WorldPos.from_world(landing.x, landing.y, landing.z))
 	# Phase 129 — a downed body loses every effect.
 	if root._status != null and PlayerRegistry.is_downed(simulated):
 		root._status.clear(target_id)
@@ -215,11 +224,37 @@ func restore_status_effects(target: String, player_id: String) -> void:
 	for t in root._status.take_dirty():
 		push_status_effects(str(t), now)
 
-func _on_status_player_died(_position: Vector3, _killer_id: String) -> void:
+func _on_status_player_died(_position: Vector3, _killer_id: String, _landing: Vector3) -> void:
 	if root._status != null and not root._is_client:
 		root._status.clear("player")
 		for t in root._status.take_dirty():
 			push_status_effects(str(t), status_now())
+
+## Phase 157 — host: where an attacker stands, for the death push. A creature instance, or "player" (the
+## host's own body). Anything else (a remote peer) is the peer's last reported position when known.
+func death_attacker_pos(attacker_id: String) -> Variant:
+	if attacker_id == "player":
+		return root._player.get_position()
+	for inst in root._creature.get_all_instances():
+		if inst["instance_id"] == attacker_id:
+			return inst["position"]
+	var peer: int = root._registry.get_peer_id(attacker_id)
+	if peer != 0 and root._networking.has_last_known_state(peer):
+		return root._networking.get_last_known_state(peer)
+	return null
+
+## Phase 157 — host: the landing for a player killed by `killer_id` (ZERO on a client or with no push).
+func player_death_landing(killer_id: String, pos: Vector3, damage: float, max_hp: float) -> Vector3:
+	if root._is_client or killer_id == "":
+		return Vector3.ZERO
+	return root._battle.death_landing(pos, killer_id, damage, max_hp, root._battle.size_ratio(killer_id, max_hp))
+
+## Phase 157 — a body may land on ground it can step onto (the knockback rule).
+func death_walkable(probe: Vector3) -> bool:
+	return root._voxel.get_voxel_height_at(Vector2(probe.x, probe.z)) <= probe.y + root.KNOCKBACK_STEP_UP
+
+func death_ground(spot: Vector3) -> float:
+	return root._voxel.get_voxel_height_at(Vector2(spot.x, spot.z))
 
 ## Phase 129 — host: push `target_id` away from `attacker_id`, clamped to walkable ground.
 func _on_knockback_requested(target_id: String, attacker_id: String, tiles: int) -> void:
@@ -254,9 +289,22 @@ func _on_knockback_requested(target_id: String, attacker_id: String, tiles: int)
 	else:
 		root._networking.send_teleport(peer, WorldPos.from_world(spot.x, spot.y, spot.z))
 
-func _on_player_died(_position: Vector3, _killer_id: String) -> void:
-	if root._character.get_player_character() != "":
-		GameBus.character_death_requested.emit(root._character.get_player_character())
+func _on_player_died(death_pos: Vector3, killer_id: String, landing: Vector3) -> void:
+	# The host's death push is the body's authoritative position.
+	if landing != Vector3.ZERO and root._player != null and not root._is_client:
+		root._player.spawn_at(landing)
+	var who: String = root._character.get_player_character()
+	if who == "":
+		return
+	# Phase 157 — the death variant follows the hit: killer to body, against the way the avatar faces.
+	var src: Variant = death_attacker_pos(killer_id) if killer_id != "" else null
+	var avatar: Variant = root._character._instances.get(who, {}).get("root")
+	if src is Vector3 and avatar is Node3D:
+		var clip := DeathPush.variant(death_pos - (src as Vector3), (avatar as Node3D).rotation.y)
+		if clip != DeathPush.DEATH_DEFAULT:
+			root._character.trigger_death(who, clip)
+			return
+	GameBus.character_death_requested.emit(who)
 
 func _on_player_respawned(_position: Vector3) -> void:
 	# The death pose is terminal until reset: without this the avatar lies down for good after a respawn.

@@ -1915,7 +1915,7 @@ func _test_identity_restart_round_trip() -> void:
 	var spawned := creatures.get_all_instances()
 	assert_true(spawned.size() > 0, "need a population to record")
 	var dead_id: String = str(spawned[0]["instance_id"])
-	GameBus.creature_died.emit(dead_id, Vector3.ZERO, "player")
+	GameBus.creature_died.emit(dead_id, Vector3.ZERO, "player", Vector3.ZERO)
 	var deadline := float(creatures._instances[dead_id]["respawn_at"])
 	assert_eq(str(creatures._instances[dead_id]["state"]), "dead", "the creature is recorded dead")
 	# The deadline must be WALL-CLOCK, or a restart makes it meaningless.
@@ -2696,7 +2696,7 @@ func _test_player_set_hp_starts_respawn() -> void:
 ## recovered from.
 func _test_player_set_hp_announces_and_clears() -> void:
 	var died: Array = []
-	GameBus.player_died.connect(func(_pos, _killer): died.append(1))
+	GameBus.player_died.connect(func(_pos, _killer, _landing): died.append(1))
 	var p := PlayerSlice.new()
 	p.render_visuals = false
 	add_child(p)

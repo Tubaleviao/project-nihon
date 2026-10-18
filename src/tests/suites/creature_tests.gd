@@ -127,7 +127,7 @@ func _test_battle_kill_emits_death() -> void:
 	# Prime the defender with 1 HP so the next non-miss attack kills it.
 	b._hp_state["ForestBoar"] = 1.0
 	var captured := {}
-	GameBus.creature_died.connect(func(_id, _pos, _killer): captured["died"] = true)
+	GameBus.creature_died.connect(func(_id, _pos, _killer, _landing): captured["died"] = true)
 	for _i in range(200):
 		b.resolve_round("GraywolfPack", "ForestBoar")
 		if captured.get("died", false):
@@ -196,7 +196,7 @@ func _test_creature_death_marks_dead() -> void:
 	assert_true(instances.size() > 0, "need an instance to kill")
 	if instances.size() > 0:
 		var iid: String = instances[0]["instance_id"]
-		GameBus.creature_died.emit(iid, Vector3.ZERO, "player")
+		GameBus.creature_died.emit(iid, Vector3.ZERO, "player", Vector3.ZERO)
 		var updated := c.get_all_instances()
 		var found := false
 		for inst in updated:
@@ -219,7 +219,7 @@ func _test_creature_respawn_resets_battle_hp() -> void:
 		var iid: String = instances[0]["instance_id"]
 		# Simulate a kill: battle tracks 0 HP and the creature dies via the bus.
 		b._hp_state[iid] = 0.0
-		GameBus.creature_died.emit(iid, Vector3.ZERO, "player")
+		GameBus.creature_died.emit(iid, Vector3.ZERO, "player", Vector3.ZERO)
 		# Force the respawn timer to have elapsed, then tick. Deadlines are
 		# WALL-CLOCK seconds (Phase 33), not process uptime.
 		c._instances[iid]["respawn_at"] = Time.get_unix_time_from_system() - 1.0
@@ -526,7 +526,7 @@ func _test_loot_known_creature() -> void:
 	GameBus.loot_dropped.connect(func(pid, iid, _pos, qty):
 		drops.append({ "id": pid, "item": iid, "qty": qty }))
 	# Emit death for ForestBoar — guaranteed drops: raw_boar_meat + boar_hide.
-	GameBus.creature_died.emit("ForestBoar", Vector3.ZERO, "player")
+	GameBus.creature_died.emit("ForestBoar", Vector3.ZERO, "player", Vector3.ZERO)
 	assert_true(drops.size() >= 2, "at least 2 guaranteed drops for ForestBoar")
 	var items := drops.map(func(d): return d["item"])
 	assert_true(items.has("raw_boar_meat"), "raw_boar_meat always drops")
@@ -542,7 +542,7 @@ func _test_loot_drops_from_fabric() -> void:
 	# LavaSlug's fabric drop table: slug_shell_shard (2–4), superheated_slime_vial
 	# (1–2), lava_core_organ (15%). The first two are guaranteed; the old
 	# hardcoded ids (slag_gland / volcanic_slime) must no longer appear.
-	GameBus.creature_died.emit("LavaSlug", Vector3.ZERO, "player")
+	GameBus.creature_died.emit("LavaSlug", Vector3.ZERO, "player", Vector3.ZERO)
 	var items := drops.map(func(d): return d["item"])
 	assert_true(items.has("slug_shell_shard"),       "slug_shell_shard drops from fabric")
 	assert_true(items.has("superheated_slime_vial"), "superheated_slime_vial always drops")
@@ -555,7 +555,7 @@ func _test_loot_unknown_creature() -> void:
 	add_child(l)
 	var captured := {}
 	GameBus.loot_dropped.connect(func(_pid, _iid, _pos, _qty): captured["dropped"] = true)
-	GameBus.creature_died.emit("UnknownBeast", Vector3.ZERO, "")
+	GameBus.creature_died.emit("UnknownBeast", Vector3.ZERO, "", Vector3.ZERO)
 	assert_false(captured.get("dropped", false), "no loot dropped for unknown creature")
 	l.free()
 
@@ -564,7 +564,7 @@ func _test_loot_consume_removes() -> void:
 	add_child(l)
 	var captured := {}
 	GameBus.loot_dropped.connect(func(pid, _iid, _pos, _qty): captured["pid"] = pid)
-	GameBus.creature_died.emit("ForestBoar", Vector3.ZERO, "player")
+	GameBus.creature_died.emit("ForestBoar", Vector3.ZERO, "player", Vector3.ZERO)
 	var last_pid: String = captured.get("pid", "")
 	assert_true(last_pid != "", "at least one pickup was created")
 	var result := l.consume_pickup(last_pid)
@@ -591,7 +591,7 @@ func _test_loot_instance_id_resolve() -> void:
 			boar_iid = inst["instance_id"]
 			break
 	if boar_iid != "":
-		GameBus.creature_died.emit(boar_iid, Vector3.ZERO, "player")
+		GameBus.creature_died.emit(boar_iid, Vector3.ZERO, "player", Vector3.ZERO)
 		assert_true(drops.size() >= 2,
 			"ForestBoar drops via instance_id produce at least 2 guaranteed items")
 	else:
@@ -682,7 +682,7 @@ func _test_taming_wolf_requires_alpha_down() -> void:
 
 	# The template has no skill either, so kill a member and confirm the gate that
 	# answers next is the SKILL one: the alpha gate is satisfied, not skipped.
-	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player")
+	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player", Vector3.ZERO)
 	assert_true(c.has_defeated_species("GraywolfPack"), "a pack member is dead")
 	assert_eq(str(taming.can_tame(target, "")["reason"]), "skill_locked:Unarmed:journeyman",
 		"the alpha gate is satisfied and the skill gate answers next")
@@ -700,7 +700,7 @@ func _test_taming_wolf_grants_flag_companion() -> void:
 	var wolves := _taming_instances_of(c, "GraywolfPack")
 	var target := str(wolves[1])
 	_taming_stand_near(registry, pid, c, target)
-	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player")
+	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player", Vector3.ZERO)
 	assert_true(bool(rig["crafting"].set_skill("Unarmed", "journeyman")), "Unarmed: journeyman")
 
 	var result: Dictionary = taming.tame(target, "")
@@ -743,7 +743,7 @@ func _test_taming_refusal_is_atomic() -> void:
 	taming.inventory_slice = inventory
 	var wolves := _taming_instances_of(c, "GraywolfPack")
 	var target := str(wolves[1])
-	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player")
+	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player", Vector3.ZERO)
 	assert_true(bool(crafting.set_skill("Unarmed", "journeyman")), "Unarmed: journeyman")
 	assert_true(bool(taming.can_tame(target, "")["ok"]), "every requirement but the owner is met")
 
@@ -771,7 +771,7 @@ func _test_taming_requires_skill() -> void:
 	var wolves := _taming_instances_of(c, "GraywolfPack")
 	var target := str(wolves[1])
 	_taming_stand_near(registry, pid, c, target)
-	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player")
+	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player", Vector3.ZERO)
 
 	assert_eq(taming.skill_tier(pid, "Unarmed"), "novice", "a fresh table is novice")
 	var refused: Dictionary = taming.tame(target, "")
@@ -801,7 +801,7 @@ func _test_taming_requires_unarmed() -> void:
 	var wolves := _taming_instances_of(c, "GraywolfPack")
 	var target := str(wolves[1])
 	_taming_stand_near(registry, pid, c, target)
-	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player")
+	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player", Vector3.ZERO)
 	rig["crafting"].set_skill("Unarmed", "journeyman")
 
 	var ch := CharacterSlice.new()
@@ -963,7 +963,7 @@ func _test_taming_is_per_player() -> void:
 	var registry: Node = rig["registry"]
 	var wolves := _taming_instances_of(c, "GraywolfPack")
 	var target := str(wolves[1])
-	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player")
+	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player", Vector3.ZERO)
 
 	var alice: String = str(registry.resolve_identity(2))
 	var bob: String = str(registry.resolve_identity(3))
@@ -1044,17 +1044,17 @@ func _test_taming_companion_respawn_suppressed() -> void:
 	var wolves := _taming_instances_of(c, "GraywolfPack")
 	var target := str(wolves[1])
 	_taming_stand_near(registry, pid, c, target)
-	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player")
+	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player", Vector3.ZERO)
 	rig["crafting"].set_skill("Unarmed", "journeyman")
 	assert_true(bool(taming.tame(target, "")["success"]), "the pup is tamed")
 
-	GameBus.creature_died.emit(target, Vector3.ZERO, "player")
+	GameBus.creature_died.emit(target, Vector3.ZERO, "player", Vector3.ZERO)
 	assert_eq(str(c._instances[target]["state"]), "dead", "the companion died")
 	c._instances[target]["respawn_at"] = Time.get_unix_time_from_system() - 1.0
 
 	var wild := _taming_instance_of(c, "ForestBoar")
 	assert_true(wild != "", "a wild creature exists to control against")
-	GameBus.creature_died.emit(wild, Vector3.ZERO, "player")
+	GameBus.creature_died.emit(wild, Vector3.ZERO, "player", Vector3.ZERO)
 	c._instances[wild]["respawn_at"] = Time.get_unix_time_from_system() - 1.0
 
 	c._tick_respawn()
@@ -1077,7 +1077,7 @@ func _test_taming_companion_follows() -> void:
 	var wolves := _taming_instances_of(c, "GraywolfPack")
 	var target := str(wolves[1])
 	_taming_stand_near(registry, pid, c, target)
-	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player")
+	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player", Vector3.ZERO)
 	rig["crafting"].set_skill("Unarmed", "journeyman")
 	assert_true(bool(taming.tame(target, "")["success"]), "the pup is tamed")
 
@@ -1120,7 +1120,7 @@ func _test_taming_record_round_trip() -> void:
 	var wolves := _taming_instances_of(c, "GraywolfPack")
 	var target := str(wolves[1])
 	_taming_stand_near(registry, pid, c, target)
-	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player")
+	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player", Vector3.ZERO)
 	rig["crafting"].set_skill("Unarmed", "journeyman")
 	assert_true(bool(taming.tame(target, "")["success"]), "the pup is tamed")
 
@@ -2038,7 +2038,7 @@ func _test_despawn_keeps_death_record() -> void:
 	var spawned := creatures.get_all_instances()
 	assert_true(spawned.size() > 0, "need a population to kill")
 	var iid: String = str(spawned[0]["instance_id"])
-	GameBus.creature_died.emit(iid, Vector3.ZERO, "player")
+	GameBus.creature_died.emit(iid, Vector3.ZERO, "player", Vector3.ZERO)
 	var deadline := float(creatures._instances[iid]["respawn_at"])
 	assert_eq(str(creatures._instances[iid]["state"]), "dead", "the creature is dead")
 
@@ -2190,7 +2190,7 @@ func _test_taming_mirrors_evicted_on_forget() -> void:
 	var registry: Node = rig["registry"]
 	var wolves := _taming_instances_of(c, "GraywolfPack")
 	var target := str(wolves[1])
-	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player")
+	GameBus.creature_died.emit(str(wolves[0]), Vector3.ZERO, "player", Vector3.ZERO)
 	var alice: String = str(registry.resolve_identity(2))
 	rig["crafting"].set_skill_for(alice, "Unarmed", "journeyman")
 	_taming_stand_near(registry, alice, c, target)
@@ -2245,7 +2245,7 @@ func _test_battle_routes_player_rounds_by_target() -> void:
 	var on_damage := func(damage: float, attacker_id: String, target_id: String) -> void:
 		hits.append([damage, attacker_id, target_id])
 	var deaths: Array = []
-	var on_death := func(entity_id: String, _position: Vector3, _killer: String) -> void:
+	var on_death := func(entity_id: String, _position: Vector3, _killer: String, _landing: Vector3) -> void:
 		deaths.append(entity_id)
 	GameBus.player_damaged.connect(on_damage)
 	GameBus.creature_died.connect(on_death)
