@@ -252,13 +252,41 @@ func trigger_gesture(instance_id: String, clip: String, hold: bool, seat_lift: f
 	var lengths: Dictionary = inst["anim_tree"].get_meta("clip_lengths", {}) if inst.has("anim_tree") and is_instance_valid(inst["anim_tree"]) else {}
 	loco.trigger_gesture(clip, hold, float(lengths.get(clip, DEFAULT_GESTURE_SECONDS)))
 	inst["seat_lift"] = seat_lift
+	_settle_lift(inst)
 	return true
 
-## Raise a seated body's root by its seat lift; any state but a gesture drops the lift.
+## Raise a seated body's root by its seat lift; any state but a gesture drops the lift. Called right after the
+## root was placed on the ground, so the whole lift is added.
 func apply_seat_lift(inst: Dictionary, root: Node3D) -> void:
 	if not inst["locomotion"].is_gesturing():
 		inst["seat_lift"] = 0.0
-	root.position.y += float(inst.get("seat_lift", 0.0))
+	var lift := float(inst.get("seat_lift", 0.0))
+	root.position.y += lift
+	inst["lift_applied"] = lift
+
+## Move the root by the change in lift since it was last applied, so a pose started or ended while the body
+## stands still sits down or stands up at once instead of at the next position report.
+func _settle_lift(inst: Dictionary) -> void:
+	var node: Variant = inst.get("root")
+	var lift := float(inst.get("seat_lift", 0.0))
+	if node is Node3D:
+		(node as Node3D).position.y += lift - float(inst.get("lift_applied", 0.0))
+	inst["lift_applied"] = lift
+
+## Step the locomotion machine of an avatar whose gesture would otherwise never advance (a remote peer's:
+## only the local body runs `sync_player_avatar`). A no-op for a body that is not gesturing.
+func advance_gesture(instance_id: String, delta: float) -> void:
+	if not sl._instances.has(instance_id):
+		return
+	var inst: Dictionary = sl._instances[instance_id]
+	if not inst["locomotion"].is_gesturing():
+		return
+	sl.update_locomotion(instance_id, 0.0, true, 0.0, delta)
+	if not inst["locomotion"].is_gesturing():
+		inst["seat_lift"] = 0.0
+		_settle_lift(inst)
+	if inst.has("anim_tree") and is_instance_valid(inst["anim_tree"]):
+		sl.RigTree.drive(inst["anim_tree"], inst["locomotion"])
 
 func end_gesture(instance_id: String) -> void:
 	if not sl._instances.has(instance_id):
@@ -266,6 +294,7 @@ func end_gesture(instance_id: String) -> void:
 	var inst: Dictionary = sl._instances[instance_id]
 	inst["locomotion"].end_gesture()
 	inst["seat_lift"] = 0.0
+	_settle_lift(inst)
 
 func gesture_clip_of(instance_id: String) -> String:
 	if not sl._instances.has(instance_id):

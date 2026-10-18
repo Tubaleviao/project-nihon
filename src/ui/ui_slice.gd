@@ -198,6 +198,11 @@ func _input(event: InputEvent) -> void:
 		var focus := get_viewport().gui_get_focus_owner() if is_inside_tree() else null
 		if (focus is LineEdit or focus is TextEdit) and event.keycode != KEY_ESCAPE:
 			return
+		# Phase 159 — the gesture wheel (Q by default, rebindable). It outranks a hotbar box bound to the same
+		# key, except while the hotbar is waiting for the key of a box.
+		if event.keycode == GesturePanelScript.key_code() and (hotbar == null or not hotbar.is_binding()):
+			toggle_window(WINDOW_GESTURES)
+			return
 		# The hotbar first: 1-9 and the player's own box shortcuts, or a key being chosen for a box.
 		if hotbar != null and hotbar.handle_key(event):
 			if is_inside_tree():
@@ -206,10 +211,6 @@ func _input(event: InputEvent) -> void:
 		# `?` is matched on the character it produces: it is not Shift+/ on every layout.
 		if event.unicode == 63:
 			toggle_window(WINDOW_CONTROLS)
-			return
-		# Phase 159 — the gesture wheel (Q by default, rebindable).
-		if event.keycode == GesturePanelScript.key_code():
-			toggle_window(WINDOW_GESTURES)
 			return
 		match event.keycode:
 			KEY_I:

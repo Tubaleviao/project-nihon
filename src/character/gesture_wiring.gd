@@ -14,6 +14,8 @@ const PlayerSlice := preload("res://src/player/player_slice.gd")
 ## Gesture the sit falls back to when no seat is in front of the body.
 const GROUND_SIT := "SitGround"
 const SEAT_GESTURE := "Sit"
+## How far above the terrain under it a peer's reported position may be and still count as standing.
+const GROUNDED_TOLERANCE_M := 0.6
 ## How far ahead of the body a seat is looked for.
 const SEAT_REACH_M := 0.6
 
@@ -34,6 +36,8 @@ func _connect_all() -> void:
 	connect_bus(GameBus.remote_player_state, _on_remote_state)
 	connect_bus(GameBus.player_damaged, _on_player_damaged)
 	connect_bus(GameBus.player_died, _on_local_died)
+	connect_bus(GameBus.combat_hit_resolved, _on_combat_hit)
+	connect_bus(GameBus.block_mine_requested, _on_mine_requested)
 	connect_bus(GameBus.player_left, _on_player_left)
 	connect_bus(GameBus.player_joined, _on_player_joined)
 
@@ -59,6 +63,14 @@ func _position_of(player_id: String) -> Variant:
 		return root._networking.get_last_known_state(peer)
 	return null
 
+## Whether a peer's last reported position stands on the ground: the host reads the terrain itself rather
+## than taking the client's word. Without a voxel world (no evidence to refute it) the peer counts as grounded.
+func _peer_grounded(pos: Vector3) -> bool:
+	if root._voxel == null:
+		return true
+	var support: float = root._voxel.sample_support_height_at(Vector2(pos.x, pos.z), pos.y)
+	return pos.y - support <= GROUNDED_TOLERANCE_M
+
 func _alive(player_id: String) -> bool:
 	if _is_local(player_id):
 		return root._player == null or root._player.get_hp() > 0.0
@@ -71,7 +83,7 @@ func _on_gesture_intent(gesture_id: String, player_id: String) -> void:
 	var pos: Variant = _position_of(pid)
 	if pos == null:
 		return   # a peer that never reported has no evidence to validate against
-	var grounded: bool = root._player.is_grounded() if _is_local(pid) else true
+	var grounded: bool = root._player.is_grounded() if _is_local(pid) else _peer_grounded(pos)
 	root._gesture.request(pid, gesture_id, _alive(pid), grounded, pos)
 
 ## The slice accepted a start or a cancel: show it here and tell the peers in range.
@@ -87,6 +99,10 @@ func _on_gesture_synced(player_id: String, gesture_id: String) -> void:
 		var at: Variant = _position_of(player_id if peer != 1 else _local_id())
 		if at != null:
 			root._networking.send_gesture(peer, gesture_id, at)
+			if gesture_id != "":
+				# The broadcast above already told everyone in range: the entrant replay must not repeat it.
+				for key in _visible_pairs(peer, at):
+					_entered[key] = true
 
 func _on_remote_state(peer_id: int, position: Vector3) -> void:
 	if root._is_client or root._gesture == null:
@@ -102,6 +118,18 @@ func _on_player_damaged(_damage: float, _attacker_id: String, target_id: String)
 	root._gesture.note_damage(pid)
 	if not _alive(pid):
 		root._gesture.note_death(pid)
+
+## A swing takes the body out of its pose (the attack clip would stand it up on the rig otherwise).
+func _on_combat_hit(attacker_id: String, _defender_id: String, _outcome: String, _damage: float) -> void:
+	_note_action(attacker_id)
+
+func _on_mine_requested(_position: Vector3, _normal: Vector3, player_id: String, _exact: Dictionary) -> void:
+	_note_action(player_id)
+
+func _note_action(player_id: String) -> void:
+	if root._is_client or root._gesture == null:
+		return
+	root._gesture.note_action(_local_id() if _is_local(player_id) else player_id)
 
 func _on_local_died(_position: Vector3, _killer_id: String, _landing: Vector3) -> void:
 	if not root._is_client and root._gesture != null:
@@ -129,6 +157,7 @@ func tick(delta: float) -> void:
 		return
 	if root._is_client:
 		_apply_pending()
+		_advance_remote_avatars(delta)
 		return
 	var local := _local_id()
 	if root._player != null:
@@ -153,13 +182,24 @@ func _replay_to_entrants() -> void:
 		var at: Variant = _position_of(str(pid))
 		if subject == 0 or at == null:
 			continue
-		for viewer in net._connected_peers():
-			var v := int(viewer)
-			if v != subject and net.has_last_known_state(v) and net.in_aoi(v, at):
-				visible["%d:%d" % [v, subject]] = { "viewer": v, "subject": subject, "pose": held[pid] }
+		var pairs := _visible_pairs(subject, at)
+		for key in pairs:
+			visible[key] = { "viewer": pairs[key], "subject": subject, "pose": held[pid] }
 	for key in GestureRules.new_pairs(visible, _entered):
 		net.send_peer_gestures_to(visible[key]["viewer"], { visible[key]["subject"]: visible[key]["pose"] })
 	_entered = visible
+
+## "viewer:subject" -> viewer peer for every connected peer (but the subject) whose AOI holds `at`.
+func _visible_pairs(subject: int, at: Vector3) -> Dictionary:
+	var out := {}
+	var net: Variant = root._networking
+	if net == null or not net.is_host():
+		return out
+	for viewer in net.connected_peers():
+		var v := int(viewer)
+		if v != subject and net.has_last_known_state(v) and net.in_aoi(v, at):
+			out["%d:%d" % [v, subject]] = v
+	return out
 
 func _regen(player_id: String, amount: float) -> void:
 	if _is_local(player_id):
@@ -187,6 +227,14 @@ func _on_peer_gesture_synced(peer_id: int, gesture_id: String) -> void:
 		_applied.erase(peer_id)
 		play(root._character.get_peer_character(peer_id), "")
 		return
+	var res: Resource = GestureRules.find(gesture_id, GameData.GESTURES)
+	if res != null and not GestureRules.is_pose(res):
+		# A one-shot is played now, every time it arrives (a repeated wave restarts the clip); it is not kept
+		# for an avatar that does not exist yet, and a pose it replaces is gone.
+		_remote_poses.erase(peer_id)
+		_applied.erase(peer_id)
+		play(root._character.get_peer_character(peer_id), gesture_id)
+		return
 	_remote_poses[peer_id] = gesture_id
 	_apply_pending()
 
@@ -204,6 +252,12 @@ func _apply_pending() -> void:
 		if _applied.get(peer, "") != stamp:
 			_applied[peer] = stamp
 			play(iid, str(_remote_poses[peer]))
+
+## Remote avatars are placed by their position reports only, so a gesturing one is stepped here: its
+## one-shot timer runs out and the rig tree follows the state.
+func _advance_remote_avatars(delta: float) -> void:
+	for peer in root._character._peer_characters:
+		root._character._m2.advance_gesture(str(root._character._peer_characters[peer]), delta)
 
 # ---------------------------------------------------------------------------
 # Rig

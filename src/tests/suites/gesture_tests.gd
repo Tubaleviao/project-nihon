@@ -16,6 +16,9 @@ func register() -> void:
 	_run_test("gesture: death cancels every pose and a one-shot replaces a pose", _test_death_and_replace)
 	_run_test("gesture: regeneration while Sit is held is the base rate times restRegen", _test_rest_regen)
 	_run_test("gesture: a pose for a peer waits for its avatar and a late joiner sees it seated", _test_peer_pose_waits_for_avatar)
+	_run_test("gesture: a repeated one-shot replays on a remote avatar, and a remote gesture advances and settles", _test_remote_oneshot_repeats)
+	_run_test("gesture: a swing ends a held pose", _test_action_cancels)
+	_run_test("gesture: seat lift moves the root when a pose starts or ends in place", _test_lift_settles)
 	_run_test("gesture: a viewer entering range of a held pose is replayed it once, and again after leaving", _test_new_pairs)
 	_run_test("gesture: every gesture has a clip on the placeholder player rig, listed in the loop table", _test_every_gesture_has_a_clip)
 	_run_test("gesture: locomotion holds a pose, ends a one-shot, and the Gesture node stands up in 0.3 s", _test_locomotion_and_tree)
@@ -205,6 +208,54 @@ func _test_peer_pose_waits_for_avatar() -> void:
 	_free_fixture(f)
 
 
+func _test_remote_oneshot_repeats() -> void:
+	var f := _fixture()
+	var gr: Node = f["gr"]
+	gr._is_client = true
+	var other: String = f["ch"].create_character("TravellerHuman", Vector3(3, 0, 0))
+	assert_true(f["ch"].attach_rig(other, "models/player_rig.glb.raw"), "the peer's avatar gets a rig")
+	f["ch"].bind_peer_character(7, other)
+	GameBus.peer_gesture_synced.emit(7, "Wave")
+	var loco = f["ch"]._instances[other]["locomotion"]
+	assert_eq(int(loco.gesture_serial), 1, "the first wave plays")
+	GameBus.peer_gesture_synced.emit(7, "Wave")
+	assert_eq(int(loco.gesture_serial), 2, "a second wave restarts the clip")
+	for i in 40:
+		gr._gesture_wiring.tick(0.1)
+	assert_false(loco.is_gesturing(), "the remote avatar's one-shot runs out without any position report")
+	GameBus.peer_gesture_synced.emit(7, "SitGround")
+	gr._gesture_wiring.tick(0.1)
+	GameBus.peer_gesture_synced.emit(7, "Wave")
+	assert_false(gr._gesture_wiring._remote_poses.has(7), "a one-shot replaces the stored pose")
+	gr._is_client = false
+	f["ch"].remove_character(other)
+	_free_fixture(f)
+
+
+func _test_action_cancels() -> void:
+	var f := _fixture()
+	var seen: Array = []
+	var catch := func(p: String, g: String) -> void: seen.append([p, g])
+	GameBus.gesture_synced.connect(catch)
+	assert_eq(f["sl"].request("p1", "Sit", true, true, Vector3.ZERO), "", "sit accepted")
+	GameBus.combat_hit_resolved.emit("p1", "wolf-1", "hit", 3.0)
+	assert_eq(f["sl"].held_id("p1"), "", "a swing stands the player up")
+	assert_eq(seen.back(), ["p1", ""], "and the stand-up is synced")
+	GameBus.gesture_synced.disconnect(catch)
+	_free_fixture(f)
+
+
+func _test_lift_settles() -> void:
+	var f := _fixture()
+	var root: Node3D = f["ch"]._instances[f["iid"]]["root"]
+	var base := root.position.y
+	f["ch"]._m2.trigger_gesture(f["iid"], "sit", true, 0.4)
+	assert_true(absf(root.position.y - (base + 0.4)) < 0.0001, "the root rises at once")
+	f["ch"]._m2.end_gesture(f["iid"])
+	assert_true(absf(root.position.y - base) < 0.0001, "and drops at once when the pose ends")
+	_free_fixture(f)
+
+
 func _test_new_pairs() -> void:
 	var entered := {}
 	var visible := {"2:1": true}
@@ -268,6 +319,8 @@ func _test_chat_commands() -> void:
 	chat.free()
 	assert_eq(seen, [["Sit", ""], ["Wave", ""]], "a typed command is a gesture_intent for the local player, not a chat line")
 	assert_true(ChatCommands.help_lines(false).has("chat.usage.gestures"), "/help lists the gestures")
+	assert_true(ChatCommands.is_command("/gestures") and ChatCommands.is_known("gestures"), "/gestures is a known command")
+	assert_true(ChatCommands.run("/gestures", Vector3.ZERO).contains("/sit"), "and answers with the gesture commands")
 
 
 func _test_wheel_key() -> void:

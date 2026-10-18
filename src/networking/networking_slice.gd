@@ -76,6 +76,7 @@ extends Node
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const Diag := preload("res://src/core/diag.gd")
 const I18n := preload("res://src/core/i18n.gd")
+const GestureRules := preload("res://src/character/gesture_rules.gd")
 
 enum Role { OFFLINE, HOST, CLIENT }
 
@@ -574,6 +575,10 @@ func _ensure_transport() -> Transport:
 func _connected_peers() -> Array:
 	return _ensure_transport().peers()
 
+## Public read of the peers the host fans out to (empty before a transport is up).
+func connected_peers() -> Array:
+	return _connected_peers()
+
 func _connected() -> bool:
 	return _ensure_transport().is_up()
 
@@ -989,7 +994,7 @@ const COMBAT_KEY_MAX := 64
 const COMBAT_OUTCOMES := ["hit", "critical", "miss", "kill"]
 
 ## Phase 159 — the longest gesture id a packet may carry.
-const GESTURE_ID_MAX := 32
+const GESTURE_ID_MAX := GestureRules.MAX_ID_CHARS
 
 func send_gesture(subject_peer: int, gesture_id: String, position: Vector3) -> void:
 	_m2.send_gesture(subject_peer, gesture_id, position)

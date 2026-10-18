@@ -75,6 +75,10 @@ func note_damage(player_id: String) -> void:
 	if not held.is_empty() and GestureRules.flag(gestures.get(held["id"], null), "cancelOnDamage"):
 		cancel(player_id)
 
+## `player_id` swung at something (a hit or a mining swing): the body leaves its pose for the swing.
+func note_action(player_id: String) -> void:
+	cancel(player_id)
+
 ## `player_id` died: every gesture ends.
 func note_death(player_id: String) -> void:
 	cancel(player_id)
