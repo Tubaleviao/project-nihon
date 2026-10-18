@@ -27,6 +27,10 @@ extends Node
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const WaystoneSlice := preload("res://src/world/waystone_slice.gd")
+const WorldShape := preload("res://src/terrain/world_shape.gd")
+const Horizon := preload("res://src/terrain/horizon.gd")
+const DistantTerrain := preload("res://src/terrain/distant_terrain.gd")
+const PlayerSlice := preload("res://src/player/player_slice.gd")
 
 const ARG := "--playtest-bot"
 const OUT_DIR := "res://playtest"
@@ -49,6 +53,22 @@ const STEP_GRACE_SECS := 10.0    ## past its deadline a step that has not return
 const SPAWN_OFFSET_M := 2.0      ## a teleport lands this far above the ground
 const FIGHT_MAX_GROUND_GAP_M := 2.0
 const ARRIVE_TOLERANCE_M := 2.0    ## travel lands the body on the destination stone, within this ground distance
+## Phase 164 — the horizon step: from the nearest coast, look out to sea in four headings and read the
+## skyline of the distant ring alone (drawn over a key colour), which must be level to SKYLINE_FLAT_PX.
+const HORIZON_TIMEOUT_SECS := 240.0
+const SKYLINE_KEY := Color(1.0, 0.0, 1.0)
+const SKYLINE_FLAT_PX := 2
+const HORIZON_PITCH := -20.0          ## the shallowest the camera looks down (PlayerSlice.CAMERA_PITCH_MAX)
+const HORIZON_HEADINGS := [-15.0, -5.0, 5.0, 15.0]   ## degrees either side of the open-sea bearing
+const HORIZON_HALF_FOV := 60.0        ## rays are checked this far either side of each heading (the frame's half width)
+const HORIZON_RAY_STEP := 5.0         ## degrees between checked rays
+const HORIZON_RISE_MAX := 0.002       ## radians (~1 px): land may rise this far over the sea horizon (half the skyline limit)
+const COAST_SEARCH_M := 4.0e6         ## the coast search marches this far from the body
+const COAST_BEARING_STEP := 11.25     ## degrees between marched bearings
+const COAST_MARCH_M := 2000.0         ## march step on the large-scale shape
+const COAST_INLAND_M := 48.0          ## the body stands this far back from the shore
+const COAST_DEEP_M := 20.0            ## open water: the shape lies this far under the sea level
+const COAST_WORK_MS := 40             ## search work per frame before it yields
 
 var _root: Node
 var _frames: Array = []       ## frame times (ms) of the step in flight
@@ -69,10 +89,12 @@ static func requested(args: Array) -> bool:
 	return ARG in args
 
 static func _step_timeout(step: String) -> float:
+	if step == "horizon":
+		return HORIZON_TIMEOUT_SECS
 	return STREAM_TIMEOUT_SECS if step == "stream" or step == "pole" else STEP_TIMEOUT_SECS
 
 static func step_names() -> Array:
-	return ["walk", "stream", "mine", "gather", "craft", "place", "fight", "travel", "pole"]
+	return ["walk", "stream", "mine", "gather", "craft", "place", "fight", "travel", "horizon", "pole"]
 
 # ---------------------------------------------------------------------------
 # Pure report maths
@@ -151,6 +173,26 @@ static func report_markdown(report: Dictionary) -> String:
 			lines.append("- %s" % _md_cell(str(f)))
 	lines.append("")
 	return "\n".join(lines)
+
+## Phase 164 — the skyline of a frame drawn over `key`: per column, the first row from the top that is
+## not the key colour (the frame's height when the whole column is key).
+static func skyline_rows(img: Image, key: Color, tol: float = 0.08) -> Array:
+	var rows: Array = []
+	for x in img.get_width():
+		var row := img.get_height()
+		for y in img.get_height():
+			var c := img.get_pixel(x, y)
+			if absf(c.r - key.r) + absf(c.g - key.g) + absf(c.b - key.b) > tol * 3.0:
+				row = y
+				break
+		rows.append(row)
+	return rows
+
+## Highest minus lowest skyline row (0 for a level skyline).
+static func skyline_spread(rows: Array) -> int:
+	if rows.is_empty():
+		return 0
+	return int(rows.max()) - int(rows.min())
 
 # ---------------------------------------------------------------------------
 # The run
@@ -624,6 +666,183 @@ func _step_travel() -> Array:
 	var ok: bool = await _until(func():
 		return WaystoneSlice.distance_m(_root._player.get_world_pos(), dest) < ARRIVE_TOLERANCE_M, STEP_TIMEOUT_SECS)
 	return [ok, "travelled to the second stone" if ok else "body did not reach the second stone"]
+
+## Phase 164 — the horizon: find the nearest coast with open sea across four headings, stand there and
+## look out at the shallowest pitch. Each heading's frame is drawn with the camera seeing only the
+## distant ring over a key colour (no sky, no fog, no HUD), so the first non-key row of each column is
+## the ring's silhouette; it must be level to SKYLINE_FLAT_PX across the frame (the old square ring
+## showed its corners as peaks).
+func _step_horizon() -> Array:
+	if DisplayServer.get_name() == "headless":
+		return [true, "headless: no frame to read (skipped)"]
+	var player = _root._player
+	var start: Vector3 = _player_pos()
+	var found: Array = await _find_coast(Vector2(start.x, start.z))
+	if found.is_empty():
+		return [false, "no coast with open sea within %.0f km" % (COAST_SEARCH_M / 1000.0)]
+	var spot_xz: Vector2 = found[0]
+	var bearing: float = found[1]
+	var m := WorldPos.CHUNK_METERS
+	var chunk := Vector2i(floori(spot_xz.x / m), floori(spot_xz.y / m))
+	var rings_before: int = _root._distant.rebuilds_completed
+	var spot := _teleport_to(chunk, Vector3(spot_xz.x - float(chunk.x) * m, 0.0, spot_xz.y - float(chunk.y) * m))
+	if not await _until(func(): return _root._chunk_manager.is_chunk_built(spot["chunk"]), HORIZON_TIMEOUT_SECS):
+		return [false, "the coast chunk never built"]
+	await _until(func(): return false, 1.0)   # the body settles
+	# The ring on screen must be one built after the teleport, around the body (not the old one).
+	if not await _until(func(): return _ring_ready_at(rings_before), HORIZON_TIMEOUT_SECS):
+		return [false, "the distant ring never rebuilt at the coast"]
+	var cam: Camera3D = player._camera
+	var arm: Node3D = player._cam_arm
+	var pivot: Node3D = player._pivot
+	var keyed := Environment.new()
+	keyed.background_mode = Environment.BG_COLOR
+	keyed.background_color = SKYLINE_KEY
+	keyed.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	keyed.ambient_light_color = Color(0.5, 0.5, 0.5)
+	var layers: Array = []
+	for cl in _root.find_children("*", "CanvasLayer", true, false):
+		layers.append([cl, cl.visible])
+		cl.visible = false
+	var old_mask := cam.cull_mask
+	var old_pitch := arm.rotation_degrees.x
+	cam.cull_mask = DistantTerrain.RING_RENDER_LAYER
+	cam.environment = keyed
+	arm.rotation_degrees.x = HORIZON_PITCH
+	var spreads: Array = []
+	var worst := 0
+	for h in HORIZON_HEADINGS:
+		var dir := Vector2.from_angle(deg_to_rad(bearing + float(h)))
+		pivot.global_rotation.y = atan2(-dir.x, -dir.y)
+		for _f in 3:
+			await RenderingServer.frame_post_draw
+		var img := get_viewport().get_texture().get_image()
+		if img == null:
+			continue
+		img.save_png(ProjectSettings.globalize_path(OUT_DIR.path_join("horizon_%+d.png" % int(h))))
+		var rows := skyline_rows(img, SKYLINE_KEY)
+		var spread := skyline_spread(rows)
+		if int(rows.min()) >= img.get_height():
+			spread = img.get_height()   # no ring in view at all
+		spreads.append(spread)
+		worst = maxi(worst, spread)
+	cam.environment = null
+	cam.cull_mask = old_mask
+	arm.rotation_degrees.x = old_pitch
+	for pair in layers:
+		if is_instance_valid(pair[0]):
+			pair[0].visible = pair[1]
+	if spreads.size() < HORIZON_HEADINGS.size():
+		return [false, "only %d of %d frames read" % [spreads.size(), HORIZON_HEADINGS.size()]]
+	return [worst <= SKYLINE_FLAT_PX, "coast at %.0f m, bearing %.0f°, skyline spread %s px (limit %d)" % [
+		Vector2(start.x, start.z).distance_to(spot_xz), bearing, str(spreads), SKYLINE_FLAT_PX]]
+
+## True when a ring build newer than `completed_before` is swapped in, none is pending, and it is
+## centred within two lattice cells of the body.
+func _ring_ready_at(completed_before: int) -> bool:
+	var d = _root._distant
+	if d == null or d.is_building() or d.rebuilds_completed <= completed_before or d.get_child_count() == 0 or d._req.built == null:
+		return false
+	var pp := _player_pos()
+	var rc: Vector2 = d._req.built.args["ring_center"]
+	return rc.distance_to(Vector2(pp.x, pp.z)) <= 4.0 * d.ring_half_m / float(DistantTerrain.GRID)
+
+## The nearest coast from which every ray across the four headings' frames sees nothing above the sea
+## horizon out to the ring's outer circle. Bearings every COAST_BEARING_STEP are marched outward on the
+## large-scale shape until they reach the sea; each crossing (nearest first) is bisected to the shore
+## and a point COAST_INLAND_M back onto land is tested. Returns [xz, bearing_deg] or [] when none
+## within COAST_SEARCH_M works. Yields every COAST_WORK_MS.
+func _find_coast(from: Vector2) -> Array:
+	var outer: float = _root._distant.outer_radius_m if _root._distant != null and _root._distant.outer_radius_m > 0.0 \
+		else DistantTerrain.outer_radius_for(DistantTerrain.ring_half_extent(_root._chunk_manager.stream_radius()))
+	var eye_h := PlayerSlice.camera_eye_height(PlayerSlice.CAMERA_DISTANCE, HORIZON_PITCH)
+	var span: float = float(HORIZON_HEADINGS.back()) - float(HORIZON_HEADINGS.front()) + 2.0 * HORIZON_HALF_FOV
+	var need := int(ceil(span / HORIZON_RAY_STEP)) + 1
+	var rays := int(360.0 / HORIZON_RAY_STEP)
+	var sea := WorldShape.sea_level()
+	var seed_v: int = _root._terrain.get_world_seed()
+	var w := Horizon.default_circumference()
+	var t0 := Time.get_ticks_msec()
+	var crossings: Array = []   # [distance, direction]
+	for b in int(360.0 / COAST_BEARING_STEP):
+		var dir := Vector2.from_angle(deg_to_rad(float(b) * COAST_BEARING_STEP))
+		var d := 0.0
+		while d <= COAST_SEARCH_M:
+			if Time.get_ticks_msec() - t0 > COAST_WORK_MS:
+				await get_tree().process_frame
+				t0 = Time.get_ticks_msec()
+			var p := from + dir * d
+			if WorldShape.height(seed_v, p.x, p.y, w) < sea - COAST_DEEP_M and _open_water(seed_v, w, p, dir, outer, sea - COAST_DEEP_M):
+				crossings.append([d, dir])
+				break
+			d += COAST_MARCH_M
+	crossings.sort_custom(func(a, b): return float(a[0]) < float(b[0]))
+	for c in crossings:
+		if Time.get_ticks_msec() > _step_deadline_ms:
+			break
+		var dir: Vector2 = c[1]
+		var hi := float(c[0])                               # sea
+		var lo := maxf(hi - COAST_MARCH_M, 0.0)
+		# The shape marched above `sea - COAST_DEEP_M` there, which may still be water: walk back to land.
+		while lo > 0.0 and _root._terrain.get_height_at(from + dir * lo) < sea:
+			hi = lo
+			lo = maxf(lo - COAST_MARCH_M, 0.0)
+		while hi - lo > 16.0:
+			var mid := (lo + hi) * 0.5
+			var p := from + dir * mid
+			if _root._terrain.get_height_at(p) < sea:
+				hi = mid
+			else:
+				lo = mid
+		var xz := from + dir * maxf(lo - COAST_INLAND_M, 0.0)
+		var ground: float = _root._terrain.get_height_at(xz)
+		if ground < sea:
+			continue
+		var open := {}
+		var r0 := 0
+		while r0 < rays:
+			var run := 0
+			while run < need and _ray_cached(open, xz, (r0 + run) % rays, ground + eye_h, outer, sea):
+				run += 1
+			if run >= need:
+				print("[Playtest] coast at %.0f km" % (from.distance_to(xz) / 1000.0))
+				return [xz, float(r0) * HORIZON_RAY_STEP + span / 2.0]
+			r0 += run + 1   # no run through the failed ray can hold the span
+			await get_tree().process_frame
+	print("[Playtest] none of %d coast crossings had open sea across the frames" % crossings.size())
+	return []
+
+## True when the large-scale shape stays under `level` for `reach` metres past `p` along `dir` (open
+## water, not a lagoon or a shallow flat the detail noise lifts above the sea).
+static func _open_water(seed_v: int, w: float, p: Vector2, dir: Vector2, reach: float, level: float) -> bool:
+	var d := COAST_MARCH_M
+	while d <= reach:
+		var q := p + dir * d
+		if WorldShape.height(seed_v, q.x, q.y, w) >= level:
+			return false
+		d += COAST_MARCH_M
+	return true
+
+func _ray_cached(cache: Dictionary, xz: Vector2, r: int, eye_y: float, outer: float, sea: float) -> bool:
+	if not cache.has(r):
+		cache[r] = _ray_open(xz, deg_to_rad(float(r) * HORIZON_RAY_STEP), eye_y, outer, sea)
+	return cache[r]
+
+## True when nothing along the ray at `angle` from `xz` rises over the sea horizon of an eye at `eye_y`
+## by more than HORIZON_RISE_MAX: every sample out to `outer` is sea, or lies at most that far above the
+## eye's horizon line after the curvature drop.
+func _ray_open(xz: Vector2, angle: float, eye_y: float, outer: float, sea: float) -> bool:
+	var dir := Vector2.from_angle(angle)
+	var horizon_dip := sqrt(2.0 * maxf(eye_y - sea, 0.1) / Horizon.planet_radius())
+	var d := 64.0
+	while d <= outer:
+		var h: float = _root._terrain.get_height_at(xz + dir * d)
+		if h >= sea:
+			var dip := (eye_y - h + Horizon.curvature_drop(d)) / d
+			if dip < horizon_dip - HORIZON_RISE_MAX:
+				return false
+		d += 64.0 if d < 1000.0 else 500.0
+	return true
 
 ## Phase 141 — the pole: stand just past the north pole, let the window settle, then step over the
 ## fold line. Only the frames from the fold until the folded window is rebuilt (no stand-in left,

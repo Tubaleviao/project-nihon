@@ -6,11 +6,18 @@ extends Node3D
 ## The ring covers `RING_FACTOR` times the voxel window's half-extent around a centre, sampled from
 ## `WorldShape` (the large-scale shape: no detail noise, no edits) on a GRID × GRID lattice and
 ## re-centred whenever the player moves a whole cell.
+##
+## Phase 164 — outside that square the lattice turns polar: `POLAR_RINGS` rings of cells whose radial
+## step grows geometrically with distance, out to a circle of `outer_radius_for` (at least the horizon
+## for the camera's highest eye), so the silhouette is the curved ground and never a mesh corner. The
+## innermost polar ring is the square's own boundary row, so the two meet without a crack. The ring is
+## drawn with `Horizon.curvature_material`, which lowers every vertex by the planet's curvature drop.
 
 const WorldShape := preload("res://src/terrain/world_shape.gd")
 const TerrainSliceScript := preload("res://src/terrain/terrain_slice.gd")
 const VoxelSliceScript := preload("res://src/terrain/voxel_slice.gd")
 const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
+const Horizon := preload("res://src/terrain/horizon.gd")
 const CHUNK_METERS := 32.0   # TerrainSlice.CHUNK_SIZE * TILE_SIZE
 const RING_FACTOR := 10      ## the ring reaches this many times the voxel window's extent
 const GRID := 64             ## cells per side of the ring's lattice
@@ -21,12 +28,23 @@ const SEA_FLOOR_COLOR := Color(0.2, 0.32, 0.5)
 const RING_DROP := 0.5       ## land is drawn this far below the shape + detail height
 const EDGE_STEP := 2.0       ## ring vertices are this far apart along the window's edge
 const SKIRT_DEPTH := 12.0    ## the wall at the window's edge drops this far below the ring there
+## Phase 164 — polar rings outside the square lattice (the boundary row of the square is ring 0).
+const POLAR_RINGS := 36
+## The highest the camera's eye rises above the ground: `PlayerSlice.camera_eye_height` at the widest
+## zoom and the steepest pitch is about 25.2 m (asserted by the suite).
+const EYE_HEIGHT_MAX := 26.0
+const HORIZON_MARGIN := 1.1  ## the outer radius reaches this far past the horizon of `EYE_HEIGHT_MAX`
+## A render layer only the ring is on (besides layer 1), so a camera can draw the ring alone (the
+## playtest bot's horizon step reads its silhouette that way).
+const RING_RENDER_LAYER := 1 << 19
 
 var world_seed: int = 0
 var circumference_m: float = 40000.0 * 1000.0
 ## Half-extent of the voxel window in metres, and the ring's own.
 var window_half_m: float = 0.0
 var ring_half_m: float = 0.0
+## Phase 164 — radius of the ring's outer circle (`outer_radius_for`), set by `rebuild`.
+var outer_radius_m: float = 0.0
 var _mesh_inst: MeshInstance3D = null
 
 ## Phase 120 — one build request: what the ring is built for (compared by `rebuild` to decide whether
@@ -117,6 +135,22 @@ func detach_ring() -> Node3D:
 static func ring_half_extent(radius_chunks: int) -> float:
 	return float(RING_FACTOR) * (float(radius_chunks) + 0.5) * CHUNK_METERS
 
+## Phase 164 — the outer circle's radius for a square lattice of half-extent `half_m`: at least
+## `HORIZON_MARGIN` × the horizon of `EYE_HEIGHT_MAX` on a planet of `circumference_m`, and clear of the
+## square's corners by one square cell.
+static func outer_radius_for(half_m: float, circumference_m: float = -1.0) -> float:
+	var corner := half_m * sqrt(2.0) + half_m * 2.0 / float(GRID)
+	return maxf(Horizon.horizon_distance(EYE_HEIGHT_MAX, circumference_m) * HORIZON_MARGIN, corner * 1.25)
+
+## Phase 164 — radius of the first polar ring past the square (ring 0 is the square's boundary).
+static func first_polar_radius(half_m: float) -> float:
+	return half_m * sqrt(2.0) + half_m * 2.0 / float(GRID)
+
+## Phase 164 — rows a full build visits (the `BuildControl.rows` of an unaborted build): the square's
+## height rows, its cell rows and one per polar ring.
+static func build_rows() -> int:
+	return 2 * GRID + 1 + POLAR_RINGS
+
 ## Colour of the distant ground at altitude `alt` above sea level, whitened toward the polar ice at
 ## world Z `z` as the voxel ground is (`VoxelSlice.icy`).
 static func color_for(alt: float, z: float = 0.0) -> Color:
@@ -137,6 +171,7 @@ static func _altitude_color(alt: float) -> Color:
 func rebuild(center: Vector2, radius_chunks: int) -> bool:
 	window_half_m = (float(radius_chunks) + 0.5) * CHUNK_METERS
 	ring_half_m = ring_half_extent(radius_chunks)
+	outer_radius_m = outer_radius_for(ring_half_m, circumference_m)
 	var cell := ring_half_m * 2.0 / float(GRID)
 	var origin := Vector2i(floori(center.x / cell), floori(center.y / cell))
 	# The voxel window is chunk-snapped around the player: the hole is exactly that rectangle, so the
@@ -246,10 +281,8 @@ func _swap_in(mesh: ArrayMesh) -> void:
 	_mesh_inst = MeshInstance3D.new()
 	_mesh_inst.name = "DistantRing"
 	_mesh_inst.mesh = mesh
-	var mat := StandardMaterial3D.new()
-	mat.vertex_color_use_as_albedo = true
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	_mesh_inst.material_override = mat
+	_mesh_inst.material_override = Horizon.curvature_material(circumference_m)
+	_mesh_inst.layers = 1 | RING_RENDER_LAYER
 	_mesh_inst.position = _origin.value
 	add_child(_mesh_inst)
 
@@ -360,6 +393,8 @@ static func build_mesh(seed_v: int, w: float, ring_center: Vector2, half_m: floa
 			if z1 > wt:
 				_add_strip(vertices, colors, normals, indices, noise, seed_v, w, snap, sea, mx0, wt, mx1, z1, false, false)
 	_add_skirt(vertices, colors, normals, indices, noise, seed_v, w, snap, sea, window_center, win_half_m)
+	if not _add_polar(vertices, colors, normals, indices, noise, seed_v, w, snap, sea, ring_center, half_m, heights, control):
+		return null
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = vertices
@@ -478,6 +513,67 @@ static func _add_skirt(vertices: PackedVector3Array, colors: PackedColorArray, n
 				indices.append_array([base, base + 1, base + 2, base, base + 2, base + 3])
 			prev_top = top
 			prev_h = h
+
+## Phase 164 — the polar rings around the square lattice. Ring 0 is the square's boundary row (its
+## 4 × GRID vertices, corners included, with the heights the square used, so the two share every edge
+## vertex); ring k ≥ 1 lies on a circle of radius `first_polar_radius` × q^(k−1), the last one at
+## `outer_radius_for`. Every ring has a vertex on each ray from `ring_center` through a boundary vertex,
+## so a cell between two rays is a quad and the corners of the square are vertices, never cut across.
+## Vertices are shared between cells (smooth normals): the polar part costs (POLAR_RINGS + 1) × 4 × GRID
+## vertices. Returns false when the build was aborted.
+static func _add_polar(vertices: PackedVector3Array, colors: PackedColorArray, normals: PackedVector3Array,
+		indices: PackedInt32Array, noise: FastNoiseLite, seed_v: int, w: float, snap: Dictionary, sea: float,
+		ring_center: Vector2, half_m: float, heights: PackedFloat32Array, control: BuildControl) -> bool:
+	var cell := half_m * 2.0 / float(GRID)
+	var n := 4 * GRID
+	var dirs: Array[Vector2] = []
+	var base := vertices.size()
+	# Ring 0: the boundary row, counter-clockwise from the (-half, -half) corner.
+	for s in n:
+		var side := s / GRID
+		var t := s % GRID
+		var ij := Vector2i.ZERO
+		match side:
+			0: ij = Vector2i(t, 0)
+			1: ij = Vector2i(GRID, t)
+			2: ij = Vector2i(GRID - t, GRID)
+			_: ij = Vector2i(0, GRID - t)
+		var p := Vector2(ring_center.x - half_m + float(ij.x) * cell, ring_center.y - half_m + float(ij.y) * cell)
+		var h := heights[ij.y * (GRID + 1) + ij.x]
+		dirs.append((p - ring_center).normalized())
+		vertices.append(Vector3(p.x, ring_y(h, sea), p.y))
+		colors.append(color_for(h - sea, p.y))
+	var r1 := first_polar_radius(half_m)
+	var q := pow(outer_radius_for(half_m, w) / r1, 1.0 / float(POLAR_RINGS - 1))
+	for k in range(1, POLAR_RINGS + 1):
+		if control != null:
+			if control.aborted:
+				return false
+			control.rows += 1
+		var r := r1 * pow(q, float(k - 1)) if k < POLAR_RINGS else outer_radius_for(half_m, w)
+		for s in n:
+			var p := ring_center + dirs[s] * r
+			var h := ground_at(noise, seed_v, p.x, p.y, w, snap)
+			vertices.append(Vector3(p.x, ring_y(h, sea), p.y))
+			colors.append(color_for(h - sea, p.y))
+	var acc := PackedVector3Array()
+	acc.resize(n * (POLAR_RINGS + 1))
+	for k in POLAR_RINGS:
+		for s in n:
+			var a := base + k * n + s
+			var b := base + k * n + (s + 1) % n
+			var c := base + (k + 1) * n + (s + 1) % n
+			var d := base + (k + 1) * n + s
+			indices.append_array([a, b, c, a, c, d])
+			var f := (vertices[c] - vertices[a]).cross(vertices[b] - vertices[a])
+			if f.y < 0.0:
+				f = -f
+			for v in [a, b, c, d]:
+				acc[v - base] += f
+	for v in acc:
+		var nv := v.normalized() if v.length_squared() > 0.0 else Vector3.UP
+		normals.append(nv)
+	return true
 
 ## Number of collision bodies in this ring's subtree — always 0 (asserted by the suite).
 func collision_body_count() -> int:

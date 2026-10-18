@@ -31,6 +31,8 @@ const CAMERA_DISTANCE_MIN  := 4.0
 const CAMERA_DISTANCE_MAX  := 24.0
 const CAMERA_PIVOT_HEIGHT  := 2.0   # vertical point the camera orbits around
 const ZOOM_STEP := 1.5             # world units per scroll tick
+## Phase 164 — the camera's far plane reaches this far past the distant ring's outer radius.
+const VIEW_FAR_MARGIN := 1.1
 ## The camera eases toward the body's height instead of riding it rigidly, so a step up or
 ## down a block glides rather than jolting the whole view. Rate is 1/s (exponential, about
 ## 95% of a step covered in 3 / rate seconds); a jump bigger than CAMERA_SNAP_DISTANCE
@@ -71,6 +73,10 @@ const TREE_COLLISION_MASK := 8 # layer 4 (bit 3) — tree trunks, for the chop r
 const PlayerRules := preload("res://src/core/player_rules.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
 const VoxelSliceScript := preload("res://src/terrain/voxel_slice.gd")
+const DistantTerrain := preload("res://src/terrain/distant_terrain.gd")
+## Phase 164 — the ring radius (chunks) the camera's first far plane is sized for: the default view
+## distance plus prefetch (`ChunkManager.stream_radius`).
+const DEFAULT_RING_RADIUS := 4
 
 const MAX_HP := PlayerRules.MAX_HP
 
@@ -488,6 +494,24 @@ func spawn_at(pos: Vector3) -> void:
 		_body.global_position = pos + _origin.value
 		_vel = Vector3.ZERO
 
+## Phase 164 — height of the camera's eye above the body's feet for an orbit `distance` at `pitch_deg`
+## (degrees, negative looks down): the pivot height plus the arm's rise.
+static func camera_eye_height(distance: float, pitch_deg: float) -> float:
+	return CAMERA_PIVOT_HEIGHT + distance * sin(deg_to_rad(-pitch_deg))
+
+## Phase 164 — the far plane for a distant ring of outer radius `ring_radius_m`.
+static func view_far_for(ring_radius_m: float) -> float:
+	return ring_radius_m * VIEW_FAR_MARGIN
+
+## Phase 164 — keep the far plane past the distant ring's outer circle.
+func set_view_far(ring_radius_m: float) -> void:
+	if _camera != null:
+		_camera.far = view_far_for(ring_radius_m)
+
+## The camera's far plane in metres (0 before the camera exists).
+func view_far() -> float:
+	return _camera.far if _camera != null else 0.0
+
 ## Adjust the orbit camera's distance from the player (scroll-wheel zoom),
 ## clamped to [CAMERA_DISTANCE_MIN, CAMERA_DISTANCE_MAX].
 func _zoom(delta_z: float) -> void:
@@ -686,6 +710,9 @@ func _build_body() -> void:
 	_camera.name = "PlayerCamera"
 	_camera.position = Vector3(0, 0, CAMERA_DISTANCE)
 	_camera.current  = true
+	# Phase 164 — past the ring's outer circle (Godot's default 4 km would cut the horizon off).
+	# The boot path keeps it in step with the ring it builds (`set_view_far`).
+	_camera.far = view_far_for(DistantTerrain.outer_radius_for(DistantTerrain.ring_half_extent(DEFAULT_RING_RADIUS)))
 	cam_arm.add_child(_camera)
 
 ## True when the ground under a body is deep enough below the sea surface that it swims.
