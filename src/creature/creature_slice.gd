@@ -914,6 +914,13 @@ func _on_creature_died(entity_id: String, _position: Vector3, _killer_id: String
 				# goes through set_instance_position so the spatial index and the box follow.
 				if landing != Vector3.ZERO and iid == entity_id:
 					set_instance_position(iid, landing)
+					# A corpse rests on the ground: drop the flyer's hover band the move just added.
+					if hover_of(iid) > 0.0:
+						var rest: Vector3 = inst["position"]
+						rest.y = minf(rest.y, landing.y)
+						inst["position"] = rest
+						_spatial.update(iid, rest)
+						_place_box(iid, rest)
 				# WALL-CLOCK deadline (Phase 33) — a saved deadline must still mean
 				# the same moment in a new process, so this is Unix-epoch seconds,
 				# not process uptime.
