@@ -136,6 +136,26 @@ func send_combat_hit(attacker_key: String, defender_key: String, outcome: String
 		"o":    outcome,
 	}, position)
 
+## Phase 159 — host → clients in range of `position`: peer `subject_peer` (the host's own body is peer 1)
+## started `gesture_id`, or stood up (""). Animation only; the actor's own client is in range of itself.
+func send_gesture(subject_peer: int, gesture_id: String, position: Vector3) -> void:
+	if sl._role != sl.Role.HOST:
+		sl.Diag.warn("NetworkingSlice: send_gesture called on non-host — dropped")
+		return
+	sl._broadcast_aoi({ "type": "gesture", "peer_id": subject_peer, "g": gesture_id }, position)
+
+## Phase 159 — host: a peer just bound its identity; tell it the poses held by the players inside its AOI
+## (`poses` is peer id -> gesture id, the host's own body as peer 1), so a late joiner sees them seated.
+func send_peer_gestures_to(peer_id: int, poses: Dictionary) -> void:
+	if sl._role != sl.Role.HOST or not sl._connected():
+		return
+	var center = sl._joiner_aoi_center(peer_id)
+	for subject in poses:
+		var o := int(subject)
+		if o == peer_id or not sl._has_subject_position(o) or center.distance_to(sl._subject_position(o)) > sl.AOI_RADIUS:
+			continue
+		sl._deliver(peer_id, { "type": "gesture", "peer_id": o, "g": str(poses[subject]) })
+
 ## Phase 36 — per-peer client → host token bucket. `now_ms` is an argument (not a
 ## clock read) so the rule is testable without waiting: the same shape the
 ## emulator's `_sample_remote_state_at` uses. Returns true when a token was
@@ -298,6 +318,16 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 			var said: Variant = payload.get("text", "")
 			if said is String:
 				GameBus.chat_intent.emit(said, speaker)
+		"gesture_intent":
+			# Phase 159 — a gesture is started or ended for the connection's own player, never for a name
+			# in the payload; the host's GestureSlice validates the id, the player's state and the rate.
+			var actor = sl._actor_id(sender)
+			if actor == "":
+				sl._refuse_unhandshaked(sender, "gesture_intent")
+				return
+			var wanted: Variant = payload.get("g", "")
+			if wanted is String and (wanted as String).length() <= sl.GESTURE_ID_MAX:
+				GameBus.gesture_intent.emit(wanted, actor)
 		"equip_intent":
 			# Phase 47 — a worn-slot action is applied to the connection's player, never
 			# to a name in the payload; the registry checks it against the fabric and the bag.

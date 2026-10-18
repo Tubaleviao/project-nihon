@@ -26,7 +26,7 @@ const SCALE_PARAM := "parameters/Locomotion/Scale/scale"
 ## listed in one of the two (the suite asserts the table covers every clip a rig ships).
 const LOOPING_CLIPS := ["idle", "walk", "run", "fall"]
 const ONE_SHOT_CLIPS := ["land", "attack", "attack_unarmed", "attack_1h", "attack_tool", "death", "hit",
-	"stagger", "death_back", "death_forward", "death_side", "idle_look", "idle_stretch", "sit", "lie_down", "wave"]
+	"stagger", "death_back", "death_forward", "death_side", "idle_look", "idle_stretch", "sit", "sit_ground", "lie_down", "wave", "point", "bow", "cheer", "shrug", "clap", "kneel"]
 
 ## The swing a body plays by what its main hand holds; a rig missing one plays `attack`.
 const ATTACK_DEFAULT := "attack"
@@ -60,6 +60,8 @@ const XFADE_LOCOMOTION := 0.12
 const XFADE_ATTACK := 0.05
 const XFADE_DEATH := 0.08
 const XFADE_FROM_LAND := 0.1
+## Phase 159 — the stand-up out of a gesture is a 0.3 s transition, not a pop.
+const XFADE_STAND_UP := 0.3
 
 
 ## The attack clip for a main-hand item (`""` for empty hands): unarmed, a tool (anything the fabric
@@ -81,6 +83,7 @@ static func node_for_state(state: int) -> String:
 		Locomotion.State.LAND: return "Land"
 		Locomotion.State.ATTACK: return "Attack"
 		Locomotion.State.DEATH: return "Death"
+		Locomotion.State.GESTURE: return "Gesture"
 	return ""
 
 
@@ -123,6 +126,14 @@ static func swing_lengths(player: AnimationPlayer) -> Dictionary:
 	return out
 
 
+## Phase 159 — length in seconds of every clip of `player`, by name (a one-shot gesture lasts its clip).
+static func clip_lengths(player: AnimationPlayer) -> Dictionary:
+	var out := {}
+	for clip_name in player.get_animation_list():
+		out[str(clip_name)] = player.get_animation(clip_name).length
+	return out
+
+
 ## Metres of ground per second of clip time for the walk and run clips of `player`'s rig.
 static func clip_ground_speeds(player: AnimationPlayer) -> Vector2:
 	var walk_m := float(player.get_meta("walk_stride_m", WALK_STRIDE_M))
@@ -148,6 +159,8 @@ static func xfade_for(from: String, to: String) -> float:
 		return XFADE_ATTACK
 	if to == "Death":
 		return XFADE_DEATH
+	if from == "Gesture":
+		return XFADE_STAND_UP
 	if from == "Land":
 		return XFADE_FROM_LAND
 	return XFADE_LOCOMOTION
@@ -198,7 +211,8 @@ static func build_tree(player: AnimationPlayer) -> AnimationTree:
 		if n == "" or added.has(n):
 			continue
 		var clip := AnimationNodeAnimation.new()
-		clip.animation = _resolve_clip(player, n.to_lower())
+		# The Gesture node has no clip of its own: `set_gesture_clip` points it at the gesture played.
+		clip.animation = _resolve_clip(player, "idle" if n == "Gesture" else n.to_lower())
 		sm.add_node(n, clip)
 		added[n] = true
 	for a in added:
@@ -217,9 +231,11 @@ static func build_tree(player: AnimationPlayer) -> AnimationTree:
 	for clip_name in player.get_animation_list():
 		clips[str(clip_name)] = true
 	tree.set_meta("clips", clips)
+	tree.set_meta("clip_lengths", clip_lengths(player))
 	tree.set_meta("loco_tree", loco_tree)
 	tree.set_meta("attack_node", sm.get_node("Attack"))
 	tree.set_meta("death_node", sm.get_node("Death"))
+	tree.set_meta("gesture_node", sm.get_node("Gesture"))
 	return tree
 
 
@@ -270,6 +286,18 @@ static func set_death_clip(tree: Object, clip: String) -> String:
 	return chosen
 
 
+## Phase 159 — point the Gesture node at `clip`, falling back to `idle` when the rig lacks it. Returns the
+## clip it settled on.
+static func set_gesture_clip(tree: Object, clip: String) -> String:
+	var clips: Dictionary = tree.get_meta("clips", {})
+	var chosen := clip if clips.has(clip) else "idle"
+	var node: AnimationNodeAnimation = tree.get_meta("gesture_node", null)
+	if node != null and clips.has(chosen):
+		node.animation = chosen
+	tree.set_meta("gesture_clip", chosen)
+	return chosen
+
+
 ## Fire a OneShot (`param` is its request parameter) after pointing its clip node at `clip`.
 ## `count_key` is the meta counter the suite reads; no frames elapse there, so it counts what was fired.
 static func _fire_shot(tree: Object, node_name: String, clip_node: String, param: String, clip: String, count_key: String) -> bool:
@@ -313,6 +341,14 @@ static func drive_shots(tree: Object, playback: Object, loco) -> void:
 			if playback != null and tree.get_meta("travel_node", "") == "Attack":
 				playback.start("Attack")
 				tree.set_meta("swing_restarts", int(tree.get_meta("swing_restarts", 0)) + 1)
+	var gesture: int = loco.gesture_serial
+	if gesture != int(tree.get_meta("gesture_serial", 0)):
+		tree.set_meta("gesture_serial", gesture)
+		if loco.get_state() == Locomotion.State.GESTURE:
+			set_gesture_clip(tree, loco.gesture_clip)
+			if playback != null and tree.get_meta("travel_node", "") == "Gesture":
+				playback.start("Gesture")   # the same gesture twice restarts the clip
+				tree.set_meta("gesture_restarts", int(tree.get_meta("gesture_restarts", 0)) + 1)
 	var hit: int = loco.hit_serial
 	if hit != int(tree.get_meta("hit_serial", 0)):
 		tree.set_meta("hit_serial", hit)

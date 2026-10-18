@@ -126,6 +126,11 @@ func submit(text: String) -> void:
 	var clean := ChatCommands.sanitize(text)
 	if clean == "":
 		return
+	# Phase 159 — `/sit`, `/wave`, ...: a gesture action for the host, not a chat line.
+	var gesture := ChatCommands.gesture_id(clean)
+	if gesture != "":
+		GameBus.gesture_intent.emit(gesture, "")
+		return
 	if ChatCommands.is_command(clean):
 		var pos: Vector3 = player_slice.get_position() if player_slice != null else Vector3.ZERO
 		_add_line(CHANNEL_SYSTEM, "", ChatCommands.run(clean, pos))
