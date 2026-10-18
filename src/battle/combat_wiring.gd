@@ -31,7 +31,8 @@ func _on_combat_hit_resolved(attacker_id: String, defender_id: String, outcome: 
 	var a_key := _wire_key(attacker_id)
 	var d_key := _wire_key(defender_id)
 	_animate_hit(a_key, d_key, outcome)
-	if root._networking != null:
+	# Only a hosting machine has clients to tell; offline, the send would just warn on every swing.
+	if root._networking != null and root._networking.is_host():
 		root._networking.send_combat_hit(a_key, d_key, outcome, _event_position(a_key, d_key))
 
 ## Client: the host's swing, animated on whatever bodies this client draws.
