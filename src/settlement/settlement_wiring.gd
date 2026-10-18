@@ -22,7 +22,10 @@ func make_slice(ctx: GameRoot) -> Node:
 	slice.position_of = self.player_xz
 	slice.is_host = not root._is_client
 	root._voxel.claim_guard = slice.edit_blocker
+	if not root._is_client:
+		root._voxel.claim_activity = slice.note_edit
 	root._station.claim_guard = slice.edit_blocker
+	slice.release_station = root._station.remove_station
 	root._tree.claim_guard = slice.edit_blocker
 	root._station.settlement_slice = slice
 	root._technology.settlement_slice = slice
@@ -42,17 +45,9 @@ func _connect_all() -> void:
 	connect_bus(GameBus.settlements_changed, _on_changed)
 	connect_bus(GameBus.settlement_resolved, _on_resolved)
 	connect_bus(GameBus.station_placed, _on_station_placed)
-	connect_bus(GameBus.block_changed, _on_block_changed)
 
 func _on_changed() -> void:
 	_dirty = true
-
-## A block edit that passed the claim guard counts as activity for the local player's claim (remote
-## players are covered by the standing-in-claim sweep in `tick`).
-func _on_block_changed(_action: String, position: Vector3, _normal: Vector3, _material: String) -> void:
-	if root._is_client or root._settlements == null:
-		return
-	root._settlements.note_edit(root._registry.local_player_id, Vector2(position.x, position.z))
 
 ## A hearth placed by the local player (host or listen host) founds a settlement there. The placement
 ## already took the Hearth item and `StationSlice` refused an occupied spot, so this only records it.
@@ -72,6 +67,8 @@ func _on_station_placed(station_id: String, type: String, position: Vector3) -> 
 	var why: String = root._settlements.found(pid, "", Vector2(position.x, position.z), false, exact, true)
 	if why != "" and root._station != null:
 		root._station.remove_station(station_id)
+	elif why == "":
+		root._settlements.note_hearth_station(root._settlements.settlement_of(pid), station_id)
 
 ## Tell the actor's peer how its intent went; the local player reads the bus directly.
 func _on_resolved(player_id: String, action: String, ok: bool, reason: String) -> void:
@@ -121,7 +118,7 @@ func player_xz(player_id: String) -> Variant:
 		return SettlementSlice.xz_of_exact(root._player.get_world_pos())
 	var peer: int = root._registry.get_peer_id(player_id)
 	if peer != 0:
-		var pos: Dictionary = root._networking.get_last_known_exact(peer)
+		var pos: Dictionary = root._networking.get_expected_exact(peer)
 		if not pos.is_empty():
 			return SettlementSlice.xz_of_exact(pos)
 	return null

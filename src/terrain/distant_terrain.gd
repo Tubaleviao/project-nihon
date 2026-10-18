@@ -57,10 +57,9 @@ class RequestState extends RefCounted:
 var _req := RequestState.new()
 
 ## Phase 68 — the lattice build runs on a `WorkerThreadPool` task; the main thread only swaps the
-## finished mesh in. `_task` is the task id in flight (-1 when idle); `_result` is what the task
-## produced (written by the worker, read after `wait_for_task_completion`).
+## finished mesh in. `_task` is the task id in flight (-1 when idle); the task writes its mesh to
+## its `BuildControl`, read after `wait_for_task_completion`.
 var _task := -1
-var _result: ArrayMesh = null
 
 ## Phase 83 — shared between the main thread and a build's worker: the main thread raises `aborted`
 ## (leaving the tree), the worker checks it before each row and returns no mesh. `rows` counts the
@@ -68,6 +67,7 @@ var _result: ArrayMesh = null
 class BuildControl extends RefCounted:
 	var aborted := false
 	var rows := 0
+	var mesh: ArrayMesh = null   ## the worker's result, read after `wait_for_task_completion`
 
 var _control: BuildControl = null
 
@@ -194,12 +194,13 @@ func _start(r: Request) -> void:
 	_control = BuildControl.new()
 	r.args["control"] = _control
 	_req.running = r
-	_result = null
-	_task = WorkerThreadPool.add_task(_build_job)
+	# #397 — the task is a STATIC function on the script, handed the request args (never mutated on the main thread once running): a task
+	# bound to this node keeps the node locked while it runs, so freeing the ring mid-build failed
+	# ("Object is locked and can't be freed") and leaked it.
+	_task = WorkerThreadPool.add_task(Callable(get_script(), "_build_job").bind(r.args, _control))
 
-func _build_job() -> void:
-	var a := _req.running.args
-	_result = build_mesh(a["seed"], a["w"], a["ring_center"], a["half_m"], a["window_half_m"], a["window_center"], a["control"], a["snap"])
+static func _build_job(a: Dictionary, control: BuildControl) -> void:
+	control.mesh = build_mesh(a["seed"], a["w"], a["ring_center"], a["half_m"], a["window_half_m"], a["window_center"], control, a["snap"])
 
 ## True while a lattice build is in flight or queued.
 func is_building() -> bool:
@@ -214,8 +215,9 @@ func poll(block: bool = false) -> bool:
 			break
 		WorkerThreadPool.wait_for_task_completion(_task)
 		_task = -1
-		var mesh := _result
-		_result = null
+		var mesh: ArrayMesh = _control.mesh if _control != null else null
+		if _control != null:
+			_control.mesh = null
 		if mesh == null:   # the build was aborted: nothing to apply
 			if _req.queued != null:
 				rebuilds_dropped += 1   # the queued request never ran
@@ -277,7 +279,6 @@ func _join_worker(remember: bool) -> void:
 	if _req.queued != null:
 		rebuilds_dropped += 1   # the aborted running request is superseded (or the queued one never runs)
 	_task = -1
-	_result = null
 	_req.queued = null
 
 ## Re-requests a build `_exit_tree` discarded. A fresh `BuildControl` (abort flag clear) is made by

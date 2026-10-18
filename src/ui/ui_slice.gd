@@ -68,6 +68,12 @@ const SLOT_SIZE := Vector2(72, 72)
 const INVENTORY_COLUMNS := 5
 
 ## Set by game_root after instantiation.
+const UiPart1 := preload("res://src/ui/ui_part_1.gd")
+const UiPart2 := preload("res://src/ui/ui_part_2.gd")
+var _m2 := UiPart2.new(self)
+
+var _m1 := UiPart1.new(self)
+
 var inventory_slice: Node = null
 ## Phase 47 — the character slice: the Character window reads the local avatar's
 ## worn set and stats from it, and equips through its `apply_equipment`.
@@ -228,68 +234,7 @@ func _input(event: InputEvent) -> void:
 # ---------------------------------------------------------------------------
 
 func _build_hud() -> void:
-	hotbar = HotbarScript.new()
-	hotbar.anchor_left = 0.5
-	hotbar.anchor_right = 0.5
-	hotbar.anchor_top = 1.0
-	hotbar.anchor_bottom = 1.0
-	hotbar.offset_left = -300.0
-	hotbar.offset_right = 300.0
-	hotbar.offset_top = -13.0
-	hotbar.offset_bottom = -12.0
-	hotbar.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	hotbar.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	hotbar.save_path = layout_path.get_basename() + "_hotbar.json"
-	hotbar.icon_loader = func(item_id: String) -> Texture2D: return _load_item_icon(item_icon_key(item_id))
-	hotbar.held_provider = func() -> Dictionary:
-		return inventory_slice.get_contents() if inventory_slice != null else {}
-	hotbar.tier_provider = func() -> Dictionary:
-		return crafting_slice.get_skills() if crafting_slice != null else {}
-	hotbar.build()
-	hotbar.slot_selected.connect(_on_hotbar_selected)
-	hotbar.drag_began.connect(_on_drag_began)
-	hotbar.notice.connect(_notify)
-	_ui.add_child(hotbar)
-
-	# Under the health bar (top-left, see PlayerSlice._build_hud).
-	window_dock = WindowDockScript.new()
-	window_dock.offset_left = 12.0
-	window_dock.offset_top = 48.0
-	window_dock.save_path = layout_path.get_basename() + "_dock.json"
-	window_dock.build()
-	window_dock.window_toggled.connect(toggle_window)
-	_ui.add_child(window_dock)
-
-	_hud_notice = Label.new()
-	_hud_notice.anchor_left = 0.5
-	_hud_notice.anchor_right = 0.5
-	_hud_notice.anchor_top = 1.0
-	_hud_notice.anchor_bottom = 1.0
-	_hud_notice.offset_left = -300.0
-	_hud_notice.offset_right = 300.0
-	_hud_notice.offset_top = -180.0
-	_hud_notice.offset_bottom = -156.0
-	_hud_notice.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_hud_notice.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_hud_notice.add_theme_color_override("font_outline_color", Color(0, 0, 0))
-	_hud_notice.add_theme_constant_override("outline_size", 5)
-	_ui.add_child(_hud_notice)
-
-	_toast_label = Label.new()
-	_toast_label.anchor_left = 0.5
-	_toast_label.anchor_right = 0.5
-	_toast_label.offset_left = -300.0
-	_toast_label.offset_right = 300.0
-	_toast_label.offset_top = 60.0
-	_toast_label.offset_bottom = 120.0
-	_toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_toast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_toast_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_toast_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.5))
-	_toast_label.add_theme_color_override("font_outline_color", Color(0, 0, 0))
-	_toast_label.add_theme_constant_override("outline_size", 5)
-	_toast_label.text = _toast_shown
-	_ui.add_child(_toast_label)
+	_m1._build_hud()
 
 # ---------------------------------------------------------------------------
 # Drag and drop
@@ -640,38 +585,8 @@ static func item_description(item_id: String) -> String:
 	var d = res.get("description")
 	return str(d) if d != null else ""
 
-## One row per carried item for the slot grid: { id, quantity, durability,
-## icon_key, tooltip, actions }, sorted by key. `inventory_lines()` stays the
-## text projection; this is the structured one the grid is built from.
 func inventory_rows() -> Array:
-	var rows: Array = []
-	if inventory_slice == null:
-		return rows
-	var contents: Dictionary = inventory_slice.get_contents()
-	var keys: Array = contents.keys()
-	keys.sort()
-	var repairable := {}
-	for r in repair_rows():
-		repairable[str(r["id"])] = true
-	for item_id in keys:
-		var iid := str(item_id)
-		var qty := int(contents[item_id])
-		var dur := durability_bar(iid).strip_edges()
-		var tip := I18n.t("ui.tip_quantity", [iid, qty])
-		if dur != "":
-			tip += I18n.t("ui.tip_durability", [dur.trim_prefix("[").trim_suffix("]")])
-		var desc := item_description(iid)
-		if desc != "":
-			tip += "\n" + desc
-		rows.append({
-			"id": iid,
-			"quantity": qty,
-			"durability": dur,
-			"icon_key": item_icon_key(iid),
-			"tooltip": tip,
-			"actions": item_actions(iid, repairable),
-		})
-	return rows
+	return _m2.inventory_rows()
 
 ## The `?` legend, moved here from the always-on HUD panel. Each row:
 ## { keys, desc, mouse } where `mouse` is a MouseButton for a drawn cue, or 0.
@@ -747,61 +662,11 @@ func crafting_rows() -> Array:
 		})
 	return rows
 
-## One row per held repairable item: { id, can_repair, reason, station, materials }.
-## Only durable items that have a fabric repair spec AND are currently held AND
-## are not pristine are listed — a pristine item needs no repair, and stackable
-## materials have no repair spec.
 func repair_rows() -> Array:
-	var rows: Array = []
-	if crafting_slice == null or inventory_slice == null:
-		return rows
-	var ids: Array = inventory_slice.get_contents().keys()
-	ids.sort()
-	for item_id in ids:
-		var iid := str(item_id)
-		var spec: Dictionary = crafting_slice.get_repair_spec(iid)
-		if spec.is_empty():
-			continue
-		var check: Dictionary = crafting_slice.can_repair(iid, spec)
-		# Skip items whose only blocker is being pristine — they need no repair.
-		# Filter on can_repair's reason (which already reflects the condition)
-		# rather than re-deriving "pristine" here.
-		if str(check.get("reason", "")) == "already_pristine":
-			continue
-		rows.append({
-			"id": iid,
-			"can_repair": bool(check.get("success", false)),
-			"reason": str(check.get("reason", "")),
-			"station": str(spec.get("station", "")),
-			"icon_key": item_icon_key(iid),
-			"materials": _fmt_entries(spec.get("materials", [])),
-		})
-	return rows
+	return _m1.repair_rows()
 
-## One row per technology: { id, status, can_research, requires, duration, cost }.
 func technology_rows() -> Array:
-	var rows: Array = []
-	if technology_slice == null:
-		return rows
-	var ids: Array = GameData.TECHNOLOGIES.keys()
-	ids.sort()
-	for tech_id in ids:
-		var tid := str(tech_id)
-		var status: String = technology_slice.get_status(tid)
-		var data: Dictionary = technology_slice.get_tech_data(tid)
-		var points_cost: int = technology_slice.research_cost(tid)
-		var short: bool = status == "locked" and technology_slice.get_points() < points_cost
-		rows.append({
-			"id": tid,
-			"status": status,
-			"can_research": _can_research(tid, status, data) and not short,
-			"points_cost": points_cost,
-			"reason": "needs_points:%d" % points_cost if short else "",
-			"requires": data.get("requires", []),
-			"duration": int(data.get("researchDuration", 0)),
-			"cost": _fmt_entries(data.get("researchMaterials", [])),
-		})
-	return rows
+	return _m2.technology_rows()
 
 ## One row per active market listing: { id, seller, item_id, quantity, price }.
 func market_rows() -> Array:
@@ -1065,86 +930,10 @@ func _refresh_skills() -> void:
 		_skills_grid.add_child(b)
 
 func refresh_character() -> void:
-	if _character_grid == null:
-		return
-	_refresh_skills()
-	_character_stats.text = character_stats_text()
-	# An appearance change that left the worn set alone (a palette tweak, a LOD swap)
-	# produces the same rows; rebuilding the whole grid for it is wasted work.
-	var rows := character_rows()
-	var signature: int = rows.hash()
-	if signature == _character_rows_signature and _character_grid.get_child_count() > 0:
-		return
-	_character_rows_signature = signature
-	for c in _character_grid.get_children():
-		_character_grid.remove_child(c)
-		_retire(c)
-	for row in rows:
-		var slot := Button.new()
-		slot.custom_minimum_size = SLOT_SIZE
-		slot.tooltip_text = str(row["tooltip"])
-		slot.clip_text = true
-		var tex: Texture2D = _load_item_icon(str(row["icon_key"])) if str(row["icon_key"]) != "" else null
-		if tex != null:
-			slot.icon = tex
-			slot.expand_icon = true
-			slot.text = str(row["slot"])
-		else:
-			slot.text = "%s\n%s" % [row["slot"], item_glyph(str(row["item"])) if str(row["item"]) != "" else "—"]
-		slot.gui_input.connect(_on_slot_gui_input.bind(str(row["item"]), row["actions"]))
-		_character_grid.add_child(slot)
+	_m1.refresh_character()
 
 func refresh_crafting() -> void:
-	if _crafting_box == null:
-		return
-	for child in _crafting_box.get_children():
-		child.queue_free()
-	for row in crafting_rows():
-		var r: Dictionary = row
-		var hbox := HBoxContainer.new()
-		hbox.add_theme_constant_override("separation", 8)
-		var btn := Button.new()
-		btn.text = I18n.t("ui.craft")
-		btn.disabled = not bool(r["can_craft"])
-		btn.pressed.connect(_on_craft_pressed.bind(str(r["id"])))
-		hbox.add_child(btn)
-		_add_row_icon(hbox, str(r["icon_key"]))
-		var line := "%s: %s → %s" % [r["id"], r["inputs"], r["outputs"]]
-		if str(r.get("station", "")) != "":
-			line += "  @ %s" % r["station"]
-		var lbl := Label.new()
-		lbl.text = line + ("" if bool(r["can_craft"]) else "  (%s)" % I18n.reason_text(str(r["reason"])))
-		lbl.modulate = Color(1, 1, 1) if bool(r["can_craft"]) else Color(0.6, 0.6, 0.6)
-		hbox.add_child(lbl)
-		_crafting_box.add_child(hbox)
-
-	# Repair section: one row per held, repairable, non-pristine item.
-	var repair_rows_list: Array = repair_rows()
-	if not repair_rows_list.is_empty():
-		var sep := Label.new()
-		sep.text = I18n.t("ui.repairs_header")
-		sep.add_theme_font_size_override("font_size", 14)
-		sep.modulate = Color(0.75, 0.75, 0.75)
-		_crafting_box.add_child(sep)
-		for row in repair_rows_list:
-			var r: Dictionary = row
-			var hbox := HBoxContainer.new()
-			hbox.add_theme_constant_override("separation", 8)
-			var btn := Button.new()
-			btn.text = I18n.t("ui.repair")
-			btn.disabled = not bool(r["can_repair"])
-			btn.pressed.connect(_on_repair_pressed.bind(str(r["id"])))
-			hbox.add_child(btn)
-			_add_row_icon(hbox, str(r["icon_key"]))
-			var line := str(r["id"])
-			if str(r.get("station", "")) != "":
-				line += "  @ %s" % r["station"]
-			line += "  " + I18n.t("ui.needs", [r["materials"]])
-			var lbl := Label.new()
-			lbl.text = line + ("" if bool(r["can_repair"]) else "  (%s)" % I18n.reason_text(str(r["reason"])))
-			lbl.modulate = Color(1, 1, 1) if bool(r["can_repair"]) else Color(0.6, 0.6, 0.6)
-			hbox.add_child(lbl)
-			_crafting_box.add_child(hbox)
+	_m2.refresh_crafting()
 
 ## The local player's research-point balance (Phase 124); 0 with no technology slice.
 func research_points() -> int:
@@ -1418,36 +1207,7 @@ func _on_proposal_vote_pressed(proposal_id: String, verdict: String) -> void:
 # ---------------------------------------------------------------------------
 
 func _build_ui() -> void:
-	_ui = CanvasLayer.new()
-	_ui.name = "Windows"
-	_ui.layer = 30
-	add_child(_ui)
-	# Built first so every window draws above the HUD.
-	_build_hud()
-
-	_panels[WINDOW_INVENTORY] = _build_window(WINDOW_INVENTORY, "win.inventory", _build_inventory_content(), Vector2(24, 24))
-	_panels[WINDOW_TECHNOLOGY] = _build_window(WINDOW_TECHNOLOGY, "win.technology", _build_technology_content(), Vector2(470, 24))
-	_panels[WINDOW_CRAFTING] = _build_window(WINDOW_CRAFTING, "win.crafting", _build_crafting_content(), Vector2(24, 360))
-	_panels[WINDOW_TRADE] = _build_window(WINDOW_TRADE, "win.trade", _build_trade_content(), Vector2(470, 360))
-	_panels[WINDOW_MARKET] = _build_window(WINDOW_MARKET, "win.market", _build_market_content(), Vector2(24, 700))
-	_panels[WINDOW_PROPOSALS] = _build_window(WINDOW_PROPOSALS, "win.proposals", _build_proposals_content(), Vector2(470, 700))
-	_panels[WINDOW_CONTROLS] = _build_window(WINDOW_CONTROLS, "win.controls", _build_controls_content(), Vector2(916, 24))
-
-	_panels[WINDOW_CHARACTER] = _build_window(WINDOW_CHARACTER, "win.character", _build_character_content(), Vector2(916, 360))
-	_panels[WINDOW_SKILLS] = _build_window(WINDOW_SKILLS, "win.skills", _build_skills_content(), Vector2(916, 700))
-	_panels[WINDOW_SETTLEMENT] = _build_window(WINDOW_SETTLEMENT, "win.settlement", _build_settlement_content(), Vector2(916, 80))
-	_panels[WINDOW_MAP] = _build_window(WINDOW_MAP, "win.map", _build_map_content(), Vector2(200, 80))
-
-	_slot_menu = PopupMenu.new()
-	_slot_menu.id_pressed.connect(_on_slot_menu_pressed)
-	_ui.add_child(_slot_menu)
-	_load_layout()
-	_apply_layout()
-	# The panels have no real size until their first layout pass: re-fit once it has run.
-	_apply_layout.call_deferred()
-	# A viewport resize (window drag, fullscreen toggle) re-fits too.
-	if is_inside_tree() and not get_viewport().size_changed.is_connected(_apply_layout):
-		get_viewport().size_changed.connect(_apply_layout)
+	_m1._build_ui()
 
 ## Phase 140 — the settlement window: found, invite, roles and the shared stockpile.
 func _build_settlement_content() -> Control:
@@ -1457,31 +1217,7 @@ func _build_settlement_content() -> Control:
 	return panel
 
 func _build_map_content() -> Control:
-	var box := VBoxContainer.new()
-	map_window = MapWindowScript.new()
-	map_window.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	box.add_child(map_window)
-	map_window.notice.connect(push_toast)
-	GameBus.waystone_travel_resolved.connect(_on_waystone_resolved)
-	var row := HBoxContainer.new()
-	box.add_child(row)
-	var fold := CheckButton.new()
-	_set_tr(fold, "text", "map.planet")
-	_set_tr(fold, "tooltip_text", "map.planet_tip")
-	fold.focus_mode = Control.FOCUS_NONE
-	fold.toggled.connect(func(on: bool) -> void: map_window.set_planet(on))
-	row.add_child(fold)
-	var here := Button.new()
-	_set_tr(here, "text", "map.centre")
-	here.focus_mode = Control.FOCUS_NONE
-	here.pressed.connect(func() -> void: map_window.center_on_player())
-	row.add_child(here)
-	var hint := Label.new()
-	_set_tr(hint, "text", "map.hint")
-	_set_tr(hint, "tooltip_text", "map.hint_tip")
-	hint.mouse_filter = Control.MOUSE_FILTER_PASS
-	row.add_child(hint)
-	return box
+	return _m2._build_map_content()
 
 ## Phase 125 — a refused travel is said on the toast channel; a success needs no words (the world moves).
 func _on_waystone_resolved(player_id: String, ok: bool, reason: String) -> void:
@@ -1506,47 +1242,8 @@ const WAYSTONE_REFUSALS := {
 	"unreachable": "waystone.unreachable",
 }
 
-## `title` is a catalog key.
 func _build_window(key: String, title: String, content: Control, position: Vector2) -> PanelContainer:
-	var panel := PanelContainer.new()
-	panel.position = position
-	panel.custom_minimum_size = Vector2(420, 300)
-	panel.visible = false
-	_ui.add_child(panel)
-
-	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 12)
-	margin.add_theme_constant_override("margin_right", 12)
-	margin.add_theme_constant_override("margin_top", 12)
-	margin.add_theme_constant_override("margin_bottom", 12)
-	panel.add_child(margin)
-
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 8)
-	margin.add_child(vbox)
-
-	var bar := HBoxContainer.new()
-	bar.mouse_filter = Control.MOUSE_FILTER_STOP
-	bar.mouse_default_cursor_shape = Control.CURSOR_MOVE
-	bar.gui_input.connect(_on_title_gui_input.bind(key))
-	vbox.add_child(bar)
-
-	var title_label := Label.new()
-	_set_tr(title_label, "text", title)
-	title_label.add_theme_font_size_override("font_size", 22)
-	title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	bar.add_child(title_label)
-
-	var close := Button.new()
-	close.text = "✕"
-	close.pressed.connect(_on_close_pressed.bind(key))
-	bar.add_child(close)
-
-	# The body fills the window: a ScrollContainer inside it has no minimum height, so a body that
-	# only takes its minimum size leaves the crafting and technology lists 0 px tall.
-	content.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	vbox.add_child(content)
-	return panel
+	return _m1._build_window(key, title, content, position)
 
 # ---------------------------------------------------------------------------
 # Window drag + layout persistence
@@ -1632,39 +1329,8 @@ func _build_controls_content() -> Control:
 	_refill_controls()
 	return _controls_box
 
-## (Re)build the control rows in the active language.
 func _refill_controls() -> void:
-	if _controls_box == null:
-		return
-	if _language_button != null:
-		_language_button.text = language_button_text()
-	for child in _controls_box.get_children():
-		if child != _language_button:
-			child.free()
-	var box := _controls_box
-	for row in controls_rows():
-		var line := HBoxContainer.new()
-		line.add_theme_constant_override("separation", 10)
-		if int(row["mouse"]) != 0:
-			var holder := CenterContainer.new()
-			holder.custom_minimum_size = Vector2(56, 30)
-			var icon: Control = MouseIconScript.new()
-			icon.button = int(row["mouse"])
-			icon.custom_minimum_size = Vector2(20, 30)
-			holder.add_child(icon)
-			line.add_child(holder)
-		else:
-			var key_label := Label.new()
-			key_label.text = str(row["keys"])
-			key_label.add_theme_font_size_override("font_size", 15)
-			key_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
-			key_label.custom_minimum_size = Vector2(90, 0)
-			line.add_child(key_label)
-		var desc := Label.new()
-		desc.text = str(row["desc"])
-		desc.add_theme_font_size_override("font_size", 15)
-		line.add_child(desc)
-		box.add_child(line)
+	_m2._refill_controls()
 
 func _build_inventory_content() -> Control:
 	var vbox := VBoxContainer.new()
@@ -1773,75 +1439,10 @@ func _build_trade_content() -> Control:
 	return vbox
 
 func _build_market_content() -> Control:
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 6)
-	var list_lbl := Label.new()
-	_set_tr(list_lbl, "text", "market.list_prompt")
-	vbox.add_child(list_lbl)
-	var list_row := HBoxContainer.new()
-	list_row.add_theme_constant_override("separation", 6)
-	_market_item_select = OptionButton.new()
-	_market_item_select.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	list_row.add_child(_market_item_select)
-	_market_qty = LineEdit.new()
-	_market_qty.text = "1"
-	_market_qty.custom_minimum_size = Vector2(40, 0)
-	list_row.add_child(_market_qty)
-	_market_price = LineEdit.new()
-	_market_price.text = "1.0"
-	_market_price.custom_minimum_size = Vector2(50, 0)
-	list_row.add_child(_market_price)
-	var list_btn := Button.new()
-	_set_tr(list_btn, "text", "market.list")
-	list_btn.pressed.connect(_on_market_list_pressed)
-	list_row.add_child(list_btn)
-	vbox.add_child(list_row)
-	_market_feedback = Label.new()
-	_market_feedback.add_theme_font_size_override("font_size", 13)
-	vbox.add_child(_market_feedback)
-	var browse_lbl := Label.new()
-	_set_tr(browse_lbl, "text", "market.browse")
-	vbox.add_child(browse_lbl)
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_market_box = VBoxContainer.new()
-	_market_box.add_theme_constant_override("separation", 4)
-	_market_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(_market_box)
-	vbox.add_child(scroll)
-	return vbox
+	return _m1._build_market_content()
 
 func _build_proposals_content() -> Control:
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 6)
-	var title_row := HBoxContainer.new()
-	title_row.add_theme_constant_override("separation", 6)
-	_proposal_title = LineEdit.new()
-	_set_tr(_proposal_title, "placeholder_text", "proposal.title_ph")
-	_proposal_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	title_row.add_child(_proposal_title)
-	var submit_btn := Button.new()
-	_set_tr(submit_btn, "text", "proposal.submit")
-	submit_btn.pressed.connect(_on_proposal_submit_pressed)
-	title_row.add_child(submit_btn)
-	vbox.add_child(title_row)
-	_proposal_body = LineEdit.new()
-	_set_tr(_proposal_body, "placeholder_text", "proposal.body_ph")
-	vbox.add_child(_proposal_body)
-	_proposal_feedback = Label.new()
-	_proposal_feedback.add_theme_font_size_override("font_size", 13)
-	vbox.add_child(_proposal_feedback)
-	var list_lbl := Label.new()
-	_set_tr(list_lbl, "text", "proposal.list")
-	vbox.add_child(list_lbl)
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_proposal_box = VBoxContainer.new()
-	_proposal_box.add_theme_constant_override("separation", 4)
-	_proposal_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(_proposal_box)
-	vbox.add_child(scroll)
-	return vbox
+	return _m2._build_proposals_content()
 
 # ---------------------------------------------------------------------------
 # Helpers

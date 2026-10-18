@@ -5,6 +5,10 @@ extends "res://src/core/wiring.gd"
 const TerrainSlice     := preload("res://src/terrain/terrain_slice.gd")
 const WorldClock       := preload("res://src/world/world_clock.gd")
 
+## Seconds since the host last ticked status effects / sent a world-clock tick (module-only state).
+var _status_tick_elapsed: float = 0.0
+var _clock_tick_elapsed: float = 0.0
+
 func _connect_all() -> void:
 	connect_bus(GameBus.weather_overrides_synced, _on_weather_overrides_synced)
 	connect_bus(GameBus.world_clock_received, _on_world_clock_received)
@@ -14,17 +18,16 @@ func _connect_all() -> void:
 ## saves and ticks.
 func tick_world_clock(delta: float) -> void:
 	root._clock.advance(delta)
-	root._settlement_wiring.tick(delta)
 	if not root._is_client:
 		root._weather.tick()
-		root._status_tick_elapsed += delta
-		if root._status_tick_elapsed >= root.STATUS_TICK_SECONDS:
-			root._status_tick_elapsed = 0.0
+		_status_tick_elapsed += delta
+		if _status_tick_elapsed >= root.STATUS_TICK_SECONDS:
+			_status_tick_elapsed = 0.0
 			root._combat_wiring.tick_status_effects()
 	if not root._is_client and root._networking != null and root._networking.is_host():
-		root._clock_tick_elapsed += delta
-		if root._clock_tick_elapsed >= root.clock_tick_seconds:
-			root._clock_tick_elapsed = 0.0
+		_clock_tick_elapsed += delta
+		if _clock_tick_elapsed >= root.clock_tick_seconds:
+			_clock_tick_elapsed = 0.0
 			root.clock_ticks_sent += 1
 			root._networking.broadcast_world_clock(root._clock.time_days)
 	if root._is_server or root._player == null:

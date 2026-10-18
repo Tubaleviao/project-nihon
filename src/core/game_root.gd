@@ -87,6 +87,8 @@ var _creature_ai: CreatureAI
 var _worldgen_stamp: int = TerrainSlice.WORLDGEN_VERSION
 ## Phase 106 — the fingerprint the next save writes; resolved when a record loads.
 var _worldgen_fp_stamp: int = -1
+## Every worldgen fingerprint this world was saved under, oldest first (see `PersistenceSlice.fingerprint_history`).
+var _worldgen_fp_history: Array = []
 var _networking:  NetworkingSlice
 var _persistence: PersistenceSlice
 var _registry:    PlayerRegistry
@@ -114,7 +116,6 @@ var _weather:     WeatherSlice
 var _status:      StatusEffects
 ## Test hook: fixed seconds in place of the engine clock.
 var status_clock: Callable = Callable()
-var _status_tick_elapsed: float = 0.0
 
 ## Network role (Phase 18/27). HOST = authoritative simulation (default, matches
 ## single-player); CLIENT = receives world state from a host; SERVER = headless
@@ -171,7 +172,6 @@ var _colonization := ColonizationMap.new()
 ## Phase 54 — the world clock. The host advances and saves it and ticks it to clients; a client
 ## advances locally and slews to each tick.
 var _clock := WorldClock.new()
-var _clock_tick_elapsed: float = 0.0
 ## Seconds between host ticks (the net harness shortens it); `clock_ticks_sent` counts them.
 var clock_tick_seconds: float = WorldClock.TICK_SECONDS
 var clock_ticks_sent: int = 0
@@ -1025,13 +1025,6 @@ func _boot_server() -> void:
 	_persistence_wiring.apply_loaded_creature_state()
 	_networking.host(_networking.DEFAULT_PORT, _networking.DEFAULT_MAX_CLIENTS)
 
-## Phase 66 — client: the other players inside our AOI, as character instances.
-## { peer_id: instance_id }. A peer's replicated gear lands on its instance (bound through
-## `bind_peer_character`), so what the host sends is applied to something visible. An
-## instance lives while the peer is inside AOI: leaving it (`peer_equipment_evicted`) or
-## disconnecting frees the body, and re-entry builds a fresh one the host's resend dresses.
-var _remote_avatars: Dictionary = {}
-
 ## A remote avatar is dropped only once it is this far away, a margin PAST the host's AOI
 ## edge. The host stops reporting a peer at exactly AOI_RADIUS, so pruning at the same radius
 ## made an avatar standing on the edge flicker (dropped, re-created by the next report).
@@ -1091,6 +1084,9 @@ func _process(delta: float) -> void:
 	_tick_pending_client_boot(delta)
 
 	_weather_wiring.tick_world_clock(delta)
+	if not _pending_host_boot:
+		for w in _wirings:
+			w.tick(delta)
 	_peer_wiring.sync_player_avatar(delta)
 	if _distant != null and _player != null and _chunk_manager != null:
 		_distant.world_seed = _terrain.get_world_seed()
@@ -1127,9 +1123,6 @@ const WEATHER_FOG_DENSITY := 0.03
 ## Warmth the season tints were last computed for (NAN before the first apply).
 var _season_warmth: float = NAN
 
-## Phase 47 — make the local avatar wear a recorded set. The `_applying_equipment`
-## guard keeps the restore from echoing back out as a fresh intent.
-var _applying_equipment: bool = false
 ## Worn set this client last matched against the host (what it has already sent actions for);
 ## an appearance change that leaves gear alone sends nothing.
 var _last_sent_equipment: Dictionary = {}
@@ -1189,7 +1182,6 @@ static func client_respawn_point(own: Dictionary, standing: Dictionary) -> Dicti
 
 ## A refused pickup or mining yield used to be silent, which read as "picking up is broken".
 const PACK_FULL_NOTICE_MSEC := 3000   ## at most one notice this often, so a held click does not spam
-var _pack_full_notice_msec := -PACK_FULL_NOTICE_MSEC
 
 ## Seconds between status-effect ticks: damage over time arrives in 0.25 s slices, not one packet a frame.
 const STATUS_TICK_SECONDS := 0.25

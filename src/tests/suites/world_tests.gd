@@ -206,7 +206,17 @@ func _test_waystone_wire_and_chat_leftovers() -> void:
 	n._role = NetworkingSlice.Role.HOST
 	n.set_transport(_StampingTransport.new([4]))
 	assert_false(n.send_teleport(77, WorldPos.from_world(1.0, 2.0, 3.0)), "send_teleport is false for an unconnected peer")
+	n.remember_player_state(4, Vector3(900.0, 2.0, 900.0), WorldPos.from_world(900.0, 2.0, 900.0))
 	assert_true(n.send_teleport(4, WorldPos.from_world(1.0, 2.0, 3.0)), "and true for a connected one")
+	var landed: Dictionary = n.get_expected_exact(4)
+	assert_true(WorldPos.offset_between(landed, WorldPos.from_world(1.0, 2.0, 3.0)).length() < 0.001,
+		"right after a delivered teleport the host judges the peer at the landing")
+	assert_true(WorldPos.offset_between(n.get_last_known_exact(4), WorldPos.from_world(900.0, 2.0, 900.0)).length() < 0.001,
+		"while its report record is untouched")
+	n.remember_player_state(4, Vector3(900.0, 2.0, 900.0), WorldPos.from_world(900.0, 2.0, 900.0))
+	assert_true(n.get_expected_exact(4)["chunk"] == WorldPos.from_world(1.0, 2.0, 3.0)["chunk"], "a stale in-flight report does not undo it")
+	n.remember_player_state(4, Vector3(1.0, 2.0, 3.0), WorldPos.from_world(1.5, 2.0, 3.0))
+	assert_true(WorldPos.offset_between(n.get_expected_exact(4), WorldPos.from_world(1.5, 2.0, 3.0)).length() < 0.001, "a report at the landing ends it")
 	n.emulate_network = true
 	n.emulator_loss_rate = NetworkingSlice.MAX_LOSS_RATE
 	var sent := 0
@@ -298,12 +308,22 @@ func _test_phase130_waystone_throttle_full() -> void:
 	GameBus.waystone_travel_resolved.connect(on_res)
 	var was_quiet := Diag.quiet
 	Diag.quiet = true
+	var warns_before := Diag.warn_count()
 	for i in 20:
 		way._on_travel_intent(a, "station_99", "p1")
 		now[0] += 0.01
+	var flood_warns := Diag.warn_count() - warns_before
+	var throttled := int(way._suppressed.get("p1", 0))
+	now[0] += WaystoneSlice.INTENT_INTERVAL + 0.01
+	way._on_travel_intent(a, "station_99", "p1")
+	var after_warns := Diag.warn_count() - warns_before - flood_warns
 	Diag.quiet = was_quiet
 	GameBus.waystone_travel_resolved.disconnect(on_res)
-	assert_true(replies.size() <= 1, "20 refused intents in 0.2 s earn at most one reply, got %d" % replies.size())
+	assert_true(replies.size() <= 2, "20 refused intents in 0.2 s earn at most one reply (plus the later one), got %d" % replies.size())
+	assert_true(flood_warns <= 1, "the flood logs at most one line, got %d" % flood_warns)
+	assert_true(throttled > 0, "the throttled refusals are counted")
+	assert_eq(after_warns, 1, "the next answered refusal logs one aggregate line")
+	assert_false(way._suppressed.has("p1"), "and the count starts over")
 	# A full list refuses early instead of truncating.
 	var ids: Array = []
 	for i in PlayerRegistry.MAX_WAYSTONES:
@@ -1252,7 +1272,7 @@ func _test_attach_rig() -> void:
 
 ## Phase 115 (#258) — an exact far position survives all three placement doors: the host's own
 ## `_place_local_player`, the host's `_snapshot_own_record` (what `_build_snapshot` ships, through JSON) and
-## the client's `_place_from_snapshot` (what `_on_world_snapshot_received` calls), within 1e-3 m.
+## the client's `_place_from_snapshot` (what `SnapshotWiring.on_world_snapshot_received` calls), within 1e-3 m.
 func _test_exact_placement_paths() -> void:
 	var root_script: GDScript = load("res://src/core/game_root.gd")
 	var chunk := Vector2i(600000, 40)

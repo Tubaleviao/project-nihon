@@ -19,6 +19,11 @@ func wire(ctx: GameRoot) -> void:
 func _connect_all() -> void:
 	pass
 
+## Virtual: per-frame work, called by GameRoot for every module once the host's boot has finished
+## (the world record is loaded), so no module drives another's tick by hand.
+func tick(_delta: float) -> void:
+	pass
+
 ## Connects `handler` to `sig` once: a second call with the same pair is a no-op.
 func connect_bus(sig: Signal, handler: Callable) -> void:
 	if sig.is_connected(handler):

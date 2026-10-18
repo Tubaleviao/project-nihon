@@ -206,6 +206,7 @@ settlement.item_ph,Item,Item
 settlement.qty_ph,Quantity,Quantidade
 settlement.found,Found here (needs a Hearth),Fundar aqui (exige uma Lareira)
 settlement.invite,Invite,Convidar
+settlement.uninvite,Withdraw invite,Retirar convite
 settlement.set_role,Set role,Definir papel
 settlement.leave,Leave,Sair
 settlement.deposit,Deposit,Depositar
@@ -224,6 +225,7 @@ settlement.tier.town,town,vila
 settlement.tier.abandoned,abandoned,abandonado
 settlement.ok.found,Settlement founded.,Assentamento fundado.
 settlement.ok.invite,Invitation sent.,Convite enviado.
+settlement.ok.uninvite,Invitation withdrawn.,Convite retirado.
 settlement.ok.join,You joined the settlement.,Você entrou no assentamento.
 settlement.ok.role,Role changed.,Papel alterado.
 settlement.ok.leave,You left the settlement.,Você saiu do assentamento.
@@ -240,6 +242,7 @@ settlement.refused.not_member,You are not a member.,Você não é membro.
 settlement.refused.no_permission,Your role does not allow that.,Seu papel não permite isso.
 settlement.refused.unknown_settlement,No such settlement.,Esse assentamento não existe.
 settlement.refused.not_invited,You were not invited.,Você não foi convidado.
+settlement.refused.no_such_invite,There is no invite to withdraw for that player.,Não há convite desse jogador para retirar.
 settlement.refused.full,No room left.,Sem espaço.
 settlement.refused.bad_role,That role cannot be given.,Esse papel não pode ser dado.
 settlement.refused.founder_locked,The founder's place cannot change.,O lugar do fundador não pode mudar.

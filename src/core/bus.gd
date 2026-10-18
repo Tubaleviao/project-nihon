@@ -206,7 +206,7 @@ signal waystone_travel_resolved(player_id: String, ok: bool, reason: String)
 signal waystones_synced(player_id: String, station_ids: Array)
 
 ## Phase 140 — a settlement intent: `action` is one of SettlementSlice.ACTIONS (found, invite, join, role,
-## leave, deposit, withdraw) and `args` its parameters. A client forwards it; the host binds the identity.
+## leave, deposit, withdraw, uninvite) and `args` its parameters. A client forwards it; the host binds the identity.
 signal settlement_intent(action: String, args: Dictionary, player_id: String)
 
 ## Phase 140 — the host resolved a settlement intent. `reason` is "" on success, else a refusal code (see

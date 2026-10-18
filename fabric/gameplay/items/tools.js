@@ -106,7 +106,7 @@ module.exports = {
       weight:    { type: 'decimal', description: 'kg; affects carry capacity', defaultValue: 2.3 },
       rarity:    { type: 'enum', values: RARITIES, defaultValue: 'common' },
       stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory', defaultValue: false },
-      shape: itemShape({ archetype: 'axe', parts: { head: 'Ferrite', handle: 'Thornwood' } }),
+      shape: itemShape({ archetype: 'axe', parts: { head: 'Ferrite', handle: 'Thornwood' }, unshown: ['Duskfiber'] }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 90 },
       toolType:   { type: 'string', description: 'Tool class — the action this tool performs. "pick" mines, "axe" chops.', defaultValue: 'axe' },
       repair: repairData({

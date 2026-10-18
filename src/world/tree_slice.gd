@@ -589,7 +589,7 @@ func inventory_for(player_id: String) -> Node:
 
 ## Is `player_id` a player whose own client mirrors this inventory over the wire?
 ## False for `""` (this machine's own player) and for the local id, whose pack is live
-## in this process — the same test `PeerWiring._sync_peer_own_state` makes.
+## in this process — the same test `PeerWiring.sync_peer_own_state` makes.
 func _is_remote_actor(player_id: String) -> bool:
 	if player_id == "":
 		return false
@@ -833,13 +833,22 @@ func _forget_spots(canon: Vector2i) -> void:
 		_pending_spots.erase(canon)
 
 ## Phase 138 — a chunk that now has a record: clear the trees inside its held spots, then let them go.
-## A chunk still without a record keeps them for the next `spawn_for_chunk`.
+## A chunk still without a record keeps them for the next `spawn_for_chunk` or `on_chunk_recorded`.
+## With no `record_writer` nothing will ever record it: the spots are applied by geometry on every
+## spawn and kept, so the cleared trees never come back as ghosts.
 func _apply_pending_spots(chunk_pos: Vector2i) -> void:
 	var canon := TerrainSlice.wrap_chunk(chunk_pos)
-	if not is_authoritative or not _pending_spots.has(canon) or not ChunkRecords.has_record(canon):
+	if not is_authoritative or not _pending_spots.has(canon):
+		return
+	var recorded := ChunkRecords.has_record(canon)
+	if not recorded and record_writer.is_valid():
 		return
 	var spots: Array = _pending_spots[canon]
-	_forget_spots(canon)
+	if recorded:
+		_forget_spots(canon)
+	_apply_spots_to(chunk_pos, spots)
+
+func _apply_spots_to(chunk_pos: Vector2i, spots: Array) -> void:
 	var wm := _lap_metres()
 	var hit: Array = []
 	for tid in _by_chunk.get(chunk_pos, []):
@@ -855,6 +864,23 @@ func _apply_pending_spots(chunk_pos: Vector2i) -> void:
 				break
 	for tid in hit:
 		_clear_tree(str(tid))
+
+## #367 — ChunkManager recorded `canon` after its trees spawned: apply its held
+## spots now instead of at the chunk's next spawn.
+func on_chunk_recorded(canon: Vector2i) -> void:
+	# A chunk loaded across the seam is keyed by the position it was loaded at, not the canonical one.
+	# Every resident alias gets the spots: the first would otherwise forget them for the rest.
+	if not is_authoritative or not _pending_spots.has(canon):
+		return
+	var recorded := ChunkRecords.has_record(canon)
+	if not recorded and record_writer.is_valid():
+		return
+	var spots: Array = _pending_spots[canon]
+	if recorded:
+		_forget_spots(canon)
+	for chunk: Vector2i in _spawned_chunks.keys():
+		if chunk == canon or TerrainSlice.wrap_chunk(chunk) == canon:
+			_apply_spots_to(chunk, spots)
 
 ## The held spots as saveable data: { "cx,cz": [[x, z, radius], ...] }.
 func pending_spots_to_data() -> Dictionary:

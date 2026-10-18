@@ -174,7 +174,7 @@ issue number where the criterion used to be.
 | 151 | Item shapes in the fabric | Done | [history](docs/roadmap-history/phases-151.md) |
 | 152 | Item models and icons from one generator | Done | [history](docs/roadmap-history/phases-152.md) |
 | 153 | Items in the world: equipment, held tools and icons everywhere | Done | [history](docs/roadmap-history/phases-153.md) |
-| 154 | Split the biggest slices | Planned | below |
+| 154 | Split the biggest slices | Done | [history](docs/roadmap-history/phases-154.md) |
 | 155 | Animation tempo: looping clips, stride-matched walk and snappier transitions | Planned | below |
 | 156 | Idle, attack and hit clips for everyone, on every swing | Planned | below |
 | 157 | Deaths that read as deaths: a push, a fall and a body that stays | Planned | below |
@@ -191,56 +191,11 @@ issue number where the criterion used to be.
 | 168 | Native `build_runs` | Planned | below |
 | 169 | Native `build_chunk_arrays` and the speed target | Planned | below |
 | 170 | A compute-shader heightmap, if the native builder is still the bottleneck | Planned | below |
+| 171 | Creatures in exact coordinates: no float32 metres far from the origin | Planned | below |
 
 ---
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
----
-
-
-## Phase 154 — Split the biggest slices
-
-**Goal:** four files hold a large share of the game: `src/terrain/voxel_slice.gd` (~3.3k lines),
-`src/networking/networking_slice.gd` (~2.4k), `src/ui/ui_slice.gd` (~1.8k) and
-`src/character/character_slice.gd` (~1.8k). They mix several jobs, which makes reviews slow and
-merge conflicts common between the autopilot's parallel branches. Phase 132 already did this for
-wiring. This phase does the same for the slices, with no change in behaviour.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phases 147–150 (they touch the same files; split after, to avoid conflicts).
-
-**Deliverables:**
-- `voxel_slice.gd` → edit/authority, settle, mesh build and persistence modules. The slice stays the
-  public facade.
-- `networking_slice.gd` → transport/emulator, peer registry, intent validation and AOI/delta modules.
-- `ui_slice.gd` → one module per window (inventory, crafting, research, character, map), plus a
-  shared `item_rows` helper.
-- `character_slice.gd` → equipment, appearance/palette and limb animation modules.
-- One PR per slice. Each moves code without changing what it does, and the public API of the
-  slice is unchanged.
-- A suite size audit: no non-test `.gd` file under `src/` is over 1500 lines, apart from an
-  explicit allow-list that this phase empties.
-
-**Acceptance criteria:**
-- [ ] The four files are each at most 1500 lines, and the size audit passes with an empty allow-list.
-- [ ] The size audit fails on a fixture file over the limit.
-- [ ] No test file changes except import paths (a behaviour-preserving split).
-- [ ] Suite green on both boot paths, harness green, playtest bot green.
 
 ---
 
@@ -324,8 +279,9 @@ phase gives every body a visible idle, a swing on every hit and a flinch when hi
   play once after the body has been idle for 6–12 s (a seeded random from the instance id, so tests
   are deterministic). Creature skeletons get the same treatment: quadruped head bob and tail sway,
   bird preen, serpent coil.
-- Attack on every swing: the host's per-hit combat event (`combat_resolved` or the hit event it
-  already broadcasts) drives the attacker's attack animation for **any** attacker id — the local
+- Attack on every swing: the host's per-hit combat event (today `GameBus.combat_round_resolved`
+  carries one result per round, so a per-hit signal such as `combat_hit_resolved` is added to
+  `src/core/bus.gd` in this phase) drives the attacker's attack animation for **any** attacker id — the local
   player, a remote peer's avatar and a creature model. Remote clients get it from the existing
   synced combat result, so no new wire message is needed if the result already carries the attacker;
   otherwise one compact field is added and validated on the host.
@@ -365,7 +321,8 @@ vanishing after `CORPSE_SECONDS` (8 s).
 
 **Newel dependency:** NO.
 
-**Depends on:** Phase 155. Uses Phase 129's knockback helper.
+**Depends on:** Phase 155. Uses Phase 129's knockback helper. Reads `corpseSeconds` from Phase 160
+when it has landed; until then the corpse lifetime stays the `CORPSE_SECONDS` constant.
 
 **Deliverables:**
 - Host-decided death push: when the host resolves a killing blow it computes a short throw
@@ -374,6 +331,10 @@ vanishing after `CORPSE_SECONDS` (8 s).
   `StatusEffects.knockback_target`. The landing position is part of the death event
   (`creature_died` / `player_died` gain `landing: Vector3` — the host value, never the client's).
   The body's authoritative position becomes the landing spot.
+  The signature change touches every existing listener, updated in this phase:
+  `CreatureSlice._on_creature_died`, `CreatureAI._on_creature_died`, `LootSlice._on_creature_died`,
+  `CombatWiring._on_player_died` / `_on_status_player_died`, the emitters in
+  `BattleSlice` and `PlayerSlice._die`, and the suite tests that emit either signal.
 - Client-side fall: the visual body travels from its position to `landing` over about 0.35 s on a
   short arc (no physics ragdoll, so the headless server stays deterministic), while the death clip
   plays. Two or more death variants per skeleton, picked by the hit direction relative to the
@@ -921,6 +882,37 @@ heightmap path is Phase 170.
 - [ ] Playtest bot (CI): the measurement is in `report.json`, and this section records the decision.
 - [ ] If a shader ships: suite parity with the native `heightmap_for` for the fixed chunk set, and a
   machine without compute support uses the native/GDScript path.
+- [ ] Suite green on both boot paths, harness green.
+
+## Phase 171 — Creatures in exact coordinates: no float32 metres far from the origin
+
+**Goal:** creature records (`CreatureSlice._instances`, `_dead_state`, the wire and the save) hold
+their position as a float32 world `Vector3`. At x ≈ 2e7 m (half a lap from the origin) a float32 has
+about 2 m between values, so a creature's range checks, model placement (`CreatureVisuals`) and AI
+steps are metres-coarse there, and a model can jitter. Players, waystones and hearths already use
+exact `{chunk, local}` positions; creatures should too. Split out of review follow-ups #380 and #392.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 154 (it splits the files this phase touches).
+
+**Deliverables:**
+- `CreatureSlice` keeps each instance's position as `{chunk, local}` (`WorldPos`), with the
+  `Vector3` world metres derived only near the camera or the player (scene-relative, like
+  `WorldPos.to_scene`). `creature_state_changed`, snapshots and the world record carry the exact form;
+  a legacy float position still loads.
+- `CreatureVisuals.reselect` and `_update_model` place models from camera-relative positions computed
+  from the exact form, never from a float32 world `Vector3`.
+- `CreatureAI` paths and `creatures_in_radius` / the spatial hash work in the local frame of the chunk
+  window, so a step far from the origin is the same size as one near it.
+- The fold log (`_fold_log`, Phase 145) folds exact positions.
+
+**Acceptance criteria:**
+- [ ] Suite: a creature at x ≈ 2e7 m moved by 0.1 m keeps the 0.1 m in its record, on the wire and
+  after save and load.
+- [ ] Suite: its model's scene position is within 1 cm of the record, seen from a camera beside it.
+- [ ] Suite: a legacy float-position creature record still loads.
+- [ ] Harness: a creature delta far from the origin lands within 1 cm on the client.
 - [ ] Suite green on both boot paths, harness green.
 
 ---

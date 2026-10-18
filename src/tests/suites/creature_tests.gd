@@ -12,6 +12,8 @@ func register() -> void:
 	_run_test("models: every creature names a skeleton and ships a matching rig", _test_models_rigs_match_fabric)
 	_run_test("models: a type without a model takes no slot from one that has it", _test_phase147_unmodelled_takes_no_slot)
 	_run_test("models: a respawn teleport does not play run", _test_phase147_respawn_not_run)
+	_run_test("models: a respawn near the corpse does not play run", _test_models_near_respawn_not_run)
+	_run_test("models: an out-of-range type is pre-warmed one per frame", _test_models_template_prewarm)
 	_run_test("models: range, hysteresis and the pool swap",    _test_models_range_hysteresis)
 	_run_test("models: a missing key keeps the box, warns once per type", _test_models_missing_key_warns_once)
 	_run_test("models: state-to-clip map and death does not loop", _test_models_clip_map)
@@ -2482,4 +2484,30 @@ func _test_phase147_respawn_not_run() -> void:
 	var m: Dictionary = v.models["m0"]
 	assert_eq(float(m["speed"]), 0.0, "a jump to the respawn point is not a speed")
 	assert_true(int(m["loco"]) != CreatureVisualsScript.Locomotion.State.RUN, "so the clip is not run")
+	c.free()
+
+func _test_models_near_respawn_not_run() -> void:
+	var c := _model_slice("GraywolfPack", 1)
+	var v = c.visuals()
+	v.reselect(c._instances, Vector3.ZERO)
+	c.apply_creature_state("m0", "GraywolfPack", "dead", Vector3.ZERO, 0.0)
+	v._update_model("m0", c._instances["m0"], 0.05)
+	# Respawned 3 m away: under TELEPORT_JUMP_M, so only leaving `dead` tells it from a run.
+	c.apply_creature_state("m0", "GraywolfPack", "idle", Vector3(3, 0, 0), 10.0)
+	v._update_model("m0", c._instances["m0"], 0.05)
+	var m: Dictionary = v.models["m0"]
+	assert_eq(float(m["speed"]), 0.0, "leaving death resets the speed estimate")
+	assert_eq(int(m["loco"]), CreatureVisualsScript.Locomotion.State.IDLE, "so the respawned body idles")
+	c.free()
+
+func _test_models_template_prewarm() -> void:
+	var c := _model_slice("GraywolfPack", 1)
+	var v = c.visuals()
+	v.reselect(c._instances, Vector3(0, 0, 1000.0))
+	assert_false(v._templates.has("GraywolfPack"), "a far creature's type is not built inside the range check")
+	assert_eq(v.prewarm_one(), "GraywolfPack", "the next frame builds the queued type")
+	assert_true(v._templates.has("GraywolfPack"), "so its first model needs no build")
+	assert_eq(v.prewarm_one(), "", "one type per frame, nothing left")
+	v.reselect(c._instances, Vector3(0, 0, 1000.0))
+	assert_eq(v.prewarm_one(), "", "a built type is not queued again")
 	c.free()

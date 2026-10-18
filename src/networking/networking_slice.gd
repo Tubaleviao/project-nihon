@@ -155,6 +155,15 @@ const IDENTIFIED_STATE_KEYS: PackedStringArray = ["market", "governance", "trade
 ## Phase 36 — the public handle THIS client was told to call itself (see
 ## `identity_assigned`). A client is shown its own handle back as the literal
 ## "player", so its local view keeps the convention it has always had.
+const NetPart1 := preload("res://src/networking/net_part_1.gd")
+const NetPart2 := preload("res://src/networking/net_part_2.gd")
+const NetPart3 := preload("res://src/networking/net_part_3.gd")
+var _m3 := NetPart3.new(self)
+
+var _m2 := NetPart2.new(self)
+
+var _m1 := NetPart1.new(self)
+
 var claimed_handle: String = ""
 ## Phase 53 — a friend's handle to spawn beside on a first join ("" = none). Set before connecting.
 var friend_code: String = ""
@@ -337,39 +346,14 @@ static func profile_from_args(args: Array) -> String:
 		return "?"
 	return str(args[i + 1])
 
-## Phase 135 — apply `--net-profile` from the command line at boot. An unknown name (or a flag with
-## no value) is refused: the process exits 2, because a run that fell back to loopback would report a
-## pass for a link it never emulated. Returns false on refusal.
 func _apply_profile_arg(args: Array) -> bool:
-	var name := profile_from_args(args)
-	if name == "":
-		return true
-	if apply_profile(name):
-		print("[Networking] link profile: %s" % name)
-		return true
-	Diag.error("[Networking] unknown --net-profile '%s' (known: %s)" % [name, ", ".join(NET_PROFILES.keys())])
-	get_tree().quit(2)
-	return false
+	return _m1._apply_profile_arg(args)
 
 static func has_profile(name: String) -> bool:
 	return NET_PROFILES.has(name)
 
-## Phase 135 — apply a named profile. False (nothing changed) for an unknown name. `loopback` turns
-## the emulator off; any other profile turns it on. The one-way latency is the profile's, so the
-## round trip is twice it (`profile_rtt_ms`).
 func apply_profile(name: String) -> bool:
-	if not NET_PROFILES.has(name):
-		return false
-	var p: Dictionary = NET_PROFILES[name]
-	net_profile = name
-	emulator_latency_ms = float(p["latency_ms"])
-	emulator_jitter_ms = float(p["jitter_ms"])
-	emulator_loss_rate = float(p["loss_rate"])
-	emulator_bandwidth_kbps = float(p["bandwidth_kbps"])
-	emulate_network = name != "loopback"
-	# The real wire under it is reliable ENet, so a loss the profile models costs a retransmit delay.
-	emulator_retransmit = true
-	return true
+	return _m2.apply_profile(name)
 
 ## Phase 135 — how much longer than loopback this slice's waits should be: one plus the profile's round
 ## trip over 250 ms (1.0 with no profile). The harness and the client handshake both scale by it.
@@ -399,20 +383,8 @@ func _process(_delta: float) -> void:
 # Public API
 # ---------------------------------------------------------------------------
 
-## Start an authoritative ENet server. Sets the slice to HOST role.
-## Prints one boot line on success (the same line a dedicated server and a
-## listen host both emit) so CI can assert the server actually came up rather
-## than merely failing to crash.
 func host(port: int = DEFAULT_PORT, max_clients: int = DEFAULT_MAX_CLIENTS) -> Error:
-	_peer = ENetMultiplayerPeer.new()
-	var err := _peer.create_server(port, max_clients)
-	if err != OK:
-		Diag.error("NetworkingSlice: failed to create server on port %d — %s" % [port, error_string(err)])
-		return err
-	_role = Role.HOST
-	_attach_peer()
-	print("[Server] listening on port %d, max_clients %d" % [port, max_clients])
-	return OK
+	return _m3.host(port, max_clients)
 
 ## Connect to a remote host. Sets the slice to CLIENT role.
 func join(address: String = "127.0.0.1", port: int = DEFAULT_PORT) -> Error:
@@ -425,21 +397,8 @@ func join(address: String = "127.0.0.1", port: int = DEFAULT_PORT) -> Error:
 	_attach_peer()
 	return OK
 
-## Tear down the peer and return to offline role.
 func disconnect_all() -> void:
-	if _peer:
-		_peer.close()
-	_detach_peer()
-	multiplayer.multiplayer_peer = null
-	_role = Role.OFFLINE
-	_pending.clear()
-	_link_free_at_ms.clear()
-	_ordered_at_ms.clear()
-	_jitter_buffer.clear()
-	_player_ids.clear()
-	# Phase 37 — a torn-down connection cannot complete the snapshot it was
-	# reassembling (see forget_player_id).
-	_snapshot_buffer.clear()
+	_m1.disconnect_all()
 
 func is_host() -> bool:
 	return _role == Role.HOST
@@ -459,18 +418,8 @@ func is_offline() -> bool:
 func get_player_id(peer_id: int) -> String:
 	return str(_player_ids.get(peer_id, ""))
 
-## Record the peer → player_id mapping, and (on a host) send the assigned id back
-## to that peer so it can cache it for a reconnect.
 func set_player_id(peer_id: int, player_id: String) -> void:
-	if player_id.is_empty():
-		return
-	_player_ids[peer_id] = player_id
-	if _role == Role.HOST:
-		_deliver(peer_id, {
-			"type": "identity_assigned",
-			"player_id": player_id,
-			"handle": _public_handle(player_id),
-		})
+	_m2.set_player_id(peer_id, player_id)
 
 func forget_player_id(peer_id: int) -> void:
 	_player_ids.erase(peer_id)
@@ -495,45 +444,15 @@ func party_id_for(peer_id: int) -> String:
 		return "peer_%d" % peer_id
 	return pid
 
-## Host → one client: send the initial world snapshot, split into fixed-size
-## chunks so a large world (the chunk-edit manifest + creatures + the peer's own
-## record) never exceeds a single reliable packet. Since Phase 41 the terrain
-## itself is NOT in the payload — the snapshot carries the world `seed` and the
-## client regenerates the ground from it. The client reassembles chunks by
-## snapshot_id.
 func send_snapshot(peer_id: int, data: Dictionary) -> void:
-	if not _role == Role.HOST:
-		Diag.warn("NetworkingSlice: send_snapshot called on non-host — dropped")
-		return
-	var json := JSON.stringify(data)
-	var chunk_count := maxi(1, ceili(float(json.length()) / float(SNAPSHOT_CHUNK_SIZE)))
-	var snapshot_id: int = _next_snapshot_id
-	_next_snapshot_id += 1
-	for i in range(chunk_count):
-		var packet := {
-			"type":        "snapshot_chunk",
-			"snapshot_id": snapshot_id,
-			"index":       i,
-			"count":       chunk_count,
-			"data":        json.substr(i * SNAPSHOT_CHUNK_SIZE, SNAPSHOT_CHUNK_SIZE),
-		}
-		_deliver(peer_id, packet)
+	_m3.send_snapshot(peer_id, data)
 
 # ---------------------------------------------------------------------------
 # Phase 19 — reconnect resume (host side)
 # ---------------------------------------------------------------------------
 
-## Record a client's last-known authoritative position. Retained across a
-## disconnect so a rejoining client resumes from where it left off.
-## Clears the eviction countdown: an active peer is never stale.
 func remember_player_state(peer_id: int, position: Vector3, exact: Dictionary = {}) -> void:
-	_last_known_states[peer_id] = position
-	if exact.is_empty():
-		_last_known_exact.erase(peer_id)
-	else:
-		_last_known_exact[peer_id] = exact
-	_peer_spatial.update(peer_id, position)
-	_last_known_timestamps.erase(peer_id)
+	_m1.remember_player_state(peer_id, position, exact)
 
 ## Phase 86 — the exact `{chunk, local}` position of the peer's last report, or an empty dictionary
 ## when it sent only a legacy float array (or nothing). Persist this in preference to the Vector3.
@@ -556,19 +475,8 @@ func has_last_known_state(peer_id: int) -> bool:
 func get_last_known_states() -> Dictionary:
 	return _last_known_states.duplicate(true)
 
-## Evict last-known states for peers that have been disconnected longer than
-## LAST_KNOWN_STATE_TTL_MS. Called every frame from _process() so the host
-## dict doesn't grow without bound over long sessions.
 func _evict_stale_states() -> void:
-	if _last_known_timestamps.is_empty():
-		return
-	var now_ms: float = float(Time.get_ticks_msec())
-	for pid: int in _last_known_timestamps.keys():
-		if now_ms - float(_last_known_timestamps[pid]) > float(LAST_KNOWN_STATE_TTL_MS):
-			_last_known_states.erase(pid)
-			_last_known_exact.erase(pid)
-			_last_known_timestamps.erase(pid)
-			_peer_spatial.remove(pid)
+	_m2._evict_stale_states()
 
 # ---------------------------------------------------------------------------
 # Phase 29 — interest management (area of interest)
@@ -679,41 +587,8 @@ func _broadcast(payload: Dictionary) -> void:
 	elif _role == Role.CLIENT:
 		_deliver(1, payload)
 
-## Central outbound path (Phase 19). Attach a per-type monotonic seq, then
-## either send immediately (emulation disabled — zero overhead) or queue for
-## emulated delivery (loss / jitter / reorder).
-## True when the packet was sent or queued; false when the emulator dropped it.
 func _deliver(peer_id: int, payload: Dictionary) -> bool:
-	var transport := _ensure_transport()
-	if not transport.stamps_seq:
-		transport.send(peer_id, payload)
-		return true
-	var ptype: String = str(payload.get("type", "_"))
-	if not _send_seq.has(ptype):
-		_send_seq[ptype] = 0
-	payload["seq"] = _send_seq[ptype]
-	_send_seq[ptype] += 1
-	if not emulate_network:
-		transport.send(peer_id, payload)
-		return true
-	var retransmit_delay_ms := 0.0
-	if _should_drop():
-		if not emulator_retransmit:
-			return false
-		# One retransmission timeout: a round trip plus the jitter allowance, then it is sent again.
-		retransmit_delay_ms = 2.0 * (maxf(0.0, emulator_latency_ms) + emulator_jitter_ms) + 50.0
-		emulator_retransmits += 1
-	# A serialised copy: the caller may reuse or mutate `payload` before the delayed delivery.
-	var json := JSON.stringify(payload)
-	var at_ms: float = _schedule_at_ms(float(Time.get_ticks_msec()), json.to_utf8_buffer().size(), peer_id) \
-			+ retransmit_delay_ms
-	if emulator_retransmit:
-		at_ms = maxf(at_ms, float(_ordered_at_ms.get(peer_id, 0.0)))
-		_ordered_at_ms[peer_id] = at_ms
-	_pending.append({ "at_ms": at_ms, "peer_id": peer_id, "payload": json })
-	if emulator_reorder:
-		_maybe_reorder()
-	return true
+	return _m3._deliver(peer_id, payload)
 
 ## Perform the actual RPC send. Host → client uses _rpc_h2c (authority), client
 ## → host uses _rpc_c2h. No-op when no peer is attached (isolated tests).
@@ -730,21 +605,7 @@ func _send_raw(peer_id: int, json: String) -> void:
 # ---------------------------------------------------------------------------
 
 func _on_player_state_sync_requested(payload: Dictionary) -> void:
-	if not _connected():
-		return
-	var pos: Vector3 = payload.get("position", Vector3.ZERO)
-	# Phase 86 — the exact `{chunk, local}` position rides the wire when the sender holds one, so the
-	# host does not quantise a far-away player to float32 metres.
-	var exact = payload.get("world_pos", null)
-	var wire: Dictionary = exact if _is_exact_pos(exact) else WorldPos.from_world(pos.x, pos.y, pos.z)
-	var packet := {
-		"type":     "player_moved",
-		"peer_id":  multiplayer.get_unique_id(),
-		"pk":       WorldPos.pos_to_packet_text(wire),
-		"hp":       payload.get("hp",     100.0),
-		"max_hp":   payload.get("max_hp", 100.0),
-	}
-	_broadcast_aoi(packet, pos)
+	_m1._on_player_state_sync_requested(payload)
 
 func _warn_malformed_position(sender: int, now_ms: float = -1.0) -> bool:
 	if now_ms < 0.0:
@@ -760,23 +621,7 @@ static func _is_exact_pos(pos: Variant) -> bool:
 	return pos is Dictionary and pos.get("chunk") is Vector2i and pos.get("local") is Vector3
 
 func _on_block_edit_intent(action: String, position: Vector3, normal: Vector3, material: String, exact: Dictionary) -> void:
-	if _role != Role.CLIENT:
-		# Host applies edits directly through the voxel slice; only clients
-		# forward intents to the host.
-		return
-	var packet := {
-		"type":     "block_edit_intent",
-		"action":   action,
-		"normal":   [normal.x, normal.y, normal.z],
-		"material": material,
-	}
-	# Phase 119 — the exact aimed point rides the wire when the sender holds one, not a float32 position
-	# quantised to metres far from the origin.
-	if _is_exact_pos(exact) and WorldPos.is_plausible_pos(exact):
-		packet["pk"] = WorldPos.pos_to_packet_text(exact)
-	else:
-		packet["position"] = WorldPos.to_wire(position)
-	_broadcast(packet)
+	_m2._on_block_edit_intent(action, position, normal, material, exact)
 
 func _on_block_changed(action: String, position: Vector3, normal: Vector3, material: String) -> void:
 	if _role != Role.HOST:
@@ -918,16 +763,25 @@ func _on_system_message(key: String, args: Array, target_id: String) -> void:
 	if peer > HOST_PEER_ID:
 		_deliver(peer, payload)
 
-## Phase 85 — host → one client: move that player's body to `position` (an admin teleport).
 func send_teleport(peer_id: int, position: Dictionary) -> bool:
-	if _role != Role.HOST:
-		Diag.warn("NetworkingSlice: send_teleport called on non-host — dropped")
-		return false
-	if _peer == null and _transport == null:
-		return false
-	if not _connected_peers().has(peer_id):
-		return false
-	return _deliver(peer_id, { "type": "teleport", "position": WorldPos.pos_to_wire(position) })
+	return _m3.send_teleport(peer_id, position)
+
+## Peer -> { pos, msec }: where the host last teleported the peer, until a report shows it there (or
+## TELEPORT_PENDING_MSEC passes). Reports already in flight still carry the old spot, so the last
+## report alone would place the peer where it was before the teleport.
+var _teleport_pending: Dictionary = {}
+const TELEPORT_PENDING_MSEC := 3000
+const TELEPORT_ARRIVED_M := 4.0
+
+## The peer's exact position as the host should judge it: the pending teleport target when one is
+## newer than its reports, else `get_last_known_exact`. The reports themselves are left untouched.
+func get_expected_exact(peer_id: int) -> Dictionary:
+	var pending: Variant = _teleport_pending.get(peer_id, null)
+	if pending is Dictionary:
+		if Time.get_ticks_msec() - int(pending["msec"]) <= TELEPORT_PENDING_MSEC:
+			return pending["pos"]
+		_teleport_pending.erase(peer_id)
+	return get_last_known_exact(peer_id)
 
 ## Phase 47 — client → host: one equip / unequip action on this machine's avatar (`item_key`
 ## "" unequips `slot`). Carries no identity: the host binds it to the connection and decides
@@ -1045,28 +899,8 @@ func equipment_targets(owner_peer: int) -> Array:
 			out.append(int(pid))
 	return out
 
-## Phase 47 — host: a peer just bound its identity; tell it the worn sets of the other
-## connected players (the host's own included) inside its AOI, because
-## `_on_equipment_changed` only fires on a change and a late joiner would otherwise
-## never learn gear that was already on.
 func send_peer_equipment_to(peer_id: int) -> void:
-	if _role != Role.HOST or not _connected() or player_registry == null:
-		return
-	var others: Array = Array(_connected_peers())
-	others.append(HOST_PEER_ID)
-	var center := _joiner_aoi_center(peer_id)
-	for other in others:
-		var o := int(other)
-		if o == peer_id or not _has_subject_position(o) or center.distance_to(_subject_position(o)) > AOI_RADIUS:
-			continue
-		# A join intent the host re-answers (the client's snapshot retry) lands here again:
-		# a pair already sent is current, because every later change goes out through
-		# `_on_equipment_changed`, and a disconnect clears the pair.
-		if _equipment_sent.has(_pair_key(peer_id, o)):
-			continue
-		var worn := _worn_of_peer(o)
-		if not worn.is_empty():
-			_send_equipment(peer_id, o, worn)
+	_m1.send_peer_equipment_to(peer_id)
 
 ## AOI centre for a peer that has just joined: its reported position when it has one,
 ## else the position restored from its record (a joiner has reported none yet, and the
@@ -1080,59 +914,14 @@ func _joiner_aoi_center(peer_id: int) -> Vector3:
 		return WorldPos.from_wire(pos)
 	return DEFAULT_AOI_CENTER
 
-## Phase 47 — host: tell the peers whose AOI contains `peer_id` what it wears. Used when
-## a peer's position first becomes known: a reconnecting player's worn set is restored
-## from its record, which fires no `equipment_changed`, and at the handshake the peer has
-## no position yet to scope by (a reconnect gets a fresh ENet id, so the spawn default
-## would be used). Does nothing for a peer with no connection, no worn set or no position.
 func announce_equipment_to_aoi(peer_id: int) -> void:
-	if _role != Role.HOST or not _connected() or player_registry == null or not has_last_known_state(peer_id):
-		return
-	var worn := _worn_of_peer(peer_id)
-	if worn.is_empty():
-		return
-	for pid in equipment_targets(peer_id):
-		_send_equipment(int(pid), peer_id, worn)
+	_m2.announce_equipment_to_aoi(peer_id)
 
-## Phase 48 — host: `moved` changed position (or is the host avatar), so re-evaluate every
-## (viewer, subject) pair it is part of. A pair that ENTERED AOI is sent the subject's
-## set; a pair that LEFT is told to evict it.
 func _refresh_equipment_pairs(moved: int) -> void:
-	if not _connected() or player_registry == null:
-		return
-	# A client reports at movement rate; its pairs only change at an AOI boundary, so
-	# skip the whole pass until it has moved EQUIPMENT_REEVAL_DIST_SQ from the last one.
-	if moved != HOST_PEER_ID and has_last_known_state(moved):
-		var at := get_last_known_state(moved)
-		if _equipment_eval_positions.has(moved) \
-				and (_equipment_eval_positions[moved] as Vector3).distance_squared_to(at) <= EQUIPMENT_REEVAL_DIST_SQ:
-			return
-		_equipment_eval_positions[moved] = at
-	var others: Array = Array(_connected_peers())
-	others.append(HOST_PEER_ID)
-	for other in others:
-		var o := int(other)
-		if o == moved:
-			continue
-		_update_equipment_pair(moved, o)
-		_update_equipment_pair(o, moved)
+	_m3._refresh_equipment_pairs(moved)
 
 func _update_equipment_pair(viewer: int, subject: int) -> void:
-	equipment_pair_evaluations += 1
-	# The host never needs its own view of anyone, and a viewer without a known
-	# position has no AOI yet (the handshake / first-report paths cover it).
-	if viewer == HOST_PEER_ID or not has_last_known_state(viewer) or not _has_subject_position(subject):
-		return
-	var key := _pair_key(viewer, subject)
-	var visible := in_aoi(viewer, _subject_position(subject))
-	if visible and not _equipment_sent.has(key):
-		var worn := _worn_of_peer(subject)
-		if worn.is_empty():
-			return
-		_send_equipment(viewer, subject, worn)
-	elif not visible and _equipment_sent.has(key):
-		_equipment_sent.erase(key)
-		_deliver(viewer, { "type": "peer_equipment_evict", "peer_id": subject })
+	_m1._update_equipment_pair(viewer, subject)
 
 ## Phase 54 — host: send every peer the world clock sample `days` (in-game days).
 func broadcast_world_clock(days: float) -> void:
@@ -1186,93 +975,19 @@ var _inbound_exact: Dictionary = {}
 var peer_held: Callable = Callable()
 
 func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
-	if _role != Role.HOST:
-		return
-	# Phase 19 — persist the client's last-known authoritative position so a
-	# rejoining client can resume from it.
-	var first_report := not has_last_known_state(peer_id)
-	remember_player_state(peer_id, position, _inbound_exact)
-	if first_report:
-		announce_equipment_to_aoi(peer_id)
-	_refresh_equipment_pairs(peer_id)
-	# Phase 97 — relay the peer's exact `{chunk, local}` when its report carried one, so a far-from-origin
-	# avatar does not jitter by float32 metres on the other clients.
-	var relayed: Dictionary = _inbound_exact if not _inbound_exact.is_empty() \
-			else WorldPos.from_world(position.x, position.y, position.z)
-	var packet := {
-		"type":     "remote_player_state",
-		"peer_id":  peer_id,
-		"pk":       WorldPos.pos_to_packet_text(relayed),
-	}
-	_broadcast_aoi(packet, position)
+	_m2._on_remote_player_state(peer_id, position)
 
 func _on_inventory_synced(owner_id: String, contents: Dictionary, durabilities: Dictionary = {}) -> void:
-	if _role != Role.HOST:
-		return
-	# Phase 37 — an inventory is PRIVATE to its owner and the sync now names that
-	# owner, so it goes to that owner's peer alone. Broadcasting it handed every client
-	# one player's pack (and, before the owner was carried at all, had every
-	# InventorySlice in the process apply it).
-	var peer := _peer_for_inventory_owner(owner_id)
-	if peer == 0:
-		return
-	var packet := {
-		"type":     "inventory_synced",
-		"contents": contents,
-		"durabilities": durabilities,
-	}
-	_deliver(peer, packet)
+	_m3._on_inventory_synced(owner_id, contents, durabilities)
 
-## The live peer whose player owns the inventory named by `owner_id`, or 0 when there
-## is nobody to send it to: an offline owner, a name this host cannot resolve, an
-## unwired registry (the check FAILS CLOSED — an unaddressed private payload is not
-## broadcast), or this machine's OWN player, whose inventory is already live here.
-##
-## `""` and `"player"` both denote the local bucket (see
-## InventorySlice.LOCAL_OWNER_LITERALS).
 func _peer_for_inventory_owner(owner_id: String) -> int:
-	if player_registry == null or not player_registry.has_method("get_peer_id"):
-		return 0
-	var pid := owner_id
-	if pid == "" or pid == "player":
-		pid = str(player_registry.local_player_id)
-	if pid == "":
-		return 0
-	return int(player_registry.get_peer_id(pid))
+	return _m1._peer_for_inventory_owner(owner_id)
 
-## Phase 37 — host → one client: a creature struck THIS player. Damage is applied by
-## the machine that simulates the body (`PlayerSlice` on the peer's own client, which
-## owns its HP), so the host sends the round's outcome rather than trying to hold a
-## peer's health it cannot verify (`PlayerRegistry.record_hp` refuses a
-## client-declared HP for the same reason). Peer-scoped, like `send_own_state`: one
-## player's damage is not world state.
 func send_player_damaged(peer_id: int, damage: float, attacker_id: String) -> void:
-	if _role != Role.HOST:
-		Diag.warn("NetworkingSlice: send_player_damaged called on non-host — dropped")
-		return
-	_deliver(peer_id, {
-		"type":        "player_damaged",
-		"damage":      damage,
-		"attacker_id": attacker_id,
-	})
+	_m2.send_player_damaged(peer_id, damage, attacker_id)
 
-## Phase 118 — host → the crafter's peer ALONE: a void burst resolved against them. The
-## packet carries no player id (the receiving machine knows who it is), and a burst that
-## struck the host's own player has no peer to send to. An unresolvable owner fails
-## closed, like `_on_inventory_synced`.
 func _on_void_burst_resolved(result: Dictionary) -> void:
-	if _role != Role.HOST:
-		return
-	var peer := _peer_for_inventory_owner(str(result.get("player_id", "")))
-	if peer == 0:
-		return
-	_deliver(peer, {
-		"type":      "void_burst_resolved",
-		"recipe_id": str(result.get("recipe_id", "")),
-		"damage":    float(result.get("damage", 0.0)),
-		"survived":  bool(result.get("survived", false)),
-		"flag":      str(result.get("flag", "")),
-	})
+	_m3._on_void_burst_resolved(result)
 
 ## Phase 118 — host → the owner's peer alone: a profession unlocked for them.
 func _on_profession_unlocked(player_id: String, profession: String) -> void:
@@ -1415,84 +1130,11 @@ func _parse(json: String) -> Variant:
 		return null
 	return payload
 
-## Phase 19 — sequence dedup / gap detection.
-## Uses a per-type sliding window so reordered-but-unseen packets are accepted
-## (returned true) rather than silently dropped. Only true duplicates (the same
-## seq already in the seen window) and packets older than DEDUP_WINDOW behind
-## the frontier are dropped (returned false).
-## Gap warnings are rate-limited to one per second per (peer, type) channel.
 func _dedup(sender: int, payload: Dictionary) -> bool:
-	if not payload.has("seq"):
-		return true   # legacy packet without seq — accept
-	var seq: int = int(payload["seq"])
-	var ptype: String = str(payload.get("type", "_"))
-	var key: String = "%d:%s" % [sender, ptype]
+	return _m1._dedup(sender, payload)
 
-	if not _recv_seen.has(key):
-		_recv_seen[key] = {}
-	var seen: Dictionary = _recv_seen[key]
-
-	# True duplicate: this exact seq was already accepted in the window.
-	if seen.has(seq):
-		return false
-
-	var last: int = _recv_seq.get(key, -1)
-
-	# Too stale: more than DEDUP_WINDOW behind the frontier — cannot reorder.
-	if last >= 0 and seq < last - DEDUP_WINDOW:
-		return false
-
-	# Forward gap (packet loss): log at most once per second per channel.
-	if last >= 0 and seq > last + 1:
-		var now_ms: float = float(Time.get_ticks_msec())
-		var gap_last: float = float(_seq_gap_warn_ms.get(key, -SEQ_GAP_WARN_INTERVAL_MS))
-		if now_ms - gap_last >= SEQ_GAP_WARN_INTERVAL_MS:
-			Diag.warn("NetworkingSlice: seq gap — peer %d type '%s' frontier %d got %d" \
-				% [sender, ptype, last, seq])
-			_seq_gap_warn_ms[key] = now_ms
-
-	# Mark seen and prune entries beyond the window.
-	seen[seq] = true
-	var cutoff: int = seq - DEDUP_WINDOW
-	for k: int in seen.keys():
-		if k < cutoff:
-			seen.erase(k)
-
-	# Advance the frontier only when this seq is higher.
-	if seq > last:
-		_recv_seq[key] = seq
-
-	return true
-
-## Phase 36 — per-peer client → host token bucket. `now_ms` is an argument (not a
-## clock read) so the rule is testable without waiting: the same shape the
-## emulator's `_sample_remote_state_at` uses. Returns true when a token was
-## available and the packet may be routed, false when the bucket is empty and the
-## packet is dropped.
-##
-## Refill is continuous (elapsed ms × RATE_BUCKET_REFILL_PER_SEC) and capped at
-## RATE_BUCKET_CAPACITY, so an idle peer always has a full burst waiting and a
-## flooding one is held to the sustained rate. The bucket is created on a peer's
-## first packet with a full capacity — the join burst (handshake + first snapshot
-## request + first movement packets) is exactly what that burst is for.
 func _allow_packet(peer_id: int, now_ms: float) -> bool:
-	if not _rate_buckets.has(peer_id):
-		_rate_buckets[peer_id] = { "tokens": RATE_BUCKET_CAPACITY, "at_ms": now_ms }
-	var bucket: Dictionary = _rate_buckets[peer_id]
-	var elapsed: float = maxf(0.0, now_ms - float(bucket["at_ms"]))
-	bucket["at_ms"] = now_ms
-	bucket["tokens"] = minf(
-		RATE_BUCKET_CAPACITY,
-		float(bucket["tokens"]) + elapsed * 0.001 * RATE_BUCKET_REFILL_PER_SEC
-	)
-	if float(bucket["tokens"]) < 1.0:
-		var last_warn: float = float(_rate_warn_ms.get(peer_id, -SEQ_GAP_WARN_INTERVAL_MS))
-		if now_ms - last_warn >= SEQ_GAP_WARN_INTERVAL_MS:
-			_rate_warn_ms[peer_id] = now_ms
-			Diag.warn("NetworkingSlice: peer %d exceeded the client packet rate — dropping" % peer_id)
-		return false
-	bucket["tokens"] = float(bucket["tokens"]) - 1.0
-	return true
+	return _m2._allow_packet(peer_id, now_ms)
 
 ## The ACTING party behind a connection: the identity the host bound to it, and
 ## nothing else. `""` when the peer has not completed the handshake.
@@ -1512,19 +1154,8 @@ func _actor_id(sender: int) -> String:
 func _refuse_unhandshaked(sender: int, ptype: String) -> void:
 	Diag.warn("NetworkingSlice: %s from un-handshaked peer %d — dropped" % [ptype, sender])
 
-## Phase 36 — is `position` within `reach` metres of the peer's last recorded
-## position? The host records that position from the peer's own movement packets
-## (see remember_player_state), so it is the host's evidence of where the peer is,
-## not the peer's claim.
-##
-## A peer that has never reported a position has none the host can check against,
-## and the edit is refused rather than measured from an assumed origin:
-## `has_last_known_state()` is what distinguishes "never reported" from "at the
-## origin" (get_last_known_state answers Vector3.ZERO for both).
 func _within_reach(sender: int, position: Vector3, reach: float) -> bool:
-	if not has_last_known_state(sender):
-		return false
-	return get_last_known_state(sender).distance_to(position) <= reach
+	return _m3._within_reach(sender, position, reach)
 
 ## Phase 36 — the host-side tree population, wired by game_root. A chop intent
 ## names only a tree id, so the tree's own position is the only way to check the
@@ -1550,26 +1181,8 @@ func _chop_is_in_reach(sender: int, tree_id: String) -> bool:
 		return false
 	return _within_reach(sender, rec["position"], MAX_EDIT_REACH)
 
-## Resolve the counterparty a client NAMED on a trade invite to the player id it
-## denotes, or "" when it denotes nothing this host can open a session with.
-##
-## Phase 36 — this is the ONE identity a client payload may legitimately name: an
-## invite grants the named player nothing (it is answered by that player's own
-## accept, which is bound to its own connection), and every ACTING half is bound to
-## the sender. Requiring the name to resolve against the registry means the host
-## only ever opens a session with a player it knows and that is online right now —
-## an invite to an offline or invented id is dropped, not parked.
-##
-## Phase 37 — the name must be a public HANDLE (see
-## PlayerRegistry.resolve_named_party): accepting a raw player id as well turned this
-## into a yes/no oracle for "is this exact id online", which is a probing tool, not a
-## feature. An id is a bearer token and a client is never told one.
 func _named_party(raw: String) -> String:
-	if raw == "" or player_registry == null:
-		return ""
-	if not player_registry.has_method("resolve_named_party"):
-		return ""
-	return str(player_registry.resolve_named_party(raw))
+	return _m1._named_party(raw)
 
 # ---------------------------------------------------------------------------
 # Phase 36 — identity redaction on the wire
@@ -1582,28 +1195,8 @@ func _public_handle(player_id: String) -> String:
 		return ""
 	return str(player_registry.public_handle(player_id))
 
-## Host side: replace every player id inside a host → client payload with its public
-## handle, recursively — dictionary KEYS as well as values, because a trade's `offers`
-## and `accepted` maps are keyed by party.
-##
-## The player id is a BEARER TOKEN (`resolve_identity` hands the record to whoever
-## presents it on join), so broadcasting it handed every client the means to take over
-## any player's record once that player disconnected — inventories, positions,
-## appearance, technology. Market listings, trade sessions, and proposals all named
-## players by id; this is where they stop. The handle is derived, opaque and stable
-## (see PlayerRegistry.public_handle), and it is not a claim: claiming it mints a new
-## identity.
-##
-## Non-id strings ("merchant", a proposal title, an item key) are untouched: the
-## shape test recognises a minted id and nothing else.
 func redact_for_client(value: Variant) -> Variant:
-	if player_registry == null:
-		return value
-	return _map_identities(value, func(s: String) -> String:
-		if PlayerRegistry.looks_like_player_id(s):
-			return _public_handle(s)
-		return s
-	)
+	return _m2.redact_for_client(value)
 
 ## Client side: show THIS client's own handle back to its own slices as the literal
 ## "player" — the convention the local player has always had (`TradeSlice.PARTY_PLAYER`,
@@ -1617,43 +1210,11 @@ func adopt_own_handle(value: Variant) -> Variant:
 		return "player" if s == claimed_handle else s
 	)
 
-## Phase 38 — host side: the world snapshot's social/economy blobs, redacted and keyed
-## by the ONE list that says which parts of the world name players
-## (`IDENTIFIED_STATE_KEYS`).
-##
-## The snapshot used to hardcode exactly those three keys, which left two lists to
-## keep in step: this side's literals and the constant `_adopt_snapshot_identities`
-## walks on the receiving side. A fourth identity-bearing blob added to the constant
-## would then have been ADOPTED by every client while never being redacted on the way
-## out — a player id on the wire, which is the leak the constant exists to prevent.
-## Blobs the constant does not name are dropped rather than passed through: an
-## identity-bearing key that nobody has added to the list is a key whose redaction
-## story has not been decided yet.
 func redact_social_state(state: Dictionary) -> Dictionary:
-	var out := {}
-	for key in IDENTIFIED_STATE_KEYS:
-		if state.has(key):
-			out[key] = redact_for_client(state[key])
-	return out
+	return _m3.redact_social_state(state)
 
-## Walk `value`, mapping every STRING through `mapper` — values and dictionary keys
-## alike. Arrays and dictionaries are rebuilt; every other type is passed through. The
-## shapes walked here are the replicated social/economy state (dictionaries of
-## dictionaries of scalars), never a whole world snapshot.
 func _map_identities(value: Variant, mapper: Callable) -> Variant:
-	if value is String:
-		return mapper.call(value)
-	if value is Array:
-		var out_items: Array = []
-		for item in value:
-			out_items.append(_map_identities(item, mapper))
-		return out_items
-	if value is Dictionary:
-		var out: Dictionary = {}
-		for key in value:
-			out[_map_identities(key, mapper)] = _map_identities(value[key], mapper)
-		return out
-	return value
+	return _m1._map_identities(value, mapper)
 
 ## Client side: the world snapshot's identity-bearing blobs, restored to this client's
 ## own view (see IDENTIFIED_STATE_KEYS — the host half of the same list is
@@ -1666,442 +1227,11 @@ func _adopt_snapshot_identities(data: Dictionary) -> Dictionary:
 			data[key] = adopt_own_handle(data[key])
 	return data
 
-## Route a client → host packet. Only client-originated types are accepted;
-## host-only types sent by a malicious client are dropped and logged.
 func _route_c2h(sender: int, payload: Dictionary) -> void:
-	match str(payload.get("type", "")):
-		"join_intent":
-			# Phase 33 — the client presents its cached id ("" on a first join).
-			# The registry owns resolution; the host answers with player_joined.
-			# Phase 53 — a first join may carry a friend's handle to spawn beside.
-			if player_registry != null and player_registry.has_method("note_friend_code"):
-				player_registry.note_friend_code(sender, str(payload.get("friend_code", "")))
-			GameBus.player_join_intent.emit(sender, str(payload.get("claimed_id", "")))
-		"player_moved":
-			# Phase 86 — a position that does not decode is refused, not read as the origin: the
-			# previous last-known state stands.
-			# Phase 119 — the packet is decoded and validated here, once, before any consumer
-			# (`aoi_region` included) sees a number from it: a truncated, non-finite or implausible
-			# position is refused, with one throttled warning per peer.
-			# The compact position is decoded ONCE (`WorldPos.compact_decodes` counts them).
-			var exact := WorldPos.pos_from_packet(payload)
-			if exact.is_empty() and (payload.has("pk") or not WorldPos.is_wire(payload.get("position", null))):
-				_warn_malformed_position(sender)
-				return
-			var pos := WorldPos.to_scene(exact, Vector2i.ZERO) if not exact.is_empty() \
-					else WorldPos.from_wire(payload.get("position", null), Vector3.ZERO)
-			# The packet also carries the peer's self-declared `hp` / `max_hp`,
-			# used for its own display. The host deliberately keeps NO durable
-			# copy of THAT value: it is client-declared and cannot be verified
-			# here, so persisting it made health a restart-proof cheat (see
-			# PlayerRegistry.record_hp). Phase 38 — a peer's health IS durable
-			# now, but only from the number the host resolved itself
-			# (record_simulated_hp, via combat_wiring.on_player_damaged); the
-			# declared half still has no door. Position is the other half the
-			# host retains, and only so a reconnect can resume from it.
-			# Phase 130 — the host decides immobilization itself: a held peer's report is dropped
-			# (its first report is kept, so it still has a position to be held at).
-			if has_last_known_state(sender) and peer_held.is_valid() and bool(peer_held.call(sender)):
-				return
-			_inbound_exact = exact
-			GameBus.remote_player_state.emit(sender, pos)
-			_inbound_exact = {}
-		"craft_intent":
-			# A remote peer's craft must resolve against ITS OWN inventory (crafting
-			# is per-player now that each player persists one). The identity comes
-			# from the connection, never from the payload: a client cannot name
-			# whose inventory it crafts against.
-			var crafter := _actor_id(sender)
-			if crafter == "":
-				_refuse_unhandshaked(sender, "craft_intent")
-				return
-			GameBus.craft_intent.emit(str(payload.get("recipe_id", "")), crafter)
-		"repair_intent":
-			# Phase 34 — the same identity rule as craft_intent: the repairing
-			# player is the one bound to THIS connection, so a client cannot name
-			# whose tool it repairs or whose materials it spends.
-			var repairer := _actor_id(sender)
-			if repairer == "":
-				_refuse_unhandshaked(sender, "repair_intent")
-				return
-			GameBus.repair_intent.emit(str(payload.get("item_id", "")), repairer)
-		"research_intent":
-			# Phase 34 — and the same for research: whose tree moves is decided by
-			# the connection, never by the payload.
-			var researcher := _actor_id(sender)
-			if researcher == "":
-				_refuse_unhandshaked(sender, "research_intent")
-				return
-			GameBus.research_intent.emit(str(payload.get("tech_id", "")), researcher)
-		"waystone_travel_intent":
-			# Phase 125 — who travels is the connection's player, never a name in the payload.
-			var traveller := _actor_id(sender)
-			if traveller == "":
-				_refuse_unhandshaked(sender, "waystone_travel_intent")
-				return
-			GameBus.waystone_travel_intent.emit(str(payload.get("from", "")).left(64), str(payload.get("to", "")).left(64), traveller)
-		"settlement_intent":
-			# Phase 140 — who acts is the connection's player. Only short scalar args are kept.
-			var settler := _actor_id(sender)
-			if settler == "":
-				_refuse_unhandshaked(sender, "settlement_intent")
-				return
-			var raw_args: Variant = payload.get("args", {})
-			var clean := {}
-			if raw_args is Dictionary:
-				for k: Variant in (raw_args as Dictionary).keys():
-					var v: Variant = raw_args[k]
-					if (v is String or v is int or v is float) and clean.size() < 8:
-						clean[str(k).left(16)] = str(v).left(64) if v is String else v
-			GameBus.settlement_intent.emit(str(payload.get("action", "")).left(16), clean, settler)
-		"tame_intent":
-			# Phase 35 — and the same for taming: the flag and the companion bind
-			# to the connection's own player, never to a name in the payload.
-			# Phase 47 — the payload's bare-hands claim is NOT read: the host
-			# evaluates the fabric's rule against its own copy of the sender's worn
-			# set (PlayerRegistry.get_equipment).
-			var tamer := _actor_id(sender)
-			if tamer == "":
-				_refuse_unhandshaked(sender, "tame_intent")
-				return
-			GameBus.tame_intent.emit(str(payload.get("instance_id", "")), tamer)
-		"chat_intent":
-			# Phase 85 — a chat line or command is said BY the connection's player; the host's
-			# ChatSlice decides whether a command is theirs to run.
-			var speaker := _actor_id(sender)
-			if speaker == "":
-				_refuse_unhandshaked(sender, "chat_intent")
-				return
-			var said: Variant = payload.get("text", "")
-			if said is String:
-				GameBus.chat_intent.emit(said, speaker)
-		"equip_intent":
-			# Phase 47 — a worn-slot action is applied to the connection's player, never
-			# to a name in the payload; the registry checks it against the fabric and the bag.
-			var wearer := _actor_id(sender)
-			if wearer == "":
-				_refuse_unhandshaked(sender, "equip_intent")
-				return
-			var slot: Variant = payload.get("slot", "")
-			var item: Variant = payload.get("item", "")
-			if slot is String and item is String:
-				var seq: Variant = payload.get("seq", 0)
-				var seq_n: int = int(seq) if (seq is int or seq is float) else 0
-				# Phase 119 — an action numbered below one already applied is stale or replayed: ignored.
-				if seq_n < player_registry.equip_seq_of(wearer):
-					return
-				player_registry.note_equip_seq(wearer, seq_n)
-				GameBus.equip_intent.emit(wearer, slot, item)
-		"block_edit_intent":
-			# Phase 36 — a world edit needs a bound identity AND a target within the
-			# host's evidence of arm's reach. The block position arrives as a bare
-			# claim: with no reach check a client could mine or build anywhere in the
-			# world (under another player's feet included), and with no handshake
-			# requirement it could do so before the host knew who it was at all.
-			#
-			# Phase 42 review — the bound identity also RIDES the request now, so the
-			# action resolves against that player's own pack: without it the host
-			# credited its own inventory with a client's material (and spent its own on
-			# a client's placement). `action`/`material` are still the client's claims,
-			# but neither grants anything — the actor is the connection, the material
-			# must be a real fabric material, and the debit lands on the actor's pack.
-			if _actor_id(sender) == "":
-				_refuse_unhandshaked(sender, "block_edit_intent")
-				return
-			var action := str(payload.get("action", ""))
-			if payload.has("pk") and not WorldPos.packet_has_pos(payload):
-				_warn_malformed_position(sender)
-				return
-			var ipos := WorldPos.packet_world(payload, _vec3(payload.get("position", [])))
-			var iexact := WorldPos.pos_from_packet(payload) if payload.has("pk") else {}
-			var inorm := _vec3(payload.get("normal", [0, 1, 0]))
-			if not _within_reach(sender, ipos, MAX_EDIT_REACH):
-				Diag.warn("NetworkingSlice: block_edit_intent from peer %d is out of reach — dropped" % sender)
-				return
-			if action == "mine":
-				GameBus.block_mine_requested.emit(ipos, inorm, _actor_id(sender), iexact)
-			elif action == "place":
-				GameBus.block_place_requested.emit(
-					ipos, inorm, _actor_id(sender), str(payload.get("material", "")), iexact)
-			else:
-				Diag.error("NetworkingSlice: unknown block_edit_intent action '%s'" % action)
-		"tree_chop_intent":
-			# Phase 36 — same two rules as block_edit_intent. The intent names only
-			# a tree id, so the reach check resolves the tree's own position through
-			# the wired TreeSlice (a tree the host does not have is not chopable
-			# either — TreeSlice re-checks that too, authoritatively). The host then
-			# re-runs the chop and broadcasts tree_chopped back to every client.
-			#
-			# Phase 42 review — and the bound identity rides the request, so the wood
-			# and the axe's wear are the CHOPPER's (see the block_edit_intent arm).
-			if _actor_id(sender) == "":
-				_refuse_unhandshaked(sender, "tree_chop_intent")
-				return
-			var tree_id := str(payload.get("tree_id", ""))
-			if not _chop_is_in_reach(sender, tree_id):
-				Diag.warn("NetworkingSlice: tree_chop_intent from peer %d is out of reach — dropped" % sender)
-				return
-			GameBus.tree_chop_requested.emit(tree_id, _actor_id(sender))
-		"market_list_intent":
-			# Phase 36 — a listing is the CONNECTION's player selling. `seller` used
-			# to be passed through verbatim unless it read exactly "player", so a
-			# client could name a victim: the escrow debit then emptied that player's
-			# inventory into a listing the attacker could buy back.
-			var seller := _actor_id(sender)
-			if seller == "":
-				_refuse_unhandshaked(sender, "market_list_intent")
-				return
-			GameBus.market_list_intent.emit(
-				seller,
-				str(payload.get("item_id", "")),
-				int(payload.get("quantity", 0)),
-				float(payload.get("price", 0.0))
-			)
-		"market_buy_intent":
-			# Phase 36 — the buyer is the connection's player too: naming one let a
-			# client drain a victim's market purchases into its own listing.
-			var buyer := _actor_id(sender)
-			if buyer == "":
-				_refuse_unhandshaked(sender, "market_buy_intent")
-				return
-			GameBus.market_buy_intent.emit(str(payload.get("listing_id", "")), buyer)
-		"proposal_submit_intent":
-			# Phase 36 — the author is the connection's player, never a name.
-			var author := _actor_id(sender)
-			if author == "":
-				_refuse_unhandshaked(sender, "proposal_submit_intent")
-				return
-			GameBus.proposal_submit_intent.emit(
-				author,
-				str(payload.get("title", "")),
-				str(payload.get("body", ""))
-			)
-		"proposal_vote_intent":
-			# Phase 36 — "one vote per distinct voter" is what a quorum MEANS, so the
-			# voter must be the connection's player: a client that could name voters
-			# could ratify any proposal alone, and could vote a proposal through under
-			# the author's name (the one identity the rule forbids).
-			var voter := _actor_id(sender)
-			if voter == "":
-				_refuse_unhandshaked(sender, "proposal_vote_intent")
-				return
-			GameBus.proposal_vote_intent.emit(
-				str(payload.get("proposal_id", "")),
-				voter,
-				str(payload.get("verdict", ""))
-			)
-		"proposal_supersede_intent":
-			# Superseding names no party — it is a transition between two proposals —
-			# so there is no identity to bind. It still requires a bound identity: an
-			# anonymous connection may not move the decisions log. WHICH players may
-			# supersede a given proposal is a governance rule, not an identity one,
-			# and is not decided here.
-			if _actor_id(sender) == "":
-				_refuse_unhandshaked(sender, "proposal_supersede_intent")
-				return
-			GameBus.proposal_supersede_intent.emit(
-				str(payload.get("proposal_id", "")),
-				str(payload.get("replacement_id", ""))
-			)
-		"trade_start_intent":
-			# Phase 36 — party_a is the connection's player: a client cannot open a
-			# session in someone else's name. party_b is the counterparty the client
-			# NAMES — an invite is the one thing a payload may legitimately name here,
-			# because it grants nothing: every later step (propose, accept, reject)
-			# acts as the connection's own player, so a session aimed at a name nobody
-			# answers simply never resolves. Rate-limited like every other intent, so
-			# a nameless invite flood cannot be a cheap amplification either.
-			var actor := _actor_id(sender)
-			if actor == "":
-				_refuse_unhandshaked(sender, "trade_start_intent")
-				return
-			var other := _named_party(str(payload.get("party_b", "")))
-			if other == "" or other == actor:
-				Diag.warn("NetworkingSlice: trade_start_intent from peer %d names an unusable counterparty — dropped" % sender)
-				return
-			GameBus.trade_start_intent.emit(actor, other)
-		"trade_propose_intent":
-			# Phase 36 — the party proposing is the connection's player.
-			var proposer := _actor_id(sender)
-			if proposer == "":
-				_refuse_unhandshaked(sender, "trade_propose_intent")
-				return
-			GameBus.trade_propose_intent.emit(
-				str(payload.get("trade_id", "")),
-				proposer,
-				payload.get("give", {}),
-				payload.get("want", {})
-			)
-		"trade_accept_intent":
-			# Phase 36 — THE trade finding: `party` used to pass through verbatim,
-			# so a client could accept AS the other side and commit the other
-			# player's goods. The accepter is the connection's player, always.
-			var accepter := _actor_id(sender)
-			if accepter == "":
-				_refuse_unhandshaked(sender, "trade_accept_intent")
-				return
-			GameBus.trade_accept_intent.emit(
-				str(payload.get("trade_id", "")),
-				accepter
-			)
-		"trade_reject_intent":
-			# Phase 36 — and a client may only reject on its own behalf (a spoofed
-			# reject closed another player's session for both sides).
-			var rejecter := _actor_id(sender)
-			if rejecter == "":
-				_refuse_unhandshaked(sender, "trade_reject_intent")
-				return
-			GameBus.trade_reject_intent.emit(
-				str(payload.get("trade_id", "")),
-				rejecter
-			)
-		_:
-			# Clients may not send host-authoritative types (block_changed,
-			# inventory_synced, etc.) — drop anything else and log it.
-			Diag.warn("NetworkingSlice: unexpected type '%s' from client %d — dropped" \
-				% [payload.get("type", ""), sender])
+	_m2._route_c2h(sender, payload)
 
-## Route a host → client packet. Only host-originated types are handled.
 func _route_h2c(payload: Dictionary) -> void:
-	match str(payload.get("type", "")):
-		"player_moved":
-			# The host's own movement arrives as player_moved (peer_id == host id).
-			var pos := WorldPos.packet_world(payload, _vec3(payload.get("position", [])))
-			GameBus.remote_player_state.emit(int(payload.get("peer_id", 1)), pos)
-		"block_changed":
-			GameBus.block_changed.emit(
-				str(payload.get("action", "")),
-				_vec3(payload.get("position", [])),
-				_vec3(payload.get("normal", [0, 1, 0])),
-				str(payload.get("material", ""))
-			)
-		"tree_chopped":
-			GameBus.tree_chopped.emit(
-				str(payload.get("tree_id", "")),
-				str(payload.get("wood", "")),
-				str(payload.get("state", "")),
-				float(payload.get("respawn_at", 0.0))
-			)
-		"tree_respawned":
-			GameBus.tree_respawned.emit(str(payload.get("tree_id", "")))
-		"tree_cleared":
-			GameBus.tree_cleared.emit(str(payload.get("tree_id", "")))
-		"chat_message":
-			# Phase 85 — host text for this player's chat box; the target is us by delivery.
-			GameBus.chat_posted.emit(
-				str(payload.get("channel", "chat")),
-				str(payload.get("sender", "")),
-				str(payload.get("text", "")),
-				""
-			)
-		"system_message":
-			# Phase 131 — a keyed host line; an unknown key, too many args or an oversize arg becomes the
-			# generic fallback line, never the raw input.
-			var clean := I18n.sanitize_msg(payload.get("key", null), payload.get("args", null))
-			GameBus.system_message.emit(str(clean["key"]), clean["args"], "")
-		"teleport":
-			# Phase 85 — an admin moved us; game_root places the body (rebasing the scene if far).
-			var spot: Dictionary = WorldPos.pos_from_wire(payload.get("position", null))
-			if spot.is_empty():
-				Diag.warn("NetworkingSlice: malformed teleport position dropped")
-			else:
-				GameBus.player_teleport.emit(spot)
-		"creature_state_changed":
-			GameBus.creature_state_changed.emit(
-				str(payload.get("instance_id", "")),
-				str(payload.get("creature_id", "")),
-				str(payload.get("state", "")),
-				WorldPos.packet_world(payload, _vec3(payload.get("position", [])))
-			)
-		"remote_player_state":
-			_route_remote_player_state(payload)
-		"weather_overrides":
-			# Phase 128 — only a client adopts the host's table; the list is validated by the slice.
-			if _role == Role.CLIENT and payload.get("overrides", null) is Array:
-				GameBus.weather_overrides_synced.emit(payload["overrides"])
-		"world_clock":
-			# Phase 54 — the host's clock sample; game_root's WorldClock slews to it.
-			GameBus.world_clock_received.emit(float(payload.get("days", 0.0)))
-		"peer_equipment_evict":
-			# Phase 48 — the peer left our AOI; drop what we stored for it.
-			GameBus.peer_equipment_evicted.emit(int(payload.get("peer_id", 0)))
-		"peer_equipment":
-			# Phase 47 — another peer's worn set, scoped to our AOI by the host.
-			var worn: Variant = payload.get("worn", {})
-			if worn is Dictionary:
-				GameBus.peer_equipment_synced.emit(int(payload.get("peer_id", 0)), worn)
-		"inventory_synced":
-			# Phase 37 — the packet is addressed to THIS client alone (the host sends it
-			# to the owner's peer, see _on_inventory_synced) and carries no identity: the
-			# only inventory it can be is this machine's own, which is the local bucket
-			# (`""` / `"player"`). Re-broadcasting a player id here would put a bearer
-			# token on the wire for nothing.
-			GameBus.inventory_synced.emit(
-				"",
-				payload.get("contents", {}),
-				payload.get("durabilities", {})
-			)
-		"player_damaged":
-			# Phase 37 — a creature struck US on the host's authoritative simulation. The
-			# local body is the one that takes the hit, so the target is the local bucket
-			# id the bus has always used for it.
-			GameBus.player_damaged.emit(
-				float(payload.get("damage", 0.0)),
-				str(payload.get("attacker_id", "")),
-				"player"
-			)
-		"status_effects":
-			# Phase 129 — addressed to us alone; the slice validates each entry.
-			if _role == Role.CLIENT and payload.get("effects", null) is Array:
-				GameBus.status_effects_synced.emit("player", payload["effects"])
-		"void_burst_resolved":
-			# Phase 118 — addressed to us alone; the player id is the local bucket.
-			GameBus.void_burst_resolved.emit({
-				"recipe_id": str(payload.get("recipe_id", "")),
-				"player_id": "",
-				"damage":    float(payload.get("damage", 0.0)),
-				"survived":  bool(payload.get("survived", false)),
-				"flag":      str(payload.get("flag", "")),
-			})
-		"profession_unlocked":
-			GameBus.profession_unlocked.emit("", str(payload.get("profession", "")))
-		"market_synced":
-			# Phase 36 — the payload names players by public handle; our OWN handle is
-			# shown back to the slices as "player" so the local view is unchanged.
-			GameBus.market_synced.emit(adopt_own_handle(payload.get("data", {})))
-		"governance_synced":
-			GameBus.governance_synced.emit(adopt_own_handle(payload.get("data", {})))
-		"trade_synced":
-			GameBus.trade_synced.emit(adopt_own_handle(payload.get("data", {})))
-		"trade_completed":
-			GameBus.trade_completed.emit(adopt_own_handle(payload.get("trade", {})))
-		"world_snapshot":
-			GameBus.world_snapshot_received.emit(payload.get("data", {}))
-		"own_state_synced":
-			# Phase 34 — the host's copy of OUR record changed (it resolved a repair
-			# or research for us). Apply it; game_root owns what that means.
-			# NOTE: no listener on this side of the signal — `send_own_state` is a
-			# direct call, and re-emitting from a listener on the same signal would
-			# make the client loop forever on its own packet.
-			GameBus.own_state_synced.emit(payload.get("data", {}))
-		"identity_assigned":
-			# Phase 33 — the host's answer to our join intent. Cache it so a
-			# reconnect claims the same record. Phase 36 — it now also carries our
-			# public HANDLE, which is what this client is called by in everything
-			# that is broadcast (a handle is not a claim: it is one-way and no record
-			# is keyed by it, so caching it is safe where caching an id would not be).
-			claimed_player_id = str(payload.get("player_id", ""))
-			claimed_handle = str(payload.get("handle", ""))
-			GameBus.player_identity_assigned.emit(claimed_player_id)
-		"spawn_notice":
-			# Phase 131 — a catalog key (+ args), rendered here in this client's locale.
-			var note := I18n.sanitize_msg(payload.get("key", null), payload.get("args", null))
-			GameBus.spawn_notice.emit(I18n.render(note))
-		"snapshot_chunk":
-			_accumulate_snapshot_chunk(payload)
-		_:
-			# Legacy low-level packets fall through to packet_received.
-			GameBus.packet_received.emit(1, payload)
+	_m3._route_h2c(payload)
 
 ## Remote-player state on the client: when emulation is enabled, buffer and
 ## replay through the jitter buffer; otherwise emit straight through (the
@@ -2114,38 +1244,8 @@ func _route_remote_player_state(payload: Dictionary) -> void:
 	else:
 		GameBus.remote_player_state.emit(pid, pos)
 
-## Reassemble a chunked world snapshot (see send_snapshot) and emit
-## world_snapshot_received once the final chunk lands. Chunks are indexed so
-## out-of-order delivery still reassembles correctly, and duplicate chunks are
-## ignored (Phase 19) so emulator re-delivery cannot corrupt the reassembly.
 func _accumulate_snapshot_chunk(payload: Dictionary) -> void:
-	var snapshot_id: int = int(payload.get("snapshot_id", -1))
-	var index: int = int(payload.get("index", -1))
-	var count: int = int(payload.get("count", 0))
-	var chunk: String = str(payload.get("data", ""))
-	if snapshot_id < 0 or count <= 0 or index < 0 or index >= count:
-		Diag.error("NetworkingSlice: malformed snapshot_chunk dropped")
-		return
-	if not _snapshot_buffer.has(snapshot_id):
-		_snapshot_buffer[snapshot_id] = { "count": count, "received": 0, "parts": [] }
-	var entry: Dictionary = _snapshot_buffer[snapshot_id]
-	while entry["parts"].size() < count:
-		entry["parts"].append("")
-	# Idempotent: only count a chunk once, so a duplicate (emulator re-delivery)
-	# never double-increments `received` and prematurely completes reassembly.
-	if entry["parts"][index] == "":
-		entry["parts"][index] = chunk
-		entry["received"] += 1
-	if entry["received"] >= count:
-		_snapshot_buffer.erase(snapshot_id)
-		var full := ""
-		for part in entry["parts"]:
-			full += part
-		var data = JSON.parse_string(full)
-		if data is Dictionary:
-			GameBus.world_snapshot_received.emit(_adopt_snapshot_identities(data))
-		else:
-			Diag.error("NetworkingSlice: snapshot reassembly produced invalid JSON")
+	_m1._accumulate_snapshot_chunk(payload)
 
 ## Decode a wire vector. Positions arrive as `{chunk, local}` (Phase 63) or the legacy `[x, y, z]`
 ## array; normals and other plain vectors are always the array form.
@@ -2205,26 +1305,8 @@ func _peer_reachable(peer_id: int) -> bool:
 		return false
 	return _role != Role.HOST or peer_id in transport.peers()
 
-## Drain the emulator queue, delivering due packets via the real RPC.
 func _drain_emulator(now_ms: float = -1.0) -> void:
-	var now := now_ms if now_ms >= 0.0 else float(Time.get_ticks_msec())
-	var i := 0
-	while i < _pending.size():
-		var entry: Dictionary = _pending[i]
-		if float(entry["at_ms"]) <= now:
-			var msg: Variant = JSON.parse_string(str(entry["payload"]))
-			# Phase 135 — a packet whose connection is gone (or never completed) is lost with it, as on
-			# a real wire; sending it would raise an RPC error per packet on every frame.
-			if msg is Dictionary and _peer_reachable(int(entry["peer_id"])):
-				_ensure_transport().send(int(entry["peer_id"]), msg)
-			else:
-				emulator_dropped += 1
-				if _role == Role.HOST:
-					_link_free_at_ms.erase(int(entry["peer_id"]))
-					_ordered_at_ms.erase(int(entry["peer_id"]))
-			_pending.remove_at(i)
-		else:
-			i += 1
+	_m2._drain_emulator(now_ms)
 
 # ---------------------------------------------------------------------------
 # Phase 19 — jitter buffer (client)
@@ -2237,29 +1319,8 @@ func _buffer_remote_state(peer_id: int, position: Vector3) -> void:
 		_jitter_buffer[peer_id] = []
 	_jitter_buffer[peer_id].append({ "at_ms": at_ms, "position": position })
 
-## Sample the buffered snapshots for `peer_id` at playback time
-## (now_ms - jitter_buffer_ms), interpolating between the two surrounding
-## snapshots. Pure — accepts an explicit clock for tests.
 func _sample_remote_state_at(peer_id: int, now_ms: float) -> Vector3:
-	var queue: Array = _jitter_buffer.get(peer_id, [])
-	if queue.is_empty():
-		return Vector3.ZERO
-	var play: float = now_ms - jitter_buffer_ms
-	var first: Dictionary = queue[0]
-	if play <= float(first["at_ms"]):
-		return first["position"]
-	var last: Dictionary = queue[queue.size() - 1]
-	if play >= float(last["at_ms"]):
-		return last["position"]
-	for i in range(queue.size() - 1):
-		var a: Dictionary = queue[i]
-		var b: Dictionary = queue[i + 1]
-		var ta: float = float(a["at_ms"])
-		var tb: float = float(b["at_ms"])
-		if play >= ta and play <= tb:
-			var t: float = (play - ta) / maxf(tb - ta, 0.0001)
-			return (a["position"] as Vector3).lerp(b["position"], t)
-	return last["position"]
+	return _m3._sample_remote_state_at(peer_id, now_ms)
 
 ## Drop buffered snapshots older than the playback window.
 func _prune_jitter_buffer(peer_id: int, now_ms: float) -> void:
@@ -2307,20 +1368,8 @@ func _detach_peer() -> void:
 	if multiplayer.server_disconnected.is_connected(_on_server_disconnected):
 		multiplayer.server_disconnected.disconnect(_on_server_disconnected)
 
-## Phase 38 — client side: the host went away. The reconnect policy is game_root's
-## (`_on_server_disconnected` there answers a retry), but the transport state left
-## behind is this slice's, and the snapshot buffer is the part that leaks: an
-## incomplete snapshot can never be completed by the host that just vanished, so its
-## entry lived for the whole session. Neither pre-existing clear site covered this —
-## one is this slice's own teardown and the other is a PEER disconnecting, and a client
-## has no peers to disconnect (see forget_player_id).
-##
-## Role-gated: a host has no server to lose, and its own teardown clears the buffer
-## already. A second, weaker clear here would be a hole rather than a fix.
 func _on_server_disconnected() -> void:
-	if _role != Role.CLIENT:
-		return
-	_snapshot_buffer.clear()
+	_m1._on_server_disconnected()
 
 ## Phase 33 — client side: the connection is up, so present our cached player id.
 ## The host answers with the id it binds us to (the same one on a reconnect, a
@@ -2372,19 +1421,5 @@ func _on_peer_connected(id: int) -> void:
 	_peer_spatial.update(id, get_aoi_center(id))
 	GameBus.peer_connected.emit(id)
 
-## Phase 19 — a peer disconnecting does NOT erase its last-known position; it is
-## retained (with a TTL) so a rejoining client resumes from where it left off and
-## the record written at disconnect carries that position.
-## A disconnect timestamp is set so _evict_stale_states() can expire the entry
-## after LAST_KNOWN_STATE_TTL_MS if the peer never reconnects.
 func _on_peer_disconnected(id: int) -> void:
-	_malformed_position_warn_ms.erase(id)
-	GameBus.peer_disconnected.emit(id)
-	# Phase 33 — the connection is gone, so its transport mapping goes with it.
-	# The player's durable record stays on disk, which is what lets a reconnect
-	# with the same player id re-bind to it; game_root writes it and then releases
-	# the in-memory copy (PlayerRegistry.evict_player).
-	forget_player_id(id)
-	_forget_equipment_pairs(id)
-	if _last_known_states.has(id):
-		_last_known_timestamps[id] = Time.get_ticks_msec()
+	_m2._on_peer_disconnected(id)
