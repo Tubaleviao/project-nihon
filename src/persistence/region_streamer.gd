@@ -27,6 +27,8 @@ var read_thread_ids: Array = []
 var record_threads := false   # off in the game: the list would grow with every read
 ## The keys of the last `sync`'s wanted set: a read that finishes for a region no longer wanted is dropped.
 var _wanted_last: Dictionary = {}
+## Phase 162 — region reads begun (sync or on a worker), for the crowd stress report.
+var reads_started := 0
 var _voxel: Object
 ## "rx,rz" -> true for every region read and still wanted.
 var _resident: Dictionary = {}
@@ -117,6 +119,7 @@ func sync(wanted: Dictionary) -> Dictionary:
 		if async_reads:
 			_start_read(str(rkey))
 			continue
+		reads_started += 1
 		var read := _store.read_region(RegionStore.region_from_key(str(rkey)))
 		if not bool(read["ok"]):
 			# Not resident: a later sync (the next window move) retries the read once the backoff
@@ -190,6 +193,7 @@ func _note_failure(rkey: String) -> void:
 func _start_read(rkey: String) -> void:
 	if _reading.has(rkey):
 		return
+	reads_started += 1
 	_reading[rkey] = WorkerThreadPool.add_task(_read_task.bind(rkey), true, "region read " + rkey)
 
 ## The worker body: only the file read runs here (`RegionStore.read_region` is safe off the main thread).

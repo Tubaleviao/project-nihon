@@ -32,6 +32,7 @@ extends Node
 ##   on_companion_tamed(instance_id, player_id)  -- Phase 35: enter the tamed state
 
 ## Seconds between creature melee strikes while aggressive.
+const TickProbe := preload("res://src/core/tick_probe.gd")
 const ATTACK_INTERVAL  := 1.5
 ## Patrol waypoint spread around the spawn origin.
 const PATROL_RADIUS    := 6.0
@@ -134,6 +135,11 @@ func _ready() -> void:
 	GameBus.block_changed.connect(_on_block_changed)
 
 func _process(delta: float) -> void:
+	TickProbe.begin("creature_ai")   # Phase 162 — the stress run's per-phase tick cost
+	_tick_all(delta)
+	TickProbe.end()
+
+func _tick_all(delta: float) -> void:
 	if not is_authoritative:
 		return
 	begin_tick()

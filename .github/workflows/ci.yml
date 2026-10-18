@@ -4,6 +4,14 @@ on:
   push:
     branches: [main, master]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      stress_max:
+        description: "Crowd stress run: the largest crowd to try (16, 32, 64, 128 or 200)"
+        default: "64"
+      stress_profiles:
+        description: "Crowd stress run: link profiles, space-separated (lan, wan_br, wan_bad)"
+        default: "lan"
 
 jobs:
   godot-tests:
@@ -231,6 +239,60 @@ jobs:
             ${{ runner.temp }}/net-harness
             ${{ runner.temp }}/net-harness-wan-bad
           if-no-files-found: ignore
+
+  stress:
+    name: Crowd stress run and bottleneck report
+    # Phase 162 — main pushes and manual runs only, not every PR: the ladder takes a quarter of an hour.
+    # A manual run can pass a bigger ceiling and other link profiles.
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        # Same submodule note as godot-tests: the public repo runs on the committed placeholders.
+
+      - name: Download Godot 4.7
+        run: |
+          mkdir -p /tmp/godot
+          curl -fsSL -o /tmp/godot/godot.zip \
+            https://github.com/godotengine/godot/releases/download/4.7-stable/Godot_v4.7-stable_linux.x86_64.zip
+          unzip -o /tmp/godot/godot.zip -d /tmp/godot
+          chmod +x /tmp/godot/Godot_v4.7-stable_linux.x86_64
+
+      - name: Run the stress ladder
+        env:
+          GODOT: /tmp/godot/Godot_v4.7-stable_linux.x86_64
+          STRESS_MAX: ${{ github.event.inputs.stress_max || '64' }}
+          STRESS_PROFILES: ${{ github.event.inputs.stress_profiles || 'lan' }}
+        run: |
+          # Every pattern up to STRESS_MAX bots. Budgets are a report; the driver exits non-zero only on a
+          # hard failure (a crash, a host or watcher frame over 2 s, a bot dropped by the host without a
+          # reason, a peer record left after churn).
+          tools/stress.sh
+
+      - name: The report names a largest passing size per pattern and the top hot spots
+        run: |
+          test -s stress/report.json && test -s stress/report.md
+          cat stress/report.md >> "$GITHUB_STEP_SUMMARY"
+          profiles="${{ github.event.inputs.stress_profiles || 'lan' }}"
+          want=$(( $(echo $profiles | wc -w) * 5 ))
+          got=$(grep -c '^STRESS_LARGEST ' stress/report.log || true)
+          if [ "$got" -ne "$want" ]; then
+            echo "::error::the report names a largest passing size for $got series, expected $want"
+            exit 1
+          fi
+          if [ "$(grep -c '^STRESS_HOTSPOT ' stress/report.log || true)" -lt 3 ]; then
+            echo "::error::the report names fewer than three hot spots"
+            exit 1
+          fi
+
+      - name: Upload the stress report and run logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stress
+          path: stress/
+          if-no-files-found: warn
 
   playtest:
     name: Playtest bot (rendered session under xvfb)

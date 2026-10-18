@@ -10,6 +10,7 @@ const NetworkingSlice  := preload("res://src/networking/networking_slice.gd")
 const PlayerRegistry   := preload("res://src/persistence/player_registry.gd")
 const PlayerSlice      := preload("res://src/player/player_slice.gd")
 const SpawnFinder      := preload("res://src/world/spawn_finder.gd")
+const TickProbe        := preload("res://src/core/tick_probe.gd")
 
 ## Phase 66 — client: the other players inside our AOI, as character instances.
 ## { peer_id: instance_id }. A peer's replicated gear lands on its instance (bound through
@@ -65,9 +66,13 @@ func _on_player_joined(peer_id: int, player_id: String, reconnected: bool) -> vo
 	root._chat.announce_joined(player_id)
 	# Phase 52 — the peer's window opens NOW, so the regions around its saved position are
 	# resident (and its snapshot carries their edits) before the snapshot is built.
+	TickProbe.begin("window_moves")
 	root._chunk_manager.set_peer_center(peer_id, peer_window_chunk(peer_id), true)
 	root._chunk_manager.refresh(false)
+	TickProbe.end()
+	TickProbe.begin("snapshots")
 	root._networking.send_snapshot(peer_id, root._snapshot_wiring.build_snapshot(peer_id))
+	TickProbe.end()
 
 ## Phase 53 — the local (host / offline) player's placement on a boot with no saved position:
 ## the friend named by `--friend` if any, else habitable land away from colonized regions. Cached,
@@ -324,8 +329,10 @@ func on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	# miss the destination's edits: forget the crossing so the next state packet retries it.
 	if root._chunk_manager != null and root._registry.get_player_id(peer_id) != "":
 		var target: Vector2i = root._chunk_manager.world_to_chunk(Vector2(position.x, position.z))
+		TickProbe.begin("window_moves")
 		if root._chunk_manager.set_peer_center(peer_id, target):
 			root._chunk_manager.refresh(false)
+		TickProbe.end()
 		# The window centre is stored wrapped past the seam; compare like with like. A move that was
 		# refused or clamped builds no snapshot (it would miss the destination's edits): the crossing is
 		# forgotten and the next state packet retries it once the window has caught up.
@@ -337,7 +344,9 @@ func on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	# crossing (the record is written at load and at disconnect, not per frame).
 	# The crossing position is passed explicitly: this handler may run before the
 	# networking slice's own handler has recorded it, so get_aoi_center() can be stale.
+	TickProbe.begin("snapshots")
 	root._networking.send_snapshot(peer_id, root._snapshot_wiring.build_snapshot(peer_id, false, position, false))
+	TickProbe.end()
 
 ## The chunk a peer's window is centred on: its last reported position, else the position
 ## its record holds (a joining peer has not sent a state packet yet).
@@ -363,9 +372,11 @@ func sync_peer_windows(delta: float) -> void:
 	if root._peer_window_elapsed < root.PEER_WINDOW_INTERVAL:
 		return
 	root._peer_window_elapsed = 0.0
+	TickProbe.begin("peer_windows")
 	for peer_id in root._registry.get_peer_ids():
 		if int(peer_id) > 0:
 			root._chunk_manager.sync_peer_center(int(peer_id), peer_window_chunk(int(peer_id)))
+	TickProbe.end()
 
 func fold_local_player() -> void:
 	if not root._player.has_method("fold_to"):

@@ -4,6 +4,7 @@ extends "res://src/core/wiring.gd"
 
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const Diag := preload("res://src/core/diag.gd")
+const TickProbe := preload("res://src/core/tick_probe.gd")
 const TerrainSlice     := preload("res://src/terrain/terrain_slice.gd")
 const VoxelSlice       := preload("res://src/terrain/voxel_slice.gd")
 const ChunkRecords     := preload("res://src/terrain/chunk_records.gd")
@@ -30,6 +31,11 @@ func _connect_all() -> void:
 ## short cadence keeps the "don't stat every frame" fix while bounding the
 ## shutdown latency to `shutdownPollSeconds` instead of the autosave interval.
 func tick_save_lifecycle(delta: float) -> void:
+	TickProbe.begin("save")   # Phase 162 — the stress run's per-phase tick cost
+	_tick_save_lifecycle(delta)
+	TickProbe.end()
+
+func _tick_save_lifecycle(delta: float) -> void:
 	if root._is_client:
 		return
 	root._shutdown_poll_elapsed += delta

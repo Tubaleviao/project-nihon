@@ -30,6 +30,16 @@ npm run generate  # generate the design bible into bible/
 
 Run the game with Godot 4.7 from the repository root. Running the tests, the two-client network harness, and the full fabric-first workflow are covered in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
+### Testing
+
+The unit suite (`-- --run-tests`), the two-client network harness (`tools/net_harness.sh`) and the playtest bot (`-- --playtest-bot`) are described in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#testing). To see how the server holds up under a crowd, run the stress test locally:
+
+```bash
+STRESS_MAX=32 STRESS_PROFILES=lan GODOT=/path/to/Godot_v4.7-stable_linux.x86_64 tools/stress.sh
+```
+
+It boots a dedicated server, a watching client and a process of scripted bot players, walks them in five patterns at growing crowd sizes, and writes `stress/report.md` (the largest crowd that met every budget, and the ranked bottlenecks) and `stress/report.json`.
+
 ---
 
 ## Status

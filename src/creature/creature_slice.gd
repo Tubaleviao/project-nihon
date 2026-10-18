@@ -33,6 +33,7 @@ extends Node
 ## Time.get_ticks_msec(), which is meaningless in a new process.)
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const Diag := preload("res://src/core/diag.gd")
+const TickProbe := preload("res://src/core/tick_probe.gd")
 
 ## CHUNK_SIZE and BIOME_KEYS live in TerrainSlice (single source of truth).
 ## Spawning uses _chunk_biome() which delegates to terrain_slice, so no local
@@ -117,6 +118,7 @@ func _ready() -> void:
 		_build_visuals()
 
 func _process(delta: float) -> void:
+	TickProbe.begin("creature_sync")   # Phase 162 — the stress run's per-phase tick cost
 	_tick_respawn()
 	_tick_visuals(delta)
 	if is_authoritative:
@@ -128,6 +130,7 @@ func _process(delta: float) -> void:
 		if _sync_accum >= delta_interval:
 			_sync_accum = 0.0
 			_broadcast_creature_states()
+	TickProbe.end()
 
 ## Phase 135/150 — seconds between creature delta broadcasts. The two-client harness raises it to
 ## `THROTTLED_SYNC_INTERVAL` under a bandwidth-capped profile: at the full rate wandering creatures alone

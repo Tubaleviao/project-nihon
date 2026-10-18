@@ -182,7 +182,7 @@ issue number where the criterion used to be.
 | 159 | Gestures at runtime: a gesture wheel, chat commands and synced poses | Done | [history](docs/roadmap-history/phases-159.md) |
 | 160 | Harvesting in the fabric: tools, the Skinning skill, carcass weight and carry | Planned | below |
 | 161 | Harvesting at runtime: work the body, carry it home | Planned | below |
-| 162 | A crowd walks: a multi-player stress test and a bottleneck report | Planned | below |
+| 162 | A crowd walks: a multi-player stress test and a bottleneck report | Done | [history](docs/roadmap-history/phases-162.md) |
 | 163 | Crowd performance: fix what the Phase 162 report names | Planned | below |
 | 164 | A round horizon: a circular distant ring, planet curvature and haze | Done | [history](docs/roadmap-history/phases-164.md) |
 | 165 | Mountains on the horizon: distant bands out to the visibility limit | Planned | below |
@@ -294,64 +294,6 @@ right tool, gets yields and quality from their Skinning level, or picks the body
 - [ ] Harness step `carcass_synced`: a carcass harvested on the host loses those entries on the
   client, and a carried carcass follows the carrier on the other client.
 - [ ] Playtest bot: the `fight` step ends with the harvested items in the inventory.
-- [ ] Suite green on both boot paths, harness green.
-
----
-
-## Phase 162 — A crowd walks: a multi-player stress test and a bottleneck report
-
-**Goal:** every multiplayer gate runs one host and one client (Phase 39 harness, Phase 135 WAN
-profiles), and the playtest bot (Phase 134) plays alone. Nothing tells us what happens when 16, 64 or
-200 players walk around the same world: how long a host tick takes, how many bytes each peer gets,
-whether chunk streaming, AOI relays, peer windows or region reads fall behind, or what a client pays to
-draw a crowd. This phase adds a stress run that connects many scripted players over real sockets, walks
-them in fixed patterns, measures the host and a watching client, and writes a report that ranks the
-bottlenecks. The report is the input to Phase 163. Thresholds are a report, not a gate, except for hard
-failures.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phase 119, Phase 134, Phase 135, Phase 142.
-
-**Deliverables:**
-- `src/tests/stress_bots.gd` (new) — `--stress-bots <n>` user arg boots one headless process that
-  opens `n` light bot connections to a host (each its own ENet peer and player identity, no terrain,
-  no rendering, no slices beyond what the wire needs). Every bot sends the same movement intents and
-  position claims a real client sends, at the client's real rate, and answers what the host expects
-  of a client (window claims, acks), so the host cannot tell a bot from a player.
-- Walk patterns, seeded and repeatable: `cluster` (all bots inside one AOI around a shared spawn),
-  `spread` (bots walk away from spawn in different directions, each streaming its own window),
-  `cross` (bots repeatedly cross AOI cells and chunk borders), `pole` (a group walks across a polar
-  fold), and `churn` (bots join and leave every few seconds).
-- Host metrics, sampled per tick: tick time p50/p95/p99/max split by phase (networking poll, AOI and
-  relays, peer windows, creature AI, chunk records and region streaming, save), peers per AOI cell,
-  bytes and packets sent and received per peer per second, ENet queue depth, chunks dispatched and
-  waiting, region reads, memory and node count.
-- Watcher metrics: one full headless client (`--net-harness client` with a `--stress-watch` flag)
-  stands inside the crowd and records frame time, remote avatars shown, bytes received, apply time of
-  position relays and how far a relayed position lags the host.
-- `tools/stress.sh` (new) — boots a dedicated server, the bot process and the watcher; runs each
-  pattern at a ladder of crowd sizes (16, 32, 64, 128, 200) under `lan` and `wan_br`; stops a step
-  early when the host tick p95 passes a ceiling, and records the size where it happened.
-- `stress/report.json` and `stress/report.md` — per pattern and size the metrics above, the largest
-  size that met the budgets (host tick p95 ≤ 16 ms, ≤ 64 kbit/s down per peer, watcher frame p95 ≤
-  33 ms, relay lag ≤ 250 ms), and a ranked list of the hot spots: the tick phase whose cost grows
-  fastest with the crowd and the message types that take the most bytes.
-- `.github/workflows/ci.yml` — a `stress` job (main pushes and manual dispatch, not every PR) runs the
-  ladder up to 64 and uploads `stress/`; a manual run can pass a bigger ceiling.
-- A short note in `README.md` Testing on running the stress test locally.
-
-**Acceptance criteria:**
-- [ ] Suite: the report builder computes percentiles, per-phase tick shares and the per-peer byte
-  rate correctly from a fixed sample list; the hot-spot ranking orders a fixed set of growth curves
-  correctly; the largest passing size is the last size that met every budget.
-- [ ] Suite: a bot's intents and claims pass the host's validation and rate limits unchanged (the
-  same checks a real client's do), and a bot that sends a malformed claim is refused like a client.
-- [ ] Suite: two runs of a pattern with the same seed give the same bot paths.
-- [ ] CI: the `stress` job runs every pattern up to 64 bots under `lan`, uploads `report.json` and
-  `report.md`, and fails only on a hard failure (crash, a host or watcher frame over 2 s, a bot
-  dropped by the host without a reason, an orphaned peer record after `churn`).
-- [ ] CI: the report names a largest passing size per pattern and at least the top three hot spots.
 - [ ] Suite green on both boot paths, harness green.
 
 ---

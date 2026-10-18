@@ -48,7 +48,25 @@ GODOT=/tmp/godot/Godot_v4.7-stable_linux.x86_64 tools/net_harness.sh
 #    unknown profile name is refused at boot (exit 2). Under a bandwidth cap the harness
 #    host mutes creature position deltas, which alone exceed 256 kbit/s per client.
 NET_PROFILE=wan_bad GODOT=/tmp/godot/Godot_v4.7-stable_linux.x86_64 tools/net_harness.sh
+
+# 4. The crowd stress run (Phase 162). A dedicated server, one watching client and a bot
+#    process with n light clients, per walk pattern (cluster, spread, cross, pole, churn) and
+#    crowd size (16, 32, 64, 128, 200), under each link profile. Writes stress/report.json and
+#    stress/report.md: the largest crowd that met every budget per pattern, and the ranked hot
+#    spots. Exits 1 only on a hard failure (crash, a frame over 2 s, a bot dropped without a
+#    reason, a peer record left behind). A full ladder takes about an hour; narrow it with
+#    STRESS_MAX, STRESS_PATTERNS, STRESS_PROFILES and STRESS_SECONDS:
+STRESS_MAX=32 STRESS_PATTERNS="cluster churn" STRESS_PROFILES=lan \
+  GODOT=/tmp/godot/Godot_v4.7-stable_linux.x86_64 tools/stress.sh
 ```
+
+The stress run's three roles are user args too: `--server --stress-host <out.json>` (the host
+recorder), `--net-harness client --stress-watch <out.json>` (the watcher, which runs the shipped
+client boot instead of the harness scenario) and `--stress-bots <n>` (the bot process, debug builds
+only). `tools/stress.sh` wires them together with a "steady" file (the bots have all joined; the host
+and the watcher sample only while it exists) and a "stop" file. The host recorder empties and uses
+`user://stress/server/`, never a real save. The watcher, like the harness client, writes the cached
+client identity.
 
 `--run-tests` and `--net-harness <host|client>` are **user args**, so they go after the
 `--` separator. The harness cannot live in the suite — an `ENetMultiplayerPeer` only
