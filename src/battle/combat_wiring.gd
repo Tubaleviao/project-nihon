@@ -33,7 +33,9 @@ func _on_combat_hit_resolved(attacker_id: String, defender_id: String, outcome: 
 	_animate_hit(a_key, d_key, outcome)
 	# Only a hosting machine has clients to tell; offline, the send would just warn on every swing.
 	if root._networking != null and root._networking.is_host():
-		root._networking.send_combat_hit(a_key, d_key, outcome, _event_position(a_key, d_key))
+		var at: Variant = _event_position(a_key, d_key)
+		if at != null:   # no resolvable position: an AOI broadcast around the origin would be wrong
+			root._networking.send_combat_hit(a_key, d_key, outcome, at)
 
 ## Client: the host's swing, animated on whatever bodies this client draws.
 func _on_combat_hit_synced(attacker_key: String, defender_key: String, outcome: String) -> void:
@@ -71,7 +73,9 @@ func _animate_hit(a_key: String, d_key: String, outcome: String) -> void:
 	# The local body flinches on `player_damaged` (which also covers burns and the like), so a hit on it
 	# is skipped here and nobody flinches twice.
 	var is_local_body := d_key.begins_with("p:") and _character_for_key(d_key) == root._character.get_player_character()
-	if outcome != "miss" and not is_local_body:
+	# A creature killed by this blow goes to its Death node; a queued flinch would replay on respawn.
+	var killed_creature := outcome == "kill" and d_key.begins_with("c:")
+	if outcome != "miss" and not is_local_body and not killed_creature:
 		_flinch(d_key)
 
 ## The local body took damage, from any source: flinch.
@@ -99,7 +103,7 @@ func _flinch(key: String) -> void:
 		root._character.trigger_hit(iid)
 
 ## Where a swing happened, for the packet's area of interest: the attacker's body, else the target's.
-func _event_position(a_key: String, d_key: String) -> Vector3:
+func _event_position(a_key: String, d_key: String) -> Variant:
 	for key in [a_key, d_key]:
 		if key.begins_with("c:"):
 			var at: Vector3 = root._creature.get_instance_position(key.substr(2))
@@ -111,7 +115,7 @@ func _event_position(a_key: String, d_key: String) -> Vector3:
 				return root._player.get_position()
 			if root._networking.has_last_known_state(peer):
 				return root._networking.get_last_known_state(peer)
-	return Vector3.ZERO
+	return null
 
 ## Phase 37/38 — a combat round landed on a player. The damage is applied by the machine
 ## that SIMULATES that body: the local body in-process (PlayerSlice listens to this

@@ -910,8 +910,10 @@ func _on_creature_died(entity_id: String, _position: Vector3, _killer_id: String
 				inst["state"]      = "dead"
 				inst["hp"]         = 0.0
 				# Phase 157 — the host's death push: the body's authoritative position becomes the landing.
-				if landing != Vector3.ZERO:
-					inst["position"] = landing
+				# Only the instance the blow named moves (a type id matches every instance of it), and it
+				# goes through set_instance_position so the spatial index and the box follow.
+				if landing != Vector3.ZERO and iid == entity_id:
+					set_instance_position(iid, landing)
 				# WALL-CLOCK deadline (Phase 33) — a saved deadline must still mean
 				# the same moment in a new process, so this is Unix-epoch seconds,
 				# not process uptime.

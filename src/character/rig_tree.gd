@@ -321,7 +321,9 @@ static func drive_shots(tree: Object, playback: Object, loco) -> void:
 	if idle != int(tree.get_meta("idle_serial", 0)):
 		tree.set_meta("idle_serial", idle)
 		fire_idle_variant(tree, loco.idle_clip)
-	elif loco.get_state() != Locomotion.State.IDLE and tree.get_meta("idle_shots", 0) > 0:
+		tree.set_meta("idle_live", true)
+	elif loco.get_state() != Locomotion.State.IDLE and tree.get_meta("idle_live", false):
+		tree.set_meta("idle_live", false)   # abort once, not every frame the body moves
 		abort_idle_variant(tree)
 
 
