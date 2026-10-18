@@ -295,6 +295,9 @@ func end_gesture(instance_id: String) -> void:
 	inst["locomotion"].end_gesture()
 	inst["seat_lift"] = 0.0
 	_settle_lift(inst)
+	# A remote avatar's tree has no other driver, so leave the pose node here.
+	if inst.has("anim_tree") and is_instance_valid(inst["anim_tree"]):
+		sl.RigTree.drive(inst["anim_tree"], inst["locomotion"])
 
 func gesture_clip_of(instance_id: String) -> String:
 	if not sl._instances.has(instance_id):

@@ -253,6 +253,12 @@ func _test_lift_settles() -> void:
 	assert_true(absf(root.position.y - (base + 0.4)) < 0.0001, "the root rises at once")
 	f["ch"]._m2.end_gesture(f["iid"])
 	assert_true(absf(root.position.y - base) < 0.0001, "and drops at once when the pose ends")
+	var tree: AnimationTree = f["ch"]._instances[f["iid"]]["anim_tree"]
+	f["ch"]._m2.trigger_gesture(f["iid"], "sit", true, 0.4)
+	f["ch"]._m2.advance_gesture(f["iid"], 0.016)
+	assert_eq(tree.get_meta("travel_node", ""), "Gesture", "a remote avatar sits")
+	f["ch"]._m2.end_gesture(f["iid"])
+	assert_eq(tree.get_meta("travel_node", ""), "Locomotion", "and its tree stands up without a local drive")
 	_free_fixture(f)
 
 
