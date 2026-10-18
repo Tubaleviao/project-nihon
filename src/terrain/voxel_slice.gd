@@ -108,6 +108,7 @@ const Settle := preload("res://src/terrain/settle.gd")
 const VoxelPersist := preload("res://src/terrain/voxel_persist.gd")
 const VoxelEdit := preload("res://src/terrain/voxel_edit.gd")
 const VoxelBuild := preload("res://src/terrain/voxel_build.gd")
+const VoxelQuery := preload("res://src/terrain/voxel_query.gd")
 const VoxelConsts := preload("res://src/terrain/voxel_consts.gd")
 const VoxelMesh := preload("res://src/terrain/voxel_mesh.gd")
 const VoxelRuns := preload("res://src/terrain/voxel_runs.gd")
@@ -189,6 +190,7 @@ const VEIN_DEPOSIT_INSET := 0.16
 var _persist := VoxelPersist.new(self)
 var _edit := VoxelEdit.new(self)
 var _build := VoxelBuild.new(self)
+var _query := VoxelQuery.new(self)
 var _chunks: Dictionary = {}
 ## Base heightmaps keyed by "x,y" string (the unedited noise terrain).
 var _heightmaps: Dictionary = {}
@@ -851,31 +853,11 @@ func _vein_from_id(id: String) -> Dictionary:
 func place_block(world_pos: Vector3, normal: Vector3, material: String = "", player_id: String = "", exact: Dictionary = {}) -> bool:
 	return _edit.place_block(world_pos, normal, material, player_id, exact)
 
-## Top of the column at a world XZ position — the highest solid run's top, or
-## BEDROCK_DEPTH when the column is mined out to the floor.
-##
-## This is the column's TOP, not the surface a body stands on: inside a tunnel the
-## body's own Y decides which run holds it, which is what `sample_support_height_at`
-## answers — and that is the read production uses for footing
-## (`peer_wiring.sync_player_avatar`). This accessor stays because it is how a
-## column's SHAPE is asserted (the suite), and because the pre-ceiling footing read
-## it used to be is still what a caller outside a tunnel means.
 func get_voxel_height_at(world_pos: Vector2) -> float:
-	return _column_top_at_tile(_world_to_tile(world_pos))
+	return _query.get_voxel_height_at(world_pos)
 
-## The top of the highest run AT OR BELOW from_y, or BEDROCK_DEPTH when nothing
-## solid lies below. Phase 41 — the footing sampler is a function of the body's
-## own Y for exactly one reason: a column-top sampler is only correct in a world
-## with no ceilings, and a body standing under a tunnel roof would otherwise be
-## placed ON the roof. A tolerance of half a step lets a body standing exactly on
-## a surface still find it.
 func sample_support_height_at(world_pos: Vector2, from_y: float) -> float:
-	var support := BEDROCK_DEPTH
-	for run in get_column_runs_at(world_pos):
-		var top := float(run["top"])
-		if top <= from_y + STEP_HEIGHT * 0.5 and top > support:
-			support = top
-	return support
+	return _query.sample_support_height_at(world_pos, from_y)
 
 ## The resolved solid runs of the column at a world XZ position, bottom → top.
 func get_column_runs_at(world_xz: Vector2) -> Array:
@@ -885,47 +867,14 @@ func get_column_runs_at(world_xz: Vector2) -> Array:
 func get_runs_at_tile(tile: Vector2i) -> Array:
 	return VoxelRuns.apply_run_ops(_base_runs_for_tile(tile), _edits.get(_tile_key(tile), []))
 
-## Phase 110 — true when any tile within Chebyshev `radius` tiles of `tile` carries an edit.
 func has_edit_near(tile: Vector2i, radius: int) -> bool:
-	if _edits.is_empty():
-		return false
-	for dz in range(-radius, radius + 1):
-		for dx in range(-radius, radius + 1):
-			if _edits.has(_tile_key(Vector2i(tile.x + dx, tile.y + dz))):
-				return true
-	return false
+	return _query.has_edit_near(tile, radius)
 
-## Phase 126 — `has_edit_near` for edits that reach `min_y` or higher: an edit whose span tops out below
-## it (a deep mine under a tree) does not count. The rule `TreeSlice.CLEAR_DEPTH_M` applies live.
 func has_edit_near_at(tile: Vector2i, radius: int, min_y: float) -> bool:
-	if _edits.is_empty():
-		return false
-	for dz in range(-radius, radius + 1):
-		for dx in range(-radius, radius + 1):
-			for e in _edits.get(_tile_key(Vector2i(tile.x + dx, tile.y + dz)), []):
-				# A deplete op is vein bookkeeping on the anchor tile, not a terrain edit: the dig that
-				# took the ore carries its own span, which is what the depth rule judges.
-				if (e as Dictionary).get("op", "") == "deplete":
-					continue
-				if float((e as Dictionary).get("top", INF)) >= min_y:
-					return true
-	return false
+	return _query.has_edit_near_at(tile, radius, min_y)
 
-## Phase 116 — true when the chunk or the `radius` tiles around it hold any edit: one index lookup per
-## chunk instead of `has_edit_near`'s string keys per tree. A false answer rules every tile of the chunk
-## out for a `has_edit_near` of the same radius; a true one means "ask per tile".
 func has_edits_near_chunk(chunk_pos: Vector2i, radius: int = 1) -> bool:
-	if _edits_by_chunk.is_empty():
-		return false
-	var first := chunk_pos * CHUNK_SIZE + Vector2i(-radius, -radius)
-	var last := chunk_pos * CHUNK_SIZE + Vector2i(CHUNK_SIZE - 1 + radius, CHUNK_SIZE - 1 + radius)
-	var c0 := _tile_to_chunk(first)
-	var c1 := _tile_to_chunk(last)
-	for cz in range(c0.y, c1.y + 1):
-		for cx in range(c0.x, c1.x + 1):
-			if not (_edits_by_chunk.get(_chunk_key(Vector2i(cx, cz)), {}) as Dictionary).is_empty():
-				return true
-	return false
+	return _query.has_edits_near_chunk(chunk_pos, radius)
 
 func get_edits() -> Dictionary:
 	return _persist.get_edits()
@@ -1062,32 +1011,11 @@ func set_place_material(material: String) -> void:
 func get_place_material() -> String:
 	return _place_material
 
-## Advance to the next buildable material — only materials currently held in
-## the inventory (sorted GameData.MATERIALS keys). Falls back to an empty
-## selection when the inventory holds nothing buildable.
 func cycle_place_material() -> String:
-	var keys := _buildable_materials()
-	if keys.is_empty():
-		_place_material = ""
-	else:
-		var idx: int = keys.find(_place_material)
-		idx = (idx + 1) % keys.size()
-		_place_material = str(keys[idx])
-	GameBus.block_place_material_changed.emit(_place_material)
-	return _place_material
+	return _query.cycle_place_material()
 
-## Sorted material keys the player can actually place: every GameData.MATERIALS
-## key held in the inventory. With no inventory wired, falls back to all keys.
 func _buildable_materials() -> Array:
-	var keys: Array = GameData.MATERIALS.keys()
-	keys.sort()
-	if inventory_slice == null or not inventory_slice.has_method("get_item_count"):
-		return keys
-	var out: Array = []
-	for key in keys:
-		if inventory_slice.get_item_count(str(key)) > 0:
-			out.append(str(key))
-	return out
+	return _query._buildable_materials()
 
 ## Material at a natural tile, read off the ORE FIELD (Phase 43): the vein's material when
 ## (tile, depth) is inside a LIVE vein, otherwise the biome's host rock (the heaviest
@@ -1125,29 +1053,11 @@ func material_at(world_xz: Vector2, depth: float) -> String:
 func get_vein_depletion() -> Dictionary:
 	return _vein_taken.duplicate()
 
-## The seed the ore field is evaluated with: the world's (Phase 41), or 0 for a slice with no
-## terrain wired (an isolated rig).
 func _world_seed() -> int:
-	if terrain_slice != null and terrain_slice.has_method("get_world_seed"):
-		return int(terrain_slice.get_world_seed())
-	return 0
+	return _query._world_seed()
 
-## Small raised markers on the VEINS in one chunk, as
-## `[{ "position": Vector3, "size": Vector3, "color": Color }]` — the geometry
-## `build_chunk_arrays` emits on top of the ground. A natural column carries one when its
-## top slice lies inside a LIVE vein (Phase 43): the marker marks a vein that is actually
-## there, in the vein's own colour — a ferrite vein in ferrite rock included, since the
-## marker is its only surface tell. A player-placed surface is never a vein, a column mined
-## down OUT of a vein loses its marker, and an exhausted vein shows none. Pure, so the read
-## is testable headlessly without a renderer.
-##
-## Phase 42 review pass 8 — this is the RESOLVE half's job, called from
-## `collect_build_runs`, which hands it the memo it already filled (`cache`): the walk below
-## asks the same question about the same columns, so the chunk's own runs are replayed once
-## rather than twice. Called on its own (a test, a probe) it builds its own memo.
 func vein_deposits(chunk_pos: Vector2i, heightmap: Array, cache: Dictionary = {}) -> Array:
-	return vein_deposits_at(chunk_pos, heightmap, cache, _edits, gather_biomes_for(chunk_pos),
-		_field(_world_seed(), _vein_taken))
+	return _query.vein_deposits(chunk_pos, heightmap, cache)
 
 ## Phase 42 review pass 9 — the PURE half of the walk above: the edits, the biomes and (Phase 43)
 ## the ore field's inputs arrive as plain arguments (see `gather_build_input`), so a worker can
@@ -1194,29 +1104,11 @@ static func vein_deposits_at(chunk_pos: Vector2i, heightmap: Array, cache: Dicti
 static func _voxel_height(raw_height: float) -> float:
 	return floor(raw_height / STEP_HEIGHT) * STEP_HEIGHT
 
-## A tile's natural (unedited) runs, from its chunk's heightmap when that chunk is
-## built, else from the deterministic terrain sampler — the placeholder a tile
-## needs BEFORE streaming has reached it, e.g. when a load-time migration runs
-## first. Both answer the same height by construction (the heightmap is
-## `get_height_at` sampled on the tile grid), so the migration is migration, not a
-## guess.
 func _base_runs_for_tile(tile: Vector2i) -> Array:
-	var top := _base_top_for_tile(tile)
-	if top <= BEDROCK_DEPTH:
-		return []
-	return [{ "bottom": BEDROCK_DEPTH, "top": top, "material": "" }]
+	return _query._base_runs_for_tile(tile)
 
 func _base_top_for_tile(tile: Vector2i) -> float:
-	var chunk := _tile_to_chunk(tile)
-	var ckey := _chunk_key(chunk)
-	if _heightmaps.has(ckey):
-		var hm: Array = _heightmaps[ckey]
-		var lx := tile.x - chunk.x * CHUNK_SIZE
-		var lz := tile.y - chunk.y * CHUNK_SIZE
-		return _voxel_height(float(hm[lz * CHUNK_SIZE + lx]))
-	if terrain_slice != null and terrain_slice.has_method("get_height_at"):
-		return _voxel_height(terrain_slice.get_height_at(Vector2(tile.x * TILE_SIZE, tile.y * TILE_SIZE)))
-	return BEDROCK_DEPTH
+	return _query._base_top_for_tile(tile)
 
 ## A tile's resolved runs straight off a chunk heightmap (the mesher's read path,
 ## which never touches the terrain sampler). `cache` memoises the answer by global
@@ -1303,25 +1195,11 @@ func _run_color(run: Dictionary, world_xz: Vector2, biomes: Dictionary = {}, col
 	return run_color(run, world_xz, _biomes_or_lookup(world_xz, biomes), colours,
 		_base_top_for_tile(_world_to_tile(world_xz)), _field(_world_seed(), _vein_taken))
 
-## Phase 65 — set the season tint of every biome in one call (`{biome: Color}`). Each chunk's
-## material belongs to its own biome, so one biome's snow never tints another biome's chunks.
 func set_season_tints(tints: Dictionary) -> void:
-	_season_tints = tints.duplicate()
-	for biome in _biome_mats:
-		var mat: StandardMaterial3D = _biome_mats[biome]
-		var tint: Color = _season_tints.get(biome, Color.WHITE)
-		if not mat.albedo_color.is_equal_approx(tint):
-			mat.albedo_color = tint
+	_query.set_season_tints(tints)
 
-## The terrain material the chunks of `biome` share. ONE instance per biome for the slice's life.
-## A chunk's material is chosen when it is BUILT: one built before `terrain_slice` is assigned
-## resolves `DEFAULT_BIOME` and keeps that biome's material until its next rebuild.
 func _terrain_material_for(biome: String) -> StandardMaterial3D:
-	if not _biome_mats.has(biome):
-		var mat := _make_terrain_material()
-		mat.albedo_color = _season_tints.get(biome, Color.WHITE)
-		_biome_mats[biome] = mat
-	return _biome_mats[biome]
+	return _query._terrain_material_for(biome)
 
 ## The terrain's per-chunk material: per-column vertex colour, both faces
 ## rendered, so the shell is never see-through regardless of triangle winding.
@@ -1498,13 +1376,8 @@ func _chunk_center_xz(chunk_pos: Vector2i) -> Vector2:
 	var extent := float(CHUNK_SIZE * TILE_SIZE)
 	return (Vector2(chunk_pos) + Vector2(0.5, 0.5)) * extent
 
-## The biome a resolve falls back to when nothing asked a terrain slice — see the
-## `DEFAULT_BIOME` constant (Phase 42 review pass 9).
 func _biome_at(xz: Vector2) -> String:
-	biome_lookups += 1
-	if terrain_slice != null and terrain_slice.has_method("get_biome_at"):
-		return terrain_slice.get_biome_at(xz)
-	return DEFAULT_BIOME
+	return _query._biome_at(xz)
 
 ## Phase 42 review pass 9 — the RESOLVED form of the biome read: it comes from the gathered map
 ## (`gather_biomes_for`), keyed by chunk, because a tile's biome IS its chunk's biome. No slice
@@ -1545,28 +1418,11 @@ static func icy(colour: Color, world_z: float) -> Color:
 static func is_frozen_chunk(chunk_pos: Vector2i) -> bool:
 	return absf(TerrainSlice.latitude_of(chunk_pos.y)) >= ICE_FULL_LAT
 
-## Phase 64 — the biome whose surface the tile at `world_xz` WEARS, resolved from the terrain
-## slice: the same `blended_biome` answer the mesher gets from the gathered map.
 func shown_biome_at(world_xz: Vector2) -> String:
-	_sync_guess_seed()
-	var extent := float(CHUNK_SIZE * TILE_SIZE)
-	var c := Vector2i(floori(world_xz.x / extent), floori(world_xz.y / extent))
-	var around: Array = []
-	for dz in range(-1, 2):
-		for dx in range(-1, 2):
-			around.append(c + Vector2i(dx, dz))
-	var biomes: Dictionary = {}
-	for n in _lending_ring(c, around):
-		biomes[_chunk_key(n)] = _chunk_biome_memo(n)
-	return blended_biome(world_xz, biomes, str(biomes[_chunk_key(c)]))
+	return _query.shown_biome_at(world_xz)
 
 func _chunk_biome_memo(chunk: Vector2i) -> String:
-	var key := _chunk_key(chunk)
-	if not _shown_biomes.has(key):
-		if _shown_biomes.size() >= SHOWN_BIOME_CACHE_MAX:
-			_shown_biomes.erase(_shown_biomes.keys()[0])
-		_shown_biomes[key] = _biome_at(_chunk_world_center(chunk))
-	return _shown_biomes[key]
+	return _query._chunk_biome_memo(chunk)
 
 ## Drop the `shown_biome_at` memo (a world reset).
 func reset_shown_biomes() -> void:
@@ -1578,36 +1434,16 @@ func _natural_color(world_xz: Vector2, biomes: Dictionary = {}, colours: Diction
 	return natural_color(world_xz, _biomes_or_lookup(world_xz, biomes), colours, depth,
 		_field(_world_seed(), _vein_taken))
 
-## A caller with no gathered biome map (an isolated test, a direct call) gets the one answer the
-## terrain slice owes for this world position.
-##
-## Phase 42 review pass 10 — the test is now a LOOKUP OF THIS POSITION'S CHUNK, not "is the map
-## non-empty". The old form returned any non-empty map untouched, so a PARTIALLY populated one —
-## the realistic case, since a caller that names one chunk does not necessarily name the one a
-## stray position falls in — passed straight through, and `biome_of` then answered
-## `DEFAULT_BIOME` for the missing chunk, silently tinting a real chunk as TemperateForest. A
-## miss is now resolved from the terrain slice (the same read `_biome_at` makes) and folded into
-## a COPY, so the caller's map is never mutated and the answer is the chunk's real biome.
 func _biomes_or_lookup(world_xz: Vector2, biomes: Dictionary) -> Dictionary:
-	var extent := float(CHUNK_SIZE * TILE_SIZE)
-	var ckey := _chunk_key(Vector2i(floori(world_xz.x / extent), floori(world_xz.y / extent)))
-	if biomes.has(ckey) or terrain_slice == null:
-		return biomes
-	var filled := biomes.duplicate()
-	filled[ckey] = _biome_at(world_xz)
-	return filled
+	return _query._biomes_or_lookup(world_xz, biomes)
 
 ## Resolve a material key to its terrain colour (falling back to green for
 ## unknown keys). Pure (a `const` lookup), so the worker half may call it.
 static func _material_color(material: String) -> Color:
 	return MATERIAL_COLORS.get(material, FALLBACK_TERRAIN_COLOR)
 
-## Top of a tile's highest solid run, or BEDROCK_DEPTH when nothing is solid.
 func _column_top_at_tile(tile: Vector2i) -> float:
-	var runs := get_runs_at_tile(tile)
-	if runs.is_empty():
-		return BEDROCK_DEPTH
-	return float(runs[-1]["top"])
+	return _query._column_top_at_tile(tile)
 
 func _rebuild_chunk_at_tile(tile: Vector2i) -> void:
 	_build._rebuild_chunk_at_tile(tile)
