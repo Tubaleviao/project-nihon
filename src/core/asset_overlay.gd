@@ -210,6 +210,13 @@ func load_mesh(rel: String) -> Mesh:
 	root.free()
 	if mesh == null:
 		Diag.warn("[AssetOverlay] %s contains no mesh" % rel)
+		return null
+	# The glTF importer leaves COLOR_0 unused for albedo; item models carry their
+	# per-part palette only there, so switch it on for surfaces that have colours.
+	for s in mesh.get_surface_count():
+		var mat := mesh.surface_get_material(s)
+		if mat is BaseMaterial3D and mesh.surface_get_arrays(s)[Mesh.ARRAY_COLOR] != null:
+			(mat as BaseMaterial3D).vertex_color_use_as_albedo = true
 	return mesh
 
 
