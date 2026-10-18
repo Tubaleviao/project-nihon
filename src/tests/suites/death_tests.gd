@@ -1,6 +1,7 @@
 extends "res://src/tests/test_support.gd"
 ## Phase 157 — the death push, the clip variants and a body that lies on the ground.
 
+const DeathPush := preload("res://src/battle/death_push.gd")
 const RigTree := preload("res://src/character/rig_tree.gd")
 const CreatureVisuals := preload("res://src/creature/creature_visuals.gd")
 

@@ -35,6 +35,8 @@ func _ready() -> void:
 	GameBus.combat_round_requested.connect(_on_combat_round_requested)
 	GameBus.creature_respawned.connect(_on_creature_respawned)
 
+const DeathPush := preload("res://src/battle/death_push.gd")
+
 ## Phase 37 — the registry's id-SHAPE predicate, preloaded for the player/creature
 ## split: it is a pure static check on a string, so no registry needs to be in the tree
 ## for a defender id to be recognised as a player's.

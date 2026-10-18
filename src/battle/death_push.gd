@@ -1,4 +1,3 @@
-class_name DeathPush
 extends RefCounted
 ## Phase 157 — the throw a killing blow gives the body, and which death clip it plays.
 ##

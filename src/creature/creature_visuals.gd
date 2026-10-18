@@ -12,6 +12,7 @@ extends Node3D
 ## The placeholder rigs face -Z (the Godot forward); the fabric `restPose` puts the head at +Z.
 ## `yaw_for_direction` is the one place that reconciles the two.
 
+const DeathPush := preload("res://src/battle/death_push.gd")
 const RigTree := preload("res://src/character/rig_tree.gd")
 const Locomotion := preload("res://src/character/locomotion.gd")
 const CharacterMaterial := preload("res://src/character/character_material.gd")

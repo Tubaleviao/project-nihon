@@ -2,6 +2,7 @@ extends "res://src/core/wiring.gd"
 ## Combat wiring (Phase 132) — Combat, creature events and status effects.
 ## Moved out of game_root.gd; `root` is the GameRoot that owns the slices.
 
+const DeathPush := preload("res://src/battle/death_push.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const TerrainSlice     := preload("res://src/terrain/terrain_slice.gd")
 const BattleSlice      := preload("res://src/battle/battle_slice.gd")
