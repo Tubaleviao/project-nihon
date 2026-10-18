@@ -4,6 +4,10 @@ extends "res://src/core/wiring.gd"
 
 const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 
+## Phase 47 — true while the local avatar is put into a recorded set, so the restore does not echo
+## back out as a fresh equip intent.
+var _applying_equipment: bool = false
+
 func _connect_all() -> void:
 	connect_bus(GameBus.equipment_revoked, _on_equipment_revoked)
 	connect_bus(GameBus.character_appearance_changed, _on_character_appearance_changed)
@@ -24,9 +28,9 @@ func apply_local_equipment(worn: Variant) -> void:
 	# information: the avatar keeps the gear its appearance recipe gave it, and that
 	# set becomes the record instead of stripping the avatar bare.
 	if not (worn as Dictionary).is_empty():
-		root._applying_equipment = true
+		_applying_equipment = true
 		root._character.apply_equipment_set(char_id, worn)
-		root._applying_equipment = false
+		_applying_equipment = false
 	elif not root._registry.local_player_id.is_empty():
 		root._registry.record_equipment(root._registry.local_player_id, root._character.get_equipment_set(char_id))
 
@@ -37,9 +41,9 @@ func apply_host_equipment(worn: Dictionary) -> void:
 	var char_id: String = root._character.get_player_character()
 	if char_id == "":
 		return
-	root._applying_equipment = true
+	_applying_equipment = true
 	root._character.apply_equipment_set(char_id, worn)
-	root._applying_equipment = false
+	_applying_equipment = false
 	root._last_sent_equipment = root._character.get_equipment_set(char_id).duplicate()
 
 ## Listen host: its own bag lost a worn item; the record is already cleared, the avatar
@@ -53,7 +57,7 @@ func _on_equipment_revoked(player_id: String, worn: Dictionary) -> void:
 ## into one equip / unequip ACTION per differing slot (the host validates each against the
 ## fabric and the bag, applies it to its own record and replicates it to nearby peers).
 func _on_character_appearance_changed(instance_id: String, _appearance: Dictionary) -> void:
-	if root._applying_equipment or instance_id != root._character.get_player_character():
+	if _applying_equipment or instance_id != root._character.get_player_character():
 		return
 	var worn: Dictionary = root._character.get_equipment_set(instance_id)
 	if root._is_client:

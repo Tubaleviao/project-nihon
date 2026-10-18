@@ -3,6 +3,9 @@ extends "res://src/core/wiring.gd"
 ## Moved out of game_root.gd; `root` is the GameRoot that owns the slices.
 
 
+## When the last "pack full" notice was shown (at most one per GameRoot.PACK_FULL_NOTICE_MSEC).
+var _pack_full_notice_msec: int = -GameRoot.PACK_FULL_NOTICE_MSEC
+
 func _connect_all() -> void:
 	connect_bus(GameBus.inventory_full, _on_inventory_full)
 	connect_bus(GameBus.craft_resolved, _on_craft_resolved)
@@ -17,9 +20,9 @@ func _on_inventory_full() -> void:
 	if root._is_server or root._registry == null or root._registry.local_player_id.is_empty():
 		return
 	var now := Time.get_ticks_msec()
-	if now - root._pack_full_notice_msec < root.PACK_FULL_NOTICE_MSEC:
+	if now - _pack_full_notice_msec < root.PACK_FULL_NOTICE_MSEC:
 		return
-	root._pack_full_notice_msec = now
+	_pack_full_notice_msec = now
 	GameBus.system_message.emit("chat.pack_full", [], root._registry.local_player_id)
 
 ## Phase 34 — a craft the host resolved for a REMOTE peer changed that peer's own
