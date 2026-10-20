@@ -21,7 +21,6 @@ const CARRY_SEND_INTERVAL := 0.2
 var _actions: Dictionary = {}
 var _rng := RandomNumberGenerator.new()
 var _send_clock: float = 0.0
-## Carriers hit this frame: checked for death on the next tick.
 ## peer id -> { carcass id: true } the host already sent into that peer's AOI.
 var _seen: Dictionary = {}
 var _aoi_clock: float = 0.0
@@ -148,6 +147,7 @@ func _on_harvest_intent(carcass_id: String, player_id: String) -> void:
 	var pid := _pid(player_id)
 	var pos: Variant = _position_of(pid)
 	if pos == null or not _alive(pid):
+		_refuse(pid, carcass_id, "unavailable")
 		return
 	if _actions.has(pid):
 		return   # one harvest at a time
@@ -239,6 +239,7 @@ func _on_carry_intent(carcass_id: String, player_id: String) -> void:
 	var pid := _pid(player_id)
 	var pos: Variant = _position_of(pid)
 	if pos == null or not _alive(pid):
+		_refuse(pid, carcass_id, "unavailable")
 		return
 	var why: String = root._carcass.carry(carcass_id, pid, pos, level_of(pid))
 	if why != "":
@@ -401,7 +402,7 @@ func _scan_aoi() -> void:
 		if not fresh.is_empty():
 			root._networking.send_carcasses_to(peer_id, fresh)
 
-func _on_player_joined(peer_id: int, _player_id: String, _reconnected: bool) -> void:
+func _on_player_joined(peer_id: int, player_id: String, _reconnected: bool) -> void:
 	if root._is_client or root._carcass == null or root._networking == null or not root._networking.is_host():
 		return
 	var list: Array = []
@@ -413,6 +414,9 @@ func _on_player_joined(peer_id: int, _player_id: String, _reconnected: bool) -> 
 	for id in root._networking.send_carcasses_to(peer_id, list):
 		sent[id] = true
 	_seen[peer_id] = sent
+	# A client that dropped while carrying (or came from another host) may still think it carries.
+	if player_id != "":
+		_push_carry_state(_pid(player_id))
 
 # ---------------------------------------------------------------------------
 # Client

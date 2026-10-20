@@ -16,6 +16,7 @@ func register() -> void:
 	_run_test("carcass: hostile saved data and unknown creatures are dropped", _test_hostile_save)
 	_run_test("carcass: a remote peer's harvest pushes its changed bag to that peer", _test_peer_harvest_syncs_bag)
 	_run_test("carcass: the host moves a carried body no faster than the slowed walk; an over-speed carrier loses it", _test_carry_speed_host_rule)
+	_run_test("carcass: a loaded world keeps the region cap and a worn-out tool is not counted for the prompt", _test_load_cap_and_worn_tool)
 	_run_test("carcass: body nodes follow an origin rebase and sit at world position plus the offset", _test_rebase_shifts_bodies)
 
 
@@ -288,6 +289,24 @@ func _test_hostile_save() -> void:
 	g.from_data("garbage")
 	assert_eq(g.count(), 0, "garbage clears")
 	g.free()
+
+
+func _test_load_cap_and_worn_tool() -> void:
+	var g := CarcassSlice.new()
+	add_child(g)
+	var cap := int(CarcassRules.rule_f("maxCarcassesPerRegion", 24.0))
+	var item: String = CarcassRules.entries_for("ForestBoar")[0]["item"]
+	var list: Array = []
+	for i in cap + 10:
+		list.append({"id": "c%d" % i, "creature": "ForestBoar", "pos": [0, 0, 0], "entries": [{"item": item}], "remaining": 10.0 + i})
+	g.from_data({"carcasses": list})
+	assert_eq(g.count(), cap, "a loaded record cannot exceed the per-region cap")
+	g.from_data({"carcasses": [{"id": "far", "creature": "ForestBoar", "pos": [2.0e7, 0, 0], "entries": [{"item": item}], "remaining": 10.0}]})
+	assert_eq(g.count(), 1, "a far-out body on a planet-scale world survives a reload")
+	g.free()
+	assert_false(PlayerSlice._has_usable_copy({"SkinningKnife": [0.0]}, "SkinningKnife"), "a fully worn tool is not usable")
+	assert_true(PlayerSlice._has_usable_copy({"SkinningKnife": [0.0, 5.0]}, "SkinningKnife"), "one good copy is enough")
+	assert_true(PlayerSlice._has_usable_copy({}, "SkinningKnife"), "a non-durable item is usable")
 
 
 func _test_peer_harvest_syncs_bag() -> void:

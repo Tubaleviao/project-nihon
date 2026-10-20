@@ -1201,6 +1201,15 @@ func _try_tame() -> void:
 	GameBus.tame_requested.emit(iid)
 
 
+## True unless `item` is durable and every copy is at 0 durability.
+static func _has_usable_copy(durability: Dictionary, item: String) -> bool:
+	if not durability.has(item):
+		return true
+	for v in durability[item]:
+		if float(v) > 0.0:
+			return true
+	return false
+
 ## Phase 161 — the prompt for the body at hand (or the one being carried), through I18n; "" when none.
 func _carcass_prompt() -> String:
 	if carcass_slice == null:
@@ -1212,13 +1221,11 @@ func _carcass_prompt() -> String:
 		return ""
 	var held: Array = []
 	if inventory_slice != null:
+		# A fully worn tool does not count: the host refuses it too.
+		var worn: Dictionary = inventory_slice.get_durability_data()
 		for item in inventory_slice.get_contents():
 			var t := CarcassRules.tool_of(str(item))
-			if not t.is_empty():
-				held.append(t["tool"])
-		for item in inventory_slice.get_durability_data():
-			var t := CarcassRules.tool_of(str(item))
-			if not t.is_empty():
+			if not t.is_empty() and _has_usable_copy(worn, str(item)):
 				held.append(t["tool"])
 	var p: Array = CarcassRules.prompt_for(carcass_slice.get_carcass(cid)["entries"], held, false)
 	var args: Array = []

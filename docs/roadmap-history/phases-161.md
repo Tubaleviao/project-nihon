@@ -59,3 +59,6 @@ in the per-region voxel files; the per-region cap is enforced by region key. The
 `MainHand` item or else the best held item providing the category (the knife and saw have no equipment slot).
 The grade is rolled and reported in the `harvest_resolved` result; storing it as an inventory instance
 property is left to the later phase that makes recipes care about grade.
+The kneel/harvest clip, the `carry` locomotion layer and the back/shoulder socket need art and rig work and are
+not built: a harvest shows only its prompt and result message, and a carried body is a placeholder box that
+follows the carrier. Progress feedback for remote clients (`harvest_started` is host-only) goes with them.

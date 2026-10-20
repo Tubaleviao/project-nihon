@@ -102,8 +102,7 @@ func remove(id: String) -> void:
 ## The region key ("rx,rz") a position falls in.
 static func region_key(position: Vector3) -> String:
 	var chunk := Vector2i(floori(position.x / TerrainSlice.CHUNK_METERS), floori(position.z / TerrainSlice.CHUNK_METERS))
-	var r := RegionStore.region_of_chunk(chunk)
-	return "%d,%d" % [r.x, r.y]
+	return RegionStore.region_key(RegionStore.region_of_chunk(chunk))
 
 ## Past `maxCarcassesPerRegion` in a region the body with the least time left decays first.
 func _enforce_region_cap(position: Vector3, keep: String) -> void:
@@ -282,7 +281,7 @@ func from_data(data: Variant) -> void:
 			continue
 		var coords_ok := true
 		for n in p:
-			if not (n is float or n is int) or not is_finite(float(n)) or absf(float(n)) > 1.0e7:
+			if not (n is float or n is int) or not is_finite(float(n)) or absf(float(n)) > 1.0e9:
 				coords_ok = false
 		if not coords_ok:
 			continue
@@ -304,6 +303,7 @@ func from_data(data: Variant) -> void:
 			"entries": kept, "killer": str(rec.get("killer", "")), "remaining": minf(remaining, CarcassRules.corpse_seconds(creature)),
 			"carrier": "", "mode": "", "mass": CarcassRules.mass_of(creature) }
 		_refresh(id, false)
+		_enforce_region_cap(_carcasses[id]["position"], id)
 		# Never hand out an id a restored body already holds.
 		if id.begins_with("carcass_") and id.substr(8).is_valid_int():
 			_next_id = maxi(_next_id, id.substr(8).to_int() + 1)
