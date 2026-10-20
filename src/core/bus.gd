@@ -753,3 +753,29 @@ signal locale_changed(locale: String)
 ## Move THIS machine's own player to a world position (an admin teleport). The host emits it for
 ## itself and sends a `teleport` packet to a remote player's client, which re-emits it here.
 signal player_teleport(position: Dictionary)
+
+# ---------------------------------------------------------------------------
+# Carcasses (Phase 161)
+# ---------------------------------------------------------------------------
+
+## One carcass ACTION from a player. CLIENT -> host: emitted with an empty player_id and forwarded; the host
+## re-emits it under the identity bound to that connection, so a client can only act for its OWN body.
+signal harvest_intent(carcass_id: String, player_id: String)
+signal carry_intent(carcass_id: String, player_id: String)
+## Put the carried body down where the player stands.
+signal carcass_drop_intent(player_id: String)
+
+## Host: a carcass was created or changed (entries worked, picked up, put down) / is gone.
+signal carcass_changed(carcass_id: String)
+signal carcass_removed(carcass_id: String)
+
+## Host: a timed harvest began (`seconds` long) / ended. `reason` is "" on success, else a refusal or
+## cancel key ("out_of_range", "moved", "damaged", ...); `items` is [{ item, quantity, quality }].
+signal harvest_started(player_id: String, carcass_id: String, seconds: float)
+signal harvest_resolved(player_id: String, carcass_id: String, reason: String, items: Array)
+
+## Client: the host sent a carcass record (Vector3 position) / says it is gone.
+signal peer_carcass_synced(record: Dictionary)
+signal peer_carcass_removed(carcass_id: String)
+## Client: the host set this machine's carry state (`speed_factor` 1.0 = free; `carrying` blocks attack).
+signal carry_state_synced(carrying: bool, speed_factor: float)

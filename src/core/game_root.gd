@@ -26,6 +26,8 @@ const PersistenceSlice := preload("res://src/persistence/persistence_slice.gd")
 const PlayerRegistry   := preload("res://src/persistence/player_registry.gd")
 const PlayerSlice      := preload("res://src/player/player_slice.gd")
 const LootSlice        := preload("res://src/loot/loot_slice.gd")
+const CarcassSlice     := preload("res://src/loot/carcass_slice.gd")
+const CarcassWiring    := preload("res://src/loot/carcass_wiring.gd")
 const InventorySlice   := preload("res://src/inventory/inventory_slice.gd")
 const CharacterSlice   := preload("res://src/character/character_slice.gd")
 const CraftingSlice    := preload("res://src/crafting/crafting_slice.gd")
@@ -73,6 +75,7 @@ var _settlement_wiring := SettlementWiring.new()
 var _crafting_wiring := CraftingWiring.new()
 var _character_wiring := CharacterWiring.new()
 var _gesture_wiring := GestureWiring.new()
+var _carcass_wiring := CarcassWiring.new()
 var _peer_wiring := PeerWiring.new()
 var _snapshot_wiring := SnapshotWiring.new()
 var _persistence_wiring := PersistenceWiring.new()
@@ -97,6 +100,7 @@ var _persistence: PersistenceSlice
 var _registry:    PlayerRegistry
 var _player:      PlayerSlice
 var _loot:        LootSlice
+var _carcass:     CarcassSlice
 var _inventory:   InventorySlice
 var _character:   CharacterSlice
 var _crafting:    CraftingSlice
@@ -234,7 +238,7 @@ var _handshake_retries: int = 0
 
 ## Phase 132 — wiring modules know their root from construction (the suite builds roots without `_ready`).
 func _init() -> void:
-	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _settlement_wiring, _crafting_wiring, _character_wiring, _gesture_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring]
+	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _settlement_wiring, _crafting_wiring, _character_wiring, _gesture_wiring, _carcass_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring]
 	for w in _wirings:
 		w.root = self
 
@@ -282,6 +286,7 @@ func _ready() -> void:
 	_registry    = PlayerRegistry.new()
 	_player      = PlayerSlice.new()
 	_loot        = LootSlice.new()
+	_carcass     = CarcassSlice.new()
 	_inventory   = InventorySlice.new()
 	_character   = CharacterSlice.new()
 	_crafting    = CraftingSlice.new()
@@ -319,7 +324,6 @@ func _ready() -> void:
 	_creature.terrain_slice = _terrain
 	_creature.use_surface(_voxel, _chunk_manager.is_chunk_built)
 	_creature.world_clock = _clock
-	# TreeSlice likewise stands its trees on the terrain surface.
 	_tree.terrain_slice = _terrain
 	_tree.world_clock = _clock
 
@@ -327,26 +331,21 @@ func _ready() -> void:
 	_creature_ai.creature_slice = _creature
 	_creature_ai.player_slice   = _player
 	_creature_ai.battle_slice   = _battle
-	# Phase 36 — creature AI targets the nearest of ALL players, so it needs the
-	# targets this integration layer alone can assemble: the local body plus every
-	# connected peer's last recorded position (see _peer_wiring.player_targets).
+	# Phase 36 — AI targets the nearest of ALL players: the local body plus every peer's last position.
 	_creature_ai.player_targets = _peer_wiring.player_targets
 
-	# Wire crafting + station cross-references before add_child so their _ready()
-	# methods see the correct dependencies if they ever emit signals during init.
+	# Cross-references wired before add_child so _ready() sees them.
 	_crafting.station_slice    = _station
 	_station.player_slice      = _player
 
-	# Headless server (Phase 27): creature + player presentation is skipped so
-	# the authoritative simulation runs with no visual nodes. Set BEFORE the
-	# slices enter the tree so their _ready() skips body/pool construction.
-	for presenter in [_creature, _player, _tree, _chat, _character]:
+	# Headless server (Phase 27): no presentation nodes; set BEFORE the slices enter the tree.
+	for presenter in [_creature, _player, _tree, _chat, _character, _carcass]:
 		presenter.render_visuals = not _is_server
 
 	# The UI (Phase 14) is presentation only, so a headless dedicated server
 	# (Phase 27) keeps it out of the tree — its _ready() would otherwise build
 	# windows nothing can render or click.
-	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _registry, _player, _loot, _inventory, _character, _crafting, _technology, _taming, _professions, _station, _tree, _market, _trade, _proposal, _chat, _gesture, _waystones, _settlements, _weather]
+	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _registry, _player, _loot, _carcass, _inventory, _character, _crafting, _technology, _taming, _professions, _station, _tree, _market, _trade, _proposal, _chat, _gesture, _waystones, _settlements, _weather]
 	if not _is_server:
 		slices.append(_ui)
 	if not _is_server:
@@ -362,6 +361,7 @@ func _ready() -> void:
 	_player.terrain_slice      = _terrain
 	_battle.creature_slice     = _creature
 	_loot.creature_slice       = _creature
+	_player.carcass_slice      = _carcass
 	_crafting.inventory_slice  = _inventory
 	_crafting.technology_slice = _technology
 	# Phase 33 — crafting resolves against the CRAFTER's own inventory, so the slice

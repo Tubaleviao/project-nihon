@@ -191,6 +191,7 @@ static func steps() -> Array:
 		{ "name": "peer_attack_animated", "compare": true },
 		{ "name": "death_landing_synced", "compare": true },
 		{ "name": "gesture_synced", "compare": true },
+		{ "name": "carcass_synced", "compare": true },
 	]
 
 ## The step names, comma-joined — the payload of the `plan` line the runner prints
@@ -416,6 +417,7 @@ func run(root: Node, role: String) -> void:
 	await _step_peer_attack_animated()
 	await _step_death_landing_synced()
 	await _step_gesture_synced()
+	await _step_carcass_synced()
 	_finish()
 
 ## End this process, with the run's own verdict carried in the exit code.
@@ -1835,6 +1837,50 @@ func _step_gesture_synced() -> void:
 	var own: bool = await _await_until(func(): return loco.is_gesture_held() and loco.gesture_clip == "sit_ground", _step_timeout())
 	var late: bool = await _await_until(func(): return _root._gesture_wiring._remote_poses.get(1, "") == "SitGround", _step_timeout())
 	_report("gesture_synced", verdict(own and late, true), "seated" if own and late else ("own_missing" if not own else "late_join_missing"))
+
+## Phase 161 — a carcass the host works loses those entries on the client, and a carcass the peer carries
+## follows it. The host plants a body beside the peer, takes its knife entries, then hands it to the peer
+## to carry and walks the peer's reported position; the client reads both through the carcass view.
+func _step_carcass_synced() -> void:
+	if _role == "host":
+		var peer := _peer_id()
+		if peer == 0 or not _root._networking.has_last_known_state(peer):
+			_report("carcass_synced", "fail", "no_peer_position")
+			return
+		var pid: String = _root._networking.get_player_id(peer)
+		var at: Vector3 = _root._networking.get_last_known_state(peer) + Vector3(2.0, 0.0, 0.0)
+		var cid: String = _root._carcass.create_for_death("ForestBoar", at, "harness")
+		await _await_settle(2.0)
+		var pool: Array = _root._carcass.workable_entries(cid, "knife")
+		var rolls := RandomNumberGenerator.new()
+		_root._carcass.resolve_harvest(cid, "knife", 1.0, 10, rolls)
+		await _await_settle(2.0)
+		GameBus.carry_intent.emit(cid, pid)
+		await _await_settle(0.5)
+		var carried: bool = _root._carcass.carried_by(pid) == cid
+		# The peer walks 6 m; the body follows it on the host (the wiring tick reads the reported position).
+		var walked: Vector3 = _root._networking.get_last_known_state(peer) + Vector3(6.0, 0.0, 0.0)
+		_root._carcass_wiring.position_probe = func(who: String) -> Vector3: return walked if who == pid else Vector3.ZERO
+		await _await_settle(4.0)
+		_root._carcass_wiring.position_probe = Callable()
+		var followed: bool = carried and (_root._carcass.get_carcass(cid)["position"] as Vector3).distance_to(walked) < 0.5
+		_report("carcass_synced", verdict(carried and followed and not pool.is_empty(), true), "worked-and-carried" if carried and followed else ("carry_refused" if not carried else "did_not_follow"))
+		return
+	var slice: Node = _root._carcass
+	var saw_worked: bool = await _await_until(func():
+		for id in slice.ids():
+			var left: Array = slice.get_carcass(id)["entries"]
+			if not left.is_empty() and left.all(func(e): return e["tool"] != "knife"):
+				return true
+		return false, _step_timeout())
+	# The body started 2 m from this client and the host walked it 6 m on while carried.
+	var saw_follow: bool = saw_worked and await _await_until(func():
+		for id in slice.ids():
+			var c: Dictionary = slice.get_carcass(id)
+			if str(c["carrier"]) != "" and (c["position"] as Vector3).distance_to(_root._player.get_position()) > 4.0:
+				return true
+		return false, _step_timeout())
+	_report("carcass_synced", verdict(saw_worked and saw_follow, true), "worked-and-carried" if saw_worked and saw_follow else ("entries_not_synced" if not saw_worked else "carry_not_followed"))
 
 ## Phase 157 — a creature the host kills lands where the HOST decided, and the client sees the same spot.
 ## The host announces the death with its own landing (the value `BattleSlice` computes in play); the client

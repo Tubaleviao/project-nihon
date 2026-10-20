@@ -13,6 +13,7 @@ extends Node
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const Diag := preload("res://src/core/diag.gd")
 const I18n := preload("res://src/core/i18n.gd")
+const CarcassRules := preload("res://src/loot/carcass_rules.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const StatusEffects := preload("res://src/battle/status_effects.gd")
 
@@ -151,6 +152,11 @@ var render_visuals: bool = true
 
 ## Set by game_root after all slices are instantiated.
 var creature_slice: Node = null
+## Phase 161 — the carcass slice (read-only queries: which body is nearest).
+var carcass_slice: Node = null
+## Phase 161 — set by the host's carry state: a carried body blocks attacking and slows walking.
+var carrying: bool = false
+var carry_speed_factor: float = 1.0
 var voxel_slice: Node = null
 ## Phase 128 — outdoor walking speed follows the weather under the body (null: no weather).
 var weather_slice: Node = null
@@ -396,6 +402,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	# TamingSlice (fabric-driven); this is only the player-facing affordance.
 	if event is InputEventKey and event.pressed and event.keycode == KEY_G:
 		_try_tame()
+	# X key → work the nearest body with the tool in hand; Z key → carry it, or put the carried one down.
+	if event is InputEventKey and event.pressed and not event.echo and (event.keycode == KEY_X or event.keycode == KEY_Z):
+		_try_carcass(event.keycode == KEY_X)
 	# E key → toggle all equipment on/off (inspect the naked body under the gear).
 	if event is InputEventKey and event.pressed and event.keycode == KEY_E:
 		GameBus.character_equipment_toggle_requested.emit()
@@ -809,7 +818,7 @@ func _move(delta: float) -> void:
 		dir = (basis.x * dir.x + basis.z * dir.z).normalized()
 
 	var speed := walking_speed(swimming, _weather_factor_now())
-	speed = held_speed(speed, is_immobilized())
+	speed = held_speed(speed, is_immobilized()) * clampf(carry_speed_factor, 0.0, 1.0)
 	_vel.x = dir.x * speed
 	_vel.z = dir.z * speed
 
@@ -927,7 +936,7 @@ func _is_local_target(target_id: String) -> bool:
 	return target_id == "" or target_id == "player"
 
 func _try_attack() -> void:
-	if not _alive or is_immobilized():
+	if not _alive or is_immobilized() or carrying:
 		return
 	if creature_slice == null:
 		Diag.warn("PlayerSlice: creature_slice not wired — cannot resolve attack target")
@@ -1106,6 +1115,9 @@ func _update_aim_hud() -> void:
 	elif _aimed_tree_id != "":
 		_aim_label.text = I18n.t("hud.chop", [_aimed_tree_species])
 		_aim_label.visible = true
+	elif _carcass_prompt() != "":
+		_aim_label.text = _carcass_prompt()
+		_aim_label.visible = true
 	else:
 		_aim_label.text = ""
 		_aim_label.visible = false
@@ -1185,6 +1197,45 @@ func _try_tame() -> void:
 		return
 	GameBus.tame_requested.emit(iid)
 
+
+## Phase 161 — the prompt for the body at hand (or the one being carried), through I18n; "" when none.
+func _carcass_prompt() -> String:
+	if carcass_slice == null:
+		return ""
+	if carrying:
+		return I18n.t("hud.carcass.carrying")
+	var cid := str(carcass_slice.nearest(get_position(), 3.0))
+	if cid == "":
+		return ""
+	var held: Array = []
+	if inventory_slice != null:
+		for item in inventory_slice.get_contents():
+			var t := CarcassRules.tool_of(str(item))
+			if not t.is_empty():
+				held.append(t["tool"])
+		for item in inventory_slice.get_durability_data():
+			var t := CarcassRules.tool_of(str(item))
+			if not t.is_empty():
+				held.append(t["tool"])
+	var p: Array = CarcassRules.prompt_for(carcass_slice.get_carcass(cid)["entries"], held, false)
+	var args: Array = []
+	for a in p[1]:
+		args.append(I18n.t(a) if str(a).begins_with("tool.") else a)
+	return I18n.t(p[0], args)
+
+## Phase 161 — ask the host to harvest or carry the nearest body, or put the carried one down. The host
+## re-checks range, tool and capacity; this is only the affordance.
+func _try_carcass(harvest: bool) -> void:
+	if not _alive:
+		return
+	if not harvest and carrying:
+		GameBus.carcass_drop_intent.emit("")
+		return
+	if carcass_slice == null or carrying:
+		return
+	var cid := str(carcass_slice.nearest(get_position(), 3.0))
+	if cid != "":
+		(GameBus.harvest_intent if harvest else GameBus.carry_intent).emit(cid, "")
 
 func _on_place_material_changed(_material: String) -> void:
 	_refresh_build_hint()

@@ -318,6 +318,9 @@ func _ready() -> void:
 	# command replies) travel back.
 	GameBus.chat_intent.connect(_on_chat_intent)
 	GameBus.gesture_intent.connect(_on_gesture_intent)
+	GameBus.harvest_intent.connect(_on_harvest_intent)
+	GameBus.carry_intent.connect(_on_carry_intent)
+	GameBus.carcass_drop_intent.connect(_on_carcass_drop_intent)
 	GameBus.chat_posted.connect(_on_chat_posted)
 	GameBus.system_message.connect(_on_system_message)
 	# Phase 24 — social/economy replication.
@@ -1010,6 +1013,33 @@ func _on_gesture_intent(gesture_id: String, _player_id: String) -> void:
 	if _role != Role.CLIENT:
 		return
 	_broadcast({ "type": "gesture_intent", "g": gesture_id })
+
+## Phase 161 — carcasses. The host sends a body's record to the peers whose AOI holds it, and its removal to
+## everyone (a body that left the AOI is forgotten by the client when it never returns).
+func send_carcass(record: Dictionary) -> void:
+	_m2.send_carcass(record)
+
+func send_carcass_removed(carcass_id: String) -> void:
+	_m2.send_carcass_removed(carcass_id)
+
+func send_carcasses_to(peer_id: int, records: Array) -> void:
+	_m2.send_carcasses_to(peer_id, records)
+
+func send_carry_state(peer_id: int, carrying: bool, speed_factor: float) -> void:
+	_m2.send_carry_state(peer_id, carrying, speed_factor)
+
+## Phase 161 — client: forward a carcass action; the host binds it to the connection's player.
+func _on_harvest_intent(carcass_id: String, _player_id: String) -> void:
+	if _role == Role.CLIENT:
+		_broadcast({ "type": "harvest_intent", "id": carcass_id })
+
+func _on_carry_intent(carcass_id: String, _player_id: String) -> void:
+	if _role == Role.CLIENT:
+		_broadcast({ "type": "carry_intent", "id": carcass_id })
+
+func _on_carcass_drop_intent(_player_id: String) -> void:
+	if _role == Role.CLIENT:
+		_broadcast({ "type": "carcass_drop_intent" })
 
 func send_combat_hit(attacker_key: String, defender_key: String, outcome: String, position: Vector3) -> void:
 	_m2.send_combat_hit(attacker_key, defender_key, outcome, position)

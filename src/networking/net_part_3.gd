@@ -261,6 +261,22 @@ func _route_h2c(payload: Dictionary) -> void:
 			var g: Variant = payload.get("g", "")
 			if sl._role == sl.Role.CLIENT and g is String and (g as String).length() <= sl.GESTURE_ID_MAX:
 				GameBus.peer_gesture_synced.emit(int(payload.get("peer_id", 0)), g)
+		"carcass":
+			# Phase 161 — a body in our AOI; the slice keeps a view of it.
+			var cpos: Variant = payload.get("pos", [])
+			var cid: Variant = payload.get("id", "")
+			if sl._role == sl.Role.CLIENT and cid is String and cpos is Array and (cpos as Array).size() == 3:
+				GameBus.peer_carcass_synced.emit({ "id": cid, "creature": str(payload.get("creature", "")),
+					"position": Vector3(float(cpos[0]), float(cpos[1]), float(cpos[2])),
+					"entries": payload.get("entries", []) if payload.get("entries", []) is Array else [],
+					"carrier": str(payload.get("carrier", "")), "mode": str(payload.get("mode", "")),
+					"mass": float(payload.get("mass", 0.0)), "remaining": float(payload.get("remaining", 0.0)) })
+		"carcass_removed":
+			if sl._role == sl.Role.CLIENT and payload.get("id", "") is String:
+				GameBus.peer_carcass_removed.emit(payload["id"])
+		"carry_state":
+			if sl._role == sl.Role.CLIENT:
+				GameBus.carry_state_synced.emit(bool(payload.get("carrying", false)), clampf(float(payload.get("factor", 1.0)), 0.0, 1.0))
 		"peer_equipment_evict":
 			# Phase 48 — the peer left our AOI; drop what we stored for it.
 			GameBus.peer_equipment_evicted.emit(int(payload.get("peer_id", 0)))

@@ -156,6 +156,36 @@ func send_peer_gestures_to(peer_id: int, poses: Dictionary) -> void:
 			continue
 		sl._deliver(peer_id, { "type": "gesture", "peer_id": o, "g": str(poses[subject]) })
 
+## Phase 161 — host → clients in range of the body: its record (position, remaining entries, carrier).
+func send_carcass(record: Dictionary) -> void:
+	if sl._role != sl.Role.HOST:
+		return
+	var p: Vector3 = record["position"]
+	sl._broadcast_aoi({ "type": "carcass", "id": record["id"], "creature": record["creature"], "pos": [p.x, p.y, p.z],
+		"entries": record["entries"], "carrier": record["carrier"], "mode": record["mode"], "mass": record["mass"],
+		"remaining": record["remaining"] }, p)
+
+func send_carcass_removed(carcass_id: String) -> void:
+	if sl._role != sl.Role.HOST or not sl._connected():
+		return
+	for peer in sl._connected_peers():
+		sl._deliver(int(peer), { "type": "carcass_removed", "id": carcass_id })
+
+## Phase 161 — host: a peer that just bound its identity learns the bodies inside its AOI.
+func send_carcasses_to(peer_id: int, records: Array) -> void:
+	if sl._role != sl.Role.HOST or not sl._connected():
+		return
+	var center = sl._joiner_aoi_center(peer_id)
+	for r in records:
+		if center.distance_to(r["position"]) <= sl.AOI_RADIUS:
+			var p: Vector3 = r["position"]
+			sl._deliver(peer_id, { "type": "carcass", "id": r["id"], "creature": r["creature"], "pos": [p.x, p.y, p.z],
+				"entries": r["entries"], "carrier": r["carrier"], "mode": r["mode"], "mass": r["mass"], "remaining": r["remaining"] })
+
+func send_carry_state(peer_id: int, carrying: bool, speed_factor: float) -> void:
+	if sl._role == sl.Role.HOST and sl._connected():
+		sl._deliver(peer_id, { "type": "carry_state", "carrying": carrying, "factor": speed_factor })
+
 ## Phase 36 — per-peer client → host token bucket. `now_ms` is an argument (not a
 ## clock read) so the rule is testable without waiting: the same shape the
 ## emulator's `_sample_remote_state_at` uses. Returns true when a token was
@@ -328,6 +358,25 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 			var wanted: Variant = payload.get("g", "")
 			if wanted is String and (wanted as String).length() <= sl.GESTURE_ID_MAX:
 				GameBus.gesture_intent.emit(wanted, actor)
+		"harvest_intent", "carry_intent":
+			# Phase 161 — a carcass action is done BY the connection's player; the host re-checks range,
+			# tool, capacity and state in the carcass wiring (a client's claim is never read).
+			var worker = sl._actor_id(sender)
+			if worker == "":
+				sl._refuse_unhandshaked(sender, str(payload.get("type", "")))
+				return
+			var cid: Variant = payload.get("id", "")
+			if cid is String and (cid as String).length() <= 32:
+				if str(payload.get("type", "")) == "harvest_intent":
+					GameBus.harvest_intent.emit(cid, worker)
+				else:
+					GameBus.carry_intent.emit(cid, worker)
+		"carcass_drop_intent":
+			var dropper = sl._actor_id(sender)
+			if dropper == "":
+				sl._refuse_unhandshaked(sender, "carcass_drop_intent")
+				return
+			GameBus.carcass_drop_intent.emit(dropper)
 		"equip_intent":
 			# Phase 47 — a worn-slot action is applied to the connection's player, never
 			# to a name in the payload; the registry checks it against the fabric and the bag.

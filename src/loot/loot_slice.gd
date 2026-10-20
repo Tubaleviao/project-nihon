@@ -1,20 +1,13 @@
 extends Node
-## Loot slice — spawns world-space pickups when a creature dies.
+## Loot slice — world-space pickups for items dropped on the ground (a creature's body is the CarcassSlice's, Phase 161).
 ##
 ## Plug contract (GameBus signals consumed / emitted):
-##   IN  : creature_died(entity_id, position, killer_id)
 ##   OUT : loot_dropped(pickup_id, item_id, position, quantity)
 ##         loot_expired(pickup_id)
 ##
 ## Public API:
 ##   get_pickups_near(pos: Vector3, radius: float) -> Array[Dictionary]
 ##   consume_pickup(pickup_id: String)              -> Dictionary  (empty on miss)
-##
-## Drop tables are read from the fabric at runtime: each creature entity carries
-## a structured `drops` json field (fabric/world/creatures/*.js) with the exact
-## drop table — item key, drop chance (0–1), and quantity range [minQty, maxQty].
-## The fabric is the single source of truth; this slice never hardcodes drops.
-## Format per entry: { "item": String, "chance": float, "minQty": int, "maxQty": int }
 ##
 ## Despawn timer is read from GameData.LOOTS["LootTable"].despawnSeconds.
 ## DESPAWN_SECONDS is a fallback only (matches the fabric defaultValue).
@@ -39,7 +32,6 @@ func _ready() -> void:
 	var res: Resource = GameData.LOOTS.get("LootTable", null)
 	if res != null:
 		_despawn_ms = float(res.get("despawnSeconds")) * 1000.0
-	GameBus.creature_died.connect(_on_creature_died)
 
 func _process(_delta: float) -> void:
 	_tick_despawn()
@@ -73,28 +65,6 @@ func get_pickup(pickup_id: String) -> Dictionary:
 # Private
 # ---------------------------------------------------------------------------
 
-func _on_creature_died(entity_id: String, position: Vector3, _killer_id: String, landing: Vector3) -> void:
-	if entity_id == "player":
-		return
-	# entity_id may be a creature instance_id; resolve to the fabric key for drop table lookup.
-	var fabric_key := entity_id
-	if creature_slice != null:
-		var resolved: String = creature_slice.get_instance_creature_id(entity_id)
-		if resolved != "":
-			fabric_key = resolved
-	var table: Array = _drop_table(fabric_key)
-	if table.is_empty():
-		return
-	for entry in table:
-		if randf() <= float(entry.get("chance", 0.0)):
-			var item_id: String = str(entry.get("item", ""))
-			if item_id == "":
-				continue
-			var qty: int = randi_range(int(entry.get("minQty", 1)), int(entry.get("maxQty", 1)))
-			if qty <= 0:
-				continue
-			spawn_pickup(item_id, qty, position if landing == Vector3.ZERO else landing)
-
 ## Put `quantity` of `item_id` on the ground at `position` and return its pickup id.
 ## `durabilities` (one per unit, worst first) is what the pickup hands back to whoever collects it,
 ## so a worn tool keeps its wear; empty means fresh.
@@ -116,22 +86,6 @@ func spawn_pickup(item_id: String, quantity: int, position: Vector3, durabilitie
 	}
 	GameBus.loot_dropped.emit(pid, item_id, position, quantity)
 	return pid
-
-## Resolve a creature's structured drop table from the fabric (`drops` json field
-## on GameData.CREATURES). Returns the Array of { item, chance, minQty, maxQty }
-## entries, or [] when the creature is unknown or has no drops field.
-func _drop_table(fabric_key: String) -> Array:
-	var res: Resource = GameData.CREATURES.get(fabric_key, null)
-	if res == null:
-		return []
-	var drops = res.get("drops")
-	if drops is Array:
-		return drops
-	if drops is String and drops != "":
-		var parsed = JSON.parse_string(drops)
-		if parsed is Array:
-			return parsed
-	return []
 
 func _tick_despawn() -> void:
 	var now := Time.get_ticks_msec()

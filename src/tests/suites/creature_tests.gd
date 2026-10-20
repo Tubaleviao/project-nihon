@@ -525,12 +525,12 @@ func _test_loot_known_creature() -> void:
 	var drops: Array = []
 	GameBus.loot_dropped.connect(func(pid, iid, _pos, qty):
 		drops.append({ "id": pid, "item": iid, "qty": qty }))
-	# Emit death for ForestBoar — guaranteed drops: raw_boar_meat + boar_hide.
+	# Phase 161: a kill leaves a carcass (CarcassSlice) — the loot slice rolls nothing on a death.
 	GameBus.creature_died.emit("ForestBoar", Vector3.ZERO, "player", Vector3.ZERO)
-	assert_true(drops.size() >= 2, "at least 2 guaranteed drops for ForestBoar")
-	var items := drops.map(func(d): return d["item"])
-	assert_true(items.has("raw_boar_meat"), "raw_boar_meat always drops")
-	assert_true(items.has("boar_hide"),     "boar_hide always drops")
+	assert_eq(drops.size(), 0, "a death drops no pickups")
+	var items := CarcassRules.entries_for("ForestBoar").map(func(e): return e["item"])
+	assert_true(items.has("raw_boar_meat"), "raw_boar_meat is in the boar's harvest table")
+	assert_true(items.has("boar_hide"),     "boar_hide is in the boar's harvest table")
 	l.free()
 
 func _test_loot_drops_from_fabric() -> void:
@@ -539,13 +539,12 @@ func _test_loot_drops_from_fabric() -> void:
 	var drops: Array = []
 	GameBus.loot_dropped.connect(func(pid, iid, _pos, qty):
 		drops.append({ "id": pid, "item": iid, "qty": qty }))
-	# LavaSlug's fabric drop table: slug_shell_shard (2–4), superheated_slime_vial
-	# (1–2), lava_core_organ (15%). The first two are guaranteed; the old
-	# hardcoded ids (slag_gland / volcanic_slime) must no longer appear.
+	# LavaSlug's fabric harvest table; the old hardcoded ids (slag_gland / volcanic_slime) must not appear.
 	GameBus.creature_died.emit("LavaSlug", Vector3.ZERO, "player", Vector3.ZERO)
-	var items := drops.map(func(d): return d["item"])
-	assert_true(items.has("slug_shell_shard"),       "slug_shell_shard drops from fabric")
-	assert_true(items.has("superheated_slime_vial"), "superheated_slime_vial always drops")
+	assert_eq(drops.size(), 0, "a death drops no pickups")
+	var items := CarcassRules.entries_for("LavaSlug").map(func(e): return e["item"])
+	assert_true(items.has("slug_shell_shard"),       "slug_shell_shard is in the fabric table")
+	assert_true(items.has("superheated_slime_vial"), "superheated_slime_vial is in the fabric table")
 	assert_false(items.has("slag_gland"),            "stale 'slag_gland' id no longer used")
 	assert_false(items.has("volcanic_slime"),        "stale 'volcanic_slime' id no longer used")
 	l.free()
@@ -564,7 +563,7 @@ func _test_loot_consume_removes() -> void:
 	add_child(l)
 	var captured := {}
 	GameBus.loot_dropped.connect(func(pid, _iid, _pos, _qty): captured["pid"] = pid)
-	GameBus.creature_died.emit("ForestBoar", Vector3.ZERO, "player", Vector3.ZERO)
+	l.spawn_pickup("boar_hide", 1, Vector3.ZERO)
 	var last_pid: String = captured.get("pid", "")
 	assert_true(last_pid != "", "at least one pickup was created")
 	var result := l.consume_pickup(last_pid)
@@ -574,29 +573,30 @@ func _test_loot_consume_removes() -> void:
 	l.free()
 
 func _test_loot_instance_id_resolve() -> void:
+	# Phase 161: the carcass wiring resolves an instance id to the fabric key before it leaves the body.
 	var c := CreatureSlice.new()
 	add_child(c)
 	c.spawn_for_chunk(Vector2i(0, 0))
-	var l := LootSlice.new()
-	l.creature_slice = c
-	add_child(l)
-	var drops: Array = []
-	GameBus.loot_dropped.connect(func(pid, iid, _pos, qty):
-		drops.append({ "id": pid, "item": iid, "qty": qty }))
-	# Kill by instance_id; loot slice must resolve to "ForestBoar" for drop table.
-	var instances := c.get_all_instances()
+	var gr: Node = (load("res://src/core/game_root.gd") as GDScript).new()
+	var carcass := CarcassSlice.new()
+	add_child(carcass)
+	gr._creature = c
+	gr._carcass = carcass
+	gr._carcass_wiring.wire(gr)
 	var boar_iid := ""
-	for inst in instances:
+	for inst in c.get_all_instances():
 		if inst["creature_id"] == "ForestBoar":
 			boar_iid = inst["instance_id"]
 			break
 	if boar_iid != "":
 		GameBus.creature_died.emit(boar_iid, Vector3.ZERO, "player", Vector3.ZERO)
-		assert_true(drops.size() >= 2,
-			"ForestBoar drops via instance_id produce at least 2 guaranteed items")
+		assert_eq(carcass.count(), 1, "a boar killed by instance id leaves a body")
+		assert_eq(carcass.get_carcass(carcass.ids()[0])["creature"], "ForestBoar", "of the fabric key")
 	else:
 		assert_true(true, "no ForestBoar instance — skip instance_id resolve test")
-	l.free()
+	gr._carcass_wiring.unwire()
+	carcass.free()
+	gr.free()
 	c.free()
 
 # ---------------------------------------------------------------------------
