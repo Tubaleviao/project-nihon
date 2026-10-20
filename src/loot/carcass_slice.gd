@@ -66,6 +66,9 @@ func count() -> int:
 func ids() -> Array:
 	return _carcasses.keys()
 
+func position_of(id: String) -> Vector3:
+	return (_carcasses[id]["position"] as Vector3) if _carcasses.has(id) else Vector3(INF, INF, INF)
+
 ## A snapshot of the bodies for a client view: ids and what a prompt needs, no host-only fields.
 func view_of(id: String) -> Dictionary:
 	if not _carcasses.has(id):
@@ -294,6 +297,9 @@ func from_data(data: Variant) -> void:
 			"entries": kept, "killer": str(rec.get("killer", "")), "remaining": minf(remaining, CarcassRules.corpse_seconds(creature)),
 			"carrier": "", "mode": "", "mass": CarcassRules.mass_of(creature) }
 		_refresh(id, false)
+		# Never hand out an id a restored body already holds.
+		if id.begins_with("carcass_") and id.substr(8).is_valid_int():
+			_next_id = maxi(_next_id, id.substr(8).to_int() + 1)
 
 func clear() -> void:
 	for id in _nodes.keys():

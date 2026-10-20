@@ -279,6 +279,9 @@ func _test_hostile_save() -> void:
 		{"id": "e", "creature": "ForestBoar", "pos": [0, 0, 0], "entries": [{"item": CarcassRules.entries_for("ForestBoar")[0]["item"]}], "remaining": 99999999.0}]})
 	assert_eq(g.count(), 1, "only the valid body survives")
 	assert_true(g.get_carcass("e")["remaining"] <= CarcassRules.corpse_seconds("ForestBoar"), "remaining time is clamped")
+	g.from_data({"next_id": 1, "carcasses": [{"id": "carcass_7", "creature": "ForestBoar", "pos": [0, 0, 0],
+		"entries": [{"item": CarcassRules.entries_for("ForestBoar")[0]["item"]}], "remaining": 10.0}]})
+	assert_true(int(g.to_data()["next_id"]) >= 8, "the id counter passes every restored id")
 	g.from_data("garbage")
 	assert_eq(g.count(), 0, "garbage clears")
 	g.free()

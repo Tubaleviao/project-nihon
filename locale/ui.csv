@@ -317,6 +317,7 @@ hud.carcass.refused.moved,You moved away.,Você se afastou.
 hud.carcass.refused.cancelled,Harvest cancelled.,Coleta cancelada.
 hud.carcass.refused.damaged,You were hit.,Você foi atingido.
 hud.carcass.refused.unknown_carcass,The body is gone.,O corpo sumiu.
-hud.carcass.done,You harvested {0}.,Você coletou {0}.
+hud.carcass.done,You harvested {0} × {1}.,Você coletou {0} × {1}.
+hud.carcass.nothing,The cuts yielded nothing.,Os cortes não renderam nada.
 tool.knife,knife,faca
 tool.bonetool,bone tool,ferramenta de osso

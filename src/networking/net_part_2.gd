@@ -165,8 +165,11 @@ func send_carcass(record: Dictionary) -> void:
 		"entries": record["entries"], "carrier": record["carrier"], "mode": record["mode"], "mass": record["mass"],
 		"remaining": record["remaining"] }, p)
 
-func send_carcass_removed(carcass_id: String) -> void:
+func send_carcass_removed(carcass_id: String, only_peer: int = 0) -> void:
 	if sl._role != sl.Role.HOST or not sl._connected():
+		return
+	if only_peer != 0:
+		sl._deliver(only_peer, { "type": "carcass_removed", "id": carcass_id })
 		return
 	for peer in sl._connected_peers():
 		sl._deliver(int(peer), { "type": "carcass_removed", "id": carcass_id })

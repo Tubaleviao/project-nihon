@@ -1019,8 +1019,8 @@ func _on_gesture_intent(gesture_id: String, _player_id: String) -> void:
 func send_carcass(record: Dictionary) -> void:
 	_m2.send_carcass(record)
 
-func send_carcass_removed(carcass_id: String) -> void:
-	_m2.send_carcass_removed(carcass_id)
+func send_carcass_removed(carcass_id: String, only_peer: int = 0) -> void:   # only_peer 0 = everyone
+	_m2.send_carcass_removed(carcass_id, only_peer)
 
 func send_carcasses_to(peer_id: int, records: Array) -> void:
 	_m2.send_carcasses_to(peer_id, records)

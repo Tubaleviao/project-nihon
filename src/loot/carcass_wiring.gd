@@ -105,9 +105,9 @@ func tool_for(player_id: String, carcass_id: String) -> Dictionary:
 	var best := {}
 	for item in candidates:
 		var t := CarcassRules.tool_of(str(item))
-		if t.is_empty() or (inv != null and inv.is_durable(str(item)) and inv.get_durability(str(item)) <= 0.0):
+		if t.is_empty() or not _usable(inv, str(item)):
 			continue
-		if root._carcass.workable_entries(carcass_id, str(t["tool"])).is_empty():
+		if not _needs_category(carcass_id, str(t["tool"])):
 			continue
 		var cand := { "item": str(item), "tool": t["tool"], "efficiency": t["efficiency"] }
 		if best.is_empty() or float(cand["efficiency"]) > float(best["efficiency"]):
@@ -151,6 +151,23 @@ func _on_harvest_intent(carcass_id: String, player_id: String) -> void:
 		"category": str(tool.get("tool", "")), "item": str(tool.get("item", "")), "efficiency": float(tool.get("efficiency", 1.0)) }
 	GameBus.harvest_started.emit(pid, carcass_id, float(_actions[pid]["remaining"]))
 
+## A tool is usable while any copy still has durability (`use_item` wears the most-worn usable copy).
+func _usable(inv: Node, item: String) -> bool:
+	if inv == null or not inv.is_durable(item):
+		return true
+	for v in inv.get_durability_values(item):
+		if float(v) > 0.0:
+			return true
+	return false
+
+## True when some remaining entry needs exactly `category` (entries needing no tool are worked bare-handed, so
+## a held tool never changes them).
+func _needs_category(carcass_id: String, category: String) -> bool:
+	for e in root._carcass.workable_entries(carcass_id, category):
+		if str(e.get("tool", "none")) == category:
+			return true
+	return false
+
 func _holds(player_id: String, item: String) -> bool:
 	if str(root._registry.get_equipment(_pid(player_id)).get("MainHand", "")) == item:
 		return true
@@ -168,13 +185,12 @@ func _finish(player_id: String) -> void:
 	_actions.erase(player_id)
 	var cid: String = a["carcass"]
 	var pos: Variant = _position_of(player_id)
-	var tool := tool_for(player_id, cid)   # re-read: the bag may have changed during the action
 	var category: String = str(a["category"])
 	if pos == null or not _alive(player_id):
 		GameBus.harvest_resolved.emit(player_id, cid, "moved", [])
 		return
 	var why: String = root._carcass.check_harvest(cid, pos, category, player_id)
-	if why == "" and category != "" and (tool.is_empty() or str(tool["tool"]) != category):
+	if why == "" and category != "" and not (_holds(player_id, str(a["item"])) and _usable(_inventory_of(player_id), str(a["item"]))):
 		why = "no_tool"
 	if why != "":
 		GameBus.harvest_resolved.emit(player_id, cid, why, [])
@@ -197,11 +213,11 @@ func _on_resolved(player_id: String, _carcass_id: String, reason: String, items:
 	if reason != "":
 		GameBus.system_message.emit("hud.carcass.refused." + reason, [], player_id)
 		return
-	var names: Array = []
+	if items.is_empty():
+		GameBus.system_message.emit("hud.carcass.nothing", [], player_id)
+		return
 	for it in items:
-		names.append("%d × %s" % [int(it["quantity"]), str(it["item"])])
-	if not names.is_empty():
-		GameBus.system_message.emit("hud.carcass.done", [", ".join(names)], player_id)
+		GameBus.system_message.emit("hud.carcass.done", [int(it["quantity"]), str(it["item"])], player_id)
 
 func _on_carry_intent(carcass_id: String, player_id: String) -> void:
 	if root._is_client or root._carcass == null:
@@ -343,11 +359,13 @@ func _scan_aoi() -> void:
 		var fresh: Array = []
 		var now := {}
 		for id in root._carcass.ids():
-			var view: Dictionary = root._carcass.view_of(id)
-			if root._networking.in_aoi(peer_id, view["position"]):
+			if root._networking.in_aoi(peer_id, root._carcass.position_of(id)):
 				now[id] = true
 				if not seen.has(id):
-					fresh.append(view)
+					fresh.append(root._carcass.view_of(id))
+		for id in seen:
+			if not now.has(id):
+				root._networking.send_carcass_removed(str(id), peer_id)   # the client forgets what left its AOI
 		_seen[peer_id] = now
 		if not fresh.is_empty():
 			root._networking.send_carcasses_to(peer_id, fresh)
@@ -356,8 +374,13 @@ func _on_player_joined(peer_id: int, _player_id: String, _reconnected: bool) -> 
 	if root._is_client or root._carcass == null or root._networking == null or not root._networking.is_host():
 		return
 	var list: Array = []
+	var sent := {}
 	for id in root._carcass.ids():
+		if root._networking.has_last_known_state(peer_id) and not root._networking.in_aoi(peer_id, root._carcass.position_of(id)):
+			continue
 		list.append(root._carcass.view_of(id))
+		sent[id] = true
+	_seen[peer_id] = sent   # replaces any set left by an earlier connection with the same peer id
 	root._networking.send_carcasses_to(peer_id, list)
 
 # ---------------------------------------------------------------------------
