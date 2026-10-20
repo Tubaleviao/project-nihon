@@ -242,6 +242,8 @@ func _ready() -> void:
 	# Phase 36 — the role flags are read FIRST, because they decide whether the
 	# automated suite runs on this boot (see should_run_tests).
 	_boot_wiring.parse_network_args()
+	if _boot_wiring.start_stress_bots():
+		return   # Phase 162 — a crowd of stress bots, not a game
 	# Phase 131 — saved language, else the OS locale, else English.
 	LocaleSettings.apply_startup()
 	# Phase 42 review pass 3 — and whether this boot quits itself once its world is up
@@ -582,7 +584,9 @@ func _ready() -> void:
 		await _run_net_harness(_net_harness_role)
 		return
 
+	_boot_wiring.prepare_stress_role()
 	_boot_world()
+	_boot_wiring.start_stress_recorder()
 	_boot_wiring.start_playtest_bot()
 
 ## Phase 39 — run the two-client network harness and let it end this process.
@@ -1027,7 +1031,7 @@ func _boot_server() -> void:
 	_chunk_manager.build_first_ring(_chunk_manager.player_chunk())
 	_chunk_manager.refresh()
 	_persistence_wiring.apply_loaded_creature_state()
-	_networking.host(_networking.DEFAULT_PORT, _networking.DEFAULT_MAX_CLIENTS)
+	_networking.host(_networking.DEFAULT_PORT, _boot_wiring.max_clients)
 
 ## A remote avatar is dropped only once it is this far away, a margin PAST the host's AOI
 ## edge. The host stops reporting a peer at exactly AOI_RADIUS, so pruning at the same radius

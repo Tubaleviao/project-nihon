@@ -4,6 +4,12 @@ extends "res://src/core/wiring.gd"
 
 const Diag := preload("res://src/core/diag.gd")
 const PLAYTEST_BOT_PATH := "res://src/tests/playtest_bot.gd"
+const STRESS_BOTS_PATH := "res://src/tests/stress_bots.gd"
+const STRESS_RECORDER_PATH := "res://src/tests/stress_recorder.gd"
+const NetworkingSlice := preload("res://src/networking/networking_slice.gd")
+
+## Phase 162 — the dedicated server's connection cap (a stress host raises it past the ladder's top).
+var max_clients: int = NetworkingSlice.DEFAULT_MAX_CLIENTS
 
 ## Parse `--client [addr]` from OS user args to determine network role. Defaults
 ## to host (authoritative single-player) when no args are present. A malformed
@@ -34,6 +40,9 @@ func parse_network_args() -> void:
 	elif harness_role == "client":
 		root._is_client = true
 	root._net_harness_role = harness_role
+	# Phase 162 — a stress watcher is a harness CLIENT that runs the shipped client boot, not the scenario.
+	if args.has("--stress-watch"):
+		root._net_harness_role = ""
 
 ## Phase 33 — save-on-shutdown. `auto_accept_quit = false` turns the window
 ## manager's close request into a notification this node answers by writing the
@@ -88,6 +97,28 @@ func check_game_data() -> void:
 		for key in reg:
 			if reg[key] == null:
 				Diag.error("%s → %s FAILED" % [reg_name, key])
+
+## Phase 162 — `--stress-bots <n>`: this process is a crowd of bot clients and no game (debug builds
+## only). True when it took the boot; the caller then builds nothing else.
+func start_stress_bots() -> bool:
+	if not OS.is_debug_build() or not OS.get_cmdline_user_args().has("--stress-bots"):
+		return false
+	var bots: Node = (load(STRESS_BOTS_PATH) as GDScript).new()
+	bots.name = "StressBots"
+	root.add_child(bots)
+	root.set_process(false)   # no slices to tick
+	root.set_physics_process(false)
+	return true
+
+## Phase 162 — the stress host's save directory and seed (before the world boot), then the recorder
+## of a `--stress-host` / `--stress-watch` boot (after it). Debug builds only; no-ops otherwise.
+func prepare_stress_role() -> void:
+	if OS.is_debug_build():
+		(load(STRESS_RECORDER_PATH) as GDScript).prepare(root)
+
+func start_stress_recorder() -> void:
+	if OS.is_debug_build():
+		(load(STRESS_RECORDER_PATH) as GDScript).attach(root)
 
 ## Phase 134 — `--playtest-bot`: a scripted bot plays the rendered listen host, then quits the process.
 ## Debug builds only: it empties the pack and edits the world, so a release build ignores the flag.

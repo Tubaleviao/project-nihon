@@ -549,7 +549,20 @@ func _on_peer_disconnected(id: int) -> void:
 	# the in-memory copy (PlayerRegistry.evict_player).
 	sl.forget_player_id(id)
 	sl._forget_equipment_pairs(id)
+	forget_peer_channels(id)
 	if not sl._last_known_states.has(id):
 		sl._teleport_pending.erase(id)   # nothing will age it out otherwise
 	if sl._last_known_states.has(id):
 		sl._last_known_timestamps[id] = Time.get_ticks_msec()
+
+## Phase 162 — drop the per-peer receive channels (`"<peer>:<type>"` seq frontiers, dedup windows, gap
+## warning clocks) and the emulated link of a peer that left. They were kept for every peer that ever
+## connected: the crowd stress run's `churn` pattern counts them as orphans.
+func forget_peer_channels(id: int) -> void:
+	var prefix := "%d:" % id
+	for table: Dictionary in [sl._recv_seq, sl._recv_seen, sl._seq_gap_warn_ms]:
+		for key in table.keys():
+			if str(key).begins_with(prefix):
+				table.erase(key)
+	sl._link_free_at_ms.erase(id)
+	sl._ordered_at_ms.erase(id)
