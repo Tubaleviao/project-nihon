@@ -91,7 +91,7 @@ func build_snapshot(peer_id: int, include_own_record: bool = true,
 	# the constant there were two places to update, and the failure mode was a blob a
 	# client would adopt but nobody would redact.
 	snapshot.merge(root._networking.redact_social_state(_social_state()))
-	add_generation_records(snapshot, peer_id, aoi_center)
+	add_generation_records(snapshot, peer_id, aoi_center, not include_own_record)
 	if not full_edits:
 		snapshot["edits_aoi"] = [aoi_center.x, aoi_center.z, NetworkingSlice.EDITS_SCOPE_RADIUS]
 	# The peer's own record exists only once the host resolved its identity, and it
@@ -128,11 +128,19 @@ func snapshot_own_record(player_id: String) -> Dictionary:
 		snapshot["player"]["spawn"] = own["spawn"]
 	return snapshot
 
+## Phase 163 — host: peer id -> { record key -> hash }, the generation records that peer holds.
+var records_sent: Dictionary = {}
+
 ## Phase 109 — the generation records of the chunks in the peer's streamed window plus its first ring.
 ## The scope is named (`gen_scope`) so the client knows which part of its table the packet speaks for.
 ## Re-scopes are rate-limited by `_on_remote_player_state`, which defers the whole crossing rather than
 ## sending it without records.
-func add_generation_records(snapshot: Dictionary, peer_id: int, aoi_center: Vector3) -> void:
+##
+## Phase 163 — a re-scope (`delta`) carries only the records this peer was not sent at its last scope, or
+## that changed since: the client keeps every record inside the new scope, so resending them was the bulk
+## of `snapshot_chunk` bytes on every AOI crossing. `records_sent` mirrors what the client
+## holds (key -> record hash, pruned to the scope like the client's table); a join starts it afresh.
+func add_generation_records(snapshot: Dictionary, peer_id: int, aoi_center: Vector3, delta: bool = false) -> void:
 	if root._chunk_manager == null:
 		return
 	var now := Time.get_ticks_msec()
@@ -143,9 +151,19 @@ func add_generation_records(snapshot: Dictionary, peer_id: int, aoi_center: Vect
 		Diag.warn("GameRoot: generation records for peer %d truncated at the %d-record packet cap" % [peer_id, ChunkRecordSync.PACKET_CAP])
 	snapshot["gen_scope"] = [center.x, center.y, radius]   # always named: a client prunes to it
 	root._peer_records_msec[peer_id] = now   # the window was served, records or not: the re-scope interval counts from here
-	if (found["records"] as Dictionary).is_empty():
+	var held: Dictionary = records_sent.get(peer_id, {}) if delta else {}
+	var records: Dictionary = found["records"]
+	var sent := {}
+	var out := {}
+	for key in records:
+		var h := hash(records[key])
+		sent[key] = h
+		if held.get(key) != h:
+			out[key] = records[key]
+	records_sent[peer_id] = sent
+	if out.is_empty():
 		return   # no records to attach
-	snapshot["gen_records"] = found["records"]
+	snapshot["gen_records"] = out
 
 ## Phase 38 — the replicated social/economy state, keyed by the names the wire uses
 ## (`NetworkingSlice.IDENTIFIED_STATE_KEYS`).

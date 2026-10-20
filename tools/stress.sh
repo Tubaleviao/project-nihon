@@ -18,9 +18,10 @@
 #
 # Then `tools/stress_report.gd` turns every run into `$STRESS_OUT/report.json` and `report.md`: per
 # series the largest crowd that met every budget, and the hot spots ranked by how much of a budget
-# they would take at the top of the ladder. Budgets are a report; the driver fails (exit 1) only on a
-# hard failure: a crash, a host or watcher frame over 2 s, a bot dropped by the host without a reason,
-# or a peer record left after everyone left.
+# they would take at the top of the ladder. Budgets are a report; the driver fails (exit 1) on a hard
+# failure: a crash, a host or watcher frame over 2 s, a bot dropped by the host without a reason, or a
+# peer record left after everyone left. Phase 163 — it also fails when a pattern's largest passing size
+# drops below the committed baseline's (`StressRules.BASELINE_LARGEST`, docs/perf/crowd-baseline.md).
 #
 # Usage:
 #   GODOT=/tmp/godot/Godot_v4.7-stable_linux.x86_64 tools/stress.sh

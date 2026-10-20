@@ -3,6 +3,8 @@ extends RefCounted
 
 ## A worker task must not hold a Node, so the lambda below names the script constant, not `sl`.
 const VoxelBuilder := preload("res://src/terrain/voxel_slice.gd")
+const TerrainSliceScript := preload("res://src/terrain/terrain_slice.gd")
+const SeamWrapScript := preload("res://src/terrain/seam_wrap.gd")
 
 var sl: Node
 
@@ -53,14 +55,24 @@ func refresh(unload_now: bool = true) -> void:
 	# the docstring above for why the two radii were briefly different and why that was a waste.
 	var radius = sl.stream_radius()
 	var desired: Array = []
-	var refs: Dictionary = {}
+	# Phase 163 — counted on the canonical chunk first and keyed once per distinct chunk: crowded
+	# windows overlap, and a string key per (window, chunk) was most of a crossing's refresh.
+	var counts: Dictionary = {}   # canonical Vector2i -> windows covering it
+	var circumference: int = TerrainSliceScript.circumference_chunks()
 	for win_center in centers:
 		for c in sl._desired_chunks(win_center, radius):
-			var ckey = sl._chunk_key(c)
-			if not refs.has(ckey):
+			var canon := Vector2i(SeamWrapScript.wrap_i(c.x, circumference), c.y)
+			if not counts.has(canon):
 				desired.append(c)
-				refs[ckey] = 0
-			refs[ckey] += 1
+				counts[canon] = 0
+			counts[canon] += 1
+	var refs: Dictionary = {}
+	var desired_keys: Array = []
+	for c in desired:
+		var canon := Vector2i(SeamWrapScript.wrap_i(c.x, circumference), c.y)
+		var ckey := "%d,%d" % [canon.x, canon.y]
+		refs[ckey] = counts[canon]
+		desired_keys.append(ckey)
 	sl._chunk_refs = refs
 	# Phase 52 — the edits of every region the windows touch are resident BEFORE a chunk is
 	# queued, so no build reads a log that is missing its region.
@@ -69,15 +81,16 @@ func refresh(unload_now: bool = true) -> void:
 
 	# Queue loads nearest-first. Dispatching is what is bounded per frame; the build
 	# itself runs on a worker.
+	# Phase 163 — decorated with the distance once per chunk, not twice per comparison.
 	var to_load: Array = []
-	for c in desired:
-		var key = sl._chunk_key(c)
+	for i in desired.size():
+		var key: String = desired_keys[i]
 		if not sl._loaded.has(key) and not sl._pending.has(key):
-			to_load.append(c)
-	to_load.sort_custom(func(a, b): return sl._nearest_dist2(centers, a) < sl._nearest_dist2(centers, b))
-	for c in to_load:
-		sl._pending[sl._chunk_key(c)] = true
-		sl._load_queue.append(c)
+			to_load.append([sl._nearest_dist2(centers, desired[i]), desired[i], key])
+	to_load.sort_custom(func(a, b): return a[0] < b[0])
+	for entry in to_load:
+		sl._pending[entry[2]] = true
+		sl._load_queue.append(entry[1])
 
 	# Phase 49 — a synchronous `refresh()` unloads everything now; the `_process` path
 	# (`unload_now == false`) queues the stale chunks and `_drain_unload_queue` releases a

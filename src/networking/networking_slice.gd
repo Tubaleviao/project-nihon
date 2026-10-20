@@ -266,7 +266,12 @@ const LAST_KNOWN_STATE_TTL_MS := 300_000  # 5 minutes
 
 ## Spatial hash of peer AOI centers (peer_id -> position), mirroring
 ## _last_known_states so interest queries stay O(cells), not O(peers) (Phase 29).
-var _peer_spatial := SpatialHash.new()
+## Phase 163 — cells one AOI radius wide: a query probes 3×3 cells, not the 25×25 of 8 m cells.
+var _peer_spatial := SpatialHash.new(AOI_RADIUS)
+
+## Phase 163 — this frame's position relays, sent as one `player_states` batch per peer by `flush_relays`.
+const RelayBatch := preload("res://src/networking/relay_batch.gd")
+var _relays := RelayBatch.new()
 
 ## Phase 36 — peer_id → { tokens, at_ms }: the client → host token bucket (see
 ## RATE_BUCKET_CAPACITY). Entries exist only for live peers: the bucket is dropped
@@ -379,6 +384,7 @@ static func profile_rtt_ms(name: String) -> float:
 ## Eviction of stale last-known-states runs unconditionally (no ENet overhead).
 func _process(_delta: float) -> void:
 	_evict_stale_states()
+	flush_relays(true)
 	if not emulate_network:
 		return
 	_drain_emulator()
@@ -516,11 +522,11 @@ func aoi_region(position: Vector3) -> Vector2i:
 ## Peer ids (among `connected`) whose AOI contains `position`. Pure — the
 ## connected set is passed in so the filter is testable headless.
 func aoi_recipients(position: Vector3, connected: Array) -> Array:
-	var out: Array = []
-	for pid in _peer_spatial.query_radius(position, AOI_RADIUS):
-		if pid in connected:
-			out.append(pid)
-	return out
+	return _m1.aoi_recipients(position, connected)
+
+## Phase 163 — host: send the frame's queued relays, one `player_states` packet per recipient (net_part_1).
+func flush_relays(paced: bool = false) -> int:
+	return _m1.flush_relays(paced)
 
 ## Broadcast a spatial delta only to peers whose AOI contains `position`.
 ## On the host this replaces the N×M broadcast-to-all with a scoped fan-out;
@@ -1306,18 +1312,7 @@ func _route_h2c(payload: Dictionary) -> void:
 ## replay through the jitter buffer; otherwise emit straight through (the
 ## Phase 18 path, unchanged).
 func _route_remote_player_state(payload: Dictionary) -> void:
-	var pid := int(payload.get("peer_id", 0))
-	if TickProbe.log_relays:   # a second decode, paid only by a stress watcher (outside the timed span)
-		var exact := WorldPos.pos_from_packet(payload)
-		if not exact.is_empty():
-			TickProbe.relay_seen(pid, TickProbe.position_key(exact))
-	TickProbe.begin("relay_apply")
-	var pos := WorldPos.packet_world(payload, _vec3(payload.get("position", [])))
-	if emulate_network and _role == Role.CLIENT:
-		_buffer_remote_state(pid, pos)
-	else:
-		GameBus.remote_player_state.emit(pid, pos)
-	TickProbe.end()
+	_m1._route_remote_player_state(payload)
 
 func _accumulate_snapshot_chunk(payload: Dictionary) -> void:
 	_m1._accumulate_snapshot_chunk(payload)

@@ -433,6 +433,7 @@ func _test_rescope_resent_when_clamped() -> void:
 	gr._chunk_manager = cm
 	gr._is_client = false
 	gr._peer_wiring.on_remote_player_state(5, Vector3(64.0 * 40.0, 0.0, 0.0))
+	gr._peer_wiring.flush_rescopes()   # Phase 163 — crossings are served once a frame
 	var sent: Array = n.memory_transport().outbox.filter(func(o): return o["payload"].get("type") == "snapshot_chunk")
 	assert_true(sent.is_empty(), "a refused or clamped move builds and sends no snapshot")
 	assert_eq(stub.built, 0, "the snapshot builder was not even reached")

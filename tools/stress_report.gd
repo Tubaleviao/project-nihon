@@ -6,7 +6,8 @@ extends SceneTree
 ##       `<out_dir>/report.json` and `<out_dir>/report.md`, prints `STRESS_LARGEST <series> <size>` per
 ##       series and `STRESS_HOTSPOT <rank> <name>` for the top hot spots, and exits 1 when any run
 ##       had a hard failure (a crash, a frame over 2 s, a bot dropped without a reason, an orphaned
-##       peer record), 0 otherwise. Missed budgets are a report, not a failure.
+##       peer record), 0 otherwise. Missed budgets are a report, not a failure. Phase 163 — a series whose
+##       largest passing size falls below `StressRules.BASELINE_LARGEST` also fails (`STRESS_REGRESSION`).
 ##   godot … -s tools/stress_report.gd -- continue <run_dir>
 ##       Exits 0 when the ladder may climb past this run (its host tick p95 is under the stop
 ##       ceiling and the host wrote a report), 1 when it should stop.
@@ -82,5 +83,8 @@ func _build(runs_dir: String, out_dir: String, extra: Array) -> int:
 		rank += 1
 	for f in report["hard_failures"]:
 		print("STRESS_HARD_FAILURE %s" % str(f))
+	for r in report["regressions"]:
+		print("STRESS_REGRESSION %s" % str(r))
 	print("STRESS_RUNS %d" % rows.size())
-	return 1 if not (report["hard_failures"] as Array).is_empty() or rows.is_empty() else 0
+	var failed: bool = not (report["hard_failures"] as Array).is_empty() or not (report["regressions"] as Array).is_empty()
+	return 1 if failed or rows.is_empty() else 0

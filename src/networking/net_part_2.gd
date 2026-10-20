@@ -98,12 +98,8 @@ func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	# avatar does not jitter by float32 metres on the other clients.
 	var relayed: Dictionary = sl._inbound_exact if not sl._inbound_exact.is_empty() \
 			else sl.WorldPos.from_world(position.x, position.y, position.z)
-	var packet := {
-		"type":     "remote_player_state",
-		"peer_id":  peer_id,
-		"pk":       sl.WorldPos.pos_to_packet_text(relayed),
-	}
-	sl._broadcast_aoi(packet, position)
+	# Phase 163 — queued for the frame's `player_states` batch (`flush_relays`), not sent one by one.
+	sl._relays.offer(peer_id, sl.WorldPos.pos_to_packet_text(relayed), position)
 
 ## Phase 37 — host → one client: a creature struck THIS player. Damage is applied by
 ## the machine that simulates the body (`PlayerSlice` on the peer's own client, which
@@ -605,6 +601,7 @@ func _on_peer_disconnected(id: int) -> void:
 	# the in-memory copy (PlayerRegistry.evict_player).
 	sl.forget_player_id(id)
 	sl._forget_equipment_pairs(id)
+	sl._relays.forget(id)
 	forget_peer_channels(id)
 	if not sl._last_known_states.has(id):
 		sl._teleport_pending.erase(id)   # nothing will age it out otherwise

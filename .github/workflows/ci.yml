@@ -278,9 +278,10 @@ jobs:
           STRESS_MAX: ${{ github.event.inputs.stress_max || '64' }}
           STRESS_PROFILES: ${{ github.event.inputs.stress_profiles || 'lan' }}
         run: |
-          # Every pattern up to STRESS_MAX bots. Budgets are a report; the driver exits non-zero only on a
-          # hard failure (a crash, a host or watcher frame over 2 s, a bot dropped by the host without a
-          # reason, a peer record left after churn).
+          # Every pattern up to STRESS_MAX bots. Budgets are a report; the driver exits non-zero on a hard
+          # failure (a crash, a host or watcher frame over 2 s, a bot dropped by the host without a reason,
+          # a peer record left after churn) and, since Phase 163, when a pattern's largest passing size drops
+          # below the baseline's (`StressRules.BASELINE_LARGEST`, docs/perf/crowd-baseline.md).
           tools/stress.sh
 
       - name: The report names a largest passing size per pattern and the top hot spots

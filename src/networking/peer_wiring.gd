@@ -181,6 +181,8 @@ func _on_peer_disconnected(peer_id: int) -> void:
 	if root._is_client:
 		return
 	root._chunk_manager.clear_peer_center(peer_id)
+	_rescopes.erase(peer_id)
+	root._snapshot_wiring.records_sent.erase(peer_id)
 	var player_id := root._registry.get_player_id(peer_id)
 	if player_id.is_empty():
 		return
@@ -321,32 +323,62 @@ func on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	if Time.get_ticks_msec() - int(root._peer_records_msec.get(peer_id, -root.RECORDS_RESCOPE_INTERVAL_MSEC)) < root.RECORDS_RESCOPE_INTERVAL_MSEC:
 		return
 	root._peer_aoi_regions[peer_id] = region
+	# Phase 163 — the crossing is served by `flush_rescopes` once a frame, so n peers crossing in one
+	# frame cost one window refresh, not n (64 bots crossing the polar fold together stalled the host).
+	_rescopes[peer_id] = position
+
+## Phase 163 — peer id -> the crossing position of a re-scope waiting for this frame's flush.
+var _rescopes: Dictionary = {}
+## Window refreshes `flush_rescopes` has run (the suite pins one per frame, however many peers crossed).
+var rescope_refreshes := 0
+
+func tick(_delta: float) -> void:
+	if not root._is_client:
+		flush_rescopes()
+
+## Phase 163 — host, once a frame: serve the frame's AOI crossings. Every window moves first and the
+## windows are refreshed ONCE, then each crossing's snapshot is built. Returns the snapshots sent.
+func flush_rescopes() -> int:
+	if _rescopes.is_empty():
+		return 0
+	var crossings := _rescopes
+	_rescopes = {}
 	# Phase 62 — re-centre the peer's window and make the regions around the new position
 	# resident BEFORE the snapshot is built, as the join path does: a teleport into a region
 	# with stored edits must carry those edits in the re-scope snapshot. The re-centre is
 	# rate-limited and clamped (`set_peer_center`), so this cannot be used to flood reads.
 	# When the window could not reach the target yet (refused or clamped) the snapshot would
 	# miss the destination's edits: forget the crossing so the next state packet retries it.
-	if root._chunk_manager != null and root._registry.get_player_id(peer_id) != "":
-		var target: Vector2i = root._chunk_manager.world_to_chunk(Vector2(position.x, position.z))
-		TickProbe.begin("window_moves")
-		if root._chunk_manager.set_peer_center(peer_id, target):
-			root._chunk_manager.refresh(false)
-		TickProbe.end()
-		# The window centre is stored wrapped past the seam; compare like with like. A move that was
-		# refused or clamped builds no snapshot (it would miss the destination's edits): the crossing is
-		# forgotten and the next state packet retries it once the window has caught up.
-		if root._chunk_manager.peer_center(peer_id) != TerrainSlice.wrap_chunk(target):
-			root._peer_aoi_regions.erase(peer_id)
-			return
+	var ready: Array = []
+	var moved := false
+	TickProbe.begin("window_moves")
+	for peer_id: int in crossings:
+		var position: Vector3 = crossings[peer_id]
+		if root._chunk_manager != null and root._registry.get_player_id(peer_id) != "":
+			var target: Vector2i = root._chunk_manager.world_to_chunk(Vector2(position.x, position.z))
+			if root._chunk_manager.set_peer_center(peer_id, target):
+				moved = true
+			# The window centre is stored wrapped past the seam; compare like with like. A move that was
+			# refused or clamped builds no snapshot (it would miss the destination's edits): the crossing is
+			# forgotten and the next state packet retries it once the window has caught up.
+			if root._chunk_manager.peer_center(peer_id) != TerrainSlice.wrap_chunk(target):
+				root._peer_aoi_regions.erase(peer_id)
+				continue
+		ready.append(peer_id)
+	if moved:
+		root._chunk_manager.refresh(false)
+		rescope_refreshes += 1
+	TickProbe.end()
 	# Phase 33 — world/entity data only: the peer's own record is NOT re-sent, or
 	# the client would re-apply a stale position/HP/inventory on every region
 	# crossing (the record is written at load and at disconnect, not per frame).
-	# The crossing position is passed explicitly: this handler may run before the
-	# networking slice's own handler has recorded it, so get_aoi_center() can be stale.
+	# The crossing position is passed explicitly: the networking slice's last-known
+	# position may lag it, so get_aoi_center() can be stale.
 	TickProbe.begin("snapshots")
-	root._networking.send_snapshot(peer_id, root._snapshot_wiring.build_snapshot(peer_id, false, position, false))
+	for peer_id: int in ready:
+		root._networking.send_snapshot(peer_id, root._snapshot_wiring.build_snapshot(peer_id, false, crossings[peer_id], false))
 	TickProbe.end()
+	return ready.size()
 
 ## The chunk a peer's window is centred on: its last reported position, else the position
 ## its record holds (a joining peer has not sent a state packet yet).

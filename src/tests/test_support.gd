@@ -75,10 +75,18 @@ func _count_files_with(dir: String, needle: String) -> int:
 		n += _count_files_with(dir.path_join(d), needle)
 	return n
 
-## The `remote_player_state` packets the host's outbox holds about `peer_id`.
+## The relays about `peer_id` the host's outbox holds, as `{ peer_id: recipient, payload: { peer_id, pk } }`.
+## Phase 163 — the frame's queued relays are flushed first, and each `player_states` batch is expanded.
 func _relays_of_peer(n: NetworkingSlice, peer_id: int) -> Array:
-	return n.memory_transport().outbox.filter(func(o): return str(o["payload"].get("type", "")) == "remote_player_state" \
-			and int(o["payload"].get("peer_id", 0)) == peer_id)
+	n.flush_relays()
+	var out: Array = []
+	for o in n.memory_transport().outbox:
+		if str(o["payload"].get("type", "")) != NetworkingSlice.RelayBatch.PACKET_TYPE:
+			continue
+		for e in NetworkingSlice.RelayBatch.decode(o["payload"]):
+			if int(e[0]) == peer_id:
+				out.append({ "peer_id": o["peer_id"], "payload": { "peer_id": e[0], "pk": e[1] } })
+	return out
 
 func _assert_relay_exact(relayed: Array, chunk: Vector2i, local: Vector3, label: String) -> void:
 	assert_false(relayed.is_empty(), "%s: the position was relayed to the peer in range" % label)

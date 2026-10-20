@@ -40,6 +40,8 @@ STRESS_MAX=32 STRESS_PROFILES=lan GODOT=/path/to/Godot_v4.7-stable_linux.x86_64 
 
 It boots a dedicated server, a watching client and a process of scripted bot players, walks them in five patterns at growing crowd sizes, and writes `stress/report.md` (the largest crowd that met every budget, and the ranked bottlenecks) and `stress/report.json`.
 
+The crowd the host supports today (Phase 163, `lan`, one desktop machine): 64 players standing together (`cluster`) or crossing a pole (`pole`), 32 walking across AOI cells (`cross`), 16 spread out (`spread`) or joining and leaving every few seconds (`churn`). The starting point is [docs/perf/crowd-baseline.md](docs/perf/crowd-baseline.md); the `stress` CI job fails if any of these drops below the baseline.
+
 ---
 
 ## Status

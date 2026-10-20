@@ -22,6 +22,16 @@ const BUDGETS := {
 const LADDER_STOP_TICK_P95_MS := 50.0
 ## A frame (host or watcher) longer than this is a hard failure.
 const HARD_FRAME_MS := 2000.0
+## Phase 163 — the largest passing size of each series in the committed baseline
+## (`docs/perf/crowd-baseline.md`, the Phase 162 run). A run whose series falls below it fails the
+## stress job: the crowd the host supports may only grow.
+const BASELINE_LARGEST := {
+	"lan/cluster": 16,
+	"lan/cross": 16,
+	"lan/spread": 16,
+	"lan/pole": 32,
+	"lan/churn": 0,
+}
 
 ## Mirrors `PlayerSlice.SPEED` (m/s on foot) and the client's report interval
 ## (`PlayerSlice.SYNC_INTERVAL` physics ticks at 60 Hz), so a bot walks and reports like a player.
@@ -465,7 +475,21 @@ static func build_report(rows: Array, meta: Dictionary = {}) -> Dictionary:
 		"series": out_series,
 		"hot_spots": rank_hot_spots(phase_curves, message_curves, top_size),
 		"hard_failures": failures,
+		"regressions": baseline_regressions(out_series, int(meta.get("max", top_size))),
 	}
+
+## Phase 163 — the series of `series` whose largest passing size is below `BASELINE_LARGEST`. A series the
+## run did not include, or a baseline size above the run's ladder ceiling `max_size`, is not judged.
+static func baseline_regressions(series: Dictionary, max_size: int = 200) -> Array:
+	var out: Array = []
+	for key in BASELINE_LARGEST:
+		var want := int(BASELINE_LARGEST[key])
+		if not series.has(key) or want > max_size:
+			continue
+		var got := int((series[key] as Dictionary).get("largest_passing", 0))
+		if got < want:
+			out.append("%s: largest passing size %d is below the baseline's %d" % [key, got, want])
+	return out
 
 ## `report.md`: one table per series, then the hot spots and the hard failures.
 static func report_markdown(report: Dictionary) -> String:
@@ -514,6 +538,14 @@ static func report_markdown(report: Dictionary) -> String:
 				float(row["relay_lag_ms"]), int(row["relay_lag_samples"]), int(row["watch_avatars_max"]),
 				int(row["aoi_cell_peers_max"]), "pass" if meets_all(row) else "miss"])
 		lines.append("")
+	lines.append("## Baseline")
+	lines.append("")
+	var regressions: Array = report.get("regressions", [])
+	if regressions.is_empty():
+		lines.append("No series fell below the baseline's largest passing size.")
+	for r in regressions:
+		lines.append("- %s" % str(r))
+	lines.append("")
 	lines.append("## Hard failures")
 	lines.append("")
 	var failures: Array = report.get("hard_failures", [])

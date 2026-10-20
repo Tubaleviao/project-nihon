@@ -249,6 +249,13 @@ func _route_h2c(payload: Dictionary) -> void:
 				GameBus.combat_hit_synced.emit(a, d, o)
 		"remote_player_state":
 			sl._route_remote_player_state(payload)
+		"player_states":
+			# Phase 163 — the host's batch of position relays; a malformed batch is refused whole.
+			var entries: Array = sl.RelayBatch.decode(payload)
+			if entries.is_empty():
+				sl.Diag.warn("NetworkingSlice: malformed player_states batch dropped")
+			for e in entries:
+				sl._route_remote_player_state({ "peer_id": e[0], "pk": e[1] })
 		"weather_overrides":
 			# Phase 128 — only a client adopts the host's table; the list is validated by the slice.
 			if sl._role == sl.Role.CLIENT and payload.get("overrides", null) is Array:

@@ -23,6 +23,8 @@ var _id_to_cell: Dictionary = {}
 var _positions: Dictionary = {}
 ## cell coordinate (Vector2i) → { id: true } (an id set).
 var _cells: Dictionary = {}
+## Phase 163 — cells probed by `query_radius` since construction (the suite pins the AOI query cost).
+var probes := 0
 
 func _init(p_cell_size: float = 8.0) -> void:
 	cell_size = maxf(p_cell_size, 0.0001)
@@ -76,6 +78,7 @@ func query_radius(pos: Vector3, radius: float) -> Array:
 	var max_c := _cell(Vector3(pos.x + radius, pos.y, pos.z + radius))
 	for cx in range(min_c.x, max_c.x + 1):
 		for cz in range(min_c.y, max_c.y + 1):
+			probes += 1
 			var c := Vector2i(cx, cz)
 			if not _cells.has(c):
 				continue
