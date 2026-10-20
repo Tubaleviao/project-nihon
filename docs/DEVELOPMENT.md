@@ -54,7 +54,7 @@ NET_PROFILE=wan_bad GODOT=/tmp/godot/Godot_v4.7-stable_linux.x86_64 tools/net_ha
 #    crowd size (16, 32, 64, 128, 200), under each link profile. Writes stress/report.json and
 #    stress/report.md: the largest crowd that met every budget per pattern, and the ranked hot
 #    spots. Exits 1 only on a hard failure (crash, a frame over 2 s, a bot dropped without a
-#    reason, a peer record left behind). A full ladder takes about an hour; narrow it with
+#    reason, a peer record left behind). The default ladder (up to 64 bots, 15 runs) takes a while and a full one (to 200) longer; narrow it with
 #    STRESS_MAX, STRESS_PATTERNS, STRESS_PROFILES and STRESS_SECONDS:
 STRESS_MAX=32 STRESS_PATTERNS="cluster churn" STRESS_PROFILES=lan \
   GODOT=/tmp/godot/Godot_v4.7-stable_linux.x86_64 tools/stress.sh

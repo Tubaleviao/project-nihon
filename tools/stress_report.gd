@@ -63,6 +63,9 @@ func _build(runs_dir: String, out_dir: String, extra: Array) -> int:
 	var report := StressRules.build_report(rows, meta)
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	var fj := FileAccess.open(out_dir.path_join("report.json"), FileAccess.WRITE)
+	if fj == null:
+		push_error("stress_report: cannot write %s" % out_dir)
+		return 1
 	fj.store_string(JSON.stringify(report, "  "))
 	fj.close()
 	var fm := FileAccess.open(out_dir.path_join("report.md"), FileAccess.WRITE)

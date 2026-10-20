@@ -76,6 +76,9 @@ func _test_stress_largest_passing() -> void:
 	rows[2]["relay_lag_ms"] = 251.0
 	assert_eq(StressRules.largest_passing(rows), 32, "one budget missed is a miss")
 	assert_eq(StressRules.largest_passing([_row(16, 17.0, 1.0, 1.0, 1.0)]), 0, "no passing size is 0")
+	var crashed := _row(64, 1.0, 1.0, 1.0, 1.0)
+	crashed["hard_failures"] = ["host: no report (crashed or never finished)"]
+	assert_eq(StressRules.largest_passing([_row(16, 5.0, 20.0, 16.7, 40.0), crashed]), 16, "a run with a hard failure never passes")
 	var met := StressRules.budgets_met(_row(16, 16.0, 64.0, 33.0, 250.0))
 	for k in StressRules.BUDGETS:
 		assert_true(bool(met[k]), "a value equal to its budget meets it (%s)" % k)

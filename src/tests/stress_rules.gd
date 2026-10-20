@@ -357,11 +357,11 @@ static func hard_failures(host: Dictionary, watch: Dictionary, bots: Dictionary)
 # The report: every run -> per series the largest passing size, and the hot spots
 # ---------------------------------------------------------------------------
 
-## The largest size in `rows` (one series) that met every budget; 0 when none did.
+## The largest size in `rows` (one series) that met every budget without a hard failure; 0 when none did.
 static func largest_passing(rows: Array) -> int:
 	var best := 0
 	for row in rows:
-		if meets_all(row):
+		if meets_all(row) and (row.get("hard_failures", []) as Array).is_empty():
 			best = maxi(best, int(row.get("size", 0)))
 	return best
 
@@ -433,6 +433,8 @@ static func build_report(rows: Array, meta: Dictionary = {}) -> Dictionary:
 		for phase in PHASE_LABELS:
 			var curve: Array = []
 			for row in list:
+				if int(row.get("host_frames", 0)) == 0:
+					continue   # the host's report is missing: no point, not a zero
 				curve.append([int(row["size"]), float((row.get("phase_ms_per_tick", {}) as Dictionary).get(phase, 0.0))])
 			if not phase_curves.has(phase):
 				phase_curves[phase] = []
@@ -444,6 +446,8 @@ static func build_report(rows: Array, meta: Dictionary = {}) -> Dictionary:
 		for t in types:
 			var mcurve: Array = []
 			for row in list:
+				if int(row.get("host_frames", 0)) == 0:
+					continue
 				mcurve.append([int(row["size"]), float((row.get("kbps_by_type", {}) as Dictionary).get(t, 0.0))])
 			if not message_curves.has(t):
 				message_curves[t] = []

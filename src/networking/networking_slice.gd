@@ -1277,11 +1277,11 @@ func _route_h2c(payload: Dictionary) -> void:
 ## Phase 18 path, unchanged).
 func _route_remote_player_state(payload: Dictionary) -> void:
 	var pid := int(payload.get("peer_id", 0))
-	TickProbe.begin("relay_apply")
-	if TickProbe.log_relays:   # a second decode, paid only by a stress watcher
+	if TickProbe.log_relays:   # a second decode, paid only by a stress watcher (outside the timed span)
 		var exact := WorldPos.pos_from_packet(payload)
 		if not exact.is_empty():
 			TickProbe.relay_seen(pid, TickProbe.position_key(exact))
+	TickProbe.begin("relay_apply")
 	var pos := WorldPos.packet_world(payload, _vec3(payload.get("position", [])))
 	if emulate_network and _role == Role.CLIENT:
 		_buffer_remote_state(pid, pos)

@@ -252,7 +252,7 @@ jobs:
 
   stress:
     name: Crowd stress run and bottleneck report
-    # Phase 162 — main pushes and manual runs only, not every PR: the ladder takes a quarter of an hour.
+    # Phase 162 — main pushes and manual runs only, not every PR: the default ladder (15 runs up to 64 bots) takes a while.
     # A manual run can pass a bigger ceiling and other link profiles.
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -281,6 +281,7 @@ jobs:
           tools/stress.sh
 
       - name: The report names a largest passing size per pattern and the top hot spots
+        if: always()   # a hard failure still gets its report in the job summary
         env:
           STRESS_PROFILES: ${{ github.event.inputs.stress_profiles || 'lan' }}
         run: |
