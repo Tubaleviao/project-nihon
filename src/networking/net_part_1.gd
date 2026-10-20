@@ -261,3 +261,54 @@ func _on_server_disconnected() -> void:
 	if sl._role != sl.Role.CLIENT:
 		return
 	sl._snapshot_buffer.clear()
+
+## Phase 163 — host: send the frame's queued position relays, one `player_states` packet per recipient
+## (more only past `RelayBatch.BATCH_MAX` subjects). `_process` calls it every frame with `paced`, and it
+## then sends only every `RelayBatch.FLUSH_MS`: reports arrive spread over the frames, so a per-frame
+## flush sent batches of one or two. A direct call (a test) sends now. Returns the packets sent.
+func flush_relays(paced: bool = false) -> int:
+	if sl._role != sl.Role.HOST or not sl._relays.has_pending():
+		return 0
+	var now_ms := float(Time.get_ticks_msec())
+	if paced and now_ms - sl._relays.flushed_ms < sl.RelayBatch.FLUSH_MS:
+		return 0
+	sl._relays.flushed_ms = now_ms
+	sl.TickProbe.begin("aoi_relay")
+	var connected := {}
+	if sl._connected():
+		for p in sl._connected_peers():
+			connected[int(p)] = true
+	var batches: Dictionary = sl._relays.build(now_ms, connected,
+			func(pos: Vector3) -> Array: return sl._peer_spatial.query_radius(pos, sl.AOI_RADIUS), Callable(sl, "get_aoi_center"))
+	var sent := 0
+	for rid in batches:
+		for packet in sl.RelayBatch.packets(batches[rid]):
+			sl._deliver(int(rid), packet)
+			sent += 1
+	sl.TickProbe.end()
+	return sent
+
+## Peer ids (among `connected`) whose AOI contains `position`.
+func aoi_recipients(position: Vector3, connected: Array) -> Array:
+	var out: Array = []
+	var live := {}   # Phase 163 — one pass over `connected`, not an array scan per candidate
+	for pid in connected:
+		live[pid] = true
+	for pid in sl._peer_spatial.query_radius(position, sl.AOI_RADIUS):
+		if live.has(pid):
+			out.append(pid)
+	return out
+
+func _route_remote_player_state(payload: Dictionary) -> void:
+	var pid := int(payload.get("peer_id", 0))
+	if sl.TickProbe.log_relays:   # a second decode, paid only by a stress watcher (outside the timed span)
+		var exact: Dictionary = sl.WorldPos.pos_from_packet(payload)
+		if not exact.is_empty():
+			sl.TickProbe.relay_seen(pid, sl.TickProbe.position_key(exact))
+	sl.TickProbe.begin("relay_apply")
+	var pos: Vector3 = sl.WorldPos.packet_world(payload, sl._vec3(payload.get("position", [])))
+	if sl.emulate_network and sl._role == sl.Role.CLIENT:
+		sl._buffer_remote_state(pid, pos)
+	else:
+		GameBus.remote_player_state.emit(pid, pos)
+	sl.TickProbe.end()

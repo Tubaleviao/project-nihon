@@ -183,7 +183,7 @@ issue number where the criterion used to be.
 | 160 | Harvesting in the fabric: tools, the Skinning skill, carcass weight and carry | Done | [history](docs/roadmap-history/phases-160.md) |
 | 161 | Harvesting at runtime: work the body, carry it home | Done | [history](docs/roadmap-history/phases-161.md) |
 | 162 | A crowd walks: a multi-player stress test and a bottleneck report | Done | [history](docs/roadmap-history/phases-162.md) |
-| 163 | Crowd performance: fix what the Phase 162 report names | Planned | below |
+| 163 | Crowd performance: fix what the Phase 162 report names | Done | [history](docs/roadmap-history/phases-163.md) |
 | 164 | A round horizon: a circular distant ring, planet curvature and haze | Done | [history](docs/roadmap-history/phases-164.md) |
 | 165 | Mountains on the horizon: distant bands out to the visibility limit | Planned | below |
 | 166 | Native builder scaffold: GDExtension, loader, fallback, CI binaries and releases | Planned | below |
@@ -192,49 +192,7 @@ issue number where the criterion used to be.
 | 169 | Native `build_chunk_arrays` and the speed target | Planned | below |
 | 170 | A compute-shader heightmap, if the native builder is still the bottleneck | Planned | below |
 | 171 | Creatures in exact coordinates: no float32 metres far from the origin | Planned | below |
-
----
-
-## Phase 163 — Crowd performance: fix what the Phase 162 report names
-
-**Goal:** make the crowd sizes from Phase 162 cheaper. This phase is written before the measurements,
-so its deliverables are the hot spots the Phase 162 report ranks, worked top-down; the candidates below
-are what the code suggests today and are dropped or reordered when the report disagrees. The PR body
-records the report before and after each fix, so every change is justified by a number.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phase 162.
-
-**Deliverables:**
-- A `docs/perf/crowd-baseline.md` page: the Phase 162 report that this phase starts from (sizes, tick
-  phases, bytes per message type), committed so later runs have a fixed comparison.
-- Fixes for the top hot spots, each with a suite test that pins the cost it removed. Likely candidates:
-  - position relays: send only what changed, at a rate that drops with distance inside the AOI, and
-    batch every relay for one peer into one packet per tick instead of one per subject;
-  - AOI work: update a peer's AOI set when it changes cell, not every tick; keep per-cell subscriber
-    lists so a relay does not scan every peer;
-  - peer windows and region reads: share the window work for peers that stand in the same chunks,
-    so a cluster of players costs closer to one window than to n;
-  - creature AI and syncs: tick creatures near players, sleep the rest, and share path searches for
-    creatures chasing the same target;
-  - the watcher: pool remote avatars, cut their animation and nameplate cost by distance, and apply
-    relays in one pass per frame.
-- `tools/stress.sh` budgets move into one table, and CI fails when the largest passing size of any
-  pattern drops below the size recorded in the baseline.
-- `README.md` Testing: the crowd size the host supports today.
-
-**Acceptance criteria:**
-- [ ] CI `stress` job: under `lan`, the `cluster` and `cross` patterns meet every budget at 64 bots,
-  and no pattern's largest passing size is lower than in the baseline.
-- [ ] CI `stress` job: host tick p95 at 64 bots in `cluster` is at most half the baseline's, and
-  bytes down per peer in `cluster` at 64 bots is at most 60% of the baseline's.
-- [ ] Suite: each fix has a test that proves its saving on a fixed input (relays per tick, AOI
-  scans per tick, windows built per tick, creatures ticked per tick), and the existing sync, AOI and
-  creature tests stay green.
-- [ ] Suite: a relay batch decodes to the same positions as the per-subject relays; a distant peer
-  in the AOI still gets a relay at least once per second.
-- [ ] Harness green on loopback and under `wan_bad`; suite green on both boot paths.
+| 172 | Host chunk attach off the main thread | Planned | below |
 
 ---
 
@@ -457,6 +415,37 @@ exact `{chunk, local}` positions; creatures should too. Split out of review foll
 - [ ] Suite: its model's scene position is within 1 cm of the record, seen from a camera beside it.
 - [ ] Suite: a legacy float-position creature record still loads.
 - [ ] Harness: a creature delta far from the origin lands within 1 cm on the client.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 172 — Host chunk attach off the main thread
+
+**Goal:** after Phase 163 the host's tick p95 under a moving crowd (`cross`, `spread`) sits at 13–17 ms
+whatever the crowd size, and the frames that set it are single-chunk attaches: `voxel_build.build_chunk`
+spends about 16 ms on the main thread per streamed chunk (the terrain mesh and its trimesh collision),
+while the worker already did the resolve. That keeps `cross` at 64 bots just over the 16 ms tick budget
+(16.9 ms) and is the Phase 163 criterion this phase closes. A dedicated server draws nothing, so it
+should not pay for a mesh, and the collision it needs can be prepared off the main thread.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 163.
+
+**Deliverables:**
+- Measure the split of `build_chunk` on the host (mesh, collision shape, contents) with `TickProbe`
+  sub-phases, and record it in the PR.
+- A headless/dedicated host builds no render mesh (no `MeshInstance3D`, water or deposit visuals); a
+  listen host and clients keep them.
+- The collision shape's faces are built on the worker with the arrays, and the main thread only
+  attaches the prepared shape; an attach that still exceeds the pump budget is spread over frames.
+- Whatever cannot move is bounded per frame by the Phase 142 pump, so no single attach exceeds it.
+
+**Acceptance criteria:**
+- [ ] Suite: a headless host's chunk carries collision and no render mesh; a listen host's carries both.
+- [ ] Suite: the worker-built collision faces equal the main-thread ones for a fixed chunk set.
+- [ ] CI `stress` job: under `lan`, `cross` meets every budget at 64 bots and no pattern's largest
+  passing size falls below the baseline.
 - [ ] Suite green on both boot paths, harness green.
 
 ---

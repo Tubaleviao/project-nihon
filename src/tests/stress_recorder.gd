@@ -340,12 +340,13 @@ static func orphans(root: Node) -> Dictionary:
 		"bound_peers": (root._registry.get_peer_ids() as Array).size(),
 		"peer_windows": int(root._chunk_manager.peer_window_count()),
 		"aoi_regions": (root._peer_aoi_regions as Dictionary).size(),
+		"relay_pairs": int(net._relays.pair_count()),
 		"records_clocks": (root._peer_records_msec as Dictionary).size(),
+		"records_sent": (root._snapshot_wiring.records_sent as Dictionary).size(),
 	}
 
 func _watch_report() -> Dictionary:
 	var in_type: Dictionary = _wire["in_type"]
-	var relay_row: Array = in_type.get("remote_player_state", [0, 0])
 	var in_bytes := 0
 	for k in _wire["in_peer"]:
 		in_bytes += int((_wire["in_peer"][k] as Array)[0])
@@ -358,7 +359,7 @@ func _watch_report() -> Dictionary:
 		"avatars_mean": _avatar_sum / maxf(1.0, float(_frame_ms.size())),
 		"bytes_in": in_bytes,
 		"in_type": in_type,
-		"relays": int(relay_row[1]),
+		"relays": _relays.size(),   # Phase 163 — relays arrive batched: count the positions, not packets
 		"relay_apply_us": int(_phase_us.get("relay_apply", 0)),
 		"phase_us": _phase_us,
 		"relay_seen": _relays,

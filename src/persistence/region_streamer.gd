@@ -14,6 +14,7 @@ extends RefCounted
 const RegionStore := preload("res://src/persistence/region_store.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
+const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 
 var _store: RegionStore
 ## Phase 142 — read missing regions on a worker (see the header). Off: `sync` reads inline.
@@ -63,12 +64,22 @@ func _init(store: RegionStore, voxel: Object, async: bool = false) -> void:
 ## Phase 114 — a chunk that already has a generation record needs only `recorded_margin` (a frontier
 ## blend reads records around an UNRECORDED chunk), so a fully recorded window loads no extra region.
 static func regions_for_chunks(chunks: Array, margin: int = 1, recorded_margin: int = 1) -> Dictionary:
-	var out: Dictionary = {}
-	# One locked pass over the record table for the whole list (not a lock per chunk).
-	var recorded: Dictionary = ChunkRecords.recorded_keys(chunks, TerrainSlice.wrap_chunk) if margin != recorded_margin else {}
+	# Phase 163 — regions are collected as Vector2i and keyed once each at the end: a crossing's window
+	# has hundreds of chunks but touches a handful of regions, and a string per chunk (nine per edge
+	# chunk) was most of a refresh.
+	var regions: Dictionary = {}
+	# Only a chunk near an edge (for the wider margin) can reach past its region, so only those are
+	# looked up in the record table, in one locked pass (not a lock per chunk).
+	var widest := maxi(margin, recorded_margin)
+	var circumference := TerrainSlice.circumference_chunks()
+	var edge: Array = []
 	for c in chunks:
+		regions[RegionStore.region_of_chunk(c)] = true
+		if _near_region_edge(c, widest):
+			edge.append(c)
+	var recorded: Dictionary = ChunkRecords.recorded_keys(edge, TerrainSlice.wrap_chunk) if margin != recorded_margin else {}
+	for c in edge:
 		var chunk: Vector2i = c
-		out[RegionStore.region_key(RegionStore.region_of_chunk(chunk))] = true
 		var reach := recorded_margin if recorded.has(chunk) else margin
 		if not _near_region_edge(chunk, reach):
 			continue   # an interior chunk reads nothing beyond its own region
@@ -79,10 +90,19 @@ static func regions_for_chunks(chunks: Array, margin: int = 1, recorded_margin: 
 		# Phase 113: the host passes `Frontier.BLEND_CHUNKS`, the records a frontier chunk reads.
 		# Regions are `REGION_SIZE` wide, far wider than the margin, so the extremes and the centre
 		# of the square touch every region it does.
+		# The three region columns and three region rows of the square, each computed once.
+		var rxs: Array = []
 		for dx in [-reach, 0, reach]:
-			for dz in [-reach, 0, reach]:
-				var n := TerrainSlice.wrap_chunk(chunk + Vector2i(dx, dz))
-				out[RegionStore.region_key(RegionStore.region_of_chunk(n))] = true
+			rxs.append(floori(float(SeamWrap.wrap_i(chunk.x + dx, circumference)) / float(RegionStore.REGION_SIZE)))
+		var rzs: Array = []
+		for dz in [-reach, 0, reach]:
+			rzs.append(floori(float(chunk.y + dz) / float(RegionStore.REGION_SIZE)))
+		for rx in rxs:
+			for rz in rzs:
+				regions[Vector2i(rx, rz)] = true
+	var out: Dictionary = {}
+	for r in regions:
+		out[RegionStore.region_key(r)] = true
 	return out
 
 ## Phase 121 — true when `chunk` is within `reach` chunks of its region's edge or of the X seam (where
