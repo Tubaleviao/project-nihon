@@ -88,6 +88,7 @@ func remove(id: String) -> void:
 	var carrier := str(_carcasses[id]["carrier"])
 	if carrier != "":
 		_carried.erase(carrier)
+		GameBus.carcass_carrier_lost.emit(carrier)
 	_carcasses.erase(id)
 	_free_node(id)
 	GameBus.carcass_removed.emit(id)
@@ -268,6 +269,12 @@ func from_data(data: Variant) -> void:
 		var p: Variant = rec.get("pos", [])
 		var remaining := float(rec.get("remaining", 0.0))
 		if not (p is Array) or (p as Array).size() != 3 or not is_finite(remaining) or remaining <= 0.0:
+			continue
+		var coords_ok := true
+		for n in p:
+			if not (n is float or n is int) or not is_finite(float(n)) or absf(float(n)) > 1.0e7:
+				coords_ok = false
+		if not coords_ok:
 			continue
 		var id := str(rec.get("id", ""))
 		if id == "" or _carcasses.has(id):

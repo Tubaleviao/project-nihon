@@ -1109,14 +1109,17 @@ func _update_aim_hud() -> void:
 		_aim_label.visible = false
 		return
 	_aim_label.position = _aim_label.get_viewport().get_mouse_position() + Vector2(18.0, 22.0)
+	var carcass_text := ""
+	if _aimed_item_id == "" and _aimed_tree_id == "":
+		carcass_text = _carcass_prompt()
 	if _aimed_item_id != "":
 		_aim_label.text = I18n.t("hud.pickup", [_aimed_item_id])
 		_aim_label.visible = true
 	elif _aimed_tree_id != "":
 		_aim_label.text = I18n.t("hud.chop", [_aimed_tree_species])
 		_aim_label.visible = true
-	elif _carcass_prompt() != "":
-		_aim_label.text = _carcass_prompt()
+	elif carcass_text != "":
+		_aim_label.text = carcass_text
 		_aim_label.visible = true
 	else:
 		_aim_label.text = ""
@@ -1204,7 +1207,7 @@ func _carcass_prompt() -> String:
 		return ""
 	if carrying:
 		return I18n.t("hud.carcass.carrying")
-	var cid := str(carcass_slice.nearest(get_position(), 3.0))
+	var cid := str(carcass_slice.nearest(get_position(), CarcassRules.rule_f("harvestRangeMetres", 3.0)))
 	if cid == "":
 		return ""
 	var held: Array = []
@@ -1233,7 +1236,7 @@ func _try_carcass(harvest: bool) -> void:
 		return
 	if carcass_slice == null or carrying:
 		return
-	var cid := str(carcass_slice.nearest(get_position(), 3.0))
+	var cid := str(carcass_slice.nearest(get_position(), CarcassRules.rule_f("harvestRangeMetres", 3.0)))
 	if cid != "":
 		(GameBus.harvest_intent if harvest else GameBus.carry_intent).emit(cid, "")
 

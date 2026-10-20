@@ -12,6 +12,7 @@ func register() -> void:
 	_run_test("carcass: a body expires after corpseSeconds and a saved world restores it", _test_expiry_and_save)
 	_run_test("carcass: a region keeps at most maxCarcassesPerRegion bodies, the oldest decaying first", _test_region_cap)
 	_run_test("carcass: the prompt names what the held tools can take and what is missing", _test_prompt)
+	_run_test("carcass: a carried body that decays releases its carrier; a refused carry keeps the harvest running", _test_carrier_lost)
 	_run_test("carcass: hostile saved data and unknown creatures are dropped", _test_hostile_save)
 
 
@@ -185,7 +186,9 @@ func _test_carry() -> void:
 	f["gr"]._player = pl
 	pl.set_hp(0.0)
 	GameBus.player_damaged.emit(5.0, "x", "p1")
+	f["gr"]._carcass_wiring.tick(0.01)   # the death check runs once the hit has been applied
 	assert_eq(f["sl"].carried_by("p1"), "", "dying drops the body")
+	assert_false(pl.carrying, "the carry state is cleared with it")
 	pl.free()
 	f["gr"]._player = null
 	_free_fixture(f)
@@ -235,9 +238,39 @@ func _test_prompt() -> void:
 		assert_true(I18nScript.has_key(key), "%s is in the catalog" % key)
 
 
+func _test_carrier_lost() -> void:
+	var f := _fixture()
+	var pl := PlayerSlice.new()
+	f["gr"]._player = pl
+	var cid: String = f["sl"].create_for_death("ForestBoar", Vector3.ZERO, "p1")
+	GameBus.carry_intent.emit(cid, "p1")
+	assert_true(pl.carrying, "carrying")
+	f["sl"].remove(cid)
+	assert_false(pl.carrying, "a body that vanishes releases its carrier")
+	assert_eq(pl.carry_speed_factor, 1.0, "speed back to normal")
+	f["inv"].add_item("SkinningKnife", 1)
+	var other: String = f["sl"].create_for_death("ForestBoar", Vector3(40, 0, 0), "p1")
+	var near: String = f["sl"].create_for_death("ForestBoar", Vector3.ZERO, "p1")
+	GameBus.harvest_intent.emit(near, "p1")
+	GameBus.carry_intent.emit(other, "p1")   # out of range: refused, the harvest goes on
+	assert_true(f["gr"]._carcass_wiring._actions.has("p1"), "a refused carry does not cancel the harvest")
+	pl.free()
+	f["gr"]._player = null
+	_free_fixture(f)
+
+
 func _test_hostile_save() -> void:
 	var g := CarcassSlice.new()
 	add_child(g)
+	g.from_data({"next_id": 5, "carcasses": [
+		{"id": "a", "creature": "Nope", "pos": [0, 0, 0], "entries": [], "remaining": 10.0},
+		{"id": "b", "creature": "ForestBoar", "pos": [0, 0], "entries": [], "remaining": 10.0},
+		{"id": "c", "creature": "ForestBoar", "pos": [0, 0, 0], "entries": [{"item": "diamond"}], "remaining": 10.0},
+		{"id": "d", "creature": "ForestBoar", "pos": [0, 0, 0], "entries": [{"item": CarcassRules.entries_for("ForestBoar")[0]["item"]}], "remaining": -3.0},
+		{"id": "e", "creature": "ForestBoar", "pos": [0, 0, 0], "entries": [{"item": CarcassRules.entries_for("ForestBoar")[0]["item"]}], "remaining": 99999999.0}]})
+	g.from_data({"carcasses": [{"id": "n", "creature": "ForestBoar", "pos": [NAN, 0, 0], "entries": [{"item": CarcassRules.entries_for("ForestBoar")[0]["item"]}], "remaining": 10.0},
+		{"id": "s", "creature": "ForestBoar", "pos": ["x", 0, 0], "entries": [{"item": CarcassRules.entries_for("ForestBoar")[0]["item"]}], "remaining": 10.0}]})
+	assert_eq(g.count(), 0, "a non-finite or non-numeric position is dropped")
 	g.from_data({"next_id": 5, "carcasses": [
 		{"id": "a", "creature": "Nope", "pos": [0, 0, 0], "entries": [], "remaining": 10.0},
 		{"id": "b", "creature": "ForestBoar", "pos": [0, 0], "entries": [], "remaining": 10.0},

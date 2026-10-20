@@ -28,6 +28,8 @@ var attacker_pos_fn: Callable = Callable()
 var walkable_fn: Callable = Callable()
 ## `(Vector3) -> float`: ground height under a landing spot, so the body lies on the terrain.
 var ground_fn: Callable = Callable()
+## `(attacker_id) -> bool`: true when that attacker may not start a round (carrying a body, Phase 161).
+var attack_blocked: Callable = Callable()
 ## Counts resolved rounds; the seed of the on-hit roll, so a replayed round rolls the same.
 var _round_seq: int = 0
 
@@ -194,6 +196,8 @@ func reset_hp(entity_id: String) -> void:
 # ---------------------------------------------------------------------------
 
 func _on_combat_round_requested(attacker_id: String, defender_id: String) -> void:
+	if attack_blocked.is_valid() and attack_blocked.call(attacker_id):
+		return   # e.g. the attacker is carrying a body (Phase 161): the host refuses, not only the client
 	resolve_round(attacker_id, defender_id)
 
 ## Clear tracked HP when a creature respawns so it doesn't re-enter combat with

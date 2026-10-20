@@ -314,6 +314,7 @@ hud.carcass.refused.too_heavy,Too heavy to carry.,Pesado demais para carregar.
 hud.carcass.refused.carrying,You are already carrying a body.,Você já está carregando um corpo.
 hud.carcass.refused.carried_by_other,Someone else carries it.,Outra pessoa o carrega.
 hud.carcass.refused.moved,You moved away.,Você se afastou.
+hud.carcass.refused.cancelled,Harvest cancelled.,Coleta cancelada.
 hud.carcass.refused.damaged,You were hit.,Você foi atingido.
 hud.carcass.refused.unknown_carcass,The body is gone.,O corpo sumiu.
 hud.carcass.done,You harvested {0}.,Você coletou {0}.

@@ -768,6 +768,8 @@ signal carcass_drop_intent(player_id: String)
 ## Host: a carcass was created or changed (entries worked, picked up, put down) / is gone.
 signal carcass_changed(carcass_id: String)
 signal carcass_removed(carcass_id: String)
+## Host: a body vanished (decay, region cap) while `player_id` carried it, so their carry state is stale.
+signal carcass_carrier_lost(player_id: String)
 
 ## Host: a timed harvest began (`seconds` long) / ended. `reason` is "" on success, else a refusal or
 ## cancel key ("out_of_range", "moved", "damaged", ...); `items` is [{ item, quantity, quality }].
