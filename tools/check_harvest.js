@@ -68,6 +68,24 @@ expect('a chance curve above 1 fails', harvest.harvestProblems(ch), /chanceCurve
 const cr = fresh(); cr.creatures.ForestBoar.carryRule = 'fly';
 expect('an unknown carry rule fails', harvest.harvestProblems(cr), /carryRule must be one of/);
 
+const sk = fresh(); sk.creatures.ForestBoar.drops[0].skill = 'Smithing';
+expect('a skill other than Skinning fails', harvest.harvestProblems(sk), /skill must be Skinning/);
+
+const mx = fresh(); mx.skinning.maxLevel = 7;
+expect('Skinning maxLevel differing from levelCap fails', harvest.harvestProblems(mx), /maxLevel \(7\) must equal levelCap/);
+
+const big = fresh(); big.creatures.ForestBoar.carcassMassKg = 1000;
+expect('a drag body over the drag limit fails', harvest.harvestProblems(big), /ForestBoar: carryRule drag but 1000 kg exceeds/);
+
+const none = fresh(); none.tools.BoneSaw.harvestTool = 'none';
+expect("an item with harvestTool 'none' fails", harvest.harvestProblems(none), /BoneSaw\.harvestTool must be one of/);
+
+const qty = fresh(); qty.creatures.ForestBoar.drops[0].maxQty = 0; qty.creatures.ForestBoar.drops[0].minQty = 0;
+expect('maxQty 0 fails', harvest.harvestProblems(qty), /needs 0 <= minQty <= maxQty/);
+
+const chn = fresh(); chn.creatures.ForestBoar.drops[0].chance = 0;
+expect('chance 0 fails', harvest.harvestProblems(chn), /chance must be in/);
+
 let threw = false;
 try { harvest.validateHarvest(spoon); } catch (e) { threw = true; }
 expect('validateHarvest throws on bad data', threw ? [] : ['did not throw'], null);

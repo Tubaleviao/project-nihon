@@ -303,7 +303,7 @@ module.exports = {
       ...carcassFields({ massKg: 3, corpseSeconds: 180, carryRule: 'carry' }),
       drops: dropsData([
         { item: 'hawk_feather', chance: 1.0,  minQty: 1, maxQty: 3, tool: 'none', skill: 'Skinning' },
-        { item: 'hawk_talon',   chance: 0.35, minQty: 1, maxQty: 1, tool: 'none', skill: 'Skinning' },
+        { item: 'hawk_talon',   chance: 0.35, minQty: 1, maxQty: 1, tool: 'bonetool', skill: 'Skinning' },
       ]),
     },
     stateMachine: creatureStateMachine(),
