@@ -310,6 +310,19 @@ func gesture_clip_of(instance_id: String) -> String:
 func attack_clip_of(instance_id: String) -> String:
 	return sl.RigTree.attack_clip_for(str(sl.get_equipment_set(instance_id).get("MainHand", "")), GameData.ITEMS)
 
+func set_character_position(instance_id: String, pos: Vector3) -> bool:
+	if not sl._instances.has(instance_id):
+		return false
+	var inst: Dictionary = sl._instances[instance_id]
+	inst["position"] = pos
+	(inst["root"] as Node3D).position = pos + sl._origin.value + Vector3(0.0, float(inst.get("seat_lift", 0.0)), 0.0)
+	return true
+
+func get_character_yaw(instance_id: String) -> Variant:
+	if not sl._instances.has(instance_id):
+		return null
+	return (sl._instances[instance_id]["root"] as Node3D).rotation.y
+
 func trigger_hit(instance_id: String, stagger: bool = false) -> void:
 	if sl._instances.has(instance_id):
 		sl._instances[instance_id]["locomotion"].trigger_hit(stagger)

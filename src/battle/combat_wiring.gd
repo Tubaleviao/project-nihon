@@ -73,9 +73,9 @@ func _animate_hit(a_key: String, d_key: String, outcome: String) -> void:
 	# The local body flinches on `player_damaged` (which also covers burns and the like), so a hit on it
 	# is skipped here and nobody flinches twice.
 	var is_local_body := d_key.begins_with("p:") and _character_for_key(d_key) == root._character.get_player_character()
-	# A creature killed by this blow goes to its Death node; a queued flinch would replay on respawn.
-	var killed_creature := outcome == "kill" and d_key.begins_with("c:")
-	if outcome != "miss" and not is_local_body and not killed_creature:
+	# A body killed by this blow (creature or player) goes to its death pose; a queued flinch would
+	# replay on respawn.
+	if outcome != "miss" and outcome != "kill" and not is_local_body:
 		_flinch(d_key)
 
 ## The local body took damage, from any source: flinch.
@@ -236,10 +236,11 @@ func _on_status_player_died(_position: Vector3, _killer_id: String, _landing: Ve
 			push_status_effects(str(t), status_now())
 
 ## Phase 157 — host: where an attacker stands, for the death push. A creature instance, or "player" (the
-## host's own body). Anything else (a remote peer) is the peer's last reported position when known.
+## host's own body, by either of its ids). Anything else (a remote peer) is the peer's last reported
+## position when known. Null when nothing places the attacker (no player body on a dedicated server).
 func death_attacker_pos(attacker_id: String) -> Variant:
-	if attacker_id == "player":
-		return root._player.get_position()
+	if attacker_id == "player" or (attacker_id != "" and attacker_id == root._registry.local_player_id):
+		return root._player.get_position() if root._player != null else null
 	for inst in root._creature.get_all_instances():
 		if inst["instance_id"] == attacker_id:
 			return inst["position"]
@@ -254,7 +255,8 @@ func player_death_landing(killer_id: String, pos: Vector3, damage: float, max_hp
 		return Vector3.ZERO
 	return root._battle.death_landing(pos, killer_id, damage, max_hp, root._battle.size_ratio(killer_id, max_hp))
 
-## Phase 157 — a body may land on ground it can step onto (the knockback rule).
+## Phase 157 — a body may land on ground it can step onto (the knockback rule, shared with
+## `_on_knockback_requested`).
 func death_walkable(probe: Vector3) -> bool:
 	return root._voxel.get_voxel_height_at(Vector2(probe.x, probe.z)) <= probe.y + root.KNOCKBACK_STEP_UP
 
@@ -283,9 +285,7 @@ func _on_knockback_requested(target_id: String, attacker_id: String, tiles: int)
 		if peer == 0 or not root._networking.has_last_known_state(peer):
 			return   # a peer that never reported has no position to push from (it reads as the origin)
 		pos = root._networking.get_last_known_state(peer)
-	var walkable := func(probe: Vector3) -> bool:
-		return root._voxel.get_voxel_height_at(Vector2(probe.x, probe.z)) <= probe.y + root.KNOCKBACK_STEP_UP
-	var spot := StatusEffects.knockback_target(pos, src, tiles, TerrainSlice.TILE_SIZE, walkable)
+	var spot := StatusEffects.knockback_target(pos, src, tiles, TerrainSlice.TILE_SIZE, death_walkable)
 	if spot == pos:
 		return
 	spot.y = maxf(spot.y, root._voxel.get_voxel_height_at(Vector2(spot.x, spot.z)))
@@ -303,14 +303,16 @@ func _on_player_died(death_pos: Vector3, killer_id: String, landing: Vector3) ->
 	if who == "":
 		return
 	# Phase 157 — the death variant follows the hit: killer to body, against the way the avatar faces.
+	GameBus.character_death_requested.emit(who, death_clip(who, death_pos, killer_id))
+
+## Phase 157 — the death variant for `who` killed at `death_pos` by `killer_id`: the push variant from
+## the killer-to-body direction against the avatar's facing, else the default clip.
+func death_clip(who: String, death_pos: Vector3, killer_id: String) -> String:
 	var src: Variant = death_attacker_pos(killer_id) if killer_id != "" else null
-	var avatar: Variant = root._character._instances.get(who, {}).get("root")
-	if src is Vector3 and avatar is Node3D:
-		var clip := DeathPush.variant(death_pos - (src as Vector3), (avatar as Node3D).rotation.y)
-		if clip != DeathPush.DEATH_DEFAULT:
-			root._character.trigger_death(who, clip)
-			return
-	GameBus.character_death_requested.emit(who)
+	var yaw: Variant = root._character.get_character_yaw(who)
+	if src is Vector3 and yaw != null:
+		return DeathPush.variant(death_pos - (src as Vector3), float(yaw))
+	return DeathPush.DEATH_DEFAULT
 
 func _on_player_respawned(_position: Vector3) -> void:
 	# The death pose is terminal until reset: without this the avatar lies down for good after a respawn.
