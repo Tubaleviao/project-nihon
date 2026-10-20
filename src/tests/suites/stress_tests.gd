@@ -351,8 +351,8 @@ func _test_relay_batch_per_tick() -> void:
 	n._m2.flush_relays()
 	var outbox: Array = n.memory_transport().outbox
 	assert_eq(outbox.size(), 5, "one packet per recipient (was one per recipient per subject: 25)")
-	assert_eq(n.relay_packets_sent, 5, "counted")
-	assert_eq(n.relay_entries_sent, 25, "carrying every relay")
+	assert_eq(n._m2.relay_packets_sent, 5, "counted")
+	assert_eq(n._m2.relay_entries_sent, 25, "carrying every relay")
 	n._m2.flush_relays()
 	assert_eq(n.memory_transport().outbox.size(), 5, "an empty tick sends nothing")
 	n.free()
@@ -396,9 +396,9 @@ func _test_relay_far_once_per_second() -> void:
 		var pos := Vector3(0.45 * i, 0.0, 0.0)
 		n.remember_player_state(2, pos)
 		var pk := WorldPos.pos_to_packet_text(WorldPos.from_world(pos.x, pos.y, pos.z))
-		if n._relay_scheduler.offer(3, 2, pk, 80.0 - pos.x, t):
+		if n._m2.relay_scheduler.offer(3, 2, pk, 80.0 - pos.x, t):
 			times.append(t)
-		for r in n._relay_scheduler.release_due(t):
+		for r in n._m2.relay_scheduler.release_due(t):
 			times.append(t)
 	assert_true(times.size() >= 4, "a walker is relayed to a distant peer at least once per second over four seconds")
 	assert_true(times.size() < 40, "and far fewer than the 40 reports it made")

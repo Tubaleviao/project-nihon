@@ -85,7 +85,6 @@ enum Role { OFFLINE, HOST, CLIENT }
 ## O(radius²)-cells query, not an O(peers) scan (Phase 29).
 const SpatialHash := preload("res://src/core/spatial_hash.gd")
 const Transport := preload("res://src/networking/transport.gd")
-const RelayScheduler := preload("res://src/networking/relay_scheduler.gd")
 const EnetTransport := preload("res://src/networking/enet_transport.gd")
 
 ## Phase 36 — the registry's id-SHAPE predicate, preloaded for the redactor: it is a
@@ -380,8 +379,6 @@ static func profile_rtt_ms(name: String) -> float:
 ## Eviction of stale last-known-states runs unconditionally (no ENet overhead).
 func _process(_delta: float) -> void:
 	_evict_stale_states()
-	if _role == Role.HOST:
-		_m2.flush_relays()
 	if not emulate_network:
 		return
 	_drain_emulator()
@@ -544,12 +541,6 @@ func _broadcast_aoi(payload: Dictionary, position: Vector3) -> void:
 ## Phase 119 — the wire. `null` until the first send/connect, then an `EnetTransport` over the engine
 ## peer. The suite injects a `MemoryTransport` (`set_transport`); a release boot refuses it.
 var _transport: Transport = null
-## Phase 163 — host: which relay goes to whom and when (see `RelayScheduler`), the relays queued for this
-## tick's batch (recipient -> [[subject, packed position]]) and what was sent, for the suite and the report.
-var _relay_scheduler := RelayScheduler.new()
-var _relay_outbox: Dictionary = {}
-var relay_packets_sent := 0
-var relay_entries_sent := 0
 ## The engine transport, built lazily by `_ensure_transport` when none is injected.
 var _enet: Transport = null
 

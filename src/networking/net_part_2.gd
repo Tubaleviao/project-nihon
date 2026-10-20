@@ -2,6 +2,12 @@ extends RefCounted
 ## Methods moved verbatim out of `networking_slice.gd` (Phase 154). `sl` is the owning slice; each moved method keeps a forwarder there.
 
 var sl: Node
+## Phase 163 — which relay goes to whom and when (`RelayScheduler`), the relays queued for this tick's batch
+## (recipient -> [[subject, packed position]]) and what was sent, for the suite and the report.
+var relay_scheduler := preload("res://src/networking/relay_scheduler.gd").new()
+var relay_outbox: Dictionary = {}
+var relay_packets_sent := 0
+var relay_entries_sent := 0
 
 func _init(slice: Node) -> void:
 	sl = slice
@@ -40,6 +46,7 @@ func set_player_id(peer_id: int, player_id: String) -> void:
 ## LAST_KNOWN_STATE_TTL_MS. Called every frame from _process() so the host
 ## dict doesn't grow without bound over long sessions.
 func _evict_stale_states() -> void:
+	flush_relays()   # Phase 163: runs once per host tick, from the slice's `_process`
 	if sl._last_known_timestamps.is_empty():
 		return
 	var now_ms: float = float(Time.get_ticks_msec())
@@ -109,36 +116,36 @@ func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	var now := float(Time.get_ticks_msec())
 	for pid in sl.aoi_recipients(position, sl._connected_peers()):
 		var dist: float = sl.get_aoi_center(int(pid)).distance_to(position)
-		if sl._relay_scheduler.offer(int(pid), peer_id, pk, dist, now):
+		if relay_scheduler.offer(int(pid), peer_id, pk, dist, now):
 			queue_relay(int(pid), peer_id, pk)
 
 ## Phase 163 — host: hold one relay for the end-of-tick batch to `recipient`.
 func queue_relay(recipient: int, subject: int, pk: String) -> void:
-	if not sl._relay_outbox.has(recipient):
-		sl._relay_outbox[recipient] = []
-	sl._relay_outbox[recipient].append([subject, pk])
+	if not relay_outbox.has(recipient):
+		relay_outbox[recipient] = []
+	relay_outbox[recipient].append([subject, pk])
 
 ## Phase 163 — host, once per tick: release the held-back relays that are due, then send each recipient
 ## everything queued for it in ONE `remote_player_states` packet (one per tick, not one per subject).
 func flush_relays() -> void:
 	if sl._role != sl.Role.HOST:
 		return
-	for r in sl._relay_scheduler.release_due(float(Time.get_ticks_msec())):
+	for r in relay_scheduler.release_due(float(Time.get_ticks_msec())):
 		if r[0] in sl._connected_peers():
 			queue_relay(int(r[0]), int(r[1]), str(r[2]))
-	var outbox: Dictionary = sl._relay_outbox
-	sl._relay_outbox = {}
+	var outbox: Dictionary = relay_outbox
+	relay_outbox = {}
 	for recipient in outbox:
-		sl.relay_packets_sent += 1
-		sl.relay_entries_sent += outbox[recipient].size()
+		relay_packets_sent += 1
+		relay_entries_sent += outbox[recipient].size()
 		sl._deliver(int(recipient), { "type": "remote_player_states", "s": outbox[recipient] })
 
 ## Phase 163 — a peer left: no relay is held for it or about it.
 func forget_relays(id: int) -> void:
-	sl._relay_scheduler.forget(id)
-	sl._relay_outbox.erase(id)
-	for recipient in sl._relay_outbox:
-		sl._relay_outbox[recipient] = sl._relay_outbox[recipient].filter(func(e): return int(e[0]) != id)
+	relay_scheduler.forget(id)
+	relay_outbox.erase(id)
+	for recipient in relay_outbox:
+		relay_outbox[recipient] = relay_outbox[recipient].filter(func(e): return int(e[0]) != id)
 
 ## Phase 37 — host → one client: a creature struck THIS player. Damage is applied by
 ## the machine that simulates the body (`PlayerSlice` on the peer's own client, which
