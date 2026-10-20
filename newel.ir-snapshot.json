@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:f854dc7402f8215d589ed8246f53698772621e68bb12118571c994a5b4dd088e",
+  "schemaHash": "sha256:d4f95ce36a0d530eec731e678f1badbab727ffbeb6155e3f03e22c4a48518768",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -25071,7 +25071,7 @@
                 "chance": 0.35,
                 "minQty": 1,
                 "maxQty": 1,
-                "tool": "none",
+                "tool": "bonetool",
                 "skill": "Skinning"
               }
             ]

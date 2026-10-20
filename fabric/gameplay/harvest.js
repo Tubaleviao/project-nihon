@@ -107,6 +107,7 @@ function harvestProblems(data) {
   }
   if (Array.isArray(s.chanceCurve) && s.chanceCurve.some((c) => !(c >= 0 && c <= 1))) problems.push('Skinning.chanceCurve entries must be in [0, 1]')
   if (Array.isArray(s.xpToLevel) && s.xpToLevel[0] !== 0) problems.push('Skinning.xpToLevel must start at 0 for level 0')
+  if (s.maxLevel !== s.levelCap) problems.push(`Skinning.maxLevel (${s.maxLevel}) must equal levelCap (${s.levelCap})`)
   if (!(s.xpPerHarvest > 0)) problems.push('Skinning.xpPerHarvest must be > 0')
 
   if (!(r.carrySlowAboveFraction > 0 && r.carrySlowAboveFraction <= 1)) problems.push('carrySlowAboveFraction must be in (0, 1]')
@@ -133,6 +134,7 @@ function harvestProblems(data) {
       if (!HARVEST_TOOLS.includes(e.tool)) problems.push(`${at}: tool must be one of ${HARVEST_TOOLS.join(', ')}, got "${e.tool}"`)
       else if (!provided.has(e.tool)) problems.push(`${at}: no item provides tool "${e.tool}"`)
       if (!skills.includes(e.skill)) problems.push(`${at}: unknown skill "${e.skill}"`)
+      else if (e.skill !== 'Skinning') problems.push(`${at}: skill must be Skinning (the only skill with yield, chance and quality curves), got "${e.skill}"`)
       if (!(typeof e.chance === 'number' && e.chance > 0 && e.chance <= 1)) problems.push(`${at}: chance must be in (0, 1]`)
       if (!(Number.isInteger(e.minQty) && Number.isInteger(e.maxQty) && e.minQty >= 0 && e.maxQty >= e.minQty && e.maxQty >= 1)) problems.push(`${at}: needs 0 <= minQty <= maxQty, maxQty >= 1`)
     })
