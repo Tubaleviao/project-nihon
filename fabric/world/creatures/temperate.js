@@ -1,4 +1,5 @@
 const { defineEntity, skeletonField, creatureStateMachine, dropsData, tameData, pathFields, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS, GROUP_BEHAVIORS } = require('./shared')
+const { carcassFields } = require('../../gameplay/harvest')
 
 module.exports = {
 
@@ -28,10 +29,11 @@ module.exports = {
       spawnDensity:   { type: 'decimal', description: 'Amplitude (0–1) of the seeded density noise that clusters and thins packs across the world', defaultValue: 0.5 },
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'TemperateForest' },
       onHitEffects:   { type: 'json', description: 'Status effects a landed hit rolls: [{ effect, chance }] (Phase 129); each effect names a CombatSystem.statusEffects row', defaultValue: [{ effect: 'knockback', chance: 1.0 }] },
+      ...carcassFields({ massKg: 90, corpseSeconds: 300, carryRule: 'drag' }),
       drops: dropsData([
-        { item: 'raw_boar_meat', chance: 1.0, minQty: 1, maxQty: 3 },
-        { item: 'boar_hide',     chance: 1.0, minQty: 1, maxQty: 1 },
-        { item: 'boar_tusk',     chance: 0.2, minQty: 1, maxQty: 1 },
+        { item: 'raw_boar_meat', chance: 1.0, minQty: 1, maxQty: 3, tool: 'knife', skill: 'Skinning' },
+        { item: 'boar_hide',     chance: 1.0, minQty: 1, maxQty: 1, tool: 'knife', skill: 'Skinning' },
+        { item: 'boar_tusk',     chance: 0.2, minQty: 1, maxQty: 1, tool: 'bonetool', skill: 'Skinning' },
       ]),
     },
     stateMachine: creatureStateMachine({ conditionalAlertSkip: true }),
@@ -110,10 +112,11 @@ module.exports = {
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'TemperateForest' },
       groupBehavior:  { type: 'enum', values: GROUP_BEHAVIORS, description: 'How group members coordinate: none (solitary), pack (share alert/aggressive), herd (share flee)', defaultValue: 'pack' },
       packRadius:     { type: 'decimal', description: 'Distance in metres within which group members coordinate with each other', defaultValue: 20.0 },
+      ...carcassFields({ massKg: 35, corpseSeconds: 300, carryRule: 'carry' }),
       drops: dropsData([
-        { item: 'wolf_pelt',       chance: 1.0, minQty: 1, maxQty: 1 },
-        { item: 'wolf_fang',       chance: 0.4, minQty: 0, maxQty: 1 },
-        { item: 'alpha_wolf_fang', chance: 1.0, minQty: 1, maxQty: 1 },
+        { item: 'wolf_pelt',       chance: 1.0, minQty: 1, maxQty: 1, tool: 'knife', skill: 'Skinning' },
+        { item: 'wolf_fang',       chance: 0.4, minQty: 0, maxQty: 1, tool: 'bonetool', skill: 'Skinning' },
+        { item: 'alpha_wolf_fang', chance: 1.0, minQty: 1, maxQty: 1, tool: 'bonetool', skill: 'Skinning' },
       ]),
       tame: tameData({
         result: 'companion',
@@ -212,11 +215,12 @@ module.exports = {
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'TemperateGrassland' },
       groupBehavior:  { type: 'enum', values: GROUP_BEHAVIORS, description: 'How group members coordinate: none (solitary), pack (share alert/aggressive), herd (share flee)', defaultValue: 'herd' },
       packRadius:     { type: 'decimal', description: 'Distance in metres within which group members coordinate with each other', defaultValue: 20.0 },
+      ...carcassFields({ massKg: 600, corpseSeconds: 600, carryRule: 'immovable' }),
       drops: dropsData([
-        { item: 'bison_meat', chance: 1.0,  minQty: 3, maxQty: 6 },
-        { item: 'bison_hide', chance: 1.0,  minQty: 2, maxQty: 2 },
-        { item: 'bison_bone', chance: 1.0,  minQty: 1, maxQty: 2 },
-        { item: 'bison_horn', chance: 0.25, minQty: 1, maxQty: 1 },
+        { item: 'bison_meat', chance: 1.0,  minQty: 3, maxQty: 6, tool: 'knife', skill: 'Skinning' },
+        { item: 'bison_hide', chance: 1.0,  minQty: 2, maxQty: 2, tool: 'knife', skill: 'Skinning' },
+        { item: 'bison_bone', chance: 1.0,  minQty: 1, maxQty: 2, tool: 'bonetool', skill: 'Skinning' },
+        { item: 'bison_horn', chance: 0.25, minQty: 1, maxQty: 1, tool: 'bonetool', skill: 'Skinning' },
       ]),
     },
     stateMachine: creatureStateMachine(),
@@ -296,9 +300,10 @@ module.exports = {
       spawnChance:    { type: 'decimal', description: 'Probability (0–1) that a chunk of this creature\'s biome rolls a pack at all', defaultValue: 0.6 },
       spawnDensity:   { type: 'decimal', description: 'Amplitude (0–1) of the seeded density noise that clusters and thins packs across the world', defaultValue: 0.5 },
       biome:          { type: 'enum', values: BIOME_KEYS, description: 'Biome this creature belongs to', defaultValue: 'TemperateGrassland' },
+      ...carcassFields({ massKg: 3, corpseSeconds: 180, carryRule: 'carry' }),
       drops: dropsData([
-        { item: 'hawk_feather', chance: 1.0,  minQty: 1, maxQty: 3 },
-        { item: 'hawk_talon',   chance: 0.35, minQty: 1, maxQty: 1 },
+        { item: 'hawk_feather', chance: 1.0,  minQty: 1, maxQty: 3, tool: 'none', skill: 'Skinning' },
+        { item: 'hawk_talon',   chance: 0.35, minQty: 1, maxQty: 1, tool: 'bonetool', skill: 'Skinning' },
       ]),
     },
     stateMachine: creatureStateMachine(),

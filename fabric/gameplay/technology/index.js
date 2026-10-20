@@ -66,7 +66,7 @@ module.exports = {
       researchCost: { type: 'integer', description: 'Research points spent to begin research (Phase 124); earned by the ResearchPointRule table', defaultValue: 0 },
       tier:   { type: 'integer', description: 'Technology tree tier (1 = root)' },
       tech: techData({
-        unlocks: ['RecipeFerriteIngot', 'RecipeFerriteShortSword', 'RecipeFerritePick'],
+        unlocks: ['RecipeFerriteIngot', 'RecipeFerriteShortSword', 'RecipeFerritePick', 'RecipeSkinningKnife', 'RecipeBoneSaw'],
         requires: [],
         researchDuration: 10,
         researchMaterials: [{ item: 'Ferrite', quantity: 4 }],
@@ -78,6 +78,8 @@ module.exports = {
       unlocksRecipeFerriteIngot:     { name: 'unlocksRecipeFerriteIngot',     kind: 'hasOne', target: 'RecipeFerriteIngot' },
       unlocksRecipeFerriteShortSword: { name: 'unlocksRecipeFerriteShortSword', kind: 'hasOne', target: 'RecipeFerriteShortSword' },
       unlocksRecipeFerritePick:      { name: 'unlocksRecipeFerritePick',      kind: 'hasOne', target: 'RecipeFerritePick' },
+      unlocksRecipeSkinningKnife:    { name: 'unlocksRecipeSkinningKnife',    kind: 'hasOne', target: 'RecipeSkinningKnife' },
+      unlocksRecipeBoneSaw:          { name: 'unlocksRecipeBoneSaw',          kind: 'hasOne', target: 'RecipeBoneSaw' },
     },
     stateMachine: technologyStateMachine(),
     behaviors: {

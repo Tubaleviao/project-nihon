@@ -26,5 +26,6 @@ Completed phases moved out of [ROADMAP.md](../../ROADMAP.md) to keep it short. T
 | 157 | [phases-157.md](phases-157.md) |
 | 158 | [phases-158.md](phases-158.md) |
 | 159 | [phases-159.md](phases-159.md) |
+| 160 | [phases-160.md](phases-160.md) |
 | 162 | [phases-162.md](phases-162.md) |
 | 164 | [phases-164.md](phases-164.md) |

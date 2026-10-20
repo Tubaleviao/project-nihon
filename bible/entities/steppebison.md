@@ -33,7 +33,10 @@ A massive, shaggy bison that grazes temperate grasslands in loose herds. Slow an
 | `biome` | enum (`TemperateForest`, `TemperateGrassland`, `VolcanicBadlands`, `TwilightGrove`, `VoidRift`, `Ocean`, `Beach`, `Desert`, `Tundra`, `Alpine`, `Taiga`, `Savanna`) | yes | Biome this creature belongs to |
 | `groupBehavior` | enum (`none`, `pack`, `herd`) | yes | How group members coordinate: none (solitary), pack (share alert/aggressive), herd (share flee) |
 | `packRadius` | decimal | yes | Distance in metres within which group members coordinate with each other |
-| `drops` | json | yes | Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system. |
+| `carcassMassKg` | decimal | yes | Mass in kg of the body a kill leaves; compared with the carrier's carry capacity |
+| `corpseSeconds` | integer | yes | Seconds the body stays in the world before it decays |
+| `carryRule` | enum (`carry`, `drag`, `immovable`) | yes | `carry` (fits the carry capacity), `drag` (heavier, slower) or `immovable` |
+| `drops` | json | yes | Structured harvest table: raw item key, base chance (0-1), quantity range [minQty, maxQty], the tool category that works it (knife, bonetool, none) and the scaling skill. Each entry is rolled independently per harvest. |
 
 ### State machine
 

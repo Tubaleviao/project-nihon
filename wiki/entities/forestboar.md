@@ -35,7 +35,10 @@ A stout, bristle-furred boar that roots through the forest floor for tubers and 
 | spawnDensity | decimal | Amplitude (0–1) of the seeded density noise that clusters and thins packs across the world |
 | biome | `TemperateForest`, `TemperateGrassland`, `VolcanicBadlands`, `TwilightGrove`, `VoidRift`, `Ocean`, `Beach`, `Desert`, `Tundra`, `Alpine`, `Taiga`, `Savanna` | Biome this creature belongs to |
 | onHitEffects | json | Status effects a landed hit rolls: [{ effect, chance }] (Phase 129); each effect names a CombatSystem.statusEffects row |
-| drops | json | Structured drop table: raw drop item key, drop chance (0–1), and quantity range [minQty, maxQty]. Rolled independently per kill by the loot system. |
+| carcassMassKg | decimal | Mass in kg of the body a kill leaves; compared with the carrier's carry capacity |
+| corpseSeconds | integer | Seconds the body stays in the world before it decays |
+| carryRule | `carry`, `drag`, `immovable` | \`carry\` (fits the carry capacity), \`drag\` (heavier, slower) or \`immovable\` |
+| drops | json | Structured harvest table: raw item key, base chance (0-1), quantity range [minQty, maxQty], the tool category that works it (knife, bonetool, none) and the scaling skill. Each entry is rolled independently per harvest. |
 
 ## States
 

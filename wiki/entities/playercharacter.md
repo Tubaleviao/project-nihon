@@ -19,6 +19,7 @@ The player-controlled character in the world. Stats are derived from equipped it
 | name | string | Display name chosen at character creation |
 | baseHp | integer | Maximum HP at current level/gear baseline |
 | currentHp | integer | Current hit points; 0 triggers the die transition |
+| carryCapacityKg | decimal | Base kg of creature body the character can carry; Skinning level adds to it (HarvestRules.carryBonusPerSkinningLevelKg) |
 | baseSpeed | decimal | Movement speed in tiles per second |
 | positionX | decimal | World X coordinate (server-authoritative) |
 | positionY | decimal | World Y coordinate (elevation) |

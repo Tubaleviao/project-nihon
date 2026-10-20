@@ -47,6 +47,11 @@
       0.12,
       0.16
     ],
+    "knife": [
+      0.06,
+      0.4,
+      0.08
+    ],
     "longsword": [
       0.22,
       1.15,
@@ -76,6 +81,11 @@
       0.22,
       0.12,
       0.18
+    ],
+    "saw": [
+      0.1,
+      0.55,
+      0.14
     ],
     "shard": [
       0.2,
@@ -128,6 +138,11 @@
       "archetype": "block",
       "scale": 1,
       "hash": "5a18c5c56f279612"
+    },
+    "BoneSaw": {
+      "archetype": "saw",
+      "scale": 1,
+      "hash": "83a26936b1d6bc28"
     },
     "CarpenterAxe": {
       "archetype": "axe",
@@ -188,6 +203,11 @@
       "archetype": "shard",
       "scale": 1,
       "hash": "9ede4c39bef63b99"
+    },
+    "SkinningKnife": {
+      "archetype": "knife",
+      "scale": 1,
+      "hash": "4b2de4fbde3133f9"
     },
     "ThornwoodPlank": {
       "archetype": "plank",

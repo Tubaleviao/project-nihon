@@ -1,0 +1,20 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/items/bonesaw.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+condition = 0
+weight = 0.9
+rarity = 0
+stackable = false
+shape = {"archetype":"saw","parts":{"blade":"Ferrite","grip":"Thornwood"},"scale":1}
+durability = 70
+harvestTool = "bonetool"
+efficiency = 1.0
+repair = {"station":"forge","materials":[{"item":"FerriteIngot","quantity":1}],"skillGuards":[{"skill":"Smithing","tier":"novice"}]}
+state_machine_field = "condition"
+initial_state = "pristine"
+description = "Broad-backed ferrite saw on a thornwood grip. Cuts bone, tusk, horn and fang free of a body; the bonetool category of the harvest tables."
+tags = ["item"]

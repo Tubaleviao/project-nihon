@@ -109,6 +109,8 @@ module.exports = {
       shape: itemShape({ archetype: 'axe', parts: { head: 'Ferrite', handle: 'Thornwood' }, unshown: ['Duskfiber'] }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 90 },
       toolType:   { type: 'string', description: 'Tool class — the action this tool performs. "pick" mines, "axe" chops.', defaultValue: 'axe' },
+      harvestTool: { type: 'string', description: 'Harvest tool category this item provides (Phase 160): knife or bonetool', defaultValue: 'bonetool' },
+      efficiency:  { type: 'decimal', description: 'How well it works that category, in (0, 1]; below 1.0 is a poor substitute', defaultValue: 0.5 },
       repair: repairData({
         station: 'forge',
         materials: [{ item: 'FerriteIngot', quantity: 1 }],
@@ -130,6 +132,88 @@ module.exports = {
       repair: {
         description: 'Restore to pristine condition at a forge',
         rules: ['Repair costs one ferrite ingot; handle wrap (duskfiber) does not require replacement'],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
+  // ─── SkinningKnife ────────────────────────────────────────────────
+  SkinningKnife: defineEntity({
+    tags: ['item'],
+    description:
+      'Short ferrite blade on a thornwood grip, ground for pelts and meat. Takes hide, pelt and organs from a body; the knife category of the harvest tables.',
+    goal: 'Entry harvest tool; gates the knife entries of every creature body',
+    fields: {
+      id:        { type: 'uuid', primaryKey: true },
+      condition: { type: 'enum', values: DURABILITY_STATES },
+      weight:    { type: 'decimal', description: 'kg; affects carry capacity', defaultValue: 0.4 },
+      rarity:    { type: 'enum', values: RARITIES, defaultValue: 'common' },
+      stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory', defaultValue: false },
+      shape: itemShape({ archetype: 'knife', parts: { blade: 'Ferrite', grip: 'Thornwood' } }),
+      durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 60 },
+      harvestTool: { type: 'string', description: 'Harvest tool category this item provides (Phase 160): knife or bonetool', defaultValue: 'knife' },
+      efficiency:  { type: 'decimal', description: 'How well it works that category, in (0, 1]; below 1.0 is a poor substitute', defaultValue: 1.0 },
+      repair: repairData({
+        station: 'forge',
+        materials: [{ item: 'FerriteIngot', quantity: 1 }],
+        skillGuards: [{ skill: 'Smithing', tier: 'novice' }],
+      }),
+    },
+    relations: {
+      ferrite:   { name: 'ferrite',   kind: 'hasOne', target: 'Ferrite' },
+      thornwood: { name: 'thornwood', kind: 'hasOne', target: 'Thornwood' },
+    },
+    stateMachine: itemStateMachine(),
+    behaviors: {
+      degrade: {
+        description: 'Reduce durability after each harvest',
+        rules: ['Each finished harvest consumes durability points'],
+        auth: { roles: ['maintainer'] },
+      },
+      repair: {
+        description: 'Restore to pristine condition at a forge',
+        rules: ['Repair costs one ferrite ingot'],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
+  // ─── BoneSaw ──────────────────────────────────────────────────────
+  BoneSaw: defineEntity({
+    tags: ['item'],
+    description:
+      'Broad-backed ferrite saw on a thornwood grip. Cuts bone, tusk, horn and fang free of a body; the bonetool category of the harvest tables.',
+    goal: 'Second harvest tool; gates the bone entries of every creature body',
+    fields: {
+      id:        { type: 'uuid', primaryKey: true },
+      condition: { type: 'enum', values: DURABILITY_STATES },
+      weight:    { type: 'decimal', description: 'kg; affects carry capacity', defaultValue: 0.9 },
+      rarity:    { type: 'enum', values: RARITIES, defaultValue: 'common' },
+      stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory', defaultValue: false },
+      shape: itemShape({ archetype: 'saw', parts: { blade: 'Ferrite', grip: 'Thornwood' } }),
+      durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 70 },
+      harvestTool: { type: 'string', description: 'Harvest tool category this item provides (Phase 160): knife or bonetool', defaultValue: 'bonetool' },
+      efficiency:  { type: 'decimal', description: 'How well it works that category, in (0, 1]; below 1.0 is a poor substitute', defaultValue: 1.0 },
+      repair: repairData({
+        station: 'forge',
+        materials: [{ item: 'FerriteIngot', quantity: 1 }],
+        skillGuards: [{ skill: 'Smithing', tier: 'novice' }],
+      }),
+    },
+    relations: {
+      ferrite:   { name: 'ferrite',   kind: 'hasOne', target: 'Ferrite' },
+      thornwood: { name: 'thornwood', kind: 'hasOne', target: 'Thornwood' },
+    },
+    stateMachine: itemStateMachine(),
+    behaviors: {
+      degrade: {
+        description: 'Reduce durability after each harvest',
+        rules: ['Each finished harvest consumes durability points'],
+        auth: { roles: ['maintainer'] },
+      },
+      repair: {
+        description: 'Restore to pristine condition at a forge',
+        rules: ['Repair costs one ferrite ingot'],
         auth: { roles: ['maintainer'] },
       },
     },

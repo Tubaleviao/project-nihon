@@ -69,6 +69,10 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [SitGround](entities/sitground.md) — Sit cross-legged on the ground; a small rest bonus
 - [Wave](entities/wave.md) — Wave a hand in greeting
 
+## Harvest
+
+- [HarvestRules](entities/harvestrules.md) — Tuning for working and moving a creature body: how long a harvest takes, how close the harvester stands, how carrying and dragging slow the walk, and how many bodies a region keeps
+
 ## Item
 
 - [AethermiteBow](entities/aethermitebow.md) — Recurve bow with an aethermite-treated thornwood stave and duskfiber string
@@ -76,6 +80,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [AethermiteShard](entities/aethermiteshard.md) — Raw aethermite refined into a crystalline shard at an arcane forge
 - [AlchemyPotion](entities/alchemypotion.md) — Sealed glass flask containing an Alchemist-brewed reagent
 - [AshiteBlock](entities/ashiteblock.md) — Quarried ashite stone block cut to standard building dimensions
+- [BoneSaw](entities/bonesaw.md) — Broad-backed ferrite saw on a thornwood grip
 - [CarpenterAxe](entities/carpenteraxe.md) — Felling axe with a weighted ferrite head and a duskfiber-wrapped thornwood handle
 - [DuskfiberCloak](entities/duskfibercloak.md) — Hooded cloak woven from duskfiber bast
 - [EnchantedAethermiteShard](entities/enchantedaethermiteshard.md) — A refined aethermite shard that has been fully imbued at an arcane forge
@@ -88,6 +93,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [Hearth](entities/hearth.md) — A stone-ringed fire pit that founds a settlement when placed on free land
 - [LumenfiteOrb](entities/lumenfiteorb.md) — A polished lumenfite sphere charged with stored magical energy by an Arcanist
 - [RefinedVoiditeShard](entities/refinedvoiditeshard.md) — Raw voidite stabilised in a forge into a crystalline shard
+- [SkinningKnife](entities/skinningknife.md) — Short ferrite blade on a thornwood grip, ground for pelts and meat
 - [ThornwoodPlank](entities/thornwoodplank.md) — Rough-cut plank milled from thornwood logs
 - [VeilsteelChestplate](entities/veilsteelchestplate.md) — Full torso armour forged from veilsteel plates over a ferrite under-layer
 - [VeilsteelIngot](entities/veilsteelingot.md) — Refined veilsteel bar alloyed in a master forge from ferrite ingots and an aethermite shard
@@ -140,6 +146,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 
 - [RecipeAethermiteBow](entities/recipeaethermitebow.md) — Treat a thornwood bow stave with aethermite and restring with duskfiber to produce an aethermite bow
 - [RecipeAshiteBlock](entities/recipeashiteblock.md) — Cut and shape raw ashite stone into standard building blocks at a masonry bench
+- [RecipeBoneSaw](entities/recipebonesaw.md) — Craft a bone saw from two ferrite ingots and one thornwood plank
 - [RecipeCarpenterAxe](entities/recipecarpenteraxe.md) — Assemble a carpenter axe from one ferrite ingot, one thornwood plank, and one duskfiber strand
 - [RecipeDuskfiberCloak](entities/recipeduskfibercloak.md) — Weave three duskfiber strands into a duskfiber cloak at a carpentry bench
 - [RecipeEnchantedAethermiteShard](entities/recipeenchantedaethermiteshard.md) — Imbue a refined aethermite shard with magical energy at an arcane forge to produce an enchanted catalyst
@@ -150,6 +157,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [RecipeHearth](entities/recipehearth.md) — Lay a hearth from six thornwood planks and four ferrite ingots at a carpentry bench
 - [RecipeLumenfiteOrb](entities/recipelumenfiteorb.md) — Polish a lumenfite stone into a charged spell-focus orb at an arcane forge
 - [RecipeRefinedVoiditeShard](entities/reciperefinedvoiditeshard.md) — Stabilise one raw voidite crystal into a refined voidite shard at a forge
+- [RecipeSkinningKnife](entities/recipeskinningknife.md) — Craft a skinning knife from one ferrite ingot and one thornwood plank
 - [RecipeStaminaPotion](entities/recipestaminapotion.md) — Brew a stamina-restoring potion from aethermite dust and root reagents
 - [RecipeThornwoodPlank](entities/recipethornwoodplank.md) — Mill two thornwood logs into three thornwood planks at a carpentry bench
 - [RecipeVeilsteelChestplate](entities/recipeveilsteelchestplate.md) — Forge a veilsteel chestplate from four veilsteel ingots and two ferrite ingots
@@ -180,6 +188,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [Navigation](entities/navigation.md) — Wayfinding without landmarks using stars, moss growth, wind direction, and terrain features
 - [RestorationMagic](entities/restorationmagic.md) — Healing, shielding, and cleansing magic
 - [Shieldcraft](entities/shieldcraft.md) — Techniques for using a shield offensively and defensively — blocking, parrying, bashing, and forming protective stances
+- [Skinning](entities/skinning.md) — Working a creature body with a knife or bone tool
 - [Smithing](entities/smithing.md) — Metalworking at a forge — shaping ingots into weapons, armor, and structural components
 - [Speechcraft](entities/speechcraft.md) — Persuasion, intimidation, and deception aimed at NPC targets
 - [Stealth](entities/stealth.md) — Moving, hiding, and acting without detection

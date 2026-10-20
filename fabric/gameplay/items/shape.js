@@ -9,6 +9,8 @@ const ARCHETYPES = {
   axe:        ['head', 'handle'],
   sword:      ['blade', 'grip'],
   longsword:  ['blade', 'grip'],
+  knife:      ['blade', 'grip'],
+  saw:        ['blade', 'grip'],
   bow:        ['limb', 'grip', 'tip'],
   shield:     ['face', 'rim'],
   helmet:     ['shell', 'trim'],

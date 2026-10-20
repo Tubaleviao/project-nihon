@@ -9,6 +9,7 @@ state = 0
 name = ""
 baseHp = 100
 currentHp = 100
+carryCapacityKg = 40.0
 baseSpeed = 4.5
 positionX = 0.0
 positionY = 0.0

@@ -14,7 +14,7 @@ func register() -> void:
 	_run_test("death: the clip follows the hit direction", _test_variant_by_direction)
 	_run_test("death: every rig has the variants and ends lying on the ground", _test_rigs_end_grounded)
 	_run_test("death: a creature model falls to its landing and plays the variant", _test_visuals_fall_and_variant)
-	_run_test("death: the corpse lifetime is the constant until the fabric names one", _test_corpse_lifetime)
+	_run_test("death: the corpse lifetime is the fabric's corpseSeconds, else the constant", _test_corpse_lifetime)
 
 
 func _flat_ground(_p: Vector3) -> bool:
@@ -200,5 +200,5 @@ func _test_visuals_fall_and_variant() -> void:
 
 
 func _test_corpse_lifetime() -> void:
-	assert_eq(CreatureVisuals.corpse_seconds("GraywolfPack"), CreatureVisuals.CORPSE_SECONDS, "no fabric value, the constant")
+	assert_eq(CreatureVisuals.corpse_seconds("GraywolfPack"), float(GameData.CREATURES["GraywolfPack"].get("corpseSeconds")), "the fabric value (Phase 160)")
 	assert_eq(CreatureVisuals.corpse_seconds("NoSuchBeast"), CreatureVisuals.CORPSE_SECONDS, "unknown type, the constant")
