@@ -1855,8 +1855,9 @@ func _step_carcass_synced() -> void:
 		var rolls := RandomNumberGenerator.new()
 		_root._carcass.resolve_harvest(cid, "knife", 1.0, 10, rolls)
 		await _await_settle(2.0)
+		# Read the carry at once: the intent resolves synchronously, and a client that has already seen the
+		# follow may finish and disconnect (which drops the body) during any wait after this.
 		GameBus.carry_intent.emit(cid, pid)
-		await _await_settle(0.5)
 		var carried: bool = _root._carcass.carried_by(pid) == cid
 		# The peer walks 6 m; the body follows it on the host (the wiring tick reads the reported position).
 		var walked: Vector3 = _root._networking.get_last_known_state(peer) + Vector3(6.0, 0.0, 0.0)
@@ -1867,17 +1868,22 @@ func _step_carcass_synced() -> void:
 		_report("carcass_synced", verdict(carried and followed and not pool.is_empty(), true), "worked-and-carried" if carried and followed else ("carry_refused" if not carried else "did_not_follow"))
 		return
 	var slice: Node = _root._carcass
+	var first_seen := {}
 	var saw_worked: bool = await _await_until(func():
 		for id in slice.ids():
+			if not first_seen.has(id):
+				first_seen[id] = slice.get_carcass(id)["position"]
 			var left: Array = slice.get_carcass(id)["entries"]
 			if not left.is_empty() and left.all(func(e): return e["tool"] != "knife"):
 				return true
 		return false, _step_timeout())
-	# The body started 2 m from this client and the host walked it 6 m on while carried.
+	# The host planted the body 2 m beside this peer (+x), so a carry pulls it 2 m back onto the peer and the
+	# host's 6 m walk leaves it 4 m past where it first appeared. Measured from there: this client's own
+	# position need not match the host's last report of it.
 	var saw_follow: bool = saw_worked and await _await_until(func():
 		for id in slice.ids():
 			var c: Dictionary = slice.get_carcass(id)
-			if str(c["carrier"]) != "" and (c["position"] as Vector3).distance_to(_root._player.get_position()) > 4.0:
+			if str(c["carrier"]) != "" and first_seen.has(id) and (c["position"] as Vector3).distance_to(first_seen[id]) > 3.0:
 				return true
 		return false, _step_timeout())
 	_report("carcass_synced", verdict(saw_worked and saw_follow, true), "worked-and-carried" if saw_worked and saw_follow else ("entries_not_synced" if not saw_worked else "carry_not_followed"))
