@@ -50,12 +50,17 @@ func offer(subject: int, pk: String, position: Vector3) -> void:
 func has_pending() -> bool:
 	return not _pending.is_empty()
 
-## Turn the frame's reports into recipient -> flat `[subject, pk, …]` and clear them. `connected` is the
+## Turn the frame's reports into recipient -> flat `[subject, pk, …]` and clear them (all but a change
+## still owed to a far recipient, which waits for a later flush). `connected` is the
 ## set of live peers (id -> true), `recipients_of(position)` the peer ids whose AOI holds `position` (one
 ## spatial query per subject), `center_of(peer)` a recipient's AOI centre. A subject is never relayed to
 ## itself: its own client already knows where it is.
 func build(now_ms: float, connected: Dictionary, recipients_of: Callable, center_of: Callable) -> Dictionary:
 	var out := {}
+	# A changed report held back from a far recipient (`FAR_GAP_MS`) stays queued until it is due: the
+	# subject may not report again (a dead body stops ticking after its death push), and the far peer
+	# would keep the stale position for good.
+	var held := {}
 	for subject: int in _pending:
 		var entry: Array = _pending[subject]
 		var pk: String = entry[0]
@@ -71,6 +76,8 @@ func build(now_ms: float, connected: Dictionary, recipients_of: Callable, center
 			var changed := prev == null or str(prev[1]) != pk
 			var dist: float = (center_of.call(rid) as Vector3).distance_to(pos)
 			if not due(dist, changed, since):
+				if changed:
+					held[subject] = entry
 				continue
 			seen[subject] = [now_ms, pk]
 			_last[rid] = seen
@@ -78,7 +85,7 @@ func build(now_ms: float, connected: Dictionary, recipients_of: Callable, center
 				out[rid] = []
 			(out[rid] as Array).append_array([subject, pk])
 			relays += 1
-	_pending.clear()
+	_pending = held
 	return out
 
 ## Split one recipient's flat list into packets of at most `BATCH_MAX` subjects.

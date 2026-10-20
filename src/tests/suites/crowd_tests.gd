@@ -150,6 +150,16 @@ func _test_crowd_relay_distant_once_per_second() -> void:
 		if not (idle.build(float(k) * 500.0, connected, recipients, center) as Dictionary).is_empty():
 			idle_sent += 1
 	assert_eq(idle_sent, 11, "an idle subject is refreshed once a second, not every report")
+	# A last move held back by the far gap (a death push: the body stops reporting) still goes out.
+	var last := RelayBatch.new()
+	last.offer(3, "before", subject_at[0])
+	last.build(0.0, connected, recipients, center)
+	last.offer(3, "pushed", subject_at[0])
+	assert_true((last.build(200.0, connected, recipients, center) as Dictionary).is_empty(), "inside FAR_GAP_MS the move waits")
+	assert_true(last.has_pending(), "and stays queued")
+	var late: Dictionary = last.build(RelayBatch.FAR_GAP_MS, connected, recipients, center)
+	assert_eq(late.get(2, []), [3, "pushed"], "it goes out once due, with no new report")
+	assert_false(last.has_pending(), "and is then cleared")
 
 func _test_crowd_relay_batch_split() -> void:
 	var flat := []
