@@ -249,6 +249,13 @@ func _route_h2c(payload: Dictionary) -> void:
 				GameBus.combat_hit_synced.emit(a, d, o)
 		"remote_player_state":
 			sl._route_remote_player_state(payload)
+		"remote_player_states":
+			# Phase 163 — one packet carries every relay of a tick: [[peer id, packed position], ...].
+			var entries = payload.get("s", [])
+			if entries is Array:
+				for entry in entries:
+					if entry is Array and entry.size() == 2:
+						sl._route_remote_player_state({ "peer_id": entry[0], "pk": entry[1] })
 		"weather_overrides":
 			# Phase 128 — only a client adopts the host's table; the list is validated by the slice.
 			if sl._role == sl.Role.CLIENT and payload.get("overrides", null) is Array:

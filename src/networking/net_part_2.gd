@@ -103,7 +103,42 @@ func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 		"peer_id":  peer_id,
 		"pk":       sl.WorldPos.pos_to_packet_text(relayed),
 	}
-	sl._broadcast_aoi(packet, position)
+	if not sl._connected():
+		return
+	var pk: String = packet["pk"]
+	var now := float(Time.get_ticks_msec())
+	for pid in sl.aoi_recipients(position, sl._connected_peers()):
+		var dist: float = sl.get_aoi_center(int(pid)).distance_to(position)
+		if sl._relay_scheduler.offer(int(pid), peer_id, pk, dist, now):
+			queue_relay(int(pid), peer_id, pk)
+
+## Phase 163 — host: hold one relay for the end-of-tick batch to `recipient`.
+func queue_relay(recipient: int, subject: int, pk: String) -> void:
+	if not sl._relay_outbox.has(recipient):
+		sl._relay_outbox[recipient] = []
+	sl._relay_outbox[recipient].append([subject, pk])
+
+## Phase 163 — host, once per tick: release the held-back relays that are due, then send each recipient
+## everything queued for it in ONE `remote_player_states` packet (one per tick, not one per subject).
+func flush_relays() -> void:
+	if sl._role != sl.Role.HOST:
+		return
+	for r in sl._relay_scheduler.release_due(float(Time.get_ticks_msec())):
+		if r[0] in sl._connected_peers():
+			queue_relay(int(r[0]), int(r[1]), str(r[2]))
+	var outbox: Dictionary = sl._relay_outbox
+	sl._relay_outbox = {}
+	for recipient in outbox:
+		sl.relay_packets_sent += 1
+		sl.relay_entries_sent += outbox[recipient].size()
+		sl._deliver(int(recipient), { "type": "remote_player_states", "s": outbox[recipient] })
+
+## Phase 163 — a peer left: no relay is held for it or about it.
+func forget_relays(id: int) -> void:
+	sl._relay_scheduler.forget(id)
+	sl._relay_outbox.erase(id)
+	for recipient in sl._relay_outbox:
+		sl._relay_outbox[recipient] = sl._relay_outbox[recipient].filter(func(e): return int(e[0]) != id)
 
 ## Phase 37 — host → one client: a creature struck THIS player. Damage is applied by
 ## the machine that simulates the body (`PlayerSlice` on the peer's own client, which
@@ -598,6 +633,7 @@ func _drain_emulator(now_ms: float = -1.0) -> void:
 ## after LAST_KNOWN_STATE_TTL_MS if the peer never reconnects.
 func _on_peer_disconnected(id: int) -> void:
 	sl._malformed_position_warn_ms.erase(id)
+	forget_relays(id)
 	GameBus.peer_disconnected.emit(id)
 	# Phase 33 — the connection is gone, so its transport mapping goes with it.
 	# The player's durable record stays on disk, which is what lets a reconnect

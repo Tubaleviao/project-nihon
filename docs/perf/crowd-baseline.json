@@ -1,0 +1,11 @@
+{
+  "comment": "Phase 163 — the Phase 162 report this phase started from (one desktop machine, `STRESS_MAX=64 STRESS_PROFILES=lan`). CI fails when the largest passing size of a series drops below the size here.",
+  "largest_passing": {
+    "lan/cluster": 16,
+    "lan/cross": 16,
+    "lan/spread": 16,
+    "lan/pole": 32,
+    "lan/churn": 0
+  },
+  "cluster_64": { "host_tick_p95_ms": 18.42, "down_kbps_per_peer": 136.7 }
+}

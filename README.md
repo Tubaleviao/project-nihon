@@ -40,6 +40,8 @@ STRESS_MAX=32 STRESS_PROFILES=lan GODOT=/path/to/Godot_v4.7-stable_linux.x86_64 
 
 It boots a dedicated server, a watching client and a process of scripted bot players, walks them in five patterns at growing crowd sizes, and writes `stress/report.md` (the largest crowd that met every budget, and the ranked bottlenecks) and `stress/report.json`.
 
+Crowd the host supports today (`lan`, every budget met, see [docs/perf/crowd-baseline.md](docs/perf/crowd-baseline.md) for the numbers this was measured against): see `stress/report.md` after a run; the CI `stress` job fails when a pattern's largest passing size falls below `docs/perf/crowd-baseline.json`.
+
 ---
 
 ## Status

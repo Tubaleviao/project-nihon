@@ -21,6 +21,11 @@ func register() -> void:
 	_run_test("stress: tick probe phases are exclusive and its counters reset", _test_stress_tick_probe)
 	_run_test("stress: a disconnect drops the peer's receive channels", _test_stress_disconnect_drops_channels)
 	_run_test("stress: the stress args are parsed", _test_stress_args)
+	_run_test("relay: the interval drops with distance and a held report is released", _test_relay_scheduler_intervals)
+	_run_test("relay: a still player is told again only on the heartbeat; a leaver is forgotten", _test_relay_scheduler_heartbeat)
+	_run_test("relay: one packet per recipient per tick, not one per subject", _test_relay_batch_per_tick)
+	_run_test("relay: a batch decodes to the same positions as per-subject relays", _test_relay_batch_decodes)
+	_run_test("relay: a distant peer in the AOI still gets a relay at least once per second", _test_relay_far_once_per_second)
 
 func _test_stress_report_statistics() -> void:
 	var samples := [4.0, 1.0, 3.0, 2.0, 5.0]
@@ -300,3 +305,103 @@ func _test_stress_args() -> void:
 	for p in StressRules.PATTERNS:
 		assert_true(StressRules.is_pattern(p), "%s is a pattern" % p)
 	assert_false(StressRules.is_pattern("stampede"), "an unknown pattern is refused")
+
+const RelayScheduler := preload("res://src/networking/relay_scheduler.gd")
+
+func _relay_host(peers: Array) -> NetworkingSlice:
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	n.set_transport(MemoryTransport.new(peers))
+	return n
+
+func _test_relay_scheduler_intervals() -> void:
+	var r := RelayScheduler.new()
+	assert_true(r.offer(2, 1, "a", 10.0, 0.0), "the first report always goes out")
+	assert_true(r.offer(2, 1, "b", 10.0, 1.0), "a near neighbour gets every changed report")
+	assert_true(r.offer(3, 1, "a", 90.0, 0.0), "a far neighbour's first report goes out")
+	assert_false(r.offer(3, 1, "b", 90.0, 100.0), "a far neighbour's next report inside the interval is held")
+	assert_false(r.offer(3, 1, "c", 90.0, 200.0), "and a newer one replaces it")
+	assert_true(r.release_due(500.0).is_empty(), "nothing is released before the interval is over")
+	var due := r.release_due(RelayScheduler.FAR_MS + 1.0)
+	assert_eq(due, [[3, 1, "c"]], "the latest held report is released once the interval is over")
+	assert_true(r.release_due(RelayScheduler.FAR_MS * 3.0).is_empty(), "and only once")
+	assert_true(RelayScheduler.interval_ms(10.0) < RelayScheduler.interval_ms(40.0) and RelayScheduler.interval_ms(40.0) < RelayScheduler.interval_ms(90.0), "the interval grows with distance")
+
+func _test_relay_scheduler_heartbeat() -> void:
+	var r := RelayScheduler.new()
+	assert_true(r.offer(2, 1, "a", 10.0, 0.0), "first")
+	assert_false(r.offer(2, 1, "a", 10.0, 500.0), "an unchanged position is not sent again")
+	assert_true(r.offer(2, 1, "a", 10.0, RelayScheduler.HEARTBEAT_MS), "but a heartbeat tells the neighbour it is still there")
+	assert_eq(r.pair_count(), 1, "one pair held")
+	r.forget(1)
+	assert_eq(r.pair_count(), 0, "a peer that left is forgotten as a subject")
+	r.offer(2, 1, "a", 10.0, 0.0)
+	r.forget(2)
+	assert_eq(r.pair_count(), 0, "and as a recipient")
+
+func _test_relay_batch_per_tick() -> void:
+	var n := _relay_host([2, 3, 4, 5, 6])
+	for pid in [2, 3, 4, 5, 6]:
+		n.remember_player_state(pid, Vector3(float(pid), 0.0, 0.0))
+	# Five subjects each report once in one tick; each of five recipients is within range of all of them.
+	for pid in [2, 3, 4, 5, 6]:
+		n._m2._on_remote_player_state(pid, Vector3(float(pid) + 0.5, 0.0, 0.0))
+	assert_true(n.memory_transport().outbox.is_empty(), "nothing is sent before the tick's flush")
+	n._m2.flush_relays()
+	var outbox: Array = n.memory_transport().outbox
+	assert_eq(outbox.size(), 5, "one packet per recipient (was one per recipient per subject: 25)")
+	assert_eq(n.relay_packets_sent, 5, "counted")
+	assert_eq(n.relay_entries_sent, 25, "carrying every relay")
+	n._m2.flush_relays()
+	assert_eq(n.memory_transport().outbox.size(), 5, "an empty tick sends nothing")
+	n.free()
+
+func _test_relay_batch_decodes() -> void:
+	var host := _relay_host([2, 3])
+	host.remember_player_state(2, Vector3(1.0, 0.0, 1.0))
+	host.remember_player_state(3, Vector3(2.0, 0.0, 2.0))
+	var truth := { 2: Vector3(1.25, 3.0, 1.5), 3: Vector3(2.5, 4.0, 2.75) }
+	for pid in truth:
+		host._m2._on_remote_player_state(pid, truth[pid])
+	host._m2.flush_relays()
+	var client := NetworkingSlice.new()
+	add_child(client)
+	client._role = NetworkingSlice.Role.CLIENT
+	var got := {}
+	var cb := func(pid: int, pos: Vector3): got[pid] = pos
+	GameBus.remote_player_state.connect(cb)
+	for o in host.memory_transport().outbox:
+		if int(o["peer_id"]) == 2:
+			assert_eq(o["payload"]["type"], "remote_player_states", "sent as a batch")
+			client._m3._route_h2c(JSON.parse_string(JSON.stringify(o["payload"])))
+	GameBus.remote_player_state.disconnect(cb)
+	assert_eq(got.size(), 2, "both subjects arrive from the one packet")
+	for pid in truth:
+		assert_true((got[pid] as Vector3).distance_to(truth[pid]) < 0.01, "peer %d decodes to the position a per-subject relay carries" % pid)
+	client._m3._route_h2c({ "type": "remote_player_states", "s": "junk" })
+	client._m3._route_h2c({ "type": "remote_player_states", "s": [[1], 5, [1, "x", 3]] })
+	host.free()
+	client.free()
+
+func _test_relay_far_once_per_second() -> void:
+	var n := _relay_host([2, 3])
+	n.remember_player_state(2, Vector3(0.0, 0.0, 0.0))
+	n.remember_player_state(3, Vector3(80.0, 0.0, 0.0))
+	var times := []
+	var t := 0.0
+	# Peer 2 walks at 4.5 m/s and reports every 0.1 s; peer 3 stands 80 m away. Count what peer 3 is sent.
+	for i in 40:
+		t += 100.0
+		var pos := Vector3(0.45 * i, 0.0, 0.0)
+		n.remember_player_state(2, pos)
+		var pk := WorldPos.pos_to_packet_text(WorldPos.from_world(pos.x, pos.y, pos.z))
+		if n._relay_scheduler.offer(3, 2, pk, 80.0 - pos.x, t):
+			times.append(t)
+		for r in n._relay_scheduler.release_due(t):
+			times.append(t)
+	assert_true(times.size() >= 4, "a walker is relayed to a distant peer at least once per second over four seconds")
+	assert_true(times.size() < 40, "and far fewer than the 40 reports it made")
+	for i in range(1, times.size()):
+		assert_true(times[i] - times[i - 1] <= 1000.0, "no gap over a second")
+	n.free()

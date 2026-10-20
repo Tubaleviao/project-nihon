@@ -346,6 +346,8 @@ static func orphans(root: Node) -> Dictionary:
 func _watch_report() -> Dictionary:
 	var in_type: Dictionary = _wire["in_type"]
 	var relay_row: Array = in_type.get("remote_player_state", [0, 0])
+	var batch_row: Array = in_type.get("remote_player_states", [0, 0])   # Phase 163: one packet per tick
+	relay_row = [int(relay_row[0]) + int(batch_row[0]), int(relay_row[1]) + int(batch_row[1])]
 	var in_bytes := 0
 	for k in _wire["in_peer"]:
 		in_bytes += int((_wire["in_peer"][k] as Array)[0])
