@@ -10,6 +10,7 @@ extends "res://src/core/wiring.gd"
 
 const CarcassRules := preload("res://src/loot/carcass_rules.gd")
 const PlayerRegistry := preload("res://src/persistence/player_registry.gd")
+const PlayerSlice := preload("res://src/player/player_slice.gd")
 
 ## How far a harvester may drift from where the action began before it is cancelled.
 const MOVE_CANCEL_M := 0.6
@@ -27,6 +28,17 @@ var _seen: Dictionary = {}
 var _aoi_clock: float = 0.0
 ## How often the host looks for bodies newly inside a peer's AOI (seconds).
 const AOI_SCAN_INTERVAL := 1.0
+## The host's own carry rule (the client's slowed walk is only its affordance): a carried body moves toward its
+## carrier no faster than the slowed walk allows, times this slack for timing jitter. Travel is a budget that
+## refills at that rate and holds at most CARRY_BUDGET_SECONDS of it, so a stalled report followed by a jump
+## still catches up, while a sustained over-speed outruns the body.
+const CARRY_SPEED_SLACK := 1.25
+const CARRY_BUDGET_SECONDS := 1.0
+## A carrier farther than the harvest range plus this from the body it carries lets go of it (the body stays
+## where it got to).
+const CARRY_LEASH_SLACK_M := 1.0
+## player id -> metres of horizontal carry travel left in the budget.
+var _carry_budget: Dictionary = {}
 
 func _connect_all() -> void:
 	if root._battle != null and not root._is_client:
@@ -320,10 +332,13 @@ func tick(delta: float) -> void:
 			if float(a["remaining"]) <= 0.0:
 				_finish(pid)
 	_send_clock += delta
+	for pid in _carry_budget.keys():
+		if root._carcass.carried_by(pid) == "":
+			_carry_budget.erase(pid)
 	for pid in root._carcass._carried.keys():
 		var at: Variant = _position_of(pid)
 		if at != null:
-			root._carcass.follow(pid, at)
+			_follow_capped(pid, at, delta)
 	_aoi_clock += delta
 	if _aoi_clock >= AOI_SCAN_INTERVAL:
 		_aoi_clock = 0.0
@@ -332,6 +347,23 @@ func tick(delta: float) -> void:
 		_send_clock = 0.0
 		for pid in root._carcass._carried.keys():
 			_on_changed(root._carcass.carried_by(pid))
+
+## Move `pid`'s carried body toward `at` within the carry budget; past the leash the carrier lets go of it.
+func _follow_capped(pid: String, at: Vector3, delta: float) -> void:
+	var id: String = root._carcass.carried_by(pid)
+	var body: Vector3 = root._carcass.position_of(id)
+	var rate := PlayerSlice.SPEED * root._carcass.speed_multiplier(pid, level_of(pid)) * CARRY_SPEED_SLACK
+	var budget := minf(float(_carry_budget.get(pid, rate * CARRY_BUDGET_SECONDS)) + rate * delta, rate * CARRY_BUDGET_SECONDS)
+	var gap := Vector2(at.x - body.x, at.z - body.z)
+	var step := minf(gap.length(), budget)
+	_carry_budget[pid] = budget - step
+	var moved := at if step >= gap.length() else Vector3(body.x + gap.x / gap.length() * step, at.y, body.z + gap.y / gap.length() * step)
+	if Vector2(at.x - moved.x, at.z - moved.z).length() > CarcassRules.rule_f("harvestRangeMetres", 3.0) + CARRY_LEASH_SLACK_M:
+		root._carcass.drop(pid, moved)
+		_carry_budget.erase(pid)
+		_push_carry_state(pid)
+		return
+	root._carcass.follow(pid, moved)
 
 func _on_changed(carcass_id: String) -> void:
 	if root._is_client or root._networking == null or not root._networking.is_host():

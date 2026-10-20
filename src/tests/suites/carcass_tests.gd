@@ -15,6 +15,7 @@ func register() -> void:
 	_run_test("carcass: a carried body that decays releases its carrier; a refused carry keeps the harvest running", _test_carrier_lost)
 	_run_test("carcass: hostile saved data and unknown creatures are dropped", _test_hostile_save)
 	_run_test("carcass: a remote peer's harvest pushes its changed bag to that peer", _test_peer_harvest_syncs_bag)
+	_run_test("carcass: the host moves a carried body no faster than the slowed walk; an over-speed carrier loses it", _test_carry_speed_host_rule)
 	_run_test("carcass: body nodes follow an origin rebase and sit at world position plus the offset", _test_rebase_shifts_bodies)
 
 
@@ -345,3 +346,38 @@ func _test_rebase_shifts_bodies() -> void:
 	var b: String = sl.create_for_death("ForestBoar", Vector3(20, 0, 0), "p1")
 	assert_eq((sl._nodes[b] as Node3D).position, Vector3(20, 0, 0) + shift + lift, "a body made after the rebase uses the offset")
 	sl.free()
+
+
+func _test_carry_speed_host_rule() -> void:
+	var f := _fixture()
+	var cw = f["gr"]._carcass_wiring
+	var light := ""
+	for key: String in GameData.CREATURES:
+		if CarcassRules.carry_rule(key) == "carry" and light == "":
+			light = key
+	var cid: String = f["sl"].create_for_death(light, Vector3.ZERO, "p1")
+	f["at"][0] = Vector3.ZERO
+	GameBus.carry_intent.emit(cid, "p1")
+	assert_eq(f["sl"].carried_by("p1"), cid, "carried")
+	var walk: float = PlayerSlice.SPEED * f["sl"].speed_multiplier("p1", cw.level_of("p1"))
+	# An honest carrier at its slowed walk, whose reports stall for half a second and then jump.
+	var x := 0.0
+	for i in 40:
+		x += walk * 0.1
+		if i < 10 or i >= 15:
+			f["at"][0] = Vector3(x, 0, 0)
+		cw.tick(0.1)
+	for i in 10:
+		cw.tick(0.1)
+	assert_eq(f["sl"].carried_by("p1"), cid, "an honest carrier keeps the body through a stalled report")
+	assert_true(f["sl"].position_of(cid).distance_to(Vector3(x, 0, 0)) < 0.5, "and the body catches up")
+	# A carrier reporting twice the walk speed outruns the body and lets go of it.
+	var start := x
+	for i in 30:
+		x += walk * 2.0 * 0.1
+		f["at"][0] = Vector3(x, 0, 0)
+		cw.tick(0.1)
+	assert_eq(f["sl"].carried_by("p1"), "", "an over-speed carrier loses the body")
+	var left_at: Vector3 = f["sl"].position_of(cid)
+	assert_true(left_at.x > start and left_at.x < x - CarcassRules.rule_f("harvestRangeMetres", 3.0), "the body stays where it got to, behind the carrier")
+	_free_fixture(f)
