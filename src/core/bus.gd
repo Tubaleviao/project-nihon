@@ -569,8 +569,9 @@ signal character_appearance_changed(instance_id: String, appearance: Dictionary)
 signal character_attack_requested(instance_id: String)
 
 ## Request the death animation on a character instance (ROADMAP Phase 20).
-## Wired from game_root on player death.
-signal character_death_requested(instance_id: String)
+## Wired from game_root on player death. `clip` is the death variant to play ("" plays the default
+## `death` clip; Phase 157 picks a push variant from the killing blow's direction).
+signal character_death_requested(instance_id: String, clip: String)
 
 ## Request to toggle all equipment slots on/off at once (vanity/debug — inspect
 ## the "naked" body under the gear). Wired from PlayerSlice on a hotkey; the

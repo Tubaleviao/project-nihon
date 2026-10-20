@@ -656,7 +656,7 @@ func _test_character_attack_death_signals() -> void:
 	var iid := ch.create_character("TravellerHuman", Vector3.ZERO)
 	GameBus.character_attack_requested.emit(iid)
 	assert_eq(ch.get_locomotion_state_name(iid), "ATTACK", "attack request → ATTACK")
-	GameBus.character_death_requested.emit(iid)
+	GameBus.character_death_requested.emit(iid, "")
 	assert_eq(ch.get_locomotion_state_name(iid), "DEATH", "death request → DEATH")
 	ch.free()
 

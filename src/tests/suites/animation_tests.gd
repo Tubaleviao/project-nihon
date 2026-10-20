@@ -2,6 +2,7 @@ extends "res://src/tests/test_support.gd"
 ## Phase 156 — idle variants, a swing on every hit, the flinch, and the clips behind them.
 
 const RigTree := preload("res://src/character/rig_tree.gd")
+const DeathPush := preload("res://src/battle/death_push.gd")
 
 
 func register() -> void:
@@ -14,6 +15,9 @@ func register() -> void:
 	_run_test("animation: the idle variant waits for its seeded delay and never plays while moving", _test_idle_variant)
 	_run_test("animation: every rig has idle, hit and an attack, and every clip is visible", _test_rig_clips_present_and_visible)
 	_run_test("animation: a rig missing a variant falls back to attack", _test_attack_fallback)
+	_run_test("animation: a killing blow does not queue a flinch on a player avatar", _test_kill_no_flinch)
+	_run_test("death: the attacker position needs a body and knows the local player's id", _test_death_attacker_pos_guards)
+	_run_test("death: the player's death clip goes through the bus intent", _test_player_death_clip_via_bus)
 
 
 ## A host-shaped GameRoot with the slices the combat wiring touches, plus the player avatar with a rig.
@@ -272,3 +276,53 @@ func _test_p158_gesture_catalog() -> void:
 		assert_true(key != "", "%s has a name key" % id)
 		for loc in cats:
 			assert_true((cats[loc] as Dictionary).has(key), "%s has %s" % [loc, key])
+
+
+func _test_kill_no_flinch() -> void:
+	var f := _fixture()
+	var peer_iid: String = f["ch"].create_character_from_recipe({"skeleton": "HumanoidSkeleton"}, Vector3(3, 0, 0))
+	f["ch"].bind_peer_character(5, peer_iid)
+	f["gr"]._is_client = true
+	var loco = f["ch"]._instances[peer_iid]["locomotion"]
+	GameBus.combat_hit_synced.emit("c:w0", "p:5", "hit")
+	assert_eq(int(loco.hit_serial), 1, "a plain hit flinches the peer's avatar")
+	GameBus.combat_hit_synced.emit("c:w0", "p:5", "kill")
+	assert_eq(int(loco.hit_serial), 1, "the killing blow queues no flinch to replay on respawn")
+	assert_eq(int(f["cr"].visuals().models["w0"]["swing"]), 2, "the killer still swings")
+	_free_fixture(f)
+
+
+func _test_death_attacker_pos_guards() -> void:
+	var f := _fixture()
+	var cw = f["gr"]._combat_wiring
+	f["gr"]._registry.local_player_id = "local-1"
+	assert_true(f["gr"]._player == null, "the fixture has no player body (a dedicated server)")
+	assert_true(cw.death_attacker_pos("player") == null, "no body, no position for 'player'")
+	assert_true(cw.death_attacker_pos("local-1") == null, "nor for the local player's own id")
+	var wolf: Variant = cw.death_attacker_pos("w0")
+	assert_true(wolf is Vector3, "a creature attacker resolves to its instance position")
+	assert_true(cw.death_attacker_pos("nobody") == null, "an unknown attacker resolves to nothing")
+	_free_fixture(f)
+
+
+func _test_player_death_clip_via_bus() -> void:
+	var f := _fixture()
+	var cw = f["gr"]._combat_wiring
+	var loco = f["ch"]._instances[f["iid"]]["locomotion"]
+	var heard: Array = []
+	var spy := func(iid: String, clip: String) -> void: heard.append([iid, clip])
+	GameBus.character_death_requested.connect(spy)
+	# The wolf stands at the origin; the body dies 2 m away along +x.
+	var death_pos := Vector3(2, 0, 0)
+	var yaw: float = f["ch"].get_character_yaw(f["iid"])
+	var expected := DeathPush.variant(death_pos - Vector3.ZERO, yaw)
+	assert_eq(cw.death_clip(f["iid"], death_pos, "w0"), expected, "the clip follows killer-to-body against the facing")
+	assert_eq(cw.death_clip(f["iid"], death_pos, ""), DeathPush.DEATH_DEFAULT, "no killer, the default clip")
+	assert_eq(cw.death_clip("missing", death_pos, "w0"), DeathPush.DEATH_DEFAULT, "no avatar, the default clip")
+	GameBus.player_died.emit(death_pos, "w0", Vector3.ZERO)
+	GameBus.character_death_requested.disconnect(spy)
+	assert_eq(heard, [[f["iid"], expected]], "the death goes out as one bus intent carrying the clip")
+	assert_eq(loco.get_state(), Locomotion.State.DEATH, "and the avatar dies")
+	assert_eq(loco.death_clip, expected, "playing that clip")
+	assert_true(f["ch"].get_character_yaw("missing") == null, "an unknown instance has no yaw")
+	_free_fixture(f)

@@ -210,18 +210,17 @@ func create_character_from_recipe(recipe: Dictionary, pos: Vector3) -> String:
 
 ## Move an instance's body to `pos`. False for an unknown instance.
 func set_character_position(instance_id: String, pos: Vector3) -> bool:
-	if not _instances.has(instance_id):
-		return false
-	var inst: Dictionary = _instances[instance_id]
-	inst["position"] = pos
-	(inst["root"] as Node3D).position = pos + _origin.value + Vector3(0.0, float(inst.get("seat_lift", 0.0)), 0.0)
-	return true
+	return _m2.set_character_position(instance_id, pos)
 
 ## Where an instance's body is, or null for an unknown instance.
 func get_character_position(instance_id: String) -> Variant:
 	if not _instances.has(instance_id):
 		return null
 	return _instances[instance_id]["position"]
+
+## Which way an instance's body faces (its root's yaw, radians), or null for an unknown instance.
+func get_character_yaw(instance_id: String) -> Variant:
+	return _m2.get_character_yaw(instance_id)
 
 ## Free an instance (its body and any peer binding to it). The player's own avatar stays
 ## selected only while it exists. False for an unknown instance.
@@ -930,8 +929,8 @@ func get_player_character() -> String:
 func _on_attack_requested(instance_id: String) -> void:
 	trigger_attack(instance_id)
 
-func _on_death_requested(instance_id: String) -> void:
-	trigger_death(instance_id)
+func _on_death_requested(instance_id: String, clip: String) -> void:
+	trigger_death(instance_id, clip if clip != "" else "death")
 
 func _on_equipment_toggle_requested() -> void:
 	toggle_equipment(_player_character_id)
