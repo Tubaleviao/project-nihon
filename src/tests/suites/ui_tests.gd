@@ -947,14 +947,16 @@ func _test_hud_hotbar_pure() -> void:
 	assert_eq(_HotbarScript.digit_slot(KEY_0), -1, "0 is not a bottom-row key")
 	for k in [KEY_W, KEY_I, KEY_C, KEY_H, KEY_M, KEY_P, KEY_1, KEY_ESCAPE, KEY_SPACE]:
 		assert_false(_HotbarScript.bind_allowed(k), "game key %d cannot be a shortcut" % k)
-	for k in [KEY_Z, KEY_X, KEY_J, KEY_F5, KEY_0]:
+	for k in [KEY_U, KEY_J, KEY_F5, KEY_0]:
 		assert_true(_HotbarScript.bind_allowed(k), "key %d may be a shortcut" % k)
+	for k in [KEY_X, KEY_Z]:
+		assert_false(_HotbarScript.bind_allowed(k), "harvest and carry keys %d cannot be a shortcut" % k)
 	var binds := []
 	for i in 18:
 		binds.append(0)
-	binds[11] = KEY_Z
-	assert_eq(_HotbarScript.slot_for_key(binds, KEY_Z), 11, "a bound key finds its box")
-	assert_eq(_HotbarScript.slot_for_key(binds, KEY_X), -1, "an unbound key finds none")
+	binds[11] = KEY_U
+	assert_eq(_HotbarScript.slot_for_key(binds, KEY_U), 11, "a bound key finds its box")
+	assert_eq(_HotbarScript.slot_for_key(binds, KEY_J), -1, "an unbound key finds none")
 	# persistence
 	var json := _HotbarScript.state_to_json(placed, binds, true)
 	var back := _HotbarScript.parse_state(json)
@@ -1031,10 +1033,10 @@ func _test_hud_hotbar_skills_and_binding() -> void:
 	assert_true(hb.is_binding(), "a game key is refused and the choice stays open")
 	var z := InputEventKey.new()
 	z.pressed = true
-	z.keycode = KEY_Z
+	z.keycode = KEY_U
 	hb.handle_key(z)
 	assert_false(hb.is_binding(), "an allowed key finishes the choice")
-	assert_eq(hb.binds[10], KEY_Z, "the box now has that shortcut")
+	assert_eq(hb.binds[10], KEY_U, "the box now has that shortcut")
 	got.clear()
 	GameBus.skill_slot_triggered.connect(cb)
 	assert_true(hb.handle_key(z), "the chosen key fires the box")
@@ -1044,12 +1046,12 @@ func _test_hud_hotbar_skills_and_binding() -> void:
 	hb.assign(11, "skill:Smithing")
 	hb.begin_binding(11)
 	hb.handle_key(z)
-	assert_eq([hb.binds[10], hb.binds[11]], [0, KEY_Z], "a key belongs to one box")
+	assert_eq([hb.binds[10], hb.binds[11]], [0, KEY_U], "a key belongs to one box")
 	# Persistence
 	assert_true(FileAccess.file_exists(ui.hotbar.save_path), "the bar saved itself")
 	var again := _HotbarScript.parse_state(FileAccess.get_file_as_string(ui.hotbar.save_path))
 	assert_eq(again["slots"][2], "skill:Alchemy", "contents persisted")
-	assert_eq(again["binds"][11], KEY_Z, "shortcuts persisted")
+	assert_eq(again["binds"][11], KEY_U, "shortcuts persisted")
 	ui.free()
 	DirAccess.remove_absolute(_TEST_HOTBAR_FILE)
 

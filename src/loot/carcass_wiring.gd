@@ -22,7 +22,6 @@ var _actions: Dictionary = {}
 var _rng := RandomNumberGenerator.new()
 var _send_clock: float = 0.0
 ## Carriers hit this frame: checked for death on the next tick.
-var _death_check: Array = []
 ## peer id -> { carcass id: true } the host already sent into that peer's AOI.
 var _seen: Dictionary = {}
 var _aoi_clock: float = 0.0
@@ -263,10 +262,6 @@ func _on_player_damaged(_damage: float, _attacker_id: String, target_id: String)
 		return
 	var pid := _pid(target_id)
 	_cancel(pid, "damaged")
-	# `player_damaged` fires before the hit is applied to the body's health, so the death check waits for
-	# the next tick.
-	if root._carcass.carried_by(pid) != "" and not _death_check.has(pid):
-		_death_check.append(pid)
 
 func _drop_where_standing(pid: String) -> void:
 	var pos: Variant = _position_of(pid)
@@ -277,7 +272,6 @@ func _on_player_left(player_id: String) -> void:
 	if root._carcass == null or root._is_client:
 		return
 	_actions.erase(player_id)
-	_death_check.erase(player_id)
 	var id: String = root._carcass.carried_by(player_id)
 	if id == "":
 		return
@@ -313,10 +307,10 @@ func _on_carry_state(carrying: bool, factor: float) -> void:
 func tick(delta: float) -> void:
 	if root._carcass == null or root._is_client:
 		return
-	for pid in _death_check:
+	# Any cause of death releases the body (checked each tick; `player_damaged` fires before the hit lands).
+	for pid in root._carcass.carrier_ids():
 		if not _alive(pid):
 			_drop_where_standing(pid)
-	_death_check.clear()
 	root._carcass.advance(delta)
 	for pid in _actions.keys():
 		var a: Dictionary = _actions[pid]
@@ -335,7 +329,7 @@ func tick(delta: float) -> void:
 	for pid in _carry_budget.keys():
 		if root._carcass.carried_by(pid) == "":
 			_carry_budget.erase(pid)
-	for pid in root._carcass._carried.keys():
+	for pid in root._carcass.carrier_ids():
 		var at: Variant = _position_of(pid)
 		if at != null:
 			_follow_capped(pid, at, delta)
@@ -345,7 +339,7 @@ func tick(delta: float) -> void:
 		_scan_aoi()
 	if _send_clock >= CARRY_SEND_INTERVAL:
 		_send_clock = 0.0
-		for pid in root._carcass._carried.keys():
+		for pid in root._carcass.carrier_ids():
 			_on_changed(root._carcass.carried_by(pid))
 
 ## Move `pid`'s carried body toward `at` within the carry budget; past the leash the carrier lets go of it.
@@ -376,6 +370,8 @@ func _on_removed(carcass_id: String) -> void:
 	if root._is_client or root._networking == null or not root._networking.is_host():
 		return
 	root._networking.send_carcass_removed(carcass_id)
+	for peer in _seen:
+		(_seen[peer] as Dictionary).erase(carcass_id)   # already told; the scan must not send the removal again
 
 ## Send each connected peer the bodies that came inside its AOI since the last scan, and forget the ones that
 ## left so they are sent again on return. (A body that changes while in view is re-sent by `_on_changed`.)
@@ -409,14 +405,14 @@ func _on_player_joined(peer_id: int, _player_id: String, _reconnected: bool) -> 
 	if root._is_client or root._carcass == null or root._networking == null or not root._networking.is_host():
 		return
 	var list: Array = []
-	var sent := {}
 	for id in root._carcass.ids():
-		if root._networking.has_last_known_state(peer_id) and not root._networking.in_aoi(peer_id, root._carcass.position_of(id)):
-			continue
 		list.append(root._carcass.view_of(id))
+	# `_seen` records only what the networking layer really sent (it filters by the joiner's AOI centre), so a
+	# body it dropped is still sent by the scan later. Replaces any set left by an earlier connection.
+	var sent := {}
+	for id in root._networking.send_carcasses_to(peer_id, list):
 		sent[id] = true
-	_seen[peer_id] = sent   # replaces any set left by an earlier connection with the same peer id
-	root._networking.send_carcasses_to(peer_id, list)
+	_seen[peer_id] = sent
 
 # ---------------------------------------------------------------------------
 # Client

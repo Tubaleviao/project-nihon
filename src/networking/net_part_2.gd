@@ -175,15 +175,19 @@ func send_carcass_removed(carcass_id: String, only_peer: int = 0) -> void:
 		sl._deliver(int(peer), { "type": "carcass_removed", "id": carcass_id })
 
 ## Phase 161 — host: a peer that just bound its identity learns the bodies inside its AOI.
-func send_carcasses_to(peer_id: int, records: Array) -> void:
+## Returns the ids it sent.
+func send_carcasses_to(peer_id: int, records: Array) -> Array:
+	var sent: Array = []
 	if sl._role != sl.Role.HOST or not sl._connected():
-		return
+		return sent
 	var center = sl._joiner_aoi_center(peer_id)
 	for r in records:
 		if center.distance_to(r["position"]) <= sl.AOI_RADIUS:
 			var p: Vector3 = r["position"]
 			sl._deliver(peer_id, { "type": "carcass", "id": r["id"], "creature": r["creature"], "pos": [p.x, p.y, p.z],
 				"entries": r["entries"], "carrier": r["carrier"], "mode": r["mode"], "mass": r["mass"], "remaining": r["remaining"] })
+			sent.append(r["id"])
+	return sent
 
 func send_carry_state(peer_id: int, carrying: bool, speed_factor: float) -> void:
 	if sl._role == sl.Role.HOST and sl._connected():

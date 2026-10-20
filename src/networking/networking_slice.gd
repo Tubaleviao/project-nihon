@@ -1022,8 +1022,8 @@ func send_carcass(record: Dictionary) -> void:
 func send_carcass_removed(carcass_id: String, only_peer: int = 0) -> void:   # only_peer 0 = everyone
 	_m2.send_carcass_removed(carcass_id, only_peer)
 
-func send_carcasses_to(peer_id: int, records: Array) -> void:
-	_m2.send_carcasses_to(peer_id, records)
+func send_carcasses_to(peer_id: int, records: Array) -> Array:
+	return _m2.send_carcasses_to(peer_id, records)
 
 func send_carry_state(peer_id: int, carrying: bool, speed_factor: float) -> void:
 	_m2.send_carry_state(peer_id, carrying, speed_factor)

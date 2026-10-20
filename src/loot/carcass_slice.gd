@@ -182,6 +182,10 @@ func resolve_harvest(id: String, category: String, efficiency: float, level: int
 # Host: carry
 # ---------------------------------------------------------------------------
 
+## Player ids that currently carry a body.
+func carrier_ids() -> Array:
+	return _carried.keys()
+
 func carried_by(player_id: String) -> String:
 	return str(_carried.get(player_id, ""))
 
