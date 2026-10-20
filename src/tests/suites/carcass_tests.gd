@@ -14,6 +14,8 @@ func register() -> void:
 	_run_test("carcass: the prompt names what the held tools can take and what is missing", _test_prompt)
 	_run_test("carcass: a carried body that decays releases its carrier; a refused carry keeps the harvest running", _test_carrier_lost)
 	_run_test("carcass: hostile saved data and unknown creatures are dropped", _test_hostile_save)
+	_run_test("carcass: a remote peer's harvest pushes its changed bag to that peer", _test_peer_harvest_syncs_bag)
+	_run_test("carcass: body nodes follow an origin rebase and sit at world position plus the offset", _test_rebase_shifts_bodies)
 
 
 ## A host-shaped GameRoot with the carcass slice and wiring, one player "p1" at `at` and a bag.
@@ -285,3 +287,61 @@ func _test_hostile_save() -> void:
 	g.from_data("garbage")
 	assert_eq(g.count(), 0, "garbage clears")
 	g.free()
+
+
+func _test_peer_harvest_syncs_bag() -> void:
+	var f := _fixture()
+	var net := NetworkingSlice.new()
+	add_child(net)
+	net.emulate_network = true
+	net._role = NetworkingSlice.Role.HOST
+	f["gr"]._networking = net
+	f["gr"]._registry.ensure_player("p2")
+	f["gr"]._registry._peer_ids[7] = "p2"
+	var bag := InventorySlice.new()
+	add_child(bag)
+	f["gr"]._registry.set_inventory("p2", bag)
+	bag.add_item("SkinningKnife", 1)
+	var cid: String = f["sl"].create_for_death("ForestBoar", Vector3.ZERO, "p1")
+	for e: Dictionary in f["sl"]._carcasses[cid]["entries"]:
+		e["chance"] = 1.0
+	net._pending.clear()
+	var got := []
+	var h := func(_p: String, _c: String, reason: String, items: Array) -> void: got.append([reason, items])
+	GameBus.harvest_resolved.connect(h)
+	GameBus.harvest_intent.emit(cid, "p2")
+	f["gr"]._carcass_wiring.tick(CarcassRules.rule_f("harvestSeconds", 4.0) + 0.1)
+	GameBus.harvest_resolved.disconnect(h)
+	assert_eq(got.size(), 1, "the peer's harvest resolved")
+	assert_eq(got[0][0] if got.size() > 0 else "?", "", "and succeeded")
+	var pushes := []
+	for q: Dictionary in net._pending:
+		var packet: Dictionary = JSON.parse_string(q["payload"])
+		if str(packet.get("type", "")) == "own_state_synced":
+			pushes.append([int(q["peer_id"]), packet])
+	assert_eq(pushes.size(), 1, "one own-state push")
+	if pushes.size() == 1:
+		assert_eq(pushes[0][0], 7, "addressed to the harvester's peer")
+		var contents: Dictionary = pushes[0][1]["data"].get("inventory", {})
+		for it: Dictionary in got[0][1]:
+			assert_true(int(contents.get(it["item"], 0)) >= int(it["quantity"]), "the push carries %s" % it["item"])
+	f["gr"]._networking = null
+	net.free()
+	bag.free()
+	_free_fixture(f)
+
+
+func _test_rebase_shifts_bodies() -> void:
+	var sl := CarcassSlice.new()
+	sl.render_visuals = true
+	add_child(sl)
+	var a: String = sl.create_for_death("ForestBoar", Vector3(10, 0, 0), "p1")
+	var lift := Vector3(0.0, 0.2, 0.0)
+	assert_eq((sl._nodes[a] as Node3D).position, Vector3(10, 0, 0) + lift, "no rebase yet: the world position")
+	var shift := Vector3(-64, 0, 32)
+	sl.shift_scene(shift)
+	assert_eq((sl._nodes[a] as Node3D).position, Vector3(10, 0, 0) + shift + lift, "a rebase moves the body node")
+	assert_eq(sl.position_of(a), Vector3(10, 0, 0), "the record keeps its world position")
+	var b: String = sl.create_for_death("ForestBoar", Vector3(20, 0, 0), "p1")
+	assert_eq((sl._nodes[b] as Node3D).position, Vector3(20, 0, 0) + shift + lift, "a body made after the rebase uses the offset")
+	sl.free()

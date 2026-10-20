@@ -349,7 +349,7 @@ func _ready() -> void:
 	if not _is_server:
 		slices.append(_ui)
 	if not _is_server:
-		_rebase = RebaseDriver.new([_voxel, _tree, _creature, _station, _player, _loot, _character])
+		_rebase = RebaseDriver.new([_voxel, _tree, _creature, _station, _player, _loot, _carcass, _character])
 	for s in slices:
 		s.name = s.get_script().resource_path.get_file().get_basename()
 		add_child(s)

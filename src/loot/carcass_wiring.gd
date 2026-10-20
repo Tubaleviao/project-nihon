@@ -203,6 +203,9 @@ func _finish(player_id: String) -> void:
 				root._loot.spawn_pickup(str(it["item"]), int(it["quantity"]), pos)
 	if str(a["item"]) != "" and inv != null:
 		inv.use_item(str(a["item"]), "harvest")
+	# A remote harvester's bag lives in the registry here; its own client mirrors it, so send the change.
+	if root._peer_wiring != null:
+		root._peer_wiring.sync_peer_own_state({ "success": true, "player_id": player_id })
 	root._registry.add_skill_xp(player_id, CarcassRules.SKILL, int(CarcassRules.skill().get("xpPerHarvest")))
 	GameBus.harvest_resolved.emit(player_id, cid, "", items)
 

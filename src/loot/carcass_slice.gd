@@ -14,6 +14,7 @@ extends Node
 const CarcassRules := preload("res://src/loot/carcass_rules.gd")
 const RegionStore := preload("res://src/persistence/region_store.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
+const SceneOffset := preload("res://src/core/scene_offset.gd")
 
 ## Why a harvest or carry was refused (also what the wiring sends the player as a key).
 const OK := ""
@@ -32,6 +33,8 @@ var _carried: Dictionary = {}
 ## Scene node per carcass (clients and listen hosts only); empty when `render_visuals` is false.
 var render_visuals: bool = false
 var _nodes: Dictionary = {}
+## The scene-origin offset a client rebase has applied; body nodes sit at world position + this.
+var _origin: SceneOffset = SceneOffset.new()
 
 # ---------------------------------------------------------------------------
 # Host: records
@@ -346,7 +349,13 @@ func _place(id: String) -> void:
 		node.name = "Carcass_%s" % id
 		add_child(node)
 		_nodes[id] = node
-	node.position = (_carcasses[id]["position"] as Vector3) + Vector3(0.0, 0.2, 0.0)
+	node.position = _origin.to_scene(_carcasses[id]["position"] as Vector3) + Vector3(0.0, 0.2, 0.0)
+
+## Rebase (Phase 63): shift every body node by `shift`; the records keep their world positions.
+func shift_scene(shift: Vector3) -> void:
+	_origin.add(shift)
+	for id in _nodes:
+		(_nodes[id] as Node3D).position += shift
 
 func _free_node(id: String) -> void:
 	var node: Node = _nodes.get(id, null)
