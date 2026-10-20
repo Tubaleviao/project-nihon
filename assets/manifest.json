@@ -48,7 +48,19 @@
     "textures/items/FerriteShield_channel.png.raw": "textures/items/FerriteShield_channel.png.raw",
     "textures/items/FerriteHelmet.png.raw": "textures/items/FerriteHelmet.png.raw",
     "textures/items/FerriteHelmet_color_mask.png.raw": "textures/items/FerriteHelmet_color_mask.png.raw",
-    "textures/items/FerriteHelmet_channel.png.raw": "textures/items/FerriteHelmet_channel.png.raw"
+    "textures/items/FerriteHelmet_channel.png.raw": "textures/items/FerriteHelmet_channel.png.raw",
+    "textures/items/VeilsteelLongsword.png.raw": "textures/items/VeilsteelLongsword.png.raw",
+    "textures/items/VeilsteelLongsword_color_mask.png.raw": "textures/items/VeilsteelLongsword_color_mask.png.raw",
+    "textures/items/VeilsteelLongsword_channel.png.raw": "textures/items/VeilsteelLongsword_channel.png.raw",
+    "textures/items/VeilsteelPick.png.raw": "textures/items/VeilsteelPick.png.raw",
+    "textures/items/VeilsteelPick_color_mask.png.raw": "textures/items/VeilsteelPick_color_mask.png.raw",
+    "textures/items/VeilsteelPick_channel.png.raw": "textures/items/VeilsteelPick_channel.png.raw",
+    "textures/items/VoiditeEdge.png.raw": "textures/items/VoiditeEdge.png.raw",
+    "textures/items/VoiditeEdge_color_mask.png.raw": "textures/items/VoiditeEdge_color_mask.png.raw",
+    "textures/items/VoiditeEdge_channel.png.raw": "textures/items/VoiditeEdge_channel.png.raw",
+    "textures/items/AethermiteBow.png.raw": "textures/items/AethermiteBow.png.raw",
+    "textures/items/AethermiteBow_color_mask.png.raw": "textures/items/AethermiteBow_color_mask.png.raw",
+    "textures/items/AethermiteBow_channel.png.raw": "textures/items/AethermiteBow_channel.png.raw"
   },
   "meshes": {
     "models/placeholder_rig.glb.raw": "models/placeholder_rig.glb.raw",
