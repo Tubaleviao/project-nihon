@@ -339,9 +339,9 @@ func _test_wheel_key() -> void:
 	assert_eq(GesturePanel.key_code(), KEY_Q, "Q by default (G is Proposals and taming)")
 	assert_false(GesturePanel.set_key(KEY_W), "a movement key cannot open the wheel")
 	assert_false(GesturePanel.set_key(KEY_G), "nor the key Proposals owns")
-	assert_true(GesturePanel.set_key(KEY_Z), "a free key can")
+	assert_true(GesturePanel.set_key(KEY_U), "a free key can")
 	GesturePanel._cached_key = -1
-	assert_eq(GesturePanel.key_code(), KEY_Z, "and the choice is read back from the settings file")
+	assert_eq(GesturePanel.key_code(), KEY_U, "and the choice is read back from the settings file")
 	var box := GesturePanel.build(GameData.GESTURES, Callable())
 	assert_eq(box.get_child_count(), GameData.GESTURES.size(), "one button per fabric gesture")
 	box.free()

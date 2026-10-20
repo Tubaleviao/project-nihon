@@ -303,3 +303,22 @@ reason.expired,The proposal expired.,A proposta expirou.
 reason.replacement_not_ratified,The replacement is not ratified.,A substituição não foi ratificada.
 reason.not_supersedable,It cannot be superseded.,Não pode ser substituída.
 reason.invalid_verdict,Invalid verdict.,Voto inválido.
+hud.carcass.harvest,X: harvest {0} · Z: carry,X: coletar {0} · Z: carregar
+hud.carcass.needs,Needs a {0} to work this body · Z: carry,Precisa de {0} para trabalhar este corpo · Z: carregar
+hud.carcass.carrying,Z: put the body down,Z: largar o corpo
+hud.carcass.empty,Nothing left to take · Z: carry,Nada mais a aproveitar · Z: carregar
+hud.carcass.refused.out_of_range,Too far from the body.,Longe demais do corpo.
+hud.carcass.refused.no_tool,You have no tool for that.,Você não tem a ferramenta para isso.
+hud.carcass.refused.empty,Nothing left to take.,Nada mais a aproveitar.
+hud.carcass.refused.too_heavy,Too heavy to carry.,Pesado demais para carregar.
+hud.carcass.refused.carrying,You are already carrying a body.,Você já está carregando um corpo.
+hud.carcass.refused.carried_by_other,Someone else carries it.,Outra pessoa o carrega.
+hud.carcass.refused.moved,You moved away.,Você se afastou.
+hud.carcass.refused.cancelled,Harvest cancelled.,Coleta cancelada.
+hud.carcass.refused.damaged,You were hit.,Você foi atingido.
+hud.carcass.refused.unknown_carcass,The body is gone.,O corpo sumiu.
+hud.carcass.refused.unavailable,You cannot do that right now.,Você não pode fazer isso agora.
+hud.carcass.done,You harvested {0} × {1}.,Você coletou {0} × {1}.
+hud.carcass.nothing,The cuts yielded nothing.,Os cortes não renderam nada.
+tool.knife,knife,faca
+tool.bonetool,bone tool,ferramenta de osso

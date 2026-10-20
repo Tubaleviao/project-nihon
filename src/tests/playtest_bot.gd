@@ -614,7 +614,33 @@ func _step_fight() -> Array:
 	var why := "drawn as a model" if modelled else "no model node (%s)" % _model_diag(iid)
 	var left_hp: float = _root._battle.get_hp(iid)
 	_root._creature.despawn_instance(iid)   # the bot's target must not outlive the step
-	return [ok and modelled, "%s at %.0f hp after %d rounds, %s, player %.1f m from the surface" % [cid, left_hp, rounds, why, gap]]
+	# Phase 161: the kill leaves a body; a knife in hand takes its pelt and meat into the bag.
+	var harvested := await _harvest_after_kill(cid)
+	return [ok and modelled and harvested[0], "%s at %.0f hp after %d rounds, %s, player %.1f m from the surface; %s" % [cid, left_hp, rounds, why, gap, harvested[1]]]
+
+## Kill `creature_key` beside the player through the real death path, harvest the body with a knife and
+## check the bag holds what came off. Chances are pinned to 1 so the check does not depend on a roll.
+func _harvest_after_kill(creature_key: String) -> Array:
+	var slice: Node = _root._carcass
+	var before: int = slice.count()
+	GameBus.creature_died.emit(creature_key, _root._player.get_position(), "player", Vector3.ZERO)
+	if slice.count() != before + 1:
+		return [false, "a kill left no carcass"]
+	var cid: String = slice.ids().back()
+	for e: Dictionary in slice._carcasses[cid]["entries"]:
+		e["chance"] = 1.0
+	_root._inventory.add_item("SkinningKnife", 1)
+	var held_before := {}
+	for e: Dictionary in slice.workable_entries(cid, "knife"):
+		held_before[str(e["item"])] = _root._inventory.get_item_count(str(e["item"]))
+	GameBus.harvest_intent.emit(cid, "")
+	var secs: float = float(GameData.HARVESTS["HarvestRules"].get("harvestSeconds"))
+	await _until(func(): return false, secs + 0.8)
+	var got: Array = []
+	for item in held_before:
+		if _root._inventory.get_item_count(str(item)) > int(held_before[item]):
+			got.append(item)
+	return [not got.is_empty(), "harvested %s" % str(got) if not got.is_empty() else "the bag gained nothing from the body"]
 
 ## Player height minus the built surface under the body (0 on the surface).
 func _ground_gap() -> float:

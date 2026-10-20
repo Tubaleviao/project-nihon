@@ -463,6 +463,8 @@ func ensure_player(player_id: String) -> Dictionary:
 			"professions": {},
 			"craft_counter": 0,
 			"skills":     {},
+			# Phase 161 — skill experience points, { skill: xp }; the level follows from the fabric's table.
+			"skill_xp":   {},
 			"cooldowns":  {},
 			# Phase 47 — the worn set, { slot: item_key }.
 			"equipment":  {},
@@ -872,6 +874,29 @@ static func sanitize_waystones(raw: Variant) -> Array:
 	out.sort()
 	return out.slice(0, MAX_WAYSTONES)
 
+## Phase 161 — a saved or synced XP table as { skill: non-negative int } with bounded names.
+static func sanitize_skill_xp(raw: Variant) -> Dictionary:
+	var out := {}
+	if raw is Dictionary:
+		for k in raw:
+			if k is String and k != "" and k.length() <= 32 and (raw[k] is int or raw[k] is float) and is_finite(float(raw[k])):
+				out[k] = clampi(int(raw[k]), 0, 100000000)
+	return out
+
+func get_skill_xp(player_id: String, skill: String) -> int:
+	var xp: Variant = get_record(player_id).get("skill_xp", {})
+	return int((xp as Dictionary).get(skill, 0)) if xp is Dictionary else 0
+
+## Add `amount` XP to one skill on the player's record; returns the new total.
+func add_skill_xp(player_id: String, skill: String, amount: int) -> int:
+	var rec := ensure_player(player_id)
+	if rec.is_empty() or skill == "":
+		return 0
+	var xp: Dictionary = rec.get("skill_xp", {})
+	xp[skill] = clampi(int(xp.get(skill, 0)) + amount, 0, 100000000)
+	rec["skill_xp"] = xp
+	return int(xp[skill])
+
 ## Phase 118 — the professions this player has unlocked ({ name: true }). Progression,
 ## so durable like the flags.
 func record_professions(player_id: String, professions: Dictionary) -> void:
@@ -1065,6 +1090,7 @@ func get_player_data(player_id: String) -> Dictionary:
 		"professions": rec.get("professions", {}),
 		"craft_counter": int(rec.get("craft_counter", 0)),
 		"skills":     rec.get("skills", {}),
+		"skill_xp":   rec.get("skill_xp", {}),
 		"cooldowns":  live_cooldowns(rec.get("cooldowns", {})),
 		"equipment":  get_equipment(player_id),
 		"inventory": {},
@@ -1137,6 +1163,8 @@ func apply_player_data(player_id: String, data: Dictionary) -> void:
 	# record. A payload from before this phase carries no `skills` key and restores
 	# to the empty table — every skill then reads as its seed tier (novice).
 	rec["skills"]     = data.get("skills", {})
+	# Phase 161: skill XP rides the record; a payload from before it restores to none.
+	rec["skill_xp"]   = sanitize_skill_xp(data.get("skill_xp", {}))
 	# Phase 37: so are the interaction cooldowns (an expired deadline is dropped on
 	# the way in — see live_cooldowns). A pre-Phase-37 payload carries no key.
 	rec["cooldowns"]  = live_cooldowns(data.get("cooldowns", {}))
