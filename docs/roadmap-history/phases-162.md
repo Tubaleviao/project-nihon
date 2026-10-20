@@ -31,7 +31,7 @@ failures.
   fold), and `churn` (bots join and leave every few seconds).
 - Host metrics, sampled per tick: tick time p50/p95/p99/max split by phase (networking poll, AOI and
   relays, peer windows, creature AI, chunk records and region streaming, save), peers per AOI cell,
-  bytes and packets sent and received per peer per second, ENet queue depth, chunks dispatched and
+  bytes and packets sent and received per peer per second, ENet link health (round trip, packet loss and throttle: Godot exposes no queue depth), chunks dispatched and
   waiting, region reads, memory and node count.
 - Watcher metrics: one full headless client (`--net-harness client` with a `--stress-watch` flag)
   stands inside the crowd and records frame time, remote avatars shown, bytes received, apply time of

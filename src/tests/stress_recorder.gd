@@ -5,7 +5,7 @@ extends Node
 ##     on a pinned world seed, with every new player placed at one anchor (so the bots, which spawn
 ##     where the host puts them, and the watcher stand in the same crowd). Per tick it records the
 ##     tick time and its split by phase (`TickProbe`), bytes and packets per peer and per message
-##     type, peers per AOI cell, ENet round trips, chunk builds and waits, region reads, memory and
+##     type, peers per AOI cell, ENet link health (round trip, packet loss, throttle), chunk builds and waits, region reads, memory and
 ##     node count. When the stop file appears it waits for every peer to leave, counts the per-peer
 ##     records the host still holds (an orphan is a hard failure) and writes the report.
 ##   • `--stress-watch <out.json>` on a `--net-harness client` boot: a full client that joins the
@@ -62,6 +62,8 @@ var _peer_seconds: Dictionary = {}
 var _peers_max := 0
 var _cell_peers_max := 0
 var _rtt: Array = []
+var _loss: Array = []
+var _throttle_min := 100000.0
 var _rtt_clock := 0.0
 var _chunks_in_flight_max := 0
 var _chunks_waiting_max := 0
@@ -256,6 +258,8 @@ func _sample_host(delta: float, work_ms: float) -> void:
 				var pp: ENetPacketPeer = (mp as ENetMultiplayerPeer).get_peer(int(p))
 				if pp != null:
 					_rtt.append(pp.get_statistic(ENetPacketPeer.PEER_ROUND_TRIP_TIME))
+					_loss.append(pp.get_statistic(ENetPacketPeer.PEER_PACKET_LOSS))
+					_throttle_min = minf(_throttle_min, pp.get_statistic(ENetPacketPeer.PEER_PACKET_THROTTLE))
 
 func _sample_watch(_delta: float, wall_ms: float) -> void:
 	_frame_ms.append(wall_ms)
@@ -310,6 +314,8 @@ func _host_report(connected: int) -> Dictionary:
 		"peers_max": _peers_max,
 		"aoi_cell_peers_max": _cell_peers_max,
 		"rtt_ms_p95": StressRules.percentile(_rtt, 95.0),
+		"enet_loss_p95": StressRules.percentile(_loss, 95.0),
+		"enet_throttle_min": _throttle_min,
 		"chunks_in_flight_max": _chunks_in_flight_max,
 		"chunks_waiting_max": _chunks_waiting_max,
 		"region_reads": reads,

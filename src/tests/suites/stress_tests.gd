@@ -168,6 +168,11 @@ func _test_stress_mirrored_constants() -> void:
 	assert_true(is_equal_approx(StressRules.SEND_INTERVAL, float(PlayerSlice.SYNC_INTERVAL) / float(Engine.physics_ticks_per_second)),
 		"and reports as often as a client")
 	assert_eq(StressRules.LADDER, [16, 32, 64, 128, 200], "the ladder is the roadmap's")
+	var script_text := FileAccess.get_file_as_string("res://tools/stress.sh")
+	assert_true(script_text.contains('LADDER="%s"' % " ".join(StressRules.LADDER.map(func(n): return str(n)))),
+		"tools/stress.sh climbs the same ladder")
+	assert_true(script_text.contains('PATTERNS="${STRESS_PATTERNS:-%s}"' % " ".join(StressRules.PATTERNS)),
+		"and runs the same patterns")
 	assert_true(StressRecorder.MAX_CLIENTS > StressRules.LADDER[StressRules.LADDER.size() - 1],
 		"the stress host takes the top of the ladder plus a watcher")
 

@@ -1138,7 +1138,8 @@ func _accept_c2h(sender: int, json: String) -> void:
 	var payload = _parse(json)
 	if payload == null:
 		return
-	TickProbe.count_in(sender, str(payload.get("type", "")), json.length())
+	if TickProbe.enabled:
+		TickProbe.count_in(sender, str(payload.get("type", "")), json.to_utf8_buffer().size())
 	if not _dedup(sender, payload):
 		return
 	_route_c2h(sender, payload)
@@ -1149,7 +1150,8 @@ func _rpc_h2c(json: String) -> void:
 	var payload = _parse(json)
 	if payload == null:
 		return
-	TickProbe.count_in(1, str(payload.get("type", "")), json.length())
+	if TickProbe.enabled:
+		TickProbe.count_in(1, str(payload.get("type", "")), json.to_utf8_buffer().size())
 	# Snapshot chunks are index-reassembled (out-of-order tolerant) and made
 	# idempotent separately; every other packet type is seq-deduplicated.
 	if str(payload.get("type", "")) != "snapshot_chunk":

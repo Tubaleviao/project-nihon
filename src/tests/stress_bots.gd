@@ -138,7 +138,11 @@ func _process(delta: float) -> void:
 	if _steady_s < 0.0 and (all_joined or _clock_s >= STEADY_DEADLINE_S):
 		_steady_s = _clock_s
 		if steady_path != "":
-			FileAccess.open(steady_path, FileAccess.WRITE).store_string("steady\n")
+			var steady := FileAccess.open(steady_path, FileAccess.WRITE)
+			if steady != null:
+				steady.store_string("steady\n")
+			else:
+				push_warning("[Stress] cannot write the steady file %s" % steady_path)
 		print("[Stress] steady: %d/%d bots joined at %.1f s" % [_joined_count(), n, _clock_s])
 	if _steady_s >= 0.0 and _clock_s - _steady_s >= seconds:
 		_finish()
@@ -177,6 +181,10 @@ func _tick_bot(bot: Dictionary) -> void:
 			bot["failed"] = true
 			_join_failures += 1
 			_leave(bot)
+			if not _peer_connected(slice):
+				# Never connected: no goodbye acknowledgement will come.
+				bot["leaving"] = false
+				slice.disconnect_all()
 		elif waited > HANDSHAKE_RETRY_S * float(int(bot["retries"]) + 1) and int(bot["retries"]) < MAX_HANDSHAKE_RETRIES:
 			bot["retries"] = int(bot["retries"]) + 1
 			slice.request_handshake()
@@ -207,6 +215,10 @@ func _connect(bot: Dictionary) -> void:
 	var slice: Node = bot["slice"]
 	if bot["joined_once"]:
 		_reconnects += 1
+	if bot["leaving"]:
+		# The goodbye was not acknowledged yet: close the old connection now, so its late
+		# acknowledgement cannot be read as a drop of the new one.
+		slice.disconnect_all()
 	bot["leaving"] = false
 	bot["retries"] = 0
 	bot["connect_s"] = _clock_s
@@ -217,6 +229,10 @@ func _connect(bot: Dictionary) -> void:
 		_join_failures += 1
 		return
 	bot["online"] = true
+
+func _peer_connected(slice: Node) -> bool:
+	return slice.multiplayer.multiplayer_peer != null \
+		and slice.multiplayer.multiplayer_peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED
 
 func _leave(bot: Dictionary) -> void:
 	bot["leaving"] = true

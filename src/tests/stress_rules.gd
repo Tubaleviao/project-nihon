@@ -259,6 +259,8 @@ static func run_row(host: Dictionary, watch: Dictionary, bots: Dictionary) -> Di
 		"peers_max": int(host.get("peers_max", 0)),
 		"aoi_cell_peers_max": int(host.get("aoi_cell_peers_max", 0)),
 		"rtt_ms_p95": float(host.get("rtt_ms_p95", 0.0)),
+		"enet_loss_p95": float(host.get("enet_loss_p95", 0.0)),
+		"enet_throttle_min": float(host.get("enet_throttle_min", 0.0)),
 		"chunks_in_flight_max": int(host.get("chunks_in_flight_max", 0)),
 		"chunks_waiting_max": int(host.get("chunks_waiting_max", 0)),
 		"region_reads": int(host.get("region_reads", 0)),

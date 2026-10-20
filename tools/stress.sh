@@ -39,7 +39,14 @@ PATTERNS="${STRESS_PATTERNS:-cluster spread cross pole churn}"
 PROFILES="${STRESS_PROFILES:-lan wan_br}"
 STEADY_SECS="${STRESS_SECONDS:-20}"
 SEED="${STRESS_SEED:-1}"
-LADDER="16 32 64 128 200"
+LADDER="16 32 64 128 200"   # pinned to StressRules.LADDER by the suite
+case "$MAX_SIZE" in ''|*[!0-9]*) echo "::error::stress: STRESS_MAX must be a number, got '$MAX_SIZE'." >&2; exit 2;; esac
+for p in $PROFILES; do
+  case "$p" in lan|wan_br|wan_bad) ;; *) echo "::error::stress: unknown link profile '$p' (lan, wan_br, wan_bad)." >&2; exit 2;; esac
+done
+for p in $PATTERNS; do
+  case "$p" in cluster|spread|cross|pole|churn) ;; *) echo "::error::stress: unknown pattern '$p'." >&2; exit 2;; esac
+done
 RUNS="$OUT/runs"
 
 note() { echo "stress: $*"; }

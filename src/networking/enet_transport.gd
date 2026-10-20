@@ -28,5 +28,6 @@ func is_up() -> bool:
 
 func send(peer: int, msg: Dictionary) -> void:
 	var json := JSON.stringify(msg)
-	TickProbe.count_out(peer, str(msg.get("type", "")), json.length())   # Phase 162 — stress run byte counts
+	if TickProbe.enabled:   # Phase 162 — stress run byte counts
+		TickProbe.count_out(peer, str(msg.get("type", "")), json.to_utf8_buffer().size())
 	_send_raw.call(peer, json)

@@ -31,8 +31,8 @@ extends Node
 ##   force_state(instance_id, state)   -- test helper
 ##   on_companion_tamed(instance_id, player_id)  -- Phase 35: enter the tamed state
 
-## Seconds between creature melee strikes while aggressive.
 const TickProbe := preload("res://src/core/tick_probe.gd")
+## Seconds between creature melee strikes while aggressive.
 const ATTACK_INTERVAL  := 1.5
 ## Patrol waypoint spread around the spawn origin.
 const PATROL_RADIUS    := 6.0

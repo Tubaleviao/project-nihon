@@ -16,6 +16,8 @@ on:
 jobs:
   godot-tests:
     name: Godot headless test suite
+    # A manual dispatch is for the crowd stress run only.
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -54,6 +56,8 @@ jobs:
 
   server-boot:
     name: Dedicated server boots clean
+    # A manual dispatch is for the crowd stress run only.
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -90,6 +94,8 @@ jobs:
 
   host-boot:
     name: Listen host reaches the world (first ring placed)
+    # A manual dispatch is for the crowd stress run only.
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     # Phase 42 review pass 4 — a hard cap on this job. The boot below waits on
     # WorkerThreadPool tasks, and `--quit-after 100000` (its outer net) is FRAMES: a boot
@@ -145,6 +151,8 @@ jobs:
 
   fabric:
     name: Fabric validation + drift check
+    # A manual dispatch is for the crowd stress run only.
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -196,6 +204,8 @@ jobs:
 
   net-harness:
     name: Two-client network harness (loopback ENet)
+    # A manual dispatch is for the crowd stress run only.
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -271,11 +281,12 @@ jobs:
           tools/stress.sh
 
       - name: The report names a largest passing size per pattern and the top hot spots
+        env:
+          STRESS_PROFILES: ${{ github.event.inputs.stress_profiles || 'lan' }}
         run: |
           test -s stress/report.json && test -s stress/report.md
           cat stress/report.md >> "$GITHUB_STEP_SUMMARY"
-          profiles="${{ github.event.inputs.stress_profiles || 'lan' }}"
-          want=$(( $(echo $profiles | wc -w) * 5 ))
+          want=$(( $(echo $STRESS_PROFILES | wc -w) * 5 ))
           got=$(grep -c '^STRESS_LARGEST ' stress/report.log || true)
           if [ "$got" -ne "$want" ]; then
             echo "::error::the report names a largest passing size for $got series, expected $want"
@@ -296,6 +307,8 @@ jobs:
 
   playtest:
     name: Playtest bot (rendered session under xvfb)
+    # A manual dispatch is for the crowd stress run only.
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
