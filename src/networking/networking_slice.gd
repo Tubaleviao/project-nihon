@@ -77,6 +77,7 @@ const WorldPos := preload("res://src/terrain/world_pos.gd")
 const Diag := preload("res://src/core/diag.gd")
 const I18n := preload("res://src/core/i18n.gd")
 const GestureRules := preload("res://src/character/gesture_rules.gd")
+const TickProbe := preload("res://src/core/tick_probe.gd")
 
 enum Role { OFFLINE, HOST, CLIENT }
 
@@ -981,7 +982,9 @@ var _inbound_exact: Dictionary = {}
 var peer_held: Callable = Callable()
 
 func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
+	TickProbe.begin("aoi_relay")
 	_m2._on_remote_player_state(peer_id, position)
+	TickProbe.end()
 
 func _on_inventory_synced(owner_id: String, contents: Dictionary, durabilities: Dictionary = {}) -> void:
 	_m3._on_inventory_synced(owner_id, contents, durabilities)
@@ -1121,7 +1124,11 @@ func _on_packet_send_requested(peer_id: int, payload: Dictionary) -> void:
 ## rate-limited warning — a dropped packet is not an error the sender can fix.
 @rpc("any_peer", "reliable")
 func _rpc_c2h(json: String) -> void:
-	var sender := multiplayer.get_remote_sender_id()
+	TickProbe.begin("net_in")   # Phase 162 — the stress run's cost of inbound client packets
+	_accept_c2h(multiplayer.get_remote_sender_id(), json)
+	TickProbe.end()
+
+func _accept_c2h(sender: int, json: String) -> void:
 	if json.length() > MAX_CLIENT_PACKET_BYTES:
 		Diag.warn("NetworkingSlice: client packet from peer %d is %d chars (cap %d) — dropped" \
 			% [sender, json.length(), MAX_CLIENT_PACKET_BYTES])
@@ -1131,6 +1138,8 @@ func _rpc_c2h(json: String) -> void:
 	var payload = _parse(json)
 	if payload == null:
 		return
+	if TickProbe.enabled:
+		TickProbe.count_in(sender, str(payload.get("type", "")), json.to_utf8_buffer().size())
 	if not _dedup(sender, payload):
 		return
 	_route_c2h(sender, payload)
@@ -1141,6 +1150,8 @@ func _rpc_h2c(json: String) -> void:
 	var payload = _parse(json)
 	if payload == null:
 		return
+	if TickProbe.enabled:
+		TickProbe.count_in(1, str(payload.get("type", "")), json.to_utf8_buffer().size())
 	# Snapshot chunks are index-reassembled (out-of-order tolerant) and made
 	# idempotent separately; every other packet type is seq-deduplicated.
 	if str(payload.get("type", "")) != "snapshot_chunk":
@@ -1266,11 +1277,17 @@ func _route_h2c(payload: Dictionary) -> void:
 ## Phase 18 path, unchanged).
 func _route_remote_player_state(payload: Dictionary) -> void:
 	var pid := int(payload.get("peer_id", 0))
+	if TickProbe.log_relays:   # a second decode, paid only by a stress watcher (outside the timed span)
+		var exact := WorldPos.pos_from_packet(payload)
+		if not exact.is_empty():
+			TickProbe.relay_seen(pid, TickProbe.position_key(exact))
+	TickProbe.begin("relay_apply")
 	var pos := WorldPos.packet_world(payload, _vec3(payload.get("position", [])))
 	if emulate_network and _role == Role.CLIENT:
 		_buffer_remote_state(pid, pos)
 	else:
 		GameBus.remote_player_state.emit(pid, pos)
+	TickProbe.end()
 
 func _accumulate_snapshot_chunk(payload: Dictionary) -> void:
 	_m1._accumulate_snapshot_chunk(payload)

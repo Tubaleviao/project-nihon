@@ -85,6 +85,7 @@ extends Node
 ##   is_first_ring_ready() -> bool
 ##   first_ring_progress() -> float         — 0..1, drives the loading bar
 const Diag := preload("res://src/core/diag.gd")
+const TickProbe := preload("res://src/core/tick_probe.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
@@ -397,6 +398,7 @@ func _process(_delta: float) -> void:
 	# loaded, and while the poll sat behind the `_active` guard nothing applied it and
 	# nothing awaited it — the chunk was left without a mesh and the task's result sat in
 	# the pool until shutdown (the same exit-134 leak `_exit_tree` now closes there).
+	TickProbe.begin("chunks")   # Phase 162 — the stress run's per-phase tick cost
 	begin_pump()
 	_apply_finished_builds()
 	_poll_region_reads()
@@ -406,6 +408,7 @@ func _process(_delta: float) -> void:
 		refresh(false)
 		_drain_unload_queue(unloads_per_frame)
 	_pump_open = false   # a drain outside a frame (a boot, a tool, a test) is unbounded again
+	TickProbe.end()
 
 ## Begin automatic streaming (driven by _process). The first `refresh()` is what
 ## centres the window, so the caller places the player before calling it —

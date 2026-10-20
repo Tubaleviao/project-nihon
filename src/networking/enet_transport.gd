@@ -3,6 +3,8 @@ extends "res://src/networking/transport.gd"
 ## the engine's ENet multiplayer peer. `send_raw` is the slice's `(peer, json)` RPC sender, so the RPC
 ## declarations stay on the node that owns them.
 
+const TickProbe := preload("res://src/core/tick_probe.gd")
+
 var _multiplayer: MultiplayerAPI
 var _send_raw: Callable
 
@@ -25,4 +27,7 @@ func is_up() -> bool:
 	return mp_peer != null and mp_peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED
 
 func send(peer: int, msg: Dictionary) -> void:
-	_send_raw.call(peer, JSON.stringify(msg))
+	var json := JSON.stringify(msg)
+	if TickProbe.enabled:   # Phase 162 — stress run byte counts
+		TickProbe.count_out(peer, str(msg.get("type", "")), json.to_utf8_buffer().size())
+	_send_raw.call(peer, json)

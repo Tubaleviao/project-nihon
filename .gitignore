@@ -12,6 +12,7 @@ tools/pack_project/_overlay/
 # Added by code-review-graph
 .code-review-graph/
 /playtest/
+/stress/
 /build/
 
 __pycache__/
