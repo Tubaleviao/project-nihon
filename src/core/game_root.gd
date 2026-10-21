@@ -705,8 +705,7 @@ func _boot_world() -> void:
 		return
 
 	if _is_server:
-		_voxel.attach_geometry = false   # Phase 163: a dedicated server draws and walks nothing, so its chunks attach no geometry
-		_boot_server()
+		_voxel.attach_geometry = false; _boot_server()   # Phase 163: a dedicated server draws and walks nothing
 		_quit_after_boot_if_asked("server")
 		return
 
