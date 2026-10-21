@@ -516,11 +516,7 @@ func aoi_region(position: Vector3) -> Vector2i:
 ## Peer ids (among `connected`) whose AOI contains `position`. Pure — the
 ## connected set is passed in so the filter is testable headless.
 func aoi_recipients(position: Vector3, connected: Array) -> Array:
-	var out: Array = []; var live := {}
-	for c in connected: live[int(c)] = true
-	for pid in _peer_spatial.query_radius(position, AOI_RADIUS):
-		if live.has(int(pid)): out.append(pid)
-	return out
+	return _m2.aoi_recipients(position, connected)
 
 ## Broadcast a spatial delta only to peers whose AOI contains `position`.
 ## On the host this replaces the N×M broadcast-to-all with a scoped fan-out;

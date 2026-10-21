@@ -96,6 +96,16 @@ func announce_equipment_to_aoi(peer_id: int) -> void:
 	for pid in sl.equipment_targets(peer_id):
 		sl._send_equipment(int(pid), peer_id, worn)
 
+func aoi_recipients(position: Vector3, connected: Array) -> Array:
+	var out: Array = []
+	var live := {}
+	for c in connected:
+		live[int(c)] = true
+	for pid in sl._peer_spatial.query_radius(position, sl.AOI_RADIUS):
+		if live.has(int(pid)):
+			out.append(pid)
+	return out
+
 func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	if sl._role != sl.Role.HOST:
 		return
@@ -110,14 +120,9 @@ func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	# avatar does not jitter by float32 metres on the other clients.
 	var relayed: Dictionary = sl._inbound_exact if not sl._inbound_exact.is_empty() \
 			else sl.WorldPos.from_world(position.x, position.y, position.z)
-	var packet := {
-		"type":     "remote_player_state",
-		"peer_id":  peer_id,
-		"pk":       sl.WorldPos.pos_to_packet_text(relayed),
-	}
 	if not sl._connected():
 		return
-	var pk: String = packet["pk"]
+	var pk: String = sl.WorldPos.pos_to_packet_text(relayed)
 	var now := float(Time.get_ticks_msec())
 	for pid in sl.aoi_recipients(position, sl._connected_peers()):
 		var dist: float = sl.get_aoi_center(int(pid)).distance_to(position)
@@ -140,7 +145,9 @@ func flush_relays(force: bool = false) -> void:
 		return   # a packet carries ~100 ms of relays: its framing is paid once, not every tick
 	relay_flushed_ms = now_ms
 	for r in relay_scheduler.release_due(float(Time.get_ticks_msec())):
-		if r[0] in sl._connected_peers():
+		# A held report is only sent while the subject is still in the recipient's AOI, so a ghost is never made.
+		if r[0] in sl._connected_peers() and sl.has_last_known_state(int(r[1])) \
+				and sl.in_aoi(int(r[0]), sl.get_last_known_state(int(r[1]))):
 			queue_relay(int(r[0]), int(r[1]), str(r[2]))
 	var outbox: Dictionary = relay_outbox
 	relay_outbox = {}

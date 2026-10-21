@@ -1,9 +1,9 @@
 {
-  "comment": "Phase 163 \u2014 the Phase 162 report this phase started from (one desktop machine, `STRESS_MAX=64 STRESS_PROFILES=lan`). CI fails when the largest passing size of a series drops below the size here.",
+  "comment": "Phase 163 \u2014 `cluster_64` is the Phase 162 report this phase started from (one desktop machine, `STRESS_MAX=64 STRESS_PROFILES=lan`). CI fails when the largest passing size of a series drops below its floor, or when `lan/cluster` at 64 bots exceeds the limits.",
   "largest_passing": {
-    "lan/cluster": 16,
-    "lan/cross": 16,
-    "lan/spread": 16,
+    "lan/cluster": 64,
+    "lan/cross": 64,
+    "lan/spread": 64,
     "lan/pole": 32,
     "lan/churn": 0
   },
@@ -11,5 +11,9 @@
     "host_tick_p95_ms": 18.42,
     "down_kbps_per_peer": 136.7
   },
-  "floor_comment": "Floors are the Phase 162 sizes; the sizes after Phase 163 are in crowd-baseline.md."
+  "floor_comment": "Floors are the sizes reached after Phase 163 (the Phase 162 sizes were 16/16/16/32/0); see crowd-baseline.md.",
+  "cluster_64_limits": {
+    "host_tick_p95_ms": 9.21,
+    "down_kbps_per_peer": 82.02
+  }
 }

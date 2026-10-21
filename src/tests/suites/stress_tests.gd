@@ -26,6 +26,7 @@ func register() -> void:
 	_run_test("relay: a move in a crowd that wears nothing evaluates no equipment pair", _test_relay_equipment_pairs_skipped)
 	_run_test("relay: one packet per recipient per tick, not one per subject", _test_relay_batch_per_tick)
 	_run_test("relay: a batch decodes to the same positions as per-subject relays", _test_relay_batch_decodes)
+	_run_test("relay: a held report is dropped when its subject left the recipient's AOI", _test_relay_held_leaves_aoi)
 	_run_test("relay: a distant peer in the AOI still gets a relay at least once per second", _test_relay_far_once_per_second)
 
 func _test_stress_report_statistics() -> void:
@@ -435,3 +436,16 @@ func _test_relay_equipment_pairs_skipped() -> void:
 	assert_true(n._equipment_sent.has("2:5"), "and the mover is told what it wears")
 	n.free()
 	reg.free()
+
+func _test_relay_held_leaves_aoi() -> void:
+	var n := _relay_host([2, 3])
+	n.remember_player_state(2, Vector3(0.0, 0.0, 0.0))
+	n.remember_player_state(3, Vector3(80.0, 0.0, 0.0))
+	var now := float(Time.get_ticks_msec())
+	var scheduler: RelayScheduler = n._m2.relay_scheduler
+	scheduler.offer(3, 2, "a", 80.0, now - 2000.0)
+	assert_false(scheduler.offer(3, 2, "b", 80.0, now - 1900.0), "the second report is held")
+	n.remember_player_state(2, Vector3(-1000.0, 0.0, 0.0))   # the subject leaves the recipient's AOI before the release
+	n._m2.flush_relays(true)
+	assert_true(n.memory_transport().outbox.is_empty(), "the held report is not sent to a peer that no longer sees the subject")
+	n.free()
