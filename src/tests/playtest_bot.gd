@@ -68,10 +68,10 @@ const HORIZON_STAND_TOLERANCE_M := 3.0   ## the body must stand within this far 
 ## Phase 165 — the far_peak step: stand `FAR_PEAK_DISTANCE_M` from a tall ridge on the world seed and look
 ## at it with only the ring and the bands drawn: rock or snow must show above the ring's skyline.
 const FAR_PEAK_DISTANCE_M := 60000.0
-const FAR_PEAK_MIN_HEIGHT := 260.0    ## tall enough to clear the horizon from 60 km (about 250 m for the camera's eye) and be rock
+const FAR_PEAK_MIN_HEIGHT := 330.0    ## 80+ m over the horizon from 60 km (about 250 m for the camera's eye): a ridge barely over it shows a few pixels
 const FAR_PEAK_SEARCH_M := 2.0e6      ## the ridge is looked for this far from the body, nearest square ring first
 const FAR_PEAK_SEARCH_STEP_M := 8000.0
-const FAR_PEAK_MIN_PX := 20           ## rock or snow pixels above the ring's skyline needed to pass
+const FAR_PEAK_MIN_PX := 8            ## rock or snow pixels above the ring's skyline needed to pass
 const FAR_PEAK_SAT_MAX := 0.18        ## rock (grey) and snow (white) are below this saturation; land and sea are not
 const FAR_PEAK_TIMEOUT_SECS := 240.0
 const COAST_SEARCH_M := 4.0e6         ## the coast search marches this far from the body
@@ -512,7 +512,8 @@ func _step_gather() -> Array:
 		tried += 1
 		var spot := _teleport_to(chunk, here["local"])
 		await _until(func(): return _root._chunk_manager.is_chunk_built(spot["chunk"]), STEP_TIMEOUT_SECS)
-		await _until(func(): return false, 0.2)
+		spot = _teleport_to(chunk, here["local"])   # the body dropped while the chunk built: stand it on the built ground
+		await _until(func(): return false, 0.5)
 		standing = _standing_trees()
 	if standing.is_empty():
 		return [false, "no standing tree in the loaded window"]
