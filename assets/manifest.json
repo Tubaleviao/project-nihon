@@ -60,7 +60,19 @@
     "textures/items/VoiditeEdge_channel.png.raw": "textures/items/VoiditeEdge_channel.png.raw",
     "textures/items/AethermiteBow.png.raw": "textures/items/AethermiteBow.png.raw",
     "textures/items/AethermiteBow_color_mask.png.raw": "textures/items/AethermiteBow_color_mask.png.raw",
-    "textures/items/AethermiteBow_channel.png.raw": "textures/items/AethermiteBow_channel.png.raw"
+    "textures/items/AethermiteBow_channel.png.raw": "textures/items/AethermiteBow_channel.png.raw",
+    "textures/items/SkinningKnife.png.raw": "textures/items/SkinningKnife.png.raw",
+    "textures/items/SkinningKnife_color_mask.png.raw": "textures/items/SkinningKnife_color_mask.png.raw",
+    "textures/items/SkinningKnife_channel.png.raw": "textures/items/SkinningKnife_channel.png.raw",
+    "textures/items/BoneSaw.png.raw": "textures/items/BoneSaw.png.raw",
+    "textures/items/BoneSaw_color_mask.png.raw": "textures/items/BoneSaw_color_mask.png.raw",
+    "textures/items/BoneSaw_channel.png.raw": "textures/items/BoneSaw_channel.png.raw",
+    "textures/items/VeilsteelChestplate.png.raw": "textures/items/VeilsteelChestplate.png.raw",
+    "textures/items/VeilsteelChestplate_color_mask.png.raw": "textures/items/VeilsteelChestplate_color_mask.png.raw",
+    "textures/items/VeilsteelChestplate_channel.png.raw": "textures/items/VeilsteelChestplate_channel.png.raw",
+    "textures/items/DuskfiberCloak.png.raw": "textures/items/DuskfiberCloak.png.raw",
+    "textures/items/DuskfiberCloak_color_mask.png.raw": "textures/items/DuskfiberCloak_color_mask.png.raw",
+    "textures/items/DuskfiberCloak_channel.png.raw": "textures/items/DuskfiberCloak_channel.png.raw"
   },
   "meshes": {
     "models/placeholder_rig.glb.raw": "models/placeholder_rig.glb.raw",

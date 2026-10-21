@@ -1171,7 +1171,8 @@ func _test_asset_creature_roster_placeholders() -> void:
 func _test_asset_item_mesh_placeholders() -> void:
 	var items := {"CarpenterAxe": 64, "FerritePick": 64, "FerriteShortSword": 32, "FerriteShield": 64,
 		"FerriteHelmet": 64, "VeilsteelLongsword": 64, "VeilsteelPick": 64, "VoiditeEdge": 32,
-		"AethermiteBow": 64}
+		"AethermiteBow": 64,
+		"SkinningKnife": 32, "BoneSaw": 32, "VeilsteelChestplate": 64, "DuskfiberCloak": 64}
 	for item: String in items:
 		var size: int = items[item]
 		var mkey := "models/items/%s.glb.raw" % item
