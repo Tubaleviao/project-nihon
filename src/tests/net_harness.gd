@@ -1862,9 +1862,12 @@ func _step_carcass_synced() -> void:
 		# The peer walks 6 m; the body follows it on the host (the wiring tick reads the reported position).
 		var walked: Vector3 = _root._networking.get_last_known_state(peer) + Vector3(6.0, 0.0, 0.0)
 		_root._carcass_wiring.position_probe = func(who: String) -> Vector3: return walked if who == pid else Vector3.ZERO
-		await _await_settle(4.0)
+		# Read the follow as soon as it lands: the client, once it has seen it, finishes and disconnects, and a
+		# disconnect drops the body where the host has it at that moment (possibly short of `walked`).
+		var followed: bool = carried and await _await_until(func() -> bool:
+			return _root._carcass.has_carcass(cid) and _root._carcass.position_of(cid).distance_to(walked) < 0.5, 4.0)
+		await _await_settle(4.0)   # the peer stays "walked" while the client watches the body arrive
 		_root._carcass_wiring.position_probe = Callable()
-		var followed: bool = carried and (_root._carcass.get_carcass(cid)["position"] as Vector3).distance_to(walked) < 0.5
 		_report("carcass_synced", verdict(carried and followed and not pool.is_empty(), true), "worked-and-carried" if carried and followed else ("carry_refused" if not carried else "did_not_follow"))
 		return
 	var slice: Node = _root._carcass
@@ -1879,11 +1882,13 @@ func _step_carcass_synced() -> void:
 		return false, _step_timeout())
 	# The host planted the body 2 m beside this peer (+x), so a carry pulls it 2 m back onto the peer and the
 	# host's 6 m walk leaves it 4 m past where it first appeared. Measured from there: this client's own
-	# position need not match the host's last report of it.
+	# position need not match the host's last report of it. The bar is the host's own (within 0.5 m of the
+	# walk's end): finishing earlier disconnects this peer while the body is still on its way, and the host
+	# then drops it short of where its check looks.
 	var saw_follow: bool = saw_worked and await _await_until(func():
 		for id in slice.ids():
 			var c: Dictionary = slice.get_carcass(id)
-			if str(c["carrier"]) != "" and first_seen.has(id) and (c["position"] as Vector3).distance_to(first_seen[id]) > 3.0:
+			if str(c["carrier"]) != "" and first_seen.has(id) and (c["position"] as Vector3).distance_to(first_seen[id]) > 3.5:
 				return true
 		return false, _step_timeout())
 	_report("carcass_synced", verdict(saw_worked and saw_follow, true), "worked-and-carried" if saw_worked and saw_follow else ("entries_not_synced" if not saw_worked else "carry_not_followed"))

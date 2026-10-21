@@ -291,10 +291,13 @@ func flush_relays(paced: bool = false) -> int:
 ## Peer ids (among `connected`) whose AOI contains `position`.
 func aoi_recipients(position: Vector3, connected: Array) -> Array:
 	var out: Array = []
+	var near: Array = sl._peer_spatial.query_radius(position, sl.AOI_RADIUS)
+	if near.is_empty():
+		return out   # nobody nearby: skip building the peer set
 	var live := {}   # Phase 163 — one pass over `connected`, not an array scan per candidate
 	for pid in connected:
 		live[pid] = true
-	for pid in sl._peer_spatial.query_radius(position, sl.AOI_RADIUS):
+	for pid in near:
 		if live.has(pid):
 			out.append(pid)
 	return out

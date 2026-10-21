@@ -154,19 +154,23 @@ func workable_entries(id: String, category: String) -> Array:
 	return out
 
 ## Work every entry `category` can reach: roll yield and grade from the (effective) level, remove those
-## entries, and drop the body when nothing is left. Returns `[{ item, quantity, quality }]` (only entries
-## that rolled above zero) — the worked entries are gone either way.
+## entries, and drop the body when nothing is left. `efficiency` scales only the entries that need `category`;
+## `none` entries are worked bare-handed at the full level, so holding a poor tool never costs them yield.
+## Returns `[{ item, quantity, quality }]` (only entries that rolled above zero) — the worked entries are gone
+## either way.
 func resolve_harvest(id: String, category: String, efficiency: float, level: int, rng: RandomNumberGenerator) -> Array:
 	var out: Array = []
 	if not _carcasses.has(id):
 		return out
 	var c: Dictionary = _carcasses[id]
-	var eff := CarcassRules.effective_level(level, efficiency)
+	var tool_eff := CarcassRules.effective_level(level, efficiency)
+	var bare_eff := CarcassRules.effective_level(level, 1.0)
 	var left: Array = []
 	for e in c["entries"]:
 		if not CarcassRules.entry_workable(e, category):
 			left.append(e)
 			continue
+		var eff := bare_eff if str(e.get("tool", "none")) == "none" else tool_eff
 		var qty := CarcassRules.quantity(e, eff, rng.randf())
 		if qty > 0:
 			out.append({ "item": str(e["item"]), "quantity": qty, "quality": CarcassRules.quality(eff) })

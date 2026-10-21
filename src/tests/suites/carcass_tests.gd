@@ -18,6 +18,9 @@ func register() -> void:
 	_run_test("carcass: the host moves a carried body no faster than the slowed walk; an over-speed carrier loses it", _test_carry_speed_host_rule)
 	_run_test("carcass: a loaded world keeps the region cap and a worn-out tool is not counted for the prompt", _test_load_cap_and_worn_tool)
 	_run_test("carcass: body nodes follow an origin rebase and sit at world position plus the offset", _test_rebase_shifts_bodies)
+	_run_test("carcass: a drop puts the body where the host has it, not at a client-reported position", _test_drop_uses_host_position)
+	_run_test("carcass: a poor tool scales only its own entries; none entries keep the bare-hand yield", _test_bare_hand_entries_ignore_tool)
+	_run_test("carcass: harvesting has its own wear value", _test_harvest_wear_value)
 
 
 ## A host-shaped GameRoot with the carcass slice and wiring, one player "p1" at `at` and a bag.
@@ -400,3 +403,45 @@ func _test_carry_speed_host_rule() -> void:
 	var left_at: Vector3 = f["sl"].position_of(cid)
 	assert_true(left_at.x > start and left_at.x < x - CarcassRules.rule_f("harvestRangeMetres", 3.0), "the body stays where it got to, behind the carrier")
 	_free_fixture(f)
+
+
+func _test_drop_uses_host_position() -> void:
+	var f := _fixture()
+	var light := ""
+	for key: String in GameData.CREATURES:
+		if CarcassRules.carry_rule(key) == "carry" and light == "":
+			light = key
+	var cid: String = f["sl"].create_for_death(light, Vector3(1, 0, 0), "p1")
+	f["at"][0] = Vector3(1, 0, 0)
+	GameBus.carry_intent.emit(cid, "p1")
+	assert_eq(f["sl"].carried_by("p1"), cid, "carried")
+	# The carrier reports a far position and drops before the body could follow it there.
+	f["at"][0] = Vector3(500, 0, 500)
+	GameBus.carcass_drop_intent.emit("p1")
+	assert_eq(f["sl"].carried_by("p1"), "", "dropped")
+	assert_eq(f["sl"].position_of(cid), Vector3(1, 0, 0), "the body stays where the host had it")
+	_free_fixture(f)
+
+
+func _test_bare_hand_entries_ignore_tool() -> void:
+	var sl := CarcassSlice.new()
+	add_child(sl)
+	var cap := int(GameData.SKILLS["Skinning"].get("levelCap"))
+	var cid: String = sl.create_for_death("ForestBoar", Vector3.ZERO, "p1")
+	var item: String = CarcassRules.entries_for("ForestBoar")[0]["item"]
+	sl._carcasses[cid]["entries"] = [
+		{"item": item, "chance": 1.0, "minQty": 1, "maxQty": 5, "tool": "none"},
+		{"item": item, "chance": 1.0, "minQty": 1, "maxQty": 5, "tool": "knife"}]
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1
+	var got: Array = sl.resolve_harvest(cid, "knife", 0.0, cap, rng)
+	assert_eq(got.size(), 2, "both entries rolled")
+	if got.size() == 2:
+		assert_eq(int(got[0]["quantity"]), 5, "the none entry yields at the full level")
+		assert_eq(str(got[0]["quality"]), CarcassRules.quality(cap), "and grades at it")
+		assert_eq(int(got[1]["quantity"]), 1, "the knife entry follows the useless knife")
+	sl.free()
+
+
+func _test_harvest_wear_value() -> void:
+	assert_true(InventorySlice.ACTION_DECREMENT.has("harvest"), "harvest is listed in ACTION_DECREMENT")

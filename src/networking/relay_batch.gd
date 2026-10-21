@@ -23,13 +23,19 @@ const FLUSH_MS := 100.0
 const BATCH_MAX := 256
 ## Longest compact position text a client accepts in a batch entry.
 const PK_MAX := 64
+## A pair not relayed for this long is forgotten (the subject left the recipient's AOI or stopped reporting),
+## so `_last` does not grow with every pair that ever met. A forgotten pair's next report is relayed at once,
+## as a first relay. `build` sweeps at most once per this interval.
+const PAIR_TTL_MS := 5.0 * KEEPALIVE_MS
 
 ## subject -> [pk, position]: the latest report of each subject since the last flush.
 var _pending: Dictionary = {}
 ## When the last flush ran (ms; the slice's pacing reads it).
 var flushed_ms := -INF
-## recipient -> { subject -> [ms, pk] }: the last relay of each pair. Dropped with either peer.
+## recipient -> { subject -> [ms, pk] }: the last relay of each pair. Dropped with either peer, or after
+## `PAIR_TTL_MS` without a relay.
 var _last: Dictionary = {}
+var _swept_ms := -INF
 ## Counters for the suite: AOI queries run and pair relays queued by `build`, since construction.
 var scans := 0
 var relays := 0
@@ -86,7 +92,20 @@ func build(now_ms: float, connected: Dictionary, recipients_of: Callable, center
 			(out[rid] as Array).append_array([subject, pk])
 			relays += 1
 	_pending = held
+	if now_ms - _swept_ms >= PAIR_TTL_MS:
+		_swept_ms = now_ms
+		prune(now_ms)
 	return out
+
+## Forget every pair whose last relay is older than `PAIR_TTL_MS`.
+func prune(now_ms: float) -> void:
+	for r in _last.keys():
+		var seen: Dictionary = _last[r]
+		for subject in seen.keys():
+			if now_ms - float(seen[subject][0]) >= PAIR_TTL_MS:
+				seen.erase(subject)
+		if seen.is_empty():
+			_last.erase(r)
 
 ## Split one recipient's flat list into packets of at most `BATCH_MAX` subjects.
 static func packets(flat: Array) -> Array:
