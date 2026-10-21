@@ -633,14 +633,20 @@ func _harvest_after_kill(creature_key: String) -> Array:
 	var held_before := {}
 	for e: Dictionary in slice.workable_entries(cid, "knife"):
 		held_before[str(e["item"])] = _root._inventory.get_item_count(str(e["item"]))
+	# Wait for the host's verdict, not a fixed time: the action counts game-tick seconds, which a slow
+	# rendered frame stretches past the wall clock.
+	var verdict := []
+	var on_resolved := func(_pid: String, _cid: String, reason: String, _items: Array) -> void: verdict.append(reason)
+	GameBus.harvest_resolved.connect(on_resolved)
 	GameBus.harvest_intent.emit(cid, "")
 	var secs: float = float(GameData.HARVESTS["HarvestRules"].get("harvestSeconds"))
-	await _until(func(): return false, secs + 0.8)
+	await _until(func(): return not verdict.is_empty(), maxf(secs * 6.0, STEP_TIMEOUT_SECS))
+	GameBus.harvest_resolved.disconnect(on_resolved)
 	var got: Array = []
 	for item in held_before:
 		if _root._inventory.get_item_count(str(item)) > int(held_before[item]):
 			got.append(item)
-	return [not got.is_empty(), "harvested %s" % str(got) if not got.is_empty() else "the bag gained nothing from the body"]
+	return [not got.is_empty(), "harvested %s" % str(got) if not got.is_empty() else "the bag gained nothing from the body (%s)" % (str(verdict) if not verdict.is_empty() else "no verdict")]
 
 ## Player height minus the built surface under the body (0 on the surface).
 func _ground_gap() -> float:
