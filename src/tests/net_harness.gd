@@ -526,14 +526,22 @@ func _step_snapshot_complete() -> void:
 ## The client reports a position and names a tree inside reach. The tree's position is
 ## resolved on the HOST, from the host's own TreeSlice — the intent carries an id and
 ## nothing else — so a pass here means the host measured against its own evidence.
+##
+## #429 — the origin chunk's trees can land on either side after the step starts (the client's
+## tree table is seeded from the snapshot, the host's when its chunk build attaches), and reading
+## `_targets()` at that instant failed the step as `no_in_reach_target` on the client and
+## `not_consumed` on the host. Both sides now wait, bounded by `_step_timeout()`, for the full
+## target set, and a miss reports what the side saw. The host's wait for the chop covers the
+## client's own target wait on top of the chop itself.
 func _step_chop_in_reach() -> void:
+	var have: bool = await _await_until(func(): return _targets().size() >= TARGETS_NEEDED, _step_timeout())
 	var targets := _targets()
-	if targets.is_empty():
-		_report("chop_in_reach", "fail", "no_in_reach_target")
+	if not have:
+		_report("chop_in_reach", "fail", "no_in_reach_target-origin%d-reach%d" % [_shared_trees().size(), targets.size()])
 		return
 	var t := str(targets[0])
 	if _role == "host":
-		var ok: bool = await _await_until(func(): return _chop_count(t) >= 1, _step_timeout())
+		var ok: bool = await _await_until(func(): return _chop_count(t) >= 1, _step_timeout() * 2.0)
 		_report("chop_in_reach", verdict(ok, true), t if ok else "not_consumed")
 		return
 	_report_position()

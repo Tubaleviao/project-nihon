@@ -347,6 +347,10 @@ func scene_offset() -> Vector3:
 ## Keyed by the folded-frame chunk each one covers; `build_chunk` frees the one it replaces.
 ## Phase 163 — false on a dedicated server: nothing draws or walks there, so a chunk attaches no meshes and no collision body.
 var attach_geometry := true
+## #437 — what a build hands `build_chunk` when `attach_geometry` is false: no mesh, collision or
+## deposit arrays (the worker skips `build_runs` and `build_chunk_arrays`), only the chunk-local
+## flag the root's position reads. Not empty, so a worker result carrying it is not refused.
+const NO_GEOMETRY_ARRAYS := { "local": true }
 var _standins: Dictionary = {}   # "cx,cz" -> Node3D
 
 ## Take every streamed chunk root (and any stand-in still waiting) out of the slice, so a re-stream
