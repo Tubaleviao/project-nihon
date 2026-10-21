@@ -345,6 +345,8 @@ func scene_offset() -> Vector3:
 ## and the body never waits for it. Round the antimeridian a stand-in is the very chunk that
 ## replaces it; over a pole the ground in reach is the pole's snow field, the same on both sides.
 ## Keyed by the folded-frame chunk each one covers; `build_chunk` frees the one it replaces.
+## Phase 163 — false on a dedicated server: nothing draws or walks there, so a chunk attaches no meshes and no collision body.
+var attach_geometry := true
 var _standins: Dictionary = {}   # "cx,cz" -> Node3D
 
 ## Take every streamed chunk root (and any stand-in still waiting) out of the slice, so a re-stream

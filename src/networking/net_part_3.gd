@@ -112,12 +112,17 @@ func _refresh_equipment_pairs(moved: int) -> void:
 		sl._equipment_eval_positions[moved] = at
 	var others: Array = Array(sl._connected_peers())
 	others.append(sl.HOST_PEER_ID)
+	# Phase 163 — a pair needs work only when its subject wears something to show, or the viewer holds a
+	# record to evict. In a crowd where nobody wears gear that is no pair at all, instead of 2 per peer.
+	var moved_worn: bool = not sl._worn_of_peer(moved).is_empty()
 	for other in others:
 		var o := int(other)
 		if o == moved:
 			continue
-		sl._update_equipment_pair(moved, o)
-		sl._update_equipment_pair(o, moved)
+		if moved_worn or sl._equipment_sent.has(sl._pair_key(o, moved)):
+			sl._update_equipment_pair(o, moved)
+		if sl._equipment_sent.has(sl._pair_key(moved, o)) or not sl._worn_of_peer(o).is_empty():
+			sl._update_equipment_pair(moved, o)
 
 func _on_inventory_synced(owner_id: String, contents: Dictionary, durabilities: Dictionary = {}) -> void:
 	if sl._role != sl.Role.HOST:

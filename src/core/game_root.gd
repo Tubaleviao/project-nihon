@@ -337,10 +337,10 @@ func _ready() -> void:
 	# Cross-references wired before add_child so _ready() sees them.
 	_crafting.station_slice    = _station
 	_station.player_slice      = _player
-
-	# Headless server (Phase 27): no presentation nodes; set BEFORE the slices enter the tree.
+	# Headless server (Phase 27): no presentation nodes (Phase 163: no chunk geometry); set BEFORE the slices enter the tree.
 	for presenter in [_creature, _player, _tree, _chat, _character, _carcass]:
 		presenter.render_visuals = not _is_server
+	_voxel.attach_geometry = not _is_server
 
 	# The UI (Phase 14) is presentation only, so a headless dedicated server
 	# (Phase 27) keeps it out of the tree — its _ready() would otherwise build

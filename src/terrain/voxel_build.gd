@@ -76,41 +76,43 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 	else:
 		root.set_meta("centre", Vector3(float(chunk_pos.x * s.CHUNK_SIZE) * s.TILE_SIZE + half, 0.0,
 			float(chunk_pos.y * s.CHUNK_SIZE) * s.TILE_SIZE + half))
-	var surface = s._mesh_from_arrays(built)
-	var mesh_inst := MeshInstance3D.new()
-	mesh_inst.mesh = surface
-	var chunk_mat = s._terrain_material_for(s._biome_at(s._chunk_center_xz(chunk_pos)))
-	mesh_inst.material_override = chunk_mat
-	root.add_child(mesh_inst)
+	var chunk_mat = null
+	if s.attach_geometry:
+		var surface = s._mesh_from_arrays(built)
+		var mesh_inst := MeshInstance3D.new()
+		mesh_inst.mesh = surface
+		chunk_mat = s._terrain_material_for(s._biome_at(s._chunk_center_xz(chunk_pos)))
+		mesh_inst.material_override = chunk_mat
+		root.add_child(mesh_inst)
 
-	# --- Water (Phase 51): a flat, collision-free surface where the ground is below sea level. ---
-	var water_mesh = s.water_mesh_for(chunk_pos, heightmap, bool(built.get("local", false)))
-	if water_mesh != null:
-		var water_inst := MeshInstance3D.new()
-		water_inst.name = "Water"
-		water_inst.mesh = water_mesh
-		water_inst.material_override = s._ice_material() if s.is_frozen_chunk(chunk_pos) else s._water_material()
-		root.add_child(water_inst)
+		# --- Water (Phase 51): a flat, collision-free surface where the ground is below sea level. ---
+		var water_mesh = s.water_mesh_for(chunk_pos, heightmap, bool(built.get("local", false)))
+		if water_mesh != null:
+			var water_inst := MeshInstance3D.new()
+			water_inst.name = "Water"
+			water_inst.mesh = water_mesh
+			water_inst.material_override = s._ice_material() if s.is_frozen_chunk(chunk_pos) else s._water_material()
+			root.add_child(water_inst)
 
-	# --- Rare-vein deposits: a SECOND mesh, from arrays the build already carries. ---
-	# Phase 42 review pass 8 — this used to call `vein_deposits()` HERE, on the main thread,
-	# walking all 4096 of the chunk's columns a second time (run replay + a biome and
-	# material roll per tile) after the worker had already finished. The list is resolved
-	# by `collect_build_runs` now and the boxes are emitted by `build_chunk_arrays`, so the
-	# main thread only attaches what it is handed. They stay a separate mesh with no
-	# collision, deliberately: they are decoration, and a box the player can see but not
-	# stand on is the correct read for "a vein showing through the ground".
-	var deposit_vertices: PackedVector3Array = built.get("deposit_vertices", PackedVector3Array())
-	if not deposit_vertices.is_empty():
-		var deposit_inst := MeshInstance3D.new()
-		deposit_inst.mesh = s._mesh_from_arrays({
-			"vertices": built["deposit_vertices"],
-			"normals":  built["deposit_normals"],
-			"colors":   built["deposit_colors"],
-			"indices":  built["deposit_indices"],
-		})
-		deposit_inst.material_override = chunk_mat
-		root.add_child(deposit_inst)
+		# --- Rare-vein deposits: a SECOND mesh, from arrays the build already carries. ---
+		# Phase 42 review pass 8 — this used to call `vein_deposits()` HERE, on the main thread,
+		# walking all 4096 of the chunk's columns a second time (run replay + a biome and
+		# material roll per tile) after the worker had already finished. The list is resolved
+		# by `collect_build_runs` now and the boxes are emitted by `build_chunk_arrays`, so the
+		# main thread only attaches what it is handed. They stay a separate mesh with no
+		# collision, deliberately: they are decoration, and a box the player can see but not
+		# stand on is the correct read for "a vein showing through the ground".
+		var deposit_vertices: PackedVector3Array = built.get("deposit_vertices", PackedVector3Array())
+		if not deposit_vertices.is_empty():
+			var deposit_inst := MeshInstance3D.new()
+			deposit_inst.mesh = s._mesh_from_arrays({
+				"vertices": built["deposit_vertices"],
+				"normals":  built["deposit_normals"],
+				"colors":   built["deposit_colors"],
+				"indices":  built["deposit_indices"],
+			})
+			deposit_inst.material_override = chunk_mat
+			root.add_child(deposit_inst)
 
 	# --- Collision: ONE ConcavePolygonShape3D per chunk, from the same triangles
 	# the mesh shows. The per-row run-merge this replaces existed because
@@ -119,6 +121,8 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 	# not (ceilings, overhangs, a span of solid material). A CharacterBody3D does
 	# not stand ON a concave shape directly — it collides WITH the static body
 	# carrying it, which is the supported direction. ---
+	if not s.attach_geometry:
+		return true
 	var static_body := StaticBody3D.new()
 	static_body.collision_layer = s.TERRAIN_COLLISION_LAYER
 	static_body.collision_mask = 0
