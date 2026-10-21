@@ -75,6 +75,7 @@ const PlayerRules := preload("res://src/core/player_rules.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
 const VoxelSliceScript := preload("res://src/terrain/voxel_slice.gd")
 const DistantTerrain := preload("res://src/terrain/distant_terrain.gd")
+const DistantBands := preload("res://src/terrain/distant_bands.gd")
 ## Phase 164 — the ring radius (chunks) the camera's first far plane is sized for: the default view
 ## distance plus prefetch (`ChunkManager.stream_radius`).
 const DEFAULT_RING_RADIUS := 4
@@ -721,7 +722,7 @@ func _build_body() -> void:
 	_camera.current  = true
 	# Phase 164 — past the ring's outer circle (Godot's default 4 km would cut the horizon off).
 	# The boot path keeps it in step with the ring it builds (`set_view_far`).
-	_camera.far = view_far_for(DistantTerrain.outer_radius_for(DistantTerrain.ring_half_extent(DEFAULT_RING_RADIUS)))
+	_camera.far = view_far_for(maxf(DistantTerrain.outer_radius_for(DistantTerrain.ring_half_extent(DEFAULT_RING_RADIUS)), DistantBands.outer_radius()))
 	cam_arm.add_child(_camera)
 
 ## True when the ground under a body is deep enough below the sea surface that it swims.

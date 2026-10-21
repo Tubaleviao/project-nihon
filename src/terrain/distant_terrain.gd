@@ -46,6 +46,9 @@ var ring_half_m: float = 0.0
 ## Phase 164 — radius of the ring's outer circle (`outer_radius_for`), set by `rebuild`.
 var outer_radius_m: float = 0.0
 var _mesh_inst: MeshInstance3D = null
+## Phase 165 — the bands outside the ring (`distant_bands.gd`), made by `make_bands`; `rebuild` keeps them
+## centred. Null in an isolated ring (the suite's), which draws only the ring.
+var bands: Node3D = null
 
 ## Phase 120 — one build request: what the ring is built for (compared by `rebuild` to decide whether
 ## anything changed) and the arguments the worker is handed, including the snapshot of recorded land.
@@ -131,6 +134,19 @@ func detach_ring() -> Node3D:
 	_mesh_inst = null
 	return _standin
 
+## Phase 165 — make the bands as a child of `parent` (a sibling of the ring: the ring's own children stay
+## its mesh) and return them, so the caller can rebase them with the ring.
+func make_bands(parent: Node) -> Node3D:
+	bands = load("res://src/terrain/distant_bands.gd").new()
+	bands.name = "DistantBands"
+	bands.circumference_m = circumference_m
+	parent.add_child(bands)
+	return bands
+
+## Phase 165 — how far the picture reaches: the bands' outer radius, else the ring's own.
+func reach_m() -> float:
+	return maxf(outer_radius_m, bands.outer_radius_m) if bands != null else outer_radius_m
+
 ## Ring half-extent in metres for a voxel window of `radius_chunks` (Chebyshev radius).
 static func ring_half_extent(radius_chunks: int) -> float:
 	return float(RING_FACTOR) * (float(radius_chunks) + 0.5) * CHUNK_METERS
@@ -172,6 +188,9 @@ func rebuild(center: Vector2, radius_chunks: int) -> bool:
 	window_half_m = (float(radius_chunks) + 0.5) * CHUNK_METERS
 	ring_half_m = ring_half_extent(radius_chunks)
 	outer_radius_m = outer_radius_for(ring_half_m, circumference_m)
+	if bands != null:
+		bands.world_seed = world_seed
+		bands.update(center, outer_radius_m)
 	var cell := ring_half_m * 2.0 / float(GRID)
 	var origin := Vector2i(floori(center.x / cell), floori(center.y / cell))
 	# The voxel window is chunk-snapped around the player: the hole is exactly that rectangle, so the
