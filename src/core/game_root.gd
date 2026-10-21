@@ -341,6 +341,8 @@ func _ready() -> void:
 	# Headless server (Phase 27): no presentation nodes; set BEFORE the slices enter the tree.
 	for presenter in [_creature, _player, _tree, _chat, _character, _carcass]:
 		presenter.render_visuals = not _is_server
+	# Phase 163 — a dedicated server draws and walks nothing: its chunks attach no meshes or collision body.
+	_voxel.attach_geometry = not _is_server
 
 	# The UI (Phase 14) is presentation only, so a headless dedicated server
 	# (Phase 27) keeps it out of the tree — its _ready() would otherwise build
@@ -705,7 +707,7 @@ func _boot_world() -> void:
 		return
 
 	if _is_server:
-		_voxel.attach_geometry = false; _boot_server()   # Phase 163: a dedicated server draws and walks nothing
+		_boot_server()
 		_quit_after_boot_if_asked("server")
 		return
 
