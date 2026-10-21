@@ -20,6 +20,8 @@ func register() -> void:
 	_run_test("crowd: a re-scope sends only the records the peer does not hold", _test_crowd_rescope_record_delta)
 	_run_test("crowd: the stress report fails a series below the baseline", _test_crowd_baseline_gate)
 	_run_test("crowd: the faster region lookup names the same regions", _test_crowd_regions_for_chunks_same)
+	_run_test("crowd: a move in a crowd that wears nothing evaluates no equipment pair", _test_crowd_equipment_pairs_skipped)
+	_run_test("crowd: a dedicated server chunk keeps its data and attaches no geometry", _test_crowd_server_chunk_no_geometry)
 
 func _test_crowd_relay_due_rule() -> void:
 	var near := RelayBatch.NEAR_RADIUS - 1.0
@@ -326,3 +328,46 @@ func _test_crowd_regions_for_chunks_same() -> void:
 		wk.sort()
 		assert_eq(gk, wk, "the window around %s touches the same regions" % str(center))
 	ChunkRecordsScript.clear()
+
+func _test_crowd_equipment_pairs_skipped() -> void:
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	reg.set_local_player("player_host_1")
+	var peers := [2, 3, 4, 5, 6, 7, 8, 9]
+	var n := _host(peers)
+	n.player_registry = reg
+	for pid in peers:
+		reg.resolve_identity(pid)
+		n.remember_player_state(pid, Vector3(float(pid), 0.0, 0.0))
+	n.equipment_pair_evaluations = 0
+	n._equipment_eval_positions.clear()
+	n._refresh_equipment_pairs(2)
+	assert_eq(n.equipment_pair_evaluations, 0, "nobody wears anything: a move evaluates no pair (was 2 per other peer: 16)")
+	reg.record_equipment(str(reg.get_player_id(5)), { "Chest": "VeilsteelChestplate" })
+	n._equipment_eval_positions.clear()
+	n._refresh_equipment_pairs(2)
+	assert_eq(n.equipment_pair_evaluations, 1, "one wearer: only the pair that shows its gear is evaluated")
+	assert_true(n._equipment_sent.has("2:5"), "and the mover is told what it wears")
+	n.free()
+	reg.free()
+
+func _chunk_children(v: VoxelSlice) -> Array:
+	var root: Node = v._chunks[VoxelSlice._chunk_key(Vector2i(0, 0))]
+	return root.get_children().filter(func(c): return c is MeshInstance3D or c is StaticBody3D)
+
+func _test_crowd_server_chunk_no_geometry() -> void:
+	var flat: Array = []
+	flat.resize(64 * 64)
+	flat.fill(2.0)
+	var client := VoxelSlice.new()
+	add_child(client)
+	client.build_chunk(Vector2i(0, 0), flat)
+	assert_false(_chunk_children(client).is_empty(), "a drawing peer attaches a mesh and a collision body")
+	client.free()
+	var server := VoxelSlice.new()
+	add_child(server)
+	server.attach_geometry = false
+	server.build_chunk(Vector2i(0, 0), flat)
+	assert_eq(_chunk_children(server), [], "a dedicated server attaches no mesh and no collision body")
+	assert_eq(server.get_voxel_height_at(Vector2(16.0, 16.0)), 2.0, "the chunk's height data is still there")
+	server.free()
