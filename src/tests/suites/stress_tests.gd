@@ -349,13 +349,18 @@ func _test_relay_batch_per_tick() -> void:
 	for pid in [2, 3, 4, 5, 6]:
 		n._m2._on_remote_player_state(pid, Vector3(float(pid) + 0.5, 0.0, 0.0))
 	assert_true(n.memory_transport().outbox.is_empty(), "nothing is sent before the tick's flush")
-	n._m2.flush_relays()
+	n._m2.flush_relays(true)
 	var outbox: Array = n.memory_transport().outbox
 	assert_eq(outbox.size(), 5, "one packet per recipient (was one per recipient per subject: 25)")
 	assert_eq(n._m2.relay_packets_sent, 5, "counted")
 	assert_eq(n._m2.relay_entries_sent, 25, "carrying every relay")
-	n._m2.flush_relays()
+	n._m2.flush_relays(true)
 	assert_eq(n.memory_transport().outbox.size(), 5, "an empty tick sends nothing")
+	n._m2.queue_relay(2, 3, Marshalls.raw_to_base64(PackedByteArray(range(20))))
+	n._m2.flush_relays()
+	assert_eq(n.memory_transport().outbox.size(), 5, "a flush inside the window waits, so one packet carries about 100 ms of relays")
+	n._m2.flush_relays(true)
+	assert_eq(n.memory_transport().outbox.size(), 6, "and the forced flush sends what waited")
 	n.free()
 
 func _test_relay_batch_decodes() -> void:
@@ -365,7 +370,7 @@ func _test_relay_batch_decodes() -> void:
 	var truth := { 2: Vector3(1.25, 3.0, 1.5), 3: Vector3(2.5, 4.0, 2.75) }
 	for pid in truth:
 		host._m2._on_remote_player_state(pid, truth[pid])
-	host._m2.flush_relays()
+	host._m2.flush_relays(true)
 	var client := NetworkingSlice.new()
 	add_child(client)
 	client._role = NetworkingSlice.Role.CLIENT
@@ -382,7 +387,7 @@ func _test_relay_batch_decodes() -> void:
 		assert_true((got[pid] as Vector3).distance_to(truth[pid]) < 0.01, "peer %d decodes to the position a per-subject relay carries" % pid)
 	var before := got.size()
 	client._m3._route_h2c({ "type": "remote_player_states", "b": 5 })
-	client._m3._route_h2c({ "type": "remote_player_states", "b": Marshalls.raw_to_base64(PackedByteArray([1, 2, 3])) })
+	client._m3._route_h2c({ "type": "remote_player_states", "b": Marshalls.raw_to_base64(PackedByteArray([0,0,0,0,0,0,0,0,1,2,3])) })
 	assert_eq(got.size(), before, "a damaged batch is dropped")
 	host.free()
 	client.free()

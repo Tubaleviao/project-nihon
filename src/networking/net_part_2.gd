@@ -3,7 +3,10 @@ extends RefCounted
 
 var sl: Node
 const RELAY_POS_BYTES := 20
-const RELAY_ENTRY_BYTES := 24
+const RELAY_SAME_BYTES := 17
+const RELAY_FAR_BYTES := 25
+const RELAY_FLUSH_MS := 100.0
+var relay_flushed_ms := 0.0
 ## Phase 163 — which relay goes to whom and when (`RelayScheduler`), the relays queued for this tick's batch
 ## (recipient -> [[subject, packed position]]) and what was sent, for the suite and the report.
 var relay_scheduler := preload("res://src/networking/relay_scheduler.gd").new()
@@ -127,11 +130,15 @@ func queue_relay(recipient: int, subject: int, pk: String) -> void:
 		relay_outbox[recipient] = []
 	relay_outbox[recipient].append([subject, pk])
 
-## Phase 163 — host, once per tick: release the held-back relays that are due, then send each recipient
-## everything queued for it in ONE `remote_player_states` packet (one per tick, not one per subject).
-func flush_relays() -> void:
+## Phase 163 — host, every RELAY_FLUSH_MS (`force` flushes now): release the held-back relays that are due, then send each recipient
+## everything queued for it in ONE `remote_player_states` packet (one per flush, not one per subject).
+func flush_relays(force: bool = false) -> void:
 	if sl._role != sl.Role.HOST:
 		return
+	var now_ms := float(Time.get_ticks_msec())
+	if not force and now_ms - relay_flushed_ms < RELAY_FLUSH_MS:
+		return   # a packet carries ~100 ms of relays: its framing is paid once, not every tick
+	relay_flushed_ms = now_ms
 	for r in relay_scheduler.release_due(float(Time.get_ticks_msec())):
 		if r[0] in sl._connected_peers():
 			queue_relay(int(r[0]), int(r[1]), str(r[2]))
@@ -139,32 +146,64 @@ func flush_relays() -> void:
 	relay_outbox = {}
 	for recipient in outbox:
 		var bytes := PackedByteArray()
+		bytes.resize(8)   # the batch's reference chunk, taken from the first entry
+		var have_ref := false
+		var count := 0
 		for e in outbox[recipient]:
 			var pk := Marshalls.base64_to_raw(str(e[1]))
 			if pk.size() != RELAY_POS_BYTES:
 				continue
+			if not have_ref:
+				for i in 8:
+					bytes[i] = pk[i]
+				have_ref = true
+			var same := true
+			for i in 8:
+				same = same and pk[i] == bytes[i]
 			var at := bytes.size()
-			bytes.resize(at + RELAY_ENTRY_BYTES)
+			bytes.resize(at + (RELAY_SAME_BYTES if same else RELAY_FAR_BYTES))
 			bytes.encode_s32(at, int(e[0]))
-			for i in RELAY_POS_BYTES:
-				bytes[at + 4 + i] = pk[i]
-		if bytes.is_empty():
+			bytes[at + 4] = 0 if same else 1
+			var from := 8 if same else 0
+			for i in range(from, RELAY_POS_BYTES):
+				bytes[at + 5 + i - from] = pk[i]
+			count += 1
+		if count == 0:
 			continue
 		relay_packets_sent += 1
-		relay_entries_sent += bytes.size() / RELAY_ENTRY_BYTES
+		relay_entries_sent += count
 		sl._deliver(int(recipient), { "type": "remote_player_states", "b": Marshalls.raw_to_base64(bytes) })
 
-## Phase 163 — client: unpack a `remote_player_states` batch ("b": base64 of 24-byte entries, an int32 peer id
-## then the 20-byte compact position) into per-subject relays. A damaged batch is dropped whole.
+## Phase 163 — client: unpack a `remote_player_states` batch into per-subject relays. "b" is base64 of an 8-byte
+## reference chunk, then entries: an int32 peer id, a flag byte, and either the 12-byte local position (flag 0,
+## same chunk as the reference) or the full 20-byte compact position (flag 1). A damaged batch is dropped whole.
 func apply_relay_batch(payload: Dictionary) -> void:
+	for r in decode_relay_batch(payload):
+		sl._route_remote_player_state({ "peer_id": r[0], "pk": Marshalls.raw_to_base64(r[1]) })
+
+## The `[peer id, compact position bytes]` entries of a batch; empty for a damaged one.
+static func decode_relay_batch(payload: Dictionary) -> Array:
 	var text = payload.get("b", null)
 	if not text is String:
-		return
+		return []
 	var bytes := Marshalls.base64_to_raw(text)
-	if bytes.is_empty() or bytes.size() % RELAY_ENTRY_BYTES != 0:
-		return
-	for at in range(0, bytes.size(), RELAY_ENTRY_BYTES):
-		sl._route_remote_player_state({ "peer_id": bytes.decode_s32(at), "pk": Marshalls.raw_to_base64(bytes.slice(at + 4, at + RELAY_ENTRY_BYTES)) })
+	var at := 8
+	var relays: Array = []
+	while at < bytes.size():
+		if at + 5 > bytes.size() or bytes[at + 4] > 1:
+			return []
+		var size: int = RELAY_SAME_BYTES if bytes[at + 4] == 0 else RELAY_FAR_BYTES
+		if at + size > bytes.size():
+			return []
+		var pk := PackedByteArray()
+		if bytes[at + 4] == 0:
+			pk = bytes.slice(0, 8)
+			pk.append_array(bytes.slice(at + 5, at + size))
+		else:
+			pk = bytes.slice(at + 5, at + size)
+		relays.append([bytes.decode_s32(at), pk])
+		at += size
+	return relays
 
 ## Phase 163 — a peer left: no relay is held for it or about it.
 func forget_relays(id: int) -> void:
