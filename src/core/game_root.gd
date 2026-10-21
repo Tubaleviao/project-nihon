@@ -513,7 +513,7 @@ func _ready() -> void:
 		_distant.circumference_m = float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
 		add_child(_distant)
 		if _rebase != null:
-			_rebase.targets.append(_distant)
+			_rebase.targets.append_array([_distant, _distant.make_bands(self)])
 		var minimap_layer := CanvasLayer.new()
 		minimap_layer.name = "MinimapLayer"
 		minimap_layer.layer = 20
@@ -1100,8 +1100,8 @@ func _process(delta: float) -> void:
 		_distant.world_seed = _terrain.get_world_seed()
 		var pp := _player.get_position()
 		_distant.rebuild(Vector2(pp.x, pp.z), _chunk_manager.stream_radius())
-		if _distant.outer_radius_m > 0.0 and not is_equal_approx(_player.view_far(), PlayerSlice.view_far_for(_distant.outer_radius_m)):
-			_player.set_view_far(_distant.outer_radius_m)
+		if _distant.outer_radius_m > 0.0 and not is_equal_approx(_player.view_far(), PlayerSlice.view_far_for(_distant.reach_m())):
+			_player.set_view_far(_distant.reach_m())
 	if _is_client:
 		_peer_wiring.prune_remote_avatars()
 	if not _is_client and _player != null:

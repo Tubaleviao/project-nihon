@@ -30,6 +30,7 @@ const WaystoneSlice := preload("res://src/world/waystone_slice.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
 const Horizon := preload("res://src/terrain/horizon.gd")
 const DistantTerrain := preload("res://src/terrain/distant_terrain.gd")
+const DistantBands := preload("res://src/terrain/distant_bands.gd")
 const PlayerSlice := preload("res://src/player/player_slice.gd")
 
 const ARG := "--playtest-bot"
@@ -64,6 +65,15 @@ const HORIZON_HALF_FOV := 60.0        ## rays are checked this far either side o
 const HORIZON_RAY_STEP := 5.0         ## degrees between checked rays
 const HORIZON_RISE_MAX := 0.002       ## radians (~1 px): land may rise this far over the sea horizon (half the skyline limit)
 const HORIZON_STAND_TOLERANCE_M := 3.0   ## the body must stand within this far under the built coast ground
+## Phase 165 — the far_peak step: stand `FAR_PEAK_DISTANCE_M` from a tall ridge on the world seed and look
+## at it with only the ring and the bands drawn: rock or snow must show above the ring's skyline.
+const FAR_PEAK_DISTANCE_M := 60000.0
+const FAR_PEAK_MIN_HEIGHT := 330.0    ## 80+ m over the horizon from 60 km (about 250 m for the camera's eye): a ridge barely over it shows a few pixels
+const FAR_PEAK_SEARCH_M := 2.0e6      ## the ridge is looked for this far from the body, nearest square ring first
+const FAR_PEAK_SEARCH_STEP_M := 8000.0
+const FAR_PEAK_MIN_PX := 8            ## rock or snow pixels above the ring's skyline needed to pass
+const FAR_PEAK_SAT_MAX := 0.18        ## rock (grey) and snow (white) are below this saturation; land and sea are not
+const FAR_PEAK_TIMEOUT_SECS := 240.0
 const COAST_SEARCH_M := 4.0e6         ## the coast search marches this far from the body
 const COAST_BEARING_STEP := 11.25     ## degrees between marched bearings
 const COAST_MARCH_M := 2000.0         ## march step on the large-scale shape
@@ -92,10 +102,12 @@ static func requested(args: Array) -> bool:
 static func _step_timeout(step: String) -> float:
 	if step == "horizon":
 		return HORIZON_TIMEOUT_SECS
+	if step == "far_peak":
+		return FAR_PEAK_TIMEOUT_SECS
 	return STREAM_TIMEOUT_SECS if step == "stream" or step == "pole" else STEP_TIMEOUT_SECS
 
 static func step_names() -> Array:
-	return ["walk", "stream", "mine", "gather", "craft", "place", "fight", "travel", "horizon", "pole"]
+	return ["walk", "stream", "mine", "gather", "craft", "place", "fight", "travel", "horizon", "far_peak", "pole"]
 
 # ---------------------------------------------------------------------------
 # Pure report maths
@@ -197,6 +209,28 @@ static func skyline_rows(img: Image, key: Color, tol: float = 0.08) -> Array:
 				break
 		rows.append(row)
 	return rows
+
+## Phase 165 — pixels of `img` that are rock or snow (grey or white: low saturation, not the key colour)
+## and lie ABOVE `ring_rows` (the first non-key row of each column of the ring-only frame).
+static func rock_pixels_above(img: Image, ring_rows: Array, key: Color, tol: float = 0.08) -> int:
+	var fmt := img.duplicate() as Image
+	fmt.convert(Image.FORMAT_RGB8)
+	var data := fmt.get_data()
+	var w := fmt.get_width()
+	var limit := int(tol * 3.0 * 255.0)
+	var kr := int(roundf(key.r * 255.0))
+	var kg := int(roundf(key.g * 255.0))
+	var kb := int(roundf(key.b * 255.0))
+	var count := 0
+	for x in mini(w, ring_rows.size()):
+		for y in int(ring_rows[x]):
+			var i := (y * w + x) * 3
+			if absi(data[i] - kr) + absi(data[i + 1] - kg) + absi(data[i + 2] - kb) <= limit:
+				continue
+			var c := Color8(data[i], data[i + 1], data[i + 2])
+			if c.s <= FAR_PEAK_SAT_MAX and c.v > 0.15:
+				count += 1
+	return count
 
 ## Highest minus lowest skyline row (0 for a level skyline).
 static func skyline_spread(rows: Array) -> int:
@@ -478,7 +512,8 @@ func _step_gather() -> Array:
 		tried += 1
 		var spot := _teleport_to(chunk, here["local"])
 		await _until(func(): return _root._chunk_manager.is_chunk_built(spot["chunk"]), STEP_TIMEOUT_SECS)
-		await _until(func(): return false, 0.2)
+		spot = _teleport_to(chunk, here["local"])   # the body dropped while the chunk built: stand it on the built ground
+		await _until(func(): return false, 0.5)
 		standing = _standing_trees()
 	if standing.is_empty():
 		return [false, "no standing tree in the loaded window"]
@@ -787,6 +822,132 @@ func _step_horizon() -> Array:
 		return [false, "only %d of %d frames read" % [spreads.size(), HORIZON_HEADINGS.size()]]
 	return [worst <= SKYLINE_FLAT_PX, "coast at %.0f m, bearing %.0f°, skyline spread %s px (limit %d)" % [
 		Vector2(start.x, start.z).distance_to(spot_xz), bearing, str(spreads), SKYLINE_FLAT_PX]]
+
+## Phase 165 — a vantage `FAR_PEAK_DISTANCE_M` from a tall ridge: the search over the shape
+## on a coarse grid around `from` (nearest square ring first) for the nearest point at least `FAR_PEAK_MIN_HEIGHT` tall, then the
+## first of sixteen bearings whose point at that distance is dry land. Returns [vantage, bearing_to_peak_deg,
+## peak, peak_height] or [].
+func _find_far_peak(from: Vector2) -> Array:
+	var seed_v: int = _root._terrain.get_world_seed()
+	var w := Horizon.default_circumference()
+	var sea := WorldShape.sea_level()
+	var best := Vector2.ZERO
+	var best_d := INF
+	var best_h := 0.0
+	var t0 := Time.get_ticks_msec()
+	var n := int(FAR_PEAK_SEARCH_M / FAR_PEAK_SEARCH_STEP_M)
+	for r in range(0, n + 1):   # square rings of growing radius: the first ring with a ridge holds the nearest
+		for j in range(-r, r + 1):
+			if Time.get_ticks_msec() - t0 > COAST_WORK_MS:
+				await get_tree().process_frame
+				t0 = Time.get_ticks_msec()
+			var i_step := 1 if absi(j) == r or r == 0 else 2 * r   # interior cells belong to a smaller ring
+			for i in range(-r, r + 1, i_step):
+				var p := from + Vector2(float(i), float(j)) * FAR_PEAK_SEARCH_STEP_M
+				var d := p.distance_to(from)
+				if d >= best_d:
+					continue
+				var h := WorldShape.height(seed_v, p.x, p.y, w)
+				if h >= FAR_PEAK_MIN_HEIGHT:
+					best = p
+					best_d = d
+					best_h = h
+		if best_d < INF:
+			break
+	if best_d == INF:
+		return []
+	for b in 16:
+		var dir := Vector2.from_angle(deg_to_rad(float(b) * 22.5))
+		var v := best + dir * FAR_PEAK_DISTANCE_M
+		var vh := WorldShape.height(seed_v, v.x, v.y, w)
+		if vh > sea + 3.0 and vh < 100.0:
+			return [v, rad_to_deg((-dir).angle()), best, best_h]
+	return []
+
+## Phase 165 — mountains on the horizon: from 60 km, a tall ridge shows rock or snow above the ring's skyline.
+func _step_far_peak() -> Array:
+	if DisplayServer.get_name() == "headless":
+		return [true, "headless: no frame to read (skipped)"]
+	var player = _root._player
+	var start: Vector3 = _player_pos()
+	var found: Array = await _find_far_peak(Vector2(start.x, start.z))
+	if found.is_empty():
+		return [false, "no ridge of %.0f m within %.0f km with dry land %.0f km from it" % [FAR_PEAK_MIN_HEIGHT, FAR_PEAK_SEARCH_M / 1000.0, FAR_PEAK_DISTANCE_M / 1000.0]]
+	var spot_xz: Vector2 = found[0]
+	var bearing: float = found[1]
+	var m := WorldPos.CHUNK_METERS
+	var chunk := Vector2i(floori(spot_xz.x / m), floori(spot_xz.y / m))
+	var bands = _root._distant.bands
+	var before: Array = []
+	for k in bands.band_count():
+		before.append(bands.band_builds_completed(k))
+	var spot := _teleport_to(chunk, Vector3(spot_xz.x - float(chunk.x) * m, 0.0, spot_xz.y - float(chunk.y) * m))
+	if not await _until(func(): return _root._chunk_manager.is_chunk_built(spot["chunk"]), FAR_PEAK_TIMEOUT_SECS):
+		return [false, "the vantage chunk never built"]
+	spot = _teleport_to(chunk, Vector3(spot_xz.x - float(chunk.x) * m, 0.0, spot_xz.y - float(chunk.y) * m))
+	await _until(func(): return false, 1.0)   # the body settles
+	if not await _until(func(): return _bands_ready_after(before), FAR_PEAK_TIMEOUT_SECS):
+		return [false, "the distant bands never rebuilt at the vantage"]
+	var cam: Camera3D = player._camera
+	var arm: Node3D = player._cam_arm
+	var pivot: Node3D = player._pivot
+	var keyed := Environment.new()
+	keyed.background_mode = Environment.BG_COLOR
+	keyed.background_color = SKYLINE_KEY
+	keyed.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	keyed.ambient_light_color = Color(0.5, 0.5, 0.5)
+	var layers: Array = []
+	for cl in _root.find_children("*", "CanvasLayer", true, false):
+		layers.append([cl, cl.visible])
+		cl.visible = false
+	var old_mask := cam.cull_mask
+	var old_pitch := arm.rotation_degrees.x
+	var old_yaw := pivot.global_rotation.y
+	cam.environment = keyed
+	arm.rotation_degrees.x = HORIZON_PITCH
+	var dir := Vector2.from_angle(deg_to_rad(bearing))
+	pivot.global_rotation.y = atan2(-dir.x, -dir.y)
+	var ring_img: Image = null
+	var all_img: Image = null
+	for pass_i in 2:
+		cam.cull_mask = DistantTerrain.RING_RENDER_LAYER if pass_i == 0 else (DistantTerrain.RING_RENDER_LAYER | DistantBands.BANDS_RENDER_LAYER)
+		for _f in 3:
+			await RenderingServer.frame_post_draw
+		var img := get_viewport().get_texture().get_image()
+		if pass_i == 0:
+			ring_img = img
+		else:
+			all_img = img
+	cam.environment = null
+	cam.cull_mask = old_mask
+	arm.rotation_degrees.x = old_pitch
+	pivot.global_rotation.y = old_yaw
+	for pair in layers:
+		if is_instance_valid(pair[0]):
+			pair[0].visible = pair[1]
+	if ring_img == null or all_img == null:
+		return [false, "no frame read"]
+	all_img.save_png(ProjectSettings.globalize_path(OUT_DIR.path_join("far_peak.png")))
+	var rows := skyline_rows(ring_img, SKYLINE_KEY)
+	var px := rock_pixels_above(all_img, rows, SKYLINE_KEY)
+	var worst_ms := 0.0
+	for f in _frames:
+		worst_ms = maxf(worst_ms, float(f))
+	var detail := "ridge %.0f m at %.0f km, bearing %.0f°: %d rock/snow px above the ring's skyline (need %d), worst frame %.0f ms" % [
+		float(found[3]), Vector2(spot_xz).distance_to(Vector2(found[2])) / 1000.0, bearing, px, FAR_PEAK_MIN_PX, worst_ms]
+	return [px >= FAR_PEAK_MIN_PX, detail]
+
+## True when every band has completed a build newer than `before`, none is pending, and band 0 is
+## centred on the cell the body stands in.
+func _bands_ready_after(before: Array) -> bool:
+	var b = _root._distant.bands
+	if b == null or b.is_building():
+		return false
+	for k in b.band_count():
+		if b.band_builds_completed(k) <= int(before[k] if k < before.size() else 0):
+			return false
+	var pp := _player_pos()
+	return b.band_origin(0) == DistantBands.origin_for(b.band_spec(0), Vector2(pp.x, pp.z))
 
 ## True when a ring build newer than `completed_before` is swapped in, none is pending, and it is
 ## centred within two lattice cells of the body.

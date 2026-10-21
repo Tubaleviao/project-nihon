@@ -441,6 +441,8 @@ func fold_local_player() -> void:
 	var xform := TerrainSlice.fold_scene_transform(before, root._player.get_scene_position(), turned)
 	if ring != null:
 		ring.transform = xform * ring.transform
+	if root._distant != null and root._distant.bands != null:
+		root._distant.bands.fold_by(xform)   # the old-frame meshes stay put until the folded rebuilds swap in
 	if root._voxel != null:
 		root._voxel.adopt_standins(standins, xform)
 		root._fold_standins_since_msec = Time.get_ticks_msec()
