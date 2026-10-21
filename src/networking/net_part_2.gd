@@ -2,6 +2,8 @@ extends RefCounted
 ## Methods moved verbatim out of `networking_slice.gd` (Phase 154). `sl` is the owning slice; each moved method keeps a forwarder there.
 
 var sl: Node
+const RELAY_POS_BYTES := 20
+const RELAY_ENTRY_BYTES := 24
 ## Phase 163 — which relay goes to whom and when (`RelayScheduler`), the relays queued for this tick's batch
 ## (recipient -> [[subject, packed position]]) and what was sent, for the suite and the report.
 var relay_scheduler := preload("res://src/networking/relay_scheduler.gd").new()
@@ -136,9 +138,33 @@ func flush_relays() -> void:
 	var outbox: Dictionary = relay_outbox
 	relay_outbox = {}
 	for recipient in outbox:
+		var bytes := PackedByteArray()
+		for e in outbox[recipient]:
+			var pk := Marshalls.base64_to_raw(str(e[1]))
+			if pk.size() != RELAY_POS_BYTES:
+				continue
+			var at := bytes.size()
+			bytes.resize(at + RELAY_ENTRY_BYTES)
+			bytes.encode_s32(at, int(e[0]))
+			for i in RELAY_POS_BYTES:
+				bytes[at + 4 + i] = pk[i]
+		if bytes.is_empty():
+			continue
 		relay_packets_sent += 1
-		relay_entries_sent += outbox[recipient].size()
-		sl._deliver(int(recipient), { "type": "remote_player_states", "s": outbox[recipient] })
+		relay_entries_sent += bytes.size() / RELAY_ENTRY_BYTES
+		sl._deliver(int(recipient), { "type": "remote_player_states", "b": Marshalls.raw_to_base64(bytes) })
+
+## Phase 163 — client: unpack a `remote_player_states` batch ("b": base64 of 24-byte entries, an int32 peer id
+## then the 20-byte compact position) into per-subject relays. A damaged batch is dropped whole.
+func apply_relay_batch(payload: Dictionary) -> void:
+	var text = payload.get("b", null)
+	if not text is String:
+		return
+	var bytes := Marshalls.base64_to_raw(text)
+	if bytes.is_empty() or bytes.size() % RELAY_ENTRY_BYTES != 0:
+		return
+	for at in range(0, bytes.size(), RELAY_ENTRY_BYTES):
+		sl._route_remote_player_state({ "peer_id": bytes.decode_s32(at), "pk": Marshalls.raw_to_base64(bytes.slice(at + 4, at + RELAY_ENTRY_BYTES)) })
 
 ## Phase 163 — a peer left: no relay is held for it or about it.
 func forget_relays(id: int) -> void:

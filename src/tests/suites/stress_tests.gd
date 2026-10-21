@@ -23,6 +23,7 @@ func register() -> void:
 	_run_test("stress: the stress args are parsed", _test_stress_args)
 	_run_test("relay: the interval drops with distance and a held report is released", _test_relay_scheduler_intervals)
 	_run_test("relay: a still player is told again only on the heartbeat; a leaver is forgotten", _test_relay_scheduler_heartbeat)
+	_run_test("relay: a move in a crowd that wears nothing evaluates no equipment pair", _test_relay_equipment_pairs_skipped)
 	_run_test("relay: one packet per recipient per tick, not one per subject", _test_relay_batch_per_tick)
 	_run_test("relay: a batch decodes to the same positions as per-subject relays", _test_relay_batch_decodes)
 	_run_test("relay: a distant peer in the AOI still gets a relay at least once per second", _test_relay_far_once_per_second)
@@ -322,7 +323,7 @@ func _test_relay_scheduler_intervals() -> void:
 	assert_true(r.offer(3, 1, "a", 90.0, 0.0), "a far neighbour's first report goes out")
 	assert_false(r.offer(3, 1, "b", 90.0, 100.0), "a far neighbour's next report inside the interval is held")
 	assert_false(r.offer(3, 1, "c", 90.0, 200.0), "and a newer one replaces it")
-	assert_true(r.release_due(500.0).is_empty(), "nothing is released before the interval is over")
+	assert_true(r.release_due(300.0).is_empty(), "nothing is released before the interval is over")
 	var due := r.release_due(RelayScheduler.FAR_MS + 1.0)
 	assert_eq(due, [[3, 1, "c"]], "the latest held report is released once the interval is over")
 	assert_true(r.release_due(RelayScheduler.FAR_MS * 3.0).is_empty(), "and only once")
@@ -379,8 +380,10 @@ func _test_relay_batch_decodes() -> void:
 	assert_eq(got.size(), 2, "both subjects arrive from the one packet")
 	for pid in truth:
 		assert_true((got[pid] as Vector3).distance_to(truth[pid]) < 0.01, "peer %d decodes to the position a per-subject relay carries" % pid)
-	client._m3._route_h2c({ "type": "remote_player_states", "s": "junk" })
-	client._m3._route_h2c({ "type": "remote_player_states", "s": [[1], 5, [1, "x", 3]] })
+	var before := got.size()
+	client._m3._route_h2c({ "type": "remote_player_states", "b": 5 })
+	client._m3._route_h2c({ "type": "remote_player_states", "b": Marshalls.raw_to_base64(PackedByteArray([1, 2, 3])) })
+	assert_eq(got.size(), before, "a damaged batch is dropped")
 	host.free()
 	client.free()
 
@@ -405,3 +408,25 @@ func _test_relay_far_once_per_second() -> void:
 	for i in range(1, times.size()):
 		assert_true(times[i] - times[i - 1] <= 1000.0, "no gap over a second")
 	n.free()
+
+func _test_relay_equipment_pairs_skipped() -> void:
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	reg.set_local_player("player_host_1")
+	var peers := [2, 3, 4, 5, 6, 7, 8, 9]
+	var n := _relay_host(peers)
+	n.player_registry = reg
+	for pid in peers:
+		reg.resolve_identity(pid)
+		n.remember_player_state(pid, Vector3(float(pid), 0.0, 0.0))
+	n.equipment_pair_evaluations = 0
+	n._equipment_eval_positions.clear()
+	n._refresh_equipment_pairs(2)
+	assert_eq(n.equipment_pair_evaluations, 0, "nobody wears anything: a move evaluates no pair (was 2 per other peer: 18)")
+	reg.record_equipment(str(reg.get_player_id(5)), { "Chest": "VeilsteelChestplate" })
+	n._equipment_eval_positions.clear()
+	n._refresh_equipment_pairs(2)
+	assert_eq(n.equipment_pair_evaluations, 1, "one wearer: only the pair that shows its gear is evaluated")
+	assert_true(n._equipment_sent.has("2:5"), "and the mover is told what it wears")
+	n.free()
+	reg.free()

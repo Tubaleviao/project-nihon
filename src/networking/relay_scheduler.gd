@@ -7,11 +7,11 @@ extends RefCounted
 ## held back stays pending and is released once its interval is over, so a player who stops still
 ## ends up at its last position on every neighbour. Pure: the caller passes the clock.
 
-const NEAR_M := 12.0
-const MID_M := 40.0
+const NEAR_M := 24.0
+const MID_M := 56.0
 const NEAR_MS := 0.0
-const MID_MS := 700.0
-const FAR_MS := 900.0
+const MID_MS := 200.0
+const FAR_MS := 400.0
 ## A neighbour is told a still player's position at least this often, so it can tell "stopped" from "lost".
 const HEARTBEAT_MS := 1000.0
 

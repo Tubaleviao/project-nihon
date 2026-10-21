@@ -83,9 +83,11 @@ func _relays_of_peer(n: NetworkingSlice, peer_id: int) -> Array:
 	for o in n.memory_transport().outbox:
 		if str(o["payload"].get("type", "")) != "remote_player_states":
 			continue
-		for e in o["payload"]["s"]:
-			if int(e[0]) == peer_id:
-				out.append({ "peer_id": o["peer_id"], "payload": { "type": "remote_player_state", "peer_id": e[0], "pk": e[1] } })
+		var bytes := Marshalls.base64_to_raw(o["payload"]["b"])
+		for at in range(0, bytes.size(), 24):
+			if bytes.decode_s32(at) == peer_id:
+				out.append({ "peer_id": o["peer_id"], "payload": { "type": "remote_player_state", "peer_id": peer_id,
+						"pk": Marshalls.raw_to_base64(bytes.slice(at + 4, at + 24)) } })
 	return out
 
 func _assert_relay_exact(relayed: Array, chunk: Vector2i, local: Vector3, label: String) -> void:

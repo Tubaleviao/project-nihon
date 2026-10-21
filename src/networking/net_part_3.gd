@@ -112,12 +112,17 @@ func _refresh_equipment_pairs(moved: int) -> void:
 		sl._equipment_eval_positions[moved] = at
 	var others: Array = Array(sl._connected_peers())
 	others.append(sl.HOST_PEER_ID)
+	# Phase 163 — a pair needs work only when its subject wears something to show, or the viewer holds a
+	# record to evict. In a crowd where nobody wears gear that is no pair at all, instead of 2 per peer.
+	var moved_worn: bool = not sl._worn_of_peer(moved).is_empty()
 	for other in others:
 		var o := int(other)
 		if o == moved:
 			continue
-		sl._update_equipment_pair(moved, o)
-		sl._update_equipment_pair(o, moved)
+		if moved_worn or sl._equipment_sent.has(sl._pair_key(o, moved)):
+			sl._update_equipment_pair(o, moved)
+		if sl._equipment_sent.has(sl._pair_key(moved, o)) or not sl._worn_of_peer(o).is_empty():
+			sl._update_equipment_pair(moved, o)
 
 func _on_inventory_synced(owner_id: String, contents: Dictionary, durabilities: Dictionary = {}) -> void:
 	if sl._role != sl.Role.HOST:
@@ -250,12 +255,7 @@ func _route_h2c(payload: Dictionary) -> void:
 		"remote_player_state":
 			sl._route_remote_player_state(payload)
 		"remote_player_states":
-			# Phase 163 — one packet carries every relay of a tick: [[peer id, packed position], ...].
-			var entries = payload.get("s", [])
-			if entries is Array:
-				for entry in entries:
-					if entry is Array and entry.size() == 2:
-						sl._route_remote_player_state({ "peer_id": entry[0], "pk": entry[1] })
+			sl._m2.apply_relay_batch(payload)   # Phase 163 — one packet carries every relay of a tick
 		"weather_overrides":
 			# Phase 128 — only a client adopts the host's table; the list is validated by the slice.
 			if sl._role == sl.Role.CLIENT and payload.get("overrides", null) is Array:
