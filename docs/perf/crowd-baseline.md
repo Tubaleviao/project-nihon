@@ -35,13 +35,21 @@ window, creature and watcher candidates for a later report that ranks them.
 Largest passing size per series is in `crowd-baseline.json` (cluster 16, cross 16, spread 16, pole 32,
 churn 0, from the Phase 162 notes).
 
-## After the first fixes (same machine, same command)
+## After Phase 163 (same machine, same command)
 
-| Fix | Effect at `lan/cluster`, 64 bots |
+| Fix | Effect |
 |---|---|
 | Equipment pairs: a move evaluates only pairs that show gear or hold a record to evict | `aoi_relay` phase 2258 → ~1000 ms over the run |
-| `aoi_recipients` filters against a set, not a linear `in` | linear in the crowd |
-| Relays: one binary `remote_player_states` packet per recipient per tick (24 bytes per entry) | down per peer 136.7 → 85.3 kbit/s (62% of baseline; target 60%) |
-| Host tick p95 | 18.4 → 16.4 ms (target 9.2): the p95 is the `chunks` phase spiking on window streaming (about 14 ms even at 16 bots), not the relays |
+| `aoi_recipients` filters against a set | linear in the crowd |
+| Dedicated server attaches no chunk geometry (`VoxelSlice.attach_geometry`) | the tick p95 spikes were chunk attach (mesh and trimesh) |
+| Relays: one binary `remote_player_states` packet per recipient per 100 ms, same-chunk entries 17 bytes | down per peer 136.7 → 63.3 kbit/s |
 
-Largest passing size, `lan/cluster`: 16 → 32.
+`lan`, 64 bots: `cluster` tick p95 18.4 → 8.6 ms (47%), down per peer 136.7 → 63.3 kbit/s (46%); every budget met.
+
+| Series | Largest passing size, before → after |
+|---|---|
+| lan/cluster | 16 → 64 |
+| lan/cross | 16 → 64 |
+| lan/spread | 16 → 64 |
+| lan/pole | 32 → 32 (64 misses the tick budget: a 0.5 s stall at the fold) |
+| lan/churn | 0 → 0 (every join costs a full snapshot) |
