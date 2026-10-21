@@ -608,9 +608,9 @@ func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	# ghosts are a client-only concern, so never build a visual pool here.
 	if not render_visuals:
 		return
-	# Never ghost our own local player: the host echoes a client's movement back
-	# to every peer (including the originator), and that echo must not spawn a
-	# ghost of ourselves.
+	# Never ghost our own local player. The host's relay batch (Phase 163) no
+	# longer sends a subject its own position, but a stray packet naming our own
+	# peer id must still not spawn a ghost of ourselves.
 	if peer_id == multiplayer.get_unique_id():
 		return
 	if _ghost_suppressed.has(peer_id):

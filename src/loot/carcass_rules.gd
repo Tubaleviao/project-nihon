@@ -62,7 +62,9 @@ static func level_for_xp(xp: int) -> int:
 
 ## The level a tool of `efficiency` works at: floor(level * efficiency).
 static func effective_level(level: int, efficiency: float) -> int:
-	return clampi(int(floor(float(level) * clampf(efficiency, 0.0, 1.0))), 0, int(skill().get("levelCap")))
+	var s: Resource = skill()
+	var eff := int(floor(float(level) * clampf(efficiency, 0.0, 1.0)))
+	return clampi(eff, 0, int(s.get("levelCap"))) if s != null else maxi(eff, 0)
 
 ## The harvest category an item provides and how well: `{ tool, efficiency }`, or `{}` for a non-tool.
 static func tool_of(item_id: String) -> Dictionary:
@@ -82,24 +84,29 @@ static func entry_workable(entry: Dictionary, category: String) -> bool:
 ## Quantity for one entry at an effective level: `minQty` at level 0 rising to `maxQty` at the cap along
 ## the yield curve. `roll` in [0, 1) is the chance roll (the entry's chance plus the level's bonus); a
 ## failed roll gives 0.
+## Without the Skinning skill data (or with empty curves) the entry's own chance and `minQty` apply.
 static func quantity(entry: Dictionary, eff_level: int, roll: float) -> int:
 	var s: Resource = skill()
-	var chance_c: Array = s.get("chanceCurve")
-	var yield_c: Array = s.get("yieldCurve")
-	var l := clampi(eff_level, 0, chance_c.size() - 1)
-	if roll >= minf(1.0, float(entry.get("chance", 0.0)) + float(chance_c[l])):
+	var chance_c: Array = s.get("chanceCurve") if s != null else []
+	var yield_c: Array = s.get("yieldCurve") if s != null else []
+	var bonus := float(chance_c[clampi(eff_level, 0, chance_c.size() - 1)]) if not chance_c.is_empty() else 0.0
+	if roll >= minf(1.0, float(entry.get("chance", 0.0)) + bonus):
 		return 0
 	var lo := int(entry.get("minQty", 1))
 	var hi := int(entry.get("maxQty", lo))
-	return lo + int(round(float(hi - lo) * float(yield_c[l])))
+	var frac := float(yield_c[clampi(eff_level, 0, yield_c.size() - 1)]) if not yield_c.is_empty() else 0.0
+	return lo + int(round(float(hi - lo) * frac))
 
+## The grade for an effective level ("" without the Skinning skill data).
 static func quality(eff_level: int) -> String:
-	var q: Array = skill().get("qualityCurve")
-	return str(q[clampi(eff_level, 0, q.size() - 1)])
+	var s: Resource = skill()
+	var q: Array = s.get("qualityCurve") if s != null else []
+	return str(q[clampi(eff_level, 0, q.size() - 1)]) if not q.is_empty() else ""
 
 ## Carry capacity in kg: the base from the player entity plus the Skinning bonus.
 static func capacity_kg(level: int) -> float:
-	var base := float(GameData.PLAYERS["PlayerCharacter"].get("carryCapacityKg"))
+	var pc: Resource = GameData.PLAYERS.get("PlayerCharacter", null)
+	var base := float(pc.get("carryCapacityKg")) if pc != null else 0.0
 	return base + rule_f("carryBonusPerSkinningLevelKg", 0.0) * float(level)
 
 ## "carry", "drag" or "none" for a body of `mass` kg under `rule` against `capacity`.

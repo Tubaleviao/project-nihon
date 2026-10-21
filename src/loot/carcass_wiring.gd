@@ -248,15 +248,14 @@ func _on_carry_intent(carcass_id: String, player_id: String) -> void:
 	_cancel(pid, "cancelled")
 	_push_carry_state(pid)
 
+## The body goes down where the host has it (it follows the carrier within the carry budget), never at a
+## client-reported position, so a drop cannot teleport it.
 func _on_drop_intent(player_id: String) -> void:
 	if root._is_client or root._carcass == null:
 		return
 	var pid := _pid(player_id)
-	var pos: Variant = _position_of(pid)
-	if pos == null:
-		return
-	root._carcass.drop(pid, pos)
-	_push_carry_state(pid)
+	if _drop_in_place(pid):
+		_push_carry_state(pid)
 
 func _on_player_damaged(_damage: float, _attacker_id: String, target_id: String) -> void:
 	if root._is_client or root._carcass == null:
@@ -264,23 +263,16 @@ func _on_player_damaged(_damage: float, _attacker_id: String, target_id: String)
 	var pid := _pid(target_id)
 	_cancel(pid, "damaged")
 
-func _drop_where_standing(pid: String) -> void:
-	var pos: Variant = _position_of(pid)
-	if pos != null and root._carcass.drop(pid, pos) != "":
-		_push_carry_state(pid)
+## Put `pid`'s carried body down at its own host-side position. False when nothing was carried.
+func _drop_in_place(pid: String) -> bool:
+	var id: String = root._carcass.carried_by(pid)
+	return id != "" and root._carcass.drop(pid, root._carcass.position_of(id)) != ""
 
 func _on_player_left(player_id: String) -> void:
 	if root._carcass == null or root._is_client:
 		return
 	_actions.erase(player_id)
-	var id: String = root._carcass.carried_by(player_id)
-	if id == "":
-		return
-	# The body stays where it last followed its carrier when the carrier's position is already gone.
-	var pos: Variant = _position_of(player_id)
-	if pos == null:
-		pos = root._carcass.get_carcass(id).get("position", Vector3.ZERO)
-	root._carcass.drop(player_id, pos)
+	_drop_in_place(player_id)   # the body stays where it last followed its carrier
 
 func _on_carrier_lost(player_id: String) -> void:
 	if root._is_client or root._carcass == null:
@@ -311,7 +303,8 @@ func tick(delta: float) -> void:
 	# Any cause of death releases the body (checked each tick; `player_damaged` fires before the hit lands).
 	for pid in root._carcass.carrier_ids():
 		if not _alive(pid):
-			_drop_where_standing(pid)
+			if _drop_in_place(pid):
+				_push_carry_state(pid)
 	root._carcass.advance(delta)
 	for pid in _actions.keys():
 		var a: Dictionary = _actions[pid]

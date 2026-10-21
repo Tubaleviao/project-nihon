@@ -15,6 +15,7 @@ func register() -> void:
 	_run_test("crowd: a distant peer in the AOI still hears once a second", _test_crowd_relay_distant_once_per_second)
 	_run_test("crowd: a big batch splits at the packet cap", _test_crowd_relay_batch_split)
 	_run_test("crowd: a departed peer leaves no relay state", _test_crowd_relay_forget)
+	_run_test("crowd: a pair out of the AOI is forgotten after PAIR_TTL_MS, a live one is kept", _test_crowd_relay_prunes_stale_pairs)
 	_run_test("crowd: an AOI query probes a 3x3 block of cells", _test_crowd_aoi_query_cells)
 	_run_test("crowd: n crossings in one frame cost one window refresh", _test_crowd_rescopes_one_refresh)
 	_run_test("crowd: a re-scope sends only the records the peer does not hold", _test_crowd_rescope_record_delta)
@@ -371,3 +372,28 @@ func _test_crowd_server_chunk_no_geometry() -> void:
 	assert_eq(_chunk_children(server), [], "a dedicated server attaches no mesh and no collision body")
 	assert_eq(server.get_voxel_height_at(Vector2(16.0, 16.0)), 2.0, "the chunk's height data is still there")
 	server.free()
+
+func _test_crowd_relay_prunes_stale_pairs() -> void:
+	var b := RelayBatch.new()
+	var connected := { 2: true, 4: true }
+	var in_view := [true]
+	var recipients := func(pos: Vector3) -> Array: return [2, 4] if pos.x < 0.0 or in_view[0] else [4]
+	var center := func(_peer: int) -> Vector3: return Vector3.ZERO
+	# Subject 3 is seen by peers 2 and 4; subject 5 (x < 0) stays in both AOIs the whole time.
+	b.offer(3, "a", Vector3(10.0, 0.0, 0.0))
+	b.offer(5, "b", Vector3(-10.0, 0.0, 0.0))
+	b.build(0.0, connected, recipients, center)
+	assert_eq(b.pair_count(), 4, "four pairs relayed")
+	in_view[0] = false   # 3 leaves 2's AOI
+	var now := 0.0
+	while now <= RelayBatch.PAIR_TTL_MS * 2.0:
+		now += 500.0
+		b.offer(3, "a%d" % int(now), Vector3(10.0, 0.0, 0.0))
+		b.offer(5, "b", Vector3(-10.0, 0.0, 0.0))
+		b.build(now, connected, recipients, center)
+	assert_eq(b.pair_count(), 3, "the pair that left the AOI is forgotten; the live ones stay")
+	assert_false((b._last.get(2, {}) as Dictionary).has(3), "and it is the 2 <- 3 pair")
+	in_view[0] = true
+	b.offer(3, "back", Vector3(10.0, 0.0, 0.0))
+	var back: Dictionary = b.build(now + 100.0, connected, recipients, center)
+	assert_true((back.get(2, []) as Array).has(3), "a forgotten pair is relayed at once on return")
