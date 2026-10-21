@@ -63,6 +63,9 @@ class BuildControl extends RefCounted:
 
 var _bands: Array[Band] = []
 var _plan_key := ""
+var _plan_ring := -1.0
+var _plan_circ := -1.0
+var _warmed := false
 var _origin: SceneOffset = SceneOffset.new()
 const SceneOffset := preload("res://src/core/scene_offset.gd")
 
@@ -82,7 +85,8 @@ static func plan(ring_radius: float, outer: float) -> Array:
 	for k in MAX_BANDS:
 		var cell := CELL_0 * pow(2.0, float(k))
 		var half := hole0 * pow(2.0, float(k + 1))
-		out.append({"cell": cell, "hole_half": half * 0.5, "half": half})
+		# band 0 also lies under the ring: there it takes the cell's centre height, not its peak
+		out.append({"cell": cell, "hole_half": half * 0.5, "half": half, "under_r": ring_radius if k == 0 else 0.0})
 		if half - cell >= outer:
 			break
 	return out
@@ -114,6 +118,10 @@ static func cell_height(seed_v: int, w: float, cell: float, ix: int, iz: int, he
 			best = maxf(best, h)
 	return best
 
+## The ground height at one point (`height_fn` replaces the shape).
+static func point_height(seed_v: int, w: float, x: float, z: float, height_fn: Callable = Callable()) -> float:
+	return height_fn.call(x, z) if height_fn.is_valid() else shape_ground(seed_v, w, x, z)
+
 ## The y a band vertex of ground height `h` is drawn at.
 static func band_y(h: float, sea: float) -> float:
 	return maxf(h, sea) - BAND_DROP
@@ -132,6 +140,7 @@ static func build_band(seed_v: int, w: float, spec: Dictionary, origin: Vector2i
 	var sea := WorldShape.sea_level()
 	var sh := roundi(float(spec["half"]) / cell)
 	var hh := roundi(float(spec["hole_half"]) / cell)
+	var under_r: float = spec.get("under_r", 0.0)
 	var oc := origin
 	if has_outer:
 		oc = Vector2i(floori(float(origin.x) / 2.0) * 2, floori(float(origin.y) / 2.0) * 2)
@@ -155,6 +164,8 @@ static func build_band(seed_v: int, w: float, spec: Dictionary, origin: Vector2i
 			var on_edge_z := has_outer and (j == 0 or j == side - 1)
 			if on_edge_x or on_edge_z:
 				h = _coarse_edge_height(seed_v, w, cell, ix, iz, height_fn)
+			elif under_r > 0.0 and Vector2(float(ix - origin.x), float(iz - origin.y)).length() * cell < under_r:
+				h = point_height(seed_v, w, float(ix) * cell, float(iz) * cell, height_fn)   # under the ring: no peaks through it
 			else:
 				h = cell_height(seed_v, w, cell, ix, iz, height_fn)
 			index[j * side + i] = vertices.size()
@@ -246,6 +257,13 @@ func shift_scene(shift: Vector3) -> void:
 		if b.mesh_inst != null:
 			b.mesh_inst.position += shift
 
+## A fold (antimeridian or pole) changes the world frame: carry the finished meshes across by `xform`
+## (as the ring's) until the rebuilds for the folded position swap in.
+func fold_by(xform: Transform3D) -> void:
+	for b in _bands:
+		if b.mesh_inst != null:
+			b.mesh_inst.transform = xform * b.mesh_inst.transform
+
 func scene_offset() -> Vector3:
 	return _origin.value
 
@@ -261,15 +279,20 @@ func is_building() -> bool:
 ## Returns true when any build was started or queued.
 func update(center: Vector2, ring_radius: float) -> bool:
 	ring_radius_m = ring_radius
-	outer_radius_m = outer_radius(circumference_m)
-	var specs := plan(ring_radius, outer_radius_m)
-	var key := "%d:%s" % [roundi(circumference_m), str(specs)]
-	if key != _plan_key:
-		_reset_bands(specs)
-		_plan_key = key
+	if not _warmed:
+		WorldShape.warm()   # the fabric snapshot is taken here, never first on a worker
+		TerrainSliceScript.warm_polar_caches()
+		_warmed = true
+	if ring_radius != _plan_ring or circumference_m != _plan_circ:   # the plan changes with these two only
+		_plan_ring = ring_radius
+		_plan_circ = circumference_m
+		outer_radius_m = outer_radius(circumference_m)
+		var specs := plan(ring_radius, outer_radius_m)
+		var key := "%d:%s" % [roundi(circumference_m), str(specs)]
+		if key != _plan_key:
+			_reset_bands(specs)
+			_plan_key = key
 	var any := false
-	WorldShape.warm()   # the fabric snapshot is taken here, never first on a worker
-	TerrainSliceScript.warm_polar_caches()
 	for b in _bands:
 		var o := origin_for(b.spec, center)
 		var req := {"origin": o, "seed": world_seed, "circ": circumference_m, "last": b.index == _bands.size() - 1}

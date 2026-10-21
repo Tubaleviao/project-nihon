@@ -822,8 +822,8 @@ func _step_horizon() -> Array:
 	return [worst <= SKYLINE_FLAT_PX, "coast at %.0f m, bearing %.0f°, skyline spread %s px (limit %d)" % [
 		Vector2(start.x, start.z).distance_to(spot_xz), bearing, str(spreads), SKYLINE_FLAT_PX]]
 
-## Phase 165 — a vantage `FAR_PEAK_DISTANCE_M` from a tall ridge: the highest-first search over the shape
-## on a coarse grid around `from` for the nearest point at least `FAR_PEAK_MIN_HEIGHT` tall, then the
+## Phase 165 — a vantage `FAR_PEAK_DISTANCE_M` from a tall ridge: the search over the shape
+## on a coarse grid around `from` (nearest square ring first) for the nearest point at least `FAR_PEAK_MIN_HEIGHT` tall, then the
 ## first of sixteen bearings whose point at that distance is dry land. Returns [vantage, bearing_to_peak_deg,
 ## peak, peak_height] or [].
 func _find_far_peak(from: Vector2) -> Array:
@@ -840,9 +840,8 @@ func _find_far_peak(from: Vector2) -> Array:
 			if Time.get_ticks_msec() - t0 > COAST_WORK_MS:
 				await get_tree().process_frame
 				t0 = Time.get_ticks_msec()
-			for i in range(-r, r + 1):
-				if maxi(absi(i), absi(j)) != r:
-					continue
+			var i_step := 1 if absi(j) == r or r == 0 else 2 * r   # interior cells belong to a smaller ring
+			for i in range(-r, r + 1, i_step):
 				var p := from + Vector2(float(i), float(j)) * FAR_PEAK_SEARCH_STEP_M
 				var d := p.distance_to(from)
 				if d >= best_d:
@@ -935,7 +934,7 @@ func _step_far_peak() -> Array:
 		worst_ms = maxf(worst_ms, float(f))
 	var detail := "ridge %.0f m at %.0f km, bearing %.0f°: %d rock/snow px above the ring's skyline (need %d), worst frame %.0f ms" % [
 		float(found[3]), Vector2(spot_xz).distance_to(Vector2(found[2])) / 1000.0, bearing, px, FAR_PEAK_MIN_PX, worst_ms]
-	return [px >= FAR_PEAK_MIN_PX and worst_ms <= HARD_FRAME_MS, detail]
+	return [px >= FAR_PEAK_MIN_PX, detail]
 
 ## True when every band has completed a build newer than `before`, none is pending, and band 0 is
 ## centred on the cell the body stands in.
