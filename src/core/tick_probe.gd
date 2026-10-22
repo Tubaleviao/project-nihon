@@ -50,9 +50,11 @@ static func count_in(peer: int, type: String, bytes: int) -> void:
 	_add(_in_peer, peer, bytes)
 	_add(_in_type, type, bytes)
 
-static func relay_seen(peer_id: int, key: String) -> void:
+## `pos` is the relayed exact position (empty when unknown); the stress watcher turns it into its
+## distance to the subject, so the lag budget can leave out far relays the host thins on purpose.
+static func relay_seen(peer_id: int, key: String, pos: Dictionary = {}) -> void:
 	if enabled and log_relays:
-		_relays.append([peer_id, key, int(Time.get_unix_time_from_system() * 1000.0)])
+		_relays.append([peer_id, key, int(Time.get_unix_time_from_system() * 1000.0), pos])
 
 static func _add(table: Dictionary, key: Variant, bytes: int) -> void:
 	var row: Array = table.get(key, [0, 0])

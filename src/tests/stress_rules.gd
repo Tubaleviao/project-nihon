@@ -37,6 +37,10 @@ const BASELINE_LARGEST := {
 ## (`PlayerSlice.SYNC_INTERVAL` physics ticks at 60 Hz), so a bot walks and reports like a player.
 const WALK_SPEED := 4.5
 const SEND_INTERVAL := 0.5
+## Mirrors `RelayBatch.NEAR_RADIUS`: only relays of subjects this close to the watcher count toward the
+## relay lag. Farther ones are thinned on purpose (one per `FAR_GAP_MS`, a held change sent once due),
+## so their arrival trails the send by design, not by load.
+const RELAY_NEAR_M := 24.0
 
 ## `cluster` / `churn`: bots wander between random points inside this disc around the anchor (m).
 const CLUSTER_RADIUS := 30.0
@@ -227,10 +231,13 @@ static func fit_line(points: Array) -> Vector2:
 # ---------------------------------------------------------------------------
 
 ## Join the bots' sends with the watcher's arrivals: each relay the watcher saw is matched to the
-## send it carried (`"<peer>|<key>"` -> unix ms), and its lag is arrival minus send (ms).
+## send it carried (`"<peer>|<key>"` -> unix ms), and its lag is arrival minus send (ms). An arrival
+## whose 4th field (the watcher's distance to the subject) is past `RELAY_NEAR_M` is skipped.
 static func relay_lags(sends: Dictionary, seen: Array) -> Array:
 	var out: Array = []
 	for row in seen:
+		if (row as Array).size() > 3 and float(row[3]) > RELAY_NEAR_M:
+			continue
 		var key := "%d|%s" % [int(row[0]), str(row[1])]
 		if sends.has(key):
 			out.append(maxf(0.0, float(row[2]) - float(sends[key])))

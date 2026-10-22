@@ -7,6 +7,7 @@ const StressBotSlice := preload("res://src/tests/stress_bot_slice.gd")
 const StressRecorder := preload("res://src/tests/stress_recorder.gd")
 const StressBots := preload("res://src/tests/stress_bots.gd")
 const TickProbe := preload("res://src/core/tick_probe.gd")
+const RelayBatch := preload("res://src/networking/relay_batch.gd")
 
 func register() -> void:
 	_run_test("stress: percentiles, phase shares and per-peer rates from fixed samples", _test_stress_report_statistics)
@@ -110,6 +111,9 @@ func _test_stress_lag_and_report() -> void:
 	var sends := { "5|1,2,3,4,5": 1000, "6|1,2,3,4,5": 1100 }
 	var seen := [[5, "1,2,3,4,5", 1040], [6, "1,2,3,4,5", 1400], [7, "9,9,9,9,9", 2000]]
 	assert_eq(StressRules.relay_lags(sends, seen), [40.0, 300.0], "lag is arrival minus send; an unmatched arrival is skipped")
+	var near_far := [[5, "1,2,3,4,5", 1040, 10.0], [6, "1,2,3,4,5", 1400, 40.0], [6, "1,2,3,4,5", 1300, -1.0]]
+	assert_eq(StressRules.relay_lags(sends, near_far), [40.0, 200.0],
+		"a subject past the near radius is thinned on purpose and left out; an unknown distance counts")
 	var rows := [
 		StressRules.run_row({ "tick_ms": [2.0, 3.0], "phase_us": { "aoi_relay": 2000 }, "out_type": { "remote_player_state": [1000, 10] },
 			"peer_seconds": { "5": 2.0 }, "out_peer": { "5": [1000, 10] }, "pattern": "cluster", "profile": "lan" },
@@ -170,6 +174,7 @@ func _test_stress_mirrored_constants() -> void:
 	assert_eq(StressRules.WALK_SPEED, PlayerSlice.SPEED, "a bot walks at the player's speed")
 	assert_true(is_equal_approx(StressRules.SEND_INTERVAL, float(PlayerSlice.SYNC_INTERVAL) / float(Engine.physics_ticks_per_second)),
 		"and reports as often as a client")
+	assert_eq(StressRules.RELAY_NEAR_M, RelayBatch.NEAR_RADIUS, "the lag counts the relays the host never thins")
 	assert_eq(StressRules.LADDER, [16, 32, 64, 128, 200], "the ladder is the roadmap's")
 	var script_text := FileAccess.get_file_as_string("res://tools/stress.sh")
 	assert_true(script_text.contains('LADDER="%s"' % " ".join(StressRules.LADDER.map(func(n): return str(n)))),
