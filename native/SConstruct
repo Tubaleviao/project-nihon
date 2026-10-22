@@ -1,0 +1,17 @@
+#!/usr/bin/env python
+# Builds the NativeChunkBuilder GDExtension (Phase 166).
+#   tools/fetch_godot_cpp.sh                       # once: pinned godot-cpp checkout into native/godot-cpp
+#   cd native && scons platform=linux              # also: windows, macos (universal via arch=universal)
+# Output: native/bin/libnihon_native.<platform>.<target>.<arch>.<ext>, named in nihon_native.gdextension.
+env = SConscript("godot-cpp/SConstruct")
+
+env.Append(CPPPATH=["src/"])
+sources = Glob("src/*.cpp")
+
+suffix = env["suffix"].replace(".dev", "").replace(".universal", "")
+lib = env.SharedLibrary(
+    "bin/libnihon_native{}{}".format(suffix, env["SHLIBSUFFIX"]),
+    source=sources,
+)
+
+Default(lib)

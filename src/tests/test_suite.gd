@@ -37,6 +37,7 @@ const SUITES: Array[String] = [
 	"res://src/tests/suites/runner_tests.gd",
 	"res://src/tests/suites/stress_tests.gd",
 	"res://src/tests/suites/crowd_tests.gd",
+	"res://src/tests/suites/native_tests.gd",
 ]
 ## A suite file may not outgrow this (Phase 133): split it by system instead.
 const MAX_SUITE_LINES := 3000
