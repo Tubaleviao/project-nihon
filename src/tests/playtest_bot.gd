@@ -71,8 +71,8 @@ const FAR_PEAK_DISTANCE_M := 60000.0
 const FAR_PEAK_MIN_HEIGHT := 330.0    ## 80+ m over the horizon from 60 km (about 250 m for the camera's eye): a ridge barely over it shows a few pixels
 const FAR_PEAK_SEARCH_M := 2.0e6      ## the ridge is looked for this far from the body, nearest square ring first
 const FAR_PEAK_SEARCH_STEP_M := 8000.0
-const FAR_PEAK_EXTRA_RINGS := 6      ## rings searched past the first with a ridge, for more candidates
-const FAR_PEAK_CANDIDATES := 24       ## nearest ridges tried for a vantage
+const FAR_PEAK_EXTRA_RINGS := 40     ## rings searched past the first with a ridge, for more candidates
+const FAR_PEAK_CANDIDATES := 8       ## nearest ridges with a usable vantage compared (the tallest wins)
 const FAR_PEAK_MIN_PX := 8            ## rock or snow pixels above the ring's skyline needed to pass
 const FAR_PEAK_SAT_MAX := 0.18        ## rock (grey) and snow (white) are below this saturation; land and sea are not
 const FAR_PEAK_TIMEOUT_SECS := 240.0
@@ -573,16 +573,20 @@ func _step_craft() -> Array:
 		return [false, "research: %s" % tech]
 	_root._inventory.add_item("Thornwood", 2)
 	_root._crafting.set_skill("Carpentry", "novice")
-	# The bench counts only within reach of the body: a body still settling onto the ground can sit more
-	# than the station radius from where the bench went down, so re-place at the feet until it is near.
-	var near := false
-	for attempt in 3:
-		if await _place_with_keys("carpentry bench") == 0 and attempt == 0:
-			return [false, "bench placement refused"]
-		await _until(func(): return false, 0.5)
-		near = _root._station.station_near_player("carpentry bench", _root._crafting.STATION_RADIUS)
-		if near:
-			break
+	# The bench counts only within reach of the body. The key places it at the aimed block, which can lie
+	# beyond the station radius, so when it is not near, walk the body (a teleport) to where it went down.
+	if await _place_with_keys("carpentry bench") == 0:
+		return [false, "bench placement refused"]
+	await _until(func(): return false, 0.5)
+	var radius: float = _root._crafting.STATION_RADIUS
+	var near: bool = _root._station.station_near_player("carpentry bench", radius)
+	if not near:
+		var m := WorldPos.CHUNK_METERS
+		var at: Vector3 = _root._station.get_station(str(_placed.back()[0]))["position"]
+		var chunk := Vector2i(floori(at.x / m), floori(at.z / m))
+		_teleport_to(chunk, Vector3(at.x - float(chunk.x) * m, 0.0, at.z - float(chunk.y) * m))
+		await _until(func(): return false, 1.0)   # the body settles
+		near = _root._station.station_near_player("carpentry bench", radius)
 	if not near:
 		return [false, "the bench is out of reach of the body"]
 	var before := _crafted.size()
@@ -865,7 +869,13 @@ func _find_far_peak(from: Vector2) -> Array:
 	# and of those the tallest (the most pixels above the skyline).
 	peaks.sort_custom(func(p1, p2): return float(p1[0]) < float(p2[0]))
 	var best: Array = []
-	for k in mini(peaks.size(), FAR_PEAK_CANDIDATES):
+	var usable := 0
+	for k in peaks.size():
+		if usable >= FAR_PEAK_CANDIDATES:
+			break
+		if Time.get_ticks_msec() - t0 > COAST_WORK_MS:
+			await get_tree().process_frame
+			t0 = Time.get_ticks_msec()
 		var peak: Vector2 = peaks[k][1]
 		for b in 16:
 			var dir := Vector2.from_angle(deg_to_rad(float(b) * 22.5))
@@ -874,6 +884,7 @@ func _find_far_peak(from: Vector2) -> Array:
 			if vh > sea + 3.0 and vh < 100.0:
 				if best.is_empty() or float(peaks[k][2]) > float(best[3]):
 					best = [v, rad_to_deg((-dir).angle()), peak, peaks[k][2]]
+				usable += 1
 				break
 	return best
 
