@@ -366,15 +366,17 @@ void NativeChunkBuilder::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("version"), &NativeChunkBuilder::version);
 	ClassDB::bind_method(D_METHOD("functions"), &NativeChunkBuilder::functions);
 	ClassDB::bind_method(D_METHOD("heightmap_for", "pos", "seed", "noise", "cfg"), &NativeChunkBuilder::heightmap_for);
+	ClassDB::bind_method(D_METHOD("build_runs", "chunk_pos", "heightmap", "input", "cfg"), &NativeChunkBuilder::build_runs);
 }
 
 int NativeChunkBuilder::version() const {
-	return 2;
+	return 3;
 }
 
 PackedStringArray NativeChunkBuilder::functions() const {
 	PackedStringArray out;
 	out.push_back("heightmap_for");
+	out.push_back("build_runs");
 	return out;
 }
 

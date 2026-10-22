@@ -31,6 +31,12 @@ public:
 	// (see `TerrainSlice._native_cfg`): circumference_chunks, sea, min_height, max_height,
 	// ridge_amplitude, spline, and `records` ({Vector2i cell: PackedFloat64Array corners} for
 	// recorded cells the chunk reads). Thread-safe: no state is kept between calls.
+	// Phase 168. Port of `VoxelSlice.build_runs(chunk_pos, heightmap, input)` -> { runs, deposits }.
+	// `cfg` carries the tables the GDScript side owns (see `VoxelSlice._native_runs_cfg`): the
+	// circumference, material colours, biome host rocks and surface styles, the ore field's depth
+	// bands and a callable for `OreField.vein_in_cell`. Thread-safe: no state between calls.
+	Dictionary build_runs(const Vector2i &p_chunk, const Array &p_heightmap, const Dictionary &p_input, const Dictionary &p_cfg) const;
+
 	Array heightmap_for(const Vector2i &p_pos, int64_t p_seed, const Ref<FastNoiseLite> &p_noise, const Dictionary &p_cfg) const;
 };
 
