@@ -5,6 +5,7 @@ extends "res://src/tests/test_support.gd"
 ## only checked for consistency with what the engine can see.
 
 const NativeBuilder := preload("res://src/terrain/native_builder.gd")
+const VoxelRuns := preload("res://src/terrain/voxel_runs.gd")
 
 const EXPECT_NATIVE_ARG := "--expect-native"
 const EXPECT_FALLBACK_ARG := "--expect-fallback"
@@ -14,6 +15,8 @@ func register() -> void:
 	_run_test("native: the real loader matches the build (native present or fallback)",             _test_native_real_loader)
 	_run_test("native: only ported functions are routed natively",                                 _test_native_routes_only_ported)
 	_run_test("native: heightmap_for matches the GDScript reference on the fixed chunk set",       _test_native_heightmap_parity)
+	_run_test("native: build_runs matches the GDScript reference on the fixed chunk set",          _test_native_build_runs_parity)
+	_run_test("native: run edits resolve in a total order",                                       _test_native_run_ops_order)
 	_run_test("native: the extension and its build files are in the tree",                         _test_native_files_present)
 	_run_test("native: the release workflow is tag-triggered and builds three platforms",           _test_native_release_workflow)
 
@@ -31,9 +34,9 @@ func _test_native_real_loader() -> void:
 	if EXPECT_NATIVE_ARG in args:
 		assert_eq(mode, NativeBuilder.MODE_NATIVE, "the binary is present: the loader reports native")
 		assert_true(ClassDB.class_exists(NativeBuilder.CLASS_NAME), "NativeChunkBuilder is registered")
-		assert_eq(NativeBuilder.version(), 2, "the native class reports its version")
+		assert_eq(NativeBuilder.version(), 3, "the native class reports its version")
 		var b: RefCounted = ClassDB.instantiate(NativeBuilder.CLASS_NAME)
-		assert_eq(b.call("functions") as PackedStringArray, PackedStringArray(["heightmap_for"]), "Phase 167 ports heightmap_for")
+		assert_eq(b.call("functions") as PackedStringArray, PackedStringArray(["heightmap_for", "build_runs"]), "Phases 167-168 port heightmap_for and build_runs")
 	if EXPECT_FALLBACK_ARG in args:
 		assert_eq(mode, NativeBuilder.MODE_FALLBACK, "no binary: the loader reports the GDScript fallback")
 		assert_eq(NativeBuilder.version(), -1, "no native version on the fallback")
@@ -42,7 +45,8 @@ func _test_native_real_loader() -> void:
 
 func _test_native_routes_only_ported() -> void:
 	NativeBuilder.init()
-	for fn in ["build_runs", "build_chunk_arrays"]:
+	assert_eq(NativeBuilder.use_native("build_runs"), NativeBuilder.is_native(), "build_runs is native exactly when the extension loaded")
+	for fn in ["build_chunk_arrays"]:
 		assert_false(NativeBuilder.use_native(fn), "%s is not ported yet" % fn)
 	assert_false(NativeBuilder.use_native("not_a_function"), "an unknown function is never native")
 
@@ -87,6 +91,81 @@ func _test_native_heightmap_parity() -> void:
 			assert_eq(got.size(), want.size(), "native heightmap_for %s has the same size (records %d)" % [str(pos), round_i])
 			assert_true(got == want, "native heightmap_for %s equals the GDScript reference (records %d)" % [str(pos), round_i])
 	ChunkRecordsScript.clear()
+
+## One build input for `chunk`: the 3x3 ring's heightmaps (the +x column left unknown for the odd
+## chunks, so unknown-neighbour reads are covered), their biomes, the seed, edits and a depletion
+## record naming real veins found by the first pass.
+func _native_runs_input(chunk: Vector2i, seed_v: int, noise: FastNoiseLite, edits: Dictionary, depleted: Dictionary, skip_east: bool) -> Dictionary:
+	var neighbours := {}
+	var biomes := {}
+	for dz in range(-1, 2):
+		for dx in range(-1, 2):
+			var c := Vector2i(chunk.x + dx, chunk.y + dz)
+			var key := VoxelSlice._chunk_key(c)
+			biomes[key] = TerrainSlice.biome_for_chunk(c, seed_v)
+			if (dx != 0 or dz != 0) and not (skip_east and dx == 1):
+				neighbours[key] = TerrainSlice.heightmap_for(c, seed_v, noise)
+	return {"edits": edits, "neighbour_heightmaps": neighbours, "biomes": biomes, "seed": seed_v, "depleted": depleted}
+
+func _native_runs_edits(chunk: Vector2i) -> Dictionary:
+	var gx := chunk.x * 64
+	var gz := chunk.y * 64
+	var edits := {}
+	var top := 40.0
+	# A carved tunnel, a stacked placed block, a corner tile on the ring, and an unknown op kind.
+	edits[VoxelSlice._tile_key(Vector2i(gx + 5, gz + 5))] = [{"op": "remove", "bottom": -3.0, "top": -2.0}]
+	edits[VoxelSlice._tile_key(Vector2i(gx + 6, gz + 5))] = [{"op": "add", "bottom": top, "top": top + 0.25, "material": "Ferrite"}, {"op": "remove", "bottom": -90.0, "top": -80.0}]
+	edits[VoxelSlice._tile_key(Vector2i(gx - 1, gz - 1))] = [{"op": "remove", "bottom": -10.0, "top": 30.0}, {"op": "bogus", "bottom": 0.0, "top": 1.0}]
+	edits[VoxelSlice._tile_key(Vector2i(gx + 64, gz + 10))] = [{"op": "add", "bottom": -96.0, "top": 5.0, "material": "Voidite"}]
+	return edits
+
+func _test_native_build_runs_parity() -> void:
+	NativeBuilder.init()
+	if not NativeBuilder.is_native():
+		print("[Native] build_runs parity skipped: no native extension in this run")
+		return
+	var seed_v := 777001
+	var noise := FastNoiseLite.new()
+	TerrainSlice.configure_noise(noise, seed_v)
+	ChunkRecordsScript.clear()
+	var deposits_seen := 0
+	var vein_colours := 0
+	var topsoil := 0
+	for chunk: Vector2i in _native_parity_chunks():
+		var hm := TerrainSlice.heightmap_for(chunk, seed_v, noise)
+		for variant in range(3):
+			# 0 plain, 1 edited + one live vein mined out, 2 edited with an unknown east ring
+			var edits := {} if variant == 0 else _native_runs_edits(chunk)
+			var depleted := {}
+			if variant == 1:
+				# Mine out every other vein cell the chunk's ring touches, at the top two depth cells.
+				var c0 := int(floor(float(chunk.x * 64 - 1 + OreField.CELL_OFFSET_TILES) / OreField.CELL_TILES))
+				var z0 := int(floor(float(chunk.y * 64 - 1 + OreField.CELL_OFFSET_TILES) / OreField.CELL_TILES))
+				for cx in range(c0, c0 + 6):
+					for cz in range(z0, z0 + 6):
+						if (cx + cz) % 2 == 0:
+							for cy in range(0, 3):
+								depleted["%d,%d,%d" % [cx, cy, cz]] = 99
+			var input := _native_runs_input(chunk, seed_v, noise, edits, depleted, variant == 2)
+			var want := VoxelSlice.build_runs_gd(chunk, hm, input)
+			var got := VoxelSlice.build_runs(chunk, hm, input)
+			assert_eq((got["runs"] as Dictionary).keys(), (want["runs"] as Dictionary).keys(), "native build_runs %s v%d has the same tiles in the same order" % [str(chunk), variant])
+			assert_true(got["runs"] == want["runs"], "native build_runs %s v%d runs equal the GDScript reference" % [str(chunk), variant])
+			assert_true(got["deposits"] == want["deposits"], "native build_runs %s v%d deposits equal the reference, same order" % [str(chunk), variant])
+			deposits_seen += (want["deposits"] as Array).size()
+			for key in (want["runs"] as Dictionary):
+				for entry: Dictionary in want["runs"][key]:
+					if entry.has("top_color"):
+						topsoil += 1
+	assert_true(deposits_seen > 0, "the fixed chunk set holds vein deposits, so the ore path is compared (%d)" % deposits_seen)
+	assert_true(topsoil > 0, "the fixed chunk set holds topsoiled runs, so the topsoil path is compared (%d)" % topsoil)
+
+## `add_span` merges runs sorted by bottom; with the sort on `bottom` alone a tie fell to the
+## (unstable) sort's whim. Two runs that share a bottom now resolve the same whatever their order.
+func _test_native_run_ops_order() -> void:
+	var a := VoxelRuns.apply_run_ops([], [{"op": "add", "bottom": 1.0, "top": 2.0, "material": "Ferrite"}, {"op": "add", "bottom": 1.0, "top": 1.5, "material": "Soil"}])
+	var b := VoxelRuns.apply_run_ops([], [{"op": "add", "bottom": 1.0, "top": 1.5, "material": "Soil"}, {"op": "add", "bottom": 1.0, "top": 2.0, "material": "Ferrite"}])
+	assert_true(a == b, "equal-bottom runs resolve to the same list in either insertion order")
 
 func _test_native_files_present() -> void:
 	assert_true(FileAccess.file_exists(NativeBuilder.EXTENSION_PATH), "the .gdextension file is committed")

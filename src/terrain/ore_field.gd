@@ -194,6 +194,12 @@ static func warm() -> void:
 	# Latch only once the tables are filled and ClimateField is warm, so an early call retries.
 	_warmed = not _bands.is_empty() and ClimateField.is_warm()
 
+## Every material's fabric band and ley gate (key -> `{ min, max, ley }`), for the native `build_runs`.
+static func bands() -> Dictionary:
+	if not _warmed:
+		warm()
+	return _bands
+
 ## A material's fabric band and ley gate. An unknown material has an EMPTY band.
 static func band_of(material: String) -> Dictionary:
 	if not _warmed:
