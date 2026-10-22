@@ -39,7 +39,7 @@ jobs:
       - name: Run headless test suite
         run: |
           # --quit is mandatory: without it the headless main loop never exits.
-          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --quit -- --run-tests \
+          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --quit -- --run-tests --expect-fallback \
             2>&1 | tee /tmp/godot-tests.log
           if ! grep -q "All tests passed" /tmp/godot-tests.log; then
             echo "::error::test suite did not report 'All tests passed'"
@@ -53,6 +53,102 @@ jobs:
             echo "::error::one or more tests failed"
             exit 1
           fi
+
+  native:
+    name: Native builder (${{ matrix.name }})
+    # A manual dispatch is for the crowd stress run only.
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux, os: ubuntu-latest, scons: "platform=linux arch=x86_64" }
+          - { name: windows, os: windows-latest, scons: "platform=windows arch=x86_64" }
+          - { name: macos, os: macos-latest, scons: "platform=macos arch=universal" }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache godot-cpp
+        uses: actions/cache@v4
+        with:
+          path: native/godot-cpp
+          key: godot-cpp-godot-4.5-stable-${{ matrix.os }}
+
+      - name: Fetch godot-cpp
+        shell: bash
+        run: tools/fetch_godot_cpp.sh
+
+      - name: Install SCons
+        run: python -m pip install scons
+
+      - name: Build the extension
+        shell: bash
+        working-directory: native
+        run: |
+          scons ${{ matrix.scons }} target=template_debug -j4
+          scons ${{ matrix.scons }} target=template_release -j4
+          ls bin
+
+      - name: Upload the binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.name }}
+          path: native/bin/
+          if-no-files-found: error
+
+  native-suite:
+    name: Godot suite with the native builder
+    needs: native
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-linux
+          path: native/bin
+
+      - name: Download Godot 4.7
+        run: |
+          mkdir -p /tmp/godot
+          curl -fsSL -o /tmp/godot/godot.zip \
+            https://github.com/godotengine/godot/releases/download/4.7-stable/Godot_v4.7-stable_linux.x86_64.zip
+          unzip -o /tmp/godot/godot.zip -d /tmp/godot
+          chmod +x /tmp/godot/Godot_v4.7-stable_linux.x86_64
+
+      - name: Run the test suite with the binary present
+        run: |
+          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --quit -- --run-tests --expect-native \
+            2>&1 | tee /tmp/godot-native.log
+          if ! grep -q "All tests passed" /tmp/godot-native.log; then
+            echo "::error::Test suite did not report 'All tests passed' with the native builder"
+            exit 1
+          fi
+          if ! grep -q "\[Native\] chunk builder: native" /tmp/godot-native.log; then
+            echo "::error::The loader did not report the native builder"
+            exit 1
+          fi
+          if grep -qE "SCRIPT ERROR|Parse Error|Compile Error" /tmp/godot-native.log; then
+            echo "::error::Script errors in the native-builder run"
+            exit 1
+          fi
+          if grep -q "✗" /tmp/godot-native.log; then
+            echo "::error::Failing assertions in the native-builder run"
+            exit 1
+          fi
+
+  workflows:
+    name: Lint workflows
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: actionlint
+        run: |
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint -color
 
   server-boot:
     name: Dedicated server boots clean
@@ -291,7 +387,7 @@ jobs:
         run: |
           test -s stress/report.json && test -s stress/report.md
           cat stress/report.md >> "$GITHUB_STEP_SUMMARY"
-          want=$(( $(echo $STRESS_PROFILES | wc -w) * 5 ))
+          want=$(( $(echo "$STRESS_PROFILES" | wc -w) * 5 ))
           got=$(grep -c '^STRESS_LARGEST ' stress/report.log || true)
           if [ "$got" -ne "$want" ]; then
             echo "::error::the report names a largest passing size for $got series, expected $want"
@@ -391,20 +487,38 @@ jobs:
           cp -r /tmp/godot/templates/templates/* ~/.local/share/godot/export_templates/4.7.stable/
 
       - name: Export the Linux preset
+        # No binaries: the project is exported without the extension, which is how the
+        # GDScript fallback ships (see native/README.md).
         run: |
+          rm -f native/nihon_native.gdextension native/nihon_native.gdextension.uid
           mkdir -p build/linux
           /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --import || true
           /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --export-release "Linux" build/linux/nihon.x86_64
           test -s build/linux/nihon.x86_64
 
-  build:
-    name: Linux and Windows exports
-    needs: [godot-tests, server-boot, host-boot, fabric, net-harness, playtest]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: The export without the native binaries boots on the GDScript fallback
+        working-directory: build/linux
+        run: |
+          ./nihon.x86_64 --headless --quit-after 100000 -- --quit-after-boot 2>&1 | tee /tmp/export-fallback.log
+          grep -q "\[Native\] chunk builder: gdscript fallback" /tmp/export-fallback.log
+          grep -q "\[World\] first ring built" /tmp/export-fallback.log
+          if grep -qE "SCRIPT ERROR|Parse Error|Compile Error" /tmp/export-fallback.log; then
+            echo "::error::Script errors in the fallback export boot"
+            exit 1
+          fi
+
+  export-native:
+    name: Linux export with the native binaries (pull request)
+    if: github.event_name == 'pull_request'
+    needs: native
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        # No submodule: the builds carry the committed placeholders only.
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-linux
+          path: native/bin
 
       - name: Download Godot 4.7 and its export templates
         run: |
@@ -419,14 +533,58 @@ jobs:
           unzip -o /tmp/godot/templates.tpz -d /tmp/godot/templates
           cp -r /tmp/godot/templates/templates/* ~/.local/share/godot/export_templates/4.7.stable/
 
-      - name: Export the Linux and Windows presets
+      - name: Export the Linux preset with the binaries and boot it
         run: |
-          mkdir -p build/linux build/windows
+          mkdir -p build/linux
+          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --import || true
+          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --export-release "Linux" build/linux/nihon.x86_64
+          cd build/linux
+          ./nihon.x86_64 --headless --quit-after 100000 -- --quit-after-boot 2>&1 | tee /tmp/export-native.log
+          grep -q "\[Native\] chunk builder: native" /tmp/export-native.log
+          grep -q "\[World\] first ring built" /tmp/export-native.log
+
+  build:
+    name: Linux, Windows and macOS exports
+    needs: [native, native-suite, godot-tests, server-boot, host-boot, fabric, net-harness, playtest]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        # No submodule: the builds carry the committed placeholders only.
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: native-*
+          path: native-binaries
+
+      - name: Place the native binaries
+        run: |
+          mkdir -p native/bin
+          cp native-binaries/*/* native/bin/
+
+      - name: Download Godot 4.7 and its export templates
+        run: |
+          mkdir -p /tmp/godot
+          curl -fsSL -o /tmp/godot/godot.zip \
+            https://github.com/godotengine/godot/releases/download/4.7-stable/Godot_v4.7-stable_linux.x86_64.zip
+          unzip -o /tmp/godot/godot.zip -d /tmp/godot
+          chmod +x /tmp/godot/Godot_v4.7-stable_linux.x86_64
+          curl -fsSL -o /tmp/godot/templates.tpz \
+            https://github.com/godotengine/godot/releases/download/4.7-stable/Godot_v4.7-stable_export_templates.tpz
+          mkdir -p ~/.local/share/godot/export_templates/4.7.stable
+          unzip -o /tmp/godot/templates.tpz -d /tmp/godot/templates
+          cp -r /tmp/godot/templates/templates/* ~/.local/share/godot/export_templates/4.7.stable/
+
+      - name: Export the Linux, Windows and macOS presets
+        run: |
+          mkdir -p build/linux build/windows build/macos
           /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --import || true
           /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --export-release "Linux" build/linux/nihon.x86_64
           /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --export-release "Windows Desktop" build/windows/nihon.exe
+          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --export-release "macOS" build/macos/nihon.zip
           test -s build/linux/nihon.x86_64
           test -s build/windows/nihon.exe
+          test -s build/macos/nihon.zip
 
       - name: Upload the Linux build
         uses: actions/upload-artifact@v4
@@ -439,3 +597,9 @@ jobs:
         with:
           name: nihon-windows
           path: build/windows/
+
+      - name: Upload the macOS build
+        uses: actions/upload-artifact@v4
+        with:
+          name: nihon-macos
+          path: build/macos/

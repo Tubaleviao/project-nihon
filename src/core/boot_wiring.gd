@@ -3,6 +3,7 @@ extends "res://src/core/wiring.gd"
 ## Moved out of game_root.gd; `root` is the GameRoot that owns the slices.
 
 const Diag := preload("res://src/core/diag.gd")
+const NativeBuilder := preload("res://src/terrain/native_builder.gd")
 const PLAYTEST_BOT_PATH := "res://src/tests/playtest_bot.gd"
 const STRESS_BOTS_PATH := "res://src/tests/stress_bots.gd"
 const STRESS_RECORDER_PATH := "res://src/tests/stress_recorder.gd"
@@ -15,6 +16,7 @@ var max_clients: int = NetworkingSlice.DEFAULT_MAX_CLIENTS
 ## to host (authoritative single-player) when no args are present. A malformed
 ## address is rejected with a warning and falls back to localhost.
 func parse_network_args() -> void:
+	NativeBuilder.init()   # Phase 166 — native chunk builder if its binary is present, else GDScript
 	var args := OS.get_cmdline_user_args()
 	for i in range(args.size()):
 		if args[i] == "--server":

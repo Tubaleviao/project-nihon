@@ -17,3 +17,11 @@ tools/pack_project/_overlay/
 
 __pycache__/
 *.pyc
+
+# Native builder (Phase 166): pinned godot-cpp checkout and built binaries never go in git
+/native/godot-cpp
+/native/bin/
+/native/.sconsign*
+*.os
+*.obj
+*.o
