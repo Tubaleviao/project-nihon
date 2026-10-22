@@ -55,7 +55,9 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 	# read for "a vein showing through the ground". Collision built from this
 	# surface can therefore never inherit one.
 	var built: Dictionary = arrays
-	if built.is_empty():
+	if built.is_empty() and not s.attach_geometry:
+		built = s.NO_GEOMETRY_ARRAYS   # #437: nothing below reads the arrays on a server
+	elif built.is_empty():
 		# Only the SYNCHRONOUS path reaches this now: a worker result that carried nothing
 		# was refused above rather than quietly rebuilt here (Phase 42 review).
 		built = s.build_chunk_arrays(chunk_pos, heightmap, s.collect_build_runs(chunk_pos, heightmap), true)

@@ -179,13 +179,19 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 	# 60 Hz, and the one main-thread cost the earlier passes left behind (measured; see the split
 	# probe). The payload is plain data only (heightmap arrays, deep-copied edit lists,
 	# chunk-keyed biomes), so the task may hold it.
-	var gathered: Dictionary = sl.voxel_slice.gather_build_input(chunk_pos, heightmap)
+	# #437 — a dedicated server attaches no geometry: skip the gather and hand back the no-geometry
+	# marker instead of resolving and building arrays `build_chunk` would discard.
+	var geometry: bool = not sl.skips_geometry()
+	var gathered: Dictionary = sl.voxel_slice.gather_build_input(chunk_pos, heightmap) if geometry else {}
 	var revision: int = int(sl.voxel_slice.chunk_revision(chunk_pos))
 	var result: Array = [null]
-	var task_id = WorkerThreadPool.add_task(
-		func(): result[0] = VoxelBuilder.build_chunk_arrays(chunk_pos, heightmap,
-			VoxelBuilder.build_runs(chunk_pos, heightmap, gathered), true),
-		false, "chunk build %s" % key)
+	var job := func() -> void:
+		if not geometry:
+			result[0] = VoxelBuilder.NO_GEOMETRY_ARRAYS
+			return
+		result[0] = VoxelBuilder.build_chunk_arrays(chunk_pos, heightmap,
+			VoxelBuilder.build_runs(chunk_pos, heightmap, gathered), true)
+	var task_id = WorkerThreadPool.add_task(job, false, "chunk build %s" % key)
 	sl._builds[task_id] = {
 		"chunk":     chunk_pos,
 		"key":       key,

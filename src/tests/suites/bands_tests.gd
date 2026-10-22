@@ -212,6 +212,7 @@ func _test_bands_far_peak_reader() -> void:
 		img.set_pixel(x, 18, Color(0.3, 0.5, 0.2))
 	img.set_pixel(30, 18, Color(0.5, 0.48, 0.45))   # one rock pixel
 	assert_eq(PB.rock_pixels_above(img, ring_rows, key), 31, "rock counts, green does not")
+	assert_eq(PB.rock_pixels_above(img, ring_rows, key, 0.08, true), 36, "any_colour counts the green too")
 
 func _test_bands_budget_and_far() -> void:
 	var b := Bands.new()

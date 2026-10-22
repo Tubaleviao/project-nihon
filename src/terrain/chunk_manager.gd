@@ -850,6 +850,12 @@ func _spawn_chunk_contents(chunk_pos: Vector2i) -> void:
 func _dispatch_build(chunk_pos: Vector2i) -> void:
 	_m1._dispatch_build(chunk_pos)
 
+## #437 — true when the voxel slice attaches no geometry (a dedicated server): a build there
+## only needs the chunk's heightmap, so the worker skips the resolve and the mesh arrays.
+func skips_geometry() -> bool:
+	var flag = voxel_slice.get("attach_geometry") if voxel_slice != null else null
+	return flag is bool and not flag
+
 ## Phase 141 — the dispatch with the NOISE on the worker too. Measured before this: the main thread
 ## paid 14 ms (equator) to 36 ms (by a pole) for the chunk's own heightmap and up to 8 more maps for
 ## its unbuilt neighbours' seam guesses (120 ms to 290 ms on a cold window), once per dispatch, i.e.
@@ -861,15 +867,21 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 func _dispatch_worker_noise_build(chunk_pos: Vector2i, key: String) -> void:
 	TerrainSlice.warm_polar_caches()   # the static caches the generator reads, filled here on the main thread
 	var cached: Array = voxel_slice.take_cached_heightmap(chunk_pos)
-	var gathered: Dictionary = voxel_slice.gather_build_input_deferred(chunk_pos)
+	# #437 — a dedicated server attaches no geometry, so its task only generates the map: no gather,
+	# no seam strips, no resolve and no mesh/collision/deposit arrays to throw away.
+	var geometry := not skips_geometry()
+	var gathered: Dictionary = voxel_slice.gather_build_input_deferred(chunk_pos) if geometry else {}
 	var seed_v: int = int(terrain_slice.get_world_seed())
 	var noise: FastNoiseLite = terrain_slice.detail_noise_copy()
 	var revision: int = int(voxel_slice.chunk_revision(chunk_pos))
 	var result: Array = [null, cached]
 	var job := func() -> void:
 		var hm: Array = cached if not cached.is_empty() else TerrainSlice.heightmap_for(chunk_pos, seed_v, noise)
-		VoxelBuilder.fill_seam_strips(chunk_pos, gathered, seed_v, noise)
 		result[1] = hm
+		if not geometry:
+			result[0] = VoxelBuilder.NO_GEOMETRY_ARRAYS
+			return
+		VoxelBuilder.fill_seam_strips(chunk_pos, gathered, seed_v, noise)
 		result[0] = VoxelBuilder.build_chunk_arrays(chunk_pos, hm, VoxelBuilder.build_runs(chunk_pos, hm, gathered), true)
 	# A low-priority task may only use `low_priority_thread_ratio` of the pool (0.3 by default: three or
 	# four threads on most machines, which is what really capped the build rate), so the catch-up

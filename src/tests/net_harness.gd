@@ -526,14 +526,22 @@ func _step_snapshot_complete() -> void:
 ## The client reports a position and names a tree inside reach. The tree's position is
 ## resolved on the HOST, from the host's own TreeSlice — the intent carries an id and
 ## nothing else — so a pass here means the host measured against its own evidence.
+##
+## #429 — the origin chunk's trees can land on either side after the step starts (the client's
+## tree table is seeded from the snapshot, the host's when its chunk build attaches), and reading
+## `_targets()` at that instant failed the step as `no_in_reach_target` on the client and
+## `not_consumed` on the host. Both sides now wait, bounded by `_step_timeout()`, for the full
+## target set, and a miss reports what the side saw. The host's wait for the chop covers the
+## client's own target wait on top of the chop itself.
 func _step_chop_in_reach() -> void:
+	var have: bool = await _await_until(func(): return _targets().size() >= TARGETS_NEEDED, _step_timeout())
 	var targets := _targets()
-	if targets.is_empty():
-		_report("chop_in_reach", "fail", "no_in_reach_target")
+	if not have:
+		_report("chop_in_reach", "fail", "no_in_reach_target-origin%d-reach%d" % [_shared_trees().size(), targets.size()])
 		return
 	var t := str(targets[0])
 	if _role == "host":
-		var ok: bool = await _await_until(func(): return _chop_count(t) >= 1, _step_timeout())
+		var ok: bool = await _await_until(func(): return _chop_count(t) >= 1, _step_timeout() * 2.0)
 		_report("chop_in_reach", verdict(ok, true), t if ok else "not_consumed")
 		return
 	_report_position()
@@ -819,6 +827,9 @@ func _step_admin_teleport() -> void:
 ## client to both and stocks the fare; the client asks to travel from the first to the second over the
 ## socket. The client lands at the second stone and the host sees its next report from there.
 const WAYSTONE_GAP_M := 80.0
+## Host: where the client stood before the waystone step sent it 80 m away (it teleports home after).
+var _client_home_exact: Dictionary = {}
+
 func _step_waystone_travel() -> void:
 	# The client was just sent home by the step before: let its reports settle so the stone sits where it stands.
 	# Scaled with the link: on a slow link the host's last known position lags the teleport by seconds, and a
@@ -832,6 +843,7 @@ func _step_waystone_travel() -> void:
 		if not got_exact or seen.is_empty():
 			_report("waystone_travel", "fail", "no_client_position")
 			return
+		_client_home_exact = seen
 		var base: Vector3 = WorldPos.to_scene(seen, seen["chunk"])
 		var a: String = _root._station.place_station("waystone", base)
 		var b: String = _root._station.place_station("waystone", base + Vector3(WAYSTONE_GAP_M, 0.0, 0.0))
@@ -1601,9 +1613,16 @@ func _step_settlement() -> void:
 	GameBus.block_changed.connect(_on_settlement_edit)
 	GameBus.settlement_resolved.connect(_on_settlement_resolved)
 	# The client was just sent home by the step before: let the host's record of where it stands settle.
-	await _await_settle(3.0)
+	# Scaled with the link, and the host waits for the record to be back home: on a slow link it lags the
+	# teleport by seconds, and a claim founded at the stale spot leaves the client outside it.
+	await _await_settle(3.0 * _time_scale)
 	if _role == "host":
 		var peer := _peer_id()
+		if not _client_home_exact.is_empty():
+			await _await_until(func():
+				var now_at: Dictionary = _root._networking.get_last_known_exact(peer)
+				return not now_at.is_empty() and now_at["chunk"] == _client_home_exact["chunk"] \
+					and (now_at["local"] as Vector3).distance_to(_client_home_exact["local"]) < 2.0, _step_timeout())
 		var bound := _live_bound_id()
 		var local: String = _root._registry.local_player_id
 		var voxel: VoxelSlice = _root._voxel

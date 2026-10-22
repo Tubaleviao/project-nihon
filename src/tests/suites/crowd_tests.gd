@@ -23,6 +23,7 @@ func register() -> void:
 	_run_test("crowd: the faster region lookup names the same regions", _test_crowd_regions_for_chunks_same)
 	_run_test("crowd: a move in a crowd that wears nothing evaluates no equipment pair", _test_crowd_equipment_pairs_skipped)
 	_run_test("crowd: a dedicated server chunk keeps its data and attaches no geometry", _test_crowd_server_chunk_no_geometry)
+	_run_test("crowd: a dedicated server's chunk worker builds only the heightmap", _test_crowd_server_worker_skips_arrays)
 
 func _test_crowd_relay_due_rule() -> void:
 	var near := RelayBatch.NEAR_RADIUS - 1.0
@@ -372,6 +373,31 @@ func _test_crowd_server_chunk_no_geometry() -> void:
 	assert_eq(_chunk_children(server), [], "a dedicated server attaches no mesh and no collision body")
 	assert_eq(server.get_voxel_height_at(Vector2(16.0, 16.0)), 2.0, "the chunk's height data is still there")
 	server.free()
+
+func _test_crowd_server_worker_skips_arrays() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var voxel: VoxelSlice = rig["voxel"]
+	var terrain: TerrainSlice = rig["terrain"]
+	voxel.attach_geometry = false
+	assert_true(cm.skips_geometry(), "the manager sees a server voxel slice")
+	cm.load_chunk(Vector2i(2, 3))
+	var results: Array = []
+	for entry in cm._builds.values():
+		results.append(entry["result"])
+	assert_eq(results.size(), 1, "one build in flight")
+	_wait_for_builds(cm)
+	assert_eq(results[0][0], VoxelSlice.NO_GEOMETRY_ARRAYS, "the worker handed back no mesh, collision or deposit arrays")
+	assert_true(cm.is_chunk_built(Vector2i(2, 3)), "the chunk still counts as built")
+	assert_true(voxel._heightmaps.get("2,3", []) == terrain.generate_heightmap(Vector2i(2, 3)),
+		"and the slice stores the generated map")
+	var root: Node = voxel._chunks["2,3"]
+	assert_eq(root.get_children().filter(func(c): return c is MeshInstance3D or c is StaticBody3D), [],
+		"nothing is attached")
+	cm.free()
+	voxel.free()
+	terrain.free()
+	rig["player"].free()
 
 func _test_crowd_relay_prunes_stale_pairs() -> void:
 	var b := RelayBatch.new()
