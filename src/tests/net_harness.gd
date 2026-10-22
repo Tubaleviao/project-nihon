@@ -827,6 +827,9 @@ func _step_admin_teleport() -> void:
 ## client to both and stocks the fare; the client asks to travel from the first to the second over the
 ## socket. The client lands at the second stone and the host sees its next report from there.
 const WAYSTONE_GAP_M := 80.0
+## Host: where the client stood before the waystone step sent it 80 m away (it teleports home after).
+var _client_home_exact: Dictionary = {}
+
 func _step_waystone_travel() -> void:
 	# The client was just sent home by the step before: let its reports settle so the stone sits where it stands.
 	# Scaled with the link: on a slow link the host's last known position lags the teleport by seconds, and a
@@ -840,6 +843,7 @@ func _step_waystone_travel() -> void:
 		if not got_exact or seen.is_empty():
 			_report("waystone_travel", "fail", "no_client_position")
 			return
+		_client_home_exact = seen
 		var base: Vector3 = WorldPos.to_scene(seen, seen["chunk"])
 		var a: String = _root._station.place_station("waystone", base)
 		var b: String = _root._station.place_station("waystone", base + Vector3(WAYSTONE_GAP_M, 0.0, 0.0))
@@ -1609,9 +1613,16 @@ func _step_settlement() -> void:
 	GameBus.block_changed.connect(_on_settlement_edit)
 	GameBus.settlement_resolved.connect(_on_settlement_resolved)
 	# The client was just sent home by the step before: let the host's record of where it stands settle.
-	await _await_settle(3.0)
+	# Scaled with the link, and the host waits for the record to be back home: on a slow link it lags the
+	# teleport by seconds, and a claim founded at the stale spot leaves the client outside it.
+	await _await_settle(3.0 * _time_scale)
 	if _role == "host":
 		var peer := _peer_id()
+		if not _client_home_exact.is_empty():
+			await _await_until(func():
+				var now_at: Dictionary = _root._networking.get_last_known_exact(peer)
+				return not now_at.is_empty() and now_at["chunk"] == _client_home_exact["chunk"] \
+					and (now_at["local"] as Vector3).distance_to(_client_home_exact["local"]) < 2.0, _step_timeout())
 		var bound := _live_bound_id()
 		var local: String = _root._registry.local_player_id
 		var voxel: VoxelSlice = _root._voxel
