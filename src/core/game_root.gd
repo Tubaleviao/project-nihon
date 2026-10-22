@@ -512,8 +512,8 @@ func _ready() -> void:
 		_distant.name = "DistantTerrain"
 		_distant.circumference_m = float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
 		add_child(_distant)
-		if _rebase != null:
-			_rebase.targets.append_array([_distant, _distant.make_bands(self)])
+		# #444: no null guard, so the bands are always made (`_rebase` exists whenever this is not a server)
+		_rebase.targets.append_array([_distant, _distant.make_bands(self)])
 		var minimap_layer := CanvasLayer.new()
 		minimap_layer.name = "MinimapLayer"
 		minimap_layer.layer = 20

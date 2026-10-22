@@ -387,7 +387,7 @@ func _test_crowd_server_worker_skips_arrays() -> void:
 		results.append(entry["result"])
 	assert_eq(results.size(), 1, "one build in flight")
 	_wait_for_builds(cm)
-	assert_eq(results[0][0], VoxelSlice.NO_GEOMETRY_ARRAYS, "the worker handed back no mesh, collision or deposit arrays")
+	assert_eq(results[0][0], VoxelSlice.no_geometry_arrays(), "the worker handed back no mesh, collision or deposit arrays")
 	assert_true(cm.is_chunk_built(Vector2i(2, 3)), "the chunk still counts as built")
 	assert_true(voxel._heightmaps.get("2,3", []) == terrain.generate_heightmap(Vector2i(2, 3)),
 		"and the slice stores the generated map")
