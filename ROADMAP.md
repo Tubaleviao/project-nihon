@@ -187,31 +187,12 @@ issue number where the criterion used to be.
 | 164 | A round horizon: a circular distant ring, planet curvature and haze | Done | [history](docs/roadmap-history/phases-164.md) |
 | 165 | Mountains on the horizon: distant bands out to the visibility limit | Done | [history](docs/roadmap-history/phases-165.md) |
 | 166 | Native builder scaffold: GDExtension, loader, fallback, CI binaries and releases | Done | [history](docs/roadmap-history/phases-166.md) |
-| 167 | Native `heightmap_for` | Planned | below |
+| 167 | Native `heightmap_for` | Done | [history](docs/roadmap-history/phases-167.md) |
 | 168 | Native `build_runs` | Planned | below |
 | 169 | Native `build_chunk_arrays` and the speed target | Planned | below |
 | 170 | A compute-shader heightmap, if the native builder is still the bottleneck | Planned | below |
 | 171 | Creatures in exact coordinates: no float32 metres far from the origin | Planned | below |
 | 172 | Host chunk attach off the main thread | Planned | below |
-
----
-
-## Phase 167 — Native `heightmap_for`
-
-**Newel dependency:** NO.
-
-**Depends on:** Phase 166.
-
-**Deliverables:**
-- `heightmap_for` ported to `NativeChunkBuilder`: climate, shape, ore and biome resolve, using the
-  engine's `FastNoiseLite` through `godot-cpp`.
-- The loader routes `heightmap_for` to native when the extension is present.
-
-**Acceptance criteria:**
-- [ ] Suite: native and GDScript `heightmap_for` give equal results for a fixed set of chunks
-  (equator, ice, pole, antimeridian, edited chunk). Skipped with one log line when the extension is
-  absent; CI runs it with the extension built.
-- [ ] Suite green on both boot paths, harness green.
 
 ---
 

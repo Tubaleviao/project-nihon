@@ -75,6 +75,7 @@ const I18n := preload("res://src/core/i18n.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
 const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
 const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
+const NativeBuilder := preload("res://src/terrain/native_builder.gd")
 
 ## The starting area is flattened into a plain field so the player can walk
 ## freely from spawn without jumping. Spawn centre + radius + flat height below.
@@ -582,6 +583,38 @@ func _generate(pos: Vector2i) -> Array:
 ## no longer runs on the main thread (it was 14 ms per chunk at the equator and 36 ms by a pole).
 ## Recorded corner heights are read from `ChunkRecords`, which locks its own table.
 static func heightmap_for(pos: Vector2i, seed_v: int, noise: FastNoiseLite) -> Array:
+	if NativeBuilder.use_native("heightmap_for"):   # Phase 167: same result, computed in C++
+		return NativeBuilder.builder().call("heightmap_for", pos, seed_v, noise, _native_cfg(pos)) as Array
+	return heightmap_for_gd(pos, seed_v, noise)
+
+## Phase 167 — what the native `heightmap_for` cannot read itself: the fabric's shape parameters and
+## the recorded corner heights of the (at most two) chunk cells the chunk's tiles sample, keyed by the
+## un-wrapped cell the native code looks up (`records`: {Vector2i cell: PackedFloat64Array [h00, h10,
+## h01, h11]}). The first cell is the chunk's own, the second the one a tile in the antimeridian
+## blend band reads at `x - w`.
+static func _native_cfg(pos: Vector2i) -> Dictionary:
+	var c := circumference_chunks()
+	var records := {}
+	if not ChunkRecords.is_empty():
+		var own := wrap_chunk(pos)
+		for cell in [own, Vector2i(own.x - c, own.y)]:
+			var rec := ChunkRecords.get_record(wrap_chunk(cell))
+			if not rec.is_empty():
+				var rh: Array = rec["h"]
+				records[cell] = PackedFloat64Array([float(rh[0]), float(rh[1]), float(rh[2]), float(rh[3])])
+	return {
+		"circumference_chunks": c,
+		"sea": WorldShape.sea_level(),
+		"min_height": WorldShape.min_height(),
+		"max_height": WorldShape.max_height(),
+		"ridge_amplitude": WorldShape.ridge_amplitude(),
+		"spline": WorldShape.spline(),
+		"records": records,
+	}
+
+## The GDScript reference of `heightmap_for`: the fallback without the native extension, and what the
+## suite compares the native result against.
+static func heightmap_for_gd(pos: Vector2i, seed_v: int, noise: FastNoiseLite) -> Array:
 	var out: Array = []
 	out.resize(CHUNK_SIZE * CHUNK_SIZE)
 	var origin_x := pos.x * CHUNK_SIZE * TILE_SIZE

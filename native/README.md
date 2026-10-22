@@ -17,3 +17,7 @@ attaches them to a GitHub Release).
 An export needs either every binary the preset's platform lists or none: to export without the
 extension (the GDScript fallback), delete `native/nihon_native.gdextension` first, as the
 `export-check` CI job does.
+
+Ported so far: `heightmap_for` (Phase 167; `functions()` lists what a build implements and the loader
+routes only those). `src/tests/suites/native_tests.gd` holds the bit-exact parity check against the
+GDScript reference; it runs with `--expect-native` in CI and skips with one log line otherwise.
