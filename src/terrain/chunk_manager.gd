@@ -879,7 +879,7 @@ func _dispatch_worker_noise_build(chunk_pos: Vector2i, key: String) -> void:
 		var hm: Array = cached if not cached.is_empty() else TerrainSlice.heightmap_for(chunk_pos, seed_v, noise)
 		result[1] = hm
 		if not geometry:
-			result[0] = VoxelBuilder.NO_GEOMETRY_ARRAYS
+			result[0] = VoxelBuilder.no_geometry_arrays()
 			return
 		VoxelBuilder.fill_seam_strips(chunk_pos, gathered, seed_v, noise)
 		result[0] = VoxelBuilder.build_chunk_arrays(chunk_pos, hm, VoxelBuilder.build_runs(chunk_pos, hm, gathered), true)

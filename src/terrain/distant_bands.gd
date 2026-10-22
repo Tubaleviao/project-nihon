@@ -295,9 +295,11 @@ func update(center: Vector2, ring_radius: float) -> bool:
 	var any := false
 	for b in _bands:
 		var o := origin_for(b.spec, center)
-		var req := {"origin": o, "seed": world_seed, "circ": circumference_m, "last": b.index == _bands.size() - 1}
-		if b.want == req:
+		# #444: called every frame, so the unchanged case compares the fields before building a request
+		# (`last` only changes with the plan, which resets `want`)
+		if not b.want.is_empty() and b.want["origin"] == o and b.want["seed"] == world_seed and b.want["circ"] == circumference_m:
 			continue
+		var req := {"origin": o, "seed": world_seed, "circ": circumference_m, "last": b.index == _bands.size() - 1}
 		b.want = req
 		b.discarded = {}
 		any = true
@@ -343,11 +345,12 @@ func poll(block: bool = false) -> bool:
 			if mesh == null:
 				b.queued = {}
 				break
-			if b.queued.is_empty():
-				_swap_in(b, mesh)
-				b.builds_completed += 1
-				swapped = true
-			else:   # superseded while building: build the newest request
+			# A superseded build still swaps in (#444): it is nearer than the mesh it replaces, and
+			# discarding it would starve a fast mover's band of swaps. Then the newest request builds.
+			_swap_in(b, mesh)
+			b.builds_completed += 1
+			swapped = true
+			if not b.queued.is_empty():
 				var next := b.queued
 				b.queued = {}
 				_start(b, next)

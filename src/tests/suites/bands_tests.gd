@@ -12,6 +12,7 @@ func register() -> void:
 	_run_test("bands: the outer radius is the closed form and follows maxHeight",   _test_bands_outer_radius)
 	_run_test("bands: a single 500 m peak keeps its height in every band",          _test_bands_peak_kept)
 	_run_test("bands: a near-band cell rebuilds only the near band, off the main thread", _test_bands_rebuild_rules)
+	_run_test("bands: a build superseded mid-flight still swaps in, then the newest builds", _test_bands_superseded_swaps_in)
 	_run_test("bands: they wrap at the antimeridian; adjacent bands share their edge", _test_bands_wrap_and_seams)
 	_run_test("bands: the playtest far_peak reader counts rock and snow above the ring", _test_bands_far_peak_reader)
 	_run_test("bands: no collision body, vertices within budget, far plane reaches them", _test_bands_budget_and_far)
@@ -110,6 +111,23 @@ func _test_bands_rebuild_rules() -> void:
 	assert_eq(b.band_builds_started(n - 1), base[n - 1], "the far band did not")
 	assert_false(b.is_building(), "nothing is left building")
 	assert_eq(b.collision_body_count(), 0, "no collision")
+	b.free()
+
+## #444 — a fast mover queues a newer request while a band builds: the finished (older) mesh swaps in
+## rather than being thrown away, then the queued one builds and swaps in after it.
+func _test_bands_superseded_swaps_in() -> void:
+	var b := Bands.new()
+	b.world_seed = SEED
+	add_child(b)
+	var ring := _ring_radius()
+	b.update(Vector2(100.0, 100.0), ring)
+	assert_true(b.is_building(), "the first request is in flight")
+	assert_true(b.update(Vector2(100.0 + Bands.CELL_0, 100.0), ring), "a near-band cell later, a newer request")
+	assert_true(b.poll(true), "draining swaps meshes in")
+	assert_eq(b.band_builds_started(0), 2, "band 0 built the first request and then the queued one")
+	assert_eq(b.band_builds_completed(0), 2, "and both swapped in, the superseded one included")
+	assert_eq(b.band_origin(0), Bands.origin_for(b.band_spec(0), Vector2(100.0 + Bands.CELL_0, 100.0)), "it ends on the newest origin")
+	assert_false(b.is_building(), "nothing is left building")
 	b.free()
 
 func _vertex_map(mesh: ArrayMesh) -> Dictionary:

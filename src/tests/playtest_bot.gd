@@ -727,10 +727,15 @@ func _harvest_after_kill(creature_key: String) -> Array:
 	GameBus.player_damaged.connect(on_damaged)
 	var secs: float = float(GameData.HARVESTS["HarvestRules"].get("harvestSeconds"))
 	var got: Array = []
+	# One deadline across every try (#444): HARVEST_TRIES full waits would outrun the step's own timeout.
+	var deadline_ms := Time.get_ticks_msec() + int(maxf(secs * 6.0, STEP_TIMEOUT_SECS) * 1000.0)
 	for _try in HARVEST_TRIES:
+		var left := float(deadline_ms - Time.get_ticks_msec()) / 1000.0
+		if left <= 0.0:
+			break
 		var seen := verdict.size()
 		GameBus.harvest_intent.emit(cid, "")
-		await _until(func(): return verdict.size() > seen, maxf(secs * 6.0, STEP_TIMEOUT_SECS))
+		await _until(func(): return verdict.size() > seen, left)
 		for item in held_before:
 			if _root._inventory.get_item_count(str(item)) > int(held_before[item]):
 				got.append(item)
@@ -955,9 +960,9 @@ func _far_peak_attempt(found: Array, player) -> Array:
 	var m := WorldPos.CHUNK_METERS
 	var chunk := Vector2i(floori(spot_xz.x / m), floori(spot_xz.y / m))
 	var bands = _root._distant.bands
-	var before: Array = []
+	var before: Array = []   # per band: [builds completed, origin asked for] before the move
 	for k in bands.band_count():
-		before.append(bands.band_builds_completed(k))
+		before.append([bands.band_builds_completed(k), bands.band_origin(k)])
 	var spot := _teleport_to(chunk, Vector3(spot_xz.x - float(chunk.x) * m, 0.0, spot_xz.y - float(chunk.y) * m))
 	if not await _until(func(): return _root._chunk_manager.is_chunk_built(spot["chunk"]), FAR_PEAK_TIMEOUT_SECS):
 		return [false, "the vantage chunk never built"]
@@ -1018,14 +1023,19 @@ func _far_peak_attempt(found: Array, player) -> Array:
 		float(found[3]), Vector2(spot_xz).distance_to(Vector2(found[2])) / 1000.0, bearing, px, rock_px, FAR_PEAK_MIN_PX, worst_ms]
 	return [px >= FAR_PEAK_MIN_PX, detail]
 
-## True when every band has completed a build newer than `before`, none is pending, and band 0 is
-## centred on the cell the body stands in.
+## True when every band whose origin moved since `before` (`[completed, origin]` per band) has
+## completed a build newer than it, none is pending, and band 0 is centred on the cell the body stands
+## in. A band whose origin did not move is never asked again, so it is not waited for (#444).
 func _bands_ready_after(before: Array) -> bool:
 	var b = _root._distant.bands
 	if b == null or b.is_building():
 		return false
 	for k in b.band_count():
-		if b.band_builds_completed(k) <= int(before[k] if k < before.size() else 0):
+		if k >= before.size():
+			if b.band_builds_completed(k) == 0:
+				return false
+			continue
+		if b.band_origin(k) != before[k][1] and b.band_builds_completed(k) <= int(before[k][0]):
 			return false
 	var pp := _player_pos()
 	return b.band_origin(0) == DistantBands.origin_for(b.band_spec(0), Vector2(pp.x, pp.z))

@@ -187,7 +187,7 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 	var result: Array = [null]
 	var job := func() -> void:
 		if not geometry:
-			result[0] = VoxelBuilder.NO_GEOMETRY_ARRAYS
+			result[0] = VoxelBuilder.no_geometry_arrays()
 			return
 		result[0] = VoxelBuilder.build_chunk_arrays(chunk_pos, heightmap,
 			VoxelBuilder.build_runs(chunk_pos, heightmap, gathered), true)
