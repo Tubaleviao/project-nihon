@@ -56,6 +56,7 @@ const TELEPORT_SETTLE_MS := 1500 ## frames this long after a teleport (the new w
 const STEP_GRACE_SECS := 10.0    ## past its deadline a step that has not returned has crashed or hung: fail it
 const SPAWN_OFFSET_M := 2.0      ## a teleport lands this far above the ground
 const FIGHT_MAX_GROUND_GAP_M := 2.0
+const HARVEST_TRIES := 3         ## fight's harvest tries: one a hit cancels ("damaged") is retried
 const ARRIVE_TOLERANCE_M := 2.0    ## travel lands the body on the destination stone, within this ground distance
 ## Phase 164 — the horizon step: from the nearest coast, look out to sea in four headings and read the
 ## skyline of the distant ring alone (drawn over a key colour), which must be level to SKYLINE_FLAT_PX.
@@ -707,16 +708,29 @@ func _harvest_after_kill(creature_key: String) -> Array:
 	# rendered frame stretches past the wall clock.
 	var verdict := []
 	var on_resolved := func(_pid: String, _cid: String, reason: String, _items: Array) -> void: verdict.append(reason)
+	# A hit cancels the work ("damaged"); the world's own creatures can land one mid-harvest, so a
+	# cancelled try is retried and the attackers are named in the note.
+	var attackers := []
+	var on_damaged := func(_dmg: float, attacker_id: String, _target_id: String) -> void: attackers.append(attacker_id)
 	GameBus.harvest_resolved.connect(on_resolved)
-	GameBus.harvest_intent.emit(cid, "")
+	GameBus.player_damaged.connect(on_damaged)
 	var secs: float = float(GameData.HARVESTS["HarvestRules"].get("harvestSeconds"))
-	await _until(func(): return not verdict.is_empty(), maxf(secs * 6.0, STEP_TIMEOUT_SECS))
-	GameBus.harvest_resolved.disconnect(on_resolved)
 	var got: Array = []
-	for item in held_before:
-		if _root._inventory.get_item_count(str(item)) > int(held_before[item]):
-			got.append(item)
-	return [not got.is_empty(), "harvested %s" % str(got) if not got.is_empty() else "the bag gained nothing from the body (%s)" % (str(verdict) if not verdict.is_empty() else "no verdict")]
+	for _try in HARVEST_TRIES:
+		var seen := verdict.size()
+		GameBus.harvest_intent.emit(cid, "")
+		await _until(func(): return verdict.size() > seen, maxf(secs * 6.0, STEP_TIMEOUT_SECS))
+		for item in held_before:
+			if _root._inventory.get_item_count(str(item)) > int(held_before[item]):
+				got.append(item)
+		if not got.is_empty() or verdict.size() <= seen or str(verdict.back()) != "damaged":
+			break
+	GameBus.harvest_resolved.disconnect(on_resolved)
+	GameBus.player_damaged.disconnect(on_damaged)
+	var why := str(verdict) if not verdict.is_empty() else "no verdict"
+	if not attackers.is_empty():
+		why += ", hit by %s" % str(attackers)
+	return [not got.is_empty(), "harvested %s" % str(got) if not got.is_empty() else "the bag gained nothing from the body (%s)" % why]
 
 ## Player height minus the built surface under the body (0 on the surface).
 func _ground_gap() -> float:
