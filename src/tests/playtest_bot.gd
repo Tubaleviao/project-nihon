@@ -44,6 +44,8 @@ const BOOT_TIMEOUT_SECS := 120.0
 const WATCHDOG_SLACK_SECS := 60.0 ## whole-run budget = boot + every step's timeout + this
 const STREAM_CHUNKS := 20
 const WALK_SECS := 3.0
+const WALK_MIN_M := 4.0        ## the walk step keeps going until the body has moved this far
+const WALK_MAX_SECS := 20.0   ## ... but not past this
 const WALK_FOOT_SECS := 2.0   ## the walk step samples the feet over the last this many seconds
 ## The feet must swap the lead at least this often over the window. A share-of-frames check flaked
 ## under xvfb: ~10 fps samples alias with the gait, so a cycling walk could read 14% one foot ahead.
@@ -413,14 +415,23 @@ func _step_walk() -> Array:
 		skeleton = _first_skeleton(rig)
 	var foot_l := skeleton.find_bone("Foot_L") if skeleton != null else -1
 	var foot_r := skeleton.find_bone("Foot_R") if skeleton != null else -1
-	var samples: Array = []  # [left, right] foot positions in world space, per frame
+	var samples: Array = []  # [time, left, right] foot positions in world space; only the last WALK_FOOT_SECS are kept
 	_key(KEY_W, true)
 	var t0 := Time.get_ticks_msec()
-	while float(Time.get_ticks_msec() - t0) / 1000.0 < WALK_SECS:
+	# A slow runner (the world still loading under the body) walks late, so keep walking until the body has
+	# covered WALK_MIN_M, up to WALK_MAX_SECS, then judge the feet over the final WALK_FOOT_SECS.
+	while true:
 		await get_tree().process_frame
-		if foot_l >= 0 and foot_r >= 0 and float(Time.get_ticks_msec() - t0) / 1000.0 >= WALK_SECS - WALK_FOOT_SECS:
-			samples.append([skeleton.to_global(skeleton.get_bone_global_pose(foot_l).origin),
+		var elapsed := float(Time.get_ticks_msec() - t0) / 1000.0
+		var here := _player_pos()
+		var travelled := Vector2(here.x - start.x, here.z - start.z).length()
+		if foot_l >= 0 and foot_r >= 0:
+			samples.append([elapsed, skeleton.to_global(skeleton.get_bone_global_pose(foot_l).origin),
 				skeleton.to_global(skeleton.get_bone_global_pose(foot_r).origin)])
+			while elapsed - float(samples[0][0]) > WALK_FOOT_SECS:
+				samples.pop_front()
+		if (elapsed >= WALK_SECS and travelled >= WALK_MIN_M) or elapsed >= WALK_MAX_SECS:
+			break
 	_key(KEY_W, false)
 	var delta := Vector2(_player_pos().x - start.x, _player_pos().z - start.z)
 	var moved := delta.length()
@@ -432,8 +443,8 @@ func _step_walk() -> Array:
 		var switches := 0
 		var leader := 0  # +1 left ahead, -1 right ahead, 0 not yet known
 		for pair in samples:
-			var l: Vector3 = pair[0]
-			var r: Vector3 = pair[1]
+			var l: Vector3 = pair[1]
+			var r: Vector3 = pair[2]
 			var lead := Vector2(l.x - r.x, l.z - r.z).dot(dir)
 			if lead > 0.0:
 				left_ahead += 1
