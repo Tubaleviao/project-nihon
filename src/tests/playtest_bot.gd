@@ -73,6 +73,7 @@ const FAR_PEAK_SEARCH_M := 2.0e6      ## the ridge is looked for this far from t
 const FAR_PEAK_SEARCH_STEP_M := 8000.0
 const FAR_PEAK_EXTRA_RINGS := 40     ## rings searched past the first with a ridge, for more candidates
 const FAR_PEAK_CANDIDATES := 8       ## nearest ridges with a usable vantage compared (the tallest wins)
+const FAR_PEAK_ATTEMPTS := 3         ## vantages tried (tallest ridge first): a hill beside one can hide the bands behind the ring's own skyline
 const FAR_PEAK_MIN_PX := 8            ## rock or snow pixels above the ring's skyline needed to pass
 const FAR_PEAK_SAT_MAX := 0.18        ## rock (grey) and snow (white) are below this saturation; land and sea are not
 const FAR_PEAK_TIMEOUT_SECS := 240.0
@@ -105,7 +106,7 @@ static func _step_timeout(step: String) -> float:
 	if step == "horizon":
 		return HORIZON_TIMEOUT_SECS
 	if step == "far_peak":
-		return FAR_PEAK_TIMEOUT_SECS
+		return FAR_PEAK_TIMEOUT_SECS * FAR_PEAK_ATTEMPTS
 	return STREAM_TIMEOUT_SECS if step == "stream" or step == "pole" else STEP_TIMEOUT_SECS
 
 static func step_names() -> Array:
@@ -847,8 +848,8 @@ func _step_horizon() -> Array:
 
 ## Phase 165 — a vantage `FAR_PEAK_DISTANCE_M` from a tall ridge: the search over the shape
 ## on a coarse grid around `from` (nearest square ring first) for points at least `FAR_PEAK_MIN_HEIGHT` tall, then, for the
-## nearest `FAR_PEAK_CANDIDATES` of them, the first of sixteen bearings whose point at that distance is dry land; the tallest wins. Returns [vantage, bearing_to_peak_deg,
-## peak, peak_height] or [].
+## nearest `FAR_PEAK_CANDIDATES` of them, the first of sixteen bearings whose point at that distance is dry land; tallest first. Returns a list of [vantage, bearing_to_peak_deg,
+## peak, peak_height], empty when none.
 func _find_far_peak(from: Vector2) -> Array:
 	var seed_v: int = _root._terrain.get_world_seed()
 	var w := Horizon.default_circumference()
@@ -872,9 +873,9 @@ func _find_far_peak(from: Vector2) -> Array:
 					peaks.append([p.distance_to(from), p, h])
 					last_ring = mini(last_ring, r + FAR_PEAK_EXTRA_RINGS)
 	# A ridge whose 60 km ring is all sea or highland has no vantage: take the nearest ridges that do,
-	# and of those the tallest (the most pixels above the skyline).
+	# and of those the tallest first (the most pixels above the skyline).
 	peaks.sort_custom(func(p1, p2): return float(p1[0]) < float(p2[0]))
-	var best: Array = []
+	var vantages: Array = []
 	var usable := 0
 	for k in peaks.size():
 		if usable >= FAR_PEAK_CANDIDATES:
@@ -888,11 +889,11 @@ func _find_far_peak(from: Vector2) -> Array:
 			var v := peak + dir * FAR_PEAK_DISTANCE_M
 			var vh := WorldShape.height(seed_v, v.x, v.y, w)
 			if vh > sea + 3.0 and vh < 100.0:
-				if best.is_empty() or float(peaks[k][2]) > float(best[3]):
-					best = [v, rad_to_deg((-dir).angle()), peak, peaks[k][2]]
+				vantages.append([v, rad_to_deg((-dir).angle()), peak, peaks[k][2]])
 				usable += 1
 				break
-	return best
+	vantages.sort_custom(func(a, b): return float(a[3]) > float(b[3]))
+	return vantages
 
 ## Phase 165 — mountains on the horizon: from 60 km, a tall ridge shows rock or snow above the ring's skyline.
 func _step_far_peak() -> Array:
@@ -900,9 +901,18 @@ func _step_far_peak() -> Array:
 		return [true, "headless: no frame to read (skipped)"]
 	var player = _root._player
 	var start: Vector3 = _player_pos()
-	var found: Array = await _find_far_peak(Vector2(start.x, start.z))
-	if found.is_empty():
+	var vantages: Array = await _find_far_peak(Vector2(start.x, start.z))
+	if vantages.is_empty():
 		return [false, "no ridge of %.0f m within %.0f km with dry land %.0f km from it" % [FAR_PEAK_MIN_HEIGHT, FAR_PEAK_SEARCH_M / 1000.0, FAR_PEAK_DISTANCE_M / 1000.0]]
+	var last: Array = []
+	for k in mini(vantages.size(), FAR_PEAK_ATTEMPTS):
+		last = await _far_peak_attempt(vantages[k], player)
+		if last[0]:
+			return last
+	return last
+
+## One vantage of `_step_far_peak`: stand there, draw the ring alone and then the ring with the bands, count.
+func _far_peak_attempt(found: Array, player) -> Array:
 	var spot_xz: Vector2 = found[0]
 	var bearing: float = found[1]
 	var m := WorldPos.CHUNK_METERS
