@@ -82,6 +82,15 @@ static func max_height() -> float:
 	warm()
 	return _max_h
 
+static func ridge_amplitude() -> float:
+	warm()
+	return _ridge_amp
+
+## The height spline, `[[continentalness, height], ...]`.
+static func spline() -> Array:
+	warm()
+	return _spline
+
 static func ocean_share() -> float:
 	warm()
 	return _ocean_share

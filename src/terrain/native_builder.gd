@@ -69,6 +69,10 @@ static func use_native(fn: String) -> bool:
 		return false
 	return (_builder.call("functions") as PackedStringArray).has(fn)
 
+## The native builder instance for `use_native` callers. Stateless, so any thread may call it.
+static func builder() -> RefCounted:
+	return _builder
+
 ## Native builder version, or -1 on the fallback.
 static func version() -> int:
 	return int(_builder.call("version")) if is_native() else -1

@@ -654,7 +654,10 @@ func _chunk_build_split_probe(clock_scale: int, spike_every: int = 0) -> void:
 	assert_true(int(built["cell_count"]) > 0, "the worker half produced a real chunk")
 	assert_true((VoxelSlice._mesh_from_arrays(built)).get_surface_count() == 1,
 		"and its arrays commit to a mesh")
-	assert_true(resolve_us > 0 and pure_us > 0, "and both halves' costs were measured")
+	# The medians, not the sums: a spike (see `PROBE_SPIKE_US`) landing on a span's opening read makes
+	# that one span negative, and with the native heightmap (Phase 167) the spans are short enough
+	# that one such span outweighs a sum. A median absorbs it.
+	assert_true(steady_resolve > 0 and steady_worker > 0, "and both halves' costs were measured")
 	# THE ratio criterion (row 8): the expensive half is the half that runs off the main thread.
 	# Measured ~1.8x on the machine that pass ran on, so a strict `>` is the honest assertion — a
 	# ratio test tight enough to be interesting would be a flake.
@@ -714,7 +717,10 @@ func _chunk_build_split_probe(clock_scale: int, spike_every: int = 0) -> void:
 	# alike, while the old world-scan gather cost many times more.
 	# The floor keeps a ~1 ms empty-log median from shrinking the ceiling to a few ms of scheduler noise;
 	# the work-count assertions above are what pin the gather's cost, this only bounds the wall clock.
-	var pop_ceiling: int = maxi(3 * steady_resolve, 3000 * clock_scale)
+	# Phase 167: with the native heightmap the empty-log median is ~1 ms, and copying the window's 4096
+	# edits alone costs ~5 ms in a debug build, so the floor sits above that; the old world-scan gather
+	# cost hundreds of milliseconds here and the work-count assertions pin it exactly.
+	var pop_ceiling: int = maxi(3 * steady_resolve, 12000 * clock_scale)
 	assert_true(steady_pop < pop_ceiling,
 		"and the main-thread half still fits a frame with a populated edit log (%d us of %d us, %d window edits)" % [
 			steady_pop, pop_ceiling, window_edits])
