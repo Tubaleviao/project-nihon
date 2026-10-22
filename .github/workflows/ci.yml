@@ -387,7 +387,7 @@ jobs:
         run: |
           test -s stress/report.json && test -s stress/report.md
           cat stress/report.md >> "$GITHUB_STEP_SUMMARY"
-          want=$(( $(echo $STRESS_PROFILES | wc -w) * 5 ))
+          want=$(( $(echo "$STRESS_PROFILES" | wc -w) * 5 ))
           got=$(grep -c '^STRESS_LARGEST ' stress/report.log || true)
           if [ "$got" -ne "$want" ]; then
             echo "::error::the report names a largest passing size for $got series, expected $want"
@@ -487,7 +487,10 @@ jobs:
           cp -r /tmp/godot/templates/templates/* ~/.local/share/godot/export_templates/4.7.stable/
 
       - name: Export the Linux preset
+        # No binaries: the project is exported without the extension, which is how the
+        # GDScript fallback ships (see native/README.md).
         run: |
+          rm -f native/nihon_native.gdextension native/nihon_native.gdextension.uid
           mkdir -p build/linux
           /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --import || true
           /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --export-release "Linux" build/linux/nihon.x86_64
