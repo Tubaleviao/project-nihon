@@ -45,7 +45,10 @@ const WATCHDOG_SLACK_SECS := 60.0 ## whole-run budget = boot + every step's time
 const STREAM_CHUNKS := 20
 const WALK_SECS := 3.0
 const WALK_FOOT_SECS := 2.0   ## the walk step samples the feet over the last this many seconds
-const WALK_FOOT_MIN := 0.3    ## each foot is ahead of the other at least this share of the samples
+## The feet must swap the lead at least this often over the window. A share-of-frames check flaked
+## under xvfb: ~10 fps samples alias with the gait, so a cycling walk could read 14% one foot ahead.
+const WALK_FOOT_MIN_SWITCHES := 2
+const WALK_FOOT_DEADBAND_M := 0.03   ## a lead smaller than this is the feet passing, not a swap
 const GATHER_SEARCH_CHUNKS := 30  ## forest chunks the gather step will hop to at most
 const GATHER_SEARCH_RADIUS := 60  ## chunk rings around the body it scans for forest
 const FIGHT_RANGE_M := 1.5
@@ -399,8 +402,8 @@ func _teleport_to(chunk: Vector2i, local: Vector3) -> Dictionary:
 func _player_pos() -> Vector3:
 	return _root._player.get_position()
 
-## Hold W for a few seconds: the body must move, and each foot must spend a fair share of the
-## last WALK_FOOT_SECS in front of the other (a clip stuck on its last key keeps one foot ahead).
+## Hold W for a few seconds: the body must move, and the feet must swap the lead at least
+## WALK_FOOT_MIN_SWITCHES times over the last WALK_FOOT_SECS (a clip stuck on its last key keeps one foot ahead).
 func _step_walk() -> Array:
 	var start := _player_pos()
 	var rig := _player_rig()
@@ -425,14 +428,23 @@ func _step_walk() -> Array:
 	if samples.size() >= 10 and moved > 1.0:
 		var dir := delta.normalized()
 		var left_ahead := 0
+		var switches := 0
+		var leader := 0  # +1 left ahead, -1 right ahead, 0 not yet known
 		for pair in samples:
 			var l: Vector3 = pair[0]
 			var r: Vector3 = pair[1]
-			if Vector2(l.x - r.x, l.z - r.z).dot(dir) > 0.0:
+			var lead := Vector2(l.x - r.x, l.z - r.z).dot(dir)
+			if lead > 0.0:
 				left_ahead += 1
+			if absf(lead) < WALK_FOOT_DEADBAND_M:
+				continue   # feet level: passing, not a change of leader
+			var side := 1 if lead > 0.0 else -1
+			if leader != 0 and side != leader:
+				switches += 1
+			leader = side
 		var frac := float(left_ahead) / float(samples.size())
-		note += ", left foot ahead %.0f%% of %d frames" % [frac * 100.0, samples.size()]
-		ok = ok and frac >= WALK_FOOT_MIN and frac <= 1.0 - WALK_FOOT_MIN
+		note += ", left foot ahead %.0f%% of %d frames, %d lead switches" % [frac * 100.0, samples.size(), switches]
+		ok = ok and switches >= WALK_FOOT_MIN_SWITCHES
 	else:
 		note += ", no rig feet sampled"
 	return [ok, note]
