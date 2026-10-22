@@ -71,6 +71,8 @@ const FAR_PEAK_DISTANCE_M := 60000.0
 const FAR_PEAK_MIN_HEIGHT := 330.0    ## 80+ m over the horizon from 60 km (about 250 m for the camera's eye): a ridge barely over it shows a few pixels
 const FAR_PEAK_SEARCH_M := 2.0e6      ## the ridge is looked for this far from the body, nearest square ring first
 const FAR_PEAK_SEARCH_STEP_M := 8000.0
+const FAR_PEAK_EXTRA_RINGS := 6      ## rings searched past the first with a ridge, for more candidates
+const FAR_PEAK_CANDIDATES := 24       ## nearest ridges tried for a vantage
 const FAR_PEAK_MIN_PX := 8            ## rock or snow pixels above the ring's skyline needed to pass
 const FAR_PEAK_SAT_MAX := 0.18        ## rock (grey) and snow (white) are below this saturation; land and sea are not
 const FAR_PEAK_TIMEOUT_SECS := 240.0
@@ -571,8 +573,18 @@ func _step_craft() -> Array:
 		return [false, "research: %s" % tech]
 	_root._inventory.add_item("Thornwood", 2)
 	_root._crafting.set_skill("Carpentry", "novice")
-	if await _place_with_keys("carpentry bench") == 0:
-		return [false, "bench placement refused"]
+	# The bench counts only within reach of the body: a body still settling onto the ground can sit more
+	# than the station radius from where the bench went down, so re-place at the feet until it is near.
+	var near := false
+	for attempt in 3:
+		if await _place_with_keys("carpentry bench") == 0 and attempt == 0:
+			return [false, "bench placement refused"]
+		await _until(func(): return false, 0.5)
+		near = _root._station.station_near_player("carpentry bench", _root._crafting.STATION_RADIUS)
+		if near:
+			break
+	if not near:
+		return [false, "the bench is out of reach of the body"]
 	var before := _crafted.size()
 	var planks: int = _root._inventory.get_item_count("ThornwoodPlank")
 	GameBus.craft_requested.emit("RecipeThornwoodPlank")
@@ -824,19 +836,20 @@ func _step_horizon() -> Array:
 		Vector2(start.x, start.z).distance_to(spot_xz), bearing, str(spreads), SKYLINE_FLAT_PX]]
 
 ## Phase 165 — a vantage `FAR_PEAK_DISTANCE_M` from a tall ridge: the search over the shape
-## on a coarse grid around `from` (nearest square ring first) for the nearest point at least `FAR_PEAK_MIN_HEIGHT` tall, then the
-## first of sixteen bearings whose point at that distance is dry land. Returns [vantage, bearing_to_peak_deg,
+## on a coarse grid around `from` (nearest square ring first) for points at least `FAR_PEAK_MIN_HEIGHT` tall, then, for the
+## nearest `FAR_PEAK_CANDIDATES` of them, the first of sixteen bearings whose point at that distance is dry land; the tallest wins. Returns [vantage, bearing_to_peak_deg,
 ## peak, peak_height] or [].
 func _find_far_peak(from: Vector2) -> Array:
 	var seed_v: int = _root._terrain.get_world_seed()
 	var w := Horizon.default_circumference()
 	var sea := WorldShape.sea_level()
-	var best := Vector2.ZERO
-	var best_d := INF
-	var best_h := 0.0
+	var peaks: Array = []   # [distance, point, height] of every grid point tall enough, nearest rings first
 	var t0 := Time.get_ticks_msec()
 	var n := int(FAR_PEAK_SEARCH_M / FAR_PEAK_SEARCH_STEP_M)
-	for r in range(0, n + 1):   # square rings of growing radius: the first ring with a ridge holds the nearest
+	var last_ring := n
+	for r in range(0, n + 1):   # square rings of growing radius
+		if r > last_ring:
+			break
 		for j in range(-r, r + 1):
 			if Time.get_ticks_msec() - t0 > COAST_WORK_MS:
 				await get_tree().process_frame
@@ -844,25 +857,25 @@ func _find_far_peak(from: Vector2) -> Array:
 			var i_step := 1 if absi(j) == r or r == 0 else 2 * r   # interior cells belong to a smaller ring
 			for i in range(-r, r + 1, i_step):
 				var p := from + Vector2(float(i), float(j)) * FAR_PEAK_SEARCH_STEP_M
-				var d := p.distance_to(from)
-				if d >= best_d:
-					continue
 				var h := WorldShape.height(seed_v, p.x, p.y, w)
 				if h >= FAR_PEAK_MIN_HEIGHT:
-					best = p
-					best_d = d
-					best_h = h
-		if best_d < INF:
-			break
-	if best_d == INF:
-		return []
-	for b in 16:
-		var dir := Vector2.from_angle(deg_to_rad(float(b) * 22.5))
-		var v := best + dir * FAR_PEAK_DISTANCE_M
-		var vh := WorldShape.height(seed_v, v.x, v.y, w)
-		if vh > sea + 3.0 and vh < 100.0:
-			return [v, rad_to_deg((-dir).angle()), best, best_h]
-	return []
+					peaks.append([p.distance_to(from), p, h])
+					last_ring = mini(last_ring, r + FAR_PEAK_EXTRA_RINGS)
+	# A ridge whose 60 km ring is all sea or highland has no vantage: take the nearest ridges that do,
+	# and of those the tallest (the most pixels above the skyline).
+	peaks.sort_custom(func(p1, p2): return float(p1[0]) < float(p2[0]))
+	var best: Array = []
+	for k in mini(peaks.size(), FAR_PEAK_CANDIDATES):
+		var peak: Vector2 = peaks[k][1]
+		for b in 16:
+			var dir := Vector2.from_angle(deg_to_rad(float(b) * 22.5))
+			var v := peak + dir * FAR_PEAK_DISTANCE_M
+			var vh := WorldShape.height(seed_v, v.x, v.y, w)
+			if vh > sea + 3.0 and vh < 100.0:
+				if best.is_empty() or float(peaks[k][2]) > float(best[3]):
+					best = [v, rad_to_deg((-dir).angle()), peak, peaks[k][2]]
+				break
+	return best
 
 ## Phase 165 — mountains on the horizon: from 60 km, a tall ridge shows rock or snow above the ring's skyline.
 func _step_far_peak() -> Array:
