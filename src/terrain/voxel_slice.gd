@@ -100,6 +100,7 @@ const Diag := preload("res://src/core/diag.gd")
 const MeshUtil := preload("res://src/core/mesh_util.gd")
 ## Phase 43 — the deterministic ore field: veins, their depth band and ley gate.
 const OreField := preload("res://src/terrain/ore_field.gd")
+const NativeBuilder := preload("res://src/terrain/native_builder.gd")
 const BiomeBlend := preload("res://src/terrain/biome_blend.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
@@ -414,6 +415,7 @@ func _ready() -> void:
 	# come off the generated fabric resources (`depthBand`, `leyGated`), which is why this
 	# cannot be a `const`.
 	OreField.warm()
+	native_runs_cfg()   # Phase 168: snapshot the native build_runs tables on the main thread
 	WorldShape.warm()
 	_world_floor = StaticBody3D.new()
 	_world_floor.name = "WorldFloor"
@@ -594,6 +596,40 @@ static func _chunk_world_center(chunk_pos: Vector2i) -> Vector2:
 ## inputs are the chunk, its heightmap and the payload `gather_build_input` copied off the
 ## slice; `build_chunk_arrays` consumes what this returns.
 static func build_runs(chunk_pos: Vector2i, heightmap: Array, input: Dictionary) -> Dictionary:
+	if NativeBuilder.use_native("build_runs"):   # Phase 168: same result, computed in C++
+		return NativeBuilder.builder().call("build_runs", chunk_pos, heightmap, input, native_runs_cfg()) as Dictionary
+	return build_runs_gd(chunk_pos, heightmap, input)
+
+## Phase 168 — what the native `build_runs` cannot read itself, snapshotted once (fabric tables are fixed
+## after boot) and warmed from `_ready` so a worker only reads it.
+static var _native_runs_cfg: Dictionary = {}
+
+static func native_runs_cfg() -> Dictionary:
+	if not _native_runs_cfg.is_empty():
+		return _native_runs_cfg
+	OreField.warm()
+	var host := {}
+	for biome in BIOME_BIAS:
+		host[str(biome)] = OreField.host_material(str(biome))
+	var styles := {}
+	for biome in GameData.BIOMES:
+		var style := surface_style(str(biome))
+		if not style.is_empty():
+			styles[str(biome)] = style
+	_native_runs_cfg = {
+		"circumference_chunks": TerrainSlice.circumference_chunks(),
+		"colors": MATERIAL_COLORS,
+		"fallback_color": FALLBACK_TERRAIN_COLOR,
+		"ice_color": ICE_COLOR,
+		"host": host,
+		"styles": styles,
+		"bands": OreField.bands(),
+		"vein_cell": Callable(OreField, "vein_in_cell"),
+	}
+	return _native_runs_cfg
+
+## The GDScript reference of `build_runs`: the fallback and the parity suite's baseline.
+static func build_runs_gd(chunk_pos: Vector2i, heightmap: Array, input: Dictionary) -> Dictionary:
 	var edits: Dictionary = input.get("edits", {})
 	var neighbours: Dictionary = input.get("neighbour_heightmaps", {})
 	var biomes: Dictionary = input.get("biomes", {})

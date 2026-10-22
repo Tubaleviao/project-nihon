@@ -188,28 +188,11 @@ issue number where the criterion used to be.
 | 165 | Mountains on the horizon: distant bands out to the visibility limit | Done | [history](docs/roadmap-history/phases-165.md) |
 | 166 | Native builder scaffold: GDExtension, loader, fallback, CI binaries and releases | Done | [history](docs/roadmap-history/phases-166.md) |
 | 167 | Native `heightmap_for` | Done | [history](docs/roadmap-history/phases-167.md) |
-| 168 | Native `build_runs` | Planned | below |
+| 168 | Native `build_runs` | Done | [history](docs/roadmap-history/phases-168.md) |
 | 169 | Native `build_chunk_arrays` and the speed target | Planned | below |
 | 170 | A compute-shader heightmap, if the native builder is still the bottleneck | Planned | below |
 | 171 | Creatures in exact coordinates: no float32 metres far from the origin | Planned | below |
 | 172 | Host chunk attach off the main thread | Planned | below |
-
----
-
-## Phase 168 — Native `build_runs`
-
-**Newel dependency:** NO.
-
-**Depends on:** Phase 167.
-
-**Deliverables:**
-- `build_runs` ported to `NativeChunkBuilder`, routed through the loader.
-- If the GDScript reference's output order depends on dictionary iteration, the reference is made
-  deterministic first (in the same PR) so parity is defined.
-
-**Acceptance criteria:**
-- [ ] Suite: native and GDScript `build_runs` give equal output, same order, for the fixed chunk set.
-- [ ] Suite green on both boot paths, harness green.
 
 ---
 

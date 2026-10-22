@@ -44,7 +44,14 @@ static func add_span(runs: Array, bottom: float, top: float, material: String) -
 	for run in runs:
 		out.append({ "bottom": float(run["bottom"]), "top": float(run["top"]), "material": str(run.get("material", "")) })
 	out.append({ "bottom": bottom, "top": top, "material": material })
-	out.sort_custom(func(a, b): return float(a["bottom"]) < float(b["bottom"]))
+	# A total order (bottom, then top, then material): `sort_custom` is not stable, so a tie on
+	# `bottom` alone left the run order, and the merge below, up to the sort's whim (Phase 168).
+	out.sort_custom(func(a, b):
+		if float(a["bottom"]) != float(b["bottom"]):
+			return float(a["bottom"]) < float(b["bottom"])
+		if float(a["top"]) != float(b["top"]):
+			return float(a["top"]) < float(b["top"])
+		return str(a["material"]) < str(b["material"]))
 	var merged: Array = []
 	for run in out:
 		if merged.is_empty():
