@@ -18,6 +18,6 @@ An export needs either every binary the preset's platform lists or none: to expo
 extension (the GDScript fallback), delete `native/nihon_native.gdextension` first, as the
 `export-check` CI job does.
 
-Ported so far: `heightmap_for` (Phase 167) and `build_runs` (Phase 168; `functions()` lists what a build implements and the loader
+Ported so far: `heightmap_for` (Phase 167) `build_runs` (Phase 168) and `build_chunk_arrays` (Phase 169; `functions()` lists what a build implements and the loader
 routes only those). `src/tests/suites/native_tests.gd` holds the bit-exact parity check against the
 GDScript reference; it runs with `--expect-native` in CI and skips with one log line otherwise.

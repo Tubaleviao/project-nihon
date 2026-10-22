@@ -12,6 +12,7 @@ func register() -> void:
 	_run_test("runner: no source file under src/ is over the line cap", _test_runner_source_size_audit)
 	_run_test("playtest: report percentiles and hitch counts", _test_playtest_report_percentiles_and_hitches)
 	_run_test("playtest: step failure, hard frame and missing step fail the run", _test_playtest_report_verdicts)
+	_run_test("playtest: the report names the builder and each step's chunk build rate", _test_playtest_report_builder_and_rate)
 	_run_test("playtest: --playtest-bot is parsed", _test_playtest_bot_arg)
 	_run_test("playtest: the bot mutates no slice directly", _test_playtest_bot_uses_intents)
 	_run_test("playtest: markdown escapes free-text detail", _test_playtest_markdown_escapes_detail)
@@ -104,6 +105,15 @@ func _test_playtest_report_percentiles_and_hitches() -> void:
 	assert_eq(int(empty["frames"]), 0, "empty list has no frames")
 	assert_eq(float(empty["max_ms"]), 0.0, "empty list has max 0")
 	assert_eq(int(empty["hitches"]), 0, "empty list has no hitches")
+
+func _test_playtest_report_builder_and_rate() -> void:
+	var rec: Dictionary = Bot.step_record("stream", true, "ok", [16.0], 20, 4.0)
+	assert_eq(float(rec["chunk_build_rate"]), 5.0, "20 builds in 4 s is 5 chunks/s")
+	assert_eq(float(Bot.step_record("walk", true, "ok", [], 7)["chunk_build_rate"]), 0.0, "an untimed step has no rate")
+	var report: Dictionary = Bot.build_report([rec], "native")
+	assert_eq(str(report["builder"]), "native", "the report records the builder")
+	assert_true(Bot.report_markdown(report).contains("Chunk builder: **native**"), "the markdown names the builder")
+	assert_true(Bot.report_markdown(report).contains("5.00"), "the markdown shows the rate")
 
 func _all_ok_steps() -> Array:
 	var steps: Array = []

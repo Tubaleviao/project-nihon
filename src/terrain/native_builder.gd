@@ -12,6 +12,9 @@ const EXTENSION_PATH := "res://native/nihon_native.gdextension"
 const CLASS_NAME := "NativeChunkBuilder"
 const MODE_NATIVE := "native"
 const MODE_FALLBACK := "gdscript"
+## User arg that forces the GDScript builder even when the binary is present (the playtest's
+## fallback run, Phase 169).
+const DISABLE_ARG := "--no-native"
 ## Functions a later step may route natively, in step order.
 const FUNCTIONS: Array[String] = ["heightmap_for", "build_runs", "build_chunk_arrays"]
 
@@ -44,7 +47,9 @@ static func init() -> String:
 		return _mode
 	_loaded = true
 	var ext_loaded := false
-	if ClassDB.class_exists(CLASS_NAME):
+	if DISABLE_ARG in OS.get_cmdline_user_args():
+		pass
+	elif ClassDB.class_exists(CLASS_NAME):
 		ext_loaded = true   # already registered, e.g. through the editor's extension list
 	elif library_present():
 		var status := GDExtensionManager.load_extension(EXTENSION_PATH)
@@ -54,7 +59,7 @@ static func init() -> String:
 		_builder = ClassDB.instantiate(CLASS_NAME)
 		print("[Native] chunk builder: native (version %d)" % int(_builder.call("version")))
 	else:
-		print("[Native] chunk builder: gdscript fallback (no native extension)")
+		print("[Native] chunk builder: gdscript fallback (%s)" % ("disabled by %s" % DISABLE_ARG if DISABLE_ARG in OS.get_cmdline_user_args() else "no native extension"))
 	return _mode
 
 static func mode() -> String:

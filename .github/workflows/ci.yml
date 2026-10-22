@@ -407,12 +407,24 @@ jobs:
           if-no-files-found: warn
 
   playtest:
-    name: Playtest bot (rendered session under xvfb)
+    name: Playtest bot (${{ matrix.builder }} builder, rendered session under xvfb)
     # A manual dispatch is for the crowd stress run only.
     if: github.event_name != 'workflow_dispatch'
+    # Phase 169: the step list runs once per chunk builder on the same commit; `playtest-compare` reads both reports.
+    needs: native
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        builder: [gdscript, native]
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        if: matrix.builder == 'native'
+        with:
+          name: native-linux
+          path: native/bin
 
       - name: Install a software renderer and X server
         run: |
@@ -436,7 +448,7 @@ jobs:
           # are a report, not a gate. A crash writes no report.json, which fails the check below.
           set +e
           timeout 1500 xvfb-run -a -s "-screen 0 1280x720x24" \
-            /tmp/godot/Godot_v4.7-stable_linux.x86_64 --path . --rendering-driver opengl3 -- --playtest-bot \
+            /tmp/godot/Godot_v4.7-stable_linux.x86_64 --path . --rendering-driver opengl3 -- --playtest-bot ${{ matrix.builder == 'gdscript' && '--no-native' || '' }} \
             2>&1 | tee /tmp/playtest.log
           status=${PIPESTATUS[0]}
           set -e
@@ -445,6 +457,10 @@ jobs:
             exit 1
           fi
           cat playtest/report.md >> "$GITHUB_STEP_SUMMARY"
+          if ! grep -q "\[Native\] chunk builder: ${{ matrix.builder }}" /tmp/playtest.log; then
+            echo "::error::the playtest did not run on the ${{ matrix.builder }} builder"
+            exit 1
+          fi
           if grep -qE "SCRIPT ERROR|Parse Error|Compile Error" /tmp/playtest.log; then
             echo "::error::script/parse/compile errors present"
             exit 1
@@ -461,9 +477,30 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playtest
+          name: playtest-${{ matrix.builder }}
           path: playtest/
           if-no-files-found: warn
+
+  playtest-compare:
+    name: Native builder speed target (Phase 169)
+    needs: playtest
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: playtest-gdscript
+          path: reports/gdscript
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: playtest-native
+          path: reports/native
+
+      - name: Compare the two runs
+        run: tools/check_native_speedup.py reports/gdscript/report.json reports/native/report.json 2.0 >> "$GITHUB_STEP_SUMMARY"
 
   export-check:
     name: Linux export (pull request)

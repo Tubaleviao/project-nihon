@@ -30,6 +30,7 @@ const WaystoneSlice := preload("res://src/world/waystone_slice.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
 const Horizon := preload("res://src/terrain/horizon.gd")
 const DistantTerrain := preload("res://src/terrain/distant_terrain.gd")
+const NativeBuilder := preload("res://src/terrain/native_builder.gd")
 const DistantBands := preload("res://src/terrain/distant_bands.gd")
 const PlayerSlice := preload("res://src/player/player_slice.gd")
 
@@ -98,6 +99,10 @@ var _skip_until_ms: int = 0   ## frames before this tick are not recorded (just 
 var _step_result: Array = []  ## set by the step runner when its coroutine returns; empty while it runs
 var _step_deadline_ms: int = 0
 var _chunk_builds: int = 0
+## Phase 169: seconds the step spent WAITING for chunk builds, when it measures that (the `stream`
+## step); the report's build rate divides by this instead of the whole step, whose fixed pauses
+## would otherwise dilute a faster builder. 0 means "use the whole step".
+var _build_wait_secs: float = 0.0
 var _mined: Array = []
 var _chopped: Array = []
 var _crafted: Array = []
@@ -148,8 +153,11 @@ static func summarize(frames_ms: Array) -> Dictionary:
 		"hitches": hitches,
 	}
 
-static func step_record(step: String, ok: bool, detail: String, frames_ms: Array, chunk_builds: int) -> Dictionary:
+static func step_record(step: String, ok: bool, detail: String, frames_ms: Array, chunk_builds: int, secs: float = 0.0) -> Dictionary:
 	var rec := summarize(frames_ms)
+	# Phase 169: chunks finished per wall-clock second of the step (0 when the step was not timed).
+	rec["seconds"] = secs
+	rec["chunk_build_rate"] = float(chunk_builds) / secs if secs > 0.0 else 0.0
 	rec["step"] = step
 	rec["ok"] = ok
 	rec["detail"] = detail
@@ -158,7 +166,7 @@ static func step_record(step: String, ok: bool, detail: String, frames_ms: Array
 
 ## The run verdict. `failures` names every hard failure: a failed (or timed-out) step, a frame over
 ## HARD_FRAME_MS, and a step of the fixed list that never ran.
-static func build_report(steps: Array) -> Dictionary:
+static func build_report(steps: Array, builder: String = "") -> Dictionary:
 	var failures: Array = []
 	var seen := {}
 	for s in steps:
@@ -170,7 +178,9 @@ static func build_report(steps: Array) -> Dictionary:
 	for step_name in step_names():
 		if not seen.has(step_name):
 			failures.append("step %s never ran" % step_name)
-	return { "ok": failures.is_empty(), "failures": failures, "steps": steps }
+	# `builder` is which chunk builder ran ("native" or "gdscript"); CI compares the `stream` step's
+	# `chunk_build_rate` between the two runs (Phase 169).
+	return { "ok": failures.is_empty(), "failures": failures, "builder": builder, "steps": steps }
 
 ## One line, no column break: `|` and newlines in free text would split a table row.
 static func _md_cell(text: String) -> String:
@@ -182,12 +192,14 @@ static func report_markdown(report: Dictionary) -> String:
 	lines.append("")
 	lines.append("Result: **%s**" % ("PASS" if bool(report["ok"]) else "FAIL"))
 	lines.append("")
-	lines.append("| Step | Result | Frames | p50 ms | p95 ms | p99 ms | Max ms | Hitches (>%d ms) | Chunk builds | Detail |" % int(HITCH_MS))
-	lines.append("|---|---|---|---|---|---|---|---|---|---|")
+	lines.append("Chunk builder: **%s**" % str(report.get("builder", "")))
+	lines.append("")
+	lines.append("| Step | Result | Frames | p50 ms | p95 ms | p99 ms | Max ms | Hitches (>%d ms) | Chunk builds | Builds/s | Detail |" % int(HITCH_MS))
+	lines.append("|---|---|---|---|---|---|---|---|---|---|---|")
 	for s in report["steps"]:
-		lines.append("| %s | %s | %d | %.1f | %.1f | %.1f | %.1f | %d | %d | %s |" % [
+		lines.append("| %s | %s | %d | %.1f | %.1f | %.1f | %.1f | %d | %d | %.2f | %s |" % [
 			_md_cell(str(s["step"])), "ok" if bool(s["ok"]) else "FAIL", int(s["frames"]), float(s["p50_ms"]), float(s["p95_ms"]),
-			float(s["p99_ms"]), float(s["max_ms"]), int(s["hitches"]), int(s["chunk_builds"]), _md_cell(str(s["detail"]))])
+			float(s["p99_ms"]), float(s["max_ms"]), int(s["hitches"]), int(s["chunk_builds"]), float(s.get("chunk_build_rate", 0.0)), _md_cell(str(s["detail"]))])
 	if not (report["failures"] as Array).is_empty():
 		lines.append("")
 		lines.append("## Hard failures")
@@ -310,7 +322,7 @@ func _on_watchdog() -> void:
 ## Write the report, print the verdict and quit. Pending chunk records are dropped first: the
 ## game's exit flush would otherwise put the bot's frontier chunks into the player's region store.
 func _finish(steps: Array) -> void:
-	var report := build_report(steps)
+	var report := build_report(steps, NativeBuilder.mode())
 	if not _write_report(report):
 		report["ok"] = false
 		(report["failures"] as Array).append("the report could not be written to %s" % OUT_DIR)
@@ -329,6 +341,8 @@ func _run_step(step: String) -> Dictionary:
 	_step_deadline_ms = Time.get_ticks_msec() + int(_step_timeout(step) * 1000.0)
 	_recording = true
 	_step_result = []
+	_build_wait_secs = 0.0
+	var step_start_ms := Time.get_ticks_msec()
 	_run_step_body(step)
 	# A step coroutine that hits a script error never returns; its own waits all stop at the step
 	# deadline, so a step still silent a little after it has crashed (or hung) and fails here, not
@@ -339,7 +353,7 @@ func _run_step(step: String) -> Dictionary:
 	var result: Array = _step_result if not _step_result.is_empty() else [false, "step %s crashed or hung (no result %d s past its deadline)" % [step, int(STEP_GRACE_SECS)]]
 	_key(KEY_W, false)
 	_recording = false
-	var rec := step_record(step, bool(result[0]), str(result[1]), _frames, _chunk_builds)
+	var rec := step_record(step, bool(result[0]), str(result[1]), _frames, _chunk_builds, _build_wait_secs if _build_wait_secs > 0.0 else float(Time.get_ticks_msec() - step_start_ms) / 1000.0)
 	await _screenshot(step)
 	print("[Playtest] %s %s %s" % [step, "ok" if bool(rec["ok"]) else "FAIL", rec["detail"]])
 	return rec
@@ -475,11 +489,13 @@ func _step_stream() -> Array:
 	var home: Dictionary = _root._player.get_world_pos()
 	for i in range(1, STREAM_CHUNKS + 1):
 		var spot := _teleport_to((home["chunk"] as Vector2i) + Vector2i(i, 0), home["local"])
+		var wait_start_ms := Time.get_ticks_msec()
 		var built: bool = await _until(func(): return _root._chunk_manager.is_chunk_built(spot["chunk"]), STREAM_TIMEOUT_SECS)
+		_build_wait_secs += float(Time.get_ticks_msec() - wait_start_ms) / 1000.0
 		if not built:
 			return [false, "chunk %d east never built" % i]
 		await _until(func(): return false, 0.1)
-	return [true, "%d chunks streamed" % STREAM_CHUNKS]
+	return [true, "%d chunks streamed (%s builder, %.2f chunks/s)" % [STREAM_CHUNKS, NativeBuilder.mode(), float(STREAM_CHUNKS) / maxf(_build_wait_secs, 0.001)]]
 
 ## Mine the ground block under the body through the player's own intent.
 func _step_mine() -> Array:

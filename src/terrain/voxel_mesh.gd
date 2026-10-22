@@ -4,6 +4,8 @@ extends RefCounted
 
 const VoxelConsts := preload("res://src/terrain/voxel_consts.gd")
 const VoxelRuns := preload("res://src/terrain/voxel_runs.gd")
+const NativeBuilder := preload("res://src/terrain/native_builder.gd")
+const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const MeshUtil := preload("res://src/core/mesh_util.gd")
 const CHUNK_SIZE := VoxelConsts.CHUNK_SIZE
 const TILE_SIZE := VoxelConsts.TILE_SIZE
@@ -58,6 +60,19 @@ const FALLBACK_TERRAIN_COLOR := VoxelConsts.FALLBACK_TERRAIN_COLOR
 ## see `build_chunk`): float32 vertices in absolute metres snap to whole metres a few million metres out.
 ## The default keeps absolute coordinates, which is what the suite's seam probes read.
 static func build_chunk_arrays(chunk_pos: Vector2i, heightmap: Array, resolved: Dictionary, local: bool = false) -> Dictionary:
+	if NativeBuilder.use_native("build_chunk_arrays"):   # Phase 169: same arrays, computed in C++
+		return NativeBuilder.builder().call("build_chunk_arrays", chunk_pos, heightmap, resolved, local, native_cfg()) as Dictionary
+	return build_chunk_arrays_gd(chunk_pos, heightmap, resolved, local)
+
+## Phase 169 — what the native mesher cannot read itself: the seam wrap and the fallback colour.
+## Built per call (two scalars), so a worker needs no shared state.
+static func native_cfg() -> Dictionary:
+	return { "circumference_chunks": TerrainSlice.circumference_chunks(), "fallback_color": FALLBACK_TERRAIN_COLOR }
+
+## The GDScript reference of `build_chunk_arrays`: the fallback and the parity suite's baseline. Its
+## output order is dictionary insertion order (directions, then groups, in first-seen order), which
+## Godot guarantees, so it is deterministic and the native port reproduces it.
+static func build_chunk_arrays_gd(chunk_pos: Vector2i, heightmap: Array, resolved: Dictionary, local: bool = false) -> Dictionary:
 	var corner_x := chunk_pos.x * CHUNK_SIZE * TILE_SIZE
 	var corner_z := chunk_pos.y * CHUNK_SIZE * TILE_SIZE
 	var origin_x := 0.0 if local else corner_x

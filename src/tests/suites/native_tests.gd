@@ -5,6 +5,7 @@ extends "res://src/tests/test_support.gd"
 ## only checked for consistency with what the engine can see.
 
 const NativeBuilder := preload("res://src/terrain/native_builder.gd")
+const VoxelMesh := preload("res://src/terrain/voxel_mesh.gd")
 const VoxelRuns := preload("res://src/terrain/voxel_runs.gd")
 
 const EXPECT_NATIVE_ARG := "--expect-native"
@@ -16,6 +17,8 @@ func register() -> void:
 	_run_test("native: only ported functions are routed natively",                                 _test_native_routes_only_ported)
 	_run_test("native: heightmap_for matches the GDScript reference on the fixed chunk set",       _test_native_heightmap_parity)
 	_run_test("native: build_runs matches the GDScript reference on the fixed chunk set",          _test_native_build_runs_parity)
+	_run_test("native: build_chunk_arrays matches the GDScript reference on the fixed chunk set",  _test_native_chunk_arrays_parity)
+	_run_test("native: build_chunk_arrays uses the GDScript fallback when the extension is absent", _test_native_chunk_arrays_fallback)
 	_run_test("native: run edits resolve in a total order",                                       _test_native_run_ops_order)
 	_run_test("native: the extension and its build files are in the tree",                         _test_native_files_present)
 	_run_test("native: the release workflow is tag-triggered and builds three platforms",           _test_native_release_workflow)
@@ -34,9 +37,9 @@ func _test_native_real_loader() -> void:
 	if EXPECT_NATIVE_ARG in args:
 		assert_eq(mode, NativeBuilder.MODE_NATIVE, "the binary is present: the loader reports native")
 		assert_true(ClassDB.class_exists(NativeBuilder.CLASS_NAME), "NativeChunkBuilder is registered")
-		assert_eq(NativeBuilder.version(), 3, "the native class reports its version")
+		assert_eq(NativeBuilder.version(), 4, "the native class reports its version")
 		var b: RefCounted = ClassDB.instantiate(NativeBuilder.CLASS_NAME)
-		assert_eq(b.call("functions") as PackedStringArray, PackedStringArray(["heightmap_for", "build_runs"]), "Phases 167-168 port heightmap_for and build_runs")
+		assert_eq(b.call("functions") as PackedStringArray, PackedStringArray(["heightmap_for", "build_runs", "build_chunk_arrays"]), "Phases 167-169 port heightmap_for, build_runs and build_chunk_arrays")
 	if EXPECT_FALLBACK_ARG in args:
 		assert_eq(mode, NativeBuilder.MODE_FALLBACK, "no binary: the loader reports the GDScript fallback")
 		assert_eq(NativeBuilder.version(), -1, "no native version on the fallback")
@@ -46,8 +49,7 @@ func _test_native_real_loader() -> void:
 func _test_native_routes_only_ported() -> void:
 	NativeBuilder.init()
 	assert_eq(NativeBuilder.use_native("build_runs"), NativeBuilder.is_native(), "build_runs is native exactly when the extension loaded")
-	for fn in ["build_chunk_arrays"]:
-		assert_false(NativeBuilder.use_native(fn), "%s is not ported yet" % fn)
+	assert_eq(NativeBuilder.use_native("build_chunk_arrays"), NativeBuilder.is_native(), "build_chunk_arrays is native exactly when the extension loaded")
 	assert_false(NativeBuilder.use_native("not_a_function"), "an unknown function is never native")
 
 ## The chunk set the native port is held to: equator, ice shelf, pole snow field, both sides of the
@@ -159,6 +161,52 @@ func _test_native_build_runs_parity() -> void:
 						topsoil += 1
 	assert_true(deposits_seen > 0, "the fixed chunk set holds vein deposits, so the ore path is compared (%d)" % deposits_seen)
 	assert_true(topsoil > 0, "the fixed chunk set holds topsoiled runs, so the topsoil path is compared (%d)" % topsoil)
+
+func _arrays_equal(got: Dictionary, want: Dictionary, label: String) -> void:
+	assert_eq(got.keys(), want.keys(), "%s: same result keys" % label)
+	for k in want:
+		assert_true(got[k] == want[k], "%s: %s equals the GDScript reference" % [label, k])
+
+func _test_native_chunk_arrays_parity() -> void:
+	NativeBuilder.init()
+	if not NativeBuilder.is_native():
+		print("[Native] build_chunk_arrays parity skipped: no native extension in this run")
+		return
+	var seed_v := 777001
+	var noise := FastNoiseLite.new()
+	TerrainSlice.configure_noise(noise, seed_v)
+	ChunkRecordsScript.clear()
+	var quads := 0
+	var deposit_verts := 0
+	for chunk: Vector2i in _native_parity_chunks():
+		var hm := TerrainSlice.heightmap_for(chunk, seed_v, noise)
+		for variant in range(3):
+			var edits := {} if variant == 0 else _native_runs_edits(chunk)
+			var input := _native_runs_input(chunk, seed_v, noise, edits, {}, variant == 2)
+			var resolved := VoxelSlice.build_runs_gd(chunk, hm, input)
+			for local in [false, true]:
+				var want := VoxelMesh.build_chunk_arrays_gd(chunk, hm, resolved, local)
+				var got := VoxelMesh.build_chunk_arrays(chunk, hm, resolved, local)
+				_arrays_equal(got, want, "native build_chunk_arrays %s v%d local=%s" % [str(chunk), variant, str(local)])
+				quads += int(want["quad_count"])
+				deposit_verts += (want["deposit_vertices"] as PackedVector3Array).size()
+		# the natural-column fallback (no resolved columns) and an UNKNOWN-column table
+		var bare := { "runs": {} }
+		_arrays_equal(VoxelMesh.build_chunk_arrays(chunk, hm, bare), VoxelMesh.build_chunk_arrays_gd(chunk, hm, bare), "native build_chunk_arrays %s bare" % str(chunk))
+	assert_true(quads > 1000, "the fixed chunk set meshes real geometry (%d quads)" % quads)
+	assert_true(deposit_verts > 0, "the fixed chunk set holds deposit boxes, so that path is compared (%d)" % deposit_verts)
+
+func _test_native_chunk_arrays_fallback() -> void:
+	# With no extension the public entry point IS the reference, element for element.
+	NativeBuilder.init()
+	if NativeBuilder.is_native():
+		return
+	var hm: Array = []
+	hm.resize(64 * 64)
+	hm.fill(3.0)
+	var resolved := { "runs": {} }
+	_arrays_equal(VoxelMesh.build_chunk_arrays(Vector2i(0, 0), hm, resolved), VoxelMesh.build_chunk_arrays_gd(Vector2i(0, 0), hm, resolved), "fallback build_chunk_arrays")
+	assert_true((VoxelMesh.build_chunk_arrays(Vector2i(0, 0), hm, resolved)["quad_count"] as int) > 0, "the fallback meshes a flat chunk")
 
 ## `add_span` merges runs sorted by bottom; with the sort on `bottom` alone a tie fell to the
 ## (unstable) sort's whim. Two runs that share a bottom now resolve the same whatever their order.
