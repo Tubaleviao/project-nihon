@@ -307,7 +307,7 @@ func _route_remote_player_state(payload: Dictionary) -> void:
 	if sl.TickProbe.log_relays:   # a second decode, paid only by a stress watcher (outside the timed span)
 		var exact: Dictionary = sl.WorldPos.pos_from_packet(payload)
 		if not exact.is_empty():
-			sl.TickProbe.relay_seen(pid, sl.TickProbe.position_key(exact))
+			sl.TickProbe.relay_seen(pid, sl.TickProbe.position_key(exact), exact)
 	sl.TickProbe.begin("relay_apply")
 	var pos: Vector3 = sl.WorldPos.packet_world(payload, sl._vec3(payload.get("position", [])))
 	if sl.emulate_network and sl._role == sl.Role.CLIENT:

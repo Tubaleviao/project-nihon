@@ -266,7 +266,12 @@ func _sample_watch(_delta: float, wall_ms: float) -> void:
 	var avatars: int = (_root._peer_wiring._remote_avatars as Dictionary).size()
 	_avatars_max = maxi(_avatars_max, avatars)
 	_avatar_sum += float(avatars)
-	_relays.append_array(TickProbe.take_relays())
+	# Each arrival's 4th field becomes the watcher's distance to the subject (-1 when unknown).
+	var me: Dictionary = _root._player.get_world_pos()
+	for row in TickProbe.take_relays():
+		var pos: Dictionary = row[3]
+		row[3] = WorldPos.offset_between(me, pos).length() if not pos.is_empty() and not me.is_empty() else -1.0
+		_relays.append(row)
 
 func _begin_stop() -> void:
 	_stopping = true
