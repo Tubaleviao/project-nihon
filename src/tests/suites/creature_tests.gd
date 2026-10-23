@@ -86,6 +86,10 @@ func register() -> void:
 	_run_test("creature: despawn keeps the death record",         _test_despawn_keeps_death_record)
 	_run_test("creature: recorded death survives boot replay",    _test_recorded_death_survives_boot_replay)
 	_run_test("creature: state delta keeps the respawn deadline", _test_creature_state_delta_keeps_deadline)
+	_run_test("creature: far step keeps 0.1 m (record, wire, save)", _test_creature_far_step_exact)
+	_run_test("creature: far model sits within 1 cm of the record", _test_creature_far_model_exact)
+	_run_test("creature: spawn_exact does not alias the live position", _test_creature_spawn_exact_not_aliased)
+	_run_test("creature: legacy float position still loads",     _test_creature_legacy_float_position)
 	_run_test("taming: cooldowns are durable",                    _test_taming_cooldowns_are_durable)
 	_run_test("taming: per-player mirrors are evicted",           _test_taming_mirrors_evicted_on_forget)
 	_run_test("battle: player rounds route by target id",         _test_battle_routes_player_rounds_by_target)
@@ -2510,4 +2514,80 @@ func _test_models_template_prewarm() -> void:
 	assert_eq(v.prewarm_one(), "", "one type per frame, nothing left")
 	v.reselect(c._instances, Vector3(0, 0, 1000.0))
 	assert_eq(v.prewarm_one(), "", "a built type is not queued again")
+	c.free()
+
+## Phase 171 — a creature half a lap from the origin (x about 2e7 m).
+const FAR_CHUNK := Vector2i(625000, 3)
+
+func _far_pos(x: float) -> Dictionary:
+	return {"chunk": FAR_CHUNK, "local": Vector3(x, 2.0, 5.0)}
+
+func _test_creature_far_step_exact() -> void:
+	var c := CreatureSlice.new()
+	add_child(c)
+	c.apply_creature_pos("f0", "ForestBoar", "idle", _far_pos(5.0), 10.0)
+	var start: Dictionary = c.get_instance_pos("f0")
+	c.move_instance("f0", Vector3(0.1, 0.0, 0.0))
+	var rec: Dictionary = c.get_instance_pos("f0")
+	assert_eq(rec["chunk"], FAR_CHUNK, "the chunk index is exact")
+	assert_true(absf(WorldPos.offset_between(start, rec).x - 0.1) < 1.0e-5, "the record keeps the 0.1 m step")
+	# On the wire: the signal carries the exact form and the packet text decodes back to it.
+	var got: Array = []
+	var cb := func(_i, _c, _s, p): got.append(p)
+	GameBus.creature_state_changed.connect(cb)
+	c.is_authoritative = true
+	c._broadcast_creature_states()
+	GameBus.creature_state_changed.disconnect(cb)
+	assert_eq(got.size(), 1, "one delta is broadcast")
+	var wire: Dictionary = WorldPos.pos_from_compact(WorldPos.pos_to_packet_text(got[0]))
+	assert_true(absf(WorldPos.offset_between(start, wire).x - 0.1) < 1.0e-5, "the packet keeps the 0.1 m step")
+	# Save and load: the snapshot entry rebuilds the same record on a second slice.
+	var snap: Array = c.get_snapshot_creatures()
+	var json: Variant = JSON.parse_string(JSON.stringify(snap))
+	var loaded := CreatureSlice.new()
+	add_child(loaded)
+	loaded.apply_snapshot_creatures(json)
+	assert_true(absf(WorldPos.offset_between(start, loaded.get_instance_pos("f0")).x - 0.1) < 1.0e-5,
+		"a saved and loaded record keeps the 0.1 m step")
+	loaded.free()
+	c.free()
+
+func _test_creature_far_model_exact() -> void:
+	var c := _model_slice("GraywolfPack", 0)
+	var v = c.visuals()
+	# What the rebase driver does: the scene origin moves to the far chunk.
+	c.shift_scene(WorldPos.rebase_shift(Vector2i.ZERO, FAR_CHUNK))
+	c.apply_creature_pos("m0", "GraywolfPack", "idle", _far_pos(8.0), 10.0)
+	c.move_instance("m0", Vector3(0.1, 0.0, 0.0))
+	var cam := _far_pos(5.0)
+	var cam_scene: Dictionary = v.pos_of_scene(Vector3.ZERO)   # frame origin as an exact position
+	assert_eq(cam_scene["chunk"], FAR_CHUNK, "the models' frame follows the rebase")
+	v.reselect(c._instances, Vector3.ZERO, cam)
+	assert_true(c.has_model("m0"), "a creature beside the camera gets a model")
+	v.tick(c._instances, Vector3.ZERO, false, 0.016)
+	var node: Node3D = v.models["m0"]["node"]
+	var want: Vector3 = WorldPos.offset_between(cam, c.get_instance_pos("m0"))
+	var cam_in_scene: Vector3 = WorldPos.to_scene(cam, FAR_CHUNK)
+	assert_true((node.position - (cam_in_scene + want)).length() < 0.01, "the model is within 1 cm of the record")
+	c.free()
+
+func _test_creature_legacy_float_position() -> void:
+	var c := CreatureSlice.new()
+	add_child(c)
+	c.apply_snapshot_creatures([{"instance_id": "l0", "creature_id": "ForestBoar", "state": "idle",
+		"position": [1.5, 2.0, 3.5], "hp": 10.0, "respawn_at": -1.0}])
+	assert_true(c._instances.has("l0"), "the legacy entry loads")
+	var pos: Dictionary = c.get_instance_pos("l0")
+	assert_true((WorldPos.to_scene(pos, Vector2i.ZERO) - Vector3(1.5, 2.0, 3.5)).length() < 1.0e-4, "at the same place")
+	assert_eq(pos["chunk"], Vector2i.ZERO, "split into chunk and local")
+	c.free()
+
+func _test_creature_spawn_exact_not_aliased() -> void:
+	var c := CreatureSlice.new()
+	add_child(c)
+	c.apply_creature_pos("a0", "ForestBoar", "idle", _far_pos(5.0), 10.0)
+	c.move_instance("a0", Vector3(1.0, 0.0, 0.0))
+	var spawn: Dictionary = c._instances["a0"]["spawn_exact"]
+	assert_true(absf((spawn["local"] as Vector3).x - 5.0) < 1.0e-5, "moving does not drag the spawn point")
+	assert_true(not is_same(spawn, c._instances["a0"]["pos"]), "pos and spawn_exact are separate records")
 	c.free()

@@ -187,7 +187,7 @@ func _test_visuals_fall_and_variant() -> void:
 	# Killed from the east side of a model that faces -Z: the host moved the body 1 m east... of a
 	# model at x=10, so it travels along +X, a side hit.
 	cr._instances["w0"]["state"] = "dead"
-	cr._instances["w0"]["position"] = Vector3(11.0, 0.0, 0.0)
+	CreatureSlice._store_pos(cr._instances["w0"], {"chunk": Vector2i.ZERO, "local": Vector3(11.0, 0.0, 0.0)})
 	vis._update_model("w0", cr._instances["w0"], 0.016)
 	assert_eq(str(m["tree"].get_meta("death_clip", "")), "death_side", "a sideways throw plays death_side")
 	var node: Node3D = m["node"]

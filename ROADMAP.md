@@ -191,41 +191,8 @@ issue number where the criterion used to be.
 | 168 | Native `build_runs` | Done | [history](docs/roadmap-history/phases-168.md) |
 | 169 | Native `build_chunk_arrays` and the speed target | Done | [history](docs/roadmap-history/phases-169.md) |
 | 170 | A compute-shader heightmap, if the native builder is still the bottleneck | Done | [history](docs/roadmap-history/phases-170.md) |
-| 171 | Creatures in exact coordinates: no float32 metres far from the origin | Planned | below |
+| 171 | Creatures in exact coordinates: no float32 metres far from the origin | Done | [history](docs/roadmap-history/phases-171.md) |
 | 172 | Host chunk attach off the main thread | Done | [history](docs/roadmap-history/phases-172.md) |
-
----
-
-## Phase 171 — Creatures in exact coordinates: no float32 metres far from the origin
-
-**Goal:** creature records (`CreatureSlice._instances`, `_dead_state`, the wire and the save) hold
-their position as a float32 world `Vector3`. At x ≈ 2e7 m (half a lap from the origin) a float32 has
-about 2 m between values, so a creature's range checks, model placement (`CreatureVisuals`) and AI
-steps are metres-coarse there, and a model can jitter. Players, waystones and hearths already use
-exact `{chunk, local}` positions; creatures should too. Split out of review follow-ups #380 and #392.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phase 154 (it splits the files this phase touches).
-
-**Deliverables:**
-- `CreatureSlice` keeps each instance's position as `{chunk, local}` (`WorldPos`), with the
-  `Vector3` world metres derived only near the camera or the player (scene-relative, like
-  `WorldPos.to_scene`). `creature_state_changed`, snapshots and the world record carry the exact form;
-  a legacy float position still loads.
-- `CreatureVisuals.reselect` and `_update_model` place models from camera-relative positions computed
-  from the exact form, never from a float32 world `Vector3`.
-- `CreatureAI` paths and `creatures_in_radius` / the spatial hash work in the local frame of the chunk
-  window, so a step far from the origin is the same size as one near it.
-- The fold log (`_fold_log`, Phase 145) folds exact positions.
-
-**Acceptance criteria:**
-- [ ] Suite: a creature at x ≈ 2e7 m moved by 0.1 m keeps the 0.1 m in its record, on the wire and
-  after save and load.
-- [ ] Suite: its model's scene position is within 1 cm of the record, seen from a camera beside it.
-- [ ] Suite: a legacy float-position creature record still loads.
-- [ ] Harness: a creature delta far from the origin lands within 1 cm on the client.
-- [ ] Suite green on both boot paths, harness green.
 
 ---
 

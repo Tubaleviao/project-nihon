@@ -101,7 +101,7 @@ signal block_changed(action: String, position: Vector3, normal: Vector3, materia
 signal block_edit_resolved(tile: Vector2i, edit_y: float)
 
 ## Host → clients: authoritative creature state delta (position + state enum).
-signal creature_state_changed(instance_id: String, creature_id: String, state: String, position: Vector3)
+signal creature_state_changed(instance_id: String, creature_id: String, state: String, position: Dictionary)
 
 ## Remote player position update for ghost interpolation (host → clients).
 signal remote_player_state(peer_id: int, position: Vector3)

@@ -31,6 +31,7 @@ extends Node
 ##   force_state(instance_id, state)   -- test helper
 ##   on_companion_tamed(instance_id, player_id)  -- Phase 35: enter the tamed state
 
+const WorldPos := preload("res://src/terrain/world_pos.gd")
 const TickProbe := preload("res://src/core/tick_probe.gd")
 ## Seconds between creature melee strikes while aggressive.
 const ATTACK_INTERVAL  := 1.5
@@ -358,8 +359,9 @@ func _step_toward(inst: Dictionary, iid: String, target: Vector3, speed: float, 
 	if dir.length_squared() < 0.001:
 		return
 	dir = dir.normalized()
-	var new_pos: Vector3 = pos + dir * speed * delta
-	creature_slice.set_instance_position(iid, new_pos)
+	# Phase 171 — the step is a metre-sized delta added to the exact position, so it is the same size
+	# at x = 2e7 as at the origin (a float32 `pos + step` would round to the 2 m grid there).
+	creature_slice.move_instance(iid, dir * speed * delta)
 
 # ---------------------------------------------------------------------------
 # Path following (Phase 136)
@@ -395,7 +397,10 @@ func _path_rules(iid: String) -> Dictionary:
 ## whose own chunk is not loaded stays where it is.
 func _walk_path(iid: String, inst: Dictionary, target: Vector3, speed: float, delta: float) -> void:
 	var pos: Vector3 = inst["position"]
-	var here: Vector2i = creature_slice.tile_of(pos)
+	# Phase 171 — the creature's own tile comes from its exact position (float32 `pos` is on a 2 m grid far out).
+	var here: Vector2i = creature_slice.tile_of_pos(creature_slice.get_instance_pos(iid)) \
+			if creature_slice.has_method("tile_of_pos") and not creature_slice.get_instance_pos(iid).is_empty() \
+			else creature_slice.tile_of(pos)
 	if is_nan(creature_slice.surface_at_tile(here)):
 		return
 	var goal: Vector2i = creature_slice.tile_of(target)
@@ -439,14 +444,20 @@ func _walk_path(iid: String, inst: Dictionary, target: Vector3, speed: float, de
 			_request_path(iid, goal)
 			return
 	var ts: float = creature_slice.tile_size()
-	var center := Vector3((float(here.x + dtx) + 0.5) * ts, pos.y, (float(wp.y) + 0.5) * ts)
-	var flat := Vector3(center.x - pos.x, 0.0, center.z - pos.z)
+	var cs: int = creature_slice._chunk_size()
+	var ctile := Vector2i(here.x + dtx, wp.y)
+	var cchunk := Vector2i(floori(float(ctile.x) / cs), floori(float(ctile.y) / cs))
+	var center_pos := {"chunk": cchunk, "local": Vector3(
+		(float(ctile.x - cchunk.x * cs) + 0.5) * ts, pos.y, (float(ctile.y - cchunk.y * cs) + 0.5) * ts)}
+	var from_pos: Dictionary = creature_slice.get_instance_pos(iid)
+	var flat: Vector3 = WorldPos.offset_between(from_pos, center_pos)
+	flat.y = 0.0
 	var step := speed * delta
 	if flat.length() <= step:
-		creature_slice.set_instance_position(iid, Vector3(center.x, pos.y, center.z))
+		creature_slice.set_instance_pos(iid, center_pos)
 		ai["path_idx"] = idx + 1
 	else:
-		creature_slice.set_instance_position(iid, pos + flat.normalized() * step)
+		creature_slice.move_instance(iid, flat.normalized() * step)
 
 static func _canon(tile: Vector2i, lap: int) -> Vector2i:
 	return Vector2i(SeamWrap.wrap_i(tile.x, lap), tile.y) if lap > 0 else tile

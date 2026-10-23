@@ -309,18 +309,54 @@ func tile_of(pos: Vector3) -> Vector2i:
 	var ts := _tile_size()
 	return Vector2i(floori(pos.x / ts), floori(pos.z / ts))
 
+## Phase 171 — the exact `{chunk, local}` position of an instance (empty when unknown). `inst["position"]` is
+## the world-metres Vector3 derived from it: exact near the origin, float32-coarse far from it.
+func get_instance_pos(instance_id: String) -> Dictionary:
+	if not _instances.has(instance_id):
+		return {}
+	return (_instances[instance_id]["pos"] as Dictionary).duplicate()   # a copy: edits must go through set_instance_pos
+
+## Store an exact position on a record and refresh the derived Vector3.
+static func _store_pos(inst: Dictionary, pos: Dictionary) -> void:
+	inst["pos"] = pos.duplicate()   # own copy: spawn_exact / _last_broadcast must not alias a record that is edited in place
+	inst["position"] = WorldPos.to_scene(pos, Vector2i.ZERO)
+
+## The tile holding an exact position, with no float32 world metre in between.
+func tile_of_pos(pos: Dictionary) -> Vector2i:
+	var ts := _tile_size()
+	var cs := _chunk_size()
+	var chunk: Vector2i = pos["chunk"]
+	var local: Vector3 = pos["local"]
+	return Vector2i(chunk.x * cs + floori(local.x / ts), chunk.y * cs + floori(local.z / ts))
+
 ## Move an instance to a new world position, keeping body and record in sync. With a surface the position
 ## is set on it (a mined pit or a placed block counts), so a mover cannot leave a creature floating.
+## A Vector3 is split into `{chunk, local}` here; a mover far from the origin uses `move_instance`.
 func set_instance_position(instance_id: String, pos: Vector3) -> void:
+	set_instance_pos(instance_id, WorldPos.from_world(pos.x, pos.y, pos.z))
+
+## `set_instance_position` for an exact `{chunk, local}` position.
+func set_instance_pos(instance_id: String, pos: Dictionary) -> void:
 	if not _instances.has(instance_id):
 		return
 	if voxel_slice != null:
-		var h := surface_at_tile(tile_of(pos))
+		var h := surface_at_tile(tile_of_pos(pos))
 		if not is_nan(h):
-			pos.y = h + hover_of(instance_id)   # a flyer keeps its hover band above the surface
-	_instances[instance_id]["position"] = pos
-	_spatial.update(instance_id, pos)
-	_place_box(instance_id, pos)
+			var l: Vector3 = pos["local"]
+			l.y = h + hover_of(instance_id)   # a flyer keeps its hover band above the surface
+			pos = {"chunk": pos["chunk"], "local": l}
+	var inst: Dictionary = _instances[instance_id]
+	_store_pos(inst, pos)
+	_spatial.update(instance_id, inst["position"])
+	_place_box(instance_id, inst["position"])
+
+## Move an instance by `delta` metres. The offset is added to `local` and carried into the chunk index, so a
+## 0.1 m step is 0.1 m at any distance from the origin.
+func move_instance(instance_id: String, delta: Vector3) -> void:
+	if not _instances.has(instance_id):
+		return
+	var cur: Dictionary = _instances[instance_id]["pos"]
+	set_instance_pos(instance_id, WorldPos.normalized({"chunk": cur["chunk"], "local": (cur["local"] as Vector3) + delta}))
 
 ## Return a snapshot of all active instances (for HUD / minimap use).
 ##
@@ -391,12 +427,11 @@ func get_snapshot_creatures() -> Array:
 	var out: Array = []
 	for iid in _instances:
 		var inst: Dictionary = _instances[iid]
-		var pos: Vector3 = inst["position"]
 		out.append({
 			"instance_id": iid,
 			"creature_id": inst["creature_id"],
 			"state":       inst["state"],
-			"position":    WorldPos.to_wire(pos),
+			"position":    WorldPos.pos_to_wire(inst["pos"]),
 			"hp":          float(inst.get("hp", 0.0)),
 			"respawn_at":  float(inst.get("respawn_at", -1.0)),
 		})
@@ -618,7 +653,9 @@ func fold_contents(turned: bool, pole_sign: int) -> void:
 		var inst: Dictionary = _instances[iid]
 		var pos: Vector3 = TerrainSlice.fold_world_vec_like(inst["position"], turned, pole_sign)
 		inst["position"] = pos
+		inst["pos"] = WorldPos.from_world(pos.x, pos.y, pos.z)
 		inst["spawn_pos"] = TerrainSlice.fold_world_vec_like(inst["spawn_pos"], turned, pole_sign)
+		inst["spawn_exact"] = WorldPos.from_world(inst["spawn_pos"].x, inst["spawn_pos"].y, inst["spawn_pos"].z)
 		var chunk := Vector2i(floori(pos.x / TerrainSlice.CHUNK_METERS), floori(pos.z / TerrainSlice.CHUNK_METERS))
 		inst["chunk"] = chunk
 		if not _by_chunk.has(chunk):
@@ -628,7 +665,7 @@ func fold_contents(turned: bool, pole_sign: int) -> void:
 		if _last_broadcast.has(iid):
 			# The wire carries no fold: other peers keep the frame they have, so the carried
 			# creature is not re-sent as a move.
-			_last_broadcast[iid]["position"] = pos
+			_last_broadcast[iid]["position"] = inst["pos"]
 	# Held death records re-apply at their chunk's next spawn and are saved: keep them in the same frame.
 	for iid in _dead_state:
 		var rec: Dictionary = _dead_state[iid]
@@ -730,11 +767,10 @@ func _remember_death(iid: String, inst: Dictionary) -> void:
 	if deadline <= Time.get_unix_time_from_system():
 		_dead_state.erase(iid)
 		return
-	var pos: Vector3 = inst.get("position", Vector3.ZERO)
 	_dead_state[iid] = {
 		"creature_id": str(inst.get("creature_id", "")),
 		"respawn_at":  deadline,
-		"position":    WorldPos.to_wire(pos),
+		"position":    WorldPos.pos_to_wire(inst.get("pos", WorldPos.from_world(0.0, 0.0, 0.0))),
 	}
 
 func _spawn(creature_id: String, chunk_pos: Vector2i, spawn_index: int = 0) -> String:
@@ -748,13 +784,15 @@ func _spawn(creature_id: String, chunk_pos: Vector2i, spawn_index: int = 0) -> S
 	# A spawn is a PACK (Phase 44): its members cluster around a single deterministic
 	# centre, which is also what lets pack/herd coordination (alert / flee) fire in
 	# practice instead of being scattered out of packRadius.
-	var center: Vector2 = _deterministic_chunk_position(chunk_pos, creature_id, 0)
-	xz = center + _pack_member_offset(spawn_index)
-	var pos: Vector3 = Vector3(xz.x, 0.0, xz.y)
+	# Phase 171 — the member's place is the chunk plus a small local offset, never a float32 world metre.
+	xz = _deterministic_chunk_local(chunk_pos, creature_id, 0) + _pack_member_offset(spawn_index)
+	var exact: Dictionary = WorldPos.normalized({"chunk": chunk_pos, "local": Vector3(xz.x, 0.0, xz.y)})
+	var pos: Vector3 = WorldPos.to_scene(exact, Vector2i.ZERO)
 
 	# Sit the creature on the terrain surface instead of a fixed height.
 	if terrain_slice != null and terrain_slice.has_method("get_height_at"):
 		pos.y = terrain_slice.get_height_at(Vector2(pos.x, pos.z)) + hover_for_creature(creature_id)
+		exact["local"] = Vector3(exact["local"].x, pos.y, exact["local"].z)
 
 	var iid := _instance_id(chunk_pos, creature_id, spawn_index)
 
@@ -770,8 +808,10 @@ func _spawn(creature_id: String, chunk_pos: Vector2i, spawn_index: int = 0) -> S
 		"instance_id": iid,
 		"creature_id": creature_id,
 		"position":    pos,
+		"pos":         exact,
 		"chunk":       chunk_pos,
 		"spawn_pos":   pos,
+		"spawn_exact": exact.duplicate(),
 		"state":       "idle",
 		"hp":          hp,
 		"respawn_at":  -1.0,
@@ -824,6 +864,11 @@ func _instance_id(chunk_pos: Vector2i, creature_id: String, spawn_index: int) ->
 ## creature always lands at the same spot regardless of frame rate or call order.
 ## Tile-aware: converts the global tile index to world units via TILE_SIZE (0.5).
 func _deterministic_chunk_position(chunk_pos: Vector2i, creature_id: String, spawn_index: int) -> Vector2:
+	var cm := float(_chunk_size()) * _tile_size()
+	return Vector2(float(chunk_pos.x) * cm, float(chunk_pos.y) * cm) + _deterministic_chunk_local(chunk_pos, creature_id, spawn_index)
+
+## The same centre as an offset in metres from the chunk's origin corner (small, so float32 is exact).
+func _deterministic_chunk_local(chunk_pos: Vector2i, creature_id: String, spawn_index: int) -> Vector2:
 	var cs: int = _chunk_size()
 	var ts: float = _tile_size()
 	# Tiles kept clear on every side: the 1-tile border plus the farthest member offset,
@@ -835,10 +880,7 @@ func _deterministic_chunk_position(chunk_pos: Vector2i, creature_id: String, spa
 	var seed_z: int = (chunk_pos.x * 19349663) ^ (chunk_pos.y * 83492791) ^ (creature_id.hash() * 1000003) ^ (spawn_index * 73856093)
 	var local_x: int = (abs(seed_x) % inner) + inset
 	var local_z: int = (abs(seed_z) % inner) + inset
-	return Vector2(
-		float(chunk_pos.x * cs + local_x) * ts + ts * 0.5,
-		float(chunk_pos.y * cs + local_z) * ts + ts * 0.5
-	)
+	return Vector2(float(local_x) * ts + ts * 0.5, float(local_z) * ts + ts * 0.5)
 
 ## Small deterministic offsets for pack members around the pack centre. Kept
 ## well inside a typical packRadius (20 m) so every member stays in coordination
@@ -921,7 +963,9 @@ func _on_creature_died(entity_id: String, _position: Vector3, _killer_id: String
 					if hover_of(iid) > 0.0:
 						var rest: Vector3 = inst["position"]
 						rest.y = minf(rest.y, landing.y)
-						inst["position"] = rest
+						var rest_pos: Dictionary = (inst["pos"] as Dictionary).duplicate()
+						rest_pos["local"] = Vector3(rest_pos["local"].x, rest.y, rest_pos["local"].z)
+						_store_pos(inst, rest_pos)
 						_spatial.update(iid, rest)
 						_place_box(iid, rest)
 				# WALL-CLOCK deadline (Phase 33) — a saved deadline must still mean
@@ -963,7 +1007,7 @@ func _tick_respawn() -> void:
 			inst["state"]      = "idle"
 			inst["hp"]         = max_hp
 			inst["respawn_at"] = -1.0
-			inst["position"]   = inst["spawn_pos"]
+			_store_pos(inst, inst["spawn_exact"])
 			_spatial.update(iid, inst["spawn_pos"])
 			_place_box(iid, inst["spawn_pos"])
 			GameBus.creature_respawned.emit(iid, creature_id)
@@ -981,7 +1025,7 @@ func _broadcast_creature_states() -> void:
 	for iid in _instances:
 		var inst: Dictionary = _instances[iid]
 		var state: String = inst["state"]
-		var pos: Vector3 = inst["position"]
+		var pos: Dictionary = inst["pos"]
 		var prev = _last_broadcast.get(iid, null)
 		if prev != null and prev["state"] == state and prev["position"] == pos:
 			continue
@@ -991,10 +1035,10 @@ func _broadcast_creature_states() -> void:
 ## Client-side application of a host-authoritative creature state delta. Creates
 ## the instance record (and a visual body) on first sight, then updates its
 ## state and position on subsequent updates.
-func _on_creature_state_changed(instance_id: String, creature_id: String, state: String, position: Vector3) -> void:
+func _on_creature_state_changed(instance_id: String, creature_id: String, state: String, position: Dictionary) -> void:
 	if is_authoritative:
 		return   # the host already owns this instance
-	apply_creature_state(instance_id, creature_id, state, position)
+	apply_creature_pos(instance_id, creature_id, state, position)
 
 ## Client-side application of a single authoritative creature state (see
 ## _on_creature_state_changed). Public so the snapshot loader can seed the
@@ -1008,14 +1052,20 @@ func _on_creature_state_changed(instance_id: String, creature_id: String, state:
 ## existing deadline alone. Assigning the -1.0 default unconditionally wiped a dead
 ## instance's respawn_at on every delta, so the creature never came back.
 func apply_creature_state(instance_id: String, creature_id: String, state: String, position: Vector3, hp: float = -1.0, respawn_at: float = -1.0) -> void:
+	apply_creature_pos(instance_id, creature_id, state, WorldPos.from_world(position.x, position.y, position.z), hp, respawn_at)
+
+## `apply_creature_state` with an exact `{chunk, local}` position (Phase 171): what the wire and the save carry.
+func apply_creature_pos(instance_id: String, creature_id: String, state: String, pos: Dictionary, hp: float = -1.0, respawn_at: float = -1.0) -> void:
 	if not _fold_log.is_empty():
-		position = _to_local_frame(position)
+		var folded := _to_local_frame(WorldPos.to_scene(pos, Vector2i.ZERO))
+		pos = WorldPos.from_world(folded.x, folded.y, folded.z)
+	var position: Vector3 = WorldPos.to_scene(pos, Vector2i.ZERO)
 	if _instances.has(instance_id):
 		var inst: Dictionary = _instances[instance_id]
 		if creature_id != "":
 			inst["creature_id"] = creature_id
 		inst["state"]    = state
-		inst["position"] = position
+		_store_pos(inst, pos)
 		if hp >= 0.0:
 			inst["hp"] = hp
 		if respawn_at >= 0.0:
@@ -1038,8 +1088,10 @@ func apply_creature_state(instance_id: String, creature_id: String, state: Strin
 		"instance_id": instance_id,
 		"creature_id": creature_id,
 		"position":    position,
+		"pos":         pos,
 		"chunk":       Vector2i.ZERO,
 		"spawn_pos":   position,
+		"spawn_exact": pos.duplicate(),
 		"state":       state,
 		"hp":          maxf(hp, 0.0),
 		"respawn_at":  respawn_at,
@@ -1079,15 +1131,24 @@ func _apply_creature_entries(list: Array, create_missing: bool) -> void:
 		if not create_missing and not _instances.has(iid):
 			_hold_death_record(iid, entry)
 			continue
-		var pos := WorldPos.from_wire(entry.get("position", []))
-		apply_creature_state(
+		apply_creature_pos(
 			iid,
 			str(entry.get("creature_id", "")),
 			str(entry.get("state", "idle")),
-			pos,
+			_entry_pos(entry),
 			float(entry.get("hp", -1.0)),
 			float(entry.get("respawn_at", -1.0))
 		)
+
+## The exact position of a snapshot / world-record entry: the `{chunk, local}` form keeps its chunk, a legacy
+## `[x, y, z]` float array is split (Phase 171).
+func _entry_pos(entry: Dictionary) -> Dictionary:
+	var data: Variant = entry.get("position", [])
+	var exact := WorldPos.pos_from_wire(data)
+	if not exact.is_empty():
+		return exact
+	var w := WorldPos.from_wire(data)
+	return WorldPos.from_world(w.x, w.y, w.z)
 
 ## Hold an unstreamed id's recorded death so it re-applies when its chunk streams
 ## (see _spawn). Only a pending death is held; a live entry, an entry whose deadline
@@ -1098,11 +1159,10 @@ func _hold_death_record(iid: String, entry: Dictionary) -> void:
 	var deadline := float(entry.get("respawn_at", -1.0))
 	if deadline <= Time.get_unix_time_from_system():
 		return
-	var pos := WorldPos.from_wire(entry.get("position", []))
 	_dead_state[iid] = {
 		"creature_id": str(entry.get("creature_id", "")),
 		"respawn_at":  deadline,
-		"position":    WorldPos.to_wire(pos),
+		"position":    WorldPos.pos_to_wire(_entry_pos(entry)),
 	}
 
 # ---------------------------------------------------------------------------
@@ -1148,9 +1208,11 @@ func _tick_visuals(delta: float) -> void:
 		return
 	var cam := get_viewport().get_camera_3d() if is_inside_tree() else null
 	var cam_world := Vector3.ZERO
+	var cam_pos := {}
 	if cam != null:
 		cam_world = cam.global_position - _visuals.position
-	_visuals.tick(_instances, cam_world, cam != null, delta)
+		cam_pos = _visuals.pos_of_scene(cam.global_position)
+	_visuals.tick(_instances, cam_world, cam != null, delta, cam_pos)
 
 ## A model took over from the box: hide it.
 func _on_model_attached(iid: String) -> void:
