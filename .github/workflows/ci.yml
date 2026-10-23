@@ -467,7 +467,7 @@ jobs:
       - name: Run the bot again on the GDScript fallback (Phase 169)
         run: |
           # Same commit, `--no-native`: the stream step's chunk build rate with the native builder
-          # must be at least double this run's, and the native run must show no hitch in any step.
+          # must be at least double this run's, and the native run must not hitch more than this one.
           mkdir -p /tmp/playtest-native
           cp playtest/report.json /tmp/playtest-native/report.json
           mkdir -p /tmp/playtest-native-png
