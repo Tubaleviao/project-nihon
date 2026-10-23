@@ -15,6 +15,7 @@ const CarcassRules := preload("res://src/loot/carcass_rules.gd")
 const RegionStore := preload("res://src/persistence/region_store.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const SceneOffset := preload("res://src/core/scene_offset.gd")
+const CreatureVisuals := preload("res://src/creature/creature_visuals.gd")
 
 ## Why a harvest or carry was refused (also what the wiring sends the player as a key).
 const OK := ""
@@ -33,6 +34,19 @@ var _carried: Dictionary = {}
 ## Scene node per carcass (clients and listen hosts only); empty when `render_visuals` is false.
 var render_visuals: bool = false
 var _nodes: Dictionary = {}
+## carcass id -> seconds a fresh body has waited for its dying model to be handed over (see `adopt_corpse`).
+var _pending: Dictionary = {}
+## carcass id -> true once it drew the dying creature's own model.
+var _adopted: Dictionary = {}
+## `(creature_key) -> Node3D`: a body in its death pose for a carcass with no dying model to adopt (null when
+## the type has no usable model; the fallback marker is drawn then).
+var model_source: Callable = Callable()
+## A fresh body waits this long (seconds) for the dying creature's model before it builds its own.
+const ADOPT_WAIT_SECONDS := 1.0
+## A handed-over model belongs to the nearest unclaimed body of its type within this distance (metres).
+const ADOPT_RADIUS_M := 2.5
+## A carried body rides this high on its carrier (metres); a dragged one stays on the ground.
+const CARRY_LIFT_M := 1.1
 ## The scene-origin offset a client rebase has applied; body nodes sit at world position + this.
 var _origin: SceneOffset = SceneOffset.new()
 
@@ -315,6 +329,8 @@ func from_data(data: Variant) -> void:
 func clear() -> void:
 	for id in _nodes.keys():
 		_free_node(id)
+	_pending.clear()
+	_adopted.clear()
 	_carcasses.clear()
 	_carried.clear()
 
@@ -336,7 +352,7 @@ func remove_view(id: String) -> void:
 		_free_node(id)
 
 # ---------------------------------------------------------------------------
-# Visuals (a placeholder body; the prompt text is the UI's)
+# Visuals (the creature's own body; the prompt text is the UI's)
 # ---------------------------------------------------------------------------
 
 func _refresh(id: String, announce: bool = true) -> void:
@@ -344,20 +360,96 @@ func _refresh(id: String, announce: bool = true) -> void:
 	if announce:
 		GameBus.carcass_changed.emit(id)
 
+func _process(delta: float) -> void:
+	tick_visuals(delta)
+
+## A fresh body that waited ADOPT_WAIT_SECONDS without being handed its dying model builds its own.
+func tick_visuals(delta: float) -> void:
+	for id in _pending.keys():
+		_pending[id] = float(_pending[id]) + delta
+		if float(_pending[id]) >= ADOPT_WAIT_SECONDS:
+			_pending.erase(id)
+			_build_own(id)
+
+## A body is fresh (its creature's dying model may still be on screen to hand over) while it has lost no more
+## decay time than the creature visuals keep offering that model.
+func _is_fresh(c: Dictionary) -> bool:
+	return float(c["remaining"]) >= CarcassRules.corpse_seconds(str(c["creature"])) - CreatureVisuals.HANDOFF_SECONDS
+
 func _place(id: String) -> void:
 	if not render_visuals or not _carcasses.has(id) or not is_inside_tree():
 		return
 	var node: Node3D = _nodes.get(id, null)
-	if node == null:
-		node = MeshInstance3D.new()
-		var box := BoxMesh.new()
-		var m := clampf(CarcassRules.mass_of(str(_carcasses[id]["creature"])) / 100.0, 0.3, 1.5)
-		box.size = Vector3(0.9, 0.35, 0.5) * (0.6 + m)
-		(node as MeshInstance3D).mesh = box
-		node.name = "Carcass_%s" % id
-		add_child(node)
-		_nodes[id] = node
-	node.position = _origin.to_scene(_carcasses[id]["position"] as Vector3) + Vector3(0.0, 0.2, 0.0)
+	if node != null:
+		node.position = _scene_pos(id)
+	elif not _pending.has(id):
+		if _is_fresh(_carcasses[id]):
+			_pending[id] = 0.0   # wait for the dying model (`adopt_corpse`) before drawing one of its own
+		else:
+			_build_own(id)
+
+func _build_own(id: String) -> void:
+	if not _carcasses.has(id) or _nodes.has(id) or not is_inside_tree():
+		return
+	var node := _own_body(str(_carcasses[id]["creature"]))
+	node.name = "Carcass_%s" % id
+	add_child(node)
+	_nodes[id] = node
+	node.position = _scene_pos(id)
+
+## Where body `id` is drawn: on the ground, or on its carrier's shoulders when carried (not dragged).
+func _scene_pos(id: String) -> Vector3:
+	var c: Dictionary = _carcasses[id]
+	var p := _origin.to_scene(c["position"] as Vector3)
+	if str(c["mode"]) == "carry" and str(c["carrier"]) != "":
+		p.y += CARRY_LIFT_M
+	if _nodes.has(id) and (_nodes[id] as Node).has_meta("marker"):
+		p.y += 0.2
+	return p
+
+## The creature's body in its death pose, or a small earth-toned marker when its type has no usable model.
+func _own_body(creature: String) -> Node3D:
+	var model: Node3D = model_source.call(creature) if model_source.is_valid() else null
+	if model != null:
+		return model
+	var mesh := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	var m := clampf(CarcassRules.mass_of(creature) / 100.0, 0.3, 1.5)
+	box.size = Vector3(0.9, 0.35, 0.5) * (0.6 + m)
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.36, 0.25, 0.18)
+	box.material = mat
+	mesh.mesh = box
+	mesh.set_meta("marker", true)
+	return mesh
+
+## A dying creature's model (from `CreatureVisuals`) offered to the body it became. The nearest body of that
+## type within ADOPT_RADIUS_M that has not adopted one takes the node over (replacing a body it built itself);
+## false when none does, so the creature visuals keep it.
+func adopt_corpse(creature: String, node: Node3D) -> bool:
+	if not render_visuals or not is_inside_tree() or node == null:
+		return false
+	var at := node.global_position
+	var best := ""
+	var best_d := ADOPT_RADIUS_M
+	for id in _carcasses:
+		var c: Dictionary = _carcasses[id]
+		if str(c["creature"]) != creature or _adopted.has(id):
+			continue
+		var p := _origin.to_scene(c["position"] as Vector3)
+		var d := Vector2(at.x - p.x, at.z - p.z).length()
+		if d <= best_d:
+			best_d = d
+			best = id
+	if best == "":
+		return false
+	_free_node(best)
+	_adopted[best] = true
+	_reparent_rig(node)
+	node.name = "Carcass_%s" % best
+	_nodes[best] = node
+	node.position = _scene_pos(best)
+	return true
 
 ## Rebase (Phase 63): shift every body node by `shift`; the records keep their world positions.
 func shift_scene(shift: Vector3) -> void:
@@ -365,8 +457,23 @@ func shift_scene(shift: Vector3) -> void:
 	for id in _nodes:
 		(_nodes[id] as Node3D).position += shift
 
+## Move a rig under this slice. A Skeleton3D leaving the tree drops its internal PhysicalBoneSimulator3D
+## without freeing it and makes a new one when it re-enters, so the dropped ones are freed here.
+func _reparent_rig(node: Node3D) -> void:
+	var sims: Array = []
+	for sk in node.find_children("*", "Skeleton3D", true, false):
+		for child in (sk as Node).get_children(true):
+			if child is PhysicalBoneSimulator3D:
+				sims.append(child)
+	node.reparent(self, false)
+	for sim in sims:
+		if is_instance_valid(sim) and (sim as Node).get_parent() == null:
+			(sim as Node).free()
+
 func _free_node(id: String) -> void:
 	var node: Node = _nodes.get(id, null)
 	_nodes.erase(id)
+	_pending.erase(id)
+	_adopted.erase(id)
 	if node != null:
 		node.free()

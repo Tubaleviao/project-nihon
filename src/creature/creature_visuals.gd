@@ -33,6 +33,9 @@ const SELECT_INTERVAL := 0.25
 const TELEPORT_JUMP_M := 8.0
 ## Seconds a dead creature's model holds its death pose before it is dropped.
 const CORPSE_SECONDS := 8.0
+## Seconds after death a corpse model keeps offering itself to `corpse_handoff` (a client's carcass record can
+## arrive a little after the death state).
+const HANDOFF_SECONDS := 3.0
 ## Phase 157 — seconds the body takes to travel from where it was struck to its landing, and the arc's height.
 const FALL_SECONDS := 0.35
 const FALL_ARC_M := 0.25
@@ -52,6 +55,9 @@ var _templates: Dictionary = {}
 ## creature_id -> true once its missing/broken model has warned.
 var warned_types: Dictionary = {}
 var max_models: int = MAX_MODELS
+## `(creature_id, node) -> bool`: offered a dead model once it has landed; true when a carcass took the node
+## (reparented it and now owns it), so this node forgets it without freeing it.
+var corpse_handoff: Callable = Callable()
 ## Colour a creature type's box is tinted with; the model's palette index is the nearest entry.
 var tint_of: Callable = Callable()
 var _select_accum: float = 0.0
@@ -269,17 +275,10 @@ func attach(iid: String, inst: Dictionary) -> bool:
 	if models.has(iid):
 		return true
 	var cid: String = inst["creature_id"]
-	var tpl: Variant = _template(cid)
-	if tpl == null:
-		return false
-	var node := (tpl["scene"] as PackedScene).instantiate() as Node3D
+	var node := _instantiate(cid)
 	if node == null:
 		return false
 	node.name = "Model_%s" % iid.validate_node_name()
-	node.set_meta("creature_id", cid)
-	for m in node.find_children("*", "MeshInstance3D", true, false):
-		(m as MeshInstance3D).material_override = tpl["material"]
-		CharacterMaterial.apply_instance(m as GeometryInstance3D, tpl["index"])
 	var player := node.find_child("AnimationPlayer", true, false) as AnimationPlayer
 	var tree := RigTree.build_tree(player)
 	node.add_child(tree)
@@ -292,6 +291,37 @@ func attach(iid: String, inst: Dictionary) -> bool:
 		"loco": -1, "dead_at": -1.0, "fall_t": 1.0, "fall_from": pos, "corpse_s": corpse_seconds(cid), "state": str(inst["state"]), "swing_left": 0.0, "swing": 0, "swing_seen": 0}
 	model_attached.emit(iid)
 	return true
+
+
+## A fresh instance of `cid`'s rig with its material, or null when the type has no usable model.
+func _instantiate(cid: String) -> Node3D:
+	var tpl: Variant = _template(cid)
+	if tpl == null:
+		return null
+	var node := (tpl["scene"] as PackedScene).instantiate() as Node3D
+	if node == null:
+		return null
+	node.set_meta("creature_id", cid)
+	for m in node.find_children("*", "MeshInstance3D", true, false):
+		(m as MeshInstance3D).material_override = tpl["material"]
+		CharacterMaterial.apply_instance(m as GeometryInstance3D, tpl["index"])
+	return node
+
+
+## A `cid` body lying in the last pose of its death clip, for a carcass that had no dying model to adopt (it
+## died out of model range, came from a save or came into view later). Null when the type has no usable model.
+func corpse_model(cid: String) -> Node3D:
+	var node := _instantiate(cid)
+	if node == null:
+		return null
+	var player := node.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	if player != null and player.has_animation("death"):
+		# Posed once it is in the scene (a skeleton animated out of the tree leaves a stray bone simulator).
+		node.tree_entered.connect(func() -> void:
+			player.play("death")
+			player.seek(player.get_animation("death").length, true)
+			player.pause(), CONNECT_ONE_SHOT)
+	return node
 
 
 ## Drop a model without the detach signal (its instance is going away, so no box comes back).
@@ -365,6 +395,12 @@ func _update_model(iid: String, inst: Dictionary, delta: float) -> void:
 		m["dead_at"] = float(m["dead_at"]) + delta
 		if float(m["dead_at"]) >= float(m["corpse_s"]):
 			detach(iid)
+			return
+		# Once it has landed the body is the carcass's: hand the node over (its tree keeps playing the death
+		# clip) so one body is drawn, carried and worked, not a corpse model beside a carcass marker.
+		if float(m["fall_t"]) >= FALL_SECONDS and float(m["dead_at"]) <= HANDOFF_SECONDS and corpse_handoff.is_valid() \
+				and bool(corpse_handoff.call(str(node.get_meta("creature_id", "")), node)):
+			models.erase(iid)
 			return
 	else:
 		m["dead_at"] = -1.0

@@ -1201,6 +1201,8 @@ func _build_visuals() -> void:
 	_visuals.tint_of = _creature_color
 	_visuals.model_attached.connect(_on_model_attached)
 	_visuals.model_detached.connect(_on_model_detached)
+	_visuals.corpse_handoff = func(cid: String, node: Node3D) -> bool:
+		return corpse_handoff.is_valid() and bool(corpse_handoff.call(cid, node))
 	add_child(_visuals)
 
 func _tick_visuals(delta: float) -> void:
@@ -1213,6 +1215,15 @@ func _tick_visuals(delta: float) -> void:
 		cam_world = cam.global_position - _visuals.position
 		cam_pos = _visuals.pos_of_scene(cam.global_position)
 	_visuals.tick(_instances, cam_world, cam != null, delta, cam_pos)
+
+## `(creature_id, node) -> bool`: a landed corpse model is offered to the carcass that stands for it (set by
+## the carcass wiring); see `CreatureVisuals.corpse_handoff`.
+var corpse_handoff: Callable = Callable()
+
+## A `creature_id` body in its death pose for a carcass with no dying model to adopt; null without visuals or
+## a usable model.
+func build_corpse_model(creature_id: String) -> Node3D:
+	return _visuals.corpse_model(creature_id) if _visuals != null else null
 
 ## A model took over from the box: hide it.
 func _on_model_attached(iid: String) -> void:

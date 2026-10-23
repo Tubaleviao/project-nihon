@@ -42,6 +42,10 @@ func _connect_all() -> void:
 	if root._battle != null and not root._is_client:
 		root._battle.attack_blocked = func(attacker_id: String) -> bool:
 			return root._carcass != null and root._carcass.carried_by(_pid(attacker_id)) != ""
+	# One body per kill: the dying creature's model becomes the carcass's (or the carcass draws its own).
+	if root._creature != null and root._carcass != null:
+		root._creature.corpse_handoff = root._carcass.adopt_corpse
+		root._carcass.model_source = root._creature.build_corpse_model
 	connect_bus(GameBus.creature_died, _on_creature_died)
 	connect_bus(GameBus.harvest_intent, _on_harvest_intent)
 	connect_bus(GameBus.carry_intent, _on_carry_intent)
@@ -426,4 +430,8 @@ func _on_view_removed(carcass_id: String) -> void:
 func unwire() -> void:
 	if root != null and root._battle != null:
 		root._battle.attack_blocked = Callable()
+	if root != null and root._creature != null:
+		root._creature.corpse_handoff = Callable()
+	if root != null and root._carcass != null:
+		root._carcass.model_source = Callable()
 	super.unwire()
