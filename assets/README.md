@@ -29,8 +29,8 @@ and `icons/items/<ItemId>.png.raw` (32x32 RGBA, a software render of the same tr
 when it or the files are stale, so rerun the generator after a fabric shape change. Ten creatures (GraywolfPack,
 ForestBoar, SteppeBison, GlimmerFox, VeilStalker, RiftWarden, RidgeHawk, CinderGargoyle,
 VoidSerpent, LavaSlug: `models/creatures/<Entity>.glb.raw` plus three textures each) have
-public placeholders, and thirteen items (CarpenterAxe, FerritePick, FerriteShortSword, FerriteShield,
-FerriteHelmet, VeilsteelLongsword, VeilsteelPick, VoiditeEdge, AethermiteBow, SkinningKnife, BoneSaw, VeilsteelChestplate, DuskfiberCloak) also have three
+public placeholders, and all 27 items (CarpenterAxe, FerritePick, FerriteShortSword, FerriteShield,
+FerriteHelmet, VeilsteelLongsword, VeilsteelPick, VoiditeEdge, AethermiteBow, SkinningKnife, BoneSaw, VeilsteelChestplate, DuskfiberCloak, plus the 14 materials, consumables and stations: AethermiteDust, AethermiteShard, EnchantedAethermiteShard, AlchemyPotion, AshiteBlock, FerriteIngot, VeilsteelIngot, FieldRations, LumenfiteOrb, RefinedVoiditeShard, ThornwoodPlank, VoidRuneTablet, Hearth, Waystone) also have three
 `textures/items/` sheets. Other `models/creatures/<Entity>.glb.raw` keys still work
 only through a code fallback (a procedural box). The asset roadmap in
 `project-nihon-assets/ROADMAP.md` adds each placeholder before the art for that key.
