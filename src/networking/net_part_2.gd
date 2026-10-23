@@ -233,6 +233,11 @@ func send_admin_moves(peer_id: int, speed_factor: float, flying: bool) -> bool:
 		return false
 	return sl._deliver(peer_id, { "type": "admin_moves", "speed": speed_factor, "fly": flying })
 
+## Phase 182 — host → every client: the world was regenerated; each drops what it holds of the old ground.
+func broadcast_world_regen() -> void:
+	if sl._role == sl.Role.HOST and sl._connected():
+		sl._broadcast({ "type": "world_regen" })
+
 ## Phase 182 — host → one client: an admin healed that player to full (`/heal`). True when sent.
 func send_admin_heal(peer_id: int) -> bool:
 	if sl._role != sl.Role.HOST or not sl._connected() or not sl._connected_peers().has(peer_id):

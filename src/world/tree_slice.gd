@@ -347,6 +347,15 @@ func _chunk_has_edits(chunk_pos: Vector2i) -> bool:
 
 ## Re-run `spawn_for_chunk` over every chunk holding trees (a client whose records arrived after
 ## its trees spawned): applies the recorded budget and the cleared list.
+## Phase 182 — `/regen world`: forget every clear, held spot and remembered stump, so the trees grow
+## back as the generator places them. The chunks were unloaded first (their trees despawned with them).
+func reset_world() -> void:
+	_cleared_local.clear()
+	_cleared_total = 0
+	_pending_spots.clear()
+	_pending_spot_count = 0
+	_stump_memory.clear()
+
 func resync_recorded_chunks() -> void:
 	for chunk in _spawned_chunks.keys():
 		spawn_for_chunk(chunk)

@@ -21,6 +21,10 @@ func register() -> void:
 	_run_test("admin: the Admin box is hidden until the host says admin, and the window refuses otherwise", _test_dock_and_window)
 	_run_test("admin: the Admin window types the chat commands", _test_panel_commands)
 	_run_test("admin: every new command has a usage line and every catalog key both languages", _test_catalog)
+	_run_test("admin: /regen world asks for confirm before it asks the host to regenerate", _test_regen_command)
+	_run_test("admin: the voxel, tree and region-streamer resets forget the old ground", _test_regen_resets)
+	_run_test("admin: /regen world moves the regions aside, empties memory and keeps stations", _test_regen_world_host)
+	_run_test("admin: a client told of a regen drops its records and edits", _test_regen_client)
 
 
 func _test_parse_time() -> void:
@@ -302,3 +306,131 @@ func _test_catalog() -> void:
 		assert_true(I18nScript.has_key(key), "%s is in the catalog" % key)
 		for loc in csv["locales"]:
 			assert_true(str((csv["catalog"][loc] as Dictionary).get(key, "")).strip_edges() != "", "%s has a %s line" % [key, loc])
+
+func _test_regen_command() -> void:
+	var rig := _chat_rig()
+	var chat: ChatSlice = rig["chat"]
+	var asked: Array = []
+	var cb := func(pid: String) -> void: asked.append(pid)
+	GameBus.world_regen_requested.connect(cb)
+	var heard := _capture(func() -> void:
+		chat.handle_intent("/regen", "")
+		chat.handle_intent("/regen world", "")
+		chat.handle_intent("/regen world please", "")
+		chat.handle_intent("/regen world confirm", "stranger_1")
+		chat.handle_intent("/regen world confirm", ""))
+	GameBus.world_regen_requested.disconnect(cb)
+	assert_eq(_keys(heard), ["chat.usage.regen", "chat.regen_confirm", "chat.regen_confirm", "chat.admin_only"],
+		"usage, then the warning twice, and a non-admin is refused")
+	assert_eq(asked, ["player_host_1"], "only the confirmed admin line asks the host")
+	assert_eq(AdminPanel.REGEN_COMMAND, "/regen world confirm", "the window's button sends the confirmed form")
+	chat.free()
+	rig["reg"].free()
+
+func _test_regen_resets() -> void:
+	var voxel := _make_voxel()
+	voxel.apply_edits({ "3,4": [{ "op": "remove", "bottom": 1.0, "top": 2.0 }] })
+	voxel._vein_taken["v1"] = 3
+	voxel._dirty_chunks["0,0"] = true
+	var hm: Array = []
+	hm.resize(VoxelSlice.CHUNK_SIZE * VoxelSlice.CHUNK_SIZE)
+	hm.fill(0.0)
+	voxel._heightmaps["0,0"] = hm
+	voxel.reset_world()
+	assert_true(voxel.get_edits().is_empty(), "no edit is left")
+	assert_true(voxel._vein_taken.is_empty(), "no ore is depleted")
+	assert_true(voxel._dirty_chunks.is_empty(), "nothing is waiting to be saved")
+	assert_true(voxel._heightmaps.is_empty(), "and no heightmap of the old ground is cached")
+	voxel.free()
+	var t := _make_tree_slice()
+	t._record_cleared(Vector2i(2, 2), 1)
+	t._pending_spots[Vector2i(1, 1)] = [[1.0, 1.0, 2.0]]
+	t._pending_spot_count = 1
+	t._stump_memory["tree_x"] = 99.0
+	t.reset_world()
+	assert_true(t._cleared_local.is_empty() and t._cleared_total == 0, "tree clears are forgotten")
+	assert_true(t._pending_spots.is_empty() and t._pending_spot_count == 0, "and so are held spots")
+	assert_true(t._stump_memory.is_empty(), "and remembered stumps")
+	t.free()
+	var store := RegionStoreScript.new(_fresh_region_dir("test_p182_streamer") + "regions/")
+	store.write_chunks({ "1,1": { "gen": RegionStoreScript.normalize_gen(TerrainSlice.generation_record(Vector2i(1, 1), 31)) } })
+	var v2 := _make_voxel()
+	var streamer := RegionStreamerScript.new(store, v2)
+	streamer.sync({ "0,0": true })
+	assert_true(streamer._resident.has("0,0"), "a region was read")
+	streamer.reset()
+	assert_true(streamer._resident.is_empty() and streamer._wanted_last.is_empty(), "the streamer forgets every read")
+	v2.free()
+	ChunkRecordsScript.clear()
+
+## A GameRoot with just the slices a regen touches (the suite builds roots without `_ready`).
+func _regen_root(dir: String) -> Node:
+	var gr: Node = load("res://src/core/game_root.gd").new()
+	gr._persistence = PersistenceSlice.new()
+	gr._persistence.server_save_dir = dir
+	gr._voxel = _make_voxel()
+	gr._terrain = TerrainSlice.new()
+	gr._terrain.set_world_seed(31)
+	gr._voxel.terrain_slice = gr._terrain
+	gr._station = StationSlice.new()
+	gr._tree = _make_tree_slice()
+	gr._chunk_manager = ChunkManager.new()
+	return gr
+
+func _free_regen_root(gr: Node) -> void:
+	for n in [gr._persistence, gr._voxel, gr._terrain, gr._station, gr._tree, gr._chunk_manager]:
+		if is_instance_valid(n):
+			n.free()
+	gr.free()
+
+func _test_regen_world_host() -> void:
+	var dir := _fresh_region_dir("test_p182_regen")
+	var gr := _regen_root(dir)
+	var store: RegionStoreScript = gr._persistence.region_store
+	store.write_chunks({ "1,1": { "gen": RegionStoreScript.normalize_gen(TerrainSlice.generation_record(Vector2i(1, 1), 31)),
+		"edits": { "40,40": [{ "op": "remove", "bottom": 1.0, "top": 2.0 }] } } })
+	assert_eq(_region_files(dir + "regions/").size(), 1, "the world has a region on disk")
+	ChunkRecordsScript.set_record(Vector2i(1, 1), _sync_record(Vector2i(1, 1)))
+	gr._voxel.apply_edits({ "40,40": [{ "op": "remove", "bottom": 1.0, "top": 2.0 }] })
+	gr._station.place_station("forge", Vector3(8.5, 6.0, 8.5))
+	var placed_y := WorldPos.from_wire(gr._station.get_station_data()[0]["position"]).y
+	var lift: float = placed_y - gr._voxel.get_voxel_height_at(Vector2(8.5, 8.5))
+	assert_eq(gr._admin_wiring.regen_world(false), "", "a host regenerates")
+	assert_true(ChunkRecordsScript.is_empty(), "no generation record is left in memory")
+	assert_true(gr._voxel.get_edits().is_empty(), "nor any edit")
+	assert_eq(_region_files(dir + "regions/").size(), 0, "the regions folder is empty")
+	var backups: Array = []
+	for name in DirAccess.open(dir).get_directories():
+		if str(name).begins_with("regions.regen-"):
+			backups.append(str(name))
+	assert_eq(backups.size(), 1, "the old regions were moved aside")
+	assert_eq(_region_files(dir + str(backups[0]) + "/").size(), 1, "with their file in it")
+	var kept: Array = gr._station.get_station_data()
+	assert_eq(kept.size(), 1, "the station is kept")
+	var kept_y := WorldPos.from_wire(kept[0]["position"]).y
+	var ground: float = gr._voxel.get_voxel_height_at(Vector2(8.5, 8.5))
+	assert_true(absf(kept_y - (ground + lift)) < 1e-4, "as high above the new ground as it stood above the old (%.3f over %.3f)" % [kept_y, ground])
+	gr._is_client = true
+	assert_eq(gr._admin_wiring.regen_world(false), "not_host", "a client cannot regenerate")
+	for name in backups:
+		_wipe_dir(dir + str(name) + "/")
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(dir + str(name)))
+	_free_regen_root(gr)
+	ChunkRecordsScript.clear()
+
+func _test_regen_client() -> void:
+	var gr := _regen_root(_fresh_region_dir("test_p182_regen_client"))
+	gr._is_client = true
+	gr._admin_wiring.wire(gr)
+	ChunkRecordsScript.set_record(Vector2i(1, 1), _sync_record(Vector2i(1, 1)))
+	gr._voxel.apply_edits({ "3,4": [{ "op": "remove", "bottom": 1.0, "top": 2.0 }] })
+	var client := NetworkingSlice.new()
+	add_child(client)
+	client._role = NetworkingSlice.Role.CLIENT
+	client._route_h2c({ "type": "world_regen" })
+	assert_true(ChunkRecordsScript.is_empty(), "the client's records are gone")
+	assert_true(gr._voxel.get_edits().is_empty(), "and its edits")
+	gr._admin_wiring.unwire()
+	client.free()
+	_free_regen_root(gr)
+	ChunkRecordsScript.clear()

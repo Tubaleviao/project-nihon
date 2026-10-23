@@ -194,6 +194,7 @@ static func steps() -> Array:
 		{ "name": "gesture_synced", "compare": true },
 		{ "name": "carcass_synced", "compare": true },
 		{ "name": "admin_moves_synced", "compare": true },
+		{ "name": "world_regen_synced", "compare": true },
 	]
 
 ## The step names, comma-joined — the payload of the `plan` line the runner prints
@@ -427,6 +428,7 @@ func run(root: Node, role: String) -> void:
 	await _step_gesture_synced()
 	await _step_carcass_synced()
 	await _step_admin_moves_synced()
+	await _step_world_regen_synced()
 	_finish()
 
 ## End this process, with the run's own verdict carried in the exit code.
@@ -2306,7 +2308,7 @@ func _step_admin_moves_synced() -> void:
 		_root._chat.handle_intent("/heal %s" % handle, "")
 		var moves: Dictionary = _root._chat.admin_moves_of(pid)
 		var ok: bool = is_equal_approx(float(moves["speed"]), 2.0) and bool(moves["fly"])
-		await _await_settle(4.0)   # the client reads all three before this process (the last step) exits
+		await _await_settle(2.0)
 		_report("admin_moves_synced", verdict(ok, true), "sent" if ok else "host_refused")
 		return
 	_root._player.set_hp(40.0)
@@ -2315,3 +2317,16 @@ func _step_admin_moves_synced() -> void:
 	var healed: bool = await _await_until(func(): return _root._player.get_hp() >= PlayerSlice.MAX_HP, _step_timeout())
 	var ok := moved and healed and not admin_flag
 	_report("admin_moves_synced", verdict(ok, true), "sent" if ok else ("not_moved" if not moved else ("not_healed" if not healed else "client_thinks_admin")))
+
+## Phase 182 — `/regen world` on the host reaches the client: it drops its records and edits, restreams
+## and is sent its scope again.
+func _step_world_regen_synced() -> void:
+	if _role == "host":
+		await _await_settle(1.0)
+		var why: String = _root._admin_wiring.regen_world()
+		await _await_settle(5.0)   # the client applies it before this process (the last step) exits
+		_report("world_regen_synced", verdict(why == "", true), "regenerated" if why == "" else why)
+		return
+	var got: bool = await _await_until(func(): return _root._admin_wiring.regens_applied >= 1, _step_timeout())
+	var clean: bool = got and _root._voxel.get_edits().is_empty()
+	_report("world_regen_synced", verdict(clean, true), "regenerated" if clean else ("not_received" if not got else "edits_left"))
