@@ -61,6 +61,7 @@ const TELEPORT_SETTLE_MS := 1500 ## frames this long after a teleport (the new w
 const STEP_GRACE_SECS := 10.0    ## past its deadline a step that has not returned has crashed or hung: fail it
 const SPAWN_OFFSET_M := 2.0      ## a teleport lands this far above the ground
 const FIGHT_MAX_GROUND_GAP_M := 2.0
+const CREATURE_CLEAR_M := 60.0   ## fight's harvest removes the world's creatures this near the body
 const HARVEST_TRIES := 3         ## fight's harvest tries: one a hit cancels ("damaged") is retried
 const ARRIVE_TOLERANCE_M := 2.0    ## travel lands the body on the destination stone, within this ground distance
 ## Phase 164 — the horizon step: from the nearest coast, look out to sea in four headings and read the
@@ -742,6 +743,7 @@ func _harvest_after_kill(creature_key: String) -> Array:
 	for e: Dictionary in slice._carcasses[cid]["entries"]:
 		e["chance"] = 1.0
 	_root._inventory.add_item("SkinningKnife", 1)
+	_clear_creatures_near_body()
 	var held_before := {}
 	for e: Dictionary in slice.workable_entries(cid, "knife"):
 		held_before[str(e["item"])] = _root._inventory.get_item_count(str(e["item"]))
@@ -777,6 +779,15 @@ func _harvest_after_kill(creature_key: String) -> Array:
 	if not attackers.is_empty():
 		why += ", hit by %s" % str(attackers)
 	return [not got.is_empty(), "harvested %s" % str(got) if not got.is_empty() else "the bag gained nothing from the body (%s)" % why]
+
+## The world's own creatures (a wolf pack) can reach the body and cancel every harvest try with a hit; the
+## step tests the harvest, not the world's spawns, so the ones near the body are removed first.
+func _clear_creatures_near_body() -> void:
+	var here := _player_pos()
+	for iid in _root._creature._instances.keys():
+		var pos: Vector3 = (_root._creature._instances[iid] as Dictionary)["position"]
+		if Vector2(pos.x - here.x, pos.z - here.z).length() <= CREATURE_CLEAR_M:
+			_root._creature.despawn_instance(str(iid))
 
 ## Player height minus the built surface under the body (0 on the surface).
 func _ground_gap() -> float:
@@ -817,7 +828,13 @@ func _step_travel() -> Array:
 	_key(KEY_W, true)
 	await _until(func(): return false, 1.5)
 	_key(KEY_W, false)
-	if await _place_with_keys(stone) == 0:
+	var second := await _place_with_keys(stone)
+	if second == 0:   # the aimed block can be sky or unbuilt ground: walk on and aim again once
+		_key(KEY_W, true)
+		await _until(func(): return false, 1.5)
+		_key(KEY_W, false)
+		second = await _place_with_keys(stone)
+	if second == 0:
 		return [false, "second waystone refused"]
 	var b: String = str(_placed.back()[0])
 	# Back beside the first stone, which the travel starts from. Placed, not walked: a timed walk
