@@ -1127,9 +1127,6 @@ func _process(delta: float) -> void:
 		return
 	_peer_wiring.tick_client_handshake(delta)
 
-## Fog density at visibility factor 0 (Godot units: 0.02 is dense within ~100 m).
-const WEATHER_FOG_DENSITY := 0.03
-
 ## Warmth the season tints were last computed for (NAN before the first apply).
 var _season_warmth: float = NAN
 
