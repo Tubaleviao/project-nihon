@@ -11,6 +11,7 @@ func register() -> void:
 	_run_test("runner: every suite file is listed and under the line cap", _test_runner_suite_files_listed_and_capped)
 	_run_test("runner: no source file under src/ is over the line cap", _test_runner_source_size_audit)
 	_run_test("playtest: report percentiles and hitch counts", _test_playtest_report_percentiles_and_hitches)
+	_run_test("playtest: p95 process budget gate", _test_playtest_budget_gate)
 	_run_test("playtest: step failure, hard frame and missing step fail the run", _test_playtest_report_verdicts)
 	_run_test("playtest: --playtest-bot is parsed", _test_playtest_bot_arg)
 	_run_test("playtest: the bot mutates no slice directly", _test_playtest_bot_uses_intents)
@@ -129,6 +130,31 @@ func _test_playtest_report_verdicts() -> void:
 	assert_false(bool(Bot.build_report(missing)["ok"]), "a step that never ran fails the run")
 	var md: String = Bot.report_markdown(bad)
 	assert_true(md.contains("FAIL") and md.contains("| mine |"), "the markdown lists the failing step")
+
+## Phase 174 — a step over its p95 process budget (+25% headroom) fails the run; an injected 40 ms step does.
+func _test_playtest_budget_gate() -> void:
+	var budgets := { "walk": 10.0, "craft": 10.0, "fight": 10.0 }
+	var steps: Array = []
+	for n in Bot.step_names():
+		steps.append(Bot.step_record(n, true, "fine", [16.0, 17.0], 0, { "process_ms": [8.0, 9.0, 10.0], "physics_ms": [1.0], "render_ms": [2.0] }))
+	assert_true(bool(Bot.build_report(steps, budgets)["ok"]), "a step at its budget passes")
+	assert_eq(float(steps[0]["process_ms"]["p95"]), 10.0, "the record carries the process p95")
+	assert_eq(float(steps[0]["physics_ms"]["p50"]), 1.0, "the record carries physics")
+	assert_eq(float(steps[0]["render_ms"]["max"]), 2.0, "the record carries render")
+	steps[0] = Bot.step_record("walk", true, "fine", [16.0], 0, { "process_ms": [12.4] })
+	assert_true(bool(Bot.build_report(steps, budgets)["ok"]), "12.4 ms is inside 10 ms + 25%")
+	steps[0] = Bot.step_record("walk", true, "fine", [16.0], 0, { "process_ms": [12.6] })
+	assert_false(bool(Bot.build_report(steps, budgets)["ok"]), "12.6 ms is over 10 ms + 25%")
+	steps[0] = Bot.step_record("walk", true, "fine", [16.0], 0, { "process_ms": [40.0, 40.0, 40.0, 40.0] })
+	var bad: Dictionary = Bot.build_report(steps, budgets)
+	assert_false(bool(bad["ok"]), "an injected 40 ms step fails the run")
+	assert_true(str(bad["failures"][0]).contains("walk"), "the failure names the step")
+	assert_true(bool(Bot.build_report(steps)["ok"]), "no budgets, no gate")
+	var table: Dictionary = Bot.load_budgets()
+	var md := FileAccess.get_file_as_string("res://docs/perf/playtest-baseline.md")
+	for n in ["walk", "craft", "fight"]:
+		assert_true(table.has(n), "the budget table covers %s" % n)
+		assert_true(md.contains("| %s | %d |" % [n, int(table.get(n, -1))]), "playtest-baseline.md lists the %s budget" % n)
 
 ## Phase 150 — the bot plays through the bus and the player's own keys: no direct slice mutation.
 func _test_playtest_bot_uses_intents() -> void:

@@ -510,8 +510,17 @@ jobs:
           # non-zero on a hard failure (step timeout, any frame over 2 s). Slow percentiles
           # are a report, not a gate. A crash writes no report.json, which fails the check below.
           set +e
+          # Phase 174: two extra report-only runs. The gate is the median of the three runs' p95
+          # process time (tools/check_playtest_budget.py), so one noisy shared-runner run does not fail a PR.
+          mkdir -p /tmp/pt-extra
+          for n in 1 2; do
+            timeout 1500 xvfb-run -a -s "-screen 0 1280x720x24" \
+              /tmp/godot/Godot_v4.7-stable_linux.x86_64 --path . --rendering-driver opengl3 -- --playtest-bot --playtest-no-budget \
+              > /tmp/pt-extra/run$n.log 2>&1
+            cp playtest/report.json /tmp/pt-extra/report$n.json || true
+          done
           timeout 1500 xvfb-run -a -s "-screen 0 1280x720x24" \
-            /tmp/godot/Godot_v4.7-stable_linux.x86_64 --path . --rendering-driver opengl3 -- --playtest-bot \
+            /tmp/godot/Godot_v4.7-stable_linux.x86_64 --path . --rendering-driver opengl3 -- --playtest-bot --playtest-no-budget \
             2>&1 | tee /tmp/playtest.log
           status=${PIPESTATUS[0]}
           set -e
@@ -530,6 +539,8 @@ jobs:
               exit 1
             fi
           done
+          cp playtest/report.json /tmp/pt-extra/report3.json
+          python3 tools/check_playtest_budget.py /tmp/pt-extra/report?.json || exit 1
           exit "$status"
 
       - name: Run the bot again on the GDScript fallback (Phase 169)

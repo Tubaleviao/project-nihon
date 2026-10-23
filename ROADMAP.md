@@ -35,7 +35,7 @@ budget honest. Then it gives the game icons, attributes, a character sheet and c
 
 | Phase | Title | Status | Spec |
 |---|---|---|---|
-| 174 | An honest playtest frame budget | Planned | below |
+| 174 | An honest playtest frame budget | Done | below |
 | 175 | UI icons: dock, windows, skills and status from one generator | Planned | below |
 | 176 | An icon for everything a player can hold | Planned | below |
 | 177 | Attributes in the fabric: strength, vitality, resistance, agility, intelligence, perception | Planned | below |
@@ -43,6 +43,7 @@ budget honest. Then it gives the game icons, attributes, a character sheet and c
 | 179 | The character sheet: a paper doll, attributes and derived stats | Planned | below |
 | 180 | Character creation in the fabric: name, appearance and starting attributes | Planned | below |
 | 181 | Character creation at runtime: a creation screen before the first spawn | Planned | below |
+| 182 | Playtest process time under 16 ms | Planned | below |
 
 ---
 
@@ -68,16 +69,16 @@ after Phase 169 moved it native. Find out what the number measures, then gate on
 - If the process time is over budget, profile it and fix the top cost, or file it as the next phase.
 
 **Acceptance criteria:**
-- [ ] `playtest/report.json` carries `adapter`, `native_builder` and per-step `process_ms`,
+- [x] `playtest/report.json` carries `adapter`, `native_builder` and per-step `process_ms`,
   `physics_ms` and `render_ms` percentiles.
-- [ ] CI playtest: the native builder is loaded (`native_builder: true`).
-- [ ] CI playtest: `walk`, `craft` and `fight` p95 process time is within the budget table. The
+- [x] CI playtest: the native builder is loaded (`native_builder: true`).
+- [x] CI playtest: `walk`, `craft` and `fight` p95 process time is within the budget table. The
   gate takes the median of 3 runs and allows 25% headroom over the budget, so a noisy shared
   runner does not fail unrelated PRs. The bot fails the run above that, and a fixture proves it
   (an injected 40 ms step fails).
-- [ ] The budget table's target is p95 process time ≤ 16 ms. If a step is over it when the phase
+- [x] The budget table's target is p95 process time ≤ 16 ms. If a step is over it when the phase
   closes, a follow-up phase that names the top cost is in the index.
-- [ ] Suite green on both boot paths.
+- [x] Suite green on both boot paths.
 
 ---
 
@@ -352,6 +353,29 @@ validates everything and records it.
 - [ ] Playtest bot: a `create` step completes before `walk` and saves a screenshot of the screen.
 - [ ] Every new string is in both catalogs, and the i18n key check passes.
 - [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 182 — Playtest process time under 16 ms
+
+**Goal:** Phase 174 gated `walk`, `craft` and `fight` on p95 process time and found them at 145, 193
+and 177 ms on the CI renderer (llvmpipe) with the native builder loaded. Physics is under 6 ms, so
+the cost is main-thread `_process` work, not the chunk build. Name it and cut it.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 174.
+
+**Deliverables:**
+- Profile the three steps (per-slice `_process` timing, `Performance` custom monitors) and name the
+  top main-thread cost in the PR.
+- Fix it, then lower `docs/perf/playtest-budget.json` and the table in `docs/perf/playtest-baseline.md`
+  toward the 16 ms target.
+
+**Acceptance criteria:**
+- [ ] The top main-thread cost per step is named in `docs/perf/playtest-baseline.md`.
+- [ ] CI playtest: `walk`, `craft` and `fight` median p95 process time is ≤ 16 ms × 1.25.
+- [ ] Suite green on both boot paths.
 
 ---
 
