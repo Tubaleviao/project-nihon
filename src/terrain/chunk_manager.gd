@@ -102,6 +102,7 @@ const DEFAULT_VIEW_DISTANCE := 3       # Chebyshev radius, in chunks
 ## freed'`, and a crash. A static call through this constant touches no node at all,
 ## and the lambda's captured value keeps the script resource alive for the task.
 const VoxelBuilder := preload("res://src/terrain/voxel_slice.gd")
+const VoxelMesh := preload("res://src/terrain/voxel_mesh.gd")
 
 ## Phase 42 — how far BEYOND the view ring a chunk is still queued and kept. The
 ## streamed window is `view_distance + prefetch_distance`: the load ring leads the
@@ -853,8 +854,14 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 ## #437 — true when the voxel slice attaches no geometry (a dedicated server): a build there
 ## only needs the chunk's heightmap, so the worker skips the resolve and the mesh arrays.
 func skips_geometry() -> bool:
+	var coll = voxel_slice.get("attach_collision") if voxel_slice != null else null
+	return not keeps_render() and coll is bool and not coll
+
+## Phase 172 — true unless the voxel slice draws nothing (a headless host): the worker then drops the
+## mesh and deposit arrays and hands back only the collision faces and shape.
+func keeps_render() -> bool:
 	var flag = voxel_slice.get("attach_geometry") if voxel_slice != null else null
-	return flag is bool and not flag
+	return not (flag is bool and not flag)
 
 ## Phase 141 — the dispatch with the NOISE on the worker too. Measured before this: the main thread
 ## paid 14 ms (equator) to 36 ms (by a pole) for the chunk's own heightmap and up to 8 more maps for
@@ -870,6 +877,7 @@ func _dispatch_worker_noise_build(chunk_pos: Vector2i, key: String) -> void:
 	# #437 — a dedicated server attaches no geometry, so its task only generates the map: no gather,
 	# no seam strips, no resolve and no mesh/collision/deposit arrays to throw away.
 	var geometry := not skips_geometry()
+	var keep_render := keeps_render()
 	var gathered: Dictionary = voxel_slice.gather_build_input_deferred(chunk_pos) if geometry else {}
 	var seed_v: int = int(terrain_slice.get_world_seed())
 	var noise: FastNoiseLite = terrain_slice.detail_noise_copy()
@@ -882,7 +890,7 @@ func _dispatch_worker_noise_build(chunk_pos: Vector2i, key: String) -> void:
 			result[0] = VoxelBuilder.no_geometry_arrays()
 			return
 		VoxelBuilder.fill_seam_strips(chunk_pos, gathered, seed_v, noise)
-		result[0] = VoxelBuilder.build_chunk_arrays(chunk_pos, hm, VoxelBuilder.build_runs(chunk_pos, hm, gathered), true)
+		result[0] = VoxelMesh.build_worker_arrays(chunk_pos, hm, VoxelBuilder.build_runs(chunk_pos, hm, gathered), keep_render)
 	# A low-priority task may only use `low_priority_thread_ratio` of the pool (0.3 by default: three or
 	# four threads on most machines, which is what really capped the build rate), so the catch-up
 	# dispatches at high priority and can use every worker.
