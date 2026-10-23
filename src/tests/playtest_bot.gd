@@ -87,6 +87,7 @@ const FAR_PEAK_ATTEMPTS := 3         ## vantages tried (tallest ridge first): a 
 const FAR_PEAK_MIN_PX := 8            ## rock or snow pixels above the ring's skyline needed to pass
 const FAR_PEAK_SAT_MAX := 0.18        ## rock (grey) and snow (white) are below this saturation; land and sea are not
 const FAR_PEAK_TIMEOUT_SECS := 240.0
+const RIDGE_SIGHT_STEP_M := 500.0   ## the sight line to the ridge is sampled this often (`ridge_clearance`)
 const COAST_SEARCH_M := 4.0e6         ## the coast search marches this far from the body
 const COAST_BEARING_STEP := 11.25     ## degrees between marched bearings
 const COAST_MARCH_M := 2000.0         ## march step on the large-scale shape
@@ -961,8 +962,9 @@ func _step_horizon() -> Array:
 
 ## Phase 165 — a vantage `FAR_PEAK_DISTANCE_M` from a tall ridge: the search over the shape
 ## on a coarse grid around `from` (nearest square ring first) for points at least `FAR_PEAK_MIN_HEIGHT` tall, then, for the
-## nearest `FAR_PEAK_CANDIDATES` of them, the first of sixteen bearings whose point at that distance is dry land; tallest first. Returns a list of [vantage, bearing_to_peak_deg,
-## peak, peak_height], empty when none.
+## nearest `FAR_PEAK_CANDIDATES` of them, the dry-land bearing (of sixteen) with the most open sight line to the ridge
+## (`ridge_clearance`); most open first. Returns a list of [vantage, bearing_to_peak_deg, peak, peak_height, clearance],
+## empty when none.
 func _find_far_peak(from: Vector2) -> Array:
 	var seed_v: int = _root._terrain.get_world_seed()
 	var w := Horizon.default_circumference()
@@ -997,16 +999,43 @@ func _find_far_peak(from: Vector2) -> Array:
 			await get_tree().process_frame
 			t0 = Time.get_ticks_msec()
 		var peak: Vector2 = peaks[k][1]
+		var best: Array = []
+		var height_at := func(p: Vector2) -> float: return WorldShape.height(seed_v, p.x, p.y, w)
 		for b in 16:
 			var dir := Vector2.from_angle(deg_to_rad(float(b) * 22.5))
 			var v := peak + dir * FAR_PEAK_DISTANCE_M
 			var vh := WorldShape.height(seed_v, v.x, v.y, w)
 			if vh > sea + 3.0 and vh < 100.0:
-				vantages.append([v, rad_to_deg((-dir).angle()), peak, peaks[k][2]])
-				usable += 1
-				break
-	vantages.sort_custom(func(a, b): return float(a[3]) > float(b[3]))
+				var clear := ridge_clearance(height_at, v, peak, w / TAU)
+				if best.is_empty() or clear > float(best[4]):
+					best = [v, rad_to_deg((-dir).angle()), peak, peaks[k][2], clear]
+			if Time.get_ticks_msec() - t0 > COAST_WORK_MS:
+				await get_tree().process_frame
+				t0 = Time.get_ticks_msec()
+		if not best.is_empty():
+			vantages.append(best)
+			usable += 1
+	# Most open sight line first: a taller ridge behind a nearer hill shows nothing.
+	vantages.sort_custom(func(a, b): return float(a[4]) > float(b[4]))
 	return vantages
+
+## Phase 165 — how far (radians of elevation) the ridge at `peak` stands above the highest terrain between it and
+## `from`, seen from a standing eye at `from` on a sphere of radius `radius_m`. `height_at` maps an xz point to the
+## shape height. Positive: the ridge's top clears every nearer rise, so its bands can show above the ring's skyline;
+## negative: a nearer hill hides it. Sampled every `RIDGE_SIGHT_STEP_M` along the line.
+static func ridge_clearance(height_at: Callable, from: Vector2, peak: Vector2, radius_m: float) -> float:
+	var dist := from.distance_to(peak)
+	if dist < 2.0 * RIDGE_SIGHT_STEP_M:
+		return 0.0   # no line to sample
+	var eye: float = float(height_at.call(from)) + 2.0
+	var top_angle := (float(height_at.call(peak)) - eye) / dist - dist / (2.0 * radius_m)
+	var blocker := -INF
+	var n := int(dist / RIDGE_SIGHT_STEP_M)
+	for i in range(1, n):
+		var d := float(i) * RIDGE_SIGHT_STEP_M
+		var h: float = height_at.call(from.lerp(peak, d / dist))
+		blocker = maxf(blocker, (h - eye) / d - d / (2.0 * radius_m))
+	return top_angle - blocker
 
 ## Phase 165 — mountains on the horizon: from 60 km, a tall ridge shows rock or snow above the ring's skyline.
 func _step_far_peak() -> Array:
