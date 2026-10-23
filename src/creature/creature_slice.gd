@@ -318,7 +318,7 @@ func get_instance_pos(instance_id: String) -> Dictionary:
 
 ## Store an exact position on a record and refresh the derived Vector3.
 static func _store_pos(inst: Dictionary, pos: Dictionary) -> void:
-	inst["pos"] = pos
+	inst["pos"] = pos.duplicate()   # own copy: spawn_exact / _last_broadcast must not alias a record that is edited in place
 	inst["position"] = WorldPos.to_scene(pos, Vector2i.ZERO)
 
 ## The tile holding an exact position, with no float32 world metre in between.
@@ -811,7 +811,7 @@ func _spawn(creature_id: String, chunk_pos: Vector2i, spawn_index: int = 0) -> S
 		"pos":         exact,
 		"chunk":       chunk_pos,
 		"spawn_pos":   pos,
-		"spawn_exact": exact,
+		"spawn_exact": exact.duplicate(),
 		"state":       "idle",
 		"hp":          hp,
 		"respawn_at":  -1.0,
@@ -963,7 +963,7 @@ func _on_creature_died(entity_id: String, _position: Vector3, _killer_id: String
 					if hover_of(iid) > 0.0:
 						var rest: Vector3 = inst["position"]
 						rest.y = minf(rest.y, landing.y)
-						var rest_pos: Dictionary = inst["pos"]
+						var rest_pos: Dictionary = (inst["pos"] as Dictionary).duplicate()
 						rest_pos["local"] = Vector3(rest_pos["local"].x, rest.y, rest_pos["local"].z)
 						_store_pos(inst, rest_pos)
 						_spatial.update(iid, rest)
@@ -1091,7 +1091,7 @@ func apply_creature_pos(instance_id: String, creature_id: String, state: String,
 		"pos":         pos,
 		"chunk":       Vector2i.ZERO,
 		"spawn_pos":   position,
-		"spawn_exact": pos,
+		"spawn_exact": pos.duplicate(),
 		"state":       state,
 		"hp":          maxf(hp, 0.0),
 		"respawn_at":  respawn_at,

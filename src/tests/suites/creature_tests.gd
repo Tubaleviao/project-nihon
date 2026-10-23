@@ -88,6 +88,7 @@ func register() -> void:
 	_run_test("creature: state delta keeps the respawn deadline", _test_creature_state_delta_keeps_deadline)
 	_run_test("creature: far step keeps 0.1 m (record, wire, save)", _test_creature_far_step_exact)
 	_run_test("creature: far model sits within 1 cm of the record", _test_creature_far_model_exact)
+	_run_test("creature: spawn_exact does not alias the live position", _test_creature_spawn_exact_not_aliased)
 	_run_test("creature: legacy float position still loads",     _test_creature_legacy_float_position)
 	_run_test("taming: cooldowns are durable",                    _test_taming_cooldowns_are_durable)
 	_run_test("taming: per-player mirrors are evicted",           _test_taming_mirrors_evicted_on_forget)
@@ -2579,4 +2580,14 @@ func _test_creature_legacy_float_position() -> void:
 	var pos: Dictionary = c.get_instance_pos("l0")
 	assert_true((WorldPos.to_scene(pos, Vector2i.ZERO) - Vector3(1.5, 2.0, 3.5)).length() < 1.0e-4, "at the same place")
 	assert_eq(pos["chunk"], Vector2i.ZERO, "split into chunk and local")
+	c.free()
+
+func _test_creature_spawn_exact_not_aliased() -> void:
+	var c := CreatureSlice.new()
+	add_child(c)
+	c.apply_creature_pos("a0", "ForestBoar", "idle", _far_pos(5.0), 10.0)
+	c.move_instance("a0", Vector3(1.0, 0.0, 0.0))
+	var spawn: Dictionary = c._instances["a0"]["spawn_exact"]
+	assert_true(absf((spawn["local"] as Vector3).x - 5.0) < 1.0e-5, "moving does not drag the spawn point")
+	assert_true(not is_same(spawn, c._instances["a0"]["pos"]), "pos and spawn_exact are separate records")
 	c.free()
