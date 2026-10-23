@@ -414,6 +414,7 @@ func _ready() -> void:
 	_networking.tree_slice      = _tree
 	_networking.player_registry = _registry
 	_networking.peer_held = _peer_wiring.peer_is_held
+	_networking.peer_speed_cap = _carcass_wiring.peer_speed_cap
 	# Phase 85 — chat and admin commands act on the registry's players, the local body and pack,
 	# and reach a remote player through the networking slice's host → peer doors. A headless
 	# server builds no box.
