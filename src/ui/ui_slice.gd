@@ -46,10 +46,11 @@ const WINDOW_SKILLS     := "skills"
 const WINDOW_MAP        := "map"
 const WINDOW_SETTLEMENT := "settlement"
 const WINDOW_GESTURES  := "gestures"
+const WINDOW_ADMIN     := "admin"   # Phase 182 — admins only (`is_admin`)
 
 const WINDOW_KEYS := [
 	WINDOW_INVENTORY, WINDOW_TECHNOLOGY, WINDOW_CRAFTING,
-	WINDOW_TRADE, WINDOW_MARKET, WINDOW_PROPOSALS, WINDOW_CONTROLS, WINDOW_CHARACTER, WINDOW_SKILLS, WINDOW_MAP, WINDOW_SETTLEMENT, WINDOW_GESTURES,
+	WINDOW_TRADE, WINDOW_MARKET, WINDOW_PROPOSALS, WINDOW_CONTROLS, WINDOW_CHARACTER, WINDOW_SKILLS, WINDOW_MAP, WINDOW_SETTLEMENT, WINDOW_GESTURES, WINDOW_ADMIN,
 ]
 
 const MouseIconScript := preload("res://src/ui/mouse_icon.gd")
@@ -142,6 +143,7 @@ var layout_path: String = LAYOUT_PATH
 var map_window: Control = null
 var settlement_slice: Node = null
 var settlement_panel: Control = null
+var is_admin: bool = false   # Phase 182 — the host said this player is an admin (`set_admin`)
 var _layout: Dictionary = {}                 # window key -> Vector2
 var _crafting_box: VBoxContainer = null
 var _repair_feedback: Label = null
@@ -233,6 +235,8 @@ func _input(event: InputEvent) -> void:
 				toggle_window(WINDOW_MAP)
 			KEY_L:
 				toggle_window(WINDOW_SETTLEMENT)
+			KEY_O:
+				toggle_window(WINDOW_ADMIN)
 			KEY_ESCAPE:
 				_close_all_windows()
 
@@ -357,7 +361,7 @@ func any_window_open() -> bool:
 
 func open_window(panel: String) -> void:
 	var p: Control = _panels.get(panel, null)
-	if p == null:
+	if p == null or (panel == WINDOW_ADMIN and not is_admin):
 		return
 	if panel == WINDOW_CRAFTING and _repair_feedback != null:
 		_repair_feedback.text = ""
@@ -1218,12 +1222,11 @@ func _on_proposal_vote_pressed(proposal_id: String, verdict: String) -> void:
 func _build_ui() -> void:
 	_m1._build_ui()
 
-## Phase 140 — the settlement window: found, invite, roles and the shared stockpile.
 func _build_settlement_content() -> Control:
-	var panel := SettlementPanelScript.new()
-	panel.settlement_slice = settlement_slice
-	settlement_panel = panel
-	return panel
+	return _m2._build_settlement_content()
+
+func set_admin(admin: bool) -> void:
+	_m2.set_admin(admin)
 
 func _build_map_content() -> Control:
 	return _m2._build_map_content()

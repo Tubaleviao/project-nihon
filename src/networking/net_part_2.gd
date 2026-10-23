@@ -34,6 +34,9 @@ func set_player_id(peer_id: int, player_id: String) -> void:
 			"type": "identity_assigned",
 			"player_id": player_id,
 			"handle": sl._public_handle(player_id),
+			# Phase 182 — whether this player may run admin commands, so its client shows the Admin
+			# window. A hint only: the host checks every command again.
+			"admin": bool(sl.admin_check.call(player_id)) if sl.admin_check.is_valid() else false,
 		})
 
 ## Evict last-known states for peers that have been disconnected longer than
@@ -223,6 +226,18 @@ func send_carcasses_to(peer_id: int, records: Array) -> Array:
 func send_carry_state(peer_id: int, carrying: bool, speed_factor: float) -> void:
 	if sl._role == sl.Role.HOST and sl._connected():
 		sl._deliver(peer_id, { "type": "carry_state", "carrying": carrying, "factor": speed_factor })
+
+## Phase 182 — host → one client: that player's admin moves (`/speed`, `/fly`). True when sent.
+func send_admin_moves(peer_id: int, speed_factor: float, flying: bool) -> bool:
+	if sl._role != sl.Role.HOST or not sl._connected() or not sl._connected_peers().has(peer_id):
+		return false
+	return sl._deliver(peer_id, { "type": "admin_moves", "speed": speed_factor, "fly": flying })
+
+## Phase 182 — host → one client: an admin healed that player to full (`/heal`). True when sent.
+func send_admin_heal(peer_id: int) -> bool:
+	if sl._role != sl.Role.HOST or not sl._connected() or not sl._connected_peers().has(peer_id):
+		return false
+	return sl._deliver(peer_id, { "type": "admin_heal" })
 
 ## Phase 36 — per-peer client → host token bucket. `now_ms` is an argument (not a
 ## clock read) so the rule is testable without waiting: the same shape the

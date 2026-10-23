@@ -971,16 +971,7 @@ func send_own_state(peer_id: int, data: Dictionary) -> void:
 	_deliver(peer_id, { "type": "own_state_synced", "data": data })
 
 func _on_creature_state_changed(instance_id: String, creature_id: String, state: String, position: Dictionary) -> void:
-	if _role != Role.HOST:
-		return
-	var packet := {
-		"type":        "creature_state_changed",
-		"instance_id": instance_id,
-		"creature_id": creature_id,
-		"state":       state,
-		"pk":          WorldPos.pos_to_packet_text(position),
-	}
-	_broadcast_aoi(packet, WorldPos.to_scene(position, Vector2i.ZERO))
+	_m3.relay_creature_state(instance_id, creature_id, state, position)
 
 ## Phase 97 — the exact position of the `player_moved` report being routed right now (empty otherwise);
 ## `_on_remote_player_state` relays it. Set and cleared around the emit in `_route_c2h`.
@@ -994,6 +985,9 @@ var peer_held: Callable = Callable()
 ## Issue #426 — host: `(peer_id) -> float`, a peer's top horizontal speed in m/s (0 = uncapped; a carrier's comes from
 ## its body). A report that outruns it is clamped and the peer is teleported back (see `_clamp_to_speed_cap`).
 var peer_speed_cap: Callable = Callable()
+## Phase 182 — `(player_id) -> bool`: whether a player is an admin (ChatSlice.is_admin), told to its
+## client with its identity.
+var admin_check: Callable = Callable()
 
 func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	TickProbe.begin("aoi_relay")
@@ -1038,6 +1032,12 @@ func send_carcasses_to(peer_id: int, records: Array) -> Array:
 
 func send_carry_state(peer_id: int, carrying: bool, speed_factor: float) -> void:
 	_m2.send_carry_state(peer_id, carrying, speed_factor)
+
+## Phase 182 — host → one client: its admin moves / an admin heal.
+func send_admin_moves(peer_id: int, speed_factor: float, flying: bool) -> bool:
+	return _m2.send_admin_moves(peer_id, speed_factor, flying)
+func send_admin_heal(peer_id: int) -> bool:
+	return _m2.send_admin_heal(peer_id)
 
 ## Phase 161 — client: forward a carcass action; the host binds it to the connection's player.
 func _on_harvest_intent(carcass_id: String, _player_id: String) -> void:

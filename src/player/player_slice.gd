@@ -16,6 +16,7 @@ const I18n := preload("res://src/core/i18n.gd")
 const CarcassRules := preload("res://src/loot/carcass_rules.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const StatusEffects := preload("res://src/battle/status_effects.gd")
+const AdminRules := preload("res://src/admin/admin_rules.gd")
 
 const SPEED        := 4.5     # m/s horizontal
 const JUMP_FORCE   := 5.0     # m/s vertical
@@ -168,6 +169,9 @@ var carcass_slice: Node = null
 ## Phase 161 — set by the host's carry state: a carried body blocks attacking and slows walking.
 var carrying: bool = false
 var carry_speed_factor: float = 1.0
+## Phase 182 — the admin moves the host set for this body (`/speed`, `/fly`); see `set_admin_moves`.
+var admin_speed_factor: float = 1.0
+var flying: bool = false
 var voxel_slice: Node = null
 ## Phase 128 — outdoor walking speed follows the weather under the body (null: no weather).
 var weather_slice: Node = null
@@ -560,6 +564,15 @@ func _zoom(delta_z: float) -> void:
 	_cam_distance = clampf(_cam_distance + delta_z, CAMERA_DISTANCE_MIN, CAMERA_DISTANCE_MAX)
 	_camera.position.z = _cam_distance
 
+## Phase 182 — apply the admin moves the host sent (`/speed`, `/fly`); the factor is re-clamped here.
+func set_admin_moves(speed_factor: float, fly: bool) -> void:
+	admin_speed_factor = AdminRules.sanitize_speed(speed_factor)
+	flying = fly
+
+## False while the body is down (waiting to respawn).
+func is_alive() -> bool:
+	return _alive
+
 func get_hp() -> float:
 	return _hp
 
@@ -823,9 +836,12 @@ func _ground_top_at(xz: Vector2, natural: float) -> float:
 	return natural
 
 func _move(delta: float) -> void:
-	var swimming := _swimming_now()
+	var swimming := _swimming_now() and not flying
 	# Apply gravity.
-	if swimming:
+	if flying:
+		# Phase 182 — no gravity: Space climbs, Ctrl sinks, neither hovers.
+		_vel.y = AdminRules.fly_vertical_velocity(Input.is_action_pressed("ui_accept"), Input.is_key_pressed(KEY_CTRL), admin_speed_factor)
+	elif swimming:
 		_vel.y = swim_vertical_velocity(_body.global_position.y, WorldShape.sea_level())
 	elif not _body.is_on_floor():
 		_vel.y += GRAVITY * delta
@@ -834,7 +850,7 @@ func _move(delta: float) -> void:
 			_vel.y = 0.0
 
 	# Jump.
-	if not swimming and Input.is_action_just_pressed("ui_accept") and _body.is_on_floor():
+	if not flying and not swimming and Input.is_action_just_pressed("ui_accept") and _body.is_on_floor():
 		_vel.y = JUMP_FORCE
 
 	# Horizontal movement relative to camera yaw.
@@ -852,6 +868,7 @@ func _move(delta: float) -> void:
 
 	var speed := walking_speed(swimming, _weather_factor_now())
 	speed = held_speed(speed, is_immobilized()) * clampf(carry_speed_factor, 0.0, 1.0)
+	speed *= admin_speed_factor * (AdminRules.FLY_SPEED_FACTOR if flying else 1.0)
 	_vel.x = dir.x * speed
 	_vel.z = dir.z * speed
 

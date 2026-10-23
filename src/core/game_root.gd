@@ -64,6 +64,7 @@ const GestureSlice    := preload("res://src/character/gesture_slice.gd")
 const PeerWiring := preload("res://src/networking/peer_wiring.gd")
 const SnapshotWiring := preload("res://src/persistence/snapshot_wiring.gd")
 const PersistenceWiring := preload("res://src/persistence/persistence_wiring.gd")
+const AdminWiring := preload("res://src/admin/admin_wiring.gd")
 
 ## Phase 132 — per-system wiring modules (see `src/core/wiring.gd`), wired in this fixed order.
 var _wirings: Array = []
@@ -79,6 +80,7 @@ var _carcass_wiring := CarcassWiring.new()
 var _peer_wiring := PeerWiring.new()
 var _snapshot_wiring := SnapshotWiring.new()
 var _persistence_wiring := PersistenceWiring.new()
+var _admin_wiring := AdminWiring.new()
 
 var _terrain:     TerrainSlice
 var _voxel:       VoxelSlice
@@ -238,7 +240,7 @@ var _handshake_retries: int = 0
 
 ## Phase 132 — wiring modules know their root from construction (the suite builds roots without `_ready`).
 func _init() -> void:
-	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _settlement_wiring, _crafting_wiring, _character_wiring, _gesture_wiring, _carcass_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring]
+	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _settlement_wiring, _crafting_wiring, _character_wiring, _gesture_wiring, _carcass_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring, _admin_wiring]
 	for w in _wirings:
 		w.root = self
 

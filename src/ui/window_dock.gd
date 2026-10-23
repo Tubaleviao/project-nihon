@@ -24,7 +24,10 @@ const ENTRIES: Array = [
 	{"key": "proposals",  "letter": "G", "name": "dock.proposals"},
 	{"key": "settlement", "letter": "L", "name": "dock.settlement"},
 	{"key": "controls",   "letter": "?", "name": "dock.controls"},
+	{"key": "admin",      "letter": "O", "name": "dock.admin"},
 ]
+## Phase 182 — boxes hidden until `set_entry_visible` shows them (the Admin window, for admins only).
+const HIDDEN_BY_DEFAULT := ["admin"]
 
 const BOX_PX := 32.0
 const COLUMNS := 4
@@ -34,6 +37,7 @@ var save_path: String = ""
 var _toggle: Button = null
 var _grid: GridContainer = null
 var _boxes: Dictionary = {}   # window key -> Button
+var _shown: Dictionary = {}   # a HIDDEN_BY_DEFAULT key -> true once shown (kept for a dock built later)
 
 func _init() -> void:
 	name = "WindowDock"
@@ -61,6 +65,7 @@ func build() -> void:
 		b.pressed.connect(func(): window_toggled.emit(str(e["key"])))
 		_grid.add_child(b)
 		_boxes[str(e["key"])] = b
+		b.visible = not (str(e["key"]) in HIDDEN_BY_DEFAULT) or _shown.has(str(e["key"]))
 	_apply_expanded(load_expanded(save_path))
 
 ## The language changed: re-render the toggle and every box tooltip.
@@ -71,6 +76,20 @@ func relocalize() -> void:
 	_toggle.tooltip_text = I18n.t("dock.tip")
 	for e in entries():
 		(_boxes[str(e["key"])] as Button).tooltip_text = "%s  (%s)" % [I18n.t(e["name"]), e["letter"]]
+
+## Show or hide one window's box (Phase 182: the Admin box follows the admin status).
+func set_entry_visible(window_key: String, shown: bool) -> void:
+	if shown:
+		_shown[window_key] = true
+	else:
+		_shown.erase(window_key)
+	var b: Button = _boxes.get(window_key, null)
+	if b != null:
+		b.visible = shown
+
+func is_entry_visible(window_key: String) -> bool:
+	var b: Button = _boxes.get(window_key, null)
+	return b != null and b.visible
 
 static func entries() -> Array:
 	return ENTRIES

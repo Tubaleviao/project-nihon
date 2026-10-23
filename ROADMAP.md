@@ -44,6 +44,52 @@ budget honest. Then it gives the game icons, attributes, a character sheet and c
 | 180 | Character creation in the fabric: name, appearance and starting attributes | Planned | below |
 | 181 | Character creation at runtime: a creation screen before the first spawn | Planned | below |
 
+### Out of arc: admin tools (Phase 182)
+
+Requested during playtesting, and done ahead of the arc: an admin needs to set the weather, the
+time of day, a player's speed and health, and to regenerate a world whose recorded terrain is out of
+date (for example, a world recorded around the pre-worldgen-9 spawn pit).
+
+| Phase | Title | Status | Spec |
+|---|---|---|---|
+| 182 | Admin tools: /time, /speed, /fly, /heal, /regen world and an Admin window | In progress | below |
+
+---
+
+## Phase 182 — Admin tools: /time, /speed, /fly, /heal, /regen world and an Admin window
+
+**Goal:** an admin can change the time of day, a player's speed, flying and health, and regenerate
+the world's terrain from a chat command or from an Admin window. The host checks and runs every
+command, as Phase 85's admin commands do.
+
+**Newel dependency:** NO. The commands are runtime tooling, not game design.
+
+**Depends on:** Phase 85 (chat and admin commands), Phase 128 (`/weather`).
+
+**Deliverables:**
+- `/time <hh:mm | +hours>` moves the host clock forward (never backwards) and broadcasts it.
+- `/speed <0.1–10> [player]` and `/fly [player]` set host-owned session moves, delivered to the
+  player's client as an `admin_moves` packet. Flying has no gravity; Space climbs and Ctrl sinks.
+- `/heal [player]` fills the bar of a live player: the host's own simulated HP for a peer, and an
+  `admin_heal` packet to the peer's client. It does not revive a downed player.
+- `identity_assigned` tells a client whether it is an admin. The Admin window (O, a dock box shown
+  only to admins) types the same commands, so it adds no new authority.
+- `/regen world` (second PR): wipe every chunk record, terrain edit, tree clear and ore depletion,
+  both on disk and in memory. Keep players, inventories and stations. Tell every client to drop its
+  copies and resend its scope. Re-place every player and station on the new ground.
+- Every new string is in `locale/ui.csv` in `en` and `pt_BR`.
+
+**Acceptance criteria:**
+- [x] `admin_tests`: the parsers, refusal for non-admins, local and remote delivery (packets to the
+  target's peer alone), heal not reviving, client routing and the strict admin flag, the hidden
+  dock box, the window commands, and catalog keys in both languages.
+- [x] Net harness step `admin_moves_synced`: the host's `/speed`, `/fly` and `/heal` reach the
+  client's body, and the client is not told it is an admin.
+- [ ] `/regen world`: a suite test proves records, edits, clears and depletion are gone on the host
+  and on disk, stations and players stand on the new ground, and a harness step proves a client
+  rebuilds from the fresh records.
+- [x] Suite green on both boot paths.
+
 ---
 
 ## Phase 174 — An honest playtest frame budget

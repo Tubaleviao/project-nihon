@@ -755,6 +755,18 @@ signal locale_changed(locale: String)
 ## itself and sends a `teleport` packet to a remote player's client, which re-emits it here.
 signal player_teleport(position: Dictionary)
 
+## Phase 182 — the host set THIS machine's own player's admin moves (`/speed`, `/fly`). The host emits
+## it for itself and sends an `admin_moves` packet to a remote player's client, which re-emits it here.
+signal admin_moves_synced(speed_factor: float, flying: bool)
+
+## Phase 182 — the host healed THIS machine's own player to full (`/heal`); same doors as above.
+signal admin_healed()
+
+## Phase 182 — whether THIS machine's player is an admin: true on a host or offline (its own player is
+## one), and on a client what the host's `identity_assigned` said. Only the Admin window reads it; the
+## host still checks every command.
+signal admin_status_synced(is_admin: bool)
+
 # ---------------------------------------------------------------------------
 # Carcasses (Phase 161)
 # ---------------------------------------------------------------------------

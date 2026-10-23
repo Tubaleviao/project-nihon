@@ -152,6 +152,7 @@ func _build_ui() -> void:
 	sl._panels[sl.WINDOW_SETTLEMENT] = sl._build_window(sl.WINDOW_SETTLEMENT, "win.settlement", sl._build_settlement_content(), Vector2(916, 80))
 	sl._panels[sl.WINDOW_GESTURES] = sl._build_window(sl.WINDOW_GESTURES, "win.gestures", sl._build_gesture_content(), Vector2(600, 200))
 	sl._panels[sl.WINDOW_MAP] = sl._build_window(sl.WINDOW_MAP, "win.map", sl._build_map_content(), Vector2(200, 80))
+	sl._panels[sl.WINDOW_ADMIN] = sl._build_window(sl.WINDOW_ADMIN, "win.admin", sl._m2._build_admin_content(), Vector2(600, 80))
 
 	sl._slot_menu = PopupMenu.new()
 	sl._slot_menu.id_pressed.connect(sl._on_slot_menu_pressed)
