@@ -13,6 +13,12 @@ on:
         description: "Crowd stress run: link profiles, space-separated (lan, wan_br, wan_bad)"
         default: "lan"
 
+# A new push to a pull request cancels that PR's older run. Pushes and manual runs get a group
+# of their own (the run id), so they never cancel or queue behind each other.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   godot-tests:
     name: Godot headless test suite
@@ -54,18 +60,17 @@ jobs:
             exit 1
           fi
 
-  native:
-    name: Native builder (${{ matrix.name }})
+  native-linux:
+    name: Native builder (linux)
+    # Its own job, not a leg of the matrix below: the jobs that run the Linux binary (native-suite,
+    # playtest, export-native) need only this one, so they no longer wait for the macOS build.
     # A manual dispatch is for the crowd stress run only.
     if: github.event_name != 'workflow_dispatch'
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { name: linux, os: ubuntu-latest, scons: "platform=linux arch=x86_64" }
-          - { name: windows, os: windows-latest, scons: "platform=windows arch=x86_64" }
-          - { name: macos, os: macos-latest, scons: "platform=macos arch=universal" }
+    runs-on: ubuntu-latest
+    env:
+      # godot-cpp's SConstruct reads SCONS_CACHE: compiled objects are reused across runs, so only
+      # what changed is rebuilt (the godot-cpp bindings were most of the build time).
+      SCONS_CACHE: ${{ github.workspace }}/.scons-cache
     steps:
       - uses: actions/checkout@v4
 
@@ -73,7 +78,14 @@ jobs:
         uses: actions/cache@v4
         with:
           path: native/godot-cpp
-          key: godot-cpp-godot-4.5-stable-${{ matrix.os }}
+          key: godot-cpp-godot-4.5-stable-ubuntu-latest
+
+      - name: Cache the SCons build
+        uses: actions/cache@v4
+        with:
+          path: .scons-cache
+          key: scons-godot-4.5-stable-ubuntu-latest-${{ hashFiles('native/src/**', 'native/SConstruct') }}
+          restore-keys: scons-godot-4.5-stable-ubuntu-latest-
 
       - name: Fetch godot-cpp
         shell: bash
@@ -86,8 +98,64 @@ jobs:
         shell: bash
         working-directory: native
         run: |
+          # Both targets: the editor binary loads the debug library, the exports the release one.
+          scons platform=linux arch=x86_64 target=template_debug -j4
+          scons platform=linux arch=x86_64 target=template_release -j4
+          ls bin
+
+      - name: Upload the binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-linux
+          path: native/bin/
+          if-no-files-found: error
+
+  native:
+    name: Native builder (${{ matrix.name }})
+    # A manual dispatch is for the crowd stress run only.
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: windows, os: windows-latest, scons: "platform=windows arch=x86_64" }
+          - { name: macos, os: macos-latest, scons: "platform=macos arch=universal" }
+    env:
+      SCONS_CACHE: ${{ github.workspace }}/.scons-cache
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache godot-cpp
+        uses: actions/cache@v4
+        with:
+          path: native/godot-cpp
+          key: godot-cpp-godot-4.5-stable-${{ matrix.os }}
+
+      - name: Cache the SCons build
+        uses: actions/cache@v4
+        with:
+          path: .scons-cache
+          key: scons-godot-4.5-stable-${{ matrix.os }}-${{ hashFiles('native/src/**', 'native/SConstruct') }}
+          restore-keys: scons-godot-4.5-stable-${{ matrix.os }}-
+
+      - name: Fetch godot-cpp
+        shell: bash
+        run: tools/fetch_godot_cpp.sh
+
+      - name: Install SCons
+        run: python -m pip install scons
+
+      - name: Build the extension
+        shell: bash
+        working-directory: native
+        run: |
+          # Nothing on a pull request runs these binaries (only the main build job exports them), so a
+          # PR compiles the debug target to prove the platform builds, and main builds both.
           scons ${{ matrix.scons }} target=template_debug -j4
-          scons ${{ matrix.scons }} target=template_release -j4
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            scons ${{ matrix.scons }} target=template_release -j4
+          fi
           ls bin
 
       - name: Upload the binaries
@@ -99,7 +167,7 @@ jobs:
 
   native-suite:
     name: Godot suite with the native builder
-    needs: native
+    needs: native-linux
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -410,7 +478,7 @@ jobs:
     name: Playtest bot (rendered session under xvfb)
     # A manual dispatch is for the crowd stress run only.
     if: github.event_name != 'workflow_dispatch'
-    needs: native
+    needs: native-linux
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -550,7 +618,7 @@ jobs:
   export-native:
     name: Linux export with the native binaries (pull request)
     if: github.event_name == 'pull_request'
-    needs: native
+    needs: native-linux
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -585,7 +653,7 @@ jobs:
 
   build:
     name: Linux, Windows and macOS exports
-    needs: [native, native-suite, godot-tests, server-boot, host-boot, fabric, net-harness, playtest]
+    needs: [native-linux, native, native-suite, godot-tests, server-boot, host-boot, fabric, net-harness, playtest]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:

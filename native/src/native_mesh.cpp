@@ -292,7 +292,7 @@ struct MergeScratch {
 	uint32_t stamp = 0;
 };
 
-std::vector<Rect> merge_rects(std::vector<int> cells, MergeScratch &sc) {
+std::vector<Rect> merge_rects(std::vector<int> &cells, MergeScratch &sc) {
 	std::vector<Rect> out;
 	std::sort(cells.begin(), cells.end());
 	if (sc.stamp > 0xFFFFFFF0u) {
@@ -386,7 +386,7 @@ Dictionary NativeChunkBuilder::build_chunk_arrays(const Vector2i &p_chunk, const
 	MergeScratch scratch;
 
 	for (int dir : m.dir_order) {
-		for (const Group &g : m.buckets[dir].groups) {
+		for (Group &g : m.buckets[dir].groups) {
 			cell_count += g.cell_count;
 			for (const Rect &rect : merge_rects(g.cells, scratch)) {
 				double plane = g.plane;

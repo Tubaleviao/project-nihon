@@ -44,6 +44,7 @@ const WARMUP_FRAMES := 3     ## the first frames of a step (shader compile, firs
 const BOOT_TIMEOUT_SECS := 120.0
 const WATCHDOG_SLACK_SECS := 60.0 ## whole-run budget = boot + every step's timeout + this
 const STREAM_CHUNKS := 20
+const SHADER_SHARE_LIMIT := 0.5   ## Phase 170: heightmap share of the build above which a compute shader is justified
 const RATE_CHUNKS := 24      ## chunks the stream step times the pure worker build on (Phase 169)
 const NativeBuilder := preload("res://src/terrain/native_builder.gd")
 const WALK_SECS := 3.0
@@ -82,11 +83,12 @@ const FAR_PEAK_MIN_HEIGHT := 330.0    ## 80+ m over the horizon from 60 km (abou
 const FAR_PEAK_SEARCH_M := 2.0e6      ## the ridge is looked for this far from the body, nearest square ring first
 const FAR_PEAK_SEARCH_STEP_M := 8000.0
 const FAR_PEAK_EXTRA_RINGS := 40     ## rings searched past the first with a ridge, for more candidates
-const FAR_PEAK_CANDIDATES := 8       ## nearest ridges with a usable vantage compared (the tallest wins)
-const FAR_PEAK_ATTEMPTS := 3         ## vantages tried (tallest ridge first): a hill beside one can hide the bands behind the ring's own skyline
+const FAR_PEAK_CANDIDATES := 8       ## nearest ridges with a usable vantage compared (the most open sight line wins)
+const FAR_PEAK_ATTEMPTS := 3         ## vantages tried (most open sight line first): a hill beside one can hide the bands behind the ring's own skyline
 const FAR_PEAK_MIN_PX := 8            ## rock or snow pixels above the ring's skyline needed to pass
 const FAR_PEAK_SAT_MAX := 0.18        ## rock (grey) and snow (white) are below this saturation; land and sea are not
 const FAR_PEAK_TIMEOUT_SECS := 240.0
+const RIDGE_SIGHT_STEP_M := 500.0   ## the sight line to the ridge is sampled this often (`ridge_clearance`)
 const COAST_SEARCH_M := 4.0e6         ## the coast search marches this far from the body
 const COAST_BEARING_STEP := 11.25     ## degrees between marched bearings
 const COAST_MARCH_M := 2000.0         ## march step on the large-scale shape
@@ -102,6 +104,7 @@ var _skip_until_ms: int = 0   ## frames before this tick are not recorded (just 
 var _step_result: Array = []  ## set by the step runner when its coroutine returns; empty while it runs
 var _step_deadline_ms: int = 0
 var _chunk_builds: int = 0
+var _build_breakdown: Dictionary = {}   ## Phase 170: the stream step's per-stage build time
 var _stream_rate: float = 0.0   ## the stream step's chunk build rate (chunks/s), 0 until it ran
 var _mined: Array = []
 var _chopped: Array = []
@@ -193,6 +196,13 @@ static func report_markdown(report: Dictionary) -> String:
 		lines.append("| %s | %s | %d | %.1f | %.1f | %.1f | %.1f | %d | %d | %s |" % [
 			_md_cell(str(s["step"])), "ok" if bool(s["ok"]) else "FAIL", int(s["frames"]), float(s["p50_ms"]), float(s["p95_ms"]),
 			float(s["p99_ms"]), float(s["max_ms"]), int(s["hitches"]), int(s["chunk_builds"]), _md_cell(str(s["detail"]))])
+	for s in report["steps"]:
+		var bb: Dictionary = s.get("build_breakdown", {})
+		if not bb.is_empty():
+			lines.append("")
+			lines.append("Build time per chunk (window radius %d, %d chunks): heightmap %.1f ms, seam %.1f ms, runs %.1f ms, arrays %.1f ms, total %.1f ms. Heightmap share %.0f%% (limit %.0f%%): **%s**." % [
+				int(bb["window_radius"]), int(bb["chunks"]), float(bb["heightmap_ms"]), float(bb["seam_ms"]), float(bb["runs_ms"]),
+				float(bb["arrays_ms"]), float(bb["total_ms"]), 100.0 * float(bb["heightmap_share"]), 100.0 * SHADER_SHARE_LIMIT, str(bb["decision"])])
 	if not (report["failures"] as Array).is_empty():
 		lines.append("")
 		lines.append("## Hard failures")
@@ -349,6 +359,7 @@ func _run_step(step: String) -> Dictionary:
 	if step == "stream":
 		rec["builder"] = NativeBuilder.mode()
 		rec["build_rate"] = _stream_rate
+		rec["build_breakdown"] = _build_breakdown
 	await _screenshot(step)
 	print("[Playtest] %s %s %s" % [step, "ok" if bool(rec["ok"]) else "FAIL", rec["detail"]])
 	return rec
@@ -492,7 +503,7 @@ func _step_stream() -> Array:
 	_stream_rate = _measure_build_rate(home["chunk"])
 	_recording = true
 	_skip_frames = WARMUP_FRAMES
-	return [true, "%d chunks streamed; %s builder %.1f chunks/s" % [STREAM_CHUNKS, NativeBuilder.mode(), _stream_rate]]
+	return [true, "%d chunks streamed; %s builder %.1f chunks/s, heightmap %.0f%% of the build" % [STREAM_CHUNKS, NativeBuilder.mode(), _stream_rate, 100.0 * float(_build_breakdown.get("heightmap_share", 0.0))]]
 
 ## Phase 169 — the chunk build rate of the builder in use (`NativeBuilder.mode()`), chunks per second of
 ## the pure worker half (map, seam strips, resolve, mesh) run synchronously on `RATE_CHUNKS` chunks past
@@ -502,15 +513,46 @@ func _measure_build_rate(home_chunk: Vector2i) -> float:
 	TerrainSlice.warm_polar_caches()
 	var seed_v: int = int(_root._terrain.get_world_seed())
 	var noise: FastNoiseLite = _root._terrain.detail_noise_copy()
+	var parts := { "heightmap": 0, "seam": 0, "runs": 0, "arrays": 0 }
 	var started := Time.get_ticks_usec()
 	for i in range(RATE_CHUNKS):
 		var c := home_chunk + Vector2i(STREAM_CHUNKS + 4 + i % 6, 4 + i / 6)
+		var t0 := Time.get_ticks_usec()
 		var hm: Array = TerrainSlice.heightmap_for(c, seed_v, noise)
+		var t1 := Time.get_ticks_usec()
 		var gathered: Dictionary = _root._voxel.gather_build_input_deferred(c)
 		VoxelSlice.fill_seam_strips(c, gathered, seed_v, noise)
-		VoxelSlice.build_chunk_arrays(c, hm, VoxelSlice.build_runs(c, hm, gathered), true)
+		var t2 := Time.get_ticks_usec()
+		var runs: Dictionary = VoxelSlice.build_runs(c, hm, gathered)
+		var t3 := Time.get_ticks_usec()
+		VoxelSlice.build_chunk_arrays(c, hm, runs, true)
+		var t4 := Time.get_ticks_usec()
+		parts["heightmap"] += t1 - t0
+		parts["seam"] += t2 - t1
+		parts["runs"] += t3 - t2
+		parts["arrays"] += t4 - t3
 	var secs := float(Time.get_ticks_usec() - started) / 1.0e6
+	_build_breakdown = build_breakdown(parts, RATE_CHUNKS, _root._chunk_manager.stream_radius())
 	return float(RATE_CHUNKS) / maxf(secs, 0.000001)
+
+## Phase 170 — where one chunk build goes. `parts_usec` is the summed microseconds of each stage over
+## `chunks` builds; the record carries milliseconds per chunk, the heightmap's share of the total, the
+## streamed window radius of the session (`DEFAULT_VIEW_DISTANCE + prefetch`, the largest default; context
+## only, the timed chunks are a fixed block east of the spawn, so the share is that of spawn-latitude land) and the decision: a compute-shader heightmap is worth building only when
+## `heightmap_for` is over `SHADER_SHARE_LIMIT` of the build.
+static func build_breakdown(parts_usec: Dictionary, chunks: int, window_radius: int) -> Dictionary:
+	var total := 0.0
+	for k in parts_usec:
+		total += float(parts_usec[k])
+	var n := float(maxi(chunks, 1))
+	var rec := { "chunks": chunks, "window_radius": window_radius }
+	for k in parts_usec:
+		rec["%s_ms" % k] = float(parts_usec[k]) / 1000.0 / n
+	rec["total_ms"] = total / 1000.0 / n
+	var share: float = float(parts_usec.get("heightmap", 0)) / total if total > 0.0 else 0.0
+	rec["heightmap_share"] = share
+	rec["decision"] = "compute_shader" if share > SHADER_SHARE_LIMIT else "no_shader"
+	return rec
 
 ## Mine the ground block under the body through the player's own intent.
 func _step_mine() -> Array:
@@ -937,8 +979,9 @@ func _step_horizon() -> Array:
 
 ## Phase 165 — a vantage `FAR_PEAK_DISTANCE_M` from a tall ridge: the search over the shape
 ## on a coarse grid around `from` (nearest square ring first) for points at least `FAR_PEAK_MIN_HEIGHT` tall, then, for the
-## nearest `FAR_PEAK_CANDIDATES` of them, the first of sixteen bearings whose point at that distance is dry land; tallest first. Returns a list of [vantage, bearing_to_peak_deg,
-## peak, peak_height], empty when none.
+## nearest `FAR_PEAK_CANDIDATES` of them, the dry-land bearing (of sixteen) with the most open sight line to the ridge
+## (`ridge_clearance`); most open first. Returns a list of [vantage, bearing_to_peak_deg, peak, peak_height, clearance],
+## empty when none.
 func _find_far_peak(from: Vector2) -> Array:
 	var seed_v: int = _root._terrain.get_world_seed()
 	var w := Horizon.default_circumference()
@@ -962,7 +1005,7 @@ func _find_far_peak(from: Vector2) -> Array:
 					peaks.append([p.distance_to(from), p, h])
 					last_ring = mini(last_ring, r + FAR_PEAK_EXTRA_RINGS)
 	# A ridge whose 60 km ring is all sea or highland has no vantage: take the nearest ridges that do,
-	# and of those the tallest first (the most pixels above the skyline).
+	# and of those the most open sight line first (`ridge_clearance`).
 	peaks.sort_custom(func(p1, p2): return float(p1[0]) < float(p2[0]))
 	var vantages: Array = []
 	var usable := 0
@@ -973,16 +1016,43 @@ func _find_far_peak(from: Vector2) -> Array:
 			await get_tree().process_frame
 			t0 = Time.get_ticks_msec()
 		var peak: Vector2 = peaks[k][1]
+		var best: Array = []
+		var height_at := func(p: Vector2) -> float: return WorldShape.height(seed_v, p.x, p.y, w)
 		for b in 16:
 			var dir := Vector2.from_angle(deg_to_rad(float(b) * 22.5))
 			var v := peak + dir * FAR_PEAK_DISTANCE_M
 			var vh := WorldShape.height(seed_v, v.x, v.y, w)
 			if vh > sea + 3.0 and vh < 100.0:
-				vantages.append([v, rad_to_deg((-dir).angle()), peak, peaks[k][2]])
-				usable += 1
-				break
-	vantages.sort_custom(func(a, b): return float(a[3]) > float(b[3]))
+				var clear := ridge_clearance(height_at, v, peak, w / TAU)
+				if best.is_empty() or clear > float(best[4]):
+					best = [v, rad_to_deg((-dir).angle()), peak, peaks[k][2], clear]
+			if Time.get_ticks_msec() - t0 > COAST_WORK_MS:
+				await get_tree().process_frame
+				t0 = Time.get_ticks_msec()
+		if not best.is_empty():
+			vantages.append(best)
+			usable += 1
+	# Most open sight line first: a taller ridge behind a nearer hill shows nothing.
+	vantages.sort_custom(func(a, b): return float(a[4]) > float(b[4]))
 	return vantages
+
+## Phase 165 — how far (radians of elevation) the ridge at `peak` stands above the highest terrain between it and
+## `from`, seen from a standing eye at `from` on a sphere of radius `radius_m`. `height_at` maps an xz point to the
+## shape height. Positive: the ridge's top clears every nearer rise, so its bands can show above the ring's skyline;
+## negative: a nearer hill hides it. Sampled every `RIDGE_SIGHT_STEP_M` along the line.
+static func ridge_clearance(height_at: Callable, from: Vector2, peak: Vector2, radius_m: float) -> float:
+	var dist := from.distance_to(peak)
+	if dist < 2.0 * RIDGE_SIGHT_STEP_M:
+		return 0.0   # no line to sample
+	var eye: float = float(height_at.call(from)) + 2.0
+	var top_angle := (float(height_at.call(peak)) - eye) / dist - dist / (2.0 * radius_m)
+	var blocker := -INF
+	var n := int(dist / RIDGE_SIGHT_STEP_M)
+	for i in range(1, n):
+		var d := float(i) * RIDGE_SIGHT_STEP_M
+		var h: float = height_at.call(from.lerp(peak, d / dist))
+		blocker = maxf(blocker, (h - eye) / d - d / (2.0 * radius_m))
+	return top_angle - blocker
 
 ## Phase 165 — mountains on the horizon: from 60 km, a tall ridge shows rock or snow above the ring's skyline.
 func _step_far_peak() -> Array:

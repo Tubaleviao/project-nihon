@@ -190,32 +190,11 @@ issue number where the criterion used to be.
 | 167 | Native `heightmap_for` | Done | [history](docs/roadmap-history/phases-167.md) |
 | 168 | Native `build_runs` | Done | [history](docs/roadmap-history/phases-168.md) |
 | 169 | Native `build_chunk_arrays` and the speed target | Done | [history](docs/roadmap-history/phases-169.md) |
-| 170 | A compute-shader heightmap, if the native builder is still the bottleneck | Planned | below |
+| 170 | A compute-shader heightmap, if the native builder is still the bottleneck | Done | [history](docs/roadmap-history/phases-170.md) |
 | 171 | Creatures in exact coordinates: no float32 metres far from the origin | Done | [history](docs/roadmap-history/phases-171.md) |
 | 172 | Host chunk attach off the main thread | Planned | below |
 
 ---
-
-## Phase 170 — A compute-shader heightmap, if the native builder is still the bottleneck
-
-**Goal:** moved out of Phase 144. Measure first; build only if the numbers ask for it.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phase 169, Phase 165.
-
-**Deliverables:**
-- A playtest-bot measurement at the largest default view distance (after Phase 165) that reports
-  where chunk build time goes with the native builder.
-- If `heightmap_for` is still over half of the build time: a compute-shader heightmap path with the
-  native builder as fallback. Otherwise: the measurement is recorded in this section and the phase
-  closes with no shader.
-
-**Acceptance criteria:**
-- [ ] Playtest bot (CI): the measurement is in `report.json`, and this section records the decision.
-- [ ] If a shader ships: suite parity with the native `heightmap_for` for the fixed chunk set, and a
-  machine without compute support uses the native/GDScript path.
-- [ ] Suite green on both boot paths, harness green.
 
 ## Phase 172 — Host chunk attach off the main thread
 
