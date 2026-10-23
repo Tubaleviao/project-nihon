@@ -37,6 +37,11 @@ public:
 	// bands and a callable for `OreField.vein_in_cell`. Thread-safe: no state between calls.
 	Dictionary build_runs(const Vector2i &p_chunk, const Array &p_heightmap, const Dictionary &p_input, const Dictionary &p_cfg) const;
 
+	// Phase 169. Port of `VoxelMesh.build_chunk_arrays(chunk_pos, heightmap, resolved, local)`: the
+	// greedy mesher. `cfg` carries circumference_chunks and fallback_color. An input it cannot read
+	// comes back as an empty Dictionary and the caller runs the GDScript reference. Thread-safe.
+	Dictionary build_chunk_arrays(const Vector2i &p_chunk, const Array &p_heightmap, const Dictionary &p_resolved, bool p_local, const Dictionary &p_cfg) const;
+
 	Array heightmap_for(const Vector2i &p_pos, int64_t p_seed, const Ref<FastNoiseLite> &p_noise, const Dictionary &p_cfg) const;
 };
 

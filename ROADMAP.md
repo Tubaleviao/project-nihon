@@ -189,36 +189,12 @@ issue number where the criterion used to be.
 | 166 | Native builder scaffold: GDExtension, loader, fallback, CI binaries and releases | Done | [history](docs/roadmap-history/phases-166.md) |
 | 167 | Native `heightmap_for` | Done | [history](docs/roadmap-history/phases-167.md) |
 | 168 | Native `build_runs` | Done | [history](docs/roadmap-history/phases-168.md) |
-| 169 | Native `build_chunk_arrays` and the speed target | Planned | below |
+| 169 | Native `build_chunk_arrays` and the speed target | Done | [history](docs/roadmap-history/phases-169.md) |
 | 170 | A compute-shader heightmap, if the native builder is still the bottleneck | Planned | below |
 | 171 | Creatures in exact coordinates: no float32 metres far from the origin | Planned | below |
 | 172 | Host chunk attach off the main thread | Planned | below |
 
 ---
-
-## Phase 169 — Native `build_chunk_arrays` and the speed target
-
-**Newel dependency:** NO.
-
-**Depends on:** Phase 168.
-
-**Deliverables:**
-- `build_chunk_arrays` (the greedy mesher) ported to `NativeChunkBuilder` with a deterministic output
-  order, routed through the loader. The whole chunk build now runs native when the extension loads.
-- The playtest bot's `stream` step records the chunk build rate and which builder was used, and CI
-  runs the step once per builder on the same commit.
-
-**Acceptance criteria:**
-- [ ] Suite: native and GDScript builders give equal arrays for the fixed chunk set; the GDScript
-  fallback is used when the extension is absent.
-- [ ] Playtest bot (CI): the `stream` step's chunk build rate with the native builder is at least
-  double the GDScript fallback's on the same commit (so Phase 142's pump gains are not counted), and
-  `report.json` shows no step with a hitch over 50 ms (the bot does not fail on hitches, so this is
-  read from the report, not from the exit code).
-- [ ] Suite green on both boot paths, harness green.
-
----
-
 
 ## Phase 170 — A compute-shader heightmap, if the native builder is still the bottleneck
 

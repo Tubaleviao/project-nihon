@@ -5,6 +5,8 @@ extends RefCounted
 const VoxelConsts := preload("res://src/terrain/voxel_consts.gd")
 const VoxelRuns := preload("res://src/terrain/voxel_runs.gd")
 const MeshUtil := preload("res://src/core/mesh_util.gd")
+const NativeBuilder := preload("res://src/terrain/native_builder.gd")
+const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const CHUNK_SIZE := VoxelConsts.CHUNK_SIZE
 const TILE_SIZE := VoxelConsts.TILE_SIZE
 const STEP_HEIGHT := VoxelConsts.STEP_HEIGHT
@@ -58,6 +60,15 @@ const FALLBACK_TERRAIN_COLOR := VoxelConsts.FALLBACK_TERRAIN_COLOR
 ## see `build_chunk`): float32 vertices in absolute metres snap to whole metres a few million metres out.
 ## The default keeps absolute coordinates, which is what the suite's seam probes read.
 static func build_chunk_arrays(chunk_pos: Vector2i, heightmap: Array, resolved: Dictionary, local: bool = false) -> Dictionary:
+	if NativeBuilder.use_native("build_chunk_arrays"):   # Phase 169: same arrays, built in C++
+		var cfg := { "circumference_chunks": TerrainSlice.circumference_chunks(), "fallback_color": FALLBACK_TERRAIN_COLOR }
+		var native := NativeBuilder.builder().call("build_chunk_arrays", chunk_pos, heightmap, resolved, local, cfg) as Dictionary
+		if native.has("vertices"):   # a rejected input (malformed table) comes back empty: use the reference
+			return native
+	return build_chunk_arrays_gd(chunk_pos, heightmap, resolved, local)
+
+## The GDScript reference of `build_chunk_arrays`: the fallback and the parity suite's baseline.
+static func build_chunk_arrays_gd(chunk_pos: Vector2i, heightmap: Array, resolved: Dictionary, local: bool = false) -> Dictionary:
 	var corner_x := chunk_pos.x * CHUNK_SIZE * TILE_SIZE
 	var corner_z := chunk_pos.y * CHUNK_SIZE * TILE_SIZE
 	var origin_x := 0.0 if local else corner_x

@@ -12,6 +12,9 @@ const EXTENSION_PATH := "res://native/nihon_native.gdextension"
 const CLASS_NAME := "NativeChunkBuilder"
 const MODE_NATIVE := "native"
 const MODE_FALLBACK := "gdscript"
+
+## User arg that forces the GDScript fallback even with the binary present (CI times both builders).
+const NO_NATIVE_ARG := "--no-native"
 ## Functions a later step may route natively, in step order.
 const FUNCTIONS: Array[String] = ["heightmap_for", "build_runs", "build_chunk_arrays"]
 
@@ -27,6 +30,8 @@ static func mode_for(extension_loaded: bool, class_available: bool) -> String:
 ## Checked first so a checkout without the binaries boots silently on the fallback instead of
 ## logging an engine error for the missing library.
 static func library_present() -> bool:
+	if NO_NATIVE_ARG in OS.get_cmdline_user_args():
+		return false
 	var cfg := ConfigFile.new()
 	if cfg.load(EXTENSION_PATH) != OK:
 		return false
@@ -49,7 +54,9 @@ static func init() -> String:
 	elif library_present():
 		var status := GDExtensionManager.load_extension(EXTENSION_PATH)
 		ext_loaded = status == GDExtensionManager.LOAD_STATUS_OK or status == GDExtensionManager.LOAD_STATUS_ALREADY_LOADED
-	_mode = mode_for(ext_loaded, ClassDB.class_exists(CLASS_NAME))
+	# `--no-native` forces the fallback even when the class is registered (library_present() checks it too).
+	var forced := NO_NATIVE_ARG in OS.get_cmdline_user_args()
+	_mode = mode_for(ext_loaded and not forced, ClassDB.class_exists(CLASS_NAME))
 	if _mode == MODE_NATIVE:
 		_builder = ClassDB.instantiate(CLASS_NAME)
 		print("[Native] chunk builder: native (version %d)" % int(_builder.call("version")))
