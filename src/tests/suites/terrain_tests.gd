@@ -60,6 +60,7 @@ func register() -> void:
 	_run_test("worldgen: fingerprint stamp on the world record", _test_worldgen_fingerprint_record)
 	_run_test("worldgen: fingerprint mismatch wiring",        _test_worldgen_fingerprint_game_root)
 	_run_test("worldgen: golden generator values",            _test_worldgen_golden)
+	_run_test("worldgen: the spawn plain is level with a highland", _test_spawn_plain_no_pit)
 	_run_test("worldgen: fingerprint test restores statics",  _test_worldgen_fingerprint_restores)
 	_run_test("worldgen: fingerprint notice reaches the UI",  _test_worldgen_fingerprint_notice)
 	_run_test("biomes: adjacency table",                      _test_adjacency_table)
@@ -1644,6 +1645,28 @@ func _test_worldgen_fingerprint_game_root() -> void:
 
 ## Phase 106 — golden generator values. A Godot upgrade or an unversioned edit that moves any of
 ## them must bump `TerrainSlice.WORLDGEN_VERSION` and update these numbers in the same change.
+## Worldgen 9: on a highland seed the spawn plain lies at the land's level, not in a pit at 2 m. Seed
+## 2045165241 is a playtest world whose old plain sat ~400 m below the land 3 km out. A low seed keeps 2 m.
+func _test_spawn_plain_no_pit() -> void:
+	var w: float = float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
+	var c := WorldShape.SPAWN_CENTER
+	var high := 2045165241
+	var plain := WorldShape.spawn_plain_height(high, w)
+	assert_true(plain > 100.0, "the highland's plain is high ground (got %.1f)" % plain)
+	assert_true(absf(WorldShape.height(high, c.x, c.y, w) - plain) < 1e-6, "the spawn lies on the plain")
+	assert_true(absf(WorldShape.height(high, c.x + 1000.0, c.y, w) - plain) < 1e-6, "and so does land 1 km out")
+	# The land the ease reaches lies both above and below the plain: no rim stands over it all round.
+	var above := 0
+	var below := 0
+	for a in WorldShape.SPAWN_RIM_SAMPLES:
+		var p := c + Vector2.from_angle(TAU * float(a) / float(WorldShape.SPAWN_RIM_SAMPLES)) * WorldShape.SPAWN_EASE_M
+		if WorldShape.height(high, p.x, p.y, w) > plain:
+			above += 1
+		else:
+			below += 1
+	assert_true(above > 0 and below > 0, "the plain sits inside its rim's range (%d above, %d below)" % [above, below])
+	assert_eq(WorldShape.spawn_plain_height(777, w), WorldShape.SPAWN_HEIGHT, "a low seed keeps the 2 m plain")
+
 func _test_worldgen_golden() -> void:
 	var n := FastNoiseLite.new()
 	TerrainSlice.configure_noise(n, 12345)

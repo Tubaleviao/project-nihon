@@ -97,6 +97,13 @@ func _test_native_heightmap_parity() -> void:
 			assert_eq(got.size(), want.size(), "native heightmap_for %s has the same size (records %d)" % [str(pos), round_i])
 			assert_true(got == want, "native heightmap_for %s equals the GDScript reference (records %d)" % [str(pos), round_i])
 	ChunkRecordsScript.clear()
+	# Worldgen 9: a highland seed's spawn plain is not 2 m; the native side takes it from the GDScript one.
+	var high := 2045165241
+	var high_noise := FastNoiseLite.new()
+	TerrainSlice.configure_noise(high_noise, high)
+	for pos: Vector2i in [Vector2i(0, 0), Vector2i(60, -20), Vector2i(-100, 40)]:   # on the plain, in the ease
+		assert_true(TerrainSlice.heightmap_for(pos, high, high_noise) == TerrainSlice.heightmap_for_gd(pos, high, high_noise),
+			"native heightmap_for %s matches on a highland spawn plain" % str(pos))
 
 ## One build input for `chunk`: the 3x3 ring's heightmaps (the +x column left unknown for the odd
 ## chunks, so unknown-neighbour reads are covered), their biomes, the seed, edits and a depletion

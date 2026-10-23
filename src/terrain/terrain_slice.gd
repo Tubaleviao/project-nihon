@@ -33,7 +33,9 @@ const HEIGHT_SCALE := 5.0    # world units peak-to-valley of the small-scale DET
 ## before that change has a lower floor than one written after it. 7 = Phase 127 frontier corners are
 ## weighted by the blend itself, so unrecorded land beside a record eases into the generator differently.
 ## 8 = the pole's snow field is flat: its drifts ran along X as ridges whose voxel steps drew as lines.
-const WORLDGEN_VERSION := 8
+## 9 = the spawn plain lies at the mean height of the land around it (never below 2 m), not always at 2 m:
+## on a highland seed the old plain was a pit up to ~500 m deep that read as a bowl under the horizon.
+const WORLDGEN_VERSION := 9
 
 ## Phase 106 — a hash of every fabric parameter world-gen reads that `WORLDGEN_VERSION` cannot see:
 ## the `WorldSystem` shape fields (`sea`, `min/max height`, `oceanShare`, `ridgeAmplitude`,
@@ -51,6 +53,7 @@ static var _fingerprint_cache := -1
 ## for a generator change) calls this before reading `worldgen_fingerprint()` again.
 static func reset_fingerprint_cache() -> void:
 	_fingerprint_cache = -1
+	WorldShape.reset_plain_cache()   # the spawn plain is derived from the same parameters
 
 static func compute_worldgen_fingerprint() -> int:
 	var fields := WorldShape.fingerprint_fields()
@@ -584,15 +587,16 @@ func _generate(pos: Vector2i) -> Array:
 ## Recorded corner heights are read from `ChunkRecords`, which locks its own table.
 static func heightmap_for(pos: Vector2i, seed_v: int, noise: FastNoiseLite) -> Array:
 	if NativeBuilder.use_native("heightmap_for"):   # Phase 167: same result, computed in C++
-		return NativeBuilder.builder().call("heightmap_for", pos, seed_v, noise, _native_cfg(pos)) as Array
+		return NativeBuilder.builder().call("heightmap_for", pos, seed_v, noise, _native_cfg(pos, seed_v)) as Array
 	return heightmap_for_gd(pos, seed_v, noise)
 
-## Phase 167 — what the native `heightmap_for` cannot read itself: the fabric's shape parameters and
+## Phase 167 — what the native `heightmap_for` cannot read itself: the fabric's shape parameters, the spawn
+## plain's height for `seed_v` (worldgen 9; the mean of the land around it, cached on the GDScript side) and
 ## the recorded corner heights of the (at most two) chunk cells the chunk's tiles sample, keyed by the
 ## un-wrapped cell the native code looks up (`records`: {Vector2i cell: PackedFloat64Array [h00, h10,
 ## h01, h11]}). The first cell is the chunk's own, the second the one a tile in the antimeridian
 ## blend band reads at `x - w`.
-static func _native_cfg(pos: Vector2i) -> Dictionary:
+static func _native_cfg(pos: Vector2i, seed_v: int) -> Dictionary:
 	var c := circumference_chunks()
 	var records := {}
 	if not ChunkRecords.is_empty():
@@ -609,6 +613,7 @@ static func _native_cfg(pos: Vector2i) -> Dictionary:
 		"max_height": WorldShape.max_height(),
 		"ridge_amplitude": WorldShape.ridge_amplitude(),
 		"spline": WorldShape.spline(),
+		"spawn_plain": WorldShape.spawn_plain_height(seed_v, float(c) * CHUNK_METERS),
 		"records": records,
 	}
 

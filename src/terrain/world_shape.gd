@@ -29,10 +29,13 @@ const CONTRAST := 1.9 ## stretches the fbm (which clusters near 0.5) toward the 
 
 ## Phase 53 retired the 20 m flattened disc in `TerrainSlice`; this large-scale plain stays, so the
 ## origin region is dry land for every seed (the dev rig and the suite stand on it) and `SpawnFinder`
-## places new players by the planet's habitable land, not by this. The height is forced to SPAWN_HEIGHT within SPAWN_PLAIN_M of the spawn and
-## eases back to the natural shape by SPAWN_EASE_M, so the player always starts on dry, flat ground.
+## places new players by the planet's habitable land, not by this. The height is forced to the plain's height
+## (`spawn_plain_height`) within SPAWN_PLAIN_M of the spawn and eases back to the natural shape by SPAWN_EASE_M,
+## so the player always starts on dry, flat ground. Worldgen 9: the plain sits at the surrounding land's mean
+## level (never below SPAWN_HEIGHT), not always at SPAWN_HEIGHT, so on a highland it is a level plain instead
+## of a pit hundreds of metres deep.
 const SPAWN_CENTER := Vector2(16.0, 16.0)
-const SPAWN_HEIGHT := 2.0
+const SPAWN_HEIGHT := 2.0   ## the lowest the spawn plain lies (dry land just above the default sea)
 const SPAWN_PLAIN_M := 1500.0
 const SPAWN_EASE_M := 4000.0
 
@@ -59,6 +62,7 @@ static func warm() -> void:
 		if sp is Array and (sp as Array).size() >= 2:
 			_spline = sp
 	_warmed = true
+	reset_plain_cache()
 
 ## Phase 106 — the warmed fabric parameters the shape reads, in a fixed order, for
 ## `TerrainSlice.worldgen_fingerprint`.
@@ -156,6 +160,15 @@ static func spline_height(c: float) -> float:
 ## Large-scale terrain height in metres at world (x, z), `w` the circumference in metres. No
 ## small-scale detail (TerrainSlice adds that); this is what climate and biomes read.
 static func height(seed_v: int, x: float, z: float, w: float) -> float:
+	var h := natural_height(seed_v, x, z, w)
+	# The spawn plain.
+	var d := Vector2(x - SPAWN_CENTER.x, z - SPAWN_CENTER.y).length()
+	if d < SPAWN_EASE_M:
+		h = lerpf(spawn_plain_height(seed_v, w), h, smoothstep(SPAWN_PLAIN_M, SPAWN_EASE_M, d))
+	return h
+
+## The shape's height with no spawn plain: the continent spline plus the inland ridges.
+static func natural_height(seed_v: int, x: float, z: float, w: float) -> float:
 	warm()
 	var c := continentalness(seed_v, x, z, w)
 	var e := erosion(seed_v, x, z, w)
@@ -164,12 +177,44 @@ static func height(seed_v: int, x: float, z: float, w: float) -> float:
 	var inland := smoothstep(0.68, 0.9, c)
 	var rugged := 1.0 - smoothstep(0.35, 0.8, e)
 	var peaks := ridges(seed_v, x, z, w) * _ridge_amp * inland * rugged
-	var h := clampf(base + peaks, _min_h, _max_h)
-	# The spawn plain.
-	var d := Vector2(x - SPAWN_CENTER.x, z - SPAWN_CENTER.y).length()
-	if d < SPAWN_EASE_M:
-		h = lerpf(SPAWN_HEIGHT, h, smoothstep(SPAWN_PLAIN_M, SPAWN_EASE_M, d))
-	return h
+	return clampf(base + peaks, _min_h, _max_h)
+
+## Samples on the SPAWN_EASE_M circle the spawn plain's height is the mean of.
+const SPAWN_RIM_SAMPLES := 8
+
+## "seed:circumference" -> spawn plain height; workers read it, so it is guarded. Cleared when the warmed
+## parameters change (`warm`, `TerrainSlice.reset_fingerprint_cache`).
+static var _plain_cache: Dictionary = {}
+static var _plain_mutex := Mutex.new()
+
+static func reset_plain_cache() -> void:
+	_plain_mutex.lock()
+	_plain_cache.clear()
+	_plain_mutex.unlock()
+
+## The spawn plain's height: the mean natural height on the circle where the plain's ease ends, never below
+## SPAWN_HEIGHT. So the ease climbs to some of the surrounding land and down to the rest, rather than all of
+## it rising from a fixed 2 m. Ground that is low or sea around the spawn gives SPAWN_HEIGHT exactly, as
+## before worldgen 9.
+static func spawn_plain_height(seed_v: int, w: float) -> float:
+	var key := "%d:%s" % [seed_v, str(w)]
+	_plain_mutex.lock()
+	var hit: Variant = _plain_cache.get(key, null)
+	_plain_mutex.unlock()
+	if hit != null:
+		return float(hit)
+	var plain := _spawn_plain_uncached(seed_v, w)
+	_plain_mutex.lock()
+	_plain_cache[key] = plain
+	_plain_mutex.unlock()
+	return plain
+
+static func _spawn_plain_uncached(seed_v: int, w: float) -> float:
+	var sum := 0.0
+	for i in SPAWN_RIM_SAMPLES:
+		var p := SPAWN_CENTER + Vector2.from_angle(TAU * float(i) / float(SPAWN_RIM_SAMPLES)) * SPAWN_EASE_M
+		sum += natural_height(seed_v, p.x, p.y, w)
+	return clampf(maxf(sum / float(SPAWN_RIM_SAMPLES), SPAWN_HEIGHT), _min_h, _max_h)
 
 ## Height above sea level (negative in the ocean).
 static func altitude(seed_v: int, x: float, z: float, w: float) -> float:
