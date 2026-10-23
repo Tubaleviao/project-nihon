@@ -77,6 +77,28 @@ static func builder() -> RefCounted:
 static func version() -> int:
 	return int(_builder.call("version")) if is_native() else -1
 
+static var _memo: Dictionary = {}
+static var _memo_lock := Mutex.new()
+
+## The value `make` builds for `key`, built once under a lock (#452): workers that reach a native
+## input table before the main thread warmed it share one build instead of racing to fill it.
+static func memo(key: String, make: Callable) -> Variant:
+	_memo_lock.lock()
+	if not _memo.has(key):
+		_memo[key] = make.call()
+	var value: Variant = _memo[key]
+	_memo_lock.unlock()
+	return value
+
+## Test hook: drop a memoized value (or all of them) so the next `memo` call builds it again.
+static func forget_memo(key: String = "") -> void:
+	_memo_lock.lock()
+	if key.is_empty():
+		_memo.clear()
+	else:
+		_memo.erase(key)
+	_memo_lock.unlock()
+
 ## Test hook: forget the cached decision so `init()` runs again.
 static func reset_for_tests() -> void:
 	_loaded = false

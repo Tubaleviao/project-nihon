@@ -597,16 +597,17 @@ static func _chunk_world_center(chunk_pos: Vector2i) -> Vector2:
 ## slice; `build_chunk_arrays` consumes what this returns.
 static func build_runs(chunk_pos: Vector2i, heightmap: Array, input: Dictionary) -> Dictionary:
 	if NativeBuilder.use_native("build_runs"):   # Phase 168: same result, computed in C++
-		return NativeBuilder.builder().call("build_runs", chunk_pos, heightmap, input, native_runs_cfg()) as Dictionary
+		var native := NativeBuilder.builder().call("build_runs", chunk_pos, heightmap, input, native_runs_cfg()) as Dictionary
+		if native.has("runs"):   # #452: a rejected input (heightmap size, vein callable) comes back empty
+			return native
 	return build_runs_gd(chunk_pos, heightmap, input)
 
 ## Phase 168 — what the native `build_runs` cannot read itself, snapshotted once (fabric tables are fixed
-## after boot) and warmed from `_ready` so a worker only reads it.
-static var _native_runs_cfg: Dictionary = {}
-
+## after boot) and warmed from `_ready`; `NativeBuilder.memo` fills it under a lock for a worker that gets there first.
 static func native_runs_cfg() -> Dictionary:
-	if not _native_runs_cfg.is_empty():
-		return _native_runs_cfg
+	return NativeBuilder.memo("build_runs", _make_native_runs_cfg)
+
+static func _make_native_runs_cfg() -> Dictionary:
 	OreField.warm()
 	var host := {}
 	for biome in BIOME_BIAS:
@@ -616,7 +617,7 @@ static func native_runs_cfg() -> Dictionary:
 		var style := surface_style(str(biome))
 		if not style.is_empty():
 			styles[str(biome)] = style
-	_native_runs_cfg = {
+	return {
 		"circumference_chunks": TerrainSlice.circumference_chunks(),
 		"colors": MATERIAL_COLORS,
 		"fallback_color": FALLBACK_TERRAIN_COLOR,
@@ -626,7 +627,6 @@ static func native_runs_cfg() -> Dictionary:
 		"bands": OreField.bands(),
 		"vein_cell": Callable(OreField, "vein_in_cell"),
 	}
-	return _native_runs_cfg
 
 ## The GDScript reference of `build_runs`: the fallback and the parity suite's baseline.
 static func build_runs_gd(chunk_pos: Vector2i, heightmap: Array, input: Dictionary) -> Dictionary:

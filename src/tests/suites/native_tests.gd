@@ -16,7 +16,9 @@ func register() -> void:
 	_run_test("native: only ported functions are routed natively",                                 _test_native_routes_only_ported)
 	_run_test("native: heightmap_for matches the GDScript reference on the fixed chunk set",       _test_native_heightmap_parity)
 	_run_test("native: build_runs matches the GDScript reference on the fixed chunk set",          _test_native_build_runs_parity)
-	_run_test("native: run edits resolve in a total order",                                       _test_native_run_ops_order)
+	_run_test("native: a rejected build_runs falls back to the GDScript reference",                _test_native_build_runs_rejection_falls_back)
+	_run_test("native: the build_runs cfg snapshot is filled once across threads",                 _test_native_runs_cfg_single_fill)
+	_run_test("native: run edits resolve in a total order",                                     _test_native_run_ops_order)
 	_run_test("native: the extension and its build files are in the tree",                         _test_native_files_present)
 	_run_test("native: the release workflow is tag-triggered and builds three platforms",           _test_native_release_workflow)
 
@@ -159,6 +161,49 @@ func _test_native_build_runs_parity() -> void:
 						topsoil += 1
 	assert_true(deposits_seen > 0, "the fixed chunk set holds vein deposits, so the ore path is compared (%d)" % deposits_seen)
 	assert_true(topsoil > 0, "the fixed chunk set holds topsoiled runs, so the topsoil path is compared (%d)" % topsoil)
+
+## #452 — a native `build_runs` that rejects its input returns an empty Dictionary; `VoxelSlice.build_runs`
+## falls back to the GDScript reference instead of handing the caller a result without `runs`.
+func _test_native_build_runs_rejection_falls_back() -> void:
+	NativeBuilder.init()
+	if not NativeBuilder.is_native():
+		print("[Native] build_runs fallback skipped: no native extension in this run")
+		return
+	var seed_v := 777001
+	var noise := FastNoiseLite.new()
+	TerrainSlice.configure_noise(noise, seed_v)
+	ChunkRecordsScript.clear()
+	var chunk := Vector2i(300, 7)
+	var hm := TerrainSlice.heightmap_for(chunk, seed_v, noise)
+	var input := _native_runs_input(chunk, seed_v, noise, {}, {}, false)
+	var good := VoxelSlice.native_runs_cfg()
+	var bad := good.duplicate()
+	bad["vein_cell"] = Callable()   # the native side fails its vein-callable check
+	NativeBuilder._memo["build_runs"] = bad
+	var got := VoxelSlice.build_runs(chunk, hm, input)
+	NativeBuilder._memo["build_runs"] = good
+	var want := VoxelSlice.build_runs_gd(chunk, hm, input)
+	assert_true(got.has("runs"), "a rejected native build still returns runs")
+	assert_true(got["runs"] == want["runs"], "the fallback runs are the GDScript reference")
+
+## #452 — the cfg snapshot is filled under a lock: workers that reach it before `_ready` warmed it all
+## get the one snapshot instead of racing to build their own.
+func _test_native_runs_cfg_single_fill() -> void:
+	var saved := VoxelSlice.native_runs_cfg()
+	NativeBuilder.forget_memo("build_runs")
+	var threads: Array[Thread] = []
+	for i in range(4):
+		var t := Thread.new()
+		t.start(VoxelSlice.native_runs_cfg)
+		threads.append(t)
+	var results: Array = []
+	for t in threads:
+		results.append(t.wait_to_finish())
+	for cfg in results:
+		assert_true(is_same(cfg, results[0]), "every worker gets the same cfg snapshot")
+	assert_false((results[0] as Dictionary).is_empty(), "the snapshot is filled")
+	assert_true(results[0] == saved, "a refill equals the warmed snapshot")
+	assert_true(is_same(VoxelSlice.native_runs_cfg(), results[0]), "later calls get that same snapshot")
 
 ## `add_span` merges runs sorted by bottom; with the sort on `bottom` alone a tie fell to the
 ## (unstable) sort's whim. Two runs that share a bottom now resolve the same whatever their order.

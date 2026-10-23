@@ -1035,10 +1035,10 @@ func _bands_ready_after(before: Array) -> bool:
 			if b.band_builds_completed(k) == 0:
 				return false
 			continue
-		if b.band_origin(k) != before[k][1] and b.band_builds_completed(k) <= int(before[k][0]):
+		if b.band_origin(k) != before[k][1] and (b.band_builds_completed(k) <= int(before[k][0]) or b.band_built_origin(k) != b.band_origin(k)):
 			return false
 	var pp := _player_pos()
-	return b.band_origin(0) == DistantBands.origin_for(b.band_spec(0), Vector2(pp.x, pp.z))
+	return b.band_built_origin(0) == DistantBands.origin_for(b.band_spec(0), Vector2(pp.x, pp.z))
 
 ## True when a ring build newer than `completed_before` is swapped in, none is pending, and it is
 ## centred within two lattice cells of the body.
