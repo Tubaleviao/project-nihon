@@ -44,6 +44,6 @@ Phases with no section of their own were merged into another phase:
 
 | Phase | Merged into |
 |---|---|
-| 102–104 | [Phase 101](phases-99-129.md#phase-101--chat-and-admin-commands-are-host-authoritative-exact-and-proven-on-the-wire) |
-| 105 | [Phase 99](phases-99-129.md#phase-99--housekeeping-sweep-legacy-tiles-roadmapreadme-hygiene-and-review-leftovers) |
+| 102–104 | [Phase 101](phases-99-129.md#phase-101--chat-and-admin-commands-are-host-authoritative-exact-and-proven-on-the-wire--done) |
+| 105 | [Phase 99](phases-99-129.md#phase-99--housekeeping-sweep-legacy-tiles-roadmapreadme-hygiene-and-review-leftovers--done) |
 | 144 | Split into [Phase 166](phases-166.md)–[169](phases-169.md) |

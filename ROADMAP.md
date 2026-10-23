@@ -62,8 +62,13 @@ the backlog down before the arc adds new systems, and make the cap above enforce
   trust-boundary bug. Fold each item that belongs to a phase of this arc into that phase's
   deliverables, and record the issue number there. Close the rest with a one-line reason.
 - Fix the standalone issues: #426 first (host-side speed clamp for carrying peers, a
-  trust-boundary gap that the repo rule says should never have been deferred), #429 (the `chop_in_reach` harness flake) and #427 (the harvest quality grade never reaches
-  the item stack; Phase 178 builds on it).
+  trust-boundary gap that the repo rule says should never have been deferred), #429 (the
+  `chop_in_reach` harness flake) and #427 (the harvest quality grade never reaches the item
+  stack; Phase 178 builds on it).
+- Fix the playtest bot flakes. On PR #469, a docs-only change, two CI runs failed on different
+  steps: `fight` ("the bag gained nothing from the body (["moved"])") and then `travel` ("first
+  waystone refused"). File an issue for each, name the root cause and make the step
+  deterministic.
 - `tools/check_followups.sh`: counts open `autopilot-followup` issues via `gh` and exits 1 when
   there are more than 10. Autopilot runs it before it opens a new phase.
 
@@ -78,6 +83,7 @@ the backlog down before the arc adds new systems, and make the cap above enforce
   (`tools/net_harness.sh`).
 - [ ] Suite: a carrying peer that reports a speed above the clamp is pulled back by the host.
 - [ ] Suite: a harvested stack carries its quality grade through to the inventory and a save.
+- [ ] The playtest bot passes 5 CI runs in a row on an unchanged commit, with no step failure.
 - [ ] Suite green on both boot paths, harness green.
 
 ---
@@ -140,7 +146,10 @@ pure-Python, deterministic, and hand-polished later by the private repo over the
 - Skill icons at `assets/icons/skills/<Skill>.png.raw` for all 22 skills. Each one combines a
   category frame (combat, crafting, magic, exploration, social, survival) with a symbol for the
   skill (sword, bow, saw, anvil, rune, skinning knife…). The frames come from the fabric's
-  category enum, so a new category without a frame fails `--check`.
+  category enum, so a new category without a frame fails `--check`. Today each skill file
+  repeats its own copy of that enum, and 21 of the 22 copies lack `survival` (only
+  `survival.js` has it). Define the enum once in `fabric/gameplay/skills/` and have every skill
+  read it first.
 - HUD icons for HP and each Phase 129 status effect. Attribute icons come later, in Phase 179,
   once Phase 177 has defined the attribute ids.
 - The dock draws the icon with the shortcut letter as a small corner badge. The tooltip keeps the

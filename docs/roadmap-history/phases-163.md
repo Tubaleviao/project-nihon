@@ -39,7 +39,7 @@ records the report before and after each fix, so every change is justified by a 
   at 64 and no pattern regressed; `cross` at 64 meets the byte, watcher and lag budgets but its host
   tick p95 is 16.9 ms against 16. The spikes are single-chunk attaches (`voxel_build.build_chunk`,
   ~16 ms of mesh and trimesh collision on the host's main thread), not crowd work: carried to
-  [Phase 172](../../ROADMAP.md#phase-172--host-chunk-attach-off-the-main-thread).*
+  [Phase 172](phases-172.md#phase-172--host-chunk-attach-off-the-main-thread).*
 - [x] CI `stress` job: host tick p95 at 64 bots in `cluster` is at most half the baseline's, and
   bytes down per peer in `cluster` at 64 bots is at most 60% of the baseline's. *(8.66 ms against
   17.63 → 8.82 allowed; 51.0 kbit/s against 130.2 → 78.1 allowed.)*
