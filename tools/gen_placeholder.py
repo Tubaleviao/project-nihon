@@ -25,7 +25,7 @@ the rig changes nothing in a public clone.
 Item icons and models are not written here: ``tools/gen_item_assets.py`` owns item art. The GraywolfPack creature
 textures (``textures/creatures/GraywolfPack*.png.raw``) are the checkerboard (base) and
 two black masks (``_channel``, ``_color_mask``), like the player's. The nine roster creatures
-(``CREATURE_SIZES``) get the same three sheets at 128x128 or 64x64; so do the thirteen item meshes
+(``CREATURE_SIZES``) get the same three sheets at 128x128 or 64x64; so do the twenty-seven item meshes
 (``ITEM_TEXTURE_SIZES``, ``textures/items/``).
 
 A bare ``<out>`` writes the sheet its default path gets (black for the mask
@@ -60,11 +60,14 @@ CREATURE_SIZES = {
     "RiftWarden": 128, "GlimmerFox": 64, "RidgeHawk": 64, "VeilStalker": 64,
 }
 CREATURE_DIR = ROOT / "assets/textures/creatures"
-# Item meshes' textures: name -> size (the swords', knife's and saw's sheets are 32x32, the rest 64x64).
+# Item meshes' textures: name -> size (small items are 32x32, the rest 64x64).
 ITEM_TEXTURE_SIZES = {
     "CarpenterAxe": 64, "FerritePick": 64, "FerriteShortSword": 32, "FerriteShield": 64, "FerriteHelmet": 64,
     "VeilsteelLongsword": 64, "VeilsteelPick": 64, "VoiditeEdge": 32, "AethermiteBow": 64,
     "SkinningKnife": 32, "BoneSaw": 32, "VeilsteelChestplate": 64, "DuskfiberCloak": 64,
+    "AethermiteDust": 64, "AshiteBlock": 64, "FieldRations": 64, "LumenfiteOrb": 64, "ThornwoodPlank": 64,
+    "Hearth": 64, "Waystone": 64, "AethermiteShard": 32, "EnchantedAethermiteShard": 32, "AlchemyPotion": 32,
+    "FerriteIngot": 32, "VeilsteelIngot": 32, "RefinedVoiditeShard": 32, "VoidRuneTablet": 32,
 }
 ITEM_TEXTURE_DIR = ROOT / "assets/textures/items"
 
