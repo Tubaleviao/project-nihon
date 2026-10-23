@@ -2,6 +2,7 @@ extends RefCounted
 ## Chunk build, input gathering and unload, moved out of `VoxelSlice` verbatim (Phase 154).
 ## `s` is the owning slice; every moved method keeps a forwarder on the slice.
 
+const TickProbe := preload("res://src/core/tick_probe.gd")
 var s: Node
 
 func _init(slice: Node) -> void:
@@ -55,8 +56,9 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 	# read for "a vein showing through the ground". Collision built from this
 	# surface can therefore never inherit one.
 	var built: Dictionary = arrays
-	if built.is_empty() and not s.attach_geometry:
-		built = s.no_geometry_arrays()   # #437: nothing below reads the arrays on a server
+	TickProbe.begin("chunk_attach_arrays")
+	if built.is_empty() and not s.attach_geometry and not s.attach_collision:
+		built = s.no_geometry_arrays()   # #437: nothing below reads the arrays on a rig that wants neither
 	elif built.is_empty():
 		# Only the SYNCHRONOUS path reaches this now: a worker result that carried nothing
 		# was refused above rather than quietly rebuilt here (Phase 42 review).
@@ -78,7 +80,9 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 	else:
 		root.set_meta("centre", Vector3(float(chunk_pos.x * s.CHUNK_SIZE) * s.TILE_SIZE + half, 0.0,
 			float(chunk_pos.y * s.CHUNK_SIZE) * s.TILE_SIZE + half))
+	TickProbe.end()
 	var chunk_mat = null
+	TickProbe.begin("chunk_attach_mesh")
 	if s.attach_geometry:
 		var surface = s._mesh_from_arrays(built)
 		var mesh_inst := MeshInstance3D.new()
@@ -123,20 +127,21 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 	# not (ceilings, overhangs, a span of solid material). A CharacterBody3D does
 	# not stand ON a concave shape directly — it collides WITH the static body
 	# carrying it, which is the supported direction. ---
-	if not s.attach_geometry:
+	TickProbe.end()
+	if not s.attach_collision:
 		return true
+	TickProbe.begin("chunk_attach_collision")
 	var static_body := StaticBody3D.new()
 	static_body.collision_layer = s.TERRAIN_COLLISION_LAYER
 	static_body.collision_mask = 0
 	var col_shape := CollisionShape3D.new()
-	var trimesh := ConcavePolygonShape3D.new()
-	trimesh.set_faces(built["collision"])
-	# Both sides of a wall collide, so a body inside a tunnel is held by the roof
-	# from below as well as by the floor from above.
-	trimesh.backface_collision = true
-	col_shape.shape = trimesh
+	# Phase 172 — a worker build hands the shape over already made; only the synchronous path builds it
+	# here. Both sides of a wall collide, so a body inside a tunnel is held by the roof from below too.
+	var prepared = built.get("shape")
+	col_shape.shape = prepared if prepared is ConcavePolygonShape3D else s.VoxelMesh.collision_shape(built["collision"])
 	static_body.add_child(col_shape)
 	root.add_child(static_body)
+	TickProbe.end()
 	return true
 
 ## Resolve every column a chunk build must READ into a plain table the pure builder can

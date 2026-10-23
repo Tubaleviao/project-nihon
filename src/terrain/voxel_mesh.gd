@@ -66,6 +66,24 @@ static func build_chunk_arrays(chunk_pos: Vector2i, heightmap: Array, resolved: 
 			return native
 	return build_chunk_arrays_gd(chunk_pos, heightmap, resolved, local)
 
+## Phase 172 — the worker's half of a streamed build: the arrays, plus the collision shape made here
+## so the main thread only attaches it. `keep_render` false (a headless host) drops the mesh and
+## deposit arrays, leaving `collision`, the shape and the `local` flag. A shape is a Resource and
+## `set_faces` only fills it, so it is built on the worker; it is unused until a body holds it.
+static func build_worker_arrays(chunk_pos: Vector2i, heightmap: Array, resolved: Dictionary, keep_render: bool) -> Dictionary:
+	var built := build_chunk_arrays(chunk_pos, heightmap, resolved, true)
+	built["shape"] = collision_shape(built["collision"])
+	if not keep_render:
+		return { "local": bool(built.get("local", true)), "collision": built["collision"], "shape": built["shape"] }
+	return built
+
+## The chunk's trimesh: both sides collide, so a body inside a tunnel is held by the roof as well.
+static func collision_shape(faces: PackedVector3Array) -> ConcavePolygonShape3D:
+	var trimesh := ConcavePolygonShape3D.new()
+	trimesh.set_faces(faces)
+	trimesh.backface_collision = true
+	return trimesh
+
 ## What the native `build_chunk_arrays` cannot read itself. Not memoised: the circumference follows the
 ## world configuration, and the dictionary is two entries.
 static func native_arrays_cfg() -> Dictionary:

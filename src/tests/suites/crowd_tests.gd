@@ -1,6 +1,7 @@
 extends "res://src/tests/test_support.gd"
 ## Phase 163 — crowd performance: each fix the Phase 162 report asked for, with the cost it removed
 ## pinned on a fixed input (relays per tick, AOI cells probed per query, window refreshes per frame).
+const VoxelMesh := preload("res://src/terrain/voxel_mesh.gd")
 
 const RelayBatch := preload("res://src/networking/relay_batch.gd")
 const StressRules := preload("res://src/tests/stress_rules.gd")
@@ -22,8 +23,10 @@ func register() -> void:
 	_run_test("crowd: the stress report fails a series below the baseline", _test_crowd_baseline_gate)
 	_run_test("crowd: the faster region lookup names the same regions", _test_crowd_regions_for_chunks_same)
 	_run_test("crowd: a move in a crowd that wears nothing evaluates no equipment pair", _test_crowd_equipment_pairs_skipped)
-	_run_test("crowd: a dedicated server chunk keeps its data and attaches no geometry", _test_crowd_server_chunk_no_geometry)
+	_run_test("crowd: a dedicated server chunk keeps its data and attaches collision, no render mesh", _test_crowd_server_chunk_no_geometry)
 	_run_test("crowd: a dedicated server's chunk worker builds only the heightmap", _test_crowd_server_worker_skips_arrays)
+	_run_test("crowd: a headless host's worker builds collision and no render arrays", _test_crowd_headless_worker_builds_collision_only)
+	_run_test("crowd: worker-built collision faces equal the main-thread ones", _test_crowd_worker_collision_equals_main_thread)
 
 func _test_crowd_relay_due_rule() -> void:
 	var near := RelayBatch.NEAR_RADIUS - 1.0
@@ -370,9 +373,64 @@ func _test_crowd_server_chunk_no_geometry() -> void:
 	add_child(server)
 	server.attach_geometry = false
 	server.build_chunk(Vector2i(0, 0), flat)
-	assert_eq(_chunk_children(server), [], "a dedicated server attaches no mesh and no collision body")
+	var kinds: Array = _chunk_children(server).map(func(c): return c.get_class())
+	assert_eq(kinds, ["StaticBody3D"], "a dedicated server attaches collision and no render mesh (Phase 172)")
+	server.free()
+	var neither := VoxelSlice.new()
+	add_child(neither)
+	neither.attach_geometry = false
+	neither.attach_collision = false
+	neither.build_chunk(Vector2i(0, 0), flat)
+	assert_eq(_chunk_children(neither), [], "a rig that wants neither attaches nothing")
+	neither.free()
+	server = VoxelSlice.new()
+	add_child(server)
+	server.attach_geometry = false
+	server.build_chunk(Vector2i(0, 0), flat)
 	assert_eq(server.get_voxel_height_at(Vector2(16.0, 16.0)), 2.0, "the chunk's height data is still there")
 	server.free()
+
+func _test_crowd_headless_worker_builds_collision_only() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var voxel: VoxelSlice = rig["voxel"]
+	voxel.attach_geometry = false
+	assert_false(cm.skips_geometry(), "collision still needs the worker build")
+	assert_false(cm.keeps_render(), "but no render arrays")
+	cm.load_chunk(Vector2i(2, 3))
+	var results: Array = []
+	for entry in cm._builds.values():
+		results.append(entry["result"])
+	_wait_for_builds(cm)
+	var built: Dictionary = results[0][0]
+	assert_false(built.has("vertices"), "the worker dropped the mesh arrays")
+	assert_true(built["shape"] is ConcavePolygonShape3D, "the worker made the shape")
+	var root: Node = voxel._chunks["2,3"]
+	assert_eq(root.get_children().filter(func(c): return c is MeshInstance3D), [], "no render mesh on the host")
+	var bodies: Array = root.get_children().filter(func(c): return c is StaticBody3D)
+	assert_eq(bodies.size(), 1, "one collision body")
+	assert_true(bodies[0].get_child(0).shape == built["shape"], "it holds the worker's shape")
+	cm.free()
+	voxel.free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+func _test_crowd_worker_collision_equals_main_thread() -> void:
+	var flat: Array = []
+	flat.resize(64 * 64)
+	for i in flat.size():
+		flat[i] = 2.0 + float((i * 7) % 5) * 0.5
+	for chunk in [Vector2i(0, 0), Vector2i(3, -2)]:
+		var main := VoxelSlice.new()
+		add_child(main)
+		var resolved: Dictionary = main.collect_build_runs(chunk, flat)
+		var worker: Dictionary = VoxelMesh.build_worker_arrays(chunk, flat, resolved, false)
+		var reference: Dictionary = VoxelSlice.build_chunk_arrays(chunk, flat, resolved, true)
+		assert_true(worker["collision"] == reference["collision"], "worker collision faces equal the main-thread ones at %s" % chunk)
+		assert_true((worker["shape"] as ConcavePolygonShape3D).get_faces() == (reference["collision"] as PackedVector3Array),
+			"the prepared shape holds exactly those faces at %s" % chunk)
+		assert_true((worker["shape"] as ConcavePolygonShape3D).backface_collision, "both sides collide")
+		main.free()
 
 func _test_crowd_server_worker_skips_arrays() -> void:
 	var rig := _make_chunk_build_rig()
@@ -380,7 +438,8 @@ func _test_crowd_server_worker_skips_arrays() -> void:
 	var voxel: VoxelSlice = rig["voxel"]
 	var terrain: TerrainSlice = rig["terrain"]
 	voxel.attach_geometry = false
-	assert_true(cm.skips_geometry(), "the manager sees a server voxel slice")
+	voxel.attach_collision = false
+	assert_true(cm.skips_geometry(), "the manager sees a voxel slice that wants no geometry")
 	cm.load_chunk(Vector2i(2, 3))
 	var results: Array = []
 	for entry in cm._builds.values():

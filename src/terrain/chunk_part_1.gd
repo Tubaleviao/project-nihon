@@ -3,6 +3,7 @@ extends RefCounted
 
 ## A worker task must not hold a Node, so the lambda below names the script constant, not `sl`.
 const VoxelBuilder := preload("res://src/terrain/voxel_slice.gd")
+const VoxelMesh := preload("res://src/terrain/voxel_mesh.gd")
 const TerrainSliceScript := preload("res://src/terrain/terrain_slice.gd")
 const SeamWrapScript := preload("res://src/terrain/seam_wrap.gd")
 
@@ -183,14 +184,15 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 	# marker instead of resolving and building arrays `build_chunk` would discard.
 	var geometry: bool = not sl.skips_geometry()
 	var gathered: Dictionary = sl.voxel_slice.gather_build_input(chunk_pos, heightmap) if geometry else {}
+	var keep_render: bool = sl.keeps_render()
 	var revision: int = int(sl.voxel_slice.chunk_revision(chunk_pos))
 	var result: Array = [null]
 	var job := func() -> void:
 		if not geometry:
 			result[0] = VoxelBuilder.no_geometry_arrays()
 			return
-		result[0] = VoxelBuilder.build_chunk_arrays(chunk_pos, heightmap,
-			VoxelBuilder.build_runs(chunk_pos, heightmap, gathered), true)
+		result[0] = VoxelMesh.build_worker_arrays(chunk_pos, heightmap,
+			VoxelBuilder.build_runs(chunk_pos, heightmap, gathered), keep_render)
 	var task_id = WorkerThreadPool.add_task(job, false, "chunk build %s" % key)
 	sl._builds[task_id] = {
 		"chunk":     chunk_pos,
