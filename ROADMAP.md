@@ -37,7 +37,7 @@ budget honest. Then it gives the game icons, attributes, a character sheet and c
 |---|---|---|---|
 | 173 | Follow-up debt burn | Planned | below |
 | 174 | An honest playtest frame budget | Planned | below |
-| 175 | UI icons: dock, windows, skills and attributes from one generator | Planned | below |
+| 175 | UI icons: dock, windows, skills and status from one generator | Planned | below |
 | 176 | An icon for everything a player can hold | Planned | below |
 | 177 | Attributes in the fabric: strength, vitality, resistance, agility, intelligence, perception | Planned | below |
 | 178 | Attributes at runtime: host-owned, persisted, feeding the derived stats | Planned | below |
@@ -61,17 +61,21 @@ the backlog down before the arc adds new systems, and make the cap above enforce
 - Triage every open `autopilot-followup` issue. Fix each item that is a correctness or
   trust-boundary bug. Fold each item that belongs to a phase of this arc into that phase's
   deliverables, and record the issue number there. Close the rest with a one-line reason.
-- Fix the standalone issues: #426 (host-side speed clamp for carrying peers, a trust-boundary
-  gap), #429 (the `chop_in_reach` harness flake) and #427 (the harvest quality grade never reaches
+- Fix the standalone issues: #426 first (host-side speed clamp for carrying peers, a
+  trust-boundary gap that the repo rule says should never have been deferred), #429 (the `chop_in_reach` harness flake) and #427 (the harvest quality grade never reaches
   the item stack; Phase 178 builds on it).
 - `tools/check_followups.sh`: counts open `autopilot-followup` issues via `gh` and exits 1 when
   there are more than 10. Autopilot runs it before it opens a new phase.
 
 **Acceptance criteria:**
 - [ ] At most 5 `autopilot-followup` issues are open when the phase closes (`gh issue list
-  --label autopilot-followup --state open`).
-- [ ] #426, #427 and #429 are closed by merged PRs. The harness runs `chop_in_reach` 20 times in a
-  row with no failure in CI.
+  --label autopilot-followup --state open`), not counting follow-ups filed by this phase's own
+  reviews, which go under the cap of 10 like any later phase.
+- [ ] #426, #427 and #429 are closed by merged PRs.
+- [ ] #429: the root cause (host `not_consumed` / client `no_in_reach_target`) is named in the fix
+  PR, a suite or harness test reproduces that ordering deterministically, and the harness runs
+  `chop_in_reach` 20 times in a row with no failure both in CI and in a local loop
+  (`tools/net_harness.sh`).
 - [ ] Suite: a carrying peer that reports a speed above the clamp is pulled back by the host.
 - [ ] Suite: a harvested stack carries its quality grade through to the inventory and a save.
 - [ ] Suite green on both boot paths, harness green.
@@ -103,16 +107,20 @@ after Phase 169 moved it native. Find out what the number measures, then gate on
 - [ ] `playtest/report.json` carries `adapter`, `native_builder` and per-step `process_ms`,
   `physics_ms` and `render_ms` percentiles.
 - [ ] CI playtest: the native builder is loaded (`native_builder: true`).
-- [ ] CI playtest: `walk`, `craft` and `fight` p95 process time ≤ 16 ms. The bot fails the run
-  above budget, and a fixture proves it (an injected 40 ms step fails).
+- [ ] CI playtest: `walk`, `craft` and `fight` p95 process time is within the budget table. The
+  gate takes the median of 3 runs and allows 25% headroom over the budget, so a noisy shared
+  runner does not fail unrelated PRs. The bot fails the run above that, and a fixture proves it
+  (an injected 40 ms step fails).
+- [ ] The budget table's target is p95 process time ≤ 16 ms. If a step is over it when the phase
+  closes, a follow-up phase that names the top cost is in the index.
 - [ ] Suite green on both boot paths.
 
 ---
 
-## Phase 175 — UI icons: dock, windows, skills and attributes from one generator
+## Phase 175 — UI icons: dock, windows, skills and status from one generator
 
 **Goal:** the window dock shows one letter per button (I, C, K, H, T…), and skills have no
-pictures. Draw each window, skill and attribute as a small, readable icon: a bag for the
+pictures. Draw each window, skill and status effect as a small, readable icon: a bag for the
 inventory, a globe for the map, a hammer and anvil for crafting. Use the Phase 152 pattern:
 pure-Python, deterministic, and hand-polished later by the private repo over the same keys.
 
@@ -130,10 +138,11 @@ pure-Python, deterministic, and hand-polished later by the private repo over the
   technology (gear and flask), trade (two hands swapping), market (coin stack), map (globe),
   proposals (scroll and quill), settlement (house with a hearth), controls (keyboard).
 - Skill icons at `assets/icons/skills/<Skill>.png.raw` for all 22 skills. Each one combines a
-  category frame (combat, crafting, magic, exploration, social) with a symbol for the skill
-  (sword, bow, saw, anvil, rune…).
-- Attribute icons at `assets/icons/attributes/<Attribute>.png.raw` for the Phase 177 set, plus HUD
-  icons for HP and each Phase 129 status effect.
+  category frame (combat, crafting, magic, exploration, social, survival) with a symbol for the
+  skill (sword, bow, saw, anvil, rune, skinning knife…). The frames come from the fabric's
+  category enum, so a new category without a frame fails `--check`.
+- HUD icons for HP and each Phase 129 status effect. Attribute icons come later, in Phase 179,
+  once Phase 177 has defined the attribute ids.
 - The dock draws the icon with the shortcut letter as a small corner badge. The tooltip keeps the
   translated name. The skills window and the HUD status row use their icons.
 - `assets/manifest.json` and `assets/README.md` list the new keys. The private repo gets a
@@ -199,25 +208,33 @@ character creation and grow slowly from use, in keeping with the sandbox constit
   - **Vitality**: max HP, HP regeneration, rest regeneration (Phase 158 gestures).
   - **Resistance**: damage reduction, status-effect chance and duration (Phase 129), knockdown
     and stagger resistance.
-  - **Agility**: movement speed (small), attack interval, chance to avoid a knockdown.
+  - **Agility**: movement speed (small), attack interval, dodge chance against a melee hit.
+    Knockdown and stagger belong to Resistance alone.
   - **Intelligence**: research point gain (Phase 124), the chance of a quality grade on a craft,
     XP rate for magic skills.
   - **Perception**: gather yield, the harvest quality grade (Phase 161), the radius at which
     creatures and deposits show on the minimap.
 - A derivation table: each derived stat as a base plus a per-point slope with a clamp, so a
-  20-point gap is noticeable but never a one-shot. The table is data, not code.
+  20-point gap is noticeable but never a one-shot. The table is data, not code. At base 10 in
+  every attribute, each derived stat equals today's constant (`BASE_CARRY_CAPACITY_KG` 40 kg,
+  `PlayerRules.MAX_HP` 100, and so on), so existing characters do not change on migration.
 - A growth table: skill XP from each skill category feeds weighted attributes (combat → Strength
-  and Agility, crafting → Strength and Intelligence, exploration → Perception and Agility…) with
-  diminishing returns and a total-points cap. Growth comes from use, not from spending points.
+  and Agility, crafting → Strength and Intelligence, exploration → Perception and Agility,
+  survival → Vitality and Perception, magic → Intelligence and Resistance, social → Perception)
+  with diminishing returns and a total-points cap. Every category in the skill enum has a row.
+  Growth comes from use, not from spending points.
 - `PlayerCharacter` gains `attributes` (json) and drops the fixed `carryCapacityKg` default in
-  favour of the derivation.
+  favour of the derivation. `HarvestRules` in `fabric/gameplay/harvest.js` stops reading
+  `defaults(PlayerCharacter).carryCapacityKg` and takes its base from the derivation at base 10.
 - `tools/check_attributes.js` in the style of `check_combat.js`: bounds are consistent, every
-  derived stat it names exists, and the extremes (all 5s, all 30s) stay inside each stat's clamp.
+  derived stat it names exists, the extremes (all 5s, all 30s) stay inside each stat's clamp,
+  base 10 reproduces today's constants, and every skill category has a growth row.
 - Display names and descriptions are UI catalog keys (`attr.<id>.name`, `attr.<id>.desc`) in
   `en` and `pt_BR`.
 
 **Acceptance criteria:**
-- [ ] `npm run validate`, `npm run check-drift` and `node tools/check_attributes.js` pass.
+- [ ] `npm run validate`, `npm run check-drift`, `node tools/check_attributes.js` and the
+  harvest check pass.
 - [ ] Generated `GameData` exposes the attribute set, the derivation table and the growth table.
 - [ ] Every attribute has `en` and `pt_BR` catalog entries, and the i18n key check passes.
 
@@ -246,7 +263,8 @@ the fabric table, persists them, and grows them from skill XP. The client only d
 **Acceptance criteria:**
 - [ ] Suite: each derived stat equals the fabric formula at the minimum, base and maximum.
 - [ ] Suite: growth from XP follows the table, has diminishing returns and stops at the cap.
-- [ ] Suite: a pre-178 save loads with base attributes and the same carry capacity as before.
+- [ ] Suite: a pre-178 save loads with base attributes and the same carry capacity and max HP as
+  before.
 - [ ] Harness: `attributes_synced` reaches the owner over the socket. A client payload carrying
   attribute values is refused and counted.
 - [ ] Suite green on both boot paths, harness green.
@@ -269,6 +287,8 @@ attributes with icons and tooltips, and the derived stats they produce.
 - Equipment slots laid out around the doll by body position (head, chest, hands, main hand, off
   hand…), each with the item icon and its durability. Drag and drop equips and unequips through
   the existing bus intents.
+- Attribute icons at `assets/icons/attributes/<Attribute>.png.raw` for the Phase 177 set, drawn
+  by `tools/gen_ui_icons.py` (Phase 175) and keyed from `GameData`.
 - An attribute panel: icon, value and a growth bar toward the next point. The tooltip lists what
   the attribute feeds and by how much.
 - A derived-stat panel: HP, regeneration, carry, damage, reduction, speed, research gain and yield.
@@ -279,6 +299,8 @@ attributes with icons and tooltips, and the derived stats they produce.
 **Acceptance criteria:**
 - [ ] Suite: the sheet's projection (`character_sheet_rows()`) lists every equipment slot, all six
   attributes and every derived stat, with values equal to the host's synced numbers.
+- [ ] Every Phase 177 attribute has an icon at its key, no orphan exists, and
+  `python3 tools/gen_ui_icons.py --check` passes.
 - [ ] Suite: dropping an item on a slot emits the same equip intent as the context menu.
 - [ ] Suite: building the sheet hard-codes no user-facing literal (audit test), and both locales
   render.
@@ -299,12 +321,16 @@ a handle. Model the creation choices so the runtime screen in Phase 181 is gener
 
 **Deliverables:**
 - `fabric/gameplay/characters/creation.js` (new): a `CharacterCreation` entity with:
-  - name rules: 3–16 characters, Unicode letters plus a single inner space, hyphen or apostrophe,
-    unique per server (case- and accent-folded), and a reserved list;
+  - name rules: 3–16 characters, Unicode letters from a single script (no Latin mixed with
+    Cyrillic or Greek) plus a single inner space, hyphen or apostrophe, unique per server after
+    case folding, accent folding and a confusables skeleton (Unicode TR39), so "Аlice" with a
+    Cyrillic А collides with "Alice", and a reserved list;
   - appearance options drawn from the existing recipe fields (`appearances.js`): skeleton, body,
     head, eyes, hair, beard, the skin, hair and eye palette ranges, and the proportion bounds (§8);
   - starting attributes: base 10 each and 12 points to distribute within the creation range
-    (Phase 177);
+    (Phase 177). Lowering an attribute below 10 returns one point per step, so the rule is
+    `sum(attr - 10) <= 12` with every value in 5–18. The fabric check and the Phase 181 host
+    validator both read this one rule;
   - a starting kit per server rule (none by default; the sandbox gives no class kits).
 - Public placeholders for at least three heads, five hair styles and three beards, at the same
   keys the private repo will fill (placeholder rule; `gen_placeholder_glb.py`).
@@ -315,7 +341,9 @@ a handle. Model the creation choices so the runtime screen in Phase 181 is gener
 - [ ] `npm run validate`, `npm run check-drift` and `node tools/check_creation.js` pass.
 - [ ] Suite: every appearance option resolves through `AssetOverlay` in the public build.
 - [ ] Suite: the name rule accepts and rejects a fixture list, including accents, emoji, a
-  reserved word and a case-folded duplicate.
+  reserved word, a case-folded duplicate and a mixed-script or confusable duplicate.
+- [ ] Suite: the point rule accepts a fixture that lowers one attribute to 5 and spends the freed
+  points, and refuses one that spends 13.
 
 ---
 
@@ -338,7 +366,9 @@ validates everything and records it.
   and uniqueness, every option and the point budget, creates the record, then places the spawn.
   It refuses with a keyed reason that the client renders in its locale. Rate-limited.
 - Existing players without a creation record are offered the screen once. Their handle and
-  progress are kept.
+  progress are kept. A player who skips it keeps base attributes, the default appearance and their
+  handle as display name. The host records the skip, and the screen stays reachable from the
+  character sheet until they create a character.
 - The display name shows on the character sheet, in chat and settlement lists, and on a nameplate
   above other players. The friend code stays the handle.
 - The appearance recipe syncs to peers in the area of interest, so everyone sees each other's
@@ -350,7 +380,8 @@ validates everything and records it.
   palette index, proportion bound, overspent points) with its own key.
 - [ ] Harness: `create_character` over the socket. A duplicate name from a second client is
   refused, and the second client sees the first one's appearance and nameplate.
-- [ ] Suite: a pre-181 save boots, offers creation once and keeps inventory and skills.
+- [ ] Suite: a pre-181 save boots, offers creation once and keeps inventory and skills. A skip is
+  recorded, is not offered again on the next join, and shows the handle on the nameplate.
 - [ ] Playtest bot: a `create` step completes before `walk` and saves a screenshot of the screen.
 - [ ] Every new string is in both catalogs, and the i18n key check passes.
 - [ ] Suite green on both boot paths, harness green.
