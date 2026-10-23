@@ -1330,6 +1330,13 @@ func restream() -> void:
 	_last_centers = []
 	_catchup = true   # Phase 141 — the whole window rebuilds: burst it (see `catchup_builds_in_flight`)
 
+## Phase 182 — `/regen world`: drop the generation records not yet written (they describe the old
+## world's frontier) and every deferred one.
+func discard_pending_records() -> void:
+	_pending_records.clear()
+	_deferred_records.clear()
+	_deferred_since.clear()
+
 ## True when `chunk_pos` is loaded and its ground has been built.
 func is_chunk_built(chunk_pos: Vector2i) -> bool:
 	return _built.has(_chunk_key(chunk_pos))

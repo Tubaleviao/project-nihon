@@ -24,7 +24,7 @@ const MAX_GIVE_QUANTITY := 10000
 
 ## Commands any player may run / only admins may run. The one place the names are listed.
 const PLAYER_COMMANDS := ["help", "players"]
-const ADMIN_COMMANDS := ["say", "tp", "bring", "give", "kill", "weather", "time", "speed", "fly", "heal"]
+const ADMIN_COMMANDS := ["say", "tp", "bring", "give", "kill", "weather", "time", "speed", "fly", "heal", "regen"]
 
 ## Catalog key of the one line of usage per command, for `/help` (see `locale/ui.csv`).
 const USAGE := {
@@ -42,6 +42,7 @@ const USAGE := {
 	"speed":   "chat.usage.speed",
 	"fly":     "chat.usage.fly",
 	"heal":    "chat.usage.heal",
+	"regen":   "chat.usage.regen",
 }
 
 ## True when `text` is a command this module answers.

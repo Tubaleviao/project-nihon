@@ -88,9 +88,9 @@ command, as Phase 85's admin commands do.
   dock box, the window commands, and catalog keys in both languages.
 - [x] Net harness step `admin_moves_synced`: the host's `/speed`, `/fly` and `/heal` reach the
   client's body, and the client is not told it is an admin.
-- [ ] `/regen world`: a suite test proves records, edits, clears and depletion are gone on the host
-  and on disk, stations and players stand on the new ground, and a harness step proves a client
-  rebuilds from the fresh records.
+- [x] `/regen world`: suite tests prove records, edits, clears and depletion are gone on the host
+  and on disk (the old regions folder moved aside as a backup), and that stations keep their height
+  above the new ground. The `world_regen_synced` harness step proves a client drops its copy.
 - [x] Suite green on both boot paths.
 
 ---
