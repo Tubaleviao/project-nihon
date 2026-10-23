@@ -89,6 +89,7 @@ func register() -> void:
 	_run_test("net: harness log line round-trips",                _test_net_harness_line_round_trip)
 	_run_test("net: harness verdict treats refusal as a pass",    _test_net_harness_verdict)
 	_run_test("net: harness targets are deterministic",           _test_net_harness_target_selection)
+	_run_test("net: #429 harness targets arriving late make the step wait, not fail", _test_net_harness_targets_arrive_late)
 	_run_test("net: harness awaits are not bare",                 _test_net_harness_bare_await_audit)
 
 func _test_wire_chunk_local() -> void:
@@ -2124,6 +2125,23 @@ func _test_net_harness_target_selection() -> void:
 		"only the far tree is beyond the refusal radius")
 	assert_eq(NetHarness.beyond_reach_target(trees, origin, 1000.0), "",
 		"and an empty selection is reported as empty, never as the nearest tree")
+
+## #429 — the ordering that flaked `chop_in_reach`: one side's origin-chunk trees land after the step starts
+## (the client from the snapshot, the host when its chunk build attaches). A partial table is not ready, so
+## the step waits instead of failing `no_in_reach_target` / `not_consumed`; once the set is complete both
+## orders of arrival name the same targets.
+func _test_net_harness_targets_arrive_late() -> void:
+	var o := NetHarness.RENDEZVOUS
+	var t1 := { "tree_id": "tree_1", "position": o + Vector3(2, 0, 0) }
+	var t2 := { "tree_id": "tree_2", "position": o + Vector3(0, 0, 3) }
+	var t3 := { "tree_id": "tree_3", "position": o + Vector3(4, 0, 4) }
+	var n := NetHarness.TARGETS_NEEDED
+	assert_false(NetHarness.targets_ready([], o, NetHarness.TARGET_REACH, n), "no trees yet: the step must wait")
+	assert_false(NetHarness.targets_ready([t3, t1], o, NetHarness.TARGET_REACH, n), "a partial table: the step must wait")
+	var early := NetHarness.in_reach_targets([t3, t1, t2], o, NetHarness.TARGET_REACH, n)
+	var late := NetHarness.in_reach_targets([t2, t1, t3], o, NetHarness.TARGET_REACH, n)
+	assert_true(NetHarness.targets_ready([t3, t1, t2], o, NetHarness.TARGET_REACH, n), "the full set is ready")
+	assert_eq(early, late, "arrival order does not change the targets both sides name")
 
 ## Phase 39 review pass — the pump's own audit, the ONE class the synchronous suite could
 ## not otherwise reach, because it has no frames to give and so cannot host the pump.
