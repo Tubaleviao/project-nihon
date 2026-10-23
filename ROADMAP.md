@@ -15,263 +15,377 @@ judgement, a visual inspection) is not a criterion: it is filed as a GitHub issu
 proceeds without it, so unpublished human work never parks the roadmap. The phase records the
 issue number where the criterion used to be.
 
+**Follow-up debt cap.** No new feature phase starts while more than 10 `autopilot-followup`
+issues are open. Burn them down first (fix, fold into the next phase, or close with a reason).
+
 ---
 
 ## Phase index
 
+Phases 1–172 are done. Their specs and acceptance criteria are archived in
+[docs/roadmap-history/](docs/roadmap-history/README.md).
+
+### Arc: make it look and feel like an RPG (Phases 173–181)
+
+After 172 phases the engine is strong: a deterministic planet, host-authoritative multiplayer,
+persistence, crafting, combat, taming and settlements. But it does not yet look or play like an
+RPG. Items and windows show letters, the character has no attributes, and a player never creates a
+character: they spawn as a handle. This arc pays down the follow-up debt and makes the frame
+budget honest. Then it gives the game icons, attributes, a character sheet and character creation.
+
 | Phase | Title | Status | Spec |
 |---|---|---|---|
-| 1 | Constitution fabric | Done | [history](docs/roadmap-history/phases-01-19.md) |
-| 2 | Materials and world primitives | Done | [history](docs/roadmap-history/phases-01-19.md) |
-| 3 | Skills and professions | Done | [history](docs/roadmap-history/phases-01-19.md) |
-| 4 | Items, recipes, and technology tree | Done | [history](docs/roadmap-history/phases-01-19.md) |
-| 5 | Creatures and combat systems | Done | [history](docs/roadmap-history/phases-01-19.md) |
-| 6 | `generator-bible` integration | Done | [history](docs/roadmap-history/phases-01-19.md) |
-| 7 | Character system specification | Done | [history](docs/roadmap-history/phases-01-19.md) |
-| 8 | `generator-godot` integration | Done | [history](docs/roadmap-history/phases-01-19.md) |
-| 9 | Public wiki | Done | [history](docs/roadmap-history/phases-01-19.md) |
-| 10 | Vertical slices: playable game loop | Done | [history](docs/roadmap-history/phases-01-19.md) |
-| 11 | Crafting slice | Done | [history](docs/roadmap-history/phases-01-19.md) |
-| 12 | Voxel mining and building | Done | [history](docs/roadmap-history/phases-01-19.md) |
-| 13 | Technology unlock gates | Done | [history](docs/roadmap-history/phases-01-19.md) |
-| 14 | Player UI: inventory, technology tree, crafting | Done | [history](docs/roadmap-history/phases-01-19.md) |
-| 15 | Creature AI and behavior | Done | [history](docs/roadmap-history/phases-01-19.md) |
-| 16 | Station-gated crafting and tool durability | Done | [history](docs/roadmap-history/phases-01-19.md) |
-| 17 | Chunk streaming and world expansion | Done | [history](docs/roadmap-history/phases-01-19.md) |
-| 18 | Multiplayer world sync (core) | Done | [history](docs/roadmap-history/phases-01-19.md) |
-| 19 | Multiplayer chaos resilience | Done | [history](docs/roadmap-history/phases-01-19.md) |
-| 20 | Skeleton rig and animation | Done | [history](docs/roadmap-history/phases-20-32.md) |
-| 21 | Asset separation and public placeholders | Done | [history](docs/roadmap-history/phases-20-32.md) |
-| 22 | Material and palette pipeline | Done | [history](docs/roadmap-history/phases-20-32.md) |
-| 23 | LOD and composition simplification | Done | [history](docs/roadmap-history/phases-20-32.md) |
-| 24 | Social systems and player economy | Done | [history](docs/roadmap-history/phases-20-32.md) |
-| 25 | Tool and equipment repair | Done | [history](docs/roadmap-history/phases-20-32.md) |
-| 26 | Client-side rendering instancing | Done | [history](docs/roadmap-history/phases-20-32.md) |
-| 27 | Headless data-oriented server | Done | [history](docs/roadmap-history/phases-20-32.md) |
-| 28 | Spatial hashing | Done | [history](docs/roadmap-history/phases-20-32.md) |
-| 29 | Interest management (area of interest) | Done | [history](docs/roadmap-history/phases-20-32.md) |
-| 30 | Pack and herd behavior | Done | [history](docs/roadmap-history/phases-20-32.md) |
-| 31 | Trees and resource appearance | Done | [history](docs/roadmap-history/phases-20-32.md) |
-| 32 | One authoritative boot path | Done | [history](docs/roadmap-history/phases-20-32.md) |
-| 33 | Player identity and server-side persistence | Done | [history](docs/roadmap-history/phases-33-38.md) |
-| 34 | Per-player repair and research | Done | [history](docs/roadmap-history/phases-33-38.md) |
-| 35 | Creature taming | Done | [history](docs/roadmap-history/phases-33-38.md) |
-| 36 | Review pass: the network trust boundary, gated boots, per-player progression | Done | [history](docs/roadmap-history/phases-33-38.md) |
-| 37 | Review pass: owner-scoped syncs, durable cooldowns, bounded memory, routed rounds | Done | [history](docs/roadmap-history/phases-33-38.md) |
-| 38 | Review pass: host-simulated peer health, one key list, the missing clear, an in-place prune | Done | [history](docs/roadmap-history/phases-33-38.md) |
-| 39 | Two-client network harness: prove the wire over a real socket | Done | [history](docs/roadmap-history/phases-39-42.md) |
-| 40 | Review pass: the avatar's footing — the voxel surface, walked stairs | Done | [history](docs/roadmap-history/phases-39-42.md) |
-| 41 | Deterministic world and volumetric terrain | Done | [history](docs/roadmap-history/phases-39-42.md) |
-| 42 | Threaded chunk build and a loading screen | Done | [history](docs/roadmap-history/phases-39-42.md) |
-| 43 | Natural resource distribution | Done | [history](docs/roadmap-history/phases-43-59.md) |
-| 44 | Spawn scarcity | Done | [history](docs/roadmap-history/phases-43-59.md) |
-| 45 | Asset pipeline for meshes and animation | Done | [history](docs/roadmap-history/phases-43-59.md) |
-| 46 | UI shell | Done | [history](docs/roadmap-history/phases-43-59.md) |
-| 47 | Character window | Done | [history](docs/roadmap-history/phases-43-59.md) |
-| 48 | Review pass: the equipment trust boundary | Done | [history](docs/roadmap-history/phases-43-59.md) |
-| 49 | Zone crossing and natural ground | Done | [history](docs/roadmap-history/phases-43-59.md) |
-| 50 | Planet coordinates | Done | [history](docs/roadmap-history/phases-43-59.md) |
-| 51 | Continents, oceans and mountains | Done | [history](docs/roadmap-history/phases-43-59.md) |
-| 52 | Region storage and per-player server streaming | Done | [history](docs/roadmap-history/phases-43-59.md) |
-| 53 | Spawn placement and friend codes | Done | [history](docs/roadmap-history/phases-43-59.md) |
-| 54 | World clock, day and night, seasons | Done | [history](docs/roadmap-history/phases-43-59.md) |
-| 55 | Two-client harness: equipment delivery over the socket | Done | [history](docs/roadmap-history/phases-43-59.md) |
-| 56 | Station placement follow-ups | Done | [history](docs/roadmap-history/phases-43-59.md) |
-| 57 | Spawn determinism and cost follow-ups | Done | [history](docs/roadmap-history/phases-43-59.md) |
-| 58 | UI layout file robustness | Done | [history](docs/roadmap-history/phases-43-59.md) |
-| 59 | Wire the Phase 45 rig into the game | Done | [history](docs/roadmap-history/phases-43-59.md) |
-| 60 | Host-authoritative equip | Done | [history](docs/roadmap-history/phases-60-74.md) |
-| 61 | Region storage correctness | Done | [history](docs/roadmap-history/phases-60-74.md) |
-| 62 | Peer streaming window limits | Done | [history](docs/roadmap-history/phases-60-74.md) |
-| 63 | Planet coordinates wiring | Done | [history](docs/roadmap-history/phases-60-74.md) |
-| 64 | Biome blend consistency | Done | [history](docs/roadmap-history/phases-60-74.md) |
-| 65 | World clock and season follow-ups | Done | [history](docs/roadmap-history/phases-60-74.md) |
-| 66 | Spawn point and colonization follow-ups | Done | [history](docs/roadmap-history/phases-60-74.md) |
-| 67 | Network test seam cleanup | Done | [history](docs/roadmap-history/phases-60-74.md) |
-| 68 | Distant terrain off the main thread | Done | [history](docs/roadmap-history/phases-60-74.md) |
-| 69 | Neighbour seam rebuilds that match the edits | Done | [history](docs/roadmap-history/phases-60-74.md) |
-| 70 | Equip intent ordering and refusal cost | Done | [history](docs/roadmap-history/phases-60-74.md) |
-| 71 | World-generation version stamp | Done | [history](docs/roadmap-history/phases-60-74.md) |
-| 72 | Stable, low-frequency rare-biome niches | Done | [history](docs/roadmap-history/phases-60-74.md) |
-| 73 | Swimming and the distant ring follow the real ground | Done | [history](docs/roadmap-history/phases-60-74.md) |
-| 74 | Minimap redraw cost and first-apply layout clamp | Done | [history](docs/roadmap-history/phases-60-74.md) |
-| 75 | Region edits survive eviction and malformed neighbours | Done | [history](docs/roadmap-history/phases-75-98.md) |
-| 76 | Niche field wraps the planet and is calibrated by a test | Done | [history](docs/roadmap-history/phases-75-98.md) |
-| 77 | One detail-noise formula and the ring's strip helper | Done | [history](docs/roadmap-history/phases-75-98.md) |
-| 78 | Exact player position far from the origin | Done | [history](docs/roadmap-history/phases-75-98.md) |
-| 79 | Deterministic peer-window rate limit and a production ref-count reader | Done | [history](docs/roadmap-history/phases-75-98.md) |
-| 80 | Rebase in the physics step and explicit shift sets | Done | [history](docs/roadmap-history/phases-75-98.md) |
-| 81 | Pole-aware tile biome and a mined-tile biome memo | Done | [history](docs/roadmap-history/phases-75-98.md) |
-| 82 | Honest peer-window refusal count and a thread-safe warning counter | Done | [history](docs/roadmap-history/phases-75-98.md) |
-| 83 | Distant-ring teardown that does not stall | Done | [history](docs/roadmap-history/phases-75-98.md) |
-| 84 | The suite exits with no leaked objects | Done | [history](docs/roadmap-history/phases-75-98.md) |
-| 85 | Peer claims and host syncs keep separate interval clocks | Done | [history](docs/roadmap-history/phases-75-98.md) |
-| 86 | Remote peers' positions stay exact far from the origin | Done | [history](docs/roadmap-history/phases-75-98.md) |
-| 87 | Exact spawn and respawn points | Done | [history](docs/roadmap-history/phases-75-98.md) |
-| 88 | The distant ring survives a reparent and its abort is proven | Done | [history](docs/roadmap-history/phases-75-98.md) |
-| 89 | A malformed region entry warns once per session | Done | [history](docs/roadmap-history/phases-75-98.md) |
-| 90 | One scene-origin source and one wire-position validator | Done | [history](docs/roadmap-history/phases-75-98.md) |
-| 91 | A legacy tile height survives a depletion overlay | Done | [history](docs/roadmap-history/phases-75-98.md) |
-| 92 | The shown-biome memo follows the terrain slice and one pole-ring rule | Done | [history](docs/roadmap-history/phases-75-98.md) |
-| 93 | Host-sync window moves are counted and a clock swap resets the throttles | Done | [history](docs/roadmap-history/phases-75-98.md) |
-| 94 | A test eviction helper and a bounded UI retire list | Done | [history](docs/roadmap-history/phases-75-98.md) |
-| 95 | Free pointer, right-click look, chat box and admin commands | Done | [history](docs/roadmap-history/phases-75-98.md) |
-| 96 | A detached ring rebuild does not orphan its worker | Done | [history](docs/roadmap-history/phases-75-98.md) |
-| 97 | Peer windows and position relays use the exact peer position | Done | [history](docs/roadmap-history/phases-75-98.md) |
-| 98 | An exact first-boot spawn and a public canonical helper | Done | [history](docs/roadmap-history/phases-75-98.md) |
-| 99 | Housekeeping sweep: legacy tiles, roadmap/README hygiene and review leftovers | Done | [history](docs/roadmap-history/phases-99-129.md) |
-| 100 | Follow-up issue backlog triage | Done | [history](docs/roadmap-history/phases-99-129.md) |
-| 101 | Chat and admin commands are host-authoritative, exact and proven on the wire | Done | [history](docs/roadmap-history/phases-99-129.md) |
-| 102 | An admin `/kill` lands on the host's simulated peer health | Merged | [Phase 101](docs/roadmap-history/phases-99-129.md#phase-101--chat-and-admin-commands-are-host-authoritative-exact-and-proven-on-the-wire) |
-| 103 | Teleports carry the exact position and stay on the planet | Merged | [Phase 101](docs/roadmap-history/phases-99-129.md#phase-101--chat-and-admin-commands-are-host-authoritative-exact-and-proven-on-the-wire) |
-| 104 | Two-client harness: chat and admin teleport over the socket | Merged | [Phase 101](docs/roadmap-history/phases-99-129.md#phase-101--chat-and-admin-commands-are-host-authoritative-exact-and-proven-on-the-wire) |
-| 105 | Archive Phases 75–95 into the roadmap history | Merged | [Phase 99](docs/roadmap-history/phases-99-129.md#phase-99--housekeeping-sweep-legacy-tiles-roadmapreadme-hygiene-and-review-leftovers) |
-| 106 | A world stamp that covers fabric parameters, and golden generator values | Done | [history](docs/roadmap-history/phases-99-129.md) |
-| 107 | A per-chunk generation record in the region store | Done | [history](docs/roadmap-history/phases-99-129.md) |
-| 108 | Terrain reads and writes the generation record on the host | Done | [history](docs/roadmap-history/phases-99-129.md) |
-| 109 | Generation records reach clients, scoped and validated | Done | [history](docs/roadmap-history/phases-99-129.md) |
-| 110 | Trees are pinned per chunk and cleared where players build | Done | [history](docs/roadmap-history/phases-99-129.md) |
-| 111 | A full-map window: zoom from the minimap out to a whole planet | Done | [history](docs/roadmap-history/phases-99-129.md) |
-| 112 | A biome adjacency table in the fabric and an offline scan | Done | [history](docs/roadmap-history/phases-99-129.md) |
-| 113 | Frontier generation: a new generator version meets recorded land | Done | [history](docs/roadmap-history/phases-99-129.md) |
-| 114 | Generation record and frontier cleanup sweep | Done | [history](docs/roadmap-history/phases-99-129.md) |
-| 115 | Chat, admin and test-tooling cleanup sweep | Done | [history](docs/roadmap-history/phases-99-129.md) |
-| 116 | Tree clears follow chunks onto clients | Done | [history](docs/roadmap-history/phases-99-129.md) |
-| 117 | Map waypoints, HUD toasts and an explored set that scales | Done | [history](docs/roadmap-history/phases-99-129.md) |
-| 118 | Void bursts, the survivor flag and the VoidTouched unlock | Done | [history](docs/roadmap-history/phases-99-129.md) |
-| 119 | An injected network transport and a compact per-tick wire form | Done | [history](docs/roadmap-history/phases-99-129.md) |
-| 120 | The distant ring draws recorded land | Done | [history](docs/roadmap-history/phases-99-129.md) |
-| 121 | Crash-consistent saves | Done | [history](docs/roadmap-history/phases-99-129.md) |
-| 122 | Far terrain without mirroring and one scene-offset helper | Done | [history](docs/roadmap-history/phases-99-129.md) |
-| 123 | The player rig wears the character material and body masks | Done | [history](docs/roadmap-history/phases-99-129.md) |
-| 124 | Research points: the fabric's `researchCost` is enforced | Done | [history](docs/roadmap-history/phases-99-129.md) |
-| 125 | Waystones: a first fast-travel network | Done | [history](docs/roadmap-history/phases-99-129.md) |
-| 126 | Tree clears the host keeps, and one seam-wrap module | Done | [history](docs/roadmap-history/phases-99-129.md) |
-| 127 | Terrain streaming, generation records and persistence cleanup sweep | Done | [history](docs/roadmap-history/phases-99-129.md) |
-| 128 | Weather: the fabric's `WeatherSystem` runs on the host | Done | [history](docs/roadmap-history/phases-99-129.md) |
-| 129 | Combat status effects: burn, paralysis, knockback, knockdown and stagger | Done | [history](docs/roadmap-history/phases-99-129.md) |
-| 130 | Host authority sweep: status effects, waystones and research points | Done | [history](docs/roadmap-history/phases-130-145.md) |
-| 131 | Internationalization: translated UI and keyed host messages | Done | [history](docs/roadmap-history/phases-130-145.md) |
-| 132 | One wiring module per system: `game_root` keeps the boot paths | Done | [history](docs/roadmap-history/phases-130-145.md) |
-| 133 | The test suite splits by system and runs by filter | Done | [history](docs/roadmap-history/phases-130-145.md) |
-| 134 | A bot plays: playtest report and downloadable builds | Done | [history](docs/roadmap-history/phases-130-145.md) |
-| 135 | A WAN profile: latency, loss and bandwidth in the two-client harness | Done | [history](docs/roadmap-history/phases-130-145.md) |
-| 136 | Creatures walk on the ground and around obstacles | Done | [history](docs/roadmap-history/phases-130-145.md) |
-| 137 | Loose ground settles: sand and soil fall when undermined | Done | [history](docs/roadmap-history/phases-130-145.md) |
-| 138 | Trees, generation records and persistence cleanup sweep | Done | [history](docs/roadmap-history/phases-130-145.md) |
-| 139 | Settlements in the fabric: founding, membership and shared storage | Done | [history](docs/roadmap-history/phases-130-145.md) |
-| 140 | Settlements at runtime: a hearth, a claim and a shared stockpile | Done | [history](docs/roadmap-history/phases-130-145.md) |
-| 141 | Terrain streaming off the main thread: worker noise, seam strips, polar shortcuts, fold catch-up | Done | [history](docs/roadmap-history/phases-130-145.md) |
-| 142 | Terrain build throughput: a time-budgeted pump and worker region reads | Done | [history](docs/roadmap-history/phases-130-145.md) |
-| 143 | Creature models: rigged, animated creatures replace the tinted box | Done | [history](docs/roadmap-history/phases-130-145.md) |
-| 144 | A native chunk builder: GDExtension, CI binaries and a GDScript fallback | Merged | split into [Phase 166](docs/roadmap-history/phases-166.md)–169 |
-| 145 | Fold contents: creatures and trees survive a polar fold | Done | [history](docs/roadmap-history/phases-130-145.md) |
-| 146 | Roadmap close-out: archive merged phases and keep the index honest | Done | [history](docs/roadmap-history/phases-130-145.md) |
-| 147 | Review follow-ups I: trust boundary and far-from-origin precision | Done | [history](docs/roadmap-history/phases-147.md) |
-| 148 | Review follow-ups II: i18n leftovers | Done | [history](docs/roadmap-history/phases-148.md) |
-| 149 | Review follow-ups III: world, terrain and persistence | Done | [history](docs/roadmap-history/phases-149.md) |
-| 150 | Review follow-ups IV: wiring, harness and playtest bot | Done | [history](docs/roadmap-history/phases-150.md) |
-| 151 | Item shapes in the fabric | Done | [history](docs/roadmap-history/phases-151.md) |
-| 152 | Item models and icons from one generator | Done | [history](docs/roadmap-history/phases-152.md) |
-| 153 | Items in the world: equipment, held tools and icons everywhere | Done | [history](docs/roadmap-history/phases-153.md) |
-| 154 | Split the biggest slices | Done | [history](docs/roadmap-history/phases-154.md) |
-| 155 | Animation tempo: looping clips, stride-matched walk and snappier transitions | Done | [history](docs/roadmap-history/phases-155.md) |
-| 156 | Idle, attack and hit clips for everyone, on every swing | Done | [history](docs/roadmap-history/phases-156.md) |
-| 157 | Deaths that read as deaths: a push, a fall and a body that stays | Done | [history](docs/roadmap-history/phases-157.md) |
-| 158 | Gestures in the fabric: sit, lie down, wave and friends | Done | [history](docs/roadmap-history/phases-158.md) |
-| 159 | Gestures at runtime: a gesture wheel, chat commands and synced poses | Done | [history](docs/roadmap-history/phases-159.md) |
-| 160 | Harvesting in the fabric: tools, the Skinning skill, carcass weight and carry | Done | [history](docs/roadmap-history/phases-160.md) |
-| 161 | Harvesting at runtime: work the body, carry it home | Done | [history](docs/roadmap-history/phases-161.md) |
-| 162 | A crowd walks: a multi-player stress test and a bottleneck report | Done | [history](docs/roadmap-history/phases-162.md) |
-| 163 | Crowd performance: fix what the Phase 162 report names | Done | [history](docs/roadmap-history/phases-163.md) |
-| 164 | A round horizon: a circular distant ring, planet curvature and haze | Done | [history](docs/roadmap-history/phases-164.md) |
-| 165 | Mountains on the horizon: distant bands out to the visibility limit | Done | [history](docs/roadmap-history/phases-165.md) |
-| 166 | Native builder scaffold: GDExtension, loader, fallback, CI binaries and releases | Done | [history](docs/roadmap-history/phases-166.md) |
-| 167 | Native `heightmap_for` | Done | [history](docs/roadmap-history/phases-167.md) |
-| 168 | Native `build_runs` | Done | [history](docs/roadmap-history/phases-168.md) |
-| 169 | Native `build_chunk_arrays` and the speed target | Done | [history](docs/roadmap-history/phases-169.md) |
-| 170 | A compute-shader heightmap, if the native builder is still the bottleneck | Done | [history](docs/roadmap-history/phases-170.md) |
-| 171 | Creatures in exact coordinates: no float32 metres far from the origin | Done | [history](docs/roadmap-history/phases-171.md) |
-| 172 | Host chunk attach off the main thread | Done | [history](docs/roadmap-history/phases-172.md) |
+| 173 | Follow-up debt burn | Planned | below |
+| 174 | An honest playtest frame budget | Planned | below |
+| 175 | UI icons: dock, windows, skills and attributes from one generator | Planned | below |
+| 176 | An icon for everything a player can hold | Planned | below |
+| 177 | Attributes in the fabric: strength, vitality, resistance, agility, intelligence, perception | Planned | below |
+| 178 | Attributes at runtime: host-owned, persisted, feeding the derived stats | Planned | below |
+| 179 | The character sheet: a paper doll, attributes and derived stats | Planned | below |
+| 180 | Character creation in the fabric: name, appearance and starting attributes | Planned | below |
+| 181 | Character creation at runtime: a creation screen before the first spawn | Planned | below |
+
+---
+
+## Phase 173 — Follow-up debt burn
+
+**Goal:** about 30 `autopilot-followup` issues are open, some for a week, and roughly a third of
+recent commits are follow-ups. Each review spawns more debt than the next phase pays off. Burn
+the backlog down before the arc adds new systems, and make the cap above enforceable.
+
+**Newel dependency:** NO.
+
+**Depends on:** nothing.
+
+**Deliverables:**
+- Triage every open `autopilot-followup` issue. Fix each item that is a correctness or
+  trust-boundary bug. Fold each item that belongs to a phase of this arc into that phase's
+  deliverables, and record the issue number there. Close the rest with a one-line reason.
+- Fix the standalone issues: #426 (host-side speed clamp for carrying peers, a trust-boundary
+  gap), #429 (the `chop_in_reach` harness flake) and #427 (the harvest quality grade never reaches
+  the item stack; Phase 178 builds on it).
+- `tools/check_followups.sh`: counts open `autopilot-followup` issues via `gh` and exits 1 when
+  there are more than 10. Autopilot runs it before it opens a new phase.
+
+**Acceptance criteria:**
+- [ ] At most 5 `autopilot-followup` issues are open when the phase closes (`gh issue list
+  --label autopilot-followup --state open`).
+- [ ] #426, #427 and #429 are closed by merged PRs. The harness runs `chop_in_reach` 20 times in a
+  row with no failure in CI.
+- [ ] Suite: a carrying peer that reports a speed above the clamp is pulled back by the host.
+- [ ] Suite: a harvested stack carries its quality grade through to the inventory and a save.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 174 — An honest playtest frame budget
+
+**Goal:** the playtest bot reports PASS while `walk`, `craft` and `fight` run at a p50 of about
+130 ms per frame, with every frame counted as a hitch. The only failure condition is a frame over
+2 s. The per-chunk build is about 138 ms, and 114 ms of that is `arrays`, which is suspicious
+after Phase 169 moved it native. Find out what the number measures, then gate on it.
+
+**Newel dependency:** NO.
+
+**Depends on:** nothing.
+
+**Deliverables:**
+- The playtest report records the rendering adapter and driver, whether the native chunk builder
+  loaded, and each step's frame time split into process, physics and render
+  (`Performance` monitors).
+- If the run uses the GDScript fallback, fix the CI packaging so the native builder loads.
+- A per-step budget table in `docs/perf/playtest-baseline.md`: p95 **process** time (which
+  software rendering does not inflate), plus p95 total frame time on a named renderer class.
+  `--playtest-bot` exits 1 when a step exceeds its budget.
+- If the process time is over budget, profile it and fix the top cost, or file it as the next phase.
+
+**Acceptance criteria:**
+- [ ] `playtest/report.json` carries `adapter`, `native_builder` and per-step `process_ms`,
+  `physics_ms` and `render_ms` percentiles.
+- [ ] CI playtest: the native builder is loaded (`native_builder: true`).
+- [ ] CI playtest: `walk`, `craft` and `fight` p95 process time ≤ 16 ms. The bot fails the run
+  above budget, and a fixture proves it (an injected 40 ms step fails).
+- [ ] Suite green on both boot paths.
+
+---
+
+## Phase 175 — UI icons: dock, windows, skills and attributes from one generator
+
+**Goal:** the window dock shows one letter per button (I, C, K, H, T…), and skills have no
+pictures. Draw each window, skill and attribute as a small, readable icon: a bag for the
+inventory, a globe for the map, a hammer and anvil for crafting. Use the Phase 152 pattern:
+pure-Python, deterministic, and hand-polished later by the private repo over the same keys.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 173.
+
+**Deliverables:**
+- `tools/gen_ui_icons.py` (new, pure Python, no Blender or GPU). It uses a small vector DSL
+  (polygons, circles, arcs, strokes) rasterized at 128×128 and downsampled to 32×32 and 64×64,
+  with a palette snap and a 1 px outline. The style follows the icon rules in
+  `project-nihon-assets/STYLE.md`. `--check` and `--out DIR` work as in `gen_item_assets.py`.
+- Window icons at `assets/icons/ui/window/<key>.png.raw` for every entry in `WindowDock`:
+  inventory (bag), character (helmeted bust), skills (open book), crafting (hammer and anvil),
+  technology (gear and flask), trade (two hands swapping), market (coin stack), map (globe),
+  proposals (scroll and quill), settlement (house with a hearth), controls (keyboard).
+- Skill icons at `assets/icons/skills/<Skill>.png.raw` for all 22 skills. Each one combines a
+  category frame (combat, crafting, magic, exploration, social) with a symbol for the skill
+  (sword, bow, saw, anvil, rune…).
+- Attribute icons at `assets/icons/attributes/<Attribute>.png.raw` for the Phase 177 set, plus HUD
+  icons for HP and each Phase 129 status effect.
+- The dock draws the icon with the shortcut letter as a small corner badge. The tooltip keeps the
+  translated name. The skills window and the HUD status row use their icons.
+- `assets/manifest.json` and `assets/README.md` list the new keys. The private repo gets a
+  matching note (separate PR).
+
+**Acceptance criteria:**
+- [ ] Every `WindowDock` entry, every skill in `GameData.SKILLS`, every status effect and HP has an
+  icon at its key. No orphan icon exists.
+- [ ] Suite: every UI icon is 32×32 or 64×64 RGBA, has transparent corners and more than 40 opaque
+  pixels, and no two are byte-identical.
+- [ ] Suite: a built dock button carries a texture and a badge with the shortcut letter, and no
+  dock button's text is a bare letter.
+- [ ] CI: `python3 tools/gen_ui_icons.py --check` passes, and two runs are byte-identical.
+- [ ] Suite green on both boot paths.
+
+---
+
+## Phase 176 — An icon for everything a player can hold
+
+**Goal:** all 27 items have icons since Phase 152, but materials (Soil, Thornwood, Ferrite…),
+harvest goods (hides, meat, bones, sigils) and carcasses still fall back to `item_glyph`, which
+paints their first letter. Every stack a player can hold should have a picture.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 175 (shares the rasterizer).
+
+**Deliverables:**
+- `gen_item_assets.py` (or `gen_ui_icons.py`) draws an icon for every material from its palette
+  and form (block, ore chunk, log, sheaf, pile) and for every harvest and loot output from its
+  kind (hide, meat, bone, trophy).
+- One source of truth for "every id that can sit in a slot": items, materials, harvest outputs,
+  loot outputs and carcasses. The suite and the generator both read it.
+- The technology tree and the crafting rows show the icon of what they unlock or produce. The
+  market and trade rows show it too.
+- The public build never shows the glyph fallback. It remains only as a debug guard.
+
+**Acceptance criteria:**
+- [ ] Suite: every holdable id has an icon at its key, and no orphan icon exists.
+- [ ] Suite: building the inventory, hotbar, character, crafting, technology, market and trade
+  rows for a fixture holding every holdable id never calls `item_glyph`.
+- [ ] CI: the generator's `--check` passes, and two runs are byte-identical.
+- [ ] Suite green on both boot paths.
+
+---
+
+## Phase 177 — Attributes in the fabric: strength, vitality, resistance, agility, intelligence, perception
+
+**Goal:** the character has no attributes. Carry capacity is a fixed base (Phase 160), HP is a flat
+100, and nothing distinguishes one character's body from another's. Model a small attribute set
+that feeds systems that already exist. There are no classes and no levels: attributes start from
+character creation and grow slowly from use, in keeping with the sandbox constitution.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 173.
+
+**Deliverables:**
+- `fabric/gameplay/attributes.js` (new): an `AttributeSystem` entity with six attributes and their
+  bounds (base 10, creation range 5–18, hard cap 30). Each attribute lists what it feeds:
+  - **Strength**: carry capacity (replaces the fixed Phase 160 base), melee damage, knockback
+    dealt, mining and chopping speed.
+  - **Vitality**: max HP, HP regeneration, rest regeneration (Phase 158 gestures).
+  - **Resistance**: damage reduction, status-effect chance and duration (Phase 129), knockdown
+    and stagger resistance.
+  - **Agility**: movement speed (small), attack interval, chance to avoid a knockdown.
+  - **Intelligence**: research point gain (Phase 124), the chance of a quality grade on a craft,
+    XP rate for magic skills.
+  - **Perception**: gather yield, the harvest quality grade (Phase 161), the radius at which
+    creatures and deposits show on the minimap.
+- A derivation table: each derived stat as a base plus a per-point slope with a clamp, so a
+  20-point gap is noticeable but never a one-shot. The table is data, not code.
+- A growth table: skill XP from each skill category feeds weighted attributes (combat → Strength
+  and Agility, crafting → Strength and Intelligence, exploration → Perception and Agility…) with
+  diminishing returns and a total-points cap. Growth comes from use, not from spending points.
+- `PlayerCharacter` gains `attributes` (json) and drops the fixed `carryCapacityKg` default in
+  favour of the derivation.
+- `tools/check_attributes.js` in the style of `check_combat.js`: bounds are consistent, every
+  derived stat it names exists, and the extremes (all 5s, all 30s) stay inside each stat's clamp.
+- Display names and descriptions are UI catalog keys (`attr.<id>.name`, `attr.<id>.desc`) in
+  `en` and `pt_BR`.
+
+**Acceptance criteria:**
+- [ ] `npm run validate`, `npm run check-drift` and `node tools/check_attributes.js` pass.
+- [ ] Generated `GameData` exposes the attribute set, the derivation table and the growth table.
+- [ ] Every attribute has `en` and `pt_BR` catalog entries, and the i18n key check passes.
+
+---
+
+## Phase 178 — Attributes at runtime: host-owned, persisted, feeding the derived stats
+
+**Goal:** make Phase 177 real. The host owns every player's attributes, derives their stats from
+the fabric table, persists them, and grows them from skill XP. The client only displays them.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 177.
+
+**Deliverables:**
+- `src/character/attribute_rules.gd`: pure functions for deriving stats and applying growth, read
+  from `GameData`.
+- The host stores attributes on the player record. A save from before this phase loads with base
+  10 in everything (versioned migration, as in Phase 121).
+- Carry capacity, max HP and regeneration, damage reduction, status-effect rolls, attack interval,
+  research gain, gather yield, harvest quality and minimap detection radius read the derived stats.
+- `attributes_synced` goes to the owning client only, and peers get only what they need to draw.
+  The client sends no attribute values. The host ignores and rate-limits any attempt.
+- Skill XP grants feed attribute growth on the host, with the cap enforced.
+
+**Acceptance criteria:**
+- [ ] Suite: each derived stat equals the fabric formula at the minimum, base and maximum.
+- [ ] Suite: growth from XP follows the table, has diminishing returns and stops at the cap.
+- [ ] Suite: a pre-178 save loads with base attributes and the same carry capacity as before.
+- [ ] Harness: `attributes_synced` reaches the owner over the socket. A client payload carrying
+  attribute values is refused and counted.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 179 — The character sheet: a paper doll, attributes and derived stats
+
+**Goal:** today the character window is a text label, a friend code and a grid of slots. Turn it
+into an RPG character sheet: the player's own rig in the middle with equipment slots around it,
+attributes with icons and tooltips, and the derived stats they produce.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phases 175, 176 and 178.
+
+**Deliverables:**
+- A `SubViewport` preview of the local rig, wearing the current equipment and the Phase 123
+  character material. It turns on drag and idles with the Phase 156 clip.
+- Equipment slots laid out around the doll by body position (head, chest, hands, main hand, off
+  hand…), each with the item icon and its durability. Drag and drop equips and unequips through
+  the existing bus intents.
+- An attribute panel: icon, value and a growth bar toward the next point. The tooltip lists what
+  the attribute feeds and by how much.
+- A derived-stat panel: HP, regeneration, carry, damage, reduction, speed, research gain and yield.
+- A short skills summary (the top skills by tier, with skill icons) that links to the skills window.
+- A display name above the doll once Phase 181 lands. Until then the handle is shown.
+- Every string goes through `I18n.t`. Numbers are formatted for the active locale.
+
+**Acceptance criteria:**
+- [ ] Suite: the sheet's projection (`character_sheet_rows()`) lists every equipment slot, all six
+  attributes and every derived stat, with values equal to the host's synced numbers.
+- [ ] Suite: dropping an item on a slot emits the same equip intent as the context menu.
+- [ ] Suite: building the sheet hard-codes no user-facing literal (audit test), and both locales
+  render.
+- [ ] Playtest bot: a `character_sheet` step opens the window, renders the doll with a non-empty
+  viewport and takes a screenshot.
+- [ ] Suite green on both boot paths.
+
+---
+
+## Phase 180 — Character creation in the fabric: name, appearance and starting attributes
+
+**Goal:** a player never creates a character. They spawn with a default appearance and are known by
+a handle. Model the creation choices so the runtime screen in Phase 181 is generated from data.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 177.
+
+**Deliverables:**
+- `fabric/gameplay/characters/creation.js` (new): a `CharacterCreation` entity with:
+  - name rules: 3–16 characters, Unicode letters plus a single inner space, hyphen or apostrophe,
+    unique per server (case- and accent-folded), and a reserved list;
+  - appearance options drawn from the existing recipe fields (`appearances.js`): skeleton, body,
+    head, eyes, hair, beard, the skin, hair and eye palette ranges, and the proportion bounds (§8);
+  - starting attributes: base 10 each and 12 points to distribute within the creation range
+    (Phase 177);
+  - a starting kit per server rule (none by default; the sandbox gives no class kits).
+- Public placeholders for at least three heads, five hair styles and three beards, at the same
+  keys the private repo will fill (placeholder rule; `gen_placeholder_glb.py`).
+- `tools/check_creation.js`: every option refers to an existing part, palette index or bound, and
+  the default recipe is a valid creation.
+
+**Acceptance criteria:**
+- [ ] `npm run validate`, `npm run check-drift` and `node tools/check_creation.js` pass.
+- [ ] Suite: every appearance option resolves through `AssetOverlay` in the public build.
+- [ ] Suite: the name rule accepts and rejects a fixture list, including accents, emoji, a
+  reserved word and a case-folded duplicate.
+
+---
+
+## Phase 181 — Character creation at runtime: a creation screen before the first spawn
+
+**Goal:** a new player creates a character before they enter the world. They pick a name, shape
+the face and body, choose colours, spend the starting points and see the result live. The host
+validates everything and records it.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phases 179 and 180.
+
+**Deliverables:**
+- A creation screen shown on first join to a server where the player has no character record,
+  before spawn placement (Phase 53). It has a live rig preview (reusing the Phase 179 viewport),
+  pickers generated from the `CharacterCreation` options, a randomize button, an attribute point
+  spender, and a name field with a live availability check.
+- A host intent `create_character(name, recipe, attributes)`. The host validates the name rule
+  and uniqueness, every option and the point budget, creates the record, then places the spawn.
+  It refuses with a keyed reason that the client renders in its locale. Rate-limited.
+- Existing players without a creation record are offered the screen once. Their handle and
+  progress are kept.
+- The display name shows on the character sheet, in chat and settlement lists, and on a nameplate
+  above other players. The friend code stays the handle.
+- The appearance recipe syncs to peers in the area of interest, so everyone sees each other's
+  character.
+- The playtest bot creates a character as its first step.
+
+**Acceptance criteria:**
+- [ ] Suite: the host accepts a valid creation and refuses each invalid field (name, option,
+  palette index, proportion bound, overspent points) with its own key.
+- [ ] Harness: `create_character` over the socket. A duplicate name from a second client is
+  refused, and the second client sees the first one's appearance and nameplate.
+- [ ] Suite: a pre-181 save boots, offers creation once and keeps inventory and skills.
+- [ ] Playtest bot: a `create` step completes before `walk` and saves a screenshot of the screen.
+- [ ] Every new string is in both catalogs, and the i18n key check passes.
+- [ ] Suite green on both boot paths, harness green.
 
 ---
 
 ## Deferred (in priority order)
 
-- **Character attributes (strength and friends)** — Phase 160 gives carry capacity a fixed base plus
-  gear/skill bonuses because there is no attribute system. A strength attribute that feeds carry
-  capacity, drag rules and melee knockback would replace that base.
+- **Next arc: the first settlement loop** — a goal you can describe from the player's side for
+  the arc after this one: four friends found a village, specialize, trade and defend it from a
+  raid within an hour of play. Derive its phases from that loop (shared projects, roles from
+  skills and attributes, raids, settlement upkeep) rather than from engine work.
+- **Rivers, lakes and fluid flow** — water above sea level and flowing water (a cellular
+  automaton on dirty chunks only) after Phase 51's static sea level and Phase 137's falling sand.
+- **Fast travel beyond waystones** — a planet takes about 90 days to walk around. Phase 125 added
+  waystones; roads, mounts (taming exists) and boats remain.
 - **Physics ragdolls** — Phase 157 animates deaths with a host-chosen landing spot and authored
-  clips, so the headless server stays deterministic. A client-only ragdoll blend on top of that is a
-  later polish.
-
+  clips, so the headless server stays deterministic. A client-only ragdoll blend on top is later
+  polish.
 - **Localized fabric content** — entity names and descriptions (items, creatures, skills,
   technologies) translated through catalogs generated by Newel (`../newel/ROADMAP.md` Phase 15),
   consumed with the Phase 131 locale settings.
-
-- **Server sharding (final, not before maturity)** — split the authoritative
-  simulation across multiple servers by region / spatial partition so total
-  population exceeds one process. Deferred to LAST: it is a horizontal-scaling
-  concern that only pays off once a single headless server (Phase 27) plus
-  spatial hashing (Phase 28) and interest management (Phase 29) are already
-  saturating. No structural change is required *before* the game matures to
-  make sharding possible — the Phase 27 sim/visual split and the Phase 28
-  hash are the prerequisites, and both are already planned ahead of it. Revisit
+- **Public wiki deployment** — VitePress (or equivalent) static-site deployment and CI-triggered
+  wiki regeneration from the fabric (deferred from Phase 9).
+- **Voxel techniques from GDVoxelPlayground** — <https://github.com/JorisAR/GDVoxelPlayground>
+  (MIT) was evaluated and not adopted wholesale: it ray-marches a fixed 128³ GPU grid, which does
+  not fit an unbounded streamed world with a headless server. Worth borrowing later, CPU-side and
+  deterministic: **WFC** for ruins, villages and dungeons, and a **brick occupancy map** if meshing
+  becomes the bottleneck.
+- **Real cross-region multiplayer run** — Phase 135 emulates WAN profiles in the harness. A run
+  between real regions remains.
+- **Automatic LOD mesh decimation** — simplified meshes are hand-authored (Phase 23).
+- **Dynamic impostor re-bake** — impostor billboards are baked offline. A live re-bake on palette
+  change is deferred from Phase 23.
+- **Server sharding (last, not before maturity)** — split the authoritative simulation across
+  servers by region once one headless server (Phase 27) with spatial hashing (Phase 28) and
+  interest management (Phase 29) saturates. No structural change is needed before then. Revisit
   when Brazil-region load approaches one server's ceiling.
-
-- **Rivers, lakes and fluid flow** — water above sea level and flowing water
-  (the cellular-automaton idea from the GDVoxelPlayground evaluation) follow
-  Phase 51's static sea level. **(falling sand and soil planned: Phase 137; water remains.)**
-- **Fast travel** — a planet takes about 90 days to walk around. Some form of
-  travel network (roads, boats, waystones) is needed once players spread out
-  (after Phase 53). **(Phase 125 added waystones; roads and boats remain.)**
-- **Voxel techniques from GDVoxelPlayground (evaluated, not adopted wholesale)** —
-  <https://github.com/JorisAR/GDVoxelPlayground> (MIT) ray-marches a FIXED 128³
-  voxel grid on the GPU via `RenderingDevice` compute. It does not fit Nihon,
-  which has an unbounded streamed world, a headless server with no
-  `RenderingDevice`, seed-deterministic CPU terrain, sparse-run columns with
-  trimesh collision, and per-edit authority and persistence. Three techniques
-  are worth borrowing later, each CPU-side and deterministic:
-  - a **cellular automaton** for sand, water and lava, run on dirty chunks
-    only;
-  - **WFC** for ruins, villages and dungeons;
-  - a **brick occupancy map** if meshing becomes the bottleneck.
-
-- **Public wiki deployment** — VitePress (or equivalent) static-site deployment
-  and CI-triggered wiki regeneration from the fabric (deferred from Phase 9).
-- **Research cost points** — the abstract `researchCost` points field is modelled
-  in the fabric but not enforced at runtime (deferred from Phase 13). **(closed: Phase 124 — `begin_research` spends `researchCost` from a host-owned balance earned by the `ResearchPointRule` table.)**
-- **`VoidTouched` special-case unlock** — the void-burst survivor unlock trigger
-  is defined in the fabric but not wired to any runtime event (deferred from
-  Phase 13). **(closed: Phase 118 — a refining craft can burst, survivors get
-  `voidBurstSurvivor`, and `ProfessionSlice` unlocks `VoidTouched`.)**
-- **Station placement UI** — **(closed: placement is grid-snapped to 1 m cells and
-  refuses overlap via `StationSlice.try_place_station`; N toggles a translucent
-  green/red preview ghost and V places at the aimed top face or the player's feet.
-  A full build-mode menu remains out of scope.)**
-- **NavigationAgent3D path-finding** — creature movement currently uses direct
-  kinematic stepping; replacing it with nav-mesh baked from voxel terrain and
-  `NavigationAgent3D` per-instance requires the chunk-streaming world from
-  Phase 17 to produce stable nav-mesh regions (deferred from Phase 15).
-  **(planned: Phase 136 replaces it with a host-side grid path over voxel columns.)**
-- **WAN / cross-region multiplayer testing** — all Phase 18–19 multiplayer
-  validation is loopback or LAN (deferred from Phase 19). **(planned: Phase 135 runs the harness
-  under emulated WAN profiles; a real cross-region run remains.)**
-- **Automatic LOD mesh decimation** — simplified meshes are hand-authored;
-  runtime decimation deferred from Phase 23.
-- **Dynamic impostor re-bake** — impostor billboards are offline-baked; live
-  palette-change re-bake deferred from Phase 23.
-- **Peer damage over the wire** — a creature aggros and chases a remote peer, but
-  the host opens no combat round against it: damage to a peer belongs to that
-  peer's own client, and the host has no simulation of a peer's HP to hit or
-  persist. Needs a host → client damage event plus per-peer HP ownership on the
-  peer's side (deferred from Phase 36). **(delivered in Phase 37: the round is routed
-  by target id, `player_damaged` carries the target, and the host sends the hit to the
-  peer's own client. What remains is making a peer's HP authoritative rather than
-  client-owned.)** **(closed in Phase 38: the host simulates the peer's HP itself and
-  persists it on the peer's record. `player_damaged` stays a display update — a client
-  that ignores it now diverges from the host's number instead of owning it.)**
-- **Peer equipment replication** — **(closed in Phase 47: the host records each
-  peer's worn set and the bare-hands rule reads it; late joiners are announced to
-  their AOI, and the two-client harness step `equipment_recorded` proves the
-  intent over a real socket.)**

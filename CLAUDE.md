@@ -67,5 +67,6 @@ Unit tests live in `src/tests/suites/<system>_tests.gd` (one file per system, no
 - Each new system: fabric, generate, check-drift, slice in `src/`, bus signals in `bus.gd`, handlers in the system's `<system>_wiring.gd` (constructed once in `game_root.gd`'s wiring list), tests per acceptance criterion.
 - Branches: `feat/<system>`, `fix/<area>`, `docs/<topic>`, `fabric/<topic>`. PR titles: `feat(<system>): <short description>`. Fabric design PRs are separate from implementation PRs. No direct pushes to `main` except regenerated artifacts.
 - Trust boundary: a review finding where the host relies on the client to enforce a rule, trusts client-reported state it could check, or accepts unvalidated network input is fixed in the same PR, never deferred to a follow-up issue.
-- i18n (Phase 131): until it lands, keep new player-facing text to a minimum and list each new literal in the PR body so Phase 131 migrates it; after it lands, every player-facing string goes through `tr()` and both the `en` and `pt_BR` catalogs.
+- i18n (Phase 131, done): every player-facing string goes through `I18n.t()` with keys in both the `en` and `pt_BR` columns of `locale/ui.csv`; hosts send keys + params, never prose.
+- Follow-up debt cap: no new feature phase starts while more than 10 `autopilot-followup` issues are open (see `ROADMAP.md`).
 - `AGENTS.md` describes code-review-graph MCP tools; use them to narrow scope, then verify in source.
