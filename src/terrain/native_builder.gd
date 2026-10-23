@@ -13,6 +13,8 @@ const CLASS_NAME := "NativeChunkBuilder"
 const MODE_NATIVE := "native"
 const MODE_FALLBACK := "gdscript"
 ## Functions a later step may route natively, in step order.
+## User arg that forces the GDScript fallback even with the binary present (CI times both builders).
+const NO_NATIVE_ARG := "--no-native"
 const FUNCTIONS: Array[String] = ["heightmap_for", "build_runs", "build_chunk_arrays"]
 
 static var _loaded := false
@@ -27,6 +29,8 @@ static func mode_for(extension_loaded: bool, class_available: bool) -> String:
 ## Checked first so a checkout without the binaries boots silently on the fallback instead of
 ## logging an engine error for the missing library.
 static func library_present() -> bool:
+	if NO_NATIVE_ARG in OS.get_cmdline_user_args():
+		return false
 	var cfg := ConfigFile.new()
 	if cfg.load(EXTENSION_PATH) != OK:
 		return false
@@ -44,7 +48,9 @@ static func init() -> String:
 		return _mode
 	_loaded = true
 	var ext_loaded := false
-	if ClassDB.class_exists(CLASS_NAME):
+	if NO_NATIVE_ARG in OS.get_cmdline_user_args():
+		pass   # forced fallback
+	elif ClassDB.class_exists(CLASS_NAME):
 		ext_loaded = true   # already registered, e.g. through the editor's extension list
 	elif library_present():
 		var status := GDExtensionManager.load_extension(EXTENSION_PATH)

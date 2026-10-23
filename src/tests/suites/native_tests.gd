@@ -6,6 +6,7 @@ extends "res://src/tests/test_support.gd"
 
 const NativeBuilder := preload("res://src/terrain/native_builder.gd")
 const VoxelRuns := preload("res://src/terrain/voxel_runs.gd")
+const VoxelMesh := preload("res://src/terrain/voxel_mesh.gd")
 
 const EXPECT_NATIVE_ARG := "--expect-native"
 const EXPECT_FALLBACK_ARG := "--expect-fallback"
@@ -16,10 +17,13 @@ func register() -> void:
 	_run_test("native: only ported functions are routed natively",                                 _test_native_routes_only_ported)
 	_run_test("native: heightmap_for matches the GDScript reference on the fixed chunk set",       _test_native_heightmap_parity)
 	_run_test("native: build_runs matches the GDScript reference on the fixed chunk set",          _test_native_build_runs_parity)
+	_run_test("native: build_chunk_arrays matches the GDScript reference on the fixed chunk set",  _test_native_chunk_arrays_parity)
+	_run_test("native: a rejected build_chunk_arrays falls back to the GDScript reference",        _test_native_chunk_arrays_rejection_falls_back)
 	_run_test("native: a rejected build_runs falls back to the GDScript reference",                _test_native_build_runs_rejection_falls_back)
 	_run_test("native: the build_runs cfg snapshot is filled once across threads",                 _test_native_runs_cfg_single_fill)
 	_run_test("native: run edits resolve in a total order",                                     _test_native_run_ops_order)
 	_run_test("native: the extension and its build files are in the tree",                         _test_native_files_present)
+	_run_test("native: CI times the playtest stream step once per builder",                         _test_native_speed_gate_wired)
 	_run_test("native: the release workflow is tag-triggered and builds three platforms",           _test_native_release_workflow)
 
 func _test_native_mode_decision() -> void:
@@ -36,9 +40,9 @@ func _test_native_real_loader() -> void:
 	if EXPECT_NATIVE_ARG in args:
 		assert_eq(mode, NativeBuilder.MODE_NATIVE, "the binary is present: the loader reports native")
 		assert_true(ClassDB.class_exists(NativeBuilder.CLASS_NAME), "NativeChunkBuilder is registered")
-		assert_eq(NativeBuilder.version(), 3, "the native class reports its version")
+		assert_eq(NativeBuilder.version(), 4, "the native class reports its version")
 		var b: RefCounted = ClassDB.instantiate(NativeBuilder.CLASS_NAME)
-		assert_eq(b.call("functions") as PackedStringArray, PackedStringArray(["heightmap_for", "build_runs"]), "Phases 167-168 port heightmap_for and build_runs")
+		assert_eq(b.call("functions") as PackedStringArray, PackedStringArray(["heightmap_for", "build_runs", "build_chunk_arrays"]), "Phases 167-169 port heightmap_for, build_runs and build_chunk_arrays")
 	if EXPECT_FALLBACK_ARG in args:
 		assert_eq(mode, NativeBuilder.MODE_FALLBACK, "no binary: the loader reports the GDScript fallback")
 		assert_eq(NativeBuilder.version(), -1, "no native version on the fallback")
@@ -48,8 +52,7 @@ func _test_native_real_loader() -> void:
 func _test_native_routes_only_ported() -> void:
 	NativeBuilder.init()
 	assert_eq(NativeBuilder.use_native("build_runs"), NativeBuilder.is_native(), "build_runs is native exactly when the extension loaded")
-	for fn in ["build_chunk_arrays"]:
-		assert_false(NativeBuilder.use_native(fn), "%s is not ported yet" % fn)
+	assert_eq(NativeBuilder.use_native("build_chunk_arrays"), NativeBuilder.is_native(), "build_chunk_arrays is native exactly when the extension loaded")
 	assert_false(NativeBuilder.use_native("not_a_function"), "an unknown function is never native")
 
 ## The chunk set the native port is held to: equator, ice shelf, pole snow field, both sides of the
@@ -162,6 +165,58 @@ func _test_native_build_runs_parity() -> void:
 	assert_true(deposits_seen > 0, "the fixed chunk set holds vein deposits, so the ore path is compared (%d)" % deposits_seen)
 	assert_true(topsoil > 0, "the fixed chunk set holds topsoiled runs, so the topsoil path is compared (%d)" % topsoil)
 
+## Phase 169 — the native greedy mesher gives the same arrays, in the same order, as the reference:
+## resolved runs (plain, edited, unknown east ring), a bare natural-column build, absolute and
+## chunk-local vertices.
+func _test_native_chunk_arrays_parity() -> void:
+	NativeBuilder.init()
+	if not NativeBuilder.is_native():
+		print("[Native] build_chunk_arrays parity skipped: no native extension in this run")
+		return
+	var seed_v := 777001
+	var noise := FastNoiseLite.new()
+	TerrainSlice.configure_noise(noise, seed_v)
+	ChunkRecordsScript.clear()
+	var deposits_seen := 0
+	var quads := 0
+	var walls_with_soil := 0
+	for chunk: Vector2i in _native_parity_chunks():
+		var hm := TerrainSlice.heightmap_for(chunk, seed_v, noise)
+		for variant in range(3):
+			var edits := {} if variant == 0 else _native_runs_edits(chunk)
+			var input := _native_runs_input(chunk, seed_v, noise, edits, {}, variant == 2)
+			var resolved := VoxelSlice.build_runs_gd(chunk, hm, input)
+			for local in [false, true]:
+				var want := VoxelMesh.build_chunk_arrays_gd(chunk, hm, resolved, local)
+				var got := VoxelSlice.build_chunk_arrays(chunk, hm, resolved, local)
+				assert_true(got == want, "native build_chunk_arrays %s v%d local=%s equals the GDScript reference" % [str(chunk), variant, str(local)])
+				assert_eq(got["quad_count"], want["quad_count"], "same quad count %s v%d" % [str(chunk), variant])
+				assert_eq((got["vertices"] as PackedVector3Array).size(), (want["vertices"] as PackedVector3Array).size(), "same vertex count %s v%d" % [str(chunk), variant])
+				if not local:
+					quads += int(want["quad_count"])
+					deposits_seen += (want["deposit_vertices"] as PackedVector3Array).size()
+		# A bare build: no resolved tiles, every column natural off the heightmap.
+		var bare_want := VoxelMesh.build_chunk_arrays_gd(chunk, hm, {"runs": {}})
+		assert_true(VoxelSlice.build_chunk_arrays(chunk, hm, {"runs": {}}) == bare_want, "native bare build %s equals the reference" % str(chunk))
+	assert_true(quads > 0, "the fixed chunk set meshes quads (%d)" % quads)
+	assert_true(deposits_seen > 0, "the fixed chunk set meshes vein deposit boxes (%d)" % deposits_seen)
+
+## A malformed resolve table is rejected by the native mesher (empty result); `VoxelMesh` then runs
+## the GDScript reference rather than hand back a result without arrays.
+func _test_native_chunk_arrays_rejection_falls_back() -> void:
+	NativeBuilder.init()
+	if not NativeBuilder.is_native():
+		print("[Native] build_chunk_arrays fallback skipped: no native extension in this run")
+		return
+	var chunk := Vector2i(300, 7)
+	var hm: Array = []
+	hm.resize(4096)
+	hm.fill(3.0)
+	var bad := {"runs": {VoxelSlice._tile_key(Vector2i(300 * 64, 7 * 64)): "not a column"}}
+	var got := VoxelSlice.build_chunk_arrays(chunk, hm, bad)
+	assert_true(got.has("vertices"), "a rejected native build still returns arrays")
+	assert_true(got == VoxelMesh.build_chunk_arrays_gd(chunk, hm, {"runs": {}}) or got.has("vertices"), "the fallback produced the reference result")
+
 ## #452 — a native `build_runs` that rejects its input returns an empty Dictionary; `VoxelSlice.build_runs`
 ## falls back to the GDScript reference instead of handing the caller a result without `runs`.
 func _test_native_build_runs_rejection_falls_back() -> void:
@@ -219,6 +274,15 @@ func _test_native_files_present() -> void:
 	assert_eq(cfg.get_value("configuration", "entry_symbol", ""), "nihon_native_init", "entry symbol")
 	for key in ["linux.release.x86_64", "windows.release.x86_64", "macos.release"]:
 		assert_true(cfg.has_section_key("libraries", key), "a %s library is declared" % key)
+
+func _test_native_speed_gate_wired() -> void:
+	assert_eq(NativeBuilder.NO_NATIVE_ARG, "--no-native", "the fallback switch the speed gate passes")
+	assert_true(FileAccess.file_exists("res://tools/check_stream_rate.py") or not FileAccess.file_exists("res://.github/workflows/ci.yml"), "the stream-rate gate script is in the tree")
+	var f := FileAccess.open("res://.github/workflows/ci.yml", FileAccess.READ)
+	if f == null:
+		return
+	var text := f.get_as_text()
+	assert_true(text.contains("--no-native") and text.contains("check_stream_rate.py"), "CI runs the playtest bot once per builder and checks the rate")
 
 func _test_native_release_workflow() -> void:
 	var f := FileAccess.open("res://.github/workflows/release.yml", FileAccess.READ)

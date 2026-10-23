@@ -24,6 +24,7 @@ extends Node
 ##   report_markdown(report) -> String        — static
 ##   step_names() -> Array                    — static, the fixed step order
 
+const VoxelSlice := preload("res://src/terrain/voxel_slice.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const WaystoneSlice := preload("res://src/world/waystone_slice.gd")
@@ -43,6 +44,8 @@ const WARMUP_FRAMES := 3     ## the first frames of a step (shader compile, firs
 const BOOT_TIMEOUT_SECS := 120.0
 const WATCHDOG_SLACK_SECS := 60.0 ## whole-run budget = boot + every step's timeout + this
 const STREAM_CHUNKS := 20
+const RATE_CHUNKS := 24      ## chunks the stream step times the pure worker build on (Phase 169)
+const NativeBuilder := preload("res://src/terrain/native_builder.gd")
 const WALK_SECS := 3.0
 const WALK_MIN_M := 4.0        ## the walk step keeps going until the body has moved this far
 const WALK_MAX_SECS := 20.0   ## ... but not past this
@@ -98,6 +101,7 @@ var _skip_until_ms: int = 0   ## frames before this tick are not recorded (just 
 var _step_result: Array = []  ## set by the step runner when its coroutine returns; empty while it runs
 var _step_deadline_ms: int = 0
 var _chunk_builds: int = 0
+var _stream_rate: float = 0.0   ## the stream step's chunk build rate (chunks/s), 0 until it ran
 var _mined: Array = []
 var _chopped: Array = []
 var _crafted: Array = []
@@ -311,6 +315,7 @@ func _on_watchdog() -> void:
 ## game's exit flush would otherwise put the bot's frontier chunks into the player's region store.
 func _finish(steps: Array) -> void:
 	var report := build_report(steps)
+	report["builder"] = NativeBuilder.mode()
 	if not _write_report(report):
 		report["ok"] = false
 		(report["failures"] as Array).append("the report could not be written to %s" % OUT_DIR)
@@ -340,6 +345,9 @@ func _run_step(step: String) -> Dictionary:
 	_key(KEY_W, false)
 	_recording = false
 	var rec := step_record(step, bool(result[0]), str(result[1]), _frames, _chunk_builds)
+	if step == "stream":
+		rec["builder"] = NativeBuilder.mode()
+		rec["build_rate"] = _stream_rate
 	await _screenshot(step)
 	print("[Playtest] %s %s %s" % [step, "ok" if bool(rec["ok"]) else "FAIL", rec["detail"]])
 	return rec
@@ -479,7 +487,29 @@ func _step_stream() -> Array:
 		if not built:
 			return [false, "chunk %d east never built" % i]
 		await _until(func(): return false, 0.1)
-	return [true, "%d chunks streamed" % STREAM_CHUNKS]
+	_recording = false   # the timed loop blocks the main thread on purpose: it is not a frame to judge
+	_stream_rate = _measure_build_rate(home["chunk"])
+	_recording = true
+	_skip_frames = WARMUP_FRAMES
+	return [true, "%d chunks streamed; %s builder %.1f chunks/s" % [STREAM_CHUNKS, NativeBuilder.mode(), _stream_rate]]
+
+## Phase 169 — the chunk build rate of the builder in use (`NativeBuilder.mode()`), chunks per second of
+## the pure worker half (map, seam strips, resolve, mesh) run synchronously on `RATE_CHUNKS` chunks past
+## the streamed ones. It times the builder itself, so the pump's scheduling (Phase 142) is not in the
+## number and a native run is comparable with a `--no-native` run on the same commit.
+func _measure_build_rate(home_chunk: Vector2i) -> float:
+	TerrainSlice.warm_polar_caches()
+	var seed_v: int = int(_root._terrain.get_world_seed())
+	var noise: FastNoiseLite = _root._terrain.detail_noise_copy()
+	var started := Time.get_ticks_usec()
+	for i in range(RATE_CHUNKS):
+		var c := home_chunk + Vector2i(STREAM_CHUNKS + 4 + i % 6, 4 + i / 6)
+		var hm: Array = TerrainSlice.heightmap_for(c, seed_v, noise)
+		var gathered: Dictionary = _root._voxel.gather_build_input_deferred(c)
+		VoxelSlice.fill_seam_strips(c, gathered, seed_v, noise)
+		VoxelSlice.build_chunk_arrays(c, hm, VoxelSlice.build_runs(c, hm, gathered), true)
+	var secs := float(Time.get_ticks_usec() - started) / 1.0e6
+	return float(RATE_CHUNKS) / maxf(secs, 0.000001)
 
 ## Mine the ground block under the body through the player's own intent.
 func _step_mine() -> Array:

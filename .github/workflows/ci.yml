@@ -410,9 +410,16 @@ jobs:
     name: Playtest bot (rendered session under xvfb)
     # A manual dispatch is for the crowd stress run only.
     if: github.event_name != 'workflow_dispatch'
+    needs: native
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download the Linux native builder
+        uses: actions/download-artifact@v4
+        with:
+          name: native-linux
+          path: native/bin
 
       - name: Install a software renderer and X server
         run: |
@@ -456,6 +463,27 @@ jobs:
             fi
           done
           exit "$status"
+
+      - name: Run the bot again on the GDScript fallback (Phase 169)
+        run: |
+          # Same commit, `--no-native`: the stream step's chunk build rate with the native builder
+          # must be at least double this run's, and the native run must show no hitch in any step.
+          mkdir -p /tmp/playtest-native
+          cp playtest/report.json /tmp/playtest-native/report.json
+          set +e
+          timeout 1500 xvfb-run -a -s "-screen 0 1280x720x24" \
+            /tmp/godot/Godot_v4.7-stable_linux.x86_64 --path . --rendering-driver opengl3 -- --playtest-bot --no-native \
+            2>&1 | tee /tmp/playtest-gdscript.log
+          set -e
+          if [ ! -f playtest/report.json ]; then
+            echo "::error::the fallback run wrote no report"
+            exit 1
+          fi
+          cp playtest/report.json /tmp/playtest-native/report-gdscript.json
+          cp /tmp/playtest-native/report.json playtest/report.json
+          cp /tmp/playtest-native/report-gdscript.json playtest/report-gdscript.json
+          python3 tools/check_stream_rate.py playtest/report.json playtest/report-gdscript.json | tee -a "$GITHUB_STEP_SUMMARY"
+          test "${PIPESTATUS[0]}" -eq 0
 
       - name: Upload the playtest report
         if: always()
