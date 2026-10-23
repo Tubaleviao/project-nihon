@@ -8,8 +8,8 @@ extends Node
 ## frame times, and after it a screenshot, so a human playtest is one artifact download away.
 ##
 ## Output (`playtest/`, next to the project): `report.json`, `report.md` and `<step>.png`.
-## Perf numbers are a report, not a gate. Only hard failures fail the run: a step timeout, a frame
-## over HARD_FRAME_MS, or a crash (no report at all).
+## Perf is gated on p95 PROCESS time per step (Phase 174, `docs/perf/playtest-budget.json`, +25% headroom); wall frame time stays a report,
+## because software rendering inflates it. Other hard failures: a step timeout, a frame over HARD_FRAME_MS, or a crash (no report at all).
 ##
 ## The report maths (percentiles, hitches, verdicts, markdown) is static and pure, so the
 ## synchronous suite pins it (`_test_playtest_report_*`); `run()` is the only part that needs frames.
@@ -56,6 +56,9 @@ const STREAM_CHUNKS := 20
 const SHADER_SHARE_LIMIT := 0.5   ## Phase 170: heightmap share of the build above which a compute shader is justified
 const RATE_CHUNKS := 24      ## chunks the stream step times the pure worker build on (Phase 169)
 const NativeBuilder := preload("res://src/terrain/native_builder.gd")
+const BUDGET_PATH := "res://docs/perf/playtest-budget.json"   ## Phase 174: per-step p95 process budget (ms), source of the table in playtest-baseline.md
+const BUDGET_HEADROOM := 1.25   ## a step fails the gate above budget * this, so a noisy shared runner does not fail unrelated PRs
+const NO_BUDGET_ARG := "--playtest-no-budget"   ## report only: CI runs the bot 3 times with this and gates the median (tools/check_playtest_budget.py)
 const WALK_SECS := 3.0
 const WALK_MIN_M := 4.0        ## the walk step keeps going until the body has moved this far
 const WALK_MAX_SECS := 20.0   ## ... but not past this
@@ -111,6 +114,9 @@ const COAST_WORK_MS := 40             ## search work per frame before it yields
 
 var _root: Node
 var _frames: Array = []       ## frame times (ms) of the step in flight
+var _process_ms: Array = []   ## Phase 174: per recorded frame, Performance TIME_PROCESS (ms)
+var _physics_ms: Array = []   ## ... TIME_PHYSICS_PROCESS
+var _render_ms: Array = []    ## ... measured render time of the root viewport, CPU + GPU (0 headless)
 var _recording: bool = false
 var _skip_frames: int = 0
 var _skip_until_ms: int = 0   ## frames before this tick are not recorded (just after a teleport)
@@ -200,18 +206,45 @@ static func summarize(frames_ms: Array) -> Dictionary:
 		"hitches": hitches,
 	}
 
-static func step_record(step: String, ok: bool, detail: String, frames_ms: Array, chunk_builds: int) -> Dictionary:
+## Phase 174: p50/p95/max of one frame-time part.
+static func part_summary(values_ms: Array) -> Dictionary:
+	var s := summarize(values_ms)
+	return { "p50": s["p50_ms"], "p95": s["p95_ms"], "max": s["max_ms"] }
+
+static func step_record(step: String, ok: bool, detail: String, frames_ms: Array, chunk_builds: int, parts: Dictionary = {}) -> Dictionary:
 	var rec := summarize(frames_ms)
+	for key in ["process_ms", "physics_ms", "render_ms"]:
+		rec[key] = part_summary(parts.get(key, []))
 	rec["step"] = step
 	rec["ok"] = ok
 	rec["detail"] = detail
 	rec["chunk_builds"] = chunk_builds
 	return rec
 
+## Phase 174 — the steps whose p95 process time is over budget * headroom. `budgets` maps step to ms.
+static func budget_failures(steps: Array, budgets: Dictionary, headroom: float = BUDGET_HEADROOM) -> Array:
+	var out: Array = []
+	for s in steps:
+		var name := str(s["step"])
+		if not budgets.has(name) or not s.has("process_ms"):
+			continue
+		var limit := float(budgets[name]) * headroom
+		var p95 := float((s["process_ms"] as Dictionary)["p95"])
+		if p95 > limit:
+			out.append("step %s p95 process time %.1f ms is over its budget %.1f ms (+%d%% headroom = %.1f ms)" % [
+				name, p95, float(budgets[name]), int(round((headroom - 1.0) * 100.0)), limit])
+	return out
+
+static func load_budgets() -> Dictionary:
+	var parsed = JSON.parse_string(FileAccess.get_file_as_string(BUDGET_PATH))
+	return parsed if parsed is Dictionary else {}
+
 ## The run verdict. `failures` names every hard failure: a failed (or timed-out) step, a frame over
-## HARD_FRAME_MS, and a step of the fixed list that never ran.
-static func build_report(steps: Array) -> Dictionary:
+## HARD_FRAME_MS, a step over its process-time budget (`budgets`, empty to skip) and a step of the
+## fixed list that never ran.
+static func build_report(steps: Array, budgets: Dictionary = {}) -> Dictionary:
 	var failures: Array = []
+	failures.append_array(budget_failures(steps, budgets))
 	var seen := {}
 	for s in steps:
 		seen[str(s["step"])] = true
@@ -234,12 +267,23 @@ static func report_markdown(report: Dictionary) -> String:
 	lines.append("")
 	lines.append("Result: **%s**" % ("PASS" if bool(report["ok"]) else "FAIL"))
 	lines.append("")
+	if report.has("adapter"):
+		lines.append("Adapter: %s (%s), native builder: %s" % [_md_cell(str(report["adapter"])), _md_cell(str(report.get("driver", ""))), str(report.get("native_builder", false))])
+		lines.append("")
 	lines.append("| Step | Result | Frames | p50 ms | p95 ms | p99 ms | Max ms | Hitches (>%d ms) | Chunk builds | Detail |" % int(HITCH_MS))
 	lines.append("|---|---|---|---|---|---|---|---|---|---|")
 	for s in report["steps"]:
 		lines.append("| %s | %s | %d | %.1f | %.1f | %.1f | %.1f | %d | %d | %s |" % [
 			_md_cell(str(s["step"])), "ok" if bool(s["ok"]) else "FAIL", int(s["frames"]), float(s["p50_ms"]), float(s["p95_ms"]),
 			float(s["p99_ms"]), float(s["max_ms"]), int(s["hitches"]), int(s["chunk_builds"]), _md_cell(str(s["detail"]))])
+	lines.append("")
+	lines.append("| Step | process p50/p95 ms | physics p50/p95 ms | render p50/p95 ms |")
+	lines.append("|---|---|---|---|")
+	for s in report["steps"]:
+		if s.has("process_ms"):
+			lines.append("| %s | %.1f / %.1f | %.1f / %.1f | %.1f / %.1f |" % [_md_cell(str(s["step"])),
+				float(s["process_ms"]["p50"]), float(s["process_ms"]["p95"]), float(s["physics_ms"]["p50"]), float(s["physics_ms"]["p95"]),
+				float(s["render_ms"]["p50"]), float(s["render_ms"]["p95"])])
 	for s in report["steps"]:
 		var bb: Dictionary = s.get("build_breakdown", {})
 		if not bb.is_empty():
@@ -329,9 +373,14 @@ func _process(delta: float) -> void:
 		_skip_frames -= 1
 		return
 	_frames.append(delta * 1000.0)
+	_process_ms.append(Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0)
+	_physics_ms.append(Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0)
+	var vp := get_viewport().get_viewport_rid()
+	_render_ms.append(RenderingServer.viewport_get_measured_render_time_cpu(vp) + RenderingServer.viewport_get_measured_render_time_gpu(vp))
 
 func run(root: Node) -> void:
 	_root = root
+	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 	# A step body that hits a script error aborts its coroutine and would leave the process
 	# running with no verdict; the watchdog writes what exists and quits.
 	var budget := BOOT_TIMEOUT_SECS + WATCHDOG_SLACK_SECS
@@ -369,8 +418,13 @@ func _on_watchdog() -> void:
 ## Write the report, print the verdict and quit. Pending chunk records are dropped first: the
 ## game's exit flush would otherwise put the bot's frontier chunks into the player's region store.
 func _finish(steps: Array) -> void:
-	var report := build_report(steps)
+	var budgets: Dictionary = {} if NO_BUDGET_ARG in OS.get_cmdline_user_args() else load_budgets()
+	var report := build_report(steps, budgets)
 	report["builder"] = NativeBuilder.mode()
+	report["native_builder"] = NativeBuilder.is_native()
+	report["adapter"] = RenderingServer.get_video_adapter_name()
+	report["driver"] = RenderingServer.get_current_rendering_driver_name()
+	report["budget_ms"] = budgets
 	if not _write_report(report):
 		report["ok"] = false
 		(report["failures"] as Array).append("the report could not be written to %s" % OUT_DIR)
@@ -384,6 +438,9 @@ func _finish(steps: Array) -> void:
 func _run_step(step: String) -> Dictionary:
 	print("[Playtest] step %s" % step)
 	_frames = []
+	_process_ms = []
+	_physics_ms = []
+	_render_ms = []
 	_chunk_builds = 0
 	_skip_frames = WARMUP_FRAMES
 	_step_deadline_ms = Time.get_ticks_msec() + int(_step_timeout(step) * 1000.0)
@@ -399,7 +456,8 @@ func _run_step(step: String) -> Dictionary:
 	var result: Array = _step_result if not _step_result.is_empty() else [false, "step %s crashed or hung (no result %d s past its deadline)" % [step, int(STEP_GRACE_SECS)]]
 	_key(KEY_W, false)
 	_recording = false
-	var rec := step_record(step, bool(result[0]), str(result[1]), _frames, _chunk_builds)
+	var rec := step_record(step, bool(result[0]), str(result[1]), _frames, _chunk_builds,
+		{ "process_ms": _process_ms, "physics_ms": _physics_ms, "render_ms": _render_ms })
 	if step == "stream":
 		rec["builder"] = NativeBuilder.mode()
 		rec["build_rate"] = _stream_rate
