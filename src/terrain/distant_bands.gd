@@ -48,6 +48,7 @@ class Band extends RefCounted:
 	var want: Dictionary = {}       ## the newest accepted request (what the mesh is, or will be, for)
 	var running: Dictionary = {}
 	var queued: Dictionary = {}
+	var built: Dictionary = {}      ## the request of the mesh on screen (empty before the first swap)
 	var discarded: Dictionary = {}  ## the request `_exit_tree` set aside so `_enter_tree` can restart it
 	var task := -1
 	var control: BuildControl = null
@@ -238,8 +239,13 @@ func band_builds_completed(k: int) -> int:
 	return _bands[k].builds_completed
 
 ## The lattice origin band `k` was last asked for (`Vector2i(-999999, -999999)` before any request).
+## This is request state: the mesh on screen may still be an older build (see `band_built_origin`).
 func band_origin(k: int) -> Vector2i:
 	return _bands[k].want.get("origin", Vector2i(-999999, -999999))
+
+## The lattice origin of the mesh band `k` displays (`Vector2i(-999999, -999999)` before the first swap).
+func band_built_origin(k: int) -> Vector2i:
+	return _bands[k].built.get("origin", Vector2i(-999999, -999999))
 
 func band_thread(k: int) -> int:
 	return _bands[k].last_thread
@@ -347,9 +353,13 @@ func poll(block: bool = false) -> bool:
 				break
 			# A superseded build still swaps in (#444): it is nearer than the mesh it replaces, and
 			# discarding it would starve a fast mover's band of swaps. Then the newest request builds.
-			_swap_in(b, mesh)
-			b.builds_completed += 1
-			swapped = true
+			# A build for another world seed is not nearer, it is the old world's horizon (#448): drop it.
+			var other_world: bool = not b.queued.is_empty() and b.queued["seed"] != b.running["seed"]
+			if not other_world:
+				_swap_in(b, mesh)
+				b.built = b.running
+				b.builds_completed += 1
+				swapped = true
 			if not b.queued.is_empty():
 				var next := b.queued
 				b.queued = {}
