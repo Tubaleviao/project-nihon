@@ -222,7 +222,7 @@ func _finish(player_id: String) -> void:
 	var items: Array = root._carcass.resolve_harvest(cid, category, float(a["efficiency"]), level_of(player_id), _rng)
 	var inv := _inventory_of(player_id)
 	for it in items:
-		if inv == null or not inv.add_item(str(it["item"]), int(it["quantity"])):
+		if inv == null or not inv.add_item(str(it["item"]), int(it["quantity"]), [], str(it.get("quality", ""))):
 			if root._loot != null:
 				root._loot.spawn_pickup(str(it["item"]), int(it["quantity"]), pos)
 	if str(a["item"]) != "" and inv != null:

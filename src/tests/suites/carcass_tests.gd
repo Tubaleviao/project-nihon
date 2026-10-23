@@ -20,6 +20,7 @@ func register() -> void:
 	_run_test("carcass: body nodes follow an origin rebase and sit at world position plus the offset", _test_rebase_shifts_bodies)
 	_run_test("carcass: a drop puts the body where the host has it, not at a client-reported position", _test_drop_uses_host_position)
 	_run_test("carcass: a poor tool scales only its own entries; none entries keep the bare-hand yield", _test_bare_hand_entries_ignore_tool)
+	_run_test("carcass: a harvested stack keeps its quality grade through the bag, a sync and a save", _test_harvest_quality_reaches_stack)
 	_run_test("carcass: harvesting has its own wear value", _test_harvest_wear_value)
 	_run_test("carcass: a fresh body adopts the dying creature's model, one body per kill", _test_adopts_dying_model)
 	_run_test("carcass: a body with no model to adopt draws the creature's own, never a white block", _test_own_body_model)
@@ -81,6 +82,53 @@ func _test_kill_makes_carcass() -> void:
 	var c: Dictionary = f["sl"].get_carcass(f["sl"].ids()[0])
 	assert_eq(c["creature"], "ForestBoar", "the boar's body")
 	assert_eq((c["entries"] as Array).size(), CarcassRules.entries_for("ForestBoar").size(), "all entries remain")
+	_free_fixture(f)
+
+
+func _test_harvest_quality_reaches_stack() -> void:
+	var f := _fixture()
+	var cid: String = f["sl"].create_for_death("ForestBoar", Vector3(1, 0, 0), "p1")
+	f["at"][0] = Vector3(1, 0, 0)
+	f["inv"].add_item("SkinningKnife", 1)
+	f["inv"].add_item("BoneSaw", 1)
+	for e: Dictionary in f["sl"]._carcasses[cid]["entries"]:
+		e["chance"] = 1.0
+	f["gr"]._registry.add_skill_xp("p1", "Skinning", 100000)
+	var r := _work(f, cid)
+	assert_eq(r[0][0], "", "the harvest succeeds")
+	var checked := 0
+	for it: Dictionary in r[0][1]:
+		var want := str(it["quality"])
+		assert_true(want != "", "the roll carries a grade")
+		assert_eq(f["inv"].get_quality(str(it["item"])), want, "%s stack carries the rolled grade" % it["item"])
+		checked += 1
+	assert_true(checked > 0, "something was harvested")
+	var item: String = str(r[0][1][0]["item"])
+	var grade: String = f["inv"].get_quality(item)
+	# A sync (durabilities channel) and a JSON save round trip keep it.
+	var copy := InventorySlice.new()
+	add_child(copy)
+	copy.replace_contents(f["inv"].get_contents(), f["inv"].get_durability_data())
+	assert_eq(copy.get_quality(item), grade, "a synced bag shows the same grade")
+	var saved: Dictionary = JSON.parse_string(JSON.stringify(f["gr"]._registry.get_player_data("p1")))
+	var other := PlayerRegistry.new()
+	other.apply_player_data("p1", saved)
+	assert_eq(other.get_inventory("p1").get_quality(item), grade, "a save round trip keeps the grade")
+	# Mixing: a lesser grade pulls the stack down, an ungraded unit clears it, a fresh stack starts over.
+	var inv: InventorySlice = f["inv"]
+	inv.add_item(item, 1, [], "poor")
+	assert_eq(inv.get_quality(item), "poor", "the stack holds its worst grade")
+	inv.add_item(item, 1, [], "prime")
+	assert_eq(inv.get_quality(item), "poor", "a better unit does not lift the stack")
+	inv.add_item(item, 1)
+	assert_eq(inv.get_quality(item), "", "an ungraded unit leaves the stack ungraded")
+	assert_false(inv.get_quality_data().has(item), "no grade is saved for it")
+	inv.drop_item(item, inv.get_item_count(item))
+	inv.add_item(item, 1, [], "fine")
+	assert_eq(inv.get_quality(item), "fine", "a new stack starts at its own grade")
+	other.get_inventory("p1").free()
+	other.free()
+	copy.free()
 	_free_fixture(f)
 
 

@@ -103,6 +103,15 @@ static func quality(eff_level: int) -> String:
 	var q: Array = s.get("qualityCurve") if s != null else []
 	return str(q[clampi(eff_level, 0, q.size() - 1)]) if not q.is_empty() else ""
 
+## Order of a grade, worst first (the quality curve never falls, so first appearance is the rank); -1 when unknown.
+static func grade_rank(grade: String) -> int:
+	var s: Resource = skill()
+	var seen: Array = []
+	for q in (s.get("qualityCurve") if s != null else []):
+		if not seen.has(str(q)):
+			seen.append(str(q))
+	return seen.find(grade)
+
 ## Carry capacity in kg: the base from the player entity plus the Skinning bonus.
 static func capacity_kg(level: int) -> float:
 	var pc: Resource = GameData.PLAYERS.get("PlayerCharacter", null)
