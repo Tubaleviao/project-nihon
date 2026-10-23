@@ -44,6 +44,7 @@ const WARMUP_FRAMES := 3     ## the first frames of a step (shader compile, firs
 const BOOT_TIMEOUT_SECS := 120.0
 const WATCHDOG_SLACK_SECS := 60.0 ## whole-run budget = boot + every step's timeout + this
 const STREAM_CHUNKS := 20
+const SHADER_SHARE_LIMIT := 0.5   ## Phase 170: heightmap share of the build above which a compute shader is justified
 const RATE_CHUNKS := 24      ## chunks the stream step times the pure worker build on (Phase 169)
 const NativeBuilder := preload("res://src/terrain/native_builder.gd")
 const WALK_SECS := 3.0
@@ -101,6 +102,7 @@ var _skip_until_ms: int = 0   ## frames before this tick are not recorded (just 
 var _step_result: Array = []  ## set by the step runner when its coroutine returns; empty while it runs
 var _step_deadline_ms: int = 0
 var _chunk_builds: int = 0
+var _build_breakdown: Dictionary = {}   ## Phase 170: the stream step's per-stage build time
 var _stream_rate: float = 0.0   ## the stream step's chunk build rate (chunks/s), 0 until it ran
 var _mined: Array = []
 var _chopped: Array = []
@@ -192,6 +194,13 @@ static func report_markdown(report: Dictionary) -> String:
 		lines.append("| %s | %s | %d | %.1f | %.1f | %.1f | %.1f | %d | %d | %s |" % [
 			_md_cell(str(s["step"])), "ok" if bool(s["ok"]) else "FAIL", int(s["frames"]), float(s["p50_ms"]), float(s["p95_ms"]),
 			float(s["p99_ms"]), float(s["max_ms"]), int(s["hitches"]), int(s["chunk_builds"]), _md_cell(str(s["detail"]))])
+	for s in report["steps"]:
+		var bb: Dictionary = s.get("build_breakdown", {})
+		if not bb.is_empty():
+			lines.append("")
+			lines.append("Build time per chunk (window radius %d, %d chunks): heightmap %.1f ms, seam %.1f ms, runs %.1f ms, arrays %.1f ms, total %.1f ms. Heightmap share %.0f%% (limit %.0f%%): **%s**." % [
+				int(bb["window_radius"]), int(bb["chunks"]), float(bb["heightmap_ms"]), float(bb["seam_ms"]), float(bb["runs_ms"]),
+				float(bb["arrays_ms"]), float(bb["total_ms"]), 100.0 * float(bb["heightmap_share"]), 100.0 * SHADER_SHARE_LIMIT, str(bb["decision"])])
 	if not (report["failures"] as Array).is_empty():
 		lines.append("")
 		lines.append("## Hard failures")
@@ -348,6 +357,7 @@ func _run_step(step: String) -> Dictionary:
 	if step == "stream":
 		rec["builder"] = NativeBuilder.mode()
 		rec["build_rate"] = _stream_rate
+		rec["build_breakdown"] = _build_breakdown
 	await _screenshot(step)
 	print("[Playtest] %s %s %s" % [step, "ok" if bool(rec["ok"]) else "FAIL", rec["detail"]])
 	return rec
@@ -491,7 +501,7 @@ func _step_stream() -> Array:
 	_stream_rate = _measure_build_rate(home["chunk"])
 	_recording = true
 	_skip_frames = WARMUP_FRAMES
-	return [true, "%d chunks streamed; %s builder %.1f chunks/s" % [STREAM_CHUNKS, NativeBuilder.mode(), _stream_rate]]
+	return [true, "%d chunks streamed; %s builder %.1f chunks/s, heightmap %.0f%% of the build" % [STREAM_CHUNKS, NativeBuilder.mode(), _stream_rate, 100.0 * float(_build_breakdown.get("heightmap_share", 0.0))]]
 
 ## Phase 169 — the chunk build rate of the builder in use (`NativeBuilder.mode()`), chunks per second of
 ## the pure worker half (map, seam strips, resolve, mesh) run synchronously on `RATE_CHUNKS` chunks past
@@ -501,15 +511,46 @@ func _measure_build_rate(home_chunk: Vector2i) -> float:
 	TerrainSlice.warm_polar_caches()
 	var seed_v: int = int(_root._terrain.get_world_seed())
 	var noise: FastNoiseLite = _root._terrain.detail_noise_copy()
+	var parts := { "heightmap": 0, "seam": 0, "runs": 0, "arrays": 0 }
 	var started := Time.get_ticks_usec()
 	for i in range(RATE_CHUNKS):
 		var c := home_chunk + Vector2i(STREAM_CHUNKS + 4 + i % 6, 4 + i / 6)
+		var t0 := Time.get_ticks_usec()
 		var hm: Array = TerrainSlice.heightmap_for(c, seed_v, noise)
+		var t1 := Time.get_ticks_usec()
 		var gathered: Dictionary = _root._voxel.gather_build_input_deferred(c)
 		VoxelSlice.fill_seam_strips(c, gathered, seed_v, noise)
-		VoxelSlice.build_chunk_arrays(c, hm, VoxelSlice.build_runs(c, hm, gathered), true)
+		var t2 := Time.get_ticks_usec()
+		var runs: Dictionary = VoxelSlice.build_runs(c, hm, gathered)
+		var t3 := Time.get_ticks_usec()
+		VoxelSlice.build_chunk_arrays(c, hm, runs, true)
+		var t4 := Time.get_ticks_usec()
+		parts["heightmap"] += t1 - t0
+		parts["seam"] += t2 - t1
+		parts["runs"] += t3 - t2
+		parts["arrays"] += t4 - t3
 	var secs := float(Time.get_ticks_usec() - started) / 1.0e6
+	_build_breakdown = build_breakdown(parts, RATE_CHUNKS, _root._chunk_manager.stream_radius())
 	return float(RATE_CHUNKS) / maxf(secs, 0.000001)
+
+## Phase 170 — where one chunk build goes. `parts_usec` is the summed microseconds of each stage over
+## `chunks` builds; the record carries milliseconds per chunk, the heightmap's share of the total, the
+## streamed window radius the measurement was taken at (`DEFAULT_VIEW_DISTANCE + prefetch`, the
+## largest default) and the decision: a compute-shader heightmap is worth building only when
+## `heightmap_for` is over `SHADER_SHARE_LIMIT` of the build.
+static func build_breakdown(parts_usec: Dictionary, chunks: int, window_radius: int) -> Dictionary:
+	var total := 0.0
+	for k in parts_usec:
+		total += float(parts_usec[k])
+	var n := float(maxi(chunks, 1))
+	var rec := { "chunks": chunks, "window_radius": window_radius }
+	for k in parts_usec:
+		rec["%s_ms" % k] = float(parts_usec[k]) / 1000.0 / n
+	rec["total_ms"] = total / 1000.0 / n
+	var share: float = float(parts_usec.get("heightmap", 0)) / total if total > 0.0 else 0.0
+	rec["heightmap_share"] = share
+	rec["decision"] = "compute_shader" if share > SHADER_SHARE_LIMIT else "no_shader"
+	return rec
 
 ## Mine the ground block under the body through the player's own intent.
 func _step_mine() -> Array:

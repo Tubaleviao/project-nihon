@@ -5,6 +5,7 @@ usage: check_stream_rate.py <native report.json> <gdscript report.json>
 
 - the `stream` step names its builder in each report (native / gdscript);
 - the native chunk build rate is at least MIN_RATIO times the fallback's;
+- the native stream step carries the Phase 170 per-stage build breakdown and its shader decision;
 - the native run has no step with a hitch (a frame over 50 ms): the bot does not fail on hitches,
   so the report is read here.
 """
@@ -40,6 +41,12 @@ def main(native_path, gd_path):
     for step in native["steps"]:
         if int(step["hitches"]) > 0:
             errors.append("native run: step %s has %d hitch frame(s) over 50 ms (max %.0f ms)" % (step["step"], step["hitches"], step["max_ms"]))
+    bb = n.get("build_breakdown") or {}
+    for key in ("heightmap_ms", "seam_ms", "runs_ms", "arrays_ms", "total_ms", "heightmap_share", "window_radius", "decision"):
+        if key not in bb:
+            errors.append("the native stream step has no build_breakdown.%s (Phase 170 measurement)" % key)
+    if bb:
+        print("heightmap share of the native build: %.0f%% at window radius %s -> %s" % (100.0 * float(bb.get("heightmap_share", 0.0)), bb.get("window_radius"), bb.get("decision")))
     for e in errors:
         print("::error::" + e)
     return 1 if errors else 0

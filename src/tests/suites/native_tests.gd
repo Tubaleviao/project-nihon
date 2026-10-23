@@ -24,6 +24,7 @@ func register() -> void:
 	_run_test("native: run edits resolve in a total order",                                     _test_native_run_ops_order)
 	_run_test("native: the extension and its build files are in the tree",                         _test_native_files_present)
 	_run_test("native: CI times the playtest stream step once per builder",                         _test_native_speed_gate_wired)
+	_run_test("native: the build breakdown decides on the heightmap share",                         _test_native_build_breakdown)
 	_run_test("native: the release workflow is tag-triggered and builds three platforms",           _test_native_release_workflow)
 
 func _test_native_mode_decision() -> void:
@@ -294,6 +295,18 @@ func _test_native_speed_gate_wired() -> void:
 	assert_true(live.contains("--playtest-bot --no-native"), "CI runs the playtest bot on the GDScript fallback")
 	assert_true(live.contains("check_stream_rate.py playtest/report.json playtest/report-gdscript.json"), "CI checks the native rate against the fallback's")
 	assert_true(live.contains("fallback_status"), "CI reads the fallback run's exit status")
+
+func _test_native_build_breakdown() -> void:
+	var PB := preload("res://src/tests/playtest_bot.gd")
+	var low := PB.build_breakdown({ "heightmap": 2000, "seam": 1000, "runs": 3000, "arrays": 4000 }, 2, 5)
+	assert_eq(int(low["window_radius"]), 5, "window radius recorded")
+	assert_true(absf(float(low["total_ms"]) - 5.0) < 0.0001, "10 ms over 2 chunks is 5 ms per chunk")
+	assert_true(absf(float(low["heightmap_share"]) - 0.2) < 0.0001, "heightmap is 20%")
+	assert_eq(low["decision"], "no_shader", "under half: no shader")
+	var high := PB.build_breakdown({ "heightmap": 7000, "seam": 1000, "runs": 1000, "arrays": 1000 }, 1, 5)
+	assert_eq(high["decision"], "compute_shader", "over half: a shader is justified")
+	var empty := PB.build_breakdown({ "heightmap": 0 }, 0, 0)
+	assert_eq(empty["decision"], "no_shader", "no time measured: no shader")
 
 func _test_native_release_workflow() -> void:
 	var f := FileAccess.open("res://.github/workflows/release.yml", FileAccess.READ)
