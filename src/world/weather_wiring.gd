@@ -14,6 +14,12 @@ const HAZE_DAY := Color(0.66, 0.74, 0.84)
 const HAZE_NIGHT := Color(0.02, 0.03, 0.08)
 const HAZE_DENSITY := 0.00015   ## clear-weather exponential fog: ~14% at 1 km, ~95% at 20 km
 const HAZE_AERIAL := 0.5        ## how much the fog takes its colour from the sky behind it
+## How steeply weather thickens the haze: the fog density is the clear haze's times (1 / visibilityFactor)
+## to this power, so rain (0.8) is a light veil (~2.4x), fog (0.5) closes in to about a kilometre (16x)
+## and a blizzard (0.4) to a few hundred metres (~39x).
+const WEATHER_FOG_EXPONENT := 4.0
+## visibilityFactor is floored here before the power, so a zero factor stays a finite fog.
+const WEATHER_VIS_FLOOR := 0.2
 
 ## Seconds since the host last ticked status effects / sent a world-clock tick (module-only state).
 var _status_tick_elapsed: float = 0.0
@@ -64,14 +70,21 @@ func _apply_weather_look(state: String) -> void:
 	var env_node := root.get_node_or_null("Environment") as WorldEnvironment
 	if env_node == null or env_node.environment == null:
 		return
-	apply_weather_fog(env_node.environment, root._weather.visibility_factor(state), root.WEATHER_FOG_DENSITY)
+	apply_weather_fog(env_node.environment, root._weather.visibility_factor(state))
 
-## Phase 164 — the fog for a weather `vis` (visibilityFactor, 1 = clear): the haze base plus the
-## weather's share, and in thick weather the sky is fogged too (with the same colour as its horizon).
-static func apply_weather_fog(env: Environment, vis: float, weather_density: float) -> void:
+## The fog density for a weather `vis` (visibilityFactor, 1 = clear): the clear haze scaled by
+## (1 / vis)^WEATHER_FOG_EXPONENT. A flat per-weather density (the old 0.03 x (1 - vis)) made light rain
+## forty times the haze, so everything past ~300 m became one flat band of haze colour under the horizon.
+static func weather_fog_density(vis: float) -> float:
+	var v := clampf(vis, WEATHER_VIS_FLOOR, 1.0)
+	return HAZE_DENSITY * pow(1.0 / v, WEATHER_FOG_EXPONENT)
+
+## Phase 164 — the fog for a weather `vis` (visibilityFactor, 1 = clear), and in thick weather the sky is
+## fogged too (with the same colour as its horizon).
+static func apply_weather_fog(env: Environment, vis: float) -> void:
 	var v := clampf(vis, 0.0, 1.0)
 	env.fog_enabled = true
-	env.fog_density = HAZE_DENSITY + (1.0 - v) * weather_density
+	env.fog_density = weather_fog_density(v)
 	env.fog_sky_affect = 1.0 - v
 
 ## Phase 164 — the haze colour at a `daylight` level (0 night .. 1 day).
@@ -91,7 +104,7 @@ static func make_environment() -> Environment:
 	env.ambient_light_energy = 0.5
 	env.fog_mode = Environment.FOG_MODE_EXPONENTIAL
 	env.fog_aerial_perspective = HAZE_AERIAL
-	apply_weather_fog(env, 1.0, 0.0)
+	apply_weather_fog(env, 1.0)
 	apply_sky_look(env, 1.0)
 	return env
 

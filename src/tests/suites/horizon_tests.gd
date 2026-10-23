@@ -207,13 +207,23 @@ func _test_horizon_sky_matches_haze() -> void:
 	assert_true((seen[0] as Color).get_luminance() > (seen[2] as Color).get_luminance(), "noon haze is brighter than night's")
 	# Weather thickens the fog on top of the haze and never changes its colour.
 	var before := env.fog_light_color
-	WeatherWiring.apply_weather_fog(env, 0.3, 0.03)
-	assert_true(absf(env.fog_density - (WeatherWiring.HAZE_DENSITY + 0.7 * 0.03)) < 1e-9, "weather adds its share to the haze base")
+	WeatherWiring.apply_weather_fog(env, 0.3)
+	assert_true(absf(env.fog_density - WeatherWiring.weather_fog_density(0.3)) < 1e-9, "weather thickens the haze base")
 	assert_true(env.fog_sky_affect > 0.0, "thick weather fogs the sky too")
 	assert_eq(env.fog_light_color, before, "the fog colour stays the sky's")
 	assert_eq(mat.sky_horizon_color, env.fog_light_color, "and still matches the horizon")
-	WeatherWiring.apply_weather_fog(env, 1.0, 0.03)
+	WeatherWiring.apply_weather_fog(env, 1.0)
 	assert_true(absf(env.fog_density - WeatherWiring.HAZE_DENSITY) < 1e-9, "clear weather returns to the base haze")
+	# Light rain is a veil, not a wall: ground 2 km out keeps most of its colour (the old flat 0.03 share
+	# washed everything past ~300 m into one band of haze under the horizon).
+	assert_true(exp(-WeatherWiring.weather_fog_density(0.8) * 2000.0) > 0.4, "rain leaves 2 km of ground in view")
+	# Thicker weather closes in further, and the thickest stays a finite fog.
+	var last := 0.0
+	for vis in [1.0, 0.8, 0.6, 0.5, 0.4, 0.0]:
+		var d := WeatherWiring.weather_fog_density(vis)
+		assert_true(d >= last and is_finite(d), "visibility %s: fog no thinner than at clearer weather" % vis)
+		last = d
+	assert_true(exp(-WeatherWiring.weather_fog_density(0.5) * 1500.0) < 0.05, "fog hides the ground past 1.5 km")
 	root.free()
 
 func _test_horizon_skyline_reader() -> void:
