@@ -243,6 +243,8 @@ func handle_intent(text: String, player_id: String) -> void:
 			_cmd_fly(speaker, args)
 		"heal":
 			_cmd_heal(speaker, args)
+		"regen":
+			_cmd_regen(speaker, args)
 		_:
 			pass
 
@@ -522,6 +524,17 @@ func _cmd_heal(speaker: String, args: Array) -> void:
 			return
 		player_registry.record_simulated_hp(target, PlayerRules.MAX_HP)
 	_reply(speaker, "chat.healed", [_handle_of(target)])
+
+## Phase 182 — `/regen world confirm`: regenerate the terrain (AdminWiring runs it). Without `confirm`
+## the admin is told what it does and how to confirm, and nothing happens.
+func _cmd_regen(speaker: String, args: Array) -> void:
+	if args.is_empty() or str(args[0]).to_lower() != "world":
+		_reply(speaker, ChatCommands.USAGE["regen"])
+		return
+	if args.size() != 2 or str(args[1]).to_lower() != "confirm":
+		_reply(speaker, "chat.regen_confirm")
+		return
+	GameBus.world_regen_requested.emit(speaker)
 
 ## Phase 182 — `{ speed, fly }` the host last set for `player_id` (1.0 / false when none).
 func admin_moves_of(player_id: String) -> Dictionary:

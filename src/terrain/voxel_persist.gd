@@ -382,3 +382,17 @@ func end_inflight_chunks(keys: Array) -> void:
 func mark_dirty_chunks(keys: Array) -> void:
 	for key in keys:
 		s._dirty_chunks[str(key)] = true
+
+## Phase 182 — `/regen world`: drop every edit, depletion and cached heightmap, as if no player had
+## ever touched the ground. The caller unloads the chunks first (`ChunkManager.restream`), so nothing
+## rebuilds here; the window reloads them from the generator.
+func reset_world() -> void:
+	s._vein_carry = {}
+	s._commit_edits({})
+	s._dirty_chunks.clear()
+	s._inflight_chunks.clear()
+	s._partial_chunks.clear()
+	s._heightmaps.clear()
+	s._guess_heightmaps.clear()
+	s._shown_biomes.clear()
+	s._settle = s.Settle.SettleQueue.new()

@@ -231,6 +231,11 @@ func send_carry_state(peer_id: int, carrying: bool, speed_factor: float) -> void
 ## `admin_heal` (`/heal`) and `admin_status` { admin } (the admins file changed mid-session).
 const ADMIN_PACKETS := ["admin_moves", "admin_heal", "admin_status"]
 
+## Phase 182 — host → every client: the world was regenerated; each drops what it holds of the old ground.
+func broadcast_world_regen() -> void:
+	if sl._role == sl.Role.HOST and sl._connected():
+		sl._broadcast({ "type": "world_regen" })
+
 ## Phase 182 — host → one client: an admin packet of `kind` carrying `fields`. True when sent.
 func send_admin(peer_id: int, kind: String, fields: Dictionary = {}) -> bool:
 	if not (kind in ADMIN_PACKETS) or sl._role != sl.Role.HOST or not sl._connected() or not sl._connected_peers().has(peer_id):

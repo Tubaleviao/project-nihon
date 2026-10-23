@@ -15,7 +15,9 @@ var _weather_pick: OptionButton = null
 var _weather_hours: SpinBox = null
 var _hour: SpinBox = null
 var _speed: SpinBox = null
-var _bound: Array = []   # [Control, property, i18n key]
+var _bound: Array = []   # [Node, property, i18n key]
+var _confirm: ConfirmationDialog = null
+const REGEN_COMMAND := "/regen world confirm"
 ## The commands this panel sent, newest last (the suite reads it; bounded).
 var sent: Array = []
 const SENT_KEEP := 16
@@ -51,6 +53,15 @@ func _init() -> void:
 	add_child(m_row)
 	_button("admin.fly", func() -> void: run("/fly"), m_row)
 	_button("admin.heal", func() -> void: run("/heal"), m_row)
+	# Regenerating the world asks first; the host asks again unless the command says `confirm`.
+	_confirm = ConfirmationDialog.new()
+	_confirm.dialog_text = I18n.t("admin.regen_ask")
+	_confirm.dialog_autowrap = true
+	_confirm.min_size = Vector2i(420, 0)
+	_bound.append([_confirm, "dialog_text", "admin.regen_ask"])
+	_confirm.confirmed.connect(func() -> void: run(REGEN_COMMAND))
+	add_child(_confirm)
+	_button("admin.regen", func() -> void: _confirm.popup_centered(), self)
 
 func _ready() -> void:
 	GameBus.locale_changed.connect(func(_l: String) -> void: relocalize())
@@ -65,7 +76,7 @@ func run(command: String) -> void:
 ## The language changed: re-render every label and the weather names.
 func relocalize() -> void:
 	for b: Array in _bound:
-		(b[0] as Control).set(str(b[1]), I18n.t(str(b[2])))
+		(b[0] as Object).set(str(b[1]), I18n.t(str(b[2])))
 	for i in _weather_pick.item_count:
 		_weather_pick.set_item_text(i, weather_label(str(_weather_pick.get_item_metadata(i))))
 
