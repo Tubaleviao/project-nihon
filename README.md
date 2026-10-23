@@ -14,8 +14,7 @@ The entire game design bible — materials, skills, creatures, items, world syst
   <img src="docs/media/combat.gif" alt="Walking up to a group of creatures and fighting them, HP bar and hotbar on screen" width="640">
 </p>
 
-<sub>Captured from the public build, which uses placeholder art. Creatures still show as boxes until
-rigged models land (ROADMAP Phase 143).</sub>
+<sub>Captured from the public build, which uses placeholder art.</sub>
 
 ---
 
@@ -46,9 +45,9 @@ The crowd the host supports today (Phase 163, `lan`, one desktop machine): 64 pl
 
 ## Status
 
-140+ phases shipped so far: voxel terrain on a whole planet with continents, biomes, day/night and weather; mining, building and station-gated crafting; a technology tree and research; creatures with pack behavior, combat and taming; host-authoritative multiplayer with persistence; and waystone fast travel.
+170+ phases shipped so far: voxel terrain on a whole planet with continents, biomes, day/night and weather; mining, building and station-gated crafting; a technology tree and research; rigged, animated creatures with pack behavior, combat, taming and harvesting; settlements; host-authoritative multiplayer with persistence; waystone fast travel; and English and Brazilian Portuguese UI.
 
-See [ROADMAP.md](ROADMAP.md) for the phase index, open phases and deferred work. Completed phases are archived in [docs/roadmap-history/](docs/roadmap-history/README.md) with their full spec and acceptance criteria.
+The current arc (Phases 173–181) makes it look and feel like an RPG: icons everywhere, character attributes, a character sheet and character creation. See [ROADMAP.md](ROADMAP.md) for the open phases and deferred work. Completed phases are archived in [docs/roadmap-history/](docs/roadmap-history/README.md) with their full spec and acceptance criteria.
 
 Production art lives in a private `assets-prod/` git submodule (Git LFS); the public repo ships placeholders. See [assets/README.md](assets/README.md).
 
