@@ -15,6 +15,7 @@ func register() -> void:
 	_run_test("models: a respawn near the corpse does not play run", _test_models_near_respawn_not_run)
 	_run_test("models: an out-of-range type is pre-warmed one per frame", _test_models_template_prewarm)
 	_run_test("models: range, hysteresis and the pool swap",    _test_models_range_hysteresis)
+	_run_test("models: a landed corpse model is handed to its carcass, not drawn beside it", _test_models_corpse_handoff)
 	_run_test("models: a missing key keeps the box, warns once per type", _test_models_missing_key_warns_once)
 	_run_test("models: state-to-clip map and death does not loop", _test_models_clip_map)
 	_run_test("models: MAX_MODELS keeps the nearest",           _test_models_max_models_nearest)
@@ -2401,6 +2402,38 @@ func _test_models_range_hysteresis() -> void:
 	v.reselect(c._instances, Vector3(0, 0, 5.0))
 	c.set_instance_position("m0", Vector3(2, 0, 0))
 	assert_false(pool.is_shown(mi), "a moving modelled creature does not bring its box back")
+	c.free()
+
+func _test_models_corpse_handoff() -> void:
+	var c := _model_slice("GraywolfPack", 1)
+	var v = c.visuals()
+	var sl := CarcassSlice.new()
+	sl.render_visuals = true
+	add_child(sl)
+	c.corpse_handoff = sl.adopt_corpse
+	sl.model_source = c.build_corpse_model
+	v.reselect(c._instances, Vector3(0, 0, 5.0))
+	assert_true(c.has_model("m0"), "the wolf is modelled")
+	var model: Node3D = v.models["m0"]["node"]
+	var cid: String = sl.create_for_death("GraywolfPack", Vector3.ZERO, "p1")
+	assert_true(cid != "", "the kill leaves a body")
+	c.apply_creature_state("m0", "GraywolfPack", "dead", Vector3.ZERO, 0.0)
+	v.tick(c._instances, Vector3(0, 0, 5.0), true, CreatureVisualsScript.FALL_SECONDS * 0.5)
+	assert_true(c.has_model("m0"), "the model plays the fall itself")
+	assert_false(sl._nodes.has(cid), "and the body draws nothing meanwhile")
+	v.tick(c._instances, Vector3(0, 0, 5.0), true, CreatureVisualsScript.FALL_SECONDS)
+	assert_false(c.has_model("m0"), "once landed the creature no longer draws it")
+	assert_true(is_instance_valid(model) and model.get_parent() == sl, "the carcass holds the same node")
+	assert_eq(sl._nodes.get(cid, null), model, "as the body's node")
+	assert_false(c._pool.is_shown(int(c._instances["m0"]["mi"])), "no pool box for the dead wolf")
+	sl.tick_visuals(CarcassSlice.ADOPT_WAIT_SECONDS)
+	assert_eq(sl.get_child_count(), 1, "one body is drawn for the kill")
+	# A body with no dying model to take draws the creature in its death pose.
+	var own: Node3D = c.build_corpse_model("GraywolfPack")
+	assert_true(own != null and own.find_child("AnimationPlayer", true, false) != null, "the death-pose body is the rig")
+	if own != null:
+		own.free()
+	sl.free()
 	c.free()
 
 func _test_models_missing_key_warns_once() -> void:

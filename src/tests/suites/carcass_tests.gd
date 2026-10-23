@@ -21,6 +21,9 @@ func register() -> void:
 	_run_test("carcass: a drop puts the body where the host has it, not at a client-reported position", _test_drop_uses_host_position)
 	_run_test("carcass: a poor tool scales only its own entries; none entries keep the bare-hand yield", _test_bare_hand_entries_ignore_tool)
 	_run_test("carcass: harvesting has its own wear value", _test_harvest_wear_value)
+	_run_test("carcass: a fresh body adopts the dying creature's model, one body per kill", _test_adopts_dying_model)
+	_run_test("carcass: a body with no model to adopt draws the creature's own, never a white block", _test_own_body_model)
+	_run_test("carcass: a carried body rides on the carrier's shoulders, a dragged one stays down", _test_carried_body_lift)
 
 
 ## A host-shaped GameRoot with the carcass slice and wiring, one player "p1" at `at` and a bag.
@@ -359,6 +362,7 @@ func _test_rebase_shifts_bodies() -> void:
 	sl.render_visuals = true
 	add_child(sl)
 	var a: String = sl.create_for_death("ForestBoar", Vector3(10, 0, 0), "p1")
+	sl.tick_visuals(CarcassSlice.ADOPT_WAIT_SECONDS)   # no dying model came: the body draws its marker
 	var lift := Vector3(0.0, 0.2, 0.0)
 	assert_eq((sl._nodes[a] as Node3D).position, Vector3(10, 0, 0) + lift, "no rebase yet: the world position")
 	var shift := Vector3(-64, 0, 32)
@@ -366,6 +370,7 @@ func _test_rebase_shifts_bodies() -> void:
 	assert_eq((sl._nodes[a] as Node3D).position, Vector3(10, 0, 0) + shift + lift, "a rebase moves the body node")
 	assert_eq(sl.position_of(a), Vector3(10, 0, 0), "the record keeps its world position")
 	var b: String = sl.create_for_death("ForestBoar", Vector3(20, 0, 0), "p1")
+	sl.tick_visuals(CarcassSlice.ADOPT_WAIT_SECONDS)
 	assert_eq((sl._nodes[b] as Node3D).position, Vector3(20, 0, 0) + shift + lift, "a body made after the rebase uses the offset")
 	sl.free()
 
@@ -445,3 +450,96 @@ func _test_bare_hand_entries_ignore_tool() -> void:
 
 func _test_harvest_wear_value() -> void:
 	assert_true(InventorySlice.ACTION_DECREMENT.has("harvest"), "harvest is listed in ACTION_DECREMENT")
+
+
+func _test_adopts_dying_model() -> void:
+	var sl := CarcassSlice.new()
+	sl.render_visuals = true
+	add_child(sl)
+	var built := [0]
+	sl.model_source = func(_cid: String) -> Node3D:
+		built[0] += 1
+		return Node3D.new()
+	var a: String = sl.create_for_death("ForestBoar", Vector3(10, 0, 0), "p1")
+	assert_false(sl._nodes.has(a), "a fresh body waits for the dying model instead of drawing one")
+	var holder := Node3D.new()
+	add_child(holder)
+	var far := Node3D.new()
+	holder.add_child(far)
+	far.position = Vector3(10 + CarcassSlice.ADOPT_RADIUS_M + 1.0, 0, 0)
+	assert_false(sl.adopt_corpse("ForestBoar", far), "a model too far from the body is not taken")
+	var other := Node3D.new()
+	holder.add_child(other)
+	other.position = Vector3(10.5, 0, 0)
+	assert_false(sl.adopt_corpse("GrayWolfPack", other), "a model of another creature is not taken")
+	var dying := Node3D.new()
+	holder.add_child(dying)
+	dying.position = Vector3(10.5, 0, 0)
+	dying.rotation.y = 1.0
+	assert_true(sl.adopt_corpse("ForestBoar", dying), "the dying model becomes the body")
+	assert_eq(dying.get_parent(), sl, "the carcass owns the node")
+	assert_eq(sl._nodes[a], dying, "it is the body's node")
+	assert_eq(dying.position, Vector3(10, 0, 0), "drawn where the body lies")
+	assert_true(absf(dying.rotation.y - 1.0) < 0.001, "keeping the way it fell")
+	sl.tick_visuals(CarcassSlice.ADOPT_WAIT_SECONDS)
+	assert_eq(built[0], 0, "no second body is built")
+	assert_eq(sl.get_child_count(), 1, "one body node for one kill")
+	var again := Node3D.new()
+	holder.add_child(again)
+	again.position = Vector3(10, 0, 0)
+	assert_false(sl.adopt_corpse("ForestBoar", again), "a body that adopted a model takes no other")
+	sl.remove(a)
+	assert_false(is_instance_valid(dying), "the model goes with the body")
+	holder.free()
+	sl.free()
+
+
+func _test_own_body_model() -> void:
+	var sl := CarcassSlice.new()
+	sl.render_visuals = true
+	add_child(sl)
+	var asked: Array = []
+	sl.model_source = func(cid: String) -> Node3D:
+		asked.append(cid)
+		return Node3D.new()
+	var a: String = sl.create_for_death("ForestBoar", Vector3(3, 0, 0), "p1")
+	sl.tick_visuals(CarcassSlice.ADOPT_WAIT_SECONDS * 0.5)
+	assert_false(sl._nodes.has(a), "still waiting")
+	sl.tick_visuals(CarcassSlice.ADOPT_WAIT_SECONDS * 0.5)
+	assert_eq(asked, ["ForestBoar"], "the creature's own model is asked for")
+	assert_false(sl._nodes[a] is MeshInstance3D, "the body is the model, not a box")
+	assert_eq((sl._nodes[a] as Node3D).position, Vector3(3, 0, 0), "on the ground where it lies")
+	# A body seen late (from a save, or coming into view) draws its model at once.
+	sl.apply_view({ "id": "carcass_late", "creature": "ForestBoar", "position": Vector3(5, 0, 0), "remaining": 1.0 })
+	assert_true(sl._nodes.has("carcass_late"), "an old body does not wait")
+	# A type with no usable model draws an earth-toned marker, not the untextured white box.
+	sl.model_source = func(_cid: String) -> Node3D: return null
+	var b: String = sl.create_for_death("ForestBoar", Vector3(7, 0, 0), "p1")
+	sl.tick_visuals(CarcassSlice.ADOPT_WAIT_SECONDS)
+	var marker := sl._nodes[b] as MeshInstance3D
+	assert_true(marker != null, "a marker stands in")
+	if marker != null:
+		var mat := (marker.mesh as BoxMesh).material as StandardMaterial3D
+		assert_true(mat != null and mat.albedo_color != Color.WHITE, "and it is not white")
+	sl.free()
+
+
+func _test_carried_body_lift() -> void:
+	var f := _fixture()
+	var sl: Node = f["sl"]
+	sl.render_visuals = true
+	sl.model_source = func(_cid: String) -> Node3D: return Node3D.new()
+	var cid: String = sl.create_for_death("GlimmerFox", Vector3(1, 0, 0), "p1")
+	sl.tick_visuals(CarcassSlice.ADOPT_WAIT_SECONDS)
+	sl._carcasses[cid]["mass"] = 1.0   # light enough to lift at Skinning 0
+	assert_true(cid != "", "a fox leaves a body")
+	GameBus.carry_intent.emit(cid, "p1")
+	assert_eq(sl.carried_by("p1"), cid, "carried")
+	assert_eq(str(sl._carcasses[cid]["mode"]), "carry", "lifted, not dragged")
+	assert_eq((sl._nodes[cid] as Node3D).position, Vector3(1, CarcassSlice.CARRY_LIFT_M, 0), "on the carrier's shoulders")
+	sl._carcasses[cid]["mode"] = "drag"
+	sl._place(cid)
+	assert_eq((sl._nodes[cid] as Node3D).position, Vector3(1, 0, 0), "a dragged body stays on the ground")
+	GameBus.carcass_drop_intent.emit("p1")
+	assert_eq((sl._nodes[cid] as Node3D).position, Vector3(1, 0, 0), "a dropped body lies on the ground")
+	_free_fixture(f)

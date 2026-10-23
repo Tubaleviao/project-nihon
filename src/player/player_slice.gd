@@ -21,12 +21,20 @@ const SPEED        := 4.5     # m/s horizontal
 const JUMP_FORCE   := 5.0     # m/s vertical
 const GRAVITY      := -9.8    # m/s²
 const MOUSE_SENS   := 0.002   # radians per pixel
-# Isometric orbit camera: the mouse orbits (yaw) + tilts (pitch) around the
-# player, and the scroll wheel zooms. Pitch is clamped to a downward-only range
-# so the camera always looks at the ground from above (classic isometric view).
+# Orbit camera: the mouse orbits (yaw) + tilts (pitch) around the player, and
+# the scroll wheel zooms. Pitch runs from a steep top-down view up to a little
+# above level, so the player can look out at the horizon the way one does on
+# Earth (a level view puts it mid-screen); the default looks gently down, with
+# the horizon in the upper part of the frame rather than past its top edge.
 const CAMERA_PITCH_MIN := -75.0   # degrees below horizontal (looking down)
-const CAMERA_PITCH_MAX := -20.0
-const CAMERA_PITCH     := -45.0   # default isometric down-angle
+const CAMERA_PITCH_MAX := 10.0    # degrees above horizontal (looking a little up)
+const CAMERA_PITCH     := -22.0   # default down-angle
+## Vertical field of view (degrees). Godot's 75° default stretches the ground at the frame's edges and,
+## with the camera pitched down, pushes the horizon toward the top of the screen.
+const CAMERA_FOV := 60.0
+## The camera stops this far short of terrain between it and the pivot, so tilting up or backing into a
+## slope never puts it under the ground.
+const CAMERA_GROUND_CLEARANCE := 0.4
 const CAMERA_DISTANCE      := 12.0  # orbit radius behind the pivot
 const CAMERA_DISTANCE_MIN  := 4.0
 const CAMERA_DISTANCE_MAX  := 24.0
@@ -88,6 +96,8 @@ var death_landing_fn: Callable = Callable()
 
 var _body:   CharacterBody3D
 var _camera: Camera3D
+## The zoom distance the scroll wheel sets; the camera sits closer when terrain is in the way.
+var _cam_distance: float = CAMERA_DISTANCE
 var _pivot:  Node3D           # horizontal yaw pivot under _body
 var _cam_arm: Node3D          # pitch arm under _pivot; its Y carries the camera's height smoothing
 var _cam_follow_y: float = NAN  # the height the camera follows (eased body Y); NAN until the first frame
@@ -310,6 +320,7 @@ func _process(delta: float) -> void:
 		_update_status_label()
 	if render_visuals:
 		_update_camera_height(delta)
+		_update_camera_clearance()
 		_update_aim()
 		_update_station_preview()
 	_tick_ghosts(delta)
@@ -322,6 +333,25 @@ func _update_camera_height(delta: float) -> void:
 	var body_y := _body.global_position.y
 	_cam_follow_y = follow_height(_cam_follow_y, body_y, delta)
 	_cam_arm.position.y = CAMERA_PIVOT_HEIGHT + (_cam_follow_y - body_y)
+
+## Pull the camera in along its arm when terrain lies between it and the pivot (a spring arm), and let it
+## back out to the zoom distance when the way is clear.
+func _update_camera_clearance() -> void:
+	if _camera == null or _cam_arm == null or not _camera.is_inside_tree():
+		return
+	var from := _cam_arm.global_position
+	var back := _cam_arm.global_transform.basis.z.normalized()
+	var to := from + back * _cam_distance
+	var query := PhysicsRayQueryParameters3D.create(from, to, VoxelSliceScript.TERRAIN_COLLISION_LAYER)
+	var hit := _cam_arm.get_world_3d().direct_space_state.intersect_ray(query)
+	_camera.position.z = camera_arm_length(_cam_distance, from.distance_to(hit["position"]) if not hit.is_empty() else -1.0)
+
+## The camera's distance along its arm: the zoom `distance`, or short of terrain `hit_m` along the arm (negative
+## when nothing is in the way) by CAMERA_GROUND_CLEARANCE, never closer than a tenth of a metre.
+static func camera_arm_length(distance: float, hit_m: float) -> float:
+	if hit_m < 0.0 or hit_m >= distance:
+		return distance
+	return maxf(hit_m - CAMERA_GROUND_CLEARANCE, 0.1)
 
 ## One frame of the camera's height smoothing: `current` eased toward `target` over `delta`
 ## seconds. Snaps when `current` is unset (NAN) or further than CAMERA_SNAP_DISTANCE away.
@@ -527,7 +557,8 @@ func view_far() -> float:
 func _zoom(delta_z: float) -> void:
 	if _camera == null:
 		return
-	_camera.position.z = clampf(_camera.position.z + delta_z, CAMERA_DISTANCE_MIN, CAMERA_DISTANCE_MAX)
+	_cam_distance = clampf(_cam_distance + delta_z, CAMERA_DISTANCE_MIN, CAMERA_DISTANCE_MAX)
+	_camera.position.z = _cam_distance
 
 func get_hp() -> float:
 	return _hp
@@ -719,6 +750,7 @@ func _build_body() -> void:
 	_camera = Camera3D.new()
 	_camera.name = "PlayerCamera"
 	_camera.position = Vector3(0, 0, CAMERA_DISTANCE)
+	_camera.fov = CAMERA_FOV
 	_camera.current  = true
 	# Phase 164 — past the ring's outer circle (Godot's default 4 km would cut the horizon off).
 	# The boot path keeps it in step with the ring it builds (`set_view_far`).

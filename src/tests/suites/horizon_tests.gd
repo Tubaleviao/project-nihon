@@ -14,6 +14,7 @@ func register() -> void:
 	_run_test("horizon: curvature drop and horizon distance match the closed forms", _test_horizon_closed_forms)
 	_run_test("horizon: the ring's outer silhouette is a circle",                     _test_horizon_ring_is_round)
 	_run_test("horizon: the outer radius and the camera's far reach the horizon",     _test_horizon_outer_radius_and_far)
+	_run_test("horizon: the camera can look out at the horizon and stays above the ground", _test_horizon_camera_can_look_level)
 	_run_test("horizon: the polar ring keeps the window hole, no collision, in budget", _test_horizon_ring_hole_and_budget)
 	_run_test("horizon: the ring shader's drop is horizon.gd's",                       _test_horizon_ring_shader)
 	_run_test("horizon: the sky's horizon is the haze at noon, dusk and night",        _test_horizon_sky_matches_haze)
@@ -235,3 +236,13 @@ func _test_horizon_skyline_reader() -> void:
 	var empty := Image.create(4, 10, false, Image.FORMAT_RGBA8)
 	empty.fill(key)
 	assert_eq(PlaytestBot.skyline_rows(empty, key), [10, 10, 10, 10], "an all-sky column reads as the frame height")
+
+
+func _test_horizon_camera_can_look_level() -> void:
+	assert_true(PlayerSlice.CAMERA_PITCH_MAX >= 0.0, "the pitch reaches level, so the horizon can sit mid-screen")
+	var half_fov := PlayerSlice.CAMERA_FOV * 0.5
+	assert_true(-PlayerSlice.CAMERA_PITCH < half_fov, "at the default pitch the horizon is inside the frame (%.0f° down, %.0f° half view)" % [-PlayerSlice.CAMERA_PITCH, half_fov])
+	assert_eq(PlayerSlice.camera_arm_length(12.0, -1.0), 12.0, "a clear arm keeps the zoom distance")
+	assert_eq(PlayerSlice.camera_arm_length(12.0, 20.0), 12.0, "terrain past the camera does not pull it in")
+	assert_eq(PlayerSlice.camera_arm_length(12.0, 5.0), 5.0 - PlayerSlice.CAMERA_GROUND_CLEARANCE, "terrain in the way pulls it short of the hit")
+	assert_eq(PlayerSlice.camera_arm_length(12.0, 0.2), 0.1, "never onto the pivot")
