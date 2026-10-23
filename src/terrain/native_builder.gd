@@ -49,14 +49,14 @@ static func init() -> String:
 		return _mode
 	_loaded = true
 	var ext_loaded := false
-	if NO_NATIVE_ARG in OS.get_cmdline_user_args():
-		pass   # forced fallback
-	elif ClassDB.class_exists(CLASS_NAME):
+	if ClassDB.class_exists(CLASS_NAME):
 		ext_loaded = true   # already registered, e.g. through the editor's extension list
 	elif library_present():
 		var status := GDExtensionManager.load_extension(EXTENSION_PATH)
 		ext_loaded = status == GDExtensionManager.LOAD_STATUS_OK or status == GDExtensionManager.LOAD_STATUS_ALREADY_LOADED
-	_mode = mode_for(ext_loaded, ClassDB.class_exists(CLASS_NAME))
+	# `--no-native` forces the fallback even when the class is registered (library_present() checks it too).
+	var forced := NO_NATIVE_ARG in OS.get_cmdline_user_args()
+	_mode = mode_for(ext_loaded and not forced, ClassDB.class_exists(CLASS_NAME))
 	if _mode == MODE_NATIVE:
 		_builder = ClassDB.instantiate(CLASS_NAME)
 		print("[Native] chunk builder: native (version %d)" % int(_builder.call("version")))

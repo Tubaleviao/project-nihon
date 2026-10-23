@@ -287,7 +287,13 @@ func _test_native_speed_gate_wired() -> void:
 	if f == null:
 		return
 	var text := f.get_as_text()
-	assert_true(text.contains("--no-native") and text.contains("check_stream_rate.py"), "CI runs the playtest bot once per builder and checks the rate")
+	var live := ""
+	for line in text.split("\n"):
+		if not line.strip_edges().begins_with("#"):
+			live += line + "\n"
+	assert_true(live.contains("--playtest-bot --no-native"), "CI runs the playtest bot on the GDScript fallback")
+	assert_true(live.contains("check_stream_rate.py playtest/report.json playtest/report-gdscript.json"), "CI checks the native rate against the fallback's")
+	assert_true(live.contains("fallback_status"), "CI reads the fallback run's exit status")
 
 func _test_native_release_workflow() -> void:
 	var f := FileAccess.open("res://.github/workflows/release.yml", FileAccess.READ)

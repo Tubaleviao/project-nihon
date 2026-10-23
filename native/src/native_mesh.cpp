@@ -44,7 +44,7 @@ struct Group {
 	double bottom = 0.0;
 	double top = 0.0;
 	Color color;
-	std::vector<bool> cells = std::vector<bool>(CHUNK_SIZE * CHUNK_SIZE, false);
+	std::vector<int> cells;   // tile indices (tz * CHUNK_SIZE + tx), each once
 	int cell_count = 0;
 };
 
@@ -110,9 +110,8 @@ public:
 	Color fallback;
 	std::vector<double> hm;
 	const Dictionary *runs = nullptr;
-	// The 66x66 ring (tile -1..64 in each axis); `known` is false for an unknown neighbour.
+	// The 66x66 ring (tile -1..64 in each axis); an empty Column stands for an unknown neighbour.
 	std::vector<Column> ring;
-	std::vector<bool> ring_ok;
 	std::array<Bucket, DIR_COUNT> buckets;
 	std::vector<int> dir_order;   // dirs in the order their first group appeared
 
@@ -224,10 +223,9 @@ public:
 		}
 		Group &g = b.groups[gi];
 		int idx = tz * CHUNK_SIZE + tx;
-		if (!g.cells[idx]) {
-			g.cells[idx] = true;
-			g.cell_count++;
-		}
+		// Callers add a tile at most once per group: runs in a column differ in bottom/top.
+		g.cells.push_back(idx);
+		g.cell_count++;
 	}
 
 	double wall_plane(int dir, int tx, int tz) const {
@@ -287,25 +285,42 @@ struct Rect {
 	int tx, tz, w, h;
 };
 
-std::vector<Rect> merge_rects(const std::vector<bool> &cells) {
+// Scratch marks for merge_rects, reused across groups so a group costs O(its cells), not O(chunk).
+// A tile is "present" when mark == stamp and "used" when mark == stamp + 1; stamps advance by 2.
+struct MergeScratch {
+	std::vector<uint32_t> mark = std::vector<uint32_t>(CHUNK_SIZE * CHUNK_SIZE, 0);
+	uint32_t stamp = 0;
+};
+
+std::vector<Rect> merge_rects(std::vector<int> cells, MergeScratch &sc) {
 	std::vector<Rect> out;
-	std::vector<bool> used(CHUNK_SIZE * CHUNK_SIZE, false);
-	for (int idx = 0; idx < CHUNK_SIZE * CHUNK_SIZE; idx++) {
-		if (!cells[idx] || used[idx]) {
+	std::sort(cells.begin(), cells.end());
+	if (sc.stamp > 0xFFFFFFF0u) {
+		std::fill(sc.mark.begin(), sc.mark.end(), 0);
+		sc.stamp = 0;
+	}
+	sc.stamp += 2;
+	const uint32_t present = sc.stamp;
+	const uint32_t used = sc.stamp + 1;
+	std::vector<uint32_t> &mark = sc.mark;
+	for (int idx : cells) {
+		mark[idx] = present;
+	}
+	for (int idx : cells) {
+		if (mark[idx] != present) {
 			continue;
 		}
 		int tx = idx % CHUNK_SIZE;
 		int tz = idx / CHUNK_SIZE;
 		int w = 1;
-		while (tx + w < CHUNK_SIZE && cells[tz * CHUNK_SIZE + tx + w] && !used[tz * CHUNK_SIZE + tx + w]) {
+		while (tx + w < CHUNK_SIZE && mark[tz * CHUNK_SIZE + tx + w] == present) {
 			w++;
 		}
 		int h = 1;
 		while (tz + h < CHUNK_SIZE) {
 			bool complete = true;
 			for (int dx = 0; dx < w; dx++) {
-				int probe = (tz + h) * CHUNK_SIZE + tx + dx;
-				if (!cells[probe] || used[probe]) {
+				if (mark[(tz + h) * CHUNK_SIZE + tx + dx] != present) {
 					complete = false;
 					break;
 				}
@@ -317,7 +332,7 @@ std::vector<Rect> merge_rects(const std::vector<bool> &cells) {
 		}
 		for (int dz = 0; dz < h; dz++) {
 			for (int dx = 0; dx < w; dx++) {
-				used[(tz + dz) * CHUNK_SIZE + tx + dx] = true;
+				mark[(tz + dz) * CHUNK_SIZE + tx + dx] = used;
 			}
 		}
 		out.push_back({ tx, tz, w, h });
@@ -368,11 +383,12 @@ Dictionary NativeChunkBuilder::build_chunk_arrays(const Vector2i &p_chunk, const
 	PackedInt32Array indices;
 	int64_t quad_count = 0;
 	int64_t cell_count = 0;
+	MergeScratch scratch;
 
 	for (int dir : m.dir_order) {
 		for (const Group &g : m.buckets[dir].groups) {
 			cell_count += g.cell_count;
-			for (const Rect &rect : merge_rects(g.cells)) {
+			for (const Rect &rect : merge_rects(g.cells, scratch)) {
 				double plane = g.plane;
 				if (dir == NORTH || dir == SOUTH) {
 					plane -= plane_dz;

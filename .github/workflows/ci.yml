@@ -470,17 +470,29 @@ jobs:
           # must be at least double this run's, and the native run must show no hitch in any step.
           mkdir -p /tmp/playtest-native
           cp playtest/report.json /tmp/playtest-native/report.json
+          mkdir -p /tmp/playtest-native-png
+          cp playtest/*.png /tmp/playtest-native-png/
           set +e
           timeout 1500 xvfb-run -a -s "-screen 0 1280x720x24" \
             /tmp/godot/Godot_v4.7-stable_linux.x86_64 --path . --rendering-driver opengl3 -- --playtest-bot --no-native \
             2>&1 | tee /tmp/playtest-gdscript.log
+          fallback_status=${PIPESTATUS[0]}
           set -e
           if [ ! -f playtest/report.json ]; then
             echo "::error::the fallback run wrote no report"
             exit 1
           fi
+          if grep -qE "SCRIPT ERROR|Parse Error|Compile Error" /tmp/playtest-gdscript.log; then
+            echo "::error::script/parse/compile errors in the fallback run"
+            exit 1
+          fi
+          if [ "$fallback_status" -ne 0 ]; then
+            echo "::error::the fallback run failed (exit $fallback_status)"
+            exit 1
+          fi
           cp playtest/report.json /tmp/playtest-native/report-gdscript.json
           cp /tmp/playtest-native/report.json playtest/report.json
+          cp /tmp/playtest-native-png/*.png playtest/   # keep the native run's screenshots with its report
           cp /tmp/playtest-native/report-gdscript.json playtest/report-gdscript.json
           python3 tools/check_stream_rate.py playtest/report.json playtest/report-gdscript.json | tee -a "$GITHUB_STEP_SUMMARY"
           test "${PIPESTATUS[0]}" -eq 0
