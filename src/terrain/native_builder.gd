@@ -12,9 +12,10 @@ const EXTENSION_PATH := "res://native/nihon_native.gdextension"
 const CLASS_NAME := "NativeChunkBuilder"
 const MODE_NATIVE := "native"
 const MODE_FALLBACK := "gdscript"
-## Functions a later step may route natively, in step order.
+
 ## User arg that forces the GDScript fallback even with the binary present (CI times both builders).
 const NO_NATIVE_ARG := "--no-native"
+## Functions a later step may route natively, in step order.
 const FUNCTIONS: Array[String] = ["heightmap_for", "build_runs", "build_chunk_arrays"]
 
 static var _loaded := false
