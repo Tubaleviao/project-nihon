@@ -16,6 +16,7 @@ const DeathPush := preload("res://src/battle/death_push.gd")
 const RigTree := preload("res://src/character/rig_tree.gd")
 const Locomotion := preload("res://src/character/locomotion.gd")
 const CharacterMaterial := preload("res://src/character/character_material.gd")
+const WorldPos := preload("res://src/terrain/world_pos.gd")
 const Diag := preload("res://src/core/diag.gd")
 const GameDataReader := preload("res://src/core/game_data_reader.gd")
 
@@ -178,18 +179,38 @@ func has_model(instance_id: String) -> bool:
 	return models.has(instance_id)
 
 
-## Shift every model by `shift` (a client rebase moves this node; positions stay world coordinates).
+## Phase 171 — the scene frame models are placed in: a model's local position is
+## `WorldPos.to_scene(pos, frame_chunk) + frame_shift`, so it comes from the exact `{chunk, local}` and stays
+## centimetre-exact however far the world origin is. A rebase moves `frame_chunk` by whole chunks and keeps the
+## sub-chunk remainder in `frame_shift`; this node itself is never moved.
+var frame_chunk := Vector2i.ZERO
+var frame_shift := Vector3.ZERO
+
+## Shift every model by `shift` (a client rebase moves the scene origin).
 func shift_scene(shift: Vector3) -> void:
-	position += shift
+	var cm := WorldPos.CHUNK_METERS
+	var whole := Vector2i(roundi(shift.x / cm), roundi(shift.z / cm))
+	frame_chunk -= whole
+	frame_shift += shift - Vector3(float(whole.x) * cm, 0.0, float(whole.y) * cm)
+
+## The scene position of an instance record: from its exact position when it has one.
+func scene_of(inst: Dictionary) -> Vector3:
+	if inst.has("pos"):
+		return WorldPos.to_scene(inst["pos"], frame_chunk) + frame_shift
+	return (inst["position"] as Vector3) + frame_shift + Vector3(float(frame_chunk.x) * WorldPos.CHUNK_METERS, 0.0, float(frame_chunk.y) * WorldPos.CHUNK_METERS)
+
+## The exact position of a scene point in this frame.
+func pos_of_scene(scene_pos: Vector3) -> Dictionary:
+	return WorldPos.from_scene(scene_pos - frame_shift, frame_chunk)
 
 
 ## Run one frame. `instances` is the slice's id -> record map; `cam_world` the camera in world coordinates
 ## (a zero-length query is skipped when `has_cam` is false).
-func tick(instances: Dictionary, cam_world: Vector3, has_cam: bool, delta: float) -> void:
+func tick(instances: Dictionary, cam_world: Vector3, has_cam: bool, delta: float, cam_pos: Dictionary = {}) -> void:
 	_select_accum += delta
 	if has_cam and _select_accum >= SELECT_INTERVAL:
 		_select_accum = 0.0
-		reselect(instances, cam_world)
+		reselect(instances, cam_world, cam_pos)
 	prewarm_one()
 	for iid in models.keys():
 		if not instances.has(iid):
@@ -199,14 +220,18 @@ func tick(instances: Dictionary, cam_world: Vector3, has_cam: bool, delta: float
 
 
 ## Range check: attach models to the nearest creatures, detach the rest.
-func reselect(instances: Dictionary, cam_world: Vector3) -> void:
+func reselect(instances: Dictionary, cam_world: Vector3, cam_pos: Dictionary = {}) -> void:
 	var cands: Array = []
 	var limit := MODEL_RANGE_M + HYSTERESIS_M
 	for iid in instances:
 		var inst: Dictionary = instances[iid]
 		if inst["state"] == "dead" and not models.has(iid):
 			continue
-		var d: float = cam_world.distance_to(inst["position"])
+		var d: float
+		if not cam_pos.is_empty() and inst.has("pos"):
+			d = WorldPos.offset_between(cam_pos, inst["pos"]).length()   # exact: no float32 world metre
+		else:
+			d = cam_world.distance_to(inst["position"])
 		var cid := str(inst["creature_id"])
 		if d > limit:
 			if not _templates.has(cid):
@@ -261,9 +286,9 @@ func attach(iid: String, inst: Dictionary) -> bool:
 	tree.anim_player = tree.get_path_to(player)
 	tree.active = true
 	add_child(node)
-	var pos: Vector3 = inst["position"]
+	var pos: Vector3 = scene_of(inst)
 	node.transform = Transform3D(Basis(), pos)
-	models[iid] = {"node": node, "tree": tree, "speed": 0.0, "last_pos": pos, "yaw": 0.0,
+	models[iid] = {"node": node, "tree": tree, "speed": 0.0, "last_pos": pos, "last_exact": inst.get("pos", {}), "yaw": 0.0,
 		"loco": -1, "dead_at": -1.0, "fall_t": 1.0, "fall_from": pos, "corpse_s": corpse_seconds(cid), "state": str(inst["state"]), "swing_left": 0.0, "swing": 0, "swing_seen": 0}
 	model_attached.emit(iid)
 	return true
@@ -291,9 +316,15 @@ func detach(iid: String) -> void:
 
 func _update_model(iid: String, inst: Dictionary, delta: float) -> void:
 	var m: Dictionary = models[iid]
-	var pos: Vector3 = inst["position"]
+	var pos: Vector3 = scene_of(inst)
 	var state: String = inst["state"]
 	var last: Vector3 = m["last_pos"]
+	# Speed and heading come from the exact displacement since the last update, so a rebase (which moves every
+	# scene position at once) is not read as a sprint and a 0.1 m step far from the origin is 0.1 m.
+	var last_exact: Dictionary = m.get("last_exact", {})
+	if not last_exact.is_empty() and inst.has("pos"):
+		last = pos - WorldPos.offset_between(last_exact, inst["pos"])
+	m["last_exact"] = inst.get("pos", {})
 	if m["state"] == "dead" and state != "dead":
 		# Leaving death is a respawn: the body was put back at its spawn point, however near, so
 		# the move is not a run and the model does not turn toward it.

@@ -27,6 +27,15 @@ func host(port: int = sl.DEFAULT_PORT, max_clients: int = sl.DEFAULT_MAX_CLIENTS
 ## itself is NOT in the payload — the snapshot carries the world `seed` and the
 ## client regenerates the ground from it. The client reassembles chunks by
 ## snapshot_id.
+## Phase 171 — the exact position a `creature_state_changed` packet carries (compact `pk`, else the wire
+## `position`; a legacy float array is split). Anything undecodable is the origin.
+func _creature_wire_pos(sl_: Node, payload: Dictionary) -> Dictionary:
+	var exact: Dictionary = sl_.WorldPos.pos_from_packet(payload)
+	if not exact.is_empty():
+		return exact
+	var w: Vector3 = sl_.WorldPos.packet_world(payload, sl_._vec3(payload.get("position", [])))
+	return sl_.WorldPos.from_world(w.x, w.y, w.z)
+
 func send_snapshot(peer_id: int, data: Dictionary) -> void:
 	if not sl._role == sl.Role.HOST:
 		sl.Diag.warn("NetworkingSlice: send_snapshot called on non-host — dropped")
@@ -242,7 +251,7 @@ func _route_h2c(payload: Dictionary) -> void:
 				str(payload.get("instance_id", "")),
 				str(payload.get("creature_id", "")),
 				str(payload.get("state", "")),
-				sl.WorldPos.packet_world(payload, sl._vec3(payload.get("position", [])))
+				_creature_wire_pos(sl, payload)
 			)
 		"combat_hit":
 			# Phase 156 — animation only. An oversize key or an unknown outcome is dropped.

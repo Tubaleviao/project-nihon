@@ -188,6 +188,7 @@ static func steps() -> Array:
 		{ "name": "chunk_record_synced", "compare": true },
 		{ "name": "frontier_record_synced", "compare": true },
 		{ "name": "fold_carries_creatures", "compare": true },
+		{ "name": "creature_far_delta", "compare": true },
 		{ "name": "peer_attack_animated", "compare": true },
 		{ "name": "death_landing_synced", "compare": true },
 		{ "name": "gesture_synced", "compare": true },
@@ -338,7 +339,7 @@ func run(root: Node, role: String) -> void:
 	print(format_line("profile", "ok", profile if profile != "" else "loopback"))
 	if _root._networking.emulator_bandwidth_kbps > 0.0:
 		_root._creature.delta_interval = CreatureSlice.THROTTLED_SYNC_INTERVAL
-	GameBus.creature_state_changed.connect(func(_i: String, _c: String, _s: String, _p: Vector3) -> void: _creature_deltas += 1)
+	GameBus.creature_state_changed.connect(func(_i: String, _c: String, _s: String, _p: Dictionary) -> void: _creature_deltas += 1)
 	print(format_line("plan", "ok", plan_detail()))
 	if not _self_audit():
 		return
@@ -414,6 +415,7 @@ func run(root: Node, role: String) -> void:
 	await _step_chunk_record_synced()
 	await _step_frontier_record_synced()
 	await _step_fold_carries_creatures()
+	await _step_creature_far_delta()
 	await _step_peer_attack_animated()
 	await _step_death_landing_synced()
 	await _step_gesture_synced()
@@ -1792,6 +1794,33 @@ func _step_fold_carries_creatures() -> void:
 	ok = ok and _root._creature.get_instance_position(iid).distance_to(TerrainSlice.fold_world_vec_like(next, true, 1)) < 0.01
 	_root._creature.prune_carried(func(_c): return false)
 	_report("fold_carries_creatures", verdict(ok, true), "kept-and-host-unmoved" if ok else "probe_not_carried")
+
+## Phase 171 — a creature delta for a creature half a lap from the origin lands on the client within 1 cm.
+## The host ships two exact positions 0.1 m apart straight to the peer (the AOI would drop a packet that far
+## from the harness players); the client's record must follow the step, not the float32 grid (about 2 m there).
+func _step_creature_far_delta() -> void:
+	var iid := "creature_harness_far_probe"
+	var far := { "chunk": Vector2i(625000, 3), "local": Vector3(5.0, 2.0, 5.0) }
+	var next := { "chunk": Vector2i(625000, 3), "local": Vector3(5.1, 2.0, 5.0) }
+	if _role == "host":
+		var peers: PackedInt32Array = _root.multiplayer.get_peers()
+		if peers.is_empty():
+			_report("creature_far_delta", "fail", "no_connected_peer")
+			return
+		await _await_settle(1.0)
+		for p in [far, next]:
+			_root._networking._deliver(peers[0], {
+				"type": "creature_state_changed", "instance_id": iid, "creature_id": "ForestBoar", "state": "idle",
+				"pk": WorldPos.pos_to_packet_text(p),
+			})
+			await _await_settle(0.5)
+		_report("creature_far_delta", verdict(true, true), "sent")
+		return
+	var ok: bool = await _await_until(func():
+		var got: Dictionary = _root._creature.get_instance_pos(iid)
+		return not got.is_empty() and WorldPos.offset_between(next, got).length() < 0.01, _step_timeout())
+	_root._creature.despawn_instance(iid)
+	_report("creature_far_delta", verdict(ok, true), "within_1cm" if ok else "far_delta_lost")
 
 ## Phase 156 — a swing the host resolved for the bound peer reaches that peer's client as the synced combat
 ## hit and plays an attack on the avatar that client draws for it (its own body, here). The host sends the

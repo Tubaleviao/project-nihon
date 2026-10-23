@@ -912,8 +912,8 @@ func _test_net_creature_state_compact_position() -> void:
 	})
 	GameBus.creature_state_changed.disconnect(cb)
 	assert_eq(got.size(), 2, "both creature packets are routed")
-	assert_true(got[0].distance_to(sent) < 0.01, "the compact creature position decodes to where it was sent")
-	assert_eq(got[1], Vector3(1.0, 2.0, 3.0), "a legacy float-array creature position still decodes")
+	assert_true(WorldPos.to_scene(got[0], Vector2i.ZERO).distance_to(sent) < 0.01, "the compact creature position decodes to where it was sent")
+	assert_eq(WorldPos.to_scene(got[1], Vector2i.ZERO), Vector3(1.0, 2.0, 3.0), "a legacy float-array creature position still decodes")
 	n.free()
 
 func _test_net_inventory_replace_contents() -> void:

@@ -969,7 +969,7 @@ func send_own_state(peer_id: int, data: Dictionary) -> void:
 		return
 	_deliver(peer_id, { "type": "own_state_synced", "data": data })
 
-func _on_creature_state_changed(instance_id: String, creature_id: String, state: String, position: Vector3) -> void:
+func _on_creature_state_changed(instance_id: String, creature_id: String, state: String, position: Dictionary) -> void:
 	if _role != Role.HOST:
 		return
 	var packet := {
@@ -977,9 +977,9 @@ func _on_creature_state_changed(instance_id: String, creature_id: String, state:
 		"instance_id": instance_id,
 		"creature_id": creature_id,
 		"state":       state,
-		"pk":          WorldPos.pos_to_packet_text(WorldPos.from_world(position.x, position.y, position.z)),
+		"pk":          WorldPos.pos_to_packet_text(position),
 	}
-	_broadcast_aoi(packet, position)
+	_broadcast_aoi(packet, WorldPos.to_scene(position, Vector2i.ZERO))
 
 ## Phase 97 — the exact position of the `player_moved` report being routed right now (empty otherwise);
 ## `_on_remote_player_state` relays it. Set and cleared around the emit in `_route_c2h`.
