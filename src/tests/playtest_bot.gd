@@ -666,6 +666,17 @@ func _place_with_keys(station_type: String) -> int:
 	await _until(func(): return _placed.size() > before, 2.0)
 	return _placed.size() - before
 
+## `_place_with_keys`, walking forward 1.5 s and aiming again after each refusal, up to `tries` attempts.
+func _place_walking(station_type: String, tries: int) -> int:
+	for attempt in tries:
+		var placed := await _place_with_keys(station_type)
+		if placed > 0:
+			return placed
+		_key(KEY_W, true)
+		await _until(func(): return false, 1.5)
+		_key(KEY_W, false)
+	return 0
+
 ## Craft planks at a carpentry bench set down at the feet.
 func _step_craft() -> Array:
 	var tech: Variant = await _unlock("TechBasicCarpentry")
@@ -807,13 +818,17 @@ func _harvest_after_kill(creature_key: String) -> Array:
 		var left := float(deadline_ms - Time.get_ticks_msec()) / 1000.0
 		if left <= 0.0:
 			break
+		# #472 root cause of "moved": the host cancels work when the body drifts 0.6 m from where it started, and the
+		# bot's body can still be settling (falling after the fight step's teleport, or a rebase) at that instant.
+		# Start only once it has held still, so the origin the host records is the resting position.
+		await _hold_still(minf(left, 3.0))
 		var seen := verdict.size()
 		GameBus.harvest_intent.emit(cid, "")
 		await _until(func(): return verdict.size() > seen, left)
 		for item in held_before:
 			if _root._inventory.get_item_count(str(item)) > int(held_before[item]):
 				got.append(item)
-		if not got.is_empty() or verdict.size() <= seen or str(verdict.back()) != "damaged":
+		if not got.is_empty() or verdict.size() <= seen or not ["damaged", "moved"].has(str(verdict.back())):
 			break
 	GameBus.harvest_resolved.disconnect(on_resolved)
 	GameBus.player_damaged.disconnect(on_damaged)
@@ -821,6 +836,15 @@ func _harvest_after_kill(creature_key: String) -> Array:
 	if not attackers.is_empty():
 		why += ", hit by %s" % str(attackers)
 	return [not got.is_empty(), "harvested %s" % str(got) if not got.is_empty() else "the bag gained nothing from the body (%s)" % why]
+
+## Wait (bounded by `max_secs`) until the player's position has moved less than 0.1 m over 0.3 s.
+func _hold_still(max_secs: float) -> void:
+	var deadline := Time.get_ticks_msec() + int(max_secs * 1000.0)
+	while Time.get_ticks_msec() < deadline:
+		var a := _player_pos()
+		await _until(func(): return false, 0.3)
+		if _player_pos().distance_to(a) < 0.1:
+			return
 
 ## The world's own creatures (a wolf pack) can reach the body and cancel every harvest try with a hit; the
 ## step tests the harvest, not the world's spawns, so the ones near the body are removed first.
@@ -864,18 +888,15 @@ func _step_travel() -> Array:
 	var item: String = _root._station.placement_item(stone)
 	if item != "":
 		_root._inventory.add_item(item, 2)   # each placement consumes one
-	if await _place_with_keys(stone) == 0:
+	# #471 root cause of "first waystone refused": the key places at the aimed block, which can be sky, unbuilt
+	# ground or inside another station's clearance. Only the second stone retried; both walk on and aim again.
+	if await _place_walking(stone, 3) == 0:
 		return [false, "first waystone refused"]
 	var a: String = str(_placed[before][0])
 	_key(KEY_W, true)
 	await _until(func(): return false, 1.5)
 	_key(KEY_W, false)
-	var second := await _place_with_keys(stone)
-	if second == 0:   # the aimed block can be sky or unbuilt ground: walk on and aim again once
-		_key(KEY_W, true)
-		await _until(func(): return false, 1.5)
-		_key(KEY_W, false)
-		second = await _place_with_keys(stone)
+	var second := await _place_walking(stone, 3)
 	if second == 0:
 		return [false, "second waystone refused"]
 	var b: String = str(_placed.back()[0])
