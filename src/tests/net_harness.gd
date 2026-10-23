@@ -1814,11 +1814,16 @@ func _step_creature_far_delta() -> void:
 				"pk": WorldPos.pos_to_packet_text(p),
 			})
 			await _await_settle(0.5)
-		_report("creature_far_delta", verdict(true, true), "sent")
+		_report("creature_far_delta", verdict(true, true), "within_1cm")
 		return
+	# The fold step left this client in a folded frame, which would replay onto the host's positions: set it
+	# aside for the probe and put it back.
+	var folds: Array = _root._creature._fold_log
+	_root._creature._fold_log = []
 	var ok: bool = await _await_until(func():
 		var got: Dictionary = _root._creature.get_instance_pos(iid)
 		return not got.is_empty() and WorldPos.offset_between(next, got).length() < 0.01, _step_timeout())
+	_root._creature._fold_log = folds
 	_root._creature.despawn_instance(iid)
 	_report("creature_far_delta", verdict(ok, true), "within_1cm" if ok else "far_delta_lost")
 
