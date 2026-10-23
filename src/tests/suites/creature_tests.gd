@@ -526,11 +526,11 @@ func _test_phase130_status_authority() -> void:
 	n._route_c2h(5, { "type": "player_moved", "position": [150.0, 2.0, 3.0] })
 	var held_at: Vector3 = n.get_last_known_state(5)
 	assert_true(held_at.x <= 56.5 and held_at.x >= 50.0, "a report far above the cap is clamped to the budget (got %s)" % held_at)
-	assert_eq(n._speed_ledger[5]["budget"], 0.0, "the over-speed report spent the whole budget")
+	assert_eq(n._m2.speed_ledger[5]["budget"], 0.0, "the over-speed report spent the whole budget")
 	cap[0] = 0.0
 	n._route_c2h(5, { "type": "player_moved", "position": [150.0, 2.0, 3.0] })
 	assert_eq(n.get_last_known_state(5), Vector3(150.0, 2.0, 3.0), "without a cap the report stands")
-	assert_false(n._speed_ledger.has(5), "the ledger is dropped once the cap lifts")
+	assert_false(n._m2.speed_ledger.has(5), "the ledger is dropped once the cap lifts")
 	n.free()
 
 func _test_loot_known_creature() -> void:
