@@ -90,6 +90,15 @@ func _position_of(player_id: String) -> Variant:
 		return root._networking.get_last_known_state(peer)
 	return null
 
+## Issue #426 — the fastest horizontal speed (m/s) `peer` may walk at while carrying a body; 0 when it carries nothing.
+func peer_speed_cap(peer: int) -> float:
+	if root._carcass == null or root._is_client or root._networking == null:
+		return 0.0
+	var pid: String = root._networking.get_player_id(peer)
+	if pid == "" or root._carcass.carried_by(pid) == "":
+		return 0.0
+	return PlayerSlice.SPEED * root._carcass.speed_multiplier(pid, level_of(pid)) * CARRY_SPEED_SLACK
+
 func _alive(player_id: String) -> bool:
 	if _is_local(player_id):
 		return root._player == null or root._player.get_hp() > 0.0
@@ -213,7 +222,7 @@ func _finish(player_id: String) -> void:
 	var items: Array = root._carcass.resolve_harvest(cid, category, float(a["efficiency"]), level_of(player_id), _rng)
 	var inv := _inventory_of(player_id)
 	for it in items:
-		if inv == null or not inv.add_item(str(it["item"]), int(it["quantity"])):
+		if inv == null or not inv.add_item(str(it["item"]), int(it["quantity"]), [], str(it.get("quality", ""))):
 			if root._loot != null:
 				root._loot.spawn_pickup(str(it["item"]), int(it["quantity"]), pos)
 	if str(a["item"]) != "" and inv != null:

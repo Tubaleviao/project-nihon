@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–172 are done. Their specs and acceptance criteria are archived in
+Phases 1–173 are done. Their specs and acceptance criteria are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Arc: make it look and feel like an RPG (Phases 173–181)
@@ -35,7 +35,6 @@ budget honest. Then it gives the game icons, attributes, a character sheet and c
 
 | Phase | Title | Status | Spec |
 |---|---|---|---|
-| 173 | Follow-up debt burn | Planned | below |
 | 174 | An honest playtest frame budget | Planned | below |
 | 175 | UI icons: dock, windows, skills and status from one generator | Planned | below |
 | 176 | An icon for everything a player can hold | Planned | below |
@@ -44,47 +43,6 @@ budget honest. Then it gives the game icons, attributes, a character sheet and c
 | 179 | The character sheet: a paper doll, attributes and derived stats | Planned | below |
 | 180 | Character creation in the fabric: name, appearance and starting attributes | Planned | below |
 | 181 | Character creation at runtime: a creation screen before the first spawn | Planned | below |
-
----
-
-## Phase 173 — Follow-up debt burn
-
-**Goal:** about 30 `autopilot-followup` issues are open, some for a week, and roughly a third of
-recent commits are follow-ups. Each review spawns more debt than the next phase pays off. Burn
-the backlog down before the arc adds new systems, and make the cap above enforceable.
-
-**Newel dependency:** NO.
-
-**Depends on:** nothing.
-
-**Deliverables:**
-- Triage every open `autopilot-followup` issue. Fix each item that is a correctness or
-  trust-boundary bug. Fold each item that belongs to a phase of this arc into that phase's
-  deliverables, and record the issue number there. Close the rest with a one-line reason.
-- Fix the standalone issues: #426 first (host-side speed clamp for carrying peers, a
-  trust-boundary gap that the repo rule says should never have been deferred), #429 (the
-  `chop_in_reach` harness flake) and #427 (the harvest quality grade never reaches the item
-  stack; Phase 178 builds on it).
-- Fix the playtest bot flakes. On PR #469, a docs-only change, two CI runs failed on different
-  steps: `fight` ("the bag gained nothing from the body (["moved"])") and then `travel` ("first
-  waystone refused"). File an issue for each, name the root cause and make the step
-  deterministic.
-- `tools/check_followups.sh`: counts open `autopilot-followup` issues via `gh` and exits 1 when
-  there are more than 10. Autopilot runs it before it opens a new phase.
-
-**Acceptance criteria:**
-- [ ] At most 5 `autopilot-followup` issues are open when the phase closes (`gh issue list
-  --label autopilot-followup --state open`), not counting follow-ups filed by this phase's own
-  reviews, which go under the cap of 10 like any later phase.
-- [ ] #426, #427 and #429 are closed by merged PRs.
-- [ ] #429: the root cause (host `not_consumed` / client `no_in_reach_target`) is named in the fix
-  PR, a suite or harness test reproduces that ordering deterministically, and the harness runs
-  `chop_in_reach` 20 times in a row with no failure both in CI and in a local loop
-  (`tools/net_harness.sh`).
-- [ ] Suite: a carrying peer that reports a speed above the clamp is pulled back by the host.
-- [ ] Suite: a harvested stack carries its quality grade through to the inventory and a save.
-- [ ] The playtest bot passes 5 CI runs in a row on an unchanged commit, with no step failure.
-- [ ] Suite green on both boot paths, harness green.
 
 ---
 
