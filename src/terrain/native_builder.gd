@@ -26,11 +26,15 @@ static var _builder: RefCounted = null
 static func mode_for(extension_loaded: bool, class_available: bool) -> String:
 	return MODE_NATIVE if extension_loaded and class_available else MODE_FALLBACK
 
+## True when `--no-native` (a user arg) forces the GDScript fallback.
+static func forced_fallback() -> bool:
+	return NO_NATIVE_ARG in OS.get_cmdline_user_args()
+
 ## True when the .gdextension lists a binary for this platform and build that exists on disk.
 ## Checked first so a checkout without the binaries boots silently on the fallback instead of
 ## logging an engine error for the missing library.
 static func library_present() -> bool:
-	if NO_NATIVE_ARG in OS.get_cmdline_user_args():
+	if forced_fallback():
 		return false
 	var cfg := ConfigFile.new()
 	if cfg.load(EXTENSION_PATH) != OK:
@@ -55,8 +59,7 @@ static func init() -> String:
 		var status := GDExtensionManager.load_extension(EXTENSION_PATH)
 		ext_loaded = status == GDExtensionManager.LOAD_STATUS_OK or status == GDExtensionManager.LOAD_STATUS_ALREADY_LOADED
 	# `--no-native` forces the fallback even when the class is registered (library_present() checks it too).
-	var forced := NO_NATIVE_ARG in OS.get_cmdline_user_args()
-	_mode = mode_for(ext_loaded and not forced, ClassDB.class_exists(CLASS_NAME))
+	_mode = mode_for(ext_loaded and not forced_fallback(), ClassDB.class_exists(CLASS_NAME))
 	if _mode == MODE_NATIVE:
 		_builder = ClassDB.instantiate(CLASS_NAME)
 		print("[Native] chunk builder: native (version %d)" % int(_builder.call("version")))

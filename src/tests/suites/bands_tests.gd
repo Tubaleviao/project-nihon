@@ -15,6 +15,7 @@ func register() -> void:
 	_run_test("bands: a build superseded mid-flight still swaps in, then the newest builds", _test_bands_superseded_swaps_in)
 	_run_test("bands: a build superseded by a seed change is dropped, not swapped in", _test_bands_seed_change_drops_old_build)
 	_run_test("bands: they wrap at the antimeridian; adjacent bands share their edge", _test_bands_wrap_and_seams)
+	_run_test("bands: the playtest far_peak vantage scores its sight line", _test_bands_ridge_clearance)
 	_run_test("bands: the playtest far_peak reader counts rock and snow above the ring", _test_bands_far_peak_reader)
 	_run_test("bands: no collision body, vertices within budget, far plane reaches them", _test_bands_budget_and_far)
 
@@ -253,6 +254,23 @@ func _test_bands_far_peak_reader() -> void:
 	img.set_pixel(30, 18, Color(0.5, 0.48, 0.45))   # one rock pixel
 	assert_eq(PB.rock_pixels_above(img, ring_rows, key), 31, "rock counts, green does not")
 	assert_eq(PB.rock_pixels_above(img, ring_rows, key, 0.08, true), 36, "any_colour counts the green too")
+
+func _test_bands_ridge_clearance() -> void:
+	var PB := preload("res://src/tests/playtest_bot.gd")
+	var r := 6.0e6
+	var flat := func(_p: Vector2) -> float: return 0.0
+	var ridge := func(p: Vector2) -> float: return 300.0 if p.x >= 59990.0 else 0.0
+	var hill := func(p: Vector2) -> float:
+		if p.x >= 59990.0:
+			return 300.0
+		return 400.0 if absf(p.x - 20000.0) < 600.0 else 0.0
+	var from := Vector2.ZERO
+	var peak := Vector2(60000.0, 0.0)
+	assert_true(PB.ridge_clearance(ridge, from, peak, r) > 0.0, "an open sight line clears")
+	assert_true(PB.ridge_clearance(hill, from, peak, r) < PB.ridge_clearance(ridge, from, peak, r), "a nearer hill lowers the clearance")
+	assert_true(PB.ridge_clearance(hill, from, peak, r) < 0.0, "a nearer hill taller in angle than the ridge hides it")
+	assert_true(PB.ridge_clearance(flat, from, peak, r) < 0.0, "flat ground: the curve hides the ridge's base")
+	assert_eq(PB.ridge_clearance(ridge, from, from, r), 0.0, "a ridge on the eye has no sight line to score")
 
 func _test_bands_budget_and_far() -> void:
 	var b := Bands.new()
