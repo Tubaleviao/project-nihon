@@ -535,8 +535,8 @@ func _measure_build_rate(home_chunk: Vector2i) -> float:
 
 ## Phase 170 — where one chunk build goes. `parts_usec` is the summed microseconds of each stage over
 ## `chunks` builds; the record carries milliseconds per chunk, the heightmap's share of the total, the
-## streamed window radius the measurement was taken at (`DEFAULT_VIEW_DISTANCE + prefetch`, the
-## largest default) and the decision: a compute-shader heightmap is worth building only when
+## streamed window radius of the session (`DEFAULT_VIEW_DISTANCE + prefetch`, the largest default; context
+## only, the timed chunks are a fixed block east of the spawn, so the share is that of spawn-latitude land) and the decision: a compute-shader heightmap is worth building only when
 ## `heightmap_for` is over `SHADER_SHARE_LIMIT` of the build.
 static func build_breakdown(parts_usec: Dictionary, chunks: int, window_radius: int) -> Dictionary:
 	var total := 0.0

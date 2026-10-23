@@ -6,7 +6,7 @@ usage: check_stream_rate.py <native report.json> <gdscript report.json>
 - the `stream` step names its builder in each report (native / gdscript);
 - the native chunk build rate is at least MIN_RATIO times the fallback's;
 - the native stream step carries the Phase 170 per-stage build breakdown and its shader decision;
-- the native run hitches (frames over 50 ms) no more than the fallback run does: the bot does not
+- the native stream step hitches (frames over 50 ms) no more than the fallback's does: the bot does not
   fail on hitches, so the reports are read here. The CI renderer is software GL, where frames are slow
   whatever the builder, so an absolute zero is out of reach; the fallback run on the same commit and
   runner is the baseline, with HITCH_SLACK frames of noise allowed.
@@ -42,13 +42,14 @@ def main(native_path, gd_path):
     print("stream build rate: native %.1f chunks/s, gdscript %.1f chunks/s, ratio %.2fx (need %.1fx)" % (n_rate, g_rate, ratio, MIN_RATIO))
     if ratio < MIN_RATIO:
         errors.append("native build rate is %.2fx the fallback's, need at least %.1fx" % (ratio, MIN_RATIO))
-    n_hitches = sum(int(step["hitches"]) for step in native["steps"])
-    g_hitches = sum(int(step["hitches"]) for step in gd["steps"])
+    # The stream step only: the other steps do not run the builder, and the native run goes first, so
+    # it alone pays the cold-start costs (shader compile, page cache) in their frames.
+    n_hitches = int(n["hitches"])
+    g_hitches = int(g["hitches"])
     limit = g_hitches * HITCH_RATIO + HITCH_SLACK
     print("hitch frames over 50 ms: native %d, gdscript %d (limit %.0f)" % (n_hitches, g_hitches, limit))
     if n_hitches > limit:
-        worst = max(native["steps"], key=lambda step: int(step["hitches"]))
-        errors.append("native run has %d hitch frames, over the fallback's %d (limit %.0f); worst step %s (max %.0f ms)" % (n_hitches, g_hitches, limit, worst["step"], worst["max_ms"]))
+        errors.append("native stream step has %d hitch frames, over the fallback's %d (limit %.0f); max %.0f ms" % (n_hitches, g_hitches, limit, float(n["max_ms"])))
     bb = n.get("build_breakdown") or {}
     for key in ("heightmap_ms", "seam_ms", "runs_ms", "arrays_ms", "total_ms", "heightmap_share", "window_radius", "decision"):
         if key not in bb:

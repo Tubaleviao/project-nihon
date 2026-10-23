@@ -216,8 +216,7 @@ func _test_native_chunk_arrays_rejection_falls_back() -> void:
 	# A string "bottom" is unreadable to the native port but still a number to the reference (float("0")).
 	var col := [{"bottom": "-96.0", "top": 3.0, "color": Color.RED}]
 	var bad := {"runs": {VoxelSlice._tile_key(Vector2i(300 * 64, 7 * 64)): col}}
-	var cfg := { "circumference_chunks": TerrainSlice.circumference_chunks(), "fallback_color": VoxelMesh.FALLBACK_TERRAIN_COLOR }
-	var direct := NativeBuilder.builder().call("build_chunk_arrays", chunk, hm, bad, false, cfg) as Dictionary
+	var direct := NativeBuilder.builder().call("build_chunk_arrays", chunk, hm, bad, false, VoxelMesh.native_arrays_cfg()) as Dictionary
 	assert_true(direct.is_empty(), "the native mesher rejects the malformed table")
 	var got := VoxelSlice.build_chunk_arrays(chunk, hm, bad)
 	assert_true(got.has("vertices"), "a rejected native build still returns arrays")

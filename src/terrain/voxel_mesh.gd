@@ -61,11 +61,15 @@ const FALLBACK_TERRAIN_COLOR := VoxelConsts.FALLBACK_TERRAIN_COLOR
 ## The default keeps absolute coordinates, which is what the suite's seam probes read.
 static func build_chunk_arrays(chunk_pos: Vector2i, heightmap: Array, resolved: Dictionary, local: bool = false) -> Dictionary:
 	if NativeBuilder.use_native("build_chunk_arrays"):   # Phase 169: same arrays, built in C++
-		var cfg := { "circumference_chunks": TerrainSlice.circumference_chunks(), "fallback_color": FALLBACK_TERRAIN_COLOR }
-		var native := NativeBuilder.builder().call("build_chunk_arrays", chunk_pos, heightmap, resolved, local, cfg) as Dictionary
+		var native := NativeBuilder.builder().call("build_chunk_arrays", chunk_pos, heightmap, resolved, local, native_arrays_cfg()) as Dictionary
 		if native.has("vertices"):   # a rejected input (malformed table) comes back empty: use the reference
 			return native
 	return build_chunk_arrays_gd(chunk_pos, heightmap, resolved, local)
+
+## What the native `build_chunk_arrays` cannot read itself. Not memoised: the circumference follows the
+## world configuration, and the dictionary is two entries.
+static func native_arrays_cfg() -> Dictionary:
+	return { "circumference_chunks": TerrainSlice.circumference_chunks(), "fallback_color": FALLBACK_TERRAIN_COLOR }
 
 ## The GDScript reference of `build_chunk_arrays`: the fallback and the parity suite's baseline.
 static func build_chunk_arrays_gd(chunk_pos: Vector2i, heightmap: Array, resolved: Dictionary, local: bool = false) -> Dictionary:
