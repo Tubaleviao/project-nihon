@@ -374,11 +374,16 @@ func _biome_chunks(terrain: Node, biomes: Array, count: int) -> Array:
 	for row in [0.0, 0.1, -0.1, 0.2, -0.2, 0.3, -0.3, 0.45, -0.45, 0.55, -0.55, 0.65, -0.65, 0.75, -0.75]:
 		var cz := int(row * float(pole))
 		# Continents are thousands of kilometres across: a coarse sweep of the whole circumference
-		# finds land, and a fine sweep round each landfall finds the wanted biome.
+		# finds land, and a fine sweep round each landfall finds the wanted biome. The windows of
+		# neighbouring landfalls overlap six-fold, so each starts where the last one stopped: same
+		# lattice, same order, each chunk sampled once (and never listed twice).
+		var swept := -600000 - 1500
 		for coarse in range(-600000, 600000, 500):
 			if str(terrain.get_biome_at_chunk(Vector2i(coarse, cz))) == "Ocean":
 				continue
-			for cx in range(coarse - 1500, coarse + 1500, 4):
+			var from := maxi(coarse - 1500, swept)
+			swept = coarse + 1500
+			for cx in range(from, coarse + 1500, 4):
 				if biomes.has(str(terrain.get_biome_at_chunk(Vector2i(cx, cz)))):
 					out.append(Vector2i(cx, cz))
 					if out.size() >= count:
