@@ -346,8 +346,9 @@ func scene_offset() -> Vector3:
 ## and the body never waits for it. Round the antimeridian a stand-in is the very chunk that
 ## replaces it; over a pole the ground in reach is the pole's snow field, the same on both sides.
 ## Keyed by the folded-frame chunk each one covers; `build_chunk` frees the one it replaces.
-## Phase 163 — false on a dedicated server: nothing draws or walks there, so a chunk attaches no meshes and no collision body.
+## Phase 163 — false on a dedicated server: nothing draws there, so a chunk attaches no render mesh, water or deposits.
 var attach_geometry := true
+var attach_collision := true   # Phase 172: separate from the render mesh; its shape is built on the worker
 ## #437 — what a build hands `build_chunk` when `attach_geometry` is false: no mesh, collision or
 ## deposit arrays (the worker skips `build_runs` and `build_chunk_arrays`), only the chunk-local
 ## flag the root's position reads. Not empty, so a worker result carrying it is not refused.
