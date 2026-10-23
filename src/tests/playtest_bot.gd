@@ -83,8 +83,8 @@ const FAR_PEAK_MIN_HEIGHT := 330.0    ## 80+ m over the horizon from 60 km (abou
 const FAR_PEAK_SEARCH_M := 2.0e6      ## the ridge is looked for this far from the body, nearest square ring first
 const FAR_PEAK_SEARCH_STEP_M := 8000.0
 const FAR_PEAK_EXTRA_RINGS := 40     ## rings searched past the first with a ridge, for more candidates
-const FAR_PEAK_CANDIDATES := 8       ## nearest ridges with a usable vantage compared (the tallest wins)
-const FAR_PEAK_ATTEMPTS := 3         ## vantages tried (tallest ridge first): a hill beside one can hide the bands behind the ring's own skyline
+const FAR_PEAK_CANDIDATES := 8       ## nearest ridges with a usable vantage compared (the most open sight line wins)
+const FAR_PEAK_ATTEMPTS := 3         ## vantages tried (most open sight line first): a hill beside one can hide the bands behind the ring's own skyline
 const FAR_PEAK_MIN_PX := 8            ## rock or snow pixels above the ring's skyline needed to pass
 const FAR_PEAK_SAT_MAX := 0.18        ## rock (grey) and snow (white) are below this saturation; land and sea are not
 const FAR_PEAK_TIMEOUT_SECS := 240.0
@@ -1005,7 +1005,7 @@ func _find_far_peak(from: Vector2) -> Array:
 					peaks.append([p.distance_to(from), p, h])
 					last_ring = mini(last_ring, r + FAR_PEAK_EXTRA_RINGS)
 	# A ridge whose 60 km ring is all sea or highland has no vantage: take the nearest ridges that do,
-	# and of those the tallest first (the most pixels above the skyline).
+	# and of those the most open sight line first (`ridge_clearance`).
 	peaks.sort_custom(func(p1, p2): return float(p1[0]) < float(p2[0]))
 	var vantages: Array = []
 	var usable := 0

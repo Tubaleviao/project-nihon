@@ -21,8 +21,9 @@ Completed phase, archived from [ROADMAP.md](../../ROADMAP.md). See the [index](R
 
 **Acceptance criteria:**
 - [x] Playtest bot (CI): the measurement is in `report.json`, and this section records the decision.
-- [x] If a shader (not applicable: no shader shipped, see the decision) ships: suite parity with the native `heightmap_for` for the fixed chunk set, and a
-  machine without compute support uses the native/GDScript path.
+- [x] If a shader ships: suite parity with the native `heightmap_for` for the fixed chunk set, and a
+  machine without compute support uses the native/GDScript path. (Not applicable: no shader shipped,
+  see the decision.)
 - [x] Suite green on both boot paths, harness green.
 
 **Decision: no shader.** The playtest bot's `stream` step now writes `build_breakdown` into

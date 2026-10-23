@@ -15,7 +15,7 @@ import json
 import sys
 
 MIN_RATIO = 2.0
-HITCH_SLACK = 10   ## frames of run-to-run noise allowed on top of the fallback's total
+HITCH_SLACK = 10   # frames of run-to-run noise allowed on top of the fallback's total
 HITCH_RATIO = 1.25
 
 
