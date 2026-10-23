@@ -397,7 +397,10 @@ func _path_rules(iid: String) -> Dictionary:
 ## whose own chunk is not loaded stays where it is.
 func _walk_path(iid: String, inst: Dictionary, target: Vector3, speed: float, delta: float) -> void:
 	var pos: Vector3 = inst["position"]
-	var here: Vector2i = creature_slice.tile_of(pos)
+	# Phase 171 — the creature's own tile comes from its exact position (float32 `pos` is on a 2 m grid far out).
+	var here: Vector2i = creature_slice.tile_of_pos(creature_slice.get_instance_pos(iid)) \
+			if creature_slice.has_method("tile_of_pos") and not creature_slice.get_instance_pos(iid).is_empty() \
+			else creature_slice.tile_of(pos)
 	if is_nan(creature_slice.surface_at_tile(here)):
 		return
 	var goal: Vector2i = creature_slice.tile_of(target)

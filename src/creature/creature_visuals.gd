@@ -197,7 +197,7 @@ func shift_scene(shift: Vector3) -> void:
 func scene_of(inst: Dictionary) -> Vector3:
 	if inst.has("pos"):
 		return WorldPos.to_scene(inst["pos"], frame_chunk) + frame_shift
-	return (inst["position"] as Vector3) + frame_shift + Vector3(float(frame_chunk.x) * WorldPos.CHUNK_METERS, 0.0, float(frame_chunk.y) * WorldPos.CHUNK_METERS)
+	return (inst["position"] as Vector3) + frame_shift - Vector3(float(frame_chunk.x) * WorldPos.CHUNK_METERS, 0.0, float(frame_chunk.y) * WorldPos.CHUNK_METERS)
 
 ## The exact position of a scene point in this frame.
 func pos_of_scene(scene_pos: Vector3) -> Dictionary:

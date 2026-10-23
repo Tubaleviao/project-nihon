@@ -314,7 +314,7 @@ func tile_of(pos: Vector3) -> Vector2i:
 func get_instance_pos(instance_id: String) -> Dictionary:
 	if not _instances.has(instance_id):
 		return {}
-	return _instances[instance_id]["pos"]
+	return (_instances[instance_id]["pos"] as Dictionary).duplicate()   # a copy: edits must go through set_instance_pos
 
 ## Store an exact position on a record and refresh the derived Vector3.
 static func _store_pos(inst: Dictionary, pos: Dictionary) -> void:

@@ -21,21 +21,23 @@ func host(port: int = sl.DEFAULT_PORT, max_clients: int = sl.DEFAULT_MAX_CLIENTS
 	print("[Server] listening on port %d, max_clients %d" % [port, max_clients])
 	return OK
 
+## Phase 171 — the exact position a `creature_state_changed` packet carries (compact `pk`, else the wire
+## `position`; a legacy float array is split). A packet whose `pk` does not decode is empty (the caller drops it).
+func _creature_wire_pos(sl_: Node, payload: Dictionary) -> Dictionary:
+	var exact: Dictionary = sl_.WorldPos.pos_from_packet(payload)
+	if not exact.is_empty():
+		return exact
+	if payload.has("pk"):
+		return {}
+	var w: Vector3 = sl_.WorldPos.packet_world(payload, sl_._vec3(payload.get("position", [])))
+	return sl_.WorldPos.from_world(w.x, w.y, w.z)
+
 ## Host → one client: send the initial world snapshot, split into fixed-size
 ## chunks so a large world (the chunk-edit manifest + creatures + the peer's own
 ## record) never exceeds a single reliable packet. Since Phase 41 the terrain
 ## itself is NOT in the payload — the snapshot carries the world `seed` and the
 ## client regenerates the ground from it. The client reassembles chunks by
 ## snapshot_id.
-## Phase 171 — the exact position a `creature_state_changed` packet carries (compact `pk`, else the wire
-## `position`; a legacy float array is split). Anything undecodable is the origin.
-func _creature_wire_pos(sl_: Node, payload: Dictionary) -> Dictionary:
-	var exact: Dictionary = sl_.WorldPos.pos_from_packet(payload)
-	if not exact.is_empty():
-		return exact
-	var w: Vector3 = sl_.WorldPos.packet_world(payload, sl_._vec3(payload.get("position", [])))
-	return sl_.WorldPos.from_world(w.x, w.y, w.z)
-
 func send_snapshot(peer_id: int, data: Dictionary) -> void:
 	if not sl._role == sl.Role.HOST:
 		sl.Diag.warn("NetworkingSlice: send_snapshot called on non-host — dropped")
@@ -247,12 +249,16 @@ func _route_h2c(payload: Dictionary) -> void:
 			else:
 				GameBus.player_teleport.emit(spot)
 		"creature_state_changed":
-			GameBus.creature_state_changed.emit(
-				str(payload.get("instance_id", "")),
-				str(payload.get("creature_id", "")),
-				str(payload.get("state", "")),
-				_creature_wire_pos(sl, payload)
-			)
+			var cpos: Dictionary = _creature_wire_pos(sl, payload)
+			if cpos.is_empty():
+				sl.Diag.warn("NetworkingSlice: creature_state_changed with undecodable position dropped")
+			else:
+				GameBus.creature_state_changed.emit(
+					str(payload.get("instance_id", "")),
+					str(payload.get("creature_id", "")),
+					str(payload.get("state", "")),
+					cpos
+				)
 		"combat_hit":
 			# Phase 156 — animation only. An oversize key or an unknown outcome is dropped.
 			var a := str(payload.get("a", ""))
