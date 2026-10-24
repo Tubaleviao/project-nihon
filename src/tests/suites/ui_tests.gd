@@ -1,4 +1,6 @@
 extends "res://src/tests/test_support.gd"
+
+const HoldablesData := preload("res://src/inventory/holdables.gd")
 ## Phase 133 — the ui tests, moved unchanged from the old single-file suite.
 
 
@@ -61,6 +63,7 @@ func register() -> void:
 	_run_test("map: M and the dock box toggle the Map window",  _test_map_window_key)
 	_run_test("map: waypoints sit on the game view's horizon",  _test_map_waypoint_horizon)
 	_run_test("ui: every item resolves an icon texture on every surface", _test_ui_every_item_has_icon)
+	_run_test("ui: no surface falls back to the glyph for any holdable id", _test_ui_no_glyph_for_any_holdable)
 	_run_test("ui: crafting rows gate on technology",          _test_ui_crafting_rows_tech_gate)
 	_run_test("ui: technology rows report status + prereqs",   _test_ui_technology_rows_status)
 	_run_test("ui: the loading screen shows and hides",          _test_loading_screen_visibility)
@@ -888,6 +891,78 @@ func _test_ui_every_item_has_icon() -> void:
 			"%s output icon resolves" % row["id"])
 	crafting.free()
 	ui.free()
+
+## Phase 176: a fixture holding every holdable id (items, materials, harvest outputs) builds the
+## inventory, hotbar, crafting, technology, market and trade rows without one glyph fallback, and
+## every row's icon key resolves to a texture.
+func _test_ui_no_glyph_for_any_holdable() -> void:
+	var ui := _new_test_ui()
+	var inv := InventorySlice.new()
+	add_child(inv)
+	inv._max_slots = 1000
+	inv._max_weight = 1000000.0
+	var craft := CraftingSlice.new()
+	add_child(craft)
+	var tech := TechnologySlice.new()
+	add_child(tech)
+	var market := MarketSlice.new()
+	add_child(market)
+	var trade := TradeSlice.new()
+	add_child(trade)
+	ui.inventory_slice = inv
+	ui.crafting_slice = craft
+	ui.technology_slice = tech
+	ui.market_slice = market
+	ui.trade_slice = trade
+	var ids: Array = HoldablesData.ids()
+	var offer := {}
+	for id in ids:
+		assert_true(inv.add_item(str(id), 3), "%s fits the fixture bag" % id)
+		offer[str(id)] = 1
+	market.set_party_inventory("player", inv)
+	for id in ids:
+		assert_true(market.list_item("player", str(id), 1, 2.0) != "", "%s lists on the market" % id)
+	ui._active_trade_id = trade.start_trade("player", "merchant")
+	trade.propose(ui._active_trade_id, "player", offer, {})
+	trade.propose(ui._active_trade_id, "merchant", {}, offer)
+	for id in ids:
+		inv.add_item(str(id), 1)
+	var before := UiSlice.glyph_calls
+	var rows: Array = []
+	rows.append_array(ui.inventory_rows())
+	rows.append_array(ui.crafting_rows())
+	rows.append_array(ui.technology_rows())
+	rows.append_array(ui.market_rows())
+	rows.append_array(ui._m2.trade_rows())
+	ui.refresh_inventory()
+	ui.refresh_crafting()
+	ui.refresh_technology()
+	ui.refresh_market()
+	ui.refresh_trade()
+	assert_eq(ui.inventory_rows().size(), ids.size(), "one inventory row per holdable id")
+	assert_eq(ui.market_rows().size(), ids.size(), "one market row per holdable id")
+	assert_eq(ui._m2.trade_rows().size(), ids.size() * 2, "a give row and a want row per holdable id")
+	for row in rows:
+		var key := str(row.get("icon_key", ""))
+		var label := str(row.get("id", row.get("item_id", "")))
+		if key != "":
+			assert_true(ui._load_item_icon(key) != null, "%s: %s resolves a texture" % [label, key])
+	for id in ids:
+		assert_true(ui._load_item_icon(UiSlice.item_icon_key(str(id))) != null, "%s resolves a texture" % id)
+	var techs_with_icon := 0
+	for row in ui.technology_rows():
+		if str(row["icon_key"]) != "":
+			techs_with_icon += 1
+	assert_eq(techs_with_icon, GameData.TECHNOLOGIES.size(), "every technology shows what it unlocks")
+	for row in ui.crafting_rows():
+		assert_true(str(row["icon_key"]) != "", "%s shows what it produces" % row["id"])
+	assert_eq(UiSlice.glyph_calls, before, "no row fell back to the glyph")
+	ui.free()
+	inv.free()
+	craft.free()
+	tech.free()
+	market.free()
+	trade.free()
 
 func _test_ui_controls_panel() -> void:
 	var rows := UiSlice.controls_rows()

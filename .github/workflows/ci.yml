@@ -357,6 +357,13 @@ jobs:
           python3 tools/gen_item_assets.py --out /tmp/items-b
           diff -r /tmp/items-a /tmp/items-b
 
+      - name: Check the holdable icons are current and the generator is deterministic
+        run: |
+          python3 tools/gen_holdable_icons.py --check
+          python3 tools/gen_holdable_icons.py --out /tmp/holdables-a
+          python3 tools/gen_holdable_icons.py --out /tmp/holdables-b
+          diff -r /tmp/holdables-a /tmp/holdables-b
+
       - name: Check the UI icons are current and the generator is deterministic
         run: |
           python3 tools/gen_ui_icons.py --check

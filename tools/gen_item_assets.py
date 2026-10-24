@@ -34,6 +34,7 @@ import zlib
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import holdables  # noqa: E402
 from gen_placeholder import _png  # noqa: E402
 from gen_placeholder_glb import Blob, _glb  # noqa: E402
 
@@ -567,6 +568,11 @@ def manifest_text(items: dict, root: Path) -> str:
     return json.dumps(manifest, indent=2) + "\n"
 
 
+def _other_holdables() -> set:
+    """Materials and harvest outputs: their icons share this directory but come from gen_holdable_icons.py."""
+    return {i for i, k in holdables.holdable_kinds().items() if k != "item"}
+
+
 def write(items: dict, root: Path) -> None:
     for rel, data in outputs(items).items():
         path = root / rel
@@ -578,7 +584,7 @@ def write(items: dict, root: Path) -> None:
     for stale in (root / MODEL_DIR).glob("*.glb.raw"):
         if stale.name not in keep:
             stale.unlink()
-    keep = {f"{i}.png.raw" for i in items}
+    keep = {f"{i}.png.raw" for i in items} | {f"{i}.png.raw" for i in _other_holdables()}
     for stale in (root / ICON_DIR).glob("*.png.raw"):
         if stale.name not in keep:
             stale.unlink()
@@ -604,7 +610,7 @@ def check(items: dict) -> int:
             problems.append(f"{rel} differs from the generator output")
     for d, suffix in ((MODEL_DIR, ".glb.raw"), (ICON_DIR, ".png.raw")):
         for f in sorted((ROOT / d).glob("*" + suffix)):
-            if f.name[: -len(suffix)] not in items:
+            if f.name[: -len(suffix)] not in items and not (suffix == ".png.raw" and f.name[: -len(suffix)] in _other_holdables()):
                 problems.append(f"orphan {d / f.name}: not an item")
     manifest = json.loads((ROOT / MANIFEST).read_text())
     for i in items:

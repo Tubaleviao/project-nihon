@@ -497,8 +497,10 @@ static func layout_to_json(layout: Dictionary) -> String:
 static func item_icon_key(item_id: String) -> String:
 	return ICON_KEY_FORMAT % item_id
 
+static var glyph_calls := 0  # debug guard: the suite fails if a row moves it (Phase 176)
 ## First glyph of the item name, painted when no icon asset exists.
 static func item_glyph(item_id: String) -> String:
+	glyph_calls += 1
 	return item_id.substr(0, 1).to_upper() if item_id != "" else "?"
 
 ## Right-click actions an item supports. Only intents that already exist on the
@@ -970,6 +972,7 @@ func refresh_technology() -> void:
 		btn.disabled = not bool(r["can_research"])
 		btn.pressed.connect(_on_research_pressed.bind(str(r["id"])))
 		hbox.add_child(btn)
+		_add_row_icon(hbox, str(r["icon_key"]))
 		var req_arr: Array = r.get("requires", [])
 		var reqs: String = ", ".join(req_arr) if req_arr.size() > 0 else "—"
 		var line := I18n.t("ui.tech_line", [r["id"], r["status"], reqs, r["cost"], r["points_cost"], r["duration"]])
@@ -1031,9 +1034,7 @@ func refresh_proposals() -> void:
 		_proposal_box.add_child(hbox)
 
 func refresh_trade() -> void:
-	if _trade_status == null:
-		return
-	_trade_status.text = _trade_status_text()
+	_m2.refresh_trade()
 
 ## Human-readable summary of the active trade session, or a prompt when none is
 ## open. Pure projection so it is testable without a scene tree.
@@ -1456,6 +1457,8 @@ func _build_trade_content() -> Control:
 	_trade_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_trade_status.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	vbox.add_child(_trade_status)
+	_m2.trade_box = VBoxContainer.new()
+	vbox.add_child(_m2.trade_box)
 	return vbox
 
 func _build_market_content() -> Control:

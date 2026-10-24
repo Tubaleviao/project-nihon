@@ -2,6 +2,7 @@ extends RefCounted
 ## Methods moved verbatim out of `ui_slice.gd` (Phase 154). `sl` is the owning slice; each moved method keeps a forwarder there.
 
 var sl: Node
+var trade_box: VBoxContainer = null
 
 const AdminPanelScript := preload("res://src/ui/admin_panel.gd")
 
@@ -60,6 +61,7 @@ func technology_rows() -> Array:
 			"can_research": sl._can_research(tid, status, data) and not short,
 			"points_cost": points_cost,
 			"reason": "needs_points:%d" % points_cost if short else "",
+			"icon_key": unlock_icon_key(data.get("unlocks", [])),
 			"requires": data.get("requires", []),
 			"duration": int(data.get("researchDuration", 0)),
 			"cost": sl._fmt_entries(data.get("researchMaterials", [])),
@@ -230,3 +232,50 @@ func set_admin(admin: bool) -> void:
 		sl.window_dock.set_entry_visible(sl.WINDOW_ADMIN, admin)
 	if not admin:
 		sl.close_window(sl.WINDOW_ADMIN)
+
+func refresh_trade() -> void:
+	if sl._trade_status == null:
+		return
+	sl._trade_status.text = sl._trade_status_text()
+	if trade_box == null:
+		return
+	for child in trade_box.get_children():
+		child.queue_free()
+	for row in trade_rows():
+		var hbox := HBoxContainer.new()
+		hbox.add_theme_constant_override("separation", 8)
+		sl._add_row_icon(hbox, str(row["icon_key"]))
+		var lbl := Label.new()
+		lbl.text = sl.I18n.t("trade.entry", [row["party"], sl.I18n.t("trade.side_give" if row["side"] == "give" else "trade.side_want"), row["item_id"], row["quantity"]])
+		hbox.add_child(lbl)
+		trade_box.add_child(hbox)
+
+## One row per item in the active trade's offers: { party, side ("give" | "want"), item_id,
+## quantity, icon_key }. Empty with no open trade.
+func trade_rows() -> Array:
+	var rows: Array = []
+	if sl.trade_slice == null or sl._active_trade_id == "":
+		return rows
+	var trade: Dictionary = sl.trade_slice.get_trade(sl._active_trade_id)
+	if str(trade.get("state", "pending")) in ["completed", "rejected"]:
+		return rows
+	var offers: Dictionary = trade.get("offers", {})
+	for party in offers:
+		for side in ["give", "want"]:
+			var stacks: Dictionary = offers[party].get(side, {})
+			for item_id in stacks:
+				rows.append({
+					"party": str(party), "side": side, "item_id": str(item_id),
+					"quantity": int(stacks[item_id]), "icon_key": sl.item_icon_key(str(item_id)),
+				})
+	return rows
+
+## Icon key of what a technology unlocks: the first output of its first recipe that has one.
+func unlock_icon_key(unlocks: Array) -> String:
+	if sl.crafting_slice == null:
+		return ""
+	for rid in unlocks:
+		var key: String = sl._first_output_icon_key(sl.crafting_slice.get_recipe(str(rid)).get("outputs", []))
+		if key != "":
+			return key
+	return ""

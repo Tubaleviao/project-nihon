@@ -147,9 +147,12 @@ trade.accept,Accept trade,Aceitar troca
 trade.blurb,Player-to-player trade with the merchant. Your Trade tier lowers the broker fee on received goods.,Troca de jogador com o mercador. Seu nível de Troca reduz a taxa de corretagem sobre os bens recebidos.
 trade.completed,Trade completed — the merchant's goods were added to your inventory (less the Trade broker fee).,Troca concluída — os bens do mercador foram adicionados ao seu inventário (menos a taxa de corretagem).
 trade.ended,Trade session ended.,Sessão de troca encerrada.
+trade.entry,{0} {1} {2} ×{3},{0} {1} {2} ×{3}
 trade.none,"No active trade. Click ""Start trade"" to open a session with the merchant.","Nenhuma troca ativa. Clique em ""Iniciar troca"" para abrir uma sessão com o mercador."
 trade.open,"Trade {0} open — click ""Accept trade"" to complete the exchange.","Troca {0} aberta — clique em ""Aceitar troca"" para concluir a troca."
 trade.rejected,Trade rejected.,Troca rejeitada.
+trade.side_give,offers,oferece
+trade.side_want,wants,quer
 trade.start,Start trade,Iniciar troca
 trade.unavailable,Trade is unavailable (no trade slice wired).,Troca indisponível (nenhum módulo de troca ligado).
 ui.against,Against,Contra

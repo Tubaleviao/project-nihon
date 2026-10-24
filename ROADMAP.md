@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–175 and 182 are done. Their specs and acceptance criteria are archived in
+Phases 1–176 and 182 are done. Their specs and acceptance criteria are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Arc: make it look and feel like an RPG (Phases 173–181, 183)
@@ -37,7 +37,7 @@ budget honest. Then it gives the game icons, attributes, a character sheet and c
 |---|---|---|---|
 | 174 | An honest playtest frame budget | Done | [phases-174.md](docs/roadmap-history/phases-174.md) |
 | 175 | UI icons: dock, windows, skills and status from one generator | Done | [phases-175.md](docs/roadmap-history/phases-175.md) |
-| 176 | An icon for everything a player can hold | Planned | below |
+| 176 | An icon for everything a player can hold | Done | [phases-176.md](docs/roadmap-history/phases-176.md) |
 | 177 | Attributes in the fabric: strength, vitality, resistance, agility, intelligence, perception | Planned | below |
 | 178 | Attributes at runtime: host-owned, persisted, feeding the derived stats | Planned | below |
 | 179 | The character sheet: a paper doll, attributes and derived stats | Planned | below |
@@ -54,35 +54,6 @@ date (for example, a world recorded around the pre-worldgen-9 spawn pit).
 | Phase | Title | Status | Spec |
 |---|---|---|---|
 | 182 | Admin tools: /time, /speed, /fly, /heal, /regen world and an Admin window | Done | [phases-182.md](docs/roadmap-history/phases-182.md) |
-
----
-
-## Phase 176 — An icon for everything a player can hold
-
-**Goal:** all 27 items have icons since Phase 152, but materials (Soil, Thornwood, Ferrite…),
-harvest goods (hides, meat, bones, sigils) and carcasses still fall back to `item_glyph`, which
-paints their first letter. Every stack a player can hold should have a picture.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phase 175 (shares the rasterizer).
-
-**Deliverables:**
-- `gen_item_assets.py` (or `gen_ui_icons.py`) draws an icon for every material from its palette
-  and form (block, ore chunk, log, sheaf, pile) and for every harvest and loot output from its
-  kind (hide, meat, bone, trophy).
-- One source of truth for "every id that can sit in a slot": items, materials, harvest outputs,
-  loot outputs and carcasses. The suite and the generator both read it.
-- The technology tree and the crafting rows show the icon of what they unlock or produce. The
-  market and trade rows show it too.
-- The public build never shows the glyph fallback. It remains only as a debug guard.
-
-**Acceptance criteria:**
-- [ ] Suite: every holdable id has an icon at its key, and no orphan icon exists.
-- [ ] Suite: building the inventory, hotbar, character, crafting, technology, market and trade
-  rows for a fixture holding every holdable id never calls `item_glyph`.
-- [ ] CI: the generator's `--check` passes, and two runs are byte-identical.
-- [ ] Suite green on both boot paths.
 
 ---
 
