@@ -42,6 +42,7 @@ Completed phases moved out of [ROADMAP.md](../../ROADMAP.md) to keep it short. T
 | 173 | [phases-173.md](phases-173.md) |
 | 174 | [phases-174.md](phases-174.md) |
 | 175 | [phases-175.md](phases-175.md) |
+| 176 | [phases-176.md](phases-176.md) |
 | 182 | [phases-182.md](phases-182.md) |
 
 Phases with no section of their own were merged into another phase:

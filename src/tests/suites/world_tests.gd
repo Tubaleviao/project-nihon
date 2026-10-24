@@ -43,6 +43,7 @@ func register() -> void:
 	_run_test("asset: attached rigs wear the character material", _test_rig_wears_character_material)
 	_run_test("asset: rig root names and the serpent fall clip", _test_asset_rig_root_names_and_fall_clip)
 	_run_test("asset: item icon placeholders are 32x32 RGBA",   _test_asset_item_icon_placeholders)
+	_run_test("asset: every holdable id has an icon and none is orphaned", _test_asset_holdable_icons)
 	_run_test("asset: GraywolfPack placeholders have the quadruped contract", _test_asset_graywolfpack_placeholders)
 	_run_test("asset: roster creature placeholders have their skeleton contract", _test_asset_creature_roster_placeholders)
 	_run_test("asset: item mesh placeholders load with their sheets", _test_asset_item_mesh_placeholders)
@@ -1012,6 +1013,31 @@ func _test_asset_rig_root_names_and_fall_clip() -> void:
 			assert_true(distinct, "the serpent fall clip has at least two distinct keys")
 		serpent.free()
 
+## Phase 176: every id a stack can have (items, materials, harvest outputs) has a 32x32 RGBA icon at its
+## key, and no file in the icon directory belongs to an id that cannot be held. Drawn by
+## `tools/gen_item_assets.py` (items) and `tools/gen_holdable_icons.py` (the rest).
+func _test_asset_holdable_icons() -> void:
+	var ids: Array = Holdables.ids()
+	assert_true(ids.size() >= GameData.ITEMS.size() + GameData.MATERIALS.size(), "the list covers items and materials")
+	assert_true(ids.has("wolf_pelt") and ids.has("Soil") and ids.has("FerritePick"), "it holds a drop, a material and an item")
+	var seen := {}
+	for id: String in ids:
+		var key := UiSlice.item_icon_key(id)
+		var path := "res://assets/" + key
+		assert_true(FileAccess.file_exists(path), "icon %s exists" % key)
+		var img := Image.new()
+		if img.load_png_from_buffer(FileAccess.get_file_as_bytes(path)) != OK:
+			assert_true(false, "%s decodes as PNG" % key)
+			continue
+		assert_eq(img.get_size(), Vector2i(32, 32), "%s is 32x32" % key)
+		assert_eq(img.get_format(), Image.FORMAT_RGBA8, "%s is RGBA" % key)
+		var digest := img.get_data().hex_encode()
+		assert_false(seen.has(digest), "%s is not byte-identical to %s" % [key, seen.get(digest, "")])
+		seen[digest] = id
+	for f in DirAccess.get_files_at("res://assets/icons/items"):
+		if f.ends_with(".png.raw"):
+			assert_true(ids.has(f.trim_suffix(".png.raw")), "%s belongs to a holdable id" % f)
+
 ## Issue #319 / Phase 152: every item in `GameData.ITEMS` has a 32x32 RGBA icon, drawn by
 ## `tools/gen_item_assets.py`: transparent corners, real content, never the same pixels twice.
 func _test_asset_item_icon_placeholders() -> void:
@@ -1073,7 +1099,9 @@ func _test_asset_item_models() -> void:
 		for file in DirAccess.get_files_at(dir_and_suffix[0]):
 			if file.ends_with(dir_and_suffix[1]):
 				var id: String = file.trim_suffix(dir_and_suffix[1])
-				assert_true(GameData.ITEMS.has(id), "%s/%s is for an item" % [dir_and_suffix[0], file])
+				# Icons of materials and harvest outputs share the directory (Phase 176).
+				var held: bool = dir_and_suffix[1] == ".png.raw" and Holdables.ids().has(id)
+				assert_true(GameData.ITEMS.has(id) or held, "%s/%s is for an item" % [dir_and_suffix[0], file])
 
 ## Issue #318: `models/creatures/GraywolfPack.glb.raw` and its three textures stand in
 ## for the private wolf: a skin on the fabric QuadrupedSkeleton bones, a visible body, and
