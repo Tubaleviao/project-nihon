@@ -275,6 +275,11 @@ static func in_reach_targets(trees: Array, origin: Vector3, reach: float, count:
 		ids.pop_back()
 	return ids
 
+## #429 — true once `trees` holds the full in-reach set. `_step_chop_in_reach` waits on this, so a side whose
+## origin-chunk trees land after the step starts waits for them rather than reporting no target.
+static func targets_ready(trees: Array, origin: Vector3, reach: float, count: int) -> bool:
+	return in_reach_targets(trees, origin, reach, count).size() >= count
+
 ## The first tree beyond `beyond` on the XZ plane — the out-of-reach target. Sorted by
 ## tree id, so both processes agree without a side channel, and id-sorted rather than
 ## "farthest" so a few units of difference between the two sides' view of the world
@@ -536,7 +541,7 @@ func _step_snapshot_complete() -> void:
 ## target set, and a miss reports what the side saw. The host's wait for the chop covers the
 ## client's own target wait on top of the chop itself.
 func _step_chop_in_reach() -> void:
-	var have: bool = await _await_until(func(): return _targets().size() >= TARGETS_NEEDED, _step_timeout())
+	var have: bool = await _await_until(func(): return targets_ready(_shared_trees(), RENDEZVOUS, TARGET_REACH, TARGETS_NEEDED), _step_timeout())
 	var targets := _targets()
 	if not have:
 		_report("chop_in_reach", "fail", "no_in_reach_target-origin%d-reach%d" % [_shared_trees().size(), targets.size()])

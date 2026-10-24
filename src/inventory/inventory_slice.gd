@@ -36,6 +36,7 @@ extends Node
 ##   repair_item(item_id)             -> bool
 ##   transfer(src, dst, counts)       -> Dictionary { success, reason }  (static)
 const Diag := preload("res://src/core/diag.gd")
+const CarcassRules := preload("res://src/loot/carcass_rules.gd")
 
 ## Inventory capacity comes from the Inventory entity in the fabric
 ## (GameData.PLAYERS["Inventory"].maxSlots / maxWeightKg), loaded in _ready().
@@ -92,6 +93,14 @@ var _item_weight_cache: Dictionary = {}
 ## quantities live in `_contents`.
 var _item_durability_cache: Dictionary = {}
 var _durability: Dictionary = {}
+
+## Issue #427 — quality grade of a stack ("poor" … "prime"), item_id -> grade. Only items whose stack carries a
+## grade appear. A stack mixing grades holds the WORST (it never claims better than its worst unit), and
+## a unit added without a grade to a stack that has units makes it ungraded. Entries of items no longer held
+## are stale and never read: `get_quality` checks the count, and a fresh stack overwrites. Rides the
+## durabilities dictionary of the sync / save payloads under QUALITY_KEY, so no signal or save field changes.
+const QUALITY_KEY := "__quality"
+var _quality: Dictionary = {}
 
 ## Durability points consumed per use, by action type. Actions without a
 ## specific entry fall back to DURABILITY_DECREMENT.
@@ -183,6 +192,12 @@ func replace_contents(contents: Dictionary, durabilities: Dictionary = {}) -> vo
 		new_weight += _item_weight(item_id) * float(qty)
 	_contents = new_contents
 	_durability = new_durability
+	var graded = durabilities.get(QUALITY_KEY, {})
+	_quality = {}
+	if graded is Dictionary:
+		for item_id in graded:
+			if (new_contents.has(item_id) or new_durability.has(item_id)) and CarcassRules.grade_rank(str(graded[item_id])) >= 0:
+				_quality[item_id] = str(graded[item_id])
 	_current_weight = new_weight
 	_is_full = false
 	GameBus.inventory_changed.emit()
@@ -249,7 +264,7 @@ func drop_item_returning(item_id: String, quantity: int) -> Dictionary:
 ## `durabilities` is an optional per-instance list (one entry per added unit) that
 ## sets each transferred instance's durability — used by the trade to carry a
 ## tool's condition across inventories; empty/omitted means fresh (max).
-func add_item(item_id: String, quantity: int, durabilities: Array = []) -> bool:
+func add_item(item_id: String, quantity: int, durabilities: Array = [], quality: String = "") -> bool:
 	if quantity <= 0:
 		return true
 	var add_weight := _item_weight(item_id) * float(quantity)
@@ -258,6 +273,7 @@ func add_item(item_id: String, quantity: int, durabilities: Array = []) -> bool:
 	var already_held: bool = get_item_count(item_id) > 0
 	if not already_held and get_total_slots_used() >= _max_slots:
 		return false
+	_merge_quality(item_id, already_held, quality)
 	if is_durable(item_id):
 		_append_instances(item_id, quantity, durabilities)
 	else:
@@ -365,7 +381,40 @@ func get_durability_data() -> Dictionary:
 	var out := {}
 	for item_id in _durability:
 		out[item_id] = (_durability[item_id] as Array).duplicate()
+	var graded := get_quality_data()
+	if not graded.is_empty():
+		out[QUALITY_KEY] = graded
 	return out
+
+## Grade of the held stack of `item_id`, "" when none is held or the stack is ungraded.
+func get_quality(item_id: String) -> String:
+	if get_item_count(item_id) <= 0:
+		return ""
+	return str(_quality.get(item_id, ""))
+
+## { item_id: grade } for every held graded stack.
+func get_quality_data() -> Dictionary:
+	var out := {}
+	for item_id in _quality:
+		if get_item_count(item_id) > 0:
+			out[item_id] = _quality[item_id]
+	return out
+
+func _merge_quality(item_id: String, already_held: bool, grade: String) -> void:
+	if not already_held:
+		if grade != "" and CarcassRules.grade_rank(grade) >= 0:
+			_quality[item_id] = grade
+		else:
+			_quality.erase(item_id)
+		return
+	var have: String = str(_quality.get(item_id, ""))
+	if have == "":
+		return
+	if grade == "" or CarcassRules.grade_rank(grade) < CarcassRules.grade_rank(have):
+		if grade == "":
+			_quality.erase(item_id)
+		else:
+			_quality[item_id] = grade
 
 ## Current condition tier (pristine → worn → damaged → broken) for a durable
 ## item, derived from the WORST instance's durability vs. max. Non-durable items

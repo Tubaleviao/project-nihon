@@ -84,6 +84,41 @@ func announce_equipment_to_aoi(peer_id: int) -> void:
 	for pid in sl.equipment_targets(peer_id):
 		sl._send_equipment(int(pid), peer_id, worn)
 
+## peer_id -> { budget: metres of travel earned and unspent, msec: last report, pulled: last pull-back }.
+var speed_ledger: Dictionary = {}
+const SPEED_BUDGET_SECONDS := 1.0
+const SPEED_PULLBACK_MIN_MS := 250
+
+## Issue #426 — the position the host accepts for `peer` when its report outruns `peer_speed_cap`, or null when the
+## report stands (no cap, first report, or within the earned travel budget). The peer is pulled back with a
+## teleport, at most once per SPEED_PULLBACK_MIN_MS. Horizontal travel only.
+func _clamp_to_speed_cap(peer: int, pos: Vector3) -> Variant:
+	if not sl.peer_speed_cap.is_valid() or not sl.has_last_known_state(peer):
+		speed_ledger.erase(peer)
+		return null
+	var cap: float = float(sl.peer_speed_cap.call(peer))
+	if cap <= 0.0:
+		speed_ledger.erase(peer)
+		return null
+	var now := Time.get_ticks_msec()
+	var max_budget: float = cap * SPEED_BUDGET_SECONDS
+	var led: Dictionary = speed_ledger.get(peer, { "budget": max_budget, "msec": now, "pulled": now - SPEED_PULLBACK_MIN_MS })
+	var budget := minf(float(led["budget"]) + cap * float(now - int(led["msec"])) / 1000.0, max_budget)
+	led["msec"] = now
+	var from: Vector3 = sl.get_last_known_state(peer)
+	var gap := Vector2(pos.x - from.x, pos.z - from.z)
+	if gap.length() <= budget:
+		led["budget"] = budget - gap.length()
+		speed_ledger[peer] = led
+		return null
+	led["budget"] = 0.0
+	var accepted := Vector3(from.x + gap.x / gap.length() * budget, pos.y, from.z + gap.y / gap.length() * budget)
+	if now - int(led["pulled"]) >= SPEED_PULLBACK_MIN_MS:
+		led["pulled"] = now
+		sl.send_teleport(peer, sl.WorldPos.from_world(accepted.x, accepted.y, accepted.z))
+	speed_ledger[peer] = led
+	return accepted
+
 func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	if sl._role != sl.Role.HOST:
 		return
@@ -279,6 +314,10 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 			# (its first report is kept, so it still has a position to be held at).
 			if sl.has_last_known_state(sender) and sl.peer_held.is_valid() and bool(sl.peer_held.call(sender)):
 				return
+			var capped = _clamp_to_speed_cap(sender, pos)
+			if capped != null:
+				pos = capped
+				exact = {}
 			sl._inbound_exact = exact
 			GameBus.remote_player_state.emit(sender, pos)
 			sl._inbound_exact = {}

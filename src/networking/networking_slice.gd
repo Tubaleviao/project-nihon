@@ -439,6 +439,7 @@ func forget_player_id(peer_id: int) -> void:
 	# starts with a full bucket rather than inheriting its predecessor's debt.
 	_rate_buckets.erase(peer_id)
 	_rate_warn_ms.erase(peer_id)
+	_m2.speed_ledger.erase(peer_id)
 	# Phase 37 — and so is snapshot reassembly: a snapshot that lost a chunk is never
 	# completed, so its buffer entry lived for the whole session (one leak per lost
 	# chunk, on a connection that may be long gone). The parts are keyed by
@@ -989,6 +990,10 @@ var _inbound_exact: Dictionary = {}
 ## (paralysis, knockdown). A `player_moved` report from a held peer is dropped, so its last-known
 ## position stands whatever its own client sends. Unset: nothing is held.
 var peer_held: Callable = Callable()
+
+## Issue #426 — host: `(peer_id) -> float`, a peer's top horizontal speed in m/s (0 = uncapped; a carrier's comes from
+## its body). A report that outruns it is clamped and the peer is teleported back (see `_clamp_to_speed_cap`).
+var peer_speed_cap: Callable = Callable()
 
 func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 	TickProbe.begin("aoi_relay")
