@@ -517,7 +517,12 @@ func _test_regen_world_host() -> void:
 	gr._station.place_station("forge", Vector3(8.5, 6.0, 8.5))
 	var placed_y := WorldPos.from_wire(gr._station.get_station_data()[0]["position"]).y
 	var lift: float = placed_y - gr._voxel.get_voxel_height_at(Vector2(8.5, 8.5))
+	gr._worldgen_stamp = TerrainSlice.WORLDGEN_VERSION - 3
+	gr._worldgen_fp_stamp = 12345
 	assert_eq(gr._admin_wiring.regen_world(false), "", "a host regenerates")
+	assert_eq(gr._worldgen_stamp, TerrainSlice.WORLDGEN_VERSION, "the world is stamped with the running generator")
+	assert_eq(gr._worldgen_fp_stamp, TerrainSlice.worldgen_fingerprint(), "and its fingerprint")
+	assert_true(gr._worldgen_fp_history.has(12345), "the old fingerprint stays in the history")
 	assert_true(ChunkRecordsScript.is_empty(), "no generation record is left in memory")
 	assert_true(gr._voxel.get_edits().is_empty(), "nor any edit")
 	assert_eq(_region_files(dir + "regions/").size(), 0, "the regions folder is empty")
