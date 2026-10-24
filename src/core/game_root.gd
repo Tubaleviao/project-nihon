@@ -558,7 +558,6 @@ func _ready() -> void:
 	for w in _wirings:
 		w.wire(self)
 
-
 	# Lighting — a directional "sun" plus soft ambient sky fill. Skipped on a
 	# headless server (no renderer to light).
 	if not _is_server:

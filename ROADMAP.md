@@ -52,7 +52,7 @@ date (for example, a world recorded around the pre-worldgen-9 spawn pit).
 
 | Phase | Title | Status | Spec |
 |---|---|---|---|
-| 182 | Admin tools: /time, /speed, /fly, /heal, /regen world and an Admin window | In progress | below |
+| 182 | Admin tools: /time, /speed, /fly, /heal, /regen world and an Admin window | Planned | below |
 
 ---
 
