@@ -15,7 +15,7 @@ Commercial acumen that improves buy/sell spreads with NPC vendors and enables me
 | `tier` | enum (`novice`, `apprentice`, `journeyman`, `expert`, `master`) | yes |  |
 | `xpCurve` | enum (`linear`, `quadratic`, `exponential`) | yes | XP required per tier |
 | `maxLevel` | integer | yes | Maximum XP level within a tier before tier advance is required |
-| `category` | enum (`combat`, `crafting`, `magic`, `exploration`, `social`) | yes | Skill domain: social |
+| `category` | enum (`combat`, `crafting`, `magic`, `exploration`, `social`, `survival`) | yes | Skill domain: social |
 
 ### State machine
 

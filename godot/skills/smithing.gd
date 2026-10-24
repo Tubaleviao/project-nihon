@@ -14,6 +14,7 @@ enum Category {
 	MAGIC,
 	EXPLORATION,
 	SOCIAL,
+	SURVIVAL,
 }
 
 enum Tier {

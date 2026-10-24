@@ -18,7 +18,7 @@ Reading environmental signs — footprints, disturbed foliage, scent trails — 
 | tier | `novice`, `apprentice`, `journeyman`, `expert`, `master` |  |
 | xpCurve | `linear`, `quadratic`, `exponential` | XP required per tier |
 | maxLevel | integer | Maximum XP level within a tier before tier advance is required |
-| category | `combat`, `crafting`, `magic`, `exploration`, `social` | Skill domain: exploration |
+| category | `combat`, `crafting`, `magic`, `exploration`, `social`, `survival` | Skill domain: exploration |
 
 ## States
 

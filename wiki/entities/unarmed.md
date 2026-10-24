@@ -18,7 +18,7 @@ Hand-to-hand fighting techniques including strikes, grapples, and throws. Effect
 | tier | `novice`, `apprentice`, `journeyman`, `expert`, `master` |  |
 | xpCurve | `linear`, `quadratic`, `exponential` | XP required per tier |
 | maxLevel | integer | Maximum XP level within a tier before tier advance is required |
-| category | `combat`, `crafting`, `magic`, `exploration`, `social` | Skill domain: combat |
+| category | `combat`, `crafting`, `magic`, `exploration`, `social`, `survival` | Skill domain: combat |
 
 ## States
 

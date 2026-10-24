@@ -14,7 +14,7 @@ module.exports = {
       tier:     { type: 'enum', values: SKILL_TIERS },
       xpCurve:  { type: 'enum', values: ['linear', 'quadratic', 'exponential'], description: 'XP required per tier' },
       maxLevel: { type: 'integer', description: 'Maximum XP level within a tier before tier advance is required' },
-      category: { type: 'enum', values: ['combat', 'crafting', 'magic', 'exploration', 'social'], description: 'Skill domain: social' },
+      category: { type: 'enum', values: SKILL_CATEGORIES, description: 'Skill domain: social' },
     },
     stateMachine: skillStateMachine(),
     behaviors: {
@@ -53,7 +53,7 @@ module.exports = {
       tier:     { type: 'enum', values: SKILL_TIERS },
       xpCurve:  { type: 'enum', values: ['linear', 'quadratic', 'exponential'], description: 'XP required per tier' },
       maxLevel: { type: 'integer', description: 'Maximum XP level within a tier before tier advance is required' },
-      category: { type: 'enum', values: ['combat', 'crafting', 'magic', 'exploration', 'social'], description: 'Skill domain: social' },
+      category: { type: 'enum', values: SKILL_CATEGORIES, description: 'Skill domain: social' },
     },
     stateMachine: skillStateMachine(),
     behaviors: {
@@ -92,7 +92,7 @@ module.exports = {
       tier:     { type: 'enum', values: SKILL_TIERS },
       xpCurve:  { type: 'enum', values: ['linear', 'quadratic', 'exponential'], description: 'XP required per tier' },
       maxLevel: { type: 'integer', description: 'Maximum XP level within a tier before tier advance is required' },
-      category: { type: 'enum', values: ['combat', 'crafting', 'magic', 'exploration', 'social'], description: 'Skill domain: social' },
+      category: { type: 'enum', values: SKILL_CATEGORIES, description: 'Skill domain: social' },
     },
     stateMachine: skillStateMachine(),
     behaviors: {
@@ -131,7 +131,7 @@ module.exports = {
       tier:     { type: 'enum', values: SKILL_TIERS },
       xpCurve:  { type: 'enum', values: ['linear', 'quadratic', 'exponential'], description: 'XP required per tier' },
       maxLevel: { type: 'integer', description: 'Maximum XP level within a tier before tier advance is required' },
-      category: { type: 'enum', values: ['combat', 'crafting', 'magic', 'exploration', 'social'], description: 'Skill domain: social' },
+      category: { type: 'enum', values: SKILL_CATEGORIES, description: 'Skill domain: social' },
     },
     stateMachine: skillStateMachine(),
     behaviors: {

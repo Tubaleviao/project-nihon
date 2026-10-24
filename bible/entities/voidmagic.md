@@ -15,7 +15,7 @@ Channelling of void energy — entropic, corrupting, and capable of bypassing co
 | `tier` | enum (`novice`, `apprentice`, `journeyman`, `expert`, `master`) | yes |  |
 | `xpCurve` | enum (`linear`, `quadratic`, `exponential`) | yes | XP required per tier |
 | `maxLevel` | integer | yes | Maximum XP level within a tier before tier advance is required |
-| `category` | enum (`combat`, `crafting`, `magic`, `exploration`, `social`) | yes | Skill domain: magic |
+| `category` | enum (`combat`, `crafting`, `magic`, `exploration`, `social`, `survival`) | yes | Skill domain: magic |
 | `flagGate` | json | yes | Structured flag gate: the player flag that must be held before this skill can be used or advanced (the skill is not tutored). |
 
 ### State machine

@@ -18,7 +18,7 @@ Working with Thornwood, Duskfiber, and other woody materials to craft furniture,
 | tier | `novice`, `apprentice`, `journeyman`, `expert`, `master` |  |
 | xpCurve | `linear`, `quadratic`, `exponential` | XP required per tier |
 | maxLevel | integer | Maximum XP level within a tier before tier advance is required |
-| category | `combat`, `crafting`, `magic`, `exploration`, `social` | Skill domain: crafting |
+| category | `combat`, `crafting`, `magic`, `exploration`, `social`, `survival` | Skill domain: crafting |
 
 ## States
 
