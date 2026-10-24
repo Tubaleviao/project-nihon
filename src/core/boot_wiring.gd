@@ -122,6 +122,11 @@ func start_stress_recorder() -> void:
 	if OS.is_debug_build():
 		(load(STRESS_RECORDER_PATH) as GDScript).attach(root)
 
+## `--playtest-bot`: the bot's emptied save directory and pinned seed, before the world boot.
+func prepare_playtest_bot() -> void:
+	if OS.is_debug_build():
+		(load(PLAYTEST_BOT_PATH) as GDScript).prepare(root)
+
 ## Phase 134 — `--playtest-bot`: a scripted bot plays the rendered listen host, then quits the process.
 ## Debug builds only: it empties the pack and edits the world, so a release build ignores the flag.
 func start_playtest_bot() -> void:

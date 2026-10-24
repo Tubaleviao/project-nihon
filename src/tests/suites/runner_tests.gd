@@ -13,6 +13,7 @@ func register() -> void:
 	_run_test("playtest: report percentiles and hitch counts", _test_playtest_report_percentiles_and_hitches)
 	_run_test("playtest: step failure, hard frame and missing step fail the run", _test_playtest_report_verdicts)
 	_run_test("playtest: --playtest-bot is parsed", _test_playtest_bot_arg)
+	_run_test("playtest: the world seed is pinned unless --playtest-seed names one", _test_playtest_seed_arg)
 	_run_test("playtest: the bot mutates no slice directly", _test_playtest_bot_uses_intents)
 	_run_test("playtest: markdown escapes free-text detail", _test_playtest_markdown_escapes_detail)
 
@@ -142,6 +143,11 @@ func _test_playtest_bot_uses_intents() -> void:
 func _test_playtest_bot_arg() -> void:
 	assert_true(Bot.requested(["--playtest-bot"]), "the flag asks for the bot")
 	assert_false(Bot.requested(["--server"]), "other args do not")
+
+func _test_playtest_seed_arg() -> void:
+	assert_eq(Bot.seed_from_args(["--playtest-bot"]), Bot.WORLD_SEED, "no override: the pinned seed")
+	assert_eq(Bot.seed_from_args(["--playtest-bot", "--playtest-seed", "42"]), 42, "the override names the seed")
+	assert_eq(Bot.seed_from_args(["--playtest-bot", "--playtest-seed", "--no-native"]), Bot.WORLD_SEED, "a missing value keeps the pinned seed")
 
 func _test_playtest_markdown_escapes_detail() -> void:
 	var rec := [Bot.step_record("craft", false, "research: a | b\nsecond line", [16.0], 0)]

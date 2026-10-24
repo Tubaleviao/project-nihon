@@ -36,6 +36,15 @@ const PlayerSlice := preload("res://src/player/player_slice.gd")
 
 const ARG := "--playtest-bot"
 const OUT_DIR := "res://playtest"
+## The bot's own save directory, emptied before the boot: a saved world must not pick the seed.
+const SAVE_DIR := "user://playtest/server/"
+## The world seed every run plays, so a step's verdict depends on the commit, not on a random world:
+## on a fresh `randi()` seed far_peak, travel and horizon passed or failed by luck (a seed's tallest
+## ridge is ~350 m against far_peak's 330). Where the bot stands still varies run to run (builder,
+## walk distance), so far_peak also hops between search origins (`FAR_PEAK_HOP_M`). 42, 31 and 7
+## passed every step locally; 162 failed walk. `--playtest-seed <n>` plays another seed.
+const WORLD_SEED := 42
+const SEED_ARG := "--playtest-seed"
 const HITCH_MS := 50.0        ## a frame over this is a hitch (counted, not a failure)
 const HARD_FRAME_MS := 2000.0 ## a frame over this fails the run
 const STEP_TIMEOUT_SECS := 60.0 ## wall clock for a WHOLE step, not for one wait inside it
@@ -84,7 +93,11 @@ const FAR_PEAK_SEARCH_M := 2.0e6      ## the ridge is looked for this far from t
 const FAR_PEAK_SEARCH_STEP_M := 8000.0
 const FAR_PEAK_EXTRA_RINGS := 40     ## rings searched past the first with a ridge, for more candidates
 const FAR_PEAK_CANDIDATES := 8       ## nearest ridges with a usable vantage compared (the most open sight line wins)
-const FAR_PEAK_ATTEMPTS := 3         ## vantages tried (most open sight line first): a hill beside one can hide the bands behind the ring's own skyline
+const FAR_PEAK_ATTEMPTS := 3         ## vantages tried per search origin (most open sight line first): a hill beside one can hide the bands behind the ring's own skyline
+const FAR_PEAK_MAX_TRIES := 8        ## vantages tried in all, over every search origin
+const FAR_PEAK_HOP_M := 500000.0     ## when an origin's vantages all fail, search again this far N/E/S/W of the body
+const FAR_PEAK_SAME_RIDGE_M := 30000.0   ## a vantage on a peak this close to one already tried is skipped (same massif)
+const FAR_PEAK_STEP_SECS := 900.0    ## wall clock for the whole step (a try takes ~20-50 s)
 const FAR_PEAK_MIN_PX := 8            ## rock or snow pixels above the ring's skyline needed to pass
 const FAR_PEAK_SAT_MAX := 0.18        ## rock (grey) and snow (white) are below this saturation; land and sea are not
 const FAR_PEAK_TIMEOUT_SECS := 240.0
@@ -116,11 +129,42 @@ var _steps_done: Array = []   ## finished step records, for the watchdog's parti
 static func requested(args: Array) -> bool:
 	return ARG in args
 
+## The seed a run with `args` plays: `--playtest-seed <n>` when given, else `WORLD_SEED`.
+static func seed_from_args(args: Array) -> int:
+	var i := args.find(SEED_ARG)
+	if i >= 0 and i + 1 < args.size() and str(args[i + 1]).is_valid_int():
+		return int(str(args[i + 1]))
+	return WORLD_SEED
+
+## Before the world boot: an emptied save directory and the pinned seed, so every run plays one world.
+static func prepare(root: Node) -> void:
+	var args := Array(OS.get_cmdline_user_args())
+	if not requested(args) or root._is_client or root._is_server:
+		return
+	root._persistence.server_save_dir = SAVE_DIR
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(SAVE_DIR))
+	_clear_dir(SAVE_DIR)
+	var seed_v := seed_from_args(args)
+	root._terrain.set_world_seed(seed_v)
+	print("[Playtest] world seed %d" % seed_v)
+
+static func _clear_dir(path: String) -> void:
+	if not path.begins_with("user://playtest/") or ".." in path:
+		return
+	var dir := DirAccess.open(path)
+	if dir == null:
+		return
+	for sub in dir.get_directories():
+		_clear_dir(path.path_join(sub))
+		dir.remove(sub)
+	for file in dir.get_files():
+		dir.remove(file)
+
 static func _step_timeout(step: String) -> float:
 	if step == "horizon":
 		return HORIZON_TIMEOUT_SECS
 	if step == "far_peak":
-		return FAR_PEAK_TIMEOUT_SECS * FAR_PEAK_ATTEMPTS
+		return FAR_PEAK_STEP_SECS
 	return STREAM_TIMEOUT_SECS if step == "stream" or step == "pole" else STEP_TIMEOUT_SECS
 
 static func step_names() -> Array:
@@ -1081,15 +1125,34 @@ func _step_far_peak() -> Array:
 		return [true, "headless: no frame to read (skipped)"]
 	var player = _root._player
 	var start: Vector3 = _player_pos()
-	var vantages: Array = await _find_far_peak(Vector2(start.x, start.z))
-	if vantages.is_empty():
-		return [false, "no ridge of %.0f m within %.0f km with dry land %.0f km from it" % [FAR_PEAK_MIN_HEIGHT, FAR_PEAK_SEARCH_M / 1000.0, FAR_PEAK_DISTANCE_M / 1000.0]]
-	var last: Array = []
-	for k in mini(vantages.size(), FAR_PEAK_ATTEMPTS):
-		last = await _far_peak_attempt(vantages[k], player)
-		if last[0]:
-			return last
-	return last
+	var origin0 := Vector2(start.x, start.z)
+	# The body's spot when the step starts varies run to run: when every vantage near it fails (a low
+	# ridge, a hill in the way), hop to a few more origins across the world and search again.
+	var origins: Array = [origin0]
+	for d in [Vector2(0, -1), Vector2(1, 0), Vector2(0, 1), Vector2(-1, 0)]:
+		origins.append(origin0 + d * FAR_PEAK_HOP_M)
+	var tried_peaks: Array = []
+	var fails: Array = []
+	for origin in origins:
+		if tried_peaks.size() >= FAR_PEAK_MAX_TRIES:
+			break
+		var vantages: Array = await _find_far_peak(origin)
+		var tries := 0
+		for v in vantages:
+			if tries >= FAR_PEAK_ATTEMPTS or tried_peaks.size() >= FAR_PEAK_MAX_TRIES:
+				break
+			if tried_peaks.any(func(p): return (p as Vector2).distance_to(v[2]) < FAR_PEAK_SAME_RIDGE_M):
+				continue
+			tried_peaks.append(v[2])
+			tries += 1
+			var res: Array = await _far_peak_attempt(v, player)
+			print("[Playtest] far_peak try %d: %s" % [tried_peaks.size(), res[1]])
+			if res[0]:
+				return [true, "%s (try %d)" % [res[1], tried_peaks.size()]]
+			fails.append(res[1])
+	if fails.is_empty():
+		return [false, "no ridge of %.0f m within %.0f km of %d origins with dry land %.0f km from it" % [FAR_PEAK_MIN_HEIGHT, FAR_PEAK_SEARCH_M / 1000.0, origins.size(), FAR_PEAK_DISTANCE_M / 1000.0]]
+	return [false, "%d vantages failed; last: %s" % [fails.size(), fails[-1]]]
 
 ## One vantage of `_step_far_peak`: stand there, draw the ring alone and then the ring with the bands, count.
 func _far_peak_attempt(found: Array, player) -> Array:
