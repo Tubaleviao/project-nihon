@@ -1,4 +1,6 @@
 extends "res://src/tests/test_support.gd"
+
+const HoldablesData := preload("res://src/inventory/holdables.gd")
 ## Phase 133 — the ui tests, moved unchanged from the old single-file suite.
 
 
@@ -912,7 +914,7 @@ func _test_ui_no_glyph_for_any_holdable() -> void:
 	ui.technology_slice = tech
 	ui.market_slice = market
 	ui.trade_slice = trade
-	var ids: Array = Holdables.ids()
+	var ids: Array = HoldablesData.ids()
 	var offer := {}
 	for id in ids:
 		assert_true(inv.add_item(str(id), 3), "%s fits the fixture bag" % id)

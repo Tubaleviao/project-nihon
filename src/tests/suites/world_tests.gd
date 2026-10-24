@@ -1,4 +1,6 @@
 extends "res://src/tests/test_support.gd"
+
+const HoldablesData := preload("res://src/inventory/holdables.gd")
 ## Phase 133 — the world tests, moved unchanged from the old single-file suite.
 
 
@@ -1017,7 +1019,7 @@ func _test_asset_rig_root_names_and_fall_clip() -> void:
 ## key, and no file in the icon directory belongs to an id that cannot be held. Drawn by
 ## `tools/gen_item_assets.py` (items) and `tools/gen_holdable_icons.py` (the rest).
 func _test_asset_holdable_icons() -> void:
-	var ids: Array = Holdables.ids()
+	var ids: Array = HoldablesData.ids()
 	assert_true(ids.size() >= GameData.ITEMS.size() + GameData.MATERIALS.size(), "the list covers items and materials")
 	assert_true(ids.has("wolf_pelt") and ids.has("Soil") and ids.has("FerritePick"), "it holds a drop, a material and an item")
 	var seen := {}
@@ -1100,7 +1102,7 @@ func _test_asset_item_models() -> void:
 			if file.ends_with(dir_and_suffix[1]):
 				var id: String = file.trim_suffix(dir_and_suffix[1])
 				# Icons of materials and harvest outputs share the directory (Phase 176).
-				var held: bool = dir_and_suffix[1] == ".png.raw" and Holdables.ids().has(id)
+				var held: bool = dir_and_suffix[1] == ".png.raw" and HoldablesData.ids().has(id)
 				assert_true(GameData.ITEMS.has(id) or held, "%s/%s is for an item" % [dir_and_suffix[0], file])
 
 ## Issue #318: `models/creatures/GraywolfPack.glb.raw` and its three textures stand in
