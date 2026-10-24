@@ -17,14 +17,31 @@ the table below mirrors it (a suite test checks they agree).
 
 ## Budget table
 
-Target for every step: p95 process time ≤ 16 ms. The budgets below are the current gate, set from the
-first measured run (llvmpipe, `opengl3`, native builder loaded, 2026-10-23), not the target.
+Target for every step: p95 process time ≤ 16 ms. The budgets below are the current gate, set from
+measured runs (llvmpipe, `opengl3`, native builder loaded), not the target.
 
 | Step | Budget p95 process (ms) | Target (ms) | Measured p95 process (ms) |
 |---|---|---|---|
-| walk | 150 | 16 | 145 |
-| craft | 200 | 16 | 193 |
-| fight | 190 | 16 | 177 |
+| walk | 210 | 16 | 205 |
+| craft | 200 | 16 | 170 |
+| fight | 190 | 16 | 143 |
+
+"Measured" is the median of three runs on 2026-10-24, on the pinned `PlaytestBot.WORLD_SEED` (#480).
+The first run (2026-10-23, before the seed was pinned) measured walk at 145 ms, craft at 193 ms and
+fight at 177 ms. On the pinned world `walk` is steadily about 200–208 ms, so its budget was raised from
+150 to 210 ms. The two other budgets still hold.
+
+p95 wall frame time on the same renderer class (llvmpipe, median of the same three runs): walk 93 ms,
+craft 125 ms, fight 110 ms. It is recorded here and not gated.
+
+Open question for Phase 183: on these runs the p95 **process** time is higher than the p95 **wall**
+frame time (walk 205 vs 93 ms). A frame's process work cannot take longer than the frame, so the two
+series are not sampled the same way (the `Performance` monitor and the bot's frame clock may not
+cover the same frames). Phase 183 must settle what `process_ms` measures before it cuts against it.
+
+A local run needs a current native library: when `native/src` is newer than `native/bin`, the bot runs
+the GDScript fallback (the log says `native version N is older than M; rebuild native/`) and its
+numbers are not comparable. Rebuild with `scons platform=linux target=template_debug` in `native/`.
 
 ## Findings
 

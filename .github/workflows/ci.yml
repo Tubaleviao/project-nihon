@@ -569,13 +569,14 @@ jobs:
         run: |
           # Same commit, `--no-native`: the stream step's chunk build rate with the native builder
           # must be at least double this run's, and the native run must not hitch more than this one.
+          # `--playtest-no-budget`: the Phase 174 process-time budget is the native builder's, gated above.
           mkdir -p /tmp/playtest-native
           cp playtest/report.json /tmp/playtest-native/report.json
           mkdir -p /tmp/playtest-native-png
           cp playtest/*.png /tmp/playtest-native-png/
           set +e
           timeout 1500 xvfb-run -a -s "-screen 0 1280x720x24" \
-            /tmp/godot/Godot_v4.7-stable_linux.x86_64 --path . --rendering-driver opengl3 -- --playtest-bot --no-native \
+            /tmp/godot/Godot_v4.7-stable_linux.x86_64 --path . --rendering-driver opengl3 -- --playtest-bot --no-native --playtest-no-budget \
             2>&1 | tee /tmp/playtest-gdscript.log
           fallback_status=${PIPESTATUS[0]}
           set -e
