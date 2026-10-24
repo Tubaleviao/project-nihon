@@ -950,13 +950,8 @@ func broadcast_weather_overrides(overrides: Array) -> void:
 	if _role == Role.HOST:
 		_broadcast({ "type": "weather_overrides", "overrides": overrides })
 
-## Drop every sent-record involving a peer that disconnected.
 func _forget_equipment_pairs(peer_id: int) -> void:
-	_equipment_eval_positions.erase(peer_id)
-	for key in _equipment_sent.keys():
-		var parts := str(key).split(":")
-		if int(parts[0]) == peer_id or int(parts[1]) == peer_id:
-			_equipment_sent.erase(key)
+	_m1.forget_equipment_pairs(peer_id)
 
 ## Phase 34 — host → one client: the peer's OWN record slice changed on the host's
 ## side of an action it asked for (its inventory after a repair, its technology
@@ -1036,6 +1031,8 @@ func send_carry_state(peer_id: int, carrying: bool, speed_factor: float) -> void
 ## Phase 182 — host → one client: its admin moves, an admin heal or its admin status (see `_m2.send_admin`).
 func send_admin(peer_id: int, kind: String, fields: Dictionary = {}) -> bool:
 	return _m2.send_admin(peer_id, kind, fields)
+func broadcast_world_regen() -> void:
+	_m2.broadcast_world_regen()
 
 ## Phase 161 — client: forward a carcass action; the host binds it to the connection's player.
 func _on_harvest_intent(carcass_id: String, _player_id: String) -> void:

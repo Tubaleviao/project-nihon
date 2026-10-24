@@ -317,6 +317,9 @@ func _route_h2c(payload: Dictionary) -> void:
 			var now_admin: Variant = payload.get("admin", false)
 			if sl._role == sl.Role.CLIENT:
 				GameBus.admin_status_synced.emit(now_admin is bool and now_admin)
+		"world_regen":
+			if sl._role == sl.Role.CLIENT:
+				GameBus.world_regen_received.emit()
 		"peer_equipment_evict":
 			# Phase 48 — the peer left our AOI; drop what we stored for it.
 			GameBus.peer_equipment_evicted.emit(int(payload.get("peer_id", 0)))

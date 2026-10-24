@@ -10,7 +10,7 @@ extends Node
 ## Authority: the host runs every command. A client forwards the line as a `chat_intent` (see
 ## NetworkingSlice) and the host binds the speaker to the connection — an identity in the payload is
 ## never read. An admin is the host's own local player, or a player id listed in `user://admins.json`
-## (a JSON array of player ids, read once at boot). Everything a command does to a remote player goes
+## (a JSON array of player ids, read at boot and re-read when it changes on disk). Everything a command does to a remote player goes
 ## through the existing host → peer doors (`send_teleport`, the `player_damaged` signal, `inventory_synced`).
 ##
 ## Plug contract (GameBus signals consumed / emitted):
@@ -243,6 +243,8 @@ func handle_intent(text: String, player_id: String) -> void:
 			_cmd_fly(speaker, args)
 		"heal":
 			_cmd_heal(speaker, args)
+		"regen":
+			_cmd_regen(speaker, args)
 		_:
 			pass
 
@@ -522,6 +524,17 @@ func _cmd_heal(speaker: String, args: Array) -> void:
 			return
 		player_registry.record_simulated_hp(target, PlayerRules.MAX_HP)
 	_reply(speaker, "chat.healed", [_handle_of(target)])
+
+## Phase 182 — `/regen world confirm`: regenerate the terrain (AdminWiring runs it). Without `confirm`
+## the admin is told what it does and how to confirm, and nothing happens.
+func _cmd_regen(speaker: String, args: Array) -> void:
+	if args.is_empty() or str(args[0]).to_lower() != "world":
+		_reply(speaker, ChatCommands.USAGE["regen"])
+		return
+	if args.size() != 2 or str(args[1]).to_lower() != "confirm":
+		_reply(speaker, "chat.regen_confirm")
+		return
+	GameBus.world_regen_requested.emit(speaker)
 
 ## Phase 182 — `{ speed, fly }` the host last set for `player_id` (1.0 / false when none).
 func admin_moves_of(player_id: String) -> Dictionary:

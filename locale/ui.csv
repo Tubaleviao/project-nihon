@@ -354,3 +354,9 @@ weather.state.fog,Fog,Neblina
 weather.state.ash_fall,Ash fall,Chuva de cinzas
 weather.state.electrical_storm,Electrical storm,Tempestade elétrica
 weather.state.void_storm,Void storm,Tempestade do vazio
+chat.usage.regen,/regen world confirm — regenerate the terrain (players and stations are kept),/regen world confirm — regenera o terreno (jogadores e estações são mantidos)
+chat.regen_confirm,"This wipes every terrain edit, mined ore and cleared tree, and rebuilds the ground from the generator. Players, inventories and stations are kept; the old regions are moved aside as a backup. Type /regen world confirm to do it.","Isto apaga toda edição de terreno, minério extraído e árvore cortada, e reconstrói o chão a partir do gerador. Jogadores, inventários e estações são mantidos; as regiões antigas são guardadas como cópia de segurança. Digite /regen world confirm para fazer isso."
+chat.regen_done,The world was regenerated.,O mundo foi regenerado.
+chat.regen_failed,The world was not regenerated: the old regions could not be moved aside.,O mundo não foi regenerado: não foi possível guardar as regiões antigas.
+admin.regen,Regenerate world…,Regenerar mundo…
+admin.regen_ask,"Regenerate the world? Every terrain edit, mined ore and cleared tree is wiped (players, inventories and stations are kept; the old regions are kept as a backup).","Regenerar o mundo? Toda edição de terreno, minério extraído e árvore cortada será apagada (jogadores, inventários e estações são mantidos; as regiões antigas ficam como cópia de segurança)."

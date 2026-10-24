@@ -1400,7 +1400,7 @@ static func _tile_key(tile: Vector2i) -> String:
 ## Tile X wrapped across the seam; the code lives in `VoxelConsts` (Phase 154).
 static func canonical_tile(tile: Vector2i) -> Vector2i:
 	return VoxelConsts.canonical_tile(tile)
-
+func reset_world() -> void: _persist.reset_world()   # Phase 182 — `/regen world` (see VoxelPersist)
 
 ## Phase 42 review pass 9 — STATIC: the worker half of a build keys chunks too (`_neighbour_runs`).
 static func _chunk_key(chunk_pos: Vector2i) -> String:

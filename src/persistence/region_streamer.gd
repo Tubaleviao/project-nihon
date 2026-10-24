@@ -195,6 +195,22 @@ func _adopt_read(rkey: String, read: Dictionary, adopted: Array) -> void:
 	ChunkRecords.adopt_region(readable, adopted)
 	_resident[rkey] = true
 
+## Phase 182 — forget every region read, finished or in flight, so the next `sync` reads them all
+## again (from a region directory `/regen world` has just emptied). Waits for reads in flight: one
+## landing afterwards would adopt the old world's edits and records.
+func reset() -> void:
+	for rkey in _reading.keys():
+		WorkerThreadPool.wait_for_task_completion(_reading[rkey])
+	_reading.clear()
+	_read_mutex.lock()
+	_read_out.clear()
+	_read_mutex.unlock()
+	_resident.clear()
+	_stranded.clear()
+	_stranded_wait.clear()
+	_backoff.clear()
+	_wanted_last.clear()
+
 ## Take (and forget) a finished worker read's result.
 func _take_read(rkey: String) -> Dictionary:
 	_read_mutex.lock()

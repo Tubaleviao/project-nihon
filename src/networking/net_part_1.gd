@@ -315,3 +315,11 @@ func _route_remote_player_state(payload: Dictionary) -> void:
 	else:
 		GameBus.remote_player_state.emit(pid, pos)
 	sl.TickProbe.end()
+
+## Drop every sent-record involving a peer that disconnected.
+func forget_equipment_pairs(peer_id: int) -> void:
+	sl._equipment_eval_positions.erase(peer_id)
+	for key in sl._equipment_sent.keys():
+		var parts := str(key).split(":")
+		if int(parts[0]) == peer_id or int(parts[1]) == peer_id:
+			sl._equipment_sent.erase(key)

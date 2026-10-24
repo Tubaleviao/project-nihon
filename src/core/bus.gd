@@ -767,6 +767,14 @@ signal admin_healed()
 ## host still checks every command.
 signal admin_status_synced(is_admin: bool)
 
+## Phase 182 — host: an admin asked to regenerate the world's terrain (`/regen world confirm`).
+## AdminWiring runs it; `player_id` is the admin, told how it went.
+signal world_regen_requested(player_id: String)
+
+## Phase 182 — client: the host regenerated the world. Drop every record, edit and clear held, and
+## restream; the host's next snapshot brings the new scope.
+signal world_regen_received()
+
 # ---------------------------------------------------------------------------
 # Carcasses (Phase 161)
 # ---------------------------------------------------------------------------
