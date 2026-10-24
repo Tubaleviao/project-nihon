@@ -588,6 +588,7 @@ func _ready() -> void:
 		return
 
 	_boot_wiring.prepare_stress_role()
+	_boot_wiring.prepare_playtest_bot()
 	_boot_world()
 	_boot_wiring.start_stress_recorder()
 	_boot_wiring.start_playtest_bot()

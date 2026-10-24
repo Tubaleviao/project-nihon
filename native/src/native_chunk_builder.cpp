@@ -34,7 +34,7 @@ const int RIDGE_CELLS = 320;
 const double CONTRAST = 1.9;
 const double SPAWN_CENTER_X = 16.0;
 const double SPAWN_CENTER_Z = 16.0;
-const double SPAWN_HEIGHT = 2.0;
+const double SPAWN_HEIGHT = 2.0;   // the plain's floor; the plain itself comes in `Cfg::spawn_plain` (worldgen 9)
 const double SPAWN_PLAIN_M = 1500.0;
 const double SPAWN_EASE_M = 4000.0;
 
@@ -86,6 +86,7 @@ struct Cfg {
 	double min_h = -64.0;
 	double max_h = 512.0;
 	double ridge_amp = 400.0;
+	double spawn_plain = SPAWN_HEIGHT;   // `WorldShape.spawn_plain_height` for this seed, computed in GDScript
 	std::vector<double> spline_x;
 	std::vector<double> spline_y;
 	Dictionary records;
@@ -159,7 +160,7 @@ double shape_height(const Cfg &cfg, int64_t seed_v, double x, double z, double w
 	double h = clampf(base + peaks, cfg.min_h, cfg.max_h);
 	double d = Vector2(x - SPAWN_CENTER_X, z - SPAWN_CENTER_Z).length();   // float32, as GDScript's Vector2
 	if (d < SPAWN_EASE_M) {
-		h = lerpf(SPAWN_HEIGHT, h, smoothstep(SPAWN_PLAIN_M, SPAWN_EASE_M, d));
+		h = lerpf(cfg.spawn_plain, h, smoothstep(SPAWN_PLAIN_M, SPAWN_EASE_M, d));
 	}
 	return h;
 }
@@ -371,7 +372,7 @@ void NativeChunkBuilder::_bind_methods() {
 }
 
 int NativeChunkBuilder::version() const {
-	return 4;
+	return 5;   // 5 = heightmap_for reads the spawn plain from `cfg.spawn_plain` (worldgen 9)
 }
 
 PackedStringArray NativeChunkBuilder::functions() const {
@@ -391,6 +392,7 @@ Array NativeChunkBuilder::heightmap_for(const Vector2i &p_pos, int64_t p_seed, c
 	cfg.min_h = p_cfg.get("min_height", -64.0);
 	cfg.max_h = p_cfg.get("max_height", 512.0);
 	cfg.ridge_amp = p_cfg.get("ridge_amplitude", 400.0);
+	cfg.spawn_plain = p_cfg.get("spawn_plain", SPAWN_HEIGHT);
 	cfg.records = p_cfg.get("records", Dictionary());
 	Array spline = p_cfg.get("spline", Array());
 	for (int i = 0; i < spline.size(); i++) {
