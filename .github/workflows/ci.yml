@@ -380,6 +380,9 @@ jobs:
       - name: Check the harvest validation rejects bad tables
         run: node tools/check_harvest.js
 
+      - name: Check the attribute validation rejects bad tables
+        run: node tools/check_attributes.js
+
       - name: Check the roadmap index matches the phase specs
         run: node tools/check_roadmap.js
 

@@ -21,6 +21,6 @@ Tuning for working and moving a creature body: how long a harvest takes, how clo
 | carrySlowSpeedMultiplier | decimal | Walk speed multiplier while carrying above carrySlowAboveFraction |
 | dragCapacityFactor | decimal | A \`drag\` body up to capacity times this factor can be dragged |
 | dragSpeedMultiplier | decimal | Walk speed multiplier while dragging a body |
-| carryBonusPerSkinningLevelKg | decimal | Extra carry capacity in kg per Skinning level (no strength attribute exists yet) |
+| carryBonusPerSkinningLevelKg | decimal | Extra carry capacity in kg per Skinning level, on top of the Strength-derived capacity (AttributeSystem.derivation.carryCapacityKg) |
 | maxCarcassesPerRegion | integer | Bodies a region keeps; the oldest decays first |
 

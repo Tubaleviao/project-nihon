@@ -365,3 +365,35 @@ chat.regen_done,The world was regenerated.,O mundo foi regenerado.
 chat.regen_failed,The world was not regenerated: the old regions could not be moved aside.,O mundo não foi regenerado: não foi possível guardar as regiões antigas.
 admin.regen,Regenerate world…,Regenerar mundo…
 admin.regen_ask,"Regenerate the world? Every terrain edit, mined ore and cleared tree is wiped (players, inventories and stations are kept; the old regions are kept as a backup).","Regenerar o mundo? Toda edição de terreno, minério extraído e árvore cortada será apagada (jogadores, inventários e estações são mantidos; as regiões antigas ficam como cópia de segurança)."
+attr.strength.name,Strength,Força
+attr.strength.desc,"Carry capacity, melee damage, knockback dealt, and mining and chopping speed.","Capacidade de carga, dano corpo a corpo, repulsão causada e velocidade de mineração e corte."
+attr.vitality.name,Vitality,Vitalidade
+attr.vitality.desc,"Max HP, HP regeneration and the bonus from resting.","HP máximo, regeneração de HP e o bônus de descanso."
+attr.resistance.name,Resistance,Resistência
+attr.resistance.desc,"Damage reduction, status-effect chance and duration, and resisting knockdown and stagger.","Redução de dano, chance e duração de efeitos de status e resistência a derrubada e atordoamento."
+attr.agility.name,Agility,Agilidade
+attr.agility.desc,"Movement speed, attack interval and the chance to dodge a melee hit.","Velocidade de movimento, intervalo de ataque e chance de esquivar de um golpe corpo a corpo."
+attr.intelligence.name,Intelligence,Inteligência
+attr.intelligence.desc,"Research point gain, the chance of a better craft grade and XP for magic skills.","Ganho de pontos de pesquisa, chance de uma qualidade melhor na fabricação e XP de habilidades mágicas."
+attr.perception.name,Perception,Percepção
+attr.perception.desc,"Gather yield, harvest quality and how far creatures and deposits show on the minimap.","Rendimento de coleta, qualidade da colheita e a distância em que criaturas e jazidas aparecem no minimapa."
+stat.carryCapacityKg,Carry capacity,Capacidade de carga
+stat.meleeDamageFactor,Melee damage,Dano corpo a corpo
+stat.knockbackDealtFactor,Knockback dealt,Repulsão causada
+stat.gatherSpeedFactor,Mining and chopping speed,Velocidade de mineração e corte
+stat.maxHp,Max HP,HP máximo
+stat.hpRegenPerSecond,HP regeneration,Regeneração de HP
+stat.restRegenFactor,Rest bonus,Bônus de descanso
+stat.damageReduction,Damage reduction,Redução de dano
+stat.statusChanceFactor,Status-effect chance,Chance de efeitos de status
+stat.statusDurationFactor,Status-effect duration,Duração de efeitos de status
+stat.staggerResistChance,Knockdown and stagger resistance,Resistência a derrubada e atordoamento
+stat.moveSpeedFactor,Movement speed,Velocidade de movimento
+stat.attackIntervalFactor,Attack interval,Intervalo de ataque
+stat.dodgeChance,Dodge chance,Chance de esquiva
+stat.researchGainFactor,Research gain,Ganho de pesquisa
+stat.craftQualityChance,Craft quality chance,Chance de qualidade na fabricação
+stat.magicXpFactor,Magic XP rate,Taxa de XP mágica
+stat.gatherYieldFactor,Gather yield,Rendimento de coleta
+stat.harvestQualityBonus,Harvest quality,Qualidade da colheita
+stat.detectionRadiusMetres,Detection radius,Raio de detecção

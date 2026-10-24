@@ -13,7 +13,7 @@ enum State {
 @export var name: String
 @export var baseHp: int
 @export var currentHp: int
-@export var carryCapacityKg: float
+@export var attributes: Dictionary
 @export var baseSpeed: float
 @export var positionX: float
 @export var positionY: float

@@ -112,11 +112,17 @@ static func grade_rank(grade: String) -> int:
 			seen.append(str(q))
 	return seen.find(grade)
 
-## Carry capacity in kg: the base from the player entity plus the Skinning bonus.
+## Carry capacity in kg: the base plus the Skinning bonus.
 static func capacity_kg(level: int) -> float:
-	var pc: Resource = GameData.PLAYERS.get("PlayerCharacter", null)
-	var base := float(pc.get("carryCapacityKg")) if pc != null else 0.0
-	return base + rule_f("carryBonusPerSkinningLevelKg", 0.0) * float(level)
+	return base_capacity_kg() + rule_f("carryBonusPerSkinningLevelKg", 0.0) * float(level)
+
+## The Strength-derived carry capacity at the attribute base (Phase 177; 0.0 without the fabric row). Every
+## character is at base until Phase 178 gives attributes a runtime, and at base the derivation is its `base`.
+static func base_capacity_kg() -> float:
+	var a: Resource = GameData.ATTRIBUTES.get("AttributeSystem", null)
+	var table = a.get("derivation") if a != null else null
+	var row = (table as Dictionary).get("carryCapacityKg", null) if table is Dictionary else null
+	return float((row as Dictionary).get("base", 0.0)) if row is Dictionary else 0.0
 
 ## "carry", "drag" or "none" for a body of `mass` kg under `rule` against `capacity`.
 static func carry_mode(rule: String, mass: float, capacity: float) -> String:
