@@ -69,6 +69,9 @@ const WALK_FOOT_MIN_SWITCHES := 2
 const WALK_FOOT_DEADBAND_M := 0.03   ## a lead smaller than this is the feet passing, not a swap
 const GATHER_SEARCH_CHUNKS := 30  ## forest chunks the gather step will hop to at most
 const GATHER_SEARCH_RADIUS := 60  ## chunk rings around the body it scans for forest
+const GATHER_FAR_BEARINGS := 16    ## rays the far scan casts when the rings hold no forest
+const GATHER_FAR_STEP := 8         ## chunks between samples along a far-scan ray
+const GATHER_FAR_RADIUS := 4000    ## chunks a far-scan ray reaches
 const FIGHT_RANGE_M := 1.5
 const TELEPORT_SETTLE_MS := 1500 ## frames this long after a teleport (the new window's builds) are not recorded
 const STEP_GRACE_SECS := 10.0    ## past its deadline a step that has not returned has crashed or hung: fail it
@@ -726,8 +729,28 @@ func _nearest_tree(ids: Array) -> String:
 			best = str(tid)
 	return best
 
-## Chunks around `origin`, nearest ring first, whose biome grows trees (budget above zero).
+func _grows_trees(c: Vector2i) -> bool:
+	var canon := TerrainSlice.wrap_chunk(c)
+	return _root._tree.tree_count_for(canon, str(_root._terrain.get_biome_at_chunk(canon))) > 0
+
+## Chunks around `origin`, nearest ring first, whose biome grows trees (budget above zero). The spawn
+## is not pinned, so the body can stand in a desert or ice sheet wider than the rings: then rays cast
+## outward, nearest sample first, and the first forest chunk found seeds a ring scan around it.
 func _forest_chunks_near(origin: Vector2i) -> Array:
+	var found := _forest_rings(origin)
+	if not found.is_empty():
+		return found
+	for d in range(GATHER_SEARCH_RADIUS + GATHER_FAR_STEP, GATHER_FAR_RADIUS + 1, GATHER_FAR_STEP):
+		for b in range(GATHER_FAR_BEARINGS):
+			var a := TAU * float(b) / float(GATHER_FAR_BEARINGS)
+			var c := origin + Vector2i(roundi(cos(a) * d), roundi(sin(a) * d))
+			if _grows_trees(c):
+				found = [c]
+				found.append_array(_forest_rings(c))
+				return found.slice(0, GATHER_SEARCH_CHUNKS)
+	return found
+
+func _forest_rings(origin: Vector2i) -> Array:
 	var found: Array = []
 	for r in range(1, GATHER_SEARCH_RADIUS + 1):
 		for dx in range(-r, r + 1):
@@ -735,8 +758,7 @@ func _forest_chunks_near(origin: Vector2i) -> Array:
 				if maxi(absi(dx), absi(dy)) != r:
 					continue
 				var c := origin + Vector2i(dx, dy)
-				var canon := TerrainSlice.wrap_chunk(c)
-				if _root._tree.tree_count_for(canon, str(_root._terrain.get_biome_at_chunk(canon))) > 0:
+				if _grows_trees(c):
 					found.append(c)
 		if found.size() >= GATHER_SEARCH_CHUNKS:
 			break
@@ -750,7 +772,8 @@ func _step_gather() -> Array:
 	# biome and the tree budget are pure functions of the chunk), ring by ring, and hop straight to it.
 	var here: Dictionary = _root._player.get_world_pos()
 	var tried := 0
-	for chunk in _forest_chunks_near(here["chunk"] as Vector2i):
+	var forest: Array = _forest_chunks_near(here["chunk"] as Vector2i)
+	for chunk in forest:
 		if not standing.is_empty() or tried >= GATHER_SEARCH_CHUNKS or Time.get_ticks_msec() >= _step_deadline_ms:
 			break
 		tried += 1
@@ -760,7 +783,7 @@ func _step_gather() -> Array:
 		await _until(func(): return false, 0.5)
 		standing = _standing_trees()
 	if standing.is_empty():
-		return [false, "no standing tree in the loaded window"]
+		return [false, "no standing tree in the loaded window (%d forest chunks found near %s, %d visited)" % [forest.size(), str(here["chunk"]), tried]]
 	if not _root._inventory.add_item("CarpenterAxe", 1):
 		return [false, "axe does not fit the pack (weight %.1f of %.1f)" % [_root._inventory.get_current_weight(), _root._inventory.get_max_weight()]]
 	var before := _chopped.size()
