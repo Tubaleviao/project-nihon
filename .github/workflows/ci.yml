@@ -532,8 +532,18 @@ jobs:
           # non-zero on a hard failure (step timeout, any frame over 2 s). Slow percentiles
           # are a report, not a gate. A crash writes no report.json, which fails the check below.
           set +e
+          # Phase 174: two extra report-only runs. The gate is the median of the three runs' p95
+          # process time (tools/check_playtest_budget.py), so one noisy shared-runner run does not fail a PR.
+          mkdir -p /tmp/pt-extra
+          for n in 1 2; do
+            rm -f playtest/report.json   # a crashed run must not hand its predecessor's report to the median
+            timeout 1500 xvfb-run -a -s "-screen 0 1280x720x24" \
+              /tmp/godot/Godot_v4.7-stable_linux.x86_64 --path . --rendering-driver opengl3 -- --playtest-bot --playtest-no-budget \
+              > /tmp/pt-extra/run$n.log 2>&1
+            cp playtest/report.json /tmp/pt-extra/report$n.json
+          done
           timeout 1500 xvfb-run -a -s "-screen 0 1280x720x24" \
-            /tmp/godot/Godot_v4.7-stable_linux.x86_64 --path . --rendering-driver opengl3 -- --playtest-bot \
+            /tmp/godot/Godot_v4.7-stable_linux.x86_64 --path . --rendering-driver opengl3 -- --playtest-bot --playtest-no-budget \
             2>&1 | tee /tmp/playtest.log
           status=${PIPESTATUS[0]}
           set -e
@@ -552,19 +562,22 @@ jobs:
               exit 1
             fi
           done
+          cp playtest/report.json /tmp/pt-extra/report3.json
+          python3 tools/check_playtest_budget.py /tmp/pt-extra/report?.json || exit 1
           exit "$status"
 
       - name: Run the bot again on the GDScript fallback (Phase 169)
         run: |
           # Same commit, `--no-native`: the stream step's chunk build rate with the native builder
           # must be at least double this run's, and the native run must not hitch more than this one.
+          # `--playtest-no-budget`: the Phase 174 process-time budget is the native builder's, gated above.
           mkdir -p /tmp/playtest-native
           cp playtest/report.json /tmp/playtest-native/report.json
           mkdir -p /tmp/playtest-native-png
           cp playtest/*.png /tmp/playtest-native-png/
           set +e
           timeout 1500 xvfb-run -a -s "-screen 0 1280x720x24" \
-            /tmp/godot/Godot_v4.7-stable_linux.x86_64 --path . --rendering-driver opengl3 -- --playtest-bot --no-native \
+            /tmp/godot/Godot_v4.7-stable_linux.x86_64 --path . --rendering-driver opengl3 -- --playtest-bot --no-native --playtest-no-budget \
             2>&1 | tee /tmp/playtest-gdscript.log
           fallback_status=${PIPESTATUS[0]}
           set -e

@@ -8,8 +8,8 @@ extends Node
 ## frame times, and after it a screenshot, so a human playtest is one artifact download away.
 ##
 ## Output (`playtest/`, next to the project): `report.json`, `report.md` and `<step>.png`.
-## Perf numbers are a report, not a gate. Only hard failures fail the run: a step timeout, a frame
-## over HARD_FRAME_MS, or a crash (no report at all).
+## Perf is gated on p95 PROCESS time per step (Phase 174, `docs/perf/playtest-budget.json`, +25% headroom); wall frame time stays a report,
+## because software rendering inflates it. Other hard failures: a step timeout, a frame over HARD_FRAME_MS, or a crash (no report at all).
 ##
 ## The report maths (percentiles, hitches, verdicts, markdown) is static and pure, so the
 ## synchronous suite pins it (`_test_playtest_report_*`); `run()` is the only part that needs frames.
@@ -56,6 +56,9 @@ const STREAM_CHUNKS := 20
 const SHADER_SHARE_LIMIT := 0.5   ## Phase 170: heightmap share of the build above which a compute shader is justified
 const RATE_CHUNKS := 24      ## chunks the stream step times the pure worker build on (Phase 169)
 const NativeBuilder := preload("res://src/terrain/native_builder.gd")
+const BUDGET_PATH := "res://docs/perf/playtest-budget.json"   ## Phase 174: per-step p95 process budget (ms), source of the table in playtest-baseline.md
+const BUDGET_HEADROOM := 1.25   ## a step fails the gate above budget * this, so a noisy shared runner does not fail unrelated PRs
+const NO_BUDGET_ARG := "--playtest-no-budget"   ## report only: CI runs the bot 3 times with this and gates the median (tools/check_playtest_budget.py)
 const WALK_SECS := 3.0
 const WALK_MIN_M := 4.0        ## the walk step keeps going until the body has moved this far
 const WALK_MAX_SECS := 20.0   ## ... but not past this
@@ -111,8 +114,16 @@ const COAST_WORK_MS := 40             ## search work per frame before it yields
 
 var _root: Node
 var _frames: Array = []       ## frame times (ms) of the step in flight
+var _process_ms: Array = []   ## Phase 174: per recorded frame, the scene tree's _process work (ms), first callback to last
+var _physics_ms: Array = []   ## ... the _physics_process work of the ticks that ran before it (0 when none did)
+var _render_ms: Array = []    ## ... measured render time of the root viewport, CPU + GPU (0 headless)
 var _recording: bool = false
+var _frame_start_us: int = 0   ## this frame's first _process callback (the bot's own, see FrameEnd)
+var _frame_delta_ms: float = -1.0   ## this frame's delta when it is recorded, -1 when it is skipped
+var _physics_start_us: int = 0
+var _physics_frame_us: int = 0   ## physics work since the last recorded frame
 var _skip_frames: int = 0
+var _place_refusal: String = ""   ## why `_place_walking`'s last try was refused (for the step's detail)
 var _skip_until_ms: int = 0   ## frames before this tick are not recorded (just after a teleport)
 var _step_result: Array = []  ## set by the step runner when its coroutine returns; empty while it runs
 var _step_deadline_ms: int = 0
@@ -200,18 +211,45 @@ static func summarize(frames_ms: Array) -> Dictionary:
 		"hitches": hitches,
 	}
 
-static func step_record(step: String, ok: bool, detail: String, frames_ms: Array, chunk_builds: int) -> Dictionary:
+## Phase 174: p50/p95/max of one frame-time part.
+static func part_summary(values_ms: Array) -> Dictionary:
+	var s := summarize(values_ms)
+	return { "p50": s["p50_ms"], "p95": s["p95_ms"], "max": s["max_ms"] }
+
+static func step_record(step: String, ok: bool, detail: String, frames_ms: Array, chunk_builds: int, parts: Dictionary = {}) -> Dictionary:
 	var rec := summarize(frames_ms)
+	for key in ["process_ms", "physics_ms", "render_ms"]:
+		rec[key] = part_summary(parts.get(key, []))
 	rec["step"] = step
 	rec["ok"] = ok
 	rec["detail"] = detail
 	rec["chunk_builds"] = chunk_builds
 	return rec
 
+## Phase 174 — the steps whose p95 process time is over budget * headroom. `budgets` maps step to ms.
+static func budget_failures(steps: Array, budgets: Dictionary, headroom: float = BUDGET_HEADROOM) -> Array:
+	var out: Array = []
+	for s in steps:
+		var name := str(s["step"])
+		if not budgets.has(name) or not s.has("process_ms"):
+			continue
+		var limit := float(budgets[name]) * headroom
+		var p95 := float((s["process_ms"] as Dictionary)["p95"])
+		if p95 > limit:
+			out.append("step %s p95 process time %.1f ms is over its budget %.1f ms (+%d%% headroom = %.1f ms)" % [
+				name, p95, float(budgets[name]), int(round((headroom - 1.0) * 100.0)), limit])
+	return out
+
+static func load_budgets() -> Dictionary:
+	var parsed = JSON.parse_string(FileAccess.get_file_as_string(BUDGET_PATH))
+	return parsed if parsed is Dictionary else {}
+
 ## The run verdict. `failures` names every hard failure: a failed (or timed-out) step, a frame over
-## HARD_FRAME_MS, and a step of the fixed list that never ran.
-static func build_report(steps: Array) -> Dictionary:
+## HARD_FRAME_MS, a step over its process-time budget (`budgets`, empty to skip) and a step of the
+## fixed list that never ran.
+static func build_report(steps: Array, budgets: Dictionary = {}) -> Dictionary:
 	var failures: Array = []
+	failures.append_array(budget_failures(steps, budgets))
 	var seen := {}
 	for s in steps:
 		seen[str(s["step"])] = true
@@ -234,12 +272,23 @@ static func report_markdown(report: Dictionary) -> String:
 	lines.append("")
 	lines.append("Result: **%s**" % ("PASS" if bool(report["ok"]) else "FAIL"))
 	lines.append("")
+	if report.has("adapter"):
+		lines.append("Adapter: %s (%s), native builder: %s" % [_md_cell(str(report["adapter"])), _md_cell(str(report.get("driver", ""))), str(report.get("native_builder", false))])
+		lines.append("")
 	lines.append("| Step | Result | Frames | p50 ms | p95 ms | p99 ms | Max ms | Hitches (>%d ms) | Chunk builds | Detail |" % int(HITCH_MS))
 	lines.append("|---|---|---|---|---|---|---|---|---|---|")
 	for s in report["steps"]:
 		lines.append("| %s | %s | %d | %.1f | %.1f | %.1f | %.1f | %d | %d | %s |" % [
 			_md_cell(str(s["step"])), "ok" if bool(s["ok"]) else "FAIL", int(s["frames"]), float(s["p50_ms"]), float(s["p95_ms"]),
 			float(s["p99_ms"]), float(s["max_ms"]), int(s["hitches"]), int(s["chunk_builds"]), _md_cell(str(s["detail"]))])
+	lines.append("")
+	lines.append("| Step | process p50/p95 ms | physics p50/p95 ms | render p50/p95 ms |")
+	lines.append("|---|---|---|---|")
+	for s in report["steps"]:
+		if s.has("process_ms"):
+			lines.append("| %s | %.1f / %.1f | %.1f / %.1f | %.1f / %.1f |" % [_md_cell(str(s["step"])),
+				float(s["process_ms"]["p50"]), float(s["process_ms"]["p95"]), float(s["physics_ms"]["p50"]), float(s["physics_ms"]["p95"]),
+				float(s["render_ms"]["p50"]), float(s["render_ms"]["p95"])])
 	for s in report["steps"]:
 		var bb: Dictionary = s.get("build_breakdown", {})
 		if not bb.is_empty():
@@ -319,8 +368,36 @@ func _ready() -> void:
 	GameBus.research_resolved.connect(func(result: Dictionary): _researched.append(result))
 	GameBus.station_placed.connect(func(id: String, type: String, _p: Vector3): _placed.append([id, type]))
 	GameBus.chunk_loaded.connect(func(_c: Vector2i): _chunk_builds += 1)
+	# Phase 174: the bot's callbacks run first and FrameEnd's last, so the two clocks bracket the frame's
+	# _process and _physics_process work. Performance.TIME_PROCESS cannot stand in: Godot publishes the MAX
+	# process time of the last second, once a second, so a per-frame sample of it is the step's worst frame.
+	process_priority = FrameEnd.FIRST
+	process_physics_priority = FrameEnd.FIRST
+	var end := FrameEnd.new()
+	end.bot = self
+	add_child(end)
+
+## The last _process and _physics_process callback of every frame (see `_ready`).
+class FrameEnd extends Node:
+	const FIRST := -(1 << 30)
+	var bot: Node
+
+	func _ready() -> void:
+		process_priority = -FIRST
+		process_physics_priority = -FIRST
+
+	func _process(_delta: float) -> void:
+		bot._end_frame()
+
+	func _physics_process(_delta: float) -> void:
+		bot._physics_frame_us += Time.get_ticks_usec() - bot._physics_start_us
+
+func _physics_process(_delta: float) -> void:
+	_physics_start_us = Time.get_ticks_usec()
 
 func _process(delta: float) -> void:
+	_frame_start_us = Time.get_ticks_usec()
+	_frame_delta_ms = -1.0
 	if not _recording:
 		return
 	if Time.get_ticks_msec() < _skip_until_ms:
@@ -328,10 +405,22 @@ func _process(delta: float) -> void:
 	if _skip_frames > 0:
 		_skip_frames -= 1
 		return
-	_frames.append(delta * 1000.0)
+	_frame_delta_ms = delta * 1000.0
+
+func _end_frame() -> void:
+	var physics_us := _physics_frame_us
+	_physics_frame_us = 0
+	if _frame_delta_ms < 0.0 or not _recording:
+		return
+	_frames.append(_frame_delta_ms)
+	_process_ms.append(float(Time.get_ticks_usec() - _frame_start_us) / 1000.0)
+	_physics_ms.append(float(physics_us) / 1000.0)
+	var vp := get_viewport().get_viewport_rid()
+	_render_ms.append(RenderingServer.viewport_get_measured_render_time_cpu(vp) + RenderingServer.viewport_get_measured_render_time_gpu(vp))
 
 func run(root: Node) -> void:
 	_root = root
+	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 	# A step body that hits a script error aborts its coroutine and would leave the process
 	# running with no verdict; the watchdog writes what exists and quits.
 	var budget := BOOT_TIMEOUT_SECS + WATCHDOG_SLACK_SECS
@@ -369,8 +458,13 @@ func _on_watchdog() -> void:
 ## Write the report, print the verdict and quit. Pending chunk records are dropped first: the
 ## game's exit flush would otherwise put the bot's frontier chunks into the player's region store.
 func _finish(steps: Array) -> void:
-	var report := build_report(steps)
+	var budgets: Dictionary = {} if NO_BUDGET_ARG in OS.get_cmdline_user_args() else load_budgets()
+	var report := build_report(steps, budgets)
 	report["builder"] = NativeBuilder.mode()
+	report["native_builder"] = NativeBuilder.is_native()
+	report["adapter"] = RenderingServer.get_video_adapter_name()
+	report["driver"] = RenderingServer.get_current_rendering_driver_name()
+	report["budget_ms"] = budgets
 	if not _write_report(report):
 		report["ok"] = false
 		(report["failures"] as Array).append("the report could not be written to %s" % OUT_DIR)
@@ -384,6 +478,9 @@ func _finish(steps: Array) -> void:
 func _run_step(step: String) -> Dictionary:
 	print("[Playtest] step %s" % step)
 	_frames = []
+	_process_ms = []
+	_physics_ms = []
+	_render_ms = []
 	_chunk_builds = 0
 	_skip_frames = WARMUP_FRAMES
 	_step_deadline_ms = Time.get_ticks_msec() + int(_step_timeout(step) * 1000.0)
@@ -399,7 +496,8 @@ func _run_step(step: String) -> Dictionary:
 	var result: Array = _step_result if not _step_result.is_empty() else [false, "step %s crashed or hung (no result %d s past its deadline)" % [step, int(STEP_GRACE_SECS)]]
 	_key(KEY_W, false)
 	_recording = false
-	var rec := step_record(step, bool(result[0]), str(result[1]), _frames, _chunk_builds)
+	var rec := step_record(step, bool(result[0]), str(result[1]), _frames, _chunk_builds,
+		{ "process_ms": _process_ms, "physics_ms": _physics_ms, "render_ms": _render_ms })
 	if step == "stream":
 		rec["builder"] = NativeBuilder.mode()
 		rec["build_rate"] = _stream_rate
@@ -711,11 +809,19 @@ func _place_with_keys(station_type: String) -> int:
 	return _placed.size() - before
 
 ## `_place_with_keys`, walking forward 1.5 s and aiming again after each refusal, up to `tries` attempts.
+## Each retry turns the view a quarter first: a body stuck against a slope or a trunk walks nowhere, and its
+## next spot is still inside the last station's spacing. `_place_refusal` says why the last try was refused.
 func _place_walking(station_type: String, tries: int) -> int:
+	_place_refusal = ""
 	for attempt in tries:
 		var placed := await _place_with_keys(station_type)
 		if placed > 0:
 			return placed
+		var station = _root._station
+		var why: String = station.placement_blocker(station_type, station.snap_to_grid(_root._player._station_target()))
+		_place_refusal = "%s at %s" % [why if why != "" else "no blocker (aim or item)", str(_player_pos().snapped(Vector3.ONE * 0.1))]
+		var pivot: Node3D = _root._player._pivot
+		pivot.global_rotation.y += PI * 0.5
 		_key(KEY_W, true)
 		await _until(func(): return false, 1.5)
 		_key(KEY_W, false)
@@ -832,6 +938,14 @@ func _step_fight() -> Array:
 ## check the bag holds what came off. Chances are pinned to 1 so the check does not depend on a roll.
 func _harvest_after_kill(creature_key: String) -> Array:
 	var slice: Node = _root._carcass
+	# #487: the host refuses a harvest by a downed body ("unavailable"), and the fight can down it. Let a
+	# downed body respawn first (the kill below lands where it stands), then heal it through the admin door.
+	var player = _root._player
+	if not player.is_alive():
+		await _until(func(): return player.is_alive(), PlayerSlice.RESPAWN_DELAY + STEP_TIMEOUT_SECS)
+		_skip_until_ms = Time.get_ticks_msec() + TELEPORT_SETTLE_MS
+		await _hold_still(3.0)
+	GameBus.admin_healed.emit()
 	var before: int = slice.count()
 	GameBus.creature_died.emit(creature_key, _root._player.get_position(), "player", Vector3.ZERO)
 	if slice.count() != before + 1:
@@ -879,6 +993,7 @@ func _harvest_after_kill(creature_key: String) -> Array:
 	var why := str(verdict) if not verdict.is_empty() else "no verdict"
 	if not attackers.is_empty():
 		why += ", hit by %s" % str(attackers)
+	why += ", player hp %.0f%s" % [player.get_hp(), "" if player.is_alive() else " (down)"]
 	return [not got.is_empty(), "harvested %s" % str(got) if not got.is_empty() else "the bag gained nothing from the body (%s)" % why]
 
 ## Wait (bounded by `max_secs`) until the player's position has moved less than 0.1 m over 0.3 s.
@@ -935,14 +1050,14 @@ func _step_travel() -> Array:
 	# #471 root cause of "first waystone refused": the key places at the aimed block, which can be sky, unbuilt
 	# ground or inside another station's clearance. Only the second stone retried; both walk on and aim again.
 	if await _place_walking(stone, 3) == 0:
-		return [false, "first waystone refused"]
+		return [false, "first waystone refused (%s)" % _place_refusal]
 	var a: String = str(_placed[before][0])
 	_key(KEY_W, true)
 	await _until(func(): return false, 1.5)
 	_key(KEY_W, false)
-	var second := await _place_walking(stone, 3)
+	var second := await _place_walking(stone, 4)
 	if second == 0:
-		return [false, "second waystone refused"]
+		return [false, "second waystone refused (%s)" % _place_refusal]
 	var b: String = str(_placed.back()[0])
 	# Back beside the first stone, which the travel starts from. Placed, not walked: a timed walk
 	# back can stop outside the attune radius and the host refuses the travel as too_far.
