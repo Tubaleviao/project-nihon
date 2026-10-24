@@ -938,6 +938,14 @@ func _step_fight() -> Array:
 ## check the bag holds what came off. Chances are pinned to 1 so the check does not depend on a roll.
 func _harvest_after_kill(creature_key: String) -> Array:
 	var slice: Node = _root._carcass
+	# #487: the host refuses a harvest by a downed body ("unavailable"), and the fight can down it. Let a
+	# downed body respawn first (the kill below lands where it stands), then heal it through the admin door.
+	var player = _root._player
+	if not player.is_alive():
+		await _until(func(): return player.is_alive(), PlayerSlice.RESPAWN_DELAY + STEP_TIMEOUT_SECS)
+		_skip_until_ms = Time.get_ticks_msec() + TELEPORT_SETTLE_MS
+		await _hold_still(3.0)
+	GameBus.admin_healed.emit()
 	var before: int = slice.count()
 	GameBus.creature_died.emit(creature_key, _root._player.get_position(), "player", Vector3.ZERO)
 	if slice.count() != before + 1:
@@ -985,6 +993,7 @@ func _harvest_after_kill(creature_key: String) -> Array:
 	var why := str(verdict) if not verdict.is_empty() else "no verdict"
 	if not attackers.is_empty():
 		why += ", hit by %s" % str(attackers)
+	why += ", player hp %.0f%s" % [player.get_hp(), "" if player.is_alive() else " (down)"]
 	return [not got.is_empty(), "harvested %s" % str(got) if not got.is_empty() else "the bag gained nothing from the body (%s)" % why]
 
 ## Wait (bounded by `max_secs`) until the player's position has moved less than 0.1 m over 0.3 s.
