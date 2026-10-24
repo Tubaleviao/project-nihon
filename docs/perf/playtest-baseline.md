@@ -33,14 +33,15 @@ measured runs (llvmpipe, `opengl3`, native builder loaded), not the target.
 
 | Step | Budget p95 process (ms) | Target (ms) | Measured p95 process (ms) |
 |---|---|---|---|
-| walk | 40 | 16 | 25.6 (local) |
-| craft | 45 | 16 | 27.1 (local) |
-| fight | 35 | 16 | 18.0 (local) |
+| walk | 40 | 16 | 27.3 (CI) / 25.6 (local) |
+| craft | 45 | 16 | 22.6 (CI) / 27.1 (local) |
+| fight | 35 | 16 | 7.5 (CI) / 18.0 (local) |
 
-"Measured" is the median of three runs on the local box on 2026-10-24, on the pinned
-`PlaytestBot.WORLD_SEED` (#480); per-run p95: walk 29.0 / 25.6 / 23.3, craft 30.9 / 27.1 / 22.5,
-fight 21.3 / 18.0 / 10.4. The GitHub runner was about 1.5× slower than the local box on the old
-metric, so the budgets leave that much room over the local numbers.
+"Measured" is the median of three runs, on CI (GitHub runner, llvmpipe, the gate run of 2026-10-24 on
+ca6e87c) and on the local box (2026-10-24), both on the pinned `PlaytestBot.WORLD_SEED` (#480). Local
+per-run p95: walk 29.0 / 25.6 / 23.3, craft 30.9 / 27.1 / 22.5, fight 21.3 / 18.0 / 10.4. On this metric
+the runner is no slower than the local box. The budgets leave about 1.5× over the slower of the two,
+because fight varies about 2× from run to run.
 
 p95 wall frame time on the same runs (llvmpipe): walk 95 ms, craft 120 ms, fight 104 ms. It is recorded
 here and not gated: process is now about a quarter of the wall frame, so most of the frame is
