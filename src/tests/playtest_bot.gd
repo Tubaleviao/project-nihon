@@ -63,7 +63,7 @@ const STEP_GRACE_SECS := 10.0    ## past its deadline a step that has not return
 const SPAWN_OFFSET_M := 2.0      ## a teleport lands this far above the ground
 const FIGHT_MAX_GROUND_GAP_M := 2.0
 const CREATURE_CLEAR_M := 60.0   ## fight's harvest removes the world's creatures this near the body
-const HARVEST_TRIES := 3         ## fight's harvest tries: one a hit cancels ("damaged") is retried
+const HARVEST_TRIES := 3         ## fight's harvest tries: one a hit or drift cancels ("damaged", "moved") is retried
 const ARRIVE_TOLERANCE_M := 2.0    ## travel lands the body on the destination stone, within this ground distance
 ## Phase 164 — the horizon step: from the nearest coast, look out to sea in four headings and read the
 ## skyline of the distant ring alone (drawn over a key colour), which must be level to SKYLINE_FLAT_PX.
@@ -794,7 +794,8 @@ func _harvest_after_kill(creature_key: String) -> Array:
 	var verdict := []
 	var on_resolved := func(_pid: String, _cid: String, reason: String, _items: Array) -> void: verdict.append(reason)
 	# A hit cancels the work ("damaged"); the world's own creatures can land one mid-harvest, so a
-	# cancelled try is retried and the attackers are named in the note.
+	# cancelled try is retried and the attackers are named in the note. So is "moved": the body can still
+	# be settling (a knockback, a step down) when the first try starts, which drifts it past the cancel radius.
 	var attackers := []
 	var on_damaged := func(_dmg: float, attacker_id: String, _target_id: String) -> void: attackers.append(attacker_id)
 	GameBus.harvest_resolved.connect(on_resolved)
@@ -813,7 +814,7 @@ func _harvest_after_kill(creature_key: String) -> Array:
 		for item in held_before:
 			if _root._inventory.get_item_count(str(item)) > int(held_before[item]):
 				got.append(item)
-		if not got.is_empty() or verdict.size() <= seen or str(verdict.back()) != "damaged":
+		if not got.is_empty() or verdict.size() <= seen or not (str(verdict.back()) in ["damaged", "moved"]):
 			break
 	GameBus.harvest_resolved.disconnect(on_resolved)
 	GameBus.player_damaged.disconnect(on_damaged)
