@@ -150,8 +150,8 @@ jobs:
         shell: bash
         working-directory: native
         run: |
-          # Nothing on a pull request runs these binaries (only the main build job exports them), so a
-          # PR compiles the debug target to prove the platform builds, and main builds both.
+          # A pull request compiles the debug target to prove the platform builds (its build job exports
+          # debug), and main builds both.
           scons ${{ matrix.scons }} target=template_debug -j4
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             scons ${{ matrix.scons }} target=template_release -j4
@@ -428,7 +428,7 @@ jobs:
       - uses: actions/checkout@v4
         # Same submodule note as godot-tests: the public repo runs on the committed placeholders.
         with:
-          fetch-depth: ${{ github.event_name == 'pull_request' && 0 || 1 }}
+          fetch-depth: ${{ github.event_name == 'pull_request' && '0' || '1' }}   # a bare 0 is falsy and would yield 1
 
       - name: Does this pull request touch the host's hot path?
         id: scope
@@ -440,7 +440,8 @@ jobs:
             exit 0
           fi
           hot='^(src/(networking|terrain|persistence|world|core)/|src/tests/stress|tools/stress|project\.godot$|\.github/workflows/ci\.yml$)'
-          if git diff --name-only "$BASE_SHA" HEAD | grep -qE "$hot"; then
+          # A diff that cannot be taken (no base commit) runs the stress job rather than skip it.
+          if ! changed=$(git diff --name-only "$BASE_SHA" HEAD) || grep -qE "$hot" <<<"$changed"; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"
@@ -707,12 +708,16 @@ jobs:
           cp -r /tmp/godot/templates/templates/* ~/.local/share/godot/export_templates/4.7.stable/
 
       - name: Export the Linux, Windows and macOS presets
+        env:
+          # A pull request's native builders compile only template_debug (see `native`), so a PR checks
+          # every preset with a debug export; main exports release.
+          EXPORT_MODE: ${{ github.event_name == 'pull_request' && '--export-debug' || '--export-release' }}
         run: |
           mkdir -p build/linux build/windows build/macos
           /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --import || true
-          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --export-release "Linux" build/linux/nihon.x86_64
-          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --export-release "Windows Desktop" build/windows/nihon.exe
-          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --export-release "macOS" build/macos/nihon.zip
+          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . "$EXPORT_MODE" "Linux" build/linux/nihon.x86_64
+          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . "$EXPORT_MODE" "Windows Desktop" build/windows/nihon.exe
+          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . "$EXPORT_MODE" "macOS" build/macos/nihon.zip
           test -s build/linux/nihon.x86_64
           test -s build/windows/nihon.exe
           test -s build/macos/nihon.zip
