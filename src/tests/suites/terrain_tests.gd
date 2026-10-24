@@ -1643,8 +1643,6 @@ func _test_worldgen_fingerprint_game_root() -> void:
 	GameBus.worldgen_fingerprint_mismatch.disconnect(cb)
 	gr.free()
 
-## Phase 106 — golden generator values. A Godot upgrade or an unversioned edit that moves any of
-## them must bump `TerrainSlice.WORLDGEN_VERSION` and update these numbers in the same change.
 ## Worldgen 9: on a highland seed the spawn plain lies at the land's level, not in a pit at 2 m. Seed
 ## 2045165241 is a playtest world whose old plain sat ~400 m below the land 3 km out. A low seed keeps 2 m.
 func _test_spawn_plain_no_pit() -> void:
@@ -1667,6 +1665,8 @@ func _test_spawn_plain_no_pit() -> void:
 	assert_true(above > 0 and below > 0, "the plain sits inside its rim's range (%d above, %d below)" % [above, below])
 	assert_eq(WorldShape.spawn_plain_height(777, w), WorldShape.SPAWN_HEIGHT, "a low seed keeps the 2 m plain")
 
+## Phase 106 — golden generator values. A Godot upgrade or an unversioned edit that moves any of
+## them must bump `TerrainSlice.WORLDGEN_VERSION` and update these numbers in the same change.
 func _test_worldgen_golden() -> void:
 	var n := FastNoiseLite.new()
 	TerrainSlice.configure_noise(n, 12345)

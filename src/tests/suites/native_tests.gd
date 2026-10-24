@@ -41,13 +41,15 @@ func _test_native_real_loader() -> void:
 	if EXPECT_NATIVE_ARG in args:
 		assert_eq(mode, NativeBuilder.MODE_NATIVE, "the binary is present: the loader reports native")
 		assert_true(ClassDB.class_exists(NativeBuilder.CLASS_NAME), "NativeChunkBuilder is registered")
-		assert_eq(NativeBuilder.version(), 4, "the native class reports its version")
+		assert_eq(NativeBuilder.version(), NativeBuilder.REQUIRED_VERSION, "the native class reports its version")
 		var b: RefCounted = ClassDB.instantiate(NativeBuilder.CLASS_NAME)
 		assert_eq(b.call("functions") as PackedStringArray, PackedStringArray(["heightmap_for", "build_runs", "build_chunk_arrays"]), "Phases 167-169 port heightmap_for, build_runs and build_chunk_arrays")
 	if EXPECT_FALLBACK_ARG in args:
 		assert_eq(mode, NativeBuilder.MODE_FALLBACK, "no binary: the loader reports the GDScript fallback")
 		assert_eq(NativeBuilder.version(), -1, "no native version on the fallback")
-	assert_eq(mode == NativeBuilder.MODE_NATIVE, ClassDB.class_exists(NativeBuilder.CLASS_NAME), "native exactly when the class is registered")
+	var current := not NativeBuilder.forced_fallback() and ClassDB.class_exists(NativeBuilder.CLASS_NAME) \
+		and int(ClassDB.instantiate(NativeBuilder.CLASS_NAME).call("version")) >= NativeBuilder.REQUIRED_VERSION
+	assert_eq(mode == NativeBuilder.MODE_NATIVE, current, "native exactly when a current class is registered")
 	assert_eq(NativeBuilder.use_native("heightmap_for"), mode == NativeBuilder.MODE_NATIVE, "heightmap_for is native exactly when the extension loaded")
 
 func _test_native_routes_only_ported() -> void:

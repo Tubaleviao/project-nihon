@@ -17,6 +17,9 @@ const MODE_FALLBACK := "gdscript"
 const NO_NATIVE_ARG := "--no-native"
 ## Functions a later step may route natively, in step order.
 const FUNCTIONS: Array[String] = ["heightmap_for", "build_runs", "build_chunk_arrays"]
+## The oldest native builder whose results match this GDScript. A stale binary (an older build left in
+## `native/bin`) would compute different terrain than its peers, so it is not used. 5 = worldgen 9's spawn plain.
+const REQUIRED_VERSION := 5
 
 static var _loaded := false
 static var _mode := MODE_FALLBACK
@@ -61,8 +64,14 @@ static func init() -> String:
 	# `--no-native` forces the fallback even when the class is registered (library_present() checks it too).
 	_mode = mode_for(ext_loaded and not forced_fallback(), ClassDB.class_exists(CLASS_NAME))
 	if _mode == MODE_NATIVE:
-		_builder = ClassDB.instantiate(CLASS_NAME)
-		print("[Native] chunk builder: native (version %d)" % int(_builder.call("version")))
+		var b: RefCounted = ClassDB.instantiate(CLASS_NAME)
+		var v := int(b.call("version"))
+		if v < REQUIRED_VERSION:
+			_mode = MODE_FALLBACK
+			print("[Native] chunk builder: gdscript fallback (native version %d is older than %d; rebuild native/)" % [v, REQUIRED_VERSION])
+		else:
+			_builder = b
+			print("[Native] chunk builder: native (version %d)" % v)
 	else:
 		print("[Native] chunk builder: gdscript fallback (no native extension)")
 	return _mode

@@ -186,10 +186,13 @@ const SPAWN_RIM_SAMPLES := 8
 ## parameters change (`warm`, `TerrainSlice.reset_fingerprint_cache`).
 static var _plain_cache: Dictionary = {}
 static var _plain_mutex := Mutex.new()
+## Bumped by every reset, so a plain computed from the old parameters while a reset ran is not stored.
+static var _plain_gen := 0
 
 static func reset_plain_cache() -> void:
 	_plain_mutex.lock()
 	_plain_cache.clear()
+	_plain_gen += 1
 	_plain_mutex.unlock()
 
 ## The spawn plain's height: the mean natural height on the circle where the plain's ease ends, never below
@@ -200,12 +203,14 @@ static func spawn_plain_height(seed_v: int, w: float) -> float:
 	var key := "%d:%s" % [seed_v, str(w)]
 	_plain_mutex.lock()
 	var hit: Variant = _plain_cache.get(key, null)
+	var gen := _plain_gen
 	_plain_mutex.unlock()
 	if hit != null:
 		return float(hit)
 	var plain := _spawn_plain_uncached(seed_v, w)
 	_plain_mutex.lock()
-	_plain_cache[key] = plain
+	if gen == _plain_gen:
+		_plain_cache[key] = plain
 	_plain_mutex.unlock()
 	return plain
 
