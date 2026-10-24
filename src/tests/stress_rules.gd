@@ -498,6 +498,14 @@ static func baseline_regressions(series: Dictionary, max_size: int = 200) -> Arr
 			out.append("%s: largest passing size %d is below the baseline's %d" % [key, got, want])
 	return out
 
+## A run worth one more try before it counts: it missed a budget with no hard failure, at a size its
+## series' baseline says must pass. A shared CI runner's slow seconds land on one 20 s run and miss it
+## (tick p95 at 16 bots has ranged 3–18 ms on the same code); a real regression misses the rerun too.
+static func needs_retry(row: Dictionary, series_key: String) -> bool:
+	if meets_all(row) or not (row.get("hard_failures", []) as Array).is_empty():
+		return false
+	return int(row.get("size", 0)) <= int(BASELINE_LARGEST.get(series_key, 0))
+
 ## `report.md`: one table per series, then the hot spots and the hard failures.
 static func report_markdown(report: Dictionary) -> String:
 	var lines: PackedStringArray = []

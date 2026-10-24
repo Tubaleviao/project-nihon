@@ -21,6 +21,7 @@ func register() -> void:
 	_run_test("crowd: n crossings in one frame cost one window refresh", _test_crowd_rescopes_one_refresh)
 	_run_test("crowd: a re-scope sends only the records the peer does not hold", _test_crowd_rescope_record_delta)
 	_run_test("crowd: the stress report fails a series below the baseline", _test_crowd_baseline_gate)
+	_run_test("crowd: a budget miss at or below the baseline gets one rerun", _test_crowd_baseline_retry)
 	_run_test("crowd: the faster region lookup names the same regions", _test_crowd_regions_for_chunks_same)
 	_run_test("crowd: a move in a crowd that wears nothing evaluates no equipment pair", _test_crowd_equipment_pairs_skipped)
 	_run_test("crowd: a dedicated server chunk keeps its data and attaches collision, no render mesh", _test_crowd_server_chunk_no_geometry)
@@ -296,6 +297,19 @@ func _test_crowd_baseline_gate() -> void:
 	var md := StressRules.report_markdown(StressRules.build_report([], { "max": "64" }))
 	assert_true(md.contains("## Baseline"), "the report has a baseline section")
 	assert_eq(StressRules.BASELINE_LARGEST.size(), StressRules.PATTERNS.size(), "every pattern has a lan baseline")
+
+func _test_crowd_baseline_retry() -> void:
+	var pass_all := { "host_tick_p95_ms": true, "down_kbps_per_peer": true, "watch_frame_p95_ms": true, "relay_lag_ms": true }
+	var miss := pass_all.duplicate()
+	miss["host_tick_p95_ms"] = false
+	var row := func(size: int, met: Dictionary, hard: Array = []) -> Dictionary:
+		return { "size": size, "budgets_met": met, "hard_failures": hard }
+	assert_true(StressRules.needs_retry(row.call(16, miss), "lan/spread"), "a miss at the baseline size is rerun")
+	assert_false(StressRules.needs_retry(row.call(16, pass_all), "lan/spread"), "a pass is not rerun")
+	assert_false(StressRules.needs_retry(row.call(32, miss), "lan/spread"), "a miss above the baseline size is only a report")
+	assert_false(StressRules.needs_retry(row.call(16, miss, ["host: a frame took 2500 ms"]), "lan/spread"), "a hard failure is not rerun")
+	assert_false(StressRules.needs_retry(row.call(16, miss), "lan/churn"), "a series whose baseline is 0 is never rerun")
+	assert_false(StressRules.needs_retry(row.call(16, miss), "wan_br/spread"), "a series without a baseline is never rerun")
 
 ## The Phase 121 rule, written out per chunk and per neighbour as it was before Phase 163 keyed the
 ## regions once each: every region of a chunk and, near an edge, of the corners of its margin square.

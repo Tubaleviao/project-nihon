@@ -22,6 +22,9 @@
 # failure: a crash, a host or watcher frame over 2 s, a bot dropped by the host without a reason, or a
 # peer record left after everyone left. Phase 163 — it also fails when a pattern's largest passing size
 # drops below the committed baseline's (`StressRules.BASELINE_LARGEST`, docs/perf/crowd-baseline.md).
+# A run that misses a budget at or below its baseline size, with no hard failure, is run once more
+# (`StressRules.needs_retry`): the first try moves to `<size>.miss` (kept in the artifact, left out of
+# the report) and the rerun counts. Runner noise passes the rerun; a real regression misses it too.
 #
 # Usage:
 #   GODOT=/tmp/godot/Godot_v4.7-stable_linux.x86_64 tools/stress.sh
@@ -160,6 +163,14 @@ for profile in $PROFILES; do
     for size in $LADDER; do
       [ "$size" -gt "$MAX_SIZE" ] && break
       run_one "$profile" "$pattern" "$size"
+      dir="$RUNS/$profile/$pattern/$size"
+      if "$GODOT" --headless --path "$REPO_ROOT" -s tools/stress_report.gd -- retry "$dir" "$profile" "$pattern" "$size" \
+          >"$dir/retry.log" 2>&1; then
+        note "$profile/$pattern/$size missed a budget at or below the baseline; running it once more ($(grep -h STRESS_BUDGETS "$dir/retry.log"))"
+        rm -rf "$dir.miss"
+        mv "$dir" "$dir.miss"
+        run_one "$profile" "$pattern" "$size"
+      fi
       if ! "$GODOT" --headless --path "$REPO_ROOT" -s tools/stress_report.gd -- continue "$RUNS/$profile/$pattern/$size" \
           >"$RUNS/$profile/$pattern/$size/continue.log" 2>&1; then
         note "$profile/$pattern: ladder stops at $size ($(grep -h STRESS_TICK_P95 "$RUNS/$profile/$pattern/$size/continue.log" || echo 'no host report'))"

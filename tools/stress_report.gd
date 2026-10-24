@@ -11,6 +11,8 @@ extends SceneTree
 ##   godot … -s tools/stress_report.gd -- continue <run_dir>
 ##       Exits 0 when the ladder may climb past this run (its host tick p95 is under the stop
 ##       ceiling and the host wrote a report), 1 when it should stop.
+##   godot … -s tools/stress_report.gd -- retry <run_dir> <profile> <pattern> <size>
+##       Exits 0 when the run should be run once more (`StressRules.needs_retry`), 1 otherwise.
 
 const StressRules := preload("res://src/tests/stress_rules.gd")
 
@@ -21,8 +23,10 @@ func _init() -> void:
 		quit(_build(str(args[1]), str(args[2]), args.slice(3)))
 	elif mode == "continue" and args.size() >= 2:
 		quit(_continue(str(args[1])))
+	elif mode == "retry" and args.size() >= 5:
+		quit(_retry(str(args[1]), str(args[2]), str(args[3]), int(args[4])))
 	else:
-		printerr("usage: stress_report.gd -- build <runs_dir> <out_dir> [k=v …] | continue <run_dir>")
+		printerr("usage: stress_report.gd -- build <runs_dir> <out_dir> [k=v …] | continue <run_dir> | retry <run_dir> <profile> <pattern> <size>")
 		quit(2)
 
 static func _read(path: String) -> Dictionary:
@@ -47,6 +51,12 @@ func _continue(run_dir: String) -> int:
 	var p95 := StressRules.percentile(host.get("tick_ms", []), 95.0)
 	print("STRESS_TICK_P95 %.3f" % p95)
 	return 0 if p95 <= StressRules.LADDER_STOP_TICK_P95_MS else 1
+
+func _retry(run_dir: String, profile: String, pattern: String, size: int) -> int:
+	var row := _row(run_dir, profile, pattern, size)
+	var met: Dictionary = row["budgets_met"]
+	print("STRESS_BUDGETS %s" % JSON.stringify(met))
+	return 0 if StressRules.needs_retry(row, "%s/%s" % [profile, pattern]) else 1
 
 func _build(runs_dir: String, out_dir: String, extra: Array) -> int:
 	var rows: Array = []

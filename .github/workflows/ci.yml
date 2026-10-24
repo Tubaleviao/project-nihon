@@ -150,8 +150,8 @@ jobs:
         shell: bash
         working-directory: native
         run: |
-          # Nothing on a pull request runs these binaries (only the main build job exports them), so a
-          # PR compiles the debug target to prove the platform builds, and main builds both.
+          # A pull request compiles the debug target to prove the platform builds (its build job exports
+          # debug), and main builds both.
           scons ${{ matrix.scons }} target=template_debug -j4
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             scons ${{ matrix.scons }} target=template_release -j4
@@ -419,16 +419,37 @@ jobs:
 
   stress:
     name: Crowd stress run and bottleneck report
-    # Phase 162 — main pushes and manual runs only, not every PR: the default ladder (15 runs up to 64 bots) takes a while.
+    # Phase 162 — main pushes and manual runs. A pull request runs it only when it touches the host's hot
+    # path or the stress tooling (the `scope` step), so the baseline gate fails the PR, not main after the merge.
     # A manual run can pass a bigger ceiling and other link profiles.
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
         # Same submodule note as godot-tests: the public repo runs on the committed placeholders.
+        with:
+          fetch-depth: ${{ github.event_name == 'pull_request' && '0' || '1' }}   # a bare 0 is falsy and would yield 1
+
+      - name: Does this pull request touch the host's hot path?
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          hot='^(src/(networking|terrain|persistence|world|core)/|src/tests/stress|tools/stress|project\.godot$|\.github/workflows/ci\.yml$)'
+          # A diff that cannot be taken (no base commit) runs the stress job rather than skip it.
+          if ! changed=$(git diff --name-only "$BASE_SHA" HEAD) || grep -qE "$hot" <<<"$changed"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No host hot-path or stress tooling change; the stress run is skipped on this pull request." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Download Godot 4.7
+        if: steps.scope.outputs.run == 'true'
         run: |
           mkdir -p /tmp/godot
           curl -fsSL -o /tmp/godot/godot.zip \
@@ -437,6 +458,7 @@ jobs:
           chmod +x /tmp/godot/Godot_v4.7-stable_linux.x86_64
 
       - name: Run the stress ladder
+        if: steps.scope.outputs.run == 'true'
         env:
           GODOT: /tmp/godot/Godot_v4.7-stable_linux.x86_64
           STRESS_MAX: ${{ github.event.inputs.stress_max || '64' }}
@@ -449,7 +471,7 @@ jobs:
           tools/stress.sh
 
       - name: The report names a largest passing size per pattern and the top hot spots
-        if: always()   # a hard failure still gets its report in the job summary
+        if: always() && steps.scope.outputs.run == 'true'   # a hard failure still gets its report in the job summary
         env:
           STRESS_PROFILES: ${{ github.event.inputs.stress_profiles || 'lan' }}
         run: |
@@ -467,7 +489,7 @@ jobs:
           fi
 
       - name: Upload the stress report and run logs
-        if: always()
+        if: always() && steps.scope.outputs.run == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: stress
@@ -654,7 +676,9 @@ jobs:
   build:
     name: Linux, Windows and macOS exports
     needs: [native-linux, native, native-suite, godot-tests, server-boot, host-boot, fabric, net-harness, playtest]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Pull requests export all three presets too (under a minute), so a preset only the main build used
+    # (the macOS one, Phase 166) cannot break main on merge; only main uploads the builds.
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -684,29 +708,36 @@ jobs:
           cp -r /tmp/godot/templates/templates/* ~/.local/share/godot/export_templates/4.7.stable/
 
       - name: Export the Linux, Windows and macOS presets
+        env:
+          # A pull request's native builders compile only template_debug (see `native`), so a PR checks
+          # every preset with a debug export; main exports release.
+          EXPORT_MODE: ${{ github.event_name == 'pull_request' && '--export-debug' || '--export-release' }}
         run: |
           mkdir -p build/linux build/windows build/macos
           /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --import || true
-          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --export-release "Linux" build/linux/nihon.x86_64
-          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --export-release "Windows Desktop" build/windows/nihon.exe
-          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --export-release "macOS" build/macos/nihon.zip
+          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . "$EXPORT_MODE" "Linux" build/linux/nihon.x86_64
+          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . "$EXPORT_MODE" "Windows Desktop" build/windows/nihon.exe
+          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . "$EXPORT_MODE" "macOS" build/macos/nihon.zip
           test -s build/linux/nihon.x86_64
           test -s build/windows/nihon.exe
           test -s build/macos/nihon.zip
 
       - name: Upload the Linux build
+        if: github.event_name == 'push'
         uses: actions/upload-artifact@v4
         with:
           name: nihon-linux
           path: build/linux/
 
       - name: Upload the Windows build
+        if: github.event_name == 'push'
         uses: actions/upload-artifact@v4
         with:
           name: nihon-windows
           path: build/windows/
 
       - name: Upload the macOS build
+        if: github.event_name == 'push'
         uses: actions/upload-artifact@v4
         with:
           name: nihon-macos
