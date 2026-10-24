@@ -141,6 +141,8 @@ spawn.unknown_friend,Unknown friend code — placed on open land instead.,Códig
 status.heat_burn,heat burn,queimadura de calor
 status.paralysis,paralysis,paralisia
 status.stagger,stagger,cambaleio
+status.knockdown,knockdown,derrubada
+status.knockback,knockback,repulsão
 trade.accept,Accept trade,Aceitar troca
 trade.blurb,Player-to-player trade with the merchant. Your Trade tier lowers the broker fee on received goods.,Troca de jogador com o mercador. Seu nível de Troca reduz a taxa de corretagem sobre os bens recebidos.
 trade.completed,Trade completed — the merchant's goods were added to your inventory (less the Trade broker fee).,Troca concluída — os bens do mercador foram adicionados ao seu inventário (menos a taxa de corretagem).

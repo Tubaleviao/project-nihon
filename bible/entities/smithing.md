@@ -15,7 +15,7 @@ Metalworking at a forge — shaping ingots into weapons, armor, and structural c
 | `tier` | enum (`novice`, `apprentice`, `journeyman`, `expert`, `master`) | yes |  |
 | `xpCurve` | enum (`linear`, `quadratic`, `exponential`) | yes | XP required per tier |
 | `maxLevel` | integer | yes | Maximum XP level within a tier before tier advance is required |
-| `category` | enum (`combat`, `crafting`, `magic`, `exploration`, `social`) | yes | Skill domain: crafting |
+| `category` | enum (`combat`, `crafting`, `magic`, `exploration`, `social`, `survival`) | yes | Skill domain: crafting |
 
 ### State machine
 

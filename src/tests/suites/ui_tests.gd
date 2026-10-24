@@ -42,6 +42,9 @@ func register() -> void:
 	_run_test("hud: a dropped tool keeps its wear",            _test_hud_drop_keeps_durability)
 	_run_test("hud: skills list + window keys",                _test_hud_skills_rows_and_window_keys)
 	_run_test("hud: window dock letters match the key map",    _test_hud_window_dock)
+	_run_test("icons: every window, skill, status and HP has a valid UI icon", _test_ui_icons_cover_everything)
+	_run_test("icons: dock buttons carry an icon and a letter badge", _test_dock_icons_and_badges)
+	_run_test("icons: status icon ids are distinct and ordered", _test_status_icon_ids)
 	_run_test("map: cube faces are equal, seams meet, the globe inverts", _test_map_cube_net)
 	_run_test("map: tiles are pure and keyed by seed and version", _test_map_tile_purity)
 	_run_test("map: tile cache is bounded, coarse answered first", _test_map_tile_cache)
@@ -2134,3 +2137,70 @@ func _test_p148_catalog_retry() -> void:
 	assert_eq(I18nScript.load_failures, failures + 1, "with no further error")
 	Diag.quiet = quiet
 	I18nScript._loaded = old_loaded
+
+
+## Phase 175 — the UI icon keys every window, skill, status effect and HP must have, by directory.
+func _ui_icon_expectations() -> Dictionary:
+	var windows: Array = []
+	for e in _WindowDockScript.entries():
+		windows.append(str(e["key"]))
+	var hud: Array = [UiIcons.HP]
+	var effects := StatusEffects.new()
+	for id in effects.table().keys():
+		hud.append(str(id))
+	var skills: Array = GameData.SKILLS.keys()
+	return {
+		"res://assets/icons/ui/window": windows,
+		"res://assets/icons/ui/hud": hud,
+		"res://assets/icons/skills": skills,
+	}
+
+func _test_ui_icons_cover_everything() -> void:
+	var seen: Dictionary = {}
+	var want := _ui_icon_expectations()
+	assert_true((want["res://assets/icons/ui/hud"] as Array).size() >= 6, "HP and the five status effects are expected")
+	for dir in want:
+		var ids: Array = want[dir]
+		for id in ids:
+			var path: String = "%s/%s.png.raw" % [dir, id]
+			assert_true(FileAccess.file_exists(path), "an icon exists at %s" % path)
+			var bytes := FileAccess.get_file_as_bytes(path)
+			var img := Image.new()
+			assert_eq(img.load_png_from_buffer(bytes), OK, "%s decodes as PNG" % path)
+			var w := img.get_width()
+			assert_true((w == 32 or w == 64) and img.get_height() == w, "%s is 32x32 or 64x64" % path)
+			img.convert(Image.FORMAT_RGBA8)
+			var last := w - 1
+			for corner in [Vector2i(0, 0), Vector2i(last, 0), Vector2i(0, last), Vector2i(last, last)]:
+				assert_eq(img.get_pixelv(corner).a, 0.0, "%s has a transparent corner" % path)
+			var opaque := 0
+			for y in w:
+				for x in w:
+					if img.get_pixel(x, y).a > 0.5:
+						opaque += 1
+			assert_true(opaque > 40, "%s has more than 40 opaque pixels (%d)" % [path, opaque])
+			var h := hash(bytes)
+			assert_false(seen.has(h) and seen[h] == bytes, "%s is not byte-identical to another icon" % path)
+			seen[h] = bytes
+		for file in DirAccess.get_files_at(dir):
+			if file.ends_with(".png.raw"):
+				assert_true(ids.has(file.trim_suffix(".png.raw")), "%s/%s is not an orphan" % [dir, file])
+
+func _test_dock_icons_and_badges() -> void:
+	var ui := _new_hud_ui()
+	for e in _WindowDockScript.entries():
+		var b: Button = ui.window_dock.box(str(e["key"]))
+		assert_true(b != null, "a dock box exists for %s" % e["key"])
+		if b == null:
+			continue
+		assert_true(b.icon != null, "the %s dock button carries a texture" % e["key"])
+		assert_true(b.text.length() != 1, "the %s dock button text is not a bare letter" % e["key"])
+		var badge := b.get_node_or_null("Badge") as Label
+		assert_true(badge != null and badge.text == str(e["letter"]), "the %s button has a badge with %s" % [e["key"], e["letter"]])
+		assert_true(b.tooltip_text.begins_with(I18nScript.t(str(e["name"]))), "the tooltip keeps the translated name")
+	ui.free()
+
+func _test_status_icon_ids() -> void:
+	var rows := [{"effect": "paralysis"}, {"effect": "heat_burn"}, {"effect": "paralysis"}, {}]
+	assert_eq(PlayerSlice.status_icon_ids(rows), ["paralysis", "heat_burn"], "one icon per distinct effect, in order")
+	assert_eq(PlayerSlice.status_icon_ids([]), [], "no effects, no icons")

@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:d4f95ce36a0d530eec731e678f1badbab727ffbeb6155e3f03e22c4a48518768",
+  "schemaHash": "sha256:897129da5ccd86d63f40d5eaf3e960eb86bb2a7522939d17411ec6af94eac774",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -6572,7 +6572,8 @@
               "crafting",
               "magic",
               "exploration",
-              "social"
+              "social",
+              "survival"
             ],
             "pii": false
           }
@@ -6761,7 +6762,8 @@
               "crafting",
               "magic",
               "exploration",
-              "social"
+              "social",
+              "survival"
             ],
             "pii": false
           }
@@ -6950,7 +6952,8 @@
               "crafting",
               "magic",
               "exploration",
-              "social"
+              "social",
+              "survival"
             ],
             "pii": false
           }
@@ -7139,7 +7142,8 @@
               "crafting",
               "magic",
               "exploration",
-              "social"
+              "social",
+              "survival"
             ],
             "pii": false
           }
@@ -7328,7 +7332,8 @@
               "crafting",
               "magic",
               "exploration",
-              "social"
+              "social",
+              "survival"
             ],
             "pii": false
           }
@@ -7517,7 +7522,8 @@
               "crafting",
               "magic",
               "exploration",
-              "social"
+              "social",
+              "survival"
             ],
             "pii": false
           }
@@ -7706,7 +7712,8 @@
               "crafting",
               "magic",
               "exploration",
-              "social"
+              "social",
+              "survival"
             ],
             "pii": false
           }
@@ -7895,7 +7902,8 @@
               "crafting",
               "magic",
               "exploration",
-              "social"
+              "social",
+              "survival"
             ],
             "pii": false
           }
@@ -8084,7 +8092,8 @@
               "crafting",
               "magic",
               "exploration",
-              "social"
+              "social",
+              "survival"
             ],
             "pii": false
           },
@@ -8289,7 +8298,8 @@
               "crafting",
               "magic",
               "exploration",
-              "social"
+              "social",
+              "survival"
             ],
             "pii": false
           }
@@ -8478,7 +8488,8 @@
               "crafting",
               "magic",
               "exploration",
-              "social"
+              "social",
+              "survival"
             ],
             "pii": false
           },
@@ -8683,7 +8694,8 @@
               "crafting",
               "magic",
               "exploration",
-              "social"
+              "social",
+              "survival"
             ],
             "pii": false
           }
@@ -8872,7 +8884,8 @@
               "crafting",
               "magic",
               "exploration",
-              "social"
+              "social",
+              "survival"
             ],
             "pii": false
           }
@@ -9062,7 +9075,8 @@
               "crafting",
               "magic",
               "exploration",
-              "social"
+              "social",
+              "survival"
             ],
             "pii": false
           }
@@ -9251,7 +9265,8 @@
               "crafting",
               "magic",
               "exploration",
-              "social"
+              "social",
+              "survival"
             ],
             "pii": false
           }
@@ -9440,7 +9455,8 @@
               "crafting",
               "magic",
               "exploration",
-              "social"
+              "social",
+              "survival"
             ],
             "pii": false
           }
@@ -9629,7 +9645,8 @@
               "crafting",
               "magic",
               "exploration",
-              "social"
+              "social",
+              "survival"
             ],
             "pii": false
           }
@@ -9818,7 +9835,8 @@
               "crafting",
               "magic",
               "exploration",
-              "social"
+              "social",
+              "survival"
             ],
             "pii": false
           }
@@ -10007,7 +10025,8 @@
               "crafting",
               "magic",
               "exploration",
-              "social"
+              "social",
+              "survival"
             ],
             "pii": false
           }
@@ -10197,7 +10216,8 @@
               "crafting",
               "magic",
               "exploration",
-              "social"
+              "social",
+              "survival"
             ],
             "pii": false
           }
@@ -10386,7 +10406,8 @@
               "crafting",
               "magic",
               "exploration",
-              "social"
+              "social",
+              "survival"
             ],
             "pii": false
           }

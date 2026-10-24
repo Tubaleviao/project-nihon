@@ -18,7 +18,7 @@ Healing, shielding, and cleansing magic. Operates on living targets and can purg
 | tier | `novice`, `apprentice`, `journeyman`, `expert`, `master` |  |
 | xpCurve | `linear`, `quadratic`, `exponential` | XP required per tier |
 | maxLevel | integer | Maximum XP level within a tier before tier advance is required |
-| category | `combat`, `crafting`, `magic`, `exploration`, `social` | Skill domain: magic |
+| category | `combat`, `crafting`, `magic`, `exploration`, `social`, `survival` | Skill domain: magic |
 
 ## States
 

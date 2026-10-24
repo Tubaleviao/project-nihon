@@ -226,6 +226,7 @@ func _ui_row(rows: Array, id: String) -> Dictionary:
 
 const _HotbarScript := preload("res://src/ui/hotbar.gd")
 const _WindowDockScript := preload("res://src/ui/window_dock.gd")
+const UiIcons := preload("res://src/ui/ui_icons.gd")
 const _TEST_HOTBAR_FILE := "user://test_ui_layout_hotbar.json"
 const _TEST_DOCK_FILE := "user://test_ui_layout_dock.json"
 

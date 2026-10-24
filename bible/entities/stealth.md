@@ -15,7 +15,7 @@ Moving, hiding, and acting without detection. Affects footstep volume, trail sig
 | `tier` | enum (`novice`, `apprentice`, `journeyman`, `expert`, `master`) | yes |  |
 | `xpCurve` | enum (`linear`, `quadratic`, `exponential`) | yes | XP required per tier |
 | `maxLevel` | integer | yes | Maximum XP level within a tier before tier advance is required |
-| `category` | enum (`combat`, `crafting`, `magic`, `exploration`, `social`) | yes | Skill domain: exploration |
+| `category` | enum (`combat`, `crafting`, `magic`, `exploration`, `social`, `survival`) | yes | Skill domain: exploration |
 
 ### State machine
 

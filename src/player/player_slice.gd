@@ -13,6 +13,7 @@ extends Node
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const Diag := preload("res://src/core/diag.gd")
 const I18n := preload("res://src/core/i18n.gd")
+const UiIcons := preload("res://src/ui/ui_icons.gd")
 const CarcassRules := preload("res://src/loot/carcass_rules.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const StatusEffects := preload("res://src/battle/status_effects.gd")
@@ -137,6 +138,9 @@ var _hp_label: Label = null
 ## fed the same way). It holds the local bucket "player" only; the host owns the damage.
 var _status_view := StatusEffects.new()
 var _status_label: Label = null
+## Phase 175 — one icon per active status effect, under the status text (top-right).
+var _status_icons: HBoxContainer = null
+var _status_icon_signature: String = ""
 var _status_refresh: float = 0.0
 ## Test hook: a fixed clock in seconds in place of the engine's.
 var status_clock: Callable = Callable()
@@ -238,8 +242,40 @@ func _on_locale_changed(_locale: String) -> void:
 	_refresh_build_hint()
 
 func _update_status_label() -> void:
+	var active := status_effects_active()
 	if _status_label != null:
-		_status_label.text = status_line(status_effects_active())
+		_status_label.text = status_line(active)
+	_refresh_status_icons(active)
+
+## Phase 175 — the HUD status row: the icon of each active effect, in the order of the text line.
+func _refresh_status_icons(active: Array) -> void:
+	if _status_icons == null:
+		return
+	var ids := status_icon_ids(active)
+	var signature := ",".join(ids)
+	if signature == _status_icon_signature:
+		return
+	_status_icon_signature = signature
+	for c in _status_icons.get_children():
+		_status_icons.remove_child(c)
+		c.free()
+	for id in ids:
+		var rect := TextureRect.new()
+		rect.texture = UiIcons.load_icon(UiIcons.hud_key(id))
+		rect.custom_minimum_size = Vector2(24.0, 24.0)
+		rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		rect.tooltip_text = I18n.t("status." + id) if I18n.has_key("status." + id) else id.replace("_", " ")
+		_status_icons.add_child(rect)
+
+## The effect ids to draw an icon for, one per distinct active effect, in list order.
+static func status_icon_ids(effects: Array) -> Array:
+	var ids: Array = []
+	for e in effects:
+		var id := str(e.get("effect", ""))
+		if id != "" and not ids.has(id):
+			ids.append(id)
+	return ids
 
 func _ready() -> void:
 	GameBus.status_effects_synced.connect(_on_status_effects_synced)
@@ -1019,7 +1055,7 @@ func _build_hud() -> void:
 	hp_label.anchor_right = 0.0
 	hp_label.anchor_top = 0.0
 	hp_label.anchor_bottom = 0.0
-	hp_label.offset_left = 12.0
+	hp_label.offset_left = 40.0
 	hp_label.offset_right = 260.0
 	hp_label.offset_top = 12.0
 	hp_label.offset_bottom = 40.0
@@ -1029,6 +1065,16 @@ func _build_hud() -> void:
 	hp_label.add_theme_color_override("font_color", Color(0.85, 0.20, 0.20))
 	_hud.add_child(hp_label)
 	_hp_label = hp_label
+	var hp_icon := TextureRect.new()
+	hp_icon.name = "HpIcon"
+	hp_icon.texture = UiIcons.load_icon(UiIcons.hud_key(UiIcons.HP))
+	hp_icon.position = Vector2(12.0, 12.0)
+	hp_icon.custom_minimum_size = Vector2(24.0, 24.0)
+	hp_icon.size = Vector2(24.0, 24.0)
+	hp_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	hp_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	hp_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hud.add_child(hp_icon)
 
 	# Phase 129 — active status effects with their remaining time, top-right.
 	_status_label = Label.new()
@@ -1046,6 +1092,17 @@ func _build_hud() -> void:
 	_status_label.add_theme_color_override("font_outline_color", Color(0, 0, 0))
 	_status_label.add_theme_constant_override("outline_size", 5)
 	_hud.add_child(_status_label)
+	_status_icons = HBoxContainer.new()
+	_status_icons.name = "StatusIcons"
+	_status_icons.anchor_left = 1.0
+	_status_icons.anchor_right = 1.0
+	_status_icons.offset_left = -360.0
+	_status_icons.offset_right = -12.0
+	_status_icons.offset_top = 42.0
+	_status_icons.offset_bottom = 70.0
+	_status_icons.alignment = BoxContainer.ALIGNMENT_END
+	_status_icons.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hud.add_child(_status_icons)
 	_update_hp_bar()
 
 	# Aimed item name: a tooltip that follows the pointer (see `_update_aim_hud`).
