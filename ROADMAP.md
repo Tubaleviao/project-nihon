@@ -74,6 +74,9 @@ command, as Phase 85's admin commands do.
   `admin_heal` packet to the peer's client. It does not revive a downed player.
 - `identity_assigned` tells a client whether it is an admin. The Admin window (O, a dock box shown
   only to admins) types the same commands, so it adds no new authority.
+- The host re-reads `admins.json` when it changes, and an `admin_status` packet tells each online
+  player whose status flipped. Admin moves are session state: a rejoining player walks normally, on
+  the host and on its own client. A carrier's speed cap follows its `/speed` and `/fly`.
 - `/regen world` (second PR): wipe every chunk record, terrain edit, tree clear and ore depletion,
   both on disk and in memory. Keep players, inventories and stations. Tell every client to drop its
   copies and resend its scope. Re-place every player and station on the new ground.

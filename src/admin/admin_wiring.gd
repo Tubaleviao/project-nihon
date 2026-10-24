@@ -10,6 +10,8 @@ func _connect_all() -> void:
 	connect_bus(GameBus.admin_moves_synced, _on_admin_moves)
 	connect_bus(GameBus.admin_healed, _on_admin_healed)
 	connect_bus(GameBus.admin_status_synced, _on_admin_status)
+	# A client's (re)connection starts walking normally: the host dropped its moves when it left or joined.
+	connect_bus(GameBus.player_identity_assigned, _on_identity_assigned)
 	# The commands' doors: `/time` runs the host's clock, and a joining client is told whether it is an admin.
 	if root._chat != null:
 		root._chat.world_clock = root._clock
@@ -27,6 +29,10 @@ func _on_admin_moves(speed_factor: float, flying: bool) -> void:
 func _on_admin_healed() -> void:
 	if root._player != null and root._player.is_alive():
 		root._player.set_hp(PlayerSlice.MAX_HP)
+
+func _on_identity_assigned(_player_id: String) -> void:
+	if root._is_client:
+		_on_admin_moves(1.0, false)
 
 func _on_admin_status(is_admin: bool) -> void:
 	if root._ui != null:

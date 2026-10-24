@@ -569,6 +569,13 @@ func set_admin_moves(speed_factor: float, fly: bool) -> void:
 	admin_speed_factor = AdminRules.sanitize_speed(speed_factor)
 	flying = fly
 
+## Phase 182 — a flying body's vertical velocity for Space (`up`) / Ctrl (`down`) held: none while it is
+## immobilized, or while a text field (the chat box) holds the keyboard, so sending a line does not climb.
+func fly_vertical(up: bool, down: bool) -> float:
+	if not world_input_allowed() or is_immobilized():
+		return 0.0
+	return AdminRules.fly_vertical_velocity(up, down, admin_speed_factor)
+
 ## False while the body is down (waiting to respawn).
 func is_alive() -> bool:
 	return _alive
@@ -840,7 +847,7 @@ func _move(delta: float) -> void:
 	# Apply gravity.
 	if flying:
 		# Phase 182 — no gravity: Space climbs, Ctrl sinks, neither hovers.
-		_vel.y = AdminRules.fly_vertical_velocity(Input.is_action_pressed("ui_accept"), Input.is_key_pressed(KEY_CTRL), admin_speed_factor)
+		_vel.y = fly_vertical(Input.is_action_pressed("ui_accept"), Input.is_key_pressed(KEY_CTRL))
 	elif swimming:
 		_vel.y = swim_vertical_velocity(_body.global_position.y, WorldShape.sea_level())
 	elif not _body.is_on_floor():

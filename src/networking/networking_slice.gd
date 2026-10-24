@@ -1033,11 +1033,9 @@ func send_carcasses_to(peer_id: int, records: Array) -> Array:
 func send_carry_state(peer_id: int, carrying: bool, speed_factor: float) -> void:
 	_m2.send_carry_state(peer_id, carrying, speed_factor)
 
-## Phase 182 — host → one client: its admin moves / an admin heal.
-func send_admin_moves(peer_id: int, speed_factor: float, flying: bool) -> bool:
-	return _m2.send_admin_moves(peer_id, speed_factor, flying)
-func send_admin_heal(peer_id: int) -> bool:
-	return _m2.send_admin_heal(peer_id)
+## Phase 182 — host → one client: its admin moves, an admin heal or its admin status (see `_m2.send_admin`).
+func send_admin(peer_id: int, kind: String, fields: Dictionary = {}) -> bool:
+	return _m2.send_admin(peer_id, kind, fields)
 
 ## Phase 161 — client: forward a carcass action; the host binds it to the connection's player.
 func _on_harvest_intent(carcass_id: String, _player_id: String) -> void:

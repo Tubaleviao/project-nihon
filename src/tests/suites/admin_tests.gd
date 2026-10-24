@@ -21,6 +21,11 @@ func register() -> void:
 	_run_test("admin: the Admin box is hidden until the host says admin, and the window refuses otherwise", _test_dock_and_window)
 	_run_test("admin: the Admin window types the chat commands", _test_panel_commands)
 	_run_test("admin: every new command has a usage line and every catalog key both languages", _test_catalog)
+	_run_test("admin: a heal that cannot reach the peer leaves the host's simulated health alone", _test_heal_unsent_keeps_hp)
+	_run_test("admin: a rejoining player walks normally on the host and on its own client", _test_moves_reset_on_rejoin)
+	_run_test("admin: flying holds still while immobilized or while a text field has the keyboard", _test_fly_gated)
+	_run_test("admin: an admins file edited mid-session takes effect and tells the player's client", _test_admins_file_live)
+	_run_test("admin: an admin's /speed and /fly raise the host's carry cap to match", _test_carry_cap_follows_moves)
 
 
 func _test_parse_time() -> void:
@@ -156,9 +161,10 @@ func _test_moves_and_heal_remote() -> void:
 	assert_eq(wire.outbox[1]["payload"]["speed"], 2.0, "the fly toggle keeps the speed")
 	assert_eq(wire.outbox[1]["payload"]["fly"], true, "and turns flying on")
 	assert_eq(reg.get_hp(pid), PlayerRules.MAX_HP, "the host's own simulation of the peer is full too")
-	assert_false(n.send_admin_moves(9, 1.0, false), "an unconnected peer is not sent anything")
+	assert_false(n.send_admin(9, "admin_moves", { "speed": 1.0, "fly": false }), "an unconnected peer is not sent anything")
+	assert_false(n.send_admin(4, "teleport"), "nor anything but an admin packet")
 	n._role = NetworkingSlice.Role.CLIENT
-	assert_false(n.send_admin_heal(4), "and a client sends no admin packets")
+	assert_false(n.send_admin(4, "admin_heal"), "and a client sends no admin packets")
 	n.free()
 	chat.free()
 	reg.free()
@@ -216,6 +222,8 @@ func _test_client_routes() -> void:
 	client._route_h2c({ "type": "admin_heal" })
 	client._route_h2c({ "type": "identity_assigned", "player_id": "p1", "handle": "h1", "admin": true })
 	client._route_h2c({ "type": "identity_assigned", "player_id": "p1", "handle": "h1", "admin": "yes" })
+	client._route_h2c({ "type": "admin_status", "admin": true })
+	client._route_h2c({ "type": "admin_status", "admin": 1 })
 	client._role = NetworkingSlice.Role.HOST
 	client._route_h2c({ "type": "admin_heal" })
 	GameBus.admin_moves_synced.disconnect(on_moves)
@@ -223,7 +231,7 @@ func _test_client_routes() -> void:
 	GameBus.admin_status_synced.disconnect(on_status)
 	assert_eq(moves, [[2.5, true]], "a client applies a numeric speed and drops a malformed one")
 	assert_eq(heals[0], 1, "a heal reaches a client's bus, never a host's")
-	assert_eq(status, [true, false], "the admin flag is read strictly from the identity")
+	assert_eq(status, [true, false, true, false], "the admin flag is read strictly from the identity and a status packet")
 	# The host side: the identity packet carries what admin_check says.
 	var host := NetworkingSlice.new()
 	add_child(host)
@@ -302,3 +310,118 @@ func _test_catalog() -> void:
 		assert_true(I18nScript.has_key(key), "%s is in the catalog" % key)
 		for loc in csv["locales"]:
 			assert_true(str((csv["catalog"][loc] as Dictionary).get(key, "")).strip_edges() != "", "%s has a %s line" % [key, loc])
+
+func _test_heal_unsent_keeps_hp() -> void:
+	var rig := _chat_rig()
+	var chat: ChatSlice = rig["chat"]
+	var reg: PlayerRegistry = rig["reg"]
+	reg.is_authoritative = true
+	var pid := reg.resolve_identity(4, "")
+	reg.record_simulated_hp(pid, 40.0)
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	n.set_transport(MemoryTransport.new([]))   # the registry still names peer 4, but the wire has dropped it
+	chat.networking = n
+	var heard := _capture(func() -> void: chat.handle_intent("/heal %s" % reg.public_handle(pid), ""))
+	assert_eq(_keys(heard), ["chat.unreachable"], "the admin hears the peer is out of reach")
+	assert_eq(reg.get_hp(pid), 40.0, "and the host did not fill a bar the client never heard about")
+	n.free()
+	chat.free()
+	reg.free()
+
+func _test_moves_reset_on_rejoin() -> void:
+	var rig := _chat_rig()
+	var chat: ChatSlice = rig["chat"]
+	chat._admin_moves["p9"] = { "speed": 3.0, "fly": true }
+	GameBus.player_joined.emit(4, "p9", true)
+	assert_eq(chat.admin_moves_of("p9"), { "speed": 1.0, "fly": false }, "the host forgets the moves on a (re)join")
+	chat.free()
+	rig["reg"].free()
+	# The client side: its identity resets the body it kept from the last connection.
+	var gr: Node = (load("res://src/core/game_root.gd") as GDScript).new()
+	gr._is_client = true
+	var player := PlayerSlice.new()
+	gr._player = player
+	gr._admin_wiring.wire(gr)
+	player.set_admin_moves(3.0, true)
+	GameBus.player_identity_assigned.emit("p9")
+	gr._admin_wiring.unwire()
+	assert_eq(player.admin_speed_factor, 1.0, "the client walks at normal speed again")
+	assert_false(player.flying, "and no longer flies")
+	player.free()
+	gr.free()
+
+func _test_fly_gated() -> void:
+	var t := [0.0]
+	var player := PlayerSlice.new()
+	player.status_clock = func() -> float: return t[0]
+	add_child(player)
+	player.set_admin_moves(2.0, true)
+	assert_eq(player.fly_vertical(true, false), AdminRules.FLY_VERTICAL_SPEED * 2.0, "Space climbs at the admin speed")
+	player.apply_status_effects([{ "effect": "paralysis", "remaining": 3.0 }])
+	assert_eq(player.fly_vertical(true, false), 0.0, "an immobilized body neither climbs")
+	assert_eq(player.fly_vertical(false, true), 0.0, "nor sinks")
+	t[0] = 3.1
+	player.set_world_input_frozen(true)
+	assert_eq(player.fly_vertical(true, false), 0.0, "and the keys mean nothing while world input is refused")
+	player.set_world_input_frozen(false)
+	assert_eq(player.fly_vertical(false, true), -AdminRules.FLY_VERTICAL_SPEED * 2.0, "until it is allowed again")
+	player.free()
+
+func _test_admins_file_live() -> void:
+	var path := "user://admin_tests_admins.json"
+	var rig := _chat_rig()
+	var chat: ChatSlice = rig["chat"]
+	var reg: PlayerRegistry = rig["reg"]
+	reg.is_authoritative = true
+	var pid := reg.resolve_identity(4, "")
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	var wire := MemoryTransport.new([4])
+	n.set_transport(wire)
+	chat.networking = n
+	chat.admins_path = path
+	assert_eq(chat.poll_admins_file(), [], "no file, no change")
+	_write_admins(path, [pid])
+	assert_eq(chat.poll_admins_file(), [pid], "an added id flips")
+	assert_true(chat.is_admin(pid), "and may run admin commands now")
+	assert_eq(chat.poll_admins_file(), [], "an unchanged file is not read again")
+	_write_admins(path, [])
+	chat._admins_mtime = -1   # the file's mtime has a one-second grain; the test cannot wait for it
+	assert_eq(chat.poll_admins_file(), [pid], "a removed id flips back")
+	assert_false(chat.is_admin(pid), "and is refused again")
+	var sent: Array = []
+	for m: Dictionary in wire.outbox:
+		assert_eq(int(m["peer_id"]), 4, "the status goes to that player's peer alone")
+		sent.append(m["payload"].get("admin"))
+	assert_eq(sent, [true, false], "as an admin_status each time it flipped")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	n.free()
+	chat.free()
+	reg.free()
+
+func _write_admins(path: String, ids: Array) -> void:
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_string(JSON.stringify(ids))
+	f.close()
+
+func _test_carry_cap_follows_moves() -> void:
+	var gr: Node = (load("res://src/core/game_root.gd") as GDScript).new()
+	gr._registry = PlayerRegistry.new()
+	gr._registry.local_player_id = "p1"
+	var sl := CarcassSlice.new()
+	add_child(sl)
+	gr._carcass = sl
+	var chat := ChatSlice.new()
+	gr._chat = chat
+	var base: float = gr._carcass_wiring.carry_rate("p1")
+	chat._admin_moves["p1"] = { "speed": 2.0, "fly": false }
+	assert_true(absf(gr._carcass_wiring.carry_rate("p1") - base * 2.0) < 1e-6, "/speed 2 doubles the carry cap")
+	chat._admin_moves["p1"] = { "speed": 2.0, "fly": true }
+	assert_true(absf(gr._carcass_wiring.carry_rate("p1") - base * 2.0 * AdminRules.FLY_SPEED_FACTOR) < 1e-6, "and flying multiplies it again")
+	chat.free()
+	sl.free()
+	gr._registry.free()
+	gr.free()

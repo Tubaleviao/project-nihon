@@ -227,17 +227,17 @@ func send_carry_state(peer_id: int, carrying: bool, speed_factor: float) -> void
 	if sl._role == sl.Role.HOST and sl._connected():
 		sl._deliver(peer_id, { "type": "carry_state", "carrying": carrying, "factor": speed_factor })
 
-## Phase 182 — host → one client: that player's admin moves (`/speed`, `/fly`). True when sent.
-func send_admin_moves(peer_id: int, speed_factor: float, flying: bool) -> bool:
-	if sl._role != sl.Role.HOST or not sl._connected() or not sl._connected_peers().has(peer_id):
-		return false
-	return sl._deliver(peer_id, { "type": "admin_moves", "speed": speed_factor, "fly": flying })
+## Phase 182 — the admin packets a host sends one client: `admin_moves` { speed, fly } (`/speed`, `/fly`),
+## `admin_heal` (`/heal`) and `admin_status` { admin } (the admins file changed mid-session).
+const ADMIN_PACKETS := ["admin_moves", "admin_heal", "admin_status"]
 
-## Phase 182 — host → one client: an admin healed that player to full (`/heal`). True when sent.
-func send_admin_heal(peer_id: int) -> bool:
-	if sl._role != sl.Role.HOST or not sl._connected() or not sl._connected_peers().has(peer_id):
+## Phase 182 — host → one client: an admin packet of `kind` carrying `fields`. True when sent.
+func send_admin(peer_id: int, kind: String, fields: Dictionary = {}) -> bool:
+	if not (kind in ADMIN_PACKETS) or sl._role != sl.Role.HOST or not sl._connected() or not sl._connected_peers().has(peer_id):
 		return false
-	return sl._deliver(peer_id, { "type": "admin_heal" })
+	var packet := fields.duplicate()
+	packet["type"] = kind
+	return sl._deliver(peer_id, packet)
 
 ## Phase 36 — per-peer client → host token bucket. `now_ms` is an argument (not a
 ## clock read) so the rule is testable without waiting: the same shape the
