@@ -28,3 +28,15 @@ static func load_icon(key: String) -> Texture2D:
 		tex = AssetOverlay.load_texture(key)
 	_cache[path] = tex
 	return tex
+
+## A skills-window button: the skill's icon over its tier, or the name and tier when it has no icon.
+static func style_skill_button(b: Button, skill: String, tier: String) -> void:
+	var tex := load_icon(skill_key(skill))
+	if tex == null:
+		b.text = "%s\n%s" % [skill.substr(0, 8), tier]
+		return
+	b.icon = tex
+	b.expand_icon = true
+	b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+	b.text = tier

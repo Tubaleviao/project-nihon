@@ -937,15 +937,7 @@ func _refresh_skills() -> void:
 		var b := Button.new()
 		b.custom_minimum_size = Vector2(SLOT_SIZE.x, 64.0)
 		b.clip_text = true
-		var skill_icon: Texture2D = UiIcons.load_icon(UiIcons.skill_key(str(row["id"])))
-		if skill_icon != null:
-			b.icon = skill_icon
-			b.expand_icon = true
-			b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
-			b.text = str(row["tier"])
-		else:
-			b.text = "%s\n%s" % [str(row["id"]).substr(0, 8), str(row["tier"])]
+		UiIcons.style_skill_button(b, str(row["id"]), str(row["tier"]))
 		b.add_theme_font_size_override("font_size", 12)
 		b.tooltip_text = str(row["tooltip"])
 		b.set_drag_forwarding(_skill_drag.bind(str(row["id"]), b), Callable(), Callable())
