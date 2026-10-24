@@ -91,18 +91,21 @@ func regen_world(save := true) -> String:
 		p.y = root._voxel.get_voxel_height_at(Vector2(p.x, p.z)) + float(station_lift[i])
 		stations[i]["position"] = WorldPos.to_wire(p)
 	root._station.apply_station_data(stations)
+	# Clients drop their copy first, so a teleport onto the new ground never lands among old terrain.
+	var hosting: bool = root._networking != null and root._networking.is_host()
+	if hosting:
+		root._networking.broadcast_world_regen()
 	for b: Dictionary in bodies:
 		_place_body(b)
-	# Clients drop their copy, then get their scope again with every record in it.
-	if root._networking != null and root._networking.is_host():
-		root._networking.broadcast_world_regen()
+	# Then they get their scope again with every record in it.
+	if hosting:
 		for peer in root._networking.connected_peers():
 			root._snapshot_wiring.records_sent.erase(int(peer))
 			root._networking.send_snapshot(int(peer), root._snapshot_wiring.build_snapshot(int(peer), false, null, true))
 	root._chunk_manager.refresh()
 	if save:
 		root._persistence_wiring.save_everything(false)
-	print("[Admin] world regenerated; the old regions are in %s" % backup)
+	print("[Admin] world regenerated; " + ("there were no old regions" if backup == NO_BACKUP else "the old regions are in %s" % backup))
 	return ""
 
 ## The regenerated ground is the running generator's, so the next save stamps its version and
@@ -148,19 +151,25 @@ func _place_body(b: Dictionary) -> void:
 
 ## A body is set this far above the ground it lands on, so it settles onto it instead of into it.
 const BODY_CLEARANCE_M := 0.5
+## `_move_regions_aside`'s answer when there was no regions folder to keep.
+const NO_BACKUP := "(none)"
 
 ## Move the regions folder `dir` to a dated sibling and leave an empty one. The path of the backup, or ""
 ## when the move failed (the world is then left as it was).
 func _move_regions_aside(dir: String) -> String:
 	var from := ProjectSettings.globalize_path(dir.trim_suffix("/"))
 	var to := REGEN_BACKUP_FORMAT % [from, int(Time.get_unix_time_from_system())]
+	var n := 1
+	while DirAccess.dir_exists_absolute(to):   # two regens in one second
+		n += 1
+		to = REGEN_BACKUP_FORMAT % [from, int(Time.get_unix_time_from_system())] + "-%d" % n
 	if DirAccess.dir_exists_absolute(from):
 		var err := DirAccess.rename_absolute(from, to)
 		if err != OK:
 			push_error("[Admin] could not move %s aside (%s): the world was not regenerated" % [from, error_string(err)])
 			return ""
 	else:
-		to = from + " (none)"
+		to = NO_BACKUP
 	DirAccess.make_dir_recursive_absolute(from)
 	return to
 
@@ -171,7 +180,8 @@ func _on_world_regen_requested(player_id: String) -> void:
 	if why == "":
 		GameBus.system_message.emit("chat.regen_done", [], "")
 	else:
-		GameBus.system_message.emit("chat.regen_failed", [why], player_id)
+		GameBus.system_message.emit("chat.regen_failed", [], player_id)
+		push_warning("[Admin] /regen world refused: %s" % why)
 
 ## Client: the host regenerated the world. Drop the old ground; its next snapshot brings the new scope.
 func _on_world_regen_received() -> void:
