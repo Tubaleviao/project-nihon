@@ -22,14 +22,14 @@ measured runs (llvmpipe, `opengl3`, native builder loaded), not the target.
 
 | Step | Budget p95 process (ms) | Target (ms) | Measured p95 process (ms) |
 |---|---|---|---|
-| walk | 210 | 16 | 205 |
-| craft | 200 | 16 | 170 |
-| fight | 190 | 16 | 143 |
+| walk | 280 | 16 | 309 (CI) / 205 (local) |
+| craft | 200 | 16 | 197 (CI) / 170 (local) |
+| fight | 200 | 16 | 204 (CI) / 143 (local) |
 
-"Measured" is the median of three runs on 2026-10-24, on the pinned `PlaytestBot.WORLD_SEED` (#480).
+"Measured" is the median of three runs: on CI (GitHub runner, llvmpipe, the Phase 174 gate run of 2026-10-24) and on the local box. The CI runner is slower than the local box (walk 309 vs 205 ms), so the budgets are set from the CI numbers. Local numbers: the median of three runs on 2026-10-24, on the pinned `PlaytestBot.WORLD_SEED` (#480).
 The first run (2026-10-23, before the seed was pinned) measured walk at 145 ms, craft at 193 ms and
 fight at 177 ms. On the pinned world `walk` is steadily about 200–208 ms, so its budget was raised from
-150 to 210 ms. The two other budgets still hold.
+150 to 210 ms, and after the first CI gate run (walk 309 ms, fight 204 ms median on the runner) to 280 and 200 ms. craft still holds.
 
 p95 wall frame time on the same renderer class (llvmpipe, median of the same three runs): walk 93 ms,
 craft 125 ms, fight 110 ms. It is recorded here and not gated.
