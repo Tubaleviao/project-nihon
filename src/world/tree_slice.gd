@@ -345,8 +345,6 @@ func _chunk_has_edits(chunk_pos: Vector2i) -> bool:
 	return voxel_slice != null and voxel_slice.has_method("has_edits_near_chunk") \
 		and voxel_slice.has_edits_near_chunk(chunk_pos, clear_radius_tiles())
 
-## Re-run `spawn_for_chunk` over every chunk holding trees (a client whose records arrived after
-## its trees spawned): applies the recorded budget and the cleared list.
 ## Phase 182 — `/regen world`: forget every clear, held spot and remembered stump, so the trees grow
 ## back as the generator places them. The chunks were unloaded first (their trees despawned with them).
 func reset_world() -> void:
@@ -356,6 +354,8 @@ func reset_world() -> void:
 	_pending_spot_count = 0
 	_stump_memory.clear()
 
+## Re-run `spawn_for_chunk` over every chunk holding trees (a client whose records arrived after
+## its trees spawned): applies the recorded budget and the cleared list.
 func resync_recorded_chunks() -> void:
 	for chunk in _spawned_chunks.keys():
 		spawn_for_chunk(chunk)

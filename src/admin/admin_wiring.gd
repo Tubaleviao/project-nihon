@@ -5,6 +5,8 @@ extends "res://src/core/wiring.gd"
 ## player and its networking carries them to a remote player's client.
 
 const PlayerSlice := preload("res://src/player/player_slice.gd")
+const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
+const PersistenceSlice := preload("res://src/persistence/persistence_slice.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
 const RegionStore := preload("res://src/persistence/region_store.gd")
@@ -76,6 +78,7 @@ func regen_world(save := true) -> String:
 	ChunkRecords.clear()
 	root._voxel.reset_world()
 	root._tree.reset_world()
+	_stamp_current_generator()
 	# Stand everything back on the new ground.
 	for i in stations.size():
 		var p := WorldPos.from_wire(stations[i]["position"])
@@ -95,6 +98,16 @@ func regen_world(save := true) -> String:
 		root._persistence_wiring.save_everything(false)
 	print("[Admin] world regenerated; the old regions are in %s" % backup)
 	return ""
+
+## The regenerated ground is the running generator's, so the next save stamps its version and
+## fingerprint (the old stamps would warn at every boot that saved edits may not match the terrain).
+## The fingerprint history keeps what the world was generated with before.
+func _stamp_current_generator() -> void:
+	var running_fp := TerrainSlice.worldgen_fingerprint()
+	var was := { "worldgenFingerprint": root._worldgen_fp_stamp, "worldgenFingerprintHistory": root._worldgen_fp_history }
+	root._worldgen_stamp = TerrainSlice.WORLDGEN_VERSION
+	root._worldgen_fp_stamp = running_fp
+	root._worldgen_fp_history = PersistenceSlice.fingerprint_history(was, running_fp)
 
 ## Every online body with its height above the ground under it: { local: bool, peer: int, pos, lift }.
 func _bodies_and_lift() -> Array:
