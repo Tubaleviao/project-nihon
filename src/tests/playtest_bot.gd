@@ -114,11 +114,16 @@ const COAST_WORK_MS := 40             ## search work per frame before it yields
 
 var _root: Node
 var _frames: Array = []       ## frame times (ms) of the step in flight
-var _process_ms: Array = []   ## Phase 174: per recorded frame, Performance TIME_PROCESS (ms)
-var _physics_ms: Array = []   ## ... TIME_PHYSICS_PROCESS
+var _process_ms: Array = []   ## Phase 174: per recorded frame, the scene tree's _process work (ms), first callback to last
+var _physics_ms: Array = []   ## ... the _physics_process work of the ticks that ran before it (0 when none did)
 var _render_ms: Array = []    ## ... measured render time of the root viewport, CPU + GPU (0 headless)
 var _recording: bool = false
+var _frame_start_us: int = 0   ## this frame's first _process callback (the bot's own, see FrameEnd)
+var _frame_delta_ms: float = -1.0   ## this frame's delta when it is recorded, -1 when it is skipped
+var _physics_start_us: int = 0
+var _physics_frame_us: int = 0   ## physics work since the last recorded frame
 var _skip_frames: int = 0
+var _place_refusal: String = ""   ## why `_place_walking`'s last try was refused (for the step's detail)
 var _skip_until_ms: int = 0   ## frames before this tick are not recorded (just after a teleport)
 var _step_result: Array = []  ## set by the step runner when its coroutine returns; empty while it runs
 var _step_deadline_ms: int = 0
@@ -363,8 +368,36 @@ func _ready() -> void:
 	GameBus.research_resolved.connect(func(result: Dictionary): _researched.append(result))
 	GameBus.station_placed.connect(func(id: String, type: String, _p: Vector3): _placed.append([id, type]))
 	GameBus.chunk_loaded.connect(func(_c: Vector2i): _chunk_builds += 1)
+	# Phase 174: the bot's callbacks run first and FrameEnd's last, so the two clocks bracket the frame's
+	# _process and _physics_process work. Performance.TIME_PROCESS cannot stand in: Godot publishes the MAX
+	# process time of the last second, once a second, so a per-frame sample of it is the step's worst frame.
+	process_priority = FrameEnd.FIRST
+	process_physics_priority = FrameEnd.FIRST
+	var end := FrameEnd.new()
+	end.bot = self
+	add_child(end)
+
+## The last _process and _physics_process callback of every frame (see `_ready`).
+class FrameEnd extends Node:
+	const FIRST := -(1 << 30)
+	var bot: Node
+
+	func _ready() -> void:
+		process_priority = -FIRST
+		process_physics_priority = -FIRST
+
+	func _process(_delta: float) -> void:
+		bot._end_frame()
+
+	func _physics_process(_delta: float) -> void:
+		bot._physics_frame_us += Time.get_ticks_usec() - bot._physics_start_us
+
+func _physics_process(_delta: float) -> void:
+	_physics_start_us = Time.get_ticks_usec()
 
 func _process(delta: float) -> void:
+	_frame_start_us = Time.get_ticks_usec()
+	_frame_delta_ms = -1.0
 	if not _recording:
 		return
 	if Time.get_ticks_msec() < _skip_until_ms:
@@ -372,9 +405,16 @@ func _process(delta: float) -> void:
 	if _skip_frames > 0:
 		_skip_frames -= 1
 		return
-	_frames.append(delta * 1000.0)
-	_process_ms.append(Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0)
-	_physics_ms.append(Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0)
+	_frame_delta_ms = delta * 1000.0
+
+func _end_frame() -> void:
+	var physics_us := _physics_frame_us
+	_physics_frame_us = 0
+	if _frame_delta_ms < 0.0 or not _recording:
+		return
+	_frames.append(_frame_delta_ms)
+	_process_ms.append(float(Time.get_ticks_usec() - _frame_start_us) / 1000.0)
+	_physics_ms.append(float(physics_us) / 1000.0)
 	var vp := get_viewport().get_viewport_rid()
 	_render_ms.append(RenderingServer.viewport_get_measured_render_time_cpu(vp) + RenderingServer.viewport_get_measured_render_time_gpu(vp))
 
@@ -769,11 +809,19 @@ func _place_with_keys(station_type: String) -> int:
 	return _placed.size() - before
 
 ## `_place_with_keys`, walking forward 1.5 s and aiming again after each refusal, up to `tries` attempts.
+## Each retry turns the view a quarter first: a body stuck against a slope or a trunk walks nowhere, and its
+## next spot is still inside the last station's spacing. `_place_refusal` says why the last try was refused.
 func _place_walking(station_type: String, tries: int) -> int:
+	_place_refusal = ""
 	for attempt in tries:
 		var placed := await _place_with_keys(station_type)
 		if placed > 0:
 			return placed
+		var station = _root._station
+		var why: String = station.placement_blocker(station_type, station.snap_to_grid(_root._player._station_target()))
+		_place_refusal = "%s at %s" % [why if why != "" else "no blocker (aim or item)", str(_player_pos().snapped(Vector3.ONE * 0.1))]
+		var pivot: Node3D = _root._player._pivot
+		pivot.global_rotation.y += PI * 0.5
 		_key(KEY_W, true)
 		await _until(func(): return false, 1.5)
 		_key(KEY_W, false)
@@ -993,14 +1041,14 @@ func _step_travel() -> Array:
 	# #471 root cause of "first waystone refused": the key places at the aimed block, which can be sky, unbuilt
 	# ground or inside another station's clearance. Only the second stone retried; both walk on and aim again.
 	if await _place_walking(stone, 3) == 0:
-		return [false, "first waystone refused"]
+		return [false, "first waystone refused (%s)" % _place_refusal]
 	var a: String = str(_placed[before][0])
 	_key(KEY_W, true)
 	await _until(func(): return false, 1.5)
 	_key(KEY_W, false)
-	var second := await _place_walking(stone, 3)
+	var second := await _place_walking(stone, 4)
 	if second == 0:
-		return [false, "second waystone refused"]
+		return [false, "second waystone refused (%s)" % _place_refusal]
 	var b: String = str(_placed.back()[0])
 	# Back beside the first stone, which the travel starts from. Placed, not walked: a timed walk
 	# back can stop outside the attune radius and the host refuses the travel as too_far.

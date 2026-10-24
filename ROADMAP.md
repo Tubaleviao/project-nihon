@@ -333,18 +333,16 @@ validates everything and records it.
 
 ## Phase 183 — Playtest process time under 16 ms
 
-**Goal:** Phase 174 gated `walk`, `craft` and `fight` on p95 process time and found them at 205, 170
-and 143 ms on llvmpipe with the native builder loaded (median of 3 runs on the pinned seed). Physics is under 6 ms, so
-the cost is main-thread `_process` work, not the chunk build. Name it and cut it.
+**Goal:** Phase 174 gated `walk`, `craft` and `fight` on p95 process time (the scene tree's `_process`
+work per frame) and found them at 26, 27 and 18 ms on llvmpipe with the native builder loaded (median of
+3 local runs on the pinned seed). Physics is under 1.5 ms, so the cost is main-thread `_process` work,
+not the chunk build. Name it and cut it.
 
 **Newel dependency:** NO.
 
 **Depends on:** Phase 174.
 
 **Deliverables:**
-- Settle what `process_ms` measures: on the 2026-10-24 runs its p95 is above the p95 wall frame time
-  (walk 205 vs 93 ms), which one frame cannot do. Sample both on the same frames, or gate on the one
-  that is right (see `docs/perf/playtest-baseline.md`).
 - Profile the three steps (per-slice `_process` timing, `Performance` custom monitors) and name the
   top main-thread cost in the PR.
 - Fix it, then lower `docs/perf/playtest-budget.json` and the table in `docs/perf/playtest-baseline.md`

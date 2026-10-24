@@ -1,9 +1,20 @@
 # Playtest frame budget (Phase 174)
 
 `--playtest-bot` records, per step, the frame time split into **process**, **physics** and **render**
-(`Performance.TIME_PROCESS`, `TIME_PHYSICS_PROCESS` and the root viewport's measured render time,
-CPU + GPU) and writes the rendering adapter, driver and whether the native chunk builder loaded
-(`native_builder`) into `playtest/report.json`.
+and writes the rendering adapter, driver and whether the native chunk builder loaded
+(`native_builder`) into `playtest/report.json`:
+
+- **process**: the scene tree's `_process` work of the frame, timed from the first `_process`
+  callback (the bot's, at the lowest `process_priority`) to the last (its `FrameEnd` child, at the
+  highest). Timers, tweens and deferred calls flushed after the last node are not in it.
+- **physics**: the `_physics_process` work of the physics ticks that ran before that frame, bracketed
+  the same way (0 when no tick ran).
+- **render**: the root viewport's measured render time, CPU + GPU.
+
+`Performance.TIME_PROCESS` is not used: Godot publishes the **maximum** process time of the last
+second, once a second (`main/main.cpp`, `process_max`), so a per-frame sample of it is the worst frame
+of the last second. Before this was found, the gate read walk at 205 ms (local) and 309 / 473 ms (CI)
+"p95 process", above the 93 ms p95 wall frame, and it failed CI on noise.
 
 The gate is the **p95 process time**, not the wall frame time: CI renders with llvmpipe (software), which
 inflates the frame but not the process time. The source of truth is `docs/perf/playtest-budget.json`;
@@ -22,22 +33,18 @@ measured runs (llvmpipe, `opengl3`, native builder loaded), not the target.
 
 | Step | Budget p95 process (ms) | Target (ms) | Measured p95 process (ms) |
 |---|---|---|---|
-| walk | 280 | 16 | 309 (CI) / 205 (local) |
-| craft | 200 | 16 | 197 (CI) / 170 (local) |
-| fight | 200 | 16 | 204 (CI) / 143 (local) |
+| walk | 40 | 16 | 25.6 (local) |
+| craft | 45 | 16 | 27.1 (local) |
+| fight | 35 | 16 | 18.0 (local) |
 
-"Measured" is the median of three runs: on CI (GitHub runner, llvmpipe, the Phase 174 gate run of 2026-10-24) and on the local box. The CI runner is slower than the local box (walk 309 vs 205 ms), so the budgets are set from the CI numbers. Local numbers: the median of three runs on 2026-10-24, on the pinned `PlaytestBot.WORLD_SEED` (#480).
-The first run (2026-10-23, before the seed was pinned) measured walk at 145 ms, craft at 193 ms and
-fight at 177 ms. On the pinned world `walk` is steadily about 200–208 ms, so its budget was raised from
-150 to 210 ms, and after the first CI gate run (walk 309 ms, fight 204 ms median on the runner) to 280 and 200 ms. craft still holds.
+"Measured" is the median of three runs on the local box on 2026-10-24, on the pinned
+`PlaytestBot.WORLD_SEED` (#480); per-run p95: walk 29.0 / 25.6 / 23.3, craft 30.9 / 27.1 / 22.5,
+fight 21.3 / 18.0 / 10.4. The GitHub runner was about 1.5× slower than the local box on the old
+metric, so the budgets leave that much room over the local numbers.
 
-p95 wall frame time on the same renderer class (llvmpipe, median of the same three runs): walk 93 ms,
-craft 125 ms, fight 110 ms. It is recorded here and not gated.
-
-Open question for Phase 183: on these runs the p95 **process** time is higher than the p95 **wall**
-frame time (walk 205 vs 93 ms). A frame's process work cannot take longer than the frame, so the two
-series are not sampled the same way (the `Performance` monitor and the bot's frame clock may not
-cover the same frames). Phase 183 must settle what `process_ms` measures before it cuts against it.
+p95 wall frame time on the same runs (llvmpipe): walk 95 ms, craft 120 ms, fight 104 ms. It is recorded
+here and not gated: process is now about a quarter of the wall frame, so most of the frame is
+rendering (software) and engine work outside the scene tree's callbacks.
 
 A local run needs a current native library: when `native/src` is newer than `native/bin`, the bot runs
 the GDScript fallback (the log says `native version N is older than M; rebuild native/`) and its
@@ -47,8 +54,6 @@ numbers are not comparable. Rebuild with `scons platform=linux target=template_d
 
 - The GDScript fallback is not in use: the report says `native_builder: true` with the native library
   loaded, and CI now fails when it does not.
-- Process time is about 75–80% of the wall frame (p50 104 ms of 83–137 ms in `walk`), physics is
-  under 6 ms, and the measured render time is not what makes the frame long. The cost sits in the
-  main-thread `_process` work, so the "114 ms arrays" number from the stream step is a worker build,
-  not a frame cost. All three gated steps are over the 16 ms target; the follow-up phase in
-  `ROADMAP.md` profiles the main-thread work and brings them under it.
+- Physics is under 1.5 ms p95 in every gated step.
+- All three gated steps are over the 16 ms target (p50 walk 18–23 ms, craft 9–17 ms, fight 8–15 ms);
+  the follow-up phase in `ROADMAP.md` profiles the main-thread work and brings them under it.
