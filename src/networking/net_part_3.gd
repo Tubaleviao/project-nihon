@@ -304,6 +304,19 @@ func _route_h2c(payload: Dictionary) -> void:
 		"carry_state":
 			if sl._role == sl.Role.CLIENT:
 				GameBus.carry_state_synced.emit(bool(payload.get("carrying", false)), clampf(float(payload.get("factor", 1.0)), 0.0, 1.0))
+		"admin_moves":
+			# Phase 182 — the host set our `/speed` / `/fly`; the factor is clamped again where it is applied.
+			var speed: Variant = payload.get("speed", 1.0)
+			if sl._role == sl.Role.CLIENT and (speed is float or speed is int):
+				GameBus.admin_moves_synced.emit(float(speed), bool(payload.get("fly", false)))
+		"admin_heal":
+			if sl._role == sl.Role.CLIENT:
+				GameBus.admin_healed.emit()
+		"admin_status":
+			# Phase 182 — the host's admins file changed: read strictly, like the identity's flag.
+			var now_admin: Variant = payload.get("admin", false)
+			if sl._role == sl.Role.CLIENT:
+				GameBus.admin_status_synced.emit(now_admin is bool and now_admin)
 		"peer_equipment_evict":
 			# Phase 48 — the peer left our AOI; drop what we stored for it.
 			GameBus.peer_equipment_evicted.emit(int(payload.get("peer_id", 0)))
@@ -375,6 +388,8 @@ func _route_h2c(payload: Dictionary) -> void:
 			sl.claimed_player_id = str(payload.get("player_id", ""))
 			sl.claimed_handle = str(payload.get("handle", ""))
 			GameBus.player_identity_assigned.emit(sl.claimed_player_id)
+			var admin: Variant = payload.get("admin", false)
+			GameBus.admin_status_synced.emit(admin is bool and admin)
 		"spawn_notice":
 			# Phase 131 — a catalog key (+ args), rendered here in this client's locale.
 			var note = sl.I18n.sanitize_msg(payload.get("key", null), payload.get("args", null))
@@ -408,3 +423,16 @@ func _sample_remote_state_at(peer_id: int, now_ms: float) -> Vector3:
 			var t: float = (play - ta) / maxf(tb - ta, 0.0001)
 			return (a["position"] as Vector3).lerp(b["position"], t)
 	return last["position"]
+
+## Host: relay a creature's state change to the peers whose AOI holds it.
+func relay_creature_state(instance_id: String, creature_id: String, state: String, position: Dictionary) -> void:
+	if sl._role != sl.Role.HOST:
+		return
+	var packet := {
+		"type":        "creature_state_changed",
+		"instance_id": instance_id,
+		"creature_id": creature_id,
+		"state":       state,
+		"pk":          sl.WorldPos.pos_to_packet_text(position),
+	}
+	sl._broadcast_aoi(packet, sl.WorldPos.to_scene(position, Vector2i.ZERO))

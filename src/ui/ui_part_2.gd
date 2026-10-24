@@ -3,6 +3,8 @@ extends RefCounted
 
 var sl: Node
 
+const AdminPanelScript := preload("res://src/ui/admin_panel.gd")
+
 func _init(slice: Node) -> void:
 	sl = slice
 
@@ -208,3 +210,23 @@ func _build_proposals_content() -> Control:
 	scroll.add_child(sl._proposal_box)
 	vbox.add_child(scroll)
 	return vbox
+
+## Phase 140 — the settlement window: found, invite, roles and the shared stockpile.
+func _build_settlement_content() -> Control:
+	var panel = sl.SettlementPanelScript.new()
+	panel.settlement_slice = sl.settlement_slice
+	sl.settlement_panel = panel
+	return panel
+
+## Phase 182 — the Admin window: weather, time, speed, flying and healing, through the chat commands.
+func _build_admin_content() -> Control:
+	return AdminPanelScript.new()
+
+## Phase 182 — the host said whether this player is an admin: show or hide the dock box, and close the
+## window when the right was taken away.
+func set_admin(admin: bool) -> void:
+	sl.is_admin = admin
+	if sl.window_dock != null:
+		sl.window_dock.set_entry_visible(sl.WINDOW_ADMIN, admin)
+	if not admin:
+		sl.close_window(sl.WINDOW_ADMIN)

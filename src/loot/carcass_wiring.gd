@@ -11,6 +11,7 @@ extends "res://src/core/wiring.gd"
 const CarcassRules := preload("res://src/loot/carcass_rules.gd")
 const PlayerRegistry := preload("res://src/persistence/player_registry.gd")
 const PlayerSlice := preload("res://src/player/player_slice.gd")
+const AdminRules := preload("res://src/admin/admin_rules.gd")
 
 ## How far a harvester may drift from where the action began before it is cancelled.
 const MOVE_CANCEL_M := 0.6
@@ -97,7 +98,16 @@ func peer_speed_cap(peer: int) -> float:
 	var pid: String = root._networking.get_player_id(peer)
 	if pid == "" or root._carcass.carried_by(pid) == "":
 		return 0.0
-	return PlayerSlice.SPEED * root._carcass.speed_multiplier(pid, level_of(pid)) * CARRY_SPEED_SLACK
+	return carry_rate(pid)
+
+## The fastest horizontal speed (m/s) `pid` may carry a body at: the slowed walk times the slack, times the
+## admin moves the host set for it (Phase 182 `/speed`, `/fly`), which its body walks at too.
+func carry_rate(pid: String) -> float:
+	var rate := PlayerSlice.SPEED * root._carcass.speed_multiplier(pid, level_of(pid)) * CARRY_SPEED_SLACK
+	if root._chat != null:
+		var moves: Dictionary = root._chat.admin_moves_of(pid)
+		rate *= float(moves["speed"]) * (AdminRules.FLY_SPEED_FACTOR if bool(moves["fly"]) else 1.0)
+	return rate
 
 func _alive(player_id: String) -> bool:
 	if _is_local(player_id):
@@ -353,7 +363,7 @@ func tick(delta: float) -> void:
 func _follow_capped(pid: String, at: Vector3, delta: float) -> void:
 	var id: String = root._carcass.carried_by(pid)
 	var body: Vector3 = root._carcass.position_of(id)
-	var rate := PlayerSlice.SPEED * root._carcass.speed_multiplier(pid, level_of(pid)) * CARRY_SPEED_SLACK
+	var rate := carry_rate(pid)
 	var budget := minf(float(_carry_budget.get(pid, rate * CARRY_BUDGET_SECONDS)) + rate * delta, rate * CARRY_BUDGET_SECONDS)
 	var gap := Vector2(at.x - body.x, at.z - body.z)
 	var step := minf(gap.length(), budget)

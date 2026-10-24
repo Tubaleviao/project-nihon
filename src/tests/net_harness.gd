@@ -193,6 +193,7 @@ static func steps() -> Array:
 		{ "name": "death_landing_synced", "compare": true },
 		{ "name": "gesture_synced", "compare": true },
 		{ "name": "carcass_synced", "compare": true },
+		{ "name": "admin_moves_synced", "compare": true },
 	]
 
 ## The step names, comma-joined — the payload of the `plan` line the runner prints
@@ -425,6 +426,7 @@ func run(root: Node, role: String) -> void:
 	await _step_death_landing_synced()
 	await _step_gesture_synced()
 	await _step_carcass_synced()
+	await _step_admin_moves_synced()
 	_finish()
 
 ## End this process, with the run's own verdict carried in the exit code.
@@ -2287,3 +2289,29 @@ func _discover_peer() -> int:
 func _rediscover_peer() -> int:
 	_bound_peer = 0
 	return _discover_peer()
+
+## Phase 182 — the host's admin `/speed`, `/fly` and `/heal` on the peer reach the peer's own body, and
+## the peer (not an admin) is told it is none. The client hurts itself first so the heal has a gap to fill.
+func _step_admin_moves_synced() -> void:
+	if _role == "host":
+		var peers: PackedInt32Array = _root.multiplayer.get_peers()
+		var pid: String = _root._networking.get_player_id(peers[0]) if peers.size() > 0 else ""
+		if pid == "":
+			_report("admin_moves_synced", "fail", "no_connected_peer")
+			return
+		await _await_settle(2.0)
+		var handle: String = _root._registry.public_handle(pid)
+		_root._chat.handle_intent("/speed 2 %s" % handle, "")
+		_root._chat.handle_intent("/fly %s" % handle, "")
+		_root._chat.handle_intent("/heal %s" % handle, "")
+		var moves: Dictionary = _root._chat.admin_moves_of(pid)
+		var ok: bool = is_equal_approx(float(moves["speed"]), 2.0) and bool(moves["fly"])
+		await _await_settle(4.0)   # the client reads all three before this process (the last step) exits
+		_report("admin_moves_synced", verdict(ok, true), "sent" if ok else "host_refused")
+		return
+	_root._player.set_hp(40.0)
+	var admin_flag: bool = _root._ui != null and _root._ui.is_admin
+	var moved: bool = await _await_until(func(): return is_equal_approx(_root._player.admin_speed_factor, 2.0) and _root._player.flying, _step_timeout())
+	var healed: bool = await _await_until(func(): return _root._player.get_hp() >= PlayerSlice.MAX_HP, _step_timeout())
+	var ok := moved and healed and not admin_flag
+	_report("admin_moves_synced", verdict(ok, true), "sent" if ok else ("not_moved" if not moved else ("not_healed" if not healed else "client_thinks_admin")))

@@ -322,3 +322,35 @@ hud.carcass.done,You harvested {0} × {1}.,Você coletou {0} × {1}.
 hud.carcass.nothing,The cuts yielded nothing.,Os cortes não renderam nada.
 tool.knife,knife,faca
 tool.bonetool,bone tool,ferramenta de osso
+chat.usage.time,/time <hh:mm> | /time +<hours> — set the time of day,/time <hh:mm> | /time +<horas> — define a hora do dia
+chat.usage.speed,/speed <factor> [player] — walking speed multiplier (0.1–10),/speed <fator> [jogador] — multiplicador da velocidade de caminhada (0.1–10)
+chat.usage.fly,/fly [player] — toggle flying (Space up · Ctrl down),/fly [jogador] — liga ou desliga o voo (Espaço sobe · Ctrl desce)
+chat.usage.heal,/heal [player] — restore full health,/heal [jogador] — restaura a vida toda
+chat.time_off,The world clock is not running here.,O relógio do mundo não está ativo aqui.
+chat.time_bad,"Give a time as hh:mm (00:00–23:59), or +hours.","Informe a hora como hh:mm (00:00–23:59) ou +horas."
+chat.time_bad_skip,Skip between 1 and {0} whole hours.,Avance entre 1 e {0} horas inteiras.
+chat.time_set,The time is now {0}.,Agora são {0}.
+chat.speed_range,Speed must be a number from {0:1} to {1:1}.,A velocidade deve ser um número de {0:1} a {1:1}.
+chat.speed_set,{0} now moves at {1:1}× speed.,{0} agora se move a {1:1}× de velocidade.
+chat.fly_on,{0} can fly now (Space up · Ctrl down).,{0} agora pode voar (Espaço sobe · Ctrl desce).
+chat.fly_off,{0} walks again.,{0} voltou a caminhar.
+chat.heal_downed,{0} is down; healing does not revive.,{0} está caído; curar não revive.
+chat.healed,{0} is back to full health.,{0} está com a vida toda de novo.
+dock.admin,Admin,Administração
+win.admin,Admin (O),Administração (O)
+admin.weather,Weather (your cell · hours),Clima (sua célula · horas)
+admin.time,Time of day (hour),Hora do dia (hora)
+admin.speed,Speed,Velocidade
+admin.set,Set,Definir
+admin.skip_hour,+1 h,+1 h
+admin.reset,Reset,Redefinir
+admin.fly,Fly on/off,Voo liga/desliga
+admin.heal,Heal,Curar
+weather.state.clear,Clear,Céu limpo
+weather.state.rain,Rain,Chuva
+weather.state.storm,Storm,Tempestade
+weather.state.blizzard,Blizzard,Nevasca
+weather.state.fog,Fog,Neblina
+weather.state.ash_fall,Ash fall,Chuva de cinzas
+weather.state.electrical_storm,Electrical storm,Tempestade elétrica
+weather.state.void_storm,Void storm,Tempestade do vazio

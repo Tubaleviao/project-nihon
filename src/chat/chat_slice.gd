@@ -3,7 +3,8 @@ extends Node
 ##
 ## Plain text is said to everyone. A line starting with `/` is a command: the player commands
 ## (`/help`, `/players`, `/where`) are open to all; the admin commands (`/say`, `/tp`, `/bring`,
-## `/give`, `/kill`) are refused for anyone who is not an admin. Spelling and argument parsing are
+## `/give`, `/kill`, `/weather`, Phase 182's `/time`, `/speed`, `/fly`, `/heal`) are refused for anyone who
+## is not an admin. Spelling and argument parsing are
 ## pure and live in `ChatCommands`; this slice owns the effects and the box.
 ##
 ## Authority: the host runs every command. A client forwards the line as a `chat_intent` (see
@@ -26,6 +27,8 @@ const I18n := preload("res://src/core/i18n.gd")
 const Diag := preload("res://src/core/diag.gd")
 const PlayerRules := preload("res://src/core/player_rules.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
+const AdminRules := preload("res://src/admin/admin_rules.gd")
+const PlayerRegistry := preload("res://src/persistence/player_registry.gd")
 
 const ADMINS_PATH := "user://admins.json"
 ## Lines kept in the log, and shown at once while the box is closed.
@@ -55,10 +58,17 @@ var player_slice: Node = null
 var inventory_slice: Node = null
 ## Phase 128 — the host's weather, for the admin `/weather` override.
 var weather_slice: Node = null
+## Phase 182 — the host's world clock, for `/time` (a `WorldClock`; null in a rig without one).
+var world_clock: RefCounted = null
 var networking: Node = null
 ## False on a headless server: no box is built, the slice only runs commands.
 var render_visuals: bool = true
 var admins_path: String = ADMINS_PATH
+## Phase 182 — how often (seconds) the host re-reads the admins file, so an id added or removed mid-session
+## takes effect and its client is told (`poll_admins_file`).
+const ADMINS_POLL_SEC := 2.0
+var _admins_mtime: int = 0
+var _admins_polled_at: float = -INF
 
 ## Lines refused by the token bucket since boot.
 var chat_rate_refused: int = 0
@@ -66,6 +76,9 @@ var chat_rate_refused: int = 0
 var now_sec: Callable = func() -> float: return Time.get_ticks_msec() / 1000.0
 
 var _admins: Dictionary = {}     # player id -> true
+## Phase 182 — player id -> { speed: float, fly: bool } for the players an admin changed (`/speed`,
+## `/fly`). Session state: a player who leaves is dropped, and comes back walking normally.
+var _admin_moves: Dictionary = {}
 var _buckets: Dictionary = {}    # player id -> { tokens: float, at: float, notice_at: float }
 var _lines: Array = []           # { channel, sender, text, born }
 var _layer: CanvasLayer = null
@@ -79,12 +92,39 @@ func _ready() -> void:
 	GameBus.system_message.connect(_on_system_message)
 	GameBus.locale_changed.connect(_on_locale_changed)
 	GameBus.player_left.connect(_on_player_left)
+	GameBus.player_joined.connect(_on_player_joined)
 	if render_visuals:
 		_build_ui()
 
 func _process(_delta: float) -> void:
 	if _log != null:
 		_refresh_log()
+	if not _is_client() and now_sec.call() - _admins_polled_at >= ADMINS_POLL_SEC:
+		poll_admins_file()
+
+## Phase 182 — host: re-read the admins file when it changed on disk. Every online player whose admin
+## status flipped is told (a peer by an `admin_status` packet; the local player is always an admin).
+## Returns the ids that flipped.
+func poll_admins_file() -> Array:
+	_admins_polled_at = float(now_sec.call())
+	var mtime := FileAccess.get_modified_time(admins_path) if FileAccess.file_exists(admins_path) else 0
+	if mtime == _admins_mtime:
+		return []
+	var online := _online_ids()
+	var before := {}
+	for pid in online:
+		before[pid] = is_admin(pid)
+	_load_admins()
+	var flipped: Array = []
+	for pid in online:
+		var now_admin := is_admin(pid)
+		if now_admin == bool(before[pid]):
+			continue
+		flipped.append(pid)
+		var peer := _peer_of(pid)
+		if not _is_local(pid) and networking != null and peer > 1:
+			networking.send_admin(peer, "admin_status", { "admin": now_admin })
+	return flipped
 
 func _input(event: InputEvent) -> void:
 	if _field == null or not (event is InputEventKey) or not event.pressed:
@@ -195,6 +235,14 @@ func handle_intent(text: String, player_id: String) -> void:
 			_cmd_kill(speaker, args)
 		"weather":
 			_cmd_weather(speaker, args)
+		"time":
+			_cmd_time(speaker, args)
+		"speed":
+			_cmd_speed(speaker, args)
+		"fly":
+			_cmd_fly(speaker, args)
+		"heal":
+			_cmd_heal(speaker, args)
 		_:
 			pass
 
@@ -220,8 +268,14 @@ func _take_token(speaker: String) -> bool:
 ## Phase 115 — a bucket outlives its player: dropping it on disconnect let a reconnect refill it. Only
 ## buckets that have refilled completely (idle `CHAT_BURST / CHAT_LINES_PER_SEC` seconds) are pruned,
 ## and only once `MAX_BUCKETS` are held, so the map stays bounded without forgiving a recent flood.
-func _on_player_left(_player_id: String) -> void:
+func _on_player_left(player_id: String) -> void:
 	_prune_buckets()
+	_admin_moves.erase(player_id)
+
+## Phase 182 — a (re)joining player walks normally, and its client resets its body to match on the identity.
+## Dropped on the join too, so a reconnect bound before the old connection's leave is not left stale.
+func _on_player_joined(_peer_id: int, player_id: String, _reconnected: bool) -> void:
+	_admin_moves.erase(player_id)
 
 func _prune_buckets(limit: int = MAX_BUCKETS) -> void:
 	if _buckets.size() <= limit:
@@ -371,6 +425,122 @@ func _cmd_weather(speaker: String, args: Array) -> void:
 			_reply(speaker, "chat.weather_bad_hours")
 		_:
 			_reply(speaker, "chat.weather_fail", [why])
+
+## Phase 182 — `/time <hh:mm | +hours>`: move the world clock forward to that time and tell every client
+## (a jump this large snaps a client's clock instead of slewing it).
+func _cmd_time(speaker: String, args: Array) -> void:
+	if world_clock == null:
+		_reply(speaker, "chat.time_off")
+		return
+	if args.size() != 1:
+		_reply(speaker, ChatCommands.USAGE["time"])
+		return
+	var r := AdminRules.parse_time(str(args[0]), float(world_clock.time_days))
+	if not bool(r["ok"]):
+		_reply(speaker, str(r["error"]), r["args"])
+		_reply(speaker, ChatCommands.USAGE["time"])
+		return
+	world_clock.time_days = float(r["days"])
+	if networking != null and networking.has_method("broadcast_world_clock"):
+		networking.broadcast_world_clock(world_clock.time_days)
+	var minutes := roundi(fposmod(world_clock.time_days, 1.0) * 1440.0) % 1440
+	@warning_ignore("integer_division")
+	_reply(speaker, "chat.time_set", ["%02d:%02d" % [minutes / 60, minutes % 60]])
+
+## Phase 182 — `/speed <factor> [player]`: a walking (and flying) speed multiplier.
+func _cmd_speed(speaker: String, args: Array) -> void:
+	if args.is_empty() or args.size() > 2:
+		_reply(speaker, ChatCommands.USAGE["speed"])
+		return
+	var f := AdminRules.parse_speed(str(args[0]))
+	if f < 0.0:
+		_reply(speaker, "chat.speed_range", [AdminRules.SPEED_MIN, AdminRules.SPEED_MAX])
+		return
+	var target := speaker
+	if args.size() == 2:
+		target = _find_player(str(args[1]), speaker)
+		if target == "":
+			_reply(speaker, "chat.no_player", [args[1]])
+			return
+	var moves := admin_moves_of(target)
+	if not _send_moves(target, f, bool(moves["fly"])):
+		_unreachable(target, speaker)
+		return
+	_reply(speaker, "chat.speed_set", [_handle_of(target), f])
+
+## Phase 182 — `/fly [player]`: toggle flying (no gravity; Space climbs, Ctrl sinks).
+func _cmd_fly(speaker: String, args: Array) -> void:
+	if args.size() > 1:
+		_reply(speaker, ChatCommands.USAGE["fly"])
+		return
+	var target := speaker
+	if args.size() == 1:
+		target = _find_player(str(args[0]), speaker)
+		if target == "":
+			_reply(speaker, "chat.no_player", [args[0]])
+			return
+	var moves := admin_moves_of(target)
+	var fly := not bool(moves["fly"])
+	if not _send_moves(target, float(moves["speed"]), fly):
+		_unreachable(target, speaker)
+		return
+	_reply(speaker, "chat.fly_on" if fly else "chat.fly_off", [_handle_of(target)])
+
+## Phase 182 — `/heal [player]`: back to full health. A downed player is left to respawn: healing is not
+## a revive.
+func _cmd_heal(speaker: String, args: Array) -> void:
+	if args.size() > 1:
+		_reply(speaker, ChatCommands.USAGE["heal"])
+		return
+	var target := speaker
+	if args.size() == 1:
+		target = _find_player(str(args[0]), speaker)
+		if target == "":
+			_reply(speaker, "chat.no_player", [args[0]])
+			return
+	if _is_local(target):
+		if player_slice == null:
+			_reply(speaker, "chat.no_body")
+			return
+		if player_slice.has_method("is_alive") and not player_slice.is_alive():
+			_reply(speaker, "chat.heal_downed", [_handle_of(target)])
+			return
+		GameBus.admin_healed.emit()
+	else:
+		var peer := _peer_of(target)
+		if networking == null or peer <= 1:
+			_unreachable(target, speaker)
+			return
+		var hp: float = player_registry.get_hp(target) if player_registry != null else -1.0
+		if hp >= 0.0 and PlayerRegistry.is_downed(hp):
+			_reply(speaker, "chat.heal_downed", [_handle_of(target)])
+			return
+		# The peer's client first (it owns the bar), then the host's own simulation of the peer's health
+		# (what the next hit is resolved against), so a heal that never left changes neither.
+		if not networking.send_admin(peer, "admin_heal"):
+			_unreachable(target, speaker)
+			return
+		player_registry.record_simulated_hp(target, PlayerRules.MAX_HP)
+	_reply(speaker, "chat.healed", [_handle_of(target)])
+
+## Phase 182 — `{ speed, fly }` the host last set for `player_id` (1.0 / false when none).
+func admin_moves_of(player_id: String) -> Dictionary:
+	return _admin_moves.get(player_id, { "speed": 1.0, "fly": false })
+
+## Record and deliver `target`'s moves: the local body through the bus, a peer through its client.
+## False when there was nobody to send them to (the record is left as it was).
+func _send_moves(target: String, speed: float, fly: bool) -> bool:
+	if _is_local(target):
+		GameBus.admin_moves_synced.emit(speed, fly)
+	else:
+		var peer := _peer_of(target)
+		if networking == null or peer <= 1 or not networking.send_admin(peer, "admin_moves", { "speed": speed, "fly": fly }):
+			return false
+	if is_equal_approx(speed, 1.0) and not fly:
+		_admin_moves.erase(target)
+	else:
+		_admin_moves[target] = { "speed": speed, "fly": fly }
+	return true
 
 func _cmd_kill(speaker: String, args: Array) -> void:
 	var target := speaker
@@ -529,7 +699,9 @@ func announce_joined(player_id: String) -> void:
 func _load_admins() -> void:
 	_admins.clear()
 	if not FileAccess.file_exists(admins_path):
+		_admins_mtime = 0
 		return
+	_admins_mtime = FileAccess.get_modified_time(admins_path)
 	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(admins_path))
 	if not (parsed is Array):
 		Diag.warn("ChatSlice: %s is not a JSON array of player ids — ignored" % admins_path)
