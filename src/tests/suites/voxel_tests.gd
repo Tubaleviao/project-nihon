@@ -2088,6 +2088,33 @@ func _test_chunk_failed_chunk_is_rearmed() -> void:
 ## Phase 42 review — a chunk's creature and tree budgets spawn when its GROUND EXISTS, not
 ## when it enters the streamed set. The build is on a worker, so spawning at load time put
 ## the population on a chunk whose mesh arrived a frame or more later.
+## A chunk that grows trees under this run's seed, near the origin first, then round the globe:
+## the climate reads altitude and latitude, so for some seeds every chunk near the origin is a
+## mountain (Alpine) or grassland — a row-0 strip alone missed a forest in ~5% of seeds.
+const NO_TREE_CHUNK := Vector2i(2147483647, 2147483647)
+
+func _find_tree_chunk(terrain: TerrainSlice, tree: TreeSlice) -> Vector2i:
+	var lap := TerrainSlice.circumference_chunks()
+	@warning_ignore("integer_division")
+	var stride := maxi(1, lap / 512)
+	@warning_ignore("integer_division")
+	var quarter := TerrainSlice.pole_chunks() / 4
+	var rows: Array = [0, 16, -16, quarter, -quarter]
+	for z in rows:
+		for cx in range(-80, 80):
+			if _grows_trees(terrain, tree, Vector2i(cx, z)):
+				return Vector2i(cx, z)
+	for z in rows:
+		@warning_ignore("integer_division")
+		for cx in range(-lap / 2, lap / 2, stride):
+			if _grows_trees(terrain, tree, Vector2i(cx, z)):
+				return Vector2i(cx, z)
+	return NO_TREE_CHUNK
+
+func _grows_trees(terrain: TerrainSlice, tree: TreeSlice, chunk: Vector2i) -> bool:
+	var biome := str(terrain.get_biome_at_chunk(chunk))
+	return ["TemperateForest", "TwilightGrove"].has(biome) and tree.tree_count_for(chunk, biome) > 0
+
 func _test_chunk_contents_spawn_after_ground() -> void:
 	var rig := _make_chunk_build_rig()
 	var cm: ChunkManager = rig["cm"]
@@ -2098,13 +2125,15 @@ func _test_chunk_contents_spawn_after_ground() -> void:
 	cm.tree_slice = tree
 	# The world seed is random per run and a chunk of a tree biome can roll as a clearing
 	# (Phase 44), so pick one that actually grows trees — otherwise this fails ~10% of runs.
-	var c := Vector2i(-1, -1)
-	for cx in range(-80, 80):
-		var cand := Vector2i(cx, 0)
-		var biome := str(terrain.get_biome_at_chunk(cand))
-		if ["TemperateForest", "TwilightGrove"].has(biome) and tree.tree_count_for(cand, biome) > 0:
-			c = cand
-			break
+	var c := _find_tree_chunk(terrain, tree)
+	assert_true(c != NO_TREE_CHUNK, "a chunk that grows trees exists for this seed")
+	if c == NO_TREE_CHUNK:
+		rig["cm"].free()
+		rig["voxel"].free()
+		rig["terrain"].free()
+		rig["player"].free()
+		tree.free()
+		return
 	var key := "%d,%d" % [c.x, c.y]
 	cm.load_chunk(c)
 	assert_false(cm._built.has(key), "the build is in flight")
