@@ -18,11 +18,18 @@ static func ids() -> Array:
 	out.sort()
 	return out
 
-## Item ids named by any creature's harvest table (`drops`), sorted and unique.
+## Item ids named by any creature's harvest table (`drops`) or taming `yields`, sorted and unique.
 static func drop_ids() -> Array:
 	var seen := {}
 	for creature in GameData.CREATURES.values():
 		for entry in creature.drops:
+			var item := str(entry.get("item", ""))
+			if item != "":
+				seen[item] = true
+		var tame = creature.get("tame")
+		if not (tame is Dictionary):
+			continue
+		for entry in tame.get("yields", []):
 			var item := str(entry.get("item", ""))
 			if item != "":
 				seen[item] = true

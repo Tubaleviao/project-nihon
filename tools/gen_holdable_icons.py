@@ -331,6 +331,10 @@ def write(files, root):
         path = root / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
+    kinds = holdables.holdable_kinds()
+    for stale in sorted((root / ICON_DIR).glob("*.png.raw")):
+        if stale.name[: -len(".png.raw")] not in kinds:
+            stale.unlink()
     print(f"wrote {len(files)} holdable icons under {root}")
 
 

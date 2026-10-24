@@ -33,13 +33,18 @@ def materials() -> list:
 
 
 def drops() -> list:
-    """Item ids named by any creature's harvest table, in first-seen order, duplicates removed."""
+    """Item ids named by any creature's harvest table or taming yield, in first-seen order, duplicates removed."""
     seen = []
     for tres in sorted((GODOT / "creatures").glob("*.tres")):
-        m = re.search(r"^drops = (\[.*\])$", tres.read_text(), re.M)
-        if not m:
-            continue
-        for entry in json.loads(m.group(1)):
+        text = tres.read_text()
+        entries = []
+        m = re.search(r"^drops = (\[.*\])$", text, re.M)
+        if m:
+            entries += json.loads(m.group(1))
+        t = re.search(r"^tame = (\{.*\})$", text, re.M)
+        if t:
+            entries += json.loads(t.group(1)).get("yields", [])
+        for entry in entries:
             if entry["item"] not in seen:
                 seen.append(entry["item"])
     return seen

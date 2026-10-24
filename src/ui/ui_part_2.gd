@@ -256,7 +256,10 @@ func trade_rows() -> Array:
 	var rows: Array = []
 	if sl.trade_slice == null or sl._active_trade_id == "":
 		return rows
-	var offers: Dictionary = sl.trade_slice.get_trade(sl._active_trade_id).get("offers", {})
+	var trade: Dictionary = sl.trade_slice.get_trade(sl._active_trade_id)
+	if str(trade.get("state", "pending")) in ["completed", "rejected"]:
+		return rows
+	var offers: Dictionary = trade.get("offers", {})
 	for party in offers:
 		for side in ["give", "want"]:
 			var stacks: Dictionary = offers[party].get(side, {})
