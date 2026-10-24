@@ -502,7 +502,9 @@ func repair_item(item_id: String) -> bool:
 ## Durability ordering: removed values are delivered WORST-first (ascending), so
 ## when `receive` < `give` the fee burns the BEST (highest-durability) instances
 ## and the receiver keeps the WORST — consistent with `_remove_instances` and
-## `_worst_values`. Returns { success: bool, reason: String }.
+## `_worst_values`. The source stack's quality grade (#427) travels with the
+## goods (#474), merged into `dst` by `add_item`'s worst-grade rule. Returns
+## { success: bool, reason: String }.
 static func transfer(src: Node, dst: Node, give: Dictionary, receive: Variant = null) -> Dictionary:
 	var add: Dictionary = give
 	if receive is Dictionary:
@@ -512,6 +514,10 @@ static func transfer(src: Node, dst: Node, give: Dictionary, receive: Variant = 
 	for item_id in give:
 		if int(src.get_item_count(item_id)) < int(give[item_id]):
 			return { "success": false, "reason": "missing_goods" }
+	# Read the grades before consuming: an emptied stack reports none.
+	var grades := {}
+	for item_id in add:
+		grades[item_id] = str(src.get_quality(item_id))
 	var consumed: Dictionary = src.consume_items_with_durability(give)
 	if not bool(consumed.get("success", false)):
 		return { "success": false, "reason": "missing_goods" }
@@ -520,7 +526,7 @@ static func transfer(src: Node, dst: Node, give: Dictionary, receive: Variant = 
 		var qty: int = int(add[item_id])
 		var dvals: Array = (removed.get(item_id, []) as Array).duplicate()
 		dvals.sort()   # worst-first, so the fee burns the best instances
-		if not bool(dst.add_item(item_id, qty, dvals)):
+		if not bool(dst.add_item(item_id, qty, dvals, grades[item_id])):
 			Diag.warn("InventorySlice.transfer: add_item failed for '%s' ×%d after consuming from source — goods lost" % [item_id, qty])
 	return { "success": true, "reason": "" }
 

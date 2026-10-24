@@ -90,6 +90,9 @@ func announce_equipment_to_aoi(peer_id: int) -> void:
 ## peer_id -> { budget: metres of travel earned and unspent, msec: last report, pulled: last pull-back }.
 var speed_ledger: Dictionary = {}
 const SPEED_BUDGET_SECONDS := 1.0
+## #474 — a report that arrives after a lag stall may cover the stall's travel, up to this many seconds of it,
+## so a legit carrier is not pulled back by its catch-up report. Average speed stays capped.
+const SPEED_STALL_SECONDS := 3.0
 const SPEED_PULLBACK_MIN_MS := 250
 
 ## Issue #426 — the position the host accepts for `peer` when its report outruns `peer_speed_cap`, or null when the
@@ -106,7 +109,9 @@ func _clamp_to_speed_cap(peer: int, pos: Vector3) -> Variant:
 	var now := Time.get_ticks_msec()
 	var max_budget: float = cap * SPEED_BUDGET_SECONDS
 	var led: Dictionary = speed_ledger.get(peer, { "budget": max_budget, "msec": now, "pulled": now - SPEED_PULLBACK_MIN_MS })
-	var budget := minf(float(led["budget"]) + cap * float(now - int(led["msec"])) / 1000.0, max_budget)
+	var elapsed := float(now - int(led["msec"])) / 1000.0
+	var limit := maxf(max_budget, cap * minf(elapsed, SPEED_STALL_SECONDS))
+	var budget := minf(float(led["budget"]) + cap * elapsed, limit)
 	led["msec"] = now
 	var from: Vector3 = sl.get_last_known_state(peer)
 	var gap := Vector2(pos.x - from.x, pos.z - from.z)
