@@ -114,6 +114,12 @@ func _test_harvest_quality_reaches_stack() -> void:
 	var other := PlayerRegistry.new()
 	other.apply_player_data("p1", saved)
 	assert_eq(other.get_inventory("p1").get_quality(item), grade, "a save round trip keeps the grade")
+	# #474: a transfer (trade) carries the grade into the other bag.
+	var dst := InventorySlice.new()
+	add_child(dst)
+	assert_true(bool(InventorySlice.transfer(f["inv"], dst, { item: 1 })["success"]), "the transfer succeeds")
+	assert_eq(dst.get_quality(item), grade, "the moved unit keeps its grade")
+	dst.free()
 	# Mixing: a lesser grade pulls the stack down, an ungraded unit clears it, a fresh stack starts over.
 	var inv: InventorySlice = f["inv"]
 	inv.add_item(item, 1, [], "poor")

@@ -2123,8 +2123,9 @@ func _test_chunk_contents_spawn_after_ground() -> void:
 	add_child(tree)
 	tree.terrain_slice = terrain
 	cm.tree_slice = tree
-	# The world seed is random per run and a chunk of a tree biome can roll as a clearing
-	# (Phase 44), so pick one that actually grows trees — otherwise this fails ~10% of runs.
+	# A chunk of a tree biome can roll as a clearing (Phase 44), so pick one that actually grows trees.
+	# #485: the seed is pinned too; a random one flaked in CI (the chunk's trees did not spawn).
+	terrain.set_world_seed(4242)
 	var c := _find_tree_chunk(terrain, tree)
 	assert_true(c != NO_TREE_CHUNK, "a chunk that grows trees exists for this seed")
 	if c == NO_TREE_CHUNK:
@@ -2142,7 +2143,7 @@ func _test_chunk_contents_spawn_after_ground() -> void:
 	_wait_for_builds(cm)
 	assert_true(cm._built.has(key), "the ground lands")
 	assert_true(tree.trees_in_chunk(c).size() > 0,
-		"and the chunk's trees spawn with it")
+		"and the chunk's trees spawn with it (chunk %s, %s, budget %d)" % [c, terrain.get_biome_at_chunk(c), tree._budget_for(c, terrain.get_biome_at_chunk(c))])
 	rig["cm"].free()
 	rig["voxel"].free()
 	rig["terrain"].free()
