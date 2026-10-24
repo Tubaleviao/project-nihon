@@ -1247,12 +1247,12 @@ class _StampingTransport extends MemoryTransport:
 
 # ---- Phase 126 — tree clears the host keeps, and one seam-wrap module ----
 
-## A tree slice on a real terrain slice (seed 31), the way a host has it, writing records straight to the table.
+## A tree slice on a real terrain slice (seed 32), the way a host has it, writing records straight to the table.
 func _p126_host_rig() -> Dictionary:
 	ChunkRecordsScript.clear()
 	var terrain := TerrainSlice.new()
 	add_child(terrain)
-	terrain.set_world_seed(31)
+	terrain.set_world_seed(32)   # worldgen 9 moved seed 31's spawn plain off its tree-growing biomes
 	var t := _make_tree_slice()
 	t.terrain_slice = terrain
 	t.record_writer = func(c: Vector2i, rec: Dictionary) -> void:

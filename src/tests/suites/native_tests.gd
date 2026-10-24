@@ -41,13 +41,15 @@ func _test_native_real_loader() -> void:
 	if EXPECT_NATIVE_ARG in args:
 		assert_eq(mode, NativeBuilder.MODE_NATIVE, "the binary is present: the loader reports native")
 		assert_true(ClassDB.class_exists(NativeBuilder.CLASS_NAME), "NativeChunkBuilder is registered")
-		assert_eq(NativeBuilder.version(), 4, "the native class reports its version")
+		assert_eq(NativeBuilder.version(), NativeBuilder.REQUIRED_VERSION, "the native class reports its version")
 		var b: RefCounted = ClassDB.instantiate(NativeBuilder.CLASS_NAME)
 		assert_eq(b.call("functions") as PackedStringArray, PackedStringArray(["heightmap_for", "build_runs", "build_chunk_arrays"]), "Phases 167-169 port heightmap_for, build_runs and build_chunk_arrays")
 	if EXPECT_FALLBACK_ARG in args:
 		assert_eq(mode, NativeBuilder.MODE_FALLBACK, "no binary: the loader reports the GDScript fallback")
 		assert_eq(NativeBuilder.version(), -1, "no native version on the fallback")
-	assert_eq(mode == NativeBuilder.MODE_NATIVE, ClassDB.class_exists(NativeBuilder.CLASS_NAME), "native exactly when the class is registered")
+	var current := not NativeBuilder.forced_fallback() and ClassDB.class_exists(NativeBuilder.CLASS_NAME) \
+		and int(ClassDB.instantiate(NativeBuilder.CLASS_NAME).call("version")) >= NativeBuilder.REQUIRED_VERSION
+	assert_eq(mode == NativeBuilder.MODE_NATIVE, current, "native exactly when a current class is registered")
 	assert_eq(NativeBuilder.use_native("heightmap_for"), mode == NativeBuilder.MODE_NATIVE, "heightmap_for is native exactly when the extension loaded")
 
 func _test_native_routes_only_ported() -> void:
@@ -97,6 +99,13 @@ func _test_native_heightmap_parity() -> void:
 			assert_eq(got.size(), want.size(), "native heightmap_for %s has the same size (records %d)" % [str(pos), round_i])
 			assert_true(got == want, "native heightmap_for %s equals the GDScript reference (records %d)" % [str(pos), round_i])
 	ChunkRecordsScript.clear()
+	# Worldgen 9: a highland seed's spawn plain is not 2 m; the native side takes it from the GDScript one.
+	var high := 2045165241
+	var high_noise := FastNoiseLite.new()
+	TerrainSlice.configure_noise(high_noise, high)
+	for pos: Vector2i in [Vector2i(0, 0), Vector2i(60, -20), Vector2i(-100, 40)]:   # on the plain, in the ease
+		assert_true(TerrainSlice.heightmap_for(pos, high, high_noise) == TerrainSlice.heightmap_for_gd(pos, high, high_noise),
+			"native heightmap_for %s matches on a highland spawn plain" % str(pos))
 
 ## One build input for `chunk`: the 3x3 ring's heightmaps (the +x column left unknown for the odd
 ## chunks, so unknown-neighbour reads are covered), their biomes, the seed, edits and a depletion
