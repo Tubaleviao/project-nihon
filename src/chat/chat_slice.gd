@@ -10,7 +10,7 @@ extends Node
 ## Authority: the host runs every command. A client forwards the line as a `chat_intent` (see
 ## NetworkingSlice) and the host binds the speaker to the connection — an identity in the payload is
 ## never read. An admin is the host's own local player, or a player id listed in `user://admins.json`
-## (a JSON array of player ids, read once at boot). Everything a command does to a remote player goes
+## (a JSON array of player ids, read at boot and re-read when it changes on disk). Everything a command does to a remote player goes
 ## through the existing host → peer doors (`send_teleport`, the `player_damaged` signal, `inventory_synced`).
 ##
 ## Plug contract (GameBus signals consumed / emitted):

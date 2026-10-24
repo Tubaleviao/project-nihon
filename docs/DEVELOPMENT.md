@@ -75,6 +75,31 @@ boot mode; the purely computational half of it (the step table, the log-line for
 parser, the convergence verdict, the target selection) is still registered in the suite
 and covered on every boot.
 
+## Admin commands
+
+The host runs every chat command and checks who typed it. An admin is the host's own local
+player, or a player id listed in `user://admins.json` (a JSON array of ids). The host re-reads the
+file when it changes, so adding or removing an id takes effect mid-session. `/help` lists the
+commands a player may use.
+
+| Command | Effect |
+|---|---|
+| `/tp <x> <y> <z>` · `/tp <player>` · `/bring <player>` | Teleport |
+| `/give <item> [quantity] [player]` | Create items |
+| `/kill [player]` | Kill a player |
+| `/say <message>` | Global announcement |
+| `/weather <state> <hours>` | Override the weather of your cell |
+| `/time <hh:mm>` · `/time +<hours>` | Move the host clock forward (never back) |
+| `/speed <0.1–10> [player]` | Walking speed multiplier for the session |
+| `/fly [player]` | Toggle flying (Space climbs, Ctrl sinks) |
+| `/heal [player]` | Fill a live player's health (does not revive) |
+| `/regen world confirm` | Regenerate the terrain from the current generator |
+
+The Admin window (**O**, a dock box shown only to admins) types the same commands, so it adds no
+authority of its own. `/regen world` keeps players, inventories and stations. It moves the save's
+regions folder aside to `regions.regen-<unix time>` as a backup (move it back by hand to undo),
+empties the host's memory of the old ground and tells every client to drop its copy.
+
 ## Branching strategy
 
 | Branch prefix | Purpose |
