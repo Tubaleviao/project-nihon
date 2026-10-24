@@ -36,6 +36,14 @@ const PlayerSlice := preload("res://src/player/player_slice.gd")
 
 const ARG := "--playtest-bot"
 const OUT_DIR := "res://playtest"
+## The bot's own save directory, emptied before the boot: a saved world must not pick the seed.
+const SAVE_DIR := "user://playtest/server/"
+## The world seed every run plays, so a step's verdict depends on the commit, not on a random world:
+## on a fresh `randi()` seed far_peak, travel and horizon passed or failed by luck (a seed's tallest
+## ridge is ~350 m against far_peak's 330). 42 passes every step with margin (a 399 m ridge, 861 band px);
+## 162 fails walk. `--playtest-seed <n>` plays another seed.
+const WORLD_SEED := 42
+const SEED_ARG := "--playtest-seed"
 const HITCH_MS := 50.0        ## a frame over this is a hitch (counted, not a failure)
 const HARD_FRAME_MS := 2000.0 ## a frame over this fails the run
 const STEP_TIMEOUT_SECS := 60.0 ## wall clock for a WHOLE step, not for one wait inside it
@@ -115,6 +123,37 @@ var _steps_done: Array = []   ## finished step records, for the watchdog's parti
 
 static func requested(args: Array) -> bool:
 	return ARG in args
+
+## The seed a run with `args` plays: `--playtest-seed <n>` when given, else `WORLD_SEED`.
+static func seed_from_args(args: Array) -> int:
+	var i := args.find(SEED_ARG)
+	if i >= 0 and i + 1 < args.size() and str(args[i + 1]).is_valid_int():
+		return int(str(args[i + 1]))
+	return WORLD_SEED
+
+## Before the world boot: an emptied save directory and the pinned seed, so every run plays one world.
+static func prepare(root: Node) -> void:
+	var args := Array(OS.get_cmdline_user_args())
+	if not requested(args) or root._is_client or root._is_server:
+		return
+	root._persistence.server_save_dir = SAVE_DIR
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(SAVE_DIR))
+	_clear_dir(SAVE_DIR)
+	var seed_v := seed_from_args(args)
+	root._terrain.set_world_seed(seed_v)
+	print("[Playtest] world seed %d" % seed_v)
+
+static func _clear_dir(path: String) -> void:
+	if not path.begins_with("user://playtest/") or ".." in path:
+		return
+	var dir := DirAccess.open(path)
+	if dir == null:
+		return
+	for sub in dir.get_directories():
+		_clear_dir(path.path_join(sub))
+		dir.remove(sub)
+	for file in dir.get_files():
+		dir.remove(file)
 
 static func _step_timeout(step: String) -> float:
 	if step == "horizon":
