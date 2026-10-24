@@ -8,6 +8,11 @@ absolute numbers are a reference, not a gate. The gate is the **largest passing 
 
 The Phase 163 run that follows each fix is in the PR body; this page stays the starting point.
 
+A run that misses a budget at or below its series' baseline size, with no hard failure, is run once more
+and the rerun counts (`StressRules.needs_retry`; the first try stays in the artifact as `<size>.miss`).
+On a shared CI runner the host tick p95 at 16 bots has ranged from 3 to 18 ms on the same code, so one
+slow 20 s window should not fail main; a real regression misses the rerun as well.
+
 ---
 
 ## Report
