@@ -66,6 +66,7 @@ const DRAG_VISIBLE_MARGIN := 48.0
 ## Largest stored window coordinate a layout file may carry; beyond it the entry is junk.
 const LAYOUT_MAX_COORD := 100000.0
 const LAYOUT_PATH := "user://ui_layout.json"
+const UiIcons := preload("res://src/ui/ui_icons.gd")
 const ICON_KEY_FORMAT := "icons/items/%s.png.raw"
 const SLOT_SIZE := Vector2(72, 72)
 const INVENTORY_COLUMNS := 5
@@ -934,9 +935,17 @@ func _refresh_skills() -> void:
 		_retire(c)
 	for row in rows:
 		var b := Button.new()
-		b.custom_minimum_size = Vector2(SLOT_SIZE.x, 48.0)
+		b.custom_minimum_size = Vector2(SLOT_SIZE.x, 64.0)
 		b.clip_text = true
-		b.text = "%s\n%s" % [str(row["id"]).substr(0, 8), str(row["tier"])]
+		var skill_icon: Texture2D = UiIcons.load_icon(UiIcons.skill_key(str(row["id"])))
+		if skill_icon != null:
+			b.icon = skill_icon
+			b.expand_icon = true
+			b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+			b.text = str(row["tier"])
+		else:
+			b.text = "%s\n%s" % [str(row["id"]).substr(0, 8), str(row["tier"])]
 		b.add_theme_font_size_override("font_size", 12)
 		b.tooltip_text = str(row["tooltip"])
 		b.set_drag_forwarding(_skill_drag.bind(str(row["id"]), b), Callable(), Callable())

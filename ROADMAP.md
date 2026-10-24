@@ -36,7 +36,7 @@ budget honest. Then it gives the game icons, attributes, a character sheet and c
 | Phase | Title | Status | Spec |
 |---|---|---|---|
 | 174 | An honest playtest frame budget | Done | [phases-174.md](docs/roadmap-history/phases-174.md) |
-| 175 | UI icons: dock, windows, skills and status from one generator | Planned | below |
+| 175 | UI icons: dock, windows, skills and status from one generator | Done | below |
 | 176 | An icon for everything a player can hold | Planned | below |
 | 177 | Attributes in the fabric: strength, vitality, resistance, agility, intelligence, perception | Planned | below |
 | 178 | Attributes at runtime: host-owned, persisted, feeding the derived stats | Planned | below |
@@ -92,14 +92,14 @@ pure-Python, deterministic, and hand-polished later by the private repo over the
   matching note (separate PR).
 
 **Acceptance criteria:**
-- [ ] Every `WindowDock` entry, every skill in `GameData.SKILLS`, every status effect and HP has an
+- [x] Every `WindowDock` entry, every skill in `GameData.SKILLS`, every status effect and HP has an
   icon at its key. No orphan icon exists.
-- [ ] Suite: every UI icon is 32×32 or 64×64 RGBA, has transparent corners and more than 40 opaque
+- [x] Suite: every UI icon is 32×32 or 64×64 RGBA, has transparent corners and more than 40 opaque
   pixels, and no two are byte-identical.
-- [ ] Suite: a built dock button carries a texture and a badge with the shortcut letter, and no
+- [x] Suite: a built dock button carries a texture and a badge with the shortcut letter, and no
   dock button's text is a bare letter.
-- [ ] CI: `python3 tools/gen_ui_icons.py --check` passes, and two runs are byte-identical.
-- [ ] Suite green on both boot paths.
+- [x] CI: `python3 tools/gen_ui_icons.py --check` passes, and two runs are byte-identical.
+- [x] Suite green on both boot paths.
 
 ---
 

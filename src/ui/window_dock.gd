@@ -1,6 +1,6 @@
 extends VBoxContainer
 ## Window dock — a collapsible box under the health bar holding one small box per game
-## window, each labelled with its shortcut letter. Clicking a box toggles that window, so the
+## window, each showing the window's icon with its shortcut letter as a corner badge. Clicking a box toggles that window, so the
 ## shortcuts teach themselves: the player sees "I", clicks it, and the inventory opens.
 ##
 ## Presentation only: `window_toggled(key)` is handled by the UI slice, which owns the windows.
@@ -12,6 +12,7 @@ signal window_toggled(window_key: String)
 ## Dock order. Each entry: { key (window key), letter (shortcut), name }.
 ## The letters must match the key map in `UiSlice._input`.
 const I18n := preload("res://src/core/i18n.gd")
+const UiIcons := preload("res://src/ui/ui_icons.gd")
 const ENTRIES: Array = [
 	{"key": "inventory",  "letter": "I", "name": "dock.inventory"},
 	{"key": "character",  "letter": "C", "name": "dock.character"},
@@ -58,8 +59,11 @@ func build() -> void:
 	add_child(_grid)
 	for e in entries():
 		var b := Button.new()
-		b.text = str(e["letter"])
 		b.custom_minimum_size = Vector2(BOX_PX, BOX_PX)
+		b.icon = UiIcons.load_icon(UiIcons.window_key(str(e["key"])))
+		b.expand_icon = true
+		b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		b.add_child(_badge(str(e["letter"])))
 		b.focus_mode = Control.FOCUS_NONE
 		b.tooltip_text = "%s  (%s)" % [I18n.t(e["name"]), e["letter"]]
 		b.pressed.connect(func(): window_toggled.emit(str(e["key"])))
@@ -67,6 +71,23 @@ func build() -> void:
 		_boxes[str(e["key"])] = b
 		b.visible = not (str(e["key"]) in HIDDEN_BY_DEFAULT) or _shown.has(str(e["key"]))
 	_apply_expanded(load_expanded(save_path))
+
+## The shortcut letter as a small corner badge over the icon.
+static func _badge(letter: String) -> Label:
+	var badge := Label.new()
+	badge.name = "Badge"
+	badge.text = letter
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	badge.offset_left = -12.0
+	badge.offset_top = -14.0
+	badge.offset_right = -1.0
+	badge.offset_bottom = 0.0
+	badge.add_theme_font_size_override("font_size", 11)
+	badge.add_theme_color_override("font_color", Color(1, 1, 1))
+	badge.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+	badge.add_theme_constant_override("outline_size", 4)
+	return badge
 
 ## The language changed: re-render the toggle and every box tooltip.
 func relocalize() -> void:
@@ -86,6 +107,10 @@ func set_entry_visible(window_key: String, shown: bool) -> void:
 	var b: Button = _boxes.get(window_key, null)
 	if b != null:
 		b.visible = shown
+
+## The box of one window (tests and the UI slice).
+func box(window_key: String) -> Button:
+	return _boxes.get(window_key, null)
 
 func is_entry_visible(window_key: String) -> bool:
 	var b: Button = _boxes.get(window_key, null)

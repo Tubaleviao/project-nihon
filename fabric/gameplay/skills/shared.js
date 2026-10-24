@@ -1,6 +1,8 @@
 const { defineEntity } = require('@newel/core')
 
 const SKILL_TIERS = ['novice', 'apprentice', 'journeyman', 'expert', 'master']
+// The one skill-category enum: every skill file reads it, and tools/gen_ui_icons.py needs a frame per entry.
+const SKILL_CATEGORIES = ['combat', 'crafting', 'magic', 'exploration', 'social', 'survival']
 
 function skillStateMachine() {
   return {
@@ -22,4 +24,4 @@ function skillStateMachine() {
   }
 }
 
-module.exports = { defineEntity, skillStateMachine, SKILL_TIERS }
+module.exports = { defineEntity, skillStateMachine, SKILL_TIERS, SKILL_CATEGORIES }

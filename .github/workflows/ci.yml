@@ -357,6 +357,13 @@ jobs:
           python3 tools/gen_item_assets.py --out /tmp/items-b
           diff -r /tmp/items-a /tmp/items-b
 
+      - name: Check the UI icons are current and the generator is deterministic
+        run: |
+          python3 tools/gen_ui_icons.py --check
+          python3 tools/gen_ui_icons.py --out /tmp/ui-icons-a
+          python3 tools/gen_ui_icons.py --out /tmp/ui-icons-b
+          diff -r /tmp/ui-icons-a /tmp/ui-icons-b
+
       - name: Check the status-effect table validation rejects bad tables
         run: node tools/check_combat.js
 

@@ -1,4 +1,4 @@
-const { defineEntity, skillStateMachine, SKILL_TIERS } = require('./shared')
+const { defineEntity, skillStateMachine, SKILL_TIERS, SKILL_CATEGORIES } = require('./shared')
 const { SKINNING } = require('../harvest')
 
 module.exports = {
