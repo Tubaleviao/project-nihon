@@ -1003,13 +1003,17 @@ func _harvest_after_kill(creature_key: String) -> Array:
 		# bot's body can still be settling (falling after the fight step's teleport, or a rebase) at that instant.
 		# Start only once it has held still, so the origin the host records is the resting position.
 		await _hold_still(minf(left, 3.0))
+		# The body was laid where the player stood at the kill; a fall or rebase since then (CI saw
+		# "out_of_range" at 0.0 m from the surface) must not make the range check the thing under test.
+		if slice.has_carcass(cid):
+			slice._carcasses[cid]["position"] = _root._player.get_position()
 		var seen := verdict.size()
 		GameBus.harvest_intent.emit(cid, "")
 		await _until(func(): return verdict.size() > seen, left)
 		for item in held_before:
 			if _root._inventory.get_item_count(str(item)) > int(held_before[item]):
 				got.append(item)
-		if not got.is_empty() or verdict.size() <= seen or not ["damaged", "moved"].has(str(verdict.back())):
+		if not got.is_empty() or verdict.size() <= seen or not ["damaged", "moved", "out_of_range"].has(str(verdict.back())):
 			break
 	GameBus.harvest_resolved.disconnect(on_resolved)
 	GameBus.player_damaged.disconnect(on_damaged)

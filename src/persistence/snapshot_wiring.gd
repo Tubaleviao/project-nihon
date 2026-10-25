@@ -131,6 +131,15 @@ func snapshot_own_record(player_id: String) -> Dictionary:
 ## Phase 163 — host: peer id -> { record key -> hash }, the generation records that peer holds.
 var records_sent: Dictionary = {}
 
+## Send a snapshot built by `build_snapshot`. Building it already advanced `records_sent` to the new
+## scope; a snapshot that did not go out whole never reaches the client, so the peer's entry is
+## forgotten and its next re-scope carries every record again (#444).
+func send_snapshot(peer_id: int, snapshot: Dictionary) -> bool:
+	var sent: bool = root._networking.send_snapshot(peer_id, snapshot)
+	if not sent:
+		records_sent.erase(peer_id)
+	return sent
+
 ## Phase 109 — the generation records of the chunks in the peer's streamed window plus its first ring.
 ## The scope is named (`gen_scope`) so the client knows which part of its table the packet speaks for.
 ## Re-scopes are rate-limited by `_on_remote_player_state`, which defers the whole crossing rather than

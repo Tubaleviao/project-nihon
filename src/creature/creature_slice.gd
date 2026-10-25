@@ -1128,6 +1128,9 @@ func _apply_creature_entries(list: Array, create_missing: bool) -> void:
 		if entry is not Dictionary:
 			continue
 		var iid := str(entry.get("instance_id", ""))
+		var pos := _entry_pos(entry)
+		if pos.is_empty():
+			continue
 		if not create_missing and not _instances.has(iid):
 			_hold_death_record(iid, entry)
 			continue
@@ -1135,20 +1138,25 @@ func _apply_creature_entries(list: Array, create_missing: bool) -> void:
 			iid,
 			str(entry.get("creature_id", "")),
 			str(entry.get("state", "idle")),
-			_entry_pos(entry),
+			pos,
 			float(entry.get("hp", -1.0)),
 			float(entry.get("respawn_at", -1.0))
 		)
 
 ## The exact position of a snapshot / world-record entry: the `{chunk, local}` form keeps its chunk, a legacy
-## `[x, y, z]` float array is split (Phase 171).
+## `[x, y, z]` float array is split (Phase 171). Empty when the entry holds no plausible position (a huge
+## chunk or a NaN local from a hand-edited save, #464): the caller skips that entry.
 func _entry_pos(entry: Dictionary) -> Dictionary:
 	var data: Variant = entry.get("position", [])
-	var exact := WorldPos.pos_from_wire(data)
-	if not exact.is_empty():
-		return exact
+	if data is Dictionary:
+		return WorldPos.pos_from_wire(data)   # validated by `is_wire`; {} when it is not plausible
+	if not (data is Array and (data as Array).size() >= 3):
+		return {}
 	var w := WorldPos.from_wire(data)
-	return WorldPos.from_world(w.x, w.y, w.z)
+	if not (is_finite(w.x) and is_finite(w.y) and is_finite(w.z)):
+		return {}
+	var exact := WorldPos.from_world(w.x, w.y, w.z)
+	return exact if WorldPos.is_plausible_pos(exact) else {}
 
 ## Hold an unstreamed id's recorded death so it re-applies when its chunk streams
 ## (see _spawn). Only a pending death is held; a live entry, an entry whose deadline
