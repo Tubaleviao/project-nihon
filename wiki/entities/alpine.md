@@ -7,7 +7,7 @@ title: "Alpine"
 
 `biome`
 
-Snow-capped peaks above the tree line, at any latitude.
+Snow-capped peaks above the tree line, which falls toward the poles.
 
 > Make mountains a biome of their own: cold, bare and high
 

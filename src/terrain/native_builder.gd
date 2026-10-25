@@ -18,8 +18,8 @@ const NO_NATIVE_ARG := "--no-native"
 ## Functions a later step may route natively, in step order.
 const FUNCTIONS: Array[String] = ["heightmap_for", "build_runs", "build_chunk_arrays"]
 ## The oldest native builder whose results match this GDScript. A stale binary (an older build left in
-## `native/bin`) would compute different terrain than its peers, so it is not used. 5 = worldgen 9's spawn plain.
-const REQUIRED_VERSION := 5
+## `native/bin`) would compute different terrain than its peers, so it is not used. 5 = worldgen 9's spawn plain; 6 = worldgen 10 ridges.
+const REQUIRED_VERSION := 6
 
 static var _loaded := false
 static var _mode := MODE_FALLBACK

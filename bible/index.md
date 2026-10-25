@@ -16,7 +16,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 
 ## Biome
 
-- [Alpine](entities/alpine.md) — Snow-capped peaks above the tree line, at any latitude
+- [Alpine](entities/alpine.md) — Snow-capped peaks above the tree line, which falls toward the poles
 - [Beach](entities/beach.md) — The first metre and a half of shore above the waterline: pale sand and no trees
 - [Desert](entities/desert.md) — Hot, dry sand and rock: the dry half of the tropics
 - [Ocean](entities/ocean.md) — Open water over the continental shelf and the deep basins

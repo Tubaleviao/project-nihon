@@ -3,8 +3,10 @@ const { adjacencyFields } = require('./adjacency')
 
 // Phase 51 — the Earth-like biomes. Each is a climate envelope (temperature, moisture, altitude)
 // plus the same ground facts the fantasy biomes carry. Altitude is metres above sea level; the
-// land default is [1.5, 250], so Ocean sits below the sea surface, Beach on the first metre and a
-// half of shore, and Alpine above the tree line.
+// land default is [1.5, 1000], so Ocean sits below the sea surface and Beach on the first metre and a
+// half of shore. Phase 188: Alpine is chosen by temperature (the altitude lapse cools high ground), on
+// ground above ALPINE_FLOOR; Tundra is the cold ground below it. So the tree line falls toward the
+// poles, and warm high ground keeps its forest or grassland instead of turning to snow.
 function earthBiome({ key, description, goal, treeDensity, surfaceMaterial, surfaceTint, soilTint, topsoilDepth,
   temperature, moisture, altitude, avgTemperature, avgRainfall, soilFertility, surfaceVeinChance, rules, season = {} }) {
   const S = { swing: 10, summer: '#ffffff', winter: '#c9d3dc', growth: { summer: 1.25, winter: 0.5 }, spawn: { summer: 1.15, winter: 0.7 }, ...season }
@@ -46,7 +48,12 @@ function earthBiome({ key, description, goal, treeDensity, surfaceMaterial, surf
 }
 
 const ALL = { min: 0, max: 1 }
-const LAND = { min: 1.5, max: 250 }
+const LAND = { min: 1.5, max: 1000 }
+// The lowest ground Alpine can claim, in metres. The spawn plain is capped below it
+// (`WorldShape.SPAWN_PLAIN_MAX`), so a first-boot spawn is never on snow.
+const ALPINE_FLOOR = 200
+// Alpine is ground colder than this (normalised); Taiga starts here, so the two never overlap.
+const TREE_LINE_TEMPERATURE = 0.15
 
 module.exports = {
 
@@ -82,16 +89,16 @@ module.exports = {
     description: 'Frozen, treeless plains at the high latitudes, down to the polar ice.',
     goal: 'The cold pole of the climate: cold ground with little to harvest',
     treeDensity: 0, surfaceMaterial: 'Snow', surfaceTint: '#dfe8ea', soilTint: '#7d7a6e', topsoilDepth: 1.5,
-    temperature: { min: 0, max: 0.2 }, moisture: ALL, altitude: LAND,
+    temperature: { min: 0, max: 0.2 }, moisture: ALL, altitude: { min: LAND.min, max: ALPINE_FLOOR },
     season: { swing: 14 }, avgTemperature: -12, avgRainfall: 250, soilFertility: 0.05, surfaceVeinChance: 0.2,
     rules: ['No trees grow on the tundra', 'Ferrite veins outcrop at weight 0.3'],
   }),
 
   Alpine: earthBiome({ key: 'Alpine',
-    description: 'Snow-capped peaks above the tree line, at any latitude.',
+    description: 'Snow-capped peaks above the tree line, which falls toward the poles.',
     goal: 'Make mountains a biome of their own: cold, bare and high',
     treeDensity: 0, surfaceMaterial: 'Snow', surfaceTint: '#f2f6f7', soilTint: '#8c8c93', topsoilDepth: 1,
-    temperature: ALL, moisture: ALL, altitude: { min: 250, max: 100000 },
+    temperature: { min: 0, max: TREE_LINE_TEMPERATURE }, moisture: ALL, altitude: { min: ALPINE_FLOOR, max: 100000 },
     season: { swing: 14 }, avgTemperature: -5, avgRainfall: 900, soilFertility: 0, surfaceVeinChance: 0.4,
     rules: ['No trees grow above the tree line', 'Ferrite and Aethermite veins outcrop at weight 0.5 on bare peaks'],
   }),

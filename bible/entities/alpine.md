@@ -3,7 +3,7 @@
 
 **Tags:** `biome`
 
-Snow-capped peaks above the tree line, at any latitude.
+Snow-capped peaks above the tree line, which falls toward the poles.
 
 > **Goal:** Make mountains a biome of their own: cold, bare and high
 
