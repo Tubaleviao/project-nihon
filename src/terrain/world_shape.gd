@@ -24,7 +24,13 @@ const SPLINE_DEFAULT: Array = [[0.0, -64.0], [0.35, -52.0], [0.55, -24.0], [0.64
 const CONTINENT_CELLS := [16, 44, 128]
 const CONTINENT_WEIGHTS := [0.55, 0.3, 0.15]
 const EROSION_CELLS := 64
-const RIDGE_CELLS := 320
+## Phase 188: 1,600 cells (25 km at 40,000 km), with a second octave at 8.3 km. At 320 cells one ridge
+## was ~125 km wide, so inland it was a plateau hundreds of kilometres across; now ranges are thin lines
+## of peaks with valleys between them.
+const RIDGE_CELLS := 1600
+## Exponent on the ridge profile. The two-octave noise clusters near 0.5, so the old square kept most
+## rugged inland ground near full ridge height; a high power keeps only the crest lines.
+const RIDGE_SHARPNESS := 10.0
 const CONTRAST := 1.9 ## stretches the fbm (which clusters near 0.5) toward the extremes
 
 ## Phase 53 retired the 20 m flattened disc in `TerrainSlice`; this large-scale plain stays, so the
@@ -33,9 +39,11 @@ const CONTRAST := 1.9 ## stretches the fbm (which clusters near 0.5) toward the 
 ## (`spawn_plain_height`) within SPAWN_PLAIN_M of the spawn and eases back to the natural shape by SPAWN_EASE_M,
 ## so the player always starts on dry, flat ground. Worldgen 9: the plain sits at the surrounding land's mean
 ## level (never below SPAWN_HEIGHT), not always at SPAWN_HEIGHT, so on a highland it is a level plain instead
-## of a pit hundreds of metres deep.
+## of a pit hundreds of metres deep. Phase 188: the plain is capped at SPAWN_PLAIN_MAX, below the lowest
+## ground Alpine can claim (its fabric altitude floor), so a first-boot spawn is never on snow.
 const SPAWN_CENTER := Vector2(16.0, 16.0)
 const SPAWN_HEIGHT := 2.0   ## the lowest the spawn plain lies (dry land just above the default sea)
+const SPAWN_PLAIN_MAX := 150.0 ## the highest the spawn plain lies (below the Alpine floor)
 const SPAWN_PLAIN_M := 1500.0
 const SPAWN_EASE_M := 4000.0
 
@@ -140,8 +148,7 @@ static func erosion(seed_v: int, x: float, z: float, w: float) -> float:
 ## Ridge value in [0, 1]: peaks on thin lines where the underlying noise crosses 0.5.
 static func ridges(seed_v: int, x: float, z: float, w: float) -> float:
 	var n := _noise(seed_v, x, z, w, RIDGE_CELLS, 41) * 0.7 + _noise(seed_v, x, z, w, RIDGE_CELLS * 3, 42) * 0.3
-	var r := 1.0 - absf(n * 2.0 - 1.0)
-	return r * r
+	return pow(1.0 - absf(n * 2.0 - 1.0), RIDGE_SHARPNESS)
 
 ## Piecewise-linear spline lookup: continentalness -> base height.
 static func spline_height(c: float) -> float:
@@ -196,7 +203,7 @@ static func reset_plain_cache() -> void:
 	_plain_mutex.unlock()
 
 ## The spawn plain's height: the mean natural height on the circle where the plain's ease ends, never below
-## SPAWN_HEIGHT. So the ease climbs to some of the surrounding land and down to the rest, rather than all of
+## SPAWN_HEIGHT and never above SPAWN_PLAIN_MAX. So the ease climbs to some of the surrounding land and down to the rest, rather than all of
 ## it rising from a fixed 2 m. Ground that is low or sea around the spawn gives SPAWN_HEIGHT exactly, as
 ## before worldgen 9.
 static func spawn_plain_height(seed_v: int, w: float) -> float:
@@ -219,7 +226,7 @@ static func _spawn_plain_uncached(seed_v: int, w: float) -> float:
 	for i in SPAWN_RIM_SAMPLES:
 		var p := SPAWN_CENTER + Vector2.from_angle(TAU * float(i) / float(SPAWN_RIM_SAMPLES)) * SPAWN_EASE_M
 		sum += natural_height(seed_v, p.x, p.y, w)
-	return clampf(maxf(sum / float(SPAWN_RIM_SAMPLES), SPAWN_HEIGHT), _min_h, _max_h)
+	return clampf(clampf(sum / float(SPAWN_RIM_SAMPLES), SPAWN_HEIGHT, SPAWN_PLAIN_MAX), _min_h, _max_h)
 
 ## Height above sea level (negative in the ocean).
 static func altitude(seed_v: int, x: float, z: float, w: float) -> float:

@@ -61,6 +61,8 @@ func register() -> void:
 	_run_test("worldgen: fingerprint mismatch wiring",        _test_worldgen_fingerprint_game_root)
 	_run_test("worldgen: golden generator values",            _test_worldgen_golden)
 	_run_test("worldgen: the spawn plain is level with a highland", _test_spawn_plain_no_pit)
+	_run_test("worldgen: little Alpine around spawn, plain below the floor", _test_spawn_little_alpine)
+	_run_test("worldgen: mountain ranges near spawn, with valleys", _test_mountain_ranges_near_spawn)
 	_run_test("worldgen: fingerprint test restores statics",  _test_worldgen_fingerprint_restores)
 	_run_test("worldgen: fingerprint notice reaches the UI",  _test_worldgen_fingerprint_notice)
 	_run_test("biomes: adjacency table",                      _test_adjacency_table)
@@ -251,7 +253,8 @@ func _test_world_shape_wraps_in_range() -> void:
 	assert_eq(WorldShape.height(9, 6.0e6, 1.0e6, w), WorldShape.height(9, 6.0e6, 1.0e6, w), "and the shape is pure in (seed, position)")
 	assert_true(WorldShape.height(9, 6.0e6, 1.0e6, w) != WorldShape.height(10, 6.0e6, 1.0e6, w) or WorldShape.height(9, 7.1e6, -3.0e6, w) != WorldShape.height(10, 7.1e6, -3.0e6, w), "a different seed shapes different continents")
 
-## At latitude 85 degrees the land biome is the polar one (Tundra), and a 450 m peak at the equator is Alpine.
+## At latitude 85 degrees low land is the polar biome (Tundra). Phase 188: Alpine is chosen by temperature
+## above its altitude floor, so a 450 m peak at 70 degrees is Alpine and warm high ground is not.
 func _test_climate_poles_and_peaks() -> void:
 	var keys: Array = TerrainSlice.BIOME_KEYS
 	var B: Dictionary = GameData.BIOMES
@@ -259,11 +262,13 @@ func _test_climate_poles_and_peaks() -> void:
 		for cx in [-300, 0, 77, 4000]:
 			var pole := ClimateField.biome_for_chunk(seed_v, Vector2i(cx, 0), keys, 85.0, 20.0)
 			assert_eq(pole, "Tundra", "land at 85 degrees is polar at seed %d chunk %d" % [seed_v, cx])
-			var peak := ClimateField.biome_for_chunk(seed_v, Vector2i(cx, 0), keys, 0.0, 450.0)
-			assert_eq(peak, "Alpine", "a 450 m peak at the equator is Alpine at seed %d chunk %d" % [seed_v, cx])
+			var peak := ClimateField.biome_for_chunk(seed_v, Vector2i(cx, 0), keys, 70.0, 450.0)
+			assert_eq(peak, "Alpine", "a 450 m peak at 70 degrees is Alpine at seed %d chunk %d" % [seed_v, cx])
 	assert_true(ClimateField.temperature_at(1, Vector2(5, 5), 85.0, 20.0) < 0.2, "85 degrees is cold")
 	assert_true(ClimateField.temperature_at(1, Vector2(5, 5), 0.0, 450.0) < ClimateField.temperature_at(1, Vector2(5, 5), 0.0, 0.0), "height cools the equator")
-	assert_eq(_climate_pick(0.5, 0.5, keys, B, 450.0, 1.0), "Alpine", "pure envelope pick: high ground is Alpine")
+	assert_eq(_climate_pick(0.05, 0.5, keys, B, 450.0, 1.0), "Alpine", "pure envelope pick: cold high ground is Alpine")
+	assert_true(_climate_pick(0.5, 0.7, keys, B, 450.0, 1.0) != "Alpine", "warm high ground is not Alpine")
+	assert_eq(_climate_pick(0.05, 0.5, keys, B, 100.0, 1.0), "Tundra", "cold ground below the Alpine floor is Tundra")
 	assert_eq(_climate_pick(0.5, 0.5, keys, B, -30.0, 1.0), "Ocean", "below sea level is Ocean")
 	assert_eq(_climate_pick(0.5, 0.5, keys, B, 0.5, 1.0), "Beach", "the first metre of shore is Beach")
 	assert_eq(_climate_pick(0.85, 0.8, keys, B, 10.0, 1.0) in ["Beach", "Ocean"], false, "hot wet ground 10 m up is land, not shore")
@@ -1643,14 +1648,15 @@ func _test_worldgen_fingerprint_game_root() -> void:
 	GameBus.worldgen_fingerprint_mismatch.disconnect(cb)
 	gr.free()
 
-## Worldgen 9: on a highland seed the spawn plain lies at the land's level, not in a pit at 2 m. Seed
-## 2045165241 is a playtest world whose old plain sat ~400 m below the land 3 km out. A low seed keeps 2 m.
+## Worldgen 9: on a highland seed the spawn plain lies at the land's level, not in a pit at 2 m. Seed 31's
+## rim averages ~114 m. Phase 188: the plain is capped at SPAWN_PLAIN_MAX, below the Alpine floor, so seed
+## 2045165241 (a playtest world whose rim averages over 150 m) lies at the cap. A low seed keeps 2 m.
 func _test_spawn_plain_no_pit() -> void:
 	var w: float = float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
 	var c := WorldShape.SPAWN_CENTER
-	var high := 2045165241
+	var high := 31
 	var plain := WorldShape.spawn_plain_height(high, w)
-	assert_true(plain > 100.0, "the highland's plain is high ground (got %.1f)" % plain)
+	assert_true(plain > 100.0 and plain < WorldShape.SPAWN_PLAIN_MAX, "the highland's plain is high ground under the cap (got %.1f)" % plain)
 	assert_true(absf(WorldShape.height(high, c.x, c.y, w) - plain) < 1e-6, "the spawn lies on the plain")
 	assert_true(absf(WorldShape.height(high, c.x + 1000.0, c.y, w) - plain) < 1e-6, "and so does land 1 km out")
 	# The land the ease reaches lies both above and below the plain: no rim stands over it all round.
@@ -1663,6 +1669,7 @@ func _test_spawn_plain_no_pit() -> void:
 		else:
 			below += 1
 	assert_true(above > 0 and below > 0, "the plain sits inside its rim's range (%d above, %d below)" % [above, below])
+	assert_eq(WorldShape.spawn_plain_height(2045165241, w), WorldShape.SPAWN_PLAIN_MAX, "a higher rim meets the cap")
 	assert_eq(WorldShape.spawn_plain_height(777, w), WorldShape.SPAWN_HEIGHT, "a low seed keeps the 2 m plain")
 
 ## Phase 106 — golden generator values. A Godot upgrade or an unversioned edit that moves any of
@@ -1675,12 +1682,12 @@ func _test_worldgen_golden() -> void:
 		var got := TerrainSlice.detail_of(n, 37.0 * i + 5.5, -91.0 * i + 3.25)
 		assert_true(absf(got - float(detail[i])) < 1e-6, "detail noise point %d matches the golden value (got %.9f)" % [i, got])
 	var w: float = float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
-	var shape: Array = [2.0, -57.776415828, 105.545489436, -53.650412350, -34.981083839, -53.885990050, -55.059654802, -52.487651444]
+	var shape: Array = [2.0, -57.776415828, 28.062052369, -53.650412350, -34.981083839, -53.885990050, -55.059654802, -52.487651444]
 	for i in 8:
 		var got := WorldShape.height(777 + i, 1234.5 * i * 1000.0, -5000.0 * i + 300.0, w)
 		assert_true(absf(got - float(shape[i])) < 1e-8, "shape height %d matches the golden value (got %.9f)" % [i, got])
 	var biomes: Array = ["TemperateGrassland", "Ocean", "TemperateForest", "Ocean", "Ocean", "Ocean", "Ocean", "Desert",
-		"Alpine", "Ocean", "Ocean", "Ocean", "Ocean", "Ocean", "TemperateForest", "Ocean"]
+		"TemperateForest", "Ocean", "Ocean", "Ocean", "Ocean", "Ocean", "TemperateForest", "Ocean"]
 	for i in 16:
 		var c := Vector2i((i * 65537) % 600000 - 300000, (i * 104729) % 300000 - 150000)
 		assert_eq(TerrainSlice.biome_for_chunk(c, 100 + i), biomes[i], "biome of golden chunk %d" % i)
@@ -2860,3 +2867,59 @@ func _test_ore_build_payload_carries_field() -> void:
 # ---------------------------------------------------------------------------
 # Assertion helpers
 # ---------------------------------------------------------------------------
+
+
+# ---- Phase 188 — mountain ranges, not plateaus ----
+
+## Eight fixed seeds whose spawn is on a continent with mountains in reach; 42, 1234 and 2045165241 were 100%
+## Alpine around spawn at worldgen 9 (spawn plains of 297, 512 and 380 m).
+const RANGE_SEEDS := [42, 1234, 2045165241, 9, 26, 31, 57, 132]
+
+static func _alpine_floor() -> float:
+	return float((GameData.BIOMES["Alpine"].get("altitude") as Dictionary)["min"])
+
+## Over a 16 km square around spawn, Alpine is under 15% of the land on every seed, and the spawn plain
+## (plus the detail noise the biome pick adds) lies below the Alpine floor.
+func _test_spawn_little_alpine() -> void:
+	var w: float = float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
+	var floor_m := _alpine_floor()
+	assert_true(WorldShape.SPAWN_PLAIN_MAX + TerrainSlice.HEIGHT_SCALE < floor_m, "the plain's cap is below the Alpine floor (%.0f m)" % floor_m)
+	@warning_ignore("integer_division")
+	var half := int(8000.0 / TerrainSlice.CHUNK_METERS)
+	for seed_v in RANGE_SEEDS:
+		var plain := WorldShape.spawn_plain_height(seed_v, w)
+		assert_true(plain + TerrainSlice.HEIGHT_SCALE < floor_m, "seed %d: spawn plain %.1f m is below the Alpine floor" % [seed_v, plain])
+		assert_true(TerrainSlice.generated_biome_for_chunk(Vector2i(0, 0), seed_v) != "Alpine", "seed %d: the spawn chunk is not Alpine" % seed_v)
+		var land := 0
+		var alpine := 0
+		for cz in range(-half, half + 1, 8):
+			for cx in range(-half, half + 1, 8):
+				var b := TerrainSlice.generated_biome_for_chunk(Vector2i(cx, cz), seed_v)
+				if b == "Ocean" or b == "Beach":
+					continue
+				land += 1
+				if b == "Alpine":
+					alpine += 1
+		assert_true(land > 0 and float(alpine) / float(land) < 0.15, "seed %d: Alpine is %d of %d land samples" % [seed_v, alpine, land])
+
+## Mountains still exist: on every seed some land within 100 km of spawn is above 250 m. And they are
+## ranges, not a plateau: within 8 km of the highest sample the ground falls at least 150 m somewhere.
+func _test_mountain_ranges_near_spawn() -> void:
+	var w: float = float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
+	var c := WorldShape.SPAWN_CENTER
+	for seed_v in RANGE_SEEDS:
+		var peak := -INF
+		var at := c
+		for iz in range(-25, 26):
+			for ix in range(-25, 26):
+				var p := c + Vector2(ix, iz) * 4000.0
+				var h := WorldShape.height(seed_v, p.x, p.y, w)
+				if h > peak:
+					peak = h
+					at = p
+		assert_true(peak > 250.0, "seed %d: land within 100 km of spawn rises above 250 m (%.0f m)" % [seed_v, peak])
+		var low := INF
+		for a in 16:
+			var q := at + Vector2.from_angle(TAU * float(a) / 16.0) * 8000.0
+			low = minf(low, WorldShape.height(seed_v, q.x, q.y, w))
+		assert_true(low < peak - 150.0, "seed %d: the ground falls from the %.0f m peak to %.0f m within 8 km" % [seed_v, peak, low])

@@ -35,7 +35,10 @@ const HEIGHT_SCALE := 5.0    # world units peak-to-valley of the small-scale DET
 ## 8 = the pole's snow field is flat: its drifts ran along X as ridges whose voxel steps drew as lines.
 ## 9 = the spawn plain lies at the mean height of the land around it (never below 2 m), not always at 2 m:
 ## on a highland seed the old plain was a pit up to ~500 m deep that read as a bowl under the horizon.
-const WORLDGEN_VERSION := 9
+## 10 = Phase 188 mountain ranges, not plateaus: ridges are 25 km cells (were 125 km) with a sharper crest
+## profile, Alpine is chosen by temperature above a 200 m floor (it was any ground above 250 m), the land
+## biomes reach 1,000 m, and the spawn plain is capped at 150 m, below the Alpine floor.
+const WORLDGEN_VERSION := 10
 
 ## Phase 106 — a hash of every fabric parameter world-gen reads that `WORLDGEN_VERSION` cannot see:
 ## the `WorldSystem` shape fields (`sea`, `min/max height`, `oceanShare`, `ridgeAmplitude`,

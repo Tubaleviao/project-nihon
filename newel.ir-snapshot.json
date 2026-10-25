@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:527a5d408340fbc99b0b3d80d4c2714849f33192468352c0524f4fd73208c3b7",
+  "schemaHash": "sha256:d32f2b6df62fb5aa8f9a73ffad4964e225cb198dc7ab4a0692cccb2485bc4879",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -3307,7 +3307,7 @@
             "pii": false,
             "defaultValue": {
               "min": 1.5,
-              "max": 250
+              "max": 1000
             }
           },
           "rarity": {
@@ -3556,7 +3556,7 @@
             "pii": false,
             "defaultValue": {
               "min": 1.5,
-              "max": 250
+              "max": 1000
             }
           },
           "rarity": {
@@ -3805,7 +3805,7 @@
             "pii": false,
             "defaultValue": {
               "min": 1.5,
-              "max": 250
+              "max": 1000
             }
           },
           "rarity": {
@@ -4070,7 +4070,7 @@
             "pii": false,
             "defaultValue": {
               "min": 1.5,
-              "max": 250
+              "max": 1000
             }
           },
           "rarity": {
@@ -4330,7 +4330,7 @@
             "pii": false,
             "defaultValue": {
               "min": 1.5,
-              "max": 250
+              "max": 1000
             }
           },
           "rarity": {
@@ -5075,7 +5075,7 @@
             "pii": false,
             "defaultValue": {
               "min": 1.5,
-              "max": 250
+              "max": 1000
             }
           },
           "rarity": {
@@ -5316,7 +5316,7 @@
             "pii": false,
             "defaultValue": {
               "min": 1.5,
-              "max": 250
+              "max": 200
             }
           },
           "rarity": {
@@ -5383,7 +5383,7 @@
         "tags": [
           "biome"
         ],
-        "description": "Snow-capped peaks above the tree line, at any latitude.",
+        "description": "Snow-capped peaks above the tree line, which falls toward the poles.",
         "goal": "Make mountains a biome of their own: cold, bare and high",
         "fields": {
           "id": {
@@ -5534,7 +5534,7 @@
             "pii": false,
             "defaultValue": {
               "min": 0,
-              "max": 1
+              "max": 0.15
             }
           },
           "moisture": {
@@ -5557,7 +5557,7 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
-              "min": 250,
+              "min": 200,
               "max": 100000
             }
           },
@@ -5797,7 +5797,7 @@
             "pii": false,
             "defaultValue": {
               "min": 1.5,
-              "max": 250
+              "max": 1000
             }
           },
           "rarity": {
@@ -6036,7 +6036,7 @@
             "pii": false,
             "defaultValue": {
               "min": 1.5,
-              "max": 250
+              "max": 1000
             }
           },
           "rarity": {

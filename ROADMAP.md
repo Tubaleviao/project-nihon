@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–178, 182 and 187 are done. Their specs and acceptance criteria are archived in
+Phases 1–178, 182, 187 and 188 are done. Their specs and acceptance criteria are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Arc: make it look and feel like an RPG (Phases 173–181, 183)
@@ -71,7 +71,7 @@ render mesh, at 27 chunks/s.
 | Phase | Title | Status | Spec |
 |---|---|---|---|
 | 187 | Fast flight I: high-priority builds, a heading-first queue and a flight step | Done | [phases-187.md](docs/roadmap-history/phases-187.md) |
-| 188 | Mountain ranges, not plateaus: narrower ridges, a temperature tree line and a low spawn plain | Planned | below |
+| 188 | Mountain ranges, not plateaus: narrower ridges, a temperature tree line and a low spawn plain | Done | [phases-188.md](docs/roadmap-history/phases-188.md) |
 | 189 | Fast flight II: collision and contents only near the body | Planned | below |
 | 190 | Fast flight III: coarse chunks beyond the near ring | Planned | below |
 | 191 | Fast flight IV: a recent-chunk cache, no holes, and a /speed cap of 30 on a slow machine | Planned | below |
@@ -90,39 +90,6 @@ The scattered UI instructions are removed, so the tutorial is the one place that
 | 184 | First steps in the fabric: the tutorial steps, the bed and a shelter rule | Planned | below |
 | 185 | The bed is the spawn point: host-owned, persisted, one per player | Planned | below |
 | 186 | The first-steps tutorial at runtime: one-time cards, a toggle, and no other in-UI tutorial | Planned | below |
-
----
-
-## Phase 188 — Mountain ranges, not plateaus: narrower ridges, a temperature tree line and a low spawn plain
-
-**Goal:** a regenerated world is snow almost everywhere on some seeds, far from the poles and off any
-peak. `WorldShape` has `RIDGE_CELLS = 320` cells around a 40,000 km planet, so one ridge is about
-125 km wide. Inland, that is a plateau hundreds of kilometres across at 300–500 m. `Alpine` is picked at
-any temperature above 250 m, so the whole plateau is snow. The spawn plain is the mean height of its
-4 km rim, so it sits on the plateau too. Over a 16 km square around spawn, seeds 42 and 1234 are 100%
-Alpine (spawn plains of 297 m and 512 m), and six other seeds are 0%. `/regen world` keeps the seed and
-reruns the same generator, so it gives the same snow.
-
-**Newel dependency:** NO (the biome envelopes are fabric data; the change is to their values).
-
-**Depends on:** Phase 51 (climate envelopes), worldgen 9 (spawn plain).
-
-**Deliverables:**
-- Ridges become ranges: ridge wavelength in the tens of kilometres, not 125 km. Retune
-  `RIDGE_CELLS` (and the second octave), so peaks are thin lines with valleys between them.
-- `Alpine` is chosen by temperature (the altitude lapse already cools high ground), not by a fixed
-  250 m floor at every latitude. Change the envelope in `fabric/world/biomes/earth.js` and regenerate.
-- The spawn plain is capped below the tree line, so a new player never spawns on snow outside the polar
-  cap.
-- `TerrainSlice.WORLDGEN_VERSION` bump, a history line, and new `_test_worldgen_golden` values.
-
-**Acceptance criteria:**
-- [ ] Suite: over a 16 km square around spawn, every one of 8 fixed seeds is under 15% Alpine on land,
-  and every spawn plain is below the Alpine floor.
-- [ ] Suite: mountains still exist: on each seed, some land within 100 km of spawn is above 250 m.
-- [ ] Suite: worldgen golden values updated, and the version history names the change.
-- [ ] Playtest bot green on the pinned seed (re-check every step, since the pin's world changes).
-- [ ] `npm run validate` and `npm run check-drift` clean.
 
 ---
 

@@ -30,7 +30,8 @@ const double NOISE_OFFSET_RANGE = 4096.0;
 const int CONTINENT_CELLS[3] = { 16, 44, 128 };
 const double CONTINENT_WEIGHTS[3] = { 0.55, 0.3, 0.15 };
 const int EROSION_CELLS = 64;
-const int RIDGE_CELLS = 320;
+const int RIDGE_CELLS = 1600;   // worldgen 10 (Phase 188): 25 km ranges, were 125 km
+const double RIDGE_SHARPNESS = 10.0;
 const double CONTRAST = 1.9;
 const double SPAWN_CENTER_X = 16.0;
 const double SPAWN_CENTER_Z = 16.0;
@@ -130,8 +131,7 @@ double continentalness(int64_t seed_v, double x, double z, double w) {
 
 double ridges(int64_t seed_v, double x, double z, double w) {
 	double n = shape_noise(seed_v, x, z, w, RIDGE_CELLS, 41) * 0.7 + shape_noise(seed_v, x, z, w, RIDGE_CELLS * 3, 42) * 0.3;
-	double r = 1.0 - std::fabs(n * 2.0 - 1.0);
-	return r * r;
+	return std::pow(1.0 - std::fabs(n * 2.0 - 1.0), RIDGE_SHARPNESS);
 }
 
 double spline_height(const Cfg &cfg, double c) {
@@ -372,7 +372,7 @@ void NativeChunkBuilder::_bind_methods() {
 }
 
 int NativeChunkBuilder::version() const {
-	return 5;   // 5 = heightmap_for reads the spawn plain from `cfg.spawn_plain` (worldgen 9)
+	return 6;   // 6 = worldgen 10 ridges (Phase 188); 5 = heightmap_for reads the spawn plain from `cfg.spawn_plain` (worldgen 9)
 }
 
 PackedStringArray NativeChunkBuilder::functions() const {
