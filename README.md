@@ -9,12 +9,12 @@ The entire game design bible — materials, skills, creatures, items, world syst
 ## Gameplay
 
 <p align="center">
-  <img src="docs/media/explore.gif" alt="Walking across voxel hills with the HUD, minimap and hotbar on screen, then opening the world map" width="640">
-  <img src="docs/media/crafting.gif" alt="Chopping a tree, then the inventory, technology and crafting windows: research Basic Carpentry and craft planks at a bench" width="640">
-  <img src="docs/media/combat.gif" alt="Walking up to a group of creatures and fighting them, HP bar and hotbar on screen" width="640">
+  <img src="docs/media/explore-2026-10-25.gif" alt="Walking across voxel hills at noon with the HUD, window dock, minimap and hotbar on screen" width="640">
+  <img src="docs/media/crafting-2026-10-25.gif" alt="Chopping a tree in a forest, then the inventory and technology windows: research Basic Carpentry, set down a bench and craft planks in the crafting window" width="640">
+  <img src="docs/media/combat-2026-10-25.gif" alt="Walking up to a wolf pack and fighting it; a killed wolf leaves a body that needs a knife to harvest" width="640">
 </p>
 
-<sub>Captured from the public build, which uses placeholder art.</sub>
+<sub>Captured from the public build, which uses placeholder art. Earlier captures are kept in <code>docs/media/</code>.</sub>
 
 ---
 
