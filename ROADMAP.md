@@ -96,14 +96,21 @@ attributes with icons and tooltips, and the derived stats they produce.
 
 ---
 
-## Phase 180 — Character creation in the fabric: name, appearance and starting attributes
+## Phase 180 — Character creation in the fabric: name, gender, hair and a chibi art style
 
 **Goal:** a player never creates a character. They spawn with a default appearance and are known by
-a handle. Model the creation choices so the runtime screen in Phase 181 is generated from data.
+a handle. Model a small set of creation choices (name, gender, hair style, hair colour) so the
+runtime screen in Phase 181 is generated from data, and set the character art style it uses.
 
 **Newel dependency:** NO.
 
 **Depends on:** Phase 177.
+
+**Art direction:** characters are cute, chunky chibi figures in the spirit of Ragnarok Online:
+a big head (about a third of the height), large expressive eyes, short limbs, big hands and boots,
+and bold, chunky hair that carries most of the identity. They are our own designs, never copies:
+no Ragnarok hair styles, outfits, palettes, names or proportions traced from it. Reference for the
+mood: a 3D chibi novice in a plain leather outfit, framed alone on a dark, quiet backdrop.
 
 **Deliverables:**
 - `fabric/gameplay/characters/creation.js` (new): a `CharacterCreation` entity with:
@@ -111,33 +118,40 @@ a handle. Model the creation choices so the runtime screen in Phase 181 is gener
     Cyrillic or Greek) plus a single inner space, hyphen or apostrophe, unique per server after
     case folding, accent folding and a confusables skeleton (Unicode TR39), so "Аlice" with a
     Cyrillic А collides with "Alice", and a reserved list;
-  - appearance options drawn from the existing recipe fields (`appearances.js`): skeleton, body,
-    head, eyes, hair, beard, the skin, hair and eye palette ranges, and the proportion bounds (§8);
-  - starting attributes: base 10 each and 12 points to distribute within the creation range
-    (Phase 177). Lowering an attribute below 10 returns one point per step, so the rule is
-    `sum(attr - 10) <= 12` with every value in 5–18. The fabric check and the Phase 181 host
-    validator both read this one rule;
-  - a starting kit per server rule (none by default; the sandbox gives no class kits).
-- Public placeholders for at least three heads, five hair styles and three beards, at the same
-  keys the private repo will fill (placeholder rule; `gen_placeholder_glb.py`).
-- `tools/check_creation.js`: every option refers to an existing part, palette index or bound, and
-  the default recipe is a valid creation.
+  - gender: two options (masculine, feminine). Each maps to a fixed body preset in
+    `appearances.js` (body, head, eyes, skin colour and chibi proportions), so the player does not
+    pick those parts;
+  - hair: a list of hair styles per gender and a curated hair colour list (palette indices);
+  - a default creation (one gender, hair style and colour) and a starting kit per server rule
+    (a plain novice outfit by default; no class kits, the sandbox has none).
+  Attributes are not chosen at creation: every character starts at the Phase 177 base values.
+- A `chibi` proportion preset in `appearances.js` (large `headScale`, short limbs) used by both
+  gender presets, within the §8 bounds (widen the bounds if needed and say so in the bible).
+- Public placeholders for both gender bodies, the novice outfit, at least six hair styles per
+  gender and the hair colour list, at the same keys the private repo will fill (placeholder rule;
+  `gen_placeholder_glb.py`). Each hair style also gets a UI icon (the picker grid shows hair, not
+  names), drawn by `tools/gen_ui_icons.py`.
+- `tools/check_creation.js`: every gender preset, hair style and colour refers to an existing
+  part or palette index, each gender has at least one hair style, and the default is a valid
+  creation.
 
 **Acceptance criteria:**
 - [ ] `npm run validate`, `npm run check-drift` and `node tools/check_creation.js` pass.
-- [ ] Suite: every appearance option resolves through `AssetOverlay` in the public build.
+- [ ] Suite: every gender preset and hair option resolves through `AssetOverlay` in the public
+  build, and every hair style has an icon.
 - [ ] Suite: the name rule accepts and rejects a fixture list, including accents, emoji, a
   reserved word, a case-folded duplicate and a mixed-script or confusable duplicate.
-- [ ] Suite: the point rule accepts a fixture that lowers one attribute to 5 and spends the freed
-  points, and refuses one that spends 13.
+- [ ] Suite: a creation with a hair style from the other gender, an unknown hair style or a hair
+  colour outside the list is refused.
+- [ ] Suite: the default rig's head-to-height ratio is within the chibi preset range.
 
 ---
 
 ## Phase 181 — Character creation at runtime: a creation screen before the first spawn
 
-**Goal:** a new player creates a character before they enter the world. They pick a name, shape
-the face and body, choose colours, spend the starting points and see the result live. The host
-validates everything and records it.
+**Goal:** a new player creates a character before they enter the world. They pick a name, a
+gender, a hair style and a hair colour and see the result live. The host validates everything and
+records it.
 
 **Newel dependency:** NO.
 
@@ -145,14 +159,15 @@ validates everything and records it.
 
 **Deliverables:**
 - A creation screen shown on first join to a server where the player has no character record,
-  before spawn placement (Phase 53). It has a live rig preview (reusing the Phase 179 viewport),
-  pickers generated from the `CharacterCreation` options, a randomize button, an attribute point
-  spender, and a name field with a live availability check.
-- A host intent `create_character(name, recipe, attributes)`. The host validates the name rule
-  and uniqueness, every option and the point budget, creates the record, then places the spawn.
+  before spawn placement (Phase 53). Layout: the hair style grid (icons) on the left with a hair
+  colour row under it, the live chibi rig in the centre on a dark backdrop (reusing the Phase 179
+  viewport), gender toggles on either side of the rig, and the name field with an "enter the
+  world" button at the bottom right. A randomize button picks a gender, hair and colour.
+- A host intent `create_character(name, gender, hair, hair_color)`. The host validates the name
+  rule and uniqueness and every option, creates the record, then places the spawn.
   It refuses with a keyed reason that the client renders in its locale. Rate-limited.
 - Existing players without a creation record are offered the screen once. Their handle and
-  progress are kept. A player who skips it keeps base attributes, the default appearance and their
+  progress are kept. A player who skips it keeps the default appearance and their
   handle as display name. The host records the skip, and the screen stays reachable from the
   character sheet until they create a character.
 - The display name shows on the character sheet, in chat and settlement lists, and on a nameplate
@@ -162,8 +177,8 @@ validates everything and records it.
 - The playtest bot creates a character as its first step.
 
 **Acceptance criteria:**
-- [ ] Suite: the host accepts a valid creation and refuses each invalid field (name, option,
-  palette index, proportion bound, overspent points) with its own key.
+- [ ] Suite: the host accepts a valid creation and refuses each invalid field (name, gender,
+  hair style, hair colour) with its own key.
 - [ ] Harness: `create_character` over the socket. A duplicate name from a second client is
   refused, and the second client sees the first one's appearance and nameplate.
 - [ ] Suite: a pre-181 save boots, offers creation once and keeps inventory and skills. A skip is
