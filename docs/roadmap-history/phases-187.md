@@ -15,11 +15,13 @@ seconds at a time. Two scheduling faults were behind it, both cheap to fix.
 **Depends on:** Phase 141 (worker builds, the fold catch-up), Phase 169 (native builder), Phase 182 (`/speed`, `/fly`).
 
 **Deliverables:**
-- The local player's window (and the Phase 141 catch-up) is dispatched to the `WorkerThreadPool` at
-  high priority (`ChunkManager.build_high_priority`). A low-priority task may use only
-  `low_priority_thread_ratio` of the pool (0.3 by default): 11 builds sat in flight while three ran.
-  `build_cap()` (all cores but one) still bounds them. A peer's window on a host stays low priority:
-  with every build high, the crowd stress run failed its host tick budget at 16 bots in every pattern.
+- While the local player crosses chunks fast (a crossing within 2 s of the last, `is_moving_fast`), its
+  window is dispatched to the `WorkerThreadPool` at high priority (`ChunkManager.build_high_priority`),
+  as the Phase 141 catch-up always is. A low-priority task may use only `low_priority_thread_ratio` of
+  the pool (0.3 by default): 11 builds sat in flight while three ran. `build_cap()` still bounds them.
+  Everything else stays low: with every build high, the crowd stress run (host, watcher and bots on one
+  4-core runner) missed its host tick budget in every pattern; with every build low, the playtest
+  flight had ground under the body in about 60% of samples.
 - Finished builds in the local player's 3×3 ring attach first (`_apply_order`), the rest in dispatch
   order (so a fold's catch-up cannot starve). A peer-only crossing keeps the old append-sorted queue:
   re-ranking a crowd's queue on each peer crossing took the stress pole pattern's host tick p95 from
@@ -36,7 +38,7 @@ seconds at a time. Two scheduling faults were behind it, both cheap to fix.
   a 1.5 s warm-up. It records `flight` in `report.json` and returns the body to where it started.
 
 **Acceptance criteria:**
-- [x] Suite: the local window builds high and a peer window low; finished builds attach nearest first; the queue key orders under, ahead, beside, behind,
+- [x] Suite: the local window builds high while moving fast, a standing one and a peer window low; finished builds attach nearest first; the queue key orders under, ahead, beside, behind,
   and never lets the heading outrank a nearer ring; a crossing re-sorts the whole queue
   (`terrain_stream_tests`); the flight verdict (`runner_tests`).
 - [x] Playtest bot (CI, native builder): `flight` keeps the ground under the body built in ≥ 90% of

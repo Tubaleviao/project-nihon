@@ -12,7 +12,7 @@ func register() -> void:
 	_run_test("stream: a frame's pump stops at its time budget and bounds its applies", _test_stream_pump_budget)
 	_run_test("stream: the steady build cap defaults to the core count minus one", _test_stream_builds_in_flight_default)
 	_run_test("stream: a restream bursts the build cap until the window is rebuilt", _test_stream_fold_catchup)
-	_run_test("stream: the local window builds at high priority, a peer window at low", _test_stream_builds_high_priority)
+	_run_test("stream: the local window builds high while moving fast, a peer window low", _test_stream_builds_high_priority)
 	_run_test("stream: finished builds attach nearest the body first", _test_stream_apply_nearest_first)
 	_run_test("stream: the queue key puts the body's chunk first and favours the heading", _test_stream_queue_priority)
 	_run_test("stream: a crossing re-sorts the whole queue around the new centre", _test_stream_queue_resorted_on_move)
@@ -340,14 +340,27 @@ func _test_fold_dead_records() -> void:
 ## high priority, while a peer's window on a host stays low so the host tick keeps its cores.
 func _test_stream_builds_high_priority() -> void:
 	var cm := ChunkManager.new()
+	var clock := [0]
+	cm.pump_clock_usec = func(): return clock[0] * 1000
 	cm.view_distance = 2
 	cm.prefetch_distance = 0
-	assert_true(cm.build_high_priority(Vector2i(50, 50)), "before the first refresh every build is high")
+	assert_false(cm.build_high_priority(Vector2i(0, 0)), "before the first refresh a build is low")
 	cm._last_centers = [Vector2i(0, 0), Vector2i(40, 0)]
-	assert_true(cm.build_high_priority(Vector2i(0, 0)), "the chunk under the local player is high")
-	assert_true(cm.build_high_priority(Vector2i(2, -2)), "the edge of the local window is high")
+	assert_false(cm.build_high_priority(Vector2i(0, 0)), "standing still: low")
+	clock[0] = 1000
+	cm.note_local_crossing()
+	clock[0] = 8000
+	cm.note_local_crossing()   # a walk: one crossing in 7 s
+	assert_false(cm.is_moving_fast(), "a walk is not fast")
+	clock[0] = 8400
+	cm.note_local_crossing()   # 90 m/s: one crossing in 0.36 s
+	assert_true(cm.is_moving_fast(), "a crossing within 2 s of the last is fast")
+	assert_true(cm.build_high_priority(Vector2i(0, 0)), "fast: the chunk under the local player is high")
+	assert_true(cm.build_high_priority(Vector2i(2, -2)), "fast: the edge of the local window is high")
 	assert_false(cm.build_high_priority(Vector2i(3, 0)), "past the local window is low")
 	assert_false(cm.build_high_priority(Vector2i(40, 0)), "a peer's window is low")
+	clock[0] = 8400 + ChunkManager.FAST_HOLD_MSEC
+	assert_false(cm.build_high_priority(Vector2i(0, 0)), "the hold runs out without another crossing")
 	cm._catchup = true
 	assert_true(cm.build_high_priority(Vector2i(40, 0)), "a fold's catch-up is high everywhere")
 	cm.free()

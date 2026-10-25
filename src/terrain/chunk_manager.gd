@@ -254,15 +254,37 @@ func is_catching_up() -> bool:
 func build_cap() -> int:
 	return maxi(max_builds_in_flight, catchup_builds_in_flight) if _catchup else max_builds_in_flight
 
-## Phase 187 — whether `chunk`'s build runs at high priority: during a fold's catch-up, and for the local
-## player's own window (the first of `_last_centers`). A peer's window on a host stays low priority: with
-## every build high, the crowd stress run's 16 peers took the cores the host tick needed (tick p95 22–33 ms
-## against 12–15 ms). See `_dispatch_worker_noise_build`.
+## Phase 187 — high priority for a fold's catch-up and for the local window while moving fast; the rest
+## low. All high, the crowd stress run (host, watcher, bots on one 4-core runner) missed its host tick
+## budget in every pattern; all low, playtest flight had ground under the body in about 60% of samples.
 func build_high_priority(chunk: Vector2i) -> bool:
-	if _catchup or _last_centers.is_empty():
+	if _catchup:
 		return true
+	if _last_centers.is_empty() or not is_moving_fast():
+		return false
 	var c: Vector2i = _last_centers[0]
 	return maxi(absi(chunk.x - c.x), absi(chunk.y - c.y)) <= stream_radius()
+
+## Phase 187 — a local crossing within FAST_CROSSING_MSEC of the previous one marks the player as fast
+## for FAST_HOLD_MSEC (one chunk in 2 s is 16 m/s: a sprint or a mount, not a walk).
+const FAST_CROSSING_MSEC := 2000
+const FAST_HOLD_MSEC := 2000
+var _last_local_crossing_msec: int = -1
+var _fast_until_msec: int = -1
+
+## True while the local player is crossing chunks fast (see FAST_CROSSING_MSEC).
+func is_moving_fast() -> bool:
+	return _fast_until_msec >= 0 and _now_msec() < _fast_until_msec
+
+## Note a local crossing at the pump clock's time (called by `refresh` when the local centre moves by a step).
+func note_local_crossing() -> void:
+	var now := _now_msec()
+	if _last_local_crossing_msec >= 0 and now - _last_local_crossing_msec <= FAST_CROSSING_MSEC:
+		_fast_until_msec = now + FAST_HOLD_MSEC
+	_last_local_crossing_msec = now
+
+func _now_msec() -> int:
+	return int(pump_clock_usec.call()) / 1000
 
 ## Phase 42 review pass 3 — seconds between self-heal attempts while the window is not moving
 ## (see DEFAULT_SELF_HEAL_INTERVAL / `_self_heal_failed`). Overridable for tests.
@@ -1181,31 +1203,9 @@ func _apply_finished_builds() -> void:
 		_apply_build_entry(task_id)
 		applied += 1
 
-## Phase 187 — the finished builds in the order they attach: the local player's 3×3 ring first (the
-## chunk under the body before its neighbours), everything else in dispatch order. The attach is the
-## main-thread wall (collision alone is ~9 ms a chunk, so an over-budget frame attaches one); in dispatch
-## order the chunk under a fast player waited behind ring chunks dispatched before it. Only those nine
-## jump the line, so no other build can be starved by a stream of nearer ones (a fold's catch-up).
+## Phase 187 — the order finished builds attach in (see `ChunkPart1.apply_order`).
 func _apply_order(done: Array) -> Array:
-	if done.size() < 2 or _last_centers.is_empty():
-		return done
-	var local: Vector2i = _last_centers[0]
-	var urgent: Array = []
-	var rest: Array = []
-	for i in done.size():
-		var c: Vector2i = _builds[done[i]]["chunk"]
-		var d := maxi(absi(c.x - local.x), absi(c.y - local.y))
-		if d <= 1:
-			urgent.append([d, i, done[i]])
-		else:
-			rest.append(done[i])
-	if urgent.is_empty():
-		return done
-	urgent.sort_custom(func(a, b): return a[0] < b[0] or (a[0] == b[0] and a[1] < b[1]))
-	var out: Array = []
-	for u in urgent:
-		out.append(u[2])
-	return out + rest
+	return _m1.apply_order(done)
 
 ## Apply every in-flight build NOW, blocking on each task. The frame path polls
 ## (`_apply_finished_builds`); this is the blocking variant for a caller that has no

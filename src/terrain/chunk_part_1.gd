@@ -53,6 +53,8 @@ func refresh(unload_now: bool = true) -> void:
 	var local_moved: bool = sl._last_centers.is_empty() or sl._last_centers[0] != centers[0]
 	if not sl._last_centers.is_empty():
 		heading = sl.heading_between(sl._last_centers[0], centers[0], sl.stream_radius())
+		if heading != Vector2.ZERO:
+			sl.note_local_crossing()
 	sl._last_centers = centers
 	# ONE radius for WANTED and DESIRED on purpose (ninth review pass): `wanted` — what a
 	# crossing retains — is the same radius the queue spans, so no chunk that was queued (and
@@ -217,3 +219,29 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 		"revision":  revision,
 		"result":    result,
 	}
+
+## Phase 187 — the finished builds in the order they attach: the local player's 3×3 ring first (the
+## chunk under the body before its neighbours), everything else in dispatch order. The attach is the
+## main-thread wall (collision alone is ~9 ms a chunk, so an over-budget frame attaches one); in dispatch
+## order the chunk under a fast player waited behind ring chunks dispatched before it. Only those nine
+## jump the line, so no other build can be starved by a stream of nearer ones (a fold's catch-up).
+func apply_order(done: Array) -> Array:
+	if done.size() < 2 or sl._last_centers.is_empty():
+		return done
+	var local: Vector2i = sl._last_centers[0]
+	var urgent: Array = []
+	var rest: Array = []
+	for i in done.size():
+		var c: Vector2i = sl._builds[done[i]]["chunk"]
+		var d := maxi(absi(c.x - local.x), absi(c.y - local.y))
+		if d <= 1:
+			urgent.append([d, i, done[i]])
+		else:
+			rest.append(done[i])
+	if urgent.is_empty():
+		return done
+	urgent.sort_custom(func(a, b): return a[0] < b[0] or (a[0] == b[0] and a[1] < b[1]))
+	var out: Array = []
+	for u in urgent:
+		out.append(u[2])
+	return out + rest
