@@ -41,18 +41,20 @@ expect('every skill category has a growth row', SKILL_CATEGORIES.filter((c) => !
 
 // Every attribute and derived stat has a non-empty name (and an attribute a description) in every locale.
 {
-  const lines = require('fs').readFileSync(require('path').join(__dirname, '../locale/ui.csv'), 'utf8').split('\n').filter(Boolean);
-  const cells = (line) => {
-    const out = []; let cur = ''; let q = false;
-    for (let i = 0; i < line.length; i++) {
-      const c = line[i];
-      if (q) { if (c === '"' && line[i + 1] === '"') { cur += '"'; i++ } else if (c === '"') q = false; else cur += c }
-      else if (c === '"') q = true; else if (c === ',') { out.push(cur); cur = '' } else cur += c;
-    }
-    return out.concat([cur]);
-  };
-  const header = cells(lines[0]);
-  const rows = new Map(lines.slice(1).map((l) => { const c = cells(l); return [c[0], c] }));
+  // Parse the whole file: a quoted cell may span lines (ui.csv has several), so records are not lines.
+  const text = require('fs').readFileSync(require('path').join(__dirname, '../locale/ui.csv'), 'utf8');
+  const records = []; let rec = []; let cur = ''; let q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"' && text[i + 1] === '"') { cur += '"'; i++ } else if (c === '"') q = false; else cur += c }
+    else if (c === '"') q = true;
+    else if (c === ',') { rec.push(cur); cur = '' }
+    else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; rec.push(cur); cur = ''; if (rec.some(Boolean)) records.push(rec); rec = [] }
+    else cur += c;
+  }
+  rec.push(cur); if (rec.some(Boolean)) records.push(rec);
+  const header = records[0];
+  const rows = new Map(records.slice(1).map((c) => [c[0], c]));
   const keys = [...attributes.ATTRIBUTES.flatMap((a) => [attributes.nameKey(a), attributes.descKey(a)]),
     ...Object.keys(attributes.DERIVATION).map(attributes.statKey)];
   const missing = [];

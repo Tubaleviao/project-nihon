@@ -157,9 +157,12 @@ function harvestData({ creatures, items, skills, rules = HarvestRules, skinning 
     const f = defaults(e)
     cs[name] = { drops: f.drops, carcassMassKg: f.carcassMassKg, corpseSeconds: f.corpseSeconds, carryRule: f.carryRule }
   }
+  // A missing Strength row leaves the capacity undefined, which harvestProblems reports instead of throwing here.
+  const a = defaults(attributeSystem)
+  const carryRow = a.derivation && a.derivation.carryCapacityKg
   return {
     creatures: cs, tools, skills: Object.keys(skills), skinning: defaults(skinning), rules: defaults(rules),
-    baseCapacityKg: (() => { const a = defaults(attributeSystem); return attributes.derive(a.derivation.carryCapacityKg, a.base) })(),
+    baseCapacityKg: carryRow ? attributes.derive(carryRow, a.base) : undefined,
   }
 }
 

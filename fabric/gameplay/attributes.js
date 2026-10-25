@@ -118,7 +118,18 @@ function attributeProblems(data) {
   const isNum = (v) => typeof v === 'number' && Number.isFinite(v)
   const close = (x, y) => Math.abs(x - y) < 1e-9
 
+  // Shape first: the checks below index into every table, so a missing one is reported, not thrown.
+  const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
   if (!Array.isArray(attributes) || attributes.length === 0) problems.push('attributes must be a non-empty list')
+  if (!isObj(b)) problems.push('bounds must be an object')
+  if (!isObj(derivation)) problems.push('derivation must be an object')
+  else for (const [id, r] of Object.entries(derivation)) if (!isObj(r)) problems.push(`derived stat ${id} must be an object`)
+  if (!isObj(g) || !isObj(g.categories)) problems.push('growth must be an object with a categories object')
+  else for (const [c, w] of Object.entries(g.categories)) if (!isObj(w)) problems.push(`growth row ${c} must be an object`)
+  if (!Array.isArray(categories)) problems.push('categories must be a list')
+  if (!isObj(today)) problems.push('today must be an object')
+  if (problems.length) return problems
+
   if (new Set(attributes).size !== attributes.length) problems.push('attributes must be unique')
   for (const a of attributes) if (!/^[a-z]+$/.test(a)) problems.push(`attribute "${a}" must be lower case letters`)
 

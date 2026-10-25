@@ -46,8 +46,9 @@ func _test_gamedata_tables() -> void:
 		for k in ["attribute", "kind", "base", "perPoint", "perPointBelow", "min", "max"]:
 			assert_true(row.has(k), "%s has %s" % [id, k])
 		assert_true(float(row["min"]) < float(row["max"]), "%s has a clamp" % id)
-		for v in [5, 30]:
-			var raw: float = float(row["base"]) + (float(row["perPointBelow"]) if v < 10 else float(row["perPoint"])) * (v - 10)
+		var b := int(s.get("base"))
+		for v in [int(s.get("creationMin")), int(s.get("hardCap"))]:
+			var raw: float = float(row["base"]) + (float(row["perPointBelow"]) if v < b else float(row["perPoint"])) * (v - b)
 			assert_true(raw >= float(row["min"]) - 0.000001 and raw <= float(row["max"]) + 0.000001, "%s at %d stays inside its clamp" % [id, v])
 	var growth: Dictionary = s.get("growth")
 	assert_true(int(growth.get("xpPerPoint", 0)) > 0, "a point costs XP")
@@ -98,7 +99,7 @@ func _test_base_reproduces_today() -> void:
 			assert_eq(_derive(row, base, base), 1.0, "%s is 1 at base" % id)
 		elif kind == "chance" or kind == "bonus":
 			assert_eq(_derive(row, base, base), 0.0, "%s is 0 at base" % id)
-		assert_true(_derive(row, 30, base) != _derive(row, base, base), "%s changes at the hard cap" % id)
+		assert_true(_derive(row, int(s.get("hardCap")), base) != _derive(row, base, base), "%s changes at the hard cap" % id)
 
 
 func _test_player_defaults() -> void:
