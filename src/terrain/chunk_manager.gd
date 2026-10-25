@@ -1181,22 +1181,31 @@ func _apply_finished_builds() -> void:
 		_apply_build_entry(task_id)
 		applied += 1
 
-## Phase 187 — the finished builds in the order they attach: nearest window centre first, ties in
-## dispatch order. The attach is the main-thread wall (collision alone is ~9 ms a chunk, so an over-budget
-## frame attaches one); in dispatch order the chunk under a fast player waited behind ring chunks
-## dispatched before it.
+## Phase 187 — the finished builds in the order they attach: the local player's 3×3 ring first (the
+## chunk under the body before its neighbours), everything else in dispatch order. The attach is the
+## main-thread wall (collision alone is ~9 ms a chunk, so an over-budget frame attaches one); in dispatch
+## order the chunk under a fast player waited behind ring chunks dispatched before it. Only those nine
+## jump the line, so no other build can be starved by a stream of nearer ones (a fold's catch-up).
 func _apply_order(done: Array) -> Array:
 	if done.size() < 2 or _last_centers.is_empty():
 		return done
-	var ranked: Array = []
+	var local: Vector2i = _last_centers[0]
+	var urgent: Array = []
+	var rest: Array = []
 	for i in done.size():
-		var entry: Dictionary = _builds[done[i]]
-		ranked.append([queue_priority(_last_centers, Vector2.ZERO, entry["chunk"]), i, done[i]])
-	ranked.sort_custom(func(a, b): return a[0] < b[0] or (a[0] == b[0] and a[1] < b[1]))
+		var c: Vector2i = _builds[done[i]]["chunk"]
+		var d := maxi(absi(c.x - local.x), absi(c.y - local.y))
+		if d <= 1:
+			urgent.append([d, i, done[i]])
+		else:
+			rest.append(done[i])
+	if urgent.is_empty():
+		return done
+	urgent.sort_custom(func(a, b): return a[0] < b[0] or (a[0] == b[0] and a[1] < b[1]))
 	var out: Array = []
-	for r in ranked:
-		out.append(r[2])
-	return out
+	for u in urgent:
+		out.append(u[2])
+	return out + rest
 
 ## Apply every in-flight build NOW, blocking on each task. The frame path polls
 ## (`_apply_finished_builds`); this is the blocking variant for a caller that has no

@@ -20,10 +20,13 @@ seconds at a time. Two scheduling faults were behind it, both cheap to fix.
   `low_priority_thread_ratio` of the pool (0.3 by default): 11 builds sat in flight while three ran.
   `build_cap()` (all cores but one) still bounds them. A peer's window on a host stays low priority:
   with every build high, the crowd stress run failed its host tick budget at 16 bots in every pattern.
-- Finished builds attach nearest a window centre first (`_apply_order`), not in dispatch order. The
+- Finished builds in the local player's 3×3 ring attach first (`_apply_order`), the rest in dispatch
+  order (so a fold's catch-up cannot starve). A peer-only crossing keeps the old append-sorted queue:
+  re-ranking a crowd's queue on each peer crossing took the stress pole pattern's host tick p95 from
+  7 ms to 40–53 ms. The
   attach is the main-thread wall (an over-budget frame attaches one), so on a CI runner at about 8 fps
   the chunk under the body waited behind ring chunks dispatched before it (48% coverage on CI).
-- The load queue is re-sorted as a whole on every window move (`ChunkManager.queue_priority`): squared
+- The load queue is re-sorted as a whole when the local player crosses a chunk (`ChunkManager.queue_priority`): squared
   distance from the nearest window centre, less `HEADING_BIAS` (0.5) times the lead along the local
   player's heading (`heading_between`). The chunk under the body comes first, then the ring ahead.
   New chunks used to be appended behind what earlier crossings queued, so the chunk under a fast player

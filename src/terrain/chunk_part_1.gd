@@ -50,6 +50,7 @@ func refresh(unload_now: bool = true) -> void:
 		return
 
 	var heading := Vector2.ZERO
+	var local_moved: bool = sl._last_centers.is_empty() or sl._last_centers[0] != centers[0]
 	if not sl._last_centers.is_empty():
 		heading = sl.heading_between(sl._last_centers[0], centers[0], sl.stream_radius())
 	sl._last_centers = centers
@@ -86,20 +87,26 @@ func refresh(unload_now: bool = true) -> void:
 	# Queue loads nearest-first. Dispatching is what is bounded per frame; the build
 	# itself runs on a worker.
 	# Phase 163 — decorated with the distance once per chunk, not twice per comparison.
-	# Phase 187 — the WHOLE queue is re-sorted, not only the new chunks: appended behind what earlier
-	# crossings queued, the chunk under a fast player waited behind ground it had already passed. The
-	# key also favours the heading (`queue_priority`), so the ring being flown into builds first.
+	# Phase 187 — when the LOCAL player crossed, the WHOLE queue is re-sorted, not only the new chunks:
+	# appended behind what earlier crossings queued, the chunk under a fast player waited behind ground it
+	# had already passed. The key also favours the heading (`queue_priority`), so the ring being flown into
+	# builds first. A peer-only move keeps the old append: re-ranking a crowd's queue against every centre
+	# on each peer crossing cost the host tick (crowd stress, pole pattern: tick p95 7 ms → 40–53 ms).
+	var to_load: Array = []
 	for i in desired.size():
 		var key: String = desired_keys[i]
 		if not sl._loaded.has(key) and not sl._pending.has(key):
 			sl._pending[key] = true
-			sl._load_queue.append(desired[i])
-	var ranked: Array = []
-	for c in sl._load_queue:
-		ranked.append([sl.queue_priority(centers, heading, c), c])
-	ranked.sort_custom(func(a, b): return a[0] < b[0])
-	sl._load_queue.clear()
-	for entry in ranked:
+			if local_moved:
+				sl._load_queue.append(desired[i])
+			else:
+				to_load.append([sl._nearest_dist2(centers, desired[i]), desired[i]])
+	if local_moved:
+		for c in sl._load_queue:
+			to_load.append([sl.queue_priority(centers, heading, c), c])
+		sl._load_queue.clear()
+	to_load.sort_custom(func(a, b): return a[0] < b[0])
+	for entry in to_load:
 		sl._load_queue.append(entry[1])
 
 	# Phase 49 — a synchronous `refresh()` unloads everything now; the `_process` path

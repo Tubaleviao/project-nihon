@@ -356,14 +356,15 @@ func _test_stream_builds_high_priority() -> void:
 		assert_true(src.contains("add_task(job, build_high_priority(chunk_pos)") or src.contains("add_task(job, sl.build_high_priority(chunk_pos)"),
 			"%s asks build_high_priority" % path)
 
-## Phase 187 — one over-budget frame attaches one build, so the order is the chunk under the body first,
-## not the dispatch order.
+## Phase 187 — one over-budget frame attaches one build, so the local player's 3×3 ring attaches first
+## (under the body, then its neighbours) and the rest keep dispatch order, so none is starved.
 func _test_stream_apply_nearest_first() -> void:
 	var cm := ChunkManager.new()
-	cm._builds = { 11: { "chunk": Vector2i(3, 1) }, 12: { "chunk": Vector2i(5, 0) }, 13: { "chunk": Vector2i(4, 0) }, 14: { "chunk": Vector2i(3, -1) } }
-	assert_eq(cm._apply_order([11, 12, 13, 14]), [11, 12, 13, 14], "before the first refresh: dispatch order")
-	cm._last_centers = [Vector2i(4, 0)]
-	assert_eq(cm._apply_order([11, 12, 13, 14]), [13, 12, 11, 14], "under the body, then the next ring, ties in dispatch order")
+	cm._builds = { 11: { "chunk": Vector2i(7, 0) }, 12: { "chunk": Vector2i(5, 1) }, 13: { "chunk": Vector2i(1, 0) }, 14: { "chunk": Vector2i(4, 0) }, 15: { "chunk": Vector2i(6, 0) } }
+	assert_eq(cm._apply_order([11, 12, 13, 14, 15]), [11, 12, 13, 14, 15], "before the first refresh: dispatch order")
+	cm._last_centers = [Vector2i(4, 0), Vector2i(1, 0)]
+	assert_eq(cm._apply_order([11, 12, 13, 14, 15]), [14, 12, 11, 13, 15], "under the body, its ring, then dispatch order (a peer's centre included)")
+	assert_eq(cm._apply_order([11, 15]), [11, 15], "nothing near the body: dispatch order")
 	assert_eq(cm._apply_order([12]), [12], "one finished build is itself")
 	cm._builds.clear()
 	cm.free()
