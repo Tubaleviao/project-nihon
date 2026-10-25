@@ -20,6 +20,7 @@ func register() -> void:
 	_run_test("crowd: an AOI query probes a 3x3 block of cells", _test_crowd_aoi_query_cells)
 	_run_test("crowd: n crossings in one frame cost one window refresh", _test_crowd_rescopes_one_refresh)
 	_run_test("crowd: a re-scope sends only the records the peer does not hold", _test_crowd_rescope_record_delta)
+	_run_test("crowd: a snapshot that did not go out whole resends every record next time", _test_crowd_rescope_dropped_send)
 	_run_test("crowd: the stress report fails a series below the baseline", _test_crowd_baseline_gate)
 	_run_test("crowd: a budget miss at or below the baseline gets one rerun", _test_crowd_baseline_retry)
 	_run_test("crowd: the faster region lookup names the same regions", _test_crowd_regions_for_chunks_same)
@@ -279,6 +280,48 @@ func _test_crowd_rescope_record_delta() -> void:
 	assert_eq((rejoin.get("gen_records", {}) as Dictionary).size(), 5, "a join starts afresh")
 	sw.records_sent.erase(9)
 	sw.records_sent.erase(10)
+	cm.free()
+	gr.free()
+	ChunkRecordsScript.clear()
+
+## #444: `records_sent` advances when the snapshot is built, so one the emulator dropped must not leave
+## the host believing the client holds its records.
+func _test_crowd_rescope_dropped_send() -> void:
+	ChunkRecordsScript.clear()
+	for x in 4:
+		ChunkRecordsScript.set_record(Vector2i(x, 0), _sync_record(Vector2i(x, 0)))
+	var gr: Node = load("res://src/core/game_root.gd").new()
+	var cm := ChunkManager.new()
+	gr._chunk_manager = cm
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	n.set_transport(_StampingTransport.new([9]))
+	n._rng.seed = 444
+	gr._networking = n
+	var sw = gr._snapshot_wiring
+	var join := {}
+	sw.add_generation_records(join, 9, Vector3.ZERO)
+	assert_true(sw.send_snapshot(9, join), "a lossless send goes out whole")
+	assert_true(sw.records_sent.has(9), "and the host remembers what the peer holds")
+	n.emulate_network = true
+	n.emulator_loss_rate = NetworkingSlice.MAX_LOSS_RATE
+	var dropped := false
+	for i in 200:
+		var again := {}
+		sw.add_generation_records(again, 9, Vector3.ZERO, true)
+		if not sw.send_snapshot(9, again):
+			dropped = true
+			break
+		assert_false(again.has("gen_records"), "a delivered re-scope over the same window carries no records")
+	assert_true(dropped, "the emulator dropped one re-scope")
+	assert_false(sw.records_sent.has(9), "a dropped snapshot forgets the peer's records")
+	n.emulator_loss_rate = 0.0
+	var next := {}
+	sw.add_generation_records(next, 9, Vector3.ZERO, true)
+	assert_eq((next.get("gen_records", {}) as Dictionary).size(), 4, "so the next re-scope carries every record again")
+	sw.records_sent.erase(9)
+	n.free()
 	cm.free()
 	gr.free()
 	ChunkRecordsScript.clear()

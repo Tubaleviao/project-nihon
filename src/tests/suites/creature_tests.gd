@@ -91,6 +91,7 @@ func register() -> void:
 	_run_test("creature: far model sits within 1 cm of the record", _test_creature_far_model_exact)
 	_run_test("creature: spawn_exact does not alias the live position", _test_creature_spawn_exact_not_aliased)
 	_run_test("creature: legacy float position still loads",     _test_creature_legacy_float_position)
+	_run_test("creature: an implausible saved position is skipped", _test_creature_implausible_entry_pos)
 	_run_test("taming: cooldowns are durable",                    _test_taming_cooldowns_are_durable)
 	_run_test("taming: per-player mirrors are evicted",           _test_taming_mirrors_evicted_on_forget)
 	_run_test("battle: player rounds route by target id",         _test_battle_routes_player_rounds_by_target)
@@ -2629,6 +2630,26 @@ func _test_creature_legacy_float_position() -> void:
 	var pos: Dictionary = c.get_instance_pos("l0")
 	assert_true((WorldPos.to_scene(pos, Vector2i.ZERO) - Vector3(1.5, 2.0, 3.5)).length() < 1.0e-4, "at the same place")
 	assert_eq(pos["chunk"], Vector2i.ZERO, "split into chunk and local")
+	c.free()
+
+## #464: a hand-edited save can hold a huge chunk or a NaN local; that entry is skipped, not loaded.
+func _test_creature_implausible_entry_pos() -> void:
+	var c := CreatureSlice.new()
+	add_child(c)
+	c.apply_snapshot_creatures([
+		{"instance_id": "b0", "creature_id": "ForestBoar", "state": "idle", "position": {"chunk": [999999999, 0], "local": [1.0, 2.0, 3.0]}},
+		{"instance_id": "b1", "creature_id": "ForestBoar", "state": "idle", "position": [NAN, 2.0, 3.0]},
+		{"instance_id": "b2", "creature_id": "ForestBoar", "state": "idle"},
+		{"instance_id": "b3", "creature_id": "ForestBoar", "state": "dead", "respawn_at": Time.get_unix_time_from_system() + 60.0,
+			"position": {"chunk": [0, 0], "local": [INF, 2.0, 3.0]}},
+		{"instance_id": "ok", "creature_id": "ForestBoar", "state": "idle", "position": WorldPos.pos_to_wire(_far_pos(5.0))},
+	])
+	for iid in ["b0", "b1", "b2", "b3"]:
+		assert_false(c._instances.has(iid), "entry %s with no plausible position is skipped" % iid)
+	assert_true(c._instances.has("ok"), "a plausible far entry still loads")
+	c.apply_recorded_creature_states([{"instance_id": "held", "creature_id": "ForestBoar", "state": "dead",
+		"respawn_at": Time.get_unix_time_from_system() + 60.0, "position": [1.0e30, 0.0, 0.0]}])
+	assert_false(c._dead_state.has("held"), "an implausible recorded death is not held")
 	c.free()
 
 func _test_creature_spawn_exact_not_aliased() -> void:

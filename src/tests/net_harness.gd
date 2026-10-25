@@ -1817,13 +1817,16 @@ func _step_creature_far_delta() -> void:
 			_report("creature_far_delta", "fail", "no_connected_peer")
 			return
 		await _await_settle(1.0)
+		# The host's half passes only when both packets went out (#464); the client's half judges the landing.
+		var sent := 0
 		for p in [far, next]:
-			_root._networking._deliver(peers[0], {
+			if _root._networking._deliver(peers[0], {
 				"type": "creature_state_changed", "instance_id": iid, "creature_id": "ForestBoar", "state": "idle",
 				"pk": WorldPos.pos_to_packet_text(p),
-			})
+			}):
+				sent += 1
 			await _await_settle(0.5)
-		_report("creature_far_delta", verdict(true, true), "within_1cm")
+		_report("creature_far_delta", verdict(sent == 2, true), "within_1cm" if sent == 2 else "far_delta_unsent")
 		return
 	# The fold step left this client in a folded frame, which would replay onto the host's positions: set it
 	# aside for the probe and put it back.

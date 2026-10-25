@@ -71,7 +71,7 @@ func _on_player_joined(peer_id: int, player_id: String, reconnected: bool) -> vo
 	root._chunk_manager.refresh(false)
 	TickProbe.end()
 	TickProbe.begin("snapshots")
-	root._networking.send_snapshot(peer_id, root._snapshot_wiring.build_snapshot(peer_id))
+	root._snapshot_wiring.send_snapshot(peer_id, root._snapshot_wiring.build_snapshot(peer_id))
 	TickProbe.end()
 
 ## Phase 53 — the local (host / offline) player's placement on a boot with no saved position:
@@ -376,7 +376,7 @@ func flush_rescopes() -> int:
 	# position may lag it, so get_aoi_center() can be stale.
 	TickProbe.begin("snapshots")
 	for peer_id: int in ready:
-		root._networking.send_snapshot(peer_id, root._snapshot_wiring.build_snapshot(peer_id, false, crossings[peer_id], false))
+		root._snapshot_wiring.send_snapshot(peer_id, root._snapshot_wiring.build_snapshot(peer_id, false, crossings[peer_id], false))
 	TickProbe.end()
 	return ready.size()
 

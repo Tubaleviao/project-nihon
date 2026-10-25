@@ -38,14 +38,17 @@ func _creature_wire_pos(sl_: Node, payload: Dictionary) -> Dictionary:
 ## itself is NOT in the payload — the snapshot carries the world `seed` and the
 ## client regenerates the ground from it. The client reassembles chunks by
 ## snapshot_id.
-func send_snapshot(peer_id: int, data: Dictionary) -> void:
+## False when it was not sent whole (not a host, or the emulator dropped a chunk): the client then never
+## reassembles it, so a caller tracking what the client holds must not count it (#444).
+func send_snapshot(peer_id: int, data: Dictionary) -> bool:
 	if not sl._role == sl.Role.HOST:
 		sl.Diag.warn("NetworkingSlice: send_snapshot called on non-host — dropped")
-		return
+		return false
 	var json := JSON.stringify(data)
 	var chunk_count = maxi(1, ceili(float(json.length()) / float(sl.SNAPSHOT_CHUNK_SIZE)))
 	var snapshot_id: int = sl._next_snapshot_id
 	sl._next_snapshot_id += 1
+	var whole := true
 	for i in range(chunk_count):
 		var packet := {
 			"type":        "snapshot_chunk",
@@ -54,7 +57,8 @@ func send_snapshot(peer_id: int, data: Dictionary) -> void:
 			"count":       chunk_count,
 			"data":        json.substr(i * sl.SNAPSHOT_CHUNK_SIZE, sl.SNAPSHOT_CHUNK_SIZE),
 		}
-		sl._deliver(peer_id, packet)
+		whole = sl._deliver(peer_id, packet) and whole
+	return whole
 
 ## Central outbound path (Phase 19). Attach a per-type monotonic seq, then
 ## either send immediately (emulation disabled — zero overhead) or queue for

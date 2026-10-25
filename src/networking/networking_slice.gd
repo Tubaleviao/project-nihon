@@ -65,7 +65,7 @@ extends Node
 ##   join(address, port)     -> Error
 ##   disconnect_all()        -> void
 ##   is_host() / is_client() / is_offline() -> bool
-##   send_snapshot(peer_id, data) -> void    — host → one client
+##   send_snapshot(peer_id, data) -> bool    — host → one client (false: not sent whole)
 ##   send_own_state(peer_id, data) -> void   — host → one client (Phase 34)
 ##   send_player_damaged(peer_id, damage, attacker_id) -> void  — host → one client (Phase 37)
 ##   remember_player_state(peer_id, pos) -> void   — Phase 19
@@ -457,8 +457,8 @@ func party_id_for(peer_id: int) -> String:
 		return "peer_%d" % peer_id
 	return pid
 
-func send_snapshot(peer_id: int, data: Dictionary) -> void:
-	_m3.send_snapshot(peer_id, data)
+func send_snapshot(peer_id: int, data: Dictionary) -> bool:
+	return _m3.send_snapshot(peer_id, data)
 
 # ---------------------------------------------------------------------------
 # Phase 19 — reconnect resume (host side)
