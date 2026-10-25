@@ -8,9 +8,8 @@ const harvest = require('../fabric/gameplay/harvest');
 const creatures = require('../fabric/world/creatures');
 const items = require('../fabric/gameplay/items');
 const skills = require('../fabric/gameplay/skills');
-const player = require('../fabric/gameplay/player');
 
-const fresh = () => JSON.parse(JSON.stringify(harvest.harvestData({ creatures, items, skills, player })));
+const fresh = () => JSON.parse(JSON.stringify(harvest.harvestData({ creatures, items, skills })));
 let failed = 0;
 function expect(label, problems, pattern) {
   const ok = pattern === null ? problems.length === 0 : problems.some((p) => pattern.test(p));

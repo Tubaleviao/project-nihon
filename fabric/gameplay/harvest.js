@@ -1,4 +1,5 @@
 const { defineEntity } = require('@newel/core')
+const attributes = require('./attributes')
 
 // Phase 160 — harvesting. A dead creature leaves a body; its `drops` entries are harvest entries that
 // name the tool category that works them and the skill that scales them. Phase 161 reads this at runtime.
@@ -43,8 +44,8 @@ const RULES = {
   maxCarcassesPerRegion: 24,
 }
 
-// Base carry capacity in kg; PlayerCharacter.carryCapacityKg takes its default from here.
-const BASE_CARRY_CAPACITY_KG = 40.0
+// Base carry capacity in kg: the Strength derivation (Phase 177) at base 10. The Skinning bonus adds to it.
+const BASE_CARRY_CAPACITY_KG = attributes.derive(attributes.DERIVATION.carryCapacityKg, attributes.BOUNDS.base)
 
 // Fields spread into a creature entity: carcass weight, how long the body lasts, how it can be moved.
 function carcassFields({ massKg, corpseSeconds = 300, carryRule }) {
@@ -69,7 +70,7 @@ const HarvestRules = defineEntity({
     carrySlowSpeedMultiplier:     { type: 'decimal', description: 'Walk speed multiplier while carrying above carrySlowAboveFraction', defaultValue: RULES.carrySlowSpeedMultiplier },
     dragCapacityFactor:           { type: 'decimal', description: 'A `drag` body up to capacity times this factor can be dragged', defaultValue: RULES.dragCapacityFactor },
     dragSpeedMultiplier:          { type: 'decimal', description: 'Walk speed multiplier while dragging a body', defaultValue: RULES.dragSpeedMultiplier },
-    carryBonusPerSkinningLevelKg: { type: 'decimal', description: 'Extra carry capacity in kg per Skinning level (no strength attribute exists yet)', defaultValue: RULES.carryBonusPerSkinningLevelKg },
+    carryBonusPerSkinningLevelKg: { type: 'decimal', description: 'Extra carry capacity in kg per Skinning level, on top of the Strength-derived capacity (AttributeSystem.derivation.carryCapacityKg)', defaultValue: RULES.carryBonusPerSkinningLevelKg },
     maxCarcassesPerRegion:        { type: 'integer', description: 'Bodies a region keeps; the oldest decays first', defaultValue: RULES.maxCarcassesPerRegion },
   },
 })
@@ -117,7 +118,7 @@ function harvestProblems(data) {
   if (!(r.harvestRangeMetres > 0)) problems.push('harvestRangeMetres must be > 0')
   if (!(r.carryBonusPerSkinningLevelKg >= 0)) problems.push('carryBonusPerSkinningLevelKg must be >= 0')
   if (!(Number.isInteger(r.maxCarcassesPerRegion) && r.maxCarcassesPerRegion >= 1)) problems.push('maxCarcassesPerRegion must be an integer >= 1')
-  if (!(baseCapacityKg > 0)) problems.push('carryCapacityKg must be > 0')
+  if (!(baseCapacityKg > 0)) problems.push('the base carry capacity (AttributeSystem.derivation.carryCapacityKg at base) must be > 0')
 
   for (const [name, c] of Object.entries(creatures)) {
     if (!(typeof c.carcassMassKg === 'number' && c.carcassMassKg > 0)) problems.push(`${name}: creature needs carcassMassKg > 0, got ${c.carcassMassKg}`)
@@ -145,7 +146,7 @@ function harvestProblems(data) {
 const defaults = (e) => Object.fromEntries(Object.entries((e && e.fields) || {}).map(([k, v]) => [k, v.defaultValue]))
 
 /** Builds the harvestProblems input from fabric entities. */
-function harvestData({ creatures, items, skills, rules = HarvestRules, skinning = skills.Skinning, player }) {
+function harvestData({ creatures, items, skills, rules = HarvestRules, skinning = skills.Skinning, attributeSystem = attributes.AttributeSystem }) {
   const tools = {}
   for (const [name, e] of Object.entries(items)) {
     const f = defaults(e)
@@ -156,9 +157,12 @@ function harvestData({ creatures, items, skills, rules = HarvestRules, skinning 
     const f = defaults(e)
     cs[name] = { drops: f.drops, carcassMassKg: f.carcassMassKg, corpseSeconds: f.corpseSeconds, carryRule: f.carryRule }
   }
+  // A missing Strength row leaves the capacity undefined, which harvestProblems reports instead of throwing here.
+  const a = defaults(attributeSystem)
+  const carryRow = a.derivation && a.derivation.carryCapacityKg
   return {
     creatures: cs, tools, skills: Object.keys(skills), skinning: defaults(skinning), rules: defaults(rules),
-    baseCapacityKg: defaults(player.PlayerCharacter).carryCapacityKg,
+    baseCapacityKg: carryRow ? attributes.derive(carryRow, a.base) : undefined,
   }
 }
 

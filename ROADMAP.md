@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–176 and 182 are done. Their specs and acceptance criteria are archived in
+Phases 1–177 and 182 are done. Their specs and acceptance criteria are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Arc: make it look and feel like an RPG (Phases 173–181, 183)
@@ -38,7 +38,7 @@ budget honest. Then it gives the game icons, attributes, a character sheet and c
 | 174 | An honest playtest frame budget | Done | [phases-174.md](docs/roadmap-history/phases-174.md) |
 | 175 | UI icons: dock, windows, skills and status from one generator | Done | [phases-175.md](docs/roadmap-history/phases-175.md) |
 | 176 | An icon for everything a player can hold | Done | [phases-176.md](docs/roadmap-history/phases-176.md) |
-| 177 | Attributes in the fabric: strength, vitality, resistance, agility, intelligence, perception | Planned | below |
+| 177 | Attributes in the fabric: strength, vitality, resistance, agility, intelligence, perception | Done | [phases-177.md](docs/roadmap-history/phases-177.md) |
 | 178 | Attributes at runtime: host-owned, persisted, feeding the derived stats | Planned | below |
 | 179 | The character sheet: a paper doll, attributes and derived stats | Planned | below |
 | 180 | Character creation in the fabric: name, appearance and starting attributes | Planned | below |
@@ -57,57 +57,6 @@ date (for example, a world recorded around the pre-worldgen-9 spawn pit).
 
 ---
 
-## Phase 177 — Attributes in the fabric: strength, vitality, resistance, agility, intelligence, perception
-
-**Goal:** the character has no attributes. Carry capacity is a fixed base (Phase 160), HP is a flat
-100, and nothing distinguishes one character's body from another's. Model a small attribute set
-that feeds systems that already exist. There are no classes and no levels: attributes start from
-character creation and grow slowly from use, in keeping with the sandbox constitution.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phase 173.
-
-**Deliverables:**
-- `fabric/gameplay/attributes.js` (new): an `AttributeSystem` entity with six attributes and their
-  bounds (base 10, creation range 5–18, hard cap 30). Each attribute lists what it feeds:
-  - **Strength**: carry capacity (replaces the fixed Phase 160 base), melee damage, knockback
-    dealt, mining and chopping speed.
-  - **Vitality**: max HP, HP regeneration, rest regeneration (Phase 158 gestures).
-  - **Resistance**: damage reduction, status-effect chance and duration (Phase 129), knockdown
-    and stagger resistance.
-  - **Agility**: movement speed (small), attack interval, dodge chance against a melee hit.
-    Knockdown and stagger belong to Resistance alone.
-  - **Intelligence**: research point gain (Phase 124), the chance of a quality grade on a craft,
-    XP rate for magic skills.
-  - **Perception**: gather yield, the harvest quality grade (Phase 161), the radius at which
-    creatures and deposits show on the minimap.
-- A derivation table: each derived stat as a base plus a per-point slope with a clamp, so a
-  20-point gap is noticeable but never a one-shot. The table is data, not code. At base 10 in
-  every attribute, each derived stat equals today's constant (`BASE_CARRY_CAPACITY_KG` 40 kg,
-  `PlayerRules.MAX_HP` 100, and so on), so existing characters do not change on migration.
-- A growth table: skill XP from each skill category feeds weighted attributes (combat → Strength
-  and Agility, crafting → Strength and Intelligence, exploration → Perception and Agility,
-  survival → Vitality and Perception, magic → Intelligence and Resistance, social → Perception)
-  with diminishing returns and a total-points cap. Every category in the skill enum has a row.
-  Growth comes from use, not from spending points.
-- `PlayerCharacter` gains `attributes` (json) and drops the fixed `carryCapacityKg` default in
-  favour of the derivation. `HarvestRules` in `fabric/gameplay/harvest.js` stops reading
-  `defaults(PlayerCharacter).carryCapacityKg` and takes its base from the derivation at base 10.
-- `tools/check_attributes.js` in the style of `check_combat.js`: bounds are consistent, every
-  derived stat it names exists, the extremes (all 5s, all 30s) stay inside each stat's clamp,
-  base 10 reproduces today's constants, and every skill category has a growth row.
-- Display names and descriptions are UI catalog keys (`attr.<id>.name`, `attr.<id>.desc`) in
-  `en` and `pt_BR`.
-
-**Acceptance criteria:**
-- [ ] `npm run validate`, `npm run check-drift`, `node tools/check_attributes.js` and the
-  harvest check pass.
-- [ ] Generated `GameData` exposes the attribute set, the derivation table and the growth table.
-- [ ] Every attribute has `en` and `pt_BR` catalog entries, and the i18n key check passes.
-
----
-
 ## Phase 178 — Attributes at runtime: host-owned, persisted, feeding the derived stats
 
 **Goal:** make Phase 177 real. The host owns every player's attributes, derives their stats from
@@ -116,6 +65,12 @@ the fabric table, persists them, and grows them from skill XP. The client only d
 **Newel dependency:** NO.
 
 **Depends on:** Phase 177.
+
+**From Phase 177:** the tables are `GameData.ATTRIBUTES["AttributeSystem"]` (`derivation`, `growth`,
+bounds). The formula, every stat id and the growth rule are in
+[phases-177.md](docs/roadmap-history/phases-177.md#as-built). `CarcassRules.base_capacity_kg()`
+reads the Strength row's base until this phase derives carry capacity per player.
+`detectionRadiusMetres` (32 m at base) is new: the minimap draws no creatures or deposits yet.
 
 **Deliverables:**
 - `src/character/attribute_rules.gd`: pure functions for deriving stats and applying growth, read

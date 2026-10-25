@@ -102,7 +102,7 @@ func _test_skinning_tables() -> void:
 
 func _test_carcass_data() -> void:
 	var rules = GameData.HARVESTS["HarvestRules"]
-	var capacity := float(GameData.PLAYERS["PlayerCharacter"].get("carryCapacityKg"))
+	var capacity := CarcassRules.base_capacity_kg()
 	assert_true(capacity > 0.0, "the player has a base carry capacity")
 	for creature: String in GameData.CREATURES:
 		var c = GameData.CREATURES[creature]

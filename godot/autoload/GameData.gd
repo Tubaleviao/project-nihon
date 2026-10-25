@@ -7,6 +7,10 @@ const APPEARANCES: Dictionary = {
 		"TravellerHuman": preload("res://godot/appearances/travellerhuman.tres")
 }
 
+const ATTRIBUTES: Dictionary = {
+		"AttributeSystem": preload("res://godot/attributes/attributesystem.tres")
+}
+
 const BIOMES: Dictionary = {
 		"Alpine": preload("res://godot/biomes/alpine.tres"),
 		"Beach": preload("res://godot/biomes/beach.tres"),

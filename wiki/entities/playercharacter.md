@@ -7,7 +7,7 @@ title: "PlayerCharacter"
 
 `player`
 
-The player-controlled character in the world. Stats are derived from equipped items, active skills, and status effects. A player's character persists across sessions; death resets only transient state.
+The player-controlled character in the world. Stats are derived from attributes (AttributeSystem), equipped items, active skills, and status effects. A player's character persists across sessions; death resets only transient state.
 
 > Model the minimum runtime data the server needs to authorise actions and the client needs to render the character
 
@@ -19,7 +19,7 @@ The player-controlled character in the world. Stats are derived from equipped it
 | name | string | Display name chosen at character creation |
 | baseHp | integer | Maximum HP at current level/gear baseline |
 | currentHp | integer | Current hit points; 0 triggers the die transition |
-| carryCapacityKg | decimal | Base kg of creature body the character can carry; Skinning level adds to it (HarvestRules.carryBonusPerSkinningLevelKg) |
+| attributes | json | Attribute values { strength, vitality, resistance, agility, intelligence, perception } (Phase 177); carry capacity, max HP and the other derived stats come from AttributeSystem.derivation |
 | baseSpeed | decimal | Movement speed in tiles per second |
 | positionX | decimal | World X coordinate (server-authoritative) |
 | positionY | decimal | World Y coordinate (elevation) |

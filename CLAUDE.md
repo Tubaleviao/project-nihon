@@ -17,6 +17,8 @@ npm run check-drift  # fail if newel.ir-snapshot.json is stale (CI runs this)
 npm run inspect      # list all entities
 ```
 
+Each fabric validator has a `tools/check_*.js` that proves it rejects bad tables (`node tools/check_attributes.js`, `check_harvest.js`, `check_combat.js`…); CI runs them all, so a new validator gets one and a CI step.
+
 Godot (CI downloads 4.7-stable to `/tmp/godot/Godot_v4.7-stable_linux.x86_64`). Flags after `--` are **user args** (`OS.get_cmdline_user_args()`); putting them before `--` silently does nothing:
 
 ```bash

@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:897129da5ccd86d63f40d5eaf3e960eb86bb2a7522939d17411ec6af94eac774",
+  "schemaHash": "sha256:8e283ad715b66840e9964ea90fc1b5c581828fcdbad463aced046b689ec6ccda",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -29216,12 +29216,347 @@
         "pii": [],
         "gdpr": {}
       },
+      "AttributeSystem": {
+        "name": "AttributeSystem",
+        "tags": [
+          "attribute"
+        ],
+        "description": "The six character attributes (Strength, Vitality, Resistance, Agility, Intelligence, Perception), what each one feeds, and how skill use grows them. No classes and no levels: a character starts from creation and grows slowly from use. At base 10 in every attribute each derived stat equals the number the game used before attributes existed.",
+        "goal": "Give each character a body that differs from another's through data that feeds existing systems, in keeping with KnowledgeIsProgression and NoPayToWin",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "attributes": {
+            "name": "attributes",
+            "type": "json",
+            "description": "Attribute ids in display order; names and descriptions are catalog keys attr.<id>.name / attr.<id>.desc",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "strength",
+              "vitality",
+              "resistance",
+              "agility",
+              "intelligence",
+              "perception"
+            ]
+          },
+          "base": {
+            "name": "base",
+            "type": "integer",
+            "description": "Starting value of every attribute; a save from before Phase 178 loads at this value",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 10
+          },
+          "creationMin": {
+            "name": "creationMin",
+            "type": "integer",
+            "description": "Lowest value character creation allows",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 5
+          },
+          "creationMax": {
+            "name": "creationMax",
+            "type": "integer",
+            "description": "Highest value character creation allows",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 18
+          },
+          "hardCap": {
+            "name": "hardCap",
+            "type": "integer",
+            "description": "No attribute grows above this value",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 30
+          },
+          "derivation": {
+            "name": "derivation",
+            "type": "json",
+            "description": "Derived stats: { <stat>: { attribute, kind, base, perPoint, perPointBelow, min, max, unit? } }; stat = clamp(base + slope * (value - attribute base), min, max), slope = perPointBelow under the base, perPoint at or above it",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "carryCapacityKg": {
+                "attribute": "strength",
+                "kind": "amount",
+                "base": 40,
+                "perPoint": 2,
+                "perPointBelow": 2,
+                "min": 25,
+                "max": 85,
+                "unit": "kg"
+              },
+              "meleeDamageFactor": {
+                "attribute": "strength",
+                "kind": "factor",
+                "base": 1,
+                "perPoint": 0.02,
+                "perPointBelow": 0.02,
+                "min": 0.85,
+                "max": 1.45
+              },
+              "knockbackDealtFactor": {
+                "attribute": "strength",
+                "kind": "factor",
+                "base": 1,
+                "perPoint": 0.02,
+                "perPointBelow": 0.02,
+                "min": 0.85,
+                "max": 1.45
+              },
+              "gatherSpeedFactor": {
+                "attribute": "strength",
+                "kind": "factor",
+                "base": 1,
+                "perPoint": 0.015,
+                "perPointBelow": 0.015,
+                "min": 0.9,
+                "max": 1.35
+              },
+              "maxHp": {
+                "attribute": "vitality",
+                "kind": "amount",
+                "base": 100,
+                "perPoint": 5,
+                "perPointBelow": 5,
+                "min": 70,
+                "max": 210,
+                "unit": "hp"
+              },
+              "hpRegenPerSecond": {
+                "attribute": "vitality",
+                "kind": "amount",
+                "base": 0.25,
+                "perPoint": 0.0125,
+                "perPointBelow": 0.0125,
+                "min": 0.18,
+                "max": 0.55,
+                "unit": "hp/s"
+              },
+              "restRegenFactor": {
+                "attribute": "vitality",
+                "kind": "factor",
+                "base": 1,
+                "perPoint": 0.02,
+                "perPointBelow": 0.02,
+                "min": 0.85,
+                "max": 1.45
+              },
+              "damageReduction": {
+                "attribute": "resistance",
+                "kind": "chance",
+                "base": 0,
+                "perPoint": 0.01,
+                "perPointBelow": 0.01,
+                "min": -0.06,
+                "max": 0.22
+              },
+              "statusChanceFactor": {
+                "attribute": "resistance",
+                "kind": "factor",
+                "base": 1,
+                "perPoint": -0.015,
+                "perPointBelow": -0.015,
+                "min": 0.65,
+                "max": 1.1
+              },
+              "statusDurationFactor": {
+                "attribute": "resistance",
+                "kind": "factor",
+                "base": 1,
+                "perPoint": -0.015,
+                "perPointBelow": -0.015,
+                "min": 0.65,
+                "max": 1.1
+              },
+              "staggerResistChance": {
+                "attribute": "resistance",
+                "kind": "chance",
+                "base": 0,
+                "perPoint": 0.01,
+                "perPointBelow": 0,
+                "min": 0,
+                "max": 0.22
+              },
+              "moveSpeedFactor": {
+                "attribute": "agility",
+                "kind": "factor",
+                "base": 1,
+                "perPoint": 0.005,
+                "perPointBelow": 0.005,
+                "min": 0.97,
+                "max": 1.12
+              },
+              "attackIntervalFactor": {
+                "attribute": "agility",
+                "kind": "factor",
+                "base": 1,
+                "perPoint": -0.01,
+                "perPointBelow": -0.01,
+                "min": 0.78,
+                "max": 1.06
+              },
+              "dodgeChance": {
+                "attribute": "agility",
+                "kind": "chance",
+                "base": 0,
+                "perPoint": 0.005,
+                "perPointBelow": 0,
+                "min": 0,
+                "max": 0.12
+              },
+              "researchGainFactor": {
+                "attribute": "intelligence",
+                "kind": "factor",
+                "base": 1,
+                "perPoint": 0.025,
+                "perPointBelow": 0.025,
+                "min": 0.85,
+                "max": 1.55
+              },
+              "craftQualityChance": {
+                "attribute": "intelligence",
+                "kind": "chance",
+                "base": 0,
+                "perPoint": 0.01,
+                "perPointBelow": 0,
+                "min": 0,
+                "max": 0.22
+              },
+              "magicXpFactor": {
+                "attribute": "intelligence",
+                "kind": "factor",
+                "base": 1,
+                "perPoint": 0.02,
+                "perPointBelow": 0.02,
+                "min": 0.85,
+                "max": 1.45
+              },
+              "gatherYieldFactor": {
+                "attribute": "perception",
+                "kind": "factor",
+                "base": 1,
+                "perPoint": 0.015,
+                "perPointBelow": 0.015,
+                "min": 0.9,
+                "max": 1.35
+              },
+              "harvestQualityBonus": {
+                "attribute": "perception",
+                "kind": "bonus",
+                "base": 0,
+                "perPoint": 0.1,
+                "perPointBelow": 0.1,
+                "min": -0.6,
+                "max": 2.2
+              },
+              "detectionRadiusMetres": {
+                "attribute": "perception",
+                "kind": "amount",
+                "base": 32,
+                "perPoint": 1.6,
+                "perPointBelow": 1.6,
+                "min": 24,
+                "max": 68,
+                "unit": "m"
+              }
+            }
+          },
+          "growth": {
+            "name": "growth",
+            "type": "json",
+            "description": "Growth from skill XP: { xpPerPoint, costStep, totalPointsCap, categories: { <skill category>: { <attribute>: weight } } }; the next point of an attribute that has grown g points costs xpPerPoint * (1 + costStep * g) weighted XP",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "xpPerPoint": 600,
+              "costStep": 0.25,
+              "totalPointsCap": 40,
+              "categories": {
+                "combat": {
+                  "strength": 0.5,
+                  "agility": 0.5
+                },
+                "crafting": {
+                  "strength": 0.5,
+                  "intelligence": 0.5
+                },
+                "exploration": {
+                  "perception": 0.5,
+                  "agility": 0.5
+                },
+                "survival": {
+                  "vitality": 0.5,
+                  "perception": 0.5
+                },
+                "magic": {
+                  "intelligence": 0.5,
+                  "resistance": 0.5
+                },
+                "social": {
+                  "perception": 1
+                }
+              }
+            }
+          }
+        },
+        "relations": {},
+        "behaviors": {
+          "derive": {
+            "name": "derive",
+            "description": "Compute a character's derived stats from its attributes",
+            "rules": [
+              "Each derived stat is fed by exactly one attribute through the derivation table; nothing else is hard-coded",
+              "At base 10 in every attribute each derived stat equals today's constant (carry 40 kg, max HP 100, HP regeneration 0.25/s, every factor 1, every chance 0)",
+              "The clamp keeps a 20-point gap noticeable but never a one-shot"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "grow": {
+            "name": "grow",
+            "description": "Grow attributes from skill XP on the host",
+            "rules": [
+              "XP granted in a skill category is split over that category's weighted attributes",
+              "Each point grown makes the next point of that attribute cost more (diminishing returns)",
+              "Growth stops at the hard cap per attribute and at totalPointsCap across all six",
+              "Attributes never grow from spending points; the client sends no attribute values"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
       "PlayerCharacter": {
         "name": "PlayerCharacter",
         "tags": [
           "player"
         ],
-        "description": "The player-controlled character in the world. Stats are derived from equipped items, active skills, and status effects. A player's character persists across sessions; death resets only transient state.",
+        "description": "The player-controlled character in the world. Stats are derived from attributes (AttributeSystem), equipped items, active skills, and status effects. A player's character persists across sessions; death resets only transient state.",
         "goal": "Model the minimum runtime data the server needs to authorise actions and the client needs to render the character",
         "fields": {
           "id": {
@@ -29269,14 +29604,21 @@
             "pii": false,
             "defaultValue": 100
           },
-          "carryCapacityKg": {
-            "name": "carryCapacityKg",
-            "type": "decimal",
-            "description": "Base kg of creature body the character can carry; Skinning level adds to it (HarvestRules.carryBonusPerSkinningLevelKg)",
+          "attributes": {
+            "name": "attributes",
+            "type": "json",
+            "description": "Attribute values { strength, vitality, resistance, agility, intelligence, perception } (Phase 177); carry capacity, max HP and the other derived stats come from AttributeSystem.derivation",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
-            "defaultValue": 40
+            "defaultValue": {
+              "strength": 10,
+              "vitality": 10,
+              "resistance": 10,
+              "agility": 10,
+              "intelligence": 10,
+              "perception": 10
+            }
           },
           "baseSpeed": {
             "name": "baseSpeed",
@@ -29926,7 +30268,7 @@
           "carryBonusPerSkinningLevelKg": {
             "name": "carryBonusPerSkinningLevelKg",
             "type": "decimal",
-            "description": "Extra carry capacity in kg per Skinning level (no strength attribute exists yet)",
+            "description": "Extra carry capacity in kg per Skinning level, on top of the Strength-derived capacity (AttributeSystem.derivation.carryCapacityKg)",
             "nullable": false,
             "primaryKey": false,
             "pii": false,

@@ -12,6 +12,10 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [BoarRider](entities/boarrider.md) — A quadruped boar — the same character system driving a non-humanoid skeleton
 - [TravellerHuman](entities/travellerhuman.md) — The default humanoid traveller: veilsteel chestplate, a sheathed veilsteel longsword, and a stored ferrite shield
 
+## Attribute
+
+- [AttributeSystem](entities/attributesystem.md) — The six character attributes (Strength, Vitality, Resistance, Agility, Intelligence, Perception), what each one feeds, and how skill use grows them
+
 ## Biome
 
 - [Alpine](entities/alpine.md) — Snow-capped peaks above the tree line, at any latitude

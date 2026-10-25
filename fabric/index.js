@@ -22,6 +22,7 @@ const player       = require('./gameplay/player')
 const loot         = require('./gameplay/loot')
 const gestures     = require('./gameplay/gestures')
 const harvest      = require('./gameplay/harvest')
+const attributes   = require('./gameplay/attributes')
 const persistence  = require('./gameplay/persistence')
 const skeletons    = require('./gameplay/characters/skeletons')
 const palettes     = require('./gameplay/characters/palettes')
@@ -54,7 +55,11 @@ gestures.validateGestures(gestures.gestureTable())
 
 // Phase 160 — every harvest entry must name a tool category some item provides and a real skill, every creature needs a
 // carcass mass, and the Skinning yield and quality tables must cover every level and never fall.
-harvest.validateHarvest(harvest.harvestData({ creatures, items, skills, player }))
+harvest.validateHarvest(harvest.harvestData({ creatures, items, skills }))
+
+// Phase 177 — the attribute bounds, derivation and growth tables must be well formed, base 10 must reproduce today's
+// constants, and every skill category needs a growth row.
+attributes.validateAttributes(attributes.attributeData())
 
 // Phase 151 — every entity tagged `item` needs a shape: a known archetype, and a real material for each of its parts.
 {
@@ -267,6 +272,7 @@ module.exports = defineFabric({
     },
     // Gameplay — Player + Inventory
     {
+      AttributeSystem: attributes.AttributeSystem,
       PlayerCharacter: player.PlayerCharacter,
       Inventory:       player.Inventory,
     },
