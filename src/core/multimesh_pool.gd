@@ -91,9 +91,21 @@ func instance_count() -> int:
 func _grow() -> void:
 	var old := _multimesh.instance_count
 	var new_count := old + GROW_STEP
+	# Setting instance_count clears every instance's data: the live instances would
+	# draw nothing (a zero transform) until their next set_transform. Carry the
+	# buffer (12 transform floats + 4 colour floats per instance) across the resize.
+	var kept: PackedFloat32Array = _multimesh.buffer
 	_multimesh.instance_count = new_count
 	# New instances default to the identity transform (visible at origin) — hide
 	# them so an unset instance never flashes at the world origin before its
 	# caller assigns a real transform.
 	for i in range(old, new_count):
-		hide(i)
+		_hidden[i] = true
+	if kept.is_empty():
+		# The headless dummy renderer keeps no buffer: write the hidden transforms one by one.
+		for i in range(old, new_count):
+			hide(i)
+		return
+	var buf := kept
+	buf.resize(kept.size() / maxi(old, 1) * new_count)   # zero-filled: a zero-scale transform, hidden
+	_multimesh.buffer = buf
