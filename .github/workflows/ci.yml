@@ -1,9 +1,22 @@
 name: CI
 
+# A push or PR that touches only hand-written docs skips CI. Docs that CI reads stay out of this
+# list: bible/ and wiki/ (generated, checked for fabric drift), ROADMAP.md and
+# docs/roadmap-history/ (check_roadmap.js) and docs/perf/ (stress + playtest baselines).
 on:
   push:
     branches: [main, master]
+    paths-ignore: &docs-only
+      - README.md
+      - AGENTS.md
+      - CLAUDE.md
+      - characters.md
+      - assets/README.md
+      - native/README.md
+      - docs/DEVELOPMENT.md
+      - docs/media/**
   pull_request:
+    paths-ignore: *docs-only
   workflow_dispatch:
     inputs:
       stress_max:
