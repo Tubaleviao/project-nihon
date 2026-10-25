@@ -33,6 +33,7 @@ const Horizon := preload("res://src/terrain/horizon.gd")
 const DistantTerrain := preload("res://src/terrain/distant_terrain.gd")
 const DistantBands := preload("res://src/terrain/distant_bands.gd")
 const PlayerSlice := preload("res://src/player/player_slice.gd")
+const AdminRules := preload("res://src/admin/admin_rules.gd")
 
 const ARG := "--playtest-bot"
 const OUT_DIR := "res://playtest"
@@ -73,6 +74,15 @@ const GATHER_FAR_BEARINGS := 16    ## rays the far scan casts when the rings hol
 const GATHER_FAR_STEP := 8         ## chunks between samples along a far-scan ray
 const GATHER_FAR_RADIUS := 4000    ## chunks a far-scan ray reaches
 const FIGHT_RANGE_M := 1.5
+## Phase 187 — the flight step: the body is carried east at the top admin speed (walk speed × the
+## `/speed` cap × the flying factor: 90 m/s) for FLIGHT_SECS, and the chunk under it must be built in
+## at least FLIGHT_MIN_COVER of the samples taken after FLIGHT_WARMUP_SECS (the first crossings drain
+## the queue the start position left behind). Gated with the native builder only.
+const FLIGHT_SPEED_MPS := PlayerSlice.SPEED * AdminRules.SPEED_MAX * AdminRules.FLY_SPEED_FACTOR
+const FLIGHT_SECS := 12.0
+const FLIGHT_WARMUP_SECS := 1.5
+const FLIGHT_SAMPLE_SECS := 0.25
+const FLIGHT_MIN_COVER := 0.9
 const TELEPORT_SETTLE_MS := 1500 ## frames this long after a teleport (the new window's builds) are not recorded
 const STEP_GRACE_SECS := 10.0    ## past its deadline a step that has not returned has crashed or hung: fail it
 const SPAWN_OFFSET_M := 2.0      ## a teleport lands this far above the ground
@@ -133,6 +143,7 @@ var _step_deadline_ms: int = 0
 var _chunk_builds: int = 0
 var _build_breakdown: Dictionary = {}   ## Phase 170: the stream step's per-stage build time
 var _stream_rate: float = 0.0   ## the stream step's chunk build rate (chunks/s), 0 until it ran
+var _flight: Dictionary = {}   ## Phase 187: the flight step's coverage record
 var _mined: Array = []
 var _chopped: Array = []
 var _crafted: Array = []
@@ -179,10 +190,10 @@ static func _step_timeout(step: String) -> float:
 		return HORIZON_TIMEOUT_SECS
 	if step == "far_peak":
 		return FAR_PEAK_STEP_SECS
-	return STREAM_TIMEOUT_SECS if step == "stream" or step == "pole" else STEP_TIMEOUT_SECS
+	return STREAM_TIMEOUT_SECS if step == "stream" or step == "pole" or step == "flight" else STEP_TIMEOUT_SECS
 
 static func step_names() -> Array:
-	return ["walk", "stream", "mine", "gather", "craft", "place", "fight", "travel", "horizon", "far_peak", "pole"]
+	return ["walk", "stream", "flight", "mine", "gather", "craft", "place", "fight", "travel", "horizon", "far_peak", "pole"]
 
 # ---------------------------------------------------------------------------
 # Pure report maths
@@ -505,6 +516,8 @@ func _run_step(step: String) -> Dictionary:
 		rec["builder"] = NativeBuilder.mode()
 		rec["build_rate"] = _stream_rate
 		rec["build_breakdown"] = _build_breakdown
+	if step == "flight":
+		rec["flight"] = _flight
 	await _screenshot(step)
 	print("[Playtest] %s %s %s" % [step, "ok" if bool(rec["ok"]) else "FAIL", rec["detail"]])
 	return rec
@@ -649,6 +662,73 @@ func _step_stream() -> Array:
 	_recording = true
 	_skip_frames = WARMUP_FRAMES
 	return [true, "%d chunks streamed; %s builder %.1f chunks/s, heightmap %.0f%% of the build" % [STREAM_CHUNKS, NativeBuilder.mode(), _stream_rate, 100.0 * float(_build_breakdown.get("heightmap_share", 0.0))]]
+
+## Phase 187 — the flight verdict from the samples taken after the warm-up: `under` and `ring` are
+## per-sample shares (0..1) of the chunk under the body and of its 3×3 ring that were built. Pure.
+static func flight_verdict(under: Array, ring: Array, min_cover: float = FLIGHT_MIN_COVER) -> Dictionary:
+	var n := under.size()
+	var u := 0.0
+	var r := 0.0
+	var worst := 1.0
+	for i in n:
+		u += float(under[i])
+		r += float(ring[i]) if i < ring.size() else 0.0
+		worst = minf(worst, float(ring[i]) if i < ring.size() else 0.0)
+	var cover := u / float(n) if n > 0 else 0.0
+	return { "samples": n, "under_cover": cover, "ring_cover": r / float(n) if n > 0 else 0.0,
+		"worst_ring": worst if n > 0 else 0.0, "ok": n > 0 and cover >= min_cover }
+
+## Phase 187 — carry the body east at FLIGHT_SPEED_MPS (a ground-hugging teleport every frame: the
+## streaming load of admin flight without its input or physics) and sample the ground under it.
+## Then put it back where it started, built, for the steps that follow.
+func _step_flight() -> Array:
+	var cm = _root._chunk_manager
+	var home: Dictionary = _root._player.get_world_pos()
+	var m := WorldPos.CHUNK_METERS
+	var home_chunk: Vector2i = home["chunk"]
+	var home_local: Vector3 = home["local"]
+	var x0: float = float(home_chunk.x) * m + home_local.x
+	var under: Array = []
+	var ring: Array = []
+	var t0 := Time.get_ticks_msec()
+	var next_sample := FLIGHT_WARMUP_SECS
+	while true:
+		await get_tree().process_frame
+		var secs := float(Time.get_ticks_msec() - t0) / 1000.0
+		if secs >= FLIGHT_SECS:
+			break
+		var x := x0 + FLIGHT_SPEED_MPS * secs
+		var cx := floori(x / m)
+		var ch := Vector2i(cx, home_chunk.y)
+		var xz := Vector2(x, float(home_chunk.y) * m + home_local.z)
+		var built: bool = cm.is_chunk_built(ch)
+		var ground: float = _root._voxel.get_voxel_height_at(xz) if built else _root._terrain.get_height_at(xz)
+		GameBus.player_teleport.emit(WorldPos.normalized({ "chunk": ch,
+			"local": Vector3(x - float(cx) * m, ground + SPAWN_OFFSET_M, home_local.z) }))
+		if secs >= next_sample:
+			next_sample += FLIGHT_SAMPLE_SECS
+			var n := 0
+			for dx in range(-1, 2):
+				for dz in range(-1, 2):
+					if cm.is_chunk_built(ch + Vector2i(dx, dz)):
+						n += 1
+			under.append(1.0 if built else 0.0)
+			ring.append(float(n) / 9.0)
+	_flight = flight_verdict(under, ring)
+	_flight["speed_mps"] = FLIGHT_SPEED_MPS
+	var back := _teleport_to(home_chunk, home_local)
+	var settled: bool = await _until(func(): return cm.is_chunk_built(back["chunk"]), STEP_TIMEOUT_SECS)
+	var note := "%.0f m/s for %.0f s: ground under the body built in %.0f%% of %d samples, 3×3 ring %.0f%% (worst %.0f%%)" % [
+		FLIGHT_SPEED_MPS, FLIGHT_SECS, 100.0 * float(_flight["under_cover"]), int(_flight["samples"]),
+		100.0 * float(_flight["ring_cover"]), 100.0 * float(_flight["worst_ring"])]
+	if not settled:
+		return [false, note + "; the start chunk never rebuilt"]
+	# The gate is the native builder's: the GDScript fallback (CI's `--no-native` run) builds about 7× slower
+	# and cannot hold 90 m/s, so that run reports the coverage without failing on it.
+	_flight["gated"] = NativeBuilder.mode() == NativeBuilder.MODE_NATIVE
+	if not bool(_flight["gated"]):
+		return [true, note + " (report only: %s builder)" % NativeBuilder.mode()]
+	return [bool(_flight["ok"]), note]
 
 ## Phase 169 — the chunk build rate of the builder in use (`NativeBuilder.mode()`), chunks per second of
 ## the pure worker half (map, seam strips, resolve, mesh) run synchronously on `RATE_CHUNKS` chunks past

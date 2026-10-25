@@ -1,6 +1,7 @@
 extends "res://src/tests/test_support.gd"
 ## Phase 141 — terrain streaming off the main thread: the static heightmap generator, the seam
 ## edge strips, the polar shortcuts, the worker-noise build and the fold catch-up.
+## Phase 187 — build priority and the load queue's order at speed.
 
 func register() -> void:
 	_run_test("stream: the static generator matches generate_heightmap", _test_stream_static_generator_matches)
@@ -11,6 +12,9 @@ func register() -> void:
 	_run_test("stream: a frame's pump stops at its time budget and bounds its applies", _test_stream_pump_budget)
 	_run_test("stream: the steady build cap defaults to the core count minus one", _test_stream_builds_in_flight_default)
 	_run_test("stream: a restream bursts the build cap until the window is rebuilt", _test_stream_fold_catchup)
+	_run_test("stream: every chunk build is dispatched at high priority", _test_stream_builds_high_priority)
+	_run_test("stream: the queue key puts the body's chunk first and favours the heading", _test_stream_queue_priority)
+	_run_test("stream: a crossing re-sorts the whole queue around the new centre", _test_stream_queue_resorted_on_move)
 	_run_test("fold: a creature and a tree keep id, state and place across a pole fold", _test_fold_carries_contents)
 	_run_test("fold: the fold image of a position is an involution over a pole and a lap", _test_fold_like_involution)
 	_run_test("fold: a client replays two folds on host positions, the log stays minimal", _test_fold_log_replay)
@@ -329,3 +333,56 @@ func _test_fold_dead_records() -> void:
 	var got: Vector3 = WorldPos.from_wire(cs._dead_state["d0"]["position"])
 	assert_true(got.distance_to(TerrainSlice.fold_world_vec_like(at, true, 1)) < 0.01, "its position is the fold's image")
 	cs.free()
+
+## Phase 187 — a low-priority task may use only `low_priority_thread_ratio` of the pool, which held the
+## steady stream to three or four threads; both dispatch paths now pass high priority.
+func _test_stream_builds_high_priority() -> void:
+	assert_true(ChunkManager.BUILD_HIGH_PRIORITY, "chunk builds run at high priority")
+	for path in ["res://src/terrain/chunk_manager.gd", "res://src/terrain/chunk_part_1.gd"]:
+		var src := FileAccess.get_file_as_string(path)
+		assert_false(src.contains("add_task(job, false") or src.contains("add_task(job, _catchup"),
+			"%s dispatches no build at low priority" % path)
+
+func _test_stream_queue_priority() -> void:
+	var centers: Array = [Vector2i(10, 0)]
+	var east := Vector2(1, 0)
+	var under := ChunkManager.queue_priority(centers, east, Vector2i(10, 0))
+	var ahead := ChunkManager.queue_priority(centers, east, Vector2i(11, 0))
+	var side := ChunkManager.queue_priority(centers, east, Vector2i(10, 1))
+	var behind := ChunkManager.queue_priority(centers, east, Vector2i(9, 0))
+	var ahead2 := ChunkManager.queue_priority(centers, east, Vector2i(12, 0))
+	assert_true(under < ahead and ahead < side and side < behind, "under, then ahead, then beside, then behind")
+	assert_true(behind < ahead2, "the heading never outranks a nearer ring")
+	assert_eq(ChunkManager.queue_priority(centers, Vector2.ZERO, Vector2i(12, 1)), 5.0, "standing still: the squared distance")
+	assert_eq(ChunkManager.queue_priority([Vector2i(0, 0), Vector2i(20, 0)], Vector2.ZERO, Vector2i(19, 0)), 1.0,
+		"the nearest window centre counts")
+	assert_eq(ChunkManager.heading_between(Vector2i(0, 0), Vector2i(1, 0), 4), east, "one crossing east")
+	assert_eq(ChunkManager.heading_between(Vector2i(0, 0), Vector2i(0, 0), 4), Vector2.ZERO, "no move, no heading")
+	assert_eq(ChunkManager.heading_between(Vector2i(0, 0), Vector2i(9, 0), 4), Vector2.ZERO, "a jump past the radius is a teleport")
+
+## Chunks a previous crossing queued used to stay ahead of the new ones, so the chunk under a fast player
+## waited behind ground it had already passed.
+func _test_stream_queue_resorted_on_move() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var player: PlayerSlice = rig["player"]
+	cm.view_distance = 2
+	cm.prefetch_distance = 0
+	cm.refresh(false)   # queued around (0,0), nothing dispatched
+	assert_eq(cm._load_queue[0], Vector2i(0, 0), "the first queue starts under the body")
+	player.spawn_at(Vector3(32.0 * 2.0 + 16.0, 40.0, 16.0))   # two chunks east, no drain in between
+	cm.refresh(false)
+	assert_eq(cm._load_queue[0], Vector2i(2, 0), "after the crossing the queue starts under the body again")
+	assert_eq(cm._load_queue[1], Vector2i(3, 0), "then the chunk ahead")
+	var center := Vector2i(2, 0)
+	var last := -1.0e9
+	var sorted := true
+	for c: Vector2i in cm._load_queue:
+		var k := ChunkManager.queue_priority([center], Vector2(1, 0), c)
+		sorted = sorted and k >= last
+		last = k
+	assert_true(sorted, "the whole queue is in priority order, old entries included")
+	rig["cm"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()

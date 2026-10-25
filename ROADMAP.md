@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–178 and 182 are done. Their specs and acceptance criteria are archived in
+Phases 1–178, 182 and 187 are done. Their specs and acceptance criteria are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Arc: make it look and feel like an RPG (Phases 173–181, 183)
@@ -55,6 +55,27 @@ date (for example, a world recorded around the pre-worldgen-9 spawn pit).
 |---|---|---|---|
 | 182 | Admin tools: /time, /speed, /fly, /heal, /regen world and an Admin window | Done | [phases-182.md](docs/roadmap-history/phases-182.md) |
 
+### Next, ahead of the arc: fast flight and worldgen fixes (Phases 187–191)
+
+Found while flying with `/fly` and `/speed 10` (90 m/s): the ground fell behind the player, and a
+regenerated world was snow almost everywhere. Like Phase 182, this runs ahead of the RPG arc: Phase
+179 resumes after Phase 191. Phase 188 comes second because a worldgen bump is cheaper the fewer worlds
+have recorded the old plateaus. Phases 189–191 then raise the admin speed cap on a slow machine.
+
+Measured on seed 42 at 90 m/s with the native builder (probe in the Phase 187 PR): chunk builds ran
+at low priority, so 11 builds sat in flight while three ran, and the chunk under the body was missing
+for seconds at a time. Once builds keep up, the main thread is the next wall. Each attached chunk costs
+9.3 ms of collision, 5–6.5 ms of dispatch and bookkeeping, 4.5–12 ms of creature spawns and 1.7 ms of
+render mesh, at 27 chunks/s.
+
+| Phase | Title | Status | Spec |
+|---|---|---|---|
+| 187 | Fast flight I: high-priority builds, a heading-first queue and a flight step | Done | [phases-187.md](docs/roadmap-history/phases-187.md) |
+| 188 | Mountain ranges, not plateaus: narrower ridges, a temperature tree line and a low spawn plain | Planned | below |
+| 189 | Fast flight II: collision and contents only near the body | Planned | below |
+| 190 | Fast flight III: coarse chunks beyond the near ring | Planned | below |
+| 191 | Fast flight IV: a recent-chunk cache, no holes, and a /speed cap of 30 on a slow machine | Planned | below |
+
 ### Arc: first steps (Phases 184–186)
 
 A new player lands in the world with no guidance except instructions scattered through the UI
@@ -69,6 +90,125 @@ The scattered UI instructions are removed, so the tutorial is the one place that
 | 184 | First steps in the fabric: the tutorial steps, the bed and a shelter rule | Planned | below |
 | 185 | The bed is the spawn point: host-owned, persisted, one per player | Planned | below |
 | 186 | The first-steps tutorial at runtime: one-time cards, a toggle, and no other in-UI tutorial | Planned | below |
+
+---
+
+## Phase 188 — Mountain ranges, not plateaus: narrower ridges, a temperature tree line and a low spawn plain
+
+**Goal:** a regenerated world is snow almost everywhere on some seeds, far from the poles and off any
+peak. `WorldShape` has `RIDGE_CELLS = 320` cells around a 40,000 km planet, so one ridge is about
+125 km wide. Inland, that is a plateau hundreds of kilometres across at 300–500 m. `Alpine` is picked at
+any temperature above 250 m, so the whole plateau is snow. The spawn plain is the mean height of its
+4 km rim, so it sits on the plateau too. Over a 16 km square around spawn, seeds 42 and 1234 are 100%
+Alpine (spawn plains of 297 m and 512 m), and six other seeds are 0%. `/regen world` keeps the seed and
+reruns the same generator, so it gives the same snow.
+
+**Newel dependency:** NO (the biome envelopes are fabric data; the change is to their values).
+
+**Depends on:** Phase 51 (climate envelopes), worldgen 9 (spawn plain).
+
+**Deliverables:**
+- Ridges become ranges: ridge wavelength in the tens of kilometres, not 125 km. Retune
+  `RIDGE_CELLS` (and the second octave), so peaks are thin lines with valleys between them.
+- `Alpine` is chosen by temperature (the altitude lapse already cools high ground), not by a fixed
+  250 m floor at every latitude. Change the envelope in `fabric/world/biomes/earth.js` and regenerate.
+- The spawn plain is capped below the tree line, so a new player never spawns on snow outside the polar
+  cap.
+- `TerrainSlice.WORLDGEN_VERSION` bump, a history line, and new `_test_worldgen_golden` values.
+
+**Acceptance criteria:**
+- [ ] Suite: over a 16 km square around spawn, every one of 8 fixed seeds is under 15% Alpine on land,
+  and every spawn plain is below the Alpine floor.
+- [ ] Suite: mountains still exist: on each seed, some land within 100 km of spawn is above 250 m.
+- [ ] Suite: worldgen golden values updated, and the version history names the change.
+- [ ] Playtest bot green on the pinned seed (re-check every step, since the pin's world changes).
+- [ ] `npm run validate` and `npm run check-drift` clean.
+
+---
+
+## Phase 189 — Fast flight II: collision and contents only near the body
+
+**Goal:** after Phase 187 the build threads keep up at 90 m/s, but each attached chunk costs the main
+thread about 17–30 ms. Most of that is ground no one touches: collision for a chunk four rings out, and
+creatures spawned under a player who is gone a second later. Pay only for the ground that is reached.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 187.
+
+**Deliverables:**
+- Collision is built only for chunks within Chebyshev 1 of a body (walking), and for the chunk below a
+  flying body. A chunk entering that ring gets its collision then (from the worker's arrays, kept or
+  rebuilt). A host keeps collision wherever a creature or peer needs it (dedicated server unchanged).
+- Creatures and trees of a chunk spawn when its body slows below a threshold or the chunk enters the
+  near ring, not at the moment its mesh attaches. Host authority and determinism are unchanged: the same
+  ids and positions spawn, later.
+- The playtest bot's `flight` step records main-thread ms per attached chunk (TickProbe phases).
+
+**Acceptance criteria:**
+- [ ] Suite: a chunk outside the near ring has no collision shape, and gets one when it enters; a
+  flying body's chunk below has one.
+- [ ] Suite: a chunk's contents spawn once, with the same ids, whether they spawn on attach or on
+  slowing down.
+- [ ] Playtest bot (CI): `flight` main-thread ms per attached chunk at most half of Phase 187's record.
+- [ ] Net harness green (peers' windows still have collision where their bodies are).
+- [ ] Suite green on both boot paths.
+
+---
+
+## Phase 190 — Fast flight III: coarse chunks beyond the near ring
+
+**Goal:** every chunk in the 9×9 window is built at full detail (64×64 tiles of 0.5 m), while the
+player reaches only the 3×3 around them. Build the outer rings coarser, so a crossing costs a fraction of
+nine full builds and a slow machine keeps up.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 189.
+
+**Deliverables:**
+- A level of detail per ring: full detail within Chebyshev 1, and coarser render-only meshes (32×32,
+  then 16×16 tiles) beyond. A chunk is upgraded when it enters the near ring and downgraded lazily.
+- The native builder and the GDScript reference both build the coarse levels, with equal output.
+- Seams between levels are closed (skirts or stitched edges), so no gap shows between rings.
+
+**Acceptance criteria:**
+- [ ] Suite: native and GDScript coarse builds are equal on the fixed chunk set.
+- [ ] Suite: a coarse chunk's mean height matches the full chunk's within a tolerance, and no seam
+  between levels leaves a gap (edge heights shared or skirted).
+- [ ] Playtest bot (CI): worker ms per crossing at 90 m/s at most a third of Phase 189's.
+- [ ] Suite green on both boot paths.
+
+---
+
+## Phase 191 — Fast flight IV: a recent-chunk cache, no holes, and a /speed cap of 30 on a slow machine
+
+**Goal:** turning back rebuilds ground that was built seconds ago, and a chunk not yet built shows as
+empty space. With Phases 187–190 in place, raise the admin speed cap and prove it holds on a slow
+machine.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 190.
+
+**Deliverables:**
+- An LRU cache of recently built chunk arrays (bounded by memory), keyed by chunk and revision, so a
+  return trip attaches without a rebuild. An edit invalidates it.
+- The distant ring draws under any chunk of the window that is not built yet, so the player sees coarse
+  ground, never a hole.
+- `AdminRules.SPEED_MAX` 10 → 30 (flying: 270 m/s). The playtest bot's `flight` step runs at the new
+  top speed.
+- CI runs the `flight` step a second time with the worker pool limited to 2 threads (the slow-machine
+  case) at the old 90 m/s.
+
+**Acceptance criteria:**
+- [ ] Suite: a cached chunk attaches without a dispatch; an edit invalidates its entry; the cache
+  stays within its bound.
+- [ ] Suite: the distant ring covers an unbuilt window chunk and leaves a built one to the voxel mesh.
+- [ ] Playtest bot (CI): `flight` at 270 m/s keeps the ground under the body built in ≥ 90% of samples.
+- [ ] Playtest bot (CI, 2 worker threads): `flight` at 90 m/s keeps it in ≥ 90% of samples.
+- [ ] `/speed` accepts 30 and refuses 31, in `admin_tests`; catalog strings updated in `en` and `pt_BR`.
+- [ ] Suite green on both boot paths, net harness green.
 
 ---
 

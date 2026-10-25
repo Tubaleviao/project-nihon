@@ -49,6 +49,9 @@ func refresh(unload_now: bool = true) -> void:
 		sl._retry_deferred_records()
 		return
 
+	var heading := Vector2.ZERO
+	if not sl._last_centers.is_empty():
+		heading = sl.heading_between(sl._last_centers[0], centers[0], sl.stream_radius())
 	sl._last_centers = centers
 	# ONE radius for WANTED and DESIRED on purpose (ninth review pass): `wanted` — what a
 	# crossing retains — is the same radius the queue spans, so no chunk that was queued (and
@@ -83,14 +86,20 @@ func refresh(unload_now: bool = true) -> void:
 	# Queue loads nearest-first. Dispatching is what is bounded per frame; the build
 	# itself runs on a worker.
 	# Phase 163 — decorated with the distance once per chunk, not twice per comparison.
-	var to_load: Array = []
+	# Phase 187 — the WHOLE queue is re-sorted, not only the new chunks: appended behind what earlier
+	# crossings queued, the chunk under a fast player waited behind ground it had already passed. The
+	# key also favours the heading (`queue_priority`), so the ring being flown into builds first.
 	for i in desired.size():
 		var key: String = desired_keys[i]
 		if not sl._loaded.has(key) and not sl._pending.has(key):
-			to_load.append([sl._nearest_dist2(centers, desired[i]), desired[i], key])
-	to_load.sort_custom(func(a, b): return a[0] < b[0])
-	for entry in to_load:
-		sl._pending[entry[2]] = true
+			sl._pending[key] = true
+			sl._load_queue.append(desired[i])
+	var ranked: Array = []
+	for c in sl._load_queue:
+		ranked.append([sl.queue_priority(centers, heading, c), c])
+	ranked.sort_custom(func(a, b): return a[0] < b[0])
+	sl._load_queue.clear()
+	for entry in ranked:
 		sl._load_queue.append(entry[1])
 
 	# Phase 49 — a synchronous `refresh()` unloads everything now; the `_process` path
@@ -193,7 +202,7 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 			return
 		result[0] = VoxelMesh.build_worker_arrays(chunk_pos, heightmap,
 			VoxelBuilder.build_runs(chunk_pos, heightmap, gathered), keep_render)
-	var task_id = WorkerThreadPool.add_task(job, false, "chunk build %s" % key)
+	var task_id = WorkerThreadPool.add_task(job, sl.BUILD_HIGH_PRIORITY, "chunk build %s" % key)
 	sl._builds[task_id] = {
 		"chunk":     chunk_pos,
 		"key":       key,

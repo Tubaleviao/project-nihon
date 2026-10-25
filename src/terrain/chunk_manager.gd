@@ -150,6 +150,15 @@ const DEFAULT_APPLIES_PER_FRAME := 3
 ## synchronously (its contract); only the per-frame `_process` path is budgeted.
 const DEFAULT_UNLOADS_PER_FRAME := 4
 
+## Phase 187 — chunk builds run at high priority, steady or catch-up (see `_dispatch_worker_noise_build`).
+const BUILD_HIGH_PRIORITY := true
+
+## Phase 187 — how strongly the load queue favours the direction of travel: a chunk's priority is its
+## squared distance from the nearest window centre minus this times its lead along the heading (in
+## chunks), so among chunks at the same distance the ones ahead build first, and the chunk under the
+## player (distance 0) still comes before every neighbour. Below 1, so it never outranks a nearer ring.
+const HEADING_BIAS := 0.5
+
 ## Phase 42 review — how many times one chunk's build may be dispatched before the
 ## manager gives up on it and reports the failure. It exists because a worker result can
 ## now be REFUSED (an empty result, or a chunk rebuilt under it) and a refusal is answered
@@ -892,9 +901,11 @@ func _dispatch_worker_noise_build(chunk_pos: Vector2i, key: String) -> void:
 		VoxelBuilder.fill_seam_strips(chunk_pos, gathered, seed_v, noise)
 		result[0] = VoxelMesh.build_worker_arrays(chunk_pos, hm, VoxelBuilder.build_runs(chunk_pos, hm, gathered), keep_render)
 	# A low-priority task may only use `low_priority_thread_ratio` of the pool (0.3 by default: three or
-	# four threads on most machines, which is what really capped the build rate), so the catch-up
-	# dispatches at high priority and can use every worker.
-	var task_id := WorkerThreadPool.add_task(job, _catchup, "chunk build %s" % key)
+	# four threads on most machines, which is what really capped the build rate). Phase 141 raised only the
+	# catch-up to high priority; Phase 187 does it for every build, because the steady stream is capped the
+	# same way: at 90 m/s (admin flight) 11 builds sat in flight while three ran. `build_cap()` (all cores
+	# but one) is what keeps a worker free for the rest of the pool.
+	var task_id := WorkerThreadPool.add_task(job, BUILD_HIGH_PRIORITY, "chunk build %s" % key)
 	_builds[task_id] = {
 		"chunk":     chunk_pos,
 		"key":       key,
@@ -1414,6 +1425,28 @@ func _desired_chunks(center: Vector2i, radius: int) -> Array:
 		for dz in range(-radius, radius + 1):
 			out.append(center + Vector2i(dx, dz))
 	return out
+
+## Phase 187 — the load queue's sort key for `chunk` (smaller builds first): its squared distance from
+## the nearest of `centers`, less `HEADING_BIAS` times its lead from `centers[0]` (the local player) along
+## `heading` (a unit vector in chunks, or zero when standing). Pure.
+static func queue_priority(centers: Array, heading: Vector2, chunk: Vector2i) -> float:
+	var best := 1 << 60
+	for c: Vector2i in centers:
+		var dx := chunk.x - c.x
+		var dz := chunk.y - c.y
+		best = mini(best, dx * dx + dz * dz)
+	if centers.is_empty() or heading == Vector2.ZERO:
+		return float(best)
+	var origin: Vector2i = centers[0]
+	return float(best) - HEADING_BIAS * Vector2(chunk - origin).dot(heading)
+
+## Phase 187 — the local player's heading between two window centres, in chunks (unit length), or zero
+## when it did not move or jumped further than a stream radius (a teleport or a fold restreams anyway).
+static func heading_between(from: Vector2i, to: Vector2i, max_step: int) -> Vector2:
+	var d := Vector2(to - from)
+	if d == Vector2.ZERO or absi(to.x - from.x) > max_step or absi(to.y - from.y) > max_step:
+		return Vector2.ZERO
+	return d.normalized()
 
 ## Squared Chebyshev-ish distance from `center` to `chunk` — used only for
 ## ordering the load queue so the chunk nearest the player builds first.

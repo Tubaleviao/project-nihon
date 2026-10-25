@@ -17,6 +17,7 @@ func register() -> void:
 	_run_test("playtest: the world seed is pinned unless --playtest-seed names one", _test_playtest_seed_arg)
 	_run_test("playtest: the bot mutates no slice directly", _test_playtest_bot_uses_intents)
 	_run_test("playtest: markdown escapes free-text detail", _test_playtest_markdown_escapes_detail)
+	_run_test("playtest: the flight step's coverage verdict", _test_playtest_flight_verdict)
 
 func _test_runner_filter_parse_and_match() -> void:
 	assert_eq(Runner.filter_from_args(PackedStringArray(["--run-tests"])), "", "no filter arg means no filter")
@@ -118,7 +119,7 @@ func _test_playtest_report_verdicts() -> void:
 	assert_true(bool(good["ok"]), "slow percentiles (400 ms frames) are a report, not a failure")
 	assert_true((good["failures"] as Array).is_empty(), "no failures listed")
 	var timed_out: Array = _all_ok_steps()
-	timed_out[2] = Bot.step_record("mine", false, "no block_mined", [16.0], 0)
+	timed_out[Bot.step_names().find("mine")] = Bot.step_record("mine", false, "no block_mined", [16.0], 0)
 	var bad: Dictionary = Bot.build_report(timed_out)
 	assert_false(bool(bad["ok"]), "a failed or timed-out step fails the run")
 	assert_eq((bad["failures"] as Array).size(), 1, "one failure")
@@ -179,3 +180,13 @@ func _test_playtest_markdown_escapes_detail() -> void:
 	var rec := [Bot.step_record("craft", false, "research: a | b\nsecond line", [16.0], 0)]
 	var md: String = Bot.report_markdown(Bot.build_report(rec))
 	assert_true(md.contains("a \\| b second line"), "pipes are escaped and newlines flattened")
+
+## Phase 187 — the flight step passes when the ground under the body was built in FLIGHT_MIN_COVER of the samples.
+func _test_playtest_flight_verdict() -> void:
+	assert_eq(Bot.FLIGHT_SPEED_MPS, 90.0, "the top admin speed: 4.5 m/s × 10 × 2")
+	var v: Dictionary = Bot.flight_verdict([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0], [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.5])
+	assert_true(bool(v["ok"]), "nine of ten is the floor")
+	assert_eq(float(v["worst_ring"]), 0.5, "the worst ring sample is kept")
+	assert_false(bool(Bot.flight_verdict([1.0, 0.0], [1.0, 0.0])["ok"]), "half is a failure")
+	assert_false(bool(Bot.flight_verdict([], [])["ok"]), "no samples is a failure")
+	assert_true("flight" in Bot.step_names(), "the bot has a flight step")
