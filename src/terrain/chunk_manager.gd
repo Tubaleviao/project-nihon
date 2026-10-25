@@ -150,9 +150,6 @@ const DEFAULT_APPLIES_PER_FRAME := 3
 ## synchronously (its contract); only the per-frame `_process` path is budgeted.
 const DEFAULT_UNLOADS_PER_FRAME := 4
 
-## Phase 187 — chunk builds run at high priority, steady or catch-up (see `_dispatch_worker_noise_build`).
-const BUILD_HIGH_PRIORITY := true
-
 ## Phase 187 — how strongly the load queue favours the direction of travel: a chunk's priority is its
 ## squared distance from the nearest window centre minus this times its lead along the heading (in
 ## chunks), so among chunks at the same distance the ones ahead build first, and the chunk under the
@@ -256,6 +253,16 @@ func is_catching_up() -> bool:
 ## The in-flight cap in force: the steady one, or the catch-up one after a fold.
 func build_cap() -> int:
 	return maxi(max_builds_in_flight, catchup_builds_in_flight) if _catchup else max_builds_in_flight
+
+## Phase 187 — whether `chunk`'s build runs at high priority: during a fold's catch-up, and for the local
+## player's own window (the first of `_last_centers`). A peer's window on a host stays low priority: with
+## every build high, the crowd stress run's 16 peers took the cores the host tick needed (tick p95 22–33 ms
+## against 12–15 ms). See `_dispatch_worker_noise_build`.
+func build_high_priority(chunk: Vector2i) -> bool:
+	if _catchup or _last_centers.is_empty():
+		return true
+	var c: Vector2i = _last_centers[0]
+	return maxi(absi(chunk.x - c.x), absi(chunk.y - c.y)) <= stream_radius()
 
 ## Phase 42 review pass 3 — seconds between self-heal attempts while the window is not moving
 ## (see DEFAULT_SELF_HEAL_INTERVAL / `_self_heal_failed`). Overridable for tests.
@@ -902,10 +909,10 @@ func _dispatch_worker_noise_build(chunk_pos: Vector2i, key: String) -> void:
 		result[0] = VoxelMesh.build_worker_arrays(chunk_pos, hm, VoxelBuilder.build_runs(chunk_pos, hm, gathered), keep_render)
 	# A low-priority task may only use `low_priority_thread_ratio` of the pool (0.3 by default: three or
 	# four threads on most machines, which is what really capped the build rate). Phase 141 raised only the
-	# catch-up to high priority; Phase 187 does it for every build, because the steady stream is capped the
-	# same way: at 90 m/s (admin flight) 11 builds sat in flight while three ran. `build_cap()` (all cores
-	# but one) is what keeps a worker free for the rest of the pool.
-	var task_id := WorkerThreadPool.add_task(job, BUILD_HIGH_PRIORITY, "chunk build %s" % key)
+	# catch-up to high priority; Phase 187 does it for the local player's window too, because the steady
+	# stream is capped the same way: at 90 m/s (admin flight) 11 builds sat in flight while three ran. A peer's
+	# window stays low (`build_high_priority`). `build_cap()` (all cores but one) keeps a worker free.
+	var task_id := WorkerThreadPool.add_task(job, build_high_priority(chunk_pos), "chunk build %s" % key)
 	_builds[task_id] = {
 		"chunk":     chunk_pos,
 		"key":       key,
@@ -1163,14 +1170,33 @@ func flush_records_final() -> void:
 func _apply_finished_builds() -> void:
 	if _builds.is_empty():
 		return
-	var applied := 0
+	var done: Array = []
 	for task_id in _builds.keys():
-		if not WorkerThreadPool.is_task_completed(task_id):
-			continue
+		if WorkerThreadPool.is_task_completed(task_id):
+			done.append(task_id)
+	var applied := 0
+	for task_id in _apply_order(done):
 		if applied >= maxi(applies_per_frame, 1) or (applied > 0 and _pump_over()):
 			return   # the rest stay finished in the table and apply next frame
 		_apply_build_entry(task_id)
 		applied += 1
+
+## Phase 187 — the finished builds in the order they attach: nearest window centre first, ties in
+## dispatch order. The attach is the main-thread wall (collision alone is ~9 ms a chunk, so an over-budget
+## frame attaches one); in dispatch order the chunk under a fast player waited behind ring chunks
+## dispatched before it.
+func _apply_order(done: Array) -> Array:
+	if done.size() < 2 or _last_centers.is_empty():
+		return done
+	var ranked: Array = []
+	for i in done.size():
+		var entry: Dictionary = _builds[done[i]]
+		ranked.append([queue_priority(_last_centers, Vector2.ZERO, entry["chunk"]), i, done[i]])
+	ranked.sort_custom(func(a, b): return a[0] < b[0] or (a[0] == b[0] and a[1] < b[1]))
+	var out: Array = []
+	for r in ranked:
+		out.append(r[2])
+	return out
 
 ## Apply every in-flight build NOW, blocking on each task. The frame path polls
 ## (`_apply_finished_builds`); this is the blocking variant for a caller that has no

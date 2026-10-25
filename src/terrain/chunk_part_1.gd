@@ -202,7 +202,7 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 			return
 		result[0] = VoxelMesh.build_worker_arrays(chunk_pos, heightmap,
 			VoxelBuilder.build_runs(chunk_pos, heightmap, gathered), keep_render)
-	var task_id = WorkerThreadPool.add_task(job, sl.BUILD_HIGH_PRIORITY, "chunk build %s" % key)
+	var task_id = WorkerThreadPool.add_task(job, sl.build_high_priority(chunk_pos), "chunk build %s" % key)
 	sl._builds[task_id] = {
 		"chunk":     chunk_pos,
 		"key":       key,

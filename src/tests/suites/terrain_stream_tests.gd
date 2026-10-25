@@ -12,7 +12,8 @@ func register() -> void:
 	_run_test("stream: a frame's pump stops at its time budget and bounds its applies", _test_stream_pump_budget)
 	_run_test("stream: the steady build cap defaults to the core count minus one", _test_stream_builds_in_flight_default)
 	_run_test("stream: a restream bursts the build cap until the window is rebuilt", _test_stream_fold_catchup)
-	_run_test("stream: every chunk build is dispatched at high priority", _test_stream_builds_high_priority)
+	_run_test("stream: the local window builds at high priority, a peer window at low", _test_stream_builds_high_priority)
+	_run_test("stream: finished builds attach nearest the body first", _test_stream_apply_nearest_first)
 	_run_test("stream: the queue key puts the body's chunk first and favours the heading", _test_stream_queue_priority)
 	_run_test("stream: a crossing re-sorts the whole queue around the new centre", _test_stream_queue_resorted_on_move)
 	_run_test("fold: a creature and a tree keep id, state and place across a pole fold", _test_fold_carries_contents)
@@ -335,13 +336,37 @@ func _test_fold_dead_records() -> void:
 	cs.free()
 
 ## Phase 187 — a low-priority task may use only `low_priority_thread_ratio` of the pool, which held the
-## steady stream to three or four threads; both dispatch paths now pass high priority.
+## steady stream to three or four threads; the local player's window and a fold's catch-up now build at
+## high priority, while a peer's window on a host stays low so the host tick keeps its cores.
 func _test_stream_builds_high_priority() -> void:
-	assert_true(ChunkManager.BUILD_HIGH_PRIORITY, "chunk builds run at high priority")
+	var cm := ChunkManager.new()
+	cm.view_distance = 2
+	cm.prefetch_distance = 0
+	assert_true(cm.build_high_priority(Vector2i(50, 50)), "before the first refresh every build is high")
+	cm._last_centers = [Vector2i(0, 0), Vector2i(40, 0)]
+	assert_true(cm.build_high_priority(Vector2i(0, 0)), "the chunk under the local player is high")
+	assert_true(cm.build_high_priority(Vector2i(2, -2)), "the edge of the local window is high")
+	assert_false(cm.build_high_priority(Vector2i(3, 0)), "past the local window is low")
+	assert_false(cm.build_high_priority(Vector2i(40, 0)), "a peer's window is low")
+	cm._catchup = true
+	assert_true(cm.build_high_priority(Vector2i(40, 0)), "a fold's catch-up is high everywhere")
+	cm.free()
 	for path in ["res://src/terrain/chunk_manager.gd", "res://src/terrain/chunk_part_1.gd"]:
 		var src := FileAccess.get_file_as_string(path)
-		assert_false(src.contains("add_task(job, false") or src.contains("add_task(job, _catchup"),
-			"%s dispatches no build at low priority" % path)
+		assert_true(src.contains("add_task(job, build_high_priority(chunk_pos)") or src.contains("add_task(job, sl.build_high_priority(chunk_pos)"),
+			"%s asks build_high_priority" % path)
+
+## Phase 187 — one over-budget frame attaches one build, so the order is the chunk under the body first,
+## not the dispatch order.
+func _test_stream_apply_nearest_first() -> void:
+	var cm := ChunkManager.new()
+	cm._builds = { 11: { "chunk": Vector2i(3, 1) }, 12: { "chunk": Vector2i(5, 0) }, 13: { "chunk": Vector2i(4, 0) }, 14: { "chunk": Vector2i(3, -1) } }
+	assert_eq(cm._apply_order([11, 12, 13, 14]), [11, 12, 13, 14], "before the first refresh: dispatch order")
+	cm._last_centers = [Vector2i(4, 0)]
+	assert_eq(cm._apply_order([11, 12, 13, 14]), [13, 12, 11, 14], "under the body, then the next ring, ties in dispatch order")
+	assert_eq(cm._apply_order([12]), [12], "one finished build is itself")
+	cm._builds.clear()
+	cm.free()
 
 func _test_stream_queue_priority() -> void:
 	var centers: Array = [Vector2i(10, 0)]
