@@ -30,6 +30,9 @@ var walkable_fn: Callable = Callable()
 var ground_fn: Callable = Callable()
 ## `(attacker_id) -> bool`: true when that attacker may not start a round (carrying a body, Phase 161).
 var attack_blocked: Callable = Callable()
+## Phase 178 — `(player_target_id: String, stat_id: String) -> float`: a defending player's derived attribute stat
+## (Resistance: damage reduction, status chance and duration; Agility: dodge). Unwired, every stat is neutral.
+var player_stat_fn: Callable = Callable()
 ## Counts resolved rounds; the seed of the on-hit roll, so a replayed round rolls the same.
 var _round_seq: int = 0
 
@@ -73,6 +76,9 @@ func resolve_round(attacker_id: String, defender_id: String) -> Dictionary:
 	var now := _now()
 	if hit_roll < 0.8:
 		damage = base_dmg * randf_range(0.85, 1.15)
+		# Phase 178 — Strength: a player's melee hit scales (1.0 at base 10).
+		if is_player_target(attacker_id):
+			damage *= _player_stat(attacker_id, "meleeDamageFactor", 1.0)
 		var is_crit := randf() < 0.1
 		if is_crit:
 			damage *= 2.0
@@ -89,7 +95,13 @@ func resolve_round(attacker_id: String, defender_id: String) -> Dictionary:
 	# peer, whose body is simulated on its own client. The target rides the signal, so
 	# the host can deliver it to that peer (CombatWiring._on_player_damaged).
 	if is_player_target(defender_id):
+		# Phase 178 — Agility: a melee hit on a player can be dodged outright (host-rolled, like the hit roll).
+		if outcome != "miss" and randf() < _player_stat(defender_id, "dodgeChance", 0.0):
+			outcome = "miss"
+			damage = 0.0
 		if outcome != "miss":
+			# Resistance shaves the damage.
+			damage *= clampf(1.0 - _player_stat(defender_id, "damageReduction", 0.0), 0.0, 1.0)
 			# Phase 129 — a knocked-down body takes more; the hit may leave an effect on it.
 			if status_effects != null:
 				damage *= status_effects.damage_factor(defender_id, now)
@@ -168,6 +180,9 @@ func death_landing(pos: Vector3, attacker_id: String, damage: float, max_hp: flo
 		spot.y = float(ground_fn.call(spot))   # the body rests on the ground it lands on, uphill or down
 	return spot
 
+func _player_stat(defender_id: String, stat_id: String, neutral: float) -> float:
+	return float(player_stat_fn.call(defender_id, stat_id)) if player_stat_fn.is_valid() else neutral
+
 func _now() -> float:
 	return float(now_fn.call()) if now_fn.is_valid() else 0.0
 
@@ -176,9 +191,15 @@ func _now() -> float:
 func _roll_on_hit(attacker_res: Resource, attacker_id: String, target_id: String, now: float) -> void:
 	if attacker_res == null:
 		return
-	var landed: Array = status_effects.rolled_effects(attacker_res.get("onHitEffects"), _round_seq, attacker_id, target_id)
+	var landed: Array = status_effects.rolled_effects(attacker_res.get("onHitEffects"), _round_seq, attacker_id, target_id,
+			_player_stat(target_id, "statusChanceFactor", 1.0))
 	for effect in landed:
-		status_effects.apply(target_id, effect, now)
+		# Phase 178 — Resistance: a stagger or knockdown (anything that displaces or immobilises) can be shrugged off.
+		var row: Dictionary = status_effects.row(effect)
+		if (int(row.get("displaceTiles", 0)) > 0 or bool(row.get("immobilize", false))) \
+				and randf() < _player_stat(target_id, "staggerResistChance", 0.0):
+			continue
+		status_effects.apply(target_id, effect, now, _player_stat(target_id, "statusDurationFactor", 1.0))
 		var tiles := int(status_effects.row(effect).get("displaceTiles", 0))
 		if tiles > 0:
 			GameBus.knockback_requested.emit(target_id, attacker_id, tiles)

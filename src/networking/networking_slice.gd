@@ -624,6 +624,20 @@ func _send_raw(peer_id: int, json: String) -> void:
 func _on_player_state_sync_requested(payload: Dictionary) -> void:
 	_m1._on_player_state_sync_requested(payload)
 
+## Phase 178 — client packets that carried attribute values (the host owns attributes), refused and counted. The
+## warning is throttled per peer like the malformed-position one; the count is not.
+var attributes_refused: int = 0
+var _attribute_refusal_warn_ms: Dictionary = {}
+
+func _refuse_attribute_claim(sender: int, now_ms: float = -1.0) -> void:
+	attributes_refused += 1
+	if now_ms < 0.0:
+		now_ms = float(Time.get_ticks_msec())
+	if now_ms - float(_attribute_refusal_warn_ms.get(sender, -MALFORMED_WARN_INTERVAL_MS)) < MALFORMED_WARN_INTERVAL_MS:
+		return
+	_attribute_refusal_warn_ms[sender] = now_ms
+	Diag.warn("NetworkingSlice: peer %d sent attribute values — refused (the host owns attributes)" % sender)
+
 func _warn_malformed_position(sender: int, now_ms: float = -1.0) -> bool:
 	if now_ms < 0.0:
 		now_ms = float(Time.get_ticks_msec())

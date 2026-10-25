@@ -113,8 +113,9 @@ static func grade_rank(grade: String) -> int:
 	return seen.find(grade)
 
 ## Carry capacity in kg: the base plus the Skinning bonus.
-static func capacity_kg(level: int) -> float:
-	return base_capacity_kg() + rule_f("carryBonusPerSkinningLevelKg", 0.0) * float(level)
+## `base_kg` is the carrier's Strength-derived capacity (Phase 178); negative reads the attribute base.
+static func capacity_kg(level: int, base_kg: float = -1.0) -> float:
+	return (base_kg if base_kg >= 0.0 else base_capacity_kg()) + rule_f("carryBonusPerSkinningLevelKg", 0.0) * float(level)
 
 ## The Strength-derived carry capacity at the attribute base (Phase 177; 0.0 without the fabric row). Every
 ## character is at base until Phase 178 gives attributes a runtime, and at base the derivation is its `base`.

@@ -522,7 +522,7 @@ func _cmd_heal(speaker: String, args: Array) -> void:
 		if not networking.send_admin(peer, "admin_heal"):
 			_unreachable(target, speaker)
 			return
-		player_registry.record_simulated_hp(target, PlayerRules.MAX_HP)
+		player_registry.record_simulated_hp(target, player_registry.max_hp_of(target))
 	_reply(speaker, "chat.healed", [_handle_of(target)])
 
 ## Phase 182 — `/regen world confirm`: regenerate the terrain (AdminWiring runs it). Without `confirm`

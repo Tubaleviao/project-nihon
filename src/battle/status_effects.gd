@@ -63,11 +63,14 @@ func row(effect_id: String) -> Dictionary:
 
 ## Start `effect_id` on `target_id`. A non-stacking effect already running is refreshed (its timer
 ## restarts, nothing doubles); an instant effect (duration 0, e.g. knockback) stores nothing.
-func apply(target_id: String, effect_id: String, now: float) -> bool:
+## `duration_factor` scales a running effect's length (Phase 178 Resistance); an instant effect stays instant.
+func apply(target_id: String, effect_id: String, now: float, duration_factor: float = 1.0) -> bool:
 	var r := row(effect_id)
 	if r.is_empty() or target_id.is_empty():
 		return false
 	var duration := float(r["durationSeconds"])
+	if duration > 0.0:
+		duration *= maxf(duration_factor, 0.0)
 	if duration <= 0.0:
 		return true
 	if not _active.has(target_id):
@@ -216,7 +219,8 @@ static func roll_value(seq: int, attacker_id: String, target_id: String, index: 
 	return float(x & 0xFFFFFF) / float(0x1000000)
 
 ## The effects (`[{ effect, chance }]`) that land for this round, in table order.
-func rolled_effects(on_hit: Variant, seq: int, attacker_id: String, target_id: String) -> Array:
+## `chance_factor` scales every entry's chance (Phase 178 Resistance).
+func rolled_effects(on_hit: Variant, seq: int, attacker_id: String, target_id: String, chance_factor: float = 1.0) -> Array:
 	var out: Array = []
 	if not (on_hit is Array):
 		return out
@@ -227,7 +231,7 @@ func rolled_effects(on_hit: Variant, seq: int, attacker_id: String, target_id: S
 		var effect := str(entry.get("effect", ""))
 		if row(effect).is_empty():
 			continue
-		if roll_value(seq, attacker_id, target_id, i) < float(entry.get("chance", 0.0)):
+		if roll_value(seq, attacker_id, target_id, i) < float(entry.get("chance", 0.0)) * chance_factor:
 			out.append(effect)
 	return out
 

@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–177 and 182 are done. Their specs and acceptance criteria are archived in
+Phases 1–178 and 182 are done. Their specs and acceptance criteria are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Arc: make it look and feel like an RPG (Phases 173–181, 183)
@@ -39,7 +39,7 @@ budget honest. Then it gives the game icons, attributes, a character sheet and c
 | 175 | UI icons: dock, windows, skills and status from one generator | Done | [phases-175.md](docs/roadmap-history/phases-175.md) |
 | 176 | An icon for everything a player can hold | Done | [phases-176.md](docs/roadmap-history/phases-176.md) |
 | 177 | Attributes in the fabric: strength, vitality, resistance, agility, intelligence, perception | Done | [phases-177.md](docs/roadmap-history/phases-177.md) |
-| 178 | Attributes at runtime: host-owned, persisted, feeding the derived stats | Planned | below |
+| 178 | Attributes at runtime: host-owned, persisted, feeding the derived stats | Done | [phases-178.md](docs/roadmap-history/phases-178.md) |
 | 179 | The character sheet: a paper doll, attributes and derived stats | Planned | below |
 | 180 | Character creation in the fabric: name, appearance and starting attributes | Planned | below |
 | 181 | Character creation at runtime: a creation screen before the first spawn | Planned | below |
@@ -54,43 +54,6 @@ date (for example, a world recorded around the pre-worldgen-9 spawn pit).
 | Phase | Title | Status | Spec |
 |---|---|---|---|
 | 182 | Admin tools: /time, /speed, /fly, /heal, /regen world and an Admin window | Done | [phases-182.md](docs/roadmap-history/phases-182.md) |
-
----
-
-## Phase 178 — Attributes at runtime: host-owned, persisted, feeding the derived stats
-
-**Goal:** make Phase 177 real. The host owns every player's attributes, derives their stats from
-the fabric table, persists them, and grows them from skill XP. The client only displays them.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phase 177.
-
-**From Phase 177:** the tables are `GameData.ATTRIBUTES["AttributeSystem"]` (`derivation`, `growth`,
-bounds). The formula, every stat id and the growth rule are in
-[phases-177.md](docs/roadmap-history/phases-177.md#as-built). `CarcassRules.base_capacity_kg()`
-reads the Strength row's base until this phase derives carry capacity per player.
-`detectionRadiusMetres` (32 m at base) is new: the minimap draws no creatures or deposits yet.
-
-**Deliverables:**
-- `src/character/attribute_rules.gd`: pure functions for deriving stats and applying growth, read
-  from `GameData`.
-- The host stores attributes on the player record. A save from before this phase loads with base
-  10 in everything (versioned migration, as in Phase 121).
-- Carry capacity, max HP and regeneration, damage reduction, status-effect rolls, attack interval,
-  research gain, gather yield, harvest quality and minimap detection radius read the derived stats.
-- `attributes_synced` goes to the owning client only, and peers get only what they need to draw.
-  The client sends no attribute values. The host ignores and rate-limits any attempt.
-- Skill XP grants feed attribute growth on the host, with the cap enforced.
-
-**Acceptance criteria:**
-- [ ] Suite: each derived stat equals the fabric formula at the minimum, base and maximum.
-- [ ] Suite: growth from XP follows the table, has diminishing returns and stops at the cap.
-- [ ] Suite: a pre-178 save loads with base attributes and the same carry capacity and max HP as
-  before.
-- [ ] Harness: `attributes_synced` reaches the owner over the socket. A client payload carrying
-  attribute values is refused and counted.
-- [ ] Suite green on both boot paths, harness green.
 
 ---
 

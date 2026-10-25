@@ -305,6 +305,12 @@ func redact_for_client(value: Variant) -> Variant:
 ## Route a client → host packet. Only client-originated types are accepted;
 ## host-only types sent by a malicious client are dropped and logged.
 func _route_c2h(sender: int, payload: Dictionary) -> void:
+	# Phase 178 — the host owns attributes and growth: a packet that carries values for them (as its own type, or
+	# smuggled beside another) is refused and counted, and any other fields it carries are not read.
+	if payload.has("attributes") or payload.has("attribute_growth") or payload.has("attribute_xp") \
+			or str(payload.get("type", "")) == "attributes_intent":
+		sl._refuse_attribute_claim(sender)
+		return
 	match str(payload.get("type", "")):
 		"join_intent":
 			# Phase 33 — the client presents its cached id ("" on a first join).

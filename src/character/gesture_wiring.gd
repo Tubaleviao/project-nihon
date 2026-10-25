@@ -175,7 +175,10 @@ func tick(delta: float) -> void:
 	for pid in held:
 		var mult: float = root._gesture.regen_multiplier(str(pid))
 		if mult > 1.0:
-			_regen_owed[pid] = float(_regen_owed.get(pid, 0.0)) + GestureRules.regen_amount(mult, delta)
+			# Phase 178 — Vitality sets the base rate and the pose bonus (host-resolved from the record).
+			var rid: String = _local_id() if _is_local(str(pid)) else str(pid)
+			mult = maxf(mult * root._registry.stat_of(rid, "restRegenFactor"), 1.0)
+			_regen_owed[pid] = float(_regen_owed.get(pid, 0.0)) + GestureRules.regen_amount(mult, delta, root._registry.stat_of(rid, "hpRegenPerSecond"))
 	_regen_clock += delta
 	if _regen_clock >= REGEN_APPLY_INTERVAL:
 		_regen_clock = 0.0
@@ -218,12 +221,13 @@ func _visible_pairs(subject: int, at: Vector3) -> Dictionary:
 func _regen(player_id: String, amount: float) -> void:
 	if _is_local(player_id):
 		var own: float = root._player.get_hp()
-		if own > 0.0 and own < PlayerSlice.MAX_HP:
-			root._player.set_hp(minf(own + amount, PlayerSlice.MAX_HP))
+		if own > 0.0 and own < root._player.max_hp:
+			root._player.set_hp(minf(own + amount, root._player.max_hp))
 		return
 	var hp: float = root._registry.get_hp(player_id)
-	if hp >= 0.0 and not PlayerRegistry.is_downed(hp) and hp < PlayerSlice.MAX_HP:
-		root._registry.record_simulated_hp(player_id, minf(hp + amount, PlayerSlice.MAX_HP))
+	var ceiling: float = root._registry.max_hp_of(player_id)
+	if hp >= 0.0 and not PlayerRegistry.is_downed(hp) and hp < ceiling:
+		root._registry.record_simulated_hp(player_id, minf(hp + amount, ceiling))
 
 # ---------------------------------------------------------------------------
 # Client: pose the avatars

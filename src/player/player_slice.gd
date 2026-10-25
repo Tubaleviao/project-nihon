@@ -82,6 +82,7 @@ const TREE_COLLISION_MASK := 8 # layer 4 (bit 3) — tree trunks, for the chop r
 ## persistence preload presentation. Aliased here so every existing reader
 ## (`_hp`, the HUD, the suite, the harness) keeps the same name.
 const PlayerRules := preload("res://src/core/player_rules.gd")
+const AttributeRules := preload("res://src/character/attribute_rules.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
 const VoxelSliceScript := preload("res://src/terrain/voxel_slice.gd")
 const DistantTerrain := preload("res://src/terrain/distant_terrain.gd")
@@ -104,6 +105,10 @@ var _pivot:  Node3D           # horizontal yaw pivot under _body
 var _cam_arm: Node3D          # pitch arm under _pivot; its Y carries the camera's height smoothing
 var _cam_follow_y: float = NAN  # the height the camera follows (eased body Y); NAN until the first frame
 var _hp:     float = MAX_HP
+## Phase 178 — this body's attributes (a display copy: the host owns them) and the Vitality-derived HP ceiling.
+## A body with no attributes yet reads as base 10 everywhere, so `max_hp` is `MAX_HP` until the host says otherwise.
+var attributes: Dictionary = AttributeRules.defaults()
+var max_hp: float = MAX_HP
 var _vel:    Vector3 = Vector3.ZERO
 var _sync_tick: int = 0
 var _alive: bool = true
@@ -619,6 +624,19 @@ func is_alive() -> bool:
 func get_hp() -> float:
 	return _hp
 
+## Phase 178 — adopt the host's attribute table: `max_hp` follows Vitality, and HP is re-clamped under a lowered
+## ceiling. The HP value itself is host-simulated and is not raised here.
+func set_attributes(table: Dictionary) -> void:
+	attributes = AttributeRules.sanitize(table)
+	max_hp = AttributeRules.stat("maxHp", attributes)
+	if _hp > max_hp:
+		_hp = max_hp
+	_update_hp_bar()
+
+## One derived stat of this body (see `AttributeRules.stat`).
+func stat(stat_id: String) -> float:
+	return AttributeRules.stat(stat_id, attributes)
+
 ## Restore HP from a save (Phase 33). Clamped to [0, MAX_HP]; the position half
 ## of a restore is `spawn_at()`. Restoring HP is what makes the boot snapshot's
 ## `player.hp` field actually read back instead of written and forgotten.
@@ -654,7 +672,7 @@ func get_hp() -> float:
 ##     instead of a fresh one — the body would come back early, on the seconds left over
 ##     from a death it had already recovered from.
 func set_hp(hp: float) -> void:
-	_hp = clampf(hp, 0.0, MAX_HP)
+	_hp = clampf(hp, 0.0, max_hp)
 	if _hp <= 0.0:
 		if _alive:
 			_die()   # the death door: arms the countdown AND emits player_died
@@ -911,7 +929,7 @@ func _move(delta: float) -> void:
 
 	var speed := walking_speed(swimming, _weather_factor_now())
 	speed = held_speed(speed, is_immobilized()) * clampf(carry_speed_factor, 0.0, 1.0)
-	speed *= admin_speed_factor * (AdminRules.FLY_SPEED_FACTOR if flying else 1.0)
+	speed *= stat("moveSpeedFactor") * admin_speed_factor * (AdminRules.FLY_SPEED_FACTOR if flying else 1.0)
 	_vel.x = dir.x * speed
 	_vel.z = dir.z * speed
 
@@ -967,7 +985,7 @@ func _broadcast_state() -> void:
 		"position": get_position(),
 		"world_pos": get_world_pos(),
 		"hp":       _hp,
-		"max_hp":   MAX_HP,
+		"max_hp":   max_hp,
 	}
 	GameBus.player_state_changed.emit(payload)
 	GameBus.player_state_sync_requested.emit(payload)
@@ -977,7 +995,7 @@ func _die(killer_id: String = "", killing_damage: float = 0.0) -> void:
 	_respawn_timer = RESPAWN_DELAY
 	var landing := Vector3.ZERO
 	if death_landing_fn.is_valid() and killing_damage > 0.0:
-		landing = death_landing_fn.call(killer_id, get_position(), killing_damage, MAX_HP)
+		landing = death_landing_fn.call(killer_id, get_position(), killing_damage, max_hp)
 	GameBus.player_died.emit(get_position(), killer_id, landing)
 
 ## Phase 53 — where a respawn puts the body: the player's own spawn point (game_root sets it from
@@ -995,7 +1013,7 @@ func set_respawn_world_pos(wp: Dictionary) -> void:
 	respawn_point = Vector3(chunk.x * WorldPos.CHUNK_METERS + local.x, local.y, chunk.y * WorldPos.CHUNK_METERS + local.z)
 
 func _respawn() -> void:
-	_hp = MAX_HP
+	_hp = max_hp
 	apply_status_effects([])
 	_alive = true
 	_respawn_timer = -1.0
@@ -1145,10 +1163,10 @@ func _update_hp_bar() -> void:
 	if _hp_label == null:
 		return
 	var bar := ""
-	var filled := int((_hp / MAX_HP) * 10.0)
+	var filled := int((_hp / max_hp) * 10.0)
 	for i in range(10):
 		bar += "█" if i < filled else "░"
-	_hp_label.text = I18n.t("hud.hp", [bar, I18n.number(_hp), I18n.number(MAX_HP)])
+	_hp_label.text = I18n.t("hud.hp", [bar, I18n.number(_hp), I18n.number(max_hp)])
 
 func _update_aim() -> void:
 	var pid := ""

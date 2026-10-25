@@ -79,6 +79,7 @@ const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 ## two constants. The values are unchanged; only their home is, and `PlayerSlice` re-exports
 ## both names so no reader moved.**
 const PlayerRules := preload("res://src/core/player_rules.gd")
+const AttributeRules := preload("res://src/character/attribute_rules.gd")
 
 ## Phase 39 — how long a host-simulated peer stays down before its health reads back
 ## full. The Phase 37 cooldown shape, applied to the one deadline a body carries.
@@ -465,6 +466,10 @@ func ensure_player(player_id: String) -> Dictionary:
 			"skills":     {},
 			# Phase 161 — skill experience points, { skill: xp }; the level follows from the fabric's table.
 			"skill_xp":   {},
+			# Phase 178 — the six attributes ({ attribute: int }, base 10 each) and the growth banked toward the next
+			# point ({ points, xp }). Host-owned: no client message writes either.
+			"attributes": AttributeRules.defaults(),
+			"attribute_growth": AttributeRules.empty_growth(),
 			"cooldowns":  {},
 			# Phase 47 — the worn set, { slot: item_key }.
 			"equipment":  {},
@@ -729,7 +734,7 @@ func _resolved_hp(rec: Dictionary) -> float:
 		float(rec.get("hp", -1.0)),
 		float(rec.get("respawn_deadline", 0.0)),
 		-1.0,
-		PlayerRules.MAX_HP
+		AttributeRules.stat("maxHp", AttributeRules.sanitize(rec.get("attributes", {})))
 	)
 
 ## Phase 38 — pure: a peer's host-simulated HP after a resolved hit.
@@ -896,6 +901,41 @@ func add_skill_xp(player_id: String, skill: String, amount: int) -> int:
 	xp[skill] = clampi(int(xp.get(skill, 0)) + amount, 0, 100000000)
 	rec["skill_xp"] = xp
 	return int(xp[skill])
+
+## Phase 178 — the player's attributes as a complete { attribute: int } table (base 10 for a record without them).
+func get_attributes(player_id: String) -> Dictionary:
+	return AttributeRules.sanitize(get_record(player_id).get("attributes", {}))
+
+## One derived stat for `player_id` (see `AttributeRules.stat`).
+func stat_of(player_id: String, stat_id: String) -> float:
+	return AttributeRules.stat(stat_id, get_attributes(player_id))
+
+## The player's max HP: the Vitality-derived number (100 at base, `PlayerRules.MAX_HP`).
+func max_hp_of(player_id: String) -> float:
+	return stat_of(player_id, "maxHp") if has_player(player_id) else PlayerRules.MAX_HP
+
+## Host: grant `amount` XP to `skill` and feed it to the attributes its category weights (Phase 178). Returns the
+## attributes that gained a point; `GameBus.attributes_synced` is emitted when any did, so the owner's client
+## refreshes. Refused (returns []) on a non-authoritative machine.
+func grant_skill_xp(player_id: String, skill: String, amount: int) -> Array:
+	if not is_authoritative or amount <= 0:
+		return []
+	add_skill_xp(player_id, skill, amount)
+	var rec := get_record(player_id)
+	if rec.is_empty():
+		return []
+	var category := AttributeRules.category_of_skill(skill)
+	var xp := float(amount)
+	if category == "magic":
+		xp *= stat_of(player_id, "magicXpFactor")
+	var attrs := get_attributes(player_id)
+	var growth := AttributeRules.sanitize_growth(rec.get("attribute_growth", {}))
+	var gained := AttributeRules.grow(attrs, growth, category, xp)
+	rec["attribute_growth"] = growth
+	if not gained.is_empty():
+		rec["attributes"] = attrs
+		GameBus.attributes_synced.emit(player_id, attrs)
+	return gained
 
 ## Phase 118 — the professions this player has unlocked ({ name: true }). Progression,
 ## so durable like the flags.
@@ -1091,6 +1131,8 @@ func get_player_data(player_id: String) -> Dictionary:
 		"craft_counter": int(rec.get("craft_counter", 0)),
 		"skills":     rec.get("skills", {}),
 		"skill_xp":   rec.get("skill_xp", {}),
+		"attributes": get_attributes(player_id),
+		"attribute_growth": AttributeRules.sanitize_growth(rec.get("attribute_growth", {})),
 		"cooldowns":  live_cooldowns(rec.get("cooldowns", {})),
 		"equipment":  get_equipment(player_id),
 		"inventory": {},
@@ -1165,6 +1207,10 @@ func apply_player_data(player_id: String, data: Dictionary) -> void:
 	rec["skills"]     = data.get("skills", {})
 	# Phase 161: skill XP rides the record; a payload from before it restores to none.
 	rec["skill_xp"]   = sanitize_skill_xp(data.get("skill_xp", {}))
+	# Phase 178: attributes ride the record; a pre-178 payload carries none and restores to base 10 in everything,
+	# which derives today's carry capacity and max HP exactly.
+	rec["attributes"] = AttributeRules.sanitize(data.get("attributes", {}))
+	rec["attribute_growth"] = AttributeRules.sanitize_growth(data.get("attribute_growth", {}))
 	# Phase 37: so are the interaction cooldowns (an expired deadline is dropped on
 	# the way in — see live_cooldowns). A pre-Phase-37 payload carries no key.
 	rec["cooldowns"]  = live_cooldowns(data.get("cooldowns", {}))

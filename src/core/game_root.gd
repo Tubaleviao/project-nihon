@@ -310,6 +310,7 @@ func _ready() -> void:
 	_status = StatusEffects.new()
 	_battle.status_effects = _status
 	_battle.now_fn = _combat_wiring.status_now
+	_battle.player_stat_fn = _combat_wiring.player_stat
 	_battle.attacker_pos_fn = _combat_wiring.death_attacker_pos
 	_battle.walkable_fn = _combat_wiring.death_walkable
 	_battle.ground_fn = _combat_wiring.death_ground
