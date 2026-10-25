@@ -150,6 +150,12 @@ const DEFAULT_APPLIES_PER_FRAME := 3
 ## synchronously (its contract); only the per-frame `_process` path is budgeted.
 const DEFAULT_UNLOADS_PER_FRAME := 4
 
+## Phase 187 — how strongly the load queue favours the direction of travel: a chunk's priority is its
+## squared distance from the nearest window centre minus this times its lead along the heading (in
+## chunks), so among chunks at the same distance the ones ahead build first, and the chunk under the
+## player (distance 0) still comes before every neighbour. Below 1, so it never outranks a nearer ring.
+const HEADING_BIAS := 0.5
+
 ## Phase 42 review — how many times one chunk's build may be dispatched before the
 ## manager gives up on it and reports the failure. It exists because a worker result can
 ## now be REFUSED (an empty result, or a chunk rebuilt under it) and a refusal is answered
@@ -247,6 +253,38 @@ func is_catching_up() -> bool:
 ## The in-flight cap in force: the steady one, or the catch-up one after a fold.
 func build_cap() -> int:
 	return maxi(max_builds_in_flight, catchup_builds_in_flight) if _catchup else max_builds_in_flight
+
+## Phase 187 — high priority for a fold's catch-up and for the local window while moving fast; the rest
+## low. All high, the crowd stress run (host, watcher, bots on one 4-core runner) missed its host tick
+## budget in every pattern; all low, playtest flight had ground under the body in about 60% of samples.
+func build_high_priority(chunk: Vector2i) -> bool:
+	if _catchup:
+		return true
+	if _last_centers.is_empty() or not is_moving_fast():
+		return false
+	var c: Vector2i = _last_centers[0]
+	return maxi(absi(chunk.x - c.x), absi(chunk.y - c.y)) <= stream_radius()
+
+## Phase 187 — a local crossing within FAST_CROSSING_MSEC of the previous one marks the player as fast
+## for FAST_HOLD_MSEC (one chunk in 2 s is 16 m/s: a sprint or a mount, not a walk).
+const FAST_CROSSING_MSEC := 2000
+const FAST_HOLD_MSEC := 2000
+var _last_local_crossing_msec: int = -1
+var _fast_until_msec: int = -1
+
+## True while the local player is crossing chunks fast (see FAST_CROSSING_MSEC).
+func is_moving_fast() -> bool:
+	return _fast_until_msec >= 0 and _now_msec() < _fast_until_msec
+
+## Note a local crossing at the pump clock's time (called by `refresh` when the local centre moves by a step).
+func note_local_crossing() -> void:
+	var now := _now_msec()
+	if _last_local_crossing_msec >= 0 and now - _last_local_crossing_msec <= FAST_CROSSING_MSEC:
+		_fast_until_msec = now + FAST_HOLD_MSEC
+	_last_local_crossing_msec = now
+
+func _now_msec() -> int:
+	return int(pump_clock_usec.call()) / 1000
 
 ## Phase 42 review pass 3 — seconds between self-heal attempts while the window is not moving
 ## (see DEFAULT_SELF_HEAL_INTERVAL / `_self_heal_failed`). Overridable for tests.
@@ -892,9 +930,11 @@ func _dispatch_worker_noise_build(chunk_pos: Vector2i, key: String) -> void:
 		VoxelBuilder.fill_seam_strips(chunk_pos, gathered, seed_v, noise)
 		result[0] = VoxelMesh.build_worker_arrays(chunk_pos, hm, VoxelBuilder.build_runs(chunk_pos, hm, gathered), keep_render)
 	# A low-priority task may only use `low_priority_thread_ratio` of the pool (0.3 by default: three or
-	# four threads on most machines, which is what really capped the build rate), so the catch-up
-	# dispatches at high priority and can use every worker.
-	var task_id := WorkerThreadPool.add_task(job, _catchup, "chunk build %s" % key)
+	# four threads on most machines, which is what really capped the build rate). Phase 141 raised only the
+	# catch-up to high priority; Phase 187 does it for the local player's window too, because the steady
+	# stream is capped the same way: at 90 m/s (admin flight) 11 builds sat in flight while three ran. A peer's
+	# window stays low (`build_high_priority`). `build_cap()` (all cores but one) keeps a worker free.
+	var task_id := WorkerThreadPool.add_task(job, build_high_priority(chunk_pos), "chunk build %s" % key)
 	_builds[task_id] = {
 		"chunk":     chunk_pos,
 		"key":       key,
@@ -1152,14 +1192,20 @@ func flush_records_final() -> void:
 func _apply_finished_builds() -> void:
 	if _builds.is_empty():
 		return
-	var applied := 0
+	var done: Array = []
 	for task_id in _builds.keys():
-		if not WorkerThreadPool.is_task_completed(task_id):
-			continue
+		if WorkerThreadPool.is_task_completed(task_id):
+			done.append(task_id)
+	var applied := 0
+	for task_id in _apply_order(done):
 		if applied >= maxi(applies_per_frame, 1) or (applied > 0 and _pump_over()):
 			return   # the rest stay finished in the table and apply next frame
 		_apply_build_entry(task_id)
 		applied += 1
+
+## Phase 187 — the order finished builds attach in (see `ChunkPart1.apply_order`).
+func _apply_order(done: Array) -> Array:
+	return _m1.apply_order(done)
 
 ## Apply every in-flight build NOW, blocking on each task. The frame path polls
 ## (`_apply_finished_builds`); this is the blocking variant for a caller that has no
@@ -1414,6 +1460,28 @@ func _desired_chunks(center: Vector2i, radius: int) -> Array:
 		for dz in range(-radius, radius + 1):
 			out.append(center + Vector2i(dx, dz))
 	return out
+
+## Phase 187 — the load queue's sort key for `chunk` (smaller builds first): its squared distance from
+## the nearest of `centers`, less `HEADING_BIAS` times its lead from `centers[0]` (the local player) along
+## `heading` (a unit vector in chunks, or zero when standing). Pure.
+static func queue_priority(centers: Array, heading: Vector2, chunk: Vector2i) -> float:
+	var best := 1 << 60
+	for c: Vector2i in centers:
+		var dx := chunk.x - c.x
+		var dz := chunk.y - c.y
+		best = mini(best, dx * dx + dz * dz)
+	if centers.is_empty() or heading == Vector2.ZERO:
+		return float(best)
+	var origin: Vector2i = centers[0]
+	return float(best) - HEADING_BIAS * Vector2(chunk - origin).dot(heading)
+
+## Phase 187 — the local player's heading between two window centres, in chunks (unit length), or zero
+## when it did not move or jumped further than a stream radius (a teleport or a fold restreams anyway).
+static func heading_between(from: Vector2i, to: Vector2i, max_step: int) -> Vector2:
+	var d := Vector2(to - from)
+	if d == Vector2.ZERO or absi(to.x - from.x) > max_step or absi(to.y - from.y) > max_step:
+		return Vector2.ZERO
+	return d.normalized()
 
 ## Squared Chebyshev-ish distance from `center` to `chunk` — used only for
 ## ordering the load queue so the chunk nearest the player builds first.

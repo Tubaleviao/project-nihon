@@ -49,6 +49,12 @@ func refresh(unload_now: bool = true) -> void:
 		sl._retry_deferred_records()
 		return
 
+	var heading := Vector2.ZERO
+	var local_moved: bool = sl._last_centers.is_empty() or sl._last_centers[0] != centers[0]
+	if not sl._last_centers.is_empty():
+		heading = sl.heading_between(sl._last_centers[0], centers[0], sl.stream_radius())
+		if heading != Vector2.ZERO:
+			sl.note_local_crossing()
 	sl._last_centers = centers
 	# ONE radius for WANTED and DESIRED on purpose (ninth review pass): `wanted` — what a
 	# crossing retains — is the same radius the queue spans, so no chunk that was queued (and
@@ -83,14 +89,26 @@ func refresh(unload_now: bool = true) -> void:
 	# Queue loads nearest-first. Dispatching is what is bounded per frame; the build
 	# itself runs on a worker.
 	# Phase 163 — decorated with the distance once per chunk, not twice per comparison.
+	# Phase 187 — when the LOCAL player crossed, the WHOLE queue is re-sorted, not only the new chunks:
+	# appended behind what earlier crossings queued, the chunk under a fast player waited behind ground it
+	# had already passed. The key also favours the heading (`queue_priority`), so the ring being flown into
+	# builds first. A peer-only move keeps the old append: re-ranking a crowd's queue against every centre
+	# on each peer crossing cost the host tick (crowd stress, pole pattern: tick p95 7 ms → 40–53 ms).
 	var to_load: Array = []
 	for i in desired.size():
 		var key: String = desired_keys[i]
 		if not sl._loaded.has(key) and not sl._pending.has(key):
-			to_load.append([sl._nearest_dist2(centers, desired[i]), desired[i], key])
+			sl._pending[key] = true
+			if local_moved:
+				sl._load_queue.append(desired[i])
+			else:
+				to_load.append([sl._nearest_dist2(centers, desired[i]), desired[i]])
+	if local_moved:
+		for c in sl._load_queue:
+			to_load.append([sl.queue_priority(centers, heading, c), c])
+		sl._load_queue.clear()
 	to_load.sort_custom(func(a, b): return a[0] < b[0])
 	for entry in to_load:
-		sl._pending[entry[2]] = true
 		sl._load_queue.append(entry[1])
 
 	# Phase 49 — a synchronous `refresh()` unloads everything now; the `_process` path
@@ -193,7 +211,7 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 			return
 		result[0] = VoxelMesh.build_worker_arrays(chunk_pos, heightmap,
 			VoxelBuilder.build_runs(chunk_pos, heightmap, gathered), keep_render)
-	var task_id = WorkerThreadPool.add_task(job, false, "chunk build %s" % key)
+	var task_id = WorkerThreadPool.add_task(job, sl.build_high_priority(chunk_pos), "chunk build %s" % key)
 	sl._builds[task_id] = {
 		"chunk":     chunk_pos,
 		"key":       key,
@@ -201,3 +219,29 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 		"revision":  revision,
 		"result":    result,
 	}
+
+## Phase 187 — the finished builds in the order they attach: the local player's 3×3 ring first (the
+## chunk under the body before its neighbours), everything else in dispatch order. The attach is the
+## main-thread wall (collision alone is ~9 ms a chunk, so an over-budget frame attaches one); in dispatch
+## order the chunk under a fast player waited behind ring chunks dispatched before it. Only those nine
+## jump the line, so no other build can be starved by a stream of nearer ones (a fold's catch-up).
+func apply_order(done: Array) -> Array:
+	if done.size() < 2 or sl._last_centers.is_empty():
+		return done
+	var local: Vector2i = sl._last_centers[0]
+	var urgent: Array = []
+	var rest: Array = []
+	for i in done.size():
+		var c: Vector2i = sl._builds[done[i]]["chunk"]
+		var d := maxi(absi(c.x - local.x), absi(c.y - local.y))
+		if d <= 1:
+			urgent.append([d, i, done[i]])
+		else:
+			rest.append(done[i])
+	if urgent.is_empty():
+		return done
+	urgent.sort_custom(func(a, b): return a[0] < b[0] or (a[0] == b[0] and a[1] < b[1]))
+	var out: Array = []
+	for u in urgent:
+		out.append(u[2])
+	return out + rest
