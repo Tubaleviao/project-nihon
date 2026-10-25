@@ -172,7 +172,9 @@ func workable_entries(id: String, category: String) -> Array:
 ## `none` entries are worked bare-handed at the full level, so holding a poor tool never costs them yield.
 ## Returns `[{ item, quantity, quality }]` (only entries that rolled above zero) — the worked entries are gone
 ## either way.
-func resolve_harvest(id: String, category: String, efficiency: float, level: int, rng: RandomNumberGenerator) -> Array:
+## Phase 178 — Perception: `yield_factor` scales each quantity (the fraction rolls on `rng`, only when the factor is
+## not 1) and `quality_bonus` shifts the grade step. The defaults leave a base-10 harvest unchanged.
+func resolve_harvest(id: String, category: String, efficiency: float, level: int, rng: RandomNumberGenerator, yield_factor: float = 1.0, quality_bonus: float = 0.0) -> Array:
 	var out: Array = []
 	if not _carcasses.has(id):
 		return out
@@ -186,8 +188,11 @@ func resolve_harvest(id: String, category: String, efficiency: float, level: int
 			continue
 		var eff := bare_eff if str(e.get("tool", "none")) == "none" else tool_eff
 		var qty := CarcassRules.quantity(e, eff, rng.randf())
+		if qty > 0 and yield_factor != 1.0:
+			var scaled := float(qty) * maxf(yield_factor, 0.0)
+			qty = int(floor(scaled)) + (1 if rng.randf() < scaled - floor(scaled) else 0)
 		if qty > 0:
-			out.append({ "item": str(e["item"]), "quantity": qty, "quality": CarcassRules.quality(eff) })
+			out.append({ "item": str(e["item"]), "quantity": qty, "quality": CarcassRules.quality(eff + roundi(quality_bonus)) })
 	c["entries"] = left
 	if left.is_empty():
 		remove(id)
@@ -207,7 +212,7 @@ func carried_by(player_id: String) -> String:
 	return str(_carried.get(player_id, ""))
 
 ## "" when `player_id` takes the body (carry or drag), else the reason. Sets the carrier on success.
-func carry(id: String, player_id: String, player_pos: Vector3, level: int) -> String:
+func carry(id: String, player_id: String, player_pos: Vector3, level: int, base_kg: float = -1.0) -> String:
 	if not _carcasses.has(id):
 		return REASON_UNKNOWN
 	var c: Dictionary = _carcasses[id]
@@ -217,7 +222,7 @@ func carry(id: String, player_id: String, player_pos: Vector3, level: int) -> St
 		return REASON_TAKEN
 	if player_pos.distance_to(c["position"]) > CarcassRules.rule_f("harvestRangeMetres", 3.0):
 		return REASON_RANGE
-	var mode := CarcassRules.carry_mode(CarcassRules.carry_rule(str(c["creature"])), float(c["mass"]), CarcassRules.capacity_kg(level))
+	var mode := CarcassRules.carry_mode(CarcassRules.carry_rule(str(c["creature"])), float(c["mass"]), CarcassRules.capacity_kg(level, base_kg))
 	if mode == "none":
 		return REASON_TOO_HEAVY
 	c["carrier"] = player_id
@@ -240,12 +245,12 @@ func drop(player_id: String, position: Vector3) -> String:
 	return id
 
 ## Walk speed multiplier for a player: 1.0 unless they hold a body.
-func speed_multiplier(player_id: String, level: int) -> float:
+func speed_multiplier(player_id: String, level: int, base_kg: float = -1.0) -> float:
 	var id := carried_by(player_id)
 	if id == "":
 		return 1.0
 	var c: Dictionary = _carcasses[id]
-	return CarcassRules.speed_multiplier(str(c["mode"]), float(c["mass"]), CarcassRules.capacity_kg(level))
+	return CarcassRules.speed_multiplier(str(c["mode"]), float(c["mass"]), CarcassRules.capacity_kg(level, base_kg))
 
 ## The carried body follows its carrier (the host's own position knowledge).
 func follow(player_id: String, position: Vector3) -> void:

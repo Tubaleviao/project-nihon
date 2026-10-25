@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:8e283ad715b66840e9964ea90fc1b5c581828fcdbad463aced046b689ec6ccda",
+  "schemaHash": "sha256:527a5d408340fbc99b0b3d80d4c2714849f33192468352c0524f4fd73208c3b7",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -6575,7 +6575,8 @@
               "social",
               "survival"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "combat"
           }
         },
         "relations": {},
@@ -6765,7 +6766,8 @@
               "social",
               "survival"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "combat"
           }
         },
         "relations": {},
@@ -6955,7 +6957,8 @@
               "social",
               "survival"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "combat"
           }
         },
         "relations": {},
@@ -7145,7 +7148,8 @@
               "social",
               "survival"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "combat"
           }
         },
         "relations": {},
@@ -7335,7 +7339,8 @@
               "social",
               "survival"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "crafting"
           }
         },
         "relations": {},
@@ -7525,7 +7530,8 @@
               "social",
               "survival"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "crafting"
           }
         },
         "relations": {},
@@ -7715,7 +7721,8 @@
               "social",
               "survival"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "crafting"
           }
         },
         "relations": {},
@@ -7905,7 +7912,8 @@
               "social",
               "survival"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "crafting"
           }
         },
         "relations": {},
@@ -8095,7 +8103,8 @@
               "social",
               "survival"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "crafting"
           },
           "flagGate": {
             "name": "flagGate",
@@ -8301,7 +8310,8 @@
               "social",
               "survival"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "magic"
           }
         },
         "relations": {},
@@ -8491,7 +8501,8 @@
               "social",
               "survival"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "magic"
           },
           "flagGate": {
             "name": "flagGate",
@@ -8697,7 +8708,8 @@
               "social",
               "survival"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "magic"
           }
         },
         "relations": {},
@@ -8887,7 +8899,8 @@
               "social",
               "survival"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "magic"
           }
         },
         "relations": {},
@@ -9078,7 +9091,8 @@
               "social",
               "survival"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "exploration"
           }
         },
         "relations": {},
@@ -9268,7 +9282,8 @@
               "social",
               "survival"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "exploration"
           }
         },
         "relations": {},
@@ -9458,7 +9473,8 @@
               "social",
               "survival"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "exploration"
           }
         },
         "relations": {},
@@ -9648,7 +9664,8 @@
               "social",
               "survival"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "exploration"
           }
         },
         "relations": {},
@@ -9838,7 +9855,8 @@
               "social",
               "survival"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "social"
           }
         },
         "relations": {},
@@ -10028,7 +10046,8 @@
               "social",
               "survival"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "social"
           }
         },
         "relations": {},
@@ -10219,7 +10238,8 @@
               "social",
               "survival"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "social"
           }
         },
         "relations": {},
@@ -10409,7 +10429,8 @@
               "social",
               "survival"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "social"
           }
         },
         "relations": {},
@@ -10600,7 +10621,8 @@
               "social",
               "survival"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "survival"
           },
           "levelCap": {
             "name": "levelCap",

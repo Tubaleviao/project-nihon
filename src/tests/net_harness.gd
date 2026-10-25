@@ -58,6 +58,7 @@ extends Node
 
 const I18n := preload("res://src/core/i18n.gd")
 const PlayerSlice := preload("res://src/player/player_slice.gd")
+const AttributeRules := preload("res://src/character/attribute_rules.gd")
 const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 const NetworkingSlice := preload("res://src/networking/networking_slice.gd")
 const CreatureSlice := preload("res://src/creature/creature_slice.gd")
@@ -194,6 +195,7 @@ static func steps() -> Array:
 		{ "name": "gesture_synced", "compare": true },
 		{ "name": "carcass_synced", "compare": true },
 		{ "name": "admin_moves_synced", "compare": true },
+		{ "name": "attributes_synced", "compare": true },
 		{ "name": "world_regen_synced", "compare": true },
 	]
 
@@ -428,6 +430,7 @@ func run(root: Node, role: String) -> void:
 	await _step_gesture_synced()
 	await _step_carcass_synced()
 	await _step_admin_moves_synced()
+	await _step_attributes_synced()
 	await _step_world_regen_synced()
 	_finish()
 
@@ -2320,6 +2323,34 @@ func _step_admin_moves_synced() -> void:
 	var healed: bool = await _await_until(func(): return _root._player.get_hp() >= PlayerSlice.MAX_HP, _step_timeout())
 	var ok := moved and healed and not admin_flag
 	_report("admin_moves_synced", verdict(ok, true), "sent" if ok else ("not_moved" if not moved else ("not_healed" if not healed else "client_thinks_admin")))
+
+## Phase 178 — the host grows the peer's attributes from skill XP and `attributes_synced` reaches that owner over
+## the socket (the host's own body is untouched); then the client sends a packet that claims attribute values,
+## and the host refuses and counts it, leaving the record as it was.
+func _step_attributes_synced() -> void:
+	const DETAIL := "owner-synced-claim-refused"
+	if _role == "host":
+		var peers: PackedInt32Array = _root.multiplayer.get_peers()
+		var pid: String = _root._networking.get_player_id(peers[0]) if peers.size() > 0 else ""
+		if pid == "":
+			_report("attributes_synced", "fail", "no_connected_peer")
+			return
+		var own_before: Dictionary = _root._player.attributes.duplicate()
+		var gained: Array = _root._registry.grant_skill_xp(pid, "Skinning", 20000)
+		var refused: bool = await _await_until(func(): return _root._networking.attributes_refused >= 1, _step_timeout() * 2.0)
+		var rec: Dictionary = _root._registry.get_attributes(pid)
+		var held := int(rec["strength"]) == 10 and int(rec["vitality"]) > 10
+		var untouched: bool = _root._player.attributes == own_before
+		var ok := not gained.is_empty() and refused and held and untouched
+		_report("attributes_synced", verdict(ok, true), DETAIL if ok else ("no_growth" if gained.is_empty() else ("claim_not_refused" if not refused else ("claim_applied" if not held else "host_body_moved"))))
+		return
+	var got: bool = await _await_until(func(): return int(_root._player.attributes.get("vitality", 10)) > 10, _step_timeout())
+	var max_hp_ok: bool = got and is_equal_approx(_root._player.max_hp, AttributeRules.stat("maxHp", _root._player.attributes))
+	GameBus.packet_send_requested.emit(1, { "type": "attributes_intent", "attributes": { "strength": 30, "vitality": 30 } })
+	await _await_settle(1.0)
+	var strength_ok := int(_root._player.attributes.get("strength", 10)) == 10
+	var ok := got and max_hp_ok and strength_ok
+	_report("attributes_synced", verdict(ok, true), DETAIL if ok else ("not_received" if not got else ("max_hp_stale" if not max_hp_ok else "claim_applied")))
 
 ## Phase 182 — `/regen world` on the host reaches the client: it drops its records and edits, restreams
 ## and is sent its scope again.

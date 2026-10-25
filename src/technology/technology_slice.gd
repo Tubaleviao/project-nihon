@@ -335,6 +335,9 @@ func grant_points(player_id: String, source: String, amount: int) -> int:
 	if not is_authoritative or amount <= 0 or not SOURCES.has(source) or not _rules().has(source):
 		return 0
 	var pid := resolve_player(player_id)
+	# Phase 178 — Intelligence scales the points a source earns (1.0 at base 10, so base characters are unchanged).
+	if player_registry != null and player_registry.has_method("stat_of"):
+		amount = maxi(1, roundi(float(amount) * float(player_registry.stat_of(pid, "researchGainFactor"))))
 	var granted := _earn(pid, amount)
 	if granted > 0:
 		_set_points(pid, get_points(pid) + granted)

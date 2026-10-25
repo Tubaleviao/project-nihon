@@ -103,7 +103,7 @@ func peer_speed_cap(peer: int) -> float:
 ## The fastest horizontal speed (m/s) `pid` may carry a body at: the slowed walk times the slack, times the
 ## admin moves the host set for it (Phase 182 `/speed`, `/fly`), which its body walks at too.
 func carry_rate(pid: String) -> float:
-	var rate := PlayerSlice.SPEED * root._carcass.speed_multiplier(pid, level_of(pid)) * CARRY_SPEED_SLACK
+	var rate := PlayerSlice.SPEED * root._carcass.speed_multiplier(pid, level_of(pid), capacity_of(pid)) * CARRY_SPEED_SLACK * root._registry.stat_of(pid, "moveSpeedFactor")
 	if root._chat != null:
 		var moves: Dictionary = root._chat.admin_moves_of(pid)
 		rate *= float(moves["speed"]) * (AdminRules.FLY_SPEED_FACTOR if bool(moves["fly"]) else 1.0)
@@ -116,6 +116,10 @@ func _alive(player_id: String) -> bool:
 
 func _inventory_of(player_id: String) -> Node:
 	return root._inventory if _is_local(player_id) else root._registry.get_inventory(player_id)
+
+## Phase 178 — the player's Strength-derived carry capacity (kg), before the Skinning bonus.
+func capacity_of(player_id: String) -> float:
+	return root._registry.stat_of(_pid(player_id), "carryCapacityKg")
 
 func level_of(player_id: String) -> int:
 	return CarcassRules.level_for_xp(root._registry.get_skill_xp(_pid(player_id), CarcassRules.SKILL))
@@ -229,7 +233,8 @@ func _finish(player_id: String) -> void:
 	if why != "":
 		GameBus.harvest_resolved.emit(player_id, cid, why, [])
 		return
-	var items: Array = root._carcass.resolve_harvest(cid, category, float(a["efficiency"]), level_of(player_id), _rng)
+	var items: Array = root._carcass.resolve_harvest(cid, category, float(a["efficiency"]), level_of(player_id), _rng,
+			root._registry.stat_of(_pid(player_id), "gatherYieldFactor"), root._registry.stat_of(_pid(player_id), "harvestQualityBonus"))
 	var inv := _inventory_of(player_id)
 	for it in items:
 		if inv == null or not inv.add_item(str(it["item"]), int(it["quantity"]), [], str(it.get("quality", ""))):
@@ -240,7 +245,7 @@ func _finish(player_id: String) -> void:
 	# A remote harvester's bag lives in the registry here; its own client mirrors it, so send the change.
 	if root._peer_wiring != null:
 		root._peer_wiring.sync_peer_own_state({ "success": true, "player_id": player_id })
-	root._registry.add_skill_xp(player_id, CarcassRules.SKILL, int(CarcassRules.skill().get("xpPerHarvest")))
+	root._registry.grant_skill_xp(_pid(player_id), CarcassRules.SKILL, int(CarcassRules.skill().get("xpPerHarvest")))
 	GameBus.harvest_resolved.emit(player_id, cid, "", items)
 
 ## Tell the harvester how it went, as a key + args the client renders in its own locale.
@@ -264,7 +269,7 @@ func _on_carry_intent(carcass_id: String, player_id: String) -> void:
 	if pos == null or not _alive(pid):
 		_refuse(pid, carcass_id, "unavailable")
 		return
-	var why: String = root._carcass.carry(carcass_id, pid, pos, level_of(pid))
+	var why: String = root._carcass.carry(carcass_id, pid, pos, level_of(pid), capacity_of(pid))
 	if why != "":
 		_refuse(pid, carcass_id, why)
 		return
@@ -305,7 +310,7 @@ func _on_carrier_lost(player_id: String) -> void:
 ## Tell the player what the body does to their walking (the host applies it to its own avatar directly).
 func _push_carry_state(pid: String) -> void:
 	var carrying: bool = root._carcass.carried_by(pid) != ""
-	var factor: float = root._carcass.speed_multiplier(pid, level_of(pid))
+	var factor: float = root._carcass.speed_multiplier(pid, level_of(pid), capacity_of(pid))
 	if _is_local(pid):
 		_on_carry_state(carrying, factor)
 	elif root._networking != null and root._networking.is_host():

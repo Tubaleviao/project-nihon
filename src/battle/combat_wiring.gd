@@ -13,6 +13,8 @@ const StatusEffects    := preload("res://src/battle/status_effects.gd")
 const RigTree          := preload("res://src/character/rig_tree.gd")
 
 func _connect_all() -> void:
+	if root._battle != null:
+		root._battle.player_stat_fn = player_stat   # Phase 178 — a defending player's attribute stats
 	connect_bus(GameBus.knockback_requested, _on_knockback_requested)
 	connect_bus(GameBus.player_died, _on_status_player_died)
 	connect_bus(GameBus.combat_hit_resolved, _on_combat_hit_resolved)
@@ -157,14 +159,14 @@ func on_player_damaged(damage: float, attacker_id: String, target_id: String) ->
 	# number this process holds.
 	var was_downed := PlayerRegistry.is_downed(root._registry.get_hp(target_id))
 	var simulated := PlayerRegistry.simulated_hp_after_hit(
-		root._registry.get_hp(target_id), damage, PlayerSlice.MAX_HP)
+		root._registry.get_hp(target_id), damage, root._registry.max_hp_of(target_id))
 	root._registry.record_simulated_hp(target_id, simulated)
 	root._networking.send_player_damaged(peer, damage, attacker_id)
 	# Phase 157 — the killing blow throws a peer's body like any other: the host picks the spot, the
 	# peer's client is teleported there.
 	if PlayerRegistry.is_downed(simulated) and not was_downed and root._networking.has_last_known_state(peer):
 		var pos: Vector3 = root._networking.get_last_known_state(peer)
-		var landing := player_death_landing(attacker_id, pos, damage, PlayerSlice.MAX_HP)
+		var landing := player_death_landing(attacker_id, pos, damage, root._registry.max_hp_of(target_id))
 		if landing != Vector3.ZERO:
 			root._networking.send_teleport(peer, WorldPos.from_world(landing.x, landing.y, landing.z))
 	# Phase 129 — a downed body loses every effect.
@@ -172,6 +174,12 @@ func on_player_damaged(damage: float, attacker_id: String, target_id: String) ->
 		root._status.clear(target_id)
 		for t in root._status.take_dirty():
 			push_status_effects(str(t), status_now())
+
+## Phase 178 — a defending player's derived stat for BattleSlice: the local body ("player" or "") reads the
+## host's own record, a peer its record by id. Neutral for a target nobody models.
+func player_stat(target_id: String, stat_id: String) -> float:
+	var pid: String = root._registry.local_player_id if (target_id == "" or target_id == "player") else target_id
+	return root._registry.stat_of(pid, stat_id)
 
 func status_now() -> float:
 	return float(root.status_clock.call()) if root.status_clock.is_valid() else float(Time.get_ticks_msec()) / 1000.0

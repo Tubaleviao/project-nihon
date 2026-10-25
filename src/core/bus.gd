@@ -202,6 +202,11 @@ signal own_state_synced(data: Dictionary)
 ## window refreshes. game_root pushes it to the owning peer only.
 signal research_points_synced(player_id: String, points: int)
 
+## Phase 178 — a player's attributes changed (growth from skill XP). `attributes` is the complete
+## { attribute: int } table. Host → the owner's peer alone, never broadcast; on a client it arrives with the local
+## bucket id "" and replaces the client's displayed copy. Peers get nothing: no remote avatar draws an attribute.
+signal attributes_synced(player_id: String, attributes: Dictionary)
+
 ## Phase 125 — a waystone travel intent: `player_id` asks to travel from waystone station `from_id` to
 ## `to_id`. A client emits it with an empty player_id ("me"); networking forwards it and the host
 ## re-emits it with the identity bound to that connection. "" on the host means the local player.

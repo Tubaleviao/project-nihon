@@ -624,6 +624,10 @@ func _send_raw(peer_id: int, json: String) -> void:
 func _on_player_state_sync_requested(payload: Dictionary) -> void:
 	_m1._on_player_state_sync_requested(payload)
 
+## Phase 178 — client packets that carried attribute values, refused and counted (see `_m2.refuse_attribute_claim`).
+var attributes_refused: int = 0
+var _attribute_refusal_warn_ms: Dictionary = {}
+
 func _warn_malformed_position(sender: int, now_ms: float = -1.0) -> bool:
 	if now_ms < 0.0:
 		now_ms = float(Time.get_ticks_msec())

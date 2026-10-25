@@ -274,6 +274,8 @@ func restore_local_player() -> void:
 		root._player.set_respawn_world_pos(_lifted_world_pos(spawn))
 	else:
 		record_first_spawn(pid)
+	# Phase 178 — the attributes first, so a saved HP above 100 is not clamped under the default ceiling.
+	root._player.set_attributes(root._registry.get_attributes(pid))
 	var hp := float(rec.get("hp", -1.0))
 	if hp >= 0.0:
 		root._player.set_hp(hp)

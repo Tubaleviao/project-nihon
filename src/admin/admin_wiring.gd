@@ -35,7 +35,7 @@ func _on_admin_moves(speed_factor: float, flying: bool) -> void:
 ## A downed body is left to respawn: healing is not a revive.
 func _on_admin_healed() -> void:
 	if root._player != null and root._player.is_alive():
-		root._player.set_hp(PlayerSlice.MAX_HP)
+		root._player.set_hp(root._player.max_hp)
 
 func _on_identity_assigned(_player_id: String) -> void:
 	if root._is_client:
