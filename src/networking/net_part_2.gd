@@ -302,6 +302,17 @@ func redact_for_client(value: Variant) -> Variant:
 		return s
 	)
 
+## Phase 178 — a client packet carried attribute values (the host owns attributes): count it, warn at most once per
+## peer per interval.
+func refuse_attribute_claim(sender: int, now_ms: float = -1.0) -> void:
+	sl.attributes_refused += 1
+	if now_ms < 0.0:
+		now_ms = float(Time.get_ticks_msec())
+	if now_ms - float(sl._attribute_refusal_warn_ms.get(sender, -sl.MALFORMED_WARN_INTERVAL_MS)) < sl.MALFORMED_WARN_INTERVAL_MS:
+		return
+	sl._attribute_refusal_warn_ms[sender] = now_ms
+	sl.Diag.warn("NetworkingSlice: peer %d sent attribute values — refused (the host owns attributes)" % sender)
+
 ## Route a client → host packet. Only client-originated types are accepted;
 ## host-only types sent by a malicious client are dropped and logged.
 func _route_c2h(sender: int, payload: Dictionary) -> void:
@@ -309,7 +320,7 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 	# smuggled beside another) is refused and counted, and any other fields it carries are not read.
 	if payload.has("attributes") or payload.has("attribute_growth") or payload.has("attribute_xp") \
 			or str(payload.get("type", "")) == "attributes_intent":
-		sl._refuse_attribute_claim(sender)
+		refuse_attribute_claim(sender)
 		return
 	match str(payload.get("type", "")):
 		"join_intent":

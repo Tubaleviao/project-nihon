@@ -13,6 +13,8 @@ const StatusEffects    := preload("res://src/battle/status_effects.gd")
 const RigTree          := preload("res://src/character/rig_tree.gd")
 
 func _connect_all() -> void:
+	if root._battle != null:
+		root._battle.player_stat_fn = player_stat   # Phase 178 — a defending player's attribute stats
 	connect_bus(GameBus.knockback_requested, _on_knockback_requested)
 	connect_bus(GameBus.player_died, _on_status_player_died)
 	connect_bus(GameBus.combat_hit_resolved, _on_combat_hit_resolved)
