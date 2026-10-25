@@ -788,6 +788,13 @@ func _step_gather() -> Array:
 		return [false, "axe does not fit the pack (weight %.1f of %.1f)" % [_root._inventory.get_current_weight(), _root._inventory.get_max_weight()]]
 	var before := _chopped.size()
 	var target := _nearest_tree(standing)
+	# The pool grows past its first block once enough chunks have streamed in; a grow must not wipe the
+	# trees already drawn (a zero transform draws nothing). Only a real renderer keeps the transforms.
+	var pool = _root._tree._pool
+	if pool != null and DisplayServer.get_name() != "headless":
+		var xf: Transform3D = pool._multimesh.get_instance_transform(int(_root._tree._trees[target]["mi"]))
+		if is_zero_approx(xf.basis.determinant()):
+			return [false, "standing tree %s has no drawn mesh (pool of %d)" % [target, pool.instance_count()]]
 	GameBus.tree_chop_requested.emit(target, "")
 	var ok: bool = await _until(func(): return _chopped.size() > before, STEP_TIMEOUT_SECS)
 	return [ok, "felled %s" % str(_chopped.back()) if ok else "chop %s gave nothing" % target]
