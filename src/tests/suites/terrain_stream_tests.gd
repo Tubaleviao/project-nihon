@@ -466,7 +466,8 @@ func _test_near_collision_ring() -> void:
 	var rig := _make_chunk_build_rig()
 	var cm: ChunkManager = rig["cm"]
 	var voxel: VoxelSlice = rig["voxel"]
-	_build_chunks(cm, [Vector2i(0, 0), Vector2i(1, 1), Vector2i(3, 0)])
+	_build_chunks(cm, [Vector2i(0, 0), Vector2i(1, 1), Vector2i(2, 0), Vector2i(3, 0)])
+	assert_true(voxel.has_collision(Vector2i(2, 0)), "a chunk two out (inside the 60 m reach) has collision")
 	assert_true(voxel.has_collision(Vector2i(0, 0)), "the chunk under the body has collision")
 	assert_true(voxel.has_collision(Vector2i(1, 1)), "a chunk of its ring (Chebyshev 1) has collision")
 	assert_true(cm.is_chunk_built(Vector2i(3, 0)), "a chunk three out is built")

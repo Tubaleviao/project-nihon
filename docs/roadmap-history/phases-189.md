@@ -15,7 +15,7 @@ creatures spawned under a player who is gone a second later. Pay only for the gr
 **Depends on:** Phase 187.
 
 **Deliverables:**
-- Collision is built only for chunks within Chebyshev 1 of a body (walking), and for the chunk below a
+- Collision is built only for chunks within Chebyshev 2 of the walking local body (past its 60 m reach), 1 of a peer, and for the chunk below a
   flying body. A chunk entering that ring gets its collision then (from the worker's arrays, kept or
   rebuilt). A host keeps collision wherever a creature or peer needs it (dedicated server unchanged).
 - Creatures and trees of a chunk spawn when its body slows below a threshold or the chunk enters the
@@ -32,12 +32,12 @@ creatures spawned under a player who is gone a second later. Pay only for the gr
   chunk enters the near ring`).
 - [x] Playtest bot (CI): `flight` main-thread ms per attached chunk at most half of Phase 187's record.
   The record is flown in the same run (see below) and gated on the median of the three CI runs.
-- [x] Net harness green (peers' windows still have collision where their bodies are).
+- [x] Suite: a peer window's centre keeps its ring (`near: collision … peer`); net harness green.
 - [x] Suite green on both boot paths.
 
 **As built:**
 - `src/terrain/near_ring.gd` (owned by `ChunkManager` as `_near`) holds the policy. The bodies are the local
-  player (Chebyshev 0 while it flies and `is_moving_fast()`, else 1) and every peer window's centre
+  player (Chebyshev 0 while it flies and `is_moving_fast()`, else `REACH_RADIUS` 2) and every peer window's centre
   (Chebyshev 1). A process that draws nothing (`keeps_render()` false: the dedicated server) attaches
   collision everywhere, as before. Only the local player's body collides with terrain; creatures do not use
   terrain physics, so no creature needs a ring.

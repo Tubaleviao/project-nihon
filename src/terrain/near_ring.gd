@@ -5,7 +5,7 @@ extends RefCounted
 ## about 17–30 ms, and most of it went on ground no one touches: the collision body of a chunk four rings
 ## out (~9 ms) and the creatures and trees of a chunk the player is gone from a second later (4.5–12 ms).
 ##
-## * Collision: a landing build attaches its collision only within Chebyshev `NEAR_RADIUS` of a body (the
+## * Collision: a landing build attaches its collision only within Chebyshev `REACH_RADIUS` of the local body, `NEAR_RADIUS` of a peer (the
 ##   local player and every peer window's centre), and only under a flying body that is crossing chunks
 ##   fast. The others keep their worker-made shape parked on the voxel slice, and `tick` attaches it when
 ##   the chunk enters the ring: the chunk under the local body at once, the rest under the pump budget. A
@@ -21,6 +21,9 @@ const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 
 ## A body reaches the chunk it stands in and the eight around it.
 const NEAR_RADIUS := 1
+## A walking local body keeps collision two rings out (at least 64 m, past the 60 m aim, build and chop
+## reach, whose rays hit terrain on the collision layer).
+const REACH_RADIUS := 2
 
 var cm: Node
 ## False: collision and contents on every attach, as in Phase 187 (`ChunkManager.set_near_ring_enabled`).
@@ -36,11 +39,11 @@ static func ring_distance(a: Vector2i, b: Vector2i) -> int:
 	return maxi(absi(SeamWrap.delta(b.x, a.x, TerrainSlice.circumference_chunks())), absi(b.y - a.y))
 
 ## The bodies collision is kept near, as [chunk, radius]: the local player first (radius 0 while it flies
-## fast, else `NEAR_RADIUS`), then each peer window's centre at `NEAR_RADIUS`.
+## fast, else `REACH_RADIUS`), then each peer window's centre at `NEAR_RADIUS`.
 func bodies() -> Array:
 	var local: Vector2i = cm.player_chunk()
 	var flying: bool = cm.player_slice != null and cm.player_slice.get("flying") == true
-	var out: Array = [[local, 0 if flying and cm.is_moving_fast() else NEAR_RADIUS]]
+	var out: Array = [[local, 0 if flying and cm.is_moving_fast() else REACH_RADIUS]]
 	for peer_id in cm._peer_centers:
 		out.append([cm._peer_centers[peer_id], NEAR_RADIUS])
 	return out
@@ -73,7 +76,7 @@ func _defers(local: Vector2i, chunk: Vector2i) -> bool:
 
 ## Spawn a just-built chunk's contents now, or keep them until a body reaches it.
 func spawn_or_wait(key: String, chunk: Vector2i) -> void:
-	if defers_contents(chunk):
+	if defers_contents(chunk) and not cm._contents_spawned.has(key):
 		_waiting[key] = chunk
 	else:
 		cm._spawn_contents_once(key, chunk)
@@ -98,6 +101,8 @@ func tick() -> void:
 func _attach_near_collision() -> void:
 	var voxel: Node = cm.voxel_slice
 	if voxel == null or not voxel.has_method("attach_parked_collision"):
+		return
+	if not voxel._build.has_any_parked_collision():
 		return
 	var under := true   # the first chunk visited is the one under the local body
 	for b in bodies():

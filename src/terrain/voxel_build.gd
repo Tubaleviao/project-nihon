@@ -183,6 +183,16 @@ func has_parked_collision(chunk_pos: Vector2i) -> bool:
 	var standin = s._standins.get(key)
 	return standin != null and is_instance_valid(standin) and (standin as Node3D).has_meta("parked_shape")
 
+## Phase 189 — true when any chunk, root or stand-in, holds a parked shape (the steady state: none).
+func has_any_parked_collision() -> bool:
+	if not s._parked_shapes.is_empty():
+		return true
+	for key in s._standins:
+		var standin = s._standins[key]
+		if is_instance_valid(standin) and (standin as Node3D).has_meta("parked_shape"):
+			return true
+	return false
+
 ## Phase 189 — a fold carries the chunk roots across as stand-ins (`detach_standins`): each takes its
 ## parked shape along, so the stand-in under the body can still be given its collision.
 func carry_parked_shapes() -> void:
