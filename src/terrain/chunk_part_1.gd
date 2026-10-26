@@ -133,6 +133,65 @@ func refresh(unload_now: bool = true) -> void:
 
 	sl._self_heal_failed(centers, true)
 
+func drain_load_queue() -> void:
+	# Phase 42 review pass 4 — a drain with NOTHING queued has nothing to dispatch, so it
+	# does not resolve the window at all. `_process` calls this every tick, and the read
+	# below is a `PlayerSlice.get_position()` call; the empty case is the common one
+	# (a settled window drains nothing until the player crosses a chunk boundary).
+	if sl._load_queue.is_empty() and sl._rebuild_queue.is_empty():
+		if sl._catchup and sl._builds.is_empty():
+			sl._catchup = false   # the folded window is rebuilt: back to the steady cap
+		return
+	var budget: int = maxi(sl.loads_per_frame, sl.catchup_loads_per_frame) if sl._catchup else sl.loads_per_frame
+	# Phase 42 review pass 3 — the streamed window is resolved ONCE for the whole drain. The
+	# player's chunk cannot move during it (the position is re-read at the next frame's
+	# `refresh()`), and the per-chunk form re-derived it — a slice call — for every
+	# candidate, so a drain of a full view ring paid ~49 of them to reach the same answer.
+	var centers: Array = sl.window_centers()
+	var radius: int = sl.stream_radius()
+	var waiting := 0
+	while budget > 0:
+		if sl._pump_exhausted():
+			return   # the frame's main-thread budget is spent: the rest waits for the next one
+		if sl._builds.size() >= sl.build_cap():
+			return   # the pool is busy: leave the rest queued for a later frame
+		if not sl._rebuild_queue.is_empty():
+			var rebuild: Vector2i = sl._rebuild_queue.pop_front()
+			var rkey: String = sl._chunk_key(rebuild)
+			sl._rebuild_pending.erase(rkey)
+			# Streamed out while it waited: nothing to rebuild (it rebuilds from the
+			# current edit log when it streams back in).
+			if sl._loaded.has(rkey):
+				sl._dispatch_build(rebuild)
+				sl._pump_steps += 1
+				budget -= 1
+			continue
+		if sl._load_queue.is_empty():
+			return
+		var chunk: Vector2i = sl._load_queue.pop_front()
+		sl._pending.erase(sl._chunk_key(chunk))
+		# Phase 42 review — CANCELLATION. A chunk can leave the streamed window while it
+		# sits in the queue (the player turned around). Dispatching it anyway built ground
+		# nobody wants — and `refresh()` would not re-queue it on the way back in, because
+		# its `_pending` mark was still set, so it was silently skipped instead. Dropping
+		# it here clears that mark, so a chunk that leaves range and returns is queued
+		# again rather than left as a hole.
+		if not sl._within_windows(centers, radius, chunk):
+			continue
+		# Phase 142 — the chunk's regions read on a worker; it waits at the back of the queue
+		# until they land (a failed region does not hold it: see `regions_settled`).
+		if sl._reads_async() and not sl.region_streamer.regions_settled(chunk, sl.Frontier.BLEND_CHUNKS):
+			sl._pending[sl._chunk_key(chunk)] = true
+			sl._load_queue.append(chunk)
+			waiting += 1
+			if waiting > sl._load_queue.size():
+				return
+			continue
+		if not sl._loaded.has(sl._chunk_key(chunk)):
+			sl.load_chunk(chunk)
+			sl._pump_steps += 1
+		budget -= 1
+
 ## Hand one chunk's build to a worker task. Main-thread work: the heightmap generation and the
 ## GATHER of the plain state the resolve reads (`gather_build_input` — that is where `_edits`,
 ## `_heightmaps` and the biome lookup are read). Worker work: the whole resolve

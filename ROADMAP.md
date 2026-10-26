@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–178, 182, 187 and 188 are done. Their specs and acceptance criteria are archived in
+Phases 1–178, 182 and 187–189 are done. Their specs and acceptance criteria are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Arc: make it look and feel like an RPG (Phases 173–181, 183)
@@ -72,7 +72,7 @@ render mesh, at 27 chunks/s.
 |---|---|---|---|
 | 187 | Fast flight I: high-priority builds, a heading-first queue and a flight step | Done | [phases-187.md](docs/roadmap-history/phases-187.md) |
 | 188 | Mountain ranges, not plateaus: narrower ridges, a temperature tree line and a low spawn plain | Done | [phases-188.md](docs/roadmap-history/phases-188.md) |
-| 189 | Fast flight II: collision and contents only near the body | Planned | below |
+| 189 | Fast flight II: collision and contents only near the body | Done | [phases-189.md](docs/roadmap-history/phases-189.md) |
 | 190 | Fast flight III: coarse chunks beyond the near ring | Planned | below |
 | 191 | Fast flight IV: a recent-chunk cache, no holes, and a /speed cap of 30 on a slow machine | Planned | below |
 
@@ -90,36 +90,6 @@ The scattered UI instructions are removed, so the tutorial is the one place that
 | 184 | First steps in the fabric: the tutorial steps, the bed and a shelter rule | Planned | below |
 | 185 | The bed is the spawn point: host-owned, persisted, one per player | Planned | below |
 | 186 | The first-steps tutorial at runtime: one-time cards, a toggle, and no other in-UI tutorial | Planned | below |
-
----
-
-## Phase 189 — Fast flight II: collision and contents only near the body
-
-**Goal:** after Phase 187 the build threads keep up at 90 m/s, but each attached chunk costs the main
-thread about 17–30 ms. Most of that is ground no one touches: collision for a chunk four rings out, and
-creatures spawned under a player who is gone a second later. Pay only for the ground that is reached.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phase 187.
-
-**Deliverables:**
-- Collision is built only for chunks within Chebyshev 1 of a body (walking), and for the chunk below a
-  flying body. A chunk entering that ring gets its collision then (from the worker's arrays, kept or
-  rebuilt). A host keeps collision wherever a creature or peer needs it (dedicated server unchanged).
-- Creatures and trees of a chunk spawn when its body slows below a threshold or the chunk enters the
-  near ring, not at the moment its mesh attaches. Host authority and determinism are unchanged: the same
-  ids and positions spawn, later.
-- The playtest bot's `flight` step records main-thread ms per attached chunk (TickProbe phases).
-
-**Acceptance criteria:**
-- [ ] Suite: a chunk outside the near ring has no collision shape, and gets one when it enters; a
-  flying body's chunk below has one.
-- [ ] Suite: a chunk's contents spawn once, with the same ids, whether they spawn on attach or on
-  slowing down.
-- [ ] Playtest bot (CI): `flight` main-thread ms per attached chunk at most half of Phase 187's record.
-- [ ] Net harness green (peers' windows still have collision where their bodies are).
-- [ ] Suite green on both boot paths.
 
 ---
 

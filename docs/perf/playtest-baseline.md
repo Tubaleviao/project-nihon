@@ -51,6 +51,20 @@ A local run needs a current native library: when `native/src` is newer than `nat
 the GDScript fallback (the log says `native version N is older than M; rebuild native/`) and its
 numbers are not comparable. Rebuild with `scons platform=linux target=template_debug` in `native/`.
 
+## Flight: main thread per attached chunk (Phase 189)
+
+The `flight` step records the chunk manager's main-thread time (TickProbe `chunks` and the `chunk_*` phases
+nested in it) per chunk attached after the warm-up, in `flight.main_ms_per_attach`. It flies a second time
+over the same ground with the near ring off (the Phase 187 behaviour: collision and contents on every
+attach) and records that as `flight.record_ms_per_attach`. Both flights also record the phases the near
+ring removes, collision bodies and contents (`chunk_attach_collision` + `chunk_contents`), as
+`flight.near_ms_per_attach` and `flight.record_near_ms_per_attach`, plus every chunk phase per attached
+chunk (`phases_ms_per_attach`, `record_phases_ms_per_attach`). `tools/check_playtest_budget.py` fails when
+the median near-ring cost over the three CI runs is above half the median of the record's. The whole pump
+is report-only: mesh upload and dispatch are not the near ring's to cut, and their share varies by machine
+(a 2-core llvmpipe runner pays ~4 ms more per chunk on both flights). The record is measured in the same
+run, so the gate holds on any machine.
+
 ## Findings
 
 - The GDScript fallback is not in use: the report says `native_builder: true` with the native library

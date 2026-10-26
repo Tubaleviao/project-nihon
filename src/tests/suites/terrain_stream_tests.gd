@@ -2,6 +2,7 @@ extends "res://src/tests/test_support.gd"
 ## Phase 141 — terrain streaming off the main thread: the static heightmap generator, the seam
 ## edge strips, the polar shortcuts, the worker-noise build and the fold catch-up.
 ## Phase 187 — build priority and the load queue's order at speed.
+## Phase 189 — collision and contents only near a body.
 
 func register() -> void:
 	_run_test("stream: the static generator matches generate_heightmap", _test_stream_static_generator_matches)
@@ -16,6 +17,13 @@ func register() -> void:
 	_run_test("stream: finished builds attach nearest the body first", _test_stream_apply_nearest_first)
 	_run_test("stream: the queue key puts the body's chunk first and favours the heading", _test_stream_queue_priority)
 	_run_test("stream: a crossing re-sorts the whole queue around the new centre", _test_stream_queue_resorted_on_move)
+	_run_test("near: collision only within a walking body's ring, attached when a chunk enters it", _test_near_collision_ring)
+	_run_test("near: parked collision attaches nearest first under the pump budget", _test_near_collision_nearest_first)
+	_run_test("near: a fast flying body gets collision under it only, its ring once it slows", _test_near_collision_flying)
+	_run_test("near: a peer's ring keeps collision, a dedicated server keeps it everywhere", _test_near_collision_peer_and_server)
+	_run_test("near: a fold stand-in keeps its parked collision for the body", _test_near_collision_fold_standin)
+	_run_test("near: contents spawn once with the same ids on attach or on slowing down", _test_near_contents_same_ids)
+	_run_test("near: deferred contents spawn when the chunk enters the near ring", _test_near_contents_enter_ring)
 	_run_test("fold: a creature and a tree keep id, state and place across a pole fold", _test_fold_carries_contents)
 	_run_test("fold: the fold image of a position is an involution over a pole and a lap", _test_fold_like_involution)
 	_run_test("fold: a client replays two folds on host positions, the log stays minimal", _test_fold_log_replay)
@@ -425,3 +433,192 @@ func _test_stream_queue_resorted_on_move() -> void:
 	rig["voxel"].free()
 	rig["terrain"].free()
 	rig["player"].free()
+
+# ---------------------------------------------------------------------------
+# Phase 189 — collision and contents only near a body
+# ---------------------------------------------------------------------------
+
+func _free_build_rig(rig: Dictionary) -> void:
+	for k in ["cm", "voxel", "terrain", "player", "creature", "tree"]:
+		if rig.has(k) and is_instance_valid(rig[k]):
+			rig[k].free()
+
+## Build `chunks` through the worker path (the one that gates collision), blocking until they attach.
+func _build_chunks(cm: ChunkManager, chunks: Array) -> void:
+	for c in chunks:
+		cm.load_chunk(c)
+	_wait_for_builds(cm)
+
+## Put the rig's player in the middle of `chunk`.
+func _stand_in(player: PlayerSlice, chunk: Vector2i) -> void:
+	var m := TerrainSlice.CHUNK_METERS
+	player.spawn_at(Vector3(float(chunk.x) * m + m * 0.5, 40.0, float(chunk.y) * m + m * 0.5))
+
+## Make the rig's manager see a fast crossing on a stub clock; returns the clock to advance.
+func _make_fast(cm: ChunkManager) -> Array:
+	var clock := [100000]
+	cm.pump_clock_usec = func(): return clock[0] * 1000
+	cm.note_local_crossing()
+	clock[0] += 300
+	cm.note_local_crossing()
+	return clock
+
+func _test_near_collision_ring() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var voxel: VoxelSlice = rig["voxel"]
+	_build_chunks(cm, [Vector2i(0, 0), Vector2i(1, 1), Vector2i(2, 0), Vector2i(3, 0)])
+	assert_true(voxel.has_collision(Vector2i(2, 0)), "a chunk two out (inside the 60 m reach) has collision")
+	assert_true(voxel.has_collision(Vector2i(0, 0)), "the chunk under the body has collision")
+	assert_true(voxel.has_collision(Vector2i(1, 1)), "a chunk of its ring (Chebyshev 1) has collision")
+	assert_true(cm.is_chunk_built(Vector2i(3, 0)), "a chunk three out is built")
+	assert_false(voxel.has_collision(Vector2i(3, 0)), "... and has no collision shape")
+	assert_true(voxel.has_parked_collision(Vector2i(3, 0)), "... its worker shape is kept for later")
+	cm._near.tick()
+	assert_false(voxel.has_collision(Vector2i(3, 0)), "a tick with the body away attaches nothing")
+	_stand_in(rig["player"], Vector2i(2, 0))
+	cm._near.tick()
+	assert_true(voxel.has_collision(Vector2i(3, 0)), "entering the ring gives it its collision")
+	assert_false(voxel.has_parked_collision(Vector2i(3, 0)), "the parked shape is spent")
+	cm.unload_chunk(Vector2i(3, 0))
+	assert_false(voxel.has_parked_collision(Vector2i(3, 0)), "an unload drops a parked shape")
+	_free_build_rig(rig)
+
+func _test_near_collision_nearest_first() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var voxel: VoxelSlice = rig["voxel"]
+	_build_chunks(cm, [Vector2i(0, 0), Vector2i(3, 0), Vector2i(4, 0)])
+	_stand_in(rig["player"], Vector2i(2, 0))
+	var clock := [0]
+	cm.pump_budget_msec = 4
+	cm.pump_clock_usec = func():
+		clock[0] += 10000
+		return clock[0]
+	cm.begin_pump()
+	cm._near.tick()
+	assert_true(voxel.has_collision(Vector2i(3, 0)), "the nearer parked chunk is attached first")
+	assert_true(voxel.has_parked_collision(Vector2i(4, 0)), "the budget leaves the farther one for a later frame")
+	cm.begin_pump()
+	cm._near.tick()
+	assert_true(voxel.has_collision(Vector2i(4, 0)), "the next frame attaches it")
+	_free_build_rig(rig)
+
+func _test_near_collision_flying() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var voxel: VoxelSlice = rig["voxel"]
+	var player: PlayerSlice = rig["player"]
+	_stand_in(player, Vector2i(3, 0))
+	player.flying = true
+	var clock := _make_fast(cm)
+	assert_true(cm.is_moving_fast(), "the body crosses chunks fast")
+	_build_chunks(cm, [Vector2i(3, 0), Vector2i(4, 0)])
+	assert_true(voxel.has_collision(Vector2i(3, 0)), "a fast flying body's chunk below has collision")
+	assert_false(voxel.has_collision(Vector2i(4, 0)), "its neighbour does not")
+	player.flying = false
+	assert_true(cm._near.wants_collision(Vector2i(4, 0)), "walking fast, the ring is wanted again")
+	player.flying = true
+	clock[0] += ChunkManager.FAST_HOLD_MSEC
+	assert_false(cm.is_moving_fast(), "the flight slowed down")
+	cm._near.tick()
+	assert_true(voxel.has_collision(Vector2i(4, 0)), "a slow flyer's ring gets its collision")
+	_free_build_rig(rig)
+
+func _test_near_collision_peer_and_server() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var voxel: VoxelSlice = rig["voxel"]
+	cm.set_peer_center(7, Vector2i(10, 0), true)
+	_build_chunks(cm, [Vector2i(11, 1), Vector2i(13, 0)])
+	assert_true(voxel.has_collision(Vector2i(11, 1)), "a chunk in a peer's ring has collision")
+	assert_false(voxel.has_collision(Vector2i(13, 0)), "one beyond it does not")
+	_free_build_rig(rig)
+	var srv := _make_chunk_build_rig()
+	srv["voxel"].attach_geometry = false   # a dedicated server: no render mesh, collision kept
+	_build_chunks(srv["cm"], [Vector2i(5, 0)])
+	assert_true(srv["voxel"].has_collision(Vector2i(5, 0)), "a dedicated server keeps collision everywhere (unchanged)")
+	_free_build_rig(srv)
+
+## A build rig with a creature and a tree slice on the manager.
+func _make_contents_rig() -> Dictionary:
+	var rig := _make_chunk_build_rig()
+	var creature := CreatureSlice.new()
+	add_child(creature)
+	var tree := _make_tree_slice()
+	rig["cm"].creature_slice = creature
+	rig["cm"].tree_slice = tree
+	rig["creature"] = creature
+	rig["tree"] = tree
+	return rig
+
+## The chunk's creature ids with their positions, and its tree ids with theirs.
+func _contents_of(rig: Dictionary, chunk: Vector2i) -> Dictionary:
+	var out := {}
+	for inst in rig["creature"].get_all_instances():
+		if inst["chunk"] == chunk:
+			out[str(inst["instance_id"])] = inst["position"]
+	for tid in rig["tree"].trees_in_chunk(chunk):
+		out[str(tid)] = rig["tree"].get_tree_record(str(tid))["position"]
+	return out
+
+func _test_near_contents_same_ids() -> void:
+	var far := Vector2i(3, 0)
+	var on_attach := _make_contents_rig()
+	_build_chunks(on_attach["cm"], [far])
+	var want := _contents_of(on_attach, far)
+	assert_true(want.size() > 0, "the chunk has contents")
+	_free_build_rig(on_attach)
+
+	var later := _make_contents_rig()
+	var cm: ChunkManager = later["cm"]
+	var clock := _make_fast(cm)
+	_build_chunks(cm, [far])
+	assert_true(cm.is_chunk_built(far), "built while the player is fast")
+	assert_true(cm._near.is_waiting(far), "its contents wait")
+	assert_eq(_contents_of(later, far).size(), 0, "nothing spawned on attach")
+	cm._near.tick()
+	assert_eq(_contents_of(later, far).size(), 0, "still fast and far: nothing spawns")
+	clock[0] += ChunkManager.FAST_HOLD_MSEC
+	cm._near.tick()
+	assert_eq(_contents_of(later, far), want, "on slowing down the same ids spawn at the same places")
+	assert_false(cm._near.is_waiting(far), "nothing waits any more")
+	cm._near.tick()
+	cm.request_rebuild(far)
+	_wait_for_builds(cm)
+	assert_eq(_contents_of(later, far), want, "a later tick and a rebuild spawn nothing twice")
+	_free_build_rig(later)
+
+func _test_near_contents_enter_ring() -> void:
+	var rig := _make_contents_rig()
+	var cm: ChunkManager = rig["cm"]
+	var far := Vector2i(4, 0)
+	_make_fast(cm)
+	_build_chunks(cm, [far, Vector2i(1, 0)])
+	assert_false(cm._near.is_waiting(Vector2i(1, 0)), "a chunk in the near ring spawns on attach, fast or not")
+	assert_true(cm._near.is_waiting(far), "a far chunk waits")
+	_stand_in(rig["player"], Vector2i(3, 0))
+	cm._near.tick()
+	assert_false(cm._near.is_waiting(far), "entering the ring releases it while still fast")
+	assert_true(_contents_of(rig, far).size() > 0, "and its contents spawn")
+	_free_build_rig(rig)
+
+## A fold carries the chunk roots across as stand-ins; one whose collision was parked must still get it
+## when the body lands on it, or the body falls through until the folded chunk rebuilds.
+func _test_near_collision_fold_standin() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var voxel: VoxelSlice = rig["voxel"]
+	var far := Vector2i(3, 0)
+	_build_chunks(cm, [far])
+	assert_true(voxel.has_parked_collision(far), "built away from the body: parked")
+	var roots: Array = voxel.detach_standins()
+	voxel.adopt_standins(roots, Transform3D.IDENTITY)
+	assert_true(voxel.has_standin(far), "the root stands in for its own chunk (an identity fold)")
+	assert_true(voxel.has_parked_collision(far), "the stand-in carries the parked shape")
+	_stand_in(rig["player"], far)
+	cm._near.tick()
+	assert_false(voxel.has_parked_collision(far), "the body's tick attached it")
+	var root: Node3D = voxel._standins[voxel._chunk_key(far)]
+	assert_true(root.has_node("Collision"), "the stand-in under the body has its collision")
+	_free_build_rig(rig)
