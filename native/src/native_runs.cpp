@@ -155,7 +155,19 @@ typedef std::vector<Run> Runs;
 typedef std::pair<int64_t, int64_t> TileId;
 typedef std::tuple<int64_t, int64_t, int64_t> CellId;
 
+// The run-entry keys, built once per call instead of once per entry.
+struct Keys {
+	Variant bottom = String("bottom");
+	Variant top = String("top");
+	Variant material = String("material");
+	Variant color = String("color");
+	Variant top_color = String("top_color");
+	Variant soil_color = String("soil_color");
+	Variant soil_depth = String("soil_depth");
+};
+
 struct Ctx {
+	Keys k;
 	int64_t seed_v = 0;
 	int64_t circ = 4;
 	int64_t pole = 1;
@@ -171,6 +183,12 @@ struct Ctx {
 	std::map<String, Color> color_map;
 	std::map<CellId, Vein> veins;
 	std::map<TileId, Runs> columns;
+	// The biome table read once per chunk: a lookup per tile built a String key and hashed it.
+	struct BiomeEntry {
+		bool known = false;
+		String biome;
+	};
+	mutable std::map<std::pair<int64_t, int64_t>, BiomeEntry> biome_cache;
 
 	// --- wrapping and keys
 	int64_t wrap_x_tile(int64_t x) const {
@@ -196,10 +214,28 @@ struct Ctx {
 		auto it = host_map.find(biome);
 		return it == host_map.end() ? String("Ferrite") : it->second;
 	}
+	const BiomeEntry &biome_entry(int64_t cx, int64_t cz) const {
+		std::pair<int64_t, int64_t> id(wrap_chunk_x(cx), cz);
+		auto it = biome_cache.find(id);
+		if (it != biome_cache.end()) {
+			return it->second;
+		}
+		BiomeEntry e;
+		Variant key = chunk_key(cx, cz);
+		if (biomes.has(key)) {
+			e.known = true;
+			e.biome = String(biomes[key]);
+		}
+		return biome_cache.emplace(id, e).first->second;
+	}
+	// The chunk's biome, or `fallback` when the table does not hold it.
+	String biome_or(int64_t cx, int64_t cz, const String &fallback) const {
+		const BiomeEntry &e = biome_entry(cx, cz);
+		return e.known ? e.biome : fallback;
+	}
 	String biome_of(double wx, double wz) const {
 		double extent = CHUNK_METERS;
-		Variant v = biomes.get(chunk_key((int64_t)std::floor(wx / extent), (int64_t)std::floor(wz / extent)), Variant("TemperateForest"));
-		return String(v);
+		return biome_or((int64_t)std::floor(wx / extent), (int64_t)std::floor(wz / extent), String("TemperateForest"));
 	}
 	double latitude_at(double world_z) const {
 		double lat = world_z / CHUNK_METERS * 90.0 / double(pole);
@@ -455,9 +491,9 @@ struct Ctx {
 		int sz = lz < extent - lz ? -1 : 1;
 		int64_t gx = (int64_t)std::floor(wx / TILE_SIZE);
 		int64_t gz = (int64_t)std::floor(wz / TILE_SIZE);
-		String bx = String(biomes.get(chunk_key(cx + sx, cz), Variant(own)));
-		String bz = String(biomes.get(chunk_key(cx, cz + sz), Variant(own)));
-		String bd = String(biomes.get(chunk_key(cx + sx, cz + sz), Variant(own)));
+		String bx = biome_or(cx + sx, cz, own);
+		String bz = biome_or(cx, cz + sz, own);
+		String bd = biome_or(cx + sx, cz + sz, own);
 		double dd = std::max(dx, dz);
 		if (dd < BLEND_TILES && bd != own && 0.5 * (roll(gx, gz) + roll(gz, gx)) < 0.5 * chance(dd, BLEND_TILES)) {
 			return bd;
@@ -504,9 +540,9 @@ struct Ctx {
 		if (material_for_biome(biome, wx, wz, 0.0) != host_material(biome)) {
 			return;
 		}
-		entry["top_color"] = icy(it->second.top, wz);
-		entry["soil_color"] = icy(it->second.soil, wz);
-		entry["soil_depth"] = it->second.depth;
+		entry[k.top_color] = icy(it->second.top, wz);
+		entry[k.soil_color] = icy(it->second.soil, wz);
+		entry[k.soil_depth] = it->second.depth;
 	}
 };
 
@@ -572,10 +608,10 @@ Dictionary NativeChunkBuilder::build_runs(const Vector2i &p_chunk, const Array &
 			Array coloured;
 			for (const Run &run : runs) {
 				Dictionary entry;
-				entry["bottom"] = run.bottom;
-				entry["top"] = run.top;
-				entry["material"] = run.material;
-				entry["color"] = ctx.run_color(run, wx, wz, surface);
+				entry[ctx.k.bottom] = run.bottom;
+				entry[ctx.k.top] = run.top;
+				entry[ctx.k.material] = run.material;
+				entry[ctx.k.color] = ctx.run_color(run, wx, wz, surface);
 				ctx.apply_topsoil(entry, run, wx, wz, surface);
 				coloured.push_back(entry);
 			}

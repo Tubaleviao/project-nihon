@@ -103,8 +103,19 @@ std::vector<Seg> subtract_runs(const Run &run, const Column &others) {
 	return segs;
 }
 
+// The run-table keys, built once per call instead of once per lookup.
+struct Keys {
+	Variant bottom = String("bottom");
+	Variant top = String("top");
+	Variant color = String("color");
+	Variant top_color = String("top_color");
+	Variant soil_color = String("soil_color");
+	Variant soil_depth = String("soil_depth");
+};
+
 class Mesher {
 public:
+	Keys k;
 	Vector2i chunk;
 	int64_t lap_tiles = 0;   // circumference in tiles
 	Color fallback;
@@ -139,26 +150,26 @@ public:
 			}
 			Dictionary d = a[i];
 			Run r;
-			Variant b = d.get("bottom", Variant());
-			Variant t = d.get("top", Variant());
+			Variant b = d.get(k.bottom, Variant());
+			Variant t = d.get(k.top, Variant());
 			if ((b.get_type() != Variant::FLOAT && b.get_type() != Variant::INT) || (t.get_type() != Variant::FLOAT && t.get_type() != Variant::INT)) {
 				return false;
 			}
 			r.bottom = double(b);
 			r.top = double(t);
-			Variant c = d.get("color", fallback);
+			Variant c = d.get(k.color, fallback);
 			if (c.get_type() != Variant::COLOR) {
 				return false;
 			}
 			r.color = c;
-			Variant tc = d.get("top_color", r.color);
-			Variant sc = d.get("soil_color", r.color);
+			Variant tc = d.get(k.top_color, r.color);
+			Variant sc = d.get(k.soil_color, r.color);
 			if (tc.get_type() != Variant::COLOR || sc.get_type() != Variant::COLOR) {
 				return false;
 			}
 			r.top_color = tc;
 			r.soil_color = sc;
-			Variant sd = d.get("soil_depth", 0.0);
+			Variant sd = d.get(k.soil_depth, 0.0);
 			if (sd.get_type() != Variant::FLOAT && sd.get_type() != Variant::INT) {
 				return false;
 			}
@@ -340,6 +351,18 @@ std::vector<Rect> merge_rects(std::vector<int> &cells, MergeScratch &sc) {
 	return out;
 }
 
+// One bulk copy into a Packed array: a push_back per element is an engine call each, and a chunk
+// carries tens of thousands of vertices.
+template <typename P, typename T>
+P to_packed(const std::vector<T> &v) {
+	P out;
+	out.resize((int64_t)v.size());
+	if (!v.empty()) {
+		std::copy(v.begin(), v.end(), out.ptrw());
+	}
+	return out;
+}
+
 } // namespace
 
 Dictionary NativeChunkBuilder::build_chunk_arrays(const Vector2i &p_chunk, const Array &p_heightmap, const Dictionary &p_resolved, bool p_local, const Dictionary &p_cfg) const {
@@ -378,9 +401,9 @@ Dictionary NativeChunkBuilder::build_chunk_arrays(const Vector2i &p_chunk, const
 	double plane_dx = corner_x - origin_x;
 	double plane_dz = corner_z - origin_z;
 
-	PackedVector3Array vertices, normals, collision;
-	PackedColorArray colors;
-	PackedInt32Array indices;
+	std::vector<Vector3> vertices, normals, collision;
+	std::vector<Color> colors;
+	std::vector<int32_t> indices;
 	int64_t quad_count = 0;
 	int64_t cell_count = 0;
 	MergeScratch scratch;
@@ -450,9 +473,9 @@ Dictionary NativeChunkBuilder::build_chunk_arrays(const Vector2i &p_chunk, const
 	}
 
 	// Deposit boxes (MeshUtil.add_box_arrays): geometry only, never collision.
-	PackedVector3Array dep_vertices, dep_normals;
-	PackedColorArray dep_colors;
-	PackedInt32Array dep_indices;
+	std::vector<Vector3> dep_vertices, dep_normals;
+	std::vector<Color> dep_colors;
+	std::vector<int32_t> dep_indices;
 	for (int i = 0; i < deposits.size(); i++) {
 		Variant dv = deposits[i];
 		ERR_FAIL_COND_V(dv.get_type() != Variant::DICTIONARY, empty);
@@ -495,17 +518,17 @@ Dictionary NativeChunkBuilder::build_chunk_arrays(const Vector2i &p_chunk, const
 	}
 
 	Dictionary out;
-	out["vertices"] = vertices;
-	out["normals"] = normals;
-	out["colors"] = colors;
-	out["indices"] = indices;
-	out["collision"] = collision;
+	out["vertices"] = to_packed<PackedVector3Array>(vertices);
+	out["normals"] = to_packed<PackedVector3Array>(normals);
+	out["colors"] = to_packed<PackedColorArray>(colors);
+	out["indices"] = to_packed<PackedInt32Array>(indices);
+	out["collision"] = to_packed<PackedVector3Array>(collision);
 	out["quad_count"] = quad_count;
 	out["cell_count"] = cell_count;
-	out["deposit_vertices"] = dep_vertices;
-	out["deposit_normals"] = dep_normals;
-	out["deposit_colors"] = dep_colors;
-	out["deposit_indices"] = dep_indices;
+	out["deposit_vertices"] = to_packed<PackedVector3Array>(dep_vertices);
+	out["deposit_normals"] = to_packed<PackedVector3Array>(dep_normals);
+	out["deposit_colors"] = to_packed<PackedColorArray>(dep_colors);
+	out["deposit_indices"] = to_packed<PackedInt32Array>(dep_indices);
 	out["local"] = p_local;
 	return out;
 }
