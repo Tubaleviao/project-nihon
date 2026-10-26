@@ -836,10 +836,12 @@ func _spawn_contents_once(key: String, chunk_pos: Vector2i) -> void:
 	_spawn_chunk_contents(chunk_pos)
 
 func _spawn_chunk_contents(chunk_pos: Vector2i) -> void:
+	TickProbe.begin("chunk_contents")   # Phase 189: the flight report's breakdown
 	if creature_slice != null and creature_slice.has_method("spawn_for_chunk"):
 		creature_slice.spawn_for_chunk(chunk_pos)
 	if tree_slice != null and tree_slice.has_method("spawn_for_chunk"):
 		tree_slice.spawn_for_chunk(chunk_pos)
+	TickProbe.end()
 
 func _dispatch_build(chunk_pos: Vector2i) -> void:
 	_m1._dispatch_build(chunk_pos)

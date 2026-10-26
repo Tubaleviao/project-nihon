@@ -689,6 +689,14 @@ static func chunk_main_ms(times: Dictionary) -> float:
 			us += int(times[phase])
 	return float(us) / 1000.0
 
+## The same phases one by one, in ms per attached chunk (the flight report's breakdown). Pure.
+static func chunk_phases_ms(times: Dictionary, attached: int) -> Dictionary:
+	var out := {}
+	for phase in times:
+		if attached > 0 and (str(phase) == "chunks" or str(phase).begins_with("chunk_")):
+			out[str(phase)] = snappedf(float(times[phase]) / 1000.0 / float(attached), 0.01)
+	return out
+
 ## Phase 187 — carry the body east at FLIGHT_SPEED_MPS (a ground-hugging teleport every frame: the
 ## streaming load of admin flight without its input or physics) and sample the ground under it.
 ## Then put it back where it started, built, for the steps that follow.
@@ -723,6 +731,8 @@ func _step_flight() -> Array:
 	_flight["main_ms_per_attach"] = gated["ms_per_attach"]
 	_flight["record_attached"] = record["attached"]
 	_flight["record_ms_per_attach"] = record["ms_per_attach"]
+	_flight["phases_ms_per_attach"] = gated["phases"]
+	_flight["record_phases_ms_per_attach"] = record["phases"]
 	var note := "%.0f m/s for %.0f s: ground under the body built in %.0f%% of %d samples, 3×3 ring %.0f%% (worst %.0f%%); main thread %.1f ms per attached chunk (%d chunks), %.1f ms with the near ring off (%d chunks)" % [
 		FLIGHT_SPEED_MPS, FLIGHT_SECS, 100.0 * float(_flight["under_cover"]), int(_flight["samples"]),
 		100.0 * float(_flight["ring_cover"]), 100.0 * float(_flight["worst_ring"]),
@@ -776,11 +786,13 @@ func _fly_east(home_chunk: Vector2i, home_local: Vector3) -> Dictionary:
 						n += 1
 			under.append(1.0 if built else 0.0)
 			ring.append(float(n) / 9.0)
-	var main_ms := chunk_main_ms(TickProbe.take_times())
+	var times := TickProbe.take_times()
+	var main_ms := chunk_main_ms(times)
 	TickProbe.enabled = probe_was
 	var attached: int = cm.builds_attached - attached0
 	return { "under": under, "ring": ring, "attached": attached,
-		"ms_per_attach": main_ms / float(attached) if attached > 0 else 0.0 }
+		"ms_per_attach": main_ms / float(attached) if attached > 0 else 0.0,
+		"phases": chunk_phases_ms(times, attached) }
 
 ## Put the body back where a flight started and wait for its chunk to be built.
 func _return_home(home_chunk: Vector2i, home_local: Vector3) -> bool:

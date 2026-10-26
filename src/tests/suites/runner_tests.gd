@@ -194,5 +194,8 @@ func _test_playtest_flight_verdict() -> void:
 	var times := { "chunks": 4000, "chunk_attach_collision": 1500, "chunk_attach_mesh": 500, "creature_ai": 9000 }
 	assert_eq(Bot.chunk_main_ms(times), 6.0, "chunks + chunk_* in ms, other phases left out")
 	assert_eq(Bot.chunk_main_ms({}), 0.0, "an empty probe is no time")
+	assert_eq(Bot.chunk_phases_ms(times, 2), { "chunks": 2.0, "chunk_attach_collision": 0.75, "chunk_attach_mesh": 0.25 },
+		"the breakdown is per attached chunk, chunk phases only")
+	assert_eq(Bot.chunk_phases_ms(times, 0), {}, "no attach, no breakdown")
 	assert_true(FileAccess.get_file_as_string("res://tools/check_playtest_budget.py").contains("FLIGHT_MAX_SHARE = %s" % str(Bot.FLIGHT_MAX_SHARE)),
 		"the CI gate's flight share is the bot's")

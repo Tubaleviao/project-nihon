@@ -52,6 +52,11 @@ def check_flight(reports, max_share=FLIGHT_MAX_SHARE):
     line = (f"flight: median main thread {med:.1f} ms per attached chunk of {len(flights)} runs "
             f"(near ring off: {record:.1f} ms, limit {limit:.1f} ms)")
     print(line)
+    for label, field in (("near ring on ", "phases_ms_per_attach"), ("near ring off", "record_phases_ms_per_attach")):
+        phases = sorted({p for f in flights for p in f.get(field, {})})
+        if phases:
+            print(f"  {label}: " + ", ".join(
+                f"{p} {statistics.median(f.get(field, {}).get(p, 0.0) for f in flights):.2f}" for p in phases))
     if os.environ.get("GITHUB_ACTIONS") == "true":
         print(f"::notice title=Flight main thread per attached chunk::{line}")
     if med > limit:
