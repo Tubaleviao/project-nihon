@@ -34,6 +34,7 @@ const DistantTerrain := preload("res://src/terrain/distant_terrain.gd")
 const DistantBands := preload("res://src/terrain/distant_bands.gd")
 const PlayerSlice := preload("res://src/player/player_slice.gd")
 const AdminRules := preload("res://src/admin/admin_rules.gd")
+const TickProbe := preload("res://src/core/tick_probe.gd")
 
 const ARG := "--playtest-bot"
 const OUT_DIR := "res://playtest"
@@ -83,6 +84,7 @@ const FLIGHT_SECS := 12.0
 const FLIGHT_WARMUP_SECS := 1.5
 const FLIGHT_SAMPLE_SECS := 0.25
 const FLIGHT_MIN_COVER := 0.9
+const FLIGHT_MAX_SHARE := 0.5   ## Phase 189: main-thread ms per attached chunk at most this share of the record flight's (CI median)
 const TELEPORT_SETTLE_MS := 1500 ## frames this long after a teleport (the new window's builds) are not recorded
 const STEP_GRACE_SECS := 10.0    ## past its deadline a step that has not returned has crashed or hung: fail it
 const SPAWN_OFFSET_M := 2.0      ## a teleport lands this far above the ground
@@ -678,16 +680,67 @@ static func flight_verdict(under: Array, ring: Array, min_cover: float = FLIGHT_
 	return { "samples": n, "under_cover": cover, "ring_cover": r / float(n) if n > 0 else 0.0,
 		"worst_ring": worst if n > 0 else 0.0, "ok": n > 0 and cover >= min_cover }
 
+## Phase 189 — main-thread ms the chunk manager spent, from a `TickProbe.take_times()` table (µs): its
+## frame pump (`chunks`) and every phase nested in it (`chunk_*`: attach arrays, mesh, collision). Pure.
+static func chunk_main_ms(times: Dictionary) -> float:
+	var us := 0
+	for phase in times:
+		if str(phase) == "chunks" or str(phase).begins_with("chunk_"):
+			us += int(times[phase])
+	return float(us) / 1000.0
+
 ## Phase 187 — carry the body east at FLIGHT_SPEED_MPS (a ground-hugging teleport every frame: the
 ## streaming load of admin flight without its input or physics) and sample the ground under it.
 ## Then put it back where it started, built, for the steps that follow.
+## Phase 189 — the body flies (as `/fly` sets it), and after the warm-up each flight records the chunk
+## manager's main-thread ms per attached chunk (TickProbe phases). The step flies twice over the same
+## ground: the gated flight, then a record flight with the near ring off (`set_near_ring_enabled(false)`,
+## the Phase 187 behaviour). The record flies second, over warm ground, so the comparison does not favour
+## the near ring. `tools/check_playtest_budget.py` gates the medians: `main_ms_per_attach` at most
+## FLIGHT_MAX_SHARE of `record_ms_per_attach`.
 func _step_flight() -> Array:
 	var cm = _root._chunk_manager
 	var home: Dictionary = _root._player.get_world_pos()
-	var m := WorldPos.CHUNK_METERS
 	var home_chunk: Vector2i = home["chunk"]
 	var home_local: Vector3 = home["local"]
+	var was_flying: bool = _root._player.flying
+	var speed: float = _root._player.admin_speed_factor
+	GameBus.admin_moves_synced.emit(speed, true)   # what `/fly` sends
+	var gated := await _fly_east(home_chunk, home_local)
+	var settled := await _return_home(home_chunk, home_local)
+	cm.set_near_ring_enabled(false)
+	var record := await _fly_east(home_chunk, home_local)
+	cm.set_near_ring_enabled(true)
+	GameBus.admin_moves_synced.emit(speed, was_flying)
+	settled = await _return_home(home_chunk, home_local) and settled
+	_flight = flight_verdict(gated["under"], gated["ring"])
+	_flight["speed_mps"] = FLIGHT_SPEED_MPS
+	_flight["attached"] = gated["attached"]
+	_flight["main_ms_per_attach"] = gated["ms_per_attach"]
+	_flight["record_attached"] = record["attached"]
+	_flight["record_ms_per_attach"] = record["ms_per_attach"]
+	var note := "%.0f m/s for %.0f s: ground under the body built in %.0f%% of %d samples, 3×3 ring %.0f%% (worst %.0f%%); main thread %.1f ms per attached chunk (%d chunks), %.1f ms with the near ring off (%d chunks)" % [
+		FLIGHT_SPEED_MPS, FLIGHT_SECS, 100.0 * float(_flight["under_cover"]), int(_flight["samples"]),
+		100.0 * float(_flight["ring_cover"]), 100.0 * float(_flight["worst_ring"]),
+		float(gated["ms_per_attach"]), int(gated["attached"]), float(record["ms_per_attach"]), int(record["attached"])]
+	if not settled:
+		return [false, note + "; the start chunk never rebuilt"]
+	# The gate is the native builder's: the GDScript fallback (CI's `--no-native` run) builds about 7× slower
+	# and cannot hold 90 m/s, so that run reports the coverage without failing on it.
+	_flight["gated"] = NativeBuilder.mode() == NativeBuilder.MODE_NATIVE
+	if not bool(_flight["gated"]):
+		return [true, note + " (report only: %s builder)" % NativeBuilder.mode()]
+	return [bool(_flight["ok"]), note]
+
+## One flight east from home: { under, ring } per-sample shares, and the chunks attached after the warm-up
+## with the chunk manager's main-thread ms per attached chunk.
+func _fly_east(home_chunk: Vector2i, home_local: Vector3) -> Dictionary:
+	var cm = _root._chunk_manager
+	var m := WorldPos.CHUNK_METERS
 	var x0: float = float(home_chunk.x) * m + home_local.x
+	var probe_was := TickProbe.enabled
+	var attached0: int = cm.builds_attached
+	var probing := false
 	var under: Array = []
 	var ring: Array = []
 	var t0 := Time.get_ticks_msec()
@@ -705,6 +758,11 @@ func _step_flight() -> Array:
 		var ground: float = _root._voxel.get_voxel_height_at(xz) if built else _root._terrain.get_height_at(xz)
 		GameBus.player_teleport.emit(WorldPos.normalized({ "chunk": ch,
 			"local": Vector3(x - float(cx) * m, ground + SPAWN_OFFSET_M, home_local.z) }))
+		if secs >= FLIGHT_WARMUP_SECS and not probing:
+			probing = true
+			TickProbe.enabled = true
+			TickProbe.take_times()
+			attached0 = cm.builds_attached
 		if secs >= next_sample:
 			next_sample += FLIGHT_SAMPLE_SECS
 			var n := 0
@@ -714,21 +772,17 @@ func _step_flight() -> Array:
 						n += 1
 			under.append(1.0 if built else 0.0)
 			ring.append(float(n) / 9.0)
-	_flight = flight_verdict(under, ring)
-	_flight["speed_mps"] = FLIGHT_SPEED_MPS
+	var main_ms := chunk_main_ms(TickProbe.take_times())
+	TickProbe.enabled = probe_was
+	var attached: int = cm.builds_attached - attached0
+	return { "under": under, "ring": ring, "attached": attached,
+		"ms_per_attach": main_ms / float(attached) if attached > 0 else 0.0 }
+
+## Put the body back where a flight started and wait for its chunk to be built.
+func _return_home(home_chunk: Vector2i, home_local: Vector3) -> bool:
+	var cm = _root._chunk_manager
 	var back := _teleport_to(home_chunk, home_local)
-	var settled: bool = await _until(func(): return cm.is_chunk_built(back["chunk"]), STEP_TIMEOUT_SECS)
-	var note := "%.0f m/s for %.0f s: ground under the body built in %.0f%% of %d samples, 3×3 ring %.0f%% (worst %.0f%%)" % [
-		FLIGHT_SPEED_MPS, FLIGHT_SECS, 100.0 * float(_flight["under_cover"]), int(_flight["samples"]),
-		100.0 * float(_flight["ring_cover"]), 100.0 * float(_flight["worst_ring"])]
-	if not settled:
-		return [false, note + "; the start chunk never rebuilt"]
-	# The gate is the native builder's: the GDScript fallback (CI's `--no-native` run) builds about 7× slower
-	# and cannot hold 90 m/s, so that run reports the coverage without failing on it.
-	_flight["gated"] = NativeBuilder.mode() == NativeBuilder.MODE_NATIVE
-	if not bool(_flight["gated"]):
-		return [true, note + " (report only: %s builder)" % NativeBuilder.mode()]
-	return [bool(_flight["ok"]), note]
+	return await _until(func(): return cm.is_chunk_built(back["chunk"]), STEP_TIMEOUT_SECS)
 
 ## Phase 169 — the chunk build rate of the builder in use (`NativeBuilder.mode()`), chunks per second of
 ## the pure worker half (map, seam strips, resolve, mesh) run synchronously on `RATE_CHUNKS` chunks past

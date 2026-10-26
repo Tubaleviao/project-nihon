@@ -22,7 +22,9 @@ func _init(slice: Node) -> void:
 ## the worker exists to remove, done SILENTLY. It is a refusal now, and the manager answers
 ## a refusal with a fresh dispatch (see `ChunkManager._apply_build_entry`). The 2-arg form
 ## is untouched: an empty `arrays` with no revision means "build it here", on purpose.
-func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {}, revision: int = -1) -> bool:
+## Phase 189 — `collide` false parks the chunk's collision shape instead of attaching it (see
+## `attach_parked_collision`); the chunk manager passes it for ground no body can reach yet.
+func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {}, revision: int = -1, collide: bool = true) -> bool:
 	var key = s._chunk_key(chunk_pos)
 	if revision >= 0 and revision != s.chunk_revision(chunk_pos):
 		return false   # stale worker result: this chunk was rebuilt while it was in flight
@@ -128,21 +130,88 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 	# not stand ON a concave shape directly — it collides WITH the static body
 	# carrying it, which is the supported direction. ---
 	TickProbe.end()
+	s._parked_shapes.erase(key)
 	if not s.attach_collision:
 		return true
-	TickProbe.begin("chunk_attach_collision")
-	var static_body := StaticBody3D.new()
-	static_body.collision_layer = s.TERRAIN_COLLISION_LAYER
-	static_body.collision_mask = 0
-	var col_shape := CollisionShape3D.new()
 	# Phase 172 — a worker build hands the shape over already made; only the synchronous path builds it
 	# here. Both sides of a wall collide, so a body inside a tunnel is held by the roof from below too.
 	var prepared = built.get("shape")
-	col_shape.shape = prepared if prepared is ConcavePolygonShape3D else s.VoxelMesh.collision_shape(built["collision"])
+	var shape: Shape3D = prepared if prepared is ConcavePolygonShape3D else s.VoxelMesh.collision_shape(built["collision"])
+	# Phase 189 — a chunk no body can reach keeps its shape parked: the body is ~9 ms of main thread per
+	# chunk, and at 90 m/s most of the window is ground nobody touches. `attach_parked_collision` adds it
+	# when the chunk enters the near ring.
+	if not collide:
+		s._parked_shapes[key] = shape
+		return true
+	_attach_collision(root, shape)
+	return true
+
+## Phase 189 — give `root` its terrain collision body carrying `shape`.
+func _attach_collision(root: Node3D, shape: Shape3D) -> void:
+	TickProbe.begin("chunk_attach_collision")
+	var static_body := StaticBody3D.new()
+	static_body.name = "Collision"
+	static_body.collision_layer = s.TERRAIN_COLLISION_LAYER
+	static_body.collision_mask = 0
+	var col_shape := CollisionShape3D.new()
+	col_shape.shape = shape
 	static_body.add_child(col_shape)
 	root.add_child(static_body)
 	TickProbe.end()
-	return true
+
+## Phase 189 — attach the collision a gated build parked for `chunk_pos`, on its chunk root or on the fold
+## stand-in covering it. False when nothing was parked (not built, or its collision is already there).
+func attach_parked_collision(chunk_pos: Vector2i) -> bool:
+	var key = s._chunk_key(chunk_pos)
+	var shape: Shape3D = s._parked_shapes.get(key)
+	if shape != null and s._chunks.has(key):
+		s._parked_shapes.erase(key)
+		_attach_collision(s._chunks[key], shape)
+		return true
+	var standin = s._standins.get(key)
+	if standin != null and is_instance_valid(standin) and (standin as Node3D).has_meta("parked_shape"):
+		_attach_collision(standin, standin.get_meta("parked_shape"))
+		standin.remove_meta("parked_shape")
+		return true
+	return false
+
+## Phase 189 — true when `chunk_pos` has a parked collision shape (on its root or its stand-in).
+func has_parked_collision(chunk_pos: Vector2i) -> bool:
+	var key = s._chunk_key(chunk_pos)
+	if s._parked_shapes.has(key):
+		return true
+	var standin = s._standins.get(key)
+	return standin != null and is_instance_valid(standin) and (standin as Node3D).has_meta("parked_shape")
+
+## Phase 189 — a fold carries the chunk roots across as stand-ins (`detach_standins`): each takes its
+## parked shape along, so the stand-in under the body can still be given its collision.
+func carry_parked_shapes() -> void:
+	for key in s._parked_shapes:
+		if s._chunks.has(key):
+			(s._chunks[key] as Node3D).set_meta("parked_shape", s._parked_shapes[key])
+	s._parked_shapes.clear()
+
+## Phase 189 — true when the built chunk at `chunk_pos` has its collision body attached.
+func has_collision(chunk_pos: Vector2i) -> bool:
+	var root: Node = s._chunks.get(s._chunk_key(chunk_pos))
+	return root != null and root.has_node("Collision")
+
+## Carry `roots` (from `detach_standins`) by the fold's scene transform `xform` and keep each as the
+## stand-in of the chunk it now covers. A second stand-in on the same chunk is freed.
+func adopt_standins(roots: Array, xform: Transform3D) -> void:
+	for r in roots:
+		if not is_instance_valid(r):
+			continue
+		var root := r as Node3D
+		root.transform = xform * root.transform
+		var centre: Vector3 = root.transform * (root.get_meta("centre", Vector3.ZERO) as Vector3)
+		var chunk := Vector2i(floori((float(centre.x) - float(s._origin.value.x)) / s.TerrainSlice.CHUNK_METERS),
+			floori((float(centre.z) - float(s._origin.value.z)) / s.TerrainSlice.CHUNK_METERS))
+		var key: String = s._chunk_key(chunk)
+		if s._standins.has(key) and is_instance_valid(s._standins[key]):
+			(s._standins[key] as Node3D).queue_free()
+		root.set_meta("standin_chunk", chunk)
+		s._standins[key] = root
 
 ## Resolve every column a chunk build must READ into a plain table the pure builder can
 ## consume — plus the chunk's rare-vein deposit list.
@@ -399,6 +468,7 @@ func unload_chunk(chunk_pos: Vector2i) -> void:
 		s._chunks.erase(key)
 	if s._standins.has(key):
 		s._free_standin(key)
+	s._parked_shapes.erase(key)
 	s._prune_heightmaps(chunk_pos)
 
 ## Drop the base heightmaps of chunks that are no longer worth remembering: one

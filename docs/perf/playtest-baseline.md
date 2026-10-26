@@ -51,6 +51,15 @@ A local run needs a current native library: when `native/src` is newer than `nat
 the GDScript fallback (the log says `native version N is older than M; rebuild native/`) and its
 numbers are not comparable. Rebuild with `scons platform=linux target=template_debug` in `native/`.
 
+## Flight: main thread per attached chunk (Phase 189)
+
+The `flight` step records the chunk manager's main-thread time (TickProbe `chunks` and the `chunk_*` phases
+nested in it) per chunk attached after the warm-up, in `flight.main_ms_per_attach`. It flies a second time
+over the same ground with the near ring off (the Phase 187 behaviour: collision and contents on every
+attach) and records that as `flight.record_ms_per_attach`. `tools/check_playtest_budget.py` fails when the
+median of the first over the three CI runs is above half the median of the record. The record is measured
+in the same run, so the gate holds on any machine.
+
 ## Findings
 
 - The GDScript fallback is not in use: the report says `native_builder: true` with the native library

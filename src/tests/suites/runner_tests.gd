@@ -190,3 +190,9 @@ func _test_playtest_flight_verdict() -> void:
 	assert_false(bool(Bot.flight_verdict([1.0, 0.0], [1.0, 0.0])["ok"]), "half is a failure")
 	assert_false(bool(Bot.flight_verdict([], [])["ok"]), "no samples is a failure")
 	assert_true("flight" in Bot.step_names(), "the bot has a flight step")
+	# Phase 189 — the flight step's main-thread cost is the chunk manager's pump and the phases nested in it.
+	var times := { "chunks": 4000, "chunk_attach_collision": 1500, "chunk_attach_mesh": 500, "creature_ai": 9000 }
+	assert_eq(Bot.chunk_main_ms(times), 6.0, "chunks + chunk_* in ms, other phases left out")
+	assert_eq(Bot.chunk_main_ms({}), 0.0, "an empty probe is no time")
+	assert_true(FileAccess.get_file_as_string("res://tools/check_playtest_budget.py").contains("FLIGHT_MAX_SHARE = %s" % str(Bot.FLIGHT_MAX_SHARE)),
+		"the CI gate's flight share is the bot's")
