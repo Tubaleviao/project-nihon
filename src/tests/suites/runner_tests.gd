@@ -197,5 +197,8 @@ func _test_playtest_flight_verdict() -> void:
 	assert_eq(Bot.chunk_phases_ms(times, 2), { "chunks": 2.0, "chunk_attach_collision": 0.75, "chunk_attach_mesh": 0.25 },
 		"the breakdown is per attached chunk, chunk phases only")
 	assert_eq(Bot.chunk_phases_ms(times, 0), {}, "no attach, no breakdown")
+	assert_eq(Bot.near_ring_ms({ "chunks": 4000, "chunk_attach_collision": 1500, "chunk_contents": 700, "chunk_attach_mesh": 500 }), 2.2,
+		"the gated cost is collision and contents only")
+	assert_eq(Bot.near_ring_ms(times), 1.5, "a flight that spawned nothing has collision only")
 	assert_true(FileAccess.get_file_as_string("res://tools/check_playtest_budget.py").contains("FLIGHT_MAX_SHARE = %s" % str(Bot.FLIGHT_MAX_SHARE)),
 		"the CI gate's flight share is the bot's")

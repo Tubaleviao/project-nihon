@@ -84,7 +84,11 @@ const FLIGHT_SECS := 12.0
 const FLIGHT_WARMUP_SECS := 1.5
 const FLIGHT_SAMPLE_SECS := 0.25
 const FLIGHT_MIN_COVER := 0.9
-const FLIGHT_MAX_SHARE := 0.5   ## Phase 189: main-thread ms per attached chunk at most this share of the record flight's (CI median)
+const FLIGHT_MAX_SHARE := 0.5   ## Phase 189: near-ring ms per attached chunk at most this share of the record flight's (CI median)
+## Phase 189 — the chunk phases the near ring removes: off-ring collision bodies and contents spawned under a
+## fast player. The gate compares these; the rest of the pump (mesh upload, dispatch) is report-only, since
+## its share varies with the machine (a 2-core llvmpipe runner pays ~4 ms more per chunk on both flights).
+const NEAR_RING_PHASES := ["chunk_attach_collision", "chunk_contents"]
 const TELEPORT_SETTLE_MS := 1500 ## frames this long after a teleport (the new window's builds) are not recorded
 const STEP_GRACE_SECS := 10.0    ## past its deadline a step that has not returned has crashed or hung: fail it
 const SPAWN_OFFSET_M := 2.0      ## a teleport lands this far above the ground
@@ -689,6 +693,13 @@ static func chunk_main_ms(times: Dictionary) -> float:
 			us += int(times[phase])
 	return float(us) / 1000.0
 
+## Phase 189 — ms of the phases the near ring targets (`NEAR_RING_PHASES`), from the same table. Pure.
+static func near_ring_ms(times: Dictionary) -> float:
+	var us := 0
+	for phase in NEAR_RING_PHASES:
+		us += int(times.get(phase, 0))
+	return float(us) / 1000.0
+
 ## The same phases one by one, in ms per attached chunk (the flight report's breakdown). Pure.
 static func chunk_phases_ms(times: Dictionary, attached: int) -> Dictionary:
 	var out := {}
@@ -704,8 +715,8 @@ static func chunk_phases_ms(times: Dictionary, attached: int) -> Dictionary:
 ## manager's main-thread ms per attached chunk (TickProbe phases). The step flies twice over the same
 ## ground: the gated flight, then a record flight with the near ring off (`set_near_ring_enabled(false)`,
 ## the Phase 187 behaviour). The record flies second, over warm ground, so the comparison does not favour
-## the near ring. `tools/check_playtest_budget.py` gates the medians: `main_ms_per_attach` at most
-## FLIGHT_MAX_SHARE of `record_ms_per_attach`.
+## the near ring. `tools/check_playtest_budget.py` gates the medians: `near_ms_per_attach` (collision and
+## contents) at most FLIGHT_MAX_SHARE of `record_near_ms_per_attach`; the whole pump is report-only.
 func _step_flight() -> Array:
 	var cm = _root._chunk_manager
 	var home: Dictionary = _root._player.get_world_pos()
@@ -731,12 +742,15 @@ func _step_flight() -> Array:
 	_flight["main_ms_per_attach"] = gated["ms_per_attach"]
 	_flight["record_attached"] = record["attached"]
 	_flight["record_ms_per_attach"] = record["ms_per_attach"]
+	_flight["near_ms_per_attach"] = gated["near_ms_per_attach"]
+	_flight["record_near_ms_per_attach"] = record["near_ms_per_attach"]
 	_flight["phases_ms_per_attach"] = gated["phases"]
 	_flight["record_phases_ms_per_attach"] = record["phases"]
-	var note := "%.0f m/s for %.0f s: ground under the body built in %.0f%% of %d samples, 3×3 ring %.0f%% (worst %.0f%%); main thread %.1f ms per attached chunk (%d chunks), %.1f ms with the near ring off (%d chunks)" % [
+	var note := "%.0f m/s for %.0f s: ground under the body built in %.0f%% of %d samples, 3×3 ring %.0f%% (worst %.0f%%); main thread %.1f ms per attached chunk (%d chunks), %.1f ms with the near ring off (%d chunks); collision and contents %.1f ms, %.1f ms with it off" % [
 		FLIGHT_SPEED_MPS, FLIGHT_SECS, 100.0 * float(_flight["under_cover"]), int(_flight["samples"]),
 		100.0 * float(_flight["ring_cover"]), 100.0 * float(_flight["worst_ring"]),
-		float(gated["ms_per_attach"]), int(gated["attached"]), float(record["ms_per_attach"]), int(record["attached"])]
+		float(gated["ms_per_attach"]), int(gated["attached"]), float(record["ms_per_attach"]), int(record["attached"]),
+		float(gated["near_ms_per_attach"]), float(record["near_ms_per_attach"])]
 	if not settled:
 		return [false, note + "; the start chunk never rebuilt"]
 	# The gate is the native builder's: the GDScript fallback (CI's `--no-native` run) builds about 7× slower
@@ -792,6 +806,7 @@ func _fly_east(home_chunk: Vector2i, home_local: Vector3) -> Dictionary:
 	var attached: int = cm.builds_attached - attached0
 	return { "under": under, "ring": ring, "attached": attached,
 		"ms_per_attach": main_ms / float(attached) if attached > 0 else 0.0,
+		"near_ms_per_attach": near_ring_ms(times) / float(attached) if attached > 0 else 0.0,
 		"phases": chunk_phases_ms(times, attached) }
 
 ## Put the body back where a flight started and wait for its chunk to be built.
