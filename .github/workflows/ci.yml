@@ -593,8 +593,8 @@ jobs:
             fi
           done
           cp playtest/report.json /tmp/pt-extra/report3.json
-          # Phase 189: the gate also compares the flight step's main-thread ms per attached chunk with the
-          # record flight flown in the same run with the near ring off; prove that check first.
+          # Phase 189: the gate also compares the flight step's collision and contents ms per attached chunk
+          # with the record flight flown in the same run with the near ring off; prove that check first.
           python3 tools/check_playtest_budget.py --self-test || exit 1
           python3 tools/check_playtest_budget.py /tmp/pt-extra/report?.json || exit 1
           exit "$status"
