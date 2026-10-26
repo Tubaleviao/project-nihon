@@ -102,26 +102,22 @@ func _attach_near_collision() -> void:
 	var voxel: Node = cm.voxel_slice
 	if voxel == null or not voxel.has_method("attach_parked_collision"):
 		return
-	if not voxel._build.has_any_parked_collision():
+	var parked: Array = voxel._build.parked_chunks()
+	if parked.is_empty():
 		return
-	var under := true   # the first chunk visited is the one under the local body
-	for b in bodies():
-		for c in _ring_nearest_first(b[0], int(b[1])):
-			if voxel.has_parked_collision(c):
-				if not under and cm._pump_exhausted():
-					return
-				voxel.attach_parked_collision(c)
-				cm._pump_steps += 1
-			under = false
-
-## The chunks within Chebyshev `r` of `centre`, the centre first.
-static func _ring_nearest_first(centre: Vector2i, r: int) -> Array:
-	var out: Array = [centre]
-	for dz in range(-r, r + 1):
-		for dx in range(-r, r + 1):
-			if dx != 0 or dz != 0:
-				out.append(centre + Vector2i(dx, dz))
-	return out
+	var near := bodies()
+	var local: Vector2i = near[0][0]
+	var due: Array = []
+	for c in parked:
+		if _within(near, c):
+			due.append([ring_distance(local, c), c])
+	due.sort_custom(func(a, b): return a[0] < b[0])
+	for d in due:
+		# the chunk under the local body is never held by the pump budget; the rest are, nearest first
+		if d[0] > 0 and cm._pump_exhausted():
+			return
+		voxel.attach_parked_collision(d[1])
+		cm._pump_steps += 1
 
 func _release_contents() -> void:
 	if _waiting.is_empty():

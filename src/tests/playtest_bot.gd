@@ -708,6 +708,10 @@ func _step_flight() -> Array:
 	GameBus.admin_moves_synced.emit(speed, true)   # what `/fly` sends
 	var gated := await _fly_east(home_chunk, home_local)
 	var settled := await _return_home(home_chunk, home_local)
+	if not settled:
+		# a record flight launched from the wrong place would be meaningless: restore and fail the step
+		GameBus.admin_moves_synced.emit(speed, was_flying)
+		return [false, "the start chunk never rebuilt after the gated flight"]
 	cm.set_near_ring_enabled(false)
 	var record := await _fly_east(home_chunk, home_local)
 	cm.set_near_ring_enabled(true)

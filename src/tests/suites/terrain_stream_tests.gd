@@ -18,6 +18,7 @@ func register() -> void:
 	_run_test("stream: the queue key puts the body's chunk first and favours the heading", _test_stream_queue_priority)
 	_run_test("stream: a crossing re-sorts the whole queue around the new centre", _test_stream_queue_resorted_on_move)
 	_run_test("near: collision only within a walking body's ring, attached when a chunk enters it", _test_near_collision_ring)
+	_run_test("near: parked collision attaches nearest first under the pump budget", _test_near_collision_nearest_first)
 	_run_test("near: a fast flying body gets collision under it only, its ring once it slows", _test_near_collision_flying)
 	_run_test("near: a peer's ring keeps collision, a dedicated server keeps it everywhere", _test_near_collision_peer_and_server)
 	_run_test("near: a fold stand-in keeps its parked collision for the body", _test_near_collision_fold_standin)
@@ -481,6 +482,26 @@ func _test_near_collision_ring() -> void:
 	assert_false(voxel.has_parked_collision(Vector2i(3, 0)), "the parked shape is spent")
 	cm.unload_chunk(Vector2i(3, 0))
 	assert_false(voxel.has_parked_collision(Vector2i(3, 0)), "an unload drops a parked shape")
+	_free_build_rig(rig)
+
+func _test_near_collision_nearest_first() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var voxel: VoxelSlice = rig["voxel"]
+	_build_chunks(cm, [Vector2i(0, 0), Vector2i(3, 0), Vector2i(4, 0)])
+	_stand_in(rig["player"], Vector2i(2, 0))
+	var clock := [0]
+	cm.pump_budget_msec = 4
+	cm.pump_clock_usec = func():
+		clock[0] += 10000
+		return clock[0]
+	cm.begin_pump()
+	cm._near.tick()
+	assert_true(voxel.has_collision(Vector2i(3, 0)), "the nearer parked chunk is attached first")
+	assert_true(voxel.has_parked_collision(Vector2i(4, 0)), "the budget leaves the farther one for a later frame")
+	cm.begin_pump()
+	cm._near.tick()
+	assert_true(voxel.has_collision(Vector2i(4, 0)), "the next frame attaches it")
 	_free_build_rig(rig)
 
 func _test_near_collision_flying() -> void:
