@@ -425,6 +425,73 @@ var _last_self_heal_msec: int = -1
 ## repopulates.
 var _contents_spawned: Dictionary = {} # "cx,cz" -> true
 
+## Phase 189 — pay only for the ground that is reached. When true (a rendering game, not a dedicated
+## server): a built chunk gets its collision body only within Chebyshev `NEAR_RING` of a window centre (the
+## local body's or a peer's, so a flying body's chunk below is always in), and its creatures and trees spawn
+## when it enters that ring or when the local window has been still for `CONTENTS_SETTLE_MSEC`, instead of when
+## its mesh attaches. The same ids and positions spawn, later. Off by default: every chunk attaches both at once.
+var defer_far_work := false:
+	set(v):
+		defer_far_work = v
+		if voxel_slice != null:
+			voxel_slice.collision_gate = collision_wanted if v else Callable()
+const NEAR_RING := 1
+## Phase 189 — builds attached since boot; the playtest's flight step divides main-thread time by it.
+var attached_total := 0
+const CONTENTS_SETTLE_MSEC := 1500
+## Built chunks whose contents wait for the near ring or a still window: "cx,cz" -> true.
+var _contents_waiting: Dictionary = {}
+var _last_recenter_msec: int = 0
+var _last_local_center: Vector2i = Vector2i(1 << 30, 1 << 30)
+
+## True when `chunk` is within `NEAR_RING` (Chebyshev) of any window centre.
+func in_near_ring(chunk: Vector2i) -> bool:
+	for c in window_centers():
+		if _within_stream_at(c, NEAR_RING, chunk):
+			return true
+	return false
+
+## The voxel slice's `collision_gate`: a chunk gets collision only in the near ring.
+func collision_wanted(chunk: Vector2i) -> bool:
+	return in_near_ring(chunk)
+
+## Phase 189 — the per-frame service of the withheld work: collision for chunks that entered the near ring,
+## contents for chunks in it (all of them, at once) and, once the local window has been still, one waiting chunk
+## a frame. Returns how many chunks it gave something to.
+func serve_deferred_work() -> int:
+	if not defer_far_work or voxel_slice == null:
+		return 0
+	var local := player_chunk()
+	var now: int = now_msec.call()
+	if local != _last_local_center:
+		_last_local_center = local
+		_last_recenter_msec = now
+	var served := 0
+	var centers := window_centers()
+	for c in centers:
+		for dz in range(-NEAR_RING, NEAR_RING + 1):
+			for dx in range(-NEAR_RING, NEAR_RING + 1):
+				var ch := TerrainSlice.wrap_chunk(c + Vector2i(dx, dz))
+				var key := _chunk_key(ch)
+				if voxel_slice.attach_pending_collision(ch):
+					served += 1
+				if _contents_waiting.has(key) and _built.has(key):
+					_release_contents(key, ch)
+					served += 1
+	if not _contents_waiting.is_empty() and now - _last_recenter_msec >= CONTENTS_SETTLE_MSEC:
+		var key: String = _contents_waiting.keys()[0]
+		_release_contents(key, _key_to_chunk(key))
+		served += 1
+	return served
+
+func _release_contents(key: String, chunk: Vector2i) -> void:
+	_contents_waiting.erase(key)
+	_spawn_contents_once(key, chunk, true)
+
+## Chunks whose contents are waiting (a test hook).
+func contents_waiting_count() -> int:
+	return _contents_waiting.size()
+
 ## Phase 42 — the boot gate. `_first_ring` maps "cx,cz" -> built?, and an EMPTY map
 ## means the gate was never armed (so `is_first_ring_ready()` answers true for every
 ## caller that has no boot to hold).
@@ -440,6 +507,7 @@ func _process(_delta: float) -> void:
 	TickProbe.begin("chunks")   # Phase 162 — the stress run's per-phase tick cost
 	begin_pump()
 	_apply_finished_builds()
+	serve_deferred_work()
 	_poll_region_reads()
 	flush_records()
 	if _active:
@@ -454,8 +522,10 @@ func _process(_delta: float) -> void:
 ## `_boot_host()` reaches it through `_boot_server()` before the spawn and then
 ## re-centres with a second `refresh()`, while a dedicated server simply streams
 ## around the player's pre-spawn position (the origin) and never moves it.
-func start() -> void:
+func start(defer_far: bool = false) -> void:
 	_active = true
+	if defer_far:
+		defer_far_work = true   # Phase 189
 
 ## Stop automatic streaming (keeps currently loaded chunks).
 func stop() -> void:
@@ -874,9 +944,13 @@ var _seam_revision: Dictionary = {}
 ## Spawn a chunk's contents once per residency, and not while its generation record is still deferred:
 ## the record may rebuild the ground, and a population placed on the plain generator's ground would
 ## stand under the player's edits of the rebuilt one. `_record_deferred` spawns it once the record lands.
-func _spawn_contents_once(key: String, chunk_pos: Vector2i) -> void:
+func _spawn_contents_once(key: String, chunk_pos: Vector2i, released: bool = false) -> void:
 	if _contents_spawned.has(key) or _deferred_records.has(key):
 		return
+	if defer_far_work and not released and not in_near_ring(chunk_pos):
+		_contents_waiting[key] = true
+		return
+	_contents_waiting.erase(key)
 	_contents_spawned[key] = true
 	_spawn_chunk_contents(chunk_pos)
 
@@ -1291,6 +1365,7 @@ func _apply_build_entry(task_id: int) -> bool:
 	_build_attempts.erase(key)
 	_failed.erase(key)
 	_built[key] = true
+	attached_total += 1
 	# The ground exists now, so its contents may: creatures and trees spawn HERE rather
 	# than at load time (see `_spawn_chunk_contents`) — but ONCE per residency, not once
 	# per build. An EDIT rebuilds a loaded chunk, and re-deriving the population for it
@@ -1407,6 +1482,7 @@ func unload_chunk(chunk_pos: Vector2i) -> void:
 	# The residency ends here: the contents are despawned below, so a chunk that streams
 	# back in repopulates (`_apply_build_entry`).
 	_contents_spawned.erase(key)
+	_contents_waiting.erase(key)
 	_rebuild_pending.erase(key)
 	# Phase 42 review pass 3 — and the QUEUED entry goes with the mark. `_rebuild_queue` is
 	# deduped through `_rebuild_pending`, so a mark cleared while its queue entry lived

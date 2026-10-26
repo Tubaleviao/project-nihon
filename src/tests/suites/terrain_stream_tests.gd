@@ -16,6 +16,8 @@ func register() -> void:
 	_run_test("stream: finished builds attach nearest the body first", _test_stream_apply_nearest_first)
 	_run_test("stream: the queue key puts the body's chunk first and favours the heading", _test_stream_queue_priority)
 	_run_test("stream: a crossing re-sorts the whole queue around the new centre", _test_stream_queue_resorted_on_move)
+	_run_test("far work: collision only in the near ring, and a chunk gets it on entering", _test_far_collision_near_ring)
+	_run_test("far work: a chunk's contents spawn once whether on entering the ring or on a still window", _test_far_contents_once)
 	_run_test("fold: a creature and a tree keep id, state and place across a pole fold", _test_fold_carries_contents)
 	_run_test("fold: the fold image of a position is an involution over a pole and a lap", _test_fold_like_involution)
 	_run_test("fold: a client replays two folds on host positions, the log stays minimal", _test_fold_log_replay)
@@ -425,3 +427,66 @@ func _test_stream_queue_resorted_on_move() -> void:
 	rig["voxel"].free()
 	rig["terrain"].free()
 	rig["player"].free()
+
+## Phase 189 — a rig streamed with the far-work deferral on, around the body's chunk (0,0).
+func _far_work_rig() -> Dictionary:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var spy := ContentsSpy.new()
+	add_child(spy)
+	cm.creature_slice = spy
+	rig["spy"] = spy
+	cm.defer_far_work = true
+	cm.view_distance = 3
+	cm.prefetch_distance = 0
+	cm.refresh(false)
+	_wait_for_builds(cm)
+	return rig
+
+func _far_work_free(rig: Dictionary) -> void:
+	rig["cm"].defer_far_work = false
+	rig["cm"].free()
+	rig["spy"].free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
+
+func _test_far_collision_near_ring() -> void:
+	var rig := _far_work_rig()
+	var cm: ChunkManager = rig["cm"]
+	var voxel: VoxelSlice = rig["voxel"]
+	var player: PlayerSlice = rig["player"]
+	var near := Vector2i(1, 1)
+	var far := Vector2i(3, 0)
+	assert_true(cm.is_chunk_built(near) and cm.is_chunk_built(far), "both chunks are built")
+	assert_true(voxel.chunk_has_collision(Vector2i(0, 0)), "the chunk under the body has collision (a flying body's chunk below)")
+	assert_true(voxel.chunk_has_collision(near), "a chunk at Chebyshev 1 has collision")
+	assert_false(voxel.chunk_has_collision(far), "a chunk outside the near ring has no collision shape")
+	assert_true(voxel.has_pending_collision(far), "its shape waits")
+	player.spawn_at(Vector3(32.0 * 3.0 + 16.0, 40.0, 16.0))   # the body reaches it
+	cm.serve_deferred_work()
+	assert_true(voxel.chunk_has_collision(far), "the chunk gets collision when it enters the near ring")
+	assert_false(voxel.has_pending_collision(far), "and nothing waits for it")
+	assert_false(voxel.chunk_has_collision(Vector2i(-3, 0)) and voxel.has_pending_collision(Vector2i(-3, 0)), "a chunk is never both")
+	_far_work_free(rig)
+
+func _test_far_contents_once() -> void:
+	var rig := _far_work_rig()
+	var cm: ChunkManager = rig["cm"]
+	var spy: ContentsSpy = rig["spy"]
+	var clock := [1000]
+	cm.now_msec = func() -> int: return clock[0]
+	cm.serve_deferred_work()
+	assert_true(cm.contents_waiting_count() > 0, "chunks outside the near ring wait")
+	assert_false(spy.spawned.has(Vector2i(3, 0)), "a far chunk has spawned nothing yet")
+	assert_true(spy.spawned.has(Vector2i(1, 1)), "a near chunk spawned on attach")
+	clock[0] += ChunkManager.CONTENTS_SETTLE_MSEC
+	for i in 100:
+		cm.serve_deferred_work()
+	assert_eq(cm.contents_waiting_count(), 0, "a still window releases every waiting chunk")
+	assert_true(spy.spawned.has(Vector2i(3, 0)), "the far chunk spawned on slowing down")
+	var seen := {}
+	for c: Vector2i in spy.spawned:
+		assert_false(seen.has(c), "chunk %s spawned once" % str(c))
+		seen[c] = true
+	_far_work_free(rig)

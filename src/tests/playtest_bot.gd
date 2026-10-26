@@ -24,6 +24,7 @@ extends Node
 ##   report_markdown(report) -> String        — static
 ##   step_names() -> Array                    — static, the fixed step order
 
+const TickProbe := preload("res://src/core/tick_probe.gd")
 const VoxelSlice := preload("res://src/terrain/voxel_slice.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
@@ -83,6 +84,10 @@ const FLIGHT_SECS := 12.0
 const FLIGHT_WARMUP_SECS := 1.5
 const FLIGHT_SAMPLE_SECS := 0.25
 const FLIGHT_MIN_COVER := 0.9
+## Phase 189 — main-thread ms per attached chunk during flight. Phase 187 measured about 25 ms (collision
+## 9.3, dispatch and bookkeeping 5–6.5, creature spawns 4.5–12, render mesh 1.7); Phase 189 must be at most half.
+const FLIGHT_BASELINE_MS_PER_CHUNK := 25.0
+const FLIGHT_MAX_MS_PER_CHUNK := FLIGHT_BASELINE_MS_PER_CHUNK / 2.0
 const TELEPORT_SETTLE_MS := 1500 ## frames this long after a teleport (the new window's builds) are not recorded
 const STEP_GRACE_SECS := 10.0    ## past its deadline a step that has not returned has crashed or hung: fail it
 const SPAWN_OFFSET_M := 2.0      ## a teleport lands this far above the ground
@@ -692,6 +697,10 @@ func _step_flight() -> Array:
 	var ring: Array = []
 	var t0 := Time.get_ticks_msec()
 	var next_sample := FLIGHT_WARMUP_SECS
+	var probe_was_on: bool = TickProbe.enabled
+	TickProbe.enabled = true
+	TickProbe.take_times()
+	var attached0: int = cm.attached_total
 	while true:
 		await get_tree().process_frame
 		var secs := float(Time.get_ticks_msec() - t0) / 1000.0
@@ -716,11 +725,23 @@ func _step_flight() -> Array:
 			ring.append(float(n) / 9.0)
 	_flight = flight_verdict(under, ring)
 	_flight["speed_mps"] = FLIGHT_SPEED_MPS
+	var phases: Dictionary = TickProbe.take_times()
+	TickProbe.enabled = probe_was_on
+	var attached: int = cm.attached_total - attached0
+	var chunks_us := 0
+	for phase in ["chunks", "chunk_attach_collision", "chunk_attach_arrays"]:
+		chunks_us += int(phases.get(phase, 0))
+	_flight["attached"] = attached
+	_flight["ms_per_chunk"] = float(chunks_us) / 1000.0 / float(maxi(attached, 1))
+	_flight["phases_ms"] = {}
+	for phase in phases:
+		_flight["phases_ms"][phase] = float(phases[phase]) / 1000.0
 	var back := _teleport_to(home_chunk, home_local)
 	var settled: bool = await _until(func(): return cm.is_chunk_built(back["chunk"]), STEP_TIMEOUT_SECS)
 	var note := "%.0f m/s for %.0f s: ground under the body built in %.0f%% of %d samples, 3×3 ring %.0f%% (worst %.0f%%)" % [
 		FLIGHT_SPEED_MPS, FLIGHT_SECS, 100.0 * float(_flight["under_cover"]), int(_flight["samples"]),
 		100.0 * float(_flight["ring_cover"]), 100.0 * float(_flight["worst_ring"])]
+	note += "; main thread %.1f ms per attached chunk (%d attached; limit %.1f)" % [float(_flight["ms_per_chunk"]), attached, FLIGHT_MAX_MS_PER_CHUNK]
 	if not settled:
 		return [false, note + "; the start chunk never rebuilt"]
 	# The gate is the native builder's: the GDScript fallback (CI's `--no-native` run) builds about 7× slower
@@ -728,7 +749,8 @@ func _step_flight() -> Array:
 	_flight["gated"] = NativeBuilder.mode() == NativeBuilder.MODE_NATIVE
 	if not bool(_flight["gated"]):
 		return [true, note + " (report only: %s builder)" % NativeBuilder.mode()]
-	return [bool(_flight["ok"]), note]
+	_flight["cost_ok"] = attached < 4 or float(_flight["ms_per_chunk"]) <= FLIGHT_MAX_MS_PER_CHUNK
+	return [bool(_flight["ok"]) and bool(_flight["cost_ok"]), note]
 
 ## Phase 169 — the chunk build rate of the builder in use (`NativeBuilder.mode()`), chunks per second of
 ## the pure worker half (map, seam strips, resolve, mesh) run synchronously on `RATE_CHUNKS` chunks past
