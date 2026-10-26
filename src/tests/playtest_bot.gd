@@ -810,10 +810,27 @@ func _fly_east(home_chunk: Vector2i, home_local: Vector3) -> Dictionary:
 		"phases": chunk_phases_ms(times, attached) }
 
 ## Put the body back where a flight started and wait for its chunk to be built.
+## The world's own creatures can down the body while it waits on a slow build (CI's GDScript run saw
+## HP 0 here), and a downed body respawns at its respawn point, out of reach of the home chunk. So a
+## downed body is let respawn, healed and carried home again, under one deadline.
 func _return_home(home_chunk: Vector2i, home_local: Vector3) -> bool:
 	var cm = _root._chunk_manager
-	var back := _teleport_to(home_chunk, home_local)
-	return await _until(func(): return cm.is_chunk_built(back["chunk"]), STEP_TIMEOUT_SECS)
+	var player = _root._player
+	var deadline_ms := Time.get_ticks_msec() + int((PlayerSlice.RESPAWN_DELAY + STEP_TIMEOUT_SECS) * 1000.0)
+	while true:
+		var left := float(deadline_ms - Time.get_ticks_msec()) / 1000.0
+		if left <= 0.0:
+			return false
+		if not player.is_alive():
+			await _until(func(): return player.is_alive(), left)
+			continue
+		GameBus.admin_healed.emit()
+		var back := _teleport_to(home_chunk, home_local)
+		_clear_creatures_near_body()
+		await _until(func(): return cm.is_chunk_built(back["chunk"]) or not player.is_alive(), left)
+		if player.is_alive():
+			return cm.is_chunk_built(back["chunk"])
+	return false
 
 ## Phase 169 — the chunk build rate of the builder in use (`NativeBuilder.mode()`), chunks per second of
 ## the pure worker half (map, seam strips, resolve, mesh) run synchronously on `RATE_CHUNKS` chunks past
