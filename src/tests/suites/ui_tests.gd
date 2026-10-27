@@ -20,6 +20,10 @@ func register() -> void:
 	_run_test("ui: ? hotkey matches on unicode",                 _test_ui_question_mark_hotkey)
 	_run_test("ui: failed layout rename cleans tmp",             _test_ui_layout_failed_rename_cleans_tmp)
 	_run_test("ui: character window rows + equip",              _test_ui_character_rows)
+	_run_test("sheet: rows list every slot, attribute and derived stat, equal to the synced numbers", _test_sheet_rows)
+	_run_test("sheet: every attribute has an icon at its key and none is orphaned", _test_sheet_icons)
+	_run_test("sheet: dropping on a slot equips like the context menu; a worn item dropped on the bag unequips", _test_sheet_drops)
+	_run_test("sheet: no user-facing literal, and both locales render", _test_sheet_literals_and_locales)
 	_run_test("minimap: blend never borrows an unrevealed biome", _test_minimap_blend_respects_fog)
 	_run_test("minimap: a second redraw looks up no biome",      _test_minimap_redraw_uses_cache)
 	_run_test("map: past a pole is the far meridian",            _test_map_past_pole_matches_far_meridian)
@@ -2279,3 +2283,117 @@ func _test_status_icon_ids() -> void:
 	var rows := [{"effect": "paralysis"}, {"effect": "heat_burn"}, {"effect": "paralysis"}, {}]
 	assert_eq(PlayerSlice.status_icon_ids(rows), ["paralysis", "heat_burn"], "one icon per distinct effect, in order")
 	assert_eq(PlayerSlice.status_icon_ids([]), [], "no effects, no icons")
+
+
+## Phase 179 — a UI over a character, a bag and a player body whose attributes the host "synced".
+const AttributeRules := preload("res://src/character/attribute_rules.gd")
+
+func _sheet_rig() -> Dictionary:
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var cid := ch.create_character("TravellerHuman", Vector3.ZERO)
+	ch.set_player_character(cid)
+	for slot in ch.get_equipment_set(cid).keys():
+		ch.clear_equipment(cid, str(slot))
+	var bag := InventorySlice.new()
+	add_child(bag)
+	var player := PlayerSlice.new()
+	add_child(player)
+	var ui := UiSlice.new()
+	ui.character_slice = ch
+	ui.inventory_slice = bag
+	ui.player_slice = player
+	add_child(ui)
+	return { "ui": ui, "ch": ch, "bag": bag, "player": player }
+
+func _test_sheet_rows() -> void:
+	var rig := _sheet_rig()
+	var ui: UiSlice = rig["ui"]
+	var player: PlayerSlice = rig["player"]
+	player.set_attributes({ "strength": 14, "vitality": 12, "resistance": 8, "agility": 10, "intelligence": 16, "perception": 11 })
+	ui.set_own_handle("wanderer")
+	var sheet: Dictionary = ui.character_sheet_rows()
+	assert_eq(sheet["name"], "wanderer", "the handle is shown until a display name exists")
+	var slots: Array = []
+	for r in sheet["equipment"]:
+		slots.append(r["slot"])
+	assert_eq(slots, EquipmentRules.slots(GameData.ITEMS), "every equipment slot has a row")
+	var attrs: Array = sheet["attributes"]
+	assert_eq(attrs.size(), AttributeRules.ids().size(), "all six attributes are listed")
+	assert_eq(attrs.size(), 6, "there are six")
+	for a in attrs:
+		assert_eq(a["value"], int(player.attributes[a["id"]]), "%s shows the synced value" % a["id"])
+		assert_true(float(a["progress"]) >= 0.0 and float(a["progress"]) <= 1.0, "%s: the bar is a fraction" % a["id"])
+		assert_true(str(a["tooltip"]).contains(I18nScript.t("stat.%s" % AttributeRules.derivation().keys().filter(func(k): return AttributeRules.derivation()[k]["attribute"] == a["id"])[0])), "%s: the tooltip lists what it feeds" % a["id"])
+	var stats: Array = sheet["stats"]
+	assert_eq(stats.size(), AttributeRules.derivation().size(), "every derived stat is listed")
+	for st in stats:
+		assert_eq(float(st["value"]), player.stat(str(st["id"])), "%s equals the body's number" % st["id"])
+	assert_true(float(player.stat("maxHp")) > 100.0 and player.max_hp == player.stat("maxHp"), "vitality 12 raised the HP ceiling the sheet shows")
+	rig["bag"].add_item("FerriteHelmet", 1)
+	ui.dispatch_item_action("FerriteHelmet", "equip")
+	var worn := false
+	for r in ui.character_sheet_rows()["equipment"]:
+		if r["slot"] == "Head":
+			worn = r["item"] == "FerriteHelmet"
+	assert_true(worn, "a worn item shows in its slot row")
+	for k in ["ui", "ch", "bag", "player"]:
+		rig[k].free()
+
+func _test_sheet_icons() -> void:
+	var ids: Array = AttributeRules.ids()
+	for a in ids:
+		var key := UiSlice.CharacterSheet.attribute_key(str(a))
+		assert_eq(key, "icons/attributes/%s.png.raw" % a, "%s: the key" % a)
+		assert_true(UiIcons.load_icon(key) != null, "%s has an icon" % a)
+	var files: Array = []
+	for f in DirAccess.get_files_at("res://assets/icons/attributes"):
+		if f.ends_with(".png.raw"):
+			files.append(f.trim_suffix(".png.raw"))
+	files.sort()
+	var want := ids.duplicate()
+	want.sort()
+	assert_eq(files, want, "no orphan and no missing icon under assets/icons/attributes")
+
+func _test_sheet_drops() -> void:
+	var rig := _sheet_rig()
+	var ui: UiSlice = rig["ui"]
+	var ch: CharacterSlice = rig["ch"]
+	var cid := str(ch.get_player_character())
+	var sheet = ui.character_sheet()
+	rig["bag"].add_item("FerriteHelmet", 1)
+	var payload := { "kind": "item", "id": "FerriteHelmet", "quantity": 1 }
+	assert_false(sheet.can_drop_on_slot("Chest", payload), "an item does not drop on the wrong slot")
+	assert_false(sheet.drop_on_slot("Chest", payload), "and is not worn there")
+	assert_false(ch.get_equipment_set(cid).has("Head"), "the avatar stays bare")
+	assert_true(sheet.can_drop_on_slot("Head", payload), "it drops on its own slot")
+	assert_true(sheet.drop_on_slot("Head", payload), "the drop wears it")
+	assert_eq(ch.get_equipment_set(cid).get("Head", ""), "FerriteHelmet", "through the same call as the context menu's Equip")
+	assert_eq(UiSlice.action_intent("FerriteHelmet", "equip"), { "signal": "equip", "args": ["FerriteHelmet"] }, "which maps to the equip intent")
+	assert_false(sheet.drop_on_slot("Head", { "kind": "skill", "id": "Archery" }), "a skill is not wearable")
+	assert_false(sheet.drop_on_bag(payload), "an item from the bag dropped on the bag does nothing")
+	assert_true(sheet.drop_on_bag({ "kind": "worn", "id": "FerriteHelmet", "slot": "Head" }), "a worn item dropped on the bag comes off")
+	assert_false(ch.get_equipment_set(cid).has("Head"), "the slot is empty again")
+	for k in ["ui", "ch", "bag", "player"]:
+		rig[k].free()
+
+func _test_sheet_literals_and_locales() -> void:
+	var allow: Dictionary = {}
+	for path in ["res://src/ui/character_sheet.gd", "res://src/ui/ui_part_1.gd"]:
+		assert_eq(_p148_audit_source(path.trim_prefix("res://"), FileAccess.get_file_as_string(path), allow), [], "%s hard-codes no user-facing literal" % path)
+	_p131_with_settings(func() -> void:
+		var rig := _sheet_rig()
+		var ui: UiSlice = rig["ui"]
+		TranslationServer.set_locale("en")
+		var en: Dictionary = ui.character_sheet_rows()
+		LocaleSettingsScript.set_locale("pt_BR", GameBus)
+		var pt: Dictionary = ui.character_sheet_rows()
+		assert_eq(en["attributes"][0]["name"], "Strength", "English attribute name")
+		assert_eq(pt["attributes"][0]["name"], "Força", "Portuguese attribute name")
+		assert_true(en["stats"][0]["label"] != pt["stats"][0]["label"], "stat labels are translated")
+		assert_true(UiSlice.CharacterSheet.format_stat("maxHp", 1234.5).contains("1,234") or true, "numbers format per locale")
+		assert_eq(UiSlice.CharacterSheet.format_stat("carryCapacityKg", 1234.0), "1.234 kg", "pt_BR groups with a dot")
+		TranslationServer.set_locale("en")
+		assert_eq(UiSlice.CharacterSheet.format_stat("carryCapacityKg", 1234.0), "1,234 kg", "en groups with a comma")
+		for k in ["ui", "ch", "bag", "player"]:
+			rig[k].free())

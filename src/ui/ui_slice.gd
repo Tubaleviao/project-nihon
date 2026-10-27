@@ -131,6 +131,22 @@ var _toast_queue: Array[String] = []
 var _toast_shown: String = ""
 var _toast_left: float = 0.0
 var _character_grid: GridContainer = null
+## Phase 179 — the sheet's other widgets (see `character_sheet.gd`).
+const CharacterSheet := preload("res://src/ui/character_sheet.gd")
+var _character_grid_right: GridContainer = null
+var _sheet_name: Label = null
+var _sheet_doll: CharacterSheet.DollView = null
+var _sheet_attr_box: VBoxContainer = null
+var _sheet_stat_box: GridContainer = null
+var _sheet_skill_box: HBoxContainer = null
+var _sheet := CharacterSheet.new(self)
+
+## Phase 179 — what the Character window shows, as data (`CharacterSheet.rows`).
+func character_sheet_rows() -> Dictionary:
+	return _sheet.rows()
+
+func character_sheet() -> CharacterSheet:
+	return _sheet
 var _slot_menu: PopupMenu = null
 var _slot_menu_item: String = ""
 var _slot_menu_actions: Array = []
@@ -261,6 +277,14 @@ func _inventory_drag(_at: Vector2, item_id: String, qty: int, source: Control) -
 	label.text = "%s ×%d" % [item_id, qty] if qty > 1 else item_id
 	source.set_drag_preview(label)
 	_drag_payload = {"kind": "item", "id": item_id, "quantity": qty}
+	return _drag_payload
+
+## The drag source for a worn item on the character sheet: dropping it on the bag takes it off.
+func _worn_drag(_at: Vector2, item_id: String, slot: String, source: Control) -> Variant:
+	var label := Label.new()
+	label.text = item_id
+	source.set_drag_preview(label)
+	_drag_payload = {"kind": "worn", "id": item_id, "slot": slot}
 	return _drag_payload
 
 func _skill_drag(_at: Vector2, skill: String, source: Control) -> Variant:
@@ -1368,12 +1392,18 @@ func _build_inventory_content() -> Control:
 	vbox.add_child(scroll)
 	_inventory_grid = GridContainer.new()
 	_inventory_grid.columns = INVENTORY_COLUMNS
+	# Phase 179 — a worn item dragged off the character sheet and dropped on the bag is taken off.
+	_inventory_grid.set_drag_forwarding(Callable(), func(_at: Vector2, d: Variant) -> bool: return d is Dictionary and str(d.get("kind", "")) == "worn",
+		func(_at: Vector2, d: Variant) -> void: _sheet.drop_on_bag(d))
 	scroll.add_child(_inventory_grid)
 	return vbox
 
 func _build_character_content() -> Control:
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 6)
+	_sheet_name = Label.new()
+	_sheet_name.add_theme_font_size_override("font_size", 17)
+	vbox.add_child(_sheet_name)
 	_character_stats = Label.new()
 	_character_stats.add_theme_font_size_override("font_size", 15)
 	vbox.add_child(_character_stats)
@@ -1391,9 +1421,29 @@ func _build_character_content() -> Control:
 	_spawn_notice_label = Label.new()
 	_spawn_notice_label.add_theme_font_size_override("font_size", 13)
 	vbox.add_child(_spawn_notice_label)
+	# Phase 179 — the sheet: slots left and right of the rig preview, attributes and derived stats beside it.
+	var sheet := HBoxContainer.new()
+	sheet.add_theme_constant_override("separation", 10)
 	_character_grid = GridContainer.new()
-	_character_grid.columns = INVENTORY_COLUMNS
-	vbox.add_child(_character_grid)
+	_character_grid.columns = 1
+	_character_grid_right = GridContainer.new()
+	_character_grid_right.columns = 1
+	_sheet_doll = CharacterSheet.DollView.new()
+	sheet.add_child(_character_grid)
+	sheet.add_child(_sheet_doll)
+	sheet.add_child(_character_grid_right)
+	var side := VBoxContainer.new()
+	side.add_theme_constant_override("separation", 4)
+	_sheet_attr_box = VBoxContainer.new()
+	_sheet_stat_box = GridContainer.new()
+	_sheet_stat_box.columns = 2
+	_sheet_skill_box = HBoxContainer.new()
+	side.add_child(_sheet_attr_box)
+	side.add_child(_sheet_stat_box)
+	side.add_child(_sheet_skill_box)
+	sheet.add_child(side)
+	vbox.add_child(sheet)
+	_sheet_doll.set_drag_forwarding(Callable(), Callable(), Callable())
 	return vbox
 
 func _build_skills_content() -> Control:

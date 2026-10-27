@@ -160,6 +160,7 @@ ui.buy,Buy,Comprar
 ui.copy,Copy,Copiar
 ui.craft,Craft,Criar
 ui.defense,Defense {0},Defesa {0}
+ui.sheet_name,Character: {0},Personagem: {0}
 ui.drop_blocked,Items can't be dropped while joined to another player's world yet,Itens não podem ser largados enquanto você está no mundo de outro jogador
 ui.empty,(empty),(vazio)
 ui.equip_slot,Equip ({0}),Equipar ({0})

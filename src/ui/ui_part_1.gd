@@ -106,30 +106,84 @@ func refresh_character() -> void:
 		return
 	sl._refresh_skills()
 	sl._character_stats.text = sl.character_stats_text()
+	var sheet: Dictionary = sl.character_sheet_rows()
+	sl._sheet_name.text = sl.I18n.t("ui.sheet_name", [str(sheet["name"])])
 	# An appearance change that left the worn set alone (a palette tweak, a LOD swap)
 	# produces the same rows; rebuilding the whole grid for it is wasted work.
-	var rows = sl.character_rows()
-	var signature: int = rows.hash()
+	var signature: int = sheet.hash()
 	if signature == sl._character_rows_signature and sl._character_grid.get_child_count() > 0:
 		return
 	sl._character_rows_signature = signature
-	for c in sl._character_grid.get_children():
-		sl._character_grid.remove_child(c)
-		sl._retire(c)
-	for row in rows:
+	if sl._sheet_doll != null and not sl._sheet_doll.has_rig() and sl.is_inside_tree():
+		sl._sheet_doll.show_rig(sl.character_slice)
+	for grid in [sl._character_grid, sl._character_grid_right]:
+		for c in grid.get_children():
+			grid.remove_child(c)
+			sl._retire(c)
+	for row in sheet["equipment"]:
 		var slot = Button.new()
 		slot.custom_minimum_size = sl.SLOT_SIZE
 		slot.tooltip_text = str(row["tooltip"])
 		slot.clip_text = true
 		var tex: Texture2D = sl._load_item_icon(str(row["icon_key"])) if str(row["icon_key"]) != "" else null
+		var dur := str(row["durability"])
 		if tex != null:
 			slot.icon = tex
 			slot.expand_icon = true
-			slot.text = str(row["slot"])
+			slot.text = "%s\n%s" % [row["slot"], dur] if dur != "" else str(row["slot"])
 		else:
 			slot.text = "%s\n%s" % [row["slot"], sl.item_glyph(str(row["item"])) if str(row["item"]) != "" else "—"]
 		slot.gui_input.connect(sl._on_slot_gui_input.bind(str(row["item"]), row["actions"]))
-		sl._character_grid.add_child(slot)
+		var slot_name := str(row["slot"])
+		slot.set_drag_forwarding(sl._worn_drag.bind(str(row["item"]), slot_name, slot) if str(row["item"]) != "" else Callable(),
+			sl.character_sheet().can_drop_on_slot.bind(slot_name),
+			sl.character_sheet().drop_on_slot.bind(slot_name))
+		(sl._character_grid if str(row["side"]) == "left" else sl._character_grid_right).add_child(slot)
+	_fill_sheet_panels(sheet)
+
+## The attribute rows (icon, value, a bar, the tooltip of what it feeds), the derived stats and the top skills.
+func _fill_sheet_panels(sheet: Dictionary) -> void:
+	for box in [sl._sheet_attr_box, sl._sheet_stat_box, sl._sheet_skill_box]:
+		for c in box.get_children():
+			box.remove_child(c)
+			sl._retire(c)
+	for a in sheet["attributes"]:
+		var line := HBoxContainer.new()
+		line.tooltip_text = str(a["tooltip"])
+		var icon := TextureRect.new()
+		icon.custom_minimum_size = Vector2(24, 24)
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.texture = sl.UiIcons.load_icon(str(a["icon_key"]))
+		line.add_child(icon)
+		var label := Label.new()
+		label.custom_minimum_size = Vector2(110, 0)
+		label.text = "%s %d" % [a["name"], int(a["value"])]
+		line.add_child(label)
+		var bar := ProgressBar.new()
+		bar.custom_minimum_size = Vector2(90, 14)
+		bar.max_value = 1.0
+		bar.value = float(a["progress"])
+		bar.show_percentage = false
+		line.add_child(bar)
+		line.mouse_filter = Control.MOUSE_FILTER_PASS
+		sl._sheet_attr_box.add_child(line)
+	for st in sheet["stats"]:
+		var name_label := Label.new()
+		name_label.text = str(st["label"])
+		name_label.add_theme_font_size_override("font_size", 12)
+		var value_label := Label.new()
+		value_label.text = str(st["text"])
+		value_label.add_theme_font_size_override("font_size", 12)
+		sl._sheet_stat_box.add_child(name_label)
+		sl._sheet_stat_box.add_child(value_label)
+	for k in sheet["skills"]:
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(sl.SLOT_SIZE.x, 56.0)
+		sl.UiIcons.style_skill_button(b, str(k["id"]), str(k["tier"]))
+		b.tooltip_text = str(k["tooltip"])
+		b.pressed.connect(sl.open_window.bind(sl.WINDOW_SKILLS))   # the summary links to the skills window
+		sl._sheet_skill_box.add_child(b)
 
 func _build_ui() -> void:
 	sl._ui = CanvasLayer.new()

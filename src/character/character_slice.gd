@@ -710,6 +710,11 @@ func _dress_rig(rig_root: Node, appearance: Dictionary) -> void:
 			"accent_index": int(appearance.get("beardColor", 0)),
 		})
 
+## Phase 179 — dress a rig that lives outside the world (the character sheet's preview) like the local avatar's.
+func dress_preview_rig(rig_root: Node) -> void:
+	var iid := get_player_character()
+	_dress_rig(rig_root, get_appearance(iid) if iid != "" else {})
+
 ## Rig keys tried in order for an avatar: the player rig (the production pack's art, or
 ## its public placeholder), then the older unskinned placeholder body for a manifest that
 ## lists no player rig. The first one the manifest lists wins.
