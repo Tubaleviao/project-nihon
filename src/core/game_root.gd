@@ -1102,7 +1102,7 @@ func _process(delta: float) -> void:
 	if _distant != null and _player != null and _chunk_manager != null:
 		_distant.world_seed = _terrain.get_world_seed()
 		var pp := _player.get_position()
-		_distant.rebuild(Vector2(pp.x, pp.z), _chunk_manager.stream_radius())
+		_distant.rebuild(Vector2(pp.x, pp.z), _chunk_manager.stream_radius(), _chunk_manager)
 		if _distant.outer_radius_m > 0.0 and not is_equal_approx(_player.view_far(), PlayerSlice.view_far_for(_distant.reach_m())):
 			_player.set_view_far(_distant.reach_m())
 	if _is_client:

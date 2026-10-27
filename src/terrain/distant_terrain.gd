@@ -116,9 +116,93 @@ func shift_scene(shift: Vector3) -> void:
 	_origin.value += shift
 	if _mesh_inst != null:
 		_mesh_inst.position += shift
+	for fill in _fills.values():
+		(fill as MeshInstance3D).position += shift
 
 func scene_offset() -> Vector3:
 	return _origin.value
+
+## Phase 191 — the ring leaves a hole where the voxel window is, so a window chunk not built yet showed
+## the sky. `set_unbuilt` keeps one coarse patch (`FILL_CELLS`² quads of the same ground) under each such
+## chunk, dropped the frame the voxel mesh attaches, so the player sees coarse ground and never a hole.
+## A patch sits `RING_DROP` below the voxel ground, so a built chunk always draws over it.
+const FILL_CELLS := 8
+const FILL_PER_CALL := 3   ## patches built per `set_unbuilt` call (each samples (FILL_CELLS+1)² heights)
+var _fills: Dictionary = {}   ## Vector2i chunk -> MeshInstance3D
+
+## Keep a patch under exactly the chunks in `chunks` (the unbuilt ones of the voxel window). Patches of
+## chunks no longer listed are freed at once; at most `FILL_PER_CALL` new ones are made per call, nearest
+## to `near` first. Returns the number of patches standing.
+func set_unbuilt(chunks: Array, near: Vector2i = Vector2i.ZERO) -> int:
+	var want: Dictionary = {}
+	for c in chunks:
+		want[c] = true
+	for c in _fills.keys():
+		if not want.has(c):
+			(_fills[c] as MeshInstance3D).free()
+			_fills.erase(c)
+	var fresh: Array = []
+	for c in want:
+		if not _fills.has(c):
+			fresh.append(c)
+	fresh.sort_custom(func(a, b): return (a - near).length_squared() < (b - near).length_squared())
+	var made := 0
+	for c: Vector2i in fresh:
+		if made >= FILL_PER_CALL:
+			break
+		made += 1
+		var circ_chunks := TerrainSliceScript.circumference_chunks()
+		var snap: Dictionary = ChunkRecords.snapshot_near(c, 1, circ_chunks) if not ChunkRecords.is_empty() else {}
+		var mi := MeshInstance3D.new()
+		mi.name = "Fill_%d_%d" % [c.x, c.y]
+		mi.mesh = build_fill_mesh(world_seed, circumference_m, c, snap)
+		mi.material_override = Horizon.curvature_material(circumference_m)
+		mi.layers = 1 | RING_RENDER_LAYER
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.position = _origin.value
+		add_child(mi)
+		_fills[c] = mi
+	return _fills.size()
+
+## True when a patch stands under `chunk`.
+func covers_chunk(chunk: Vector2i) -> bool:
+	return _fills.has(chunk)
+
+func fill_count() -> int:
+	return _fills.size()
+
+## The patch for `chunk`: `FILL_CELLS`² quads over its 32 m square, heights as the ring's (`ground_at`).
+static func build_fill_mesh(seed_v: int, w: float, chunk: Vector2i, snap: Dictionary = {}) -> ArrayMesh:
+	var noise := FastNoiseLite.new()
+	TerrainSliceScript.configure_noise(noise, seed_v)
+	var sea := WorldShape.sea_level()
+	var cell := CHUNK_METERS / float(FILL_CELLS)
+	var x0 := float(chunk.x) * CHUNK_METERS
+	var z0 := float(chunk.y) * CHUNK_METERS
+	var n := FILL_CELLS + 1
+	var heights := PackedFloat32Array()
+	heights.resize(n * n)
+	for j in n:
+		for i in n:
+			heights[j * n + i] = ground_at(noise, seed_v, x0 + float(i) * cell, z0 + float(j) * cell, w, snap)
+	var vertices := PackedVector3Array()
+	var colors := PackedColorArray()
+	var normals := PackedVector3Array()
+	var indices := PackedInt32Array()
+	for j in FILL_CELLS:
+		for i in FILL_CELLS:
+			_add_quad(vertices, colors, normals, indices, sea,
+				x0 + float(i) * cell, z0 + float(j) * cell, x0 + float(i + 1) * cell, z0 + float(j + 1) * cell,
+				heights[j * n + i], heights[j * n + i + 1], heights[(j + 1) * n + i + 1], heights[(j + 1) * n + i])
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_COLOR] = colors
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
 
 ## Phase 120 — the ring a fold carries across (see `VoxelSlice.detach_standins`): taken out of the
 ## slice so the fold's rebase does not move it, it keeps drawing until the next ring is swapped in.
@@ -184,7 +268,10 @@ static func _altitude_color(alt: float) -> Color:
 ## Request the ring around world XZ `center` for a voxel window of `radius_chunks`. Returns true
 ## when a build was started or queued (the centre moved a whole cell, or first call); the finished
 ## mesh is swapped in by `poll` (called every frame from `_process`).
-func rebuild(center: Vector2, radius_chunks: int) -> bool:
+## Phase 191 — `chunks` (the chunk manager) also keeps a patch under each unbuilt chunk of its window.
+func rebuild(center: Vector2, radius_chunks: int, chunks: Node = null) -> bool:
+	if chunks != null:
+		set_unbuilt(chunks.unbuilt_window_chunks(), chunks.player_chunk())
 	window_half_m = (float(radius_chunks) + 0.5) * CHUNK_METERS
 	ring_half_m = ring_half_extent(radius_chunks)
 	outer_radius_m = outer_radius_for(ring_half_m, circumference_m)

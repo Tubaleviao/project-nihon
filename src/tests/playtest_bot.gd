@@ -80,6 +80,10 @@ const FIGHT_RANGE_M := 1.5
 ## at least FLIGHT_MIN_COVER of the samples taken after FLIGHT_WARMUP_SECS (the first crossings drain
 ## the queue the start position left behind). Gated with the native builder only.
 const FLIGHT_SPEED_MPS := PlayerSlice.SPEED * AdminRules.SPEED_MAX * AdminRules.FLY_SPEED_FACTOR
+## Phase 191 — the slow-machine run (CI, worker pool limited to 2 threads): `--playtest-only flight` plays that
+## one step, `--playtest-flight-speed 10` flies it at the old 90 m/s (walk speed × 10 × the flying factor).
+const ONLY_ARG := "--playtest-only"
+const FLIGHT_SPEED_ARG := "--playtest-flight-speed"
 const FLIGHT_SECS := 12.0
 const FLIGHT_WARMUP_SECS := 1.5
 const FLIGHT_SAMPLE_SECS := 0.25
@@ -200,6 +204,27 @@ static func _step_timeout(step: String) -> float:
 	return STREAM_TIMEOUT_SECS if step == "stream" or step == "pole" or step == "flight" else STEP_TIMEOUT_SECS
 
 static func step_names() -> Array:
+	var only := only_from_args(Array(OS.get_cmdline_user_args()))
+	if only != "" and only in all_step_names():
+		return [only]
+	return all_step_names()
+
+## Phase 191 — the step `--playtest-only <step>` names, or "".
+static func only_from_args(args: Array) -> String:
+	var i := args.find(ONLY_ARG)
+	if i >= 0 and i + 1 < args.size():
+		return str(args[i + 1])
+	return ""
+
+## Phase 191 — the flight speed in m/s: `--playtest-flight-speed <factor>` is the `/speed` factor (clamped to the
+## admin range), else the top admin speed (`FLIGHT_SPEED_MPS`).
+static func flight_speed_from_args(args: Array) -> float:
+	var i := args.find(FLIGHT_SPEED_ARG)
+	if i >= 0 and i + 1 < args.size() and str(args[i + 1]).is_valid_float():
+		return PlayerSlice.SPEED * clampf(str(args[i + 1]).to_float(), AdminRules.SPEED_MIN, AdminRules.SPEED_MAX) * AdminRules.FLY_SPEED_FACTOR
+	return FLIGHT_SPEED_MPS
+
+static func all_step_names() -> Array:
 	return ["walk", "stream", "flight", "mine", "gather", "craft", "place", "fight", "travel", "horizon", "far_peak", "pole"]
 
 # ---------------------------------------------------------------------------
@@ -709,6 +734,9 @@ static func chunk_phases_ms(times: Dictionary, attached: int) -> Dictionary:
 			out[str(phase)] = snappedf(float(times[phase]) / 1000.0 / float(attached), 0.01)
 	return out
 
+func _flight_speed() -> float:
+	return flight_speed_from_args(Array(OS.get_cmdline_user_args()))
+
 ## Phase 187 — carry the body east at FLIGHT_SPEED_MPS (a ground-hugging teleport every frame: the
 ## streaming load of admin flight without its input or physics) and sample the ground under it.
 ## Then put it back where it started, built, for the steps that follow.
@@ -741,7 +769,7 @@ func _step_flight() -> Array:
 	GameBus.admin_moves_synced.emit(speed, was_flying)
 	settled = await _return_home(home_chunk, home_local) and settled
 	_flight = flight_verdict(gated["under"], gated["ring"])
-	_flight["speed_mps"] = FLIGHT_SPEED_MPS
+	_flight["speed_mps"] = _flight_speed()
 	_flight["attached"] = gated["attached"]
 	_flight["main_ms_per_attach"] = gated["ms_per_attach"]
 	_flight["record_attached"] = record["attached"]
@@ -755,7 +783,7 @@ func _step_flight() -> Array:
 	_flight["worker_ms_per_crossing"] = gated["worker_ms_per_crossing"]
 	_flight["record_worker_ms_per_crossing"] = record["worker_ms_per_crossing"]
 	var note := "%.0f m/s for %.0f s: ground under the body built in %.0f%% of %d samples, 3×3 ring %.0f%% (worst %.0f%%); main thread %.1f ms per attached chunk (%d chunks), %.1f ms with the near ring off (%d chunks); collision and contents %.1f ms, %.1f ms with it off; worker %.0f ms per crossing, %.0f ms with coarse chunks off" % [
-		FLIGHT_SPEED_MPS, FLIGHT_SECS, 100.0 * float(_flight["under_cover"]), int(_flight["samples"]),
+		_flight_speed(), FLIGHT_SECS, 100.0 * float(_flight["under_cover"]), int(_flight["samples"]),
 		100.0 * float(_flight["ring_cover"]), 100.0 * float(_flight["worst_ring"]),
 		float(gated["ms_per_attach"]), int(gated["attached"]), float(record["ms_per_attach"]), int(record["attached"]),
 		float(gated["near_ms_per_attach"]), float(record["near_ms_per_attach"]),
@@ -789,7 +817,7 @@ func _fly_east(home_chunk: Vector2i, home_local: Vector3) -> Dictionary:
 		var secs := float(Time.get_ticks_msec() - t0) / 1000.0
 		if secs >= FLIGHT_SECS:
 			break
-		var x := x0 + FLIGHT_SPEED_MPS * secs
+		var x := x0 + _flight_speed() * secs
 		var cx := floori(x / m)
 		var ch := Vector2i(cx, home_chunk.y)
 		var xz := Vector2(x, float(home_chunk.y) * m + home_local.z)

@@ -49,8 +49,9 @@ func _test_parse_time() -> void:
 func _test_parse_speed_and_fly() -> void:
 	assert_eq(AdminRules.parse_speed("2"), 2.0, "2 is a speed")
 	assert_eq(AdminRules.parse_speed("0.1"), 0.1, "the minimum is allowed")
-	assert_eq(AdminRules.parse_speed("10"), 10.0, "and the maximum")
-	for bad in ["0", "11", "-2", "nan", "fast", ""]:
+	assert_eq(AdminRules.parse_speed("30"), 30.0, "and the maximum (Phase 191)")
+	assert_eq(AdminRules.SPEED_MAX, 30.0, "the cap is 30")
+	for bad in ["0", "31", "30.5", "-2", "nan", "fast", ""]:
 		assert_eq(AdminRules.parse_speed(bad), -1.0, "'%s' is not a speed" % bad)
 	assert_eq(AdminRules.sanitize_speed(1000.0), AdminRules.SPEED_MAX, "a wire value is clamped")
 	assert_eq(AdminRules.sanitize_speed(NAN), 1.0, "and a non-number is normal speed")
@@ -283,7 +284,7 @@ func _test_panel_commands() -> void:
 	assert_eq(AdminPanel.time_command(7), "/time 07:00", "time")
 	assert_eq(AdminPanel.time_command(30), "/time 23:00", "an hour is clamped")
 	assert_eq(AdminPanel.speed_command(2.5), "/speed 2.5", "speed")
-	assert_eq(AdminPanel.speed_command(99.0), "/speed 10.0", "a speed is clamped")
+	assert_eq(AdminPanel.speed_command(99.0), "/speed 30.0", "a speed is clamped")
 	assert_eq(AdminPanel.weather_label("rain"), I18nScript.t("weather.state.rain"), "a state's name is translated")
 	assert_eq(AdminPanel.weather_label("no_such_state"), "no_such_state", "an unnamed one shows its id")
 	var panel := AdminPanel.new()

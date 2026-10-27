@@ -5,7 +5,7 @@ extends RefCounted
 
 ## `/speed` bounds: a multiplier on walking (and flying) speed.
 const SPEED_MIN := 0.1
-const SPEED_MAX := 10.0
+const SPEED_MAX := 30.0
 ## Flying: horizontal speed is the walking speed times this (before `/speed`), and Space / Ctrl climb and
 ## sink at FLY_VERTICAL_SPEED (m/s, also scaled by `/speed`).
 const FLY_SPEED_FACTOR := 2.0
