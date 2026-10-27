@@ -1338,6 +1338,7 @@ func _test_exact_placement_paths() -> void:
 	var shipped: Dictionary = JSON.parse_string(JSON.stringify(gr._snapshot_wiring.snapshot_own_record(pid)))
 	assert_true(WorldPos.is_wire(shipped["player"]["position"]), "the snapshot's player position is a valid wire record")
 	assert_eq(WorldPos.wire_chunk(shipped["player"]["position"]), chunk, "naming the exact chunk")
+	assert_true(shipped.has("attribute_growth"), "the own record carries the attribute growth for the character sheet (Phase 179)")
 	# Door 3: a client places itself from that packet with a rebase, not a float detour.
 	var client_body := PlayerSlice.new()
 	client_body.render_visuals = true

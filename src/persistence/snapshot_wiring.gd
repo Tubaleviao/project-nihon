@@ -115,6 +115,8 @@ func snapshot_own_record(player_id: String) -> Dictionary:
 	snapshot["companions"] = own.get("companions", [])
 	snapshot["professions"] = own.get("professions", {})
 	snapshot["attributes"] = own.get("attributes", {})
+	# Phase 179: the growth banked toward the next point, for the character sheet's bars.
+	snapshot["attribute_growth"] = own.get("attribute_growth", {})
 	snapshot["waystones"] = own.get("waystones", [])
 	# Phase 47 — the worn set rides the own-record payload too.
 	snapshot["equipment"] = own.get("equipment", {})
