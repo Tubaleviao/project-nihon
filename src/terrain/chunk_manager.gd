@@ -810,6 +810,8 @@ func rebuild_seam_neighbours(chunk_pos: Vector2i) -> void:
 			if _loaded.has(nkey):
 				complete = false
 			continue
+		if _near.lod_of(nkey) > 1 and _near.lod_for(n) > 1:
+			continue   # Phase 190: a coarse chunk reads no neighbour data and skirts its edges, a rebuild would be identical
 		request_rebuild(n)
 	if complete:
 		_seam_revision[key] = rev
@@ -1198,13 +1200,12 @@ func _apply_build_entry(task_id: int) -> bool:
 	_builds.erase(task_id)
 	WorkerThreadPool.wait_for_task_completion(task_id)
 	var key: String = str(entry["key"])
-	var spent: Array = entry["result"]
-	worker_usec += int(spent[2]) if spent.size() > 2 else 0   # Phase 190: the work was done, attached or not
+	var result: Array = entry["result"]
+	worker_usec += int(result[2]) if result.size() > 2 else 0   # Phase 190: the work was done, attached or not
 	if bool(entry.get("superseded", false)):
 		return false   # a later dispatch for this chunk owns the mesh
 	if not _loaded.has(key):
 		return false   # streamed out while it built: nothing to attach it to
-	var result: Array = entry["result"]
 	var arrays: Dictionary = {}
 	if result[0] is Dictionary:
 		arrays = result[0]
