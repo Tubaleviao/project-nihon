@@ -4,6 +4,10 @@ extends RefCounted
 
 const TickProbe := preload("res://src/core/tick_probe.gd")
 var s: Node
+## Phase 189 — when valid, `collision_gate(chunk) -> bool` says whether a built chunk gets its collision body
+## now. A refused chunk keeps its shape (or triangle soup) in `_pending_collision` until `attach_pending_collision`.
+var collision_gate: Callable = Callable()
+var _pending_collision: Dictionary = {}
 
 func _init(slice: Node) -> void:
 	s = slice
@@ -29,7 +33,7 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 	if arrays.is_empty() and revision >= 0:
 		return false   # a worker build that produced nothing: refuse, do not rebuild here
 	s._chunk_revision[key] = s.chunk_revision(chunk_pos) + 1
-	s._pending_collision.erase(key)   # Phase 189: a rebuild replaces any collision still waiting for its chunk
+	_pending_collision.erase(key)   # Phase 189: a rebuild replaces any collision still waiting for its chunk
 
 	# Remember the base heightmap so edits can be reapplied on rebuild.
 	s._heightmaps[key] = heightmap
@@ -134,8 +138,8 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 	# Phase 189 — a chunk the gate does not want yet keeps its shape and gets the body when a body comes
 	# near (`attach_pending_collision`): at flight speed most chunks are never touched.
 	var prepared = built.get("shape")
-	if s.collision_gate.is_valid() and not bool(s.collision_gate.call(chunk_pos)):
-		s._pending_collision[key] = prepared if prepared is ConcavePolygonShape3D else built["collision"]
+	if collision_gate.is_valid() and not bool(collision_gate.call(chunk_pos)):
+		_pending_collision[key] = prepared if prepared is ConcavePolygonShape3D else built["collision"]
 		return true
 	_attach_collision_body(root, prepared if prepared is ConcavePolygonShape3D else built["collision"])
 	return true
@@ -154,13 +158,27 @@ func _attach_collision_body(root: Node3D, shape: Variant) -> void:
 	root.add_child(static_body)
 	TickProbe.end()
 
+## Phase 189 — true when the chunk's build is waiting for a collision body.
+func has_pending_collision(chunk_pos: Vector2i) -> bool:
+	return _pending_collision.has(s._chunk_key(chunk_pos))
+
+## Phase 189 — true when the chunk's node carries a collision body.
+func chunk_has_collision(chunk_pos: Vector2i) -> bool:
+	var root = s._chunks.get(s._chunk_key(chunk_pos))
+	if root == null:
+		return false
+	for c in root.get_children():
+		if c is StaticBody3D:
+			return true
+	return false
+
 ## Phase 189 — give a built chunk the collision it was built without. True when it attached one now.
 func attach_pending_collision(chunk_pos: Vector2i) -> bool:
 	var key = s._chunk_key(chunk_pos)
-	if not s._pending_collision.has(key) or not s._chunks.has(key):
+	if not _pending_collision.has(key) or not s._chunks.has(key):
 		return false
-	var shape: Variant = s._pending_collision[key]
-	s._pending_collision.erase(key)
+	var shape: Variant = _pending_collision[key]
+	_pending_collision.erase(key)
 	_attach_collision_body(s._chunks[key], shape)
 	return true
 
@@ -417,7 +435,7 @@ func unload_chunk(chunk_pos: Vector2i) -> void:
 	if s._chunks.has(key):
 		s._chunks[key].queue_free()
 		s._chunks.erase(key)
-	s._pending_collision.erase(key)
+	_pending_collision.erase(key)
 	if s._standins.has(key):
 		s._free_standin(key)
 	s._prune_heightmaps(chunk_pos)

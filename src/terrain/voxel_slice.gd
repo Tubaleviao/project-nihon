@@ -349,11 +349,6 @@ func scene_offset() -> Vector3:
 ## Phase 163 — false on a dedicated server: nothing draws there, so a chunk attaches no render mesh, water or deposits.
 var attach_geometry := true
 var attach_collision := true   # Phase 172: separate from the render mesh; its shape is built on the worker
-## Phase 189 — when valid, `collision_gate(chunk) -> bool` says whether a built chunk gets its collision body
-## now. A chunk the gate refuses keeps its shape in `_pending_collision` (chunk key -> the worker's shape, or
-## the triangle soup) until `attach_pending_collision`. Unset (the default): every chunk attaches at once.
-var collision_gate: Callable = Callable()
-var _pending_collision: Dictionary = {}
 ## #437 — what a build hands `build_chunk` when `attach_geometry` is false: no mesh, collision or
 ## deposit arrays (the worker skips `build_runs` and `build_chunk_arrays`), only the chunk-local
 ## flag the root's position reads. Not empty, so a worker result carrying it is not refused.
@@ -444,24 +439,6 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	if is_authoritative and not _settle.is_empty():
 		settle_tick()
-
-## Phase 189 — give a built chunk the collision its build withheld (see `collision_gate`).
-func attach_pending_collision(chunk_pos: Vector2i) -> bool:
-	return _build.attach_pending_collision(chunk_pos)
-
-## Phase 189 — true when the chunk's build is waiting for a collision body.
-func has_pending_collision(chunk_pos: Vector2i) -> bool:
-	return _pending_collision.has(_chunk_key(chunk_pos))
-
-## Phase 189 — true when the chunk's node carries a collision body.
-func chunk_has_collision(chunk_pos: Vector2i) -> bool:
-	var root = _chunks.get(_chunk_key(chunk_pos))
-	if root == null:
-		return false
-	for c in root.get_children():
-		if c is StaticBody3D:
-			return true
-	return false
 
 func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {}, revision: int = -1) -> bool:
 	return _build.build_chunk(chunk_pos, heightmap, arrays, revision)

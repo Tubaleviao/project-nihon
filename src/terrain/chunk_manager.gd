@@ -90,6 +90,8 @@ const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
 const Frontier := preload("res://src/terrain/frontier.gd")
+const PeerRecenter := preload("res://src/terrain/peer_recenter.gd")
+const FarWork := preload("res://src/terrain/far_work.gd")
 const RegionStore := preload("res://src/persistence/region_store.gd")
 
 ## Chunk size is owned by TerrainSlice; world_to_chunk() delegates to it.
@@ -434,63 +436,26 @@ var defer_far_work := false:
 	set(v):
 		defer_far_work = v
 		if voxel_slice != null:
-			voxel_slice.collision_gate = collision_wanted if v else Callable()
-const NEAR_RING := 1
+			voxel_slice._build.collision_gate = in_near_ring if v else Callable()
+const NEAR_RING := FarWork.NEAR_RING
 ## Phase 189 — builds attached since boot; the playtest's flight step divides main-thread time by it.
 var attached_total := 0
-const CONTENTS_SETTLE_MSEC := 1500
-## Built chunks whose contents wait for the near ring or a still window: "cx,cz" -> true.
-var _contents_waiting: Dictionary = {}
-var _last_recenter_msec: int = 0
-var _last_local_center: Vector2i = Vector2i(1 << 30, 1 << 30)
+## Phase 189 — the withheld-work service (collision gate, waiting contents) lives in `far_work.gd`.
+var _far := FarWork.new(self)
+## The peer re-centre rules (`_move_peer_center`) live in `peer_recenter.gd`.
+var _peers := PeerRecenter.new(self)
 
 ## True when `chunk` is within `NEAR_RING` (Chebyshev) of any window centre.
 func in_near_ring(chunk: Vector2i) -> bool:
-	for c in window_centers():
-		if _within_stream_at(c, NEAR_RING, chunk):
-			return true
-	return false
+	return _far.in_near_ring(chunk)
 
-## The voxel slice's `collision_gate`: a chunk gets collision only in the near ring.
-func collision_wanted(chunk: Vector2i) -> bool:
-	return in_near_ring(chunk)
-
-## Phase 189 — the per-frame service of the withheld work: collision for chunks that entered the near ring,
-## contents for chunks in it (all of them, at once) and, once the local window has been still, one waiting chunk
-## a frame. Returns how many chunks it gave something to.
+## Phase 189 — per-frame: collision and contents for chunks that entered the near ring, and one waiting chunk
+## a frame once the local window is still. Returns how many chunks it served.
 func serve_deferred_work() -> int:
-	if not defer_far_work or voxel_slice == null:
-		return 0
-	var local := player_chunk()
-	var now: int = now_msec.call()
-	if local != _last_local_center:
-		_last_local_center = local
-		_last_recenter_msec = now
-	var served := 0
-	var centers := window_centers()
-	for c in centers:
-		for dz in range(-NEAR_RING, NEAR_RING + 1):
-			for dx in range(-NEAR_RING, NEAR_RING + 1):
-				var ch := TerrainSlice.wrap_chunk(c + Vector2i(dx, dz))
-				var key := _chunk_key(ch)
-				if voxel_slice.attach_pending_collision(ch):
-					served += 1
-				if _contents_waiting.has(key) and _built.has(key):
-					_release_contents(key, ch)
-					served += 1
-	if not _contents_waiting.is_empty() and now - _last_recenter_msec >= CONTENTS_SETTLE_MSEC:
-		var key: String = _contents_waiting.keys()[0]
-		_release_contents(key, _key_to_chunk(key))
-		served += 1
-	return served
+	return _far.serve()
 
-func _release_contents(key: String, chunk: Vector2i) -> void:
-	_contents_waiting.erase(key)
-	_spawn_contents_once(key, chunk, true)
-
-## Chunks whose contents are waiting (a test hook).
 func contents_waiting_count() -> int:
-	return _contents_waiting.size()
+	return _far.waiting.size()
 
 ## Phase 42 — the boot gate. `_first_ring` maps "cx,cz" -> built?, and an EMPTY map
 ## means the gate was never armed (so `is_first_ring_ready()` answers true for every
@@ -948,9 +913,9 @@ func _spawn_contents_once(key: String, chunk_pos: Vector2i, released: bool = fal
 	if _contents_spawned.has(key) or _deferred_records.has(key):
 		return
 	if defer_far_work and not released and not in_near_ring(chunk_pos):
-		_contents_waiting[key] = true
+		_far.waiting[key] = true
 		return
-	_contents_waiting.erase(key)
+	_far.waiting.erase(key)
 	_contents_spawned[key] = true
 	_spawn_chunk_contents(chunk_pos)
 
@@ -1138,49 +1103,7 @@ func set_peer_center(peer_id: int, chunk: Vector2i, host_driven: bool = false) -
 	return _move_peer_center(peer_id, chunk, host_driven, false)
 
 func _move_peer_center(peer_id: int, chunk: Vector2i, host_driven: bool, is_sync: bool) -> bool:
-	var now: int = now_msec.call()
-	# X is a wrapped planet coordinate: store and compare the canonical chunk.
-	chunk = TerrainSlice.wrap_chunk(chunk)
-	if not host_driven and not is_sync and not _peer_centers.has(peer_id):
-		# A raw client claim has nothing to measure a step from: only the host's placement (or its own tracked
-		# position, the sync) may set a first center.
-		peer_recenter_refused += 1
-		return false
-	if host_driven or not _peer_centers.has(peer_id):
-		var moved: bool = _peer_centers.get(peer_id, null) != chunk
-		_peer_centers[peer_id] = chunk
-		_peer_last_claim_msec[peer_id] = now
-		_peer_last_sync_msec[peer_id] = now
-		return moved
-	var current: Vector2i = _peer_centers[peer_id]
-	if current == chunk:
-		return false
-	var last_msec: Dictionary = _peer_last_sync_msec if is_sync else _peer_last_claim_msec
-	if now - int(last_msec.get(peer_id, -1000000)) < int(PEER_RECENTER_INTERVAL * 1000.0):
-		if not is_sync:
-			peer_recenter_refused += 1
-		return false
-	var step := _wrapped_step(current, chunk)
-	var reach := maxi(absi(step.x), absi(step.y))
-	if reach > PEER_RECENTER_MAX_CHUNKS:
-		if is_sync:
-			peer_sync_far_hops += 1
-		else:
-			peer_recenter_refused += 1
-		step = _scaled_step(step, reach)
-	_peer_centers[peer_id] = TerrainSlice.wrap_chunk(current + step)
-	last_msec[peer_id] = now
-	return true
-
-## The step from `from` to `to`, X measured the short way round the seam.
-static func _wrapped_step(from: Vector2i, to: Vector2i) -> Vector2i:
-	var c := TerrainSlice.circumference_chunks()
-	return Vector2i(SeamWrap.delta(to.x, from.x, c), to.y - from.y)
-
-static func _scaled_step(step: Vector2i, reach: int) -> Vector2i:
-	return Vector2i(
-		roundi(float(step.x) * PEER_RECENTER_MAX_CHUNKS / float(reach)),
-		roundi(float(step.y) * PEER_RECENTER_MAX_CHUNKS / float(reach)))
+	return _peers.move(peer_id, chunk, host_driven, is_sync)
 
 ## Phase 82 — the periodic re-centre of a peer on the position the host tracks. That position is
 ## still client-reported, so it gets the same interval limit and clamp as a claim (a hostile
@@ -1482,7 +1405,7 @@ func unload_chunk(chunk_pos: Vector2i) -> void:
 	# The residency ends here: the contents are despawned below, so a chunk that streams
 	# back in repopulates (`_apply_build_entry`).
 	_contents_spawned.erase(key)
-	_contents_waiting.erase(key)
+	_far.waiting.erase(key)
 	_rebuild_pending.erase(key)
 	# Phase 42 review pass 3 — and the QUEUED entry goes with the mark. `_rebuild_queue` is
 	# deduped through `_rebuild_pending`, so a mark cleared while its queue entry lived

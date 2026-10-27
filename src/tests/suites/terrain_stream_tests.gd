@@ -459,15 +459,15 @@ func _test_far_collision_near_ring() -> void:
 	var near := Vector2i(1, 1)
 	var far := Vector2i(3, 0)
 	assert_true(cm.is_chunk_built(near) and cm.is_chunk_built(far), "both chunks are built")
-	assert_true(voxel.chunk_has_collision(Vector2i(0, 0)), "the chunk under the body has collision (a flying body's chunk below)")
-	assert_true(voxel.chunk_has_collision(near), "a chunk at Chebyshev 1 has collision")
-	assert_false(voxel.chunk_has_collision(far), "a chunk outside the near ring has no collision shape")
-	assert_true(voxel.has_pending_collision(far), "its shape waits")
+	assert_true(voxel._build.chunk_has_collision(Vector2i(0, 0)), "the chunk under the body has collision (a flying body's chunk below)")
+	assert_true(voxel._build.chunk_has_collision(near), "a chunk at Chebyshev 1 has collision")
+	assert_false(voxel._build.chunk_has_collision(far), "a chunk outside the near ring has no collision shape")
+	assert_true(voxel._build.has_pending_collision(far), "its shape waits")
 	player.spawn_at(Vector3(32.0 * 3.0 + 16.0, 40.0, 16.0))   # the body reaches it
 	cm.serve_deferred_work()
-	assert_true(voxel.chunk_has_collision(far), "the chunk gets collision when it enters the near ring")
-	assert_false(voxel.has_pending_collision(far), "and nothing waits for it")
-	assert_false(voxel.chunk_has_collision(Vector2i(-3, 0)) and voxel.has_pending_collision(Vector2i(-3, 0)), "a chunk is never both")
+	assert_true(voxel._build.chunk_has_collision(far), "the chunk gets collision when it enters the near ring")
+	assert_false(voxel._build.has_pending_collision(far), "and nothing waits for it")
+	assert_false(voxel._build.chunk_has_collision(Vector2i(-3, 0)) and voxel._build.has_pending_collision(Vector2i(-3, 0)), "a chunk is never both")
 	_far_work_free(rig)
 
 func _test_far_contents_once() -> void:
@@ -480,7 +480,7 @@ func _test_far_contents_once() -> void:
 	assert_true(cm.contents_waiting_count() > 0, "chunks outside the near ring wait")
 	assert_false(spy.spawned.has(Vector2i(3, 0)), "a far chunk has spawned nothing yet")
 	assert_true(spy.spawned.has(Vector2i(1, 1)), "a near chunk spawned on attach")
-	clock[0] += ChunkManager.CONTENTS_SETTLE_MSEC
+	clock[0] += preload("res://src/terrain/far_work.gd").CONTENTS_SETTLE_MSEC
 	for i in 100:
 		cm.serve_deferred_work()
 	assert_eq(cm.contents_waiting_count(), 0, "a still window releases every waiting chunk")
