@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–179, 182 and 187–191 are done. Their specs and acceptance criteria are archived in
+Phases 1–180, 182 and 187–192 are done. Their specs and acceptance criteria are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Arc: make it look and feel like an RPG (Phases 173–181, 183)
@@ -41,7 +41,7 @@ budget honest. Then it gives the game icons, attributes, a character sheet and c
 | 177 | Attributes in the fabric: strength, vitality, resistance, agility, intelligence, perception | Done | [phases-177.md](docs/roadmap-history/phases-177.md) |
 | 178 | Attributes at runtime: host-owned, persisted, feeding the derived stats | Done | [phases-178.md](docs/roadmap-history/phases-178.md) |
 | 179 | The character sheet: a paper doll, attributes and derived stats | Done | [phases-179.md](docs/roadmap-history/phases-179.md) |
-| 180 | Character creation in the fabric: name, appearance and starting attributes | Planned | below |
+| 180 | Character creation in the fabric: name, gender, hair and a chibi art style | Done | [phases-180.md](docs/roadmap-history/phases-180.md) |
 | 181 | Character creation at runtime: a creation screen before the first spawn | Planned | below |
 | 183 | Playtest process time under 16 ms | Planned | below |
 
@@ -99,57 +99,6 @@ The scattered UI instructions are removed, so the tutorial is the one place that
 | 184 | First steps in the fabric: the tutorial steps, the bed and a shelter rule | Planned | below |
 | 185 | The bed is the spawn point: host-owned, persisted, one per player | Planned | below |
 | 186 | The first-steps tutorial at runtime: one-time cards, a toggle, and no other in-UI tutorial | Planned | below |
-
----
-
-## Phase 180 — Character creation in the fabric: name, gender, hair and a chibi art style
-
-**Goal:** a player never creates a character. They spawn with a default appearance and are known by
-a handle. Model a small set of creation choices (name, gender, hair style, hair colour) so the
-runtime screen in Phase 181 is generated from data, and set the character art style it uses.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phase 177.
-
-**Art direction:** characters are cute, chunky chibi figures in the spirit of Ragnarok Online:
-a big head (about a third of the height), large expressive eyes, short limbs, big hands and boots,
-and bold, chunky hair that carries most of the identity. They are our own designs, never copies:
-no Ragnarok hair styles, outfits, palettes, names or proportions traced from it. Reference for the
-mood: a 3D chibi novice in a plain leather outfit, framed alone on a dark, quiet backdrop.
-
-**Deliverables:**
-- `fabric/gameplay/characters/creation.js` (new): a `CharacterCreation` entity with:
-  - name rules: 3–16 characters, Unicode letters from a single script (no Latin mixed with
-    Cyrillic or Greek) plus a single inner space, hyphen or apostrophe, unique per server after
-    case folding, accent folding and a confusables skeleton (Unicode TR39), so "Аlice" with a
-    Cyrillic А collides with "Alice", and a reserved list;
-  - gender: two options (masculine, feminine). Each maps to a fixed body preset in
-    `appearances.js` (body, head, eyes, skin colour and chibi proportions), so the player does not
-    pick those parts;
-  - hair: a list of hair styles per gender and a curated hair colour list (palette indices);
-  - a default creation (one gender, hair style and colour) and a starting kit per server rule
-    (a plain novice outfit by default; no class kits, the sandbox has none).
-  Attributes are not chosen at creation: every character starts at the Phase 177 base values.
-- A `chibi` proportion preset in `appearances.js` (large `headScale`, short limbs) used by both
-  gender presets, within the §8 bounds (widen the bounds if needed and say so in the bible).
-- Public placeholders for both gender bodies, the novice outfit, at least six hair styles per
-  gender and the hair colour list, at the same keys the private repo will fill (placeholder rule;
-  `gen_placeholder_glb.py`). Each hair style also gets a UI icon (the picker grid shows hair, not
-  names), drawn by `tools/gen_ui_icons.py`.
-- `tools/check_creation.js`: every gender preset, hair style and colour refers to an existing
-  part or palette index, each gender has at least one hair style, and the default is a valid
-  creation.
-
-**Acceptance criteria:**
-- [ ] `npm run validate`, `npm run check-drift` and `node tools/check_creation.js` pass.
-- [ ] Suite: every gender preset and hair option resolves through `AssetOverlay` in the public
-  build, and every hair style has an icon.
-- [ ] Suite: the name rule accepts and rejects a fixture list, including accents, emoji, a
-  reserved word, a case-folded duplicate and a mixed-script or confusable duplicate.
-- [ ] Suite: a creation with a hair style from the other gender, an unknown hair style or a hair
-  colour outside the list is refused.
-- [ ] Suite: the default rig's head-to-height ratio is within the chibi preset range.
 
 ---
 

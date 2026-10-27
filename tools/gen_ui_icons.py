@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""UI icons from one generator: window dock, skills, HP and status effects (Phase 175).
+"""UI icons from one generator: window dock, skills, HP, status effects and hair (Phase 175).
 
 Writes 32x32 RGBA icons, one per key:
 
@@ -7,6 +7,8 @@ Writes 32x32 RGBA icons, one per key:
 * ``assets/icons/skills/<Skill>.png.raw`` - every skill under ``fabric/gameplay/skills/``: a frame
   coloured by the skill's category (the file it lives in) around a symbol for the skill;
 * ``assets/icons/attributes/<attribute>.png.raw`` - every attribute of ``fabric/gameplay/attributes.js``;
+* ``assets/icons/hair/<hair>.png.raw`` - every hair style of ``fabric/gameplay/characters/creation.js``
+  (Phase 180: the creation picker shows hair, not names), drawn from the style's ``shape``;
 * ``assets/icons/ui/hud/hp.png.raw`` and ``assets/icons/ui/hud/<effect>.png.raw`` - HP and every
   status effect of ``fabric/gameplay/combat.js``.
 
@@ -36,11 +38,13 @@ WINDOW_DIR = Path("assets/icons/ui/window")
 HUD_DIR = Path("assets/icons/ui/hud")
 SKILL_DIR = Path("assets/icons/skills")
 ATTRIBUTE_DIR = Path("assets/icons/attributes")
+HAIR_DIR = Path("assets/icons/hair")
 DOCK_GD = ROOT / "src/ui/window_dock.gd"
 SKILLS_DIR = ROOT / "fabric/gameplay/skills"
 COMBAT_JS = ROOT / "fabric/gameplay/combat.js"
 ATTRIBUTES_JS = ROOT / "fabric/gameplay/attributes.js"
-KEY_PREFIXES = ("icons/ui/", "icons/skills/", "icons/attributes/")
+CREATION_JS = ROOT / "fabric/gameplay/characters/creation.js"
+KEY_PREFIXES = ("icons/ui/", "icons/skills/", "icons/attributes/", "icons/hair/")
 
 RENDER = 128
 ICON = 32
@@ -549,6 +553,76 @@ ATTRIBUTES = {
     "agility": s_feet, "intelligence": s_sparkle, "perception": s_eye,
 }
 
+# Phase 180 — hair shape -> (behind the face, in front of it); every shape of creation.js needs one.
+def _cap(c):
+    c.ellipse(50, 42, 28, 17, "wood")
+    c.rect(22, 40, 78, 46, "wood")
+
+
+def _fringe(c):
+    _cap(c)
+    c.rect(24, 40, 76, 50, "wood")
+
+
+def _spikes(c):
+    _cap(c)
+    for x0, x1, tip in ((24, 40, (28, 10)), (38, 56, (47, 4)), (54, 72, (68, 8)), (68, 80, (84, 22))):
+        c.poly([(x0, 36), (x1, 36), tip], "wood")
+
+
+def _swept(c):
+    _cap(c)
+    c.poly([(18, 46), (30, 24), (88, 26), (82, 38), (40, 58), (20, 60)], "wood")
+    c.line((36, 34), (78, 30), 3, "wood_l")
+
+
+def _mop(c):
+    c.ellipse(50, 42, 34, 22, "wood")
+    c.rect(18, 42, 82, 54, "wood")
+
+
+def _topknot(c):
+    _cap(c)
+    c.circle(50, 16, 9, "wood")
+    c.rect(46, 22, 54, 28, "wood_d")
+
+
+def _mohawk(c):
+    c.rrect(43, 6, 57, 46, 5, "wood")
+
+
+def _nothing(c):
+    pass
+
+
+HAIR = {
+    "crop": (_nothing, _cap),
+    "spiky": (_nothing, _spikes),
+    "swept": (_nothing, _swept),
+    "mop": (lambda c: c.rect(18, 46, 82, 66, "wood_d"), _mop),
+    "topknot": (_nothing, _topknot),
+    "mohawk": (_nothing, _mohawk),
+    "bob": (lambda c: c.rrect(18, 34, 82, 82, 12, "wood_d"), _fringe),
+    "long": (lambda c: c.rect(20, 36, 80, 98, "wood_d"), _cap),
+    "twintails": (lambda c: (c.ellipse(15, 66, 9, 24, "wood_d"), c.ellipse(85, 66, 9, 24, "wood_d")), _fringe),
+    "ponytail": (lambda c: c.ellipse(82, 62, 9, 26, "wood_d"), _fringe),
+    "bun": (lambda c: c.circle(50, 17, 13, "wood_d"), _fringe),
+    "braid": (lambda c: [c.circle(22, y, 6, "wood_d") for y in (70, 81, 92)], _fringe),
+}
+
+
+def draw_hair(shape):
+    behind, front = HAIR[shape]
+    c = Canvas()
+    c.place(0.92, 4, 4)
+    behind(c)
+    c.ellipse(50, 60, 26, 25, "skin")
+    c.circle(41, 63, 3.5, "ink")
+    c.circle(59, 63, 3.5, "ink")
+    front(c)
+    return c.to_png()
+
+
 # Skill -> symbol; every skill needs one, and no two may look the same.
 SYMBOLS = {
     "Swordsmanship": s_sword, "Archery": s_bow, "Shieldcraft": s_shield, "Unarmed": s_fist,
@@ -633,8 +707,19 @@ def read_attributes():
     return re.findall(r"'(\w+)'", m.group(1))
 
 
+def read_hair():
+    """hair id -> shape, from creation.js (`HAIR_STYLES`)."""
+    m = re.search(r"const HAIR_STYLES = \{(.*?)^\}", CREATION_JS.read_text(), re.M | re.S)
+    if not m:
+        sys.exit("fabric/gameplay/characters/creation.js: HAIR_STYLES not found")
+    return dict(re.findall(r"^\s+(\w+):\s*\{[^}]*shape:\s*'(\w+)'", m.group(1), re.M))
+
+
 def validate():
     problems = []
+    for h, shape in read_hair().items():
+        if shape not in HAIR:
+            problems.append(f"hair {h}: shape {shape} has no drawing in gen_ui_icons.py")
     for a in read_attributes():
         if a not in ATTRIBUTES:
             problems.append(f"attribute {a} has no drawing in gen_ui_icons.py")
@@ -671,6 +756,8 @@ def outputs():
         files[ATTRIBUTE_DIR / f"{a}.png.raw"] = draw_attribute(a)
     for h in ["hp"] + effects:
         files[HUD_DIR / f"{h}.png.raw"] = draw_hud(h)
+    for h, shape in sorted(read_hair().items()):
+        files[HAIR_DIR / f"{h}.png.raw"] = draw_hair(shape)
     seen = {}
     for rel, data in files.items():
         if data in seen:
@@ -694,7 +781,7 @@ def write(files, root):
         path = root / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
-    for d in (WINDOW_DIR, HUD_DIR, SKILL_DIR, ATTRIBUTE_DIR):
+    for d in (WINDOW_DIR, HUD_DIR, SKILL_DIR, ATTRIBUTE_DIR, HAIR_DIR):
         keep = {r.name for r in files if r.parent == d}
         for stale in (root / d).glob("*.png.raw"):
             if stale.name not in keep:
@@ -711,7 +798,7 @@ def check(files):
             problems.append(f"missing {rel}")
         elif (ROOT / rel).read_bytes() != data:
             problems.append(f"{rel} differs from the generator output")
-    for d in (WINDOW_DIR, HUD_DIR, SKILL_DIR, ATTRIBUTE_DIR):
+    for d in (WINDOW_DIR, HUD_DIR, SKILL_DIR, ATTRIBUTE_DIR, HAIR_DIR):
         for f in sorted((ROOT / d).glob("*.png.raw")):
             if d / f.name not in files:
                 problems.append(f"orphan {d / f.name}")

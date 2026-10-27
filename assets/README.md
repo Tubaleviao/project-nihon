@@ -33,18 +33,27 @@ or drop without a row in the generator fails the run. The public build never sho
 UI icons are written by `tools/gen_ui_icons.py` (32x32 RGBA, a vector DSL on a fixed palette):
 `icons/ui/window/<key>.png.raw` for every `WindowDock` entry, `icons/skills/<Skill>.png.raw` for
 every skill (a frame per category of `SKILL_CATEGORIES` around a symbol), and
-`icons/ui/hud/hp.png.raw` plus `icons/ui/hud/<effect>.png.raw` for every status effect. They are
+`icons/ui/hud/hp.png.raw` plus `icons/ui/hud/<effect>.png.raw` for every status effect, and
+`icons/hair/<hair>.png.raw` for every hair style of the character-creation table (Phase 180). They are
 listed in `manifest.json` under `textures`; `python3 tools/gen_ui_icons.py --check` fails when a
 file is stale, missing or orphaned. The private repo overrides them by key.
 `models/items/shapes.lock.json` hashes each shape; `python3 tools/gen_item_assets.py --check` fails
 when it or the files are stale, so rerun the generator after a fabric shape change. Ten creatures (GraywolfPack,
 ForestBoar, SteppeBison, GlimmerFox, VeilStalker, RiftWarden, RidgeHawk, CinderGargoyle,
 VoidSerpent, LavaSlug: `models/creatures/<Entity>.glb.raw` plus three textures each) have
-public placeholders, and all 27 items (CarpenterAxe, FerritePick, FerriteShortSword, FerriteShield,
-FerriteHelmet, VeilsteelLongsword, VeilsteelPick, VoiditeEdge, AethermiteBow, SkinningKnife, BoneSaw, VeilsteelChestplate, DuskfiberCloak, plus the 14 materials, consumables and stations: AethermiteDust, AethermiteShard, EnchantedAethermiteShard, AlchemyPotion, AshiteBlock, FerriteIngot, VeilsteelIngot, FieldRations, LumenfiteOrb, RefinedVoiditeShard, ThornwoodPlank, VoidRuneTablet, Hearth, Waystone) also have three
+public placeholders, and all 28 items (CarpenterAxe, FerritePick, FerriteShortSword, FerriteShield,
+FerriteHelmet, VeilsteelLongsword, VeilsteelPick, VoiditeEdge, AethermiteBow, SkinningKnife, BoneSaw, VeilsteelChestplate, DuskfiberCloak, NoviceTunic, plus the 14 materials, consumables and stations: AethermiteDust, AethermiteShard, EnchantedAethermiteShard, AlchemyPotion, AshiteBlock, FerriteIngot, VeilsteelIngot, FieldRations, LumenfiteOrb, RefinedVoiditeShard, ThornwoodPlank, VoidRuneTablet, Hearth, Waystone) also have three
 `textures/items/` sheets. Other `models/creatures/<Entity>.glb.raw` keys still work
 only through a code fallback (a procedural box). The asset roadmap in
 `project-nihon-assets/ROADMAP.md` adds each placeholder before the art for that key.
+
+Character creation (Phase 180): `tools/gen_placeholder_glb.py` writes the two chibi gender bodies
+`models/characters/bodies/chibi_body_{m,f}.glb.raw` (skinned to HumanoidSkeleton with every player clip),
+the heads `models/characters/heads/chibi_head_{m,f}.glb.raw` and one static mesh per hair style at
+`models/characters/hair/<hair>.glb.raw` (origin at the Head joint, drawn from the style's `shape` in
+`fabric/gameplay/characters/creation.js`); `tools/gen_placeholder.py` writes the eyes
+`textures/characters/eyes/chibi_eyes_{m,f}.png.raw`. `node tools/check_creation.js` fails when a preset part
+or hair style has no placeholder or manifest entry.
 
 Rig textures: an attached player rig is drawn with the character shader, whose three sheets are
 bound by key through `AssetOverlay.load_texture`: `textures/characters/player.png.raw` (detail),

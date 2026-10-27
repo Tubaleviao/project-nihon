@@ -1,0 +1,29 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/items/novicetunic.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+condition = 0
+weight = 0.8
+rarity = 0
+stackable = false
+shape = {"archetype":"chestplate","parts":{"plate":"Duskfiber","under":"Duskfiber"},"scale":1}
+durability = 60
+repair = {"station":"carpentry bench","materials":[{"item":"Duskfiber","quantity":1}],"skillGuards":[{"skill":"Carpentry","tier":"novice"}]}
+equipmentSlot = "Chest"
+deformationMode = "SKINNED"
+masks = {"primary":true,"secondary":true,"accent":true,"metal":false,"emission":false,"wear":true}
+hideRegions = ["BodyChest"]
+attachments = {"equipped":"socket_chest","stored":"socket_back"}
+minLodLevel = 2
+size = [0.62,0.5,0.36]
+metalTone = "none"
+emissionColor = 200
+compatibleTags = ["humanoid"]
+defense = 1
+state_machine_field = "condition"
+initial_state = "pristine"
+description = "Plain woven tunic with a belted waist, given to every new character. Barely armour at all; it marks a newcomer and is replaced as soon as anything better is made."
+tags = ["item"]

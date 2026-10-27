@@ -14,7 +14,55 @@ const { defineEntity } = require('./shared')
 // the item definition (in GameData.ITEMS) carries the sockets and masks.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Phase 180 — the chibi art style: a big head (about a third of the height), short limbs, big hands
+// and boots. Both creation gender presets use these proportions. headScale, legLength, armLength and
+// height reach past the pre-180 §8 bounds; characters.md §8 records the widened bounds.
+const CHIBI_PROPORTIONS = { height: 0.8, bodyMass: 1.1, shoulderWidth: 1.0, armLength: 0.7, legLength: 0.55, headScale: 2.6 }
+// The head-to-height ratio a chibi rig must keep (head height / total height, placeholder landmarks).
+const CHIBI_RANGE = { min: 0.28, max: 0.4 }
+
+// A creation gender preset (Phase 180): body, head, eyes, skin and proportions are fixed by the gender;
+// hair and hair colour come from the player's creation. `hair` here is the default for the preset.
+function novicePreset({ gender, body, head, eyes, hair, proportions }) {
+  return defineEntity({
+    tags: ['appearance'],
+    description:
+      `The ${gender} character-creation preset: a chibi body in the plain novice tunic. ` +
+      'The player picks hair and hair colour on top of it (CharacterCreation); everything else is fixed.',
+    goal: 'Give every new character the same readable chibi silhouette, told apart by hair and name',
+    fields: {
+      skeleton: { type: 'string', description: 'Skeleton key in GameData.SKELETONS', defaultValue: 'HumanoidSkeleton' },
+      body: { type: 'string', description: 'Body mesh identifier: models/characters/bodies/<id>.glb.raw', defaultValue: body },
+      proportionPreset: { type: 'string', description: 'Named proportion preset these proportions come from', defaultValue: 'chibi' },
+      proportions: { type: 'json', description: 'Body proportion multipliers (§8, chibi preset)', defaultValue: proportions },
+      skinColor: { type: 'integer', description: 'Palette index for skin', defaultValue: 6 },
+      head: { type: 'string', description: 'Head mesh identifier: models/characters/heads/<id>.glb.raw', defaultValue: head },
+      eyes: { type: 'string', description: 'Eyes texture identifier: textures/characters/eyes/<id>.png.raw', defaultValue: eyes },
+      eyeColor: { type: 'integer', description: 'Palette index for eyes', defaultValue: 225 },
+      hair: { type: 'string', description: 'Default hair style (CharacterCreation.hairStyles)', defaultValue: hair },
+      hairColor: { type: 'integer', description: 'Default hair colour (CharacterCreation.hairColors)', defaultValue: 41 },
+      beard: { type: 'string', description: 'Beard component identifier', defaultValue: 'none' },
+      beardColor: { type: 'integer', description: 'Palette index for beard', defaultValue: 0 },
+      equipment: {
+        type: 'json',
+        description: 'Equipment instances by slot: the starting kit worn',
+        defaultValue: { Chest: { item: 'NoviceTunic', state: 'equipped', primaryColor: 96, secondaryColor: 100, accentColor: 140, durability: 1.0 } },
+      },
+    },
+  })
+}
+
 module.exports = {
+
+  NoviceMasculine: novicePreset({
+    gender: 'masculine', body: 'chibi_body_m', head: 'chibi_head_m', eyes: 'chibi_eyes_m', hair: 'hair_m_crop',
+    proportions: CHIBI_PROPORTIONS,
+  }),
+
+  NoviceFeminine: novicePreset({
+    gender: 'feminine', body: 'chibi_body_f', head: 'chibi_head_f', eyes: 'chibi_eyes_f', hair: 'hair_f_bob',
+    proportions: { ...CHIBI_PROPORTIONS, height: 0.75, bodyMass: 1.05, shoulderWidth: 0.95 },
+  }),
 
   TravellerHuman: defineEntity({
     tags: ['appearance'],
@@ -78,3 +126,6 @@ module.exports = {
   }),
 
 }
+
+module.exports.CHIBI_PROPORTIONS = CHIBI_PROPORTIONS
+module.exports.CHIBI_RANGE = CHIBI_RANGE

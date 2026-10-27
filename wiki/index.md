@@ -10,6 +10,8 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 ## Appearance
 
 - [BoarRider](entities/boarrider.md) — A quadruped boar — the same character system driving a non-humanoid skeleton
+- [NoviceFeminine](entities/novicefeminine.md) — The feminine character-creation preset: a chibi body in the plain novice tunic
+- [NoviceMasculine](entities/novicemasculine.md) — The masculine character-creation preset: a chibi body in the plain novice tunic
 - [TravellerHuman](entities/travellerhuman.md) — The default humanoid traveller: veilsteel chestplate, a sheathed veilsteel longsword, and a stored ferrite shield
 
 ## Attribute
@@ -34,6 +36,10 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 ## Container
 
 - [Stockpile](entities/stockpile.md) — The container a settlement's members fill and draw from together
+
+## Creation
+
+- [CharacterCreation](entities/charactercreation.md) — The choices a new player makes before entering the world: a name, a gender, a hair style and a hair colour
 
 ## Creature
 
@@ -98,6 +104,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [FieldRations](entities/fieldrations.md) — Dried grain-and-herb ration pack prepared from temperate grassland crops
 - [Hearth](entities/hearth.md) — A stone-ringed fire pit that founds a settlement when placed on free land
 - [LumenfiteOrb](entities/lumenfiteorb.md) — A polished lumenfite sphere charged with stored magical energy by an Arcanist
+- [NoviceTunic](entities/novicetunic.md) — Plain woven tunic with a belted waist, given to every new character
 - [RefinedVoiditeShard](entities/refinedvoiditeshard.md) — Raw voidite stabilised in a forge into a crystalline shard
 - [SkinningKnife](entities/skinningknife.md) — Short ferrite blade on a thornwood grip, ground for pelts and meat
 - [ThornwoodPlank](entities/thornwoodplank.md) — Rough-cut plank milled from thornwood logs

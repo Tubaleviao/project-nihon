@@ -27,6 +27,7 @@ const persistence  = require('./gameplay/persistence')
 const skeletons    = require('./gameplay/characters/skeletons')
 const palettes     = require('./gameplay/characters/palettes')
 const appearances  = require('./gameplay/characters/appearances')
+const creation     = require('./gameplay/characters/creation')
 
 // Phase 125 — the travel cost must name a real item; throwing fails `npm run validate`.
 waystone.validateTravel(waystone.TRAVEL, Object.keys(items))
@@ -62,6 +63,10 @@ harvest.validateHarvest(harvest.harvestData({ creatures, items, skills }))
 // Phase 177 — the attribute bounds, derivation and growth tables must be well formed, base 10 must reproduce today's
 // constants, and every skill category needs a growth row.
 attributes.validateAttributes(attributes.attributeData())
+
+// Phase 180 — character creation: every gender preset, hair style and colour must point at real data, each gender
+// needs a hair style, the chibi presets keep their head ratio and the default creation must be valid.
+creation.validateCreation(creation.creationData(), creation.creationRefs())
 
 // Phase 151 — every entity tagged `item` needs a shape: a known archetype, and a real material for each of its parts.
 {
@@ -189,6 +194,7 @@ module.exports = defineFabric({
       FerriteHelmet:            items.FerriteHelmet,
       VeilsteelChestplate:      items.VeilsteelChestplate,
       DuskfiberCloak:           items.DuskfiberCloak,
+      NoviceTunic:              items.NoviceTunic,
       FerriteShield:            items.FerriteShield,
       FieldRations:             items.FieldRations,
       AlchemyPotion:            items.AlchemyPotion,
@@ -291,8 +297,11 @@ module.exports = defineFabric({
       BirdSkeleton:      skeletons.BirdSkeleton,
       SerpentSkeleton:   skeletons.SerpentSkeleton,
       DefaultPalette:    palettes.DefaultPalette,
+      NoviceMasculine:   appearances.NoviceMasculine,
+      NoviceFeminine:    appearances.NoviceFeminine,
       TravellerHuman:    appearances.TravellerHuman,
       BoarRider:         appearances.BoarRider,
+      CharacterCreation: creation.CharacterCreation,
     },
   ),
 })

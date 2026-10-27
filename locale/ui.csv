@@ -397,3 +397,15 @@ stat.magicXpFactor,Magic XP rate,Taxa de XP mágica
 stat.gatherYieldFactor,Gather yield,Rendimento de coleta
 stat.harvestQualityBonus,Harvest quality,Qualidade da colheita
 stat.detectionRadiusMetres,Detection radius,Raio de detecção
+creation.gender.masculine,Masculine,Masculino
+creation.gender.feminine,Feminine,Feminino
+creation.refuse.name_length,A name needs 3 to 16 letters.,Um nome precisa ter de 3 a 16 letras.
+creation.refuse.name_chars,"A name can only use letters, plus one space, hyphen or apostrophe.","Um nome só pode usar letras, mais um espaço, hífen ou apóstrofo."
+creation.refuse.name_script,A name must use letters from one alphabet.,Um nome deve usar letras de um só alfabeto.
+creation.refuse.name_separator,"A name can have one space, hyphen or apostrophe, and not at either end.","Um nome pode ter um espaço, hífen ou apóstrofo, e não nas pontas."
+creation.refuse.name_reserved,That name is reserved.,Esse nome é reservado.
+creation.refuse.name_taken,Someone on this server already has that name or one that looks like it.,Alguém neste servidor já tem esse nome ou um parecido.
+creation.refuse.gender,Pick a body type.,Escolha um tipo de corpo.
+creation.refuse.hair,That hair style does not exist.,Esse estilo de cabelo não existe.
+creation.refuse.hair_gender,That hair style is not available for this body type.,Esse estilo de cabelo não está disponível para este tipo de corpo.
+creation.refuse.hair_color,That hair colour is not available.,Essa cor de cabelo não está disponível.

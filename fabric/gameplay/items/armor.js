@@ -111,6 +111,58 @@ module.exports = {
     },
   }),
 
+  // ─── NoviceTunic ──────────────────────────────────────────────────────────
+  // Phase 180 — the starting kit (CharacterCreation.startingKit): every new character wears one.
+  NoviceTunic: defineEntity({
+    tags: ['item'],
+    description:
+      'Plain woven tunic with a belted waist, given to every new character. ' +
+      'Barely armour at all; it marks a newcomer and is replaced as soon as anything better is made.',
+    goal: 'The starting outfit: a newcomer is dressed without being given a head start (NoPayToWin, no class kits)',
+    fields: {
+      id:        { type: 'uuid', primaryKey: true },
+      condition: { type: 'enum', values: DURABILITY_STATES },
+      weight:    { type: 'decimal', description: 'kg', defaultValue: 0.8 },
+      rarity:    { type: 'enum', values: RARITIES, defaultValue: 'common' },
+      stackable: { type: 'boolean', description: 'Always false for armour pieces', defaultValue: false },
+      shape: itemShape({ archetype: 'chestplate', parts: { plate: 'Duskfiber', under: 'Duskfiber' } }),
+      durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 60 },
+      repair: repairData({
+        station: 'carpentry bench',
+        materials: [{ item: 'Duskfiber', quantity: 1 }],
+        skillGuards: [{ skill: 'Carpentry', tier: 'novice' }],
+      }),
+      ...equipmentVisualFields({
+        slot: 'Chest',
+        defense: 1,
+        deformationMode: 'SKINNED',
+        masks: { primary: true, secondary: true, accent: true, metal: false, emission: false, wear: true },
+        hideRegions: ['BodyChest'],
+        attachments: { equipped: 'socket_chest', stored: 'socket_back' },
+        minLodLevel: 2,
+        size: [0.62, 0.50, 0.36],
+        metalTone: 'none',
+        compatibleTags: ['humanoid'],
+      }),
+    },
+    relations: {
+      duskfiber: { name: 'duskfiber', kind: 'hasOne', target: 'Duskfiber' },
+    },
+    stateMachine: itemStateMachine(),
+    behaviors: {
+      degrade: {
+        description: 'Condition worsens when struck in combat',
+        rules: ['Wears out faster than any crafted armour'],
+        auth: { roles: ['maintainer'] },
+      },
+      repair: {
+        description: 'Patch the weave at a crafting bench',
+        rules: ['Requires one duskfiber strand per condition tier restored', 'Carpentry: Novice'],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
   // ─── DuskfiberCloak ───────────────────────────────────────────────────────
   DuskfiberCloak: defineEntity({
     tags: ['item'],

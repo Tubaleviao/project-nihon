@@ -198,12 +198,20 @@ Each character family may have one or more body meshes compatible with its
 
 | Parameter      | Min  | Default | Max  |
 |---------------|------|---------|------|
-| height         | 0.85 | 1.00    | 1.15 |
+| height         | 0.75 | 1.00    | 1.15 |
 | bodyMass       | 0.80 | 1.00    | 1.20 |
 | shoulderWidth  | 0.90 | 1.00    | 1.10 |
-| armLength      | 0.90 | 1.00    | 1.10 |
-| legLength      | 0.90 | 1.00    | 1.10 |
-| headScale      | 0.90 | 1.00    | 1.10 |
+| armLength      | 0.65 | 1.00    | 1.10 |
+| legLength      | 0.50 | 1.00    | 1.10 |
+| headScale      | 0.90 | 1.00    | 2.80 |
+
+**Widened for the chibi preset (Phase 180).** Player characters are chibi figures:
+a head about a third of the height, short limbs. The creation presets
+(`NoviceMasculine`, `NoviceFeminine` in `fabric/gameplay/characters/appearances.js`)
+use `headScale` 2.6, `legLength` 0.55, `armLength` 0.7 and `height` 0.75–0.8,
+so the minimums of `height`, `armLength` and `legLength` and the maximum of
+`headScale` were widened (from 0.85, 0.90, 0.90 and 1.10). A created rig must keep
+a head-to-height ratio in `CharacterCreation.headRatio` (0.28–0.40).
 
 These bounds are **artistically defined**, not engine defaults. Each combination
 must be validated against animations, clothing, armor, attachments, clipping, and

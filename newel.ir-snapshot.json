@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:f90ed1717443e262155521b9309f10808989cc383fc3c241575badf36995505b",
+  "schemaHash": "sha256:81f4a1778a342a3cec556fd20486cd7af00d2bc28916004b0d46e64d446d68bd",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -15141,6 +15141,355 @@
               "guards": [
                 "Requires two duskfiber strands per condition tier restored",
                 "Carpentry: Apprentice"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "NoviceTunic": {
+        "name": "NoviceTunic",
+        "tags": [
+          "item"
+        ],
+        "description": "Plain woven tunic with a belted waist, given to every new character. Barely armour at all; it marks a newcomer and is replaced as soon as anything better is made.",
+        "goal": "The starting outfit: a newcomer is dressed without being given a head start (NoPayToWin, no class kits)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.8
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "common"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "Always false for armour pieces",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "chestplate",
+              "parts": {
+                "plate": "Duskfiber",
+                "under": "Duskfiber"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Remaining durability points before condition degrades",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 60
+          },
+          "repair": {
+            "name": "repair",
+            "type": "json",
+            "description": "Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "station": "carpentry bench",
+              "materials": [
+                {
+                  "item": "Duskfiber",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Carpentry",
+                  "tier": "novice"
+                }
+              ]
+            }
+          },
+          "equipmentSlot": {
+            "name": "equipmentSlot",
+            "type": "string",
+            "description": "Equipment slot — what is equipped (§6)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Chest"
+          },
+          "deformationMode": {
+            "name": "deformationMode",
+            "type": "string",
+            "description": "SKINNED | RIGID | HYBRID (§10)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "SKINNED"
+          },
+          "masks": {
+            "name": "masks",
+            "type": "json",
+            "description": "Color/mask regions present on the asset (§17)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "primary": true,
+              "secondary": true,
+              "accent": true,
+              "metal": false,
+              "emission": false,
+              "wear": true
+            }
+          },
+          "hideRegions": {
+            "name": "hideRegions",
+            "type": "json",
+            "description": "Body regions this item hides to prevent clipping (§16)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "BodyChest"
+            ]
+          },
+          "attachments": {
+            "name": "attachments",
+            "type": "json",
+            "description": "Attachment state → socket map (§7)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "equipped": "socket_chest",
+              "stored": "socket_back"
+            }
+          },
+          "minLodLevel": {
+            "name": "minLodLevel",
+            "type": "integer",
+            "description": "Coarsest LOD at which this part still renders (§35)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 2
+          },
+          "size": {
+            "name": "size",
+            "type": "json",
+            "description": "Placeholder mesh extents [x, y, z]",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              0.62,
+              0.5,
+              0.36
+            ]
+          },
+          "metalTone": {
+            "name": "metalTone",
+            "type": "string",
+            "description": "Metal tone for metal-mask regions (§21)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "none"
+          },
+          "emissionColor": {
+            "name": "emissionColor",
+            "type": "integer",
+            "description": "Palette index in the emission region (192–223) for emissive regions (§22)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 200
+          },
+          "compatibleTags": {
+            "name": "compatibleTags",
+            "type": "json",
+            "description": "Semantic tags required to equip (§39)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "humanoid"
+            ]
+          },
+          "defense": {
+            "name": "defense",
+            "type": "integer",
+            "description": "Defense contributed to the character window total while worn (Phase 47); the panel sums this field, never prose",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          }
+        },
+        "relations": {
+          "duskfiber": {
+            "name": "duskfiber",
+            "kind": "hasOne",
+            "target": "Duskfiber"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "Condition worsens when struck in combat",
+            "rules": [
+              "Wears out faster than any crafted armour"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Patch the weave at a crafting bench",
+            "rules": [
+              "Requires one duskfiber strand per condition tier restored",
+              "Carpentry: Novice"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Wears out faster than any crafted armour"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Wears out faster than any crafted armour"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Wears out faster than any crafted armour"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires one duskfiber strand per condition tier restored",
+                "Carpentry: Novice"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires one duskfiber strand per condition tier restored",
+                "Carpentry: Novice"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires one duskfiber strand per condition tier restored",
+                "Carpentry: Novice"
               ],
               "effects": []
             }
@@ -31571,6 +31920,300 @@
         "pii": [],
         "gdpr": {}
       },
+      "NoviceMasculine": {
+        "name": "NoviceMasculine",
+        "tags": [
+          "appearance"
+        ],
+        "description": "The masculine character-creation preset: a chibi body in the plain novice tunic. The player picks hair and hair colour on top of it (CharacterCreation); everything else is fixed.",
+        "goal": "Give every new character the same readable chibi silhouette, told apart by hair and name",
+        "fields": {
+          "skeleton": {
+            "name": "skeleton",
+            "type": "string",
+            "description": "Skeleton key in GameData.SKELETONS",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "HumanoidSkeleton"
+          },
+          "body": {
+            "name": "body",
+            "type": "string",
+            "description": "Body mesh identifier: models/characters/bodies/<id>.glb.raw",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "chibi_body_m"
+          },
+          "proportionPreset": {
+            "name": "proportionPreset",
+            "type": "string",
+            "description": "Named proportion preset these proportions come from",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "chibi"
+          },
+          "proportions": {
+            "name": "proportions",
+            "type": "json",
+            "description": "Body proportion multipliers (§8, chibi preset)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "height": 0.8,
+              "bodyMass": 1.1,
+              "shoulderWidth": 1,
+              "armLength": 0.7,
+              "legLength": 0.55,
+              "headScale": 2.6
+            }
+          },
+          "skinColor": {
+            "name": "skinColor",
+            "type": "integer",
+            "description": "Palette index for skin",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 6
+          },
+          "head": {
+            "name": "head",
+            "type": "string",
+            "description": "Head mesh identifier: models/characters/heads/<id>.glb.raw",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "chibi_head_m"
+          },
+          "eyes": {
+            "name": "eyes",
+            "type": "string",
+            "description": "Eyes texture identifier: textures/characters/eyes/<id>.png.raw",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "chibi_eyes_m"
+          },
+          "eyeColor": {
+            "name": "eyeColor",
+            "type": "integer",
+            "description": "Palette index for eyes",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 225
+          },
+          "hair": {
+            "name": "hair",
+            "type": "string",
+            "description": "Default hair style (CharacterCreation.hairStyles)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "hair_m_crop"
+          },
+          "hairColor": {
+            "name": "hairColor",
+            "type": "integer",
+            "description": "Default hair colour (CharacterCreation.hairColors)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 41
+          },
+          "beard": {
+            "name": "beard",
+            "type": "string",
+            "description": "Beard component identifier",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "none"
+          },
+          "beardColor": {
+            "name": "beardColor",
+            "type": "integer",
+            "description": "Palette index for beard",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
+          },
+          "equipment": {
+            "name": "equipment",
+            "type": "json",
+            "description": "Equipment instances by slot: the starting kit worn",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "Chest": {
+                "item": "NoviceTunic",
+                "state": "equipped",
+                "primaryColor": 96,
+                "secondaryColor": 100,
+                "accentColor": 140,
+                "durability": 1
+              }
+            }
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "NoviceFeminine": {
+        "name": "NoviceFeminine",
+        "tags": [
+          "appearance"
+        ],
+        "description": "The feminine character-creation preset: a chibi body in the plain novice tunic. The player picks hair and hair colour on top of it (CharacterCreation); everything else is fixed.",
+        "goal": "Give every new character the same readable chibi silhouette, told apart by hair and name",
+        "fields": {
+          "skeleton": {
+            "name": "skeleton",
+            "type": "string",
+            "description": "Skeleton key in GameData.SKELETONS",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "HumanoidSkeleton"
+          },
+          "body": {
+            "name": "body",
+            "type": "string",
+            "description": "Body mesh identifier: models/characters/bodies/<id>.glb.raw",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "chibi_body_f"
+          },
+          "proportionPreset": {
+            "name": "proportionPreset",
+            "type": "string",
+            "description": "Named proportion preset these proportions come from",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "chibi"
+          },
+          "proportions": {
+            "name": "proportions",
+            "type": "json",
+            "description": "Body proportion multipliers (§8, chibi preset)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "height": 0.75,
+              "bodyMass": 1.05,
+              "shoulderWidth": 0.95,
+              "armLength": 0.7,
+              "legLength": 0.55,
+              "headScale": 2.6
+            }
+          },
+          "skinColor": {
+            "name": "skinColor",
+            "type": "integer",
+            "description": "Palette index for skin",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 6
+          },
+          "head": {
+            "name": "head",
+            "type": "string",
+            "description": "Head mesh identifier: models/characters/heads/<id>.glb.raw",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "chibi_head_f"
+          },
+          "eyes": {
+            "name": "eyes",
+            "type": "string",
+            "description": "Eyes texture identifier: textures/characters/eyes/<id>.png.raw",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "chibi_eyes_f"
+          },
+          "eyeColor": {
+            "name": "eyeColor",
+            "type": "integer",
+            "description": "Palette index for eyes",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 225
+          },
+          "hair": {
+            "name": "hair",
+            "type": "string",
+            "description": "Default hair style (CharacterCreation.hairStyles)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "hair_f_bob"
+          },
+          "hairColor": {
+            "name": "hairColor",
+            "type": "integer",
+            "description": "Default hair colour (CharacterCreation.hairColors)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 41
+          },
+          "beard": {
+            "name": "beard",
+            "type": "string",
+            "description": "Beard component identifier",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "none"
+          },
+          "beardColor": {
+            "name": "beardColor",
+            "type": "integer",
+            "description": "Palette index for beard",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
+          },
+          "equipment": {
+            "name": "equipment",
+            "type": "json",
+            "description": "Equipment instances by slot: the starting kit worn",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "Chest": {
+                "item": "NoviceTunic",
+                "state": "equipped",
+                "primaryColor": 96,
+                "secondaryColor": 100,
+                "accentColor": 140,
+                "durability": 1
+              }
+            }
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
       "TravellerHuman": {
         "name": "TravellerHuman",
         "tags": [
@@ -31851,6 +32494,785 @@
         },
         "relations": {},
         "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "CharacterCreation": {
+        "name": "CharacterCreation",
+        "tags": [
+          "creation"
+        ],
+        "description": "The choices a new player makes before entering the world: a name, a gender, a hair style and a hair colour. Gender picks a fixed chibi body preset; attributes are not chosen (every character starts at the AttributeSystem base). The host validates every field and refuses with a keyed reason.",
+        "goal": "Let each player be someone recognisable from the first minute, with a name nobody else can impersonate",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "name": {
+            "name": "name",
+            "type": "json",
+            "description": "Name rule: { minLength, maxLength, maxSeparators, separators, combining, scripts: { <group>: [[lo, hi]] }, reserved, confusables, confusableSequences, accentFold }; uniqueness is per server on the TR39-style skeleton",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "minLength": 3,
+              "maxLength": 16,
+              "maxSeparators": 1,
+              "separators": [
+                " ",
+                "-",
+                "'"
+              ],
+              "combining": [
+                [
+                  768,
+                  879
+                ]
+              ],
+              "scripts": {
+                "latin": [
+                  [
+                    65,
+                    90
+                  ],
+                  [
+                    97,
+                    122
+                  ],
+                  [
+                    192,
+                    214
+                  ],
+                  [
+                    216,
+                    246
+                  ],
+                  [
+                    248,
+                    591
+                  ],
+                  [
+                    7680,
+                    7935
+                  ]
+                ],
+                "greek": [
+                  [
+                    902,
+                    902
+                  ],
+                  [
+                    904,
+                    906
+                  ],
+                  [
+                    908,
+                    908
+                  ],
+                  [
+                    910,
+                    929
+                  ],
+                  [
+                    931,
+                    1023
+                  ],
+                  [
+                    7936,
+                    8124
+                  ]
+                ],
+                "cyrillic": [
+                  [
+                    1024,
+                    1153
+                  ],
+                  [
+                    1162,
+                    1327
+                  ]
+                ],
+                "japanese": [
+                  [
+                    12353,
+                    12438
+                  ],
+                  [
+                    12449,
+                    12538
+                  ],
+                  [
+                    12540,
+                    12540
+                  ],
+                  [
+                    19968,
+                    40959
+                  ]
+                ]
+              },
+              "reserved": [
+                "admin",
+                "administrator",
+                "administrador",
+                "moderator",
+                "moderador",
+                "mod",
+                "gm",
+                "gamemaster",
+                "staff",
+                "support",
+                "suporte",
+                "server",
+                "servidor",
+                "system",
+                "sistema",
+                "host",
+                "nihon",
+                "projectnihon",
+                "player",
+                "jogador",
+                "guest",
+                "convidado",
+                "anonymous",
+                "anonimo",
+                "everyone",
+                "null",
+                "undefined"
+              ],
+              "confusables": {
+                "а": "a",
+                "с": "c",
+                "е": "e",
+                "о": "o",
+                "р": "p",
+                "х": "x",
+                "у": "y",
+                "ѕ": "s",
+                "і": "i",
+                "ј": "j",
+                "һ": "h",
+                "ԁ": "d",
+                "ԛ": "q",
+                "ԝ": "w",
+                "ӏ": "l",
+                "ү": "y",
+                "к": "k",
+                "м": "m",
+                "н": "h",
+                "т": "t",
+                "в": "b",
+                "α": "a",
+                "β": "b",
+                "ε": "e",
+                "ζ": "z",
+                "η": "n",
+                "ι": "i",
+                "κ": "k",
+                "μ": "u",
+                "ν": "v",
+                "ο": "o",
+                "ρ": "p",
+                "τ": "t",
+                "υ": "u",
+                "χ": "x",
+                "γ": "y"
+              },
+              "confusableSequences": {
+                "rn": "m",
+                "vv": "w"
+              },
+              "accentFold": {
+                "à": "a",
+                "á": "a",
+                "â": "a",
+                "ã": "a",
+                "ä": "a",
+                "å": "a",
+                "ç": "c",
+                "è": "e",
+                "é": "e",
+                "ê": "e",
+                "ë": "e",
+                "ì": "i",
+                "í": "i",
+                "î": "i",
+                "ï": "i",
+                "ñ": "n",
+                "ò": "o",
+                "ó": "o",
+                "ô": "o",
+                "õ": "o",
+                "ö": "o",
+                "ù": "u",
+                "ú": "u",
+                "û": "u",
+                "ü": "u",
+                "ý": "y",
+                "ÿ": "y",
+                "ā": "a",
+                "ă": "a",
+                "ą": "a",
+                "ć": "c",
+                "ĉ": "c",
+                "ċ": "c",
+                "č": "c",
+                "ď": "d",
+                "ē": "e",
+                "ĕ": "e",
+                "ė": "e",
+                "ę": "e",
+                "ě": "e",
+                "ĝ": "g",
+                "ğ": "g",
+                "ġ": "g",
+                "ģ": "g",
+                "ĥ": "h",
+                "ĩ": "i",
+                "ī": "i",
+                "ĭ": "i",
+                "į": "i",
+                "ĵ": "j",
+                "ķ": "k",
+                "ĺ": "l",
+                "ļ": "l",
+                "ľ": "l",
+                "ń": "n",
+                "ņ": "n",
+                "ň": "n",
+                "ō": "o",
+                "ŏ": "o",
+                "ő": "o",
+                "ŕ": "r",
+                "ŗ": "r",
+                "ř": "r",
+                "ś": "s",
+                "ŝ": "s",
+                "ş": "s",
+                "š": "s",
+                "ţ": "t",
+                "ť": "t",
+                "ũ": "u",
+                "ū": "u",
+                "ŭ": "u",
+                "ů": "u",
+                "ű": "u",
+                "ų": "u",
+                "ŵ": "w",
+                "ŷ": "y",
+                "ź": "z",
+                "ż": "z",
+                "ž": "z",
+                "ơ": "o",
+                "ư": "u",
+                "ǎ": "a",
+                "ǐ": "i",
+                "ǒ": "o",
+                "ǔ": "u",
+                "ǖ": "u",
+                "ǘ": "u",
+                "ǚ": "u",
+                "ǜ": "u",
+                "ǟ": "a",
+                "ǡ": "a",
+                "ǣ": "æ",
+                "ǧ": "g",
+                "ǩ": "k",
+                "ǫ": "o",
+                "ǭ": "o",
+                "ǯ": "ʒ",
+                "ǰ": "j",
+                "ǵ": "g",
+                "ǹ": "n",
+                "ǻ": "a",
+                "ǽ": "æ",
+                "ǿ": "ø",
+                "ȁ": "a",
+                "ȃ": "a",
+                "ȅ": "e",
+                "ȇ": "e",
+                "ȉ": "i",
+                "ȋ": "i",
+                "ȍ": "o",
+                "ȏ": "o",
+                "ȑ": "r",
+                "ȓ": "r",
+                "ȕ": "u",
+                "ȗ": "u",
+                "ș": "s",
+                "ț": "t",
+                "ȟ": "h",
+                "ȧ": "a",
+                "ȩ": "e",
+                "ȫ": "o",
+                "ȭ": "o",
+                "ȯ": "o",
+                "ȱ": "o",
+                "ȳ": "y",
+                "ḁ": "a",
+                "ḃ": "b",
+                "ḅ": "b",
+                "ḇ": "b",
+                "ḉ": "c",
+                "ḋ": "d",
+                "ḍ": "d",
+                "ḏ": "d",
+                "ḑ": "d",
+                "ḓ": "d",
+                "ḕ": "e",
+                "ḗ": "e",
+                "ḙ": "e",
+                "ḛ": "e",
+                "ḝ": "e",
+                "ḟ": "f",
+                "ḡ": "g",
+                "ḣ": "h",
+                "ḥ": "h",
+                "ḧ": "h",
+                "ḩ": "h",
+                "ḫ": "h",
+                "ḭ": "i",
+                "ḯ": "i",
+                "ḱ": "k",
+                "ḳ": "k",
+                "ḵ": "k",
+                "ḷ": "l",
+                "ḹ": "l",
+                "ḻ": "l",
+                "ḽ": "l",
+                "ḿ": "m",
+                "ṁ": "m",
+                "ṃ": "m",
+                "ṅ": "n",
+                "ṇ": "n",
+                "ṉ": "n",
+                "ṋ": "n",
+                "ṍ": "o",
+                "ṏ": "o",
+                "ṑ": "o",
+                "ṓ": "o",
+                "ṕ": "p",
+                "ṗ": "p",
+                "ṙ": "r",
+                "ṛ": "r",
+                "ṝ": "r",
+                "ṟ": "r",
+                "ṡ": "s",
+                "ṣ": "s",
+                "ṥ": "s",
+                "ṧ": "s",
+                "ṩ": "s",
+                "ṫ": "t",
+                "ṭ": "t",
+                "ṯ": "t",
+                "ṱ": "t",
+                "ṳ": "u",
+                "ṵ": "u",
+                "ṷ": "u",
+                "ṹ": "u",
+                "ṻ": "u",
+                "ṽ": "v",
+                "ṿ": "v",
+                "ẁ": "w",
+                "ẃ": "w",
+                "ẅ": "w",
+                "ẇ": "w",
+                "ẉ": "w",
+                "ẋ": "x",
+                "ẍ": "x",
+                "ẏ": "y",
+                "ẑ": "z",
+                "ẓ": "z",
+                "ẕ": "z",
+                "ẖ": "h",
+                "ẗ": "t",
+                "ẘ": "w",
+                "ẙ": "y",
+                "ẛ": "ſ",
+                "ạ": "a",
+                "ả": "a",
+                "ấ": "a",
+                "ầ": "a",
+                "ẩ": "a",
+                "ẫ": "a",
+                "ậ": "a",
+                "ắ": "a",
+                "ằ": "a",
+                "ẳ": "a",
+                "ẵ": "a",
+                "ặ": "a",
+                "ẹ": "e",
+                "ẻ": "e",
+                "ẽ": "e",
+                "ế": "e",
+                "ề": "e",
+                "ể": "e",
+                "ễ": "e",
+                "ệ": "e",
+                "ỉ": "i",
+                "ị": "i",
+                "ọ": "o",
+                "ỏ": "o",
+                "ố": "o",
+                "ồ": "o",
+                "ổ": "o",
+                "ỗ": "o",
+                "ộ": "o",
+                "ớ": "o",
+                "ờ": "o",
+                "ở": "o",
+                "ỡ": "o",
+                "ợ": "o",
+                "ụ": "u",
+                "ủ": "u",
+                "ứ": "u",
+                "ừ": "u",
+                "ử": "u",
+                "ữ": "u",
+                "ự": "u",
+                "ỳ": "y",
+                "ỵ": "y",
+                "ỷ": "y",
+                "ỹ": "y",
+                "ΐ": "ι",
+                "ά": "α",
+                "έ": "ε",
+                "ή": "η",
+                "ί": "ι",
+                "ΰ": "υ",
+                "ϊ": "ι",
+                "ϋ": "υ",
+                "ό": "ο",
+                "ύ": "υ",
+                "ώ": "ω",
+                "ϓ": "ϒ",
+                "ϔ": "ϒ",
+                "ἀ": "α",
+                "ἁ": "α",
+                "ἂ": "α",
+                "ἃ": "α",
+                "ἄ": "α",
+                "ἅ": "α",
+                "ἆ": "α",
+                "ἇ": "α",
+                "ἐ": "ε",
+                "ἑ": "ε",
+                "ἒ": "ε",
+                "ἓ": "ε",
+                "ἔ": "ε",
+                "ἕ": "ε",
+                "ἠ": "η",
+                "ἡ": "η",
+                "ἢ": "η",
+                "ἣ": "η",
+                "ἤ": "η",
+                "ἥ": "η",
+                "ἦ": "η",
+                "ἧ": "η",
+                "ἰ": "ι",
+                "ἱ": "ι",
+                "ἲ": "ι",
+                "ἳ": "ι",
+                "ἴ": "ι",
+                "ἵ": "ι",
+                "ἶ": "ι",
+                "ἷ": "ι",
+                "ὀ": "ο",
+                "ὁ": "ο",
+                "ὂ": "ο",
+                "ὃ": "ο",
+                "ὄ": "ο",
+                "ὅ": "ο",
+                "ὐ": "υ",
+                "ὑ": "υ",
+                "ὒ": "υ",
+                "ὓ": "υ",
+                "ὔ": "υ",
+                "ὕ": "υ",
+                "ὖ": "υ",
+                "ὗ": "υ",
+                "ὠ": "ω",
+                "ὡ": "ω",
+                "ὢ": "ω",
+                "ὣ": "ω",
+                "ὤ": "ω",
+                "ὥ": "ω",
+                "ὦ": "ω",
+                "ὧ": "ω",
+                "ὰ": "α",
+                "ά": "α",
+                "ὲ": "ε",
+                "έ": "ε",
+                "ὴ": "η",
+                "ή": "η",
+                "ὶ": "ι",
+                "ί": "ι",
+                "ὸ": "ο",
+                "ό": "ο",
+                "ὺ": "υ",
+                "ύ": "υ",
+                "ὼ": "ω",
+                "ώ": "ω",
+                "ᾀ": "α",
+                "ᾁ": "α",
+                "ᾂ": "α",
+                "ᾃ": "α",
+                "ᾄ": "α",
+                "ᾅ": "α",
+                "ᾆ": "α",
+                "ᾇ": "α",
+                "ᾐ": "η",
+                "ᾑ": "η",
+                "ᾒ": "η",
+                "ᾓ": "η",
+                "ᾔ": "η",
+                "ᾕ": "η",
+                "ᾖ": "η",
+                "ᾗ": "η",
+                "ᾠ": "ω",
+                "ᾡ": "ω",
+                "ᾢ": "ω",
+                "ᾣ": "ω",
+                "ᾤ": "ω",
+                "ᾥ": "ω",
+                "ᾦ": "ω",
+                "ᾧ": "ω",
+                "ᾰ": "α",
+                "ᾱ": "α",
+                "ᾲ": "α",
+                "ᾳ": "α",
+                "ᾴ": "α",
+                "ᾶ": "α",
+                "ᾷ": "α",
+                "й": "и",
+                "ѐ": "е",
+                "ё": "е",
+                "ѓ": "г",
+                "ї": "і",
+                "ќ": "к",
+                "ѝ": "и",
+                "ў": "у",
+                "ѷ": "ѵ",
+                "ӂ": "ж",
+                "ӑ": "а",
+                "ӓ": "а",
+                "ӗ": "е",
+                "ӛ": "ә",
+                "ӝ": "ж",
+                "ӟ": "з",
+                "ӣ": "и",
+                "ӥ": "и",
+                "ӧ": "о",
+                "ӫ": "ө",
+                "ӭ": "э",
+                "ӯ": "у",
+                "ӱ": "у",
+                "ӳ": "у",
+                "ӵ": "ч",
+                "ӹ": "ы",
+                "ß": "ss",
+                "ø": "o",
+                "đ": "d",
+                "ł": "l",
+                "æ": "ae",
+                "œ": "oe",
+                "þ": "th",
+                "ð": "d",
+                "ħ": "h",
+                "ı": "i"
+              }
+            }
+          },
+          "genders": {
+            "name": "genders",
+            "type": "json",
+            "description": "{ <gender>: { appearance } }; the appearance preset fixes body, head, eyes, skin and proportions. Label: creation.gender.<id>",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "masculine": {
+                "appearance": "NoviceMasculine"
+              },
+              "feminine": {
+                "appearance": "NoviceFeminine"
+              }
+            }
+          },
+          "hairStyles": {
+            "name": "hairStyles",
+            "type": "json",
+            "description": "{ <hair id>: { gender, shape } }; mesh models/characters/hair/<id>.glb.raw, icon icons/hair/<id>.png.raw",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "hair_m_crop": {
+                "gender": "masculine",
+                "shape": "crop"
+              },
+              "hair_m_spiky": {
+                "gender": "masculine",
+                "shape": "spiky"
+              },
+              "hair_m_swept": {
+                "gender": "masculine",
+                "shape": "swept"
+              },
+              "hair_m_mop": {
+                "gender": "masculine",
+                "shape": "mop"
+              },
+              "hair_m_topknot": {
+                "gender": "masculine",
+                "shape": "topknot"
+              },
+              "hair_m_mohawk": {
+                "gender": "masculine",
+                "shape": "mohawk"
+              },
+              "hair_f_bob": {
+                "gender": "feminine",
+                "shape": "bob"
+              },
+              "hair_f_long": {
+                "gender": "feminine",
+                "shape": "long"
+              },
+              "hair_f_twintails": {
+                "gender": "feminine",
+                "shape": "twintails"
+              },
+              "hair_f_ponytail": {
+                "gender": "feminine",
+                "shape": "ponytail"
+              },
+              "hair_f_bun": {
+                "gender": "feminine",
+                "shape": "bun"
+              },
+              "hair_f_braid": {
+                "gender": "feminine",
+                "shape": "braid"
+              }
+            }
+          },
+          "hairColors": {
+            "name": "hairColors",
+            "type": "json",
+            "description": "Curated hair colours as DefaultPalette indices",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              33,
+              37,
+              41,
+              45,
+              49,
+              53,
+              58,
+              62,
+              129,
+              133,
+              138,
+              151
+            ]
+          },
+          "defaultCreation": {
+            "name": "defaultCreation",
+            "type": "json",
+            "description": "The creation a player who skips the screen gets: { gender, hair, hairColor }",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "gender": "masculine",
+              "hair": "hair_m_crop",
+              "hairColor": 41
+            }
+          },
+          "startingKit": {
+            "name": "startingKit",
+            "type": "json",
+            "description": "Items given once at creation: [{ item, quantity, equip }]; a server rule may replace it",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              {
+                "item": "NoviceTunic",
+                "quantity": 1,
+                "equip": true
+              }
+            ]
+          },
+          "proportionPreset": {
+            "name": "proportionPreset",
+            "type": "string",
+            "description": "Body proportion preset both gender presets use",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "chibi"
+          },
+          "headRatio": {
+            "name": "headRatio",
+            "type": "json",
+            "description": "Allowed head-to-height ratio of a created rig: { min, max }",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0.28,
+              "max": 0.4
+            }
+          },
+          "refusals": {
+            "name": "refusals",
+            "type": "json",
+            "description": "Refusal reasons; the catalog key is creation.refuse.<reason>",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "name_length",
+              "name_chars",
+              "name_script",
+              "name_separator",
+              "name_reserved",
+              "name_taken",
+              "gender",
+              "hair",
+              "hair_gender",
+              "hair_color"
+            ]
+          }
+        },
+        "relations": {},
+        "behaviors": {
+          "create": {
+            "name": "create",
+            "description": "Create a character on the host from a name, gender, hair style and hair colour",
+            "rules": [
+              "The name is 3–16 letters from one script group with at most one inner space, hyphen or apostrophe",
+              "The name is unique per server on its skeleton (case, accents and confusable look-alikes folded) and is not reserved",
+              "The hair style belongs to the chosen gender and the colour is in the curated list",
+              "Attributes start at the AttributeSystem base; the client sends no attribute values",
+              "A refusal carries a keyed reason the client renders in its own locale"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
         "pii": [],
         "gdpr": {}
       }

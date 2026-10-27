@@ -1,0 +1,21 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/appearances/novicemasculine.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+skeleton = "HumanoidSkeleton"
+body = "chibi_body_m"
+proportionPreset = "chibi"
+proportions = {"height":0.8,"bodyMass":1.1,"shoulderWidth":1,"armLength":0.7,"legLength":0.55,"headScale":2.6}
+skinColor = 6
+head = "chibi_head_m"
+eyes = "chibi_eyes_m"
+eyeColor = 225
+hair = "hair_m_crop"
+hairColor = 41
+beard = "none"
+beardColor = 0
+equipment = {"Chest":{"item":"NoviceTunic","state":"equipped","primaryColor":96,"secondaryColor":100,"accentColor":140,"durability":1}}
+description = "The masculine character-creation preset: a chibi body in the plain novice tunic. The player picks hair and hair colour on top of it (CharacterCreation); everything else is fixed."
+tags = ["appearance"]
