@@ -224,6 +224,90 @@ func _refresh_doll() -> void:
 	var built: Dictionary = ch._make_visual("sheet_doll", ch.deserialize_appearance(appearance))
 	sl._sheet_doll.rebuild(built.get("root", null))
 
+## Phase 179 — the sheet's whole projection, one row per thing it shows, each with a `section`: "slot" (every
+## equipment slot), "attribute" (all six), "stat" (every derived stat) and "skill" (the top skills by tier).
+## Values are the body's synced attribute table run through the fabric formula.
+func character_sheet_rows() -> Array:
+	var rows: Array = []
+	for r in sl.character_rows():
+		var row: Dictionary = (r as Dictionary).duplicate()
+		row["section"] = "slot"
+		rows.append(row)
+	var attrs := _local_attributes()
+	rows.append_array(sl.CharacterSheet.attribute_rows(attrs, _local_growth()))
+	rows.append_array(sl.CharacterSheet.stat_rows(attrs))
+	rows.append_array(sl.CharacterSheet.skill_rows(sl.skills_rows(sl.crafting_slice.get_skills() if sl.crafting_slice != null else {})))
+	return rows
+
+func _local_attributes() -> Dictionary:
+	return sl.AttributeRules.sanitize(sl.player_slice.get("attributes")) if sl.player_slice != null and sl.player_slice.get("attributes") != null else sl.AttributeRules.defaults()
+
+func _local_growth() -> Dictionary:
+	return sl.AttributeRules.sanitize_growth(sl.player_slice.get("attribute_growth")) if sl.player_slice != null and sl.player_slice.get("attribute_growth") != null else sl.AttributeRules.empty_growth()
+
+## Phase 179 — dropping a bag item on a slot equips it through the same path as the context menu.
+func slot_accepts_drop(slot: String, data: Variant) -> bool:
+	return data is Dictionary and str((data as Dictionary).get("kind", "")) == "item" \
+			and sl.EquipmentRules.slot_of(str((data as Dictionary).get("id", "")), GameData.ITEMS) == slot
+
+func drop_on_slot(slot: String, data: Variant) -> bool:
+	return slot_accepts_drop(slot, data) and sl.dispatch_item_action(str((data as Dictionary)["id"]), "equip")
+
+func slot_drag(_at: Vector2, item_id: String, source: Control) -> Variant:
+	if item_id == "":
+		return null
+	var label := Label.new()
+	label.text = item_id
+	source.set_drag_preview(label)
+	sl._drag_payload = {"kind": "equipped", "id": item_id}
+	return sl._drag_payload
+
+func build_character_content() -> Control:
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	sl._character_stats = Label.new()
+	sl._character_stats.add_theme_font_size_override("font_size", 15)
+	vbox.add_child(sl._character_stats)
+	# Phase 53 — the friend code: the handle another player enters to spawn beside this one.
+	var code_row := HBoxContainer.new()
+	code_row.add_theme_constant_override("separation", 6)
+	sl._friend_code_label = Label.new()
+	sl._friend_code_label.text = sl.friend_code_text(sl.own_handle)
+	code_row.add_child(sl._friend_code_label)
+	var copy_btn := Button.new()
+	sl._set_tr(copy_btn, "text", "ui.copy")
+	copy_btn.pressed.connect(sl._on_copy_friend_code_pressed)
+	code_row.add_child(copy_btn)
+	vbox.add_child(code_row)
+	sl._spawn_notice_label = Label.new()
+	sl._spawn_notice_label.add_theme_font_size_override("font_size", 13)
+	vbox.add_child(sl._spawn_notice_label)
+	sl._sheet_name = Label.new()
+	sl._sheet_name.add_theme_font_size_override("font_size", 16)
+	sl._sheet_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(sl._sheet_name)
+	var body := HBoxContainer.new()
+	body.alignment = BoxContainer.ALIGNMENT_CENTER
+	sl._sheet_left = VBoxContainer.new()
+	sl._sheet_right = VBoxContainer.new()
+	sl._sheet_doll = sl.CharacterSheet.Doll.new()
+	body.add_child(sl._sheet_left)
+	body.add_child(sl._sheet_doll)
+	body.add_child(sl._sheet_right)
+	vbox.add_child(body)
+	sl._character_grid = GridContainer.new()
+	sl._character_grid.columns = sl.INVENTORY_COLUMNS
+	vbox.add_child(sl._character_grid)
+	sl._sheet_attributes = VBoxContainer.new()
+	vbox.add_child(sl._sheet_attributes)
+	sl._sheet_stats = GridContainer.new()
+	sl._sheet_stats.columns = 2
+	sl._sheet_stats.add_theme_constant_override("h_separation", 14)
+	vbox.add_child(sl._sheet_stats)
+	sl._sheet_skills = HBoxContainer.new()
+	vbox.add_child(sl._sheet_skills)
+	return vbox
+
 func _build_ui() -> void:
 	sl._ui = CanvasLayer.new()
 	sl._ui.name = "Windows"
@@ -240,7 +324,7 @@ func _build_ui() -> void:
 	sl._panels[sl.WINDOW_PROPOSALS] = sl._build_window(sl.WINDOW_PROPOSALS, "win.proposals", sl._build_proposals_content(), Vector2(470, 700))
 	sl._panels[sl.WINDOW_CONTROLS] = sl._build_window(sl.WINDOW_CONTROLS, "win.controls", sl._build_controls_content(), Vector2(916, 24))
 
-	sl._panels[sl.WINDOW_CHARACTER] = sl._build_window(sl.WINDOW_CHARACTER, "win.character", sl._build_character_content(), Vector2(916, 360))
+	sl._panels[sl.WINDOW_CHARACTER] = sl._build_window(sl.WINDOW_CHARACTER, "win.character", build_character_content(), Vector2(916, 360))
 	sl._panels[sl.WINDOW_SKILLS] = sl._build_window(sl.WINDOW_SKILLS, "win.skills", sl._build_skills_content(), Vector2(916, 700))
 	sl._panels[sl.WINDOW_SETTLEMENT] = sl._build_window(sl.WINDOW_SETTLEMENT, "win.settlement", sl._build_settlement_content(), Vector2(916, 80))
 	sl._panels[sl.WINDOW_GESTURES] = sl._build_window(sl.WINDOW_GESTURES, "win.gestures", sl._build_gesture_content(), Vector2(600, 200))
