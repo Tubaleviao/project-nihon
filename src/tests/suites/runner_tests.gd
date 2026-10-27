@@ -191,9 +191,10 @@ func _test_playtest_flight_verdict() -> void:
 	assert_eq(Bot.only_from_args(["--playtest-bot"]), "", "no flag, every step")
 	assert_eq(Bot.all_step_names().size(), 13, "the full list: Phase 179 added character_sheet")
 	var v: Dictionary = Bot.flight_verdict([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0], [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.5])
-	assert_true(bool(v["ok"]), "nine of ten is the floor")
+	assert_true(bool(v["ok"]), "nine of ten passes")
 	assert_eq(float(v["worst_ring"]), 0.5, "the worst ring sample is kept")
 	assert_false(bool(Bot.flight_verdict([1.0, 0.0], [1.0, 0.0])["ok"]), "half is a failure")
+	assert_false(bool(Bot.flight_verdict([1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0], [])["ok"]), "seven of ten is under the floor")
 	assert_false(bool(Bot.flight_verdict([], [])["ok"]), "no samples is a failure")
 	assert_true("flight" in Bot.step_names(), "the bot has a flight step")
 	# Phase 189 — the flight step's main-thread cost is the chunk manager's pump and the phases nested in it.
