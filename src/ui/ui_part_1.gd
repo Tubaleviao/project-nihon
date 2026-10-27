@@ -1,6 +1,8 @@
 extends RefCounted
 ## Methods moved verbatim out of `ui_slice.gd` (Phase 154). `sl` is the owning slice; each moved method keeps a forwarder there.
 
+const UiIcons := preload("res://src/ui/ui_icons.gd")
+
 var sl: Node
 
 func _init(slice: Node) -> void:
@@ -106,6 +108,7 @@ func refresh_character() -> void:
 		return
 	sl._refresh_skills()
 	sl._character_stats.text = sl.character_stats_text()
+	_refresh_sheet()
 	# An appearance change that left the worn set alone (a palette tweak, a LOD swap)
 	# produces the same rows; rebuilding the whole grid for it is wasted work.
 	var rows = sl.character_rows()
@@ -113,9 +116,10 @@ func refresh_character() -> void:
 	if signature == sl._character_rows_signature and sl._character_grid.get_child_count() > 0:
 		return
 	sl._character_rows_signature = signature
-	for c in sl._character_grid.get_children():
-		sl._character_grid.remove_child(c)
-		sl._retire(c)
+	for holder in [sl._character_grid, sl._sheet_left, sl._sheet_right]:
+		for c in holder.get_children():
+			holder.remove_child(c)
+			sl._retire(c)
 	for row in rows:
 		var slot = Button.new()
 		slot.custom_minimum_size = sl.SLOT_SIZE
@@ -129,7 +133,180 @@ func refresh_character() -> void:
 		else:
 			slot.text = "%s\n%s" % [row["slot"], sl.item_glyph(str(row["item"])) if str(row["item"]) != "" else "—"]
 		slot.gui_input.connect(sl._on_slot_gui_input.bind(str(row["item"]), row["actions"]))
-		sl._character_grid.add_child(slot)
+		var slot_name := str(row["slot"])
+		slot.set_drag_forwarding(sl._slot_drag.bind(str(row["item"]), slot),
+				func(_at: Vector2, data: Variant) -> bool: return sl.slot_accepts_drop(slot_name, data),
+				func(_at: Vector2, data: Variant) -> void: sl.drop_on_slot(slot_name, data))
+		match sl.CharacterSheet.column_of(str(row["slot"])):
+			"left":
+				sl._sheet_left.add_child(slot)
+			"right":
+				sl._sheet_right.add_child(slot)
+			_:
+				sl._character_grid.add_child(slot)
+
+## Phase 179 — the attribute, derived-stat and skills panels, the name above the doll and the doll itself.
+## Rebuilt only when the projection changed.
+func _refresh_sheet() -> void:
+	var rows: Array = sl.character_sheet_rows()
+	var panel_rows := rows.filter(func(r): return str(r["section"]) != "slot")
+	var signature: int = panel_rows.hash()
+	sl._sheet_name.text = sl.own_handle
+	_refresh_doll()
+	if signature == sl._sheet_signature and sl._sheet_attributes.get_child_count() > 0:
+		return
+	sl._sheet_signature = signature
+	for holder in [sl._sheet_attributes, sl._sheet_stats, sl._sheet_skills]:
+		for c in holder.get_children():
+			holder.remove_child(c)
+			sl._retire(c)
+	for row in panel_rows:
+		match str(row["section"]):
+			"attribute":
+				var line := HBoxContainer.new()
+				line.tooltip_text = str(row["tooltip"])
+				var icon := TextureRect.new()
+				icon.texture = UiIcons.load_icon(str(row["icon_key"]))
+				icon.custom_minimum_size = Vector2(24, 24)
+				icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+				icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+				line.add_child(icon)
+				var label := Label.new()
+				label.text = "%s %d" % [row["name"], int(row["value"])]
+				label.custom_minimum_size = Vector2(130, 0)
+				line.add_child(label)
+				var bar := ProgressBar.new()
+				bar.min_value = 0.0
+				bar.max_value = 1.0
+				bar.value = float(row["progress"])
+				bar.show_percentage = false
+				bar.custom_minimum_size = Vector2(120, 12)
+				bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+				line.add_child(bar)
+				sl._sheet_attributes.add_child(line)
+			"stat":
+				var name_label := Label.new()
+				name_label.text = str(row["label"])
+				name_label.add_theme_font_size_override("font_size", 12)
+				sl._sheet_stats.add_child(name_label)
+				var value_label := Label.new()
+				value_label.text = str(row["text"])
+				value_label.add_theme_font_size_override("font_size", 12)
+				sl._sheet_stats.add_child(value_label)
+			"skill":
+				var b := Button.new()
+				b.custom_minimum_size = Vector2(sl.SLOT_SIZE.x, 64.0)
+				b.clip_text = true
+				UiIcons.style_skill_button(b, str(row["id"]), str(row["tier"]))
+				b.add_theme_font_size_override("font_size", 12)
+				b.tooltip_text = str(row["tooltip"])
+				b.pressed.connect(sl.open_window.bind(sl.WINDOW_SKILLS))
+				sl._sheet_skills.add_child(b)
+
+## Rebuild the doll's rig from the local avatar's appearance and worn set when either changed.
+func _refresh_doll() -> void:
+	var ch: Node = sl.character_slice
+	if ch == null or sl._sheet_doll == null:
+		return
+	var iid := str(ch.get_player_character())
+	if iid == "":
+		return
+	var appearance: Dictionary = ch.get_appearance(iid)
+	var worn: Dictionary = ch.get_equipment_set(iid)
+	var equipment := {}
+	for slot in worn:
+		equipment[slot] = { "item": str(worn[slot]), "state": "equipped" }
+	appearance["equipment"] = equipment
+	var signature := appearance.hash()
+	if signature == sl._doll_signature and sl._sheet_doll.has_rig():
+		return
+	sl._doll_signature = signature
+	var built: Dictionary = ch._make_visual("sheet_doll", ch.deserialize_appearance(appearance))
+	sl._sheet_doll.rebuild(built.get("root", null))
+
+## Phase 179 — the sheet's whole projection, one row per thing it shows, each with a `section`: "slot" (every
+## equipment slot), "attribute" (all six), "stat" (every derived stat) and "skill" (the top skills by tier).
+## Values are the body's synced attribute table run through the fabric formula.
+func character_sheet_rows() -> Array:
+	var rows: Array = []
+	for r in sl.character_rows():
+		var row: Dictionary = (r as Dictionary).duplicate()
+		row["section"] = "slot"
+		rows.append(row)
+	var attrs := _local_attributes()
+	rows.append_array(sl.CharacterSheet.attribute_rows(attrs, _local_growth()))
+	rows.append_array(sl.CharacterSheet.stat_rows(attrs))
+	rows.append_array(sl.CharacterSheet.skill_rows(sl.skills_rows(sl.crafting_slice.get_skills() if sl.crafting_slice != null else {})))
+	return rows
+
+func _local_attributes() -> Dictionary:
+	return sl.AttributeRules.sanitize(sl.player_slice.get("attributes")) if sl.player_slice != null and sl.player_slice.get("attributes") != null else sl.AttributeRules.defaults()
+
+func _local_growth() -> Dictionary:
+	return sl.AttributeRules.sanitize_growth(sl.player_slice.get("attribute_growth")) if sl.player_slice != null and sl.player_slice.get("attribute_growth") != null else sl.AttributeRules.empty_growth()
+
+## Phase 179 — dropping a bag item on a slot equips it through the same path as the context menu.
+func slot_accepts_drop(slot: String, data: Variant) -> bool:
+	return data is Dictionary and str((data as Dictionary).get("kind", "")) == "item" \
+			and sl.EquipmentRules.slot_of(str((data as Dictionary).get("id", "")), GameData.ITEMS) == slot
+
+func drop_on_slot(slot: String, data: Variant) -> bool:
+	return slot_accepts_drop(slot, data) and sl.dispatch_item_action(str((data as Dictionary)["id"]), "equip")
+
+func slot_drag(_at: Vector2, item_id: String, source: Control) -> Variant:
+	if item_id == "":
+		return null
+	var label := Label.new()
+	label.text = item_id
+	source.set_drag_preview(label)
+	sl._drag_payload = {"kind": "equipped", "id": item_id}
+	return sl._drag_payload
+
+func build_character_content() -> Control:
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	sl._character_stats = Label.new()
+	sl._character_stats.add_theme_font_size_override("font_size", 15)
+	vbox.add_child(sl._character_stats)
+	# Phase 53 — the friend code: the handle another player enters to spawn beside this one.
+	var code_row := HBoxContainer.new()
+	code_row.add_theme_constant_override("separation", 6)
+	sl._friend_code_label = Label.new()
+	sl._friend_code_label.text = sl.friend_code_text(sl.own_handle)
+	code_row.add_child(sl._friend_code_label)
+	var copy_btn := Button.new()
+	sl._set_tr(copy_btn, "text", "ui.copy")
+	copy_btn.pressed.connect(sl._on_copy_friend_code_pressed)
+	code_row.add_child(copy_btn)
+	vbox.add_child(code_row)
+	sl._spawn_notice_label = Label.new()
+	sl._spawn_notice_label.add_theme_font_size_override("font_size", 13)
+	vbox.add_child(sl._spawn_notice_label)
+	sl._sheet_name = Label.new()
+	sl._sheet_name.add_theme_font_size_override("font_size", 16)
+	sl._sheet_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(sl._sheet_name)
+	var body := HBoxContainer.new()
+	body.alignment = BoxContainer.ALIGNMENT_CENTER
+	sl._sheet_left = VBoxContainer.new()
+	sl._sheet_right = VBoxContainer.new()
+	sl._sheet_doll = sl.CharacterSheet.Doll.new()
+	body.add_child(sl._sheet_left)
+	body.add_child(sl._sheet_doll)
+	body.add_child(sl._sheet_right)
+	vbox.add_child(body)
+	sl._character_grid = GridContainer.new()
+	sl._character_grid.columns = sl.INVENTORY_COLUMNS
+	vbox.add_child(sl._character_grid)
+	sl._sheet_attributes = VBoxContainer.new()
+	vbox.add_child(sl._sheet_attributes)
+	sl._sheet_stats = GridContainer.new()
+	sl._sheet_stats.columns = 2
+	sl._sheet_stats.add_theme_constant_override("h_separation", 14)
+	vbox.add_child(sl._sheet_stats)
+	sl._sheet_skills = HBoxContainer.new()
+	vbox.add_child(sl._sheet_skills)
+	return vbox
 
 func _build_ui() -> void:
 	sl._ui = CanvasLayer.new()
@@ -147,7 +324,7 @@ func _build_ui() -> void:
 	sl._panels[sl.WINDOW_PROPOSALS] = sl._build_window(sl.WINDOW_PROPOSALS, "win.proposals", sl._build_proposals_content(), Vector2(470, 700))
 	sl._panels[sl.WINDOW_CONTROLS] = sl._build_window(sl.WINDOW_CONTROLS, "win.controls", sl._build_controls_content(), Vector2(916, 24))
 
-	sl._panels[sl.WINDOW_CHARACTER] = sl._build_window(sl.WINDOW_CHARACTER, "win.character", sl._build_character_content(), Vector2(916, 360))
+	sl._panels[sl.WINDOW_CHARACTER] = sl._build_window(sl.WINDOW_CHARACTER, "win.character", build_character_content(), Vector2(916, 360))
 	sl._panels[sl.WINDOW_SKILLS] = sl._build_window(sl.WINDOW_SKILLS, "win.skills", sl._build_skills_content(), Vector2(916, 700))
 	sl._panels[sl.WINDOW_SETTLEMENT] = sl._build_window(sl.WINDOW_SETTLEMENT, "win.settlement", sl._build_settlement_content(), Vector2(916, 80))
 	sl._panels[sl.WINDOW_GESTURES] = sl._build_window(sl.WINDOW_GESTURES, "win.gestures", sl._build_gesture_content(), Vector2(600, 200))

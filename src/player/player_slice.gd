@@ -633,6 +633,13 @@ func set_attributes(table: Dictionary) -> void:
 		_hp = max_hp
 	_update_hp_bar()
 
+## Phase 179 — the growth banked toward the next point (a display copy for the character sheet's growth bars; the
+## host owns it and sends it with the attribute table).
+var attribute_growth: Dictionary = AttributeRules.empty_growth()
+
+func set_attribute_growth(raw: Variant) -> void:
+	attribute_growth = AttributeRules.sanitize_growth(raw)
+
 ## One derived stat of this body (see `AttributeRules.stat`).
 func stat(stat_id: String) -> float:
 	return AttributeRules.stat(stat_id, attributes)

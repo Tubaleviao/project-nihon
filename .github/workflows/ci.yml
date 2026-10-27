@@ -637,7 +637,7 @@ jobs:
             echo "::error::script/parse/compile errors present"
             exit 1
           fi
-          for step in walk stream flight mine gather craft place fight travel horizon; do
+          for step in walk stream flight mine gather craft character_sheet place fight travel horizon; do
             if [ ! -s "playtest/$step.png" ]; then
               echo "::error::missing screenshot for step $step"
               exit 1

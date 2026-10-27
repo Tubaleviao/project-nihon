@@ -580,6 +580,7 @@ func _own_state_payload(player_id: String) -> Dictionary:
 		"companions": own.get("companions", []),
 		"professions": own.get("professions", {}),
 		"attributes": own.get("attributes", {}),
+		"attribute_growth": own.get("attribute_growth", {}),
 	}
 
 ## Phase 178 — an attribute table changed on the host. The local body adopts it directly; a remote owner gets it on
@@ -587,12 +588,15 @@ func _own_state_payload(player_id: String) -> Dictionary:
 func _on_attributes_synced(player_id: String, attributes: Dictionary) -> void:
 	if root._is_client:
 		return
+	var growth: Dictionary = root._registry.get_player_data(player_id if player_id != "" else root._registry.local_player_id).get("attribute_growth", {})
 	if player_id == "" or player_id == root._registry.local_player_id:
 		apply_own_attributes(attributes)
+		if root._player != null:
+			root._player.set_attribute_growth(growth)
 		return
 	var peer := root._registry.get_peer_id(player_id)
 	if peer != 0:
-		root._networking.send_own_state(peer, { "attributes": attributes })
+		root._networking.send_own_state(peer, { "attributes": attributes, "attribute_growth": growth })
 
 ## Phase 178 — display this machine's own attributes (the host's own body, or a client's mirror of the host's
 ## number). Sanitised: a table that does not parse reads as base 10.
@@ -627,6 +631,8 @@ func on_own_state_synced(data: Dictionary) -> void:
 		root._professions.apply_record({ "professions": data["professions"] }, root._registry.local_player_id)
 	if data.get("attributes", null) is Dictionary:
 		apply_own_attributes(data["attributes"])
+	if data.get("attribute_growth", null) is Dictionary and root._player != null:
+		root._player.set_attribute_growth(data["attribute_growth"])
 	root._waystone_wiring.apply_own_view(data)
 	if data.get("settlement_view", null) is Dictionary:
 		root._settlements.apply_view(data["settlement_view"])

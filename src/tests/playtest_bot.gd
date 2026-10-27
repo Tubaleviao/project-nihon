@@ -227,7 +227,7 @@ static func flight_speed_from_args(args: Array) -> float:
 	return FLIGHT_SPEED_MPS
 
 static func all_step_names() -> Array:
-	return ["walk", "stream", "flight", "mine", "gather", "craft", "place", "fight", "travel", "horizon", "far_peak", "pole"]
+	return ["walk", "stream", "flight", "mine", "gather", "craft", "character_sheet", "place", "fight", "travel", "horizon", "far_peak", "pole"]
 
 # ---------------------------------------------------------------------------
 # Pure report maths
@@ -1135,6 +1135,31 @@ func _step_craft() -> Array:
 	var node: Node = character.get_part_node(iid, "MainHand") if hand_ok else null
 	hand_ok = node != null and str(node.get_meta("item_model", "")) == "VeilsteelLongsword"
 	return [bool(_crafted.back()["success"]) and got == 3 and hand_ok, "%s; hand model %s" % [detail, "ok" if hand_ok else "MISSING"]]
+
+## Phase 179: open the Character window, check every attribute and slot is listed and the doll holds a rig, and (on
+## a display) that the doll's viewport is not blank. The step's screenshot shows the sheet.
+func _step_character_sheet() -> Array:
+	var ui: Node = _root._ui
+	ui.open_window(ui.WINDOW_CHARACTER)
+	ui.refresh_character()
+	await _until(func(): return false, 0.5)
+	var rows: Array = ui.character_sheet_rows()
+	var attrs := rows.filter(func(r): return str(r["section"]) == "attribute").size()
+	var slots := rows.filter(func(r): return str(r["section"]) == "slot").size()
+	var doll = ui._sheet_doll
+	if attrs != 6 or slots == 0 or doll == null or not doll.has_rig():
+		return [false, "sheet incomplete: %d attributes, %d slots, rig %s" % [attrs, slots, str(doll != null and doll.has_rig())]]
+	if DisplayServer.get_name() == "headless":
+		return [true, "%d attributes, %d slots, doll rig built (headless: viewport not read)" % [attrs, slots]]
+	await _until(func(): return false, 0.3)
+	var img: Image = doll.viewport.get_texture().get_image()
+	var seen := {}
+	if img != null:
+		for y in range(0, img.get_height(), 4):
+			for x in range(0, img.get_width(), 4):
+				seen[img.get_pixel(x, y).to_html()] = true
+	var ok := seen.size() > 3
+	return [ok, "%d attributes, %d slots, doll viewport %d colours" % [attrs, slots, seen.size()]]
 
 ## Place a station with the player's own keys, a few metres from the bench so the two do not overlap.
 func _step_place() -> Array:

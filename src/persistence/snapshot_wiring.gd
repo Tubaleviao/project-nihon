@@ -115,6 +115,8 @@ func snapshot_own_record(player_id: String) -> Dictionary:
 	snapshot["companions"] = own.get("companions", [])
 	snapshot["professions"] = own.get("professions", {})
 	snapshot["attributes"] = own.get("attributes", {})
+	# Phase 179: the growth banked toward the next point, for the character sheet's bars.
+	snapshot["attribute_growth"] = own.get("attribute_growth", {})
 	snapshot["waystones"] = own.get("waystones", [])
 	# Phase 47 — the worn set rides the own-record payload too.
 	snapshot["equipment"] = own.get("equipment", {})
@@ -293,6 +295,8 @@ func on_world_snapshot_received(data: Dictionary) -> void:
 		root._professions.apply_record({ "professions": data["professions"] }, root._registry.local_player_id)
 	if data.get("attributes", null) is Dictionary:
 		root._peer_wiring.apply_own_attributes(data["attributes"])
+	if data.get("attribute_growth", null) is Dictionary and root._player != null:
+		root._player.set_attribute_growth(data["attribute_growth"])
 	root._waystone_wiring.apply_own_view(data)
 	if data.has("equipment") and data["equipment"] is Dictionary:
 		# A client builds no avatar at boot, so the first snapshot creates it; without
