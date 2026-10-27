@@ -140,8 +140,8 @@ func refresh_character() -> void:
 		slot.gui_input.connect(sl._on_slot_gui_input.bind(str(row["item"]), row["actions"]))
 		var slot_name := str(row["slot"])
 		slot.set_drag_forwarding(sl._worn_drag.bind(str(row["item"]), slot_name, slot) if str(row["item"]) != "" else Callable(),
-			sl.character_sheet().can_drop_on_slot.bind(slot_name),
-			sl.character_sheet().drop_on_slot.bind(slot_name))
+			func(_at: Vector2, d: Variant) -> bool: return sl.character_sheet().can_drop_on_slot(slot_name, d),
+			func(_at: Vector2, d: Variant) -> void: sl.character_sheet().drop_on_slot(slot_name, d))   # Control calls (at, data)
 		(sl._character_grid if str(row["side"]) == "left" else sl._character_grid_right).add_child(slot)
 	_fill_sheet_panels(sheet)
 
