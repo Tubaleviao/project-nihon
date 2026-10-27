@@ -85,6 +85,7 @@ const FLIGHT_WARMUP_SECS := 1.5
 const FLIGHT_SAMPLE_SECS := 0.25
 const FLIGHT_MIN_COVER := 0.9
 const FLIGHT_MAX_SHARE := 0.5   ## Phase 189: near-ring ms per attached chunk at most this share of the record flight's (CI median)
+const FLIGHT_WORKER_MAX_SHARE := 1.0 / 3.0   ## Phase 190: worker ms per crossing at most this share of the record flight's (CI median)
 ## Phase 189 — the chunk phases the near ring removes: off-ring collision bodies and contents spawned under a
 ## fast player. The gate compares these; the rest of the pump (mesh upload, dispatch) is report-only, since
 ## its share varies with the machine (a 2-core llvmpipe runner pays ~4 ms more per chunk on both flights).
@@ -717,6 +718,9 @@ static func chunk_phases_ms(times: Dictionary, attached: int) -> Dictionary:
 ## the Phase 187 behaviour). The record flies second, over warm ground, so the comparison does not favour
 ## the near ring. `tools/check_playtest_budget.py` gates the medians: `near_ms_per_attach` (collision and
 ## contents) at most FLIGHT_MAX_SHARE of `record_near_ms_per_attach`; the whole pump is report-only.
+## Phase 190 — the near ring off also builds every chunk at full detail (`NearRing.lod_for`), so the record
+## flight is the Phase 189 worker load too: each flight records its worker ms per local chunk crossing
+## (`ChunkManager.worker_usec`), gated at FLIGHT_WORKER_MAX_SHARE of the record's.
 func _step_flight() -> Array:
 	var cm = _root._chunk_manager
 	var home: Dictionary = _root._player.get_world_pos()
@@ -746,11 +750,16 @@ func _step_flight() -> Array:
 	_flight["record_near_ms_per_attach"] = record["near_ms_per_attach"]
 	_flight["phases_ms_per_attach"] = gated["phases"]
 	_flight["record_phases_ms_per_attach"] = record["phases"]
-	var note := "%.0f m/s for %.0f s: ground under the body built in %.0f%% of %d samples, 3×3 ring %.0f%% (worst %.0f%%); main thread %.1f ms per attached chunk (%d chunks), %.1f ms with the near ring off (%d chunks); collision and contents %.1f ms, %.1f ms with it off" % [
+	_flight["crossings"] = gated["crossings"]
+	_flight["record_crossings"] = record["crossings"]
+	_flight["worker_ms_per_crossing"] = gated["worker_ms_per_crossing"]
+	_flight["record_worker_ms_per_crossing"] = record["worker_ms_per_crossing"]
+	var note := "%.0f m/s for %.0f s: ground under the body built in %.0f%% of %d samples, 3×3 ring %.0f%% (worst %.0f%%); main thread %.1f ms per attached chunk (%d chunks), %.1f ms with the near ring off (%d chunks); collision and contents %.1f ms, %.1f ms with it off; worker %.0f ms per crossing, %.0f ms with coarse chunks off" % [
 		FLIGHT_SPEED_MPS, FLIGHT_SECS, 100.0 * float(_flight["under_cover"]), int(_flight["samples"]),
 		100.0 * float(_flight["ring_cover"]), 100.0 * float(_flight["worst_ring"]),
 		float(gated["ms_per_attach"]), int(gated["attached"]), float(record["ms_per_attach"]), int(record["attached"]),
-		float(gated["near_ms_per_attach"]), float(record["near_ms_per_attach"])]
+		float(gated["near_ms_per_attach"]), float(record["near_ms_per_attach"]),
+		float(gated["worker_ms_per_crossing"]), float(record["worker_ms_per_crossing"])]
 	if not settled:
 		return [false, note + "; the start chunk never rebuilt"]
 	# The gate is the native builder's: the GDScript fallback (CI's `--no-native` run) builds about 7× slower
@@ -768,6 +777,8 @@ func _fly_east(home_chunk: Vector2i, home_local: Vector3) -> Dictionary:
 	var x0: float = float(home_chunk.x) * m + home_local.x
 	var probe_was := TickProbe.enabled
 	var attached0: int = cm.builds_attached
+	var worker0: int = cm.worker_usec
+	var crossings0: int = cm.local_crossings
 	var probing := false
 	var under: Array = []
 	var ring: Array = []
@@ -791,6 +802,8 @@ func _fly_east(home_chunk: Vector2i, home_local: Vector3) -> Dictionary:
 			TickProbe.enabled = true
 			TickProbe.take_times()
 			attached0 = cm.builds_attached
+			worker0 = cm.worker_usec
+			crossings0 = cm.local_crossings
 		if secs >= next_sample:
 			next_sample += FLIGHT_SAMPLE_SECS
 			var n := 0
@@ -804,7 +817,9 @@ func _fly_east(home_chunk: Vector2i, home_local: Vector3) -> Dictionary:
 	var main_ms := chunk_main_ms(times)
 	TickProbe.enabled = probe_was
 	var attached: int = cm.builds_attached - attached0
-	return { "under": under, "ring": ring, "attached": attached,
+	var crossings: int = cm.local_crossings - crossings0
+	return { "under": under, "ring": ring, "attached": attached, "crossings": crossings,
+		"worker_ms_per_crossing": float(cm.worker_usec - worker0) / 1000.0 / float(crossings) if crossings > 0 else 0.0,
 		"ms_per_attach": main_ms / float(attached) if attached > 0 else 0.0,
 		"near_ms_per_attach": near_ring_ms(times) / float(attached) if attached > 0 else 0.0,
 		"phases": chunk_phases_ms(times, attached) }

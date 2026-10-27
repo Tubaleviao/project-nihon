@@ -65,6 +65,17 @@ is report-only: mesh upload and dispatch are not the near ring's to cut, and the
 (a 2-core llvmpipe runner pays ~4 ms more per chunk on both flights). The record is measured in the same
 run, so the gate holds on any machine.
 
+## Flight: worker ms per crossing (Phase 190)
+
+Each flight also records the worker time of every build reaped after the warm-up
+(`ChunkManager.worker_usec`, timed inside the task) per local chunk crossing, as
+`flight.worker_ms_per_crossing` and, for the record flight (near ring off, so every chunk is built at full
+detail: the Phase 189 load), `flight.record_worker_ms_per_crossing`. `tools/check_playtest_budget.py` fails
+when the median over the three CI runs is above a third of the record's median. Local run (native, 3 runs,
+seed pinned): 10.8 ms against 116.7 ms (0.09). The stream is dispatch-bound at 90 m/s (about 4.5 builds
+per crossing on both flights), so the ratio is close to a coarse build's cost over a full one's: about
+1–2 ms (heightmap 0.6 ms) against 24 ms.
+
 ## Findings
 
 - The GDScript fallback is not in use: the report says `native_builder: true` with the native library

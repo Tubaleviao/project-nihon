@@ -369,10 +369,11 @@ void NativeChunkBuilder::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("heightmap_for", "pos", "seed", "noise", "cfg"), &NativeChunkBuilder::heightmap_for);
 	ClassDB::bind_method(D_METHOD("build_runs", "chunk_pos", "heightmap", "input", "cfg"), &NativeChunkBuilder::build_runs);
 	ClassDB::bind_method(D_METHOD("build_chunk_arrays", "chunk_pos", "heightmap", "resolved", "local", "cfg"), &NativeChunkBuilder::build_chunk_arrays);
+	ClassDB::bind_method(D_METHOD("build_coarse_arrays", "chunk_pos", "heightmap", "input", "step", "local", "cfg"), &NativeChunkBuilder::build_coarse_arrays);
 }
 
 int NativeChunkBuilder::version() const {
-	return 6;   // 6 = worldgen 10 ridges (Phase 188); 5 = heightmap_for reads the spawn plain from `cfg.spawn_plain` (worldgen 9)
+	return 7;   // 7 = build_coarse_arrays (Phase 190); 6 = worldgen 10 ridges (Phase 188); 5 = heightmap_for reads the spawn plain from `cfg.spawn_plain` (worldgen 9)
 }
 
 PackedStringArray NativeChunkBuilder::functions() const {
@@ -380,6 +381,7 @@ PackedStringArray NativeChunkBuilder::functions() const {
 	out.push_back("heightmap_for");
 	out.push_back("build_runs");
 	out.push_back("build_chunk_arrays");
+	out.push_back("build_coarse_arrays");
 	return out;
 }
 

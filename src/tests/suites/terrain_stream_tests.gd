@@ -372,10 +372,10 @@ func _test_stream_builds_high_priority() -> void:
 	cm._catchup = true
 	assert_true(cm.build_high_priority(Vector2i(40, 0)), "a fold's catch-up is high everywhere")
 	cm.free()
-	for path in ["res://src/terrain/chunk_manager.gd", "res://src/terrain/chunk_part_1.gd"]:
-		var src := FileAccess.get_file_as_string(path)
-		assert_true(src.contains("add_task(job, build_high_priority(chunk_pos)") or src.contains("add_task(job, sl.build_high_priority(chunk_pos)"),
-			"%s asks build_high_priority" % path)
+	# Both dispatches live in chunk_part_1.gd since Phase 190 moved the worker-noise one there.
+	var src := FileAccess.get_file_as_string("res://src/terrain/chunk_part_1.gd")
+	assert_eq(src.count("add_task(job, sl.build_high_priority(chunk_pos)"), 2, "both dispatches ask build_high_priority")
+	assert_false(FileAccess.get_file_as_string("res://src/terrain/chunk_manager.gd").contains("add_task("), "chunk_manager.gd adds no task of its own")
 
 ## Phase 187 — one over-budget frame attaches one build, so the local player's 3×3 ring attaches first
 ## (under the body, then its neighbours) and the rest keep dispatch order, so none is starved.
@@ -466,6 +466,7 @@ func _make_fast(cm: ChunkManager) -> Array:
 func _test_near_collision_ring() -> void:
 	var rig := _make_chunk_build_rig()
 	var cm: ChunkManager = rig["cm"]
+	cm.set_lod_enabled(false)   # Phase 190: a far chunk is coarse and has no shape at all; parking is a full chunk's
 	var voxel: VoxelSlice = rig["voxel"]
 	_build_chunks(cm, [Vector2i(0, 0), Vector2i(1, 1), Vector2i(2, 0), Vector2i(3, 0)])
 	assert_true(voxel.has_collision(Vector2i(2, 0)), "a chunk two out (inside the 60 m reach) has collision")
@@ -487,6 +488,7 @@ func _test_near_collision_ring() -> void:
 func _test_near_collision_nearest_first() -> void:
 	var rig := _make_chunk_build_rig()
 	var cm: ChunkManager = rig["cm"]
+	cm.set_lod_enabled(false)   # Phase 190: a far chunk is coarse and has no shape at all; parking is a full chunk's
 	var voxel: VoxelSlice = rig["voxel"]
 	_build_chunks(cm, [Vector2i(0, 0), Vector2i(3, 0), Vector2i(4, 0)])
 	_stand_in(rig["player"], Vector2i(2, 0))
@@ -507,6 +509,7 @@ func _test_near_collision_nearest_first() -> void:
 func _test_near_collision_flying() -> void:
 	var rig := _make_chunk_build_rig()
 	var cm: ChunkManager = rig["cm"]
+	cm.set_lod_enabled(false)   # Phase 190: a far chunk is coarse and has no shape at all; parking is a full chunk's
 	var voxel: VoxelSlice = rig["voxel"]
 	var player: PlayerSlice = rig["player"]
 	_stand_in(player, Vector2i(3, 0))
@@ -608,6 +611,7 @@ func _test_near_contents_enter_ring() -> void:
 func _test_near_collision_fold_standin() -> void:
 	var rig := _make_chunk_build_rig()
 	var cm: ChunkManager = rig["cm"]
+	cm.set_lod_enabled(false)   # Phase 190: a far chunk is coarse and has no shape at all; parking is a full chunk's
 	var voxel: VoxelSlice = rig["voxel"]
 	var far := Vector2i(3, 0)
 	_build_chunks(cm, [far])

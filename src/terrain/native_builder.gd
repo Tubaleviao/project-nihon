@@ -4,7 +4,7 @@ extends RefCounted
 ## binary for this platform is present and loads, and the game logs which one is in use.
 ##
 ## `use_native(fn)` is the per-function switch later steps route through: Phase 167 `heightmap_for`,
-## 168 `build_runs`, 169 `build_chunk_arrays`. A function is routed native only when the extension is
+## 168 `build_runs`, 169 `build_chunk_arrays`, 190 `build_coarse_arrays`. A function is routed native only when the extension is
 ## loaded AND the native class reports it (`functions()`), so this scaffold, which implements none,
 ## routes nothing and every chunk is still built by GDScript.
 
@@ -16,10 +16,11 @@ const MODE_FALLBACK := "gdscript"
 ## User arg that forces the GDScript fallback even with the binary present (CI times both builders).
 const NO_NATIVE_ARG := "--no-native"
 ## Functions a later step may route natively, in step order.
-const FUNCTIONS: Array[String] = ["heightmap_for", "build_runs", "build_chunk_arrays"]
+const FUNCTIONS: Array[String] = ["heightmap_for", "build_runs", "build_chunk_arrays", "build_coarse_arrays"]
 ## The oldest native builder whose results match this GDScript. A stale binary (an older build left in
-## `native/bin`) would compute different terrain than its peers, so it is not used. 5 = worldgen 9's spawn plain; 6 = worldgen 10 ridges.
-const REQUIRED_VERSION := 6
+## `native/bin`) would compute different terrain than its peers, so it is not used. 5 = worldgen 9's spawn plain; 6 = worldgen 10 ridges;
+## 7 = Phase 190 coarse builds.
+const REQUIRED_VERSION := 7
 
 static var _loaded := false
 static var _mode := MODE_FALLBACK

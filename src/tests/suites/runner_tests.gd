@@ -202,3 +202,5 @@ func _test_playtest_flight_verdict() -> void:
 	assert_eq(Bot.near_ring_ms(times), 1.5, "a flight that spawned nothing has collision only")
 	assert_true(FileAccess.get_file_as_string("res://tools/check_playtest_budget.py").contains("FLIGHT_MAX_SHARE = %s" % str(Bot.FLIGHT_MAX_SHARE)),
 		"the CI gate's flight share is the bot's")
+	assert_true(is_equal_approx(Bot.FLIGHT_WORKER_MAX_SHARE, 1.0 / 3.0) and FileAccess.get_file_as_string("res://tools/check_playtest_budget.py").contains("FLIGHT_WORKER_MAX_SHARE = 1.0 / 3.0"),
+		"the CI gate's worker share is the bot's (a third)")
