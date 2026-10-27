@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–178, 182 and 187–189 are done. Their specs and acceptance criteria are archived in
+Phases 1–178, 182 and 187–190 are done. Their specs and acceptance criteria are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Arc: make it look and feel like an RPG (Phases 173–181, 183)
@@ -73,7 +73,7 @@ render mesh, at 27 chunks/s.
 | 187 | Fast flight I: high-priority builds, a heading-first queue and a flight step | Done | [phases-187.md](docs/roadmap-history/phases-187.md) |
 | 188 | Mountain ranges, not plateaus: narrower ridges, a temperature tree line and a low spawn plain | Done | [phases-188.md](docs/roadmap-history/phases-188.md) |
 | 189 | Fast flight II: collision and contents only near the body | Done | [phases-189.md](docs/roadmap-history/phases-189.md) |
-| 190 | Fast flight III: coarse chunks beyond the near ring | Planned | below |
+| 190 | Fast flight III: coarse chunks beyond the near ring | Done | [phases-190.md](docs/roadmap-history/phases-190.md) |
 | 191 | Fast flight IV: a recent-chunk cache, no holes, and a /speed cap of 30 on a slow machine | Planned | below |
 
 ### Arc: first steps (Phases 184–186)
@@ -90,31 +90,6 @@ The scattered UI instructions are removed, so the tutorial is the one place that
 | 184 | First steps in the fabric: the tutorial steps, the bed and a shelter rule | Planned | below |
 | 185 | The bed is the spawn point: host-owned, persisted, one per player | Planned | below |
 | 186 | The first-steps tutorial at runtime: one-time cards, a toggle, and no other in-UI tutorial | Planned | below |
-
----
-
-## Phase 190 — Fast flight III: coarse chunks beyond the near ring
-
-**Goal:** every chunk in the 9×9 window is built at full detail (64×64 tiles of 0.5 m), while the
-player reaches only the 3×3 around them. Build the outer rings coarser, so a crossing costs a fraction of
-nine full builds and a slow machine keeps up.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phase 189.
-
-**Deliverables:**
-- A level of detail per ring: full detail within Chebyshev 1, and coarser render-only meshes (32×32,
-  then 16×16 tiles) beyond. A chunk is upgraded when it enters the near ring and downgraded lazily.
-- The native builder and the GDScript reference both build the coarse levels, with equal output.
-- Seams between levels are closed (skirts or stitched edges), so no gap shows between rings.
-
-**Acceptance criteria:**
-- [ ] Suite: native and GDScript coarse builds are equal on the fixed chunk set.
-- [ ] Suite: a coarse chunk's mean height matches the full chunk's within a tolerance, and no seam
-  between levels leaves a gap (edge heights shared or skirted).
-- [ ] Playtest bot (CI): worker ms per crossing at 90 m/s at most a third of Phase 189's.
-- [ ] Suite green on both boot paths.
 
 ---
 

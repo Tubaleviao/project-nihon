@@ -42,6 +42,13 @@ public:
 	// comes back as an empty Dictionary and the caller runs the GDScript reference. Thread-safe.
 	Dictionary build_chunk_arrays(const Vector2i &p_chunk, const Array &p_heightmap, const Dictionary &p_resolved, bool p_local, const Dictionary &p_cfg) const;
 
+	// Phase 190. Port of `VoxelCoarse.build_coarse_arrays(chunk_pos, heightmap, input, step, local)`: the
+	// coarse build (one column per `step`x`step` tiles, skirts on the chunk edge, a conservative collision soup). `cfg` is the
+	// `build_runs` cfg. Empty on an input it cannot read; the caller then runs the GDScript reference.
+	Dictionary build_coarse_arrays(const Vector2i &p_chunk, const Array &p_heightmap, const Dictionary &p_input, int64_t p_step, bool p_local, const Dictionary &p_cfg) const;
+	// Its first half, `VoxelCoarse.coarse_columns` (not bound): the resolved column of each cell.
+	Dictionary coarse_columns(const Vector2i &p_chunk, const Array &p_heightmap, const Dictionary &p_input, int64_t p_step, const Dictionary &p_cfg) const;
+
 	Array heightmap_for(const Vector2i &p_pos, int64_t p_seed, const Ref<FastNoiseLite> &p_noise, const Dictionary &p_cfg) const;
 };
 

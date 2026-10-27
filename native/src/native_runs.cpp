@@ -7,6 +7,8 @@
 
 #include <godot_cpp/core/math.hpp>
 #include <godot_cpp/variant/color.hpp>
+#include <godot_cpp/variant/packed_color_array.hpp>
+#include <godot_cpp/variant/packed_float64_array.hpp>
 #include <godot_cpp/variant/vector2.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 #include <godot_cpp/variant/vector3i.hpp>
@@ -546,12 +548,8 @@ struct Ctx {
 	}
 };
 
-} // namespace
-
-Dictionary NativeChunkBuilder::build_runs(const Vector2i &p_chunk, const Array &p_heightmap, const Dictionary &p_input, const Dictionary &p_cfg) const {
-	Dictionary result;
-	ERR_FAIL_COND_V(p_heightmap.size() != CHUNK_SIZE * CHUNK_SIZE, result);
-	Ctx ctx;
+// Fill `ctx` from a build input and the runs cfg (`VoxelSlice.native_runs_cfg`). False on a cfg it cannot read.
+bool load_ctx(Ctx &ctx, const Dictionary &p_input, const Dictionary &p_cfg) {
 	ctx.seed_v = (int64_t)p_input.get("seed", 0);
 	ctx.edits = p_input.get("edits", Dictionary());
 	ctx.neighbours = p_input.get("neighbour_heightmaps", Dictionary());
@@ -562,7 +560,9 @@ Dictionary NativeChunkBuilder::build_runs(const Vector2i &p_chunk, const Array &
 	ctx.fallback_color = p_cfg.get("fallback_color", Color());
 	ctx.ice_color = p_cfg.get("ice_color", Color());
 	ctx.vein_cell = p_cfg.get("vein_cell", Callable());
-	ERR_FAIL_COND_V(!ctx.vein_cell.is_valid(), result);
+	if (!ctx.vein_cell.is_valid()) {
+		return false;
+	}
 	Dictionary colors = p_cfg.get("colors", Dictionary());
 	Array keys = colors.keys();
 	for (int i = 0; i < keys.size(); i++) {
@@ -593,6 +593,16 @@ Dictionary NativeChunkBuilder::build_runs(const Vector2i &p_chunk, const Array &
 		band.ley = b["ley"];
 		ctx.bands[String(keys[i])] = band;
 	}
+	return true;
+}
+
+} // namespace
+
+Dictionary NativeChunkBuilder::build_runs(const Vector2i &p_chunk, const Array &p_heightmap, const Dictionary &p_input, const Dictionary &p_cfg) const {
+	Dictionary result;
+	ERR_FAIL_COND_V(p_heightmap.size() != CHUNK_SIZE * CHUNK_SIZE, result);
+	Ctx ctx;
+	ERR_FAIL_COND_V(!load_ctx(ctx, p_input, p_cfg), result);
 
 	const int64_t cpx = p_chunk.x;
 	const int64_t cpz = p_chunk.y;
@@ -651,5 +661,80 @@ Dictionary NativeChunkBuilder::build_runs(const Vector2i &p_chunk, const Array &
 	}
 	result["runs"] = out;
 	result["deposits"] = deposits;
+	return result;
+}
+
+// Phase 190 — `VoxelCoarse.coarse_columns`: one resolved column per cell of `step`x`step` tiles, at the
+// highest natural top of the cell (first in row-major order on a tie), coloured by that tile's biome: its
+// host rock and the topsoil of the biome it shows (no ore field). Empty on an input it cannot read.
+Dictionary NativeChunkBuilder::coarse_columns(const Vector2i &p_chunk, const Array &p_heightmap, const Dictionary &p_input, int64_t p_step, const Dictionary &p_cfg) const {
+	Dictionary result;
+	ERR_FAIL_COND_V(p_heightmap.size() != CHUNK_SIZE * CHUNK_SIZE, result);
+	ERR_FAIL_COND_V(p_step < 1 || CHUNK_SIZE % p_step != 0, result);
+	Ctx ctx;
+	ERR_FAIL_COND_V(!load_ctx(ctx, p_input, p_cfg), result);
+	std::vector<double> hm(CHUNK_SIZE * CHUNK_SIZE);
+	for (int i = 0; i < CHUNK_SIZE * CHUNK_SIZE; i++) {
+		Variant h = p_heightmap[i];
+		ERR_FAIL_COND_V(h.get_type() != Variant::FLOAT && h.get_type() != Variant::INT, result);
+		hm[i] = double(h);
+	}
+	const int64_t n = CHUNK_SIZE / p_step;
+	PackedFloat64Array tops, soil_depths;
+	PackedColorArray colors, top_colors, soil_colors;
+	tops.resize(n * n);
+	soil_depths.resize(n * n);
+	colors.resize(n * n);
+	top_colors.resize(n * n);
+	soil_colors.resize(n * n);
+	for (int64_t cz = 0; cz < n; cz++) {
+		for (int64_t cx = 0; cx < n; cx++) {
+			double best = -INFINITY;
+			int64_t btx = 0, btz = 0;
+			for (int64_t dz = 0; dz < p_step; dz++) {
+				for (int64_t dx = 0; dx < p_step; dx++) {
+					int64_t tx = cx * p_step + dx;
+					int64_t tz = cz * p_step + dz;
+					double h = voxel_height(hm[tz * CHUNK_SIZE + tx]);
+					if (h > best) {
+						best = h;
+						btx = tx;
+						btz = tz;
+					}
+				}
+			}
+			int64_t i = cz * n + cx;
+			tops.set(i, best);
+			if (best <= BEDROCK_DEPTH) {
+				colors.set(i, ctx.fallback_color);
+				top_colors.set(i, ctx.fallback_color);
+				soil_colors.set(i, ctx.fallback_color);
+				soil_depths.set(i, 0.0);
+				continue;
+			}
+			int64_t gx = int64_t(p_chunk.x) * CHUNK_SIZE + btx;
+			int64_t gz = int64_t(p_chunk.y) * CHUNK_SIZE + btz;
+			double wx = f32(double(gx) * TILE_SIZE + TILE_SIZE * 0.5);
+			double wz = f32(double(gz) * TILE_SIZE + TILE_SIZE * 0.5);
+			String biome = ctx.biome_of(wx, wz);
+			Color color = ctx.icy(ctx.material_color(ctx.host_material(biome)), wz);
+			colors.set(i, color);
+			auto st = ctx.styles.find(ctx.blended_biome(wx, wz, biome));
+			if (st == ctx.styles.end()) {
+				top_colors.set(i, color);
+				soil_colors.set(i, color);
+				soil_depths.set(i, 0.0);
+			} else {
+				top_colors.set(i, ctx.icy(st->second.top, wz));
+				soil_colors.set(i, ctx.icy(st->second.soil, wz));
+				soil_depths.set(i, st->second.depth);
+			}
+		}
+	}
+	result["tops"] = tops;
+	result["colors"] = colors;
+	result["top_colors"] = top_colors;
+	result["soil_colors"] = soil_colors;
+	result["soil_depths"] = soil_depths;
 	return result;
 }

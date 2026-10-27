@@ -192,6 +192,19 @@ var builds_attached: int = 0
 func set_near_ring_enabled(on: bool) -> void:
 	_near.enabled = on
 
+## Phase 190 — false builds every chunk at full detail (the Phase 189 behaviour): the playtest bot's record flight.
+func set_lod_enabled(on: bool) -> void:
+	_near.lod_enabled = on
+
+## Phase 190 — worker µs of every build reaped, and the local player's chunk crossings: the flight step's
+## worker ms per crossing.
+var worker_usec: int = 0
+var local_crossings: int = 0
+
+## Phase 190 — the level `chunk` is built at: 1 full, a `VoxelCoarse.STEPS` value coarse, 0 not built.
+func chunk_lod(chunk_pos: Vector2i) -> int:
+	return _near.lod_of(_chunk_key(chunk_pos)) if _built.has(_chunk_key(chunk_pos)) else 0
+
 ## Set by game_root before the slices enter the tree.
 var terrain_slice: Node = null
 var voxel_slice: Node = null
@@ -288,6 +301,7 @@ func is_moving_fast() -> bool:
 
 ## Note a local crossing at the pump clock's time (called by `refresh` when the local centre moves by a step).
 func note_local_crossing() -> void:
+	local_crossings += 1
 	var now := _now_msec()
 	if _last_local_crossing_msec >= 0 and now - _last_local_crossing_msec <= FAST_CROSSING_MSEC:
 		_fast_until_msec = now + FAST_HOLD_MSEC
@@ -858,47 +872,9 @@ func keeps_render() -> bool:
 	var flag = voxel_slice.get("attach_geometry") if voxel_slice != null else null
 	return not (flag is bool and not flag)
 
-## Phase 141 — the dispatch with the NOISE on the worker too. Measured before this: the main thread
-## paid 14 ms (equator) to 36 ms (by a pole) for the chunk's own heightmap and up to 8 more maps for
-## its unbuilt neighbours' seam guesses (120 ms to 290 ms on a cold window), once per dispatch, i.e.
-## a stall of 1 to 18 frames on every frame of a crossing. Now the main thread only gathers (edits,
-## known maps, biomes) and copies the noise; the task generates the chunk's map from the static
-## generator (`TerrainSlice.heightmap_for`) and only the seam EDGES of the unknown neighbours
-## (`VoxelSlice.fill_seam_strips`), then resolves and builds as before. The map comes back in
-## `result[1]`, and `_apply_build_entry` stores that one.
+## Phase 141 — the dispatch with the noise on the worker too (moved to `chunk_part_1.gd` by Phase 190).
 func _dispatch_worker_noise_build(chunk_pos: Vector2i, key: String) -> void:
-	TerrainSlice.warm_polar_caches()   # the static caches the generator reads, filled here on the main thread
-	var cached: Array = voxel_slice.take_cached_heightmap(chunk_pos)
-	# #437 — a dedicated server attaches no geometry, so its task only generates the map: no gather,
-	# no seam strips, no resolve and no mesh/collision/deposit arrays to throw away.
-	var geometry := not skips_geometry()
-	var keep_render := keeps_render()
-	var gathered: Dictionary = voxel_slice.gather_build_input_deferred(chunk_pos) if geometry else {}
-	var seed_v: int = int(terrain_slice.get_world_seed())
-	var noise: FastNoiseLite = terrain_slice.detail_noise_copy()
-	var revision: int = int(voxel_slice.chunk_revision(chunk_pos))
-	var result: Array = [null, cached]
-	var job := func() -> void:
-		var hm: Array = cached if not cached.is_empty() else TerrainSlice.heightmap_for(chunk_pos, seed_v, noise)
-		result[1] = hm
-		if not geometry:
-			result[0] = VoxelBuilder.no_geometry_arrays()
-			return
-		VoxelBuilder.fill_seam_strips(chunk_pos, gathered, seed_v, noise)
-		result[0] = VoxelMesh.build_worker_arrays(chunk_pos, hm, VoxelBuilder.build_runs(chunk_pos, hm, gathered), keep_render)
-	# A low-priority task may only use `low_priority_thread_ratio` of the pool (0.3 by default: three or
-	# four threads on most machines, which is what really capped the build rate). Phase 141 raised only the
-	# catch-up to high priority; Phase 187 does it for the local player's window too, because the steady
-	# stream is capped the same way: at 90 m/s (admin flight) 11 builds sat in flight while three ran. A peer's
-	# window stays low (`build_high_priority`). `build_cap()` (all cores but one) keeps a worker free.
-	var task_id := WorkerThreadPool.add_task(job, build_high_priority(chunk_pos), "chunk build %s" % key)
-	_builds[task_id] = {
-		"chunk":     chunk_pos,
-		"key":       key,
-		"heightmap": [],
-		"revision":  revision,
-		"result":    result,
-	}
+	_m1.dispatch_worker_noise_build(chunk_pos, key)
 
 ## Mark any build already in flight for `key` as stale, so `_apply_build_entry` reaps it
 ## without attaching it and without re-dispatching. Split out of `_dispatch_build` by the
@@ -1222,6 +1198,8 @@ func _apply_build_entry(task_id: int) -> bool:
 	_builds.erase(task_id)
 	WorkerThreadPool.wait_for_task_completion(task_id)
 	var key: String = str(entry["key"])
+	var spent: Array = entry["result"]
+	worker_usec += int(spent[2]) if spent.size() > 2 else 0   # Phase 190: the work was done, attached or not
 	if bool(entry.get("superseded", false)):
 		return false   # a later dispatch for this chunk owns the mesh
 	if not _loaded.has(key):
@@ -1248,6 +1226,7 @@ func _apply_build_entry(task_id: int) -> bool:
 	_build_attempts.erase(key)
 	_failed.erase(key)
 	_built[key] = true
+	_near.note_built(key, int(arrays.get("lod", 1)))
 	builds_attached += 1
 	# The ground exists now, so its contents may: creatures and trees spawn HERE rather
 	# than at load time (see `_spawn_chunk_contents`) — but ONCE per residency, not once

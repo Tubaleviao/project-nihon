@@ -7,6 +7,7 @@ extends "res://src/tests/test_support.gd"
 const NativeBuilder := preload("res://src/terrain/native_builder.gd")
 const VoxelRuns := preload("res://src/terrain/voxel_runs.gd")
 const VoxelMesh := preload("res://src/terrain/voxel_mesh.gd")
+const VoxelCoarse := preload("res://src/terrain/voxel_coarse.gd")
 
 const EXPECT_NATIVE_ARG := "--expect-native"
 const EXPECT_FALLBACK_ARG := "--expect-fallback"
@@ -19,6 +20,7 @@ func register() -> void:
 	_run_test("native: build_runs matches the GDScript reference on the fixed chunk set",          _test_native_build_runs_parity)
 	_run_test("native: build_chunk_arrays matches the GDScript reference on the fixed chunk set",  _test_native_chunk_arrays_parity)
 	_run_test("native: a rejected build_chunk_arrays falls back to the GDScript reference",        _test_native_chunk_arrays_rejection_falls_back)
+	_run_test("native: build_coarse_arrays matches the GDScript reference on the fixed chunk set", _test_native_coarse_parity)
 	_run_test("native: a rejected build_runs falls back to the GDScript reference",                _test_native_build_runs_rejection_falls_back)
 	_run_test("native: the build_runs cfg snapshot is filled once across threads",                 _test_native_runs_cfg_single_fill)
 	_run_test("native: run edits resolve in a total order",                                     _test_native_run_ops_order)
@@ -43,7 +45,7 @@ func _test_native_real_loader() -> void:
 		assert_true(ClassDB.class_exists(NativeBuilder.CLASS_NAME), "NativeChunkBuilder is registered")
 		assert_eq(NativeBuilder.version(), NativeBuilder.REQUIRED_VERSION, "the native class reports its version")
 		var b: RefCounted = ClassDB.instantiate(NativeBuilder.CLASS_NAME)
-		assert_eq(b.call("functions") as PackedStringArray, PackedStringArray(["heightmap_for", "build_runs", "build_chunk_arrays"]), "Phases 167-169 port heightmap_for, build_runs and build_chunk_arrays")
+		assert_eq(b.call("functions") as PackedStringArray, PackedStringArray(["heightmap_for", "build_runs", "build_chunk_arrays", "build_coarse_arrays"]), "Phases 167-169 and 190 port heightmap_for, build_runs, build_chunk_arrays and build_coarse_arrays")
 	if EXPECT_FALLBACK_ARG in args:
 		assert_eq(mode, NativeBuilder.MODE_FALLBACK, "no binary: the loader reports the GDScript fallback")
 		assert_eq(NativeBuilder.version(), -1, "no native version on the fallback")
@@ -210,6 +212,42 @@ func _test_native_chunk_arrays_parity() -> void:
 		assert_true(VoxelSlice.build_chunk_arrays(chunk, hm, {"runs": {}}) == bare_want, "native bare build %s equals the reference" % str(chunk))
 	assert_true(quads > 0, "the fixed chunk set meshes quads (%d)" % quads)
 	assert_true(deposits_seen > 0, "the fixed chunk set meshes vein deposit boxes (%d)" % deposits_seen)
+
+## Phase 190 — the native coarse build gives the same arrays, in the same order, as the reference: both
+## coarse levels, absolute and chunk-local vertices, a full biome ring and one missing its east column.
+func _test_native_coarse_parity() -> void:
+	NativeBuilder.init()
+	if not NativeBuilder.is_native():
+		print("[Native] build_coarse_arrays parity skipped: no native extension in this run")
+		return
+	var seed_v := 777001
+	var noise := FastNoiseLite.new()
+	TerrainSlice.configure_noise(noise, seed_v)
+	ChunkRecordsScript.clear()
+	var quads := 0
+	var topsoil := 0
+	for chunk: Vector2i in _native_parity_chunks():
+		var hm := TerrainSlice.heightmap_for(chunk, seed_v, noise)
+		for variant in range(2):
+			var input := _native_runs_input(chunk, seed_v, noise, {}, {}, false)
+			if variant == 1:
+				for dz in range(-1, 2):   # a ring chunk with no biome: the blend reads its own
+					(input["biomes"] as Dictionary).erase(VoxelSlice._chunk_key(chunk + Vector2i(1, dz)))
+			for step: int in VoxelCoarse.STEPS:
+				var cols := VoxelCoarse.coarse_columns(chunk, hm, input, step)
+				for i in (cols["tops"] as PackedFloat64Array).size():
+					if cols["top_colors"][i] != cols["colors"][i]:
+						topsoil += 1
+				for local in [false, true]:
+					var want := VoxelCoarse.build_coarse_arrays_gd(chunk, hm, input, step, local)
+					var got := VoxelCoarse.build_coarse_arrays(chunk, hm, input, step, local)
+					assert_true(got == want, "native build_coarse_arrays %s v%d step %d local=%s equals the GDScript reference" % [str(chunk), variant, step, str(local)])
+					assert_eq(got["quad_count"], want["quad_count"], "same quad count %s step %d" % [str(chunk), step])
+					quads += int(want["quad_count"])
+	assert_true(quads > 0, "the fixed chunk set meshes coarse quads (%d)" % quads)
+	assert_true(topsoil > 0, "the fixed chunk set holds topsoiled cells, so the topsoil path is compared (%d)" % topsoil)
+	var bad := NativeBuilder.builder().call("build_coarse_arrays", Vector2i(1, 1), [1.0, 2.0], {}, 2, true, VoxelSlice.native_runs_cfg()) as Dictionary
+	assert_true(bad.is_empty(), "a malformed heightmap is rejected by the native coarse build")
 
 ## A malformed resolve table is rejected by the native mesher (empty result); `VoxelMesh` then runs
 ## the GDScript reference rather than hand back a result without arrays.

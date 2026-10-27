@@ -4,6 +4,7 @@ extends RefCounted
 ## A worker task must not hold a Node, so the lambda below names the script constant, not `sl`.
 const VoxelBuilder := preload("res://src/terrain/voxel_slice.gd")
 const VoxelMesh := preload("res://src/terrain/voxel_mesh.gd")
+const VoxelCoarse := preload("res://src/terrain/voxel_coarse.gd")
 const TerrainSliceScript := preload("res://src/terrain/terrain_slice.gd")
 const SeamWrapScript := preload("res://src/terrain/seam_wrap.gd")
 
@@ -304,3 +305,61 @@ func apply_order(done: Array) -> Array:
 	for u in urgent:
 		out.append(u[2])
 	return out + rest
+
+## Phase 141 — the dispatch with the NOISE on the worker too. Measured before this: the main thread
+## paid 14 ms (equator) to 36 ms (by a pole) for the chunk's own heightmap and up to 8 more maps for
+## its unbuilt neighbours' seam guesses (120 ms to 290 ms on a cold window), once per dispatch, i.e.
+## a stall of 1 to 18 frames on every frame of a crossing. Now the main thread only gathers (edits,
+## known maps, biomes) and copies the noise; the task generates the chunk's map from the static
+## generator (`TerrainSlice.heightmap_for`) and only the seam EDGES of the unknown neighbours
+## (`VoxelSlice.fill_seam_strips`), then resolves and builds as before. The map comes back in
+## `result[1]`, and `_apply_build_entry` stores that one.
+##
+## Phase 190 — a chunk `NearRing.lod_for` puts beyond the detail ring is built coarse instead
+## (`VoxelCoarse`): no seam strips, no full resolve, a small conservative collision shape. Its gather is
+## only the biomes. The task's own time comes back in `result[2]` (µs) for the flight step's worker ms per crossing.
+func dispatch_worker_noise_build(chunk_pos: Vector2i, key: String) -> void:
+	TerrainSliceScript.warm_polar_caches()   # the static caches the generator reads, filled here on the main thread
+	var voxel: Node = sl.voxel_slice
+	var cached: Array = voxel.take_cached_heightmap(chunk_pos)
+	# #437 — a dedicated server attaches no geometry, so its task only generates the map: no gather,
+	# no seam strips, no resolve and no mesh/collision/deposit arrays to throw away.
+	var geometry: bool = not sl.skips_geometry()
+	var keep_render: bool = sl.keeps_render()
+	var lod: int = sl._near.lod_for(chunk_pos) if geometry else VoxelCoarse.FULL
+	var gathered: Dictionary = {}
+	if lod != VoxelCoarse.FULL:
+		gathered = { "biomes": voxel.gather_biomes_for(chunk_pos) }
+	elif geometry:
+		gathered = voxel.gather_build_input_deferred(chunk_pos)
+	var seed_v: int = int(sl.terrain_slice.get_world_seed())
+	var noise: FastNoiseLite = sl.terrain_slice.detail_noise_copy()
+	var revision: int = int(voxel.chunk_revision(chunk_pos))
+	var result: Array = [null, cached, 0]
+	var job := func() -> void:
+		var t0 := Time.get_ticks_usec()
+		var hm: Array = cached if not cached.is_empty() else TerrainSliceScript.heightmap_for(chunk_pos, seed_v, noise)
+		result[1] = hm
+		if not geometry:
+			result[0] = VoxelBuilder.no_geometry_arrays()
+		elif lod != VoxelCoarse.FULL:
+			var coarse := VoxelCoarse.build_coarse_arrays(chunk_pos, hm, gathered, lod, true)
+			coarse["shape"] = VoxelMesh.collision_shape(coarse["collision"])
+			result[0] = coarse
+		else:
+			VoxelBuilder.fill_seam_strips(chunk_pos, gathered, seed_v, noise)
+			result[0] = VoxelMesh.build_worker_arrays(chunk_pos, hm, VoxelBuilder.build_runs(chunk_pos, hm, gathered), keep_render)
+		result[2] = Time.get_ticks_usec() - t0
+	# A low-priority task may only use `low_priority_thread_ratio` of the pool (0.3 by default: three or
+	# four threads on most machines, which is what really capped the build rate). Phase 141 raised only the
+	# catch-up to high priority; Phase 187 does it for the local player's window too, because the steady
+	# stream is capped the same way: at 90 m/s (admin flight) 11 builds sat in flight while three ran. A peer's
+	# window stays low (`build_high_priority`). `build_cap()` (all cores but one) keeps a worker free.
+	var task_id := WorkerThreadPool.add_task(job, sl.build_high_priority(chunk_pos), "chunk build %s" % key)
+	sl._builds[task_id] = {
+		"chunk":     chunk_pos,
+		"key":       key,
+		"heightmap": [],
+		"revision":  revision,
+		"result":    result,
+	}

@@ -14,6 +14,10 @@ the median of its record flight, flown in the same run with the near ring off, i
 (`flight.record_near_ms_per_attach`). The whole chunk pump (`main_ms_per_attach`, `record_ms_per_attach`)
 and its per-phase breakdown are printed, not gated: mesh upload and dispatch are not the near ring's to cut,
 and their share varies with the machine.
+
+Phase 190: also fails when the median worker ms per local chunk crossing of the gated flight
+(`flight.worker_ms_per_crossing`, coarse chunks beyond the near ring) is over FLIGHT_WORKER_MAX_SHARE of the
+record flight's (`flight.record_worker_ms_per_crossing`, every chunk at full detail, i.e. Phase 189).
 """
 import json
 import os
@@ -24,6 +28,7 @@ from pathlib import Path
 HEADROOM = 1.25
 BUDGET = Path(__file__).resolve().parent.parent / "docs" / "perf" / "playtest-budget.json"
 FLIGHT_MAX_SHARE = 0.5   # PlaytestBot.FLIGHT_MAX_SHARE
+FLIGHT_WORKER_MAX_SHARE = 1.0 / 3.0   # PlaytestBot.FLIGHT_WORKER_MAX_SHARE
 
 
 def check(reports, budgets):
@@ -72,6 +77,26 @@ def check_flight(reports, max_share=FLIGHT_MAX_SHARE):
     return []
 
 
+def check_flight_worker(reports, max_share=FLIGHT_WORKER_MAX_SHARE):
+    flights = [s["flight"] for r in reports for s in r["steps"]
+               if s["step"] == "flight" and s.get("flight", {}).get("crossings", 0) > 0
+               and s["flight"].get("record_crossings", 0) > 0 and "record_worker_ms_per_crossing" in s["flight"]]
+    if not flights:
+        return ["no report has a flight step that crossed chunks on both flights with worker times"]
+    med = statistics.median(f["worker_ms_per_crossing"] for f in flights)
+    record = statistics.median(f["record_worker_ms_per_crossing"] for f in flights)
+    limit = record * max_share
+    line = (f"flight: median worker {med:.1f} ms per chunk crossing of {len(flights)} runs "
+            f"(every chunk at full detail: {record:.1f} ms, limit {limit:.1f} ms)")
+    print(line)
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        print(f"::notice title=Flight worker ms per crossing::{line}")
+    if med > limit:
+        return [f"flight: median worker {med:.1f} ms per crossing is over {limit:.1f} ms "
+                f"({max_share:.0%} of the full-detail record's)"]
+    return []
+
+
 def self_test():
     def report(ms, record, total=10.0, total_record=15.0):
         return {"steps": [{"step": "flight", "flight": {
@@ -97,6 +122,23 @@ def self_test():
         if (not check_flight(reports)) != ok:
             print(f"self-test: the flight gate got '{name}' wrong")
             bad += 1
+
+    def worker(ms, record, crossings=30, record_crossings=30):
+        return {"steps": [{"step": "flight", "flight": {
+            "crossings": crossings, "worker_ms_per_crossing": ms,
+            "record_crossings": record_crossings, "record_worker_ms_per_crossing": record}}]}
+    worker_cases = [
+        ("a fifth of the record", [worker(40, 200), worker(45, 210), worker(38, 190)], True),
+        ("one noisy run of three", [worker(40, 200), worker(150, 200), worker(50, 205)], True),
+        ("half the record", [worker(100, 200), worker(110, 205), worker(95, 190)], False),
+        ("a record flight that never crossed", [worker(40, 200, 30, 0)], False),
+        ("a report without the worker fields",
+         [{"steps": [{"step": "flight", "flight": {"crossings": 30, "record_crossings": 30}}]}], False),
+    ]
+    for name, reports, ok in worker_cases:
+        if (not check_flight_worker(reports)) != ok:
+            print(f"self-test: the flight worker gate got '{name}' wrong")
+            bad += 1
     print("self-test: ok" if not bad else f"self-test: {bad} case(s) wrong")
     return 1 if bad else 0
 
@@ -110,6 +152,7 @@ def main(argv):
     reports = [json.loads(Path(a).read_text()) for a in argv]
     failures = check(reports, json.loads(BUDGET.read_text()))
     failures += check_flight(reports)
+    failures += check_flight_worker(reports)
     for f in failures:
         print(f"FAIL: {f}")
     return 1 if failures else 0
