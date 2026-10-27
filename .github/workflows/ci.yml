@@ -3,6 +3,8 @@ name: CI
 # A push or PR that touches only hand-written docs skips CI. Docs that CI reads stay out of this
 # list: bible/ and wiki/ (generated, checked for fabric drift), ROADMAP.md and
 # docs/roadmap-history/ (check_roadmap.js) and docs/perf/ (stress + playtest baselines).
+# A change to only the roadmap (plus docs from this list) runs a light CI: the `changes` job
+# skips everything but `fabric` (which runs check_roadmap.js) and the workflow lint.
 on:
   push:
     branches: [main, master]
@@ -33,10 +35,52 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Classify changed paths
+    # `light` is true when every changed path is a roadmap file or a docs-only path (the list above).
+    # The roadmap still needs `check_roadmap.js` (in `fabric`, which always runs), but not the suite,
+    # boots, harness, playtest, stress or exports, so those skip. Anything unclear (a manual run, a
+    # new branch, a failed diff) counts as not light and runs everything.
+    runs-on: ubuntu-latest
+    outputs:
+      light: ${{ steps.classify.outputs.light }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Classify
+        id: classify
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          light=false
+          if [ "$EVENT" = pull_request ]; then
+            # The checkout is the PR's merge commit: its first parent is the base.
+            files=$(git diff --name-only HEAD^1 HEAD) || files=""
+          elif [ "$EVENT" = push ] && [ -n "$BEFORE" ] && ! [[ "$BEFORE" =~ ^0+$ ]]; then
+            files=$(git diff --name-only "$BEFORE" HEAD) || files=""
+          else
+            files=""
+          fi
+          if [ -n "$files" ]; then
+            light=true
+            while IFS= read -r f; do
+              case "$f" in
+                ROADMAP.md|docs/roadmap-history/*|README.md|AGENTS.md|CLAUDE.md|characters.md) ;;
+                assets/README.md|native/README.md|docs/DEVELOPMENT.md|docs/media/*) ;;
+                *) light=false; echo "runs full CI: $f"; break ;;
+              esac
+            done <<< "$files"
+          fi
+          echo "light=$light" | tee -a "$GITHUB_OUTPUT"
+
   godot-tests:
     name: Godot headless test suite
     # A manual dispatch is for the crowd stress run only.
-    if: github.event_name != 'workflow_dispatch'
+    needs: changes
+    if: github.event_name != 'workflow_dispatch' && needs.changes.outputs.light != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -78,7 +122,8 @@ jobs:
     # Its own job, not a leg of the matrix below: the jobs that run the Linux binary (native-suite,
     # playtest, export-native) need only this one, so they no longer wait for the macOS build.
     # A manual dispatch is for the crowd stress run only.
-    if: github.event_name != 'workflow_dispatch'
+    needs: changes
+    if: github.event_name != 'workflow_dispatch' && needs.changes.outputs.light != 'true'
     runs-on: ubuntu-latest
     env:
       # godot-cpp's SConstruct reads SCONS_CACHE: compiled objects are reused across runs, so only
@@ -126,7 +171,8 @@ jobs:
   native:
     name: Native builder (${{ matrix.name }})
     # A manual dispatch is for the crowd stress run only.
-    if: github.event_name != 'workflow_dispatch'
+    needs: changes
+    if: github.event_name != 'workflow_dispatch' && needs.changes.outputs.light != 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -234,7 +280,8 @@ jobs:
   server-boot:
     name: Dedicated server boots clean
     # A manual dispatch is for the crowd stress run only.
-    if: github.event_name != 'workflow_dispatch'
+    needs: changes
+    if: github.event_name != 'workflow_dispatch' && needs.changes.outputs.light != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -272,7 +319,8 @@ jobs:
   host-boot:
     name: Listen host reaches the world (first ring placed)
     # A manual dispatch is for the crowd stress run only.
-    if: github.event_name != 'workflow_dispatch'
+    needs: changes
+    if: github.event_name != 'workflow_dispatch' && needs.changes.outputs.light != 'true'
     runs-on: ubuntu-latest
     # Phase 42 review pass 4 — a hard cap on this job. The boot below waits on
     # WorkerThreadPool tasks, and `--quit-after 100000` (its outer net) is FRAMES: a boot
@@ -402,7 +450,8 @@ jobs:
   net-harness:
     name: Two-client network harness (loopback ENet)
     # A manual dispatch is for the crowd stress run only.
-    if: github.event_name != 'workflow_dispatch'
+    needs: changes
+    if: github.event_name != 'workflow_dispatch' && needs.changes.outputs.light != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -452,6 +501,8 @@ jobs:
     # Phase 162 — main pushes and manual runs. A pull request runs it only when it touches the host's hot
     # path or the stress tooling (the `scope` step), so the baseline gate fails the PR, not main after the merge.
     # A manual run can pass a bigger ceiling and other link profiles.
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.light != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -681,7 +732,8 @@ jobs:
 
   export-check:
     name: Linux export (pull request)
-    if: github.event_name == 'pull_request'
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.light != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
