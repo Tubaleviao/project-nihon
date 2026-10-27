@@ -163,8 +163,15 @@ mood: a 3D chibi novice in a plain leather outfit, framed alone on a dark, quiet
   part or palette index, each gender has at least one hair style, and the default is a valid
   creation.
 
+**Progress (WIP, branch `autopilot/1027-b98c0f-character-creation`):** done: `fabric/gameplay/characters/creation.js`
+(name rules, genders, six hair styles per gender, hair colours, default, starting kit), the `CreationMasculine` and
+`CreationFeminine` chibi presets, the widened proportion bounds (`BODY_PROP_BOUNDS`: limbs to 0.60, head to 1.90),
+`tools/check_creation.js` and its CI step. Left: the `NoviceTunic` outfit item, public placeholders (`gen_placeholder_glb.py`:
+two bodies, outfit, 12 hair meshes), hair-style icons in `gen_ui_icons.py`, the runtime name rule (TR39 skeleton) and the
+suites below.
+
 **Acceptance criteria:**
-- [ ] `npm run validate`, `npm run check-drift` and `node tools/check_creation.js` pass.
+- [x] `npm run validate`, `npm run check-drift` and `node tools/check_creation.js` pass.
 - [ ] Suite: every gender preset and hair option resolves through `AssetOverlay` in the public
   build, and every hair style has an icon.
 - [ ] Suite: the name rule accepts and rejects a fixture list, including accents, emoji, a
