@@ -97,9 +97,9 @@ const BODY_PROP_BOUNDS: Dictionary = {
 	"height":        { "min": 0.85, "default": 1.00, "max": 1.15 },
 	"bodyMass":      { "min": 0.80, "default": 1.00, "max": 1.20 },
 	"shoulderWidth": { "min": 0.90, "default": 1.00, "max": 1.10 },
-	"armLength":     { "min": 0.90, "default": 1.00, "max": 1.10 },
-	"legLength":     { "min": 0.90, "default": 1.00, "max": 1.10 },
-	"headScale":     { "min": 0.90, "default": 1.00, "max": 1.10 },
+	"armLength":     { "min": 0.60, "default": 1.00, "max": 1.10 },   # Phase 180: chibi limbs are short
+	"legLength":     { "min": 0.60, "default": 1.00, "max": 1.10 },
+	"headScale":     { "min": 0.90, "default": 1.00, "max": 1.90 },   # Phase 180: and the head about a third of the height
 }
 
 ## Quantization step for the six proportion sliders (§8). Snapping each slider to

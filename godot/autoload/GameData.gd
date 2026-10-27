@@ -4,6 +4,8 @@ extends Node
 
 const APPEARANCES: Dictionary = {
 		"BoarRider": preload("res://godot/appearances/boarrider.tres"),
+		"CreationFeminine": preload("res://godot/appearances/creationfeminine.tres"),
+		"CreationMasculine": preload("res://godot/appearances/creationmasculine.tres"),
 		"TravellerHuman": preload("res://godot/appearances/travellerhuman.tres")
 }
 
@@ -28,6 +30,10 @@ const BIOMES: Dictionary = {
 
 const CONTAINERS: Dictionary = {
 		"Stockpile": preload("res://godot/containers/stockpile.tres")
+}
+
+const CREATIONS: Dictionary = {
+		"CharacterCreation": preload("res://godot/creations/charactercreation.tres")
 }
 
 const CREATURES: Dictionary = {

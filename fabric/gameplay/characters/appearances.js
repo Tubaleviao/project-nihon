@@ -14,6 +14,32 @@ const { defineEntity } = require('./shared')
 // the item definition (in GameData.ITEMS) carries the sockets and masks.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Phase 180 — the two creation body presets: a chibi figure (head about a third of the height, short limbs), used by
+// both genders. Parts are public placeholders at the keys the private pack fills.
+const chibiPreset = (gender, description) => defineEntity({
+  tags: ['appearance', 'creation'],
+  description,
+  goal: `The fixed chibi body a ${gender} character is created with`,
+  fields: {
+    skeleton: { type: 'string', description: 'Skeleton key in GameData.SKELETONS', defaultValue: 'HumanoidSkeleton' },
+    body: { type: 'string', description: 'Body mesh identifier', defaultValue: `chibi_body_${gender[0]}_01` },
+    proportions: {
+      type: 'json',
+      description: 'Chibi proportions (§8): a large head and short limbs; the bounds were widened for them',
+      defaultValue: { height: 0.85, bodyMass: 1.1, shoulderWidth: 1.0, armLength: 0.7, legLength: 0.65, headScale: 1.8 },
+    },
+    skinColor: { type: 'integer', description: 'Palette index for skin', defaultValue: gender === 'masculine' ? 10 : 6 },
+    head: { type: 'string', description: 'Head mesh identifier', defaultValue: `chibi_head_${gender[0]}_01` },
+    eyes: { type: 'string', description: 'Eyes component identifier (large and expressive)', defaultValue: 'eyes_chibi_01' },
+    eyeColor: { type: 'integer', description: 'Palette index for eyes', defaultValue: 225 },
+    hair: { type: 'string', description: 'Hair component identifier (the creation default)', defaultValue: `hair_chibi_${gender[0]}_01` },
+    hairColor: { type: 'integer', description: 'Palette index for hair', defaultValue: 40 },
+    beard: { type: 'string', description: 'Beard component identifier', defaultValue: 'none' },
+    beardColor: { type: 'integer', description: 'Palette index for beard', defaultValue: 40 },
+    equipment: { type: 'json', description: 'Equipment instances by slot', defaultValue: {} },
+  },
+})
+
 module.exports = {
 
   TravellerHuman: defineEntity({
@@ -76,5 +102,8 @@ module.exports = {
       equipment: { type: 'json', description: 'Equipment instances by slot', defaultValue: {} },
     },
   }),
+
+  CreationMasculine: chibiPreset('masculine', 'The masculine creation body: a chunky chibi figure with a big head, large eyes, short limbs and big hands and boots.'),
+  CreationFeminine: chibiPreset('feminine', 'The feminine creation body: a chunky chibi figure with a big head, large eyes, short limbs and big hands and boots.'),
 
 }

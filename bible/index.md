@@ -8,6 +8,8 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 ## Appearance
 
 - [BoarRider](entities/boarrider.md) — A quadruped boar — the same character system driving a non-humanoid skeleton
+- [CreationFeminine](entities/creationfeminine.md) — The feminine creation body: a chunky chibi figure with a big head, large eyes, short limbs and big hands and boots
+- [CreationMasculine](entities/creationmasculine.md) — The masculine creation body: a chunky chibi figure with a big head, large eyes, short limbs and big hands and boots
 - [TravellerHuman](entities/travellerhuman.md) — The default humanoid traveller: veilsteel chestplate, a sheathed veilsteel longsword, and a stored ferrite shield
 
 ## Attribute
@@ -32,6 +34,10 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 ## Container
 
 - [Stockpile](entities/stockpile.md) — The container a settlement's members fill and draw from together
+
+## Creation
+
+- [CharacterCreation](entities/charactercreation.md) — What a player chooses when creating a character: a name (rules and uniqueness), a gender (a fixed chibi body preset), a hair style of that gender and a hair colour
 
 ## Creature
 

@@ -27,6 +27,7 @@ const persistence  = require('./gameplay/persistence')
 const skeletons    = require('./gameplay/characters/skeletons')
 const palettes     = require('./gameplay/characters/palettes')
 const appearances  = require('./gameplay/characters/appearances')
+const creation     = require('./gameplay/characters/creation')
 
 // Phase 125 — the travel cost must name a real item; throwing fails `npm run validate`.
 waystone.validateTravel(waystone.TRAVEL, Object.keys(items))
@@ -60,6 +61,9 @@ harvest.validateHarvest(harvest.harvestData({ creatures, items, skills }))
 // Phase 177 — the attribute bounds, derivation and growth tables must be well formed, base 10 must reproduce today's
 // constants, and every skill category needs a growth row.
 attributes.validateAttributes(attributes.attributeData())
+
+// Phase 180 — creation: genders map to chibi presets, every gender has hair, colours sit in the hair region, the default is valid.
+creation.validateCreation(creation.creationData(), appearances)
 
 // Phase 151 — every entity tagged `item` needs a shape: a known archetype, and a real material for each of its parts.
 {
@@ -273,6 +277,7 @@ module.exports = defineFabric({
     // Gameplay — Player + Inventory
     {
       AttributeSystem: attributes.AttributeSystem,
+      CharacterCreation: creation.CharacterCreation,
       PlayerCharacter: player.PlayerCharacter,
       Inventory:       player.Inventory,
     },
@@ -291,6 +296,8 @@ module.exports = defineFabric({
       DefaultPalette:    palettes.DefaultPalette,
       TravellerHuman:    appearances.TravellerHuman,
       BoarRider:         appearances.BoarRider,
+      CreationMasculine: appearances.CreationMasculine,
+      CreationFeminine:  appearances.CreationFeminine,
     },
   ),
 })

@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:d32f2b6df62fb5aa8f9a73ffad4964e225cb198dc7ab4a0692cccb2485bc4879",
+  "schemaHash": "sha256:d8614575dbf608bdc519d2f90c3ca96f33f620904f41880ea4f68cfb61ad4ec8",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -29573,6 +29573,163 @@
         "pii": [],
         "gdpr": {}
       },
+      "CharacterCreation": {
+        "name": "CharacterCreation",
+        "tags": [
+          "creation"
+        ],
+        "description": "What a player chooses when creating a character: a name (rules and uniqueness), a gender (a fixed chibi body preset), a hair style of that gender and a hair colour. Attributes are not chosen; every character starts at base. Cute, chunky chibi figures: a big head, short limbs, bold hair. Our own designs.",
+        "goal": "Let a player become a recognisable character in one short screen, generated from data, without a pay or class gate",
+        "fields": {
+          "nameRules": {
+            "name": "nameRules",
+            "type": "json",
+            "description": "Name length, scripts, separators, uniqueness folding and reserved names",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "minLength": 3,
+              "maxLength": 16,
+              "scriptsMixAllowed": false,
+              "separators": [
+                " ",
+                "-",
+                "'"
+              ],
+              "maxSeparators": 1,
+              "uniqueBy": [
+                "caseFold",
+                "accentFold",
+                "confusablesSkeleton"
+              ],
+              "reserved": [
+                "admin",
+                "administrator",
+                "moderator",
+                "mod",
+                "server",
+                "system",
+                "console",
+                "root",
+                "npc",
+                "gm",
+                "staff",
+                "nihon"
+              ]
+            }
+          },
+          "genders": {
+            "name": "genders",
+            "type": "json",
+            "description": "The gender options, in display order",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "masculine",
+              "feminine"
+            ]
+          },
+          "presets": {
+            "name": "presets",
+            "type": "json",
+            "description": "Gender -> the appearance entity (body, head, eyes, skin, chibi proportions)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "masculine": "CreationMasculine",
+              "feminine": "CreationFeminine"
+            }
+          },
+          "hair": {
+            "name": "hair",
+            "type": "json",
+            "description": "Gender -> hair style ids (each has a UI icon and a mesh at the same key)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "masculine": [
+                "hair_chibi_m_01",
+                "hair_chibi_m_02",
+                "hair_chibi_m_03",
+                "hair_chibi_m_04",
+                "hair_chibi_m_05",
+                "hair_chibi_m_06"
+              ],
+              "feminine": [
+                "hair_chibi_f_01",
+                "hair_chibi_f_02",
+                "hair_chibi_f_03",
+                "hair_chibi_f_04",
+                "hair_chibi_f_05",
+                "hair_chibi_f_06"
+              ]
+            }
+          },
+          "hairColors": {
+            "name": "hairColors",
+            "type": "json",
+            "description": "The curated hair colour list (palette indices in the hair region)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              33,
+              36,
+              40,
+              44,
+              48,
+              52,
+              56,
+              60
+            ]
+          },
+          "defaultCreation": {
+            "name": "defaultCreation",
+            "type": "json",
+            "description": "The creation a skipped screen uses",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "gender": "feminine",
+              "hair": "hair_chibi_f_01",
+              "hairColor": 40
+            }
+          },
+          "startingKit": {
+            "name": "startingKit",
+            "type": "json",
+            "description": "The starting outfit and items per server rule: a plain novice outfit, no class kits",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "outfit": "NoviceTunic",
+              "items": []
+            }
+          },
+          "chibiHeadRatio": {
+            "name": "chibiHeadRatio",
+            "type": "json",
+            "description": "Allowed head height / total height of a chibi rig",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              0.28,
+              0.4
+            ]
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
       "PlayerCharacter": {
         "name": "PlayerCharacter",
         "tags": [
@@ -31658,6 +31815,266 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 0
+          },
+          "equipment": {
+            "name": "equipment",
+            "type": "json",
+            "description": "Equipment instances by slot",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {}
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "CreationMasculine": {
+        "name": "CreationMasculine",
+        "tags": [
+          "appearance",
+          "creation"
+        ],
+        "description": "The masculine creation body: a chunky chibi figure with a big head, large eyes, short limbs and big hands and boots.",
+        "goal": "The fixed chibi body a masculine character is created with",
+        "fields": {
+          "skeleton": {
+            "name": "skeleton",
+            "type": "string",
+            "description": "Skeleton key in GameData.SKELETONS",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "HumanoidSkeleton"
+          },
+          "body": {
+            "name": "body",
+            "type": "string",
+            "description": "Body mesh identifier",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "chibi_body_m_01"
+          },
+          "proportions": {
+            "name": "proportions",
+            "type": "json",
+            "description": "Chibi proportions (§8): a large head and short limbs; the bounds were widened for them",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "height": 0.85,
+              "bodyMass": 1.1,
+              "shoulderWidth": 1,
+              "armLength": 0.7,
+              "legLength": 0.65,
+              "headScale": 1.8
+            }
+          },
+          "skinColor": {
+            "name": "skinColor",
+            "type": "integer",
+            "description": "Palette index for skin",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 10
+          },
+          "head": {
+            "name": "head",
+            "type": "string",
+            "description": "Head mesh identifier",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "chibi_head_m_01"
+          },
+          "eyes": {
+            "name": "eyes",
+            "type": "string",
+            "description": "Eyes component identifier (large and expressive)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "eyes_chibi_01"
+          },
+          "eyeColor": {
+            "name": "eyeColor",
+            "type": "integer",
+            "description": "Palette index for eyes",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 225
+          },
+          "hair": {
+            "name": "hair",
+            "type": "string",
+            "description": "Hair component identifier (the creation default)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "hair_chibi_m_01"
+          },
+          "hairColor": {
+            "name": "hairColor",
+            "type": "integer",
+            "description": "Palette index for hair",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 40
+          },
+          "beard": {
+            "name": "beard",
+            "type": "string",
+            "description": "Beard component identifier",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "none"
+          },
+          "beardColor": {
+            "name": "beardColor",
+            "type": "integer",
+            "description": "Palette index for beard",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 40
+          },
+          "equipment": {
+            "name": "equipment",
+            "type": "json",
+            "description": "Equipment instances by slot",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {}
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "CreationFeminine": {
+        "name": "CreationFeminine",
+        "tags": [
+          "appearance",
+          "creation"
+        ],
+        "description": "The feminine creation body: a chunky chibi figure with a big head, large eyes, short limbs and big hands and boots.",
+        "goal": "The fixed chibi body a feminine character is created with",
+        "fields": {
+          "skeleton": {
+            "name": "skeleton",
+            "type": "string",
+            "description": "Skeleton key in GameData.SKELETONS",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "HumanoidSkeleton"
+          },
+          "body": {
+            "name": "body",
+            "type": "string",
+            "description": "Body mesh identifier",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "chibi_body_f_01"
+          },
+          "proportions": {
+            "name": "proportions",
+            "type": "json",
+            "description": "Chibi proportions (§8): a large head and short limbs; the bounds were widened for them",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "height": 0.85,
+              "bodyMass": 1.1,
+              "shoulderWidth": 1,
+              "armLength": 0.7,
+              "legLength": 0.65,
+              "headScale": 1.8
+            }
+          },
+          "skinColor": {
+            "name": "skinColor",
+            "type": "integer",
+            "description": "Palette index for skin",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 6
+          },
+          "head": {
+            "name": "head",
+            "type": "string",
+            "description": "Head mesh identifier",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "chibi_head_f_01"
+          },
+          "eyes": {
+            "name": "eyes",
+            "type": "string",
+            "description": "Eyes component identifier (large and expressive)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "eyes_chibi_01"
+          },
+          "eyeColor": {
+            "name": "eyeColor",
+            "type": "integer",
+            "description": "Palette index for eyes",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 225
+          },
+          "hair": {
+            "name": "hair",
+            "type": "string",
+            "description": "Hair component identifier (the creation default)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "hair_chibi_f_01"
+          },
+          "hairColor": {
+            "name": "hairColor",
+            "type": "integer",
+            "description": "Palette index for hair",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 40
+          },
+          "beard": {
+            "name": "beard",
+            "type": "string",
+            "description": "Beard component identifier",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "none"
+          },
+          "beardColor": {
+            "name": "beardColor",
+            "type": "integer",
+            "description": "Palette index for beard",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 40
           },
           "equipment": {
             "name": "equipment",

@@ -1,0 +1,16 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/creations/charactercreation.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+nameRules = {"minLength":3,"maxLength":16,"scriptsMixAllowed":false,"separators":[" ","-","'"],"maxSeparators":1,"uniqueBy":["caseFold","accentFold","confusablesSkeleton"],"reserved":["admin","administrator","moderator","mod","server","system","console","root","npc","gm","staff","nihon"]}
+genders = ["masculine","feminine"]
+presets = {"masculine":"CreationMasculine","feminine":"CreationFeminine"}
+hair = {"masculine":["hair_chibi_m_01","hair_chibi_m_02","hair_chibi_m_03","hair_chibi_m_04","hair_chibi_m_05","hair_chibi_m_06"],"feminine":["hair_chibi_f_01","hair_chibi_f_02","hair_chibi_f_03","hair_chibi_f_04","hair_chibi_f_05","hair_chibi_f_06"]}
+hairColors = [33,36,40,44,48,52,56,60]
+defaultCreation = {"gender":"feminine","hair":"hair_chibi_f_01","hairColor":40}
+startingKit = {"outfit":"NoviceTunic","items":[]}
+chibiHeadRatio = [0.28,0.4]
+description = "What a player chooses when creating a character: a name (rules and uniqueness), a gender (a fixed chibi body preset), a hair style of that gender and a hair colour. Attributes are not chosen; every character starts at base. Cute, chunky chibi figures: a big head, short limbs, bold hair. Our own designs."
+tags = ["creation"]

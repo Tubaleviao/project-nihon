@@ -1,0 +1,20 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/appearances/creationmasculine.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+skeleton = "HumanoidSkeleton"
+body = "chibi_body_m_01"
+proportions = {"height":0.85,"bodyMass":1.1,"shoulderWidth":1,"armLength":0.7,"legLength":0.65,"headScale":1.8}
+skinColor = 10
+head = "chibi_head_m_01"
+eyes = "eyes_chibi_01"
+eyeColor = 225
+hair = "hair_chibi_m_01"
+hairColor = 40
+beard = "none"
+beardColor = 40
+equipment = {}
+description = "The masculine creation body: a chunky chibi figure with a big head, large eyes, short limbs and big hands and boots."
+tags = ["appearance", "creation"]
