@@ -96,6 +96,7 @@ func refresh(unload_now: bool = true) -> void:
 	# builds first. A peer-only move keeps the old append: re-ranking a crowd's queue against every centre
 	# on each peer crossing cost the host tick (crowd stress, pole pattern: tick p95 7 ms → 40–53 ms).
 	var to_load: Array = []
+	var lane: bool = local_moved and sl.is_moving_fast()
 	for i in desired.size():
 		var key: String = desired_keys[i]
 		if not sl._loaded.has(key) and not sl._pending.has(key):
@@ -106,7 +107,12 @@ func refresh(unload_now: bool = true) -> void:
 				to_load.append([sl._nearest_dist2(centers, desired[i]), desired[i]])
 	if local_moved:
 		for c in sl._load_queue:
-			to_load.append([sl.queue_priority(centers, heading, c), c])
+			# Phase 191: a chunk the window has left is dropped here, not skipped one by one at the drain (a fast flyer
+			# leaves a column behind per crossing, and the dead entries piled up ahead of the ground it needs).
+			if refs_has(refs, c, circumference):
+				to_load.append([sl.queue_priority(centers, heading, c, lane), c])
+			else:
+				sl._pending.erase(sl._chunk_key(c))
 		sl._load_queue.clear()
 	to_load.sort_custom(func(a, b): return a[0] < b[0])
 	for entry in to_load:
@@ -134,6 +140,9 @@ func refresh(unload_now: bool = true) -> void:
 
 	sl._self_heal_failed(centers, true)
 
+func refs_has(refs: Dictionary, chunk: Vector2i, circumference: int) -> bool:
+	return refs.has("%d,%d" % [SeamWrapScript.wrap_i(chunk.x, circumference), chunk.y])
+
 func drain_load_queue() -> void:
 	# Phase 42 review pass 4 — a drain with NOTHING queued has nothing to dispatch, so it
 	# does not resolve the window at all. `_process` calls this every tick, and the read
@@ -143,7 +152,9 @@ func drain_load_queue() -> void:
 		if sl._catchup and sl._builds.is_empty():
 			sl._catchup = false   # the folded window is rebuilt: back to the steady cap
 		return
-	var budget: int = maxi(sl.loads_per_frame, sl.catchup_loads_per_frame) if sl._catchup else sl.loads_per_frame
+	# Phase 191 — a fast flyer needs a column of new chunks per crossing: at one dispatch a frame a slow machine's
+	# frame rate caps the stream below the crossing rate, so it gets the catch-up burst too.
+	var budget: int = maxi(sl.loads_per_frame, sl.catchup_loads_per_frame) if sl._catchup or sl.is_moving_fast() else sl.loads_per_frame
 	# Phase 42 review pass 3 — the streamed window is resolved ONCE for the whole drain. The
 	# player's chunk cannot move during it (the position is re-read at the next frame's
 	# `refresh()`), and the per-chunk form re-derived it — a slice call — for every
@@ -289,6 +300,8 @@ func apply_order(done: Array) -> Array:
 	if done.size() < 2 or sl._last_centers.is_empty():
 		return done
 	var local: Vector2i = sl._last_centers[0]
+	if sl.is_moving_fast():
+		return _lane_order(done, local)
 	var urgent: Array = []
 	var rest: Array = []
 	for i in done.size():
@@ -305,6 +318,20 @@ func apply_order(done: Array) -> Array:
 	for u in urgent:
 		out.append(u[2])
 	return out + rest
+
+## Phase 191 — while the local body flies fast the main-thread attach (one chunk a frame on a slow machine) is the
+## wall: a crossing finishes a whole column of chunks and only the one in the body's row matters. Finished builds attach
+## lane first (the fewest chunks off either axis through the body), then nearest, so the ground ahead of the body lands
+## before the rest of the column.
+func _lane_order(done: Array, local: Vector2i) -> Array:
+	var keyed: Array = []
+	for i in done.size():
+		var c: Vector2i = sl._builds[done[i]]["chunk"]
+		var ax := absi(c.x - local.x)
+		var az := absi(c.y - local.y)
+		keyed.append([mini(ax, az) * 1000 + maxi(ax, az), i, done[i]])
+	keyed.sort_custom(func(a, b): return a[0] < b[0] or (a[0] == b[0] and a[1] < b[1]))
+	return keyed.map(func(k): return k[2])
 
 ## Phase 141 — the dispatch with the NOISE on the worker too. Measured before this: the main thread
 ## paid 14 ms (equator) to 36 ms (by a pole) for the chunk's own heightmap and up to 8 more maps for

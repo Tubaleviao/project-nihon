@@ -1443,7 +1443,14 @@ func _desired_chunks(center: Vector2i, radius: int) -> Array:
 ## Phase 187 — the load queue's sort key for `chunk` (smaller builds first): its squared distance from
 ## the nearest of `centers`, less `HEADING_BIAS` times its lead from `centers[0]` (the local player) along
 ## `heading` (a unit vector in chunks, or zero when standing). Pure.
-static func queue_priority(centers: Array, heading: Vector2, chunk: Vector2i) -> float:
+## Phase 191 — `lane`: a fast flyer builds the chunks in its heading lane first (a column of new ground per crossing,
+## and only the chunk in the body's row has to be there when it arrives), nearest ahead first, the rest after.
+static func queue_priority(centers: Array, heading: Vector2, chunk: Vector2i, lane: bool = false) -> float:
+	if lane and not centers.is_empty() and heading != Vector2.ZERO:
+		var rel := Vector2(chunk - (centers[0] as Vector2i))
+		var lead := rel.dot(heading)
+		var lateral := absf(rel.cross(heading))
+		return lateral * 3.0 + (lead if lead >= 1.0 else 50.0 - lead)
 	var best := 1 << 60
 	for c: Vector2i in centers:
 		var dx := chunk.x - c.x
