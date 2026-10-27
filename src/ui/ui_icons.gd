@@ -5,6 +5,7 @@ extends RefCounted
 const WINDOW_FORMAT := "icons/ui/window/%s.png.raw"
 const SKILL_FORMAT := "icons/skills/%s.png.raw"
 const HUD_FORMAT := "icons/ui/hud/%s.png.raw"
+const ATTRIBUTE_FORMAT := "icons/attributes/%s.png.raw"
 const HP := "hp"
 
 static var _cache: Dictionary = {}
@@ -14,6 +15,9 @@ static func window_key(window_key_id: String) -> String:
 
 static func skill_key(skill: String) -> String:
 	return SKILL_FORMAT % skill
+
+static func attribute_key(attribute: String) -> String:
+	return ATTRIBUTE_FORMAT % attribute
 
 static func hud_key(id: String) -> String:
 	return HUD_FORMAT % id

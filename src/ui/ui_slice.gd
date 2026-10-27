@@ -60,6 +60,8 @@ const WindowDockScript := preload("res://src/ui/window_dock.gd")
 const MapWindowScript := preload("res://src/ui/map_window.gd")
 const SettlementPanelScript := preload("res://src/ui/settlement_panel.gd")
 const GesturePanelScript := preload("res://src/ui/gesture_panel.gd")
+const CharacterSheet := preload("res://src/ui/character_sheet.gd")
+const AttributeRules := preload("res://src/character/attribute_rules.gd")
 
 ## Pixels of a window that must stay reachable on every edge when dragged.
 const DRAG_VISIBLE_MARGIN := 48.0
@@ -131,6 +133,16 @@ var _toast_queue: Array[String] = []
 var _toast_shown: String = ""
 var _toast_left: float = 0.0
 var _character_grid: GridContainer = null
+## Phase 179 — the sheet: slot columns around the doll, the attribute / derived-stat / skills panels.
+var _sheet_left: VBoxContainer = null
+var _sheet_right: VBoxContainer = null
+var _sheet_doll: CharacterSheet.Doll = null
+var _sheet_name: Label = null
+var _sheet_attributes: VBoxContainer = null
+var _sheet_stats: GridContainer = null
+var _sheet_skills: HBoxContainer = null
+var _sheet_signature: int = 0
+var _doll_signature: int = 0
 var _slot_menu: PopupMenu = null
 var _slot_menu_item: String = ""
 var _slot_menu_actions: Array = []
@@ -277,6 +289,10 @@ func _on_drag_end() -> void:
 	_drag_payload = {}
 	var vp := get_viewport() if is_inside_tree() else null
 	if vp == null or vp.gui_is_drag_successful():
+		return
+	# Phase 179: an equipped item dragged off its slot and released anywhere else comes off.
+	if str(payload.get("kind", "")) == "equipped":
+		dispatch_item_action(str(payload.get("id", "")), "unequip")
 		return
 	# Released over a control that refused it (a window, the hotbar edge): nothing happens.
 	# Released over the bare world: the drop target is the ground.
@@ -579,6 +595,44 @@ func character_rows() -> Array:
 			"actions": [{"action": "unequip", "label": I18n.t("ui.unequip")}] if item != "" else [],
 		})
 	return rows
+
+## Phase 179 — the sheet's whole projection, one row per thing it shows, each with a `section`: "slot" (every
+## equipment slot), "attribute" (all six), "stat" (every derived stat) and "skill" (the top skills by tier).
+## Values are the body's synced attribute table run through the fabric formula.
+func character_sheet_rows() -> Array:
+	var rows: Array = []
+	for r in character_rows():
+		var row: Dictionary = (r as Dictionary).duplicate()
+		row["section"] = "slot"
+		rows.append(row)
+	var attrs := _local_attributes()
+	rows.append_array(CharacterSheet.attribute_rows(attrs, _local_growth()))
+	rows.append_array(CharacterSheet.stat_rows(attrs))
+	rows.append_array(CharacterSheet.skill_rows(skills_rows(crafting_slice.get_skills() if crafting_slice != null else {})))
+	return rows
+
+func _local_attributes() -> Dictionary:
+	return AttributeRules.sanitize(player_slice.get("attributes")) if player_slice != null and player_slice.get("attributes") != null else AttributeRules.defaults()
+
+func _local_growth() -> Dictionary:
+	return AttributeRules.sanitize_growth(player_slice.get("attribute_growth")) if player_slice != null and player_slice.get("attribute_growth") != null else AttributeRules.empty_growth()
+
+## Phase 179 — dropping a bag item on a slot equips it through the same path as the context menu.
+func slot_accepts_drop(slot: String, data: Variant) -> bool:
+	return data is Dictionary and str((data as Dictionary).get("kind", "")) == "item" \
+			and EquipmentRules.slot_of(str((data as Dictionary).get("id", "")), GameData.ITEMS) == slot
+
+func drop_on_slot(slot: String, data: Variant) -> bool:
+	return slot_accepts_drop(slot, data) and dispatch_item_action(str((data as Dictionary)["id"]), "equip")
+
+func _slot_drag(_at: Vector2, item_id: String, source: Control) -> Variant:
+	if item_id == "":
+		return null
+	var label := Label.new()
+	label.text = item_id
+	source.set_drag_preview(label)
+	_drag_payload = {"kind": "equipped", "id": item_id}
+	return _drag_payload
 
 ## The Character window's totals line, summed from fabric values only.
 func character_stats_text() -> String:
@@ -1391,9 +1445,30 @@ func _build_character_content() -> Control:
 	_spawn_notice_label = Label.new()
 	_spawn_notice_label.add_theme_font_size_override("font_size", 13)
 	vbox.add_child(_spawn_notice_label)
+	_sheet_name = Label.new()
+	_sheet_name.add_theme_font_size_override("font_size", 16)
+	_sheet_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(_sheet_name)
+	var body := HBoxContainer.new()
+	body.alignment = BoxContainer.ALIGNMENT_CENTER
+	_sheet_left = VBoxContainer.new()
+	_sheet_right = VBoxContainer.new()
+	_sheet_doll = CharacterSheet.Doll.new()
+	body.add_child(_sheet_left)
+	body.add_child(_sheet_doll)
+	body.add_child(_sheet_right)
+	vbox.add_child(body)
 	_character_grid = GridContainer.new()
 	_character_grid.columns = INVENTORY_COLUMNS
 	vbox.add_child(_character_grid)
+	_sheet_attributes = VBoxContainer.new()
+	vbox.add_child(_sheet_attributes)
+	_sheet_stats = GridContainer.new()
+	_sheet_stats.columns = 2
+	_sheet_stats.add_theme_constant_override("h_separation", 14)
+	vbox.add_child(_sheet_stats)
+	_sheet_skills = HBoxContainer.new()
+	vbox.add_child(_sheet_skills)
 	return vbox
 
 func _build_skills_content() -> Control:

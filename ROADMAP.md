@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–178, 182 and 187–191 are done. Their specs and acceptance criteria are archived in
+Phases 1–179, 182 and 187–191 are done. Their specs and acceptance criteria are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Arc: make it look and feel like an RPG (Phases 173–181, 183)
@@ -40,7 +40,7 @@ budget honest. Then it gives the game icons, attributes, a character sheet and c
 | 176 | An icon for everything a player can hold | Done | [phases-176.md](docs/roadmap-history/phases-176.md) |
 | 177 | Attributes in the fabric: strength, vitality, resistance, agility, intelligence, perception | Done | [phases-177.md](docs/roadmap-history/phases-177.md) |
 | 178 | Attributes at runtime: host-owned, persisted, feeding the derived stats | Done | [phases-178.md](docs/roadmap-history/phases-178.md) |
-| 179 | The character sheet: a paper doll, attributes and derived stats | Planned | below |
+| 179 | The character sheet: a paper doll, attributes and derived stats | Done | [phases-179.md](docs/roadmap-history/phases-179.md) |
 | 180 | Character creation in the fabric: name, appearance and starting attributes | Planned | below |
 | 181 | Character creation at runtime: a creation screen before the first spawn | Planned | below |
 | 183 | Playtest process time under 16 ms | Planned | below |
@@ -59,7 +59,7 @@ date (for example, a world recorded around the pre-worldgen-9 spawn pit).
 
 Found while flying with `/fly` and `/speed 10` (90 m/s): the ground fell behind the player, and a
 regenerated world was snow almost everywhere. Like Phase 182, this runs ahead of the RPG arc: Phase
-179 resumes after Phase 191. Phase 188 comes second because a worldgen bump is cheaper the fewer worlds
+179 resumed after Phase 191. Phase 188 comes second because a worldgen bump is cheaper the fewer worlds
 have recorded the old plateaus. Phases 189–191 then raise the admin speed cap on a slow machine.
 
 Measured on seed 42 at 90 m/s with the native builder (probe in the Phase 187 PR): chunk builds ran
@@ -90,45 +90,6 @@ The scattered UI instructions are removed, so the tutorial is the one place that
 | 184 | First steps in the fabric: the tutorial steps, the bed and a shelter rule | Planned | below |
 | 185 | The bed is the spawn point: host-owned, persisted, one per player | Planned | below |
 | 186 | The first-steps tutorial at runtime: one-time cards, a toggle, and no other in-UI tutorial | Planned | below |
-
----
-
-## Phase 179 — The character sheet: a paper doll, attributes and derived stats
-
-**Goal:** today the character window is a text label, a friend code and a grid of slots. Turn it
-into an RPG character sheet: the player's own rig in the middle with equipment slots around it,
-attributes with icons and tooltips, and the derived stats they produce.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phases 175, 176 and 178.
-
-**Deliverables:**
-- A `SubViewport` preview of the local rig, wearing the current equipment and the Phase 123
-  character material. It turns on drag and idles with the Phase 156 clip.
-- Equipment slots laid out around the doll by body position (head, chest, hands, main hand, off
-  hand…), each with the item icon and its durability. Drag and drop equips and unequips through
-  the existing bus intents.
-- Attribute icons at `assets/icons/attributes/<Attribute>.png.raw` for the Phase 177 set, drawn
-  by `tools/gen_ui_icons.py` (Phase 175) and keyed from `GameData`.
-- An attribute panel: icon, value and a growth bar toward the next point. The tooltip lists what
-  the attribute feeds and by how much.
-- A derived-stat panel: HP, regeneration, carry, damage, reduction, speed, research gain and yield.
-- A short skills summary (the top skills by tier, with skill icons) that links to the skills window.
-- A display name above the doll once Phase 181 lands. Until then the handle is shown.
-- Every string goes through `I18n.t`. Numbers are formatted for the active locale.
-
-**Acceptance criteria:**
-- [ ] Suite: the sheet's projection (`character_sheet_rows()`) lists every equipment slot, all six
-  attributes and every derived stat, with values equal to the host's synced numbers.
-- [ ] Every Phase 177 attribute has an icon at its key, no orphan exists, and
-  `python3 tools/gen_ui_icons.py --check` passes.
-- [ ] Suite: dropping an item on a slot emits the same equip intent as the context menu.
-- [ ] Suite: building the sheet hard-codes no user-facing literal (audit test), and both locales
-  render.
-- [ ] Playtest bot: a `character_sheet` step opens the window, renders the doll with a non-empty
-  viewport and takes a screenshot.
-- [ ] Suite green on both boot paths.
 
 ---
 

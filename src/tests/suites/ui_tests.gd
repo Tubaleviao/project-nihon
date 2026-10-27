@@ -1,6 +1,9 @@
 extends "res://src/tests/test_support.gd"
 
 const HoldablesData := preload("res://src/inventory/holdables.gd")
+const I18n := preload("res://src/core/i18n.gd")
+const AttributeRules := preload("res://src/character/attribute_rules.gd")
+const CharacterSheet := preload("res://src/ui/character_sheet.gd")
 ## Phase 133 — the ui tests, moved unchanged from the old single-file suite.
 
 
@@ -72,6 +75,10 @@ func register() -> void:
 	_run_test("p131: catalogs share one key set, no empty cells",  _test_p131_catalog_keys)
 	_run_test("p131: no untranslated literal in UI assignments",   _test_p131_literal_audit)
 	_run_test("p148: the literal audit fails on a hard-coded fixture", _test_p148_audit_fixture)
+	_run_test("p179: the sheet projection lists every slot, attribute and derived stat with the synced numbers", _test_p179_sheet_rows)
+	_run_test("p179: every attribute has an icon at its key", _test_p179_attribute_icons)
+	_run_test("p179: dropping a bag item on a slot equips like the context menu", _test_p179_slot_drop)
+	_run_test("p179: the sheet renders in both locales and the window builds a doll", _test_p179_locales_and_window)
 	_run_test("p148: every reason code has a catalog key",             _test_p148_reason_codes_have_keys)
 	_run_test("p148: reason codes render with params",             _test_p148_reason_text)
 	_run_test("p148: multi-digit and numeric placeholders",        _test_p148_number_placeholders)
@@ -2279,3 +2286,108 @@ func _test_status_icon_ids() -> void:
 	var rows := [{"effect": "paralysis"}, {"effect": "heat_burn"}, {"effect": "paralysis"}, {}]
 	assert_eq(PlayerSlice.status_icon_ids(rows), ["paralysis", "heat_burn"], "one icon per distinct effect, in order")
 	assert_eq(PlayerSlice.status_icon_ids([]), [], "no effects, no icons")
+
+## Phase 179 — a UI slice over a character, a bag and a player body carrying a non-default attribute table.
+func _p179_fixture() -> Dictionary:
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var cid := ch.create_character("TravellerHuman", Vector3.ZERO)
+	ch.set_player_character(cid)
+	for slot in ch.get_equipment_set(cid).keys():
+		ch.clear_equipment(cid, str(slot))
+	var bag := InventorySlice.new()
+	add_child(bag)
+	var body := PlayerSlice.new()
+	var attrs := AttributeRules.defaults()
+	attrs["strength"] = 14
+	attrs["vitality"] = 7
+	body.set_attributes(attrs)
+	var growth := AttributeRules.empty_growth()
+	growth["xp"]["strength"] = AttributeRules.cost_of_next(0) / 2.0
+	body.set_attribute_growth(growth)
+	var ui := UiSlice.new()
+	ui.character_slice = ch
+	ui.inventory_slice = bag
+	ui.player_slice = body
+	add_child(ui)
+	return { "ch": ch, "bag": bag, "body": body, "ui": ui, "attrs": attrs }
+
+func _p179_free(f: Dictionary) -> void:
+	f["ui"].free()
+	f["body"].free()
+	f["bag"].free()
+	f["ch"].free()
+
+func _test_p179_sheet_rows() -> void:
+	var f := _p179_fixture()
+	var rows: Array = f["ui"].character_sheet_rows()
+	var by_section := {}
+	for r in rows:
+		by_section[r["section"]] = int(by_section.get(r["section"], 0)) + 1
+	assert_eq(by_section.get("slot", 0), EquipmentRules.slots(GameData.ITEMS).size(), "a row per equipment slot")
+	assert_eq(by_section.get("attribute", 0), AttributeRules.ids().size(), "a row per attribute")
+	assert_eq(by_section.get("stat", 0), AttributeRules.derivation().size(), "a row per derived stat")
+	assert_true(int(by_section.get("skill", 0)) <= 4, "at most four skills")
+	var attrs: Dictionary = f["attrs"]
+	for r in rows:
+		if r["section"] == "attribute":
+			assert_eq(int(r["value"]), int(attrs[r["id"]]), "attribute %s equals the synced table" % r["id"])
+		elif r["section"] == "stat":
+			assert_eq(float(r["value"]), AttributeRules.stat(str(r["id"]), attrs), "stat %s equals the formula" % r["id"])
+			assert_eq(float(r["value"]), f["body"].stat(str(r["id"])), "and the body's own number")
+	var strength: Dictionary = rows.filter(func(r): return r["section"] == "attribute" and r["id"] == "strength")[0]
+	assert_true(absf(float(strength["progress"]) - 0.5) < 0.001, "growth bar is the banked XP over the next point's cost")
+	assert_true(str(strength["tooltip"]).find(I18n.t("stat.carryCapacityKg")) >= 0, "the tooltip lists what the attribute feeds")
+	_p179_free(f)
+
+func _test_p179_attribute_icons() -> void:
+	for a in AttributeRules.ids():
+		var key := UiIcons.attribute_key(str(a))
+		assert_true(FileAccess.file_exists(AssetOverlay.resolve_path(key)), "icon for %s" % a)
+		assert_true(UiIcons.load_icon(key) != null, "%s loads" % a)
+	var dir := "res://assets/icons/attributes"
+	for file in DirAccess.get_files_at(dir):
+		if file.ends_with(".png.raw"):
+			assert_true(AttributeRules.ids().has(file.trim_suffix(".png.raw")), "no orphan icon %s" % file)
+
+func _test_p179_slot_drop() -> void:
+	var f := _p179_fixture()
+	var ui: UiSlice = f["ui"]
+	f["bag"].add_item("FerriteHelmet", 1)
+	var payload := { "kind": "item", "id": "FerriteHelmet", "quantity": 1 }
+	assert_false(ui.slot_accepts_drop("Chest", payload), "a helmet does not fit the chest")
+	assert_false(ui.drop_on_slot("Chest", payload), "and the drop does nothing")
+	assert_true(ui.slot_accepts_drop("Head", payload), "it fits the head")
+	assert_false(ui.slot_accepts_drop("Head", { "kind": "skill", "id": "Archery" }), "a skill is not an item")
+	assert_true(ui.drop_on_slot("Head", payload), "the drop equips")
+	assert_eq(f["ch"].get_equipment_set(f["ch"].get_player_character()).get("Head", ""), "FerriteHelmet", "the same result as the context menu")
+	_p179_free(f)
+
+func _test_p179_locales_and_window() -> void:
+	var f := _p179_fixture()
+	var old_locale := TranslationServer.get_locale()
+	var names := {}
+	for loc in ["en", "pt_BR"]:
+		TranslationServer.set_locale(loc)
+		var rows: Array = f["ui"].character_sheet_rows()
+		for r in rows:
+			if r["section"] == "attribute":
+				assert_true(str(r["name"]) != "" and not str(r["name"]).begins_with("attr."), "%s name renders in %s" % [r["id"], loc])
+				names[loc] = str(r["name"])
+			elif r["section"] == "stat":
+				assert_true(str(r["label"]) != "" and not str(r["label"]).begins_with("stat."), "%s label renders in %s" % [r["id"], loc])
+	assert_true(names["en"] != names["pt_BR"], "the two locales differ")
+	TranslationServer.set_locale("en")
+	assert_eq(CharacterSheet.format_stat("moveSpeedFactor", 1.05), "×1.05", "a factor reads as a multiplier")
+	assert_eq(CharacterSheet.format_stat("dodgeChance", 0.05), "5.0%", "a chance reads as a percent")
+	TranslationServer.set_locale("pt_BR")
+	assert_eq(CharacterSheet.format_stat("dodgeChance", 0.05), "5,0%", "with the locale's decimal comma")
+	TranslationServer.set_locale(old_locale)
+	var ui: UiSlice = f["ui"]
+	ui.refresh_character()
+	assert_eq(ui._sheet_attributes.get_child_count(), AttributeRules.ids().size(), "the window lists every attribute")
+	assert_eq(ui._sheet_stats.get_child_count(), AttributeRules.derivation().size() * 2, "and every derived stat")
+	assert_true(ui._sheet_doll.has_rig(), "the doll holds a rig")
+	assert_eq(ui._sheet_left.get_child_count() + ui._sheet_right.get_child_count() + ui._character_grid.get_child_count(),
+		EquipmentRules.slots(GameData.ITEMS).size(), "every slot sits around the doll")
+	_p179_free(f)

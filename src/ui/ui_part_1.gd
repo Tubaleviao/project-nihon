@@ -1,6 +1,8 @@
 extends RefCounted
 ## Methods moved verbatim out of `ui_slice.gd` (Phase 154). `sl` is the owning slice; each moved method keeps a forwarder there.
 
+const UiIcons := preload("res://src/ui/ui_icons.gd")
+
 var sl: Node
 
 func _init(slice: Node) -> void:
@@ -106,6 +108,7 @@ func refresh_character() -> void:
 		return
 	sl._refresh_skills()
 	sl._character_stats.text = sl.character_stats_text()
+	_refresh_sheet()
 	# An appearance change that left the worn set alone (a palette tweak, a LOD swap)
 	# produces the same rows; rebuilding the whole grid for it is wasted work.
 	var rows = sl.character_rows()
@@ -113,9 +116,10 @@ func refresh_character() -> void:
 	if signature == sl._character_rows_signature and sl._character_grid.get_child_count() > 0:
 		return
 	sl._character_rows_signature = signature
-	for c in sl._character_grid.get_children():
-		sl._character_grid.remove_child(c)
-		sl._retire(c)
+	for holder in [sl._character_grid, sl._sheet_left, sl._sheet_right]:
+		for c in holder.get_children():
+			holder.remove_child(c)
+			sl._retire(c)
 	for row in rows:
 		var slot = Button.new()
 		slot.custom_minimum_size = sl.SLOT_SIZE
@@ -129,7 +133,96 @@ func refresh_character() -> void:
 		else:
 			slot.text = "%s\n%s" % [row["slot"], sl.item_glyph(str(row["item"])) if str(row["item"]) != "" else "—"]
 		slot.gui_input.connect(sl._on_slot_gui_input.bind(str(row["item"]), row["actions"]))
-		sl._character_grid.add_child(slot)
+		var slot_name := str(row["slot"])
+		slot.set_drag_forwarding(sl._slot_drag.bind(str(row["item"]), slot),
+				func(_at: Vector2, data: Variant) -> bool: return sl.slot_accepts_drop(slot_name, data),
+				func(_at: Vector2, data: Variant) -> void: sl.drop_on_slot(slot_name, data))
+		match sl.CharacterSheet.column_of(str(row["slot"])):
+			"left":
+				sl._sheet_left.add_child(slot)
+			"right":
+				sl._sheet_right.add_child(slot)
+			_:
+				sl._character_grid.add_child(slot)
+
+## Phase 179 — the attribute, derived-stat and skills panels, the name above the doll and the doll itself.
+## Rebuilt only when the projection changed.
+func _refresh_sheet() -> void:
+	var rows: Array = sl.character_sheet_rows()
+	var panel_rows := rows.filter(func(r): return str(r["section"]) != "slot")
+	var signature: int = panel_rows.hash()
+	sl._sheet_name.text = sl.own_handle
+	_refresh_doll()
+	if signature == sl._sheet_signature and sl._sheet_attributes.get_child_count() > 0:
+		return
+	sl._sheet_signature = signature
+	for holder in [sl._sheet_attributes, sl._sheet_stats, sl._sheet_skills]:
+		for c in holder.get_children():
+			holder.remove_child(c)
+			sl._retire(c)
+	for row in panel_rows:
+		match str(row["section"]):
+			"attribute":
+				var line := HBoxContainer.new()
+				line.tooltip_text = str(row["tooltip"])
+				var icon := TextureRect.new()
+				icon.texture = UiIcons.load_icon(str(row["icon_key"]))
+				icon.custom_minimum_size = Vector2(24, 24)
+				icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+				icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+				line.add_child(icon)
+				var label := Label.new()
+				label.text = "%s %d" % [row["name"], int(row["value"])]
+				label.custom_minimum_size = Vector2(130, 0)
+				line.add_child(label)
+				var bar := ProgressBar.new()
+				bar.min_value = 0.0
+				bar.max_value = 1.0
+				bar.value = float(row["progress"])
+				bar.show_percentage = false
+				bar.custom_minimum_size = Vector2(120, 12)
+				bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+				line.add_child(bar)
+				sl._sheet_attributes.add_child(line)
+			"stat":
+				var name_label := Label.new()
+				name_label.text = str(row["label"])
+				name_label.add_theme_font_size_override("font_size", 12)
+				sl._sheet_stats.add_child(name_label)
+				var value_label := Label.new()
+				value_label.text = str(row["text"])
+				value_label.add_theme_font_size_override("font_size", 12)
+				sl._sheet_stats.add_child(value_label)
+			"skill":
+				var b := Button.new()
+				b.custom_minimum_size = Vector2(sl.SLOT_SIZE.x, 64.0)
+				b.clip_text = true
+				UiIcons.style_skill_button(b, str(row["id"]), str(row["tier"]))
+				b.add_theme_font_size_override("font_size", 12)
+				b.tooltip_text = str(row["tooltip"])
+				b.pressed.connect(sl.open_window.bind(sl.WINDOW_SKILLS))
+				sl._sheet_skills.add_child(b)
+
+## Rebuild the doll's rig from the local avatar's appearance and worn set when either changed.
+func _refresh_doll() -> void:
+	var ch: Node = sl.character_slice
+	if ch == null or sl._sheet_doll == null:
+		return
+	var iid := str(ch.get_player_character())
+	if iid == "":
+		return
+	var appearance: Dictionary = ch.get_appearance(iid)
+	var worn: Dictionary = ch.get_equipment_set(iid)
+	var equipment := {}
+	for slot in worn:
+		equipment[slot] = { "item": str(worn[slot]), "state": "equipped" }
+	appearance["equipment"] = equipment
+	var signature := appearance.hash()
+	if signature == sl._doll_signature and sl._sheet_doll.has_rig():
+		return
+	sl._doll_signature = signature
+	var built: Dictionary = ch._make_visual("sheet_doll", ch.deserialize_appearance(appearance))
+	sl._sheet_doll.rebuild(built.get("root", null))
 
 func _build_ui() -> void:
 	sl._ui = CanvasLayer.new()

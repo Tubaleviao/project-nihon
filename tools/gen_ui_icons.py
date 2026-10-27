@@ -6,6 +6,7 @@ Writes 32x32 RGBA icons, one per key:
 * ``assets/icons/ui/window/<key>.png.raw`` - every ``WindowDock`` entry (``src/ui/window_dock.gd``);
 * ``assets/icons/skills/<Skill>.png.raw`` - every skill under ``fabric/gameplay/skills/``: a frame
   coloured by the skill's category (the file it lives in) around a symbol for the skill;
+* ``assets/icons/attributes/<attribute>.png.raw`` - every attribute of ``fabric/gameplay/attributes.js``;
 * ``assets/icons/ui/hud/hp.png.raw`` and ``assets/icons/ui/hud/<effect>.png.raw`` - HP and every
   status effect of ``fabric/gameplay/combat.js``.
 
@@ -34,10 +35,12 @@ MANIFEST = Path("assets/manifest.json")
 WINDOW_DIR = Path("assets/icons/ui/window")
 HUD_DIR = Path("assets/icons/ui/hud")
 SKILL_DIR = Path("assets/icons/skills")
+ATTRIBUTE_DIR = Path("assets/icons/attributes")
 DOCK_GD = ROOT / "src/ui/window_dock.gd"
 SKILLS_DIR = ROOT / "fabric/gameplay/skills"
 COMBAT_JS = ROOT / "fabric/gameplay/combat.js"
-KEY_PREFIXES = ("icons/ui/", "icons/skills/")
+ATTRIBUTES_JS = ROOT / "fabric/gameplay/attributes.js"
+KEY_PREFIXES = ("icons/ui/", "icons/skills/", "icons/attributes/")
 
 RENDER = 128
 ICON = 32
@@ -534,6 +537,18 @@ HUD = {
     "knockdown": s_knockdown, "stagger": s_stagger,
 }
 
+def s_vital(c):
+    s_heart(c)
+    c.rect(44, 28, 56, 70, "white")
+    c.rect(29, 43, 71, 55, "white")
+
+
+# Attribute id -> drawing; every attribute of attributes.js needs one (Phase 179).
+ATTRIBUTES = {
+    "strength": s_fist, "vitality": s_vital, "resistance": s_shield,
+    "agility": s_feet, "intelligence": s_sparkle, "perception": s_eye,
+}
+
 # Skill -> symbol; every skill needs one, and no two may look the same.
 SYMBOLS = {
     "Swordsmanship": s_sword, "Archery": s_bow, "Shieldcraft": s_shield, "Unarmed": s_fist,
@@ -556,6 +571,13 @@ def draw_hud(key):
     c = Canvas()
     c.place(0.92, 4, 4)
     HUD[key](c)
+    return c.to_png()
+
+
+def draw_attribute(key):
+    c = Canvas()
+    c.place(0.92, 4, 4)
+    ATTRIBUTES[key](c)
     return c.to_png()
 
 
@@ -604,8 +626,18 @@ def read_effects():
     return re.findall(r"^  (\w+):\s*\{", m.group(1), re.M)
 
 
+def read_attributes():
+    m = re.search(r"const ATTRIBUTES\s*=\s*\[([^\]]*)\]", ATTRIBUTES_JS.read_text())
+    if not m:
+        sys.exit("fabric/gameplay/attributes.js: ATTRIBUTES not found")
+    return re.findall(r"'(\w+)'", m.group(1))
+
+
 def validate():
     problems = []
+    for a in read_attributes():
+        if a not in ATTRIBUTES:
+            problems.append(f"attribute {a} has no drawing in gen_ui_icons.py")
     cats = read_categories()
     for cat in cats:
         if cat not in FRAMES:
@@ -635,6 +667,8 @@ def outputs():
         files[WINDOW_DIR / f"{w}.png.raw"] = draw_window(w)
     for s, cat in sorted(skills.items()):
         files[SKILL_DIR / f"{s}.png.raw"] = draw_skill(cat, s)
+    for a in read_attributes():
+        files[ATTRIBUTE_DIR / f"{a}.png.raw"] = draw_attribute(a)
     for h in ["hp"] + effects:
         files[HUD_DIR / f"{h}.png.raw"] = draw_hud(h)
     seen = {}
@@ -660,7 +694,7 @@ def write(files, root):
         path = root / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
-    for d in (WINDOW_DIR, HUD_DIR, SKILL_DIR):
+    for d in (WINDOW_DIR, HUD_DIR, SKILL_DIR, ATTRIBUTE_DIR):
         keep = {r.name for r in files if r.parent == d}
         for stale in (root / d).glob("*.png.raw"):
             if stale.name not in keep:
@@ -677,7 +711,7 @@ def check(files):
             problems.append(f"missing {rel}")
         elif (ROOT / rel).read_bytes() != data:
             problems.append(f"{rel} differs from the generator output")
-    for d in (WINDOW_DIR, HUD_DIR, SKILL_DIR):
+    for d in (WINDOW_DIR, HUD_DIR, SKILL_DIR, ATTRIBUTE_DIR):
         for f in sorted((ROOT / d).glob("*.png.raw")):
             if d / f.name not in files:
                 problems.append(f"orphan {d / f.name}")
