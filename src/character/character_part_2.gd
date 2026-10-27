@@ -340,3 +340,23 @@ func get_equipment_set(instance_id: String) -> Dictionary:
 			if item != "" and str((entry as Dictionary).get("state", "equipped")) == "equipped":
 				out[str(slot)] = item
 	return out
+
+## Phase 179 — a second body for the character sheet's preview, added under `parent` (the preview's viewport): the
+## local avatar's appearance on the default rig (Phase 123 material), wearing what it wears, idling on the rig's own
+## clip. This slice keeps no record of it (no LOD pass, no sync); the caller frees it. It is built where it will
+## stay: a Skeleton3D that leaves the tree drops a PhysicalBoneSimulator3D it never frees. Null when there is no
+## local avatar or the manifest lists no rig.
+func build_preview(parent: Node) -> Node3D:
+	var src: String = sl.get_player_character()
+	if src == "" or not sl._instances.has(src):
+		return null
+	var pid: String = sl.create_character_from_recipe(sl.get_appearance(src), Vector3.ZERO, parent)
+	if pid == "" or not sl.attach_default_rig(pid):
+		sl.remove_character(pid)
+		return null
+	sl.apply_equipment_set(pid, sl.get_equipment_set(src))
+	var root: Node3D = sl._instances[pid]["root"]
+	sl._instances.erase(pid)
+	root.position = Vector3.ZERO
+	root.visible = true
+	return root

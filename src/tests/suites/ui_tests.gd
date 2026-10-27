@@ -2406,7 +2406,7 @@ func _test_sheet_preview() -> void:
 	var before: int = ch._instances.size()
 	var holder := Node3D.new()
 	add_child(holder)
-	var root: Node3D = ch.build_preview(holder)
+	var root: Node3D = ch._m2.build_preview(holder)
 	if root == null:
 		assert_true(AssetOverlay.first_key("meshes", CharacterSlice.DEFAULT_RIG_KEYS) == "", "no preview only when the manifest lists no rig")
 	else:

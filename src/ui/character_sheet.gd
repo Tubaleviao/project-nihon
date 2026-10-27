@@ -146,7 +146,7 @@ class DollView extends SubViewportContainer:
 	## Replace the preview with a body built under the viewport by `CharacterSlice.build_preview`. False when there is none.
 	func rebuild_preview(character_slice: Node) -> bool:
 		clear_preview()
-		rig = character_slice.build_preview(viewport)
+		rig = character_slice._m2.build_preview(viewport)   # the sheet's second body: character_part_2.gd
 		return rig != null
 
 	## Free the preview body.

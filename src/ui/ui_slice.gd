@@ -131,8 +131,7 @@ var _toast_queue: Array[String] = []
 var _toast_shown: String = ""
 var _toast_left: float = 0.0
 var _character_grid: GridContainer = null
-## Phase 179 — the sheet's other widgets (see `character_sheet.gd`).
-const CharacterSheet := preload("res://src/ui/character_sheet.gd")
+const CharacterSheet := preload("res://src/ui/character_sheet.gd")   # Phase 179: the sheet's widgets
 var _character_grid_right: GridContainer = null
 var _sheet_name: Label = null
 var _sheet_doll: CharacterSheet.DollView = null
@@ -142,10 +141,8 @@ var _sheet_stat_box: GridContainer = null
 var _sheet_skill_box: HBoxContainer = null
 var _sheet := CharacterSheet.new(self)
 
-## Phase 179 — what the Character window shows, as data (`CharacterSheet.rows`).
-func character_sheet_rows() -> Dictionary:
+func character_sheet_rows() -> Dictionary:   # Phase 179: what the Character window shows, as data
 	return _sheet.rows()
-
 func character_sheet() -> CharacterSheet:
 	return _sheet
 var _slot_menu: PopupMenu = null
@@ -1393,59 +1390,11 @@ func _build_inventory_content() -> Control:
 	vbox.add_child(scroll)
 	_inventory_grid = GridContainer.new()
 	_inventory_grid.columns = INVENTORY_COLUMNS
-	# Phase 179 — a worn item dragged off the character sheet and dropped on the bag is taken off.
-	_inventory_grid.set_drag_forwarding(Callable(), func(_at: Vector2, d: Variant) -> bool: return d is Dictionary and str(d.get("kind", "")) == "worn",
-		func(_at: Vector2, d: Variant) -> void: _sheet.drop_on_bag(d))
 	scroll.add_child(_inventory_grid)
 	return vbox
 
 func _build_character_content() -> Control:
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 6)
-	_sheet_name = Label.new()
-	_sheet_name.add_theme_font_size_override("font_size", 17)
-	vbox.add_child(_sheet_name)
-	_character_stats = Label.new()
-	_character_stats.add_theme_font_size_override("font_size", 15)
-	vbox.add_child(_character_stats)
-	# Phase 53 — the friend code: the handle another player enters to spawn beside this one.
-	var code_row := HBoxContainer.new()
-	code_row.add_theme_constant_override("separation", 6)
-	_friend_code_label = Label.new()
-	_friend_code_label.text = friend_code_text(own_handle)
-	code_row.add_child(_friend_code_label)
-	var copy_btn := Button.new()
-	_set_tr(copy_btn, "text", "ui.copy")
-	copy_btn.pressed.connect(_on_copy_friend_code_pressed)
-	code_row.add_child(copy_btn)
-	vbox.add_child(code_row)
-	_spawn_notice_label = Label.new()
-	_spawn_notice_label.add_theme_font_size_override("font_size", 13)
-	vbox.add_child(_spawn_notice_label)
-	# Phase 179 — the sheet: slots left and right of the rig preview, attributes and derived stats beside it.
-	var sheet := HBoxContainer.new()
-	sheet.add_theme_constant_override("separation", 10)
-	_character_grid = GridContainer.new()
-	_character_grid.columns = 1
-	_character_grid_right = GridContainer.new()
-	_character_grid_right.columns = 1
-	_sheet_doll = CharacterSheet.DollView.new()
-	sheet.add_child(_character_grid)
-	sheet.add_child(_sheet_doll)
-	sheet.add_child(_character_grid_right)
-	var side := VBoxContainer.new()
-	side.add_theme_constant_override("separation", 4)
-	_sheet_attr_box = VBoxContainer.new()
-	_sheet_stat_box = GridContainer.new()
-	_sheet_stat_box.columns = 4
-	_sheet_skill_box = HBoxContainer.new()
-	side.add_child(_sheet_attr_box)
-	side.add_child(_sheet_stat_box)
-	side.add_child(_sheet_skill_box)
-	sheet.add_child(side)
-	vbox.add_child(sheet)
-	_sheet_doll.set_drag_forwarding(Callable(), Callable(), Callable())
-	return vbox
+	return _m1.build_character_content()
 
 func _build_skills_content() -> Control:
 	var vbox := VBoxContainer.new()

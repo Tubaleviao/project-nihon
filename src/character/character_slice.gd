@@ -710,26 +710,6 @@ func _dress_rig(rig_root: Node, appearance: Dictionary) -> void:
 			"accent_index": int(appearance.get("beardColor", 0)),
 		})
 
-## Phase 179 — a second body for the character sheet's preview, added under `parent` (the preview's viewport): the
-## local avatar's appearance on the default rig (Phase 123 material), wearing what it wears, idling on the rig's own
-## clip. This slice keeps no record of it (no LOD pass, no sync); the caller frees it. It is built where it will
-## stay: a Skeleton3D that leaves the tree drops a PhysicalBoneSimulator3D it never frees. Null when there is no
-## local avatar or the manifest lists no rig.
-func build_preview(parent: Node) -> Node3D:
-	var src := get_player_character()
-	if src == "" or not _instances.has(src):
-		return null
-	var pid := create_character_from_recipe(get_appearance(src), Vector3.ZERO, parent)
-	if pid == "" or not attach_default_rig(pid):
-		remove_character(pid)
-		return null
-	apply_equipment_set(pid, get_equipment_set(src))
-	var root: Node3D = _instances[pid]["root"]
-	_instances.erase(pid)
-	root.position = Vector3.ZERO
-	root.visible = true
-	return root
-
 ## Rig keys tried in order for an avatar: the player rig (the production pack's art, or
 ## its public placeholder), then the older unskinned placeholder body for a manifest that
 ## lists no player rig. The first one the manifest lists wins.
