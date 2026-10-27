@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–178, 182, 187, 188 and 189 are done. Their specs and acceptance criteria are archived in
+Phases 1–178, 182 and 187–189 are done. Their specs and acceptance criteria are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Arc: make it look and feel like an RPG (Phases 173–181, 183)

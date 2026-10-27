@@ -349,6 +349,18 @@ func scene_offset() -> Vector3:
 ## Phase 163 — false on a dedicated server: nothing draws there, so a chunk attaches no render mesh, water or deposits.
 var attach_geometry := true
 var attach_collision := true   # Phase 172: separate from the render mesh; its shape is built on the worker
+## Phase 189 — shapes of built chunks whose collision waits for a body (`build_chunk(..., collide = false)`),
+## attached by `attach_parked_collision` when the chunk manager's near ring reaches them.
+var _parked_shapes: Dictionary = {}   # "cx,cz" -> Shape3D
+
+func attach_parked_collision(chunk_pos: Vector2i) -> bool:
+	return _build.attach_parked_collision(chunk_pos)
+
+func has_parked_collision(chunk_pos: Vector2i) -> bool:
+	return _build.has_parked_collision(chunk_pos)
+
+func has_collision(chunk_pos: Vector2i) -> bool:
+	return _build.has_collision(chunk_pos)
 ## #437 — what a build hands `build_chunk` when `attach_geometry` is false: no mesh, collision or
 ## deposit arrays (the worker skips `build_runs` and `build_chunk_arrays`), only the chunk-local
 ## flag the root's position reads. Not empty, so a worker result carrying it is not refused.
@@ -361,26 +373,14 @@ var _standins: Dictionary = {}   # "cx,cz" -> Node3D
 ## does not free them. They stay in the tree and keep drawing; hand them to `adopt_standins`.
 func detach_standins() -> Array:
 	var roots: Array = _chunks.values() + _standins.values()
+	_build.carry_parked_shapes()   # Phase 189: a carried root keeps its parked collision
 	_chunks.clear()
 	_standins.clear()
 	return roots
 
-## Carry `roots` (from `detach_standins`) by the fold's scene transform `xform` and keep each as the
-## stand-in of the chunk it now covers. A second stand-in on the same chunk is freed.
+## Carry `roots` (from `detach_standins`) by the fold's transform `xform`, each the stand-in of its chunk.
 func adopt_standins(roots: Array, xform: Transform3D) -> void:
-	for r in roots:
-		if not is_instance_valid(r):
-			continue
-		var root := r as Node3D
-		root.transform = xform * root.transform
-		var centre: Vector3 = root.transform * (root.get_meta("centre", Vector3.ZERO) as Vector3)
-		var chunk := Vector2i(floori((float(centre.x) - float(_origin.value.x)) / TerrainSlice.CHUNK_METERS),
-			floori((float(centre.z) - float(_origin.value.z)) / TerrainSlice.CHUNK_METERS))
-		var key := _chunk_key(chunk)
-		if _standins.has(key) and is_instance_valid(_standins[key]):
-			(_standins[key] as Node3D).queue_free()
-		root.set_meta("standin_chunk", chunk)
-		_standins[key] = root
+	_build.adopt_standins(roots, xform)
 
 ## True while a stand-in covers `chunk_pos`.
 func has_standin(chunk_pos: Vector2i) -> bool:
@@ -440,8 +440,8 @@ func _process(_delta: float) -> void:
 	if is_authoritative and not _settle.is_empty():
 		settle_tick()
 
-func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {}, revision: int = -1) -> bool:
-	return _build.build_chunk(chunk_pos, heightmap, arrays, revision)
+func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {}, revision: int = -1, collide: bool = true) -> bool:
+	return _build.build_chunk(chunk_pos, heightmap, arrays, revision, collide)
 
 ## Phase 51 — the static water level. Rows of tiles whose ground lies below the sea surface,
 ## merged into spans: each span is `Vector3i(tile_z, first_tile_x, last_tile_x + 1)`. Pure.

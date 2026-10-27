@@ -1020,7 +1020,7 @@ func _boot_server() -> void:
 	# Phase 108 — the host records each chunk it first streams in; never while a save is writing regions.
 	_chunk_manager.record_store = _persistence.region_store
 	_chunk_manager.records_flush_blocked = func() -> bool: return _save_thread != null
-	_chunk_manager.start(not _is_server)   # Phase 189: a rendering game defers far collision and contents
+	_chunk_manager.start()
 	# Phase 42 — arm the boot gate BEFORE the first refresh, and not after it. Both boot
 	# paths inherit it here, which is what stops a gate wired into one of them from being a
 	# hole in the others. The centre is the player's chunk: pre-spawn that is the origin

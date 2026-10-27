@@ -90,8 +90,6 @@ const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
 const Frontier := preload("res://src/terrain/frontier.gd")
-const PeerRecenter := preload("res://src/terrain/peer_recenter.gd")
-const FarWork := preload("res://src/terrain/far_work.gd")
 const RegionStore := preload("res://src/persistence/region_store.gd")
 
 ## Chunk size is owned by TerrainSlice; world_to_chunk() delegates to it.
@@ -183,6 +181,16 @@ const DEFAULT_SELF_HEAL_INTERVAL := 5.0
 
 const ChunkPart1 := preload("res://src/terrain/chunk_part_1.gd")
 var _m1 := ChunkPart1.new(self)
+## Phase 189 — collision and contents only near a body (see `near_ring.gd`).
+const NearRing := preload("res://src/terrain/near_ring.gd")
+var _near := NearRing.new(self)
+## Builds attached since the manager was made: the playtest flight step divides its chunk-phase time by it.
+var builds_attached: int = 0
+
+## Phase 189 — false restores the Phase 187 behaviour (collision and contents on every attach): the playtest
+## bot's record flight.
+func set_near_ring_enabled(on: bool) -> void:
+	_near.enabled = on
 
 ## Set by game_root before the slices enter the tree.
 var terrain_slice: Node = null
@@ -427,36 +435,6 @@ var _last_self_heal_msec: int = -1
 ## repopulates.
 var _contents_spawned: Dictionary = {} # "cx,cz" -> true
 
-## Phase 189 — pay only for the ground that is reached. When true (a rendering game, not a dedicated
-## server): a built chunk gets its collision body only within Chebyshev `NEAR_RING` of a window centre (the
-## local body's or a peer's, so a flying body's chunk below is always in), and its creatures and trees spawn
-## when it enters that ring or when the local window has been still for `CONTENTS_SETTLE_MSEC`, instead of when
-## its mesh attaches. The same ids and positions spawn, later. Off by default: every chunk attaches both at once.
-var defer_far_work := false:
-	set(v):
-		defer_far_work = v
-		if voxel_slice != null:
-			voxel_slice._build.collision_gate = in_near_ring if v else Callable()
-const NEAR_RING := FarWork.NEAR_RING
-## Phase 189 — builds attached since boot; the playtest's flight step divides main-thread time by it.
-var attached_total := 0
-## Phase 189 — the withheld-work service (collision gate, waiting contents) lives in `far_work.gd`.
-var _far := FarWork.new(self)
-## The peer re-centre rules (`_move_peer_center`) live in `peer_recenter.gd`.
-var _peers := PeerRecenter.new(self)
-
-## True when `chunk` is within `NEAR_RING` (Chebyshev) of any window centre.
-func in_near_ring(chunk: Vector2i) -> bool:
-	return _far.in_near_ring(chunk)
-
-## Phase 189 — per-frame: collision and contents for chunks that entered the near ring, and one waiting chunk
-## a frame once the local window is still. Returns how many chunks it served.
-func serve_deferred_work() -> int:
-	return _far.serve()
-
-func contents_waiting_count() -> int:
-	return _far.waiting.size()
-
 ## Phase 42 — the boot gate. `_first_ring` maps "cx,cz" -> built?, and an EMPTY map
 ## means the gate was never armed (so `is_first_ring_ready()` answers true for every
 ## caller that has no boot to hold).
@@ -472,7 +450,7 @@ func _process(_delta: float) -> void:
 	TickProbe.begin("chunks")   # Phase 162 — the stress run's per-phase tick cost
 	begin_pump()
 	_apply_finished_builds()
-	serve_deferred_work()
+	_near.tick()
 	_poll_region_reads()
 	flush_records()
 	if _active:
@@ -487,10 +465,8 @@ func _process(_delta: float) -> void:
 ## `_boot_host()` reaches it through `_boot_server()` before the spawn and then
 ## re-centres with a second `refresh()`, while a dedicated server simply streams
 ## around the player's pre-spawn position (the origin) and never moves it.
-func start(defer_far: bool = false) -> void:
+func start() -> void:
 	_active = true
-	if defer_far:
-		defer_far_work = true   # Phase 189
 
 ## Stop automatic streaming (keeps currently loaded chunks).
 func stop() -> void:
@@ -593,63 +569,7 @@ func stream_radius() -> int:
 ## guard now, and so does the public `load_chunk` — the cap bounds every dispatch, not only
 ## the ones an internal caller happened to check first. See `_dispatch_build`.)**
 func _drain_load_queue() -> void:
-	# Phase 42 review pass 4 — a drain with NOTHING queued has nothing to dispatch, so it
-	# does not resolve the window at all. `_process` calls this every tick, and the read
-	# below is a `PlayerSlice.get_position()` call; the empty case is the common one
-	# (a settled window drains nothing until the player crosses a chunk boundary).
-	if _load_queue.is_empty() and _rebuild_queue.is_empty():
-		if _catchup and _builds.is_empty():
-			_catchup = false   # the folded window is rebuilt: back to the steady cap
-		return
-	var budget := maxi(loads_per_frame, catchup_loads_per_frame) if _catchup else loads_per_frame
-	# Phase 42 review pass 3 — the streamed window is resolved ONCE for the whole drain. The
-	# player's chunk cannot move during it (the position is re-read at the next frame's
-	# `refresh()`), and the per-chunk form re-derived it — a slice call — for every
-	# candidate, so a drain of a full view ring paid ~49 of them to reach the same answer.
-	var centers := window_centers()
-	var radius := stream_radius()
-	var waiting := 0
-	while budget > 0:
-		if _pump_exhausted():
-			return   # the frame's main-thread budget is spent: the rest waits for the next one
-		if _builds.size() >= build_cap():
-			return   # the pool is busy: leave the rest queued for a later frame
-		if not _rebuild_queue.is_empty():
-			var rebuild: Vector2i = _rebuild_queue.pop_front()
-			var rkey := _chunk_key(rebuild)
-			_rebuild_pending.erase(rkey)
-			# Streamed out while it waited: nothing to rebuild (it rebuilds from the
-			# current edit log when it streams back in).
-			if _loaded.has(rkey):
-				_dispatch_build(rebuild)
-				_pump_steps += 1
-				budget -= 1
-			continue
-		if _load_queue.is_empty():
-			return
-		var chunk: Vector2i = _load_queue.pop_front()
-		_pending.erase(_chunk_key(chunk))
-		# Phase 42 review — CANCELLATION. A chunk can leave the streamed window while it
-		# sits in the queue (the player turned around). Dispatching it anyway built ground
-		# nobody wants — and `refresh()` would not re-queue it on the way back in, because
-		# its `_pending` mark was still set, so it was silently skipped instead. Dropping
-		# it here clears that mark, so a chunk that leaves range and returns is queued
-		# again rather than left as a hole.
-		if not _within_windows(centers, radius, chunk):
-			continue
-		# Phase 142 — the chunk's regions read on a worker; it waits at the back of the queue
-		# until they land (a failed region does not hold it: see `regions_settled`).
-		if _reads_async() and not region_streamer.regions_settled(chunk, Frontier.BLEND_CHUNKS):
-			_pending[_chunk_key(chunk)] = true
-			_load_queue.append(chunk)
-			waiting += 1
-			if waiting > _load_queue.size():
-				return
-			continue
-		if not _loaded.has(_chunk_key(chunk)):
-			load_chunk(chunk)
-			_pump_steps += 1
-		budget -= 1
+	_m1.drain_load_queue()
 
 ## Take a chunk into the streamed set, announce it, and dispatch its terrain build.
 ##
@@ -748,7 +668,7 @@ func _record_deferred() -> void:
 		if records_created != before and _loaded.has(_chunk_key(canon)):
 			request_rebuild(canon)
 		if not _deferred_records.has(k) and _built.has(_chunk_key(canon)):
-			_spawn_contents_once(_chunk_key(canon), canon)
+			_near.spawn_or_wait(_chunk_key(canon), canon)
 
 ## A stationary host never crosses a window, so nothing else re-reads the regions a deferred chunk is
 ## waiting for: once per `STRANDED_RETRY_MSEC`, sync the regions the current windows want (a region
@@ -909,21 +829,19 @@ var _seam_revision: Dictionary = {}
 ## Spawn a chunk's contents once per residency, and not while its generation record is still deferred:
 ## the record may rebuild the ground, and a population placed on the plain generator's ground would
 ## stand under the player's edits of the rebuilt one. `_record_deferred` spawns it once the record lands.
-func _spawn_contents_once(key: String, chunk_pos: Vector2i, released: bool = false) -> void:
+func _spawn_contents_once(key: String, chunk_pos: Vector2i) -> void:
 	if _contents_spawned.has(key) or _deferred_records.has(key):
 		return
-	if defer_far_work and not released and not in_near_ring(chunk_pos):
-		_far.waiting[key] = true
-		return
-	_far.waiting.erase(key)
 	_contents_spawned[key] = true
 	_spawn_chunk_contents(chunk_pos)
 
 func _spawn_chunk_contents(chunk_pos: Vector2i) -> void:
+	TickProbe.begin("chunk_contents")   # Phase 189: the flight report's breakdown
 	if creature_slice != null and creature_slice.has_method("spawn_for_chunk"):
 		creature_slice.spawn_for_chunk(chunk_pos)
 	if tree_slice != null and tree_slice.has_method("spawn_for_chunk"):
 		tree_slice.spawn_for_chunk(chunk_pos)
+	TickProbe.end()
 
 func _dispatch_build(chunk_pos: Vector2i) -> void:
 	_m1._dispatch_build(chunk_pos)
@@ -1103,7 +1021,49 @@ func set_peer_center(peer_id: int, chunk: Vector2i, host_driven: bool = false) -
 	return _move_peer_center(peer_id, chunk, host_driven, false)
 
 func _move_peer_center(peer_id: int, chunk: Vector2i, host_driven: bool, is_sync: bool) -> bool:
-	return _peers.move(peer_id, chunk, host_driven, is_sync)
+	var now: int = now_msec.call()
+	# X is a wrapped planet coordinate: store and compare the canonical chunk.
+	chunk = TerrainSlice.wrap_chunk(chunk)
+	if not host_driven and not is_sync and not _peer_centers.has(peer_id):
+		# A raw client claim has nothing to measure a step from: only the host's placement (or its own tracked
+		# position, the sync) may set a first center.
+		peer_recenter_refused += 1
+		return false
+	if host_driven or not _peer_centers.has(peer_id):
+		var moved: bool = _peer_centers.get(peer_id, null) != chunk
+		_peer_centers[peer_id] = chunk
+		_peer_last_claim_msec[peer_id] = now
+		_peer_last_sync_msec[peer_id] = now
+		return moved
+	var current: Vector2i = _peer_centers[peer_id]
+	if current == chunk:
+		return false
+	var last_msec: Dictionary = _peer_last_sync_msec if is_sync else _peer_last_claim_msec
+	if now - int(last_msec.get(peer_id, -1000000)) < int(PEER_RECENTER_INTERVAL * 1000.0):
+		if not is_sync:
+			peer_recenter_refused += 1
+		return false
+	var step := _wrapped_step(current, chunk)
+	var reach := maxi(absi(step.x), absi(step.y))
+	if reach > PEER_RECENTER_MAX_CHUNKS:
+		if is_sync:
+			peer_sync_far_hops += 1
+		else:
+			peer_recenter_refused += 1
+		step = _scaled_step(step, reach)
+	_peer_centers[peer_id] = TerrainSlice.wrap_chunk(current + step)
+	last_msec[peer_id] = now
+	return true
+
+## The step from `from` to `to`, X measured the short way round the seam.
+static func _wrapped_step(from: Vector2i, to: Vector2i) -> Vector2i:
+	var c := TerrainSlice.circumference_chunks()
+	return Vector2i(SeamWrap.delta(to.x, from.x, c), to.y - from.y)
+
+static func _scaled_step(step: Vector2i, reach: int) -> Vector2i:
+	return Vector2i(
+		roundi(float(step.x) * PEER_RECENTER_MAX_CHUNKS / float(reach)),
+		roundi(float(step.y) * PEER_RECENTER_MAX_CHUNKS / float(reach)))
 
 ## Phase 82 — the periodic re-centre of a peer on the position the host tracks. That position is
 ## still client-reported, so it gets the same interval limit and clamp as a claim (a hostile
@@ -1275,7 +1235,7 @@ func _apply_build_entry(task_id: int) -> bool:
 	var heightmap: Array = entry["heightmap"]
 	if result.size() > 1 and result[1] is Array and not (result[1] as Array).is_empty():
 		heightmap = result[1]
-	if not voxel_slice.build_chunk(chunk, heightmap, arrays, int(entry["revision"])):
+	if not voxel_slice.build_chunk(chunk, heightmap, arrays, int(entry["revision"]), _near.wants_collision(chunk)):
 		if int(_build_attempts.get(key, 0)) < MAX_BUILD_RETRIES:
 			# A retry is a dispatch like any other, and `_dispatch_build` enforces the
 			# in-flight cap itself (ninth review pass), deferring to `_rebuild_queue` when
@@ -1288,13 +1248,13 @@ func _apply_build_entry(task_id: int) -> bool:
 	_build_attempts.erase(key)
 	_failed.erase(key)
 	_built[key] = true
-	attached_total += 1
+	builds_attached += 1
 	# The ground exists now, so its contents may: creatures and trees spawn HERE rather
 	# than at load time (see `_spawn_chunk_contents`) — but ONCE per residency, not once
 	# per build. An EDIT rebuilds a loaded chunk, and re-deriving the population for it
 	# re-scanned every live instance and every live tree in the world to arrive at the
-	# same count (see `_contents_spawned`).
-	_spawn_contents_once(key, chunk)
+	# same count (see `_contents_spawned`). Phase 189: and not while a fast player is nowhere near it.
+	_near.spawn_or_wait(key, chunk)
 	_update_first_ring_progress()
 	return true
 
@@ -1405,7 +1365,7 @@ func unload_chunk(chunk_pos: Vector2i) -> void:
 	# The residency ends here: the contents are despawned below, so a chunk that streams
 	# back in repopulates (`_apply_build_entry`).
 	_contents_spawned.erase(key)
-	_far.waiting.erase(key)
+	_near.forget(key)
 	_rebuild_pending.erase(key)
 	# Phase 42 review pass 3 — and the QUEUED entry goes with the mark. `_rebuild_queue` is
 	# deduped through `_rebuild_pending`, so a mark cleared while its queue entry lived
