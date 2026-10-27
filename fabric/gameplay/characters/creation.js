@@ -15,20 +15,21 @@ const { CHIBI_RANGE } = require('./appearances')
 //
 // Name rule: 3–16 characters after trimming the edges; Unicode letters from a
 // single script group plus at most one inner separator (space, hyphen or
-// apostrophe). Combining marks (U+0300–U+036F) may follow a letter and do not
-// count toward the length. Uniqueness is decided on the name's skeleton, a
+// apostrophe). Combining marks (U+0300–U+036F) may follow a letter, at most
+// `maxMarksPerLetter` of them (two covers Vietnamese, more is "Zalgo" text that
+// draws over the line), and do not count toward the length. Uniqueness is decided on the name's skeleton, a
 // subset of Unicode TR39:
 //   1. lower-case,
 //   2. fold accents (`accentFold`, built from Unicode NFD) and drop combining marks,
 //   3. map each confusable code point to its Latin look-alike (`confusables`),
-//   4. replace each `confusableSequences` key (e.g. "rn" → "m"),
-//   5. drop separators.
+//   4. drop separators,
+//   5. replace each `confusableSequences` key (e.g. "rn" → "m").
 // So "Аlice" with a Cyrillic А is refused as mixed script, and an all-Cyrillic
 // "Асе" collides with an existing "Ace". The reserved list is compared on
 // skeletons too. Godot strings have no NFD, so the fold tables are data here.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const NAME_LIMITS = { minLength: 3, maxLength: 16, maxSeparators: 1 }
+const NAME_LIMITS = { minLength: 3, maxLength: 16, maxSeparators: 1, maxMarksPerLetter: 2 }
 const SEPARATORS = [' ', '-', "'"]
 const COMBINING = [[0x0300, 0x036f]]
 
@@ -150,6 +151,8 @@ function creationProblems(data, refs) {
   const n = data.name || {}
   if (!(Number.isInteger(n.minLength) && Number.isInteger(n.maxLength) && n.minLength >= 1 && n.minLength <= n.maxLength))
     p.push(`name: length bounds ${n.minLength}..${n.maxLength} are not 1 <= min <= max`)
+  for (const k of ['maxSeparators', 'maxMarksPerLetter'])
+    if (!(Number.isInteger(n[k]) && n[k] >= 0)) p.push(`name: ${k} ${n[k]} is not a whole number >= 0`)
   if (!Array.isArray(n.separators) || n.separators.some((s) => [...s].length !== 1)) p.push('name: every separator must be one character')
   const ranges = Object.values(n.scripts || {}).flat()
   if (!ranges.length) p.push('name: no script group')
@@ -245,7 +248,7 @@ const CharacterCreation = defineEntity({
     id: { type: 'uuid', primaryKey: true },
     name: {
       type: 'json',
-      description: 'Name rule: { minLength, maxLength, maxSeparators, separators, combining, scripts: { <group>: [[lo, hi]] }, ' +
+      description: 'Name rule: { minLength, maxLength, maxSeparators, maxMarksPerLetter, separators, combining, scripts: { <group>: [[lo, hi]] }, ' +
         'reserved, confusables, confusableSequences, accentFold }; uniqueness is per server on the TR39-style skeleton',
       defaultValue: creationData().name,
     },

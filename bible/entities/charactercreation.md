@@ -12,7 +12,7 @@ The choices a new player makes before entering the world: a name, a gender, a ha
 | Name | Type | Required | Description |
 | ---- | ---- | -------- | ----------- |
 | `id` | uuid | yes |  |
-| `name` | json | yes | Name rule: { minLength, maxLength, maxSeparators, separators, combining, scripts: { <group>: [[lo, hi]] }, reserved, confusables, confusableSequences, accentFold }; uniqueness is per server on the TR39-style skeleton |
+| `name` | json | yes | Name rule: { minLength, maxLength, maxSeparators, maxMarksPerLetter, separators, combining, scripts: { <group>: [[lo, hi]] }, reserved, confusables, confusableSequences, accentFold }; uniqueness is per server on the TR39-style skeleton |
 | `genders` | json | yes | { <gender>: { appearance } }; the appearance preset fixes body, head, eyes, skin and proportions. Label: creation.gender.<id> |
 | `hairStyles` | json | yes | { <hair id>: { gender, shape } }; mesh models/characters/hair/<id>.glb.raw, icon icons/hair/<id>.png.raw |
 | `hairColors` | json | yes | Curated hair colours as DefaultPalette indices |

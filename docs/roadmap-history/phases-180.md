@@ -61,8 +61,8 @@ mood: a 3D chibi novice in a plain leather outfit, framed alone on a dark, quiet
   Godot has no NFD, so the accent fold table is built from the JS engine's NFD at generate time (plus ß, ø, æ,
   œ, þ…). The skeleton lower-cases first, then folds accents and drops combining marks, then maps confusables
   (lower-case Cyrillic and Greek look-alikes), drops separators and replaces "rn" → "m", "vv" → "w". Lower-casing
-  first keeps "ВОВ" and "вов" on one skeleton. Edges are trimmed; a combining mark must follow a letter and does
-  not count toward the length. The reserved list is compared on skeletons.
+  first keeps "ВОВ" and "вов" on one skeleton. Edges are trimmed; a combining mark must follow a letter, at most `maxMarksPerLetter` (2) stack on one
+  letter (no "Zalgo" names), and marks do not count toward the length. The reserved list is compared on skeletons.
 - Runtime rules: `src/character/creation_rules.gd` (`name_refusal`, `skeleton`, `choice_refusal`,
   `creation_refusal`, `preset`, `head_ratio`). Refusal keys are `creation.refuse.<reason>`, gender labels
   `creation.gender.<id>`, in both locales.

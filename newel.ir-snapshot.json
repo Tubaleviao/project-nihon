@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:81f4a1778a342a3cec556fd20486cd7af00d2bc28916004b0d46e64d446d68bd",
+  "schemaHash": "sha256:2e3650cd2ad1ccbac6d06826d2a24952ca80862d5dc9e41d948634c8bb7fafd4",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -32515,7 +32515,7 @@
           "name": {
             "name": "name",
             "type": "json",
-            "description": "Name rule: { minLength, maxLength, maxSeparators, separators, combining, scripts: { <group>: [[lo, hi]] }, reserved, confusables, confusableSequences, accentFold }; uniqueness is per server on the TR39-style skeleton",
+            "description": "Name rule: { minLength, maxLength, maxSeparators, maxMarksPerLetter, separators, combining, scripts: { <group>: [[lo, hi]] }, reserved, confusables, confusableSequences, accentFold }; uniqueness is per server on the TR39-style skeleton",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -32523,6 +32523,7 @@
               "minLength": 3,
               "maxLength": 16,
               "maxSeparators": 1,
+              "maxMarksPerLetter": 2,
               "separators": [
                 " ",
                 "-",

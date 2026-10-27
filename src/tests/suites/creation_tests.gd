@@ -73,7 +73,7 @@ func _test_hair_icons() -> void:
 
 
 func _test_names_accepted() -> void:
-	for n in ["Alice", "José", "Ana-Maria", "O'Brien", "Mary Ann", "  Bob  ", "Zoëy", "Анна", "Ελένη", "やまだ太郎", "Kim"]:
+	for n in ["Alice", "José", "Ana-Maria", "O'Brien", "Mary Ann", "  Bob  ", "Zoëy", "Анна", "Ελένη", "やまだ太郎", "Kim", "Nguye\u0302\u0303n"]:
 		assert_eq(CreationRules.name_refusal(n), "", "accepts %s" % n)
 	assert_eq(CreationRules.normalize_name("  Bob  "), "Bob", "edges are trimmed")
 
@@ -86,6 +86,7 @@ func _test_names_refused() -> void:
 		"Ali\U01F600": "name_chars",
 		"Ali_ce": "name_chars",
 		"́Ana": "name_chars",
+		"Ana\u0301\u0301\u0301": "name_chars",
 		"Ana Maria-José": "name_separator",
 		"-Ana": "name_separator",
 		"Ana-": "name_separator",

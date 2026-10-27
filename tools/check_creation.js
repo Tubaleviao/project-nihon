@@ -37,6 +37,7 @@ expect('the shipped creation data is valid', check(fresh()), null);
 { const r = refs(); r.appearances.NoviceMasculine = { ...r.appearances.NoviceMasculine, proportions: { height: 1, legLength: 1, headScale: 1 } };
   expect('a preset with adult proportions is outside the chibi head ratio', check(fresh(), r), /gender masculine: head-to-height ratio/); }
 { const d = fresh(); d.name.confusables['A'] = 'a'; expect('an upper-case confusable is refused', check(d), /not one lower-case code point/); }
+{ const d = fresh(); d.name.maxMarksPerLetter = -1; expect('a negative mark limit is refused', check(d), /maxMarksPerLetter -1/); }
 { const d = fresh(); d.name.reserved.push('Admin'); expect('a reserved name not in skeleton form is refused', check(d), /reserved "Admin"/); }
 
 // The fold table comes from Unicode NFD: a few spot checks.

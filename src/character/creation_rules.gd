@@ -65,13 +65,17 @@ static func name_refusal(raw: String, taken: Dictionary = {}) -> String:
 	var group := ""
 	var mixed := false
 	var prev_letter := false
+	var marks := 0
+	var max_marks := int(rule.get("maxMarksPerLetter", 2))
 	for i in name.length():
 		var ch := name[i]
 		var cp := name.unicode_at(i)
 		if _in_ranges(cp, combining):
-			if not prev_letter:
-				return "name_chars"   # a mark must sit on a letter
+			marks += 1
+			if not prev_letter or marks > max_marks:
+				return "name_chars"   # a mark must sit on a letter, and only a few may stack
 			continue
+		marks = 0
 		length += 1
 		if ch in separators:
 			seps += 1
