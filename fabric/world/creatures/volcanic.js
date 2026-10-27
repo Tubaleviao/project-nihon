@@ -1,4 +1,4 @@
-const { defineEntity, skeletonField, creatureStateMachine, dropsData, pathFields, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS } = require('./shared')
+const { defineEntity, bodyFields, skeletonField, creatureStateMachine, dropsData, pathFields, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS } = require('./shared')
 const { carcassFields } = require('../../gameplay/harvest')
 
 module.exports = {
@@ -21,6 +21,7 @@ module.exports = {
       alertRadius:    { type: 'decimal', description: 'Distance in metres at which creature enters alert state', defaultValue: 6.0 },
       skeleton:       skeletonField('SerpentSkeleton'),
       ...pathFields(),
+      ...bodyFields({ bodyRadiusMetres: 0.5, squash: 0.45 }),
       attackRadius:   { type: 'decimal', description: 'Distance in metres at which creature begins attacking', defaultValue: 3.0 },
       fleeThreshold:  { type: 'decimal', description: 'HP fraction (0–1) below which creature flees', defaultValue: 0.10 },
       respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 1500 },
@@ -108,6 +109,7 @@ module.exports = {
       alertRadius:    { type: 'decimal', description: 'Distance in metres at which creature enters alert state', defaultValue: 15.0 },
       skeleton:       skeletonField('BirdSkeleton'),
       ...pathFields({ movement: 'flying', hoverMetres: 2.5 }),
+      ...bodyFields({ bodyRadiusMetres: 0.8, squash: 0.05 }),
       attackRadius:   { type: 'decimal', description: 'Distance in metres at which creature begins attacking', defaultValue: 4.0 },
       fleeThreshold:  { type: 'decimal', description: 'HP fraction (0–1) below which creature flees', defaultValue: 0.20 },
       respawnSeconds: { type: 'integer', description: 'Seconds before a dead creature respawns', defaultValue: 2400 },

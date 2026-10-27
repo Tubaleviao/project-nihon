@@ -66,6 +66,8 @@ enum State {
 @export var pathRadiusTiles: int
 @export var movement: int
 @export var hoverMetres: float
+@export var bodyRadiusMetres: float
+@export var squash: float
 @export var attackRadius: float
 @export var fleeThreshold: float
 @export var respawnSeconds: int

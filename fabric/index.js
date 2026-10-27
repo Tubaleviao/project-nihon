@@ -46,6 +46,8 @@ combat.validateCombat(combat.STATUS_EFFECTS, combat.creatureOnHit(creatures), Ob
 // Phase 136 — every creature's ground-movement fields must be in range; throwing fails `npm run validate`.
 require('./world/creatures/shared').validatePathFields(creatures)
 require('./world/creatures/shared').validateSkeletonFields(creatures)
+// Phase 192 — every creature declares a body footprint and squash in range.
+require('./world/creatures/shared').validateBodyFields(creatures)
 
 // Phase 137 — every biome's `surfaceMaterial` must declare whether it is `granular` (settles when undermined).
 require('./world/materials/granular').validateGranular(require('./world/biomes'), materials)

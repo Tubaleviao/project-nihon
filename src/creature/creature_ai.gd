@@ -63,6 +63,10 @@ const GROUP_HERD := 2
 ## (`CreaturePath`) and stand on the column top; with no voxel surface wired (isolated tests) they keep
 ## the straight 3D step.
 const CreaturePath := preload("res://src/creature/creature_path.gd")
+## Phase 192 — creature footprints: overlapping bodies are pushed apart once per tick.
+const CreatureBody := preload("res://src/creature/creature_body.gd")
+## Creatures farther than this from every player skip the push (nobody is there to see them overlap).
+const BODY_ACTIVE_RANGE := 96.0
 const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
 ## Path searches the whole population may start in one tick; the rest wait their turn in a FIFO queue.
@@ -154,6 +158,7 @@ func _tick_all(delta: float) -> void:
 	# The view is rebuilt only when the population's membership changes (see
 	# CreatureSlice.instances_view), and the records in it are the live ones.
 	var instances: Array = creature_slice.instances_view()
+	var near: Array = []
 	for inst in instances:
 		var iid: String = inst["instance_id"]
 		var c_state: String = inst["state"]
@@ -162,12 +167,16 @@ func _tick_all(delta: float) -> void:
 		_ensure_ai_record(iid, inst["position"])
 		if _is_companion(iid):
 			_tick_companion(iid, inst, delta)
+			near.append(inst)
 			continue
 		# Phase 36 — the NEAREST of every player, not only the host's own body: a
 		# creature used to stand still while a remote peer walked through its
 		# territory, because the only position it ever looked at was this machine's.
 		var target := _nearest_target(inst["position"], targets)
 		_tick_instance(iid, inst, target["position"], delta, str(target["id"]))
+		if float(target["distance"]) <= BODY_ACTIVE_RANGE:
+			near.append(inst)
+	separate_bodies(near, targets)
 
 ## The player targets on this machine (see `player_targets`).
 func _player_targets() -> Dictionary:
@@ -339,6 +348,11 @@ func _patrol(iid: String, inst: Dictionary, delta: float) -> void:
 	_move_instance(iid, inst, target, SPEED_IDLE, delta)
 
 func _chase(iid: String, inst: Dictionary, player_pos: Vector3, delta: float) -> void:
+	# Phase 192 — a chaser stops when its body meets the player's instead of walking into it.
+	var pos: Vector3 = inst["position"]
+	var reach := CreatureBody.radius_of(str(inst["creature_id"])) + CreatureBody.PLAYER_RADIUS
+	if Vector2(pos.x - player_pos.x, pos.z - player_pos.z).length() <= reach:
+		return
 	_move_instance(iid, inst, player_pos, SPEED_AGGRESSIVE, delta)
 
 func _flee(iid: String, inst: Dictionary, player_pos: Vector3, delta: float) -> void:
@@ -362,6 +376,60 @@ func _step_toward(inst: Dictionary, iid: String, target: Vector3, speed: float, 
 	# Phase 171 — the step is a metre-sized delta added to the exact position, so it is the same size
 	# at x = 2e7 as at the origin (a float32 `pos + step` would round to the 2 m grid there).
 	creature_slice.move_instance(iid, dir * speed * delta)
+
+# ---------------------------------------------------------------------------
+# Body contact (Phase 192)
+# ---------------------------------------------------------------------------
+
+## Push overlapping bodies apart: each pair of live creatures in `insts` splits its overlap, and a
+## creature standing in a player is moved out of them (a player is never moved by a creature). A push
+## that would carry a ground creature up or down a ledge taller than it can step is dropped, so a crowd
+## against a cliff does not climb it.
+func separate_bodies(insts: Array, targets: Dictionary) -> void:
+	if insts.is_empty():
+		return
+	var by_id := {}
+	for inst in insts:
+		by_id[inst["instance_id"]] = inst
+	var shoves := {}
+	for inst in insts:
+		var iid: String = inst["instance_id"]
+		var pos: Vector3 = inst["position"]
+		var r := CreatureBody.radius_of(str(inst["creature_id"]))
+		for nid in creature_slice.creatures_in_radius(pos, r + CreatureBody.MAX_RADIUS):
+			# Each pair once (the lower id leads), and only with live neighbours in range.
+			if str(nid) <= iid or not by_id.has(nid):
+				continue
+			var other: Dictionary = by_id[nid]
+			var push := CreatureBody.pair_push(pos, r, other["position"],
+					CreatureBody.radius_of(str(other["creature_id"])), iid + "|" + str(nid))
+			if push == Vector3.ZERO:
+				continue
+			shoves[iid] = (shoves.get(iid, Vector3.ZERO) as Vector3) + push * 0.5
+			shoves[nid] = (shoves.get(nid, Vector3.ZERO) as Vector3) - push * 0.5
+		for tid in targets:
+			var out := CreatureBody.push_out(pos, r, targets[tid], CreatureBody.PLAYER_RADIUS, iid + "|" + str(tid))
+			if out != Vector3.ZERO:
+				shoves[iid] = (shoves.get(iid, Vector3.ZERO) as Vector3) + out
+	for iid in shoves:
+		_shove(iid, (shoves[iid] as Vector3).limit_length(CreatureBody.MAX_SHOVE))
+
+## Move `iid` by a contact push, unless it would step a ground creature over a ledge it cannot climb.
+func _shove(iid: String, push: Vector3) -> void:
+	if push.length_squared() < 1e-8:
+		return
+	var ground: bool = not creature_slice.has_method("movement_of") or creature_slice.movement_of(iid) == creature_slice.MOVE_GROUND
+	if ground and creature_slice.has_method("has_surface") and creature_slice.has_surface():
+		var pos: Vector3 = creature_slice.get_instance_position(iid)
+		var here: Vector2i = creature_slice.tile_of(pos)
+		var there: Vector2i = creature_slice.tile_of(pos + push)
+		if there != here:
+			var lap := _lap_tiles()
+			var h_here: float = creature_slice.surface_at_tile(here)
+			var h_there: float = creature_slice.surface_at_tile(_canon(there, lap))
+			if is_nan(h_there) or absf(h_there - h_here) > float(_path_rules(iid)["max_step"]):
+				return
+	creature_slice.move_instance(iid, push)
 
 # ---------------------------------------------------------------------------
 # Path following (Phase 136)

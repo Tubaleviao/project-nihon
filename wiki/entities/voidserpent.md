@@ -27,6 +27,8 @@ A massive serpentine entity born from void-rift energy given form. Its scales sh
 | pathRadiusTiles | integer | Search radius in tiles of one path query |
 | movement | `ground`, `flying`, `swimming` | ground snaps to the surface, flying holds hoverMetres above it, swimming stays in water |
 | hoverMetres | decimal | Height in metres above the surface a flying creature holds |
+| bodyRadiusMetres | decimal | Radius in metres of the footprint other creatures and players are kept out of |
+| squash | decimal | How far the body squashes on contact, as a fraction of its length (0 = rigid) |
 | attackRadius | decimal | Distance in metres at which creature begins attacking |
 | fleeThreshold | decimal | HP fraction (0–1) below which creature flees |
 | respawnSeconds | integer | Seconds before a dead creature respawns |

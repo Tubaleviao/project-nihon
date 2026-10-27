@@ -19,6 +19,7 @@ const CharacterMaterial := preload("res://src/character/character_material.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const Diag := preload("res://src/core/diag.gd")
 const GameDataReader := preload("res://src/core/game_data_reader.gd")
+const CreatureBody := preload("res://src/creature/creature_body.gd")
 
 ## Creatures closer than this to the camera get a model.
 const MODEL_RANGE_M := 40.0
@@ -65,6 +66,11 @@ var _palette: Array = []
 ## creature_id -> true: types seen by `reselect` (in the slice, out of model range) whose template is not
 ## built yet. `tick` builds one per frame so a type's first model does not hitch the frame it comes in range.
 var _warm_queue: Dictionary = {}
+## Phase 192 — `() -> Array` of player feet positions in this node's scene frame: a model squashes
+## against them as well as against its modelled neighbours. Unset: creatures only.
+var body_points: Callable = Callable()
+## instance_id -> { dir, depth } for this frame's modelled live creatures (see `contacts_for`).
+var _contacts: Dictionary = {}
 
 
 ## Pure: which instances hold a model. `cands` is [[instance_id, distance_m], ...], `current` maps the
@@ -218,11 +224,35 @@ func tick(instances: Dictionary, cam_world: Vector3, has_cam: bool, delta: float
 		_select_accum = 0.0
 		reselect(instances, cam_world, cam_pos)
 	prewarm_one()
+	var players: Array = body_points.call() if body_points.is_valid() else []
+	_contacts = contacts_for(instances, players)
 	for iid in models.keys():
 		if not instances.has(iid):
 			detach(iid)
 			continue
 		_update_model(iid, instances[iid], delta)
+
+
+## Phase 192 — the strongest contact on each modelled live creature, against the other modelled ones and
+## `players` (scene positions), as instance_id -> { dir, depth } (see `CreatureBody.contact`). Only models
+## squash, and only the nearest few creatures have one, so the pair scan stays small.
+func contacts_for(instances: Dictionary, players: Array) -> Dictionary:
+	var bodies: Array = []
+	for iid in models:
+		if instances.has(iid) and instances[iid]["state"] != "dead":
+			var inst: Dictionary = instances[iid]
+			bodies.append([iid, scene_of(inst), CreatureBody.radius_of(str(inst["creature_id"]))])
+	var out := {}
+	for b in bodies:
+		var others: Array = []
+		for o in bodies:
+			if o[0] != b[0]:
+				others.append([o[1], o[2]])
+		for p in players:
+			if p is Vector3:
+				others.append([p, CreatureBody.PLAYER_RADIUS])
+		out[b[0]] = CreatureBody.contact(b[1], float(b[2]), others)
+	return out
 
 
 ## Range check: attach models to the nearest creatures, detach the rest.
@@ -288,7 +318,8 @@ func attach(iid: String, inst: Dictionary) -> bool:
 	var pos: Vector3 = scene_of(inst)
 	node.transform = Transform3D(Basis(), pos)
 	models[iid] = {"node": node, "tree": tree, "speed": 0.0, "last_pos": pos, "last_exact": inst.get("pos", {}), "yaw": 0.0,
-		"loco": -1, "dead_at": -1.0, "fall_t": 1.0, "fall_from": pos, "corpse_s": corpse_seconds(cid), "state": str(inst["state"]), "swing_left": 0.0, "swing": 0, "swing_seen": 0}
+		"loco": -1, "dead_at": -1.0, "fall_t": 1.0, "fall_from": pos, "corpse_s": corpse_seconds(cid), "state": str(inst["state"]), "swing_left": 0.0, "swing": 0, "swing_seen": 0,
+		"give": CreatureBody.squash_of(cid), "squash": Vector2.ZERO, "squash_dir": Vector3.ZERO}
 	model_attached.emit(iid)
 	return true
 
@@ -388,7 +419,7 @@ func _update_model(iid: String, inst: Dictionary, delta: float) -> void:
 		m["fall_t"] = float(m["fall_t"]) + delta
 		var u := clampf(float(m["fall_t"]) / FALL_SECONDS, 0.0, 1.0)
 		draw_pos = (m["fall_from"] as Vector3).lerp(pos, u) + Vector3(0.0, DeathPush.arc_height(u, FALL_ARC_M), 0.0)
-	node.transform = Transform3D(Basis(Vector3.UP, float(m["yaw"])), draw_pos)
+	node.transform = Transform3D(_squash_of(iid, m, state, delta) * Basis(Vector3.UP, float(m["yaw"])), draw_pos)
 	if state == "dead":
 		if float(m["dead_at"]) < 0.0:
 			m["dead_at"] = 0.0
@@ -421,6 +452,18 @@ func _update_model(iid: String, inst: Dictionary, delta: float) -> void:
 		m["loco"] = s
 		RigTree.travel_once(tree, tree.get(RigTree.PLAYBACK_PARAM), RigTree.node_for_state(s))
 	RigTree.apply_motion(tree, float(m["speed"]), blend_for_speed(float(m["speed"])))
+
+
+## Phase 192 — this frame's squash basis for a model: a spring pulls the squash toward the contact's depth
+## times the type's give, so a bump presses in, overshoots into a little stretch when released and
+## settles. The last contact direction is kept while the spring winds down. A dead body does not squash.
+func _squash_of(iid: String, m: Dictionary, state: String, delta: float) -> Basis:
+	var c: Dictionary = _contacts.get(iid, {})
+	var depth: float = float(c.get("depth", 0.0)) if state != "dead" else 0.0
+	if depth > 0.0:
+		m["squash_dir"] = c["dir"]
+	m["squash"] = CreatureBody.spring_step(m["squash"], depth * float(m["give"]), delta)
+	return CreatureBody.squash_basis(m["squash_dir"], (m["squash"] as Vector2).x)
 
 
 ## The packed rig and material for a creature type, built once. Null (with one warning per type)
