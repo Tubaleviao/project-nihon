@@ -240,7 +240,9 @@ func _test_registry_growth() -> void:
 	GameBus.attributes_synced.connect(on_sync)
 	var cost := int(float((_system().get("growth") as Dictionary)["xpPerPoint"]) * 2.0)   # survival: half Vitality, half Perception
 	assert_eq(reg.grant_skill_xp("p", "Skinning", cost - 2), [], "not enough XP gains nothing")
-	assert_true(seen.is_empty(), "and nothing is synced")
+	assert_eq(seen.size(), 1, "the sync still goes out so the owner's growth bar moves")
+	assert_eq(int(seen[0][1]["vitality"]), 10, "carrying the unchanged table")
+	seen.clear()
 	assert_eq(reg.get_skill_xp("p", "Skinning"), cost - 2, "the skill still gained its XP")
 	var gained := reg.grant_skill_xp("p", "Skinning", 2)
 	assert_eq(gained.size(), 2, "vitality and perception gain a point")

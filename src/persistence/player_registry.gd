@@ -915,8 +915,8 @@ func max_hp_of(player_id: String) -> float:
 	return stat_of(player_id, "maxHp") if has_player(player_id) else PlayerRules.MAX_HP
 
 ## Host: grant `amount` XP to `skill` and feed it to the attributes its category weights (Phase 178). Returns the
-## attributes that gained a point; `GameBus.attributes_synced` is emitted when any did, so the owner's client
-## refreshes. Refused (returns []) on a non-authoritative machine.
+## attributes that gained a point; `GameBus.attributes_synced` is emitted on every grant, so the owner's client
+## refreshes its attributes and growth bars. Refused (returns []) on a non-authoritative machine.
 func grant_skill_xp(player_id: String, skill: String, amount: int) -> Array:
 	if not is_authoritative or amount <= 0:
 		return []
@@ -934,7 +934,8 @@ func grant_skill_xp(player_id: String, skill: String, amount: int) -> Array:
 	rec["attribute_growth"] = growth
 	if not gained.is_empty():
 		rec["attributes"] = attrs
-		GameBus.attributes_synced.emit(player_id, attrs)
+	# Phase 179: emitted on every grant, not only on a gained point, so the owner's growth bar moves with the XP.
+	GameBus.attributes_synced.emit(player_id, attrs)
 	return gained
 
 ## Phase 118 — the professions this player has unlocked ({ name: true }). Progression,
