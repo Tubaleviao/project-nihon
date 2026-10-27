@@ -327,6 +327,15 @@ func dispatch_worker_noise_build(chunk_pos: Vector2i, key: String) -> void:
 	var geometry: bool = not sl.skips_geometry()
 	var keep_render: bool = sl.keeps_render()
 	var lod: int = sl._near.lod_for(chunk_pos) if geometry else VoxelCoarse.FULL
+	var revision: int = int(voxel.chunk_revision(chunk_pos))
+	# Phase 191 — a chunk built moments ago and unchanged since attaches from the cache, with no worker task.
+	if geometry and keep_render:
+		var hit: Dictionary = sl._cache.take(key, sl.cache_signature(chunk_pos, lod))
+		if not hit.is_empty():
+			sl._cache.invalidate(key)   # re-put by the attach (a refused one must not hit again)
+			sl.cache_attaches += 1
+			sl._attach_built(key, chunk_pos, hit["heightmap"], hit["arrays"], revision)
+			return
 	var gathered: Dictionary = {}
 	if lod != VoxelCoarse.FULL:
 		gathered = { "biomes": voxel.gather_biomes_for(chunk_pos) }
@@ -334,7 +343,6 @@ func dispatch_worker_noise_build(chunk_pos: Vector2i, key: String) -> void:
 		gathered = voxel.gather_build_input_deferred(chunk_pos)
 	var seed_v: int = int(sl.terrain_slice.get_world_seed())
 	var noise: FastNoiseLite = sl.terrain_slice.detail_noise_copy()
-	var revision: int = int(voxel.chunk_revision(chunk_pos))
 	var result: Array = [null, cached, 0]
 	var job := func() -> void:
 		var t0 := Time.get_ticks_usec()

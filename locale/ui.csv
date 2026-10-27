@@ -328,7 +328,7 @@ hud.carcass.nothing,The cuts yielded nothing.,Os cortes não renderam nada.
 tool.knife,knife,faca
 tool.bonetool,bone tool,ferramenta de osso
 chat.usage.time,/time <hh:mm> | /time +<hours> — set the time of day,/time <hh:mm> | /time +<horas> — define a hora do dia
-chat.usage.speed,/speed <factor> [player] — walking speed multiplier (0.1–10),/speed <fator> [jogador] — multiplicador da velocidade de caminhada (0.1–10)
+chat.usage.speed,/speed <factor> [player] — walking speed multiplier (0.1–30),/speed <fator> [jogador] — multiplicador da velocidade de caminhada (0.1–30)
 chat.usage.fly,/fly [player] — toggle flying (Space up · Ctrl down),/fly [jogador] — liga ou desliga o voo (Espaço sobe · Ctrl desce)
 chat.usage.heal,/heal [player] — restore full health,/heal [jogador] — restaura a vida toda
 chat.time_off,The world clock is not running here.,O relógio do mundo não está ativo aqui.

@@ -184,6 +184,25 @@ var _m1 := ChunkPart1.new(self)
 ## Phase 189 — collision and contents only near a body (see `near_ring.gd`).
 const NearRing := preload("res://src/terrain/near_ring.gd")
 var _near := NearRing.new(self)
+
+## Phase 191 — recently built chunk arrays, so a return trip attaches without a worker build.
+const ChunkCache := preload("res://src/terrain/chunk_cache.gd")
+var _cache := ChunkCache.new()
+var cache_attaches: int = 0   # chunks attached from the cache instead of a worker build
+
+func chunk_cache() -> ChunkCache:
+	return _cache
+
+## Phase 191 — what a build of `chunk` at `lod` reads: the level, the edit revision of the chunk and each
+## neighbour (their strips shape its seams) and its own generation record. A cache entry made under another
+## signature is stale.
+func cache_signature(chunk: Vector2i, lod: int) -> Array:
+	var revs: Array = []
+	if voxel_slice != null and voxel_slice.has_method("edit_revision"):
+		for dz in range(-1, 2):
+			for dx in range(-1, 2):
+				revs.append(int(voxel_slice.edit_revision(chunk + Vector2i(dx, dz))))
+	return [lod, revs, ChunkRecords.get_record(TerrainSlice.wrap_chunk(chunk)).hash()]
 ## Builds attached since the manager was made: the playtest flight step divides its chunk-phase time by it.
 var builds_attached: int = 0
 
@@ -904,6 +923,7 @@ func _supersede_in_flight(key: String) -> void:
 ## supersede happens UNCONDITIONALLY so the pre-edit build cannot land while it waits.
 func request_rebuild(chunk_pos: Vector2i) -> void:
 	var key := _chunk_key(chunk_pos)
+	_cache.invalidate(key)   # Phase 191: the data under it changed, loaded or not
 	if not _loaded.has(key):
 		return
 	if _track_rebuilds:
@@ -1214,7 +1234,11 @@ func _apply_build_entry(task_id: int) -> bool:
 	var heightmap: Array = entry["heightmap"]
 	if result.size() > 1 and result[1] is Array and not (result[1] as Array).is_empty():
 		heightmap = result[1]
-	if not voxel_slice.build_chunk(chunk, heightmap, arrays, int(entry["revision"]), _near.wants_collision(chunk)):
+	return _attach_built(key, chunk, heightmap, arrays, int(entry["revision"]))
+
+## Attach one chunk's build result (a worker's, or a cache entry's) and do the bookkeeping that follows.
+func _attach_built(key: String, chunk: Vector2i, heightmap: Array, arrays: Dictionary, revision: int) -> bool:
+	if not voxel_slice.build_chunk(chunk, heightmap, arrays, revision, _near.wants_collision(chunk)):
 		if int(_build_attempts.get(key, 0)) < MAX_BUILD_RETRIES:
 			# A retry is a dispatch like any other, and `_dispatch_build` enforces the
 			# in-flight cap itself (ninth review pass), deferring to `_rebuild_queue` when
@@ -1227,7 +1251,10 @@ func _apply_build_entry(task_id: int) -> bool:
 	_build_attempts.erase(key)
 	_failed.erase(key)
 	_built[key] = true
-	_near.note_built(key, int(arrays.get("lod", 1)))
+	var lod := int(arrays.get("lod", 1))
+	_near.note_built(key, lod)
+	if keeps_render() and not arrays.is_empty():
+		_cache.put(key, cache_signature(chunk, lod), arrays, heightmap)
 	builds_attached += 1
 	# The ground exists now, so its contents may: creatures and trees spawn HERE rather
 	# than at load time (see `_spawn_chunk_contents`) — but ONCE per residency, not once
@@ -1306,6 +1333,7 @@ func _update_first_ring_progress() -> void:
 ## before it (or still queued) sits a whole lap away from where the window now wants it, and a
 ## kept key would never be rebuilt in the right place.
 func restream() -> void:
+	_cache.clear()
 	for key in _loaded.keys():
 		unload_chunk(_key_to_chunk(key))
 	_load_queue.clear()
@@ -1317,11 +1345,23 @@ func restream() -> void:
 ## Phase 182 — `/regen world`: drop the generation records not yet written (they describe the old
 ## world's frontier) and every deferred one.
 func discard_pending_records() -> void:
+	_cache.clear()
 	_pending_records.clear()
 	_deferred_records.clear()
 	_deferred_since.clear()
 
 ## True when `chunk_pos` is loaded and its ground has been built.
+## Phase 191 — the chunks of the local player's streamed window whose ground is not built yet (the distant
+## ring draws coarse ground under them).
+func unbuilt_window_chunks() -> Array:
+	var out: Array = []
+	if _last_centers.is_empty():
+		return out
+	for c in _desired_chunks(_last_centers[0], stream_radius()):
+		if not _built.has(_chunk_key(c)):
+			out.append(c)
+	return out
+
 func is_chunk_built(chunk_pos: Vector2i) -> bool:
 	return _built.has(_chunk_key(chunk_pos))
 

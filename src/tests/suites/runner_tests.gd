@@ -183,7 +183,13 @@ func _test_playtest_markdown_escapes_detail() -> void:
 
 ## Phase 187 — the flight step passes when the ground under the body was built in FLIGHT_MIN_COVER of the samples.
 func _test_playtest_flight_verdict() -> void:
-	assert_eq(Bot.FLIGHT_SPEED_MPS, 90.0, "the top admin speed: 4.5 m/s × 10 × 2")
+	assert_eq(Bot.FLIGHT_SPEED_MPS, 270.0, "the top admin speed (Phase 191): 4.5 m/s × 30 × 2")
+	assert_eq(Bot.flight_speed_from_args(["--playtest-bot", "--playtest-flight-speed", "10"]), 90.0, "the slow-machine run flies at the old 90 m/s")
+	assert_eq(Bot.flight_speed_from_args(["--playtest-bot"]), 270.0, "else at the top speed")
+	assert_eq(Bot.flight_speed_from_args(["--playtest-flight-speed", "99"]), 270.0, "a factor over the admin cap is clamped")
+	assert_eq(Bot.only_from_args(["--playtest-only", "flight"]), "flight", "--playtest-only names one step")
+	assert_eq(Bot.only_from_args(["--playtest-bot"]), "", "no flag, every step")
+	assert_eq(Bot.all_step_names().size(), 12, "the full list is unchanged")
 	var v: Dictionary = Bot.flight_verdict([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0], [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.5])
 	assert_true(bool(v["ok"]), "nine of ten is the floor")
 	assert_eq(float(v["worst_ring"]), 0.5, "the worst ring sample is kept")

@@ -90,7 +90,7 @@ commands a player may use.
 | `/say <message>` | Global announcement |
 | `/weather <state> <hours>` | Override the weather of your cell |
 | `/time <hh:mm>` · `/time +<hours>` | Move the host clock forward (never back) |
-| `/speed <0.1–10> [player]` | Walking speed multiplier for the session |
+| `/speed <0.1–30> [player]` | Walking speed multiplier for the session |
 | `/fly [player]` | Toggle flying (Space climbs, Ctrl sinks) |
 | `/heal [player]` | Fill a live player's health (does not revive) |
 | `/regen world confirm` | Regenerate the terrain from the current generator |

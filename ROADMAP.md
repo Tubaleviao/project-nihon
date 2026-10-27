@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–178, 182 and 187–190 are done. Their specs and acceptance criteria are archived in
+Phases 1–178, 182 and 187–191 are done. Their specs and acceptance criteria are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Arc: make it look and feel like an RPG (Phases 173–181, 183)
@@ -74,7 +74,7 @@ render mesh, at 27 chunks/s.
 | 188 | Mountain ranges, not plateaus: narrower ridges, a temperature tree line and a low spawn plain | Done | [phases-188.md](docs/roadmap-history/phases-188.md) |
 | 189 | Fast flight II: collision and contents only near the body | Done | [phases-189.md](docs/roadmap-history/phases-189.md) |
 | 190 | Fast flight III: coarse chunks beyond the near ring | Done | [phases-190.md](docs/roadmap-history/phases-190.md) |
-| 191 | Fast flight IV: a recent-chunk cache, no holes, and a /speed cap of 30 on a slow machine | Planned | below |
+| 191 | Fast flight IV: a recent-chunk cache, no holes, and a /speed cap of 30 on a slow machine | Done | [phases-191.md](docs/roadmap-history/phases-191.md) |
 
 ### Arc: first steps (Phases 184–186)
 
@@ -90,37 +90,6 @@ The scattered UI instructions are removed, so the tutorial is the one place that
 | 184 | First steps in the fabric: the tutorial steps, the bed and a shelter rule | Planned | below |
 | 185 | The bed is the spawn point: host-owned, persisted, one per player | Planned | below |
 | 186 | The first-steps tutorial at runtime: one-time cards, a toggle, and no other in-UI tutorial | Planned | below |
-
----
-
-## Phase 191 — Fast flight IV: a recent-chunk cache, no holes, and a /speed cap of 30 on a slow machine
-
-**Goal:** turning back rebuilds ground that was built seconds ago, and a chunk not yet built shows as
-empty space. With Phases 187–190 in place, raise the admin speed cap and prove it holds on a slow
-machine.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phase 190.
-
-**Deliverables:**
-- An LRU cache of recently built chunk arrays (bounded by memory), keyed by chunk and revision, so a
-  return trip attaches without a rebuild. An edit invalidates it.
-- The distant ring draws under any chunk of the window that is not built yet, so the player sees coarse
-  ground, never a hole.
-- `AdminRules.SPEED_MAX` 10 → 30 (flying: 270 m/s). The playtest bot's `flight` step runs at the new
-  top speed.
-- CI runs the `flight` step a second time with the worker pool limited to 2 threads (the slow-machine
-  case) at the old 90 m/s.
-
-**Acceptance criteria:**
-- [ ] Suite: a cached chunk attaches without a dispatch; an edit invalidates its entry; the cache
-  stays within its bound.
-- [ ] Suite: the distant ring covers an unbuilt window chunk and leaves a built one to the voxel mesh.
-- [ ] Playtest bot (CI): `flight` at 270 m/s keeps the ground under the body built in ≥ 90% of samples.
-- [ ] Playtest bot (CI, 2 worker threads): `flight` at 90 m/s keeps it in ≥ 90% of samples.
-- [ ] `/speed` accepts 30 and refuses 31, in `admin_tests`; catalog strings updated in `en` and `pt_BR`.
-- [ ] Suite green on both boot paths, net harness green.
 
 ---
 
