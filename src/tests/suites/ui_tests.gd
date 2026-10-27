@@ -24,6 +24,7 @@ func register() -> void:
 	_run_test("sheet: every attribute has an icon at its key and none is orphaned", _test_sheet_icons)
 	_run_test("sheet: dropping on a slot equips like the context menu; a worn item dropped on the bag unequips", _test_sheet_drops)
 	_run_test("sheet: no user-facing literal, and both locales render", _test_sheet_literals_and_locales)
+	_run_test("sheet: the preview body is a detached rig", _test_sheet_preview)
 	_run_test("minimap: blend never borrows an unrevealed biome", _test_minimap_blend_respects_fog)
 	_run_test("minimap: a second redraw looks up no biome",      _test_minimap_redraw_uses_cache)
 	_run_test("map: past a pole is the far meridian",            _test_map_past_pole_matches_far_meridian)
@@ -2397,3 +2398,22 @@ func _test_sheet_literals_and_locales() -> void:
 		assert_eq(UiSlice.CharacterSheet.format_stat("carryCapacityKg", 1234.0), "1,234 kg", "en groups with a comma")
 		for k in ["ui", "ch", "bag", "player"]:
 			rig[k].free())
+
+func _test_sheet_preview() -> void:
+	var rig := _sheet_rig()
+	var ui: UiSlice = rig["ui"]
+	var ch: CharacterSlice = rig["ch"]
+	var before: int = ch._instances.size()
+	var holder := Node3D.new()
+	add_child(holder)
+	var root: Node3D = ch.build_preview(holder)
+	if root == null:
+		assert_true(AssetOverlay.first_key("meshes", CharacterSlice.DEFAULT_RIG_KEYS) == "", "no preview only when the manifest lists no rig")
+	else:
+		assert_eq(ch._instances.size(), before, "the preview is detached: the slice keeps no extra body")
+		assert_true(root.get_parent() == holder, "and puts it under the caller's node")
+		assert_true(root.find_child("RigScene", true, false) != null, "it carries the rig")
+		root.free()
+	holder.free()
+	for k in ["ui", "ch", "bag", "player"]:
+		rig[k].free()

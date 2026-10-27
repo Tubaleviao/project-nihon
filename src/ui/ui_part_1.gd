@@ -114,8 +114,12 @@ func refresh_character() -> void:
 	if signature == sl._character_rows_signature and sl._character_grid.get_child_count() > 0:
 		return
 	sl._character_rows_signature = signature
-	if sl._sheet_doll != null and not sl._sheet_doll.has_rig() and sl.is_inside_tree():
-		sl._sheet_doll.show_rig(sl.character_slice)
+	# The preview is rebuilt when what is worn changes (its body is a detached copy of the avatar).
+	var worn_hash: int = sl._local_worn().hash()
+	if sl._sheet_doll != null and sl.character_slice != null and sl.is_inside_tree() \
+			and (not sl._sheet_doll.has_rig() or worn_hash != sl._sheet_worn_hash):
+		sl._sheet_worn_hash = worn_hash
+		sl._sheet_doll.rebuild_preview(sl.character_slice)
 	for grid in [sl._character_grid, sl._character_grid_right]:
 		for c in grid.get_children():
 			grid.remove_child(c)
@@ -171,10 +175,10 @@ func _fill_sheet_panels(sheet: Dictionary) -> void:
 	for st in sheet["stats"]:
 		var name_label := Label.new()
 		name_label.text = str(st["label"])
-		name_label.add_theme_font_size_override("font_size", 12)
+		name_label.add_theme_font_size_override("font_size", 11)
 		var value_label := Label.new()
 		value_label.text = str(st["text"])
-		value_label.add_theme_font_size_override("font_size", 12)
+		value_label.add_theme_font_size_override("font_size", 11)
 		sl._sheet_stat_box.add_child(name_label)
 		sl._sheet_stat_box.add_child(value_label)
 	for k in sheet["skills"]:
@@ -201,7 +205,7 @@ func _build_ui() -> void:
 	sl._panels[sl.WINDOW_PROPOSALS] = sl._build_window(sl.WINDOW_PROPOSALS, "win.proposals", sl._build_proposals_content(), Vector2(470, 700))
 	sl._panels[sl.WINDOW_CONTROLS] = sl._build_window(sl.WINDOW_CONTROLS, "win.controls", sl._build_controls_content(), Vector2(916, 24))
 
-	sl._panels[sl.WINDOW_CHARACTER] = sl._build_window(sl.WINDOW_CHARACTER, "win.character", sl._build_character_content(), Vector2(916, 360))
+	sl._panels[sl.WINDOW_CHARACTER] = sl._build_window(sl.WINDOW_CHARACTER, "win.character", sl._build_character_content(), Vector2(150, 24))
 	sl._panels[sl.WINDOW_SKILLS] = sl._build_window(sl.WINDOW_SKILLS, "win.skills", sl._build_skills_content(), Vector2(916, 700))
 	sl._panels[sl.WINDOW_SETTLEMENT] = sl._build_window(sl.WINDOW_SETTLEMENT, "win.settlement", sl._build_settlement_content(), Vector2(916, 80))
 	sl._panels[sl.WINDOW_GESTURES] = sl._build_window(sl.WINDOW_GESTURES, "win.gestures", sl._build_gesture_content(), Vector2(600, 200))

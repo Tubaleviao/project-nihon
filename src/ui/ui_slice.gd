@@ -136,6 +136,7 @@ const CharacterSheet := preload("res://src/ui/character_sheet.gd")
 var _character_grid_right: GridContainer = null
 var _sheet_name: Label = null
 var _sheet_doll: CharacterSheet.DollView = null
+var _sheet_worn_hash: int = 0
 var _sheet_attr_box: VBoxContainer = null
 var _sheet_stat_box: GridContainer = null
 var _sheet_skill_box: HBoxContainer = null
@@ -1436,7 +1437,7 @@ func _build_character_content() -> Control:
 	side.add_theme_constant_override("separation", 4)
 	_sheet_attr_box = VBoxContainer.new()
 	_sheet_stat_box = GridContainer.new()
-	_sheet_stat_box.columns = 2
+	_sheet_stat_box.columns = 4
 	_sheet_skill_box = HBoxContainer.new()
 	side.add_child(_sheet_attr_box)
 	side.add_child(_sheet_stat_box)

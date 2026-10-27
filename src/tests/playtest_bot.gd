@@ -200,7 +200,7 @@ static func _step_timeout(step: String) -> float:
 	return STREAM_TIMEOUT_SECS if step == "stream" or step == "pole" or step == "flight" else STEP_TIMEOUT_SECS
 
 static func step_names() -> Array:
-	return ["walk", "stream", "flight", "mine", "gather", "craft", "place", "fight", "travel", "horizon", "far_peak", "pole"]
+	return ["walk", "character_sheet", "stream", "flight", "mine", "gather", "craft", "place", "fight", "travel", "horizon", "far_peak", "pole"]
 
 # ---------------------------------------------------------------------------
 # Pure report maths
@@ -592,6 +592,30 @@ func _player_pos() -> Vector3:
 
 ## Hold W for a few seconds: the body must move, and the feet must swap the lead at least
 ## WALK_FOOT_MIN_SWITCHES times over the last WALK_FOOT_SECS (a clip stuck on its last key keeps one foot ahead).
+## Phase 179 — open the Character window and check the sheet: a doll whose preview viewport has drawn something
+## (a headless run has no renderer: it checks the rig is in the viewport instead), six attribute rows, every equipment
+## slot, and the derived stats. The screenshot that follows the step shows the window.
+func _step_character_sheet() -> Array:
+	var ui = _root._ui
+	ui.open_window(ui.WINDOW_CHARACTER)
+	ui.refresh_character()
+	var doll = ui._sheet_doll
+	if doll == null:
+		return [false, "the Character window has no rig preview"]
+	var headless := DisplayServer.get_name() == "headless"
+	var drawn: bool = await _until(func(): return doll.has_rig() and (headless or doll.is_drawn()), 10.0)
+	var sheet: Dictionary = ui.character_sheet_rows()
+	var detail := "%d slots, %d attributes, %d derived stats, %d skills; the rig preview %s" % [
+		sheet["equipment"].size(), sheet["attributes"].size(), sheet["stats"].size(), sheet["skills"].size(),
+		"drew" if drawn and not headless else ("holds the rig (headless)" if drawn else "is empty")]
+	if not drawn:
+		return [false, detail]
+	if sheet["attributes"].size() != 6 or sheet["equipment"].is_empty() or sheet["stats"].is_empty():
+		return [false, detail]
+	await get_tree().process_frame
+	await get_tree().process_frame
+	return [true, detail]
+
 func _step_walk() -> Array:
 	var start := _player_pos()
 	var rig := _player_rig()

@@ -177,7 +177,7 @@ func create_character(appearance_id: String, pos: Vector3) -> String:
 ## Spawn a character from a raw appearance recipe (persisted / network source).
 ## The recipe is normalized (unknown fields dropped, proportions clamped) before
 ## the visual is assembled.
-func create_character_from_recipe(recipe: Dictionary, pos: Vector3) -> String:
+func create_character_from_recipe(recipe: Dictionary, pos: Vector3, parent: Node = null) -> String:
 	var normalized := deserialize_appearance(recipe)
 	var iid := "character_%d" % _next_id
 	_next_id += 1
@@ -185,7 +185,7 @@ func create_character_from_recipe(recipe: Dictionary, pos: Vector3) -> String:
 	var built: Dictionary = _make_visual(iid, normalized)
 	var root: Node3D = built["root"]
 	root.position = pos + _origin.value
-	add_child(root)
+	(parent if parent != null else self).add_child(root)
 
 	built["locomotion"].seed_idle(iid.hash())
 	_instances[iid] = {
@@ -710,10 +710,25 @@ func _dress_rig(rig_root: Node, appearance: Dictionary) -> void:
 			"accent_index": int(appearance.get("beardColor", 0)),
 		})
 
-## Phase 179 — dress a rig that lives outside the world (the character sheet's preview) like the local avatar's.
-func dress_preview_rig(rig_root: Node) -> void:
-	var iid := get_player_character()
-	_dress_rig(rig_root, get_appearance(iid) if iid != "" else {})
+## Phase 179 — a second body for the character sheet's preview, added under `parent` (the preview's viewport): the
+## local avatar's appearance on the default rig (Phase 123 material), wearing what it wears, idling on the rig's own
+## clip. This slice keeps no record of it (no LOD pass, no sync); the caller frees it. It is built where it will
+## stay: a Skeleton3D that leaves the tree drops a PhysicalBoneSimulator3D it never frees. Null when there is no
+## local avatar or the manifest lists no rig.
+func build_preview(parent: Node) -> Node3D:
+	var src := get_player_character()
+	if src == "" or not _instances.has(src):
+		return null
+	var pid := create_character_from_recipe(get_appearance(src), Vector3.ZERO, parent)
+	if pid == "" or not attach_default_rig(pid):
+		remove_character(pid)
+		return null
+	apply_equipment_set(pid, get_equipment_set(src))
+	var root: Node3D = _instances[pid]["root"]
+	_instances.erase(pid)
+	root.position = Vector3.ZERO
+	root.visible = true
+	return root
 
 ## Rig keys tried in order for an avatar: the player rig (the production pack's art, or
 ## its public placeholder), then the older unskinned placeholder body for a manifest that

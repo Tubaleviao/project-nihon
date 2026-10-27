@@ -120,6 +120,8 @@ class DollView extends SubViewportContainer:
 	func _init() -> void:
 		stretch = true
 		custom_minimum_size = Vector2(PREVIEW_SIZE)
+		size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 		viewport = SubViewport.new()
 		viewport.own_world_3d = true
 		viewport.transparent_bg = true
@@ -127,8 +129,8 @@ class DollView extends SubViewportContainer:
 		viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 		add_child(viewport)
 		var cam := Camera3D.new()
-		cam.position = Vector3(0.0, 1.0, 3.2)
-		cam.fov = 36.0
+		cam.position = Vector3(0.0, 1.0, 5.5)
+		cam.fov = 30.0
 		viewport.add_child(cam)
 		cam.look_at_from_position(cam.position, Vector3(0.0, 0.95, 0.0))
 		var sun := DirectionalLight3D.new()
@@ -141,32 +143,20 @@ class DollView extends SubViewportContainer:
 		elif event is InputEventMouseMotion and _drag and rig != null:
 			rig.rotate_y(event.relative.x * 0.01)
 
+	## Replace the preview with a body built under the viewport by `CharacterSlice.build_preview`. False when there is none.
+	func rebuild_preview(character_slice: Node) -> bool:
+		clear_preview()
+		rig = character_slice.build_preview(viewport)
+		return rig != null
+
+	## Free the preview body.
+	func clear_preview() -> void:
+		if rig != null and is_instance_valid(rig):
+			rig.free()
+		rig = null
+
 	func has_rig() -> bool:
 		return rig != null and is_instance_valid(rig)
-
-	## Instance the rig once. False when the manifest lists none (the doll stays empty).
-	func show_rig(character_slice: Node) -> bool:
-		if has_rig():
-			return true
-		var key: String = AssetOverlay.first_key("meshes", ["models/player_rig.glb.raw", "models/placeholder_rig.glb.raw"])
-		if key == "":
-			return false
-		var scene := AssetOverlay.load_rig_scene(key)
-		if scene == null:
-			return false
-		var player := scene.find_child("AnimationPlayer", true, false) as AnimationPlayer
-		viewport.add_child(scene)
-		rig = scene
-		if character_slice != null and character_slice.has_method("dress_preview_rig"):
-			character_slice.dress_preview_rig(scene)
-		if player != null:
-			var RigTreeScript := load("res://src/character/rig_tree.gd")
-			RigTreeScript.prepare_library(player)
-			var tree: AnimationTree = RigTreeScript.build_tree(player)
-			scene.add_child(tree)
-			tree.anim_player = tree.get_path_to(player)
-			tree.active = true
-		return true
 
 	## True when the preview has drawn something (any pixel with alpha).
 	func is_drawn() -> bool:
