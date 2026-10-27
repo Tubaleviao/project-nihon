@@ -64,6 +64,8 @@ const NO_BUDGET_ARG := "--playtest-no-budget"   ## report only: CI runs the bot 
 const WALK_SECS := 3.0
 const WALK_MIN_M := 4.0        ## the walk step keeps going until the body has moved this far
 const WALK_MAX_SECS := 20.0   ## ... but not past this
+const WALK_WINDOW_MIN_M := 1.5   ## ... and the body must have covered this much inside the feet window
+const WALK_GROUND_SECS := 15.0   ## the walk step waits this long for the chunk under the body
 const WALK_FOOT_SECS := 2.0   ## the walk step samples the feet over the last this many seconds
 ## The feet must swap the lead at least this often over the window. A share-of-frames check flaked
 ## under xvfb: ~10 fps samples alias with the gait, so a cycling walk could read 14% one foot ahead.
@@ -618,6 +620,10 @@ func _player_pos() -> Vector3:
 ## Hold W for a few seconds: the body must move, and the feet must swap the lead at least
 ## WALK_FOOT_MIN_SWITCHES times over the last WALK_FOOT_SECS (a clip stuck on its last key keeps one foot ahead).
 func _step_walk() -> Array:
+	# A slow builder may not have the ground under the body yet: it would stand or crawl, and the
+	# clip rightly stays near idle. Wait for the ground before judging the gait.
+	var here_chunk: Vector2i = _root._player.get_world_pos()["chunk"]
+	await _until(func(): return _root._chunk_manager.is_chunk_built(here_chunk), WALK_GROUND_SECS)
 	var start := _player_pos()
 	var rig := _player_rig()
 	var skeleton: Skeleton3D = null
@@ -637,10 +643,14 @@ func _step_walk() -> Array:
 		var travelled := Vector2(here.x - start.x, here.z - start.z).length()
 		if foot_l >= 0 and foot_r >= 0:
 			samples.append([elapsed, skeleton.to_global(skeleton.get_bone_global_pose(foot_l).origin),
-				skeleton.to_global(skeleton.get_bone_global_pose(foot_r).origin)])
+				skeleton.to_global(skeleton.get_bone_global_pose(foot_r).origin), here])
 			while elapsed - float(samples[0][0]) > WALK_FOOT_SECS:
 				samples.pop_front()
-		if (elapsed >= WALK_SECS and travelled >= WALK_MIN_M) or elapsed >= WALK_MAX_SECS:
+		var window_m := 0.0
+		if not samples.is_empty():
+			var first: Vector3 = samples[0][3]
+			window_m = Vector2(here.x - first.x, here.z - first.z).length()
+		if (elapsed >= WALK_SECS and travelled >= WALK_MIN_M and (window_m >= WALK_WINDOW_MIN_M or foot_l < 0)) or elapsed >= WALK_MAX_SECS:
 			break
 	_key(KEY_W, false)
 	var delta := Vector2(_player_pos().x - start.x, _player_pos().z - start.z)
