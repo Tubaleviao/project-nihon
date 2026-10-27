@@ -76,6 +76,15 @@ render mesh, at 27 chunks/s.
 | 190 | Fast flight III: coarse chunks beyond the near ring | Done | [phases-190.md](docs/roadmap-history/phases-190.md) |
 | 191 | Fast flight IV: a recent-chunk cache, no holes, and a /speed cap of 30 on a slow machine | Done | [phases-191.md](docs/roadmap-history/phases-191.md) |
 
+### Out of arc: creature bodies (Phase 192)
+
+Found while playing: creatures walked through each other and through the player. Requested ahead of
+the arc, like Phase 182.
+
+| Phase | Title | Status | Spec |
+|---|---|---|---|
+| 192 | Creature bodies: creatures collide with each other and the player, and squash on contact | Done | [phases-192.md](docs/roadmap-history/phases-192.md) |
+
 ### Arc: first steps (Phases 184–186)
 
 A new player lands in the world with no guidance except instructions scattered through the UI

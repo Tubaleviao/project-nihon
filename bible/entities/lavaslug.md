@@ -24,6 +24,8 @@ A slow-moving, magma-encrusted slug the size of a cart horse that grazes on ashi
 | `pathRadiusTiles` | integer | yes | Search radius in tiles of one path query |
 | `movement` | enum (`ground`, `flying`, `swimming`) | yes | ground snaps to the surface, flying holds hoverMetres above it, swimming stays in water |
 | `hoverMetres` | decimal | yes | Height in metres above the surface a flying creature holds |
+| `bodyRadiusMetres` | decimal | yes | Radius in metres of the footprint other creatures and players are kept out of |
+| `squash` | decimal | yes | How far the body squashes on contact, as a fraction of its length (0 = rigid) |
 | `attackRadius` | decimal | yes | Distance in metres at which creature begins attacking |
 | `fleeThreshold` | decimal | yes | HP fraction (0–1) below which creature flees |
 | `respawnSeconds` | integer | yes | Seconds before a dead creature respawns |

@@ -149,6 +149,46 @@ function validatePathFields(creatures) {
   }
 }
 
+// Body contact (Phase 192), consumed by CreatureBody (src/creature/creature_body.gd). Spread into a
+// creature's `fields`. Creatures are not physics bodies: the host AI pushes overlapping footprints apart
+// (creature against creature, creature out of a player) and the model squashes along the contact.
+//   bodyRadiusMetres  radius of the creature's footprint circle on the ground (BODY_RADIUS_MIN..BODY_RADIUS_MAX)
+//   squash            how far the model gives on contact, as a fraction of its length (0 = rigid .. SQUASH_MAX)
+const BODY_RADIUS_MIN = 0.2
+const BODY_RADIUS_MAX = 2.0
+const SQUASH_MAX = 0.5
+function bodyFields({ bodyRadiusMetres = 0.5, squash = 0.2 } = {}) {
+  return {
+    bodyRadiusMetres: { type: 'decimal', description: 'Radius in metres of the footprint other creatures and players are kept out of', defaultValue: bodyRadiusMetres },
+    squash:           { type: 'decimal', description: 'How far the body squashes on contact, as a fraction of its length (0 = rigid)', defaultValue: squash },
+  }
+}
+
+// The problems with each creature's body fields (empty when all are in range).
+function bodyFieldProblems(creatures) {
+  const out = []
+  for (const [name, entity] of Object.entries(creatures)) {
+    const f = (entity && entity.fields) || {}
+    if (!f.bodyRadiusMetres || !f.squash) {
+      out.push(`${name}: creature must declare bodyRadiusMetres and squash (spread bodyFields())`)
+      continue
+    }
+    const r = f.bodyRadiusMetres.defaultValue
+    if (!(typeof r === 'number' && r >= BODY_RADIUS_MIN && r <= BODY_RADIUS_MAX)) {
+      out.push(`${name}: bodyRadiusMetres must be in ${BODY_RADIUS_MIN}..${BODY_RADIUS_MAX} (got ${r})`)
+    }
+    const s = f.squash.defaultValue
+    if (!(typeof s === 'number' && s >= 0 && s <= SQUASH_MAX)) out.push(`${name}: squash must be in 0..${SQUASH_MAX} (got ${s})`)
+  }
+  return out
+}
+
+// Throws (failing `npm run validate`) when a creature's body fields are missing or out of range.
+function validateBodyFields(creatures) {
+  const problems = bodyFieldProblems(creatures)
+  if (problems.length) throw new Error(problems.join('\n'))
+}
+
 // Skeleton family a creature's model is rigged on (Phase 143), consumed by CreatureVisuals. Spread into
 // a creature's `fields`. Each value names a SkeletonDefinition entity in gameplay/characters/skeletons.js.
 const CREATURE_SKELETONS = ['QuadrupedSkeleton', 'BirdSkeleton', 'SerpentSkeleton', 'HumanoidSkeleton']
@@ -166,4 +206,4 @@ function validateSkeletonFields(creatures, skeletons = CREATURE_SKELETONS) {
   }
 }
 
-module.exports = { skeletonField, validateSkeletonFields, CREATURE_SKELETONS, pathFields, validatePathFields, PATH_RADIUS_MAX, MOVEMENT_KINDS, defineEntity, creatureStateMachine, creatureStateValues, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS, GROUP_BEHAVIORS, dropsData, tameData }
+module.exports = { bodyFields, bodyFieldProblems, validateBodyFields, BODY_RADIUS_MIN, BODY_RADIUS_MAX, SQUASH_MAX, skeletonField, validateSkeletonFields, CREATURE_SKELETONS, pathFields, validatePathFields, PATH_RADIUS_MAX, MOVEMENT_KINDS, defineEntity, creatureStateMachine, creatureStateValues, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS, GROUP_BEHAVIORS, dropsData, tameData }

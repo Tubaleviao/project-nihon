@@ -1222,7 +1222,12 @@ func _tick_visuals(delta: float) -> void:
 	if cam != null:
 		cam_world = cam.global_position - _visuals.position
 		cam_pos = _visuals.pos_of_scene(cam.global_position)
+	_visuals.body_points = player_points
 	_visuals.tick(_instances, cam_world, cam != null, delta, cam_pos)
+
+## Phase 192 — `() -> Array` of player feet positions in scene coordinates, for the models to squash
+## against (set by game_root; unset in tests and on a dedicated server).
+var player_points: Callable = Callable()
 
 ## `(creature_id, node) -> bool`: a landed corpse model is offered to the carcass that stands for it (set by
 ## the carcass wiring); see `CreatureVisuals.corpse_handoff`.

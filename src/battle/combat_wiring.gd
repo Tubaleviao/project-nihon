@@ -15,6 +15,8 @@ const RigTree          := preload("res://src/character/rig_tree.gd")
 func _connect_all() -> void:
 	if root._battle != null:
 		root._battle.player_stat_fn = player_stat   # Phase 178 — a defending player's attribute stats
+	if root._creature != null:
+		root._creature.player_points = local_body_points   # Phase 192 — creature models squash against the player
 	connect_bus(GameBus.knockback_requested, _on_knockback_requested)
 	connect_bus(GameBus.player_died, _on_status_player_died)
 	connect_bus(GameBus.combat_hit_resolved, _on_combat_hit_resolved)
@@ -24,6 +26,10 @@ func _connect_all() -> void:
 	connect_bus(GameBus.player_damaged, on_player_damaged)
 	connect_bus(GameBus.player_died, _on_player_died)
 	connect_bus(GameBus.player_respawned, _on_player_respawned)
+
+## Phase 192 — the local player's feet in scene coordinates (none before the body exists).
+func local_body_points() -> Array:
+	return [root._player.get_scene_position()] if root._player != null else []
 
 ## Phase 156 — one swing resolved on the host (a miss too): animate the attacker and the target here and
 ## tell the clients in range. Ids become wire keys first, so both sides run the same animation path.

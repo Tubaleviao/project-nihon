@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:d32f2b6df62fb5aa8f9a73ffad4964e225cb198dc7ab4a0692cccb2485bc4879",
+  "schemaHash": "sha256:f90ed1717443e262155521b9309f10808989cc383fc3c241575badf36995505b",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -23261,6 +23261,24 @@
             "pii": false,
             "defaultValue": 0
           },
+          "bodyRadiusMetres": {
+            "name": "bodyRadiusMetres",
+            "type": "decimal",
+            "description": "Radius in metres of the footprint other creatures and players are kept out of",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.6
+          },
+          "squash": {
+            "name": "squash",
+            "type": "decimal",
+            "description": "How far the body squashes on contact, as a fraction of its length (0 = rigid)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.25
+          },
           "attackRadius": {
             "name": "attackRadius",
             "type": "decimal",
@@ -23816,6 +23834,24 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 0
+          },
+          "bodyRadiusMetres": {
+            "name": "bodyRadiusMetres",
+            "type": "decimal",
+            "description": "Radius in metres of the footprint other creatures and players are kept out of",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "squash": {
+            "name": "squash",
+            "type": "decimal",
+            "description": "How far the body squashes on contact, as a fraction of its length (0 = rigid)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.2
           },
           "attackRadius": {
             "name": "attackRadius",
@@ -24418,6 +24454,24 @@
             "pii": false,
             "defaultValue": 0
           },
+          "bodyRadiusMetres": {
+            "name": "bodyRadiusMetres",
+            "type": "decimal",
+            "description": "Radius in metres of the footprint other creatures and players are kept out of",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          },
+          "squash": {
+            "name": "squash",
+            "type": "decimal",
+            "description": "How far the body squashes on contact, as a fraction of its length (0 = rigid)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.15
+          },
           "attackRadius": {
             "name": "attackRadius",
             "type": "decimal",
@@ -24984,6 +25038,24 @@
             "pii": false,
             "defaultValue": 2.5
           },
+          "bodyRadiusMetres": {
+            "name": "bodyRadiusMetres",
+            "type": "decimal",
+            "description": "Radius in metres of the footprint other creatures and players are kept out of",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.4
+          },
+          "squash": {
+            "name": "squash",
+            "type": "decimal",
+            "description": "How far the body squashes on contact, as a fraction of its length (0 = rigid)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.3
+          },
           "attackRadius": {
             "name": "attackRadius",
             "type": "decimal",
@@ -25510,6 +25582,24 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 0
+          },
+          "bodyRadiusMetres": {
+            "name": "bodyRadiusMetres",
+            "type": "decimal",
+            "description": "Radius in metres of the footprint other creatures and players are kept out of",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "squash": {
+            "name": "squash",
+            "type": "decimal",
+            "description": "How far the body squashes on contact, as a fraction of its length (0 = rigid)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.45
           },
           "attackRadius": {
             "name": "attackRadius",
@@ -26062,6 +26152,24 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 2.5
+          },
+          "bodyRadiusMetres": {
+            "name": "bodyRadiusMetres",
+            "type": "decimal",
+            "description": "Radius in metres of the footprint other creatures and players are kept out of",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.8
+          },
+          "squash": {
+            "name": "squash",
+            "type": "decimal",
+            "description": "How far the body squashes on contact, as a fraction of its length (0 = rigid)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.05
           },
           "attackRadius": {
             "name": "attackRadius",
@@ -26616,6 +26724,24 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 0
+          },
+          "bodyRadiusMetres": {
+            "name": "bodyRadiusMetres",
+            "type": "decimal",
+            "description": "Radius in metres of the footprint other creatures and players are kept out of",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.4
+          },
+          "squash": {
+            "name": "squash",
+            "type": "decimal",
+            "description": "How far the body squashes on contact, as a fraction of its length (0 = rigid)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.3
           },
           "attackRadius": {
             "name": "attackRadius",
@@ -27196,6 +27322,24 @@
             "pii": false,
             "defaultValue": 0
           },
+          "bodyRadiusMetres": {
+            "name": "bodyRadiusMetres",
+            "type": "decimal",
+            "description": "Radius in metres of the footprint other creatures and players are kept out of",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.6
+          },
+          "squash": {
+            "name": "squash",
+            "type": "decimal",
+            "description": "How far the body squashes on contact, as a fraction of its length (0 = rigid)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.2
+          },
           "attackRadius": {
             "name": "attackRadius",
             "type": "decimal",
@@ -27750,6 +27894,24 @@
             "pii": false,
             "defaultValue": 0
           },
+          "bodyRadiusMetres": {
+            "name": "bodyRadiusMetres",
+            "type": "decimal",
+            "description": "Radius in metres of the footprint other creatures and players are kept out of",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.6
+          },
+          "squash": {
+            "name": "squash",
+            "type": "decimal",
+            "description": "How far the body squashes on contact, as a fraction of its length (0 = rigid)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.35
+          },
           "attackRadius": {
             "name": "attackRadius",
             "type": "decimal",
@@ -28303,6 +28465,24 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 0
+          },
+          "bodyRadiusMetres": {
+            "name": "bodyRadiusMetres",
+            "type": "decimal",
+            "description": "Radius in metres of the footprint other creatures and players are kept out of",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          },
+          "squash": {
+            "name": "squash",
+            "type": "decimal",
+            "description": "How far the body squashes on contact, as a fraction of its length (0 = rigid)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.1
           },
           "attackRadius": {
             "name": "attackRadius",
