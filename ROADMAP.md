@@ -199,6 +199,24 @@ records it.
   colour row under it, the live chibi rig in the centre on a dark backdrop (reusing the Phase 179
   viewport), gender toggles on either side of the rig, and the name field with an "enter the
   world" button at the bottom right. A randomize button picks a gender, hair and colour.
+- The screen's skin is art at overlay keys, never baked into the scene. The layout, sizes,
+  margins and font sizes live in code. Only pixels come from assets, so the private repo
+  (`project-nihon-assets` Phase A20) can replace them without a code change:
+  - `textures/ui/creation/backdrop.png.raw`: the dark backdrop behind the rig;
+  - `textures/ui/creation/panel.png.raw`: a 9-slice frame for the hair grid, colour row and name
+    panel (patch margins fixed in code);
+  - `textures/ui/creation/rig_frame.png.raw`: the frame around the rig viewport;
+  - `textures/ui/creation/button.png.raw`, `button_hover.png.raw`, `button_pressed.png.raw`: 9-slice
+    states for "enter the world", randomize and the gender toggles;
+  - `icons/ui/creation/<control>.png.raw`: the randomize and gender toggle icons, drawn by
+    `tools/gen_ui_icons.py`.
+  The overlay ships bytes, not Godot themes, so the screen loads each PNG through
+  `AssetOverlay.load_texture` and builds its `StyleBoxTexture`s in code. It never loads a `.tres`
+  theme from the overlay.
+- **Public placeholder:** a generator (`tools/gen_ui_skin.py`, or a mode of
+  `gen_placeholder.py`) writes every skin key above as flat colour at its final size, with
+  `--check` like `gen_ui_icons.py`. The placeholders land in this phase, before any art in the
+  private repo.
 - A host intent `create_character(name, gender, hair, hair_color)`. The host validates the name
   rule and uniqueness and every option, creates the record, then places the spawn.
   It refuses with a keyed reason that the client renders in its locale. Rate-limited.
@@ -220,6 +238,9 @@ records it.
 - [ ] Suite: a pre-181 save boots, offers creation once and keeps inventory and skills. A skip is
   recorded, is not offered again on the next join, and shows the handle on the nameplate.
 - [ ] Playtest bot: a `create` step completes before `walk` and saves a screenshot of the screen.
+- [ ] Suite: every skin and icon key the screen reads has a public placeholder at that key, no
+  orphan exists under `textures/ui/creation/` or `icons/ui/creation/`, and the screen builds
+  with only the public tree (no `assets.pck`). The skin generator's `--check` passes in CI.
 - [ ] Every new string is in both catalogs, and the i18n key check passes.
 - [ ] Suite green on both boot paths, harness green.
 
