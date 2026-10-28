@@ -30,6 +30,7 @@ machine.
 - [x] Suite: the distant ring covers an unbuilt window chunk and leaves a built one to the voxel mesh.
 - [x] Playtest bot (CI): `flight` at 270 m/s keeps the ground under the body built in ≥ 90% of samples.
 - [x] Playtest bot (CI, 2 worker threads): `flight` at 90 m/s keeps it in ≥ 90% of samples.
+  (PR #518 lowered both flight gates to ≥ 75%: CI runners covered 79–100% on the same commit. See #519.)
 - [x] `/speed` accepts 30 and refuses 31, in `admin_tests`; catalog strings updated in `en` and `pt_BR`.
 - [x] Suite green on both boot paths, net harness green.
 
