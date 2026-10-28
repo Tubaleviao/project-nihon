@@ -70,6 +70,7 @@ const WALK_FOOT_SECS := 2.0   ## the walk step samples the feet over the last th
 ## The feet must swap the lead at least this often over the window. A share-of-frames check flaked
 ## under xvfb: ~10 fps samples alias with the gait, so a cycling walk could read 14% one foot ahead.
 const WALK_FOOT_MIN_SWITCHES := 2
+const WALK_FOOT_MIN_FRAMES := 30   ## the walk step keeps sampling until the feet window holds this many frames (a ~7 fps runner aliases with the gait)
 const WALK_FOOT_DEADBAND_M := 0.03   ## a lead smaller than this is the feet passing, not a swap
 const GATHER_SEARCH_CHUNKS := 30  ## forest chunks the gather step will hop to at most
 const GATHER_SEARCH_RADIUS := 60  ## chunk rings around the body it scans for forest
@@ -652,7 +653,7 @@ func _step_walk() -> Array:
 		if not samples.is_empty():
 			var first: Vector3 = samples[0][3]
 			window_m = Vector2(here.x - first.x, here.z - first.z).length()
-		if (elapsed >= WALK_SECS and travelled >= WALK_MIN_M and (window_m >= WALK_WINDOW_MIN_M or foot_l < 0)) or elapsed >= WALK_MAX_SECS:
+		if (elapsed >= WALK_SECS and travelled >= WALK_MIN_M and (window_m >= WALK_WINDOW_MIN_M or foot_l < 0) and (samples.size() >= WALK_FOOT_MIN_FRAMES or foot_l < 0)) or elapsed >= WALK_MAX_SECS:
 			break
 	_key(KEY_W, false)
 	var delta := Vector2(_player_pos().x - start.x, _player_pos().z - start.z)
