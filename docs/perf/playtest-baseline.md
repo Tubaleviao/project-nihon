@@ -33,13 +33,15 @@ Target for every step: p95 process time ≤ 16 ms. Since Phase 183 the budget IS
 
 | Step | Budget p95 process (ms) | Target (ms) | Measured p95 process (ms) |
 |---|---|---|---|
-| walk | 16 | 16 | 15.2 (local) |
-| craft | 16 | 16 | 11.8 (local) |
-| fight | 16 | 16 | 5.5 (local) |
+| walk | 16 | 16 | 18.7 (CI) / 15.2 (local) |
+| craft | 16 | 16 | 11.6 (CI) / 11.8 (local) |
+| fight | 16 | 16 | 9.4 (CI) / 5.5 (local) |
 
-"Measured" is the median of three local runs (2026-10-28, llvmpipe, `opengl3`, native builder loaded) on
+"Measured" is the median of three runs on CI (GitHub runner, llvmpipe, the gate run of PR #523) and on
+the local box (2026-10-28, llvmpipe, `opengl3`, native builder loaded) on
 the pinned `PlaytestBot.WORLD_SEED` and `PlaytestBot.PLAYER_ID`. Per-run p95: walk 15.2 / 15.6 / 15.2,
-craft 12.1 / 11.8 / 11.6, fight 5.4 / 5.5 / 5.7. The same spawn on the commit before Phase 183 measured
+craft 12.1 / 11.8 / 11.6, fight 5.4 / 5.5 / 5.7. CI walk sits closest to the limit (18.7 of 20 ms). The same spawn on the commit before Phase 183 measured
+locally
 walk 59.8 / 41.3 / 42.6, craft 19.8 / 20.7 / 20.5, fight 12.2 / 11.6 / 12.2.
 
 Phase 174's numbers (walk 27.3 CI / 25.6 local, craft 22.6 / 27.1, fight 7.5 / 18.0, budgets 40 / 45 / 35)
