@@ -303,6 +303,10 @@ func set_world_input_frozen(frozen: bool) -> void:
 func is_world_input_frozen() -> bool:
 	return _world_input_frozen
 
+## Phase 181 — set while the character creation screen is up: the body takes no keys (typing a name must not
+## walk it) and no world action resolves.
+var creation_hold: bool = false
+
 ## The ONE predicate a world action consults before it resolves: the world input freeze must be off
 ## (the loading screen blocks it until the ground the body stands on exists) and no text field may
 ## hold the keyboard (typing in chat must not mine, tame or equip). The mouse is no longer captured
@@ -310,7 +314,7 @@ func is_world_input_frozen() -> bool:
 ## by that control before it reaches `_unhandled_input`, which is what keeps a menu click out of the
 ## world. Public so the freeze is assertable without a display server.
 func world_input_allowed() -> bool:
-	if _world_input_frozen:
+	if _world_input_frozen or creation_hold:
 		return false
 	if is_inside_tree():
 		var focus := get_viewport().gui_get_focus_owner()
@@ -908,7 +912,7 @@ func _move(delta: float) -> void:
 	# Apply gravity.
 	if flying:
 		# Phase 182 — no gravity: Space climbs, Ctrl sinks, neither hovers.
-		_vel.y = fly_vertical(Input.is_action_pressed("ui_accept"), Input.is_key_pressed(KEY_CTRL))
+		_vel.y = fly_vertical(Input.is_action_pressed("ui_accept") and not creation_hold, Input.is_key_pressed(KEY_CTRL) and not creation_hold)
 	elif swimming:
 		_vel.y = swim_vertical_velocity(_body.global_position.y, WorldShape.sea_level())
 	elif not _body.is_on_floor():
@@ -918,7 +922,7 @@ func _move(delta: float) -> void:
 			_vel.y = 0.0
 
 	# Jump.
-	if not flying and not swimming and Input.is_action_just_pressed("ui_accept") and _body.is_on_floor():
+	if not creation_hold and not flying and not swimming and Input.is_action_just_pressed("ui_accept") and _body.is_on_floor():
 		_vel.y = JUMP_FORCE
 
 	# Horizontal movement relative to camera yaw.
@@ -927,6 +931,8 @@ func _move(delta: float) -> void:
 	if Input.is_key_pressed(KEY_S): dir.z += 1.0
 	if Input.is_key_pressed(KEY_A): dir.x -= 1.0
 	if Input.is_key_pressed(KEY_D): dir.x += 1.0
+	if creation_hold:
+		dir = Vector3.ZERO
 
 	if dir.length_squared() > 0.0:
 		dir = dir.normalized()

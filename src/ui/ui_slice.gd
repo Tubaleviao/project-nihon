@@ -61,6 +61,8 @@ const MapWindowScript := preload("res://src/ui/map_window.gd")
 const SettlementPanelScript := preload("res://src/ui/settlement_panel.gd")
 const GesturePanelScript := preload("res://src/ui/gesture_panel.gd")
 const CharacterSheet := preload("res://src/ui/character_sheet.gd")
+const CreationScreen := preload("res://src/ui/creation_screen.gd")
+const CreationRules := preload("res://src/character/creation_rules.gd")
 const AttributeRules := preload("res://src/character/attribute_rules.gd")
 
 ## Pixels of a window that must stay reachable on every edge when dragged.
@@ -177,6 +179,13 @@ var _proposal_feedback: Label = null
 ## `str(character_rows())` at the last grid build; an unchanged one skips the rebuild.
 var _character_rows_signature: int = 0
 
+## Phase 181 — the character creation screen (built when first shown, on its own layer above the windows), this
+## machine's own creation state, and the character sheet's "create character" button.
+var creation_screen: Control = null
+var _creation_layer: CanvasLayer = null
+var _creation_state: Dictionary = { "state": CreationRules.STATE_NONE }
+var _sheet_create_button: Button = null
+
 func _ready() -> void:
 	_build_ui()
 	GameBus.locale_changed.connect(_on_locale_changed)
@@ -200,13 +209,14 @@ func _ready() -> void:
 	GameBus.proposal_ratified.connect(_on_proposal_ratified)
 	GameBus.world_input_frozen.connect(_on_world_input_frozen)
 	GameBus.block_place_material_changed.connect(_on_place_material_changed)
+	GameBus.character_creation_resolved.connect(_m2.on_creation_resolved)
 	refresh_all()
 
 func _on_world_input_frozen(frozen: bool) -> void:
 	_world_input_frozen = frozen
 
 func _input(event: InputEvent) -> void:
-	if _world_input_frozen:
+	if _world_input_frozen or is_creation_open():
 		return
 	if event is InputEventKey and event.pressed:
 		# Typing into a text field must not trigger window hotkeys.
@@ -419,6 +429,8 @@ func _on_locale_changed(_locale: String) -> void:
 		if is_instance_valid(b["node"]):
 			(b["node"] as Control).set(b["prop"], I18n.t(b["key"]))
 	_refill_controls()
+	if creation_screen != null:
+		creation_screen.refresh()
 	if _gesture_box != null:
 		GesturePanelScript.relabel(_gesture_box, GameData.GESTURES)
 	if hotbar != null:
@@ -874,6 +886,29 @@ func _on_character_appearance_changed(iid: String, _appearance: Dictionary) -> v
 static func friend_code_text(handle: String) -> String:
 	return I18n.t("ui.friend_code", [handle if handle != "" else I18n.t("ui.friend_code_none")])
 
+# ---------------------------------------------------------------------------
+# Phase 181 — character creation
+# ---------------------------------------------------------------------------
+
+## Show the creation screen (built on first use, bodies in ui_part_2). The body takes no keys while it is up.
+func show_creation(state: Dictionary = {}) -> void:
+	_m2.show_creation(state)
+
+func hide_creation() -> void:
+	_m2.hide_creation()
+
+func is_creation_open() -> bool:
+	return creation_screen != null and creation_screen.visible
+
+## This machine's own creation state changed (the host's answer, or the join snapshot).
+func set_creation_state(state: Dictionary) -> void:
+	_creation_state = CreationRules.sanitize_state(state)
+	refresh_character()
+
+## The name the local player is shown by on the character sheet.
+func own_display_name() -> String:
+	return CreationRules.display_name(_creation_state, own_handle)
+
 func set_own_handle(handle: String) -> void:
 	own_handle = handle
 	if _friend_code_label != null:
@@ -976,30 +1011,7 @@ func research_points() -> int:
 	return 0 if technology_slice == null else int(technology_slice.get_points())
 
 func refresh_technology() -> void:
-	if _technology_box == null:
-		return
-	for child in _technology_box.get_children():
-		child.queue_free()
-	var balance := Label.new()
-	balance.text = I18n.t("ui.research_points", [research_points()])
-	_technology_box.add_child(balance)
-	for row in technology_rows():
-		var r: Dictionary = row
-		var hbox := HBoxContainer.new()
-		hbox.add_theme_constant_override("separation", 8)
-		var btn := Button.new()
-		btn.text = I18n.t("ui.research")
-		btn.disabled = not bool(r["can_research"])
-		btn.pressed.connect(_on_research_pressed.bind(str(r["id"])))
-		hbox.add_child(btn)
-		_add_row_icon(hbox, str(r["icon_key"]))
-		var req_arr: Array = r.get("requires", [])
-		var reqs: String = ", ".join(req_arr) if req_arr.size() > 0 else "—"
-		var line := I18n.t("ui.tech_line", [r["id"], r["status"], reqs, r["cost"], r["points_cost"], r["duration"]])
-		var lbl := Label.new()
-		lbl.text = line + ("  (%s)" % I18n.reason_text(str(r["reason"])) if str(r["reason"]) != "" else "")
-		hbox.add_child(lbl)
-		_technology_box.add_child(hbox)
+	_m2.refresh_technology()
 
 func refresh_market() -> void:
 	if _market_box != null:
@@ -1434,27 +1446,7 @@ func _build_technology_content() -> Control:
 	return vbox
 
 func _build_trade_content() -> Control:
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 6)
-	var lbl := Label.new()
-	_set_tr(lbl, "text", "trade.blurb")
-	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	vbox.add_child(lbl)
-	var start_btn := Button.new()
-	_set_tr(start_btn, "text", "trade.start")
-	start_btn.pressed.connect(_on_trade_start_pressed)
-	vbox.add_child(start_btn)
-	var accept_btn := Button.new()
-	_set_tr(accept_btn, "text", "trade.accept")
-	accept_btn.pressed.connect(_on_trade_accept_pressed)
-	vbox.add_child(accept_btn)
-	_trade_status = Label.new()
-	_trade_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_trade_status.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	vbox.add_child(_trade_status)
-	_m2.trade_box = VBoxContainer.new()
-	vbox.add_child(_m2.trade_box)
-	return vbox
+	return _m2.build_trade_content()
 
 func _build_market_content() -> Control:
 	return _m1._build_market_content()

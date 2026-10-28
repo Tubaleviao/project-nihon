@@ -151,7 +151,10 @@ func _refresh_sheet() -> void:
 	var rows: Array = sl.character_sheet_rows()
 	var panel_rows := rows.filter(func(r): return str(r["section"]) != "slot")
 	var signature: int = panel_rows.hash()
-	sl._sheet_name.text = sl.own_handle
+	sl._sheet_name.text = sl.own_display_name()
+	# Phase 181 — the creation screen stays reachable from the sheet until a character exists.
+	if sl._sheet_create_button != null:
+		sl._sheet_create_button.visible = not sl.CreationRules.is_created(sl._creation_state)
 	_refresh_doll()
 	if signature == sl._sheet_signature and sl._sheet_attributes.get_child_count() > 0:
 		return
@@ -286,6 +289,10 @@ func build_character_content() -> Control:
 	sl._sheet_name.add_theme_font_size_override("font_size", 16)
 	sl._sheet_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(sl._sheet_name)
+	sl._sheet_create_button = Button.new()
+	sl._set_tr(sl._sheet_create_button, "text", "creation.open")
+	sl._sheet_create_button.pressed.connect(func() -> void: sl.show_creation())
+	vbox.add_child(sl._sheet_create_button)
 	var body := HBoxContainer.new()
 	body.alignment = BoxContainer.ALIGNMENT_CENTER
 	sl._sheet_left = VBoxContainer.new()

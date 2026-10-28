@@ -409,3 +409,14 @@ creation.refuse.gender,Pick a body type.,Escolha um tipo de corpo.
 creation.refuse.hair,That hair style does not exist.,Esse estilo de cabelo não existe.
 creation.refuse.hair_gender,That hair style is not available for this body type.,Esse estilo de cabelo não está disponível para este tipo de corpo.
 creation.refuse.hair_color,That hair colour is not available.,Essa cor de cabelo não está disponível.
+creation.refuse.rate_limited,Too many tries. Wait a moment and try again.,Tentativas demais. Espere um pouco e tente de novo.
+creation.refuse.already_created,This character already exists.,Este personagem já existe.
+creation.title,Create your character,Crie seu personagem
+creation.hair,Hair,Cabelo
+creation.hair_color,Hair colour,Cor do cabelo
+creation.randomize,Randomize,Aleatório
+creation.skip,Skip for now,Pular por enquanto
+creation.name,Name,Nome
+creation.enter,Enter the world,Entrar no mundo
+creation.open,Create character,Criar personagem
+creation.welcome,"Welcome, {0}!","Bem-vindo(a), {0}!"

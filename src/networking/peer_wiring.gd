@@ -291,6 +291,8 @@ func _on_remote_avatar_state(peer_id: int, position: Vector3) -> void:
 	root._character.bind_peer_character(peer_id, iid)
 	# The avatar IS this peer now; the PlayerSlice capsule ghost would draw it a second time.
 	root._player.set_ghost_suppressed(peer_id, true)
+	# Phase 181 — and it needs that peer's name and look: asked for once per appearance in our AOI.
+	root._networking.request_peer_look(peer_id)
 
 ## A peer with nothing worn is never sent an evict, so a body that has drifted out of range
 ## is dropped here as well (the host stops reporting its state once it leaves our AOI).
@@ -636,6 +638,7 @@ func on_own_state_synced(data: Dictionary) -> void:
 	root._waystone_wiring.apply_own_view(data)
 	if data.get("settlement_view", null) is Dictionary:
 		root._settlements.apply_view(data["settlement_view"])
+	root._creation_wiring.apply_own(data)
 	if data.get("settlement_result", null) is Dictionary:
 		var sres: Dictionary = data["settlement_result"]
 		GameBus.settlement_resolved.emit(root._registry.local_player_id, str(sres.get("action", "")).left(16), bool(sres.get("ok", false)), str(sres.get("reason", "")).left(32))

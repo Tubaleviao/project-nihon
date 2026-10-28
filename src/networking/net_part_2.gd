@@ -442,6 +442,24 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 			var wanted: Variant = payload.get("g", "")
 			if wanted is String and (wanted as String).length() <= sl.GESTURE_ID_MAX:
 				GameBus.gesture_intent.emit(wanted, actor)
+		"creation_intent":
+			# Phase 181 — a creation or skip is for the connection's own player, never a name in the payload; the
+			# registry validates every field, the name's uniqueness and the rate.
+			var creator = sl._actor_id(sender)
+			if creator == "":
+				sl._refuse_unhandshaked(sender, "creation_intent")
+				return
+			var action := str(payload.get("action", ""))
+			if action == "create" or action == "skip":
+				GameBus.character_creation_intent.emit(action, sl.CreationRules.intent_fields(payload), creator)
+		"look_request":
+			# Phase 181 — a bound client asks for one peer's look; answered only inside its AOI.
+			if sl._actor_id(sender) == "":
+				sl._refuse_unhandshaked(sender, "look_request")
+				return
+			var subject: Variant = payload.get("peer_id", 0)
+			if subject is int or subject is float:
+				sl.answer_look_request(sender, int(subject))
 		"harvest_intent", "carry_intent":
 			# Phase 161 — a carcass action is done BY the connection's player; the host re-checks range,
 			# tool, capacity and state in the carcass wiring (a client's claim is never read).

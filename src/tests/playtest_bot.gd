@@ -46,6 +46,8 @@ const SAVE_DIR := "user://playtest/server/"
 ## walk distance), so far_peak also hops between search origins (`FAR_PEAK_HOP_M`). 42, 31 and 7
 ## passed every step locally; 162 failed walk. `--playtest-seed <n>` plays another seed.
 const WORLD_SEED := 42
+## Phase 181 — the name the `create` step gives the bot's character (a fresh save offers the screen).
+const CREATE_NAME := "Hikari"
 const SEED_ARG := "--playtest-seed"
 const HITCH_MS := 50.0        ## a frame over this is a hitch (counted, not a failure)
 const HARD_FRAME_MS := 2000.0 ## a frame over this fails the run
@@ -230,7 +232,7 @@ static func flight_speed_from_args(args: Array) -> float:
 	return FLIGHT_SPEED_MPS
 
 static func all_step_names() -> Array:
-	return ["walk", "stream", "flight", "mine", "gather", "craft", "character_sheet", "place", "fight", "travel", "horizon", "far_peak", "pole"]
+	return ["create", "walk", "stream", "flight", "mine", "gather", "craft", "character_sheet", "place", "fight", "travel", "horizon", "far_peak", "pole"]
 
 # ---------------------------------------------------------------------------
 # Pure report maths
@@ -555,7 +557,8 @@ func _run_step(step: String) -> Dictionary:
 		rec["build_breakdown"] = _build_breakdown
 	if step == "flight":
 		rec["flight"] = _flight
-	await _screenshot(step)
+	if step != "create":   # Phase 181: that step shoots the screen itself, before it closes
+		await _screenshot(step)
 	print("[Playtest] %s %s %s" % [step, "ok" if bool(rec["ok"]) else "FAIL", rec["detail"]])
 	return rec
 
@@ -1138,6 +1141,27 @@ func _step_craft() -> Array:
 	var node: Node = character.get_part_node(iid, "MainHand") if hand_ok else null
 	hand_ok = node != null and str(node.get_meta("item_model", "")) == "VeilsteelLongsword"
 	return [bool(_crafted.back()["success"]) and got == 3 and hand_ok, "%s; hand model %s" % [detail, "ok" if hand_ok else "MISSING"]]
+
+## Phase 181: the first step. A fresh save offers the creation screen; the bot picks a seeded random look, types
+## a name, saves the screenshot of the screen and enters the world. The host records the creation and the screen
+## closes, so every later step plays a created character.
+func _step_create() -> Array:
+	var ui: Node = _root._ui
+	if not await _until(func(): return ui.is_creation_open(), 10.0):
+		return [false, "the creation screen was not offered on a fresh save"]
+	var screen: Control = ui.creation_screen
+	screen.randomize_choice(WORLD_SEED)
+	screen.set_name_text(CREATE_NAME)
+	await _until(func(): return false, 0.5)
+	await _screenshot("create")
+	var rig := bool(screen.has_rig())
+	screen.submit()
+	var closed: bool = await _until(func(): return not ui.is_creation_open(), 5.0)
+	var state: Dictionary = _root._registry.creation_of(_root._registry.local_player_id)
+	var ok: bool = closed and rig and str(state.get("state", "")) == "created" and str(state.get("name", "")) == CREATE_NAME \
+		and not _root._player.creation_hold
+	return [ok, "created %s (%s, %s, colour %d); screen %s, rig %s" % [str(state.get("name", "?")), str(state.get("gender", "?")),
+		str(state.get("hair", "?")), int(state.get("hairColor", -1)), "closed" if closed else "STILL OPEN: " + str(screen.error_text()), str(rig)]]
 
 ## Phase 179: open the Character window, check every attribute and slot is listed and the doll holds a rig, and (on
 ## a display) that the doll's viewport is not blank. The step's screenshot shows the sheet.

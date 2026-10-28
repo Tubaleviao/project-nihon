@@ -206,7 +206,7 @@ func handle_intent(text: String, player_id: String) -> void:
 	if not bypass and not _take_token(speaker):
 		return
 	if not is_cmd:
-		_post(CHANNEL_CHAT, _handle_of(speaker), clean, "")
+		_post(CHANNEL_CHAT, _name_of(speaker), clean, "")
 		return
 	var parsed := ChatCommands.parse(clean)
 	var cmd: String = parsed["name"]
@@ -306,7 +306,9 @@ func _cmd_players(speaker: String) -> void:
 	var ids := _online_ids()
 	var names: Array = []
 	for pid in ids:
-		names.append(_handle_of(str(pid)))
+		# Phase 181 — the name, and the handle commands take (the friend code), when they differ.
+		var shown := _name_of(str(pid))
+		names.append(shown if shown == _handle_of(str(pid)) else "%s (%s)" % [shown, _handle_of(str(pid))])
 	_reply(speaker, "chat.players", [ids.size(), ", ".join(names)])
 
 func _cmd_say(speaker: String, args: Array) -> void:
@@ -665,6 +667,12 @@ func _peer_of(player_id: String) -> int:
 func _handle_of(player_id: String) -> String:
 	return player_registry.public_handle(player_id) if player_registry != null else player_id
 
+## Phase 181 — the name a player is shown by in chat: their created name, else their handle.
+func _name_of(player_id: String) -> String:
+	if player_registry != null and player_registry.has_method("display_name"):
+		return player_registry.display_name(player_id)
+	return _handle_of(player_id)
+
 func _is_client() -> bool:
 	return networking != null and networking.has_method("is_client") and networking.is_client()
 
@@ -707,7 +715,7 @@ func announce_joined(player_id: String) -> void:
 	if _last_join_announce.size() >= MAX_JOIN_MEMO:
 		_last_join_announce.clear()
 	_last_join_announce[player_id] = now
-	_say_system("chat.player_joined", [_handle_of(player_id)], "")
+	_say_system("chat.player_joined", [_name_of(player_id)], "")
 
 func _load_admins() -> void:
 	_admins.clear()

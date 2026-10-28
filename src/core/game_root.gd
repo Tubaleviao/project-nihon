@@ -9,7 +9,6 @@ const RebaseDriver := preload("res://src/terrain/rebase_driver.gd")
 const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 const Diag := preload("res://src/core/diag.gd")
 const LocaleSettings := preload("res://src/core/locale_settings.gd")
-
 const TerrainSlice     := preload("res://src/terrain/terrain_slice.gd")
 const WorldShape       := preload("res://src/terrain/world_shape.gd")
 const VoxelSlice       := preload("res://src/terrain/voxel_slice.gd")
@@ -60,6 +59,7 @@ const SettlementWiring := preload("res://src/settlement/settlement_wiring.gd")
 const CraftingWiring := preload("res://src/crafting/crafting_wiring.gd")
 const CharacterWiring := preload("res://src/character/character_wiring.gd")
 const GestureWiring   := preload("res://src/character/gesture_wiring.gd")
+const CreationWiring  := preload("res://src/character/creation_wiring.gd")
 const GestureSlice    := preload("res://src/character/gesture_slice.gd")
 const PeerWiring := preload("res://src/networking/peer_wiring.gd")
 const SnapshotWiring := preload("res://src/persistence/snapshot_wiring.gd")
@@ -76,6 +76,7 @@ var _settlement_wiring := SettlementWiring.new()
 var _crafting_wiring := CraftingWiring.new()
 var _character_wiring := CharacterWiring.new()
 var _gesture_wiring := GestureWiring.new()
+var _creation_wiring := CreationWiring.new()
 var _carcass_wiring := CarcassWiring.new()
 var _peer_wiring := PeerWiring.new()
 var _snapshot_wiring := SnapshotWiring.new()
@@ -240,7 +241,7 @@ var _handshake_retries: int = 0
 
 ## Phase 132 — wiring modules know their root from construction (the suite builds roots without `_ready`).
 func _init() -> void:
-	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _settlement_wiring, _crafting_wiring, _character_wiring, _gesture_wiring, _carcass_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring, _admin_wiring]
+	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _settlement_wiring, _crafting_wiring, _character_wiring, _gesture_wiring, _creation_wiring, _carcass_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring, _admin_wiring]
 	for w in _wirings:
 		w.root = self
 
@@ -550,8 +551,7 @@ func _ready() -> void:
 		# screen to show), and it starts hidden: the boot path shows it (see _boot_host)
 		# for as long as the ground under the spawn point is being built.
 		#
-		# Phase 42 review — no second `not _is_server` guard here: this block is already
-		# inside one (the minimap's), so the nested copy was dead.
+		# Phase 42 review — no second `not _is_server` guard: this block is inside the minimap's.
 		add_child(_loading_screen)
 
 	# Bus listeners for integration-layer logging.

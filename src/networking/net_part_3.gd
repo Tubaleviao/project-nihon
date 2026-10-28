@@ -327,6 +327,10 @@ func _route_h2c(payload: Dictionary) -> void:
 		"peer_equipment_evict":
 			# Phase 48 — the peer left our AOI; drop what we stored for it.
 			GameBus.peer_equipment_evicted.emit(int(payload.get("peer_id", 0)))
+		"peer_look":
+			# Phase 181 — another peer's name and creation look; the choices are checked again here.
+			if sl._role == sl.Role.CLIENT and payload.get("look", null) is Dictionary:
+				GameBus.peer_look_synced.emit(int(payload.get("peer_id", 0)), sl.CreationRules.sanitize_look(payload["look"]))
 		"peer_equipment":
 			# Phase 47 — another peer's worn set, scoped to our AOI by the host.
 			var worn: Variant = payload.get("worn", {})

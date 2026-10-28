@@ -323,3 +323,74 @@ func forget_equipment_pairs(peer_id: int) -> void:
 		var parts := str(key).split(":")
 		if int(parts[0]) == peer_id or int(parts[1]) == peer_id:
 			sl._equipment_sent.erase(key)
+
+func forget_player_id(peer_id: int) -> void:
+	sl._player_ids.erase(peer_id)
+	# Phase 36 — the rate-limit state is transport state too: a reconnecting peer
+	# starts with a full bucket rather than inheriting its predecessor's debt.
+	sl._rate_buckets.erase(peer_id)
+	sl._rate_warn_ms.erase(peer_id)
+	sl._m2.speed_ledger.erase(peer_id)
+	# Phase 37 — and so is snapshot reassembly: a snapshot that lost a chunk is never
+	# completed, so its buffer entry lived for the whole session (one leak per lost
+	# chunk, on a connection that may be long gone). The parts are keyed by
+	# snapshot_id, and the sender is the connection that carried them, so the whole
+	# buffer goes with the connection: a later snapshot is a fresh snapshot_id anyway.
+	sl._snapshot_buffer.clear()
+
+## Phase 181 — client: forward a creation or skip; the host binds it to the connection's player. Only the four
+## creation fields travel, as capped strings and an int.
+func forward_creation_intent(action: String, creation: Dictionary) -> void:
+	if sl._role != sl.Role.CLIENT:
+		return
+	var packet: Dictionary = sl.CreationRules.intent_fields(creation)
+	packet["type"] = "creation_intent"
+	packet["action"] = action.left(8)
+	sl._broadcast(packet)
+
+## Phase 181 — host: `viewer` asked for `subject`'s look (its avatar just appeared there). Pulled on appearance
+## rather than pushed per AOI pair: every player has a look, and a pushed pair per (viewer, subject) is the crowd
+## cost Phase 163 removed for gear. Answered only while the subject stands inside the viewer's AOI (the scope its
+## position relay has), so a client cannot list everyone's names.
+func answer_look_request(viewer: int, subject: int) -> bool:
+	if sl._role != sl.Role.HOST or sl.player_registry == null or subject == viewer:
+		sl.look_requests_refused += 1
+		return false
+	var owner_id: String = sl.player_registry.local_player_id if subject == sl.HOST_PEER_ID else sl.get_player_id(subject)
+	if owner_id == "" or not sl._has_subject_position(subject) or not sl.has_last_known_state(viewer) \
+			or not sl.in_aoi(viewer, sl._subject_position(subject)):
+		sl.look_requests_refused += 1
+		return false
+	sl.look_requests_answered += 1
+	sl._deliver(viewer, { "type": "peer_look", "peer_id": subject, "look": sl.player_registry.look_of(owner_id) })
+	return true
+
+## Phase 181 — host: a player's look changed (a creation). It goes to the peers whose AOI holds that player,
+## named by the owner's peer id; peers that meet the player later ask for it (`answer_look_request`).
+func push_look(player_id: String, look: Dictionary) -> void:
+	if sl._role != sl.Role.HOST or not sl._connected() or sl.player_registry == null:
+		return
+	var owner_peer: int = sl._equipment_owner(player_id)
+	if owner_peer == 0 or not sl._has_subject_position(owner_peer):
+		return
+	for pid in sl.equipment_targets(owner_peer):
+		sl._deliver(int(pid), { "type": "peer_look", "peer_id": owner_peer, "look": look.duplicate() })
+
+## Broadcast a spatial delta only to peers whose AOI contains `position` (a client forwards it to the host).
+func broadcast_aoi(payload: Dictionary, position: Vector3) -> void:
+	if not sl._connected():
+		return
+	if sl._role == sl.Role.HOST:
+		for pid in sl.aoi_recipients(position, sl._connected_peers()):
+			sl._deliver(int(pid), payload.duplicate(true))
+	elif sl._role == sl.Role.CLIENT:
+		sl._deliver(1, payload)
+
+## Legacy low-level send: wraps an arbitrary payload and ships it as-is.
+func packet_send_requested(peer_id: int, payload: Dictionary) -> void:
+	if not sl._connected():
+		return
+	if sl._role == sl.Role.HOST:
+		sl._deliver(peer_id, payload.duplicate(true))
+	else:
+		sl._deliver(1, payload)
