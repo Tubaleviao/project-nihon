@@ -15,6 +15,8 @@ extends RefCounted
 ##   sea_level    metres (default 0.0)
 ##   lap_tiles    tiles in one lap of the world; 0 = no seam (default 0)
 ##   max_expansions  node-expansion cap (default DEFAULT_MAX_EXPANSIONS)
+##   max_usec     wall-clock cap in µs, checked between expansions (default 0: none); a capped search
+##                returns its best partial path, like the expansion cap
 ##
 ## surface: Callable(tile: Vector2i) -> float, the walkable height of the column, or NAN when it is not
 ## known (an unloaded chunk). An unknown tile is not walkable.
@@ -34,7 +36,12 @@ const _DIRS: Array[Vector2i] = [
 
 ## The search result: { path: Array[Vector2i] (tiles after `from_tile`, empty when none is better than
 ## staying), reached: bool (the last tile is the goal), capped: bool (stopped at the expansion cap),
-## expansions: int }.
+## expansions: int, window: bool }.
+##
+## Phase 183 — a goal beyond `radius` cannot be reached inside the window, and the search used to spend
+## its whole expansion cap (~20 ms) proving it. It aims at the point where the straight line to the goal
+## leaves the window instead; `window` is true when the path ends there (reached stays false: the goal is
+## further), so the caller plans again from there at once.
 static func search(from_tile: Vector2i, to_tile: Vector2i, rules: Dictionary, surface: Callable) -> Dictionary:
 	var max_step := float(rules.get("max_step", DEFAULT_MAX_STEP))
 	var can_swim := bool(rules.get("can_swim", false))
@@ -46,22 +53,37 @@ static func search(from_tile: Vector2i, to_tile: Vector2i, rules: Dictionary, su
 	var goal := Vector2i(to_tile.x - from_tile.x, to_tile.y - from_tile.y)
 	if lap > 0:
 		goal.x = SeamWrap.delta(to_tile.x, from_tile.x, lap)
-	var info := { "path": [], "reached": goal == Vector2i.ZERO, "capped": false, "expansions": 0 }
+	var info := { "path": [], "reached": goal == Vector2i.ZERO, "capped": false, "expansions": 0, "window": false }
 	if goal == Vector2i.ZERO:
 		return info
+	var far := maxi(absi(goal.x), absi(goal.y))
+	var aim := goal
+	if far > radius:
+		aim = Vector2i(_round_div(goal.x * radius, far), _round_div(goal.y * radius, far))
+	var max_usec := int(rules.get("max_usec", 0))
+	var t0 := Time.get_ticks_usec()
 
 	var heights := {}   # offset -> float (NAN = not walkable)
 	var start_h := _height(Vector2i.ZERO, from_tile, lap, surface, sea, can_swim, heights)
 	if is_nan(start_h):
+		return info
+	# Phase 183 — the straight line first. It has min(|dx|, |dy|) diagonal steps and the rest straight,
+	# which is an octile-shortest path, so when every step of it is one A* could take it is as good as the
+	# search's answer at a fraction of the cost (most patrol legs cross open ground).
+	var line := _straight_line(aim, from_tile, lap, surface, sea, can_swim, max_step, heights)
+	if not line.is_empty():
+		info["path"] = line
+		info["reached"] = aim == goal
+		info["window"] = aim != goal
 		return info
 	var g := { Vector2i.ZERO: 0.0 }
 	var parent := {}
 	var closed := {}
 	var heap: Array = []   # [f, h, serial, offset] ordered by f, then h, then insertion
 	var serial := 0
-	_push(heap, [_octile(Vector2i.ZERO, goal), _octile(Vector2i.ZERO, goal), serial, Vector2i.ZERO])
+	_push(heap, [_octile(Vector2i.ZERO, aim), _octile(Vector2i.ZERO, aim), serial, Vector2i.ZERO])
 	var best := Vector2i.ZERO
-	var best_h := _octile(Vector2i.ZERO, goal)
+	var best_h := _octile(Vector2i.ZERO, aim)
 	var expansions := 0
 
 	while not heap.is_empty():
@@ -70,15 +92,16 @@ static func search(from_tile: Vector2i, to_tile: Vector2i, rules: Dictionary, su
 		if closed.has(cur):
 			continue
 		closed[cur] = true
-		if cur == goal:
+		if cur == aim:
 			best = cur
-			info["reached"] = true
+			info["reached"] = aim == goal
+			info["window"] = aim != goal
 			break
-		var hcur := _octile(cur, goal)
+		var hcur := _octile(cur, aim)
 		if hcur < best_h or (is_equal_approx(hcur, best_h) and float(g[cur]) < float(g[best])):
 			best = cur
 			best_h = hcur
-		if expansions >= cap:
+		if expansions >= cap or (max_usec > 0 and Time.get_ticks_usec() - t0 >= max_usec):
 			info["capped"] = true
 			break
 		expansions += 1
@@ -103,7 +126,7 @@ static func search(from_tile: Vector2i, to_tile: Vector2i, rules: Dictionary, su
 				g[nxt] = ng
 				parent[nxt] = cur
 				serial += 1
-				var hh := _octile(nxt, goal)
+				var hh := _octile(nxt, aim)
 				_push(heap, [ng + hh, hh, serial, nxt])
 	info["expansions"] = expansions
 
@@ -114,6 +137,36 @@ static func search(from_tile: Vector2i, to_tile: Vector2i, rules: Dictionary, su
 		at = parent[at]
 	info["path"] = path
 	return info
+
+## The tiles from the start to `goal` (an offset) along the rounded straight line, as world tiles, or empty
+## when a step of it is not walkable under the same rules the search applies (ledge, water, unknown,
+## a cut corner).
+static func _straight_line(goal: Vector2i, from_tile: Vector2i, lap: int, surface: Callable, sea: float, can_swim: bool, max_step: float, heights: Dictionary) -> Array:
+	var n := maxi(absi(goal.x), absi(goal.y))
+	var out: Array = []
+	var cur := Vector2i.ZERO
+	var cur_h: float = heights[cur]
+	for k in range(1, n + 1):
+		var nxt := Vector2i(_round_div(goal.x * k, n), _round_div(goal.y * k, n))
+		var d := nxt - cur
+		var nh := _height(nxt, from_tile, lap, surface, sea, can_swim, heights)
+		if is_nan(nh) or absf(nh - cur_h) > max_step:
+			return []
+		if d.x != 0 and d.y != 0:
+			var ha := _height(cur + Vector2i(d.x, 0), from_tile, lap, surface, sea, can_swim, heights)
+			var hb := _height(cur + Vector2i(0, d.y), from_tile, lap, surface, sea, can_swim, heights)
+			if is_nan(ha) or is_nan(hb) or absf(ha - cur_h) > max_step or absf(hb - cur_h) > max_step:
+				return []
+		out.append(from_tile + nxt)
+		cur = nxt
+		cur_h = nh
+	return out
+
+## `a / n` rounded half away from zero (n > 0).
+static func _round_div(a: int, n: int) -> int:
+	@warning_ignore("integer_division")
+	var q := (absi(a) * 2 + n) / (2 * n)
+	return q if a >= 0 else -q
 
 ## Convenience: just the tiles (see `search`).
 static func find_path(from_tile: Vector2i, to_tile: Vector2i, rules: Dictionary, surface: Callable) -> Array:

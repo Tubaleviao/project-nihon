@@ -66,6 +66,16 @@ func bodies() -> Array:
 		out.append([cm._peer_centers[peer_id], NEAR_RADIUS])
 	return out
 
+## Phase 183 — true when a build of `chunk` landing now may take its collision a quadrant at a time: it is
+## off the local body's chunk and its neighbours (`NEAR_RADIUS`) and off every peer's.
+func staggers_collision(chunk: Vector2i) -> bool:
+	if not enabled or not cm.keeps_render():
+		return false
+	var near: Array = [[cm.player_chunk(), NEAR_RADIUS]]
+	for peer_id in cm._peer_centers:
+		near.append([cm._peer_centers[peer_id], NEAR_RADIUS])
+	return not _within(near, chunk)
+
 ## True when a build of `chunk` landing now attaches its collision.
 func wants_collision(chunk: Vector2i) -> bool:
 	if not enabled or not cm.keeps_render():
@@ -204,7 +214,8 @@ func _attach_near_collision() -> void:
 		# the chunk under the local body is never held by the pump budget; the rest are, nearest first
 		if d[0] > 0 and cm._pump_exhausted():
 			return
-		voxel.attach_parked_collision(d[1])
+		# Phase 183 — beyond the body's own ring a chunk takes one quadrant a step, the rest next frames.
+		voxel.attach_parked_collision(d[1], d[0] <= NEAR_RADIUS)
 		cm._pump_steps += 1
 
 func _release_contents() -> void:

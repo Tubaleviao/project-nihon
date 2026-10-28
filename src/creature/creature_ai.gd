@@ -71,6 +71,23 @@ const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
 ## Path searches the whole population may start in one tick; the rest wait their turn in a FIFO queue.
 const PATH_BUDGET_PER_TICK := 8
+## Phase 183 — and at most this much main-thread time per tick (µs), past the first search: a wave of
+## new creatures asking at once (a chunk ring loading) used to spend 20+ ms on searches in one frame.
+const PATH_BUDGET_USEC := 2000
+## Phase 183 — the expansion cap of an idle creature's search. A patrol leg is at most `PATROL_RADIUS`
+## (12 tiles), so a reachable waypoint is found well inside it; an unreachable one (in the water, up a
+## cliff) used to spend the full `CreaturePath` cap, ~10 ms of one frame, on a walk nobody asked for.
+const PATROL_MAX_EXPANSIONS := 150
+## Phase 183 — one search's wall-clock cap (µs, `CreaturePath` `max_usec`): an unreachable goal inside the
+## window (across water) still costs the expansion cap otherwise, ~20 ms of GDScript in one frame.
+const PATH_MAX_USEC := 3000
+## Phase 183 — searches read column heights through a shared cache (`_cached_surface`): one search asks for
+## the same tile up to ~10 times (neighbours and corner checks) and every creature nearby asks for the same
+## ground, while a `surface_at_tile` read costs a chunk-key lookup and a voxel column walk. The cache is
+## dropped on any block change, chunk load or unload, and at least this often (s), so ground that changes
+## without an event (a test's drained lake) is seen within a retry interval.
+const SURFACE_CACHE_SECS := 1.0
+const SURFACE_CACHE_MAX := 40000   ## tiles kept before the cache is dropped (bounded memory)
 ## A path is recomputed once its goal tile has moved more than this many tiles (Chebyshev).
 const PATH_REPATH_TILES := 2
 ## Phase 149 — a creature stopped at the end of a partial path (the goal was out of reach) searches again
@@ -81,6 +98,15 @@ const FLEE_LEAD := 4.0
 ## Fabric defaults when a creature resource lacks the Phase 136 fields.
 const DEFAULT_MAX_STEP := 0.75
 const DEFAULT_PATH_RADIUS := 24
+## Phase 183 — AI level of detail. A creature that is idle (patrolling), wild and farther than
+## `far_range()` from every player cannot change state this frame, so it is ticked once every
+## `FAR_STRIDE` frames, round robin, with the time it missed. Everything else ticks every frame.
+const FAR_STRIDE := 4
+## Metres past the widest reach a state change needs (1.5 × the largest `alertRadius`): a player moving
+## fast closes this before a far creature's next tick.
+const FAR_MARGIN := 16.0
+## A far creature never steps more than this many seconds at once (a long hitch is not one giant stride).
+const FAR_MAX_STEP_SECS := 0.25
 
 ## Searches started this tick, the busiest tick seen and the lifetime total (test counters).
 var path_searches_this_tick := 0
@@ -89,9 +115,21 @@ var path_searches_total := 0
 ## Instances waiting for a search, oldest first.
 var _path_queue: Array = []
 var path_budget := PATH_BUDGET_PER_TICK
+var path_budget_usec := PATH_BUDGET_USEC
+var _path_usec_this_tick := 0
 
 ## Per-instance AI state: { "state", "attack_timer", "patrol_target", "spawn_pos" }
 var _ai: Dictionary = {}
+var _frame := 0   ## Phase 183: frames ticked, for the far round robin
+var _next_bucket := 0
+var _far_range := -1.0   ## cached `far_range()`, -1 before the first call
+var _rules_cache: Dictionary = {}   ## creature id -> `_path_rules` dictionary (fabric data, fixed for a run)
+var _surface_cache: Dictionary = {}   ## Vector2i tile -> float height (unknown tiles are never kept)
+var _surface_age := 0.0
+var _surface_fn := Callable()   ## `_cached_surface`, made once
+## Phase 183 — creatures ticked last frame at full rate and at the far rate (probe and tests).
+var ticked_full := 0
+var ticked_far := 0
 
 ## aggressionLevel from fabric drives the idle→next-state branch:
 ##   0 PASSIVE    — flee immediately when player enters alertRadius
@@ -138,15 +176,20 @@ func _ready() -> void:
 	GameBus.creature_respawned.connect(_on_creature_respawned)
 	GameBus.creature_spawned.connect(_on_creature_spawned)
 	GameBus.block_changed.connect(_on_block_changed)
+	GameBus.chunk_loaded.connect(_drop_surface_cache.unbind(1))
+	GameBus.chunk_unloaded.connect(_drop_surface_cache.unbind(1))
 
 func _process(delta: float) -> void:
 	TickProbe.begin("creature_ai")   # Phase 162 — the stress run's per-phase tick cost
 	_tick_all(delta)
 	TickProbe.end()
 
+var _tick_delta := 0.0
+
 func _tick_all(delta: float) -> void:
 	if not is_authoritative:
 		return
+	_tick_delta = delta
 	begin_tick()
 	if creature_slice == null:
 		return
@@ -159,6 +202,10 @@ func _tick_all(delta: float) -> void:
 	# CreatureSlice.instances_view), and the records in it are the live ones.
 	var instances: Array = creature_slice.instances_view()
 	var near: Array = []
+	var far_r := far_range()
+	_frame += 1
+	ticked_full = 0
+	ticked_far = 0
 	for inst in instances:
 		var iid: String = inst["instance_id"]
 		var c_state: String = inst["state"]
@@ -168,15 +215,47 @@ func _tick_all(delta: float) -> void:
 		if _is_companion(iid):
 			_tick_companion(iid, inst, delta)
 			near.append(inst)
+			ticked_full += 1
 			continue
 		# Phase 36 — the NEAREST of every player, not only the host's own body: a
 		# creature used to stand still while a remote peer walked through its
 		# territory, because the only position it ever looked at was this machine's.
 		var target := _nearest_target(inst["position"], targets)
-		_tick_instance(iid, inst, target["position"], delta, str(target["id"]))
-		if float(target["distance"]) <= BODY_ACTIVE_RANGE:
+		var dist := float(target["distance"])
+		var ai: Dictionary = _ai[iid]
+		if dist > far_r and ai["state"] == "idle" and not is_held(iid):
+			# Phase 183 — far and patrolling: its turn comes once every FAR_STRIDE frames.
+			var acc: float = float(ai.get("far_dt", 0.0)) + delta
+			if (_frame + int(ai["bucket"])) % FAR_STRIDE != 0:
+				ai["far_dt"] = acc
+			else:
+				ai["far_dt"] = 0.0
+				_tick_instance(iid, inst, target["position"], minf(acc, FAR_MAX_STEP_SECS), str(target["id"]))
+				ticked_far += 1
+		else:
+			var missed: float = float(ai.get("far_dt", 0.0))
+			ai["far_dt"] = 0.0
+			_tick_instance(iid, inst, target["position"], delta + minf(missed, FAR_MAX_STEP_SECS), str(target["id"]))
+			ticked_full += 1
+		if dist <= BODY_ACTIVE_RANGE:
 			near.append(inst)
+	TickProbe.begin("creature_ai:bodies")
 	separate_bodies(near, targets)
+	TickProbe.end()
+
+## Phase 183 — the distance beyond which an idle creature is ticked at the far rate: 1.5 × the largest
+## fabric `alertRadius` (the territorial alert reach, and the safe radius past which a chase gives up)
+## plus `FAR_MARGIN`.
+func far_range() -> float:
+	if _far_range < 0.0:
+		var widest := 12.0
+		for id in GameData.CREATURES:
+			var res: Resource = GameData.CREATURES[id]
+			var r: Variant = res.get("alertRadius") if res != null else null
+			if r != null:
+				widest = maxf(widest, float(r))
+		_far_range = widest * 1.5 + FAR_MARGIN
+	return _far_range
 
 ## The player targets on this machine (see `player_targets`).
 func _player_targets() -> Dictionary:
@@ -437,17 +516,43 @@ func _shove(iid: String, push: Vector3) -> void:
 
 ## Start a tick: the search budget refills and queued searches run oldest first.
 func begin_tick() -> void:
+	_surface_age += _tick_delta
+	if _surface_age >= SURFACE_CACHE_SECS or _surface_cache.size() > SURFACE_CACHE_MAX:
+		_drop_surface_cache()
 	path_searches_this_tick = 0
+	_path_usec_this_tick = 0
 	_service_path_queue()
 
 func _lap_tiles() -> int:
 	return creature_slice.lap_tiles() if creature_slice.has_method("lap_tiles") else 0
 
+## The search rules of `iid`'s creature type (cached per type: they are fabric data and the world's lap).
+## Callers read the dictionary and never write it.
 func _path_rules(iid: String) -> Dictionary:
-	var res: Resource = GameData.CREATURES.get(creature_slice.get_instance_creature_id(iid), null)
+	var cid: String = str(creature_slice.get_instance_creature_id(iid))
+	var cached: Variant = _rules_cache.get(cid)
+	if cached != null:
+		return cached
+	var rules := _path_rules_of(cid)
+	_rules_cache[cid] = rules
+	return rules
+
+## `_path_rules` with the idle expansion cap (cached per type the same way).
+func _patrol_rules(iid: String) -> Dictionary:
+	var cid: String = "patrol:" + str(creature_slice.get_instance_creature_id(iid))
+	var cached: Variant = _rules_cache.get(cid)
+	if cached != null:
+		return cached
+	var rules := _path_rules(iid).duplicate()
+	rules["max_expansions"] = PATROL_MAX_EXPANSIONS
+	_rules_cache[cid] = rules
+	return rules
+
+func _path_rules_of(cid: String) -> Dictionary:
+	var res: Resource = GameData.CREATURES.get(cid, null)
 	var rules := {
 		"max_step": DEFAULT_MAX_STEP, "can_swim": false, "radius": DEFAULT_PATH_RADIUS,
-		"sea_level": WorldShape.sea_level(), "lap_tiles": _lap_tiles(),
+		"sea_level": WorldShape.sea_level(), "lap_tiles": _lap_tiles(), "max_usec": PATH_MAX_USEC,
 	}
 	if res != null:
 		var step: Variant = res.get("maxStepMetres")
@@ -494,6 +599,11 @@ func _walk_path(iid: String, inst: Dictionary, target: Vector3, speed: float, de
 		if bool(ai.get("path_reached", false)):
 			_step_toward(inst, iid, target, speed, delta)
 			return
+		if bool(ai.get("path_window", false)):
+			# Phase 183 — the path ran to the edge of the search window: plan the next stretch from here.
+			_clear_path(ai)
+			_request_path(iid, goal)
+			return
 		ai["path_retry"] = float(ai.get("path_retry", 0.0)) + delta
 		if float(ai["path_retry"]) >= PATH_RETRY_SECONDS:
 			_clear_path(ai)   # clears the retry timer too
@@ -536,6 +646,7 @@ func _clear_path(ai: Dictionary) -> void:
 	ai["path_stale"] = false
 	ai["path_idx"] = 0
 	ai["path_reached"] = false
+	ai["path_window"] = false
 	ai["path_retry"] = 0.0
 
 ## Queue a search to `goal` for `iid` (once) and run what the budget allows.
@@ -548,7 +659,8 @@ func _request_path(iid: String, goal: Vector2i) -> void:
 	_service_path_queue()
 
 func _service_path_queue() -> void:
-	while path_searches_this_tick < path_budget and not _path_queue.is_empty():
+	while path_searches_this_tick < path_budget and not _path_queue.is_empty() \
+			and (path_searches_this_tick == 0 or _path_usec_this_tick < path_budget_usec):
 		var iid: String = _path_queue.pop_front()
 		if not _ai.has(iid):
 			continue
@@ -559,7 +671,14 @@ func _service_path_queue() -> void:
 		var pos: Vector3 = creature_slice.get_instance_position(iid)
 		var from: Vector2i = creature_slice.tile_of(pos)
 		var goal: Vector2i = ai["path_want"]
-		var res := CreaturePath.search(from, goal, _path_rules(iid), creature_slice.surface_at_tile)
+		TickProbe.begin("creature_ai:path_search")
+		var t0 := Time.get_ticks_usec()
+		var rules := _patrol_rules(iid) if ai["state"] == "idle" else _path_rules(iid)
+		if not _surface_fn.is_valid():
+			_surface_fn = _cached_surface
+		var res := CreaturePath.search(from, goal, rules, _surface_fn)
+		_path_usec_this_tick += Time.get_ticks_usec() - t0
+		TickProbe.end()
 		path_searches_this_tick += 1
 		path_searches_total += 1
 		path_searches_peak = maxi(path_searches_peak, path_searches_this_tick)
@@ -567,10 +686,26 @@ func _service_path_queue() -> void:
 		ai["path_idx"] = 0
 		ai["path_goal"] = goal
 		ai["path_reached"] = bool(res["reached"])
+		ai["path_window"] = bool(res.get("window", false))
 		ai["path_stale"] = false
+
+## `creature_slice.surface_at_tile` through the shared cache (see `SURFACE_CACHE_SECS`).
+func _cached_surface(tile: Vector2i) -> float:
+	var h: Variant = _surface_cache.get(tile)
+	if h != null:
+		return h
+	var v: float = creature_slice.surface_at_tile(tile)
+	if not is_nan(v):
+		_surface_cache[tile] = v
+	return v
+
+func _drop_surface_cache() -> void:
+	_surface_cache.clear()
+	_surface_age = 0.0
 
 ## A block changed: any creature whose remaining path crosses that column (or touches it) plans again.
 func _on_block_changed(_action: String, position: Vector3, _normal: Vector3, _material: String) -> void:
+	_drop_surface_cache()
 	if creature_slice == null or not creature_slice.has_method("tile_of"):
 		return
 	var tile: Vector2i = creature_slice.tile_of(position)
@@ -711,7 +846,9 @@ func _ensure_ai_record(iid: String, spawn_pos: Vector3) -> void:
 			"attack_timer":  0.0,
 			"spawn_pos":     spawn_pos,
 			"patrol_target": _random_waypoint(spawn_pos),
+			"bucket":        _next_bucket,   # Phase 183: its turn in the far round robin
 		}
+		_next_bucket = (_next_bucket + 1) % FAR_STRIDE
 
 func _random_waypoint(origin: Vector3) -> Vector3:
 	var angle := randf_range(0.0, TAU)

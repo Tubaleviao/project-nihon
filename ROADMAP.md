@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–182 and 187–192 are done. Their specs and acceptance criteria are archived in
+Phases 1–183 and 187–192 are done. Their specs and acceptance criteria are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Arc: make it look and feel like an RPG (Phases 173–181, 183)
@@ -43,7 +43,7 @@ budget honest. Then it gives the game icons, attributes, a character sheet and c
 | 179 | The character sheet: a paper doll, attributes and derived stats | Done | [phases-179.md](docs/roadmap-history/phases-179.md) |
 | 180 | Character creation in the fabric: name, gender, hair and a chibi art style | Done | [phases-180.md](docs/roadmap-history/phases-180.md) |
 | 181 | Character creation at runtime: a creation screen before the first spawn | Done | [phases-181.md](docs/roadmap-history/phases-181.md) |
-| 183 | Playtest process time under 16 ms | Planned | below |
+| 183 | Playtest process time under 16 ms | Done | [phases-183.md](docs/roadmap-history/phases-183.md) |
 
 ### Out of arc: admin tools (Phase 182)
 
@@ -99,30 +99,6 @@ The scattered UI instructions are removed, so the tutorial is the one place that
 | 184 | First steps in the fabric: the tutorial steps, the bed and a shelter rule | Planned | below |
 | 185 | The bed is the spawn point: host-owned, persisted, one per player | Planned | below |
 | 186 | The first-steps tutorial at runtime: one-time cards, a toggle, and no other in-UI tutorial | Planned | below |
-
----
-
-## Phase 183 — Playtest process time under 16 ms
-
-**Goal:** Phase 174 gated `walk`, `craft` and `fight` on p95 process time (the scene tree's `_process`
-work per frame) and found them at 26, 27 and 18 ms on llvmpipe with the native builder loaded (median of
-3 local runs on the pinned seed). Physics is under 1.5 ms, so the cost is main-thread `_process` work,
-not the chunk build. Name it and cut it.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phase 174.
-
-**Deliverables:**
-- Profile the three steps (per-slice `_process` timing, `Performance` custom monitors) and name the
-  top main-thread cost in the PR.
-- Fix it, then lower `docs/perf/playtest-budget.json` and the table in `docs/perf/playtest-baseline.md`
-  toward the 16 ms target.
-
-**Acceptance criteria:**
-- [ ] The top main-thread cost per step is named in `docs/perf/playtest-baseline.md`.
-- [ ] CI playtest: `walk`, `craft` and `fight` median p95 process time is ≤ 16 ms × 1.25.
-- [ ] Suite green on both boot paths.
 
 ---
 

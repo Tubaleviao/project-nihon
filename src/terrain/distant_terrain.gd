@@ -17,6 +17,7 @@ const WorldShape := preload("res://src/terrain/world_shape.gd")
 const TerrainSliceScript := preload("res://src/terrain/terrain_slice.gd")
 const VoxelSliceScript := preload("res://src/terrain/voxel_slice.gd")
 const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
+const TickProbe := preload("res://src/core/tick_probe.gd")
 const Horizon := preload("res://src/terrain/horizon.gd")
 const CHUNK_METERS := 32.0   # TerrainSlice.CHUNK_SIZE * TILE_SIZE
 const RING_FACTOR := 10      ## the ring reaches this many times the voxel window's extent
@@ -128,12 +129,16 @@ func scene_offset() -> Vector3:
 ## A patch sits `RING_DROP` below the voxel ground, so a built chunk always draws over it.
 const FILL_CELLS := 8
 const FILL_PER_CALL := 3   ## patches built per `set_unbuilt` call (each samples (FILL_CELLS+1)² heights)
+## Phase 183 — main-thread µs a frame's `rebuild` may spend making patches, past the first: a patch is
+## ~1–2.5 ms, so three in one frame were a 3–7 ms spike every time the window moved.
+const FILL_BUDGET_USEC := 1000
 var _fills: Dictionary = {}   ## Vector2i chunk -> MeshInstance3D
 
 ## Keep a patch under exactly the chunks in `chunks` (the unbuilt ones of the voxel window). Patches of
 ## chunks no longer listed are freed at once; at most `FILL_PER_CALL` new ones are made per call, nearest
-## to `near` first. Returns the number of patches standing.
-func set_unbuilt(chunks: Array, near: Vector2i = Vector2i.ZERO) -> int:
+## to `near` first, and with `budget_usec` > 0 no more once that much time went on them (one always is).
+## Returns the number of patches standing.
+func set_unbuilt(chunks: Array, near: Vector2i = Vector2i.ZERO, budget_usec: int = 0) -> int:
 	var want: Dictionary = {}
 	for c in chunks:
 		want[c] = true
@@ -147,8 +152,9 @@ func set_unbuilt(chunks: Array, near: Vector2i = Vector2i.ZERO) -> int:
 			fresh.append(c)
 	fresh.sort_custom(func(a, b): return (a - near).length_squared() < (b - near).length_squared())
 	var made := 0
+	var t0 := Time.get_ticks_usec()
 	for c: Vector2i in fresh:
-		if made >= FILL_PER_CALL:
+		if made >= FILL_PER_CALL or (made > 0 and budget_usec > 0 and Time.get_ticks_usec() - t0 >= budget_usec):
 			break
 		made += 1
 		var circ_chunks := TerrainSliceScript.circumference_chunks()
@@ -271,7 +277,9 @@ static func _altitude_color(alt: float) -> Color:
 ## Phase 191 — `chunks` (the chunk manager) also keeps a patch under each unbuilt chunk of its window.
 func rebuild(center: Vector2, radius_chunks: int, chunks: Node = null) -> bool:
 	if chunks != null:
-		set_unbuilt(chunks.unbuilt_window_chunks(), chunks.player_chunk())
+		TickProbe.begin("distant_fills")   # Phase 183 — the playtest profiler's view of the fill patches
+		set_unbuilt(chunks.unbuilt_window_chunks(), chunks.player_chunk(), FILL_BUDGET_USEC)
+		TickProbe.end()
 	window_half_m = (float(radius_chunks) + 0.5) * CHUNK_METERS
 	ring_half_m = ring_half_extent(radius_chunks)
 	outer_radius_m = outer_radius_for(ring_half_m, circumference_m)

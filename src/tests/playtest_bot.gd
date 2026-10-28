@@ -35,6 +35,7 @@ const DistantBands := preload("res://src/terrain/distant_bands.gd")
 const PlayerSlice := preload("res://src/player/player_slice.gd")
 const AdminRules := preload("res://src/admin/admin_rules.gd")
 const TickProbe := preload("res://src/core/tick_probe.gd")
+const ProcessProfiler := preload("res://src/tests/process_profiler.gd")
 
 const ARG := "--playtest-bot"
 const OUT_DIR := "res://playtest"
@@ -49,6 +50,10 @@ const WORLD_SEED := 42
 ## Phase 181 — the name the `create` step gives the bot's character (a fresh save offers the screen).
 const CREATE_NAME := "Hikari"
 const SEED_ARG := "--playtest-seed"
+## Phase 183 — the local player's id in every run. The spawn search is seeded by it, and a minted id is
+## new every run: the bot started on a different continent each time, with 0 to 280 creatures around the
+## gated steps, which was most of their run-to-run spread.
+const PLAYER_ID := "player_0_1_0000000000000000000000000000b076"
 const HITCH_MS := 50.0        ## a frame over this is a hitch (counted, not a failure)
 const HARD_FRAME_MS := 2000.0 ## a frame over this fails the run
 const STEP_TIMEOUT_SECS := 60.0 ## wall clock for a WHOLE step, not for one wait inside it
@@ -168,6 +173,10 @@ var _crafted: Array = []
 var _researched: Array = []
 var _placed: Array = []
 var _steps_done: Array = []   ## finished step records, for the watchdog's partial report
+var _profiler: ProcessProfiler = null   ## Phase 183: `--playtest-profile`, else null
+var _profile_frames: Array = []   ## ... per recorded frame, its TickProbe phase table (µs)
+var _profile_creatures := 0   ## ... the most creature instances the host held in a recorded frame
+var _frame_end: Node
 
 static func requested(args: Array) -> bool:
 	return ARG in args
@@ -189,6 +198,7 @@ static func prepare(root: Node) -> void:
 	_clear_dir(SAVE_DIR)
 	var seed_v := seed_from_args(args)
 	root._terrain.set_world_seed(seed_v)
+	root._persistence_wiring.fixed_local_id = PLAYER_ID
 	print("[Playtest] world seed %d" % seed_v)
 
 static func _clear_dir(path: String) -> void:
@@ -426,9 +436,9 @@ func _ready() -> void:
 	# process time of the last second, once a second, so a per-frame sample of it is the step's worst frame.
 	process_priority = FrameEnd.FIRST
 	process_physics_priority = FrameEnd.FIRST
-	var end := FrameEnd.new()
-	end.bot = self
-	add_child(end)
+	_frame_end = FrameEnd.new()
+	_frame_end.bot = self
+	add_child(_frame_end)
 
 ## The last _process and _physics_process callback of every frame (see `_ready`).
 class FrameEnd extends Node:
@@ -451,6 +461,11 @@ func _physics_process(_delta: float) -> void:
 func _process(delta: float) -> void:
 	_frame_start_us = Time.get_ticks_usec()
 	_frame_delta_ms = -1.0
+	if _profiler != null:
+		TickProbe.enabled = true
+		TickProbe.take_times()   # what ran between frames (physics) is not this frame's process work
+		_profiler.take_over(get_tree().root, [self, _frame_end])
+		_profiler.run_frame(delta)
 	if not _recording:
 		return
 	if Time.get_ticks_msec() < _skip_until_ms:
@@ -468,11 +483,18 @@ func _end_frame() -> void:
 	_frames.append(_frame_delta_ms)
 	_process_ms.append(float(Time.get_ticks_usec() - _frame_start_us) / 1000.0)
 	_physics_ms.append(float(physics_us) / 1000.0)
+	if _profiler != null:
+		_profile_frames.append(TickProbe.take_times())
+		if _root != null and _root._creature != null:
+			_profile_creatures = maxi(_profile_creatures, _root._creature.instances_view().size())
 	var vp := get_viewport().get_viewport_rid()
 	_render_ms.append(RenderingServer.viewport_get_measured_render_time_cpu(vp) + RenderingServer.viewport_get_measured_render_time_gpu(vp))
 
 func run(root: Node) -> void:
 	_root = root
+	if ProcessProfiler.requested(Array(OS.get_cmdline_user_args())):
+		_profiler = ProcessProfiler.new()
+		print("[Playtest] profiling every script _process (diagnostic: not a gated run)")
 	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 	# A step body that hits a script error aborts its coroutine and would leave the process
 	# running with no verdict; the watchdog writes what exists and quits.
@@ -529,11 +551,13 @@ func _finish(steps: Array) -> void:
 	get_tree().quit(0 if bool(report["ok"]) else 1)
 
 func _run_step(step: String) -> Dictionary:
-	print("[Playtest] step %s" % step)
+	print("[Playtest] step %s at chunk %s" % [step, str(_root._player.get_world_pos()["chunk"])])
 	_frames = []
 	_process_ms = []
 	_physics_ms = []
 	_render_ms = []
+	_profile_frames = []
+	_profile_creatures = 0
 	_chunk_builds = 0
 	_skip_frames = WARMUP_FRAMES
 	_step_deadline_ms = Time.get_ticks_msec() + int(_step_timeout(step) * 1000.0)
@@ -557,6 +581,9 @@ func _run_step(step: String) -> Dictionary:
 		rec["build_breakdown"] = _build_breakdown
 	if step == "flight":
 		rec["flight"] = _flight
+	if _profiler != null:
+		rec["profile"] = ProcessProfiler.summarize(_profile_frames)
+		rec["profile_creatures"] = _profile_creatures
 	if step != "create":   # Phase 181: that step shoots the screen itself, before it closes
 		await _screenshot(step)
 	print("[Playtest] %s %s %s" % [step, "ok" if bool(rec["ok"]) else "FAIL", rec["detail"]])

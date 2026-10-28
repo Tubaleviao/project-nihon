@@ -12,6 +12,7 @@ func register() -> void:
 	_run_test("cache: entry count and bytes stay within the bound, least recently used first", _test_cache_bound)
 	_run_test("cache: a restream empties it", _test_cache_restream_clears)
 	_run_test("distant: the ring covers an unbuilt window chunk and leaves a built one to the voxel mesh", _test_distant_unbuilt_cover)
+	_run_test("distant: a spent fill budget makes one patch a call, and the rest follow", _test_distant_fill_budget)
 
 func _free_rig(rig: Dictionary) -> void:
 	for k in ["cm", "voxel", "terrain", "player"]:
@@ -144,4 +145,19 @@ func _test_distant_unbuilt_cover() -> void:
 	ring.set_unbuilt(many, Vector2i(10, 0))
 	assert_true(ring.fill_count() <= 1 + DistantTerrainScript.FILL_PER_CALL, "new patches are paced per call")
 	assert_eq(ring.collision_body_count(), 0, "patches carry no collision")
+	ring.free()
+
+## Phase 183 — with no time to spare after the first patch, each call makes exactly one, nearest first.
+func _test_distant_fill_budget() -> void:
+	var ring := DistantTerrainScript.new()
+	ring.world_seed = 7
+	add_child(ring)
+	var many: Array = []
+	for i in 4:
+		many.append(Vector2i(10 + i, 0))
+	assert_eq(ring.set_unbuilt(many, Vector2i(10, 0), 1), 1, "a 1 µs budget still makes the first patch, and only it")
+	assert_true(ring.covers_chunk(Vector2i(10, 0)), "the nearest one")
+	for i in 3:
+		ring.set_unbuilt(many, Vector2i(10, 0), 1)
+	assert_eq(ring.fill_count(), 4, "one call each covers the rest")
 	ring.free()

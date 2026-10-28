@@ -28,20 +28,22 @@ the table below mirrors it (a suite test checks they agree).
 
 ## Budget table
 
-Target for every step: p95 process time ≤ 16 ms. The budgets below are the current gate, set from
-measured runs (llvmpipe, `opengl3`, native builder loaded), not the target.
+Target for every step: p95 process time ≤ 16 ms. Since Phase 183 the budget IS the target: the gate is
+16 ms × 1.25 = 20 ms for every step.
 
 | Step | Budget p95 process (ms) | Target (ms) | Measured p95 process (ms) |
 |---|---|---|---|
-| walk | 40 | 16 | 27.3 (CI) / 25.6 (local) |
-| craft | 45 | 16 | 22.6 (CI) / 27.1 (local) |
-| fight | 35 | 16 | 7.5 (CI) / 18.0 (local) |
+| walk | 16 | 16 | 15.2 (local) |
+| craft | 16 | 16 | 11.8 (local) |
+| fight | 16 | 16 | 5.5 (local) |
 
-"Measured" is the median of three runs, on CI (GitHub runner, llvmpipe, the gate run of 2026-10-24 on
-ca6e87c) and on the local box (2026-10-24), both on the pinned `PlaytestBot.WORLD_SEED` (#480). Local
-per-run p95: walk 29.0 / 25.6 / 23.3, craft 30.9 / 27.1 / 22.5, fight 21.3 / 18.0 / 10.4. On this metric
-the runner is no slower than the local box. The budgets leave about 1.5× over the slower of the two,
-because fight varies about 2× from run to run.
+"Measured" is the median of three local runs (2026-10-28, llvmpipe, `opengl3`, native builder loaded) on
+the pinned `PlaytestBot.WORLD_SEED` and `PlaytestBot.PLAYER_ID`. Per-run p95: walk 15.2 / 15.6 / 15.2,
+craft 12.1 / 11.8 / 11.6, fight 5.4 / 5.5 / 5.7. The same spawn on the commit before Phase 183 measured
+walk 59.8 / 41.3 / 42.6, craft 19.8 / 20.7 / 20.5, fight 12.2 / 11.6 / 12.2.
+
+Phase 174's numbers (walk 27.3 CI / 25.6 local, craft 22.6 / 27.1, fight 7.5 / 18.0, budgets 40 / 45 / 35)
+were taken on a spawn that changed every run: see "Process time (Phase 183)" below.
 
 p95 wall frame time on the same runs (llvmpipe): walk 95 ms, craft 120 ms, fight 104 ms. It is recorded
 here and not gated: process is now about a quarter of the wall frame, so most of the frame is
@@ -76,10 +78,54 @@ seed pinned): 10.8 ms against 116.7 ms (0.09). The stream is dispatch-bound at 9
 per crossing on both flights), so the ratio is close to a coarse build's cost over a full one's: about
 1–2 ms (heightmap 0.6 ms) against 24 ms.
 
+## Process time (Phase 183)
+
+`--playtest-profile` (diagnostic, never the gated run) times every script `_process` of the scene tree by
+taking the callbacks over (`src/tests/process_profiler.gd`), with the `TickProbe` phases nested in them
+(`creature_ai`, `creature_ai:path_search`, `chunks`, `chunk_attach_*`, `distant_fills`, and a `tick:<module>` phase per wiring module), and
+writes per step the mean ms of each phase over all frames and over the worst 5% of frames (the frames that
+make the p95).
+
+**The spawn was not pinned.** The world seed was, but the spawn search (`SpawnFinder.find_new`) is seeded by
+the player id, and a fresh save minted a new one every run: the bot started on another continent each time,
+with 0 to 280 creatures around the gated steps. That was most of the run-to-run spread Phase 174 saw (fight
+"varies about 2×"). The bot now pins its id (`PlaytestBot.PLAYER_ID`, a fresh world only, via
+`PersistenceWiring.fixed_local_id`); the one chosen starts among ~200 creatures, so creature cost stays in the
+gate instead of being dodged by an empty spawn.
+
+Top main-thread cost per step, before → after (profiled means over the worst 5% of frames):
+
+| Step | Top cost before | What it was | Fix |
+|---|---|---|---|
+| walk | `creature_ai` ~8–10 ms, then `chunk_attach_collision` ~9 ms a chunk and `creature_ai:path_search` spikes up to ~20 ms | every creature of the window ran its full AI every frame; a chunk's collision body made Jolt build an ~11,000-triangle mesh on the main thread; chasers aimed A* at a player beyond the 24-tile search window and spent the whole 600-expansion cap | far idle creatures tick once every `FAR_STRIDE` frames; collision split in quadrants attached one per pump step two rings out; searches aim at the window edge, take the straight line when it is walkable, and are capped in time |
+| craft | `creature_ai` ~8 ms, `distant_fills` up to ~5 ms | the AI as above; up to three fill patches (`DistantTerrain.set_unbuilt`) built in one frame | as above; fill patches under a 1 ms per-frame budget |
+| fight | `creature_ai` ~9–10 ms | the AI as above | as above |
+
+The fixes, in `src/creature/creature_ai.gd` and `creature_path.gd` unless named:
+- **AI level of detail.** An idle (patrolling) wild creature farther than `far_range()` (1.5 × the largest
+  fabric `alertRadius` + 16 m) from every player cannot change state, so it ticks once every
+  `FAR_STRIDE` (4) frames, round robin, with the time it missed. A near, alerted, chasing, fleeing or
+  tamed creature ticks every frame.
+- **Path searches.** A time budget per tick (`PATH_BUDGET_USEC`, after the first search) on top of the
+  count budget; the straight line first (it is an octile-shortest path, so A* runs only when it is
+  blocked); a goal past the search radius is aimed at the window edge on the line to it, and the
+  creature plans the next stretch on arrival instead of waiting out a retry; idle searches cap at
+  `PATROL_MAX_EXPANSIONS`; every search stops at `PATH_MAX_USEC`; column heights come from a shared
+  cache dropped on any block change, chunk load or unload, and every `SURFACE_CACHE_SECS`.
+- **Collision in quadrants** (`VoxelMesh.collision_parts`, `VoxelBuild`, `NearRing.staggers_collision`).
+  Jolt builds a `ConcavePolygonShape3D`'s mesh lazily, when its body enters the world, on the main thread;
+  Godot queues a worker's `set_faces` to the main thread, so the build cannot move to a worker. A full
+  chunk's soup is cut into four shapes on the worker instead. A chunk off the body's own ring lands with
+  one and takes the rest one per pump step; the body's chunk and its ring take all four at once.
+- **Fill patches** (`DistantTerrain.FILL_BUDGET_USEC`).
+
+What is left in walk (profiled means): creature walking and position updates ~3 ms for ~150 creatures,
+`creature_sync` ~1.3 ms, chunk mesh attach ~1 ms, one collision quadrant ~2 ms.
+
 ## Findings
 
 - The GDScript fallback is not in use: the report says `native_builder: true` with the native library
   loaded, and CI now fails when it does not.
 - Physics is under 1.5 ms p95 in every gated step.
-- All three gated steps are over the 16 ms target (p50 walk 18–23 ms, craft 9–17 ms, fight 8–15 ms);
-  the follow-up phase in `ROADMAP.md` profiles the main-thread work and brings them under it.
+- Phase 174: all three gated steps were over the 16 ms target. Phase 183 brought them under it (see
+  "Process time (Phase 183)").

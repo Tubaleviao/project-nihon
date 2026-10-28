@@ -351,10 +351,10 @@ var attach_geometry := true
 var attach_collision := true   # Phase 172: separate from the render mesh; its shape is built on the worker
 ## Phase 189 — shapes of built chunks whose collision waits for a body (`build_chunk(..., collide = false)`),
 ## attached by `attach_parked_collision` when the chunk manager's near ring reaches them.
-var _parked_shapes: Dictionary = {}   # "cx,cz" -> Shape3D
+var _parked_shapes: Dictionary = {}   # "cx,cz" -> Shape3D, or (Phase 183) an Array of quadrant shapes still to attach
 
-func attach_parked_collision(chunk_pos: Vector2i) -> bool:
-	return _build.attach_parked_collision(chunk_pos)
+func attach_parked_collision(chunk_pos: Vector2i, all: bool = true) -> bool:
+	return _build.attach_parked_collision(chunk_pos, all)
 
 func has_parked_collision(chunk_pos: Vector2i) -> bool:
 	return _build.has_parked_collision(chunk_pos)
@@ -440,8 +440,8 @@ func _process(_delta: float) -> void:
 	if is_authoritative and not _settle.is_empty():
 		settle_tick()
 
-func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {}, revision: int = -1, collide: bool = true) -> bool:
-	return _build.build_chunk(chunk_pos, heightmap, arrays, revision, collide)
+func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {}, revision: int = -1, collide: bool = true, stagger: bool = false) -> bool:
+	return _build.build_chunk(chunk_pos, heightmap, arrays, revision, collide, stagger)
 
 ## Phase 51 — the static water level. Rows of tiles whose ground lies below the sea surface,
 ## merged into spans: each span is `Vector3i(tile_z, first_tile_x, last_tile_x + 1)`. Pure.

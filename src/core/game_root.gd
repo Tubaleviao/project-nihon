@@ -1096,8 +1096,7 @@ func _process(delta: float) -> void:
 
 	_weather_wiring.tick_world_clock(delta)
 	if not _pending_host_boot:
-		for w in _wirings:
-			w.tick(delta)
+		_boot_wiring.tick_all(_wirings, delta)   # Phase 183: a static on the Wiring base (each tick probed)
 	_peer_wiring.sync_player_avatar(delta)
 	if _distant != null and _player != null and _chunk_manager != null:
 		_distant.world_seed = _terrain.get_world_seed()
