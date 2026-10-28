@@ -199,6 +199,11 @@
       "scale": 1,
       "hash": "2464a132d10b133d"
     },
+    "NoviceTunic": {
+      "archetype": "chestplate",
+      "scale": 1,
+      "hash": "d8347521a5177c85"
+    },
     "RefinedVoiditeShard": {
       "archetype": "shard",
       "scale": 1,

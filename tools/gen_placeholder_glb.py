@@ -839,6 +839,140 @@ GESTURE_CLIPS = [
 ]
 PLAYER_CLIPS.extend(GESTURE_CLIPS)
 
+# ---------------------------------------------------------------------------
+# Phase 180 — character creation: chibi bodies, heads and hair
+# ---------------------------------------------------------------------------
+# `models/characters/bodies/<body>.glb.raw`: the two gender bodies of the creation presets
+# (fabric/gameplay/characters/appearances.js), skinned to HumanoidSkeleton with every player clip, like
+# player_rig. Chibi: about 1.1 m tall, a 0.40 m head (a third of the height), short limbs, big hands
+# and boots. `models/characters/heads/<head>.glb.raw`: the head alone, origin at the Head joint.
+# `models/characters/hair/<hair>.glb.raw`: one static mesh of boxes per hair style of
+# fabric/gameplay/characters/creation.js, origin at the Head joint, drawn from the style's `shape`.
+CHAR_DIR = OUT.parent / "characters"
+CREATION_JS = Path(__file__).resolve().parent.parent / "fabric" / "gameplay" / "characters" / "creation.js"
+
+
+def _chibi_tables(shoulder: float, hip: float) -> tuple:
+    """(joints, parts) of a chibi body; `shoulder` and `hip` scale the half-widths."""
+    joints = {
+        "Root": (0.0, 0.0, 0.0), "Hips": (0.0, 0.42, 0.0), "Spine": (0.0, 0.50, 0.0),
+        "Chest": (0.0, 0.58, 0.0), "Neck": (0.0, 0.68, 0.0), "Head": (0.0, 0.70, 0.0),
+    }
+    parts = [
+        ("Hips", (0.0, 0.40, 0.0), (0.26 * hip, 0.10, 0.18)),
+        ("Spine", (0.0, 0.50, 0.0), (0.24, 0.12, 0.17)),
+        ("Chest", (0.0, 0.60, 0.0), (0.30 * shoulder, 0.14, 0.20)),
+        ("Neck", (0.0, 0.68, 0.0), (0.08, 0.04, 0.08)),
+        ("Head", (0.0, 0.90, 0.0), (0.44, 0.40, 0.42)),
+    ]
+    for side, sx in (("L", -1.0), ("R", 1.0)):
+        joints.update({
+            "Shoulder_" + side: (sx * 0.03, 0.64, 0.0), "Arm_" + side: (sx * 0.14 * shoulder, 0.64, 0.0),
+            "Forearm_" + side: (sx * 0.155 * shoulder, 0.52, 0.0), "Hand_" + side: (sx * 0.165 * shoulder, 0.43, 0.0),
+            "Leg_" + side: (sx * 0.07 * hip, 0.38, 0.0), "Shin_" + side: (sx * 0.07 * hip, 0.21, 0.0),
+            "Foot_" + side: (sx * 0.07 * hip, 0.05, 0.0),
+        })
+        parts += [
+            ("Arm_" + side, (sx * 0.15 * shoulder, 0.58, 0.0), (0.09, 0.13, 0.09)),
+            ("Forearm_" + side, (sx * 0.16 * shoulder, 0.475, 0.0), (0.08, 0.10, 0.08)),
+            ("Hand_" + side, (sx * 0.17 * shoulder, 0.39, 0.0), (0.10, 0.09, 0.11)),
+            ("Leg_" + side, (sx * 0.07 * hip, 0.30, 0.0), (0.11, 0.17, 0.12)),
+            ("Shin_" + side, (sx * 0.07 * hip, 0.14, 0.0), (0.10, 0.14, 0.11)),
+            ("Foot_" + side, (sx * 0.07 * hip, 0.04, -0.03), (0.13, 0.08, 0.21)),
+        ]
+    return joints, parts
+
+
+CHIBI_BODIES = {"chibi_body_m": (1.0, 1.0), "chibi_body_f": (0.9, 1.08)}
+CHIBI_HEADS = {"chibi_head_m": (0.44, 0.40, 0.42), "chibi_head_f": (0.42, 0.40, 0.40)}
+
+# Hair shapes as boxes (centre, size) in head space: origin at the Head joint, the head box spans
+# x +-0.22, y 0..0.40, z +-0.21, the face looks down -Z. Every shape starts from a cap.
+_CAP = [((0.0, 0.37, 0.01), (0.48, 0.10, 0.46))]
+_BACK = [((0.0, 0.24, 0.225), (0.47, 0.24, 0.06))]
+_FRINGE = [((0.0, 0.31, -0.225), (0.46, 0.08, 0.05))]
+_SIDES = [((sx * 0.245, 0.20, 0.0), (0.05, 0.30, 0.44)) for sx in (-1.0, 1.0)]
+HAIR_BOXES = {
+    "crop": _CAP + [((0.0, 0.27, 0.215), (0.46, 0.16, 0.05))],
+    "spiky": _CAP + _BACK + [((x, 0.47, z), (0.09, 0.14, 0.09))
+                             for x, z in ((0.0, 0.0), (-0.14, -0.08), (0.14, -0.08), (-0.12, 0.12), (0.12, 0.12))],
+    "swept": _CAP + _BACK + [((-0.07, 0.33, -0.225), (0.34, 0.10, 0.06)), ((-0.20, 0.42, 0.0), (0.10, 0.08, 0.30))],
+    "mop": [((0.0, 0.37, 0.0), (0.52, 0.14, 0.50))] + _SIDES + _FRINGE + _BACK,
+    "topknot": _CAP + _BACK + [((0.0, 0.48, 0.06), (0.13, 0.13, 0.13))],
+    "mohawk": [((0.0, 0.46, 0.02), (0.09, 0.18, 0.44)), ((0.0, 0.34, 0.215), (0.09, 0.14, 0.05))],
+    "bob": _CAP + _SIDES + _FRINGE + [((0.0, 0.20, 0.23), (0.48, 0.32, 0.06))],
+    "long": _CAP + _FRINGE + [((sx * 0.245, 0.10, 0.02), (0.05, 0.50, 0.40)) for sx in (-1.0, 1.0)]
+            + [((0.0, 0.02, 0.235), (0.48, 0.72, 0.07))],
+    "twintails": _CAP + _FRINGE + _BACK + [((sx * 0.30, 0.04, 0.12), (0.10, 0.46, 0.10)) for sx in (-1.0, 1.0)]
+                 + [((sx * 0.27, 0.30, 0.12), (0.08, 0.08, 0.08)) for sx in (-1.0, 1.0)],
+    "ponytail": _CAP + _FRINGE + _BACK + [((0.0, 0.12, 0.30), (0.11, 0.42, 0.11)), ((0.0, 0.34, 0.27), (0.08, 0.08, 0.08))],
+    "bun": _CAP + _FRINGE + _BACK + [((0.0, 0.40, 0.25), (0.19, 0.17, 0.15))],
+    "braid": _CAP + _FRINGE + _BACK + [((0.17, -0.04, 0.14), (0.08, 0.56, 0.08)), ((0.17, -0.34, 0.14), (0.11, 0.06, 0.11))],
+}
+
+
+def read_hair_styles() -> dict:
+    """hair id -> shape, from creation.js (`HAIR_STYLES`)."""
+    m = re.search(r"const HAIR_STYLES = \{(.*?)^\}", CREATION_JS.read_text(), re.M | re.S)
+    if not m:
+        raise SystemExit(f"{CREATION_JS}: HAIR_STYLES not found")
+    styles = dict(re.findall(r"^\s+(\w+):\s*\{[^}]*shape:\s*'(\w+)'", m.group(1), re.M))
+    missing = sorted({sh for sh in styles.values() if sh not in HAIR_BOXES})
+    if missing:
+        raise SystemExit(f"hair shapes without boxes in gen_placeholder_glb.py: {missing}")
+    return styles
+
+
+def build_static(boxes: list, name: str) -> bytes:
+    """One static mesh of boxes ((centre, size) pairs), on one node named `name`."""
+    positions, normals, indices = [], [], []
+    for (cx, cy, cz), (sx, sy, sz) in boxes:
+        for normal, corners in CUBE_FACES:
+            base = len(positions) // 3
+            for x, y, z in corners:
+                positions.extend([round(cx + x * sx, 6), round(cy + y * sy, 6), round(cz + z * sz, 6)])
+                normals.extend(normal)
+            indices.extend([base, base + 1, base + 2, base, base + 2, base + 3])
+    blob = Blob()
+    views = [
+        blob.add(struct.pack("<%df" % len(positions), *positions), 34962, 12),
+        blob.add(struct.pack("<%df" % len(normals), *normals), 34962, 12),
+        blob.add(struct.pack("<%dH" % len(indices), *indices), 34963),
+    ]
+    xs, ys, zs = positions[0::3], positions[1::3], positions[2::3]
+    accessors = [
+        {"bufferView": views[0], "componentType": 5126, "count": len(xs), "type": "VEC3",
+         "min": [min(xs), min(ys), min(zs)], "max": [max(xs), max(ys), max(zs)]},
+        {"bufferView": views[1], "componentType": 5126, "count": len(xs), "type": "VEC3"},
+        {"bufferView": views[2], "componentType": 5123, "count": len(indices), "type": "SCALAR"},
+    ]
+    doc = {
+        "asset": {"version": "2.0", "generator": "gen_placeholder_glb.py"},
+        "scene": 0,
+        "scenes": [{"nodes": [0]}],
+        "nodes": [{"name": name, "mesh": 0}],
+        "meshes": [{"name": name, "primitives": [{"attributes": {"POSITION": 0, "NORMAL": 1}, "indices": 2, "mode": 4}]}],
+        "buffers": [{"byteLength": len(blob.data)}],
+        "bufferViews": blob.views,
+        "accessors": accessors,
+    }
+    return _glb(doc, blob)
+
+
+def character_parts() -> dict:
+    """{GLB path: bytes} for the creation bodies, heads and hair styles."""
+    out = {}
+    for body, (shoulder, hip) in CHIBI_BODIES.items():
+        joints, parts = _chibi_tables(shoulder, hip)
+        out[CHAR_DIR / "bodies" / f"{body}.glb.raw"] = build_skinned_rig(
+            SKELETON_TRES, "HumanoidSkeleton", joints, REST, parts, PLAYER_CLIPS, "ChibiRig")
+    for head, size in CHIBI_HEADS.items():
+        out[CHAR_DIR / "heads" / f"{head}.glb.raw"] = build_static([((0.0, 0.20, 0.0), size)], "Head")
+    for hair, shape in sorted(read_hair_styles().items()):
+        out[CHAR_DIR / "hair" / f"{hair}.glb.raw"] = build_static(HAIR_BOXES[shape], "Hair")
+    return out
+
+
 LOOP_CLIPS = ("idle", "walk", "run", "fall")
 MIN_PEAK_DEGREES = 10.0
 RIGS = lambda: {"player": PLAYER_CLIPS, "wolf": WOLF_CLIPS, "bird": BIRD_CLIPS, "serpent": SERPENT_CLIPS}
@@ -879,7 +1013,7 @@ if __name__ == "__main__":
         for line in found:
             print(line)
         sys.exit(1 if found else 0)
-    outputs = {OUT: build(), PLAYER_OUT: build_player_rig(), WOLF_OUT: build_wolf_rig(), **creature_rigs()}
+    outputs = {OUT: build(), PLAYER_OUT: build_player_rig(), WOLF_OUT: build_wolf_rig(), **creature_rigs(), **character_parts()}
     for path, data in outputs.items():
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)

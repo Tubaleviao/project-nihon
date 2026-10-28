@@ -25,8 +25,9 @@ the rig changes nothing in a public clone.
 Item icons and models are not written here: ``tools/gen_item_assets.py`` owns item art. The GraywolfPack creature
 textures (``textures/creatures/GraywolfPack*.png.raw``) are the checkerboard (base) and
 two black masks (``_channel``, ``_color_mask``), like the player's. The nine roster creatures
-(``CREATURE_SIZES``) get the same three sheets at 128x128 or 64x64; so do the twenty-seven item meshes
-(``ITEM_TEXTURE_SIZES``, ``textures/items/``).
+(``CREATURE_SIZES``) get the same three sheets at 128x128 or 64x64; so do the twenty-eight item meshes
+(``ITEM_TEXTURE_SIZES``, ``textures/items/``). The character-creation eyes (Phase 180,
+``textures/characters/eyes/<id>.png.raw``, ``EYES``) are two dark ovals on a transparent 32x32 sheet.
 
 A bare ``<out>`` writes the sheet its default path gets (black for the mask
 files, white for the rig detail file) and the checkerboard for any other path.
@@ -64,12 +65,16 @@ CREATURE_DIR = ROOT / "assets/textures/creatures"
 ITEM_TEXTURE_SIZES = {
     "CarpenterAxe": 64, "FerritePick": 64, "FerriteShortSword": 32, "FerriteShield": 64, "FerriteHelmet": 64,
     "VeilsteelLongsword": 64, "VeilsteelPick": 64, "VoiditeEdge": 32, "AethermiteBow": 64,
-    "SkinningKnife": 32, "BoneSaw": 32, "VeilsteelChestplate": 64, "DuskfiberCloak": 64,
+    "SkinningKnife": 32, "BoneSaw": 32, "VeilsteelChestplate": 64, "DuskfiberCloak": 64, "NoviceTunic": 64,
     "AethermiteDust": 64, "AshiteBlock": 64, "FieldRations": 64, "LumenfiteOrb": 64, "ThornwoodPlank": 64,
     "Hearth": 64, "Waystone": 64, "AethermiteShard": 32, "EnchantedAethermiteShard": 32, "AlchemyPotion": 32,
     "FerriteIngot": 32, "VeilsteelIngot": 32, "RefinedVoiditeShard": 32, "VoidRuneTablet": 32,
 }
 ITEM_TEXTURE_DIR = ROOT / "assets/textures/items"
+# Phase 180 — the eyes of the creation gender presets (fabric/gameplay/characters/appearances.js).
+EYES = ("chibi_eyes_m", "chibi_eyes_f")
+EYES_DIR = ROOT / "assets/textures/characters/eyes"
+EYES_SIZE = 32
 
 
 def _chunk(ctype: bytes, data: bytes) -> bytes:
@@ -110,6 +115,15 @@ def white(x: int, y: int):
     return WHITE
 
 
+def eyes(x: int, y: int):
+    """Two tall dark ovals with a white glint: the placeholder chibi eyes."""
+    for cx in (10.5, 21.5):
+        dx, dy = (x - cx) / 4.5, (y - 16.5) / 7.0
+        if dx * dx + dy * dy <= 1.0:
+            return (250, 250, 252, 255) if (x - cx + 1.5) ** 2 + (y - 13.5) ** 2 <= 2.5 else (30, 24, 36, 255)
+    return (0, 0, 0, 0)
+
+
 def _write(out: Path, color_at, size: int = SIZE) -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(_png(size, size, color_at))
@@ -136,6 +150,7 @@ CREATURE_OUTPUTS += [
     for name, size in ITEM_TEXTURE_SIZES.items()
     for suffix, sheet in (("", checker), ("_color_mask", black), ("_channel", black))
 ]
+CREATURE_OUTPUTS += [(EYES_DIR / f"{name}.png.raw", eyes, EYES_SIZE) for name in EYES]
 FLAGS = {"--mask": black, "--white": white}
 
 

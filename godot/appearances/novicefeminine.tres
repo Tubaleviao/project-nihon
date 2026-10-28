@@ -1,0 +1,21 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/appearances/novicefeminine.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+skeleton = "HumanoidSkeleton"
+body = "chibi_body_f"
+proportionPreset = "chibi"
+proportions = {"height":0.75,"bodyMass":1.05,"shoulderWidth":0.95,"armLength":0.7,"legLength":0.55,"headScale":2.6}
+skinColor = 6
+head = "chibi_head_f"
+eyes = "chibi_eyes_f"
+eyeColor = 225
+hair = "hair_f_bob"
+hairColor = 41
+beard = "none"
+beardColor = 0
+equipment = {"Chest":{"item":"NoviceTunic","state":"equipped","primaryColor":96,"secondaryColor":100,"accentColor":140,"durability":1}}
+description = "The feminine character-creation preset: a chibi body in the plain novice tunic. The player picks hair and hair colour on top of it (CharacterCreation); everything else is fixed."
+tags = ["appearance"]
