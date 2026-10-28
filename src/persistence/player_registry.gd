@@ -80,6 +80,7 @@ const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 ## both names so no reader moved.**
 const PlayerRules := preload("res://src/core/player_rules.gd")
 const AttributeRules := preload("res://src/character/attribute_rules.gd")
+const CreationRules := preload("res://src/character/creation_rules.gd")
 
 ## Phase 39 — how long a host-simulated peer stays down before its health reads back
 ## full. The Phase 37 cooldown shape, applied to the one deadline a body carries.
@@ -478,6 +479,8 @@ func ensure_player(player_id: String) -> Dictionary:
 			"respawn_deadline": 0.0,
 			# Phase 129 — active status effects, [{ effect, remaining }]; none by default.
 			"status_effects": [],
+			# Phase 181 — the character creation: { state: none | skipped | created, name, gender, hair, hairColor }.
+			"creation": { "state": CreationRules.STATE_NONE },
 			}
 	return _players[player_id]
 
@@ -1021,6 +1024,128 @@ static func live_cooldowns(cooldowns: Variant, now: float = -1.0) -> Dictionary:
 	return out
 
 # ---------------------------------------------------------------------------
+# Phase 181 — character creation
+# ---------------------------------------------------------------------------
+
+## Every created name on this server, player_id -> name, in the WORLD record: uniqueness covers offline players.
+var _names: Dictionary = {}
+## The uniqueness index derived from `_names`: skeleton -> player_id.
+var _taken: Dictionary = {}
+## player_id -> msec of the last creation or skip the host read (the per-player rate limit).
+var _creation_tries: Dictionary = {}
+## Creation intents refused by the rate limit since boot.
+var creation_rate_limited: int = 0
+## Most names the world record may restore (a hand-edited record cannot grow the index without bound).
+const MAX_NAMES := 100000
+
+## The player's creation state ({ state, ... }, see `CreationRules.sanitize_state`); "none" for a legacy record.
+func creation_of(player_id: String) -> Dictionary:
+	return CreationRules.sanitize_state(get_record(player_id).get("creation", {}))
+
+## The name a player is shown by: their created name (from the record, else the server's name index, so an
+## offline player keeps theirs), else their public handle. The friend code stays the handle.
+func display_name(player_id: String) -> String:
+	if player_id.is_empty():
+		return ""
+	var state := creation_of(player_id)
+	if CreationRules.is_created(state):
+		return str(state["name"])
+	return str(_names.get(player_id, public_handle(player_id)))
+
+## What peers are told about a player's character: see `CreationRules.look`.
+func look_of(player_id: String) -> Dictionary:
+	return CreationRules.look(creation_of(player_id), public_handle(player_id))
+
+## Index `name` as `player_id`'s, replacing any name that player held before.
+func note_name(player_id: String, name: String) -> void:
+	if _names.has(player_id):
+		var old_sk := CreationRules.skeleton(str(_names[player_id]))
+		if str(_taken.get(old_sk, "")) == player_id:
+			_taken.erase(old_sk)
+	_names[player_id] = name
+	_taken[CreationRules.skeleton(name)] = player_id
+
+## The name index as the world record stores it ({ player_id: name }).
+func names_to_data() -> Dictionary:
+	return _names.duplicate()
+
+## Restore the name index from a world record; a bad key or name is dropped, the first holder of a skeleton kept.
+func names_from_data(raw: Variant) -> void:
+	_names.clear()
+	_taken.clear()
+	if not (raw is Dictionary):
+		return
+	var ids: Array = (raw as Dictionary).keys()
+	ids.sort()
+	for pid: Variant in ids:
+		if _names.size() >= MAX_NAMES:
+			break
+		var name := CreationRules.normalize_name(str(raw[pid]))
+		if not (pid is String) or not looks_like_player_id(pid) or CreationRules.name_refusal(name, _taken) != "":
+			continue
+		note_name(pid, name)
+
+## The rate limit: true (and counted) when `player_id` tried less than `CreationRules.RATE_LIMIT_MSEC` ago.
+func _creation_too_soon(player_id: String, now_msec: int) -> bool:
+	var last: int = int(_creation_tries.get(player_id, -CreationRules.RATE_LIMIT_MSEC))
+	if now_msec - last < CreationRules.RATE_LIMIT_MSEC:
+		creation_rate_limited += 1
+		return true
+	_creation_tries[player_id] = now_msec
+	return false
+
+## Host: create `player_id`'s character from `c` ({ name, gender, hair, hairColor }); "" or a refusal reason
+## (`creation.refuse.<reason>`). On success the name is taken, the starting kit given and `player_look_changed`
+## emitted. A skipped player may still create; a created one may not create again.
+func create_character(player_id: String, c: Dictionary, now_msec: int = -1) -> String:
+	if not is_authoritative or not has_player(player_id):
+		return "not_host"
+	if _creation_too_soon(player_id, Time.get_ticks_msec() if now_msec < 0 else now_msec):
+		return "rate_limited"
+	if CreationRules.is_created(creation_of(player_id)):
+		return "already_created"
+	var clean := CreationRules.intent_fields(c)
+	clean["name"] = CreationRules.normalize_name(str(clean["name"]))
+	var reason := CreationRules.creation_refusal(clean, _taken)
+	if reason != "":
+		return reason
+	clean["state"] = CreationRules.STATE_CREATED
+	get_record(player_id)["creation"] = clean
+	note_name(player_id, str(clean["name"]))
+	_grant_starting_kit(player_id)
+	GameBus.player_look_changed.emit(player_id, look_of(player_id))
+	return ""
+
+## Host: `player_id` keeps the default look and their handle, recorded so the screen is not offered on the next
+## join (the character sheet still reaches it). Returns "" or a refusal reason.
+func skip_creation(player_id: String, now_msec: int = -1) -> String:
+	if not is_authoritative or not has_player(player_id):
+		return "not_host"
+	if _creation_too_soon(player_id, Time.get_ticks_msec() if now_msec < 0 else now_msec):
+		return "rate_limited"
+	if CreationRules.is_created(creation_of(player_id)):
+		return "already_created"
+	get_record(player_id)["creation"] = { "state": CreationRules.STATE_SKIPPED }
+	return ""
+
+## The fabric's starting kit, once, at creation: into the player's own bag, and worn where the kit says so.
+## The forced worn set goes to the owner through `equipment_revoked` (the owner-only "wear exactly this" door).
+func _grant_starting_kit(player_id: String) -> void:
+	var inv := get_inventory(player_id)
+	if inv == null:
+		return
+	var worn := get_equipment(player_id)
+	for k: Variant in CreationRules.starting_kit():
+		var item := str((k as Dictionary).get("item", ""))
+		if not GameData.ITEMS.has(item) or not inv.add_item(item, maxi(1, int(k.get("quantity", 1)))):
+			continue
+		var slot := EquipmentRules.slot_of(item, GameData.ITEMS)
+		if bool(k.get("equip", false)) and slot != "" and not worn.has(slot):
+			worn[slot] = item
+	if record_equipment(player_id, worn):
+		GameBus.equipment_revoked.emit(player_id, get_equipment(player_id))
+
+# ---------------------------------------------------------------------------
 # Per-player inventory
 # ---------------------------------------------------------------------------
 
@@ -1085,6 +1210,7 @@ func evict_player(player_id: String) -> bool:
 		return false
 	var had_record := _players.erase(player_id)
 	# The equip bookkeeping is per live player: nothing may outlive the record it describes.
+	_creation_tries.erase(player_id)
 	_equip_seq.erase(player_id)
 	_equip_refusals.erase(player_id)
 	_equip_revoke_pending.erase(player_id)
@@ -1136,6 +1262,7 @@ func get_player_data(player_id: String) -> Dictionary:
 		"attribute_growth": AttributeRules.sanitize_growth(rec.get("attribute_growth", {})),
 		"cooldowns":  live_cooldowns(rec.get("cooldowns", {})),
 		"equipment":  get_equipment(player_id),
+		"creation":   creation_of(player_id),
 		"inventory": {},
 		"inventory_durability": {},
 	}
@@ -1217,6 +1344,10 @@ func apply_player_data(player_id: String, data: Dictionary) -> void:
 	rec["cooldowns"]  = live_cooldowns(data.get("cooldowns", {}))
 	# Phase 47: the worn set; a pre-Phase-47 payload carries no key (nothing worn).
 	rec["equipment"]  = EquipmentRules.sanitize(data.get("equipment", {}), GameData.ITEMS)
+	# Phase 181: a pre-181 payload has no creation and restores to "none", so the screen is offered once.
+	rec["creation"]   = CreationRules.sanitize_state(data.get("creation", {}))
+	if CreationRules.is_created(rec["creation"]):
+		note_name(player_id, str(rec["creation"]["name"]))
 	var contents: Variant = data.get("inventory", {})
 	if contents is Dictionary and not contents.is_empty():
 		var inv = get_inventory(player_id)

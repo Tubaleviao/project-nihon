@@ -120,6 +120,8 @@ func snapshot_own_record(player_id: String) -> Dictionary:
 	snapshot["waystones"] = own.get("waystones", [])
 	# Phase 47 — the worn set rides the own-record payload too.
 	snapshot["equipment"] = own.get("equipment", {})
+	# Phase 181 — the creation state: the client offers the screen while it is "none".
+	snapshot["creation"] = own.get("creation", {})
 	# The stored exact {chunk, local} goes out as stored, no float round trip (Phase 78); a legacy
 	# float-array record is re-encoded, and a record with no position stays empty so the client
 	# leaves its spawn alone.
@@ -303,11 +305,15 @@ func on_world_snapshot_received(data: Dictionary) -> void:
 		# one there is nothing to wear the set, to show in the Character window, or to
 		# forward equipment intents from.
 		if root._character.get_player_character() == "":
-			var client_char: String = root._character.create_character("TravellerHuman", root._player.get_position())
+			# Phase 181 — a created character starts in its look; anyone else in the default traveller.
+			var recipe: Variant = root._creation_wiring.boot_recipe(data.get("creation", {}))
+			var client_char: String = root._character.create_character_from_recipe(recipe, root._player.get_position()) if recipe != null \
+					else root._character.create_character("TravellerHuman", root._player.get_position())
 			root._character.set_player_character(client_char)
 			root._character.attach_default_rig(client_char)
 		root._character_wiring.apply_local_equipment(data["equipment"])
 	place_from_snapshot(data.get("player", {}))
+	root._creation_wiring.apply_own(data)
 	if data.has("creatures") and data["creatures"] is Array:
 		root._creature.apply_snapshot_creatures(data["creatures"])
 	if data.has("inventory") and data["inventory"] is Dictionary:

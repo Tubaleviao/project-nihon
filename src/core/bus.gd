@@ -807,3 +807,24 @@ signal peer_carcass_synced(record: Dictionary)
 signal peer_carcass_removed(carcass_id: String)
 ## Client: the host set this machine's carry state (`speed_factor` 1.0 = free; `carrying` blocks attack).
 signal carry_state_synced(carrying: bool, speed_factor: float)
+
+# ---------------------------------------------------------------------------
+# Character creation (Phase 181)
+# ---------------------------------------------------------------------------
+
+## One creation ACTION from a player: `action` is "create" (with `creation` = { name, gender, hair, hairColor })
+## or "skip" (keep the default look and the handle). CLIENT -> host: emitted with an empty player_id and
+## forwarded; the host re-emits it under the identity bound to that connection, so a client can only create
+## its OWN character. The host validates every field and the rate.
+signal character_creation_intent(action: String, creation: Dictionary, player_id: String)
+
+## Host -> this machine's UI: a creation or skip for `player_id` was resolved. `reason` is "" on success, else a
+## refusal (`creation.refuse.<reason>`); `state` is the player's creation state after it.
+signal character_creation_resolved(player_id: String, action: String, reason: String, state: Dictionary)
+
+## Host: a player's name or creation look changed. Networking scopes it to the peers whose AOI holds the player.
+signal player_look_changed(player_id: String, look: Dictionary)
+
+## Client: the host sent another peer's look ({ name } or { name, gender, hair, hairColor }), named by its owner's
+## peer id. The avatar is rebuilt from it and its nameplate shows the name.
+signal peer_look_synced(peer_id: int, look: Dictionary)

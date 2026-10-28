@@ -435,6 +435,13 @@ jobs:
           python3 tools/gen_ui_icons.py --out /tmp/ui-icons-b
           diff -r /tmp/ui-icons-a /tmp/ui-icons-b
 
+      - name: Check the UI skin placeholders are current and the generator is deterministic
+        run: |
+          python3 tools/gen_ui_skin.py --check
+          python3 tools/gen_ui_skin.py --out /tmp/ui-skin-a
+          python3 tools/gen_ui_skin.py --out /tmp/ui-skin-b
+          diff -r /tmp/ui-skin-a /tmp/ui-skin-b
+
       - name: Check the status-effect table validation rejects bad tables
         run: node tools/check_combat.js
 
@@ -643,7 +650,7 @@ jobs:
             echo "::error::script/parse/compile errors present"
             exit 1
           fi
-          for step in walk stream flight mine gather craft character_sheet place fight travel horizon; do
+          for step in create walk stream flight mine gather craft character_sheet place fight travel horizon; do
             if [ ! -s "playtest/$step.png" ]; then
               echo "::error::missing screenshot for step $step"
               exit 1

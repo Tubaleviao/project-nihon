@@ -161,6 +161,135 @@ static func creation_refusal(c: Dictionary, taken: Dictionary = {}) -> String:
 	return reason if reason != "" else choice_refusal(c)
 
 
+# ---------------------------------------------------------------------------
+# Phase 181 — the creation record, its look on the wire and the screen's choices
+# ---------------------------------------------------------------------------
+
+## A player record's `creation` state: "none" (never decided: the screen is offered), "skipped" (the player
+## kept the default look and their handle) or "created".
+const STATE_NONE := "none"
+const STATE_SKIPPED := "skipped"
+const STATE_CREATED := "created"
+## A player may try a creation (or a skip) at most once per this many milliseconds; faster ones are refused.
+const RATE_LIMIT_MSEC := 500
+## Longest wire string the intent reads for any field (a name is at most 16 letters plus marks).
+const MAX_FIELD_LEN := 64
+
+
+## A saved or synced creation state: { state, name, gender, hair, hairColor }. A record from before Phase 181
+## (no key, or anything that does not parse) is "none". A "created" state whose choices or name no longer pass
+## the rules falls back to "none", so it is offered again rather than drawn wrong.
+static func sanitize_state(raw: Variant) -> Dictionary:
+	var out := { "state": STATE_NONE }
+	if not (raw is Dictionary):
+		return out
+	var s := str((raw as Dictionary).get("state", STATE_NONE))
+	if s == STATE_SKIPPED:
+		out["state"] = STATE_SKIPPED
+	elif s == STATE_CREATED:
+		var c := { "name": normalize_name(str(raw.get("name", ""))).left(MAX_FIELD_LEN), "gender": str(raw.get("gender", "")),
+			"hair": str(raw.get("hair", "")), "hairColor": raw.get("hairColor", null) }
+		if name_refusal(c["name"]) == "" and choice_refusal(c) == "":
+			c["hairColor"] = int(c["hairColor"])
+			c["state"] = STATE_CREATED
+			out = c
+	return out
+
+
+## True while the screen should be offered: the player neither created a character nor skipped.
+static func should_offer(state: Dictionary) -> bool:
+	return str(state.get("state", STATE_NONE)) == STATE_NONE
+
+
+## True once a character exists (the screen is no longer reachable from the character sheet).
+static func is_created(state: Dictionary) -> bool:
+	return str(state.get("state", STATE_NONE)) == STATE_CREATED
+
+
+## The name a player is shown by: the created name, else their public handle.
+static func display_name(state: Dictionary, handle: String) -> String:
+	return str(state.get("name", "")) if is_created(state) else handle
+
+
+## What other peers are sent about a player: { name, gender, hair, hairColor } for a created character, or
+## { name } (the handle) for one that has none, which keeps the default look.
+static func look(state: Dictionary, handle: String) -> Dictionary:
+	if not is_created(state):
+		return { "name": handle }
+	return { "name": str(state["name"]), "gender": str(state["gender"]), "hair": str(state["hair"]), "hairColor": int(state["hairColor"]) }
+
+
+## A look as it arrives from the host: the name capped, the choices kept only when they pass the rules.
+static func sanitize_look(raw: Variant) -> Dictionary:
+	if not (raw is Dictionary):
+		return {}
+	var out := { "name": str((raw as Dictionary).get("name", "")).left(MAX_FIELD_LEN) }
+	var c := { "gender": str(raw.get("gender", "")), "hair": str(raw.get("hair", "")), "hairColor": raw.get("hairColor", null) }
+	if choice_refusal(c) == "":
+		c["hairColor"] = int(c["hairColor"])
+		out.merge(c)
+	return out
+
+
+## The creation fields a client intent carries, as strings and an int, capped; nothing else is read.
+static func intent_fields(raw: Variant) -> Dictionary:
+	var d: Dictionary = raw if raw is Dictionary else {}
+	var color: Variant = d.get("hairColor", null)
+	return { "name": str(d.get("name", "")).left(MAX_FIELD_LEN), "gender": str(d.get("gender", "")).left(MAX_FIELD_LEN),
+		"hair": str(d.get("hair", "")).left(MAX_FIELD_LEN), "hairColor": int(color) if (color is int or color is float) and is_finite(float(color)) and float(color) == floorf(float(color)) else -1 }
+
+
+## The genders in a stable order.
+static func genders() -> Array:
+	var d := data()
+	var out: Array = (d.get("genders") as Dictionary).keys() if d != null else []
+	out.sort()
+	return out
+
+
+## The hair styles of one gender, sorted by id.
+static func hair_options(gender: String) -> Array:
+	var d := data()
+	var out: Array = []
+	if d == null:
+		return out
+	var styles: Dictionary = d.get("hairStyles")
+	for id in styles:
+		if str((styles[id] as Dictionary).get("gender", "")) == gender:
+			out.append(str(id))
+	out.sort()
+	return out
+
+
+## The curated hair colours (palette indices), in fabric order.
+static func color_options() -> Array:
+	var d := data()
+	return (d.get("hairColors") as Array).duplicate() if d != null else []
+
+
+## The default creation: { gender, hair, hairColor }.
+static func default_choice() -> Dictionary:
+	var d := data()
+	return (d.get("defaultCreation") as Dictionary).duplicate() if d != null else {}
+
+
+## A random valid gender, hair and colour, drawn from `rng`.
+static func random_choice(rng: RandomNumberGenerator) -> Dictionary:
+	var gs := genders()
+	if gs.is_empty():
+		return default_choice()
+	var g := str(gs[rng.randi_range(0, gs.size() - 1)])
+	var hairs := hair_options(g)
+	var colors := color_options()
+	return { "gender": g, "hair": str(hairs[rng.randi_range(0, hairs.size() - 1)]), "hairColor": int(colors[rng.randi_range(0, colors.size() - 1)]) }
+
+
+## The items a created character is given once: [{ item, quantity, equip }].
+static func starting_kit() -> Array:
+	var d := data()
+	return (d.get("startingKit") as Array).duplicate(true) if d != null else []
+
+
 ## The appearance preset (GameData.APPEARANCES) a gender uses, or null.
 static func preset(gender: String) -> Resource:
 	var d := data()

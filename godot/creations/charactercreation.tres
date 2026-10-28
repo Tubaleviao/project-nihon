@@ -13,6 +13,6 @@ defaultCreation = {"gender":"masculine","hair":"hair_m_crop","hairColor":41}
 startingKit = [{"item":"NoviceTunic","quantity":1,"equip":true}]
 proportionPreset = "chibi"
 headRatio = {"min":0.28,"max":0.4}
-refusals = ["name_length","name_chars","name_script","name_separator","name_reserved","name_taken","gender","hair","hair_gender","hair_color"]
+refusals = ["name_length","name_chars","name_script","name_separator","name_reserved","name_taken","gender","hair","hair_gender","hair_color","rate_limited","already_created"]
 description = "The choices a new player makes before entering the world: a name, a gender, a hair style and a hair colour. Gender picks a fixed chibi body preset; attributes are not chosen (every character starts at the AttributeSystem base). The host validates every field and refuses with a keyed reason."
 tags = ["creation"]

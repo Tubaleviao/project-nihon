@@ -92,6 +92,7 @@ const EnetTransport := preload("res://src/networking/enet_transport.gd")
 ## when no registry is in the tree (an offline seller's id lives on inside a persisted
 ## listing long after their record was evicted).
 const PlayerRegistry := preload("res://src/persistence/player_registry.gd")
+const CreationRules := preload("res://src/character/creation_rules.gd")
 
 const DEFAULT_PORT    := 7777
 const DEFAULT_CHANNEL := 0
@@ -323,6 +324,9 @@ func _ready() -> void:
 	# command replies) travel back.
 	GameBus.chat_intent.connect(_on_chat_intent)
 	GameBus.gesture_intent.connect(_on_gesture_intent)
+	# Phase 181 — a creation travels client → host as an intent; a look travels host → the peers in AOI.
+	GameBus.character_creation_intent.connect(_on_character_creation_intent)
+	GameBus.player_look_changed.connect(_on_player_look_changed)
 	GameBus.harvest_intent.connect(_on_harvest_intent)
 	GameBus.carry_intent.connect(_on_carry_intent)
 	GameBus.carcass_drop_intent.connect(_on_carcass_drop_intent)
@@ -434,18 +438,7 @@ func set_player_id(peer_id: int, player_id: String) -> void:
 	_m2.set_player_id(peer_id, player_id)
 
 func forget_player_id(peer_id: int) -> void:
-	_player_ids.erase(peer_id)
-	# Phase 36 — the rate-limit state is transport state too: a reconnecting peer
-	# starts with a full bucket rather than inheriting its predecessor's debt.
-	_rate_buckets.erase(peer_id)
-	_rate_warn_ms.erase(peer_id)
-	_m2.speed_ledger.erase(peer_id)
-	# Phase 37 — and so is snapshot reassembly: a snapshot that lost a chunk is never
-	# completed, so its buffer entry lived for the whole session (one leak per lost
-	# chunk, on a connection that may be long gone). The parts are keyed by
-	# snapshot_id, and the sender is the connection that carried them, so the whole
-	# buffer goes with the connection: a later snapshot is a fresh snapshot_id anyway.
-	_snapshot_buffer.clear()
+	_m1.forget_player_id(peer_id)
 
 ## The player id behind a connection, or "peer_<id>" when the handshake has not
 ## happened yet. For LABELS and diagnostics only — never for authorizing an action:
@@ -533,13 +526,7 @@ func flush_relays(paced: bool = false) -> int:
 ## On the host this replaces the N×M broadcast-to-all with a scoped fan-out;
 ## on a client it forwards to the host unchanged (position is ignored there).
 func _broadcast_aoi(payload: Dictionary, position: Vector3) -> void:
-	if not _connected():
-		return
-	if _role == Role.HOST:
-		for pid in aoi_recipients(position, _connected_peers()):
-			_deliver(int(pid), payload.duplicate(true))
-	elif _role == Role.CLIENT:
-		_deliver(1, payload)
+	_m1.broadcast_aoi(payload, position)
 
 # ---------------------------------------------------------------------------
 # Private
@@ -1018,6 +1005,25 @@ func _on_gesture_intent(gesture_id: String, _player_id: String) -> void:
 		return
 	_broadcast({ "type": "gesture_intent", "g": gesture_id })
 
+## Phase 181 — creation and looks (bodies in net_part_1): a client forwards its creation intent and asks for a
+## peer's look when that peer's avatar appears; the host answers inside the AOI and pushes a changed look.
+func _on_character_creation_intent(action: String, creation: Dictionary, _player_id: String) -> void:
+	_m1.forward_creation_intent(action, creation)
+
+func request_peer_look(peer_id: int) -> void:
+	if _role == Role.CLIENT and peer_id > 0:
+		_broadcast({ "type": "look_request", "peer_id": peer_id })
+
+## Look requests the host answered / refused (subject outside the requester's AOI, unknown, or unbound).
+var look_requests_answered: int = 0
+var look_requests_refused: int = 0
+
+func answer_look_request(viewer: int, subject: int) -> bool:
+	return _m1.answer_look_request(viewer, subject)
+
+func _on_player_look_changed(player_id: String, look: Dictionary) -> void:
+	_m1.push_look(player_id, look)
+
 ## Phase 161 — carcasses. The host sends a body's record to the peers whose AOI holds it, and its removal to
 ## everyone (a body that left the AOI is forgotten by the client when it never returns).
 func send_carcass(record: Dictionary) -> void:
@@ -1142,13 +1148,7 @@ func _on_trade_reject_intent(trade_id: String, party: String) -> void:
 	_broadcast({ "type": "trade_reject_intent", "trade_id": trade_id, "party": party })
 
 func _on_packet_send_requested(peer_id: int, payload: Dictionary) -> void:
-	# Legacy low-level send: wraps an arbitrary payload and ships it as-is.
-	if not _connected():
-		return
-	if _role == Role.HOST:
-		_deliver(peer_id, payload.duplicate(true))
-	else:
-		_deliver(1, payload)
+	_m1.packet_send_requested(peer_id, payload)
 
 # ---------------------------------------------------------------------------
 # Wire → GameBus (inbound)

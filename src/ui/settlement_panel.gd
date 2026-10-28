@@ -121,8 +121,10 @@ func refresh() -> void:
 	_status.text = I18n.t("settlement.status", [SettlementSlice.display_name(claim), I18n.t("settlement.tier." + str(claim.get("status", "founded"))),
 		I18n.t("settlement.role." + str(mine.get("role", "guest"))), int(float(claim.get("radius", 0.0)))])
 	var lines: Array = []
+	var names: Dictionary = mine.get("names", {}) if mine.get("names", {}) is Dictionary else {}
 	for pid: String in (mine.get("members", {}) as Dictionary):
-		lines.append("%s: %s" % [pid.left(8), I18n.t("settlement.role." + str(mine["members"][pid]))])
+		# Phase 181 — the member's display name when the host sent one, else the start of its key.
+		lines.append("%s: %s" % [str(names.get(pid, pid.left(8))), I18n.t("settlement.role." + str(mine["members"][pid]))])
 	_members.text = I18n.t("settlement.members", [", ".join(lines)])
 	var items: Array = []
 	for item: String in (mine.get("stock", {}) as Dictionary):

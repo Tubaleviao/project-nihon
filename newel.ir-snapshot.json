@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:2e3650cd2ad1ccbac6d06826d2a24952ca80862d5dc9e41d948634c8bb7fafd4",
+  "schemaHash": "sha256:33e09977f03f865a9e48d0a5949dd4f91b0d435656a507751782e87604e034d7",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -33251,7 +33251,9 @@
               "gender",
               "hair",
               "hair_gender",
-              "hair_color"
+              "hair_color",
+              "rate_limited",
+              "already_created"
             ]
           }
         },

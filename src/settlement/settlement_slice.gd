@@ -737,10 +737,18 @@ func private_view(player_id: String) -> Dictionary:
 	if id != "":
 		var s: Dictionary = _settlements[id]
 		out["mine"] = { "id": id, "role": role_of(pid, id), "members": (s["members"] as Dictionary).duplicate(),
-			"stock": stock_of(id), "capacity": capacity_stacks(id), "used": used_stacks(id) }
+			"stock": stock_of(id), "capacity": capacity_stacks(id), "used": used_stacks(id), "names": _member_names(s) }
 	for sid: String in ids():
 		if (_settlements[sid]["invites"] as Dictionary).has(pid):
 			(out["invites"] as Array).append({ "id": sid, "name": str(_settlements[sid]["name"]), "name_n": int(_settlements[sid]["name_n"]) })
+	return out
+
+## Phase 181 — each member's display name ({ member key: name }), from the registry when it can tell.
+func _member_names(s: Dictionary) -> Dictionary:
+	var out := {}
+	for m: Variant in (s["members"] as Dictionary).keys():
+		if registry != null and registry.has_method("display_name"):
+			out[m] = str(registry.display_name(str(m)))
 	return out
 
 ## A claim or invite entry's name in the active locale: its own text, or the numbered default.

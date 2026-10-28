@@ -125,6 +125,8 @@ const STARTING_KIT = [{ item: 'NoviceTunic', quantity: 1, equip: true }]
 const REFUSALS = [
   'name_length', 'name_chars', 'name_script', 'name_separator', 'name_reserved', 'name_taken',
   'gender', 'hair', 'hair_gender', 'hair_color',
+  // Phase 181 — the runtime intent: too many tries in a row, or a character already exists.
+  'rate_limited', 'already_created',
 ]
 const refusalKey = (reason) => `creation.refuse.${reason}`
 const genderKey = (gender) => `creation.gender.${gender}`

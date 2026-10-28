@@ -138,6 +138,8 @@ func collect_save_job(incremental: bool) -> Dictionary:
 		"weather":         root._weather.to_data() if root._weather != null else [],
 		# Phase 138 — tree clears the host could not pin in a record yet (see TreeSlice._pending_spots).
 		"treeSpots":       root._tree.pending_spots_to_data() if root._tree != null else {},
+		# Phase 181 — every created name on the server, so uniqueness covers offline players.
+		"names":           root._registry.names_to_data(),
 	}
 	# NOTE: no `dirty_chunks` key. It used to ride the record, but nothing ever read
 	# it back — dirty tracking lives in memory (VoxelSlice) and is reset by the save
@@ -250,6 +252,12 @@ func _bind_local_identity() -> void:
 func restore_or_create_player_character(pos: Vector3) -> String:
 	var pid := root._registry.local_player_id
 	var appearance: Variant = root._registry.get_record(pid).get("appearance", {}) if not pid.is_empty() else {}
+	# Phase 181 — a created character's look wins over a stored recipe (a save from before the creation).
+	var created: Variant = root._creation_wiring.boot_recipe(root._registry.creation_of(pid)) if not pid.is_empty() else null
+	if created != null:
+		var made: String = root._character.create_character_from_recipe(created, pos)
+		if made != "":
+			return made
 	if appearance is Dictionary and not (appearance as Dictionary).is_empty():
 		var restored: String = root._character.create_character_from_recipe(appearance, pos)
 		if restored != "":
@@ -429,6 +437,7 @@ func load_world_records() -> void:
 	root._registry.set_record_loader(root._persistence.load_player)
 	root._registry.set_spawn_placer(root._peer_wiring.place_new_player)
 	root._registry.set_friend_locator(root._peer_wiring.locate_friend_on_disk)
+	root._registry.names_from_data(root._loaded_world.get("names", {}))
 	root._colonization.from_data(root._loaded_world.get("colonization", {}))
 	root._clock.from_data(root._loaded_world.get("clock", {}))
 	root._weather.from_data(root._loaded_world.get("weather", []))

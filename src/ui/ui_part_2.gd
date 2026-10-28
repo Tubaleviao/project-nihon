@@ -279,3 +279,101 @@ func unlock_icon_key(unlocks: Array) -> String:
 		if key != "":
 			return key
 	return ""
+
+func refresh_technology() -> void:
+	if sl._technology_box == null:
+		return
+	for child in sl._technology_box.get_children():
+		child.queue_free()
+	var balance := Label.new()
+	balance.text = sl.I18n.t("ui.research_points", [sl.research_points()])
+	sl._technology_box.add_child(balance)
+	for row in sl.technology_rows():
+		var r: Dictionary = row
+		var hbox := HBoxContainer.new()
+		hbox.add_theme_constant_override("separation", 8)
+		var btn := Button.new()
+		btn.text = sl.I18n.t("ui.research")
+		btn.disabled = not bool(r["can_research"])
+		btn.pressed.connect(sl._on_research_pressed.bind(str(r["id"])))
+		hbox.add_child(btn)
+		sl._add_row_icon(hbox, str(r["icon_key"]))
+		var req_arr: Array = r.get("requires", [])
+		var reqs: String = ", ".join(req_arr) if req_arr.size() > 0 else "—"
+		var line: String = sl.I18n.t("ui.tech_line", [r["id"], r["status"], reqs, r["cost"], r["points_cost"], r["duration"]])
+		var lbl := Label.new()
+		lbl.text = line + ("  (%s)" % sl.I18n.reason_text(str(r["reason"])) if str(r["reason"]) != "" else "")
+		hbox.add_child(lbl)
+		sl._technology_box.add_child(hbox)
+
+func build_trade_content() -> Control:
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	var lbl := Label.new()
+	sl._set_tr(lbl, "text", "trade.blurb")
+	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	vbox.add_child(lbl)
+	var start_btn := Button.new()
+	sl._set_tr(start_btn, "text", "trade.start")
+	start_btn.pressed.connect(sl._on_trade_start_pressed)
+	vbox.add_child(start_btn)
+	var accept_btn := Button.new()
+	sl._set_tr(accept_btn, "text", "trade.accept")
+	accept_btn.pressed.connect(sl._on_trade_accept_pressed)
+	vbox.add_child(accept_btn)
+	sl._trade_status = Label.new()
+	sl._trade_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	sl._trade_status.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	vbox.add_child(sl._trade_status)
+	trade_box = VBoxContainer.new()
+	vbox.add_child(trade_box)
+	return vbox
+
+# ---------------------------------------------------------------------------
+# Phase 181 — the character creation screen
+# ---------------------------------------------------------------------------
+
+## Show the creation screen, built on first use on its own layer above the windows; the body takes no keys.
+func show_creation(state: Dictionary) -> void:
+	if not state.is_empty():
+		sl.set_creation_state(state)
+	if sl.creation_screen == null:
+		sl._creation_layer = CanvasLayer.new()
+		sl._creation_layer.name = "Creation"
+		sl._creation_layer.layer = 40
+		sl.add_child(sl._creation_layer)
+		sl.creation_screen = sl.CreationScreen.new()
+		sl.creation_screen.visual_builder = _creation_visual
+		if sl.character_slice != null:
+			sl.creation_screen.palette = sl.character_slice.palette_color
+		sl._creation_layer.add_child(sl.creation_screen)
+	sl.creation_screen.visible = true
+	sl.creation_screen.refresh()
+	if sl.player_slice != null:
+		sl.player_slice.creation_hold = true
+
+func hide_creation() -> void:
+	if sl.creation_screen != null:
+		sl.creation_screen.visible = false
+	if sl.player_slice != null:
+		sl.player_slice.creation_hold = false
+
+## The doll's rig for a choice: the gender's preset with the chosen hair, built like the character sheet's.
+func _creation_visual(choice: Dictionary) -> Node3D:
+	if sl.character_slice == null:
+		return null
+	var ch: Node = sl.character_slice
+	var built: Dictionary = ch._make_visual("creation_doll", ch.deserialize_appearance(ch.creation_recipe(choice)))
+	return built.get("root", null)
+
+## The host answered this machine's creation or skip: a refusal shows on the screen in this locale; a success
+## closes it.
+func on_creation_resolved(_player_id: String, action: String, reason: String, state: Dictionary) -> void:
+	sl.set_creation_state(state)
+	if reason != "":
+		if sl.creation_screen != null:
+			sl.creation_screen.show_refusal(reason)
+		return
+	hide_creation()
+	if action == "create":
+		sl.push_toast(sl.I18n.t("creation.welcome", [sl.own_display_name()]))

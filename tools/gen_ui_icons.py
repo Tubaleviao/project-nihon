@@ -10,7 +10,9 @@ Writes 32x32 RGBA icons, one per key:
 * ``assets/icons/hair/<hair>.png.raw`` - every hair style of ``fabric/gameplay/characters/creation.js``
   (Phase 180: the creation picker shows hair, not names), drawn from the style's ``shape``;
 * ``assets/icons/ui/hud/hp.png.raw`` and ``assets/icons/ui/hud/<effect>.png.raw`` - HP and every
-  status effect of ``fabric/gameplay/combat.js``.
+  status effect of ``fabric/gameplay/combat.js``;
+* ``assets/icons/ui/creation/randomize.png.raw`` and ``assets/icons/ui/creation/gender_<gender>.png.raw`` -
+  the creation screen's randomize button and one toggle per gender of ``creation.js`` (Phase 181).
 
 A small vector DSL (polygons, circles, ellipses, strokes, arcs) is rasterized at 128x128 on a fixed
 palette and downsampled to 32x32 by block mode (so only palette colours appear), then a 1 px
@@ -39,6 +41,7 @@ HUD_DIR = Path("assets/icons/ui/hud")
 SKILL_DIR = Path("assets/icons/skills")
 ATTRIBUTE_DIR = Path("assets/icons/attributes")
 HAIR_DIR = Path("assets/icons/hair")
+CREATION_DIR = Path("assets/icons/ui/creation")
 DOCK_GD = ROOT / "src/ui/window_dock.gd"
 SKILLS_DIR = ROOT / "fabric/gameplay/skills"
 COMBAT_JS = ROOT / "fabric/gameplay/combat.js"
@@ -623,6 +626,38 @@ def draw_hair(shape):
     return c.to_png()
 
 
+def _die(c):
+    c.rrect(14, 14, 86, 86, 12, "cream")
+    c.rrect(20, 20, 80, 80, 9, "white")
+    for x, y in ((34, 34), (66, 34), (50, 50), (34, 66), (66, 66)):
+        c.circle(x, y, 6, "ink")
+
+
+def _gender_head(c, ring, hair, long_hair):
+    c.circle(50, 50, 44, ring)
+    if long_hair:
+        c.rrect(24, 30, 76, 84, 12, hair)
+    c.ellipse(50, 54, 22, 22, "skin")
+    c.ellipse(50, 36, 24, 13, hair)
+    c.circle(42, 57, 3, "ink")
+    c.circle(58, 57, 3, "ink")
+
+
+# Creation screen controls (Phase 181): the randomize die and one head per gender of creation.js.
+CREATION = {
+    "randomize": _die,
+    "gender_masculine": lambda c: _gender_head(c, "blue", "wood", False),
+    "gender_feminine": lambda c: _gender_head(c, "red", "wood_d", True),
+}
+
+
+def draw_creation(key):
+    c = Canvas()
+    c.place(0.92, 4, 4)
+    CREATION[key](c)
+    return c.to_png()
+
+
 # Skill -> symbol; every skill needs one, and no two may look the same.
 SYMBOLS = {
     "Swordsmanship": s_sword, "Archery": s_bow, "Shieldcraft": s_shield, "Unarmed": s_fist,
@@ -715,8 +750,22 @@ def read_hair():
     return dict(re.findall(r"^\s+(\w+):\s*\{[^}]*shape:\s*'(\w+)'", m.group(1), re.M))
 
 
+def read_genders():
+    m = re.search(r"const GENDERS = \{(.*?)^\}", CREATION_JS.read_text(), re.M | re.S)
+    if not m:
+        sys.exit("fabric/gameplay/characters/creation.js: GENDERS not found")
+    return re.findall(r"^\s+(\w+):\s*\{", m.group(1), re.M)
+
+
+def creation_keys():
+    return ["randomize"] + [f"gender_{g}" for g in read_genders()]
+
+
 def validate():
     problems = []
+    for k in creation_keys():
+        if k not in CREATION:
+            problems.append(f"creation control {k} has no drawing in gen_ui_icons.py")
     for h, shape in read_hair().items():
         if shape not in HAIR:
             problems.append(f"hair {h}: shape {shape} has no drawing in gen_ui_icons.py")
@@ -758,6 +807,8 @@ def outputs():
         files[HUD_DIR / f"{h}.png.raw"] = draw_hud(h)
     for h, shape in sorted(read_hair().items()):
         files[HAIR_DIR / f"{h}.png.raw"] = draw_hair(shape)
+    for k in creation_keys():
+        files[CREATION_DIR / f"{k}.png.raw"] = draw_creation(k)
     seen = {}
     for rel, data in files.items():
         if data in seen:
@@ -781,7 +832,7 @@ def write(files, root):
         path = root / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
-    for d in (WINDOW_DIR, HUD_DIR, SKILL_DIR, ATTRIBUTE_DIR, HAIR_DIR):
+    for d in (WINDOW_DIR, HUD_DIR, SKILL_DIR, ATTRIBUTE_DIR, HAIR_DIR, CREATION_DIR):
         keep = {r.name for r in files if r.parent == d}
         for stale in (root / d).glob("*.png.raw"):
             if stale.name not in keep:
@@ -798,7 +849,7 @@ def check(files):
             problems.append(f"missing {rel}")
         elif (ROOT / rel).read_bytes() != data:
             problems.append(f"{rel} differs from the generator output")
-    for d in (WINDOW_DIR, HUD_DIR, SKILL_DIR, ATTRIBUTE_DIR, HAIR_DIR):
+    for d in (WINDOW_DIR, HUD_DIR, SKILL_DIR, ATTRIBUTE_DIR, HAIR_DIR, CREATION_DIR):
         for f in sorted((ROOT / d).glob("*.png.raw")):
             if d / f.name not in files:
                 problems.append(f"orphan {d / f.name}")

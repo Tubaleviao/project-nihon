@@ -196,6 +196,7 @@ static func steps() -> Array:
 		{ "name": "carcass_synced", "compare": true },
 		{ "name": "admin_moves_synced", "compare": true },
 		{ "name": "attributes_synced", "compare": true },
+		{ "name": "create_character", "compare": true },
 		{ "name": "world_regen_synced", "compare": true },
 	]
 
@@ -342,6 +343,10 @@ func run(root: Node, role: String) -> void:
 	# and by what it renders to in THIS process's locale.
 	TranslationServer.set_locale("pt_BR" if role == "client" else "en")
 	GameBus.player_teleport.connect(_on_player_teleport)
+	# Phase 181 — the scenario creates characters through the intent, not the screen: a screen up from the
+	# first frame would hold the client's body for every step before the creation one.
+	_root._creation_wiring.offered = true
+	GameBus.character_creation_resolved.connect(_on_creation_resolved)
 	print(format_line("ready", "ok", role))
 	var profile: String = _root._networking.net_profile
 	_time_scale = _root._networking.link_time_scale()
@@ -431,6 +436,7 @@ func run(root: Node, role: String) -> void:
 	await _step_carcass_synced()
 	await _step_admin_moves_synced()
 	await _step_attributes_synced()
+	await _step_create_character()
 	await _step_world_regen_synced()
 	_finish()
 
@@ -2351,6 +2357,65 @@ func _step_attributes_synced() -> void:
 	var strength_ok := int(_root._player.attributes.get("strength", 10)) == 10
 	var ok := got and max_hp_ok and strength_ok
 	_report("attributes_synced", verdict(ok, true), DETAIL if ok else ("not_received" if not got else ("max_hp_stale" if not max_hp_ok else "claim_applied")))
+
+## Phase 181 — the names and the look the creation step uses. The host's own player takes HOST_NAME; the client
+## then asks for the same name case-folded (refused as taken) and takes CLIENT_NAME.
+const HOST_NAME := "Akira"
+const HOST_LOOK := { "gender": "feminine", "hair": "hair_f_bob", "hairColor": 129 }
+const CLIENT_NAME := "Renée"
+
+## Creation answers this process saw for its own player, in order: [action, reason].
+var _creations_seen: Array = []
+
+func _on_creation_resolved(_player_id: String, action: String, reason: String, _state: Dictionary) -> void:
+	_creations_seen.append([action, reason])
+
+## Phase 181 — `create_character` over the socket. The host's own player creates a character first; the client
+## sees that player's look (the gender preset and hair colour on its avatar) and nameplate, asks for the same
+## name case-folded and is refused with `name_taken`, then creates its own, which the host records.
+func _step_create_character() -> void:
+	const DETAIL := "taken-refused-look-and-nameplate-seen"
+	var host_id: int = _root._networking.HOST_PEER_ID
+	if _role == "host":
+		var peers: PackedInt32Array = _root.multiplayer.get_peers()
+		var pid: String = _root._networking.get_player_id(peers[0]) if peers.size() > 0 else ""
+		if pid == "":
+			_report("create_character", "fail", "no_connected_peer")
+			return
+		var mine: Dictionary = HOST_LOOK.duplicate()
+		mine["name"] = HOST_NAME
+		GameBus.character_creation_intent.emit("create", mine, "")
+		var host_ok: bool = _root._registry.display_name(_root._registry.local_player_id) == HOST_NAME
+		# The client draws this player only while the host relays its body (a dedicated host's own body does not
+		# broadcast): report it a few times, the way the shipped body does, so the client builds the avatar it dresses.
+		for i in 8:
+			var here: Vector3 = _root._player.get_position()
+			GameBus.player_state_sync_requested.emit({ "position": here, "world_pos": WorldPos.from_world(here.x, here.y, here.z),
+				"hp": float(PlayerSlice.MAX_HP), "max_hp": float(PlayerSlice.MAX_HP) })
+			await _await_settle(0.25)
+		var created: bool = await _await_until(func(): return _root._registry.display_name(pid) == CLIENT_NAME, _step_timeout() * 2.0)
+		var ok := host_ok and created
+		_report("create_character", verdict(ok, true), DETAIL if ok else ("host_not_created" if not host_ok else "peer_not_created-%s" % _root._registry.display_name(pid)))
+		return
+	var look_ok: bool = await _await_until(func(): return str(_root._character.get_peer_look(host_id).get("name", "")) == HOST_NAME, _step_timeout())
+	var avatar: String = _root._character.get_peer_character(host_id)
+	var plate_ok: bool = look_ok and await _await_until(func(): return _root._character.get_nameplate(_root._character.get_peer_character(host_id)) == HOST_NAME, _step_timeout())
+	avatar = _root._character.get_peer_character(host_id)
+	var app: Dictionary = _root._character.get_appearance(avatar) if avatar != "" else {}
+	var body_ok: bool = int(app.get("hairColor", -1)) == int(HOST_LOOK["hairColor"]) and str(app.get("hair", "")) == str(HOST_LOOK["hair"])
+	_creations_seen.clear()
+	var dup: Dictionary = HOST_LOOK.duplicate()
+	dup["name"] = HOST_NAME.to_upper()
+	GameBus.character_creation_intent.emit("create", dup, "")
+	var refused: bool = await _await_until(func(): return not _creations_seen.is_empty(), _step_timeout())
+	var taken: bool = refused and str(_creations_seen[0][1]) == "name_taken"
+	await _await_settle(1.0)   # past the host's per-player creation rate limit
+	var own := { "name": CLIENT_NAME, "gender": "masculine", "hair": "hair_m_spiky", "hairColor": 41 }
+	GameBus.character_creation_intent.emit("create", own, "")
+	var created: bool = await _await_until(func(): return _creations_seen.size() >= 2 and str(_creations_seen[1][1]) == "", _step_timeout())
+	var ok := look_ok and plate_ok and body_ok and taken and created
+	_report("create_character", verdict(ok, true), DETAIL if ok else ("look_not_seen" if not look_ok else ("no_nameplate-avatar_%s" % str(avatar != "") if not plate_ok \
+		else ("body_not_dressed-%s" % str(app.get("hair", "")) if not body_ok else ("duplicate_not_refused-%s" % str(_creations_seen) if not taken else "not_created-%s" % str(_creations_seen))))))
 
 ## Phase 182 — `/regen world` on the host reaches the client: it drops its records and edits, restreams
 ## and is sent its scope again.
