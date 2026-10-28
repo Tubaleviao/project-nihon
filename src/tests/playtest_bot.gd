@@ -634,7 +634,7 @@ func _step_walk() -> Array:
 		skeleton = _first_skeleton(rig)
 	var foot_l := skeleton.find_bone("Foot_L") if skeleton != null else -1
 	var foot_r := skeleton.find_bone("Foot_R") if skeleton != null else -1
-	var samples: Array = []  # [time, left, right] foot positions in world space; only the last WALK_FOOT_SECS are kept
+	var samples: Array = []  # [time, left, right] foot positions in world space; the last WALK_FOOT_SECS are kept, but never fewer than WALK_FOOT_MIN_FRAMES
 	_key(KEY_W, true)
 	var t0 := Time.get_ticks_msec()
 	# A slow runner (the world still loading under the body) walks late, so keep walking until the body has
@@ -647,7 +647,7 @@ func _step_walk() -> Array:
 		if foot_l >= 0 and foot_r >= 0:
 			samples.append([elapsed, skeleton.to_global(skeleton.get_bone_global_pose(foot_l).origin),
 				skeleton.to_global(skeleton.get_bone_global_pose(foot_r).origin), here])
-			while elapsed - float(samples[0][0]) > WALK_FOOT_SECS:
+			while samples.size() > WALK_FOOT_MIN_FRAMES and elapsed - float(samples[0][0]) > WALK_FOOT_SECS:
 				samples.pop_front()
 		var window_m := 0.0
 		if not samples.is_empty():
