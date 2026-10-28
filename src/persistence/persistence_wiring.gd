@@ -240,10 +240,14 @@ func _finish_save(result: int) -> void:
 ## persistent as the world; otherwise a fresh id is minted here. Binding the
 ## game's own `_inventory` is what makes the local player's inventory per-player
 ## without touching any existing call site.
+## Phase 183 — the id a FRESH world's local player gets instead of a minted one ("" mints). Only the
+## playtest bot sets it: the spawn search is seeded by the player id, so a pin keeps every run on one ground.
+var fixed_local_id := ""
+
 func _bind_local_identity() -> void:
 	var pid := str(root._loaded_world.get("local_player_id", ""))
 	if pid.is_empty():
-		pid = root._registry.mint_player_id()
+		pid = fixed_local_id if fixed_local_id != "" else root._registry.mint_player_id()
 	root._registry.set_local_player(pid, root._inventory)
 
 ## Rebuild the local avatar from the appearance recipe in the saved player

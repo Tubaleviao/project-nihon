@@ -20,6 +20,12 @@ func register() -> void:
 	_run_test("path: a flyer holds its hover band, a ground creature stays on the surface", _test_path_flyer_hover)
 	_run_test("path: a creature at the end of a partial path retries within the interval", _test_path_partial_retry)
 	_run_test("path: a changed column replans, an unloaded chunk freezes", _test_path_stale_and_freeze)
+	_run_test("path: the time budget stops a tick's searches after the first", _test_path_time_budget)
+	_run_test("path: open ground takes the straight line, a shortest path, with no search", _test_path_straight_line)
+	_run_test("path: a goal past the window aims at its edge, and a long chase never stalls", _test_path_window_aim)
+	_run_test("path: the time cap stops a search with its best partial path", _test_path_time_cap)
+	_run_test("ai lod: a far idle creature ticks once a stride with the time it missed", _test_ai_lod_far_stride)
+	_run_test("ai lod: a near or chasing creature ticks every frame", _test_ai_lod_full_rate)
 
 func _flat_rules(extra: Dictionary = {}) -> Dictionary:
 	var r := { "max_step": 0.75, "can_swim": false, "radius": 24, "sea_level": 0.0, "lap_tiles": 0 }
@@ -128,6 +134,7 @@ func _test_path_budget_fairness() -> void:
 		c.set_instance_position(iid, Vector3(float(i % 14) + 3.5, 0.0, float(i / 14) - 7.0 + 0.5))
 		start[iid] = c.get_instance_position(iid)
 	ai.player_targets = func() -> Dictionary: return { "player": Vector3(10.9, 0.0, 0.9) }
+	ai.path_budget_usec = 1 << 40   # the count budget is under test here, not the time budget
 	var ticks := ceili(float(count) / float(ai.path_budget))
 	for i in ticks:
 		ai._process(0.1)
@@ -241,3 +248,152 @@ func _test_path_partial_retry() -> void:
 		ai._process(0.1)
 	assert_true(c.get_instance_position(iid).distance_to(goal) < 2.0, "it reached the goal within the retry interval")
 	_free_walker(w)
+
+## Phase 183 — with no time left after the first search, each tick runs exactly one, and the queue drains.
+func _test_path_time_budget() -> void:
+	var flat := func(_x: int, _z: int) -> float: return 0.0
+	var count := 6
+	var w := _make_walker(flat, count)
+	var ai: CreatureAI = w["ai"]
+	var c: CreatureSlice = w["creature"]
+	for i in count:
+		c.set_instance_position(w["ids"][i], Vector3(float(i) + 0.5, 0.0, -6.5))
+	ai.player_targets = func() -> Dictionary: return { "player": Vector3(3.5, 0.0, 3.5) }
+	ai.path_budget_usec = 0
+	ai._process(0.1)
+	assert_eq(ai.path_searches_this_tick, 1, "a spent time budget still runs the tick's first search")
+	for i in count:
+		ai._process(0.1)
+		assert_true(ai.path_searches_this_tick <= 1, "tick %d runs at most one search" % i)
+	var pathed := 0
+	for iid in w["ids"]:
+		if ai._ai[iid].has("path"):
+			pathed += 1
+	assert_eq(pathed, count, "every creature got its path, one tick at a time")
+	_free_walker(w)
+
+## A ForestBoar patrolling (idle) at `x` metres from the player at the origin, with its patrol point 5 m east.
+func _lod_walker(xs: Array) -> Dictionary:
+	var flat := func(_x: int, _z: int) -> float: return 0.0
+	var w := _make_walker(flat, xs.size())
+	var ai: CreatureAI = w["ai"]
+	var c: CreatureSlice = w["creature"]
+	for i in xs.size():
+		var iid: String = w["ids"][i]
+		c.set_instance_position(iid, Vector3(float(xs[i]) + 0.5, 0.0, 0.5))
+		ai.force_state(iid, "idle")
+		ai._ai[iid]["patrol_target"] = Vector3(float(xs[i]) + 5.5, 0.0, 0.5)
+		ai._ai[iid]["spawn_pos"] = Vector3(float(xs[i]) + 0.5, 0.0, 0.5)
+	ai.player_targets = func() -> Dictionary: return { "player": Vector3(0.5, 0.0, 0.5) }
+	return w
+
+func _test_ai_lod_far_stride() -> void:
+	var ai_probe := CreatureAI.new()
+	var far := ceilf(ai_probe.far_range()) + 10.0
+	ai_probe.free()
+	var w := _lod_walker([far])
+	var ai: CreatureAI = w["ai"]
+	var c: CreatureSlice = w["creature"]
+	var iid: String = w["ids"][0]
+	var start := c.get_instance_position(iid)
+	var ticks := 0
+	for i in CreatureAI.FAR_STRIDE:
+		ai._process(0.05)
+		ticks += ai.ticked_far
+		assert_eq(ai.ticked_full, 0, "frame %d: a far idle creature is never ticked at the full rate" % i)
+	assert_eq(ticks, 1, "it is ticked once in %d frames" % CreatureAI.FAR_STRIDE)
+	var moved := c.get_instance_position(iid).distance_to(start)
+	var expected := CreatureAI.SPEED_IDLE * 0.05 * float(CreatureAI.FAR_STRIDE)
+	assert_true(absf(moved - expected) < 0.05, "and walks the stride's whole time at once (%f m, want %f)" % [moved, expected])
+	assert_eq(ai.get_state(iid), "idle", "still patrolling")
+	_free_walker(w)
+
+func _test_ai_lod_full_rate() -> void:
+	var w := _lod_walker([4.0, 6.0])
+	var ai: CreatureAI = w["ai"]
+	var near: String = w["ids"][0]
+	var chaser: String = w["ids"][1]
+	ai.player_targets = func() -> Dictionary: return { "player": Vector3(0.5, 0.0, 0.5) }
+	for i in 3:
+		ai._process(0.05)
+		assert_eq(ai.ticked_far, 0, "frame %d: a creature inside the alert reach is never on the far rate" % i)
+		assert_eq(ai.ticked_full, 2, "frame %d: both are ticked every frame" % i)
+	# A chaser stays on the full rate however far it is.
+	var c: CreatureSlice = w["creature"]
+	var far := ceilf(ai.far_range()) + 10.0
+	c.set_instance_position(near, Vector3(far, 0.0, 0.5))
+	c.set_instance_position(chaser, Vector3(far, 0.0, 3.5))
+	ai.force_state(near, "idle")
+	ai.force_state(chaser, "aggressive")
+	ai._process(0.05)
+	assert_eq(ai.ticked_full, 1, "a far creature out of the idle state is ticked at the full rate")
+	assert_eq(ai.get_state(chaser), "idle", "which is how it notices the player is gone and calms down")
+	# A creature that comes back in range is ticked at once, with the time it missed.
+	ai.force_state(chaser, "idle")
+	for i in CreatureAI.FAR_STRIDE - 1:
+		ai._process(0.05)
+	var missed := float(ai._ai[near].get("far_dt", 0.0))
+	c.set_instance_position(near, Vector3(4.5, 0.0, 0.5))
+	ai._process(0.05)
+	assert_eq(float(ai._ai[near].get("far_dt", -1.0)), 0.0, "back in range, the missed time is spent (%f s were owed)" % missed)
+	_free_walker(w)
+
+## Phase 183 — on open ground the path is the straight line: one tile a step, min(|dx|, |dy|) of them
+## diagonal (an octile-shortest path), found without expanding a node. A ledge on it sends it to the search.
+func _test_path_straight_line() -> void:
+	var flat := func(_x: int, _z: int) -> float: return 0.0
+	for goal in [Vector2i(7, 3), Vector2i(-5, 9), Vector2i(0, -6), Vector2i(4, 4)]:
+		var info := CreaturePath.search(Vector2i(100, 200), Vector2i(100, 200) + goal, _flat_rules(), _surface(flat))
+		assert_true(info["reached"], "%s is reached" % str(goal))
+		assert_eq(info["expansions"], 0, "%s: no node expanded" % str(goal))
+		var path: Array = info["path"]
+		assert_eq(path.size(), maxi(absi(goal.x), absi(goal.y)), "%s: one tile a step" % str(goal))
+		var prev := Vector2i(100, 200)
+		var diagonals := 0
+		for t in path:
+			var d: Vector2i = t - prev
+			assert_true(absi(d.x) <= 1 and absi(d.y) <= 1 and d != Vector2i.ZERO, "%s: %s steps to a neighbour" % [str(goal), str(t)])
+			if d.x != 0 and d.y != 0:
+				diagonals += 1
+			prev = t
+		assert_eq(diagonals, mini(absi(goal.x), absi(goal.y)), "%s: as many diagonals as a shortest path has" % str(goal))
+		assert_eq(path[-1], Vector2i(100, 200) + goal, "%s: ends on the goal" % str(goal))
+	var ledge := func(x: int, _z: int) -> float: return 2.0 if x == 3 else 0.0
+	var blocked := CreaturePath.search(Vector2i.ZERO, Vector2i(6, 0), _flat_rules(), _surface(ledge))
+	assert_true(blocked["expansions"] > 0, "a ledge across the line is left to the search")
+
+## Phase 183 — a goal beyond the search radius: the path runs to the window's edge on the line to it (no
+## full-cap search), and a chaser plans the next stretch at once instead of waiting out a retry.
+func _test_path_window_aim() -> void:
+	var flat := func(_x: int, _z: int) -> float: return 0.0
+	var info := CreaturePath.search(Vector2i.ZERO, Vector2i(60, 20), _flat_rules({ "radius": 24 }), _surface(flat))
+	assert_false(info["reached"], "the goal itself is out of the window")
+	assert_true(info["window"], "the path ends on the window's edge")
+	assert_eq(info["path"][-1], Vector2i(24, 8), "where the straight line to the goal leaves it")
+	assert_eq(info["expansions"], 0, "found without a search")
+	var walled := func(x: int, z: int) -> float: return 3.0 if x == 4 and absi(z) <= 2 else 0.0
+	var round_wall := CreaturePath.search(Vector2i.ZERO, Vector2i(60, 0), _flat_rules({ "radius": 24 }), _surface(walled))
+	assert_true(round_wall["window"], "a wall on the line: the search goes round it to the edge")
+	assert_true(round_wall["expansions"] < CreaturePath.DEFAULT_MAX_EXPANSIONS, "well inside the cap (%d)" % int(round_wall["expansions"]))
+	var w := _make_walker(flat)
+	var ai: CreatureAI = w["ai"]
+	var c: CreatureSlice = w["creature"]
+	var iid: String = w["ids"][0]
+	# A 4-tile window and a player 11 tiles off (inside the boar's 12 m give-up radius): three stretches.
+	var rules := ai._path_rules(iid).duplicate()
+	rules["radius"] = 4
+	ai._rules_cache[c.get_instance_creature_id(iid)] = rules
+	ai.player_targets = func() -> Dictionary: return { "player": Vector3(11.5, 0.0, 0.5) }
+	for i in 30:   # 3 s: 10.5 m at the chase speed; two retry stalls would cost 4 s of it
+		ai._process(0.1)
+	var covered := c.get_instance_position(iid).x - 0.5
+	assert_true(covered >= 8.0, "the chase runs on from one window to the next without a retry stall (%f m)" % covered)
+	_free_walker(w)
+
+## Phase 183 — with a spent time cap the search stops after its first expansion, capped, still with a partial path.
+func _test_path_time_cap() -> void:
+	var pocket := func(x: int, z: int) -> float: return 5.0 if maxi(absi(x), absi(z)) == 12 else 0.0
+	var info := CreaturePath.search(Vector2i.ZERO, Vector2i(20, 0), _flat_rules({ "max_usec": 1 }), _surface(pocket))
+	assert_true(info["capped"], "the search is capped")
+	assert_true(int(info["expansions"]) < 50, "long before the expansion cap (%d)" % int(info["expansions"]))
+	assert_false(info["reached"], "and reports the goal unreached")

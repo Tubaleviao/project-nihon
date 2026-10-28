@@ -4,6 +4,8 @@ extends "res://src/tests/test_support.gd"
 ## Phase 187 — build priority and the load queue's order at speed.
 ## Phase 189 — collision and contents only near a body.
 
+const VoxelMesh := preload("res://src/terrain/voxel_mesh.gd")
+
 func register() -> void:
 	_run_test("stream: the static generator matches generate_heightmap", _test_stream_static_generator_matches)
 	_run_test("stream: a seam strip is the full map's edge and nothing else", _test_stream_seam_strip_is_edge)
@@ -19,6 +21,9 @@ func register() -> void:
 	_run_test("stream: a crossing re-sorts the whole queue around the new centre", _test_stream_queue_resorted_on_move)
 	_run_test("near: collision only within a walking body's ring, attached when a chunk enters it", _test_near_collision_ring)
 	_run_test("near: parked collision attaches nearest first under the pump budget", _test_near_collision_nearest_first)
+	_run_test("near: a chunk off the body's ring takes its collision a quadrant a step", _test_near_collision_staggered)
+	_run_test("near: a chunk beside the body lands with a quadrant and takes the rest in one tick", _test_near_collision_neighbour)
+	_run_test("near: the quadrant split keeps every collision face, small soups stay whole", _test_collision_parts_split)
 	_run_test("near: a fast flying body gets collision under it only, its ring once it slows", _test_near_collision_flying)
 	_run_test("near: a peer's ring keeps collision, a dedicated server keeps it everywhere", _test_near_collision_peer_and_server)
 	_run_test("near: a fold stand-in keeps its parked collision for the body", _test_near_collision_fold_standin)
@@ -501,9 +506,14 @@ func _test_near_collision_nearest_first() -> void:
 	cm._near.tick()
 	assert_true(voxel.has_collision(Vector2i(3, 0)), "the nearer parked chunk is attached first")
 	assert_true(voxel.has_parked_collision(Vector2i(4, 0)), "the budget leaves the farther one for a later frame")
-	cm.begin_pump()
-	cm._near.tick()
-	assert_true(voxel.has_collision(Vector2i(4, 0)), "the next frame attaches it")
+	# Phase 183 — one quadrant a step: the nearer chunk takes the rest of its quadrants first
+	var frames := 0
+	while not voxel.has_collision(Vector2i(4, 0)) and frames < 8:
+		cm.begin_pump()
+		cm._near.tick()
+		frames += 1
+	assert_true(voxel.has_collision(Vector2i(4, 0)), "a later frame attaches it (%d frames)" % frames)
+	assert_false(voxel.has_parked_collision(Vector2i(3, 0)), "after the nearer one has every quadrant")
 	_free_build_rig(rig)
 
 func _test_near_collision_flying() -> void:
@@ -626,3 +636,78 @@ func _test_near_collision_fold_standin() -> void:
 	var root: Node3D = voxel._standins[voxel._chunk_key(far)]
 	assert_true(root.has_node("Collision"), "the stand-in under the body has its collision")
 	_free_build_rig(rig)
+
+## Phase 183 — a full chunk two rings out lands with one quadrant of its collision and takes the rest one a
+## near-ring step; the body's own chunk gets every quadrant at once.
+func _test_near_collision_staggered() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	cm.set_lod_enabled(false)
+	var voxel: VoxelSlice = rig["voxel"]
+	_build_chunks(cm, [Vector2i(0, 0), Vector2i(2, 0)])
+	var own: Node = voxel._chunks["0,0"].get_node("Collision")
+	assert_true(own.get_child_count() > 1, "the chunk under the body was split (%d quadrants)" % own.get_child_count())
+	assert_false(voxel.has_parked_collision(Vector2i(0, 0)), "and has every quadrant at once")
+	var body: Node = voxel._chunks["2,0"].get_node("Collision")
+	assert_eq(body.get_child_count(), 1, "two rings out: one quadrant on landing")
+	assert_true(voxel.has_parked_collision(Vector2i(2, 0)), "the rest are parked")
+	var steps := 0
+	while voxel.has_parked_collision(Vector2i(2, 0)) and steps < 8:
+		var before := body.get_child_count()
+		cm.begin_pump()
+		cm._near.tick()
+		assert_eq(body.get_child_count(), before + 1, "step %d adds one quadrant" % steps)
+		steps += 1
+	assert_false(voxel.has_parked_collision(Vector2i(2, 0)), "until none is left")
+	assert_eq(body.get_child_count(), own.get_child_count(), "on one body, like the near chunk's")
+	_free_build_rig(rig)
+
+## Phase 183 — a chunk beside the body lands with one quadrant too (all four at once overran a walk's frame
+## by ~6 ms on every chunk line), and the next near-ring tick gives it the rest while the pump budget lasts.
+func _test_near_collision_neighbour() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	cm.set_lod_enabled(false)
+	var voxel: VoxelSlice = rig["voxel"]
+	_build_chunks(cm, [Vector2i(0, 0), Vector2i(1, 0)])
+	var own: Node = voxel._chunks["0,0"].get_node("Collision")
+	var side: Node = voxel._chunks["1,0"].get_node("Collision")
+	assert_true(own.get_child_count() > 1, "the chunk under the body was split (%d quadrants)" % own.get_child_count())
+	assert_eq(side.get_child_count(), 1, "beside the body: one quadrant on landing")
+	assert_true(voxel.has_parked_collision(Vector2i(1, 0)), "the rest are parked")
+	cm.pump_budget_msec = 0   # no time budget: the tick is bounded by what is parked
+	cm.begin_pump()
+	cm._near.tick()
+	assert_false(voxel.has_parked_collision(Vector2i(1, 0)), "one tick attaches every quadrant left")
+	assert_eq(side.get_child_count(), own.get_child_count(), "on one body, like the body's own chunk")
+	_free_build_rig(rig)
+
+func _test_collision_parts_split() -> void:
+	var faces := PackedVector3Array()
+	var half := float(VoxelSlice.CHUNK_SIZE) * VoxelSlice.TILE_SIZE * 0.5
+	for i in 1200:   # 2,400 triangles across the chunk
+		var x := float(i % 40) * 0.8
+		var z := float(i / 40) * 1.0
+		faces.append_array([Vector3(x, 1, z), Vector3(x + 0.5, 1, z), Vector3(x + 0.5, 1, z + 0.5),
+			Vector3(x, 1, z), Vector3(x + 0.5, 1, z + 0.5), Vector3(x, 1, z + 0.5)])
+	var parts := VoxelMesh.collision_parts(faces)
+	assert_eq(parts.size(), 4, "a big soup is cut in four")
+	var all := PackedVector3Array()
+	for p in range(parts.size()):
+		var f: PackedVector3Array = (parts[p] as ConcavePolygonShape3D).get_faces()
+		assert_true((parts[p] as ConcavePolygonShape3D).backface_collision, "part %d collides on both sides" % p)
+		for i in range(0, f.size(), 3):
+			var q := (2 if f[i].z >= half else 0) + (1 if f[i].x >= half else 0)
+			if q != p:
+				assert_eq(q, p, "a triangle starting at %s is in its own quadrant" % f[i])
+				break
+		all.append_array(f)
+	assert_eq(_tri_keys(all), _tri_keys(faces), "the parts hold exactly the soup's triangles")
+	assert_eq(VoxelMesh.collision_parts(faces.slice(0, 300)), [], "a small soup stays one shape")
+
+static func _tri_keys(faces: PackedVector3Array) -> Array:
+	var out: Array = []
+	for i in range(0, faces.size(), 3):
+		out.append("%s|%s|%s" % [faces[i], faces[i + 1], faces[i + 2]])
+	out.sort()
+	return out

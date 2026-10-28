@@ -24,7 +24,7 @@ func _init(slice: Node) -> void:
 ## is untouched: an empty `arrays` with no revision means "build it here", on purpose.
 ## Phase 189 — `collide` false parks the chunk's collision shape instead of attaching it (see
 ## `attach_parked_collision`); the chunk manager passes it for ground no body can reach yet.
-func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {}, revision: int = -1, collide: bool = true) -> bool:
+func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {}, revision: int = -1, collide: bool = true, stagger: bool = false) -> bool:
 	var key = s._chunk_key(chunk_pos)
 	if revision >= 0 and revision != s.chunk_revision(chunk_pos):
 		return false   # stale worker result: this chunk was rebuilt while it was in flight
@@ -136,35 +136,57 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 	# Phase 172 — a worker build hands the shape over already made; only the synchronous path builds it
 	# here. Both sides of a wall collide, so a body inside a tunnel is held by the roof from below too.
 	var prepared = built.get("shape")
-	var shape: Shape3D = prepared if prepared is ConcavePolygonShape3D else s.VoxelMesh.collision_shape(built["collision"])
+	var parts: Array = built.get("shape_parts", [])
+	# Phase 183 — a split build carries its collision as quadrant shapes (`VoxelMesh.collision_parts`).
+	var shape: Variant = parts.duplicate() if not parts.is_empty() \
+		else (prepared if prepared is ConcavePolygonShape3D else s.VoxelMesh.collision_shape(built["collision"]))
 	# Phase 189 — a chunk no body can reach keeps its shape parked: the body is ~9 ms of main thread per
 	# chunk, and at 90 m/s most of the window is ground nobody touches. `attach_parked_collision` adds it
 	# when the chunk enters the near ring.
 	if not collide:
 		s._parked_shapes[key] = shape
 		return true
+	# Phase 183 — `stagger` (a chunk the body is not on or beside): the first quadrant now, the rest parked
+	# for the near ring to attach one a pump step.
+	if stagger and shape is Array and (shape as Array).size() > 1:
+		_attach_collision(root, [(shape as Array).pop_front()])
+		s._parked_shapes[key] = shape
+		return true
 	_attach_collision(root, shape)
 	return true
 
-## Phase 189 — give `root` its terrain collision body carrying `shape`.
-func _attach_collision(root: Node3D, shape: Shape3D) -> void:
+## Phase 189 — give `root` its terrain collision body carrying `shape`: one Shape3D, or (Phase 183) an Array
+## of quadrant shapes, added to the body `root` already has when an earlier quadrant made it.
+func _attach_collision(root: Node3D, shape: Variant) -> void:
 	TickProbe.begin("chunk_attach_collision")
-	var static_body := StaticBody3D.new()
-	static_body.name = "Collision"
-	static_body.collision_layer = s.TERRAIN_COLLISION_LAYER
-	static_body.collision_mask = 0
-	var col_shape := CollisionShape3D.new()
-	col_shape.shape = shape
-	static_body.add_child(col_shape)
-	root.add_child(static_body)
+	var static_body: StaticBody3D = root.get_node_or_null("Collision")
+	if static_body == null:
+		static_body = StaticBody3D.new()
+		static_body.name = "Collision"
+		static_body.collision_layer = s.TERRAIN_COLLISION_LAYER
+		static_body.collision_mask = 0
+		_add_shapes(static_body, shape)
+		root.add_child(static_body)
+	else:
+		_add_shapes(static_body, shape)
 	TickProbe.end()
+
+static func _add_shapes(body: StaticBody3D, shape: Variant) -> void:
+	for sh in (shape as Array if shape is Array else [shape]):
+		var col_shape := CollisionShape3D.new()
+		col_shape.shape = sh
+		body.add_child(col_shape)
 
 ## Phase 189 — attach the collision a gated build parked for `chunk_pos`, on its chunk root or on the fold
 ## stand-in covering it. False when nothing was parked (not built, or its collision is already there).
-func attach_parked_collision(chunk_pos: Vector2i) -> bool:
+## Phase 183 — with `all` false a parked set of quadrants gives up one, and the rest stay parked.
+func attach_parked_collision(chunk_pos: Vector2i, all: bool = true) -> bool:
 	var key = s._chunk_key(chunk_pos)
-	var shape: Shape3D = s._parked_shapes.get(key)
+	var shape: Variant = s._parked_shapes.get(key)
 	if shape != null and s._chunks.has(key):
+		if not all and shape is Array and (shape as Array).size() > 1:
+			_attach_collision(s._chunks[key], [(shape as Array).pop_front()])
+			return true
 		s._parked_shapes.erase(key)
 		_attach_collision(s._chunks[key], shape)
 		return true

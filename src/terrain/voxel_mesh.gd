@@ -72,10 +72,53 @@ static func build_chunk_arrays(chunk_pos: Vector2i, heightmap: Array, resolved: 
 ## `set_faces` only fills it, so it is built on the worker; it is unused until a body holds it.
 static func build_worker_arrays(chunk_pos: Vector2i, heightmap: Array, resolved: Dictionary, keep_render: bool) -> Dictionary:
 	var built := build_chunk_arrays(chunk_pos, heightmap, resolved, true)
-	built["shape"] = collision_shape(built["collision"])
+	var parts := collision_parts(built["collision"]) if bool(built.get("local", false)) else []
+	if parts.is_empty():
+		built["shape"] = collision_shape(built["collision"])
+	else:
+		built["shape_parts"] = parts
 	if not keep_render:
-		return { "local": bool(built.get("local", true)), "collision": built["collision"], "shape": built["shape"] }
+		var out := { "local": bool(built.get("local", true)), "collision": built["collision"] }
+		for k in ["shape", "shape_parts"]:
+			if built.has(k):
+				out[k] = built[k]
+		return out
 	return built
+
+## Phase 183 — a chunk-local collision soup this big is cut into its four quadrants (by each triangle's
+## first vertex), one shape each, so a chunk away from the body can take its collision over four pump
+## steps: Jolt builds a shape's mesh on the main thread the moment its body enters the world, ~9 ms for a
+## whole chunk. Smaller soups (coarse chunks, flat ground) stay one shape.
+const SPLIT_MIN_VERTICES := 6000
+
+## The four quadrant shapes of `faces` (chunk-local, metres), empty ones left out; [] below the threshold.
+static func collision_parts(faces: PackedVector3Array) -> Array:
+	if faces.size() < SPLIT_MIN_VERTICES:
+		return []
+	var half := float(CHUNK_SIZE) * TILE_SIZE * 0.5
+	var q0 := PackedVector3Array()
+	var q1 := PackedVector3Array()
+	var q2 := PackedVector3Array()
+	var q3 := PackedVector3Array()
+	var n := faces.size() - faces.size() % 3
+	var i := 0
+	while i < n:
+		var v: Vector3 = faces[i]
+		if v.z < half:
+			if v.x < half:
+				q0.append(v); q0.append(faces[i + 1]); q0.append(faces[i + 2])
+			else:
+				q1.append(v); q1.append(faces[i + 1]); q1.append(faces[i + 2])
+		elif v.x < half:
+			q2.append(v); q2.append(faces[i + 1]); q2.append(faces[i + 2])
+		else:
+			q3.append(v); q3.append(faces[i + 1]); q3.append(faces[i + 2])
+		i += 3
+	var out: Array = []
+	for q in [q0, q1, q2, q3]:
+		if not q.is_empty():
+			out.append(collision_shape(q))
+	return out
 
 ## The chunk's trimesh: both sides collide, so a body inside a tunnel is held by the roof as well.
 static func collision_shape(faces: PackedVector3Array) -> ConcavePolygonShape3D:

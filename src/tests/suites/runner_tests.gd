@@ -18,6 +18,8 @@ func register() -> void:
 	_run_test("playtest: the bot mutates no slice directly", _test_playtest_bot_uses_intents)
 	_run_test("playtest: markdown escapes free-text detail", _test_playtest_markdown_escapes_detail)
 	_run_test("playtest: the flight step's coverage verdict", _test_playtest_flight_verdict)
+	_run_test("playtest: the profiler sums each phase over all frames and over the worst ones", _test_playtest_profiler_summary)
+	_run_test("playtest: the bot's player id is pinned and shaped like a minted one", _test_playtest_player_id_pinned)
 
 func _test_runner_filter_parse_and_match() -> void:
 	assert_eq(Runner.filter_from_args(PackedStringArray(["--run-tests"])), "", "no filter arg means no filter")
@@ -88,6 +90,7 @@ func _test_runner_source_size_audit() -> void:
 
 # Phase 134 — the playtest bot's report maths.
 const Bot := preload("res://src/tests/playtest_bot.gd")
+const ProcessProfiler := preload("res://src/tests/process_profiler.gd")
 
 func _test_playtest_report_percentiles_and_hitches() -> void:
 	var frames: Array = []
@@ -217,3 +220,23 @@ func _test_playtest_flight_verdict() -> void:
 		"the CI gate's flight share is the bot's")
 	assert_true(is_equal_approx(Bot.FLIGHT_WORKER_MAX_SHARE, 1.0 / 3.0) and FileAccess.get_file_as_string("res://tools/check_playtest_budget.py").contains("FLIGHT_WORKER_MAX_SHARE = 1.0 / 3.0"),
 		"the CI gate's worker share is the bot's (a third)")
+
+## Phase 183 — `--playtest-profile`: per phase, the mean ms over every frame and over the worst 5% by total.
+func _test_playtest_profiler_summary() -> void:
+	assert_true(ProcessProfiler.requested(["--playtest-bot", "--playtest-profile"]), "the flag asks for the profiler")
+	assert_false(ProcessProfiler.requested(["--playtest-bot"]), "off by default")
+	var frames: Array = []
+	for i in 19:
+		frames.append({ "node:a": 1000, "node:b": 2000 })   # 3 ms frames
+	frames.append({ "node:a": 1000, "node:b": 2000, "chunk_attach_collision": 9000 })   # the one 12 ms frame
+	var s := ProcessProfiler.summarize(frames)
+	assert_true(is_equal_approx(float(s["node:a"]["mean"]), 1.0), "a phase in every frame: its mean")
+	assert_true(is_equal_approx(float(s["chunk_attach_collision"]["mean"]), 0.45), "a phase in one frame of 20: spread over all")
+	assert_true(is_equal_approx(float(s["chunk_attach_collision"]["worst_mean"]), 9.0), "and all of it in the worst frame (1 of 20 at 5%)")
+	assert_true(is_equal_approx(float(s["node:b"]["worst_mean"]), 2.0), "the worst frame's other phases too")
+	assert_eq(ProcessProfiler.summarize([]), {}, "no frames, no phases")
+
+func _test_playtest_player_id_pinned() -> void:
+	assert_true(PlayerRegistry.looks_like_player_id(Bot.PLAYER_ID), "the pinned id has the minted shape (redaction and validation treat it as one)")
+	var src := FileAccess.get_file_as_string("res://src/tests/playtest_bot.gd")
+	assert_true(src.contains("_persistence_wiring.fixed_local_id = PLAYER_ID"), "the bot pins it before the world boot")

@@ -1238,7 +1238,7 @@ func _apply_build_entry(task_id: int) -> bool:
 
 ## Attach one chunk's build result (a worker's, or a cache entry's) and do the bookkeeping that follows.
 func _attach_built(key: String, chunk: Vector2i, heightmap: Array, arrays: Dictionary, revision: int) -> bool:
-	if not voxel_slice.build_chunk(chunk, heightmap, arrays, revision, _near.wants_collision(chunk)):
+	if not voxel_slice.build_chunk(chunk, heightmap, arrays, revision, _near.wants_collision(chunk), _near.staggers_collision(chunk)):
 		if int(_build_attempts.get(key, 0)) < MAX_BUILD_RETRIES:
 			# A retry is a dispatch like any other, and `_dispatch_build` enforces the
 			# in-flight cap itself (ninth review pass), deferring to `_rebuild_queue` when

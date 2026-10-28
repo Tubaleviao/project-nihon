@@ -6,6 +6,7 @@ extends RefCounted
 ## `wire` connected. `root` is the GameRoot that owns the slices.
 
 const GameRoot := preload("res://src/core/game_root.gd")
+const _WiringProbe := preload("res://src/core/tick_probe.gd")
 
 var root: GameRoot = null
 var _connections: Array = []
@@ -23,6 +24,15 @@ func _connect_all() -> void:
 ## (the world record is loaded), so no module drives another's tick by hand.
 func tick(_delta: float) -> void:
 	pass
+
+## Tick every module in order. Phase 183 — under the playtest profiler each tick is its own `TickProbe`
+## phase, `tick:<module script>`.
+static func tick_all(wirings: Array, delta: float) -> void:
+	for w in wirings:
+		if _WiringProbe.enabled:
+			_WiringProbe.begin("tick:" + (w.get_script() as Script).resource_path.get_file().get_basename())
+		w.tick(delta)
+		_WiringProbe.end()
 
 ## Connects `handler` to `sig` once: a second call with the same pair is a no-op.
 func connect_bus(sig: Signal, handler: Callable) -> void:

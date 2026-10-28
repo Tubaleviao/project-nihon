@@ -66,6 +66,18 @@ func bodies() -> Array:
 		out.append([cm._peer_centers[peer_id], NEAR_RADIUS])
 	return out
 
+## Phase 183 — true when a build of `chunk` landing now may take its collision a quadrant at a time: it is
+## off the local body's own chunk and off every peer's ring (`NEAR_RADIUS`). A neighbour of the local body
+## takes the rest in the same near-ring tick while the pump budget lasts (`_attach_near_collision`): all four
+## at once overran the frame by ~6 ms on every walk across a chunk line.
+func staggers_collision(chunk: Vector2i) -> bool:
+	if not enabled or not cm.keeps_render():
+		return false
+	var near: Array = [[cm.player_chunk(), 0]]
+	for peer_id in cm._peer_centers:
+		near.append([cm._peer_centers[peer_id], NEAR_RADIUS])
+	return not _within(near, chunk)
+
 ## True when a build of `chunk` landing now attaches its collision.
 func wants_collision(chunk: Vector2i) -> bool:
 	if not enabled or not cm.keeps_render():
@@ -201,11 +213,21 @@ func _attach_near_collision() -> void:
 			due.append([ring_distance(local, c), c])
 	due.sort_custom(func(a, b): return a[0] < b[0])
 	for d in due:
-		# the chunk under the local body is never held by the pump budget; the rest are, nearest first
-		if d[0] > 0 and cm._pump_exhausted():
+		# the chunk under the local body is never held by the pump budget and takes every quadrant at once
+		if d[0] == 0:
+			voxel.attach_parked_collision(d[1])
+			cm._pump_steps += 1
+			continue
+		# Phase 183 — the rest are held by it, nearest first, one quadrant a step: the body's ring keeps
+		# taking its quadrants while the budget lasts, a chunk beyond it one, the rest next frames.
+		while not cm._pump_exhausted():
+			if not voxel.attach_parked_collision(d[1], false):
+				break
+			cm._pump_steps += 1
+			if d[0] > NEAR_RADIUS:
+				break
+		if cm._pump_exhausted():
 			return
-		voxel.attach_parked_collision(d[1])
-		cm._pump_steps += 1
 
 func _release_contents() -> void:
 	if _waiting.is_empty():

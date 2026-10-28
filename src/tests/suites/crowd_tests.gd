@@ -461,12 +461,14 @@ func _test_crowd_headless_worker_builds_collision_only() -> void:
 	_wait_for_builds(cm)
 	var built: Dictionary = results[0][0]
 	assert_false(built.has("vertices"), "the worker dropped the mesh arrays")
-	assert_true(built["shape"] is ConcavePolygonShape3D, "the worker made the shape")
+	var shapes: Array = built.get("shape_parts", [built.get("shape")])
+	assert_true(not shapes.is_empty() and shapes.all(func(sh): return sh is ConcavePolygonShape3D), "the worker made the shape(s)")
 	var root: Node = voxel._chunks["2,3"]
 	assert_eq(root.get_children().filter(func(c): return c is MeshInstance3D), [], "no render mesh on the host")
 	var bodies: Array = root.get_children().filter(func(c): return c is StaticBody3D)
 	assert_eq(bodies.size(), 1, "one collision body")
-	assert_true(bodies[0].get_child(0).shape == built["shape"], "it holds the worker's shape")
+	var held: Array = bodies[0].get_children().map(func(c): return c.shape)
+	assert_eq(held, shapes, "it holds the worker's shapes, all of them (a host draws nothing, so nothing is staggered)")
 	cm.free()
 	voxel.free()
 	rig["terrain"].free()
@@ -484,9 +486,13 @@ func _test_crowd_worker_collision_equals_main_thread() -> void:
 		var worker: Dictionary = VoxelMesh.build_worker_arrays(chunk, flat, resolved, false)
 		var reference: Dictionary = VoxelSlice.build_chunk_arrays(chunk, flat, resolved, true)
 		assert_true(worker["collision"] == reference["collision"], "worker collision faces equal the main-thread ones at %s" % chunk)
-		assert_true((worker["shape"] as ConcavePolygonShape3D).get_faces() == (reference["collision"] as PackedVector3Array),
-			"the prepared shape holds exactly those faces at %s" % chunk)
-		assert_true((worker["shape"] as ConcavePolygonShape3D).backface_collision, "both sides collide")
+		var shapes: Array = worker.get("shape_parts", [worker.get("shape")])
+		var faces := PackedVector3Array()
+		for sh in shapes:
+			faces.append_array((sh as ConcavePolygonShape3D).get_faces())
+			assert_true((sh as ConcavePolygonShape3D).backface_collision, "both sides collide")
+		assert_eq(_triangle_keys(faces), _triangle_keys(reference["collision"]),
+			"the prepared shape(s) hold exactly those faces at %s (%d part(s))" % [chunk, shapes.size()])
 		main.free()
 
 func _test_crowd_server_worker_skips_arrays() -> void:
@@ -539,3 +545,11 @@ func _test_crowd_relay_prunes_stale_pairs() -> void:
 	b.offer(3, "back", Vector3(10.0, 0.0, 0.0))
 	var back: Dictionary = b.build(now + 100.0, connected, recipients, center)
 	assert_true((back.get(2, []) as Array).has(3), "a forgotten pair is relayed at once on return")
+
+## The triangles of a face soup as sorted strings: the same set whatever order the quadrant split put them in.
+static func _triangle_keys(faces: PackedVector3Array) -> Array:
+	var out: Array = []
+	for i in range(0, faces.size() - faces.size() % 3, 3):
+		out.append("%s|%s|%s" % [faces[i], faces[i + 1], faces[i + 2]])
+	out.sort()
+	return out
