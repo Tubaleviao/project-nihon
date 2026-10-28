@@ -86,6 +86,7 @@ const ITEMS: Dictionary = {
 		"AethermiteShard": preload("res://godot/items/aethermiteshard.tres"),
 		"AlchemyPotion": preload("res://godot/items/alchemypotion.tres"),
 		"AshiteBlock": preload("res://godot/items/ashiteblock.tres"),
+		"Bed": preload("res://godot/items/bed.tres"),
 		"BoneSaw": preload("res://godot/items/bonesaw.tres"),
 		"CarpenterAxe": preload("res://godot/items/carpenteraxe.tres"),
 		"DuskfiberCloak": preload("res://godot/items/duskfibercloak.tres"),
@@ -153,6 +154,7 @@ const PROFESSIONS: Dictionary = {
 const RECIPES: Dictionary = {
 		"RecipeAethermiteBow": preload("res://godot/recipes/recipeaethermitebow.tres"),
 		"RecipeAshiteBlock": preload("res://godot/recipes/recipeashiteblock.tres"),
+		"RecipeBed": preload("res://godot/recipes/recipebed.tres"),
 		"RecipeBoneSaw": preload("res://godot/recipes/recipebonesaw.tres"),
 		"RecipeCarpenterAxe": preload("res://godot/recipes/recipecarpenteraxe.tres"),
 		"RecipeDuskfiberCloak": preload("res://godot/recipes/recipeduskfibercloak.tres"),
@@ -232,7 +234,12 @@ const TECHNOLOGIES: Dictionary = {
 		"TechVoidMastery": preload("res://godot/technologies/techvoidmastery.tres")
 }
 
+const TUTORIALS: Dictionary = {
+		"Tutorial": preload("res://godot/tutorials/tutorial.tres")
+}
+
 const WORLD_SYSTEMS: Dictionary = {
+		"BedSpawn": preload("res://godot/world_systems/bedspawn.tres"),
 		"CombatSystem": preload("res://godot/world_systems/combatsystem.tres"),
 		"GovernanceSystem": preload("res://godot/world_systems/governancesystem.tres"),
 		"MarketSystem": preload("res://godot/world_systems/marketsystem.tres"),

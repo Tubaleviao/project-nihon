@@ -28,6 +28,8 @@ const skeletons    = require('./gameplay/characters/skeletons')
 const palettes     = require('./gameplay/characters/palettes')
 const appearances  = require('./gameplay/characters/appearances')
 const creation     = require('./gameplay/characters/creation')
+const bed          = require('./gameplay/bed')
+const tutorial     = require('./gameplay/tutorial')
 
 // Phase 125 — the travel cost must name a real item; throwing fails `npm run validate`.
 waystone.validateTravel(waystone.TRAVEL, Object.keys(items))
@@ -67,6 +69,11 @@ attributes.validateAttributes(attributes.attributeData())
 // Phase 180 — character creation: every gender preset, hair style and colour must point at real data, each gender
 // needs a hair style, the chibi presets keep their head ratio and the default creation must be valid.
 creation.validateCreation(creation.creationData(), creation.creationRefs())
+
+// Phase 184 — the bed rule must name a real placement item and a sane shelter rule; every tutorial step needs a unique
+// id, earlier `requires`, a known trigger kind with exactly its params, and params that name real fabric data.
+bed.validateBed(bed.RULES, Object.keys(items))
+tutorial.validateTutorial(tutorial.tutorialData(), tutorial.tutorialRefs())
 
 // Phase 151 — every entity tagged `item` needs a shape: a known archetype, and a real material for each of its parts.
 {
@@ -209,6 +216,7 @@ module.exports = defineFabric({
       EnchantedAethermiteShard: items.EnchantedAethermiteShard,
       VoidRuneTablet:           items.VoidRuneTablet,
       LumenfiteOrb:             items.LumenfiteOrb,
+      Bed:                      items.Bed,
     },
     // Gameplay — Gestures
     gestures.GESTURES,
@@ -235,6 +243,7 @@ module.exports = defineFabric({
       RecipeCarpenterAxe:              recipes.RecipeCarpenterAxe,
       RecipeDuskfiberCloak:            recipes.RecipeDuskfiberCloak,
       RecipeAshiteBlock:               recipes.RecipeAshiteBlock,
+      RecipeBed:                       recipes.RecipeBed,
     },
     // Gameplay — Technology
     {
@@ -247,6 +256,7 @@ module.exports = defineFabric({
       TechVoidMastery:    technology.TechVoidMastery,
       ResearchPointRule:  technology.ResearchPointRule,
       WaystoneTravel:     waystone.WaystoneTravel,
+      BedSpawn:           bed.BedSpawn,
     },
     // Gameplay — Settlements (Phase 139)
     {
@@ -303,5 +313,7 @@ module.exports = defineFabric({
       BoarRider:         appearances.BoarRider,
       CharacterCreation: creation.CharacterCreation,
     },
+    // Gameplay — First-steps tutorial (Phase 184)
+    { Tutorial: tutorial.Tutorial },
   ),
 })

@@ -27,6 +27,7 @@ const ARCHETYPES = {
   rations:    ['body', 'wrap'],
   hearth:     ['base', 'fuel'],
   waystone:   ['stone', 'glyph'],
+  bed:        ['frame', 'mattress'],
 }
 
 // Materials an item's `hasOne` relations name but its shape deliberately does not draw (e.g. an

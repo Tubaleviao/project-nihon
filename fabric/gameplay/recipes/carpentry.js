@@ -177,4 +177,40 @@ module.exports = {
     },
   }),
 
+  // ─── RecipeBed ────────────────────────────────────────────────────────────
+  // Phase 184 — no station, so a bed is reachable in the first hour: planks come from the first
+  // carpentry bench, and Basic Carpentry has no prerequisite and no research-point cost.
+  RecipeBed: defineEntity({
+    tags: ['recipe'],
+    description: 'Lash six thornwood planks into a bed frame with a straw pallet, by hand.',
+    goal: 'A first-hour spawn point: the bed a new player places in their first shelter (Phase 184)',
+    fields: {
+      id:     { type: 'uuid', primaryKey: true },
+      domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
+      outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
+      recipe: recipeData({
+        domain: 'carpentry',
+        station: '',
+        inputs: [{ item: 'ThornwoodPlank', quantity: 6 }],
+        outputs: [{ item: 'Bed', quantity: 1 }],
+        skillGuards: [{ skill: 'Carpentry', tier: 'novice' }],
+      }),
+    },
+    relations: {
+      inputPlank: { name: 'inputPlank', kind: 'hasOne', target: 'ThornwoodPlank' },
+      output:     { name: 'output',     kind: 'hasOne', target: 'Bed' },
+    },
+    behaviors: {
+      craft: {
+        description: 'Lash planks into a bed anywhere, with no station',
+        rules: [
+          'Requires Carpentry: Novice',
+          'Needs no station',
+          'Six planks yield one bed',
+        ],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
 }

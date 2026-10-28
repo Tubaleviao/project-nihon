@@ -1,0 +1,17 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/items/bed.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+condition = 0
+weight = 15.0
+rarity = 0
+stackable = false
+shape = {"archetype":"bed","parts":{"frame":"Thornwood","mattress":"Grass"},"scale":1}
+durability = 300
+state_machine_field = "condition"
+initial_state = "pristine"
+description = "A plank frame with a straw pallet. Placed as a bed station; the bed a player places becomes the place they come back to after death. One bed per player."
+tags = ["item", "station"]

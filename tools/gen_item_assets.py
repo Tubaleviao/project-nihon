@@ -70,7 +70,7 @@ ARCHETYPE_BOUNDS = {
     "ingot": (0.30, 0.12, 0.16), "shard": (0.20, 0.34, 0.20), "dust": (0.30, 0.14, 0.30),
     "plank": (0.14, 0.06, 0.60), "block": (0.34, 0.34, 0.34), "orb": (0.25, 0.30, 0.25),
     "tablet": (0.34, 0.44, 0.10), "potion": (0.18, 0.30, 0.18), "rations": (0.22, 0.12, 0.18),
-    "hearth": (0.70, 0.30, 0.70), "waystone": (0.50, 1.20, 0.40),
+    "hearth": (0.70, 0.30, 0.70), "waystone": (0.50, 1.20, 0.40), "bed": (0.60, 0.40, 1.00),
 }
 
 
@@ -332,12 +332,21 @@ def _waystone(rng):
             "glyph": prism(2, 0.113, 0.137, (0, 0.5), (0.05, 0.12))}
 
 
+def _bed(rng):
+    legs = []
+    for dz, dx in ((-0.42, -0.24), (-0.42, 0.24), (0.42, -0.24), (0.42, 0.24)):
+        legs += prism(1, 0.0, 0.12, (dz, dx), (0.03, 0.03))
+    frame = prism(1, 0.12, 0.2, (0, 0), (0.46, 0.27)) + prism(1, 0.2, 0.36, (-0.44, 0), (0.02, 0.27)) + legs
+    return {"frame": frame, "mattress": prism(1, 0.2, 0.28, (0.04, 0), (0.38, 0.23))}
+
+
 ARCHETYPES = {
     "pick": _pick, "axe": _axe, "sword": _blade_weapon(0.58), "longsword": _blade_weapon(0.9),
     "knife": _knife, "saw": _saw, "bow": _bow,
     "shield": _shield, "helmet": _helmet, "chestplate": _chestplate, "cloak": _cloak, "ingot": _ingot,
     "shard": _shard, "dust": _dust, "plank": _plank, "block": _block, "orb": _orb, "tablet": _tablet,
     "potion": _potion, "rations": _rations, "hearth": _hearth, "waystone": _waystone,
+    "bed": _bed,
 }
 
 
