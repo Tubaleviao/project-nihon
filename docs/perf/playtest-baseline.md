@@ -118,7 +118,11 @@ The fixes, in `src/creature/creature_ai.gd` and `creature_path.gd` unless named:
   Jolt builds a `ConcavePolygonShape3D`'s mesh lazily, when its body enters the world, on the main thread;
   Godot queues a worker's `set_faces` to the main thread, so the build cannot move to a worker. A full
   chunk's soup is cut into four shapes on the worker instead. A chunk off the body's own ring lands with
-  one and takes the rest one per pump step; the body's chunk and its ring take all four at once.
+  one and takes the rest one per pump step; the body's own chunk takes all four at once. Its ring lands with
+  one too and takes the rest one quadrant per pump step in the same tick while the budget lasts: all four at
+  once overran the 4 ms pump budget by a whole chunk (walk's worst-5% `chunk_attach_collision` 7.2 → 4.3 ms,
+  flight main thread 5.4 → 2.7 ms per attached chunk, local). PR #523's second CI run failed walk at 24.6 ms
+  on a runner ~30% slower across the board (render and physics too); the first passed at 18.7 ms.
 - **Fill patches** (`DistantTerrain.FILL_BUDGET_USEC`).
 
 What is left in walk (profiled means): creature walking and position updates ~3 ms for ~150 creatures,

@@ -22,6 +22,7 @@ func register() -> void:
 	_run_test("near: collision only within a walking body's ring, attached when a chunk enters it", _test_near_collision_ring)
 	_run_test("near: parked collision attaches nearest first under the pump budget", _test_near_collision_nearest_first)
 	_run_test("near: a chunk off the body's ring takes its collision a quadrant a step", _test_near_collision_staggered)
+	_run_test("near: a chunk beside the body lands with a quadrant and takes the rest in one tick", _test_near_collision_neighbour)
 	_run_test("near: the quadrant split keeps every collision face, small soups stay whole", _test_collision_parts_split)
 	_run_test("near: a fast flying body gets collision under it only, its ring once it slows", _test_near_collision_flying)
 	_run_test("near: a peer's ring keeps collision, a dedicated server keeps it everywhere", _test_near_collision_peer_and_server)
@@ -505,9 +506,14 @@ func _test_near_collision_nearest_first() -> void:
 	cm._near.tick()
 	assert_true(voxel.has_collision(Vector2i(3, 0)), "the nearer parked chunk is attached first")
 	assert_true(voxel.has_parked_collision(Vector2i(4, 0)), "the budget leaves the farther one for a later frame")
-	cm.begin_pump()
-	cm._near.tick()
-	assert_true(voxel.has_collision(Vector2i(4, 0)), "the next frame attaches it")
+	# Phase 183 — one quadrant a step: the nearer chunk takes the rest of its quadrants first
+	var frames := 0
+	while not voxel.has_collision(Vector2i(4, 0)) and frames < 8:
+		cm.begin_pump()
+		cm._near.tick()
+		frames += 1
+	assert_true(voxel.has_collision(Vector2i(4, 0)), "a later frame attaches it (%d frames)" % frames)
+	assert_false(voxel.has_parked_collision(Vector2i(3, 0)), "after the nearer one has every quadrant")
 	_free_build_rig(rig)
 
 func _test_near_collision_flying() -> void:
@@ -632,7 +638,7 @@ func _test_near_collision_fold_standin() -> void:
 	_free_build_rig(rig)
 
 ## Phase 183 — a full chunk two rings out lands with one quadrant of its collision and takes the rest one a
-## near-ring step; the body's own chunk (and its ring) gets every quadrant at once.
+## near-ring step; the body's own chunk gets every quadrant at once.
 func _test_near_collision_staggered() -> void:
 	var rig := _make_chunk_build_rig()
 	var cm: ChunkManager = rig["cm"]
@@ -654,6 +660,26 @@ func _test_near_collision_staggered() -> void:
 		steps += 1
 	assert_false(voxel.has_parked_collision(Vector2i(2, 0)), "until none is left")
 	assert_eq(body.get_child_count(), own.get_child_count(), "on one body, like the near chunk's")
+	_free_build_rig(rig)
+
+## Phase 183 — a chunk beside the body lands with one quadrant too (all four at once overran a walk's frame
+## by ~6 ms on every chunk line), and the next near-ring tick gives it the rest while the pump budget lasts.
+func _test_near_collision_neighbour() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	cm.set_lod_enabled(false)
+	var voxel: VoxelSlice = rig["voxel"]
+	_build_chunks(cm, [Vector2i(0, 0), Vector2i(1, 0)])
+	var own: Node = voxel._chunks["0,0"].get_node("Collision")
+	var side: Node = voxel._chunks["1,0"].get_node("Collision")
+	assert_true(own.get_child_count() > 1, "the chunk under the body was split (%d quadrants)" % own.get_child_count())
+	assert_eq(side.get_child_count(), 1, "beside the body: one quadrant on landing")
+	assert_true(voxel.has_parked_collision(Vector2i(1, 0)), "the rest are parked")
+	cm.pump_budget_msec = 0   # no time budget: the tick is bounded by what is parked
+	cm.begin_pump()
+	cm._near.tick()
+	assert_false(voxel.has_parked_collision(Vector2i(1, 0)), "one tick attaches every quadrant left")
+	assert_eq(side.get_child_count(), own.get_child_count(), "on one body, like the body's own chunk")
 	_free_build_rig(rig)
 
 func _test_collision_parts_split() -> void:
