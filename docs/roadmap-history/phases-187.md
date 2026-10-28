@@ -43,6 +43,7 @@ seconds at a time. Two scheduling faults were behind it, both cheap to fix.
   (`terrain_stream_tests`); the flight verdict (`runner_tests`).
 - [x] Playtest bot (CI, native builder): `flight` keeps the ground under the body built in ≥ 90% of
   samples. The `--no-native` run reports it without gating (the GDScript builder is about 7× slower).
+  (PR #518 lowered the gate to ≥ 75%: CI runners covered 79–100% on the same commit. See #519.)
 - [x] Suite green on both boot paths.
 
 **Shipped:** measured locally on seed 42. Probe at 90 m/s for 30 s without a window:
