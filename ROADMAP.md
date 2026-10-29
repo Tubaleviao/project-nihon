@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–185 and 187–192 are done. Their specs and acceptance criteria are archived in
+Phases 1–184 and 187–193 are done. Their specs and acceptance criteria are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Arc: make it look and feel like an RPG (Phases 173–181, 183)
@@ -84,6 +84,16 @@ the arc, like Phase 182.
 | Phase | Title | Status | Spec |
 |---|---|---|---|
 | 192 | Creature bodies: creatures collide with each other and the player, and squash on contact | Done | [phases-192.md](docs/roadmap-history/phases-192.md) |
+
+### Out of arc: a lighter collision ring (Phase 193)
+
+Found on PR #524: the playtest walk step's median p95 process time reached 21.1 ms (limit 20) on a slow
+runner. Profiled locally, the biggest cost in the walk was Jolt taking the collision trimeshes of the 16
+chunks two rings out, which only the 60 m aim ray needed.
+
+| Phase | Title | Status | Spec |
+|---|---|---|---|
+| 193 | A lighter collision ring: a voxel aim ray, collision one ring out, and a dive guard | Done | [phases-193.md](docs/roadmap-history/phases-193.md) |
 
 ### Arc: first steps (Phases 184–186)
 

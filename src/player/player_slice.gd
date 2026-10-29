@@ -85,6 +85,8 @@ const PlayerRules := preload("res://src/core/player_rules.gd")
 const AttributeRules := preload("res://src/character/attribute_rules.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
 const VoxelSliceScript := preload("res://src/terrain/voxel_slice.gd")
+const VoxelRay := preload("res://src/terrain/voxel_ray.gd")
+const DiveGuard := preload("res://src/player/dive_guard.gd")
 const DistantTerrain := preload("res://src/terrain/distant_terrain.gd")
 const DistantBands := preload("res://src/terrain/distant_bands.gd")
 ## Phase 164 — the ring radius (chunks) the camera's first far plane is sized for: the default view
@@ -966,9 +968,34 @@ func _move(delta: float) -> void:
 			_body.global_position = climbed.origin
 
 	_body.velocity = _vel
+	# Phase 193 — dive guard: never let one step carry the feet below the column's ground under them.
+	var runs: Variant = _runs_under_body()
+	if _vel.y < 0.0 and runs != null and delta > 0.0:
+		var feet := _feet_world_y()
+		_body.velocity.y = -minf(-_vel.y, DiveGuard.descent_room(feet, runs) / delta)
 	_body.move_and_slide()
 	# Sync velocity after slide so gravity accumulation is correct.
 	_vel = _body.velocity
+	# Phase 193 — rescue: feet that still ended inside solid ground (a fast diagonal dive into a hillside whose
+	# collision had not landed, a tunnelled step) go back up onto that run's top.
+	runs = _runs_under_body()
+	if runs != null:
+		var feet := _feet_world_y()
+		var lift := DiveGuard.buried_lift(feet, runs)
+		if lift > feet:
+			_body.global_position.y += lift - feet
+			_vel.y = maxf(_vel.y, 0.0)
+			_body.velocity = _vel
+
+## Phase 193 — the solid runs of the tile under the body, or null with no voxel slice (a bare rig).
+func _runs_under_body() -> Variant:
+	if voxel_slice == null or _body == null or not voxel_slice.has_method("get_runs_at_tile"):
+		return null
+	return voxel_slice.get_runs_at_tile(VoxelRay.tile_of(_body.global_position, _origin.value))
+
+## The body's feet (its origin; the capsule sits 0.9 above it) in world height.
+func _feet_world_y() -> float:
+	return float(_body.global_position.y) - float(_origin.value.y)
 
 ## Phase 91 — a fold over a pole or round the antimeridian (`TerrainSlice.fold_world_pos`), applied by
 ## the game root once it has rebased the scene to `pos`'s chunk: land on `pos` keeping the motion, and
@@ -1226,12 +1253,9 @@ func _update_aim() -> void:
 					pid = str(collider.get_meta("pickup_id"))
 					item_id = str(collider.get_meta("item_id"))
 
-			# Block ray (terrain layer 2) — mine/build target.
-			var bto := from + dir * BUILD_RANGE
-			var bquery := PhysicsRayQueryParameters3D.create(from, bto, TERRAIN_COLLISION_MASK)
-			bquery.collide_with_areas = false
-			bquery.collide_with_bodies = true
-			var bhit := space.intersect_ray(bquery)
+			# Block ray — mine/build target. Phase 193: walked through the voxel columns (`VoxelRay`), not the
+			# terrain collision layer, which a walking body keeps only on its own 3×3 chunks.
+			var bhit := _terrain_ray(from, dir, BUILD_RANGE)
 			if not bhit.is_empty():
 				_aimed_block_hit = true
 				_aimed_block_pos = (bhit.get("position", Vector3.ZERO) as Vector3) - _origin.value
@@ -1258,6 +1282,19 @@ func _update_aim() -> void:
 	_aimed_tree_id = tid
 	_aimed_tree_species = tspecies
 	_update_aim_hud()
+
+## Phase 193 — the first terrain face along `dir` from the scene position `from` within `range_m`, as
+## `{ position (scene), normal, distance }`, or {}. Reads the voxel columns when a voxel slice is wired, else
+## (a rig without one) the terrain collision layer.
+func _terrain_ray(from: Vector3, dir: Vector3, range_m: float) -> Dictionary:
+	if voxel_slice != null and voxel_slice.has_method("column_top_at_tile"):
+		return VoxelRay.cast(from, dir, range_m, _origin.value,
+			func(t: Vector2i) -> Array: return voxel_slice.get_runs_at_tile(t),
+			func(t: Vector2i) -> float: return voxel_slice.column_top_at_tile(t))
+	var query := PhysicsRayQueryParameters3D.create(from, from + dir * range_m, TERRAIN_COLLISION_MASK)
+	query.collide_with_areas = false
+	query.collide_with_bodies = true
+	return _camera.get_world_3d().direct_space_state.intersect_ray(query)
 
 func _update_aim_hud() -> void:
 	if _aim_label == null:

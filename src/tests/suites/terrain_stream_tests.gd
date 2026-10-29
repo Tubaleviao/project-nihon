@@ -474,9 +474,11 @@ func _test_near_collision_ring() -> void:
 	cm.set_lod_enabled(false)   # Phase 190: a far chunk is coarse and has no shape at all; parking is a full chunk's
 	var voxel: VoxelSlice = rig["voxel"]
 	_build_chunks(cm, [Vector2i(0, 0), Vector2i(1, 1), Vector2i(2, 0), Vector2i(3, 0)])
-	assert_true(voxel.has_collision(Vector2i(2, 0)), "a chunk two out (inside the 60 m reach) has collision")
 	assert_true(voxel.has_collision(Vector2i(0, 0)), "the chunk under the body has collision")
 	assert_true(voxel.has_collision(Vector2i(1, 1)), "a chunk of its ring (Chebyshev 1) has collision")
+	# Phase 193 — two out is past the collision ring: the aim ray reads the voxel columns instead.
+	assert_false(voxel.has_collision(Vector2i(2, 0)), "a chunk two out has no collision")
+	assert_true(voxel.has_parked_collision(Vector2i(2, 0)), "... its shape is parked")
 	assert_true(cm.is_chunk_built(Vector2i(3, 0)), "a chunk three out is built")
 	assert_false(voxel.has_collision(Vector2i(3, 0)), "... and has no collision shape")
 	assert_true(voxel.has_parked_collision(Vector2i(3, 0)), "... its worker shape is kept for later")
@@ -495,8 +497,9 @@ func _test_near_collision_nearest_first() -> void:
 	var cm: ChunkManager = rig["cm"]
 	cm.set_lod_enabled(false)   # Phase 190: a far chunk is coarse and has no shape at all; parking is a full chunk's
 	var voxel: VoxelSlice = rig["voxel"]
+	# Phase 193 — the collision ring is one out: the nearer chunk is the body's own, the farther its neighbour.
 	_build_chunks(cm, [Vector2i(0, 0), Vector2i(3, 0), Vector2i(4, 0)])
-	_stand_in(rig["player"], Vector2i(2, 0))
+	_stand_in(rig["player"], Vector2i(3, 0))
 	var clock := [0]
 	cm.pump_budget_msec = 4
 	cm.pump_clock_usec = func():
@@ -505,15 +508,15 @@ func _test_near_collision_nearest_first() -> void:
 	cm.begin_pump()
 	cm._near.tick()
 	assert_true(voxel.has_collision(Vector2i(3, 0)), "the nearer parked chunk is attached first")
-	assert_true(voxel.has_parked_collision(Vector2i(4, 0)), "the budget leaves the farther one for a later frame")
-	# Phase 183 — one quadrant a step: the nearer chunk takes the rest of its quadrants first
+	assert_false(voxel.has_parked_collision(Vector2i(3, 0)), "the body's own chunk takes every quadrant, budget or not")
+	assert_false(voxel.has_collision(Vector2i(4, 0)), "the budget leaves the farther one for a later frame")
 	var frames := 0
-	while not voxel.has_collision(Vector2i(4, 0)) and frames < 8:
+	while voxel.has_parked_collision(Vector2i(4, 0)) and frames < 8:
 		cm.begin_pump()
 		cm._near.tick()
 		frames += 1
-	assert_true(voxel.has_collision(Vector2i(4, 0)), "a later frame attaches it (%d frames)" % frames)
-	assert_false(voxel.has_parked_collision(Vector2i(3, 0)), "after the nearer one has every quadrant")
+	assert_true(voxel.has_collision(Vector2i(4, 0)), "later frames attach it (%d frames)" % frames)
+	assert_false(voxel.has_parked_collision(Vector2i(4, 0)), "with every quadrant")
 	_free_build_rig(rig)
 
 func _test_near_collision_flying() -> void:
@@ -637,8 +640,8 @@ func _test_near_collision_fold_standin() -> void:
 	assert_true(root.has_node("Collision"), "the stand-in under the body has its collision")
 	_free_build_rig(rig)
 
-## Phase 183 — a full chunk two rings out lands with one quadrant of its collision and takes the rest one a
-## near-ring step; the body's own chunk gets every quadrant at once.
+## Phase 183 — a parked chunk beyond the local body's ring (since Phase 193, one a peer's ring reached after it
+## was built) takes its collision one quadrant a near-ring step; the body's own chunk gets every quadrant at once.
 func _test_near_collision_staggered() -> void:
 	var rig := _make_chunk_build_rig()
 	var cm: ChunkManager = rig["cm"]
@@ -648,9 +651,14 @@ func _test_near_collision_staggered() -> void:
 	var own: Node = voxel._chunks["0,0"].get_node("Collision")
 	assert_true(own.get_child_count() > 1, "the chunk under the body was split (%d quadrants)" % own.get_child_count())
 	assert_false(voxel.has_parked_collision(Vector2i(0, 0)), "and has every quadrant at once")
+	assert_false(voxel._chunks["2,0"].has_node("Collision"), "two rings out: no collision on landing")
+	assert_true(voxel.has_parked_collision(Vector2i(2, 0)), "it is parked")
+	cm.set_peer_center(7, Vector2i(3, 0), true)
+	cm.pump_budget_msec = 0
+	cm.begin_pump()
+	cm._near.tick()
 	var body: Node = voxel._chunks["2,0"].get_node("Collision")
-	assert_eq(body.get_child_count(), 1, "two rings out: one quadrant on landing")
-	assert_true(voxel.has_parked_collision(Vector2i(2, 0)), "the rest are parked")
+	assert_eq(body.get_child_count(), 1, "a peer's ring reaches it: one quadrant on the first step")
 	var steps := 0
 	while voxel.has_parked_collision(Vector2i(2, 0)) and steps < 8:
 		var before := body.get_child_count()
