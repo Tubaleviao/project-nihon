@@ -140,11 +140,6 @@ func _build_map_content() -> Control:
 	here.focus_mode = Control.FOCUS_NONE
 	here.pressed.connect(func() -> void: sl.map_window.center_on_player())
 	row.add_child(here)
-	var hint = Label.new()
-	sl._set_tr(hint, "text", "map.hint")
-	sl._set_tr(hint, "tooltip_text", "map.hint_tip")
-	hint.mouse_filter = Control.MOUSE_FILTER_PASS
-	row.add_child(hint)
 	return box
 
 ## (Re)build the control rows in the active language.
