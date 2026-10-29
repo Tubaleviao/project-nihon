@@ -92,6 +92,7 @@ func set_enabled(on: bool) -> void:
 func restart() -> void:
 	state = State.fresh()
 	_metres = 0.0
+	history.clear()
 	_gathered_items.clear()
 	_gathered_tags.clear()
 	_commit()

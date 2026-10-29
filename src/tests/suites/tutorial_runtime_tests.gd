@@ -30,6 +30,10 @@ func _test_next_step() -> void:
 	assert_eq(nxt, "jump", "then the next whose requires are done")
 	(st["dismissed"] as Array).append("jump")
 	assert_true(str(Rules.next_step(st)["id"]) != "jump", "a dismissed step is never returned")
+	# Dismissing a step must not strand the steps that require it.
+	var skipped := { "enabled": true, "done": [], "dismissed": ["move"] }
+	var ids: Array = Rules.eligible(skipped).map(func(x: Dictionary) -> String: return str(x["id"]))
+	assert_true(ids.has("jump") and ids.has("mine") and not ids.has("move"), "a dismissed step unlocks the steps after it")
 	# A step whose requires are not done is never offered.
 	var offered := {}
 	for i in 60:

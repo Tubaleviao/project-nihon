@@ -11,7 +11,7 @@ static func steps() -> Array:
 static func _has(list: Variant, id: String) -> bool:
 	return list is Array and (list as Array).has(id)
 
-## Every step, in fabric order, that is not done or dismissed and whose `requires` are all done. Empty when the
+## Every step, in fabric order, that is not done or dismissed and whose `requires` are all done or dismissed. Empty when the
 ## tutorial is off. The first is the card; an event may complete any of them, so a player who does the second
 ## thing first is not stuck on the first.
 static func eligible(state: Dictionary, table: Array = []) -> Array:
@@ -24,7 +24,8 @@ static func eligible(state: Dictionary, table: Array = []) -> Array:
 			continue
 		var ready := true
 		for r in s["requires"]:
-			if not _has(state.get("done"), str(r)):
+			# A dismissed step no longer holds back the steps after it.
+			if not _has(state.get("done"), str(r)) and not _has(state.get("dismissed"), str(r)):
 				ready = false
 				break
 		if ready:

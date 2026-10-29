@@ -14,6 +14,10 @@ const ShelterRule := preload("res://src/world/shelter_rule.gd")
 const TELEPORT_M := 20.0
 ## Degrees the look must turn the camera to count as looking around.
 const LOOK_DEGREES := 30.0
+## Seconds between shelter checks while `build_shelter` is open.
+const SHELTER_CHECK_S := 1.0
+## Stations farther than this (m) from the player are not counted as the player's when seeding a veteran.
+const SEED_STATION_M := 150.0
 
 var slice: TutorialSlice = null
 var card: TutorialCard = null
@@ -22,6 +26,13 @@ var _last_pos: Vector3 = Vector3.ZERO
 var _have_pos: bool = false
 var _pack: Dictionary = {}
 var _skills: Dictionary = {}
+var _skills_known: bool = false
+var _pack_known: bool = false
+var _pack_dirty: bool = false
+## Items crafted since the last frame, so the pack growing by them is not counted as gathered.
+var _crafted: Dictionary = {}
+var _bed: Dictionary = {}
+var _shelter_clock: float = 0.0
 var _seeded: bool = false
 var _look_from: float = 0.0
 
@@ -63,14 +74,20 @@ func _local() -> String:
 func seed_from_player() -> void:
 	if _seeded or slice == null or not slice.is_fresh():
 		return
+	var rec: Dictionary = root._registry.get_record(_local())
+	if rec.is_empty():
+		return   # the record has not arrived yet; try again next tick
 	_seeded = true
 	var facts := { "items": root._inventory.get_contents(), "tags": {}, "stations": [], "bed": false, "kills": 0,
 		"slots": [], "technologies": [] }
 	for key in facts["items"]:
 		facts["tags"][key] = _tags_of(str(key))
+	var here: Vector3 = root._player.get_position() if root._player != null else Vector3.ZERO
 	for st in root._station.get_all_stations():
+		var sp: Variant = st.get("position", null)
+		if sp is Vector3 and Vector2((sp as Vector3).x - here.x, (sp as Vector3).z - here.z).length() > SEED_STATION_M:
+			continue
 		facts["stations"].append(str(st["type"]))
-	var rec: Dictionary = root._registry.get_record(_local())
 	facts["bed"] = BedStore.from_record(rec) != null
 	facts["slots"] = (rec.get("equipment", {}) as Dictionary).keys()
 	var tech: Variant = rec.get("technology", {})
@@ -106,8 +123,12 @@ func _on_changed() -> void:
 func _on_craft_resolved(result: Dictionary) -> void:
 	if not bool(result.get("success", false)):
 		return
+	var crafter := str(result.get("player_id", ""))
+	if crafter != "" and crafter != _local() and crafter != "player":
+		return
 	for out in result.get("outputs", []):
 		var key := str(out.get("item", ""))
+		_crafted[key] = int(_crafted.get(key, 0)) + int(out.get("quantity", 1))
 		_note("item_crafted", { "item": key, "tags": _tags_of(key) })
 
 func _on_station_placed(_id: String, type: String, _pos: Vector3) -> void:
@@ -118,7 +139,7 @@ func _on_tech_unlocked(tech_id: String, player_id: String) -> void:
 		_note("technology_researched", { "technology": tech_id })
 
 func _on_creature_died(entity_id: String, _pos: Vector3, killer_id: String, _landing: Vector3) -> void:
-	if killer_id == _local() or killer_id == "player" or killer_id == "":
+	if killer_id == _local() or killer_id == "player":
 		_note("creature_killed", { "creature": entity_id, "tags": ["creature"] })
 
 func _on_harvest_resolved(player_id: String, _carcass: String, reason: String, _items: Array) -> void:
@@ -128,8 +149,15 @@ func _on_harvest_resolved(player_id: String, _carcass: String, reason: String, _
 func _on_bed_synced(player_id: String, bed: Dictionary) -> void:
 	if player_id != _local() or bed.is_empty():
 		return
+	_bed = bed
 	_note("bed_placed")
-	if _bed_sheltered(bed):
+	_check_shelter()
+
+## The bed may be walled and roofed long after it is placed, so this runs on a timer while the step is open.
+func _check_shelter() -> void:
+	if _bed.is_empty() or slice == null or slice.is_done("build_shelter"):
+		return
+	if _bed_sheltered(_bed):
 		_note("shelter_complete")
 
 func _bed_sheltered(bed: Dictionary) -> bool:
@@ -141,9 +169,10 @@ func _bed_sheltered(bed: Dictionary) -> bool:
 func _on_respawned(_pos: Vector3) -> void:
 	_note("respawned")
 
-func _on_chat(text: String, _pid: String) -> void:
-	if not text.begins_with("/"):
-		_note("chat_sent")
+func _on_chat(text: String, pid: String) -> void:
+	if pid == "" or pid == _local():
+		if not text.begins_with("/"):
+			_note("chat_sent")
 
 func _on_equipment_changed(player_id: String, worn: Dictionary) -> void:
 	if player_id == _local() or player_id == "":
@@ -153,13 +182,22 @@ func _on_equipment_changed(player_id: String, worn: Dictionary) -> void:
 
 ## The local pack changed: what it gained is what was gathered (picked up, mined, felled or crafted).
 func _on_inventory_changed() -> void:
+	_pack_dirty = true   # read in `tick`, after this frame's craft results have been seen
+
+func _scan_pack() -> void:
+	_pack_dirty = false
 	var contents: Dictionary = root._inventory.get_contents()
-	if not _pack.is_empty():
+	if _pack_known:
 		for key in contents:
 			var gained := int(contents[key]) - int(_pack.get(key, 0))
+			var made := mini(gained, int(_crafted.get(key, 0)))
+			if made > 0:
+				gained -= made
+				_crafted[key] = int(_crafted[key]) - made
 			if gained > 0:
 				_note("item_gathered", { "item": str(key), "tags": _tags_of(str(key)), "count": gained })
 	_pack = contents.duplicate()
+	_pack_known = true
 
 func _on_waystones_synced(player_id: String, station_ids: Array) -> void:
 	if player_id == _local() and not station_ids.is_empty():
@@ -169,6 +207,13 @@ func tick(delta: float) -> void:
 	if slice == null or root._player == null:
 		return
 	seed_from_player()
+	if _pack_dirty or not _pack_known:
+		_scan_pack()
+	_crafted.clear()
+	_shelter_clock += delta
+	if _shelter_clock >= SHELTER_CHECK_S:
+		_shelter_clock = 0.0
+		_check_shelter()
 	var pos: Vector3 = root._player.get_position()
 	if _have_pos:
 		var d := Vector2(pos.x - _last_pos.x, pos.z - _last_pos.z).length()
@@ -181,6 +226,8 @@ func tick(delta: float) -> void:
 		_look_from = root._player.look_degrees
 	var tiers: Variant = root._registry.get_record(_local()).get("skills", {})
 	if tiers is Dictionary:
-		if not _skills.is_empty() and tiers != _skills:
-			_note("skill_tier_up")
-		_skills = (tiers as Dictionary).duplicate()
+		if tiers != _skills:
+			if _skills_known:
+				_note("skill_tier_up")
+			_skills = (tiers as Dictionary).duplicate()
+		_skills_known = true

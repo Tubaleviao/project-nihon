@@ -59,8 +59,9 @@ func _init() -> void:
 func bind(tutorial: Node) -> void:
 	slice = tutorial
 	active = tutorial
-	GameBus.tutorial_changed.connect(refresh)
-	GameBus.locale_changed.connect(func(_l: String) -> void: refresh())
+	if not GameBus.tutorial_changed.is_connected(refresh):
+		GameBus.tutorial_changed.connect(refresh)
+		GameBus.locale_changed.connect(func(_l: String) -> void: refresh())
 	refresh()
 
 ## The player's own key text for each input action a step names, from the `?` rows.
@@ -122,10 +123,10 @@ static func add_settings(box: Control) -> void:
 	box.add_child(restart)
 	toggle.text = I18n.t("tutorial.toggle")
 	restart.text = I18n.t("tutorial.restart")
-	toggle.toggled.connect(func(on: bool) -> void: if active != null: active.set_enabled(on))
-	restart.pressed.connect(func() -> void: if active != null: active.restart())
+	toggle.toggled.connect(func(on: bool) -> void: if is_instance_valid(active): active.set_enabled(on))
+	restart.pressed.connect(func() -> void: if is_instance_valid(active): active.restart())
 	var sync := func() -> void:
-		if active != null:
+		if is_instance_valid(active):
 			toggle.set_pressed_no_signal(bool(active.state["enabled"]))
 		toggle.text = I18n.t("tutorial.toggle")
 		restart.text = I18n.t("tutorial.restart")
