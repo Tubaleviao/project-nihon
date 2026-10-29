@@ -547,6 +547,42 @@ func record_spawn_world_pos(player_id: String, wp: Dictionary) -> void:
 func spawn_of(player_id: String) -> Variant:
 	return spawn_from_record(get_record(player_id))
 
+## Phase 185 — the bed a player placed, as an exact `{chunk, local}`, or null (no bed, or a malformed one).
+func bed_of(player_id: String) -> Variant:
+	return bed_from_record(get_record(player_id))
+
+static func bed_from_record(rec: Dictionary) -> Variant:
+	var b: Variant = rec.get("bed", null)
+	if not (b is Dictionary) or not _has_chunk_local(b):
+		return null
+	return world_pos_of(b)
+
+## The station id of the player's bed ("" when none).
+func bed_station_of(player_id: String) -> String:
+	return str(get_record(player_id).get("bed_station", "")).left(64)
+
+## Record the bed (exact position + the station that draws it) on the player's record.
+func set_bed(player_id: String, wp: Dictionary, station_id: String) -> void:
+	var rec := ensure_player(player_id)
+	if rec.is_empty():
+		return
+	rec["bed"] = WorldPos.pos_to_wire(canonical_world_pos(WorldPos.normalized(wp)))
+	rec["bed_station"] = station_id
+
+func clear_bed(player_id: String) -> void:
+	var rec := get_record(player_id)
+	rec.erase("bed")
+	rec.erase("bed_station")
+
+## The player whose bed is drawn by `station_id`, or "".
+func bed_owner_of_station(station_id: String) -> String:
+	if station_id == "":
+		return ""
+	for pid in get_player_ids():
+		if str(get_record(str(pid)).get("bed_station", "")) == station_id and bed_of(str(pid)) != null:
+			return str(pid)
+	return ""
+
 static func spawn_from_record(rec: Dictionary) -> Variant:
 	var sp: Variant = rec.get("spawn", null)
 	if not (sp is Dictionary) or not _has_chunk_local(sp):
@@ -1268,6 +1304,10 @@ func get_player_data(player_id: String) -> Dictionary:
 	}
 	if rec.get("spawn", null) is Dictionary and spawn_from_record(rec) != null:
 		data["spawn"] = rec["spawn"]
+	# Phase 185 — the bed rides the record; a record without one (every pre-185 save) has none.
+	if bed_from_record(rec) != null:
+		data["bed"] = rec["bed"]
+		data["bed_station"] = str(rec.get("bed_station", ""))
 	var inv = _inventories.get(player_id, null)
 	if inv != null and is_instance_valid(inv):
 		data["inventory"] = inv.get_contents()
@@ -1295,6 +1335,13 @@ func apply_player_data(player_id: String, data: Dictionary) -> void:
 		rec["spawn"] = (data["spawn"] as Dictionary).duplicate(true)
 	else:
 		rec.erase("spawn")
+	# Phase 185 — the bed: absent or malformed in a payload means no bed (old respawn rule).
+	if bed_from_record(data) != null:
+		rec["bed"] = (data["bed"] as Dictionary).duplicate(true)
+		rec["bed_station"] = str(data.get("bed_station", "")).left(64)
+	else:
+		rec.erase("bed")
+		rec.erase("bed_station")
 	var restored_hp := float(data.get("hp", -1.0))
 	rec["hp"] = restored_hp
 	# Phase 39 — the respawn deadline rides the same record. The saved `hp` above is

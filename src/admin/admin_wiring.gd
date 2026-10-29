@@ -91,6 +91,7 @@ func regen_world(save := true) -> String:
 		p.y = root._voxel.get_voxel_height_at(Vector2(p.x, p.z)) + float(station_lift[i])
 		stations[i]["position"] = WorldPos.to_wire(p)
 	root._station.apply_station_data(stations)
+	root._bed_wiring.world_regenerated()   # Phase 185 — a regenerated world leaves no bed
 	# Clients drop their copy first, so a teleport onto the new ground never lands among old terrain.
 	var hosting: bool = root._networking != null and root._networking.is_host()
 	if hosting:

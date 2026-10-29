@@ -281,7 +281,8 @@ func restore_local_player() -> void:
 		place_local_player(saved_pos)
 	# Phase 66 — a respawn goes to the ORIGINAL spawn point: the recorded one, else (a record from
 	# before the field existed) the saved position; a fresh player's placement is recorded now.
-	var spawn: Variant = root.respawn_point_for(rec)
+	var spawn: Variant = root.original_spawn_for(rec)
+	root._bed_wiring.note_local(rec)   # Phase 185 — the bed overrides it at death time, never the stored spawn
 	if spawn != null:
 		root._player.set_respawn_world_pos(_lifted_world_pos(spawn))
 	else:

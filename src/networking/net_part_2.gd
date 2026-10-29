@@ -397,6 +397,20 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 				sl._refuse_unhandshaked(sender, "waystone_travel_intent")
 				return
 			GameBus.waystone_travel_intent.emit(str(payload.get("from", "")).left(64), str(payload.get("to", "")).left(64), traveller)
+		"bed_place_intent":
+			# Phase 185 — whose bed it is is the connection's player; the offset is checked by BedSlice.
+			var sleeper = sl._actor_id(sender)
+			if sleeper == "":
+				sl._refuse_unhandshaked(sender, "bed_place_intent")
+				return
+			var raw_off: Variant = payload.get("offset", null)
+			if not (raw_off is Array) or (raw_off as Array).size() != 3:
+				return
+			var comps: Array = raw_off
+			for c in comps:
+				if not ((c is float or c is int) and is_finite(float(c))):
+					return
+			GameBus.bed_place_intent.emit(Vector3(float(comps[0]), float(comps[1]), float(comps[2])), sleeper)
 		"settlement_intent":
 			# Phase 140 — who acts is the connection's player. Only short scalar args are kept.
 			var settler = sl._actor_id(sender)
