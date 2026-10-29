@@ -291,10 +291,26 @@ func _on_player_damaged(_damage: float, _attacker_id: String, target_id: String)
 	var pid := _pid(target_id)
 	_cancel(pid, "damaged")
 
-## Put `pid`'s carried body down at its own host-side position. False when nothing was carried.
+## Put `pid`'s carried body down. False when nothing was carried. Phase 195 — at the carrier's host-side
+## position when the host knows it and it is within the leash of the body (#444): the body trails its
+## carrier by up to a tick of the carry budget, so a dying or stopping carrier dropped it behind them. A
+## carrier farther than the leash (a teleport) leaves the body where it is: a drop never carries it there.
 func _drop_in_place(pid: String) -> bool:
 	var id: String = root._carcass.carried_by(pid)
-	return id != "" and root._carcass.drop(pid, root._carcass.position_of(id)) != ""
+	if id == "":
+		return false
+	return root._carcass.drop(pid, drop_point(pid, id)) != ""
+
+## Where `pid`'s carried body `id` goes down (see `_drop_in_place`).
+func drop_point(pid: String, id: String) -> Vector3:
+	var body: Vector3 = root._carcass.position_of(id)
+	var at: Variant = _position_of(pid)
+	if at == null:
+		return body
+	var leash := CarcassRules.rule_f("harvestRangeMetres", 3.0) + CARRY_LEASH_SLACK_M
+	if Vector2((at as Vector3).x - body.x, (at as Vector3).z - body.z).length() > leash:
+		return body
+	return at
 
 func _on_player_left(player_id: String) -> void:
 	if root._carcass == null or root._is_client:

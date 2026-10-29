@@ -715,6 +715,7 @@ func _on_peer_disconnected(id: int) -> void:
 	sl.forget_player_id(id)
 	sl._forget_equipment_pairs(id)
 	sl._relays.forget(id)
+	sl._m1.aoi_deliveries.erase(id)
 	forget_peer_channels(id)
 	if not sl._last_known_states.has(id):
 		sl._teleport_pending.erase(id)   # nothing will age it out otherwise

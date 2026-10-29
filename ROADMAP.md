@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–194 are done. Their specs and acceptance criteria, and the introductions of
+Phases 1–195 are done. Their specs and acceptance criteria, and the introductions of
 the arcs they belonged to, are archived in [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Arc: first steps (Phases 184–186)
@@ -52,7 +52,7 @@ rework and may no longer apply. Each phase re-checks its items against `main` fi
 | Phase | Title | Status | Spec |
 |---|---|---|---|
 | 194 | Follow-up debt burn II: terrain streaming and the near ring (#504, #509, #512) | Done | [phases-194.md](docs/roadmap-history/phases-194.md) |
-| 195 | Follow-up debt burn III: creature positions and the snapshot path (#444, #464, #493) | Planned | below |
+| 195 | Follow-up debt burn III: creature positions and the snapshot path (#444, #464, #493) | Done | [phases-195.md](docs/roadmap-history/phases-195.md) |
 | 196 | Follow-up debt burn IV: waystones, gestures, trees and the player registry (#336, #367, #420, #522) | Planned | below |
 
 ### Arc: the first settlement loop (Phases 197–202)
@@ -74,63 +74,6 @@ Raids come from creatures only. Settlement-against-settlement conflict stays def
 | 200 | Raids: a warned, bounded attack the village can defend | Planned | below |
 | 201 | Upkeep: a village that has to keep going | Planned | below |
 | 202 | The settlement loop, played: four bots found, specialize, trade and defend a village | Planned | below |
-
----
-
-## Phase 195 — Follow-up debt burn III: creature positions and the snapshot path (#444, #464, #493)
-
-**Goal:** Phase 171 moved creatures onto exact positions, but its follow-ups (#464) say the AI
-heading, the spatial hash, the fold log and the death fall still use float32 world metres, so a
-creature far from the origin steers and folds coarsely. The snapshot follow-ups (#493, #444) contain
-two real losses: an entry with a bad position drops its HP and death too, and a dropped send
-advances `records_sent`, so the next delta leaves records out.
-
-**Newel dependency:** NO.
-
-**Depends on:** nothing.
-
-**Deliverables:**
-- Re-check every item against `main` and close the ones already fixed with a pointer (for
-  example #444's `NO_GEOMETRY_ARRAYS` item, removed in #447 but still unticked).
-- Creature exact positions (#464): `_step_toward` / `_flee` heading from
-  `WorldPos.offset_between`. The death fall stores an exact position or an offset, not a
-  scene-frame vector. `fold_contents`, the fold-log replay, the spatial hash and
-  `creatures_in_radius` work on `{chunk, local}`. `position` becomes a read-only accessor, and every
-  write goes through `_store_pos`.
-- Snapshot apply (#493, #464): an entry with no or an implausible position still applies its HP,
-  state and death. Every `{chunk, local}` entry, from the wire or from a save, goes through
-  `WorldPos.is_plausible_pos`. The legacy-array branch reuses `WorldPos.is_wire` and checks element
-  types. `_hold_death_record` takes the validated position.
-- Snapshot send (#493, #444): `send_snapshot` stops at the first failed chunk.
-  `records_sent[peer_id]` advances only for a send that succeeded. `net_harness.gd` sends through
-  `SnapshotWiring.send_snapshot`.
-- Relay and AOI (#444): `relay_batch.build` and `flush_relays` / `aoi_recipients` reuse the
-  recipient set within a flush instead of rebuilding it per subject.
-- Carcasses (#444): a dropped carcass lands at the carrier's host position when the host knows it.
-- Distant bands (#444): a finished band mesh is swapped in before the queued one builds, so a fast
-  mover cannot starve a band. `make_bands` runs without a rebase driver too.
-- Playtest bot (#493, #444): the bot stops writing `_carcasses[cid].position`, and the
-  `out_of_range` retry goes. `_harvest_after_kill` shares one deadline across tries.
-  `_bands_ready_after` waits only for bands whose origin changed, and `_far_peak_attempt` needs a
-  minimum rock/snow share, not any coloured pixel.
-- Leftovers: the dead `"harvest": 1.0` entry in `ACTION_DECREMENT` goes.
-
-**Acceptance criteria:**
-- [ ] #444, #464 and #493 are closed: every item is fixed by a merged PR or closed with a reason.
-- [ ] Suite: a creature at chunk 312,500 steps toward and flees from a target with the same heading,
-  within 0.1°, as the same layout at the origin.
-- [ ] Suite: `creatures_in_radius` finds a creature across a chunk seam at chunk 312,500, and a
-  fold-log replay there restores the exact `{chunk, local}`.
-- [ ] Suite: a snapshot entry with an implausible position still applies HP, state and death. A
-  save or wire entry with a huge chunk or a NaN local is rejected.
-- [ ] Suite: a failed send leaves `records_sent` unchanged and the next delta carries the omitted
-  records; `send_snapshot` stops at the first failure.
-- [ ] Suite (audit): `net_harness.gd` never calls `_networking.send_snapshot`, nothing outside
-  `_store_pos` writes a creature's position, and `playtest_bot.gd` never writes `_carcasses`.
-- [ ] Harness: `creature_far_delta`'s host half asserts the delta reached the client through the
-  broadcast and AOI path.
-- [ ] Playtest: `fight` and `far_peak` pass 5 runs in a row on an unchanged commit.
-- [ ] Suite green on both boot paths, harness green.
 
 ---
 

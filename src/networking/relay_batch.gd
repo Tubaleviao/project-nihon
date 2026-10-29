@@ -28,7 +28,8 @@ const PK_MAX := 64
 ## as a first relay. `build` sweeps at most once per this interval.
 const PAIR_TTL_MS := 5.0 * KEEPALIVE_MS
 
-## subject -> [pk, position]: the latest report of each subject since the last flush.
+## subject -> [pk, position] (+ its recipients once queried): the latest report of each subject since the
+## last flush.
 var _pending: Dictionary = {}
 ## When the last flush ran (ms; the slice's pacing reads it).
 var flushed_ms := -INF
@@ -71,8 +72,16 @@ func build(now_ms: float, connected: Dictionary, recipients_of: Callable, center
 		var entry: Array = _pending[subject]
 		var pk: String = entry[0]
 		var pos: Vector3 = entry[1]
-		scans += 1
-		for r in recipients_of.call(pos):
+		# Phase 195 — a report held back from a far recipient keeps the recipients it was queried with: its
+		# position has not changed (a new report replaces the entry), so the spatial query is not re-run on
+		# every flush until it is due (#444). A recipient that left is still dropped by `connected`.
+		var recipients: Array
+		if entry.size() > 2:
+			recipients = entry[2]
+		else:
+			recipients = recipients_of.call(pos)
+			scans += 1
+		for r in recipients:
 			var rid := int(r)
 			if rid == subject or not connected.has(rid):
 				continue
@@ -83,7 +92,7 @@ func build(now_ms: float, connected: Dictionary, recipients_of: Callable, center
 			var dist: float = (center_of.call(rid) as Vector3).distance_to(pos)
 			if not due(dist, changed, since):
 				if changed:
-					held[subject] = entry
+					held[subject] = [pk, pos, recipients]
 				continue
 			seen[subject] = [now_ms, pk]
 			_last[rid] = seen

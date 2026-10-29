@@ -21,7 +21,7 @@ func register() -> void:
 	_run_test("carcass: a drop puts the body where the host has it, not at a client-reported position", _test_drop_uses_host_position)
 	_run_test("carcass: a poor tool scales only its own entries; none entries keep the bare-hand yield", _test_bare_hand_entries_ignore_tool)
 	_run_test("carcass: a harvested stack keeps its quality grade through the bag, a sync and a save", _test_harvest_quality_reaches_stack)
-	_run_test("carcass: harvesting has its own wear value", _test_harvest_wear_value)
+	_run_test("carcass: harvesting wears by the default value", _test_harvest_wear_value)
 	_run_test("carcass: a fresh body adopts the dying creature's model, one body per kill", _test_adopts_dying_model)
 	_run_test("carcass: a body with no model to adopt draws the creature's own, never a white block", _test_own_body_model)
 	_run_test("carcass: a carried body rides on the carrier's shoulders, a dragged one stays down", _test_carried_body_lift)
@@ -502,8 +502,11 @@ func _test_bare_hand_entries_ignore_tool() -> void:
 	sl.free()
 
 
+## Phase 195 — a harvest wears the knife by the default decrement; its own entry equalled it and is gone (#444).
 func _test_harvest_wear_value() -> void:
-	assert_true(InventorySlice.ACTION_DECREMENT.has("harvest"), "harvest is listed in ACTION_DECREMENT")
+	assert_false(InventorySlice.ACTION_DECREMENT.has("harvest"), "harvest has no entry of its own")
+	assert_eq(float(InventorySlice.ACTION_DECREMENT.get("harvest", InventorySlice.DURABILITY_DECREMENT)), 1.0,
+		"a harvest still wears one point (the default)")
 
 
 func _test_adopts_dying_model() -> void:
@@ -595,5 +598,6 @@ func _test_carried_body_lift() -> void:
 	sl._place(cid)
 	assert_eq((sl._nodes[cid] as Node3D).position, Vector3(1, 0, 0), "a dragged body stays on the ground")
 	GameBus.carcass_drop_intent.emit("p1")
-	assert_eq((sl._nodes[cid] as Node3D).position, Vector3(1, 0, 0), "a dropped body lies on the ground")
+	# Phase 195 — it goes down at the carrier's host position (the fixture's p1 stands at the origin, in reach).
+	assert_eq((sl._nodes[cid] as Node3D).position, Vector3(0, 0, 0), "a dropped body lies on the ground at its carrier")
 	_free_fixture(f)

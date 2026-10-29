@@ -110,7 +110,6 @@ const ACTION_DECREMENT: Dictionary = {
 	"chop": 1.0,
 	"place": 1.0,
 	"attack": 1.0,
-	"harvest": 1.0,
 }
 
 ## Condition tiers ordered pristine → broken, mirroring the fabric's

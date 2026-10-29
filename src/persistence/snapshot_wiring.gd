@@ -137,15 +137,31 @@ func snapshot_own_record(player_id: String) -> Dictionary:
 
 ## Phase 163 — host: peer id -> { record key -> hash }, the generation records that peer holds.
 var records_sent: Dictionary = {}
+## Phase 195 — peer id -> the table `records_sent` becomes once the snapshot built last for that peer is
+## sent whole. Building a snapshot no longer advances `records_sent` itself (#444, #493).
+var _staged_records: Dictionary = {}
 
-## Send a snapshot built by `build_snapshot`. Building it already advanced `records_sent` to the new
-## scope; a snapshot that did not go out whole never reaches the client, so the peer's entry is
-## forgotten and its next re-scope carries every record again (#444).
+## Send a snapshot built by `build_snapshot`. Phase 195 — only a snapshot that went out whole advances
+## `records_sent` to the scope it carries; one that did not never reaches the client, so the table is left
+## as it was and the next delta carries the records this one held (#444, #493).
 func send_snapshot(peer_id: int, snapshot: Dictionary) -> bool:
 	var sent: bool = root._networking.send_snapshot(peer_id, snapshot)
-	if not sent:
-		records_sent.erase(peer_id)
+	if sent:
+		commit_staged_records(peer_id)
+	else:
+		_staged_records.erase(peer_id)
 	return sent
+
+## The peer now holds the records its last-built snapshot carried (called once that snapshot is sent).
+func commit_staged_records(peer_id: int) -> void:
+	if _staged_records.has(peer_id):
+		records_sent[peer_id] = _staged_records[peer_id]
+		_staged_records.erase(peer_id)
+
+## Forget what a peer holds (a leave, or a resend from scratch).
+func forget_records(peer_id: int) -> void:
+	records_sent.erase(peer_id)
+	_staged_records.erase(peer_id)
 
 ## Phase 109 — the generation records of the chunks in the peer's streamed window plus its first ring.
 ## The scope is named (`gen_scope`) so the client knows which part of its table the packet speaks for.
@@ -176,7 +192,7 @@ func add_generation_records(snapshot: Dictionary, peer_id: int, aoi_center: Vect
 		sent[key] = h
 		if held.get(key) != h:
 			out[key] = records[key]
-	records_sent[peer_id] = sent
+	_staged_records[peer_id] = sent   # committed by `send_snapshot` once it goes out whole
 	if out.is_empty():
 		return   # no records to attach
 	snapshot["gen_records"] = out
@@ -201,6 +217,8 @@ func _social_state() -> Dictionary:
 func _scoped_creatures(aoi_center: Vector3) -> Array:
 	var out: Array = []
 	for c in root._creature.get_snapshot_creatures():
+		if not c.has("position"):
+			continue   # a held death with no position (Phase 195): nothing for a client to place
 		var pos := WorldPos.from_wire(c.get("position", []))
 		if NetworkingSlice.within_aoi(aoi_center, pos):
 			out.append(c)

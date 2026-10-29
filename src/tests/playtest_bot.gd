@@ -144,6 +144,9 @@ const FAR_PEAK_SAME_RIDGE_M := 30000.0   ## a vantage on a peak this close to on
 const FAR_PEAK_STEP_SECS := 900.0    ## wall clock for the whole step (a try takes ~20-50 s)
 const FAR_PEAK_MIN_PX := 8            ## rock or snow pixels above the ring's skyline needed to pass
 const FAR_PEAK_SAT_MAX := 0.18        ## rock (grey) and snow (white) are below this saturation; land and sea are not
+## Phase 195 — least share of the band pixels above the ring's skyline that must be rock or snow (#444): any
+## band geometry (a near hill) draws there, a far peak draws grey and white. A run at the pinned seed saw 54%.
+const FAR_PEAK_MIN_ROCK_SHARE := 0.1
 const FAR_PEAK_TIMEOUT_SECS := 240.0
 const RIDGE_SIGHT_STEP_M := 500.0   ## the sight line to the ridge is sampled this often (`ridge_clearance`)
 const COAST_SEARCH_M := 4.0e6         ## the coast search marches this far from the body
@@ -1371,13 +1374,16 @@ func _harvest_after_kill(creature_key: String) -> Array:
 		_skip_until_ms = Time.get_ticks_msec() + TELEPORT_SETTLE_MS
 		await _hold_still(3.0)
 	GameBus.admin_healed.emit()
+	# Phase 195 — the body is laid where the player stands at the kill, and the host range-checks the harvest
+	# against it. The bot no longer rewrites the carcass's position (#493): it lets the body come to rest
+	# (a fall after the fight step's teleport, a rebase) before the kill instead.
+	await _hold_still(3.0)
 	var before: int = slice.count()
 	GameBus.creature_died.emit(creature_key, _root._player.get_position(), "player", Vector3.ZERO)
 	if slice.count() != before + 1:
 		return [false, "a kill left no carcass"]
 	var cid: String = slice.ids().back()
-	for e: Dictionary in slice._carcasses[cid]["entries"]:
-		e["chance"] = 1.0
+	slice.pin_entry_chances(cid, 1.0)
 	_root._inventory.add_item("SkinningKnife", 1)
 	_clear_creatures_near_body()
 	var held_before := {}
@@ -1405,17 +1411,14 @@ func _harvest_after_kill(creature_key: String) -> Array:
 		# bot's body can still be settling (falling after the fight step's teleport, or a rebase) at that instant.
 		# Start only once it has held still, so the origin the host records is the resting position.
 		await _hold_still(minf(left, 3.0))
-		# The body was laid where the player stood at the kill; a fall or rebase since then (CI saw
-		# "out_of_range" at 0.0 m from the surface) must not make the range check the thing under test.
-		if slice.has_carcass(cid):
-			slice._carcasses[cid]["position"] = _root._player.get_position()
 		var seen := verdict.size()
 		GameBus.harvest_intent.emit(cid, "")
 		await _until(func(): return verdict.size() > seen, left)
 		for item in held_before:
 			if _root._inventory.get_item_count(str(item)) > int(held_before[item]):
 				got.append(item)
-		if not got.is_empty() or verdict.size() <= seen or not ["damaged", "moved", "out_of_range"].has(str(verdict.back())):
+		# Only a cancelled try is retried; "out_of_range" is a real failure the step reports (#493).
+		if not got.is_empty() or verdict.size() <= seen or not ["damaged", "moved"].has(str(verdict.back())):
 			break
 	GameBus.harvest_resolved.disconnect(on_resolved)
 	GameBus.player_damaged.disconnect(on_damaged)
@@ -1835,16 +1838,23 @@ func _far_peak_attempt(found: Array, player) -> Array:
 	ring_img.save_png(ProjectSettings.globalize_path(OUT_DIR.path_join("far_peak_ring.png")))
 	all_img.save_png(ProjectSettings.globalize_path(OUT_DIR.path_join("far_peak_bands.png")))
 	var rows := skyline_rows(ring_img, SKYLINE_KEY)
-	# The tallest ridge on the seed is only ~350 m: its upper slopes may be grass at night, so the pass counts
-	# any band pixel above the ring (the rock/snow share is reported beside it).
+	# Phase 195 — the pass needs rock or snow, not any band pixel (#444): a near hill drawn by the bands also
+	# rises above the ring. The tallest ridge on the seed is only ~350 m and partly grass, so the rock/snow
+	# pixels need only be a share (`FAR_PEAK_MIN_ROCK_SHARE`) of the band pixels, and at least `FAR_PEAK_MIN_PX`.
 	var px := rock_pixels_above(all_img, rows, SKYLINE_KEY, 0.08, true)
 	var rock_px := rock_pixels_above(all_img, rows, SKYLINE_KEY)
+	var rock_ok := far_peak_passes(px, rock_px)
 	var worst_ms := 0.0
 	for f in _frames:
 		worst_ms = maxf(worst_ms, float(f))
-	var detail := "ridge %.0f m at %.0f km, bearing %.0f°: %d band px above the ring's skyline, %d of them rock/snow (need %d), worst frame %.0f ms" % [
-		float(found[3]), Vector2(spot_xz).distance_to(Vector2(found[2])) / 1000.0, bearing, px, rock_px, FAR_PEAK_MIN_PX, worst_ms]
-	return [px >= FAR_PEAK_MIN_PX, detail]
+	var detail := "ridge %.0f m at %.0f km, bearing %.0f°: %d band px above the ring's skyline, %d of them rock/snow (need %d and %.0f%%), worst frame %.0f ms" % [
+		float(found[3]), Vector2(spot_xz).distance_to(Vector2(found[2])) / 1000.0, bearing, px, rock_px, FAR_PEAK_MIN_PX, FAR_PEAK_MIN_ROCK_SHARE * 100.0, worst_ms]
+	return [rock_ok, detail]
+
+## Phase 195 — the far-peak verdict from the band pixels above the ring's skyline (`band_px`) and how many of
+## them are rock or snow (`rock_px`). Pure, so the suite pins it.
+static func far_peak_passes(band_px: int, rock_px: int) -> bool:
+	return rock_px >= FAR_PEAK_MIN_PX and float(rock_px) >= float(band_px) * FAR_PEAK_MIN_ROCK_SHARE
 
 ## True when every band whose origin moved since `before` (`[completed, origin]` per band) has
 ## completed a build newer than it, none is pending, and band 0 is centred on the cell the body stands

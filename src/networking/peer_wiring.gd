@@ -183,7 +183,7 @@ func _on_peer_disconnected(peer_id: int) -> void:
 		return
 	root._chunk_manager.clear_peer_center(peer_id)
 	_rescopes.erase(peer_id)
-	root._snapshot_wiring.records_sent.erase(peer_id)
+	root._snapshot_wiring.forget_records(peer_id)
 	var player_id := root._registry.get_player_id(peer_id)
 	if player_id.is_empty():
 		return
@@ -276,6 +276,19 @@ func player_targets() -> Dictionary:
 		if player_id.is_empty():
 			continue
 		out[player_id] = root._networking.get_last_known_state(int(peer_id))
+	return out
+
+## Phase 195 — `player_targets` at exact `{chunk, local}` positions (the same ids), so a creature far from
+## the origin is steered on an exact offset (#464).
+func player_exact_targets() -> Dictionary:
+	var out := {}
+	if root._player != null:
+		out["player"] = root._player.get_world_pos()
+	for peer_id in root._networking.get_last_known_states():
+		var player_id := root._registry.get_player_id(int(peer_id))
+		if player_id.is_empty():
+			continue
+		out[player_id] = peer_exact_pos(int(peer_id))
 	return out
 
 func _on_remote_avatar_state(peer_id: int, position: Vector3) -> void:
