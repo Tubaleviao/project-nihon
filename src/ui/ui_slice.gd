@@ -637,27 +637,28 @@ func inventory_rows() -> Array:
 	return _m2.inventory_rows()
 
 ## The `?` legend, moved here from the always-on HUD panel. Each row:
-## { keys, desc, mouse } where `mouse` is a MouseButton for a drawn cue, or 0.
+## { action, keys, desc, mouse } where `mouse` is a MouseButton for a drawn cue, or 0. `action` is the
+## id a tutorial step names in `inputs` (Phase 184, `Tutorial.inputActions`), in this row order.
 static func controls_rows() -> Array:
 	return [
-		{"keys": "WASD", "desc": I18n.t("controls.row0"), "mouse": 0},
-		{"keys": "Space", "desc": I18n.t("controls.row1"), "mouse": 0},
-		{"keys": I18n.t("controls.key.hold"), "desc": I18n.t("controls.row2"), "mouse": MOUSE_BUTTON_RIGHT},
-		{"keys": I18n.t("controls.key.scroll"), "desc": I18n.t("controls.row3"), "mouse": 0},
-		{"keys": "1 – 9", "desc": I18n.t("controls.row4"), "mouse": 0},
-		{"keys": "▴", "desc": I18n.t("controls.row5"), "mouse": 0},
-		{"keys": I18n.t("controls.key.drag"), "desc": I18n.t("controls.row6"), "mouse": 0},
-		{"keys": "", "desc": I18n.t("controls.row7"), "mouse": MOUSE_BUTTON_LEFT},
-		{"keys": "Shift +", "desc": I18n.t("controls.row8"), "mouse": MOUSE_BUTTON_LEFT},
-		{"keys": "", "desc": I18n.t("controls.row9"), "mouse": MOUSE_BUTTON_MIDDLE},
-		{"keys": "R", "desc": I18n.t("controls.row10"), "mouse": 0},
-		{"keys": "B · V", "desc": I18n.t("controls.row11"), "mouse": 0},
-		{"keys": "G", "desc": I18n.t("controls.row12"), "mouse": 0},
-		{"keys": "E", "desc": I18n.t("controls.row13"), "mouse": 0},
-		{"keys": "I · C · K · H · T · Y · P · G", "desc": I18n.t("controls.row14"), "mouse": 0},
-		{"keys": "?", "desc": I18n.t("controls.row15"), "mouse": 0},
-		{"keys": "Enter · /", "desc": I18n.t("controls.row16"), "mouse": 0},
-		{"keys": "ESC", "desc": I18n.t("controls.row17"), "mouse": 0},
+		{"action": "move", "keys": "WASD", "desc": I18n.t("controls.row0"), "mouse": 0},
+		{"action": "jump", "keys": "Space", "desc": I18n.t("controls.row1"), "mouse": 0},
+		{"action": "look", "keys": I18n.t("controls.key.hold"), "desc": I18n.t("controls.row2"), "mouse": MOUSE_BUTTON_RIGHT},
+		{"action": "zoom", "keys": I18n.t("controls.key.scroll"), "desc": I18n.t("controls.row3"), "mouse": 0},
+		{"action": "hotbar_use", "keys": "1 – 9", "desc": I18n.t("controls.row4"), "mouse": 0},
+		{"action": "hotbar_expand", "keys": "▴", "desc": I18n.t("controls.row5"), "mouse": 0},
+		{"action": "drag", "keys": I18n.t("controls.key.drag"), "desc": I18n.t("controls.row6"), "mouse": 0},
+		{"action": "attack", "keys": "", "desc": I18n.t("controls.row7"), "mouse": MOUSE_BUTTON_LEFT},
+		{"action": "mine", "keys": "Shift +", "desc": I18n.t("controls.row8"), "mouse": MOUSE_BUTTON_LEFT},
+		{"action": "place", "keys": "", "desc": I18n.t("controls.row9"), "mouse": MOUSE_BUTTON_MIDDLE},
+		{"action": "next_block", "keys": "R", "desc": I18n.t("controls.row10"), "mouse": 0},
+		{"action": "station", "keys": "B · V", "desc": I18n.t("controls.row11"), "mouse": 0},
+		{"action": "tame", "keys": "G", "desc": I18n.t("controls.row12"), "mouse": 0},
+		{"action": "equipment", "keys": "E", "desc": I18n.t("controls.row13"), "mouse": 0},
+		{"action": "windows", "keys": "I · C · K · H · T · Y · P · G", "desc": I18n.t("controls.row14"), "mouse": 0},
+		{"action": "controls", "keys": "?", "desc": I18n.t("controls.row15"), "mouse": 0},
+		{"action": "chat", "keys": "Enter · /", "desc": I18n.t("controls.row16"), "mouse": 0},
+		{"action": "close", "keys": "ESC", "desc": I18n.t("controls.row17"), "mouse": 0},
 	]
 
 func inventory_usage_text() -> String:

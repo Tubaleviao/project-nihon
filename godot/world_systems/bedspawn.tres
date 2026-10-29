@@ -1,0 +1,10 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/world_systems/bedspawn.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+rules = {"stationType":"bed","placementItem":"Bed","perPlayer":1,"notices":{"placed":"bed.placed","lost":"bed.lost"},"shelter":{"roofWithinMetres":3,"sideReachMetres":2,"minClosedSides":3,"wallCheckMetres":1}}
+description = "A bed a player places becomes where they come back after death. One bed per player; the bed must be placed like a station, and a shelter rule says when the space around it is a roofed room."
+tags = ["world-system"]

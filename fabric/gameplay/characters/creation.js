@@ -119,7 +119,9 @@ const GENDERS = {
 const DEFAULT_CREATION = { gender: 'masculine', hair: 'hair_m_crop', hairColor: 41 }
 
 // Items given once at creation. Server rules may replace the list; the sandbox has no class kits.
-const STARTING_KIT = [{ item: 'NoviceTunic', quantity: 1, equip: true }]
+// Phase 184 — a carpenter's axe: trees are the only wood source and need an axe, and every axe recipe
+// needs wood, so without one a new player could never reach planks, stations or a bed.
+const STARTING_KIT = [{ item: 'NoviceTunic', quantity: 1, equip: true }, { item: 'CarpenterAxe', quantity: 1 }]
 
 // Refusal keys the host sends; the client renders them through I18n.t (locale/ui.csv).
 const REFUSALS = [

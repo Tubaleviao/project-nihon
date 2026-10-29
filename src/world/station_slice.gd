@@ -114,9 +114,20 @@ func _compute_placeable_station_types() -> Array:
 	var settle: Resource = GameData.WORLD_SYSTEMS.get("Settlement", null)
 	if settle != null and settle.get("rules") is Dictionary and str(settle.get("rules").get("hearthStation", "")) != "":
 		types[str(settle.get("rules")["hearthStation"])] = true
+	# Phase 184 — and the bed (BedSpawn.stationType); Phase 185 makes it the owner's spawn point.
+	var bed_type := str(_bed_rules().get("stationType", ""))
+	if bed_type != "":
+		types[bed_type] = true
 	var out: Array = types.keys()
 	out.sort()
 	return out
+
+## The fabric bed rule (`GameData.WORLD_SYSTEMS["BedSpawn"].rules`), or {} with no fabric.
+static func _bed_rules() -> Dictionary:
+	var res: Resource = GameData.WORLD_SYSTEMS.get("BedSpawn", null)
+	if res == null or not (res.get("rules") is Dictionary):
+		return {}
+	return res.get("rules")
 
 ## The currently selected station type for placement, lazily initialised to the
 ## first fabric-derived type. Returns "" when no station type exists.
@@ -191,10 +202,14 @@ func try_place_station(type: String, position: Vector3, inventory: Node = null, 
 	return place_station(type, pos)
 
 ## The item one placement of a `type` station consumes, or "" for a free placement (the fabric's
-## `WaystoneTravel.placementItem` for the waystone type; forges and benches stay free).
+## `WaystoneTravel.placementItem` for the waystone type, `BedSpawn.placementItem` for the bed; forges and
+## benches stay free).
 func placement_item(type: String) -> String:
 	if settlement_slice != null and type == str(settlement_slice.rules()["hearthStation"]):
 		return str(settlement_slice.rules()["hearthItem"])
+	var bed := _bed_rules()
+	if not bed.is_empty() and type == str(bed.get("stationType", "")):
+		return str(bed.get("placementItem", ""))
 	var res: Resource = GameData.WORLD_SYSTEMS.get("WaystoneTravel", null)
 	if res == null or not (res.get("rules") is Dictionary):
 		return ""

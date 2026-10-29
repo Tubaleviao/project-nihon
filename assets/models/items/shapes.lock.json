@@ -7,6 +7,11 @@
       0.8,
       0.4
     ],
+    "bed": [
+      0.6,
+      0.4,
+      1.0
+    ],
     "block": [
       0.34,
       0.34,
@@ -138,6 +143,11 @@
       "archetype": "block",
       "scale": 1,
       "hash": "5a18c5c56f279612"
+    },
+    "Bed": {
+      "archetype": "bed",
+      "scale": 1,
+      "hash": "1d74ecd5d080e48e"
     },
     "BoneSaw": {
       "archetype": "saw",

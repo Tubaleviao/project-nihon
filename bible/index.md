@@ -90,6 +90,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [AethermiteShard](entities/aethermiteshard.md) — Raw aethermite refined into a crystalline shard at an arcane forge
 - [AlchemyPotion](entities/alchemypotion.md) — Sealed glass flask containing an Alchemist-brewed reagent
 - [AshiteBlock](entities/ashiteblock.md) — Quarried ashite stone block cut to standard building dimensions
+- [Bed](entities/bed.md) — A plank frame with a straw pallet
 - [BoneSaw](entities/bonesaw.md) — Broad-backed ferrite saw on a thornwood grip
 - [CarpenterAxe](entities/carpenteraxe.md) — Felling axe with a weighted ferrite head and a duskfiber-wrapped thornwood handle
 - [DuskfiberCloak](entities/duskfibercloak.md) — Hooded cloak woven from duskfiber bast
@@ -157,6 +158,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 
 - [RecipeAethermiteBow](entities/recipeaethermitebow.md) — Treat a thornwood bow stave with aethermite and restring with duskfiber to produce an aethermite bow
 - [RecipeAshiteBlock](entities/recipeashiteblock.md) — Cut and shape raw ashite stone into standard building blocks at a masonry bench
+- [RecipeBed](entities/recipebed.md) — Lash six thornwood planks into a bed frame with a straw pallet, by hand
 - [RecipeBoneSaw](entities/recipebonesaw.md) — Craft a bone saw from two ferrite ingots and one thornwood plank
 - [RecipeCarpenterAxe](entities/recipecarpenteraxe.md) — Assemble a carpenter axe from one ferrite ingot, one thornwood plank, and one duskfiber strand
 - [RecipeDuskfiberCloak](entities/recipeduskfibercloak.md) — Weave three duskfiber strands into a duskfiber cloak at a carpentry bench
@@ -235,8 +237,13 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [TechTextileWeaving](entities/techtextileweaving.md) — Fiber processing and loom construction techniques
 - [TechVoidMastery](entities/techvoidmastery.md) — Esoteric void-smithing and void-brewing techniques
 
+## Tutorial
+
+- [Tutorial](entities/tutorial.md) — The first-steps tutorial: an ordered list of small steps that teach a new player to move, gather, build the first stations and tools, make a shelter with a bed, hunt, stay alive, find their way, grow and meet other people
+
 ## World-system
 
+- [BedSpawn](entities/bedspawn.md) — A bed a player places becomes where they come back after death
 - [CombatSystem](entities/combatsystem.md) — Defines the rules governing all combat interactions — player vs creature, player vs player, and structure damage
 - [GovernanceSystem](entities/governancesystem.md) — Defines the rules of in-game community governance
 - [MarketSystem](entities/marketsystem.md) — Defines the rules of the persistent player-run market

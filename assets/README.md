@@ -41,8 +41,8 @@ file is stale, missing or orphaned. The private repo overrides them by key.
 when it or the files are stale, so rerun the generator after a fabric shape change. Ten creatures (GraywolfPack,
 ForestBoar, SteppeBison, GlimmerFox, VeilStalker, RiftWarden, RidgeHawk, CinderGargoyle,
 VoidSerpent, LavaSlug: `models/creatures/<Entity>.glb.raw` plus three textures each) have
-public placeholders, and all 28 items (CarpenterAxe, FerritePick, FerriteShortSword, FerriteShield,
-FerriteHelmet, VeilsteelLongsword, VeilsteelPick, VoiditeEdge, AethermiteBow, SkinningKnife, BoneSaw, VeilsteelChestplate, DuskfiberCloak, NoviceTunic, plus the 14 materials, consumables and stations: AethermiteDust, AethermiteShard, EnchantedAethermiteShard, AlchemyPotion, AshiteBlock, FerriteIngot, VeilsteelIngot, FieldRations, LumenfiteOrb, RefinedVoiditeShard, ThornwoodPlank, VoidRuneTablet, Hearth, Waystone) also have three
+public placeholders, and all 29 items (CarpenterAxe, FerritePick, FerriteShortSword, FerriteShield,
+FerriteHelmet, VeilsteelLongsword, VeilsteelPick, VoiditeEdge, AethermiteBow, SkinningKnife, BoneSaw, VeilsteelChestplate, DuskfiberCloak, NoviceTunic, plus the 15 materials, consumables and stations: AethermiteDust, AethermiteShard, EnchantedAethermiteShard, AlchemyPotion, AshiteBlock, FerriteIngot, VeilsteelIngot, FieldRations, LumenfiteOrb, RefinedVoiditeShard, ThornwoodPlank, VoidRuneTablet, Hearth, Waystone, Bed) also have three
 `textures/items/` sheets. Other `models/creatures/<Entity>.glb.raw` keys still work
 only through a code fallback (a procedural box). The asset roadmap in
 `project-nihon-assets/ROADMAP.md` adds each placeholder before the art for that key.

@@ -420,3 +420,79 @@ creation.name,Name,Nome
 creation.enter,Enter the world,Entrar no mundo
 creation.open,Create character,Criar personagem
 creation.welcome,"Welcome, {0}!","Bem-vindo(a), {0}!"
+bed.placed,Your bed is now where you come back after death.,Sua cama agora é onde você volta depois de morrer.
+bed.lost,"Your bed is gone, so you will come back at the world spawn.","Sua cama sumiu, então você voltará ao ponto de entrada do mundo."
+tutorial.chapter.moving,Moving,Movimento
+tutorial.chapter.gathering,Gathering,Coleta
+tutorial.chapter.first_stations,First stations,Primeiras estações
+tutorial.chapter.first_tools,First tools,Primeiras ferramentas
+tutorial.chapter.shelter,Shelter,Abrigo
+tutorial.chapter.first_hunt,First hunt,Primeira caçada
+tutorial.chapter.staying_alive,Staying alive,Sobrevivência
+tutorial.chapter.finding_way,Finding your way,Orientação
+tutorial.chapter.growing,Growing,Crescimento
+tutorial.chapter.other_people,Other people,Outras pessoas
+tutorial.move.title,Walk,Ande
+tutorial.move.body,Walk a few steps to look around your landing spot.,Ande alguns passos para conhecer o lugar onde você chegou.
+tutorial.jump.title,Jump,Pule
+tutorial.jump.body,Jump over a bump in the ground.,Pule por cima de um desnível do terreno.
+tutorial.look.title,Look around,Olhe ao redor
+tutorial.look.body,Hold to turn the camera and scroll to zoom in and out.,Segure para girar a câmera e role para aproximar ou afastar.
+tutorial.controls.title,Controls,Controles
+tutorial.controls.body,Open the controls panel. It lists every key and stays there when the tutorial is off.,Abra o painel de controles. Ele lista todas as teclas e continua lá quando o tutorial está desligado.
+tutorial.mine.title,Dig,Cave
+tutorial.mine.body,Dig into the ground with your bare hands. What you dig goes into your pack.,Cave o chão com as próprias mãos. O que você cavar vai para a sua mochila.
+tutorial.chop.title,Chop a tree,Corte uma árvore
+tutorial.chop.body,"You start with an axe. Click a tree trunk to chop it, and collect four logs.","Você começa com um machado. Clique no tronco de uma árvore para cortá-la e junte quatro toras."
+tutorial.inventory.title,Your pack,Sua mochila
+tutorial.inventory.body,Open the inventory to see what you carry and how heavy it is.,Abra o inventário para ver o que você carrega e quanto pesa.
+tutorial.hotbar.title,The bottom bar,A barra inferior
+tutorial.hotbar.body,"Expand the bottom bar and drag an item onto a box. Press the box's key to use it.","Expanda a barra inferior e arraste um item para uma caixa. Pressione a tecla da caixa para usá-lo."
+tutorial.technology.title,Technology,Tecnologia
+tutorial.technology.body,Open the technology window. Research unlocks new recipes.,Abra a janela de tecnologia. A pesquisa libera novas receitas.
+tutorial.research_carpentry.title,Learn carpentry,Aprenda carpintaria
+tutorial.research_carpentry.body,Research Basic Carpentry. It costs four logs and a little time.,Pesquise Carpintaria Básica. Custa quatro toras e um pouco de tempo.
+tutorial.place_bench.title,A carpentry bench,Uma bancada de carpintaria
+tutorial.place_bench.body,"Cycle the station type to the carpentry bench, then place it near you.","Alterne o tipo de estação até a bancada de carpintaria e coloque-a perto de você."
+tutorial.crafting.title,Crafting,Criação
+tutorial.crafting.body,Open the crafting window. It lists every recipe and what it needs.,Abra a janela de criação. Ela lista todas as receitas e o que cada uma exige.
+tutorial.craft_planks.title,Planks,Tábuas
+tutorial.craft_planks.body,"Stand by your bench and craft planks from logs. Planks build almost everything.","Fique perto da bancada e crie tábuas a partir de toras. As tábuas constroem quase tudo."
+tutorial.place_forge.title,A forge,Uma forja
+tutorial.place_forge.body,Place a forge. Metal tools and weapons are made at a forge.,Coloque uma forja. Ferramentas e armas de metal são feitas na forja.
+tutorial.research_smithing.title,Learn smithing,Aprenda ferraria
+tutorial.research_smithing.body,Research Basic Smithing to unlock ingots and the first metal tools.,Pesquise Ferraria Básica para liberar lingotes e as primeiras ferramentas de metal.
+tutorial.craft_tool.title,A pick,Uma picareta
+tutorial.craft_tool.body,"Dig up ferrite ore, smelt it into ingots and craft a pick. Its tooltip shows how much use it has left.","Cave minério de ferrita, funda-o em lingotes e crie uma picareta. A dica dela mostra quanto uso ainda resta."
+tutorial.use_tool.title,Better tools,Ferramentas melhores
+tutorial.use_tool.body,Dig with the pick in your pack. A better tool digs faster and wears out with use.,Cave com a picareta na mochila. Uma ferramenta melhor cava mais rápido e se desgasta com o uso.
+tutorial.craft_bed.title,A bed,Uma cama
+tutorial.craft_bed.body,Craft a bed from planks. It needs no station.,Crie uma cama com tábuas. Ela não precisa de estação.
+tutorial.place_bed.title,Place your bed,Coloque sua cama
+tutorial.place_bed.body,"Cycle the station type to the bed and place it. From now on, you come back at your bed after death.","Alterne o tipo de estação até a cama e coloque-a. A partir de agora, você volta à sua cama depois de morrer."
+tutorial.build_shelter.title,A roof over your bed,Um teto sobre a cama
+tutorial.build_shelter.body,"Place blocks to wall in your bed on at least three sides, and put a roof over it.","Coloque blocos para cercar a cama em pelo menos três lados e cubra-a com um teto."
+tutorial.equip_weapon.title,Arm yourself,Arme-se
+tutorial.equip_weapon.body,Craft a sword at the forge and equip it in your main hand.,Crie uma espada na forja e equipe-a na mão principal.
+tutorial.kill.title,Hunt,Cace
+tutorial.kill.body,Attack a creature until it falls. Some creatures fight back.,Ataque uma criatura até ela cair. Algumas criaturas revidam.
+tutorial.harvest.title,Harvest,Aproveite a caça
+tutorial.harvest.body,"Harvest the carcass for meat and hide, or carry it home. A knife yields more.","Aproveite a carcaça para obter carne e couro, ou carregue-a para casa. Uma faca rende mais."
+tutorial.respawn.title,Death is not the end,A morte não é o fim
+tutorial.respawn.body,"Your health regenerates over time, but nights and storms are dangerous. If you die, you come back at your bed.","Sua vida se regenera com o tempo, mas as noites e as tempestades são perigosas. Se você morrer, volta à sua cama."
+tutorial.map.title,The map,O mapa
+tutorial.map.body,Open the map. Mark waypoints on it to find your way back home.,Abra o mapa. Marque pontos de referência nele para achar o caminho de volta para casa.
+tutorial.waystone.title,Waystones,Pedras de passagem
+tutorial.waystone.body,Find a waystone and stand by it. Waystones you know let you travel far in an instant.,Encontre uma pedra de passagem e fique perto dela. As pedras que você conhece permitem viajar longe num instante.
+tutorial.skills.title,Skills,Habilidades
+tutorial.skills.body,Open the skills window. Skills grow by doing: chop to get better at chopping.,Abra a janela de habilidades. As habilidades crescem com o uso: corte para cortar melhor.
+tutorial.tier_up.title,A new tier,Um novo nível
+tutorial.tier_up.body,Keep using a skill until it reaches its next tier.,Continue usando uma habilidade até ela chegar ao próximo nível.
+tutorial.character.title,Your character,Seu personagem
+tutorial.character.body,"Open the character sheet to see your attributes, your equipment and what they add up to.","Abra a ficha do personagem para ver seus atributos, seu equipamento e o que eles somam."
+tutorial.chat.title,Say hello,Diga olá
+tutorial.chat.body,Open the chat and send a message. Type /help to list the commands.,Abra o chat e envie uma mensagem. Digite /help para listar os comandos.
+tutorial.trade.title,Trade,Troca
+tutorial.trade.body,Open the trade window to swap items with another player.,Abra a janela de troca para trocar itens com outro jogador.
+tutorial.settlement.title,Settlements,Assentamentos
+tutorial.settlement.body,"Open the settlement window. With friends and a Hearth, a shelter can grow into a village.","Abra a janela de assentamento. Com amigos e uma Lareira, um abrigo pode virar uma vila."

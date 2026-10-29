@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:33e09977f03f865a9e48d0a5949dd4f91b0d435656a507751782e87604e034d7",
+  "schemaHash": "sha256:e04a463f890a10a4b4affbf2b849c6fc393453ee05d8bf6278a07bccfa836c1d",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -18320,6 +18320,212 @@
         "pii": [],
         "gdpr": {}
       },
+      "Bed": {
+        "name": "Bed",
+        "tags": [
+          "item",
+          "station"
+        ],
+        "description": "A plank frame with a straw pallet. Placed as a bed station; the bed a player places becomes the place they come back to after death. One bed per player.",
+        "goal": "The first-hour item that turns a shelter into a home and a spawn point (Phases 184-185)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per bed",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 15
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "common"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "False; one bed per slot",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "bed",
+              "parts": {
+                "frame": "Thornwood",
+                "mattress": "Grass"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Structural integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 300
+          }
+        },
+        "relations": {
+          "plank": {
+            "name": "plank",
+            "kind": "hasOne",
+            "target": "ThornwoodPlank"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A bed does not wear while carried",
+            "rules": [
+              "Normal inventory storage never degrades a bed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-lash a worn bed at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Normal inventory storage never degrades a bed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Normal inventory storage never degrades a bed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Normal inventory storage never degrades a bed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
       "Sit": {
         "name": "Sit",
         "tags": [
@@ -21449,6 +21655,105 @@
         "pii": [],
         "gdpr": {}
       },
+      "RecipeBed": {
+        "name": "RecipeBed",
+        "tags": [
+          "recipe"
+        ],
+        "description": "Lash six thornwood planks into a bed frame with a straw pallet, by hand.",
+        "goal": "A first-hour spawn point: the bed a new player places in their first shelter (Phase 184)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "domain": {
+            "name": "domain",
+            "type": "enum",
+            "description": "Crafting station required",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "smithing",
+              "alchemy",
+              "arcane",
+              "carpentry"
+            ],
+            "pii": false
+          },
+          "outputCount": {
+            "name": "outputCount",
+            "type": "integer",
+            "description": "Number of output items produced per craft",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "carpentry",
+              "station": "",
+              "inputs": [
+                {
+                  "item": "ThornwoodPlank",
+                  "quantity": 6
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "Bed",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Carpentry",
+                  "tier": "novice"
+                }
+              ]
+            }
+          }
+        },
+        "relations": {
+          "inputPlank": {
+            "name": "inputPlank",
+            "kind": "hasOne",
+            "target": "ThornwoodPlank"
+          },
+          "output": {
+            "name": "output",
+            "kind": "hasOne",
+            "target": "Bed"
+          }
+        },
+        "behaviors": {
+          "craft": {
+            "name": "craft",
+            "description": "Lash planks into a bed anywhere, with no station",
+            "rules": [
+              "Requires Carpentry: Novice",
+              "Needs no station",
+              "Six planks yield one bed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
       "TechBasicSmithing": {
         "name": "TechBasicSmithing",
         "tags": [
@@ -21869,7 +22174,8 @@
               "unlocks": [
                 "RecipeThornwoodPlank",
                 "RecipeCarpenterAxe",
-                "RecipeWaystone"
+                "RecipeWaystone",
+                "RecipeBed"
               ],
               "requires": [],
               "researchDuration": 10,
@@ -21897,6 +22203,11 @@
             "name": "unlocksRecipeWaystone",
             "kind": "hasOne",
             "target": "RecipeWaystone"
+          },
+          "unlocksRecipeBed": {
+            "name": "unlocksRecipeBed",
+            "kind": "hasOne",
+            "target": "RecipeBed"
           }
         },
         "behaviors": {
@@ -22724,6 +23035,77 @@
               "The player is within the attune radius of the departure stone and attuned to both",
               "Both stones still exist and the cooldown has elapsed",
               "The cost is paid from the inventory; a refusal tells the owner why"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "BedSpawn": {
+        "name": "BedSpawn",
+        "tags": [
+          "world-system"
+        ],
+        "description": "A bed a player places becomes where they come back after death. One bed per player; the bed must be placed like a station, and a shelter rule says when the space around it is a roofed room.",
+        "goal": "Give a new player a home in their first hour and a reason to build a shelter",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "rules": {
+            "name": "rules",
+            "type": "json",
+            "description": "Bed rule: { stationType, placementItem, perPlayer, notices: { placed, lost }, shelter: { roofWithinMetres, sideReachMetres, minClosedSides, wallCheckMetres } } (validated at fabric load)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "stationType": "bed",
+              "placementItem": "Bed",
+              "perPlayer": 1,
+              "notices": {
+                "placed": "bed.placed",
+                "lost": "bed.lost"
+              },
+              "shelter": {
+                "roofWithinMetres": 3,
+                "sideReachMetres": 2,
+                "minClosedSides": 3,
+                "wallCheckMetres": 1
+              }
+            }
+          }
+        },
+        "relations": {},
+        "behaviors": {
+          "place": {
+            "name": "place",
+            "description": "Place a bed as a station; it becomes the owner's spawn point",
+            "rules": [
+              "Placing consumes one Bed item",
+              "A player owns at most perPlayer beds; a new one replaces the oldest"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "shelter": {
+            "name": "shelter",
+            "description": "Decide whether a bed is sheltered",
+            "rules": [
+              "A solid run starts above the bed and no more than roofWithinMetres above it",
+              "At least minClosedSides of the four sides have solid material at wall height within sideReachMetres"
             ],
             "auth": {
               "roles": [
@@ -33210,6 +33592,10 @@
                 "item": "NoviceTunic",
                 "quantity": 1,
                 "equip": true
+              },
+              {
+                "item": "CarpenterAxe",
+                "quantity": 1
               }
             ]
           },
@@ -33268,6 +33654,599 @@
               "The hair style belongs to the chosen gender and the colour is in the curated list",
               "Attributes start at the AttributeSystem base; the client sends no attribute values",
               "A refusal carries a keyed reason the client renders in its own locale"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "Tutorial": {
+        "name": "Tutorial",
+        "tags": [
+          "tutorial"
+        ],
+        "description": "The first-steps tutorial: an ordered list of small steps that teach a new player to move, gather, build the first stations and tools, make a shelter with a bed, hunt, stay alive, find their way, grow and meet other people. Each step names the keys it teaches and the event that completes it.",
+        "goal": "One guided path for the first hour, so the tutorial is the one place that teaches",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "chapters": {
+            "name": "chapters",
+            "type": "json",
+            "description": "Chapter ids in order; label tutorial.chapter.<id>",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "moving",
+              "gathering",
+              "first_stations",
+              "first_tools",
+              "shelter",
+              "first_hunt",
+              "staying_alive",
+              "finding_way",
+              "growing",
+              "other_people"
+            ]
+          },
+          "steps": {
+            "name": "steps",
+            "type": "json",
+            "description": "Ordered steps: [{ id, chapter, inputs, requires, trigger: { kind, ...params } }]; text tutorial.<id>.title / .body",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              {
+                "id": "move",
+                "chapter": "moving",
+                "inputs": [
+                  "move"
+                ],
+                "requires": [],
+                "trigger": {
+                  "kind": "moved_metres",
+                  "metres": 10
+                }
+              },
+              {
+                "id": "jump",
+                "chapter": "moving",
+                "inputs": [
+                  "jump"
+                ],
+                "requires": [
+                  "move"
+                ],
+                "trigger": {
+                  "kind": "jumped"
+                }
+              },
+              {
+                "id": "look",
+                "chapter": "moving",
+                "inputs": [
+                  "look",
+                  "zoom"
+                ],
+                "requires": [
+                  "move"
+                ],
+                "trigger": {
+                  "kind": "camera_turned"
+                }
+              },
+              {
+                "id": "controls",
+                "chapter": "moving",
+                "inputs": [
+                  "controls"
+                ],
+                "requires": [
+                  "look"
+                ],
+                "trigger": {
+                  "kind": "window_opened",
+                  "window": "controls"
+                }
+              },
+              {
+                "id": "mine",
+                "chapter": "gathering",
+                "inputs": [
+                  "mine"
+                ],
+                "requires": [
+                  "move"
+                ],
+                "trigger": {
+                  "kind": "item_gathered",
+                  "tag": "material",
+                  "count": 1
+                }
+              },
+              {
+                "id": "chop",
+                "chapter": "gathering",
+                "inputs": [
+                  "attack"
+                ],
+                "requires": [
+                  "mine"
+                ],
+                "trigger": {
+                  "kind": "item_gathered",
+                  "item": "Thornwood",
+                  "count": 4
+                }
+              },
+              {
+                "id": "inventory",
+                "chapter": "gathering",
+                "inputs": [],
+                "requires": [
+                  "mine"
+                ],
+                "trigger": {
+                  "kind": "window_opened",
+                  "window": "inventory"
+                }
+              },
+              {
+                "id": "hotbar",
+                "chapter": "gathering",
+                "inputs": [
+                  "drag",
+                  "hotbar_expand",
+                  "hotbar_use"
+                ],
+                "requires": [
+                  "inventory"
+                ],
+                "trigger": {
+                  "kind": "hotbar_bound"
+                }
+              },
+              {
+                "id": "technology",
+                "chapter": "first_stations",
+                "inputs": [],
+                "requires": [
+                  "chop"
+                ],
+                "trigger": {
+                  "kind": "window_opened",
+                  "window": "technology"
+                }
+              },
+              {
+                "id": "research_carpentry",
+                "chapter": "first_stations",
+                "inputs": [],
+                "requires": [
+                  "technology"
+                ],
+                "trigger": {
+                  "kind": "technology_researched",
+                  "technology": "TechBasicCarpentry"
+                }
+              },
+              {
+                "id": "place_bench",
+                "chapter": "first_stations",
+                "inputs": [
+                  "station"
+                ],
+                "requires": [
+                  "chop"
+                ],
+                "trigger": {
+                  "kind": "station_placed",
+                  "type": "carpentry bench"
+                }
+              },
+              {
+                "id": "crafting",
+                "chapter": "first_stations",
+                "inputs": [],
+                "requires": [
+                  "chop"
+                ],
+                "trigger": {
+                  "kind": "window_opened",
+                  "window": "crafting"
+                }
+              },
+              {
+                "id": "craft_planks",
+                "chapter": "first_stations",
+                "inputs": [],
+                "requires": [
+                  "place_bench",
+                  "research_carpentry",
+                  "crafting"
+                ],
+                "trigger": {
+                  "kind": "item_crafted",
+                  "item": "ThornwoodPlank"
+                }
+              },
+              {
+                "id": "place_forge",
+                "chapter": "first_tools",
+                "inputs": [
+                  "station"
+                ],
+                "requires": [
+                  "craft_planks"
+                ],
+                "trigger": {
+                  "kind": "station_placed",
+                  "type": "forge"
+                }
+              },
+              {
+                "id": "research_smithing",
+                "chapter": "first_tools",
+                "inputs": [],
+                "requires": [
+                  "place_forge"
+                ],
+                "trigger": {
+                  "kind": "technology_researched",
+                  "technology": "TechBasicSmithing"
+                }
+              },
+              {
+                "id": "craft_tool",
+                "chapter": "first_tools",
+                "inputs": [],
+                "requires": [
+                  "research_smithing"
+                ],
+                "trigger": {
+                  "kind": "item_crafted",
+                  "tag": "pick"
+                }
+              },
+              {
+                "id": "use_tool",
+                "chapter": "first_tools",
+                "inputs": [
+                  "mine"
+                ],
+                "requires": [
+                  "craft_tool"
+                ],
+                "trigger": {
+                  "kind": "item_gathered",
+                  "tag": "material",
+                  "count": 5
+                }
+              },
+              {
+                "id": "craft_bed",
+                "chapter": "shelter",
+                "inputs": [],
+                "requires": [
+                  "craft_planks"
+                ],
+                "trigger": {
+                  "kind": "item_crafted",
+                  "item": "Bed"
+                }
+              },
+              {
+                "id": "place_bed",
+                "chapter": "shelter",
+                "inputs": [
+                  "station"
+                ],
+                "requires": [
+                  "craft_bed"
+                ],
+                "trigger": {
+                  "kind": "bed_placed"
+                }
+              },
+              {
+                "id": "build_shelter",
+                "chapter": "shelter",
+                "inputs": [
+                  "next_block",
+                  "place"
+                ],
+                "requires": [
+                  "place_bed"
+                ],
+                "trigger": {
+                  "kind": "shelter_complete"
+                }
+              },
+              {
+                "id": "equip_weapon",
+                "chapter": "first_hunt",
+                "inputs": [
+                  "equipment"
+                ],
+                "requires": [
+                  "research_smithing"
+                ],
+                "trigger": {
+                  "kind": "item_equipped",
+                  "slot": "MainHand"
+                }
+              },
+              {
+                "id": "kill",
+                "chapter": "first_hunt",
+                "inputs": [
+                  "attack"
+                ],
+                "requires": [
+                  "equip_weapon"
+                ],
+                "trigger": {
+                  "kind": "creature_killed",
+                  "tag": "creature"
+                }
+              },
+              {
+                "id": "harvest",
+                "chapter": "first_hunt",
+                "inputs": [],
+                "requires": [
+                  "kill"
+                ],
+                "trigger": {
+                  "kind": "carcass_harvested"
+                }
+              },
+              {
+                "id": "respawn",
+                "chapter": "staying_alive",
+                "inputs": [],
+                "requires": [
+                  "place_bed"
+                ],
+                "trigger": {
+                  "kind": "respawned"
+                }
+              },
+              {
+                "id": "map",
+                "chapter": "finding_way",
+                "inputs": [],
+                "requires": [
+                  "move"
+                ],
+                "trigger": {
+                  "kind": "window_opened",
+                  "window": "map"
+                }
+              },
+              {
+                "id": "waystone",
+                "chapter": "finding_way",
+                "inputs": [],
+                "requires": [
+                  "map"
+                ],
+                "trigger": {
+                  "kind": "waystone_discovered"
+                }
+              },
+              {
+                "id": "skills",
+                "chapter": "growing",
+                "inputs": [],
+                "requires": [
+                  "chop"
+                ],
+                "trigger": {
+                  "kind": "window_opened",
+                  "window": "skills"
+                }
+              },
+              {
+                "id": "tier_up",
+                "chapter": "growing",
+                "inputs": [],
+                "requires": [
+                  "skills"
+                ],
+                "trigger": {
+                  "kind": "skill_tier_up"
+                }
+              },
+              {
+                "id": "character",
+                "chapter": "growing",
+                "inputs": [],
+                "requires": [
+                  "skills"
+                ],
+                "trigger": {
+                  "kind": "window_opened",
+                  "window": "character"
+                }
+              },
+              {
+                "id": "chat",
+                "chapter": "other_people",
+                "inputs": [
+                  "chat"
+                ],
+                "requires": [
+                  "controls"
+                ],
+                "trigger": {
+                  "kind": "chat_sent"
+                }
+              },
+              {
+                "id": "trade",
+                "chapter": "other_people",
+                "inputs": [],
+                "requires": [
+                  "chat"
+                ],
+                "trigger": {
+                  "kind": "window_opened",
+                  "window": "trade"
+                }
+              },
+              {
+                "id": "settlement",
+                "chapter": "other_people",
+                "inputs": [],
+                "requires": [
+                  "build_shelter"
+                ],
+                "trigger": {
+                  "kind": "window_opened",
+                  "window": "settlement"
+                }
+              }
+            ]
+          },
+          "triggerKinds": {
+            "name": "triggerKinds",
+            "type": "json",
+            "description": "The closed set of completion events: { <kind>: { required?, oneOf? } }",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "moved_metres": {
+                "required": [
+                  "metres"
+                ]
+              },
+              "camera_turned": {},
+              "jumped": {},
+              "item_gathered": {
+                "required": [
+                  "count"
+                ],
+                "oneOf": [
+                  "item",
+                  "tag"
+                ]
+              },
+              "item_crafted": {
+                "oneOf": [
+                  "item",
+                  "tag"
+                ]
+              },
+              "station_placed": {
+                "required": [
+                  "type"
+                ]
+              },
+              "window_opened": {
+                "required": [
+                  "window"
+                ]
+              },
+              "hotbar_bound": {},
+              "item_equipped": {
+                "required": [
+                  "slot"
+                ]
+              },
+              "creature_killed": {
+                "oneOf": [
+                  "creature",
+                  "tag"
+                ]
+              },
+              "carcass_harvested": {},
+              "bed_placed": {},
+              "shelter_complete": {},
+              "respawned": {},
+              "waystone_discovered": {},
+              "skill_tier_up": {},
+              "technology_researched": {
+                "required": [
+                  "technology"
+                ]
+              },
+              "chat_sent": {}
+            }
+          },
+          "inputActions": {
+            "name": "inputActions",
+            "type": "json",
+            "description": "Input action ids a step can name, in `?` controls-row order",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "move",
+              "jump",
+              "look",
+              "zoom",
+              "hotbar_use",
+              "hotbar_expand",
+              "drag",
+              "attack",
+              "mine",
+              "place",
+              "next_block",
+              "station",
+              "tame",
+              "equipment",
+              "windows",
+              "controls",
+              "chat",
+              "close"
+            ]
+          },
+          "windows": {
+            "name": "windows",
+            "type": "json",
+            "description": "UI window keys a window_opened trigger can name",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "inventory",
+              "technology",
+              "crafting",
+              "trade",
+              "market",
+              "proposals",
+              "controls",
+              "character",
+              "skills",
+              "map",
+              "settlement",
+              "gestures"
+            ]
+          }
+        },
+        "relations": {},
+        "behaviors": {
+          "progress": {
+            "name": "progress",
+            "description": "Show the next step and complete it from a client event",
+            "rules": [
+              "A step is eligible when every step it requires is done and it is neither done nor dismissed",
+              "A done or dismissed step never comes back; the whole tutorial can be turned off",
+              "The tutorial is client-side only and changes no game state"
             ],
             "auth": {
               "roles": [

@@ -457,6 +457,9 @@ jobs:
       - name: Check the character-creation validation rejects bad tables
         run: node tools/check_creation.js
 
+      - name: Check the tutorial and bed validation rejects bad tables
+        run: node tools/check_tutorial.js
+
       - name: Check the roadmap index matches the phase specs
         run: node tools/check_roadmap.js
 
