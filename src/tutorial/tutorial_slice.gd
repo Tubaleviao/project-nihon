@@ -50,7 +50,9 @@ func mark_done_silently(ids: Array) -> void:
 ## An event the client saw. Completes every eligible step it matches (the card's and any other whose `requires`
 ## are done); returns the first completed id, else "".
 func note_event(kind: String, params: Dictionary = {}) -> String:
-	if history.size() < MAX_HISTORY:
+	if kind == "moved_metres" and not history.is_empty() and str(history.back()["kind"]) == kind:
+		history.back()["params"]["metres"] = float(history.back()["params"]["metres"]) + float(params.get("metres", 0.0))
+	elif history.size() < MAX_HISTORY:
 		history.append({ "kind": kind, "params": params.duplicate(true) })
 	if kind == "moved_metres":
 		_metres += float(params.get("metres", 0.0))

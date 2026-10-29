@@ -193,7 +193,7 @@ func _test_playtest_flight_verdict() -> void:
 	assert_eq(Bot.flight_speed_from_args(["--playtest-flight-speed", "99"]), 270.0, "a factor over the admin cap is clamped")
 	assert_eq(Bot.only_from_args(["--playtest-only", "flight"]), "flight", "--playtest-only names one step")
 	assert_eq(Bot.only_from_args(["--playtest-bot"]), "", "no flag, every step")
-	assert_eq(Bot.all_step_names().size(), 14, "the full list: Phase 179 added character_sheet, Phase 181 create")
+	assert_eq(Bot.all_step_names().size(), 15, "the full list: Phase 179 added character_sheet, Phase 181 create, Phase 186 tutorial")
 	assert_eq(str(Bot.all_step_names()[0]), "create", "Phase 181: the character is created before the first walk")
 	var v: Dictionary = Bot.flight_verdict([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0], [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.5])
 	assert_true(bool(v["ok"]), "nine of ten passes")
