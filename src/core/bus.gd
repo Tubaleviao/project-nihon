@@ -230,6 +230,12 @@ signal bed_synced(player_id: String, bed: Dictionary)
 ## Phase 185 — a placed station was removed (not a world reload).
 signal station_removed(station_id: String)
 
+## Phase 186 — something the first-steps tutorial may count (kind from the fabric's trigger kinds, params as in
+## `TutorialRules.event_completes`). A local notification; it is never sent to the host.
+signal tutorial_event(kind: String, params: Dictionary)
+## Phase 186 — the tutorial's state changed (a step done or dismissed, the toggle, a restart): the card redraws.
+signal tutorial_changed()
+
 ## Phase 140 — a settlement intent: `action` is one of SettlementSlice.ACTIONS (found, invite, join, role,
 ## leave, deposit, withdraw, uninvite) and `args` its parameters. A client forwards it; the host binds the identity.
 signal settlement_intent(action: String, args: Dictionary, player_id: String)

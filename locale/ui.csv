@@ -14,7 +14,6 @@ chat.no_body,No body to kill here.,Não há corpo para matar aqui.
 chat.no_inventory,{0} has no inventory here.,{0} não tem inventário aqui.
 chat.no_player,No player '{0}' online.,Nenhum jogador '{0}' online.
 chat.pack_full,Your pack is full (weight or slots): drop or use something to pick up more.,Sua mochila está cheia (peso ou espaços): largue ou use algo para pegar mais.
-chat.placeholder,"Press Enter to chat, or / for commands (/help)",Pressione Enter para conversar ou / para comandos (/help)
 chat.player_joined,{0} joined the world.,{0} entrou no mundo.
 chat.players,{0} online: {1},{0} online: {1}
 chat.pos_unknown,Position of {0} is unknown.,A posição de {0} é desconhecida.
@@ -88,17 +87,15 @@ gesture.shrug,Shrug,Dar de ombros
 gesture.sit,Sit,Sentar
 gesture.sit_ground,Sit on the ground,Sentar no chão
 gesture.wave,Wave,Acenar
-hotbar.empty,"Empty box — pick things up, or drag an item or skill here",Caixa vazia — pegue coisas ou arraste um item ou habilidade para cá
 hotbar.fewer,Fewer boxes,Menos caixas
-hotbar.hint_block,{0}  ·  middle-click to place,{0}  ·  clique do meio para colocar
+hotbar.hint_block,{0},{0}
 hotbar.hint_gear,{0}  ·  worn,{0}  ·  vestido
-hotbar.hint_skill,{0}{1}  ·  press its key to use,{0}{1}  ·  pressione sua tecla para usar
+hotbar.hint_skill,{0}{1},{0}{1}
 hotbar.key_taken,{0} is already used by the game — pick another key,{0} já é usada pelo jogo — escolha outra tecla
 hotbar.menu_clear,Clear shortcut,Limpar atalho
 hotbar.menu_empty,Empty this box,Esvaziar esta caixa
 hotbar.menu_set,Set shortcut key…,Definir tecla de atalho…
-hotbar.press_key,Press the key for this box  ·  Esc cancels  ·  Backspace clears,Pressione a tecla desta caixa  ·  Esc cancela  ·  Backspace limpa
-hotbar.more,"More boxes — drag items and skills in, then right-click a box to pick its key",Mais caixas — arraste itens e habilidades e clique com o botão direito numa caixa para escolher a tecla
+hotbar.press_key,Binding this box  ·  Esc cancels  ·  Backspace clears,Definindo a tecla desta caixa  ·  Esc cancela  ·  Backspace limpa
 hud.chop,Chop: {0} (axe),Cortar: {0} (machado)
 hud.hp,HP {0} {1}/{2},PV {0} {1}/{2}
 hud.pickup,Pick up: {0},Pegar: {0}
@@ -109,12 +106,10 @@ load.building_pct,Building the world…  {0}%,Construindo o mundo…  {0}%
 locale.en,English,English
 locale.pt_BR,Português (Brasil),Português (Brasil)
 map.centre,Centre on me,Centralizar em mim
-map.delete_hint,"{0} (right-click to delete)
-{1}","{0} (botão direito para apagar)
+map.delete_hint,"{0}
+{1}","{0}
 {1}"
 map.edge,Nothing to mark there: that point is past the edge of the planet.,Nada para marcar ali: esse ponto está além da borda do planeta.
-map.hint,drag: pan  wheel: zoom  right-click: waypoint  shift+right-click: rename  click a waystone: travel,arrastar: mover  roda: zoom  botão direito: marcador  shift+botão direito: renomear  clicar numa pedra-guia: viajar
-map.hint_tip,"Right-click adds a waypoint, or deletes the one under the cursor",O botão direito adiciona um marcador ou apaga o que está sob o cursor
 map.planet,Planet,Planeta
 map.planet_tip,Fold the flat map into the planet,Dobra o mapa plano no planeta
 map.stand_at_waystone,Stand at a waystone to travel from it.,Fique numa pedra-guia para viajar a partir dela.
@@ -124,7 +119,7 @@ map.xy,X {0}  Y {1},X {0}  Y {1}
 map.zoom,Zoom {0}x,Zoom {0}x
 market.browse,Available listings:,Anúncios disponíveis:
 market.list,List,Anunciar
-market.list_failed,Couldn't list {0} — check you hold the quantity.,Não foi possível anunciar {0} — confira se você tem a quantidade.
+market.list_failed,Couldn't list {0} — check you have the quantity.,Não foi possível anunciar {0} — confira se você tem a quantidade.
 market.list_prompt,List an item for sale (item · qty · price):,Anunciar um item à venda (item · qtd · preço):
 market.listed,Listed {0} ×{1} @ {2}.,{0} ×{1} anunciado por {2}.
 msg.unknown,(unreadable message),(mensagem ilegível)
@@ -148,8 +143,8 @@ trade.blurb,Player-to-player trade with the merchant. Your Trade tier lowers the
 trade.completed,Trade completed — the merchant's goods were added to your inventory (less the Trade broker fee).,Troca concluída — os bens do mercador foram adicionados ao seu inventário (menos a taxa de corretagem).
 trade.ended,Trade session ended.,Sessão de troca encerrada.
 trade.entry,{0} {1} {2} ×{3},{0} {1} {2} ×{3}
-trade.none,"No active trade. Click ""Start trade"" to open a session with the merchant.","Nenhuma troca ativa. Clique em ""Iniciar troca"" para abrir uma sessão com o mercador."
-trade.open,"Trade {0} open — click ""Accept trade"" to complete the exchange.","Troca {0} aberta — clique em ""Aceitar troca"" para concluir a troca."
+trade.none,No active trade.,Nenhuma troca ativa.
+trade.open,Trade {0} open.,Troca {0} aberta.
 trade.rejected,Trade rejected.,Troca rejeitada.
 trade.side_give,offers,oferece
 trade.side_want,wants,quer
@@ -176,10 +171,8 @@ ui.repairs_header,— Repairs —,— Reparos —
 ui.research,Research,Pesquisar
 ui.research_points,Research points: {0},Pontos de pesquisa: {0}
 ui.researching,Researching {0}…,Pesquisando {0}…
-ui.skill_tip,"{0} ({1})
-Drag onto the bottom bar to use it with a key","{0} ({1})
-Arraste para a barra inferior para usá-la com uma tecla"
-ui.skills_title,Drag a skill onto the bottom bar,Arraste uma habilidade para a barra inferior
+ui.skill_tip,{0} ({1}),{0} ({1})
+ui.skills_title,Skills,Habilidades
 ui.slot_empty,{0}: empty,{0}: vazio
 ui.tech_line,{0} [{1}]  requires: {2}  cost: {3} + {4} pts  {5}s,{0} [{1}]  requer: {2}  custo: {3} + {4} pts  {5}s
 ui.tip_durability,"
@@ -285,7 +278,7 @@ reason.missing_goods,Missing goods.,Faltam mercadorias.
 reason.inventory_full,Pack is full.,Mochila cheia.
 reason.void_burst,A void burst struck.,Uma explosão do vazio atingiu.
 reason.already_pristine,Already pristine.,Já está perfeito.
-reason.no_item,You do not hold that item.,Você não tem esse item.
+reason.no_item,You do not have that item.,Você não tem esse item.
 reason.not_repairable,Cannot be repaired.,Não pode ser reparado.
 reason.unknown_technology,Unknown technology.,Tecnologia desconhecida.
 reason.already_unlocked,Already unlocked.,Já desbloqueado.
@@ -503,3 +496,11 @@ bed.refuse_not_yours,That is someone else's bed.,Essa é a cama de outra pessoa.
 bed.refuse_occupied,Something is already standing there.,Já há algo nesse lugar.
 bed.refuse_blocked,There is no room for a bed there.,Não há espaço para uma cama aí.
 bed.refuse_rate,Slow down; try the bed again in a moment.,Calma; tente a cama de novo em instantes.
+tutorial.dismiss,Dismiss,Dispensar
+tutorial.turn_off,Turn off tutorial,Desligar tutorial
+tutorial.done,✓ Done,✓ Feito
+tutorial.counter,Step {0} of {1},Passo {0} de {1}
+tutorial.toggle,Tutorial,Tutorial
+tutorial.restart,Restart tutorial,Reiniciar tutorial
+hotbar.more_boxes,More boxes,Mais caixas
+chat.field,Chat,Conversa

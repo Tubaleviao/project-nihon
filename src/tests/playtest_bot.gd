@@ -41,6 +41,7 @@ const ARG := "--playtest-bot"
 const OUT_DIR := "res://playtest"
 ## The bot's own save directory, emptied before the boot: a saved world must not pick the seed.
 const SAVE_DIR := "user://playtest/server/"
+const TUTORIAL_FILE := "user://playtest/tutorial.json"
 ## The world seed every run plays, so a step's verdict depends on the commit, not on a random world:
 ## on a fresh `randi()` seed far_peak, travel and horizon passed or failed by luck (a seed's tallest
 ## ridge is ~350 m against far_peak's 330). Where the bot stands still varies run to run (builder,
@@ -196,6 +197,12 @@ static func prepare(root: Node) -> void:
 	root._persistence.server_save_dir = SAVE_DIR
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(SAVE_DIR))
 	_clear_dir(SAVE_DIR)
+	# Phase 186 — the tutorial plays from its own fresh file, so the bot never marks or restarts the player's steps.
+	var tut = root._tutorial_wiring.slice
+	if tut != null:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(TUTORIAL_FILE))
+		tut.path = TUTORIAL_FILE
+		tut.load_saved()
 	var seed_v := seed_from_args(args)
 	root._terrain.set_world_seed(seed_v)
 	root._persistence_wiring.fixed_local_id = PLAYER_ID
@@ -242,7 +249,7 @@ static func flight_speed_from_args(args: Array) -> float:
 	return FLIGHT_SPEED_MPS
 
 static func all_step_names() -> Array:
-	return ["create", "walk", "stream", "flight", "mine", "gather", "craft", "character_sheet", "place", "fight", "travel", "horizon", "far_peak", "pole"]
+	return ["create", "walk", "stream", "flight", "mine", "gather", "craft", "character_sheet", "place", "fight", "tutorial", "travel", "horizon", "far_peak", "pole"]
 
 # ---------------------------------------------------------------------------
 # Pure report maths
@@ -1125,6 +1132,23 @@ func _place_walking(station_type: String, tries: int) -> int:
 		_key(KEY_W, false)
 	return 0
 
+## True once the body is within crafting reach of a `station_type`. When it is not, the body is walked (a
+## teleport) to station `station_id`. Returns whether it is in reach after that.
+func _reach_station(station_type: String, station_id: String) -> bool:
+	var radius: float = _root._crafting.STATION_RADIUS
+	if _root._station.station_near_player(station_type, radius):
+		return true
+	var m := WorldPos.CHUNK_METERS
+	var at: Vector3 = _root._station.get_station(station_id)["position"]
+	var chunk := Vector2i(floori(at.x / m), floori(at.z / m))
+	# Stand just above the station itself, not the generated ground under it: the aimed block can be a canopy
+	# or a ledge well above the ground, and a body dropped on the ground would still be out of reach.
+	var spot := WorldPos.normalized({ "chunk": chunk, "local": Vector3(at.x - float(chunk.x) * m, at.y + 1.5, at.z - float(chunk.y) * m) })
+	GameBus.player_teleport.emit(spot)
+	_skip_until_ms = Time.get_ticks_msec() + TELEPORT_SETTLE_MS
+	await _until(func(): return false, 1.0)   # the body settles
+	return _root._station.station_near_player(station_type, radius)
+
 ## Craft planks at a carpentry bench set down at the feet.
 func _step_craft() -> Array:
 	var tech: Variant = await _unlock("TechBasicCarpentry")
@@ -1137,20 +1161,7 @@ func _step_craft() -> Array:
 	if await _place_with_keys("carpentry bench") == 0:
 		return [false, "bench placement refused"]
 	await _until(func(): return false, 0.5)
-	var radius: float = _root._crafting.STATION_RADIUS
-	var near: bool = _root._station.station_near_player("carpentry bench", radius)
-	if not near:
-		var m := WorldPos.CHUNK_METERS
-		var at: Vector3 = _root._station.get_station(str(_placed.back()[0]))["position"]
-		var chunk := Vector2i(floori(at.x / m), floori(at.z / m))
-		# Stand just above the bench itself, not the generated ground under it: the aimed block can be a canopy
-		# or a ledge well above the ground, and a body dropped on the ground would still be out of reach.
-		var spot := WorldPos.normalized({ "chunk": chunk, "local": Vector3(at.x - float(chunk.x) * m, at.y + 1.5, at.z - float(chunk.y) * m) })
-		GameBus.player_teleport.emit(spot)
-		_skip_until_ms = Time.get_ticks_msec() + TELEPORT_SETTLE_MS
-		await _until(func(): return false, 1.0)   # the body settles
-		near = _root._station.station_near_player("carpentry bench", radius)
-	if not near:
+	if not await _reach_station("carpentry bench", str(_placed.back()[0])):
 		return [false, "the bench is out of reach of the body"]
 	var before := _crafted.size()
 	var planks: int = _root._inventory.get_item_count("ThornwoodPlank")
@@ -1384,6 +1395,84 @@ func _model_diag(iid: String) -> String:
 			parts.append("%.1f m from camera, state %s" % [(cam.global_position - vis.position).distance_to(inst["position"]), str(inst["state"])])
 			parts.append("camera %s, models node at %s, creature %s, player %s" % [str(cam.global_position), str(vis.position), str(inst["position"]), str(_player_pos())])
 	return ", ".join(parts)
+
+## Phase 186 — the tutorial ran beside the session. The windows the earlier steps did not open are opened with the
+## player's own windows keys' targets, then the events the tutorial saw are replayed: the moving, gathering,
+## first-tools, first-stations and first-hunt chapters must all complete. The screenshot shows a card.
+const TUTORIAL_CHAPTERS := ["moving", "gathering", "first_stations", "first_tools", "first_hunt"]
+
+## Hold the right button over the middle of the view and drag: the camera orbits as a player's look does.
+func _look_around() -> void:
+	var at: Vector2 = get_viewport().get_visible_rect().size * 0.5
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_RIGHT
+	press.pressed = true
+	press.position = at
+	Input.parse_input_event(press)
+	for _i in 10:   # 400 px: about 46°, past the tutorial's 30°
+		var motion := InputEventMouseMotion.new()
+		motion.relative = Vector2(40.0, 0.0)
+		motion.position = at
+		Input.parse_input_event(motion)
+	var release := press.duplicate()
+	release.pressed = false
+	Input.parse_input_event(release)
+
+func _step_tutorial() -> Array:
+	var wiring = _root._tutorial_wiring
+	if wiring.slice == null:
+		return [false, "no tutorial slice"]
+	# What the earlier steps never do, done the player's way: a jump, a look around with the right button held,
+	# smithing researched and a pick crafted at the place step's forge.
+	_key(KEY_SPACE, true)
+	await _until(func(): return false, 0.3)
+	_key(KEY_SPACE, false)
+	_look_around()
+	await _until(func(): return false, 0.2)
+	var tech: String = await _unlock("TechBasicSmithing")
+	if tech != "":
+		return [false, "research: %s" % tech]
+	var forge := ""
+	for p in _placed:
+		if str(p[1]) == "forge":
+			forge = str(p[0])
+	if forge == "" or not await _reach_station("forge", forge):
+		return [false, "no forge in reach for the pick"]
+	_root._inventory.add_item("FerriteIngot", 2)
+	_root._inventory.add_item("ThornwoodPlank", 1)
+	_root._crafting.set_skill("Smithing", "novice")
+	var crafted := _crafted.size()
+	GameBus.craft_requested.emit("RecipeFerritePick")
+	if not await _until(func(): return _crafted.size() > crafted, STEP_TIMEOUT_SECS) or not bool(_crafted.back().get("success", false)):
+		return [false, "pick craft: %s" % (str(_crafted.back().get("reason", "")) if _crafted.size() > crafted else "no craft_resolved")]
+	var ui: Node = _root._ui
+	for w in ["controls", "inventory", "technology", "crafting"]:
+		ui.open_window(w)
+	ui.hotbar.assign(0, "Thornwood")   # a box filled by hand, as a drag from the pack does
+	# The fight step wounds the sturdiest creature and harvests a carcass but never kills it (1989 hp); the death of
+	# a creature the player killed arrives on the same bus signal a real kill uses.
+	GameBus.creature_died.emit("playtest_target", _root._player.get_position(), _root._registry.local_player_id, Vector3.ZERO)
+	await _until(func(): return false, 0.3)
+	for w in ["controls", "inventory", "technology", "crafting"]:
+		ui.close_window(w)
+	var done: Array = wiring.Rules.replay(wiring.slice.history, wiring.slice.steps())
+	var state := { "enabled": true, "done": done, "dismissed": [] }
+	var missing := []
+	for c in TUTORIAL_CHAPTERS:
+		if not wiring.Rules.chapter_done(state, c, wiring.slice.steps()):
+			missing.append(c)
+	var kinds := {}
+	for ev in wiring.slice.history:
+		kinds[str(ev["kind"])] = int(kinds.get(str(ev["kind"]), 0)) + 1
+	print("[Playtest] tutorial events: ", kinds)
+	var open_steps := []
+	for s in wiring.slice.steps():
+		if TUTORIAL_CHAPTERS.has(str(s["chapter"])) and not done.has(str(s["id"])):
+			open_steps.append(str(s["id"]))
+	wiring.slice.restart()   # a card to photograph: the session starts the tutorial over
+	await _until(func(): return wiring.card != null and wiring.card.visible, 1.0)
+	var ok: bool = missing.is_empty() and wiring.card != null and wiring.card.visible
+	return [ok, "%d steps completed by the session; chapters missing: %s; open steps: %s" % [done.size(), str(missing), str(open_steps)]]
 
 ## Travel: two waystones set down with the player's own keys, attuned, then the intent; the body must land at the second.
 func _step_travel() -> Array:

@@ -140,11 +140,6 @@ func _build_map_content() -> Control:
 	here.focus_mode = Control.FOCUS_NONE
 	here.pressed.connect(func() -> void: sl.map_window.center_on_player())
 	row.add_child(here)
-	var hint = Label.new()
-	sl._set_tr(hint, "text", "map.hint")
-	sl._set_tr(hint, "tooltip_text", "map.hint_tip")
-	hint.mouse_filter = Control.MOUSE_FILTER_PASS
-	row.add_child(hint)
 	return box
 
 ## (Re)build the control rows in the active language.
@@ -154,7 +149,7 @@ func _refill_controls() -> void:
 	if sl._language_button != null:
 		sl._language_button.text = sl.language_button_text()
 	for child in sl._controls_box.get_children():
-		if child != sl._language_button:
+		if child != sl._language_button and not child.is_in_group("tutorial_settings"):
 			child.free()
 	var box = sl._controls_box
 	for row in sl.controls_rows():
