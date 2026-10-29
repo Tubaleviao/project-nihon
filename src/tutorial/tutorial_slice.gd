@@ -20,6 +20,10 @@ func load_saved() -> void:
 	state = State.load_state(path)
 	GameBus.tutorial_changed.emit()
 
+## True while nothing has been done or dismissed (a new install, or just after a restart).
+func is_fresh() -> bool:
+	return (state["done"] as Array).is_empty() and (state["dismissed"] as Array).is_empty()
+
 func steps() -> Array:
 	return _table if not _table.is_empty() else Rules.steps()
 

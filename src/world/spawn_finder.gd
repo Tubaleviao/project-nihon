@@ -10,6 +10,13 @@ const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
 const ColonizationMap := preload("res://src/world/colonization_map.gd")
 const PlayerRegistry := preload("res://src/persistence/player_registry.gd")
+const BedStore := preload("res://src/world/bed_store.gd")
+
+## Phase 185 — the respawn point a player RECORD implies: the bed (with `runs_at`, the nearest free cell if it is
+## blocked), else the original spawn.
+static func respawn_point_for(rec: Dictionary, runs_at: Callable = Callable()) -> Variant:
+	var bed: Variant = BedStore.respawn_bed(rec, runs_at)
+	return bed if bed != null else original_spawn_for(rec)
 
 ## Phase 66 — a player RECORD's own spawn without any bed (Phase 185): the original spawn, else (a record from
 ## before the field existed) its saved position, else null (a player never placed). Exact `{chunk, local}`.

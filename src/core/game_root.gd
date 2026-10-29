@@ -56,7 +56,7 @@ const CombatWiring := preload("res://src/battle/combat_wiring.gd")
 const WeatherWiring := preload("res://src/world/weather_wiring.gd")
 const WaystoneWiring := preload("res://src/world/waystone_wiring.gd")
 const BedWiring := preload("res://src/world/bed_wiring.gd")
-const BedStore := preload("res://src/world/bed_store.gd")
+const TutorialWiring := preload("res://src/tutorial/tutorial_wiring.gd")
 const BedSlice := preload("res://src/world/bed_slice.gd")
 const SettlementWiring := preload("res://src/settlement/settlement_wiring.gd")
 const CraftingWiring := preload("res://src/crafting/crafting_wiring.gd")
@@ -76,6 +76,7 @@ var _combat_wiring := CombatWiring.new()
 var _weather_wiring := WeatherWiring.new()
 var _waystone_wiring := WaystoneWiring.new()
 var _bed_wiring := BedWiring.new()
+var _tutorial_wiring := TutorialWiring.new()
 var _settlement_wiring := SettlementWiring.new()
 var _crafting_wiring := CraftingWiring.new()
 var _character_wiring := CharacterWiring.new()
@@ -246,7 +247,7 @@ var _handshake_retries: int = 0
 
 ## Phase 132 — wiring modules know their root from construction (the suite builds roots without `_ready`).
 func _init() -> void:
-	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _bed_wiring, _settlement_wiring, _crafting_wiring, _character_wiring, _gesture_wiring, _creation_wiring, _carcass_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring, _admin_wiring]
+	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _bed_wiring, _tutorial_wiring, _settlement_wiring, _crafting_wiring, _character_wiring, _gesture_wiring, _creation_wiring, _carcass_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring, _admin_wiring]
 	for w in _wirings:
 		w.root = self
 
@@ -434,6 +435,7 @@ func _ready() -> void:
 	_chat.weather_slice    = _weather
 	_player.weather_slice  = _weather
 	_bed_wiring.attach()   # Phase 185 — the bed is a station the host binds to its placer
+	_tutorial_wiring.attach()   # Phase 186 — the card and its slice (not on a dedicated server)
 	_waystone_wiring.attach()   # Phase 125 — waystone travel reuses the exact admin teleport door
 	if not _is_server:
 		_ui.inventory_slice       = _inventory
@@ -1172,11 +1174,9 @@ func _exit_tree() -> void:
 		_chunk_manager.flush_records_final()
 		ChunkRecords.clear()
 
-## Phase 66 — the respawn point a player RECORD implies, as an exact `{chunk, local}` (Phase 87): the bed
-## (Phase 185; with `runs_at`, the nearest free cell if it is blocked), else its original spawn, else null.
+## Phase 66 — the respawn point a player RECORD implies, as an exact `{chunk, local}`: the bed, else the original spawn.
 static func respawn_point_for(rec: Dictionary, runs_at: Callable = Callable()) -> Variant:
-	var bed: Variant = BedStore.respawn_bed(rec, runs_at)
-	return bed if bed != null else SpawnFinder.original_spawn_for(rec)
+	return SpawnFinder.respawn_point_for(rec, runs_at)
 
 ## Phase 66 — the respawn point of a client from its handshake `player` block, as an exact
 ## `{chunk, local}`: the host's recorded spawn when it sent a valid one, else where the body stands.
