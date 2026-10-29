@@ -14,6 +14,8 @@ func register() -> void:
 	_run_test("tutorial runtime: done and dismissed survive a reload; a corrupt or missing file is tutorial on, nothing done", _test_state_file)
 	_run_test("tutorial runtime: a fixture player with a tool, a station and a bed starts with those steps done", _test_veteran)
 	_run_test("tutorial runtime: the slice completes only the current step, counts metres and gathers, and restart resets", _test_slice)
+	_run_test("tutorial runtime: the removed UI instructions are gone and no catalog key outside tutorial.* and controls.* instructs", _test_catalog_audit)
+	_run_test("tutorial runtime: the card shows the step, the player's keys and the controls; the ? panel has the toggle and restart", _test_card)
 	_run_test("tutorial runtime: the slice sends no intent and no network message", _test_listens_only)
 
 func _fresh() -> Dictionary:
@@ -170,4 +172,61 @@ func _test_listens_only() -> void:
 	GameBus.settlement_intent.disconnect(a)
 	GameBus.bed_place_intent.disconnect(a)
 	sl.free()
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(FIXTURE))
+
+## Keys whose instruction moved into a tutorial step (Phase 186).
+const REMOVED := ["hotbar.empty", "hotbar.more", "map.hint", "map.hint_tip", "chat.placeholder"]
+const VERBS_EN := ["click", "right-click", "middle-click", "drag", "press", "hold", "scroll"]
+const VERBS_PT := ["clique", "clicar", "arraste", "arrastar", "pressione", "pressionar", "segure", "segurar", "role ", "rolar", "botão direito", "botão do meio"]
+
+func _test_catalog_audit() -> void:
+	var cats: Dictionary = I18nScript.parse_csv("res://locale/ui.csv")["catalog"]
+	for col in ["en", "pt_BR"]:
+		for k in REMOVED:
+			assert_false((cats[col] as Dictionary).has(k), "%s is gone from the %s column" % [k, col])
+		for k in cats[col]:
+			if str(k).begins_with("tutorial.") or str(k).begins_with("controls."):
+				continue
+			var text := str(cats[col][k]).to_lower()
+			for v in (VERBS_EN if col == "en" else VERBS_PT):
+				assert_false(_has_word(text, v), "%s (%s) has no instruction verb '%s'" % [k, col, v])
+	for k in ["tutorial.dismiss", "tutorial.turn_off", "tutorial.done", "tutorial.counter", "tutorial.toggle", "tutorial.restart"]:
+		assert_true((cats["en"] as Dictionary).has(k) and (cats["pt_BR"] as Dictionary).has(k), "%s is in both columns" % k)
+
+func _has_word(text: String, word: String) -> bool:
+	var i := text.find(word)
+	while i >= 0:
+		var before := text[i - 1] if i > 0 else " "
+		var end := i + word.length()
+		var after := text[end] if end < text.length() else " "
+		if not ("a" <= before and before <= "z") and not ("a" <= after and after <= "z"):
+			return true
+		i = text.find(word, i + 1)
+	return false
+
+func _test_card() -> void:
+	const Card := preload("res://src/tutorial/tutorial_card.gd")
+	var sl := TutorialSlice.new()
+	sl.path = FIXTURE
+	add_child(sl)
+	var card := Card.new()
+	add_child(card)
+	card.bind(sl)
+	assert_true(card.visible, "a new player sees a card")
+	assert_true(card._title.text != "" and card._title.text != "tutorial.move.title", "with the step's title")
+	assert_true(card._counter.text.contains("1"), "and the step counter")
+	var keys := Card.keys_for(sl.current_step(), UiSlice.controls_rows())
+	assert_true(keys.contains("WASD"), "the move step names the player's move keys (%s)" % keys)
+	assert_true(card._body.text.contains("WASD"), "the card body carries them")
+	sl.set_enabled(false)
+	assert_false(card.visible, "turning the tutorial off hides the card at once")
+	sl.set_enabled(true)
+	var box := VBoxContainer.new()
+	add_child(box)
+	Card.add_settings(box)
+	assert_eq(box.get_child_count(), 2, "the ? panel gets a toggle and a Restart button")
+	sl.free()
+	card.free()
+	box.free()
+	Card.active = null
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(FIXTURE))

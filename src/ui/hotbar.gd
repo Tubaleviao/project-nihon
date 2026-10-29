@@ -521,7 +521,7 @@ func _render(held: Dictionary = {}) -> void:
 		_row2.visible = expanded
 	if _more != null:
 		_more.text = "▴" if expanded else "▾"
-		_more.tooltip_text = I18n.t("hotbar.fewer") if expanded else I18n.t("hotbar.more")
+		_more.tooltip_text = I18n.t("hotbar.fewer") if expanded else I18n.t("hotbar.more_boxes")
 	for i in _buttons.size():
 		var b: Button = _buttons[i]
 		var entry := str(slots[i])
@@ -533,7 +533,7 @@ func _render(held: Dictionary = {}) -> void:
 		(_keys[i] as Label).text = _key_text(i)
 		if entry == "":
 			b.text = ""
-			b.tooltip_text = I18n.t("hotbar.empty")
+			b.tooltip_text = ""
 			continue
 		var kind := kind_at(i)
 		if kind == KIND_SKILL:

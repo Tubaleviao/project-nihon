@@ -752,7 +752,7 @@ func _on_system_message(key: String, args: Array, target_id: String) -> void:
 
 func _on_locale_changed(_locale: String) -> void:
 	if _field != null:
-		_field.placeholder_text = I18n.t("chat.placeholder")
+		_field.placeholder_text = I18n.t("chat.field")
 	if _log != null:
 		_refresh_log()
 
@@ -800,7 +800,7 @@ func _build_ui() -> void:
 
 	_field = LineEdit.new()
 	# Always on screen so the box can be found; Enter, `/` or a click gives it the keyboard.
-	_field.placeholder_text = I18n.t("chat.placeholder")
+	_field.placeholder_text = I18n.t("chat.field")
 	_field.max_length = ChatCommands.MAX_MESSAGE_CHARS
 	_field.focus_exited.connect(_on_field_focus_exited)
 	_field.text_submitted.connect(_on_text_submitted)
