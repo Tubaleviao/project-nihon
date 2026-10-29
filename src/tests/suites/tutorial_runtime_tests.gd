@@ -14,6 +14,7 @@ func register() -> void:
 	_run_test("tutorial runtime: done and dismissed survive a reload; a corrupt or missing file is tutorial on, nothing done", _test_state_file)
 	_run_test("tutorial runtime: a fixture player with a tool, a station and a bed starts with those steps done", _test_veteran)
 	_run_test("tutorial runtime: the slice completes only the current step, counts metres and gathers, and restart resets", _test_slice)
+	_run_test("tutorial runtime: replaying a session history completes the steps its events would", _test_replay)
 	_run_test("tutorial runtime: the removed UI instructions are gone and no catalog key outside tutorial.* and controls.* instructs", _test_catalog_audit)
 	_run_test("tutorial runtime: the card shows the step, the player's keys and the controls; the ? panel has the toggle and restart", _test_card)
 	_run_test("tutorial runtime: the slice sends no intent and no network message", _test_listens_only)
@@ -230,3 +231,18 @@ func _test_card() -> void:
 	box.free()
 	Card.active = null
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(FIXTURE))
+
+func _test_replay() -> void:
+	var history := [
+		{ "kind": "item_gathered", "params": { "item": "Thornwood", "tags": ["material"], "count": 3 } },
+		{ "kind": "item_gathered", "params": { "item": "Thornwood", "tags": ["material"], "count": 2 } },
+		{ "kind": "moved_metres", "params": { "metres": 4.0 } },
+		{ "kind": "moved_metres", "params": { "metres": 7.0 } },
+		{ "kind": "jumped", "params": {} },
+		{ "kind": "camera_turned", "params": {} },
+	]
+	var done: Array = Rules.replay(history)
+	for want in ["move", "jump", "look", "mine", "chop"]:
+		assert_true(done.has(want), "%s completes from the recorded session" % want)
+	assert_false(done.has("kill"), "a step with no matching event stays open")
+	assert_eq(Rules.replay([]), [], "an empty session completes nothing")
