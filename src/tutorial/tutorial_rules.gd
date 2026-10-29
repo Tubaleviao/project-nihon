@@ -11,11 +11,13 @@ static func steps() -> Array:
 static func _has(list: Variant, id: String) -> bool:
 	return list is Array and (list as Array).has(id)
 
-## The first step, in fabric order, that is not done or dismissed and whose `requires` are all done.
-## `{}` when the tutorial is off or nothing is left.
-static func next_step(state: Dictionary, table: Array = []) -> Dictionary:
+## Every step, in fabric order, that is not done or dismissed and whose `requires` are all done. Empty when the
+## tutorial is off. The first is the card; an event may complete any of them, so a player who does the second
+## thing first is not stuck on the first.
+static func eligible(state: Dictionary, table: Array = []) -> Array:
+	var out: Array = []
 	if not bool(state.get("enabled", true)):
-		return {}
+		return out
 	for s in (table if not table.is_empty() else steps()):
 		var id := str(s["id"])
 		if _has(state.get("done"), id) or _has(state.get("dismissed"), id):
@@ -26,8 +28,13 @@ static func next_step(state: Dictionary, table: Array = []) -> Dictionary:
 				ready = false
 				break
 		if ready:
-			return s
-	return {}
+			out.append(s)
+	return out
+
+## The step on the card: the first eligible one, `{}` when the tutorial is off or nothing is left.
+static func next_step(state: Dictionary, table: Array = []) -> Dictionary:
+	var e := eligible(state, table)
+	return e[0] if not e.is_empty() else {}
 
 ## True when the event `kind` with `params` completes `step`'s trigger. Count-based triggers
 ## (`moved_metres`, `item_gathered`) compare the event's running `metres` / `count` with the trigger's.
@@ -126,3 +133,38 @@ static func ids_satisfied(facts: Dictionary, table: Array = []) -> Array:
 		if done.has(str(s["id"])):
 			out.append(str(s["id"]))
 	return out
+
+## The step ids a recorded event `history` (`[{ kind, params }]`, oldest first) would complete, in the order the
+## tutorial offers them: events are replayed in passes until nothing more completes, with movement and
+## gathers summed over the whole history. The playtest bot uses it to check its own session.
+static func replay(history: Array, table: Array = []) -> Array:
+	var tbl: Array = table if not table.is_empty() else steps()
+	var metres := 0.0
+	var by_item := {}
+	var by_tag := {}
+	for ev in history:
+		var p: Dictionary = ev["params"]
+		if str(ev["kind"]) == "moved_metres":
+			metres += float(p.get("metres", 0.0))
+		elif str(ev["kind"]) == "item_gathered":
+			var n := int(p.get("count", 1))
+			by_item[str(p.get("item", ""))] = int(by_item.get(str(p.get("item", "")), 0)) + n
+			for tg in p.get("tags", []):
+				by_tag[str(tg)] = int(by_tag.get(str(tg), 0)) + n
+	var state := { "enabled": true, "done": [], "dismissed": [] }
+	var progressed := true
+	while progressed:
+		progressed = false
+		for ev in history:
+			var kind := str(ev["kind"])
+			for step in eligible(state, tbl):
+				var p: Dictionary = (ev["params"] as Dictionary).duplicate()
+				if kind == "moved_metres":
+					p["metres"] = metres
+				elif kind == "item_gathered":
+					var t: Dictionary = step["trigger"]
+					p["count"] = int(by_item.get(str(t["item"]), 0)) if t.has("item") else int(by_tag.get(str(t.get("tag", "")), 0))
+				if event_completes(step, kind, p):
+					(state["done"] as Array).append(str(step["id"]))
+					progressed = true
+	return state["done"]

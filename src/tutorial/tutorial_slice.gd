@@ -14,7 +14,11 @@ var path: String = ""
 var _table: Array = []
 ## Metres walked, so a `moved_metres` trigger counts the distance rather than one step.
 var _metres: float = 0.0
-var _gathered: Dictionary = {}   ## tag -> count gathered since the current step began
+var _gathered_items: Dictionary = {}   ## item -> count gathered this session
+var _gathered_tags: Dictionary = {}    ## tag -> count gathered this session
+## Every event seen this session, oldest first and capped (`TutorialRules.replay` reads it).
+var history: Array = []
+const MAX_HISTORY := 600
 
 func load_saved() -> void:
 	state = State.load_state(path)
@@ -43,28 +47,32 @@ func mark_done_silently(ids: Array) -> void:
 	if changed:
 		_commit()
 
-## An event the client saw. Completes the current step when it matches; returns its id, else "".
-## Only the step on the card completes, so a step never finishes before the player is shown it.
+## An event the client saw. Completes every eligible step it matches (the card's and any other whose `requires`
+## are done); returns the first completed id, else "".
 func note_event(kind: String, params: Dictionary = {}) -> String:
+	if history.size() < MAX_HISTORY:
+		history.append({ "kind": kind, "params": params.duplicate(true) })
 	if kind == "moved_metres":
 		_metres += float(params.get("metres", 0.0))
-		params = { "metres": _metres }
-	var step := current_step()
-	if step.is_empty():
-		return ""
-	if kind == "item_gathered":
-		var tags: Array = params.get("tags", [])
-		for tg in tags:
-			_gathered[str(tg)] = int(_gathered.get(str(tg), 0)) + int(params.get("count", 1))
-		params = params.duplicate()
-		params["count"] = _gathered.get(str(step["trigger"].get("tag", "")), 0) if step["trigger"].has("tag") \
-			else int(params.get("count", 1))
-	if not Rules.event_completes(step, kind, params):
-		return ""
-	(state["done"] as Array).append(str(step["id"]))
-	_gathered.clear()
-	_commit()
-	return str(step["id"])
+	elif kind == "item_gathered":
+		var n := int(params.get("count", 1))
+		_gathered_items[str(params.get("item", ""))] = int(_gathered_items.get(str(params.get("item", "")), 0)) + n
+		for tg in params.get("tags", []):
+			_gathered_tags[str(tg)] = int(_gathered_tags.get(str(tg), 0)) + n
+	var first := ""
+	for step in Rules.eligible(state, steps()):
+		var p := params
+		if kind == "moved_metres":
+			p = { "metres": _metres }
+		elif kind == "item_gathered":
+			var t: Dictionary = step["trigger"]
+			p = { "count": int(_gathered_items.get(str(t["item"]), 0)) if t.has("item") else int(_gathered_tags.get(str(t.get("tag", "")), 0)) }
+		if Rules.event_completes(step, kind, p):
+			(state["done"] as Array).append(str(step["id"]))
+			first = first if first != "" else str(step["id"])
+	if first != "":
+		_commit()
+	return first
 
 func dismiss_current() -> void:
 	var step := current_step()
@@ -81,7 +89,8 @@ func set_enabled(on: bool) -> void:
 func restart() -> void:
 	state = State.fresh()
 	_metres = 0.0
-	_gathered.clear()
+	_gathered_items.clear()
+	_gathered_tags.clear()
 	_commit()
 
 func _commit() -> void:
