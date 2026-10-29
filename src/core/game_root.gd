@@ -56,6 +56,7 @@ const CombatWiring := preload("res://src/battle/combat_wiring.gd")
 const WeatherWiring := preload("res://src/world/weather_wiring.gd")
 const WaystoneWiring := preload("res://src/world/waystone_wiring.gd")
 const BedWiring := preload("res://src/world/bed_wiring.gd")
+const BedStore := preload("res://src/world/bed_store.gd")
 const BedSlice := preload("res://src/world/bed_slice.gd")
 const SettlementWiring := preload("res://src/settlement/settlement_wiring.gd")
 const CraftingWiring := preload("res://src/crafting/crafting_wiring.gd")
@@ -1172,28 +1173,10 @@ func _exit_tree() -> void:
 		ChunkRecords.clear()
 
 ## Phase 66 — the respawn point a player RECORD implies, as an exact `{chunk, local}` (Phase 87): the bed
-## (Phase 185), else its original spawn, else (a record from before the field existed) its saved position,
-## else null (a player never placed). With `runs_at` (the world's column runs) a bed whose spot is now
-## blocked yields the nearest free standing cell within BedRule.SEARCH_TILES, else the original spawn.
+## (Phase 185; with `runs_at`, the nearest free cell if it is blocked), else its original spawn, else null.
 static func respawn_point_for(rec: Dictionary, runs_at: Callable = Callable()) -> Variant:
-	var bed: Variant = PlayerRegistry.bed_from_record(rec)
-	if bed != null:
-		if not runs_at.is_valid():
-			return bed
-		var free: Variant = BedWiring.free_spot(bed, runs_at)
-		if free != null:
-			return free
-	return original_spawn_for(rec)
-
-## The respawn point without any bed: the original spawn, else the saved position, else null.
-static func original_spawn_for(rec: Dictionary) -> Variant:
-	var spawn: Variant = PlayerRegistry.spawn_from_record(rec)
-	if spawn != null:
-		return spawn
-	var arr: Variant = rec.get("position", [])
-	if arr is Array and (arr as Array).size() >= 3:
-		return PlayerRegistry.world_pos_of(rec)
-	return null
+	var bed: Variant = BedStore.respawn_bed(rec, runs_at)
+	return bed if bed != null else SpawnFinder.original_spawn_for(rec)
 
 ## Phase 66 — the respawn point of a client from its handshake `player` block, as an exact
 ## `{chunk, local}`: the host's recorded spawn when it sent a valid one, else where the body stands.

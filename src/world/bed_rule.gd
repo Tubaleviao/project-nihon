@@ -11,6 +11,8 @@ const CLEARANCE := 1.8
 const SEARCH_TILES := 6
 const SEARCH_HEIGHT := 3.0
 const EPS := 0.001
+## Ground that rises less than this above a body's feet is a lip it steps over, not a wall.
+const LIP := 0.25
 
 ## The fabric bed table, or {} with no fabric.
 static func rules() -> Dictionary:
@@ -25,7 +27,7 @@ static func tile_of(pos: Vector3) -> Vector2i:
 ## True when a body standing with its feet at `pos` overlaps solid material.
 static func blocked(pos: Vector3, runs_at: Callable) -> bool:
 	for run in runs_at.call(tile_of(pos)):
-		if float(run["bottom"]) < pos.y + CLEARANCE - EPS and float(run["top"]) > pos.y + EPS:
+		if float(run["bottom"]) < pos.y + CLEARANCE - EPS and float(run["top"]) > pos.y + LIP:
 			return true
 	return false
 

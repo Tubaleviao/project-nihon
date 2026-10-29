@@ -56,6 +56,7 @@ extends Node
 ## (see `unawaited_waits`): that mistake compiles, runs, and turns this scenario's waits
 ## into no-ops, and the synchronous suite cannot see it because it cannot host a pump.
 
+const BedStore := preload("res://src/world/bed_store.gd")
 const I18n := preload("res://src/core/i18n.gd")
 const PlayerSlice := preload("res://src/player/player_slice.gd")
 const AttributeRules := preload("res://src/character/attribute_rules.gd")
@@ -177,6 +178,7 @@ static func steps() -> Array:
 		{ "name": "join_line_localized", "compare": true },
 		{ "name": "admin_teleport",    "compare": true },
 		{ "name": "waystone_travel",   "compare": true },
+		{ "name": "bed_spawn",         "compare": true },
 		{ "name": "settlement",        "compare": true },
 		{ "name": "non_admin_refused", "compare": true },
 		{ "name": "equipment_recorded", "compare": true },
@@ -417,6 +419,7 @@ func run(root: Node, role: String) -> void:
 	await _step_join_line_localized()
 	await _step_admin_teleport()
 	await _step_waystone_travel()
+	await _step_bed_spawn()
 	await _step_settlement()
 	await _step_non_admin_refused()
 	await _step_equipment_recorded()
@@ -913,6 +916,46 @@ func _step_waystone_travel() -> void:
 	_report_actual = false
 	_report_position()
 	_report("waystone_travel", verdict(got and near, true), "travelled-to-second-stone" if (got and near) else "no_travel-got%d-near%d" % [int(got), int(near)])
+	GameBus.player_teleport.emit(home)
+	await _await_settle(1.0)
+
+## Phase 185 — the bed is the spawn point, host-owned and owner-only. The host hands the client a Bed; the
+## client places it over the socket (an intent, not a local placement); the host records it and syncs it to
+## that client alone (the host's own bed state must stay empty); the client's respawn then lands at the bed.
+func _step_bed_spawn() -> void:
+	await _await_settle(1.0 * _time_scale)
+	if _role == "host":
+		var target := _bound_id()
+		if target == "":
+			_report("bed_spawn", "fail", "no_owner")
+			return
+		var pack: Node = _root._registry.get_inventory(target)
+		pack.add_item("Bed", 1)
+		GameBus.inventory_synced.emit(target, pack.get_contents(), {})   # the client's pack, as a grant would
+		var placed: bool = await _await_until(func(): return BedStore.of(_root._registry, target) != null, _step_timeout())
+		var own_clean: bool = _root._bed_wiring._bed.is_empty() and BedStore.of(_root._registry, _root._registry.local_player_id) == null
+		var item_gone: bool = _root._registry.get_inventory(target).get_item_count("Bed") == 0
+		_report("bed_spawn", verdict(placed and own_clean and item_gone, true),
+			"bed-spawn" if (placed and own_clean and item_gone) else "placed%d-owner_only%d-consumed%d" % [int(placed), int(own_clean), int(item_gone)])
+		return
+	if not await _await_until(func(): return _root._inventory.get_item_count("Bed") >= 1, _step_timeout()):
+		_report("bed_spawn", "fail", "no_bed_item")
+		return
+	var tries := 0
+	while tries < int(_step_timeout()) and _root._bed_wiring._bed.is_empty():
+		# Feet height (the body's origin is 0.9 m above them), 1.5 m beside the body.
+		GameBus.bed_place_intent.emit(Vector3(1.5, -0.9, 0.0), "")
+		tries += 1
+		await _await_until(func(): return not _root._bed_wiring._bed.is_empty(), 1.0)
+	var bed: Dictionary = _root._bed_wiring._bed
+	if bed.is_empty():
+		_report("bed_spawn", "fail", "bed_never_synced")
+		return
+	var home: Dictionary = _root._player.get_world_pos()
+	_root._player._respawn()
+	var at: Dictionary = _root._player.get_world_pos()
+	var near: bool = WorldPos.offset_between(at, bed).length() < 3.5
+	_report("bed_spawn", verdict(near, true), "bed-spawn" if near else "respawn_missed_bed")
 	GameBus.player_teleport.emit(home)
 	await _await_settle(1.0)
 

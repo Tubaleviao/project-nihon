@@ -317,7 +317,6 @@ func _ready() -> void:
 	GameBus.research_intent.connect(_on_research_intent)
 	GameBus.waystone_travel_intent.connect(_on_waystone_travel_intent)
 	GameBus.settlement_intent.connect(_on_settlement_intent)
-	GameBus.bed_place_intent.connect(_on_bed_place_intent)
 	# Phase 35 — taming is per-player as well (a granted flag and a companion
 	# binding both live on the tamer's record), so it travels the same way.
 	GameBus.tame_intent.connect(_on_tame_intent)
@@ -719,12 +718,6 @@ func _on_waystone_travel_intent(from_id: String, to_id: String, _player_id: Stri
 	if _role != Role.CLIENT:
 		return
 	_broadcast({ "type": "waystone_travel_intent", "from": from_id, "to": to_id })
-
-## Phase 185 — a client forwards a bed placement; the host binds the identity and validates the rest.
-func _on_bed_place_intent(offset: Vector3, _player_id: String) -> void:
-	if _role != Role.CLIENT:
-		return
-	_broadcast({ "type": "bed_place_intent", "offset": [offset.x, offset.y, offset.z] })
 
 ## Phase 140 — a client forwards a settlement intent; the host binds the identity and validates the rest.
 func _on_settlement_intent(action: String, args: Dictionary, _player_id: String) -> void:

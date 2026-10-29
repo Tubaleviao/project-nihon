@@ -2,7 +2,7 @@ extends Node
 ## Bed slice (Phase 185) — the bed is a player's spawn point, and the host owns it.
 ##
 ## A bed is a station of the fabric's `BedSpawn.stationType`. The host records the owner's bed on the
-## player record (`PlayerRegistry.set_bed`, an exact `{chunk, local}` plus the station that draws it);
+## player record (`BedStore.set_bed`, an exact `{chunk, local}` plus the station that draws it);
 ## placing a second one removes the first, which drops back as an item. A bed whose station or support
 ## is gone is cleared and its owner told with a keyed notice.
 ##
@@ -15,6 +15,7 @@ extends Node
 ## host does not know where the body is), `runs_at` and `now_fn` (seconds).
 
 const WorldPos := preload("res://src/terrain/world_pos.gd")
+const BedStore := preload("res://src/world/bed_store.gd")
 const BedRule := preload("res://src/world/bed_rule.gd")
 
 ## A placement must be this close to the placer's body (m).
@@ -74,7 +75,7 @@ func refusal(pid: String, offset: Vector3) -> String:
 	if why == "inside_claim":
 		return "bed.refuse_claim"
 	if why.begins_with("too_close_station:"):
-		var other: String = registry.bed_owner_of_station(why.get_slice(":", 1))
+		var other: String = BedStore.owner_of_station(registry, why.get_slice(":", 1))
 		if other != "" and other != pid:
 			return "bed.refuse_not_yours"
 		return "bed.refuse_occupied"
@@ -115,14 +116,14 @@ func _on_intent(offset: Vector3, player_id: String) -> void:
 func claim(pid: String, station_id: String, exact: Dictionary) -> void:
 	if registry == null or pid == "":
 		return
-	var old: String = registry.bed_station_of(pid)
-	if old != "" and old != station_id and registry.bed_of(pid) != null:
+	var old: String = BedStore.station_of(registry, pid)
+	if old != "" and old != station_id and BedStore.of(registry, pid) != null:
 		_drop_station(old)
 		var inv: Node = registry.get_inventory(pid)
 		if inv != null:
 			inv.add_item(placement_item(), 1)
-	registry.set_bed(pid, exact, station_id)
-	GameBus.bed_synced.emit(pid, registry.bed_of(pid))
+	BedStore.set_bed(registry, pid, exact, station_id)
+	GameBus.bed_synced.emit(pid, BedStore.of(registry, pid))
 	GameBus.bed_resolved.emit(pid, true, str(BedRule.rules().get("notices", {}).get("placed", "bed.placed")))
 
 func _drop_station(station_id: String) -> void:
@@ -131,16 +132,16 @@ func _drop_station(station_id: String) -> void:
 
 ## Forget `pid`'s bed and tell the owner (`lost` notice) when `notify`.
 func clear(pid: String, notify: bool = true) -> void:
-	if registry == null or registry.bed_of(pid) == null:
+	if registry == null or BedStore.of(registry, pid) == null:
 		return
-	registry.clear_bed(pid)
+	BedStore.clear(registry, pid)
 	GameBus.bed_synced.emit(pid, {})
 	if notify:
 		GameBus.bed_resolved.emit(pid, false, str(BedRule.rules().get("notices", {}).get("lost", "bed.lost")))
 
 ## A station went away: its owner's bed goes with it.
 func on_station_removed(station_id: String) -> void:
-	var owner: String = registry.bed_owner_of_station(station_id) if registry != null else ""
+	var owner: String = BedStore.owner_of_station(registry, station_id) if registry != null else ""
 	if owner != "":
 		clear(owner)
 
@@ -149,7 +150,7 @@ func on_block_changed(world_pos: Vector3) -> void:
 	if registry == null or not runs_at.is_valid() or station_slice == null:
 		return
 	for pid in registry.get_player_ids():
-		var id: String = registry.bed_station_of(str(pid))
+		var id: String = BedStore.station_of(registry, str(pid))
 		if id == "":
 			continue
 		var st: Dictionary = station_slice.get_station(id)

@@ -60,6 +60,7 @@ extends Node
 ##   apply_player_data(player_id, data) -> void
 ##   get_players_data() -> Dictionary / apply_players_data(data) -> void
 const Diag := preload("res://src/core/diag.gd")
+const BedStore := preload("res://src/world/bed_store.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 
@@ -546,42 +547,6 @@ func record_spawn_world_pos(player_id: String, wp: Dictionary) -> void:
 ## from before Phase 66, or a malformed one) — the caller falls back to the saved position.
 func spawn_of(player_id: String) -> Variant:
 	return spawn_from_record(get_record(player_id))
-
-## Phase 185 — the bed a player placed, as an exact `{chunk, local}`, or null (no bed, or a malformed one).
-func bed_of(player_id: String) -> Variant:
-	return bed_from_record(get_record(player_id))
-
-static func bed_from_record(rec: Dictionary) -> Variant:
-	var b: Variant = rec.get("bed", null)
-	if not (b is Dictionary) or not _has_chunk_local(b):
-		return null
-	return world_pos_of(b)
-
-## The station id of the player's bed ("" when none).
-func bed_station_of(player_id: String) -> String:
-	return str(get_record(player_id).get("bed_station", "")).left(64)
-
-## Record the bed (exact position + the station that draws it) on the player's record.
-func set_bed(player_id: String, wp: Dictionary, station_id: String) -> void:
-	var rec := ensure_player(player_id)
-	if rec.is_empty():
-		return
-	rec["bed"] = WorldPos.pos_to_wire(canonical_world_pos(WorldPos.normalized(wp)))
-	rec["bed_station"] = station_id
-
-func clear_bed(player_id: String) -> void:
-	var rec := get_record(player_id)
-	rec.erase("bed")
-	rec.erase("bed_station")
-
-## The player whose bed is drawn by `station_id`, or "".
-func bed_owner_of_station(station_id: String) -> String:
-	if station_id == "":
-		return ""
-	for pid in get_player_ids():
-		if str(get_record(str(pid)).get("bed_station", "")) == station_id and bed_of(str(pid)) != null:
-			return str(pid)
-	return ""
 
 static func spawn_from_record(rec: Dictionary) -> Variant:
 	var sp: Variant = rec.get("spawn", null)
@@ -1304,28 +1269,22 @@ func get_player_data(player_id: String) -> Dictionary:
 	}
 	if rec.get("spawn", null) is Dictionary and spawn_from_record(rec) != null:
 		data["spawn"] = rec["spawn"]
-	# Phase 185 — the bed rides the record; a record without one (every pre-185 save) has none.
-	if bed_from_record(rec) != null:
-		data["bed"] = rec["bed"]
-		data["bed_station"] = str(rec.get("bed_station", ""))
+	BedStore.save(rec, data)   # Phase 185
 	var inv = _inventories.get(player_id, null)
 	if inv != null and is_instance_valid(inv):
 		data["inventory"] = inv.get_contents()
 		data["inventory_durability"] = inv.get_durability_data()
 	return data
 
-## Restore a player's record and inventory from a saved payload. The inventory
-## instance for the player is created on demand.
+## Restore a player's record and inventory from a saved payload (the inventory is created on demand).
 func apply_player_data(player_id: String, data: Dictionary) -> void:
 	if player_id.is_empty() or data.is_empty():
 		return
 	var rec := ensure_player(player_id)
-	# Phase 50 — a payload with chunk + local is authoritative (and rebuilds `position`); an old
-	# payload with only `position` is migrated onto the chunk grid.
+	# Phase 50 — chunk + local is authoritative (and rebuilds `position`); an old `position`-only payload migrates.
 	var wp := world_pos_of(data)
 	_store_world_pos(rec, wp)
-	# `position` is derived from the validated chunk + local, so the two never disagree. Doubles,
-	# not a Vector3: a float32 scene position would round the exact chunk + local.
+	# `position` derives from the validated chunk + local (doubles, not a float32 Vector3), so they never disagree.
 	var chunk: Vector2i = wp["chunk"]
 	var local: Vector3 = wp["local"]
 	rec["position"] = [chunk.x * WorldPos.CHUNK_METERS + local.x, local.y, chunk.y * WorldPos.CHUNK_METERS + local.z]
@@ -1335,13 +1294,7 @@ func apply_player_data(player_id: String, data: Dictionary) -> void:
 		rec["spawn"] = (data["spawn"] as Dictionary).duplicate(true)
 	else:
 		rec.erase("spawn")
-	# Phase 185 — the bed: absent or malformed in a payload means no bed (old respawn rule).
-	if bed_from_record(data) != null:
-		rec["bed"] = (data["bed"] as Dictionary).duplicate(true)
-		rec["bed_station"] = str(data.get("bed_station", "")).left(64)
-	else:
-		rec.erase("bed")
-		rec.erase("bed_station")
+	BedStore.load_into(rec, data)   # Phase 185
 	var restored_hp := float(data.get("hp", -1.0))
 	rec["hp"] = restored_hp
 	# Phase 39 — the respawn deadline rides the same record. The saved `hp` above is

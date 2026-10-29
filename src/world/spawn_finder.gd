@@ -9,6 +9,16 @@ extends RefCounted
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
 const ColonizationMap := preload("res://src/world/colonization_map.gd")
+const PlayerRegistry := preload("res://src/persistence/player_registry.gd")
+
+## Phase 66 — a player RECORD's own spawn without any bed (Phase 185): the original spawn, else (a record from
+## before the field existed) its saved position, else null (a player never placed). Exact `{chunk, local}`.
+static func original_spawn_for(rec: Dictionary) -> Variant:
+	var spawn: Variant = PlayerRegistry.spawn_from_record(rec)
+	var arr: Variant = rec.get("position", [])
+	if spawn == null and arr is Array and (arr as Array).size() >= 3:
+		return PlayerRegistry.world_pos_of(rec)
+	return spawn
 
 const MAX_ATTEMPTS := 6000
 ## Metres above the sampled ground the body is placed, so it never starts inside the surface.

@@ -3,6 +3,7 @@ extends "res://src/core/wiring.gd"
 ## (`bed_synced`) and notices, and the client/local respawn target. `BedSlice` holds the host's rules.
 
 const WorldPos := preload("res://src/terrain/world_pos.gd")
+const BedStore := preload("res://src/world/bed_store.gd")
 const BedRule := preload("res://src/world/bed_rule.gd")
 const PlayerRegistry := preload("res://src/persistence/player_registry.gd")
 const I18n := preload("res://src/core/i18n.gd")
@@ -27,31 +28,23 @@ func _connect_all() -> void:
 	connect_bus(GameBus.block_changed, _on_block_changed)
 	connect_bus(GameBus.bed_synced, _on_bed_synced)
 	connect_bus(GameBus.bed_resolved, _on_bed_resolved)
+	if root._is_client:
+		connect_bus(GameBus.bed_place_intent, _forward_intent)
 
 ## The column runs of one tile from the live voxels (what `BedRule` reads).
 func runs_at(tile: Vector2i) -> Array:
 	return root._voxel.get_runs_at_tile(tile)
 
-## `wp` itself when its spot is free, else the nearest free standing cell, else null.
-static func free_spot(wp: Dictionary, runs: Callable) -> Variant:
-	var chunk: Vector2i = wp["chunk"]
-	var local: Vector3 = wp["local"]
-	var world := Vector3(chunk.x * WorldPos.CHUNK_METERS + local.x, local.y, chunk.y * WorldPos.CHUNK_METERS + local.z)
-	var off: Variant = BedRule.nearest_free(world, runs)
-	if off == null:
-		return null
-	return WorldPos.normalized({ "chunk": chunk, "local": local + (off as Vector3) })
-
 ## Where the local body respawns: the bed (or the nearest free cell beside it), `{}` for the original spawn.
 func respawn_target() -> Dictionary:
 	if _bed.is_empty():
 		return {}
-	var free: Variant = free_spot(_bed, self.runs_at)
+	var free: Variant = BedStore.free_spot(_bed, self.runs_at)
 	return free if free != null else {}
 
 ## Host: take the local player's bed from its record at boot.
 func note_local(rec: Dictionary) -> void:
-	var bed: Variant = PlayerRegistry.bed_from_record(rec)
+	var bed: Variant = BedStore.from_record(rec)
 	_bed = bed if bed != null else {}
 
 # --- host: placement attribution --------------------------------------------------------------------------
@@ -129,3 +122,7 @@ func _place_remote(type: String, target: Vector3) -> bool:
 		return false
 	GameBus.bed_place_intent.emit(target - root._player.get_position(), "")
 	return true
+
+## A client forwards its intent to the host, which binds the identity (net_part_2) and BedSlice checks the rest.
+func _forward_intent(offset: Vector3, _player_id: String) -> void:
+	root._networking._broadcast({ "type": "bed_place_intent", "offset": [offset.x, offset.y, offset.z] })

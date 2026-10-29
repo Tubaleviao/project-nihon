@@ -9,6 +9,7 @@ const TerrainSlice     := preload("res://src/terrain/terrain_slice.gd")
 const VoxelSlice       := preload("res://src/terrain/voxel_slice.gd")
 const ChunkRecords     := preload("res://src/terrain/chunk_records.gd")
 const PersistenceSlice := preload("res://src/persistence/persistence_slice.gd")
+const SpawnFinder := preload("res://src/world/spawn_finder.gd")
 const PlayerRegistry   := preload("res://src/persistence/player_registry.gd")
 
 func _connect_all() -> void:
@@ -281,7 +282,7 @@ func restore_local_player() -> void:
 		place_local_player(saved_pos)
 	# Phase 66 — a respawn goes to the ORIGINAL spawn point: the recorded one, else (a record from
 	# before the field existed) the saved position; a fresh player's placement is recorded now.
-	var spawn: Variant = root.original_spawn_for(rec)
+	var spawn: Variant = SpawnFinder.original_spawn_for(rec)
 	root._bed_wiring.note_local(rec)   # Phase 185 — the bed overrides it at death time, never the stored spawn
 	if spawn != null:
 		root._player.set_respawn_world_pos(_lifted_world_pos(spawn))

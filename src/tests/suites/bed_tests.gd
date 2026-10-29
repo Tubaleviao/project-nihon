@@ -3,6 +3,8 @@ extends "res://src/tests/test_support.gd"
 ## a lost bed is cleared with a keyed notice, a blocked bed finds the nearest free cell, and the host
 ## refuses a bad placement with its own key. Socket behaviour is in the net harness (`bed_spawn`).
 
+const BedStore := preload("res://src/world/bed_store.gd")
+const SpawnFinder := preload("res://src/world/spawn_finder.gd")
 const BedRule := preload("res://src/world/bed_rule.gd")
 const I18n := preload("res://src/core/i18n.gd")
 const BedSlice := preload("res://src/world/bed_slice.gd")
@@ -102,21 +104,21 @@ func _test_respawn_rule() -> void:
 	reg.record_spawn_world_pos("a", { "chunk": Vector2i(1, 2), "local": Vector3(3, 4, 5) })
 	var orig: Variant = root_script.respawn_point_for(reg.get_record("a"))
 	assert_eq(orig["chunk"], Vector2i(1, 2), "without a bed the original spawn")
-	reg.set_bed("a", { "chunk": Vector2i(-4, 7), "local": Vector3(1, 2, 3) }, "station_9")
+	BedStore.set_bed(reg, "a", { "chunk": Vector2i(-4, 7), "local": Vector3(1, 2, 3) }, "station_9")
 	var with_bed: Variant = root_script.respawn_point_for(reg.get_record("a"))
 	assert_eq(with_bed["chunk"], Vector2i(-4, 7), "with a bed the bed")
-	assert_eq(root_script.original_spawn_for(reg.get_record("a"))["chunk"], Vector2i(1, 2), "the original spawn is still recorded")
+	assert_eq(SpawnFinder.original_spawn_for(reg.get_record("a"))["chunk"], Vector2i(1, 2), "the original spawn is still recorded")
 	# A pre-185 record: no bed key at all.
 	var old := reg.get_player_data("a")
 	old.erase("bed")
 	old.erase("bed_station")
 	var pre := PlayerRegistry.new()
 	pre.apply_player_data("a", old)
-	assert_eq(pre.bed_of("a"), null, "a pre-185 record loads with no bed")
+	assert_eq(BedStore.of(pre, "a"), null, "a pre-185 record loads with no bed")
 	assert_eq(root_script.respawn_point_for(pre.get_record("a"))["chunk"], Vector2i(1, 2), "and the same respawn point as before")
 	old["bed"] = { "chunk": ["x"], "local": [1] }
 	pre.apply_player_data("a", old)
-	assert_eq(pre.bed_of("a"), null, "a malformed bed is dropped")
+	assert_eq(BedStore.of(pre, "a"), null, "a malformed bed is dropped")
 	reg.free()
 	pre.free()
 
@@ -125,14 +127,14 @@ func _test_persistence() -> void:
 	reg.is_authoritative = true
 	var wp := { "chunk": Vector2i(-300000, 500), "local": Vector3(3.5, 50.0, 9.25) }
 	reg.record_spawn_world_pos("a", { "chunk": Vector2i.ZERO, "local": Vector3.ZERO })
-	reg.set_bed("a", wp, "station_3")
+	BedStore.set_bed(reg, "a", wp, "station_3")
 	var back := PlayerRegistry.new()
 	back.apply_player_data("a", reg.get_player_data("a"))
-	var got: Variant = back.bed_of("a")
+	var got: Variant = BedStore.of(back, "a")
 	assert_eq(got["chunk"], wp["chunk"], "the bed chunk is exact after a reload")
 	assert_true((got["local"] as Vector3).distance_to(wp["local"]) < 1.0e-6, "and its local")
-	assert_eq(back.bed_station_of("a"), "station_3", "and the station that draws it")
-	assert_eq(back.bed_owner_of_station("station_3"), "a", "which finds the owner")
+	assert_eq(BedStore.station_of(back, "a"), "station_3", "and the station that draws it")
+	assert_eq(BedStore.owner_of_station(back, "station_3"), "a", "which finds the owner")
 	reg.free()
 	back.free()
 
@@ -141,15 +143,15 @@ func _test_replace() -> void:
 	var c := _connect()
 	_place(r, "p1", Vector3(2, 0, 0))
 	assert_eq(_last_key(), "bed.placed", "the first bed is placed")
-	var first: String = r.reg.bed_station_of("p1")
+	var first: String = BedStore.station_of(r.reg, "p1")
 	assert_true(first != "" and r.station.get_station(first).size() > 0, "its station exists")
 	assert_eq(r.reg.get_inventory("p1").get_item_count("Bed"), 0, "placing consumed the Bed item")
 	_place(r, "p1", Vector3(-3, 0, 0))
-	var second: String = r.reg.bed_station_of("p1")
+	var second: String = BedStore.station_of(r.reg, "p1")
 	assert_true(second != first, "the second bed is a new station")
 	assert_eq(r.station.get_station(first).size(), 0, "the first station is removed")
 	assert_eq(r.reg.get_inventory("p1").get_item_count("Bed"), 1, "and drops back as an item")
-	assert_true(r.reg.bed_of("p1") != null, "the owner still has exactly one bed")
+	assert_true(BedStore.of(r.reg, "p1") != null, "the owner still has exactly one bed")
 	assert_true(_synced.size() >= 1 and str(_synced.back()[0]) == "p1", "bed_synced names its owner only")
 	_disconnect(c)
 	_free(r)
@@ -158,29 +160,29 @@ func _test_lost() -> void:
 	var r := _rig()
 	var c := _connect()
 	_place(r, "p1", Vector3(2, 0, 0))
-	var id: String = r.reg.bed_station_of("p1")
+	var id: String = BedStore.station_of(r.reg, "p1")
 	_resolved.clear()
 	r.station.remove_station(id)
 	r.bed.on_station_removed(id)   # the wiring forwards GameBus.station_removed
-	assert_eq(r.reg.bed_of("p1"), null, "removing the station clears the bed")
+	assert_eq(BedStore.of(r.reg, "p1"), null, "removing the station clears the bed")
 	assert_eq(_last_key(), "bed.lost", "and the owner gets bed.lost")
 	assert_true((_synced.back()[1] as Dictionary).is_empty(), "bed_synced carries an empty bed")
 	# A destroyed support block.
 	_place(r, "p1", Vector3(2, 0, 0))
 	_resolved.clear()
 	r.bed.on_block_changed(Vector3(2.5, -0.5, 0.5))
-	assert_true(r.reg.bed_of("p1") != null, "a block edit with the ground still under the bed keeps it")
+	assert_true(BedStore.of(r.reg, "p1") != null, "a block edit with the ground still under the bed keeps it")
 	var holed := func(_tile: Vector2i) -> Array: return [{ "bottom": -10.0, "top": -3.0 }]
 	r.bed.runs_at = holed
 	r.bed.on_block_changed(Vector3(2.5, -0.5, 0.5))
-	assert_eq(r.reg.bed_of("p1"), null, "a bed with no support left is cleared")
+	assert_eq(BedStore.of(r.reg, "p1"), null, "a bed with no support left is cleared")
 	assert_eq(_last_key(), "bed.lost", "with the notice")
 	# A regenerated world clears every bed.
 	r.bed.runs_at = self._ground
 	_place(r, "p1", Vector3(2, 0, 0))
 	_place(r, "p2", Vector3(-2, 0, 0))
 	r.bed.clear_all()
-	assert_true(r.reg.bed_of("p1") == null and r.reg.bed_of("p2") == null, "clear_all drops every bed")
+	assert_true(BedStore.of(r.reg, "p1") == null and BedStore.of(r.reg, "p2") == null, "clear_all drops every bed")
 	_disconnect(c)
 	_free(r)
 
@@ -189,7 +191,7 @@ func _test_blocked() -> void:
 	var reg := PlayerRegistry.new()
 	reg.is_authoritative = true
 	reg.record_spawn_world_pos("a", { "chunk": Vector2i.ZERO, "local": Vector3(40, 0, 40) })
-	reg.set_bed("a", { "chunk": Vector2i.ZERO, "local": Vector3(2.25, 0, 2.25) }, "s")
+	BedStore.set_bed(reg, "a", { "chunk": Vector2i.ZERO, "local": Vector3(2.25, 0, 2.25) }, "s")
 	var open := func(_t: Vector2i) -> Array: return [{ "bottom": -10.0, "top": 0.0 }]
 	var free_pt: Variant = root_script.respawn_point_for(reg.get_record("a"), open)
 	assert_true((free_pt["local"] as Vector3).distance_to(Vector3(2.25, 0, 2.25)) < 1.0e-5, "a free bed is the respawn point")
@@ -230,7 +232,7 @@ func _test_refusals() -> void:
 	assert_eq(_last_key(), "bed.placed", "another player places theirs")
 	_place(r, "p1", Vector3(-2, 0, 0), false)
 	assert_eq(_last_key(), "bed.refuse_not_yours", "another player's bed cannot be claimed")
-	assert_true(r.reg.bed_of("p1") == null, "p1 owns nothing")
+	assert_true(BedStore.of(r.reg, "p1") == null, "p1 owns nothing")
 	_place(r, "p1", Vector3(2, 0, 0), false)
 	r.station.place_station("forge", Vector3(4.5, 0, 0.5))
 	_place(r, "p1", Vector3(4, 0, 0))
