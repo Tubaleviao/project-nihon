@@ -220,6 +220,16 @@ signal waystone_travel_resolved(player_id: String, ok: bool, reason: String)
 ## host pushes it to the owner's peer alone; a client emits it locally when it lands.
 signal waystones_synced(player_id: String, station_ids: Array)
 
+## Phase 185 — a peer asks to place its bed `offset` metres from its body (the host binds `player_id`).
+signal bed_place_intent(offset: Vector3, player_id: String)
+## Phase 185 — the host decided a bed placement or lost a bed: `key` is a catalog key (`bed.placed`, `bed.lost`,
+## `bed.refuse_*`), rendered in the owner's locale.
+signal bed_resolved(player_id: String, ok: bool, key: String)
+## Phase 185 — `player_id`'s bed changed: its exact `{chunk, local}`, or `{}` when it is gone. Owner-only.
+signal bed_synced(player_id: String, bed: Dictionary)
+## Phase 185 — a placed station was removed (not a world reload).
+signal station_removed(station_id: String)
+
 ## Phase 140 — a settlement intent: `action` is one of SettlementSlice.ACTIONS (found, invite, join, role,
 ## leave, deposit, withdraw, uninvite) and `args` its parameters. A client forwards it; the host binds the identity.
 signal settlement_intent(action: String, args: Dictionary, player_id: String)

@@ -15,6 +15,7 @@ extends "res://src/tests/test_support.gd"
 ## fails the run when one exists on disk but is missing from this list).
 const SUITES: Array[String] = [
 	"res://src/tests/suites/terrain_tests.gd",
+	"res://src/tests/suites/bed_tests.gd",
 	"res://src/tests/suites/terrain_stream_tests.gd",
 	"res://src/tests/suites/terrain_lod_tests.gd",
 	"res://src/tests/suites/chunk_cache_tests.gd",
