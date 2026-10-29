@@ -144,16 +144,24 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 	# chunk, and at 90 m/s most of the window is ground nobody touches. `attach_parked_collision` adds it
 	# when the chunk enters the near ring.
 	if not collide:
-		s._parked_shapes[key] = shape
+		_park_shape(key, shape)
 		return true
 	# Phase 183 — `stagger` (a chunk the body is not on or beside): the first quadrant now, the rest parked
 	# for the near ring to attach one a pump step.
 	if stagger and shape is Array and (shape as Array).size() > 1:
 		_attach_collision(root, [(shape as Array).pop_front()])
-		s._parked_shapes[key] = shape
+		_park_shape(key, shape)
 		return true
 	_attach_collision(root, shape)
 	return true
+
+## Phase 194 (#504) — bumped by every shape parked (never by one attached or dropped): the near ring rescans the
+## parked set only when this or its bodies moved.
+var parked_rev: int = 0
+
+func _park_shape(key: String, shape: Variant) -> void:
+	s._parked_shapes[key] = shape
+	parked_rev += 1
 
 ## Phase 189 — give `root` its terrain collision body carrying `shape`: one Shape3D, or (Phase 183) an Array
 ## of quadrant shapes, added to the body `root` already has when an earlier quadrant made it.
@@ -180,30 +188,29 @@ static func _add_shapes(body: StaticBody3D, shape: Variant) -> void:
 ## Phase 189 — attach the collision a gated build parked for `chunk_pos`, on its chunk root or on the fold
 ## stand-in covering it. False when nothing was parked (not built, or its collision is already there).
 ## Phase 183 — with `all` false a parked set of quadrants gives up one, and the rest stay parked.
+## Phase 194 (#504) — a parked shape lives in `_parked_shapes` only, whichever node will carry it; the
+## stand-in meta is a fold's carrier between `carry_parked_shapes` and `adopt_standins`, never a second store.
 func attach_parked_collision(chunk_pos: Vector2i, all: bool = true) -> bool:
 	var key = s._chunk_key(chunk_pos)
 	var shape: Variant = s._parked_shapes.get(key)
-	if shape != null and s._chunks.has(key):
-		if not all and shape is Array and (shape as Array).size() > 1:
-			_attach_collision(s._chunks[key], [(shape as Array).pop_front()])
-			return true
-		s._parked_shapes.erase(key)
-		_attach_collision(s._chunks[key], shape)
+	if shape == null:
+		return false
+	var target: Node3D = s._chunks.get(key)
+	if target == null:
+		var standin = s._standins.get(key)
+		if standin == null or not is_instance_valid(standin):
+			return false
+		target = standin
+	if not all and shape is Array and (shape as Array).size() > 1:
+		_attach_collision(target, [(shape as Array).pop_front()])
 		return true
-	var standin = s._standins.get(key)
-	if standin != null and is_instance_valid(standin) and (standin as Node3D).has_meta("parked_shape"):
-		_attach_collision(standin, standin.get_meta("parked_shape"))
-		standin.remove_meta("parked_shape")
-		return true
-	return false
+	s._parked_shapes.erase(key)
+	_attach_collision(target, shape)
+	return true
 
-## Phase 189 — true when `chunk_pos` has a parked collision shape (on its root or its stand-in).
+## Phase 189 — true when `chunk_pos` has a parked collision shape (for its root or its stand-in).
 func has_parked_collision(chunk_pos: Vector2i) -> bool:
-	var key = s._chunk_key(chunk_pos)
-	if s._parked_shapes.has(key):
-		return true
-	var standin = s._standins.get(key)
-	return standin != null and is_instance_valid(standin) and (standin as Node3D).has_meta("parked_shape")
+	return s._parked_shapes.has(s._chunk_key(chunk_pos))
 
 ## Phase 189 — every chunk, root or stand-in, that holds a parked shape (canonical chunk coordinates).
 ## Cost is O(parked), not O(ring), so the near-ring tick can scan it each frame.
@@ -211,10 +218,6 @@ func parked_chunks() -> Array:
 	var out: Array = []
 	for key in s._parked_shapes:
 		out.append(_key_chunk(key))
-	for key in s._standins:
-		var standin = s._standins[key]
-		if not s._parked_shapes.has(key) and is_instance_valid(standin) and (standin as Node3D).has_meta("parked_shape"):
-			out.append(_key_chunk(key))
 	return out
 
 static func _key_chunk(key: String) -> Vector2i:
@@ -222,17 +225,28 @@ static func _key_chunk(key: String) -> Vector2i:
 	return Vector2i(int(parts[0]), int(parts[1]))
 
 ## Phase 189 — a fold carries the chunk roots across as stand-ins (`detach_standins`): each takes its
-## parked shape along, so the stand-in under the body can still be given its collision.
+## parked shape along on its meta (the restream between keys the chunks afresh), and `adopt_standins` puts it
+## back in `_parked_shapes` under the chunk the stand-in now covers.
 func carry_parked_shapes() -> void:
 	for key in s._parked_shapes:
-		if s._chunks.has(key):
-			(s._chunks[key] as Node3D).set_meta("parked_shape", s._parked_shapes[key])
+		var holder = s._chunks.get(key, s._standins.get(key))
+		if holder != null and is_instance_valid(holder):
+			(holder as Node3D).set_meta("parked_shape", s._parked_shapes[key])
 	s._parked_shapes.clear()
 
 ## Phase 189 — true when the built chunk at `chunk_pos` has its collision body attached.
 func has_collision(chunk_pos: Vector2i) -> bool:
 	var root: Node = s._chunks.get(s._chunk_key(chunk_pos))
 	return root != null and root.has_node("Collision")
+
+## Free the stand-in of `key`. Phase 194 (#504): a parked shape with no chunk root to go to goes with it.
+func free_standin(key: String) -> void:
+	var root: Variant = s._standins.get(key)
+	s._standins.erase(key)
+	if not s._chunks.has(key):
+		s._parked_shapes.erase(key)
+	if is_instance_valid(root):
+		(root as Node3D).queue_free()
 
 ## Carry `roots` (from `detach_standins`) by the fold's scene transform `xform` and keep each as the
 ## stand-in of the chunk it now covers. A second stand-in on the same chunk is freed.
@@ -250,6 +264,14 @@ func adopt_standins(roots: Array, xform: Transform3D) -> void:
 			(s._standins[key] as Node3D).queue_free()
 		root.set_meta("standin_chunk", chunk)
 		s._standins[key] = root
+		var carried: Variant = null
+		if root.has_meta("parked_shape"):
+			carried = root.get_meta("parked_shape")
+			root.remove_meta("parked_shape")
+		if not s._chunks.has(key):   # a built root's own shape is its own; a replaced stand-in's goes with it
+			s._parked_shapes.erase(key)
+			if carried != null:
+				_park_shape(key, carried)
 
 ## Resolve every column a chunk build must READ into a plain table the pure builder can
 ## consume — plus the chunk's rare-vein deposit list.

@@ -189,6 +189,9 @@ var _near := NearRing.new(self)
 const ChunkCache := preload("res://src/terrain/chunk_cache.gd")
 var _cache := ChunkCache.new()
 var cache_attaches: int = 0   # chunks attached from the cache instead of a worker build
+var _last_hit_id: int = 0   # Phase 194: the last id a cache hit took in `_builds` (negative: no worker task)
+var _queue_in_lane := false   # Phase 194: `_load_queue` is in a fast flyer's lane order (`queue_priority`)
+var built_rev: int = 0   # Phase 194: bumped whenever a chunk's ground is built or released (`unbuilt_window_key`)
 
 func chunk_cache() -> ChunkCache:
 	return _cache
@@ -209,7 +212,7 @@ var builds_attached: int = 0
 ## Phase 189 — false restores the Phase 187 behaviour (collision and contents on every attach): the playtest
 ## bot's record flight.
 func set_near_ring_enabled(on: bool) -> void:
-	_near.enabled = on
+	_near.set_enabled(on)
 
 ## Phase 190 — false builds every chunk at full detail (the Phase 189 behaviour): the playtest bot's record flight.
 func set_lod_enabled(on: bool) -> void:
@@ -590,17 +593,8 @@ func _self_heal_failed(centers: Array, window_moved: bool) -> void:
 func stream_radius() -> int:
 	return view_distance + prefetch_distance
 
-## Dispatch up to `loads_per_frame` queued chunks this frame, nearest-first, while
-## respecting the in-flight build cap. The build itself runs on a worker.
-##
-## Phase 42 review — this is now the ONE place a build is dispatched from a queue, and
-## it drains the REBUILD queue first: `request_rebuild` and a build RETRY both enqueue
-## here instead of calling `_dispatch_build` directly, so the in-flight cap bounds every
-## dispatch and not just a streamed load. Dispatch is the only thing bounded per frame;
-## a queued rebuild is never dropped, it waits.
-## **(Ninth review pass: those callers reach the queue through `_dispatch_build`'s OWN cap
-## guard now, and so does the public `load_chunk` — the cap bounds every dispatch, not only
-## the ones an internal caller happened to check first. See `_dispatch_build`.)**
+## Dispatch up to `loads_per_frame` queued chunks this frame (the catch-up burst after a fold or while moving fast),
+## rebuilds first, in queue order, under the in-flight cap and the pump budget (see `ChunkPart1.drain_load_queue`).
 func _drain_load_queue() -> void:
 	_m1.drain_load_queue()
 
@@ -942,12 +936,18 @@ func request_rebuild(chunk_pos: Vector2i) -> void:
 ## reached — `_dispatch_build`'s own cap guard is the one caller (ninth review pass: a
 ## streamed load, `request_rebuild` and a build RETRY all arrive through it). Deduped, and
 ## drained by `_drain_load_queue` under the same cap. A build is delayed, never dropped.
-func _queue_rebuild(chunk_pos: Vector2i) -> void:
+## Phase 194 — `front` puts it (or moves it) at the head of the queue.
+func _queue_rebuild(chunk_pos: Vector2i, front: bool = false) -> void:
 	var key := _chunk_key(chunk_pos)
 	if _rebuild_pending.has(key):
-		return
+		if not front or (not _rebuild_queue.is_empty() and _chunk_key(_rebuild_queue[0]) == key):
+			return
+		_remove_queued_rebuild(key)
 	_rebuild_pending[key] = true
-	_rebuild_queue.append(chunk_pos)
+	if front:
+		_rebuild_queue.push_front(chunk_pos)
+	else:
+		_rebuild_queue.append(chunk_pos)
 
 ## Phase 42 review pass 3 — drop a chunk's queued-but-undispatched rebuild, entry AND mark.
 ## `unload_chunk` needs this: the dedupe reads `_rebuild_pending`, so clearing the mark
@@ -1111,7 +1111,8 @@ func _within_stream_at(center: Vector2i, radius: int, chunk: Vector2i) -> bool:
 ## dropping the guard costs nothing and closes the window.
 func _exit_tree() -> void:
 	for task_id in _builds.keys():
-		WorkerThreadPool.wait_for_task_completion(task_id)
+		if task_id >= 0:
+			WorkerThreadPool.wait_for_task_completion(task_id)
 	_builds.clear()
 	if _reads_async():
 		region_streamer.flush_reads()   # an unawaited worker task aborts the pool at exit
@@ -1149,7 +1150,7 @@ func _apply_finished_builds() -> void:
 		return
 	var done: Array = []
 	for task_id in _builds.keys():
-		if WorkerThreadPool.is_task_completed(task_id):
+		if task_id < 0 or WorkerThreadPool.is_task_completed(task_id):   # a cache hit is done already
 			done.append(task_id)
 	var applied := 0
 	for task_id in _apply_order(done):
@@ -1218,7 +1219,8 @@ func _apply_build_entry(task_id: int) -> bool:
 	if entry.is_empty():
 		return false
 	_builds.erase(task_id)
-	WorkerThreadPool.wait_for_task_completion(task_id)
+	if task_id >= 0:
+		WorkerThreadPool.wait_for_task_completion(task_id)
 	var key: String = str(entry["key"])
 	var result: Array = entry["result"]
 	worker_usec += int(result[2]) if result.size() > 2 else 0   # Phase 190: the work was done, attached or not
@@ -1234,7 +1236,10 @@ func _apply_build_entry(task_id: int) -> bool:
 	var heightmap: Array = entry["heightmap"]
 	if result.size() > 1 and result[1] is Array and not (result[1] as Array).is_empty():
 		heightmap = result[1]
-	return _attach_built(key, chunk, heightmap, arrays, int(entry["revision"]))
+	var attached := _attach_built(key, chunk, heightmap, arrays, int(entry["revision"]))
+	if attached and bool(entry.get("cached", false)):
+		cache_attaches += 1
+	return attached
 
 ## Attach one chunk's build result (a worker's, or a cache entry's) and do the bookkeeping that follows.
 func _attach_built(key: String, chunk: Vector2i, heightmap: Array, arrays: Dictionary, revision: int) -> bool:
@@ -1251,6 +1256,7 @@ func _attach_built(key: String, chunk: Vector2i, heightmap: Array, arrays: Dicti
 	_build_attempts.erase(key)
 	_failed.erase(key)
 	_built[key] = true
+	built_rev += 1
 	var lod := int(arrays.get("lod", 1))
 	_near.note_built(key, lod)
 	if keeps_render() and not arrays.is_empty():
@@ -1350,7 +1356,6 @@ func discard_pending_records() -> void:
 	_deferred_records.clear()
 	_deferred_since.clear()
 
-## True when `chunk_pos` is loaded and its ground has been built.
 ## Phase 191 — the chunks of the local player's streamed window whose ground is not built yet (the distant
 ## ring draws coarse ground under them).
 func unbuilt_window_chunks() -> Array:
@@ -1362,6 +1367,11 @@ func unbuilt_window_chunks() -> Array:
 			out.append(c)
 	return out
 
+## Phase 194 (#512) — what `unbuilt_window_chunks` reads: an unchanged key is an unchanged list.
+func unbuilt_window_key() -> Array:
+	return [built_rev, _last_centers[0] if not _last_centers.is_empty() else null, stream_radius()]
+
+## True when `chunk_pos` is loaded and its ground has been built.
 func is_chunk_built(chunk_pos: Vector2i) -> bool:
 	return _built.has(_chunk_key(chunk_pos))
 
@@ -1373,6 +1383,7 @@ func unload_chunk(chunk_pos: Vector2i) -> void:
 	_seam_revision.erase(key)
 	_rebuild_requests.erase(key)
 	_built.erase(key)
+	built_rev += 1
 	_build_attempts.erase(key)
 	# Phase 42 review — a streamed-out chunk carries no retry state: its groundless mark
 	# and any queued rebuild go with it (it rebuilds from the edit log when it streams
@@ -1445,12 +1456,14 @@ func _desired_chunks(center: Vector2i, radius: int) -> Array:
 ## `heading` (a unit vector in chunks, or zero when standing). Pure.
 ## Phase 191 — `lane`: a fast flyer builds the chunks in its heading lane first (a column of new ground per crossing,
 ## and only the chunk in the body's row has to be there when it arrives), nearest ahead first, the rest after.
+## Phase 194 (#512) — only the lane itself (lead ≥ 0) goes first; every other chunk is ranked by
+## `ChunkPart1.off_lane_rank` (twice its ring from the body, or its ring from a peer), not after the whole lane.
 static func queue_priority(centers: Array, heading: Vector2, chunk: Vector2i, lane: bool = false) -> float:
 	if lane and not centers.is_empty() and heading != Vector2.ZERO:
 		var rel := Vector2(chunk - (centers[0] as Vector2i))
 		var lead := rel.dot(heading)
-		var lateral := absf(rel.cross(heading))
-		return lateral * 3.0 + (lead if lead >= 1.0 else 50.0 - lead)
+		var ring := ChunkPart1.off_lane_rank(centers, chunk)
+		return minf(lead, ring) if lead >= 0.0 and absf(rel.cross(heading)) < 0.5 else ring
 	var best := 1 << 60
 	for c: Vector2i in centers:
 		var dx := chunk.x - c.x

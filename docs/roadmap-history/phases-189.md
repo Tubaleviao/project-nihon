@@ -67,3 +67,7 @@ creatures spawned under a player who is gone a second later. Pay only for the gr
   flights. Locally the gated phases are 2.2 vs 9.6 ms.
 - `_drain_load_queue` and `adopt_standins` moved verbatim into `chunk_part_1.gd` and `voxel_build.gd` (with
   forwarders) to keep `chunk_manager.gd` and `voxel_slice.gd` under the 1,500-line cap.
+
+**Note (Phase 194, #504):** as shipped, the walking body's collision ring was Chebyshev 2 (`REACH_RADIUS`), not
+the 1 of the near ring's first draft, so the 60 m aim, mine and build ray found collision to hit. Phase 193 moved
+that ray onto the voxel columns (`VoxelRay`) and set the ring to 1 (`NearRing.COLLISION_RADIUS`).

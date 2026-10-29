@@ -29,6 +29,11 @@ func register() -> void:
 	_run_test("near: a fold stand-in keeps its parked collision for the body", _test_near_collision_fold_standin)
 	_run_test("near: contents spawn once with the same ids on attach or on slowing down", _test_near_contents_same_ids)
 	_run_test("near: deferred contents spawn when the chunk enters the near ring", _test_near_contents_enter_ring)
+	_run_test("stream: a fast flyer's lane goes first, the rest by distance from the nearest centre", _test_stream_lane_order)
+	_run_test("stream: a lane-sorted queue is re-sorted by distance when the flyer stops", _test_stream_queue_resorted_on_stop)
+	_run_test("near: a parked shape lives in one store through build, park, fold and attach", _test_near_parked_one_store)
+	_run_test("near: the parked scan is skipped while idle and resumes on a newly parked shape", _test_near_scan_idle_skip)
+	_run_test("near: switching the ring off spawns every waiting chunk's contents at once", _test_near_toggle_flushes_waiting)
 	_run_test("fold: a creature and a tree keep id, state and place across a pole fold", _test_fold_carries_contents)
 	_run_test("fold: the fold image of a position is an involution over a pole and a lap", _test_fold_like_involution)
 	_run_test("fold: a client replays two folds on host positions, the log stays minimal", _test_fold_log_replay)
@@ -581,6 +586,7 @@ func _contents_of(rig: Dictionary, chunk: Vector2i) -> Dictionary:
 func _test_near_contents_same_ids() -> void:
 	var far := Vector2i(3, 0)
 	var on_attach := _make_contents_rig()
+	on_attach["cm"].set_lod_enabled(false)   # Phase 194: a coarse chunk's contents wait for its upgrade; this is the fast rule
 	_build_chunks(on_attach["cm"], [far])
 	var want := _contents_of(on_attach, far)
 	assert_true(want.size() > 0, "the chunk has contents")
@@ -588,6 +594,7 @@ func _test_near_contents_same_ids() -> void:
 
 	var later := _make_contents_rig()
 	var cm: ChunkManager = later["cm"]
+	cm.set_lod_enabled(false)
 	var clock := _make_fast(cm)
 	_build_chunks(cm, [far])
 	assert_true(cm.is_chunk_built(far), "built while the player is fast")
@@ -609,6 +616,7 @@ func _test_near_contents_enter_ring() -> void:
 	var rig := _make_contents_rig()
 	var cm: ChunkManager = rig["cm"]
 	var far := Vector2i(4, 0)
+	cm.set_lod_enabled(false)   # Phase 194: the fast rule alone (a coarse chunk also waits for its upgrade)
 	_make_fast(cm)
 	_build_chunks(cm, [far, Vector2i(1, 0)])
 	assert_false(cm._near.is_waiting(Vector2i(1, 0)), "a chunk in the near ring spawns on attach, fast or not")
@@ -719,3 +727,129 @@ static func _tri_keys(faces: PackedVector3Array) -> Array:
 		out.append("%s|%s|%s" % [faces[i], faces[i + 1], faces[i + 2]])
 	out.sort()
 	return out
+
+# ---------------------------------------------------------------------------
+# Phase 194 — follow-up debt burn II (#504, #509, #512)
+# ---------------------------------------------------------------------------
+
+## #512 — the lane (the body's chunk and the ones ahead of it) first; a diagonal neighbour, the ground behind and a
+## peer's own chunks by their distance from the nearest centre, not after the whole lane.
+func _test_stream_lane_order() -> void:
+	var centers: Array = [Vector2i(10, 0), Vector2i(20, 0)]
+	var east := Vector2(1, 0)
+	var k := func(c: Vector2i) -> float: return ChunkManager.queue_priority(centers, east, c, true)
+	assert_true(k.call(Vector2i(10, 0)) < k.call(Vector2i(11, 0)), "the body's chunk, then the one ahead")
+	assert_true(k.call(Vector2i(11, 0)) < k.call(Vector2i(11, 1)), "the lane before the diagonal beside it")
+	assert_true(k.call(Vector2i(11, 1)) < k.call(Vector2i(14, 0)), "but a diagonal neighbour before the far lane")
+	assert_true(k.call(Vector2i(9, 0)) < k.call(Vector2i(14, 0)), "and the chunk just behind the body too")
+	assert_true(k.call(Vector2i(20, 1)) < k.call(Vector2i(14, 0)), "a peer's neighbour by its distance from the peer")
+	# PR #529: at one lane chunk per ring, every nearer ring (behind the body too) went first, and a CI runner's
+	# 270 m/s flight built none of the ground under the body.
+	assert_true(k.call(Vector2i(15, 0)) < k.call(Vector2i(6, 0)), "the lane five ahead before the ground four behind")
+	assert_true(k.call(Vector2i(15, 0)) < k.call(Vector2i(13, 4)), "and before a chunk four rings out beside the lane")
+	var cm := ChunkManager.new()
+	var clock := _make_fast(cm)
+	assert_true(cm.is_moving_fast(), "fast")
+	cm._last_centers = centers
+	cm._builds = { 1: { "chunk": Vector2i(14, 0) }, 2: { "chunk": Vector2i(11, 1) }, 3: { "chunk": Vector2i(20, 0) }, 4: { "chunk": Vector2i(11, 0) } }
+	assert_eq(cm._apply_order([1, 2, 3, 4]), [3, 4, 2, 1], "the peer's own chunk, the lane ahead, the diagonal, then the far lane")
+	clock[0] += ChunkManager.FAST_HOLD_MSEC
+	cm._builds.clear()
+	cm.free()
+
+## #512 — a queue sorted for the lane kept that order after the flyer stopped: the ground beside and behind it waited.
+func _test_stream_queue_resorted_on_stop() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var player: PlayerSlice = rig["player"]
+	cm.view_distance = 2
+	cm.prefetch_distance = 0
+	cm.refresh(false)
+	var clock := _make_fast(cm)
+	player.spawn_at(Vector3(32.0 + 16.0, 40.0, 16.0))
+	cm.refresh(false)
+	assert_true(cm._queue_in_lane, "a fast crossing sorts the queue for the lane")
+	clock[0] += ChunkManager.FAST_HOLD_MSEC
+	assert_false(cm.is_moving_fast(), "the flyer stopped")
+	cm.refresh(false)   # the window did not move
+	assert_false(cm._queue_in_lane, "the lane order is dropped")
+	assert_eq(cm._load_queue[0], Vector2i(1, 0), "the queue starts under the body")
+	var last := -1.0
+	var sorted := true
+	for c: Vector2i in cm._load_queue:
+		var key := ChunkManager.queue_priority([Vector2i(1, 0)], Vector2.ZERO, c)
+		sorted = sorted and key >= last
+		last = key
+	assert_true(sorted, "and runs by distance from it")
+	_free_build_rig(rig)
+
+## #504 — a parked shape lived in `_parked_shapes` and on a stand-in's meta at once; now the table is the one store,
+## and the meta only carries a shape across a fold.
+func _test_near_parked_one_store() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	cm.set_lod_enabled(false)
+	var voxel: VoxelSlice = rig["voxel"]
+	var far := Vector2i(3, 0)
+	var gone := Vector2i(5, 0)
+	_build_chunks(cm, [Vector2i(0, 0), far, gone])
+	var both := func() -> Array:
+		var out: Array = []
+		for key in voxel._parked_shapes:
+			for node in [voxel._chunks.get(key), voxel._standins.get(key)]:
+				if node != null and is_instance_valid(node) and (node as Node3D).has_meta("parked_shape"):
+					out.append(key)
+		for key in voxel._standins:
+			if is_instance_valid(voxel._standins[key]) and (voxel._standins[key] as Node3D).has_meta("parked_shape"):
+				out.append(key)
+		return out
+	assert_true(voxel.has_parked_collision(far) and voxel.has_parked_collision(gone), "built away from the body: parked")
+	assert_eq(both.call(), [], "after the build: one store")
+	voxel.adopt_standins(voxel.detach_standins(), Transform3D.IDENTITY)
+	assert_true(voxel.has_standin(far) and voxel.has_parked_collision(far), "the fold carried the shape to the stand-in's chunk")
+	assert_eq(both.call(), [], "after the fold: one store, no meta left")
+	voxel.prune_standins(func(c: Vector2i) -> bool: return c != gone)
+	assert_false(voxel.has_parked_collision(gone), "a pruned stand-in takes its parked shape with it")
+	_stand_in(rig["player"], far)
+	cm._near.tick()
+	assert_false(voxel.has_parked_collision(far), "the body's tick attached it")
+	assert_eq(both.call(), [], "after the attach: one store")
+	assert_true((voxel._standins[voxel._chunk_key(far)] as Node3D).has_node("Collision"), "on the stand-in")
+	_free_build_rig(rig)
+
+## #504 — the near ring rescanned (and allocated) the parked list every frame; now only when a body moved or a shape
+## was parked since a scan that found nothing due.
+func _test_near_scan_idle_skip() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	cm.set_lod_enabled(false)
+	var voxel: VoxelSlice = rig["voxel"]
+	_build_chunks(cm, [Vector2i(0, 0), Vector2i(3, 0)])
+	cm._near.tick()
+	assert_false(cm._near._idle_scan.is_empty(), "nothing due: the scan's inputs are kept")
+	var idle: Array = cm._near._idle_scan
+	cm._near.tick()
+	assert_eq(cm._near._idle_scan, idle, "an unchanged frame skips the scan")
+	_build_chunks(cm, [Vector2i(1, 0)])
+	assert_true(voxel.has_parked_collision(Vector2i(1, 0)), "a chunk beside the body parks its other quadrants")
+	cm.pump_budget_msec = 0
+	cm.begin_pump()
+	cm._near.tick()
+	assert_false(voxel.has_parked_collision(Vector2i(1, 0)), "the new parked shape is scanned and attached without the body moving")
+	_free_build_rig(rig)
+
+## #504 — with the ring switched off every waiting chunk released at once on the next tick, inside the record flight's
+## measured window; it is flushed at the toggle now.
+func _test_near_toggle_flushes_waiting() -> void:
+	var rig := _make_contents_rig()
+	var cm: ChunkManager = rig["cm"]
+	cm.set_lod_enabled(false)
+	var far := Vector2i(4, 0)
+	_make_fast(cm)
+	_build_chunks(cm, [far])
+	assert_true(cm._near.is_waiting(far), "a far chunk waits while the body is fast")
+	cm.set_near_ring_enabled(false)
+	assert_eq(cm._near.waiting_count(), 0, "the toggle releases every waiting chunk")
+	assert_true(cm._contents_spawned.has(cm._chunk_key(far)), "and spawns its contents then")
+	cm.set_near_ring_enabled(true)
+	_free_build_rig(rig)

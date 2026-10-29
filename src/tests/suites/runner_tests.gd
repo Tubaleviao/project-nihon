@@ -216,10 +216,30 @@ func _test_playtest_flight_verdict() -> void:
 	assert_eq(Bot.near_ring_ms({ "chunks": 4000, "chunk_attach_collision": 1500, "chunk_contents": 700, "chunk_attach_mesh": 500 }), 2.2,
 		"the gated cost is collision and contents only")
 	assert_eq(Bot.near_ring_ms(times), 1.5, "a flight that spawned nothing has collision only")
-	assert_true(FileAccess.get_file_as_string("res://tools/check_playtest_budget.py").contains("FLIGHT_MAX_SHARE = %s" % str(Bot.FLIGHT_MAX_SHARE)),
-		"the CI gate's flight share is the bot's")
-	assert_true(is_equal_approx(Bot.FLIGHT_WORKER_MAX_SHARE, 1.0 / 3.0) and FileAccess.get_file_as_string("res://tools/check_playtest_budget.py").contains("FLIGHT_WORKER_MAX_SHARE = 1.0 / 3.0"),
-		"the CI gate's worker share is the bot's (a third)")
+	# Phase 194 (#504) — the shares are defined once: the CI gate reads them from the bot's source.
+	var gate := FileAccess.get_file_as_string("res://tools/check_playtest_budget.py")
+	assert_true(gate.contains('FLIGHT_MAX_SHARE = bot_const("FLIGHT_MAX_SHARE")') and gate.contains('FLIGHT_WORKER_MAX_SHARE = bot_const("FLIGHT_WORKER_MAX_SHARE")'),
+		"the CI gate reads both flight shares from the bot")
+	assert_true(is_equal_approx(Bot.FLIGHT_WORKER_MAX_SHARE, 1.0 / 3.0), "the worker share is a third")
+	# ... and the bot's own verdict enforces them on a budgeted run (CI's runs report only and gate the median).
+	var flight := func(near: float, record_near: float, worker: float, record_worker: float) -> Array:
+		return [{ "step": "flight", "ok": true, "max_ms": 10.0, "detail": "", "flight": { "attached": 20, "record_attached": 20,
+			"near_ms_per_attach": near, "record_near_ms_per_attach": record_near,
+			"crossings": 30, "record_crossings": 30, "worker_ms_per_crossing": worker, "record_worker_ms_per_crossing": record_worker } }]
+	assert_eq(Bot.flight_share_failures(flight.call(2.0, 10.0, 40.0, 200.0)), [], "under both shares passes")
+	assert_eq(Bot.flight_share_failures(flight.call(6.0, 10.0, 40.0, 200.0)).size(), 1, "collision and contents over half the record fail")
+	assert_eq(Bot.flight_share_failures(flight.call(2.0, 10.0, 100.0, 200.0)).size(), 1, "worker ms over a third of the record fail")
+	assert_eq(Bot.flight_share_failures([{ "step": "flight", "flight": { "attached": 0 } }]), [], "a flight that attached nothing is not judged on shares")
+	assert_true(Bot.build_report(flight.call(6.0, 10.0, 40.0, 200.0), { "walk": 1000.0 })["failures"].any(func(f): return str(f).begins_with("flight:")),
+		"a budgeted run fails on the share")
+	assert_false(Bot.build_report(flight.call(6.0, 10.0, 40.0, 200.0), {})["failures"].any(func(f): return str(f).begins_with("flight:")),
+		"a `--playtest-no-budget` run reports it only")
+	# Phase 194 (#504, #512) — the runner checks what a step left behind, and an unknown step name is refused.
+	assert_eq(Bot.state_leaks({ "flying": false, "near_ring": true, "tick_probe": false }, { "flying": true, "near_ring": false, "tick_probe": false }),
+		["flying on", "near_ring off"], "a step that left the body flying and the ring off is named")
+	assert_eq(Bot.state_leaks({ "flying": false }, { "flying": false }), [], "nothing changed, nothing named")
+	assert_eq(Bot.only_from_args(["--playtest-abort", "flight"], Bot.ABORT_ARG), "flight", "--playtest-abort names a step")
+	assert_false("nosuch" in Bot.all_step_names(), "an unknown name is no step (the run exits 1 on it)")
 
 ## Phase 183 — `--playtest-profile`: per phase, the mean ms over every frame and over the worst 5% by total.
 func _test_playtest_profiler_summary() -> void:

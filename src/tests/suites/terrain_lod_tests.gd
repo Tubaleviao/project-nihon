@@ -20,6 +20,8 @@ func register() -> void:
 	_run_test("lod: a fast flyer stands on coarse ground, upgraded once it slows", _test_lod_flying_rings)
 	_run_test("lod: a coarse chunk is upgraded when it enters the detail ring", _test_lod_upgrade_on_enter)
 	_run_test("lod: edited ground, lod off and a dedicated server build full", _test_lod_full_cases)
+	_run_test("lod: a coarse chunk's trees and creatures wait for its upgrade, a peer's window's do not", _test_lod_contents_wait_for_upgrade)
+	_run_test("lod: after a landing the chunk under the body is first in the upgrade queue", _test_lod_landing_upgrade_first)
 
 func _probe_chunks() -> Array:
 	var pole := TerrainSlice.pole_chunks()
@@ -200,7 +202,7 @@ func _lod_rig() -> Dictionary:
 	return _make_chunk_build_rig()
 
 func _free_rig(rig: Dictionary) -> void:
-	for k in ["cm", "voxel", "terrain", "player"]:
+	for k in ["cm", "voxel", "terrain", "player", "creature", "tree"]:
 		if rig.has(k) and is_instance_valid(rig[k]):
 			rig[k].free()
 
@@ -315,3 +317,72 @@ func _test_lod_full_cases() -> void:
 		assert_eq(m.chunk_lod(Vector2i(4, 0)), VoxelCoarse.FULL, ["lod off", "the near ring off (the record flight)", "a process that draws nothing"][case_i] + " builds full detail")
 		_free_rig(r)
 
+
+## Phase 194 (#509) — a coarse cell stands at its highest tile, so a tree or a creature at its true height would
+## sit buried under it: the chunk's contents wait for the full build. A peer's window is the peer's ground.
+func _test_lod_contents_wait_for_upgrade() -> void:
+	var rig := _lod_rig()
+	var cm: ChunkManager = rig["cm"]
+	var creature := CreatureSlice.new()
+	add_child(creature)
+	var tree := _make_tree_slice()
+	cm.creature_slice = creature
+	cm.tree_slice = tree
+	rig["creature"] = creature
+	rig["tree"] = tree
+	var far := Vector2i(3, 0)
+	_build(cm, [far])
+	assert_eq(cm.chunk_lod(far), 4, "built coarse while the body is away")
+	assert_true(cm._near.is_waiting(far), "its contents wait")
+	assert_eq(tree.trees_in_chunk(far).size(), 0, "no tree stands on the coarse chunk")
+	var creatures_here := func() -> int: return creature.get_all_instances().filter(func(i): return i["chunk"] == far).size()
+	assert_eq(creatures_here.call(), 0, "and no creature")
+	cm._near.tick()
+	assert_true(cm._near.is_waiting(far), "a tick with the body away (and slow) still holds them")
+	_stand(rig["player"], Vector2i(2, 0))
+	cm._near.tick()
+	_wait_for_builds(cm)
+	assert_eq(cm.chunk_lod(far), VoxelCoarse.FULL, "the body came near: upgraded")
+	assert_false(cm._near.is_waiting(far), "nothing waits any more")
+	assert_true(tree.trees_in_chunk(far).size() + creatures_here.call() > 0, "the full chunk's contents stand")
+	var peer_chunk := Vector2i(-6, 0)
+	cm.set_peer_center(7, Vector2i(-8, 0), true)
+	_build(cm, [peer_chunk])
+	assert_true(cm.chunk_lod(peer_chunk) > VoxelCoarse.FULL, "two rings from the peer: coarse on this host")
+	assert_false(cm._near.is_waiting(peer_chunk), "but in the peer's window its contents spawn: they are the peer's")
+	assert_true(cm._contents_spawned.has(cm._chunk_key(peer_chunk)), "spawned once")
+	_free_rig(rig)
+
+## Phase 194 (#509) — landing after a fast flight, the body stands on coarse conservative collision until its chunk is
+## upgraded, while the pool is full of the lane's builds: that upgrade goes to the head of the queue.
+func _test_lod_landing_upgrade_first() -> void:
+	var rig := _lod_rig()
+	var cm: ChunkManager = rig["cm"]
+	var player: PlayerSlice = rig["player"]
+	var under := Vector2i(3, 0)
+	_stand(player, under)
+	player.flying = true
+	var clock := [100000]
+	cm.pump_clock_usec = func(): return clock[0] * 1000
+	cm.note_local_crossing()
+	clock[0] += 300
+	cm.note_local_crossing()
+	_build(cm, [under, Vector2i(4, 0), Vector2i(3, 1)])
+	assert_eq(cm.chunk_lod(under), 2, "flown over: coarse")
+	cm.max_builds_in_flight = 1
+	cm.load_chunk(Vector2i(9, 9))   # the lane's build holds the only slot
+	assert_eq(cm._m1.worker_builds(), 1, "the pool is full")
+	cm._queue_rebuild(Vector2i(4, 0))
+	cm._queue_rebuild(under)   # already waiting, at the back
+	clock[0] += ChunkManager.FAST_HOLD_MSEC
+	player.flying = false
+	cm._near.tick()
+	assert_eq(cm._rebuild_queue[0], under, "the chunk under the body is first")
+	assert_eq(cm._rebuild_queue.count(under), 1, "once")
+	assert_true(cm._near._want_full.has(cm._chunk_key(under)), "and its next build is the full one")
+	cm._near.tick()
+	assert_eq(cm._rebuild_queue[0], under, "a second tick leaves it at the head")
+	cm.max_builds_in_flight = 4
+	_wait_for_builds(cm)
+	assert_eq(cm.chunk_lod(under), VoxelCoarse.FULL, "upgraded")
+	_free_rig(rig)

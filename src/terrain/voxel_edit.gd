@@ -299,6 +299,9 @@ func _append_edit(tile: Vector2i, op: Dictionary) -> void:
 		s._index_edit(key)
 	var ops: Array = s._edits[key]
 	ops.append(op)
+	# Phase 194 (#512) — a dig or a place is an edit like any other: the chunk cache signs a build with
+	# the revisions of the chunk and its neighbours, so one not bumped here let a cached mesh outlive it.
+	s._bump_edit_rev(key)
 	if ops.size() <= s.MAX_TILE_OPS:
 		return
 	var compacted = s._compact_ops(tile)

@@ -95,6 +95,10 @@ const FLIGHT_SPEED_MPS := PlayerSlice.SPEED * AdminRules.SPEED_MAX * AdminRules.
 ## one step, `--playtest-flight-speed 10` flies it at the old 90 m/s (walk speed × 10 × the flying factor).
 const ONLY_ARG := "--playtest-only"
 const FLIGHT_SPEED_ARG := "--playtest-flight-speed"
+## Phase 194 (#504) — `--playtest-abort flight` (a check of the bot, never a gated run): the flight step hangs in its
+## record flight, with the body flying, the near ring off and the TickProbe on, so the run proves the step runner
+## restores all three when a step never returns.
+const ABORT_ARG := "--playtest-abort"
 const FLIGHT_SECS := 12.0
 const FLIGHT_WARMUP_SECS := 1.5
 const FLIGHT_SAMPLE_SECS := 0.25
@@ -168,6 +172,10 @@ var _chunk_builds: int = 0
 var _build_breakdown: Dictionary = {}   ## Phase 170: the stream step's per-stage build time
 var _stream_rate: float = 0.0   ## the stream step's chunk build rate (chunks/s), 0 until it ran
 var _flight: Dictionary = {}   ## Phase 187: the flight step's coverage record
+var _flight_mps: float = -1.0   ## Phase 194: the flight speed, read from the command line once (`_flight_speed`)
+## Phase 194 (#504) — what a step changed that the runner must put back whether or not the step returns (a step
+## coroutine that hits a script error or hangs never reaches its own restore). Called once, after the step.
+var _step_restore: Callable = Callable()
 var _mined: Array = []
 var _chopped: Array = []
 var _crafted: Array = []
@@ -229,13 +237,11 @@ static func _step_timeout(step: String) -> float:
 
 static func step_names() -> Array:
 	var only := only_from_args(Array(OS.get_cmdline_user_args()))
-	if only != "" and only in all_step_names():
-		return [only]
-	return all_step_names()
+	return [only] if only != "" else all_step_names()
 
-## Phase 191 — the step `--playtest-only <step>` names, or "".
-static func only_from_args(args: Array) -> String:
-	var i := args.find(ONLY_ARG)
+## Phase 191 — the step `--playtest-only <step>` names (or `flag` names), or "".
+static func only_from_args(args: Array, flag: String = ONLY_ARG) -> String:
+	var i := args.find(flag)
 	if i >= 0 and i + 1 < args.size():
 		return str(args[i + 1])
 	return ""
@@ -310,16 +316,38 @@ static func budget_failures(steps: Array, budgets: Dictionary, headroom: float =
 				name, p95, float(budgets[name]), int(round((headroom - 1.0) * 100.0)), limit])
 	return out
 
+## Phase 194 (#504) — the flight step's share gates on one run: collision and contents per attached chunk over
+## FLIGHT_MAX_SHARE of the record flight's, worker ms per crossing over FLIGHT_WORKER_MAX_SHARE of the record's.
+## A flight that attached or crossed nothing on either flight is not judged here (its coverage verdict is).
+## CI gates the median of three runs instead (`tools/check_playtest_budget.py`, which reads both shares from here).
+static func flight_share_failures(steps: Array) -> Array:
+	var out: Array = []
+	for s in steps:
+		var f: Dictionary = s.get("flight", {}) if str(s["step"]) == "flight" else {}
+		if int(f.get("attached", 0)) > 0 and int(f.get("record_attached", 0)) > 0:
+			var limit := float(f["record_near_ms_per_attach"]) * FLIGHT_MAX_SHARE
+			if float(f["near_ms_per_attach"]) > limit:
+				out.append("flight: collision and contents %.1f ms per attached chunk is over %.1f ms (%d%% of the near-ring-off record's)" % [
+					float(f["near_ms_per_attach"]), limit, roundi(FLIGHT_MAX_SHARE * 100.0)])
+		if int(f.get("crossings", 0)) > 0 and int(f.get("record_crossings", 0)) > 0:
+			var wlimit := float(f["record_worker_ms_per_crossing"]) * FLIGHT_WORKER_MAX_SHARE
+			if float(f["worker_ms_per_crossing"]) > wlimit:
+				out.append("flight: worker %.0f ms per crossing is over %.0f ms (%d%% of the full-detail record's)" % [
+					float(f["worker_ms_per_crossing"]), wlimit, roundi(FLIGHT_WORKER_MAX_SHARE * 100.0)])
+	return out
+
 static func load_budgets() -> Dictionary:
 	var parsed = JSON.parse_string(FileAccess.get_file_as_string(BUDGET_PATH))
 	return parsed if parsed is Dictionary else {}
 
 ## The run verdict. `failures` names every hard failure: a failed (or timed-out) step, a frame over
-## HARD_FRAME_MS, a step over its process-time budget (`budgets`, empty to skip) and a step of the
-## fixed list that never ran.
+## HARD_FRAME_MS, a step over its process-time budget or a flight over its shares (`budgets`, empty to skip
+## both: `--playtest-no-budget`) and a step of the fixed list that never ran.
 static func build_report(steps: Array, budgets: Dictionary = {}) -> Dictionary:
 	var failures: Array = []
 	failures.append_array(budget_failures(steps, budgets))
+	if not budgets.is_empty():
+		failures.append_array(flight_share_failures(steps))
 	var seen := {}
 	for s in steps:
 		seen[str(s["step"])] = true
@@ -499,6 +527,13 @@ func _end_frame() -> void:
 
 func run(root: Node) -> void:
 	_root = root
+	# Phase 194 (#512) — an unknown `--playtest-only` name is a mistake, not a request for every step.
+	var only := only_from_args(Array(OS.get_cmdline_user_args()))
+	if only != "" and not only in all_step_names():
+		print("[Playtest] FAILURE: --playtest-only names no step: %s (steps: %s)" % [only, ", ".join(all_step_names())])
+		print("[Playtest] FAIL")
+		get_tree().quit(1)
+		return
 	if ProcessProfiler.requested(Array(OS.get_cmdline_user_args())):
 		_profiler = ProcessProfiler.new()
 		print("[Playtest] profiling every script _process (diagnostic: not a gated run)")
@@ -570,6 +605,7 @@ func _run_step(step: String) -> Dictionary:
 	_step_deadline_ms = Time.get_ticks_msec() + int(_step_timeout(step) * 1000.0)
 	_recording = true
 	_step_result = []
+	var before := _session_state()
 	_run_step_body(step)
 	# A step coroutine that hits a script error never returns; its own waits all stop at the step
 	# deadline, so a step still silent a little after it has crashed (or hung) and fails here, not
@@ -580,6 +616,12 @@ func _run_step(step: String) -> Dictionary:
 	var result: Array = _step_result if not _step_result.is_empty() else [false, "step %s crashed or hung (no result %d s past its deadline)" % [step, int(STEP_GRACE_SECS)]]
 	_key(KEY_W, false)
 	_recording = false
+	if _step_restore.is_valid():
+		_step_restore.call()
+		_step_restore = Callable()
+	var leaks := state_leaks(before, _session_state())
+	if not leaks.is_empty():
+		result = [false, "%s; left behind: %s" % [str(result[1]), ", ".join(leaks)]]
 	var rec := step_record(step, bool(result[0]), str(result[1]), _frames, _chunk_builds,
 		{ "process_ms": _process_ms, "physics_ms": _physics_ms, "render_ms": _render_ms })
 	if step == "stream":
@@ -785,7 +827,32 @@ static func chunk_phases_ms(times: Dictionary, attached: int) -> Dictionary:
 	return out
 
 func _flight_speed() -> float:
-	return flight_speed_from_args(Array(OS.get_cmdline_user_args()))
+	if _flight_mps < 0.0:
+		_flight_mps = flight_speed_from_args(Array(OS.get_cmdline_user_args()))
+	return _flight_mps
+
+## Phase 194 (#504) — the session state a step may change and must leave as it found it: the body's flight, the
+## near ring and the TickProbe (the profiler owns the probe in a `--playtest-profile` run).
+func _session_state() -> Dictionary:
+	var state := { "flying": _root._player.flying, "near_ring": _root._chunk_manager._near.enabled }
+	if _profiler == null:
+		state["tick_probe"] = TickProbe.enabled
+	return state
+
+## The entries of `after` that differ from `before`, as "name on/off". Pure.
+static func state_leaks(before: Dictionary, after: Dictionary) -> Array:
+	var out: Array = []
+	for k in before:
+		if after.has(k) and after[k] != before[k]:
+			out.append("%s %s" % [k, "on" if bool(after[k]) else "off"])
+	return out
+
+## Put back what the flight step changed (see `_step_restore`).
+func _restore_flight(speed: float, was_flying: bool, probe_was: bool) -> void:
+	_root._chunk_manager.set_near_ring_enabled(true)
+	if _root._player.flying != was_flying:
+		GameBus.admin_moves_synced.emit(speed, was_flying)
+	TickProbe.enabled = probe_was
 
 ## Phase 187 — carry the body east at FLIGHT_SPEED_MPS (a ground-hugging teleport every frame: the
 ## streaming load of admin flight without its input or physics) and sample the ground under it.
@@ -806,17 +873,16 @@ func _step_flight() -> Array:
 	var home_local: Vector3 = home["local"]
 	var was_flying: bool = _root._player.flying
 	var speed: float = _root._player.admin_speed_factor
+	_step_restore = _restore_flight.bind(speed, was_flying, TickProbe.enabled)
 	GameBus.admin_moves_synced.emit(speed, true)   # what `/fly` sends
 	var gated := await _fly_east(home_chunk, home_local)
 	var settled := await _return_home(home_chunk, home_local)
 	if not settled:
-		# a record flight launched from the wrong place would be meaningless: restore and fail the step
-		GameBus.admin_moves_synced.emit(speed, was_flying)
+		# a record flight launched from the wrong place would be meaningless: fail the step (the runner restores)
 		return [false, "the start chunk never rebuilt after the gated flight"]
 	cm.set_near_ring_enabled(false)
 	var record := await _fly_east(home_chunk, home_local)
-	cm.set_near_ring_enabled(true)
-	GameBus.admin_moves_synced.emit(speed, was_flying)
+	_step_restore.call()   # the body walks home: the runner's call after the step finds nothing left to put back
 	settled = await _return_home(home_chunk, home_local) and settled
 	_flight = flight_verdict(gated["under"], gated["ring"])
 	_flight["speed_mps"] = _flight_speed()
@@ -878,6 +944,10 @@ func _fly_east(home_chunk: Vector2i, home_local: Vector3) -> Dictionary:
 		if secs >= FLIGHT_WARMUP_SECS and not probing:
 			probing = true
 			TickProbe.enabled = true
+			if not cm._near.enabled and only_from_args(Array(OS.get_cmdline_user_args()), ABORT_ARG) == "flight":
+				print("[Playtest] %s flight: the step hangs here, flying, near ring off, TickProbe on" % ABORT_ARG)
+				while true:
+					await get_tree().process_frame
 			TickProbe.take_times()
 			attached0 = cm.builds_attached
 			worker0 = cm.worker_usec

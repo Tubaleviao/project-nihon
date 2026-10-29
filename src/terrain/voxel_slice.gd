@@ -402,10 +402,7 @@ func release_standins() -> void:
 		_free_standin(key)
 
 func _free_standin(key: String) -> void:
-	var root: Variant = _standins.get(key)
-	_standins.erase(key)
-	if is_instance_valid(root):
-		(root as Node3D).queue_free()
+	_build.free_standin(key)
 
 func _ready() -> void:
 	# Phase 43 — fill the ore field's material band table HERE, on the main thread, before any

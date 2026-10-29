@@ -2136,6 +2136,7 @@ func _test_chunk_contents_spawn_after_ground() -> void:
 		tree.free()
 		return
 	var key := "%d,%d" % [c.x, c.y]
+	cm.set_lod_enabled(false)   # Phase 194: the chunk is far from the body, and a coarse chunk's trees wait for its upgrade
 	cm.load_chunk(c)
 	assert_false(cm._built.has(key), "the build is in flight")
 	assert_eq(tree.trees_in_chunk(c).size(), 0,

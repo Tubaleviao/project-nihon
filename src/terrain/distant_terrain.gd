@@ -133,6 +133,11 @@ const FILL_PER_CALL := 3   ## patches built per `set_unbuilt` call (each samples
 ## ~1–2.5 ms, so three in one frame were a 3–7 ms spike every time the window moved.
 const FILL_BUDGET_USEC := 1000
 var _fills: Dictionary = {}   ## Vector2i chunk -> MeshInstance3D
+## Phase 194 — the inputs `rebuild` last made patches for, and whether it left some unmade.
+var _unbuilt_key: Array = []
+var _fills_owed := false
+## Phase 194 — what `rebuild` last asked the bands for.
+var _bands_key: Array = []
 
 ## Keep a patch under exactly the chunks in `chunks` (the unbuilt ones of the voxel window). Patches of
 ## chunks no longer listed are freed at once; at most `FILL_PER_CALL` new ones are made per call, nearest
@@ -277,15 +282,28 @@ static func _altitude_color(alt: float) -> Color:
 ## Phase 191 — `chunks` (the chunk manager) also keeps a patch under each unbuilt chunk of its window.
 func rebuild(center: Vector2, radius_chunks: int, chunks: Node = null) -> bool:
 	if chunks != null:
-		TickProbe.begin("distant_fills")   # Phase 183 — the playtest profiler's view of the fill patches
-		set_unbuilt(chunks.unbuilt_window_chunks(), chunks.player_chunk(), FILL_BUDGET_USEC)
-		TickProbe.end()
+		# Phase 194 (#512) — the window's unbuilt list (string keys, a dict per call) is read only when it can
+		# have changed, or while patches are still owed to it (`set_unbuilt` makes a few a call).
+		var key: Array = chunks.unbuilt_window_key()
+		if key != _unbuilt_key or _fills_owed:
+			_unbuilt_key = key
+			TickProbe.begin("distant_fills")   # Phase 183 — the playtest profiler's view of the fill patches
+			var unbuilt: Array = chunks.unbuilt_window_chunks()
+			_fills_owed = set_unbuilt(unbuilt, chunks.player_chunk(), FILL_BUDGET_USEC) < unbuilt.size()
+			TickProbe.end()
 	window_half_m = (float(radius_chunks) + 0.5) * CHUNK_METERS
 	ring_half_m = ring_half_extent(radius_chunks)
 	outer_radius_m = outer_radius_for(ring_half_m, circumference_m)
 	if bands != null:
-		bands.world_seed = world_seed
-		bands.update(center, outer_radius_m)
+		# Phase 194 (#444) — every band's lattice is a power-of-two multiple of band 0's, so the bands can only
+		# want a new build when band 0's cell, the ring, the seed or the world changed.
+		var cell0: float = bands.CELL_0
+		var bands_key := [Vector2i(floori(center.x / cell0), floori(center.y / cell0)), outer_radius_m, world_seed,
+			bands.circumference_m, bands]
+		if bands_key != _bands_key:
+			_bands_key = bands_key
+			bands.world_seed = world_seed
+			bands.update(center, outer_radius_m)
 	var cell := ring_half_m * 2.0 / float(GRID)
 	var origin := Vector2i(floori(center.x / cell), floori(center.y / cell))
 	# The voxel window is chunk-snapped around the player: the hole is exactly that rectangle, so the
