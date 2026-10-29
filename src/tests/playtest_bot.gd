@@ -242,7 +242,7 @@ static func flight_speed_from_args(args: Array) -> float:
 	return FLIGHT_SPEED_MPS
 
 static func all_step_names() -> Array:
-	return ["create", "walk", "stream", "flight", "mine", "gather", "craft", "character_sheet", "place", "fight", "travel", "horizon", "far_peak", "pole"]
+	return ["create", "walk", "stream", "flight", "mine", "gather", "craft", "character_sheet", "place", "fight", "tutorial", "travel", "horizon", "far_peak", "pole"]
 
 # ---------------------------------------------------------------------------
 # Pure report maths
@@ -1386,6 +1386,44 @@ func _model_diag(iid: String) -> String:
 	return ", ".join(parts)
 
 ## Travel: two waystones set down with the player's own keys, attuned, then the intent; the body must land at the second.
+## Phase 186 — the tutorial ran beside the session. The windows the earlier steps did not open are opened with the
+## player's own windows keys' targets, then the events the tutorial saw are replayed: the moving, gathering,
+## first-tools, first-stations and first-hunt chapters must all complete. The screenshot shows a card.
+const TUTORIAL_CHAPTERS := ["moving", "gathering", "first_stations", "first_tools", "first_hunt"]
+
+func _step_tutorial() -> Array:
+	var wiring = _root._tutorial_wiring
+	if wiring.slice == null:
+		return [false, "no tutorial slice"]
+	var ui: Node = _root._ui
+	for w in ["controls", "inventory", "technology", "crafting"]:
+		ui.open_window(w)
+	ui.hotbar.assign(0, "Thornwood")   # a box filled by hand, as a drag from the pack does
+	# The fight step wounds the sturdiest creature and harvests a carcass but never kills it (1989 hp); the death of
+	# a creature the player killed arrives on the same bus signal a real kill uses.
+	GameBus.creature_died.emit("playtest_target", _root._player.get_position(), _root._registry.local_player_id, Vector3.ZERO)
+	await _until(func(): return false, 0.3)
+	for w in ["controls", "inventory", "technology", "crafting"]:
+		ui.close_window(w)
+	var done: Array = wiring.Rules.replay(wiring.slice.history, wiring.slice.steps())
+	var state := { "enabled": true, "done": done, "dismissed": [] }
+	var missing := []
+	for c in TUTORIAL_CHAPTERS:
+		if not wiring.Rules.chapter_done(state, c, wiring.slice.steps()):
+			missing.append(c)
+	var kinds := {}
+	for ev in wiring.slice.history:
+		kinds[str(ev["kind"])] = int(kinds.get(str(ev["kind"]), 0)) + 1
+	print("[Playtest] tutorial events: ", kinds)
+	var open_steps := []
+	for s in wiring.slice.steps():
+		if TUTORIAL_CHAPTERS.has(str(s["chapter"])) and not done.has(str(s["id"])):
+			open_steps.append(str(s["id"]))
+	wiring.slice.restart()   # a card to photograph: the session starts the tutorial over
+	await _until(func(): return wiring.card != null and wiring.card.visible, 1.0)
+	var ok: bool = missing.is_empty() and wiring.card != null and wiring.card.visible
+	return [ok, "%d steps completed by the session; chapters missing: %s; open steps: %s" % [done.size(), str(missing), str(open_steps)]]
+
 func _step_travel() -> Array:
 	var stone: String = str(_root._waystones.station_type())
 	_key(KEY_W, true)   # clear of the bench and the forge the earlier steps set down

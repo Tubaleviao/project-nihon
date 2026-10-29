@@ -26,14 +26,14 @@ func _connect_all() -> void:
 	connect_bus(GameBus.tutorial_event, _on_event)
 	connect_bus(GameBus.craft_resolved, _on_craft_resolved)
 	connect_bus(GameBus.station_placed, _on_station_placed)
-	connect_bus(GameBus.research_resolved, _on_research_resolved)
+	connect_bus(GameBus.technology_unlocked, _on_tech_unlocked)
 	connect_bus(GameBus.creature_died, _on_creature_died)
 	connect_bus(GameBus.harvest_resolved, _on_harvest_resolved)
 	connect_bus(GameBus.bed_synced, _on_bed_synced)
 	connect_bus(GameBus.player_respawned, _on_respawned)
 	connect_bus(GameBus.chat_intent, _on_chat)
 	connect_bus(GameBus.equipment_changed, _on_equipment_changed)
-	connect_bus(GameBus.inventory_synced, _on_inventory_synced)
+	connect_bus(GameBus.inventory_changed, _on_inventory_changed)
 	connect_bus(GameBus.waystones_synced, _on_waystones_synced)
 	connect_bus(GameBus.tutorial_changed, _on_changed)
 
@@ -110,9 +110,9 @@ func _on_craft_resolved(result: Dictionary) -> void:
 func _on_station_placed(_id: String, type: String, _pos: Vector3) -> void:
 	_note("station_placed", { "type": type })
 
-func _on_research_resolved(result: Dictionary) -> void:
-	if bool(result.get("success", false)):
-		_note("technology_researched", { "technology": str(result.get("tech_id", result.get("technology", ""))) })
+func _on_tech_unlocked(tech_id: String, player_id: String) -> void:
+	if player_id == _local() or player_id == "" or player_id == "player":
+		_note("technology_researched", { "technology": tech_id })
 
 func _on_creature_died(entity_id: String, _pos: Vector3, killer_id: String, _landing: Vector3) -> void:
 	if killer_id == _local() or killer_id == "player" or killer_id == "":
@@ -148,13 +148,14 @@ func _on_equipment_changed(player_id: String, worn: Dictionary) -> void:
 			if str(worn[slot]) != "":
 				_note("item_equipped", { "slot": str(slot) })
 
-func _on_inventory_synced(owner_id: String, contents: Dictionary, _dur: Dictionary) -> void:
-	if owner_id != _local() and owner_id != "":
-		return
-	for key in contents:
-		var gained := int(contents[key]) - int(_pack.get(key, 0))
-		if gained > 0 and not _pack.is_empty():
-			_note("item_gathered", { "item": str(key), "tags": _tags_of(str(key)), "count": gained })
+## The local pack changed: what it gained is what was gathered (picked up, mined, felled or crafted).
+func _on_inventory_changed() -> void:
+	var contents: Dictionary = root._inventory.get_contents()
+	if not _pack.is_empty():
+		for key in contents:
+			var gained := int(contents[key]) - int(_pack.get(key, 0))
+			if gained > 0:
+				_note("item_gathered", { "item": str(key), "tags": _tags_of(str(key)), "count": gained })
 	_pack = contents.duplicate()
 
 func _on_waystones_synced(player_id: String, station_ids: Array) -> void:
