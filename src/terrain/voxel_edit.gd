@@ -452,7 +452,7 @@ func _apply_edit(action: String, position: Vector3, normal: Vector3, material: S
 			s._record_depletion(yielded["vein"], int(yielded["quantity"]))
 		s._rebuild_chunk_at_tile(tile)
 		return {
-			"applied": true, "tile": tile, "new_h": s._column_top_at_tile(tile),
+			"applied": true, "tile": tile, "new_h": s.column_top_at_tile(tile),
 			"pos": Vector3(position.x, float(span["top"]), position.z),
 			"material": str(span["material"]),
 		}
@@ -544,7 +544,7 @@ func _apply_settle(position: Vector3, normal: Vector3, material: String) -> Dict
 	s._append_edit(tile, { "op": "remove", "bottom": from_bottom, "top": from_top })
 	s._append_edit(tile, { "op": "add", "bottom": to_bottom, "top": to_bottom + height, "material": material })
 	s._rebuild_chunk_at_tile(tile)
-	return { "applied": true, "tile": tile, "new_h": s._column_top_at_tile(tile), "pos": position, "material": material }
+	return { "applied": true, "tile": tile, "new_h": s.column_top_at_tile(tile), "pos": position, "material": material }
 
 func _on_mine_requested(position: Vector3, normal: Vector3, player_id: String, exact: Dictionary = {}) -> void:
 	if s.is_authoritative:

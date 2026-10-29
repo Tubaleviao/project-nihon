@@ -17,7 +17,7 @@ func _init(slice: Node) -> void:
 ## column's SHAPE is asserted (the suite), and because the pre-ceiling footing read
 ## it used to be is still what a caller outside a tunnel means.
 func get_voxel_height_at(world_pos: Vector2) -> float:
-	return s._column_top_at_tile(s._world_to_tile(world_pos))
+	return s.column_top_at_tile(s._world_to_tile(world_pos))
 
 ## The top of the highest run AT OR BELOW from_y, or BEDROCK_DEPTH when nothing
 ## solid lies below. Phase 41 — the footing sampler is a function of the body's
@@ -182,7 +182,11 @@ func _terrain_material_for(biome: String) -> StandardMaterial3D:
 	return s._biome_mats[biome]
 
 ## Top of a tile's highest solid run, or BEDROCK_DEPTH when nothing is solid.
-func _column_top_at_tile(tile: Vector2i) -> float:
+## Phase 193 — public: `VoxelRay` reads it for every tile a ray crosses, so a tile with no edits answers off
+## the heightmap without allocating its runs.
+func column_top_at_tile(tile: Vector2i) -> float:
+	if not s._edits.has(s._tile_key(tile)):
+		return maxf(_base_top_for_tile(tile), s.BEDROCK_DEPTH)
 	var runs = s.get_runs_at_tile(tile)
 	if runs.is_empty():
 		return s.BEDROCK_DEPTH

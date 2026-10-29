@@ -5,7 +5,7 @@ extends RefCounted
 ## about 17–30 ms, and most of it went on ground no one touches: the collision body of a chunk four rings
 ## out (~9 ms) and the creatures and trees of a chunk the player is gone from a second later (4.5–12 ms).
 ##
-## * Collision: a landing build attaches its collision only within Chebyshev `REACH_RADIUS` of the local body, `NEAR_RADIUS` of a peer (the
+## * Collision: a landing build attaches its collision only within Chebyshev `COLLISION_RADIUS` of the local body, `NEAR_RADIUS` of a peer (the
 ##   local player and every peer window's centre), and only under a flying body that is crossing chunks
 ##   fast. The others keep their worker-made shape parked on the voxel slice, and `tick` attaches it when
 ##   the chunk enters the ring: the chunk under the local body at once, the rest under the pump budget. A
@@ -30,9 +30,14 @@ const VoxelCoarse := preload("res://src/terrain/voxel_coarse.gd")
 
 ## A body reaches the chunk it stands in and the eight around it.
 const NEAR_RADIUS := 1
-## A walking local body keeps collision two rings out (at least 64 m, past the 60 m aim, build and chop
-## reach, whose rays hit terrain on the collision layer).
+## A walking local body keeps full detail two rings out (at least 64 m, past the 60 m aim, build and chop
+## reach).
 const REACH_RADIUS := 2
+## Phase 193 — and collision one ring out: the chunk it stands in and the eight around it, at least 32 m past
+## its own chunk's edge, so a walk never leaves collided ground before the next ring lands (the chunk it steps
+## into attaches at once). The aim ray reads the voxel columns (`VoxelRay`), so nothing needs the ring two
+## out, which cost a walk ~3 ms a frame for Jolt to take 16 more chunks' trimeshes after the spawn.
+const COLLISION_RADIUS := 1
 ## Phase 190 — coarse chunks within this Chebyshev distance of the local body use the finer coarse level.
 const COARSE_RADIUS := 2
 
@@ -57,11 +62,11 @@ static func ring_distance(a: Vector2i, b: Vector2i) -> int:
 	return maxi(absi(SeamWrap.delta(b.x, a.x, TerrainSlice.circumference_chunks())), absi(b.y - a.y))
 
 ## The bodies collision is kept near, as [chunk, radius]: the local player first (radius 0 while it flies
-## fast, else `REACH_RADIUS`), then each peer window's centre at `NEAR_RADIUS`.
+## fast, else `COLLISION_RADIUS`), then each peer window's centre at `NEAR_RADIUS`.
 func bodies() -> Array:
 	var local: Vector2i = cm.player_chunk()
 	var flying: bool = cm.player_slice != null and cm.player_slice.get("flying") == true
-	var out: Array = [[local, 0 if flying and cm.is_moving_fast() else REACH_RADIUS]]
+	var out: Array = [[local, 0 if flying and cm.is_moving_fast() else COLLISION_RADIUS]]
 	for peer_id in cm._peer_centers:
 		out.append([cm._peer_centers[peer_id], NEAR_RADIUS])
 	return out

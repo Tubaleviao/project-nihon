@@ -1487,8 +1487,8 @@ func _biomes_or_lookup(world_xz: Vector2, biomes: Dictionary) -> Dictionary:
 static func _material_color(material: String) -> Color:
 	return MATERIAL_COLORS.get(material, FALLBACK_TERRAIN_COLOR)
 
-func _column_top_at_tile(tile: Vector2i) -> float:
-	return _query._column_top_at_tile(tile)
+func column_top_at_tile(tile: Vector2i) -> float:
+	return _query.column_top_at_tile(tile)
 
 func _rebuild_chunk_at_tile(tile: Vector2i) -> void:
 	_build._rebuild_chunk_at_tile(tile)
