@@ -117,6 +117,7 @@ var _alive: bool = true
 ## Phase 85 — right button held: the camera orbits and the mouse is captured.
 var _looking: bool = false
 var _look_restore_pos: Vector2 = Vector2.ZERO
+var look_degrees: float = 0.0   ## Phase 186 — degrees the look has turned the camera, for the tutorial
 
 ## Aim raycast state + HUD.
 var _hud: CanvasLayer = null
@@ -418,6 +419,7 @@ func _input(event: InputEvent) -> void:
 		if event is InputEventMouseMotion:
 			# Yaw (horizontal) — rotate the body pivot
 			_pivot.rotate_y(-event.relative.x * MOUSE_SENS)
+			look_degrees += rad_to_deg(absf(event.relative.x) * MOUSE_SENS)
 			# Pitch (vertical) — rotate only the camera arm
 			var cam_arm: Node3D = _camera.get_parent()
 			cam_arm.rotation_degrees.x = clamp(
@@ -926,6 +928,7 @@ func _move(delta: float) -> void:
 	# Jump.
 	if not creation_hold and not flying and not swimming and Input.is_action_just_pressed("ui_accept") and _body.is_on_floor():
 		_vel.y = JUMP_FORCE
+		GameBus.tutorial_event.emit("jumped", {})   # Phase 186 — a local notification, never sent
 
 	# Horizontal movement relative to camera yaw.
 	var dir := Vector3.ZERO

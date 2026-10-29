@@ -68,7 +68,8 @@ func note_event(kind: String, params: Dictionary = {}) -> String:
 			p = { "metres": _metres }
 		elif kind == "item_gathered":
 			var t: Dictionary = step["trigger"]
-			p = { "count": int(_gathered_items.get(str(t["item"]), 0)) if t.has("item") else int(_gathered_tags.get(str(t.get("tag", "")), 0)) }
+			p = params.duplicate()
+			p["count"] = int(_gathered_items.get(str(t["item"]), 0)) if t.has("item") else int(_gathered_tags.get(str(t.get("tag", "")), 0))
 		if Rules.event_completes(step, kind, p):
 			(state["done"] as Array).append(str(step["id"]))
 			first = first if first != "" else str(step["id"])

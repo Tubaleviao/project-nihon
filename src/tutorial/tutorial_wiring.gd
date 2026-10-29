@@ -1,6 +1,6 @@
 extends "res://src/core/wiring.gd"
 ## Tutorial wiring (Phase 186) — client-side only. It feeds `TutorialSlice` from the events this machine already
-## sees (crafting, stations, research, kills, carcasses, the bed, respawns, chat, worn gear, windows, movement)
+## sees (jumps, crafting, stations, research, kills, carcasses, the bed, respawns, chat, worn gear, windows, movement)
 ## and shows the card. It sends nothing to the host and changes no game state.
 
 const WorldPos := preload("res://src/terrain/world_pos.gd")
@@ -12,6 +12,8 @@ const ShelterRule := preload("res://src/world/shelter_rule.gd")
 
 ## A jump of the body bigger than this in one frame is a teleport, not walking (m).
 const TELEPORT_M := 20.0
+## Degrees the look must turn the camera to count as looking around.
+const LOOK_DEGREES := 30.0
 
 var slice: TutorialSlice = null
 var card: TutorialCard = null
@@ -21,6 +23,7 @@ var _have_pos: bool = false
 var _pack: Dictionary = {}
 var _skills: Dictionary = {}
 var _seeded: bool = false
+var _look_from: float = 0.0
 
 func _connect_all() -> void:
 	connect_bus(GameBus.tutorial_event, _on_event)
@@ -173,10 +176,9 @@ func tick(delta: float) -> void:
 			_note("moved_metres", { "metres": d })
 	_last_pos = pos
 	_have_pos = true
-	if Input.is_key_pressed(KEY_SPACE):
-		_note("jumped")
-	if Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) and Input.get_last_mouse_velocity().length() > 50.0:
+	if root._player.look_degrees - _look_from >= LOOK_DEGREES:
 		_note("camera_turned")
+		_look_from = root._player.look_degrees
 	var tiers: Variant = root._registry.get_record(_local()).get("skills", {})
 	if tiers is Dictionary:
 		if not _skills.is_empty() and tiers != _skills:
