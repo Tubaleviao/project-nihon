@@ -496,3 +496,10 @@ tutorial.trade.title,Trade,Troca
 tutorial.trade.body,Open the trade window to swap items with another player.,Abra a janela de troca para trocar itens com outro jogador.
 tutorial.settlement.title,Settlements,Assentamentos
 tutorial.settlement.body,"Open the settlement window. With friends and a Hearth, a shelter can grow into a village.","Abra a janela de assentamento. Com amigos e uma Lareira, um abrigo pode virar uma vila."
+bed.refuse_no_item,You have no bed to place.,Você não tem uma cama para colocar.
+bed.refuse_far,That spot is too far away.,Esse lugar está longe demais.
+bed.refuse_claim,You cannot place a bed in a settlement you cannot build in.,Você não pode colocar uma cama em um assentamento onde não pode construir.
+bed.refuse_not_yours,That is someone else's bed.,Essa é a cama de outra pessoa.
+bed.refuse_occupied,Something is already standing there.,Já há algo nesse lugar.
+bed.refuse_blocked,There is no room for a bed there.,Não há espaço para uma cama aí.
+bed.refuse_rate,Slow down; try the bed again in a moment.,Calma; tente a cama de novo em instantes.

@@ -55,6 +55,13 @@ func scene_offset() -> Vector3:
 	return _origin.value
 var _next_id: int = 0
 
+## Phase 185 — set on a client: `(type, target) -> bool`, true when the host places that type on the
+## client's behalf (the bed), so nothing is placed locally.
+var remote_placer: Callable = Callable()
+
+func place_remote(type: String, target: Vector3) -> bool:
+	return remote_placer.is_valid() and bool(remote_placer.call(type, target))
+
 ## Visual markers keyed by station id (MeshInstance3D).
 var _markers: Dictionary = {}
 
@@ -290,7 +297,7 @@ func get_station_data() -> Array:
 ## station keeps its saved id.
 func apply_station_data(data: Array) -> void:
 	for id in _stations.keys():
-		remove_station(str(id))
+		_drop_station(str(id))
 	for entry in data:
 		if not entry is Dictionary:
 			continue
@@ -306,6 +313,13 @@ func apply_station_data(data: Array) -> void:
 		_insert_station(id, stype, pos)
 
 func remove_station(station_id: String) -> void:
+	var existed := _stations.has(station_id)
+	_drop_station(station_id)
+	if existed:
+		GameBus.station_removed.emit(station_id)
+
+## Drop a station and its marker without telling anyone (a world reload replaces the whole set).
+func _drop_station(station_id: String) -> void:
 	if _markers.has(station_id):
 		var m: Node = _markers[station_id]
 		if is_instance_valid(m):

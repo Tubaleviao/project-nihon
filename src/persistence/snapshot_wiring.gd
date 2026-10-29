@@ -131,6 +131,8 @@ func snapshot_own_record(player_id: String) -> Dictionary:
 	# where it happened to be standing when it rejoined.
 	if own.has("spawn"):
 		snapshot["player"]["spawn"] = own["spawn"]
+	# Phase 185 — the bed goes to its owner alone (a snapshot is built per peer); absent means none.
+	snapshot["bed"] = own.get("bed", {})
 	return snapshot
 
 ## Phase 163 — host: peer id -> { record key -> hash }, the generation records that peer holds.
@@ -300,6 +302,7 @@ func on_world_snapshot_received(data: Dictionary) -> void:
 	if data.get("attribute_growth", null) is Dictionary and root._player != null:
 		root._player.set_attribute_growth(data["attribute_growth"])
 	root._waystone_wiring.apply_own_view(data)
+	root._bed_wiring.apply_own_view(data)
 	if data.has("equipment") and data["equipment"] is Dictionary:
 		# A client builds no avatar at boot, so the first snapshot creates it; without
 		# one there is nothing to wear the set, to show in the Character window, or to

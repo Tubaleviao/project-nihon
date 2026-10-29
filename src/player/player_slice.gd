@@ -1052,6 +1052,10 @@ func set_respawn_world_pos(wp: Dictionary) -> void:
 	var local: Vector3 = respawn_world_pos["local"]
 	respawn_point = Vector3(chunk.x * WorldPos.CHUNK_METERS + local.x, local.y, chunk.y * WorldPos.CHUNK_METERS + local.z)
 
+## Phase 185 — the exact `{chunk, local}` a respawn lands on instead of `respawn_world_pos` (the owner's
+## bed), or `{}` for the original spawn. Set by the bed wiring.
+var respawn_target_fn: Callable = Callable()
+
 func _respawn() -> void:
 	_hp = max_hp
 	apply_status_effects([])
@@ -1059,10 +1063,18 @@ func _respawn() -> void:
 	_respawn_timer = -1.0
 	# Teleport back to the world spawn point.
 	var spawn_pos := respawn_point
-	if respawn_world_pos.is_empty():
+	var target: Dictionary = respawn_world_pos
+	if respawn_target_fn.is_valid():
+		var bed: Variant = respawn_target_fn.call()
+		if bed is Dictionary and not (bed as Dictionary).is_empty():
+			target = bed
+			var bc: Vector2i = target["chunk"]
+			var bl: Vector3 = target["local"]
+			spawn_pos = Vector3(bc.x * WorldPos.CHUNK_METERS + bl.x, bl.y, bc.y * WorldPos.CHUNK_METERS + bl.z)
+	if target.is_empty():
 		spawn_at(spawn_pos)
 	else:
-		place_at_world_pos(respawn_world_pos)
+		place_at_world_pos(target)
 	_update_hp_bar()
 	_broadcast_state()
 	GameBus.player_respawned.emit(spawn_pos)
@@ -1334,6 +1346,9 @@ func _place_station() -> void:
 		return
 	# Grid-snapped and overlap-checked by the slice; a refused spot places nothing.
 	var target := _station_target()
+	# Phase 185 — on a client the host places the bed (and owns it); nothing is placed here.
+	if station_slice.has_method("place_remote") and station_slice.place_remote(stype, target):
+		return
 	var placed: String = station_slice.try_place_station(stype, target, inventory_slice)
 	_refresh_build_hint()
 	# A refused spot says why, on the same label the selection lives on.

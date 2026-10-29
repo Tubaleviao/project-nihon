@@ -60,6 +60,7 @@ extends Node
 ##   apply_player_data(player_id, data) -> void
 ##   get_players_data() -> Dictionary / apply_players_data(data) -> void
 const Diag := preload("res://src/core/diag.gd")
+const BedStore := preload("res://src/world/bed_store.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 
@@ -1268,24 +1269,22 @@ func get_player_data(player_id: String) -> Dictionary:
 	}
 	if rec.get("spawn", null) is Dictionary and spawn_from_record(rec) != null:
 		data["spawn"] = rec["spawn"]
+	BedStore.save(rec, data)   # Phase 185
 	var inv = _inventories.get(player_id, null)
 	if inv != null and is_instance_valid(inv):
 		data["inventory"] = inv.get_contents()
 		data["inventory_durability"] = inv.get_durability_data()
 	return data
 
-## Restore a player's record and inventory from a saved payload. The inventory
-## instance for the player is created on demand.
+## Restore a player's record and inventory from a saved payload (the inventory is created on demand).
 func apply_player_data(player_id: String, data: Dictionary) -> void:
 	if player_id.is_empty() or data.is_empty():
 		return
 	var rec := ensure_player(player_id)
-	# Phase 50 — a payload with chunk + local is authoritative (and rebuilds `position`); an old
-	# payload with only `position` is migrated onto the chunk grid.
+	# Phase 50 — chunk + local is authoritative (and rebuilds `position`); an old `position`-only payload migrates.
 	var wp := world_pos_of(data)
 	_store_world_pos(rec, wp)
-	# `position` is derived from the validated chunk + local, so the two never disagree. Doubles,
-	# not a Vector3: a float32 scene position would round the exact chunk + local.
+	# `position` derives from the validated chunk + local (doubles, not a float32 Vector3), so they never disagree.
 	var chunk: Vector2i = wp["chunk"]
 	var local: Vector3 = wp["local"]
 	rec["position"] = [chunk.x * WorldPos.CHUNK_METERS + local.x, local.y, chunk.y * WorldPos.CHUNK_METERS + local.z]
@@ -1295,6 +1294,7 @@ func apply_player_data(player_id: String, data: Dictionary) -> void:
 		rec["spawn"] = (data["spawn"] as Dictionary).duplicate(true)
 	else:
 		rec.erase("spawn")
+	BedStore.load_into(rec, data)   # Phase 185
 	var restored_hp := float(data.get("hp", -1.0))
 	rec["hp"] = restored_hp
 	# Phase 39 — the respawn deadline rides the same record. The saved `hp` above is

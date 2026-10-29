@@ -55,6 +55,9 @@ const BootWiring := preload("res://src/core/boot_wiring.gd")
 const CombatWiring := preload("res://src/battle/combat_wiring.gd")
 const WeatherWiring := preload("res://src/world/weather_wiring.gd")
 const WaystoneWiring := preload("res://src/world/waystone_wiring.gd")
+const BedWiring := preload("res://src/world/bed_wiring.gd")
+const BedStore := preload("res://src/world/bed_store.gd")
+const BedSlice := preload("res://src/world/bed_slice.gd")
 const SettlementWiring := preload("res://src/settlement/settlement_wiring.gd")
 const CraftingWiring := preload("res://src/crafting/crafting_wiring.gd")
 const CharacterWiring := preload("res://src/character/character_wiring.gd")
@@ -72,6 +75,7 @@ var _boot_wiring := BootWiring.new()
 var _combat_wiring := CombatWiring.new()
 var _weather_wiring := WeatherWiring.new()
 var _waystone_wiring := WaystoneWiring.new()
+var _bed_wiring := BedWiring.new()
 var _settlement_wiring := SettlementWiring.new()
 var _crafting_wiring := CraftingWiring.new()
 var _character_wiring := CharacterWiring.new()
@@ -120,6 +124,7 @@ var _proposal:    ProposalSlice
 var _ui:          UiSlice
 var _chat:        ChatSlice
 var _gesture:     GestureSlice
+var _bed:         BedSlice
 var _waystones:   WaystoneSlice
 var _settlements: Node
 var _weather:     WeatherSlice
@@ -241,7 +246,7 @@ var _handshake_retries: int = 0
 
 ## Phase 132 — wiring modules know their root from construction (the suite builds roots without `_ready`).
 func _init() -> void:
-	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _settlement_wiring, _crafting_wiring, _character_wiring, _gesture_wiring, _creation_wiring, _carcass_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring, _admin_wiring]
+	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _bed_wiring, _settlement_wiring, _crafting_wiring, _character_wiring, _gesture_wiring, _creation_wiring, _carcass_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring, _admin_wiring]
 	for w in _wirings:
 		w.root = self
 
@@ -305,6 +310,7 @@ func _ready() -> void:
 	_chat        = ChatSlice.new()
 	_gesture     = GestureSlice.new()
 	_waystones   = WaystoneSlice.new()
+	_bed         = BedSlice.new()
 	_settlements = _settlement_wiring.make_slice(self)
 	_weather     = WeatherSlice.new()
 	# Phase 129 — status effects live on the host; the battle slice rolls them and the AI honours them.
@@ -348,7 +354,7 @@ func _ready() -> void:
 	# The UI (Phase 14) is presentation only, so a headless dedicated server
 	# (Phase 27) keeps it out of the tree — its _ready() would otherwise build
 	# windows nothing can render or click.
-	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _registry, _player, _loot, _carcass, _inventory, _character, _crafting, _technology, _taming, _professions, _station, _tree, _market, _trade, _proposal, _chat, _gesture, _waystones, _settlements, _weather]
+	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _registry, _player, _loot, _carcass, _inventory, _character, _crafting, _technology, _taming, _professions, _station, _tree, _market, _trade, _proposal, _chat, _gesture, _waystones, _bed, _settlements, _weather]
 	if not _is_server:
 		slices.append(_ui)
 	if not _is_server:
@@ -427,6 +433,7 @@ func _ready() -> void:
 	_chat.networking       = _networking
 	_chat.weather_slice    = _weather
 	_player.weather_slice  = _weather
+	_bed_wiring.attach()   # Phase 185 — the bed is a station the host binds to its placer
 	_waystone_wiring.attach()   # Phase 125 — waystone travel reuses the exact admin teleport door
 	if not _is_server:
 		_ui.inventory_slice       = _inventory
@@ -1165,17 +1172,11 @@ func _exit_tree() -> void:
 		_chunk_manager.flush_records_final()
 		ChunkRecords.clear()
 
-## Phase 66 — the respawn point a player RECORD implies, as an exact `{chunk, local}` (Phase 87): its
-## original spawn, else (a record from before the field existed) its saved position, else null (a
-## player never placed).
-static func respawn_point_for(rec: Dictionary) -> Variant:
-	var spawn: Variant = PlayerRegistry.spawn_from_record(rec)
-	if spawn != null:
-		return spawn
-	var arr: Variant = rec.get("position", [])
-	if arr is Array and (arr as Array).size() >= 3:
-		return PlayerRegistry.world_pos_of(rec)
-	return null
+## Phase 66 — the respawn point a player RECORD implies, as an exact `{chunk, local}` (Phase 87): the bed
+## (Phase 185; with `runs_at`, the nearest free cell if it is blocked), else its original spawn, else null.
+static func respawn_point_for(rec: Dictionary, runs_at: Callable = Callable()) -> Variant:
+	var bed: Variant = BedStore.respawn_bed(rec, runs_at)
+	return bed if bed != null else SpawnFinder.original_spawn_for(rec)
 
 ## Phase 66 — the respawn point of a client from its handshake `player` block, as an exact
 ## `{chunk, local}`: the host's recorded spawn when it sent a valid one, else where the body stands.

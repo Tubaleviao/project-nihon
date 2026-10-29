@@ -636,6 +636,7 @@ func on_own_state_synced(data: Dictionary) -> void:
 	if data.get("attribute_growth", null) is Dictionary and root._player != null:
 		root._player.set_attribute_growth(data["attribute_growth"])
 	root._waystone_wiring.apply_own_view(data)
+	root._bed_wiring.apply_own_view(data)
 	if data.get("settlement_view", null) is Dictionary:
 		root._settlements.apply_view(data["settlement_view"])
 	root._creation_wiring.apply_own(data)
