@@ -351,6 +351,7 @@ func clear_slot(index: int) -> void:
 func assign(index: int, entry: String) -> void:
 	_declined.erase(entry)
 	_set_slots(place(slots, index, entry))
+	GameBus.tutorial_event.emit("hotbar_bound", {})   # Phase 186
 
 func _set_slots(next: Array) -> void:
 	var before := selected_item()

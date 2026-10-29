@@ -503,3 +503,9 @@ bed.refuse_not_yours,That is someone else's bed.,Essa é a cama de outra pessoa.
 bed.refuse_occupied,Something is already standing there.,Já há algo nesse lugar.
 bed.refuse_blocked,There is no room for a bed there.,Não há espaço para uma cama aí.
 bed.refuse_rate,Slow down; try the bed again in a moment.,Calma; tente a cama de novo em instantes.
+tutorial.dismiss,Dismiss,Dispensar
+tutorial.turn_off,Turn off tutorial,Desligar tutorial
+tutorial.done,✓ Done,✓ Feito
+tutorial.counter,Step {0} of {1},Passo {0} de {1}
+tutorial.toggle,Tutorial,Tutorial
+tutorial.restart,Restart tutorial,Reiniciar tutorial

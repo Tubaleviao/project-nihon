@@ -48,6 +48,7 @@ const WINDOW_SETTLEMENT := "settlement"
 const WINDOW_GESTURES  := "gestures"
 const WINDOW_ADMIN     := "admin"   # Phase 182 — admins only (`is_admin`)
 
+const TutorialCard := preload("res://src/tutorial/tutorial_card.gd")
 const WINDOW_KEYS := [
 	WINDOW_INVENTORY, WINDOW_TECHNOLOGY, WINDOW_CRAFTING,
 	WINDOW_TRADE, WINDOW_MARKET, WINDOW_PROPOSALS, WINDOW_CONTROLS, WINDOW_CHARACTER, WINDOW_SKILLS, WINDOW_MAP, WINDOW_SETTLEMENT, WINDOW_GESTURES, WINDOW_ADMIN,
@@ -395,6 +396,7 @@ func open_window(panel: String) -> void:
 	p.visible = true
 	p.position = clamp_window_position(p.position, p.size, _viewport_size())
 	refresh_all()
+	GameBus.tutorial_event.emit("window_opened", { "window": panel })   # Phase 186
 
 func close_window(panel: String) -> void:
 	var p: Control = _panels.get(panel, null)
@@ -1380,6 +1382,7 @@ func _build_controls_content() -> Control:
 	_language_button.focus_mode = Control.FOCUS_NONE
 	_language_button.pressed.connect(_on_language_pressed)
 	_controls_box.add_child(_language_button)
+	TutorialCard.add_settings(_controls_box)   # Phase 186 — the toggle and Restart tutorial sit beside it
 	_refill_controls()
 	return _controls_box
 

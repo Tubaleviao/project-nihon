@@ -154,7 +154,7 @@ func _refill_controls() -> void:
 	if sl._language_button != null:
 		sl._language_button.text = sl.language_button_text()
 	for child in sl._controls_box.get_children():
-		if child != sl._language_button:
+		if child != sl._language_button and not child.is_in_group("tutorial_settings"):
 			child.free()
 	var box = sl._controls_box
 	for row in sl.controls_rows():
