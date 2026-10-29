@@ -38,6 +38,11 @@ func refresh(unload_now: bool = true) -> void:
 	var center = sl.player_chunk()
 	var centers = sl._centers_around(center)
 	var window_moved = centers != sl._last_centers
+	# Phase 194 (#512) — a queue sorted for a fast flyer's lane is re-sorted by distance once it slows: the lane
+	# order put the ground beside and behind a body that has stopped after the whole lane ahead of it.
+	if sl._queue_in_lane and not sl.is_moving_fast():
+		sl._queue_in_lane = false
+		resort_queue(centers)
 	# Phase 42 review pass 4 — ONE `window_moved` decision, not two consecutive blocks.
 	# The sentinel update and the load/unload diff are the SAME pass; the early return
 	# below is what the second block's `if` was really expressing.
@@ -109,7 +114,7 @@ func refresh(unload_now: bool = true) -> void:
 		for c in sl._load_queue:
 			# Phase 191: a chunk the window has left is dropped here, not skipped one by one at the drain (a fast flyer
 			# leaves a column behind per crossing, and the dead entries piled up ahead of the ground it needs).
-			if refs_has(refs, c, circumference):
+			if refs.has(sl._chunk_key(c)):
 				to_load.append([sl.queue_priority(centers, heading, c, lane), c])
 			else:
 				sl._pending.erase(sl._chunk_key(c))
@@ -117,6 +122,8 @@ func refresh(unload_now: bool = true) -> void:
 	to_load.sort_custom(func(a, b): return a[0] < b[0])
 	for entry in to_load:
 		sl._load_queue.append(entry[1])
+	if local_moved:
+		sl._queue_in_lane = lane
 
 	# Phase 49 — a synchronous `refresh()` unloads everything now; the `_process` path
 	# (`unload_now == false`) queues the stale chunks and `_drain_unload_queue` releases a
@@ -140,8 +147,28 @@ func refresh(unload_now: bool = true) -> void:
 
 	sl._self_heal_failed(centers, true)
 
-func refs_has(refs: Dictionary, chunk: Vector2i, circumference: int) -> bool:
-	return refs.has("%d,%d" % [SeamWrapScript.wrap_i(chunk.x, circumference), chunk.y])
+## Phase 194 — worker tasks in flight: `_builds` less the cache hits waiting to attach (negative ids).
+func worker_builds() -> int:
+	var n := 0
+	for task_id in sl._builds:
+		if task_id >= 0:
+			n += 1
+	return n
+
+## Chebyshev distance from `chunk` to the nearest of `centers`. Pure.
+static func nearest_ring(centers: Array, chunk: Vector2i) -> int:
+	var best := 1 << 30
+	for c: Vector2i in centers:
+		best = mini(best, maxi(absi(chunk.x - c.x), absi(chunk.y - c.y)))
+	return best
+
+## Phase 194 — the load queue sorted by distance from the nearest of `centers` (no heading, no lane).
+func resort_queue(centers: Array) -> void:
+	var keyed: Array = []
+	for c in sl._load_queue:
+		keyed.append([sl.queue_priority(centers, Vector2.ZERO, c), c])
+	keyed.sort_custom(func(a, b): return a[0] < b[0])
+	sl._load_queue = keyed.map(func(k): return k[1])
 
 func drain_load_queue() -> void:
 	# Phase 42 review pass 4 — a drain with NOTHING queued has nothing to dispatch, so it
@@ -165,7 +192,7 @@ func drain_load_queue() -> void:
 	while budget > 0:
 		if sl._pump_exhausted():
 			return   # the frame's main-thread budget is spent: the rest waits for the next one
-		if sl._builds.size() >= sl.build_cap():
+		if worker_builds() >= sl.build_cap():
 			return   # the pool is busy: leave the rest queued for a later frame
 		if not sl._rebuild_queue.is_empty():
 			var rebuild: Vector2i = sl._rebuild_queue.pop_front()
@@ -222,6 +249,7 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 			or not sl.terrain_slice.has_method("generate_heightmap") \
 			or not sl.voxel_slice.has_method("build_chunk_arrays"):
 		sl._built[key] = true
+		sl.built_rev += 1
 		# Phase 42 review pass 4 — and the CONTENTS obey the same residency rule as the
 		# threaded path (`_contents_spawned`): a rig with no terrain/voxel has nothing to
 		# build, but an edit still reaches here through `request_rebuild`, and spawning the
@@ -230,6 +258,9 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 		sl._spawn_contents_once(key, chunk_pos)
 		sl._update_first_ring_progress()
 		return
+	# Phase 194 (#512) — a cached chunk needs no worker, so it does not wait for a slot.
+	if take_cache_hit(chunk_pos, key):
+		return
 	# Phase 42 review pass 9 — the in-flight cap is enforced HERE, not only at the call
 	# sites. Every internal caller checked it before dispatching, but `load_chunk()` is
 	# PUBLIC and dispatched outright: a direct load (a test, a future caller) put the pool
@@ -237,7 +268,7 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 	# `_drain_load_queue` drains under this same cap; the chunk is already `_loaded` (both
 	# `load_chunk` and `request_rebuild` mark it first), so the drain's rebuild branch is
 	# exactly the path that re-dispatches it. Delayed a frame, never dropped.
-	if sl._builds.size() >= sl.build_cap():
+	if worker_builds() >= sl.build_cap():
 		sl._queue_rebuild(chunk_pos)
 		return
 	# Phase 42 review — SUPERSEDE a build already in flight for this chunk. The caller
@@ -291,6 +322,34 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 		"result":    result,
 	}
 
+## Phase 191 — a chunk built moments ago and unchanged since attaches from the cache, with no worker task.
+## Phase 194 (#512) — it attaches as a finished build does, not here: it joins `_builds` under a negative id,
+## already done, so `_apply_finished_builds` attaches it in `apply_order` under the frame's pacing (a hit
+## attached at dispatch skipped both, and waited for a worker slot it never used). True when it was queued.
+func take_cache_hit(chunk_pos: Vector2i, key: String) -> bool:
+	if sl.skips_geometry() or not sl.keeps_render() or not sl.terrain_slice.has_method("detail_noise_copy"):
+		return false
+	var lod: int = sl._near.lod_for(chunk_pos)
+	var hit: Dictionary = sl._cache.take(key, sl.cache_signature(chunk_pos, lod))
+	if hit.is_empty():
+		return false
+	sl._cache.invalidate(key)   # re-put by the attach (a refused one must not hit again)
+	sl._supersede_in_flight(key)
+	if sl._rebuild_pending.has(key):
+		sl._rebuild_pending.erase(key)
+		sl._remove_queued_rebuild(key)
+	sl._build_attempts[key] = int(sl._build_attempts.get(key, 0)) + 1
+	sl._last_hit_id -= 1
+	sl._builds[sl._last_hit_id] = {
+		"chunk":     chunk_pos,
+		"key":       key,
+		"heightmap": hit["heightmap"],
+		"revision":  int(sl.voxel_slice.chunk_revision(chunk_pos)),
+		"result":    [hit["arrays"], hit["heightmap"], 0],
+		"cached":    true,
+	}
+	return true
+
 ## Phase 187 — the finished builds in the order they attach: the local player's 3×3 ring first (the
 ## chunk under the body before its neighbours), everything else in dispatch order. The attach is the
 ## main-thread wall (collision alone is ~9 ms a chunk, so an over-budget frame attaches one); in dispatch
@@ -301,7 +360,7 @@ func apply_order(done: Array) -> Array:
 		return done
 	var local: Vector2i = sl._last_centers[0]
 	if sl.is_moving_fast():
-		return _lane_order(done, local)
+		return _lane_order(done, sl._last_centers)
 	var urgent: Array = []
 	var rest: Array = []
 	for i in done.size():
@@ -321,15 +380,21 @@ func apply_order(done: Array) -> Array:
 
 ## Phase 191 — while the local body flies fast the main-thread attach (one chunk a frame on a slow machine) is the
 ## wall: a crossing finishes a whole column of chunks and only the one in the body's row matters. Finished builds attach
-## lane first (the fewest chunks off either axis through the body), then nearest, so the ground ahead of the body lands
-## before the rest of the column.
-func _lane_order(done: Array, local: Vector2i) -> Array:
+## lane first (on either axis through the body, nearest first), so the ground ahead of the body lands before the rest
+## of the column. Phase 194 (#512): the rest attach by their Chebyshev distance from the nearest window centre (half a
+## ring after a lane chunk as far out), so the body's diagonal neighbours and a peer's own chunks no longer wait for the
+## whole lane. `centers[0]` is the local body.
+func _lane_order(done: Array, centers: Array) -> Array:
+	var local: Vector2i = centers[0]
 	var keyed: Array = []
 	for i in done.size():
 		var c: Vector2i = sl._builds[done[i]]["chunk"]
 		var ax := absi(c.x - local.x)
 		var az := absi(c.y - local.y)
-		keyed.append([mini(ax, az) * 1000 + maxi(ax, az), i, done[i]])
+		var k: float = float(nearest_ring(centers, c)) + 0.5
+		if mini(ax, az) == 0:
+			k = minf(k, float(maxi(ax, az)))   # a lane chunk, unless a peer stands nearer to it
+		keyed.append([k, i, done[i]])
 	keyed.sort_custom(func(a, b): return a[0] < b[0] or (a[0] == b[0] and a[1] < b[1]))
 	return keyed.map(func(k): return k[2])
 
@@ -355,14 +420,6 @@ func dispatch_worker_noise_build(chunk_pos: Vector2i, key: String) -> void:
 	var keep_render: bool = sl.keeps_render()
 	var lod: int = sl._near.lod_for(chunk_pos) if geometry else VoxelCoarse.FULL
 	var revision: int = int(voxel.chunk_revision(chunk_pos))
-	# Phase 191 — a chunk built moments ago and unchanged since attaches from the cache, with no worker task.
-	if geometry and keep_render:
-		var hit: Dictionary = sl._cache.take(key, sl.cache_signature(chunk_pos, lod))
-		if not hit.is_empty():
-			sl._cache.invalidate(key)   # re-put by the attach (a refused one must not hit again)
-			sl.cache_attaches += 1
-			sl._attach_built(key, chunk_pos, hit["heightmap"], hit["arrays"], revision)
-			return
 	var gathered: Dictionary = {}
 	if lod != VoxelCoarse.FULL:
 		gathered = { "biomes": voxel.gather_biomes_for(chunk_pos) }

@@ -140,11 +140,12 @@ Dictionary NativeChunkBuilder::build_coarse_arrays(const Vector2i &p_chunk, cons
 	const double cell = TILE_SIZE * double(p_step);
 	const double origin_x = p_local ? 0.0 : double(int64_t(p_chunk.x) * CHUNK_SIZE) * TILE_SIZE;
 	const double origin_z = p_local ? 0.0 : double(int64_t(p_chunk.y) * CHUNK_SIZE) * TILE_SIZE;
-	PackedFloat64Array tops = cols["tops"];
-	PackedColorArray colors = cols["colors"];
-	PackedColorArray top_colors = cols["top_colors"];
-	PackedColorArray soil_colors = cols["soil_colors"];
-	PackedFloat64Array soil_depths = cols["soil_depths"];
+	// Phase 194 (#509) — const: a non-const packed array's operator[] goes through ptrw() (copy-on-write).
+	const PackedFloat64Array tops = cols["tops"];
+	const PackedColorArray colors = cols["colors"];
+	const PackedColorArray top_colors = cols["top_colors"];
+	const PackedColorArray soil_colors = cols["soil_colors"];
+	const PackedFloat64Array soil_depths = cols["soil_depths"];
 
 	Grouper grp;
 	static const int dirs[4] = { NORTH, SOUTH, WEST, EAST };
@@ -195,10 +196,10 @@ Dictionary NativeChunkBuilder::build_coarse_arrays(const Vector2i &p_chunk, cons
 	int64_t cell_count = 0;
 	for (int dir : grp.dir_order) {
 		for (Group &g : grp.buckets[dir].groups) {
-			std::vector<int> cells = g.cells;
-			std::sort(cells.begin(), cells.end());
-			cell_count += (int64_t)(std::unique(cells.begin(), cells.end()) - cells.begin());
-			for (const Rect &rect : merge_rects(g.cells, n)) {
+			// Phase 194 (#509) — `merge_rects` sorts and dedups the cells in place: count them after, one sort a group.
+			const std::vector<Rect> rects = merge_rects(g.cells, n);
+			cell_count += (int64_t)g.cells.size();
+			for (const Rect &rect : rects) {
 				double x0 = origin_x + rect.tx * cell;
 				double x1 = x0 + rect.w * cell;
 				double z0 = origin_z + rect.tz * cell;

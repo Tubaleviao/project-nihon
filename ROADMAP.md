@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–193 are done. Their specs and acceptance criteria, and the introductions of
+Phases 1–194 are done. Their specs and acceptance criteria, and the introductions of
 the arcs they belonged to, are archived in [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Arc: first steps (Phases 184–186)
@@ -51,7 +51,7 @@ rework and may no longer apply. Each phase re-checks its items against `main` fi
 
 | Phase | Title | Status | Spec |
 |---|---|---|---|
-| 194 | Follow-up debt burn II: terrain streaming and the near ring (#504, #509, #512) | Planned | below |
+| 194 | Follow-up debt burn II: terrain streaming and the near ring (#504, #509, #512) | Done | [phases-194.md](docs/roadmap-history/phases-194.md) |
 | 195 | Follow-up debt burn III: creature positions and the snapshot path (#444, #464, #493) | Planned | below |
 | 196 | Follow-up debt burn IV: waystones, gestures, trees and the player registry (#336, #367, #420, #522) | Planned | below |
 
@@ -74,64 +74,6 @@ Raids come from creatures only. Settlement-against-settlement conflict stays def
 | 200 | Raids: a warned, bounded attack the village can defend | Planned | below |
 | 201 | Upkeep: a village that has to keep going | Planned | below |
 | 202 | The settlement loop, played: four bots found, specialize, trade and defend a village | Planned | below |
-
----
-
-## Phase 194 — Follow-up debt burn II: terrain streaming and the near ring (#504, #509, #512)
-
-**Goal:** the fast-flight PRs (#503, #507, #510) left 24 review items in three issues. Some are
-real bugs: a cached chunk can outlive a neighbour's edit, a cache hit skips apply pacing, and an
-aborted playtest step leaves the bot flying. The rest are per-frame allocations and housekeeping.
-Phase 193 reworked the collision ring after these issues were filed, so some items may be gone.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phase 193.
-
-**Deliverables:**
-- Re-check every item of #504, #509 and #512 against `main`. Close each one that Phase 193 (or a
-  later PR) already fixed with a pointer to the change.
-- Correctness (#512, #504):
-  - the chunk cache signature changes when a neighbour is dug or built (`_edit_rev` is bumped by
-    dig/place edits too, not only by `request_rebuild`);
-  - a cache hit attaches through the same apply order and pacing as a fresh build;
-  - `ChunkCache.approx_bytes` counts collision shape faces and Variant arrays, so the 192 MB cap
-    means what it says;
-  - a parked collision shape lives in one store, not in both `_parked_shapes` and stand-in meta;
-  - turning the near ring off flushes `_waiting` at the toggle instead of releasing it in one
-    burst, and ring 1 skips the pump budget like the body's own chunk does;
-  - `queue_priority` / `_lane_order` re-sort when the flyer stops, and order diagonal and peer
-    chunks by distance from the nearest player, not after the whole lane.
-- Coarse chunks (#509). Decision: trees and creatures on a coarse chunk wait for its full upgrade,
-  so none sit buried under a coarse cell top. After a fast-flight landing, the chunk under the body
-  goes first in the upgrade queue.
-- Playtest and CI (#504, #512): `_step_flight` restores flying, the near ring and the TickProbe in
-  an always-run path. `FLIGHT_MAX_SHARE` is defined once and the local verdict enforces it. An
-  unknown `--playtest-only` name exits 1. `_flight_speed` reads the command line once. The
-  slow-machine CI step restores `playtest/report.json` before any upload.
-- Per-frame work: `set_unbuilt(unbuilt_window_chunks())`, `_attach_near_collision`'s parked scan
-  and `distant_terrain.rebuild`'s `bands.update` (#444) run only when their inputs change.
-- Housekeeping: the misplaced `is_chunk_built` docstring, `refs_has` duplication, the garbled
-  `near_ring.gd` header, the stale Phase 42 comment and `sl.`-prefixed access in
-  `drain_load_queue`. `native_coarse.cpp` sorts each group once and takes packed arrays by const
-  reference. A note in `docs/roadmap-history/phases-189.md` on the walking collision radius as
-  shipped.
-
-**Acceptance criteria:**
-- [ ] #504, #509 and #512 are closed: every item is fixed by a merged PR or closed with a reason
-  in the issue.
-- [ ] Suite: digging or placing in a neighbour invalidates a cached chunk; the cache never returns
-  a mesh older than a neighbour's last edit.
-- [ ] Suite: `approx_bytes` of a fixture chunk with collision is at least the byte size of its mesh
-  arrays plus its collision faces.
-- [ ] Suite: no key is in both `_parked_shapes` and stand-in meta after a build/park/attach cycle.
-- [ ] Suite: no tree or creature spawns on a coarse chunk before its upgrade, and after a landing
-  the chunk under the body is first in the upgrade queue.
-- [ ] Playtest: a flight step forced to fail leaves flying off, the near ring on and no TickProbe;
-  `--playtest-only nosuch` exits 1.
-- [ ] Playtest budget gate green (median of 3), with walk and flight at or under the current
-  baseline in `docs/perf/playtest-baseline.md`.
-- [ ] Suite green on both boot paths, harness green.
 
 ---
 

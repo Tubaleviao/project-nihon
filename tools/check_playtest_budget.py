@@ -21,14 +21,28 @@ record flight's (`flight.record_worker_ms_per_crossing`, every chunk at full det
 """
 import json
 import os
+import re
 import statistics
 import sys
 from pathlib import Path
 
 HEADROOM = 1.25
-BUDGET = Path(__file__).resolve().parent.parent / "docs" / "perf" / "playtest-budget.json"
-FLIGHT_MAX_SHARE = 0.5   # PlaytestBot.FLIGHT_MAX_SHARE
-FLIGHT_WORKER_MAX_SHARE = 1.0 / 3.0   # PlaytestBot.FLIGHT_WORKER_MAX_SHARE
+ROOT = Path(__file__).resolve().parent.parent
+BUDGET = ROOT / "docs" / "perf" / "playtest-budget.json"
+BOT = ROOT / "src" / "tests" / "playtest_bot.gd"
+
+
+def bot_const(name, source=None):
+    """Phase 194 (#504): a share is defined once, in the bot (`const NAME := 0.5` or `:= 1.0 / 3.0`)."""
+    text = source if source is not None else BOT.read_text()
+    m = re.search(rf"^const {name} := ([0-9.]+)(?: / ([0-9.]+))?\b", text, re.M)
+    if not m:
+        raise SystemExit(f"check_playtest_budget: no `const {name}` in {BOT}")
+    return float(m.group(1)) / (float(m.group(2)) if m.group(2) else 1.0)
+
+
+FLIGHT_MAX_SHARE = bot_const("FLIGHT_MAX_SHARE")
+FLIGHT_WORKER_MAX_SHARE = bot_const("FLIGHT_WORKER_MAX_SHARE")
 
 
 def check(reports, budgets):
@@ -138,6 +152,10 @@ def self_test():
     for name, reports, ok in worker_cases:
         if (not check_flight_worker(reports)) != ok:
             print(f"self-test: the flight worker gate got '{name}' wrong")
+            bad += 1
+    for src, want in (("const FLIGHT_MAX_SHARE := 0.5   ## note", 0.5), ("const FLIGHT_MAX_SHARE := 1.0 / 3.0", 1.0 / 3.0)):
+        if abs(bot_const("FLIGHT_MAX_SHARE", src) - want) > 1e-9:
+            print(f"self-test: the bot constant reader got '{src}' wrong")
             bad += 1
     print("self-test: ok" if not bad else f"self-test: {bad} case(s) wrong")
     return 1 if bad else 0

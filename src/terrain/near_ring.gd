@@ -5,11 +5,11 @@ extends RefCounted
 ## about 17–30 ms, and most of it went on ground no one touches: the collision body of a chunk four rings
 ## out (~9 ms) and the creatures and trees of a chunk the player is gone from a second later (4.5–12 ms).
 ##
-## * Collision: a landing build attaches its collision only within Chebyshev `COLLISION_RADIUS` of the local body, `NEAR_RADIUS` of a peer (the
-##   local player and every peer window's centre), and only under a flying body that is crossing chunks
-##   fast. The others keep their worker-made shape parked on the voxel slice, and `tick` attaches it when
-##   the chunk enters the ring: the chunk under the local body at once, the rest under the pump budget. A
-##   process that draws nothing (the dedicated server) attaches everywhere, as before.
+## * Collision: a landing build attaches its collision only near a body (`bodies`): within Chebyshev
+##   `COLLISION_RADIUS` of the local body (only its own chunk while it flies fast) and `NEAR_RADIUS` of each
+##   peer window's centre. The others keep their worker-made shape parked on the voxel slice, and `tick`
+##   attaches it when the chunk enters a ring: the chunk under the local body at once, the rest under the
+##   pump budget. A process that draws nothing (the dedicated server) attaches everywhere, as before.
 ## * Contents: while the local player is moving fast (`ChunkManager.is_moving_fast`), a built chunk beyond
 ##   its near ring and outside every peer's window keeps its creatures and trees unspawned. They spawn
 ##   when it enters the ring or the player slows, nearest first under the pump budget. Spawning is a pure
@@ -46,6 +46,9 @@ var cm: Node
 var enabled := true
 ## Built chunks whose contents wait for a body: "cx,cz" -> chunk.
 var _waiting: Dictionary = {}
+## Phase 194 (#504) — what the last collision scan read ([bodies, `parked_rev`]) when it left
+## nothing due: the same inputs find nothing again, so the scan is skipped.
+var _idle_scan: Array = []
 ## Phase 190 — false builds every chunk at full detail (`ChunkManager.set_lod_enabled`).
 var lod_enabled := true
 ## Phase 190 — built chunks at a coarse level: "cx,cz" -> step. A full chunk is absent.
@@ -56,6 +59,16 @@ var _want_full: Dictionary = {}
 
 func _init(manager: Node) -> void:
 	cm = manager
+
+## Phase 194 (#504) — switching the ring off spawns every waiting chunk's contents at once, at the toggle:
+## left to `_release_contents` they came out in one burst inside the record flight's measured window.
+func set_enabled(on: bool) -> void:
+	enabled = on
+	if on:
+		return
+	for key in _waiting.keys():
+		cm._spawn_contents_once(key, _waiting[key])
+	_waiting.clear()
 
 ## Chebyshev distance between two chunks, X measured the short way round the seam. Pure.
 static func ring_distance(a: Vector2i, b: Vector2i) -> int:
@@ -101,19 +114,31 @@ func defers_contents(chunk: Vector2i) -> bool:
 	return cm.is_moving_fast() and _defers(cm.player_chunk(), chunk)
 
 func _defers(local: Vector2i, chunk: Vector2i) -> bool:
-	if not enabled or ring_distance(local, chunk) <= NEAR_RADIUS:
-		return false
+	return enabled and ring_distance(local, chunk) > NEAR_RADIUS and not _in_peer_window(chunk)
+
+## True when `chunk` lies in a peer's streamed window: its contents are that peer's, whatever this host draws.
+func _in_peer_window(chunk: Vector2i) -> bool:
 	var radius: int = cm.stream_radius()
 	for peer_id in cm._peer_centers:
 		if ring_distance(cm._peer_centers[peer_id], chunk) <= radius:
-			return false
-	return true
+			return true
+	return false
 
-## Spawn a just-built chunk's contents now, or keep them until a body reaches it.
+## Phase 194 (#509) — true while `key` stands coarse: its creatures and trees would stand at true heights under a
+## cell top raised to the cell's highest tile, buried until the upgrade, so they wait for it. A peer's window
+## is exempt (the host's coarse mesh is its own view only; the peer's creatures must exist).
+func _waits_for_detail(key: String, chunk: Vector2i) -> bool:
+	return lod_of(key) > VoxelCoarse.FULL and not _in_peer_window(chunk)
+
+## Spawn a just-built chunk's contents now, or keep them until a body reaches it (and, Phase 194, until a
+## coarse chunk is upgraded).
 func spawn_or_wait(key: String, chunk: Vector2i) -> void:
-	if defers_contents(chunk) and not cm._contents_spawned.has(key):
+	if cm._contents_spawned.has(key):
+		_waiting.erase(key)
+	elif defers_contents(chunk) or _waits_for_detail(key, chunk):
 		_waiting[key] = chunk
 	else:
+		_waiting.erase(key)
 		cm._spawn_contents_once(key, chunk)
 
 ## True while `chunk` is built with its contents kept for later.
@@ -193,29 +218,40 @@ func _upgrade_detail() -> void:
 	var due: Array = []
 	for key in _coarse:
 		var chunk: Vector2i = cm._key_to_chunk(key)
-		if _within(near, chunk) and not cm._has_in_flight(key) and not cm._rebuild_pending.has(key) and not cm._failed.has(key):   # a failed build is re-armed by the self-heal, not retried every frame
-			due.append([ring_distance(local, chunk), chunk])
+		if not _within(near, chunk) or cm._has_in_flight(key) or cm._failed.has(key):   # a failed build is re-armed by the self-heal, not retried every frame
+			continue
+		var d := ring_distance(local, chunk)
+		if not cm._rebuild_pending.has(key) or (d == 0 and (cm._rebuild_queue.is_empty() or cm._chunk_key(cm._rebuild_queue[0]) != key)):
+			due.append([d, chunk])   # a queued upgrade waits its turn, but the one under the body moves to the front
 	due.sort_custom(func(a, b): return a[0] < b[0])
 	for d in due:
 		if d[0] > 0 and cm._pump_exhausted():
 			return
 		_want_full[cm._chunk_key(d[1])] = true
-		cm._dispatch_build(d[1])
+		# Phase 194 (#509) — after a fast-flight landing the pool is full of the lane's builds: the chunk under the
+		# body stands on coarse conservative collision until its upgrade, so that one goes first in the queue.
+		if d[0] == 0 and cm._m1.worker_builds() >= cm.build_cap():
+			cm._queue_rebuild(d[1], true)
+		else:
+			cm._dispatch_build(d[1])
 		cm._pump_steps += 1
 
 func _attach_near_collision() -> void:
 	var voxel: Node = cm.voxel_slice
 	if voxel == null or not voxel.has_method("attach_parked_collision"):
 		return
-	var parked: Array = voxel._build.parked_chunks()
-	if parked.is_empty():
+	if voxel._parked_shapes.is_empty():
 		return
 	var near := bodies()
+	var scan := [near, voxel._build.parked_rev]
+	if scan == _idle_scan:
+		return   # nothing was due, and no body moved and nothing was parked since
 	var local: Vector2i = near[0][0]
 	var due: Array = []
-	for c in parked:
+	for c in voxel._build.parked_chunks():
 		if _within(near, c):
 			due.append([ring_distance(local, c), c])
+	_idle_scan = scan if due.is_empty() else []
 	due.sort_custom(func(a, b): return a[0] < b[0])
 	for d in due:
 		# the chunk under the local body is never held by the pump budget and takes every quadrant at once
@@ -242,6 +278,8 @@ func _release_contents() -> void:
 	var due: Array = []
 	for key in _waiting.keys():
 		var chunk: Vector2i = _waiting[key]
+		if _waits_for_detail(key, chunk):
+			continue   # its full build releases it (`spawn_or_wait`)
 		if not fast or not _defers(local, chunk):
 			due.append([ring_distance(local, chunk), key, chunk])
 	due.sort_custom(func(a, b): return a[0] < b[0])

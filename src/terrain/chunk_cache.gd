@@ -37,7 +37,7 @@ func put(key: String, sig: Variant, arrays: Dictionary, heightmap: Array) -> voi
 	invalidate(key)
 	if arrays.is_empty():
 		return
-	var n := approx_bytes(arrays) + heightmap.size() * 8
+	var n := approx_bytes(arrays) + value_bytes(heightmap)
 	if n > max_bytes:
 		return
 	_entries[key] = { "sig": sig, "arrays": arrays, "heightmap": heightmap, "bytes": n }
@@ -74,36 +74,38 @@ func _evict() -> void:
 	while not _entries.is_empty() and (_entries.size() > max_entries or _bytes > max_bytes):
 		invalidate(str(_entries.keys()[0]))
 
-## Bytes held by the packed arrays of a build result (other values count a small flat cost). Pure.
+## Bytes held by a build result: a Variant slot per value, plus what each value holds (`value_bytes`). Pure.
+## Phase 194 (#512) — the collision shapes count too (a `ConcavePolygonShape3D` keeps its own copy of the faces,
+## and a split build carries four), and so does every slot of a plain Array (a heightmap row is Variants, not
+## packed floats). A lower bound still: Jolt's own mesh of an attached shape is not counted.
 static func approx_bytes(arrays: Dictionary) -> int:
 	var n := 0
 	for k in arrays:
-		var v: Variant = arrays[k]
-		if v is Dictionary:
-			n += approx_bytes(v)
-		elif v is Array or v is PackedByteArray or v is PackedInt32Array or v is PackedFloat32Array \
-				or v is PackedVector2Array or v is PackedVector3Array or v is PackedColorArray:
-			n += _packed_bytes(v)
-		else:
-			n += 16
+		n += VARIANT_BYTES + value_bytes(arrays[k])
 	return n
 
-static func _packed_bytes(v: Variant) -> int:
+## A Variant's own slot (Godot 4, 64-bit).
+const VARIANT_BYTES := 24
+
+## Bytes `v` holds past its own Variant slot (0 for a scalar). Pure.
+static func value_bytes(v: Variant) -> int:
+	if v is Dictionary:
+		return approx_bytes(v)
+	if v is Array:
+		var n := 0
+		for item in (v as Array):
+			n += VARIANT_BYTES + value_bytes(item)
+		return n
+	if v is ConcavePolygonShape3D:
+		return (v as ConcavePolygonShape3D).get_faces().size() * 12
 	if v is PackedVector3Array:
 		return (v as PackedVector3Array).size() * 12
 	if v is PackedColorArray:
 		return (v as PackedColorArray).size() * 16
-	if v is PackedVector2Array:
-		return (v as PackedVector2Array).size() * 8
+	if v is PackedVector2Array or v is PackedInt64Array or v is PackedFloat64Array:
+		return v.size() * 8
+	if v is PackedInt32Array or v is PackedFloat32Array:
+		return v.size() * 4
 	if v is PackedByteArray:
 		return (v as PackedByteArray).size()
-	if v is PackedInt32Array:
-		return (v as PackedInt32Array).size() * 4
-	if v is PackedFloat32Array:
-		return (v as PackedFloat32Array).size() * 4
-	if v is Array:
-		var n := 0
-		for item in (v as Array):
-			n += _packed_bytes(item) if item is Array else 16
-		return n
-	return 16
+	return 0

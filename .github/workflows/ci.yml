@@ -708,6 +708,7 @@ jobs:
           # >= 90% coverage rule, so a non-zero exit or a missing `ok` fails the job.
           mkdir -p /tmp/playtest-main
           cp playtest/report.json /tmp/playtest-main/report.json
+          rm -f playtest/report.json   # a slow run that writes nothing must not be judged on the main run's report
           printf '[threading]\nworker_pool/max_threads=2\n' > override.cfg
           set +e
           timeout 900 xvfb-run -a -s "-screen 0 1280x720x24" \
@@ -716,13 +717,19 @@ jobs:
           slow_status=${PIPESTATUS[0]}
           set -e
           rm -f override.cfg
+          # Phase 194 (#512): the main run's report goes back before any check below can fail, so the upload
+          # always carries it; the slow run's own report is kept beside it.
+          rm -f /tmp/playtest-slow.json
+          if [ -f playtest/report.json ]; then cp playtest/report.json /tmp/playtest-slow.json; fi
+          cp /tmp/playtest-main/report.json playtest/report.json
+          if [ -f /tmp/playtest-slow.json ]; then cp /tmp/playtest-slow.json playtest/report-slow.json; fi
           if grep -qE "SCRIPT ERROR|Parse Error|Compile Error" /tmp/playtest-slow.log; then
             echo "::error::script/parse/compile errors in the slow-machine run"
             exit 1
           fi
           python3 - <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
           import json, sys
-          r = json.load(open("playtest/report.json"))
+          r = json.load(open("/tmp/playtest-slow.json"))
           f = [s for s in r["steps"] if s["step"] == "flight"]
           if not f or "flight" not in f[0]:
               print("::error::the slow-machine run recorded no flight step"); sys.exit(1)
@@ -736,7 +743,6 @@ jobs:
           PY
           test "${PIPESTATUS[0]}" -eq 0
           test "$slow_status" -eq 0
-          cp /tmp/playtest-main/report.json playtest/report.json
 
       - name: Upload the playtest report
         if: always()
