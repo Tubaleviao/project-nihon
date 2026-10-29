@@ -743,6 +743,10 @@ func _test_stream_lane_order() -> void:
 	assert_true(k.call(Vector2i(11, 1)) < k.call(Vector2i(14, 0)), "but a diagonal neighbour before the far lane")
 	assert_true(k.call(Vector2i(9, 0)) < k.call(Vector2i(14, 0)), "and the chunk just behind the body too")
 	assert_true(k.call(Vector2i(20, 1)) < k.call(Vector2i(14, 0)), "a peer's neighbour by its distance from the peer")
+	# PR #529: at one lane chunk per ring, every nearer ring (behind the body too) went first, and a CI runner's
+	# 270 m/s flight built none of the ground under the body.
+	assert_true(k.call(Vector2i(15, 0)) < k.call(Vector2i(6, 0)), "the lane five ahead before the ground four behind")
+	assert_true(k.call(Vector2i(15, 0)) < k.call(Vector2i(13, 4)), "and before a chunk four rings out beside the lane")
 	var cm := ChunkManager.new()
 	var clock := _make_fast(cm)
 	assert_true(cm.is_moving_fast(), "fast")

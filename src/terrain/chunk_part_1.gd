@@ -7,6 +7,8 @@ const VoxelMesh := preload("res://src/terrain/voxel_mesh.gd")
 const VoxelCoarse := preload("res://src/terrain/voxel_coarse.gd")
 const TerrainSliceScript := preload("res://src/terrain/terrain_slice.gd")
 const SeamWrapScript := preload("res://src/terrain/seam_wrap.gd")
+## PR #529 — a fast flyer's chunk off its lane ranks this many lane chunks per ring from the body (`off_lane_rank`).
+const LANE_RING_WEIGHT := 2.0
 
 var sl: Node
 
@@ -161,6 +163,15 @@ static func nearest_ring(centers: Array, chunk: Vector2i) -> int:
 	for c: Vector2i in centers:
 		best = mini(best, maxi(absi(chunk.x - c.x), absi(chunk.y - c.y)))
 	return best
+
+## A fast flyer's off-lane rank for `chunk` (a lane chunk as far ahead ranks its lead): LANE_RING_WEIGHT times its
+## Chebyshev distance from the body (`centers[0]`), or its distance from the nearest peer, plus half a ring. The
+## weight keeps the lane ahead of everything but the ground near the body: at weight 1 (#512's first cut) every
+## nearer ring, behind the body too, went before the lane, and a CI runner's flight at 270 m/s built none of the
+## ground under the body (PR #529). Pure.
+static func off_lane_rank(centers: Array, chunk: Vector2i) -> float:
+	var own := float(nearest_ring([centers[0]], chunk)) * LANE_RING_WEIGHT
+	return minf(own, float(nearest_ring(centers.slice(1), chunk))) + 0.5
 
 ## Phase 194 — the load queue sorted by distance from the nearest of `centers` (no heading, no lane).
 func resort_queue(centers: Array) -> void:
@@ -381,9 +392,9 @@ func apply_order(done: Array) -> Array:
 ## Phase 191 — while the local body flies fast the main-thread attach (one chunk a frame on a slow machine) is the
 ## wall: a crossing finishes a whole column of chunks and only the one in the body's row matters. Finished builds attach
 ## lane first (on either axis through the body, nearest first), so the ground ahead of the body lands before the rest
-## of the column. Phase 194 (#512): the rest attach by their Chebyshev distance from the nearest window centre (half a
-## ring after a lane chunk as far out), so the body's diagonal neighbours and a peer's own chunks no longer wait for the
-## whole lane. `centers[0]` is the local body.
+## of the column. Phase 194 (#512): the rest attach by `off_lane_rank` (twice their ring from the body, or their ring
+## from a peer), so the body's diagonal neighbours and a peer's own chunks no longer wait for the whole lane, and the
+## lane does not wait for every nearer ring. `centers[0]` is the local body.
 func _lane_order(done: Array, centers: Array) -> Array:
 	var local: Vector2i = centers[0]
 	var keyed: Array = []
@@ -391,7 +402,7 @@ func _lane_order(done: Array, centers: Array) -> Array:
 		var c: Vector2i = sl._builds[done[i]]["chunk"]
 		var ax := absi(c.x - local.x)
 		var az := absi(c.y - local.y)
-		var k: float = float(nearest_ring(centers, c)) + 0.5
+		var k: float = off_lane_rank(centers, c)
 		if mini(ax, az) == 0:
 			k = minf(k, float(maxi(ax, az)))   # a lane chunk, unless a peer stands nearer to it
 		keyed.append([k, i, done[i]])

@@ -1456,13 +1456,13 @@ func _desired_chunks(center: Vector2i, radius: int) -> Array:
 ## `heading` (a unit vector in chunks, or zero when standing). Pure.
 ## Phase 191 — `lane`: a fast flyer builds the chunks in its heading lane first (a column of new ground per crossing,
 ## and only the chunk in the body's row has to be there when it arrives), nearest ahead first, the rest after.
-## Phase 194 (#512) — only the lane itself (lead ≥ 0) goes first; every other chunk is ranked by its Chebyshev
-## distance from the nearest centre, half a ring after a lane chunk as far out, not after the whole lane.
+## Phase 194 (#512) — only the lane itself (lead ≥ 0) goes first; every other chunk is ranked by
+## `ChunkPart1.off_lane_rank` (twice its ring from the body, or its ring from a peer), not after the whole lane.
 static func queue_priority(centers: Array, heading: Vector2, chunk: Vector2i, lane: bool = false) -> float:
 	if lane and not centers.is_empty() and heading != Vector2.ZERO:
 		var rel := Vector2(chunk - (centers[0] as Vector2i))
 		var lead := rel.dot(heading)
-		var ring := float(ChunkPart1.nearest_ring(centers, chunk)) + 0.5
+		var ring := ChunkPart1.off_lane_rank(centers, chunk)
 		return minf(lead, ring) if lead >= 0.0 and absf(rel.cross(heading)) < 0.5 else ring
 	var best := 1 << 60
 	for c: Vector2i in centers:
