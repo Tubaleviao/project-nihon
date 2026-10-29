@@ -67,3 +67,59 @@ Phases with no section of their own were merged into another phase:
 | 102–104 | [Phase 101](phases-99-129.md#phase-101--chat-and-admin-commands-are-host-authoritative-exact-and-proven-on-the-wire--done) |
 | 105 | [Phase 99](phases-99-129.md#phase-99--housekeeping-sweep-legacy-tiles-roadmapreadme-hygiene-and-review-leftovers--done) |
 | 144 | Split into [Phase 166](phases-166.md)–[169](phases-169.md) |
+
+## Arcs
+
+The arc introductions that framed these phases in [ROADMAP.md](../../ROADMAP.md), moved here when the
+arc closed. Text is unchanged.
+
+### Arc: make it look and feel like an RPG (Phases 173–181, 183)
+
+After 172 phases the engine is strong: a deterministic planet, host-authoritative multiplayer,
+persistence, crafting, combat, taming and settlements. But it does not yet look or play like an
+RPG. Items and windows show letters, the character has no attributes, and a player never creates a
+character: they spawn as a handle. This arc pays down the follow-up debt and makes the frame
+budget honest. Then it gives the game icons, attributes, a character sheet and character creation.
+
+Phases: [173](phases-173.md), [174](phases-174.md), [175](phases-175.md), [176](phases-176.md),
+[177](phases-177.md), [178](phases-178.md), [179](phases-179.md), [180](phases-180.md),
+[181](phases-181.md), [183](phases-183.md).
+
+### Out of arc: admin tools (Phase 182)
+
+Requested during playtesting, and done ahead of the arc: an admin needs to set the weather, the
+time of day, a player's speed and health, and to regenerate a world whose recorded terrain is out of
+date (for example, a world recorded around the pre-worldgen-9 spawn pit).
+
+Phase: [182](phases-182.md).
+
+### Next, ahead of the arc: fast flight and worldgen fixes (Phases 187–191)
+
+Found while flying with `/fly` and `/speed 10` (90 m/s): the ground fell behind the player, and a
+regenerated world was snow almost everywhere. Like Phase 182, this runs ahead of the RPG arc: Phase
+179 resumed after Phase 191. Phase 188 comes second because a worldgen bump is cheaper the fewer worlds
+have recorded the old plateaus. Phases 189–191 then raise the admin speed cap on a slow machine.
+
+Measured on seed 42 at 90 m/s with the native builder (probe in the Phase 187 PR): chunk builds ran
+at low priority, so 11 builds sat in flight while three ran, and the chunk under the body was missing
+for seconds at a time. Once builds keep up, the main thread is the next wall. Each attached chunk costs
+9.3 ms of collision, 5–6.5 ms of dispatch and bookkeeping, 4.5–12 ms of creature spawns and 1.7 ms of
+render mesh, at 27 chunks/s.
+
+Phases: [187](phases-187.md), [188](phases-188.md), [189](phases-189.md), [190](phases-190.md),
+[191](phases-191.md).
+
+### Out of arc: creature bodies (Phase 192)
+
+Found while playing: creatures walked through each other and through the player. Requested ahead of
+the arc, like Phase 182.
+
+Phase: [192](phases-192.md).
+
+### Out of arc: a lighter collision ring (Phase 193)
+
+Found on PR #524: the playtest walk step's median p95 process time reached 21.1 ms (limit 20) on a slow
+runner. Profiled locally, the biggest cost in the walk was Jolt taking the collision trimeshes of the 16
+chunks two rings out, which only the 60 m aim ray needed.
+
+Phase: [193](phases-193.md).

@@ -45,9 +45,9 @@ The crowd the host supports today (Phase 163, `lan`, one desktop machine): 64 pl
 
 ## Status
 
-170+ phases shipped so far: voxel terrain on a whole planet with continents, biomes, day/night and weather; mining, building and station-gated crafting; a technology tree and research; rigged, animated creatures with pack behavior, combat, taming and harvesting; settlements; host-authoritative multiplayer with persistence; waystone fast travel; and English and Brazilian Portuguese UI.
+190+ phases shipped so far: voxel terrain on a whole planet with continents, biomes, mountain ranges, day/night and weather; mining, building and station-gated crafting; a technology tree and research; rigged, animated creatures with pack behavior, bodies that collide, combat, taming and harvesting; settlements; character creation, attributes and a character sheet; a bed that sets your spawn point; host-authoritative multiplayer with persistence; waystone fast travel; fast admin flight; and English and Brazilian Portuguese UI.
 
-The current arc (Phases 173–181) makes it look and feel like an RPG: icons everywhere, character attributes, a character sheet and character creation. See [ROADMAP.md](ROADMAP.md) for the open phases and deferred work. Completed phases are archived in [docs/roadmap-history/](docs/roadmap-history/README.md) with their full spec and acceptance criteria.
+The current arc (Phases 184–186) gives a new player a guided first hour: a one-time tutorial and a bed to respawn at. Next comes a follow-up debt burn (Phases 194–196), then the first settlement loop (Phases 197–202): four friends found a village, specialize, trade and defend it from a raid within an hour of play. See [ROADMAP.md](ROADMAP.md) for the open phases and deferred work. Completed phases are archived in [docs/roadmap-history/](docs/roadmap-history/README.md) with their full spec and acceptance criteria.
 
 Production art lives in a private `assets-prod/` git submodule (Git LFS); the public repo ships placeholders. See [assets/README.md](assets/README.md).
 
