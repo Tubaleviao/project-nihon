@@ -71,12 +71,14 @@ func sync_player_avatar(
 	if scene_position is Vector3:
 		var sp: Vector3 = scene_position
 		root.position = Vector3(sp.x, ground_y + sl._origin.value.y, sp.z)
-	sl._m2.apply_seat_lift(inst, root)   # Phase 159 — a seated body rides the seat's height
 	root.set_meta("foot_ik_l", feet["foot_l"])
 	root.set_meta("foot_ik_r", feet["foot_r"])
 
 	inst["position"] = world_pos
 	sl.update_locomotion(instance_id, speed, grounded, velocity_y, delta)
+	# Phase 159 — a seated body rides the seat's height. Phase 196: after the locomotion step, so the frame a
+	# pose ends on is already drawn on the ground (no one-frame pop at the seat height).
+	sl._m2.apply_seat_lift(inst, root)
 	if inst.has("anim_tree") and is_instance_valid(inst["anim_tree"]):
 		sl.RigTree.drive(inst["anim_tree"], inst["locomotion"])
 

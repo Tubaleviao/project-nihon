@@ -198,15 +198,26 @@ func placement_blocker(type: String, position: Vector3, player_id: String = "") 
 ## station id, or "" when refused (see placement_blocker).
 func try_place_station(type: String, position: Vector3, inventory: Node = null, player_id: String = "") -> String:
 	var pos := snap_to_grid(position)
-	if placement_blocker(type, pos, player_id) != "":
+	if place_refusal(type, pos, inventory, player_id) != "":
 		return ""
 	# Phase 130 — a type whose fabric rule names a placement item consumes one from the placer; with no
 	# inventory to pay from (or none in it) the placement is refused.
 	var item := placement_item(type)
-	if item != "":
-		if inventory == null or not inventory.has_method("consume_items") or not inventory.consume_items({ item: 1 }):
-			return ""
+	if item != "" and not inventory.consume_items({ item: 1 }):
+		return ""
 	return place_station(type, pos)
+
+## Phase 196 — why `try_place_station` would refuse: a `placement_blocker` code, or
+## "no_placement_item:<item>" when the type's placement item is not in `inventory`. "" when it would place.
+func place_refusal(type: String, position: Vector3, inventory: Node = null, player_id: String = "") -> String:
+	var why := placement_blocker(type, snap_to_grid(position), player_id)
+	if why != "":
+		return why
+	var item := placement_item(type)
+	if item != "" and (inventory == null or not inventory.has_method("consume_items") \
+			or not inventory.has_method("get_item_count") or int(inventory.get_item_count(item)) < 1):
+		return "no_placement_item:%s" % item
+	return ""
 
 ## The item one placement of a `type` station consumes, or "" for a free placement (the fabric's
 ## `WaystoneTravel.placementItem` for the waystone type, `BedSpawn.placementItem` for the bed; forges and

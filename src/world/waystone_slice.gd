@@ -34,6 +34,11 @@ const REASONS := ["unknown_player", "rate_limited", "same_stone", "missing_stone
 const INTENT_INTERVAL := 0.5
 ## Seconds between host sweeps that attune players standing at a stone.
 const ATTUNE_SWEEP_SEC := 1.0
+## Phase 196 — seconds between two refusal replies to one player, however many intents they send.
+const REPLY_INTERVAL := 1.0
+## Phase 196 — the most a body may stand above or below a stone and still be at it: one chunk height
+## (the attune radius is a ground distance, so this keeps a flier or a cave far below out of reach).
+const VERTICAL_BOUND_M := WorldPos.CHUNK_METERS
 
 const DEFAULT_RULES := {
 	"stationType": "waystone", "attuneRadius": 4.0, "cooldownSeconds": 30,
@@ -138,6 +143,15 @@ static func distance_m(a: Dictionary, b: Dictionary) -> float:
 	d.y = 0.0
 	return d.length()
 
+## Phase 196 — true when `pos` is at the stone at `stone`: within `radius` ground metres and
+## `VERTICAL_BOUND_M` of height.
+static func at_stone(pos: Dictionary, stone: Dictionary, radius: float) -> bool:
+	if pos.is_empty() or stone.is_empty():
+		return false
+	if absf((pos["local"] as Vector3).y - (stone["local"] as Vector3).y) > VERTICAL_BOUND_M:
+		return false
+	return distance_m(pos, stone) <= radius
+
 func travel_cost(from_id: String, to_id: String) -> int:
 	var per_k: int = int(rules()["costPerThousandKm"])
 	if per_k <= 0:
@@ -160,14 +174,13 @@ func try_attune(player_id: String, station_id: String) -> String:
 		return "unknown_player"
 	if not is_waystone(station_id):
 		return "missing_stone"
-	var pos := _player_pos(player_id)
-	if pos.is_empty() or distance_m(pos, exact_pos(station_id)) > float(rules()["attuneRadius"]):
-		return "too_far"
 	var have: Array = registry.get_waystones(player_id)
 	if have.has(station_id):
 		return ""
 	if have.size() >= registry.MAX_WAYSTONES:
 		return "full"
+	if not at_stone(_player_pos(player_id), exact_pos(station_id), float(rules()["attuneRadius"])):
+		return "too_far"
 	have.append(station_id)
 	registry.record_waystones(player_id, have)
 	GameBus.waystones_synced.emit(player_id, registry.get_waystones(player_id))
@@ -193,6 +206,7 @@ func sweep_attunements() -> void:
 	for sid in stones:
 		placed.append([str(sid), exact_pos(str(sid))])
 	var radius := float(rules()["attuneRadius"])
+	var lap: int = TerrainSlice.circumference_chunks()
 	for pid in registry.get_online_player_ids():
 		var player_id := str(pid)
 		var pos := _player_pos(player_id)
@@ -201,8 +215,15 @@ func sweep_attunements() -> void:
 		var have: Array = registry.get_waystones(player_id)
 		if have.size() >= registry.MAX_WAYSTONES:
 			continue
+		var pc: Vector2i = pos["chunk"]
 		for entry in placed:
-			if not have.has(entry[0]) and distance_m(pos, entry[1]) <= radius:
+			# Phase 196 — the radius is far under a chunk, so a stone more than one chunk away (the short
+			# way round) is skipped on two integer compares before any distance is computed.
+			var dc: Vector2i = (entry[1]["chunk"] as Vector2i) - pc if not (entry[1] as Dictionary).is_empty() else Vector2i(99, 99)
+			dc.x = SeamWrap.wrap_i(dc.x, lap)
+			if absi(dc.x) > 1 or absi(dc.y) > 1 or have.has(entry[0]):
+				continue
+			if at_stone(pos, entry[1], radius):
 				try_attune(player_id, entry[0])
 
 ## Host: move `player_id` from the stone they stand at to another they are attuned to. Returns "" when
@@ -225,8 +246,7 @@ func travel(from_id: String, to_id: String, player_id: String) -> String:
 		return "not_attuned_from"
 	if not have.has(to_id):
 		return "not_attuned_to"
-	var here := _player_pos(player_id)
-	if here.is_empty() or distance_m(here, exact_pos(from_id)) > float(rules()["attuneRadius"]):
+	if not at_stone(_player_pos(player_id), exact_pos(from_id), float(rules()["attuneRadius"])):
 		return "too_far"
 	if now < float(_cooldown_until.get(player_id, -INF)):
 		return "cooldown"
@@ -260,10 +280,10 @@ func _on_travel_intent(from_id: String, to_id: String, player_id: String) -> voi
 	if reason == "":
 		GameBus.waystone_travel_resolved.emit(pid, true, reason)
 		return
-	# Phase 130 — a refusal is answered at most once per INTENT_INTERVAL per player, so a client that
+	# Phase 130 — a refusal is answered at most once per REPLY_INTERVAL per player (Phase 196: 1 s), so a client that
 	# floods bad intents cannot make the host flood replies (or the log) back.
 	var now: float = now_sec.call()
-	if now - float(_last_reply.get(pid, -INF)) < INTENT_INTERVAL:
+	if now - float(_last_reply.get(pid, -INF)) < REPLY_INTERVAL:
 		# Not answered and not logged one by one; the next logged refusal says how many were folded in.
 		_suppressed[pid] = int(_suppressed.get(pid, 0)) + 1
 		return

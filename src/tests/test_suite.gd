@@ -14,6 +14,7 @@ extends "res://src/tests/test_support.gd"
 ## Every suite file, in run order. A new `suites/*_tests.gd` is listed here (the audit below
 ## fails the run when one exists on disk but is missing from this list).
 const SUITES: Array[String] = [
+	"res://src/tests/suites/debt_burn_iv_tests.gd",
 	"res://src/tests/suites/terrain_tests.gd",
 	"res://src/tests/suites/bed_tests.gd",
 	"res://src/tests/suites/creature_exact_tests.gd",

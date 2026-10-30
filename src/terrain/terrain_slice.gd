@@ -149,6 +149,9 @@ const BIOME_KEYS: Array = [
 ## on the WORLD record (not on a player record — two players in one world must
 ## regenerate the same terrain) and travels in the join snapshot.
 var _world_seed: int = 0
+## Phase 196 — true once the seed is the world's own (restored from the record, adopted fresh by the host,
+## or taken from the host's snapshot), false while a client still runs its throwaway boot seed.
+var seed_adopted: bool = false
 
 var _noise := FastNoiseLite.new()
 
@@ -197,6 +200,7 @@ static func detail_of(n: FastNoiseLite, x: float, z: float) -> float:
 ## from the same noise field.
 func set_world_seed(seed_v: int) -> void:
 	_world_seed = seed_v
+	seed_adopted = true
 	_corner_mutex.lock()
 	_corner_caches.clear()
 	_corner_mutex.unlock()

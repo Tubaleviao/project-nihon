@@ -1101,6 +1101,7 @@ func _on_player_damaged(dmg: float, attacker_id: String, target_id: String = "pl
 func _is_local_target(target_id: String) -> bool:
 	return target_id == "" or target_id == "player"
 
+var in_pose: bool = false   # Phase 196 — this body holds a gesture pose (kept by `GestureWiring`)
 func _try_attack() -> void:
 	if not _alive or is_immobilized() or carrying:
 		return
@@ -1109,6 +1110,8 @@ func _try_attack() -> void:
 		return
 	var target_id: String = creature_slice.nearest_creature(get_position(), ATTACK_RANGE)
 	if target_id == "":
+		if in_pose:   # Phase 196 — a swing at empty air still stands the body up (its own intent, host-ended)
+			GameBus.gesture_intent.emit("", "")
 		return   # no creature in range
 	GameBus.combat_round_requested.emit("player", target_id)
 
@@ -1210,7 +1213,6 @@ func _build_hud() -> void:
 	_hud.add_child(_station_label)
 
 	_refresh_build_hint()
-
 
 	add_child(_hud)
 
@@ -1331,13 +1333,11 @@ func _refresh_build_hint() -> void:
 			stype = "none"
 		_station_label.text = "" if stype == "none" else I18n.t("hud.station", [stype])
 
-
 func _cycle_station_type() -> void:
 	if station_slice == null or not station_slice.has_method("cycle_station_type"):
 		return
 	station_slice.cycle_station_type()
 	_refresh_build_hint()
-
 
 func _place_station() -> void:
 	if station_slice == null or not station_slice.has_method("try_place_station"):
@@ -1355,8 +1355,8 @@ func _place_station() -> void:
 	var placed: String = station_slice.try_place_station(stype, target, inventory_slice)
 	_refresh_build_hint()
 	# A refused spot says why, on the same label the selection lives on.
-	if placed == "" and _station_label != null and station_slice.has_method("placement_blocker"):
-		var why: String = station_slice.placement_blocker(stype, station_slice.snap_to_grid(target))
+	if placed == "" and _station_label != null and station_slice.has_method("place_refusal"):
+		var why: String = station_slice.place_refusal(stype, target, inventory_slice)
 		if why != "":
 			_station_label.text += "  (%s)" % I18n.reason_text(why)
 

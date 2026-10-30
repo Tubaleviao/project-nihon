@@ -66,6 +66,9 @@ var _revealed: Dictionary = {}
 const SEED_SETTLE_SECONDS := 1.0
 var revealed_dir: String = ""
 var _revealed_seed: int = 0
+## Phase 196 — true once `_revealed_seed` has been the terrain's adopted seed (see `_seed_is_adopted`); a set
+## that only ever belonged to a client's throwaway boot seed is never written.
+var _revealed_seed_adopted: bool = false
 var _revealed_loaded: bool = false
 var _revealed_rev: int = 0   # bumps whenever the explored set gains a chunk or is reloaded
 var _seed_stable_for: float = 0.0   # seconds the world seed has read the same
@@ -172,6 +175,8 @@ func _tick_revealed_store(delta: float) -> void:
 	elif _seed_stable_for < SEED_SETTLE_SECONDS:
 		_seed_stable_for += delta
 	_collect_save()
+	if _revealed_loaded and s == _revealed_seed and _seed_is_adopted():
+		_revealed_seed_adopted = true
 	# A seed that has just changed is not trusted until it holds still, before the first load and after.
 	if (not _revealed_loaded or s != _revealed_seed) and _seed_stable_for < SEED_SETTLE_SECONDS:
 		return
@@ -179,22 +184,29 @@ func _tick_revealed_store(delta: float) -> void:
 		if _revealed_loaded:
 			# The set belongs to the seed that just went away: what changed since its last write is
 			# saved under THAT seed's file before it is dropped, so the old world's map is not lost.
-			if _revealed_dirty_for >= 0.0:
+			# Phase 196 — unless that seed was the client's throwaway boot seed: its set is never saved.
+			if _revealed_dirty_for >= 0.0 and _revealed_seed_adopted:
 				save_revealed(true)
 			_revealed.clear()
 			_waypoints.clear()
 			_revealed_dirty_for = -1.0
 			_revealed_rev += 1
 		_revealed_seed = s
+		_revealed_seed_adopted = _seed_is_adopted()
 		_revealed_loaded = true
 		load_revealed()
 	if _revealed_dirty_for >= 0.0:
 		_revealed_dirty_for += delta
-		if _revealed_dirty_for >= RevealedStore.DEBOUNCE_SECONDS:
+		if _revealed_dirty_for >= RevealedStore.DEBOUNCE_SECONDS and _revealed_seed_adopted:
 			save_revealed()
 
+## Phase 196 — false while the terrain still runs a throwaway boot seed (a client before the host's snapshot).
+## A terrain without the flag counts as adopted.
+func _seed_is_adopted() -> bool:
+	return not ("seed_adopted" in terrain_slice) or bool(terrain_slice.seed_adopted)
+
 func _exit_tree() -> void:
-	if _revealed_dirty_for >= 0.0:
+	if _revealed_dirty_for >= 0.0 and _revealed_seed_adopted:
 		save_revealed(true)
 	else:
 		finish_save()

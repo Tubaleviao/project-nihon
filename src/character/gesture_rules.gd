@@ -15,6 +15,9 @@ const RATE_CAPACITY := 3.0
 const RATE_REFILL_PER_S := 0.5
 ## Horizontal metres a body may drift from where a pose began before the pose counts as "moved".
 const MOVE_CANCEL_M := 0.35
+## Phase 196 — a vertical rise or drop (a jump, a fall) over this ends a `cancelOnMove` pose; the seat lift moves
+## only the avatar, never the reported body, so a seated body stays inside it.
+const RISE_CANCEL_M := 0.5
 ## The seat a sit can snap to: its top face this far above the feet (a block edge or a station).
 const SEAT_MIN_RISE := 0.25
 const SEAT_MAX_RISE := 0.75
@@ -71,9 +74,10 @@ static func take_token(state: Dictionary, now: float) -> Dictionary:
 		return { "ok": false, "state": { "tokens": tokens, "t": now } }
 	return { "ok": true, "state": { "tokens": tokens - 1.0, "t": now } }
 
-## True when a body at `now` has drifted from `origin` far enough to end a pose (horizontal distance).
+## True when a body at `now` has drifted from `origin` far enough to end a pose: horizontally, or (Phase 196)
+## by a vertical rise or drop over `RISE_CANCEL_M` (a jump or a fall leaves the seat).
 static func moved(origin: Vector3, now: Vector3) -> bool:
-	return Vector2(now.x - origin.x, now.z - origin.z).length() > MOVE_CANCEL_M
+	return Vector2(now.x - origin.x, now.z - origin.z).length() > MOVE_CANCEL_M or absf(now.y - origin.y) > RISE_CANCEL_M
 
 ## The height to lift a sitting body onto a seat whose top face is `seat_top_y`, standing with feet at
 ## `feet_y`: the rise when it is a seat height (a block edge or a station), else -1.0 (sit on the ground).

@@ -220,9 +220,17 @@ static func swap(current: Array, a: int, b: int) -> Array:
 	out[b] = tmp
 	return out
 
+## Phase 196 — the key the gesture wheel is bound to now (kept by `GesturePanel`): reserved like the
+## built-in keys, so a rebound wheel key cannot also fire a box.
+static var gesture_key: int = KEY_Q
+
 ## Whether a key may become a box shortcut: a letter, a digit 0, or a function key that the game has
 ## not claimed.
 static func bind_allowed(keycode: int) -> bool:
+	return keycode != gesture_key and free_key(keycode)
+
+## A letter, a digit 0 or a function key that no built-in action claims (the wheel key aside).
+static func free_key(keycode: int) -> bool:
 	if RESERVED_KEYS.has(keycode):
 		return false
 	return (keycode >= KEY_A and keycode <= KEY_Z) or keycode == KEY_0 or (keycode >= KEY_F1 and keycode <= KEY_F12)
