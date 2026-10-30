@@ -1456,14 +1456,15 @@ func _desired_chunks(center: Vector2i, radius: int) -> Array:
 ## `heading` (a unit vector in chunks, or zero when standing). Pure.
 ## Phase 191 — `lane`: a fast flyer builds the chunks in its heading lane first (a column of new ground per crossing,
 ## and only the chunk in the body's row has to be there when it arrives), nearest ahead first, the rest after.
-## Phase 194 (#512) — only the lane itself (lead ≥ 0) goes first; every other chunk is ranked by
-## `ChunkPart1.off_lane_rank` (twice its ring from the body, or its ring from a peer), not after the whole lane.
+## Phase 194 (#512) — the body's chunk goes first and a peer's chunks rank by their ring from it; the rest keep the
+## Phase 191 order (ahead, then beside and behind: ranked by their ring, that backlog starved the lane on a slow
+## runner, 0–43% flight cover at 270 m/s). A body that slows re-sorts by distance (`ChunkPart1.resort_queue`).
 static func queue_priority(centers: Array, heading: Vector2, chunk: Vector2i, lane: bool = false) -> float:
 	if lane and not centers.is_empty() and heading != Vector2.ZERO:
 		var rel := Vector2(chunk - (centers[0] as Vector2i))
 		var lead := rel.dot(heading)
-		var ring := ChunkPart1.off_lane_rank(centers, chunk)
-		return minf(lead, ring) if lead >= 0.0 and absf(rel.cross(heading)) < 0.5 else ring
+		var own := 0.0 if rel == Vector2.ZERO else (absf(rel.cross(heading)) * 3.0 + lead if lead >= 1.0 else 50.0 - lead)
+		return minf(own, float(ChunkPart1.nearest_ring(centers.slice(1), chunk)) + 0.5)
 	var best := 1 << 60
 	for c: Vector2i in centers:
 		var dx := chunk.x - c.x
