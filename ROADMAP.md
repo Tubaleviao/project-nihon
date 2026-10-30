@@ -25,21 +25,6 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 Phases 1–195 are done. Their specs and acceptance criteria, and the introductions of
 the arcs they belonged to, are archived in [docs/roadmap-history/](docs/roadmap-history/README.md).
 
-### Arc: first steps (Phases 184–186)
-
-A new player lands in the world with no guidance except instructions scattered through the UI
-(tooltips that say "drag here", a map hint bar, chat and trade prompts). This arc gives them one
-guided path for the first hour: move, gather, craft the first tools and stations, build a shelter
-with a bed, and kill a first creature. The bed becomes their spawn point. Each tutorial step
-appears once, never comes back after it is dismissed, and the whole tutorial can be switched off.
-The scattered UI instructions are removed, so the tutorial is the one place that teaches.
-
-| Phase | Title | Status | Spec |
-|---|---|---|---|
-| 184 | First steps in the fabric: the tutorial steps, the bed and a shelter rule | Done | [phases-184.md](docs/roadmap-history/phases-184.md) |
-| 185 | The bed is the spawn point: host-owned, persisted, one per player | Done | [phases-185.md](docs/roadmap-history/phases-185.md) |
-| 186 | The first-steps tutorial at runtime: one-time cards, a toggle, and no other in-UI tutorial | Done | [phases-186.md](docs/roadmap-history/phases-186.md) |
-
 ### Next: follow-up debt burn II (Phases 194–196)
 
 Ten `autopilot-followup` issues are open, which is the cap: the next review that files one blocks
