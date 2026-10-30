@@ -211,6 +211,11 @@ func scene_of(inst: Dictionary) -> Vector3:
 		return WorldPos.to_scene(inst["pos"], frame_chunk) + frame_shift
 	return (inst["position"] as Vector3) + frame_shift - Vector3(float(frame_chunk.x) * WorldPos.CHUNK_METERS, 0.0, float(frame_chunk.y) * WorldPos.CHUNK_METERS)
 
+## Where a model's death fall starts, in this frame's scene coordinates (its exact start re-projected, so a
+## rebase since the blow does not move it).
+func fall_start(m: Dictionary) -> Vector3:
+	return WorldPos.to_scene(m["fall_from"], frame_chunk) + frame_shift
+
 ## The exact position of a scene point in this frame.
 func pos_of_scene(scene_pos: Vector3) -> Dictionary:
 	return WorldPos.from_scene(scene_pos - frame_shift, frame_chunk)
@@ -318,7 +323,7 @@ func attach(iid: String, inst: Dictionary) -> bool:
 	var pos: Vector3 = scene_of(inst)
 	node.transform = Transform3D(Basis(), pos)
 	models[iid] = {"node": node, "tree": tree, "speed": 0.0, "last_pos": pos, "last_exact": inst.get("pos", {}), "yaw": 0.0,
-		"loco": -1, "dead_at": -1.0, "fall_t": 1.0, "fall_from": pos, "corpse_s": corpse_seconds(cid), "state": str(inst["state"]), "swing_left": 0.0, "swing": 0, "swing_seen": 0,
+		"loco": -1, "dead_at": -1.0, "fall_t": 1.0, "fall_from": pos_of_scene(pos), "corpse_s": corpse_seconds(cid), "state": str(inst["state"]), "swing_left": 0.0, "swing": 0, "swing_seen": 0,
 		"give": CreatureBody.squash_of(cid), "squash": Vector2.ZERO, "squash_dir": Vector3.ZERO}
 	model_attached.emit(iid)
 	return true
@@ -407,18 +412,20 @@ func _update_model(iid: String, inst: Dictionary, delta: float) -> void:
 	if state == "dead" and prev_state != "dead":
 		# Phase 157 — struck dead: the body flies from where it stood to the host's landing spot, and the
 		# clip follows the hit (killer to body is the direction it travelled).
-		m["fall_from"] = node.position
+		# Phase 195 — the start of the fall is kept as an exact `{chunk, local}`, not a scene vector: a client
+		# rebase mid-fall moves the frame, and a stored scene point would then throw the body from the old one (#464).
+		m["fall_from"] = pos_of_scene(node.position)
 		m["fall_t"] = 0.0
 		var tree_d: AnimationTree = m["tree"]
 		# A displacement under the push's minimum is the creature's own motion, not a throw: plain `death`.
-		var thrown := pos - (m["fall_from"] as Vector3)
+		var thrown := pos - fall_start(m)
 		var hit_dir := thrown if Vector2(thrown.x, thrown.z).length() >= DeathPush.MIN_PUSH_M * 0.5 else Vector3.ZERO
 		RigTree.set_death_clip(tree_d, DeathPush.variant(hit_dir, float(m["yaw"])))
 	var draw_pos := pos
 	if float(m["fall_t"]) < FALL_SECONDS:
 		m["fall_t"] = float(m["fall_t"]) + delta
 		var u := clampf(float(m["fall_t"]) / FALL_SECONDS, 0.0, 1.0)
-		draw_pos = (m["fall_from"] as Vector3).lerp(pos, u) + Vector3(0.0, DeathPush.arc_height(u, FALL_ARC_M), 0.0)
+		draw_pos = fall_start(m).lerp(pos, u) + Vector3(0.0, DeathPush.arc_height(u, FALL_ARC_M), 0.0)
 	node.transform = Transform3D(_squash_of(iid, m, state, delta) * Basis(Vector3.UP, float(m["yaw"])), draw_pos)
 	if state == "dead":
 		if float(m["dead_at"]) < 0.0:

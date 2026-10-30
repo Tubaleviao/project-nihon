@@ -20,7 +20,10 @@ func register() -> void:
 	_run_test("crowd: an AOI query probes a 3x3 block of cells", _test_crowd_aoi_query_cells)
 	_run_test("crowd: n crossings in one frame cost one window refresh", _test_crowd_rescopes_one_refresh)
 	_run_test("crowd: a re-scope sends only the records the peer does not hold", _test_crowd_rescope_record_delta)
-	_run_test("crowd: a snapshot that did not go out whole resends every record next time", _test_crowd_rescope_dropped_send)
+	_run_test("crowd: a dropped snapshot leaves records_sent unchanged and the next delta carries its records", _test_crowd_rescope_dropped_send)
+	_run_test("crowd: send_snapshot stops at the first dropped chunk", _test_crowd_snapshot_stops_at_first_drop)
+	_run_test("crowd: the peer set is rebuilt only when the peer list changes", _test_crowd_peer_set_reused)
+	_run_test("crowd: a held relay reuses its recipients instead of querying again", _test_crowd_relay_held_reuses_recipients)
 	_run_test("crowd: the stress report fails a series below the baseline", _test_crowd_baseline_gate)
 	_run_test("crowd: a budget miss at or below the baseline gets one rerun", _test_crowd_baseline_retry)
 	_run_test("crowd: the faster region lookup names the same regions", _test_crowd_regions_for_chunks_same)
@@ -260,8 +263,11 @@ func _test_crowd_rescope_record_delta() -> void:
 	var join := {}
 	sw.add_generation_records(join, 9, Vector3.ZERO)
 	assert_eq((join.get("gen_records", {}) as Dictionary).size(), 4, "a join carries every record in the window")
+	assert_false(sw.records_sent.has(9), "building alone does not count as sent (Phase 195)")
+	sw.commit_staged_records(9)   # what a whole send does
 	var again := {}
 	sw.add_generation_records(again, 9, Vector3.ZERO, true)
+	sw.commit_staged_records(9)
 	# Before Phase 163 every re-scope carried all four again.
 	assert_false(again.has("gen_records"), "a re-scope over the same window carries none of them")
 	assert_true(again.has("gen_scope"), "but still names its scope")
@@ -269,6 +275,7 @@ func _test_crowd_rescope_record_delta() -> void:
 	ChunkRecordsScript.set_record(Vector2i(-1, 0), _sync_record(Vector2i(-1, 0)))
 	var changed := {}
 	sw.add_generation_records(changed, 9, Vector3.ZERO, true)
+	sw.commit_staged_records(9)
 	assert_eq((changed.get("gen_records", {}) as Dictionary).keys().size(), 2, "a changed record and a new one go out")
 	assert_true((changed["gen_records"] as Dictionary).has(ChunkRecordsScript.key_of(Vector2i(2, 0))), "the changed one")
 	assert_true((changed["gen_records"] as Dictionary).has(ChunkRecordsScript.key_of(Vector2i(-1, 0))), "the new one")
@@ -278,14 +285,14 @@ func _test_crowd_rescope_record_delta() -> void:
 	var rejoin := {}
 	sw.add_generation_records(rejoin, 9, Vector3.ZERO)
 	assert_eq((rejoin.get("gen_records", {}) as Dictionary).size(), 5, "a join starts afresh")
-	sw.records_sent.erase(9)
-	sw.records_sent.erase(10)
+	sw.forget_records(9)
+	sw.forget_records(10)
 	cm.free()
 	gr.free()
 	ChunkRecordsScript.clear()
 
-## #444: `records_sent` advances when the snapshot is built, so one the emulator dropped must not leave
-## the host believing the client holds its records.
+## #444 / #493, Phase 195: only a snapshot that went out whole advances `records_sent`. A dropped one leaves
+## the table as it was, so the next delta carries the records the dropped one held, and nothing more.
 func _test_crowd_rescope_dropped_send() -> void:
 	ChunkRecordsScript.clear()
 	for x in 4:
@@ -303,28 +310,99 @@ func _test_crowd_rescope_dropped_send() -> void:
 	var join := {}
 	sw.add_generation_records(join, 9, Vector3.ZERO)
 	assert_true(sw.send_snapshot(9, join), "a lossless send goes out whole")
-	assert_true(sw.records_sent.has(9), "and the host remembers what the peer holds")
+	assert_eq((sw.records_sent.get(9, {}) as Dictionary).size(), 4, "and the host remembers the four records the peer holds")
+	var held: Dictionary = (sw.records_sent[9] as Dictionary).duplicate()
+	# A changed record: the next re-scope owes the peer that one.
+	ChunkRecordsScript.set_record(Vector2i(2, 0), _sync_record(Vector2i(2, 0), "TemperateForest"))
 	n.emulate_network = true
 	n.emulator_loss_rate = NetworkingSlice.MAX_LOSS_RATE
 	var dropped := false
 	for i in 200:
 		var again := {}
 		sw.add_generation_records(again, 9, Vector3.ZERO, true)
+		assert_eq((again.get("gen_records", {}) as Dictionary).size(), 1, "every try carries the one owed record")
 		if not sw.send_snapshot(9, again):
 			dropped = true
 			break
-		assert_false(again.has("gen_records"), "a delivered re-scope over the same window carries no records")
+		# Delivered: the peer holds it now; owe it again for the next try.
+		held = (sw.records_sent[9] as Dictionary).duplicate()
+		ChunkRecordsScript.set_record(Vector2i(2, 0), _sync_record(Vector2i(2, 0), "Desert" if i % 2 == 0 else "TemperateForest"))
 	assert_true(dropped, "the emulator dropped one re-scope")
-	assert_false(sw.records_sent.has(9), "a dropped snapshot forgets the peer's records")
+	assert_eq(sw.records_sent.get(9, {}), held, "a dropped snapshot leaves records_sent unchanged")
 	n.emulator_loss_rate = 0.0
 	var next := {}
 	sw.add_generation_records(next, 9, Vector3.ZERO, true)
-	assert_eq((next.get("gen_records", {}) as Dictionary).size(), 4, "so the next re-scope carries every record again")
-	sw.records_sent.erase(9)
+	assert_eq((next.get("gen_records", {}) as Dictionary).keys(), [ChunkRecordsScript.key_of(Vector2i(2, 0))],
+		"so the next delta carries the record the dropped one held, and only it")
+	sw.forget_records(9)
 	n.free()
 	cm.free()
 	gr.free()
 	ChunkRecordsScript.clear()
+
+## Phase 195 (#493) — `send_snapshot` stops at the first chunk the link drops: the packets queued are the
+## leading run 0..k-1, never one after the gap (the client could not reassemble it anyway).
+func _test_crowd_snapshot_stops_at_first_drop() -> void:
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.HOST
+	n.set_transport(_StampingTransport.new([9]))
+	n._rng.seed = 493
+	n.emulate_network = true
+	n.emulator_loss_rate = NetworkingSlice.MAX_LOSS_RATE
+	var big := { "blob": "x".repeat(NetworkingSlice.SNAPSHOT_CHUNK_SIZE * 12) }
+	var failed := false
+	for _i in 50:
+		n._pending.clear()
+		if n.send_snapshot(9, big):
+			continue
+		failed = true
+		var indices: Array = []
+		for p in n._pending:
+			var packet: Variant = JSON.parse_string(str(p["payload"]))
+			if packet is Dictionary and str(packet.get("type", "")) == "snapshot_chunk":
+				indices.append(int(packet["index"]))
+		var leading: Array = []
+		for k in indices.size():
+			leading.append(k)
+		assert_eq(indices, leading, "only the chunks before the first drop were queued")
+		assert_true(indices.size() < 13, "and the send ended there")
+		break
+	assert_true(failed, "a send was dropped")
+	n._pending.clear()
+	n.free()
+
+## Phase 195 (#444) — the AOI fan-out reuses one peer set until the transport's peer list changes.
+func _test_crowd_peer_set_reused() -> void:
+	var t := _StampingTransport.new([2, 3])
+	var a: Dictionary = t.peer_set()
+	assert_eq(a, {2: true, 3: true}, "the set holds every peer")
+	for _i in 5:
+		t.peer_set()
+	assert_eq(t.peer_set_builds, 1, "an unchanged list is not rebuilt")
+	t.connected.append(4)   # edited in place, as a test transport does
+	assert_true(t.peer_set().has(4), "a list edited in place is seen")
+	assert_eq(t.peer_set_builds, 2, "and rebuilt once")
+
+## Phase 195 (#444) — a report held back from a far recipient is not re-queried on every flush until it is due.
+func _test_crowd_relay_held_reuses_recipients() -> void:
+	var b := RelayBatch.new()
+	var connected := { 2: true }
+	var queries := [0]
+	var recipients := func(_pos: Vector3) -> Array:
+		queries[0] += 1
+		return [2]
+	var center := func(_peer: int) -> Vector3: return Vector3.ZERO
+	var far := Vector3(80.0, 0.0, 0.0)
+	b.offer(3, "a", far)
+	b.build(0.0, connected, recipients, center)
+	b.offer(3, "b", far)
+	for k in 6:   # held: inside FAR_GAP_MS
+		b.build(10.0 + float(k) * 100.0, connected, recipients, center)
+	assert_eq(queries[0], 2, "one query per report, not one per flush while it is held")
+	var late: Dictionary = b.build(RelayBatch.FAR_GAP_MS + 1.0, connected, recipients, center)
+	assert_eq(late.get(2, []), [3, "b"], "the held report still goes out once due")
+	assert_eq(queries[0], 2, "with the recipients it was queried with")
 
 func _test_crowd_baseline_gate() -> void:
 	var at := func(n: int) -> Dictionary: return { "largest_passing": n }

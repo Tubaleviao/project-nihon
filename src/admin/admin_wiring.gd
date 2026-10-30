@@ -101,7 +101,7 @@ func regen_world(save := true) -> String:
 	# Then they get their scope again with every record in it.
 	if hosting:
 		for peer in root._networking.connected_peers():
-			root._snapshot_wiring.records_sent.erase(int(peer))
+			root._snapshot_wiring.forget_records(int(peer))
 			root._snapshot_wiring.send_snapshot(int(peer), root._snapshot_wiring.build_snapshot(int(peer), false, null, true))
 	root._chunk_manager.refresh()
 	if save:

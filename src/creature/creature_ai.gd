@@ -166,6 +166,12 @@ var taming_slice:   Node = null
 ## registry's peer → player mapping; unwired (an isolated test, or a client, where
 ## the local body is all there is) the local player alone is the target set.
 var player_targets: Callable = Callable()
+## Phase 195 — `() -> { target_id: {chunk, local} }`: the same players at their exact positions, so a chase or
+## a flight far from the origin is steered from an exact offset, not two float32 world points (#464). Unwired,
+## or a target missing from it, falls back to splitting the Vector3 `player_targets` gives.
+var player_exact_targets: Callable = Callable()
+## The exact targets of the current tick (read once in `_tick_all`).
+var _exact_targets: Dictionary = {}
 
 ## Authority mode (Phase 18): creature AI runs on the host only. On a client
 ## the creature bodies are driven by host state broadcasts, never local AI.
@@ -196,6 +202,7 @@ func _tick_all(delta: float) -> void:
 	var targets := _player_targets()
 	if targets.is_empty():
 		return
+	_exact_targets = _player_exact_targets()
 	# Phase 37 — the cached READ-ONLY view, not `get_all_instances()`: the latter builds
 	# a fresh dictionary per instance on every call, and this loop runs once per frame.
 	# The view is rebuilt only when the population's membership changes (see
@@ -266,6 +273,31 @@ func _player_targets() -> Dictionary:
 	if player_slice == null:
 		return {}
 	return { "player": player_slice.get_position() }
+
+## The exact target positions on this machine (see `player_exact_targets`); empty when unwired.
+func _player_exact_targets() -> Dictionary:
+	if player_exact_targets.is_valid():
+		var provided = player_exact_targets.call()
+		if provided is Dictionary:
+			return provided
+	if player_targets.is_valid() or player_slice == null or not player_slice.has_method("get_world_pos"):
+		return {}
+	return { "player": player_slice.get_world_pos() }
+
+## The exact position of target `target_id`, standing at the world-metres `fallback` when none is known.
+func _target_exact(target_id: String, fallback: Vector3) -> Dictionary:
+	var exact: Variant = _exact_targets.get(target_id)
+	if exact is Dictionary and not (exact as Dictionary).is_empty():
+		return exact
+	return WorldPos.from_world(fallback.x, fallback.y, fallback.z)
+
+## A record's exact position (`pos`), or its world metres split when a test's record has none.
+static func _exact_of(inst: Dictionary) -> Dictionary:
+	var exact: Variant = inst.get("pos")
+	if exact is Dictionary and not (exact as Dictionary).is_empty():
+		return exact
+	var v: Vector3 = inst["position"]
+	return WorldPos.from_world(v.x, v.y, v.z)
 
 ## The target nearest to `from`, as { id, position }. A dictionary's iteration order
 ## is insertion order, so the strict `<` keeps the first target on a tie — which, for
@@ -386,7 +418,7 @@ func _tick_instance(iid: String, inst: Dictionary, player_pos: Vector3, delta: f
 			if dist > safe_r:
 				_transition(iid, "idle", inst)
 				return
-			_chase(iid, inst, player_pos, delta)
+			_chase(iid, inst, player_pos, delta, target_id)
 			ai["attack_timer"] += delta
 			if ai["attack_timer"] >= ATTACK_INTERVAL:
 				ai["attack_timer"] = 0.0
@@ -410,7 +442,7 @@ func _tick_instance(iid: String, inst: Dictionary, player_pos: Vector3, delta: f
 			if dist > safe_r:
 				_transition(iid, "idle", inst)
 				return
-			_flee(iid, inst, player_pos, delta)
+			_flee(iid, inst, player_pos, delta, target_id)
 
 # ---------------------------------------------------------------------------
 # Movement helpers
@@ -426,29 +458,38 @@ func _patrol(iid: String, inst: Dictionary, delta: float) -> void:
 
 	_move_instance(iid, inst, target, SPEED_IDLE, delta)
 
-func _chase(iid: String, inst: Dictionary, player_pos: Vector3, delta: float) -> void:
+func _chase(iid: String, inst: Dictionary, player_pos: Vector3, delta: float, target_id: String = "player") -> void:
 	# Phase 192 — a chaser stops when its body meets the player's instead of walking into it.
-	var pos: Vector3 = inst["position"]
+	# Phase 195 — measured on the exact offset, as the step is.
+	var goal := _target_exact(target_id, player_pos)
+	var gap := WorldPos.offset_between(_exact_of(inst), goal)
 	var reach := CreatureBody.radius_of(str(inst["creature_id"])) + CreatureBody.PLAYER_RADIUS
-	if Vector2(pos.x - player_pos.x, pos.z - player_pos.z).length() <= reach:
+	if Vector2(gap.x, gap.z).length() <= reach:
 		return
-	_move_instance(iid, inst, player_pos, SPEED_AGGRESSIVE, delta)
+	_move_instance(iid, inst, player_pos, SPEED_AGGRESSIVE, delta, goal)
 
-func _flee(iid: String, inst: Dictionary, player_pos: Vector3, delta: float) -> void:
-	var away: Vector3 = (inst["position"] - player_pos).normalized()
-	var target: Vector3 = inst["position"] + away * FLEE_LEAD
-	_move_instance(iid, inst, target, SPEED_FLEE, delta)
+## Phase 195 — the way out is the exact offset from the player, and the point fled to is the creature's own
+## exact position plus `FLEE_LEAD` that way (#464): two float32 world points far out are a metre apart.
+func _flee(iid: String, inst: Dictionary, player_pos: Vector3, delta: float, target_id: String = "player") -> void:
+	var here := _exact_of(inst)
+	var away: Vector3 = -WorldPos.offset_between(here, _target_exact(target_id, player_pos)).normalized()
+	var goal := WorldPos.normalized({"chunk": here["chunk"], "local": (here["local"] as Vector3) + away * FLEE_LEAD})
+	_move_instance(iid, inst, WorldPos.to_scene(goal, Vector2i.ZERO), SPEED_FLEE, delta, goal)
 
-func _move_instance(iid: String, inst: Dictionary, target: Vector3, speed: float, delta: float) -> void:
+## `target_exact` is the exact form of `target` when the caller has it (a chase or a flight); empty, it is
+## split from the world-metres `target` (a patrol waypoint or a companion's owner, both near the creature).
+func _move_instance(iid: String, inst: Dictionary, target: Vector3, speed: float, delta: float, target_exact: Dictionary = {}) -> void:
 	if creature_slice.has_method("has_surface") and creature_slice.has_surface():
-		_walk_path(iid, inst, target, speed, delta)
+		_walk_path(iid, inst, target, speed, delta, target_exact)
 		return
-	_step_toward(inst, iid, target, speed, delta)
+	_step_toward(inst, iid, target, speed, delta, target_exact)
 
-## The straight step toward `target` (3D when there is no surface to snap to).
-func _step_toward(inst: Dictionary, iid: String, target: Vector3, speed: float, delta: float) -> void:
-	var pos: Vector3 = inst["position"]
-	var dir: Vector3 = (target - pos)
+## The straight step toward `target` (3D when there is no surface to snap to). Phase 195 — the heading is the
+## exact offset from the creature's `{chunk, local}` to the target's (#464), so it is the same at chunk
+## 312,500 as at the origin.
+func _step_toward(inst: Dictionary, iid: String, target: Vector3, speed: float, delta: float, target_exact: Dictionary = {}) -> void:
+	var goal: Dictionary = target_exact if not target_exact.is_empty() else WorldPos.from_world(target.x, target.y, target.z)
+	var dir: Vector3 = WorldPos.offset_between(_exact_of(inst), goal)
 	if dir.length_squared() < 0.001:
 		return
 	dir = dir.normalized()
@@ -474,13 +515,16 @@ func separate_bodies(insts: Array, targets: Dictionary) -> void:
 	for inst in insts:
 		var iid: String = inst["instance_id"]
 		var pos: Vector3 = inst["position"]
+		var exact := _exact_of(inst)
 		var r := CreatureBody.radius_of(str(inst["creature_id"]))
-		for nid in creature_slice.creatures_in_radius(pos, r + CreatureBody.MAX_RADIUS):
+		for nid in creature_slice.creatures_in_radius(exact, r + CreatureBody.MAX_RADIUS):
 			# Each pair once (the lower id leads), and only with live neighbours in range.
 			if str(nid) <= iid or not by_id.has(nid):
 				continue
 			var other: Dictionary = by_id[nid]
-			var push := CreatureBody.pair_push(pos, r, other["position"],
+			# Phase 195 — the pair is pushed on its exact offset (the neighbour placed relative to this body),
+			# not on two float32 world points a metre apart far from the origin.
+			var push := CreatureBody.pair_push(pos, r, pos + WorldPos.offset_between(exact, _exact_of(other)),
 					CreatureBody.radius_of(str(other["creature_id"])), iid + "|" + str(nid))
 			if push == Vector3.ZERO:
 				continue
@@ -568,7 +612,7 @@ func _path_rules_of(cid: String) -> Dictionary:
 
 ## Follow the creature's path to `target`, asking for a new one when it has none for this goal. A creature
 ## whose own chunk is not loaded stays where it is.
-func _walk_path(iid: String, inst: Dictionary, target: Vector3, speed: float, delta: float) -> void:
+func _walk_path(iid: String, inst: Dictionary, target: Vector3, speed: float, delta: float, target_exact: Dictionary = {}) -> void:
 	var pos: Vector3 = inst["position"]
 	# Phase 171 — the creature's own tile comes from its exact position (float32 `pos` is on a 2 m grid far out).
 	var here: Vector2i = creature_slice.tile_of_pos(creature_slice.get_instance_pos(iid)) \
@@ -576,11 +620,12 @@ func _walk_path(iid: String, inst: Dictionary, target: Vector3, speed: float, de
 			else creature_slice.tile_of(pos)
 	if is_nan(creature_slice.surface_at_tile(here)):
 		return
-	var goal: Vector2i = creature_slice.tile_of(target)
+	var goal: Vector2i = creature_slice.tile_of_pos(target_exact) if not target_exact.is_empty() and creature_slice.has_method("tile_of_pos") \
+			else creature_slice.tile_of(target)
 	var ai: Dictionary = _ai[iid]
 	var lap := _lap_tiles()
 	if here == goal:
-		_step_toward(inst, iid, target, speed, delta)
+		_step_toward(inst, iid, target, speed, delta, target_exact)
 		return
 	var has_path: bool = ai.has("path_goal") and not ai.get("path_stale", false)
 	if has_path:
@@ -597,7 +642,7 @@ func _walk_path(iid: String, inst: Dictionary, target: Vector3, speed: float, de
 	if idx >= path.size():
 		# At the end of the path: walk the last stretch only when the goal was reached.
 		if bool(ai.get("path_reached", false)):
-			_step_toward(inst, iid, target, speed, delta)
+			_step_toward(inst, iid, target, speed, delta, target_exact)
 			return
 		if bool(ai.get("path_window", false)):
 			# Phase 183 — the path ran to the edge of the search window: plan the next stretch from here.
@@ -783,7 +828,7 @@ func _propagate_group_state(iid: String, inst: Dictionary, new_state: String) ->
 		return
 	if group_behavior == GROUP_HERD and new_state != "fleeing":
 		return
-	var neighbors: Array = creature_slice.creatures_in_radius(inst["position"], pack_r)
+	var neighbors: Array = creature_slice.creatures_in_radius(_exact_of(inst), pack_r)
 	for nid in neighbors:
 		if nid == iid:
 			continue

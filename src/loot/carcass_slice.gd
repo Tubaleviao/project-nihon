@@ -157,6 +157,15 @@ func check_harvest(id: String, player_pos: Vector3, category: String, player_id:
 		return REASON_NO_TOOL
 	return OK
 
+## Phase 195 — set every harvest entry of carcass `id` to `chance` (the playtest bot pins 1.0 so its harvest
+## check does not depend on a roll, without reaching into `_carcasses`). False when the carcass is unknown.
+func pin_entry_chances(id: String, chance: float) -> bool:
+	if not _carcasses.has(id):
+		return false
+	for e: Dictionary in _carcasses[id]["entries"]:
+		e["chance"] = chance
+	return true
+
 ## The remaining entries a tool of `category` can work.
 func workable_entries(id: String, category: String) -> Array:
 	var out: Array = []

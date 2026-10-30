@@ -341,8 +341,8 @@ func _ready() -> void:
 	_creature_ai.creature_slice = _creature
 	_creature_ai.player_slice   = _player
 	_creature_ai.battle_slice   = _battle
-	# Phase 36 — AI targets the nearest of ALL players: the local body plus every peer's last position.
-	_creature_ai.player_targets = _peer_wiring.player_targets
+	_creature_ai.player_targets = _peer_wiring.player_targets   # Phase 36 — ALL players; Phase 195 — and exactly:
+	_creature_ai.player_exact_targets = _peer_wiring.player_exact_targets
 
 	# Cross-references wired before add_child so _ready() sees them.
 	_crafting.station_slice    = _station

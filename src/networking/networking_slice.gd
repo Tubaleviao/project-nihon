@@ -515,7 +515,7 @@ func aoi_region(position: Vector3) -> Vector2i:
 
 ## Peer ids (among `connected`) whose AOI contains `position`. Pure — the
 ## connected set is passed in so the filter is testable headless.
-func aoi_recipients(position: Vector3, connected: Array) -> Array:
+func aoi_recipients(position: Vector3, connected: Variant) -> Array:
 	return _m1.aoi_recipients(position, connected)
 
 ## Phase 163 — host: send the frame's queued relays, one `player_states` packet per recipient (net_part_1).
@@ -902,7 +902,7 @@ func equipment_targets(owner_peer: int) -> Array:
 	var out: Array = []
 	if not _has_subject_position(owner_peer):
 		return out
-	for pid in aoi_recipients(_subject_position(owner_peer), _connected_peers()):
+	for pid in aoi_recipients(_subject_position(owner_peer), _ensure_transport().peer_set()):
 		if int(pid) != owner_peer:
 			out.append(int(pid))
 	return out

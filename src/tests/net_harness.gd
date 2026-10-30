@@ -1571,7 +1571,7 @@ func _step_chunk_record_synced() -> void:
 			_report("chunk_record_synced", "fail", "no_peer")
 			return
 		_root._peer_records_msec.erase(peer)
-		_root._networking.send_snapshot(peer, _root._snapshot_wiring.build_snapshot(peer, false, RENDEZVOUS, false))
+		_root._snapshot_wiring.send_snapshot(peer, _root._snapshot_wiring.build_snapshot(peer, false, RENDEZVOUS, false))
 		await _await_link_drained()
 		_report("chunk_record_synced", verdict(true, true), _record_detail(rec))
 		return
@@ -1813,7 +1813,7 @@ func _step_frontier_record_synced() -> void:
 			_report("frontier_record_synced", "fail", "no_peer")
 			return
 		_root._peer_records_msec.erase(peer)
-		_root._networking.send_snapshot(peer, _root._snapshot_wiring.build_snapshot(peer, false, RENDEZVOUS, false))
+		_root._snapshot_wiring.send_snapshot(peer, _root._snapshot_wiring.build_snapshot(peer, false, RENDEZVOUS, false))
 		await _await_link_drained()
 		_report("frontier_record_synced", verdict(true, true), _record_detail(rec))
 		return
@@ -1856,9 +1856,12 @@ func _step_fold_carries_creatures() -> void:
 	_root._creature.prune_carried(func(_c): return false)
 	_report("fold_carries_creatures", verdict(ok, true), "kept-and-host-unmoved" if ok else "probe_not_carried")
 
-## Phase 171 — a creature delta for a creature half a lap from the origin lands on the client within 1 cm.
-## The host ships two exact positions 0.1 m apart straight to the peer (the AOI would drop a packet that far
-## from the harness players); the client's record must follow the step, not the float32 grid (about 2 m there).
+## Phase 171 — a creature delta for a creature half a lap from the origin lands on the client within 1 cm; the
+## client's record must follow a 0.1 m step, not the float32 grid (about 2 m there).
+## Phase 195 — the host's half sends both deltas the way a creature's do: `creature_state_changed` on the bus,
+## relayed by the networking slice through the AOI broadcast (#464). The AOI would drop a packet that far from
+## the harness players, so the peer's AOI entry stands at the probe for the two emits (synchronous: no report
+## can move it between) and is put back. It passes only when the AOI path delivered both packets to the peer.
 func _step_creature_far_delta() -> void:
 	var iid := "creature_harness_far_probe"
 	var far := { "chunk": Vector2i(625000, 3), "local": Vector3(5.0, 2.0, 5.0) }
@@ -1869,16 +1872,18 @@ func _step_creature_far_delta() -> void:
 			_report("creature_far_delta", "fail", "no_connected_peer")
 			return
 		await _await_settle(1.0)
-		# The host's half passes only when both packets went out (#464); the client's half judges the landing.
+		var net = _root._networking
+		var peer := int(peers[0])
 		var sent := 0
 		for p in [far, next]:
-			if _root._networking._deliver(peers[0], {
-				"type": "creature_state_changed", "instance_id": iid, "creature_id": "ForestBoar", "state": "idle",
-				"pk": WorldPos.pos_to_packet_text(p),
-			}):
+			var before := int(net._m1.aoi_deliveries.get(peer, 0))
+			net._peer_spatial.update(peer, WorldPos.to_scene(p, Vector2i.ZERO))
+			GameBus.creature_state_changed.emit(iid, "ForestBoar", "idle", p)
+			net._peer_spatial.update(peer, net.get_aoi_center(peer))
+			if int(net._m1.aoi_deliveries.get(peer, 0)) == before + 1:
 				sent += 1
 			await _await_settle(0.5)
-		_report("creature_far_delta", verdict(sent == 2, true), "within_1cm" if sent == 2 else "far_delta_unsent")
+		_report("creature_far_delta", verdict(sent == 2, true), "within_1cm" if sent == 2 else "far_delta_not_relayed")
 		return
 	# The fold step left this client in a folded frame, which would replay onto the host's positions: set it
 	# aside for the probe and put it back.

@@ -274,10 +274,7 @@ func flush_relays(paced: bool = false) -> int:
 		return 0
 	sl._relays.flushed_ms = now_ms
 	sl.TickProbe.begin("aoi_relay")
-	var connected := {}
-	if sl._connected():
-		for p in sl._connected_peers():
-			connected[int(p)] = true
+	var connected: Dictionary = sl._ensure_transport().peer_set() if sl._connected() else {}
 	var batches: Dictionary = sl._relays.build(now_ms, connected,
 			func(pos: Vector3) -> Array: return sl._peer_spatial.query_radius(pos, sl.AOI_RADIUS), Callable(sl, "get_aoi_center"))
 	var sent := 0
@@ -288,15 +285,21 @@ func flush_relays(paced: bool = false) -> int:
 	sl.TickProbe.end()
 	return sent
 
-## Peer ids (among `connected`) whose AOI contains `position`.
-func aoi_recipients(position: Vector3, connected: Array) -> Array:
+## Peer ids (among `connected`) whose AOI contains `position`. Phase 195 — `connected` is the peer set
+## (`Transport.peer_set()`, id -> true, reused until the peer list changes); an Array is still accepted and
+## turned into one here.
+func aoi_recipients(position: Vector3, connected: Variant) -> Array:
 	var out: Array = []
 	var near: Array = sl._peer_spatial.query_radius(position, sl.AOI_RADIUS)
 	if near.is_empty():
 		return out   # nobody nearby: skip building the peer set
-	var live := {}   # Phase 163 — one pass over `connected`, not an array scan per candidate
-	for pid in connected:
-		live[pid] = true
+	var live: Dictionary
+	if connected is Dictionary:
+		live = connected
+	else:
+		live = {}   # Phase 163 — one pass over `connected`, not an array scan per candidate
+		for pid in connected:
+			live[int(pid)] = true
 	for pid in near:
 		if live.has(pid):
 			out.append(pid)
@@ -377,12 +380,17 @@ func push_look(player_id: String, look: Dictionary) -> void:
 		sl._deliver(int(pid), { "type": "peer_look", "peer_id": owner_peer, "look": look.duplicate() })
 
 ## Broadcast a spatial delta only to peers whose AOI contains `position` (a client forwards it to the host).
+## Phase 195 — host: peer id -> packets `broadcast_aoi` delivered to it (the harness checks a creature delta
+## went out through the AOI path, not around it). Dropped with the peer.
+var aoi_deliveries: Dictionary = {}
+
 func broadcast_aoi(payload: Dictionary, position: Vector3) -> void:
 	if not sl._connected():
 		return
 	if sl._role == sl.Role.HOST:
-		for pid in sl.aoi_recipients(position, sl._connected_peers()):
-			sl._deliver(int(pid), payload.duplicate(true))
+		for pid in sl.aoi_recipients(position, sl._ensure_transport().peer_set()):
+			if sl._deliver(int(pid), payload.duplicate(true)):
+				aoi_deliveries[int(pid)] = int(aoi_deliveries.get(int(pid), 0)) + 1
 	elif sl._role == sl.Role.CLIENT:
 		sl._deliver(1, payload)
 

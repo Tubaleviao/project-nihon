@@ -43,7 +43,7 @@ const TickProbe := preload("res://src/core/tick_probe.gd")
 ## `mi` is an opaque MultiMesh instance index, never a live Node3D — a headless
 ## server keeps the same records with no rendering attached.
 const MultimeshPool := preload("res://src/core/multimesh_pool.gd")
-const SpatialHash    := preload("res://src/core/spatial_hash.gd")
+const ExactSpatialHash := preload("res://src/core/exact_spatial_hash.gd")
 const SpawnRoll      := preload("res://src/world/spawn_roll.gd")
 const WorldClock     := preload("res://src/world/world_clock.gd")
 const TerrainSlice   := preload("res://src/terrain/terrain_slice.gd")
@@ -80,8 +80,9 @@ var _dead_state: Dictionary = {}
 
 ## Spatial hash over the live population so nearest-creature / neighbour queries
 ## are O(radius²) cells, not an O(N) scan (Phase 28). Kept in lockstep with
-## _instances: insert on spawn, update on move, remove on despawn.
-var _spatial := SpatialHash.new()
+## _instances: insert on spawn, update on move, remove on despawn. Phase 195 — keyed on the exact
+## `{chunk, local}` (`inst["pos"]`), so a query far from the origin is not on the float32 metre grid.
+var _spatial := ExactSpatialHash.new()
 
 ## Shared MultiMesh pool for creature bodies; null when render_visuals is false
 ## (headless server) so the simulation runs with no visual nodes.
@@ -144,25 +145,34 @@ const THROTTLED_SYNC_INTERVAL := 2.0
 ## query footprint, not the total population. TAMED instances are skipped
 ## (Phase 35): a companion is not a target, so an attack input aimed at the
 ## nearest creature must not swing at the player's own wolf.
-func nearest_creature(from_pos: Vector3, radius: float) -> String:
+func nearest_creature(from_pos: Variant, radius: float) -> String:
+	var from := _exact_of(from_pos)
 	var best_id := ""
 	var best_dist := radius + 1.0
-	for iid in _spatial.query_radius(from_pos, radius):
+	for iid in _spatial.query_radius(from, radius):
 		var inst: Dictionary = _instances[iid]
 		if inst["state"] == "dead":
 			continue
 		if str(inst.get("tamed_by", "")) != "":
 			continue
-		var d: float = inst["position"].distance_to(from_pos)
+		var d: float = WorldPos.offset_between(from, inst["pos"]).length()
 		if d < best_dist:
 			best_dist = d
 			best_id = iid
 	return best_id
 
 ## Instance ids within `radius` of `pos` (any state). The AI's neighbour /
-## proximity queries route through the hash via this (Phase 28).
-func creatures_in_radius(pos: Vector3, radius: float) -> Array:
-	return _spatial.query_radius(pos, radius)
+## proximity queries route through the hash via this (Phase 28). Phase 195 — `pos` is an exact
+## `{chunk, local}` (what the AI holds) or a world-metres Vector3 (split here, coarse far out).
+func creatures_in_radius(pos: Variant, radius: float) -> Array:
+	return _spatial.query_radius(_exact_of(pos), radius)
+
+## An exact `{chunk, local}` for a query point given either way.
+static func _exact_of(pos: Variant) -> Dictionary:
+	if pos is Dictionary:
+		return pos
+	var v: Vector3 = pos
+	return WorldPos.from_world(v.x, v.y, v.z)
 
 # ---------------------------------------------------------------------------
 # Taming (Phase 35)
@@ -316,10 +326,17 @@ func get_instance_pos(instance_id: String) -> Dictionary:
 		return {}
 	return (_instances[instance_id]["pos"] as Dictionary).duplicate()   # a copy: edits must go through set_instance_pos
 
-## Store an exact position on a record and refresh the derived Vector3.
+## Store an exact position on a record and refresh the derived Vector3. Phase 195 — the ONE writer of a
+## record's `pos` / `position` (an audit test holds every other line of the slice to it): `position` is the
+## read-only world-metres view of `pos`, so nothing can move one without the other.
 static func _store_pos(inst: Dictionary, pos: Dictionary) -> void:
 	inst["pos"] = pos.duplicate()   # own copy: spawn_exact / _last_broadcast must not alias a record that is edited in place
 	inst["position"] = WorldPos.to_scene(pos, Vector2i.ZERO)
+
+## The spawn point's exact position and its derived Vector3, written together (as `_store_pos` does).
+static func _store_spawn(inst: Dictionary, pos: Dictionary) -> void:
+	inst["spawn_exact"] = pos.duplicate()
+	inst["spawn_pos"] = WorldPos.to_scene(pos, Vector2i.ZERO)
 
 ## The tile holding an exact position, with no float32 world metre in between.
 func tile_of_pos(pos: Dictionary) -> Vector2i:
@@ -347,7 +364,7 @@ func set_instance_pos(instance_id: String, pos: Dictionary) -> void:
 			pos = {"chunk": pos["chunk"], "local": l}
 	var inst: Dictionary = _instances[instance_id]
 	_store_pos(inst, pos)
-	_spatial.update(instance_id, inst["position"])
+	_spatial.update(instance_id, inst["pos"])
 	_place_box(instance_id, inst["position"])
 
 ## Move an instance by `delta` metres. The offset is added to `local` and carried into the chunk index, so a
@@ -439,15 +456,16 @@ func get_snapshot_creatures() -> Array:
 		if _instances.has(iid):
 			continue
 		var dead: Dictionary = _dead_state[iid]
-		var dead_pos: Variant = dead.get("position", WorldPos.to_wire(Vector3.ZERO))
-		out.append({
+		var held := {
 			"instance_id": iid,
 			"creature_id": str(dead.get("creature_id", "")),
 			"state":       "dead",
-			"position":    dead_pos,
 			"hp":          0.0,
 			"respawn_at":  float(dead.get("respawn_at", -1.0)),
-		})
+		}
+		if dead.has("position"):   # a death held from an entry whose position was refused has none (Phase 195)
+			held["position"] = dead["position"]
+		out.append(held)
 	return out
 
 # ---------------------------------------------------------------------------
@@ -651,17 +669,15 @@ func fold_contents(turned: bool, pole_sign: int) -> void:
 	last_fold_ids = _instances.keys()
 	for iid in _instances.keys():
 		var inst: Dictionary = _instances[iid]
-		var pos: Vector3 = TerrainSlice.fold_world_vec_like(inst["position"], turned, pole_sign)
-		inst["position"] = pos
-		inst["pos"] = WorldPos.from_world(pos.x, pos.y, pos.z)
-		inst["spawn_pos"] = TerrainSlice.fold_world_vec_like(inst["spawn_pos"], turned, pole_sign)
-		inst["spawn_exact"] = WorldPos.from_world(inst["spawn_pos"].x, inst["spawn_pos"].y, inst["spawn_pos"].z)
-		var chunk := Vector2i(floori(pos.x / TerrainSlice.CHUNK_METERS), floori(pos.z / TerrainSlice.CHUNK_METERS))
+		# Phase 195 — the exact pair is folded (#464), never the float32 world metres derived from it.
+		_store_pos(inst, TerrainSlice.fold_world_pos_like(inst["pos"], turned, pole_sign))
+		_store_spawn(inst, TerrainSlice.fold_world_pos_like(inst["spawn_exact"], turned, pole_sign))
+		var chunk: Vector2i = inst["pos"]["chunk"]
 		inst["chunk"] = chunk
 		if not _by_chunk.has(chunk):
 			_by_chunk[chunk] = []
 		(_by_chunk[chunk] as Array).append(iid)
-		_spatial.update(iid, pos)
+		_spatial.update(iid, inst["pos"])
 		if _last_broadcast.has(iid):
 			# The wire carries no fold: other peers keep the frame they have, so the carried
 			# creature is not re-sent as a move.
@@ -669,7 +685,13 @@ func fold_contents(turned: bool, pole_sign: int) -> void:
 	# Held death records re-apply at their chunk's next spawn and are saved: keep them in the same frame.
 	for iid in _dead_state:
 		var rec: Dictionary = _dead_state[iid]
-		rec["position"] = WorldPos.to_wire(TerrainSlice.fold_world_vec_like(WorldPos.from_wire(rec["position"]), turned, pole_sign))
+		if not rec.has("position"):
+			continue
+		var held := WorldPos.pos_from_wire(rec["position"])
+		if held.is_empty():   # a legacy `[x, y, z]` record: no exact chunk to fold
+			var w := WorldPos.from_wire(rec["position"])
+			held = WorldPos.from_world(w.x, w.y, w.z)
+		rec["position"] = WorldPos.pos_to_wire(TerrainSlice.fold_world_pos_like(held, turned, pole_sign))
 	if not is_authoritative:
 		# A client's later host deltas arrive in the host's frame: replay this fold on them.
 		_log_fold(turned, pole_sign)
@@ -697,9 +719,10 @@ func reset_fold_log() -> void:
 ## is replayed through them so it lands in this peer's frame.
 var _fold_log: Array = []
 
-func _to_local_frame(pos: Vector3) -> Vector3:
+## Phase 195 — replayed on the exact `{chunk, local}` (#464), so a far creature lands on its own spot.
+func _to_local_frame(pos: Dictionary) -> Dictionary:
 	for f in _fold_log:
-		pos = TerrainSlice.fold_world_vec_like(pos, bool(f[0]), int(f[1]))
+		pos = TerrainSlice.fold_world_pos_like(pos, bool(f[0]), int(f[1]))
 	return pos
 
 ## Put every carried creature's body at its folded position (after the scene rebase moved the pool).
@@ -807,17 +830,15 @@ func _spawn(creature_id: String, chunk_pos: Vector2i, spawn_index: int = 0) -> S
 		# projects it back out for callers that want a copy.
 		"instance_id": iid,
 		"creature_id": creature_id,
-		"position":    pos,
-		"pos":         exact,
 		"chunk":       chunk_pos,
-		"spawn_pos":   pos,
-		"spawn_exact": exact.duplicate(),
 		"state":       "idle",
 		"hp":          hp,
 		"respawn_at":  -1.0,
 		"mi":          mi,
 		"tamed_by":    "",
 	}
+	_store_pos(_instances[iid], exact)
+	_store_spawn(_instances[iid], exact)
 	if not _by_chunk.has(chunk_pos):
 		_by_chunk[chunk_pos] = []
 	if not (_by_chunk[chunk_pos] as Array).has(iid):
@@ -838,7 +859,7 @@ func _spawn(creature_id: String, chunk_pos: Vector2i, spawn_index: int = 0) -> S
 			if _pool != null and mi >= 0:
 				_pool.hide(mi)
 
-	_spatial.insert(iid, pos)
+	_spatial.insert(iid, _instances[iid]["pos"])
 
 	GameBus.creature_spawned.emit(iid, creature_id, pos)
 	return iid
@@ -961,13 +982,12 @@ func _on_creature_died(entity_id: String, _position: Vector3, _killer_id: String
 					set_instance_position(iid, landing)
 					# A corpse rests on the ground: drop the flyer's hover band the move just added.
 					if hover_of(iid) > 0.0:
-						var rest: Vector3 = inst["position"]
-						rest.y = minf(rest.y, landing.y)
 						var rest_pos: Dictionary = (inst["pos"] as Dictionary).duplicate()
-						rest_pos["local"] = Vector3(rest_pos["local"].x, rest.y, rest_pos["local"].z)
+						var rest: Vector3 = rest_pos["local"]
+						rest_pos["local"] = Vector3(rest.x, minf(rest.y, landing.y), rest.z)
 						_store_pos(inst, rest_pos)
-						_spatial.update(iid, rest)
-						_place_box(iid, rest)
+						_spatial.update(iid, inst["pos"])
+						_place_box(iid, inst["position"])
 				# WALL-CLOCK deadline (Phase 33) — a saved deadline must still mean
 				# the same moment in a new process, so this is Unix-epoch seconds,
 				# not process uptime.
@@ -1008,8 +1028,8 @@ func _tick_respawn() -> void:
 			inst["hp"]         = max_hp
 			inst["respawn_at"] = -1.0
 			_store_pos(inst, inst["spawn_exact"])
-			_spatial.update(iid, inst["spawn_pos"])
-			_place_box(iid, inst["spawn_pos"])
+			_spatial.update(iid, inst["pos"])
+			_place_box(iid, inst["position"])
 			GameBus.creature_respawned.emit(iid, creature_id)
 	# Sweep non-resident death records whose deadline has passed: they no longer
 	# describe anything (the creature is due alive), and keeping them would grow the
@@ -1055,10 +1075,15 @@ func apply_creature_state(instance_id: String, creature_id: String, state: Strin
 	apply_creature_pos(instance_id, creature_id, state, WorldPos.from_world(position.x, position.y, position.z), hp, respawn_at)
 
 ## `apply_creature_state` with an exact `{chunk, local}` position (Phase 171): what the wire and the save carry.
+## Phase 195 — an empty `pos` leaves a known instance where it is and still applies the other fields (a
+## snapshot entry whose position was refused keeps its hp, state and death, #493); an unknown one is skipped.
 func apply_creature_pos(instance_id: String, creature_id: String, state: String, pos: Dictionary, hp: float = -1.0, respawn_at: float = -1.0) -> void:
-	if not _fold_log.is_empty():
-		var folded := _to_local_frame(WorldPos.to_scene(pos, Vector2i.ZERO))
-		pos = WorldPos.from_world(folded.x, folded.y, folded.z)
+	if pos.is_empty():
+		if not _instances.has(instance_id):
+			return
+		pos = _instances[instance_id]["pos"]   # already in this peer's frame: no fold replay
+	elif not _fold_log.is_empty():
+		pos = _to_local_frame(pos)
 	var position: Vector3 = WorldPos.to_scene(pos, Vector2i.ZERO)
 	if _instances.has(instance_id):
 		var inst: Dictionary = _instances[instance_id]
@@ -1070,7 +1095,7 @@ func apply_creature_pos(instance_id: String, creature_id: String, state: String,
 			inst["hp"] = hp
 		if respawn_at >= 0.0:
 			inst["respawn_at"] = respawn_at
-		_spatial.update(instance_id, position)
+		_spatial.update(instance_id, inst["pos"])
 		if _pool != null and inst.has("mi") and int(inst["mi"]) >= 0:
 			if state == "dead":
 				_pool.hide(int(inst["mi"]))
@@ -1087,19 +1112,17 @@ func apply_creature_pos(instance_id: String, creature_id: String, state: String,
 	_instances[instance_id] = {
 		"instance_id": instance_id,
 		"creature_id": creature_id,
-		"position":    position,
-		"pos":         pos,
 		"chunk":       Vector2i.ZERO,
-		"spawn_pos":   position,
-		"spawn_exact": pos.duplicate(),
 		"state":       state,
 		"hp":          maxf(hp, 0.0),
 		"respawn_at":  respawn_at,
 		"mi":          mi,
 		"tamed_by":    "",
 	}
+	_store_pos(_instances[instance_id], pos)
+	_store_spawn(_instances[instance_id], pos)
 	_invalidate_view()
-	_spatial.insert(instance_id, position)
+	_spatial.insert(instance_id, _instances[instance_id]["pos"])
 
 ## Seed the client's creature population from a host snapshot list
 ## (see get_snapshot_creatures), carrying hp and the wall-clock respawn deadline.
@@ -1128,11 +1151,11 @@ func _apply_creature_entries(list: Array, create_missing: bool) -> void:
 		if entry is not Dictionary:
 			continue
 		var iid := str(entry.get("instance_id", ""))
+		# Phase 195 — a refused position (empty) drops only the position: hp, state and death still apply
+		# to a known instance, and a held death is kept without one (#493).
 		var pos := _entry_pos(entry)
-		if pos.is_empty():
-			continue
 		if not create_missing and not _instances.has(iid):
-			_hold_death_record(iid, entry)
+			_hold_death_record(iid, entry, pos)
 			continue
 		apply_creature_pos(
 			iid,
@@ -1145,23 +1168,23 @@ func _apply_creature_entries(list: Array, create_missing: bool) -> void:
 
 ## The exact position of a snapshot / world-record entry: the `{chunk, local}` form keeps its chunk, a legacy
 ## `[x, y, z]` float array is split (Phase 171). Empty when the entry holds no plausible position (a huge
-## chunk or a NaN local from a hand-edited save, #464): the caller skips that entry.
-func _entry_pos(entry: Dictionary) -> Dictionary:
-	var data: Variant = entry.get("position", [])
+## chunk or a NaN local from a hand-edited save, #464). Phase 195 — both forms pass the wire validator
+## (`WorldPos.is_wire`, which also checks every element is a finite number) and then `is_plausible_pos`.
+static func _entry_pos(entry: Dictionary) -> Dictionary:
+	var data: Variant = entry.get("position", null)
+	var exact: Dictionary = {}
 	if data is Dictionary:
-		return WorldPos.pos_from_wire(data)   # validated by `is_wire`; {} when it is not plausible
-	if not (data is Array and (data as Array).size() >= 3):
-		return {}
-	var w := WorldPos.from_wire(data)
-	if not (is_finite(w.x) and is_finite(w.y) and is_finite(w.z)):
-		return {}
-	var exact := WorldPos.from_world(w.x, w.y, w.z)
-	return exact if WorldPos.is_plausible_pos(exact) else {}
+		exact = WorldPos.pos_from_wire(data)   # {} unless `is_wire` accepts it
+	elif data is Array and WorldPos.is_wire(data):
+		var w := WorldPos.from_wire(data)
+		exact = WorldPos.from_world(w.x, w.y, w.z)
+	return exact if not exact.is_empty() and WorldPos.is_plausible_pos(exact) else {}
 
 ## Hold an unstreamed id's recorded death so it re-applies when its chunk streams
 ## (see _spawn). Only a pending death is held; a live entry, an entry whose deadline
-## has passed, or a malformed one is ignored.
-func _hold_death_record(iid: String, entry: Dictionary) -> void:
+## has passed, or a malformed one is ignored. `pos` is the entry's validated position
+## (`_entry_pos`); an empty one holds the death with no position (the spawn supplies it).
+func _hold_death_record(iid: String, entry: Dictionary, pos: Dictionary) -> void:
 	if iid.is_empty() or str(entry.get("state", "")) != "dead":
 		return
 	var deadline := float(entry.get("respawn_at", -1.0))
@@ -1170,8 +1193,9 @@ func _hold_death_record(iid: String, entry: Dictionary) -> void:
 	_dead_state[iid] = {
 		"creature_id": str(entry.get("creature_id", "")),
 		"respawn_at":  deadline,
-		"position":    WorldPos.pos_to_wire(_entry_pos(entry)),
 	}
+	if not pos.is_empty():
+		_dead_state[iid]["position"] = WorldPos.pos_to_wire(pos)
 
 # ---------------------------------------------------------------------------
 # Visuals

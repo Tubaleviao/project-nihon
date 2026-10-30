@@ -270,7 +270,7 @@ func _test_fold_carries_contents() -> void:
 	var folded_chunk := Vector2i(floori(after.x / TerrainSlice.CHUNK_METERS), floori(after.z / TerrainSlice.CHUNK_METERS))
 	assert_eq(cs._instances[iid]["chunk"], folded_chunk, "filed under the chunk it now stands in")
 	assert_true((cs._by_chunk[folded_chunk] as Array).has(iid), "in the chunk index")
-	assert_true(cs.creatures_in_radius(after, 0.5).has(iid), "and in the spatial hash")
+	assert_true(cs.creatures_in_radius(cs._instances[iid]["pos"], 0.5).has(iid), "and in the spatial hash")
 	var tid := "tree_%d_%d_0" % [chunk.x, chunk.y]
 	assert_true(ts._trees.has(tid), "the tree keeps its id")
 	assert_eq(ts._trees[tid]["position"], TerrainSlice.fold_world_vec_like(tree_before, true, 1), "at the fold's image of its place")
@@ -323,8 +323,10 @@ func _test_fold_log_replay() -> void:
 	cs.fold_contents(true, -1)
 	assert_eq(cs._fold_log.size(), 2, "two different poles are two entries")
 	cs.apply_creature_state("c0", "ForestBoar", "idle", host)
-	var want := TerrainSlice.fold_world_vec_like(TerrainSlice.fold_world_vec_like(host, true, 1), true, -1)
-	assert_true(cs.get_instance_position("c0").distance_to(want) < 0.01, "a host position is replayed through both folds, oldest first")
+	# Phase 195 — replayed on the exact pair, so it is compared with the exact folds (float32 is a metre out here).
+	var host_exact := WorldPos.from_world(host.x, host.y, host.z)
+	var want := TerrainSlice.fold_world_pos_like(TerrainSlice.fold_world_pos_like(host_exact, true, 1), true, -1)
+	assert_true(WorldPos.offset_between(want, cs.get_instance_pos("c0")).length() < 0.01, "a host position is replayed through both folds, oldest first")
 	cs.fold_contents(true, -1)
 	assert_eq(cs._fold_log.size(), 1, "crossing the same pole back cancels its entry")
 	cs.fold_contents(true, 1)
@@ -345,8 +347,9 @@ func _test_fold_dead_records() -> void:
 	add_child(cs)
 	var pole_m := float(TerrainSlice.pole_chunks()) * TerrainSlice.CHUNK_METERS
 	var at := Vector3(100.5, 5.0, pole_m + 40.0)
-	cs._hold_death_record("d0", { "state": "dead", "creature_id": "ForestBoar",
-		"respawn_at": Time.get_unix_time_from_system() + 600.0, "position": WorldPos.to_wire(at) })
+	var entry := { "state": "dead", "creature_id": "ForestBoar",
+		"respawn_at": Time.get_unix_time_from_system() + 600.0, "position": WorldPos.to_wire(at) }
+	cs._hold_death_record("d0", entry, CreatureSlice._entry_pos(entry))
 	assert_true(cs._dead_state.has("d0"), "the death is held")
 	cs.fold_contents(true, 1)
 	var got: Vector3 = WorldPos.from_wire(cs._dead_state["d0"]["position"])
