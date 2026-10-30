@@ -37,7 +37,9 @@ func put(key: String, sig: Variant, arrays: Dictionary, heightmap: Array) -> voi
 	invalidate(key)
 	if arrays.is_empty():
 		return
-	var n := approx_bytes(arrays) + value_bytes(heightmap)
+	# A heightmap is a flat Array of floats: a Variant slot per tile, which is what `value_bytes` would sum, but
+	# that walk is 4096 GDScript calls on the main thread per attached chunk (about 3 ms on a slow runner).
+	var n := approx_bytes(arrays) + heightmap.size() * VARIANT_BYTES
 	if n > max_bytes:
 		return
 	_entries[key] = { "sig": sig, "arrays": arrays, "heightmap": heightmap, "bytes": n }
