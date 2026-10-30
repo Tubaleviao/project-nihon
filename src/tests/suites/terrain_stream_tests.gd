@@ -735,21 +735,23 @@ static func _tri_keys(faces: PackedVector3Array) -> Array:
 # Phase 194 — follow-up debt burn II (#504, #509, #512)
 # ---------------------------------------------------------------------------
 
-## #512 — the lane (the body's chunk and the ones ahead of it) first; a diagonal neighbour, the ground behind and a
-## peer's own chunks by their distance from the nearest centre, not after the whole lane.
+## #512 — the body's chunk first and a peer's own chunks by their distance from the peer. The queue keeps the ground
+## ahead before the column beside the body and the ground behind (see `queue_priority`); the attach order below
+## still takes a diagonal neighbour before the far lane.
 func _test_stream_lane_order() -> void:
 	var centers: Array = [Vector2i(10, 0), Vector2i(20, 0)]
 	var east := Vector2(1, 0)
 	var k := func(c: Vector2i) -> float: return ChunkManager.queue_priority(centers, east, c, true)
+	assert_eq(k.call(Vector2i(10, 0)), 0.0, "the body's chunk first")
 	assert_true(k.call(Vector2i(10, 0)) < k.call(Vector2i(11, 0)), "the body's chunk, then the one ahead")
 	assert_true(k.call(Vector2i(11, 0)) < k.call(Vector2i(11, 1)), "the lane before the diagonal beside it")
-	assert_true(k.call(Vector2i(11, 1)) < k.call(Vector2i(14, 0)), "but a diagonal neighbour before the far lane")
-	assert_true(k.call(Vector2i(9, 0)) < k.call(Vector2i(14, 0)), "and the chunk just behind the body too")
-	assert_true(k.call(Vector2i(20, 1)) < k.call(Vector2i(14, 0)), "a peer's neighbour by its distance from the peer")
-	# PR #529: at one lane chunk per ring, every nearer ring (behind the body too) went first, and a CI runner's
-	# 270 m/s flight built none of the ground under the body.
-	assert_true(k.call(Vector2i(15, 0)) < k.call(Vector2i(6, 0)), "the lane five ahead before the ground four behind")
-	assert_true(k.call(Vector2i(15, 0)) < k.call(Vector2i(13, 4)), "and before a chunk four rings out beside the lane")
+	assert_true(k.call(Vector2i(11, 1)) < k.call(Vector2i(15, 0)), "a diagonal ahead before the lane five out")
+	assert_true(k.call(Vector2i(20, 1)) < k.call(Vector2i(12, 0)), "a peer's neighbour by its distance from the peer")
+	# PR #529 and PR #533's CI: ranking the ground beside and behind the body by its ring (one or two lane chunks per
+	# ring) starved the lane on a slow runner, and a 270 m/s flight built 0–43% of the ground under the body.
+	assert_true(k.call(Vector2i(15, 0)) < k.call(Vector2i(9, 0)), "the lane five ahead before the chunk just behind")
+	assert_true(k.call(Vector2i(15, 0)) < k.call(Vector2i(10, 1)), "and before the chunk beside the body")
+	assert_true(k.call(Vector2i(15, 0)) < k.call(Vector2i(13, 4)), "and before a chunk four lateral out ahead")
 	var cm := ChunkManager.new()
 	var clock := _make_fast(cm)
 	assert_true(cm.is_moving_fast(), "fast")
