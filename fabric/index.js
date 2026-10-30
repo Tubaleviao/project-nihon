@@ -39,6 +39,9 @@ weather.validateWeather(weather.RULES, weather.biomeClimates(biomes))
 
 // Phase 139 — the settlement rule table must be well formed (tiers never shrink, thresholds in order, claims cannot overlap).
 settlement.validateSettlement(settlement.RULES, [...Object.keys(items), 'Hearth'])
+// Phase 197 — projects, specialties, raids and upkeep must name real items, skills, attributes, creatures
+// of the raided biome and placeable stations; raids are warned, offline-protected and capped; upkeep never falls.
+settlement.validateSettlementLoop(settlement.settlementLoopData(), settlement.settlementLoopRefs())
 
 // Phase 139 — technology rules that name a settlement station or storage must reference real entities.
 technology.validateSettlementRefs(settlement.RULES, [...Object.keys(items), 'Hearth'])
@@ -112,6 +115,7 @@ module.exports = defineFabric({
       NoTeleportation:           decisions.NoTeleportation,
       WaystonesAmendNoTeleportation: decisions.WaystonesAmendNoTeleportation,
       SettlementClaimAndDecay:   decisions.SettlementClaimAndDecay,
+      SettlementRaidsAndUpkeep:  decisions.SettlementRaidsAndUpkeep,
       MagicBalancedWithMartial:  decisions.MagicBalancedWithMartial,
       DestructibleBuildings:     decisions.DestructibleBuildings,
       KnowledgeByExperimentation: decisions.KnowledgeByExperimentation,
@@ -264,6 +268,11 @@ module.exports = defineFabric({
       Hearth:       settlement.Hearth,
       RecipeHearth: settlement.RecipeHearth,
       Stockpile:    settlement.Stockpile,
+      // Phase 197 — the settlement loop
+      SettlementProjects:    settlement.SettlementProjects,
+      SettlementSpecialties: settlement.SettlementSpecialties,
+      SettlementRaids:       settlement.SettlementRaids,
+      SettlementUpkeep:      settlement.SettlementUpkeep,
     },
     // World — Creatures
     {

@@ -1,0 +1,12 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/decisions/settlementraidsandupkeep.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+status = 0
+state_machine_field = "status"
+initial_state = "proposed"
+description = "Raids on a settlement are fair: every raid is warned (SettlementRaids.warningSeconds > 0), none starts unless a member is online inside the claim (offlineProtection), and a lost raid takes at most a capped share of the stockpile and of unfinished project labour, never the claim or finished structures. Raids come from creatures only. Upkeep is a per-tier cost from the stockpile that never falls as the tier rises; unpaid upkeep suspends project effects and never shrinks the claim, which follows only the activity-based abandonment rule (SettlementClaimAndDecay)."
+tags = ["decision"]

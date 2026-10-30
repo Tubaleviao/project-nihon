@@ -66,6 +66,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [OnePersistentWorld](entities/onepersistentworld.md) — A single persistent official world server
 - [PlayerIdentityModel](entities/playeridentitymodel.md) — A player identity is a server-issued local UUID (player_id), not an account
 - [SettlementClaimAndDecay](entities/settlementclaimanddecay.md) — Settlements claim land around a Hearth, with a radius that only grows with tier
+- [SettlementRaidsAndUpkeep](entities/settlementraidsandupkeep.md) — Raids on a settlement are fair: every raid is warned (SettlementRaids.warningSeconds > 0), none starts unless a member is online inside the claim (offlineProtection), and a lost raid takes at most a capped share of the stockpile and of unfinished project labour, never the claim or finished structures
 - [WaystonesAmendNoTeleportation](entities/waystonesamendnoteleportation.md) — Amends NoTeleportation: waystones are the one sanctioned fast travel
 
 ## Gesture
@@ -252,6 +253,10 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [PersistenceSystem](entities/persistencesystem.md) — Defines the authoritative save lifecycle: which directory the world and per-player records live in, how often the server autosaves, how a headless server is asked to shut down cleanly, and how a record is written so a kill mid-write cannot truncate it
 - [ResearchPointRule](entities/researchpointrule.md) — Points of research a player earns per source: a craft, a gathered resource, and a one-time bonus for the first craft of each recipe
 - [Settlement](entities/settlement.md) — A player-founded place: a Hearth, a claimed circle of land, members with roles and a shared Stockpile
+- [SettlementProjects](entities/settlementprojects.md) — Structures a village builds together inside its claim: a palisade, a storehouse, a workshop, a watchtower
+- [SettlementRaids](entities/settlementraids.md) — Creature packs from the village's own biome attack a settlement that is worth raiding
+- [SettlementSpecialties](entities/settlementspecialties.md) — What each member of a village is good at: woodworker, smith, hunter, builder or forager
+- [SettlementUpkeep](entities/settlementupkeep.md) — What a village pays to keep going: a cost per tier taken from the stockpile every period
 - [TradeSystem](entities/tradesystem.md) — Defines the rules governing player-to-player trade
 - [WaystoneTravel](entities/waystonetravel.md) — Fast travel between waystones: a player attunes to a stone by standing at it, then travels between two attuned stones for a cost in items per 1,000 km, once per cooldown
 - [WeatherSystem](entities/weathersystem.md) — Simulates weather across biomes as an emergent world system

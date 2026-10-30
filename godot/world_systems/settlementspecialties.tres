@@ -1,0 +1,10 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/world_systems/settlementspecialties.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+rules = {"floor":2,"bonusLabour":0.5,"specialties":{"woodworker":{"skills":{"Carpentry":1},"attributes":{"strength":0.25}},"smith":{"skills":{"Smithing":1,"ArcaneForging":0.5},"attributes":{"strength":0.25}},"hunter":{"skills":{"Archery":0.5,"Swordsmanship":0.5,"Skinning":0.5,"Tracking":0.5},"attributes":{"agility":0.25}},"builder":{"skills":{"Carpentry":0.5,"Leadership":0.5},"attributes":{"vitality":0.25,"strength":0.25}},"forager":{"skills":{"Tracking":0.5,"Navigation":0.5,"Alchemy":0.5},"attributes":{"perception":0.25}}}}
+description = "What each member of a village is good at: woodworker, smith, hunter, builder or forager. A specialty is scored from the member's skill tiers and attributes; a member's specialty is their best score at or above the floor, and it adds bonus labour on project steps that ask for it. A specialty is a consequence of how someone plays, never a class picked up front."
+tags = ["world-system"]

@@ -60,6 +60,7 @@ const DECISIONS: Dictionary = {
 		"OnePersistentWorld": preload("res://godot/decisions/onepersistentworld.tres"),
 		"PlayerIdentityModel": preload("res://godot/decisions/playeridentitymodel.tres"),
 		"SettlementClaimAndDecay": preload("res://godot/decisions/settlementclaimanddecay.tres"),
+		"SettlementRaidsAndUpkeep": preload("res://godot/decisions/settlementraidsandupkeep.tres"),
 		"WaystonesAmendNoTeleportation": preload("res://godot/decisions/waystonesamendnoteleportation.tres")
 }
 
@@ -246,6 +247,10 @@ const WORLD_SYSTEMS: Dictionary = {
 		"PersistenceSystem": preload("res://godot/world_systems/persistencesystem.tres"),
 		"ResearchPointRule": preload("res://godot/world_systems/researchpointrule.tres"),
 		"Settlement": preload("res://godot/world_systems/settlement.tres"),
+		"SettlementProjects": preload("res://godot/world_systems/settlementprojects.tres"),
+		"SettlementRaids": preload("res://godot/world_systems/settlementraids.tres"),
+		"SettlementSpecialties": preload("res://godot/world_systems/settlementspecialties.tres"),
+		"SettlementUpkeep": preload("res://godot/world_systems/settlementupkeep.tres"),
 		"TradeSystem": preload("res://godot/world_systems/tradesystem.tres"),
 		"WaystoneTravel": preload("res://godot/world_systems/waystonetravel.tres"),
 		"WeatherSystem": preload("res://godot/world_systems/weathersystem.tres"),
