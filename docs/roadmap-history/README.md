@@ -126,3 +126,14 @@ runner. Profiled locally, the biggest cost in the walk was Jolt taking the colli
 chunks two rings out, which only the 60 m aim ray needed.
 
 Phase: [193](phases-193.md).
+
+### Arc: first steps (Phases 184–186)
+
+A new player lands in the world with no guidance except instructions scattered through the UI
+(tooltips that say "drag here", a map hint bar, chat and trade prompts). This arc gives them one
+guided path for the first hour: move, gather, craft the first tools and stations, build a shelter
+with a bed, and kill a first creature. The bed becomes their spawn point. Each tutorial step
+appears once, never comes back after it is dismissed, and the whole tutorial can be switched off.
+The scattered UI instructions are removed, so the tutorial is the one place that teaches.
+
+Phases: [184](phases-184.md), [185](phases-185.md), [186](phases-186.md).

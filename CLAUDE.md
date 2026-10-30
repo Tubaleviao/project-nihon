@@ -72,3 +72,12 @@ Unit tests live in `src/tests/suites/<system>_tests.gd` (one file per system, no
 - i18n (Phase 131, done): every player-facing string goes through `I18n.t()` with keys in both the `en` and `pt_BR` columns of `locale/ui.csv`; hosts send keys + params, never prose.
 - Follow-up debt cap: no new feature phase starts while more than 10 `autopilot-followup` issues are open (see `ROADMAP.md`).
 - `AGENTS.md` describes code-review-graph MCP tools; use them to narrow scope, then verify in source.
+
+## Keeping the context small
+
+Every tool result stays in the context and is re-read on every later turn, so a large read early in a session is paid for many times. Several files here are over 1,000 lines (`creature_slice.gd`, `playtest_bot.gd`, `game_root.gd`).
+
+- **Read narrowly.** Never read a whole file over 300 lines. Find the function with `grep -n` (or the code-review-graph tools), then read that range plus about 40 lines around it. Don't read the same range twice; note what you need the first time.
+- **Explore in a subagent.** When answering a question means reading several files or large parts of one ("how does the AOI broadcast work", "where are creature positions written"), give it to an `Explore` subagent and ask for a short answer with `file:line` references. Its reads stay out of the main context. Read the source yourself only for the lines you will change.
+- **Roadmap.** To find the next phase, read the `## Phase index` at the top of `ROADMAP.md` (about the first 60 lines), then only that phase's section (`grep -n '^## Phase' ROADMAP.md` for its line range). Don't open `docs/roadmap-history/` unless the spec refers to a past phase.
+- **Command output.** Pipe long test and playtest output through `grep`/`tail` to keep only failures and the summary line.
