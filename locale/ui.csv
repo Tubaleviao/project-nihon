@@ -27,7 +27,7 @@ chat.unknown_item,Unknown item '{0}'.,Item desconhecido '{0}'.
 chat.unreachable,Could not teleport: {0} is not reachable.,Não foi possível teletransportar: {0} está inalcançável.
 chat.usage.bring,/bring <player> — teleport a player to you,/bring <jogador> — traz um jogador até você
 chat.usage.give,/give <item> [quantity] [player] — create items,/give <item> [quantidade] [jogador] — cria itens
-chat.usage.gestures,"/sit, /wave … — gestures (Q key opens the wheel)","/sit, /wave … — gestos (a tecla Q abre a roda)"
+chat.usage.gestures,"/sit, /wave … — gestures (or open the gesture wheel with its key)","/sit, /wave … — gestos (ou abra a roda de gestos com a tecla dela)"
 chat.usage.help,/help — list commands,/help — lista os comandos
 chat.usage.kill,/kill [player] — kill a player,/kill [jogador] — mata um jogador
 chat.usage.players,/players — who is online,/players — quem está online
@@ -199,7 +199,9 @@ waystone.unreachable,The journey failed; nothing was spent.,A jornada falhou; na
 win.character,Character (C),Personagem (C)
 win.controls,Controls (?),Controles (?)
 win.crafting,Crafting (H),Criação (H)
-win.gestures,Gestures (Q),Gestos (Q)
+win.gestures,Gestures ({0}),Gestos ({0})
+controls.gesture_key.rebind,"Wheel key: {0} (click to change)","Tecla da roda: {0} (clique para trocar)"
+controls.gesture_key.waiting,"Press a key for the wheel (Esc cancels)","Pressione uma tecla para a roda (Esc cancela)"
 win.inventory,Inventory,Inventário
 win.map,Map (M),Mapa (M)
 win.market,Market (P),Mercado (P)
@@ -279,6 +281,7 @@ reason.inventory_full,Pack is full.,Mochila cheia.
 reason.void_burst,A void burst struck.,Uma explosão do vazio atingiu.
 reason.already_pristine,Already pristine.,Já está perfeito.
 reason.no_item,You do not have that item.,Você não tem esse item.
+reason.no_placement_item,You need a {0} to place this.,Você precisa de {0} para colocar isto.
 reason.not_repairable,Cannot be repaired.,Não pode ser reparado.
 reason.unknown_technology,Unknown technology.,Tecnologia desconhecida.
 reason.already_unlocked,Already unlocked.,Já desbloqueado.
@@ -318,6 +321,10 @@ hud.carcass.refused.unknown_carcass,The body is gone.,O corpo sumiu.
 hud.carcass.refused.unavailable,You cannot do that right now.,Você não pode fazer isso agora.
 hud.carcass.done,You harvested {0} × {1}.,Você coletou {0} × {1}.
 hud.carcass.nothing,The cuts yielded nothing.,Os cortes não renderam nada.
+hud.gesture.refused.airborne,You need to stand on the ground for that.,Você precisa estar no chão para isso.
+hud.gesture.refused.dead,You cannot do that while down.,Você não pode fazer isso caído.
+hud.gesture.refused.rate,Too many gestures — wait a moment.,Gestos demais — espere um momento.
+hud.gesture.refused.unknown,That gesture does not exist.,Esse gesto não existe.
 tool.knife,knife,faca
 tool.bonetool,bone tool,ferramenta de osso
 chat.usage.time,/time <hh:mm> | /time +<hours> — set the time of day,/time <hh:mm> | /time +<horas> — define a hora do dia

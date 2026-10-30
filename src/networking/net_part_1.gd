@@ -333,6 +333,7 @@ func forget_player_id(peer_id: int) -> void:
 	# starts with a full bucket rather than inheriting its predecessor's debt.
 	sl._rate_buckets.erase(peer_id)
 	sl._rate_warn_ms.erase(peer_id)
+	_look_buckets.erase(peer_id)
 	sl._m2.speed_ledger.erase(peer_id)
 	# Phase 37 — and so is snapshot reassembly: a snapshot that lost a chunk is never
 	# completed, so its buffer entry lived for the whole session (one leak per lost
@@ -355,8 +356,11 @@ func forward_creation_intent(action: String, creation: Dictionary) -> void:
 ## rather than pushed per AOI pair: every player has a look, and a pushed pair per (viewer, subject) is the crowd
 ## cost Phase 163 removed for gear. Answered only while the subject stands inside the viewer's AOI (the scope its
 ## position relay has), so a client cannot list everyone's names.
-func answer_look_request(viewer: int, subject: int) -> bool:
+func answer_look_request(viewer: int, subject: int, now_ms: float = -1.0) -> bool:
 	if sl._role != sl.Role.HOST or sl.player_registry == null or subject == viewer:
+		sl.look_requests_refused += 1
+		return false
+	if not _take_look_token(viewer, now_ms if now_ms >= 0.0 else float(Time.get_ticks_msec())):
 		sl.look_requests_refused += 1
 		return false
 	var owner_id: String = sl.player_registry.local_player_id if subject == sl.HOST_PEER_ID else sl.get_player_id(subject)
@@ -366,6 +370,25 @@ func answer_look_request(viewer: int, subject: int) -> bool:
 		return false
 	sl.look_requests_answered += 1
 	sl._deliver(viewer, { "type": "peer_look", "peer_id": subject, "look": sl.player_registry.look_of(owner_id) })
+	return true
+
+## Phase 196 — a peer's own look-request budget, under the global packet bucket: a burst for walking into a
+## crowd, then a sustained rate. peer_id → { tokens, at_ms }; dropped with the transport state on disconnect.
+const LOOK_BUCKET_CAPACITY := 32.0
+const LOOK_REFILL_PER_SEC := 4.0
+var _look_buckets: Dictionary = {}
+
+## Phase 196 — one token from `viewer`'s look budget (LOOK_BUCKET_CAPACITY burst, LOOK_REFILL_PER_SEC), false
+## when it is spent. Like `creation_intent`'s registry limit, a dedicated cap under the global packet bucket.
+func _take_look_token(viewer: int, now_ms: float) -> bool:
+	var b: Dictionary = _look_buckets.get(viewer, { "tokens": LOOK_BUCKET_CAPACITY, "at_ms": now_ms })
+	var elapsed: float = maxf(0.0, now_ms - float(b["at_ms"]))
+	b["tokens"] = minf(LOOK_BUCKET_CAPACITY, float(b["tokens"]) + elapsed * 0.001 * LOOK_REFILL_PER_SEC)
+	b["at_ms"] = now_ms
+	_look_buckets[viewer] = b
+	if float(b["tokens"]) < 1.0:
+		return false
+	b["tokens"] = float(b["tokens"]) - 1.0
 	return true
 
 ## Phase 181 — host: a player's look changed (a creation). It goes to the peers whose AOI holds that player,

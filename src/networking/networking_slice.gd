@@ -993,11 +993,12 @@ const COMBAT_OUTCOMES := ["hit", "critical", "miss", "kill"]
 ## Phase 159 — the longest gesture id a packet may carry.
 const GESTURE_ID_MAX := GestureRules.MAX_ID_CHARS
 
-func send_gesture(subject_peer: int, gesture_id: String, position: Vector3) -> void:
-	_m2.send_gesture(subject_peer, gesture_id, position)
+func send_gesture(subject_peer: int, gesture_id: String, position: Vector3, lift: float = -1.0) -> void:
+	_m2.send_gesture(subject_peer, gesture_id, position, lift)
 
-func send_peer_gestures_to(peer_id: int, poses: Dictionary) -> void:
-	_m2.send_peer_gestures_to(peer_id, poses)
+func send_peer_gestures_to(peer_id: int, poses: Dictionary, lifts: Dictionary = {}) -> void:
+	_m2.send_peer_gestures_to(peer_id, poses, lifts)
+func send_player_healed(peer_id: int, amount: float) -> void: _m2.send_player_healed(peer_id, amount)
 
 ## Phase 159 — client: forward a gesture action; the host binds it to the connection's player.
 func _on_gesture_intent(gesture_id: String, _player_id: String) -> void:
@@ -1018,8 +1019,8 @@ func request_peer_look(peer_id: int) -> void:
 var look_requests_answered: int = 0
 var look_requests_refused: int = 0
 
-func answer_look_request(viewer: int, subject: int) -> bool:
-	return _m1.answer_look_request(viewer, subject)
+func answer_look_request(viewer: int, subject: int, now_ms: float = -1.0) -> bool:
+	return _m1.answer_look_request(viewer, subject, now_ms)
 
 func _on_player_look_changed(player_id: String, look: Dictionary) -> void:
 	_m1.push_look(player_id, look)

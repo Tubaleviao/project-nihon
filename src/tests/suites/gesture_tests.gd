@@ -191,7 +191,7 @@ func _test_peer_pose_waits_for_avatar() -> void:
 	gr._is_client = true
 	var wiring = gr._gesture_wiring
 	# The host's join packet names peer 7 seated before its avatar exists on this client.
-	GameBus.peer_gesture_synced.emit(7, "SitGround")
+	GameBus.peer_gesture_synced.emit(7, "SitGround", -1.0)
 	assert_eq(wiring._remote_poses.get(7, ""), "SitGround", "the pose waits")
 	var other: String = f["ch"].create_character("TravellerHuman", Vector3(3, 0, 0))
 	assert_true(f["ch"].attach_rig(other, "models/player_rig.glb.raw"), "the peer's avatar gets a rig")
@@ -200,7 +200,7 @@ func _test_peer_pose_waits_for_avatar() -> void:
 	assert_eq(f["ch"]._m2.gesture_clip_of(other), "sit_ground", "the avatar sits as soon as it exists")
 	wiring.tick(0.1)
 	assert_eq(int(f["ch"]._instances[other]["locomotion"].gesture_serial), 1, "and is not restarted every tick")
-	GameBus.peer_gesture_synced.emit(7, "")
+	GameBus.peer_gesture_synced.emit(7, "", -1.0)
 	assert_false(f["ch"]._instances[other]["locomotion"].is_gesturing(), "the stand-up arrives too")
 	assert_false(wiring._remote_poses.has(7), "and the pose is forgotten")
 	gr._is_client = false
@@ -215,17 +215,17 @@ func _test_remote_oneshot_repeats() -> void:
 	var other: String = f["ch"].create_character("TravellerHuman", Vector3(3, 0, 0))
 	assert_true(f["ch"].attach_rig(other, "models/player_rig.glb.raw"), "the peer's avatar gets a rig")
 	f["ch"].bind_peer_character(7, other)
-	GameBus.peer_gesture_synced.emit(7, "Wave")
+	GameBus.peer_gesture_synced.emit(7, "Wave", -1.0)
 	var loco = f["ch"]._instances[other]["locomotion"]
 	assert_eq(int(loco.gesture_serial), 1, "the first wave plays")
-	GameBus.peer_gesture_synced.emit(7, "Wave")
+	GameBus.peer_gesture_synced.emit(7, "Wave", -1.0)
 	assert_eq(int(loco.gesture_serial), 2, "a second wave restarts the clip")
 	for i in 40:
 		gr._gesture_wiring.tick(0.1)
 	assert_false(loco.is_gesturing(), "the remote avatar's one-shot runs out without any position report")
-	GameBus.peer_gesture_synced.emit(7, "SitGround")
+	GameBus.peer_gesture_synced.emit(7, "SitGround", -1.0)
 	gr._gesture_wiring.tick(0.1)
-	GameBus.peer_gesture_synced.emit(7, "Wave")
+	GameBus.peer_gesture_synced.emit(7, "Wave", -1.0)
 	assert_false(gr._gesture_wiring._remote_poses.has(7), "a one-shot replaces the stored pose")
 	gr._is_client = false
 	f["ch"].remove_character(other)
@@ -343,11 +343,24 @@ func _test_wheel_key() -> void:
 	GesturePanel._cached_key = -1
 	assert_eq(GesturePanel.key_code(), KEY_U, "and the choice is read back from the settings file")
 	var box := GesturePanel.build(GameData.GESTURES, Callable())
-	assert_eq(box.get_child_count(), GameData.GESTURES.size(), "one button per fabric gesture")
+	assert_eq(box.get_child_count(), GameData.GESTURES.size() + 1, "one button per fabric gesture, and the rebind button")
 	box.free()
+	# Phase 196 — the wheel key is reserved: a hotbar box cannot take it; the old default is free again.
+	assert_false(_HotbarScript.bind_allowed(KEY_U), "a box cannot bind the wheel key")
+	assert_true(I18nScript.t("win.gestures", [GesturePanel.key_label()]).contains("U"), "the window title names the bound key")
+	# The rebind button: the next key becomes the wheel key, Escape cancels, a claimed key is refused.
+	GesturePanel.awaiting_key = true
+	assert_false(GesturePanel.take_rebind_key(KEY_ESCAPE), "Escape cancels a rebind")
+	assert_eq(GesturePanel.key_code(), KEY_U, "and keeps the key")
+	assert_false(GesturePanel.awaiting_key, "and stops waiting")
+	assert_false(GesturePanel.take_rebind_key(KEY_W), "a claimed key is refused")
+	assert_true(GesturePanel.take_rebind_key(KEY_J), "a free key is taken")
+	assert_eq(GesturePanel.key_code(), KEY_J, "and opens the wheel from now on")
+	assert_true(_HotbarScript.bind_allowed(KEY_U), "and the old key is free for a box again")
 	DirAccess.remove_absolute(LocaleSettings.settings_path)
 	LocaleSettings.settings_path = old_path
 	GesturePanel._cached_key = -1
+	_HotbarScript.gesture_key = KEY_Q
 
 
 func _test_seat_lift() -> void:
@@ -355,4 +368,7 @@ func _test_seat_lift() -> void:
 	assert_eq(GestureRules.seat_lift(10.0, 10.0), -1.0, "level ground is not")
 	assert_eq(GestureRules.seat_lift(10.0, 11.5), -1.0, "nor is a wall")
 	assert_true(GestureRules.moved(Vector3.ZERO, Vector3(0.5, 9.0, 0.0)), "horizontal drift ends a pose")
-	assert_false(GestureRules.moved(Vector3.ZERO, Vector3(0.0, 9.0, 0.1)), "a jump in place or a shuffle does not")
+	assert_false(GestureRules.moved(Vector3.ZERO, Vector3(0.0, 0.3, 0.1)), "a shuffle or settling onto the ground does not")
+	# Phase 196 — a vertical rise or drop over RISE_CANCEL_M ends it too (a jump leaves the seat).
+	assert_true(GestureRules.moved(Vector3.ZERO, Vector3(0.0, 1.2, 0.0)), "a jump in place does")
+	assert_true(GestureRules.moved(Vector3.ZERO, Vector3(0.0, -2.0, 0.0)), "and so does a drop")

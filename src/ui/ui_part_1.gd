@@ -334,7 +334,8 @@ func _build_ui() -> void:
 	sl._panels[sl.WINDOW_CHARACTER] = sl._build_window(sl.WINDOW_CHARACTER, "win.character", build_character_content(), Vector2(916, 360))
 	sl._panels[sl.WINDOW_SKILLS] = sl._build_window(sl.WINDOW_SKILLS, "win.skills", sl._build_skills_content(), Vector2(916, 700))
 	sl._panels[sl.WINDOW_SETTLEMENT] = sl._build_window(sl.WINDOW_SETTLEMENT, "win.settlement", sl._build_settlement_content(), Vector2(916, 80))
-	sl._panels[sl.WINDOW_GESTURES] = sl._build_window(sl.WINDOW_GESTURES, "win.gestures", sl._build_gesture_content(), Vector2(600, 200))
+	sl._panels[sl.WINDOW_GESTURES] = sl._build_window(sl.WINDOW_GESTURES, "win.gestures", sl._build_gesture_content(), Vector2(600, 200),
+		func() -> Array: return [sl.GesturePanelScript.key_label()])
 	sl._panels[sl.WINDOW_MAP] = sl._build_window(sl.WINDOW_MAP, "win.map", sl._build_map_content(), Vector2(200, 80))
 	sl._panels[sl.WINDOW_ADMIN] = sl._build_window(sl.WINDOW_ADMIN, "win.admin", sl._m2._build_admin_content(), Vector2(600, 80))
 
@@ -350,7 +351,7 @@ func _build_ui() -> void:
 		sl.get_viewport().size_changed.connect(sl._apply_layout)
 
 ## `title` is a catalog key.
-func _build_window(key: String, title: String, content: Control, position: Vector2) -> PanelContainer:
+func _build_window(key: String, title: String, content: Control, position: Vector2, title_args: Callable = Callable()) -> PanelContainer:
 	var panel = PanelContainer.new()
 	panel.position = position
 	panel.custom_minimum_size = Vector2(420, 300)
@@ -375,7 +376,7 @@ func _build_window(key: String, title: String, content: Control, position: Vecto
 	vbox.add_child(bar)
 
 	var title_label = Label.new()
-	sl._set_tr(title_label, "text", title)
+	sl._set_tr(title_label, "text", title, title_args)
 	title_label.add_theme_font_size_override("font_size", 22)
 	title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.add_child(title_label)

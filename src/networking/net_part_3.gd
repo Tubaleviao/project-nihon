@@ -2,6 +2,8 @@ extends RefCounted
 ## Methods moved verbatim out of `networking_slice.gd` (Phase 154). `sl` is the owning slice; each moved method keeps a forwarder there.
 
 var sl: Node
+## Phase 196 — the most HP one `player_healed` packet may restore (one regen interval at any sane rate).
+const MAX_REST_HEAL := 1000.0
 
 func _init(slice: Node) -> void:
 	sl = slice
@@ -292,7 +294,12 @@ func _route_h2c(payload: Dictionary) -> void:
 			# Phase 159 — animation only: a peer id and a short gesture id ("" = stood up).
 			var g: Variant = payload.get("g", "")
 			if sl._role == sl.Role.CLIENT and g is String and (g as String).length() <= sl.GESTURE_ID_MAX:
-				GameBus.peer_gesture_synced.emit(int(payload.get("peer_id", 0)), g)
+				# Phase 196 — the host-resolved seat lift; anything but a finite number in the seat range is "none".
+				var l: Variant = payload.get("l", -1.0)
+				var lift := -1.0
+				if (l is float or l is int) and is_finite(float(l)):
+					lift = clampf(float(l), 0.0, sl.GestureRules.SEAT_MAX_RISE) if float(l) >= 0.0 else -1.0
+				GameBus.peer_gesture_synced.emit(int(payload.get("peer_id", 0)), g, lift)
 		"carcass":
 			# Phase 161 — a body in our AOI; the slice keeps a view of it.
 			var cpos: Variant = payload.get("pos", [])
@@ -348,6 +355,12 @@ func _route_h2c(payload: Dictionary) -> void:
 				payload.get("contents", {}),
 				payload.get("durabilities", {})
 			)
+		"player_healed":
+			# Phase 196 — the host's restRegen for our own resting body; bounded, finite, positive.
+			var amount: Variant = payload.get("amount", 0.0)
+			if sl._role == sl.Role.CLIENT and (amount is float or amount is int) and is_finite(float(amount)) \
+					and float(amount) > 0.0:
+				GameBus.player_rest_healed.emit(minf(float(amount), MAX_REST_HEAL))
 		"player_damaged":
 			# Phase 37 — a creature struck US on the host's authoritative simulation. The
 			# local body is the one that takes the hit, so the target is the local bucket

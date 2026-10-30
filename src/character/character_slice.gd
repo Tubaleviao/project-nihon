@@ -563,6 +563,27 @@ func peer_model_item(peer_id: int, slot: String) -> String:
 func get_peer_character(peer_id: int) -> String:
 	return str(_peer_characters.get(peer_id, ""))
 
+## Phase 196 — the instances bound to peers (the remote avatars this machine draws).
+func peer_character_ids() -> Array:
+	return _peer_characters.values()
+
+## Phase 196 — the gesture API the gesture wiring drives (see `character_part_2`).
+func trigger_gesture(instance_id: String, clip: String, hold: bool, seat_lift: float = 0.0) -> bool:
+	return _m2.trigger_gesture(instance_id, clip, hold, seat_lift)
+
+func end_gesture(instance_id: String) -> void:
+	_m2.end_gesture(instance_id)
+
+func advance_gesture(instance_id: String, delta: float) -> void:
+	_m2.advance_gesture(instance_id, delta)
+
+## Phase 196 — the direction instance `instance_id` faces on the ground plane (-Z when it has no body in a tree).
+func character_forward(instance_id: String) -> Vector3:
+	var node: Variant = _instances.get(instance_id, {}).get("root")
+	if node is Node3D and (node as Node3D).is_inside_tree():
+		return -(node as Node3D).global_transform.basis.z
+	return Vector3(0.0, 0.0, -1.0)
+
 func bind_peer_character(peer_id: int, instance_id: String) -> void:
 	_peer_characters[peer_id] = instance_id
 	# Phase 181 — a look already received dresses the new body first, so the gear goes on the right one.

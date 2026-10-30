@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–195 are done. Their specs and acceptance criteria, and the introductions of
+Phases 1–196 are done. Their specs and acceptance criteria, and the introductions of
 the arcs they belonged to, are archived in [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Next: follow-up debt burn II (Phases 194–196)
@@ -38,7 +38,7 @@ rework and may no longer apply. Each phase re-checks its items against `main` fi
 |---|---|---|---|
 | 194 | Follow-up debt burn II: terrain streaming and the near ring (#504, #509, #512) | Done | [phases-194.md](docs/roadmap-history/phases-194.md) |
 | 195 | Follow-up debt burn III: creature positions and the snapshot path (#444, #464, #493) | Done | [phases-195.md](docs/roadmap-history/phases-195.md) |
-| 196 | Follow-up debt burn IV: waystones, gestures, trees and the player registry (#336, #367, #420, #522) | Planned | below |
+| 196 | Follow-up debt burn IV: waystones, gestures, trees and the player registry (#336, #367, #420, #522) | Done | [phases-196.md](docs/roadmap-history/phases-196.md) |
 
 ### Arc: the first settlement loop (Phases 197–202)
 
@@ -59,79 +59,6 @@ Raids come from creatures only. Settlement-against-settlement conflict stays def
 | 200 | Raids: a warned, bounded attack the village can defend | Planned | below |
 | 201 | Upkeep: a village that has to keep going | Planned | below |
 | 202 | The settlement loop, played: four bots found, specialize, trade and defend a village | Planned | below |
-
----
-
-## Phase 196 — Follow-up debt burn IV: waystones, gestures, trees and the player registry (#336, #367, #420, #522)
-
-**Goal:** the last four follow-up issues are the oldest, and several of their items wait on a
-design decision. This phase makes those decisions (below) so the items can close. It also fixes
-the network trust-boundary items, which the repo rule says should never have been deferred.
-
-**Newel dependency:** NO.
-
-**Depends on:** nothing.
-
-**Decisions** (open to review on this roadmap PR):
-- A vertical rise (a jump or a drop) above a small threshold ends a `cancelOnMove` pose, like
-  horizontal movement does (#420).
-- The host decides Sit versus SitGround once, from its own support probe, and syncs the result.
-  Viewers stop probing (#420).
-- Resting regen on the host heals the remote peer's own client through a host-to-client HP update,
-  not only the host's mirror (#420).
-- Placing any station consumes its item, as founding with a `Hearth` already does, so a waystone
-  needs the `Waystone` item (#336). The fabric records this, and an amending decision squares
-  waystones with `NoTeleportation`. Both go in a separate fabric PR ahead of the runtime fix.
-- A waystone's attune and depart radius stays a ground distance plus a vertical bound of one chunk
-  height (#336).
-
-**Deliverables:**
-- Re-check every item against `main` and close the ones already fixed with a pointer.
-- Trust boundary first: a per-peer limit on `look_request` (#522), a per-peer throttle on waystone
-  refusal replies, and an early reject when the attunement list is full (#336). The player registry
-  checks a loaded record's name skeleton against `_taken` (#522).
-- Waystones (#336): the exact position is recorded and persisted at placement. The map's
-  stone-under-player check uses the player's exact `get_world_pos()`. The station id counter is
-  persisted, so a reload never reuses a removed id. The waystone position fallback uses
-  `get_last_known_state` and updates on teleport. The duplicated `waystones` handling becomes one
-  helper. The sweep caches ids and prefilters by chunk distance. The harness derives station ids,
-  and the minimap does not save the boot seed's revealed set.
-- Gestures (#420): the decisions above. Also: poses are cleared on peer disconnect and prune, and
-  an ended pose is sent as "" on AOI re-entry. A swing at empty air cancels a held pose. The wheel
-  key is reserved, bindable and read from the binding in its strings. The hotkey ignores echo and
-  modifiers and marks the event handled. A refused gesture gets a keyed notice. The rate token is
-  spent after the ground check. The listen host shows a remote client's gesture. Seat lift uses
-  `sample_support_height_at`, stand-up does not pop for a frame, and `gesture_wiring` uses a public
-  `CharacterSlice` API instead of `_peer_characters` / `_m2`.
-- Trees and persistence (#367): held tree spots are applied or forgotten when their chunk's record
-  appears. The original generation fingerprint is kept when the stamp is updated. The deferred-record
-  stamp is cleared on unload. The seam-wrap audit bans `posmod`/`fposmod` outside `seam_wrap.gd` on
-  wrap-like lines. The harness logs a missing `tree_cleared` target clearly, and
-  `_capture_spare_target` retries instead of failing on one slow probe.
-- Player registry (#522): a starting-kit item that does not fit the bag drops at the player's
-  feet, with a log line.
-
-**Acceptance criteria:**
-- [ ] #336, #367, #420 and #522 are closed: every item is fixed by a merged PR or closed with a
-  reason.
-- [ ] At most 3 `autopilot-followup` issues are open when the phase closes, not counting
-  follow-ups filed by the reviews of Phases 194–196.
-- [ ] Suite: a peer over its `look_request` limit is refused, and repeated refused travel intents
-  from one peer get at most one reply per second.
-- [ ] Suite: a waystone placed at chunk 1,500,000 keeps its exact position through a save and a
-  reload. Removing the highest-numbered station and reloading gives the next station a fresh id,
-  and no old attunement binds to it.
-- [ ] Suite: placing a waystone without the `Waystone` item is refused with a keyed reason.
-- [ ] Suite: a jump ends a Sit pose; a swing at empty air ends a held pose on the host; a pose
-  that ended while the viewer was out of AOI is not replayed on re-entry.
-- [ ] Harness: a resting remote client's own HP rises, and both viewers show the same seat lift
-  for one pose.
-- [ ] Suite: a loaded record whose name skeleton is taken does not take it from its holder, and a
-  starting-kit item that does not fit lands on the ground.
-- [ ] Suite: a tree spot held for an unrecorded chunk is applied when the chunk's record appears.
-- [ ] Harness: `chop_in_reach` and the tree-clearing step pass 20 runs in a row.
-- [ ] Every new string is in both catalogs, and the i18n key check passes.
-- [ ] Suite green on both boot paths, harness green.
 
 ---
 

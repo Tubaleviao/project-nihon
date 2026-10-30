@@ -736,8 +736,12 @@ signal gesture_intent(gesture_id: String, player_id: String)
 signal gesture_synced(player_id: String, gesture_id: String)
 
 ## Phase 159 — client: the host says peer `peer_id` (this machine's own id included) now plays
-## `gesture_id`, or stood up (""). Animation only.
-signal peer_gesture_synced(peer_id: int, gesture_id: String)
+## `gesture_id`, or stood up (""). Animation only. `lift` (Phase 196): the seat rise the host resolved for a
+## Sit, -1 when none.
+signal peer_gesture_synced(peer_id: int, gesture_id: String, lift: float)
+
+## Phase 196 — client: the host's restRegen healed our own resting body by `amount` HP.
+signal player_rest_healed(amount: float)
 
 ## Emitted by TamingSlice with the outcome of a tame attempt.
 ## result : Dictionary — { instance_id, creature_id, success, reason, result,

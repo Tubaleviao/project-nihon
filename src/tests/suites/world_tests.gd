@@ -322,7 +322,7 @@ func _test_phase130_waystone_throttle_full() -> void:
 		now[0] += 0.01
 	var flood_warns := Diag.warn_count() - warns_before
 	var throttled := int(way._suppressed.get("p1", 0))
-	now[0] += WaystoneSlice.INTENT_INTERVAL + 0.01
+	now[0] += WaystoneSlice.REPLY_INTERVAL + 0.01
 	way._on_travel_intent(a, "station_99", "p1")
 	var after_warns := Diag.warn_count() - warns_before - flood_warns
 	Diag.quiet = was_quiet

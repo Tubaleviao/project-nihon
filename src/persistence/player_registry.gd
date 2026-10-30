@@ -133,6 +133,8 @@ var _spawn_placer: Callable = Callable()
 ## Phase 53 — locates a friend by public handle among players that are not in memory (offline,
 ## evicted): `(handle) -> Variant` a Vector3 position or null.
 var _friend_locator: Callable = Callable()
+## Phase 196 — `(player_id, item, quantity) -> void`: a kit item the bag cannot take, at the player's feet.
+var _ground_dropper: Callable = Callable()
 ## peer_id -> the friend code that peer's join intent carried; consumed by the placement.
 var _friend_codes: Dictionary = {}
 ## Longest friend code a join intent may carry; a handle is `p_` + HANDLE_HEX_CHARS.
@@ -164,6 +166,8 @@ func mint_player_id() -> String:
 
 func set_spawn_placer(placer: Callable) -> void:
 	_spawn_placer = placer
+
+func set_ground_dropper(dropper: Callable) -> void: _ground_dropper = dropper
 
 func set_friend_locator(locator: Callable) -> void:
 	_friend_locator = locator
@@ -219,21 +223,17 @@ func _place_new_player(peer_id: int, player_id: String) -> void:
 func set_record_loader(loader: Callable) -> void:
 	_record_loader = loader
 
-## Phase 36 — a player's PUBLIC HANDLE: the pseudonym every host → client payload
-## names a player by (a listing's seller, a trade's parties, a proposal's author and
-## voters). The PLAYER ID must never be broadcast: it is a bearer token — presenting
-## it on join claims the record (`resolve_identity`) — so a client that learned
-## another player's id could take that player's record (inventory, position,
-## appearance, technology) simply by waiting for them to disconnect, and the social
-## broadcasts were handing out every id in the world.
+## Phase 36 — a player's PUBLIC HANDLE: the pseudonym every host → client payload names a player by (a
+## listing's seller, a trade's parties, a proposal's author and voters). The PLAYER ID must never be
+## broadcast: it is a bearer token — presenting it on join claims the record (`resolve_identity`) — so a
+## client that learned another player's id could take that player's record (inventory, position,
+## appearance, technology) simply by waiting for them to disconnect.
 ##
-## DERIVED, not minted: `sha256(player_id)` truncated. That makes it storage-free and
-## stable — it needs no record, so it answers for an OFFLINE seller named in a
-## persisted listing whose record was long since evicted, and it survives a restart
-## with the id it derives from. It is one-way: recovering the id from the handle is a
-## preimage search over the id's 128 bits of CSPRNG entropy. A handle is also not a
-## claim: `resolve_identity` only honours an id the registry actually owns, and no
-## record is EVER keyed by a handle.
+## DERIVED, not minted: `sha256(player_id)` truncated. It needs no record, so it answers for an OFFLINE
+## seller named in a persisted listing whose record was long since evicted, and it survives a restart with
+## the id it derives from. It is one-way: recovering the id is a preimage search over the id's 128 bits of
+## CSPRNG entropy. A handle is also not a claim: `resolve_identity` only honours an id the registry owns,
+## and no record is EVER keyed by a handle.
 func public_handle(player_id: String) -> String:
 	if player_id.is_empty():
 		return ""
@@ -364,23 +364,20 @@ func unbind_peer(peer_id: int) -> String:
 func get_player_id(peer_id: int) -> String:
 	return str(_peer_ids.get(peer_id, ""))
 
-## Phase 36 — resolve a counterparty NAME from a client payload to the player id it
-## denotes, or "" when nothing this host can open a session with.
+## Phase 36 — resolve a counterparty NAME from a client payload to the player id it denotes, or "" when
+## nothing this host can open a session with.
 ##
-## A trade invite is the only client payload that names another player on purpose
-## (every acting half is bound to its own connection instead), so this is the one
-## place a name from the wire has to be resolved — and it is resolved against the
-## ONLINE set: a session with an offline id could never be answered, so the invite
-## is dropped rather than parked in the trade table. `is_online` covers the listen
-## host's own player, who is an ordinary trade partner.
+## A trade invite is the only client payload that names another player on purpose (every acting half is
+## bound to its own connection instead), so this is the one place a name from the wire has to be resolved —
+## against the ONLINE set: a session with an offline id could never be answered, so the invite is dropped
+## rather than parked in the trade table. `is_online` covers the listen host's own player.
 ##
-## Phase 37 — HANDLES ONLY. This used to answer an online player's RAW ID as well,
-## which made it an online-status oracle: `resolve_named_party("player_<…>")` told a
-## client whether that exact id was connected, and an id is a BEARER TOKEN (presenting
-## it on join claims the record — see resolve_identity). A client learns ids nowhere
-## legitimate any more (see NetworkingSlice.redact_for_client), so the only use left
-## for accepting one was probing. A public handle is the name a payload may carry:
-## derived, opaque, and a claim to nothing.
+## Phase 37 — HANDLES ONLY. This used to answer an online player's RAW ID as well, which made it an
+## online-status oracle: `resolve_named_party("player_<…>")` told a client whether that exact id was
+## connected, and an id is a BEARER TOKEN (presenting it on join claims the record — see resolve_identity).
+## A client learns ids nowhere legitimate any more (see NetworkingSlice.redact_for_client), so the only use
+## left for accepting one was probing. A public handle is the name a payload may carry: derived, opaque,
+## and a claim to nothing.
 func resolve_named_party(party_name: String) -> String:
 	if party_name.is_empty():
 		return ""
@@ -625,23 +622,18 @@ func get_world_pos(player_id: String) -> Dictionary:
 
 ## Record a player's HP — but ONLY for the local (host-simulated) player.
 ##
-## A REMOTE peer's HP is client-declared: the value arrives on the wire in the
-## peer's own `player_moved` packet (see networking `_route_c2h`), and the host
-## has no simulation of that peer's health to check it against. Writing it into
-## the record made persistence into a durable cheat — a client that declared
-## 9999 HP kept 9999 HP across a reconnect, a restart, and every future save,
-## because the save lifecycle faithfully re-serialized whatever it was given.
-## The honest position is that this process cannot vouch for that number, so it
-## is not durable; the peer's HP is owned by the simulation on the machine that
-## runs it (its own client) and is revocable there.
+## A REMOTE peer's HP is client-declared: it arrives in the peer's own `player_moved` packet (see networking
+## `_route_c2h`), and the host has no simulation of that peer's health to check it against. Writing it into
+## the record made persistence into a durable cheat — a client that declared 9999 HP kept it across a
+## reconnect, a restart and every future save. This process cannot vouch for that number, so it is not
+## durable; the peer's HP is owned by the simulation on its own client and is revocable there.
 ##
-## The local player's HP IS host-simulated and durable (see `is_online` for the
-## same local-vs-remote split). Pure predicate, so the rule is testable alone.
+## The local player's HP IS host-simulated and durable (see `is_online` for the same local-vs-remote split).
+## Pure predicate, so the rule is testable alone.
 ##
-## Phase 38 — a remote peer's HP is durable too, but through a DIFFERENT door:
-## what the host RESOLVES itself is evidence and is written by
-## `record_simulated_hp`. This method stays the live-body writer and still refuses
-## a remote id, so the wire's declared value has no path into a record at all.
+## Phase 38 — a remote peer's HP is durable too, but through a DIFFERENT door: what the host RESOLVES itself
+## is evidence and is written by `record_simulated_hp`. This method stays the live-body writer and still
+## refuses a remote id, so the wire's declared value has no path into a record at all.
 static func hp_is_authoritative_locally(player_id: String, local_id: String) -> bool:
 	return player_id != "" and player_id == local_id
 
@@ -1057,6 +1049,9 @@ func display_name(player_id: String) -> String:
 func look_of(player_id: String) -> Dictionary:
 	return CreationRules.look(creation_of(player_id), public_handle(player_id))
 
+func _name_free_for(player_id: String, name: String) -> bool:
+	return str(_taken.get(CreationRules.skeleton(name), player_id)) == player_id
+
 ## Index `name` as `player_id`'s, replacing any name that player held before.
 func note_name(player_id: String, name: String) -> void:
 	if _names.has(player_id):
@@ -1139,6 +1134,8 @@ func _grant_starting_kit(player_id: String) -> void:
 	for k: Variant in CreationRules.starting_kit():
 		var item := str((k as Dictionary).get("item", ""))
 		if not GameData.ITEMS.has(item) or not inv.add_item(item, maxi(1, int(k.get("quantity", 1)))):
+			if GameData.ITEMS.has(item) and _ground_dropper.is_valid():   # Phase 196 — not lost: on the ground
+				_ground_dropper.call(player_id, item, maxi(1, int(k.get("quantity", 1))))
 			continue
 		var slot := EquipmentRules.slot_of(item, GameData.ITEMS)
 		if bool(k.get("equip", false)) and slot != "" and not worn.has(slot):
@@ -1346,7 +1343,8 @@ func apply_player_data(player_id: String, data: Dictionary) -> void:
 	rec["equipment"]  = EquipmentRules.sanitize(data.get("equipment", {}), GameData.ITEMS)
 	# Phase 181: a pre-181 payload has no creation and restores to "none", so the screen is offered once.
 	rec["creation"]   = CreationRules.sanitize_state(data.get("creation", {}))
-	if CreationRules.is_created(rec["creation"]):
+	# Phase 196 — a (hand-edited) record never takes a name skeleton another player holds.
+	if CreationRules.is_created(rec["creation"]) and _name_free_for(player_id, str(rec["creation"]["name"])):
 		note_name(player_id, str(rec["creation"]["name"]))
 	var contents: Variant = data.get("inventory", {})
 	if contents is Dictionary and not contents.is_empty():

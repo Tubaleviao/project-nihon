@@ -17,7 +17,8 @@ var gestures: Dictionary = GameData.GESTURES
 ## `() -> float` seconds for the rate limit; the suite injects a fake clock.
 var clock: Callable = Callable()
 
-## player id -> { "id": gesture id, "origin": Vector3 } for the poses currently held.
+## player id -> { "id": gesture id, "origin": Vector3, "lift": float } for the poses currently held (`lift`:
+## the seat rise the host resolved for a Sit, Phase 196; -1 when it resolved none).
 var _held: Dictionary = {}
 var _buckets: Dictionary = {}
 var rate_refused: int = 0
@@ -28,8 +29,9 @@ func _now() -> float:
 
 ## Start `gesture_id` for `player_id` (already bound to the connection by the caller). `alive`, `grounded`
 ## and `position` are the host's own evidence. An empty id stands the player up (their own pose only: the
-## id a caller passes is the connection's, never a name from a payload). Returns "" or a refusal reason.
-func request(player_id: String, gesture_id: String, alive: bool, grounded: bool, position: Vector3) -> String:
+## id a caller passes is the connection's, never a name from a payload). `lift` is the seat rise the host
+## resolved for the pose (-1: none, the avatars decide). Returns "" or a refusal reason.
+func request(player_id: String, gesture_id: String, alive: bool, grounded: bool, position: Vector3, lift: float = -1.0) -> String:
 	if player_id == "":
 		return REFUSE_UNKNOWN
 	if gesture_id == "":
@@ -41,15 +43,16 @@ func request(player_id: String, gesture_id: String, alive: bool, grounded: bool,
 		return REFUSE_UNKNOWN
 	if not alive:
 		return REFUSE_DEAD
+	# Phase 196 — the ground check first: a refused airborne attempt does not spend a token.
+	if GestureRules.flag(res, "requiresGround") and not grounded:
+		return REFUSE_AIRBORNE
 	var step := GestureRules.take_token(_buckets.get(player_id, {}), _now())
 	_buckets[player_id] = step["state"]
 	if not step["ok"]:
 		rate_refused += 1
 		return REFUSE_RATE
-	if GestureRules.flag(res, "requiresGround") and not grounded:
-		return REFUSE_AIRBORNE
 	if GestureRules.is_pose(res):
-		_held[player_id] = { "id": gesture_id, "origin": position }
+		_held[player_id] = { "id": gesture_id, "origin": position, "lift": lift }
 	else:
 		_held.erase(player_id)   # a one-shot replaces a pose: the body plays it and returns to locomotion
 	GameBus.gesture_synced.emit(player_id, gesture_id)
@@ -90,6 +93,10 @@ func forget(player_id: String) -> void:
 
 func held_id(player_id: String) -> String:
 	return str(_held.get(player_id, {}).get("id", ""))
+
+## Phase 196 — the seat rise the host resolved for `player_id`'s held pose, -1 when none.
+func lift_of(player_id: String) -> float:
+	return float(_held.get(player_id, {}).get("lift", -1.0))
 
 ## Every held pose as player id -> gesture id.
 func held_poses() -> Dictionary:

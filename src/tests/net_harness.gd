@@ -1926,6 +1926,11 @@ func _step_peer_attack_animated() -> void:
 ## Phase 159 — a gesture the host accepts for the bound peer is seen seated on that peer's client, and a
 ## pose the host's own body holds reaches the peer as it (re)joins: the host re-runs its join handler,
 ## which tells the joiner the poses held inside its AOI. SitGround stands in for `/sit` (no seat to read).
+## Phase 196: the peer sits on a seat the host's probe reports (0.4 m): the host decides Sit and its lift once,
+## and the client's own avatar and the host's avatar of it show that same lift. The peer starts hurt, and the
+## host's restRegen reaches its own client (its HP rises).
+const HARNESS_SEAT_LIFT := 0.4
+
 func _step_gesture_synced() -> void:
 	if _role == "host":
 		var peers: PackedInt32Array = _root.multiplayer.get_peers()
@@ -1939,26 +1944,44 @@ func _step_gesture_synced() -> void:
 		var seen: Vector3 = _root._networking.get_last_known_state(peers[0])
 		var floor_y: float = _root._voxel.get_voxel_height_at(Vector2(seen.x, seen.z))
 		_root._networking._last_known_states[peers[0]] = Vector3(seen.x, floor_y, seen.z)
-		GameBus.gesture_intent.emit("SitGround", pid)
+		_root._registry.record_simulated_hp(pid, _root._registry.max_hp_of(pid) * 0.5)   # the client starts hurt too
+		_root._gesture_wiring.seat_probe = func(_iid: String) -> float: return HARNESS_SEAT_LIFT
+		GameBus.gesture_intent.emit("Sit", pid)
+		var peer_seated: bool = _root._gesture.held_id(pid) == "Sit"   # decided on the spot, by the host
+		# Phase 196 — a pose now ends on a vertical move too, and the client keeps reporting from RENDEZVOUS'
+		# height (out of the creatures' reach): anchor the pose there, not on the floor the check stood it on.
+		if peer_seated:
+			_root._gesture._held[pid]["origin"] = seen
 		await _await_settle(2.0)
-		var peer_seated: bool = _root._gesture.held_id(pid) == "SitGround"
+		# The listen host's own avatar of the peer wears the same lift (when this host draws one).
+		var view: String = _root._character.get_peer_character(peers[0])
+		var host_lift: float = float(_root._character._instances.get(view, {}).get("seat_lift", HARNESS_SEAT_LIFT))
+		var lift_ok: bool = absf(host_lift - HARNESS_SEAT_LIFT) < 0.001
 		# The host sits too, then the client "joins afterwards": the join handler hands it the host's pose.
 		# The host's body has no floor under it in the harness, so its own ground check cannot be the subject here.
 		_root._gesture.request(_root._gesture_wiring._local_id(), "SitGround", true, true, _root._player.get_position())
 		await _await_settle(0.5)
 		_root._gesture_wiring._on_player_joined(peers[0], pid, true)
 		await _await_settle(6.0)   # the client reads both poses before this process (the last step) exits
-		_report("gesture_synced", verdict(peer_seated, true), "seated" if peer_seated else "host_refused")
+		_report("gesture_synced", verdict(peer_seated and lift_ok, true),
+			"seated" if peer_seated and lift_ok else ("host_refused" if not peer_seated else "host_view_lift_%.2f" % host_lift))
 		return
 	var ch: Node = _root._character
 	var iid: String = ch.get_player_character()
 	if iid == "":
 		_report("gesture_synced", "fail", "client_has_no_avatar")
 		return
+	_root._player.set_hp(_root._player.max_hp * 0.5)   # hurt, so the host's rest heal has room
+	var hp0: float = _root._player.get_hp()
 	var loco = ch._instances[iid]["locomotion"]
-	var own: bool = await _await_until(func(): return loco.is_gesture_held() and loco.gesture_clip == "sit_ground", _step_timeout())
+	var own: bool = await _await_until(func(): return loco.is_gesture_held() and loco.gesture_clip == "sit", _step_timeout())
+	var lift: float = float(ch._instances[iid].get("seat_lift", -1.0))
+	var same_lift: bool = absf(lift - HARNESS_SEAT_LIFT) < 0.001
+	var healed: bool = await _await_until(func(): return _root._player.get_hp() > hp0, _step_timeout())
 	var late: bool = await _await_until(func(): return _root._gesture_wiring._remote_poses.get(1, "") == "SitGround", _step_timeout())
-	_report("gesture_synced", verdict(own and late, true), "seated" if own and late else ("own_missing" if not own else "late_join_missing"))
+	var ok := own and same_lift and healed and late
+	_report("gesture_synced", verdict(ok, true), "seated" if ok else ("own_missing" if not own else (
+		"lift_%.2f" % lift if not same_lift else ("not_healed" if not healed else "late_join_missing"))))
 
 ## Phase 161 — a carcass the host works loses those entries on the client, and a carcass the peer carries
 ## follows it. The host plants a body beside the peer, takes its knife entries, then hands it to the peer

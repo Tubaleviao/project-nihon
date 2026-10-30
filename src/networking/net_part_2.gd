@@ -150,6 +150,14 @@ func _on_remote_player_state(peer_id: int, position: Vector3) -> void:
 ## peer's health it cannot verify (`PlayerRegistry.record_hp` refuses a
 ## client-declared HP for the same reason). Peer-scoped, like `send_own_state`: one
 ## player's damage is not world state.
+## Phase 196 — host → one peer: its resting pose regained `amount` HP on the host's clock (restRegen). The
+## peer's client owns its HP, so the heal is applied there; peer-scoped like `send_player_damaged`.
+func send_player_healed(peer_id: int, amount: float) -> void:
+	if sl._role != sl.Role.HOST:
+		sl.Diag.warn("NetworkingSlice: send_player_healed called on non-host — dropped")
+		return
+	sl._deliver(peer_id, { "type": "player_healed", "amount": amount })
+
 func send_player_damaged(peer_id: int, damage: float, attacker_id: String) -> void:
 	if sl._role != sl.Role.HOST:
 		sl.Diag.warn("NetworkingSlice: send_player_damaged called on non-host — dropped")
@@ -177,15 +185,23 @@ func send_combat_hit(attacker_key: String, defender_key: String, outcome: String
 
 ## Phase 159 — host → clients in range of `position`: peer `subject_peer` (the host's own body is peer 1)
 ## started `gesture_id`, or stood up (""). Animation only; the actor's own client is in range of itself.
-func send_gesture(subject_peer: int, gesture_id: String, position: Vector3) -> void:
+## Phase 196 — `lift` (>= 0) is the seat rise the host resolved for a Sit, so every viewer shows the same one.
+func send_gesture(subject_peer: int, gesture_id: String, position: Vector3, lift: float = -1.0) -> void:
 	if sl._role != sl.Role.HOST:
 		sl.Diag.warn("NetworkingSlice: send_gesture called on non-host — dropped")
 		return
-	sl._broadcast_aoi({ "type": "gesture", "peer_id": subject_peer, "g": gesture_id }, position)
+	sl._broadcast_aoi(_gesture_packet(subject_peer, gesture_id, lift), position)
+
+func _gesture_packet(subject_peer: int, gesture_id: String, lift: float) -> Dictionary:
+	var packet := { "type": "gesture", "peer_id": subject_peer, "g": gesture_id }
+	if lift >= 0.0:
+		packet["l"] = lift
+	return packet
 
 ## Phase 159 — host: a peer just bound its identity; tell it the poses held by the players inside its AOI
 ## (`poses` is peer id -> gesture id, the host's own body as peer 1), so a late joiner sees them seated.
-func send_peer_gestures_to(peer_id: int, poses: Dictionary) -> void:
+## `lifts` (peer id -> seat rise, Phase 196) carries the host-resolved lift of a Sit.
+func send_peer_gestures_to(peer_id: int, poses: Dictionary, lifts: Dictionary = {}) -> void:
 	if sl._role != sl.Role.HOST or not sl._connected():
 		return
 	var center = sl._joiner_aoi_center(peer_id)
@@ -193,7 +209,7 @@ func send_peer_gestures_to(peer_id: int, poses: Dictionary) -> void:
 		var o := int(subject)
 		if o == peer_id or not sl._has_subject_position(o) or center.distance_to(sl._subject_position(o)) > sl.AOI_RADIUS:
 			continue
-		sl._deliver(peer_id, { "type": "gesture", "peer_id": o, "g": str(poses[subject]) })
+		sl._deliver(peer_id, _gesture_packet(o, str(poses[subject]), float(lifts.get(subject, -1.0))))
 
 ## Phase 161 — host → clients in range of the body: its record (position, remaining entries, carrier).
 func send_carcass(record: Dictionary) -> void:

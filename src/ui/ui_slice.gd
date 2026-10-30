@@ -224,10 +224,16 @@ func _input(event: InputEvent) -> void:
 		var focus := get_viewport().gui_get_focus_owner() if is_inside_tree() else null
 		if (focus is LineEdit or focus is TextEdit) and event.keycode != KEY_ESCAPE:
 			return
-		# Phase 159 — the gesture wheel (Q by default, rebindable). It outranks a hotbar box bound to the same
-		# key, except while the hotbar is waiting for the key of a box.
-		if event.keycode == GesturePanelScript.key_code() and (hotbar == null or not hotbar.is_binding()):
-			toggle_window(WINDOW_GESTURES)
+		# Phase 159 — the gesture wheel (Q by default, rebindable) outranks a hotbar box on the same key, except
+		# while the hotbar waits for a box's key. Phase 196: a rebind takes the next key (see `handle_key`).
+		var wheel: int = GesturePanelScript.handle_key(event, hotbar != null and hotbar.is_binding())
+		if wheel != GesturePanelScript.KEY_IGNORED:
+			if wheel == GesturePanelScript.KEY_TOGGLE:
+				toggle_window(WINDOW_GESTURES)
+			else:   # a rebind ended or was refused: every label naming the key re-renders
+				_on_locale_changed(TranslationServer.get_locale())
+			if is_inside_tree():
+				get_viewport().set_input_as_handled()
 			return
 		# The hotbar first: 1-9 and the player's own box shortcuts, or a key being chosen for a box.
 		if hotbar != null and hotbar.handle_key(event):
@@ -420,16 +426,17 @@ func _close_all_windows() -> void:
 
 ## Phase 131 — set a control's text from a catalog key and remember it, so a language switch can
 ## re-apply it. `prop` is the property name ("text", "tooltip_text", "placeholder_text").
-func _set_tr(ctrl: Control, prop: String, key: String) -> void:
-	ctrl.set(prop, I18n.t(key))
-	_bound.append({"node": ctrl, "prop": prop, "key": key})
+func _set_tr(ctrl: Control, prop: String, key: String, args_fn: Callable = Callable()) -> void:
+	ctrl.set(prop, I18n.t(key, args_fn.call() if args_fn.is_valid() else []))
+	_bound.append({"node": ctrl, "prop": prop, "key": key, "args": args_fn})
 
 ## The language changed: re-apply every bound control, rebuild the data-driven lists and the controls
 ## panel, and refresh the HUD, so no window needs a restart.
 func _on_locale_changed(_locale: String) -> void:
 	for b in _bound:
 		if is_instance_valid(b["node"]):
-			(b["node"] as Control).set(b["prop"], I18n.t(b["key"]))
+			var args_fn: Callable = b.get("args", Callable())
+			(b["node"] as Control).set(b["prop"], I18n.t(b["key"], args_fn.call() if args_fn.is_valid() else []))
 	_refill_controls()
 	if creation_screen != null:
 		creation_screen.refresh()
@@ -1291,8 +1298,8 @@ const WAYSTONE_REFUSALS := {
 	"unreachable": "waystone.unreachable",
 }
 
-func _build_window(key: String, title: String, content: Control, position: Vector2) -> PanelContainer:
-	return _m1._build_window(key, title, content, position)
+func _build_window(key: String, title: String, content: Control, position: Vector2, title_args: Callable = Callable()) -> PanelContainer:
+	return _m1._build_window(key, title, content, position, title_args)
 
 # ---------------------------------------------------------------------------
 # Window drag + layout persistence

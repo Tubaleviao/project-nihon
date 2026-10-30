@@ -415,6 +415,22 @@ func lift_after_respawn() -> void:
 ## remote record is needed.
 ## Phase 71 — keep the loaded record's original stamp when re-saving (a new world takes the
 ## running one), and tell the bus when that stamp is not the running generator's.
+## Phase 196 — the registry's ground dropper: `item` x `quantity` at `player_id`'s feet (the local body,
+## or a remote peer's last reported position).
+func _drop_at_feet(player_id: String, item: String, quantity: int) -> void:
+	Diag.warn("PersistenceWiring: starting kit %s x%d did not fit %s's bag — dropped at their feet" % [item, quantity, player_id])
+	if root._loot == null:
+		return
+	var pos: Vector3
+	var peer: int = root._registry.get_peer_id(player_id)
+	if player_id == root._registry.local_player_id and root._player != null:
+		pos = root._player.get_position()
+	elif peer > 0 and root._networking.has_last_known_state(peer):
+		pos = root._networking.get_last_known_state(peer)
+	else:
+		return
+	root._loot.spawn_pickup(item, quantity, pos)
+
 func note_worldgen_version() -> void:
 	root._worldgen_stamp = PersistenceSlice.worldgen_stamp_for_save(root._loaded_world, TerrainSlice.WORLDGEN_VERSION)
 	if PersistenceSlice.check_worldgen_version(root._loaded_world, TerrainSlice.WORLDGEN_VERSION):
@@ -443,6 +459,7 @@ func load_world_records() -> void:
 	root._registry.set_record_loader(root._persistence.load_player)
 	root._registry.set_spawn_placer(root._peer_wiring.place_new_player)
 	root._registry.set_friend_locator(root._peer_wiring.locate_friend_on_disk)
+	root._registry.set_ground_dropper(_drop_at_feet)
 	root._registry.names_from_data(root._loaded_world.get("names", {}))
 	root._colonization.from_data(root._loaded_world.get("colonization", {}))
 	root._clock.from_data(root._loaded_world.get("clock", {}))
@@ -463,6 +480,7 @@ func load_world_records() -> void:
 			root._terrain.set_world_seed(int(recorded_seed))
 			print("[Server] world seed %d restored from the world record" % int(recorded_seed))
 		else:
+			root._terrain.seed_adopted = true
 			print("[Server] world record carries no seed (format %d) — adopting the fresh seed %d" % [
 				int(root._loaded_world.get("version", PersistenceSlice.LEGACY_WORLD_FORMAT_VERSION)),
 				root._terrain.get_world_seed()])

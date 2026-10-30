@@ -92,6 +92,9 @@ func update(speed: float, grounded: bool, velocity_y: float, delta: float) -> in
 		_timer -= delta
 		if _timer > 0.0:
 			return _state
+		# Phase 196 — the clip is over: leave GESTURE even in the air, where the airborne branch below would
+		# otherwise keep the state it found until the body falls.
+		_set_state(_ground_state(speed))
 
 	# Attack and land are timed one-shots — hold them until their timer elapses,
 	# then fall through into normal locomotion.
