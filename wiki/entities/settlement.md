@@ -7,7 +7,7 @@ title: "Settlement"
 
 `world-system`
 
-A player-founded place: a Hearth, a claimed circle of land, members with roles and a shared Stockpile. It grows from founded to growing to town as members and days accumulate, and is abandoned when no member is active; an abandoned claim decays until the land is free again. A claim never covers another settlement's land. Rule changes are made through GovernanceSystem proposals.
+A player-founded place: a Hearth, a claimed circle of land, members with roles and a shared Stockpile. It grows from founded to growing to town as members and days accumulate (growing also by completed projects), members build projects together, defend against creature raids and pay upkeep, and it is abandoned when no member is active; an abandoned claim decays until the land is free again. A claim never covers another settlement's land. Rule changes are made through GovernanceSystem proposals.
 
 > Give players a shared place to build a civilization together (CivilizationIsPlayerMade)
 
@@ -32,14 +32,19 @@ A player-founded place: a Hearth, a claimed circle of land, members with roles a
 | stockpile | hasOne | [Stockpile](stockpile.md) |
 | governance | hasOne | [GovernanceSystem](governancesystem.md) |
 | recipe | hasOne | [RecipeHearth](recipehearth.md) |
+| projects | hasOne | [SettlementProjects](settlementprojects.md) |
+| specialties | hasOne | [SettlementSpecialties](settlementspecialties.md) |
+| raids | hasOne | [SettlementRaids](settlementraids.md) |
+| upkeep | hasOne | [SettlementUpkeep](settlementupkeep.md) |
+| decision | hasOne | [SettlementRaidsAndUpkeep](settlementraidsandupkeep.md) |
 
 ## States
 
 ```mermaid
 stateDiagram-v2
   [*] --> founded
-  founded --> growing : grow [Both minMembers and minDays of the next tier must be met; The claim radius and Stockpile capacity rise to the new tier's values and never shrink]
-  growing --> town : grow [Both minMembers and minDays of the next tier must be met; The claim radius and Stockpile capacity rise to the new tier's values and never shrink]
+  founded --> growing : grow [minMembers of the next tier must be met, and either its minDays or (when it has one) its minProjects completed settlement projects; The claim radius and Stockpile capacity rise to the new tier's values and never shrink]
+  growing --> town : grow [minMembers of the next tier must be met, and either its minDays or (when it has one) its minProjects completed settlement projects; The claim radius and Stockpile capacity rise to the new tier's values and never shrink]
   founded --> abandoned : abandon [The claim shrinks by decayRadiusPerDay each day until its land is free; The Stockpile contents are kept for members who return]
   growing --> abandoned : abandon [The claim shrinks by decayRadiusPerDay each day until its land is free; The Stockpile contents are kept for members who return]
   town --> abandoned : abandon [The claim shrinks by decayRadiusPerDay each day until its land is free; The Stockpile contents are kept for members who return]
@@ -49,7 +54,7 @@ stateDiagram-v2
 | State | Description |
 | ----- | ----------- |
 | `founded` | The hearth is placed and the claim is at its smallest radius |
-| `growing` | Enough members and days: the claim and stockpile have grown |
+| `growing` | Enough members and days, or enough members and completed projects: the claim and stockpile have grown |
 | `town` | The top tier: the largest claim and stockpile |
 | `abandoned` | No member active for abandonAfterDays: the claim decays until the land is free |
 
@@ -69,7 +74,7 @@ Place a Hearth on free land to found a settlement
 Raise the tier when member count and age meet the next tier thresholds
 
 **Conditions:**
-- Both minMembers and minDays of the next tier must be met
+- minMembers of the next tier must be met, and either its minDays or (when it has one) its minProjects completed settlement projects
 - The claim radius and Stockpile capacity rise to the new tier's values and never shrink
 
 ### abandon

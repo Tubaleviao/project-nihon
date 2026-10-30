@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–196 are done. Their specs and acceptance criteria, and the introductions of
+Phases 1–197 are done. Their specs and acceptance criteria, and the introductions of
 the arcs they belonged to, are archived in [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Next: follow-up debt burn II (Phases 194–196)
@@ -53,63 +53,12 @@ Raids come from creatures only. Settlement-against-settlement conflict stays def
 
 | Phase | Title | Status | Spec |
 |---|---|---|---|
-| 197 | The settlement loop in the fabric: projects, specialties, raids and upkeep | Planned | below |
+| 197 | The settlement loop in the fabric: projects, specialties, raids and upkeep | Done | [phases-197.md](docs/roadmap-history/phases-197.md) |
 | 198 | Settlement projects at runtime: a village builds together | Planned | below |
 | 199 | Specialties at runtime: what each member is good at | Planned | below |
 | 200 | Raids: a warned, bounded attack the village can defend | Planned | below |
 | 201 | Upkeep: a village that has to keep going | Planned | below |
 | 202 | The settlement loop, played: four bots found, specialize, trade and defend a village | Planned | below |
-
----
-
-## Phase 197 — The settlement loop in the fabric: projects, specialties, raids and upkeep
-
-**Goal:** design the four missing parts of the settlement loop in the fabric only, a separate PR
-from the runtime as the workflow requires: projects a village builds together, a specialty for
-each member, raids it defends against and upkeep it pays. Each part is a rule table that Phases
-198–201 read from `GameData`.
-
-**Newel dependency:** NO (if a needed field type is missing, file it on Newel and use the closest
-existing type).
-
-**Depends on:** Phases 139, 177 and 184.
-
-**Deliverables:**
-- `fabric/gameplay/settlement.js`:
-  - `projects`: settlement structures (for example a palisade, a watchtower, a workshop and a
-    storehouse). Each one lists its materials (existing item keys), its labour in work units, a
-    minimum tier and its effects from a closed set: stockpile capacity, raid defence, crafting
-    speed inside the claim, upkeep relief. A structure is placed as blocks and stations in the
-    claim when it completes.
-  - `tiers` gain a second path: `growing` is also reached with `minMembers` and a number of
-    completed projects, so four players can grow a village in its first hour. `town` keeps its
-    day threshold.
-  - `specialties`: for example woodworker, smith, hunter, builder and forager. Each one is scored
-    from existing skill and attribute ids. A member's specialty is their best score above a floor,
-    and it gives bonus labour on matching project steps.
-  - `raids`: when a raid can start (minimum settlement age, a tier or stockpile-value floor, a
-    cooldown), which creature packs come (per biome, existing creatures only), the warning time,
-    what is at stake (a capped share of the stockpile and damage to unfinished projects), and
-    offline protection: no raid starts unless a member is online inside the claim.
-  - `upkeep`: a daily cost per tier taken from the stockpile. Unpaid upkeep suspends project
-    effects until it is paid. It never shrinks the claim, which still follows the activity-based
-    abandonment rule.
-- `fabric/constitution/decisions.js`: a proposed decision recording raid fairness (warning,
-  offline protection, loss cap) and the upkeep rule.
-- Tutorial: one optional "your first village" chapter (found, start a project, contribute) in the
-  Phase 184 step table, if it fits without new trigger kinds.
-- `tools/check_settlement_loop.js` and a CI step, like the other validators.
-- Regenerated `godot/`, `bible/`, `wiki/`.
-
-**Acceptance criteria:**
-- [ ] `npm run validate` and `npm run check-drift` green.
-- [ ] `node tools/check_settlement_loop.js` passes and proves the validator rejects: a project with
-  no materials or an unknown item, an effect outside the closed set, a specialty that names an
-  unknown skill or attribute, a raid loss share above 1 or with no warning time, a raid table
-  without offline protection, and upkeep that falls as the tier rises.
-- [ ] The generated bible has pages for projects, specialties, raids and upkeep, linked from the
-  Settlement page.
-- [ ] CI runs the new check.
 
 ---
 
@@ -140,6 +89,11 @@ together after the hearth.
   contributed. All text goes through `I18n.t()`.
 - Net harness: a `settlement_project` step. The host starts a project, the client contributes
   materials and labour, the project completes, and an outsider's contribution is refused.
+
+- Tutorial (from Phase 197): the optional "your first village" chapter (found, start a project,
+  contribute). Only the founding step fits the Phase 184 trigger kinds (`station_placed` with type
+  `hearth`); starting and contributing need two new kinds, `project_started` and
+  `project_contributed`, which this phase's bus events can complete.
 
 **Acceptance criteria:**
 - [ ] Suite: `project_rules` accepts a valid contribution and refuses an unknown item, too much of

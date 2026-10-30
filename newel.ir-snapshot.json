@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:e04a463f890a10a4b4affbf2b849c6fc393453ee05d8bf6278a07bccfa836c1d",
+  "schemaHash": "sha256:ae938d2f3f1b3715571ed619a4bd672f67958a8fdc3caa625b7b3f0db2cbcd9c",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -870,6 +870,121 @@
               "guards": [
                 "Community vote must reach quorum",
                 "Claim radius, decay and separation values live in Settlement rules"
+              ],
+              "effects": []
+            },
+            {
+              "from": [
+                "proposed",
+                "accepted"
+              ],
+              "to": "superseded",
+              "trigger": "supersede",
+              "guards": [
+                "A replacement decision must be accepted first"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "SettlementRaidsAndUpkeep": {
+        "name": "SettlementRaidsAndUpkeep",
+        "tags": [
+          "decision"
+        ],
+        "description": "Raids on a settlement are fair: every raid is warned (SettlementRaids.warningSeconds > 0), none starts unless a member is online inside the claim (offlineProtection), and a lost raid takes at most a capped share of the stockpile and of unfinished project labour, never the claim or finished structures. Raids come from creatures only. Upkeep is a per-tier cost from the stockpile that never falls as the tier rises; unpaid upkeep suspends project effects and never shrinks the claim, which follows only the activity-based abandonment rule (SettlementClaimAndDecay).",
+        "goal": "Give a village something to defend and to keep paying for without punishing players for logging off (TheWorldIsPersistent, EverythingHasTradeoffs, Phase 197)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "status": {
+            "name": "status",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "proposed",
+              "accepted",
+              "superseded"
+            ],
+            "pii": false
+          }
+        },
+        "relations": {
+          "raids": {
+            "name": "raids",
+            "kind": "hasOne",
+            "target": "SettlementRaids"
+          },
+          "upkeep": {
+            "name": "upkeep",
+            "kind": "hasOne",
+            "target": "SettlementUpkeep"
+          }
+        },
+        "behaviors": {
+          "accept": {
+            "name": "accept",
+            "description": "Ratify the raid fairness and upkeep rules after community review",
+            "rules": [
+              "Community vote must reach quorum",
+              "Warning, offline protection, loss caps and upkeep costs live in the SettlementRaids and SettlementUpkeep rules"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "supersede": {
+            "name": "supersede",
+            "description": "Mark this decision as replaced by a newer one",
+            "rules": [
+              "A replacement decision must be accepted first"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "status",
+          "initial": "proposed",
+          "states": {
+            "proposed": {
+              "name": "proposed",
+              "description": "Decision is under community discussion",
+              "terminal": false
+            },
+            "accepted": {
+              "name": "accepted",
+              "description": "Decision is ratified and in effect",
+              "terminal": false
+            },
+            "superseded": {
+              "name": "superseded",
+              "description": "Decision has been replaced by a newer decision",
+              "terminal": true
+            }
+          },
+          "transitions": [
+            {
+              "from": "proposed",
+              "to": "accepted",
+              "trigger": "accept",
+              "guards": [
+                "Community vote must reach quorum",
+                "Warning, offline protection, loss caps and upkeep costs live in the SettlementRaids and SettlementUpkeep rules"
               ],
               "effects": []
             },
@@ -23122,7 +23237,7 @@
         "tags": [
           "world-system"
         ],
-        "description": "A player-founded place: a Hearth, a claimed circle of land, members with roles and a shared Stockpile. It grows from founded to growing to town as members and days accumulate, and is abandoned when no member is active; an abandoned claim decays until the land is free again. A claim never covers another settlement's land. Rule changes are made through GovernanceSystem proposals.",
+        "description": "A player-founded place: a Hearth, a claimed circle of land, members with roles and a shared Stockpile. It grows from founded to growing to town as members and days accumulate (growing also by completed projects), members build projects together, defend against creature raids and pay upkeep, and it is abandoned when no member is active; an abandoned claim decays until the land is free again. A claim never covers another settlement's land. Rule changes are made through GovernanceSystem proposals.",
         "goal": "Give players a shared place to build a civilization together (CivilizationIsPlayerMade)",
         "fields": {
           "id": {
@@ -23202,7 +23317,8 @@
                 "growing": {
                   "claimRadius": 48,
                   "minMembers": 3,
-                  "minDays": 3
+                  "minDays": 3,
+                  "minProjects": 2
                 },
                 "town": {
                   "claimRadius": 96,
@@ -23287,6 +23403,31 @@
             "name": "recipe",
             "kind": "hasOne",
             "target": "RecipeHearth"
+          },
+          "projects": {
+            "name": "projects",
+            "kind": "hasOne",
+            "target": "SettlementProjects"
+          },
+          "specialties": {
+            "name": "specialties",
+            "kind": "hasOne",
+            "target": "SettlementSpecialties"
+          },
+          "raids": {
+            "name": "raids",
+            "kind": "hasOne",
+            "target": "SettlementRaids"
+          },
+          "upkeep": {
+            "name": "upkeep",
+            "kind": "hasOne",
+            "target": "SettlementUpkeep"
+          },
+          "decision": {
+            "name": "decision",
+            "kind": "hasOne",
+            "target": "SettlementRaidsAndUpkeep"
           }
         },
         "behaviors": {
@@ -23308,7 +23449,7 @@
             "name": "grow",
             "description": "Raise the tier when member count and age meet the next tier thresholds",
             "rules": [
-              "Both minMembers and minDays of the next tier must be met",
+              "minMembers of the next tier must be met, and either its minDays or (when it has one) its minProjects completed settlement projects",
               "The claim radius and Stockpile capacity rise to the new tier's values and never shrink"
             ],
             "auth": {
@@ -23380,7 +23521,7 @@
             },
             "growing": {
               "name": "growing",
-              "description": "Enough members and days: the claim and stockpile have grown",
+              "description": "Enough members and days, or enough members and completed projects: the claim and stockpile have grown",
               "terminal": false
             },
             "town": {
@@ -23400,7 +23541,7 @@
               "to": "growing",
               "trigger": "grow",
               "guards": [
-                "Both minMembers and minDays of the next tier must be met",
+                "minMembers of the next tier must be met, and either its minDays or (when it has one) its minProjects completed settlement projects",
                 "The claim radius and Stockpile capacity rise to the new tier's values and never shrink"
               ],
               "effects": []
@@ -23410,7 +23551,7 @@
               "to": "town",
               "trigger": "grow",
               "guards": [
-                "Both minMembers and minDays of the next tier must be met",
+                "minMembers of the next tier must be met, and either its minDays or (when it has one) its minProjects completed settlement projects",
                 "The claim radius and Stockpile capacity rise to the new tier's values and never shrink"
               ],
               "effects": []
@@ -23835,6 +23976,588 @@
               "The role must have take permission inside the claim",
               "A withdraw beyond the role's daily withdrawLimit is refused",
               "Guests never withdraw; the founder is not limited"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "SettlementProjects": {
+        "name": "SettlementProjects",
+        "tags": [
+          "world-system"
+        ],
+        "description": "Structures a village builds together inside its claim: a palisade, a storehouse, a workshop, a watchtower. Each needs materials and labour in ordered steps; members contribute both, and a member whose specialty matches a step works faster on it. A finished project is placed as blocks and stations in the claim, and its effects (stockpile capacity, raid defence, crafting speed inside the claim, upkeep relief) hold while upkeep is paid. Completed projects also grow a village: the growing tier is reached by minMembers and minProjects as well as by days.",
+        "goal": "Give a new village something to build together in its first hour (CivilizationIsPlayerMade, Phase 197)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "rules": {
+            "name": "rules",
+            "type": "json",
+            "description": "Project table: { workSecondsPerUnit, projects: { <key>: { minTier, materials, labour, effects, places } } } (validated at fabric load)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "workSecondsPerUnit": 2,
+              "projects": {
+                "palisade": {
+                  "minTier": "founded",
+                  "materials": [
+                    {
+                      "item": "ThornwoodPlank",
+                      "quantity": 40
+                    },
+                    {
+                      "item": "FerriteIngot",
+                      "quantity": 4
+                    }
+                  ],
+                  "labour": [
+                    {
+                      "step": "posts",
+                      "specialty": "woodworker",
+                      "work": 60
+                    },
+                    {
+                      "step": "raise",
+                      "specialty": "builder",
+                      "work": 90
+                    }
+                  ],
+                  "effects": [
+                    {
+                      "kind": "raidDefence",
+                      "value": 0.3
+                    }
+                  ],
+                  "places": {
+                    "block": "ThornwoodPlank",
+                    "blocks": 48,
+                    "layout": "ring",
+                    "stations": []
+                  }
+                },
+                "storehouse": {
+                  "minTier": "founded",
+                  "materials": [
+                    {
+                      "item": "ThornwoodPlank",
+                      "quantity": 30
+                    },
+                    {
+                      "item": "AshiteBlock",
+                      "quantity": 12
+                    }
+                  ],
+                  "labour": [
+                    {
+                      "step": "foundation",
+                      "specialty": "builder",
+                      "work": 60
+                    },
+                    {
+                      "step": "shelving",
+                      "specialty": "woodworker",
+                      "work": 60
+                    },
+                    {
+                      "step": "provisions",
+                      "specialty": "forager",
+                      "work": 30
+                    }
+                  ],
+                  "effects": [
+                    {
+                      "kind": "stockpileCapacity",
+                      "value": 20
+                    },
+                    {
+                      "kind": "upkeepRelief",
+                      "value": 0.25
+                    }
+                  ],
+                  "places": {
+                    "block": "AshiteBlock",
+                    "blocks": 24,
+                    "layout": "shed",
+                    "stations": []
+                  }
+                },
+                "workshop": {
+                  "minTier": "founded",
+                  "materials": [
+                    {
+                      "item": "ThornwoodPlank",
+                      "quantity": 20
+                    },
+                    {
+                      "item": "FerriteIngot",
+                      "quantity": 10
+                    },
+                    {
+                      "item": "AshiteBlock",
+                      "quantity": 10
+                    }
+                  ],
+                  "labour": [
+                    {
+                      "step": "walls",
+                      "specialty": "builder",
+                      "work": 60
+                    },
+                    {
+                      "step": "benches",
+                      "specialty": "woodworker",
+                      "work": 45
+                    },
+                    {
+                      "step": "anvil",
+                      "specialty": "smith",
+                      "work": 45
+                    }
+                  ],
+                  "effects": [
+                    {
+                      "kind": "craftSpeed",
+                      "value": 0.2
+                    }
+                  ],
+                  "places": {
+                    "block": "AshiteBlock",
+                    "blocks": 32,
+                    "layout": "hall",
+                    "stations": [
+                      "carpentry bench",
+                      "forge"
+                    ]
+                  }
+                },
+                "watchtower": {
+                  "minTier": "growing",
+                  "materials": [
+                    {
+                      "item": "ThornwoodPlank",
+                      "quantity": 24
+                    },
+                    {
+                      "item": "AshiteBlock",
+                      "quantity": 16
+                    },
+                    {
+                      "item": "FerriteIngot",
+                      "quantity": 6
+                    }
+                  ],
+                  "labour": [
+                    {
+                      "step": "base",
+                      "specialty": "builder",
+                      "work": 90
+                    },
+                    {
+                      "step": "lookout",
+                      "specialty": "woodworker",
+                      "work": 60
+                    },
+                    {
+                      "step": "signal",
+                      "specialty": "hunter",
+                      "work": 30
+                    }
+                  ],
+                  "effects": [
+                    {
+                      "kind": "raidDefence",
+                      "value": 0.2
+                    }
+                  ],
+                  "places": {
+                    "block": "AshiteBlock",
+                    "blocks": 40,
+                    "layout": "tower",
+                    "stations": []
+                  }
+                }
+              }
+            }
+          }
+        },
+        "relations": {
+          "settlement": {
+            "name": "settlement",
+            "kind": "hasOne",
+            "target": "Settlement"
+          }
+        },
+        "behaviors": {
+          "start": {
+            "name": "start",
+            "description": "A member with build permission starts a project at a site inside the claim",
+            "rules": [
+              "The settlement must have reached the project's minTier",
+              "The site must lie inside the claim"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "contribute": {
+            "name": "contribute",
+            "description": "A member adds materials or labour to an unfinished project",
+            "rules": [
+              "Materials are moved, never duplicated: what is contributed leaves the giver",
+              "One work unit takes workSecondsPerUnit seconds at the site; a matching specialty adds bonusLabour per unit",
+              "Steps are worked in order"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "complete": {
+            "name": "complete",
+            "description": "All materials and labour are in: the structure is placed and its effects start",
+            "rules": [
+              "Places places.blocks of places.block in the layout, plus places.stations",
+              "Counts toward the tier's minProjects"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "SettlementSpecialties": {
+        "name": "SettlementSpecialties",
+        "tags": [
+          "world-system"
+        ],
+        "description": "What each member of a village is good at: woodworker, smith, hunter, builder or forager. A specialty is scored from the member's skill tiers and attributes; a member's specialty is their best score at or above the floor, and it adds bonus labour on project steps that ask for it. A specialty is a consequence of how someone plays, never a class picked up front.",
+        "goal": "Make each member of a small village matter for something (EverythingHasTradeoffs, Phase 197)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "rules": {
+            "name": "rules",
+            "type": "json",
+            "description": "Specialty table: { floor, bonusLabour, specialties: { <key>: { skills: { <skill>: weight }, attributes: { <attribute>: weight } } } } (validated at fabric load)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "floor": 2,
+              "bonusLabour": 0.5,
+              "specialties": {
+                "woodworker": {
+                  "skills": {
+                    "Carpentry": 1
+                  },
+                  "attributes": {
+                    "strength": 0.25
+                  }
+                },
+                "smith": {
+                  "skills": {
+                    "Smithing": 1,
+                    "ArcaneForging": 0.5
+                  },
+                  "attributes": {
+                    "strength": 0.25
+                  }
+                },
+                "hunter": {
+                  "skills": {
+                    "Archery": 0.5,
+                    "Swordsmanship": 0.5,
+                    "Skinning": 0.5,
+                    "Tracking": 0.5
+                  },
+                  "attributes": {
+                    "agility": 0.25
+                  }
+                },
+                "builder": {
+                  "skills": {
+                    "Carpentry": 0.5,
+                    "Leadership": 0.5
+                  },
+                  "attributes": {
+                    "vitality": 0.25,
+                    "strength": 0.25
+                  }
+                },
+                "forager": {
+                  "skills": {
+                    "Tracking": 0.5,
+                    "Navigation": 0.5,
+                    "Alchemy": 0.5
+                  },
+                  "attributes": {
+                    "perception": 0.25
+                  }
+                }
+              }
+            }
+          }
+        },
+        "relations": {
+          "settlement": {
+            "name": "settlement",
+            "kind": "hasOne",
+            "target": "Settlement"
+          }
+        },
+        "behaviors": {
+          "score": {
+            "name": "score",
+            "description": "Score every specialty for a member and take the best one at or above the floor",
+            "rules": [
+              "Skill score: weight × tier rank (novice 0 .. master 4); attribute score: weight × points above the base",
+              "Ties go to the earlier specialty in the table; below the floor a member has no specialty"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "SettlementRaids": {
+        "name": "SettlementRaids",
+        "tags": [
+          "world-system"
+        ],
+        "description": "Creature packs from the village's own biome attack a settlement that is worth raiding. Every raid is warned, never starts while no member is online inside the claim, and has a capped loss: a share of the stockpile and damage to unfinished projects, both reduced by raid-defence projects. Raids come from creatures only; settlement-against-settlement conflict is deferred.",
+        "goal": "Give a village something to defend together without punishing it for being offline (SettlementRaidsAndUpkeep, Phase 197)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "rules": {
+            "name": "rules",
+            "type": "json",
+            "description": "Raid table: { minAgeMinutes, minTier, minStockpileStacks, cooldownHours, warningSeconds, durationSeconds, offlineProtection, defenceCap, stakes, packs } (validated at fabric load)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "minAgeMinutes": 30,
+              "minTier": "growing",
+              "minStockpileStacks": 10,
+              "cooldownHours": 6,
+              "warningSeconds": 120,
+              "durationSeconds": 600,
+              "offlineProtection": true,
+              "defenceCap": 0.75,
+              "stakes": {
+                "stockpileShareMax": 0.2,
+                "projectDamageMax": 0.25
+              },
+              "packs": {
+                "TemperateForest": [
+                  {
+                    "creature": "GraywolfPack",
+                    "min": 3,
+                    "max": 5
+                  },
+                  {
+                    "creature": "ForestBoar",
+                    "min": 1,
+                    "max": 2
+                  }
+                ],
+                "TemperateGrassland": [
+                  {
+                    "creature": "SteppeBison",
+                    "min": 2,
+                    "max": 3
+                  },
+                  {
+                    "creature": "RidgeHawk",
+                    "min": 2,
+                    "max": 4
+                  }
+                ],
+                "VolcanicBadlands": [
+                  {
+                    "creature": "CinderGargoyle",
+                    "min": 2,
+                    "max": 3
+                  },
+                  {
+                    "creature": "LavaSlug",
+                    "min": 2,
+                    "max": 4
+                  }
+                ],
+                "TwilightGrove": [
+                  {
+                    "creature": "VeilStalker",
+                    "min": 2,
+                    "max": 3
+                  },
+                  {
+                    "creature": "GlimmerFox",
+                    "min": 2,
+                    "max": 4
+                  }
+                ],
+                "VoidRift": [
+                  {
+                    "creature": "VoidSerpent",
+                    "min": 2,
+                    "max": 4
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "relations": {
+          "settlement": {
+            "name": "settlement",
+            "kind": "hasOne",
+            "target": "Settlement"
+          }
+        },
+        "behaviors": {
+          "warn": {
+            "name": "warn",
+            "description": "Announce a raid to every member warningSeconds before the first creature arrives",
+            "rules": [
+              "The settlement is at least minAgeMinutes old and has reached minTier or holds minStockpileStacks",
+              "cooldownHours have passed since the last raid ended",
+              "A member is online inside the claim (offlineProtection)"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "resolve": {
+            "name": "resolve",
+            "description": "End the raid: repelled when every raider is dead, otherwise lost after durationSeconds",
+            "rules": [
+              "A lost raid takes at most stakes.stockpileShareMax of the stockpile and stakes.projectDamageMax of each unfinished project's labour",
+              "Raid-defence effects scale both losses down by at most defenceCap"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "SettlementUpkeep": {
+        "name": "SettlementUpkeep",
+        "tags": [
+          "world-system"
+        ],
+        "description": "What a village pays to keep going: a cost per tier taken from the stockpile every period. Unpaid upkeep suspends project effects until it is paid; it never shrinks the claim, which still follows only the activity-based abandonment rule. Upkeep never falls as the tier rises.",
+        "goal": "Give a growing village a reason to keep gathering and trading (EverythingHasTradeoffs, Phase 197)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "rules": {
+            "name": "rules",
+            "type": "json",
+            "description": "Upkeep table: { periodHours, shrinksClaim, costs: { <tier>: [{ item, quantity }] } } (validated at fabric load)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "periodHours": 24,
+              "shrinksClaim": false,
+              "costs": {
+                "founded": [
+                  {
+                    "item": "ThornwoodPlank",
+                    "quantity": 2
+                  }
+                ],
+                "growing": [
+                  {
+                    "item": "ThornwoodPlank",
+                    "quantity": 6
+                  },
+                  {
+                    "item": "FerriteIngot",
+                    "quantity": 1
+                  }
+                ],
+                "town": [
+                  {
+                    "item": "ThornwoodPlank",
+                    "quantity": 12
+                  },
+                  {
+                    "item": "FerriteIngot",
+                    "quantity": 3
+                  },
+                  {
+                    "item": "AshiteBlock",
+                    "quantity": 4
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "relations": {
+          "settlement": {
+            "name": "settlement",
+            "kind": "hasOne",
+            "target": "Settlement"
+          }
+        },
+        "behaviors": {
+          "pay": {
+            "name": "pay",
+            "description": "Take the tier's upkeep from the stockpile once per periodHours",
+            "rules": [
+              "upkeepRelief effects reduce each quantity, rounded down",
+              "If the stockpile cannot pay in full nothing is taken and project effects are suspended until it can",
+              "Unpaid upkeep never shrinks the claim"
             ],
             "auth": {
               "roles": [

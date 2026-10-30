@@ -214,6 +214,45 @@ module.exports = {
     },
   }),
 
+  SettlementRaidsAndUpkeep: defineEntity({
+    tags: ['decision'],
+    description: 'Raids on a settlement are fair: every raid is warned (SettlementRaids.warningSeconds > 0), none starts unless a member is online inside the claim (offlineProtection), and a lost raid takes at most a capped share of the stockpile and of unfinished project labour, never the claim or finished structures. Raids come from creatures only. Upkeep is a per-tier cost from the stockpile that never falls as the tier rises; unpaid upkeep suspends project effects and never shrinks the claim, which follows only the activity-based abandonment rule (SettlementClaimAndDecay).',
+    goal: 'Give a village something to defend and to keep paying for without punishing players for logging off (TheWorldIsPersistent, EverythingHasTradeoffs, Phase 197)',
+    fields: {
+      id:     { type: 'uuid', primaryKey: true },
+      status: { type: 'enum', values: ['proposed', 'accepted', 'superseded'] },
+    },
+    relations: {
+      raids:  { name: 'raids',  kind: 'hasOne', target: 'SettlementRaids' },
+      upkeep: { name: 'upkeep', kind: 'hasOne', target: 'SettlementUpkeep' },
+    },
+    stateMachine: {
+      field: 'status',
+      initial: 'proposed',
+      states: {
+        proposed:   'Decision is under community discussion',
+        accepted:   'Decision is ratified and in effect',
+        superseded: { description: 'Decision has been replaced by a newer decision', terminal: true },
+      },
+      transitions: [
+        { from: 'proposed',              to: 'accepted',   trigger: 'accept' },
+        { from: ['proposed', 'accepted'], to: 'superseded', trigger: 'supersede' },
+      ],
+    },
+    behaviors: {
+      accept: {
+        description: 'Ratify the raid fairness and upkeep rules after community review',
+        rules: ['Community vote must reach quorum', 'Warning, offline protection, loss caps and upkeep costs live in the SettlementRaids and SettlementUpkeep rules'],
+        auth: { roles: ['maintainer'] },
+      },
+      supersede: {
+        description: 'Mark this decision as replaced by a newer one',
+        rules: ['A replacement decision must be accepted first'],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
   MagicBalancedWithMartial: defineEntity({
     tags: ['decision'],
     description: 'Magic and martial combat are balanced — no archetype dominates; each has unique trade-offs and counters.',
