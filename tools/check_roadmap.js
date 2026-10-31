@@ -5,7 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const STATUSES = new Set(['Planned', 'On hold', 'In review', 'Done', 'Merged']);
+const STATUSES = new Set(['Planned', 'On hold', 'In review', 'Done', 'Merged', 'Aborted']);
 
 function sections(text) {
   const out = new Map();
@@ -40,6 +40,8 @@ function check(text, baseDir) {
       if (r.status === 'Planned' && ticked && !open) errors.push(`phase ${r.n}: all criteria ticked but marked Planned`);
       if (r.status === 'In review' && open) errors.push(`phase ${r.n}: In review but has unticked criteria`);
       if (r.status === 'In review' && !open) errors.push(`phase ${r.n}: In review with every criterion ticked; mark it Done`);
+    } else if (r.status === 'Aborted') {
+      if (sec) errors.push(`phase ${r.n}: Aborted but still specified in ROADMAP.md`);
     } else if (r.status === 'Done') {
       const link = /\]\(([^)]+)\)/.exec(r.spec);
       if (!link) { errors.push(`phase ${r.n}: Done but the spec column has no history link`); continue; }
@@ -62,6 +64,7 @@ function selfTest() {
     ['Planned phase with no spec', `${row(3, 'Planned', 'below')}\n`],
     ['unknown status', `${row(4, 'Soon', 'below')}\n`],
     ['On hold phase with no spec', `${row(8, 'On hold', 'below')}\n`],
+    ['Aborted phase still specified', `${row(10, 'Aborted', '—')}\n## Phase 10 — x\n- [ ] a\n`],
     ['Planned phase with every criterion ticked', `${row(5, 'Planned', 'below')}\n## Phase 5 — x\n- [x] a\n`],
     ['In review phase with every criterion ticked', `${row(6, 'In review', 'below')}\n## Phase 6 — x\n- [x] a\n`],
   ];
@@ -69,7 +72,7 @@ function selfTest() {
   for (const [name, text] of cases) {
     if (check(text, dir).length === 0) { console.error(`self-test: check accepted ${name}`); bad++; }
   }
-  const good = `${row(1, 'Done', '[history](h.md)')}\n${row(7, 'Planned', 'below')}\n## Phase 7 — x\n- [ ] a\n${row(9, 'On hold', 'below')}\n## Phase 9 — x\n- [ ] a\n`;
+  const good = `${row(1, 'Done', '[history](h.md)')}\n${row(7, 'Planned', 'below')}\n## Phase 7 — x\n- [ ] a\n${row(9, 'On hold', 'below')}\n## Phase 9 — x\n- [ ] a\n${row(11, 'Aborted', '—')}\n`;
   const e = check(good, dir);
   if (e.length) { console.error('self-test: check rejected a valid roadmap:', e); bad++; }
   fs.rmSync(dir, { recursive: true });

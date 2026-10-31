@@ -58,6 +58,8 @@ Raids come from creatures only. Settlement-against-settlement conflict stays def
 | 197 | The settlement loop in the fabric: projects, specialties, raids and upkeep | Done | [phases-197.md](docs/roadmap-history/phases-197.md) |
 | 198 | Settlement projects at runtime: a village builds together | Done | [phases-198.md](docs/roadmap-history/phases-198.md) |
 | 199 | Specialties at runtime: what each member is good at | Done | [phases-199.md](docs/roadmap-history/phases-199.md) |
+| 200 | Raids: a warned, bounded attack the village can defend | Aborted | Deferred |
+| 201 | Upkeep: a village that has to keep going | Aborted | — |
 | 202 | The settlement loop, played: four bots found, specialize, trade and defend a village | On hold | below |
 
 ### Arc: clans, owned buildings, an Earth-scale world and buildings that stand up (Phases 203–213)
