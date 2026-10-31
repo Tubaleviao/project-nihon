@@ -15,6 +15,9 @@ extends RefCounted
 const SEA_LEVEL_DEFAULT := 0.0
 const MIN_HEIGHT_DEFAULT := -64.0
 const MAX_HEIGHT_DEFAULT := 512.0
+## Phase 203 — the fabric's `maxHeight` is Earth-scale (8,850 m); the generator keeps 512 m until Phase 211
+## lifts this hold with a WORLDGEN_VERSION bump (a taller cap is a world-gen change).
+const PEAK_HOLD := 512.0
 const OCEAN_SHARE_DEFAULT := 0.65
 const RIDGE_AMPLITUDE_DEFAULT := 400.0
 ## Fallback spline (the fabric's default) for a rig without the generated resources.
@@ -63,7 +66,7 @@ static func warm() -> void:
 	if ws != null:
 		_sea = _num(ws, "seaLevel", _sea)
 		_min_h = _num(ws, "minHeight", _min_h)
-		_max_h = _num(ws, "maxHeight", _max_h)
+		_max_h = minf(_num(ws, "maxHeight", _max_h), PEAK_HOLD)
 		_ocean_share = _num(ws, "oceanShare", _ocean_share)
 		_ridge_amp = _num(ws, "ridgeAmplitude", _ridge_amp)
 		var sp: Variant = ws.get("heightSpline")

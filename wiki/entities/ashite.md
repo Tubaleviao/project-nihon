@@ -23,6 +23,9 @@ Pale grey volcanic rock formed from compressed volcanic ash. Lightweight for its
 | depthBand | json | Depth band [min, max) in world units below the natural surface where a vein may form; empty when max <= min. Compressed volcanic ash: the bulk rock of the badlands from the surface down. |
 | leyGated | boolean | True when a vein of this material forms only near a ley line |
 | granular | boolean | True when a placed span of this material falls to the first support below it when undermined (Phase 137); rock, ores and metals stay put |
+| rarity | `common`, `uncommon`, `rare`, `epic`, `legendary` | How rare the material is (the item rarity scale); clan tiers weigh buildings by it (Phase 203) |
+| durability | integer | Base durability of a placed block; weather, age and damage lower it (StructureDurability, Phase 203). The standard building stone. |
+| structuralClass | `earth`, `wood`, `stone`, `concrete`, `steel`, `composite` | Structural class: the most floors a structure carrying this material may have (Structure.classes, Phase 203) |
 
 ## States
 

@@ -135,6 +135,13 @@ func rules() -> Dictionary:
 		var r: Variant = res.get("rules")
 		if r is Dictionary:
 			out.merge(r, true)
+	# Phase 203 — the fabric's tiers have no claim radius; DEFAULT_RULES keeps each tier's until Phase 205
+	# removes the claim (a shallow merge would drop them with the fabric's tier dictionaries).
+	var tiers: Dictionary = (out["tiers"] as Dictionary).duplicate(true)
+	for t: String in DEFAULT_RULES["tiers"]:
+		if tiers.get(t, null) is Dictionary:
+			(tiers[t] as Dictionary).merge(DEFAULT_RULES["tiers"][t])
+	out["tiers"] = tiers
 	_rules_cache = out
 	_rules_source = res
 	return out

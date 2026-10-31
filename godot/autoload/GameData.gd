@@ -50,7 +50,10 @@ const CREATURES: Dictionary = {
 }
 
 const DECISIONS: Dictionary = {
+		"ClansAndOwnedStructures": preload("res://godot/decisions/clansandownedstructures.tres"),
 		"DestructibleBuildings": preload("res://godot/decisions/destructiblebuildings.tres"),
+		"DurabilityAndDestruction": preload("res://godot/decisions/durabilityanddestruction.tres"),
+		"EarthScaleHeights": preload("res://godot/decisions/earthscaleheights.tres"),
 		"FictionalMaterials": preload("res://godot/decisions/fictionalmaterials.tres"),
 		"GodotEngine": preload("res://godot/decisions/godotengine.tres"),
 		"KnowledgeByExperimentation": preload("res://godot/decisions/knowledgebyexperimentation.tres"),
@@ -59,8 +62,10 @@ const DECISIONS: Dictionary = {
 		"OfflinePlayerNpcs": preload("res://godot/decisions/offlineplayernpcs.tres"),
 		"OnePersistentWorld": preload("res://godot/decisions/onepersistentworld.tres"),
 		"PlayerIdentityModel": preload("res://godot/decisions/playeridentitymodel.tres"),
+		"ResearchSharedByWriting": preload("res://godot/decisions/researchsharedbywriting.tres"),
 		"SettlementClaimAndDecay": preload("res://godot/decisions/settlementclaimanddecay.tres"),
 		"SettlementRaidsAndUpkeep": preload("res://godot/decisions/settlementraidsandupkeep.tres"),
+		"SkillsGrowFromWork": preload("res://godot/decisions/skillsgrowfromwork.tres"),
 		"WaystonesAmendNoTeleportation": preload("res://godot/decisions/waystonesamendnoteleportation.tres")
 }
 
@@ -189,12 +194,14 @@ const SKILLS: Dictionary = {
 		"Alchemy": preload("res://godot/skills/alchemy.tres"),
 		"ArcaneForging": preload("res://godot/skills/arcaneforging.tres"),
 		"Archery": preload("res://godot/skills/archery.tres"),
+		"Building": preload("res://godot/skills/building.tres"),
 		"Carpentry": preload("res://godot/skills/carpentry.tres"),
 		"Cartography": preload("res://godot/skills/cartography.tres"),
 		"Diplomacy": preload("res://godot/skills/diplomacy.tres"),
 		"ElementalMagic": preload("res://godot/skills/elementalmagic.tres"),
 		"Enchanting": preload("res://godot/skills/enchanting.tres"),
 		"Leadership": preload("res://godot/skills/leadership.tres"),
+		"Lockpicking": preload("res://godot/skills/lockpicking.tres"),
 		"Navigation": preload("res://godot/skills/navigation.tres"),
 		"RestorationMagic": preload("res://godot/skills/restorationmagic.tres"),
 		"Shieldcraft": preload("res://godot/skills/shieldcraft.tres"),
@@ -203,6 +210,7 @@ const SKILLS: Dictionary = {
 		"Speechcraft": preload("res://godot/skills/speechcraft.tres"),
 		"Stealth": preload("res://godot/skills/stealth.tres"),
 		"Swordsmanship": preload("res://godot/skills/swordsmanship.tres"),
+		"Tailoring": preload("res://godot/skills/tailoring.tres"),
 		"Tracking": preload("res://godot/skills/tracking.tres"),
 		"Trade": preload("res://godot/skills/trade.tres"),
 		"Unarmed": preload("res://godot/skills/unarmed.tres"),
@@ -241,19 +249,29 @@ const TUTORIALS: Dictionary = {
 
 const WORLD_SYSTEMS: Dictionary = {
 		"BedSpawn": preload("res://godot/world_systems/bedspawn.tres"),
+		"ChestsAndDoors": preload("res://godot/world_systems/chestsanddoors.tres"),
+		"Clan": preload("res://godot/world_systems/clan.tres"),
+		"ClanTiers": preload("res://godot/world_systems/clantiers.tres"),
 		"CombatSystem": preload("res://godot/world_systems/combatsystem.tres"),
 		"GovernanceSystem": preload("res://godot/world_systems/governancesystem.tres"),
 		"MarketSystem": preload("res://godot/world_systems/marketsystem.tres"),
 		"PersistenceSystem": preload("res://godot/world_systems/persistencesystem.tres"),
 		"ResearchPointRule": preload("res://godot/world_systems/researchpointrule.tres"),
+		"SelfRespawn": preload("res://godot/world_systems/selfrespawn.tres"),
 		"Settlement": preload("res://godot/world_systems/settlement.tres"),
 		"SettlementProjects": preload("res://godot/world_systems/settlementprojects.tres"),
-		"SettlementRaids": preload("res://godot/world_systems/settlementraids.tres"),
 		"SettlementSpecialties": preload("res://godot/world_systems/settlementspecialties.tres"),
-		"SettlementUpkeep": preload("res://godot/world_systems/settlementupkeep.tres"),
+		"Structure": preload("res://godot/world_systems/structure.tres"),
+		"StructureDurability": preload("res://godot/world_systems/structuredurability.tres"),
 		"TradeSystem": preload("res://godot/world_systems/tradesystem.tres"),
 		"WaystoneTravel": preload("res://godot/world_systems/waystonetravel.tres"),
 		"WeatherSystem": preload("res://godot/world_systems/weathersystem.tres"),
+		"WorkSkills": preload("res://godot/world_systems/workskills.tres"),
 		"WorldSystem": preload("res://godot/world_systems/worldsystem.tres")
+}
+
+const WRITINGS: Dictionary = {
+		"Blueprint": preload("res://godot/writings/blueprint.tres"),
+		"Book": preload("res://godot/writings/book.tres")
 }
 

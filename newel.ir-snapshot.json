@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:4670224f60646316f372784b5dff77ed6c1f20b3fdf9529f24ecd32611c45c7a",
+  "schemaHash": "sha256:d0839066284f2bdef6f4e2e006d5506bebc28f379b6b6854f6fe06fe44ed3ba4",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -785,7 +785,7 @@
         "tags": [
           "decision"
         ],
-        "description": "Settlements claim land around a Hearth, with a radius that only grows with tier. A claim never covers another settlement's land (hearths are at least minSeparation apart), and an abandoned settlement's claim decays until the land is free. Claim and role rules change only through GovernanceSystem proposals.",
+        "description": "Settlements claim land around a Hearth, with a radius that only grows with tier. A claim never covers another settlement's land (hearths are at least minSeparation apart), and an abandoned settlement's claim decays until the land is free. Claim and role rules change only through GovernanceSystem proposals. Superseded 2026-10-31 by ClansAndOwnedStructures: there is no claim area (Phase 203).",
         "goal": "Let players hold land together without letting an inactive claim lock the world forever (TheWorldIsPersistent, CivilizationIsPlayerMade)",
         "fields": {
           "id": {
@@ -805,7 +805,8 @@
               "accepted",
               "superseded"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "superseded"
           }
         },
         "relations": {
@@ -895,7 +896,7 @@
         "tags": [
           "decision"
         ],
-        "description": "Raids on a settlement are fair: every raid is warned (SettlementRaids.warningSeconds > 0), none starts unless a member is online inside the claim (offlineProtection), and a lost raid takes at most a capped share of the stockpile and of unfinished project labour, never the claim or finished structures. Raids come from creatures only. Upkeep is a per-tier cost from the stockpile that never falls as the tier rises; unpaid upkeep suspends project effects and never shrinks the claim, which follows only the activity-based abandonment rule (SettlementClaimAndDecay).",
+        "description": "Superseded 2026-10-31 by SkillsGrowFromWork: raids are deferred and upkeep is removed (Phase 203). It read: raids on a settlement are fair: every raid is warned (SettlementRaids.warningSeconds > 0), none starts unless a member is online inside the claim (offlineProtection), and a lost raid takes at most a capped share of the stockpile and of unfinished project labour, never the claim or finished structures. Raids come from creatures only. Upkeep is a per-tier cost from the stockpile that never falls as the tier rises; unpaid upkeep suspends project effects and never shrinks the claim, which follows only the activity-based abandonment rule (SettlementClaimAndDecay).",
         "goal": "Give a village something to defend and to keep paying for without punishing players for logging off (TheWorldIsPersistent, EverythingHasTradeoffs, Phase 197)",
         "fields": {
           "id": {
@@ -915,19 +916,15 @@
               "accepted",
               "superseded"
             ],
-            "pii": false
+            "pii": false,
+            "defaultValue": "superseded"
           }
         },
         "relations": {
-          "raids": {
-            "name": "raids",
+          "replacedBy": {
+            "name": "replacedBy",
             "kind": "hasOne",
-            "target": "SettlementRaids"
-          },
-          "upkeep": {
-            "name": "upkeep",
-            "kind": "hasOne",
-            "target": "SettlementUpkeep"
+            "target": "SkillsGrowFromWork"
           }
         },
         "behaviors": {
@@ -985,6 +982,636 @@
               "guards": [
                 "Community vote must reach quorum",
                 "Warning, offline protection, loss caps and upkeep costs live in the SettlementRaids and SettlementUpkeep rules"
+              ],
+              "effects": []
+            },
+            {
+              "from": [
+                "proposed",
+                "accepted"
+              ],
+              "to": "superseded",
+              "trigger": "supersede",
+              "guards": [
+                "A replacement decision must be accepted first"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "ClansAndOwnedStructures": {
+        "name": "ClansAndOwnedStructures",
+        "tags": [
+          "decision"
+        ],
+        "description": "A player founds a clan by choosing its name and invites other players; a clan has any number of members, a player belongs to at most one, and every member sees every other member's skills. A clan has no hearth: its settlements are simply where its buildings stand. Whatever a player builds is assigned to their clan or kept private, and only its owner edits it, wherever it stands. A member's private house inside their clan's circles stays theirs to edit, but any member of that clan may enter or dismantle it. Owners of touching buildings keep their own blocks. There is no claim area: around each building a circle, larger for a larger building, where no creature spawns and where only that clan's members may build. Saved settlements become clans with the same name, members and roles.",
+        "goal": "Let players hold what they build without a land claim locking the world (CivilizationIsPlayerMade, FreedomComesFirst, Phase 203)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "status": {
+            "name": "status",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "proposed",
+              "accepted",
+              "superseded"
+            ],
+            "pii": false,
+            "defaultValue": "accepted"
+          },
+          "decided": {
+            "name": "decided",
+            "type": "string",
+            "description": "The day the owner decided it",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "2026-10-31"
+          }
+        },
+        "relations": {
+          "clan": {
+            "name": "clan",
+            "kind": "hasOne",
+            "target": "Clan"
+          },
+          "structure": {
+            "name": "structure",
+            "kind": "hasOne",
+            "target": "Structure"
+          },
+          "replaces": {
+            "name": "replaces",
+            "kind": "hasOne",
+            "target": "SettlementClaimAndDecay"
+          }
+        },
+        "behaviors": {
+          "accept": {
+            "name": "accept",
+            "description": "Ratify this decision",
+            "rules": [
+              "Decided by the project owner"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "supersede": {
+            "name": "supersede",
+            "description": "Mark this decision as replaced by a newer one",
+            "rules": [
+              "A replacement decision must be accepted first"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "status",
+          "initial": "accepted",
+          "states": {
+            "proposed": {
+              "name": "proposed",
+              "description": "Decision is under community discussion",
+              "terminal": false
+            },
+            "accepted": {
+              "name": "accepted",
+              "description": "Decision is ratified and in effect",
+              "terminal": false
+            },
+            "superseded": {
+              "name": "superseded",
+              "description": "Decision has been replaced by a newer decision",
+              "terminal": true
+            }
+          },
+          "transitions": [
+            {
+              "from": "proposed",
+              "to": "accepted",
+              "trigger": "accept",
+              "guards": [
+                "Decided by the project owner"
+              ],
+              "effects": []
+            },
+            {
+              "from": [
+                "proposed",
+                "accepted"
+              ],
+              "to": "superseded",
+              "trigger": "supersede",
+              "guards": [
+                "A replacement decision must be accepted first"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "DurabilityAndDestruction": {
+        "name": "DurabilityAndDestruction",
+        "tags": [
+          "decision"
+        ],
+        "description": "Every material has a durability, higher for rarer materials, that falls with weather, time and damage. Anyone may destroy a building, but only with effort that depends on its durability and the method, and very slowly while every owner is offline. A destroyer gets nothing from a building, but a destroyed chest spills its contents to anyone. A building stays its owner's until it is dismantled or destroyed. Dismantling returns materials by durability and building skill: all of them at full durability with a very high skill, half at full durability with no skill, less as durability falls. The owner repairs with part of the build materials. Any player may kill their own character to respawn, so no one can be trapped inside another's building.",
+        "goal": "Make building meaningful with real risk, without letting a griefer take a house in one evening (DestructibleBuildings, TheWorldIsPersistent, Phase 203)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "status": {
+            "name": "status",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "proposed",
+              "accepted",
+              "superseded"
+            ],
+            "pii": false,
+            "defaultValue": "accepted"
+          },
+          "decided": {
+            "name": "decided",
+            "type": "string",
+            "description": "The day the owner decided it",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "2026-10-31"
+          }
+        },
+        "relations": {
+          "durability": {
+            "name": "durability",
+            "kind": "hasOne",
+            "target": "StructureDurability"
+          },
+          "respawn": {
+            "name": "respawn",
+            "kind": "hasOne",
+            "target": "SelfRespawn"
+          },
+          "chests": {
+            "name": "chests",
+            "kind": "hasOne",
+            "target": "ChestsAndDoors"
+          }
+        },
+        "behaviors": {
+          "accept": {
+            "name": "accept",
+            "description": "Ratify this decision",
+            "rules": [
+              "Decided by the project owner"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "supersede": {
+            "name": "supersede",
+            "description": "Mark this decision as replaced by a newer one",
+            "rules": [
+              "A replacement decision must be accepted first"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "status",
+          "initial": "accepted",
+          "states": {
+            "proposed": {
+              "name": "proposed",
+              "description": "Decision is under community discussion",
+              "terminal": false
+            },
+            "accepted": {
+              "name": "accepted",
+              "description": "Decision is ratified and in effect",
+              "terminal": false
+            },
+            "superseded": {
+              "name": "superseded",
+              "description": "Decision has been replaced by a newer decision",
+              "terminal": true
+            }
+          },
+          "transitions": [
+            {
+              "from": "proposed",
+              "to": "accepted",
+              "trigger": "accept",
+              "guards": [
+                "Decided by the project owner"
+              ],
+              "effects": []
+            },
+            {
+              "from": [
+                "proposed",
+                "accepted"
+              ],
+              "to": "superseded",
+              "trigger": "supersede",
+              "guards": [
+                "A replacement decision must be accepted first"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "ResearchSharedByWriting": {
+        "name": "ResearchSharedByWriting",
+        "tags": [
+          "decision"
+        ],
+        "description": "Research is per player and is shared only by writing: a Book teaches one researched technology and a Blueprint one structure or station recipe. Only a player who knows the content can write one, at a material cost, and reading never consumes it, so it can be read again and lent. Research never draws from a shared stockpile.",
+        "goal": "Keep knowledge a personal achievement that players trade and teach (KnowledgeIsProgression, Phase 203)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "status": {
+            "name": "status",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "proposed",
+              "accepted",
+              "superseded"
+            ],
+            "pii": false,
+            "defaultValue": "accepted"
+          },
+          "decided": {
+            "name": "decided",
+            "type": "string",
+            "description": "The day the owner decided it",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "2026-10-31"
+          }
+        },
+        "relations": {
+          "book": {
+            "name": "book",
+            "kind": "hasOne",
+            "target": "Book"
+          },
+          "blueprint": {
+            "name": "blueprint",
+            "kind": "hasOne",
+            "target": "Blueprint"
+          }
+        },
+        "behaviors": {
+          "accept": {
+            "name": "accept",
+            "description": "Ratify this decision",
+            "rules": [
+              "Decided by the project owner"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "supersede": {
+            "name": "supersede",
+            "description": "Mark this decision as replaced by a newer one",
+            "rules": [
+              "A replacement decision must be accepted first"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "status",
+          "initial": "accepted",
+          "states": {
+            "proposed": {
+              "name": "proposed",
+              "description": "Decision is under community discussion",
+              "terminal": false
+            },
+            "accepted": {
+              "name": "accepted",
+              "description": "Decision is ratified and in effect",
+              "terminal": false
+            },
+            "superseded": {
+              "name": "superseded",
+              "description": "Decision has been replaced by a newer decision",
+              "terminal": true
+            }
+          },
+          "transitions": [
+            {
+              "from": "proposed",
+              "to": "accepted",
+              "trigger": "accept",
+              "guards": [
+                "Decided by the project owner"
+              ],
+              "effects": []
+            },
+            {
+              "from": [
+                "proposed",
+                "accepted"
+              ],
+              "to": "superseded",
+              "trigger": "supersede",
+              "guards": [
+                "A replacement decision must be accepted first"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "SkillsGrowFromWork": {
+        "name": "SkillsGrowFromWork",
+        "tags": [
+          "decision"
+        ],
+        "description": "Crafting, gathering, building, dismantling and repairing grow the worker's own skill for that kind of work (sewing makes you a better sewer). Nothing a member does is progress for a clan: clan projects have no labour and are complete once their materials are in. Clan tiers come from the buildings a clan owns and their material rarity, and give nothing yet. Raids are not wanted now (deferred) and upkeep is removed. Clan skills for top contributors and elder-only buildings come later.",
+        "goal": "Make a specialty the result of how someone plays, and a clan the sum of its members (EverythingHasTradeoffs, Phase 203)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "status": {
+            "name": "status",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "proposed",
+              "accepted",
+              "superseded"
+            ],
+            "pii": false,
+            "defaultValue": "accepted"
+          },
+          "decided": {
+            "name": "decided",
+            "type": "string",
+            "description": "The day the owner decided it",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "2026-10-31"
+          }
+        },
+        "relations": {
+          "work": {
+            "name": "work",
+            "kind": "hasOne",
+            "target": "WorkSkills"
+          },
+          "tiers": {
+            "name": "tiers",
+            "kind": "hasOne",
+            "target": "ClanTiers"
+          },
+          "replaces": {
+            "name": "replaces",
+            "kind": "hasOne",
+            "target": "SettlementRaidsAndUpkeep"
+          }
+        },
+        "behaviors": {
+          "accept": {
+            "name": "accept",
+            "description": "Ratify this decision",
+            "rules": [
+              "Decided by the project owner"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "supersede": {
+            "name": "supersede",
+            "description": "Mark this decision as replaced by a newer one",
+            "rules": [
+              "A replacement decision must be accepted first"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "status",
+          "initial": "accepted",
+          "states": {
+            "proposed": {
+              "name": "proposed",
+              "description": "Decision is under community discussion",
+              "terminal": false
+            },
+            "accepted": {
+              "name": "accepted",
+              "description": "Decision is ratified and in effect",
+              "terminal": false
+            },
+            "superseded": {
+              "name": "superseded",
+              "description": "Decision has been replaced by a newer decision",
+              "terminal": true
+            }
+          },
+          "transitions": [
+            {
+              "from": "proposed",
+              "to": "accepted",
+              "trigger": "accept",
+              "guards": [
+                "Decided by the project owner"
+              ],
+              "effects": []
+            },
+            {
+              "from": [
+                "proposed",
+                "accepted"
+              ],
+              "to": "superseded",
+              "trigger": "supersede",
+              "guards": [
+                "A replacement decision must be accepted first"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "EarthScaleHeights": {
+        "name": "EarthScaleHeights",
+        "tags": [
+          "decision"
+        ],
+        "description": "Peaks reach about 8,850 m (Everest is 8,849 m) and buildings up to 163 floors of 3 m. Every building follows the floor and shape limits of its weakest load-bearing material: wood 2 floors, stone 5, concrete 10, and higher classes up to 163. Unusual shapes (long overhangs, wide unsupported spans, slender towers) need rarer materials. Builds that exist when the rules land are never collapsed.",
+        "goal": "Let players build as tall as Earth, as far as their materials allow (BelievableNotRealistic, Phase 203)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "status": {
+            "name": "status",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "proposed",
+              "accepted",
+              "superseded"
+            ],
+            "pii": false,
+            "defaultValue": "accepted"
+          },
+          "decided": {
+            "name": "decided",
+            "type": "string",
+            "description": "The day the owner decided it",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "2026-10-31"
+          }
+        },
+        "relations": {
+          "world": {
+            "name": "world",
+            "kind": "hasOne",
+            "target": "WorldSystem"
+          },
+          "structure": {
+            "name": "structure",
+            "kind": "hasOne",
+            "target": "Structure"
+          }
+        },
+        "behaviors": {
+          "accept": {
+            "name": "accept",
+            "description": "Ratify this decision",
+            "rules": [
+              "Decided by the project owner"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "supersede": {
+            "name": "supersede",
+            "description": "Mark this decision as replaced by a newer one",
+            "rules": [
+              "A replacement decision must be accepted first"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "status",
+          "initial": "accepted",
+          "states": {
+            "proposed": {
+              "name": "proposed",
+              "description": "Decision is under community discussion",
+              "terminal": false
+            },
+            "accepted": {
+              "name": "accepted",
+              "description": "Decision is ratified and in effect",
+              "terminal": false
+            },
+            "superseded": {
+              "name": "superseded",
+              "description": "Decision has been replaced by a newer decision",
+              "terminal": true
+            }
+          },
+          "transitions": [
+            {
+              "from": "proposed",
+              "to": "accepted",
+              "trigger": "accept",
+              "guards": [
+                "Decided by the project owner"
               ],
               "effects": []
             },
@@ -1652,6 +2279,48 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": false
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "description": "How rare the material is (the item rarity scale); clan tiers weigh buildings by it (Phase 203)",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "common"
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Base durability of a placed block; weather, age and damage lower it (StructureDurability, Phase 203). Crude iron: a frame of it carries ten floors.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 300
+          },
+          "structuralClass": {
+            "name": "structuralClass",
+            "type": "enum",
+            "description": "Structural class: the most floors a structure carrying this material may have (Structure.classes, Phase 203)",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "earth",
+              "wood",
+              "stone",
+              "concrete",
+              "steel",
+              "composite"
+            ],
+            "pii": false,
+            "defaultValue": "concrete"
           }
         },
         "relations": {},
@@ -1821,6 +2490,48 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": false
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "description": "How rare the material is (the item rarity scale); clan tiers weigh buildings by it (Phase 203)",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "epic"
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Base durability of a placed block; weather, age and damage lower it (StructureDurability, Phase 203). An alloy far stronger than ferrite.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 800
+          },
+          "structuralClass": {
+            "name": "structuralClass",
+            "type": "enum",
+            "description": "Structural class: the most floors a structure carrying this material may have (Structure.classes, Phase 203)",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "earth",
+              "wood",
+              "stone",
+              "concrete",
+              "steel",
+              "composite"
+            ],
+            "pii": false,
+            "defaultValue": "steel"
           }
         },
         "relations": {},
@@ -2005,6 +2716,48 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": false
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "description": "How rare the material is (the item rarity scale); clan tiers weigh buildings by it (Phase 203)",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "rare"
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Base durability of a placed block; weather, age and damage lower it (StructureDurability, Phase 203). Light and ley-touched; strong, but no frame metal.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 500
+          },
+          "structuralClass": {
+            "name": "structuralClass",
+            "type": "enum",
+            "description": "Structural class: the most floors a structure carrying this material may have (Structure.classes, Phase 203)",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "earth",
+              "wood",
+              "stone",
+              "concrete",
+              "steel",
+              "composite"
+            ],
+            "pii": false,
+            "defaultValue": "stone"
           }
         },
         "relations": {},
@@ -2204,6 +2957,48 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": false
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "description": "How rare the material is (the item rarity scale); clan tiers weigh buildings by it (Phase 203)",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "legendary"
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Base durability of a placed block; weather, age and damage lower it (StructureDurability, Phase 203). The rarest ore: nearly unbreakable, but brittle in a frame.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1200
+          },
+          "structuralClass": {
+            "name": "structuralClass",
+            "type": "enum",
+            "description": "Structural class: the most floors a structure carrying this material may have (Structure.classes, Phase 203)",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "earth",
+              "wood",
+              "stone",
+              "concrete",
+              "steel",
+              "composite"
+            ],
+            "pii": false,
+            "defaultValue": "stone"
           }
         },
         "relations": {},
@@ -2375,6 +3170,48 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": false
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "description": "How rare the material is (the item rarity scale); clan tiers weigh buildings by it (Phase 203)",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "common"
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Base durability of a placed block; weather, age and damage lower it (StructureDurability, Phase 203). The common building timber.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100
+          },
+          "structuralClass": {
+            "name": "structuralClass",
+            "type": "enum",
+            "description": "Structural class: the most floors a structure carrying this material may have (Structure.classes, Phase 203)",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "earth",
+              "wood",
+              "stone",
+              "concrete",
+              "steel",
+              "composite"
+            ],
+            "pii": false,
+            "defaultValue": "wood"
           }
         },
         "relations": {},
@@ -2544,6 +3381,48 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": false
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "description": "How rare the material is (the item rarity scale); clan tiers weigh buildings by it (Phase 203)",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "uncommon"
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Base durability of a placed block; weather, age and damage lower it (StructureDurability, Phase 203). Flexible fibre wood from the twilight groves.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 320
+          },
+          "structuralClass": {
+            "name": "structuralClass",
+            "type": "enum",
+            "description": "Structural class: the most floors a structure carrying this material may have (Structure.classes, Phase 203)",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "earth",
+              "wood",
+              "stone",
+              "concrete",
+              "steel",
+              "composite"
+            ],
+            "pii": false,
+            "defaultValue": "wood"
           },
           "isLuminous": {
             "name": "isLuminous",
@@ -2723,6 +3602,48 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": false
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "description": "How rare the material is (the item rarity scale); clan tiers weigh buildings by it (Phase 203)",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "common"
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Base durability of a placed block; weather, age and damage lower it (StructureDurability, Phase 203). The standard building stone.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 200
+          },
+          "structuralClass": {
+            "name": "structuralClass",
+            "type": "enum",
+            "description": "Structural class: the most floors a structure carrying this material may have (Structure.classes, Phase 203)",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "earth",
+              "wood",
+              "stone",
+              "concrete",
+              "steel",
+              "composite"
+            ],
+            "pii": false,
+            "defaultValue": "stone"
           }
         },
         "relations": {},
@@ -2892,6 +3813,48 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": false
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "description": "How rare the material is (the item rarity scale); clan tiers weigh buildings by it (Phase 203)",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "uncommon"
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Base durability of a placed block; weather, age and damage lower it (StructureDurability, Phase 203). Brittle, but rarer than ashite.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 340
+          },
+          "structuralClass": {
+            "name": "structuralClass",
+            "type": "enum",
+            "description": "Structural class: the most floors a structure carrying this material may have (Structure.classes, Phase 203)",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "earth",
+              "wood",
+              "stone",
+              "concrete",
+              "steel",
+              "composite"
+            ],
+            "pii": false,
+            "defaultValue": "stone"
           }
         },
         "relations": {},
@@ -3031,6 +3994,48 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": false
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "description": "How rare the material is (the item rarity scale); clan tiers weigh buildings by it (Phase 203)",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "common"
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Base durability of a placed block; weather, age and damage lower it (StructureDurability, Phase 203). Loose cover.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 20
+          },
+          "structuralClass": {
+            "name": "structuralClass",
+            "type": "enum",
+            "description": "Structural class: the most floors a structure carrying this material may have (Structure.classes, Phase 203)",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "earth",
+              "wood",
+              "stone",
+              "concrete",
+              "steel",
+              "composite"
+            ],
+            "pii": false,
+            "defaultValue": "earth"
           }
         },
         "relations": {},
@@ -3100,6 +4105,48 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": true
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "description": "How rare the material is (the item rarity scale); clan tiers weigh buildings by it (Phase 203)",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "common"
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Base durability of a placed block; weather, age and damage lower it (StructureDurability, Phase 203). Packed earth.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 30
+          },
+          "structuralClass": {
+            "name": "structuralClass",
+            "type": "enum",
+            "description": "Structural class: the most floors a structure carrying this material may have (Structure.classes, Phase 203)",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "earth",
+              "wood",
+              "stone",
+              "concrete",
+              "steel",
+              "composite"
+            ],
+            "pii": false,
+            "defaultValue": "earth"
           }
         },
         "relations": {},
@@ -3169,6 +4216,48 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": true
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "description": "How rare the material is (the item rarity scale); clan tiers weigh buildings by it (Phase 203)",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "common"
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Base durability of a placed block; weather, age and damage lower it (StructureDurability, Phase 203). Settles when undermined.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 15
+          },
+          "structuralClass": {
+            "name": "structuralClass",
+            "type": "enum",
+            "description": "Structural class: the most floors a structure carrying this material may have (Structure.classes, Phase 203)",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "earth",
+              "wood",
+              "stone",
+              "concrete",
+              "steel",
+              "composite"
+            ],
+            "pii": false,
+            "defaultValue": "earth"
           }
         },
         "relations": {},
@@ -3238,6 +4327,48 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": true
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "description": "How rare the material is (the item rarity scale); clan tiers weigh buildings by it (Phase 203)",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "common"
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Base durability of a placed block; weather, age and damage lower it (StructureDurability, Phase 203). Melts and packs.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 10
+          },
+          "structuralClass": {
+            "name": "structuralClass",
+            "type": "enum",
+            "description": "Structural class: the most floors a structure carrying this material may have (Structure.classes, Phase 203)",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "earth",
+              "wood",
+              "stone",
+              "concrete",
+              "steel",
+              "composite"
+            ],
+            "pii": false,
+            "defaultValue": "earth"
           }
         },
         "relations": {},
@@ -6466,11 +7597,20 @@
           "maxHeight": {
             "name": "maxHeight",
             "type": "decimal",
-            "description": "Highest terrain surface, in metres: the tallest peak (Phase 51)",
+            "description": "Highest terrain surface, in metres: the tallest peak, about Everest's 8,849 m (Phase 51; Earth-scale in Phase 203, generated from Phase 211 — until then the runtime keeps 512 m)",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
-            "defaultValue": 512
+            "defaultValue": 8850
+          },
+          "buildCeiling": {
+            "name": "buildCeiling",
+            "type": "decimal",
+            "description": "Highest point a block may be placed, in metres: above the tallest peak plus the tallest structure (Structure.maxFloors × floorHeight; Phase 203, read by the runtime from Phase 211, which keeps VoxelConsts.MAX_HEIGHT until then)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 9400
           },
           "oceanShare": {
             "name": "oceanShare",
@@ -10935,6 +12075,619 @@
               "trigger": "advanceTier",
               "guards": [
                 "XP threshold for the target tier must be met"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "Building": {
+        "name": "Building",
+        "tags": [
+          "skill"
+        ],
+        "description": "Putting up and taking down structures: placing blocks, dismantling them cleanly and repairing worn ones. A higher level gets more back when dismantling (StructureDurability.dismantle) and grows from every block placed, dismantled or repaired.",
+        "goal": "Reward builders and make careful dismantling a skill rather than a free refund",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "tier": {
+            "name": "tier",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "novice",
+              "apprentice",
+              "journeyman",
+              "expert",
+              "master"
+            ],
+            "pii": false
+          },
+          "xpCurve": {
+            "name": "xpCurve",
+            "type": "enum",
+            "description": "XP required per tier",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "linear",
+              "quadratic",
+              "exponential"
+            ],
+            "pii": false,
+            "defaultValue": "quadratic"
+          },
+          "maxLevel": {
+            "name": "maxLevel",
+            "type": "integer",
+            "description": "Maximum XP level within a tier before tier advance is required; the same as levelCap",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 10
+          },
+          "category": {
+            "name": "category",
+            "type": "enum",
+            "description": "Skill domain: crafting",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "combat",
+              "crafting",
+              "magic",
+              "exploration",
+              "social",
+              "survival"
+            ],
+            "pii": false,
+            "defaultValue": "crafting"
+          },
+          "levelCap": {
+            "name": "levelCap",
+            "type": "integer",
+            "description": "Highest Building level (WorkSkills.curves)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 10
+          },
+          "xpToLevel": {
+            "name": "xpToLevel",
+            "type": "json",
+            "description": "Cumulative XP needed to reach each level, index = level (WorkSkills.curves)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              0,
+              50,
+              200,
+              450,
+              800,
+              1250,
+              1800,
+              2450,
+              3200,
+              4050,
+              5000
+            ]
+          }
+        },
+        "relations": {},
+        "behaviors": {
+          "advanceTier": {
+            "name": "advanceTier",
+            "description": "Progress to the next mastery tier through accumulated building XP",
+            "rules": [
+              "XP threshold for the target tier must be met",
+              "XP comes only from the work WorkSkills maps to Building"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "dismantle": {
+            "name": "dismantle",
+            "description": "Take a structure apart for part of its materials",
+            "rules": [
+              "The share returned rises with Building level and falls with durability (StructureDurability.dismantle)"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "tier",
+          "initial": "novice",
+          "states": {
+            "novice": {
+              "name": "novice",
+              "description": "Entry-level practitioner; basic techniques only",
+              "terminal": false
+            },
+            "apprentice": {
+              "name": "apprentice",
+              "description": "Growing competence; intermediate techniques unlock",
+              "terminal": false
+            },
+            "journeyman": {
+              "name": "journeyman",
+              "description": "Solid practitioner; advanced techniques and profession gates open",
+              "terminal": false
+            },
+            "expert": {
+              "name": "expert",
+              "description": "Near-mastery; most advanced abilities available",
+              "terminal": false
+            },
+            "master": {
+              "name": "master",
+              "description": "Complete mastery; all abilities unlocked",
+              "terminal": true
+            }
+          },
+          "transitions": [
+            {
+              "from": "novice",
+              "to": "apprentice",
+              "trigger": "advanceTier",
+              "guards": [
+                "XP threshold for the target tier must be met",
+                "XP comes only from the work WorkSkills maps to Building"
+              ],
+              "effects": []
+            },
+            {
+              "from": "apprentice",
+              "to": "journeyman",
+              "trigger": "advanceTier",
+              "guards": [
+                "XP threshold for the target tier must be met",
+                "XP comes only from the work WorkSkills maps to Building"
+              ],
+              "effects": []
+            },
+            {
+              "from": "journeyman",
+              "to": "expert",
+              "trigger": "advanceTier",
+              "guards": [
+                "XP threshold for the target tier must be met",
+                "XP comes only from the work WorkSkills maps to Building"
+              ],
+              "effects": []
+            },
+            {
+              "from": "expert",
+              "to": "master",
+              "trigger": "advanceTier",
+              "guards": [
+                "XP threshold for the target tier must be met",
+                "XP comes only from the work WorkSkills maps to Building"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "Tailoring": {
+        "name": "Tailoring",
+        "tags": [
+          "skill"
+        ],
+        "description": "Sewing hides, fibre and cloth into clothing, bags and soft furnishings. Grows from every tailoring craft.",
+        "goal": "Give sewing its own craft, so a clan has a best sewer to ask",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "tier": {
+            "name": "tier",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "novice",
+              "apprentice",
+              "journeyman",
+              "expert",
+              "master"
+            ],
+            "pii": false
+          },
+          "xpCurve": {
+            "name": "xpCurve",
+            "type": "enum",
+            "description": "XP required per tier",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "linear",
+              "quadratic",
+              "exponential"
+            ],
+            "pii": false,
+            "defaultValue": "quadratic"
+          },
+          "maxLevel": {
+            "name": "maxLevel",
+            "type": "integer",
+            "description": "Maximum XP level within a tier before tier advance is required; the same as levelCap",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 10
+          },
+          "category": {
+            "name": "category",
+            "type": "enum",
+            "description": "Skill domain: crafting",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "combat",
+              "crafting",
+              "magic",
+              "exploration",
+              "social",
+              "survival"
+            ],
+            "pii": false,
+            "defaultValue": "crafting"
+          },
+          "levelCap": {
+            "name": "levelCap",
+            "type": "integer",
+            "description": "Highest Tailoring level (WorkSkills.curves)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 10
+          },
+          "xpToLevel": {
+            "name": "xpToLevel",
+            "type": "json",
+            "description": "Cumulative XP needed to reach each level, index = level (WorkSkills.curves)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              0,
+              40,
+              160,
+              360,
+              640,
+              1000,
+              1440,
+              1960,
+              2560,
+              3240,
+              4000
+            ]
+          }
+        },
+        "relations": {},
+        "behaviors": {
+          "advanceTier": {
+            "name": "advanceTier",
+            "description": "Progress to the next mastery tier through accumulated tailoring XP",
+            "rules": [
+              "XP threshold for the target tier must be met",
+              "XP comes only from the work WorkSkills maps to Tailoring"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "sew": {
+            "name": "sew",
+            "description": "Sew a garment or bag from hides, fibre or cloth",
+            "rules": [
+              "Requires the tailoring recipe and its materials"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "tier",
+          "initial": "novice",
+          "states": {
+            "novice": {
+              "name": "novice",
+              "description": "Entry-level practitioner; basic techniques only",
+              "terminal": false
+            },
+            "apprentice": {
+              "name": "apprentice",
+              "description": "Growing competence; intermediate techniques unlock",
+              "terminal": false
+            },
+            "journeyman": {
+              "name": "journeyman",
+              "description": "Solid practitioner; advanced techniques and profession gates open",
+              "terminal": false
+            },
+            "expert": {
+              "name": "expert",
+              "description": "Near-mastery; most advanced abilities available",
+              "terminal": false
+            },
+            "master": {
+              "name": "master",
+              "description": "Complete mastery; all abilities unlocked",
+              "terminal": true
+            }
+          },
+          "transitions": [
+            {
+              "from": "novice",
+              "to": "apprentice",
+              "trigger": "advanceTier",
+              "guards": [
+                "XP threshold for the target tier must be met",
+                "XP comes only from the work WorkSkills maps to Tailoring"
+              ],
+              "effects": []
+            },
+            {
+              "from": "apprentice",
+              "to": "journeyman",
+              "trigger": "advanceTier",
+              "guards": [
+                "XP threshold for the target tier must be met",
+                "XP comes only from the work WorkSkills maps to Tailoring"
+              ],
+              "effects": []
+            },
+            {
+              "from": "journeyman",
+              "to": "expert",
+              "trigger": "advanceTier",
+              "guards": [
+                "XP threshold for the target tier must be met",
+                "XP comes only from the work WorkSkills maps to Tailoring"
+              ],
+              "effects": []
+            },
+            {
+              "from": "expert",
+              "to": "master",
+              "trigger": "advanceTier",
+              "guards": [
+                "XP threshold for the target tier must be met",
+                "XP comes only from the work WorkSkills maps to Tailoring"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "Lockpicking": {
+        "name": "Lockpicking",
+        "tags": [
+          "skill"
+        ],
+        "description": "Opening a locked chest or door without breaking it. A higher level picks harder locks faster and breaks fewer tools; a lock's difficulty comes from its material and technology (ChestsAndDoors.locks).",
+        "goal": "Make a locked chest a puzzle to work rather than an absolute wall",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "tier": {
+            "name": "tier",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "novice",
+              "apprentice",
+              "journeyman",
+              "expert",
+              "master"
+            ],
+            "pii": false
+          },
+          "xpCurve": {
+            "name": "xpCurve",
+            "type": "enum",
+            "description": "XP required per tier",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "linear",
+              "quadratic",
+              "exponential"
+            ],
+            "pii": false,
+            "defaultValue": "quadratic"
+          },
+          "maxLevel": {
+            "name": "maxLevel",
+            "type": "integer",
+            "description": "Maximum XP level within a tier before tier advance is required; the same as levelCap",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 10
+          },
+          "category": {
+            "name": "category",
+            "type": "enum",
+            "description": "Skill domain: exploration",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "combat",
+              "crafting",
+              "magic",
+              "exploration",
+              "social",
+              "survival"
+            ],
+            "pii": false,
+            "defaultValue": "exploration"
+          },
+          "levelCap": {
+            "name": "levelCap",
+            "type": "integer",
+            "description": "Highest Lockpicking level (WorkSkills.curves)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 10
+          },
+          "xpToLevel": {
+            "name": "xpToLevel",
+            "type": "json",
+            "description": "Cumulative XP needed to reach each level, index = level (WorkSkills.curves)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              0,
+              60,
+              240,
+              540,
+              960,
+              1500,
+              2160,
+              2940,
+              3840,
+              4860,
+              6000
+            ]
+          }
+        },
+        "relations": {},
+        "behaviors": {
+          "advanceTier": {
+            "name": "advanceTier",
+            "description": "Progress to the next mastery tier through accumulated lockpicking XP",
+            "rules": [
+              "XP threshold for the target tier must be met",
+              "XP comes only from the work WorkSkills maps to Lockpicking"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "pickLock": {
+            "name": "pickLock",
+            "description": "Open a locked chest or door once with a lockpick",
+            "rules": [
+              "Takes longer for a harder lock (ChestsAndDoors.locks)",
+              "A failed pick can break the tool, and the owner is told"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "tier",
+          "initial": "novice",
+          "states": {
+            "novice": {
+              "name": "novice",
+              "description": "Entry-level practitioner; basic techniques only",
+              "terminal": false
+            },
+            "apprentice": {
+              "name": "apprentice",
+              "description": "Growing competence; intermediate techniques unlock",
+              "terminal": false
+            },
+            "journeyman": {
+              "name": "journeyman",
+              "description": "Solid practitioner; advanced techniques and profession gates open",
+              "terminal": false
+            },
+            "expert": {
+              "name": "expert",
+              "description": "Near-mastery; most advanced abilities available",
+              "terminal": false
+            },
+            "master": {
+              "name": "master",
+              "description": "Complete mastery; all abilities unlocked",
+              "terminal": true
+            }
+          },
+          "transitions": [
+            {
+              "from": "novice",
+              "to": "apprentice",
+              "trigger": "advanceTier",
+              "guards": [
+                "XP threshold for the target tier must be met",
+                "XP comes only from the work WorkSkills maps to Lockpicking"
+              ],
+              "effects": []
+            },
+            {
+              "from": "apprentice",
+              "to": "journeyman",
+              "trigger": "advanceTier",
+              "guards": [
+                "XP threshold for the target tier must be met",
+                "XP comes only from the work WorkSkills maps to Lockpicking"
+              ],
+              "effects": []
+            },
+            {
+              "from": "journeyman",
+              "to": "expert",
+              "trigger": "advanceTier",
+              "guards": [
+                "XP threshold for the target tier must be met",
+                "XP comes only from the work WorkSkills maps to Lockpicking"
+              ],
+              "effects": []
+            },
+            {
+              "from": "expert",
+              "to": "master",
+              "trigger": "advanceTier",
+              "guards": [
+                "XP threshold for the target tier must be met",
+                "XP comes only from the work WorkSkills maps to Lockpicking"
               ],
               "effects": []
             }
@@ -21935,20 +23688,11 @@
                   "item": "Ferrite",
                   "quantity": 4
                 }
-              ],
-              "researchSite": {
-                "station": "Hearth",
-                "scope": "settlement"
-              }
+              ]
             }
           }
         },
         "relations": {
-          "settlementHearth": {
-            "name": "settlementHearth",
-            "kind": "hasOne",
-            "target": "Hearth"
-          },
           "unlocksRecipeFerriteIngot": {
             "name": "unlocksRecipeFerriteIngot",
             "kind": "hasOne",
@@ -21981,7 +23725,7 @@
             "description": "Commit resources to researching basic smithing",
             "rules": [
               "No prerequisites required",
-              "Research is done at a Hearth inside the player's Settlement claim (tech.researchSite)"
+              "Research is per player and can be done anywhere; it is shared only by writing a Book (Phase 203)"
             ],
             "auth": {
               "roles": [
@@ -22029,7 +23773,7 @@
               "trigger": "beginResearch",
               "guards": [
                 "No prerequisites required",
-                "Research is done at a Hearth inside the player's Settlement claim (tech.researchSite)"
+                "Research is per player and can be done anywhere; it is shared only by writing a Book (Phase 203)"
               ],
               "effects": []
             },
@@ -22115,20 +23859,11 @@
                   "item": "Ashite",
                   "quantity": 20
                 }
-              ],
-              "materialSource": {
-                "container": "Stockpile",
-                "scope": "settlement"
-              }
+              ]
             }
           }
         },
         "relations": {
-          "settlementStockpile": {
-            "name": "settlementStockpile",
-            "kind": "hasOne",
-            "target": "Stockpile"
-          },
           "requiresTechBasicSmithing": {
             "name": "requiresTechBasicSmithing",
             "kind": "hasOne",
@@ -22167,7 +23902,7 @@
             "rules": [
               "Requires TechBasicSmithing: unlocked",
               "Requires Smithing: Journeyman",
-              "Requires at least twenty raw ashite ore in the settlement Stockpile (tech.materialSource)"
+              "Requires twenty raw ashite ore from the researcher's own pack"
             ],
             "auth": {
               "roles": [
@@ -22216,7 +23951,7 @@
               "guards": [
                 "Requires TechBasicSmithing: unlocked",
                 "Requires Smithing: Journeyman",
-                "Requires at least twenty raw ashite ore in the settlement Stockpile (tech.materialSource)"
+                "Requires twenty raw ashite ore from the researcher's own pack"
               ],
               "effects": []
             },
@@ -23237,7 +24972,7 @@
         "tags": [
           "world-system"
         ],
-        "description": "A player-founded place: a Hearth, a claimed circle of land, members with roles and a shared Stockpile. It grows from founded to growing to town as members and days accumulate (growing also by completed projects), members build projects together, defend against creature raids and pay upkeep, and it is abandoned when no member is active; an abandoned claim decays until the land is free again. A claim never covers another settlement's land. Rule changes are made through GovernanceSystem proposals.",
+        "description": "A player-founded village: a Hearth, members with roles and a shared Stockpile. It grows from founded to growing to town as members and days accumulate (growing also by completed projects), members build projects together, and it is abandoned when no member is active. Phase 203 replaced its claim with owned structures and clans: a settlement claims no land, and Phase 204 migrates each one to a Clan with the same name, members and roles (Clan.migration). Rule changes are made through GovernanceSystem proposals.",
         "goal": "Give players a shared place to build a civilization together (CivilizationIsPlayerMade)",
         "fields": {
           "id": {
@@ -23292,7 +25027,7 @@
           "lastActiveAt": {
             "name": "lastActiveAt",
             "type": "datetime",
-            "description": "Wall-clock time any member was last active inside the claim",
+            "description": "Wall-clock time any member was last active",
             "nullable": false,
             "primaryKey": false,
             "pii": false
@@ -23300,7 +25035,7 @@
           "rules": {
             "name": "rules",
             "type": "json",
-            "description": "Settlement rule table: { hearthStation, hearthItem, guildMaxSettlements, tiers, roles, stockpile, abandonAfterDays, decayRadiusPerDay, minSeparation } (validated at fabric load)",
+            "description": "Settlement rule table: { hearthStation, hearthItem, guildMaxSettlements, tiers, roles, stockpile, abandonAfterDays } (validated at fabric load)",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -23310,18 +25045,15 @@
               "guildMaxSettlements": 1,
               "tiers": {
                 "founded": {
-                  "claimRadius": 24,
                   "minMembers": 1,
                   "minDays": 0
                 },
                 "growing": {
-                  "claimRadius": 48,
                   "minMembers": 3,
                   "minDays": 3,
                   "minProjects": 2
                 },
                 "town": {
-                  "claimRadius": 96,
                   "minMembers": 8,
                   "minDays": 14
                 }
@@ -23363,9 +25095,7 @@
                   "capacityStacks": 160
                 }
               },
-              "abandonAfterDays": 30,
-              "decayRadiusPerDay": 2,
-              "minSeparation": 200
+              "abandonAfterDays": 30
             }
           },
           "status": {
@@ -23414,29 +25144,23 @@
             "kind": "hasOne",
             "target": "SettlementSpecialties"
           },
-          "raids": {
-            "name": "raids",
+          "clan": {
+            "name": "clan",
             "kind": "hasOne",
-            "target": "SettlementRaids"
-          },
-          "upkeep": {
-            "name": "upkeep",
-            "kind": "hasOne",
-            "target": "SettlementUpkeep"
+            "target": "Clan"
           },
           "decision": {
             "name": "decision",
             "kind": "hasOne",
-            "target": "SettlementRaidsAndUpkeep"
+            "target": "ClansAndOwnedStructures"
           }
         },
         "behaviors": {
           "found": {
             "name": "found",
-            "description": "Place a Hearth on free land to found a settlement",
+            "description": "Place a Hearth to found a settlement",
             "rules": [
               "Consumes one Hearth item (RecipeHearth)",
-              "The claim must not overlap another settlement's claim: hearths are at least minSeparation apart",
               "The placer becomes the founder and the first member"
             ],
             "auth": {
@@ -23450,7 +25174,7 @@
             "description": "Raise the tier when member count and age meet the next tier thresholds",
             "rules": [
               "minMembers of the next tier must be met, and either its minDays or (when it has one) its minProjects completed settlement projects",
-              "The claim radius and Stockpile capacity rise to the new tier's values and never shrink"
+              "Stockpile capacity rises to the new tier's value and never shrinks"
             ],
             "auth": {
               "roles": [
@@ -23462,7 +25186,6 @@
             "name": "abandon",
             "description": "Mark a settlement with no member activity for abandonAfterDays as abandoned",
             "rules": [
-              "The claim shrinks by decayRadiusPerDay each day until its land is free",
               "The Stockpile contents are kept for members who return"
             ],
             "auth": {
@@ -23473,9 +25196,9 @@
           },
           "reclaim": {
             "name": "reclaim",
-            "description": "A member returns to an abandoned settlement whose claim has not fully decayed",
+            "description": "A member returns to an abandoned settlement",
             "rules": [
-              "The settlement returns to founded and the claim regrows with the tiers"
+              "The settlement returns to founded and grows with the tiers again"
             ],
             "auth": {
               "roles": [
@@ -23488,7 +25211,7 @@
             "description": "Change a settlement rule through a governance proposal",
             "rules": [
               "A rule change is a GovernanceSystem proposal; it applies only once ratified",
-              "Claim radius, roles and withdraw limits are changed this way, never by the founder alone"
+              "Roles and withdraw limits are changed this way, never by the founder alone"
             ],
             "auth": {
               "roles": [
@@ -23496,12 +25219,13 @@
               ]
             }
           },
-          "build": {
-            "name": "build",
-            "description": "Build or break inside the claim",
+          "migrate": {
+            "name": "migrate",
+            "description": "Become a clan (Phase 204)",
             "rules": [
-              "Only roles with build permission may build inside the claim",
-              "Outsiders may not build or take inside a claim"
+              "The clan keeps the settlement's name, members and roles (Clan.migration)",
+              "The hearth is removed and returned to the founder as a Hearth item",
+              "The stockpile becomes a clan chest with the same contents"
             ],
             "auth": {
               "roles": [
@@ -23516,22 +25240,22 @@
           "states": {
             "founded": {
               "name": "founded",
-              "description": "The hearth is placed and the claim is at its smallest radius",
+              "description": "The hearth is placed and the stockpile is at its smallest",
               "terminal": false
             },
             "growing": {
               "name": "growing",
-              "description": "Enough members and days, or enough members and completed projects: the claim and stockpile have grown",
+              "description": "Enough members and days, or enough members and completed projects: the stockpile has grown",
               "terminal": false
             },
             "town": {
               "name": "town",
-              "description": "The top tier: the largest claim and stockpile",
+              "description": "The top tier: the largest stockpile",
               "terminal": false
             },
             "abandoned": {
               "name": "abandoned",
-              "description": "No member active for abandonAfterDays: the claim decays until the land is free",
+              "description": "No member active for abandonAfterDays",
               "terminal": false
             }
           },
@@ -23542,7 +25266,7 @@
               "trigger": "grow",
               "guards": [
                 "minMembers of the next tier must be met, and either its minDays or (when it has one) its minProjects completed settlement projects",
-                "The claim radius and Stockpile capacity rise to the new tier's values and never shrink"
+                "Stockpile capacity rises to the new tier's value and never shrinks"
               ],
               "effects": []
             },
@@ -23552,7 +25276,7 @@
               "trigger": "grow",
               "guards": [
                 "minMembers of the next tier must be met, and either its minDays or (when it has one) its minProjects completed settlement projects",
-                "The claim radius and Stockpile capacity rise to the new tier's values and never shrink"
+                "Stockpile capacity rises to the new tier's value and never shrinks"
               ],
               "effects": []
             },
@@ -23565,7 +25289,6 @@
               "to": "abandoned",
               "trigger": "abandon",
               "guards": [
-                "The claim shrinks by decayRadiusPerDay each day until its land is free",
                 "The Stockpile contents are kept for members who return"
               ],
               "effects": []
@@ -23575,7 +25298,7 @@
               "to": "founded",
               "trigger": "reclaim",
               "guards": [
-                "The settlement returns to founded and the claim regrows with the tiers"
+                "The settlement returns to founded and grows with the tiers again"
               ],
               "effects": []
             }
@@ -23590,8 +25313,8 @@
           "item",
           "station"
         ],
-        "description": "A stone-ringed fire pit that founds a settlement when placed on free land. It is the settlement's research and crafting anchor: technology research that needs a \"player's settlement\" is done at a Hearth.",
-        "goal": "The item and station that turns a camp into a claimed, shared settlement (Phase 139)",
+        "description": "A stone-ringed fire pit that founds a settlement when placed. Phase 203 removed its claim and its research site; Phase 204 returns each placed hearth to its founder as this item when settlements become clans.",
+        "goal": "The item and station that turns a camp into a shared settlement (Phase 139)",
         "fields": {
           "id": {
             "name": "id",
@@ -23913,7 +25636,7 @@
         "tags": [
           "container"
         ],
-        "description": "The container a settlement's members fill and draw from together. Its capacity in stacks grows with the settlement tier, and each role has a daily withdraw limit. Technology research that needs \"settlement storage\" draws its materials from here.",
+        "description": "The container a settlement's members fill and draw from together. Its capacity in stacks grows with the settlement tier, and each role has a daily withdraw limit. Phase 204 turns it into a clan chest with the same contents (Clan.migration); research no longer draws from it (Phase 203).",
         "goal": "Give a settlement a shared store so cooperation is worth more than trading (Phase 139)",
         "fields": {
           "id": {
@@ -23973,7 +25696,7 @@
             "name": "withdraw",
             "description": "A member takes items from the stockpile",
             "rules": [
-              "The role must have take permission inside the claim",
+              "The role must have take permission",
               "A withdraw beyond the role's daily withdrawLimit is refused",
               "Guests never withdraw; the founder is not limited"
             ],
@@ -23992,7 +25715,7 @@
         "tags": [
           "world-system"
         ],
-        "description": "Structures a village builds together inside its claim: a palisade, a storehouse, a workshop, a watchtower. Each needs materials and labour in ordered steps; members contribute both, and a member whose specialty matches a step works faster on it. A finished project is placed as blocks and stations in the claim, and its effects (stockpile capacity, raid defence, crafting speed inside the claim, upkeep relief) hold while upkeep is paid. Completed projects also grow a village: the growing tier is reached by minMembers and minProjects as well as by days.",
+        "description": "Structures a village builds together: a palisade, a storehouse, a workshop, a watchtower. Each needs materials, which members bring; it is complete once its materials are in, with no labour stage (Phase 203). A finished project is placed as blocks and stations. Completed projects also grow a village: the growing tier is reached by minMembers and minProjects as well as by days.",
         "goal": "Give a new village something to build together in its first hour (CivilizationIsPlayerMade, Phase 197)",
         "fields": {
           "id": {
@@ -24005,12 +25728,11 @@
           "rules": {
             "name": "rules",
             "type": "json",
-            "description": "Project table: { workSecondsPerUnit, projects: { <key>: { minTier, materials, labour, effects, places } } } (validated at fabric load)",
+            "description": "Project table: { projects: { <key>: { minTier, materials, places } } } (validated at fabric load)",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
-              "workSecondsPerUnit": 2,
               "projects": {
                 "palisade": {
                   "minTier": "founded",
@@ -24022,24 +25744,6 @@
                     {
                       "item": "FerriteIngot",
                       "quantity": 4
-                    }
-                  ],
-                  "labour": [
-                    {
-                      "step": "posts",
-                      "specialty": "woodworker",
-                      "work": 60
-                    },
-                    {
-                      "step": "raise",
-                      "specialty": "builder",
-                      "work": 90
-                    }
-                  ],
-                  "effects": [
-                    {
-                      "kind": "raidDefence",
-                      "value": 0.3
                     }
                   ],
                   "places": {
@@ -24059,33 +25763,6 @@
                     {
                       "item": "AshiteBlock",
                       "quantity": 12
-                    }
-                  ],
-                  "labour": [
-                    {
-                      "step": "foundation",
-                      "specialty": "builder",
-                      "work": 60
-                    },
-                    {
-                      "step": "shelving",
-                      "specialty": "woodworker",
-                      "work": 60
-                    },
-                    {
-                      "step": "provisions",
-                      "specialty": "forager",
-                      "work": 30
-                    }
-                  ],
-                  "effects": [
-                    {
-                      "kind": "stockpileCapacity",
-                      "value": 20
-                    },
-                    {
-                      "kind": "upkeepRelief",
-                      "value": 0.25
                     }
                   ],
                   "places": {
@@ -24109,29 +25786,6 @@
                     {
                       "item": "AshiteBlock",
                       "quantity": 10
-                    }
-                  ],
-                  "labour": [
-                    {
-                      "step": "walls",
-                      "specialty": "builder",
-                      "work": 60
-                    },
-                    {
-                      "step": "benches",
-                      "specialty": "woodworker",
-                      "work": 45
-                    },
-                    {
-                      "step": "anvil",
-                      "specialty": "smith",
-                      "work": 45
-                    }
-                  ],
-                  "effects": [
-                    {
-                      "kind": "craftSpeed",
-                      "value": 0.2
                     }
                   ],
                   "places": {
@@ -24160,29 +25814,6 @@
                       "quantity": 6
                     }
                   ],
-                  "labour": [
-                    {
-                      "step": "base",
-                      "specialty": "builder",
-                      "work": 90
-                    },
-                    {
-                      "step": "lookout",
-                      "specialty": "woodworker",
-                      "work": 60
-                    },
-                    {
-                      "step": "signal",
-                      "specialty": "hunter",
-                      "work": 30
-                    }
-                  ],
-                  "effects": [
-                    {
-                      "kind": "raidDefence",
-                      "value": 0.2
-                    }
-                  ],
                   "places": {
                     "block": "AshiteBlock",
                     "blocks": 40,
@@ -24204,10 +25835,9 @@
         "behaviors": {
           "start": {
             "name": "start",
-            "description": "A member with build permission starts a project at a site inside the claim",
+            "description": "A member with build permission starts a project at a site",
             "rules": [
-              "The settlement must have reached the project's minTier",
-              "The site must lie inside the claim"
+              "The settlement must have reached the project's minTier"
             ],
             "auth": {
               "roles": [
@@ -24217,11 +25847,9 @@
           },
           "contribute": {
             "name": "contribute",
-            "description": "A member adds materials or labour to an unfinished project",
+            "description": "A member adds materials to an unfinished project",
             "rules": [
-              "Materials are moved, never duplicated: what is contributed leaves the giver",
-              "One work unit takes workSecondsPerUnit seconds at the site; a matching specialty adds bonusLabour per unit",
-              "Steps are worked in order"
+              "Materials are moved, never duplicated: what is contributed leaves the giver"
             ],
             "auth": {
               "roles": [
@@ -24231,7 +25859,7 @@
           },
           "complete": {
             "name": "complete",
-            "description": "All materials and labour are in: the structure is placed and its effects start",
+            "description": "The contribution that brings in the last material completes the project and places it",
             "rules": [
               "Places places.blocks of places.block in the layout, plus places.stations",
               "Counts toward the tier's minProjects"
@@ -24251,7 +25879,7 @@
         "tags": [
           "world-system"
         ],
-        "description": "What each member of a village is good at: woodworker, smith, hunter, builder or forager. A specialty is scored from the member's skill tiers and attributes; a member's specialty is their best score at or above the floor, and it adds bonus labour on project steps that ask for it. A specialty is a consequence of how someone plays, never a class picked up front.",
+        "description": "What each member of a village is good at: woodworker, smith, hunter, builder or forager. A specialty is scored from the member's skill tiers and attributes; a member's specialty is their best score at or above the floor. A specialty is a consequence of how someone plays, never a class picked up front, and it gives no labour bonus (Phase 203).",
         "goal": "Make each member of a small village matter for something (EverythingHasTradeoffs, Phase 197)",
         "fields": {
           "id": {
@@ -24264,13 +25892,12 @@
           "rules": {
             "name": "rules",
             "type": "json",
-            "description": "Specialty table: { floor, bonusLabour, specialties: { <key>: { skills: { <skill>: weight }, attributes: { <attribute>: weight } } } } (validated at fabric load)",
+            "description": "Specialty table: { floor, specialties: { <key>: { skills: { <skill>: weight }, attributes: { <attribute>: weight } } } } (validated at fabric load)",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
               "floor": 2,
-              "bonusLabour": 0.5,
               "specialties": {
                 "woodworker": {
                   "skills": {
@@ -24349,13 +25976,13 @@
         "pii": [],
         "gdpr": {}
       },
-      "SettlementRaids": {
-        "name": "SettlementRaids",
+      "Clan": {
+        "name": "Clan",
         "tags": [
           "world-system"
         ],
-        "description": "Creature packs from the village's own biome attack a settlement that is worth raiding. Every raid is warned, never starts while no member is online inside the claim, and has a capped loss: a share of the stockpile and damage to unfinished projects, both reduced by raid-defence projects. Raids come from creatures only; settlement-against-settlement conflict is deferred.",
-        "goal": "Give a village something to defend together without punishing it for being offline (SettlementRaidsAndUpkeep, Phase 197)",
+        "description": "A group of players under a name one of them chose. A player belongs to at most one clan; a clan has any number of members, roles that may invite, kick and set roles, and no hearth: its settlements are simply where its buildings stand. Every member sees every other member's skills and can message any of them privately, so the clan's best sewer is one click away. A saved settlement becomes a clan with the same name, members and roles.",
+        "goal": "Let players organise without a land claim (ClansAndOwnedStructures, Phase 203)",
         "fields": {
           "id": {
             "name": "id",
@@ -24364,101 +25991,138 @@
             "primaryKey": true,
             "pii": false
           },
+          "name": {
+            "name": "name",
+            "type": "string",
+            "description": "The name the founder chose; unique by skeleton among clans",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "founder": {
+            "name": "founder",
+            "type": "string",
+            "description": "Player id of the founder",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "members": {
+            "name": "members",
+            "type": "json",
+            "description": "Player id -> role",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {}
+          },
+          "invites": {
+            "name": "invites",
+            "type": "json",
+            "description": "Invited player id -> time of the invite; lapses after invites.ttlDays",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {}
+          },
           "rules": {
             "name": "rules",
             "type": "json",
-            "description": "Raid table: { minAgeMinutes, minTier, minStockpileStacks, cooldownHours, warningSeconds, durationSeconds, offlineProtection, defenceCap, stakes, packs } (validated at fabric load)",
+            "description": "Clan rule table: { name, maxClansPerPlayer, maxMembers, founderRole, roles, invites, roster, messages, hasHearth, migration } (validated at fabric load)",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
-              "minAgeMinutes": 30,
-              "minTier": "growing",
-              "minStockpileStacks": 10,
-              "cooldownHours": 6,
-              "warningSeconds": 120,
-              "durationSeconds": 600,
-              "offlineProtection": true,
-              "defenceCap": 0.75,
-              "stakes": {
-                "stockpileShareMax": 0.2,
-                "projectDamageMax": 0.25
-              },
-              "packs": {
-                "TemperateForest": [
-                  {
-                    "creature": "GraywolfPack",
-                    "min": 3,
-                    "max": 5
-                  },
-                  {
-                    "creature": "ForestBoar",
-                    "min": 1,
-                    "max": 2
-                  }
-                ],
-                "TemperateGrassland": [
-                  {
-                    "creature": "SteppeBison",
-                    "min": 2,
-                    "max": 3
-                  },
-                  {
-                    "creature": "RidgeHawk",
-                    "min": 2,
-                    "max": 4
-                  }
-                ],
-                "VolcanicBadlands": [
-                  {
-                    "creature": "CinderGargoyle",
-                    "min": 2,
-                    "max": 3
-                  },
-                  {
-                    "creature": "LavaSlug",
-                    "min": 2,
-                    "max": 4
-                  }
-                ],
-                "TwilightGrove": [
-                  {
-                    "creature": "VeilStalker",
-                    "min": 2,
-                    "max": 3
-                  },
-                  {
-                    "creature": "GlimmerFox",
-                    "min": 2,
-                    "max": 4
-                  }
-                ],
-                "VoidRift": [
-                  {
-                    "creature": "VoidSerpent",
-                    "min": 2,
-                    "max": 4
-                  }
+              "name": {
+                "minLength": 3,
+                "maxLength": 24,
+                "maxSeparators": 3,
+                "rules": "CharacterCreation.name",
+                "uniqueBy": "skeleton",
+                "reserved": [
+                  "clan",
+                  "cla",
+                  "guild",
+                  "guilda"
                 ]
+              },
+              "maxClansPerPlayer": 1,
+              "maxMembers": 0,
+              "founderRole": "founder",
+              "roles": {
+                "founder": {
+                  "invite": true,
+                  "kick": true,
+                  "setRole": true,
+                  "dismantleClanStructures": true
+                },
+                "elder": {
+                  "invite": true,
+                  "kick": true,
+                  "setRole": false,
+                  "dismantleClanStructures": true
+                },
+                "member": {
+                  "invite": false,
+                  "kick": false,
+                  "setRole": false,
+                  "dismantleClanStructures": true
+                },
+                "guest": {
+                  "invite": false,
+                  "kick": false,
+                  "setRole": false,
+                  "dismantleClanStructures": false
+                }
+              },
+              "invites": {
+                "ttlDays": 7,
+                "maxPendingPerClan": 32
+              },
+              "roster": {
+                "skillsVisibleTo": "members",
+                "sortBy": "skill"
+              },
+              "messages": {
+                "maxLength": 280,
+                "perMinute": 10
+              },
+              "hasHearth": false,
+              "migration": {
+                "from": "Settlement",
+                "name": "same",
+                "members": "same",
+                "roles": "same",
+                "hearth": "returnToFounder",
+                "stockpile": "clanChest"
               }
             }
           }
         },
         "relations": {
+          "tiers": {
+            "name": "tiers",
+            "kind": "hasOne",
+            "target": "ClanTiers"
+          },
           "settlement": {
             "name": "settlement",
             "kind": "hasOne",
             "target": "Settlement"
+          },
+          "decision": {
+            "name": "decision",
+            "kind": "hasOne",
+            "target": "ClansAndOwnedStructures"
           }
         },
         "behaviors": {
-          "warn": {
-            "name": "warn",
-            "description": "Announce a raid to every member warningSeconds before the first creature arrives",
+          "found": {
+            "name": "found",
+            "description": "A player who is in no clan founds one with a name",
             "rules": [
-              "The settlement is at least minAgeMinutes old and has reached minTier or holds minStockpileStacks",
-              "cooldownHours have passed since the last raid ended",
-              "A member is online inside the claim (offlineProtection)"
+              "The name passes the character-name rules and no clan has the same skeleton",
+              "The founder is the first member"
             ],
             "auth": {
               "roles": [
@@ -24466,12 +26130,38 @@
               ]
             }
           },
-          "resolve": {
-            "name": "resolve",
-            "description": "End the raid: repelled when every raider is dead, otherwise lost after durationSeconds",
+          "invite": {
+            "name": "invite",
+            "description": "A member whose role may invite asks another player to join",
             "rules": [
-              "A lost raid takes at most stakes.stockpileShareMax of the stockpile and stakes.projectDamageMax of each unfinished project's labour",
-              "Raid-defence effects scale both losses down by at most defenceCap"
+              "The invite lapses after invites.ttlDays",
+              "A player already in a clan cannot accept"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "leave": {
+            "name": "leave",
+            "description": "A member leaves, or is kicked by a role that may kick",
+            "rules": [
+              "The founder cannot be kicked",
+              "A member who leaves stops receiving the others' skills"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "message": {
+            "name": "message",
+            "description": "Send a private message to one player",
+            "rules": [
+              "The host relays it only to the recipient",
+              "At most messages.perMinute per sender, messages.maxLength characters"
             ],
             "auth": {
               "roles": [
@@ -24483,13 +26173,13 @@
         "pii": [],
         "gdpr": {}
       },
-      "SettlementUpkeep": {
-        "name": "SettlementUpkeep",
+      "ClanTiers": {
+        "name": "ClanTiers",
         "tags": [
           "world-system"
         ],
-        "description": "What a village pays to keep going: a cost per tier taken from the stockpile every period. Unpaid upkeep suspends project effects until it is paid; it never shrinks the claim, which still follows only the activity-based abandonment rule. Upkeep never falls as the tier rises.",
-        "goal": "Give a growing village a reason to keep gathering and trading (EverythingHasTradeoffs, Phase 197)",
+        "description": "A clan's tier, from every building it owns wherever it stands, weighed by how durable and how rare each block's material is. It rises as the clan builds and falls when its buildings are dismantled or destroyed. A tier gives nothing yet.",
+        "goal": "Make a clan's standing the sum of what it has built (SkillsGrowFromWork, Phase 203)",
         "fields": {
           "id": {
             "name": "id",
@@ -24501,63 +26191,981 @@
           "rules": {
             "name": "rules",
             "type": "json",
-            "description": "Upkeep table: { periodHours, shrinksClaim, costs: { <tier>: [{ item, quantity }] } } (validated at fabric load)",
+            "description": "Tier table: { durabilityUnit, rarityWeight: { <rarity>: weight }, tiers: [{ tier, minScore }], gives } (validated at fabric load)",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
-              "periodHours": 24,
-              "shrinksClaim": false,
-              "costs": {
-                "founded": [
+              "durabilityUnit": 100,
+              "rarityWeight": {
+                "common": 1,
+                "uncommon": 2,
+                "rare": 4,
+                "epic": 8,
+                "legendary": 16
+              },
+              "tiers": [
+                {
+                  "tier": "band",
+                  "minScore": 0
+                },
+                {
+                  "tier": "clan",
+                  "minScore": 400
+                },
+                {
+                  "tier": "house",
+                  "minScore": 4000
+                },
+                {
+                  "tier": "dynasty",
+                  "minScore": 40000
+                }
+              ],
+              "gives": []
+            }
+          }
+        },
+        "relations": {
+          "clan": {
+            "name": "clan",
+            "kind": "hasOne",
+            "target": "Clan"
+          },
+          "decision": {
+            "name": "decision",
+            "kind": "hasOne",
+            "target": "SkillsGrowFromWork"
+          }
+        },
+        "behaviors": {
+          "score": {
+            "name": "score",
+            "description": "Sum, over every block of every structure the clan owns, durability / durabilityUnit × rarityWeight",
+            "rules": [
+              "Computed by the host from its structure index, never from a client message",
+              "The tier is the highest whose minScore the score meets"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "Structure": {
+        "name": "Structure",
+        "tags": [
+          "world-system"
+        ],
+        "description": "A connected set of placed blocks and the stations on them, owned by its builder or the builder's clan. Only its owner edits it, wherever it stands; anyone else may only damage it. Around it a circle, larger for a larger structure, where no creature spawns and, for a clan structure, where only that clan's members may build. Its floors are limited by the weakest material it carries (wood 2, stone 5, concrete 10, up to 163), and an unusual shape needs a stronger class. There is no claim area.",
+        "goal": "Make what a player builds theirs, as tall as its materials allow (ClansAndOwnedStructures, EarthScaleHeights, Phase 203)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "owner": {
+            "name": "owner",
+            "type": "string",
+            "description": "The owning player id (private) or clan id (clan)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "ownerKind": {
+            "name": "ownerKind",
+            "type": "enum",
+            "description": "Chosen by the builder when placing",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "private",
+              "clan"
+            ],
+            "pii": false,
+            "defaultValue": "private"
+          },
+          "floorHeight": {
+            "name": "floorHeight",
+            "type": "decimal",
+            "description": "Metres per floor: 24 blocks of 0.125 m",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 3
+          },
+          "maxFloors": {
+            "name": "maxFloors",
+            "type": "integer",
+            "description": "Floors of the tallest structure (the top structural class)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 163
+          },
+          "rules": {
+            "name": "rules",
+            "type": "json",
+            "description": "Structure table: { ownership, circle, floorHeight, maxFloors, classes, shapes, existingBuilds } (validated at fabric load)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "ownership": {
+                "owners": [
+                  "private",
+                  "clan"
+                ],
+                "defaultOwner": "private",
+                "edit": {
+                  "private": "owner",
+                  "clan": "member"
+                },
+                "memberPrivateInTerritory": {
+                  "enter": true,
+                  "dismantle": true,
+                  "edit": false
+                },
+                "outsiders": "damage",
+                "touching": "eachKeepsOwn"
+              },
+              "circle": {
+                "minRadius": 8,
+                "maxRadius": 128,
+                "footprintFactor": 1,
+                "heightFactor": 0.25
+              },
+              "floorHeight": 3,
+              "maxFloors": 163,
+              "classes": {
+                "earth": {
+                  "maxFloors": 1
+                },
+                "wood": {
+                  "maxFloors": 2
+                },
+                "stone": {
+                  "maxFloors": 5
+                },
+                "concrete": {
+                  "maxFloors": 10
+                },
+                "steel": {
+                  "maxFloors": 40
+                },
+                "composite": {
+                  "maxFloors": 163
+                }
+              },
+              "shapes": {
+                "overhangReach": [
                   {
-                    "item": "ThornwoodPlank",
-                    "quantity": 2
+                    "above": 8,
+                    "minClass": "wood"
+                  },
+                  {
+                    "above": 16,
+                    "minClass": "stone"
+                  },
+                  {
+                    "above": 48,
+                    "minClass": "steel"
+                  },
+                  {
+                    "above": 128,
+                    "minClass": "composite"
                   }
                 ],
-                "growing": [
+                "unsupportedSpan": [
                   {
-                    "item": "ThornwoodPlank",
-                    "quantity": 6
+                    "above": 16,
+                    "minClass": "wood"
                   },
                   {
-                    "item": "FerriteIngot",
-                    "quantity": 1
+                    "above": 32,
+                    "minClass": "stone"
+                  },
+                  {
+                    "above": 96,
+                    "minClass": "steel"
+                  },
+                  {
+                    "above": 256,
+                    "minClass": "composite"
                   }
                 ],
-                "town": [
+                "heightToFootprint": [
                   {
-                    "item": "ThornwoodPlank",
-                    "quantity": 12
+                    "above": 3,
+                    "minClass": "stone"
                   },
                   {
-                    "item": "FerriteIngot",
-                    "quantity": 3
+                    "above": 6,
+                    "minClass": "concrete"
                   },
                   {
-                    "item": "AshiteBlock",
-                    "quantity": 4
+                    "above": 12,
+                    "minClass": "steel"
+                  },
+                  {
+                    "above": 24,
+                    "minClass": "composite"
                   }
+                ]
+              },
+              "existingBuilds": "kept"
+            }
+          }
+        },
+        "relations": {
+          "durability": {
+            "name": "durability",
+            "kind": "hasOne",
+            "target": "StructureDurability"
+          },
+          "clan": {
+            "name": "clan",
+            "kind": "hasOne",
+            "target": "Clan"
+          },
+          "decision": {
+            "name": "decision",
+            "kind": "hasOne",
+            "target": "ClansAndOwnedStructures"
+          }
+        },
+        "behaviors": {
+          "build": {
+            "name": "build",
+            "description": "Place a block or station, joining or starting a structure",
+            "rules": [
+              "The builder picks private or clan for a new structure",
+              "Only the owner may add to an existing structure",
+              "Inside a clan's circle only that clan's members may start a structure",
+              "The weakest class carrying the block must allow its floor and the structure's shape"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "enter": {
+            "name": "enter",
+            "description": "A member of the clan passes into another member's private structure inside the clan's circles",
+            "rules": [
+              "Entering and dismantling are allowed, editing is not"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "StructureDurability": {
+        "name": "StructureDurability",
+        "tags": [
+          "world-system"
+        ],
+        "description": "How a placed block wears and comes apart. Its durability starts at its material's and falls with weather, age and damage; at zero it is destroyed. Destruction methods damage some classes more than others, and do so offlineFactor times more slowly while every owner is offline. A destroyer gets nothing. The owner repairs with part of the build materials, and dismantling returns a share that rises with Building skill and falls with durability.",
+        "goal": "Let anyone break a building, but only with effort (DurabilityAndDestruction, Phase 203)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "rules": {
+            "name": "rules",
+            "type": "json",
+            "description": "Durability table: { loss: { perDay, weather, perDamage }, methods, destroyerGets, repair: { share }, dismantle } (validated at fabric load)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "loss": {
+                "perDay": 0.002,
+                "weather": {
+                  "clear": 0,
+                  "fog": 0.0001,
+                  "rain": 0.0005,
+                  "storm": 0.001,
+                  "blizzard": 0.001,
+                  "ash_fall": 0.0008,
+                  "electrical_storm": 0.0012,
+                  "void_storm": 0.002
+                },
+                "perDamage": 1
+              },
+              "methods": {
+                "hand": {
+                  "damage": 1,
+                  "offlineFactor": 20,
+                  "classes": {
+                    "earth": 1,
+                    "wood": 0.25,
+                    "stone": 0.05,
+                    "concrete": 0.02,
+                    "steel": 0.01,
+                    "composite": 0.01
+                  }
+                },
+                "pick": {
+                  "damage": 10,
+                  "offlineFactor": 20,
+                  "classes": {
+                    "earth": 1,
+                    "wood": 0.5,
+                    "stone": 1,
+                    "concrete": 0.75,
+                    "steel": 0.4,
+                    "composite": 0.25
+                  }
+                },
+                "axe": {
+                  "damage": 10,
+                  "offlineFactor": 20,
+                  "classes": {
+                    "earth": 0.5,
+                    "wood": 1,
+                    "stone": 0.2,
+                    "concrete": 0.1,
+                    "steel": 0.05,
+                    "composite": 0.05
+                  }
+                },
+                "weapon": {
+                  "damage": 6,
+                  "offlineFactor": 20,
+                  "classes": {
+                    "earth": 0.5,
+                    "wood": 0.5,
+                    "stone": 0.2,
+                    "concrete": 0.1,
+                    "steel": 0.1,
+                    "composite": 0.05
+                  }
+                }
+              },
+              "destroyerGets": "nothing",
+              "repair": {
+                "share": 0.5
+              },
+              "dismantle": {
+                "atNoSkill": 0.5,
+                "atTopSkill": 1,
+                "topLevel": 10,
+                "durabilityExponent": 1.5,
+                "skill": "Building"
+              }
+            }
+          }
+        },
+        "relations": {
+          "structure": {
+            "name": "structure",
+            "kind": "hasOne",
+            "target": "Structure"
+          },
+          "skill": {
+            "name": "skill",
+            "kind": "hasOne",
+            "target": "Building"
+          },
+          "decision": {
+            "name": "decision",
+            "kind": "hasOne",
+            "target": "DurabilityAndDestruction"
+          }
+        },
+        "behaviors": {
+          "wear": {
+            "name": "wear",
+            "description": "Lower a block's durability by age and weather",
+            "rules": [
+              "Computed from timestamps when a block is read or ticked, never by touching every block every frame"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "destroy": {
+            "name": "destroy",
+            "description": "A non-owner damages a block with a method",
+            "rules": [
+              "Damage = method damage × class multiplier, divided by offlineFactor while every owner is offline",
+              "The destroyer gets nothing"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "The owner restores durability",
+            "rules": [
+              "Costs repair.share of the build materials times the fraction restored, rounded up"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "dismantle": {
+            "name": "dismantle",
+            "description": "The owner (or a clan member, for a member's private house in clan territory) takes a block apart",
+            "rules": [
+              "Returns the dismantle share of its material, by durability and Building level"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "SelfRespawn": {
+        "name": "SelfRespawn",
+        "tags": [
+          "world-system"
+        ],
+        "description": "Any player may kill their own character to respawn at their bed or the world spawn, with the normal death rules, from a command or a menu button, so no one can be trapped inside another's structure.",
+        "goal": "A way out of any wall (DurabilityAndDestruction, Phase 203)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "rules": {
+            "name": "rules",
+            "type": "json",
+            "description": "Respawn table: { command, menuButton, cooldownSeconds, destinations, deathRules } (validated at fabric load)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "command": "respawn",
+              "menuButton": true,
+              "cooldownSeconds": 60,
+              "destinations": [
+                "bed",
+                "worldSpawn"
+              ],
+              "deathRules": "normal"
+            }
+          }
+        },
+        "relations": {
+          "decision": {
+            "name": "decision",
+            "kind": "hasOne",
+            "target": "DurabilityAndDestruction"
+          }
+        },
+        "behaviors": {
+          "respawn": {
+            "name": "respawn",
+            "description": "Kill your own character and respawn",
+            "rules": [
+              "At most once per cooldownSeconds",
+              "The normal death rules apply"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "ChestsAndDoors": {
+        "name": "ChestsAndDoors",
+        "tags": [
+          "world-system"
+        ],
+        "description": "Chests and doors open for their owner only, their clan or everyone, as the owner sets. A locked one can be destroyed or picked; how hard depends on its material and the owner's lock technology. A destroyed chest spills its contents for anyone to take.",
+        "goal": "Keep a house and its things safe without making them unbreakable (DurabilityAndDestruction, Phase 203)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "rules": {
+            "name": "rules",
+            "type": "json",
+            "description": "Chest and door table: { accessModes, defaultMode, setBy, stations, locks } (validated at fabric load)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "accessModes": [
+                "owner",
+                "clan",
+                "everyone"
+              ],
+              "defaultMode": "owner",
+              "setBy": "owner",
+              "stations": {
+                "chest": {
+                  "capacityStacks": 20,
+                  "spillsOnDestroy": true
+                },
+                "door": {}
+              },
+              "locks": {
+                "materials": {
+                  "Thornwood": 1,
+                  "Duskfiber": 1.5,
+                  "Ashite": 2,
+                  "Ferrite": 3,
+                  "Aethermite": 4,
+                  "Veilsteel": 6,
+                  "Voidite": 8
+                },
+                "technologies": {
+                  "none": 1,
+                  "TechBasicCarpentry": 1.25,
+                  "TechBasicSmithing": 1.5,
+                  "TechMasterForge": 2.5
+                },
+                "durabilityFactor": 2,
+                "pickSeconds": 6,
+                "skillSpeedup": 0.6,
+                "breakChance": 0.3
+              }
+            }
+          }
+        },
+        "relations": {
+          "skill": {
+            "name": "skill",
+            "kind": "hasOne",
+            "target": "Lockpicking"
+          },
+          "decision": {
+            "name": "decision",
+            "kind": "hasOne",
+            "target": "DurabilityAndDestruction"
+          }
+        },
+        "behaviors": {
+          "open": {
+            "name": "open",
+            "description": "Open, take from, put into or pass through",
+            "rules": [
+              "The host checks the access mode on every open, take, put and pass",
+              "Only the owner changes the mode"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "pick": {
+            "name": "pick",
+            "description": "Pick a lock with a tool",
+            "rules": [
+              "Success opens it once",
+              "Failure can break the tool, and the owner is told"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "Book": {
+        "name": "Book",
+        "tags": [
+          "writing"
+        ],
+        "description": "A written account of one researched technology. Reading it teaches the technology without researching it, and the book is kept, so it can be read again or lent.",
+        "goal": "Share knowledge by writing, never through a clan (ResearchSharedByWriting, Phase 203)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "teaches": {
+            "name": "teaches",
+            "type": "string",
+            "description": "The technology or recipe key it teaches, chosen when written",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "author": {
+            "name": "author",
+            "type": "string",
+            "description": "Player id of the writer",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "rules": {
+            "name": "rules",
+            "type": "json",
+            "description": "Writing rule: { teaches, station, cost, consumedOnRead, writerMustKnow } (validated at fabric load)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "teaches": "technology",
+              "station": "",
+              "cost": [
+                {
+                  "item": "Duskfiber",
+                  "quantity": 2
+                },
+                {
+                  "item": "ThornwoodPlank",
+                  "quantity": 1
+                }
+              ],
+              "consumedOnRead": false,
+              "writerMustKnow": true
+            }
+          }
+        },
+        "relations": {
+          "teaches": {
+            "name": "teaches",
+            "kind": "hasOne",
+            "target": "TechBasicSmithing"
+          },
+          "decision": {
+            "name": "decision",
+            "kind": "hasOne",
+            "target": "ResearchSharedByWriting"
+          }
+        },
+        "behaviors": {
+          "write": {
+            "name": "write",
+            "description": "Write a book about something the writer knows",
+            "rules": [
+              "Refused when the writer does not know the content",
+              "Consumes the cost"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "read": {
+            "name": "read",
+            "description": "Read a book and learn what it teaches",
+            "rules": [
+              "The reader learns it; the item is kept, so it can be read again and lent"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "Blueprint": {
+        "name": "Blueprint",
+        "tags": [
+          "writing"
+        ],
+        "description": "A drawing of one structure or station recipe. Reading it teaches the recipe, and the blueprint is kept.",
+        "goal": "Share how to build by writing (ResearchSharedByWriting, Phase 203)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "teaches": {
+            "name": "teaches",
+            "type": "string",
+            "description": "The technology or recipe key it teaches, chosen when written",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "author": {
+            "name": "author",
+            "type": "string",
+            "description": "Player id of the writer",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "rules": {
+            "name": "rules",
+            "type": "json",
+            "description": "Writing rule: { teaches, station, cost, consumedOnRead, writerMustKnow } (validated at fabric load)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "teaches": "recipe",
+              "recipeKinds": [
+                "station",
+                "project"
+              ],
+              "station": "carpentry bench",
+              "cost": [
+                {
+                  "item": "Duskfiber",
+                  "quantity": 3
+                }
+              ],
+              "consumedOnRead": false,
+              "writerMustKnow": true
+            }
+          }
+        },
+        "relations": {
+          "teaches": {
+            "name": "teaches",
+            "kind": "hasOne",
+            "target": "RecipeHearth"
+          },
+          "decision": {
+            "name": "decision",
+            "kind": "hasOne",
+            "target": "ResearchSharedByWriting"
+          }
+        },
+        "behaviors": {
+          "write": {
+            "name": "write",
+            "description": "Write a blueprint about something the writer knows",
+            "rules": [
+              "Refused when the writer does not know the content",
+              "Consumes the cost"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "read": {
+            "name": "read",
+            "description": "Read a blueprint and learn what it teaches",
+            "rules": [
+              "The reader learns it; the item is kept, so it can be read again and lent"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "WorkSkills": {
+        "name": "WorkSkills",
+        "tags": [
+          "world-system"
+        ],
+        "description": "Which skill each kind of work grows, and by how much: crafting in each domain, gathering each family of material, plants and carcasses, building, dismantling, repairing and picking locks. The XP goes to the worker alone; nothing a member does is progress for a clan.",
+        "goal": "Make a specialty the result of how someone plays (SkillsGrowFromWork, Phase 203)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "rules": {
+            "name": "rules",
+            "type": "json",
+            "description": "Work table: { craft: { <domain>: { skill, xp } }, gather: { <family>: { skill, xp } }, build, dismantle, repair, lockpick } (validated at fabric load)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "craft": {
+                "smithing": {
+                  "skill": "Smithing",
+                  "xp": 8
+                },
+                "carpentry": {
+                  "skill": "Carpentry",
+                  "xp": 8
+                },
+                "alchemy": {
+                  "skill": "Alchemy",
+                  "xp": 8
+                },
+                "arcane": {
+                  "skill": "ArcaneForging",
+                  "xp": 10
+                },
+                "tailoring": {
+                  "skill": "Tailoring",
+                  "xp": 8
+                }
+              },
+              "gather": {
+                "metal": {
+                  "skill": "Smithing",
+                  "xp": 2
+                },
+                "stone": {
+                  "skill": "Building",
+                  "xp": 2
+                },
+                "wood": {
+                  "skill": "Carpentry",
+                  "xp": 2
+                },
+                "soil": {
+                  "skill": "Building",
+                  "xp": 1
+                },
+                "plant": {
+                  "skill": "Alchemy",
+                  "xp": 2
+                },
+                "carcass": {
+                  "skill": "Skinning",
+                  "xp": 10
+                }
+              },
+              "build": {
+                "skill": "Building",
+                "xp": 1
+              },
+              "dismantle": {
+                "skill": "Building",
+                "xp": 2
+              },
+              "repair": {
+                "skill": "Building",
+                "xp": 3
+              },
+              "lockpick": {
+                "skill": "Lockpicking",
+                "xp": 15
+              }
+            }
+          },
+          "curves": {
+            "name": "curves",
+            "type": "json",
+            "description": "XP curves of the skills added in Phase 203: { <skill>: { levelCap, xpToLevel } }",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "Building": {
+                "levelCap": 10,
+                "xpToLevel": [
+                  0,
+                  50,
+                  200,
+                  450,
+                  800,
+                  1250,
+                  1800,
+                  2450,
+                  3200,
+                  4050,
+                  5000
+                ]
+              },
+              "Tailoring": {
+                "levelCap": 10,
+                "xpToLevel": [
+                  0,
+                  40,
+                  160,
+                  360,
+                  640,
+                  1000,
+                  1440,
+                  1960,
+                  2560,
+                  3240,
+                  4000
+                ]
+              },
+              "Lockpicking": {
+                "levelCap": 10,
+                "xpToLevel": [
+                  0,
+                  60,
+                  240,
+                  540,
+                  960,
+                  1500,
+                  2160,
+                  2940,
+                  3840,
+                  4860,
+                  6000
                 ]
               }
             }
           }
         },
         "relations": {
-          "settlement": {
-            "name": "settlement",
+          "decision": {
+            "name": "decision",
             "kind": "hasOne",
-            "target": "Settlement"
+            "target": "SkillsGrowFromWork"
           }
         },
         "behaviors": {
-          "pay": {
-            "name": "pay",
-            "description": "Take the tier's upkeep from the stockpile once per periodHours",
+          "grant": {
+            "name": "grant",
+            "description": "Grant the mapped skill XP to the player who did the work",
             "rules": [
-              "upkeepRelief effects reduce each quantity, rounded down",
-              "If the stockpile cannot pay in full nothing is taken and project effects are suspended until it can",
-              "Unpaid upkeep never shrinks the claim"
+              "The host decides the kind of work and the XP from this table, never from a client message",
+              "Only the worker gains: no clan, project or other player is credited"
             ],
             "auth": {
               "roles": [

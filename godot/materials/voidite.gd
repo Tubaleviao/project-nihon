@@ -2,6 +2,23 @@
 class_name VoiditeData
 extends Resource
 
+enum Rarity {
+	COMMON,
+	UNCOMMON,
+	RARE,
+	EPIC,
+	LEGENDARY,
+}
+
+enum StructuralClass {
+	EARTH,
+	WOOD,
+	STONE,
+	CONCRETE,
+	STEEL,
+	COMPOSITE,
+}
+
 enum State {
 	RAW,
 	REFINED,
@@ -17,3 +34,6 @@ enum State {
 @export var depthBand: Dictionary
 @export var leyGated: bool
 @export var granular: bool
+@export var rarity: int
+@export var durability: int
+@export var structuralClass: int

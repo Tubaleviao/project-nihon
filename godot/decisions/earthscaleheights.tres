@@ -1,0 +1,13 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/decisions/earthscaleheights.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+status = 1
+decided = "2026-10-31"
+state_machine_field = "status"
+initial_state = "accepted"
+description = "Peaks reach about 8,850 m (Everest is 8,849 m) and buildings up to 163 floors of 3 m. Every building follows the floor and shape limits of its weakest load-bearing material: wood 2 floors, stone 5, concrete 10, and higher classes up to 163. Unusual shapes (long overhangs, wide unsupported spans, slender towers) need rarer materials. Builds that exist when the rules land are never collapsed."
+tags = ["decision"]

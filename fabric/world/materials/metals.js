@@ -1,5 +1,6 @@
 const { defineEntity } = require('@newel/core')
 const { depositFields } = require('./deposit')
+const { structuralFields } = require('./structural')
 
 // Shared state machine for every material: raw → refined → enchanted (terminal)
 // NOTE: state keys must be kept in sync with each consumer entity's `state` enum values — the normalizer does not reconcile them.
@@ -37,6 +38,7 @@ module.exports = {
       conductivity: { type: 'decimal', description: 'Thermal conductivity rating 0–1', defaultValue: 0.4 },
       magicAffinity: { type: 'decimal', description: 'Capacity to hold enchantment 0–1', defaultValue: 0.1 },
       ...depositFields({ min: 0, max: 6, why: 'Surface veins: ferrite crops out near the top of the ground and thins with depth.' }),
+      ...structuralFields({ rarity: 'common', durability: 300, structuralClass: 'concrete', why: 'Crude iron: a frame of it carries ten floors.' }),
     },
     stateMachine: materialStateMachine(),
     behaviors: {
@@ -74,6 +76,7 @@ module.exports = {
       conductivity: { type: 'decimal', description: 'Thermal conductivity rating 0–1', defaultValue: 0.05 },
       magicAffinity: { type: 'decimal', description: 'Capacity to hold enchantment 0–1; deliberately low — anti-magic is an intrinsic structural trait, not a held enchantment', defaultValue: 0.05 },
       ...depositFields({ min: 0, max: 0, why: 'An alloy smelted from ferrite and aethermite: no veilsteel ore exists in the world.' }),
+      ...structuralFields({ rarity: 'epic', durability: 800, structuralClass: 'steel', why: 'An alloy far stronger than ferrite.' }),
     },
     stateMachine: {
       field: 'state',
@@ -126,6 +129,7 @@ module.exports = {
       conductivity: { type: 'decimal', description: 'Thermal conductivity rating 0–1', defaultValue: 0.6 },
       magicAffinity: { type: 'decimal', description: 'Capacity to hold enchantment 0–1', defaultValue: 0.8 },
       ...depositFields({ min: 4, max: 16, leyGated: true, why: 'Found deep underground near ley lines: never in the top four units, and only where a ley line runs.' }),
+      ...structuralFields({ rarity: 'rare', durability: 500, structuralClass: 'stone', why: 'Light and ley-touched; strong, but no frame metal.' }),
     },
     stateMachine: {
       field: 'state',
@@ -186,6 +190,7 @@ module.exports = {
       conductivity: { type: 'decimal', description: 'Thermal conductivity rating 0–1', defaultValue: 0.9 },
       magicAffinity: { type: 'decimal', description: 'Capacity to hold enchantment 0–1', defaultValue: 0.95 },
       ...depositFields({ min: 2, max: 16, why: 'Found in void-touched biomes and deep rifts: below the topsoil, at any depth beneath it.' }),
+      ...structuralFields({ rarity: 'legendary', durability: 1200, structuralClass: 'stone', why: 'The rarest ore: nearly unbreakable, but brittle in a frame.' }),
     },
     stateMachine: materialStateMachine(),
     behaviors: {

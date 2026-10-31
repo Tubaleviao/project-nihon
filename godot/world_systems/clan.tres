@@ -1,0 +1,14 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/world_systems/clan.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+name = ""
+founder = ""
+members = {}
+invites = {}
+rules = {"name":{"minLength":3,"maxLength":24,"maxSeparators":3,"rules":"CharacterCreation.name","uniqueBy":"skeleton","reserved":["clan","cla","guild","guilda"]},"maxClansPerPlayer":1,"maxMembers":0,"founderRole":"founder","roles":{"founder":{"invite":true,"kick":true,"setRole":true,"dismantleClanStructures":true},"elder":{"invite":true,"kick":true,"setRole":false,"dismantleClanStructures":true},"member":{"invite":false,"kick":false,"setRole":false,"dismantleClanStructures":true},"guest":{"invite":false,"kick":false,"setRole":false,"dismantleClanStructures":false}},"invites":{"ttlDays":7,"maxPendingPerClan":32},"roster":{"skillsVisibleTo":"members","sortBy":"skill"},"messages":{"maxLength":280,"perMinute":10},"hasHearth":false,"migration":{"from":"Settlement","name":"same","members":"same","roles":"same","hearth":"returnToFounder","stockpile":"clanChest"}}
+description = "A group of players under a name one of them chose. A player belongs to at most one clan; a clan has any number of members, roles that may invite, kick and set roles, and no hearth: its settlements are simply where its buildings stand. Every member sees every other member's skills and can message any of them privately, so the clan's best sewer is one click away. A saved settlement becomes a clan with the same name, members and roles."
+tags = ["world-system"]

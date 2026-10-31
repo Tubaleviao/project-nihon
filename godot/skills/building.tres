@@ -1,0 +1,17 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/skills/building.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+tier = 0
+xpCurve = 1
+maxLevel = 10
+category = 1
+levelCap = 10
+xpToLevel = [0,50,200,450,800,1250,1800,2450,3200,4050,5000]
+state_machine_field = "tier"
+initial_state = "novice"
+description = "Putting up and taking down structures: placing blocks, dismantling them cleanly and repairing worn ones. A higher level gets more back when dismantling (StructureDurability.dismantle) and grows from every block placed, dismantled or repaired."
+tags = ["skill"]

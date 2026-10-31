@@ -1,0 +1,10 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/world_systems/selfrespawn.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+rules = {"command":"respawn","menuButton":true,"cooldownSeconds":60,"destinations":["bed","worldSpawn"],"deathRules":"normal"}
+description = "Any player may kill their own character to respawn at their bed or the world spawn, with the normal death rules, from a command or a menu button, so no one can be trapped inside another's structure."
+tags = ["world-system"]

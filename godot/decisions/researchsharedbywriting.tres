@@ -1,0 +1,13 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/decisions/researchsharedbywriting.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+status = 1
+decided = "2026-10-31"
+state_machine_field = "status"
+initial_state = "accepted"
+description = "Research is per player and is shared only by writing: a Book teaches one researched technology and a Blueprint one structure or station recipe. Only a player who knows the content can write one, at a material cost, and reading never consumes it, so it can be read again and lent. Research never draws from a shared stockpile."
+tags = ["decision"]

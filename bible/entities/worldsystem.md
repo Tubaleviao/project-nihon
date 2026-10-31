@@ -16,7 +16,8 @@ The planet as a fact of the fabric. The world takes globe semantics on a flat ch
 | `polarLatitude` | decimal | yes | Degrees of latitude of the polar line (north and south): past it no new player is placed; the snow-covered caps beyond stay walkable to the pole, and the world spans pole to pole at 90 (Phase 50) |
 | `seaLevel` | decimal | yes | World Y in metres of the ocean surface (Phase 51) |
 | `minHeight` | decimal | yes | Lowest terrain surface, in metres: the deepest ocean floor (Phase 51) |
-| `maxHeight` | decimal | yes | Highest terrain surface, in metres: the tallest peak (Phase 51) |
+| `maxHeight` | decimal | yes | Highest terrain surface, in metres: the tallest peak, about Everest's 8,849 m (Phase 51; Earth-scale in Phase 203, generated from Phase 211 — until then the runtime keeps 512 m) |
+| `buildCeiling` | decimal | yes | Highest point a block may be placed, in metres: above the tallest peak plus the tallest structure (Structure.maxFloors × floorHeight; Phase 203, read by the runtime from Phase 211, which keeps VoxelConsts.MAX_HEIGHT until then) |
 | `oceanShare` | decimal | yes | Target fraction of the planet below sea level, 0–1 (Phase 51) |
 | `heightSpline` | json | yes | Continentalness (0–1) to base height in metres: ocean basin, shelf, coast, inland. Points are [continentalness, height], ascending (Phase 51) |
 | `ridgeAmplitude` | decimal | yes | Metres a mountain ridge adds on rugged inland ground (Phase 51) |

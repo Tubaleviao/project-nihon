@@ -1,0 +1,13 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/decisions/durabilityanddestruction.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+status = 1
+decided = "2026-10-31"
+state_machine_field = "status"
+initial_state = "accepted"
+description = "Every material has a durability, higher for rarer materials, that falls with weather, time and damage. Anyone may destroy a building, but only with effort that depends on its durability and the method, and very slowly while every owner is offline. A destroyer gets nothing from a building, but a destroyed chest spills its contents to anyone. A building stays its owner's until it is dismantled or destroyed. Dismantling returns materials by durability and building skill: all of them at full durability with a very high skill, half at full durability with no skill, less as durability falls. The owner repairs with part of the build materials. Any player may kill their own character to respawn, so no one can be trapped inside another's building."
+tags = ["decision"]

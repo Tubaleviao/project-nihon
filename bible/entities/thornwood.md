@@ -20,6 +20,9 @@ Dense, dark-veined wood from the Thornwood tree that grows in lowland forests. C
 | `depthBand` | json | yes | Depth band [min, max) in world units below the natural surface where a vein may form; empty when max <= min. A wood: it grows as trees and is never mined from the ground. |
 | `leyGated` | boolean | yes | True when a vein of this material forms only near a ley line |
 | `granular` | boolean | yes | True when a placed span of this material falls to the first support below it when undermined (Phase 137); rock, ores and metals stay put |
+| `rarity` | enum (`common`, `uncommon`, `rare`, `epic`, `legendary`) | yes | How rare the material is (the item rarity scale); clan tiers weigh buildings by it (Phase 203) |
+| `durability` | integer | yes | Base durability of a placed block; weather, age and damage lower it (StructureDurability, Phase 203). The common building timber. |
+| `structuralClass` | enum (`earth`, `wood`, `stone`, `concrete`, `steel`, `composite`) | yes | Structural class: the most floors a structure carrying this material may have (Structure.classes, Phase 203) |
 
 ### State machine
 

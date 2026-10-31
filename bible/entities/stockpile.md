@@ -3,7 +3,7 @@
 
 **Tags:** `container`
 
-The container a settlement's members fill and draw from together. Its capacity in stacks grows with the settlement tier, and each role has a daily withdraw limit. Technology research that needs "settlement storage" draws its materials from here.
+The container a settlement's members fill and draw from together. Its capacity in stacks grows with the settlement tier, and each role has a daily withdraw limit. Phase 204 turns it into a clan chest with the same contents (Clan.migration); research no longer draws from it (Phase 203).
 
 > **Goal:** Give a settlement a shared store so cooperation is worth more than trading (Phase 139)
 
@@ -40,7 +40,7 @@ A member with build or take permission adds items to the stockpile
 A member takes items from the stockpile
 
 **Rules:**
-- The role must have take permission inside the claim
+- The role must have take permission
 - A withdraw beyond the role's daily withdrawLimit is refused
 - Guests never withdraw; the founder is not limited
 

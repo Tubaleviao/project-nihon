@@ -7,7 +7,7 @@ title: "SettlementSpecialties"
 
 `world-system`
 
-What each member of a village is good at: woodworker, smith, hunter, builder or forager. A specialty is scored from the member's skill tiers and attributes; a member's specialty is their best score at or above the floor, and it adds bonus labour on project steps that ask for it. A specialty is a consequence of how someone plays, never a class picked up front.
+What each member of a village is good at: woodworker, smith, hunter, builder or forager. A specialty is scored from the member's skill tiers and attributes; a member's specialty is their best score at or above the floor. A specialty is a consequence of how someone plays, never a class picked up front, and it gives no labour bonus (Phase 203).
 
 > Make each member of a small village matter for something (EverythingHasTradeoffs, Phase 197)
 
@@ -15,7 +15,7 @@ What each member of a village is good at: woodworker, smith, hunter, builder or 
 
 | Field | Type | Description |
 | ----- | ---- | ----------- |
-| rules | json | Specialty table: { floor, bonusLabour, specialties: { <key>: { skills: { <skill>: weight }, attributes: { <attribute>: weight } } } } (validated at fabric load) |
+| rules | json | Specialty table: { floor, specialties: { <key>: { skills: { <skill>: weight }, attributes: { <attribute>: weight } } } } (validated at fabric load) |
 
 ## Related
 

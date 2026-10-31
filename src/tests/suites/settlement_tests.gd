@@ -313,7 +313,9 @@ func _test_settlement_research() -> void:
 	var materials: Array = GameData.TECHNOLOGIES[tid].get("tech").get("researchMaterials")
 	var item := str(materials[0]["item"])
 	var qty := int(materials[0]["quantity"])
-	assert_true(GameData.TECHNOLOGIES[tid].get("tech").has("materialSource"), "the fabric names a stockpile material source")
+	# Phase 203 — the fabric dropped the stockpile source; the runtime holds it until Phase 209.
+	assert_false(GameData.TECHNOLOGIES[tid].get("tech").has("materialSource"), "the fabric names no stockpile material source")
+	assert_true(TechnologySlice.STOCKPILE_RESEARCH_HOLD.has(tid), "the runtime holds the stockpile source")
 	assert_eq(s.research_stock("p1", item), 0, "an empty stockpile holds nothing for research")
 	_give(rig, "p1", item, qty)
 	s.deposit("p1", item, qty)

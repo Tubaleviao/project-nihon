@@ -7,9 +7,9 @@ title: "Hearth"
 
 `item` · `station`
 
-A stone-ringed fire pit that founds a settlement when placed on free land. It is the settlement's research and crafting anchor: technology research that needs a "player's settlement" is done at a Hearth.
+A stone-ringed fire pit that founds a settlement when placed. Phase 203 removed its claim and its research site; Phase 204 returns each placed hearth to its founder as this item when settlements become clans.
 
-> The item and station that turns a camp into a claimed, shared settlement (Phase 139)
+> The item and station that turns a camp into a shared settlement (Phase 139)
 
 ## Attributes
 
