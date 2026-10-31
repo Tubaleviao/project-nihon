@@ -180,6 +180,7 @@ func _process(delta: float) -> void:
 	var steady := steady_path != "" and FileAccess.file_exists(steady_path)
 	if steady and not _sampling:
 		_sampling = true
+		_start_raid_pack()
 		TickProbe.take_times()
 		TickProbe.take_wire()
 		TickProbe.take_relays()
@@ -192,6 +193,20 @@ func _process(delta: float) -> void:
 		TickProbe.take_relays()
 	if stop_path != "" and FileAccess.file_exists(stop_path):
 		_begin_stop()
+
+## Phase 200 — the crowd runs with a raid on the field: a pack of raiders walks at the anchor, where the crowd
+## stands, for the whole sampled window. Host only, once.
+var _raid_started := false
+
+func _start_raid_pack() -> void:
+	if role != "host" or _raid_started or _root == null or _root._creature == null:
+		return
+	_raid_started = true
+	if OS.get_environment("STRESS_NO_RAID") != "":
+		return
+	var a := _anchor()
+	for i in 5:
+		_root._creature.spawn_raider("GraywolfPack", Vector2(a.x + 40.0 + float(i), a.z), Vector2(a.x, a.z), "stress_raid", i)
 
 func _sample(delta: float, work_ms: float, wall_ms: float) -> void:
 	_window_s += delta

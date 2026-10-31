@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–199 are done. Their specs and acceptance criteria, and the introductions of
+Phases 1–200 are done. Their specs and acceptance criteria, and the introductions of
 the arcs they belonged to, are archived in [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Next: follow-up debt burn II (Phases 194–196)
@@ -56,46 +56,9 @@ Raids come from creatures only. Settlement-against-settlement conflict stays def
 | 197 | The settlement loop in the fabric: projects, specialties, raids and upkeep | Done | [phases-197.md](docs/roadmap-history/phases-197.md) |
 | 198 | Settlement projects at runtime: a village builds together | Done | [phases-198.md](docs/roadmap-history/phases-198.md) |
 | 199 | Specialties at runtime: what each member is good at | Done | [phases-199.md](docs/roadmap-history/phases-199.md) |
-| 200 | Raids: a warned, bounded attack the village can defend | Planned | below |
+| 200 | Raids: a warned, bounded attack the village can defend | Done | [phases-200.md](docs/roadmap-history/phases-200.md) |
 | 201 | Upkeep: a village that has to keep going | Planned | below |
 | 202 | The settlement loop, played: four bots found, specialize, trade and defend a village | Planned | below |
-
----
-
-## Phase 200 — Raids: a warned, bounded attack the village can defend
-
-**Goal:** a settlement worth raiding is attacked by a creature pack from its biome. Members get a
-warning, fight at the claim edge, and the palisade and watchtower help. A lost raid costs a capped
-share of the stockpile. A raid never starts while no member is online inside the claim.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phases 192, 197 and 198.
-
-**Deliverables:**
-- `src/settlement/raid_rules.gd`: pure eligibility (age, value floor, cooldown, a member online in
-  the claim), pack choice per biome, and outcome resolution.
-- A host raid scheduler that checks eligibility on the settlement tick. A raid sends a keyed
-  warning to online members, then spawns the pack at the claim edge, using the existing pack AI with
-  the hearth as its goal. Defence effects from completed projects apply.
-- Outcome: all raiders killed or driven off is a defended raid, with ordinary loot from the
-  bodies. Raiders that reach the hearth take the capped stockpile share and damage unfinished
-  projects. The cooldown and the last result are persisted.
-- `/raid` admin command (Phase 182) to start a raid on the admin's settlement, for tests and the
-  Phase 202 run.
-- UI: the warning, a raid marker on the map and minimap, and the result in the settlement panel.
-
-**Acceptance criteria:**
-- [ ] Suite: `raid_rules` starts no raid with no member online in the claim, before the minimum
-  age, under the value floor, or inside the cooldown.
-- [ ] Suite: a lost raid takes at most the fabric's loss share, and a defended one takes nothing.
-- [ ] Suite: a palisade or watchtower changes the raid as its fabric effect says.
-- [ ] Suite: the cooldown and last result survive a save and reload.
-- [ ] Harness: a `settlement_raid` step. `/raid` warns both clients, the pack spawns at the claim
-  edge, the clients kill it, and the raid resolves as defended on both.
-- [ ] Every new string is in both catalogs, and the i18n key check passes.
-- [ ] Suite green on both boot paths, harness green, and the stress `cluster` crowd stays at or
-  above its baseline with a raid running.
 
 ---
 

@@ -67,7 +67,7 @@ static func losses(defended: bool, stock: Dictionary, defence: float, tbl: Dicti
 	var share := float(t["stakes"]["stockpileShareMax"]) * keep
 	var taken := {}
 	for item: String in stock:
-		var n := int(floor(float(int(stock[item])) * share))
+		var n := int(floor(float(int(stock[item])) * share + 1.0e-6))
 		if n > 0:
 			taken[item] = n
 	return { "stock": taken, "project_damage": float(t["stakes"]["projectDamageMax"]) * keep }

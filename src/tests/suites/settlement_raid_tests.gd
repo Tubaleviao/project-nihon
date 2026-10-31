@@ -13,6 +13,7 @@ func register() -> void:
 	_run_test("raid director: a spawned pack is judged — all dead defended, one at the hearth lost", _test_director_field)
 	_run_test("raid: raiders are creatures that die for good and leave with the raid", _test_raider_creatures)
 	_run_test("raid: the views carry the live raid and the last result", _test_views)
+	_run_test("raid: a palisade and a watchtower scale the losses by their fabric effect", _test_defence_effects)
 	_run_test("raid: every refusal and result has catalog text", _test_strings)
 
 func _ready_info() -> Dictionary:
@@ -251,4 +252,16 @@ func _test_views() -> void:
 	assert_eq(SettlementPanel.raid_text({}), "", "nothing to say")
 	for k in ["warning", "fighting"]:
 		assert_true(I18nScript.has_key("settlement.raid.phase." + k), "phase %s has text" % k)
+	_free_rig(rig)
+
+func _test_defence_effects() -> void:
+	var rig := _rig()
+	var s: SettlementSlice = rig["s"]
+	s._settlements["settlement_1"]["stock"] = { "ThornwoodPlank": 100 }
+	s._settlements["settlement_1"]["projects"]["palisade"] = { "key": "palisade", "status": "done", "work": 0.0, "given": {}, "contributors": {}, "site": { "x": 0.0, "z": 0.0 } }
+	assert_eq(s.project_effect("settlement_1", "raidDefence"), 0.3, "a standing palisade defends 0.3")
+	assert_eq(s.end_raid("settlement_1", false)["stock"], { "ThornwoodPlank": 14 }, "20% scaled by 0.7")
+	s._settlements["settlement_1"]["stock"] = { "ThornwoodPlank": 100 }
+	s._settlements["settlement_1"]["projects"]["watchtower"] = { "key": "watchtower", "status": "done", "work": 0.0, "given": {}, "contributors": {}, "site": { "x": 0.0, "z": 0.0 } }
+	assert_eq(s.end_raid("settlement_1", false)["stock"], { "ThornwoodPlank": 10 }, "with the watchtower too (0.5): 20% scaled by 0.5")
 	_free_rig(rig)

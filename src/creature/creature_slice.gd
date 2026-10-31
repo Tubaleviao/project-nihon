@@ -882,6 +882,9 @@ func spawn_raider(creature_id: String, xz: Vector2, goal: Vector2, raid_id: Stri
 	return iid
 
 const RAIDER_INDEX_BASE := 1000
+## Phase 200 — seconds between position-only deltas of one raider.
+const RAIDER_SYNC_INTERVAL := 1.0
+var _raider_sent_ms: Dictionary = {}
 
 ## Phase 200 — `[{ id, alive, xz }]` for the raiders of `raid_id`.
 func raiders_of(raid_id: String) -> Array:
@@ -910,6 +913,7 @@ func remove_raiders(raid_id: String) -> void:
 		_last_broadcast.erase(iid)
 		_spatial.remove(iid)
 		_dead_state.erase(iid)
+		_raider_sent_ms.erase(iid)
 	_invalidate_view()
 
 ## Deterministic instance id: derived from the chunk it belongs to, the creature
@@ -1097,6 +1101,13 @@ func _broadcast_creature_states() -> void:
 		var prev = _last_broadcast.get(iid, null)
 		if prev != null and prev["state"] == state and prev["position"] == pos:
 			continue
+		# Phase 200: a raider that only moved is sent at RAIDER_SYNC_INTERVAL, so a pack chasing a crowd stays inside
+		# the per-peer bandwidth budget; a state change (alert, aggressive, dead) goes out at once.
+		if prev != null and prev["state"] == state and inst.has("raid"):
+			var now_ms := Time.get_ticks_msec()
+			if now_ms - int(_raider_sent_ms.get(iid, 0)) < int(RAIDER_SYNC_INTERVAL * 1000.0):
+				continue
+			_raider_sent_ms[iid] = now_ms
 		_last_broadcast[iid] = { "state": state, "position": pos }
 		GameBus.creature_state_changed.emit(iid, inst["creature_id"], state, pos)
 
