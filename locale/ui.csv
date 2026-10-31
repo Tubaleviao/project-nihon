@@ -561,3 +561,93 @@ settlement.specialty.builder,builder,construtor
 settlement.specialty.forager,forager,coletor
 settlement.specialty.none,none,nenhuma
 character.specialty,Specialty: {0},Especialidade: {0}
+win.clan,Clan (J),Clã (J)
+dock.clan,Clan,Clã
+clan.none,"You are in no clan. Found one, or accept an invite.",Você não está em nenhum clã. Funde um ou aceite um convite.
+clan.status,{0} — your role: {1},{0} — seu papel: {1}
+clan.name_ph,Clan name,Nome do clã
+clan.player_ph,Player (handle),Jogador (código)
+clan.found,Found clan,Fundar clã
+clan.invite,Invite,Convidar
+clan.uninvite,Withdraw invite,Retirar convite
+clan.kick,Remove from clan,Remover do clã
+clan.set_role,Set role,Definir papel
+clan.leave,Leave clan,Sair do clã
+clan.sort_role,Sort by role,Ordenar por papel
+clan.message,Message,Mensagem
+clan.invited,Invited to {0},Convidado para {0}
+clan.join,Join,Entrar
+clan.decline,Decline,Recusar
+clan.online,online,online
+clan.offline,offline,offline
+clan.member_line,"{0} ({1}, {2}): {3}","{0} ({1}, {2}): {3}"
+clan.skill_line,"{0} {1}, {2} XP","{0} {1}, {2} XP"
+clan.role.founder,Founder,Fundador
+clan.role.elder,Elder,Ancião
+clan.role.member,Member,Membro
+clan.role.guest,Guest,Convidado
+clan.tier.novice,novice,novato
+clan.tier.apprentice,apprentice,aprendiz
+clan.tier.journeyman,journeyman,oficial
+clan.tier.expert,expert,especialista
+clan.tier.master,master,mestre
+skill.alchemy,Alchemy,Alquimia
+skill.arcaneforging,Arcane Forging,Forja Arcana
+skill.archery,Archery,Arqueria
+skill.building,Building,Construção
+skill.carpentry,Carpentry,Carpintaria
+skill.cartography,Cartography,Cartografia
+skill.diplomacy,Diplomacy,Diplomacia
+skill.elementalmagic,Elemental Magic,Magia Elemental
+skill.enchanting,Enchanting,Encantamento
+skill.leadership,Leadership,Liderança
+skill.lockpicking,Lockpicking,Arrombamento
+skill.navigation,Navigation,Navegação
+skill.restorationmagic,Restoration Magic,Magia de Restauração
+skill.shieldcraft,Shieldcraft,Arte do Escudo
+skill.skinning,Skinning,Esfola
+skill.smithing,Smithing,Ferraria
+skill.speechcraft,Speechcraft,Oratória
+skill.stealth,Stealth,Furtividade
+skill.swordsmanship,Swordsmanship,Esgrima
+skill.tailoring,Tailoring,Alfaiataria
+skill.tracking,Tracking,Rastreamento
+skill.trade,Trade,Comércio
+skill.unarmed,Unarmed,Desarmado
+skill.voidmagic,Void Magic,Magia do Vazio
+skill.voidsmithing,Voidsmithing,Forja do Vazio
+clan.ok.found,Clan founded.,Clã fundado.
+clan.ok.invite,Invite sent.,Convite enviado.
+clan.ok.uninvite,Invite withdrawn.,Convite retirado.
+clan.ok.join,You joined the clan.,Você entrou no clã.
+clan.ok.decline,Invite declined.,Convite recusado.
+clan.ok.leave,You left the clan.,Você saiu do clã.
+clan.ok.kick,Removed from the clan.,Removido do clã.
+clan.ok.role,Role changed.,Papel alterado.
+clan.refused.unknown_player,No such player.,Jogador desconhecido.
+clan.refused.rate_limited,Too fast. Wait a moment.,Rápido demais. Espere um pouco.
+clan.refused.bad_args,Something is missing.,Falta alguma coisa.
+clan.refused.already_member,That player is already in a clan.,Esse jogador já está em um clã.
+clan.refused.too_many,The server has too many clans.,O servidor tem clãs demais.
+clan.refused.not_member,Not a member of your clan.,Não é membro do seu clã.
+clan.refused.no_permission,Your role does not allow that.,Seu papel não permite isso.
+clan.refused.unknown_clan,That clan no longer exists.,Esse clã não existe mais.
+clan.refused.not_invited,You have no invite to that clan.,Você não tem convite para esse clã.
+clan.refused.full,The clan has too many members or invites.,O clã tem membros ou convites demais.
+clan.refused.bad_role,That role cannot be given.,Esse papel não pode ser dado.
+clan.refused.founder_locked,"The founder cannot be removed, and can leave only as the last member.",O fundador não pode ser removido e só pode sair como último membro.
+clan.refused.no_such_invite,There is no such invite.,Esse convite não existe.
+clan.refused.unknown_action,Unknown clan action.,Ação de clã desconhecida.
+clan.refused.outranked,You can only remove members ranked below you.,Você só pode remover membros abaixo de você.
+clan.refused.self,You cannot do that to yourself.,Você não pode fazer isso consigo mesmo.
+clan.refused.name_length,A clan name needs 3 to 24 letters.,Um nome de clã precisa ter de 3 a 24 letras.
+clan.refused.name_chars,"A clan name can only use letters, spaces, hyphens and apostrophes.","Um nome de clã só pode usar letras, espaços, hífens e apóstrofos."
+clan.refused.name_script,A clan name must use letters from one alphabet.,Um nome de clã deve usar letras de um só alfabeto.
+clan.refused.name_separator,"A clan name can have up to three spaces, hyphens or apostrophes, and not at either end.","Um nome de clã pode ter até três espaços, hífens ou apóstrofos, e não nas pontas."
+clan.refused.name_reserved,That clan name is reserved.,Esse nome de clã é reservado.
+clan.refused.name_taken,Another clan already has that name or one that looks like it.,Outro clã já tem esse nome ou um parecido.
+chat.usage.msg,/msg <player> <message> — a private message to one player,/msg <jogador> <mensagem> — uma mensagem privada para um jogador
+chat.msg_self,You cannot message yourself.,Você não pode mandar mensagem para si mesmo.
+chat.msg_slow,At most {0} private messages a minute. Wait a moment.,No máximo {0} mensagens privadas por minuto. Espere um pouco.
+chat.whisper_from,{0} whispers:,{0} sussurra:
+chat.whisper_to,To {0}:,Para {0}:

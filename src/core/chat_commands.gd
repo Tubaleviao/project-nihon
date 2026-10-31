@@ -17,19 +17,24 @@ const GESTURES := "/" + GESTURES_NAME
 
 ## Longest chat line accepted, in characters. The wire cap (`MAX_CLIENT_PACKET_BYTES`) is far above it.
 const MAX_MESSAGE_CHARS := 240
+## Phase 204 — a `/msg` line is longer: the command, a name and up to `Clan.messages.maxLength` (280) characters,
+## which the chat slice then caps to the fabric's length.
+const MAX_PRIVATE_LINE_CHARS := 400
+const MSG_NAME := "msg"
 ## Largest coordinate a `/tp` may name: the planet wraps (X is folded onto one lap in `parse_position`), so beyond it is a typo.
 const MAX_TP_COORD := 1.0e9
 ## Largest quantity one `/give` may grant.
 const MAX_GIVE_QUANTITY := 10000
 
 ## Commands any player may run / only admins may run. The one place the names are listed.
-const PLAYER_COMMANDS := ["help", "players"]
+const PLAYER_COMMANDS := ["help", "players", MSG_NAME]
 const ADMIN_COMMANDS := ["say", "tp", "bring", "give", "kill", "weather", "time", "speed", "fly", "heal", "regen"]
 
 ## Catalog key of the one line of usage per command, for `/help` (see `locale/ui.csv`).
 const USAGE := {
 	"help":    "chat.usage.help",
 	"players": "chat.usage.players",
+	MSG_NAME:  "chat.usage.msg",
 	WHERE_NAME: "chat.usage.where",
 	GESTURES_NAME: "chat.usage.gestures",
 	"say":     "chat.usage.say",
@@ -73,14 +78,20 @@ static func _command_of(text: String) -> String:
 	var typed := text.strip_edges().to_lower()
 	return typed if typed in [WHERE, GESTURES] else ""
 
-## `text` with control characters dropped and the length capped; "" when nothing printable is left.
+## `text` with control characters dropped and the length capped; "" when nothing printable is left. A `/msg`
+## line keeps `MAX_PRIVATE_LINE_CHARS`.
 static func sanitize(text: String) -> String:
 	var out := ""
-	for i in text.length():
+	for i in mini(text.length(), MAX_PRIVATE_LINE_CHARS * 2):
 		var code := text.unicode_at(i)
 		if code >= 32 and code != 127:
 			out += text[i]
-	return out.strip_edges().substr(0, MAX_MESSAGE_CHARS)
+	out = out.strip_edges()
+	return out.substr(0, MAX_PRIVATE_LINE_CHARS if is_private(out) else MAX_MESSAGE_CHARS)
+
+## Phase 204 — whether `text` is a private message (`/msg <player> <text>`).
+static func is_private(text: String) -> bool:
+	return text.to_lower().begins_with("/" + MSG_NAME + " ")
 
 ## True when `text` is typed as a slash command (known or not).
 static func is_slash(text: String) -> bool:

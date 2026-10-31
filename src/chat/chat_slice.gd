@@ -29,6 +29,7 @@ const PlayerRules := preload("res://src/core/player_rules.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const AdminRules := preload("res://src/admin/admin_rules.gd")
 const PlayerRegistry := preload("res://src/persistence/player_registry.gd")
+const ClanSlice := preload("res://src/clan/clan_slice.gd")
 
 const ADMINS_PATH := "user://admins.json"
 ## Lines kept in the log, and shown at once while the box is closed.
@@ -49,6 +50,12 @@ const MAX_BUCKETS := 256
 const CHANNEL_CHAT := "chat"
 const CHANNEL_ANNOUNCE := "announce"
 const CHANNEL_SYSTEM := "system"
+## Phase 204 — a private message as its recipient sees it ("whisper", the sender's name) and as its sender's
+## echo ("whisper_to", the recipient's name).
+const CHANNEL_WHISPER := "whisper"
+const CHANNEL_WHISPER_TO := "whisper_to"
+## Phase 204 — the private-message window: at most `Clan.messages.perMinute` per sender in any minute.
+const PRIVATE_WINDOW_SEC := 60.0
 ## The sender of a `/say` announcement; the client shows it translated.
 const SERVER_SENDER := "Server"
 
@@ -80,6 +87,10 @@ var _admins: Dictionary = {}     # player id -> true
 ## `/fly`). Session state: a player who leaves is dropped, and comes back walking normally.
 var _admin_moves: Dictionary = {}
 var _buckets: Dictionary = {}    # player id -> { tokens: float, at: float, notice_at: float }
+## Phase 204 — player id -> the times of their private messages inside the last `PRIVATE_WINDOW_SEC`.
+var _private_sent: Dictionary = {}
+## Private messages refused by their per-minute limit since boot.
+var private_rate_refused: int = 0
 var _lines: Array = []           # { channel, sender, text, born }
 var _layer: CanvasLayer = null
 var _log: RichTextLabel = null
@@ -89,6 +100,7 @@ func _ready() -> void:
 	_load_admins()
 	GameBus.chat_intent.connect(_on_chat_intent)
 	GameBus.chat_posted.connect(_on_chat_posted)
+	GameBus.chat_compose_requested.connect(open_input)
 	GameBus.system_message.connect(_on_system_message)
 	GameBus.locale_changed.connect(_on_locale_changed)
 	GameBus.player_left.connect(_on_player_left)
@@ -223,6 +235,8 @@ func handle_intent(text: String, player_id: String) -> void:
 				_reply(speaker, str(key))
 		"players":
 			_cmd_players(speaker)
+		ChatCommands.MSG_NAME:
+			_cmd_msg(speaker, args)
 		"say":
 			_cmd_say(speaker, args)
 		"tp":
@@ -310,6 +324,82 @@ func _cmd_players(speaker: String) -> void:
 		var shown := _name_of(str(pid))
 		names.append(shown if shown == _handle_of(str(pid)) else "%s (%s)" % [shown, _handle_of(str(pid))])
 	_reply(speaker, "chat.players", [ids.size(), ", ".join(names)])
+
+## Phase 204 — the fabric's private-message rules (`Clan.messages`, from the clan slice's merged table):
+## { maxLength, perMinute }.
+static func private_rules() -> Dictionary:
+	var m: Dictionary = ClanSlice.shared_rules()["messages"]
+	var defaults: Dictionary = ClanSlice.DEFAULT_RULES["messages"]
+	var out := {}
+	for k: String in defaults:
+		var v: Variant = m.get(k, defaults[k])
+		out[k] = int(v) if (v is int or v is float) else int(defaults[k])
+	return out
+
+## Phase 204 — `/msg <player> <text>`: one private line, relayed by the host to the recipient's peer alone, with
+## an echo to the sender. The player is a handle or the display name of someone online (a name of up to three
+## words is matched longest first). Limited to `perMinute` per sender.
+func _cmd_msg(speaker: String, args: Array) -> void:
+	if args.size() < 2:
+		_reply(speaker, ChatCommands.USAGE[ChatCommands.MSG_NAME])
+		return
+	var target := ""
+	var used := 0
+	for n in range(mini(3, args.size() - 1), 0, -1):
+		var words: PackedStringArray = PackedStringArray()
+		for i in n:
+			words.append(str(args[i]))
+		target = _find_named(" ".join(words), speaker)
+		if target != "":
+			used = n
+			break
+	if target == "":
+		_reply(speaker, "chat.no_player", [str(args[0])])
+		return
+	if target == speaker:
+		_reply(speaker, "chat.msg_self")
+		return
+	var rest: PackedStringArray = PackedStringArray()
+	for i in range(used, args.size()):
+		rest.append(str(args[i]))
+	var r := private_rules()
+	var text := " ".join(rest).left(int(r["maxLength"]))
+	if not _take_private(speaker, int(r["perMinute"])):
+		_reply(speaker, "chat.msg_slow", [int(r["perMinute"])])
+		return
+	_post(CHANNEL_WHISPER, _name_of(speaker), text, target)
+	_post(CHANNEL_WHISPER_TO, _name_of(target), text, speaker)
+
+## The online player `typed` names: a handle (as `_find_player`), else a display name, case-insensitive.
+func _find_named(typed: String, speaker: String) -> String:
+	var by_handle := _find_player(typed, speaker)
+	if by_handle != "" and _online_ids().has(by_handle):
+		return by_handle
+	var want := typed.to_lower()
+	for pid in _online_ids():
+		if _name_of(str(pid)).to_lower() == want:
+			return str(pid)
+	return ""
+
+## Record one private message for `speaker`; false when they already sent `per_minute` in the last minute.
+func _take_private(speaker: String, per_minute: int) -> bool:
+	var now: float = now_sec.call()
+	var kept: Array = []
+	for t in _private_sent.get(speaker, []):
+		if now - float(t) < PRIVATE_WINDOW_SEC:
+			kept.append(t)
+	if kept.size() >= per_minute:
+		_private_sent[speaker] = kept
+		private_rate_refused += 1
+		return false
+	kept.append(now)
+	_private_sent[speaker] = kept
+	if _private_sent.size() > MAX_BUCKETS:
+		for pid in _private_sent.keys():
+			var times: Array = _private_sent[pid]
+			if times.is_empty() or now - float(times[times.size() - 1]) >= PRIVATE_WINDOW_SEC:
+				_private_sent.erase(pid)
+	return true
 
 func _cmd_say(speaker: String, args: Array) -> void:
 	if args.is_empty():
@@ -802,9 +892,18 @@ func _build_ui() -> void:
 	# Always on screen so the box can be found; Enter, `/` or a click gives it the keyboard.
 	_field.placeholder_text = I18n.t("chat.field")
 	_field.max_length = ChatCommands.MAX_MESSAGE_CHARS
+	_field.text_changed.connect(_on_field_text_changed)
 	_field.focus_exited.connect(_on_field_focus_exited)
 	_field.text_submitted.connect(_on_text_submitted)
 	box.add_child(_field)
+
+## A `/msg` line may run to MAX_PRIVATE_LINE_CHARS; any other line stops at MAX_MESSAGE_CHARS, the length the
+## host keeps, so nothing typed is cut off unseen.
+func _on_field_text_changed(text: String) -> void:
+	_field.max_length = field_limit(text)
+
+static func field_limit(text: String) -> int:
+	return ChatCommands.MAX_PRIVATE_LINE_CHARS if ChatCommands.is_private(text) else ChatCommands.MAX_MESSAGE_CHARS
 
 func _on_text_submitted(text: String) -> void:
 	submit(text)
@@ -845,4 +944,8 @@ static func _format_line(line: Dictionary) -> String:
 			return "[color=#ffcc55][b]%s: %s[/b][/color]" % [sender, body]
 		CHANNEL_SYSTEM:
 			return "[color=#9fc7ff]%s[/color]" % body
+		CHANNEL_WHISPER:
+			return "[color=#d9a8ff]%s[/color] %s" % [I18n.t("chat.whisper_from", [str(line["sender"])]).replace("[", "[lb]"), body]
+		CHANNEL_WHISPER_TO:
+			return "[color=#b59ad6]%s[/color] %s" % [I18n.t("chat.whisper_to", [str(line["sender"])]).replace("[", "[lb]"), body]
 	return "[color=#dddddd]%s:[/color] %s" % [sender, body]

@@ -134,6 +134,8 @@ func collect_save_job(incremental: bool) -> Dictionary:
 		"colonization":    root._colonization.to_data(),
 		"clock":           root._clock.to_data(),
 		"settlements":     root._settlements.to_data() if root._settlements != null else {},
+		# Phase 204 — clans (world format 3). A record without them is from before clans: its settlements migrate.
+		"clans":           root._clans.to_data() if root._clans != null else {},
 		# Phase 161 — the bodies kills left, with the time each has left.
 		"carcasses":       root._carcass.to_data() if root._carcass != null else {},
 		"weather":         root._weather.to_data() if root._weather != null else [],
@@ -488,6 +490,15 @@ func load_world_records() -> void:
 		root._station.restore_next_id(int(root._loaded_world.get("station_next_id", 0)))
 		if root._settlements != null:
 			root._settlements.from_data(root._loaded_world.get("settlements", {}))
+		if root._clans != null:
+			if root._loaded_world.has("clans"):
+				root._clans.from_data(root._loaded_world["clans"])
+			else:
+				root._clans.from_data({})
+				var made: int = root._clans.migrate_settlements(root._loaded_world.get("settlements", {}))
+				if made > 0:
+					print("[Server] %d settlements became clans (world format %d → %d)" % [made,
+						int(root._loaded_world.get("version", PersistenceSlice.LEGACY_WORLD_FORMAT_VERSION)), PersistenceSlice.WORLD_FORMAT_VERSION])
 		if root._carcass != null:
 			root._carcass.from_data(root._loaded_world.get("carcasses", {}))
 		if root._waystones != null:

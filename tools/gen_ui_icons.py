@@ -564,11 +564,17 @@ def d_tech(c):
     s_flaskmini(c)
 
 
+def d_clan(c):
+    _lay(c, 0.55, 0, 40, s_bust)
+    _lay(c, 0.55, 44, 40, s_bust)
+    _lay(c, 0.6, 20, 0, s_flag)
+
+
 # Window key -> drawing; every WindowDock entry needs one.
 WINDOWS = {
     "inventory": s_bag, "character": s_bust, "skills": s_book, "crafting": d_craft,
     "technology": d_tech, "trade": s_swap, "market": s_coins, "map": s_globe,
-    "proposals": s_scroll, "settlement": s_house, "controls": s_keyboard, "admin": s_crown_window,
+    "proposals": s_scroll, "settlement": s_house, "clan": d_clan, "controls": s_keyboard, "admin": s_crown_window,
 }
 
 # HUD key -> drawing; every status effect of combat.js needs one.

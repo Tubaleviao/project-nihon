@@ -215,6 +215,12 @@ func _build_settlement_content() -> Control:
 	sl.settlement_panel = panel
 	return panel
 
+## Phase 204 — the clan window: found, invites, roles and the skill roster.
+func _build_clan_content() -> Control:
+	var panel = preload("res://src/ui/clan_panel.gd").new()
+	sl.clan_panel = panel
+	return panel
+
 ## Phase 182 — the Admin window: weather, time, speed, flying and healing, through the chat commands.
 func _build_admin_content() -> Control:
 	return AdminPanelScript.new()

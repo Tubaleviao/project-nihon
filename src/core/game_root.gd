@@ -59,6 +59,7 @@ const BedWiring := preload("res://src/world/bed_wiring.gd")
 const TutorialWiring := preload("res://src/tutorial/tutorial_wiring.gd")
 const BedSlice := preload("res://src/world/bed_slice.gd")
 const SettlementWiring := preload("res://src/settlement/settlement_wiring.gd")
+const ClanWiring := preload("res://src/clan/clan_wiring.gd")
 const CraftingWiring := preload("res://src/crafting/crafting_wiring.gd")
 const CharacterWiring := preload("res://src/character/character_wiring.gd")
 const GestureWiring   := preload("res://src/character/gesture_wiring.gd")
@@ -78,6 +79,7 @@ var _waystone_wiring := WaystoneWiring.new()
 var _bed_wiring := BedWiring.new()
 var _tutorial_wiring := TutorialWiring.new()
 var _settlement_wiring := SettlementWiring.new()
+var _clan_wiring := ClanWiring.new()
 var _crafting_wiring := CraftingWiring.new()
 var _character_wiring := CharacterWiring.new()
 var _gesture_wiring := GestureWiring.new()
@@ -128,6 +130,7 @@ var _gesture:     GestureSlice
 var _bed:         BedSlice
 var _waystones:   WaystoneSlice
 var _settlements: Node
+var _clans:       Node
 var _weather:     WeatherSlice
 ## Phase 129 — the host's status effects, ticked from the clock tick; null on a client.
 var _status:      StatusEffects
@@ -247,7 +250,7 @@ var _handshake_retries: int = 0
 
 ## Phase 132 — wiring modules know their root from construction (the suite builds roots without `_ready`).
 func _init() -> void:
-	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _bed_wiring, _tutorial_wiring, _settlement_wiring, _crafting_wiring, _character_wiring, _gesture_wiring, _creation_wiring, _carcass_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring, _admin_wiring]
+	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _bed_wiring, _tutorial_wiring, _settlement_wiring, _clan_wiring, _crafting_wiring, _character_wiring, _gesture_wiring, _creation_wiring, _carcass_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring, _admin_wiring]
 	for w in _wirings:
 		w.root = self
 
@@ -313,6 +316,7 @@ func _ready() -> void:
 	_waystones   = WaystoneSlice.new()
 	_bed         = BedSlice.new()
 	_settlements = _settlement_wiring.make_slice(self)
+	_clans       = _clan_wiring.make_slice(self)
 	_weather     = WeatherSlice.new()
 	# Phase 129 — status effects live on the host; the battle slice rolls them and the AI honours them.
 	_status = StatusEffects.new()
@@ -355,7 +359,7 @@ func _ready() -> void:
 	# The UI (Phase 14) is presentation only, so a headless dedicated server
 	# (Phase 27) keeps it out of the tree — its _ready() would otherwise build
 	# windows nothing can render or click.
-	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _registry, _player, _loot, _carcass, _inventory, _character, _crafting, _technology, _taming, _professions, _station, _tree, _market, _trade, _proposal, _chat, _gesture, _waystones, _bed, _settlements, _weather]
+	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _registry, _player, _loot, _carcass, _inventory, _character, _crafting, _technology, _taming, _professions, _station, _tree, _market, _trade, _proposal, _chat, _gesture, _waystones, _bed, _settlements, _clans, _weather]
 	if not _is_server:
 		slices.append(_ui)
 	if not _is_server:
@@ -703,8 +707,7 @@ func _notification(what: int) -> void:
 const DEBUG := false
 
 ## Role dispatch (Phase 32): client → `_boot_client()`, dedicated server →
-## `_boot_server()`, otherwise the listen host → `_boot_host()`. No boot logic
-## lives here any more — the host path used to be inlined at this point.
+## `_boot_server()`, otherwise the listen host → `_boot_host()`. No boot logic lives here.
 ##
 ## Phase 42 review pass 4 — the DEDICATED SERVER branch ends its boot here, so this is
 ## where `--quit-after-boot` fires for it: a `--server` boot has no deferred tail (that is
@@ -714,14 +717,11 @@ const DEBUG := false
 func _boot_world() -> void:
 	if _is_client:
 		_boot_client()
-		return
-
-	if _is_server:
+	elif _is_server:
 		_boot_server()
 		_quit_after_boot_if_asked("server")
-		return
-
-	_boot_host()
+	else:
+		_boot_host()
 
 ## Listen-host boot path (Phase 32): a superset of the server path. The
 ## authoritative half is exactly `_boot_server()` — the same

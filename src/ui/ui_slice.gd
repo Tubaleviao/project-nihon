@@ -45,13 +45,14 @@ const WINDOW_CHARACTER  := "character"
 const WINDOW_SKILLS     := "skills"
 const WINDOW_MAP        := "map"
 const WINDOW_SETTLEMENT := "settlement"
+const WINDOW_CLAN       := "clan"   # Phase 204
 const WINDOW_GESTURES  := "gestures"
 const WINDOW_ADMIN     := "admin"   # Phase 182 — admins only (`is_admin`)
 
 const TutorialCard := preload("res://src/tutorial/tutorial_card.gd")
 const WINDOW_KEYS := [
 	WINDOW_INVENTORY, WINDOW_TECHNOLOGY, WINDOW_CRAFTING,
-	WINDOW_TRADE, WINDOW_MARKET, WINDOW_PROPOSALS, WINDOW_CONTROLS, WINDOW_CHARACTER, WINDOW_SKILLS, WINDOW_MAP, WINDOW_SETTLEMENT, WINDOW_GESTURES, WINDOW_ADMIN,
+	WINDOW_TRADE, WINDOW_MARKET, WINDOW_PROPOSALS, WINDOW_CONTROLS, WINDOW_CHARACTER, WINDOW_SKILLS, WINDOW_MAP, WINDOW_SETTLEMENT, WINDOW_CLAN, WINDOW_GESTURES, WINDOW_ADMIN,
 ]
 
 const MouseIconScript := preload("res://src/ui/mouse_icon.gd")
@@ -159,6 +160,7 @@ var layout_path: String = LAYOUT_PATH
 var map_window: Control = null
 var settlement_slice: Node = null
 var settlement_panel: Control = null
+var clan_panel: Control = null   # Phase 204 — bound to its slice by ClanWiring
 var is_admin: bool = false   # Phase 182 — the host said this player is an admin (`set_admin`)
 var _layout: Dictionary = {}                 # window key -> Vector2
 var _crafting_box: VBoxContainer = null
@@ -265,6 +267,8 @@ func _input(event: InputEvent) -> void:
 				toggle_window(WINDOW_MAP)
 			KEY_L:
 				toggle_window(WINDOW_SETTLEMENT)
+			KEY_J:
+				toggle_window(WINDOW_CLAN)
 			KEY_O:
 				toggle_window(WINDOW_ADMIN)
 			KEY_ESCAPE:
@@ -1265,9 +1269,6 @@ func _on_proposal_vote_pressed(proposal_id: String, verdict: String) -> void:
 
 func _build_ui() -> void:
 	_m1._build_ui()
-
-func _build_settlement_content() -> Control:
-	return _m2._build_settlement_content()
 
 func set_admin(admin: bool) -> void:
 	_m2.set_admin(admin)

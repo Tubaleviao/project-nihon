@@ -81,8 +81,10 @@ const DEFAULT_SHUTDOWN_PATH   := "user://shutdown_requested"
 ## that the terrain is regenerated from. The version is a MARKER, not a gate: the
 ## load path is tolerant of both shapes (VoxelSlice.apply_edits migrates a legacy
 ## scalar against the tile's natural run), so a version-1 record loads with every
-## edit intact and is re-saved as version 2.
-const WORLD_FORMAT_VERSION := 2
+## edit intact and is re-saved as version 2. Phase 204 bumped it to 3: the record carries
+## `clans`, and a record without them (version 2 or older) has its settlements migrated to
+## clans on load (`ClanSlice.migrate_settlements`), then is re-saved as version 3.
+const WORLD_FORMAT_VERSION := 3
 ## Where the region files live, relative to `server_save_dir`.
 const REGIONS_SUBDIR := "regions/"
 ## The version a record written before Phase 41 has: identifiable by the absence

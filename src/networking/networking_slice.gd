@@ -317,6 +317,7 @@ func _ready() -> void:
 	GameBus.research_intent.connect(_on_research_intent)
 	GameBus.waystone_travel_intent.connect(_on_waystone_travel_intent)
 	GameBus.settlement_intent.connect(_on_settlement_intent)
+	GameBus.clan_intent.connect(_m2.forward_clan_intent)
 	# Phase 35 — taming is per-player as well (a granted flag and a companion
 	# binding both live on the tamer's record), so it travels the same way.
 	GameBus.tame_intent.connect(_on_tame_intent)
@@ -721,9 +722,7 @@ func _on_waystone_travel_intent(from_id: String, to_id: String, _player_id: Stri
 
 ## Phase 140 — a client forwards a settlement intent; the host binds the identity and validates the rest.
 func _on_settlement_intent(action: String, args: Dictionary, _player_id: String) -> void:
-	if _role != Role.CLIENT:
-		return
-	_broadcast({ "type": "settlement_intent", "action": action, "args": args })
+	_m2.forward_intent("settlement_intent", action, args)
 
 ## Phase 35 — taming: the granted flag and the companion binding live on a player
 ## record the host owns, so a client forwards the target instance and the host

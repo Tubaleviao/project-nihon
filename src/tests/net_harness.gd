@@ -181,6 +181,8 @@ static func steps() -> Array:
 		{ "name": "bed_spawn",         "compare": true },
 		{ "name": "settlement",        "compare": true },
 		{ "name": "settlement_project", "compare": true },
+		{ "name": "clan_roster",       "compare": true },
+		{ "name": "private_message",   "compare": true },
 		{ "name": "non_admin_refused", "compare": true },
 		{ "name": "equipment_recorded", "compare": true },
 		{ "name": "equipment_delivered", "compare": true },
@@ -344,6 +346,8 @@ func run(root: Node, role: String) -> void:
 	# Chat lines and teleports are observed over the whole run, like deaths (see `_chat_seen`).
 	GameBus.chat_posted.connect(_on_chat_posted)
 	GameBus.system_message.connect(_on_system_message)
+	# Phase 204 — every clan view this side receives, as it came off the wire (see `_clan_views`).
+	GameBus.own_state_synced.connect(_on_own_state_clan)
 	# Phase 131 — the two processes read different languages, so a keyed host line is checked by key
 	# and by what it renders to in THIS process's locale.
 	TranslationServer.set_locale("pt_BR" if role == "client" else "en")
@@ -425,6 +429,8 @@ func run(root: Node, role: String) -> void:
 	await _step_bed_spawn()
 	await _step_settlement()
 	await _step_settlement_project()
+	await _step_clan_roster()
+	await _step_private_message()
 	await _step_non_admin_refused()
 	await _step_equipment_recorded()
 	await _step_equipment_delivered()
@@ -962,6 +968,136 @@ func _step_bed_spawn() -> void:
 	_report("bed_spawn", verdict(near, true), "bed-spawn" if near else "respawn_missed_bed")
 	GameBus.player_teleport.emit(home)
 	await _await_settle(1.0)
+
+## Phase 204 — the clan roster over the socket, checked on the wire. The host gives its own player Tailoring XP
+## and founds a clan while the client is an outsider; the client must receive no view that shows it. The host
+## invites the client, the client joins and must then receive the host's XP in its roster; the host raises it
+## once more while the client is a member, and again after the client leaves, which the client must never see.
+const CLAN_NAME := "Harness Clan"
+const CLAN_SKILL := "Tailoring"
+const CLAN_XP_OUTSIDER := 77
+const CLAN_XP_MEMBER := 88
+const CLAN_XP_LEFT := 99
+## Client: every `clan_view` payload received, in order (raw `own_state_synced` data, not the slice's copy).
+var _clan_views: Array = []
+
+func _on_own_state_clan(data: Dictionary) -> void:
+	if data.get("clan_view", null) is Dictionary:
+		_clan_views.append((data["clan_view"] as Dictionary).duplicate(true))
+
+## The roster row in `view` whose `CLAN_SKILL` XP is `xp` ({} when none): the host's, in this scenario.
+static func _clan_row_with(view: Dictionary, xp: int) -> Dictionary:
+	var mine: Variant = view.get("mine", {})
+	if not (mine is Dictionary):
+		return {}
+	for row: Variant in ((mine as Dictionary).get("roster", []) as Array):
+		if row is Dictionary and int(((row.get("skills", {}) as Dictionary).get(CLAN_SKILL, {}) as Dictionary).get("xp", -1)) == xp:
+			return row
+	return {}
+
+func _clan_views_with(xp: int, from: int = 0) -> int:
+	var n := 0
+	for i in range(from, _clan_views.size()):
+		if not _clan_row_with(_clan_views[i], xp).is_empty():
+			n += 1
+	return n
+
+func _set_clan_xp(pid: String, xp: int) -> void:
+	_root._registry.add_skill_xp(pid, CLAN_SKILL, xp - int(_root._registry.get_skill_xp(pid, CLAN_SKILL)))
+	_root._clans.note_skills_changed(pid)
+
+func _step_clan_roster() -> void:
+	var clans: Node = _root._clans
+	await _await_settle(1.0 * _time_scale)
+	if _role == "host":
+		var local: String = _root._registry.local_player_id
+		var bound := _bound_id()
+		_set_clan_xp(local, CLAN_XP_OUTSIDER)
+		var found_why: String = clans.found(local, CLAN_NAME)
+		await _await_settle(2.0 * _time_scale)   # four view ticks while the client is an outsider
+		var invite_why: String = clans.invite(local, bound)
+		var joined: bool = await _await_until(func(): return clans.clan_of(bound) != "", _step_timeout())
+		_set_clan_xp(local, CLAN_XP_MEMBER)
+		var left: bool = await _await_until(func(): return joined and clans.clan_of(bound) == "", _step_timeout())
+		_set_clan_xp(local, CLAN_XP_LEFT)
+		await _await_settle(2.0 * _time_scale)   # the client watches these ticks for a view it must not get
+		var ok := found_why == "" and invite_why == "" and joined and left
+		_report("clan_roster", verdict(ok, true), "member-sees-skills-outsider-never" if ok else "found_%s-invite_%s-joined%d-left%d" % [found_why, invite_why, int(joined), int(left)])
+		return
+	var invited: bool = await _await_until(func(): return not _clan_views.is_empty() and ((_clan_views.back() as Dictionary).get("invites", []) as Array).size() > 0, _step_timeout())
+	var outsider_saw := _clan_views_with(CLAN_XP_OUTSIDER)
+	if invited:
+		GameBus.clan_intent.emit("join", { "id": str(((_clan_views.back() as Dictionary)["invites"] as Array)[0].get("id", "")) }, "")
+	var member_saw: bool = await _await_until(func(): return _clan_views_with(CLAN_XP_MEMBER) > 0, _step_timeout())
+	await _await_settle(0.6)   # past the host's per-player intent interval after the join
+	var before_leave := _clan_views.size()
+	GameBus.clan_intent.emit("leave", {}, "")
+	var left: bool = await _await_until(func():
+		return _clan_views.size() > before_leave and ((_clan_views.back() as Dictionary).get("mine", {}) as Dictionary).is_empty(), _step_timeout())
+	var left_at := _clan_views.size()
+	await _await_settle(3.0 * _time_scale)
+	# After the view that dropped the roster, no view may carry one: not the new XP, not any roster.
+	var after_left := 0
+	for i in range(left_at, _clan_views.size()):
+		if not ((_clan_views[i] as Dictionary).get("mine", {}) as Dictionary).is_empty():
+			after_left += 1
+	# A player id is a bearer token: no view on the wire may carry one (the client's own included).
+	var ids_seen := 0
+	for v: Dictionary in _clan_views:
+		if JSON.stringify(v).contains(_root._registry.local_player_id):
+			ids_seen += 1
+		for word: String in JSON.stringify(v).split("\""):
+			if _root._registry.looks_like_player_id(word):
+				ids_seen += 1
+	var ok := invited and outsider_saw == 0 and member_saw and left and after_left == 0 and _clan_views_with(CLAN_XP_LEFT) == 0 and ids_seen == 0
+	_report("clan_roster", verdict(ok, true), "member-sees-skills-outsider-never" if ok else "invited%d-outsiderSaw%d-memberSaw%d-left%d-afterLeft%d-ids%d" % [int(invited), outsider_saw, int(member_saw), int(left), after_left, ids_seen])
+
+## Phase 204 — a private message each way. The client sends `/msg <host handle>` (the handle from the roster
+## it received in the step before) and the host `/msg <client handle>`. Each side's chat box must show the
+## line meant for it and its own echo, and never the line it sent as if it were for it; the host also checks
+## that its line went out addressed to the client's player alone.
+const PM_TO_HOST := "harness-pm-to-host"
+const PM_TO_CLIENT := "harness-pm-to-client"
+
+func _box_has(channel: String, text: String) -> bool:
+	for line: Dictionary in _root._chat.lines():
+		if str(line.get("channel", "")) == channel and str(line.get("text", "")) == text:
+			return true
+	return false
+
+func _step_private_message() -> void:
+	await _await_settle(1.0 * _time_scale)
+	if _role == "host":
+		var bound := _bound_id()
+		var got: bool = await _await_until(func(): return _box_has("whisper", PM_TO_HOST), _step_timeout())
+		_root._chat.handle_intent("/msg %s %s" % [_root._registry.public_handle(bound), PM_TO_CLIENT], "")
+		await _await_settle(2.0 * _time_scale)
+		var addressed := 0
+		var elsewhere := 0
+		for m: Dictionary in _chat_seen:
+			if str(m["channel"]) == "whisper" and str(m["text"]) == PM_TO_CLIENT:
+				if str(m["target"]) == bound:
+					addressed += 1
+				else:
+					elsewhere += 1
+		var own_echo := _box_has("whisper_to", PM_TO_CLIENT)
+		var leaked := _box_has("whisper", PM_TO_CLIENT) or _box_has("whisper_to", PM_TO_HOST)
+		var ok := got and addressed == 1 and elsewhere == 0 and own_echo and not leaked
+		_report("private_message", verdict(ok, true), "reached-only-its-recipient" if ok else "got%d-addressed%d-elsewhere%d-echo%d-leaked%d" % [int(got), addressed, elsewhere, int(own_echo), int(leaked)])
+		return
+	var host_handle := ""
+	for v: Dictionary in _clan_views:
+		var row := _clan_row_with(v, CLAN_XP_MEMBER)
+		if not row.is_empty():
+			host_handle = str(row.get("handle", ""))
+	if host_handle != "":
+		_root._chat.submit("/msg %s %s" % [host_handle, PM_TO_HOST])
+	var got: bool = await _await_until(func(): return _box_has("whisper", PM_TO_CLIENT), _step_timeout())
+	var own_echo: bool = await _await_until(func(): return _box_has("whisper_to", PM_TO_HOST), _step_timeout())
+	await _await_settle(2.0 * _time_scale)
+	var leaked := _box_has("whisper", PM_TO_HOST) or _box_has("whisper_to", PM_TO_CLIENT)
+	var ok := host_handle != "" and got and own_echo and not leaked
+	_report("private_message", verdict(ok, true), "reached-only-its-recipient" if ok else "handle%d-got%d-echo%d-leaked%d" % [int(host_handle != ""), int(got), int(own_echo), int(leaked)])
 
 ## Step 7e — Phase 101: a non-admin's `/give` is refused to that client alone and creates nothing.
 func _step_non_admin_refused() -> void:

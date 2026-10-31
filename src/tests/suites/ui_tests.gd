@@ -1032,7 +1032,7 @@ func _test_hud_hotbar_pure() -> void:
 	assert_eq(_HotbarScript.digit_slot(KEY_0), -1, "0 is not a bottom-row key")
 	for k in [KEY_W, KEY_I, KEY_C, KEY_H, KEY_M, KEY_P, KEY_1, KEY_ESCAPE, KEY_SPACE]:
 		assert_false(_HotbarScript.bind_allowed(k), "game key %d cannot be a shortcut" % k)
-	for k in [KEY_U, KEY_J, KEY_F5, KEY_0]:
+	for k in [KEY_U, KEY_F5, KEY_0]:
 		assert_true(_HotbarScript.bind_allowed(k), "key %d may be a shortcut" % k)
 	for k in [KEY_X, KEY_Z]:
 		assert_false(_HotbarScript.bind_allowed(k), "harvest and carry keys %d cannot be a shortcut" % k)
@@ -1041,7 +1041,7 @@ func _test_hud_hotbar_pure() -> void:
 		binds.append(0)
 	binds[11] = KEY_U
 	assert_eq(_HotbarScript.slot_for_key(binds, KEY_U), 11, "a bound key finds its box")
-	assert_eq(_HotbarScript.slot_for_key(binds, KEY_J), -1, "an unbound key finds none")
+	assert_eq(_HotbarScript.slot_for_key(binds, KEY_F5), -1, "an unbound key finds none")
 	# persistence
 	var json := _HotbarScript.state_to_json(placed, binds, true)
 	var back := _HotbarScript.parse_state(json)

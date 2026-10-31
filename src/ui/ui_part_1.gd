@@ -347,7 +347,8 @@ func _build_ui() -> void:
 
 	sl._panels[sl.WINDOW_CHARACTER] = sl._build_window(sl.WINDOW_CHARACTER, "win.character", build_character_content(), Vector2(916, 360))
 	sl._panels[sl.WINDOW_SKILLS] = sl._build_window(sl.WINDOW_SKILLS, "win.skills", sl._build_skills_content(), Vector2(916, 700))
-	sl._panels[sl.WINDOW_SETTLEMENT] = sl._build_window(sl.WINDOW_SETTLEMENT, "win.settlement", sl._build_settlement_content(), Vector2(916, 80))
+	sl._panels[sl.WINDOW_SETTLEMENT] = sl._build_window(sl.WINDOW_SETTLEMENT, "win.settlement", sl._m2._build_settlement_content(), Vector2(916, 80))
+	sl._panels[sl.WINDOW_CLAN] = sl._build_window(sl.WINDOW_CLAN, "win.clan", sl._m2._build_clan_content(), Vector2(700, 80))
 	sl._panels[sl.WINDOW_GESTURES] = sl._build_window(sl.WINDOW_GESTURES, "win.gestures", sl._build_gesture_content(), Vector2(600, 200),
 		func() -> Array: return [sl.GesturePanelScript.key_label()])
 	sl._panels[sl.WINDOW_MAP] = sl._build_window(sl.WINDOW_MAP, "win.map", sl._build_map_content(), Vector2(200, 80))
