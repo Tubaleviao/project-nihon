@@ -108,6 +108,7 @@ func tick(now: float) -> void:
 		if str(r["phase"]) == "warning" and now >= float(r["spawn_at"]):
 			r["phase"] = "fighting"
 			r["spawned"] = _spawn_pack(id, r)
+			GameBus.settlements_changed.emit()   # the views carry the new phase
 			GameBus.raid_pack_spawn.emit(id, (r["pack"] as Array).duplicate(true), r["edge"])
 		elif str(r["phase"]) == "fighting":
 			if now >= float(r["ends_at"]):

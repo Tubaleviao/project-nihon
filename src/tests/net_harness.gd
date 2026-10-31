@@ -181,6 +181,7 @@ static func steps() -> Array:
 		{ "name": "bed_spawn",         "compare": true },
 		{ "name": "settlement",        "compare": true },
 		{ "name": "settlement_project", "compare": true },
+		{ "name": "settlement_raid", "compare": true },
 		{ "name": "non_admin_refused", "compare": true },
 		{ "name": "equipment_recorded", "compare": true },
 		{ "name": "equipment_delivered", "compare": true },
@@ -423,6 +424,7 @@ func run(root: Node, role: String) -> void:
 	await _step_bed_spawn()
 	await _step_settlement()
 	await _step_settlement_project()
+	await _step_settlement_raid()
 	await _step_non_admin_refused()
 	await _step_equipment_recorded()
 	await _step_equipment_delivered()
@@ -1814,6 +1816,51 @@ func _step_settlement_project() -> void:
 	await _await_settle(1.5 * _time_scale)
 	var ok: bool = seen and armed and given and built and placed
 	_report("settlement_project", verdict(ok, true), "client-built-outsider-refused" if ok else "seen%d-armed%d-given%d-built%d-edits%d" % [int(seen), int(armed), int(given), int(built), _project_edits])
+
+## Phase 200 — `/raid`: the admin's settlement is warned, the pack spawns on the claim edge, the pack is killed and the
+## raid resolves as defended, and both sides see it. The host skips the fabric's 120 s warning (it moves the spawn time up, as
+## the project step pre-fills a palisade); the kills are the host's creature deaths, the path every peer kill takes.
+func _raid_view(settlements: Node) -> Dictionary:
+	return (settlements.view().get("mine", {}) as Dictionary).get("raid", {})
+
+func _step_settlement_raid() -> void:
+	var settlements: Node = _root._settlements
+	if _role == "host":
+		var local: String = _root._registry.local_player_id
+		var sid: String = settlements.settlement_of(local)
+		var raids: Object = _root._settlement_wiring.raids
+		if sid == "" or raids == null:
+			_report("settlement_raid", "fail", "no_village")
+			return
+		var warned: Array = []
+		var on_warned := func(_id: String, seconds: int) -> void: warned.append(seconds)
+		GameBus.raid_warned.connect(on_warned)
+		GameBus.raid_requested.emit(local)
+		GameBus.raid_warned.disconnect(on_warned)
+		if warned.is_empty() or not raids.active(sid):
+			_report("settlement_raid", "fail", "not_started_%d" % int(raids.active(sid)))
+			return
+		await _await_settle(2.0 * _time_scale)   # the warning view reaches the client
+		raids._raids[sid]["spawn_at"] = float(settlements.now_sec.call())
+		var fighting: bool = await _await_until(func(): return raids.phase_of(sid) == "fighting", _step_timeout())
+		var pack: Array = _root._creature.raiders_of(sid)
+		var radius: float = settlements.claim_radius(sid)
+		var edge_ok := not pack.is_empty()
+		for e: Dictionary in pack:
+			edge_ok = edge_ok and absf((e["xz"] as Vector2).distance_to(settlements.hearth_xz(sid)) - radius) < 12.0
+		await _await_settle(2.0 * _time_scale)   # the fighting view and the pack reach the client
+		for e: Dictionary in pack:
+			GameBus.creature_died.emit(str(e["id"]), Vector3.ZERO, "harness", Vector3.ZERO)
+		var defended: bool = await _await_until(func(): return str(settlements.raid_record(sid)["last_result"]) == "defended", _step_timeout())
+		await _await_settle(2.0 * _time_scale)
+		var ok: bool = fighting and edge_ok and defended and _root._creature.raiders_of(sid).is_empty()
+		_report("settlement_raid", verdict(ok, true), "pack-killed-defended" if ok else "fighting%d-edge%d-pack%d-defended%d" % [int(fighting), int(edge_ok), pack.size(), int(defended)])
+		return
+	var saw_warning: bool = await _await_until(func(): return str(_raid_view(settlements).get("phase", "")) == "warning", _step_timeout())
+	var saw_fighting: bool = await _await_until(func(): return str(_raid_view(settlements).get("phase", "")) == "fighting", _step_timeout())
+	var saw_defended: bool = await _await_until(func(): return str(_raid_view(settlements).get("last_result", "")) == "defended" and str(_raid_view(settlements).get("phase", "")) == "", _step_timeout())
+	var ok: bool = saw_warning and saw_fighting and saw_defended
+	_report("settlement_raid", verdict(ok, true), "pack-killed-defended" if ok else "warning%d-fighting%d-defended%d" % [int(saw_warning), int(saw_fighting), int(saw_defended)])
 
 ## Phase 126 — seconds the client lags before it acks the `tree_cleared` target; the host waits on the ack.
 const CLIENT_LAG_SECS := 5.0
