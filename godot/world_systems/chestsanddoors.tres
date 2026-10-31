@@ -1,0 +1,10 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/world_systems/chestsanddoors.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+rules = {"accessModes":["owner","clan","everyone"],"defaultMode":"owner","setBy":"owner","stations":{"chest":{"capacityStacks":20,"spillsOnDestroy":true},"door":{}},"locks":{"materials":{"Thornwood":1,"Duskfiber":1.5,"Ashite":2,"Ferrite":3,"Aethermite":4,"Veilsteel":6,"Voidite":8},"technologies":{"none":1,"TechBasicCarpentry":1.25,"TechBasicSmithing":1.5,"TechMasterForge":2.5},"durabilityFactor":2,"pickSeconds":6,"skillSpeedup":0.6,"breakChance":0.3}}
+description = "Chests and doors open for their owner only, their clan or everyone, as the owner sets. A locked one can be destroyed or picked; how hard depends on its material and the owner's lock technology. A destroyed chest spills its contents for anyone to take."
+tags = ["world-system"]

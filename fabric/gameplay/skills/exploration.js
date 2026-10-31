@@ -1,4 +1,5 @@
 const { defineEntity, skillStateMachine, SKILL_TIERS, SKILL_CATEGORIES } = require('./shared')
+const { SKILL_CURVES } = require('../work')
 
 module.exports = {
 
@@ -153,6 +154,37 @@ module.exports = {
       leadExpedition: {
         description: 'Guide a group of up to 10 players through unmapped terrain without travel penalty',
         rules: ['Requires Navigation: Expert'],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
+  // ─── Lockpicking (Phase 203) ──────────────────────────────────────────────────────
+  Lockpicking: defineEntity({
+    tags: ['skill'],
+    description:
+      'Opening a locked chest or door without breaking it. A higher level picks harder locks faster and breaks ' +
+      'fewer tools; a lock\'s difficulty comes from its material and technology (ChestsAndDoors.locks).',
+    goal: 'Make a locked chest a puzzle to work rather than an absolute wall',
+    fields: {
+      id:        { type: 'uuid', primaryKey: true },
+      tier:      { type: 'enum', values: SKILL_TIERS },
+      xpCurve:   { type: 'enum', values: ['linear', 'quadratic', 'exponential'], description: 'XP required per tier', defaultValue: 'quadratic' },
+      maxLevel:  { type: 'integer', description: 'Maximum XP level within a tier before tier advance is required; the same as levelCap', defaultValue: SKILL_CURVES.Lockpicking.levelCap },
+      category:  { type: 'enum', values: SKILL_CATEGORIES, defaultValue: 'exploration', description: 'Skill domain: exploration' },
+      levelCap:  { type: 'integer', description: 'Highest Lockpicking level (WorkSkills.curves)', defaultValue: SKILL_CURVES.Lockpicking.levelCap },
+      xpToLevel: { type: 'json', description: 'Cumulative XP needed to reach each level, index = level (WorkSkills.curves)', defaultValue: SKILL_CURVES.Lockpicking.xpToLevel },
+    },
+    stateMachine: skillStateMachine(),
+    behaviors: {
+      advanceTier: {
+        description: 'Progress to the next mastery tier through accumulated lockpicking XP',
+        rules: ['XP threshold for the target tier must be met', 'XP comes only from the work WorkSkills maps to Lockpicking'],
+        auth: { roles: ['maintainer'] },
+      },
+      pickLock: {
+        description: 'Open a locked chest or door once with a lockpick',
+        rules: ['Takes longer for a harder lock (ChestsAndDoors.locks)', 'A failed pick can break the tool, and the owner is told'],
         auth: { roles: ['maintainer'] },
       },
     },

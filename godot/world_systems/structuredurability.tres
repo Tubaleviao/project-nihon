@@ -1,0 +1,10 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/world_systems/structuredurability.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+rules = {"loss":{"perDay":0.002,"weather":{"clear":0,"fog":0.0001,"rain":0.0005,"storm":0.001,"blizzard":0.001,"ash_fall":0.0008,"electrical_storm":0.0012,"void_storm":0.002},"perDamage":1},"methods":{"hand":{"damage":1,"offlineFactor":20,"classes":{"earth":1,"wood":0.25,"stone":0.05,"concrete":0.02,"steel":0.01,"composite":0.01}},"pick":{"damage":10,"offlineFactor":20,"classes":{"earth":1,"wood":0.5,"stone":1,"concrete":0.75,"steel":0.4,"composite":0.25}},"axe":{"damage":10,"offlineFactor":20,"classes":{"earth":0.5,"wood":1,"stone":0.2,"concrete":0.1,"steel":0.05,"composite":0.05}},"weapon":{"damage":6,"offlineFactor":20,"classes":{"earth":0.5,"wood":0.5,"stone":0.2,"concrete":0.1,"steel":0.1,"composite":0.05}}},"destroyerGets":"nothing","repair":{"share":0.5},"dismantle":{"atNoSkill":0.5,"atTopSkill":1,"topLevel":10,"durabilityExponent":1.5,"skill":"Building"}}
+description = "How a placed block wears and comes apart. Its durability starts at its material's and falls with weather, age and damage; at zero it is destroyed. Destruction methods damage some classes more than others, and do so offlineFactor times more slowly while every owner is offline. A destroyer gets nothing. The owner repairs with part of the build materials, and dismantling returns a share that rises with Building skill and falls with durability."
+tags = ["world-system"]

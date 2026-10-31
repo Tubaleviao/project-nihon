@@ -389,6 +389,37 @@ def s_knife(c):
     c.line((34, 56), (46, 66), 5, "gold_d")
 
 
+def s_bricks(c):
+    for row in range(4):
+        y = 22 + row * 16
+        off = 0 if row % 2 == 0 else 14
+        for i in range(-1, 4):
+            x = 10 + off + i * 28
+            x0, x1 = max(10, x), min(90, x + 26)
+            if x1 - x0 > 4:
+                c.rect(x0, y, x1, y + 14, "red" if (row + i) % 2 else "wood_l")
+    c.rect(10, 86, 90, 90, "steel_d")
+
+
+def s_needle(c):
+    c.line((20, 84), (78, 18), 5, "steel")
+    c.ellipse(76, 20, 5, 8, "steel_d")
+    c.circle(76, 20, 2, "white")
+    c.line((76, 20), (60, 52), 2, "red")
+    c.line((60, 52), (36, 44), 2, "red")
+    c.line((36, 44), (28, 70), 2, "red")
+
+
+def s_lockpick(c):
+    c.ellipse(46, 36, 22, 22, "steel_d")
+    c.ellipse(46, 36, 14, 14, "cream")
+    c.rrect(20, 44, 72, 88, 6, "gold_d")
+    c.circle(46, 62, 6, "ink")
+    c.rect(43, 62, 49, 76, "ink")
+    c.line((52, 70), (92, 40), 4, "steel")
+    c.line((92, 40), (88, 32), 4, "steel")
+
+
 def s_bag(c):
     c.ellipse(50, 64, 34, 28, "wood")
     c.poly([(36, 20), (64, 20), (68, 42), (32, 42)], "wood")
@@ -673,6 +704,7 @@ SYMBOLS = {
     "Navigation": s_compass, "ElementalMagic": s_flame, "VoidMagic": s_voidorb,
     "RestorationMagic": s_plus, "Enchanting": s_sparkle, "Diplomacy": s_flag, "Trade": s_scales,
     "Speechcraft": s_speech, "Leadership": s_crown, "Skinning": s_knife,
+    "Building": s_bricks, "Tailoring": s_needle, "Lockpicking": s_lockpick,
 }
 
 

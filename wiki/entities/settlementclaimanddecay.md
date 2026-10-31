@@ -7,7 +7,7 @@ title: "SettlementClaimAndDecay"
 
 `decision`
 
-Settlements claim land around a Hearth, with a radius that only grows with tier. A claim never covers another settlement's land (hearths are at least minSeparation apart), and an abandoned settlement's claim decays until the land is free. Claim and role rules change only through GovernanceSystem proposals.
+Settlements claim land around a Hearth, with a radius that only grows with tier. A claim never covers another settlement's land (hearths are at least minSeparation apart), and an abandoned settlement's claim decays until the land is free. Claim and role rules change only through GovernanceSystem proposals. Superseded 2026-10-31 by ClansAndOwnedStructures: there is no claim area (Phase 203).
 
 > Let players hold land together without letting an inactive claim lock the world forever (TheWorldIsPersistent, CivilizationIsPlayerMade)
 

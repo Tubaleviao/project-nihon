@@ -1,5 +1,6 @@
 const { defineEntity } = require('@newel/core')
 const { depositFields } = require('./deposit')
+const { structuralFields } = require('./structural')
 
 // Stone transitions: raw → dressed (cut to shape) → inscribed (rune-carved, terminal)
 // NOTE: state keys must be kept in sync with each consumer entity's `state` enum values — the normalizer does not reconcile them.
@@ -37,6 +38,7 @@ module.exports = {
       conductivity: { type: 'decimal', description: 'Thermal conductivity 0–1; low, good insulator', defaultValue: 0.18 },
       magicAffinity: { type: 'decimal', description: 'Capacity to hold enchantment 0–1; weak — accepts basic ward runes only', defaultValue: 0.15 },
       ...depositFields({ min: 0, max: 16, why: 'Compressed volcanic ash: the bulk rock of the badlands from the surface down.' }),
+      ...structuralFields({ rarity: 'common', durability: 200, structuralClass: 'stone', why: 'The standard building stone.' }),
     },
     stateMachine: stoneStateMachine(),
     behaviors: {
@@ -75,6 +77,7 @@ module.exports = {
       conductivity: { type: 'decimal', description: 'Thermal conductivity 0–1; near zero — poor heat conductor despite its light-energy affinity', defaultValue: 0.02 },
       magicAffinity: { type: 'decimal', description: 'Capacity to hold enchantment 0–1; high — specialised for light-type magic', defaultValue: 0.75 },
       ...depositFields({ min: 0, max: 4, why: 'Found in shallow cave systems and cliff faces: the top four units only.' }),
+      ...structuralFields({ rarity: 'uncommon', durability: 340, structuralClass: 'stone', why: 'Brittle, but rarer than ashite.' }),
     },
     stateMachine: stoneStateMachine(),
     behaviors: {

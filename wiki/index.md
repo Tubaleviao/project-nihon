@@ -56,7 +56,10 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 
 ## Decision
 
+- [ClansAndOwnedStructures](entities/clansandownedstructures.md) — A player founds a clan by choosing its name and invites other players; a clan has any number of members, a player belongs to at most one, and every member sees every other member's skills
 - [DestructibleBuildings](entities/destructiblebuildings.md) — Buildings are destructible through game systems (fire, siege, structural failure) — not by arbitrary designer flags
+- [DurabilityAndDestruction](entities/durabilityanddestruction.md) — Every material has a durability, higher for rarer materials, that falls with weather, time and damage
+- [EarthScaleHeights](entities/earthscaleheights.md) — Peaks reach about 8,850 m (Everest is 8,849 m) and buildings up to 163 floors of 3 m
 - [FictionalMaterials](entities/fictionalmaterials.md) — Fictional materials with unique properties replace real-world counterparts, giving the world consistent internal lore and design freedom
 - [GodotEngine](entities/godotengine.md) — Use Godot 4.x as the game client engine
 - [KnowledgeByExperimentation](entities/knowledgebyexperimentation.md) — Knowledge is discovered through experimentation — recipes, materials, and world secrets are not handed to players via tooltips or vendors
@@ -65,8 +68,10 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [OfflinePlayerNpcs](entities/offlineplayernpcs.md) — Offline players may be represented in the world as configurable service NPCs, keeping shops and services running in their absence
 - [OnePersistentWorld](entities/onepersistentworld.md) — A single persistent official world server
 - [PlayerIdentityModel](entities/playeridentitymodel.md) — A player identity is a server-issued local UUID (player_id), not an account
+- [ResearchSharedByWriting](entities/researchsharedbywriting.md) — Research is per player and is shared only by writing: a Book teaches one researched technology and a Blueprint one structure or station recipe
 - [SettlementClaimAndDecay](entities/settlementclaimanddecay.md) — Settlements claim land around a Hearth, with a radius that only grows with tier
-- [SettlementRaidsAndUpkeep](entities/settlementraidsandupkeep.md) — Raids on a settlement are fair: every raid is warned (SettlementRaids.warningSeconds > 0), none starts unless a member is online inside the claim (offlineProtection), and a lost raid takes at most a capped share of the stockpile and of unfinished project labour, never the claim or finished structures
+- [SettlementRaidsAndUpkeep](entities/settlementraidsandupkeep.md) — Superseded 2026-10-31 by SkillsGrowFromWork: raids are deferred and upkeep is removed (Phase 203)
+- [SkillsGrowFromWork](entities/skillsgrowfromwork.md) — Crafting, gathering, building, dismantling and repairing grow the worker's own skill for that kind of work (sewing makes you a better sewer)
 - [WaystonesAmendNoTeleportation](entities/waystonesamendnoteleportation.md) — Amends NoTeleportation: waystones are the one sanctioned fast travel
 
 ## Gesture
@@ -104,7 +109,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [FerriteShield](entities/ferriteshield.md) — Round shield of ferrite-plated hardwood
 - [FerriteShortSword](entities/ferriteshortsword.md) — Standard single-edged blade forged from a refined ferrite ingot
 - [FieldRations](entities/fieldrations.md) — Dried grain-and-herb ration pack prepared from temperate grassland crops
-- [Hearth](entities/hearth.md) — A stone-ringed fire pit that founds a settlement when placed on free land
+- [Hearth](entities/hearth.md) — A stone-ringed fire pit that founds a settlement when placed
 - [LumenfiteOrb](entities/lumenfiteorb.md) — A polished lumenfite sphere charged with stored magical energy by an Arcanist
 - [NoviceTunic](entities/novicetunic.md) — Plain woven tunic with a belted waist, given to every new character
 - [RefinedVoiditeShard](entities/refinedvoiditeshard.md) — Raw voidite stabilised in a forge into a crystalline shard
@@ -195,12 +200,14 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [Alchemy](entities/alchemy.md) — Brewing potions, reagents, poisons, and catalysts from raw materials
 - [ArcaneForging](entities/arcaneforging.md) — Specialized metalworking at arcane forges that processes magical materials — primarily Aethermite — which shatter in standard forges
 - [Archery](entities/archery.md) — Proficiency with bows and crossbows, covering aim stability, draw timing, and trajectory reading
+- [Building](entities/building.md) — Putting up and taking down structures: placing blocks, dismantling them cleanly and repairing worn ones
 - [Carpentry](entities/carpentry.md) — Working with Thornwood, Duskfiber, and other woody materials to craft furniture, structural building components, hafts, bows, and vehicles
 - [Cartography](entities/cartography.md) — Charting unexplored territories and producing maps that can be sold or shared with other players
 - [Diplomacy](entities/diplomacy.md) — Negotiating with NPC factions, guilds, and governing bodies to obtain favourable terms, treaties, or permissions
 - [ElementalMagic](entities/elementalmagic.md) — Manipulation of the four classical elements — fire, earth, air, and water
 - [Enchanting](entities/enchanting.md) — Imbuing refined items and materials with persistent magical effects using aethermite catalysts
 - [Leadership](entities/leadership.md) — Inspiring and coordinating allies in combat and in civic roles
+- [Lockpicking](entities/lockpicking.md) — Opening a locked chest or door without breaking it
 - [Navigation](entities/navigation.md) — Wayfinding without landmarks using stars, moss growth, wind direction, and terrain features
 - [RestorationMagic](entities/restorationmagic.md) — Healing, shielding, and cleansing magic
 - [Shieldcraft](entities/shieldcraft.md) — Techniques for using a shield offensively and defensively — blocking, parrying, bashing, and forming protective stances
@@ -209,6 +216,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [Speechcraft](entities/speechcraft.md) — Persuasion, intimidation, and deception aimed at NPC targets
 - [Stealth](entities/stealth.md) — Moving, hiding, and acting without detection
 - [Swordsmanship](entities/swordsmanship.md) — Mastery of bladed weapons — from crude ferrite daggers to enchanted veilsteel longswords
+- [Tailoring](entities/tailoring.md) — Sewing hides, fibre and cloth into clothing, bags and soft furnishings
 - [Tracking](entities/tracking.md) — Reading environmental signs — footprints, disturbed foliage, scent trails — to follow creatures or players across terrain
 - [Trade](entities/trade.md) — Commercial acumen that improves buy/sell spreads with NPC vendors and enables merchant-tier operations like bulk deals, consignment, and market stalls
 - [Unarmed](entities/unarmed.md) — Hand-to-hand fighting techniques including strikes, grapples, and throws
@@ -247,18 +255,28 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 ## World-system
 
 - [BedSpawn](entities/bedspawn.md) — A bed a player places becomes where they come back after death
+- [ChestsAndDoors](entities/chestsanddoors.md) — Chests and doors open for their owner only, their clan or everyone, as the owner sets
+- [Clan](entities/clan.md) — A group of players under a name one of them chose
+- [ClanTiers](entities/clantiers.md) — A clan's tier, from every building it owns wherever it stands, weighed by how durable and how rare each block's material is
 - [CombatSystem](entities/combatsystem.md) — Defines the rules governing all combat interactions — player vs creature, player vs player, and structure damage
 - [GovernanceSystem](entities/governancesystem.md) — Defines the rules of in-game community governance
 - [MarketSystem](entities/marketsystem.md) — Defines the rules of the persistent player-run market
 - [PersistenceSystem](entities/persistencesystem.md) — Defines the authoritative save lifecycle: which directory the world and per-player records live in, how often the server autosaves, how a headless server is asked to shut down cleanly, and how a record is written so a kill mid-write cannot truncate it
 - [ResearchPointRule](entities/researchpointrule.md) — Points of research a player earns per source: a craft, a gathered resource, and a one-time bonus for the first craft of each recipe
-- [Settlement](entities/settlement.md) — A player-founded place: a Hearth, a claimed circle of land, members with roles and a shared Stockpile
-- [SettlementProjects](entities/settlementprojects.md) — Structures a village builds together inside its claim: a palisade, a storehouse, a workshop, a watchtower
-- [SettlementRaids](entities/settlementraids.md) — Creature packs from the village's own biome attack a settlement that is worth raiding
+- [SelfRespawn](entities/selfrespawn.md) — Any player may kill their own character to respawn at their bed or the world spawn, with the normal death rules, from a command or a menu button, so no one can be trapped inside another's structure
+- [Settlement](entities/settlement.md) — A player-founded village: a Hearth, members with roles and a shared Stockpile
+- [SettlementProjects](entities/settlementprojects.md) — Structures a village builds together: a palisade, a storehouse, a workshop, a watchtower
 - [SettlementSpecialties](entities/settlementspecialties.md) — What each member of a village is good at: woodworker, smith, hunter, builder or forager
-- [SettlementUpkeep](entities/settlementupkeep.md) — What a village pays to keep going: a cost per tier taken from the stockpile every period
+- [Structure](entities/structure.md) — A connected set of placed blocks and the stations on them, owned by its builder or the builder's clan
+- [StructureDurability](entities/structuredurability.md) — How a placed block wears and comes apart
 - [TradeSystem](entities/tradesystem.md) — Defines the rules governing player-to-player trade
 - [WaystoneTravel](entities/waystonetravel.md) — Fast travel between waystones: a player attunes to a stone by standing at it, then travels between two attuned stones for a cost in items per 1,000 km, once per cooldown
 - [WeatherSystem](entities/weathersystem.md) — Simulates weather across biomes as an emergent world system
+- [WorkSkills](entities/workskills.md) — Which skill each kind of work grows, and by how much: crafting in each domain, gathering each family of material, plants and carcasses, building, dismantling, repairing and picking locks
 - [WorldSystem](entities/worldsystem.md) — The planet as a fact of the fabric
+
+## Writing
+
+- [Blueprint](entities/blueprint.md) — A drawing of one structure or station recipe
+- [Book](entities/book.md) — A written account of one researched technology
 

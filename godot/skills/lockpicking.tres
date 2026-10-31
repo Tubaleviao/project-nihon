@@ -1,0 +1,17 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/skills/lockpicking.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+tier = 0
+xpCurve = 1
+maxLevel = 10
+category = 3
+levelCap = 10
+xpToLevel = [0,60,240,540,960,1500,2160,2940,3840,4860,6000]
+state_machine_field = "tier"
+initial_state = "novice"
+description = "Opening a locked chest or door without breaking it. A higher level picks harder locks faster and breaks fewer tools; a lock's difficulty comes from its material and technology (ChestsAndDoors.locks)."
+tags = ["skill"]

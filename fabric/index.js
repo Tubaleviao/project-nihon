@@ -30,6 +30,11 @@ const appearances  = require('./gameplay/characters/appearances')
 const creation     = require('./gameplay/characters/creation')
 const bed          = require('./gameplay/bed')
 const tutorial     = require('./gameplay/tutorial')
+const work         = require('./gameplay/work')
+const clan         = require('./gameplay/clan')
+const structure    = require('./gameplay/structure')
+const chests       = require('./gameplay/chests')
+const writing      = require('./gameplay/writing')
 
 // Phase 125 — the travel cost must name a real item; throwing fails `npm run validate`.
 waystone.validateTravel(waystone.TRAVEL, Object.keys(items))
@@ -37,14 +42,21 @@ waystone.validateTravel(waystone.TRAVEL, Object.keys(items))
 // Phase 128 — the weather table must be well formed and every biome must reach a state.
 weather.validateWeather(weather.RULES, weather.biomeClimates(biomes))
 
-// Phase 139 — the settlement rule table must be well formed (tiers never shrink, thresholds in order, claims cannot overlap).
+// Phase 139 — the settlement rule table must be well formed (thresholds in order); Phase 203: it names no claim.
 settlement.validateSettlement(settlement.RULES, [...Object.keys(items), 'Hearth'])
-// Phase 197 — projects, specialties, raids and upkeep must name real items, skills, attributes, creatures
-// of the raided biome and placeable stations; raids are warned, offline-protected and capped; upkeep never falls.
+// Phase 197 — projects and specialties must name real items, skills, attributes and placeable stations;
+// Phase 203: no project labour or effects, no raids or upkeep.
 settlement.validateSettlementLoop(settlement.settlementLoopData(), settlement.settlementLoopRefs())
 
-// Phase 139 — technology rules that name a settlement station or storage must reference real entities.
-technology.validateSettlementRefs(settlement.RULES, [...Object.keys(items), 'Hearth'])
+// Phase 203 — research is per player: no technology names a settlement research site or stockpile.
+technology.validateSettlementRefs()
+
+// Phase 203 — clans, owned structures, durability, respawning, chests and doors, writing and work skills.
+clan.validateClan(clan.clanData(), clan.clanRefs())
+structure.validateStructure(structure.structureData(), structure.structureRefs())
+chests.validateChests(chests.chestsData(), chests.chestsRefs())
+writing.validateWriting(writing.writingData(), writing.writingRefs())
+work.validateWork(work.workData(), work.workRefs())
 
 // Phase 129 — the status-effect table must be well formed and every creature's `onHitEffects` must name a defined effect.
 combat.validateCombat(combat.STATUS_EFFECTS, combat.creatureOnHit(creatures), Object.keys(weather.RULES.states))
@@ -116,6 +128,11 @@ module.exports = defineFabric({
       WaystonesAmendNoTeleportation: decisions.WaystonesAmendNoTeleportation,
       SettlementClaimAndDecay:   decisions.SettlementClaimAndDecay,
       SettlementRaidsAndUpkeep:  decisions.SettlementRaidsAndUpkeep,
+      ClansAndOwnedStructures:   decisions.ClansAndOwnedStructures,
+      DurabilityAndDestruction:  decisions.DurabilityAndDestruction,
+      ResearchSharedByWriting:   decisions.ResearchSharedByWriting,
+      SkillsGrowFromWork:        decisions.SkillsGrowFromWork,
+      EarthScaleHeights:         decisions.EarthScaleHeights,
       MagicBalancedWithMartial:  decisions.MagicBalancedWithMartial,
       DestructibleBuildings:     decisions.DestructibleBuildings,
       KnowledgeByExperimentation: decisions.KnowledgeByExperimentation,
@@ -179,6 +196,9 @@ module.exports = defineFabric({
       Speechcraft:     skills.Speechcraft,
       Leadership:      skills.Leadership,
       Skinning:        skills.Skinning,
+      Building:        skills.Building,
+      Tailoring:       skills.Tailoring,
+      Lockpicking:     skills.Lockpicking,
     },
     // Gameplay — Professions
     {
@@ -271,8 +291,18 @@ module.exports = defineFabric({
       // Phase 197 — the settlement loop
       SettlementProjects:    settlement.SettlementProjects,
       SettlementSpecialties: settlement.SettlementSpecialties,
-      SettlementRaids:       settlement.SettlementRaids,
-      SettlementUpkeep:      settlement.SettlementUpkeep,
+    },
+    // Gameplay — Clans, owned structures, chests and doors, writing and work skills (Phase 203)
+    {
+      Clan:                clan.Clan,
+      ClanTiers:           clan.ClanTiers,
+      Structure:           structure.Structure,
+      StructureDurability: structure.StructureDurability,
+      SelfRespawn:         structure.SelfRespawn,
+      ChestsAndDoors:      chests.ChestsAndDoors,
+      Book:                writing.Book,
+      Blueprint:           writing.Blueprint,
+      WorkSkills:          work.WorkSkills,
     },
     // World — Creatures
     {

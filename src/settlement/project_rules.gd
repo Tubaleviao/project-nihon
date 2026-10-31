@@ -16,13 +16,57 @@ const MAX_BUILDING := 3
 ## Contributor entries per project (a village has at most 64 members).
 const MAX_CONTRIBUTORS := 64
 
-## The project table: `{ workSecondsPerUnit, projects {key: def} }` (empty projects when the fabric has none).
+## Phase 203 — the fabric dropped project labour and effects (a project is complete once its materials are
+## in); the runtime keeps them here until Phase 207 removes the labour stage and Phase 205 the effects.
+const LABOUR_HOLD := {
+	"workSecondsPerUnit": 2,
+	"projects": {
+		"palisade": {
+			"labour": [{ "step": "posts", "specialty": "woodworker", "work": 60 }, { "step": "raise", "specialty": "builder", "work": 90 }],
+			"effects": [{ "kind": "raidDefence", "value": 0.3 }],
+		},
+		"storehouse": {
+			"labour": [{ "step": "foundation", "specialty": "builder", "work": 60 }, { "step": "shelving", "specialty": "woodworker", "work": 60 },
+				{ "step": "provisions", "specialty": "forager", "work": 30 }],
+			"effects": [{ "kind": "stockpileCapacity", "value": 20 }, { "kind": "upkeepRelief", "value": 0.25 }],
+		},
+		"workshop": {
+			"labour": [{ "step": "walls", "specialty": "builder", "work": 60 }, { "step": "benches", "specialty": "woodworker", "work": 45 },
+				{ "step": "anvil", "specialty": "smith", "work": 45 }],
+			"effects": [{ "kind": "craftSpeed", "value": 0.2 }],
+		},
+		"watchtower": {
+			"labour": [{ "step": "base", "specialty": "builder", "work": 90 }, { "step": "lookout", "specialty": "woodworker", "work": 60 },
+				{ "step": "signal", "specialty": "hunter", "work": 30 }],
+			"effects": [{ "kind": "raidDefence", "value": 0.2 }],
+		},
+	},
+}
+static var _held: Dictionary = {}
+static var _held_source: Resource = null
+
+## The project table: `{ workSecondsPerUnit, projects {key: def} }` (empty projects when the fabric has none),
+## with LABOUR_HOLD filling in what the fabric no longer has.
 static func table() -> Dictionary:
 	var res: Resource = GameData.WORLD_SYSTEMS.get("SettlementProjects", null)
 	var r: Variant = res.get("rules") if res != null else null
 	if r is Dictionary and (r as Dictionary).get("projects", null) is Dictionary:
-		return r
+		if _held.is_empty() or res != _held_source:
+			_held = _with_hold(r)
+			_held_source = res
+		return _held
 	return { "workSecondsPerUnit": 2, "projects": {} }
+
+static func _with_hold(r: Dictionary) -> Dictionary:
+	var out: Dictionary = r.duplicate(true)
+	if not out.has("workSecondsPerUnit"):
+		out["workSecondsPerUnit"] = LABOUR_HOLD["workSecondsPerUnit"]
+	for key: String in out["projects"]:
+		var hold: Dictionary = LABOUR_HOLD["projects"].get(key, {})
+		for f: String in hold:
+			if not (out["projects"][key] as Dictionary).has(f):
+				out["projects"][key][f] = (hold[f] as Array).duplicate(true)
+	return out
 
 static func def_of(key: String, tbl: Dictionary = {}) -> Dictionary:
 	var t: Dictionary = tbl if not tbl.is_empty() else table()

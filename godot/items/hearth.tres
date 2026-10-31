@@ -13,5 +13,5 @@ shape = {"archetype":"hearth","parts":{"base":"Ferrite","fuel":"Thornwood"},"sca
 durability = 500
 state_machine_field = "condition"
 initial_state = "pristine"
-description = "A stone-ringed fire pit that founds a settlement when placed on free land. It is the settlement's research and crafting anchor: technology research that needs a \"player's settlement\" is done at a Hearth."
+description = "A stone-ringed fire pit that founds a settlement when placed. Phase 203 removed its claim and its research site; Phase 204 returns each placed hearth to its founder as this item when settlements become clans."
 tags = ["item", "station"]

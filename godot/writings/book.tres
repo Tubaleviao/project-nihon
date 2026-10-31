@@ -1,0 +1,12 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/writings/book.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+teaches = ""
+author = ""
+rules = {"teaches":"technology","station":"","cost":[{"item":"Duskfiber","quantity":2},{"item":"ThornwoodPlank","quantity":1}],"consumedOnRead":false,"writerMustKnow":true}
+description = "A written account of one researched technology. Reading it teaches the technology without researching it, and the book is kept, so it can be read again or lent."
+tags = ["writing"]

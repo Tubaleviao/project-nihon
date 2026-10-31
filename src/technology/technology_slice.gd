@@ -59,6 +59,9 @@ const CRAFTED_KEY := "_first_crafts"
 ## Fallback rule table when GameData has no ResearchPointRule (a slice built before
 ## GameData loads); mirrors the fabric default.
 const DEFAULT_RULES := { "craft": 1, "gather": 1, "firstCraftOfRecipe": 3, "maxPoints": 5000, "windowSeconds": 600, "windowCap": 60 }
+## Phase 203 — the fabric no longer names a stockpile `materialSource` (research is per player); these keep
+## Phase 140's settlement stockpile source until Phase 209 removes it.
+const STOCKPILE_RESEARCH_HOLD := ["TechMasterForge"]
 ## The rule keys that are point sources (the rest of the table are caps).
 const SOURCES := ["craft", "gather", "firstCraftOfRecipe"]
 
@@ -183,7 +186,8 @@ func begin_research(tech_id: String, player_id: String = "") -> Dictionary:
 	var materials: Array = tech.get("researchMaterials", [])
 	# Phase 140 — a technology with a settlement `materialSource` draws its materials from the
 	# researcher's settlement stockpile (and is researched inside its claim), never from the pack.
-	var from_stockpile := tech.get("materialSource", null) is Dictionary and str(tech["materialSource"].get("container", "")) == "Stockpile"
+	var from_stockpile := (tech.get("materialSource", null) is Dictionary and str(tech["materialSource"].get("container", "")) == "Stockpile") \
+		or STOCKPILE_RESEARCH_HOLD.has(tech_id)
 	if from_stockpile:
 		if settlement_slice == null or not settlement_slice.at_research_site(pid):
 			return _emit(_result(tech_id, false, "no_settlement", cur, pid))

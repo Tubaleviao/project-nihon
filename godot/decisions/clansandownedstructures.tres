@@ -1,0 +1,13 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/decisions/clansandownedstructures.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+status = 1
+decided = "2026-10-31"
+state_machine_field = "status"
+initial_state = "accepted"
+description = "A player founds a clan by choosing its name and invites other players; a clan has any number of members, a player belongs to at most one, and every member sees every other member's skills. A clan has no hearth: its settlements are simply where its buildings stand. Whatever a player builds is assigned to their clan or kept private, and only its owner edits it, wherever it stands. A member's private house inside their clan's circles stays theirs to edit, but any member of that clan may enter or dismantle it. Owners of touching buildings keep their own blocks. There is no claim area: around each building a circle, larger for a larger building, where no creature spawns and where only that clan's members may build. Saved settlements become clans with the same name, members and roles."
+tags = ["decision"]

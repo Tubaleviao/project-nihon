@@ -3,7 +3,7 @@
 
 **Tags:** `world-system`
 
-A player-founded place: a Hearth, a claimed circle of land, members with roles and a shared Stockpile. It grows from founded to growing to town as members and days accumulate (growing also by completed projects), members build projects together, defend against creature raids and pay upkeep, and it is abandoned when no member is active; an abandoned claim decays until the land is free again. A claim never covers another settlement's land. Rule changes are made through GovernanceSystem proposals.
+A player-founded village: a Hearth, members with roles and a shared Stockpile. It grows from founded to growing to town as members and days accumulate (growing also by completed projects), members build projects together, and it is abandoned when no member is active. Phase 203 replaced its claim with owned structures and clans: a settlement claims no land, and Phase 204 migrates each one to a Clan with the same name, members and roles (Clan.migration). Rule changes are made through GovernanceSystem proposals.
 
 > **Goal:** Give players a shared place to build a civilization together (CivilizationIsPlayerMade)
 
@@ -17,8 +17,8 @@ A player-founded place: a Hearth, a claimed circle of land, members with roles a
 | `members` | json | yes | Player id -> role (founder, elder, member, guest) |
 | `guild` | string | yes | Guild that holds this settlement, empty if none; a guild holds at most guildMaxSettlements |
 | `createdAt` | datetime | yes | Wall-clock time the hearth was placed |
-| `lastActiveAt` | datetime | yes | Wall-clock time any member was last active inside the claim |
-| `rules` | json | yes | Settlement rule table: { hearthStation, hearthItem, guildMaxSettlements, tiers, roles, stockpile, abandonAfterDays, decayRadiusPerDay, minSeparation } (validated at fabric load) |
+| `lastActiveAt` | datetime | yes | Wall-clock time any member was last active |
+| `rules` | json | yes | Settlement rule table: { hearthStation, hearthItem, guildMaxSettlements, tiers, roles, stockpile, abandonAfterDays } (validated at fabric load) |
 | `status` | enum (`founded`, `growing`, `town`, `abandoned`) | yes | Lifecycle tier of the settlement |
 
 ## Relations
@@ -31,9 +31,8 @@ A player-founded place: a Hearth, a claimed circle of land, members with roles a
 | `recipe` | hasOne | [RecipeHearth](recipehearth.md) |  |
 | `projects` | hasOne | [SettlementProjects](settlementprojects.md) |  |
 | `specialties` | hasOne | [SettlementSpecialties](settlementspecialties.md) |  |
-| `raids` | hasOne | [SettlementRaids](settlementraids.md) |  |
-| `upkeep` | hasOne | [SettlementUpkeep](settlementupkeep.md) |  |
-| `decision` | hasOne | [SettlementRaidsAndUpkeep](settlementraidsandupkeep.md) |  |
+| `clan` | hasOne | [Clan](clan.md) |  |
+| `decision` | hasOne | [ClansAndOwnedStructures](clansandownedstructures.md) |  |
 
 ### State machine
 
@@ -42,37 +41,36 @@ A player-founded place: a Hearth, a claimed circle of land, members with roles a
 ```mermaid
 stateDiagram-v2
   [*] --> founded
-  founded --> growing : grow\n[minMembers of the next tier must be met, and either its minDays or (when it has one) its minProjects completed settlement projects; The claim radius and Stockpile capacity rise to the new tier's values and never shrink]
-  growing --> town : grow\n[minMembers of the next tier must be met, and either its minDays or (when it has one) its minProjects completed settlement projects; The claim radius and Stockpile capacity rise to the new tier's values and never shrink]
-  founded --> abandoned : abandon\n[The claim shrinks by decayRadiusPerDay each day until its land is free; The Stockpile contents are kept for members who return]
-  growing --> abandoned : abandon\n[The claim shrinks by decayRadiusPerDay each day until its land is free; The Stockpile contents are kept for members who return]
-  town --> abandoned : abandon\n[The claim shrinks by decayRadiusPerDay each day until its land is free; The Stockpile contents are kept for members who return]
-  abandoned --> founded : reclaim\n[The settlement returns to founded and the claim regrows with the tiers]
+  founded --> growing : grow\n[minMembers of the next tier must be met, and either its minDays or (when it has one) its minProjects completed settlement projects; Stockpile capacity rises to the new tier's value and never shrinks]
+  growing --> town : grow\n[minMembers of the next tier must be met, and either its minDays or (when it has one) its minProjects completed settlement projects; Stockpile capacity rises to the new tier's value and never shrinks]
+  founded --> abandoned : abandon\n[The Stockpile contents are kept for members who return]
+  growing --> abandoned : abandon\n[The Stockpile contents are kept for members who return]
+  town --> abandoned : abandon\n[The Stockpile contents are kept for members who return]
+  abandoned --> founded : reclaim\n[The settlement returns to founded and grows with the tiers again]
 ```
 
 | State | Description | Terminal |
 | ----- | ----------- | -------- |
-| `founded` | The hearth is placed and the claim is at its smallest radius |  |
-| `growing` | Enough members and days, or enough members and completed projects: the claim and stockpile have grown |  |
-| `town` | The top tier: the largest claim and stockpile |  |
-| `abandoned` | No member active for abandonAfterDays: the claim decays until the land is free |  |
+| `founded` | The hearth is placed and the stockpile is at its smallest |  |
+| `growing` | Enough members and days, or enough members and completed projects: the stockpile has grown |  |
+| `town` | The top tier: the largest stockpile |  |
+| `abandoned` | No member active for abandonAfterDays |  |
 
 | From | To | Trigger | Guards | Effects |
 | ---- | --- | ------- | ------ | ------- |
-| `founded` | `growing` | `grow` | minMembers of the next tier must be met, and either its minDays or (when it has one) its minProjects completed settlement projects; The claim radius and Stockpile capacity rise to the new tier's values and never shrink |  |
-| `growing` | `town` | `grow` | minMembers of the next tier must be met, and either its minDays or (when it has one) its minProjects completed settlement projects; The claim radius and Stockpile capacity rise to the new tier's values and never shrink |  |
-| `founded`, `growing`, `town` | `abandoned` | `abandon` | The claim shrinks by decayRadiusPerDay each day until its land is free; The Stockpile contents are kept for members who return |  |
-| `abandoned` | `founded` | `reclaim` | The settlement returns to founded and the claim regrows with the tiers |  |
+| `founded` | `growing` | `grow` | minMembers of the next tier must be met, and either its minDays or (when it has one) its minProjects completed settlement projects; Stockpile capacity rises to the new tier's value and never shrinks |  |
+| `growing` | `town` | `grow` | minMembers of the next tier must be met, and either its minDays or (when it has one) its minProjects completed settlement projects; Stockpile capacity rises to the new tier's value and never shrinks |  |
+| `founded`, `growing`, `town` | `abandoned` | `abandon` | The Stockpile contents are kept for members who return |  |
+| `abandoned` | `founded` | `reclaim` | The settlement returns to founded and grows with the tiers again |  |
 
 ## Behaviors
 
 ### `found`
 
-Place a Hearth on free land to found a settlement
+Place a Hearth to found a settlement
 
 **Rules:**
 - Consumes one Hearth item (RecipeHearth)
-- The claim must not overlap another settlement's claim: hearths are at least minSeparation apart
 - The placer becomes the founder and the first member
 
 **Auth:** `maintainer`
@@ -83,7 +81,7 @@ Raise the tier when member count and age meet the next tier thresholds
 
 **Rules:**
 - minMembers of the next tier must be met, and either its minDays or (when it has one) its minProjects completed settlement projects
-- The claim radius and Stockpile capacity rise to the new tier's values and never shrink
+- Stockpile capacity rises to the new tier's value and never shrinks
 
 **Auth:** `maintainer`
 
@@ -92,17 +90,16 @@ Raise the tier when member count and age meet the next tier thresholds
 Mark a settlement with no member activity for abandonAfterDays as abandoned
 
 **Rules:**
-- The claim shrinks by decayRadiusPerDay each day until its land is free
 - The Stockpile contents are kept for members who return
 
 **Auth:** `maintainer`
 
 ### `reclaim`
 
-A member returns to an abandoned settlement whose claim has not fully decayed
+A member returns to an abandoned settlement
 
 **Rules:**
-- The settlement returns to founded and the claim regrows with the tiers
+- The settlement returns to founded and grows with the tiers again
 
 **Auth:** `maintainer`
 
@@ -112,17 +109,18 @@ Change a settlement rule through a governance proposal
 
 **Rules:**
 - A rule change is a GovernanceSystem proposal; it applies only once ratified
-- Claim radius, roles and withdraw limits are changed this way, never by the founder alone
+- Roles and withdraw limits are changed this way, never by the founder alone
 
 **Auth:** `maintainer`
 
-### `build`
+### `migrate`
 
-Build or break inside the claim
+Become a clan (Phase 204)
 
 **Rules:**
-- Only roles with build permission may build inside the claim
-- Outsiders may not build or take inside a claim
+- The clan keeps the settlement's name, members and roles (Clan.migration)
+- The hearth is removed and returned to the founder as a Hearth item
+- The stockpile becomes a clan chest with the same contents
 
 **Auth:** `maintainer`
 

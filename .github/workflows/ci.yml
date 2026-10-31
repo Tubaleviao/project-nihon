@@ -408,6 +408,21 @@ jobs:
       - name: Check the settlement loop validation rejects bad tables
         run: node tools/check_settlement_loop.js
 
+      - name: Check the clan validation rejects bad tables
+        run: node tools/check_clan.js
+
+      - name: Check the structure, durability and respawn validation rejects bad tables
+        run: node tools/check_structure.js
+
+      - name: Check the work-skill validation rejects bad tables
+        run: node tools/check_work.js
+
+      - name: Check the chest and door validation rejects bad tables
+        run: node tools/check_chests.js
+
+      - name: Check the writing validation rejects bad tables
+        run: node tools/check_writing.js
+
       - name: Check the granular-material validation rejects bad fabric
         run: node tools/check_granular.js
 

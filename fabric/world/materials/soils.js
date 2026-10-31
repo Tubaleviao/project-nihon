@@ -1,5 +1,6 @@
 const { defineEntity } = require('@newel/core')
 const { depositFields } = require('./deposit')
+const { structuralFields } = require('./structural')
 
 // Phase 49 — natural ground cover. Neither is ever a ground vein (empty depth band): Grass is one
 // of the covers a biome's `surfaceMaterial` can name, and Soil is what mining a slice of a biome's
@@ -18,6 +19,7 @@ module.exports = {
       density:  { type: 'decimal', description: 'g/cm³; loose, root-bound', defaultValue: 1.1 },
       hardness: { type: 'decimal', description: 'Mohs equivalent 1–10', defaultValue: 0.5 },
       ...depositFields({ min: 0, max: 0, why: 'A surface cover, never a buried vein.' }),
+      ...structuralFields({ rarity: 'common', durability: 20, structuralClass: 'earth', why: 'Loose cover.' }),
     },
   }),
 
@@ -33,6 +35,7 @@ module.exports = {
       density:  { type: 'decimal', description: 'g/cm³', defaultValue: 1.5 },
       hardness: { type: 'decimal', description: 'Mohs equivalent 1–10', defaultValue: 1 },
       ...depositFields({ min: 0, max: 0, granular: true, why: 'A topsoil layer, never a buried vein.' }),
+      ...structuralFields({ rarity: 'common', durability: 30, structuralClass: 'earth', why: 'Packed earth.' }),
     },
   }),
 
@@ -45,6 +48,7 @@ module.exports = {
       density:  { type: 'decimal', description: 'g/cm³', defaultValue: 1.6 },
       hardness: { type: 'decimal', description: 'Mohs equivalent 1–10', defaultValue: 0.5 },
       ...depositFields({ min: 0, max: 0, granular: true, why: 'A surface cover, never a buried vein.' }),
+      ...structuralFields({ rarity: 'common', durability: 15, structuralClass: 'earth', why: 'Settles when undermined.' }),
     },
   }),
 
@@ -57,6 +61,7 @@ module.exports = {
       density:  { type: 'decimal', description: 'g/cm³', defaultValue: 0.3 },
       hardness: { type: 'decimal', description: 'Mohs equivalent 1–10', defaultValue: 0.5 },
       ...depositFields({ min: 0, max: 0, granular: true, why: 'A surface cover, never a buried vein.' }),
+      ...structuralFields({ rarity: 'common', durability: 10, structuralClass: 'earth', why: 'Melts and packs.' }),
     },
   }),
 

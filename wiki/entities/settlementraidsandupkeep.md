@@ -7,7 +7,7 @@ title: "SettlementRaidsAndUpkeep"
 
 `decision`
 
-Raids on a settlement are fair: every raid is warned (SettlementRaids.warningSeconds > 0), none starts unless a member is online inside the claim (offlineProtection), and a lost raid takes at most a capped share of the stockpile and of unfinished project labour, never the claim or finished structures. Raids come from creatures only. Upkeep is a per-tier cost from the stockpile that never falls as the tier rises; unpaid upkeep suspends project effects and never shrinks the claim, which follows only the activity-based abandonment rule (SettlementClaimAndDecay).
+Superseded 2026-10-31 by SkillsGrowFromWork: raids are deferred and upkeep is removed (Phase 203). It read: raids on a settlement are fair: every raid is warned (SettlementRaids.warningSeconds > 0), none starts unless a member is online inside the claim (offlineProtection), and a lost raid takes at most a capped share of the stockpile and of unfinished project labour, never the claim or finished structures. Raids come from creatures only. Upkeep is a per-tier cost from the stockpile that never falls as the tier rises; unpaid upkeep suspends project effects and never shrinks the claim, which follows only the activity-based abandonment rule (SettlementClaimAndDecay).
 
 > Give a village something to defend and to keep paying for without punishing players for logging off (TheWorldIsPersistent, EverythingHasTradeoffs, Phase 197)
 
@@ -21,8 +21,7 @@ Raids on a settlement are fair: every raid is warned (SettlementRaids.warningSec
 
 | Name | Kind | Target |
 | ---- | ---- | ------ |
-| raids | hasOne | [SettlementRaids](settlementraids.md) |
-| upkeep | hasOne | [SettlementUpkeep](settlementupkeep.md) |
+| replacedBy | hasOne | [SkillsGrowFromWork](skillsgrowfromwork.md) |
 
 ## States
 

@@ -1,4 +1,5 @@
 const { defineEntity, skillStateMachine, SKILL_TIERS, SKILL_CATEGORIES } = require('./shared')
+const { SKILL_CURVES } = require('../work')
 
 module.exports = {
 
@@ -203,6 +204,68 @@ module.exports = {
       craftVoidlinedContainer: {
         description: 'Produce storage containers with void-lining required to safely carry enchanted voidite',
         rules: ['Requires Void Smithing: Expert'],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
+  // ─── Building (Phase 203) ──────────────────────────────────────────────────────
+  Building: defineEntity({
+    tags: ['skill'],
+    description:
+      'Putting up and taking down structures: placing blocks, dismantling them cleanly and repairing worn ones. ' +
+      'A higher level gets more back when dismantling (StructureDurability.dismantle) and grows from every block ' +
+      'placed, dismantled or repaired.',
+    goal: 'Reward builders and make careful dismantling a skill rather than a free refund',
+    fields: {
+      id:        { type: 'uuid', primaryKey: true },
+      tier:      { type: 'enum', values: SKILL_TIERS },
+      xpCurve:   { type: 'enum', values: ['linear', 'quadratic', 'exponential'], description: 'XP required per tier', defaultValue: 'quadratic' },
+      maxLevel:  { type: 'integer', description: 'Maximum XP level within a tier before tier advance is required; the same as levelCap', defaultValue: SKILL_CURVES.Building.levelCap },
+      category:  { type: 'enum', values: SKILL_CATEGORIES, defaultValue: 'crafting', description: 'Skill domain: crafting' },
+      levelCap:  { type: 'integer', description: 'Highest Building level (WorkSkills.curves)', defaultValue: SKILL_CURVES.Building.levelCap },
+      xpToLevel: { type: 'json', description: 'Cumulative XP needed to reach each level, index = level (WorkSkills.curves)', defaultValue: SKILL_CURVES.Building.xpToLevel },
+    },
+    stateMachine: skillStateMachine(),
+    behaviors: {
+      advanceTier: {
+        description: 'Progress to the next mastery tier through accumulated building XP',
+        rules: ['XP threshold for the target tier must be met', 'XP comes only from the work WorkSkills maps to Building'],
+        auth: { roles: ['maintainer'] },
+      },
+      dismantle: {
+        description: 'Take a structure apart for part of its materials',
+        rules: ['The share returned rises with Building level and falls with durability (StructureDurability.dismantle)'],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
+  // ─── Tailoring (Phase 203) ──────────────────────────────────────────────────────
+  Tailoring: defineEntity({
+    tags: ['skill'],
+    description:
+      'Sewing hides, fibre and cloth into clothing, bags and soft furnishings. Grows from every tailoring craft.',
+    goal: 'Give sewing its own craft, so a clan has a best sewer to ask',
+    fields: {
+      id:        { type: 'uuid', primaryKey: true },
+      tier:      { type: 'enum', values: SKILL_TIERS },
+      xpCurve:   { type: 'enum', values: ['linear', 'quadratic', 'exponential'], description: 'XP required per tier', defaultValue: 'quadratic' },
+      maxLevel:  { type: 'integer', description: 'Maximum XP level within a tier before tier advance is required; the same as levelCap', defaultValue: SKILL_CURVES.Tailoring.levelCap },
+      category:  { type: 'enum', values: SKILL_CATEGORIES, defaultValue: 'crafting', description: 'Skill domain: crafting' },
+      levelCap:  { type: 'integer', description: 'Highest Tailoring level (WorkSkills.curves)', defaultValue: SKILL_CURVES.Tailoring.levelCap },
+      xpToLevel: { type: 'json', description: 'Cumulative XP needed to reach each level, index = level (WorkSkills.curves)', defaultValue: SKILL_CURVES.Tailoring.xpToLevel },
+    },
+    stateMachine: skillStateMachine(),
+    behaviors: {
+      advanceTier: {
+        description: 'Progress to the next mastery tier through accumulated tailoring XP',
+        rules: ['XP threshold for the target tier must be met', 'XP comes only from the work WorkSkills maps to Tailoring'],
+        auth: { roles: ['maintainer'] },
+      },
+      sew: {
+        description: 'Sew a garment or bag from hides, fibre or cloth',
+        rules: ['Requires the tailoring recipe and its materials'],
         auth: { roles: ['maintainer'] },
       },
     },

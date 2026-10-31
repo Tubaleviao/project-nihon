@@ -1,0 +1,10 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/world_systems/clantiers.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+rules = {"durabilityUnit":100,"rarityWeight":{"common":1,"uncommon":2,"rare":4,"epic":8,"legendary":16},"tiers":[{"tier":"band","minScore":0},{"tier":"clan","minScore":400},{"tier":"house","minScore":4000},{"tier":"dynasty","minScore":40000}],"gives":[]}
+description = "A clan's tier, from every building it owns wherever it stands, weighed by how durable and how rare each block's material is. It rises as the clan builds and falls when its buildings are dismantled or destroyed. A tier gives nothing yet."
+tags = ["world-system"]

@@ -7,5 +7,5 @@ script = ExtResource("1")
 id = ""
 capacityStacks = 20
 usedStacks = 0
-description = "The container a settlement's members fill and draw from together. Its capacity in stacks grows with the settlement tier, and each role has a daily withdraw limit. Technology research that needs \"settlement storage\" draws its materials from here."
+description = "The container a settlement's members fill and draw from together. Its capacity in stacks grows with the settlement tier, and each role has a daily withdraw limit. Phase 204 turns it into a clan chest with the same contents (Clan.migration); research no longer draws from it (Phase 203)."
 tags = ["container"]

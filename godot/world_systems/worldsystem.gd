@@ -9,6 +9,7 @@ extends Resource
 @export var seaLevel: float
 @export var minHeight: float
 @export var maxHeight: float
+@export var buildCeiling: float
 @export var oceanShare: float
 @export var heightSpline: Array
 @export var ridgeAmplitude: float

@@ -7,7 +7,7 @@ title: "SettlementProjects"
 
 `world-system`
 
-Structures a village builds together inside its claim: a palisade, a storehouse, a workshop, a watchtower. Each needs materials and labour in ordered steps; members contribute both, and a member whose specialty matches a step works faster on it. A finished project is placed as blocks and stations in the claim, and its effects (stockpile capacity, raid defence, crafting speed inside the claim, upkeep relief) hold while upkeep is paid. Completed projects also grow a village: the growing tier is reached by minMembers and minProjects as well as by days.
+Structures a village builds together: a palisade, a storehouse, a workshop, a watchtower. Each needs materials, which members bring; it is complete once its materials are in, with no labour stage (Phase 203). A finished project is placed as blocks and stations. Completed projects also grow a village: the growing tier is reached by minMembers and minProjects as well as by days.
 
 > Give a new village something to build together in its first hour (CivilizationIsPlayerMade, Phase 197)
 
@@ -15,7 +15,7 @@ Structures a village builds together inside its claim: a palisade, a storehouse,
 
 | Field | Type | Description |
 | ----- | ---- | ----------- |
-| rules | json | Project table: { workSecondsPerUnit, projects: { <key>: { minTier, materials, labour, effects, places } } } (validated at fabric load) |
+| rules | json | Project table: { projects: { <key>: { minTier, materials, places } } } (validated at fabric load) |
 
 ## Related
 
@@ -27,24 +27,21 @@ Structures a village builds together inside its claim: a palisade, a storehouse,
 
 ### start
 
-A member with build permission starts a project at a site inside the claim
+A member with build permission starts a project at a site
 
 **Conditions:**
 - The settlement must have reached the project's minTier
-- The site must lie inside the claim
 
 ### contribute
 
-A member adds materials or labour to an unfinished project
+A member adds materials to an unfinished project
 
 **Conditions:**
 - Materials are moved, never duplicated: what is contributed leaves the giver
-- One work unit takes workSecondsPerUnit seconds at the site; a matching specialty adds bonusLabour per unit
-- Steps are worked in order
 
 ### complete
 
-All materials and labour are in: the structure is placed and its effects start
+The contribution that brings in the last material completes the project and places it
 
 **Conditions:**
 - Places places.blocks of places.block in the layout, plus places.stations
