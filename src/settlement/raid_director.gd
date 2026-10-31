@@ -1,8 +1,8 @@
 extends RefCounted
 ## Phase 200 — the host's raid scheduler. It owns the transient raids (a warning, then the pack on the field,
 ## then a result) and asks `RaidRules` whether a settlement may be raided on each settlement tick. The pack's
-## creatures are spawned by whoever handles `GameBus.raid_pack_spawn`; `cleared` reports them all dead or driven
-## off. The slice owns the persisted part (the cooldown clock and the last result, `end_raid`).
+## creatures are spawned through `spawn_raider` (`GameBus.raid_pack_spawn` only announces the spawned pack);
+## a raid ends when every raider is dead or has fled. The slice owns the persisted part (the cooldown clock and the last result, `end_raid`).
 
 const SettlementSlice := preload("res://src/settlement/settlement_slice.gd")
 const RaidRules := preload("res://src/settlement/raid_rules.gd")
@@ -60,6 +60,16 @@ func online_in_claim(id: String) -> int:
 			n += 1
 	return n
 
+## Members online anywhere (the claim edge, where the fight is, may lie just outside the claim).
+func online_members(id: String) -> int:
+	if slice == null or not online_ids.is_valid():
+		return 0
+	var n := 0
+	for pid: Variant in online_ids.call():
+		if slice.is_member(str(pid), id):
+			n += 1
+	return n
+
 func _info(id: String, now: float) -> Dictionary:
 	var s := slice.get_settlement(id)
 	var rec := slice.raid_record(id)
@@ -99,15 +109,26 @@ func start(id: String, now: float, forced: bool = false) -> String:
 func tick(now: float) -> void:
 	if slice == null:
 		return
-	for id: String in slice.ids():
+	var live := slice.ids()
+	for id: String in _raids.keys():
+		if not live.has(id):   # the settlement is gone: drop its raid and pack
+			_cancel(id)
+	for id: String in live:
 		if not active(id):
 			if blocker(id, now) == "":
 				start(id, now)
 			continue
 		var r: Dictionary = _raids[id]
+		# Nobody left to defend: no pack, no loss.
+		if online_ids.is_valid() and online_members(id) == 0:
+			_cancel(id)
+			continue
 		if str(r["phase"]) == "warning" and now >= float(r["spawn_at"]):
 			r["phase"] = "fighting"
 			r["spawned"] = _spawn_pack(id, r)
+			if int(r["spawned"]) <= 0 and spawn_raider.is_valid():
+				_finish(id, true)   # nothing could be spawned: the raid is over, nothing lost
+				continue
 			GameBus.settlements_changed.emit()   # the views carry the new phase
 			GameBus.raid_pack_spawn.emit(id, (r["pack"] as Array).duplicate(true), r["edge"])
 		elif str(r["phase"]) == "fighting":
@@ -129,25 +150,27 @@ func _spawn_pack(id: String, r: Dictionary) -> int:
 				n += 1
 	return n
 
-## Defended once every raider is dead; lost the moment a live one reaches the hearth.
+## Defended once every raider is dead or has fled; lost the moment a live one reaches the hearth.
 func _judge(id: String, r: Dictionary) -> void:
 	if int(r.get("spawned", 0)) <= 0:
 		return
 	var goal := slice.hearth_xz(id)
-	var alive := 0
+	var threats := 0
 	for e: Dictionary in raiders_of.call(id):
-		if bool(e["alive"]):
-			alive += 1
+		if bool(e["alive"]) and not bool(e.get("fled", false)):
+			threats += 1
 			if (e["xz"] as Vector2).distance_to(goal) <= REACH_M:
 				_finish(id, false)
 				return
-	if alive == 0:
+	if threats == 0:
 		_finish(id, true)
 
-## Every raider is dead or driven off.
-func cleared(id: String) -> void:
-	if phase_of(id) == "fighting":
-		_finish(id, true)
+## End a raid with no result and no loss (nobody online, or its settlement is gone).
+func _cancel(id: String) -> void:
+	_raids.erase(id)
+	if remove_raiders.is_valid():
+		remove_raiders.call(id)
+	GameBus.settlements_changed.emit()
 
 func _finish(id: String, defended: bool) -> void:
 	_raids.erase(id)

@@ -396,8 +396,8 @@ func _tick_instance(iid: String, inst: Dictionary, player_pos: Vector3, delta: f
 				match aggression:
 					0: # PASSIVE — flee immediately, never attack
 						_transition(iid, "fleeing", inst)
-					1: # NEUTRAL — pause and watch before committing
-						_transition(iid, "alert", inst)
+					1: # NEUTRAL — pause and watch before committing (a raider never stalls: it attacks)
+						_transition(iid, "aggressive" if inst.has("raid_goal") else "alert", inst)
 					2, 3: # AGGRESSIVE / TERRITORIAL — attack without warning
 						_transition(iid, "aggressive", inst)
 				return

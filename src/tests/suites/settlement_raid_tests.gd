@@ -165,7 +165,9 @@ func _test_director() -> void:
 	d.tick(t0 + 121.0)
 	assert_eq(_events[1][0], "spawn", "the pack spawns after the warning")
 	assert_eq(d.phase_of("settlement_1"), "fighting", "fighting")
-	d.cleared("settlement_1")
+	d.raiders_of = func(_rid: String) -> Array: return [{ "id": "r1", "alive": true, "fled": true, "xz": Vector2(500, 500) }]
+	d._raids["settlement_1"]["spawned"] = 1
+	d.tick(t0 + 122.0)
 	assert_eq(_events[2], ["resolved", "settlement_1", "defended"], "cleared: defended")
 	assert_false(d.active("settlement_1"), "the raid is over")
 	assert_eq(d.start("settlement_1", t0 + 130.0, true), "", "forced starts ignore the cooldown")
@@ -214,6 +216,27 @@ func _test_director_field() -> void:
 	field["raiders"][0]["xz"] = s.hearth_xz("settlement_1") + Vector2(1.0, 0.0)
 	d.tick(t0 + 340.0)
 	assert_eq(s.raid_record("settlement_1")["last_result"], "lost", "a raider at the hearth: lost")
+	# Fled raiders are driven off: defended with the raid's pack removed.
+	field["raiders"].clear()
+	assert_eq(d.start("settlement_1", t0 + 400.0, true), "", "again, for the fled pack")
+	d.tick(t0 + 530.0)
+	for r: Dictionary in field["raiders"]:
+		r["fled"] = true
+	d.tick(t0 + 540.0)
+	assert_eq(s.raid_record("settlement_1")["last_result"], "defended", "a driven-off pack is a defended raid")
+	# A pack that cannot spawn ends the raid with no loss.
+	d.spawn_raider = func(_c: String, _xz: Vector2, _goal: Vector2, _rid: String, _n: int) -> String: return ""
+	assert_eq(d.start("settlement_1", t0 + 700.0, true), "", "again, for the empty pack")
+	d.tick(t0 + 830.0)
+	assert_false(d.active("settlement_1"), "no raider spawned: the raid is over")
+	assert_eq(s.raid_record("settlement_1")["last_result"], "defended", "and nothing is lost")
+	# The last member leaves during the warning: no pack, no result.
+	assert_eq(d.start("settlement_1", t0 + 1000.0, true), "", "again, for the empty village")
+	var before: float = s.raid_record("settlement_1")["last_end"]
+	d.online_ids = func() -> Array: return []
+	d.tick(t0 + 1130.0)
+	assert_false(d.active("settlement_1"), "nobody online: the raid is cancelled")
+	assert_eq(s.raid_record("settlement_1")["last_end"], before, "with no result recorded")
 	_free_rig(rig)
 
 func _test_raider_creatures() -> void:
@@ -229,8 +252,13 @@ func _test_raider_creatures() -> void:
 	assert_false(bool(c.raiders_of("settlement_1")[0]["alive"]), "killed")
 	assert_true(c._suppresses_respawn(c._instances[iid]), "a dead raider never respawns")
 	assert_eq(c.raiders_of("other").size(), 0, "other raids have none")
+	var iid2 := c.spawn_raider("GraywolfPack", Vector2(120.0, -40.0), Vector2(0.0, 0.0), "settlement_2", 0)
+	assert_true(iid2 != "" and iid2 != iid, "two raids never share an instance id")
+	c.despawn_for_chunk(c._instances[iid]["chunk"])
+	assert_eq(c.raiders_of("settlement_1").size(), 1, "a chunk unload does not take a raider")
 	c.remove_raiders("settlement_1")
 	assert_eq(c.raiders_of("settlement_1").size(), 0, "removed when the raid ends")
+	c.remove_raiders("settlement_2")
 	c.free()
 
 const SettlementPanel := preload("res://src/ui/settlement_panel.gd")

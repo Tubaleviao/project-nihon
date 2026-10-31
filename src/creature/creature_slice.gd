@@ -640,8 +640,8 @@ func despawn_for_chunk(chunk_pos: Vector2i) -> void:
 		if not _instances.has(iid):
 			continue
 		var inst: Dictionary = _instances[iid]
-		if inst["state"] == "aggressive" or inst["state"] == "fleeing":
-			kept.append(iid)
+		if inst["state"] == "aggressive" or inst["state"] == "fleeing" or inst.has("raid"):
+			kept.append(iid)   # a raider belongs to its raid, not to the chunk it spawned in
 			continue
 		if inst["state"] == "dead":
 			_remember_death(iid, inst)
@@ -871,7 +871,8 @@ func _spawn(creature_id: String, chunk_pos: Vector2i, spawn_index: int = 0) -> S
 ## A raider never respawns (`_suppresses_respawn`) and is removed by `remove_raiders` when the raid ends.
 func spawn_raider(creature_id: String, xz: Vector2, goal: Vector2, raid_id: String, n: int) -> String:
 	var exact := WorldPos.from_world(xz.x, 0.0, xz.y)
-	var iid := _spawn(creature_id, exact["chunk"], RAIDER_INDEX_BASE + n)
+	_raider_seq += 1
+	var iid := _spawn(creature_id, exact["chunk"], RAIDER_INDEX_BASE + _raider_seq)   # unique: two raids never share an id
 	if iid == "":
 		return ""
 	set_instance_pos(iid, exact)
@@ -882,18 +883,19 @@ func spawn_raider(creature_id: String, xz: Vector2, goal: Vector2, raid_id: Stri
 	return iid
 
 const RAIDER_INDEX_BASE := 1000
+var _raider_seq: int = 0
 ## Phase 200 — seconds between position-only deltas of one raider.
 const RAIDER_SYNC_INTERVAL := 1.0
 var _raider_sent_ms: Dictionary = {}
 
-## Phase 200 — `[{ id, alive, xz }]` for the raiders of `raid_id`.
+## Phase 200 — `[{ id, alive, fled, xz }]` for the raiders of `raid_id`.
 func raiders_of(raid_id: String) -> Array:
 	var out: Array = []
 	for iid in _instances:
 		var inst: Dictionary = _instances[iid]
 		if str(inst.get("raid", "")) == raid_id:
 			var p: Vector3 = inst["position"]
-			out.append({ "id": iid, "alive": inst["state"] != "dead", "xz": Vector2(p.x, p.z) })
+			out.append({ "id": iid, "alive": inst["state"] != "dead", "fled": inst["state"] == "fleeing", "xz": Vector2(p.x, p.z) })
 	return out
 
 ## Phase 200 — the raid is over: its raiders (dead, alive or driven off) leave the world.
@@ -902,19 +904,24 @@ func remove_raiders(raid_id: String) -> void:
 		var inst: Dictionary = _instances[iid]
 		if str(inst.get("raid", "")) != raid_id:
 			continue
-		if _pool != null and inst.has("mi") and int(inst["mi"]) >= 0:
-			_pool.release(int(inst["mi"]))
-		if _visuals != null:
-			_visuals.detach_silently(iid)
-		var chunk: Vector2i = inst["chunk"]
-		if _by_chunk.has(chunk):
-			(_by_chunk[chunk] as Array).erase(iid)
-		_instances.erase(iid)
-		_last_broadcast.erase(iid)
-		_spatial.remove(iid)
-		_dead_state.erase(iid)
+		# Clients have no despawn message: a "removed" state delta tells them to drop the body.
+		GameBus.creature_state_changed.emit(iid, str(inst["creature_id"]), "removed", inst["pos"])
+		_erase_instance(iid, inst)
 		_raider_sent_ms.erase(iid)
 	_invalidate_view()
+
+func _erase_instance(iid: String, inst: Dictionary) -> void:
+	if _pool != null and inst.has("mi") and int(inst["mi"]) >= 0:
+		_pool.release(int(inst["mi"]))
+	if _visuals != null:
+		_visuals.detach_silently(iid)
+	var chunk: Vector2i = inst["chunk"]
+	if _by_chunk.has(chunk):
+		(_by_chunk[chunk] as Array).erase(iid)
+	_instances.erase(iid)
+	_last_broadcast.erase(iid)
+	_spatial.remove(iid)
+	_dead_state.erase(iid)
 
 ## Deterministic instance id: derived from the chunk it belongs to, the creature
 ## it is, and its spawn index — the same inputs _deterministic_chunk_position()
@@ -1117,6 +1124,11 @@ func _broadcast_creature_states() -> void:
 func _on_creature_state_changed(instance_id: String, creature_id: String, state: String, position: Dictionary) -> void:
 	if is_authoritative:
 		return   # the host already owns this instance
+	if state == "removed":   # Phase 200: the host dropped a raider
+		if _instances.has(instance_id):
+			_erase_instance(instance_id, _instances[instance_id])
+			_invalidate_view()
+		return
 	apply_creature_pos(instance_id, creature_id, state, position)
 
 ## Client-side application of a single authoritative creature state (see
