@@ -48,6 +48,16 @@ func _connect_all() -> void:
 	connect_bus(GameBus.settlements_changed, _on_changed)
 	connect_bus(GameBus.settlement_resolved, _on_resolved)
 	connect_bus(GameBus.station_placed, _on_station_placed)
+	connect_bus(GameBus.attributes_synced, _on_attributes_synced)
+	connect_bus(GameBus.skill_tier_recorded, _on_skill_tier_recorded)
+
+## Phase 199 — the host's own records changed: recompute that player's specialty (never from a message).
+func _on_attributes_synced(player_id: String, _attributes: Dictionary) -> void:
+	if not root._is_client and root._settlements != null and root._settlements.settlement_of(player_id) != "":
+		root._settlements.refresh_specialty(player_id)
+
+func _on_skill_tier_recorded(player_id: String, _skill: String, _tier: String) -> void:
+	_on_attributes_synced(player_id, {})
 
 func _on_changed() -> void:
 	_dirty = true

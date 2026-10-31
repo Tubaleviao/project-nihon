@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–198 are done. Their specs and acceptance criteria, and the introductions of
+Phases 1–199 are done. Their specs and acceptance criteria, and the introductions of
 the arcs they belonged to, are archived in [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Next: follow-up debt burn II (Phases 194–196)
@@ -55,41 +55,10 @@ Raids come from creatures only. Settlement-against-settlement conflict stays def
 |---|---|---|---|
 | 197 | The settlement loop in the fabric: projects, specialties, raids and upkeep | Done | [phases-197.md](docs/roadmap-history/phases-197.md) |
 | 198 | Settlement projects at runtime: a village builds together | Done | [phases-198.md](docs/roadmap-history/phases-198.md) |
-| 199 | Specialties at runtime: what each member is good at | Planned | below |
+| 199 | Specialties at runtime: what each member is good at | Done | [phases-199.md](docs/roadmap-history/phases-199.md) |
 | 200 | Raids: a warned, bounded attack the village can defend | Planned | below |
 | 201 | Upkeep: a village that has to keep going | Planned | below |
 | 202 | The settlement loop, played: four bots found, specialize, trade and defend a village | Planned | below |
-
----
-
-## Phase 199 — Specialties at runtime: what each member is good at
-
-**Goal:** each member gets a specialty from their skills and attributes. It shows on the roster
-and makes their labour count for more on the project steps that match it, so a village gains from
-members who do different things.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phases 178 and 198.
-
-**Deliverables:**
-- `src/settlement/specialty_rules.gd`: pure scoring from the skill and attribute tables, ties
-  broken in fabric order, and no specialty below the floor.
-- The host recomputes a member's specialty when their skills or attributes change and syncs it to
-  the settlement's members. Nothing is client-reported: the host reads its own skill and attribute
-  records.
-- Labour on a matching project step gets the fabric bonus.
-- UI: the specialty on the roster and on the character sheet (Phase 179), with an icon from the
-  Phase 175 generator.
-
-**Acceptance criteria:**
-- [ ] Suite: fixture players with a high carpentry skill, a high combat skill and only base values
-  get woodworker, hunter and no specialty; a tie resolves in fabric order.
-- [ ] Suite: a skill gain that changes the best score changes the specialty and emits one sync.
-- [ ] Suite: a matching specialty's labour adds the bonus, and a non-matching one adds the base.
-- [ ] Suite (audit): no specialty value is read from a client message.
-- [ ] Every new string is in both catalogs, and the i18n key check passes.
-- [ ] Suite green on both boot paths, harness green.
 
 ---
 

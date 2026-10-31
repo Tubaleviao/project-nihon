@@ -834,8 +834,11 @@ func record_skill(player_id: String, skill: String, tier: String) -> void:
 	var skills: Dictionary = rec.get("skills", {})
 	if not (skills is Dictionary):
 		skills = {}
+	var changed := str(skills.get(skill, "")) != tier
 	skills[skill] = tier
 	rec["skills"] = skills
+	if changed and is_authoritative:
+		GameBus.skill_tier_recorded.emit(player_id, skill, tier)
 
 ## Replace a player's whole tier table (restore path / bulk write).
 func record_skills(player_id: String, tiers: Dictionary) -> void:

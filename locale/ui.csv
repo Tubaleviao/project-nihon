@@ -554,3 +554,10 @@ tutorial.toggle,Tutorial,Tutorial
 tutorial.restart,Restart tutorial,Reiniciar tutorial
 hotbar.more_boxes,More boxes,Mais caixas
 chat.field,Chat,Conversa
+settlement.specialty.woodworker,woodworker,carpinteiro
+settlement.specialty.smith,smith,ferreiro
+settlement.specialty.hunter,hunter,caçador
+settlement.specialty.builder,builder,construtor
+settlement.specialty.forager,forager,coletor
+settlement.specialty.none,none,nenhuma
+character.specialty,Specialty: {0},Especialidade: {0}
