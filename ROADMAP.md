@@ -51,7 +51,7 @@ hour. This arc gives a village shared projects, a specialty for each member, rai
 against and upkeep to pay. Its last phase proves the loop with four bots on a dedicated server.
 Raids come from creatures only. Settlement-against-settlement conflict stays deferred.
 
-**Changed 2026-10-31 (Phases 203–213):** the owner replaced settlements' claim area with clans and owned structures, and dropped raids. Phases 200 (raids) and 201 (upkeep) moved to Deferred. Phase 202 (the loop played, which plays a raid and upkeep) is on hold until it is rewritten as a clan loop after Phase 213. Phase 199 stays: specialties follow from skills, which Phase 207 grows from labour.
+**Changed 2026-10-31 (Phases 203–213):** the owner replaced settlements' claim area with clans and owned structures, and dropped raids. Phase 200 (raids) moved to Deferred, and Phase 201 (upkeep) and project labour are removed. Phase 202 (the loop played, which plays a raid and upkeep) is on hold until it is rewritten as a clan loop after Phase 213. Phase 199 stays without its labour bonus: specialties follow from skills, which Phase 207 grows from work.
 
 | Phase | Title | Status | Spec |
 |---|---|---|---|
@@ -59,7 +59,7 @@ Raids come from creatures only. Settlement-against-settlement conflict stays def
 | 198 | Settlement projects at runtime: a village builds together | Done | [phases-198.md](docs/roadmap-history/phases-198.md) |
 | 199 | Specialties at runtime: what each member is good at | Planned | below |
 | 200 | Raids: a warned, bounded attack the village can defend | Dropped (2026-10-31) | Deferred |
-| 201 | Upkeep: a village that has to keep going | Dropped (2026-10-31) | Deferred |
+| 201 | Upkeep: a village that has to keep going | Removed (2026-10-31) | — |
 | 202 | The settlement loop, played: four bots found, specialize, trade and defend a village | On hold: Phase 203 | below |
 
 ### Arc: clans, owned buildings, an Earth-scale world and buildings that stand up (Phases 203–213)
@@ -96,11 +96,12 @@ Decided by the owner (2026-10-31), replacing the hearth claim of Phases 139–14
   cannot trap them inside a structure.
 - **Every building** follows the floor and shape limits, not only clan projects.
 - **Research is per player** and is shared only by writing: books and blueprints.
-- **Labour is personal experience.** Each labour type grows the worker's own skill (sewing makes you
-  a better sewer). It is not progress for a clan.
+- **Skills grow from work.** Crafting, gathering, building and dismantling grow the worker's own
+  skill for that kind of work (sewing makes you a better sewer). Nothing a member does is progress
+  for a clan. Clan projects have no labour: a project is complete once its materials are in.
 - **Chests** have an access mode set by their owner: owner only, clan or everyone. A locked chest can
   be destroyed or lockpicked, depending on its material and technology. Doors work the same way.
-- **Raids and upkeep are not part of the design** (Phases 200 and 201 are dropped, see Deferred).
+- **Raids are not wanted now** (Phase 200, see Deferred). Upkeep (Phase 201) is removed.
   Clan skills for the top contributors and buildings only elders can build come later.
 - **Heights:** peaks to about 8,850 m (Everest is 8,849 m) and buildings up to 163 floors. Floor
   limits depend on the material: wood 2, stone 5, concrete 10, and higher classes up to 163.
@@ -119,7 +120,7 @@ Smithing). Phase 203 models all of it in the fabric before any runtime phase sta
 | 204 | Clans: a name, invites, one clan each, and every member's skills in view | Planned | below |
 | 205 | Owned structures instead of claims: private or clan, durability, dismantling and destruction | Planned | below |
 | 206 | The circle around every building: no spawns, no foreign building | Planned | below |
-| 207 | Labour as personal experience | Planned | below |
+| 207 | Skills grow from work, and clan projects without labour | Planned | below |
 | 208 | Chests and doors: owner, clan or everyone, and locks that can be broken or picked | Planned | below |
 | 209 | Books and blueprints: research shared by writing | Planned | below |
 | 210 | Clan tiers from buildings and material rarity | Planned | below |
@@ -131,9 +132,8 @@ Smithing). Phase 203 models all of it in the fabric before any runtime phase sta
 
 ## Phase 199 — Specialties at runtime: what each member is good at
 
-**Goal:** each member gets a specialty from their skills and attributes. It shows on the roster
-and makes their labour count for more on the project steps that match it, so a village gains from
-members who do different things.
+**Goal:** each member gets a specialty from their skills and attributes. It shows on the clan roster
+(Phase 204) and the character sheet, so members can see who does what at a glance.
 
 **Newel dependency:** NO.
 
@@ -143,9 +143,8 @@ members who do different things.
 - `src/settlement/specialty_rules.gd`: pure scoring from the skill and attribute tables, ties
   broken in fabric order, and no specialty below the floor.
 - The host recomputes a member's specialty when their skills or attributes change and syncs it to
-  the settlement's members. Nothing is client-reported: the host reads its own skill and attribute
+  the clan's members. Nothing is client-reported: the host reads its own skill and attribute
   records.
-- Labour on a matching project step gets the fabric bonus.
 - UI: the specialty on the roster and on the character sheet (Phase 179), with an icon from the
   Phase 175 generator.
 
@@ -153,7 +152,6 @@ members who do different things.
 - [ ] Suite: fixture players with a high carpentry skill, a high combat skill and only base values
   get woodworker, hunter and no specialty; a tie resolves in fabric order.
 - [ ] Suite: a skill gain that changes the best score changes the specialty and emits one sync.
-- [ ] Suite: a matching specialty's labour adds the bonus, and a non-matching one adds the base.
 - [ ] Suite (audit): no specialty value is read from a client message.
 - [ ] Every new string is in both catalogs, and the i18n key check passes.
 - [ ] Suite green on both boot paths, harness green.
@@ -233,14 +231,16 @@ GDScript. A fabric design PR only, separate from the implementation phases.
   the share never rises as durability falls.
 - **New skills.** Building (the engineering skill dismantling reads), Tailoring (sewing) and
   Lockpicking, each with its XP curve.
-- **Labour.** A map from each labour type (each project step's work kind, and crafting kinds) to
-  the skill it grows, and the XP per labour beat. Labour gives a clan nothing but the finished thing.
+- **Work and skills.** A map from each kind of work (each crafting recipe kind, gathering,
+  building, dismantling, repairing) to the skill it grows, and the XP per action. Nothing gives a
+  clan progress. `SettlementProjects` loses its labour: no `steps`, work units, tools or
+  `SITE_RADIUS`. A project is complete once its materials are in.
 - **Chests and doors.** `Chest` and `Door` stations with an access mode (`owner`, `clan`,
   `everyone`), set only by their owner. Lock durability and lockpicking difficulty come from the
   material and a technology. A destroyed chest spills its contents for anyone to take.
 - **Writing.** A `Book` that teaches one researched technology and a `Blueprint` that teaches one
   structure or station recipe. Only a player who knows the content can write one, at a material
-  cost, and reading it consumes it or not (decided here).
+  cost. Reading never consumes it, so it can be read again and lent.
 - **Heights and floors.** `WorldSystem.maxHeight` about 8,850 m, and a build ceiling (moved from
   `VoxelConsts.MAX_HEIGHT` into the fabric) above the highest peak plus the tallest structure.
   `Structure.floorHeight` 3 m (24 blocks), `Structure.maxFloors` 163, and a structural class with
@@ -252,22 +252,17 @@ GDScript. A fabric design PR only, separate from the implementation phases.
 - `check_*.js` tools proving each new validator rejects a bad table, each with a CI step.
 - The floor and shape limits apply to every structure. Builds that exist when the rules land are
   never collapsed (stable-world rule).
-- The owner's decisions above (2026-10-31) are recorded as `decisions.js` entries. Still open,
-  each settled there:
-  1. **Saved settlements.** Default: each becomes a clan with the same name, members and roles.
-     Its hearth is removed (its block returned to the founder) and its stockpile becomes a clan
-     chest.
-  2. **Project labour.** Labour on a clan project counts only within `SITE_RADIUS` (8 m) of its
-     site. Kept unless decided otherwise.
-  3. **Books.** Is a book or blueprint consumed when read, or kept so it can be lent?
+- **Saved settlements.** Each becomes a clan with the same name, members and roles. Its hearth is
+  removed (its block returned to the founder) and its stockpile becomes a clan chest.
+- The owner's decisions (2026-10-31) are recorded as `decisions.js` entries.
 
 **Acceptance criteria:**
 - [ ] `npm run validate` and `npm run check-drift` pass. Every new validator has a `check_*.js`
   that rejects a bad table, and CI runs it.
 - [ ] The fabric has no claim radius; the floor limits wood 2, stone 5 and concrete 10 with a top
   class of 163; dismantling returns 100% and 50% at the two fixed points.
-- [ ] Every labour type maps to a skill, and a validator rejects one that does not.
-- [ ] The three open questions each have a recorded decision.
+- [ ] Every kind of work maps to a skill, and a validator rejects one that does not.
+- [ ] The fabric has no project labour (`steps`, work units, `SITE_RADIUS`), raids or upkeep.
 
 ---
 
@@ -380,22 +375,29 @@ circles. A bigger building has a bigger circle, and destroying it lifts both eff
 
 ---
 
-## Phase 207 — Labour as personal experience
+## Phase 207 — Skills grow from work, and clan projects without labour
 
-**Goal:** working on a project or a craft grows the worker's own skill for that kind of work. A clan
-gains nothing from labour except the finished thing.
+**Goal:** crafting, gathering, building, dismantling and repairing grow the worker's own skill for
+that kind of work. Clan projects finish when their materials are in, with no labour stage.
 
 **Newel dependency:** NO.
 
 **Depends on:** Phases 203 and 204.
 
 **Deliverables:**
-- Each labour beat calls `player_registry.add_skill_xp` for the skill Phase 203 maps it to. Phase
-  199's specialties then follow from those skills, and the clan roster (Phase 204) shows them.
+- Each kind of work calls `player_registry.grant_skill_xp` for the skill Phase 203 maps it to.
+  Today only skinning a carcass grants XP (`carcass_wiring.gd`); crafting records skill tiers but
+  no XP. Phase 199's specialties then follow from those skills, and the clan roster (Phase 204)
+  shows them.
+- Project labour is removed from the runtime: the labour clock (`LABOUR_GAP_SEC`), `SITE_RADIUS`,
+  the tool-in-hand check and work steps. A project completes on its last contribution. Saved projects with work in progress complete if their materials are in.
 - Project completion stops counting toward a tier (`minProjects`).
 
 **Acceptance criteria:**
-- [ ] Suite: a labour beat on a sewing step adds Tailoring XP to that worker and to no one else.
+- [ ] Suite: crafting a sewing recipe adds Tailoring XP to the crafter and to no one else, and each
+  kind of work grants its mapped skill.
+- [ ] Suite: a project completes on the contribution that brings in its last material, and no
+  labour code remains.
 - [ ] Suite: completing a project changes no clan-level value except the project itself.
 - [ ] Suite (audit): no XP amount is read from a client message.
 - [ ] Suite green on both boot paths, harness green.
@@ -444,8 +446,8 @@ station is learnt from a blueprint. Nothing is shared through a clan.
 
 **Deliverables:**
 - Writing: a player who knows a technology or recipe writes a book or blueprint at a station, with
-  the fabric's material cost. Reading teaches it as Phase 203 decided (the item is consumed or
-  kept).
+  the fabric's material cost. Reading teaches it and keeps the item, so it can be read again
+  or lent.
 - Research materials come from the researcher's own pack. The Phase 140 settlement stockpile source
   is removed.
 
@@ -593,7 +595,6 @@ with. Clan projects become real buildings with floors.
   deterministic: **WFC** for ruins, villages and dungeons, and a **brick occupancy map** if meshing
   becomes the bottleneck.
 - **Raids** (dropped 2026-10-31, was Phase 200) — a warned, bounded creature attack on a village. Not wanted for now. Its spec is in git history (ROADMAP.md before PR #540).
-- **Upkeep** (dropped 2026-10-31, was Phase 201) — a daily stockpile cost that kept project effects on. Not part of the design. Its spec is in git history (ROADMAP.md before PR #540).
 - **Clan skills** — abilities (such as teleporting every member to one place) for the two or three members who contribute most to a clan. Contribution is to be defined, probably as a share of members' experience given to the clan. Clan tiers (Phase 210) give nothing until then.
 - **Elder buildings** — buildings only a clan's top contributors can build. To be designed.
 - **Settlement against settlement** — Phase 205 lets anyone destroy a structure they do not own. Organized sieges, wars and disputes between clans need governance and fairness rules first.
