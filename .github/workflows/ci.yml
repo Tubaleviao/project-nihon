@@ -274,7 +274,11 @@ jobs:
 
       - name: actionlint
         run: |
-          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          for attempt in 1 2 3; do
+            bash <(curl -fsSL --retry 3 --retry-all-errors https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12 && break
+            [ "$attempt" = 3 ] && exit 1
+            sleep 5
+          done
           ./actionlint -color
 
   server-boot:
