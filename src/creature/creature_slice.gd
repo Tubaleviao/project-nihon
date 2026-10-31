@@ -1110,9 +1110,9 @@ func _broadcast_creature_states() -> void:
 			continue
 		# Phase 200: a raider that only moved is sent at RAIDER_SYNC_INTERVAL, so a pack chasing a crowd stays inside
 		# the per-peer bandwidth budget; a state change (alert, aggressive, dead) goes out at once.
-		if prev != null and prev["state"] == state and inst.has("raid"):
+		if inst.has("raid"):
 			var now_ms := Time.get_ticks_msec()
-			if now_ms - int(_raider_sent_ms.get(iid, 0)) < int(RAIDER_SYNC_INTERVAL * 1000.0):
+			if prev != null and prev["state"] == state and now_ms - int(_raider_sent_ms.get(iid, 0)) < int(RAIDER_SYNC_INTERVAL * 1000.0):
 				continue
 			_raider_sent_ms[iid] = now_ms
 		_last_broadcast[iid] = { "state": state, "position": pos }

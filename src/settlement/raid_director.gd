@@ -56,7 +56,7 @@ func online_in_claim(id: String) -> int:
 		if not slice.is_member(str(pid), id):
 			continue
 		var xz: Variant = slice.player_xz(str(pid))
-		if xz is Vector2 and (xz as Vector2).distance_to(centre) <= radius:
+		if xz is Vector2 and SettlementSlice.dist_m(xz as Vector2, centre) <= radius:
 			n += 1
 	return n
 
@@ -88,7 +88,9 @@ func blocker(id: String, now: float) -> String:
 func start(id: String, now: float, forced: bool = false) -> String:
 	var why := blocker(id, now)
 	if forced and why in ["too_young", "not_worth_raiding", "cooldown"]:
-		why = ""
+		# Skipping the first blocker must not hide a later one (a biome with no pack).
+		var t0 := RaidRules.table()
+		why = "" if (t0["packs"] as Dictionary).has(str(_info(id, now)["biome"])) else "no_pack"
 	if why != "":
 		return why
 	var t := RaidRules.table()
@@ -127,7 +129,7 @@ func tick(now: float) -> void:
 			r["phase"] = "fighting"
 			r["spawned"] = _spawn_pack(id, r)
 			if int(r["spawned"]) <= 0 and spawn_raider.is_valid():
-				_finish(id, true)   # nothing could be spawned: the raid is over, nothing lost
+				_cancel(id)   # nothing could be spawned: no raid happened, so no result and no cooldown
 				continue
 			GameBus.settlements_changed.emit()   # the views carry the new phase
 			GameBus.raid_pack_spawn.emit(id, (r["pack"] as Array).duplicate(true), r["edge"])
@@ -157,11 +159,13 @@ func _judge(id: String, r: Dictionary) -> void:
 	var goal := slice.hearth_xz(id)
 	var threats := 0
 	for e: Dictionary in raiders_of.call(id):
-		if bool(e["alive"]) and not bool(e.get("fled", false)):
+		if not bool(e["alive"]):
+			continue
+		if SettlementSlice.dist_m(e["xz"] as Vector2, goal) <= REACH_M:   # a fleeing raider can still get there
+			_finish(id, false)
+			return
+		if not bool(e.get("fled", false)):
 			threats += 1
-			if (e["xz"] as Vector2).distance_to(goal) <= REACH_M:
-				_finish(id, false)
-				return
 	if threats == 0:
 		_finish(id, true)
 

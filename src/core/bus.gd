@@ -259,7 +259,7 @@ signal raid_requested(player_id: String)
 ## Phase 200 — a raid on a settlement was announced: the warning reaches its members, `seconds` before the pack.
 signal raid_warned(settlement_id: String, seconds: int)
 
-## Phase 200 — the warning ran out: spawn `pack` ([{ creature, count }]) at `edge` (ground metres, Vector2) on the claim edge.
+## Phase 200 — the warning ran out and the host spawned `pack` ([{ creature, count }]) at `edge` (ground metres, Vector2) on the claim edge. Announcement only: listeners must not spawn it again.
 signal raid_pack_spawn(settlement_id: String, pack: Array, edge: Vector2)
 
 ## Phase 200 — a raid ended. `result` is "defended" or "lost"; `stock_lost` is { item: n }, `damage` the labour units lost.
