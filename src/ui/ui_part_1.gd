@@ -187,6 +187,18 @@ func _refresh_sheet() -> void:
 				bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 				line.add_child(bar)
 				sl._sheet_attributes.add_child(line)
+			"specialty":
+				var sline := HBoxContainer.new()
+				var sicon := TextureRect.new()
+				sicon.texture = UiIcons.load_icon(str(row["icon_key"]))
+				sicon.custom_minimum_size = Vector2(24, 24)
+				sicon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+				sicon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+				sline.add_child(sicon)
+				var slabel := Label.new()
+				slabel.text = str(row["name"])
+				sline.add_child(slabel)
+				sl._sheet_attributes.add_child(sline)
 			"stat":
 				var name_label := Label.new()
 				name_label.text = str(row["label"])
@@ -239,6 +251,8 @@ func character_sheet_rows() -> Array:
 	var attrs := _local_attributes()
 	rows.append_array(sl.CharacterSheet.attribute_rows(attrs, _local_growth()))
 	rows.append_array(sl.CharacterSheet.stat_rows(attrs))
+	var view: Dictionary = sl.settlement_slice.view() if sl.settlement_slice != null else {}
+	rows.append_array(sl.CharacterSheet.specialty_rows(str((view.get("mine", {}) as Dictionary).get("specialty", ""))))
 	rows.append_array(sl.CharacterSheet.skill_rows(sl.skills_rows(sl.crafting_slice.get_skills() if sl.crafting_slice != null else {})))
 	return rows
 

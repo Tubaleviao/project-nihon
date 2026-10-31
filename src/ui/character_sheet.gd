@@ -141,3 +141,11 @@ class Doll extends SubViewportContainer:
 			_dragging = (event as InputEventMouseButton).pressed
 		elif event is InputEventMouseMotion and _dragging:
 			pivot.rotate_y((event as InputEventMouseMotion).relative.x * DRAG_RADIANS_PER_PIXEL)
+
+## Phase 199 — the settlement specialty row of the sheet: [] when the host named none (or the player has no
+## settlement), else one { section "specialty", id, name, icon_key } row.
+static func specialty_rows(specialty: String) -> Array:
+	if specialty == "":
+		return []
+	return [{ "section": "specialty", "id": specialty, "name": I18n.t("character.specialty", [I18n.t("settlement.specialty." + specialty)]),
+		"icon_key": UiIcons.specialty_key(specialty) }]

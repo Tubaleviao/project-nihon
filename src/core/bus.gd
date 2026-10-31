@@ -253,6 +253,13 @@ signal settlements_changed()
 ## `player_id` is the member who did it ("" for completion). Host-local; members see it through their view.
 signal settlement_project_changed(settlement_id: String, project: String, what: String, player_id: String)
 
+## Phase 199 — the host recomputed a player's settlement specialty from its own skill and attribute records and it
+## changed (`specialty` "" = none). Emitted once per change.
+signal specialty_changed(player_id: String, specialty: String)
+
+## Phase 199 — the host recorded a new tier for a player's skill. Feeds the specialty recompute.
+signal skill_tier_recorded(player_id: String, skill: String, tier: String)
+
 ## Phase 128 — the host's override table changed (`WeatherSlice.to_data()` form). game_root broadcasts
 ## it to every client; a client never emits it.
 signal weather_overrides_synced(overrides: Array)
