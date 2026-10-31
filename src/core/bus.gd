@@ -253,6 +253,9 @@ signal settlements_changed()
 ## `player_id` is the member who did it ("" for completion). Host-local; members see it through their view.
 signal settlement_project_changed(settlement_id: String, project: String, what: String, player_id: String)
 
+## Phase 200 — an admin ran `/raid`: start a raid on the settlement `player_id` belongs to (SettlementWiring answers).
+signal raid_requested(player_id: String)
+
 ## Phase 200 — a raid on a settlement was announced: the warning reaches its members, `seconds` before the pack.
 signal raid_warned(settlement_id: String, seconds: int)
 

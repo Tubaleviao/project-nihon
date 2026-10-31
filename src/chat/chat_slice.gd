@@ -245,6 +245,8 @@ func handle_intent(text: String, player_id: String) -> void:
 			_cmd_heal(speaker, args)
 		"regen":
 			_cmd_regen(speaker, args)
+		"raid":
+			GameBus.raid_requested.emit(speaker)   # SettlementWiring starts it on the admin's settlement
 		_:
 			pass
 

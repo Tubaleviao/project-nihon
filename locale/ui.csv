@@ -570,3 +570,5 @@ settlement.raid.refused.no_pack,No creatures raid this land,Nenhuma criatura ata
 settlement.raid.warning,A raid is coming in {0} seconds! Defend {1}.,Um ataque chega em {0} segundos! Defenda {1}.
 settlement.raid.result.defended,Last raid: defended,Último ataque: defendido
 settlement.raid.result.lost,Last raid: lost,Último ataque: perdido
+chat.usage.raid,/raid — start a raid on your settlement now,/raid — inicia agora um ataque ao seu assentamento
+chat.raid_none,You belong to no settlement.,Você não pertence a nenhum assentamento.

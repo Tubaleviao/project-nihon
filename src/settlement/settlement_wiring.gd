@@ -6,6 +6,7 @@ const SettlementSlice := preload("res://src/settlement/settlement_slice.gd")
 const I18n := preload("res://src/core/i18n.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const ProjectRules := preload("res://src/settlement/project_rules.gd")
+const RaidDirector := preload("res://src/settlement/raid_director.gd")
 
 ## Seconds between host sweeps (grow, abandon, decay, activity, view pushes).
 const TICK_SEC := 0.5
@@ -14,6 +15,8 @@ var _elapsed: float = 0.0
 var _dirty: bool = true
 var _online: Array = []
 var _ui_bound: bool = false
+## Phase 200 — the host raid scheduler (null on a client).
+var raids: RaidDirector = null
 
 ## Build the slice and hand it the host-side guards (mine, place, station placement, research).
 func make_slice(ctx: GameRoot) -> Node:
@@ -29,6 +32,11 @@ func make_slice(ctx: GameRoot) -> Node:
 		root._voxel.claim_activity = slice.note_edit
 	root._station.claim_guard = slice.edit_blocker
 	slice.release_station = root._station.remove_station
+	if not root._is_client:
+		raids = RaidDirector.new()
+		raids.slice = slice
+		raids.online_ids = func() -> Array: return root._registry.get_online_player_ids()
+		raids.biome_at = func(xz: Vector2) -> String: return str(root._terrain.get_biome_at(xz)) if root._terrain != null else ""
 	root._tree.claim_guard = slice.edit_blocker
 	root._station.settlement_slice = slice
 	root._technology.settlement_slice = slice
@@ -49,7 +57,20 @@ func _connect_all() -> void:
 	connect_bus(GameBus.settlement_resolved, _on_resolved)
 	connect_bus(GameBus.station_placed, _on_station_placed)
 	connect_bus(GameBus.attributes_synced, _on_attributes_synced)
+	connect_bus(GameBus.raid_requested, _on_raid_requested)
 	connect_bus(GameBus.skill_tier_recorded, _on_skill_tier_recorded)
+
+## Phase 200 — `/raid` (an admin, checked by the chat): start a raid on the admin's settlement now.
+func _on_raid_requested(player_id: String) -> void:
+	if root._is_client or raids == null:
+		return
+	var id: String = root._settlements.settlement_of(player_id)
+	if id == "":
+		GameBus.system_message.emit("chat.raid_none", [], player_id)
+		return
+	var why := raids.start(id, float(root._settlements.now_sec.call()), true)
+	if why != "":
+		GameBus.system_message.emit("settlement.raid.refused." + why, [], player_id)
 
 ## Phase 199 — the host's own records changed: recompute that player's specialty (never from a message).
 func _on_attributes_synced(player_id: String, _attributes: Dictionary) -> void:
@@ -108,6 +129,8 @@ func tick(delta: float) -> void:
 	for pid: String in online:
 		root._settlements.note_activity(pid)
 	root._settlements.tick(float(root._settlements.now_sec.call()))
+	if raids != null:
+		raids.tick(float(root._settlements.now_sec.call()))
 	if _dirty:
 		_dirty = false
 		_count_colonization()

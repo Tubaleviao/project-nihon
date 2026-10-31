@@ -298,7 +298,7 @@ func _test_panel_commands() -> void:
 	panel.free()
 
 func _test_catalog() -> void:
-	for cmd in ["time", "speed", "fly", "heal"]:
+	for cmd in ["time", "speed", "fly", "heal", "raid"]:
 		assert_true(ChatCommands.is_admin_command(cmd), "/%s is an admin command" % cmd)
 		var key: String = ChatCommands.USAGE[cmd]
 		assert_true(key in ChatCommands.help_lines(true), "/%s is in an admin's /help" % cmd)
@@ -306,7 +306,7 @@ func _test_catalog() -> void:
 	var keys := ["chat.time_off", "chat.time_bad", "chat.time_bad_skip", "chat.time_set", "chat.speed_range",
 		"chat.speed_set", "chat.fly_on", "chat.fly_off", "chat.heal_downed", "chat.healed", "dock.admin", "win.admin",
 		"admin.weather", "admin.time", "admin.speed", "admin.set", "admin.skip_hour", "admin.reset", "admin.fly", "admin.heal"]
-	for cmd in ["time", "speed", "fly", "heal"]:
+	for cmd in ["time", "speed", "fly", "heal", "raid"]:
 		keys.append(ChatCommands.USAGE[cmd])
 	for id in AdminPanel.weather_states():
 		keys.append("weather.state." + str(id))
