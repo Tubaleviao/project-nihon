@@ -1041,8 +1041,16 @@ func _step_clan_roster() -> void:
 	for i in range(left_at, _clan_views.size()):
 		if not ((_clan_views[i] as Dictionary).get("mine", {}) as Dictionary).is_empty():
 			after_left += 1
-	var ok := invited and outsider_saw == 0 and member_saw and left and after_left == 0 and _clan_views_with(CLAN_XP_LEFT) == 0
-	_report("clan_roster", verdict(ok, true), "member-sees-skills-outsider-never" if ok else "invited%d-outsiderSaw%d-memberSaw%d-left%d-afterLeft%d" % [int(invited), outsider_saw, int(member_saw), int(left), after_left])
+	# A player id is a bearer token: no view on the wire may carry one (the client's own included).
+	var ids_seen := 0
+	for v: Dictionary in _clan_views:
+		if JSON.stringify(v).contains(_root._registry.local_player_id):
+			ids_seen += 1
+		for word: String in JSON.stringify(v).split("\""):
+			if _root._registry.looks_like_player_id(word):
+				ids_seen += 1
+	var ok := invited and outsider_saw == 0 and member_saw and left and after_left == 0 and _clan_views_with(CLAN_XP_LEFT) == 0 and ids_seen == 0
+	_report("clan_roster", verdict(ok, true), "member-sees-skills-outsider-never" if ok else "invited%d-outsiderSaw%d-memberSaw%d-left%d-afterLeft%d-ids%d" % [int(invited), outsider_saw, int(member_saw), int(left), after_left, ids_seen])
 
 ## Phase 204 — a private message each way. The client sends `/msg <host handle>` (the handle from the roster
 ## it received in the step before) and the host `/msg <client handle>`. Each side's chat box must show the

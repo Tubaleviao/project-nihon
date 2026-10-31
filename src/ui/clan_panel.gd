@@ -65,9 +65,10 @@ static func skill_keys() -> Array:
 	out.sort()
 	return out
 
-## A skill's display name: its fabric key, as the Skills window shows it (skill names are not in the UI catalog).
+## A skill's display name in the active locale (`skill.<key>`); a skill the catalog has no line for shows its key.
 static func skill_label(skill: String) -> String:
-	return skill
+	var key := "skill." + skill.to_lower()
+	return I18n.t(key) if I18n.has_key(key) else skill
 
 func picked_sort() -> String:
 	return str(_sort_pick.get_item_metadata(_sort_pick.selected)) if _sort_pick.selected >= 0 else ""
@@ -135,6 +136,8 @@ func refresh() -> void:
 	for i in _role_pick.item_count:
 		_role_pick.set_item_text(i, I18n.t("clan.role." + str(_role_pick.get_item_metadata(i))))
 	_sort_pick.set_item_text(0, I18n.t("clan.sort_role"))
+	for i in range(1, _sort_pick.item_count):
+		_sort_pick.set_item_text(i, skill_label(str(_sort_pick.get_item_metadata(i))))
 	var view: Dictionary = clan_slice.view() if clan_slice != null else {}
 	var mine: Dictionary = view.get("mine", {}) if view.get("mine", {}) is Dictionary else {}
 	_render_invites(view.get("invites", []) if mine.is_empty() and view.get("invites", []) is Array else [])

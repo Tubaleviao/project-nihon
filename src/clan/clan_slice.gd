@@ -32,6 +32,8 @@ const MAX_CLANS := 4096
 const MAX_MEMBERS := 512
 ## Skills sent per member in the roster (the 22 fabric skills plus room for more).
 const MAX_ROSTER_SKILLS := 48
+## A skill change re-sends a clan's roster at most this often (an XP grant fires on every harvest swing).
+const SKILL_PUSH_SEC := 5.0
 ## The clan record's format: 1 is the first (Phase 204).
 const DATA_FORMAT := 1
 const ACTIONS := ["found", "invite", "uninvite", "join", "decline", "leave", "kick", "role"]
@@ -78,6 +80,9 @@ var _last_intent: Dictionary = {}
 ## Clan ids and player ids whose views changed since the wiring last pushed them.
 var _dirty_clans: Dictionary = {}
 var _dirty_players: Dictionary = {}
+## Clan ids whose members' skills changed, held until `SKILL_PUSH_SEC` after that clan's last skill push.
+var _skill_dirty: Dictionary = {}
+var _skill_pushed: Dictionary = {}
 ## Client view: what the host last sent.
 var _view: Dictionary = {}
 
@@ -90,11 +95,15 @@ func forget_player(player_id: String) -> void:
 
 # ── rules ────────────────────────────────────────────────────────────────
 
-var _rules_cache: Dictionary = {}
-var _rules_source: Resource = null
+static var _rules_cache: Dictionary = {}
+static var _rules_source: Resource = null
 
 ## The merged rule table, built once per fabric resource. Callers must not mutate it.
 func rules() -> Dictionary:
+	return shared_rules()
+
+## `rules()` for code without a slice (the chat's `/msg` limits read `messages` here).
+static func shared_rules() -> Dictionary:
 	var src: Resource = GameData.WORLD_SYSTEMS.get("Clan", null)
 	if src == _rules_source and not _rules_cache.is_empty():
 		return _rules_cache
@@ -181,6 +190,12 @@ func _player_changed(pid: String) -> void:
 ## The players whose views must be pushed again, and forget the marks. Every member of a changed clan, every
 ## player marked on their own (an invitee, someone who just left).
 func take_dirty() -> Array:
+	var now := float(mono_sec.call())
+	for id: String in _skill_dirty.keys():
+		if now - float(_skill_pushed.get(id, -1.0e12)) >= SKILL_PUSH_SEC:
+			_skill_dirty.erase(id)
+			_skill_pushed[id] = now
+			_dirty_clans[id] = true
 	var out := {}
 	for id: String in _dirty_clans:
 		if _clans.has(id):
@@ -194,11 +209,23 @@ func take_dirty() -> Array:
 	_dirty_players.clear()
 	return out.keys()
 
-## A member's skill record changed on the host: their clan's roster is pushed again.
+## A member's skill record changed on the host: their clan's roster is pushed again, at most once per
+## `SKILL_PUSH_SEC` per clan.
 func note_skills_changed(player_id: String) -> void:
 	var id := clan_of(player_id)
 	if id != "":
-		_changed(id)
+		_skill_dirty[id] = true
+
+## A member came online or went offline: their clan's rosters show it on the next push.
+func note_presence_changed(player_id: String) -> void:
+	var id := clan_of(player_id)
+	if id != "":
+		_dirty_clans[id] = true
+
+## A player opened a session (a reconnect included): they need their own view again.
+func note_session(player_id: String) -> void:
+	_dirty_players[player_id] = true
+	note_presence_changed(player_id)
 
 # ── membership ───────────────────────────────────────────────────────────
 
@@ -235,10 +262,18 @@ func _drop_invites_of(pid: String) -> void:
 		if (_clans[id]["invites"] as Dictionary).erase(pid):
 			_dirty_clans[id] = true
 
-## A target typed by a player: a player id, else a public handle the registry knows.
-func _resolve_target(target: String) -> String:
+## A target typed by a player: a member or invitee of clan `id` by id or handle (online or not), else a player
+## id, else the handle of a player who is here. "" stays "": it never means the local player.
+func _resolve_target(target: String, id: String = "") -> String:
 	target = target.strip_edges().left(64)
-	if target == "" or registry == null:
+	if target == "":
+		return ""
+	if _clans.has(id):
+		var c: Dictionary = _clans[id]
+		for p: String in (c["members"] as Dictionary).keys() + (c["invites"] as Dictionary).keys():
+			if p == target or _handle(p) == target:
+				return p
+	if registry == null:
 		return target
 	if registry.has_method("has_player") and registry.has_player(target):
 		return target
@@ -282,7 +317,9 @@ func uninvite(actor: String, target: String) -> String:
 		return "not_member"
 	if not may(pid, "invite"):
 		return "no_permission"
-	target = _resolve_target(target)
+	target = _resolve_target(target, id)
+	if target == "":
+		return "bad_args"
 	if not (_clans[id]["invites"] as Dictionary).erase(target):
 		return "no_such_invite"
 	_dirty_players[target] = true
@@ -366,6 +403,8 @@ func _disband(id: String) -> void:
 	if str(c["name"]) != "" and str(_taken.get(CreationRules.skeleton(str(c["name"])), "")) == id:
 		_taken.erase(CreationRules.skeleton(str(c["name"])))
 	_clans.erase(id)
+	_skill_dirty.erase(id)
+	_skill_pushed.erase(id)
 
 ## Remove `target` from the actor's clan. The founder is never kicked, and an actor kicks only members ranked
 ## below them (an elder cannot kick an elder).
@@ -376,7 +415,9 @@ func kick(actor: String, target: String) -> String:
 		return "not_member"
 	if not may(pid, "kick"):
 		return "no_permission"
-	target = _resolve_target(target)
+	target = _resolve_target(target, id)
+	if target == "":
+		return "bad_args"
 	if target == pid:
 		return "self"
 	if clan_of(target) != id:
@@ -388,7 +429,8 @@ func kick(actor: String, target: String) -> String:
 	_remove_member(id, target)
 	return ""
 
-## Change `target`'s role. Only a role with `setRole` may, the founder role is never given or taken.
+## Change `target`'s role. Only a role with `setRole` may, the founder role is never given or taken, and as with
+## a kick an actor changes only a member ranked below them, to a role ranked below their own.
 func set_role(actor: String, target: String, role: String) -> String:
 	var pid := _pid(actor)
 	var id := clan_of(pid)
@@ -398,11 +440,18 @@ func set_role(actor: String, target: String, role: String) -> String:
 		return "bad_role"
 	if not may(pid, "setRole"):
 		return "no_permission"
-	target = _resolve_target(target)
+	target = _resolve_target(target, id)
+	if target == "":
+		return "bad_args"
+	if target == pid:
+		return "self"
 	if clan_of(target) != id:
 		return "not_member"
 	if target == str(_clans[id]["founder"]):
 		return "founder_locked"
+	var own := _rank(role_of(pid))
+	if _rank(role_of(target)) <= own or _rank(role) <= own:
+		return "outranked"
 	_clans[id]["members"][target] = role
 	_changed(id)
 	return ""
@@ -505,9 +554,20 @@ func migrate_settlements(data: Variant) -> int:
 			"invites": invites, "created": float(s.get("created", now_sec.call())), "settlement": str(sid).left(64) })
 		_dirty_clans[id] = true
 		made += 1
+	_drop_member_invites()
 	if made > 0:
 		GameBus.clans_changed.emit()
 	return made
+
+## Drop every invite naming a player who already belongs to a clan (a loaded or migrated record can hold one):
+## it could never be accepted and would hold one of the clan's pending slots.
+func _drop_member_invites() -> void:
+	for id: String in _clans:
+		var inv: Dictionary = _clans[id]["invites"]
+		for p: String in inv.keys():
+			if _member_of.has(p):
+				inv.erase(p)
+				_dirty_clans[id] = true
 
 static func _settlement_order(sid: String) -> int:
 	var suffix := sid.trim_prefix("settlement_")
@@ -536,6 +596,8 @@ func from_data(data: Variant) -> void:
 	_taken.clear()
 	_dirty_clans.clear()
 	_dirty_players.clear()
+	_skill_dirty.clear()
+	_skill_pushed.clear()
 	_next_id = 1
 	if not (data is Dictionary):
 		return
@@ -576,25 +638,31 @@ func from_data(data: Variant) -> void:
 		var suffix := id.trim_prefix("clan_")
 		if suffix.is_valid_int():
 			_next_id = maxi(_next_id, int(suffix) + 1)   # never reuse a loaded id
+	_drop_member_invites()
+	_dirty_clans.clear()
 
 # ── views ────────────────────────────────────────────────────────────────
 
 ## What one player may see: their own clan (name, their role, the roster with every member's skills) and the
 ## invites naming them. Sent to that player alone; an outsider's view never holds another clan's roster.
-func private_view(player_id: String) -> Dictionary:
+## Players are named by public handle only: a player id is a bearer token (see PlayerRegistry.public_handle).
+## `rosters` (clan id -> roster) lets one push build each clan's roster once for all its members.
+func private_view(player_id: String, rosters: Dictionary = {}) -> Dictionary:
 	var pid := _pid(player_id)
 	var out := { "mine": {}, "invites": [] }
 	var id := clan_of(pid)
 	if id != "":
 		var c: Dictionary = _clans[id]
-		var roster: Array = []
-		for m: String in (c["members"] as Dictionary):
-			roster.append(member_entry(m, str(c["members"][m])))
+		if not rosters.has(id):
+			var built: Array = []
+			for m: String in (c["members"] as Dictionary):
+				built.append(member_entry(m, str(c["members"][m])))
+			rosters[id] = built
 		var mine := { "id": id, "name": str(c["name"]), "name_n": int(c["name_n"]), "role": role_of(pid),
-			"founder": str(c["founder"]), "roster": roster, "invited": [] }
+			"founder": _handle(str(c["founder"])), "roster": rosters[id], "invited": [] }
 		if may(pid, "invite"):
 			for p: String in (c["invites"] as Dictionary):
-				(mine["invited"] as Array).append({ "id": p, "name": _display_name(p) })
+				(mine["invited"] as Array).append({ "handle": _handle(p), "name": _display_name(p) })
 		out["mine"] = mine
 	else:
 		for cid: String in ids():
@@ -602,7 +670,7 @@ func private_view(player_id: String) -> Dictionary:
 				(out["invites"] as Array).append({ "id": cid, "name": str(_clans[cid]["name"]), "name_n": int(_clans[cid]["name_n"]) })
 	return out
 
-## One roster row: id, display name, public handle (what `/msg` takes), role, whether online, and skills as
+## One roster row: display name, public handle (what `/msg`, kick and set-role take), role, whether online, and skills as
 ## { skill: { xp, tier } } from the host's own record (never from a message).
 func member_entry(member: String, role: String) -> Dictionary:
 	var skills := {}
@@ -623,7 +691,7 @@ func member_entry(member: String, role: String) -> Dictionary:
 	var online := registry != null and registry.has_method("is_online") and bool(registry.is_online(member))
 	if registry != null and "local_player_id" in registry and member == str(registry.local_player_id):
 		online = true
-	return { "id": member, "name": _display_name(member), "handle": _handle(member), "role": role, "online": online, "skills": skills }
+	return { "name": _display_name(member), "handle": _handle(member), "role": role, "online": online, "skills": skills }
 
 func _display_name(pid: String) -> String:
 	return str(registry.display_name(pid)) if registry != null and registry.has_method("display_name") else pid

@@ -31,6 +31,13 @@ func _connect_all() -> void:
 	connect_bus(GameBus.clan_resolved, _on_resolved)
 	connect_bus(GameBus.attributes_synced, _on_attributes_synced)
 	connect_bus(GameBus.skill_tier_recorded, _on_skill_tier_recorded)
+	connect_bus(GameBus.player_joined, _on_player_joined)
+
+## A session opened (a reconnect too, however fast): that player's new connection needs its view. The online
+## diff in `tick` would miss a drop and rejoin between two sweeps.
+func _on_player_joined(_peer_id: int, player_id: String, _reconnected: bool) -> void:
+	if not root._is_client and root._clans != null and player_id != "":
+		root._clans.note_session(player_id)
 
 ## A skill grant (which emits `attributes_synced`) or a new tier changed a member's record on the host: their
 ## clan's roster goes out again. Never read from a message: the roster is built from the host's records.
@@ -68,22 +75,24 @@ func tick(delta: float) -> void:
 				targets.append(pid)
 		for pid: String in online + _online:
 			if online.has(pid) != _online.has(pid):
-				root._clans.note_skills_changed(pid)
+				root._clans.note_presence_changed(pid)
 		_online = online
 		targets.append_array(root._clans.take_dirty())
 	push_views(targets)
 
-## Send each of `players` that is online its own view; the local player's view is applied in place.
+## Send each of `players` that is online its own view; the local player's view is applied in place. Each clan's
+## roster is built once per push and shared by its members' views.
 func push_views(players: Array) -> void:
 	var local: String = root._registry.local_player_id
 	var seen := {}
+	var rosters := {}
 	for pid: String in players:
 		if seen.has(pid):
 			continue
 		seen[pid] = true
 		if pid == local:
-			root._clans.apply_view(root._clans.private_view(pid))
+			root._clans.apply_view(root._clans.private_view(pid, rosters))
 			continue
 		var peer: int = root._registry.get_peer_id(pid)
 		if peer != 0 and root._networking != null and root._networking.is_host():
-			root._networking.send_own_state(peer, { "clan_view": root._clans.private_view(pid) })
+			root._networking.send_own_state(peer, { "clan_view": root._clans.private_view(pid, rosters) })

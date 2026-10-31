@@ -591,6 +591,31 @@ clan.tier.apprentice,apprentice,aprendiz
 clan.tier.journeyman,journeyman,oficial
 clan.tier.expert,expert,especialista
 clan.tier.master,master,mestre
+skill.alchemy,Alchemy,Alquimia
+skill.arcaneforging,Arcane Forging,Forja Arcana
+skill.archery,Archery,Arqueria
+skill.building,Building,Construção
+skill.carpentry,Carpentry,Carpintaria
+skill.cartography,Cartography,Cartografia
+skill.diplomacy,Diplomacy,Diplomacia
+skill.elementalmagic,Elemental Magic,Magia Elemental
+skill.enchanting,Enchanting,Encantamento
+skill.leadership,Leadership,Liderança
+skill.lockpicking,Lockpicking,Arrombamento
+skill.navigation,Navigation,Navegação
+skill.restorationmagic,Restoration Magic,Magia de Restauração
+skill.shieldcraft,Shieldcraft,Arte do Escudo
+skill.skinning,Skinning,Esfola
+skill.smithing,Smithing,Ferraria
+skill.speechcraft,Speechcraft,Oratória
+skill.stealth,Stealth,Furtividade
+skill.swordsmanship,Swordsmanship,Esgrima
+skill.tailoring,Tailoring,Alfaiataria
+skill.tracking,Tracking,Rastreamento
+skill.trade,Trade,Comércio
+skill.unarmed,Unarmed,Desarmado
+skill.voidmagic,Void Magic,Magia do Vazio
+skill.voidsmithing,Voidsmithing,Forja do Vazio
 clan.ok.found,Clan founded.,Clã fundado.
 clan.ok.invite,Invite sent.,Convite enviado.
 clan.ok.uninvite,Invite withdrawn.,Convite retirado.

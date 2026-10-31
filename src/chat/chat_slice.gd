@@ -29,6 +29,7 @@ const PlayerRules := preload("res://src/core/player_rules.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const AdminRules := preload("res://src/admin/admin_rules.gd")
 const PlayerRegistry := preload("res://src/persistence/player_registry.gd")
+const ClanSlice := preload("res://src/clan/clan_slice.gd")
 
 const ADMINS_PATH := "user://admins.json"
 ## Lines kept in the log, and shown at once while the box is closed.
@@ -55,7 +56,6 @@ const CHANNEL_WHISPER := "whisper"
 const CHANNEL_WHISPER_TO := "whisper_to"
 ## Phase 204 — the private-message window: at most `Clan.messages.perMinute` per sender in any minute.
 const PRIVATE_WINDOW_SEC := 60.0
-const PRIVATE_DEFAULTS := { "maxLength": 280, "perMinute": 10 }
 ## The sender of a `/say` announcement; the client shows it translated.
 const SERVER_SENDER := "Server"
 
@@ -325,15 +325,15 @@ func _cmd_players(speaker: String) -> void:
 		names.append(shown if shown == _handle_of(str(pid)) else "%s (%s)" % [shown, _handle_of(str(pid))])
 	_reply(speaker, "chat.players", [ids.size(), ", ".join(names)])
 
-## Phase 204 — the fabric's private-message rules (`Clan.messages`): { maxLength, perMinute }.
+## Phase 204 — the fabric's private-message rules (`Clan.messages`, from the clan slice's merged table):
+## { maxLength, perMinute }.
 static func private_rules() -> Dictionary:
-	var src: Resource = GameData.WORLD_SYSTEMS.get("Clan", null)
-	var fab: Variant = src.get("rules") if src != null else null
-	var out := PRIVATE_DEFAULTS.duplicate()
-	if fab is Dictionary and (fab as Dictionary).get("messages", null) is Dictionary:
-		for k: String in out:
-			if (fab["messages"] as Dictionary).get(k, null) is int or (fab["messages"] as Dictionary).get(k, null) is float:
-				out[k] = int(fab["messages"][k])
+	var m: Dictionary = ClanSlice.shared_rules()["messages"]
+	var defaults: Dictionary = ClanSlice.DEFAULT_RULES["messages"]
+	var out := {}
+	for k: String in defaults:
+		var v: Variant = m.get(k, defaults[k])
+		out[k] = int(v) if (v is int or v is float) else int(defaults[k])
 	return out
 
 ## Phase 204 — `/msg <player> <text>`: one private line, relayed by the host to the recipient's peer alone, with
@@ -891,10 +891,19 @@ func _build_ui() -> void:
 	_field = LineEdit.new()
 	# Always on screen so the box can be found; Enter, `/` or a click gives it the keyboard.
 	_field.placeholder_text = I18n.t("chat.field")
-	_field.max_length = ChatCommands.MAX_PRIVATE_LINE_CHARS   # the host caps a plain line to MAX_MESSAGE_CHARS
+	_field.max_length = ChatCommands.MAX_MESSAGE_CHARS
+	_field.text_changed.connect(_on_field_text_changed)
 	_field.focus_exited.connect(_on_field_focus_exited)
 	_field.text_submitted.connect(_on_text_submitted)
 	box.add_child(_field)
+
+## A `/msg` line may run to MAX_PRIVATE_LINE_CHARS; any other line stops at MAX_MESSAGE_CHARS, the length the
+## host keeps, so nothing typed is cut off unseen.
+func _on_field_text_changed(text: String) -> void:
+	_field.max_length = field_limit(text)
+
+static func field_limit(text: String) -> int:
+	return ChatCommands.MAX_PRIVATE_LINE_CHARS if ChatCommands.is_private(text) else ChatCommands.MAX_MESSAGE_CHARS
 
 func _on_text_submitted(text: String) -> void:
 	submit(text)

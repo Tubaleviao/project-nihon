@@ -22,6 +22,14 @@ func register() -> void:
 	_run_test("clan: the window lists the roster by skill and its Message button opens /msg", _test_clan_panel)
 	_run_test("chat: /msg reaches only its recipient, with an echo to the sender", _test_private_message)
 	_run_test("chat: /msg is limited per minute and to the fabric's length", _test_private_message_limits)
+	_run_test("clan: views name players by handle only, never by player id", _test_clan_view_no_ids)
+	_run_test("clan: an empty target is refused, never the host's own player", _test_clan_empty_target)
+	_run_test("clan: kick, set-role and withdraw reach an offline member or invitee by handle", _test_clan_offline_target)
+	_run_test("clan: set-role follows rank like kick, and never on yourself", _test_clan_set_role_rank)
+	_run_test("clan: a reconnect gets its view, a push builds each roster once", _test_clan_session_and_cache)
+	_run_test("clan: a load or migration drops invites naming a clan member", _test_clan_member_invites_dropped)
+	_run_test("clan: skill names in the window come from the catalog", _test_clan_skill_labels)
+	_run_test("chat: the field stops a plain line at the host's length, a /msg line at its own", _test_chat_field_limit)
 	_run_test("clan: the rules come from the fabric's Clan world system", _test_clan_rules_from_fabric)
 
 func _rig() -> Dictionary:
@@ -144,7 +152,7 @@ func _test_clan_invite_lapse() -> void:
 func _settlement_record() -> Dictionary:
 	return { "format": 2, "next_id": 4, "next_name": 2, "settlements": {
 		"settlement_1": { "id": "settlement_1", "name": "Oak", "name_n": 0, "founder": "p1",
-			"members": { "p1": "founder", "p2": "elder", "p3": "guest" }, "invites": { "p4": 999000.0 }, "created": 500.0,
+			"members": { "p1": "founder", "p2": "elder", "p3": "guest" }, "invites": { "p4": 999000.0, "q9": 999000.0 }, "created": 500.0,
 			"hx": 10.0, "hz": 10.0, "status": "growing", "stock": { "Ferrite": 5 }, "taken": {}, "projects": {} },
 		"settlement_2": { "id": "settlement_2", "name": "", "name_n": 1, "founder": "p4",
 			"members": { "p4": "founder" }, "invites": {}, "created": 600.0, "hx": 900.0, "hz": 900.0, "status": "founded" },
@@ -162,7 +170,8 @@ func _test_clan_migration() -> void:
 	assert_eq(oak["members"], { "p1": "founder", "p2": "elder", "p3": "guest" }, "the same members and roles")
 	assert_eq(str(oak["founder"]), "p1", "the same founder")
 	assert_eq(str(oak["settlement"]), "settlement_1", "and a link to the settlement it was")
-	assert_true((oak["invites"] as Dictionary).has("p4"), "a pending invite carries over")
+	assert_true((oak["invites"] as Dictionary).has("q9"), "a pending invite carries over")
+	assert_false((oak["invites"] as Dictionary).has("p4"), "but not one naming the founder of another migrated clan")
 	var numbered: Dictionary = s.get_clan(s.clan_of("p4"))
 	assert_eq(int(numbered["name_n"]), 1, "a default-named settlement keeps its number")
 	assert_eq(ClanSlice.display_name(numbered), I18n.t("settlement.default_name", [1]), "and renders as before")
@@ -223,7 +232,7 @@ func _test_clan_roster_scope() -> void:
 	var mine: Dictionary = s.private_view("p1")["mine"]
 	var p2_row: Dictionary = {}
 	for row: Dictionary in mine["roster"]:
-		if str(row["id"]) == "p2":
+		if str(row["handle"]) == reg.public_handle("p2"):
 			p2_row = row
 	assert_eq(p2_row.get("skills", {}).get("Tailoring", {}), { "xp": 120, "tier": "journeyman" }, "a member sees another member's skill XP and tier")
 	assert_eq(str(p2_row.get("handle", "")), reg.public_handle("p2"), "and the handle /msg takes")
@@ -236,6 +245,10 @@ func _test_clan_roster_scope() -> void:
 	reg.add_skill_xp("p2", "Tailoring", 5)
 	s.note_skills_changed("p2")
 	assert_eq(s.take_dirty().size(), 3, "a member's new XP re-sends the clan's views (members and invitee)")
+	s.note_skills_changed("p2")
+	assert_eq(s.take_dirty(), [], "another XP grant inside SKILL_PUSH_SEC waits")
+	rig["now"][0] += ClanSlice.SKILL_PUSH_SEC
+	assert_eq(s.take_dirty().size(), 3, "and goes out once the interval has passed")
 	assert_eq(s.leave("p2"), "", "p2 leaves")
 	assert_true(s.take_dirty().has("p2"), "the leaver gets a new view")
 	assert_true((s.private_view("p2")["mine"] as Dictionary).is_empty(), "with no roster: they stop receiving the others' skills")
@@ -464,3 +477,124 @@ func _test_clan_rules_from_fabric() -> void:
 	assert_eq(int(r["name"]["maxLength"]), int(fab["name"]["maxLength"]), "the name bounds are the fabric's")
 	assert_eq(str(r["founderRole"]), "founder", "the founder role")
 	s.free()
+
+func _test_clan_view_no_ids() -> void:
+	var rig := _rig()
+	var s: ClanSlice = rig["s"]
+	var reg: PlayerRegistry = rig["reg"]
+	var ids: Array = []
+	for i in 3:
+		ids.append(reg.mint_player_id())
+		reg.ensure_player(ids[i])
+	s.found(ids[0], "Oakhold")
+	s.invite(ids[0], ids[1])
+	s.join(ids[1], "clan_1")
+	s.invite(ids[0], ids[2])
+	for viewer: String in [ids[0], ids[1]]:
+		var text := JSON.stringify(s.private_view(viewer))
+		for pid: String in ids:
+			assert_false(text.contains(pid), "a view never carries a player id")
+	var mine: Dictionary = s.private_view(ids[0])["mine"]
+	assert_eq(str(mine["founder"]), reg.public_handle(ids[0]), "the founder is named by handle")
+	assert_eq(mine["invited"][0]["handle"], reg.public_handle(ids[2]), "and so is an invitee")
+	for row: Dictionary in mine["roster"]:
+		assert_false(row.has("id"), "a roster row has no id field")
+	_free_rig(rig)
+
+func _test_clan_empty_target() -> void:
+	var rig := _rig()
+	var s: ClanSlice = rig["s"]
+	rig["reg"].ensure_player("host")
+	s.found("p1", "Oakhold")
+	s.invite("p1", "host")
+	s.join("host", "clan_1")
+	assert_eq(s.set_role("p1", "", "elder"), "bad_args", "set-role with no target")
+	assert_eq(s.kick("p1", "  "), "bad_args", "kick with no target")
+	assert_eq(s.uninvite("p1", ""), "bad_args", "withdraw with no target")
+	assert_false((s.get_clan("clan_1")["members"] as Dictionary).has(""), "no blank member was written")
+	assert_eq(s.role_of("host"), "member", "the host's player is untouched")
+	_free_rig(rig)
+
+func _test_clan_offline_target() -> void:
+	var rig := _rig()
+	var s: ClanSlice = rig["s"]
+	var reg: PlayerRegistry = rig["reg"]
+	s.found("p1", "Oakhold")
+	for p in ["p2", "p3"]:
+		s.invite("p1", p)
+		s.join(p, "clan_1")
+	s.invite("p1", "p4")
+	assert_false(reg.is_online("p2"), "p2 is offline")
+	assert_eq(s.set_role("p1", reg.public_handle("p2"), "guest"), "", "an offline member's role changes by handle")
+	assert_eq(s.role_of("p2"), "guest", "to guest")
+	assert_eq(s.kick("p1", reg.public_handle("p3")), "", "an offline member is kicked by handle")
+	assert_eq(s.clan_of("p3"), "", "p3 is out")
+	assert_eq(s.uninvite("p1", reg.public_handle("p4")), "", "an offline invitee's invite is withdrawn by handle")
+	assert_eq(s.kick("p1", reg.public_handle("p3")), "not_member", "a former member's handle names no one")
+	_free_rig(rig)
+
+func _test_clan_set_role_rank() -> void:
+	var rig := _rig()
+	var s: ClanSlice = rig["s"]
+	var fab := s.rules().duplicate(true)
+	fab["roles"]["elder"]["setRole"] = true
+	ClanSlice._rules_cache = fab   # a fabric that lets elders set roles
+	s.found("p1", "Oakhold")
+	for p in ["p2", "p3", "p4"]:
+		s.invite("p1", p)
+		s.join(p, "clan_1")
+	s.set_role("p1", "p2", "elder")
+	s.set_role("p1", "p3", "elder")
+	assert_eq(s.set_role("p2", "p3", "guest"), "outranked", "an elder cannot change an elder")
+	assert_eq(s.set_role("p2", "p4", "elder"), "outranked", "nor raise a member to their own rank")
+	assert_eq(s.set_role("p2", "p4", "guest"), "", "but demotes a member")
+	assert_eq(s.set_role("p2", "p2", "member"), "self", "and never changes their own role")
+	assert_eq(s.set_role("p1", "p1", "elder"), "self", "nor does the founder")
+	ClanSlice._rules_cache = {}
+	_free_rig(rig)
+
+func _test_clan_session_and_cache() -> void:
+	var rig := _rig()
+	var s: ClanSlice = rig["s"]
+	s.found("p1", "Oakhold")
+	s.invite("p1", "p2")
+	s.join("p2", "clan_1")
+	s.take_dirty()
+	s.note_session("p2")
+	assert_true(s.take_dirty().has("p2"), "a new session is pushed its view")
+	var rosters := {}
+	var a: Dictionary = s.private_view("p1", rosters)
+	var b: Dictionary = s.private_view("p2", rosters)
+	assert_true(is_same(a["mine"]["roster"], b["mine"]["roster"]), "one roster serves every member's view in a push")
+	assert_eq(a["mine"]["role"], "founder", "while each view keeps its own role")
+	assert_eq(b["mine"]["role"], "member", "")
+	_free_rig(rig)
+
+func _test_clan_member_invites_dropped() -> void:
+	var rig := _rig()
+	var s: ClanSlice = rig["s"]
+	s.from_data({ "format": 1, "next_id": 3, "clans": {
+		"clan_1": { "name": "Oakhold", "founder": "p1", "members": { "p1": "founder" }, "invites": { "p2": 1000000.0, "p3": 1000000.0 } },
+		"clan_2": { "name": "Elmhold", "founder": "p2", "members": { "p2": "founder" }, "invites": { "p1": 1000000.0 } },
+	} })
+	assert_eq((s.get_clan("clan_1")["invites"] as Dictionary).keys(), ["p3"], "an invite to another clan's member is dropped on load")
+	assert_eq((s.get_clan("clan_2")["invites"] as Dictionary).size(), 0, "both ways")
+	s.from_data(null)
+	s.migrate_settlements({ "settlements": {
+		"settlement_1": { "name": "Oak", "founder": "p1", "members": { "p1": "founder" }, "invites": { "p2": 1.0 } },
+		"settlement_2": { "name": "Elm", "founder": "p2", "members": { "p2": "founder" } },
+	} })
+	assert_eq((s.get_clan(s.clan_of("p1"))["invites"] as Dictionary).size(), 0, "and on migration, once p2 leads a later settlement")
+	_free_rig(rig)
+
+func _test_clan_skill_labels() -> void:
+	var cats: Dictionary = I18n.parse_csv("res://locale/ui.csv")["catalog"]
+	for skill: String in ClanPanel.skill_keys():
+		for loc in cats:
+			assert_true(str((cats[loc] as Dictionary).get("skill." + skill.to_lower(), "")).strip_edges() != "", "%s has skill.%s" % [loc, skill.to_lower()])
+	assert_eq(ClanPanel.skill_label("Tailoring"), I18n.t("skill.tailoring"), "a skill shows its catalog name")
+	assert_eq(ClanPanel.skill_label("NoSuchSkill"), "NoSuchSkill", "an unknown skill shows its key")
+
+func _test_chat_field_limit() -> void:
+	assert_eq(ChatSlice.field_limit("hello"), ChatCommandsScript.MAX_MESSAGE_CHARS, "a plain line stops where the host cuts it")
+	assert_eq(ChatSlice.field_limit("/msg pl_ab hi"), ChatCommandsScript.MAX_PRIVATE_LINE_CHARS, "a /msg line keeps its longer limit")
