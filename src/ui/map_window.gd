@@ -858,7 +858,9 @@ func _draw_claims(origin: Vector2) -> void:
 		var edge := screen_of_xz(cx + float(c["radius"]) / TerrainSlice.CHUNK_METERS, cz)
 		var r: float = (edge["pos"] - centre["pos"]).length()
 		var col := Color(1.0, 0.6, 0.2, 0.9) if str(c["id"]) == mine else Color(0.9, 0.3, 0.3, 0.8)
-		draw_arc(origin + centre["pos"], maxf(r, 3.0), 0.0, TAU, 48, col, 2.0)
+		if bool(c.get("raiding", false)):
+			col = Color(1.0, 0.1, 0.1, 1.0)   # Phase 200: a village under raid
+		draw_arc(origin + centre["pos"], maxf(r, 3.0), 0.0, TAU, 48, col, 4.0 if bool(c.get("raiding", false)) else 2.0)
 		draw_string(ThemeDB.fallback_font, origin + centre["pos"] + Vector2(6, -6), SettlementSlice.display_name(c), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, col)
 
 func _draw_marker(origin: Vector2, m: Dictionary, label: String, fill: Color, text_col: Color) -> void:

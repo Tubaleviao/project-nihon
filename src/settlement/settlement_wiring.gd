@@ -36,6 +36,7 @@ func make_slice(ctx: GameRoot) -> Node:
 		raids = RaidDirector.new()
 		raids.slice = slice
 		raids.online_ids = func() -> Array: return root._registry.get_online_player_ids()
+		slice.raid_state = raids.view_of
 		raids.spawn_raider = func(c: String, xz: Vector2, goal: Vector2, rid: String, n: int) -> String: return root._creature.spawn_raider(c, xz, goal, rid, n)
 		raids.raiders_of = func(rid: String) -> Array: return root._creature.raiders_of(rid)
 		raids.remove_raiders = func(rid: String) -> void: root._creature.remove_raiders(rid)
@@ -52,6 +53,8 @@ func _bind_ui() -> void:
 		return
 	_ui_bound = true
 	ui.map_window.settlement_slice = root._settlements
+	if root._minimap != null:
+		root._minimap.settlement_slice = root._settlements
 	ui.settlement_slice = root._settlements
 	ui.settlement_panel.settlement_slice = root._settlements
 
@@ -61,7 +64,27 @@ func _connect_all() -> void:
 	connect_bus(GameBus.station_placed, _on_station_placed)
 	connect_bus(GameBus.attributes_synced, _on_attributes_synced)
 	connect_bus(GameBus.raid_requested, _on_raid_requested)
+	connect_bus(GameBus.raid_warned, _on_raid_changed)
+	connect_bus(GameBus.raid_resolved, _on_raid_resolved)
 	connect_bus(GameBus.skill_tier_recorded, _on_skill_tier_recorded)
+
+## Phase 200 — a raid moved: push the views, and tell the village in chat.
+func _on_raid_changed(id: String, seconds: int) -> void:
+	_dirty = true
+	if root._is_client or root._settlements == null:
+		return
+	var name_text: String = SettlementSlice.display_name(root._settlements.get_settlement(id))
+	for pid: String in root._registry.get_online_player_ids():
+		if root._settlements.settlement_of(pid) == id:
+			GameBus.system_message.emit("settlement.raid.warning", [seconds, name_text], pid)
+
+func _on_raid_resolved(id: String, result: String, _lost: Dictionary, _damage: float) -> void:
+	_dirty = true
+	if root._is_client or root._settlements == null:
+		return
+	for pid: String in root._registry.get_online_player_ids():
+		if root._settlements.settlement_of(pid) == id:
+			GameBus.system_message.emit("settlement.raid.result." + result, [], pid)
 
 ## Phase 200 — `/raid` (an admin, checked by the chat): start a raid on the admin's settlement now.
 func _on_raid_requested(player_id: String) -> void:

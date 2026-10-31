@@ -52,6 +52,8 @@ const FALLBACK_COLOR := Color(0.4, 0.4, 0.4)
 ## chunk manager (kept for introspection; the minimap no longer reads it).
 var chunk_manager: Node = null
 var player_slice: Node = null
+## Phase 200 — the settlement view source; a live raid on the player's village is marked where its pack comes from.
+var settlement_slice: Node = null
 ## Phase 54 — the HUD's time-of-day and season line, set by game_root when it changes.
 var clock_text: String = ""
 var terrain_slice: Node = null
@@ -341,6 +343,20 @@ func waypoint_marker(index: int, view_size: Vector2) -> Dictionary:
 	var cell_px := minf(view_size.x, view_size.y) / _chunks_across
 	return MapMath.clamp_home(d / CHUNK_SIZE * cell_px, view_size * 0.5, d.length(), 6.0)
 
+## Phase 200 — the raid marker for the player's own village: { pos, ... } like `waypoint_marker`, or {} when no raid is
+## live (or the player is not placed yet).
+func raid_marker(view_size: Vector2) -> Dictionary:
+	if settlement_slice == null or _player_chunk == Vector2i(-9999, -9999):
+		return {}
+	var raid: Variant = (settlement_slice.view().get("mine", {}) as Dictionary).get("raid", {})
+	if not (raid is Dictionary) or str((raid as Dictionary).get("phase", "")) == "":
+		return {}
+	var d := Vector2(float(raid["edge_x"]), float(raid["edge_z"])) - _player_pos
+	var circ_m := float(TerrainSlice.circumference_chunks()) * CHUNK_SIZE
+	d.x = SeamWrap.wrap_f(d.x, circ_m)
+	var cell_px := minf(view_size.x, view_size.y) / _chunks_across
+	return MapMath.clamp_home(d / CHUNK_SIZE * cell_px, view_size * 0.5, d.length(), 6.0)
+
 ## Metres from the player to waypoint `index` (x east, y world +z), the short way round the planet;
 ## (INF, INF) when there is no such waypoint or the player is not placed yet.
 func waypoint_offset_m(index: int) -> Vector2:
@@ -468,6 +484,11 @@ func _draw() -> void:
 			continue
 		var wp: Vector2 = Vector2(view_size.x * 0.5, view_size.y * 0.5) + m["pos"]
 		draw_colored_polygon(PackedVector2Array([wp + Vector2(0, -4), wp + Vector2(4, 0), wp + Vector2(0, 4), wp + Vector2(-4, 0)]), Color(0.4, 0.9, 1.0))
+
+	var rm := raid_marker(view_size)
+	if not rm.is_empty():
+		var rp: Vector2 = Vector2(view_size.x * 0.5, view_size.y * 0.5) + rm["pos"]
+		draw_circle(rp, 5.0, Color(1.0, 0.15, 0.1))
 
 	# Player arrow — points in the player's facing direction.
 	var dir := _facing_screen_dir(_facing)

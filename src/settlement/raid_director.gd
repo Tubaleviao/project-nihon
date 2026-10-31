@@ -35,6 +35,13 @@ func active(id: String) -> bool:
 func phase_of(id: String) -> String:
 	return str(_raids.get(id, {}).get("phase", ""))
 
+## The live raid as the views carry it ({} when none).
+func view_of(id: String) -> Dictionary:
+	if not _raids.has(id):
+		return {}
+	var r: Dictionary = _raids[id]
+	return { "phase": str(r["phase"]), "edge_x": (r["edge"] as Vector2).x, "edge_z": (r["edge"] as Vector2).y, "spawn_at": float(r["spawn_at"]) }
+
 func raid_of(id: String) -> Dictionary:
 	return (_raids.get(id, {}) as Dictionary).duplicate(true)
 

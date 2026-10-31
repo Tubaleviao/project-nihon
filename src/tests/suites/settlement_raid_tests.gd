@@ -12,6 +12,7 @@ func register() -> void:
 	_run_test("raid director: warning, pack, defended and lost, forced starts, never with nobody online", _test_director)
 	_run_test("raid director: a spawned pack is judged — all dead defended, one at the hearth lost", _test_director_field)
 	_run_test("raid: raiders are creatures that die for good and leave with the raid", _test_raider_creatures)
+	_run_test("raid: the views carry the live raid and the last result", _test_views)
 	_run_test("raid: every refusal and result has catalog text", _test_strings)
 
 func _ready_info() -> Dictionary:
@@ -230,3 +231,24 @@ func _test_raider_creatures() -> void:
 	c.remove_raiders("settlement_1")
 	assert_eq(c.raiders_of("settlement_1").size(), 0, "removed when the raid ends")
 	c.free()
+
+const SettlementPanel := preload("res://src/ui/settlement_panel.gd")
+
+func _test_views() -> void:
+	var rig := _rig()
+	var s: SettlementSlice = rig["s"]
+	var live := { "phase": "warning", "edge_x": 50.0, "edge_z": 0.0, "spawn_at": 1.0 }
+	s.raid_state = func(_id: String) -> Dictionary: return live
+	assert_true(s.public_claims()[0]["raiding"], "the claim is marked raided on the map")
+	var mine: Dictionary = s.private_view("p1")["mine"]
+	assert_eq(mine["raid"]["phase"], "warning", "the member sees the phase")
+	assert_eq(mine["raid"]["edge_x"], 50.0, "and where the pack comes from")
+	s.raid_state = func(_id: String) -> Dictionary: return {}
+	assert_false(s.public_claims()[0]["raiding"], "no raid, no mark")
+	s.end_raid("settlement_1", true)
+	assert_eq(s.private_view("p1")["mine"]["raid"]["last_result"], "defended", "the last result rides the view")
+	assert_true(SettlementPanel.raid_text({ "phase": "fighting", "last_result": "lost" }).contains("\n"), "the panel prints both lines")
+	assert_eq(SettlementPanel.raid_text({}), "", "nothing to say")
+	for k in ["warning", "fighting"]:
+		assert_true(I18nScript.has_key("settlement.raid.phase." + k), "phase %s has text" % k)
+	_free_rig(rig)

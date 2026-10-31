@@ -572,3 +572,5 @@ settlement.raid.result.defended,Last raid: defended,Último ataque: defendido
 settlement.raid.result.lost,Last raid: lost,Último ataque: perdido
 chat.usage.raid,/raid — start a raid on your settlement now,/raid — inicia agora um ataque ao seu assentamento
 chat.raid_none,You belong to no settlement.,Você não pertence a nenhum assentamento.
+settlement.raid.phase.warning,A raid is coming — get ready at the claim edge!,Um ataque está chegando — preparem-se na borda da área!
+settlement.raid.phase.fighting,The village is under raid — defend the hearth!,A vila está sob ataque — defendam a lareira!

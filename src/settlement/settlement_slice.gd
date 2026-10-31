@@ -105,6 +105,8 @@ var tool_in_hand: Callable = Callable()
 var place_structure: Callable = Callable()
 ## pid -> { id, key, at } the last labour beat (mono seconds).
 var _labour_clock: Dictionary = {}
+## Phase 200 — `(id) -> Dictionary` the live raid of a settlement ({} for none: phase, edge_x, edge_z, spawn_at); set by the wiring.
+var raid_state: Callable = Callable()
 ## Phase 199 — pid -> the specialty last announced for that player (absent = none).
 var _specialties: Dictionary = {}
 ## Client view: what the host last sent.
@@ -948,6 +950,15 @@ func from_data(data: Variant) -> void:
 		if suffix.is_valid_int():
 			_next_id = maxi(_next_id, int(suffix) + 1)   # never reuse a loaded id
 
+func _live_raid(id: String) -> Dictionary:
+	return raid_state.call(id) if raid_state.is_valid() else {}
+
+## What a member sees of raids: the live one (phase, where the pack comes from, when it arrives) and the last result.
+func _raid_view(id: String) -> Dictionary:
+	var out := _live_raid(id).duplicate()
+	out["last_result"] = str(raid_record(id)["last_result"])
+	return out
+
 ## Phase 200 — the raid record of a settlement: { last_end (seconds, 0 = never raided), last_result "" | "defended" | "lost" }.
 func raid_record(id: String) -> Dictionary:
 	return (_settlements.get(id, {}).get("raid", { "last_end": 0.0, "last_result": "" }) as Dictionary).duplicate()
@@ -1036,7 +1047,7 @@ func public_claims() -> Array:
 	for id: String in ids():
 		var s: Dictionary = _settlements[id]
 		out.append({ "id": id, "name": str(s["name"]), "name_n": int(s["name_n"]), "x": float(s["hx"]), "z": float(s["hz"]),
-			"radius": claim_radius(id), "status": str(s["status"]) })
+			"radius": claim_radius(id), "status": str(s["status"]), "raiding": not _live_raid(id).is_empty() })
 	return out
 
 ## What one player may see beyond the claims: their own settlement's members, role and stockpile, and any
@@ -1049,6 +1060,7 @@ func private_view(player_id: String) -> Dictionary:
 		var s: Dictionary = _settlements[id]
 		out["mine"] = { "id": id, "role": role_of(pid, id), "members": (s["members"] as Dictionary).duplicate(),
 			"stock": stock_of(id), "capacity": capacity_stacks(id), "used": used_stacks(id), "names": _member_names(s), "specialties": _member_specialties(s), "specialty": compute_specialty(pid),
+			"raid": _raid_view(id),
 			"projects": (s["projects"] as Dictionary).keys().map(func(k: String) -> Dictionary: return _project_view(k, s["projects"][k])) }
 	for sid: String in ids():
 		if (_settlements[sid]["invites"] as Dictionary).has(pid):

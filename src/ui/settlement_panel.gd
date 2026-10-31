@@ -178,7 +178,20 @@ func refresh() -> void:
 	for item: String in (mine.get("stock", {}) as Dictionary):
 		items.append("%s ×%d" % [item, int(mine["stock"][item])])
 	_stock.text = I18n.t("settlement.stock", [int(mine.get("used", 0)), int(mine.get("capacity", 0)), ", ".join(items)])
-	_projects.text = board_text(mine.get("projects", []), names)
+	_projects.text = board_text(mine.get("projects", []), names) + raid_text(mine.get("raid", {}))
+
+## Phase 200 — the raid lines of the panel: a live raid's phase and the last result ("" when neither).
+static func raid_text(raid: Variant) -> String:
+	if not (raid is Dictionary):
+		return ""
+	var out := ""
+	var phase := str((raid as Dictionary).get("phase", ""))
+	if phase != "":
+		out += "\n" + I18n.t("settlement.raid.phase." + phase)
+	var last := str((raid as Dictionary).get("last_result", ""))
+	if last != "":
+		out += "\n" + I18n.t("settlement.raid.result." + last)
+	return out
 
 ## Phase 198 — the board's text for the projects in a view: per project its labour and step (or built), the
 ## materials needed against given, and who helped.
