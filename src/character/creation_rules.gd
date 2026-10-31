@@ -51,11 +51,18 @@ static func _script_of(cp: int, scripts: Dictionary) -> String:
 
 
 ## The refusal reason for a name, or "" when it may be used. `taken` holds the skeletons of the names
-## already on the server (skeleton -> anything).
-static func name_refusal(raw: String, taken: Dictionary = {}) -> String:
+## already on the server (skeleton -> anything). Phase 204 — `limits` overrides `minLength`, `maxLength` and
+## `maxSeparators` and adds `reserved` words, so a clan name is checked by the same rules with its own bounds.
+static func name_refusal(raw: String, taken: Dictionary = {}, limits: Dictionary = {}) -> String:
 	var rule := _name_rule()
 	if rule.is_empty():
 		return "name_chars"
+	if not limits.is_empty():
+		rule = rule.duplicate()
+		for k: String in ["minLength", "maxLength", "maxSeparators"]:
+			if limits.has(k):
+				rule[k] = limits[k]
+		rule["reserved"] = (rule.get("reserved", []) as Array) + (limits.get("reserved", []) as Array)
 	var name := normalize_name(raw)
 	var separators: Array = rule.get("separators", [])
 	var combining: Array = rule.get("combining", [])

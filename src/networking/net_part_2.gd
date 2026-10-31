@@ -441,6 +441,20 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 					if (v is String or v is int or v is float) and clean.size() < 8:
 						clean[str(k).left(16)] = str(v).left(64) if v is String else v
 			GameBus.settlement_intent.emit(str(payload.get("action", "")).left(16), clean, settler)
+		"clan_intent":
+			# Phase 204 — who acts is the connection's player, as for settlements. Only short scalar args are kept.
+			var member = sl._actor_id(sender)
+			if member == "":
+				sl._refuse_unhandshaked(sender, "clan_intent")
+				return
+			var clan_args: Variant = payload.get("args", {})
+			var kept := {}
+			if clan_args is Dictionary:
+				for k: Variant in (clan_args as Dictionary).keys():
+					var v: Variant = clan_args[k]
+					if v is String and kept.size() < 4:
+						kept[str(k).left(16)] = str(v).left(64)
+			GameBus.clan_intent.emit(str(payload.get("action", "")).left(16), kept, member)
 		"tame_intent":
 			# Phase 35 — and the same for taming: the flag and the companion bind
 			# to the connection's own player, never to a name in the payload.
@@ -749,3 +763,12 @@ func forget_peer_channels(id: int) -> void:
 				table.erase(key)
 	sl._link_free_at_ms.erase(id)
 	sl._ordered_at_ms.erase(id)
+
+## Phases 140 and 204 — a client forwards a settlement or clan intent; the host binds the identity and validates the rest.
+func forward_intent(type: String, action: String, args: Dictionary) -> void:
+	if sl._role != sl.Role.CLIENT:
+		return
+	sl._broadcast({ "type": type, "action": action, "args": args })
+
+func forward_clan_intent(action: String, args: Dictionary, _player_id: String) -> void:
+	forward_intent("clan_intent", action, args)

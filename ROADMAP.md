@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–199 and 203 are done. Their specs and acceptance criteria, and the introductions of
+Phases 1–199, 203 and 204 are done. Their specs and acceptance criteria, and the introductions of
 the arcs they belonged to, are archived in [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Next: follow-up debt burn II (Phases 194–196)
@@ -117,7 +117,7 @@ Smithing). Phase 203 models all of it in the fabric before any runtime phase sta
 | Phase | Title | Status | Spec |
 |---|---|---|---|
 | 203 | Clans, ownership, durability, writing, chests and tall structures in the fabric | Done | [phases-203.md](docs/roadmap-history/phases-203.md) |
-| 204 | Clans: a name, invites, one clan each, and every member's skills in view | Planned | below |
+| 204 | Clans: a name, invites, one clan each, and every member's skills in view | Done | [phases-204.md](docs/roadmap-history/phases-204.md) |
 | 205 | Owned structures instead of claims: private or clan, durability, dismantling and destruction | Planned | below |
 | 206 | The circle around every building: no spawns, no foreign building | Planned | below |
 | 207 | Skills grow from work, and clan projects without labour | Planned | below |
@@ -161,37 +161,6 @@ must stay under one hour.
 
 ---
 
-## Phase 204 — Clans: a name, invites, one clan each, and every member's skills in view
-
-**Goal:** players found and join clans, see what each member is good at, and message the one they
-need.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phase 203.
-
-**Deliverables:**
-- `src/clan/clan_slice.gd` and its wiring: found (name), invite, accept, leave, kick, roles. One
-  clan per player, enforced on the host. Names are validated, unique and moderated.
-- Saved settlements migrate to clans as Phase 203 decided (a data-format bump). A clan has no
-  hearth.
-- The clan roster: every member's skills, sortable by skill, so "who sews best" is one click. The
-  host sends a member's skills only to their own clan's peers, and stops when they leave.
-- Private messages: from the roster (and a chat command) to one player. The host relays them only
-  to the recipient, rate-limits them, and hosts send keys and params for any system text.
-
-**Acceptance criteria:**
-- [ ] Suite: founding a second clan, or accepting an invite while in a clan, is refused. A duplicate
-  or invalid name is refused.
-- [ ] Suite: a migrated settlement is a clan with the same name, members and roles.
-- [ ] Harness: a clan member's peer receives another member's skills, and an outsider's peer never
-  does (checked on the wire). A member who leaves stops receiving them.
-- [ ] Harness: a private message reaches only its recipient.
-- [ ] Every new string is in both catalogs, and the i18n key check passes.
-- [ ] Suite green on both boot paths, harness green.
-
----
-
 ## Phase 205 — Owned structures instead of claims: private or clan, durability, dismantling and destruction
 
 **Goal:** the host knows who owns each structure and enforces it everywhere. A structure wears with
@@ -217,6 +186,10 @@ skill allow. The hearth claim is gone.
   build materials. The owner (and online clan members) are told when a structure is damaged or
   destroyed.
 - A player command and a menu button to kill your own character and respawn, rate-limited.
+- Phase 204 holds to finish here: a migrated settlement keeps its hearth and its settlement record (the
+  clan's `settlement` field names it) until this phase removes the hearth and returns it to its founder
+  as a `Hearth` item (`Clan.migration.hearth`). Settlement membership (invite, join, roles) still runs
+  beside clans until the settlement code goes, and the Settlement window (L) with it.
 - The claim, hearth, raid and upkeep code is removed: `claim_radius`, `claim_at`, tier radii,
 - Phase 203 holds to remove with it: the claim radii, `decayRadiusPerDay` and `minSeparation` now
   come only from `SettlementSlice.DEFAULT_RULES` (the fabric has none), and project effects only
@@ -323,6 +296,8 @@ everyone can open. A locked chest or door can still be broken open or picked, ha
   and a tool against the chest's difficulty. Success opens it once, failure can break the tool, and
   the owner is told.
 - UI: the chest window, the access-mode setting for the owner, and the lockpicking progress.
+- Phase 204 hold: a migrated settlement's stockpile becomes a clan chest with the same contents
+  (`Clan.migration.stockpile`); until then it stays in the settlement record.
 - Door and chest placeholders in `assets/` (placeholder rule).
 
 **Acceptance criteria:**

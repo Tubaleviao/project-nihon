@@ -354,8 +354,8 @@ func _test_wheel_key() -> void:
 	assert_eq(GesturePanel.key_code(), KEY_U, "and keeps the key")
 	assert_false(GesturePanel.awaiting_key, "and stops waiting")
 	assert_false(GesturePanel.take_rebind_key(KEY_W), "a claimed key is refused")
-	assert_true(GesturePanel.take_rebind_key(KEY_J), "a free key is taken")
-	assert_eq(GesturePanel.key_code(), KEY_J, "and opens the wheel from now on")
+	assert_true(GesturePanel.take_rebind_key(KEY_F6), "a free key is taken")
+	assert_eq(GesturePanel.key_code(), KEY_F6, "and opens the wheel from now on")
 	assert_true(_HotbarScript.bind_allowed(KEY_U), "and the old key is free for a box again")
 	DirAccess.remove_absolute(LocaleSettings.settings_path)
 	LocaleSettings.settings_path = old_path

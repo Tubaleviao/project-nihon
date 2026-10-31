@@ -260,6 +260,18 @@ signal specialty_changed(player_id: String, specialty: String)
 ## Phase 199 — the host recorded a new tier for a player's skill. Feeds the specialty recompute.
 signal skill_tier_recorded(player_id: String, skill: String, tier: String)
 
+## Phase 204 — a clan intent: `action` is one of ClanSlice.ACTIONS (found, invite, uninvite, join, decline, leave,
+## kick, role) and `args` its parameters (name, target, id, role). A client forwards it; the host binds the identity.
+signal clan_intent(action: String, args: Dictionary, player_id: String)
+
+## Phase 204 — the host resolved a clan intent. `reason` is "" on success, else a refusal code (see
+## ClanSlice.REASONS). Delivered to the actor alone.
+signal clan_resolved(player_id: String, action: String, ok: bool, reason: String)
+
+## Phase 204 — a clan changed on the host (members, roles, invites, a member's skills). The wiring pushes the
+## affected players their views on the next tick.
+signal clans_changed()
+
 ## Phase 128 — the host's override table changed (`WeatherSlice.to_data()` form). game_root broadcasts
 ## it to every client; a client never emits it.
 signal weather_overrides_synced(overrides: Array)
@@ -779,6 +791,9 @@ signal chat_intent(text: String, player_id: String)
 ## for everyone, else the one player it is for. The host emits it; networking carries it to the
 ## clients (broadcast, or to the target's peer alone), where it is re-emitted with `target_id` "".
 signal chat_posted(channel: String, sender: String, text: String, target_id: String)
+
+## Phase 204 — open the local chat box with `prefill` typed (the clan roster's "Message" button: `/msg <handle> `).
+signal chat_compose_requested(prefill: String)
 
 ## Phase 131 — a host system line as key + args (never rendered text), so each client renders it in its
 ## own locale. `target_id` as for `chat_posted`. Networking carries it; a client validates the key and
