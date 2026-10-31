@@ -253,6 +253,15 @@ signal settlements_changed()
 ## `player_id` is the member who did it ("" for completion). Host-local; members see it through their view.
 signal settlement_project_changed(settlement_id: String, project: String, what: String, player_id: String)
 
+## Phase 200 — a raid on a settlement was announced: the warning reaches its members, `seconds` before the pack.
+signal raid_warned(settlement_id: String, seconds: int)
+
+## Phase 200 — the warning ran out: spawn `pack` ([{ creature, count }]) at `edge` (ground metres, Vector2) on the claim edge.
+signal raid_pack_spawn(settlement_id: String, pack: Array, edge: Vector2)
+
+## Phase 200 — a raid ended. `result` is "defended" or "lost"; `stock_lost` is { item: n }, `damage` the labour units lost.
+signal raid_resolved(settlement_id: String, result: String, stock_lost: Dictionary, damage: float)
+
 ## Phase 199 — the host recomputed a player's settlement specialty from its own skill and attribute records and it
 ## changed (`specialty` "" = none). Emitted once per change.
 signal specialty_changed(player_id: String, specialty: String)

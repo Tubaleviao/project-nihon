@@ -1,0 +1,110 @@
+extends RefCounted
+## Phase 200 — the host's raid scheduler. It owns the transient raids (a warning, then the pack on the field,
+## then a result) and asks `RaidRules` whether a settlement may be raided on each settlement tick. The pack's
+## creatures are spawned by whoever handles `GameBus.raid_pack_spawn`; `cleared` reports them all dead or driven
+## off. The slice owns the persisted part (the cooldown clock and the last result, `end_raid`).
+
+const SettlementSlice := preload("res://src/settlement/settlement_slice.gd")
+const RaidRules := preload("res://src/settlement/raid_rules.gd")
+
+## `() -> Array` the ids of the players online (the host's own registry, never a message).
+var online_ids: Callable = Callable()
+## `(Vector2 xz) -> String` the biome key at a ground point; "" when unknown (no pack then).
+var biome_at: Callable = Callable()
+## `(String seed_text) -> float` a deterministic 0..1 value; the default hashes the text.
+var roll: Callable = Callable()
+
+var slice: SettlementSlice = null
+## settlement id -> { phase "warning" | "fighting", started, spawn_at, ends_at, pack [{creature, count}], edge Vector2 }
+var _raids: Dictionary = {}
+var _count: int = 0
+
+func active(id: String) -> bool:
+	return _raids.has(id)
+
+func phase_of(id: String) -> String:
+	return str(_raids.get(id, {}).get("phase", ""))
+
+func raid_of(id: String) -> Dictionary:
+	return (_raids.get(id, {}) as Dictionary).duplicate(true)
+
+## Members online whose position is inside the claim.
+func online_in_claim(id: String) -> int:
+	if slice == null or not online_ids.is_valid():
+		return 0
+	var n := 0
+	var centre := slice.hearth_xz(id)
+	var radius := slice.claim_radius(id)
+	for pid: Variant in online_ids.call():
+		if not slice.is_member(str(pid), id):
+			continue
+		var xz: Variant = slice.player_xz(str(pid))
+		if xz is Vector2 and (xz as Vector2).distance_to(centre) <= radius:
+			n += 1
+	return n
+
+func _info(id: String, now: float) -> Dictionary:
+	var s := slice.get_settlement(id)
+	var rec := slice.raid_record(id)
+	return { "age_sec": now - float(s.get("created", now)), "tier": str(s.get("status", "founded")), "stock_stacks": slice.used_stacks(id),
+		"since_last_sec": (now - float(rec["last_end"])) if float(rec["last_end"]) > 0.0 else 1.0e12, "active": active(id),
+		"online_in_claim": online_in_claim(id), "biome": str(biome_at.call(slice.hearth_xz(id))) if biome_at.is_valid() else "" }
+
+## Why `id` cannot be raided now ("" when it can).
+func blocker(id: String, now: float) -> String:
+	if slice == null or slice.get_settlement(id).is_empty() or str(slice.get_settlement(id).get("status", "")) == "abandoned":
+		return "no_pack"
+	return RaidRules.start_blocker(_info(id, now))
+
+## Start a raid. `forced` (the admin command) skips the age, value and cooldown checks, keeping one raid at a time,
+## a member online inside the claim and a biome with a pack. Returns "" or a refusal key.
+func start(id: String, now: float, forced: bool = false) -> String:
+	var why := blocker(id, now)
+	if forced and why in ["too_young", "not_worth_raiding", "cooldown"]:
+		why = ""
+	if why != "":
+		return why
+	var t := RaidRules.table()
+	var info := _info(id, now)
+	_count += 1
+	var rolls: Array = []
+	for i in 4:
+		rolls.append(_roll("%s:%d:%d" % [id, _count, i]))
+	var pack := RaidRules.pack_for(str(info["biome"]), rolls, t)
+	var angle := _roll("%s:%d:edge" % [id, _count]) * TAU
+	var edge := slice.hearth_xz(id) + Vector2(cos(angle), sin(angle)) * slice.claim_radius(id)
+	_raids[id] = { "phase": "warning", "started": now, "spawn_at": now + float(t["warningSeconds"]), "ends_at": now + float(t["warningSeconds"]) + float(t["durationSeconds"]),
+		"pack": pack, "edge": edge }
+	GameBus.raid_warned.emit(id, int(t["warningSeconds"]))
+	return ""
+
+## The tick: schedule raids on eligible settlements, move warnings to the field, and lose raids that ran out.
+func tick(now: float) -> void:
+	if slice == null:
+		return
+	for id: String in slice.ids():
+		if not active(id):
+			if blocker(id, now) == "":
+				start(id, now)
+			continue
+		var r: Dictionary = _raids[id]
+		if str(r["phase"]) == "warning" and now >= float(r["spawn_at"]):
+			r["phase"] = "fighting"
+			GameBus.raid_pack_spawn.emit(id, (r["pack"] as Array).duplicate(true), r["edge"])
+		elif str(r["phase"]) == "fighting" and now >= float(r["ends_at"]):
+			_finish(id, false)
+
+## Every raider is dead or driven off.
+func cleared(id: String) -> void:
+	if phase_of(id) == "fighting":
+		_finish(id, true)
+
+func _finish(id: String, defended: bool) -> void:
+	_raids.erase(id)
+	var out := slice.end_raid(id, defended)
+	GameBus.raid_resolved.emit(id, str(out.get("result", "")), out.get("stock", {}), float(out.get("damage", 0.0)))
+
+func _roll(text: String) -> float:
+	if roll.is_valid():
+		return float(roll.call(text))
+	return float(hash(text) & 0xFFFF) / 65536.0

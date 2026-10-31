@@ -252,6 +252,16 @@ func _player_xz(player_id: String) -> Variant:
 		return null
 	return xz_of_exact(pos)
 
+## Phase 200 — read-only helpers for the raid scheduler.
+func hearth_xz(id: String) -> Vector2:
+	return _hearth_xz(_settlements[id]) if _settlements.has(id) else Vector2.ZERO
+
+func is_member(player_id: String, id: String) -> bool:
+	return role_of(_pid(player_id), id) != "" and role_of(_pid(player_id), id) != "guest"
+
+func player_xz(player_id: String) -> Variant:
+	return _player_xz(player_id)
+
 func _pid(player_id: String) -> String:
 	if player_id == "" and registry != null and "local_player_id" in registry:
 		return str(registry.local_player_id)

@@ -9,6 +9,7 @@ func register() -> void:
 	_run_test("raid rules: a pack comes from the biome's rows within their counts", _test_pack)
 	_run_test("raid: a lost raid takes at most the loss share, a defended one nothing, defence scales it down", _test_losses)
 	_run_test("raid: the cooldown and last result survive a save and reload, a pre-200 world loads as never raided", _test_persistence)
+	_run_test("raid director: warning, pack, defended and lost, forced starts, never with nobody online", _test_director)
 	_run_test("raid: every refusal and result has catalog text", _test_strings)
 
 func _ready_info() -> Dictionary:
@@ -122,3 +123,54 @@ func _test_strings() -> void:
 		assert_true(I18nScript.has_key("settlement.raid.refused." + code), "refusal %s has catalog text" % code)
 	for k in ["settlement.raid.warning", "settlement.raid.result.defended", "settlement.raid.result.lost"]:
 		assert_true(I18nScript.has_key(k), "%s is in the catalog" % k)
+
+const RaidDirector := preload("res://src/settlement/raid_director.gd")
+var _events: Array = []
+
+func _on_warned(id: String, seconds: int) -> void:
+	_events.append(["warned", id, seconds])
+
+func _on_spawn(id: String, pack: Array, _edge: Vector2) -> void:
+	_events.append(["spawn", id, pack])
+
+func _on_resolved(id: String, result: String, _lost: Dictionary, _damage: float) -> void:
+	_events.append(["resolved", id, result])
+
+func _test_director() -> void:
+	var rig := _rig()
+	var s: SettlementSlice = rig["s"]
+	var now: Array = rig["now"]
+	var d := RaidDirector.new()
+	d.slice = s
+	d.online_ids = func() -> Array: return ["p1"]
+	d.biome_at = func(_xz: Vector2) -> String: return "TemperateForest"
+	_events.clear()
+	GameBus.raid_warned.connect(_on_warned)
+	GameBus.raid_pack_spawn.connect(_on_spawn)
+	GameBus.raid_resolved.connect(_on_resolved)
+	var t0: float = now[0]
+	assert_eq(d.start("settlement_1", t0), "too_young", "a fresh village is not raided")
+	assert_eq(d.start("settlement_1", t0), "too_young", "still not")
+	d.tick(t0)
+	assert_true(_events.is_empty(), "the tick starts nothing")
+	assert_eq(d.start("settlement_1", t0, true), "", "the admin command skips age, value and cooldown")
+	assert_eq(_events[0], ["warned", "settlement_1", 120], "the warning carries the fabric seconds")
+	assert_eq(d.start("settlement_1", t0, true), "raid_active", "one raid at a time")
+	d.tick(t0 + 119.0)
+	assert_eq(_events.size(), 1, "no pack before the warning ends")
+	d.tick(t0 + 121.0)
+	assert_eq(_events[1][0], "spawn", "the pack spawns after the warning")
+	assert_eq(d.phase_of("settlement_1"), "fighting", "fighting")
+	d.cleared("settlement_1")
+	assert_eq(_events[2], ["resolved", "settlement_1", "defended"], "cleared: defended")
+	assert_false(d.active("settlement_1"), "the raid is over")
+	assert_eq(d.start("settlement_1", t0 + 130.0, true), "", "forced starts ignore the cooldown")
+	d.tick(t0 + 130.0 + 121.0)
+	d.tick(t0 + 130.0 + 121.0 + 601.0)
+	assert_eq(_events[-1], ["resolved", "settlement_1", "lost"], "an unrepelled raid is lost when its time runs out")
+	d.online_ids = func() -> Array: return []
+	assert_eq(d.start("settlement_1", t0 + 5000.0, true), "no_member_online", "even forced, never with no member online")
+	GameBus.raid_warned.disconnect(_on_warned)
+	GameBus.raid_pack_spawn.disconnect(_on_spawn)
+	GameBus.raid_resolved.disconnect(_on_resolved)
+	_free_rig(rig)
