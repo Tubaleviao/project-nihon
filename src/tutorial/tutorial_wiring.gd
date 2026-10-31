@@ -144,7 +144,7 @@ func _on_settlement_resolved(player_id: String, action: String, ok: bool, _reaso
 		"project_start":
 			_note("project_started")
 		"project_give":
-			_note("project_gived")
+			_note("project_contributed")
 
 func _on_tech_unlocked(tech_id: String, player_id: String) -> void:
 	if player_id == _local() or player_id == "" or player_id == "player":
