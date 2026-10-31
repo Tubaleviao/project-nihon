@@ -233,6 +233,8 @@ func has_defeated_species(creature_id: String) -> bool:
 ## fabric's `tame.suppressRespawn` ("pup does not respawn if tamed"). Read from
 ## GameData, never hardcoded, so the fabric stays the single source of truth.
 func _suppresses_respawn(inst: Dictionary) -> bool:
+	if inst.has("raid"):
+		return true   # Phase 200: a raider that died stays dead; the raid ends and removes it
 	if str(inst.get("tamed_by", "")) == "":
 		return false
 	var res: Resource = GameData.CREATURES.get(str(inst.get("creature_id", "")), null)
@@ -863,6 +865,52 @@ func _spawn(creature_id: String, chunk_pos: Vector2i, spawn_index: int = 0) -> S
 
 	GameBus.creature_spawned.emit(iid, creature_id, pos)
 	return iid
+
+## Phase 200 — spawn one raider of settlement raid `raid_id` at ground point `xz` (metres), walking toward `goal`
+## (the hearth, ground metres). Index `n` keeps its id apart from the chunk's ordinary spawns. Returns the instance id.
+## A raider never respawns (`_suppresses_respawn`) and is removed by `remove_raiders` when the raid ends.
+func spawn_raider(creature_id: String, xz: Vector2, goal: Vector2, raid_id: String, n: int) -> String:
+	var exact := WorldPos.from_world(xz.x, 0.0, xz.y)
+	var iid := _spawn(creature_id, exact["chunk"], RAIDER_INDEX_BASE + n)
+	if iid == "":
+		return ""
+	set_instance_pos(iid, exact)
+	var inst: Dictionary = _instances[iid]
+	_store_spawn(inst, inst["pos"])
+	inst["raid"] = raid_id
+	inst["raid_goal"] = Vector2(goal)
+	return iid
+
+const RAIDER_INDEX_BASE := 1000
+
+## Phase 200 — `[{ id, alive, xz }]` for the raiders of `raid_id`.
+func raiders_of(raid_id: String) -> Array:
+	var out: Array = []
+	for iid in _instances:
+		var inst: Dictionary = _instances[iid]
+		if str(inst.get("raid", "")) == raid_id:
+			var p: Vector3 = inst["position"]
+			out.append({ "id": iid, "alive": inst["state"] != "dead", "xz": Vector2(p.x, p.z) })
+	return out
+
+## Phase 200 — the raid is over: its raiders (dead, alive or driven off) leave the world.
+func remove_raiders(raid_id: String) -> void:
+	for iid in _instances.keys():
+		var inst: Dictionary = _instances[iid]
+		if str(inst.get("raid", "")) != raid_id:
+			continue
+		if _pool != null and inst.has("mi") and int(inst["mi"]) >= 0:
+			_pool.release(int(inst["mi"]))
+		if _visuals != null:
+			_visuals.detach_silently(iid)
+		var chunk: Vector2i = inst["chunk"]
+		if _by_chunk.has(chunk):
+			(_by_chunk[chunk] as Array).erase(iid)
+		_instances.erase(iid)
+		_last_broadcast.erase(iid)
+		_spatial.remove(iid)
+		_dead_state.erase(iid)
+	_invalidate_view()
 
 ## Deterministic instance id: derived from the chunk it belongs to, the creature
 ## it is, and its spawn index — the same inputs _deterministic_chunk_position()

@@ -10,6 +10,8 @@ func register() -> void:
 	_run_test("raid: a lost raid takes at most the loss share, a defended one nothing, defence scales it down", _test_losses)
 	_run_test("raid: the cooldown and last result survive a save and reload, a pre-200 world loads as never raided", _test_persistence)
 	_run_test("raid director: warning, pack, defended and lost, forced starts, never with nobody online", _test_director)
+	_run_test("raid director: a spawned pack is judged — all dead defended, one at the hearth lost", _test_director_field)
+	_run_test("raid: raiders are creatures that die for good and leave with the raid", _test_raider_creatures)
 	_run_test("raid: every refusal and result has catalog text", _test_strings)
 
 func _ready_info() -> Dictionary:
@@ -174,3 +176,57 @@ func _test_director() -> void:
 	GameBus.raid_pack_spawn.disconnect(_on_spawn)
 	GameBus.raid_resolved.disconnect(_on_resolved)
 	_free_rig(rig)
+
+func _test_director_field() -> void:
+	var rig := _rig()
+	var s: SettlementSlice = rig["s"]
+	var t0: float = rig["now"][0]
+	var field := { "raiders": [], "removed": [] }
+	var d := RaidDirector.new()
+	d.slice = s
+	d.online_ids = func() -> Array: return ["p1"]
+	d.biome_at = func(_xz: Vector2) -> String: return "TemperateForest"
+	d.spawn_raider = func(c: String, xz: Vector2, _goal: Vector2, _rid: String, n: int) -> String:
+		field["raiders"].append({ "id": "r%d" % n, "alive": true, "xz": xz, "c": c })
+		return "r%d" % n
+	d.raiders_of = func(_rid: String) -> Array: return field["raiders"]
+	d.remove_raiders = func(rid: String) -> void: field["removed"].append(rid)
+	assert_eq(d.start("settlement_1", t0, true), "", "forced start")
+	d.tick(t0 + 121.0)
+	var n: int = field["raiders"].size()
+	assert_true(n >= 4 and n <= 7, "the temperate forest pack is 4 to 7 raiders (%d)" % n)
+	var edge: Vector2 = d.raid_of("settlement_1")["edge"]
+	assert_true(edge.distance_to(s.hearth_xz("settlement_1")) <= s.claim_radius("settlement_1") + 0.01, "they spawn on the claim edge")
+	d.tick(t0 + 130.0)
+	assert_true(d.active("settlement_1"), "raiders alive and far: the fight goes on")
+	for r: Dictionary in field["raiders"]:
+		r["alive"] = false
+	d.tick(t0 + 140.0)
+	assert_false(d.active("settlement_1"), "all dead: over")
+	assert_eq(s.raid_record("settlement_1")["last_result"], "defended", "defended")
+	assert_eq(field["removed"], ["settlement_1"], "the raiders were removed")
+	# A raider at the hearth loses it.
+	field["raiders"].clear()
+	assert_eq(d.start("settlement_1", t0 + 200.0, true), "", "again")
+	d.tick(t0 + 330.0)
+	field["raiders"][0]["xz"] = s.hearth_xz("settlement_1") + Vector2(1.0, 0.0)
+	d.tick(t0 + 340.0)
+	assert_eq(s.raid_record("settlement_1")["last_result"], "lost", "a raider at the hearth: lost")
+	_free_rig(rig)
+
+func _test_raider_creatures() -> void:
+	var c := CreatureSlice.new()
+	add_child(c)
+	var iid := c.spawn_raider("GraywolfPack", Vector2(120.0, -40.0), Vector2(0.0, 0.0), "settlement_1", 0)
+	assert_true(iid != "", "a raider spawned")
+	var list := c.raiders_of("settlement_1")
+	assert_eq(list.size(), 1, "one raider listed")
+	assert_true(bool(list[0]["alive"]), "alive")
+	assert_true((list[0]["xz"] as Vector2).distance_to(Vector2(120.0, -40.0)) < 1.0, "at the edge point")
+	GameBus.creature_died.emit(iid, Vector3.ZERO, "p1", Vector3.ZERO)
+	assert_false(bool(c.raiders_of("settlement_1")[0]["alive"]), "killed")
+	assert_true(c._suppresses_respawn(c._instances[iid]), "a dead raider never respawns")
+	assert_eq(c.raiders_of("other").size(), 0, "other raids have none")
+	c.remove_raiders("settlement_1")
+	assert_eq(c.raiders_of("settlement_1").size(), 0, "removed when the raid ends")
+	c.free()

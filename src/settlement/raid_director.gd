@@ -14,6 +14,16 @@ var biome_at: Callable = Callable()
 ## `(String seed_text) -> float` a deterministic 0..1 value; the default hashes the text.
 var roll: Callable = Callable()
 
+## `(creature_id, xz, goal, raid_id, n) -> String` spawns one raider (CreatureSlice.spawn_raider); "" when none.
+var spawn_raider: Callable = Callable()
+## `(raid_id) -> Array` of { id, alive, xz } (CreatureSlice.raiders_of).
+var raiders_of: Callable = Callable()
+## `(raid_id) -> void` removes the raid's creatures (CreatureSlice.remove_raiders).
+var remove_raiders: Callable = Callable()
+
+## A raider this close to the hearth has reached it.
+const REACH_M := 4.0
+
 var slice: SettlementSlice = null
 ## settlement id -> { phase "warning" | "fighting", started, spawn_at, ends_at, pack [{creature, count}], edge Vector2 }
 var _raids: Dictionary = {}
@@ -90,9 +100,41 @@ func tick(now: float) -> void:
 		var r: Dictionary = _raids[id]
 		if str(r["phase"]) == "warning" and now >= float(r["spawn_at"]):
 			r["phase"] = "fighting"
+			r["spawned"] = _spawn_pack(id, r)
 			GameBus.raid_pack_spawn.emit(id, (r["pack"] as Array).duplicate(true), r["edge"])
-		elif str(r["phase"]) == "fighting" and now >= float(r["ends_at"]):
-			_finish(id, false)
+		elif str(r["phase"]) == "fighting":
+			if now >= float(r["ends_at"]):
+				_finish(id, false)
+			elif raiders_of.is_valid():
+				_judge(id, r)
+
+func _spawn_pack(id: String, r: Dictionary) -> int:
+	if not spawn_raider.is_valid():
+		return 0
+	var goal := slice.hearth_xz(id)
+	var n := 0
+	for row: Dictionary in r["pack"]:
+		for i in int(row["count"]):
+			# A little spread along the edge so the pack is not one point.
+			var at: Vector2 = (r["edge"] as Vector2) + Vector2(float(i) * 1.5, float(n % 3))
+			if str(spawn_raider.call(str(row["creature"]), at, goal, id, n)) != "":
+				n += 1
+	return n
+
+## Defended once every raider is dead; lost the moment a live one reaches the hearth.
+func _judge(id: String, r: Dictionary) -> void:
+	if int(r.get("spawned", 0)) <= 0:
+		return
+	var goal := slice.hearth_xz(id)
+	var alive := 0
+	for e: Dictionary in raiders_of.call(id):
+		if bool(e["alive"]):
+			alive += 1
+			if (e["xz"] as Vector2).distance_to(goal) <= REACH_M:
+				_finish(id, false)
+				return
+	if alive == 0:
+		_finish(id, true)
 
 ## Every raider is dead or driven off.
 func cleared(id: String) -> void:
@@ -101,6 +143,8 @@ func cleared(id: String) -> void:
 
 func _finish(id: String, defended: bool) -> void:
 	_raids.erase(id)
+	if remove_raiders.is_valid():
+		remove_raiders.call(id)
 	var out := slice.end_raid(id, defended)
 	GameBus.raid_resolved.emit(id, str(out.get("result", "")), out.get("stock", {}), float(out.get("damage", 0.0)))
 

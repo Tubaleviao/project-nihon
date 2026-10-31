@@ -36,6 +36,9 @@ func make_slice(ctx: GameRoot) -> Node:
 		raids = RaidDirector.new()
 		raids.slice = slice
 		raids.online_ids = func() -> Array: return root._registry.get_online_player_ids()
+		raids.spawn_raider = func(c: String, xz: Vector2, goal: Vector2, rid: String, n: int) -> String: return root._creature.spawn_raider(c, xz, goal, rid, n)
+		raids.raiders_of = func(rid: String) -> Array: return root._creature.raiders_of(rid)
+		raids.remove_raiders = func(rid: String) -> void: root._creature.remove_raiders(rid)
 		raids.biome_at = func(xz: Vector2) -> String: return str(root._terrain.get_biome_at(xz)) if root._terrain != null else ""
 	root._tree.claim_guard = slice.edit_blocker
 	root._station.settlement_slice = slice

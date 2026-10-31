@@ -452,6 +452,11 @@ func _patrol(iid: String, inst: Dictionary, delta: float) -> void:
 	var ai: Dictionary = _ai[iid]
 	var pos: Vector3   = inst["position"]
 	var target: Vector3 = ai["patrol_target"]
+	# Phase 200 — a raider heads for its raid's goal (the hearth) instead of wandering.
+	if inst.has("raid_goal"):
+		var g: Vector2 = inst["raid_goal"]
+		_move_instance(iid, inst, Vector3(g.x, pos.y, g.y), SPEED_AGGRESSIVE, delta)
+		return
 
 	if pos.distance_to(target) < PATROL_TOLERANCE:
 		ai["patrol_target"] = _random_waypoint(ai["spawn_pos"])
