@@ -261,6 +261,8 @@ func set_skill_for(player_id: String, skill: String, tier: String) -> bool:
 		_skill_tiers[skill] = tier
 	if pid != "" and player_registry != null and player_registry.has_method("record_skill"):
 		player_registry.record_skill(pid, skill, tier)
+		if player_registry.is_authoritative:
+			GameBus.skill_tier_recorded.emit(pid, skill, tier)   # Phase 199: the specialty recompute
 	# Phase 118 — a raised tier may complete a profession's unlock conditions.
 	if profession_slice != null and pid != "":
 		profession_slice.evaluate(pid)
