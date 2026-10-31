@@ -51,7 +51,7 @@ hour. This arc gives a village shared projects, a specialty for each member, rai
 against and upkeep to pay. Its last phase proves the loop with four bots on a dedicated server.
 Raids come from creatures only. Settlement-against-settlement conflict stays deferred.
 
-**Changed 2026-10-31 (Phases 203–211):** the owner removed the claim area and dropped raids. Phase 200 moved to Deferred. Phase 201 (upkeep) and Phase 202 (the loop played, which plays a raid and upkeep) are on hold until Phase 203 decides what a settlement is without a claim. Phase 199 stays: specialties follow from skills, which Phase 206 grows from labour.
+**Changed 2026-10-31 (Phases 203–213):** the owner replaced settlements' claim area with clans and owned structures, and dropped raids. Phase 200 moved to Deferred. Phase 201 (upkeep) and Phase 202 (the loop played, which plays a raid and upkeep) are on hold until Phase 203 decides what a settlement is without a claim. Phase 199 stays: specialties follow from skills, which Phase 207 grows from labour.
 
 | Phase | Title | Status | Spec |
 |---|---|---|---|
@@ -62,23 +62,34 @@ Raids come from creatures only. Settlement-against-settlement conflict stays def
 | 201 | Upkeep: a village that has to keep going | On hold: Phase 203 | below |
 | 202 | The settlement loop, played: four bots found, specialize, trade and defend a village | On hold: Phase 203 | below |
 
-### Arc: owned buildings, an Earth-scale world and buildings that stand up (Phases 203–211)
+### Arc: clans, owned buildings, an Earth-scale world and buildings that stand up (Phases 203–213)
 
-The goal, from the player's side: **what you build is yours (or your clan's) wherever it stands,
-anyone can still break it, nothing spawns next to it, and it can be as tall as Earth's buildings
-on mountains as tall as Earth's, as far as its materials allow.**
+The goal, from the player's side: **you found or join a clan, see what everyone in it is good at
+and ask them for help; what you build is yours or your clan's for as long as it stands; anyone can
+break it, but only with effort; and it can be as tall as Earth's buildings on mountains as tall as
+Earth's, as far as its materials allow.**
 
 Decided by the owner (2026-10-31), replacing the hearth claim of Phases 139–140:
-- **No claim area.** A structure is editable by the player who built it and by that player's clan,
-  wherever it is. Anyone else can damage and destroy it but not edit it.
-- **A spawn-free circle around every building**, larger for a larger building. This is the only
-  area effect left.
-- **Research is per player** and is shared only by writing: books and blueprints. No technology is
-  researched at a settlement site or from a shared stockpile.
-- **Labour is personal experience.** Each labour type grows the worker's own skill (sewing makes
-  you a better sewer). It is not progress for a village.
-- **Chests** have an access mode chosen by their owner: owner only, clan or everyone. A locked
-  chest can be destroyed or lockpicked, depending on its material and technology.
+- **Clans.** A player founds a clan by choosing its name and invites other players. A clan has any
+  number of members, and a player belongs to at most one clan. Every member sees every other
+  member's skills, so they can find the best sewer in the clan and message them to ask for a
+  favour. Clans have tiers from the buildings they own and how rare those buildings' materials are.
+- **Ownership.** When a player builds something, they assign it to their clan or keep it private.
+  Only its owner (the player, or the clan's members) can edit it, wherever it stands. Anyone else
+  can only destroy it by force. It stays its owner's until the owner dismantles it or someone else
+  destroys it.
+- **No claim area.** Two areas remain, both a circle around each building, larger for a larger
+  building. No creature spawns inside it, and no one may build a private building or another clan's
+  building inside a clan building's circle. Destroying the building removes both.
+- **Durability.** Each material has a durability, higher for rarer materials. A block's durability
+  falls with weather, time and damage taken, and how hard it is to destroy depends on it.
+  Dismantling returns materials by durability and skill: everything at full durability with a very
+  high building skill, half at full durability with no skill, and less as durability falls.
+- **Research is per player** and is shared only by writing: books and blueprints.
+- **Labour is personal experience.** Each labour type grows the worker's own skill (sewing makes you
+  a better sewer). It is not progress for a clan.
+- **Chests** have an access mode set by their owner: owner only, clan or everyone. A locked chest can
+  be destroyed or lockpicked, depending on its material and technology.
 - **Raids are not wanted now** (Phase 200 is dropped, see Deferred).
 - **Heights:** peaks to about 8,850 m (Everest is 8,849 m) and buildings up to 163 floors. Floor
   limits depend on the material: wood 2, stone 5, concrete 10, and higher classes up to 163.
@@ -86,21 +97,24 @@ Decided by the owner (2026-10-31), replacing the hearth claim of Phases 139–14
 
 Today the tallest terrain is 512 m (`WorldSystem.maxHeight`), nothing can be placed above 640 m
 (`VoxelConsts.MAX_HEIGHT`), and a finished settlement project is a wall two blocks (0.25 m) high.
-There are no clans (a settlement's members and roles are the nearest thing), no chests, and no
-books or blueprints (the word appears only in technology descriptions). Phase 203 settles the open
-questions in the fabric before any runtime phase starts.
+There are no clans (a settlement's members and roles are the nearest thing), no private messages,
+no chests, no books or blueprints, and no building, sewing or lockpicking skill (the 22 skills
+include Carpentry and Smithing). Phase 203 settles the open questions in the fabric before any
+runtime phase starts.
 
 | Phase | Title | Status | Spec |
 |---|---|---|---|
-| 203 | Ownership, writing, chests and tall structures in the fabric | Planned | below |
-| 204 | Owned structures instead of claims: builder and clan edit anywhere, anyone destroys | Planned | below |
-| 205 | A spawn-free circle around every building | Planned | below |
-| 206 | Labour as personal experience | Planned | below |
-| 207 | Chests: owner, clan or everyone, and locks that can be broken or picked | Planned | below |
-| 208 | Books and blueprints: research shared by writing | Planned | below |
-| 209 | Earth-scale mountains: peaks to about 8,850 m on unrecorded land | Planned | below |
-| 210 | Floors and structural limits at runtime, and the materials above stone | Planned | below |
-| 211 | A clan's tower on a mountain: the arc, played | Planned | below |
+| 203 | Clans, ownership, durability, writing, chests and tall structures in the fabric | Planned | below |
+| 204 | Clans: a name, invites, one clan each, and every member's skills in view | Planned | below |
+| 205 | Owned structures instead of claims: private or clan, durability, dismantling and destruction | Planned | below |
+| 206 | The circle around every building: no spawns, no foreign building | Planned | below |
+| 207 | Labour as personal experience | Planned | below |
+| 208 | Chests: owner, clan or everyone, and locks that can be broken or picked | Planned | below |
+| 209 | Books and blueprints: research shared by writing | Planned | below |
+| 210 | Clan tiers from buildings and material rarity | Planned | below |
+| 211 | Earth-scale mountains: peaks to about 8,850 m on unrecorded land | Planned | below |
+| 212 | Floors and structural limits at runtime, and the materials above stone | Planned | below |
+| 213 | A clan's tower on a mountain: the arc, played | Planned | below |
 
 ---
 
@@ -197,7 +211,7 @@ must stay under one hour.
 
 ---
 
-## Phase 203 — Ownership, writing, chests and tall structures in the fabric
+## Phase 203 — Clans, ownership, durability, writing, chests and tall structures in the fabric
 
 **Goal:** every rule and number of this arc, modelled in the fabric with validators, before any
 GDScript. A fabric design PR only, separate from the implementation phases.
@@ -207,22 +221,34 @@ GDScript. A fabric design PR only, separate from the implementation phases.
 **Depends on:** Phase 198.
 
 **Deliverables:**
-- **Structures and ownership.** A structure is a connected set of placed blocks. It has an owner
-  (the player who placed its first block) and that owner's clan. Owner and clan may place, reshape
-  and take stations on it anywhere in the world. Anyone else may only damage it, at a rate from its
-  structural class. The `Settlement` claim fields (`tiers.claimRadius`, `decayRadiusPerDay`,
+- **Clans.** A `Clan` with a player-chosen name (length, allowed characters, unique, moderated as
+  chat is), a founder, members, invites and roles. A player is in at most one clan. Members see each
+  other's skills. Clan tiers: the score from the buildings a clan owns and their material rarity,
+  and the thresholds per tier.
+- **Structures and ownership.** A structure is a connected set of placed blocks, assigned when
+  built to its builder (private) or the builder's clan. Only the owner (the player, or any member
+  for a clan structure) may place, reshape or take stations on it, anywhere in the world. Anyone
+  else may only damage it. The `Settlement` claim fields (`tiers.claimRadius`, `decayRadiusPerDay`,
   `minSeparation`) and the hearth-site research rule (Phase 140 `materialSource`) are removed.
-- **Spawn-free circle.** The radius as a function of a structure's footprint and height, with a
-  minimum for a single placed block or station and a maximum.
-- **Labour.** A map from each labour type (each project step's work kind, and crafting kinds such
-  as sewing) to the skill it grows, and the XP per labour beat. Project completion no longer
-  advances a village tier.
+- **The circle.** One radius per structure from its footprint and height, with a minimum for a
+  single block or station and a maximum. Inside it no creature spawns, and inside a clan
+  structure's circle no one may start a private structure or another clan's structure.
+- **Durability.** A base durability per material, ranked by rarity (a validator: a rarer material
+  never has less). Loss rates per weather condition (the Phase 128 weather states), per day of age, and
+  per point of damage. A repair rule, if any (open question 4).
+- **Dismantling.** The share of materials returned as a function of durability fraction and the
+  dismantler's building skill: 100% at full durability with a very high skill, 50% at full
+  durability with no skill, falling with durability. A validator checks those two points and that
+  the share never rises as durability falls.
+- **New skills.** Building (the engineering skill dismantling reads), Tailoring (sewing) and
+  Lockpicking, each with its XP curve.
+- **Labour.** A map from each labour type (each project step's work kind, and crafting kinds) to
+  the skill it grows, and the XP per labour beat. Labour gives a clan nothing but the finished thing.
 - **Chests.** A `Chest` station with an access mode (`owner`, `clan`, `everyone`), set only by its
-  owner. Its lock durability and the lockpicking difficulty come from its material and a technology.
-  A lockpicking skill and tool exist.
+  owner. Lock durability and lockpicking difficulty come from its material and a technology.
 - **Writing.** A `Book` that teaches one researched technology and a `Blueprint` that teaches one
-  structure or station recipe. Each is written by a player who knows the content, costs materials,
-  and is consumed or kept when read (decided here).
+  structure or station recipe. Only a player who knows the content can write one, at a material
+  cost, and reading it consumes it or not (decided here).
 - **Heights and floors.** `WorldSystem.maxHeight` about 8,850 m, and a build ceiling (moved from
   `VoxelConsts.MAX_HEIGHT` into the fabric) above the highest peak plus the tallest structure.
   `Structure.floorHeight` 3 m (24 blocks), `Structure.maxFloors` 163, and a structural class with
@@ -233,88 +259,138 @@ GDScript. A fabric design PR only, separate from the implementation phases.
   footprint), each with the lowest structural class allowed past each threshold.
 - `check_*.js` tools proving each new validator rejects a bad table, each with a CI step.
 - Open questions, each settled as a `decisions.js` entry:
-  1. **What is a clan?** Default: a settlement becomes a clan (its members, roles and stockpile
-     stay, the hearth no longer claims land). The alternative is a new group separate from
-     settlements.
-  2. Do the hearth, village tiers and project effects (stockpile capacity, crafting speed) still
-     exist without a claim? Phase 201 (upkeep) pays for those effects and is on hold until this is
-     answered.
-  3. What does destroying a block drop: its material, a share, or nothing? Is destruction allowed
-     while the owner and the whole clan are offline?
-  4. Is a structure's ownership kept when it is joined to another player's structure (two owners
-     touching)?
-  5. Do the floor and shape limits apply to every player build or only to settlement projects?
-     Builds that exist when the rules land are never collapsed (stable-world rule).
-  6. Labour still counts only within `SITE_RADIUS` (8 m) of its project, so you work on a building
+  1. **Building near your own clan.** Default: a clan member may build a private structure inside
+     their own clan's circles. Only outsiders' private structures and other clans' structures are
+     refused there.
+  2. **Clan tiers.** Do all of a clan's buildings count, or only those near each other (a town)?
+     What does a tier give?
+  3. **Forced destruction.** What does the destroyer get back: the dismantling share with their own
+     skill, a smaller share, or nothing? Is it allowed while the owner (and, for a clan structure,
+     every member) is offline?
+  4. **Repair.** Can an owner restore lost durability, and at what cost?
+  5. **Settlements.** Default: an existing settlement becomes a clan with the same name, members
+     and roles. Its hearth becomes an ordinary clan building, and its stockpile a clan chest.
+     Settlement projects become clan projects. Phase 201 (upkeep) stays on hold until project
+     effects are decided here.
+  6. **Touching structures.** Default: each player's or clan's blocks stay theirs when built
+     against another owner's structure, so a wall can have two owners side by side.
+  7. Do the floor and shape limits apply to every build or only to clan projects? Builds that exist
+     when the rules land are never collapsed (stable-world rule).
+  8. Labour still counts only within `SITE_RADIUS` (8 m) of its project, so you work on a building
      where it stands. Kept unless decided otherwise.
 
 **Acceptance criteria:**
 - [ ] `npm run validate` and `npm run check-drift` pass. Every new validator has a `check_*.js`
   that rejects a bad table, and CI runs it.
-- [ ] The fabric has no claim radius, the floor limits wood 2, stone 5 and concrete 10, a top class
-  of 163, and a validator fails if any class exceeds `Structure.maxFloors`.
+- [ ] The fabric has no claim radius; the floor limits wood 2, stone 5 and concrete 10 with a top
+  class of 163; dismantling returns 100% and 50% at the two fixed points.
 - [ ] Every labour type maps to a skill, and a validator rejects one that does not.
-- [ ] The six open questions each have a recorded decision.
+- [ ] The eight open questions each have a recorded decision.
 
 ---
 
-## Phase 204 — Owned structures instead of claims: builder and clan edit anywhere, anyone destroys
+## Phase 204 — Clans: a name, invites, one clan each, and every member's skills in view
 
-**Goal:** the host knows who owns each structure and enforces it everywhere. The hearth claim is
-gone.
+**Goal:** players found and join clans, see what each member is good at, and message the one they
+need.
 
 **Newel dependency:** NO.
 
 **Depends on:** Phase 203.
 
 **Deliverables:**
-- A host-side structure index: blocks to structure, structure to owner and clan, kept as blocks are
-  placed, joined or destroyed, saved with the world, bounded in memory.
-- `edit_blocker` on the voxel, station and tree guards checks the structure under the edit, not a
-  claim. A non-owner's damage wears blocks down at the class rate, and destruction resolves as
-  Phase 203 decided. The owner and online clan members are told when a structure is being damaged.
-- The claim code is removed: `claim_radius`, `claim_at`, tier radii, `at_research_site` and claim
-  decay. Saved settlements load without their claim (a data-format bump).
+- `src/clan/clan_slice.gd` and its wiring: found (name), invite, accept, leave, kick, roles. One
+  clan per player, enforced on the host. Names are validated, unique and moderated.
+- Existing settlements migrate to clans as Phase 203 decided (a data-format bump).
+- The clan roster: every member's skills, sortable by skill, so "who sews best" is one click. The
+  host sends a member's skills only to their own clan's peers, and stops when they leave.
+- Private messages: from the roster (and a chat command) to one player. The host relays them only
+  to the recipient, rate-limits them, and hosts send keys and params for any system text.
 
 **Acceptance criteria:**
-- [ ] Suite: the owner and a clan member can place on and reshape a structure far from any hearth.
-  A third player's placement is refused, and their damage destroys a block after its durability.
-- [ ] Suite: a bare tile next to a hearth can be edited by anyone.
-- [ ] Suite: a save from before this phase loads, with no claim and its structures owned by the
-  players who placed them where that is recorded.
-- [ ] Harness: a client's damage to the host's structure reaches both peers, and its placement on it
-  is refused.
-- [ ] Suite (audit): no owner, clan or durability value is read from a client message.
+- [ ] Suite: founding a second clan, or accepting an invite while in a clan, is refused. A duplicate
+  or invalid name is refused.
+- [ ] Suite: a migrated settlement is a clan with the same name, members and roles.
+- [ ] Harness: a clan member's peer receives another member's skills, and an outsider's peer never
+  does (checked on the wire). A member who leaves stops receiving them.
+- [ ] Harness: a private message reaches only its recipient.
+- [ ] Every new string is in both catalogs, and the i18n key check passes.
 - [ ] Suite green on both boot paths, harness green.
 
 ---
 
-## Phase 205 — A spawn-free circle around every building
+## Phase 205 — Owned structures instead of claims: private or clan, durability, dismantling and destruction
 
-**Goal:** creatures never spawn near a building, and a bigger building keeps a bigger circle free.
+**Goal:** the host knows who owns each structure and enforces it everywhere. A structure wears with
+weather and time, comes apart with effort, and gives back what its condition and its dismantler's
+skill allow. The hearth claim is gone.
 
 **Newel dependency:** NO.
 
 **Depends on:** Phase 204.
 
 **Deliverables:**
-- The creature spawner reads the structure index for the circles that cover a spawn point,
-  through a spatial lookup, so a dense town does not slow spawning.
-- Creatures that walk in from outside are not removed. Only spawning is suppressed.
+- A host-side structure index: block to structure, structure to owner (player or clan), kept as
+  blocks are placed, joined or destroyed, saved with the world, bounded in memory. The builder
+  picks private or clan when placing.
+- `edit_blocker` on the voxel, station and tree guards checks the structure under the edit, not a
+  claim. A non-owner's damage lowers durability, and a block at zero is destroyed.
+- Durability per block: base from its material, lowered by weather, age and damage. Age and weather
+  loss is computed from timestamps when a block is read or ticked, not by touching every block
+  every frame, and days with the server down count once on boot.
+- Dismantling by the owner returns the Phase 203 share. Forced destruction resolves as Phase 203
+  decided. The owner (and online clan members) are told when a structure is damaged or destroyed.
+- The claim code is removed: `claim_radius`, `claim_at`, tier radii, `at_research_site` and claim
+  decay.
 
 **Acceptance criteria:**
-- [ ] Suite: over a simulated day, no creature spawns inside any building's circle, and spawns
-  continue outside it.
+- [ ] Suite: a private structure's owner can edit it far from any hearth, and a clan member cannot.
+  A clan structure can be edited by any member and by no outsider.
+- [ ] Suite: an outsider's damage destroys a block once its durability is gone, and a rarer
+  material takes more damage.
+- [ ] Suite: dismantling at full durability returns 50% with no building skill and 100% with a very
+  high one, and less after a simulated year of rain.
+- [ ] Suite: ownership is unchanged by anything but dismantling or destruction.
+- [ ] Harness: a client's damage to the host's structure reaches both peers, and its placement on it
+  is refused.
+- [ ] Suite (audit): no owner, clan, durability or skill value is read from a client message.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 206 — The circle around every building: no spawns, no foreign building
+
+**Goal:** creatures never spawn near a building, and no one builds their own or another clan's
+structure inside a clan building's circle. A bigger building has a bigger circle, and destroying it
+lifts both effects.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phase 205.
+
+**Deliverables:**
+- A spatial lookup over the structure index's circles, so a dense town does not slow spawning or
+  placement checks.
+- The creature spawner skips points inside any circle. Creatures that walk in are not removed.
+- The host refuses a new structure inside another clan's circle, or a private one by an outsider,
+  as Phase 203 decided. A circle shrinks as its structure loses blocks and goes when it is
+  destroyed.
+
+**Acceptance criteria:**
+- [ ] Suite: over a simulated day, no creature spawns inside any circle, and spawns continue
+  outside.
+- [ ] Suite: an outsider's private structure inside a clan building's circle is refused, and the
+  same placement succeeds once that building is destroyed.
 - [ ] Suite: a larger structure has a larger circle, between the fabric's minimum and maximum.
 - [ ] Playtest: walk/craft/fight stay within budget with a village of structures near spawn.
 - [ ] Suite green on both boot paths, harness green.
 
 ---
 
-## Phase 206 — Labour as personal experience
+## Phase 207 — Labour as personal experience
 
-**Goal:** working on a project or a craft grows the worker's own skill for that kind of work. A
-village gains nothing from labour except the finished thing.
+**Goal:** working on a project or a craft grows the worker's own skill for that kind of work. A clan
+gains nothing from labour except the finished thing.
 
 **Newel dependency:** NO.
 
@@ -322,31 +398,31 @@ village gains nothing from labour except the finished thing.
 
 **Deliverables:**
 - Each labour beat calls `player_registry.add_skill_xp` for the skill Phase 203 maps it to. Phase
-  199's specialties then follow from those skills.
-- Project completion stops counting toward a village tier (`minProjects`).
+  199's specialties then follow from those skills, and the clan roster (Phase 204) shows them.
+- Project completion stops counting toward a tier (`minProjects`).
 
 **Acceptance criteria:**
-- [ ] Suite: a labour beat on a sewing step adds sewing XP to that worker and to no one else.
-- [ ] Suite: completing a project changes no settlement-level value except the project itself.
+- [ ] Suite: a labour beat on a sewing step adds Tailoring XP to that worker and to no one else.
+- [ ] Suite: completing a project changes no clan-level value except the project itself.
 - [ ] Suite (audit): no XP amount is read from a client message.
 - [ ] Suite green on both boot paths, harness green.
 
 ---
 
-## Phase 207 — Chests: owner, clan or everyone, and locks that can be broken or picked
+## Phase 208 — Chests: owner, clan or everyone, and locks that can be broken or picked
 
-**Goal:** a player keeps things in a chest that only they, their clan or everyone can open. A
-locked chest can still be broken open or picked, harder for better chests.
+**Goal:** a player keeps things in a chest that only they, their clan or everyone can open. A locked
+chest can still be broken open or picked, harder for better chests.
 
 **Newel dependency:** NO.
 
-**Depends on:** Phases 203 and 204.
+**Depends on:** Phases 204 and 205.
 
 **Deliverables:**
 - The `Chest` station, its inventory and access mode on the host. Only the owner changes the mode.
   The host checks every open, take and put against it.
-- Destroying a chest spills its contents. Lockpicking is a timed action with the lockpicking skill
-  and tool against the chest's difficulty. Success opens it once, failure can break the tool, and
+- Destroying a chest spills its contents. Lockpicking is a timed action with the Lockpicking skill
+  and a tool against the chest's difficulty. Success opens it once, failure can break the tool, and
   the owner is told.
 - UI: the chest window, the access-mode setting for the owner, and the lockpicking progress.
 
@@ -362,14 +438,14 @@ locked chest can still be broken open or picked, harder for better chests.
 
 ---
 
-## Phase 208 — Books and blueprints: research shared by writing
+## Phase 209 — Books and blueprints: research shared by writing
 
 **Goal:** a technology is learnt by researching it or by reading a book about it. A structure or
-station is learnt from a blueprint. Nothing is shared through a settlement.
+station is learnt from a blueprint. Nothing is shared through a clan.
 
 **Newel dependency:** NO.
 
-**Depends on:** Phases 203 and 204.
+**Depends on:** Phase 203.
 
 **Deliverables:**
 - Writing: a player who knows a technology or recipe writes a book or blueprint at a station, with
@@ -380,14 +456,39 @@ station is learnt from a blueprint. Nothing is shared through a settlement.
 
 **Acceptance criteria:**
 - [ ] Suite: a player who reads a book unlocks its technology, and one who has not read it is
-  unchanged. Writing a book about a technology the writer does not know is refused.
-- [ ] Suite: a blueprint teaches its recipe, and no research reads a settlement stockpile.
+  unchanged. Writing about a technology the writer does not know is refused.
+- [ ] Suite: a blueprint teaches its recipe, and no research reads a shared stockpile.
 - [ ] Harness: a book handed to a client teaches the client, not the host's player.
 - [ ] Suite green on both boot paths, harness green.
 
 ---
 
-## Phase 209 — Earth-scale mountains: peaks to about 8,850 m on unrecorded land
+## Phase 210 — Clan tiers from buildings and material rarity
+
+**Goal:** a clan rises in tier by owning more buildings of rarer materials, and falls when they are
+dismantled or destroyed.
+
+**Newel dependency:** NO.
+
+**Depends on:** Phases 205 and 206.
+
+**Deliverables:**
+- The clan score from the structure index (count and material rarity, counted as Phase 203
+  decided), recomputed incrementally when a clan structure is built, loses blocks or is destroyed.
+- Tier changes are synced to members with a keyed notice, and whatever a tier gives (Phase 203)
+  is applied.
+- UI: the clan's tier and score on the roster.
+
+**Acceptance criteria:**
+- [ ] Suite: adding a stone building raises a clan's score more than a wood one, and crossing a
+  threshold changes its tier once.
+- [ ] Suite: destroying the building that held a clan above a threshold drops its tier.
+- [ ] Suite (audit): no score or tier is read from a client message.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 211 — Earth-scale mountains: peaks to about 8,850 m on unrecorded land
 
 **Goal:** the generator makes mountain ranges as tall as Earth's, and the client draws, streams and
 collides with them.
@@ -419,24 +520,24 @@ collides with them.
 
 ---
 
-## Phase 210 — Floors and structural limits at runtime, and the materials above stone
+## Phase 212 — Floors and structural limits at runtime, and the materials above stone
 
 **Goal:** the host refuses a build its material cannot hold up: too many floors, or a shape too
 unusual for its class. Concrete, steel and composites exist, so every class has something to build
-with. Settlement projects become real buildings with floors.
+with. Clan projects become real buildings with floors.
 
 **Newel dependency:** NO.
 
-**Depends on:** Phases 204 and 209.
+**Depends on:** Phases 205 and 211.
 
 **Deliverables:**
-- `src/building/structure_rules.gd`: pure, incremental functions over the Phase 204 structure
+- `src/building/structure_rules.gd`: pure, incremental functions over the Phase 205 structure
   index. Floors above ground, the weakest class carrying each block, and the shape measures. A
   163-floor tower is not rescanned on every placement.
 - The host refuses a placement that breaks a limit, with a localized reason.
 - Fabric materials, items, recipes and technologies for concrete, steel and at least one composite,
-  with block placeholders in `assets/` (placeholder rule). The top class needs a ley-gated
-  ingredient.
+  with their durability and class, and block placeholders in `assets/` (placeholder rule). The top
+  class needs a ley-gated ingredient.
 - Project layouts get real heights: a wood shed is one 3 m floor. Each block is placed at its exact
   height, `dy` included (Phase 198 drops every block on its column's top, which closes a doorway
   above the second course). A project's blocks go out in batched edits and rebuilds.
@@ -455,22 +556,23 @@ with. Settlement projects become real buildings with floors.
 
 ---
 
-## Phase 211 — A clan's tower on a mountain: the arc, played
+## Phase 213 — A clan's tower on a mountain: the arc, played
 
 **Goal:** prove the arc with the playtest bot.
 
 **Newel dependency:** NO.
 
-**Depends on:** Phases 205–210.
+**Depends on:** Phases 206–212.
 
 **Deliverables:**
-- A `tower` playtest step: the bot builds past the wood floor limit (refused), switches to a higher
-  class and builds on, sets a chest to owner-only, reads a book, and flies to an 8 km peak,
-  screenshotting the tower and the peak.
+- A `tower` playtest step: the bot founds a clan, builds a clan structure past the wood floor limit
+  (refused), switches to a higher class and builds on, sets a chest to owner-only, reads a book,
+  dismantles a fresh block for half its material, and flies to an 8 km peak, screenshotting the
+  tower and the peak.
 
 **Acceptance criteria:**
-- [ ] Playtest: the step passes, with the wood refusal at floor 3, and walk/craft/fight stay within
-  budget.
+- [ ] Playtest: the step passes, with the wood refusal at floor 3 and a 50% return, and
+  walk/craft/fight stay within budget.
 - [ ] Playtest: no creature spawns inside any building's circle during the session.
 - [ ] Suite green on both boot paths, harness green.
 
@@ -496,7 +598,7 @@ with. Settlement projects become real buildings with floors.
   deterministic: **WFC** for ruins, villages and dungeons, and a **brick occupancy map** if meshing
   becomes the bottleneck.
 - **Raids** (dropped 2026-10-31, was Phase 200) — a warned, bounded creature attack on a village. Not wanted for now. Its spec is in git history (ROADMAP.md before PR #540).
-- **Settlement against settlement** — Phase 204 lets anyone destroy a structure they do not own. Organized sieges, wars and disputes between clans need governance and fairness rules first.
+- **Settlement against settlement** — Phase 205 lets anyone destroy a structure they do not own. Organized sieges, wars and disputes between clans need governance and fairness rules first.
 - **Real cross-region multiplayer run** — Phase 135 emulates WAN profiles in the harness. A run
   between real regions remains.
 - **Automatic LOD mesh decimation** — simplified meshes are hand-authored (Phase 23).
