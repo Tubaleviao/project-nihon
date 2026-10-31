@@ -339,6 +339,8 @@ func run(root: Node, role: String) -> void:
 	GameBus.tree_chop_requested.connect(_on_chop_requested)
 	# Deaths are observed the same way, and for the same reason (see `_deaths`).
 	GameBus.player_died.connect(_on_player_died)
+	# `/heal` landings are counted over the whole run too (see `_admin_heals`).
+	GameBus.admin_healed.connect(_on_admin_healed)
 	# Chat lines and teleports are observed over the whole run, like deaths (see `_chat_seen`).
 	GameBus.chat_posted.connect(_on_chat_posted)
 	GameBus.system_message.connect(_on_system_message)
@@ -2091,30 +2093,45 @@ func _step_carcass_synced() -> void:
 		# disconnect drops the body where the host has it at that moment (possibly short of `walked`).
 		var followed: bool = carried and await _await_until(func() -> bool:
 			return _root._carcass.has_carcass(cid) and _root._carcass.position_of(cid).distance_to(walked) < 0.5, 4.0)
-		await _await_settle(4.0)   # the peer stays "walked" while the client watches the body arrive
+		# The peer stays "walked" while the client watches the body arrive. Scaled with the link like every
+		# other wait: once the probe resets, the carrier is back past the leash and lets go of the body, so a
+		# fixed 4 s was the client's whole window to see it carried, too short under a lossy link.
+		await _await_settle(6.0 * _time_scale)
 		_root._carcass_wiring.position_probe = Callable()
 		_report("carcass_synced", verdict(carried and followed and not pool.is_empty(), true), "worked-and-carried" if carried and followed else ("carry_refused" if not carried else "did_not_follow"))
 		return
 	var slice: Node = _root._carcass
-	var first_seen := {}
+	# Every position seen per body (a new one when it moved 0.25 m), not only the first: under a lossy link
+	# the first sighting can arrive mid-carry, and the walk then leaves it short of the bar from there.
+	var seen_at := {}
+	var note := func(id: String) -> void:
+		var at: Vector3 = slice.get_carcass(id)["position"]
+		var list: Array = seen_at.get(id, [])
+		if (list.is_empty() or (list[-1] as Vector3).distance_to(at) > 0.25) and list.size() < 64:
+			list.append(at)
+		seen_at[id] = list
 	var saw_worked: bool = await _await_until(func():
 		for id in slice.ids():
-			if not first_seen.has(id):
-				first_seen[id] = slice.get_carcass(id)["position"]
+			note.call(id)
 			var left: Array = slice.get_carcass(id)["entries"]
 			if not left.is_empty() and left.all(func(e): return e["tool"] != "knife"):
 				return true
 		return false, _step_timeout())
 	# The host planted the body 2 m beside this peer (+x), so a carry pulls it 2 m back onto the peer and the
-	# host's 6 m walk leaves it 4 m past where it first appeared. Measured from there: this client's own
+	# host's 6 m walk leaves it 4 m past where it first appeared. Measured from any position this client saw it
+	# at (`seen_at`), so a late first sighting still counts the whole walk; this client's own
 	# position need not match the host's last report of it. The bar is the host's own (within 0.5 m of the
 	# walk's end): finishing earlier disconnects this peer while the body is still on its way, and the host
 	# then drops it short of where its check looks.
 	var saw_follow: bool = saw_worked and await _await_until(func():
 		for id in slice.ids():
+			note.call(id)
 			var c: Dictionary = slice.get_carcass(id)
-			if str(c["carrier"]) != "" and first_seen.has(id) and (c["position"] as Vector3).distance_to(first_seen[id]) > 3.5:
-				return true
+			if str(c["carrier"]) == "":
+				continue
+			for at: Vector3 in seen_at.get(id, []):
+				if (c["position"] as Vector3).distance_to(at) > 3.5:
+					return true
 		return false, _step_timeout())
 	_report("carcass_synced", verdict(saw_worked and saw_follow, true), "worked-and-carried" if saw_worked and saw_follow else ("entries_not_synced" if not saw_worked else "carry_not_followed"))
 
@@ -2192,6 +2209,14 @@ var _deaths: int = 0
 
 func _on_player_died(_position: Vector3, _killer_id: String, _landing: Vector3) -> void:
 	_deaths += 1
+
+## `/heal` landings on THIS machine, counted over the whole run like deaths. Steps have no barrier, so
+## under a lossy link the client can reach the admin step after the host's heal already landed; hurting
+## itself then would overwrite the heal, and no second heal ever comes.
+var _admin_heals: int = 0
+
+func _on_admin_healed() -> void:
+	_admin_heals += 1
 
 ## The lowest token level seen for the peer while the rate-limit step waits. Sampled
 ## inside the convergence predicate rather than once at the end: the bucket refills at
@@ -2474,10 +2499,13 @@ func _step_admin_moves_synced() -> void:
 		await _await_settle(2.0)
 		_report("admin_moves_synced", verdict(ok, true), "sent" if ok else "host_refused")
 		return
-	_root._player.set_hp(40.0)
+	# The client hurts itself first so the heal has a gap to fill, unless the heal already landed (see
+	# `_admin_heals`): then the gap would never be filled.
+	if _admin_heals == 0:
+		_root._player.set_hp(40.0)
 	var admin_flag: bool = _root._ui != null and _root._ui.is_admin
 	var moved: bool = await _await_until(func(): return is_equal_approx(_root._player.admin_speed_factor, 2.0) and _root._player.flying, _step_timeout())
-	var healed: bool = await _await_until(func(): return _root._player.get_hp() >= PlayerSlice.MAX_HP, _step_timeout())
+	var healed: bool = await _await_until(func(): return _admin_heals > 0 and _root._player.get_hp() >= PlayerSlice.MAX_HP, _step_timeout())
 	var ok := moved and healed and not admin_flag
 	_report("admin_moves_synced", verdict(ok, true), "sent" if ok else ("not_moved" if not moved else ("not_healed" if not healed else "client_thinks_admin")))
 
