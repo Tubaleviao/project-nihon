@@ -516,6 +516,8 @@ func separate_bodies(insts: Array, targets: Dictionary) -> void:
 		var iid: String = inst["instance_id"]
 		var pos: Vector3 = inst["position"]
 		var exact := _exact_of(inst)
+		var chunk: Vector2i = exact["chunk"]
+		var local: Vector3 = exact["local"]
 		var r := CreatureBody.radius_of(str(inst["creature_id"]))
 		for nid in creature_slice.creatures_in_radius(exact, r + CreatureBody.MAX_RADIUS):
 			# Each pair once (the lower id leads), and only with live neighbours in range.
@@ -523,8 +525,14 @@ func separate_bodies(insts: Array, targets: Dictionary) -> void:
 				continue
 			var other: Dictionary = by_id[nid]
 			# Phase 195 — the pair is pushed on its exact offset (the neighbour placed relative to this body),
-			# not on two float32 world points a metre apart far from the origin.
-			var push := CreatureBody.pair_push(pos, r, pos + WorldPos.offset_between(exact, _exact_of(other)),
+			# not on two float32 world points a metre apart far from the origin. Inlined (this runs per pair
+			# per frame): the local difference, plus the integer chunk step only when they straddle an edge.
+			var there := _exact_of(other)
+			var oc: Vector2i = there["chunk"]
+			var gap: Vector3 = (there["local"] as Vector3) - local
+			if oc != chunk:
+				gap = WorldPos.offset_between(exact, there)
+			var push := CreatureBody.pair_push(pos, r, pos + gap,
 					CreatureBody.radius_of(str(other["creature_id"])), iid + "|" + str(nid))
 			if push == Vector3.ZERO:
 				continue

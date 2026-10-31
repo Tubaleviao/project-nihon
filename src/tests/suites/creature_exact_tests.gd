@@ -103,6 +103,18 @@ func _test_exact_hash() -> void:
 	assert_true(h.query_radius({"chunk": FAR, "local": Vector3(8.0, 0.0, 8.1)}, 0.15).has("x"), "found 0.1 m away")
 	h.remove("x")
 	assert_eq(h.size(), 0, "and removed")
+	# A body-sized query probes only the cells its square overlaps (separate_bodies runs one per creature
+	# per frame), and still finds a neighbour across a chunk edge on the exact offset.
+	h.insert("w", {"chunk": FAR, "local": Vector3(0.3, 0.0, 12.0)})
+	h.insert("e", {"chunk": FAR - Vector2i(1, 0), "local": Vector3(WorldPos.CHUNK_METERS - 0.3, 0.0, 12.0)})
+	var before := h.probes
+	var near := h.query_radius({"chunk": FAR, "local": Vector3(4.0, 0.0, 12.0)}, 2.5)
+	assert_eq(h.probes - before, 1, "a 2.5 m query inside one 8 m cell probes that cell alone")
+	assert_true(near.is_empty(), "and holds nothing 3.7 m away")
+	before = h.probes
+	var edge := h.query_radius({"chunk": FAR, "local": Vector3(0.1, 0.0, 12.0)}, 0.5)
+	assert_eq(h.probes - before, 2, "across the chunk edge it probes the cell on each side")
+	assert_true(edge.has("w") and edge.has("e"), "and finds both neighbours on the exact offset")
 
 func _test_far_fold_log_replay() -> void:
 	var c := CreatureSlice.new()

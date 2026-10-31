@@ -15,7 +15,9 @@ const WorldPos := preload("res://src/terrain/world_pos.gd")
 const CELL_METERS := 8.0
 const CELLS_PER_CHUNK := int(WorldPos.CHUNK_METERS / CELL_METERS)
 
-## id → cell (Vector2i), id → exact position, cell → { id: true }.
+## id → cell (Vector2i), id → exact position, cell → { id: local in the cell's chunk } (a cell lies
+## inside one chunk, so that local with the cell's chunk is the exact position, and a query reads each
+## candidate with one lookup).
 var _id_to_cell: Dictionary = {}
 var _positions: Dictionary = {}
 var _cells: Dictionary = {}
@@ -40,7 +42,7 @@ func insert(id, pos: Dictionary) -> void:
 	_positions[id] = pos
 	if not _cells.has(c):
 		_cells[c] = {}
-	_cells[c][id] = true
+	_cells[c][id] = _local_in_cell(pos, c)
 
 func remove(id) -> void:
 	if not _positions.has(id):
@@ -61,25 +63,51 @@ func update(id, pos: Dictionary) -> void:
 	var c := cell_of(pos)
 	if c == _id_to_cell[id]:
 		_positions[id] = pos
+		_cells[c][id] = _local_in_cell(pos, c)
 		return
 	insert(id, pos)
 
-## Every id within `radius` metres (3D) of the exact `pos`.
+## Every id within `radius` metres (3D) of the exact `pos`. The probed cells are the ones the query's XZ
+## square overlaps (as in the float hash: one to four for a body-sized radius, not a fixed 3×3 block), and
+## the distance is the exact offset (the integer chunk step of the candidate's cell, folded once per cell
+## with the query's local, plus the candidate's local): this runs once per creature per frame in
+## `separate_bodies`, so a candidate costs one lookup and one add, as in the float hash.
 func query_radius(pos: Dictionary, radius: float) -> Array:
 	var out: Array = []
 	var r2 := radius * radius
-	var center := cell_of(pos)
-	var reach := ceili(radius / CELL_METERS)
-	for cx in range(center.x - reach, center.x + reach + 1):
-		for cz in range(center.y - reach, center.y + reach + 1):
+	var chunk: Vector2i = pos["chunk"]
+	var local: Vector3 = pos["local"]
+	var base_x := chunk.x * CELLS_PER_CHUNK
+	var base_z := chunk.y * CELLS_PER_CHUNK
+	var min_x := base_x + floori((local.x - radius) / CELL_METERS)
+	var max_x := base_x + floori((local.x + radius) / CELL_METERS)
+	var min_z := base_z + floori((local.z - radius) / CELL_METERS)
+	var max_z := base_z + floori((local.z + radius) / CELL_METERS)
+	for cx in range(min_x, max_x + 1):
+		# The cell's chunk step from the query's, folded with the query's own local into one shift.
+		var shift_x := float(floori(float(cx) / CELLS_PER_CHUNK) - chunk.x) * WorldPos.CHUNK_METERS - local.x
+		for cz in range(min_z, max_z + 1):
 			probes += 1
-			var c := Vector2i(cx, cz)
-			if not _cells.has(c):
+			var ids: Variant = _cells.get(Vector2i(cx, cz))
+			if ids == null:
 				continue
-			for id in _cells[c]:
-				if WorldPos.offset_between(pos, _positions[id]).length_squared() <= r2:
+			var shift := Vector3(shift_x, -local.y,
+				float(floori(float(cz) / CELLS_PER_CHUNK) - chunk.y) * WorldPos.CHUNK_METERS - local.z)
+			for id in ids:
+				if ((ids[id] as Vector3) + shift).length_squared() <= r2:
 					out.append(id)
 	return out
+
+## `pos`'s local re-expressed in the chunk holding cell `c` (the same as `local` for a normalised position;
+## a record whose local runs past its chunk's edge is still placed exactly).
+static func _local_in_cell(pos: Dictionary, c: Vector2i) -> Vector3:
+	var chunk: Vector2i = pos["chunk"]
+	var local: Vector3 = pos["local"]
+	var dx := chunk.x - floori(float(c.x) / CELLS_PER_CHUNK)
+	var dz := chunk.y - floori(float(c.y) / CELLS_PER_CHUNK)
+	if dx == 0 and dz == 0:
+		return local
+	return Vector3(local.x + float(dx) * WorldPos.CHUNK_METERS, local.y, local.z + float(dz) * WorldPos.CHUNK_METERS)
 
 ## The exact cell of a `{chunk, local}` position: integer chunk arithmetic, no world metre in between.
 static func cell_of(pos: Dictionary) -> Vector2i:
