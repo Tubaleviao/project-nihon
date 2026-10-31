@@ -203,6 +203,29 @@ func place_block(world_pos: Vector3, normal: Vector3, material: String = "", pla
 	s._note_claim_activity(player_id, probe)
 	return true
 
+## Phase 198 — the host builds one block of a finished settlement structure on top of the column at
+## `exact` (`{chunk, local}`; only x and z count): no pack is debited (the project took its materials) and
+## no claim guard asks (the structure stands in its own claim). The same edit record and `block_changed`
+## sync as a placement, so peers in range see an ordinary world edit. False when the material is unknown
+## or the column is full.
+func place_structure_block(exact: Dictionary, material: String) -> bool:
+	if not GameData.MATERIALS.has(material) or not (exact.get("chunk", null) is Vector2i) or not (exact.get("local", null) is Vector3):
+		return false
+	var probe = s._resolve_edit_tile("place", Vector3.ZERO, Vector3.UP, exact)
+	var tile: Vector2i = probe["tile"]
+	# A y above every run top: the span lands on the column's own surface.
+	var span = s._place_span(s.get_runs_at_tile(tile), Vector3(0.0, 1.0e9, 0.0), Vector3.UP)
+	if span.is_empty():
+		return false
+	s._append_edit(tile, { "op": "add", "bottom": span["bottom"], "top": span["top"], "material": material })
+	s._mark_dirty(tile)
+	s._settle_note(tile)
+	s._rebuild_chunk_at_tile(tile)
+	var pos := Vector3(probe["xz"].x, float(span["bottom"]), probe["xz"].y)
+	GameBus.block_edit_resolved.emit(tile, float(span["top"]))
+	GameBus.block_changed.emit("place", pos, Vector3.UP, material)
+	return true
+
 ## Resolve the target tile for a block edit from the hit position + face normal.
 ## A side-face hit lands on the boundary between two columns, so we step along
 ## the normal: back for mining (into the block aimed at), forward for placing

@@ -18,7 +18,7 @@ const STEP_IDS := [
 	"respawn",
 	"map", "waystone",
 	"skills", "tier_up", "character",
-	"chat", "trade", "settlement",
+	"chat", "trade", "settlement", "found_village", "start_project", "contribute_project",
 ]
 
 
@@ -52,7 +52,7 @@ func _test_steps_in_order() -> void:
 		ids.append(str(s["id"]))
 	assert_eq(ids, STEP_IDS, "the steps in fabric order")
 	var chapters: Array = Array(t.get("chapters"))
-	assert_eq(chapters.size(), 10, "ten chapters")
+	assert_eq(chapters.size(), 11, "eleven chapters")
 	assert_eq(str(chapters[0]), "moving", "moving comes first")
 	# Chapters appear in the chapters list order, each as one contiguous run.
 	var last := -1

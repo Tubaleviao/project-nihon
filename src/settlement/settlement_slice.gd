@@ -7,7 +7,8 @@ extends Node
 ##
 ## Plug contract (GameBus):
 ##   IN  : settlement_intent(action, args, player_id)
-##   OUT : settlement_resolved(player_id, action, ok, reason), settlements_changed()
+##   OUT : settlement_resolved(player_id, action, ok, reason), settlements_changed(),
+##         settlement_project_changed(settlement_id, project, what, player_id)
 ##
 ## Positions are ground metres as doubles (`chunk * CHUNK_METERS + local`), so a claim far from the
 ## origin stays exact. Time is Unix seconds from `now_sec`; a "day" is 86,400 s.
@@ -17,6 +18,7 @@ extends Node
 ##   found(player_id, name, xz, consume) -> String      "" when founded, else a reason code
 ##   invite(actor, target) / join(player, id) / set_role(actor, target, role) / leave(player)
 ##   deposit(player, item, qty) / withdraw(player, item, qty)
+##   start_project(actor, key) / contribute(actor, key, item, qty, source) / labour(actor, key)   (Phase 198)
 ##   edit_blocker(player_id, xz) -> String             "" when the edit is allowed
 ##   settlement_of(player_id) -> String                id of the settlement the player belongs to
 ##   tick(now)                                         grow, abandon, decay and free settlements
@@ -25,6 +27,7 @@ const I18n := preload("res://src/core/i18n.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
+const ProjectRules := preload("res://src/settlement/project_rules.gd")
 
 const DAY_SEC := 86400.0
 ## Items per stockpile stack.
@@ -38,13 +41,22 @@ const INVITE_TTL_SEC := 7.0 * DAY_SEC
 const MAX_INTENT_ENTRIES := 256
 const MAX_SETTLEMENTS := 512
 const MAX_QTY := 10000
-const ACTIONS := ["found", "invite", "join", "role", "leave", "deposit", "withdraw", "uninvite"]
+## Phase 198 — labour counts only within this many metres of a project's site.
+const SITE_RADIUS := 8.0
+## Phase 198 — a labour beat credits at most this many seconds since the last; a longer gap restarts the clock.
+const LABOUR_GAP_SEC := 2.5
+## Phase 198 — the settlement record's format: 2 added `projects` (a format-1 record loads with none).
+const DATA_FORMAT := 2
+const ACTIONS := ["found", "invite", "join", "role", "leave", "deposit", "withdraw", "uninvite",
+	"project_start", "project_give", "project_work"]
 const ROLES := ["founder", "elder", "member", "guest"]
 
 ## Every refusal code an action can return.
 const REASONS := ["unknown_player", "rate_limited", "bad_args", "no_hearth", "already_member", "too_close",
 	"too_many", "not_member", "no_permission", "unknown_settlement", "not_invited", "full", "bad_role",
-	"founder_locked", "not_in_claim", "no_stock", "over_limit", "no_inventory", "too_far", "unknown_action", "durable", "no_such_invite"]
+	"founder_locked", "not_in_claim", "no_stock", "over_limit", "no_inventory", "too_far", "unknown_action", "durable", "no_such_invite",
+	"unknown_project", "project_exists", "tier_too_low", "too_many_projects", "project_done", "unknown_item", "too_much",
+	"labour_done", "no_tool"]
 
 const DEFAULT_RULES := {
 	"hearthStation": "hearth", "hearthItem": "Hearth", "guildMaxSettlements": 1,
@@ -84,6 +96,13 @@ var _next_name: int = 1
 var _last_intent: Dictionary = {}
 ## id -> claim radius last announced for an abandoned (decaying) settlement.
 var _radius_pushed: Dictionary = {}
+## Phase 198 — `(player_id) -> bool` whether the player holds a tool (labour needs one); set by the wiring.
+var tool_in_hand: Callable = Callable()
+## Phase 198 — `(id, key, site {x, z}) -> void` places a finished structure in the claim (site in ground metres
+## as doubles); set by the wiring.
+var place_structure: Callable = Callable()
+## pid -> { id, key, at } the last labour beat (mono seconds).
+var _labour_clock: Dictionary = {}
 ## Client view: what the host last sent.
 var _view: Dictionary = {}
 
@@ -94,6 +113,7 @@ func _ready() -> void:
 ## A player left: their rate-limit entry goes with them.
 func forget_player(player_id: String) -> void:
 	_last_intent.erase(player_id)
+	_labour_clock.erase(player_id)
 
 # ── rules ────────────────────────────────────────────────────────────────
 
@@ -118,17 +138,20 @@ func rules() -> Dictionary:
 func role_rules(role: String) -> Dictionary:
 	return (rules()["roles"] as Dictionary).get(role, { "build": false, "take": false, "invite": false, "withdrawLimit": 0 })
 
-## The tier a settlement has earned: the highest whose member count and age thresholds both hold.
+## The tier a settlement has earned: the highest whose member count holds and whose age threshold, or
+## (Phase 198, for a tier with `minProjects`) completed-project count, holds.
 func tier_for(id: String, now: float) -> String:
 	var s: Dictionary = _settlements.get(id, {})
 	if s.is_empty():
 		return ""
 	var tiers: Dictionary = rules()["tiers"]
 	var days: float = maxf(0.0, now - float(s["created"])) / DAY_SEC
+	var built := ProjectRules.completed_count(s.get("projects", {}))
 	var best: String = "founded"
 	for name: String in TIER_ORDER:
 		var t: Dictionary = tiers.get(name, {})
-		if (s["members"] as Dictionary).size() >= int(t.get("minMembers", 1)) and days >= float(t.get("minDays", 0)):
+		var aged: bool = days >= float(t.get("minDays", 0)) or (t.has("minProjects") and built >= int(t["minProjects"]))
+		if (s["members"] as Dictionary).size() >= int(t.get("minMembers", 1)) and aged:
 			best = name
 	return best
 
@@ -153,7 +176,8 @@ func capacity_stacks(id: String) -> int:
 		return 0
 	var status := str(s["status"])
 	var tier: String = "founded" if status == "abandoned" else status
-	return int((rules()["stockpile"] as Dictionary).get(tier, {}).get("capacityStacks", 0))
+	return int((rules()["stockpile"] as Dictionary).get(tier, {}).get("capacityStacks", 0)) \
+		+ int(project_effect(id, "stockpileCapacity"))
 
 func used_stacks(id: String) -> int:
 	var n := 0
@@ -279,7 +303,7 @@ func found(player_id: String, sname: String, xz: Vector2, consume: bool = true, 
 	_settlements[id] = {
 		"id": id, "name": sname, "name_n": name_n, "founder": pid, "members": { pid: "founder" }, "invites": {},
 		"created": now, "last_active": now, "hx": xz.x, "hz": xz.y, "status": "founded",
-		"abandoned_at": 0.0, "abandoned_radius": 0.0, "stock": {}, "taken": {},
+		"abandoned_at": 0.0, "abandoned_radius": 0.0, "stock": {}, "taken": {}, "projects": {},
 	}
 	if WorldPos.is_plausible_pos(exact):
 		_settlements[id]["hearth"] = WorldPos.pos_to_wire(exact)
@@ -539,6 +563,155 @@ func note_edit(player_id: String, xz: Vector2) -> void:
 	if id != "" and edit_blocker(player_id, xz) == "":
 		_touch(id)
 
+# ── projects (Phase 198) ─────────────────────────────────────────────────
+
+## Standing projects' effect `kind` for settlement `id` (see ProjectRules.EFFECT_KINDS).
+func project_effect(id: String, kind: String) -> float:
+	return ProjectRules.effect_total(_settlements.get(id, {}).get("projects", {}), kind)
+
+func projects_of(id: String) -> Dictionary:
+	return (_settlements.get(id, {}).get("projects", {}) as Dictionary).duplicate(true)
+
+## Start project `key` at the actor's feet (or at `site`, a host-side caller's ground point; an intent never
+## names one). Needs a role with `invite`, the site in the claim, and the tier.
+func start_project(actor: String, key: String, site: Variant = null) -> String:
+	var pid := _pid(actor)
+	var id := settlement_of(pid)
+	if id == "":
+		return "not_member"
+	if not bool(role_rules(role_of(pid, id))["invite"]):
+		return "no_permission"
+	var xz: Variant = site if site is Vector2 else _player_xz(pid)
+	if not (xz is Vector2) or dist_m(_hearth_xz(_settlements[id]), xz as Vector2) > claim_radius(id):
+		return "not_in_claim"
+	var s: Dictionary = _settlements[id]
+	var tier: String = "founded" if str(s["status"]) == "abandoned" else str(s["status"])
+	var why := ProjectRules.start_blocker(key, tier, s["projects"])
+	if why != "":
+		return why
+	s["projects"][key] = { "key": key, "by": pid, "started": float(now_sec.call()), "site": { "x": (xz as Vector2).x, "z": (xz as Vector2).y },
+		"given": {}, "work": 0.0, "status": "building", "done_at": 0.0, "contributors": {} }
+	_touch(id)
+	GameBus.settlement_project_changed.emit(id, key, "started", pid)
+	GameBus.settlements_changed.emit()
+	return ""
+
+## Bring `qty` of `item` to project `key`, from the contributor's pack (`source` "bag") or from the
+## stockpile ("stock", counted against the role's daily `withdrawLimit` like a withdrawal). All or nothing.
+func contribute(actor: String, key: String, item: String, qty: int, source: String = "bag") -> String:
+	var pid := _pid(actor)
+	var id := settlement_of(pid)
+	if id == "":
+		return "not_member"
+	if item == "" or item.length() > 64 or qty < 1 or qty > MAX_QTY or not (source in ["bag", "stock"]):
+		return "bad_args"
+	var role := role_of(pid, id)
+	var rr := role_rules(role)
+	if not bool(rr["build"]):
+		return "no_permission"
+	var s: Dictionary = _settlements[id]
+	var state: Dictionary = (s["projects"] as Dictionary).get(key, {})
+	var why := ProjectRules.contribution_blocker(ProjectRules.def_of(key), state, item, qty)
+	if why != "":
+		return why
+	if not _in_own_claim(pid, id):
+		return "not_in_claim"
+	if source == "stock":
+		var day := floori(float(now_sec.call()) / DAY_SEC)
+		var taken: Dictionary = (s["taken"] as Dictionary).get(pid, { "day": day, "n": 0 })
+		if int(taken["day"]) != day:
+			taken = { "day": day, "n": 0 }
+		why = ProjectRules.stock_draw_blocker(role, rr, int(taken["n"]), qty)
+		if why != "":
+			return why
+		var stock: Dictionary = s["stock"]
+		if int(stock.get(item, 0)) < qty:
+			return "no_stock"
+		stock[item] = int(stock[item]) - qty
+		if int(stock[item]) <= 0:
+			stock.erase(item)
+		taken["n"] = int(taken["n"]) + qty
+		s["taken"][pid] = taken
+	else:
+		var inv := _inventory(pid)
+		if inv == null or not inv.has_method("consume_items"):
+			return "no_inventory"
+		if inv.get_item_count(item) < qty or not inv.consume_items({ item: qty }):
+			return "no_stock"
+		_push_inventory(pid)
+	state["given"][item] = int(state["given"].get(item, 0)) + qty
+	_credit(state, pid, "items", qty)
+	_touch(id)
+	GameBus.settlement_project_changed.emit(id, key, "contributed", pid)
+	_maybe_complete(id, key)
+	GameBus.settlements_changed.emit()
+	return ""
+
+## One labour beat on project `key`: the actor works at the site with a tool in hand. The first beat starts
+## the clock; each next one within LABOUR_GAP_SEC credits the time since the last (at most LABOUR_GAP_SEC),
+## so a client sending beats faster or slower earns no more than standing there. Work units are
+## ProjectRules.work_units(seconds).
+func labour(actor: String, key: String) -> String:
+	var pid := _pid(actor)
+	var id := settlement_of(pid)
+	if id == "":
+		return "not_member"
+	if not bool(role_rules(role_of(pid, id))["build"]):
+		return "no_permission"
+	var s: Dictionary = _settlements[id]
+	var state: Dictionary = (s["projects"] as Dictionary).get(key, {})
+	var def := ProjectRules.def_of(key)
+	if def.is_empty() or state.is_empty():
+		return "unknown_project"
+	if str(state["status"]) == "done":
+		return "project_done"
+	if float(state["work"]) >= ProjectRules.total_work(def):
+		return "labour_done"
+	var xz: Variant = _player_xz(pid)
+	var site := Vector2(float(state["site"]["x"]), float(state["site"]["z"]))
+	if not (xz is Vector2) or dist_m(site, xz as Vector2) > SITE_RADIUS:
+		return "too_far"
+	if not tool_in_hand.is_valid() or not bool(tool_in_hand.call(pid)):
+		return "no_tool"
+	var now := float(mono_sec.call())
+	var clock: Dictionary = _labour_clock.get(pid, {})
+	_labour_clock[pid] = { "id": id, "key": key, "at": now }
+	if clock.is_empty() or str(clock["id"]) != id or str(clock["key"]) != key or now - float(clock["at"]) > LABOUR_GAP_SEC:
+		return ""   # the clock starts: nothing credited yet
+	var units := ProjectRules.work_units(minf(now - float(clock["at"]), LABOUR_GAP_SEC)) * labour_bonus(pid, def, float(state["work"]))
+	units = minf(units, ProjectRules.total_work(def) - float(state["work"]))
+	state["work"] = float(state["work"]) + units
+	_credit(state, pid, "work", units)
+	_touch(id)
+	_maybe_complete(id, key)
+	GameBus.settlements_changed.emit()
+	return ""
+
+## Labour multiplier for `pid` on the step `work` falls in. 1.0 until specialties (Phase 199).
+func labour_bonus(_pid_: String, _def: Dictionary, _work: float) -> float:
+	return 1.0
+
+func _credit(state: Dictionary, pid: String, field: String, n: float) -> void:
+	var c: Dictionary = state["contributors"]
+	if not c.has(pid):
+		if c.size() >= ProjectRules.MAX_CONTRIBUTORS:
+			return
+		c[pid] = { "items": 0, "work": 0.0 }
+	c[pid][field] = (int(c[pid][field]) + int(n)) if field == "items" else (float(c[pid][field]) + n)
+
+## A project with every material and every step finishes: its structure is placed (`place_structure`) and
+## its effects stand from now on.
+func _maybe_complete(id: String, key: String) -> void:
+	var state: Dictionary = _settlements[id]["projects"][key]
+	if str(state["status"]) == "done" or not ProjectRules.is_complete(ProjectRules.def_of(key), state):
+		return
+	state["status"] = "done"
+	state["done_at"] = float(now_sec.call())
+	if place_structure.is_valid():
+		place_structure.call(id, key, (state["site"] as Dictionary).duplicate())
+	GameBus.settlement_project_changed.emit(id, key, "completed", "")
+	tick(float(now_sec.call()))   # a completed project may promote the tier at once
+
 # ── lifecycle ────────────────────────────────────────────────────────────
 
 func _touch(id: String) -> void:
@@ -642,6 +815,13 @@ func _resolve(action: String, args: Dictionary, pid: String) -> String:
 			return deposit(pid, str(args.get("item", "")), _qty(args.get("qty", 0)))
 		"withdraw":
 			return withdraw(pid, str(args.get("item", "")), _qty(args.get("qty", 0)))
+		"project_start":
+			return start_project(pid, str(args.get("project", "")).left(32))
+		"project_give":
+			return contribute(pid, str(args.get("project", "")).left(32), str(args.get("item", "")), _qty(args.get("qty", 0)),
+				str(args.get("from", "bag")).left(8))
+		"project_work":
+			return labour(pid, str(args.get("project", "")).left(32))
 	return "unknown_action"
 
 ## Items and materials both live in a pack (a mined material is an item there).
@@ -654,7 +834,7 @@ static func _qty(v: Variant) -> int:
 # ── persistence ──────────────────────────────────────────────────────────
 
 func to_data() -> Dictionary:
-	return { "next_id": _next_id, "next_name": _next_name, "settlements": _settlements.duplicate(true) }
+	return { "format": DATA_FORMAT, "next_id": _next_id, "next_name": _next_name, "settlements": _settlements.duplicate(true) }
 
 ## Restore from a saved world record. Malformed entries are skipped; numbers are clamped.
 func from_data(data: Variant) -> void:
@@ -707,6 +887,8 @@ func from_data(data: Variant) -> void:
 			"status": status if (TIER_ORDER + ["abandoned"]).has(status) else "founded",
 			"abandoned_at": float(s.get("abandoned_at", 0.0)), "abandoned_radius": float(s.get("abandoned_radius", 0.0)),
 			"stock": stock, "taken": taken,
+			# A format-1 (pre-198) record has no projects: it loads with none.
+			"projects": _projects_from(s.get("projects", null)) if int((data as Dictionary).get("format", 1)) >= 2 else {},
 		}
 		if WorldPos.pos_from_wire(s.get("hearth", null)).size() > 0:
 			_settlements[str(id).left(64)]["hearth"] = (s["hearth"] as Dictionary).duplicate(true)
@@ -716,6 +898,45 @@ func from_data(data: Variant) -> void:
 		var suffix := str(id).trim_prefix("settlement_")
 		if suffix.is_valid_int():
 			_next_id = maxi(_next_id, int(suffix) + 1)   # never reuse a loaded id
+
+## Saved projects, checked: unknown keys and materials dropped, counts clamped to what the project needs.
+func _projects_from(raw: Variant) -> Dictionary:
+	var out := {}
+	if not (raw is Dictionary):
+		return out
+	for k: Variant in (raw as Dictionary).keys():
+		var p: Variant = raw[k]
+		var def := ProjectRules.def_of(str(k))
+		if def.is_empty() or not (p is Dictionary) or not (p.get("site", null) is Dictionary):
+			continue
+		var need := ProjectRules.needed_materials(def)
+		var given := {}
+		if p.get("given", null) is Dictionary:
+			for item: Variant in (p["given"] as Dictionary).keys():
+				if need.has(str(item)):
+					given[str(item)] = clampi(int(p["given"][item]), 0, int(need[str(item)]))
+		var contributors := {}
+		if p.get("contributors", null) is Dictionary:
+			for c: Variant in (p["contributors"] as Dictionary).keys():
+				var e: Variant = p["contributors"][c]
+				if e is Dictionary and contributors.size() < ProjectRules.MAX_CONTRIBUTORS:
+					contributors[str(c).left(64)] = { "items": maxi(0, int(e.get("items", 0))), "work": maxf(0.0, float(e.get("work", 0.0))) }
+		var x := float(p["site"].get("x", 0.0))
+		var z := float(p["site"].get("z", 0.0))
+		if not is_finite(x) or not is_finite(z):
+			continue
+		out[str(k)] = { "key": str(k), "by": str(p.get("by", "")).left(64), "started": float(p.get("started", 0.0)), "site": { "x": x, "z": z },
+			"given": given, "work": clampf(float(p.get("work", 0.0)), 0.0, ProjectRules.total_work(def)),
+			"status": "done" if str(p.get("status", "")) == "done" else "building", "done_at": float(p.get("done_at", 0.0)),
+			"contributors": contributors }
+	return out
+
+## A project as its members see it: what is needed, given and worked, the current step and who helped.
+func _project_view(key: String, state: Dictionary) -> Dictionary:
+	var def := ProjectRules.def_of(key)
+	return { "key": key, "status": str(state["status"]), "need": ProjectRules.needed_materials(def), "given": (state["given"] as Dictionary).duplicate(),
+		"work": float(state["work"]), "total_work": ProjectRules.total_work(def), "step": ProjectRules.current_step(def, float(state["work"]))["step"],
+		"contributors": (state["contributors"] as Dictionary).duplicate(true), "x": float(state["site"]["x"]), "z": float(state["site"]["z"]) }
 
 # ── views ────────────────────────────────────────────────────────────────
 
@@ -737,7 +958,8 @@ func private_view(player_id: String) -> Dictionary:
 	if id != "":
 		var s: Dictionary = _settlements[id]
 		out["mine"] = { "id": id, "role": role_of(pid, id), "members": (s["members"] as Dictionary).duplicate(),
-			"stock": stock_of(id), "capacity": capacity_stacks(id), "used": used_stacks(id), "names": _member_names(s) }
+			"stock": stock_of(id), "capacity": capacity_stacks(id), "used": used_stacks(id), "names": _member_names(s),
+			"projects": (s["projects"] as Dictionary).keys().map(func(k: String) -> Dictionary: return _project_view(k, s["projects"][k])) }
 	for sid: String in ids():
 		if (_settlements[sid]["invites"] as Dictionary).has(pid):
 			(out["invites"] as Array).append({ "id": sid, "name": str(_settlements[sid]["name"]), "name_n": int(_settlements[sid]["name_n"]) })

@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–197 are done. Their specs and acceptance criteria, and the introductions of
+Phases 1–198 are done. Their specs and acceptance criteria, and the introductions of
 the arcs they belonged to, are archived in [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Next: follow-up debt burn II (Phases 194–196)
@@ -54,56 +54,11 @@ Raids come from creatures only. Settlement-against-settlement conflict stays def
 | Phase | Title | Status | Spec |
 |---|---|---|---|
 | 197 | The settlement loop in the fabric: projects, specialties, raids and upkeep | Done | [phases-197.md](docs/roadmap-history/phases-197.md) |
-| 198 | Settlement projects at runtime: a village builds together | Planned | below |
+| 198 | Settlement projects at runtime: a village builds together | Done | [phases-198.md](docs/roadmap-history/phases-198.md) |
 | 199 | Specialties at runtime: what each member is good at | Planned | below |
 | 200 | Raids: a warned, bounded attack the village can defend | Planned | below |
 | 201 | Upkeep: a village that has to keep going | Planned | below |
 | 202 | The settlement loop, played: four bots found, specialize, trade and defend a village | Planned | below |
-
----
-
-## Phase 198 — Settlement projects at runtime: a village builds together
-
-**Goal:** members start a project, bring materials and work on it, and when it completes the
-structure appears in the claim and its effect applies. This is the first thing a village does
-together after the hearth.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phases 140 and 197.
-
-**Deliverables:**
-- `src/settlement/project_rules.gd`: pure functions for what a project still needs, whether a
-  contribution is valid, and the completion check.
-- Host-owned project state per settlement in the settlement slice, persisted in the world record,
-  with a versioned migration (a pre-198 settlement loads with no projects).
-- Intents: `project_start` (roles with `invite`), `project_contribute` (materials from the
-  contributor's bag or from the stockpile, within their `withdrawLimit`) and labour (working at the
-  project site with a tool, on the existing harvest-style timer). Each intent is validated,
-  rate-limited and refused with a keyed reason.
-- Completion places the structure's blocks and stations inside the claim, through the stable-world
-  edit path, and applies its effects. Tier promotion reads the completed-project path from
-  Phase 197.
-- Syncs scoped to members, plus the finished structure as ordinary world edits for peers in range.
-- UI: a project board in the settlement panel, with needed and given materials, labour and who
-  contributed. All text goes through `I18n.t()`.
-- Net harness: a `settlement_project` step. The host starts a project, the client contributes
-  materials and labour, the project completes, and an outsider's contribution is refused.
-
-- Tutorial (from Phase 197): the optional "your first village" chapter (found, start a project,
-  contribute). Only the founding step fits the Phase 184 trigger kinds (`station_placed` with type
-  `hearth`); starting and contributing need two new kinds, `project_started` and
-  `project_contributed`, which this phase's bus events can complete.
-
-**Acceptance criteria:**
-- [ ] Suite: `project_rules` accepts a valid contribution and refuses an unknown item, too much of
-  an item, a non-member, and a stockpile withdrawal over the role's limit, each with its own key.
-- [ ] Suite: a completed project places its structure, applies its effect (for example the
-  storehouse raises `capacity_stacks`) and counts toward the `growing` tier.
-- [ ] Suite: project state survives a save and reload, and a pre-198 world loads with no projects.
-- [ ] Harness: the `settlement_project` step passes over the socket.
-- [ ] Every new string is in both catalogs, and the i18n key check passes.
-- [ ] Suite green on both boot paths, harness green.
 
 ---
 

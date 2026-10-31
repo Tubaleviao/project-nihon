@@ -1,11 +1,15 @@
 extends VBoxContainer
-## Settlement window (Phase 140) — found, invite, roles, leave and the shared stockpile. Presentation
+## Settlement window (Phase 140) — found, invite, roles, leave and the shared stockpile, and (Phase 198)
+## the project board: what each project needs and has been given, its labour and who helped. Presentation
 ## only: every button emits a `GameBus.settlement_intent` and the host decides. All text goes through
 ## `I18n`. The slice's `view()` (the host's last push) is what it renders.
 
 const I18n := preload("res://src/core/i18n.gd")
 const SettlementSlice := preload("res://src/settlement/settlement_slice.gd")
+const ProjectRules := preload("res://src/settlement/project_rules.gd")
 const REFRESH_SEC := 1.0
+## Phase 198 — seconds between labour beats while "Work here" is held down (under the host's gap).
+const LABOUR_BEAT_SEC := 1.0
 
 var settlement_slice: Node = null
 
@@ -21,6 +25,10 @@ var _item_edit: LineEdit = null
 var _qty_edit: LineEdit = null
 var _buttons: Array = []   # [Button, i18n key]
 var _elapsed: float = 0.0
+var _projects: Label = null
+var _project_pick: OptionButton = null
+var _work_toggle: Button = null
+var _beat: float = 0.0
 
 func _init() -> void:
 	add_theme_constant_override("separation", 6)
@@ -51,9 +59,34 @@ func _init() -> void:
 	_qty_edit = _line("settlement.qty_ph")
 	_button("settlement.deposit", func() -> void: _send("deposit", { "item": _item_edit.text, "qty": _qty()}))
 	_button("settlement.withdraw", func() -> void: _send("withdraw", { "item": _item_edit.text, "qty": _qty() }))
+	_build_board()
 	_feedback = Label.new()
 	_feedback.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	add_child(_feedback)
+
+## Phase 198 — the project board: the projects' state, a project picker, start, give (the item and quantity
+## fields above), and a held "Work here" that beats labour while it is down.
+func _build_board() -> void:
+	_projects = Label.new()
+	_projects.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	add_child(_projects)
+	_project_pick = OptionButton.new()
+	var keys: Array = (ProjectRules.table()["projects"] as Dictionary).keys()
+	keys.sort()
+	for key: String in keys:
+		_project_pick.add_item(I18n.t("settlement.project." + key))
+		_project_pick.set_item_metadata(_project_pick.item_count - 1, key)
+	add_child(_project_pick)
+	_button("settlement.project_start", func() -> void: _send("project_start", { "project": picked_project() }))
+	_button("settlement.project_give", func() -> void: _send("project_give", { "project": picked_project(), "item": _item_edit.text, "qty": _qty(), "from": "bag" }))
+	_button("settlement.project_give_stock", func() -> void: _send("project_give", { "project": picked_project(), "item": _item_edit.text, "qty": _qty(), "from": "stock" }))
+	_work_toggle = Button.new()
+	_work_toggle.toggle_mode = true
+	add_child(_work_toggle)
+	_buttons.append([_work_toggle, "settlement.project_work"])
+
+func picked_project() -> String:
+	return str(_project_pick.get_item_metadata(_project_pick.selected)) if _project_pick.item_count > 0 and _project_pick.selected >= 0 else ""
 
 func _ready() -> void:
 	GameBus.settlement_resolved.connect(_on_resolved)
@@ -62,7 +95,13 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	if not is_visible_in_tree():
+		_work_toggle.button_pressed = false   # labour needs the player at the board
 		return
+	if _work_toggle.button_pressed:
+		_beat += delta
+		if _beat >= LABOUR_BEAT_SEC:
+			_beat = 0.0
+			_send("project_work", { "project": picked_project() })
 	_elapsed += delta
 	if _elapsed >= REFRESH_SEC:
 		_elapsed = 0.0
@@ -94,6 +133,8 @@ func _on_resolved(player_id: String, action: String, ok: bool, reason: String) -
 	if reg != null and "local_player_id" in reg and player_id != str(reg.local_player_id):
 		return
 	_feedback.text = I18n.t("settlement.ok." + action) if ok else I18n.t("settlement.refused." + reason)
+	if action == "project_work" and not ok:
+		_work_toggle.button_pressed = false   # a refused beat (no tool, too far, done) stops the work
 	refresh()
 
 ## Re-render from the last view the host pushed (also re-applies the active language).
@@ -106,6 +147,8 @@ func refresh() -> void:
 			(c as Button).text = I18n.t(str(pair[1]))
 	for i in _role_pick.item_count:
 		_role_pick.set_item_text(i, I18n.t("settlement.role." + str(_role_pick.get_item_metadata(i))))
+	for i in _project_pick.item_count:
+		_project_pick.set_item_text(i, I18n.t("settlement.project." + str(_project_pick.get_item_metadata(i))))
 	var view: Dictionary = settlement_slice.view() if settlement_slice != null else {}
 	var mine: Dictionary = view.get("mine", {})
 	_render_invites(view.get("invites", []) if mine.is_empty() else [])
@@ -113,6 +156,7 @@ func refresh() -> void:
 		_status.text = I18n.t("settlement.none")
 		_members.text = ""
 		_stock.text = ""
+		_projects.text = ""
 		return
 	var claim := {}
 	for c: Dictionary in view.get("claims", []):
@@ -130,6 +174,36 @@ func refresh() -> void:
 	for item: String in (mine.get("stock", {}) as Dictionary):
 		items.append("%s ×%d" % [item, int(mine["stock"][item])])
 	_stock.text = I18n.t("settlement.stock", [int(mine.get("used", 0)), int(mine.get("capacity", 0)), ", ".join(items)])
+	_projects.text = board_text(mine.get("projects", []), names)
+
+## Phase 198 — the board's text for the projects in a view: per project its labour and step (or built), the
+## materials needed against given, and who helped.
+static func board_text(projects: Variant, names: Dictionary) -> String:
+	var out: Array = [I18n.t("settlement.projects")]
+	if not (projects is Array):
+		return out[0]
+	for p: Variant in projects:
+		if not (p is Dictionary):
+			continue
+		var name := I18n.t("settlement.project." + str(p.get("key", "")))
+		if str(p.get("status", "")) == "done":
+			out.append(I18n.t("settlement.project_built", [name]))
+			continue
+		out.append(I18n.t("settlement.project_building", [name, int(float(p.get("work", 0.0))), int(float(p.get("total_work", 0.0))),
+			I18n.t("settlement.step." + str(p.get("step", ""))) if str(p.get("step", "")) != "" else "—"]))
+		var need: Dictionary = p.get("need", {}) if p.get("need", {}) is Dictionary else {}
+		var given: Dictionary = p.get("given", {}) if p.get("given", {}) is Dictionary else {}
+		var mats: Array = []
+		for item: String in need:
+			mats.append(I18n.t("settlement.project_need", [item, int(given.get(item, 0)), int(need[item])]))
+		out.append("  " + ", ".join(mats))
+		var helpers: Array = []
+		var c: Dictionary = p.get("contributors", {}) if p.get("contributors", {}) is Dictionary else {}
+		for pid: String in c:
+			helpers.append(str(names.get(pid, pid.left(8))))
+		if not helpers.is_empty():
+			out.append("  " + I18n.t("settlement.project_helpers", [", ".join(helpers)]))
+	return "\n".join(out)
 
 ## What the invite buttons were last built from (the invites and the locale): a refresh that changes
 ## neither keeps the buttons instead of rebuilding them.

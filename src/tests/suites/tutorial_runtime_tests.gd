@@ -80,6 +80,8 @@ func _test_events() -> void:
 		["tier_up", "skill_tier_up", {}, {}],
 		["research_carpentry", "technology_researched", { "technology": "TechBasicCarpentry" }, { "technology": "TechBasicSmithing" }],
 		["chat", "chat_sent", {}, {}],
+		["start_project", "project_started", {}, {}],
+		["contribute_project", "project_contributed", {}, {}],
 	]
 	var kinds := {}
 	for c in cases:
