@@ -5,6 +5,7 @@ extends "res://src/core/wiring.gd"
 const SettlementSlice := preload("res://src/settlement/settlement_slice.gd")
 const I18n := preload("res://src/core/i18n.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
+const ProjectRules := preload("res://src/settlement/project_rules.gd")
 
 ## Seconds between host sweeps (grow, abandon, decay, activity, view pushes).
 const TICK_SEC := 0.5
@@ -21,6 +22,8 @@ func make_slice(ctx: GameRoot) -> Node:
 	slice.registry = root._registry
 	slice.position_of = self.player_xz
 	slice.is_host = not root._is_client
+	slice.tool_in_hand = self.tool_in_hand
+	slice.place_structure = self.place_structure
 	root._voxel.claim_guard = slice.edit_blocker
 	if not root._is_client:
 		root._voxel.claim_activity = slice.note_edit
@@ -111,6 +114,43 @@ func push_views() -> void:
 		var peer: int = root._registry.get_peer_id(pid)
 		if peer != 0 and root._networking != null and root._networking.is_host():
 			root._networking.send_own_state(peer, { "settlement_view": view })
+
+## Phase 198 — whether the player has a tool to work with: in the main hand, or in the pack (tools take no
+## equipment slot; carcass harvesting reads them the same way).
+func tool_in_hand(player_id: String) -> bool:
+	if ProjectRules.is_tool_item(str(root._registry.get_equipment(player_id).get("MainHand", ""))):
+		return true
+	var inv: Node = root._inventory if player_id == root._registry.local_player_id else root._registry.get_inventory(player_id)
+	if inv == null or not inv.has_method("get_contents"):
+		return false
+	for item: Variant in (inv.get_contents() as Dictionary):
+		if ProjectRules.is_tool_item(str(item)) and inv.get_item_count(str(item)) > 0:
+			return true
+	return false
+
+## Phase 198 — place a finished project's structure at `site` ({x, z} ground metres, doubles): its blocks
+## through the voxel edit path (recorded like any edit and synced to peers in range as `block_changed`),
+## then its stations on the ground inside it.
+func place_structure(_id: String, key: String, site: Dictionary) -> void:
+	var places: Dictionary = ProjectRules.def_of(key).get("places", {})
+	var mat := ProjectRules.block_material(str(places.get("block", "")))
+	var tile := float(root._voxel.TILE_SIZE)
+	var x0 := float(site["x"])
+	var z0 := float(site["z"])
+	if mat != "":
+		for c: Vector3i in ProjectRules.layout_cells(str(places.get("layout", "shed")), int(places.get("blocks", 0))):
+			root._voxel.place_structure_block(_exact_at(x0 + (float(c.x) + 0.5) * tile, z0 + (float(c.z) + 0.5) * tile), mat)
+	var stations: Array = places.get("stations", [])
+	var offsets := ProjectRules.station_offsets(stations.size())
+	for i in stations.size():
+		var x := x0 + float(offsets[i].x) * tile
+		var z := z0 + float(offsets[i].y) * tile
+		root._station.place_station(str(stations[i]), Vector3(x, root._voxel.get_voxel_height_at(Vector2(x, z)), z))
+
+static func _exact_at(x: float, z: float) -> Dictionary:
+	var cx := floori(x / WorldPos.CHUNK_METERS)
+	var cz := floori(z / WorldPos.CHUNK_METERS)
+	return { "chunk": Vector2i(cx, cz), "local": Vector3(x - float(cx) * WorldPos.CHUNK_METERS, 0.0, z - float(cz) * WorldPos.CHUNK_METERS) }
 
 ## Where the host believes a player stands, as ground metres (null when unknown).
 func player_xz(player_id: String) -> Variant:

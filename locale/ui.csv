@@ -267,6 +267,42 @@ settlement.refused.unknown_action,Unknown action.,Ação desconhecida.
 settlement.refused.durable,Worn tools cannot be stored.,Ferramentas gastas não podem ser guardadas.
 settlement.join,Join,Entrar
 settlement.invited,Invited to: {0},Convite para: {0}
+settlement.refused.unknown_project,No such project.,Esse projeto não existe.
+settlement.refused.project_exists,Your village already has that project.,Sua vila já tem esse projeto.
+settlement.refused.tier_too_low,The settlement must grow before it can start that.,O assentamento precisa crescer antes de começar isso.
+settlement.refused.too_many_projects,Finish a project before starting another.,Termine um projeto antes de começar outro.
+settlement.refused.project_done,That project is already built.,Esse projeto já está construído.
+settlement.refused.unknown_item,That project does not use this item.,Esse projeto não usa esse item.
+settlement.refused.too_much,More than the project still needs.,Mais do que o projeto ainda precisa.
+settlement.refused.labour_done,The work is done; it still needs materials.,O trabalho está feito; ainda faltam materiais.
+settlement.refused.no_tool,Work on a project needs a tool in your hand or pack.,Trabalhar num projeto exige uma ferramenta na mão ou na mochila.
+settlement.ok.project_start,Project started.,Projeto iniciado.
+settlement.ok.project_give,Materials given.,Materiais entregues.
+settlement.ok.project_work,Working…,Trabalhando…
+settlement.project.palisade,Palisade,Paliçada
+settlement.project.storehouse,Storehouse,Armazém
+settlement.project.workshop,Workshop,Oficina
+settlement.project.watchtower,Watchtower,Torre de vigia
+settlement.step.posts,posts,estacas
+settlement.step.raise,raising,erguer
+settlement.step.foundation,foundation,fundação
+settlement.step.shelving,shelving,prateleiras
+settlement.step.provisions,provisions,provisões
+settlement.step.walls,walls,paredes
+settlement.step.benches,benches,bancadas
+settlement.step.anvil,anvil,bigorna
+settlement.step.base,base,base
+settlement.step.lookout,lookout,mirante
+settlement.step.signal,signal fire,fogueira de sinal
+settlement.projects,Projects,Projetos
+settlement.project_building,{0}: labour {1}/{2} — step: {3},{0}: trabalho {1}/{2} — etapa: {3}
+settlement.project_built,{0}: built,{0}: construído
+settlement.project_need,{0} {1}/{2},{0} {1}/{2}
+settlement.project_helpers,Helped: {0},Ajudaram: {0}
+settlement.project_start,Start {0},Iniciar {0}
+settlement.project_give,Give from pack,Entregar da mochila
+settlement.project_give_stock,Give from stockpile,Entregar do estoque
+settlement.project_work,Work here,Trabalhar aqui
 reason.unknown,Refused ({0}).,Recusado ({0}).
 reason.unknown_recipe,Unknown recipe.,Receita desconhecida.
 reason.skill_requirement,Needs {0} at {1} tier.,Exige {0} no nível {1}.
@@ -432,6 +468,7 @@ tutorial.chapter.staying_alive,Staying alive,Sobrevivência
 tutorial.chapter.finding_way,Finding your way,Orientação
 tutorial.chapter.growing,Growing,Crescimento
 tutorial.chapter.other_people,Other people,Outras pessoas
+tutorial.chapter.first_village,Your first village,Sua primeira vila
 tutorial.move.title,Walk,Ande
 tutorial.move.body,Walk a few steps to look around your landing spot.,Ande alguns passos para conhecer o lugar onde você chegou.
 tutorial.jump.title,Jump,Pule
@@ -496,6 +533,12 @@ tutorial.trade.title,Trade,Troca
 tutorial.trade.body,Open the trade window to swap items with another player.,Abra a janela de troca para trocar itens com outro jogador.
 tutorial.settlement.title,Settlements,Assentamentos
 tutorial.settlement.body,"Open the settlement window. With friends and a Hearth, a shelter can grow into a village.","Abra a janela de assentamento. Com amigos e uma Lareira, um abrigo pode virar uma vila."
+tutorial.found_village.title,Found a village,Funde uma vila
+tutorial.found_village.body,Place a Hearth on free land to claim it for your village.,Coloque uma Lareira em terra livre para reivindicá-la para sua vila.
+tutorial.start_project.title,Start a project,Comece um projeto
+tutorial.start_project.body,"In the settlement window, pick a project and start it where it should stand.","Na janela de assentamento, escolha um projeto e comece-o onde ele deve ficar."
+tutorial.contribute_project.title,Build together,Construam juntos
+tutorial.contribute_project.body,"Give the project materials from your pack or the stockpile, then work at its site with a tool.","Entregue materiais ao projeto da mochila ou do estoque e depois trabalhe no local com uma ferramenta."
 bed.refuse_no_item,You have no bed to place.,Você não tem uma cama para colocar.
 bed.refuse_far,That spot is too far away.,Esse lugar está longe demais.
 bed.refuse_claim,You cannot place a bed in a settlement you cannot build in.,Você não pode colocar uma cama em um assentamento onde não pode construir.

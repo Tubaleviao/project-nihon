@@ -895,6 +895,9 @@ func _vein_from_id(id: String) -> Dictionary:
 func place_block(world_pos: Vector3, normal: Vector3, material: String = "", player_id: String = "", exact: Dictionary = {}) -> bool:
 	return _edit.place_block(world_pos, normal, material, player_id, exact)
 
+func place_structure_block(exact: Dictionary, material: String) -> bool:
+	return _edit.place_structure_block(exact, material)
+
 func get_voxel_height_at(world_pos: Vector2) -> float:
 	return _query.get_voxel_height_at(world_pos)
 

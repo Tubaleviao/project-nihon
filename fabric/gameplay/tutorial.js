@@ -19,7 +19,7 @@ const { defineEntity } = require('@newel/core')
 
 const CHAPTERS = [
   'moving', 'gathering', 'first_stations', 'first_tools', 'shelter', 'first_hunt',
-  'staying_alive', 'finding_way', 'growing', 'other_people',
+  'staying_alive', 'finding_way', 'growing', 'other_people', 'first_village',
 ]
 
 // kind -> { required: params it must have, oneOf: exactly one of these params }. No other param is allowed.
@@ -42,6 +42,9 @@ const TRIGGER_KINDS = {
   skill_tier_up:         {},
   technology_researched: { required: ['technology'] },
   chat_sent:             {},
+  // Phase 198 — the local player's settlement project intent succeeded on the host.
+  project_started:       {},
+  project_contributed:   {},
 }
 
 // The input actions a card can name, in the order of the `?` controls rows (UiSlice.controls_rows).
@@ -101,6 +104,11 @@ const STEPS = [
   step('chat', 'other_people', ['chat'], ['controls'], { kind: 'chat_sent' }),
   step('trade', 'other_people', [], ['chat'], { kind: 'window_opened', window: 'trade' }),
   step('settlement', 'other_people', [], ['build_shelter'], { kind: 'window_opened', window: 'settlement' }),
+  // Your first village (Phase 198): found, start a project, bring it something. Like every chapter it can be
+  // dismissed; a player who never founds a village is never held by it.
+  step('found_village', 'first_village', ['station'], ['settlement'], { kind: 'station_placed', type: 'hearth' }),
+  step('start_project', 'first_village', [], ['found_village'], { kind: 'project_started' }),
+  step('contribute_project', 'first_village', [], ['start_project'], { kind: 'project_contributed' }),
 ]
 
 const titleKey = (id) => `tutorial.${id}.title`

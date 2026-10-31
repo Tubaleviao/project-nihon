@@ -18,6 +18,7 @@ func register() -> void:
 	_run_test("tutorial runtime: the removed UI instructions are gone and no catalog key outside tutorial.* and controls.* instructs", _test_catalog_audit)
 	_run_test("tutorial runtime: the card shows the step, the player's keys and the controls; the ? panel has the toggle and restart", _test_card)
 	_run_test("tutorial runtime: the slice sends no intent and no network message", _test_listens_only)
+	_run_test("tutorial runtime: every event kind the wiring notes is a fabric trigger kind", _test_wiring_kinds)
 
 func _fresh() -> Dictionary:
 	return State.fresh()
@@ -80,6 +81,8 @@ func _test_events() -> void:
 		["tier_up", "skill_tier_up", {}, {}],
 		["research_carpentry", "technology_researched", { "technology": "TechBasicCarpentry" }, { "technology": "TechBasicSmithing" }],
 		["chat", "chat_sent", {}, {}],
+		["start_project", "project_started", {}, {}],
+		["contribute_project", "project_contributed", {}, {}],
 	]
 	var kinds := {}
 	for c in cases:
@@ -254,3 +257,14 @@ func _test_replay() -> void:
 		assert_true(done.has(want), "%s completes from the recorded session" % want)
 	assert_false(done.has("kill"), "a step with no matching event stays open")
 	assert_eq(Rules.replay([]), [], "an empty session completes nothing")
+
+## The wiring's literal `_note("kind")` calls must name fabric trigger kinds: a typo there completes no
+## step, and the synthetic-event tests above feed the slice directly, past the wiring.
+func _test_wiring_kinds() -> void:
+	var src := FileAccess.get_file_as_string("res://src/tutorial/tutorial_wiring.gd")
+	var re := RegEx.create_from_string("_note\\(\"([a-z_]+)\"")
+	var fabric_kinds: Dictionary = GameData.TUTORIALS["Tutorial"].get("triggerKinds")
+	var found := re.search_all(src)
+	assert_true(found.size() > 5, "the wiring's noted kinds are found")
+	for m: RegExMatch in found:
+		assert_true(fabric_kinds.has(m.get_string(1)), "the wiring notes %s, a fabric trigger kind" % m.get_string(1))

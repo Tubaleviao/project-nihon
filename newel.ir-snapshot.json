@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:ae938d2f3f1b3715571ed619a4bd672f67958a8fdc3caa625b7b3f0db2cbcd9c",
+  "schemaHash": "sha256:4670224f60646316f372784b5dff77ed6c1f20b3fdf9529f24ecd32611c45c7a",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -34420,7 +34420,8 @@
               "staying_alive",
               "finding_way",
               "growing",
-              "other_people"
+              "other_people",
+              "first_village"
             ]
           },
           "steps": {
@@ -34841,6 +34842,42 @@
                   "kind": "window_opened",
                   "window": "settlement"
                 }
+              },
+              {
+                "id": "found_village",
+                "chapter": "first_village",
+                "inputs": [
+                  "station"
+                ],
+                "requires": [
+                  "settlement"
+                ],
+                "trigger": {
+                  "kind": "station_placed",
+                  "type": "hearth"
+                }
+              },
+              {
+                "id": "start_project",
+                "chapter": "first_village",
+                "inputs": [],
+                "requires": [
+                  "found_village"
+                ],
+                "trigger": {
+                  "kind": "project_started"
+                }
+              },
+              {
+                "id": "contribute_project",
+                "chapter": "first_village",
+                "inputs": [],
+                "requires": [
+                  "start_project"
+                ],
+                "trigger": {
+                  "kind": "project_contributed"
+                }
               }
             ]
           },
@@ -34907,7 +34944,9 @@
                   "technology"
                 ]
               },
-              "chat_sent": {}
+              "chat_sent": {},
+              "project_started": {},
+              "project_contributed": {}
             }
           },
           "inputActions": {
