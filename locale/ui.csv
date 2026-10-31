@@ -561,3 +561,12 @@ settlement.specialty.builder,builder,construtor
 settlement.specialty.forager,forager,coletor
 settlement.specialty.none,none,nenhuma
 character.specialty,Specialty: {0},Especialidade: {0}
+settlement.raid.refused.no_member_online,No member is online inside the claim,Nenhum membro está online dentro da área
+settlement.raid.refused.too_young,The settlement is too young to be raided,O assentamento é novo demais para ser atacado
+settlement.raid.refused.not_worth_raiding,The settlement holds too little to be raided,O assentamento tem pouco demais para ser atacado
+settlement.raid.refused.cooldown,The last raid was too recent,O último ataque foi recente demais
+settlement.raid.refused.raid_active,A raid is already under way,Um ataque já está em andamento
+settlement.raid.refused.no_pack,No creatures raid this land,Nenhuma criatura ataca esta terra
+settlement.raid.warning,A raid is coming in {0} seconds! Defend {1}.,Um ataque chega em {0} segundos! Defenda {1}.
+settlement.raid.result.defended,Last raid: defended,Último ataque: defendido
+settlement.raid.result.lost,Last raid: lost,Último ataque: perdido

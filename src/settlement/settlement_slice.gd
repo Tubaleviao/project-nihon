@@ -28,6 +28,7 @@ const WorldPos := preload("res://src/terrain/world_pos.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 const ProjectRules := preload("res://src/settlement/project_rules.gd")
+const RaidRules := preload("res://src/settlement/raid_rules.gd")
 const SpecialtyRules := preload("res://src/settlement/specialty_rules.gd")
 
 const DAY_SEC := 86400.0
@@ -47,7 +48,7 @@ const SITE_RADIUS := 8.0
 ## Phase 198 — a labour beat credits at most this many seconds since the last; a longer gap restarts the clock.
 const LABOUR_GAP_SEC := 2.5
 ## Phase 198 — the settlement record's format: 2 added `projects` (a format-1 record loads with none).
-const DATA_FORMAT := 2
+const DATA_FORMAT := 3
 const ACTIONS := ["found", "invite", "join", "role", "leave", "deposit", "withdraw", "uninvite",
 	"project_start", "project_give", "project_work"]
 const ROLES := ["founder", "elder", "member", "guest"]
@@ -307,7 +308,7 @@ func found(player_id: String, sname: String, xz: Vector2, consume: bool = true, 
 	_settlements[id] = {
 		"id": id, "name": sname, "name_n": name_n, "founder": pid, "members": { pid: "founder" }, "invites": {},
 		"created": now, "last_active": now, "hx": xz.x, "hz": xz.y, "status": "founded",
-		"abandoned_at": 0.0, "abandoned_radius": 0.0, "stock": {}, "taken": {}, "projects": {},
+		"abandoned_at": 0.0, "abandoned_radius": 0.0, "stock": {}, "taken": {}, "projects": {}, "raid": { "last_end": 0.0, "last_result": "" },
 	}
 	if WorldPos.is_plausible_pos(exact):
 		_settlements[id]["hearth"] = WorldPos.pos_to_wire(exact)
@@ -925,6 +926,8 @@ func from_data(data: Variant) -> void:
 			"stock": stock, "taken": taken,
 			# A format-1 (pre-198) record has no projects: it loads with none.
 			"projects": _projects_from(s.get("projects", null)) if int((data as Dictionary).get("format", 1)) >= 2 else {},
+			# A pre-200 record has no raid record: it loads as never raided.
+			"raid": _raid_from(s.get("raid", null)) if int((data as Dictionary).get("format", 1)) >= 3 else { "last_end": 0.0, "last_result": "" },
 		}
 		if WorldPos.pos_from_wire(s.get("hearth", null)).size() > 0:
 			_settlements[str(id).left(64)]["hearth"] = (s["hearth"] as Dictionary).duplicate(true)
@@ -934,6 +937,47 @@ func from_data(data: Variant) -> void:
 		var suffix := str(id).trim_prefix("settlement_")
 		if suffix.is_valid_int():
 			_next_id = maxi(_next_id, int(suffix) + 1)   # never reuse a loaded id
+
+## Phase 200 — the raid record of a settlement: { last_end (seconds, 0 = never raided), last_result "" | "defended" | "lost" }.
+func raid_record(id: String) -> Dictionary:
+	return (_settlements.get(id, {}).get("raid", { "last_end": 0.0, "last_result": "" }) as Dictionary).duplicate()
+
+## Phase 200 — the raid ended: `defended` or lost. A lost raid takes the capped, defence-scaled share of the
+## stockpile and of each unfinished project's contributed labour (RaidRules.losses). Records the end time (the
+## cooldown) and the result. Returns { result, stock {item: n}, damage (labour units lost) }; {} for no such settlement.
+func end_raid(id: String, defended: bool) -> Dictionary:
+	if not _settlements.has(id):
+		return {}
+	var s: Dictionary = _settlements[id]
+	var lost := RaidRules.losses(defended, s["stock"], project_effect(id, "raidDefence"))
+	var damage := 0.0
+	for item: String in lost["stock"]:
+		s["stock"][item] = int(s["stock"][item]) - int(lost["stock"][item])
+		if int(s["stock"][item]) <= 0:
+			(s["stock"] as Dictionary).erase(item)
+	if float(lost["project_damage"]) > 0.0:
+		for key: String in s["projects"]:
+			var p: Dictionary = s["projects"][key]
+			if str(p["status"]) == "done":
+				continue
+			var cut := floorf(float(p["work"]) * float(lost["project_damage"]))
+			p["work"] = float(p["work"]) - cut
+			damage += cut
+	s["raid"] = { "last_end": float(now_sec.call()), "last_result": "defended" if defended else "lost" }
+	_touch(id)
+	GameBus.settlements_changed.emit()
+	return { "result": s["raid"]["last_result"], "stock": lost["stock"], "damage": damage }
+
+## Saved raid record, checked.
+static func _raid_from(raw: Variant) -> Dictionary:
+	var out := { "last_end": 0.0, "last_result": "" }
+	if raw is Dictionary:
+		var res := str((raw as Dictionary).get("last_result", ""))
+		if res in ["defended", "lost"]:
+			out["last_result"] = res
+		var t := float((raw as Dictionary).get("last_end", 0.0))
+		out["last_end"] = t if is_finite(t) and t > 0.0 else 0.0
+	return out
 
 ## Saved projects, checked: unknown keys and materials dropped, counts clamped to what the project needs.
 func _projects_from(raw: Variant) -> Dictionary:
