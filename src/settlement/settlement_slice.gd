@@ -28,6 +28,7 @@ const WorldPos := preload("res://src/terrain/world_pos.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 const ProjectRules := preload("res://src/settlement/project_rules.gd")
+const SpecialtyRules := preload("res://src/settlement/specialty_rules.gd")
 
 const DAY_SEC := 86400.0
 ## Items per stockpile stack.
@@ -103,6 +104,8 @@ var tool_in_hand: Callable = Callable()
 var place_structure: Callable = Callable()
 ## pid -> { id, key, at } the last labour beat (mono seconds).
 var _labour_clock: Dictionary = {}
+## Phase 199 — pid -> the specialty last announced for that player (absent = none).
+var _specialties: Dictionary = {}
 ## Client view: what the host last sent.
 var _view: Dictionary = {}
 
@@ -114,6 +117,7 @@ func _ready() -> void:
 func forget_player(player_id: String) -> void:
 	_last_intent.erase(player_id)
 	_labour_clock.erase(player_id)
+	_specialties.erase(player_id)
 
 # ── rules ────────────────────────────────────────────────────────────────
 
@@ -688,8 +692,40 @@ func labour(actor: String, key: String) -> String:
 	return ""
 
 ## Labour multiplier for `pid` on the step `work` falls in. 1.0 until specialties (Phase 199).
-func labour_bonus(_pid_: String, _def: Dictionary, _work: float) -> float:
-	return 1.0
+func labour_bonus(pid: String, def: Dictionary, work: float) -> float:
+	return SpecialtyRules.labour_multiplier(compute_specialty(pid), str(ProjectRules.current_step(def, work)["specialty"]))
+
+## Phase 199 — the specialty the host's own skill and attribute records give `player_id` ("" for none).
+## Nothing here is client-reported.
+func compute_specialty(player_id: String) -> String:
+	if registry == null or not registry.has_method("get_skill_tier") or not registry.has_method("get_attributes"):
+		return ""
+	var pid := _pid(player_id)
+	var tbl := SpecialtyRules.table()
+	var tiers := {}
+	for key: String in tbl["specialties"]:
+		for skill: String in tbl["specialties"][key].get("skills", {}):
+			tiers[skill] = str(registry.get_skill_tier(pid, skill)) if str(registry.get_skill_tier(pid, skill)) != "" else "novice"
+	return SpecialtyRules.specialty_for(tiers, registry.get_attributes(pid), tbl)
+
+## The last specialty announced for a player ("" until one is).
+func specialty_of(player_id: String) -> String:
+	return str(_specialties.get(_pid(player_id), ""))
+
+## Recompute a player's specialty after their skills or attributes changed. A change emits one
+## `specialty_changed` and a settlements_changed so the members' views refresh; no change emits nothing.
+func refresh_specialty(player_id: String) -> bool:
+	var pid := _pid(player_id)
+	var now := compute_specialty(pid)
+	if now == specialty_of(pid):
+		return false
+	if now == "":
+		_specialties.erase(pid)
+	else:
+		_specialties[pid] = now
+	GameBus.specialty_changed.emit(pid, now)
+	GameBus.settlements_changed.emit()
+	return true
 
 func _credit(state: Dictionary, pid: String, field: String, n: float) -> void:
 	var c: Dictionary = state["contributors"]
@@ -958,7 +994,7 @@ func private_view(player_id: String) -> Dictionary:
 	if id != "":
 		var s: Dictionary = _settlements[id]
 		out["mine"] = { "id": id, "role": role_of(pid, id), "members": (s["members"] as Dictionary).duplicate(),
-			"stock": stock_of(id), "capacity": capacity_stacks(id), "used": used_stacks(id), "names": _member_names(s),
+			"stock": stock_of(id), "capacity": capacity_stacks(id), "used": used_stacks(id), "names": _member_names(s), "specialties": _member_specialties(s), "specialty": compute_specialty(pid),
 			"projects": (s["projects"] as Dictionary).keys().map(func(k: String) -> Dictionary: return _project_view(k, s["projects"][k])) }
 	for sid: String in ids():
 		if (_settlements[sid]["invites"] as Dictionary).has(pid):
@@ -971,6 +1007,15 @@ func _member_names(s: Dictionary) -> Dictionary:
 	for m: Variant in (s["members"] as Dictionary).keys():
 		if registry != null and registry.has_method("display_name"):
 			out[m] = str(registry.display_name(str(m)))
+	return out
+
+## Phase 199 — each member's specialty ({ member key: specialty }), members with none left out.
+func _member_specialties(s: Dictionary) -> Dictionary:
+	var out := {}
+	for m: Variant in (s["members"] as Dictionary).keys():
+		var sp := compute_specialty(str(m))
+		if sp != "":
+			out[m] = sp
 	return out
 
 ## A claim or invite entry's name in the active locale: its own text, or the numbered default.

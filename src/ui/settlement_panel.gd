@@ -168,7 +168,11 @@ func refresh() -> void:
 	var names: Dictionary = mine.get("names", {}) if mine.get("names", {}) is Dictionary else {}
 	for pid: String in (mine.get("members", {}) as Dictionary):
 		# Phase 181 — the member's display name when the host sent one, else the start of its key.
-		lines.append("%s: %s" % [str(names.get(pid, pid.left(8))), I18n.t("settlement.role." + str(mine["members"][pid]))])
+		var line := "%s: %s" % [str(names.get(pid, pid.left(8))), I18n.t("settlement.role." + str(mine["members"][pid]))]
+		var sp := str((mine.get("specialties", {}) as Dictionary).get(pid, ""))
+		if sp != "":
+			line += " (%s)" % I18n.t("settlement.specialty." + sp)
+		lines.append(line)
 	_members.text = I18n.t("settlement.members", [", ".join(lines)])
 	var items: Array = []
 	for item: String in (mine.get("stock", {}) as Dictionary):

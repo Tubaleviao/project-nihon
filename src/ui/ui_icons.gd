@@ -6,6 +6,7 @@ const WINDOW_FORMAT := "icons/ui/window/%s.png.raw"
 const SKILL_FORMAT := "icons/skills/%s.png.raw"
 const HUD_FORMAT := "icons/ui/hud/%s.png.raw"
 const ATTRIBUTE_FORMAT := "icons/attributes/%s.png.raw"
+const SPECIALTY_FORMAT := "icons/specialties/%s.png.raw"
 const HP := "hp"
 
 static var _cache: Dictionary = {}
@@ -18,6 +19,9 @@ static func skill_key(skill: String) -> String:
 
 static func attribute_key(attribute: String) -> String:
 	return ATTRIBUTE_FORMAT % attribute
+
+static func specialty_key(specialty: String) -> String:
+	return SPECIALTY_FORMAT % specialty
 
 static func hud_key(id: String) -> String:
 	return HUD_FORMAT % id

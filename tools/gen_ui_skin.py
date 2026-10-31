@@ -74,7 +74,7 @@ def outputs():
 
 # gen_ui_icons.py re-appends its own keys at the end of the textures table; the skin keys go just before the
 # first of them, so each generator leaves the other's order as it found it.
-ICON_PREFIXES = ("icons/ui/", "icons/skills/", "icons/attributes/", "icons/hair/")
+ICON_PREFIXES = ("icons/ui/", "icons/skills/", "icons/attributes/", "icons/hair/", "icons/specialties/")
 
 
 def manifest_text(files, root):

@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–198 are done. Their specs and acceptance criteria, and the introductions of
+Phases 1–199 are done. Their specs and acceptance criteria, and the introductions of
 the arcs they belonged to, are archived in [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Next: follow-up debt burn II (Phases 194–196)
@@ -51,16 +51,14 @@ hour. This arc gives a village shared projects, a specialty for each member, rai
 against and upkeep to pay. Its last phase proves the loop with four bots on a dedicated server.
 Raids come from creatures only. Settlement-against-settlement conflict stays deferred.
 
-**Changed 2026-10-31 (Phases 203–213):** the owner replaced settlements' claim area with clans and owned structures, and dropped raids. Phase 200 (raids) moved to Deferred, and Phase 201 (upkeep) and project labour are removed. Phase 202 (the loop played, which plays a raid and upkeep) is on hold until it is rewritten as a clan loop after Phase 213. Phase 199 stays without its labour bonus: specialties follow from skills, which Phase 207 grows from work.
+**Changed 2026-10-31 (Phases 203–213):** the owner replaced settlements' claim area with clans and owned structures, and dropped raids. Phase 200 (raids) moved to Deferred, and Phase 201 (upkeep) and project labour are removed. Phase 202 (the loop played, which plays a raid and upkeep) is on hold until it is rewritten as a clan loop after Phase 213. Phase 199 shipped (#539) with a specialty labour bonus, which Phase 207 removes with project labour: specialties then follow from skills alone, which Phase 207 grows from work.
 
 | Phase | Title | Status | Spec |
 |---|---|---|---|
 | 197 | The settlement loop in the fabric: projects, specialties, raids and upkeep | Done | [phases-197.md](docs/roadmap-history/phases-197.md) |
 | 198 | Settlement projects at runtime: a village builds together | Done | [phases-198.md](docs/roadmap-history/phases-198.md) |
-| 199 | Specialties at runtime: what each member is good at | Planned | below |
-| 200 | Raids: a warned, bounded attack the village can defend | Dropped (2026-10-31) | Deferred |
-| 201 | Upkeep: a village that has to keep going | Removed (2026-10-31) | — |
-| 202 | The settlement loop, played: four bots found, specialize, trade and defend a village | On hold: Phase 203 | below |
+| 199 | Specialties at runtime: what each member is good at | Done | [phases-199.md](docs/roadmap-history/phases-199.md) |
+| 202 | The settlement loop, played: four bots found, specialize, trade and defend a village | On hold | below |
 
 ### Arc: clans, owned buildings, an Earth-scale world and buildings that stand up (Phases 203–213)
 
@@ -127,34 +125,6 @@ Smithing). Phase 203 models all of it in the fabric before any runtime phase sta
 | 211 | Earth-scale mountains: peaks to about 8,850 m on unrecorded land | Planned | below |
 | 212 | Floors and structural limits at runtime, and the materials above stone | Planned | below |
 | 213 | A clan's tower on a mountain: the arc, played | Planned | below |
-
----
-
-## Phase 199 — Specialties at runtime: what each member is good at
-
-**Goal:** each member gets a specialty from their skills and attributes. It shows on the clan roster
-(Phase 204) and the character sheet, so members can see who does what at a glance.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phases 178 and 198.
-
-**Deliverables:**
-- `src/settlement/specialty_rules.gd`: pure scoring from the skill and attribute tables, ties
-  broken in fabric order, and no specialty below the floor.
-- The host recomputes a member's specialty when their skills or attributes change and syncs it to
-  the clan's members. Nothing is client-reported: the host reads its own skill and attribute
-  records.
-- UI: the specialty on the roster and on the character sheet (Phase 179), with an icon from the
-  Phase 175 generator.
-
-**Acceptance criteria:**
-- [ ] Suite: fixture players with a high carpentry skill, a high combat skill and only base values
-  get woodworker, hunter and no specialty; a tie resolves in fabric order.
-- [ ] Suite: a skill gain that changes the best score changes the specialty and emits one sync.
-- [ ] Suite (audit): no specialty value is read from a client message.
-- [ ] Every new string is in both catalogs, and the i18n key check passes.
-- [ ] Suite green on both boot paths, harness green.
 
 ---
 
@@ -390,7 +360,7 @@ that kind of work. Clan projects finish when their materials are in, with no lab
   no XP. Phase 199's specialties then follow from those skills, and the clan roster (Phase 204)
   shows them.
 - Project labour is removed from the runtime: the labour clock (`LABOUR_GAP_SEC`), `SITE_RADIUS`,
-  the tool-in-hand check and work steps. A project completes on its last contribution. Saved projects with work in progress complete if their materials are in.
+  the tool-in-hand check, work steps and Phase 199's specialty labour bonus (`SettlementSlice.labour_bonus`, `bonusLabour`). A project completes on its last contribution. Saved projects with work in progress complete if their materials are in.
 - Project completion stops counting toward a tier (`minProjects`).
 
 **Acceptance criteria:**

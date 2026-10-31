@@ -40,6 +40,8 @@ WINDOW_DIR = Path("assets/icons/ui/window")
 HUD_DIR = Path("assets/icons/ui/hud")
 SKILL_DIR = Path("assets/icons/skills")
 ATTRIBUTE_DIR = Path("assets/icons/attributes")
+SPECIALTY_DIR = Path("assets/icons/specialties")
+SETTLEMENT_JS = ROOT / "fabric/gameplay/settlement.js"
 HAIR_DIR = Path("assets/icons/hair")
 CREATION_DIR = Path("assets/icons/ui/creation")
 DOCK_GD = ROOT / "src/ui/window_dock.gd"
@@ -47,7 +49,7 @@ SKILLS_DIR = ROOT / "fabric/gameplay/skills"
 COMBAT_JS = ROOT / "fabric/gameplay/combat.js"
 ATTRIBUTES_JS = ROOT / "fabric/gameplay/attributes.js"
 CREATION_JS = ROOT / "fabric/gameplay/characters/creation.js"
-KEY_PREFIXES = ("icons/ui/", "icons/skills/", "icons/attributes/", "icons/hair/")
+KEY_PREFIXES = ("icons/ui/", "icons/skills/", "icons/attributes/", "icons/hair/", "icons/specialties/")
 
 RENDER = 128
 ICON = 32
@@ -556,6 +558,11 @@ ATTRIBUTES = {
     "agility": s_feet, "intelligence": s_sparkle, "perception": s_eye,
 }
 
+# Phase 199 — settlement specialty -> drawing; every specialty of settlement.js needs one.
+SPECIALTIES = {
+    "woodworker": s_saw, "smith": s_anvil, "hunter": s_bow, "builder": s_hammer, "forager": s_compass,
+}
+
 # Phase 180 — hair shape -> (behind the face, in front of it); every shape of creation.js needs one.
 def _cap(c):
     c.ellipse(50, 42, 28, 17, "wood")
@@ -690,6 +697,13 @@ def draw_attribute(key):
     return c.to_png()
 
 
+def draw_specialty(key):
+    c = Canvas()
+    c.place(0.92, 4, 4)
+    SPECIALTIES[key](c)
+    return c.to_png()
+
+
 def draw_skill(category, skill):
     frame, fill = FRAMES[category]
     c = Canvas()
@@ -742,6 +756,13 @@ def read_attributes():
     return re.findall(r"'(\w+)'", m.group(1))
 
 
+def read_specialties():
+    m = re.search(r"const SPECIALTIES = \{.*?\n  specialties: \{(.*?)\n  \},", SETTLEMENT_JS.read_text(), re.S)
+    if not m:
+        sys.exit("fabric/gameplay/settlement.js: SPECIALTIES not found")
+    return re.findall(r"^    (\w+):", m.group(1), re.M)
+
+
 def read_hair():
     """hair id -> shape, from creation.js (`HAIR_STYLES`)."""
     m = re.search(r"const HAIR_STYLES = \{(.*?)^\}", CREATION_JS.read_text(), re.M | re.S)
@@ -772,6 +793,9 @@ def validate():
     for a in read_attributes():
         if a not in ATTRIBUTES:
             problems.append(f"attribute {a} has no drawing in gen_ui_icons.py")
+    for sp in read_specialties():
+        if sp not in SPECIALTIES:
+            problems.append(f"specialty {sp} has no drawing in gen_ui_icons.py")
     cats = read_categories()
     for cat in cats:
         if cat not in FRAMES:
@@ -803,6 +827,8 @@ def outputs():
         files[SKILL_DIR / f"{s}.png.raw"] = draw_skill(cat, s)
     for a in read_attributes():
         files[ATTRIBUTE_DIR / f"{a}.png.raw"] = draw_attribute(a)
+    for sp in read_specialties():
+        files[SPECIALTY_DIR / f"{sp}.png.raw"] = draw_specialty(sp)
     for h in ["hp"] + effects:
         files[HUD_DIR / f"{h}.png.raw"] = draw_hud(h)
     for h, shape in sorted(read_hair().items()):
@@ -832,7 +858,7 @@ def write(files, root):
         path = root / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
-    for d in (WINDOW_DIR, HUD_DIR, SKILL_DIR, ATTRIBUTE_DIR, HAIR_DIR, CREATION_DIR):
+    for d in (WINDOW_DIR, HUD_DIR, SKILL_DIR, ATTRIBUTE_DIR, SPECIALTY_DIR, HAIR_DIR, CREATION_DIR):
         keep = {r.name for r in files if r.parent == d}
         for stale in (root / d).glob("*.png.raw"):
             if stale.name not in keep:
@@ -849,7 +875,7 @@ def check(files):
             problems.append(f"missing {rel}")
         elif (ROOT / rel).read_bytes() != data:
             problems.append(f"{rel} differs from the generator output")
-    for d in (WINDOW_DIR, HUD_DIR, SKILL_DIR, ATTRIBUTE_DIR, HAIR_DIR, CREATION_DIR):
+    for d in (WINDOW_DIR, HUD_DIR, SKILL_DIR, ATTRIBUTE_DIR, SPECIALTY_DIR, HAIR_DIR, CREATION_DIR):
         for f in sorted((ROOT / d).glob("*.png.raw")):
             if d / f.name not in files:
                 problems.append(f"orphan {d / f.name}")
