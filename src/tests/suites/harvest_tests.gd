@@ -97,7 +97,8 @@ func _test_skinning_tables() -> void:
 		assert_true(QUALITIES.has(String(quality_c[l])), "level %d has a known grade" % l)
 		assert_true(QUALITIES.find(String(quality_c[l])) >= QUALITIES.find(String(quality_c[l - 1])), "quality never falls at level %d" % l)
 		assert_true(float(xp_c[l]) > float(xp_c[l - 1]), "XP to level rises at level %d" % l)
-	assert_true(int(s.get("xpPerHarvest")) > 0, "a harvest grants XP")
+	assert_false("xpPerHarvest" in s, "a harvest's XP lives in WorkSkills alone (the Phase 207 review)")
+	assert_true(int(preload("res://src/character/work_skills.gd").gather_row("carcass").get("xp", 0)) > 0, "a harvest grants XP")
 
 
 func _test_carcass_data() -> void:

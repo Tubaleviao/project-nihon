@@ -1,15 +1,20 @@
 extends "res://src/tests/test_support.gd"
-## Phase 198 — settlement projects at runtime: the rules, contributions and labour, completion and its
-## structure, the growing tier by projects, persistence and the board.
+## Phase 198 — settlement projects at runtime: the rules, contributions, completion and its structure,
+## persistence and the board. Phase 207 — no labour: the last material completes a project, which changes
+## nothing but itself.
 
 const SettlementSlice := preload("res://src/settlement/settlement_slice.gd")
 const ProjectRules := preload("res://src/settlement/project_rules.gd")
+const SpecialtyRules := preload("res://src/settlement/specialty_rules.gd")
 
 func register() -> void:
 	_run_test("project rules: contributions are checked, each refusal has its own key", _test_rules_contribution)
-	_run_test("project rules: steps, completion and layouts", _test_rules_shape)
-	_run_test("project: start, contribute from bag and stockpile, labour with a tool", _test_project_flow)
-	_run_test("project: a completed project places its structure and grows the tier", _test_project_complete)
+	_run_test("project rules: completion and layouts", _test_rules_shape)
+	_run_test("project: start, contribute from bag and stockpile", _test_project_flow)
+	_run_test("project: the contribution of its last material completes it and places its structure", _test_project_complete)
+	_run_test("project: completing one changes no clan-level value but the project", _test_project_completion_isolated)
+	_run_test("project: a saved project with labour left completes on load once its materials are in", _test_project_saved_labour)
+	_run_test("project (audit): no labour code remains", _test_no_labour_code)
 	_run_test("project: state survives save and load, a pre-198 world loads with none", _test_project_persistence)
 	_run_test("project: intents resolve through the bus with keyed refusals", _test_project_intents)
 	_run_test("project: every refusal and board string has catalog text, every action fits the wire", _test_project_strings)
@@ -28,11 +33,9 @@ func _rig() -> Dictionary:
 	s.mono_sec = func() -> float: return now[0]
 	var where := { "p1": Vector2(10.0, 10.0), "p2": Vector2(12.0, 10.0), "p3": Vector2(900.0, 900.0), "p4": Vector2(11.0, 11.0) }
 	s.position_of = func(pid: String) -> Variant: return where.get(pid, null)
-	var tools := { "p1": true, "p2": true, "p4": true }
-	s.tool_in_hand = func(pid: String) -> bool: return bool(tools.get(pid, false))
 	var placed: Array = []
 	s.place_structure = func(id: String, key: String, site: Dictionary) -> void: placed.append([id, key, site])
-	return { "reg": reg, "s": s, "now": now, "where": where, "tools": tools, "placed": placed }
+	return { "reg": reg, "s": s, "now": now, "where": where, "placed": placed }
 
 func _free_rig(rig: Dictionary) -> void:
 	rig["s"].free()
@@ -49,21 +52,10 @@ func _village(rig: Dictionary) -> String:
 	assert_eq(s.join("p2", "settlement_1"), "", "p2 joins")
 	return "settlement_1"
 
-## Beat labour on `key` for `pid` until it reports `stop` or `max` beats pass, one second apart.
-func _work(rig: Dictionary, pid: String, key: String, beats: int) -> String:
-	var s: SettlementSlice = rig["s"]
-	var why := ""
-	for i in beats:
-		rig["now"][0] += 1.0
-		why = s.labour(pid, key)
-		if why != "":
-			return why
-	return why
-
 func _test_rules_contribution() -> void:
 	var def := ProjectRules.def_of("palisade")
 	assert_false(def.is_empty(), "the fabric has a palisade")
-	var state := { "status": "building", "given": { "ThornwoodPlank": 30 }, "work": 0.0 }
+	var state := { "status": "building", "given": { "ThornwoodPlank": 30 } }
 	assert_eq(ProjectRules.contribution_blocker(def, state, "ThornwoodPlank", 10), "", "the last ten planks are accepted")
 	assert_eq(ProjectRules.contribution_blocker(def, state, "AshiteBlock", 1), "unknown_item", "a material it does not use")
 	assert_eq(ProjectRules.contribution_blocker(def, state, "ThornwoodPlank", 11), "too_much", "more planks than it needs")
@@ -84,19 +76,16 @@ func _test_rules_contribution() -> void:
 
 func _test_rules_shape() -> void:
 	var def := ProjectRules.def_of("storehouse")
-	assert_eq(ProjectRules.total_work(def), 150.0, "60 + 60 + 30 work units")
-	assert_eq(ProjectRules.current_step(def, 0.0)["step"], "foundation", "the first step")
-	assert_eq(ProjectRules.current_step(def, 61.0)["step"], "shelving", "the second step")
-	assert_eq(ProjectRules.current_step(def, 150.0)["index"], -1, "every step done")
-	var full := { "status": "building", "given": ProjectRules.needed_materials(def), "work": 150.0 }
-	assert_true(ProjectRules.is_complete(def, full), "materials and labour in: complete")
-	full["work"] = 149.0
-	assert_false(ProjectRules.is_complete(def, full), "a unit of labour short")
+	assert_false(def.has("labour"), "the runtime table holds no labour steps")
+	var full := { "status": "building", "given": ProjectRules.needed_materials(def) }
+	assert_true(ProjectRules.is_complete(def, full), "materials in: complete, with no work done")
+	var short: Dictionary = full.duplicate(true)
+	short["given"]["ThornwoodPlank"] = int(short["given"]["ThornwoodPlank"]) - 1
+	assert_false(ProjectRules.is_complete(def, short), "a plank short")
 	var done := { "storehouse": { "status": "done" }, "palisade": { "status": "building" } }
 	# Phase 205 — projects have no effects: a standing storehouse adds no stockpile stacks.
 	assert_false(ProjectRules.def_of("storehouse").has("effects"), "no project carries effects")
-	assert_eq(ProjectRules.completed_count(done), 1, "one done")
-	assert_eq(ProjectRules.work_units(10.0, { "workSecondsPerUnit": 2 }), 5.0, "two seconds a unit")
+	assert_eq(ProjectRules.building_count(done), 1, "one still building")
 	for layout in ["ring", "tower", "hall", "shed"]:
 		var cells := ProjectRules.layout_cells(layout, 40)
 		assert_eq(cells.size(), 40, "%s fills exactly its block count" % layout)
@@ -105,8 +94,6 @@ func _test_rules_shape() -> void:
 			seen[c] = true
 		assert_eq(seen.size(), 40, "%s cells are distinct" % layout)
 	assert_eq(ProjectRules.station_offsets(2), [Vector2i(-1, 0), Vector2i(1, 0)], "two stations side by side")
-	assert_true(ProjectRules.is_tool_item("CarpenterAxe"), "an axe is a tool")
-	assert_false(ProjectRules.is_tool_item("ThornwoodPlank"), "a plank is not")
 	assert_eq(ProjectRules.block_material("AshiteBlock"), "Ashite", "an AshiteBlock builds Ashite")
 	assert_eq(ProjectRules.block_material("ThornwoodPlank"), "Thornwood", "a plank builds Thornwood")
 
@@ -139,25 +126,14 @@ func _test_project_flow() -> void:
 	assert_eq(s.contribute("p2", "storehouse", "AshiteBlock", 6, "stock"), "over_limit", "45 + 6 is over the member limit")
 	assert_eq(s.contribute("p2", "storehouse", "AshiteBlock", 5, "stock"), "", "45 + 5 fits")
 	assert_eq(int(s.stock_of(id)["AshiteBlock"]), 7, "taken from the stockpile")
-	assert_eq(s.contribute("p1", "storehouse", "AshiteBlock", 7, "stock"), "", "the founder draws the rest")
-	# Labour.
-	rig["tools"]["p2"] = false
-	assert_eq(_work(rig, "p2", "storehouse", 1), "no_tool", "labour needs a tool in hand")
-	rig["tools"]["p2"] = true
-	rig["where"]["p2"] = Vector2(30.0, 10.0)
-	assert_eq(_work(rig, "p2", "storehouse", 1), "too_far", "labour happens at the site")
-	rig["where"]["p2"] = Vector2(12.0, 10.0)
-	assert_eq(_work(rig, "p2", "storehouse", 11), "", "eleven beats a second apart")
+	assert_eq(s.contribute("p1", "storehouse", "AshiteBlock", 6, "stock"), "", "the founder draws all but one")
 	var p: Dictionary = s.projects_of(id)["storehouse"]
-	assert_true(absf(float(p["work"]) - 5.0) < 0.001, "ten credited seconds are five units (the first beat starts the clock)")
-	rig["now"][0] += 60.0
-	assert_eq(s.labour("p2", "storehouse"), "", "a beat after a long gap restarts the clock")
-	assert_true(absf(float(s.projects_of(id)["storehouse"]["work"]) - 5.0) < 0.001, "and credits nothing")
 	assert_eq(int(p["contributors"]["p2"]["items"]), 35, "p2's 35 materials are recorded")
 	assert_eq(str(p["status"]), "building", "still building")
+	assert_false(p.has("work"), "a project records no work")
 	var view: Dictionary = s.private_view("p2")["mine"]
 	assert_eq((view["projects"] as Array).size(), 1, "members see the project")
-	assert_eq(str(view["projects"][0]["step"]), "foundation", "on its first step")
+	assert_false((view["projects"][0] as Dictionary).has("step"), "with no labour step")
 	assert_eq((s.private_view("p3")["mine"] as Dictionary).size(), 0, "an outsider sees none of it")
 	_free_rig(rig)
 
@@ -169,13 +145,19 @@ func _test_project_complete() -> void:
 	for key in ["storehouse", "palisade"]:
 		assert_eq(s.start_project("p1", key), "", "start %s" % key)
 		var need := ProjectRules.needed_materials(ProjectRules.def_of(key))
-		for item: String in need:
-			_give(rig, "p1", item, int(need[item]))
-			assert_eq(s.contribute("p1", key, item, int(need[item])), "", "%s gets its %s" % [key, item])
-		var total := ProjectRules.total_work(ProjectRules.def_of(key))
-		var beats := int(ceil(total * 2.0)) + 1
-		assert_eq(_work(rig, "p1", key, beats), "", "%s labour runs to the end" % key)
-		assert_eq(s.labour("p1", key), "project_done", "%s labour stops once done" % key)
+		var items: Array = need.keys()
+		for i in items.size():
+			var item: String = items[i]
+			var n := int(need[item])
+			_give(rig, "p1", item, n)
+			if i == items.size() - 1:
+				assert_eq(s.contribute("p1", key, item, n - 1), "", "%s gets all but one %s" % [key, item])
+				assert_eq(str(s.projects_of(id)[key]["status"]), "building", "%s is one short: still building" % key)
+				assert_eq(s.contribute("p1", key, item, 1), "", "%s gets its last %s" % [key, item])
+				assert_eq(str(s.projects_of(id)[key]["status"]), "done", "%s completes on the last material" % key)
+			else:
+				assert_eq(s.contribute("p1", key, item, n), "", "%s gets its %s" % [key, item])
+		assert_eq(s.contribute("p1", key, items[0], 1), "project_done", "%s takes nothing more" % key)
 	var projects: Dictionary = s.projects_of(id)
 	assert_eq(str(projects["storehouse"]["status"]), "done", "the storehouse completes")
 	assert_eq((rig["placed"] as Array).size(), 2, "two structures placed")
@@ -184,10 +166,90 @@ func _test_project_complete() -> void:
 	assert_eq(s.tier_for(id, float(rig["now"][0])), "founded", "two members are short of growing")
 	assert_eq(s.invite("p1", "p4"), "", "invite p4")
 	assert_eq(s.join("p4", id), "", "p4 joins: three members")
-	assert_eq(s.tier_for(id, float(rig["now"][0])), "growing", "three members and two projects reach growing on day one")
-	s.tick(float(rig["now"][0]))
-	assert_eq(str(s.get_settlement(id)["status"]), "growing", "the tick promotes it")
+	assert_eq(s.tier_for(id, float(rig["now"][0])), "founded", "projects count toward no tier: growing still waits for its days")
+	rig["now"][0] += 3.0 * SettlementSlice.DAY_SEC
+	assert_eq(s.tier_for(id, float(rig["now"][0])), "growing", "three members and three days reach growing")
 	_free_rig(rig)
+
+## Phase 207 — completing a project changes nothing at the clan level: not the tier, the stockpile, the
+## members, their skills or attributes, or any other project; only the project itself.
+func _test_project_completion_isolated() -> void:
+	var rig := _rig()
+	var s: SettlementSlice = rig["s"]
+	var reg: Node = rig["reg"]
+	var id := _village(rig)
+	assert_eq(s.invite("p1", "p4"), "", "invite p4")
+	assert_eq(s.join("p4", id), "", "p4 joins: three members, growing's count")
+	_give(rig, "p1", "Thornwood", 10)
+	assert_eq(s.deposit("p1", "Thornwood", 10), "", "a stocked village")
+	assert_eq(s.start_project("p1", "storehouse"), "", "a second project under way")
+	assert_eq(s.start_project("p1", "palisade"), "", "the palisade")
+	var need := ProjectRules.needed_materials(ProjectRules.def_of("palisade"))
+	for item: String in need:
+		_give(rig, "p2", item, int(need[item]))
+	var before: Dictionary = s.get_settlement(id).duplicate(true)
+	var skills_before := {}
+	for pid in ["p1", "p2", "p4"]:
+		skills_before[pid] = [reg.get_record(pid).get("skill_xp", {}).duplicate(true), reg.get_attributes(pid)]
+	for item: String in need:
+		assert_eq(s.contribute("p2", "palisade", item, int(need[item])), "", "p2 brings the palisade's %s" % item)
+	s.tick(float(rig["now"][0]))
+	var after: Dictionary = s.get_settlement(id).duplicate(true)
+	assert_eq(str(after["projects"]["palisade"]["status"]), "done", "the palisade is done")
+	for k: String in before:
+		if k == "projects" or k == "last_active":
+			continue
+		assert_eq(after[k], before[k], "completion leaves the settlement's %s alone" % k)
+	assert_eq(after["projects"]["storehouse"], before["projects"]["storehouse"], "and the other project")
+	for pid in ["p1", "p2", "p4"]:
+		assert_eq([reg.get_record(pid).get("skill_xp", {}), reg.get_attributes(pid)], skills_before[pid], "%s gains no skill or attribute from it" % pid)
+	_free_rig(rig)
+
+## Phase 207 — a pre-207 save may hold a project with every material in and labour still to do: it completes
+## (and is placed) on the next tick; one still short of materials stays building.
+func _test_project_saved_labour() -> void:
+	var rig := _rig()
+	var s: SettlementSlice = rig["s"]
+	var id := _village(rig)
+	assert_eq(s.start_project("p1", "palisade"), "", "start the palisade")
+	assert_eq(s.start_project("p1", "storehouse"), "", "and the storehouse")
+	var data: Dictionary = JSON.parse_string(JSON.stringify(s.to_data()))
+	var pal: Dictionary = data["settlements"][id]["projects"]["palisade"]
+	pal["given"] = ProjectRules.needed_materials(ProjectRules.def_of("palisade"))
+	pal["work"] = 3.0   # a pre-207 record's labour, long gone from the rules
+	pal["contributors"] = { "p1": { "items": 40, "work": 3.0 } }
+	s.from_data(data)
+	assert_eq(str(s.projects_of(id)["palisade"]["status"]), "building", "loaded as it was saved")
+	assert_false(s.projects_of(id)["palisade"].has("work"), "its labour is dropped")
+	s.tick(float(rig["now"][0]))
+	assert_eq(str(s.projects_of(id)["palisade"]["status"]), "done", "the tick completes it")
+	assert_eq((rig["placed"] as Array).size(), 1, "and places it once")
+	assert_eq(str(s.projects_of(id)["storehouse"]["status"]), "building", "a project short of materials keeps building")
+	s.tick(float(rig["now"][0]))
+	assert_eq((rig["placed"] as Array).size(), 1, "a second tick places nothing more")
+	# Review — the load finds such projects once; a tick looks at no other project.
+	s._settlements[id]["projects"]["storehouse"]["given"] = ProjectRules.needed_materials(ProjectRules.def_of("storehouse"))
+	s.tick(float(rig["now"][0]))
+	assert_eq(str(s.projects_of(id)["storehouse"]["status"]), "building", "a tick after the load scans no project")
+	_free_rig(rig)
+
+## Phase 207 — the labour stage is gone from the runtime: its constants, clock, tool check, steps, intent,
+## specialty bonus and catalog text.
+func _test_no_labour_code() -> void:
+	var files := ["res://src/settlement/settlement_slice.gd", "res://src/settlement/project_rules.gd", "res://src/settlement/specialty_rules.gd",
+		"res://src/settlement/settlement_wiring.gd", "res://src/ui/settlement_panel.gd"]
+	var banned := ["LABOUR_GAP_SEC", "SITE_RADIUS", "LABOUR_HOLD", "_labour_clock", "tool_in_hand", "func labour(", "labour_bonus",
+		"labour_multiplier", "bonusLabour", "workSecondsPerUnit", "total_work", "current_step", "work_units", "is_tool_item",
+		"project_work", "minProjects", "LABOUR_BEAT_SEC"]
+	for path: String in files:
+		var src := FileAccess.get_file_as_string(path)
+		assert_true(src.length() > 0, "%s reads" % path)
+		for word: String in banned:
+			assert_false(src.contains(word), "%s has no %s" % [path.get_file(), word])
+	assert_false(SettlementSlice.ACTIONS.has("project_work"), "no work intent")
+	assert_false(SettlementSlice.REASONS.has("labour_done") or SettlementSlice.REASONS.has("no_tool"), "no labour refusals")
+	assert_false(I18nScript.has_key("settlement.project_work"), "no Work here button text")
+	assert_false(SpecialtyRules.table().has("bonusLabour"), "the specialty table has no labour bonus")
 
 func _test_project_persistence() -> void:
 	var rig := _rig()
@@ -196,14 +258,12 @@ func _test_project_persistence() -> void:
 	assert_eq(s.start_project("p1", "palisade"), "", "start the palisade")
 	_give(rig, "p1", "ThornwoodPlank", 12)
 	assert_eq(s.contribute("p1", "palisade", "ThornwoodPlank", 12), "", "twelve planks")
-	_work(rig, "p1", "palisade", 5)
 	var data: Dictionary = s.to_data()
 	assert_eq(int(data["format"]), SettlementSlice.DATA_FORMAT, "the record carries its format")
 	var round := SettlementSlice.new()
 	round.from_data(JSON.parse_string(JSON.stringify(data)))
 	var p: Dictionary = round.projects_of(id)["palisade"]
 	assert_eq(int(p["given"]["ThornwoodPlank"]), 12, "given materials survive")
-	assert_true(absf(float(p["work"]) - 2.0) < 0.001, "labour survives")
 	assert_eq(int(p["contributors"]["p1"]["items"]), 12, "contributors survive")
 	# A pre-198 record (no format): no projects, even if the key is somehow there.
 	var legacy: Dictionary = data.duplicate(true)
@@ -247,8 +307,8 @@ func _test_project_intents() -> void:
 	GameBus.settlement_intent.emit("project_give", { "project": "palisade", "item": "ThornwoodPlank", "qty": 1, "from": "elsewhere" }, "p2")
 	assert_eq(got.back(), ["p2", "project_give", false, "bad_args"], "an unknown source is refused")
 	rig["now"][0] += 1.0
-	GameBus.settlement_intent.emit("project_work", { "project": "moat" }, "p2")
-	assert_eq(got.back(), ["p2", "project_work", false, "unknown_project"], "an unknown project is refused")
+	GameBus.settlement_intent.emit("project_work", { "project": "palisade" }, "p2")
+	assert_eq(got.back(), ["p2", "project_work", false, "unknown_action"], "the labour intent is gone (Phase 207)")
 	GameBus.settlement_resolved.disconnect(on_res)
 	GameBus.settlement_project_changed.disconnect(on_proj)
 	_free_rig(rig)
@@ -258,9 +318,7 @@ func _test_project_strings() -> void:
 		assert_true(action.length() <= 16, "action %s fits the 16 characters the wire keeps" % action)
 	for code: String in SettlementSlice.REASONS:
 		assert_true(I18nScript.has_key("settlement.refused." + code), "refusal %s has catalog text" % code)
-	for action in ["project_start", "project_give", "project_work"]:
+	for action in ["project_start", "project_give"]:
 		assert_true(I18nScript.has_key("settlement.ok." + action), "%s has a success line" % action)
 	for key: String in (ProjectRules.table()["projects"] as Dictionary):
 		assert_true(I18nScript.has_key("settlement.project." + key), "project %s has a name" % key)
-		for st: Dictionary in ProjectRules.def_of(key)["labour"]:
-			assert_true(I18nScript.has_key("settlement.step." + str(st["step"])), "step %s has a name" % st["step"])

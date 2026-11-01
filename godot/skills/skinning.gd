@@ -31,7 +31,6 @@ enum Tier {
 @export var maxLevel: int
 @export var category: int
 @export var levelCap: int
-@export var xpPerHarvest: int
 @export var xpToLevel: Array
 @export var yieldCurve: Array
 @export var chanceCurve: Array

@@ -177,6 +177,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [RecipeHealthPotion](entities/recipehealthpotion.md) — Brew a health-restoring potion from aethermite dust and harvested herbs at an alchemy bench
 - [RecipeHearth](entities/recipehearth.md) — Lay a hearth from six thornwood planks and four ferrite ingots at a carpentry bench
 - [RecipeLumenfiteOrb](entities/recipelumenfiteorb.md) — Polish a lumenfite stone into a charged spell-focus orb at an arcane forge
+- [RecipeNoviceTunic](entities/recipenovicetunic.md) — Sew two duskfiber strands into a plain tunic at a carpentry bench
 - [RecipeRefinedVoiditeShard](entities/reciperefinedvoiditeshard.md) — Stabilise one raw voidite crystal into a refined voidite shard at a forge
 - [RecipeSkinningKnife](entities/recipeskinningknife.md) — Craft a skinning knife from one ferrite ingot and one thornwood plank
 - [RecipeStaminaPotion](entities/recipestaminapotion.md) — Brew a stamina-restoring potion from aethermite dust and root reagents

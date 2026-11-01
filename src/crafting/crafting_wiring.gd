@@ -15,6 +15,13 @@ func _connect_all() -> void:
 	connect_bus(GameBus.research_points_synced, _on_research_points_synced)
 	connect_bus(GameBus.resource_gathered, _on_resource_gathered)
 	connect_bus(GameBus.tame_resolved, _on_tame_resolved)
+	connect_bus(GameBus.skill_tier_recorded, _on_skill_tier_recorded)
+
+## Phase 207 review — a tier raised by work (WorkSkills) may complete a profession's unlock conditions, as a
+## tier set through the crafting slice does. Host only; `evaluate` unlocks each profession once.
+func _on_skill_tier_recorded(player_id: String, _skill: String, _tier: String) -> void:
+	if not root._is_client and root._professions != null and player_id != "":
+		root._professions.evaluate(player_id)
 
 func _on_inventory_full() -> void:
 	if root._is_server or root._registry == null or root._registry.local_player_id.is_empty():

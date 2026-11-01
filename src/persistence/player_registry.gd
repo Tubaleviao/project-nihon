@@ -80,6 +80,7 @@ const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 ## two constants. The values are unchanged; only their home is, and `PlayerSlice` re-exports
 ## both names so no reader moved.**
 const PlayerRules := preload("res://src/core/player_rules.gd")
+const RecordSanitize := preload("res://src/persistence/record_sanitize.gd")
 const AttributeRules := preload("res://src/character/attribute_rules.gd")
 const CreationRules := preload("res://src/character/creation_rules.gd")
 
@@ -861,28 +862,10 @@ func record_waystones(player_id: String, station_ids: Array) -> void:
 	var rec := ensure_player(player_id)
 	if rec.is_empty():
 		return
-	rec["waystones"] = sanitize_waystones(station_ids)
+	rec["waystones"] = RecordSanitize.sanitize_waystones(station_ids)
 
-## A saved or synced attunement list as sorted unique non-empty strings, at most `MAX_WAYSTONES`.
-const MAX_WAYSTONES := 256
-static func sanitize_waystones(raw: Variant) -> Array:
-	var seen := {}
-	if raw is Array:
-		for v in raw:
-			if v is String and v != "" and v.length() <= 64:
-				seen[v] = true
-	var out: Array = seen.keys()
-	out.sort()
-	return out.slice(0, MAX_WAYSTONES)
-
-## Phase 161 — a saved or synced XP table as { skill: non-negative int } with bounded names.
-static func sanitize_skill_xp(raw: Variant) -> Dictionary:
-	var out := {}
-	if raw is Dictionary:
-		for k in raw:
-			if k is String and k != "" and k.length() <= 32 and (raw[k] is int or raw[k] is float) and is_finite(float(raw[k])):
-				out[k] = clampi(int(raw[k]), 0, 100000000)
-	return out
+## The saved and synced field sanitizers (`sanitize_waystones`, `sanitize_skill_xp`) live in RecordSanitize.
+const MAX_WAYSTONES := RecordSanitize.MAX_WAYSTONES
 
 func get_skill_xp(player_id: String, skill: String) -> int:
 	var xp: Variant = get_record(player_id).get("skill_xp", {})
@@ -910,10 +893,14 @@ func stat_of(player_id: String, stat_id: String) -> float:
 func max_hp_of(player_id: String) -> float:
 	return stat_of(player_id, "maxHp") if has_player(player_id) else PlayerRules.MAX_HP
 
+## Phase 207 review — players a deferred grant owes an `attributes_synced` (`flush_attribute_syncs`).
+var _attr_sync_owed: Dictionary = {}
+
 ## Host: grant `amount` XP to `skill` and feed it to the attributes its category weights (Phase 178). Returns the
 ## attributes that gained a point; `GameBus.attributes_synced` is emitted on every grant, so the owner's client
 ## refreshes its attributes and growth bars. Refused (returns []) on a non-authoritative machine.
-func grant_skill_xp(player_id: String, skill: String, amount: int) -> Array:
+## Phase 207 review — with `defer_sync` (work grants) it is emitted at once only on a gained point, else owed.
+func grant_skill_xp(player_id: String, skill: String, amount: int, defer_sync: bool = false) -> Array:
 	if not is_authoritative or amount <= 0:
 		return []
 	add_skill_xp(player_id, skill, amount)
@@ -931,8 +918,20 @@ func grant_skill_xp(player_id: String, skill: String, amount: int) -> Array:
 	if not gained.is_empty():
 		rec["attributes"] = attrs
 	# Phase 179: emitted on every grant, not only on a gained point, so the owner's growth bar moves with the XP.
-	GameBus.attributes_synced.emit(player_id, attrs)
+	if defer_sync and gained.is_empty():
+		_attr_sync_owed[player_id] = true
+	else:
+		_attr_sync_owed.erase(player_id)
+		GameBus.attributes_synced.emit(player_id, attrs)
 	return gained
+
+## Host: emit the `attributes_synced` deferred grants still owe, one per player. Returns how many.
+func flush_attribute_syncs() -> int:
+	var owed: Array = _attr_sync_owed.keys().filter(has_player)
+	_attr_sync_owed = {}
+	for pid: String in owed:
+		GameBus.attributes_synced.emit(pid, get_attributes(pid))
+	return owed.size()
 
 ## Phase 118 — the professions this player has unlocked ({ name: true }). Progression,
 ## so durable like the flags.
@@ -1320,7 +1319,7 @@ func apply_player_data(player_id: String, data: Dictionary) -> void:
 	# they ride the same record. A saved payload from before this phase simply
 	# carries neither key and restores to the empty defaults.
 	rec["flags"]      = data.get("flags", {})
-	rec["waystones"]  = sanitize_waystones(data.get("waystones", []))
+	rec["waystones"]  = RecordSanitize.sanitize_waystones(data.get("waystones", []))
 	rec["companions"] = data.get("companions", [])
 	# Phase 118: unlocked professions and the void-burst craft counter. A payload from
 	# before this phase carries neither key and restores to the empty defaults.
@@ -1331,7 +1330,7 @@ func apply_player_data(player_id: String, data: Dictionary) -> void:
 	# to the empty table — every skill then reads as its seed tier (novice).
 	rec["skills"]     = data.get("skills", {})
 	# Phase 161: skill XP rides the record; a payload from before it restores to none.
-	rec["skill_xp"]   = sanitize_skill_xp(data.get("skill_xp", {}))
+	rec["skill_xp"]   = RecordSanitize.sanitize_skill_xp(data.get("skill_xp", {}))
 	# Phase 178: attributes ride the record; a pre-178 payload carries none and restores to base 10 in everything,
 	# which derives today's carry capacity and max HP exactly.
 	rec["attributes"] = AttributeRules.sanitize(data.get("attributes", {}))

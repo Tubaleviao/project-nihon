@@ -237,7 +237,7 @@ signal tutorial_event(kind: String, params: Dictionary)
 signal tutorial_changed()
 
 ## Phase 140 — a settlement intent: `action` is one of SettlementSlice.ACTIONS (found, invite, join, role,
-## leave, deposit, withdraw, uninvite; Phase 198 project_start, project_give, project_work) and `args` its
+## leave, deposit, withdraw, uninvite; Phase 198 project_start, project_give; Phase 207 removed project_work) and `args` its
 ## parameters (the wire keeps 16 characters of an action). A client forwards it; the host binds the identity.
 signal settlement_intent(action: String, args: Dictionary, player_id: String)
 

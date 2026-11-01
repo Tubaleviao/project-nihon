@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Phase 203 — proves the work-skill validator catches bad tables: a crafting domain, a material family or a kind
 // of work (building, dismantling, repairing, lockpicking) that grows no skill, an unknown skill, a row that credits
-// a clan, an XP of zero and a new skill's XP curve that falls all fail; the shipped tables pass.
+// a clan, an XP of zero, a new skill's XP curve that falls and a tier table that does not rise all fail; the
+// shipped tables pass.
 //   node tools/check_work.js
 'use strict';
 const w = require('../fabric/gameplay/work');
@@ -29,6 +30,10 @@ expect('a row that credits a clan fails', (d) => { d.work.build.clan = 5; }, /bu
 expect('a zero XP row fails', (d) => { d.work.repair.xp = 0; }, /repair\.xp must be an integer >= 1/);
 expect('an unknown kind of work fails', (d) => { d.work.praying = { skill: 'Building', xp: 1 }; }, /unknown kind of work "praying"/);
 expect('a new skill curve that falls fails', (d) => { d.curves.Tailoring.xpToLevel[5] = 1; }, /Tailoring\.xpToLevel does not rise at level 5/);
+expect('a tier table that falls fails', (d) => { d.tiers.expert = 10; }, /tiers\.expert does not rise above journeyman/);
+expect('a tier table missing a tier fails', (d) => { delete d.tiers.master; }, /tiers\.master must be an integer >= 0/);
+expect('a novice threshold above 0 fails', (d) => { d.tiers.novice = 5; }, /tiers\.novice must be 0/);
+expect('an unknown tier fails', (d) => { d.tiers.legend = 9000; }, /tiers\.legend is not a tier/);
 expect('a missing new skill curve fails', (d) => { delete d.curves.Lockpicking; }, /curves\.Lockpicking is missing/);
 
 let threw = false;

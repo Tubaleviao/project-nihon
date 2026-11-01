@@ -32,6 +32,7 @@ extends Node
 ##   chop_tree(tree_id, player_id) -> Dictionary  { success, wood, quantity, reason }
 ##   apply_chop_state(tree_id, respawn_at) -> void   (client-side host state)
 const Diag := preload("res://src/core/diag.gd")
+const WorkSkills := preload("res://src/character/work_skills.gd")
 
 const MultimeshPool := preload("res://src/core/multimesh_pool.gd")
 const MeshUtil      := preload("res://src/core/mesh_util.gd")
@@ -581,6 +582,7 @@ func chop_tree(tree_id: String, player_id: String = "") -> Dictionary:
 	if inventory != null and inventory.has_method("add_item"):
 		if not inventory.add_item(wood, CHOP_YIELD):
 			return _fail("no_inventory")
+	WorkSkills.grant(player_registry, player_id, WorkSkills.gather_row(wood), CHOP_YIELD)   # Phase 207 — per unit, as mining
 	_push_inventory(player_id)
 	_set_chopped(tree_id)
 	return { "success": true, "wood": wood, "quantity": CHOP_YIELD, "reason": "" }

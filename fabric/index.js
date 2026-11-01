@@ -266,6 +266,7 @@ module.exports = defineFabric({
       RecipeWaystone:                  recipes.RecipeWaystone,
       RecipeCarpenterAxe:              recipes.RecipeCarpenterAxe,
       RecipeDuskfiberCloak:            recipes.RecipeDuskfiberCloak,
+      RecipeNoviceTunic:               recipes.RecipeNoviceTunic,
       RecipeAshiteBlock:               recipes.RecipeAshiteBlock,
       RecipeBed:                       recipes.RecipeBed,
     },

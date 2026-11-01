@@ -1,5 +1,4 @@
 const { defineEntity } = require('@newel/core')
-const { SKINNING } = require('./harvest')
 
 // Phase 203 — skills grow from work. Every kind of work a player does grows that player's own skill for it
 // (sewing makes you a better sewer); nothing a member does is progress for a clan. Phase 207 reads this
@@ -7,8 +6,8 @@ const { SKINNING } = require('./harvest')
 //
 // `craft`:  recipe domain -> { skill, xp }   one row per crafting domain a recipe can name; `tailoring` is
 //           the sewing domain (its recipes arrive with Phase 207).
-// `gather`: what is gathered -> { skill, xp } one row per material family (a mined or chopped block of
-//           that family) plus `plant` (foraged) and `carcass` (a skinned body, Phase 160's Skinning XP).
+// `gather`: what is gathered -> { skill, xp } one row per material family (a mined or chopped unit of
+//           that family) plus `plant` (foraged) and `carcass` (a skinned body: the only Skinning XP source).
 // `build`, `dismantle`, `repair`, `lockpick`: { skill, xp } per placed block, per dismantled block, per
 //           repair and per picked lock.
 // A row is exactly { skill, xp }: a row that names a clan, a target or anything else fails, so no work
@@ -16,6 +15,10 @@ const { SKINNING } = require('./harvest')
 //
 // SKILL_CURVES — the XP curve of each skill this phase adds, like Skinning's (Phase 160): `xpToLevel`
 // is the cumulative XP to reach each level 0..levelCap.
+//
+// TIER_XP — Phase 207 review: the cumulative XP in a skill at which its tier (novice … master) is reached.
+// The host raises a worker's tier when a grant crosses a threshold and never lowers one, so the recipe
+// skill guards and the specialty tiers follow the work. One table for every skill.
 const LEVEL_CAP = 10
 const levels = (f) => Array.from({ length: LEVEL_CAP + 1 }, (_, l) => f(l))
 
@@ -24,6 +27,8 @@ const SKILL_CURVES = {
   Tailoring:   { levelCap: LEVEL_CAP, xpToLevel: levels((l) => 40 * l * l) },
   Lockpicking: { levelCap: LEVEL_CAP, xpToLevel: levels((l) => 60 * l * l) },
 }
+
+const TIER_XP = { novice: 0, apprentice: 100, journeyman: 400, expert: 1200, master: 3000 }
 
 const WORK = {
   craft: {
@@ -39,7 +44,7 @@ const WORK = {
     wood:    { skill: 'Carpentry', xp: 2 },
     soil:    { skill: 'Building', xp: 1 },
     plant:   { skill: 'Alchemy', xp: 2 },
-    carcass: { skill: 'Skinning', xp: SKINNING.xpPerHarvest },
+    carcass: { skill: 'Skinning', xp: 10 },
   },
   build:     { skill: 'Building', xp: 1 },
   dismantle: { skill: 'Building', xp: 2 },
@@ -48,12 +53,24 @@ const WORK = {
 }
 
 const SINGLE_KINDS = ['build', 'dismantle', 'repair', 'lockpick']
+const FAMILY_FILES = { metal: 'metals', stone: 'stones', wood: 'woods', soil: 'soils' }
+
+/** Phase 207 — every material's gather family, { <material>: 'metal' | 'stone' | 'wood' | 'soil' }, from the
+ *  file that defines it, so the runtime picks WorkSkills.gather[family] for a mined or chopped block. */
+function materialFamilies() {
+  const out = {}
+  for (const [fam, file] of Object.entries(FAMILY_FILES)) {
+    for (const m of Object.keys(require(`../world/materials/${file}`))) out[m] = fam
+  }
+  return out
+}
+const FAMILIES = materialFamilies()
 const ROW_FIELDS = ['skill', 'xp']
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
 
 /** The work and curve tables as plain data. */
 function workData() {
-  return JSON.parse(JSON.stringify({ work: WORK, curves: SKILL_CURVES }))
+  return JSON.parse(JSON.stringify({ work: WORK, curves: SKILL_CURVES, tiers: TIER_XP }))
 }
 
 /** What the work table must cover and may name (required lazily: skills require this file). */
@@ -70,12 +87,7 @@ function workRefs() {
   return {
     skills: tagged(require('./skills'), 'skill'),
     domains: [...domains],
-    families: {
-      metal: Object.keys(require('../world/materials/metals')),
-      stone: Object.keys(require('../world/materials/stones')),
-      wood:  Object.keys(require('../world/materials/woods')),
-      soil:  Object.keys(require('../world/materials/soils')),
-    },
+    families: Object.fromEntries(Object.entries(FAMILY_FILES).map(([fam, file]) => [fam, Object.keys(require(`../world/materials/${file}`))])),
   }
 }
 
@@ -116,6 +128,15 @@ function workProblems(data, refs) {
     for (let l = 1; l < c.xpToLevel.length; l++) if (!(c.xpToLevel[l] > c.xpToLevel[l - 1])) p.push(`${at}.xpToLevel does not rise at level ${l}`)
   }
   for (const s of ['Building', 'Tailoring', 'Lockpicking']) if (!(s in (data.curves || {}))) p.push(`WorkSkills.curves.${s} is missing`)
+
+  const tiers = isObj(data.tiers) ? data.tiers : {}
+  const { SKILL_TIERS } = require('./skills/shared')
+  for (const k of Object.keys(tiers)) if (!SKILL_TIERS.includes(k)) p.push(`WorkSkills.tiers.${k} is not a tier`)
+  SKILL_TIERS.forEach((t, i) => {
+    if (!Number.isInteger(tiers[t]) || tiers[t] < 0) p.push(`WorkSkills.tiers.${t} must be an integer >= 0`)
+    else if (i === 0 && tiers[t] !== 0) p.push(`WorkSkills.tiers.${t} must be 0: every skill starts there`)
+    else if (i > 0 && !(tiers[t] > tiers[SKILL_TIERS[i - 1]])) p.push(`WorkSkills.tiers.${t} does not rise above ${SKILL_TIERS[i - 1]}`)
+  })
   return p
 }
 
@@ -135,6 +156,8 @@ const WorkSkills = defineEntity({
     id:     { type: 'uuid', primaryKey: true },
     rules:  { type: 'json', description: 'Work table: { craft: { <domain>: { skill, xp } }, gather: { <family>: { skill, xp } }, build, dismantle, repair, lockpick } (validated at fabric load)', defaultValue: WORK },
     curves: { type: 'json', description: 'XP curves of the skills added in Phase 203: { <skill>: { levelCap, xpToLevel } }', defaultValue: SKILL_CURVES },
+    tiers:  { type: 'json', description: 'Phase 207 review — cumulative XP in a skill at which each tier is reached: { novice: 0, apprentice, journeyman, expert, master }', defaultValue: TIER_XP },
+    families: { type: 'json', description: 'Phase 207 — each material\'s gather family { <material>: metal | stone | wood | soil }, derived from the material files', defaultValue: FAMILIES },
   },
   relations: {
     decision: { name: 'decision', kind: 'hasOne', target: 'SkillsGrowFromWork' },
@@ -151,4 +174,4 @@ const WorkSkills = defineEntity({
   },
 })
 
-module.exports = { LEVEL_CAP, SKILL_CURVES, WORK, workData, workRefs, workProblems, validateWork, WorkSkills }
+module.exports = { LEVEL_CAP, SKILL_CURVES, TIER_XP, WORK, FAMILIES, materialFamilies, workData, workRefs, workProblems, validateWork, WorkSkills }

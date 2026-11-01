@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:0f31be7d651af8c1f579cae9fe5b4313e67e8bf91e40f07279f0ad98fac1e5ea",
+  "schemaHash": "sha256:bd629e6c2bfafed908fc804b690bde2b3d1326003e99276fe4a5ce015c6ecb83",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -11888,15 +11888,6 @@
             "pii": false,
             "defaultValue": 10
           },
-          "xpPerHarvest": {
-            "name": "xpPerHarvest",
-            "type": "integer",
-            "description": "Skinning XP a finished harvest grants",
-            "nullable": false,
-            "primaryKey": false,
-            "pii": false,
-            "defaultValue": 10
-          },
           "xpToLevel": {
             "name": "xpToLevel",
             "type": "json",
@@ -12002,7 +11993,7 @@
             "rules": [
               "Effective level is floor(level * tool efficiency); it indexes yieldCurve, chanceCurve and qualityCurve",
               "Quality is a property of the item instance, not a separate item id",
-              "A finished harvest grants xpPerHarvest"
+              "A finished harvest grants the Skinning XP of the WorkSkills carcass row"
             ],
             "auth": {
               "roles": [
@@ -23424,6 +23415,106 @@
         "pii": [],
         "gdpr": {}
       },
+      "RecipeNoviceTunic": {
+        "name": "RecipeNoviceTunic",
+        "tags": [
+          "recipe"
+        ],
+        "description": "Sew two duskfiber strands into a plain tunic at a carpentry bench.",
+        "goal": "The first sewing recipe, so sewing makes a better sewer (SkillsGrowFromWork, Phase 207)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "domain": {
+            "name": "domain",
+            "type": "enum",
+            "description": "Crafting station required",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "smithing",
+              "alchemy",
+              "arcane",
+              "carpentry",
+              "tailoring"
+            ],
+            "pii": false
+          },
+          "outputCount": {
+            "name": "outputCount",
+            "type": "integer",
+            "description": "Number of output items produced per craft",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "tailoring",
+              "station": "carpentry bench",
+              "inputs": [
+                {
+                  "item": "Duskfiber",
+                  "quantity": 2
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "NoviceTunic",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Tailoring",
+                  "tier": "novice"
+                }
+              ]
+            }
+          }
+        },
+        "relations": {
+          "inputDuskfiber": {
+            "name": "inputDuskfiber",
+            "kind": "hasOne",
+            "target": "Duskfiber"
+          },
+          "output": {
+            "name": "output",
+            "kind": "hasOne",
+            "target": "NoviceTunic"
+          }
+        },
+        "behaviors": {
+          "craft": {
+            "name": "craft",
+            "description": "Sew duskfiber into a tunic at a carpentry bench",
+            "rules": [
+              "Requires Tailoring: Novice",
+              "Two duskfiber strands yield one tunic",
+              "Grows the sewer's own Tailoring skill"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
       "RecipeAshiteBlock": {
         "name": "RecipeAshiteBlock",
         "tags": [
@@ -25050,8 +25141,7 @@
                 },
                 "growing": {
                   "minMembers": 3,
-                  "minDays": 3,
-                  "minProjects": 2
+                  "minDays": 3
                 },
                 "town": {
                   "minMembers": 8,
@@ -25173,7 +25263,7 @@
             "name": "grow",
             "description": "Raise the tier when member count and age meet the next tier thresholds",
             "rules": [
-              "minMembers of the next tier must be met, and either its minDays or (when it has one) its minProjects completed settlement projects",
+              "minMembers and minDays of the next tier must be met; completed projects do not count (Phase 207)",
               "Stockpile capacity rises to the new tier's value and never shrinks"
             ],
             "auth": {
@@ -25265,7 +25355,7 @@
               "to": "growing",
               "trigger": "grow",
               "guards": [
-                "minMembers of the next tier must be met, and either its minDays or (when it has one) its minProjects completed settlement projects",
+                "minMembers and minDays of the next tier must be met; completed projects do not count (Phase 207)",
                 "Stockpile capacity rises to the new tier's value and never shrinks"
               ],
               "effects": []
@@ -25275,7 +25365,7 @@
               "to": "town",
               "trigger": "grow",
               "guards": [
-                "minMembers of the next tier must be met, and either its minDays or (when it has one) its minProjects completed settlement projects",
+                "minMembers and minDays of the next tier must be met; completed projects do not count (Phase 207)",
                 "Stockpile capacity rises to the new tier's value and never shrinks"
               ],
               "effects": []
@@ -25715,7 +25805,7 @@
         "tags": [
           "world-system"
         ],
-        "description": "Structures a village builds together: a palisade, a storehouse, a workshop, a watchtower. Each needs materials, which members bring; it is complete once its materials are in, with no labour stage (Phase 203). A finished project is placed as blocks and stations. Completed projects also grow a village: the growing tier is reached by minMembers and minProjects as well as by days.",
+        "description": "Structures a village builds together: a palisade, a storehouse, a workshop, a watchtower. Each needs materials, which members bring; it is complete once its materials are in, with no labour stage (Phase 203). A finished project is placed as blocks and stations, and changes nothing else: it counts toward no tier (Phase 207).",
         "goal": "Give a new village something to build together in its first hour (CivilizationIsPlayerMade, Phase 197)",
         "fields": {
           "id": {
@@ -25862,7 +25952,7 @@
             "description": "The contribution that brings in the last material completes the project and places it",
             "rules": [
               "Places places.blocks of places.block in the layout, plus places.stations",
-              "Counts toward the tier's minProjects"
+              "Counts toward no tier and credits no clan"
             ],
             "auth": {
               "roles": [
@@ -27151,6 +27241,43 @@
                   6000
                 ]
               }
+            }
+          },
+          "tiers": {
+            "name": "tiers",
+            "type": "json",
+            "description": "Phase 207 review — cumulative XP in a skill at which each tier is reached: { novice: 0, apprentice, journeyman, expert, master }",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "novice": 0,
+              "apprentice": 100,
+              "journeyman": 400,
+              "expert": 1200,
+              "master": 3000
+            }
+          },
+          "families": {
+            "name": "families",
+            "type": "json",
+            "description": "Phase 207 — each material's gather family { <material>: metal | stone | wood | soil }, derived from the material files",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "Ferrite": "metal",
+              "Veilsteel": "metal",
+              "Aethermite": "metal",
+              "Voidite": "metal",
+              "Ashite": "stone",
+              "Lumenfite": "stone",
+              "Thornwood": "wood",
+              "Duskfiber": "wood",
+              "Grass": "soil",
+              "Soil": "soil",
+              "Sand": "soil",
+              "Snow": "soil"
             }
           }
         },

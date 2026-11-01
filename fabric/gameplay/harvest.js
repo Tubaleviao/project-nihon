@@ -26,7 +26,6 @@ const levels = (f) => Array.from({ length: SKINNING_CAP + 1 }, (_, l) => f(l))
 // Curves indexed by effective Skinning level 0..SKINNING_CAP.
 const SKINNING = {
   levelCap: SKINNING_CAP,
-  xpPerHarvest: 10,
   xpToLevel: levels((l) => 40 * l * l),
   yieldCurve: levels((l) => l / SKINNING_CAP),
   chanceCurve: levels((l) => Math.round(l * 0.025 * 1000) / 1000),
@@ -109,7 +108,6 @@ function harvestProblems(data) {
   if (Array.isArray(s.chanceCurve) && s.chanceCurve.some((c) => !(c >= 0 && c <= 1))) problems.push('Skinning.chanceCurve entries must be in [0, 1]')
   if (Array.isArray(s.xpToLevel) && s.xpToLevel[0] !== 0) problems.push('Skinning.xpToLevel must start at 0 for level 0')
   if (s.maxLevel !== s.levelCap) problems.push(`Skinning.maxLevel (${s.maxLevel}) must equal levelCap (${s.levelCap})`)
-  if (!(s.xpPerHarvest > 0)) problems.push('Skinning.xpPerHarvest must be > 0')
 
   if (!(r.carrySlowAboveFraction > 0 && r.carrySlowAboveFraction <= 1)) problems.push('carrySlowAboveFraction must be in (0, 1]')
   for (const k of ['carrySlowSpeedMultiplier', 'dragSpeedMultiplier']) if (!(r[k] > 0 && r[k] <= 1)) problems.push(`${k} must be in (0, 1]`)

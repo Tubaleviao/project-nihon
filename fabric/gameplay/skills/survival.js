@@ -18,7 +18,6 @@ module.exports = {
       maxLevel: { type: 'integer', description: 'Maximum XP level within a tier before tier advance is required; the same as levelCap', defaultValue: SKINNING.levelCap },
       category: { type: 'enum', values: SKILL_CATEGORIES, defaultValue: 'survival', description: 'Skill domain: survival' },
       levelCap:     { type: 'integer', description: 'Highest Skinning level; the tables below have one entry per level 0..levelCap', defaultValue: SKINNING.levelCap },
-      xpPerHarvest: { type: 'integer', description: 'Skinning XP a finished harvest grants', defaultValue: SKINNING.xpPerHarvest },
       xpToLevel:    { type: 'json', description: 'Cumulative XP needed to reach each level, index = level', defaultValue: SKINNING.xpToLevel },
       yieldCurve:   { type: 'json', description: 'Fraction 0..1 of the minQty..maxQty range a harvest reaches, index = effective level', defaultValue: SKINNING.yieldCurve },
       chanceCurve:  { type: 'json', description: 'Chance added to each entry (total capped at 1.0), index = effective level', defaultValue: SKINNING.chanceCurve },
@@ -36,7 +35,7 @@ module.exports = {
         rules: [
           'Effective level is floor(level * tool efficiency); it indexes yieldCurve, chanceCurve and qualityCurve',
           'Quality is a property of the item instance, not a separate item id',
-          'A finished harvest grants xpPerHarvest',
+          'A finished harvest grants the Skinning XP of the WorkSkills carcass row',
         ],
         auth: { roles: ['maintainer'] },
       },

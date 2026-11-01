@@ -21,6 +21,7 @@ extends Node
 ##   travel_cost(from_id, to_id) -> int
 ##   travel(from_id, to_id, player_id) -> String   "" when the player was moved, else a reason code
 
+const RecordSanitize := preload("res://src/persistence/record_sanitize.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
@@ -302,4 +303,4 @@ func _on_travel_intent(from_id: String, to_id: String, player_id: String) -> voi
 
 ## Client: remember the host's attunement list for the map.
 func apply_view(station_ids: Array) -> void:
-	_view = registry.sanitize_waystones(station_ids) if registry != null else station_ids.duplicate()
+	_view = RecordSanitize.sanitize_waystones(station_ids) if registry != null else station_ids.duplicate()

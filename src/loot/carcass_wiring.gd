@@ -8,6 +8,7 @@ extends "res://src/core/wiring.gd"
 ## the player's Skinning level and the tool's efficiency, wears the tool, grants XP and puts the items in the
 ## bag (on the ground when it is full). Client: `peer_carcass_synced` / `peer_carcass_removed` keep the view.
 
+const WorkSkills := preload("res://src/character/work_skills.gd")
 const CarcassRules := preload("res://src/loot/carcass_rules.gd")
 const PlayerRegistry := preload("res://src/persistence/player_registry.gd")
 const PlayerSlice := preload("res://src/player/player_slice.gd")
@@ -245,7 +246,7 @@ func _finish(player_id: String) -> void:
 	# A remote harvester's bag lives in the registry here; its own client mirrors it, so send the change.
 	if root._peer_wiring != null:
 		root._peer_wiring.sync_peer_own_state({ "success": true, "player_id": player_id })
-	root._registry.grant_skill_xp(_pid(player_id), CarcassRules.SKILL, int(CarcassRules.skill().get("xpPerHarvest")))
+	WorkSkills.grant(root._registry, _pid(player_id), WorkSkills.gather_row("carcass"))   # Phase 207 — the WorkSkills carcass row
 	GameBus.harvest_resolved.emit(player_id, cid, "", items)
 
 ## Tell the harvester how it went, as a key + args the client renders in its own locale.

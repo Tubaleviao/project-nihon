@@ -17,7 +17,6 @@ Working a creature body with a knife or bone tool. A higher level takes more fro
 | `maxLevel` | integer | yes | Maximum XP level within a tier before tier advance is required; the same as levelCap |
 | `category` | enum (`combat`, `crafting`, `magic`, `exploration`, `social`, `survival`) | yes | Skill domain: survival |
 | `levelCap` | integer | yes | Highest Skinning level; the tables below have one entry per level 0..levelCap |
-| `xpPerHarvest` | integer | yes | Skinning XP a finished harvest grants |
 | `xpToLevel` | json | yes | Cumulative XP needed to reach each level, index = level |
 | `yieldCurve` | json | yes | Fraction 0..1 of the minQty..maxQty range a harvest reaches, index = effective level |
 | `chanceCurve` | json | yes | Chance added to each entry (total capped at 1.0), index = effective level |
@@ -70,7 +69,7 @@ Work a creature body with the right tool
 **Rules:**
 - Effective level is floor(level * tool efficiency); it indexes yieldCurve, chanceCurve and qualityCurve
 - Quality is a property of the item instance, not a separate item id
-- A finished harvest grants xpPerHarvest
+- A finished harvest grants the Skinning XP of the WorkSkills carcass row
 
 **Auth:** `maintainer`
 
