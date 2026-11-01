@@ -656,3 +656,46 @@ reason.not_owner,That structure is not yours.,Essa estrutura não é sua.
 reason.foreign_circle,Only that clan's members build this close to its buildings.,Só os membros desse clã constroem tão perto das construções dele.
 bed.refuse_structure,You cannot place a bed on a structure that is not yours.,Você não pode colocar uma cama em uma estrutura que não é sua.
 bed.refuse_circle,Only that clan's members may place a bed this close to its buildings.,Só os membros desse clã podem colocar uma cama tão perto das construções dele.
+win.chest,Chest,Baú
+controls.row18,Use a chest or door · pick its lock · hit it,Usar um baú ou porta · arrombar a fechadura · golpeá-lo
+chest.none,Nothing is open. Stand at a chest or door and use it (U).,Nada está aberto. Fique junto a um baú ou porta e use-o (U).
+chest.status,"{0}, open to {1}. Lock {2}/{3}.","{0}, aberto para {1}. Fechadura {2}/{3}."
+chest.kind.chest,Chest,Baú
+chest.kind.door,Door,Porta
+chest.mode.owner,Owner only,Só o dono
+chest.mode.clan,Clan,Clã
+chest.mode.everyone,Everyone,Todos
+chest.items,"Holds {0}/{1} stacks: {2}","Guarda {0}/{1} pilhas: {2}"
+chest.empty,nothing,nada
+chest.item_ph,Item,Item
+chest.qty_ph,Quantity,Quantidade
+chest.put,Put in,Guardar
+chest.take,Take out,Retirar
+chest.close,Close,Fechar
+chest.ok.open,Opened.,Aberto.
+chest.ok.pass,The door opens for you.,A porta se abre para você.
+chest.ok.mode,Access changed.,Acesso alterado.
+chest.ok.place,Placed.,Colocado.
+chest.refused.no_lock,There is no chest or door within reach.,Não há baú nem porta ao seu alcance.
+chest.refused.far,That is too far away.,Isso está longe demais.
+chest.refused.locked,It is locked to you. Shift+U picks the lock; Ctrl+U hits it.,Está trancado para você. Shift+U arromba a fechadura; Ctrl+U golpeia.
+chest.refused.not_owner,Only its owner changes who may open it.,Só o dono muda quem pode abrir.
+chest.refused.bad_mode,That is not an access mode.,Esse não é um modo de acesso.
+chest.refused.bad_args,That cannot be done.,Isso não pode ser feito.
+chest.refused.no_stock,There is not that much of it.,Não há tanto disso.
+chest.refused.full,There is no room for it.,Não há espaço para isso.
+chest.refused.durable,Tools and gear wear; a chest keeps only things that do not.,Ferramentas e equipamentos se desgastam; um baú guarda só o que não se desgasta.
+chest.refused.no_tool,You need a lockpick.,Você precisa de uma gazua.
+chest.refused.busy,You are already picking a lock.,Você já está arrombando uma fechadura.
+chest.refused.not_locked,It already opens for you.,Já abre para você.
+chest.refused.rate,Slow down.,Calma.
+chest.refused.no_inventory,You have no pack.,Você não tem mochila.
+chest.refused.not_open,Open the chest first.,Abra o baú primeiro.
+chest.refused.blocked,There is no room for it there.,Não há espaço para isso ali.
+lock.pick_started,Picking the lock ({0} s). Stand still.,Arrombando a fechadura ({0} s). Fique parado.
+lock.pick_opened,The lock gives. It opens for you once.,A fechadura cede. Abre para você uma vez.
+lock.pick_broke,The pick failed and the lockpick snapped.,O arrombamento falhou e a gazua quebrou.
+lock.pick_lost,The pick failed.,O arrombamento falhou.
+lock.picked,"Someone picked your lock near ({0}, {1}).","Alguém arrombou sua fechadura perto de ({0}, {1})."
+lock.pick_failed,"Someone tried to pick your lock near ({0}, {1}).","Alguém tentou arrombar sua fechadura perto de ({0}, {1})."
+lock.destroyed,"Your chest or door near ({0}, {1}) was broken.","Seu baú ou porta perto de ({0}, {1}) foi quebrado."

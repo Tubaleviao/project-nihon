@@ -248,4 +248,67 @@ module.exports = {
     },
   }),
 
+  // ─── RecipeChest ───────────────────────────────────────────────────────────
+  // Phase 208 — a first-house chest: no station, so it follows the first planks
+  RecipeChest: defineEntity({
+    tags: ['recipe'],
+    description: 'Box eight thornwood planks and band them with a ferrite ingot, by hand.',
+    goal: 'a first-house chest: no station, so it follows the first planks',
+    fields: {
+      id:     { type: 'uuid', primaryKey: true },
+      domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
+      outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
+      recipe: recipeData({
+        domain: 'carpentry',
+        station: '',
+        inputs: [{ item: 'ThornwoodPlank', quantity: 8 }, { item: 'FerriteIngot', quantity: 1 }],
+        outputs: [{ item: 'Chest', quantity: 1 }],
+        skillGuards: [{ skill: 'Carpentry', tier: 'novice' }],
+      }),
+    },
+    relations: {
+      inputThornwoodPlank: { name: 'inputThornwoodPlank', kind: 'hasOne', target: 'ThornwoodPlank' },
+      inputFerriteIngot: { name: 'inputFerriteIngot', kind: 'hasOne', target: 'FerriteIngot' },
+      output: { name: 'output', kind: 'hasOne', target: 'Chest' },
+    },
+    behaviors: {
+      craft: {
+        description: 'Box planks into a chest anywhere, with no station',
+        rules: ['Requires Carpentry: Novice', 'Needs no station'],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
+  // ─── RecipeDoor ───────────────────────────────────────────────────────────
+  // Phase 208 — a first-house door: no station, so it follows the first planks
+  RecipeDoor: defineEntity({
+    tags: ['recipe'],
+    description: 'Join six thornwood planks into a door on ferrite hinges, by hand.',
+    goal: 'a first-house door: no station, so it follows the first planks',
+    fields: {
+      id:     { type: 'uuid', primaryKey: true },
+      domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
+      outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
+      recipe: recipeData({
+        domain: 'carpentry',
+        station: '',
+        inputs: [{ item: 'ThornwoodPlank', quantity: 6 }, { item: 'FerriteIngot', quantity: 1 }],
+        outputs: [{ item: 'Door', quantity: 1 }],
+        skillGuards: [{ skill: 'Carpentry', tier: 'novice' }],
+      }),
+    },
+    relations: {
+      inputThornwoodPlank: { name: 'inputThornwoodPlank', kind: 'hasOne', target: 'ThornwoodPlank' },
+      inputFerriteIngot: { name: 'inputFerriteIngot', kind: 'hasOne', target: 'FerriteIngot' },
+      output: { name: 'output', kind: 'hasOne', target: 'Door' },
+    },
+    behaviors: {
+      craft: {
+        description: 'Join planks into a door anywhere, with no station',
+        rules: ['Requires Carpentry: Novice', 'Needs no station'],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
 }

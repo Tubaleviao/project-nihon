@@ -61,6 +61,7 @@ const BedSlice := preload("res://src/world/bed_slice.gd")
 const SettlementWiring := preload("res://src/settlement/settlement_wiring.gd")
 const ClanWiring := preload("res://src/clan/clan_wiring.gd")
 const StructureWiring := preload("res://src/structure/structure_wiring.gd")
+const ChestWiring := preload("res://src/world/chest_wiring.gd")
 const CraftingWiring := preload("res://src/crafting/crafting_wiring.gd")
 const CharacterWiring := preload("res://src/character/character_wiring.gd")
 const GestureWiring   := preload("res://src/character/gesture_wiring.gd")
@@ -82,6 +83,7 @@ var _tutorial_wiring := TutorialWiring.new()
 var _settlement_wiring := SettlementWiring.new()
 var _clan_wiring := ClanWiring.new()
 var _structure_wiring := StructureWiring.new()
+var _chest_wiring := ChestWiring.new()
 var _crafting_wiring := CraftingWiring.new()
 var _character_wiring := CharacterWiring.new()
 var _gesture_wiring := GestureWiring.new()
@@ -134,6 +136,7 @@ var _waystones:   WaystoneSlice
 var _settlements: Node
 var _clans:       Node
 var _structures:  Node   # Phase 205 — the host's structure index (who owns each placed block)
+var _chests:      Node   # Phase 208 — chests and doors: owner, access mode, items and locks
 var _weather:     WeatherSlice
 ## Phase 129 — the host's status effects, ticked from the clock tick; null on a client.
 var _status:      StatusEffects
@@ -253,7 +256,7 @@ var _handshake_retries: int = 0
 
 ## Phase 132 — wiring modules know their root from construction (the suite builds roots without `_ready`).
 func _init() -> void:
-	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _bed_wiring, _tutorial_wiring, _settlement_wiring, _clan_wiring, _structure_wiring, _crafting_wiring, _character_wiring, _gesture_wiring, _creation_wiring, _carcass_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring, _admin_wiring]
+	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _bed_wiring, _tutorial_wiring, _settlement_wiring, _clan_wiring, _structure_wiring, _chest_wiring, _crafting_wiring, _character_wiring, _gesture_wiring, _creation_wiring, _carcass_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring, _admin_wiring]
 	for w in _wirings:
 		w.root = self
 
@@ -322,6 +325,7 @@ func _ready() -> void:
 	_clans       = _clan_wiring.make_slice(self)
 	_weather     = WeatherSlice.new()
 	_structures  = _structure_wiring.make_slice(self)
+	_chests      = _chest_wiring.make_slice(self)
 	# Phase 129 — status effects live on the host; the battle slice rolls them and the AI honours them.
 	_status = StatusEffects.new()
 	_battle.status_effects = _status
@@ -363,7 +367,7 @@ func _ready() -> void:
 	# The UI (Phase 14) is presentation only, so a headless dedicated server
 	# (Phase 27) keeps it out of the tree — its _ready() would otherwise build
 	# windows nothing can render or click.
-	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _registry, _player, _loot, _carcass, _inventory, _character, _crafting, _technology, _taming, _professions, _station, _tree, _market, _trade, _proposal, _chat, _gesture, _waystones, _bed, _settlements, _clans, _weather, _structures]
+	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _registry, _player, _loot, _carcass, _inventory, _character, _crafting, _technology, _taming, _professions, _station, _tree, _market, _trade, _proposal, _chat, _gesture, _waystones, _bed, _settlements, _clans, _weather, _structures, _chests]
 	if not _is_server:
 		slices.append(_ui)
 	if not _is_server:
@@ -443,6 +447,7 @@ func _ready() -> void:
 	_chat.weather_slice    = _weather
 	_player.weather_slice  = _weather
 	_bed_wiring.attach()   # Phase 185 — the bed is a station the host binds to its placer
+	_chest_wiring.attach()   # Phase 208 — and so are chests and doors (after the bed: it chains the remote placer)
 	_tutorial_wiring.attach()   # Phase 186 — the card and its slice (not on a dedicated server)
 	_waystone_wiring.attach()   # Phase 125 — waystone travel reuses the exact admin teleport door
 	if not _is_server:

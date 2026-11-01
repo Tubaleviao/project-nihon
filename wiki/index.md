@@ -101,6 +101,8 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [Bed](entities/bed.md) — A plank frame with a straw pallet
 - [BoneSaw](entities/bonesaw.md) — Broad-backed ferrite saw on a thornwood grip
 - [CarpenterAxe](entities/carpenteraxe.md) — Felling axe with a weighted ferrite head and a duskfiber-wrapped thornwood handle
+- [Chest](entities/chest.md) — A plank box with a ferrite band and lock
+- [Door](entities/door.md) — A plank door on ferrite hinges with a lock
 - [DuskfiberCloak](entities/duskfibercloak.md) — Hooded cloak woven from duskfiber bast
 - [EnchantedAethermiteShard](entities/enchantedaethermiteshard.md) — A refined aethermite shard that has been fully imbued at an arcane forge
 - [FerriteHelmet](entities/ferritehelmet.md) — Simple open-faced helmet shaped from ferrite plate
@@ -110,6 +112,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [FerriteShortSword](entities/ferriteshortsword.md) — Standard single-edged blade forged from a refined ferrite ingot
 - [FieldRations](entities/fieldrations.md) — Dried grain-and-herb ration pack prepared from temperate grassland crops
 - [Hearth](entities/hearth.md) — A stone-ringed fire pit that founds a settlement when placed
+- [Lockpick](entities/lockpick.md) — A bent ferrite pin on a thornwood grip
 - [LumenfiteOrb](entities/lumenfiteorb.md) — A polished lumenfite sphere charged with stored magical energy by an Arcanist
 - [NoviceTunic](entities/novicetunic.md) — Plain woven tunic with a belted waist, given to every new character
 - [RefinedVoiditeShard](entities/refinedvoiditeshard.md) — Raw voidite stabilised in a forge into a crystalline shard
@@ -169,6 +172,8 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [RecipeBed](entities/recipebed.md) — Lash six thornwood planks into a bed frame with a straw pallet, by hand
 - [RecipeBoneSaw](entities/recipebonesaw.md) — Craft a bone saw from two ferrite ingots and one thornwood plank
 - [RecipeCarpenterAxe](entities/recipecarpenteraxe.md) — Assemble a carpenter axe from one ferrite ingot, one thornwood plank, and one duskfiber strand
+- [RecipeChest](entities/recipechest.md) — Box eight thornwood planks and band them with a ferrite ingot, by hand
+- [RecipeDoor](entities/recipedoor.md) — Join six thornwood planks into a door on ferrite hinges, by hand
 - [RecipeDuskfiberCloak](entities/recipeduskfibercloak.md) — Weave three duskfiber strands into a duskfiber cloak at a carpentry bench
 - [RecipeEnchantedAethermiteShard](entities/recipeenchantedaethermiteshard.md) — Imbue a refined aethermite shard with magical energy at an arcane forge to produce an enchanted catalyst
 - [RecipeFerriteIngot](entities/recipeferriteingot.md) — Smelt two raw ferrite ore into one refined ferrite ingot at a forge
@@ -176,6 +181,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [RecipeFerriteShortSword](entities/recipeferriteshortsword.md) — Forge a ferrite short sword from one refined ferrite ingot
 - [RecipeHealthPotion](entities/recipehealthpotion.md) — Brew a health-restoring potion from aethermite dust and harvested herbs at an alchemy bench
 - [RecipeHearth](entities/recipehearth.md) — Lay a hearth from six thornwood planks and four ferrite ingots at a carpentry bench
+- [RecipeLockpick](entities/recipelockpick.md) — Draw a ferrite ingot into a lockpick on a thornwood grip
 - [RecipeLumenfiteOrb](entities/recipelumenfiteorb.md) — Polish a lumenfite stone into a charged spell-focus orb at an arcane forge
 - [RecipeNoviceTunic](entities/recipenovicetunic.md) — Sew two duskfiber strands into a plain tunic at a carpentry bench
 - [RecipeRefinedVoiditeShard](entities/reciperefinedvoiditeshard.md) — Stabilise one raw voidite crystal into a refined voidite shard at a forge

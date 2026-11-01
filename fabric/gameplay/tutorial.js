@@ -50,7 +50,7 @@ const TRIGGER_KINDS = {
 // The input actions a card can name, in the order of the `?` controls rows (UiSlice.controls_rows).
 const INPUT_ACTIONS = [
   'move', 'jump', 'look', 'zoom', 'hotbar_use', 'hotbar_expand', 'drag', 'attack', 'mine', 'place',
-  'next_block', 'station', 'tame', 'equipment', 'windows', 'controls', 'chat', 'close',
+  'next_block', 'station', 'tame', 'equipment', 'chest', 'windows', 'controls', 'chat', 'close',
 ]
 
 // UI windows a step may wait for (UiSlice.WINDOW_KEYS; the suite checks every one exists there).

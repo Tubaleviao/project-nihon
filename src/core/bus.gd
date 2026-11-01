@@ -245,6 +245,19 @@ signal settlement_intent(action: String, args: Dictionary, player_id: String)
 ## SettlementSlice.REASONS). Delivered to the actor alone.
 signal settlement_resolved(player_id: String, action: String, ok: bool, reason: String)
 
+## Phase 208 — a chest or door intent: `action` is one of use, close, mode, put, take, pick, cancel, hit, place
+## (ChestSlice.resolve) and `args` its parameters (item, qty, mode; place: the offset ox, oy, oz and the station
+## type). A client forwards it; the host binds the identity and finds the chest or door from the player's position.
+signal chest_intent(action: String, args: Dictionary, player_id: String)
+
+## Phase 208 — the host resolved a chest intent. `reason` is "" on success, else a ChestSlice.REASONS code.
+signal chest_resolved(player_id: String, action: String, ok: bool, reason: String)
+
+## Phase 208 — host: a lock pick began (`seconds` long) / ended. `reason` is "" when the lock opened, else why the
+## pick failed ("moved", "cancelled"); `broke` when the failure broke the tool.
+signal lock_pick_started(player_id: String, station_id: String, seconds: float)
+signal lock_pick_resolved(player_id: String, station_id: String, reason: String, broke: bool)
+
 ## Phase 140 — any settlement changed on the host (members, claim, tier, stockpile). The wiring pushes each
 ## peer its view on the next tick.
 signal settlements_changed()

@@ -29,6 +29,7 @@ extends Node
 
 ## Set by game_root so station_near_player can resolve the player's position.
 const WorldPos := preload("res://src/terrain/world_pos.gd")
+const ChestRules := preload("res://src/world/chest_rules.gd")
 
 var player_slice: Node = null
 
@@ -125,6 +126,9 @@ func _compute_placeable_station_types() -> Array:
 	var bed_type := str(_bed_rules().get("stationType", ""))
 	if bed_type != "":
 		types[bed_type] = true
+	# Phase 208 — and the chest and the door (ChestsAndDoors.stations).
+	for t: String in ChestRules.station_types():
+		types[t] = true
 	var out: Array = types.keys()
 	out.sort()
 	return out
@@ -216,7 +220,8 @@ func place_refusal(type: String, position: Vector3, inventory: Node = null, play
 	return ""
 
 ## The item one placement of a `type` station consumes, or "" for a free placement (the fabric's
-## `WaystoneTravel.placementItem` for the waystone type, `BedSpawn.placementItem` for the bed; forges and
+## `WaystoneTravel.placementItem` for the waystone type, `BedSpawn.placementItem` for the bed, the
+## `ChestsAndDoors.stations` row's for a chest or door; forges and
 ## benches stay free).
 func placement_item(type: String) -> String:
 	var settle: Resource = GameData.WORLD_SYSTEMS.get("Settlement", null)
@@ -225,6 +230,8 @@ func placement_item(type: String) -> String:
 	var bed := _bed_rules()
 	if not bed.is_empty() and type == str(bed.get("stationType", "")):
 		return str(bed.get("placementItem", ""))
+	if ChestRules.is_lock_type(type):
+		return ChestRules.placement_item(type)
 	var res: Resource = GameData.WORLD_SYSTEMS.get("WaystoneTravel", null)
 	if res == null or not (res.get("rules") is Dictionary):
 		return ""

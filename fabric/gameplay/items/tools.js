@@ -219,4 +219,39 @@ module.exports = {
     },
   }),
 
+  // ─── Lockpick ─────────────────────────────────────────────────────
+  // Phase 208 — the tool a lock is picked with (ChestsAndDoors.locks.toolType); a failed pick can break it.
+  Lockpick: defineEntity({
+    tags: ['item'],
+    description:
+      'A bent ferrite pin on a thornwood grip. Picks the lock of a chest or door; a failed pick can snap it.',
+    goal: 'The lockpicking tool: a locked chest is never unbreakable (Phase 208)',
+    fields: {
+      id:        { type: 'uuid', primaryKey: true },
+      condition: { type: 'enum', values: DURABILITY_STATES },
+      weight:    { type: 'decimal', description: 'kg; affects carry capacity', defaultValue: 0.1 },
+      rarity:    { type: 'enum', values: RARITIES, defaultValue: 'common' },
+      stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory', defaultValue: false },
+      shape: itemShape({ archetype: 'lockpick', parts: { pin: 'Ferrite', grip: 'Thornwood' } }),
+      durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 20 },
+      toolType:   { type: 'string', description: 'Tool class — "lockpick" picks locks (ChestsAndDoors.locks.toolType)', defaultValue: 'lockpick' },
+    },
+    relations: {
+      ferrite:   { name: 'ferrite',   kind: 'hasOne', target: 'Ferrite' },
+      thornwood: { name: 'thornwood', kind: 'hasOne', target: 'Thornwood' },
+    },
+    stateMachine: itemStateMachine(),
+    behaviors: {
+      degrade: {
+        description: 'A failed pick can break the lockpick',
+        rules: ['A failed pick breaks the tool with ChestsAndDoors.locks.breakChance / difficulty'],
+        auth: { roles: ['maintainer'] },
+      },
+      repair: {
+        description: 'Re-file a worn lockpick at a forge',
+        rules: ['Requires a forge; no additional materials consumed'],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
 }

@@ -218,6 +218,7 @@ module.exports = defineFabric({
       CarpenterAxe:             items.CarpenterAxe,
       SkinningKnife:            items.SkinningKnife,
       BoneSaw:                  items.BoneSaw,
+      Lockpick:                 items.Lockpick,
       FerriteShortSword:        items.FerriteShortSword,
       VeilsteelLongsword:       items.VeilsteelLongsword,
       AethermiteBow:            items.AethermiteBow,
@@ -241,6 +242,8 @@ module.exports = defineFabric({
       VoidRuneTablet:           items.VoidRuneTablet,
       LumenfiteOrb:             items.LumenfiteOrb,
       Bed:                      items.Bed,
+      Chest:                    items.Chest,
+      Door:                     items.Door,
     },
     // Gameplay — Gestures
     gestures.GESTURES,
@@ -252,6 +255,7 @@ module.exports = defineFabric({
       RecipeFerritePick:               recipes.RecipeFerritePick,
       RecipeSkinningKnife:             recipes.RecipeSkinningKnife,
       RecipeBoneSaw:                   recipes.RecipeBoneSaw,
+      RecipeLockpick:                  recipes.RecipeLockpick,
       RecipeVeilsteelLongsword:        recipes.RecipeVeilsteelLongsword,
       RecipeVeilsteelChestplate:       recipes.RecipeVeilsteelChestplate,
       RecipeHealthPotion:              recipes.RecipeHealthPotion,
@@ -269,6 +273,8 @@ module.exports = defineFabric({
       RecipeNoviceTunic:               recipes.RecipeNoviceTunic,
       RecipeAshiteBlock:               recipes.RecipeAshiteBlock,
       RecipeBed:                       recipes.RecipeBed,
+      RecipeChest:                     recipes.RecipeChest,
+      RecipeDoor:                      recipes.RecipeDoor,
     },
     // Gameplay — Technology
     {

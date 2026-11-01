@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–199 and 203–207 are done. Their specs and acceptance criteria, and the introductions of
+Phases 1–199 and 203–208 are done. Their specs and acceptance criteria, and the introductions of
 the arcs they belonged to, are archived in [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Next: follow-up debt burn II (Phases 194–196)
@@ -121,7 +121,7 @@ Smithing). Phase 203 models all of it in the fabric before any runtime phase sta
 | 205 | Owned structures instead of claims: private or clan, durability, dismantling and destruction | Done | [phases-205.md](docs/roadmap-history/phases-205.md) |
 | 206 | The circle around every building: no spawns, no foreign building | Done | [phases-206.md](docs/roadmap-history/phases-206.md) |
 | 207 | Skills grow from work, and clan projects without labour | Done | [phases-207.md](docs/roadmap-history/phases-207.md) |
-| 208 | Chests and doors: owner, clan or everyone, and locks that can be broken or picked | Planned | below |
+| 208 | Chests and doors: owner, clan or everyone, and locks that can be broken or picked | Done | [phases-208.md](docs/roadmap-history/phases-208.md) |
 | 209 | Books and blueprints: research shared by writing | Planned | below |
 | 210 | Clan tiers from buildings and material rarity | Planned | below |
 | 211 | Earth-scale mountains: peaks to about 8,850 m on unrecorded land | Planned | below |
@@ -167,41 +167,6 @@ must stay under one hour.
 - [ ] CI: the four bots end with at least two different specialties, one completed project, one
   defended raid and one paid upkeep, as read from the host's world record.
 - [ ] The scenario passes 3 CI runs in a row on an unchanged commit.
-- [ ] Suite green on both boot paths, harness green.
-
----
-
-## Phase 208 — Chests and doors: owner, clan or everyone, and locks that can be broken or picked
-
-**Goal:** a player keeps things in a chest, and a house behind a door, that only they, their clan or
-everyone can open. A locked chest or door can still be broken open or picked, harder for better ones.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phases 204 and 205.
-
-**Deliverables:**
-- The `Chest` and `Door` stations, a chest's inventory and both access modes on the host. Only the
-  owner changes a mode. The host checks every open, take, put and pass against it. A clan member may
-  open the doors of another member's private house inside the clan's territory (Phase 205).
-- Destroying a chest spills its contents for anyone to take. Lockpicking is a timed action with the Lockpicking skill
-  and a tool against the chest's difficulty. Success opens it once, failure can break the tool, and
-  the owner is told.
-- UI: the chest window, the access-mode setting for the owner, and the lockpicking progress.
-- Phase 204 hold: a migrated settlement's stockpile becomes a clan chest with the same contents
-  (`Clan.migration.stockpile`); until then it stays in the settlement record.
-- Door and chest placeholders in `assets/` (placeholder rule).
-
-**Acceptance criteria:**
-- [ ] Suite: an owner-only chest refuses a clan member, a clan chest refuses an outsider, and an
-  everyone chest opens for anyone. A non-owner cannot change the mode. Doors follow the same rules.
-- [ ] Suite: a harder chest takes longer to pick and to destroy, and a destroyed chest spills
-  everything it held.
-- [ ] Suite: a picked lock grants the `WorkSkills.lockpick` row to the picker, and `lockpick` is gone
-  from `WorkSkills.UNWIRED`.
-- [ ] Harness: a client's take from a chest it may not open is refused, and the chest is unchanged
-  on both peers.
-- [ ] Every new string is in both catalogs, and the i18n key check passes.
 - [ ] Suite green on both boot paths, harness green.
 
 ---

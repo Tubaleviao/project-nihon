@@ -64,7 +64,7 @@ module.exports = {
       researchCost: { type: 'integer', description: 'Research points spent to begin research (Phase 124); earned by the ResearchPointRule table', defaultValue: 0 },
       tier:   { type: 'integer', description: 'Technology tree tier (1 = root)' },
       tech: techData({
-        unlocks: ['RecipeFerriteIngot', 'RecipeFerriteShortSword', 'RecipeFerritePick', 'RecipeSkinningKnife', 'RecipeBoneSaw'],
+        unlocks: ['RecipeFerriteIngot', 'RecipeFerriteShortSword', 'RecipeFerritePick', 'RecipeSkinningKnife', 'RecipeBoneSaw', 'RecipeLockpick'],
         requires: [],
         researchDuration: 10,
         researchMaterials: [{ item: 'Ferrite', quantity: 4 }],
@@ -76,6 +76,7 @@ module.exports = {
       unlocksRecipeFerritePick:      { name: 'unlocksRecipeFerritePick',      kind: 'hasOne', target: 'RecipeFerritePick' },
       unlocksRecipeSkinningKnife:    { name: 'unlocksRecipeSkinningKnife',    kind: 'hasOne', target: 'RecipeSkinningKnife' },
       unlocksRecipeBoneSaw:          { name: 'unlocksRecipeBoneSaw',          kind: 'hasOne', target: 'RecipeBoneSaw' },
+      unlocksRecipeLockpick:         { name: 'unlocksRecipeLockpick',         kind: 'hasOne', target: 'RecipeLockpick' },
     },
     stateMachine: technologyStateMachine(),
     behaviors: {
@@ -155,7 +156,7 @@ module.exports = {
       researchCost: { type: 'integer', description: 'Research points spent to begin research (Phase 124); earned by the ResearchPointRule table', defaultValue: 0 },
       tier:   { type: 'integer', description: 'Technology tree tier (1 = root)' },
       tech: techData({
-        unlocks: ['RecipeThornwoodPlank', 'RecipeCarpenterAxe', 'RecipeWaystone', 'RecipeBed'],
+        unlocks: ['RecipeThornwoodPlank', 'RecipeCarpenterAxe', 'RecipeWaystone', 'RecipeBed', 'RecipeChest', 'RecipeDoor'],
         requires: [],
         researchDuration: 10,
         researchMaterials: [{ item: 'Thornwood', quantity: 4 }],
@@ -166,6 +167,8 @@ module.exports = {
       unlocksRecipeCarpenterAxe:   { name: 'unlocksRecipeCarpenterAxe',   kind: 'hasOne', target: 'RecipeCarpenterAxe' },
       unlocksRecipeWaystone:       { name: 'unlocksRecipeWaystone',       kind: 'hasOne', target: 'RecipeWaystone' },
       unlocksRecipeBed:            { name: 'unlocksRecipeBed',            kind: 'hasOne', target: 'RecipeBed' },
+      unlocksRecipeChest:          { name: 'unlocksRecipeChest',          kind: 'hasOne', target: 'RecipeChest' },
+      unlocksRecipeDoor:           { name: 'unlocksRecipeDoor',           kind: 'hasOne', target: 'RecipeDoor' },
     },
     stateMachine: technologyStateMachine(),
     behaviors: {

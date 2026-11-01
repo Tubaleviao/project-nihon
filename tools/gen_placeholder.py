@@ -67,7 +67,7 @@ ITEM_TEXTURE_SIZES = {
     "VeilsteelLongsword": 64, "VeilsteelPick": 64, "VoiditeEdge": 32, "AethermiteBow": 64,
     "SkinningKnife": 32, "BoneSaw": 32, "VeilsteelChestplate": 64, "DuskfiberCloak": 64, "NoviceTunic": 64,
     "AethermiteDust": 64, "AshiteBlock": 64, "FieldRations": 64, "LumenfiteOrb": 64, "ThornwoodPlank": 64,
-    "Hearth": 64, "Waystone": 64, "Bed": 64, "AethermiteShard": 32, "EnchantedAethermiteShard": 32, "AlchemyPotion": 32,
+    "Hearth": 64, "Waystone": 64, "Bed": 64, "Chest": 64, "Door": 64, "Lockpick": 32, "AethermiteShard": 32, "EnchantedAethermiteShard": 32, "AlchemyPotion": 32,
     "FerriteIngot": 32, "VeilsteelIngot": 32, "RefinedVoiditeShard": 32, "VoidRuneTablet": 32,
 }
 ITEM_TEXTURE_DIR = ROOT / "assets/textures/items"

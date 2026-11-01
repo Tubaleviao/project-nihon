@@ -1,0 +1,12 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/recipes/recipechest.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+domain = 0
+outputCount = 0
+recipe = {"domain":"carpentry","station":"","inputs":[{"item":"ThornwoodPlank","quantity":8},{"item":"FerriteIngot","quantity":1}],"outputs":[{"item":"Chest","quantity":1}],"skillGuards":[{"skill":"Carpentry","tier":"novice"}]}
+description = "Box eight thornwood planks and band them with a ferrite ingot, by hand."
+tags = ["recipe"]
