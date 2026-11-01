@@ -50,6 +50,9 @@ const REPAIR_REACH_M := 3.0
 ## Downtime counted on load is capped (a clock set wrong must not ruin every structure at once twice over).
 const MAX_DOWNTIME_HOURS := 24.0 * 3650.0
 const INTENT_INTERVAL := 0.25
+## Seconds between one player's hits on someone else's blocks. The host keeps the pace, not the client:
+## a client sending mine intents as fast as the network bucket allows would undo `offlineFactor`.
+const HIT_INTERVAL := 0.25
 const REASONS := ["not_owner", "no_permission", "structures_full", "no_clan", "bad_args", "no_structure",
 	"intact", "missing_materials", "no_inventory", "rate_limited", "unknown_action", "unknown_player"]
 
@@ -76,6 +79,8 @@ var _next_id: int = 1
 var _build_mode: Dictionary = {}
 var _notice_at: Dictionary = {}
 var _last_intent: Dictionary = {}
+## pid -> mono_sec of that player's last committed hit on someone else's block.
+var _last_hit: Dictionary = {}
 var _sweep_keys: Array = []
 var _collapse: Array = []
 ## Client and host: the last `block_damaged` heard, and how many (the harness reads both peers').
@@ -89,6 +94,7 @@ func _ready() -> void:
 
 func forget_player(player_id: String) -> void:
 	_last_intent.erase(player_id)
+	_last_hit.erase(player_id)
 
 func is_authoritative() -> bool:
 	return is_host
@@ -299,7 +305,8 @@ func _level_of(pid: String) -> int:
 ##   dismantle the actor may take it apart: `quantity` units of `material` come back
 ##   damage    an outsider's hit: `points` off, the block stands at `fraction`
 ##   destroy   an outsider's hit that takes it to zero: it goes, nothing comes back
-##   refused   `reason` (a clan member whose role may not dismantle the clan's structures)
+##   refused   `reason` (a clan member whose role may not dismantle the clan's structures, or an
+##             outsider's hit sooner than `HIT_INTERVAL` after their last)
 func plan_mine(player_id: String, tile: Vector2i, bottom: float, top: float, method: String) -> Dictionary:
 	var hit := cell_at(tile, (bottom + top) * 0.5)
 	if hit.is_empty():
@@ -321,6 +328,9 @@ func plan_mine(player_id: String, tile: Vector2i, bottom: float, top: float, met
 	if may_edit(player_id, sid):
 		plan.merge({ "verdict": "refused", "reason": "no_permission" })
 		return plan
+	if float(mono_sec.call()) - float(_last_hit.get(_pid(player_id), -1.0e12)) < HIT_INTERVAL:
+		plan.merge({ "verdict": "refused", "reason": "rate_limited" })
+		return plan
 	var points := Rules.hit_damage(method, material, owners_offline(sid))
 	var after := left - points
 	plan.merge({ "verdict": "destroy" if after <= 0.0 else "damage", "points": points,
@@ -333,7 +343,10 @@ func commit_mine(plan: Dictionary) -> void:
 	if not _structures.has(sid):
 		return
 	var s: Dictionary = _structures[sid]
-	match str(plan.get("verdict", "")):
+	var verdict := str(plan.get("verdict", ""))
+	if verdict == "damage" or verdict == "destroy":
+		_last_hit[str(plan.get("player_id", ""))] = float(mono_sec.call())
+	match verdict:
 		"dismantle":
 			s["credit"][str(plan["material"])] = float(plan["credit"])
 			_remove_cell(sid, plan["tile"], int(plan["mm"]))

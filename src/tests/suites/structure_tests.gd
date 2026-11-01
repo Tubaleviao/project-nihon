@@ -13,6 +13,7 @@ func register() -> void:
 	_run_test("structure: ownership changes only by dismantling or destruction", _test_ownership_stable)
 	_run_test("structure: a member's private house in clan territory can be entered and dismantled, not edited", _test_member_private_territory)
 	_run_test("structure: a destroyer gets nothing, and offline owners make it the offline factor slower", _test_destroyer_offline)
+	_run_test("structure: the host keeps an outsider's hit pace, however fast the intents come", _test_hit_pace)
 	_run_test("structure: a repair restores durability for its share of materials, only by the owner", _test_repair)
 	_run_test("structure: the index saves and loads, wears for downtime once and drops malformed entries", _test_persistence)
 	_run_test("structure: blocks worn to nothing collapse in a bounded sweep, and the owner is told", _test_collapse_sweep)
@@ -72,7 +73,9 @@ func _place(r: Dictionary, pid: String, tx: int, tz: int, y: float, mat: String 
 	r["reg"].get_inventory(pid).add_item(mat, 1)
 	return r["v"].place_block(_xyz(tx, tz, y), Vector3.UP, mat, pid)
 
+## One swing: the clock moves on by the host's hit interval first, as a player clicking at full pace.
 func _mine(r: Dictionary, pid: String, tx: int, tz: int, y: float) -> Dictionary:
+	r["now"][0] += StructureSlice.HIT_INTERVAL
 	return r["v"].mine_block(_xyz(tx, tz, y), Vector3.UP, pid)
 
 func _count(r: Dictionary, pid: String, mat: String) -> int:
@@ -141,6 +144,7 @@ func _test_damage_destroys() -> void:
 		var plan := {}
 		var k := 0
 		while k < 1000:
+			r["now"][0] += StructureSlice.HIT_INTERVAL
 			plan = st.plan_mine("p3", Vector2i(t, 4), 2.0, 2.125, "pick")
 			st.commit_mine(plan)
 			k += 1
@@ -256,6 +260,28 @@ func _test_destroyer_offline() -> void:
 	assert_false(st.owners_offline(hall), "one member online is enough")
 	r["reg"]._peer_ids.erase(5)
 	assert_true(st.owners_offline(hall), "every member offline")
+	_free_rig(r)
+
+## Review fix — the offline factor is a host rule only if the host spaces the hits: intents arriving
+## faster than `HIT_INTERVAL` (a modified client, inside the network bucket) do no damage and wear no pick.
+func _test_hit_pace() -> void:
+	var r := _rig()
+	var st: StructureSlice = r["st"]
+	assert_true(_place(r, "p1", 2, 34, 2.0, "Soil"), "p1 builds")
+	var first := _mine(r, "p3", 2, 34, 2.125)
+	assert_true(bool(first.get("damaged", false)), "an outsider's first hit lands")
+	var fraction := float(first["fraction"])
+	var burst := {}
+	for i in 20:
+		burst = r["v"].mine_block(_xyz(2, 34, 2.125), Vector3.UP, "p3")
+		assert_false(bool(burst.get("damaged", false)) or bool(burst["success"]), "hit %d inside the interval is refused" % i)
+	assert_eq(str(st.plan_mine("p3", Vector2i(2, 34), 2.0, 2.125, "hand").get("reason", "")), "rate_limited", "with its reason")
+	var next := _mine(r, "p3", 2, 34, 2.125)
+	assert_true(bool(next.get("damaged", false)), "the next hit at pace lands")
+	assert_true(float(next["fraction"]) < fraction, "and is the second hit's worth, not twenty-first")
+	assert_true(_place(r, "p1", 2, 35, 2.0, "Soil"), "p1 builds beside it")
+	var own: Dictionary = r["v"].mine_block(_xyz(2, 35, 2.125), Vector3.UP, "p1")
+	assert_true(bool(own["success"]), "the owner dismantling is not held to the outsider's pace")
 	_free_rig(r)
 
 func _test_repair() -> void:
