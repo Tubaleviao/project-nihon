@@ -191,7 +191,7 @@ func _test_level_scaling() -> void:
 	var cid: String = f["sl"].create_for_death("ForestBoar", Vector3.ZERO, "p1")
 	var xp_before: int = f["gr"]._registry.get_skill_xp("p1", "Skinning")
 	assert_eq(_work(f, cid)[0][0], "", "harvested")
-	assert_eq(f["gr"]._registry.get_skill_xp("p1", "Skinning") - xp_before, int(s.get("xpPerHarvest")), "XP granted")
+	assert_eq(f["gr"]._registry.get_skill_xp("p1", "Skinning") - xp_before, int(preload("res://src/character/work_skills.gd").gather_row("carcass")["xp"]), "XP granted")
 	assert_true(f["inv"].get_durability("SkinningKnife") < before, "the knife wore")
 	_free_fixture(f)
 

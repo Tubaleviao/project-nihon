@@ -47,7 +47,22 @@ that kind of work. Clan projects finish when their materials are in, with no lab
 - Project labour removed (rules, slice, wiring, board, the `project_work` intent, its catalog text); the
   settlement tick completes a saved project whose materials are in. `Settlement.tiers.*.minProjects` now
   fails validation (`tools/check_settlement_loop.js`).
-- Not wired: foraging (no runtime forage action exists yet) and lockpicking (Phase 208 adds locks). Their
-  rows are in the table for when they arrive. Skill XP grows attributes, and through them specialties;
-  skill tiers still come only from `record_skill`.
+- Not wired: foraging (no runtime forage action exists yet) and lockpicking (Phase 208 adds locks). Both
+  are listed in `WorkSkills.UNWIRED`; the suite fails on any other row without a grant site and on an
+  UNWIRED row that gained one.
+
+**Review pass (PR #549):**
+- Skill tiers follow the work: `WorkSkills.tiers` (fabric) is the cumulative XP per tier (100, 400, 1200,
+  3000); a grant that crosses one records the tier and emits `skill_tier_recorded` (specialty, clan roster
+  and, new, profession unlocks recompute). A tier is never lowered.
+- No place-and-dismantle loop: each structure block records its placer (structure save format 2; a
+  format-1 cell loads with none). Its own placer taking it apart again is an undo: the build XP comes back
+  off and no dismantle XP is granted.
+- Work grants defer their `attributes_synced` unless an attribute gained a point; the host flushes one per
+  player each second (`PeerWiring.ATTR_SYNC_SEC`), not one network message and specialty recompute per block.
+- Gather XP is per unit banked (a vein slice of 4, a felled tree's 2 planks).
+- The pre-207 project fix runs once per load (the projects are queued and placed on the next tick); the tick
+  scans no project.
+- `Skinning.xpPerHarvest` is gone: the WorkSkills `carcass` row is the only Skinning XP number.
+- `_credit` became `_credit_items`; `ProjectRules.completed_count` is removed.
 

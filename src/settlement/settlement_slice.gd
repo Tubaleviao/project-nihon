@@ -103,6 +103,8 @@ var place_structure: Callable = Callable()
 ## Phase 206 — `(player_id, xz: Vector2) -> bool` whether `xz` (ground metres) lies inside the circle of a
 ## clan the player is not in, where they may not build; set by the structure wiring (host). Unset: nowhere.
 var build_blocked: Callable = Callable()
+## Phase 207 — [settlement id, project key] of loaded projects with every material in, finished by the next tick.
+var _finish_on_tick: Array = []
 ## Phase 199 — pid -> the specialty last announced for that player (absent = none).
 var _specialties: Dictionary = {}
 ## Client view: what the host last sent.
@@ -564,7 +566,7 @@ func contribute(actor: String, key: String, item: String, qty: int, source: Stri
 			return "no_stock"
 		_push_inventory(pid)
 	state["given"][item] = int(state["given"].get(item, 0)) + qty
-	_credit(state, pid, "items", qty)
+	_credit_items(state, pid, qty)
 	_touch(id)
 	GameBus.settlement_project_changed.emit(id, key, "contributed", pid)
 	_maybe_complete(id, key)
@@ -603,13 +605,13 @@ func refresh_specialty(player_id: String) -> bool:
 	GameBus.settlements_changed.emit()
 	return true
 
-func _credit(state: Dictionary, pid: String, field: String, n: float) -> void:
+func _credit_items(state: Dictionary, pid: String, qty: int) -> void:
 	var c: Dictionary = state["contributors"]
 	if not c.has(pid):
 		if c.size() >= ProjectRules.MAX_CONTRIBUTORS:
 			return
 		c[pid] = { "items": 0 }
-	c[pid][field] = int(c[pid][field]) + int(n)
+	c[pid]["items"] = int(c[pid]["items"]) + qty
 
 ## A project with every material in finishes: its structure is placed (`place_structure`). Nothing else
 ## changes (Phase 207): no tier, no clan value, no credit to anyone.
@@ -628,7 +630,8 @@ func _maybe_complete(id: String, key: String) -> void:
 func _touch(id: String) -> void:
 	_settlements[id]["last_active"] = float(now_sec.call())
 
-## Grow tiers, lapse invites, complete saved projects whose materials are in and hand back migrated hearths as of `now`. Returns true when anything changed.
+## Grow tiers, lapse invites, complete the loaded projects `_finish_on_tick` names and hand back migrated hearths
+## as of `now`. Returns true when anything changed.
 ## Since Phase 205 a settlement neither decays nor is abandoned: it lasts while it has members.
 func tick(now: float) -> bool:
 	var changed := false
@@ -640,15 +643,24 @@ func tick(now: float) -> bool:
 		if TIER_ORDER.find(tier) > TIER_ORDER.find(str(s["status"])):
 			s["status"] = tier   # tiers never shrink: a settlement that lost members keeps what it earned
 			changed = true
-		# Phase 207 — a project saved with labour still to do completes once its materials are in.
-		for key: String in (s["projects"] as Dictionary).keys():
-			if str(s["projects"][key]["status"]) != "done" and ProjectRules.is_complete(ProjectRules.def_of(key), s["projects"][key]):
-				_maybe_complete(id, key)
-				changed = true
+	if not _finish_on_tick.is_empty():
+		changed = _finish_loaded() or changed
 	_return_hearths()
 	if changed:
 		GameBus.settlements_changed.emit()
 	return changed
+
+## Phase 207 — complete the projects a load found with every material in (saved with labour still to do).
+func _finish_loaded() -> bool:
+	var due := _finish_on_tick
+	_finish_on_tick = []
+	var done := false
+	for pair: Array in due:
+		var id := str(pair[0])
+		if _settlements.has(id) and (_settlements[id]["projects"] as Dictionary).has(pair[1]):
+			_maybe_complete(id, str(pair[1]))
+			done = true
+	return done
 
 ## Phase 205 — the Hearth items owed to founders whose saved hearth was removed, as a `{ founder: n }` copy.
 func hearth_returns() -> Dictionary:
@@ -731,6 +743,7 @@ func to_data() -> Dictionary:
 func from_data(data: Variant) -> void:
 	_settlements.clear()
 	_hearth_returns.clear()
+	_finish_on_tick.clear()
 	_next_id = 1
 	_next_name = 1
 	if not (data is Dictionary):
@@ -786,6 +799,12 @@ func from_data(data: Variant) -> void:
 			# A format-1 (pre-198) record has no projects: it loads with none.
 			"projects": _projects_from(s.get("projects", null)) if int((data as Dictionary).get("format", 1)) >= 2 else {},
 		}
+		# Phase 207 — a project saved with labour still to do and every material in completes on the first tick
+		# (when the world can take its structure), found once here rather than looked for on every tick.
+		for key: String in _settlements[str(id).left(64)]["projects"]:
+			var p: Dictionary = _settlements[str(id).left(64)]["projects"][key]
+			if str(p["status"]) != "done" and ProjectRules.is_complete(ProjectRules.def_of(key), p):
+				_finish_on_tick.append([str(id).left(64), key])
 		if WorldPos.pos_from_wire(s.get("hearth", null)).size() > 0:
 			_settlements[str(id).left(64)]["hearth"] = (s["hearth"] as Dictionary).duplicate(true)
 		# Phase 205 — a saved hearth is removed, and its founder is owed it back as a Hearth item

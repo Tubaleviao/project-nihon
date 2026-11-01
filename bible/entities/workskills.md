@@ -14,6 +14,7 @@ Which skill each kind of work grows, and by how much: crafting in each domain, g
 | `id` | uuid | yes |  |
 | `rules` | json | yes | Work table: { craft: { <domain>: { skill, xp } }, gather: { <family>: { skill, xp } }, build, dismantle, repair, lockpick } (validated at fabric load) |
 | `curves` | json | yes | XP curves of the skills added in Phase 203: { <skill>: { levelCap, xpToLevel } } |
+| `tiers` | json | yes | Phase 207 review — cumulative XP in a skill at which each tier is reached: { novice: 0, apprentice, journeyman, expert, master } |
 | `families` | json | yes | Phase 207 — each material's gather family { <material>: metal \| stone \| wood \| soil }, derived from the material files |
 
 ## Relations

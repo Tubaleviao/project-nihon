@@ -348,9 +348,17 @@ var _rescopes: Dictionary = {}
 ## Window refreshes `flush_rescopes` has run (the suite pins one per frame, however many peers crossed).
 var rescope_refreshes := 0
 
-func tick(_delta: float) -> void:
+## Phase 207 review — seconds between flushes of the attribute syncs work grants defer.
+const ATTR_SYNC_SEC := 1.0
+var _attr_sync_elapsed := 0.0
+
+func tick(delta: float) -> void:
 	if not root._is_client:
 		flush_rescopes()
+		_attr_sync_elapsed += delta
+		if _attr_sync_elapsed >= ATTR_SYNC_SEC and root._registry != null:
+			_attr_sync_elapsed = 0.0
+			root._registry.flush_attribute_syncs()
 
 ## Phase 163 — host, once a frame: serve the frame's AOI crossings. Every window moves first and the
 ## windows are refreshed ONCE, then each crossing's snapshot is built. Returns the snapshots sent.

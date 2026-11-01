@@ -7,6 +7,7 @@ script = ExtResource("1")
 id = ""
 rules = {"craft":{"smithing":{"skill":"Smithing","xp":8},"carpentry":{"skill":"Carpentry","xp":8},"alchemy":{"skill":"Alchemy","xp":8},"arcane":{"skill":"ArcaneForging","xp":10},"tailoring":{"skill":"Tailoring","xp":8}},"gather":{"metal":{"skill":"Smithing","xp":2},"stone":{"skill":"Building","xp":2},"wood":{"skill":"Carpentry","xp":2},"soil":{"skill":"Building","xp":1},"plant":{"skill":"Alchemy","xp":2},"carcass":{"skill":"Skinning","xp":10}},"build":{"skill":"Building","xp":1},"dismantle":{"skill":"Building","xp":2},"repair":{"skill":"Building","xp":3},"lockpick":{"skill":"Lockpicking","xp":15}}
 curves = {"Building":{"levelCap":10,"xpToLevel":[0,50,200,450,800,1250,1800,2450,3200,4050,5000]},"Tailoring":{"levelCap":10,"xpToLevel":[0,40,160,360,640,1000,1440,1960,2560,3240,4000]},"Lockpicking":{"levelCap":10,"xpToLevel":[0,60,240,540,960,1500,2160,2940,3840,4860,6000]}}
+tiers = {"novice":0,"apprentice":100,"journeyman":400,"expert":1200,"master":3000}
 families = {"Ferrite":"metal","Veilsteel":"metal","Aethermite":"metal","Voidite":"metal","Ashite":"stone","Lumenfite":"stone","Thornwood":"wood","Duskfiber":"wood","Grass":"soil","Soil":"soil","Sand":"soil","Snow":"soil"}
 description = "Which skill each kind of work grows, and by how much: crafting in each domain, gathering each family of material, plants and carcasses, building, dismantling, repairing and picking locks. The XP goes to the worker alone; nothing a member does is progress for a clan."
 tags = ["world-system"]

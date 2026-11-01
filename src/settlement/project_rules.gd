@@ -94,9 +94,6 @@ static func building_count(projects: Dictionary) -> int:
 			n += 1
 	return n
 
-static func completed_count(projects: Dictionary) -> int:
-	return projects.size() - building_count(projects)
-
 ## The cells a finished structure fills, as offsets `(dx, dy, dz)` from its site (dy above the ground),
 ## exactly `blocks` of them: courses of the layout's outline stacked upward, with a doorway left open in
 ## the two lowest courses of everything but the tower.

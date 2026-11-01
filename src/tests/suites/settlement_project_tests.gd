@@ -85,7 +85,7 @@ func _test_rules_shape() -> void:
 	var done := { "storehouse": { "status": "done" }, "palisade": { "status": "building" } }
 	# Phase 205 — projects have no effects: a standing storehouse adds no stockpile stacks.
 	assert_false(ProjectRules.def_of("storehouse").has("effects"), "no project carries effects")
-	assert_eq(ProjectRules.completed_count(done), 1, "one done")
+	assert_eq(ProjectRules.building_count(done), 1, "one still building")
 	for layout in ["ring", "tower", "hall", "shed"]:
 		var cells := ProjectRules.layout_cells(layout, 40)
 		assert_eq(cells.size(), 40, "%s fills exactly its block count" % layout)
@@ -227,6 +227,10 @@ func _test_project_saved_labour() -> void:
 	assert_eq(str(s.projects_of(id)["storehouse"]["status"]), "building", "a project short of materials keeps building")
 	s.tick(float(rig["now"][0]))
 	assert_eq((rig["placed"] as Array).size(), 1, "a second tick places nothing more")
+	# Review — the load finds such projects once; a tick looks at no other project.
+	s._settlements[id]["projects"]["storehouse"]["given"] = ProjectRules.needed_materials(ProjectRules.def_of("storehouse"))
+	s.tick(float(rig["now"][0]))
+	assert_eq(str(s.projects_of(id)["storehouse"]["status"]), "building", "a tick after the load scans no project")
 	_free_rig(rig)
 
 ## Phase 207 — the labour stage is gone from the runtime: its constants, clock, tool check, steps, intent,

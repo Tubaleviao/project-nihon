@@ -36,7 +36,8 @@ const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 const WorkSkills := preload("res://src/character/work_skills.gd")
 
-const DATA_FORMAT := 1
+## 2 (Phase 207 review): a saved cell carries its placer as a seventh field; a format-1 cell of six still loads.
+const DATA_FORMAT := 2
 const OWNER_KINDS := ["private", "clan"]
 ## Memory bounds: every indexed block costs two dictionary entries. Past them a new structure (or block) is
 ## refused rather than placed unowned.
@@ -79,7 +80,8 @@ var remove_block: Callable = Callable()
 var mono_sec: Callable = func() -> float: return Time.get_ticks_msec() / 1000.0
 
 ## sid -> { id, kind, owner, builder, anchor: Vector2i, wear, wear_hour, credit {material: f},
-##          cells { tile: { mm: [material, damage, wear_at_place] } }, count, hurt, sx, sz, levels }
+##          cells { tile: { mm: [material, damage, wear_at_place, placed_by] } }, count, hurt, sx, sz, levels }
+## `placed_by` (Phase 207 review) is the player who placed the block, "" for a block saved before it was kept.
 ## `hurt` is at least the largest damage / base of any of its blocks (never under it): the sweep reads a
 ## structure's blocks only once its wear could bring one to zero.
 ## `sx`/`sz` sum its columns' tile offsets from `anchor` (round the seam) and `levels` counts its blocks per
@@ -458,7 +460,8 @@ func _level_of(pid: String) -> int:
 
 ## What a mine of the span [`bottom`, `top`] in `tile` by `player_id` with `method` would do. Pure:
 ##   free      no structure holds it (natural ground, or a block placed before structures existed)
-##   dismantle the actor may take it apart: `quantity` units of `material` come back
+##   dismantle the actor may take it apart: `quantity` units of `material` come back; `placed_by` is who
+##             placed the block ("" unknown), so its own builder taking it apart again is an undo
 ##   damage    an outsider's hit: `points` off, the block stands at `fraction`
 ##   destroy   an outsider's hit that takes it to zero: it goes, nothing comes back
 ##   refused   `reason` (a clan member whose role may not dismantle the clan's structures, or an
@@ -474,7 +477,8 @@ func plan_mine(player_id: String, tile: Vector2i, bottom: float, top: float, met
 	var material := str(cell[0])
 	var base := Rules.base_durability(material)
 	var left := _durability_of(s, cell)
-	var plan := { "sid": sid, "tile": hit["tile"], "mm": hit["mm"], "material": material, "player_id": _pid(player_id) }
+	var plan := { "sid": sid, "tile": hit["tile"], "mm": hit["mm"], "material": material, "player_id": _pid(player_id),
+		"placed_by": str(cell[3]) if cell.size() > 3 else "" }
 	if may_dismantle(player_id, sid):
 		var credit := float((s["credit"] as Dictionary).get(material, 0.0)) \
 			+ Rules.dismantle_share(left / base if base > 0.0 else 0.0, _level_of(_pid(player_id)))
@@ -606,7 +610,7 @@ func commit_place(plan: Dictionary) -> int:
 			return 0
 	var s: Dictionary = _structures[sid]
 	_advance(s)
-	_add_cell(sid, plan["tile"], int(plan["mm"]), [str(plan["material"]), 0.0, float(s["wear"])])
+	_add_cell(sid, plan["tile"], int(plan["mm"]), [str(plan["material"]), 0.0, float(s["wear"]), str(plan["player_id"])])
 	return sid
 
 ## Index `cell` at (`tile`, `mm`) for `sid`. A block another structure still held there (a stale record) is
@@ -922,7 +926,7 @@ func to_data() -> Dictionary:
 		for t: Vector2i in s["cells"]:
 			for mm: int in s["cells"][t]:
 				var c: Array = s["cells"][t][mm]
-				cells.append([t.x, t.y, mm, c[0], c[1], c[2]])
+				cells.append([t.x, t.y, mm, c[0], c[1], c[2], c[3] if c.size() > 3 else ""])
 		var a: Vector2i = s["anchor"]
 		list.append({ "id": sid, "kind": s["kind"], "owner": s["owner"], "builder": s["builder"], "anchor": [a.x, a.y],
 			"wear": s["wear"], "wear_hour": s["wear_hour"], "credit": (s["credit"] as Dictionary).duplicate(), "cells": cells })
@@ -983,13 +987,15 @@ func _load_one(raw: Variant) -> void:
 	for c: Variant in r["cells"]:
 		if _cell_count >= MAX_CELLS:
 			break
-		if not (c is Array) or (c as Array).size() != 6 or not _num(c[0]) or not _num(c[1]) or not _num(c[2]) \
+		# Six fields before Phase 207's review added `placed_by` (that block's placer is unknown: "").
+		if not (c is Array) or not ((c as Array).size() == 6 or (c as Array).size() == 7) or not _num(c[0]) or not _num(c[1]) or not _num(c[2]) \
 				or not GameData.MATERIALS.has(c[3]) or not _num(c[4]) or not _num(c[5]):
 			continue
+		var by := str(c[6]).left(64) if (c as Array).size() == 7 and c[6] is String else ""
 		var t := Vector2i(int(c[0]), int(c[1]))
 		if int(_tiles.get(t, {}).get(int(c[2]), 0)) != 0:
 			continue   # two records claim one block: the first keeps it
-		_add_cell(sid, t, int(c[2]), [str(c[3]), maxf(0.0, float(c[4])), clampf(float(c[5]), 0.0, 2.0)])
+		_add_cell(sid, t, int(c[2]), [str(c[3]), maxf(0.0, float(c[4])), clampf(float(c[5]), 0.0, 2.0), by])
 	if int(_structures[sid]["count"]) <= 0:
 		_structures.erase(sid)
 		return

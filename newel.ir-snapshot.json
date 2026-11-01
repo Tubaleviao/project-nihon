@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:c4061ef1a06f88d61a94c0598e62911d7a8a8afdd2d105767980c28d1ac1856e",
+  "schemaHash": "sha256:bd629e6c2bfafed908fc804b690bde2b3d1326003e99276fe4a5ce015c6ecb83",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -11888,15 +11888,6 @@
             "pii": false,
             "defaultValue": 10
           },
-          "xpPerHarvest": {
-            "name": "xpPerHarvest",
-            "type": "integer",
-            "description": "Skinning XP a finished harvest grants",
-            "nullable": false,
-            "primaryKey": false,
-            "pii": false,
-            "defaultValue": 10
-          },
           "xpToLevel": {
             "name": "xpToLevel",
             "type": "json",
@@ -12002,7 +11993,7 @@
             "rules": [
               "Effective level is floor(level * tool efficiency); it indexes yieldCurve, chanceCurve and qualityCurve",
               "Quality is a property of the item instance, not a separate item id",
-              "A finished harvest grants xpPerHarvest"
+              "A finished harvest grants the Skinning XP of the WorkSkills carcass row"
             ],
             "auth": {
               "roles": [
@@ -27250,6 +27241,21 @@
                   6000
                 ]
               }
+            }
+          },
+          "tiers": {
+            "name": "tiers",
+            "type": "json",
+            "description": "Phase 207 review — cumulative XP in a skill at which each tier is reached: { novice: 0, apprentice, journeyman, expert, master }",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "novice": 0,
+              "apprentice": 100,
+              "journeyman": 400,
+              "expert": 1200,
+              "master": 3000
             }
           },
           "families": {

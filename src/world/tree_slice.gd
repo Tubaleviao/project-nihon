@@ -582,7 +582,7 @@ func chop_tree(tree_id: String, player_id: String = "") -> Dictionary:
 	if inventory != null and inventory.has_method("add_item"):
 		if not inventory.add_item(wood, CHOP_YIELD):
 			return _fail("no_inventory")
-	WorkSkills.grant(player_registry, player_id, WorkSkills.gather_row(wood))   # Phase 207 — chopping grows the chopper's skill
+	WorkSkills.grant(player_registry, player_id, WorkSkills.gather_row(wood), CHOP_YIELD)   # Phase 207 — per unit, as mining
 	_push_inventory(player_id)
 	_set_chopped(tree_id)
 	return { "success": true, "wood": wood, "quantity": CHOP_YIELD, "reason": "" }

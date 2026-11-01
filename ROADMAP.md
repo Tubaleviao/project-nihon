@@ -197,6 +197,8 @@ everyone can open. A locked chest or door can still be broken open or picked, ha
   everyone chest opens for anyone. A non-owner cannot change the mode. Doors follow the same rules.
 - [ ] Suite: a harder chest takes longer to pick and to destroy, and a destroyed chest spills
   everything it held.
+- [ ] Suite: a picked lock grants the `WorkSkills.lockpick` row to the picker, and `lockpick` is gone
+  from `WorkSkills.UNWIRED`.
 - [ ] Harness: a client's take from a chest it may not open is refused, and the chest is unchanged
   on both peers.
 - [ ] Every new string is in both catalogs, and the i18n key check passes.
