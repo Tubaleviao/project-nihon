@@ -14,6 +14,11 @@ func register() -> void:
 	_run_test("structure: a member's private house in clan territory can be entered and dismantled, not edited", _test_member_private_territory)
 	_run_test("structure: a destroyer gets nothing, and offline owners make it the offline factor slower", _test_destroyer_offline)
 	_run_test("structure: the host keeps an outsider's hit pace, however fast the intents come", _test_hit_pace)
+	_run_test("structure: no stranger builds within a block of someone else's structure, the owner still does", _test_placement_buffer)
+	_run_test("structure: a clan structure whose clan has no members left is anyone's to edit and dismantle", _test_abandoned_clan)
+	_run_test("structure: a placed block that falls keeps its owner and durability at its new height", _test_fallen_block_kept)
+	_run_test("structure: a block indexed again is taken from its old structure; a natural span is nobody's", _test_stale_records)
+	_run_test("structure: an axe hit on someone else's block wears the axe", _test_axe_wears)
 	_run_test("structure: a repair restores durability for its share of materials, only by the owner", _test_repair)
 	_run_test("structure: the index saves and loads, wears for downtime once and drops malformed entries", _test_persistence)
 	_run_test("structure: blocks worn to nothing collapse in a bounded sweep, and the owner is told", _test_collapse_sweep)
@@ -495,3 +500,97 @@ func _test_audit_client_values() -> void:
 	var edit_src := FileAccess.get_file_as_string("res://src/terrain/voxel_edit.gd")
 	assert_true(edit_src.contains("s.structures.plan_mine(player_id, tile,"), "a mine's verdict comes from the host's index")
 	assert_true(edit_src.contains("s.structures.plan_place(player_id, tile,"), "and a placement's")
+
+func _test_placement_buffer() -> void:
+	var r := _rig()
+	var st: StructureSlice = r["st"]
+	assert_true(_place(r, "p2", 40, 40, 2.0), "p2 builds a private block on the ground")
+	assert_false(_place(r, "p3", 41, 40, 2.0), "a stranger cannot build on the floor beside it")
+	assert_false(_place(r, "p3", 41, 41, 2.0), "nor diagonally")
+	assert_false(_place(r, "p1", 39, 40, 2.0), "nor may a clan member beside another member's private house")
+	assert_eq(_count(r, "p3", "Ashite"), 2, "refused placements spend nothing")
+	assert_eq(str(st.plan_place("p3", Vector2i(41, 40), 2.125, Vector3.UP, "Ashite").get("reason", "")), "not_owner",
+		"a block one step up and one across is within the buffer")
+	assert_eq(str(st.plan_place("p3", Vector2i(41, 40), 2.25, Vector3.UP, "Ashite").get("verdict", "")), "new",
+		"two steps up leaves a block of space: allowed")
+	assert_true(_place(r, "p2", 41, 40, 2.0), "the owner still builds right beside their own block")
+	assert_eq(_sid(r, 41, 40, 2.0), _sid(r, 40, 40, 2.0), "and it joins their structure")
+	assert_true(_place(r, "p3", 43, 40, 2.0), "two columns away leaves a block of space: a stranger builds there")
+	assert_true(_place(r, "p3", 44, 40, 2.0), "and beside their own block")
+	assert_eq(_sid(r, 44, 40, 2.0), _sid(r, 43, 40, 2.0), "a stranger's own structure grows beside itself")
+	assert_false(_place(r, "p2", 42, 40, 2.0), "the buffer holds both ways: p2 cannot close the gap either")
+	_free_rig(r)
+
+func _test_abandoned_clan() -> void:
+	var r := _rig()
+	var st: StructureSlice = r["st"]
+	assert_eq(st.set_build_mode("p1", "clan"), "", "p1 builds for the clan")
+	assert_true(_place(r, "p1", 10, 10, 2.0), "a clan block")
+	assert_true(_place(r, "p1", 10, 10, 2.125), "and another on it")
+	var hall := _sid(r, 10, 10, 2.0)
+	assert_false(st.may_edit("p3", hall), "an outsider may not edit a clan's structure")
+	assert_eq(r["clans"].leave("p2"), "", "p2 leaves")
+	assert_eq(r["clans"].leave("p1"), "", "the founder, alone, leaves: the clan is gone")
+	assert_true(st.may_edit("p3", hall), "anyone may edit a structure whose clan has no members left")
+	assert_true(st.may_dismantle("p3", hall), "and take it apart")
+	var got := _mine(r, "p3", 10, 10, 2.25)
+	assert_true(bool(got["success"]), "p3 takes a block apart instead of hitting it")
+	assert_eq(int(st.get_structure(hall).get("count", 0)), 1, "one block of the hall is left")
+	assert_true(_place(r, "p3", 10, 10, 2.125), "and p3 builds on what remains")
+	_free_rig(r)
+
+func _test_fallen_block_kept() -> void:
+	var r := _rig()
+	var st: StructureSlice = r["st"]
+	var v: Node = r["v"]
+	var tile := Vector2i(40, 40)
+	assert_true(_place(r, "p1", 40, 40, 2.0, "Sand"), "p1 places sand on the ground")
+	var house := _sid(r, 40, 40, 2.0)
+	_mine(r, "p3", 40, 40, 2.125)   # one hit: the block carries some damage down with it
+	var worn: float = float(st.block_durability(tile, 2.0625).get("durability", -1.0))
+	# The ground under it is dug out from below (a tunnel): the sand hangs, then falls.
+	v._append_edit(tile, { "op": "remove", "bottom": 1.5, "top": 2.0 })
+	v._settle_note(tile)
+	var guard := 0
+	while v.settle_pending() > 0 and guard < 10:
+		v.settle_tick()
+		guard += 1
+	assert_eq(float(v.get_runs_at_tile(tile)[-1]["top"]), 1.625, "the sand fell onto the dug floor")
+	assert_eq(_sid(r, 40, 40, 1.5), house, "its record moved down with it")
+	assert_eq(_sid(r, 40, 40, 2.0), 0, "and nothing is left in the air where it was")
+	assert_eq(float(st.block_durability(tile, 1.5625).get("durability", -2.0)), worn, "with the durability it had")
+	assert_true(bool(_mine(r, "p3", 40, 40, 1.625).get("damaged", false)), "a stranger still only damages it")
+	_free_rig(r)
+
+func _test_stale_records() -> void:
+	var r := _rig()
+	var st: StructureSlice = r["st"]
+	assert_true(_place(r, "p1", 40, 40, 2.0), "p1 builds")
+	assert_true(_place(r, "p1", 40, 40, 2.125), "two blocks")
+	var old := _sid(r, 40, 40, 2.0)
+	var plan := { "verdict": "new", "kind": "private", "owner": "p2", "player_id": "p2", "tile": Vector2i(40, 40),
+		"mm": StructureSlice.mm_of(2.0), "material": "Ashite" }
+	var fresh := st.commit_place(plan)
+	assert_eq(_sid(r, 40, 40, 2.0), fresh, "a block indexed again belongs to the new structure")
+	assert_eq(int(st.get_structure(old)["count"]), 1, "and is no longer counted in the old one")
+	assert_eq(st.cell_count(), 2, "one record per block")
+	# A record left over a natural span (an edit the index never saw): mining it is free and drops the record.
+	plan.merge({ "tile": Vector2i(20, 20), "mm": StructureSlice.mm_of(1.875), "owner": "p1", "player_id": "p1" }, true)
+	st.commit_place(plan)
+	assert_true(_sid(r, 20, 20, 1.875) != 0, "a stale record sits in the natural ground")
+	assert_true(bool(_mine(r, "p3", 20, 20, 2.0)["success"]), "a stranger digs the natural ground freely")
+	assert_eq(_sid(r, 20, 20, 1.875), 0, "and the stale record is gone")
+	_free_rig(r)
+
+func _test_axe_wears() -> void:
+	var r := _rig()
+	var inv: Node = r["reg"].get_inventory("p3")
+	assert_true(_place(r, "p1", 40, 40, 2.0, "Soil"), "p1 builds")
+	inv.add_item("CarpenterAxe", 1)
+	var before: float = inv.get_durability("CarpenterAxe")
+	assert_true(bool(_mine(r, "p3", 40, 40, 2.125).get("damaged", false)), "an axe hit damages the block")
+	assert_true(inv.get_durability("CarpenterAxe") < before, "and wears the axe")
+	var mid: float = inv.get_durability("CarpenterAxe")
+	assert_true(bool(_mine(r, "p3", 30, 30, 2.0)["success"]), "digging natural ground with no pick is bare-handed")
+	assert_eq(inv.get_durability("CarpenterAxe"), mid, "and leaves the axe alone")
+	_free_rig(r)

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Phase 203 — proves the structure validator catches bad tables: editing by non-owners, a circle that does not
-// grow, floor limits other than the owner's (wood 2, stone 5, concrete 10, top 163), classes out of order, a
+// grow, no space kept around a structure, an abandoned clan structure kept from everyone, floor limits other than the owner's (wood 2, stone 5, concrete 10, top 163), classes out of order, a
 // shape threshold that needs a weaker class, a rarer material with less durability, a build ceiling below the
 // peak plus the tallest tower, a cheap offline destruction, a destroyer who gets materials, a dismantle share
 // off its two fixed points or rising as durability falls, and an unlimited respawn all fail; the shipped
@@ -30,6 +30,9 @@ report('dismantling returns 50% at full durability with no skill', Math.abs(s.di
 report('a larger structure has a larger circle', s.circleRadius(s.STRUCTURE.circle, 400, 30) > s.circleRadius(s.STRUCTURE.circle, 1, 1), '');
 expect('a clan structure edited by outsiders fails', (d) => { d.structure.ownership.edit.clan = 'anyone'; }, /only the owner edits/);
 expect('clan members editing a private house fails', (d) => { d.structure.ownership.memberPrivateInTerritory.edit = true; }, /enter and dismantle, never edit/);
+expect('no space kept around a structure fails', (d) => { d.structure.ownership.buffer = 0; }, /buffer must be an integer from 1 to 4/);
+expect('a fractional buffer fails', (d) => { d.structure.ownership.buffer = 1.5; }, /buffer must be an integer from 1 to 4/);
+expect('an abandoned clan structure kept from everyone fails', (d) => { d.structure.ownership.abandonedClan = 'nobody'; }, /abandonedClan must be "anyone"/);
 expect('a circle with no growth fails', (d) => { d.structure.circle.footprintFactor = 0; d.structure.circle.heightFactor = 0; }, /larger structure has a larger circle/);
 expect('a third wood floor fails', (d) => { d.structure.classes.wood.maxFloors = 3; }, /wood\.maxFloors must be 2/);
 expect('a sixth stone floor fails', (d) => { d.structure.classes.stone.maxFloors = 6; }, /stone\.maxFloors must be 5/);

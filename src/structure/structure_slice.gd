@@ -168,12 +168,19 @@ func owners_offline(sid: int) -> bool:
 			return false
 	return true
 
-## May `player_id` place on, reshape or take stations on `sid`? The owner (any member for a clan structure).
+## Whether `s` is a clan structure whose clan has no members left (`Structure.ownership.abandonedClan`).
+func _abandoned(s: Dictionary) -> bool:
+	return str(s["kind"]) == "clan" and clans != null and _members(str(s["owner"])).is_empty()
+
+## May `player_id` place on, reshape or take stations on `sid`? The owner (any member for a clan structure);
+## anyone for a clan structure whose clan has no members left.
 func may_edit(player_id: String, sid: int) -> bool:
 	var s: Dictionary = _structures.get(sid, {})
 	var pid := _pid(player_id)
 	if s.is_empty() or pid == "":
 		return false
+	if _abandoned(s):
+		return true
 	if str(s["kind"]) == "private":
 		return str(s["owner"]) == pid
 	return _clan_of(pid) == str(s["owner"])
@@ -191,12 +198,14 @@ func _member_private_in_territory(pid: String, s: Dictionary) -> bool:
 
 ## May `player_id` take `sid` apart (and get materials back)? A private structure's owner; for a clan's, a
 ## member whose role may `dismantleClanStructures`; and a clan member for another member's private structure
-## inside the clan's territory.
+## inside the clan's territory. Anyone, for a clan structure whose clan has no members left.
 func may_dismantle(player_id: String, sid: int) -> bool:
 	var s: Dictionary = _structures.get(sid, {})
 	var pid := _pid(player_id)
 	if s.is_empty() or pid == "":
 		return false
+	if _abandoned(s):
+		return true
 	if str(s["kind"]) == "clan":
 		return _clan_of(pid) == str(s["owner"]) and (clans == null or bool(clans.may(pid, "dismantleClanStructures")))
 	if str(s["owner"]) == pid:
@@ -388,15 +397,33 @@ func _touching(tile: Vector2i, bottom: float) -> Array:
 			out.append(sid)
 	return out
 
+## The first structure `pid` may not edit with a block within `Structure.ownership.buffer` blocks of the new
+## block at [`bottom`, +STEP] in `tile` (above, below, beside or diagonally), or 0.
+func _foreign_near(pid: String, tile: Vector2i, bottom: float) -> int:
+	var reach := maxi(1, int(Rules.structure().get("ownership", {}).get("buffer", 1)))
+	var step_mm := mm_of(VoxelConsts.STEP_HEIGHT)
+	var at := mm_of(bottom)
+	for dx in range(-reach, reach + 1):
+		for dz in range(-reach, reach + 1):
+			var col: Dictionary = _tiles.get(canonical(tile + Vector2i(dx, dz)), {})
+			for mm: int in col:
+				# Within `reach` blocks vertically: less than reach + 1 steps between the two bottoms.
+				if absi(mm - at) < (reach + 1) * step_mm and not may_edit(pid, int(col[mm])):
+					return int(col[mm])
+	return 0
+
 ## What a placement of `material` at [`bottom`, +STEP] in `tile` by `player_id` would do. Pure:
 ##   join     the block joins `sid`, a touching structure with the owner the builder's mode names
 ##   new      the block starts a structure for `kind`/`owner`
-##   refused  `reason`: placed against a structure the actor may not edit, or the index is full
-## Where structures of different owners touch, each keeps its own blocks.
+##   refused  `reason`: placed against, or within `Structure.ownership.buffer` blocks of, a structure the actor
+##            may not edit; or the index is full
+## Where structures of different owners touch (a clan's and a member's own), each keeps its own blocks.
 func plan_place(player_id: String, tile: Vector2i, bottom: float, normal: Vector3, material: String) -> Dictionary:
 	var pid := _pid(player_id)
 	var target := _target_of(tile, bottom, normal)
 	if not target.is_empty() and not may_edit(pid, int(target["sid"])):
+		return { "verdict": "refused", "reason": "not_owner" }
+	if _foreign_near(pid, tile, bottom) != 0:
 		return { "verdict": "refused", "reason": "not_owner" }
 	if _cell_count >= MAX_CELLS:
 		return { "verdict": "refused", "reason": "structures_full" }
@@ -431,7 +458,12 @@ func commit_place(plan: Dictionary) -> int:
 	_add_cell(sid, plan["tile"], int(plan["mm"]), [str(plan["material"]), 0.0, float(s["wear"])])
 	return sid
 
+## Index `cell` at (`tile`, `mm`) for `sid`. A block another structure still held there (a stale record) is
+## taken from it first, so no two structures ever claim one block.
 func _add_cell(sid: int, tile: Vector2i, mm: int, cell: Array) -> void:
+	var prev := int((_tiles.get(tile, {}) as Dictionary).get(mm, 0))
+	if prev != 0 and prev != sid and _structures.has(prev):
+		_remove_cell(prev, tile, mm)
 	var s: Dictionary = _structures[sid]
 	if not (s["cells"] as Dictionary).has(tile):
 		s["cells"][tile] = {}
@@ -458,6 +490,51 @@ func _remove_cell(sid: int, tile: Vector2i, mm: int) -> void:
 		_tiles.erase(tile)
 	if int(s["count"]) <= 0:
 		_structures.erase(sid)
+
+## The indexed blocks of `tile` whose bottoms lie in [`bottom`, `top`): `[[sid, mm], ...]`.
+func _cells_in(tile: Vector2i, bottom: float, top: float) -> Array:
+	var out: Array = []
+	var col: Dictionary = _tiles.get(canonical(tile), {})
+	var lo := mm_of(bottom)
+	var hi := mm_of(top)
+	for mm: int in col:
+		if mm >= lo and mm < hi:
+			out.append([int(col[mm]), mm])
+	return out
+
+## The world dropped the loose run [`from_bottom`, `from_top`) of `tile` to `to_bottom` (settling, host): the
+## blocks it carried move with it, keeping their owner and durability.
+func shift_span(tile: Vector2i, from_bottom: float, from_top: float, to_bottom: float) -> void:
+	var t := canonical(tile)
+	var delta := mm_of(to_bottom) - mm_of(from_bottom)
+	if delta >= 0:
+		return   # only a fall moves a run
+	var cells := _cells_in(t, from_bottom, from_top)
+	cells.sort_custom(func(x: Array, y: Array) -> bool: return int(x[1]) < int(y[1]))
+	# Lowest first, each added at its new height before its old one goes: a falling block's new place is below
+	# every block of the run still waiting, and a structure never empties (and vanishes) mid-move.
+	for c: Array in cells:
+		var sid := int(c[0])
+		var mm := int(c[1])
+		if not _structures.has(sid):
+			continue
+		_add_cell(sid, t, mm + delta, _structures[sid]["cells"][t][mm])
+		_remove_cell(sid, t, mm)
+
+## Forget any record of a block in [`bottom`, `top`) of `tile`: the world holds natural ground there (a record
+## left behind by an edit the index never saw).
+func drop_span(tile: Vector2i, bottom: float, top: float) -> void:
+	var t := canonical(tile)
+	for c: Array in _cells_in(t, bottom, top):
+		_remove_cell(int(c[0]), t, int(c[1]))
+
+## The world was regenerated (`/regen world`): every placed block is gone, so is every record of one.
+func reset_world() -> void:
+	_structures.clear()
+	_tiles.clear()
+	_cell_count = 0
+	_sweep_keys.clear()
+	_collapse.clear()
 
 ## "" when `player_id` may put a station on (or fell a tree on) the ground at `pos`, else a reason: the block
 ## under it belongs to a structure they may not edit.

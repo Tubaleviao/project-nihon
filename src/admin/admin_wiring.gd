@@ -84,6 +84,8 @@ func regen_world(save := true) -> String:
 	ChunkRecords.clear()
 	root._voxel.reset_world()
 	root._tree.reset_world()
+	if root._structures != null:
+		root._structures.reset_world()   # Phase 205 — the placed blocks went with the old ground
 	_stamp_current_generator()
 	# Stand everything back on the new ground.
 	for i in stations.size():

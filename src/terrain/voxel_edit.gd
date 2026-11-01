@@ -20,20 +20,24 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: Str
 	# acting player's, which for a remote mine is the peer the intent came from.
 	var inventory = s.inventory_for(player_id)
 	var pick = s._held_pick(inventory)
+	var axe := _held_axe(inventory) if pick == "" else ""
 
 	# Phase 205 — whose block this is, decided before anything is spent: free ground, the owner taking it
-	# apart, or someone else's hit on it (damage, or destruction at zero durability).
+	# apart, or someone else's hit on it (damage, or destruction at zero durability). A natural span is
+	# nobody's, whatever the index still says about it.
 	var plan: Dictionary = { "verdict": "free" }
-	if s.structures != null:
-		plan = s.structures.plan_mine(player_id, tile, float(span["bottom"]), float(span["top"]), _method_of(inventory, pick))
+	if s.structures != null and str(span["material"]) != "":
+		plan = s.structures.plan_mine(player_id, tile, float(span["bottom"]), float(span["top"]), _method_of(pick, axe))
 	var verdict := str(plan["verdict"])
 	if verdict == "refused":
 		return { "success": false, "material": "", "quantity": 0, "position": world_pos, "player_id": player_id }
 
 	# Tool durability: mining consumes the held pick. A broken pick blocks the
-	# mine; bare-handed (no pick) mining is still allowed.
-	if pick != "" and inventory != null and inventory.has_method("use_item"):
-		if not inventory.use_item(pick, "mine"):
+	# mine; bare-handed (no pick) mining is still allowed. A hit on someone else's
+	# block with an axe (no pick held) wears that axe instead.
+	var tool: String = pick if pick != "" else (axe if verdict == "damage" or verdict == "destroy" else "")
+	if tool != "" and inventory != null and inventory.has_method("use_item"):
+		if not inventory.use_item(tool, "mine" if tool == pick else "chop"):
 			return { "success": false, "material": "", "quantity": 0, "position": world_pos, "player_id": player_id }
 
 	# A hit that leaves the block standing changes no ground: the owners are told, peers in range see it.
@@ -64,6 +68,8 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: Str
 	s._append_edit(tile, { "op": "remove", "bottom": span["bottom"], "top": span["top"] })
 	if verdict == "dismantle" or verdict == "destroy":
 		s.structures.commit_mine(plan)
+	elif natural and s.structures != null:
+		s.structures.drop_span(tile, float(span["bottom"]), float(span["top"]))
 	s._mark_dirty(tile)
 	s._settle_note(tile)
 	if not vein.is_empty():
@@ -274,12 +280,12 @@ func remove_structure_block(tile: Vector2i, bottom: float, _top: float) -> void:
 	GameBus.block_edit_resolved.emit(tile, float(span["top"]))
 	GameBus.block_changed.emit("mine", pos, normal, str(span["material"]))
 
-## Phase 205 — the destruction method (`StructureDurability.methods`) a hit with `inventory`'s tools is: the
-## held pick, else an axe, else bare hands.
-func _method_of(inventory: Node, pick: String) -> String:
+## Phase 205 — the destruction method (`StructureDurability.methods`) a hit is: the held pick, else the held
+## axe (which then wears, see `mine_block`), else bare hands.
+func _method_of(pick: String, axe: String) -> String:
 	if pick != "":
 		return "pick"
-	if inventory != null and inventory.has_method("find_tool") and str(inventory.find_tool("axe")) != "":
+	if axe != "":
 		return "axe"
 	return "hand"
 
@@ -601,6 +607,8 @@ func _settle_tile(tile: Vector2i) -> bool:
 		var to_bottom: float = f["to_bottom"]
 		s._append_edit(tile, { "op": "remove", "bottom": from_bottom, "top": from_top })
 		s._append_edit(tile, { "op": "add", "bottom": to_bottom, "top": to_bottom + (from_top - from_bottom), "material": f["material"] })
+		if s.structures != null:
+			s.structures.shift_span(tile, from_bottom, from_top, to_bottom)   # placed blocks keep their owner as they fall
 	s.settle_edits += falls.size()
 	s._mark_dirty(tile)
 	s._rebuild_chunk_at_tile(tile)
@@ -673,6 +681,12 @@ func _push_inventory(player_id: String) -> void:
 	if inv == null or not inv.has_method("get_contents"):
 		return
 	GameBus.inventory_synced.emit(player_id, inv.get_contents(), inv.get_durability_data())
+
+## The held axe's item id, or "" when `inventory` holds none ("axe" → CarpenterAxe today).
+func _held_axe(inventory: Node) -> String:
+	if inventory == null or not inventory.has_method("find_tool"):
+		return ""
+	return str(inventory.find_tool("axe"))
 
 ## The held mining pick's item id, or "" when `inventory` holds none. Delegates to the
 ## inventory's fabric-driven tool lookup ("pick" → FerritePick/VeilsteelPick).
