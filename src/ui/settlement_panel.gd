@@ -1,5 +1,5 @@
 extends VBoxContainer
-## Settlement window (Phase 140) — found, invite, roles, leave and the shared stockpile, and (Phase 198)
+## Settlement window (Phase 140) — invite, roles, leave and the shared stockpile (no founding since Phase 205), and (Phase 198)
 ## the project board: what each project needs and has been given, its labour and who helped. Presentation
 ## only: every button emits a `GameBus.settlement_intent` and the host decides. All text goes through
 ## `I18n`. The slice's `view()` (the host's last push) is what it renders.
@@ -18,7 +18,6 @@ var _members: Label = null
 var _stock: Label = null
 var _feedback: Label = null
 var _invites: VBoxContainer = null
-var _name_edit: LineEdit = null
 var _target_edit: LineEdit = null
 var _role_pick: OptionButton = null
 var _item_edit: LineEdit = null
@@ -37,8 +36,6 @@ func _init() -> void:
 	add_child(_status)
 	_invites = VBoxContainer.new()
 	add_child(_invites)
-	_name_edit = _line("settlement.name_ph")
-	_button("settlement.found", func() -> void: _send("found", { "name": _name_edit.text }))
 	_target_edit = _line("settlement.player_ph")
 	_button("settlement.invite", func() -> void: _send("invite", { "target": _target_edit.text }))
 	_button("settlement.uninvite", func() -> void: _send("uninvite", { "target": _target_edit.text }))

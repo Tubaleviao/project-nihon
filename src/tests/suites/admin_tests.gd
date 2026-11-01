@@ -6,6 +6,7 @@ const AdminPanel := preload("res://src/ui/admin_panel.gd")
 const WindowDock := preload("res://src/ui/window_dock.gd")
 const WorldClockScript := preload("res://src/world/world_clock.gd")
 const PlayerRules := preload("res://src/core/player_rules.gd")
+const StructureSlice := preload("res://src/structure/structure_slice.gd")
 
 
 func register() -> void:
@@ -500,10 +501,11 @@ func _regen_root(dir: String) -> Node:
 	gr._station = StationSlice.new()
 	gr._tree = _make_tree_slice()
 	gr._chunk_manager = ChunkManager.new()
+	gr._structures = StructureSlice.new()
 	return gr
 
 func _free_regen_root(gr: Node) -> void:
-	for n in [gr._persistence, gr._voxel, gr._terrain, gr._station, gr._tree, gr._chunk_manager]:
+	for n in [gr._persistence, gr._voxel, gr._terrain, gr._station, gr._tree, gr._chunk_manager, gr._structures]:
 		if is_instance_valid(n):
 			n.free()
 	gr.free()
@@ -520,9 +522,13 @@ func _test_regen_world_host() -> void:
 	gr._station.place_station("forge", Vector3(8.5, 6.0, 8.5))
 	var placed_y := WorldPos.from_wire(gr._station.get_station_data()[0]["position"]).y
 	var lift: float = placed_y - gr._voxel.get_voxel_height_at(Vector2(8.5, 8.5))
+	gr._structures.commit_place(gr._structures.plan_place("p1", Vector2i(40, 40), 2.0, Vector3.UP, "Ashite"))
+	assert_eq(gr._structures.count(), 1, "a structure stands before the regen")
 	gr._worldgen_stamp = TerrainSlice.WORLDGEN_VERSION - 3
 	gr._worldgen_fp_stamp = 12345
 	assert_eq(gr._admin_wiring.regen_world(false), "", "a host regenerates")
+	assert_eq(gr._structures.count(), 0, "no structure is left: its blocks went with the old ground")
+	assert_eq(gr._structures.cell_count(), 0, "nor any record of a placed block")
 	assert_eq(gr._worldgen_stamp, TerrainSlice.WORLDGEN_VERSION, "the world is stamped with the running generator")
 	assert_eq(gr._worldgen_fp_stamp, TerrainSlice.worldgen_fingerprint(), "and its fingerprint")
 	assert_true(gr._worldgen_fp_history.has(12345), "the old fingerprint stays in the history")

@@ -548,9 +548,9 @@ func trees_in_chunk(chunk_pos: Vector2i) -> Array:
 ## Every check and mutation below went through this slice's own `inventory_slice`
 ## before, which is why a client's chop filled the HOST's pack while the client —
 ## mirroring only its own pack — saw nothing.
-## Phase 140 — `(player_id, xz: Vector2) -> String`: a non-empty reason refuses a chop inside a claim
-## the actor may not build in (the host's settlement claim rule). Unset: no claims.
-var claim_guard: Callable = Callable()
+## Phase 205 — `(player_id, pos: Vector3) -> String` (`StructureSlice.edit_blocker`): a non-empty reason refuses
+## a chop of a tree standing on a structure the actor may not edit. Unset: no ownership.
+var structure_guard: Callable = Callable()
 
 func chop_tree(tree_id: String, player_id: String = "") -> Dictionary:
 	if not is_authoritative:
@@ -562,8 +562,8 @@ func chop_tree(tree_id: String, player_id: String = "") -> Dictionary:
 	if tree["state"] != "standing":
 		return _fail("not_standing")
 	var tpos: Vector3 = tree["position"]
-	if claim_guard.is_valid() and str(claim_guard.call(player_id, Vector2(tpos.x, tpos.z))) != "":
-		return _fail("claimed")
+	if structure_guard.is_valid() and str(structure_guard.call(player_id, tpos)) != "":
+		return _fail("not_owner")
 	var inventory := inventory_for(player_id)
 	var axe := _held_axe(inventory)
 	if axe == "":

@@ -83,8 +83,11 @@ const DEFAULT_SHUTDOWN_PATH   := "user://shutdown_requested"
 ## scalar against the tile's natural run), so a version-1 record loads with every
 ## edit intact and is re-saved as version 2. Phase 204 bumped it to 3: the record carries
 ## `clans`, and a record without them (version 2 or older) has its settlements migrated to
-## clans on load (`ClanSlice.migrate_settlements`), then is re-saved as version 3.
-const WORLD_FORMAT_VERSION := 3
+## clans on load (`ClanSlice.migrate_settlements`), then is re-saved as version 3. Phase 205 bumped it to 4:
+## the record carries `structures` (the structure index; a record without it has none, so every block placed
+## before it is unowned), and a saved settlement's hearth station is removed on load and owed back to its
+## founder as a Hearth item.
+const WORLD_FORMAT_VERSION := 4
 ## Where the region files live, relative to `server_save_dir`.
 const REGIONS_SUBDIR := "regions/"
 ## The version a record written before Phase 41 has: identifiable by the absence

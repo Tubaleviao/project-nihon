@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:d0839066284f2bdef6f4e2e006d5506bebc28f379b6b6854f6fe06fe44ed3ba4",
+  "schemaHash": "sha256:0f31be7d651af8c1f579cae9fe5b4313e67e8bf91e40f07279f0ad98fac1e5ea",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -26334,7 +26334,9 @@
                   "edit": false
                 },
                 "outsiders": "damage",
-                "touching": "eachKeepsOwn"
+                "touching": "eachKeepsOwn",
+                "buffer": 1,
+                "abandonedClan": "anyone"
               },
               "circle": {
                 "minRadius": 8,

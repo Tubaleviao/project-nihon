@@ -1694,11 +1694,11 @@ func _test_research_points_gate_and_spend() -> void:
 	t.free()
 	inv.free()
 
-## A settlement slice that always stands at the site and holds twenty Ashite.
+## A settlement slice whose researcher is a member at the site, with twenty Ashite.
 class _StubStockpile extends Node:
 	var stock := { "Ashite": 20 }
-	func at_research_site(_pid: String) -> bool:
-		return true
+	func settlement_of(_pid: String) -> String:
+		return "settlement_1"
 	func research_stock(_pid: String, item: String) -> int:
 		return int(stock.get(item, 0))
 	func consume_research(_pid: String, counts: Dictionary) -> bool:

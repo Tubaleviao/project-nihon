@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–199, 203 and 204 are done. Their specs and acceptance criteria, and the introductions of
+Phases 1–199 and 203–205 are done. Their specs and acceptance criteria, and the introductions of
 the arcs they belonged to, are archived in [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Next: follow-up debt burn II (Phases 194–196)
@@ -118,7 +118,7 @@ Smithing). Phase 203 models all of it in the fabric before any runtime phase sta
 |---|---|---|---|
 | 203 | Clans, ownership, durability, writing, chests and tall structures in the fabric | Done | [phases-203.md](docs/roadmap-history/phases-203.md) |
 | 204 | Clans: a name, invites, one clan each, and every member's skills in view | Done | [phases-204.md](docs/roadmap-history/phases-204.md) |
-| 205 | Owned structures instead of claims: private or clan, durability, dismantling and destruction | Planned | below |
+| 205 | Owned structures instead of claims: private or clan, durability, dismantling and destruction | Done | [phases-205.md](docs/roadmap-history/phases-205.md) |
 | 206 | The circle around every building: no spawns, no foreign building | Planned | below |
 | 207 | Skills grow from work, and clan projects without labour | Planned | below |
 | 208 | Chests and doors: owner, clan or everyone, and locks that can be broken or picked | Planned | below |
@@ -167,63 +167,6 @@ must stay under one hour.
 - [ ] CI: the four bots end with at least two different specialties, one completed project, one
   defended raid and one paid upkeep, as read from the host's world record.
 - [ ] The scenario passes 3 CI runs in a row on an unchanged commit.
-- [ ] Suite green on both boot paths, harness green.
-
----
-
-## Phase 205 — Owned structures instead of claims: private or clan, durability, dismantling and destruction
-
-**Goal:** the host knows who owns each structure and enforces it everywhere. A structure wears with
-weather and time, comes apart with effort, and gives back what its condition and its dismantler's
-skill allow. The hearth claim is gone.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phase 204.
-
-**Deliverables:**
-- A host-side structure index: block to structure, structure to owner (player or clan), kept as
-  blocks are placed, joined or destroyed, saved with the world, bounded in memory. The builder
-  picks private or clan when placing.
-- `edit_blocker` on the voxel, station and tree guards checks the structure under the edit, not a
-  claim. A non-owner's damage lowers durability, and a block at zero is destroyed.
-- Durability per block: base from its material, lowered by weather, age and damage. Age and weather
-  loss is computed from timestamps when a block is read or ticked, not by touching every block
-  every frame, and days with the server down count once on boot.
-- Dismantling by the owner (or, for a member's private house in clan territory, any clan member)
-  returns the Phase 203 share to the dismantler. Forced destruction returns nothing and is slowed
-  by the method's offline factor while every owner is offline. Repair spends the Phase 203 share of
-  build materials. The owner (and online clan members) are told when a structure is damaged or
-  destroyed.
-- A player command and a menu button to kill your own character and respawn, rate-limited.
-- Phase 204 holds to finish here: a migrated settlement keeps its hearth and its settlement record (the
-  clan's `settlement` field names it) until this phase removes the hearth and returns it to its founder
-  as a `Hearth` item (`Clan.migration.hearth`). Settlement membership (invite, join, roles) still runs
-  beside clans until the settlement code goes, and the Settlement window (L) with it.
-- The claim, hearth, raid and upkeep code is removed: `claim_radius`, `claim_at`, tier radii,
-- Phase 203 holds to remove with it: the claim radii, `decayRadiusPerDay` and `minSeparation` now
-  come only from `SettlementSlice.DEFAULT_RULES` (the fabric has none), and project effects only
-  from `ProjectRules.LABOUR_HOLD`.
-  `at_research_site`, claim decay and project effects.
-
-**Acceptance criteria:**
-- [ ] Suite: a private structure's owner can edit it far from any hearth, and a clan member cannot.
-  A clan structure can be edited by any member and by no outsider.
-- [ ] Suite: an outsider's damage destroys a block once its durability is gone, and a rarer
-  material takes more damage.
-- [ ] Suite: dismantling at full durability returns 50% with no building skill and 100% with a very
-  high one, and less after a simulated year of rain.
-- [ ] Suite: ownership is unchanged by anything but dismantling or destruction.
-- [ ] Suite: a clan member can enter and dismantle another member's private house inside the
-  clan's territory, but cannot edit it. Outside the territory they can do neither.
-- [ ] Suite: a destroyer receives no materials. Destroying a structure whose owners are all offline
-  takes the method's offline factor longer than with an owner online.
-- [ ] Suite: a repair restores durability and consumes its share of build materials, and a
-  non-owner's repair is refused.
-- [ ] Harness: a client walled in by the host's structure kills its character and respawns outside.
-- [ ] Harness: a client's damage to the host's structure reaches both peers, and its placement on it
-  is refused.
-- [ ] Suite (audit): no owner, clan, durability or skill value is read from a client message.
 - [ ] Suite green on both boot paths, harness green.
 
 ---

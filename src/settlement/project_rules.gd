@@ -1,7 +1,7 @@
 extends RefCounted
 ## Settlement project rules (Phase 198, designed in Phase 197) — the pure half of settlement projects:
-## what a project still needs, whether a contribution is valid, the completion check, the effects of
-## standing projects and the cells a finished structure fills. The settlement slice owns the state and
+## what a project still needs, whether a contribution is valid, the completion check and the cells a finished
+## structure fills (Phase 205 removed project effects). The settlement slice owns the state and
 ## calls these with plain data. Rules come from the fabric's `SettlementProjects` world system
 ## (`GameData.WORLD_SYSTEMS["SettlementProjects"].rules`).
 ##
@@ -9,7 +9,6 @@ extends RefCounted
 ##   { key, by, started, site {x, z}, given {item: n}, work (units), status "building" | "done",
 ##     done_at, contributors {pid: {items: n, work: units}} }
 
-const EFFECT_KINDS := ["stockpileCapacity", "raidDefence", "craftSpeed", "upkeepRelief"]
 const TIER_ORDER := ["founded", "growing", "town"]
 ## Projects a settlement may have under construction at once.
 const MAX_BUILDING := 3
@@ -17,28 +16,24 @@ const MAX_BUILDING := 3
 const MAX_CONTRIBUTORS := 64
 
 ## Phase 203 — the fabric dropped project labour and effects (a project is complete once its materials are
-## in); the runtime keeps them here until Phase 207 removes the labour stage and Phase 205 the effects.
+## in); the runtime keeps the labour here until Phase 207 removes the labour stage (Phase 205 removed the effects).
 const LABOUR_HOLD := {
 	"workSecondsPerUnit": 2,
 	"projects": {
 		"palisade": {
 			"labour": [{ "step": "posts", "specialty": "woodworker", "work": 60 }, { "step": "raise", "specialty": "builder", "work": 90 }],
-			"effects": [{ "kind": "raidDefence", "value": 0.3 }],
 		},
 		"storehouse": {
 			"labour": [{ "step": "foundation", "specialty": "builder", "work": 60 }, { "step": "shelving", "specialty": "woodworker", "work": 60 },
 				{ "step": "provisions", "specialty": "forager", "work": 30 }],
-			"effects": [{ "kind": "stockpileCapacity", "value": 20 }, { "kind": "upkeepRelief", "value": 0.25 }],
 		},
 		"workshop": {
 			"labour": [{ "step": "walls", "specialty": "builder", "work": 60 }, { "step": "benches", "specialty": "woodworker", "work": 45 },
 				{ "step": "anvil", "specialty": "smith", "work": 45 }],
-			"effects": [{ "kind": "craftSpeed", "value": 0.2 }],
 		},
 		"watchtower": {
 			"labour": [{ "step": "base", "specialty": "builder", "work": 90 }, { "step": "lookout", "specialty": "woodworker", "work": 60 },
 				{ "step": "signal", "specialty": "hunter", "work": 30 }],
-			"effects": [{ "kind": "raidDefence", "value": 0.2 }],
 		},
 	},
 }
@@ -160,17 +155,6 @@ static func building_count(projects: Dictionary) -> int:
 
 static func completed_count(projects: Dictionary) -> int:
 	return projects.size() - building_count(projects)
-
-## The sum of `kind` effects over the completed projects (0 when none).
-static func effect_total(projects: Dictionary, kind: String, tbl: Dictionary = {}) -> float:
-	var n := 0.0
-	for k: String in projects:
-		if str(projects[k].get("status", "")) != "done":
-			continue
-		for e: Dictionary in def_of(k, tbl).get("effects", []):
-			if str(e["kind"]) == kind:
-				n += float(e["value"])
-	return n
 
 ## Work units `seconds` of labour earn (before any specialty bonus).
 static func work_units(seconds: float, tbl: Dictionary = {}) -> float:

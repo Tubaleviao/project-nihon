@@ -12,6 +12,9 @@ const { LEVEL_CAP } = require('./work')
 //                private structure inside their clan's circles (`memberPrivateInTerritory`) may be entered
 //                and dismantled, never edited, by any member of that clan. Anyone else may only `damage`
 //                it. Where two structures touch each owner keeps their own blocks (`touching`).
+//                `buffer` blocks of space around every placed block are kept clear of anyone who may not edit
+//                it: no block of theirs lands that close (above, below, beside or diagonally).
+//                `abandonedClan` who may edit and dismantle a clan structure whose clan has no members left.
 //   `circle`     one per structure: radius = minRadius + footprintFactor × √(footprint m²) + heightFactor ×
 //                height m, clamped to [minRadius, maxRadius]. A single block or station gets minRadius.
 //                Inside it no creature spawns; inside a clan's circles only that clan's members may start a
@@ -49,6 +52,8 @@ const STRUCTURE = {
     memberPrivateInTerritory: { enter: true, dismantle: true, edit: false },
     outsiders: 'damage',
     touching: 'eachKeepsOwn',
+    buffer: 1,
+    abandonedClan: 'anyone',
   },
   circle: { minRadius: 8, maxRadius: 128, footprintFactor: 1.0, heightFactor: 0.25 },
   floorHeight: 3,
@@ -152,6 +157,8 @@ function structureProblems(data, refs) {
   if (mp.enter !== true || mp.dismantle !== true || mp.edit !== false) p.push('Structure.ownership.memberPrivateInTerritory must let clan members enter and dismantle, never edit')
   if (own.outsiders !== 'damage') p.push('Structure.ownership.outsiders must be "damage": anyone else may only damage a structure')
   if (own.touching !== 'eachKeepsOwn') p.push('Structure.ownership.touching must be "eachKeepsOwn"')
+  if (!Number.isInteger(own.buffer) || own.buffer < 1 || own.buffer > 4) p.push('Structure.ownership.buffer must be an integer from 1 to 4 blocks: a stranger may not build against a structure')
+  if (own.abandonedClan !== 'anyone') p.push('Structure.ownership.abandonedClan must be "anyone": a clan with no members left owns nothing')
 
   const c = isObj(s.circle) ? s.circle : {}
   if (!isNum(c.minRadius) || c.minRadius <= 0) p.push('Structure.circle.minRadius must be > 0')

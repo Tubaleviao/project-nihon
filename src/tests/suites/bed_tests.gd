@@ -220,10 +220,10 @@ func _test_refusals() -> void:
 	_place(r, "p1", Vector3(40, 0, 0))
 	assert_eq(_last_key(), "bed.refuse_far", "out of reach")
 	assert_eq(r.reg.get_inventory("p1").get_item_count("Bed"), 1, "a refusal keeps the item")
-	r.station.claim_guard = func(_pid: String, _xz: Vector2) -> String: return "someone"
+	r.station.structure_guard = func(_pid: String, _pos: Vector3) -> String: return "not_owner"
 	_place(r, "p1", Vector3(2, 0, 0), false)
-	assert_eq(_last_key(), "bed.refuse_claim", "inside a settlement it cannot build in")
-	r.station.claim_guard = Callable()
+	assert_eq(_last_key(), "bed.refuse_structure", "on a structure it may not edit")
+	r.station.structure_guard = Callable()
 	_runs = [{ "bottom": 0.0, "top": 3.0 }]
 	_place(r, "p1", Vector3(2, 0, 0), false)
 	assert_eq(_last_key(), "bed.refuse_blocked", "no free space")
@@ -246,7 +246,7 @@ func _test_refusals() -> void:
 	_free(r)
 
 func _test_catalog() -> void:
-	for k in ["bed.placed", "bed.lost", "bed.refuse_no_item", "bed.refuse_far", "bed.refuse_claim",
+	for k in ["bed.placed", "bed.lost", "bed.refuse_no_item", "bed.refuse_far", "bed.refuse_structure",
 			"bed.refuse_not_yours", "bed.refuse_occupied", "bed.refuse_blocked", "bed.refuse_rate"]:
 		assert_true(I18n.has_key(k), "%s is in the catalog" % k)
 		assert_true(I18n.t(k) != k and I18n.t(k).length() > 4, "%s has English text" % k)

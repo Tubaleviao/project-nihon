@@ -1,8 +1,10 @@
 extends Node
 ## Settlement slice — player-founded places (Phase 140, designed in Phase 139).
 ##
-## A settlement is a `Hearth` placed on free land: a claimed circle, members with roles and a shared
-## stockpile. The host decides everything; clients mirror a view (`apply_view`). Rules come from the
+## A settlement is members with roles, a site and a shared stockpile. Phase 205 removed its claim, its
+## hearth and its decay: what a player builds is owned by its structure (`StructureSlice`), not by land, and no
+## new settlement is founded by players (clans replace them; `found` stays for the host and tests). The site is
+## where its stockpile, research and projects are used, within SITE_REACH, until Phases 207–209 move them. The host decides everything; clients mirror a view (`apply_view`). Rules come from the
 ## fabric's `Settlement` world system (`GameData.WORLD_SYSTEMS["Settlement"].rules`).
 ##
 ## Plug contract (GameBus):
@@ -10,18 +12,17 @@ extends Node
 ##   OUT : settlement_resolved(player_id, action, ok, reason), settlements_changed(),
 ##         settlement_project_changed(settlement_id, project, what, player_id)
 ##
-## Positions are ground metres as doubles (`chunk * CHUNK_METERS + local`), so a claim far from the
+## Positions are ground metres as doubles (`chunk * CHUNK_METERS + local`), so a site far from the
 ## origin stays exact. Time is Unix seconds from `now_sec`; a "day" is 86,400 s.
 ##
 ## Public API (all host-side; a client calls none of them):
-##   rules() / tier_rules(status) / claim_radius(id) / tier_for(id, now)
-##   found(player_id, name, xz, consume) -> String      "" when founded, else a reason code
+##   rules() / tier_for(id, now)
+##   found(player_id, name, xz) -> String               "" when founded, else a reason code
 ##   invite(actor, target) / join(player, id) / set_role(actor, target, role) / leave(player)
 ##   deposit(player, item, qty) / withdraw(player, item, qty)
 ##   start_project(actor, key) / contribute(actor, key, item, qty, source) / labour(actor, key)   (Phase 198)
-##   edit_blocker(player_id, xz) -> String             "" when the edit is allowed
 ##   settlement_of(player_id) -> String                id of the settlement the player belongs to
-##   tick(now)                                         grow, abandon, decay and free settlements
+##   tick(now)                                         grow tiers, lapse invites, return migrated hearths
 
 const I18n := preload("res://src/core/i18n.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
@@ -48,23 +49,23 @@ const SITE_RADIUS := 8.0
 const LABOUR_GAP_SEC := 2.5
 ## Phase 198 — the settlement record's format: 2 added `projects` (a format-1 record loads with none).
 const DATA_FORMAT := 2
-const ACTIONS := ["found", "invite", "join", "role", "leave", "deposit", "withdraw", "uninvite",
+const ACTIONS := ["invite", "join", "role", "leave", "deposit", "withdraw", "uninvite",
 	"project_start", "project_give", "project_work"]
 const ROLES := ["founder", "elder", "member", "guest"]
 
 ## Every refusal code an action can return.
-const REASONS := ["unknown_player", "rate_limited", "bad_args", "no_hearth", "already_member", "too_close",
+const REASONS := ["unknown_player", "rate_limited", "bad_args", "already_member",
 	"too_many", "not_member", "no_permission", "unknown_settlement", "not_invited", "full", "bad_role",
-	"founder_locked", "not_in_claim", "no_stock", "over_limit", "no_inventory", "too_far", "unknown_action", "durable", "no_such_invite",
+	"founder_locked", "no_stock", "over_limit", "no_inventory", "too_far", "unknown_action", "durable", "no_such_invite",
 	"unknown_project", "project_exists", "tier_too_low", "too_many_projects", "project_done", "unknown_item", "too_much",
 	"labour_done", "no_tool"]
 
 const DEFAULT_RULES := {
 	"hearthStation": "hearth", "hearthItem": "Hearth", "guildMaxSettlements": 1,
 	"tiers": {
-		"founded": { "claimRadius": 24, "minMembers": 1, "minDays": 0 },
-		"growing": { "claimRadius": 48, "minMembers": 3, "minDays": 3 },
-		"town": { "claimRadius": 96, "minMembers": 8, "minDays": 14 },
+		"founded": { "minMembers": 1, "minDays": 0 },
+		"growing": { "minMembers": 3, "minDays": 3 },
+		"town": { "minMembers": 8, "minDays": 14 },
 	},
 	"roles": {
 		"founder": { "build": true, "take": true, "invite": true, "withdrawLimit": 0 },
@@ -73,8 +74,10 @@ const DEFAULT_RULES := {
 		"guest": { "build": false, "take": false, "invite": false, "withdrawLimit": 0 },
 	},
 	"stockpile": { "founded": { "capacityStacks": 20 }, "growing": { "capacityStacks": 60 }, "town": { "capacityStacks": 160 } },
-	"abandonAfterDays": 30, "decayRadiusPerDay": 2, "minSeparation": 200,
 }
+## Phase 205 — metres from a settlement's site within which its stockpile, research and projects are used (the
+## old founded-tier claim radius; it guards nothing and never decays).
+const SITE_REACH := 24.0
 const TIER_ORDER := ["founded", "growing", "town"]
 
 ## Set by game_root.
@@ -82,24 +85,25 @@ var registry: Node = null
 var now_sec: Callable = func() -> float: return Time.get_unix_time_from_system()
 ## Monotonic seconds for the intent rate limit (a wall-clock jump must not lock or free a player).
 var mono_sec: Callable = func() -> float: return Time.get_ticks_msec() / 1000.0
-## `(station_id) -> void`, set by the wiring: a decayed settlement's hearth station goes with it.
+## `(station_id) -> void`, set by the wiring: a migrated settlement's hearth station is removed with it.
 var release_station: Callable = Callable()
+## Phase 205 — founder -> Hearth items owed back (a saved settlement's hearth, removed on load), handed over
+## by `tick` once the founder is online with a pack that has room.
+var _hearth_returns: Dictionary = {}
 ## Test seam: `(player_id) -> Variant` the player's ground position as a `Vector2` of metres, or null.
 var position_of: Callable = Callable()
 
-## id -> { id, name, founder, members {pid: role}, invites {pid: true}, created, last_active, hx, hz,
-##         status, abandoned_at, stock {item: n}, taken {pid: {day, n}}, hearth_station }
+## id -> { id, name, founder, members {pid: role}, invites {pid: true}, created, last_active, hx, hz (the site),
+##         status, stock {item: n}, taken {pid: {day, n}}, projects }
 ## `invites` maps an invited player to the `now_sec` the invite was made (it lapses after INVITE_TTL_SEC).
 var _settlements: Dictionary = {}
 var _next_id: int = 1
 ## The next default-name number. Monotonic: it never falls when a settlement decays, so no two repeat.
 var _next_name: int = 1
 var _last_intent: Dictionary = {}
-## id -> claim radius last announced for an abandoned (decaying) settlement.
-var _radius_pushed: Dictionary = {}
 ## Phase 198 — `(player_id) -> bool` whether the player holds a tool (labour needs one); set by the wiring.
 var tool_in_hand: Callable = Callable()
-## Phase 198 — `(id, key, site {x, z}) -> void` places a finished structure in the claim (site in ground metres
+## Phase 198 — `(id, key, site {x, z}) -> void` places a finished structure at its site (site in ground metres
 ## as doubles); set by the wiring.
 var place_structure: Callable = Callable()
 ## pid -> { id, key, at } the last labour beat (mono seconds).
@@ -121,7 +125,7 @@ func forget_player(player_id: String) -> void:
 
 # ── rules ────────────────────────────────────────────────────────────────
 
-## The merged rule table, built once per fabric resource (claim_at and placement checks call this hot).
+## The merged rule table, built once per fabric resource.
 ## Callers must not mutate it.
 var _rules_cache: Dictionary = {}
 var _rules_source: Resource = null
@@ -135,13 +139,6 @@ func rules() -> Dictionary:
 		var r: Variant = res.get("rules")
 		if r is Dictionary:
 			out.merge(r, true)
-	# Phase 203 — the fabric's tiers have no claim radius; DEFAULT_RULES keeps each tier's until Phase 205
-	# removes the claim (a shallow merge would drop them with the fabric's tier dictionaries).
-	var tiers: Dictionary = (out["tiers"] as Dictionary).duplicate(true)
-	for t: String in DEFAULT_RULES["tiers"]:
-		if tiers.get(t, null) is Dictionary:
-			(tiers[t] as Dictionary).merge(DEFAULT_RULES["tiers"][t])
-	out["tiers"] = tiers
 	_rules_cache = out
 	_rules_source = res
 	return out
@@ -166,29 +163,11 @@ func tier_for(id: String, now: float) -> String:
 			best = name
 	return best
 
-## Metres the claim reaches now: the tier's radius, less what an abandoned claim has decayed.
-func claim_radius(id: String) -> float:
-	var s: Dictionary = _settlements.get(id, {})
-	if s.is_empty():
-		return 0.0
-	var r := rules()
-	var status := str(s["status"])
-	var tier: String = "founded" if status == "abandoned" else status
-	var radius := float((r["tiers"] as Dictionary).get(tier, {}).get("claimRadius", 0.0))
-	if status == "abandoned":
-		radius = float(s.get("abandoned_radius", radius))
-		var days := maxf(0.0, float(now_sec.call()) - float(s["abandoned_at"])) / DAY_SEC
-		radius -= days * float(r["decayRadiusPerDay"])
-	return maxf(radius, 0.0)
-
 func capacity_stacks(id: String) -> int:
 	var s: Dictionary = _settlements.get(id, {})
 	if s.is_empty():
 		return 0
-	var status := str(s["status"])
-	var tier: String = "founded" if status == "abandoned" else status
-	return int((rules()["stockpile"] as Dictionary).get(tier, {}).get("capacityStacks", 0)) \
-		+ int(project_effect(id, "stockpileCapacity"))
+	return int((rules()["stockpile"] as Dictionary).get(str(s["status"]), {}).get("capacityStacks", 0))
 
 func used_stacks(id: String) -> int:
 	var n := 0
@@ -233,20 +212,13 @@ static func xz_of_exact(pos: Dictionary) -> Vector2:
 	var l: Vector3 = pos["local"]
 	return Vector2(float(c.x) * WorldPos.CHUNK_METERS + l.x, float(c.y) * WorldPos.CHUNK_METERS + l.z)
 
-## The hearth's exact `{chunk, local}` (empty for a settlement founded without one).
-func hearth_exact(id: String) -> Dictionary:
+## The site's exact `{chunk, local}` (empty for a settlement founded without one; saved as `hearth`).
+func site_exact(id: String) -> Dictionary:
 	var s: Dictionary = _settlements.get(id, {})
 	return WorldPos.pos_from_wire(s["hearth"]) if s.has("hearth") else {}
 
-func _hearth_xz(s: Dictionary) -> Vector2:
+func _site_xz(s: Dictionary) -> Vector2:
 	return Vector2(float(s["hx"]), float(s["hz"]))
-
-## The settlement whose claim covers `xz`, or "".
-func claim_at(xz: Vector2) -> String:
-	for id: String in ids():
-		if dist_m(_hearth_xz(_settlements[id]), xz) <= claim_radius(id):
-			return id
-	return ""
 
 func _player_xz(player_id: String) -> Variant:
 	if position_of.is_valid():
@@ -270,23 +242,12 @@ func _inventory(player_id: String) -> Node:
 
 # ── founding ─────────────────────────────────────────────────────────────
 
-## Why a hearth cannot be set at `xz` ("" when the land is free): a hearth must stay `minSeparation`
-## from every other, so no two claims overlap.
-func founding_blocker(xz: Vector2) -> String:
-	if _settlements.size() >= MAX_SETTLEMENTS:
-		return "too_many"
-	var sep := float(rules()["minSeparation"])
-	for id: String in ids():
-		if dist_m(_hearth_xz(_settlements[id]), xz) < sep:
-			return "too_close"
-	return ""
-
-## Found a settlement for `player_id` at `xz`. `consume` takes the Hearth item from the pack (false when
-## the station placement already did). `exact` is the hearth's `{chunk, local}` when the caller has it:
+## Found a settlement for `player_id` with its site at `xz` (host and tests only: no intent founds one since
+## Phase 205). `exact` is the site's `{chunk, local}` when the caller has it:
 ## `xz` is a float32 `Vector2`, coarse far from the origin, so the exact position is what is saved.
 ## `auto_name` gives the settlement no text name but a number (`name_n`) clients render as the localized
 ## default name ("Settlement 3"); the host never renders text in its own locale.
-func found(player_id: String, sname: String, xz: Vector2, consume: bool = true, exact: Dictionary = {}, auto_name: bool = false) -> String:
+func found(player_id: String, sname: String, xz: Vector2, exact: Dictionary = {}, auto_name: bool = false) -> String:
 	var pid := _pid(player_id)
 	if pid == "":
 		return "unknown_player"
@@ -295,15 +256,8 @@ func found(player_id: String, sname: String, xz: Vector2, consume: bool = true, 
 		return "bad_args"
 	if settlement_of(pid) != "":
 		return "already_member"
-	var why := founding_blocker(xz)
-	if why != "":
-		return why
-	if consume:
-		var inv := _inventory(pid)
-		var item := str(rules()["hearthItem"])
-		if inv == null or not inv.has_method("consume_items") or inv.get_item_count(item) < 1 or not inv.consume_items({ item: 1 }):
-			return "no_hearth"
-		_push_inventory(pid)
+	if _settlements.size() >= MAX_SETTLEMENTS:
+		return "too_many"
 	var now := float(now_sec.call())
 	var id := "settlement_%d" % _next_id
 	_next_id += 1
@@ -314,11 +268,11 @@ func found(player_id: String, sname: String, xz: Vector2, consume: bool = true, 
 	_settlements[id] = {
 		"id": id, "name": sname, "name_n": name_n, "founder": pid, "members": { pid: "founder" }, "invites": {},
 		"created": now, "last_active": now, "hx": xz.x, "hz": xz.y, "status": "founded",
-		"abandoned_at": 0.0, "abandoned_radius": 0.0, "stock": {}, "taken": {}, "projects": {},
+		"stock": {}, "taken": {}, "projects": {},
 	}
 	if WorldPos.is_plausible_pos(exact):
 		_settlements[id]["hearth"] = WorldPos.pos_to_wire(exact)
-		# Components stay doubles: a `Vector2` is float32 and would snap a far hearth to metres.
+		# Components stay doubles: a `Vector2` is float32 and would snap a far site to metres.
 		var c: Vector2i = exact["chunk"]
 		var l: Vector3 = exact["local"]
 		_settlements[id]["hx"] = float(c.x) * WorldPos.CHUNK_METERS + l.x
@@ -348,11 +302,6 @@ func invite(actor: String, target: String) -> String:
 	s["invites"][target] = float(now_sec.call())
 	GameBus.settlements_changed.emit()
 	return ""
-
-## The station that is `id`'s hearth, released with it when the settlement decays away.
-func note_hearth_station(id: String, station_id: String) -> void:
-	if _settlements.has(id):
-		_settlements[id]["hearth_station"] = station_id
 
 ## Withdraw `target`'s invite to the actor's settlement (anyone who may invite may withdraw one).
 func uninvite(actor: String, target: String) -> String:
@@ -436,9 +385,9 @@ func leave(player_id: String) -> String:
 
 # ── stockpile ────────────────────────────────────────────────────────────
 
-func _in_own_claim(pid: String, id: String) -> bool:
+func _at_site(pid: String, id: String) -> bool:
 	var xz: Variant = _player_xz(pid)
-	return xz is Vector2 and dist_m(_hearth_xz(_settlements[id]), xz as Vector2) <= claim_radius(id)
+	return xz is Vector2 and dist_m(_site_xz(_settlements[id]), xz as Vector2) <= SITE_REACH
 
 ## Move `qty` of `item` from the player's pack into the stockpile. All or nothing.
 func deposit(player_id: String, item: String, qty: int) -> String:
@@ -451,8 +400,8 @@ func deposit(player_id: String, item: String, qty: int) -> String:
 	var rr := role_rules(role_of(pid, id))
 	if not (bool(rr["build"]) or bool(rr["take"])):
 		return "no_permission"
-	if not _in_own_claim(pid, id):
-		return "not_in_claim"
+	if not _at_site(pid, id):
+		return "too_far"
 	var inv := _inventory(pid)
 	if inv == null or not inv.has_method("consume_items"):
 		return "no_inventory"
@@ -487,8 +436,8 @@ func withdraw(player_id: String, item: String, qty: int) -> String:
 	var rr := role_rules(role)
 	if not bool(rr["take"]):
 		return "no_permission"
-	if not _in_own_claim(pid, id):
-		return "not_in_claim"
+	if not _at_site(pid, id):
+		return "too_far"
 	var s: Dictionary = _settlements[id]
 	var stock: Dictionary = s["stock"]
 	if int(stock.get(item, 0)) < qty:
@@ -515,25 +464,19 @@ func withdraw(player_id: String, item: String, qty: int) -> String:
 	return ""
 
 ## Units of `item` the player may draw for research: the stockpile of the settlement they belong to,
-## while they stand in its claim. 0 otherwise.
+## while they stand at its site. 0 otherwise.
 func research_stock(player_id: String, item: String) -> int:
 	var pid := _pid(player_id)
 	var id := settlement_of(pid)
-	if id == "" or not bool(role_rules(role_of(pid, id))["take"]) or not _in_own_claim(pid, id):
+	if id == "" or not bool(role_rules(role_of(pid, id))["take"]) or not _at_site(pid, id):
 		return 0
 	return int((_settlements[id]["stock"] as Dictionary).get(item, 0))
-
-## Whether `player_id` stands at their settlement's hearth claim (a research site).
-func at_research_site(player_id: String) -> bool:
-	var pid := _pid(player_id)
-	var id := settlement_of(pid)
-	return id != "" and _in_own_claim(pid, id)
 
 ## Take research materials from the player's stockpile: all or nothing.
 func consume_research(player_id: String, counts: Dictionary) -> bool:
 	var pid := _pid(player_id)
 	var id := settlement_of(pid)
-	if id == "" or not at_research_site(pid):
+	if id == "" or not _at_site(pid, id):
 		return false
 	var stock: Dictionary = _settlements[id]["stock"]
 	for item: String in counts:
@@ -554,37 +497,13 @@ func _push_inventory(pid: String) -> void:
 	if inv != null and inv.has_method("get_contents"):
 		GameBus.inventory_synced.emit(pid, inv.get_contents(), inv.get_durability_data())
 
-# ── edits ────────────────────────────────────────────────────────────────
-
-## "" when `player_id` may mine or place at ground point `xz`; else a reason. Land outside every claim is
-## free; inside one, only a member whose role has `build` may edit. A pure query (the placement preview
-## asks it too): the edit itself is recorded by `note_edit` once it succeeded.
-func edit_blocker(player_id: String, xz: Vector2) -> String:
-	var id := claim_at(xz)
-	if id == "":
-		return ""
-	var role := role_of(_pid(player_id), id)
-	if role == "" or not bool(role_rules(role)["build"]):
-		return "no_permission"
-	return ""
-
-## A successful edit at `xz` by `player_id`: counts as activity for the claim it landed in.
-func note_edit(player_id: String, xz: Vector2) -> void:
-	var id := claim_at(xz)
-	if id != "" and edit_blocker(player_id, xz) == "":
-		_touch(id)
-
 # ── projects (Phase 198) ─────────────────────────────────────────────────
-
-## Standing projects' effect `kind` for settlement `id` (see ProjectRules.EFFECT_KINDS).
-func project_effect(id: String, kind: String) -> float:
-	return ProjectRules.effect_total(_settlements.get(id, {}).get("projects", {}), kind)
 
 func projects_of(id: String) -> Dictionary:
 	return (_settlements.get(id, {}).get("projects", {}) as Dictionary).duplicate(true)
 
 ## Start project `key` at the actor's feet (or at `site`, a host-side caller's ground point; an intent never
-## names one). Needs a role with `invite`, the site in the claim, and the tier.
+## names one). Needs a role with `invite`, the project site within SITE_REACH of the settlement's, and the tier.
 func start_project(actor: String, key: String, site: Variant = null) -> String:
 	var pid := _pid(actor)
 	var id := settlement_of(pid)
@@ -593,10 +512,10 @@ func start_project(actor: String, key: String, site: Variant = null) -> String:
 	if not bool(role_rules(role_of(pid, id))["invite"]):
 		return "no_permission"
 	var xz: Variant = site if site is Vector2 else _player_xz(pid)
-	if not (xz is Vector2) or dist_m(_hearth_xz(_settlements[id]), xz as Vector2) > claim_radius(id):
-		return "not_in_claim"
+	if not (xz is Vector2) or dist_m(_site_xz(_settlements[id]), xz as Vector2) > SITE_REACH:
+		return "too_far"
 	var s: Dictionary = _settlements[id]
-	var tier: String = "founded" if str(s["status"]) == "abandoned" else str(s["status"])
+	var tier: String = str(s["status"])
 	var why := ProjectRules.start_blocker(key, tier, s["projects"])
 	if why != "":
 		return why
@@ -625,8 +544,8 @@ func contribute(actor: String, key: String, item: String, qty: int, source: Stri
 	var why := ProjectRules.contribution_blocker(ProjectRules.def_of(key), state, item, qty)
 	if why != "":
 		return why
-	if not _in_own_claim(pid, id):
-		return "not_in_claim"
+	if not _at_site(pid, id):
+		return "too_far"
 	if source == "stock":
 		var day := floori(float(now_sec.call()) / DAY_SEC)
 		var taken: Dictionary = (s["taken"] as Dictionary).get(pid, { "day": day, "n": 0 })
@@ -758,61 +677,42 @@ func _maybe_complete(id: String, key: String) -> void:
 # ── lifecycle ────────────────────────────────────────────────────────────
 
 func _touch(id: String) -> void:
-	var s: Dictionary = _settlements[id]
-	if str(s["status"]) == "abandoned":
-		_reclaim(s)
-	s["last_active"] = float(now_sec.call())
+	_settlements[id]["last_active"] = float(now_sec.call())
 
-func _reclaim(s: Dictionary) -> void:
-	if claim_radius(str(s["id"])) <= 0.0:
-		return
-	s["status"] = "founded"
-	s["abandoned_at"] = 0.0
-	GameBus.settlements_changed.emit()
-
-## Note that `player_id` is active at their settlement (standing in the claim).
-func note_activity(player_id: String) -> void:
-	var pid := _pid(player_id)
-	var id := settlement_of(pid)
-	if id != "" and _in_own_claim(pid, id):
-		_touch(id)
-
-## Grow, abandon, decay and free settlements as of `now`. Returns true when anything changed.
+## Grow tiers, lapse invites and hand back migrated hearths as of `now`. Returns true when anything changed.
+## Since Phase 205 a settlement neither decays nor is abandoned: it lasts while it has members.
 func tick(now: float) -> bool:
 	var changed := false
-	var r := rules()
 	for id: String in ids():
 		var s: Dictionary = _settlements[id]
-		var status := str(s["status"])
 		if _lapse_invites(s, now):
 			changed = true
-		if status == "abandoned":
-			var radius := claim_radius(id)
-			if radius <= 0.0:
-				_settlements.erase(id)   # the land is free again
-				_radius_pushed.erase(id)
-				# Its hearth goes too, or a station would stand on free land owned by nobody.
-				var hearth_id := str(s.get("hearth_station", ""))
-				if hearth_id != "" and release_station.is_valid():
-					release_station.call(hearth_id)
-				changed = true
-			elif int(radius) != int(_radius_pushed.get(id, radius)):
-				changed = true   # the decaying claim shrank a whole metre: clients redraw it
-			_radius_pushed[id] = radius
-			continue
-		if now - float(s["last_active"]) >= float(r["abandonAfterDays"]) * DAY_SEC:
-			s["abandoned_radius"] = claim_radius(id)
-			s["status"] = "abandoned"
-			s["abandoned_at"] = now
-			changed = true
-			continue
 		var tier := tier_for(id, now)
-		if TIER_ORDER.find(tier) > TIER_ORDER.find(status):
+		if TIER_ORDER.find(tier) > TIER_ORDER.find(str(s["status"])):
 			s["status"] = tier   # tiers never shrink: a settlement that lost members keeps what it earned
 			changed = true
+	_return_hearths()
 	if changed:
 		GameBus.settlements_changed.emit()
 	return changed
+
+## Phase 205 — the Hearth items owed to founders whose saved hearth was removed, as a `{ founder: n }` copy.
+func hearth_returns() -> Dictionary:
+	return _hearth_returns.duplicate()
+
+## Hand each owed Hearth to its founder once they are online and their pack takes it.
+func _return_hearths() -> void:
+	if _hearth_returns.is_empty() or registry == null:
+		return
+	var item := str(rules()["hearthItem"])
+	for pid: String in _hearth_returns.keys():
+		if registry.has_method("is_online") and not registry.is_online(pid):
+			continue
+		var inv := _inventory(pid)
+		if inv == null or not inv.has_method("add_item") or not inv.add_item(item, int(_hearth_returns[pid])):
+			continue
+		_hearth_returns.erase(pid)
+		_push_inventory(pid)
 
 # ── intents ──────────────────────────────────────────────────────────────
 
@@ -839,11 +739,6 @@ func _resolve(action: String, args: Dictionary, pid: String) -> String:
 			if now - float(_last_intent[k]) >= INTENT_INTERVAL:
 				_last_intent.erase(k)
 	match action:
-		"found":
-			var xz: Variant = _player_xz(pid)
-			if not (xz is Vector2):
-				return "unknown_player"
-			return found(pid, str(args.get("name", "")), xz as Vector2, true)
 		"invite":
 			return invite(pid, str(args.get("target", "")))
 		"uninvite":
@@ -877,18 +772,24 @@ static func _qty(v: Variant) -> int:
 # ── persistence ──────────────────────────────────────────────────────────
 
 func to_data() -> Dictionary:
-	return { "format": DATA_FORMAT, "next_id": _next_id, "next_name": _next_name, "settlements": _settlements.duplicate(true) }
+	return { "format": DATA_FORMAT, "next_id": _next_id, "next_name": _next_name, "settlements": _settlements.duplicate(true),
+		"hearth_returns": _hearth_returns.duplicate() }
 
 ## Restore from a saved world record. Malformed entries are skipped; numbers are clamped.
 func from_data(data: Variant) -> void:
 	_settlements.clear()
+	_hearth_returns.clear()
 	_next_id = 1
 	_next_name = 1
 	if not (data is Dictionary):
 		return
 	_next_id = maxi(1, int((data as Dictionary).get("next_id", 1)))
 	_next_name = maxi(1, int((data as Dictionary).get("next_name", 1)))
-	_radius_pushed.clear()
+	var owed: Variant = (data as Dictionary).get("hearth_returns", {})
+	if owed is Dictionary:
+		for p: Variant in owed:
+			if p is String and (owed[p] is int or owed[p] is float) and int(owed[p]) > 0 and _hearth_returns.size() < MAX_SETTLEMENTS:
+				_hearth_returns[p] = clampi(int(owed[p]), 1, MAX_SETTLEMENTS)
 	var raw: Variant = (data as Dictionary).get("settlements", {})
 	if not (raw is Dictionary):
 		return
@@ -927,16 +828,22 @@ func from_data(data: Variant) -> void:
 			"id": str(id).left(64), "name": str(s.get("name", "")).left(MAX_NAME), "name_n": clampi(int(s.get("name_n", 0)), 0, 1000000), "founder": str(s.get("founder", "")).left(64),
 			"members": members, "invites": invites, "created": float(s.get("created", 0.0)),
 			"last_active": float(s.get("last_active", now_sec.call())), "hx": float(s.get("hx", 0.0)), "hz": float(s.get("hz", 0.0)),
-			"status": status if (TIER_ORDER + ["abandoned"]).has(status) else "founded",
-			"abandoned_at": float(s.get("abandoned_at", 0.0)), "abandoned_radius": float(s.get("abandoned_radius", 0.0)),
+			# Phase 205 — an abandoned (decaying) settlement of an older save is founded again: nothing decays now.
+			"status": status if TIER_ORDER.has(status) else "founded",
 			"stock": stock, "taken": taken,
 			# A format-1 (pre-198) record has no projects: it loads with none.
 			"projects": _projects_from(s.get("projects", null)) if int((data as Dictionary).get("format", 1)) >= 2 else {},
 		}
 		if WorldPos.pos_from_wire(s.get("hearth", null)).size() > 0:
 			_settlements[str(id).left(64)]["hearth"] = (s["hearth"] as Dictionary).duplicate(true)
-		if s.get("hearth_station", null) is String:
-			_settlements[str(id).left(64)]["hearth_station"] = str(s["hearth_station"]).left(64)
+		# Phase 205 — a saved hearth is removed, and its founder is owed it back as a Hearth item
+		# (`Clan.migration.hearth`, "returnToFounder").
+		if s.get("hearth_station", null) is String and str(s["hearth_station"]) != "":
+			if release_station.is_valid():
+				release_station.call(str(s["hearth_station"]).left(64))
+			var founder := str(s.get("founder", "")).left(64)
+			if founder != "" and _hearth_returns.size() < MAX_SETTLEMENTS:
+				_hearth_returns[founder] = int(_hearth_returns.get(founder, 0)) + 1
 		_next_name = maxi(_next_name, int(_settlements[str(id).left(64)]["name_n"]) + 1)
 		var suffix := str(id).trim_prefix("settlement_")
 		if suffix.is_valid_int():
@@ -983,16 +890,17 @@ func _project_view(key: String, state: Dictionary) -> Dictionary:
 
 # ── views ────────────────────────────────────────────────────────────────
 
-## Claims anyone may see: id, name, centre, radius, tier. Sent to every peer.
+## Sites anyone may see: id, name, centre, the SITE_REACH its stockpile and projects work within, tier. Sent to
+## every peer (as `claims`, the view key since Phase 140; nothing is claimed since Phase 205).
 func public_claims() -> Array:
 	var out: Array = []
 	for id: String in ids():
 		var s: Dictionary = _settlements[id]
 		out.append({ "id": id, "name": str(s["name"]), "name_n": int(s["name_n"]), "x": float(s["hx"]), "z": float(s["hz"]),
-			"radius": claim_radius(id), "status": str(s["status"]) })
+			"radius": SITE_REACH, "status": str(s["status"]) })
 	return out
 
-## What one player may see beyond the claims: their own settlement's members, role and stockpile, and any
+## What one player may see beyond the sites: their own settlement's members, role and stockpile, and any
 ## invites naming them. Sent to that player alone.
 func private_view(player_id: String) -> Dictionary:
 	var pid := _pid(player_id)

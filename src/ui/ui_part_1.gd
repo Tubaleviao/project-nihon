@@ -307,6 +307,18 @@ func build_character_content() -> Control:
 	sl._set_tr(sl._sheet_create_button, "text", "creation.open")
 	sl._sheet_create_button.pressed.connect(func() -> void: sl.show_creation())
 	vbox.add_child(sl._sheet_create_button)
+	# Phase 205 — respawn at will (`SelfRespawn.menuButton`), and who owns what the player builds next. Each is
+	# the matching chat command, so the host applies its own rules (cooldown, clan membership) either way.
+	var own_row := HBoxContainer.new()
+	own_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	for entry: Array in [["structure.respawn_button", "/respawn"], ["structure.build_private", "/buildas private"], ["structure.build_clan", "/buildas clan"]]:
+		var b := Button.new()
+		sl._set_tr(b, "text", str(entry[0]))
+		b.focus_mode = Control.FOCUS_NONE
+		var line := str(entry[1])
+		b.pressed.connect(func() -> void: GameBus.chat_intent.emit(line, ""))
+		own_row.add_child(b)
+	vbox.add_child(own_row)
 	var body := HBoxContainer.new()
 	body.alignment = BoxContainer.ALIGNMENT_CENTER
 	sl._sheet_left = VBoxContainer.new()

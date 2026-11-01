@@ -212,19 +212,17 @@ win.trade,Trade,Troca
 dock.settlement,Settlement,Assentamento
 win.settlement,Settlement (L),Assentamento (L)
 settlement.default_name,Settlement {0},Assentamento {0}
-settlement.name_ph,Settlement name,Nome do assentamento
 settlement.player_ph,Player id,Id do jogador
 settlement.item_ph,Item,Item
 settlement.qty_ph,Quantity,Quantidade
-settlement.found,Found here (needs a Hearth),Fundar aqui (exige uma Lareira)
 settlement.invite,Invite,Convidar
 settlement.uninvite,Withdraw invite,Retirar convite
 settlement.set_role,Set role,Definir papel
 settlement.leave,Leave,Sair
 settlement.deposit,Deposit,Depositar
 settlement.withdraw,Withdraw,Retirar
-settlement.none,You belong to no settlement. Place a Hearth on free land to found one.,Você não pertence a nenhum assentamento. Coloque uma Lareira em terra livre para fundar um.
-settlement.status,{0} ({1}) — your role: {2}; claim radius {3} m,{0} ({1}) — seu papel: {2}; raio da área {3} m
+settlement.none,You belong to no settlement. Clans replace them: found or join one in the Clan window.,Você não pertence a nenhum assentamento. Os clãs os substituem: funde ou entre em um na janela do Clã.
+settlement.status,{0} ({1}) — your role: {2}; stockpile and projects within {3} m of its site,{0} ({1}) — seu papel: {2}; estoque e projetos a até {3} m do seu local
 settlement.members,Members: {0},Membros: {0}
 settlement.stock,Stockpile {0}/{1} stacks: {2},Estoque {0}/{1} pilhas: {2}
 settlement.role.founder,founder,fundador
@@ -234,8 +232,6 @@ settlement.role.guest,guest,convidado
 settlement.tier.founded,founded,fundado
 settlement.tier.growing,growing,em crescimento
 settlement.tier.town,town,vila
-settlement.tier.abandoned,abandoned,abandonado
-settlement.ok.found,Settlement founded.,Assentamento fundado.
 settlement.ok.invite,Invitation sent.,Convite enviado.
 settlement.ok.uninvite,Invitation withdrawn.,Convite retirado.
 settlement.ok.join,You joined the settlement.,Você entrou no assentamento.
@@ -246,9 +242,7 @@ settlement.ok.withdraw,Withdrawn.,Retirado.
 settlement.refused.unknown_player,Unknown player.,Jogador desconhecido.
 settlement.refused.rate_limited,Too fast; wait a moment.,Rápido demais; espere um instante.
 settlement.refused.bad_args,That request is not valid.,Esse pedido não é válido.
-settlement.refused.no_hearth,You need a Hearth in your pack.,Você precisa de uma Lareira na mochila.
 settlement.refused.already_member,Already in a settlement.,Já está em um assentamento.
-settlement.refused.too_close,Too close to another settlement.,Perto demais de outro assentamento.
 settlement.refused.too_many,The world holds no more settlements.,O mundo não comporta mais assentamentos.
 settlement.refused.not_member,You are not a member.,Você não é membro.
 settlement.refused.no_permission,Your role does not allow that.,Seu papel não permite isso.
@@ -258,7 +252,6 @@ settlement.refused.no_such_invite,There is no invite to withdraw for that player
 settlement.refused.full,No room left.,Sem espaço.
 settlement.refused.bad_role,That role cannot be given.,Esse papel não pode ser dado.
 settlement.refused.founder_locked,The founder's place cannot change.,O lugar do fundador não pode mudar.
-settlement.refused.not_in_claim,Stand inside the claim first.,Fique dentro da área antes.
 settlement.refused.no_stock,Not enough of that item.,Não há o suficiente desse item.
 settlement.refused.over_limit,Over your daily withdraw limit.,Acima do seu limite diário de retirada.
 settlement.refused.no_inventory,No pack to use.,Sem mochila para usar.
@@ -328,9 +321,6 @@ reason.insufficient_points,Not enough research points.,Pontos de pesquisa insufi
 reason.no_settlement,Needs a settlement.,Exige um assentamento.
 reason.missing_materials,Missing materials.,Faltam materiais.
 reason.unknown_station_type,Unknown station type.,Tipo de estação desconhecido.
-reason.inside_claim,Inside a settlement claim.,Dentro da área de um assentamento.
-reason.too_close_settlement,Too close to a settlement.,Perto demais de um assentamento.
-reason.already_in_settlement,Already in a settlement.,Já está em um assentamento.
 reason.too_close_station,Too close to {0}.,Perto demais de {0}.
 reason.needs_points,needs {0} research points,precisa de {0} pontos de pesquisa
 reason.unknown_proposal,Unknown proposal.,Proposta desconhecida.
@@ -541,7 +531,6 @@ tutorial.contribute_project.title,Build together,Construam juntos
 tutorial.contribute_project.body,"Give the project materials from your pack or the stockpile, then work at its site with a tool.","Entregue materiais ao projeto da mochila ou do estoque e depois trabalhe no local com uma ferramenta."
 bed.refuse_no_item,You have no bed to place.,Você não tem uma cama para colocar.
 bed.refuse_far,That spot is too far away.,Esse lugar está longe demais.
-bed.refuse_claim,You cannot place a bed in a settlement you cannot build in.,Você não pode colocar uma cama em um assentamento onde não pode construir.
 bed.refuse_not_yours,That is someone else's bed.,Essa é a cama de outra pessoa.
 bed.refuse_occupied,Something is already standing there.,Já há algo nesse lugar.
 bed.refuse_blocked,There is no room for a bed there.,Não há espaço para uma cama aí.
@@ -651,3 +640,30 @@ chat.msg_self,You cannot message yourself.,Você não pode mandar mensagem para 
 chat.msg_slow,At most {0} private messages a minute. Wait a moment.,No máximo {0} mensagens privadas por minuto. Espere um pouco.
 chat.whisper_from,{0} whispers:,{0} sussurra:
 chat.whisper_to,To {0}:,Para {0}:
+structure.damaged,"Your structure near ({0}, {1}) is being damaged.","Sua estrutura perto de ({0}, {1}) está sendo danificada."
+structure.destroyed,"Your structure near ({0}, {1}) was destroyed.","Sua estrutura perto de ({0}, {1}) foi destruída."
+structure.ok.build_as.private,What you build from now on is yours alone.,O que você construir a partir de agora é só seu.
+structure.ok.build_as.clan,What you build from now on belongs to your clan.,O que você construir a partir de agora pertence ao seu clã.
+structure.ok.repair,Structure repaired.,Estrutura reparada.
+structure.refused.not_owner,That structure is not yours.,Essa estrutura não é sua.
+structure.refused.no_permission,Your clan role may not do that.,Seu papel no clã não permite isso.
+structure.refused.structures_full,The world holds no more structures.,O mundo não comporta mais estruturas.
+structure.refused.no_clan,You are in no clan.,Você não está em nenhum clã.
+structure.refused.bad_args,Use /buildas private or /buildas clan.,Use /buildas private ou /buildas clan.
+structure.refused.no_structure,Stand at a structure you own.,Fique junto de uma estrutura sua.
+structure.refused.intact,It needs no repair.,Não precisa de reparo.
+structure.refused.missing_materials,You lack the materials to repair it.,Faltam materiais para repará-la.
+structure.refused.no_inventory,No pack to pay from.,Sem mochila para pagar.
+structure.refused.rate_limited,Too fast — wait a moment.,Rápido demais — espere um pouco.
+structure.refused.unknown_action,Unknown action.,Ação desconhecida.
+structure.refused.unknown_player,Unknown player.,Jogador desconhecido.
+structure.respawn_button,Respawn,Renascer
+structure.build_private,Build: private,Construir: privado
+structure.build_clan,Build: clan,Construir: clã
+chat.usage.respawn,/respawn — kill your character and respawn at your bed or the world spawn,/respawn — mata seu personagem e renasce na sua cama ou no ponto inicial do mundo
+chat.usage.buildas,/buildas private|clan — who owns what you build next,/buildas private|clan — de quem é o que você construir a seguir
+chat.usage.repair,"/repair — repair the structure you stand at, paying part of its materials","/repair — repara a estrutura onde você está, pagando parte dos materiais"
+chat.respawn_wait,You can respawn again in {0} s.,Você pode renascer de novo em {0} s.
+chat.respawning,Respawning.,Renascendo.
+reason.not_owner,That structure is not yours.,Essa estrutura não é sua.
+bed.refuse_structure,You cannot place a bed on a structure that is not yours.,Você não pode colocar uma cama em uma estrutura que não é sua.

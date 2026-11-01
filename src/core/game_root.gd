@@ -60,6 +60,7 @@ const TutorialWiring := preload("res://src/tutorial/tutorial_wiring.gd")
 const BedSlice := preload("res://src/world/bed_slice.gd")
 const SettlementWiring := preload("res://src/settlement/settlement_wiring.gd")
 const ClanWiring := preload("res://src/clan/clan_wiring.gd")
+const StructureWiring := preload("res://src/structure/structure_wiring.gd")
 const CraftingWiring := preload("res://src/crafting/crafting_wiring.gd")
 const CharacterWiring := preload("res://src/character/character_wiring.gd")
 const GestureWiring   := preload("res://src/character/gesture_wiring.gd")
@@ -80,6 +81,7 @@ var _bed_wiring := BedWiring.new()
 var _tutorial_wiring := TutorialWiring.new()
 var _settlement_wiring := SettlementWiring.new()
 var _clan_wiring := ClanWiring.new()
+var _structure_wiring := StructureWiring.new()
 var _crafting_wiring := CraftingWiring.new()
 var _character_wiring := CharacterWiring.new()
 var _gesture_wiring := GestureWiring.new()
@@ -131,6 +133,7 @@ var _bed:         BedSlice
 var _waystones:   WaystoneSlice
 var _settlements: Node
 var _clans:       Node
+var _structures:  Node   # Phase 205 — the host's structure index (who owns each placed block)
 var _weather:     WeatherSlice
 ## Phase 129 — the host's status effects, ticked from the clock tick; null on a client.
 var _status:      StatusEffects
@@ -250,7 +253,7 @@ var _handshake_retries: int = 0
 
 ## Phase 132 — wiring modules know their root from construction (the suite builds roots without `_ready`).
 func _init() -> void:
-	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _bed_wiring, _tutorial_wiring, _settlement_wiring, _clan_wiring, _crafting_wiring, _character_wiring, _gesture_wiring, _creation_wiring, _carcass_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring, _admin_wiring]
+	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _bed_wiring, _tutorial_wiring, _settlement_wiring, _clan_wiring, _structure_wiring, _crafting_wiring, _character_wiring, _gesture_wiring, _creation_wiring, _carcass_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring, _admin_wiring]
 	for w in _wirings:
 		w.root = self
 
@@ -318,6 +321,7 @@ func _ready() -> void:
 	_settlements = _settlement_wiring.make_slice(self)
 	_clans       = _clan_wiring.make_slice(self)
 	_weather     = WeatherSlice.new()
+	_structures  = _structure_wiring.make_slice(self)
 	# Phase 129 — status effects live on the host; the battle slice rolls them and the AI honours them.
 	_status = StatusEffects.new()
 	_battle.status_effects = _status
@@ -359,7 +363,7 @@ func _ready() -> void:
 	# The UI (Phase 14) is presentation only, so a headless dedicated server
 	# (Phase 27) keeps it out of the tree — its _ready() would otherwise build
 	# windows nothing can render or click.
-	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _registry, _player, _loot, _carcass, _inventory, _character, _crafting, _technology, _taming, _professions, _station, _tree, _market, _trade, _proposal, _chat, _gesture, _waystones, _bed, _settlements, _clans, _weather]
+	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _registry, _player, _loot, _carcass, _inventory, _character, _crafting, _technology, _taming, _professions, _station, _tree, _market, _trade, _proposal, _chat, _gesture, _waystones, _bed, _settlements, _clans, _weather, _structures]
 	if not _is_server:
 		slices.append(_ui)
 	if not _is_server:
@@ -1177,18 +1181,6 @@ func _exit_tree() -> void:
 ## Phase 66 — the respawn point a player RECORD implies, as an exact `{chunk, local}`: the bed, else the original spawn.
 static func respawn_point_for(rec: Dictionary, runs_at: Callable = Callable()) -> Variant:
 	return SpawnFinder.respawn_point_for(rec, runs_at)
-
-## Phase 66 — the respawn point of a client from its handshake `player` block, as an exact
-## `{chunk, local}`: the host's recorded spawn when it sent a valid one, else where the body stands.
-static func client_respawn_point(own: Dictionary, standing: Dictionary) -> Dictionary:
-	var sp: Variant = own.get("spawn", null)
-	if sp is Dictionary and WorldPos.is_wire(sp):
-		return PlayerRegistry.canonical_world_pos(WorldPos.pos_from_wire(sp))
-	if sp is Array and WorldPos.is_wire(sp):
-		# A legacy `[x, y, z]` spawn: no exact chunk to keep.
-		var v: Vector3 = WorldPos.from_wire(sp, Vector3.ZERO)
-		return PlayerRegistry.canonical_world_pos(WorldPos.from_world(v.x, v.y, v.z))
-	return standing
 
 ## A refused pickup or mining yield used to be silent, which read as "picking up is broken".
 const PACK_FULL_NOTICE_MSEC := 3000   ## at most one notice this often, so a held click does not spam

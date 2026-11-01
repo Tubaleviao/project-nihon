@@ -268,6 +268,14 @@ signal clan_intent(action: String, args: Dictionary, player_id: String)
 ## ClanSlice.REASONS). Delivered to the actor alone.
 signal clan_resolved(player_id: String, action: String, ok: bool, reason: String)
 
+## Phase 205 — a structure intent: "build_as" {mode: "private"|"clan"} (the owner of the structures the player
+## starts from now on) or "repair" (the nearest structure they own, paid from their pack). The host binds the
+## identity and resolves owner, clan and durability from its own records.
+signal structure_intent(action: String, args: Dictionary, player_id: String)
+
+## Phase 205 — the host resolved a structure intent. `reason` is "" on success, else a StructureSlice.REASONS code.
+signal structure_resolved(player_id: String, action: String, ok: bool, reason: String)
+
 ## Phase 204 — a clan changed on the host (members, roles, invites, a member's skills). The wiring pushes the
 ## affected players their views on the next tick.
 signal clans_changed()
@@ -468,6 +476,10 @@ signal block_mined(material: String, quantity: int, position: Vector3)
 
 ## Emitted by VoxelSlice when a block is placed.
 signal block_placed(material: String, position: Vector3)
+
+## Phase 205 — the host: a hit on someone else's structure block left it standing at `fraction` of its base
+## durability. Networking carries it to the peers in range of `position`.
+signal block_damaged(position: Vector3, fraction: float)
 
 ## Emitted by VoxelSlice when the build material selection changes.
 signal block_place_material_changed(material: String)
