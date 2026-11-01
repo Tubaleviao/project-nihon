@@ -312,4 +312,35 @@ module.exports = {
     },
   }),
 
+  // ─── RecipeLockpick ───────────────────────────────────────────────────────────
+  // Phase 208 — the lockpicking tool, from the first forge
+  RecipeLockpick: defineEntity({
+    tags: ['recipe'],
+    description: 'Draw a ferrite ingot into a lockpick on a thornwood grip.',
+    goal: 'the lockpicking tool, from the first forge',
+    fields: {
+      id:     { type: 'uuid', primaryKey: true },
+      domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
+      outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
+      recipe: recipeData({
+        domain: 'smithing',
+        station: 'forge',
+        inputs: [{ item: 'FerriteIngot', quantity: 1 }, { item: 'ThornwoodPlank', quantity: 1 }],
+        outputs: [{ item: 'Lockpick', quantity: 1 }],
+        skillGuards: [{ skill: 'Smithing', tier: 'novice' }],
+      }),
+    },
+    relations: {
+      inputFerriteIngot: { name: 'inputFerriteIngot', kind: 'hasOne', target: 'FerriteIngot' },
+      inputThornwoodPlank: { name: 'inputThornwoodPlank', kind: 'hasOne', target: 'ThornwoodPlank' },
+      output: { name: 'output', kind: 'hasOne', target: 'Lockpick' },
+    },
+    behaviors: {
+      craft: {
+        description: 'Draw the pin and fit the grip',
+        rules: ['Requires Smithing: Novice', 'Requires a functional forge'],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
 }

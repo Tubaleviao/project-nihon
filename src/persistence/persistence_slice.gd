@@ -86,8 +86,9 @@ const DEFAULT_SHUTDOWN_PATH   := "user://shutdown_requested"
 ## clans on load (`ClanSlice.migrate_settlements`), then is re-saved as version 3. Phase 205 bumped it to 4:
 ## the record carries `structures` (the structure index; a record without it has none, so every block placed
 ## before it is unowned), and a saved settlement's hearth station is removed on load and owed back to its
-## founder as a Hearth item.
-const WORLD_FORMAT_VERSION := 4
+## founder as a Hearth item. Phase 208 bumped it to 5: the record carries `chests` (chests and doors), and a
+## record without them has each migrated settlement's stockpile turned into a clan chest at its hearth.
+const WORLD_FORMAT_VERSION := 5
 ## Where the region files live, relative to `server_save_dir`.
 const REGIONS_SUBDIR := "regions/"
 ## The version a record written before Phase 41 has: identifiable by the absence

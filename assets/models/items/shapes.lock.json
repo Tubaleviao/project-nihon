@@ -22,6 +22,11 @@
       1.15,
       0.35
     ],
+    "chest": [
+      0.8,
+      0.6,
+      0.7
+    ],
     "chestplate": [
       0.7,
       0.6,
@@ -31,6 +36,11 @@
       0.7,
       0.9,
       0.2
+    ],
+    "door": [
+      0.9,
+      2.0,
+      0.16
     ],
     "dust": [
       0.3,
@@ -56,6 +66,11 @@
       0.06,
       0.4,
       0.08
+    ],
+    "lockpick": [
+      0.04,
+      0.22,
+      0.04
     ],
     "longsword": [
       0.22,
@@ -159,6 +174,16 @@
       "scale": 1,
       "hash": "8289389542f31c32"
     },
+    "Chest": {
+      "archetype": "chest",
+      "scale": 1,
+      "hash": "dd3c71d8ddde6f2c"
+    },
+    "Door": {
+      "archetype": "door",
+      "scale": 1,
+      "hash": "4fb342dcb2dddb7d"
+    },
     "DuskfiberCloak": {
       "archetype": "cloak",
       "scale": 1,
@@ -203,6 +228,11 @@
       "archetype": "hearth",
       "scale": 1,
       "hash": "ff6eedf70934f444"
+    },
+    "Lockpick": {
+      "archetype": "lockpick",
+      "scale": 1,
+      "hash": "89e1ba14433de331"
     },
     "LumenfiteOrb": {
       "archetype": "orb",

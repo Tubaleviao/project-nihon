@@ -1,0 +1,18 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/items/lockpick.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+condition = 0
+weight = 0.1
+rarity = 0
+stackable = false
+shape = {"archetype":"lockpick","parts":{"pin":"Ferrite","grip":"Thornwood"},"scale":1}
+durability = 20
+toolType = "lockpick"
+state_machine_field = "condition"
+initial_state = "pristine"
+description = "A bent ferrite pin on a thornwood grip. Picks the lock of a chest or door; a failed pick can snap it."
+tags = ["item"]

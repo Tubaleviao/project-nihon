@@ -455,6 +455,21 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 					if v is String and kept.size() < 4:
 						kept[str(k).left(16)] = str(v).left(64)
 			GameBus.clan_intent.emit(str(payload.get("action", "")).left(16), kept, member)
+		"chest_intent":
+			# Phase 208 — who acts is the connection's player; which chest or door comes from the host's own view of
+			# where that player stands. Only short scalar args are kept, and ChestSlice checks each one.
+			var opener = sl._actor_id(sender)
+			if opener == "":
+				sl._refuse_unhandshaked(sender, "chest_intent")
+				return
+			var chest_args: Variant = payload.get("args", {})
+			var held := {}
+			if chest_args is Dictionary:
+				for k: Variant in (chest_args as Dictionary).keys():
+					var v: Variant = chest_args[k]
+					if (v is String or v is int or v is float) and held.size() < 6:
+						held[str(k).left(16)] = str(v).left(64) if v is String else v
+			GameBus.chest_intent.emit(str(payload.get("action", "")).left(16), held, opener)
 		"tame_intent":
 			# Phase 35 — and the same for taming: the flag and the companion bind
 			# to the connection's own player, never to a name in the payload.
@@ -772,3 +787,6 @@ func forward_intent(type: String, action: String, args: Dictionary) -> void:
 
 func forward_clan_intent(action: String, args: Dictionary, _player_id: String) -> void:
 	forward_intent("clan_intent", action, args)
+
+func forward_chest_intent(action: String, args: Dictionary, _player_id: String) -> void:
+	forward_intent("chest_intent", action, args)

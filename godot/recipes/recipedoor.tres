@@ -1,0 +1,12 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/recipes/recipedoor.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+domain = 0
+outputCount = 0
+recipe = {"domain":"carpentry","station":"","inputs":[{"item":"ThornwoodPlank","quantity":6},{"item":"FerriteIngot","quantity":1}],"outputs":[{"item":"Door","quantity":1}],"skillGuards":[{"skill":"Carpentry","tier":"novice"}]}
+description = "Join six thornwood planks into a door on ferrite hinges, by hand."
+tags = ["recipe"]

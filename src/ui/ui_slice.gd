@@ -46,14 +46,13 @@ const WINDOW_SKILLS     := "skills"
 const WINDOW_MAP        := "map"
 const WINDOW_SETTLEMENT := "settlement"
 const WINDOW_CLAN       := "clan"   # Phase 204
+const WINDOW_CHEST      := "chest"  # Phase 208 — opened by using a chest or door (U), never by a hotkey
 const WINDOW_GESTURES  := "gestures"
 const WINDOW_ADMIN     := "admin"   # Phase 182 — admins only (`is_admin`)
 
 const TutorialCard := preload("res://src/tutorial/tutorial_card.gd")
-const WINDOW_KEYS := [
-	WINDOW_INVENTORY, WINDOW_TECHNOLOGY, WINDOW_CRAFTING,
-	WINDOW_TRADE, WINDOW_MARKET, WINDOW_PROPOSALS, WINDOW_CONTROLS, WINDOW_CHARACTER, WINDOW_SKILLS, WINDOW_MAP, WINDOW_SETTLEMENT, WINDOW_CLAN, WINDOW_GESTURES, WINDOW_ADMIN,
-]
+const WINDOW_KEYS := [WINDOW_INVENTORY, WINDOW_TECHNOLOGY, WINDOW_CRAFTING, WINDOW_TRADE, WINDOW_MARKET, WINDOW_PROPOSALS,
+	WINDOW_CONTROLS, WINDOW_CHARACTER, WINDOW_SKILLS, WINDOW_MAP, WINDOW_SETTLEMENT, WINDOW_CLAN, WINDOW_CHEST, WINDOW_GESTURES, WINDOW_ADMIN]
 
 const MouseIconScript := preload("res://src/ui/mouse_icon.gd")
 const EquipmentRules := preload("res://src/character/equipment_rules.gd")
@@ -161,6 +160,7 @@ var map_window: Control = null
 var settlement_slice: Node = null
 var settlement_panel: Control = null
 var clan_panel: Control = null   # Phase 204 — bound to its slice by ClanWiring
+var chest_panel: Control = null  # Phase 208 — bound to its view by ChestWiring
 var is_admin: bool = false   # Phase 182 — the host said this player is an admin (`set_admin`)
 var _layout: Dictionary = {}                 # window key -> Vector2
 var _crafting_box: VBoxContainer = null
@@ -668,6 +668,7 @@ static func controls_rows() -> Array:
 		{"action": "station", "keys": "B · V", "desc": I18n.t("controls.row11"), "mouse": 0},
 		{"action": "tame", "keys": "G", "desc": I18n.t("controls.row12"), "mouse": 0},
 		{"action": "equipment", "keys": "E", "desc": I18n.t("controls.row13"), "mouse": 0},
+		{"action": "chest", "keys": "U · Shift+U · Ctrl+U", "desc": I18n.t("controls.row18"), "mouse": 0},
 		{"action": "windows", "keys": "I · C · K · H · T · Y · P · G", "desc": I18n.t("controls.row14"), "mouse": 0},
 		{"action": "controls", "keys": "?", "desc": I18n.t("controls.row15"), "mouse": 0},
 		{"action": "chat", "keys": "Enter · /", "desc": I18n.t("controls.row16"), "mouse": 0},

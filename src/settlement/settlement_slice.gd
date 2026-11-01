@@ -195,6 +195,15 @@ func role_of(player_id: String, id: String) -> String:
 func stock_of(id: String) -> Dictionary:
 	return (_settlements.get(id, {}).get("stock", {}) as Dictionary).duplicate()
 
+## Phase 208 — empty `id`'s stockpile and return what it held: it becomes a clan chest (`Clan.migration.stockpile`).
+func take_stock(id: String) -> Dictionary:
+	if not _settlements.has(id):
+		return {}
+	var stock: Dictionary = _settlements[id]["stock"]
+	var out := stock.duplicate()
+	stock.clear()
+	return out
+
 ## Ground metres between two points, the short way round the planet.
 static func dist_m(a: Vector2, b: Vector2) -> float:
 	var lap := float(TerrainSlice.circumference_chunks()) * WorldPos.CHUNK_METERS

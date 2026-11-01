@@ -2054,6 +2054,9 @@ func _test_net_harness_step_table() -> void:
 	assert_eq(str(steps[0].get("name", "")), "handshake", "the scenario starts with the handshake")
 	assert_eq(str(steps[steps.size() - 1].get("name", "")), "self_respawn",
 		"and ends with a player respawned outside a stranger's walls (Phase 205)")
+	assert_eq(str(steps[steps.size() - 2].get("name", "")), "chest_take_refused",
+		"after a take from a chest the client may not open refused (Phase 208)")
+	steps = steps.slice(0, steps.size() - 2) + [steps[steps.size() - 1]]
 	assert_eq(str(steps[steps.size() - 2].get("name", "")), "structure_damage",
 		"after damage to an owned structure seen and a stranger's placement refused (Phase 205)")
 	assert_eq(str(steps[steps.size() - 3].get("name", "")), "world_regen_synced",

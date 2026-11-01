@@ -29,6 +29,7 @@ extends Node
 
 ## Set by game_root so station_near_player can resolve the player's position.
 const WorldPos := preload("res://src/terrain/world_pos.gd")
+const ChestRules := preload("res://src/world/chest_rules.gd")
 
 var player_slice: Node = null
 
@@ -125,6 +126,9 @@ func _compute_placeable_station_types() -> Array:
 	var bed_type := str(_bed_rules().get("stationType", ""))
 	if bed_type != "":
 		types[bed_type] = true
+	# Phase 208 — and the chest and the door (ChestsAndDoors.stations).
+	for t: String in ChestRules.station_types():
+		types[t] = true
 	var out: Array = types.keys()
 	out.sort()
 	return out
@@ -216,7 +220,8 @@ func place_refusal(type: String, position: Vector3, inventory: Node = null, play
 	return ""
 
 ## The item one placement of a `type` station consumes, or "" for a free placement (the fabric's
-## `WaystoneTravel.placementItem` for the waystone type, `BedSpawn.placementItem` for the bed; forges and
+## `WaystoneTravel.placementItem` for the waystone type, `BedSpawn.placementItem` for the bed, the
+## `ChestsAndDoors.stations` row's for a chest or door; forges and
 ## benches stay free).
 func placement_item(type: String) -> String:
 	var settle: Resource = GameData.WORLD_SYSTEMS.get("Settlement", null)
@@ -225,6 +230,8 @@ func placement_item(type: String) -> String:
 	var bed := _bed_rules()
 	if not bed.is_empty() and type == str(bed.get("stationType", "")):
 		return str(bed.get("placementItem", ""))
+	if ChestRules.is_lock_type(type):
+		return ChestRules.placement_item(type)
 	var res: Resource = GameData.WORLD_SYSTEMS.get("WaystoneTravel", null)
 	if res == null or not (res.get("rules") is Dictionary):
 		return ""
@@ -366,6 +373,29 @@ func _player_position() -> Vector3:
 		return player_slice.get_position()
 	return _player_position_override
 
+## Phase 208 — station types whose marker carries a collision body the player's body runs into (doors, set by
+## `ChestWiring`), shut until `set_passable` opens it on this machine. It is BLOCK_HEIGHT tall from the marker's
+## foot, so a door in a doorway cannot be stepped or jumped over.
+var blocking_types: Array = []
+const BLOCK_HEIGHT := 2.5
+
+## Open (`on`) or shut the collision of the blocking station `id` on this machine.
+func set_passable(id: String, on: bool) -> void:
+	var shape: CollisionShape3D = _block_shape(id)
+	if shape != null:
+		shape.disabled = on
+
+## Whether the blocking station `id` lets this machine's player through (true for a station that blocks nothing).
+func is_passable(id: String) -> bool:
+	var shape: CollisionShape3D = _block_shape(id)
+	return shape == null or shape.disabled
+
+func _block_shape(id: String) -> CollisionShape3D:
+	var m: Node = _markers.get(id, null)
+	if m == null or not is_instance_valid(m) or not m.has_node("Block/Shape"):
+		return null
+	return m.get_node("Block/Shape") as CollisionShape3D
+
 ## Spawn a small coloured box marker so a placed station is visible in-world.
 ## The colour is derived deterministically from the type string, so every
 ## station type gets a stable, distinct tint with no hardcoded palette.
@@ -380,6 +410,19 @@ func _add_marker(id: String, type: String, position: Vector3) -> void:
 	inst.material_override = mat
 	inst.position = position + _origin.value
 	inst.name = "Station_%s" % id
+	if blocking_types.has(type):
+		var body := StaticBody3D.new()
+		body.name = "Block"
+		body.collision_layer = 1   # the player's body collides with layer 1 (PlayerSlice)
+		body.collision_mask = 0
+		var box := BoxShape3D.new()
+		box.size = Vector3(1.0, BLOCK_HEIGHT, 1.0)
+		var shape := CollisionShape3D.new()
+		shape.name = "Shape"
+		shape.shape = box
+		shape.position.y = BLOCK_HEIGHT * 0.5 - 0.5   # from the marker's foot up
+		body.add_child(shape)
+		inst.add_child(body)
 	add_child(inst)
 	_markers[id] = inst
 

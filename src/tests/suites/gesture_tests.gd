@@ -339,24 +339,24 @@ func _test_wheel_key() -> void:
 	assert_eq(GesturePanel.key_code(), KEY_Q, "Q by default (G is Proposals and taming)")
 	assert_false(GesturePanel.set_key(KEY_W), "a movement key cannot open the wheel")
 	assert_false(GesturePanel.set_key(KEY_G), "nor the key Proposals owns")
-	assert_true(GesturePanel.set_key(KEY_U), "a free key can")
+	assert_true(GesturePanel.set_key(KEY_F7), "a free key can")
 	GesturePanel._cached_key = -1
-	assert_eq(GesturePanel.key_code(), KEY_U, "and the choice is read back from the settings file")
+	assert_eq(GesturePanel.key_code(), KEY_F7, "and the choice is read back from the settings file")
 	var box := GesturePanel.build(GameData.GESTURES, Callable())
 	assert_eq(box.get_child_count(), GameData.GESTURES.size() + 1, "one button per fabric gesture, and the rebind button")
 	box.free()
 	# Phase 196 — the wheel key is reserved: a hotbar box cannot take it; the old default is free again.
-	assert_false(_HotbarScript.bind_allowed(KEY_U), "a box cannot bind the wheel key")
-	assert_true(I18nScript.t("win.gestures", [GesturePanel.key_label()]).contains("U"), "the window title names the bound key")
+	assert_false(_HotbarScript.bind_allowed(KEY_F7), "a box cannot bind the wheel key")
+	assert_true(I18nScript.t("win.gestures", [GesturePanel.key_label()]).contains("F7"), "the window title names the bound key")
 	# The rebind button: the next key becomes the wheel key, Escape cancels, a claimed key is refused.
 	GesturePanel.awaiting_key = true
 	assert_false(GesturePanel.take_rebind_key(KEY_ESCAPE), "Escape cancels a rebind")
-	assert_eq(GesturePanel.key_code(), KEY_U, "and keeps the key")
+	assert_eq(GesturePanel.key_code(), KEY_F7, "and keeps the key")
 	assert_false(GesturePanel.awaiting_key, "and stops waiting")
 	assert_false(GesturePanel.take_rebind_key(KEY_W), "a claimed key is refused")
 	assert_true(GesturePanel.take_rebind_key(KEY_F6), "a free key is taken")
 	assert_eq(GesturePanel.key_code(), KEY_F6, "and opens the wheel from now on")
-	assert_true(_HotbarScript.bind_allowed(KEY_U), "and the old key is free for a box again")
+	assert_true(_HotbarScript.bind_allowed(KEY_F7), "and the old key is free for a box again")
 	DirAccess.remove_absolute(LocaleSettings.settings_path)
 	LocaleSettings.settings_path = old_path
 	GesturePanel._cached_key = -1

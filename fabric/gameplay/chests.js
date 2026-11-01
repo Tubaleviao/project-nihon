@@ -6,19 +6,22 @@ const { defineEntity } = require('@newel/core')
 // and adds the placeable stations.
 //
 // `accessModes`, `defaultMode`, `setBy` (always `owner`).
-// `stations`  station -> { capacityStacks?, spillsOnDestroy? }: a destroyed chest spills its contents for anyone.
+// `stations`  station type -> { placementItem, lockMaterial, capacityStacks?, spillsOnDestroy? }: one placement
+//             consumes `placementItem` (an item tagged `station`); `lockMaterial` is the lock's material (a key
+//             of `locks.materials`). A destroyed chest spills its contents for anyone.
 // `locks`     a lock's difficulty = `materials[lock material]` × `technologies[the owner's best lock technology]`
 //             (`none` when they know none of them). Its durability = the material's durability ×
 //             `durabilityFactor` × the same technology multiplier. A pick takes `pickSeconds` × difficulty,
 //             shortened by (1 − `skillSpeedup` × Lockpicking level / levelCap); a failed pick breaks the tool
-//             with `breakChance` / difficulty… capped at 1, and the owner is told.
+//             with `breakChance` / difficulty… capped at 1, and the owner is told. A pick needs an item whose
+//             `toolType` is `toolType` (Phase 208, the Lockpick).
 const CHESTS_AND_DOORS = {
   accessModes: ['owner', 'clan', 'everyone'],
   defaultMode: 'owner',
   setBy: 'owner',
   stations: {
-    chest: { capacityStacks: 20, spillsOnDestroy: true },
-    door:  {},
+    chest: { placementItem: 'Chest', lockMaterial: 'Ferrite', capacityStacks: 20, spillsOnDestroy: true },
+    door:  { placementItem: 'Door', lockMaterial: 'Ferrite' },
   },
   locks: {
     materials: { Thornwood: 1, Duskfiber: 1.5, Ashite: 2, Ferrite: 3, Aethermite: 4, Veilsteel: 6, Voidite: 8 },
@@ -27,6 +30,7 @@ const CHESTS_AND_DOORS = {
     pickSeconds: 6,
     skillSpeedup: 0.6,
     breakChance: 0.3,
+    toolType: 'lockpick',
   },
 }
 
@@ -37,7 +41,13 @@ function chestsData() { return JSON.parse(JSON.stringify(CHESTS_AND_DOORS)) }
 
 function chestsRefs() {
   const tagged = (table, tag) => Object.entries(table).filter(([, e]) => e && (e.tags || []).includes(tag)).map(([k]) => k)
-  return { materials: tagged(require('../world/materials'), 'material'), technologies: tagged(require('./technology'), 'technology') }
+  const items = require('./items')
+  return {
+    materials: tagged(require('../world/materials'), 'material'),
+    technologies: tagged(require('./technology'), 'technology'),
+    stationItems: tagged(items, 'station'),
+    toolTypes: [...new Set(Object.values(items).map((e) => e && e.fields && e.fields.toolType && e.fields.toolType.defaultValue).filter(Boolean))],
+  }
 }
 
 /** Problems with the chest and door table, as strings. */
@@ -54,6 +64,14 @@ function chestsProblems(d, refs) {
   }
   const l = isObj(d.locks) ? d.locks : {}
   const mats = isObj(l.materials) ? l.materials : {}
+  const placed = new Set()
+  for (const [k, s] of Object.entries(st)) {
+    if (!isObj(s)) continue
+    if (!(refs.stationItems || []).includes(s.placementItem)) p.push(`ChestsAndDoors.stations.${k}.placementItem "${s.placementItem}" is not an item tagged station`)
+    else if (placed.has(s.placementItem)) p.push(`ChestsAndDoors.stations.${k}.placementItem "${s.placementItem}" places two station types`)
+    placed.add(s.placementItem)
+    if (!(s.lockMaterial in mats)) p.push(`ChestsAndDoors.stations.${k}.lockMaterial "${s.lockMaterial}" is not a lock material`)
+  }
   if (Object.keys(mats).length === 0) p.push('ChestsAndDoors.locks.materials must name at least one material')
   for (const [k, v] of Object.entries(mats)) {
     if (!refs.materials.includes(k)) p.push(`ChestsAndDoors.locks.materials: "${k}" is not a material`)
@@ -68,6 +86,7 @@ function chestsProblems(d, refs) {
   for (const k of ['durabilityFactor', 'pickSeconds']) if (!isNum(l[k]) || l[k] <= 0) p.push(`ChestsAndDoors.locks.${k} must be > 0`)
   if (!isNum(l.skillSpeedup) || l.skillSpeedup < 0 || l.skillSpeedup >= 1) p.push('ChestsAndDoors.locks.skillSpeedup must be in [0, 1): no lock opens instantly')
   if (!isNum(l.breakChance) || l.breakChance < 0 || l.breakChance > 1) p.push('ChestsAndDoors.locks.breakChance must be in [0, 1]')
+  if (!(refs.toolTypes || []).includes(l.toolType)) p.push(`ChestsAndDoors.locks.toolType "${l.toolType}" is no item's toolType: no lock could be picked`)
   return p
 }
 

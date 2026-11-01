@@ -395,6 +395,7 @@ func _remove_member(id: String, pid: String) -> void:
 
 func _disband(id: String) -> void:
 	var c: Dictionary = _clans[id]
+	var heir: String = str((c["members"] as Dictionary).keys()[0]) if not (c["members"] as Dictionary).is_empty() else ""
 	for m: String in (c["members"] as Dictionary):
 		_member_of.erase(m)
 		_dirty_players[m] = true
@@ -405,6 +406,7 @@ func _disband(id: String) -> void:
 	_clans.erase(id)
 	_skill_dirty.erase(id)
 	_skill_pushed.erase(id)
+	GameBus.clan_disbanded.emit(id, heir)   # Phase 208 — its chests and doors go to its last member
 
 ## Remove `target` from the actor's clan. The founder is never kicked, and an actor kicks only members ranked
 ## below them (an elder cannot kick an elder).

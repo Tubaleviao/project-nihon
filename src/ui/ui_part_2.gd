@@ -221,6 +221,12 @@ func _build_clan_content() -> Control:
 	sl.clan_panel = panel
 	return panel
 
+## Phase 208 — the chest window: what the open chest holds, put and take, and its access mode for an owner.
+func _build_chest_content() -> Control:
+	var panel = preload("res://src/ui/chest_panel.gd").new()
+	sl.chest_panel = panel
+	return panel
+
 ## Phase 182 — the Admin window: weather, time, speed, flying and healing, through the chat commands.
 func _build_admin_content() -> Control:
 	return AdminPanelScript.new()

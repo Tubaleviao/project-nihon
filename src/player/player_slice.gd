@@ -489,6 +489,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	# X key → work the nearest body with the tool in hand; Z key → carry it, or put the carried one down.
 	if event is InputEventKey and event.pressed and not event.echo and (event.keycode == KEY_X or event.keycode == KEY_Z):
 		_try_carcass(event.keycode == KEY_X)
+	# Phase 208 — U uses the nearest chest or door, Shift+U picks its lock, Ctrl+U hits it (the host finds which).
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_U and _alive:
+		GameBus.chest_intent.emit("pick" if event.shift_pressed else ("hit" if event.ctrl_pressed else "use"), {}, "")
 	# E key → toggle all equipment on/off (inspect the naked body under the gear).
 	if event is InputEventKey and event.pressed and event.keycode == KEY_E:
 		GameBus.character_equipment_toggle_requested.emit()
@@ -1360,7 +1363,6 @@ func _place_station() -> void:
 		if why != "":
 			_station_label.text += "  (%s)" % I18n.reason_text(why)
 
-
 ## Where a station would go: on top of the aimed terrain block when the aimed
 ## face points up, else at the player's feet.
 func _station_target() -> Vector3:
@@ -1369,7 +1371,6 @@ func _station_target() -> Vector3:
 	var pos := get_position()
 	pos.y -= 0.4   # feet (-0.9) plus the half-height lift the aimed branch uses
 	return pos
-
 
 ## Keep the translucent placement ghost on the current target while the preview
 ## is toggled on (N).
@@ -1386,7 +1387,6 @@ func _update_station_preview() -> void:
 		return
 	station_slice.show_preview(stype, _station_target())
 
-
 ## Ask to tame the nearest creature within TAME_RANGE (Phase 35). The request goes
 ## on the bus and TamingSlice decides: it owns the fabric rules, the offering
 ## consumed from the tamer's inventory, the granted flag and the companion
@@ -1399,7 +1399,6 @@ func _try_tame() -> void:
 	if iid == "":
 		return
 	GameBus.tame_requested.emit(iid)
-
 
 ## True unless `item` is durable and every copy is at 0 durability.
 static func _has_usable_copy(durability: Dictionary, item: String) -> bool:

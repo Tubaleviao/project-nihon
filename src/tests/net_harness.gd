@@ -204,6 +204,7 @@ static func steps() -> Array:
 		{ "name": "create_character", "compare": true },
 		{ "name": "world_regen_synced", "compare": true },
 		{ "name": "structure_damage", "compare": true },
+		{ "name": "chest_take_refused", "compare": true },
 		{ "name": "self_respawn", "compare": true },
 	]
 
@@ -454,6 +455,7 @@ func run(root: Node, role: String) -> void:
 	await _step_create_character()
 	await _step_world_regen_synced()
 	await _step_structure_damage()
+	await _step_chest_take_refused()
 	await _step_self_respawn()
 	_finish()
 
@@ -2840,6 +2842,55 @@ func _step_structure_damage() -> void:
 	GameBus.block_changed.disconnect(_on_structure_edit)
 	var ok: bool = built and hit_seen and refused
 	_report("structure_damage", verdict(ok, true), "damage-seen-place-refused" if ok else "built%d-try%d-hit%d-refused%d" % [int(built), int(has_try), int(hit_seen), int(refused)])
+
+## Phase 208 — the host stands a chest of its own clan (the client is not in it) at the client's feet, holding five
+## Thornwood. The client uses it and asks to take one: both are refused, the chest still holds five, the
+## client's pack gains nothing and it was never sent a view of the chest.
+const CHEST_ITEM := "Thornwood"
+func _step_chest_take_refused() -> void:
+	await _await_settle(1.0 * _time_scale)
+	if _role == "host":
+		var seen: Array = []
+		var on_resolved := func(pid: String, action: String, ok: bool, _reason: String) -> void: seen.append([pid, action, ok])
+		GameBus.chest_resolved.connect(on_resolved)
+		var peer := _peer_id()
+		var bound := _live_bound_id()
+		var pack_before: int = _root._registry.get_inventory(bound).get_item_count(CHEST_ITEM)
+		var got_pos: bool = await _await_until(func(): return not _root._networking.get_last_known_exact(peer).is_empty(), _step_timeout())
+		var at: Variant = _root._chest_wiring.player_pos(bound) if got_pos else null
+		# A clan with members: a memberless clan's chest is abandoned and open to anyone (`ChestSlice._abandoned`).
+		var local: String = _root._registry.local_player_id
+		if _root._clans.clan_of(local) == "":
+			_root._clans.found(local, "Chestkeepers")
+		var clan: String = _root._clans.clan_of(local)
+		var id := ""
+		if at is Vector3 and clan != "" and _root._clans.clan_of(bound) != clan:
+			_root._chest_wiring._migrating = true   # a station the host stands up itself, given straight to the clan
+			id = _root._station.place_station("chest", _root._station.snap_to_grid(at))
+			_root._chest_wiring._migrating = false
+			_root._chests.register_clan_chest(id, "chest", _root._station.snap_to_grid(at), clan, { CHEST_ITEM: 5 })
+		var took: bool = await _await_until(func():
+			return seen.any(func(e: Array) -> bool: return str(e[0]) == bound and str(e[1]) == "take"), _step_timeout() * 2.0)
+		await _await_settle(0.5)
+		var refused: bool = took and not seen.any(func(e: Array) -> bool: return str(e[0]) == bound and bool(e[2]))
+		var unchanged: bool = id != "" and _root._chests.items_of(id) == { CHEST_ITEM: 5 }
+		var pack_same: bool = _root._registry.get_inventory(bound).get_item_count(CHEST_ITEM) == pack_before
+		GameBus.chest_resolved.disconnect(on_resolved)
+		if id != "":
+			_root._station.remove_station(id)
+		var ok: bool = refused and unchanged and pack_same
+		_report("chest_take_refused", verdict(ok, true), "take-refused-chest-unchanged" if ok else "placed%d-took%d-refused%d-unchanged%d-pack%d" % [int(id != ""), int(took), int(refused), int(unchanged), int(pack_same)])
+		return
+	var before: int = _root._inventory.get_item_count(CHEST_ITEM)
+	await _await_settle(2.0 * _time_scale)
+	GameBus.chest_intent.emit("use", {}, "")
+	await _await_settle(0.6)
+	GameBus.chest_intent.emit("take", { "item": CHEST_ITEM, "qty": 1 }, "")
+	await _await_settle(2.5 * _time_scale)
+	var pack_same: bool = _root._inventory.get_item_count(CHEST_ITEM) == before
+	var no_view: bool = _root._chest_wiring.view().is_empty()
+	var ok: bool = pack_same and no_view
+	_report("chest_take_refused", verdict(ok, true), "take-refused-chest-unchanged" if ok else "pack%d-view%d" % [int(pack_same), int(no_view)])
 
 ## Phase 205 — the host sends the client 24 m east of where it stood; the host walls that spot in with its own
 ## structure (a ring of Ashite columns two tiles out). The client sends `/respawn`: it dies by its own hand and

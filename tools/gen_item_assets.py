@@ -71,6 +71,7 @@ ARCHETYPE_BOUNDS = {
     "plank": (0.14, 0.06, 0.60), "block": (0.34, 0.34, 0.34), "orb": (0.25, 0.30, 0.25),
     "tablet": (0.34, 0.44, 0.10), "potion": (0.18, 0.30, 0.18), "rations": (0.22, 0.12, 0.18),
     "hearth": (0.70, 0.30, 0.70), "waystone": (0.50, 1.20, 0.40), "bed": (0.60, 0.40, 1.00),
+    "chest": (0.80, 0.60, 0.70), "door": (0.90, 2.00, 0.16), "lockpick": (0.04, 0.22, 0.04),
 }
 
 
@@ -340,13 +341,29 @@ def _bed(rng):
     return {"frame": frame, "mattress": prism(1, 0.2, 0.28, (0.04, 0), (0.38, 0.23))}
 
 
+def _chest(rng):
+    band = prism(1, 0.46, 0.52, (0, 0), (0.29, 0.39)) + prism(2, 0.28, 0.31, (0, 0.38), (0.05, 0.06))
+    return {"box": prism(1, 0.0, 0.46, (0, 0), (0.28, 0.38)), "band": band}
+
+
+def _door(rng):
+    hinge = prism(1, 0.3, 0.4, (0, -0.41), (0.05, 0.02)) + prism(1, 1.5, 1.6, (0, -0.41), (0.05, 0.02)) \
+        + prism(1, 0.9, 1.0, (0.06, 0.32), (0.02, 0.03))
+    return {"panel": prism(1, 0.0, 1.9, (0, 0), (0.035, 0.4)), "hinge": hinge}
+
+
+def _lockpick(rng):
+    return {"grip": cylinder(1, -0.06, 0.03, (0, 0), 0.012, n=6),
+            "pin": prism(1, 0.03, 0.14, (0, 0), (0.002, 0.003)) + prism(2, -0.002, 0.012, (0, 0.145), (0.002, 0.006))}
+
+
 ARCHETYPES = {
     "pick": _pick, "axe": _axe, "sword": _blade_weapon(0.58), "longsword": _blade_weapon(0.9),
     "knife": _knife, "saw": _saw, "bow": _bow,
     "shield": _shield, "helmet": _helmet, "chestplate": _chestplate, "cloak": _cloak, "ingot": _ingot,
     "shard": _shard, "dust": _dust, "plank": _plank, "block": _block, "orb": _orb, "tablet": _tablet,
     "potion": _potion, "rations": _rations, "hearth": _hearth, "waystone": _waystone,
-    "bed": _bed,
+    "bed": _bed, "chest": _chest, "door": _door, "lockpick": _lockpick,
 }
 
 

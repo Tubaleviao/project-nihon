@@ -17,7 +17,6 @@ const SINGLE_KINDS := ["build", "dismantle", "repair", "lockpick"]
 ## and on an entry here that gained one, so wiring a row means removing it from this list.
 const UNWIRED := {
 	"gather.plant": "no runtime forage action exists yet",
-	"lockpick": "Phase 208 adds locks",
 }
 
 static func _res() -> Resource:

@@ -138,6 +138,8 @@ func collect_save_job(incremental: bool) -> Dictionary:
 		"clans":           root._clans.to_data() if root._clans != null else {},
 		# Phase 205 — the structure index (world format 4): who owns each placed block and what it has left.
 		"structures":      root._structures.to_data() if root._structures != null else {},
+		# Phase 208 — chests and doors (world format 5). A record without them turns stockpiles into clan chests.
+		"chests":          root._chest_wiring.to_data(),
 		# Phase 161 — the bodies kills left, with the time each has left.
 		"carcasses":       root._carcass.to_data() if root._carcass != null else {},
 		"weather":         root._weather.to_data() if root._weather != null else [],
@@ -503,6 +505,7 @@ func load_world_records() -> void:
 						int(root._loaded_world.get("version", PersistenceSlice.LEGACY_WORLD_FORMAT_VERSION)), PersistenceSlice.WORLD_FORMAT_VERSION])
 		if root._structures != null:
 			root._structures.from_data(root._loaded_world.get("structures", {}), downtime_hours(root._loaded_world))
+		root._chest_wiring.load_record(root._loaded_world)
 		if root._carcass != null:
 			root._carcass.from_data(root._loaded_world.get("carcasses", {}))
 		if root._waystones != null:
