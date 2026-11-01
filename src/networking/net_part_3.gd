@@ -7,6 +7,13 @@ const MAX_REST_HEAL := 1000.0
 
 func _init(slice: Node) -> void:
 	sl = slice
+	GameBus.block_damaged.connect(_on_block_damaged)
+
+## Phase 205 — host → clients in range: a hit left a structure block standing at `fraction` of its durability.
+func _on_block_damaged(position: Vector3, fraction: float) -> void:
+	if sl._role != sl.Role.HOST:
+		return
+	sl._broadcast_aoi({ "type": "block_damaged", "position": sl.WorldPos.to_wire(position), "fraction": fraction }, position)
 
 ## Start an authoritative ENet server. Sets the slice to HOST role.
 ## Prints one boot line on success (the same line a dedicated server and a
@@ -224,6 +231,10 @@ func _route_h2c(payload: Dictionary) -> void:
 				sl._vec3(payload.get("normal", [0, 1, 0])),
 				str(payload.get("material", ""))
 			)
+		"block_damaged":
+			var fraction: Variant = payload.get("fraction", 0.0)
+			if (fraction is float or fraction is int) and is_finite(float(fraction)):
+				GameBus.block_damaged.emit(sl._vec3(payload.get("position", [])), clampf(float(fraction), 0.0, 1.0))
 		"tree_chopped":
 			GameBus.tree_chopped.emit(
 				str(payload.get("tree_id", "")),

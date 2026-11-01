@@ -243,7 +243,7 @@ func place_from_snapshot(own: Variant) -> void:
 			if not root._client_respawn_point_set:
 				# Only the first snapshot carries the placement; later AOI re-scoped snapshots
 				# carry wherever the player has since walked, which is not a spawn point.
-				root._player.set_respawn_world_pos(root.client_respawn_point(own, root._player.get_world_pos()))
+				root._player.set_respawn_world_pos(client_respawn_point(own, root._player.get_world_pos()))
 				root._client_respawn_point_set = true
 		elif (arr is Array and not (arr as Array).is_empty()) or arr is Dictionary:
 			# Phase 122 — a position that is not a valid wire position (forged, corrupt or from a newer
@@ -382,3 +382,15 @@ func on_world_snapshot_received(data: Dictionary) -> void:
 # ---------------------------------------------------------------------------
 # Phase 33 — authoritative persistence lifecycle
 # ---------------------------------------------------------------------------
+
+## Phase 66 — the respawn point of a client from its handshake `player` block, as an exact
+## `{chunk, local}`: the host's recorded spawn when it sent a valid one, else where the body stands.
+static func client_respawn_point(own: Dictionary, standing: Dictionary) -> Dictionary:
+	var sp: Variant = own.get("spawn", null)
+	if sp is Dictionary and WorldPos.is_wire(sp):
+		return PlayerRegistry.canonical_world_pos(WorldPos.pos_from_wire(sp))
+	if sp is Array and WorldPos.is_wire(sp):
+		# A legacy `[x, y, z]` spawn: no exact chunk to keep.
+		var v: Vector3 = WorldPos.from_wire(sp, Vector3.ZERO)
+		return PlayerRegistry.canonical_world_pos(WorldPos.from_world(v.x, v.y, v.z))
+	return standing

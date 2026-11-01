@@ -78,7 +78,6 @@ func _test_labour_bonus() -> void:
 	var rig := _rig()
 	var s: SettlementSlice = rig["s"]
 	var reg: PlayerRegistry = rig["reg"]
-	assert_true(reg.get_inventory("p1").add_item("Hearth", 1), "hearth")
 	assert_eq(s.found("p1", "Oak", Vector2(10.0, 10.0)), "", "founded")
 	assert_eq(s.invite("p1", "p2"), "", "invite")
 	assert_eq(s.join("p2", "settlement_1"), "", "join")
@@ -99,7 +98,6 @@ func _test_views() -> void:
 	var rig := _rig()
 	var s: SettlementSlice = rig["s"]
 	var reg: PlayerRegistry = rig["reg"]
-	assert_true(reg.get_inventory("p1").add_item("Hearth", 1), "hearth")
 	assert_eq(s.found("p1", "Oak", Vector2(10.0, 10.0)), "", "founded")
 	reg.record_skill("p1", "Carpentry", "journeyman")
 	var mine: Dictionary = s.private_view("p1")["mine"]

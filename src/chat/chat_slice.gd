@@ -38,6 +38,9 @@ const VISIBLE_LINES := 8
 ## Seconds a line stays on screen after it arrives, while the input is closed.
 const LINE_LIFETIME := 12.0
 const KILL_DAMAGE := PlayerRules.MAX_HP * 100.0
+## Phase 205 — the attacker id of a `/respawn` death.
+const SELF_KILL := "self"
+const StructureRules := preload("res://src/structure/structure_rules.gd")
 ## Phase 101 — a per-player token bucket on plain chat (Phase 115: an admin's commands do not spend it): `CHAT_BURST` lines at once, refilling at
 ## `CHAT_LINES_PER_SEC`. A refused line is dropped and counted; the player hears about it at most
 ## once per `SLOW_DOWN_NOTICE_SEC`.
@@ -89,6 +92,8 @@ var _admin_moves: Dictionary = {}
 var _buckets: Dictionary = {}    # player id -> { tokens: float, at: float, notice_at: float }
 ## Phase 204 — player id -> the times of their private messages inside the last `PRIVATE_WINDOW_SEC`.
 var _private_sent: Dictionary = {}
+## Phase 205 — player id -> `now_sec` of their last `/respawn`.
+var _respawn_at: Dictionary = {}
 ## Private messages refused by their per-minute limit since boot.
 var private_rate_refused: int = 0
 var _lines: Array = []           # { channel, sender, text, born }
@@ -237,6 +242,12 @@ func handle_intent(text: String, player_id: String) -> void:
 			_cmd_players(speaker)
 		ChatCommands.MSG_NAME:
 			_cmd_msg(speaker, args)
+		ChatCommands.RESPAWN_NAME:
+			_cmd_respawn(speaker)
+		ChatCommands.BUILDAS_NAME:
+			GameBus.structure_intent.emit("build_as", { "mode": str(args[0]).to_lower() if not args.is_empty() else "" }, speaker)
+		ChatCommands.REPAIR_NAME:
+			GameBus.structure_intent.emit("repair", {}, speaker)
 		"say":
 			_cmd_say(speaker, args)
 		"tp":
@@ -646,6 +657,30 @@ func _send_moves(target: String, speed: float, fly: bool) -> bool:
 	else:
 		_admin_moves[target] = { "speed": speed, "fly": fly }
 	return true
+
+## Phase 205 — `/respawn`: the speaker kills their own character and respawns at their bed or the world spawn
+## by the normal death rules, at most once per `SelfRespawn.cooldownSeconds`, so no structure can trap them.
+func _cmd_respawn(speaker: String) -> void:
+	var now := float(now_sec.call())
+	var wait := float(_respawn_at.get(speaker, -1.0e12)) + StructureRules.respawn_cooldown_sec() - now
+	if wait > 0.0:
+		_reply(speaker, "chat.respawn_wait", [ceili(wait)])
+		return
+	if _is_local(speaker):
+		if player_slice == null:
+			_reply(speaker, "chat.no_body")
+			return
+		player_slice.take_damage(KILL_DAMAGE, SELF_KILL)
+	else:
+		if _peer_of(speaker) <= 1:
+			return
+		GameBus.player_damaged.emit(KILL_DAMAGE, SELF_KILL, speaker)
+	_respawn_at[speaker] = now
+	if _respawn_at.size() > MAX_BUCKETS:
+		for k: String in _respawn_at.keys():
+			if now - float(_respawn_at[k]) >= StructureRules.respawn_cooldown_sec():
+				_respawn_at.erase(k)
+	_reply(speaker, "chat.respawning")
 
 func _cmd_kill(speaker: String, args: Array) -> void:
 	var target := speaker

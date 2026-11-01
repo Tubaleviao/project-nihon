@@ -2184,7 +2184,7 @@ func _test_p148_reason_text() -> void:
 		assert_eq(I18nScript.reason_text("too_close_station:station_0"), "Too close to station_0.", "the placement overlap code")
 		assert_eq(I18nScript.reason_text("no_such_code_zz"), "Refused (no_such_code_zz).", "an unknown code never renders raw-empty")
 		TranslationServer.set_locale("pt_BR")
-		assert_eq(I18nScript.reason_text("inside_claim"), "Dentro da área de um assentamento.", "pt_BR renders the same code")
+		assert_eq(I18nScript.reason_text("not_owner"), "Essa estrutura não é sua.", "pt_BR renders the same code")
 	)
 
 func _test_p148_number_placeholders() -> void:

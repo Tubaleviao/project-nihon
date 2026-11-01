@@ -1,29 +1,24 @@
 extends "res://src/tests/test_support.gd"
-## Phase 140 — settlements at runtime: founding, claims, edits, the stockpile, decay and persistence.
+## Phase 140 — settlements at runtime: members, the stockpile and persistence. Phase 205 removed the claim, the
+## hearth and decay (structures own what is built: structure_tests.gd).
 
 const SettlementSlice := preload("res://src/settlement/settlement_slice.gd")
 
 func register() -> void:
-	_run_test("settlement: founding needs a Hearth and free land", _test_settlement_found)
-	_run_test("settlement: claims never overlap", _test_settlement_no_overlap)
-	_run_test("settlement: an outsider's mine and place are refused", _test_settlement_edit_guard)
+	_run_test("settlement: founding takes no Hearth and claims no land", _test_settlement_found)
+	_run_test("settlement: tiers grow and nothing decays", _test_settlement_tiers_no_decay)
+	_run_test("settlement: a saved hearth is removed and handed back to its founder", _test_hearth_returned)
 	_run_test("settlement: stockpile keeps totals and role limits", _test_settlement_stockpile)
 	_run_test("settlement: invite, join, roles and leaving", _test_settlement_membership)
-	_run_test("settlement: tiers grow, an abandoned claim decays on the fabric schedule", _test_settlement_decay)
 	_run_test("settlement: save and load round-trips, malformed data is dropped", _test_settlement_persistence)
 	_run_test("settlement: intents resolve through the bus and refuse the unknown", _test_settlement_intents)
 	_run_test("settlement: research draws from the stockpile", _test_settlement_research)
 	_run_test("settlement: a client intent binds the connection's player", _test_settlement_wire)
 	_run_test("settlement: a hearth at x ~ 2e7 keeps its exact position through save and load", _test_phase147_hearth_exact)
-	_run_test("settlement: edit_blocker is a pure query, note_edit records the edit", _test_phase147_edit_blocker_pure)
-	_run_test("settlement: a remote member's mine counts as claim activity", _test_remote_edit_is_activity)
 	_run_test("settlement: invites lapse and can be withdrawn", _test_invite_lapse_uninvite)
-	_run_test("settlement: a decayed claim frees its hearth station", _test_decay_frees_hearth)
 	_run_test("settlement: the rate limit is monotonic and forgets a player who left", _test_rate_limit_monotonic)
-	_run_test("settlement: an outsider's chop inside a claim is refused", _test_chop_claim_guard)
 	_run_test("settlement: the panel keeps its Join buttons while the invites are unchanged", _test_panel_invites_kept)
 	_run_test("settlement: loading keeps ids unique and defaults last_active to now", _test_phase147_from_data)
-	_run_test("settlement: a decaying claim announces its shrinking radius", _test_phase147_decay_push)
 	_run_test("settlement: claims count toward colonization", _test_settlement_colonization)
 	_run_test("settlement: a default name is a number the client renders, from a monotonic counter", _test_phase148_default_name)
 	_run_test("station: placement refusals are reason codes with catalog text", _test_phase148_placement_codes)
@@ -53,7 +48,6 @@ func _give(rig: Dictionary, pid: String, item: String, n: int) -> void:
 	assert_true(rig["reg"].get_inventory(pid).add_item(item, n), "%s gets %d %s" % [pid, n, item])
 
 func _found(rig: Dictionary) -> String:
-	_give(rig, "p1", "Hearth", 1)
 	var s: SettlementSlice = rig["s"]
 	assert_eq(s.found("p1", "Oak", Vector2(10.0, 10.0)), "", "p1 founds")
 	return "settlement_1"
@@ -61,72 +55,77 @@ func _found(rig: Dictionary) -> String:
 func _test_settlement_found() -> void:
 	var rig := _rig()
 	var s: SettlementSlice = rig["s"]
-	assert_eq(s.found("p1", "Oak", Vector2(10.0, 10.0)), "no_hearth", "no Hearth item: refused")
-	assert_eq(s.count(), 0, "nothing was founded")
-	_give(rig, "p1", "Hearth", 1)
-	assert_eq(s.found("p1", "  ", Vector2(10.0, 10.0)), "bad_args", "a blank name is refused before the item is spent")
-	assert_eq(rig["reg"].get_inventory("p1").get_item_count("Hearth"), 1, "the refused founding kept the Hearth")
-	assert_eq(s.found("p1", "Oak", Vector2(10.0, 10.0)), "", "a Hearth on free land founds")
-	assert_eq(rig["reg"].get_inventory("p1").get_item_count("Hearth"), 0, "the Hearth was consumed")
+	assert_eq(s.found("p1", "  ", Vector2(10.0, 10.0)), "bad_args", "a blank name is refused")
+	assert_eq(s.found("p1", "Oak", Vector2(10.0, 10.0)), "", "the host founds with no Hearth item")
 	assert_eq(s.role_of("p1", "settlement_1"), "founder", "the founder is a member")
 	assert_eq(s.get_settlement("settlement_1")["status"], "founded", "a new settlement is founded-tier")
-	assert_eq(s.claim_radius("settlement_1"), 24.0, "the founded radius comes from the fabric")
-	_give(rig, "p1", "Hearth", 1)
 	assert_eq(s.found("p1", "Two", Vector2(5000.0, 0.0)), "already_member", "one settlement per player")
+	assert_eq(s.found("p2", "Near", Vector2(11.0, 10.0)), "", "a second site right beside the first is fine: nothing is claimed")
+	for k: String in ["claim_radius", "claim_at", "edit_blocker", "note_edit", "at_research_site", "project_effect", "founding_blocker", "note_activity"]:
+		assert_false(s.has_method(k), "no %s since Phase 205" % k)
+	for k: String in ["decayRadiusPerDay", "minSeparation"]:
+		assert_false(s.rules().has(k), "the rules carry no %s" % k)
+	for t: String in SettlementSlice.TIER_ORDER:
+		assert_false((s.rules()["tiers"][t] as Dictionary).has("claimRadius"), "%s has no claim radius" % t)
+	var seen: Array = []
+	var cb := func(pid: String, action: String, ok: bool, reason: String) -> void: seen.append([pid, action, ok, reason])
+	GameBus.settlement_resolved.connect(cb)
+	GameBus.settlement_intent.emit("found", { "name": "Oak" }, "p3")
+	assert_eq(seen.back(), ["p3", "found", false, "unknown_action"], "no intent founds a settlement")
+	GameBus.settlement_resolved.disconnect(cb)
 	_free_rig(rig)
 
-func _test_settlement_no_overlap() -> void:
+func _test_settlement_tiers_no_decay() -> void:
 	var rig := _rig()
 	var s: SettlementSlice = rig["s"]
 	_found(rig)
-	var sep: float = float(s.rules()["minSeparation"])
-	_give(rig, "p2", "Hearth", 1)
-	assert_eq(s.found("p2", "Near", Vector2(10.0 + sep - 1.0, 10.0)), "too_close", "a hearth inside the separation is refused")
-	assert_eq(rig["reg"].get_inventory("p2").get_item_count("Hearth"), 1, "the refused hearth is kept")
-	assert_eq(s.found("p2", "Far", Vector2(10.0 + sep, 10.0)), "", "a hearth at the separation is fine")
-	var top: float = float(s.rules()["tiers"]["town"]["claimRadius"])
-	assert_true(sep > 2.0 * top, "even two top-tier claims cannot overlap")
-	assert_eq(s.claim_at(Vector2(10.0 + sep, 10.0)), "settlement_2", "claim_at names the covering claim")
+	s.invite("p1", "p2")
+	s.join("p2", "settlement_1")
+	s.invite("p1", "p3")
+	s.join("p3", "settlement_1")
+	var day := SettlementSlice.DAY_SEC
+	rig["now"][0] += 3.0 * day + 1.0
+	assert_true(s.tick(rig["now"][0]), "growing is a change")
+	assert_eq(s.get_settlement("settlement_1")["status"], "growing", "three members and three days make it growing")
+	rig["now"][0] += 400.0 * day
+	assert_false(s.tick(rig["now"][0]), "a year with no one there changes nothing")
+	assert_eq(s.get_settlement("settlement_1")["status"], "growing", "nothing is abandoned")
+	assert_eq(s.count(), 1, "or decays away")
+	var data: Dictionary = s.to_data()
+	data["settlements"]["settlement_1"]["status"] = "abandoned"
+	s.from_data(data)
+	assert_eq(s.get_settlement("settlement_1")["status"], "founded", "an abandoned settlement of an older save is founded again")
 	_free_rig(rig)
 
-func _test_settlement_edit_guard() -> void:
+func _test_hearth_returned() -> void:
 	var rig := _rig()
 	var s: SettlementSlice = rig["s"]
-	_found(rig)
-	assert_eq(s.edit_blocker("p1", Vector2(20.0, 10.0)), "", "the founder builds inside the claim")
-	assert_eq(s.edit_blocker("p2", Vector2(20.0, 10.0)), "no_permission", "an outsider is refused inside the claim")
-	assert_eq(s.edit_blocker("p2", Vector2(500.0, 500.0)), "", "free land is free")
-	# The same guard on the voxel slice: an outsider's mine and place change nothing and spend nothing.
-	var v := _make_voxel()
-	v.is_authoritative = true
-	v.player_registry = rig["reg"]
-	v.claim_guard = Callable(s, "edit_blocker")
-	_give(rig, "p2", "Ferrite", 3)
-	var mined := v.mine_block(Vector3(10.5, 2.0, 10.5), Vector3.UP, "p2")
-	assert_false(bool(mined["success"]), "an outsider's mine inside the claim is refused")
-	assert_false(v.place_block(Vector3(10.5, 2.0, 10.5), Vector3.UP, "Ferrite", "p2"), "an outsider's place inside the claim is refused")
-	assert_eq(rig["reg"].get_inventory("p2").get_item_count("Ferrite"), 3, "a refused place spends nothing")
-	var own := v.mine_block(Vector3(10.5, 2.0, 10.5), Vector3.UP, "p1")
-	assert_true(bool(own["success"]), "the founder mines the same block")
-	_give(rig, "p1", "Ferrite", 1)
-	assert_true(v.place_block(Vector3(10.5, 2.0, 10.5), Vector3.UP, "Ferrite", "p1"), "the founder places inside the claim")
-	var far := v.mine_block(Vector3(30.5, 2.0, 30.5), Vector3.UP, "p2")
-	assert_true(bool(far["success"]), "the outsider mines outside the claim")
-	# A station follows the same rule, and a hearth inside the separation is refused.
-	var st := StationSlice.new()
-	add_child(st)
-	st.claim_guard = Callable(s, "edit_blocker")
-	st.settlement_slice = s
-	assert_true(st.placement_blocker("forge", Vector3(15.5, 2.0, 10.5), "p2") != "", "an outsider's station inside the claim is refused")
-	assert_eq(st.placement_blocker("forge", Vector3(15.5, 2.0, 10.5), "p1"), "", "the founder's station is fine")
-	assert_true(st.placement_blocker("hearth", Vector3(100.5, 2.0, 10.5), "p2") != "", "a hearth near a settlement is refused")
-	assert_true(st.placement_blocker("hearth", Vector3(5000.5, 2.0, 10.5), "p1") != "", "a member's second hearth is refused, so its item is never lost")
-	assert_eq(st.placement_item("hearth"), "Hearth", "placing a hearth costs a Hearth")
-	assert_true(st.placeable_station_types().has("hearth"), "the hearth is a placeable station type")
-	st.free()
-	v.free()
+	var released: Array = []
+	s.release_station = func(sid: String) -> void: released.append(sid)
+	var old := { "format": 2, "next_id": 2, "settlements": { "settlement_1": { "name": "Oak", "founder": "p1",
+		"members": { "p1": "founder", "p2": "member" }, "hx": 10.0, "hz": 10.0, "hearth_station": "station_7" } } }
+	s.from_data(JSON.parse_string(JSON.stringify(old)))
+	assert_eq(released, ["station_7"], "the saved hearth station is removed on load")
+	assert_eq(s.hearth_returns(), { "p1": 1 }, "its founder is owed a Hearth")
+	assert_false(s.get_settlement("settlement_1").has("hearth_station"), "the settlement keeps no hearth")
+	var again: Dictionary = JSON.parse_string(JSON.stringify(s.to_data()))
+	var s2 := SettlementSlice.new()
+	add_child(s2)
+	var released2: Array = []
+	s2.release_station = func(sid: String) -> void: released2.append(sid)
+	s2.from_data(again)
+	assert_eq(released2, [], "a re-saved record removes nothing twice")
+	assert_eq(s2.hearth_returns(), { "p1": 1 }, "and still owes the Hearth until it is handed over")
+	s2.free()
+	var inv: Node = rig["reg"].get_inventory("p1")
+	s.tick(rig["now"][0])
+	assert_eq(inv.get_item_count("Hearth"), 0, "an offline founder is not handed it")
+	assert_eq(s.hearth_returns(), { "p1": 1 }, "so it stays owed")
+	rig["reg"]._peer_ids[5] = "p1"   # p1 connects
+	s.tick(rig["now"][0])
+	assert_eq(inv.get_item_count("Hearth"), 1, "once online the founder holds the Hearth")
+	assert_true(s.hearth_returns().is_empty(), "and nothing is owed")
 	_free_rig(rig)
-
 func _test_settlement_stockpile() -> void:
 	var rig := _rig()
 	var s: SettlementSlice = rig["s"]
@@ -151,7 +150,6 @@ func _test_settlement_stockpile() -> void:
 	assert_eq(s.withdraw("p2", "AethermiteDust", 50), "", "a withdraw within the limit lands")
 	assert_eq(s.withdraw("p2", "AethermiteDust", 1), "over_limit", "the limit is per day")
 	rig["now"][0] += 86400.0 * 1.5
-	s.note_activity("p1")
 	assert_eq(s.withdraw("p2", "AethermiteDust", 20), "", "the next day the limit resets")
 	assert_eq(rig["reg"].get_inventory("p2").get_item_count("AethermiteDust"), 75, "the member holds what was drawn")
 	assert_eq(int(s.stock_of("settlement_1")["AethermiteDust"]) + 75 + inv1.get_item_count("AethermiteDust"), 305 + 0, "item totals are preserved")
@@ -164,10 +162,10 @@ func _test_settlement_stockpile() -> void:
 	assert_eq(s.deposit("p1", "AethermiteDust", 2000 - held), "", "a deposit up to capacity lands")
 	assert_eq(s.deposit("p1", "AethermiteDust", held + 1), "full", "a deposit beyond capacity is refused whole")
 	assert_true(s.used_stacks("settlement_1") <= cap, "the stockpile never exceeds its capacity")
-	# Not in the claim.
+	# Away from the site.
 	rig["where"]["p1"] = Vector2(900.0, 900.0)
-	assert_eq(s.deposit("p1", "AethermiteDust", 1), "not_in_claim", "a deposit needs the claim")
-	assert_eq(s.withdraw("p1", "AethermiteDust", 1), "not_in_claim", "a withdraw needs the claim")
+	assert_eq(s.deposit("p1", "AethermiteDust", 1), "too_far", "a deposit is made at the site")
+	assert_eq(s.withdraw("p1", "AethermiteDust", 1), "too_far", "and so is a withdraw")
 	assert_eq(s.deposit("p3", "AethermiteDust", 1), "not_member", "an outsider cannot deposit")
 	_free_rig(rig)
 
@@ -189,56 +187,10 @@ func _test_settlement_membership() -> void:
 	assert_eq(s.join("p3", "settlement_1"), "", "p3 joins")
 	assert_eq(s.set_role("p2", "p3", "elder"), "no_permission", "an elder cannot make elders")
 	assert_eq(s.set_role("p2", "p3", "guest"), "", "an elder makes a guest")
-	assert_eq(s.edit_blocker("p3", Vector2(15.0, 10.0)), "no_permission", "a guest cannot build in the claim")
 	assert_eq(s.withdraw("p3", "Ferrite", 1), "no_permission", "a guest cannot take")
 	assert_eq(s.leave("p1"), "founder_locked", "the founder cannot leave")
 	assert_eq(s.leave("p3"), "", "a member leaves")
 	assert_eq(s.settlement_of("p3"), "", "and belongs nowhere")
-	_free_rig(rig)
-
-func _test_settlement_decay() -> void:
-	var rig := _rig()
-	var s: SettlementSlice = rig["s"]
-	_found(rig)
-	var day := 86400.0
-	var t0: float = rig["now"][0]
-	rig["now"][0] = t0 + day
-	s.tick(rig["now"][0])
-	s.invite("p1", "p2")
-	s.join("p2", "settlement_1")
-	s.invite("p1", "p3")
-	s.join("p3", "settlement_1")
-	rig["now"][0] = t0 + 4.0 * day
-	s.note_activity("p1")
-	s.tick(rig["now"][0])
-	assert_eq(s.get_settlement("settlement_1")["status"], "growing", "three members and three days grow the settlement")
-	assert_eq(s.claim_radius("settlement_1"), 48.0, "the claim grew with the tier")
-	assert_eq(s.capacity_stacks("settlement_1"), 60, "so did the stockpile")
-	s.leave("p3")
-	s.tick(rig["now"][0])
-	assert_eq(s.get_settlement("settlement_1")["status"], "growing", "a tier is never lost to a leaver")
-	# Abandon: no activity for abandonAfterDays.
-	var after: float = rig["now"][0] + float(s.rules()["abandonAfterDays"]) * day
-	rig["now"][0] = after
-	s.tick(after)
-	assert_eq(s.get_settlement("settlement_1")["status"], "abandoned", "no activity for the fabric's days abandons it")
-	assert_eq(s.claim_radius("settlement_1"), 48.0, "the claim starts decaying from its radius")
-	rig["now"][0] = after + 5.0 * day
-	assert_eq(s.claim_radius("settlement_1"), 48.0 - 5.0 * float(s.rules()["decayRadiusPerDay"]), "the claim shrinks by the fabric rate per day")
-	assert_eq(s.edit_blocker("p3", Vector2(10.0 + 45.0, 10.0)), "", "decayed land is free to anyone")
-	# Return before the claim is gone: reclaim.
-	s.note_activity("p1")
-	assert_eq(s.get_settlement("settlement_1")["status"], "founded", "a member's return reclaims it")
-	# Abandon again and let it decay fully: the land is free and the settlement is gone.
-	var again: float = rig["now"][0] + float(s.rules()["abandonAfterDays"]) * day
-	rig["now"][0] = again
-	s.tick(again)
-	assert_eq(s.get_settlement("settlement_1")["status"], "abandoned", "abandoned again")
-	rig["now"][0] = again + 100.0 * day
-	assert_eq(s.claim_radius("settlement_1"), 0.0, "the claim decays to nothing")
-	s.tick(rig["now"][0])
-	assert_eq(s.count(), 0, "a fully decayed settlement frees its land")
-	assert_eq(s.claim_at(Vector2(10.0, 10.0)), "", "no claim remains")
 	_free_rig(rig)
 
 func _test_settlement_persistence() -> void:
@@ -256,8 +208,7 @@ func _test_settlement_persistence() -> void:
 	assert_eq(s2.count(), 1, "the settlement survives a save and load")
 	assert_eq(s2.stock_of("settlement_1"), { "AethermiteDust": 40 }, "its stockpile too")
 	assert_eq(s2.role_of("p2", "settlement_1"), "member", "and its roles")
-	assert_eq(s2.claim_radius("settlement_1"), 24.0, "and its claim")
-	assert_eq(s2.found("p3", "Next", Vector2(5000.0, 0.0), false), "", "ids continue after a load")
+	assert_eq(s2.found("p3", "Next", Vector2(5000.0, 0.0)), "", "ids continue after a load")
 	assert_true(s2.ids().has("settlement_2"), "a new settlement does not reuse an id")
 	s2.from_data({ "settlements": { "x": "junk", "y": { "members": {}, "hx": 1.0, "hz": 1.0 }, "z": { "members": { "a": "boss" }, "hx": INF, "hz": 0.0 } } })
 	assert_eq(s2.count(), 0, "malformed entries are dropped")
@@ -276,13 +227,10 @@ func _test_settlement_intents() -> void:
 	var seen: Array = []
 	var cb := func(pid: String, action: String, ok: bool, reason: String) -> void: seen.append([pid, action, ok, reason])
 	GameBus.settlement_resolved.connect(cb)
-	GameBus.settlement_intent.emit("found", { "name": "Oak" }, "p1")
-	assert_eq(seen.back(), ["p1", "found", false, "no_hearth"], "an intent without a Hearth is refused with its code")
-	_give(rig, "p1", "Hearth", 1)
-	rig["now"][0] += 1.0
-	GameBus.settlement_intent.emit("found", { "name": "Oak" }, "p1")
-	assert_eq(seen.back(), ["p1", "found", true, ""], "a Hearth founds through the bus")
+	_found(rig)
 	GameBus.settlement_intent.emit("invite", { "target": "p2" }, "p1")
+	assert_eq(seen.back(), ["p1", "invite", true, ""], "an invite resolves through the bus")
+	GameBus.settlement_intent.emit("invite", { "target": "p3" }, "p1")
 	assert_eq(seen.back()[3], "rate_limited", "intents are rate limited per player")
 	rig["now"][0] += 1.0
 	GameBus.settlement_intent.emit("dance", {}, "p1")
@@ -291,7 +239,7 @@ func _test_settlement_intents() -> void:
 	GameBus.settlement_intent.emit("deposit", { "item": "Ferrite", "qty": "lots" }, "p1")
 	assert_eq(seen.back()[3], "bad_args", "a non-numeric quantity is refused")
 	rig["now"][0] += 1.0
-	GameBus.settlement_intent.emit("found", {}, "")
+	GameBus.settlement_intent.emit("leave", {}, "")
 	assert_eq(seen.back()[0], "host", "an empty actor is the local player")
 	s.is_host = false
 	var n := seen.size()
@@ -322,7 +270,7 @@ func _test_settlement_research() -> void:
 	assert_eq(s.research_stock("p1", item), qty, "research sees the stockpile")
 	assert_eq(s.research_stock("p3", item), 0, "an outsider sees nothing")
 	rig["where"]["p1"] = Vector2(900.0, 900.0)
-	assert_eq(s.research_stock("p1", item), 0, "research needs the claim")
+	assert_eq(s.research_stock("p1", item), 0, "research is drawn at the site")
 	assert_false(s.consume_research("p1", { item: qty }), "and so does paying for it")
 	rig["where"]["p1"] = Vector2(10.0, 10.0)
 	assert_false(s.consume_research("p1", { item: qty + 1 }), "paying more than is held is refused whole")
@@ -368,40 +316,18 @@ func _test_settlement_colonization() -> void:
 func _test_phase147_hearth_exact() -> void:
 	var rig := _rig()
 	var s: SettlementSlice = rig["s"]
-	_give(rig, "p1", "Hearth", 1)
 	var far := { "chunk": Vector2i(int(2.0e7 / SettlementSlice.WorldPos.CHUNK_METERS), 5), "local": Vector3(7.3125, 12.5, 0.0625) }
-	assert_eq(s.found("p1", "Far", Vector2(2.0e7, 5.0), true, far), "", "a far hearth is founded")
+	assert_eq(s.found("p1", "Far", Vector2(2.0e7, 5.0), far), "", "a far site is founded")
 	var saved: Dictionary = s.to_data()
 	var fresh := SettlementSlice.new()
 	add_child(fresh)
 	fresh.from_data(saved)
-	var back: Dictionary = fresh.hearth_exact("settlement_1")
-	assert_eq(back["chunk"], far["chunk"], "the hearth chunk survives the save")
+	var back: Dictionary = fresh.site_exact("settlement_1")
+	assert_eq(back["chunk"], far["chunk"], "the site chunk survives the save")
 	assert_true((back["local"] as Vector3).distance_to(far["local"]) < 0.01, "and its local offset is exact to under 1 cm")
 	var want: float = float(far["chunk"].x) * SettlementSlice.WorldPos.CHUNK_METERS + 7.3125
-	assert_true(absf(float(fresh.get_settlement("settlement_1")["hx"]) - want) < 0.01, "the claim centre is a double, not a float32")
+	assert_true(absf(float(fresh.get_settlement("settlement_1")["hx"]) - want) < 0.01, "the site centre is a double, not a float32")
 	fresh.free()
-	_free_rig(rig)
-
-func _test_phase147_edit_blocker_pure() -> void:
-	var rig := _rig()
-	var s: SettlementSlice = rig["s"]
-	_found(rig)
-	s.get_settlement("settlement_1")   # sanity: it exists
-	var t0: float = float(s._settlements["settlement_1"]["last_active"])
-	rig["now"][0] += 500.0
-	var changes := [0]
-	var on_change := func() -> void: changes[0] += 1
-	GameBus.settlements_changed.connect(on_change)
-	assert_eq(s.edit_blocker("p1", Vector2(20.0, 10.0)), "", "the founder may edit inside the claim")
-	assert_eq(s.edit_blocker("p2", Vector2(20.0, 10.0)), "no_permission", "an outsider is refused")
-	assert_eq(float(s._settlements["settlement_1"]["last_active"]), t0, "a preview leaves last_active alone")
-	assert_eq(changes[0], 0, "and emits nothing")
-	s.note_edit("p2", Vector2(20.0, 10.0))
-	assert_eq(float(s._settlements["settlement_1"]["last_active"]), t0, "a refused edit is not activity")
-	s.note_edit("p1", Vector2(20.0, 10.0))
-	assert_eq(float(s._settlements["settlement_1"]["last_active"]), t0 + 500.0, "a successful edit touches the claim")
-	GameBus.settlements_changed.disconnect(on_change)
 	_free_rig(rig)
 
 func _test_phase147_from_data() -> void:
@@ -410,31 +336,16 @@ func _test_phase147_from_data() -> void:
 	s.from_data({ "next_id": 1, "settlements": { "settlement_7": { "name": "Old", "founder": "p1", "members": { "p1": "founder" } } } })
 	assert_eq(s.count(), 1, "the entry loads")
 	assert_eq(float(s._settlements["settlement_7"]["last_active"]), float(rig["now"][0]), "a missing last_active defaults to now, not 0")
-	_give(rig, "p2", "Hearth", 1)
 	assert_eq(s.found("p2", "New", Vector2(5000.0, 0.0)), "", "a new settlement is founded")
 	assert_true(s.get_settlement("settlement_8").size() > 0 and s.get_settlement("settlement_7")["name"] == "Old", "the new id is above every loaded id")
-	_free_rig(rig)
-
-func _test_phase147_decay_push() -> void:
-	var rig := _rig()
-	var s: SettlementSlice = rig["s"]
-	_found(rig)
-	var day := SettlementSlice.DAY_SEC
-	var after: float = rig["now"][0] + float(s.rules()["abandonAfterDays"]) * day
-	rig["now"][0] = after
-	assert_true(s.tick(after), "abandoning is a change")
-	assert_false(s.tick(after), "an unchanged tick is quiet")
-	rig["now"][0] = after + 3.0 * day
-	assert_true(s.tick(rig["now"][0]), "a claim that shrank is announced so clients redraw it")
-	assert_false(s.tick(rig["now"][0]), "and only once")
 	_free_rig(rig)
 
 func _test_phase148_default_name() -> void:
 	var rig := _rig()
 	var s: SettlementSlice = rig["s"]
-	assert_eq(s.found("p1", "", Vector2(10.0, 10.0), false), "bad_args", "a blank manual name is still refused")
-	assert_eq(s.found("p1", "", Vector2(10.0, 10.0), false, {}, true), "", "an auto-named founding is accepted")
-	assert_eq(s.found("p3", "", Vector2(900.0, 900.0), false, {}, true), "", "a second one")
+	assert_eq(s.found("p1", "", Vector2(10.0, 10.0)), "bad_args", "a blank manual name is still refused")
+	assert_eq(s.found("p1", "", Vector2(10.0, 10.0), {}, true), "", "an auto-named founding is accepted")
+	assert_eq(s.found("p3", "", Vector2(900.0, 900.0), {}, true), "", "a second one")
 	var claims: Array = s.public_claims()
 	assert_eq([claims[0]["name"], claims[0]["name_n"], claims[1]["name_n"]], ["", 1, 2], "stored as a number, no host-locale text")
 	TranslationServer.set_locale("pt_BR")
@@ -446,7 +357,7 @@ func _test_phase148_default_name() -> void:
 	var data: Dictionary = s.to_data()
 	(data["settlements"] as Dictionary).erase("settlement_2")
 	s.from_data(data)
-	assert_eq(s.found("p3", "", Vector2(900.0, 900.0), false, {}, true), "", "founding again after the loss")
+	assert_eq(s.found("p3", "", Vector2(900.0, 900.0), {}, true), "", "founding again after the loss")
 	assert_eq(s.public_claims()[1]["name_n"], 3, "takes the next number, not the freed one")
 	_free_rig(rig)
 
@@ -483,24 +394,6 @@ func _test_phase148_join_throttle() -> void:
 	GameBus.system_message.disconnect(cb)
 	chat.free()
 
-func _test_remote_edit_is_activity() -> void:
-	var rig := _rig()
-	var s: SettlementSlice = rig["s"]
-	_found(rig)   # p1 is a remote peer: the rig's local player is "host"
-	var t0: float = float(s._settlements["settlement_1"]["last_active"])
-	rig["now"][0] += 500.0
-	var v := _make_voxel()
-	v.is_authoritative = true
-	v.player_registry = rig["reg"]
-	v.claim_guard = Callable(s, "edit_blocker")
-	v.claim_activity = Callable(s, "note_edit")
-	assert_false(bool(v.mine_block(Vector3(10.5, 2.0, 10.5), Vector3.UP, "p2")["success"]), "an outsider's mine is refused")
-	assert_eq(float(s._settlements["settlement_1"]["last_active"]), t0, "so it is not activity")
-	assert_true(bool(v.mine_block(Vector3(10.5, 2.0, 10.5), Vector3.UP, "p1")["success"]), "the remote founder mines")
-	assert_eq(float(s._settlements["settlement_1"]["last_active"]), t0 + 500.0, "the remote founder's edit touches the claim")
-	v.free()
-	_free_rig(rig)
-
 func _test_invite_lapse_uninvite() -> void:
 	var rig := _rig()
 	var s: SettlementSlice = rig["s"]
@@ -523,27 +416,6 @@ func _test_invite_lapse_uninvite() -> void:
 	assert_eq(s.join("p3", "settlement_1"), "", "a legacy invite loads with a fresh clock")
 	_free_rig(rig)
 
-func _test_decay_frees_hearth() -> void:
-	var rig := _rig()
-	var s: SettlementSlice = rig["s"]
-	_found(rig)
-	s.note_hearth_station("settlement_1", "station_7")
-	var released: Array = []
-	s.release_station = func(sid: String) -> void: released.append(sid)
-	var round_trip: Dictionary = s.to_data()
-	s.from_data(round_trip)
-	s.release_station = func(sid: String) -> void: released.append(sid)
-	assert_eq(str(s._settlements["settlement_1"].get("hearth_station", "")), "station_7", "the hearth station id survives a save")
-	var r: Dictionary = s.rules()
-	rig["now"][0] += float(r["abandonAfterDays"]) * SettlementSlice.DAY_SEC + 1.0
-	s.tick(rig["now"][0])
-	assert_eq(released, [], "abandoned but still decaying: the hearth stands")
-	rig["now"][0] += 1000.0 * SettlementSlice.DAY_SEC
-	s.tick(rig["now"][0])
-	assert_false(s._settlements.has("settlement_1"), "the claim decayed away")
-	assert_eq(released, ["station_7"], "and its hearth station was released with it")
-	_free_rig(rig)
-
 func _test_rate_limit_monotonic() -> void:
 	var rig := _rig()
 	var s: SettlementSlice = rig["s"]
@@ -561,21 +433,6 @@ func _test_rate_limit_monotonic() -> void:
 	mono[0] += 1.0
 	s._resolve("dance", {}, "p2")
 	assert_true(s._last_intent.size() < SettlementSlice.MAX_INTENT_ENTRIES, "old entries are swept past the bound")
-	_free_rig(rig)
-
-func _test_chop_claim_guard() -> void:
-	var rig := _rig()
-	var s: SettlementSlice = rig["s"]
-	_found(rig)
-	var t := _make_tree_slice()
-	t.claim_guard = Callable(s, "edit_blocker")
-	t._spawn("Oak", "Wood", Vector2i(0, 0), 0)
-	var tid: String = t._trees.keys()[0]
-	t._trees[tid]["position"] = Vector3(12.0, 0.0, 10.0)
-	assert_eq(str(t.chop_tree(tid, "p2")["reason"]), "claimed", "an outsider cannot chop inside the claim")
-	assert_eq(str(t._trees[tid]["state"]), "standing", "and the tree stands")
-	assert_true(str(t.chop_tree(tid, "p1")["reason"]) != "claimed", "the founder is not refused by the claim")
-	t.free()
 	_free_rig(rig)
 
 func _test_panel_invites_kept() -> void:

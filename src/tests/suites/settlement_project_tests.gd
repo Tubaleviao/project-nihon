@@ -1,15 +1,15 @@
 extends "res://src/tests/test_support.gd"
 ## Phase 198 — settlement projects at runtime: the rules, contributions and labour, completion and its
-## structure and effects, the growing tier by projects, persistence and the board.
+## structure, the growing tier by projects, persistence and the board.
 
 const SettlementSlice := preload("res://src/settlement/settlement_slice.gd")
 const ProjectRules := preload("res://src/settlement/project_rules.gd")
 
 func register() -> void:
 	_run_test("project rules: contributions are checked, each refusal has its own key", _test_rules_contribution)
-	_run_test("project rules: steps, completion, effects and layouts", _test_rules_shape)
+	_run_test("project rules: steps, completion and layouts", _test_rules_shape)
 	_run_test("project: start, contribute from bag and stockpile, labour with a tool", _test_project_flow)
-	_run_test("project: a completed project places its structure, applies its effect and grows the tier", _test_project_complete)
+	_run_test("project: a completed project places its structure and grows the tier", _test_project_complete)
 	_run_test("project: state survives save and load, a pre-198 world loads with none", _test_project_persistence)
 	_run_test("project: intents resolve through the bus with keyed refusals", _test_project_intents)
 	_run_test("project: every refusal and board string has catalog text, every action fits the wire", _test_project_strings)
@@ -44,7 +44,6 @@ func _give(rig: Dictionary, pid: String, item: String, n: int) -> void:
 ## p1 founds at (10, 10); p2 joins as a member.
 func _village(rig: Dictionary) -> String:
 	var s: SettlementSlice = rig["s"]
-	_give(rig, "p1", "Hearth", 1)
 	assert_eq(s.found("p1", "Oak", Vector2(10.0, 10.0)), "", "p1 founds")
 	assert_eq(s.invite("p1", "p2"), "", "p1 invites p2")
 	assert_eq(s.join("p2", "settlement_1"), "", "p2 joins")
@@ -94,8 +93,8 @@ func _test_rules_shape() -> void:
 	full["work"] = 149.0
 	assert_false(ProjectRules.is_complete(def, full), "a unit of labour short")
 	var done := { "storehouse": { "status": "done" }, "palisade": { "status": "building" } }
-	assert_eq(ProjectRules.effect_total(done, "stockpileCapacity"), 20.0, "a standing storehouse adds 20 stacks")
-	assert_eq(ProjectRules.effect_total(done, "raidDefence"), 0.0, "an unfinished palisade defends nothing")
+	# Phase 205 — projects have no effects: a standing storehouse adds no stockpile stacks.
+	assert_false(ProjectRules.def_of("storehouse").has("effects"), "no project carries effects")
 	assert_eq(ProjectRules.completed_count(done), 1, "one done")
 	assert_eq(ProjectRules.work_units(10.0, { "workSecondsPerUnit": 2 }), 5.0, "two seconds a unit")
 	for layout in ["ring", "tower", "hall", "shed"]:
@@ -176,8 +175,7 @@ func _test_project_complete() -> void:
 	assert_eq(str(projects["storehouse"]["status"]), "done", "the storehouse completes")
 	assert_eq((rig["placed"] as Array).size(), 2, "two structures placed")
 	assert_eq(str(rig["placed"][0][1]), "storehouse", "the storehouse is placed")
-	assert_eq(s.capacity_stacks(id), cap + 20, "the storehouse raises capacity_stacks by 20")
-	assert_true(absf(s.project_effect(id, "raidDefence") - 0.3) < 0.0001, "the palisade's raid defence stands")
+	assert_eq(s.capacity_stacks(id), cap, "a standing storehouse adds no capacity (no project effects since Phase 205)")
 	assert_eq(s.tier_for(id, float(rig["now"][0])), "founded", "two members are short of growing")
 	assert_eq(s.invite("p1", "p4"), "", "invite p4")
 	assert_eq(s.join("p4", id), "", "p4 joins: three members")

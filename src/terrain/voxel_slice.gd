@@ -863,19 +863,10 @@ func get_heightmaps() -> Dictionary:
 ## Phase 91 — `exact` is the aimed point as a `{chunk, local}` world record when the caller has it
 ## (the local player does): far from the origin `world_pos` is a float32 quantised to metres, too
 ## coarse to name a half-metre tile, so the tile is resolved from `exact` instead.
-## Phase 140 — `(player_id, xz: Vector2) -> String`: a non-empty reason refuses an edit at that ground point
-## (the host's settlement claim rule). Unset: no claims.
-var claim_guard: Callable = Callable()
-## `(player_id, xz: Vector2) -> void`: told after every mine or place that succeeded, with the ACTOR's id
-## ("" for the local player), so the host counts a remote player's edit as activity for its claim.
-var claim_activity: Callable = Callable()
-
-func _claim_refused(player_id: String, probe: Dictionary) -> bool:
-	return claim_guard.is_valid() and str(claim_guard.call(player_id, probe["xz"])) != ""
-
-func _note_claim_activity(player_id: String, probe: Dictionary) -> void:
-	if claim_activity.is_valid():
-		claim_activity.call(player_id, probe["xz"])
+## Phase 205 — the host's structure index (`StructureSlice`): every mine and place on a block it holds asks
+## it first (`plan_mine` / `plan_place`) and records the outcome once the edit succeeded (`commit_*`). Unset (a
+## client, an isolated rig): no ownership, every edit is free.
+var structures: Node = null
 
 func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: String = "", exact: Dictionary = {}) -> Dictionary:
 	return _edit.mine_block(world_pos, normal, player_id, exact)
@@ -897,6 +888,9 @@ func place_block(world_pos: Vector3, normal: Vector3, material: String = "", pla
 
 func place_structure_block(exact: Dictionary, material: String) -> bool:
 	return _edit.place_structure_block(exact, material)
+
+func remove_structure_block(tile: Vector2i, bottom: float, top: float) -> void:
+	_edit.remove_structure_block(tile, bottom, top)
 
 func get_voxel_height_at(world_pos: Vector2) -> float:
 	return _query.get_voxel_height_at(world_pos)

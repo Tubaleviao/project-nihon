@@ -1,6 +1,7 @@
 extends "res://src/tests/test_support.gd"
 ## Phase 133 — the creature tests, moved unchanged from the old single-file suite.
 
+const SnapshotWiringScript := preload("res://src/persistence/snapshot_wiring.gd")
 
 func register() -> void:
 	# Phase 131 — the suite reads English text and must not see the developer's saved language.
@@ -1885,12 +1886,12 @@ func _test_spawn_point_persists() -> void:
 	# Client: the handshake block carries the spawn; the client has since moved.
 	var own: Dictionary = { "position": saved["position"], "hp": 100.0, "spawn": saved["spawn"] }
 	var standing := WorldPos.from_world(-4000.0, 3.0, 2500.0)
-	var wire: Dictionary = root_script.client_respawn_point(own, standing)
+	var wire: Dictionary = SnapshotWiringScript.client_respawn_point(own, standing)
 	assert_true(_wp_world(wire).distance_to(spawn) < 0.01, "a reconnecting client respawns at its original spawn point")
 	var other := WorldPos.from_world(1.0, 2.0, 3.0)
-	assert_eq(root_script.client_respawn_point({ "position": saved["position"] }, other),
+	assert_eq(SnapshotWiringScript.client_respawn_point({ "position": saved["position"] }, other),
 		other, "a host that sent no spawn leaves the standing position")
-	var arr_pt: Dictionary = root_script.client_respawn_point({ "spawn": [10.0, 5.0, 20.0] }, other)
+	var arr_pt: Dictionary = SnapshotWiringScript.client_respawn_point({ "spawn": [10.0, 5.0, 20.0] }, other)
 	assert_true(_wp_world(arr_pt).distance_to(Vector3(10.0, 5.0, 20.0)) < 0.01, "a legacy array spawn is accepted, not a crash")
 	# Legacy and malformed records fall back to the saved position.
 	var legacy: Dictionary = saved.duplicate(true)

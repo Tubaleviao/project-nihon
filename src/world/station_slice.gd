@@ -35,9 +35,9 @@ var player_slice: Node = null
 ## Placed stations keyed by station id.
 var _stations: Dictionary = {}
 
-## Phase 140 — settlement claim guard (`(player_id, xz) -> String`) and the slice that knows the hearth rule.
-var claim_guard: Callable = Callable()
-var settlement_slice: Node = null
+## Phase 205 — the structure guard (`(player_id, pos: Vector3) -> String`, `StructureSlice.edit_blocker`): a
+## station on a structure its placer may not edit is refused. Unset: no ownership.
+var structure_guard: Callable = Callable()
 
 ## Phase 63: the scene-origin offset a client rebase has applied to every marker (see `shift_scene`).
 const SceneOffset := preload("res://src/core/scene_offset.gd")
@@ -178,15 +178,9 @@ func snap_to_grid(position: Vector3) -> Vector3:
 func placement_blocker(type: String, position: Vector3, player_id: String = "") -> String:
 	if type == "" or not placeable_station_types().has(type):
 		return "unknown_station_type"
-	# Phase 140 — a station inside someone else's claim, or a hearth too close to another settlement.
-	if claim_guard.is_valid() and str(claim_guard.call(player_id, Vector2(position.x, position.z))) != "":
-		return "inside_claim"
-	if settlement_slice != null and type == str(settlement_slice.rules()["hearthStation"]) \
-			and settlement_slice.founding_blocker(Vector2(position.x, position.z)) != "":
-		return "too_close_settlement"
-	if settlement_slice != null and type == str(settlement_slice.rules()["hearthStation"]) \
-			and settlement_slice.settlement_of(player_id) != "":
-		return "already_in_settlement"
+	# Phase 205 — a station on someone else's structure.
+	if structure_guard.is_valid() and str(structure_guard.call(player_id, position)) != "":
+		return "not_owner"
 	for id in _stations:
 		var other: Vector3 = _stations[id]["position"]
 		# Compare on the x/z plane: the same cell at another height still collides.
@@ -223,8 +217,9 @@ func place_refusal(type: String, position: Vector3, inventory: Node = null, play
 ## `WaystoneTravel.placementItem` for the waystone type, `BedSpawn.placementItem` for the bed; forges and
 ## benches stay free).
 func placement_item(type: String) -> String:
-	if settlement_slice != null and type == str(settlement_slice.rules()["hearthStation"]):
-		return str(settlement_slice.rules()["hearthItem"])
+	var settle: Resource = GameData.WORLD_SYSTEMS.get("Settlement", null)
+	if settle != null and settle.get("rules") is Dictionary and type == str(settle.get("rules").get("hearthStation", "")):
+		return str(settle.get("rules").get("hearthItem", ""))
 	var bed := _bed_rules()
 	if not bed.is_empty() and type == str(bed.get("stationType", "")):
 		return str(bed.get("placementItem", ""))

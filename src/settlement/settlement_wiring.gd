@@ -1,5 +1,6 @@
 extends "res://src/core/wiring.gd"
-## Settlement wiring (Phase 140) — founding at a placed hearth, the host tick, and per-peer view syncs.
+## Settlement wiring (Phase 140) — the host tick and per-peer view syncs. Since Phase 205 a hearth founds
+## nothing and no claim guards an edit (structures own what is built: `structure_wiring.gd`).
 ## `root` is the GameRoot that owns the slices.
 
 const SettlementSlice := preload("res://src/settlement/settlement_slice.gd")
@@ -7,7 +8,7 @@ const I18n := preload("res://src/core/i18n.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const ProjectRules := preload("res://src/settlement/project_rules.gd")
 
-## Seconds between host sweeps (grow, abandon, decay, activity, view pushes).
+## Seconds between host sweeps (tiers, invite lapses, hearth returns, view pushes).
 const TICK_SEC := 0.5
 
 var _elapsed: float = 0.0
@@ -15,7 +16,7 @@ var _dirty: bool = true
 var _online: Array = []
 var _ui_bound: bool = false
 
-## Build the slice and hand it the host-side guards (mine, place, station placement, research).
+## Build the slice and hand it the station release (a migrated hearth) and research.
 func make_slice(ctx: GameRoot) -> Node:
 	root = ctx
 	var slice := SettlementSlice.new()
@@ -24,13 +25,7 @@ func make_slice(ctx: GameRoot) -> Node:
 	slice.is_host = not root._is_client
 	slice.tool_in_hand = self.tool_in_hand
 	slice.place_structure = self.place_structure
-	root._voxel.claim_guard = slice.edit_blocker
-	if not root._is_client:
-		root._voxel.claim_activity = slice.note_edit
-	root._station.claim_guard = slice.edit_blocker
 	slice.release_station = root._station.remove_station
-	root._tree.claim_guard = slice.edit_blocker
-	root._station.settlement_slice = slice
 	root._technology.settlement_slice = slice
 	return slice
 
@@ -47,7 +42,6 @@ func _bind_ui() -> void:
 func _connect_all() -> void:
 	connect_bus(GameBus.settlements_changed, _on_changed)
 	connect_bus(GameBus.settlement_resolved, _on_resolved)
-	connect_bus(GameBus.station_placed, _on_station_placed)
 	connect_bus(GameBus.attributes_synced, _on_attributes_synced)
 	connect_bus(GameBus.skill_tier_recorded, _on_skill_tier_recorded)
 
@@ -62,27 +56,6 @@ func _on_skill_tier_recorded(player_id: String, _skill: String, _tier: String) -
 func _on_changed() -> void:
 	_dirty = true
 
-## A hearth placed by the local player (host or listen host) founds a settlement there. The placement
-## already took the Hearth item and `StationSlice` refused an occupied spot, so this only records it.
-func _on_station_placed(station_id: String, type: String, position: Vector3) -> void:
-	if root._is_client or root._settlements == null or type != str(root._settlements.rules()["hearthStation"]):
-		return
-	var pid: String = root._registry.local_player_id
-	# The exact hearth position: the placer's exact position plus the small offset to the hearth, never the
-	# float32 `Vector3` (as the waystone does).
-	var exact: Dictionary = {}
-	if root._player != null:
-		var here: Dictionary = root._player.get_world_pos()
-		exact = WorldPos.normalized({
-			"chunk": here["chunk"],
-			"local": (here["local"] as Vector3) + (position - root._player.get_position()),
-		})
-	var why: String = root._settlements.found(pid, "", Vector2(position.x, position.z), false, exact, true)
-	if why != "" and root._station != null:
-		root._station.remove_station(station_id)
-	elif why == "":
-		root._settlements.note_hearth_station(root._settlements.settlement_of(pid), station_id)
-
 ## Tell the actor's peer how its intent went; the local player reads the bus directly.
 func _on_resolved(player_id: String, action: String, ok: bool, reason: String) -> void:
 	if root._is_client or player_id == "" or player_id == root._registry.local_player_id:
@@ -91,7 +64,7 @@ func _on_resolved(player_id: String, action: String, ok: bool, reason: String) -
 	if peer != 0:
 		root._networking.send_own_state(peer, { "settlement_result": { "action": action, "ok": ok, "reason": reason } })
 
-## Host tick: advance lifecycle, mark activity, push views when something changed.
+## Host tick: advance tiers and invites, push views when something changed.
 func tick(delta: float) -> void:
 	_bind_ui()
 	if root._is_client or root._settlements == null:
@@ -105,8 +78,6 @@ func tick(delta: float) -> void:
 	if online != _online:   # a player who just connected has no view yet
 		_online = online
 		_dirty = true
-	for pid: String in online:
-		root._settlements.note_activity(pid)
 	root._settlements.tick(float(root._settlements.now_sec.call()))
 	if _dirty:
 		_dirty = false

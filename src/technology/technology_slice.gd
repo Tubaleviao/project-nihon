@@ -185,11 +185,12 @@ func begin_research(tech_id: String, player_id: String = "") -> Dictionary:
 
 	var materials: Array = tech.get("researchMaterials", [])
 	# Phase 140 — a technology with a settlement `materialSource` draws its materials from the
-	# researcher's settlement stockpile (and is researched inside its claim), never from the pack.
+	# researcher's settlement stockpile, never from the pack. Phase 205 — the hearth-site rule is gone: the
+	# stockpile is reachable within its site's reach (`SettlementSlice.research_stock`) until Phase 209.
 	var from_stockpile := (tech.get("materialSource", null) is Dictionary and str(tech["materialSource"].get("container", "")) == "Stockpile") \
 		or STOCKPILE_RESEARCH_HOLD.has(tech_id)
 	if from_stockpile:
-		if settlement_slice == null or not settlement_slice.at_research_site(pid):
+		if settlement_slice == null or settlement_slice.settlement_of(pid) == "":
 			return _emit(_result(tech_id, false, "no_settlement", cur, pid))
 		for entry in materials:
 			if settlement_slice.research_stock(pid, str(entry.get("item", ""))) < int(entry.get("quantity", 1)):

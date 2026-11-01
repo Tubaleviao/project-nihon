@@ -13,19 +13,36 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: Str
 	var probe = s._resolve_edit_tile("mine", world_pos, normal, exact)
 	var tile: Vector2i = probe["tile"]
 	var span = s._mine_span(s.get_runs_at_tile(tile), world_pos, normal)
-	if span.is_empty() or s._claim_refused(player_id, probe):
+	if span.is_empty():
 		return { "success": false, "material": "", "quantity": 0, "position": world_pos, "player_id": player_id }
 
 	# The ACTOR's own pack: the durability spent and the yield credited are the
 	# acting player's, which for a remote mine is the peer the intent came from.
 	var inventory = s.inventory_for(player_id)
+	var pick = s._held_pick(inventory)
+
+	# Phase 205 — whose block this is, decided before anything is spent: free ground, the owner taking it
+	# apart, or someone else's hit on it (damage, or destruction at zero durability).
+	var plan: Dictionary = { "verdict": "free" }
+	if s.structures != null:
+		plan = s.structures.plan_mine(player_id, tile, float(span["bottom"]), float(span["top"]), _method_of(inventory, pick))
+	var verdict := str(plan["verdict"])
+	if verdict == "refused":
+		return { "success": false, "material": "", "quantity": 0, "position": world_pos, "player_id": player_id }
 
 	# Tool durability: mining consumes the held pick. A broken pick blocks the
 	# mine; bare-handed (no pick) mining is still allowed.
-	var pick = s._held_pick(inventory)
 	if pick != "" and inventory != null and inventory.has_method("use_item"):
 		if not inventory.use_item(pick, "mine"):
 			return { "success": false, "material": "", "quantity": 0, "position": world_pos, "player_id": player_id }
+
+	# A hit that leaves the block standing changes no ground: the owners are told, peers in range see it.
+	if verdict == "damage":
+		s.structures.commit_mine(plan)
+		s._push_inventory(player_id)   # the pick wore
+		GameBus.block_damaged.emit(world_pos, float(plan["fraction"]))
+		return { "success": false, "damaged": true, "fraction": float(plan["fraction"]), "material": str(plan["material"]),
+			"quantity": 0, "position": world_pos, "player_id": player_id }
 
 	# Phase 43 — a NATURAL span yields what the ore field holds there: a live vein's
 	# material and per-slice quantity (capped by what is left of its reserve), else the
@@ -40,7 +57,13 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: Str
 		material = str(yielded["material"])
 		quantity = int(yielded["quantity"])
 		vein = yielded["vein"]
+	elif verdict == "dismantle":
+		quantity = int(plan["quantity"])   # the share the block's durability and the dismantler's skill allow
+	elif verdict == "destroy":
+		quantity = 0   # a destroyer gets nothing (`StructureDurability.destroyerGets`)
 	s._append_edit(tile, { "op": "remove", "bottom": span["bottom"], "top": span["top"] })
+	if verdict == "dismantle" or verdict == "destroy":
+		s.structures.commit_mine(plan)
 	s._mark_dirty(tile)
 	s._settle_note(tile)
 	if not vein.is_empty():
@@ -49,7 +72,7 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: Str
 	s._rebuild_chunk_at_tile(tile)
 
 	var banked := false
-	if inventory != null and inventory.has_method("add_item"):
+	if quantity > 0 and inventory != null and inventory.has_method("add_item"):
 		# The ground is dug either way; a yield the pack cannot hold is lost, and the local
 		# player is told rather than left wondering where it went.
 		banked = inventory.add_item(material, quantity)
@@ -58,7 +81,8 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: Str
 	s._push_inventory(player_id)
 
 	var pos = Vector3(world_pos.x, float(span["top"]), world_pos.z)
-	GameBus.block_mined.emit(material, quantity, pos)
+	if quantity > 0:
+		GameBus.block_mined.emit(material, quantity, pos)
 	# Phase 124 — only a natural yield that reached the pack counts as gathering; a
 	# placed block mined back would otherwise be a research-point farm.
 	if natural and banked:
@@ -66,8 +90,8 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: Str
 	# Phase 138 — the span top, the same height `has_edit_near_at` judges on a reload, so live and reload agree.
 	GameBus.block_edit_resolved.emit(tile, float(span["top"]))
 	GameBus.block_changed.emit("mine", world_pos, normal, material)
-	s._note_claim_activity(player_id, probe)
-	return { "success": true, "material": material, "quantity": quantity, "position": pos, "player_id": player_id }
+	return { "success": true, "material": material, "quantity": quantity, "position": pos, "player_id": player_id,
+		"destroyed": verdict == "destroy" }
 
 ## Phase 43 — what mining a NATURAL span of `tile` yields, off the ore field:
 ## `{ material, quantity, vein }`. Inside a LIVE vein it is the vein's material and its
@@ -182,8 +206,15 @@ func place_block(world_pos: Vector3, normal: Vector3, material: String = "", pla
 	var probe = s._resolve_edit_tile("place", world_pos, normal, exact)
 	var tile: Vector2i = probe["tile"]
 	var span = s._place_span(s.get_runs_at_tile(tile), world_pos, normal)
-	if span.is_empty() or s._claim_refused(player_id, probe):
+	if span.is_empty():
 		return false
+	# Phase 205 — a block placed against a structure the actor may not edit is refused; otherwise it joins the
+	# touching structure its builder's mode names, or starts one.
+	var plan: Dictionary = {}
+	if s.structures != null:
+		plan = s.structures.plan_place(player_id, tile, float(span["bottom"]), normal, chosen)
+		if str(plan["verdict"]) == "refused":
+			return false
 
 	var inventory = s.inventory_for(player_id)
 	if inventory != null and inventory.has_method("drop_item"):
@@ -191,6 +222,8 @@ func place_block(world_pos: Vector3, normal: Vector3, material: String = "", pla
 			return false
 
 	s._append_edit(tile, { "op": "add", "bottom": span["bottom"], "top": span["top"], "material": chosen })
+	if s.structures != null:
+		s.structures.commit_place(plan)
 	s._mark_dirty(tile)
 	s._settle_note(tile)
 	s._rebuild_chunk_at_tile(tile)
@@ -200,7 +233,6 @@ func place_block(world_pos: Vector3, normal: Vector3, material: String = "", pla
 	GameBus.block_placed.emit(chosen, pos)
 	GameBus.block_edit_resolved.emit(tile, float(span["top"]))
 	GameBus.block_changed.emit("place", world_pos, normal, chosen)
-	s._note_claim_activity(player_id, probe)
 	return true
 
 ## Phase 198 — the host builds one block of a finished settlement structure on top of the column at
@@ -225,6 +257,31 @@ func place_structure_block(exact: Dictionary, material: String) -> bool:
 	GameBus.block_edit_resolved.emit(tile, float(span["top"]))
 	GameBus.block_changed.emit("place", pos, Vector3.UP, material)
 	return true
+
+## Phase 205 — the host removes one structure block worn to nothing (`StructureSlice.tick`): no pack is
+## credited. It is aimed as a side hit at the block's middle, so the clients' `block_changed` replay resolves
+## the same span from the same math.
+func remove_structure_block(tile: Vector2i, bottom: float, _top: float) -> void:
+	var pos := Vector3((float(tile.x) + 1.0) * s.TILE_SIZE, bottom + s.STEP_HEIGHT * 0.5, (float(tile.y) + 0.5) * s.TILE_SIZE)
+	var normal := Vector3(1.0, 0.0, 0.0)
+	var span = s._mine_span(s.get_runs_at_tile(tile), pos, normal)
+	if span.is_empty() or str(span["material"]) == "":
+		return
+	s._append_edit(tile, { "op": "remove", "bottom": span["bottom"], "top": span["top"] })
+	s._mark_dirty(tile)
+	s._settle_note(tile)
+	s._rebuild_chunk_at_tile(tile)
+	GameBus.block_edit_resolved.emit(tile, float(span["top"]))
+	GameBus.block_changed.emit("mine", pos, normal, str(span["material"]))
+
+## Phase 205 — the destruction method (`StructureDurability.methods`) a hit with `inventory`'s tools is: the
+## held pick, else an axe, else bare hands.
+func _method_of(inventory: Node, pick: String) -> String:
+	if pick != "":
+		return "pick"
+	if inventory != null and inventory.has_method("find_tool") and str(inventory.find_tool("axe")) != "":
+		return "axe"
+	return "hand"
 
 ## Resolve the target tile for a block edit from the hit position + face normal.
 ## A side-face hit lands on the boundary between two columns, so we step along

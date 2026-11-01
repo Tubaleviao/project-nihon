@@ -203,6 +203,8 @@ static func steps() -> Array:
 		{ "name": "attributes_synced", "compare": true },
 		{ "name": "create_character", "compare": true },
 		{ "name": "world_regen_synced", "compare": true },
+		{ "name": "structure_damage", "compare": true },
+		{ "name": "self_respawn", "compare": true },
 	]
 
 ## The step names, comma-joined — the payload of the `plan` line the runner prints
@@ -451,6 +453,8 @@ func run(root: Node, role: String) -> void:
 	await _step_attributes_synced()
 	await _step_create_character()
 	await _step_world_regen_synced()
+	await _step_structure_damage()
+	await _step_self_respawn()
 	_finish()
 
 ## End this process, with the run's own verdict carried in the exit code.
@@ -1797,8 +1801,8 @@ func _step_sand_settles() -> void:
 	var got: bool = await _await_until(func(): return _sand_landed(voxel, base), _step_timeout())
 	_report("sand_settles", verdict(got, true), _sand_column(voxel) if got else "client_column_%s" % _sand_column(voxel))
 
-## Phase 140 — a settlement: the host founds one on the client's spot, the outsider's edit inside the claim is
-## refused (the client sees no block change), the client joins, deposits into the stockpile and then edits.
+## Phase 140 — a settlement: the host founds one on the client's spot, the client joins, deposits into the
+## stockpile and then edits. Phase 205 — nothing is claimed: the client sees no edit before the host's own mine.
 const SETTLEMENT_ITEM := "AethermiteDust"
 const SETTLEMENT_QTY := 10
 var _settlement_edits: int = 0
@@ -1840,12 +1844,11 @@ func _step_settlement() -> void:
 		if not loaded:
 			_report("settlement", "fail", "chunk_not_loaded")
 			return
-		var why: String = settlements.found(local, "Harness", xz, false)
+		var why: String = settlements.found(local, "Harness", xz)
 		if why != "":
 			_report("settlement", "fail", "found_" + why)
 			return
 		var pos := Vector3(target.x, voxel.get_voxel_height_at(target), target.y)
-		var refused: bool = not bool(voxel.mine_block(pos, Vector3.UP, bound).get("success", false))
 		var invite_why: String = settlements.invite(local, bound)
 		var joined: bool = await _await_until(func(): return settlements.settlement_of(bound) != "", _step_timeout())
 		var inv: Node = _root._registry.get_inventory(bound)
@@ -1856,8 +1859,8 @@ func _step_settlement() -> void:
 		await _await_settle(1.5 * _time_scale)   # the host's view push runs on a half-second tick: let the client see the stock
 		var edited: bool = bool(voxel.mine_block(pos, Vector3.UP, bound).get("success", false))
 		await _await_settle(1.5 * _time_scale)
-		var ok: bool = refused and joined and deposited and edited
-		_report("settlement", verdict(ok, true), "outsider-refused-member-deposited" if ok else "invite_%s-%s-refused%d-joined%d-deposited%d-edited%d" % [invite_why, "_".join(_settlement_reasons), int(refused), int(joined), int(deposited), int(edited)])
+		var ok: bool = joined and deposited and edited
+		_report("settlement", verdict(ok, true), "member-deposited" if ok else "invite_%s-%s-joined%d-deposited%d-edited%d" % [invite_why, "_".join(_settlement_reasons), int(joined), int(deposited), int(edited)])
 		return
 	var seen_claim: bool = await _await_until(func(): return (settlements.view().get("claims", []) as Array).size() > 0, _step_timeout())
 	var invited: bool = await _await_until(func(): return (settlements.view().get("invites", []) as Array).size() > 0, _step_timeout())
@@ -1873,7 +1876,7 @@ func _step_settlement() -> void:
 	var edited: bool = await _await_until(func(): return _settlement_edits > refused_edits, _step_timeout())
 	await _await_settle(1.5 * _time_scale)   # the host's closing settle: stay level so the next step's resends overlap its grant
 	var ok: bool = seen_claim and refused_edits == 0 and joined and deposited and edited
-	_report("settlement", verdict(ok, true), "outsider-refused-member-deposited" if ok else "claim%d-invited%d-refusedEdits%d-joined%d-deposited%d-edited%d" % [int(seen_claim), int(invited), refused_edits, int(joined), int(deposited), int(edited)])
+	_report("settlement", verdict(ok, true), "member-deposited" if ok else "claim%d-invited%d-refusedEdits%d-joined%d-deposited%d-edited%d" % [int(seen_claim), int(invited), refused_edits, int(joined), int(deposited), int(edited)])
 
 ## Phase 198 — a settlement project over the socket. The host starts a palisade on the client's spot (the
 ## client is a member since the step before) and fills it to a few planks and two work units short; the
@@ -2744,3 +2747,205 @@ func _step_world_regen_synced() -> void:
 	var got: bool = await _await_until(func(): return _root._admin_wiring.regens_applied >= 1, _step_timeout())
 	var clean: bool = got and _root._voxel.get_edits().is_empty()
 	_report("world_regen_synced", verdict(clean, true), "regenerated" if clean else ("not_received" if not got else "edits_left"))
+
+## Phase 205 — the host builds a Ferrite block (its own structure) a metre from the client. The client hits it
+## over the socket: the hit is damage, never a removal, and `block_damaged` reaches both peers. The client then
+## tries to build on it with Ashite the host gave it: the host refuses, the client's pack keeps the block and
+## no placement reaches either side.
+const STRUCTURE_MAT := "Ferrite"
+const STRUCTURE_TRY_MAT := "Ashite"
+var _structure_places: Array = []
+var _structure_place_requests: int = 0
+## Host: the client's own id and where it stood during `structure_damage` (the next step judges its move from it).
+var _structure_actor: String = ""
+var _structure_home: Dictionary = {}
+## Client: teleports seen before `self_respawn` (counted in the step before, so a quick teleport is not missed).
+var _teleports_before_wall: int = 0
+
+func _on_structure_edit(action: String, pos: Vector3, _normal: Vector3, material: String) -> void:
+	if action == "place":
+		_structure_places.append([pos, material])
+
+func _on_structure_place_requested(_pos: Vector3, _normal: Vector3, player_id: String, _material: String, _exact: Dictionary) -> void:
+	if player_id != "" and player_id == _structure_actor:
+		_structure_place_requests += 1
+
+## Ground metres between two `{chunk, local}` records (x and z only).
+func _ground_dist(a: Dictionary, b: Dictionary) -> float:
+	var d: Vector3 = Vector3((a["chunk"] as Vector2i).x - (b["chunk"] as Vector2i).x, 0.0, (a["chunk"] as Vector2i).y - (b["chunk"] as Vector2i).y) * WorldPos.CHUNK_METERS \
+		+ ((a["local"] as Vector3) - (b["local"] as Vector3))
+	return Vector2(d.x, d.z).length()
+
+func _step_structure_damage() -> void:
+	var st: Node = _root._structures
+	var voxel: VoxelSlice = _root._voxel
+	_structure_places.clear()
+	GameBus.block_changed.connect(_on_structure_edit)
+	await _await_settle(2.0 * _time_scale)
+	if _role == "host":
+		GameBus.block_place_requested.connect(_on_structure_place_requested)
+		var peer := _peer_id()
+		var bound := _live_bound_id()
+		_structure_actor = bound
+		var got_pos: bool = await _await_until(func(): return not _root._networking.get_last_known_exact(peer).is_empty(), _step_timeout())
+		_structure_home = _root._networking.get_last_known_exact(peer)
+		var xz: Vector2 = _root._settlements.xz_of_exact(_root._networking.get_last_known_exact(peer)) if got_pos else Vector2.ZERO
+		var target := Vector2(xz.x + 1.0, xz.y)
+		var tile := Vector2i(floori(target.x / VoxelSlice.TILE_SIZE), floori(target.y / VoxelSlice.TILE_SIZE))
+		var loaded := false
+		if got_pos:
+			loaded = await _await_until(func(): return voxel.get_heightmaps().has(VoxelSlice._chunk_key(VoxelSlice._tile_to_chunk(tile))), _step_timeout())
+		if not loaded:
+			GameBus.block_place_requested.disconnect(_on_structure_place_requested)
+			GameBus.block_changed.disconnect(_on_structure_edit)
+			_report("structure_damage", "fail", "no_client_position" if not got_pos else "chunk_not_loaded")
+			return
+		_root._registry.get_inventory(bound).add_item(STRUCTURE_TRY_MAT, 1)
+		GameBus.inventory_synced.emit(bound, _root._registry.get_inventory(bound).get_contents(), _root._registry.get_inventory(bound).get_durability_data())
+		_root._inventory.add_item(STRUCTURE_MAT, 1)
+		var ground: float = voxel.get_voxel_height_at(target)
+		var placed: bool = voxel.place_block(Vector3(target.x, ground, target.y), Vector3.UP, STRUCTURE_MAT)
+		var sid: int = st.structure_at(tile, ground + 0.0625)
+		var damaged := false
+		if placed and sid != 0:
+			damaged = await _await_until(func(): return int(st.damage_seen) > 0, _step_timeout())
+		var tried: bool = await _await_until(func(): return _structure_place_requests > 0, _step_timeout())
+		await _await_settle(1.0 * _time_scale)
+		var standing: bool = st.structure_at(tile, ground + 0.0625) == sid
+		var left: Dictionary = st.block_durability(tile, ground + 0.0625)
+		var worn: bool = not left.is_empty() and float(left["fraction"]) < 1.0
+		var refused: bool = tried and st.structure_at(tile, ground + 0.1875) == 0 and _root._registry.get_inventory(bound).get_item_count(STRUCTURE_TRY_MAT) == 1
+		await _await_settle(1.5 * _time_scale)
+		GameBus.block_place_requested.disconnect(_on_structure_place_requested)
+		GameBus.block_changed.disconnect(_on_structure_edit)
+		var ok: bool = placed and damaged and standing and worn and refused
+		_report("structure_damage", verdict(ok, true), "damage-seen-place-refused" if ok else "placed%d-damaged%d-standing%d-worn%d-tried%d-refused%d" % [int(placed), int(damaged), int(standing), int(worn), int(tried), int(refused)])
+		return
+	_teleports_before_wall = _teleports_seen.size()
+	var built: bool = await _await_until(func():
+		for e: Array in _structure_places:
+			if str(e[1]) == STRUCTURE_MAT:
+				return true
+		return false, _step_timeout())
+	var has_try: bool = await _await_until(func(): return _root._inventory.get_item_count(STRUCTURE_TRY_MAT) >= 1, _step_timeout())
+	var hit_seen := false
+	var refused := false
+	if built:
+		var at: Vector3 = Vector3.ZERO
+		for e: Array in _structure_places:
+			if str(e[1]) == STRUCTURE_MAT:
+				at = e[0]
+		var top := at + Vector3(0.0, VoxelSlice.STEP_HEIGHT, 0.0)
+		GameBus.block_mine_requested.emit(top, Vector3.UP, "", {})
+		hit_seen = await _await_until(func(): return int(_root._structures.damage_seen) > 0, _step_timeout())
+		await _await_settle(0.6)   # past the edit rate limit
+		var before := _structure_places.size()
+		if has_try:
+			GameBus.block_place_requested.emit(top, Vector3.UP, "", STRUCTURE_TRY_MAT, {})
+		await _await_settle(2.0 * _time_scale)
+		refused = has_try and _structure_places.size() == before
+	GameBus.block_changed.disconnect(_on_structure_edit)
+	var ok: bool = built and hit_seen and refused
+	_report("structure_damage", verdict(ok, true), "damage-seen-place-refused" if ok else "built%d-try%d-hit%d-refused%d" % [int(built), int(has_try), int(hit_seen), int(refused)])
+
+## Phase 205 — the host sends the client 24 m east of where it stood; the host walls that spot in with its own
+## structure (a ring of Ashite columns two tiles out). The client sends `/respawn`: it dies by its own hand and
+## respawns at its bed or spawn, outside the walls. Both check it ended up more than the ring away.
+const WALL_RADIUS_TILES := 2
+const WALL_STEPS := 12
+const WALL_STEP_AWAY_M := 24.0
+var _wall_blocks_seen: int = 0
+
+func _on_wall_edit(action: String, _pos: Vector3, _normal: Vector3, material: String) -> void:
+	if action == "place" and material == STRUCTURE_TRY_MAT:
+		_wall_blocks_seen += 1
+
+func _wall_ring() -> Array:
+	var out: Array = []
+	for dx in range(-WALL_RADIUS_TILES, WALL_RADIUS_TILES + 1):
+		for dz in range(-WALL_RADIUS_TILES, WALL_RADIUS_TILES + 1):
+			if maxi(absi(dx), absi(dz)) == WALL_RADIUS_TILES:
+				out.append(Vector2i(dx, dz))
+	return out
+
+func _step_self_respawn() -> void:
+	var wall_blocks := _wall_ring().size() * WALL_STEPS
+	_wall_blocks_seen = 0
+	GameBus.block_changed.connect(_on_wall_edit)
+	if _role == "host":
+		var peer := _peer_id()
+		var start: Dictionary = _structure_home
+		var walled: Dictionary = {}
+		var moved := false
+		if not start.is_empty():
+			walled = WorldPos.normalized({ "chunk": start["chunk"], "local": (start["local"] as Vector3) + Vector3(WALL_STEP_AWAY_M, 0.0, 0.0) })
+			_root._networking.send_teleport(peer, walled)
+			moved = await _await_until(func():
+				var now_at: Dictionary = _root._networking.get_last_known_exact(peer)
+				return not now_at.is_empty() and _ground_dist(now_at, start) > WALL_STEP_AWAY_M * 0.25, _step_timeout())
+		# Wall in where the client REPORTS standing once it holds still (the landing can differ from the target).
+		var still := false
+		var tries := 0
+		while moved and not still and tries < 20:
+			var a: Dictionary = _root._networking.get_last_known_exact(peer)
+			await _await_settle(0.5 * _time_scale)
+			var b: Dictionary = _root._networking.get_last_known_exact(peer)
+			still = not a.is_empty() and not b.is_empty() and _ground_dist(a, b) < 0.25
+			walled = b
+			tries += 1
+		moved = moved and still
+		var voxel: VoxelSlice = _root._voxel
+		var xz: Vector2 = _root._settlements.xz_of_exact(walled) if not walled.is_empty() else Vector2.ZERO
+		var centre := Vector2i(floori(xz.x / VoxelSlice.TILE_SIZE), floori(xz.y / VoxelSlice.TILE_SIZE))
+		var loaded := false
+		if moved:
+			loaded = await _await_until(func(): return voxel.get_heightmaps().has(VoxelSlice._chunk_key(VoxelSlice._tile_to_chunk(centre))), _step_timeout())
+		var built := 0
+		if loaded:
+			for off: Vector2i in _wall_ring():
+				var at := Vector2((float(centre.x + off.x) + 0.5) * VoxelSlice.TILE_SIZE, (float(centre.y + off.y) + 0.5) * VoxelSlice.TILE_SIZE)
+				for i in WALL_STEPS:
+					_root._inventory.add_item(STRUCTURE_TRY_MAT, 1)   # one at a time: a whole wall is past the pack's carry limit
+					if voxel.place_block(Vector3(at.x, voxel.get_voxel_height_at(at), at.y), Vector3.UP, STRUCTURE_TRY_MAT):
+						built += 1
+		var ring_m := float(WALL_RADIUS_TILES + 1) * VoxelSlice.TILE_SIZE
+		var out := false
+		if built == wall_blocks:
+			out = await _await_until(func():
+				var now_at: Dictionary = _root._networking.get_last_known_exact(peer)
+				return not now_at.is_empty() and _ground_dist(now_at, walled) > ring_m + 1.0, _step_timeout() * 2.0)
+		GameBus.block_changed.disconnect(_on_wall_edit)
+		var last: Dictionary = _root._networking.get_last_known_exact(peer)
+		var seen_m: float = _ground_dist(last, walled) if not last.is_empty() and not walled.is_empty() else -1.0
+		_report("self_respawn", verdict(out, true), "respawned-outside" if out else "moved%d-loaded%d-built%d-out%d-home%d-last%.1fm" % [int(moved), int(loaded), built, int(out), int(not start.is_empty()), seen_m])
+		return
+	# The host judges where the body REALLY is in this step, not the rendezvous every report carries otherwise.
+	_report_actual = true
+	var sent: bool = await _await_until(func(): return _teleports_seen.size() > _teleports_before_wall, _step_timeout())
+	var arrived := false
+	if sent:
+		var away: Dictionary = _teleports_seen.back()
+		arrived = await _await_until(func():
+			return _root._chunk_manager.is_chunk_built(away["chunk"]) and _ground_dist(_root._player.get_world_pos(), away) < 1.0, _step_timeout())
+		_report_position()
+	var walled_in := false
+	if arrived:
+		walled_in = await _await_until(func(): return _wall_blocks_seen >= wall_blocks, _step_timeout() * 2.0)
+	var spot: Dictionary = _root._player.get_world_pos()
+	if walled_in:
+		await _await_settle(0.6)
+		GameBus.chat_intent.emit("/respawn", "")
+	var died := false
+	if walled_in:
+		died = await _await_until(func(): return not _root._player._alive, _step_timeout())
+	var back := false
+	if died:
+		back = await _await_until(func(): return _root._player._alive, _step_timeout() * 2.0)
+	var ring_m := float(WALL_RADIUS_TILES + 1) * VoxelSlice.TILE_SIZE
+	var outside: bool = back and _ground_dist(_root._player.get_world_pos(), spot) > ring_m + 1.0
+	_report_position()
+	await _await_settle(2.0 * _time_scale)   # the host's last-known position catches up with the respawn
+	_report_position()
+	_report_actual = false
+	GameBus.block_changed.disconnect(_on_wall_edit)
+	_report("self_respawn", verdict(outside, true), "respawned-outside" if outside else "arrived%d-walled%d-died%d-back%d-outside%d" % [int(arrived), int(walled_in), int(died), int(back), int(outside)])

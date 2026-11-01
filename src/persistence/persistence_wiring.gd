@@ -136,6 +136,8 @@ func collect_save_job(incremental: bool) -> Dictionary:
 		"settlements":     root._settlements.to_data() if root._settlements != null else {},
 		# Phase 204 — clans (world format 3). A record without them is from before clans: its settlements migrate.
 		"clans":           root._clans.to_data() if root._clans != null else {},
+		# Phase 205 — the structure index (world format 4): who owns each placed block and what it has left.
+		"structures":      root._structures.to_data() if root._structures != null else {},
 		# Phase 161 — the bodies kills left, with the time each has left.
 		"carcasses":       root._carcass.to_data() if root._carcass != null else {},
 		"weather":         root._weather.to_data() if root._weather != null else [],
@@ -499,6 +501,8 @@ func load_world_records() -> void:
 				if made > 0:
 					print("[Server] %d settlements became clans (world format %d → %d)" % [made,
 						int(root._loaded_world.get("version", PersistenceSlice.LEGACY_WORLD_FORMAT_VERSION)), PersistenceSlice.WORLD_FORMAT_VERSION])
+		if root._structures != null:
+			root._structures.from_data(root._loaded_world.get("structures", {}), downtime_hours(root._loaded_world))
 		if root._carcass != null:
 			root._carcass.from_data(root._loaded_world.get("carcasses", {}))
 		if root._waystones != null:
@@ -588,3 +592,12 @@ func _on_load_completed(_slot: int, data: Dictionary) -> void:
 # ---------------------------------------------------------------------------
 # GameData smoke test
 # ---------------------------------------------------------------------------
+
+## Phase 205 — the in-game hours that passed while the server was down: real seconds since the record's
+## `timestamp`, at the clock's day length. Structures wear for them once, on this load.
+func downtime_hours(world: Dictionary) -> float:
+	var saved: Variant = world.get("timestamp", null)
+	if not (saved is float or saved is int) or root._clock == null:
+		return 0.0
+	var day := float(root._clock.day_seconds())
+	return maxf(0.0, Time.get_unix_time_from_system() - float(saved)) / day * 24.0 if day > 0.0 else 0.0

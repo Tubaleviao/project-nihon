@@ -21,13 +21,18 @@ const MAX_MESSAGE_CHARS := 240
 ## which the chat slice then caps to the fabric's length.
 const MAX_PRIVATE_LINE_CHARS := 400
 const MSG_NAME := "msg"
+## Phase 205 — kill your own character and respawn (the fabric's `SelfRespawn.command`), choose who owns what
+## you build next, and repair the structure you stand at.
+const RESPAWN_NAME := "respawn"
+const BUILDAS_NAME := "buildas"
+const REPAIR_NAME := "repair"
 ## Largest coordinate a `/tp` may name: the planet wraps (X is folded onto one lap in `parse_position`), so beyond it is a typo.
 const MAX_TP_COORD := 1.0e9
 ## Largest quantity one `/give` may grant.
 const MAX_GIVE_QUANTITY := 10000
 
 ## Commands any player may run / only admins may run. The one place the names are listed.
-const PLAYER_COMMANDS := ["help", "players", MSG_NAME]
+const PLAYER_COMMANDS := ["help", "players", MSG_NAME, RESPAWN_NAME, BUILDAS_NAME, REPAIR_NAME]
 const ADMIN_COMMANDS := ["say", "tp", "bring", "give", "kill", "weather", "time", "speed", "fly", "heal", "regen"]
 
 ## Catalog key of the one line of usage per command, for `/help` (see `locale/ui.csv`).
@@ -35,6 +40,9 @@ const USAGE := {
 	"help":    "chat.usage.help",
 	"players": "chat.usage.players",
 	MSG_NAME:  "chat.usage.msg",
+	RESPAWN_NAME: "chat.usage.respawn",
+	BUILDAS_NAME: "chat.usage.buildas",
+	REPAIR_NAME: "chat.usage.repair",
 	WHERE_NAME: "chat.usage.where",
 	GESTURES_NAME: "chat.usage.gestures",
 	"say":     "chat.usage.say",
