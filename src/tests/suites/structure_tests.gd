@@ -7,6 +7,8 @@ const StructureSlice := preload("res://src/structure/structure_slice.gd")
 const StructureRules := preload("res://src/structure/structure_rules.gd")
 const ClanSlice := preload("res://src/clan/clan_slice.gd")
 const VoxelConsts := preload("res://src/terrain/voxel_consts.gd")
+const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
+const StructureWiring := preload("res://src/structure/structure_wiring.gd")
 
 ## `a` within 0.0001 of `b`.
 func assert_near(a: float, b: float, msg: String) -> void:
@@ -37,6 +39,10 @@ func register() -> void:
 	_run_test("structure circle: the lookup finds a circle across bucket edges and the world seam", _test_circle_lookup)
 	_run_test("structure circle: an outsider cannot build in a clan's circle until its building is destroyed", _test_circle_outsider)
 	_run_test("structure circle: over a simulated day no creature spawns inside a circle, spawns go on outside", _test_circle_no_spawn)
+	_run_test("structure circle: a kept-out pack comes back without a reload, a companion respawns in a circle", _test_circle_spawn_return)
+	_run_test("structure circle: the running sums give the circle a full recount gives", _test_circle_incremental)
+	_run_test("structure circle: a refused block tells its builder, a client is sent the circles it may not build in", _test_circle_feedback)
+	_run_test("structure: a block of a material with no durability falls on the first sweep", _test_zero_durability_sweep)
 
 # ── rig ──────────────────────────────────────────────────────────────────
 
@@ -793,4 +799,128 @@ func _test_circle_no_spawn() -> void:
 		c.spawn_for_chunk(ch)
 	assert_eq(c._instances.size(), free_count, "and every spawn comes back")
 	c.free()
+	_free_rig(r)
+
+func _test_circle_spawn_return() -> void:
+	var r := _rig()
+	var st: StructureSlice = r["st"]
+	var c := CreatureSlice.new()
+	add_child(c)
+	var chunks: Array = [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1)]
+	for ch: Vector2i in chunks:
+		c.spawn_for_chunk(ch)
+	var free_count := c._instances.size()
+	assert_true(free_count > 0, "creatures spawn in the empty area (%d)" % free_count)
+	var inst: Dictionary = c._instances.values()[0]
+	var xz := _spawn_xz(inst)
+	var home := _index(st, Vector2i(floori(xz.x / VoxelConsts.TILE_SIZE), floori(xz.y / VoxelConsts.TILE_SIZE)), 2000)
+	c.spawn_blocked = st.spawn_blocked
+	for ch: Vector2i in chunks:
+		c.despawn_for_chunk(ch)
+	for ch: Vector2i in chunks:
+		c.spawn_for_chunk(ch)
+	var kept_out := free_count - c._instances.size()
+	assert_true(kept_out > 0, "the house keeps %d creatures away" % kept_out)
+	assert_false(c._deferred_packs.is_empty(), "the kept-out members are remembered")
+	c._retry_deferred_packs()
+	assert_eq(c._instances.size(), free_count - kept_out, "a retry while the house stands spawns none of them")
+	for t: Vector2i in (st.get_structure(home).get("cells", {}) as Dictionary).keys():
+		st.drop_span(t, 0.0, 10.0)
+	c._retry_deferred_packs()
+	assert_eq(c._instances.size(), free_count, "the house gone, the pack is whole again with the chunk still loaded")
+	assert_true(c._deferred_packs.is_empty(), "and nothing is pending")
+	# A tamed companion whose spawn point a circle covers still comes back.
+	var iid: String = c._instances.keys()[0]
+	var pet: Dictionary = c._instances[iid]
+	var pxz := _spawn_xz(pet)
+	_index(st, Vector2i(floori(pxz.x / VoxelConsts.TILE_SIZE), floori(pxz.y / VoxelConsts.TILE_SIZE)), 2000)
+	assert_true(st.spawn_blocked(pxz), "the companion's spawn point is in a circle")
+	pet["tamed_by"] = "p1"
+	pet["state"] = "dead"
+	pet["respawn_at"] = 1.0
+	c._tick_respawn()
+	assert_true(str(c._instances[iid]["state"]) != "dead" or float(c._instances[iid]["respawn_at"]) < 0.0,
+		"a tamed companion is not held dead by a circle")
+	c.free()
+	_free_rig(r)
+
+## The circle `_compute_circle` would give from a full recount of `s`'s cells.
+static func _recount_circle(s: Dictionary) -> Dictionary:
+	var cells: Dictionary = s["cells"]
+	var lap := SeamWrap.world_tiles(TerrainSlice.circumference_chunks(), VoxelConsts.CHUNK_SIZE)
+	var a: Vector2i = s["anchor"]
+	var sum := Vector2.ZERO
+	var lo := 1 << 40
+	var hi := -(1 << 40)
+	for t: Vector2i in cells:
+		sum += Vector2(float(SeamWrap.delta(t.x, a.x, lap)), float(t.y - a.y))
+		for mm: int in cells[t]:
+			lo = mini(lo, mm)
+			hi = maxi(hi, mm + StructureSlice.mm_of(VoxelConsts.STEP_HEIGHT))
+	var n := float(cells.size())
+	var center := (Vector2(a) + sum / n + Vector2(0.5, 0.5)) * VoxelConsts.TILE_SIZE
+	center.x = SeamWrap.wrap_f(center.x, float(TerrainSlice.circumference_chunks()) * WorldPos.CHUNK_METERS)
+	return { "center": center, "radius": StructureRules.circle_radius(n * VoxelConsts.TILE_SIZE * VoxelConsts.TILE_SIZE, float(hi - lo) / 1000.0) }
+
+func _test_circle_incremental() -> void:
+	var r := _rig()
+	var st: StructureSlice = r["st"]
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 206
+	# A structure across x = 0, grown and cut at random; each step's circle matches a full recount. (At the
+	# seam the centre is ±20 000 km, where a float32 coordinate moves in 2 m steps: `_test_circle_lookup`.)
+	var sid := _index(st, Vector2i(-3, 5), 2000)
+	var mismatches := 0
+	for i in 400:
+		var t := Vector2i(-8 + rng.randi_range(0, 15), 5 + rng.randi_range(0, 6))
+		var mm := 2000 + 125 * rng.randi_range(0, 12)
+		if rng.randf() < 0.6:
+			if int((st._tiles.get(StructureSlice.canonical(t), {}) as Dictionary).get(mm, 0)) == 0:
+				_index(st, t, mm, sid)
+		elif st.count() > 0 and int(st.get_structure(sid).get("count", 0)) > 1:
+			st.drop_span(t, float(mm) / 1000.0 - 0.01, float(mm) / 1000.0 + 0.01)
+		if not st._structures.has(sid):
+			break
+		var got := st.circle_of(sid)
+		var want := _recount_circle(st._structures[sid])
+		if (got["center"] as Vector2).distance_to(want["center"]) > 1.0e-3 or absf(float(got["radius"]) - float(want["radius"])) > 1.0e-4:
+			mismatches += 1
+	assert_eq(mismatches, 0, "over 400 random edits the circle always matches a full recount")
+	_free_rig(r)
+
+func _test_circle_feedback() -> void:
+	var r := _rig()
+	var st: StructureSlice = r["st"]
+	assert_eq(st.set_build_mode("p1", "clan"), "", "p1 builds for the clan")
+	assert_true(_place(r, "p1", 10, 10, 2.0, "Soil"), "the clan's hall")
+	var heard: Array = []
+	var on := func(pid: String, action: String, ok: bool, reason: String) -> void: heard.append([pid, action, ok, reason])
+	GameBus.structure_resolved.connect(on)
+	assert_false(_place(r, "p3", 16, 10, 2.0), "an outsider's block in the circle is refused")
+	GameBus.structure_resolved.disconnect(on)
+	assert_eq(heard, [["p3", "place", false, "foreign_circle"]], "and the builder is told why")
+	var at := StructureSlice._tile_xz(Vector2i(16, 10))
+	var view: Array = st.foreign_circles_near("p3", at, 64.0)
+	assert_eq(view.size(), 1, "the outsider's client is sent the hall's circle")
+	assert_eq(st.foreign_circles_near("p2", at, 64.0), [], "a member's is sent none")
+	assert_eq(st.foreign_circles_near("p3", at + Vector2(1000.0, 0.0), 64.0), [], "nor anyone far from it")
+	var w := StructureWiring.new()
+	w.apply_circle_view({ "circle_view": view })
+	assert_eq(w.view_blocker("p3", _xyz(16, 10, 2.0)), "foreign_circle", "the client's ghost shows the station refused")
+	assert_eq(w.view_blocker("p3", _xyz(200, 10, 2.0)), "", "and allowed outside the circle")
+	w.apply_circle_view({ "circle_view": [[1.0, 2.0], "x", [INF, 0.0, 5.0], [0.0, 0.0, 3.0]] })
+	assert_eq(w._circle_view, [[0.0, 0.0, 3.0]], "a malformed entry is dropped")
+	var cats: Dictionary = I18nScript.parse_csv("res://locale/ui.csv")["catalog"]
+	for loc in cats:
+		for key: String in ["settlement.refused.foreign_circle", "bed.refuse_circle"]:
+			assert_true((cats[loc] as Dictionary).has(key), "%s has %s" % [loc, key])
+	assert_eq(StructureSlice.REASONS[0], "not_owner", "a new reason is added at the end, the old ones keep their place")
+	_free_rig(r)
+
+func _test_zero_durability_sweep() -> void:
+	var r := _rig()
+	var st: StructureSlice = r["st"]
+	var s := { "hurt": 0.0 }
+	st._note_hurt(s, ["NoSuchMaterial", 0.0, 0.0])
+	assert_near(float(s["hurt"]), 1.0, "a block with no base durability counts as at zero from the start")
 	_free_rig(r)

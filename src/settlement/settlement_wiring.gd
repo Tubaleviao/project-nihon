@@ -111,21 +111,30 @@ func tool_in_hand(player_id: String) -> bool:
 
 ## Phase 198 — place a finished project's structure at `site` ({x, z} ground metres, doubles): its blocks
 ## through the voxel edit path (recorded like any edit and synced to peers in range as `block_changed`),
-## then its stations on the ground inside it.
-func place_structure(_id: String, key: String, site: Dictionary) -> void:
+## then its stations on the ground inside it. Phase 206 — a block or station whose spot has since come inside
+## the circle of a clan the project's starter is not in is left out, as their own placement would be.
+func place_structure(id: String, key: String, site: Dictionary) -> void:
 	var places: Dictionary = ProjectRules.def_of(key).get("places", {})
 	var mat := ProjectRules.block_material(str(places.get("block", "")))
 	var tile := float(root._voxel.TILE_SIZE)
 	var x0 := float(site["x"])
 	var z0 := float(site["z"])
+	var by := str((root._settlements.projects_of(id).get(key, {}) as Dictionary).get("by", ""))
+	var blocked: Callable = root._settlements.build_blocked
 	if mat != "":
 		for c: Vector3i in ProjectRules.layout_cells(str(places.get("layout", "shed")), int(places.get("blocks", 0))):
-			root._voxel.place_structure_block(_exact_at(x0 + (float(c.x) + 0.5) * tile, z0 + (float(c.z) + 0.5) * tile), mat)
+			var bx := x0 + (float(c.x) + 0.5) * tile
+			var bz := z0 + (float(c.z) + 0.5) * tile
+			if blocked.is_valid() and bool(blocked.call(by, Vector2(bx, bz))):
+				continue
+			root._voxel.place_structure_block(_exact_at(bx, bz), mat)
 	var stations: Array = places.get("stations", [])
 	var offsets := ProjectRules.station_offsets(stations.size())
 	for i in stations.size():
 		var x := x0 + float(offsets[i].x) * tile
 		var z := z0 + float(offsets[i].y) * tile
+		if blocked.is_valid() and bool(blocked.call(by, Vector2(x, z))):
+			continue
 		root._station.place_station(str(stations[i]), Vector3(x, root._voxel.get_voxel_height_at(Vector2(x, z)), z))
 
 static func _exact_at(x: float, z: float) -> Dictionary:

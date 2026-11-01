@@ -60,8 +60,10 @@ const INTENT_INTERVAL := 0.25
 const HIT_INTERVAL := 0.25
 ## Side of one circle bucket in metres: a circle of `maxRadius` 128 m overlaps at most 6 × 6 of them.
 const BUCKET_M := 64.0
-const REASONS := ["foreign_circle", "not_owner", "no_permission", "structures_full", "no_clan", "bad_args", "no_structure",
-	"intact", "missing_materials", "no_inventory", "rate_limited", "unknown_action", "unknown_player"]
+## The most foreign circles one client is sent at a time (`foreign_circles_near`).
+const MAX_VIEW_CIRCLES := 32
+const REASONS := ["not_owner", "no_permission", "structures_full", "no_clan", "bad_args", "no_structure",
+	"intact", "missing_materials", "no_inventory", "rate_limited", "unknown_action", "unknown_player", "foreign_circle"]
 
 ## Set by the wiring (host): the player registry (identity, packs, online, skills) and the clan slice.
 var registry: Node = null
@@ -76,9 +78,11 @@ var remove_block: Callable = Callable()
 var mono_sec: Callable = func() -> float: return Time.get_ticks_msec() / 1000.0
 
 ## sid -> { id, kind, owner, builder, anchor: Vector2i, wear, wear_hour, credit {material: f},
-##          cells { tile: { mm: [material, damage, wear_at_place] } }, count, hurt }
+##          cells { tile: { mm: [material, damage, wear_at_place] } }, count, hurt, sx, sz, levels }
 ## `hurt` is at least the largest damage / base of any of its blocks (never under it): the sweep reads a
 ## structure's blocks only once its wear could bring one to zero.
+## `sx`/`sz` sum its columns' tile offsets from `anchor` (round the seam) and `levels` counts its blocks per
+## bottom mm, kept as blocks come and go, so its circle is recomputed without reading its cells.
 var _structures: Dictionary = {}
 ## tile -> { mm: sid }
 var _tiles: Dictionary = {}
@@ -245,30 +249,34 @@ func circle_of(sid: int) -> Dictionary:
 	_flush_circles()
 	return _circles.get(sid, {})
 
+## From the running sums `_add_cell`/`_remove_cell` keep: the columns' mean (measured from `anchor` round the
+## seam, so a structure across it is not averaged to the far side) and the lowest and highest block, in time
+## that does not grow with the structure's size (a level count, not a block count).
 func _compute_circle(s: Dictionary) -> Dictionary:
-	var cells: Dictionary = s["cells"]
-	var tiles_lap := SeamWrap.world_tiles(TerrainSlice.circumference_chunks(), VoxelConsts.CHUNK_SIZE)
-	var sum := Vector2.ZERO
-	var first := Vector2i.ZERO
-	var have := false
+	var cols := (s["cells"] as Dictionary).size()
+	var n := float(maxi(1, cols))
+	var a: Vector2i = s["anchor"]
 	var lo := 1 << 40
 	var hi := -(1 << 40)
-	for t: Vector2i in cells:
-		if not have:
-			first = t
-			have = true
-		# Measured from the first column round the seam, so a structure across it is not averaged to the far side.
-		var x := first.x + SeamWrap.delta(t.x, first.x, tiles_lap)
-		sum += Vector2(float(x) + 0.5, float(t.y) + 0.5) * VoxelConsts.TILE_SIZE
-		for mm: int in cells[t]:
-			lo = mini(lo, mm)
-			hi = maxi(hi, mm + mm_of(VoxelConsts.STEP_HEIGHT))
-	var n := float(maxi(1, cells.size()))
+	for mm: int in s.get("levels", {}):
+		lo = mini(lo, mm)
+		hi = maxi(hi, mm + mm_of(VoxelConsts.STEP_HEIGHT))
 	var footprint := n * VoxelConsts.TILE_SIZE * VoxelConsts.TILE_SIZE
-	var height := maxf(0.0, float(hi - lo) / 1000.0) if cells.size() > 0 else 0.0
-	var center := sum / n
+	var height := maxf(0.0, float(hi - lo) / 1000.0) if cols > 0 else 0.0
+	var center := Vector2(float(a.x) + float(s.get("sx", 0)) / n + 0.5, float(a.y) + float(s.get("sz", 0)) / n + 0.5) * VoxelConsts.TILE_SIZE
 	center.x = SeamWrap.wrap_f(center.x, _lap_m())
 	return { "center": center, "radius": Rules.circle_radius(footprint, height) }
+
+## Add (`sign` 1) or take away (-1) column `tile` from `s`'s running sums.
+static func _sum_column(s: Dictionary, tile: Vector2i, sign: int) -> void:
+	var a: Vector2i = s["anchor"]
+	var tiles_lap := SeamWrap.world_tiles(TerrainSlice.circumference_chunks(), VoxelConsts.CHUNK_SIZE)
+	s["sx"] = int(s.get("sx", 0)) + sign * SeamWrap.delta(tile.x, a.x, tiles_lap)
+	s["sz"] = int(s.get("sz", 0)) + sign * (tile.y - a.y)
+
+## Whether the ground point `xz` lies in the circle at `center` of `radius` (metres, round the seam).
+static func circle_holds(center: Vector2, radius: float, xz: Vector2) -> bool:
+	return _dist_m(center, xz) <= radius
 
 static func _lap_m() -> float:
 	return float(TerrainSlice.circumference_chunks()) * WorldPos.CHUNK_METERS
@@ -336,6 +344,41 @@ func circles_at(xz: Vector2) -> Array:
 				out.append(sid)
 	out.sort()
 	return out
+
+## The circles of clans `player_id` is not in that reach within `reach` metres of `xz`, as `[x, z, radius]`
+## (at most `MAX_VIEW_CIRCLES`, nearest first): what a client needs to show where it may not build.
+func foreign_circles_near(player_id: String, xz: Vector2, reach: float) -> Array:
+	_flush_circles()
+	var out: Array = []
+	if _circles.is_empty():
+		return out
+	var mine := _clan_of(_pid(player_id))
+	var lap := _lap_m()
+	var x := SeamWrap.wrap_f(xz.x, lap)
+	var span := reach + float(Rules.structure().get("circle", {}).get("maxRadius", 128.0))
+	var xs: Array = [x]
+	if absf(x) + span >= lap * 0.5:
+		xs.append_array([x + lap, x - lap])
+	var seen: Dictionary = {}
+	for qx: float in xs:
+		for bx in range(floori((qx - reach) / BUCKET_M), floori((qx + reach) / BUCKET_M) + 1):
+			for bz in range(floori((xz.y - reach) / BUCKET_M), floori((xz.y + reach) / BUCKET_M) + 1):
+				for sid: int in _buckets.get(Vector2i(bx, bz), {}):
+					if seen.has(sid):
+						continue
+					seen[sid] = true
+					var st: Dictionary = _structures[sid]
+					if str(st["kind"]) != "clan" or str(st["owner"]) == mine or _abandoned(st):
+						continue
+					var c: Dictionary = _circles[sid]
+					var d := _dist_m(c["center"], xz)
+					if d <= reach + float(c["radius"]):
+						out.append([d, c["center"].x, c["center"].y, float(c["radius"])])
+	out.sort()
+	var view: Array = []
+	for e: Array in out.slice(0, MAX_VIEW_CIRCLES):
+		view.append([e[1], e[2], e[3]])
+	return view
 
 ## Whether a creature may not spawn at the ground point `xz` (world metres): it lies inside a circle.
 func spawn_blocked(xz: Vector2) -> bool:
@@ -527,13 +570,13 @@ func plan_place(player_id: String, tile: Vector2i, bottom: float, normal: Vector
 	var pid := _pid(player_id)
 	var target := _target_of(tile, bottom, normal)
 	if not target.is_empty() and not may_edit(pid, int(target["sid"])):
-		return { "verdict": "refused", "reason": "not_owner" }
+		return { "verdict": "refused", "reason": "not_owner", "player_id": pid }
 	if _foreign_near(pid, tile, bottom) != 0:
-		return { "verdict": "refused", "reason": "not_owner" }
+		return { "verdict": "refused", "reason": "not_owner", "player_id": pid }
 	if foreign_circle_at(pid, _tile_xz(tile)) != 0:
-		return { "verdict": "refused", "reason": "foreign_circle" }
+		return { "verdict": "refused", "reason": "foreign_circle", "player_id": pid }
 	if _cell_count >= MAX_CELLS:
-		return { "verdict": "refused", "reason": "structures_full" }
+		return { "verdict": "refused", "reason": "structures_full", "player_id": pid }
 	var want := _desired_owner(pid)
 	var plan := { "tile": canonical(tile), "mm": mm_of(bottom), "material": material, "player_id": pid }
 	for sid: int in _touching(tile, bottom):
@@ -542,7 +585,7 @@ func plan_place(player_id: String, tile: Vector2i, bottom: float, normal: Vector
 			plan.merge({ "verdict": "join", "sid": sid })
 			return plan
 	if _structures.size() >= MAX_STRUCTURES:
-		return { "verdict": "refused", "reason": "structures_full" }
+		return { "verdict": "refused", "reason": "structures_full", "player_id": pid }
 	plan.merge({ "verdict": "new", "kind": want["kind"], "owner": want["owner"] })
 	return plan
 
@@ -575,9 +618,13 @@ func _add_cell(sid: int, tile: Vector2i, mm: int, cell: Array) -> void:
 	_circle_dirty[sid] = true
 	if not (s["cells"] as Dictionary).has(tile):
 		s["cells"][tile] = {}
+		_sum_column(s, tile, 1)
 	if not (s["cells"][tile] as Dictionary).has(mm):
 		s["count"] = int(s["count"]) + 1
 		_cell_count += 1
+		if not s.has("levels"):
+			s["levels"] = {}
+		s["levels"][mm] = int(s["levels"].get(mm, 0)) + 1
 	s["cells"][tile][mm] = cell
 	_note_hurt(s, cell)
 	if not _tiles.has(tile):
@@ -586,7 +633,8 @@ func _add_cell(sid: int, tile: Vector2i, mm: int, cell: Array) -> void:
 
 func _note_hurt(s: Dictionary, cell: Array) -> void:
 	var base := Rules.base_durability(str(cell[0]))
-	var frac := float(cell[1]) / base if base > 0.0 else (1.0 if float(cell[1]) > 0.0 else 0.0)
+	# A block of a material with no durability reads zero from the start: it falls on the first sweep.
+	var frac := float(cell[1]) / base if base > 0.0 else 1.0
 	if frac > float(s.get("hurt", 0.0)):
 		s["hurt"] = frac
 
@@ -597,8 +645,12 @@ func _remove_cell(sid: int, tile: Vector2i, mm: int) -> void:
 	if col.erase(mm):
 		s["count"] = int(s["count"]) - 1
 		_cell_count -= 1
-	if col.is_empty():
-		(s["cells"] as Dictionary).erase(tile)
+		var levels: Dictionary = s.get("levels", {})
+		levels[mm] = int(levels.get(mm, 0)) - 1
+		if int(levels[mm]) <= 0:
+			levels.erase(mm)
+	if col.is_empty() and (s["cells"] as Dictionary).erase(tile):
+		_sum_column(s, tile, -1)
 	var tcol: Dictionary = _tiles.get(tile, {})
 	if int(tcol.get(mm, 0)) == sid:
 		tcol.erase(mm)
@@ -719,6 +771,7 @@ func repair(player_id: String, sid: int) -> String:
 			var cell: Array = s["cells"][t][mm]
 			cell[1] = 0.0
 			cell[2] = 0.0
+			_note_hurt(s, cell)
 	_push_inventory(pid)
 	return ""
 

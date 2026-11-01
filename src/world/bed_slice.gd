@@ -74,6 +74,8 @@ func refusal(pid: String, offset: Vector3) -> String:
 	var why: String = station_slice.placement_blocker(t, station_slice.snap_to_grid(target), pid)
 	if why == "not_owner":
 		return "bed.refuse_structure"
+	if why == "foreign_circle":
+		return "bed.refuse_circle"
 	if why.begins_with("too_close_station:"):
 		var other: String = BedStore.owner_of_station(registry, why.get_slice(":", 1))
 		if other != "" and other != pid:

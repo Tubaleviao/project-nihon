@@ -117,6 +117,11 @@ func _test_project_flow() -> void:
 	assert_eq(s.start_project("p2", "storehouse"), "no_permission", "a member cannot start a project")
 	assert_eq(s.start_project("p3", "storehouse"), "not_member", "an outsider cannot")
 	assert_eq(s.start_project("p1", "watchtower"), "tier_too_low", "the watchtower waits for growing")
+	# Phase 206 — a project site inside the circle of a clan the starter is not in is refused.
+	s.build_blocked = func(pid: String, _xz: Vector2) -> bool: return pid == "p1"
+	assert_eq(s.start_project("p1", "storehouse"), "foreign_circle", "not inside another clan's circle")
+	assert_true(s.projects_of(id).is_empty(), "and nothing is started")
+	s.build_blocked = Callable()
 	assert_eq(s.start_project("p1", "storehouse"), "", "the founder starts the storehouse")
 	assert_eq(s.start_project("p1", "storehouse"), "project_exists", "not twice")
 	_give(rig, "p2", "ThornwoodPlank", 40)

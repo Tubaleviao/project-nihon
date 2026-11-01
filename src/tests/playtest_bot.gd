@@ -120,6 +120,9 @@ const VILLAGE_HOUSES := 24
 const VILLAGE_SIDE := 8
 const VILLAGE_WALL_STEPS := 16
 const VILLAGE_RING_M := Vector2(40.0, 120.0)
+## Metres above the spawn's ground the village's index records sit: a circle is measured on the ground, so the
+## houses still keep creatures away, but no block the steps mine, place or walk on can ever be one of them.
+const VILLAGE_ALTITUDE_M := 4000.0
 const FIGHT_MAX_GROUND_GAP_M := 2.0
 const CREATURE_CLEAR_M := 60.0   ## fight's harvest removes the world's creatures this near the body
 const HARVEST_TRIES := 3         ## fight's harvest tries: one a hit cancels ("damaged") is retried
@@ -576,13 +579,14 @@ func run(root: Node) -> void:
 ## Phase 206 — a village of structures round the spawn, so walk, craft and fight pay the circle lookups a town
 ## costs (every spawn and placement asks the index). Recorded in the host's structure index only, not the
 ## world: other players' private houses, whose circles keep creatures away but refuse none of the bot's builds.
+## They are recorded high above the ground (`VILLAGE_ALTITUDE_M`), so no block of the world coincides with one.
 func _seed_village() -> void:
 	var st = _root._structures
 	var at: Dictionary = _root._player.get_world_pos()
 	var m := WorldPos.CHUNK_METERS
 	var home := Vector2(float(at["chunk"].x) * m + at["local"].x, float(at["chunk"].y) * m + at["local"].z)
 	var step_mm := roundi(VoxelSlice.STEP_HEIGHT * 1000.0)
-	var floor_mm := roundi(_root._terrain.get_height_at(home) * 1000.0)
+	var floor_mm := roundi((_root._terrain.get_height_at(home) + VILLAGE_ALTITUDE_M) * 1000.0)
 	for h in VILLAGE_HOUSES:
 		var angle := float(h) * 2.39996   # the golden angle: the houses spread round the ring
 		var dist := lerpf(VILLAGE_RING_M.x, VILLAGE_RING_M.y, float(h) / float(maxi(1, VILLAGE_HOUSES - 1)))

@@ -223,6 +223,9 @@ func _test_refusals() -> void:
 	r.station.structure_guard = func(_pid: String, _pos: Vector3) -> String: return "not_owner"
 	_place(r, "p1", Vector3(2, 0, 0), false)
 	assert_eq(_last_key(), "bed.refuse_structure", "on a structure it may not edit")
+	r.station.structure_guard = func(_pid: String, _pos: Vector3) -> String: return "foreign_circle"
+	_place(r, "p1", Vector3(2, 0, 0), false)
+	assert_eq(_last_key(), "bed.refuse_circle", "inside the circle of a clan it is not in")
 	r.station.structure_guard = Callable()
 	_runs = [{ "bottom": 0.0, "top": 3.0 }]
 	_place(r, "p1", Vector3(2, 0, 0), false)
@@ -247,6 +250,6 @@ func _test_refusals() -> void:
 
 func _test_catalog() -> void:
 	for k in ["bed.placed", "bed.lost", "bed.refuse_no_item", "bed.refuse_far", "bed.refuse_structure",
-			"bed.refuse_not_yours", "bed.refuse_occupied", "bed.refuse_blocked", "bed.refuse_rate"]:
+			"bed.refuse_not_yours", "bed.refuse_occupied", "bed.refuse_blocked", "bed.refuse_rate", "bed.refuse_circle"]:
 		assert_true(I18n.has_key(k), "%s is in the catalog" % k)
 		assert_true(I18n.t(k) != k and I18n.t(k).length() > 4, "%s has English text" % k)

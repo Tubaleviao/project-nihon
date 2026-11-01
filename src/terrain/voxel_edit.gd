@@ -220,6 +220,8 @@ func place_block(world_pos: Vector3, normal: Vector3, material: String = "", pla
 	if s.structures != null:
 		plan = s.structures.plan_place(player_id, tile, float(span["bottom"]), normal, chosen)
 		if str(plan["verdict"]) == "refused":
+			# Phase 206 — the builder is told why (a keyed line), not left with a block that never appears.
+			GameBus.structure_resolved.emit(str(plan.get("player_id", player_id)), "place", false, str(plan["reason"]))
 			return false
 
 	var inventory = s.inventory_for(player_id)
