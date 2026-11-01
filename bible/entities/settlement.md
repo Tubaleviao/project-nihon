@@ -41,8 +41,8 @@ A player-founded village: a Hearth, members with roles and a shared Stockpile. I
 ```mermaid
 stateDiagram-v2
   [*] --> founded
-  founded --> growing : grow\n[minMembers of the next tier must be met, and either its minDays or (when it has one) its minProjects completed settlement projects; Stockpile capacity rises to the new tier's value and never shrinks]
-  growing --> town : grow\n[minMembers of the next tier must be met, and either its minDays or (when it has one) its minProjects completed settlement projects; Stockpile capacity rises to the new tier's value and never shrinks]
+  founded --> growing : grow\n[minMembers and minDays of the next tier must be met; completed projects do not count (Phase 207); Stockpile capacity rises to the new tier's value and never shrinks]
+  growing --> town : grow\n[minMembers and minDays of the next tier must be met; completed projects do not count (Phase 207); Stockpile capacity rises to the new tier's value and never shrinks]
   founded --> abandoned : abandon\n[The Stockpile contents are kept for members who return]
   growing --> abandoned : abandon\n[The Stockpile contents are kept for members who return]
   town --> abandoned : abandon\n[The Stockpile contents are kept for members who return]
@@ -58,8 +58,8 @@ stateDiagram-v2
 
 | From | To | Trigger | Guards | Effects |
 | ---- | --- | ------- | ------ | ------- |
-| `founded` | `growing` | `grow` | minMembers of the next tier must be met, and either its minDays or (when it has one) its minProjects completed settlement projects; Stockpile capacity rises to the new tier's value and never shrinks |  |
-| `growing` | `town` | `grow` | minMembers of the next tier must be met, and either its minDays or (when it has one) its minProjects completed settlement projects; Stockpile capacity rises to the new tier's value and never shrinks |  |
+| `founded` | `growing` | `grow` | minMembers and minDays of the next tier must be met; completed projects do not count (Phase 207); Stockpile capacity rises to the new tier's value and never shrinks |  |
+| `growing` | `town` | `grow` | minMembers and minDays of the next tier must be met; completed projects do not count (Phase 207); Stockpile capacity rises to the new tier's value and never shrinks |  |
 | `founded`, `growing`, `town` | `abandoned` | `abandon` | The Stockpile contents are kept for members who return |  |
 | `abandoned` | `founded` | `reclaim` | The settlement returns to founded and grows with the tiers again |  |
 
@@ -80,7 +80,7 @@ Place a Hearth to found a settlement
 Raise the tier when member count and age meet the next tier thresholds
 
 **Rules:**
-- minMembers of the next tier must be met, and either its minDays or (when it has one) its minProjects completed settlement projects
+- minMembers and minDays of the next tier must be met; completed projects do not count (Phase 207)
 - Stockpile capacity rises to the new tier's value and never shrinks
 
 **Auth:** `maintainer`

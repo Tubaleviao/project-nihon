@@ -48,6 +48,18 @@ const WORK = {
 }
 
 const SINGLE_KINDS = ['build', 'dismantle', 'repair', 'lockpick']
+const FAMILY_FILES = { metal: 'metals', stone: 'stones', wood: 'woods', soil: 'soils' }
+
+/** Phase 207 — every material's gather family, { <material>: 'metal' | 'stone' | 'wood' | 'soil' }, from the
+ *  file that defines it, so the runtime picks WorkSkills.gather[family] for a mined or chopped block. */
+function materialFamilies() {
+  const out = {}
+  for (const [fam, file] of Object.entries(FAMILY_FILES)) {
+    for (const m of Object.keys(require(`../world/materials/${file}`))) out[m] = fam
+  }
+  return out
+}
+const FAMILIES = materialFamilies()
 const ROW_FIELDS = ['skill', 'xp']
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
 
@@ -70,12 +82,7 @@ function workRefs() {
   return {
     skills: tagged(require('./skills'), 'skill'),
     domains: [...domains],
-    families: {
-      metal: Object.keys(require('../world/materials/metals')),
-      stone: Object.keys(require('../world/materials/stones')),
-      wood:  Object.keys(require('../world/materials/woods')),
-      soil:  Object.keys(require('../world/materials/soils')),
-    },
+    families: Object.fromEntries(Object.entries(FAMILY_FILES).map(([fam, file]) => [fam, Object.keys(require(`../world/materials/${file}`))])),
   }
 }
 
@@ -135,6 +142,7 @@ const WorkSkills = defineEntity({
     id:     { type: 'uuid', primaryKey: true },
     rules:  { type: 'json', description: 'Work table: { craft: { <domain>: { skill, xp } }, gather: { <family>: { skill, xp } }, build, dismantle, repair, lockpick } (validated at fabric load)', defaultValue: WORK },
     curves: { type: 'json', description: 'XP curves of the skills added in Phase 203: { <skill>: { levelCap, xpToLevel } }', defaultValue: SKILL_CURVES },
+    families: { type: 'json', description: 'Phase 207 — each material\'s gather family { <material>: metal | stone | wood | soil }, derived from the material files', defaultValue: FAMILIES },
   },
   relations: {
     decision: { name: 'decision', kind: 'hasOne', target: 'SkillsGrowFromWork' },
@@ -151,4 +159,4 @@ const WorkSkills = defineEntity({
   },
 })
 
-module.exports = { LEVEL_CAP, SKILL_CURVES, WORK, workData, workRefs, workProblems, validateWork, WorkSkills }
+module.exports = { LEVEL_CAP, SKILL_CURVES, WORK, FAMILIES, materialFamilies, workData, workRefs, workProblems, validateWork, WorkSkills }

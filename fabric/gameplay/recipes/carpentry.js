@@ -142,6 +142,41 @@ module.exports = {
     },
   }),
 
+  // ─── RecipeNoviceTunic ────────────────────────────────────────────────────
+  // Phase 207 — the first `tailoring` (sewing) recipe: sewing grows Tailoring (WorkSkills.craft.tailoring).
+  RecipeNoviceTunic: defineEntity({
+    tags: ['recipe'],
+    description: 'Sew two duskfiber strands into a plain tunic at a carpentry bench.',
+    goal: 'The first sewing recipe, so sewing makes a better sewer (SkillsGrowFromWork, Phase 207)',
+    fields: {
+      id:     { type: 'uuid', primaryKey: true },
+      domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry', 'tailoring'], description: 'Crafting station required' },
+      outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
+      recipe: recipeData({
+        domain: 'tailoring',
+        station: 'carpentry bench',
+        inputs: [{ item: 'Duskfiber', quantity: 2 }],
+        outputs: [{ item: 'NoviceTunic', quantity: 1 }],
+        skillGuards: [{ skill: 'Tailoring', tier: 'novice' }],
+      }),
+    },
+    relations: {
+      inputDuskfiber: { name: 'inputDuskfiber', kind: 'hasOne', target: 'Duskfiber' },
+      output:         { name: 'output',         kind: 'hasOne', target: 'NoviceTunic' },
+    },
+    behaviors: {
+      craft: {
+        description: 'Sew duskfiber into a tunic at a carpentry bench',
+        rules: [
+          'Requires Tailoring: Novice',
+          'Two duskfiber strands yield one tunic',
+          'Grows the sewer\'s own Tailoring skill',
+        ],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
   // ─── RecipeAshiteBlock ────────────────────────────────────────────────────
   RecipeAshiteBlock: defineEntity({
     tags: ['recipe'],

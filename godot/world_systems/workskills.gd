@@ -6,3 +6,4 @@ extends Resource
 @export var id: String
 @export var rules: Dictionary
 @export var curves: Dictionary
+@export var families: Dictionary

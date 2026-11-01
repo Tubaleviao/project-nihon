@@ -7,7 +7,7 @@ title: "SettlementProjects"
 
 `world-system`
 
-Structures a village builds together: a palisade, a storehouse, a workshop, a watchtower. Each needs materials, which members bring; it is complete once its materials are in, with no labour stage (Phase 203). A finished project is placed as blocks and stations. Completed projects also grow a village: the growing tier is reached by minMembers and minProjects as well as by days.
+Structures a village builds together: a palisade, a storehouse, a workshop, a watchtower. Each needs materials, which members bring; it is complete once its materials are in, with no labour stage (Phase 203). A finished project is placed as blocks and stations, and changes nothing else: it counts toward no tier (Phase 207).
 
 > Give a new village something to build together in its first hour (CivilizationIsPlayerMade, Phase 197)
 
@@ -45,6 +45,6 @@ The contribution that brings in the last material completes the project and plac
 
 **Conditions:**
 - Places places.blocks of places.block in the layout, plus places.stations
-- Counts toward the tier's minProjects
+- Counts toward no tier and credits no clan
 
 

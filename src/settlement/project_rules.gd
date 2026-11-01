@@ -6,8 +6,8 @@ extends RefCounted
 ## (`GameData.WORLD_SYSTEMS["SettlementProjects"].rules`).
 ##
 ## A project's state (inside a settlement's `projects`, keyed by project key):
-##   { key, by, started, site {x, z}, given {item: n}, work (units), status "building" | "done",
-##     done_at, contributors {pid: {items: n, work: units}} }
+##   { key, by, started, site {x, z}, given {item: n}, status "building" | "done", done_at,
+##     contributors {pid: {items: n}} }
 
 const TIER_ORDER := ["founded", "growing", "town"]
 ## Projects a settlement may have under construction at once.
@@ -15,53 +15,14 @@ const MAX_BUILDING := 3
 ## Contributor entries per project (a village has at most 64 members).
 const MAX_CONTRIBUTORS := 64
 
-## Phase 203 — the fabric dropped project labour and effects (a project is complete once its materials are
-## in); the runtime keeps the labour here until Phase 207 removes the labour stage (Phase 205 removed the effects).
-const LABOUR_HOLD := {
-	"workSecondsPerUnit": 2,
-	"projects": {
-		"palisade": {
-			"labour": [{ "step": "posts", "specialty": "woodworker", "work": 60 }, { "step": "raise", "specialty": "builder", "work": 90 }],
-		},
-		"storehouse": {
-			"labour": [{ "step": "foundation", "specialty": "builder", "work": 60 }, { "step": "shelving", "specialty": "woodworker", "work": 60 },
-				{ "step": "provisions", "specialty": "forager", "work": 30 }],
-		},
-		"workshop": {
-			"labour": [{ "step": "walls", "specialty": "builder", "work": 60 }, { "step": "benches", "specialty": "woodworker", "work": 45 },
-				{ "step": "anvil", "specialty": "smith", "work": 45 }],
-		},
-		"watchtower": {
-			"labour": [{ "step": "base", "specialty": "builder", "work": 90 }, { "step": "lookout", "specialty": "woodworker", "work": 60 },
-				{ "step": "signal", "specialty": "hunter", "work": 30 }],
-		},
-	},
-}
-static var _held: Dictionary = {}
-static var _held_source: Resource = null
-
-## The project table: `{ workSecondsPerUnit, projects {key: def} }` (empty projects when the fabric has none),
-## with LABOUR_HOLD filling in what the fabric no longer has.
+## The project table: `{ projects {key: def} }` (empty when the fabric has none). Phase 207 removed the labour
+## the runtime held after Phase 203: a project is complete once its materials are in.
 static func table() -> Dictionary:
 	var res: Resource = GameData.WORLD_SYSTEMS.get("SettlementProjects", null)
 	var r: Variant = res.get("rules") if res != null else null
 	if r is Dictionary and (r as Dictionary).get("projects", null) is Dictionary:
-		if _held.is_empty() or res != _held_source:
-			_held = _with_hold(r)
-			_held_source = res
-		return _held
-	return { "workSecondsPerUnit": 2, "projects": {} }
-
-static func _with_hold(r: Dictionary) -> Dictionary:
-	var out: Dictionary = r.duplicate(true)
-	if not out.has("workSecondsPerUnit"):
-		out["workSecondsPerUnit"] = LABOUR_HOLD["workSecondsPerUnit"]
-	for key: String in out["projects"]:
-		var hold: Dictionary = LABOUR_HOLD["projects"].get(key, {})
-		for f: String in hold:
-			if not (out["projects"][key] as Dictionary).has(f):
-				out["projects"][key][f] = (hold[f] as Array).duplicate(true)
-	return out
+		return r
+	return { "projects": {} }
 
 static func def_of(key: String, tbl: Dictionary = {}) -> Dictionary:
 	var t: Dictionary = tbl if not tbl.is_empty() else table()
@@ -83,25 +44,6 @@ static func remaining_materials(def: Dictionary, given: Dictionary) -> Dictionar
 		if left > 0:
 			out[item] = left
 	return out
-
-## Work units the whole project takes (every labour step).
-static func total_work(def: Dictionary) -> float:
-	var n := 0.0
-	for s: Dictionary in def.get("labour", []):
-		n += float(s["work"])
-	return n
-
-## The labour step `work` units fall in: `{ index, step, specialty, done, work }` (`done` units of this
-## step's `work`), or index -1 once every step is done.
-static func current_step(def: Dictionary, work: float) -> Dictionary:
-	var acc := 0.0
-	var steps: Array = def.get("labour", [])
-	for i in steps.size():
-		var w := float(steps[i]["work"])
-		if work < acc + w:
-			return { "index": i, "step": str(steps[i]["step"]), "specialty": str(steps[i].get("specialty", "")), "done": work - acc, "work": w }
-		acc += w
-	return { "index": -1, "step": "", "specialty": "", "done": 0.0, "work": 0.0 }
 
 ## "" when `qty` of `item` may go into the project; else a reason: `unknown_project`, `bad_args`,
 ## `project_done`, `unknown_item` (not a material this project uses) or `too_much` (more than it still
@@ -141,10 +83,9 @@ static func start_blocker(key: String, tier: String, projects: Dictionary, tbl: 
 		return "too_many_projects"
 	return ""
 
-## Whether every material is in and every labour step is worked.
+## Whether every material is in (Phase 207: there is no labour stage).
 static func is_complete(def: Dictionary, state: Dictionary) -> bool:
-	return not def.is_empty() and remaining_materials(def, state.get("given", {})).is_empty() \
-		and float(state.get("work", 0.0)) >= total_work(def) - 0.0001
+	return not def.is_empty() and remaining_materials(def, state.get("given", {})).is_empty()
 
 static func building_count(projects: Dictionary) -> int:
 	var n := 0
@@ -155,11 +96,6 @@ static func building_count(projects: Dictionary) -> int:
 
 static func completed_count(projects: Dictionary) -> int:
 	return projects.size() - building_count(projects)
-
-## Work units `seconds` of labour earn (before any specialty bonus).
-static func work_units(seconds: float, tbl: Dictionary = {}) -> float:
-	var t: Dictionary = tbl if not tbl.is_empty() else table()
-	return maxf(0.0, seconds) / maxf(0.001, float(t.get("workSecondsPerUnit", 2)))
 
 ## The cells a finished structure fills, as offsets `(dx, dy, dz)` from its site (dy above the ground),
 ## exactly `blocks` of them: courses of the layout's outline stacked upward, with a doorway left open in
@@ -199,11 +135,6 @@ static func block_material(block: String) -> String:
 			if GameData.MATERIALS.has(str(part)):
 				return str(part)
 	return ""
-
-## Whether `item` is a tool (it has a `toolType`): what labour needs in hand.
-static func is_tool_item(item: String) -> bool:
-	var res: Resource = GameData.ITEMS.get(item, null)
-	return res != null and str(res.get("toolType") if "toolType" in res else "") != ""
 
 ## Where the structure's stations stand, as ground offsets from its site: side by side inside the outline.
 static func station_offsets(count: int) -> Array:

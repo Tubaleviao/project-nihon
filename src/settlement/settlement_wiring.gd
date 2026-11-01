@@ -23,7 +23,6 @@ func make_slice(ctx: GameRoot) -> Node:
 	slice.registry = root._registry
 	slice.position_of = self.player_xz
 	slice.is_host = not root._is_client
-	slice.tool_in_hand = self.tool_in_hand
 	slice.place_structure = self.place_structure
 	slice.release_station = root._station.remove_station
 	root._technology.settlement_slice = slice
@@ -95,19 +94,6 @@ func push_views() -> void:
 		var peer: int = root._registry.get_peer_id(pid)
 		if peer != 0 and root._networking != null and root._networking.is_host():
 			root._networking.send_own_state(peer, { "settlement_view": view })
-
-## Phase 198 — whether the player has a tool to work with: in the main hand, or in the pack (tools take no
-## equipment slot; carcass harvesting reads them the same way).
-func tool_in_hand(player_id: String) -> bool:
-	if ProjectRules.is_tool_item(str(root._registry.get_equipment(player_id).get("MainHand", ""))):
-		return true
-	var inv: Node = root._inventory if player_id == root._registry.local_player_id else root._registry.get_inventory(player_id)
-	if inv == null or not inv.has_method("get_contents"):
-		return false
-	for item: Variant in (inv.get_contents() as Dictionary):
-		if ProjectRules.is_tool_item(str(item)) and inv.get_item_count(str(item)) > 0:
-			return true
-	return false
 
 ## Phase 198 — place a finished project's structure at `site` ({x, z} ground metres, doubles): its blocks
 ## through the voxel edit path (recorded like any edit and synced to peers in range as `block_changed`),

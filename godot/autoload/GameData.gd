@@ -171,6 +171,7 @@ const RECIPES: Dictionary = {
 		"RecipeHealthPotion": preload("res://godot/recipes/recipehealthpotion.tres"),
 		"RecipeHearth": preload("res://godot/recipes/recipehearth.tres"),
 		"RecipeLumenfiteOrb": preload("res://godot/recipes/recipelumenfiteorb.tres"),
+		"RecipeNoviceTunic": preload("res://godot/recipes/recipenovicetunic.tres"),
 		"RecipeRefinedVoiditeShard": preload("res://godot/recipes/reciperefinedvoiditeshard.tres"),
 		"RecipeSkinningKnife": preload("res://godot/recipes/recipeskinningknife.tres"),
 		"RecipeStaminaPotion": preload("res://godot/recipes/recipestaminapotion.tres"),

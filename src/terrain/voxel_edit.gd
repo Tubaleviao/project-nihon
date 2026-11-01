@@ -2,6 +2,8 @@ extends RefCounted
 ## Mine/place/settle edit authority, moved out of `VoxelSlice` verbatim (Phase 154).
 ## `s` is the owning slice; every moved method keeps a forwarder on the slice.
 
+const WorkSkills := preload("res://src/character/work_skills.gd")
+
 var s: Node
 
 func _init(slice: Node) -> void:
@@ -93,6 +95,13 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: Str
 	# placed block mined back would otherwise be a research-point farm.
 	if natural and banked:
 		GameBus.resource_gathered.emit(player_id, material, quantity)
+	# Phase 207 — work grows the worker's skill: a gathered natural yield by its material's family, a
+	# dismantled block as dismantling (a destroyed one grows nothing).
+	if s.is_authoritative:
+		if natural and banked:
+			WorkSkills.grant(s.player_registry, player_id, WorkSkills.gather_row(material))
+		elif verdict == "dismantle":
+			WorkSkills.grant(s.player_registry, str(plan.get("player_id", player_id)), WorkSkills.row("dismantle"))
 	# Phase 138 — the span top, the same height `has_edit_near_at` judges on a reload, so live and reload agree.
 	GameBus.block_edit_resolved.emit(tile, float(span["top"]))
 	GameBus.block_changed.emit("mine", world_pos, normal, material)
@@ -238,6 +247,8 @@ func place_block(world_pos: Vector3, normal: Vector3, material: String = "", pla
 	s._push_inventory(player_id)
 
 	var pos := Vector3(probe["xz"].x, float(span["top"]), probe["xz"].y)
+	if s.is_authoritative:
+		WorkSkills.grant(s.player_registry, str(plan.get("player_id", player_id)), WorkSkills.row("build"))   # Phase 207
 	GameBus.block_placed.emit(chosen, pos)
 	GameBus.block_edit_resolved.emit(tile, float(span["top"]))
 	GameBus.block_changed.emit("place", world_pos, normal, chosen)

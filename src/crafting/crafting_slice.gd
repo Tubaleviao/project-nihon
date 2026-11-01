@@ -63,6 +63,7 @@ const PlayerRules := preload("res://src/core/player_rules.gd")
 
 ## Shared skill-tier ordering (novice → master) — see src/core/skill_tiers.gd.
 const SkillTiers := preload("res://src/core/skill_tiers.gd")
+const WorkSkills := preload("res://src/character/work_skills.gd")
 
 ## Set by game_root so recipes can consume/produce inventory items. The fallback
 ## inventory when no per-player registry is wired (isolated unit tests) or when no
@@ -204,6 +205,9 @@ func craft(recipe_id: String, player_id: String = "") -> Dictionary:
 	# before the result is emitted, so the sync the result triggers carries the new balance.
 	if is_authoritative and technology_slice != null and technology_slice.has_method("note_craft"):
 		technology_slice.note_craft(recipe_id, pid)
+	# Phase 207 — crafting grows the crafter's own skill for the recipe's domain, before the result's sync.
+	if is_authoritative:
+		WorkSkills.grant(player_registry, pid, WorkSkills.craft_row(str(recipe.get("domain", ""))))
 
 	return _ok(recipe_id, produced, pid)
 

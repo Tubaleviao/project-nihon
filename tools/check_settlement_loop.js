@@ -2,7 +2,7 @@
 // Phase 197 — proves the settlement loop validator catches bad tables: a project with no materials or an
 // unknown item, a specialty naming an unknown skill or attribute, an unknown station or tier all fail.
 // Phase 203 — project labour (steps, work units), project effects, the specialty labour bonus, raids and
-// upkeep all fail; the shipped tables pass.
+// upkeep all fail; the shipped tables pass. Phase 207 — a tier with minProjects fails.
 //   node tools/check_settlement_loop.js
 'use strict';
 const s = require('../fabric/gameplay/settlement');
@@ -45,10 +45,10 @@ d = fresh(); d.projects.projects.watchtower.minTier = 'city';
 expect('a project with an unknown minTier fails', d, /watchtower\.minTier "city" is not a settlement tier/);
 
 const rules = JSON.parse(JSON.stringify(s.RULES));
-rules.tiers.town.minProjects = 4;
+rules.tiers.growing.minProjects = 2;
 const tierProblems = s.settlementProblems(rules, ['Hearth']);
-const ok = tierProblems.some((p) => /town keeps its day threshold/.test(p));
-console.log(`${ok ? 'ok  ' : 'FAIL'} a town tier reached by projects fails${ok ? '' : ' — ' + JSON.stringify(tierProblems)}`);
+const ok = tierProblems.some((p) => /growing\.minProjects: completed projects count toward no tier/.test(p));
+console.log(`${ok ? 'ok  ' : 'FAIL'} a tier reached by projects fails (Phase 207)${ok ? '' : ' — ' + JSON.stringify(tierProblems)}`);
 if (!ok) failed++;
 
 let threw = false;

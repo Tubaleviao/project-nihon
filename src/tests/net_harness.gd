@@ -1879,13 +1879,12 @@ func _step_settlement() -> void:
 	_report("settlement", verdict(ok, true), "member-deposited" if ok else "claim%d-invited%d-refusedEdits%d-joined%d-deposited%d-edited%d" % [int(seen_claim), int(invited), refused_edits, int(joined), int(deposited), int(edited)])
 
 ## Phase 198 — a settlement project over the socket. The host starts a palisade on the client's spot (the
-## client is a member since the step before) and fills it to a few planks and two work units short; the
-## client, with the axe the host gives it in its pack, brings the planks and works at the site until it completes. The
+## client is a member since the step before) and fills it to a few planks short; the client brings the planks the
+## host gives it, and that contribution completes it (Phase 207: no labour stage). The
 ## host checks completion and that an outsider's contribution is refused; the client checks it saw the
 ## project done in its view and the palisade's blocks arrive as world edits.
 const PROJECT_KEY := "palisade"
 const PROJECT_PLANKS := 4
-const PROJECT_TOOL := "CarpenterAxe"
 var _project_edits: int = 0
 
 func _on_project_edit(_action: String, _pos: Vector3, _normal: Vector3, _material: String) -> void:
@@ -1912,17 +1911,15 @@ func _step_settlement_project() -> void:
 		if why != "":
 			_report("settlement_project", "fail", "start_" + why)
 			return
-		# Most of the palisade is already in: the client's share is a few planks and two work units.
+		# Most of the palisade is already in: the client's share is the last few planks, which complete it (Phase 207).
 		var def: Dictionary = ProjectRules.def_of(PROJECT_KEY)
 		var state: Dictionary = settlements._settlements[sid]["projects"][PROJECT_KEY]
 		var need: Dictionary = ProjectRules.needed_materials(def)
 		for item: String in need:
 			state["given"][item] = int(need[item]) - (PROJECT_PLANKS if item == "ThornwoodPlank" else 0)
-		state["work"] = ProjectRules.total_work(def) - 2.0
 		GameBus.settlements_changed.emit()
 		var inv: Node = _root._registry.get_inventory(bound)
 		inv.add_item("ThornwoodPlank", PROJECT_PLANKS)
-		inv.add_item(PROJECT_TOOL, 1)
 		GameBus.inventory_synced.emit(bound, inv.get_contents(), inv.get_durability_data())
 		var done: bool = await _await_until(func(): return str(settlements.projects_of(sid).get(PROJECT_KEY, {}).get("status", "")) == "done", _step_timeout() * 2.0)
 		var helped: Dictionary = settlements.projects_of(sid).get(PROJECT_KEY, {}).get("contributors", {}).get(bound, {})
@@ -1934,21 +1931,17 @@ func _step_settlement_project() -> void:
 		GameBus.settlement_intent.emit("project_give", { "project": PROJECT_KEY, "item": "ThornwoodPlank", "qty": 1 }, "harness_outsider")
 		GameBus.settlement_resolved.disconnect(on_res)
 		await _await_settle(2.0 * _time_scale)   # the closing view push reaches the client
-		var ok: bool = done and int(helped.get("items", 0)) == PROJECT_PLANKS and float(helped.get("work", 0.0)) > 0.0 and outsider == ["not_member"]
-		_report("settlement_project", verdict(ok, true), "client-built-outsider-refused" if ok else "done%d-items%d-work%d-outsider_%s-%s" % [int(done), int(helped.get("items", 0)), int(float(helped.get("work", 0.0)) * 10.0), "_".join(outsider), "_".join(_settlement_reasons)])
+		var ok: bool = done and int(helped.get("items", 0)) == PROJECT_PLANKS and outsider == ["not_member"]
+		_report("settlement_project", verdict(ok, true), "client-built-outsider-refused" if ok else "done%d-items%d-outsider_%s-%s" % [int(done), int(helped.get("items", 0)), "_".join(outsider), "_".join(_settlement_reasons)])
 		return
 	GameBus.block_changed.connect(_on_project_edit)
 	var seen: bool = await _await_until(func(): return not _project_view(settlements).is_empty(), _step_timeout())
-	var armed: bool = await _await_until(func(): return _root._inventory.get_item_count(PROJECT_TOOL) >= 1 and _root._inventory.get_item_count("ThornwoodPlank") >= PROJECT_PLANKS, _step_timeout())
+	var armed: bool = await _await_until(func(): return _root._inventory.get_item_count("ThornwoodPlank") >= PROJECT_PLANKS, _step_timeout())
 	await _await_settle(0.6)
 	GameBus.settlement_intent.emit("project_give", { "project": PROJECT_KEY, "item": "ThornwoodPlank", "qty": PROJECT_PLANKS, "from": "bag" }, "")
 	var given: bool = await _await_until(func(): return int((_project_view(settlements).get("given", {}) as Dictionary).get("ThornwoodPlank", 0)) >= 40, _step_timeout())
-	# Labour beats a second apart, as the board's "Work here" sends them, until the view shows it built.
-	var deadline := Time.get_ticks_msec() + int(_step_timeout() * 1000.0)
-	while str(_project_view(settlements).get("status", "")) != "done" and Time.get_ticks_msec() < deadline:
-		GameBus.settlement_intent.emit("project_work", { "project": PROJECT_KEY }, "")
-		await _await_settle(1.0)
-	var built: bool = str(_project_view(settlements).get("status", "")) == "done"
+	# Phase 207 — the last planks complete it: no labour stage.
+	var built: bool = await _await_until(func(): return str(_project_view(settlements).get("status", "")) == "done", _step_timeout())
 	var blocks := int(ProjectRules.def_of(PROJECT_KEY)["places"]["blocks"])
 	var placed: bool = await _await_until(func(): return _project_edits >= blocks, _step_timeout())
 	GameBus.block_changed.disconnect(_on_project_edit)

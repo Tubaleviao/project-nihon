@@ -8,9 +8,9 @@ const { RARITIES, DURABILITY_STATES, itemStateMachine, itemShape } = require('./
 // settlement to a clan with the same name, members and roles (Clan.migration). The hearth fields stay until
 // that migration, which returns each hearth to its founder as a `Hearth` item.
 //
-// `tiers`: settlement tier -> { minMembers, minDays, minProjects? }. A tier is reached when the member
-//   count meets minMembers and either the age in days meets minDays or (Phase 197, when the tier has
-//   minProjects) that many settlement projects are complete. Thresholds never shrink with tier.
+// `tiers`: settlement tier -> { minMembers, minDays }. A tier is reached when the member count meets
+//   minMembers and the age in days meets minDays. Thresholds never shrink with tier. Phase 207 — completed
+//   projects no longer count toward a tier (`minProjects` fails): a project changes nothing but itself.
 // `roles`: member role -> permissions (`build`, `take`, `invite`, `withdrawLimit` items per day; the
 //   founder is never limited, and a role without `take` withdraws nothing).
 // `stockpile`: shared container capacity (stacks) by tier.
@@ -21,7 +21,7 @@ const RULES = {
   guildMaxSettlements: 1,
   tiers: {
     founded: { minMembers: 1, minDays: 0 },
-    growing: { minMembers: 3, minDays: 3, minProjects: 2 },
+    growing: { minMembers: 3, minDays: 3 },
     town:    { minMembers: 8, minDays: 14 },
   },
   roles: {
@@ -62,7 +62,7 @@ function settlementProblems(rules, itemKeys) {
     for (const f of CLAIM_FIELDS) if (f in t) problems.push(`Settlement.tiers.${name}.${f}: settlements have no claim (Phase 203)`)
     if (!Number.isInteger(t.minMembers) || t.minMembers < 1) problems.push(`Settlement.tiers.${name}.minMembers must be an integer >= 1`)
     if (!isNum(t.minDays) || t.minDays < 0) problems.push(`Settlement.tiers.${name}.minDays must be >= 0`)
-    if ('minProjects' in t && (!Number.isInteger(t.minProjects) || t.minProjects < 1)) problems.push(`Settlement.tiers.${name}.minProjects must be an integer >= 1 when present`)
+    if ('minProjects' in t) problems.push(`Settlement.tiers.${name}.minProjects: completed projects count toward no tier (Phase 207)`)
     if (prev) {
       if (t.minMembers < prev.minMembers) problems.push(`Settlement.tiers.${name}.minMembers ${t.minMembers} is below the previous tier's ${prev.minMembers} (thresholds out of order)`)
       if (t.minDays < prev.minDays) problems.push(`Settlement.tiers.${name}.minDays ${t.minDays} is below the previous tier's ${prev.minDays} (thresholds out of order)`)
@@ -70,7 +70,6 @@ function settlementProblems(rules, itemKeys) {
     prev = t
   }
   for (const name of Object.keys(tiers)) if (!TIERS.includes(name)) problems.push(`Settlement.tiers has unknown tier "${name}"`)
-  if (tiers.town && 'minProjects' in tiers.town) problems.push('Settlement.tiers.town keeps its day threshold and takes no minProjects')
 
   const stock = rules.stockpile || {}
   let prevCap = 0
@@ -268,8 +267,8 @@ const loopEntity = (description, goal, rulesDescription, rules, behaviors) => de
 const SettlementProjects = loopEntity(
   'Structures a village builds together: a palisade, a storehouse, a workshop, a watchtower. Each needs ' +
   'materials, which members bring; it is complete once its materials are in, with no labour stage (Phase 203). ' +
-  'A finished project is placed as blocks and stations. Completed projects also grow a village: the growing ' +
-  'tier is reached by minMembers and minProjects as well as by days.',
+  'A finished project is placed as blocks and stations, and changes nothing else: it counts toward no tier ' +
+  '(Phase 207).',
   'Give a new village something to build together in its first hour (CivilizationIsPlayerMade, Phase 197)',
   'Project table: { projects: { <key>: { minTier, materials, places } } }',
   PROJECTS,
@@ -286,7 +285,7 @@ const SettlementProjects = loopEntity(
     },
     complete: {
       description: 'The contribution that brings in the last material completes the project and places it',
-      rules: ['Places places.blocks of places.block in the layout, plus places.stations', 'Counts toward the tier\'s minProjects'],
+      rules: ['Places places.blocks of places.block in the layout, plus places.stations', 'Counts toward no tier and credits no clan'],
       auth: { roles: ['maintainer'] },
     },
   },
@@ -502,7 +501,7 @@ module.exports = {
       grow: {
         description: 'Raise the tier when member count and age meet the next tier thresholds',
         rules: [
-          'minMembers of the next tier must be met, and either its minDays or (when it has one) its minProjects completed settlement projects',
+          'minMembers and minDays of the next tier must be met; completed projects do not count (Phase 207)',
           'Stockpile capacity rises to the new tier\'s value and never shrinks',
         ],
         auth: { roles: ['maintainer'] },

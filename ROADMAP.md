@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–199 and 203–206 are done. Their specs and acceptance criteria, and the introductions of
+Phases 1–199 and 203–207 are done. Their specs and acceptance criteria, and the introductions of
 the arcs they belonged to, are archived in [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Next: follow-up debt burn II (Phases 194–196)
@@ -120,7 +120,7 @@ Smithing). Phase 203 models all of it in the fabric before any runtime phase sta
 | 204 | Clans: a name, invites, one clan each, and every member's skills in view | Done | [phases-204.md](docs/roadmap-history/phases-204.md) |
 | 205 | Owned structures instead of claims: private or clan, durability, dismantling and destruction | Done | [phases-205.md](docs/roadmap-history/phases-205.md) |
 | 206 | The circle around every building: no spawns, no foreign building | Done | [phases-206.md](docs/roadmap-history/phases-206.md) |
-| 207 | Skills grow from work, and clan projects without labour | Planned | below |
+| 207 | Skills grow from work, and clan projects without labour | Done | [phases-207.md](docs/roadmap-history/phases-207.md) |
 | 208 | Chests and doors: owner, clan or everyone, and locks that can be broken or picked | Planned | below |
 | 209 | Books and blueprints: research shared by writing | Planned | below |
 | 210 | Clan tiers from buildings and material rarity | Planned | below |
@@ -167,39 +167,6 @@ must stay under one hour.
 - [ ] CI: the four bots end with at least two different specialties, one completed project, one
   defended raid and one paid upkeep, as read from the host's world record.
 - [ ] The scenario passes 3 CI runs in a row on an unchanged commit.
-- [ ] Suite green on both boot paths, harness green.
-
----
-
-## Phase 207 — Skills grow from work, and clan projects without labour
-
-**Goal:** crafting, gathering, building, dismantling and repairing grow the worker's own skill for
-that kind of work. Clan projects finish when their materials are in, with no labour stage.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phases 203 and 204.
-
-**Deliverables:**
-- Each kind of work calls `player_registry.grant_skill_xp` for the skill Phase 203 maps it to.
-  Today only skinning a carcass grants XP (`carcass_wiring.gd`); crafting records skill tiers but
-  no XP. Phase 199's specialties then follow from those skills, and the clan roster (Phase 204)
-  shows them.
-- Project labour is removed from the runtime: the labour clock (`LABOUR_GAP_SEC`), `SITE_RADIUS`,
-- Phase 203 hold to remove with it: `ProjectRules.LABOUR_HOLD` keeps the labour steps,
-  `workSecondsPerUnit` and effects the fabric dropped, and `SpecialtyRules` falls back to a 0.5
-  `bonusLabour` the fabric no longer has. The fabric's `WorkSkills` table maps every kind of work
-  to its skill and XP, and the `tailoring` craft domain has no recipe yet: add a sewing recipe.
-  the tool-in-hand check, work steps and Phase 199's specialty labour bonus (`SettlementSlice.labour_bonus`, `bonusLabour`). A project completes on its last contribution. Saved projects with work in progress complete if their materials are in.
-- Project completion stops counting toward a tier (`minProjects`).
-
-**Acceptance criteria:**
-- [ ] Suite: crafting a sewing recipe adds Tailoring XP to the crafter and to no one else, and each
-  kind of work grants its mapped skill.
-- [ ] Suite: a project completes on the contribution that brings in its last material, and no
-  labour code remains.
-- [ ] Suite: completing a project changes no clan-level value except the project itself.
-- [ ] Suite (audit): no XP amount is read from a client message.
 - [ ] Suite green on both boot paths, harness green.
 
 ---

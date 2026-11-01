@@ -34,6 +34,7 @@ const VoxelConsts := preload("res://src/terrain/voxel_consts.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
+const WorkSkills := preload("res://src/character/work_skills.gd")
 
 const DATA_FORMAT := 1
 const OWNER_KINDS := ["private", "clan"]
@@ -772,6 +773,7 @@ func repair(player_id: String, sid: int) -> String:
 			cell[1] = 0.0
 			cell[2] = 0.0
 			_note_hurt(s, cell)
+	WorkSkills.grant(registry, pid, WorkSkills.row("repair"))   # Phase 207 — repairing grows the repairer's skill
 	_push_inventory(pid)
 	return ""
 
