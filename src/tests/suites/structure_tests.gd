@@ -1,10 +1,16 @@
 extends "res://src/tests/test_support.gd"
 ## Phase 205 — owned structures: who may edit, damage and dismantle a block, durability and wear, repair, the
 ## structure index's persistence, the station and tree guards, respawning at will, and what a client may name.
+## Phase 206 — the circle around every structure: its size, the lookup, no foreign building, no spawns.
 
 const StructureSlice := preload("res://src/structure/structure_slice.gd")
 const StructureRules := preload("res://src/structure/structure_rules.gd")
 const ClanSlice := preload("res://src/clan/clan_slice.gd")
+const VoxelConsts := preload("res://src/terrain/voxel_consts.gd")
+
+## `a` within 0.0001 of `b`.
+func assert_near(a: float, b: float, msg: String) -> void:
+	assert_true(absf(a - b) < 0.0001, "%s (%f against %f)" % [msg, a, b])
 
 func register() -> void:
 	_run_test("structure: a private structure is its builder's anywhere, a clan structure any member's", _test_owner_edits)
@@ -27,6 +33,10 @@ func register() -> void:
 	_run_test("structure: /respawn kills the speaker's own character, at most once per cooldown", _test_respawn_command)
 	_run_test("structure: a hit reaches peers in range as block_damaged", _test_damage_wire)
 	_run_test("structure (audit): no owner, clan, durability or skill value is read from a client message", _test_audit_client_values)
+	_run_test("structure circle: a larger structure has a larger circle, between the fabric's bounds, and it shrinks", _test_circle_size)
+	_run_test("structure circle: the lookup finds a circle across bucket edges and the world seam", _test_circle_lookup)
+	_run_test("structure circle: an outsider cannot build in a clan's circle until its building is destroyed", _test_circle_outsider)
+	_run_test("structure circle: over a simulated day no creature spawns inside a circle, spawns go on outside", _test_circle_no_spawn)
 
 # ── rig ──────────────────────────────────────────────────────────────────
 
@@ -366,6 +376,22 @@ func _test_collapse_sweep() -> void:
 	assert_eq(r["v"].column_top_at_tile(Vector2i(50, 2)), 2.0, "and its blocks from the world")
 	assert_true(notes.has(["structure.destroyed", "p1"]), "its owner is told")
 	GameBus.system_message.disconnect(cb)
+	# The sweep reads a structure's blocks only once wear could bring one to zero: a damaged block goes sooner.
+	assert_true(_place(r, "p1", 60, 2, 2.0), "a sound block")
+	assert_true(_place(r, "p1", 56, 2, 2.0), "and one p3 hits to under half its durability")
+	var k := 0
+	while k < 1000 and float(st.block_durability(Vector2i(56, 2), 2.0625).get("fraction", 0.0)) > 0.4:
+		r["now"][0] += StructureSlice.HIT_INTERVAL
+		var pl: Dictionary = st.plan_mine("p3", Vector2i(56, 2), 2.0, 2.125, "pick")
+		st.commit_mine(pl)
+		k += 1
+	assert_true(float(st.block_durability(Vector2i(56, 2), 2.0625).get("fraction", 1.0)) <= 0.4, "the hit block is under half")
+	for tx: int in [60, 56]:
+		st.get_structure(_sid(r, tx, 2, 2.0))["wear"] = 0.65
+	for i in 3:
+		st.tick()
+	assert_true(_sid(r, 60, 2, 2.0) != 0, "worn 65%, the sound block stands")
+	assert_eq(_sid(r, 56, 2, 2.0), 0, "the damaged one collapses")
 	_free_rig(r)
 
 func _test_station_tree_guard() -> void:
@@ -593,4 +619,178 @@ func _test_axe_wears() -> void:
 	var mid: float = inv.get_durability("CarpenterAxe")
 	assert_true(bool(_mine(r, "p3", 30, 30, 2.0)["success"]), "digging natural ground with no pick is bare-handed")
 	assert_eq(inv.get_durability("CarpenterAxe"), mid, "and leaves the axe alone")
+	_free_rig(r)
+
+# ── Phase 206: circles ───────────────────────────────────────────────────
+
+## Index one `p1` block at (`tile`, `mm`) without touching the world: `sid` 0 starts a structure for `kind`.
+func _index(st: StructureSlice, tile: Vector2i, mm: int, sid: int = 0, kind: String = "private", owner: String = "p1") -> int:
+	var plan := { "tile": StructureSlice.canonical(tile), "mm": mm, "material": "Ashite", "player_id": "p1" }
+	plan.merge({ "verdict": "join", "sid": sid } if sid != 0 else { "verdict": "new", "kind": kind, "owner": owner })
+	return st.commit_place(plan)
+
+func _test_circle_size() -> void:
+	var r := _rig()
+	var st: StructureSlice = r["st"]
+	var c: Dictionary = StructureRules.structure()["circle"]
+	var lo := float(c["minRadius"])
+	var hi := float(c["maxRadius"])
+	var one := _index(st, Vector2i(0, 0), 2000)
+	assert_near(float(st.circle_of(one)["radius"]), StructureRules.circle_radius(0.25, 0.125), "a single block's circle is its own size")
+	assert_true(float(st.circle_of(one)["radius"]) < lo + 1.0, "within a metre of the minimum")
+	var hall := _index(st, Vector2i(400, 400), 2000)
+	for x in 20:
+		for z in 20:
+			if x != 0 or z != 0:
+				_index(st, Vector2i(400 + x, 400 + z), 2000, hall)
+	for k in range(1, 40):
+		_index(st, Vector2i(400, 400), 2000 + 125 * k, hall)
+	var big: Dictionary = st.circle_of(hall)
+	assert_true(float(big["radius"]) > lo, "a 20 × 20 hall with a 5 m tower has a larger circle (%.2f m)" % float(big["radius"]))
+	assert_near(float(big["radius"]), StructureRules.circle_radius(400 * 0.25, 5.0), "from its footprint and height")
+	assert_true(float(big["radius"]) <= hi, "and no larger than the maximum")
+	assert_near(StructureRules.circle_radius(1.0e9, 1.0e6), hi, "the largest structure is clamped to the maximum")
+	assert_near(StructureRules.circle_radius(0.0, 0.0), lo, "the smallest to the minimum")
+	for x in range(10, 20):
+		for z in 20:
+			st.drop_span(Vector2i(400 + x, 400 + z), 1.9, 2.1)
+	var half := float(st.circle_of(hall)["radius"])
+	assert_true(half < float(big["radius"]), "losing half its floor shrinks the circle (%.2f m)" % half)
+	assert_true(half >= lo, "but never below the minimum")
+	_free_rig(r)
+
+func _test_circle_lookup() -> void:
+	var r := _rig()
+	var st: StructureSlice = r["st"]
+	# A floor whose center sits on a bucket edge (64 m): points either side are in two buckets.
+	var floor_id := _index(st, Vector2i(118, 0), 2000)
+	for x in range(119, 138):
+		_index(st, Vector2i(x, 0), 2000, floor_id)
+	var center: Vector2 = st.circle_of(floor_id)["center"]
+	assert_near(center.x, 64.0, "the floor is centred on the bucket edge")
+	for qx: float in [57.0, 63.9, 64.1, 71.0]:
+		assert_eq(st.circles_at(Vector2(qx, 0.25)), [floor_id], "the circle holds x = %.1f" % qx)
+	assert_eq(st.circles_at(Vector2(64.0 + float(st.circle_of(floor_id)["radius"]) + 0.5, 0.25)), [], "and not a point past its radius")
+	# At the seam: a block at the east edge of the lap, a point just over the seam to the west.
+	var lap_tiles := TerrainSlice.circumference_chunks() * VoxelConsts.CHUNK_SIZE
+	var lap_m := float(lap_tiles) * VoxelConsts.TILE_SIZE
+	var east := _index(st, Vector2i(lap_tiles / 2 - 1, 0), 2000)
+	assert_eq(st.circles_at(Vector2(-lap_m * 0.5 + 2.0, 0.25)), [east], "a circle reaches over the world seam")
+	assert_eq(st.circles_at(Vector2(lap_m * 0.5 + 2.0, 0.25)), [east], "named from either side of it")
+	# A structure across the seam is centred at the seam, not averaged to the far side of the world.
+	_index(st, Vector2i(-lap_tiles / 2, 0), 2000, east)
+	assert_true(absf(float(st.circle_of(east)["center"].x)) > lap_m * 0.25, "a structure across the seam is centred at the seam")
+	assert_true(st.spawn_blocked(Vector2(lap_m * 0.5 - 1.0, 0.25)), "and blocks spawns there")
+	_free_rig(r)
+
+func _test_circle_outsider() -> void:
+	var r := _rig()
+	var st: StructureSlice = r["st"]
+	assert_eq(st.set_build_mode("p1", "clan"), "", "p1 builds for the clan")
+	assert_true(_place(r, "p1", 10, 10, 2.0, "Soil"), "the clan's hall")
+	var hall := _sid(r, 10, 10, 2.0)
+	assert_eq(str(st.plan_place("p3", Vector2i(16, 10), 2.0, Vector3.UP, "Ashite").get("reason", "")), "foreign_circle",
+		"an outsider's structure 3 m from the hall is refused")
+	assert_false(_place(r, "p3", 16, 10, 2.0), "and nothing is placed")
+	assert_eq(_count(r, "p3", "Ashite"), 1, "or spent")
+	assert_true(_place(r, "p2", 10, 18, 2.0), "a member's private house there is allowed")
+	assert_eq(st.get_structure(_sid(r, 10, 18, 2.0))["kind"], "private", "and stays theirs")
+	assert_true(_place(r, "p3", 60, 10, 2.0), "an outsider builds outside the circle")
+	assert_true(_place(r, "p3", 61, 10, 2.0), "and beside their own there")
+	var station := StationSlice.new()
+	add_child(station)
+	station.structure_guard = st.build_blocker
+	assert_eq(station.placement_blocker("forge", _xyz(16, 10, 2.0), "p3"), "foreign_circle", "an outsider's station in the circle is refused")
+	assert_eq(station.placement_blocker("forge", _xyz(16, 10, 2.0), "p2"), "", "a member's is not")
+	var cats: Dictionary = I18nScript.parse_csv("res://locale/ui.csv")["catalog"]
+	for loc in cats:
+		for key: String in ["reason.foreign_circle", "structure.refused.foreign_circle"]:
+			assert_true((cats[loc] as Dictionary).has(key), "%s has %s" % [loc, key])
+	# Destroyed by force, the hall's circle goes with it.
+	var hits := 0
+	while hits < 5000 and _sid(r, 10, 10, 2.0) != 0:
+		_mine(r, "p3", 10, 10, 2.125)
+		hits += 1
+	assert_eq(_sid(r, 10, 10, 2.0), 0, "p3 destroys the hall")
+	assert_eq(st.foreign_circle_at("p3", StructureSlice._tile_xz(Vector2i(16, 10))), 0, "its circle is lifted")
+	assert_eq(station.placement_blocker("forge", _xyz(16, 10, 2.0), "p3"), "", "the station is no longer refused")
+	assert_true(_place(r, "p3", 16, 10, 2.0), "and the same placement now succeeds")
+	station.free()
+	_free_rig(r)
+
+## World x/z (metres) of a creature's spawn point.
+static func _spawn_xz(inst: Dictionary) -> Vector2:
+	var at: Dictionary = inst["spawn_exact"]
+	var chunk: Vector2i = at["chunk"]
+	var local: Vector3 = at["local"]
+	return Vector2(float(chunk.x) * WorldPos.CHUNK_METERS + local.x, float(chunk.y) * WorldPos.CHUNK_METERS + local.z)
+
+func _test_circle_no_spawn() -> void:
+	var r := _rig()
+	var st: StructureSlice = r["st"]
+	var c := CreatureSlice.new()
+	add_child(c)
+	var chunks: Array = []
+	for x in 3:
+		for z in 3:
+			chunks.append(Vector2i(x, z))
+	for ch: Vector2i in chunks:
+		c.spawn_for_chunk(ch)
+	var free_count := c._instances.size()
+	assert_true(free_count > 0, "creatures spawn in the empty area (%d)" % free_count)
+	# A house at three creatures' spawn points, one of them held alive across the build.
+	var homes: Array = []
+	for inst: Dictionary in c._instances.values().slice(0, 3):
+		var xz := _spawn_xz(inst)
+		homes.append(_index(st, Vector2i(floori(xz.x / VoxelConsts.TILE_SIZE), floori(xz.y / VoxelConsts.TILE_SIZE)), 2000))
+	var resident: String = c._instances.keys()[0]
+	c.spawn_blocked = st.spawn_blocked
+	for ch: Vector2i in chunks:
+		if ch != c._instances[resident]["chunk"]:
+			c.despawn_for_chunk(ch)
+	assert_true(c._instances.has(resident), "a creature already standing in a circle is not removed")
+	c._instances[resident]["state"] = "dead"
+	c._instances[resident]["respawn_at"] = 1.0
+	c._tick_respawn()
+	assert_eq(str(c._instances[resident]["state"]), "dead", "killed, it is held dead: its spawn point is in a circle")
+	c.despawn_for_chunk(c._instances[resident]["chunk"])
+	var spawned_outside := 0
+	var inside := 0
+	for hour in 24:
+		for ch: Vector2i in chunks:
+			c.spawn_for_chunk(ch)
+		# Half the population dies and is due back at once: respawns obey the circles too.
+		var k := 0
+		for iid: String in c._instances:
+			if k % 2 == hour % 2:
+				c._instances[iid]["state"] = "dead"
+				c._instances[iid]["respawn_at"] = 1.0
+			k += 1
+		c._tick_respawn()
+		for iid: String in c._instances:
+			var inst: Dictionary = c._instances[iid]
+			if str(inst["state"]) == "dead":
+				continue
+			if st.spawn_blocked(_spawn_xz(inst)):
+				inside += 1
+			else:
+				spawned_outside += 1
+		for ch: Vector2i in chunks:
+			c.despawn_for_chunk(ch)
+	assert_eq(inside, 0, "over a day no creature spawns or respawns inside a circle")
+	assert_true(spawned_outside > 0, "spawns go on outside (%d live sightings)" % spawned_outside)
+	for ch: Vector2i in chunks:
+		c.spawn_for_chunk(ch)
+	var blocked_count := c._instances.size()
+	assert_true(blocked_count < free_count, "the circles keep %d creatures away" % (free_count - blocked_count))
+	for ch: Vector2i in chunks:
+		c.despawn_for_chunk(ch)
+	for sid: int in homes:
+		for t: Vector2i in (st.get_structure(sid).get("cells", {}) as Dictionary).keys():
+			st.drop_span(t, 0.0, 10.0)
+	assert_eq(st.count(), 0, "the houses are gone")
+	for ch: Vector2i in chunks:
+		c.spawn_for_chunk(ch)
+	assert_eq(c._instances.size(), free_count, "and every spawn comes back")
+	c.free()
 	_free_rig(r)

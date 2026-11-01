@@ -10,7 +10,12 @@ extends Node
 ## structure, any member), and mining your own block dismantles it. Anyone else's mine is a hit: it lowers
 ## the block's durability (`StructureDurability`), and a block at zero is destroyed with nothing returned.
 ## A member's private structure inside their clan's territory (the circles of that clan's own structures)
-## can be entered and dismantled, never edited, by any member of the clan. Ownership changes only when the
+## can be entered and dismantled, never edited, by any member of the clan.
+##
+## Every structure has a circle (`Structure.circle`), larger for a larger structure (Phase 206). No creature
+## spawns inside any circle, and inside a clan's circles only that clan's members build. Circles are cached and
+## bucketed on the ground (`BUCKET_M` squares): a block added or removed marks its structure, the next lookup
+## recomputes only the marked ones, so a point query reads one or two buckets however dense the town. Ownership changes only when the
 ## blocks go: a structure whose last block is dismantled or destroyed is forgotten.
 ##
 ## Durability = base (the material's) × (1 − wear since the block was placed) − damage. Wear is per
@@ -53,7 +58,9 @@ const INTENT_INTERVAL := 0.25
 ## Seconds between one player's hits on someone else's blocks. The host keeps the pace, not the client:
 ## a client sending mine intents as fast as the network bucket allows would undo `offlineFactor`.
 const HIT_INTERVAL := 0.25
-const REASONS := ["not_owner", "no_permission", "structures_full", "no_clan", "bad_args", "no_structure",
+## Side of one circle bucket in metres: a circle of `maxRadius` 128 m overlaps at most 6 × 6 of them.
+const BUCKET_M := 64.0
+const REASONS := ["foreign_circle", "not_owner", "no_permission", "structures_full", "no_clan", "bad_args", "no_structure",
 	"intact", "missing_materials", "no_inventory", "rate_limited", "unknown_action", "unknown_player"]
 
 ## Set by the wiring (host): the player registry (identity, packs, online, skills) and the clan slice.
@@ -69,7 +76,9 @@ var remove_block: Callable = Callable()
 var mono_sec: Callable = func() -> float: return Time.get_ticks_msec() / 1000.0
 
 ## sid -> { id, kind, owner, builder, anchor: Vector2i, wear, wear_hour, credit {material: f},
-##          cells { tile: { mm: [material, damage, wear_at_place] } }, count }
+##          cells { tile: { mm: [material, damage, wear_at_place] } }, count, hurt }
+## `hurt` is at least the largest damage / base of any of its blocks (never under it): the sweep reads a
+## structure's blocks only once its wear could bring one to zero.
 var _structures: Dictionary = {}
 ## tile -> { mm: sid }
 var _tiles: Dictionary = {}
@@ -83,6 +92,12 @@ var _last_intent: Dictionary = {}
 var _last_hit: Dictionary = {}
 var _sweep_keys: Array = []
 var _collapse: Array = []
+## sid -> { center, radius } (`circle_of`); sid -> [bucket keys]; bucket key -> { sid: true }; sids whose blocks
+## changed since their circle was computed.
+var _circles: Dictionary = {}
+var _circle_keys: Dictionary = {}
+var _buckets: Dictionary = {}
+var _circle_dirty: Dictionary = {}
 ## Client and host: the last `block_damaged` heard, and how many (the harness reads both peers').
 var last_damage: Dictionary = {}
 var damage_seen: int = 0
@@ -225,42 +240,130 @@ func may_enter(player_id: String, sid: int) -> bool:
 	return bool(rule.get("enter", false)) and _member_private_in_territory(_pid(player_id), s)
 
 ## `{ center: Vector2 (ground metres), radius }` of a structure's circle (`Structure.circle`): footprint is
-## its columns' area, height its lowest to highest block.
+## its columns' area, height its lowest to highest block. {} for an unknown structure.
 func circle_of(sid: int) -> Dictionary:
-	var s: Dictionary = _structures.get(sid, {})
-	if s.is_empty():
-		return {}
+	_flush_circles()
+	return _circles.get(sid, {})
+
+func _compute_circle(s: Dictionary) -> Dictionary:
 	var cells: Dictionary = s["cells"]
+	var tiles_lap := SeamWrap.world_tiles(TerrainSlice.circumference_chunks(), VoxelConsts.CHUNK_SIZE)
 	var sum := Vector2.ZERO
+	var first := Vector2i.ZERO
+	var have := false
 	var lo := 1 << 40
 	var hi := -(1 << 40)
 	for t: Vector2i in cells:
-		sum += Vector2(float(t.x) + 0.5, float(t.y) + 0.5) * VoxelConsts.TILE_SIZE
+		if not have:
+			first = t
+			have = true
+		# Measured from the first column round the seam, so a structure across it is not averaged to the far side.
+		var x := first.x + SeamWrap.delta(t.x, first.x, tiles_lap)
+		sum += Vector2(float(x) + 0.5, float(t.y) + 0.5) * VoxelConsts.TILE_SIZE
 		for mm: int in cells[t]:
 			lo = mini(lo, mm)
 			hi = maxi(hi, mm + mm_of(VoxelConsts.STEP_HEIGHT))
 	var n := float(maxi(1, cells.size()))
 	var footprint := n * VoxelConsts.TILE_SIZE * VoxelConsts.TILE_SIZE
 	var height := maxf(0.0, float(hi - lo) / 1000.0) if cells.size() > 0 else 0.0
-	return { "center": sum / n, "radius": Rules.circle_radius(footprint, height) }
+	var center := sum / n
+	center.x = SeamWrap.wrap_f(center.x, _lap_m())
+	return { "center": center, "radius": Rules.circle_radius(footprint, height) }
+
+static func _lap_m() -> float:
+	return float(TerrainSlice.circumference_chunks()) * WorldPos.CHUNK_METERS
 
 static func _dist_m(a: Vector2, b: Vector2) -> float:
-	var lap := float(TerrainSlice.circumference_chunks()) * WorldPos.CHUNK_METERS
-	return Vector2(SeamWrap.wrap_f(b.x - a.x, lap), b.y - a.y).length()
+	return Vector2(SeamWrap.wrap_f(b.x - a.x, _lap_m()), b.y - a.y).length()
+
+func _clear_circles() -> void:
+	_circles.clear()
+	_circle_keys.clear()
+	_buckets.clear()
+	_circle_dirty.clear()
+
+## Recompute the circles of the structures whose blocks changed, and move them between buckets. A structure
+## that is gone leaves its buckets: its circle is lifted.
+func _flush_circles() -> void:
+	if _circle_dirty.is_empty():
+		return
+	for sid: int in _circle_dirty:
+		for key: Vector2i in _circle_keys.get(sid, []):
+			var b: Dictionary = _buckets.get(key, {})
+			b.erase(sid)
+			if b.is_empty():
+				_buckets.erase(key)
+		_circle_keys.erase(sid)
+		_circles.erase(sid)
+		if not _structures.has(sid):
+			continue
+		var c := _compute_circle(_structures[sid])
+		_circles[sid] = c
+		var center: Vector2 = c["center"]
+		var r := float(c["radius"])
+		var keys: Array = []
+		for bx in range(floori((center.x - r) / BUCKET_M), floori((center.x + r) / BUCKET_M) + 1):
+			for bz in range(floori((center.y - r) / BUCKET_M), floori((center.y + r) / BUCKET_M) + 1):
+				var key := Vector2i(bx, bz)
+				if not _buckets.has(key):
+					_buckets[key] = {}
+				_buckets[key][sid] = true
+				keys.append(key)
+		_circle_keys[sid] = keys
+	_circle_dirty.clear()
+
+## The structures whose circle holds the ground point `xz` (world metres), by id. Centers lie in the canonical
+## lap and a circle's buckets may run past the seam, so a point near it also reads the bucket a lap away.
+func circles_at(xz: Vector2) -> Array:
+	_flush_circles()
+	var out: Array = []
+	if _circles.is_empty():
+		return out
+	var lap := _lap_m()
+	var x := SeamWrap.wrap_f(xz.x, lap)
+	var reach := float(Rules.structure().get("circle", {}).get("maxRadius", 128.0))
+	var xs: Array = [x]
+	if x - reach < -lap * 0.5:
+		xs.append(x + lap)
+	if x + reach >= lap * 0.5:
+		xs.append(x - lap)
+	var bz := floori(xz.y / BUCKET_M)
+	for qx: float in xs:
+		var b: Dictionary = _buckets.get(Vector2i(floori(qx / BUCKET_M), bz), {})
+		for sid: int in b:
+			var c: Dictionary = _circles[sid]
+			if not out.has(sid) and _dist_m(c["center"], xz) <= float(c["radius"]):
+				out.append(sid)
+	out.sort()
+	return out
+
+## Whether a creature may not spawn at the ground point `xz` (world metres): it lies inside a circle.
+func spawn_blocked(xz: Vector2) -> bool:
+	return not circles_at(xz).is_empty()
+
+## The clan structure whose circle holds `xz` and whose clan `player_id` is not in, or 0: inside it they may not
+## build (`Structure.circle`). A clan with no members left keeps no one out (`abandonedClan`).
+func foreign_circle_at(player_id: String, xz: Vector2) -> int:
+	var mine := _clan_of(_pid(player_id))
+	for sid: int in circles_at(xz):
+		var s: Dictionary = _structures[sid]
+		if str(s["kind"]) == "clan" and str(s["owner"]) != mine and not _abandoned(s):
+			return sid
+	return 0
 
 ## Whether `sid` stands in `clan_id`'s territory: its center inside the circle of a structure that clan owns.
 func in_clan_territory(sid: int, clan_id: String) -> bool:
 	var me := circle_of(sid)
 	if me.is_empty() or clan_id == "":
 		return false
-	for other: int in _structures:
+	for other: int in circles_at(me["center"]):
 		var o: Dictionary = _structures[other]
-		if other == sid or str(o["kind"]) != "clan" or str(o["owner"]) != clan_id:
-			continue
-		var c := circle_of(other)
-		if _dist_m(c["center"], me["center"]) <= float(c["radius"]):
+		if other != sid and str(o["kind"]) == "clan" and str(o["owner"]) == clan_id:
 			return true
 	return false
+
+static func _tile_xz(tile: Vector2i) -> Vector2:
+	return (Vector2(tile) + Vector2(0.5, 0.5)) * VoxelConsts.TILE_SIZE
 
 # ── durability ───────────────────────────────────────────────────────────
 
@@ -362,6 +465,7 @@ func commit_mine(plan: Dictionary) -> void:
 		"damage":
 			var cell: Array = s["cells"][plan["tile"]][int(plan["mm"])]
 			cell[1] = float(cell[1]) + float(plan["points"])
+			_note_hurt(s, cell)
 			_notify(sid, "structure.damaged", NOTICE_GAP_SEC)
 		"destroy":
 			_remove_cell(sid, plan["tile"], int(plan["mm"]))
@@ -416,7 +520,8 @@ func _foreign_near(pid: String, tile: Vector2i, bottom: float) -> int:
 ##   join     the block joins `sid`, a touching structure with the owner the builder's mode names
 ##   new      the block starts a structure for `kind`/`owner`
 ##   refused  `reason`: placed against, or within `Structure.ownership.buffer` blocks of, a structure the actor
-##            may not edit; or the index is full
+##            may not edit (`not_owner`); inside the circle of a clan the actor is not in (`foreign_circle`,
+##            Phase 206: a new structure or a block added to one alike); or the index is full
 ## Where structures of different owners touch (a clan's and a member's own), each keeps its own blocks.
 func plan_place(player_id: String, tile: Vector2i, bottom: float, normal: Vector3, material: String) -> Dictionary:
 	var pid := _pid(player_id)
@@ -425,6 +530,8 @@ func plan_place(player_id: String, tile: Vector2i, bottom: float, normal: Vector
 		return { "verdict": "refused", "reason": "not_owner" }
 	if _foreign_near(pid, tile, bottom) != 0:
 		return { "verdict": "refused", "reason": "not_owner" }
+	if foreign_circle_at(pid, _tile_xz(tile)) != 0:
+		return { "verdict": "refused", "reason": "foreign_circle" }
 	if _cell_count >= MAX_CELLS:
 		return { "verdict": "refused", "reason": "structures_full" }
 	var want := _desired_owner(pid)
@@ -465,18 +572,27 @@ func _add_cell(sid: int, tile: Vector2i, mm: int, cell: Array) -> void:
 	if prev != 0 and prev != sid and _structures.has(prev):
 		_remove_cell(prev, tile, mm)
 	var s: Dictionary = _structures[sid]
+	_circle_dirty[sid] = true
 	if not (s["cells"] as Dictionary).has(tile):
 		s["cells"][tile] = {}
 	if not (s["cells"][tile] as Dictionary).has(mm):
 		s["count"] = int(s["count"]) + 1
 		_cell_count += 1
 	s["cells"][tile][mm] = cell
+	_note_hurt(s, cell)
 	if not _tiles.has(tile):
 		_tiles[tile] = {}
 	_tiles[tile][mm] = sid
 
+func _note_hurt(s: Dictionary, cell: Array) -> void:
+	var base := Rules.base_durability(str(cell[0]))
+	var frac := float(cell[1]) / base if base > 0.0 else (1.0 if float(cell[1]) > 0.0 else 0.0)
+	if frac > float(s.get("hurt", 0.0)):
+		s["hurt"] = frac
+
 func _remove_cell(sid: int, tile: Vector2i, mm: int) -> void:
 	var s: Dictionary = _structures[sid]
+	_circle_dirty[sid] = true
 	var col: Dictionary = s["cells"].get(tile, {})
 	if col.erase(mm):
 		s["count"] = int(s["count"]) - 1
@@ -535,6 +651,7 @@ func reset_world() -> void:
 	_cell_count = 0
 	_sweep_keys.clear()
 	_collapse.clear()
+	_clear_circles()
 
 ## "" when `player_id` may put a station on (or fell a tree on) the ground at `pos`, else a reason: the block
 ## under it belongs to a structure they may not edit.
@@ -545,6 +662,13 @@ func edit_blocker(player_id: String, pos: Vector3) -> String:
 		if sid != 0 and not may_edit(player_id, sid):
 			return "not_owner"
 	return ""
+
+## `edit_blocker`, and for a new station also the circle of a clan `player_id` is not in (`foreign_circle`).
+func build_blocker(player_id: String, pos: Vector3) -> String:
+	var why := edit_blocker(player_id, pos)
+	if why == "" and foreign_circle_at(player_id, Vector2(pos.x, pos.z)) != 0:
+		return "foreign_circle"
+	return why
 
 # ── repair ───────────────────────────────────────────────────────────────
 
@@ -589,6 +713,7 @@ func repair(player_id: String, sid: int) -> String:
 		return "missing_materials"
 	var s: Dictionary = _structures[sid]
 	s["wear"] = 0.0
+	s["hurt"] = 0.0
 	for t: Vector2i in s["cells"]:
 		for mm: int in s["cells"][t]:
 			var cell: Array = s["cells"][t][mm]
@@ -638,7 +763,8 @@ func tick() -> void:
 			continue
 		var s: Dictionary = _structures[sid]
 		_advance(s)
-		if float(s["wear"]) <= 0.0:
+		# A block is at zero once worn ≥ 1 − damage / base; below that for its most damaged block, none is.
+		if float(s["wear"]) < 1.0 - float(s.get("hurt", 0.0)):
 			continue
 		for t: Vector2i in s["cells"]:
 			for mm: int in s["cells"][t]:
@@ -755,6 +881,7 @@ func from_data(data: Variant, downtime_hours: float = 0.0) -> void:
 	_cell_count = 0
 	_sweep_keys.clear()
 	_collapse.clear()
+	_clear_circles()
 	_build_mode.clear()
 	_next_id = 1
 	if not (data is Dictionary):

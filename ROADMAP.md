@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–199 and 203–205 are done. Their specs and acceptance criteria, and the introductions of
+Phases 1–199 and 203–206 are done. Their specs and acceptance criteria, and the introductions of
 the arcs they belonged to, are archived in [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Next: follow-up debt burn II (Phases 194–196)
@@ -119,7 +119,7 @@ Smithing). Phase 203 models all of it in the fabric before any runtime phase sta
 | 203 | Clans, ownership, durability, writing, chests and tall structures in the fabric | Done | [phases-203.md](docs/roadmap-history/phases-203.md) |
 | 204 | Clans: a name, invites, one clan each, and every member's skills in view | Done | [phases-204.md](docs/roadmap-history/phases-204.md) |
 | 205 | Owned structures instead of claims: private or clan, durability, dismantling and destruction | Done | [phases-205.md](docs/roadmap-history/phases-205.md) |
-| 206 | The circle around every building: no spawns, no foreign building | Planned | below |
+| 206 | The circle around every building: no spawns, no foreign building | Done | [phases-206.md](docs/roadmap-history/phases-206.md) |
 | 207 | Skills grow from work, and clan projects without labour | Planned | below |
 | 208 | Chests and doors: owner, clan or everyone, and locks that can be broken or picked | Planned | below |
 | 209 | Books and blueprints: research shared by writing | Planned | below |
@@ -167,34 +167,6 @@ must stay under one hour.
 - [ ] CI: the four bots end with at least two different specialties, one completed project, one
   defended raid and one paid upkeep, as read from the host's world record.
 - [ ] The scenario passes 3 CI runs in a row on an unchanged commit.
-- [ ] Suite green on both boot paths, harness green.
-
----
-
-## Phase 206 — The circle around every building: no spawns, no foreign building
-
-**Goal:** creatures never spawn near a building, and only a clan's own members build inside its
-circles. A bigger building has a bigger circle, and destroying it lifts both effects.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phase 205.
-
-**Deliverables:**
-- A spatial lookup over the structure index's circles, so a dense town does not slow spawning or
-  placement checks.
-- The creature spawner skips points inside any circle. Creatures that walk in are not removed.
-- The host refuses a new structure, clan or private, by anyone who is not a member of the clan
-  whose circle it falls in. A circle shrinks as its structure loses blocks and goes when it is
-  destroyed.
-
-**Acceptance criteria:**
-- [ ] Suite: over a simulated day, no creature spawns inside any circle, and spawns continue
-  outside.
-- [ ] Suite: an outsider's structure inside a clan building's circle is refused, and the same
-  placement succeeds once that building is destroyed. A member's private house there is allowed.
-- [ ] Suite: a larger structure has a larger circle, between the fabric's minimum and maximum.
-- [ ] Playtest: walk/craft/fight stay within budget with a village of structures near spawn.
 - [ ] Suite green on both boot paths, harness green.
 
 ---

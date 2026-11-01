@@ -564,15 +564,28 @@ func spawn_for_chunk(chunk_pos: Vector2i) -> void:
 		live += to_spawn
 
 ## Spawn `count` more members of a pack, skipping indices a surviving (engaged) member
-## already holds so a reload never overwrites its record.
+## already holds so a reload never overwrites its record. A member whose spot lies inside
+## a structure's circle (Phase 206) is not spawned: the pack is that much smaller there.
 func _spawn_members(creature_id: String, chunk_pos: Vector2i, count: int) -> void:
 	var idx: int = 0
 	var spawned: int = 0
 	while spawned < count:
 		if not _instances.has(_instance_id(chunk_pos, creature_id, idx)):
-			_spawn(creature_id, chunk_pos, idx)
+			if not _spawn_blocked_at(chunk_pos, _deterministic_chunk_local(chunk_pos, creature_id, 0) + _pack_member_offset(idx)):
+				_spawn(creature_id, chunk_pos, idx)
 			spawned += 1
 		idx += 1
+
+## Phase 206 — `(world_xz: Vector2) -> bool`: true where no creature may spawn (inside a structure's circle).
+## Set on the host by the structure wiring; unset, nothing is blocked. A creature that walks in is not removed.
+var spawn_blocked: Callable = Callable()
+
+## Whether the spot `local` (metres from `chunk`'s origin corner) is inside a circle.
+func _spawn_blocked_at(chunk: Vector2i, local: Vector2) -> bool:
+	if not spawn_blocked.is_valid():
+		return false
+	var m := WorldPos.CHUNK_METERS
+	return bool(spawn_blocked.call(Vector2(float(chunk.x) * m + local.x, float(chunk.y) * m + local.y)))
 
 ## Packs the cap refused, { [chunk, creature_id]: pack size }, retried on a timer while
 ## their chunk is still streamed in (`despawn_for_chunk` drops the chunk's entries).
@@ -1011,6 +1024,12 @@ func _tick_respawn() -> void:
 			if _suppresses_respawn(inst):
 				_dead_state.erase(iid)
 				inst["respawn_at"] = -1.0
+				continue
+			# Phase 206 — a spawn point a structure's circle now covers holds the creature dead
+			# (record and deadline kept) until the structure goes.
+			var spawn_at: Dictionary = inst["spawn_exact"]
+			var spawn_local: Vector3 = spawn_at["local"]
+			if _spawn_blocked_at(spawn_at["chunk"], Vector2(spawn_local.x, spawn_local.z)):
 				continue
 			# A respawn re-admits a creature, so it obeys the cap like a spawn does: held
 			# dead (record and deadline kept) until a slot frees up.

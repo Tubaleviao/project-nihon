@@ -22,8 +22,9 @@ func make_slice(ctx: GameRoot) -> Node:
 	slice.remove_block = root._voxel.remove_structure_block
 	if not root._is_client:
 		root._voxel.structures = slice
-		root._station.structure_guard = slice.edit_blocker
+		root._station.structure_guard = slice.build_blocker
 		root._tree.structure_guard = slice.edit_blocker
+		root._creature.spawn_blocked = slice.spawn_blocked
 	return slice
 
 func _connect_all() -> void:
