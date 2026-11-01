@@ -373,6 +373,29 @@ func _player_position() -> Vector3:
 		return player_slice.get_position()
 	return _player_position_override
 
+## Phase 208 — station types whose marker carries a collision body the player's body runs into (doors, set by
+## `ChestWiring`), shut until `set_passable` opens it on this machine. It is BLOCK_HEIGHT tall from the marker's
+## foot, so a door in a doorway cannot be stepped or jumped over.
+var blocking_types: Array = []
+const BLOCK_HEIGHT := 2.5
+
+## Open (`on`) or shut the collision of the blocking station `id` on this machine.
+func set_passable(id: String, on: bool) -> void:
+	var shape: CollisionShape3D = _block_shape(id)
+	if shape != null:
+		shape.disabled = on
+
+## Whether the blocking station `id` lets this machine's player through (true for a station that blocks nothing).
+func is_passable(id: String) -> bool:
+	var shape: CollisionShape3D = _block_shape(id)
+	return shape == null or shape.disabled
+
+func _block_shape(id: String) -> CollisionShape3D:
+	var m: Node = _markers.get(id, null)
+	if m == null or not is_instance_valid(m) or not m.has_node("Block/Shape"):
+		return null
+	return m.get_node("Block/Shape") as CollisionShape3D
+
 ## Spawn a small coloured box marker so a placed station is visible in-world.
 ## The colour is derived deterministically from the type string, so every
 ## station type gets a stable, distinct tint with no hardcoded palette.
@@ -387,6 +410,19 @@ func _add_marker(id: String, type: String, position: Vector3) -> void:
 	inst.material_override = mat
 	inst.position = position + _origin.value
 	inst.name = "Station_%s" % id
+	if blocking_types.has(type):
+		var body := StaticBody3D.new()
+		body.name = "Block"
+		body.collision_layer = 1   # the player's body collides with layer 1 (PlayerSlice)
+		body.collision_mask = 0
+		var box := BoxShape3D.new()
+		box.size = Vector3(1.0, BLOCK_HEIGHT, 1.0)
+		var shape := CollisionShape3D.new()
+		shape.name = "Shape"
+		shape.shape = box
+		shape.position.y = BLOCK_HEIGHT * 0.5 - 0.5   # from the marker's foot up
+		body.add_child(shape)
+		inst.add_child(body)
 	add_child(inst)
 	_markers[id] = inst
 

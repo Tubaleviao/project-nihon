@@ -258,6 +258,10 @@ signal chest_resolved(player_id: String, action: String, ok: bool, reason: Strin
 signal lock_pick_started(player_id: String, station_id: String, seconds: float)
 signal lock_pick_resolved(player_id: String, station_id: String, reason: String, broke: bool)
 
+## Phase 208 — host: the clan `clan_id` disbanded; `heir` is its last member ("" for none). Its chests and doors
+## become theirs (`ChestSlice.clan_disbanded`).
+signal clan_disbanded(clan_id: String, heir: String)
+
 ## Phase 140 — any settlement changed on the host (members, claim, tier, stockpile). The wiring pushes each
 ## peer its view on the next tick.
 signal settlements_changed()

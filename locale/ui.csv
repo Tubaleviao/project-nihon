@@ -692,6 +692,8 @@ chest.refused.rate,Slow down.,Calma.
 chest.refused.no_inventory,You have no pack.,Você não tem mochila.
 chest.refused.not_open,Open the chest first.,Abra o baú primeiro.
 chest.refused.blocked,There is no room for it there.,Não há espaço para isso ali.
+chest.refused.protected,You cannot break a chest or door that opens for you or belongs to your clan.,Você não pode quebrar um baú ou porta que abre para você ou pertence ao seu clã.
+chest.item_entry,{0} × {1},{0} × {1}
 lock.pick_started,Picking the lock ({0} s). Stand still.,Arrombando a fechadura ({0} s). Fique parado.
 lock.pick_opened,The lock gives. It opens for you once.,A fechadura cede. Abre para você uma vez.
 lock.pick_broke,The pick failed and the lockpick snapped.,O arrombamento falhou e a gazua quebrou.

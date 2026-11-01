@@ -110,5 +110,5 @@ func refresh() -> void:
 	keys.sort()
 	var parts: Array = []
 	for k: Variant in keys:
-		parts.append("%s × %d" % [str(k), int(items[k])])
+		parts.append(I18n.t("chest.item_entry", [str(k), int(items[k])]))
 	_items.text = I18n.t("chest.items", [int(v.get("used", 0)), int(v.get("capacity", 0)), ", ".join(parts) if not parts.is_empty() else I18n.t("chest.empty")])

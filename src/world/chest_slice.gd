@@ -7,11 +7,15 @@ extends Node
 ## Access (`may_open`): the owner always (for a clan's: every member); mode `clan` adds the owner's clan's
 ## members; `everyone` adds anyone. A door also lets in whoever `StructureSlice.may_enter` lets into the
 ## structure it stands on (a clan member at another member's private house in the clan's territory). A
-## picked lock lets its picker in until they close it or walk away. Only an owner changes the mode.
+## picked lock lets its picker in until they close it or walk away (`tick` revokes the grant of a picker out of
+## reach, opened or not). Only an owner changes the mode. A clan chest or door whose clan has no members left
+## opens for anyone (`Structure.ownership.abandonedClan`); a clan that disbands hands its chests and doors to
+## its last member (`clan_disbanded`). A door's access is what `ChestWiring` opens its collision for.
 ##
 ## Breaking: a hit takes `StructureRules.hit_damage` (the held tool's method against the lock material,
 ## slowed while every owner is offline) off the lock's durability (`ChestRules.lock_durability`). At zero the
 ## station is removed and a chest spills everything it held for anyone to take. A destroyer gets nothing else.
+## Only an outsider hits: whoever it opens for, and anyone in its owner's clan, is refused (`protected`).
 ##
 ## Every refusal is a code in REASONS (`chest.refused.<code>` in the catalog).
 
@@ -22,7 +26,7 @@ const VoxelConsts := preload("res://src/terrain/voxel_consts.gd")
 
 const DATA_FORMAT := 1
 const REASONS := ["no_lock", "far", "locked", "not_owner", "bad_mode", "bad_args", "no_stock", "full", "durable",
-	"no_tool", "busy", "not_locked", "rate", "no_inventory", "not_open", "blocked"]
+	"no_tool", "busy", "not_locked", "rate", "no_inventory", "not_open", "blocked", "protected"]
 ## Metres from a chest or door at which a player may use, pick or hit it.
 const REACH_M := 3.0
 ## A pick is cancelled when its picker moves this far from where they started.
@@ -67,6 +71,9 @@ var _picks: Dictionary = {}
 var _last_hit: Dictionary = {}
 ## pid -> station id the player has open (the window's chest), for pushing views and walking away.
 var _open: Dictionary = {}
+## Station ids whose state changed and players whose open chest changed since the last `take_dirty`.
+var _dirty_ids: Dictionary = {}
+var _dirty_pids: Dictionary = {}
 var _rng := RandomNumberGenerator.new()
 
 func _ready() -> void:
@@ -123,11 +130,7 @@ func used_stacks(id: String) -> int:
 ## Every player who owns `id`: its placer for a private one, every member for a clan's.
 func owner_ids(id: String) -> Array:
 	var l: Dictionary = _locks.get(id, {})
-	if l.is_empty():
-		return []
-	if str(l["kind"]) == "private":
-		return [str(l["owner"])]
-	return (clans.get_clan(str(l["owner"])).get("members", {}) as Dictionary).keys() if clans != null else []
+	return [] if l.is_empty() else owner_ids_of(l)
 
 func is_owner(player_id: String, id: String) -> bool:
 	var l: Dictionary = _locks.get(id, {})
@@ -137,6 +140,15 @@ func is_owner(player_id: String, id: String) -> bool:
 	if str(l["kind"]) == "private":
 		return str(l["owner"]) == pid
 	return _clan_of(pid) == str(l["owner"])
+
+## A clan chest or door whose clan has no members left (`Structure.ownership.abandonedClan`).
+func _abandoned(l: Dictionary) -> bool:
+	return str(l["kind"]) == "clan" and clans != null and owner_ids_of(l).is_empty()
+
+func owner_ids_of(l: Dictionary) -> Array:
+	if str(l["kind"]) == "private":
+		return [str(l["owner"])]
+	return (clans.get_clan(str(l["owner"])).get("members", {}) as Dictionary).keys() if clans != null else []
 
 func _owners_offline(id: String) -> bool:
 	for pid: String in owner_ids(id):
@@ -150,17 +162,20 @@ func may_open(player_id: String, id: String) -> bool:
 	var pid := _pid(player_id)
 	if l.is_empty() or pid == "":
 		return false
-	if is_owner(pid, id) or (_grants.get(id, {}) as Dictionary).has(pid):
+	if is_owner(pid, id) or (_grants.get(id, {}) as Dictionary).has(pid) or _abandoned(l):
 		return true
 	match str(l["mode"]):
 		"everyone":
 			return true
 		"clan":
 			var clan := _clan_of(pid)
-			var owner_clan := str(l["owner"]) if str(l["kind"]) == "clan" else _clan_of(str(l["owner"]))
-			if clan != "" and clan == owner_clan:
+			if clan != "" and clan == _owner_clan(l):
 				return true
 	return not ChestRules.holds_items(str(l["type"])) and _may_enter_under(pid, l)
+
+## The clan a chest or door belongs to: a clan's own, else its private owner's clan ("" for none).
+func _owner_clan(l: Dictionary) -> String:
+	return str(l["owner"]) if str(l["kind"]) == "clan" else _clan_of(str(l["owner"]))
 
 ## A door: whether the structure it stands on lets `pid` in (`StructureSlice.may_enter`).
 func _may_enter_under(pid: String, l: Dictionary) -> bool:
@@ -214,12 +229,49 @@ func register(id: String, type: String, pos: Vector3, player_id: String) -> bool
 	_add(id, type, kind, owner, ChestRules.default_mode(), {}, tech, pos)
 	return true
 
-## Host: a clan chest holding `items` at `pos` (a migrated settlement's stockpile, `Clan.migration.stockpile`).
+## Host: a clan chest holding `items` at `pos` (part of a migrated settlement's stockpile,
+## `Clan.migration.stockpile`). Refused, nothing kept, when `items` is more than the chest holds: the caller
+## splits a stockpile with `split_stock` first, so nothing is ever cut.
 func register_clan_chest(id: String, type: String, pos: Vector3, clan_id: String, items: Dictionary) -> bool:
 	if not ChestRules.holds_items(type) or clan_id == "" or _locks.has(id) or _locks.size() >= MAX_LOCKS:
 		return false
-	_add(id, type, "clan", clan_id, ChestRules.default_mode(), _clean_items(items), "none", pos)
+	var kept := {}
+	var stacks := 0
+	for k: Variant in items:
+		var n: Variant = items[k]
+		if str(k) != "" and (n is int or n is float) and is_finite(float(n)) and int(n) > 0:
+			kept[str(k)] = int(n)
+			stacks += ceili(float(n) / STACK_SIZE)
+	if stacks > ChestRules.capacity_stacks(type):
+		return false
+	_add(id, type, "clan", clan_id, ChestRules.default_mode(), kept, "none", pos)
 	return true
+
+## `items` split into chests of `capacity` stacks each, every unit kept: an item fills what is left of one
+## chest in whole stacks and carries the rest to the next. Items in name order, so the split is stable.
+static func split_stock(items: Dictionary, capacity: int) -> Array:
+	var out: Array = []
+	if capacity < 1:
+		return out
+	var keys: Array = items.keys()
+	keys.sort()
+	var cur := {}
+	var free := capacity
+	for k: Variant in keys:
+		var n: Variant = items[k]
+		var left := int(n) if (n is int or n is float) and is_finite(float(n)) else 0
+		while left > 0:
+			if free == 0:
+				out.append(cur)
+				cur = {}
+				free = capacity
+			var put := mini(left, free * STACK_SIZE)
+			cur[str(k)] = int(cur.get(str(k), 0)) + put
+			free -= ceili(float(put) / STACK_SIZE)
+			left -= put
+	if not cur.is_empty():
+		out.append(cur)
+	return out
 
 func _add(id: String, type: String, kind: String, owner: String, mode: String, items: Dictionary, tech: String, pos: Vector3, hp: float = -1.0) -> void:
 	var material := ChestRules.lock_material(type)
@@ -241,6 +293,12 @@ func forget(id: String) -> void:
 	for pid: String in _open.keys():
 		if str(_open[pid]) == id:
 			_open.erase(pid)
+			_dirty_pids[pid] = true
+
+## Host: drop the record of `id` without spilling (a migration chest undone: its items never left the stockpile).
+func clear_lock(id: String) -> void:
+	_locks.erase(id)
+	_dirty_ids.erase(id)
 
 func _spill(l: Dictionary) -> void:
 	var items: Dictionary = l["items"]
@@ -250,12 +308,52 @@ func _spill(l: Dictionary) -> void:
 				spill.call(item, int(items[item]), l["pos"])
 	items.clear()
 
-## `/regen world` replaced the ground: every chest and door is gone with it.
 func clear_all() -> void:
 	_locks.clear()
 	_grants.clear()
 	_picks.clear()
 	_open.clear()
+
+## `/regen world` stood every station back on the new ground: each chest and door follows its station
+## (`station_pos(id) -> Variant`, the station's Vector3 or null). One whose station is gone spills and goes.
+## Picks in progress stop, every window closes and grants end (their players were moved too).
+func world_moved(station_pos: Callable) -> void:
+	for id: String in _locks.keys():
+		var p: Variant = station_pos.call(id)
+		if p is Vector3:
+			_locks[id]["pos"] = p
+		else:
+			forget(id)
+	_picks.clear()
+	_grants.clear()
+	for pid: String in _open.keys():
+		_dirty_pids[pid] = true
+	_open.clear()
+
+## Host: the clan `clan_id` disbanded. Its chests and doors become `heir`'s (its last member) and stop
+## opening by clan; with no heir they stay the abandoned clan's and open for anyone.
+func clan_disbanded(clan_id: String, heir: String) -> void:
+	if clan_id == "" or heir == "":
+		return
+	for id: String in _locks:
+		var l: Dictionary = _locks[id]
+		if str(l["kind"]) == "clan" and str(l["owner"]) == clan_id:
+			l["kind"] = "private"
+			l["owner"] = heir
+			if str(l["mode"]) == "clan":
+				l["mode"] = ChestRules.default_mode()
+			_dirty_ids[id] = true
+
+## Players whose view may have changed since the last call (their open chest changed, or they opened or
+## closed one); clears the record.
+func take_dirty() -> Array:
+	for pid: String in _open:
+		if _dirty_ids.has(str(_open[pid])):
+			_dirty_pids[pid] = true
+	var out: Array = _dirty_pids.keys()
+	_dirty_ids.clear()
+	_dirty_pids.clear()
+	return out
 
 # ── actions ──────────────────────────────────────────────────────────────
 
@@ -270,6 +368,7 @@ func open(player_id: String, id: String) -> String:
 		return "locked"
 	if ChestRules.holds_items(str(_locks[id]["type"])) or is_owner(pid, id):
 		_open[pid] = id
+		_dirty_pids[pid] = true
 	elif (_grants.get(id, {}) as Dictionary).has(pid):
 		(_grants[id] as Dictionary).erase(pid)   # a picked door lets its picker through once
 	return ""
@@ -278,7 +377,8 @@ func open(player_id: String, id: String) -> String:
 func close(player_id: String) -> void:
 	var pid := _pid(player_id)
 	var id := str(_open.get(pid, ""))
-	_open.erase(pid)
+	if _open.erase(pid):
+		_dirty_pids[pid] = true
 	if _grants.has(id):
 		(_grants[id] as Dictionary).erase(pid)
 
@@ -292,6 +392,7 @@ func set_mode(player_id: String, id: String, mode: String) -> String:
 	if not ChestRules.modes().has(mode):
 		return "bad_mode"
 	_locks[id]["mode"] = mode
+	_dirty_ids[id] = true
 	return ""
 
 ## Move `qty` of `item` from the player's pack into the chest. All or nothing.
@@ -313,6 +414,7 @@ func put(player_id: String, id: String, item: String, qty: int) -> String:
 	if not inv.consume_items({ item: qty }):
 		return "no_stock"
 	items[item] = had + qty
+	_dirty_ids[id] = true
 	return ""
 
 ## Move `qty` of `item` from the chest into the player's pack. All or nothing.
@@ -329,6 +431,7 @@ func take(player_id: String, id: String, item: String, qty: int) -> String:
 	items[item] = int(items[item]) - qty
 	if int(items[item]) <= 0:
 		items.erase(item)
+	_dirty_ids[id] = true
 	return ""
 
 func _may_use_items(pid: String, id: String, item: String, qty: int) -> String:
@@ -417,6 +520,13 @@ func tick(delta: float) -> void:
 		var id := str(_open[pid])
 		if not _locks.has(id) or not _within(pid, id):
 			close(pid)
+	for id: String in _grants.keys():
+		var g: Dictionary = _grants[id]
+		for pid: String in g.keys():
+			if not _locks.has(id) or not _within(pid, id):
+				g.erase(pid)   # walked away (or left the world) without opening: the lock locks behind them
+		if g.is_empty():
+			_grants.erase(id)
 
 ## One hit on the lock of `id` with `method` (`StructureRules.METHODS`). At zero durability the chest or door
 ## is destroyed and a chest spills its items. Returns "" for a hit that landed.
@@ -426,6 +536,8 @@ func hit(player_id: String, id: String, method: String) -> String:
 		return "no_lock"
 	if not _within(pid, id):
 		return "far"
+	if may_open(pid, id) or (_clan_of(pid) != "" and _clan_of(pid) == _owner_clan(_locks[id])):
+		return "protected"
 	var now := _now()
 	if now - float(_last_hit.get(pid, -1.0e12)) < HIT_GAP_SEC:
 		return "rate"
@@ -434,6 +546,7 @@ func hit(player_id: String, id: String, method: String) -> String:
 		_last_hit.clear()
 	var l: Dictionary = _locks[id]
 	l["hp"] = float(l["hp"]) - StructureRules.hit_damage(method, str(l["material"]), _owners_offline(id))
+	_dirty_ids[id] = true
 	if float(l["hp"]) > 0.0:
 		return ""
 	_notify(id, "lock.destroyed")

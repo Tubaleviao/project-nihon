@@ -28,6 +28,14 @@ func register() -> void:
 	_run_test("chest: a migrated settlement's stockpile becomes a clan chest with the same contents", _test_stockpile_migration)
 	_run_test("chest (audit): the host reads the hit method, owner and chest from its own state, never the client", _test_audit_client_values)
 	_run_test("chest: a client's view is sanitized, and the wire binds the identity", _test_wire)
+	_run_test("chest (review): /regen world moves each chest with its station and spills one whose station went", _test_world_moved)
+	_run_test("chest (review): a picked lock locks again once its picker walks away, opened or not", _test_grant_walk_away)
+	_run_test("chest (review): a disbanded clan's chests go to its last member; an abandoned clan's open for anyone", _test_clan_disband)
+	_run_test("chest (review): a stockpile larger than a chest splits into chests with every unit kept", _test_migration_split)
+	_run_test("chest (review): a door's station blocks the body until its machine is let through", _test_door_blocks)
+	_run_test("chest (review): a refused placement takes its station back out of the world", _test_place_refused)
+	_run_test("chest (review): only an outsider hits: never the owner, a clan member or anyone it opens for", _test_hit_protected)
+	_run_test("chest (review): views are pushed only to players whose open chest changed", _test_dirty_views)
 
 # ── rig ──────────────────────────────────────────────────────────────────
 
@@ -418,3 +426,198 @@ func _test_wire() -> void:
 	c.set_transport(MemoryTransport.new([1]))
 	assert_true(GameBus.chest_intent.is_connected(c._m2.forward_chest_intent), "a client forwards chest intents")
 	c.free()
+
+func _test_world_moved() -> void:
+	var r := _rig()
+	var c: ChestSlice = r["c"]
+	c.register("s1", _chest(), AT, "p1")
+	c.register("s2", _chest(), AT + Vector3(5, 0, 0), "p1")
+	_give(r, "p1", "Thornwood", 12)
+	_give(r, "p1", "Ferrite", 3)
+	c.open("p1", "s1")
+	assert_eq(c.put("p1", "s1", "Thornwood", 12), "", "into one chest")
+	c.close("p1")
+	r["pos"]["p1"] = AT + Vector3(5, 0, 0)
+	c.open("p1", "s2")
+	assert_eq(c.put("p1", "s2", "Ferrite", 3), "", "and the other")
+	var lifted := AT + Vector3(0, 7.5, 0)
+	c.world_moved(func(id: String) -> Variant: return lifted if id == "s1" else null)
+	assert_eq(c.get_lock("s1")["pos"], lifted, "a chest follows its station onto the new ground")
+	assert_eq(c.items_of("s1"), { "Thornwood": 12 }, "and keeps every item")
+	assert_eq(c.get_lock("s1")["owner"], "p1", "and its owner")
+	assert_false(c.has_lock("s2"), "one whose station is gone is forgotten")
+	assert_eq(r["spilled"].size(), 1, "and spills")
+	assert_eq([r["spilled"][0][0], r["spilled"][0][1]], ["Ferrite", 3], "everything it held")
+	assert_eq(c.open_of("p1"), "", "every window closed")
+	var src := FileAccess.get_file_as_string("res://src/world/chest_wiring.gd")
+	assert_true(src.contains("root._chests.world_moved(") and not src.contains("root._chests.clear_all()"),
+		"the wiring moves chests on /regen world instead of dropping their records")
+	_free_rig(r)
+
+func _test_grant_walk_away() -> void:
+	var r := _rig()
+	var c: ChestSlice = r["c"]
+	c.register("s1", _chest(), AT, "p1")
+	_give(r, "p3", "Lockpick", 1)
+	assert_eq(c.start_pick("p3", "s1"), "", "p3 picks")
+	c.tick(c.pick_seconds_left("p3") + 0.01)
+	assert_true(c.may_open("p3", "s1"), "the lock lets its picker in")
+	c.tick(0.1)
+	assert_true(c.may_open("p3", "s1"), "while they stand at it")
+	r["pos"]["p3"] = AT + Vector3(ChestSlice.REACH_M + 1.0, 0, 0)
+	c.tick(0.1)
+	assert_false(c.may_open("p3", "s1"), "walking away without opening it locks it again")
+	r["pos"]["p3"] = AT
+	assert_false(c.may_open("p3", "s1"), "and coming back does not reopen it")
+	c.register("d1", _door(), AT + Vector3(0, 0, 1), "p1")
+	_give(r, "p3", "Lockpick", 1)
+	c.start_pick("p3", "d1")
+	c.tick(c.pick_seconds_left("p3") + 0.01)
+	assert_true(c.may_open("p3", "d1"), "a picked door lets its picker through")
+	c.position_of = func(_pid: String) -> Variant: return null
+	c.tick(0.1)
+	c.position_of = func(pid: String) -> Variant: return r["pos"].get(pid, AT)
+	assert_false(c.may_open("p3", "d1"), "a picker who leaves the world loses the grant")
+	_free_rig(r)
+
+func _test_clan_disband() -> void:
+	var r := _rig()
+	var c: ChestSlice = r["c"]
+	var clans: ClanSlice = r["clans"]
+	var told: Array = []
+	var cb := func(cid: String, heir: String) -> void:
+		told.append([cid, heir])
+		c.clan_disbanded(cid, heir)
+	GameBus.clan_disbanded.connect(cb)
+	r["st"].set_build_mode("p2", "clan")
+	c.register("s1", _chest(), AT, "p2")
+	c.set_mode("p2", "s1", "clan")
+	r["st"].set_build_mode("p2", "private")
+	c.register("s2", _chest(), AT + Vector3(2, 0, 0), "p2")
+	assert_eq(clans.leave("p2"), "", "p2 leaves")
+	assert_eq(c.get_lock("s1")["kind"], "clan", "the clan's chest stays the clan's while it has members")
+	assert_eq(clans.leave("p1"), "", "the founder leaves last")
+	assert_eq(told, [["clan_1", "p1"]], "the disband names its last member")
+	assert_eq([c.get_lock("s1")["kind"], c.get_lock("s1")["owner"], c.get_lock("s1")["mode"]], ["private", "p1", "owner"],
+		"its chest is now the last member's, no longer open by clan")
+	assert_true(c.may_open("p1", "s1") and c.set_mode("p1", "s1", "everyone") == "", "who opens it and sets its mode")
+	assert_eq(c.get_lock("s2")["owner"], "p2", "a private chest is untouched")
+	GameBus.clan_disbanded.disconnect(cb)
+	assert_true(c.register_clan_chest("s3", _chest(), AT + Vector3(4, 0, 0), "clan_gone", { "Ferrite": 5 }), "a saved chest of a clan that no longer exists")
+	r["pos"]["p3"] = AT + Vector3(4, 0, 0)
+	assert_true(c.may_open("p3", "s3"), "opens for anyone, like an abandoned clan structure")
+	assert_true(FileAccess.get_file_as_string("res://src/world/chest_wiring.gd").contains("GameBus.clan_disbanded, _on_clan_disbanded"),
+		"the wiring hands a disbanded clan's chests on")
+	_free_rig(r)
+
+func _test_migration_split() -> void:
+	var cap := ChestRules.capacity_stacks(_chest())
+	var stock := { "Thornwood": cap * ChestSlice.STACK_SIZE + 250, "Ferrite": 7, "Resin": 2000000 }
+	var parts := ChestSlice.split_stock(stock, cap)
+	var total := {}
+	for part: Dictionary in parts:
+		var stacks := 0
+		for k: String in part:
+			total[k] = int(total.get(k, 0)) + int(part[k])
+			stacks += ceili(float(part[k]) / ChestSlice.STACK_SIZE)
+		assert_true(stacks <= cap, "every chest fits its capacity (%d of %d)" % [stacks, cap])
+	assert_eq(total, stock, "the split keeps every unit, a count past any cap included")
+	assert_eq(parts.size(), ceili(float(cap + 3 + 1 + 20000) / cap), "in as few chests as the stacks need")
+	var many := {}
+	for i in 300:
+		many["Item%03d" % i] = 1
+	var n := 0
+	for part: Dictionary in ChestSlice.split_stock(many, cap):
+		n += part.size()
+	assert_eq(n, 300, "more than 256 kinds are all kept")
+	var r := _rig()
+	var c: ChestSlice = r["c"]
+	assert_false(c.register_clan_chest("s1", _chest(), AT, "clan_1", stock), "a clan chest refuses more than it holds")
+	assert_false(c.has_lock("s1"), "and keeps nothing")
+	assert_true(c.register_clan_chest("s1", _chest(), AT, "clan_1", parts[0]), "one part fits")
+	assert_eq(c.items_of("s1"), parts[0], "exactly")
+	var src := FileAccess.get_file_as_string("res://src/world/chest_wiring.gd")
+	assert_true(src.contains("ChestSlice.split_stock(") and src.contains("root._chests.clear_lock(id)"),
+		"migration splits the stockpile and undoes every chest when one cannot be made")
+	_free_rig(r)
+
+func _test_door_blocks() -> void:
+	var stations := StationSlice.new()
+	add_child(stations)
+	stations.blocking_types = [_door()]
+	var d := stations.place_station(_door(), AT)
+	var ch := stations.place_station(_chest(), AT + Vector3(3, 0, 0))
+	assert_false(stations.is_passable(d), "a door's station blocks the body")
+	assert_true(stations.is_passable(ch), "a chest's blocks nothing")
+	var marker: Node = stations.get_node("Station_%s" % d)
+	var body := marker.get_node("Block") as StaticBody3D
+	assert_true(body != null and (body.collision_layer & 1) != 0, "on the layer the player's body collides with")
+	assert_true(((body.get_node("Shape") as CollisionShape3D).shape as BoxShape3D).size.y >= StationSlice.BLOCK_HEIGHT, "too tall to step over")
+	stations.set_passable(d, true)
+	assert_true(stations.is_passable(d), "a door let through opens")
+	stations.set_passable(d, false)
+	assert_false(stations.is_passable(d), "and shuts again")
+	stations.free()
+	var src := FileAccess.get_file_as_string("res://src/world/chest_wiring.gd")
+	assert_true(src.contains("root._station.blocking_types.append(t)") and src.contains("_let_through(player_id)")
+		and src.contains("\"door_open\""), "the wiring makes doors block and opens one only where the host let a player through")
+	assert_true(FileAccess.get_file_as_string("res://src/networking/peer_wiring.gd").contains("root._chest_wiring.apply_own_view(data)"),
+		"a client applies the host's door_open")
+
+func _test_place_refused() -> void:
+	var src := FileAccess.get_file_as_string("res://src/world/chest_wiring.gd")
+	var place := src.substr(src.find("func place_for"), src.find("func _on_station_placed") - src.find("func place_for"))
+	assert_true(place.contains("root._station.remove_station(id)") and place.contains("inv.add_item(item, 1)"),
+		"a client's refused placement removes the station it placed and refunds the item")
+	var own := src.substr(src.find("func _on_station_placed"), src.find("func _on_station_removed") - src.find("func _on_station_placed"))
+	assert_true(own.contains("root._station.remove_station(station_id)") and own.contains("add_item(ChestRules.placement_item(type), 1)"),
+		"so does the host's own")
+	var r := _rig()
+	var c: ChestSlice = r["c"]
+	assert_true(c.register("s1", _chest(), AT, "p1"), "a chest registers")
+	assert_false(c.register("s1", _chest(), AT, "p1"), "a second record of one station is refused (the case the wiring undoes)")
+	_free_rig(r)
+
+func _test_hit_protected() -> void:
+	var r := _rig()
+	var c: ChestSlice = r["c"]
+	c.register("s1", _chest(), AT, "p1")
+	r["now"][0] += 1.0
+	assert_eq(c.hit("p1", "s1", "pick"), "protected", "an owner does not hit their own chest")
+	assert_eq(c.hit("p2", "s1", "pick"), "protected", "nor does a member of the owner's clan, even locked out of it")
+	assert_eq(float(c.get_lock("s1")["hp"]), float(c.get_lock("s1")["max_hp"]), "nothing was taken off")
+	assert_eq(c.hit("p3", "s1", "pick"), "", "an outsider's hit lands")
+	c.set_mode("p1", "s1", "everyone")
+	r["now"][0] += 1.0
+	assert_eq(c.hit("p4", "s1", "pick"), "protected", "and no one hits a chest that opens for them")
+	r["st"].set_build_mode("p2", "clan")
+	c.register("s2", _chest(), AT + Vector3(1, 0, 0), "p2")
+	r["now"][0] += 1.0
+	assert_eq(c.hit("p1", "s2", "pick"), "protected", "nor a clan's chest by its members")
+	_free_rig(r)
+
+func _test_dirty_views() -> void:
+	var r := _rig()
+	var c: ChestSlice = r["c"]
+	c.register("s1", _chest(), AT, "p1")
+	c.set_mode("p1", "s1", "everyone")
+	c.take_dirty()
+	assert_eq(c.open("p3", "s1"), "", "p3 opens it")
+	assert_eq(c.take_dirty(), ["p3"], "opening marks its player")
+	c.tick(0.1)
+	assert_eq(c.take_dirty(), [], "an idle frame pushes nothing")
+	_give(r, "p1", "Ferrite", 5)
+	c.open("p1", "s1")
+	c.take_dirty()
+	c.put("p1", "s1", "Ferrite", 5)
+	var d := c.take_dirty()
+	d.sort()
+	assert_eq(d, ["p1", "p3"], "a change reaches everyone who has that chest open")
+	c.close("p3")
+	assert_eq(c.take_dirty(), ["p3"], "closing marks its player")
+	var src := FileAccess.get_file_as_string("res://src/world/chest_wiring.gd")
+	assert_true(src.contains("for pid: String in root._chests.take_dirty():") and not src.contains("for pid: String in _sent.keys():"),
+		"the wiring pushes only dirty views, never every peer each frame")
+	assert_true(FileAccess.get_file_as_string("res://src/ui/chest_panel.gd").contains("I18n.t(\"chest.item_entry\""),
+		"the chest window's item list goes through I18n")
+	_free_rig(r)
