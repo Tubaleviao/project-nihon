@@ -2843,7 +2843,7 @@ func _step_structure_damage() -> void:
 	var ok: bool = built and hit_seen and refused
 	_report("structure_damage", verdict(ok, true), "damage-seen-place-refused" if ok else "built%d-try%d-hit%d-refused%d" % [int(built), int(has_try), int(hit_seen), int(refused)])
 
-## Phase 208 — the host stands a clan chest of a clan the client is not in at the client's feet, holding five
+## Phase 208 — the host stands a chest of its own clan (the client is not in it) at the client's feet, holding five
 ## Thornwood. The client uses it and asks to take one: both are refused, the chest still holds five, the
 ## client's pack gains nothing and it was never sent a view of the chest.
 const CHEST_ITEM := "Thornwood"
@@ -2858,12 +2858,17 @@ func _step_chest_take_refused() -> void:
 		var pack_before: int = _root._registry.get_inventory(bound).get_item_count(CHEST_ITEM)
 		var got_pos: bool = await _await_until(func(): return not _root._networking.get_last_known_exact(peer).is_empty(), _step_timeout())
 		var at: Variant = _root._chest_wiring.player_pos(bound) if got_pos else null
+		# A clan with members: a memberless clan's chest is abandoned and open to anyone (`ChestSlice._abandoned`).
+		var local: String = _root._registry.local_player_id
+		if _root._clans.clan_of(local) == "":
+			_root._clans.found(local, "Chestkeepers")
+		var clan: String = _root._clans.clan_of(local)
 		var id := ""
-		if at is Vector3:
+		if at is Vector3 and clan != "" and _root._clans.clan_of(bound) != clan:
 			_root._chest_wiring._migrating = true   # a station the host stands up itself, given straight to the clan
 			id = _root._station.place_station("chest", _root._station.snap_to_grid(at))
 			_root._chest_wiring._migrating = false
-			_root._chests.register_clan_chest(id, "chest", _root._station.snap_to_grid(at), "clan_harness", { CHEST_ITEM: 5 })
+			_root._chests.register_clan_chest(id, "chest", _root._station.snap_to_grid(at), clan, { CHEST_ITEM: 5 })
 		var took: bool = await _await_until(func():
 			return seen.any(func(e: Array) -> bool: return str(e[0]) == bound and str(e[1]) == "take"), _step_timeout() * 2.0)
 		await _await_settle(0.5)
