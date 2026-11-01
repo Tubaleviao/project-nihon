@@ -652,6 +652,7 @@ func on_own_state_synced(data: Dictionary) -> void:
 	root._bed_wiring.apply_own_view(data)
 	if data.get("settlement_view", null) is Dictionary:
 		root._settlements.apply_view(data["settlement_view"])
+	root._structure_wiring.apply_circle_view(data)
 	if data.get("clan_view", null) is Dictionary and root._clans != null:
 		root._clans.apply_view(data["clan_view"])
 	if data.get("clan_result", null) is Dictionary:

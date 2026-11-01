@@ -269,6 +269,7 @@ settlement.refused.unknown_item,That project does not use this item.,Esse projet
 settlement.refused.too_much,More than the project still needs.,Mais do que o projeto ainda precisa.
 settlement.refused.labour_done,The work is done; it still needs materials.,O trabalho está feito; ainda faltam materiais.
 settlement.refused.no_tool,Work on a project needs a tool in your hand or pack.,Trabalhar num projeto exige uma ferramenta na mão ou na mochila.
+settlement.refused.foreign_circle,Only that clan's members build this close to its buildings.,Só os membros desse clã constroem tão perto das construções dele.
 settlement.ok.project_start,Project started.,Projeto iniciado.
 settlement.ok.project_give,Materials given.,Materiais entregues.
 settlement.ok.project_work,Working…,Trabalhando…
@@ -646,6 +647,7 @@ structure.ok.build_as.private,What you build from now on is yours alone.,O que v
 structure.ok.build_as.clan,What you build from now on belongs to your clan.,O que você construir a partir de agora pertence ao seu clã.
 structure.ok.repair,Structure repaired.,Estrutura reparada.
 structure.refused.not_owner,That structure is not yours.,Essa estrutura não é sua.
+structure.refused.foreign_circle,Only that clan's members build this close to its buildings.,Só os membros desse clã constroem tão perto das construções dele.
 structure.refused.no_permission,Your clan role may not do that.,Seu papel no clã não permite isso.
 structure.refused.structures_full,The world holds no more structures.,O mundo não comporta mais estruturas.
 structure.refused.no_clan,You are in no clan.,Você não está em nenhum clã.
@@ -666,4 +668,6 @@ chat.usage.repair,"/repair — repair the structure you stand at, paying part of
 chat.respawn_wait,You can respawn again in {0} s.,Você pode renascer de novo em {0} s.
 chat.respawning,Respawning.,Renascendo.
 reason.not_owner,That structure is not yours.,Essa estrutura não é sua.
+reason.foreign_circle,Only that clan's members build this close to its buildings.,Só os membros desse clã constroem tão perto das construções dele.
 bed.refuse_structure,You cannot place a bed on a structure that is not yours.,Você não pode colocar uma cama em uma estrutura que não é sua.
+bed.refuse_circle,Only that clan's members may place a bed this close to its buildings.,Só os membros desse clã podem colocar uma cama tão perto das construções dele.

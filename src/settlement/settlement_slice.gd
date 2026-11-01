@@ -58,7 +58,7 @@ const REASONS := ["unknown_player", "rate_limited", "bad_args", "already_member"
 	"too_many", "not_member", "no_permission", "unknown_settlement", "not_invited", "full", "bad_role",
 	"founder_locked", "no_stock", "over_limit", "no_inventory", "too_far", "unknown_action", "durable", "no_such_invite",
 	"unknown_project", "project_exists", "tier_too_low", "too_many_projects", "project_done", "unknown_item", "too_much",
-	"labour_done", "no_tool"]
+	"labour_done", "no_tool", "foreign_circle"]
 
 const DEFAULT_RULES := {
 	"hearthStation": "hearth", "hearthItem": "Hearth", "guildMaxSettlements": 1,
@@ -106,6 +106,9 @@ var tool_in_hand: Callable = Callable()
 ## Phase 198 — `(id, key, site {x, z}) -> void` places a finished structure at its site (site in ground metres
 ## as doubles); set by the wiring.
 var place_structure: Callable = Callable()
+## Phase 206 — `(player_id, xz: Vector2) -> bool` whether `xz` (ground metres) lies inside the circle of a
+## clan the player is not in, where they may not build; set by the structure wiring (host). Unset: nowhere.
+var build_blocked: Callable = Callable()
 ## pid -> { id, key, at } the last labour beat (mono seconds).
 var _labour_clock: Dictionary = {}
 ## Phase 199 — pid -> the specialty last announced for that player (absent = none).
@@ -514,6 +517,8 @@ func start_project(actor: String, key: String, site: Variant = null) -> String:
 	var xz: Variant = site if site is Vector2 else _player_xz(pid)
 	if not (xz is Vector2) or dist_m(_site_xz(_settlements[id]), xz as Vector2) > SITE_REACH:
 		return "too_far"
+	if build_blocked.is_valid() and bool(build_blocked.call(pid, xz as Vector2)):
+		return "foreign_circle"
 	var s: Dictionary = _settlements[id]
 	var tier: String = str(s["status"])
 	var why := ProjectRules.start_blocker(key, tier, s["projects"])

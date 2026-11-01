@@ -114,6 +114,15 @@ const NEAR_RING_PHASES := ["chunk_attach_collision", "chunk_contents"]
 const TELEPORT_SETTLE_MS := 1500 ## frames this long after a teleport (the new window's builds) are not recorded
 const STEP_GRACE_SECS := 10.0    ## past its deadline a step that has not returned has crashed or hung: fail it
 const SPAWN_OFFSET_M := 2.0      ## a teleport lands this far above the ground
+## Phase 206 — the village seeded round the spawn before the steps (`_seed_village`): this many private houses,
+## each a VILLAGE_SIDE-tile square floor walled VILLAGE_WALL_STEPS steps high, on a ring between these radii.
+const VILLAGE_HOUSES := 24
+const VILLAGE_SIDE := 8
+const VILLAGE_WALL_STEPS := 16
+const VILLAGE_RING_M := Vector2(40.0, 120.0)
+## Metres above the spawn's ground the village's index records sit: a circle is measured on the ground, so the
+## houses still keep creatures away, but no block the steps mine, place or walk on can ever be one of them.
+const VILLAGE_ALTITUDE_M := 4000.0
 const FIGHT_MAX_GROUND_GAP_M := 2.0
 const CREATURE_CLEAR_M := 60.0   ## fight's harvest removes the world's creatures this near the body
 const HARVEST_TRIES := 3         ## fight's harvest tries: one a hit cancels ("damaged") is retried
@@ -560,11 +569,38 @@ func run(root: Node) -> void:
 		_root._chunk_manager.record_store = null   # flush_records runs every frame; no frontier record of the bot may reach the player's region files
 		_root._chunk_manager._pending_records.clear()
 		_root._inventory.replace_contents({})   # a saved pack from an earlier run must not decide the result
+		_seed_village()
 		for step_name in step_names():
 			var rec: Dictionary = await _run_step(step_name)
 			_steps_done.append(rec)
 			steps.append(rec)
 	_finish(steps)
+
+## Phase 206 — a village of structures round the spawn, so walk, craft and fight pay the circle lookups a town
+## costs (every spawn and placement asks the index). Recorded in the host's structure index only, not the
+## world: other players' private houses, whose circles keep creatures away but refuse none of the bot's builds.
+## They are recorded high above the ground (`VILLAGE_ALTITUDE_M`), so no block of the world coincides with one.
+func _seed_village() -> void:
+	var st = _root._structures
+	var at: Dictionary = _root._player.get_world_pos()
+	var m := WorldPos.CHUNK_METERS
+	var home := Vector2(float(at["chunk"].x) * m + at["local"].x, float(at["chunk"].y) * m + at["local"].z)
+	var step_mm := roundi(VoxelSlice.STEP_HEIGHT * 1000.0)
+	var floor_mm := roundi((_root._terrain.get_height_at(home) + VILLAGE_ALTITUDE_M) * 1000.0)
+	for h in VILLAGE_HOUSES:
+		var angle := float(h) * 2.39996   # the golden angle: the houses spread round the ring
+		var dist := lerpf(VILLAGE_RING_M.x, VILLAGE_RING_M.y, float(h) / float(maxi(1, VILLAGE_HOUSES - 1)))
+		var c := home + Vector2(cos(angle), sin(angle)) * dist
+		var corner := Vector2i(floori(c.x / VoxelSlice.TILE_SIZE), floori(c.y / VoxelSlice.TILE_SIZE))
+		var sid := 0
+		for x in VILLAGE_SIDE:
+			for z in VILLAGE_SIDE:
+				var wall := x == 0 or z == 0 or x == VILLAGE_SIDE - 1 or z == VILLAGE_SIDE - 1
+				for k in (VILLAGE_WALL_STEPS if wall else 1):
+					var plan := { "tile": st.canonical(corner + Vector2i(x, z)), "mm": floor_mm + k * step_mm, "material": "Ashite", "player_id": "villager_%d" % h }
+					plan.merge({ "verdict": "join", "sid": sid } if sid != 0 else { "verdict": "new", "kind": "private", "owner": "villager_%d" % h })
+					sid = st.commit_place(plan)
+	print("[Playtest] village: %d structures, %d blocks round the spawn" % [st.count(), st.cell_count()])
 
 func _on_watchdog() -> void:
 	_recording = false

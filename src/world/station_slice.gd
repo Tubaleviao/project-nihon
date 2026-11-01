@@ -178,9 +178,11 @@ func snap_to_grid(position: Vector3) -> Vector3:
 func placement_blocker(type: String, position: Vector3, player_id: String = "") -> String:
 	if type == "" or not placeable_station_types().has(type):
 		return "unknown_station_type"
-	# Phase 205 — a station on someone else's structure.
-	if structure_guard.is_valid() and str(structure_guard.call(player_id, position)) != "":
-		return "not_owner"
+	# Phase 205 — a station on someone else's structure; Phase 206 — or inside a clan's circle by an outsider.
+	if structure_guard.is_valid():
+		var why := str(structure_guard.call(player_id, position))
+		if why != "":
+			return why
 	for id in _stations:
 		var other: Vector3 = _stations[id]["position"]
 		# Compare on the x/z plane: the same cell at another height still collides.
