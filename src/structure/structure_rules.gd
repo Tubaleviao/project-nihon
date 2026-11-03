@@ -7,6 +7,8 @@ extends RefCounted
 const CLASSES := ["earth", "wood", "stone", "concrete", "steel", "composite"]
 ## Destruction methods the runtime can name today (`StructureDurability.methods`).
 const METHODS := ["hand", "pick", "axe", "weapon"]
+## Material rarities in the fabric's order (`RARITIES`): a material's `rarity` is an index into this list.
+const RARITIES := ["common", "uncommon", "rare", "epic", "legendary"]
 
 static func _rules(system: String) -> Dictionary:
 	var res: Resource = GameData.WORLD_SYSTEMS.get(system, null)
@@ -21,6 +23,26 @@ static func durability_rules() -> Dictionary:
 
 static func respawn() -> Dictionary:
 	return _rules("SelfRespawn")
+
+## Phase 210 — the fabric's `ClanTiers` table (`durabilityUnit`, `rarityWeight`, `tiers`).
+static func clan_tiers() -> Dictionary:
+	return _rules("ClanTiers")
+
+static func rarity_of(material: String) -> String:
+	var m: Resource = GameData.MATERIALS.get(material, null)
+	var i := int(m.get("rarity")) if m != null and m.get("rarity") != null else 0
+	return RARITIES[i] if i >= 0 and i < RARITIES.size() else RARITIES[0]
+
+## Phase 210 — what one placed block of `material` adds to its clan's score, in points: its base durability
+## times `rarityWeight[rarity]`. The score is points / `durabilityUnit`; points stay whole so adding and taking
+## blocks away never drifts.
+static func score_points(material: String) -> int:
+	var w: Dictionary = clan_tiers().get("rarityWeight", {})
+	return roundi(base_durability(material) * maxf(0.0, float(w.get(rarity_of(material), 1.0))))
+
+## Points per score unit (`ClanTiers.durabilityUnit`).
+static func score_unit() -> float:
+	return maxf(1.0, float(clan_tiers().get("durabilityUnit", 100.0)))
 
 ## A placed block's base durability from its material (0 for an unknown one).
 static func base_durability(material: String) -> float:

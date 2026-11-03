@@ -776,6 +776,9 @@ func _test_distant_ring_record_rebuild() -> void:
 	var debounced := DistantTerrainScript.new()
 	add_child(debounced)
 	debounced.world_seed = 5
+	# The window runs from the build's start and `poll(true)` waits for the build: a window longer than any build,
+	# so a slow machine's build does not outlast it.
+	debounced.record_debounce_ms = 600000
 	debounced.rebuild(Vector2(16.0, 16.0), 2)
 	debounced.poll(true)
 	ChunkRecordsScript.set_record(Vector2i(4, 1), RegionStoreScript.normalize_gen(TerrainSlice.generation_record(Vector2i(4, 1), 5)))

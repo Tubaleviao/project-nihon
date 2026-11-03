@@ -1,7 +1,7 @@
 extends VBoxContainer
 ## Clan window (Phase 204) — found a clan, answer invites, invite, kick, set roles, leave, and the roster: every
 ## member's skills, sortable by one skill so "who sews best" is one click, with a "Message" button that opens
-## the chat box on `/msg <handle> `. Presentation only: every button emits a `GameBus.clan_intent` and the host
+## the chat box on `/msg <handle> `. Phase 210: the clan's tier and score above the roster. Presentation only: every button emits a `GameBus.clan_intent` and the host
 ## decides. All text goes through `I18n`. The slice's `view()` (the host's last push) is what it renders.
 
 const I18n := preload("res://src/core/i18n.gd")
@@ -12,6 +12,7 @@ const ROLES := ["elder", "member", "guest"]
 var clan_slice: Node = null
 
 var _status: Label = null
+var _standing: Label = null
 var _feedback: Label = null
 var _invites: VBoxContainer = null
 var _roster: VBoxContainer = null
@@ -30,6 +31,8 @@ func _init() -> void:
 	_status = Label.new()
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	add_child(_status)
+	_standing = Label.new()
+	add_child(_standing)
 	_invites = VBoxContainer.new()
 	add_child(_invites)
 	_name_edit = _line("clan.name_ph")
@@ -143,11 +146,23 @@ func refresh() -> void:
 	_render_invites(view.get("invites", []) if mine.is_empty() and view.get("invites", []) is Array else [])
 	if mine.is_empty():
 		_status.text = I18n.t("clan.none")
+		_standing.text = ""
 		_render_roster([], "")
 		return
 	_status.text = I18n.t("clan.status", [ClanSlice.display_name(mine), I18n.t("clan.role." + str(mine.get("role", "guest")))])
+	_standing.text = standing_text(mine)
 	var roster: Array = mine.get("roster", []) if mine.get("roster", []) is Array else []
 	_render_roster(roster, picked_sort())
+
+func standing_shown() -> String:
+	return _standing.text
+
+## Phase 210 — the clan's tier and score as the window shows them (the host's numbers, never the client's).
+static func standing_text(mine: Dictionary) -> String:
+	var tier := str(mine.get("tier", ""))
+	var score: Variant = mine.get("score", 0.0)
+	var v := floorf(float(score)) if (score is float or score is int) and is_finite(float(score)) else 0.0
+	return I18n.t("clan.standing", [I18n.t("clan.rank." + tier) if tier != "" else "—", v])
 
 ## The roster's lines as shown, best first for the picked skill: name, role, online, and either the picked
 ## skill's tier and XP or the member's best skills. Pure, for the tests.

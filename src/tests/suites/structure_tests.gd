@@ -2,6 +2,7 @@ extends "res://src/tests/test_support.gd"
 ## Phase 205 — owned structures: who may edit, damage and dismantle a block, durability and wear, repair, the
 ## structure index's persistence, the station and tree guards, respawning at will, and what a client may name.
 ## Phase 206 — the circle around every structure: its size, the lookup, no foreign building, no spawns.
+## Phase 210 — clan tiers from the structure index: score by durability and rarity, tier changes, the audit.
 
 const StructureSlice := preload("res://src/structure/structure_slice.gd")
 const StructureRules := preload("res://src/structure/structure_rules.gd")
@@ -9,6 +10,7 @@ const ClanSlice := preload("res://src/clan/clan_slice.gd")
 const VoxelConsts := preload("res://src/terrain/voxel_consts.gd")
 const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 const StructureWiring := preload("res://src/structure/structure_wiring.gd")
+const ClanPanel := preload("res://src/ui/clan_panel.gd")
 
 ## `a` within 0.0001 of `b`.
 func assert_near(a: float, b: float, msg: String) -> void:
@@ -43,6 +45,11 @@ func register() -> void:
 	_run_test("structure circle: the running sums give the circle a full recount gives", _test_circle_incremental)
 	_run_test("structure circle: a refused block tells its builder, a client is sent the circles it may not build in", _test_circle_feedback)
 	_run_test("structure: a block of a material with no durability falls on the first sweep", _test_zero_durability_sweep)
+	_run_test("clan tier: a stone building raises the score more than a wood one, wherever it stands; a threshold changes the tier once", _test_tier_rises)
+	_run_test("clan tier: destroying the building that held a clan above a threshold drops its tier", _test_tier_drops)
+	_run_test("clan tier (audit): no score or tier is read from a client message", _test_tier_audit)
+	_run_test("clan tier: a block placed and taken again at a threshold sends at most one line per window", _test_tier_flip_throttle)
+	_run_test("clan tier: a world saved before tiers takes its first tier without a line", _test_tier_old_save_quiet)
 
 # ── rig ──────────────────────────────────────────────────────────────────
 
@@ -923,4 +930,269 @@ func _test_zero_durability_sweep() -> void:
 	var s := { "hurt": 0.0 }
 	st._note_hurt(s, ["NoSuchMaterial", 0.0, 0.0])
 	assert_near(float(s["hurt"]), 1.0, "a block with no base durability counts as at zero from the start")
+	_free_rig(r)
+
+# ── Phase 210: clan tiers ────────────────────────────────────────────────
+
+## `pid` adds `n` blocks of `mat` to the column at `tile` straight through the index (no world edit: a
+## building far from any loaded ground), from `bottom` up. Returns the structure id.
+func _index_column(st: StructureSlice, pid: String, tile: Vector2i, n: int, mat: String = "Ashite", bottom: float = 2.0) -> int:
+	var sid := 0
+	for i in n:
+		var plan := st.plan_place(pid, tile, bottom + VoxelConsts.STEP_HEIGHT * i, Vector3.UP, mat)
+		sid = st.commit_place(plan)
+		assert_true(sid != 0, "block %d of the column is indexed" % i)
+	return sid
+
+## Every "clan.rank*" line sent while `body` runs, as [key, target].
+func _rank_lines(body: Callable) -> Array:
+	var lines: Array = []
+	var on_msg := func(key: String, _args: Array, target: String) -> void:
+		if key.begins_with("clan.rank"):
+			lines.append([key, target])
+	GameBus.system_message.connect(on_msg)
+	body.call()
+	GameBus.system_message.disconnect(on_msg)
+	return lines
+
+## Score points one `mat` block adds, as a score.
+func _block_score(mat: String) -> float:
+	return float(StructureRules.score_points(mat)) / StructureRules.score_unit()
+
+func _test_tier_rises() -> void:
+	var r := _rig()
+	var st: StructureSlice = r["st"]
+	var clans: ClanSlice = r["clans"]
+	_online(r, "p1", 2)
+	assert_eq(st.set_build_mode("p1", "clan"), "", "p1 builds for the clan")
+	assert_eq(StructureRules.class_of("Ashite"), "stone", "Ashite is stone")
+	assert_eq(StructureRules.class_of("Thornwood"), "wood", "Thornwood is wood")
+	assert_true(_block_score("Ashite") > _block_score("Thornwood") and _block_score("Thornwood") > 0.0,
+		"a stone block scores more than a wooden one (%f against %f)" % [_block_score("Ashite"), _block_score("Thornwood")])
+	assert_true(_block_score("Aethermite") > _block_score("Ashite"), "a rarer stone scores more than a common one")
+	# A stone building at home and one on the far side of the world add the same; a wooden one less.
+	assert_true(_place(r, "p1", 10, 10, 2.0, "Ashite"), "a stone clan block at home")
+	st.flush_clan_scores()
+	var home := clans.score_of("clan_1")
+	assert_near(home, _block_score("Ashite"), "the clan scores its stone block")
+	_index_column(st, "p1", Vector2i(900000, -700000), 1, "Ashite")
+	st.flush_clan_scores()
+	assert_near(clans.score_of("clan_1") - home, home, "the same building far away adds the same")
+	var before := clans.score_of("clan_1")
+	_index_column(st, "p1", Vector2i(-400000, 300000), 1, "Thornwood")
+	st.flush_clan_scores()
+	assert_true(clans.score_of("clan_1") - before < home, "a wooden building adds less than a stone one")
+	assert_true(clans.score_of("clan_1") > before, "but it adds")
+	# A private building counts for no clan.
+	assert_true(_place(r, "p2", 40, 40, 2.0, "Ashite"), "p2 builds a private block")
+	before = clans.score_of("clan_1")
+	st.flush_clan_scores()
+	assert_near(clans.score_of("clan_1"), before, "a member's private building is not the clan's")
+	# Up to just below the next tier: the tier holds; one block more crosses it, and a told member hears once.
+	var all := ClanSlice.tiers()
+	var first := str(all[0]["tier"])
+	var second := str(all[1]["tier"])
+	assert_eq(clans.tier_of("clan_1"), first, "a new clan has the lowest tier")
+	var per := _block_score("Ashite")
+	var short := ceili((float(all[1]["minScore"]) - clans.score_of("clan_1")) / per) - 1
+	var tower := Vector2i(1200, -3400)
+	var lines := _rank_lines(func() -> void:
+		_index_column(st, "p1", tower, short, "Ashite")
+		st.flush_clan_scores())
+	assert_true(clans.score_of("clan_1") < float(all[1]["minScore"]), "one block short of the threshold")
+	assert_eq(clans.tier_of("clan_1"), first, "the tier holds below it")
+	assert_eq(lines, [], "and nobody is told anything")
+	lines = _rank_lines(func() -> void:
+		_index_column(st, "p1", tower, 1, "Ashite", 2.0 + VoxelConsts.STEP_HEIGHT * short)
+		st.flush_clan_scores()
+		_index_column(st, "p1", tower, 2, "Ashite", 2.0 + VoxelConsts.STEP_HEIGHT * (short + 1))
+		st.flush_clan_scores()
+		st.flush_clan_scores())
+	assert_eq(clans.tier_of("clan_1"), second, "the block that crosses the threshold raises the tier")
+	assert_eq(lines, [["clan.rank_up." + second, "p1"]], "once, to the online member only (p2 is offline)")
+	for t: Dictionary in all:
+		for key: String in ["clan.rank.", "clan.rank_up.", "clan.rank_down."]:
+			assert_true(I18nScript.has_key(key + str(t["tier"])), "%s%s has a catalog line" % [key, t["tier"]])
+	# The running sum is a full recount's, and the member's view and window carry it.
+	assert_near(clans.score_of("clan_1"), float(st.recount_clan_scores().get("clan_1", 0.0)), "the running score matches a recount")
+	var mine: Dictionary = clans.private_view("p2")["mine"]
+	assert_eq([mine["tier"], mine["score"]], [second, clans.score_of("clan_1")], "a member's view carries the tier and score")
+	assert_eq(ClanPanel.standing_text(mine), I18nScript.t("clan.standing", [I18nScript.t("clan.rank." + second), floorf(clans.score_of("clan_1"))]),
+		"the clan window shows them")
+	assert_false(clans.private_view("p3").has("tier") or (clans.private_view("p3")["mine"] as Dictionary).has("tier"), "an outsider's view has neither")
+	# A save and load scoring the same tells no one again; a regenerated world drops the clan to the lowest tier.
+	var cdata := clans.to_data()
+	var sdata := st.to_data()
+	lines = _rank_lines(func() -> void:
+		clans.from_data(cdata)
+		st.from_data(sdata)
+		st.flush_clan_scores())
+	assert_eq([clans.tier_of("clan_1"), lines], [second, []], "after a load the tier is kept and nobody is told again")
+	r["now"][0] += ClanSlice.RANK_NOTICE_SEC
+	lines = _rank_lines(func() -> void:
+		st.reset_world()
+		st.flush_clan_scores())
+	assert_eq([clans.tier_of("clan_1"), clans.score_of("clan_1")], [first, 0.0], "with every building gone the clan is back at the lowest tier")
+	assert_eq(lines, [["clan.rank_down." + first, "p1"]], "and its online member is told")
+	_free_rig(r)
+
+func _test_tier_drops() -> void:
+	var r := _rig()
+	var st: StructureSlice = r["st"]
+	var clans: ClanSlice = r["clans"]
+	_online(r, "p1", 2)
+	_online(r, "p2", 3)
+	assert_eq(st.set_build_mode("p1", "clan"), "", "p1 builds for the clan")
+	var all := ClanSlice.tiers()
+	var per := _block_score("Ashite")
+	var need := ceili(float(all[1]["minScore"]) / per)
+	var hall := _index_column(st, "p1", Vector2i(5000, 5000), need - 1, "Ashite")
+	assert_true(_place(r, "p1", 10, 10, 2.0, "Ashite"), "the block that lifts the clan, in a second building")
+	var lift := _sid(r, 10, 10, 2.0)
+	assert_true(lift != hall, "a building of its own")
+	st.tick()
+	assert_eq(clans.tier_of("clan_1"), str(all[1]["tier"]), "the clan is above the threshold")
+	# An outsider breaks the second building down; the clan falls below the threshold.
+	r["now"][0] += ClanSlice.RANK_NOTICE_SEC
+	var lines := _rank_lines(func() -> void:
+		var k := 0
+		while k < 5000 and st.get_structure(lift).size() > 0:
+			r["now"][0] += StructureSlice.HIT_INTERVAL
+			st.commit_mine(st.plan_mine("p3", Vector2i(10, 10), 2.0, 2.125, "pick"))
+			k += 1
+		st.tick())
+	assert_true(st.get_structure(lift).is_empty(), "the building is destroyed")
+	assert_eq(clans.tier_of("clan_1"), str(all[0]["tier"]), "and the clan's tier drops")
+	assert_eq(lines.size(), 2, "both online members are told once")
+	assert_true(lines.has(["clan.rank_down." + str(all[0]["tier"]), "p1"]) and lines.has(["clan.rank_down." + str(all[0]["tier"]), "p2"]),
+		"with the keyed line")
+	# A building worn to nothing goes too, and the score with it.
+	r["hour"][0] += 24 * 365 * 50
+	for i in 40:
+		st.tick()
+	assert_eq(st.count(), 0, "the worn building collapsed")
+	assert_eq(clans.score_of("clan_1"), 0.0, "and the clan scores nothing")
+	_free_rig(r)
+
+func _test_tier_audit() -> void:
+	var r := _rig()
+	var st: StructureSlice = r["st"]
+	var clans: ClanSlice = r["clans"]
+	assert_eq(st.set_build_mode("p1", "clan"), "", "p1 builds for the clan")
+	assert_true(_place(r, "p1", 10, 10, 2.0, "Ashite"), "a clan block")
+	st.flush_clan_scores()
+	var score := clans.score_of("clan_1")
+	var tier := clans.tier_of("clan_1")
+	# Every clan action, with a forged score and tier: the host reads neither.
+	for action: String in ClanSlice.ACTIONS + ["score", "tier"]:
+		r["now"][0] += 1.0
+		GameBus.clan_intent.emit(action, { "score": 1.0e9, "tier": "dynasty", "name": "Forged", "target": "p4" }, "p1")
+	assert_eq([clans.score_of("clan_1"), clans.tier_of("clan_1")], [score, tier], "no clan intent moves the score or tier")
+	# A client's clan slice ignores a score, even one off the bus.
+	var client := ClanSlice.new()
+	client.is_host = false
+	client.from_data(clans.to_data())
+	client.set_score("clan_1", 1.0e9)
+	assert_eq(client.score_of("clan_1"), score, "a client never sets a score")
+	client.free()
+	var sources := ["res://src/networking/net_part_1.gd", "res://src/networking/net_part_2.gd", "res://src/networking/net_part_3.gd",
+		"res://src/networking/peer_wiring.gd", "res://src/networking/networking_slice.gd"]
+	for path: String in sources:
+		var src := FileAccess.get_file_as_string(path)
+		assert_true(src.length() > 0, "%s is readable" % path)
+		assert_false(src.contains("clan_score_changed") or src.contains("set_score("), "%s never sets a clan score" % path)
+		for field: String in ["score", "tier"]:
+			assert_false(src.contains("payload.get(\"%s\"" % field), "%s reads no client payload's \"%s\"" % [path, field])
+	var clan_src := FileAccess.get_file_as_string("res://src/clan/clan_slice.gd")
+	assert_false(clan_src.contains("_arg(args, \"score\"") or clan_src.contains("_arg(args, \"tier\"") or clan_src.contains("args.get(\"score\"")
+		or clan_src.contains("args.get(\"tier\""), "a clan intent names no score or tier")
+	assert_true(FileAccess.get_file_as_string("res://src/structure/structure_slice.gd").contains("GameBus.clan_score_changed.emit(id, clan_score(id))"),
+		"the score is sent from the host's structure index")
+	_free_rig(r)
+
+func _test_tier_flip_throttle() -> void:
+	var r := _rig()
+	var st: StructureSlice = r["st"]
+	var clans: ClanSlice = r["clans"]
+	_online(r, "p1", 2)
+	assert_eq(st.set_build_mode("p1", "clan"), "", "p1 builds for the clan")
+	var all := ClanSlice.tiers()
+	var first := str(all[0]["tier"])
+	var second := str(all[1]["tier"])
+	var need := ceili(float(all[1]["minScore"]) / _block_score("Ashite"))
+	var tower := Vector2i(5000, 5000)
+	_index_column(st, "p1", tower, need - 1, "Ashite")
+	st.flush_clan_scores()
+	var top := Vector2i(6000, 6000)
+	# Place and take away the block that crosses the threshold, again and again inside one window.
+	var lines := _rank_lines(func() -> void:
+		for i in 10:
+			r["now"][0] += 1.0
+			st.drop_span(top, -1000.0, 1000.0)
+			_index_column(st, "p1", top, 1, "Ashite")
+			st.flush_clan_scores()
+			clans.tick(r["now"][0])
+			r["now"][0] += 1.0
+			st.drop_span(top, -1000.0, 1000.0)
+			st.flush_clan_scores()
+			clans.tick(r["now"][0]))
+	assert_eq(lines, [["clan.rank_up." + second, "p1"]], "ten flips inside the window send the first line only")
+	assert_eq(clans.tier_of("clan_1"), first, "the tier still follows the buildings at once")
+	# The window ends with the tier back where its members last heard it: up, so they hear it went down.
+	r["now"][0] += ClanSlice.RANK_NOTICE_SEC
+	lines = _rank_lines(func() -> void: clans.tick(r["now"][0]))
+	assert_eq(lines, [["clan.rank_down." + first, "p1"]], "after the window the held change is told once")
+	lines = _rank_lines(func() -> void:
+		r["now"][0] += ClanSlice.RANK_NOTICE_SEC
+		clans.tick(r["now"][0]))
+	assert_eq(lines, [], "and nothing more")
+	# A move that comes back inside the window sends nothing once the window ends.
+	r["now"][0] += ClanSlice.RANK_NOTICE_SEC
+	lines = _rank_lines(func() -> void:
+		_index_column(st, "p1", top, 1, "Ashite")
+		st.flush_clan_scores())
+	assert_eq(lines, [["clan.rank_up." + second, "p1"]], "a rise after a quiet window is told at once")
+	lines = _rank_lines(func() -> void:
+		r["now"][0] += 1.0
+		st.drop_span(top, -1000.0, 1000.0)
+		st.flush_clan_scores()
+		r["now"][0] += 1.0
+		_index_column(st, "p1", top, 1, "Ashite")
+		st.flush_clan_scores()
+		r["now"][0] += ClanSlice.RANK_NOTICE_SEC
+		clans.tick(r["now"][0]))
+	assert_eq(clans.tier_of("clan_1"), second, "the clan is back at the tier its members heard")
+	assert_eq(lines, [], "...and a rise back to the tier last heard sends nothing")
+	_free_rig(r)
+
+func _test_tier_old_save_quiet() -> void:
+	var r := _rig()
+	var st: StructureSlice = r["st"]
+	var clans: ClanSlice = r["clans"]
+	_online(r, "p1", 2)
+	assert_eq(st.set_build_mode("p1", "clan"), "", "p1 builds for the clan")
+	var all := ClanSlice.tiers()
+	var second := str(all[1]["tier"])
+	_index_column(st, "p1", Vector2i(5000, 5000), ceili(float(all[1]["minScore"]) / _block_score("Ashite")), "Ashite")
+	st.flush_clan_scores()
+	assert_eq(clans.tier_of("clan_1"), second, "the clan's buildings lift it")
+	# The same world as a save from before Phase 210: no tier or score on the clan.
+	var cdata: Dictionary = clans.to_data()
+	for id: String in cdata["clans"]:
+		cdata["clans"][id].erase("tier")
+		cdata["clans"][id].erase("score")
+	var sdata := st.to_data()
+	r["now"][0] += ClanSlice.RANK_NOTICE_SEC
+	var lines := _rank_lines(func() -> void:
+		clans.from_data(cdata)
+		st.from_data(sdata)
+		st.flush_clan_scores()
+		clans.tick(r["now"][0]))
+	assert_eq([clans.tier_of("clan_1"), lines], [second, []], "the old save takes its tier and nobody is told")
+	# Later changes are told as usual.
+	r["now"][0] += ClanSlice.RANK_NOTICE_SEC
+	lines = _rank_lines(func() -> void:
+		st.reset_world()
+		st.flush_clan_scores())
+	assert_eq(lines, [["clan.rank_down." + str(all[0]["tier"]), "p1"]], "a later fall is told")
 	_free_rig(r)

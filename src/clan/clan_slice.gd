@@ -16,7 +16,12 @@ extends Node
 ##   clan_of(player_id) -> String / role_of(player_id) -> String / may(player_id, permission) -> bool
 ##   private_view(player_id)        what one player may see: their own clan's roster with skills, and invites
 ##   migrate_settlements(data)      a saved world's settlements become clans (Clan.migration)
-##   tick(now)                      lapse old invites
+##   tick(now)                      lapse old invites, send held tier lines
+##   set_score(id, score)           Phase 210: the structure index's score for a clan, and the tier it gives
+##
+## Phase 210 — a clan's tier (`ClanTiers.tiers`) is the highest whose `minScore` its score reaches. The score
+## comes only from the host's structure index (`GameBus.clan_score_changed`); a tier change tells the clan's
+## online members with a keyed line, and both go to members in their view. A tier gives nothing yet.
 
 const I18n := preload("res://src/core/i18n.gd")
 const CreationRules := preload("res://src/character/creation_rules.gd")
@@ -34,6 +39,9 @@ const MAX_MEMBERS := 512
 const MAX_ROSTER_SKILLS := 48
 ## A skill change re-sends a clan's roster at most this often (an XP grant fires on every harvest swing).
 const SKILL_PUSH_SEC := 5.0
+## Phase 210 — a clan's members hear at most one tier line this often: a block placed and taken away again at a
+## threshold never sends a line per flip, and a tier that moved and came back inside the window sends none.
+const RANK_NOTICE_SEC := 60.0
 ## The clan record's format: 1 is the first (Phase 204).
 const DATA_FORMAT := 1
 const ACTIONS := ["found", "invite", "uninvite", "join", "decline", "leave", "kick", "role"]
@@ -83,11 +91,18 @@ var _dirty_players: Dictionary = {}
 ## Clan ids whose members' skills changed, held until `SKILL_PUSH_SEC` after that clan's last skill push.
 var _skill_dirty: Dictionary = {}
 var _skill_pushed: Dictionary = {}
+## Phase 210 — clan id -> the tier its members last heard and when (`mono_sec`); the clans whose tier moved inside
+## that window, told on a later `tick`; and the clans loaded without a tier (a save from before Phase 210), whose
+## first score sets the tier without a line.
+var _rank_told: Dictionary = {}
+var _rank_pending: Dictionary = {}
+var _rank_quiet: Dictionary = {}
 ## Client view: what the host last sent.
 var _view: Dictionary = {}
 
 func _ready() -> void:
 	GameBus.clan_intent.connect(_on_intent)
+	GameBus.clan_score_changed.connect(set_score)
 	GameBus.player_left.connect(forget_player)
 
 func forget_player(player_id: String) -> void:
@@ -129,6 +144,87 @@ func _invite_ttl() -> float:
 func _member_cap() -> int:
 	var n := int(rules()["maxMembers"])
 	return MAX_MEMBERS if n <= 0 else mini(n, MAX_MEMBERS)
+
+## Phase 210 — the fabric's tiers as `[{ tier, minScore }, ...]`, lowest first (one score-0 tier when unset).
+static func tiers() -> Array:
+	var res: Resource = GameData.WORLD_SYSTEMS.get("ClanTiers", null)
+	var r: Variant = res.get("rules") if res != null else null
+	var out: Array = []
+	if r is Dictionary and (r as Dictionary).get("tiers", null) is Array:
+		for e: Variant in r["tiers"]:
+			if e is Dictionary and e.get("tier", null) is String and (e.get("minScore", null) is int or e.get("minScore", null) is float):
+				out.append({ "tier": str(e["tier"]), "minScore": float(e["minScore"]) })
+	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a["minScore"]) < float(b["minScore"]))
+	return out if not out.is_empty() else [{ "tier": "band", "minScore": 0.0 }]
+
+## The tier a score reaches: the highest whose `minScore` it is at or above (the lowest tier below every one).
+static func tier_for(score: float) -> String:
+	var all := tiers()
+	var out := str(all[0]["tier"])
+	for e: Dictionary in all:
+		if score >= float(e["minScore"]):
+			out = str(e["tier"])
+	return out
+
+static func tier_rank(tier: String) -> int:
+	var all := tiers()
+	for i in all.size():
+		if str(all[i]["tier"]) == tier:
+			return i
+	return 0
+
+func score_of(id: String) -> float:
+	return float((_clans.get(id, {}) as Dictionary).get("score", 0.0))
+
+func tier_of(id: String) -> String:
+	var c: Dictionary = _clans.get(id, {})
+	return str(c.get("tier", tier_for(0.0))) if not c.is_empty() else ""
+
+## Host: the structure index says clan `id` scores `score`. Its tier follows; a change tells its online members
+## ("clan.rank_up.<tier>" or "clan.rank_down.<tier>") once. Members see the score in their next view (at most
+## once per `SKILL_PUSH_SEC`, a tier change at once), and hear at most one line per `RANK_NOTICE_SEC`. A clan
+## loaded without a tier takes its first one quietly. An unknown clan (disbanded) is ignored.
+func set_score(id: String, score: float) -> void:
+	if not is_host or not _clans.has(id):
+		return
+	var c: Dictionary = _clans[id]
+	var v := maxf(0.0, score) if is_finite(score) else 0.0
+	if v == float(c.get("score", 0.0)) and c.has("tier"):
+		return
+	c["score"] = v
+	var was := str(c.get("tier", tier_for(0.0)))
+	var now := tier_for(v)
+	var quiet := _rank_quiet.has(id)
+	_rank_quiet.erase(id)
+	if not _rank_told.has(id) or quiet:
+		_rank_told[id] = [now if quiet else was, -1.0e12]
+	c["tier"] = now
+	if now == was:
+		_skill_dirty[id] = true   # the roster's score line, throttled like a skill change
+		return
+	_changed(id)
+	if not quiet:
+		_rank_pending[id] = true
+		_tell_ranks()
+
+## Tell each clan whose tier moved the tier it now holds, when its last line is `RANK_NOTICE_SEC` old: up or
+## down from the tier its members last heard, nothing when it came back to that one.
+func _tell_ranks() -> void:
+	var at := float(mono_sec.call())
+	for id: String in _rank_pending.keys():
+		var told: Array = _rank_told[id]
+		if at - float(told[1]) < RANK_NOTICE_SEC:
+			continue
+		_rank_pending.erase(id)
+		var c: Dictionary = _clans[id]
+		var now := str(c["tier"])
+		if now == str(told[0]):
+			continue
+		_rank_told[id] = [now, at]
+		var key := ("clan.rank_up." if tier_rank(now) > tier_rank(str(told[0])) else "clan.rank_down.") + now
+		for m: String in (c["members"] as Dictionary):
+			if _is_online(m):
+				GameBus.system_message.emit(key, [], m)
 
 ## The name rule's bounds for `CreationRules.name_refusal`.
 func _name_limits() -> Dictionary:
@@ -406,6 +502,9 @@ func _disband(id: String) -> void:
 	_clans.erase(id)
 	_skill_dirty.erase(id)
 	_skill_pushed.erase(id)
+	_rank_told.erase(id)
+	_rank_pending.erase(id)
+	_rank_quiet.erase(id)
 	GameBus.clan_disbanded.emit(id, heir)   # Phase 208 — its chests and doors go to its last member
 
 ## Remove `target` from the actor's clan. The founder is never kicked, and an actor kicks only members ranked
@@ -458,13 +557,16 @@ func set_role(actor: String, target: String, role: String) -> String:
 	_changed(id)
 	return ""
 
-## Lapse old invites as of `now`. Returns true when anything changed.
+## Lapse old invites as of `now`, and (host) send the tier lines `RANK_NOTICE_SEC` held back. Returns true when
+## anything changed.
 func tick(now: float) -> bool:
 	var changed := false
 	for id: String in ids():
 		if _lapse_invites(_clans[id], now):
 			_dirty_clans[id] = true
 			changed = true
+	if is_host:
+		_tell_ranks()
 	if changed:
 		GameBus.clans_changed.emit()
 	return changed
@@ -600,6 +702,9 @@ func from_data(data: Variant) -> void:
 	_dirty_players.clear()
 	_skill_dirty.clear()
 	_skill_pushed.clear()
+	_rank_told.clear()
+	_rank_pending.clear()
+	_rank_quiet.clear()
 	_next_id = 1
 	if not (data is Dictionary):
 		return
@@ -637,6 +742,16 @@ func from_data(data: Variant) -> void:
 		_add_clan(id, { "id": id, "name": cname, "name_n": name_n, "founder": founder, "members": members,
 			"invites": invites, "created": float(c.get("created", 0.0)) if is_finite(float(c.get("created", 0.0))) else 0.0,
 			"settlement": str(c.get("settlement", "")).left(64) })
+		# Phase 210 — the tier last given, so a load whose buildings score the same tells no one again. The score
+		# is the structure index's, sent again once the index loads.
+		var tier: Variant = c.get("tier", null)
+		if tier is String and tiers().any(func(e: Dictionary) -> bool: return str(e["tier"]) == tier):
+			_clans[id]["tier"] = tier
+		else:
+			_rank_quiet[id] = true   # saved before Phase 210: its buildings set a tier nobody earned just now
+		var score: Variant = c.get("score", null)
+		if (score is float or score is int) and is_finite(float(score)) and float(score) >= 0.0:
+			_clans[id]["score"] = float(score)
 		var suffix := id.trim_prefix("clan_")
 		if suffix.is_valid_int():
 			_next_id = maxi(_next_id, int(suffix) + 1)   # never reuse a loaded id
@@ -661,6 +776,7 @@ func private_view(player_id: String, rosters: Dictionary = {}) -> Dictionary:
 				built.append(member_entry(m, str(c["members"][m])))
 			rosters[id] = built
 		var mine := { "id": id, "name": str(c["name"]), "name_n": int(c["name_n"]), "role": role_of(pid),
+			"tier": tier_of(id), "score": score_of(id),
 			"founder": _handle(str(c["founder"])), "roster": rosters[id], "invited": [] }
 		if may(pid, "invite"):
 			for p: String in (c["invites"] as Dictionary):
@@ -690,10 +806,13 @@ func member_entry(member: String, role: String) -> Dictionary:
 					var e: Dictionary = skills.get(s, { "xp": 0, "tier": "" })
 					e["tier"] = str(tiers[s]).left(16)
 					skills[s] = e
-	var online := registry != null and registry.has_method("is_online") and bool(registry.is_online(member))
-	if registry != null and "local_player_id" in registry and member == str(registry.local_player_id):
-		online = true
-	return { "name": _display_name(member), "handle": _handle(member), "role": role, "online": online, "skills": skills }
+	return { "name": _display_name(member), "handle": _handle(member), "role": role, "online": _is_online(member), "skills": skills }
+
+## Whether `pid` has a session: a peer, or the host's own player.
+func _is_online(pid: String) -> bool:
+	if registry != null and "local_player_id" in registry and pid == str(registry.local_player_id):
+		return true
+	return registry != null and registry.has_method("is_online") and bool(registry.is_online(pid))
 
 func _display_name(pid: String) -> String:
 	return str(registry.display_name(pid)) if registry != null and registry.has_method("display_name") else pid

@@ -305,6 +305,10 @@ signal structure_resolved(player_id: String, action: String, ok: bool, reason: S
 ## affected players their views on the next tick.
 signal clans_changed()
 
+## Phase 210 — host: the score of clan `clan_id` from the structure index (every block its structures hold,
+## by durability and rarity) moved. The clan slice sets its tier from it (`ClanSlice.set_score`).
+signal clan_score_changed(clan_id: String, score: float)
+
 ## Phase 128 — the host's override table changed (`WeatherSlice.to_data()` form). game_root broadcasts
 ## it to every client; a client never emits it.
 signal weather_overrides_synced(overrides: Array)
