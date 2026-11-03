@@ -45,8 +45,13 @@ station is learnt from a blueprint. Nothing is shared through a clan.
   adds a recipe or project to the player's learnt set, which `is_recipe_unlocked` honours and the status
   snapshot carries under `_learnt` (bounded to known recipes and projects on load), so it persists and
   reaches the owner's client.
-- Knowing a project, for writing its blueprint, means a learnt blueprint or being able to make every crafted
-  material it needs. Starting a project is not gated by knowing it in this phase.
+- Knowing a project means a learnt blueprint or being able to make every crafted material it needs (a project
+  with no crafted material is known only from a blueprint). Writing its blueprint and starting it
+  (`SettlementSlice.knows_project`, refused `not_known`) both need it known.
+- Review pass: a station blueprint needs its recipe technology's prerequisites, as a book does; a book is
+  refused (`researching`) while its technology is under way, so paid research is never lost; a read reports
+  "known", not "researching"; reading a blueprint refreshes the crafting window; the host's writing
+  rate-limit table drops stale players; writing names, stations and messages go through the locale.
 - Research takes materials from the researcher's pack only: `STOCKPILE_RESEARCH_HOLD`,
   `SettlementSlice.research_stock` / `consume_research` and the technology slice's settlement reference are gone.
 - Network: `writing_intent` is forwarded by a client and bound to the sender's player on the host; results go

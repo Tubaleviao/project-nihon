@@ -16,11 +16,13 @@ const WritingRules := preload("res://src/technology/writing_rules.gd")
 
 ## Refusal codes; each has a `writing.refused.<code>` key in locale/ui.csv.
 const REASONS := ["unknown_writing", "not_known", "station_required", "missing_materials", "pack_full", "not_held",
-	"already_known", "prerequisite_locked", "rate"]
+	"already_known", "researching", "prerequisite_locked", "rate"]
 ## Metres from the player a writing's station must stand (CraftingSlice.STATION_RADIUS).
 const STATION_RADIUS := 8.0
 ## Milliseconds between one player's writing intents on the host.
 const GAP_MS := 250
+## Rate-limit entries kept before the stale ones (older than GAP_MS, so they limit nothing) are dropped.
+const MAX_TRACKED := 256
 
 var is_host: bool = true
 var technology: Node = null
@@ -51,6 +53,8 @@ func resolve(action: String, item_id: String, player_id: String) -> String:
 	if _last_ms.has(player_id) and now - int(_last_ms[player_id]) < GAP_MS:
 		why = "rate"
 	else:
+		if _last_ms.size() >= MAX_TRACKED:
+			_prune_rate(now)
 		_last_ms[player_id] = now
 		match action:
 			"write":
@@ -99,6 +103,12 @@ func read(player_id: String, item_id: String) -> String:
 	if why.begins_with("prerequisite_locked"):
 		return "prerequisite_locked"
 	return "unknown_writing" if why == "unknown" else why
+
+## Drop the rate-limit entries that no longer limit anyone, so the table holds only recent writers.
+func _prune_rate(now: int) -> void:
+	for pid: String in _last_ms.keys():
+		if now - int(_last_ms[pid]) >= GAP_MS:
+			_last_ms.erase(pid)
 
 func _near_station(player_id: String, type: String) -> bool:
 	var here: Variant = position_of.call(player_id) if position_of.is_valid() else null

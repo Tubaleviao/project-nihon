@@ -5,6 +5,7 @@ extends "res://src/core/wiring.gd"
 ## (`CraftingWiring._on_research_resolved` / `_on_research_points_synced`).
 
 const WritingSlice := preload("res://src/technology/writing_slice.gd")
+const WritingRules := preload("res://src/technology/writing_rules.gd")
 
 func make_slice(ctx: GameRoot) -> Node:
 	root = ctx
@@ -23,7 +24,11 @@ func _on_resolved(player_id: String, action: String, item_id: String, ok: bool, 
 	if root._is_client or player_id == "":
 		return
 	if reason != "rate":
-		var key := ("writing.ok.%s" % action) if ok else ("writing.refused." + reason)
-		GameBus.system_message.emit(key, [item_id], player_id)
+		# Keys and the taught key only: the item id is never shown as prose.
+		var w := WritingRules.of(item_id)
+		var key := "writing.refused." + reason
+		if ok:
+			key = "writing.ok.read" if action == "read" else "writing.ok.write_%s" % str(w.get("writing", "")).to_lower()
+		GameBus.system_message.emit(key, [str(w.get("teaches", ""))], player_id)
 	if ok and action == "write":
 		root._chest_wiring._push_inventory(player_id)

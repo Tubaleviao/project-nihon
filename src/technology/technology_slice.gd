@@ -106,7 +106,7 @@ var _recipe_tech: Dictionary = {}
 ## Phase 209 — player_id -> { recipe or project key -> true } learnt from a blueprint.
 var _learnt: Dictionary = {}
 
-## Phase 209 — item key -> the recipe that outputs it, for "knows how to make a project's materials".
+## Phase 209 — item key -> every recipe that outputs it, for "knows how to make a project's materials".
 var _item_recipe: Dictionary = {}
 
 func _ready() -> void:
@@ -247,7 +247,7 @@ func is_unlocked(tech_id: String, player_id: String = "") -> bool:
 ## Whether `player_id` knows `key` of `kind` ("technology", "station" or "project"), which is what a writer
 ## must know to write about it. A station recipe is known when it is craftable (its technology, or a
 ## blueprint); a project when it was learnt from a blueprint or the player can make every crafted material
-## it takes.
+## it takes (a project with no crafted material is known only from a blueprint).
 func knows(kind: String, key: String, player_id: String = "") -> bool:
 	var pid := resolve_player(player_id)
 	match kind:
@@ -259,17 +259,27 @@ func knows(kind: String, key: String, player_id: String = "") -> bool:
 			if _learnt.get(pid, {}).has(key):
 				return true
 			var project := ProjectRules.def_of(key)
-			if project.is_empty():
-				return false
-			for m: Variant in project.get("materials", []):
-				var recipe := str(_item_recipe.get(str((m as Dictionary).get("item", "")), ""))
-				if recipe != "" and not is_recipe_unlocked(recipe, pid):
-					return false
-			return true
+			return not project.is_empty() and knows_materials(project.get("materials", []), pid)
 	return false
 
+## Whether `player_id` can make every crafted material in `materials` ([{ item, quantity }]) by any recipe that
+## outputs it. False when none of them is crafted: gathering alone teaches no project.
+func knows_materials(materials: Array, player_id: String = "") -> bool:
+	var pid := resolve_player(player_id)
+	var crafted := 0
+	for m: Variant in materials:
+		var recipes: Array = _item_recipe.get(str((m as Dictionary).get("item", "")), [])
+		if recipes.is_empty():
+			continue
+		crafted += 1
+		if not recipes.any(func(r: String) -> bool: return is_recipe_unlocked(r, pid)):
+			return false
+	return crafted > 0
+
 ## Host-only: `player_id` learns `key` of `kind` by reading. "" on success, else a reason: `unknown`,
-## `already_known` or `prerequisite_locked:<tech>` (a book does not skip the tree). A technology is unlocked
+## `already_known`, `researching` (a book does not cut short research already paid for) or
+## `prerequisite_locked:<tech>` (neither a book nor a station blueprint skips the tree: a blueprint needs what
+## its recipe's technology requires, not the technology itself). A technology is unlocked
 ## and announced like finished research; a recipe or project joins the learnt set. Either way the player's
 ## record and their client's mirror are updated through the usual research paths.
 func learn(kind: String, key: String, player_id: String = "") -> String:
@@ -280,12 +290,12 @@ func learn(kind: String, key: String, player_id: String = "") -> String:
 				return "unknown"
 			if is_unlocked(key, pid):
 				return "already_known"
+			if get_status(key, pid) == STATE_RESEARCHING:
+				return "researching"
 			for req in _get_tech_data(key).get("requires", []):
 				if not is_unlocked(str(req), pid):
 					return "prerequisite_locked:%s" % str(req)
 			_status_for(pid)[key] = STATE_UNLOCKED
-			if _research_end_at.has(pid):
-				_research_end_at[pid].erase(key)
 			GameBus.technology_unlocked.emit(key, pid)
 			_emit(_result(key, true, "learnt", STATE_UNLOCKED, pid))
 			return ""
@@ -296,6 +306,10 @@ func learn(kind: String, key: String, player_id: String = "") -> String:
 				return "unknown"
 			if _learnt.get(pid, {}).has(key) or (kind == "station" and is_recipe_unlocked(key, pid)):
 				return "already_known"
+			if kind == "station":
+				for req in _get_tech_data(get_recipe_tech(key)).get("requires", []):
+					if not is_unlocked(str(req), pid):
+						return "prerequisite_locked:%s" % str(req)
 			if not _learnt.has(pid):
 				_learnt[pid] = {}
 			_learnt[pid][key] = true
@@ -551,7 +565,11 @@ func _build_recipe_index() -> void:
 		if recipe is Dictionary:
 			for out: Variant in recipe.get("outputs", []):
 				if out is Dictionary:
-					_item_recipe[str(out.get("item", ""))] = str(recipe_id)
+					var item := str(out.get("item", ""))
+					if not _item_recipe.has(item):
+						_item_recipe[item] = []
+					if not (_item_recipe[item] as Array).has(str(recipe_id)):
+						_item_recipe[item].append(str(recipe_id))
 
 ## Return the structured `tech` json field for a technology, or {} if malformed.
 func _get_tech_data(tech_id: String) -> Dictionary:

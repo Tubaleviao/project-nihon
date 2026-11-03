@@ -23,6 +23,10 @@ func register() -> void:
 	_run_test("writing: the host rate-limits one player's intents", _test_rate)
 	_run_test("writing: the wire binds the connection's player, and a client forwards", _test_wire)
 	_run_test("writing: the pack offers Read on a book, and the Technology window lists what can be written", _test_ui)
+	_run_test("writing: a book waits for research under way, and a station blueprint needs its tree's prerequisites", _test_learn_guards)
+	_run_test("writing: a project is known by crafted materials only, through any recipe that makes them", _test_knows_materials)
+	_run_test("writing: the host's rate-limit table drops stale players", _test_rate_bounded)
+	_run_test("writing: the Technology window names writings and stations in the locale, and a read says learnt", _test_ui_text)
 
 # ── rig ──────────────────────────────────────────────────────────────────
 
@@ -302,3 +306,73 @@ func _test_ui() -> void:
 	assert_false(ids.has(BOOK), "but not smithing's")
 	ui.free()
 	_free_rig(r)
+
+func _test_learn_guards() -> void:
+	var r := _rig()
+	var tech: Node = r["tech"]
+	var w: Node = r["w"]
+	tech.apply_statuses({ "TechBasicSmithing": "researching" }, "p1")
+	_give(r, "p1", BOOK, 1)
+	assert_eq(w.resolve("read", BOOK, "p1"), "researching", "a book does not cut short research already paid for")
+	assert_eq(tech.get_status("TechBasicSmithing", "p1"), "researching", "and the research goes on")
+	assert_eq(tech.learn("station", "RecipeAshiteBlock", "p2"), "prerequisite_locked:TechBasicSmithing", "a blueprint does not skip the tree")
+	assert_false(tech.is_recipe_unlocked("RecipeAshiteBlock", "p2"), "nothing is learnt")
+	tech.apply_statuses({ "TechBasicSmithing": "unlocked" }, "p2")
+	assert_eq(tech.learn("station", "RecipeAshiteBlock", "p2"), "", "with the prerequisite, the recipe alone is learnt")
+	assert_true(tech.is_recipe_unlocked("RecipeAshiteBlock", "p2"), "and craftable")
+	_free_rig(r)
+
+func _test_knows_materials() -> void:
+	var r := _rig()
+	var tech: Node = r["tech"]
+	assert_false(tech.knows_materials([], "p1"), "a project with no materials is not known by default")
+	assert_false(tech.knows_materials([{ "item": "Thornwood", "quantity": 4 }], "p1"), "nor one of gathered materials")
+	tech.apply_statuses({ "TechBasicCarpentry": "unlocked" }, "p1")
+	assert_true(tech.knows_materials([{ "item": "ThornwoodPlank", "quantity": 1 }, { "item": "Thornwood", "quantity": 1 }], "p1"),
+		"crafted materials the player can make are enough; gathered ones need nothing")
+	# Every recipe that outputs an item is indexed, not only the last one read.
+	var missing: Array = []
+	for recipe_id in GameData.RECIPES:
+		var recipe: Variant = GameData.RECIPES[recipe_id].get("recipe")
+		if recipe is Dictionary:
+			for out: Variant in recipe.get("outputs", []):
+				if out is Dictionary and not (tech._item_recipe.get(str(out.get("item", "")), []) as Array).has(str(recipe_id)):
+					missing.append(recipe_id)
+	assert_eq(missing, [], "each recipe is indexed under its outputs")
+	_free_rig(r)
+
+func _test_rate_bounded() -> void:
+	var r := _rig()
+	var w: Node = r["w"]
+	var t := [0]
+	w.now_ms = func() -> int: return t[0]
+	for i in WritingSlice.MAX_TRACKED:
+		w.resolve("read", BOOK, "gone%d" % i)
+	t[0] = WritingSlice.GAP_MS * 4
+	assert_eq(w.resolve("read", BOOK, "p1"), "not_held", "a new writer is resolved")
+	assert_eq(w._last_ms.size(), 1, "and the players who stopped writing are dropped")
+	_free_rig(r)
+
+func _test_ui_text() -> void:
+	var ui := UiSliceScript.new()
+	var row := { "writing": "Book", "teaches": "TechBasicSmithing" }
+	assert_eq(ui._m2.writing_name(row), I18nScript.t("writing.name.book", ["TechBasicSmithing"]), "a book is named from the locale")
+	assert_eq(ui._m2.station_name("carpentry bench"), I18nScript.t("station.carpentry_bench"), "a station too")
+	assert_eq(ui._m2.station_name(""), I18nScript.t("station.anywhere"), "and anywhere")
+	for item_id: String in WritingRules.items():
+		var w := WritingRules.of(item_id)
+		var keys := ["writing.name.%s" % str(w["writing"]).to_lower(), "writing.ok.write_%s" % str(w["writing"]).to_lower()]
+		var station := WritingRules.station(str(w["writing"]))
+		if station != "":
+			keys.append("station." + station.replace(" ", "_"))
+		for key: String in keys:
+			assert_true(I18nScript.has_key(key), "%s has %s" % [item_id, key])
+	for code: String in WritingSlice.REASONS:
+		assert_true(I18nScript.has_key("writing.refused." + code), "writing.refused.%s is in the locale" % code)
+	ui._technology_feedback = Label.new()
+	ui._on_research_resolved({ "tech_id": "TechBasicSmithing", "success": true, "reason": "learnt", "status": "unlocked", "player_id": "" })
+	assert_eq(ui._technology_feedback.text, I18nScript.t("ui.tech_unlocked", ["TechBasicSmithing"]), "a read book says it is known, not researching")
+	ui._on_research_resolved({ "tech_id": "TechBasicSmithing", "success": true, "reason": "", "status": "researching", "player_id": "" })
+	assert_eq(ui._technology_feedback.text, I18nScript.t("ui.researching", ["TechBasicSmithing"]), "research begun still says researching")
+	ui._technology_feedback.free()
+	ui.free()

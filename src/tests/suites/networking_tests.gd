@@ -2195,7 +2195,7 @@ func _test_net_harness_bare_await_audit() -> void:
 	for path in ["res://src/tests/net_harness.gd", "res://src/tests/net_harness_steps.gd"]:
 		var src := FileAccess.open(path, FileAccess.READ)
 		if src == null:
-			return
+			continue
 		var offenders := NetHarness.unawaited_waits(src.get_as_text().split("\n"))
 		assert_true(offenders.is_empty(),
 			"%s calls a bare coroutine at line(s) %s" % [path.get_file(), ", ".join(offenders)])

@@ -504,13 +504,14 @@ func _self_audit() -> bool:
 	_finish()
 	return false
 
-## This runner's own source as lines, or an empty array when it is not readable off disk.
+## This runner's own source as lines (each file that is readable off disk), or an empty array when neither is.
 func _own_source_lines() -> PackedStringArray:
-	var f := FileAccess.open("res://src/tests/net_harness.gd", FileAccess.READ)
-	var steps := FileAccess.open("res://src/tests/net_harness_steps.gd", FileAccess.READ)
-	if f == null or steps == null:
-		return PackedStringArray()
-	return (f.get_as_text() + "\n" + steps.get_as_text()).split("\n")
+	var text := ""
+	for path in ["res://src/tests/net_harness.gd", "res://src/tests/net_harness_steps.gd"]:
+		var f := FileAccess.open(path, FileAccess.READ)
+		if f != null:
+			text += f.get_as_text() + "\n"
+	return PackedStringArray() if text == "" else text.split("\n")
 
 # ---------------------------------------------------------------------------
 # Steps
@@ -1914,6 +1915,8 @@ func _step_settlement_project() -> void:
 		if sid == "" or settlements.settlement_of(bound) != sid or not (xz is Vector2):
 			_report("settlement_project", "fail", "no_village_%s_%s" % [sid, settlements.settlement_of(bound)])
 			return
+		# Phase 209 — starting a project needs it known: the host's player has read its blueprint.
+		_root._technology.learn("project", PROJECT_KEY, local)
 		var why: String = settlements.start_project(local, PROJECT_KEY, xz)
 		if why != "":
 			_report("settlement_project", "fail", "start_" + why)

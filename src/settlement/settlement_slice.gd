@@ -54,7 +54,7 @@ const REASONS := ["unknown_player", "rate_limited", "bad_args", "already_member"
 	"too_many", "not_member", "no_permission", "unknown_settlement", "not_invited", "full", "bad_role",
 	"founder_locked", "no_stock", "over_limit", "no_inventory", "too_far", "unknown_action", "durable", "no_such_invite",
 	"unknown_project", "project_exists", "tier_too_low", "too_many_projects", "project_done", "unknown_item", "too_much",
-	"foreign_circle"]
+	"foreign_circle", "not_known"]
 
 const DEFAULT_RULES := {
 	"hearthStation": "hearth", "hearthItem": "Hearth", "guildMaxSettlements": 1,
@@ -81,6 +81,9 @@ var registry: Node = null
 var now_sec: Callable = func() -> float: return Time.get_unix_time_from_system()
 ## Monotonic seconds for the intent rate limit (a wall-clock jump must not lock or free a player).
 var mono_sec: Callable = func() -> float: return Time.get_ticks_msec() / 1000.0
+## Phase 209 — `(pid, project_key) -> bool`, set by the wiring: whether the starter knows the project (a
+## blueprint read, or every crafted material it takes). Unset (isolated tests) nothing is gated.
+var knows_project: Callable = Callable()
 ## `(station_id) -> void`, set by the wiring: a migrated settlement's hearth station is removed with it.
 var release_station: Callable = Callable()
 ## Phase 205 — founder -> Hearth items owed back (a saved settlement's hearth, removed on load), handed over
@@ -479,7 +482,8 @@ func projects_of(id: String) -> Dictionary:
 	return (_settlements.get(id, {}).get("projects", {}) as Dictionary).duplicate(true)
 
 ## Start project `key` at the actor's feet (or at `site`, a host-side caller's ground point; an intent never
-## names one). Needs a role with `invite`, the project site within SITE_REACH of the settlement's, and the tier.
+## names one). Needs a role with `invite`, the project site within SITE_REACH of the settlement's, the tier, and
+## (Phase 209) the starter knowing the project.
 func start_project(actor: String, key: String, site: Variant = null) -> String:
 	var pid := _pid(actor)
 	var id := settlement_of(pid)
@@ -497,6 +501,8 @@ func start_project(actor: String, key: String, site: Variant = null) -> String:
 	var why := ProjectRules.start_blocker(key, tier, s["projects"])
 	if why != "":
 		return why
+	if knows_project.is_valid() and not bool(knows_project.call(pid, key)):
+		return "not_known"
 	s["projects"][key] = { "key": key, "by": pid, "started": float(now_sec.call()), "site": { "x": (xz as Vector2).x, "z": (xz as Vector2).y },
 		"given": {}, "status": "building", "done_at": 0.0, "contributors": {} }
 	_touch(id)

@@ -100,6 +100,27 @@ func writing_rows() -> Array:
 		})
 	return rows
 
+## The local player's points or learnt set changed: redraw the open Technology window and (Phase 209: a
+## blueprint read arrives this way and can unlock a recipe) the open Crafting window.
+func on_research_points_synced(player_id: String) -> void:
+	if not (player_id == "" or sl.technology_slice == null or player_id == sl.technology_slice.local_player_id()):
+		return
+	if sl._technology_box != null and sl._technology_box.is_visible_in_tree():
+		sl.refresh_technology()
+	if sl._crafting_box != null and sl._crafting_box.is_visible_in_tree():
+		sl.refresh_crafting()
+
+## Phase 209 — a writing row's name in the active locale: "Book: <technology>", "Blueprint: <recipe>".
+func writing_name(row: Dictionary) -> String:
+	return sl.I18n.t("writing.name.%s" % str(row["writing"]).to_lower(), [row["teaches"]])
+
+## Phase 209 — a writing's station in the active locale (`station.<type with underscores>`), or "anywhere".
+func station_name(type: String) -> String:
+	if type == "":
+		return sl.I18n.t("station.anywhere")
+	var key := "station." + type.replace(" ", "_")
+	return sl.I18n.t(key) if sl.I18n.has_key(key) else type
+
 func refresh_crafting() -> void:
 	if sl._crafting_box == null:
 		return
@@ -359,8 +380,7 @@ func refresh_technology() -> void:
 		hbox.add_child(btn)
 		sl._add_row_icon(hbox, sl.item_icon_key(str(w["id"])))
 		var lbl := Label.new()
-		var where: String = str(w["station"]) if str(w["station"]) != "" else "—"
-		lbl.text = sl.I18n.t("ui.writing_line", [w["id"], w["cost"], where])
+		lbl.text = sl.I18n.t("ui.writing_line", [writing_name(w), w["cost"], station_name(str(w["station"]))])
 		hbox.add_child(lbl)
 		sl._technology_box.add_child(hbox)
 

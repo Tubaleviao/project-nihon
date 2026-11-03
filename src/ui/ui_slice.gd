@@ -1137,16 +1137,14 @@ func _on_repair_resolved(result: Dictionary) -> void:
 func _on_research_resolved(result: Dictionary) -> void:
 	if _technology_feedback != null and _belongs_to_local_player(result):
 		if result.get("success", false):
-			_technology_feedback.text = I18n.t("ui.researching", [result.get("tech_id", "?")])
+			var key := "ui.tech_unlocked" if str(result.get("status", "")) == "unlocked" else "ui.researching"  # Phase 209: a read book
+			_technology_feedback.text = I18n.t(key, [result.get("tech_id", "?")])
 		else:
 			_technology_feedback.text = "%s: %s" % [result.get("tech_id", "?"), I18n.reason_text(str(result.get("reason", "?")))]
 	refresh_technology()
 
 func _on_research_points_synced(player_id: String, _points: int) -> void:
-	if _technology_box == null or not _technology_box.is_visible_in_tree():
-		return
-	if player_id == "" or technology_slice == null or player_id == technology_slice.local_player_id():
-		refresh_technology()
+	_m2.on_research_points_synced(player_id)
 
 func _on_technology_unlocked(_tech_id: String, _player_id: String) -> void:
 	refresh_technology()
