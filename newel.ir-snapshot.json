@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:39ccb84cace3f7b78b9a6aa49ef81b6d2c9516c17c3855fe400e88d1d65b674c",
+  "schemaHash": "sha256:b57b1f2bceeecee78baa15e1f6c51fb9ccf1ee2e04205c071d74738c8d7fc4e8",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -7597,7 +7597,7 @@
           "maxHeight": {
             "name": "maxHeight",
             "type": "decimal",
-            "description": "Highest terrain surface, in metres: the tallest peak, about Everest's 8,849 m (Phase 51; Earth-scale in Phase 203, generated from Phase 211 — until then the runtime keeps 512 m)",
+            "description": "Highest terrain surface, in metres: the tallest peak, about Everest's 8,849 m (Phase 51; Earth-scale in Phase 203; generated from Phase 211, where broad massifs on rugged inland ground reach it)",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -7606,7 +7606,7 @@
           "buildCeiling": {
             "name": "buildCeiling",
             "type": "decimal",
-            "description": "Highest point a block may be placed, in metres: above the tallest peak plus the tallest structure (Structure.maxFloors × floorHeight; Phase 203, read by the runtime from Phase 211, which keeps VoxelConsts.MAX_HEIGHT until then)",
+            "description": "Highest point a block may be placed, in metres: above the tallest peak plus the tallest structure (Structure.maxFloors × floorHeight; Phase 203; read by the runtime from Phase 211: a placed block's top may reach it, not pass it)",
             "nullable": false,
             "primaryKey": false,
             "pii": false,

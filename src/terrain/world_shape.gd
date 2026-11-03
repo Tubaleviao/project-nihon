@@ -14,10 +14,9 @@ extends RefCounted
 
 const SEA_LEVEL_DEFAULT := 0.0
 const MIN_HEIGHT_DEFAULT := -64.0
-const MAX_HEIGHT_DEFAULT := 512.0
-## Phase 203 — the fabric's `maxHeight` is Earth-scale (8,850 m); the generator keeps 512 m until Phase 211
-## lifts this hold with a WORLDGEN_VERSION bump (a taller cap is a world-gen change).
-const PEAK_HOLD := 512.0
+const MAX_HEIGHT_DEFAULT := 8850.0
+## Phase 211 — the fabric's `buildCeiling`: nothing is placed above it (`VoxelConsts.build_ceiling`).
+const BUILD_CEILING_DEFAULT := 9400.0
 const OCEAN_SHARE_DEFAULT := 0.65
 const RIDGE_AMPLITUDE_DEFAULT := 400.0
 ## Fallback spline (the fabric's default) for a rig without the generated resources.
@@ -34,6 +33,17 @@ const RIDGE_CELLS := 1600
 ## Exponent on the ridge profile. The two-octave noise clusters near 0.5, so the old square kept most
 ## rugged inland ground near full ridge height; a high power keeps only the crest lines.
 const RIDGE_SHARPNESS := 10.0
+## Phase 211 — Earth-scale ranges. A ridge of 8 km with the crest profile above would be a needle (its
+## slope near the crest is about 20 × amplitude × the noise gradient), so the height comes from a broad
+## massif instead: a 156 km lattice (256 cells) whose high nodes lift rugged inland ground into plateaus
+## up to `maxHeight`, with the ridges on top grown to MASSIF_RIDGE_GAIN × `ridgeAmplitude` at the summit.
+## Only nodes above MASSIF_FLOOR rise at all, so most land keeps the Phase 188 ranges.
+const MASSIF_CELLS := 256
+const MASSIF_FLOOR := 0.8
+const MASSIF_RIDGE_GAIN := 2.0
+## The massifs stay away from the origin as the spawn plain does (some seeds put a summit node on it): none
+## within MASSIF_SPAWN_CLEAR_M of the spawn centre, full strength from twice that.
+const MASSIF_SPAWN_CLEAR_M := 100000.0
 const CONTRAST := 1.9 ## stretches the fbm (which clusters near 0.5) toward the extremes
 
 ## Phase 53 retired the 20 m flattened disc in `TerrainSlice`; this large-scale plain stays, so the
@@ -56,6 +66,7 @@ static var _min_h := MIN_HEIGHT_DEFAULT
 static var _max_h := MAX_HEIGHT_DEFAULT
 static var _ocean_share := OCEAN_SHARE_DEFAULT
 static var _ridge_amp := RIDGE_AMPLITUDE_DEFAULT
+static var _ceiling := BUILD_CEILING_DEFAULT
 static var _spline: Array = SPLINE_DEFAULT
 
 ## Snapshot the fabric's world entity (idempotent). Main thread only, before any worker exists.
@@ -66,7 +77,8 @@ static func warm() -> void:
 	if ws != null:
 		_sea = _num(ws, "seaLevel", _sea)
 		_min_h = _num(ws, "minHeight", _min_h)
-		_max_h = minf(_num(ws, "maxHeight", _max_h), PEAK_HOLD)
+		_max_h = _num(ws, "maxHeight", _max_h)
+		_ceiling = _num(ws, "buildCeiling", _ceiling)
 		_ocean_share = _num(ws, "oceanShare", _ocean_share)
 		_ridge_amp = _num(ws, "ridgeAmplitude", _ridge_amp)
 		var sp: Variant = ws.get("heightSpline")
@@ -96,6 +108,11 @@ static func min_height() -> float:
 static func max_height() -> float:
 	warm()
 	return _max_h
+
+## Phase 211 — the highest a placed block may reach (the fabric's `buildCeiling`).
+static func build_ceiling() -> float:
+	warm()
+	return _ceiling
 
 static func ridge_amplitude() -> float:
 	warm()
@@ -153,6 +170,19 @@ static func ridges(seed_v: int, x: float, z: float, w: float) -> float:
 	var n := _noise(seed_v, x, z, w, RIDGE_CELLS, 41) * 0.7 + _noise(seed_v, x, z, w, RIDGE_CELLS * 3, 42) * 0.3
 	return pow(1.0 - absf(n * 2.0 - 1.0), RIDGE_SHARPNESS)
 
+## Phase 211 — massif uplift in [0, 1]: 0 below MASSIF_FLOOR, rising to 1 on the lattice's highest nodes.
+## The squared smoothstep keeps the flanks long and the summit a plateau, as Earth's great ranges stand.
+static func massif(seed_v: int, x: float, z: float, w: float) -> float:
+	var s := smoothstep(MASSIF_FLOOR, 1.0, _noise(seed_v, x, z, w, MASSIF_CELLS, 51))
+	return s * s
+
+## Metres the massif lifts at full strength: what is left of `maxHeight` above the spline's top and the
+## summit ridges, so a ridge crest on a full massif inland meets `maxHeight` exactly.
+static func massif_amplitude() -> float:
+	warm()
+	var top := float(_spline[_spline.size() - 1][1])
+	return maxf(_max_h - top - _ridge_amp * MASSIF_RIDGE_GAIN, 0.0)
+
 ## Piecewise-linear spline lookup: continentalness -> base height.
 static func spline_height(c: float) -> float:
 	warm()
@@ -186,7 +216,13 @@ static func natural_height(seed_v: int, x: float, z: float, w: float) -> float:
 	# Mountains: strongest well inland, on rugged (low-erosion) ground.
 	var inland := smoothstep(0.68, 0.9, c)
 	var rugged := 1.0 - smoothstep(0.35, 0.8, e)
-	var peaks := ridges(seed_v, x, z, w) * _ridge_amp * inland * rugged
+	var m := 0.0
+	if inland * rugged > 0.0:
+		var d := Vector2(x - SPAWN_CENTER.x, z - SPAWN_CENTER.y).length()
+		if d > MASSIF_SPAWN_CLEAR_M:
+			m = massif(seed_v, x, z, w) * smoothstep(MASSIF_SPAWN_CLEAR_M, MASSIF_SPAWN_CLEAR_M * 2.0, d)
+	var ridge_amp := _ridge_amp * lerpf(1.0, MASSIF_RIDGE_GAIN, m)
+	var peaks := (ridges(seed_v, x, z, w) * ridge_amp + m * massif_amplitude()) * inland * rugged
 	return clampf(base + peaks, _min_h, _max_h)
 
 ## Samples on the SPAWN_EASE_M circle the spawn plain's height is the mean of.
@@ -234,3 +270,41 @@ static func _spawn_plain_uncached(seed_v: int, w: float) -> float:
 ## Height above sea level (negative in the ocean).
 static func altitude(seed_v: int, x: float, z: float, w: float) -> float:
 	return height(seed_v, x, z, w) - sea_level()
+
+## Phase 211 — where the planet's tallest ranges stand: the massif lattice nodes (a node is a massif's
+## summit plateau) with the strongest uplift on rugged inland ground, best first, as
+## `[[strength, Vector2(x, z)], ...]`. Rows span pole to pole (z in ±w/4). About 33k nodes, each a few
+## lattice lookups, so the suite and the playtest bot can find Earth-scale peaks without a planet scan.
+static func massif_summits(seed_v: int, w: float, count: int) -> Array:
+	var cell := w / float(MASSIF_CELLS)
+	var rows := int(w * 0.25 / cell)
+	var out: Array = []
+	for j in range(-rows, rows + 1):
+		for i in range(-MASSIF_CELLS / 2, MASSIF_CELLS / 2):
+			var x := float(i) * cell   # canonical: x in [-w/2, w/2)
+			var z := float(j) * cell
+			var m := massif(seed_v, x, z, w) * smoothstep(MASSIF_SPAWN_CLEAR_M, MASSIF_SPAWN_CLEAR_M * 2.0, Vector2(x - SPAWN_CENTER.x, z - SPAWN_CENTER.y).length())
+			if m <= 0.0:
+				continue
+			var c := continentalness(seed_v, x, z, w)
+			var s := m * smoothstep(0.68, 0.9, c) * (1.0 - smoothstep(0.35, 0.8, erosion(seed_v, x, z, w)))
+			if s > 0.0:
+				out.append([s, Vector2(x, z)])
+	out.sort_custom(func(a: Array, b: Array) -> bool: return float(a[0]) > float(b[0]))
+	return out.slice(0, count)
+
+## Phase 211 — the highest `height` on a square grid of `step` m out to `radius` m around `centre`, as
+## `[height, Vector2(x, z)]`. A summit plateau is wider than a ridge cell, so a 25 km square around a
+## summit node holds its crest.
+static func highest_near(seed_v: int, centre: Vector2, w: float, radius: float, step: float) -> Array:
+	var best := -INF
+	var at := centre
+	var n := int(radius / step)
+	for b in range(-n, n + 1):
+		for a in range(-n, n + 1):
+			var p := centre + Vector2(a, b) * step
+			var h := height(seed_v, p.x, p.y, w)
+			if h > best:
+				best = h
+				at = p
+	return [best, at]

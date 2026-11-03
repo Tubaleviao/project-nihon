@@ -125,8 +125,8 @@ const BLEND_TILES := 4.0     # width of the dithered biome border band, in tiles
 ## "bedrock" only in the sense that mining stopped at zero: the ground has real
 ## thickness now, so a column is solid from BEDROCK_DEPTH up to its surface, a
 ## tunnel has room to exist underneath it, and mining descends one STEP_HEIGHT at
-## a time until the floor refuses. MAX_HEIGHT stays the build cap.
-## Phase 51 — the surface now spans the fabric's −64..+512 m, so the floor sits a fixed 8 m below
+## a time until the floor refuses. `build_ceiling()` is the build cap.
+## Phase 51 — the surface now spans the fabric's −64..`maxHeight` m (8,850 from Phase 211), so the floor sits a fixed 8 m below
 ## the lowest possible surface (`WorldShape` clamps heights at `minHeight`) and the build cap a
 ## little above the tallest peak. (A per-column bedrock that rides the surface is not needed: a
 ## column is one run from here up, so a deeper floor costs nothing.)
@@ -134,6 +134,10 @@ const BLEND_TILES := 4.0     # width of the dithered biome border band, in tiles
 ## the full authored vein depth (`depthBand` max 16) above the floor.
 const BEDROCK_DEPTH := VoxelConsts.BEDROCK_DEPTH
 const MAX_HEIGHT := VoxelConsts.MAX_HEIGHT
+
+## Phase 211 — the fabric's `buildCeiling` (9,400 m): a placed block's top may reach it, not pass it.
+static func build_ceiling() -> float:
+	return VoxelConsts.build_ceiling()
 
 ## A tile's op list is COMPACTED once it grows past this many ops (see
 ## `_append_edit` / `_compact_ops`). Ops are an append-only log by design, so a

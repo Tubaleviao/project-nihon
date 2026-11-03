@@ -19,8 +19,8 @@ const NO_NATIVE_ARG := "--no-native"
 const FUNCTIONS: Array[String] = ["heightmap_for", "build_runs", "build_chunk_arrays", "build_coarse_arrays"]
 ## The oldest native builder whose results match this GDScript. A stale binary (an older build left in
 ## `native/bin`) would compute different terrain than its peers, so it is not used. 5 = worldgen 9's spawn plain; 6 = worldgen 10 ridges;
-## 7 = Phase 190 coarse builds.
-const REQUIRED_VERSION := 7
+## 7 = Phase 190 coarse builds; 8 = worldgen 11 massifs (Phase 211).
+const REQUIRED_VERSION := 8
 
 static var _loaded := false
 static var _mode := MODE_FALLBACK

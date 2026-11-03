@@ -375,7 +375,7 @@ func _place_span(runs: Array, world_pos: Vector3, normal: Vector3) -> Dictionary
 	else:
 		bottom = maxf(floorf(world_pos.y / s.STEP_HEIGHT) * s.STEP_HEIGHT, s.BEDROCK_DEPTH)
 	var top = bottom + s.STEP_HEIGHT
-	if top > s.MAX_HEIGHT:
+	if top > s.build_ceiling():
 		return {}
 	if s.VoxelRuns.runs_cover_y(runs, bottom + s.STEP_HEIGHT * 0.5):
 		return {}   # the cell already holds material
@@ -647,7 +647,7 @@ func _apply_settle(position: Vector3, normal: Vector3, material: String) -> Dict
 	var from_top := normal.x
 	var to_bottom := normal.y
 	var height := from_top - from_bottom
-	if height <= 0.0 or to_bottom >= from_bottom or to_bottom < s.BEDROCK_DEPTH or from_top > s.MAX_HEIGHT or material == "":
+	if height <= 0.0 or to_bottom >= from_bottom or to_bottom < s.BEDROCK_DEPTH or from_top > s.build_ceiling() or material == "":
 		return { "applied": false }
 	if not s.is_granular(material):
 		return { "applied": false }   # only loose ground falls: a rock run never moves

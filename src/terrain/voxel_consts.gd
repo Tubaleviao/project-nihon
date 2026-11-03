@@ -7,7 +7,8 @@ const CHUNK_SIZE  := 64        # the authoritative copy lives in TerrainSlice
 const TILE_SIZE   := 0.5       # world units per tile (XZ) — half the former 1.0 size
 const STEP_HEIGHT := 0.125     # world units per quantised height step (smooth, walkable — no jumps)
 const BEDROCK_DEPTH := -96.0   # cannot mine below this — the world's floor
-const MAX_HEIGHT    := 640.0   # build cap — cannot place above this
+## Phase 211 — the fabric's `buildCeiling` default (9,400 m); `build_ceiling()` is what placement reads.
+const MAX_HEIGHT    := 9400.0
 const FALLBACK_TERRAIN_COLOR := Color(0.35, 0.60, 0.28)
 
 ## Tile X wrapped into [-C*CHUNK_SIZE/2, C*CHUNK_SIZE/2) where C is the circumference in chunks.
@@ -19,6 +20,10 @@ static func tile_key(tile: Vector2i) -> String:
 	# Phase 63: canonical across the seam, so an edit east of it is the edit west of it.
 	var t := canonical_tile(tile)
 	return "%d,%d" % [t.x, t.y]
+
+## Phase 211 — the build cap: no block may reach above the fabric's `WorldSystem.buildCeiling`.
+static func build_ceiling() -> float:
+	return TerrainSlice.WorldShape.build_ceiling()
 
 static func voxel_height(raw_height: float) -> float:
 	return floor(raw_height / STEP_HEIGHT) * STEP_HEIGHT

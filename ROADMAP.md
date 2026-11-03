@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–199 and 203–210 are done. Their specs and acceptance criteria, and the introductions of
+Phases 1–199 and 203–211 are done. Their specs and acceptance criteria, and the introductions of
 the arcs they belonged to, are archived in [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Next: follow-up debt burn II (Phases 194–196)
@@ -124,7 +124,7 @@ Smithing). Phase 203 models all of it in the fabric before any runtime phase sta
 | 208 | Chests and doors: owner, clan or everyone, and locks that can be broken or picked | Done | [phases-208.md](docs/roadmap-history/phases-208.md) |
 | 209 | Books and blueprints: research shared by writing | Done | [phases-209.md](docs/roadmap-history/phases-209.md) |
 | 210 | Clan tiers from buildings and material rarity | Done | [phases-210.md](docs/roadmap-history/phases-210.md) |
-| 211 | Earth-scale mountains: peaks to about 8,850 m on unrecorded land | Planned | below |
+| 211 | Earth-scale mountains: peaks to about 8,850 m on unrecorded land | Done | [phases-211.md](docs/roadmap-history/phases-211.md) |
 | 212 | Floors and structural limits at runtime, and the materials above stone | Planned | below |
 | 213 | A clan's tower on a mountain: the arc, played | Planned | below |
 
@@ -167,40 +167,6 @@ must stay under one hour.
 - [ ] CI: the four bots end with at least two different specialties, one completed project, one
   defended raid and one paid upkeep, as read from the host's world record.
 - [ ] The scenario passes 3 CI runs in a row on an unchanged commit.
-- [ ] Suite green on both boot paths, harness green.
-
----
-
-## Phase 211 — Earth-scale mountains: peaks to about 8,850 m on unrecorded land
-
-**Goal:** the generator makes mountain ranges as tall as Earth's, and the client draws, streams and
-collides with them.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phase 203.
-
-**Deliverables:**
-- The ridge and height fields reach the new `maxHeight`, and the build ceiling is read from the
-  Phase 203 set the fabric's `maxHeight` to 8,850 m and `buildCeiling` to 9,400 m;
-  `WorldShape.PEAK_HOLD` keeps the generator at 512 m until this phase removes it.
-  fabric. `TerrainSlice.WORLDGEN_VERSION` is bumped with a history line, and the golden values are
-  updated. Vertical precision is checked: the voxel mesh group key stores y × 10⁴ in an int32 (good
-  to about 214 km), and float32 keeps 0.125 m steps exact far past 10 km.
-- Stable-world rule: recorded chunks keep their heights. New peaks rise only on unrecorded land,
-  eased in by `frontier.gd` beside recorded land. Existing worlds keep their 512 m mountains where
-  players have been.
-- The distant ring, the horizon bands (Phase 165), the camera far plane and coarse chunks (Phase
-  190) draw an 8 km peak without holes or popping. The climate cools with altitude where it does
-  not already.
-
-**Acceptance criteria:**
-- [ ] Suite: on the pinned seed, the highest sampled surface is within 5% of `maxHeight`, and none
-  exceeds it.
-- [ ] Suite: a recorded chunk's heights are unchanged across the version bump.
-- [ ] Suite: a placement at the build ceiling succeeds and one above it is refused.
-- [ ] Playtest: `far_peak` reaches a peak above 8,000 m with no holes in its screenshot, and
-  walk/craft/fight stay within budget.
 - [ ] Suite green on both boot paths, harness green.
 
 ---

@@ -32,6 +32,10 @@ const double CONTINENT_WEIGHTS[3] = { 0.55, 0.3, 0.15 };
 const int EROSION_CELLS = 64;
 const int RIDGE_CELLS = 1600;   // worldgen 10 (Phase 188): 25 km ranges, were 125 km
 const double RIDGE_SHARPNESS = 10.0;
+const int MASSIF_CELLS = 256;   // Phase 211, as `WorldShape.MASSIF_*`
+const double MASSIF_FLOOR = 0.8;
+const double MASSIF_RIDGE_GAIN = 2.0;
+const double MASSIF_SPAWN_CLEAR_M = 100000.0;
 const double CONTRAST = 1.9;
 const double SPAWN_CENTER_X = 16.0;
 const double SPAWN_CENTER_Z = 16.0;
@@ -87,6 +91,7 @@ struct Cfg {
 	double min_h = -64.0;
 	double max_h = 512.0;
 	double ridge_amp = 400.0;
+	double massif_amp = 0.0;   // `WorldShape.massif_amplitude()`, computed in GDScript
 	double spawn_plain = SPAWN_HEIGHT;   // `WorldShape.spawn_plain_height` for this seed, computed in GDScript
 	std::vector<double> spline_x;
 	std::vector<double> spline_y;
@@ -156,9 +161,15 @@ double shape_height(const Cfg &cfg, int64_t seed_v, double x, double z, double w
 	double base = spline_height(cfg, c);
 	double inland = smoothstep(0.68, 0.9, c);
 	double rugged = 1.0 - smoothstep(0.35, 0.8, e);
-	double peaks = ridges(seed_v, x, z, w) * cfg.ridge_amp * inland * rugged;
-	double h = clampf(base + peaks, cfg.min_h, cfg.max_h);
 	double d = Vector2(x - SPAWN_CENTER_X, z - SPAWN_CENTER_Z).length();   // float32, as GDScript's Vector2
+	double m = 0.0;
+	if (inland * rugged > 0.0 && d > MASSIF_SPAWN_CLEAR_M) {
+		double s = smoothstep(MASSIF_FLOOR, 1.0, shape_noise(seed_v, x, z, w, MASSIF_CELLS, 51));
+		m = s * s * smoothstep(MASSIF_SPAWN_CLEAR_M, MASSIF_SPAWN_CLEAR_M * 2.0, d);
+	}
+	double ridge_amp = cfg.ridge_amp * lerpf(1.0, MASSIF_RIDGE_GAIN, m);
+	double peaks = (ridges(seed_v, x, z, w) * ridge_amp + m * cfg.massif_amp) * inland * rugged;
+	double h = clampf(base + peaks, cfg.min_h, cfg.max_h);
 	if (d < SPAWN_EASE_M) {
 		h = lerpf(cfg.spawn_plain, h, smoothstep(SPAWN_PLAIN_M, SPAWN_EASE_M, d));
 	}
@@ -373,7 +384,7 @@ void NativeChunkBuilder::_bind_methods() {
 }
 
 int NativeChunkBuilder::version() const {
-	return 7;   // 7 = build_coarse_arrays (Phase 190); 6 = worldgen 10 ridges (Phase 188); 5 = heightmap_for reads the spawn plain from `cfg.spawn_plain` (worldgen 9)
+	return 8;   // 8 = worldgen 11 massifs (Phase 211); 7 = build_coarse_arrays (Phase 190); 6 = worldgen 10 ridges (Phase 188); 5 = heightmap_for reads the spawn plain from `cfg.spawn_plain` (worldgen 9)
 }
 
 PackedStringArray NativeChunkBuilder::functions() const {
@@ -394,6 +405,7 @@ Array NativeChunkBuilder::heightmap_for(const Vector2i &p_pos, int64_t p_seed, c
 	cfg.min_h = p_cfg.get("min_height", -64.0);
 	cfg.max_h = p_cfg.get("max_height", 512.0);
 	cfg.ridge_amp = p_cfg.get("ridge_amplitude", 400.0);
+	cfg.massif_amp = p_cfg.get("massif_amplitude", 0.0);
 	cfg.spawn_plain = p_cfg.get("spawn_plain", SPAWN_HEIGHT);
 	cfg.records = p_cfg.get("records", Dictionary());
 	Array spline = p_cfg.get("spline", Array());

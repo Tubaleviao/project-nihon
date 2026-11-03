@@ -387,9 +387,14 @@ func _test_voxel_place_cap() -> void:
 	add_child(inv)
 	v.inventory_slice = inv
 	v.set_place_material("Ashite")
-	inv.add_item("Ashite", 1)
-	v.apply_edits({ "32,32": v.MAX_HEIGHT })
-	var ok := v.place_block(Vector3(16.0, v.MAX_HEIGHT, 16.0), Vector3.UP)
+	inv.add_item("Ashite", 2)
+	# Phase 211 — the cap is the fabric's `buildCeiling`: a block whose top reaches it is placed, the next is not.
+	var ceiling := v.build_ceiling()
+	assert_eq(ceiling, float(GameData.WORLD_SYSTEMS["WorldSystem"].get("buildCeiling")), "the build cap is the fabric's buildCeiling")
+	v.apply_edits({ "32,32": ceiling - v.STEP_HEIGHT })
+	assert_true(v.place_block(Vector3(16.0, ceiling - v.STEP_HEIGHT, 16.0), Vector3.UP), "a block reaching the ceiling is placed")
+	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), ceiling, "its top is the ceiling")
+	var ok := v.place_block(Vector3(16.0, ceiling, 16.0), Vector3.UP)
 	assert_false(ok, "place beyond build cap fails")
 	assert_eq(inv.get_item_count("Ashite"), 1, "blocked placement refunds the material")
 	v.free()
