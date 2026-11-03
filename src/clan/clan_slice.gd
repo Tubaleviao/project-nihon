@@ -17,6 +17,11 @@ extends Node
 ##   private_view(player_id)        what one player may see: their own clan's roster with skills, and invites
 ##   migrate_settlements(data)      a saved world's settlements become clans (Clan.migration)
 ##   tick(now)                      lapse old invites
+##   set_score(id, score)           Phase 210: the structure index's score for a clan, and the tier it gives
+##
+## Phase 210 — a clan's tier (`ClanTiers.tiers`) is the highest whose `minScore` its score reaches. The score
+## comes only from the host's structure index (`GameBus.clan_score_changed`); a tier change tells the clan's
+## online members with a keyed line, and both go to members in their view. A tier gives nothing yet.
 
 const I18n := preload("res://src/core/i18n.gd")
 const CreationRules := preload("res://src/character/creation_rules.gd")
@@ -88,6 +93,7 @@ var _view: Dictionary = {}
 
 func _ready() -> void:
 	GameBus.clan_intent.connect(_on_intent)
+	GameBus.clan_score_changed.connect(set_score)
 	GameBus.player_left.connect(forget_player)
 
 func forget_player(player_id: String) -> void:
@@ -129,6 +135,65 @@ func _invite_ttl() -> float:
 func _member_cap() -> int:
 	var n := int(rules()["maxMembers"])
 	return MAX_MEMBERS if n <= 0 else mini(n, MAX_MEMBERS)
+
+## Phase 210 — the fabric's tiers as `[{ tier, minScore }, ...]`, lowest first (one score-0 tier when unset).
+static func tiers() -> Array:
+	var res: Resource = GameData.WORLD_SYSTEMS.get("ClanTiers", null)
+	var r: Variant = res.get("rules") if res != null else null
+	var out: Array = []
+	if r is Dictionary and (r as Dictionary).get("tiers", null) is Array:
+		for e: Variant in r["tiers"]:
+			if e is Dictionary and e.get("tier", null) is String and (e.get("minScore", null) is int or e.get("minScore", null) is float):
+				out.append({ "tier": str(e["tier"]), "minScore": float(e["minScore"]) })
+	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a["minScore"]) < float(b["minScore"]))
+	return out if not out.is_empty() else [{ "tier": "band", "minScore": 0.0 }]
+
+## The tier a score reaches: the highest whose `minScore` it is at or above (the lowest tier below every one).
+static func tier_for(score: float) -> String:
+	var all := tiers()
+	var out := str(all[0]["tier"])
+	for e: Dictionary in all:
+		if score >= float(e["minScore"]):
+			out = str(e["tier"])
+	return out
+
+static func tier_rank(tier: String) -> int:
+	var all := tiers()
+	for i in all.size():
+		if str(all[i]["tier"]) == tier:
+			return i
+	return 0
+
+func score_of(id: String) -> float:
+	return float((_clans.get(id, {}) as Dictionary).get("score", 0.0))
+
+func tier_of(id: String) -> String:
+	var c: Dictionary = _clans.get(id, {})
+	return str(c.get("tier", tier_for(0.0))) if not c.is_empty() else ""
+
+## Host: the structure index says clan `id` scores `score`. Its tier follows; a change tells its online members
+## ("clan.rank_up.<tier>" or "clan.rank_down.<tier>") once. Members see the score in their next view (at most
+## once per `SKILL_PUSH_SEC`, a tier change at once). An unknown clan (disbanded) is ignored.
+func set_score(id: String, score: float) -> void:
+	if not is_host or not _clans.has(id):
+		return
+	var c: Dictionary = _clans[id]
+	var v := maxf(0.0, score) if is_finite(score) else 0.0
+	if v == float(c.get("score", 0.0)) and c.has("tier"):
+		return
+	c["score"] = v
+	var was := str(c.get("tier", tier_for(0.0)))
+	var now := tier_for(v)
+	if now == was:
+		c["tier"] = now
+		_skill_dirty[id] = true   # the roster's score line, throttled like a skill change
+		return
+	c["tier"] = now
+	var key := ("clan.rank_up." if tier_rank(now) > tier_rank(was) else "clan.rank_down.") + now
+	for m: String in (c["members"] as Dictionary):
+		if _is_online(m):
+			GameBus.system_message.emit(key, [], m)
+	_changed(id)
 
 ## The name rule's bounds for `CreationRules.name_refusal`.
 func _name_limits() -> Dictionary:
@@ -637,6 +702,14 @@ func from_data(data: Variant) -> void:
 		_add_clan(id, { "id": id, "name": cname, "name_n": name_n, "founder": founder, "members": members,
 			"invites": invites, "created": float(c.get("created", 0.0)) if is_finite(float(c.get("created", 0.0))) else 0.0,
 			"settlement": str(c.get("settlement", "")).left(64) })
+		# Phase 210 — the tier last given, so a load whose buildings score the same tells no one again. The score
+		# is the structure index's, sent again once the index loads.
+		var tier: Variant = c.get("tier", null)
+		if tier is String and tiers().any(func(e: Dictionary) -> bool: return str(e["tier"]) == tier):
+			_clans[id]["tier"] = tier
+		var score: Variant = c.get("score", null)
+		if (score is float or score is int) and is_finite(float(score)) and float(score) >= 0.0:
+			_clans[id]["score"] = float(score)
 		var suffix := id.trim_prefix("clan_")
 		if suffix.is_valid_int():
 			_next_id = maxi(_next_id, int(suffix) + 1)   # never reuse a loaded id
@@ -661,6 +734,7 @@ func private_view(player_id: String, rosters: Dictionary = {}) -> Dictionary:
 				built.append(member_entry(m, str(c["members"][m])))
 			rosters[id] = built
 		var mine := { "id": id, "name": str(c["name"]), "name_n": int(c["name_n"]), "role": role_of(pid),
+			"tier": tier_of(id), "score": score_of(id),
 			"founder": _handle(str(c["founder"])), "roster": rosters[id], "invited": [] }
 		if may(pid, "invite"):
 			for p: String in (c["invites"] as Dictionary):
@@ -690,10 +764,13 @@ func member_entry(member: String, role: String) -> Dictionary:
 					var e: Dictionary = skills.get(s, { "xp": 0, "tier": "" })
 					e["tier"] = str(tiers[s]).left(16)
 					skills[s] = e
-	var online := registry != null and registry.has_method("is_online") and bool(registry.is_online(member))
-	if registry != null and "local_player_id" in registry and member == str(registry.local_player_id):
-		online = true
-	return { "name": _display_name(member), "handle": _handle(member), "role": role, "online": online, "skills": skills }
+	return { "name": _display_name(member), "handle": _handle(member), "role": role, "online": _is_online(member), "skills": skills }
+
+## Whether `pid` has a session: a peer, or the host's own player.
+func _is_online(pid: String) -> bool:
+	if registry != null and "local_player_id" in registry and pid == str(registry.local_player_id):
+		return true
+	return registry != null and registry.has_method("is_online") and bool(registry.is_online(pid))
 
 func _display_name(pid: String) -> String:
 	return str(registry.display_name(pid)) if registry != null and registry.has_method("display_name") else pid

@@ -568,6 +568,19 @@ clan.tier.apprentice,apprentice,aprendiz
 clan.tier.journeyman,journeyman,oficial
 clan.tier.expert,expert,especialista
 clan.tier.master,master,mestre
+clan.standing,"Tier: {0}, score {1:0}","Nível: {0}, pontuação {1:0}"
+clan.rank.band,band,bando
+clan.rank.clan,clan,clã
+clan.rank.house,house,casa
+clan.rank.dynasty,dynasty,dinastia
+clan.rank_up.band,Your clan is a band.,Seu clã é um bando.
+clan.rank_up.clan,Your clan's buildings made it a clan.,As construções do seu clã o tornaram um clã.
+clan.rank_up.house,Your clan's buildings made it a house.,As construções do seu clã o tornaram uma casa.
+clan.rank_up.dynasty,Your clan's buildings made it a dynasty.,As construções do seu clã o tornaram uma dinastia.
+clan.rank_down.band,Your clan lost buildings and is a band again.,Seu clã perdeu construções e voltou a ser um bando.
+clan.rank_down.clan,Your clan lost buildings and is a clan again.,Seu clã perdeu construções e voltou a ser um clã.
+clan.rank_down.house,Your clan lost buildings and is a house again.,Seu clã perdeu construções e voltou a ser uma casa.
+clan.rank_down.dynasty,Your clan lost buildings and is a dynasty again.,Seu clã perdeu construções e voltou a ser uma dinastia.
 skill.alchemy,Alchemy,Alquimia
 skill.arcaneforging,Arcane Forging,Forja Arcana
 skill.archery,Archery,Arqueria

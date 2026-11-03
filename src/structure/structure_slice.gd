@@ -18,6 +18,11 @@ extends Node
 ## recomputes only the marked ones, so a point query reads one or two buckets however dense the town. Ownership changes only when the
 ## blocks go: a structure whose last block is dismantled or destroyed is forgotten.
 ##
+## A clan's score (Phase 210) is the sum over every block of every structure it owns, wherever it stands, of
+## `Rules.score_points` (base durability × rarity weight). It is kept per clan as whole points, changed by each
+## block added or removed, and sent to the clan slice (`GameBus.clan_score_changed`) on the next `tick` for every
+## clan whose points moved: never recounted, never read from a message.
+##
 ## Durability = base (the material's) × (1 − wear since the block was placed) − damage. Wear is per
 ## structure, a fraction of base, advanced from the clock's in-game hour when the structure is read or swept
 ## (`tick`), never by touching every block every frame: `loss.perDay` per day of age plus `loss.weather[state]`
@@ -26,7 +31,7 @@ extends Node
 ## Plug contract (GameBus):
 ##   IN  : structure_intent(action, args, player_id)   ("build_as" {mode}, "repair")
 ##   OUT : structure_resolved(player_id, action, ok, reason), block_damaged(position, fraction),
-##         system_message("structure.*", ...) to the owners
+##         system_message("structure.*", ...) to the owners, clan_score_changed(clan_id, score)
 ## Everything here is host-side except `note_damage_seen` (the client's mirror of `block_damaged`).
 
 const Rules := preload("res://src/structure/structure_rules.gd")
@@ -106,6 +111,12 @@ var _circle_keys: Dictionary = {}
 var _buckets: Dictionary = {}
 var _circle_dirty: Dictionary = {}
 ## Client and host: the last `block_damaged` heard, and how many (the harness reads both peers').
+## Phase 210 — clan id -> whole score points of every block its structures hold; the clans whose points moved
+## since the last `flush_clan_scores`; and whether the next flush sends every clan (after a load or a reset).
+var _clan_points: Dictionary = {}
+var _points_dirty: Dictionary = {}
+var _points_all: bool = false
+
 var last_damage: Dictionary = {}
 var damage_seen: int = 0
 
@@ -624,13 +635,17 @@ func _add_cell(sid: int, tile: Vector2i, mm: int, cell: Array) -> void:
 	if not (s["cells"] as Dictionary).has(tile):
 		s["cells"][tile] = {}
 		_sum_column(s, tile, 1)
-	if not (s["cells"][tile] as Dictionary).has(mm):
+	var old: Variant = (s["cells"][tile] as Dictionary).get(mm, null)
+	if old is Array:
+		_add_points(s, -Rules.score_points(str(old[0])))
+	else:
 		s["count"] = int(s["count"]) + 1
 		_cell_count += 1
 		if not s.has("levels"):
 			s["levels"] = {}
 		s["levels"][mm] = int(s["levels"].get(mm, 0)) + 1
 	s["cells"][tile][mm] = cell
+	_add_points(s, Rules.score_points(str(cell[0])))
 	_note_hurt(s, cell)
 	if not _tiles.has(tile):
 		_tiles[tile] = {}
@@ -647,6 +662,8 @@ func _remove_cell(sid: int, tile: Vector2i, mm: int) -> void:
 	var s: Dictionary = _structures[sid]
 	_circle_dirty[sid] = true
 	var col: Dictionary = s["cells"].get(tile, {})
+	if col.has(mm):
+		_add_points(s, -Rules.score_points(str(col[mm][0])))
 	if col.erase(mm):
 		s["count"] = int(s["count"]) - 1
 		_cell_count -= 1
@@ -663,6 +680,63 @@ func _remove_cell(sid: int, tile: Vector2i, mm: int) -> void:
 		_tiles.erase(tile)
 	if int(s["count"]) <= 0:
 		_structures.erase(sid)
+
+## A clan structure's block of `points` came or went: its clan's score moves with it.
+func _add_points(s: Dictionary, points: int) -> void:
+	if str(s["kind"]) != "clan" or points == 0:
+		return
+	var id := str(s["owner"])
+	var total := int(_clan_points.get(id, 0)) + points
+	if total > 0:
+		_clan_points[id] = total
+	else:
+		_clan_points.erase(id)
+	_points_dirty[id] = true
+
+## A clan's score: its points over `ClanTiers.durabilityUnit`.
+func clan_score(clan_id: String) -> float:
+	return float(_clan_points.get(clan_id, 0)) / Rules.score_unit()
+
+## Every clan's score from a full recount of the index (the tests hold the running sums to it).
+func recount_clan_scores() -> Dictionary:
+	var points := {}
+	for sid: int in _structures:
+		var s: Dictionary = _structures[sid]
+		if str(s["kind"]) != "clan":
+			continue
+		for t: Vector2i in s["cells"]:
+			for mm: int in s["cells"][t]:
+				points[s["owner"]] = int(points.get(s["owner"], 0)) + Rules.score_points(str(s["cells"][t][mm][0]))
+	var out := {}
+	for id: String in points:
+		if int(points[id]) > 0:
+			out[id] = float(points[id]) / Rules.score_unit()
+	return out
+
+## Host: send the clan slice the score of every clan whose points moved (every clan it knows after a load or a
+## reset, so one whose buildings are all gone falls back too).
+func flush_clan_scores() -> void:
+	if not is_host:
+		return
+	if _points_all:
+		_points_all = false
+		if clans != null:
+			for id: String in clans.ids():
+				_points_dirty[id] = true
+		for id: String in _clan_points:
+			_points_dirty[id] = true
+	if _points_dirty.is_empty():
+		return
+	var ids: Array = _points_dirty.keys()
+	_points_dirty.clear()
+	ids.sort()
+	for id: String in ids:
+		GameBus.clan_score_changed.emit(id, clan_score(id))
+
+func _clear_points() -> void:
+	_clan_points.clear()
+	_points_dirty.clear()
+	_points_all = true
 
 ## The indexed blocks of `tile` whose bottoms lie in [`bottom`, `top`): `[[sid, mm], ...]`.
 func _cells_in(tile: Vector2i, bottom: float, top: float) -> Array:
@@ -703,6 +777,7 @@ func drop_span(tile: Vector2i, bottom: float, top: float) -> void:
 
 ## The world was regenerated (`/regen world`): every placed block is gone, so is every record of one.
 func reset_world() -> void:
+	_clear_points()
 	_structures.clear()
 	_tiles.clear()
 	_cell_count = 0
@@ -842,6 +917,7 @@ func tick() -> void:
 		if not _structures.has(sid):
 			_notify(sid, "structure.destroyed", 0.0, s)
 		removed += 1
+	flush_clan_scores()
 
 # ── notices ──────────────────────────────────────────────────────────────
 
@@ -935,6 +1011,7 @@ func to_data() -> Dictionary:
 ## Load a saved index. `downtime_hours` is the in-game hours the server was down since the save: each
 ## structure wears for them once (age, and the weather rolled for those past hours at its anchor).
 func from_data(data: Variant, downtime_hours: float = 0.0) -> void:
+	_clear_points()
 	_structures.clear()
 	_tiles.clear()
 	_cell_count = 0

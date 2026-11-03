@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–199 and 203–209 are done. Their specs and acceptance criteria, and the introductions of
+Phases 1–199 and 203–210 are done. Their specs and acceptance criteria, and the introductions of
 the arcs they belonged to, are archived in [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Next: follow-up debt burn II (Phases 194–196)
@@ -123,7 +123,7 @@ Smithing). Phase 203 models all of it in the fabric before any runtime phase sta
 | 207 | Skills grow from work, and clan projects without labour | Done | [phases-207.md](docs/roadmap-history/phases-207.md) |
 | 208 | Chests and doors: owner, clan or everyone, and locks that can be broken or picked | Done | [phases-208.md](docs/roadmap-history/phases-208.md) |
 | 209 | Books and blueprints: research shared by writing | Done | [phases-209.md](docs/roadmap-history/phases-209.md) |
-| 210 | Clan tiers from buildings and material rarity | Planned | below |
+| 210 | Clan tiers from buildings and material rarity | Done | [phases-210.md](docs/roadmap-history/phases-210.md) |
 | 211 | Earth-scale mountains: peaks to about 8,850 m on unrecorded land | Planned | below |
 | 212 | Floors and structural limits at runtime, and the materials above stone | Planned | below |
 | 213 | A clan's tower on a mountain: the arc, played | Planned | below |
@@ -167,31 +167,6 @@ must stay under one hour.
 - [ ] CI: the four bots end with at least two different specialties, one completed project, one
   defended raid and one paid upkeep, as read from the host's world record.
 - [ ] The scenario passes 3 CI runs in a row on an unchanged commit.
-- [ ] Suite green on both boot paths, harness green.
-
----
-
-## Phase 210 — Clan tiers from buildings and material rarity
-
-**Goal:** a clan rises in tier by owning more buildings of rarer materials, and falls when they are
-dismantled or destroyed.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phases 205 and 206.
-
-**Deliverables:**
-- The clan score from the structure index (every clan building wherever it stands, and its
-  material rarity), recomputed incrementally when a clan structure is built, loses blocks or is destroyed.
-- Tier changes are synced to members with a keyed notice. A tier gives nothing yet (clan skills
-  come later, see Deferred).
-- UI: the clan's tier and score on the roster.
-
-**Acceptance criteria:**
-- [ ] Suite: adding a stone building raises a clan's score more than a wood one, wherever it stands,
-  and crossing a threshold changes its tier once.
-- [ ] Suite: destroying the building that held a clan above a threshold drops its tier.
-- [ ] Suite (audit): no score or tier is read from a client message.
 - [ ] Suite green on both boot paths, harness green.
 
 ---
