@@ -766,6 +766,13 @@ func _player_pos() -> Vector3:
 ## Hold W for a few seconds: the body must move, and the feet must swap the lead at least
 ## WALK_FOOT_MIN_SWITCHES times over the last WALK_FOOT_SECS (a clip stuck on its last key keeps one foot ahead).
 func _step_walk() -> Array:
+	# The pinned spawn has a wolf pack beside it (Phase 211's freed workers bring it in sooner): it downed the
+	# body mid-walk on CI, and the respawn's teleport read as 5,400 km walked. The step tests the gait, not the
+	# world's spawns: a downed body respawns first, then it is healed and the creatures near it removed.
+	if not _root._player.is_alive():
+		await _until(func(): return _root._player.is_alive(), PlayerSlice.RESPAWN_DELAY + STEP_TIMEOUT_SECS)
+	GameBus.admin_healed.emit()
+	_clear_creatures_near_body()
 	# A slow builder may not have the ground under the body yet: it would stand or crawl, and the
 	# clip rightly stays near idle. Wait for the ground before judging the gait.
 	var here_chunk: Vector2i = _root._player.get_world_pos()["chunk"]
