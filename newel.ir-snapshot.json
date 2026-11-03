@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:249ee2b33ee94bbcbaf4ffa91067098a2fec13f21127f47835790da693fb7c86",
+  "schemaHash": "sha256:39ccb84cace3f7b78b9a6aa49ef81b6d2c9516c17c3855fe400e88d1d65b674c",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -20991,6 +20991,3576 @@
               "trigger": "degrade",
               "guards": [
                 "Normal inventory storage never degrades a door"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "BookTechBasicSmithing": {
+        "name": "BookTechBasicSmithing",
+        "tags": [
+          "item",
+          "writing"
+        ],
+        "description": "A book that teaches the technology TechBasicSmithing. Reading it teaches it and keeps it, so it can be read again or lent.",
+        "goal": "Research shared by writing, never through a clan (ResearchSharedByWriting, Phase 209)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per book",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "uncommon"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "True; copies of one writing stack",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "writing": {
+            "name": "writing",
+            "type": "string",
+            "description": "The writing rule it follows (GameData.WRITINGS)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Book"
+          },
+          "teaches": {
+            "name": "teaches",
+            "type": "string",
+            "description": "The technology, recipe or project key it teaches",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "TechBasicSmithing"
+          },
+          "teachesKind": {
+            "name": "teachesKind",
+            "type": "string",
+            "description": "technology, station or project",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "technology"
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "tablet",
+              "parts": {
+                "slab": "Duskfiber",
+                "rune": "Ferrite"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Binding integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100
+          }
+        },
+        "relations": {
+          "duskfiber": {
+            "name": "duskfiber",
+            "kind": "hasOne",
+            "target": "Duskfiber"
+          },
+          "ferrite": {
+            "name": "ferrite",
+            "kind": "hasOne",
+            "target": "Ferrite"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A book does not wear while carried or read",
+            "rules": [
+              "Reading never consumes or wears it"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-bind a worn book at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "BookTechMasterForge": {
+        "name": "BookTechMasterForge",
+        "tags": [
+          "item",
+          "writing"
+        ],
+        "description": "A book that teaches the technology TechMasterForge. Reading it teaches it and keeps it, so it can be read again or lent.",
+        "goal": "Research shared by writing, never through a clan (ResearchSharedByWriting, Phase 209)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per book",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "uncommon"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "True; copies of one writing stack",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "writing": {
+            "name": "writing",
+            "type": "string",
+            "description": "The writing rule it follows (GameData.WRITINGS)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Book"
+          },
+          "teaches": {
+            "name": "teaches",
+            "type": "string",
+            "description": "The technology, recipe or project key it teaches",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "TechMasterForge"
+          },
+          "teachesKind": {
+            "name": "teachesKind",
+            "type": "string",
+            "description": "technology, station or project",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "technology"
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "tablet",
+              "parts": {
+                "slab": "Duskfiber",
+                "rune": "Veilsteel"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Binding integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100
+          }
+        },
+        "relations": {
+          "duskfiber": {
+            "name": "duskfiber",
+            "kind": "hasOne",
+            "target": "Duskfiber"
+          },
+          "veilsteel": {
+            "name": "veilsteel",
+            "kind": "hasOne",
+            "target": "Veilsteel"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A book does not wear while carried or read",
+            "rules": [
+              "Reading never consumes or wears it"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-bind a worn book at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "BookTechBasicCarpentry": {
+        "name": "BookTechBasicCarpentry",
+        "tags": [
+          "item",
+          "writing"
+        ],
+        "description": "A book that teaches the technology TechBasicCarpentry. Reading it teaches it and keeps it, so it can be read again or lent.",
+        "goal": "Research shared by writing, never through a clan (ResearchSharedByWriting, Phase 209)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per book",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "uncommon"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "True; copies of one writing stack",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "writing": {
+            "name": "writing",
+            "type": "string",
+            "description": "The writing rule it follows (GameData.WRITINGS)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Book"
+          },
+          "teaches": {
+            "name": "teaches",
+            "type": "string",
+            "description": "The technology, recipe or project key it teaches",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "TechBasicCarpentry"
+          },
+          "teachesKind": {
+            "name": "teachesKind",
+            "type": "string",
+            "description": "technology, station or project",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "technology"
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "tablet",
+              "parts": {
+                "slab": "Duskfiber",
+                "rune": "Thornwood"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Binding integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100
+          }
+        },
+        "relations": {
+          "duskfiber": {
+            "name": "duskfiber",
+            "kind": "hasOne",
+            "target": "Duskfiber"
+          },
+          "thornwood": {
+            "name": "thornwood",
+            "kind": "hasOne",
+            "target": "Thornwood"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A book does not wear while carried or read",
+            "rules": [
+              "Reading never consumes or wears it"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-bind a worn book at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "BookTechTextileWeaving": {
+        "name": "BookTechTextileWeaving",
+        "tags": [
+          "item",
+          "writing"
+        ],
+        "description": "A book that teaches the technology TechTextileWeaving. Reading it teaches it and keeps it, so it can be read again or lent.",
+        "goal": "Research shared by writing, never through a clan (ResearchSharedByWriting, Phase 209)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per book",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "uncommon"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "True; copies of one writing stack",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "writing": {
+            "name": "writing",
+            "type": "string",
+            "description": "The writing rule it follows (GameData.WRITINGS)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Book"
+          },
+          "teaches": {
+            "name": "teaches",
+            "type": "string",
+            "description": "The technology, recipe or project key it teaches",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "TechTextileWeaving"
+          },
+          "teachesKind": {
+            "name": "teachesKind",
+            "type": "string",
+            "description": "technology, station or project",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "technology"
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "tablet",
+              "parts": {
+                "slab": "Duskfiber",
+                "rune": "Grass"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Binding integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100
+          }
+        },
+        "relations": {
+          "duskfiber": {
+            "name": "duskfiber",
+            "kind": "hasOne",
+            "target": "Duskfiber"
+          },
+          "grass": {
+            "name": "grass",
+            "kind": "hasOne",
+            "target": "Grass"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A book does not wear while carried or read",
+            "rules": [
+              "Reading never consumes or wears it"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-bind a worn book at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "BookTechArcaneForging": {
+        "name": "BookTechArcaneForging",
+        "tags": [
+          "item",
+          "writing"
+        ],
+        "description": "A book that teaches the technology TechArcaneForging. Reading it teaches it and keeps it, so it can be read again or lent.",
+        "goal": "Research shared by writing, never through a clan (ResearchSharedByWriting, Phase 209)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per book",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "uncommon"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "True; copies of one writing stack",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "writing": {
+            "name": "writing",
+            "type": "string",
+            "description": "The writing rule it follows (GameData.WRITINGS)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Book"
+          },
+          "teaches": {
+            "name": "teaches",
+            "type": "string",
+            "description": "The technology, recipe or project key it teaches",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "TechArcaneForging"
+          },
+          "teachesKind": {
+            "name": "teachesKind",
+            "type": "string",
+            "description": "technology, station or project",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "technology"
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "tablet",
+              "parts": {
+                "slab": "Duskfiber",
+                "rune": "Aethermite"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Binding integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100
+          }
+        },
+        "relations": {
+          "duskfiber": {
+            "name": "duskfiber",
+            "kind": "hasOne",
+            "target": "Duskfiber"
+          },
+          "aethermite": {
+            "name": "aethermite",
+            "kind": "hasOne",
+            "target": "Aethermite"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A book does not wear while carried or read",
+            "rules": [
+              "Reading never consumes or wears it"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-bind a worn book at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "BookTechAlchemy": {
+        "name": "BookTechAlchemy",
+        "tags": [
+          "item",
+          "writing"
+        ],
+        "description": "A book that teaches the technology TechAlchemy. Reading it teaches it and keeps it, so it can be read again or lent.",
+        "goal": "Research shared by writing, never through a clan (ResearchSharedByWriting, Phase 209)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per book",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "uncommon"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "True; copies of one writing stack",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "writing": {
+            "name": "writing",
+            "type": "string",
+            "description": "The writing rule it follows (GameData.WRITINGS)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Book"
+          },
+          "teaches": {
+            "name": "teaches",
+            "type": "string",
+            "description": "The technology, recipe or project key it teaches",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "TechAlchemy"
+          },
+          "teachesKind": {
+            "name": "teachesKind",
+            "type": "string",
+            "description": "technology, station or project",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "technology"
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "tablet",
+              "parts": {
+                "slab": "Duskfiber",
+                "rune": "Lumenfite"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Binding integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100
+          }
+        },
+        "relations": {
+          "duskfiber": {
+            "name": "duskfiber",
+            "kind": "hasOne",
+            "target": "Duskfiber"
+          },
+          "lumenfite": {
+            "name": "lumenfite",
+            "kind": "hasOne",
+            "target": "Lumenfite"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A book does not wear while carried or read",
+            "rules": [
+              "Reading never consumes or wears it"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-bind a worn book at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "BookTechVoidMastery": {
+        "name": "BookTechVoidMastery",
+        "tags": [
+          "item",
+          "writing"
+        ],
+        "description": "A book that teaches the technology TechVoidMastery. Reading it teaches it and keeps it, so it can be read again or lent.",
+        "goal": "Research shared by writing, never through a clan (ResearchSharedByWriting, Phase 209)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per book",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "uncommon"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "True; copies of one writing stack",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "writing": {
+            "name": "writing",
+            "type": "string",
+            "description": "The writing rule it follows (GameData.WRITINGS)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Book"
+          },
+          "teaches": {
+            "name": "teaches",
+            "type": "string",
+            "description": "The technology, recipe or project key it teaches",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "TechVoidMastery"
+          },
+          "teachesKind": {
+            "name": "teachesKind",
+            "type": "string",
+            "description": "technology, station or project",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "technology"
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "tablet",
+              "parts": {
+                "slab": "Duskfiber",
+                "rune": "Voidite"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Binding integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100
+          }
+        },
+        "relations": {
+          "duskfiber": {
+            "name": "duskfiber",
+            "kind": "hasOne",
+            "target": "Duskfiber"
+          },
+          "voidite": {
+            "name": "voidite",
+            "kind": "hasOne",
+            "target": "Voidite"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A book does not wear while carried or read",
+            "rules": [
+              "Reading never consumes or wears it"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-bind a worn book at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "BlueprintRecipeBed": {
+        "name": "BlueprintRecipeBed",
+        "tags": [
+          "item",
+          "writing"
+        ],
+        "description": "A blueprint that teaches how to build the station of RecipeBed. Reading it teaches it and keeps it, so it can be read again or lent.",
+        "goal": "Research shared by writing, never through a clan (ResearchSharedByWriting, Phase 209)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per blueprint",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "uncommon"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "True; copies of one writing stack",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "writing": {
+            "name": "writing",
+            "type": "string",
+            "description": "The writing rule it follows (GameData.WRITINGS)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Blueprint"
+          },
+          "teaches": {
+            "name": "teaches",
+            "type": "string",
+            "description": "The technology, recipe or project key it teaches",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "RecipeBed"
+          },
+          "teachesKind": {
+            "name": "teachesKind",
+            "type": "string",
+            "description": "technology, station or project",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "station"
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "tablet",
+              "parts": {
+                "slab": "Sand",
+                "rune": "Grass"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Binding integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100
+          }
+        },
+        "relations": {
+          "sand": {
+            "name": "sand",
+            "kind": "hasOne",
+            "target": "Sand"
+          },
+          "grass": {
+            "name": "grass",
+            "kind": "hasOne",
+            "target": "Grass"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A blueprint does not wear while carried or read",
+            "rules": [
+              "Reading never consumes or wears it"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-bind a worn blueprint at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "BlueprintRecipeChest": {
+        "name": "BlueprintRecipeChest",
+        "tags": [
+          "item",
+          "writing"
+        ],
+        "description": "A blueprint that teaches how to build the station of RecipeChest. Reading it teaches it and keeps it, so it can be read again or lent.",
+        "goal": "Research shared by writing, never through a clan (ResearchSharedByWriting, Phase 209)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per blueprint",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "uncommon"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "True; copies of one writing stack",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "writing": {
+            "name": "writing",
+            "type": "string",
+            "description": "The writing rule it follows (GameData.WRITINGS)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Blueprint"
+          },
+          "teaches": {
+            "name": "teaches",
+            "type": "string",
+            "description": "The technology, recipe or project key it teaches",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "RecipeChest"
+          },
+          "teachesKind": {
+            "name": "teachesKind",
+            "type": "string",
+            "description": "technology, station or project",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "station"
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "tablet",
+              "parts": {
+                "slab": "Sand",
+                "rune": "Ferrite"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Binding integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100
+          }
+        },
+        "relations": {
+          "sand": {
+            "name": "sand",
+            "kind": "hasOne",
+            "target": "Sand"
+          },
+          "ferrite": {
+            "name": "ferrite",
+            "kind": "hasOne",
+            "target": "Ferrite"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A blueprint does not wear while carried or read",
+            "rules": [
+              "Reading never consumes or wears it"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-bind a worn blueprint at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "BlueprintRecipeDoor": {
+        "name": "BlueprintRecipeDoor",
+        "tags": [
+          "item",
+          "writing"
+        ],
+        "description": "A blueprint that teaches how to build the station of RecipeDoor. Reading it teaches it and keeps it, so it can be read again or lent.",
+        "goal": "Research shared by writing, never through a clan (ResearchSharedByWriting, Phase 209)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per blueprint",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "uncommon"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "True; copies of one writing stack",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "writing": {
+            "name": "writing",
+            "type": "string",
+            "description": "The writing rule it follows (GameData.WRITINGS)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Blueprint"
+          },
+          "teaches": {
+            "name": "teaches",
+            "type": "string",
+            "description": "The technology, recipe or project key it teaches",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "RecipeDoor"
+          },
+          "teachesKind": {
+            "name": "teachesKind",
+            "type": "string",
+            "description": "technology, station or project",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "station"
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "tablet",
+              "parts": {
+                "slab": "Sand",
+                "rune": "Thornwood"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Binding integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100
+          }
+        },
+        "relations": {
+          "sand": {
+            "name": "sand",
+            "kind": "hasOne",
+            "target": "Sand"
+          },
+          "thornwood": {
+            "name": "thornwood",
+            "kind": "hasOne",
+            "target": "Thornwood"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A blueprint does not wear while carried or read",
+            "rules": [
+              "Reading never consumes or wears it"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-bind a worn blueprint at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "BlueprintRecipeHearth": {
+        "name": "BlueprintRecipeHearth",
+        "tags": [
+          "item",
+          "writing"
+        ],
+        "description": "A blueprint that teaches how to build the station of RecipeHearth. Reading it teaches it and keeps it, so it can be read again or lent.",
+        "goal": "Research shared by writing, never through a clan (ResearchSharedByWriting, Phase 209)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per blueprint",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "uncommon"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "True; copies of one writing stack",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "writing": {
+            "name": "writing",
+            "type": "string",
+            "description": "The writing rule it follows (GameData.WRITINGS)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Blueprint"
+          },
+          "teaches": {
+            "name": "teaches",
+            "type": "string",
+            "description": "The technology, recipe or project key it teaches",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "RecipeHearth"
+          },
+          "teachesKind": {
+            "name": "teachesKind",
+            "type": "string",
+            "description": "technology, station or project",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "station"
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "tablet",
+              "parts": {
+                "slab": "Sand",
+                "rune": "Ashite"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Binding integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100
+          }
+        },
+        "relations": {
+          "sand": {
+            "name": "sand",
+            "kind": "hasOne",
+            "target": "Sand"
+          },
+          "ashite": {
+            "name": "ashite",
+            "kind": "hasOne",
+            "target": "Ashite"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A blueprint does not wear while carried or read",
+            "rules": [
+              "Reading never consumes or wears it"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-bind a worn blueprint at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "BlueprintPalisade": {
+        "name": "BlueprintPalisade",
+        "tags": [
+          "item",
+          "writing"
+        ],
+        "description": "A blueprint that teaches the settlement project palisade. Reading it teaches it and keeps it, so it can be read again or lent.",
+        "goal": "Research shared by writing, never through a clan (ResearchSharedByWriting, Phase 209)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per blueprint",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "uncommon"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "True; copies of one writing stack",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "writing": {
+            "name": "writing",
+            "type": "string",
+            "description": "The writing rule it follows (GameData.WRITINGS)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Blueprint"
+          },
+          "teaches": {
+            "name": "teaches",
+            "type": "string",
+            "description": "The technology, recipe or project key it teaches",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "palisade"
+          },
+          "teachesKind": {
+            "name": "teachesKind",
+            "type": "string",
+            "description": "technology, station or project",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "project"
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "tablet",
+              "parts": {
+                "slab": "Sand",
+                "rune": "Duskfiber"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Binding integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100
+          }
+        },
+        "relations": {
+          "sand": {
+            "name": "sand",
+            "kind": "hasOne",
+            "target": "Sand"
+          },
+          "duskfiber": {
+            "name": "duskfiber",
+            "kind": "hasOne",
+            "target": "Duskfiber"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A blueprint does not wear while carried or read",
+            "rules": [
+              "Reading never consumes or wears it"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-bind a worn blueprint at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "BlueprintStorehouse": {
+        "name": "BlueprintStorehouse",
+        "tags": [
+          "item",
+          "writing"
+        ],
+        "description": "A blueprint that teaches the settlement project storehouse. Reading it teaches it and keeps it, so it can be read again or lent.",
+        "goal": "Research shared by writing, never through a clan (ResearchSharedByWriting, Phase 209)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per blueprint",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "uncommon"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "True; copies of one writing stack",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "writing": {
+            "name": "writing",
+            "type": "string",
+            "description": "The writing rule it follows (GameData.WRITINGS)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Blueprint"
+          },
+          "teaches": {
+            "name": "teaches",
+            "type": "string",
+            "description": "The technology, recipe or project key it teaches",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "storehouse"
+          },
+          "teachesKind": {
+            "name": "teachesKind",
+            "type": "string",
+            "description": "technology, station or project",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "project"
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "tablet",
+              "parts": {
+                "slab": "Sand",
+                "rune": "Veilsteel"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Binding integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100
+          }
+        },
+        "relations": {
+          "sand": {
+            "name": "sand",
+            "kind": "hasOne",
+            "target": "Sand"
+          },
+          "veilsteel": {
+            "name": "veilsteel",
+            "kind": "hasOne",
+            "target": "Veilsteel"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A blueprint does not wear while carried or read",
+            "rules": [
+              "Reading never consumes or wears it"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-bind a worn blueprint at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "BlueprintWorkshop": {
+        "name": "BlueprintWorkshop",
+        "tags": [
+          "item",
+          "writing"
+        ],
+        "description": "A blueprint that teaches the settlement project workshop. Reading it teaches it and keeps it, so it can be read again or lent.",
+        "goal": "Research shared by writing, never through a clan (ResearchSharedByWriting, Phase 209)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per blueprint",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "uncommon"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "True; copies of one writing stack",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "writing": {
+            "name": "writing",
+            "type": "string",
+            "description": "The writing rule it follows (GameData.WRITINGS)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Blueprint"
+          },
+          "teaches": {
+            "name": "teaches",
+            "type": "string",
+            "description": "The technology, recipe or project key it teaches",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "workshop"
+          },
+          "teachesKind": {
+            "name": "teachesKind",
+            "type": "string",
+            "description": "technology, station or project",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "project"
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "tablet",
+              "parts": {
+                "slab": "Sand",
+                "rune": "Aethermite"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Binding integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100
+          }
+        },
+        "relations": {
+          "sand": {
+            "name": "sand",
+            "kind": "hasOne",
+            "target": "Sand"
+          },
+          "aethermite": {
+            "name": "aethermite",
+            "kind": "hasOne",
+            "target": "Aethermite"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A blueprint does not wear while carried or read",
+            "rules": [
+              "Reading never consumes or wears it"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-bind a worn blueprint at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "BlueprintWatchtower": {
+        "name": "BlueprintWatchtower",
+        "tags": [
+          "item",
+          "writing"
+        ],
+        "description": "A blueprint that teaches the settlement project watchtower. Reading it teaches it and keeps it, so it can be read again or lent.",
+        "goal": "Research shared by writing, never through a clan (ResearchSharedByWriting, Phase 209)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per blueprint",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "uncommon"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "True; copies of one writing stack",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "writing": {
+            "name": "writing",
+            "type": "string",
+            "description": "The writing rule it follows (GameData.WRITINGS)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Blueprint"
+          },
+          "teaches": {
+            "name": "teaches",
+            "type": "string",
+            "description": "The technology, recipe or project key it teaches",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "watchtower"
+          },
+          "teachesKind": {
+            "name": "teachesKind",
+            "type": "string",
+            "description": "technology, station or project",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "project"
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "tablet",
+              "parts": {
+                "slab": "Sand",
+                "rune": "Lumenfite"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Binding integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100
+          }
+        },
+        "relations": {
+          "sand": {
+            "name": "sand",
+            "kind": "hasOne",
+            "target": "Sand"
+          },
+          "lumenfite": {
+            "name": "lumenfite",
+            "kind": "hasOne",
+            "target": "Lumenfite"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A blueprint does not wear while carried or read",
+            "rules": [
+              "Reading never consumes or wears it"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-bind a worn blueprint at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
               ],
               "effects": []
             },

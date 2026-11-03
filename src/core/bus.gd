@@ -253,6 +253,14 @@ signal chest_intent(action: String, args: Dictionary, player_id: String)
 ## Phase 208 — the host resolved a chest intent. `reason` is "" on success, else a ChestSlice.REASONS code.
 signal chest_resolved(player_id: String, action: String, ok: bool, reason: String)
 
+## Phase 209 — a writing intent: `action` is "write" (make `item_id`, a book or blueprint about something the
+## writer knows, at the writing's station for its cost) or "read" (learn what `item_id` in the pack teaches; it
+## is kept). A client forwards it; the host binds the identity (WritingSlice.resolve).
+signal writing_intent(action: String, item_id: String, player_id: String)
+
+## Phase 209 — the host resolved a writing intent. `reason` is "" on success, else a WritingSlice.REASONS code.
+signal writing_resolved(player_id: String, action: String, item_id: String, ok: bool, reason: String)
+
 ## Phase 208 — host: a lock pick began (`seconds` long) / ended. `reason` is "" when the lock opened, else why the
 ## pick failed ("moved", "cancelled"); `broke` when the failure broke the tool.
 signal lock_pick_started(player_id: String, station_id: String, seconds: float)

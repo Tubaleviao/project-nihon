@@ -97,7 +97,22 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [AlchemyPotion](entities/alchemypotion.md) — Sealed glass flask containing an Alchemist-brewed reagent
 - [AshiteBlock](entities/ashiteblock.md) — Quarried ashite stone block cut to standard building dimensions
 - [Bed](entities/bed.md) — A plank frame with a straw pallet
+- [BlueprintPalisade](entities/blueprintpalisade.md) — A blueprint that teaches the settlement project palisade
+- [BlueprintRecipeBed](entities/blueprintrecipebed.md) — A blueprint that teaches how to build the station of RecipeBed
+- [BlueprintRecipeChest](entities/blueprintrecipechest.md) — A blueprint that teaches how to build the station of RecipeChest
+- [BlueprintRecipeDoor](entities/blueprintrecipedoor.md) — A blueprint that teaches how to build the station of RecipeDoor
+- [BlueprintRecipeHearth](entities/blueprintrecipehearth.md) — A blueprint that teaches how to build the station of RecipeHearth
+- [BlueprintStorehouse](entities/blueprintstorehouse.md) — A blueprint that teaches the settlement project storehouse
+- [BlueprintWatchtower](entities/blueprintwatchtower.md) — A blueprint that teaches the settlement project watchtower
+- [BlueprintWorkshop](entities/blueprintworkshop.md) — A blueprint that teaches the settlement project workshop
 - [BoneSaw](entities/bonesaw.md) — Broad-backed ferrite saw on a thornwood grip
+- [BookTechAlchemy](entities/booktechalchemy.md) — A book that teaches the technology TechAlchemy
+- [BookTechArcaneForging](entities/booktecharcaneforging.md) — A book that teaches the technology TechArcaneForging
+- [BookTechBasicCarpentry](entities/booktechbasiccarpentry.md) — A book that teaches the technology TechBasicCarpentry
+- [BookTechBasicSmithing](entities/booktechbasicsmithing.md) — A book that teaches the technology TechBasicSmithing
+- [BookTechMasterForge](entities/booktechmasterforge.md) — A book that teaches the technology TechMasterForge
+- [BookTechTextileWeaving](entities/booktechtextileweaving.md) — A book that teaches the technology TechTextileWeaving
+- [BookTechVoidMastery](entities/booktechvoidmastery.md) — A book that teaches the technology TechVoidMastery
 - [CarpenterAxe](entities/carpenteraxe.md) — Felling axe with a weighted ferrite head and a duskfiber-wrapped thornwood handle
 - [Chest](entities/chest.md) — A plank box with a ferrite band and lock
 - [Door](entities/door.md) — A plank door on ferrite hinges with a lock

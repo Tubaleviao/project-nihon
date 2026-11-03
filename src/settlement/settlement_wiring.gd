@@ -25,7 +25,6 @@ func make_slice(ctx: GameRoot) -> Node:
 	slice.is_host = not root._is_client
 	slice.place_structure = self.place_structure
 	slice.release_station = root._station.remove_station
-	root._technology.settlement_slice = slice
 	return slice
 
 ## The windows are built after the slices: bind them on the first frame they exist.

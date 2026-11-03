@@ -470,6 +470,15 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 					if (v is String or v is int or v is float) and held.size() < 6:
 						held[str(k).left(16)] = str(v).left(64) if v is String else v
 			GameBus.chest_intent.emit(str(payload.get("action", "")).left(16), held, opener)
+		"writing_intent":
+			# Phase 209 — who writes or reads is the connection's player, never a name in the payload; the item
+			# is a short string WritingSlice checks against the fabric's writing items and that player's pack.
+			var writer = sl._actor_id(sender)
+			if writer == "":
+				sl._refuse_unhandshaked(sender, "writing_intent")
+				return
+			var w_item: Variant = payload.get("item_id", "")
+			GameBus.writing_intent.emit(str(payload.get("action", "")).left(16), str(w_item).left(64) if w_item is String else "", writer)
 		"tame_intent":
 			# Phase 35 — and the same for taming: the flag and the companion bind
 			# to the connection's own player, never to a name in the payload.
@@ -790,3 +799,9 @@ func forward_clan_intent(action: String, args: Dictionary, _player_id: String) -
 
 func forward_chest_intent(action: String, args: Dictionary, _player_id: String) -> void:
 	forward_intent("chest_intent", action, args)
+
+## Phase 209 — a client forwards a writing intent; the host binds the identity.
+func forward_writing_intent(action: String, item_id: String, _player_id: String) -> void:
+	if sl._role != sl.Role.CLIENT:
+		return
+	sl._broadcast({ "type": "writing_intent", "action": action, "item_id": item_id })

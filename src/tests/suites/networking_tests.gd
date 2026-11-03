@@ -2054,6 +2054,9 @@ func _test_net_harness_step_table() -> void:
 	assert_eq(str(steps[0].get("name", "")), "handshake", "the scenario starts with the handshake")
 	assert_eq(str(steps[steps.size() - 1].get("name", "")), "self_respawn",
 		"and ends with a player respawned outside a stranger's walls (Phase 205)")
+	assert_eq(str(steps[steps.size() - 2].get("name", "")), "book_teaches_client",
+		"after a book handed to the client teaching the client, not the host (Phase 209)")
+	steps = steps.slice(0, steps.size() - 2) + [steps[steps.size() - 1]]
 	assert_eq(str(steps[steps.size() - 2].get("name", "")), "chest_take_refused",
 		"after a take from a chest the client may not open refused (Phase 208)")
 	steps = steps.slice(0, steps.size() - 2) + [steps[steps.size() - 1]]
@@ -2189,12 +2192,13 @@ func _test_net_harness_bare_await_audit() -> void:
 	# And the file the audit guards, audited. Skipped with a note rather than passed when the
 	# source is not on disk (an exported build ships bytecode) — an audit that could not run
 	# is not evidence, which is also what `NetHarness._self_audit` says out loud.
-	var src := FileAccess.open("res://src/tests/net_harness.gd", FileAccess.READ)
-	if src == null:
-		return
-	var offenders := NetHarness.unawaited_waits(src.get_as_text().split("\n"))
-	assert_true(offenders.is_empty(),
-		"NetHarness calls a bare coroutine at line(s) %s" % [", ".join(offenders)])
+	for path in ["res://src/tests/net_harness.gd", "res://src/tests/net_harness_steps.gd"]:
+		var src := FileAccess.open(path, FileAccess.READ)
+		if src == null:
+			return
+		var offenders := NetHarness.unawaited_waits(src.get_as_text().split("\n"))
+		assert_true(offenders.is_empty(),
+			"%s calls a bare coroutine at line(s) %s" % [path.get_file(), ", ".join(offenders)])
 
 # ---------------------------------------------------------------------------
 # Phase 42 — threaded chunk build, greedy merge, the first-ring gate

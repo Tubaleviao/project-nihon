@@ -10,6 +10,20 @@ const WRITING = {
   Blueprint: { teaches: 'recipe', recipeKinds: ['station', 'project'], station: 'carpentry bench', cost: [{ item: 'Duskfiber', quantity: 3 }], consumedOnRead: false, writerMustKnow: true },
 }
 
+// Phase 209 — one item per thing that can be written down: `<Writing><Key>` (a project key is capitalised:
+// BlueprintPalisade). The item names what it teaches, so a written book is an ordinary pack item that a chest,
+// a trade or a drop carries like any other. The validator checks the list covers every technology, station
+// recipe and project and nothing else.
+const TECHNOLOGIES = ['TechBasicSmithing', 'TechMasterForge', 'TechBasicCarpentry', 'TechTextileWeaving', 'TechArcaneForging', 'TechAlchemy', 'TechVoidMastery']
+const STATION_RECIPES = ['RecipeBed', 'RecipeChest', 'RecipeDoor', 'RecipeHearth']
+const PROJECTS = ['palisade', 'storehouse', 'workshop', 'watchtower']
+const capital = (k) => k.charAt(0).toUpperCase() + k.slice(1)
+const WRITING_ITEMS = Object.fromEntries([
+  ...TECHNOLOGIES.map((t) => [`Book${t}`, { writing: 'Book', teaches: t, kind: 'technology' }]),
+  ...STATION_RECIPES.map((r) => [`Blueprint${r}`, { writing: 'Blueprint', teaches: r, kind: 'station' }]),
+  ...PROJECTS.map((p) => [`Blueprint${capital(p)}`, { writing: 'Blueprint', teaches: p, kind: 'project' }]),
+])
+
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
 
 function writingData() { return JSON.parse(JSON.stringify(WRITING)) }
@@ -54,6 +68,10 @@ function writingProblems(w, refs) {
     if (JSON.stringify(w.Blueprint.recipeKinds) !== JSON.stringify(['station', 'project'])) p.push('Writing.Blueprint.recipeKinds must be ["station", "project"]: a blueprint teaches a structure or station')
     if (refs.stationRecipes.length + refs.projects.length === 0) p.push('Writing.Blueprint has no station recipe or project to teach')
   }
+  const same = (a, b) => JSON.stringify([...a].sort()) === JSON.stringify([...b].sort())
+  if (!same(TECHNOLOGIES, refs.technologies)) p.push(`Writing items must cover exactly the technologies ${refs.technologies.join(', ')}`)
+  if (!same(STATION_RECIPES, refs.stationRecipes)) p.push(`Writing items must cover exactly the station recipes ${refs.stationRecipes.join(', ')}`)
+  if (!same(PROJECTS, refs.projects)) p.push(`Writing items must cover exactly the projects ${refs.projects.join(', ')}`)
   return p
 }
 
@@ -100,4 +118,4 @@ const Blueprint = writingEntity('Blueprint',
   'Share how to build by writing (ResearchSharedByWriting, Phase 203)',
   'RecipeHearth')
 
-module.exports = { WRITING, writingData, writingRefs, writingProblems, validateWriting, Book, Blueprint }
+module.exports = { WRITING, WRITING_ITEMS, writingData, writingRefs, writingProblems, validateWriting, Book, Blueprint }

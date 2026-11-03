@@ -24,12 +24,10 @@ extends Node
 ##   controls_rows()        -> Array[Dictionary] (the `?` legend, testable)
 ##   clamp_window_position / item_icon_key / item_actions / action_intent (pure)
 ##
-## Window layout persistence: positions are a CLIENT-ONLY view setting, stored in
-## `user://ui_layout.json` (not on the player record). A layout carries no
-## authority, differs per machine and must not be replicated; the file holds at
-## most one entry per known window key, is overwritten in place, and unknown keys
-## are dropped on load, so nothing accumulates and there is no per-connection
-## state to evict.
+## Window layout persistence: positions are a CLIENT-ONLY view setting in `user://ui_layout.json`
+## (not on the player record): no authority, differs per machine, never replicated. The file holds at most
+## one entry per known window key, is overwritten in place, and unknown keys are dropped on load, so nothing
+## accumulates and there is no per-connection state to evict.
 const Diag := preload("res://src/core/diag.gd")
 const I18n := preload("res://src/core/i18n.gd")
 const LocaleSettings := preload("res://src/core/locale_settings.gd")
@@ -544,11 +542,8 @@ static func item_glyph(item_id: String) -> String:
 	glyph_calls += 1
 	return item_id.substr(0, 1).to_upper() if item_id != "" else "?"
 
-## Right-click actions an item supports. Only intents that already exist on the
-## bus are offered; today that is repair (a held, non-pristine item with a
-## fabric repair spec). Each entry: { action, label }.
-## `repairable` (item id -> true) may be passed to avoid recomputing
-## `repair_rows()` for every item; null means compute it here.
+## Right-click actions an item supports, each { action, label }: repair (a held, non-pristine item with a fabric
+## repair spec), equip and (Phase 209) read. `repairable` (item id -> true) saves recomputing `repair_rows()`.
 func item_actions(item_id: String, repairable = null) -> Array:
 	if repairable == null:
 		repairable = {}
@@ -557,6 +552,7 @@ func item_actions(item_id: String, repairable = null) -> Array:
 	var actions: Array = []
 	if repairable.has(item_id):
 		actions.append({"action": "repair", "label": I18n.t("ui.repair")})
+	actions.append_array(_m2.writing_actions(item_id))
 	var slot := EquipmentRules.slot_of(item_id, GameData.ITEMS)
 	# An item already on the avatar offers Unequip in the Character window, not Equip.
 	if slot != "" and character_slice != null and str(_local_worn().get(slot, "")) != item_id:
@@ -572,6 +568,8 @@ static func action_intent(item_id: String, action: String) -> Dictionary:
 			return {"signal": "equip", "args": [item_id]}
 		"unequip":
 			return {"signal": "unequip", "args": [item_id]}
+		"read":
+			return {"signal": "writing_intent", "args": ["read", item_id, ""]}
 	return {}
 
 ## Emit the bus intent for an item action. Returns false for an unknown action.
@@ -584,6 +582,8 @@ func dispatch_item_action(item_id: String, action: String) -> bool:
 			GameBus.repair_requested.emit(item_id)
 		"equip", "unequip":
 			return _dispatch_equipment(str(intent["signal"]), item_id)
+		"writing_intent":
+			GameBus.writing_intent.emit("read", item_id, "")
 		_:
 			return false
 	return true

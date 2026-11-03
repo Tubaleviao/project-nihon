@@ -701,3 +701,18 @@ lock.pick_lost,The pick failed.,O arrombamento falhou.
 lock.picked,"Someone picked your lock near ({0}, {1}).","Alguém arrombou sua fechadura perto de ({0}, {1})."
 lock.pick_failed,"Someone tried to pick your lock near ({0}, {1}).","Alguém tentou arrombar sua fechadura perto de ({0}, {1})."
 lock.destroyed,"Your chest or door near ({0}, {1}) was broken.","Seu baú ou porta perto de ({0}, {1}) foi quebrado."
+ui.read,Read,Ler
+ui.write,Write,Escrever
+ui.writing_header,— Books and blueprints you can write —,— Livros e plantas que você pode escrever —
+ui.writing_line,{0}  cost: {1}  at: {2},{0}  custo: {1}  em: {2}
+writing.ok.write,You wrote {0}.,Você escreveu {0}.
+writing.ok.read,You learnt what {0} teaches.,Você aprendeu o que {0} ensina.
+writing.refused.unknown_writing,That is not a book or blueprint.,Isso não é um livro nem uma planta.
+writing.refused.not_known,You can only write about what you know.,Você só pode escrever sobre o que sabe.
+writing.refused.station_required,You need to be at the right station to write this.,Você precisa estar na estação certa para escrever isto.
+writing.refused.missing_materials,You lack the materials to write this.,Faltam materiais para escrever isto.
+writing.refused.pack_full,Your pack has no room for it.,Sua mochila não tem espaço para isso.
+writing.refused.not_held,You do not have that to read.,Você não tem isso para ler.
+writing.refused.already_known,You already know what {0} teaches.,Você já sabe o que {0} ensina.
+writing.refused.prerequisite_locked,You need to know its prerequisites first.,Você precisa conhecer os pré-requisitos primeiro.
+writing.refused.rate,Slow down.,Mais devagar.

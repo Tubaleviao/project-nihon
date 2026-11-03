@@ -224,7 +224,7 @@ func _test_item_shapes_in_gamedata() -> void:
 	const ARCHETYPES := ["pick", "axe", "sword", "longsword", "knife", "saw", "bow", "shield", "helmet", "chestplate",
 		"cloak", "ingot", "shard", "dust", "plank", "block", "orb", "tablet", "potion", "rations",
 		"hearth", "waystone", "bed", "chest", "door", "lockpick"]
-	assert_eq(GameData.ITEMS.size(), 32, "GameData.ITEMS holds 32 items (Phase 208: Chest, Door, Lockpick)")
+	assert_eq(GameData.ITEMS.size(), 47, "GameData.ITEMS holds 47 items (Phase 209: 15 books and blueprints)")
 	for item_id in GameData.ITEMS:
 		var shape: Dictionary = GameData.ITEMS[item_id].shape
 		assert_true(not shape.is_empty(), "%s has a shape" % item_id)
@@ -1679,32 +1679,13 @@ func _test_research_points_gate_and_spend() -> void:
 	assert_eq(t.get_points(), cost - 1, "and nothing is spent by a refusal")
 
 	t.grant_points("", "craft", 3)
-	# Phase 140 — the fabric's materialSource is the settlement stockpile: a pack full of ore is not enough.
-	var homeless := t.begin_research("TechMasterForge")
-	assert_eq(str(homeless["reason"]), "no_settlement", "materials in the pack do not count without a settlement")
-	assert_eq(t.get_points(), cost + 2, "a refusal spends no points")
-	var stock := _StubStockpile.new()
-	t.settlement_slice = stock
+	# Phase 209 — research materials come from the researcher's own pack, never a stockpile.
 	var ok := t.begin_research("TechMasterForge")
 	assert_true(bool(ok["success"]), "with enough points research begins")
 	assert_eq(t.get_points(), 2, "and exactly researchCost was spent")
-	assert_eq(int(stock.stock["Ashite"]), 0, "the stockpile pays the materials")
-	assert_eq(inv.get_item_count("Ashite"), 20, "and the pack is untouched")
-	stock.free()
+	assert_eq(inv.get_item_count("Ashite"), 0, "the pack pays the materials")
 	t.free()
 	inv.free()
-
-## A settlement slice whose researcher is a member at the site, with twenty Ashite.
-class _StubStockpile extends Node:
-	var stock := { "Ashite": 20 }
-	func settlement_of(_pid: String) -> String:
-		return "settlement_1"
-	func research_stock(_pid: String, item: String) -> int:
-		return int(stock.get(item, 0))
-	func consume_research(_pid: String, counts: Dictionary) -> bool:
-		for item: String in counts:
-			stock[item] = int(stock[item]) - int(counts[item])
-		return true
 
 func _test_research_points_craft_grant_and_roundtrip() -> void:
 	var registry := PlayerRegistry.new()

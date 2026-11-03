@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–199 and 203–208 are done. Their specs and acceptance criteria, and the introductions of
+Phases 1–199 and 203–209 are done. Their specs and acceptance criteria, and the introductions of
 the arcs they belonged to, are archived in [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Next: follow-up debt burn II (Phases 194–196)
@@ -122,7 +122,7 @@ Smithing). Phase 203 models all of it in the fabric before any runtime phase sta
 | 206 | The circle around every building: no spawns, no foreign building | Done | [phases-206.md](docs/roadmap-history/phases-206.md) |
 | 207 | Skills grow from work, and clan projects without labour | Done | [phases-207.md](docs/roadmap-history/phases-207.md) |
 | 208 | Chests and doors: owner, clan or everyone, and locks that can be broken or picked | Done | [phases-208.md](docs/roadmap-history/phases-208.md) |
-| 209 | Books and blueprints: research shared by writing | Planned | below |
+| 209 | Books and blueprints: research shared by writing | Done | [phases-209.md](docs/roadmap-history/phases-209.md) |
 | 210 | Clan tiers from buildings and material rarity | Planned | below |
 | 211 | Earth-scale mountains: peaks to about 8,850 m on unrecorded land | Planned | below |
 | 212 | Floors and structural limits at runtime, and the materials above stone | Planned | below |
@@ -167,34 +167,6 @@ must stay under one hour.
 - [ ] CI: the four bots end with at least two different specialties, one completed project, one
   defended raid and one paid upkeep, as read from the host's world record.
 - [ ] The scenario passes 3 CI runs in a row on an unchanged commit.
-- [ ] Suite green on both boot paths, harness green.
-
----
-
-## Phase 209 — Books and blueprints: research shared by writing
-
-**Goal:** a technology is learnt by researching it or by reading a book about it. A structure or
-station is learnt from a blueprint. Nothing is shared through a clan.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phase 203.
-
-**Deliverables:**
-- Writing: a player who knows a technology or recipe writes a book or blueprint at a station, with
-  the fabric's material cost. Reading teaches it and keeps the item, so it can be read again
-  or lent.
-- Research materials come from the researcher's own pack. The Phase 140 settlement stockpile source
-  Phase 203 removed `materialSource` from the fabric; `TechnologySlice.STOCKPILE_RESEARCH_HOLD`
-  keeps TechMasterForge on the stockpile until this phase. The rules are `GameData.WRITINGS`
-  (`Book`, `Blueprint`).
-  is removed.
-
-**Acceptance criteria:**
-- [ ] Suite: a player who reads a book unlocks its technology, and one who has not read it is
-  unchanged. Writing about a technology the writer does not know is refused.
-- [ ] Suite: a blueprint teaches its recipe, and no research reads a shared stockpile.
-- [ ] Harness: a book handed to a client teaches the client, not the host's player.
 - [ ] Suite green on both boot paths, harness green.
 
 ---

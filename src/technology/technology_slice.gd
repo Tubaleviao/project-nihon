@@ -48,6 +48,8 @@ extends Node
 ## technology can collide with, so every save and sync path carries it; a snapshot
 ## without them (a legacy save) loads as 0 points and no recipes crafted.
 
+const ProjectRules := preload("res://src/settlement/project_rules.gd")
+
 const STATE_LOCKED := "locked"
 const STATE_RESEARCHING := "researching"
 const STATE_UNLOCKED := "unlocked"
@@ -59,9 +61,9 @@ const CRAFTED_KEY := "_first_crafts"
 ## Fallback rule table when GameData has no ResearchPointRule (a slice built before
 ## GameData loads); mirrors the fabric default.
 const DEFAULT_RULES := { "craft": 1, "gather": 1, "firstCraftOfRecipe": 3, "maxPoints": 5000, "windowSeconds": 600, "windowCap": 60 }
-## Phase 203 — the fabric no longer names a stockpile `materialSource` (research is per player); these keep
-## Phase 140's settlement stockpile source until Phase 209 removes it.
-const STOCKPILE_RESEARCH_HOLD := ["TechMasterForge"]
+## Phase 209 — the reserved snapshot key for the station recipes and settlement projects a player learnt from a
+## blueprint (a technology learnt from a book is simply "unlocked").
+const LEARNT_KEY := "_learnt"
 ## The rule keys that are point sources (the rest of the table are caps).
 const SOURCES := ["craft", "gather", "firstCraftOfRecipe"]
 
@@ -71,9 +73,6 @@ const SOURCES := ["craft", "gather", "firstCraftOfRecipe"]
 var inventory_slice: Node = null
 
 ## Set by game_root: the PlayerRegistry, which owns one inventory per player.
-## Phase 140 — the settlement slice, for technologies whose materials come from a stockpile.
-var settlement_slice: Node = null
-
 ## When wired, `inventory_for(player_id)` resolves the researcher's own inventory.
 var player_registry: Node = null
 
@@ -103,6 +102,12 @@ var _first_crafts: Dictionary = {}
 
 ## Reverse index: recipe key -> owning technology key. Built once in _ready().
 var _recipe_tech: Dictionary = {}
+
+## Phase 209 — player_id -> { recipe or project key -> true } learnt from a blueprint.
+var _learnt: Dictionary = {}
+
+## Phase 209 — item key -> the recipe that outputs it, for "knows how to make a project's materials".
+var _item_recipe: Dictionary = {}
 
 func _ready() -> void:
 	_build_recipe_index()
@@ -183,21 +188,9 @@ func begin_research(tech_id: String, player_id: String = "") -> Dictionary:
 	if get_points(pid) < cost:
 		return _emit(_result(tech_id, false, "insufficient_points", cur, pid))
 
+	# Phase 209 — research materials always come from the researcher's own pack (the Phase 140 settlement
+	# stockpile source is gone: research is per player and shared only by writing).
 	var materials: Array = tech.get("researchMaterials", [])
-	# Phase 140 — a technology with a settlement `materialSource` draws its materials from the
-	# researcher's settlement stockpile, never from the pack. Phase 205 — the hearth-site rule is gone: the
-	# stockpile is reachable within its site's reach (`SettlementSlice.research_stock`) until Phase 209.
-	var from_stockpile := (tech.get("materialSource", null) is Dictionary and str(tech["materialSource"].get("container", "")) == "Stockpile") \
-		or STOCKPILE_RESEARCH_HOLD.has(tech_id)
-	if from_stockpile:
-		if settlement_slice == null or settlement_slice.settlement_of(pid) == "":
-			return _emit(_result(tech_id, false, "no_settlement", cur, pid))
-		for entry in materials:
-			if settlement_slice.research_stock(pid, str(entry.get("item", ""))) < int(entry.get("quantity", 1)):
-				return _emit(_result(tech_id, false, "missing_materials", cur, pid))
-		if not settlement_slice.consume_research(pid, _to_counts(materials)):
-			return _emit(_result(tech_id, false, "missing_materials", cur, pid))
-		return _start_research(tech_id, tech, cur, pid, cost)
 	var inventory := inventory_for(pid)
 	if inventory == null or not inventory.has_method("consume_items"):
 		return _emit(_result(tech_id, false, "no_inventory", cur, pid))
@@ -247,10 +240,77 @@ func complete_research(tech_id: String, player_id: String = "") -> Dictionary:
 func is_unlocked(tech_id: String, player_id: String = "") -> bool:
 	return get_status(tech_id, player_id) == STATE_UNLOCKED
 
+# ---------------------------------------------------------------------------
+# Learning from writing (Phase 209)
+# ---------------------------------------------------------------------------
+
+## Whether `player_id` knows `key` of `kind` ("technology", "station" or "project"), which is what a writer
+## must know to write about it. A station recipe is known when it is craftable (its technology, or a
+## blueprint); a project when it was learnt from a blueprint or the player can make every crafted material
+## it takes.
+func knows(kind: String, key: String, player_id: String = "") -> bool:
+	var pid := resolve_player(player_id)
+	match kind:
+		"technology":
+			return is_unlocked(key, pid)
+		"station":
+			return is_recipe_unlocked(key, pid)
+		"project":
+			if _learnt.get(pid, {}).has(key):
+				return true
+			var project := ProjectRules.def_of(key)
+			if project.is_empty():
+				return false
+			for m: Variant in project.get("materials", []):
+				var recipe := str(_item_recipe.get(str((m as Dictionary).get("item", "")), ""))
+				if recipe != "" and not is_recipe_unlocked(recipe, pid):
+					return false
+			return true
+	return false
+
+## Host-only: `player_id` learns `key` of `kind` by reading. "" on success, else a reason: `unknown`,
+## `already_known` or `prerequisite_locked:<tech>` (a book does not skip the tree). A technology is unlocked
+## and announced like finished research; a recipe or project joins the learnt set. Either way the player's
+## record and their client's mirror are updated through the usual research paths.
+func learn(kind: String, key: String, player_id: String = "") -> String:
+	var pid := resolve_player(player_id)
+	match kind:
+		"technology":
+			if not GameData.TECHNOLOGIES.has(key):
+				return "unknown"
+			if is_unlocked(key, pid):
+				return "already_known"
+			for req in _get_tech_data(key).get("requires", []):
+				if not is_unlocked(str(req), pid):
+					return "prerequisite_locked:%s" % str(req)
+			_status_for(pid)[key] = STATE_UNLOCKED
+			if _research_end_at.has(pid):
+				_research_end_at[pid].erase(key)
+			GameBus.technology_unlocked.emit(key, pid)
+			_emit(_result(key, true, "learnt", STATE_UNLOCKED, pid))
+			return ""
+		"station", "project":
+			if kind == "station" and not GameData.RECIPES.has(key):
+				return "unknown"
+			if kind == "project" and ProjectRules.def_of(key).is_empty():
+				return "unknown"
+			if _learnt.get(pid, {}).has(key) or (kind == "station" and is_recipe_unlocked(key, pid)):
+				return "already_known"
+			if not _learnt.has(pid):
+				_learnt[pid] = {}
+			_learnt[pid][key] = true
+			# Emitted so the host's listener records and pushes the new snapshot (as `apply_statuses` does).
+			GameBus.research_points_synced.emit(pid, get_points(pid))
+			return ""
+	return "unknown"
+
 ## Whether a recipe is craftable FOR THIS PLAYER with respect to the technology
 ## tree. Fail-closed: a recipe that maps to no technology (or an unknown tech)
 ## returns false.
 func is_recipe_unlocked(recipe_id: String, player_id: String = "") -> bool:
+	# Phase 209 — a recipe learnt from a blueprint is craftable without its technology.
+	if _learnt.get(resolve_player(player_id), {}).has(recipe_id):
+		return true
 	var tech_id := get_recipe_tech(recipe_id)
 	if tech_id == "":
 		return false
@@ -276,6 +336,10 @@ func get_statuses(player_id: String = "") -> Dictionary:
 		var crafted: Array = _first_crafts[pid].keys()
 		crafted.sort()
 		snap[CRAFTED_KEY] = crafted
+	if not _learnt.get(pid, {}).is_empty():
+		var learnt: Array = _learnt[pid].keys()
+		learnt.sort()
+		snap[LEARNT_KEY] = learnt
 	return snap
 
 # ---------------------------------------------------------------------------
@@ -412,6 +476,14 @@ func apply_statuses(statuses: Dictionary, player_id: String = "") -> void:
 			if GameData.RECIPES.has(str(recipe_id)):
 				crafted[str(recipe_id)] = true
 	_first_crafts[pid] = crafted
+	# Phase 209 — bounded the same way: only recipes and projects the fabric knows.
+	var learnt: Dictionary = {}
+	var learnt_v: Variant = statuses.get(LEARNT_KEY, [])
+	if learnt_v is Array:
+		for key in learnt_v:
+			if GameData.RECIPES.has(str(key)) or not ProjectRules.def_of(str(key)).is_empty():
+				learnt[str(key)] = true
+	_learnt[pid] = learnt
 	_research_end_at[pid] = {}
 	# Re-schedule auto-completion for any tech restored mid-research so it does not
 	# stay stuck in "researching" forever after a reload (elapsed time is not
@@ -474,6 +546,12 @@ func _build_recipe_index() -> void:
 		var tech := _get_tech_data(tech_key)
 		for recipe_id in tech.get("unlocks", []):
 			_recipe_tech[str(recipe_id)] = tech_key
+	for recipe_id in GameData.RECIPES:
+		var recipe: Variant = GameData.RECIPES[recipe_id].get("recipe")
+		if recipe is Dictionary:
+			for out: Variant in recipe.get("outputs", []):
+				if out is Dictionary:
+					_item_recipe[str(out.get("item", ""))] = str(recipe_id)
 
 ## Return the structured `tech` json field for a technology, or {} if malformed.
 func _get_tech_data(tech_id: String) -> Dictionary:

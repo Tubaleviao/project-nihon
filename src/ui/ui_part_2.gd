@@ -5,6 +5,7 @@ var sl: Node
 var trade_box: VBoxContainer = null
 
 const AdminPanelScript := preload("res://src/ui/admin_panel.gd")
+const WritingRules := preload("res://src/technology/writing_rules.gd")
 
 func _init(slice: Node) -> void:
 	sl = slice
@@ -65,6 +66,37 @@ func technology_rows() -> Array:
 			"requires": data.get("requires", []),
 			"duration": int(data.get("researchDuration", 0)),
 			"cost": sl._fmt_entries(data.get("researchMaterials", [])),
+		})
+	return rows
+
+## Phase 209 — a book or blueprint is read from the pack; the host decides what it teaches.
+func writing_actions(item_id: String) -> Array:
+	return [{"action": "read", "label": sl.I18n.t("ui.read")}] if WritingRules.is_writing(item_id) else []
+
+## Phase 209 — write a book or blueprint; the host checks what the writer knows, the station and the cost.
+func write_pressed(item_id: String) -> void:
+	GameBus.writing_intent.emit("write", item_id, "")
+
+## Phase 209 — one row per book or blueprint: { id, writing, teaches, kind, can_write, station, cost }. `can_write`
+## is what this machine knows the player knows; the host decides.
+func writing_rows() -> Array:
+	var rows: Array = []
+	if sl.technology_slice == null:
+		return rows
+	for item_id: String in WritingRules.items():
+		var w: Dictionary = WritingRules.of(item_id)
+		var cost := []
+		var counts: Dictionary = WritingRules.cost(str(w["writing"]))
+		for item: String in counts:
+			cost.append({ "item": item, "quantity": counts[item] })
+		rows.append({
+			"id": item_id,
+			"writing": str(w["writing"]),
+			"teaches": str(w["teaches"]),
+			"kind": str(w["kind"]),
+			"can_write": bool(sl.technology_slice.knows(str(w["kind"]), str(w["teaches"]))),
+			"station": WritingRules.station(str(w["writing"])),
+			"cost": sl._fmt_entries(cost),
 		})
 	return rows
 
@@ -310,6 +342,25 @@ func refresh_technology() -> void:
 		var line: String = sl.I18n.t("ui.tech_line", [r["id"], r["status"], reqs, r["cost"], r["points_cost"], r["duration"]])
 		var lbl := Label.new()
 		lbl.text = line + ("  (%s)" % sl.I18n.reason_text(str(r["reason"])) if str(r["reason"]) != "" else "")
+		hbox.add_child(lbl)
+		sl._technology_box.add_child(hbox)
+	var header := Label.new()
+	header.text = sl.I18n.t("ui.writing_header")
+	sl._technology_box.add_child(header)
+	for row in writing_rows():
+		var w: Dictionary = row
+		if not bool(w["can_write"]):
+			continue
+		var hbox := HBoxContainer.new()
+		hbox.add_theme_constant_override("separation", 8)
+		var btn := Button.new()
+		btn.text = sl.I18n.t("ui.write")
+		btn.pressed.connect(write_pressed.bind(str(w["id"])))
+		hbox.add_child(btn)
+		sl._add_row_icon(hbox, sl.item_icon_key(str(w["id"])))
+		var lbl := Label.new()
+		var where: String = str(w["station"]) if str(w["station"]) != "" else "—"
+		lbl.text = sl.I18n.t("ui.writing_line", [w["id"], w["cost"], where])
 		hbox.add_child(lbl)
 		sl._technology_box.add_child(hbox)
 
