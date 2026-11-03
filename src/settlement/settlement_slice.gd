@@ -4,7 +4,7 @@ extends Node
 ## A settlement is members with roles, a site and a shared stockpile. Phase 205 removed its claim, its
 ## hearth and its decay: what a player builds is owned by its structure (`StructureSlice`), not by land, and no
 ## new settlement is founded by players (clans replace them; `found` stays for the host and tests). The site is
-## where its stockpile, research and projects are used, within SITE_REACH, until Phases 207–209 move them. The host decides everything; clients mirror a view (`apply_view`). Rules come from the
+## where its stockpile and projects are used, within SITE_REACH (Phase 209: research no longer reads the stockpile). The host decides everything; clients mirror a view (`apply_view`). Rules come from the
 ## fabric's `Settlement` world system (`GameData.WORLD_SYSTEMS["Settlement"].rules`).
 ##
 ## Plug contract (GameBus):
@@ -54,7 +54,7 @@ const REASONS := ["unknown_player", "rate_limited", "bad_args", "already_member"
 	"too_many", "not_member", "no_permission", "unknown_settlement", "not_invited", "full", "bad_role",
 	"founder_locked", "no_stock", "over_limit", "no_inventory", "too_far", "unknown_action", "durable", "no_such_invite",
 	"unknown_project", "project_exists", "tier_too_low", "too_many_projects", "project_done", "unknown_item", "too_much",
-	"foreign_circle"]
+	"foreign_circle", "not_known"]
 
 const DEFAULT_RULES := {
 	"hearthStation": "hearth", "hearthItem": "Hearth", "guildMaxSettlements": 1,
@@ -71,7 +71,7 @@ const DEFAULT_RULES := {
 	},
 	"stockpile": { "founded": { "capacityStacks": 20 }, "growing": { "capacityStacks": 60 }, "town": { "capacityStacks": 160 } },
 }
-## Phase 205 — metres from a settlement's site within which its stockpile, research and projects are used (the
+## Phase 205 — metres from a settlement's site within which its stockpile and projects are used (the
 ## old founded-tier claim radius; it guards nothing and never decays).
 const SITE_REACH := 24.0
 const TIER_ORDER := ["founded", "growing", "town"]
@@ -81,6 +81,9 @@ var registry: Node = null
 var now_sec: Callable = func() -> float: return Time.get_unix_time_from_system()
 ## Monotonic seconds for the intent rate limit (a wall-clock jump must not lock or free a player).
 var mono_sec: Callable = func() -> float: return Time.get_ticks_msec() / 1000.0
+## Phase 209 — `(pid, project_key) -> bool`, set by the wiring: whether the starter knows the project (a
+## blueprint read, or every crafted material it takes). Unset (isolated tests) nothing is gated.
+var knows_project: Callable = Callable()
 ## `(station_id) -> void`, set by the wiring: a migrated settlement's hearth station is removed with it.
 var release_station: Callable = Callable()
 ## Phase 205 — founder -> Hearth items owed back (a saved settlement's hearth, removed on load), handed over
@@ -466,33 +469,6 @@ func withdraw(player_id: String, item: String, qty: int) -> String:
 	GameBus.settlements_changed.emit()
 	return ""
 
-## Units of `item` the player may draw for research: the stockpile of the settlement they belong to,
-## while they stand at its site. 0 otherwise.
-func research_stock(player_id: String, item: String) -> int:
-	var pid := _pid(player_id)
-	var id := settlement_of(pid)
-	if id == "" or not bool(role_rules(role_of(pid, id))["take"]) or not _at_site(pid, id):
-		return 0
-	return int((_settlements[id]["stock"] as Dictionary).get(item, 0))
-
-## Take research materials from the player's stockpile: all or nothing.
-func consume_research(player_id: String, counts: Dictionary) -> bool:
-	var pid := _pid(player_id)
-	var id := settlement_of(pid)
-	if id == "" or not _at_site(pid, id):
-		return false
-	var stock: Dictionary = _settlements[id]["stock"]
-	for item: String in counts:
-		if int(stock.get(item, 0)) < int(counts[item]):
-			return false
-	for item: String in counts:
-		stock[item] = int(stock[item]) - int(counts[item])
-		if int(stock[item]) <= 0:
-			stock.erase(item)
-	_touch(id)
-	GameBus.settlements_changed.emit()
-	return true
-
 func _push_inventory(pid: String) -> void:
 	if registry == null or not ("local_player_id" in registry) or pid == str(registry.local_player_id):
 		return
@@ -506,7 +482,8 @@ func projects_of(id: String) -> Dictionary:
 	return (_settlements.get(id, {}).get("projects", {}) as Dictionary).duplicate(true)
 
 ## Start project `key` at the actor's feet (or at `site`, a host-side caller's ground point; an intent never
-## names one). Needs a role with `invite`, the project site within SITE_REACH of the settlement's, and the tier.
+## names one). Needs a role with `invite`, the project site within SITE_REACH of the settlement's, the tier, and
+## (Phase 209) the starter knowing the project.
 func start_project(actor: String, key: String, site: Variant = null) -> String:
 	var pid := _pid(actor)
 	var id := settlement_of(pid)
@@ -524,6 +501,8 @@ func start_project(actor: String, key: String, site: Variant = null) -> String:
 	var why := ProjectRules.start_blocker(key, tier, s["projects"])
 	if why != "":
 		return why
+	if knows_project.is_valid() and not bool(knows_project.call(pid, key)):
+		return "not_known"
 	s["projects"][key] = { "key": key, "by": pid, "started": float(now_sec.call()), "site": { "x": (xz as Vector2).x, "z": (xz as Vector2).y },
 		"given": {}, "status": "building", "done_at": 0.0, "contributors": {} }
 	_touch(id)

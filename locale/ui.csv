@@ -171,6 +171,7 @@ ui.repairs_header,— Repairs —,— Reparos —
 ui.research,Research,Pesquisar
 ui.research_points,Research points: {0},Pontos de pesquisa: {0}
 ui.researching,Researching {0}…,Pesquisando {0}…
+ui.tech_unlocked,You know {0} now.,Agora você conhece {0}.
 ui.skill_tip,{0} ({1}),{0} ({1})
 ui.skills_title,Skills,Habilidades
 ui.slot_empty,{0}: empty,{0}: vazio
@@ -267,6 +268,7 @@ settlement.refused.too_many_projects,Finish a project before starting another.,T
 settlement.refused.project_done,That project is already built.,Esse projeto já está construído.
 settlement.refused.unknown_item,That project does not use this item.,Esse projeto não usa esse item.
 settlement.refused.too_much,More than the project still needs.,Mais do que o projeto ainda precisa.
+settlement.refused.not_known,You must know how to build that project first.,Você precisa saber construir esse projeto primeiro.
 settlement.refused.foreign_circle,Only that clan's members build this close to its buildings.,Só os membros desse clã constroem tão perto das construções dele.
 settlement.ok.project_start,Project started.,Projeto iniciado.
 settlement.ok.project_give,Materials given.,Materiais entregues.
@@ -701,3 +703,24 @@ lock.pick_lost,The pick failed.,O arrombamento falhou.
 lock.picked,"Someone picked your lock near ({0}, {1}).","Alguém arrombou sua fechadura perto de ({0}, {1})."
 lock.pick_failed,"Someone tried to pick your lock near ({0}, {1}).","Alguém tentou arrombar sua fechadura perto de ({0}, {1})."
 lock.destroyed,"Your chest or door near ({0}, {1}) was broken.","Seu baú ou porta perto de ({0}, {1}) foi quebrado."
+ui.read,Read,Ler
+ui.write,Write,Escrever
+ui.writing_header,— Books and blueprints you can write —,— Livros e plantas que você pode escrever —
+ui.writing_line,{0}  cost: {1}  at: {2},{0}  custo: {1}  em: {2}
+writing.ok.write_book,You wrote a book on {0}.,Você escreveu um livro sobre {0}.
+writing.ok.write_blueprint,You drew a blueprint of {0}.,Você desenhou uma planta de {0}.
+writing.ok.read,You learnt {0}.,Você aprendeu {0}.
+writing.name.book,Book: {0},Livro: {0}
+writing.name.blueprint,Blueprint: {0},Planta: {0}
+station.anywhere,anywhere,qualquer lugar
+station.carpentry_bench,carpentry bench,bancada de carpintaria
+writing.refused.unknown_writing,That is not a book or blueprint.,Isso não é um livro nem uma planta.
+writing.refused.not_known,You can only write about what you know.,Você só pode escrever sobre o que sabe.
+writing.refused.station_required,You need to be at the right station to write this.,Você precisa estar na estação certa para escrever isto.
+writing.refused.missing_materials,You lack the materials to write this.,Faltam materiais para escrever isto.
+writing.refused.pack_full,Your pack has no room for it.,Sua mochila não tem espaço para isso.
+writing.refused.not_held,You do not have that to read.,Você não tem isso para ler.
+writing.refused.already_known,You already know {0}.,Você já conhece {0}.
+writing.refused.researching,You are researching {0} already; finish it first.,Você já está pesquisando {0}; termine primeiro.
+writing.refused.prerequisite_locked,You need to know its prerequisites first.,Você precisa conhecer os pré-requisitos primeiro.
+writing.refused.rate,Slow down.,Mais devagar.

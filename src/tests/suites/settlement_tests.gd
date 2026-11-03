@@ -12,7 +12,7 @@ func register() -> void:
 	_run_test("settlement: invite, join, roles and leaving", _test_settlement_membership)
 	_run_test("settlement: save and load round-trips, malformed data is dropped", _test_settlement_persistence)
 	_run_test("settlement: intents resolve through the bus and refuse the unknown", _test_settlement_intents)
-	_run_test("settlement: research draws from the stockpile", _test_settlement_research)
+	_run_test("settlement: research never reads the stockpile, only the researcher's pack (Phase 209)", _test_settlement_research)
 	_run_test("settlement: a client intent binds the connection's player", _test_settlement_wire)
 	_run_test("settlement: a hearth at x ~ 2e7 keeps its exact position through save and load", _test_phase147_hearth_exact)
 	_run_test("settlement: invites lapse and can be withdrawn", _test_invite_lapse_uninvite)
@@ -252,31 +252,33 @@ func _test_settlement_intents() -> void:
 func _test_settlement_research() -> void:
 	var rig := _rig()
 	var s: SettlementSlice = rig["s"]
-	_found(rig)
+	var id := _found(rig)
 	var tech := TechnologySlice.new()
 	add_child(tech)
-	tech.settlement_slice = s
+	tech.player_registry = rig["reg"]
 	tech.is_authoritative = true
 	var tid := "TechMasterForge"
 	var materials: Array = GameData.TECHNOLOGIES[tid].get("tech").get("researchMaterials")
 	var item := str(materials[0]["item"])
 	var qty := int(materials[0]["quantity"])
-	# Phase 203 — the fabric dropped the stockpile source; the runtime holds it until Phase 209.
+	# Phase 209 — research is per player: its materials come from the researcher's pack, never a stockpile.
 	assert_false(GameData.TECHNOLOGIES[tid].get("tech").has("materialSource"), "the fabric names no stockpile material source")
-	assert_true(TechnologySlice.STOCKPILE_RESEARCH_HOLD.has(tid), "the runtime holds the stockpile source")
-	assert_eq(s.research_stock("p1", item), 0, "an empty stockpile holds nothing for research")
+	assert_false((TechnologySlice as Script).get_script_constant_map().has("STOCKPILE_RESEARCH_HOLD"), "the runtime's stockpile hold is gone")
+	assert_false(s.has_method("research_stock") or s.has_method("consume_research"), "the settlement offers nothing to research")
+	tech.apply_statuses({ "TechBasicSmithing": "unlocked", TechnologySlice.POINTS_KEY: 1000 }, "p1")
 	_give(rig, "p1", item, qty)
 	s.deposit("p1", item, qty)
-	assert_eq(s.research_stock("p1", item), qty, "research sees the stockpile")
-	assert_eq(s.research_stock("p3", item), 0, "an outsider sees nothing")
-	rig["where"]["p1"] = Vector2(900.0, 900.0)
-	assert_eq(s.research_stock("p1", item), 0, "research is drawn at the site")
-	assert_false(s.consume_research("p1", { item: qty }), "and so does paying for it")
-	rig["where"]["p1"] = Vector2(10.0, 10.0)
-	assert_false(s.consume_research("p1", { item: qty + 1 }), "paying more than is held is refused whole")
-	assert_eq(s.research_stock("p1", item), qty, "a refused payment keeps the stock")
-	assert_true(s.consume_research("p1", { item: qty }), "a covered payment is taken")
-	assert_eq(s.research_stock("p1", item), 0, "from the stockpile")
+	assert_eq(int(s.stock_of(id).get(item, 0)), qty, "the stockpile holds the materials")
+	var inv: Node = rig["reg"].get_inventory("p1")
+	assert_eq(inv.get_item_count(item), 0, "the pack is empty after the deposit")
+	var refused: Dictionary = tech.begin_research(tid, "p1")
+	assert_false(bool(refused["success"]), "a full stockpile does not pay for research")
+	assert_eq(str(refused["reason"]), "missing_materials", "the pack is what counts")
+	assert_eq(int(s.stock_of(id).get(item, 0)), qty, "and the stockpile is untouched")
+	_give(rig, "p1", item, qty)
+	assert_true(bool(tech.begin_research(tid, "p1")["success"]), "the researcher's own pack pays")
+	assert_eq(inv.get_item_count(item), 0, "from the pack")
+	assert_eq(int(s.stock_of(id).get(item, 0)), qty, "never the stockpile")
 	tech.free()
 	_free_rig(rig)
 

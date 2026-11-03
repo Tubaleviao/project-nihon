@@ -109,6 +109,11 @@ func _test_project_flow() -> void:
 	assert_eq(s.start_project("p1", "storehouse"), "foreign_circle", "not inside another clan's circle")
 	assert_true(s.projects_of(id).is_empty(), "and nothing is started")
 	s.build_blocked = Callable()
+	# Phase 209 — a starter who does not know the project (no blueprint read, cannot make its materials) is refused.
+	s.knows_project = func(_pid: String, key: String) -> bool: return key != "storehouse"
+	assert_eq(s.start_project("p1", "storehouse"), "not_known", "an unknown project cannot be started")
+	assert_true(s.projects_of(id).is_empty(), "and nothing is started")
+	s.knows_project = Callable()
 	assert_eq(s.start_project("p1", "storehouse"), "", "the founder starts the storehouse")
 	assert_eq(s.start_project("p1", "storehouse"), "project_exists", "not twice")
 	_give(rig, "p2", "ThornwoodPlank", 40)

@@ -245,6 +245,8 @@ module.exports = defineFabric({
       Chest:                    items.Chest,
       Door:                     items.Door,
     },
+    // Gameplay — Written books and blueprints, one per thing that can be written (Phase 209)
+    Object.fromEntries(Object.keys(writing.WRITING_ITEMS).map((k) => [k, items[k]])),
     // Gameplay — Gestures
     gestures.GESTURES,
     // Gameplay — Recipes

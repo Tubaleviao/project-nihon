@@ -164,10 +164,85 @@
       "scale": 1,
       "hash": "1d74ecd5d080e48e"
     },
+    "BlueprintPalisade": {
+      "archetype": "tablet",
+      "scale": 1,
+      "hash": "dcedeaa7cfa633c3"
+    },
+    "BlueprintRecipeBed": {
+      "archetype": "tablet",
+      "scale": 1,
+      "hash": "13197aff22681aae"
+    },
+    "BlueprintRecipeChest": {
+      "archetype": "tablet",
+      "scale": 1,
+      "hash": "cc26bba93e73cba3"
+    },
+    "BlueprintRecipeDoor": {
+      "archetype": "tablet",
+      "scale": 1,
+      "hash": "b146c27c5d71ad27"
+    },
+    "BlueprintRecipeHearth": {
+      "archetype": "tablet",
+      "scale": 1,
+      "hash": "7208649022c4182f"
+    },
+    "BlueprintStorehouse": {
+      "archetype": "tablet",
+      "scale": 1,
+      "hash": "4d2e7b8ca1ac319e"
+    },
+    "BlueprintWatchtower": {
+      "archetype": "tablet",
+      "scale": 1,
+      "hash": "2493971195402e20"
+    },
+    "BlueprintWorkshop": {
+      "archetype": "tablet",
+      "scale": 1,
+      "hash": "8231dd328e5c0303"
+    },
     "BoneSaw": {
       "archetype": "saw",
       "scale": 1,
       "hash": "83a26936b1d6bc28"
+    },
+    "BookTechAlchemy": {
+      "archetype": "tablet",
+      "scale": 1,
+      "hash": "4f76aba4411e952b"
+    },
+    "BookTechArcaneForging": {
+      "archetype": "tablet",
+      "scale": 1,
+      "hash": "7462dcb661a1f278"
+    },
+    "BookTechBasicCarpentry": {
+      "archetype": "tablet",
+      "scale": 1,
+      "hash": "82c69e101ffad456"
+    },
+    "BookTechBasicSmithing": {
+      "archetype": "tablet",
+      "scale": 1,
+      "hash": "02db3bb482676eed"
+    },
+    "BookTechMasterForge": {
+      "archetype": "tablet",
+      "scale": 1,
+      "hash": "344c2b9a08d499ac"
+    },
+    "BookTechTextileWeaving": {
+      "archetype": "tablet",
+      "scale": 1,
+      "hash": "7962df0db80f7768"
+    },
+    "BookTechVoidMastery": {
+      "archetype": "tablet",
+      "scale": 1,
+      "hash": "2283de388a010100"
     },
     "CarpenterAxe": {
       "archetype": "axe",

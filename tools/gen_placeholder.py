@@ -69,6 +69,8 @@ ITEM_TEXTURE_SIZES = {
     "AethermiteDust": 64, "AshiteBlock": 64, "FieldRations": 64, "LumenfiteOrb": 64, "ThornwoodPlank": 64,
     "Hearth": 64, "Waystone": 64, "Bed": 64, "Chest": 64, "Door": 64, "Lockpick": 32, "AethermiteShard": 32, "EnchantedAethermiteShard": 32, "AlchemyPotion": 32,
     "FerriteIngot": 32, "VeilsteelIngot": 32, "RefinedVoiditeShard": 32, "VoidRuneTablet": 32,
+    # Phase 209 — written books and blueprints.
+    "BookTechBasicSmithing": 32, "BookTechMasterForge": 32, "BookTechBasicCarpentry": 32, "BookTechTextileWeaving": 32, "BookTechArcaneForging": 32, "BookTechAlchemy": 32, "BookTechVoidMastery": 32, "BlueprintRecipeBed": 32, "BlueprintRecipeChest": 32, "BlueprintRecipeDoor": 32, "BlueprintRecipeHearth": 32, "BlueprintPalisade": 32, "BlueprintStorehouse": 32, "BlueprintWorkshop": 32, "BlueprintWatchtower": 32,
 }
 ITEM_TEXTURE_DIR = ROOT / "assets/textures/items"
 # Phase 180 — the eyes of the creation gender presets (fabric/gameplay/characters/appearances.js).
