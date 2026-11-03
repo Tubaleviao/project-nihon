@@ -110,13 +110,15 @@ var _circles: Dictionary = {}
 var _circle_keys: Dictionary = {}
 var _buckets: Dictionary = {}
 var _circle_dirty: Dictionary = {}
-## Client and host: the last `block_damaged` heard, and how many (the harness reads both peers').
 ## Phase 210 — clan id -> whole score points of every block its structures hold; the clans whose points moved
-## since the last `flush_clan_scores`; and whether the next flush sends every clan (after a load or a reset).
+## since the last `flush_clan_scores`; whether the next flush sends every clan (after a load or a reset); and
+## each material's points per block (a load indexes up to `MAX_CELLS` blocks).
 var _clan_points: Dictionary = {}
 var _points_dirty: Dictionary = {}
 var _points_all: bool = false
+var _material_points: Dictionary = {}
 
+## Client and host: the last `block_damaged` heard, and how many (the harness reads both peers').
 var last_damage: Dictionary = {}
 var damage_seen: int = 0
 
@@ -637,7 +639,7 @@ func _add_cell(sid: int, tile: Vector2i, mm: int, cell: Array) -> void:
 		_sum_column(s, tile, 1)
 	var old: Variant = (s["cells"][tile] as Dictionary).get(mm, null)
 	if old is Array:
-		_add_points(s, -Rules.score_points(str(old[0])))
+		_add_points(s, -_points_of(str(old[0])))
 	else:
 		s["count"] = int(s["count"]) + 1
 		_cell_count += 1
@@ -645,7 +647,7 @@ func _add_cell(sid: int, tile: Vector2i, mm: int, cell: Array) -> void:
 			s["levels"] = {}
 		s["levels"][mm] = int(s["levels"].get(mm, 0)) + 1
 	s["cells"][tile][mm] = cell
-	_add_points(s, Rules.score_points(str(cell[0])))
+	_add_points(s, _points_of(str(cell[0])))
 	_note_hurt(s, cell)
 	if not _tiles.has(tile):
 		_tiles[tile] = {}
@@ -663,7 +665,7 @@ func _remove_cell(sid: int, tile: Vector2i, mm: int) -> void:
 	_circle_dirty[sid] = true
 	var col: Dictionary = s["cells"].get(tile, {})
 	if col.has(mm):
-		_add_points(s, -Rules.score_points(str(col[mm][0])))
+		_add_points(s, -_points_of(str(col[mm][0])))
 	if col.erase(mm):
 		s["count"] = int(s["count"]) - 1
 		_cell_count -= 1
@@ -692,6 +694,12 @@ func _add_points(s: Dictionary, points: int) -> void:
 	else:
 		_clan_points.erase(id)
 	_points_dirty[id] = true
+
+## `Rules.score_points(material)`, looked up once per material.
+func _points_of(material: String) -> int:
+	if not _material_points.has(material):
+		_material_points[material] = Rules.score_points(material)
+	return int(_material_points[material])
 
 ## A clan's score: its points over `ClanTiers.durabilityUnit`.
 func clan_score(clan_id: String) -> float:
@@ -736,6 +744,7 @@ func flush_clan_scores() -> void:
 func _clear_points() -> void:
 	_clan_points.clear()
 	_points_dirty.clear()
+	_material_points.clear()
 	_points_all = true
 
 ## The indexed blocks of `tile` whose bottoms lie in [`bottom`, `top`): `[[sid, mm], ...]`.

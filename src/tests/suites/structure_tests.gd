@@ -48,6 +48,8 @@ func register() -> void:
 	_run_test("clan tier: a stone building raises the score more than a wood one, wherever it stands; a threshold changes the tier once", _test_tier_rises)
 	_run_test("clan tier: destroying the building that held a clan above a threshold drops its tier", _test_tier_drops)
 	_run_test("clan tier (audit): no score or tier is read from a client message", _test_tier_audit)
+	_run_test("clan tier: a block placed and taken again at a threshold sends at most one line per window", _test_tier_flip_throttle)
+	_run_test("clan tier: a world saved before tiers takes its first tier without a line", _test_tier_old_save_quiet)
 
 # ── rig ──────────────────────────────────────────────────────────────────
 
@@ -1026,6 +1028,7 @@ func _test_tier_rises() -> void:
 		st.from_data(sdata)
 		st.flush_clan_scores())
 	assert_eq([clans.tier_of("clan_1"), lines], [second, []], "after a load the tier is kept and nobody is told again")
+	r["now"][0] += ClanSlice.RANK_NOTICE_SEC
 	lines = _rank_lines(func() -> void:
 		st.reset_world()
 		st.flush_clan_scores())
@@ -1050,6 +1053,7 @@ func _test_tier_drops() -> void:
 	st.tick()
 	assert_eq(clans.tier_of("clan_1"), str(all[1]["tier"]), "the clan is above the threshold")
 	# An outsider breaks the second building down; the clan falls below the threshold.
+	r["now"][0] += ClanSlice.RANK_NOTICE_SEC
 	var lines := _rank_lines(func() -> void:
 		var k := 0
 		while k < 5000 and st.get_structure(lift).size() > 0:
@@ -1104,4 +1108,91 @@ func _test_tier_audit() -> void:
 		or clan_src.contains("args.get(\"tier\""), "a clan intent names no score or tier")
 	assert_true(FileAccess.get_file_as_string("res://src/structure/structure_slice.gd").contains("GameBus.clan_score_changed.emit(id, clan_score(id))"),
 		"the score is sent from the host's structure index")
+	_free_rig(r)
+
+func _test_tier_flip_throttle() -> void:
+	var r := _rig()
+	var st: StructureSlice = r["st"]
+	var clans: ClanSlice = r["clans"]
+	_online(r, "p1", 2)
+	assert_eq(st.set_build_mode("p1", "clan"), "", "p1 builds for the clan")
+	var all := ClanSlice.tiers()
+	var first := str(all[0]["tier"])
+	var second := str(all[1]["tier"])
+	var need := ceili(float(all[1]["minScore"]) / _block_score("Ashite"))
+	var tower := Vector2i(5000, 5000)
+	_index_column(st, "p1", tower, need - 1, "Ashite")
+	st.flush_clan_scores()
+	var top := Vector2i(6000, 6000)
+	# Place and take away the block that crosses the threshold, again and again inside one window.
+	var lines := _rank_lines(func() -> void:
+		for i in 10:
+			r["now"][0] += 1.0
+			st.drop_span(top, -1000.0, 1000.0)
+			_index_column(st, "p1", top, 1, "Ashite")
+			st.flush_clan_scores()
+			clans.tick(r["now"][0])
+			r["now"][0] += 1.0
+			st.drop_span(top, -1000.0, 1000.0)
+			st.flush_clan_scores()
+			clans.tick(r["now"][0]))
+	assert_eq(lines, [["clan.rank_up." + second, "p1"]], "ten flips inside the window send the first line only")
+	assert_eq(clans.tier_of("clan_1"), first, "the tier still follows the buildings at once")
+	# The window ends with the tier back where its members last heard it: up, so they hear it went down.
+	r["now"][0] += ClanSlice.RANK_NOTICE_SEC
+	lines = _rank_lines(func() -> void: clans.tick(r["now"][0]))
+	assert_eq(lines, [["clan.rank_down." + first, "p1"]], "after the window the held change is told once")
+	lines = _rank_lines(func() -> void:
+		r["now"][0] += ClanSlice.RANK_NOTICE_SEC
+		clans.tick(r["now"][0]))
+	assert_eq(lines, [], "and nothing more")
+	# A move that comes back inside the window sends nothing once the window ends.
+	r["now"][0] += ClanSlice.RANK_NOTICE_SEC
+	lines = _rank_lines(func() -> void:
+		_index_column(st, "p1", top, 1, "Ashite")
+		st.flush_clan_scores())
+	assert_eq(lines, [["clan.rank_up." + second, "p1"]], "a rise after a quiet window is told at once")
+	lines = _rank_lines(func() -> void:
+		r["now"][0] += 1.0
+		st.drop_span(top, -1000.0, 1000.0)
+		st.flush_clan_scores()
+		r["now"][0] += 1.0
+		_index_column(st, "p1", top, 1, "Ashite")
+		st.flush_clan_scores()
+		r["now"][0] += ClanSlice.RANK_NOTICE_SEC
+		clans.tick(r["now"][0]))
+	assert_eq(clans.tier_of("clan_1"), second, "the clan is back at the tier its members heard")
+	assert_eq(lines, [], "...and a rise back to the tier last heard sends nothing")
+	_free_rig(r)
+
+func _test_tier_old_save_quiet() -> void:
+	var r := _rig()
+	var st: StructureSlice = r["st"]
+	var clans: ClanSlice = r["clans"]
+	_online(r, "p1", 2)
+	assert_eq(st.set_build_mode("p1", "clan"), "", "p1 builds for the clan")
+	var all := ClanSlice.tiers()
+	var second := str(all[1]["tier"])
+	_index_column(st, "p1", Vector2i(5000, 5000), ceili(float(all[1]["minScore"]) / _block_score("Ashite")), "Ashite")
+	st.flush_clan_scores()
+	assert_eq(clans.tier_of("clan_1"), second, "the clan's buildings lift it")
+	# The same world as a save from before Phase 210: no tier or score on the clan.
+	var cdata: Dictionary = clans.to_data()
+	for id: String in cdata["clans"]:
+		cdata["clans"][id].erase("tier")
+		cdata["clans"][id].erase("score")
+	var sdata := st.to_data()
+	r["now"][0] += ClanSlice.RANK_NOTICE_SEC
+	var lines := _rank_lines(func() -> void:
+		clans.from_data(cdata)
+		st.from_data(sdata)
+		st.flush_clan_scores()
+		clans.tick(r["now"][0]))
+	assert_eq([clans.tier_of("clan_1"), lines], [second, []], "the old save takes its tier and nobody is told")
+	# Later changes are told as usual.
+	r["now"][0] += ClanSlice.RANK_NOTICE_SEC
+	lines = _rank_lines(func() -> void:
+		st.reset_world()
+		st.flush_clan_scores())
+	assert_eq(lines, [["clan.rank_down." + str(all[0]["tier"]), "p1"]], "a later fall is told")
 	_free_rig(r)

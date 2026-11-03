@@ -16,7 +16,7 @@ extends Node
 ##   clan_of(player_id) -> String / role_of(player_id) -> String / may(player_id, permission) -> bool
 ##   private_view(player_id)        what one player may see: their own clan's roster with skills, and invites
 ##   migrate_settlements(data)      a saved world's settlements become clans (Clan.migration)
-##   tick(now)                      lapse old invites
+##   tick(now)                      lapse old invites, send held tier lines
 ##   set_score(id, score)           Phase 210: the structure index's score for a clan, and the tier it gives
 ##
 ## Phase 210 — a clan's tier (`ClanTiers.tiers`) is the highest whose `minScore` its score reaches. The score
@@ -39,6 +39,9 @@ const MAX_MEMBERS := 512
 const MAX_ROSTER_SKILLS := 48
 ## A skill change re-sends a clan's roster at most this often (an XP grant fires on every harvest swing).
 const SKILL_PUSH_SEC := 5.0
+## Phase 210 — a clan's members hear at most one tier line this often: a block placed and taken away again at a
+## threshold never sends a line per flip, and a tier that moved and came back inside the window sends none.
+const RANK_NOTICE_SEC := 60.0
 ## The clan record's format: 1 is the first (Phase 204).
 const DATA_FORMAT := 1
 const ACTIONS := ["found", "invite", "uninvite", "join", "decline", "leave", "kick", "role"]
@@ -88,6 +91,12 @@ var _dirty_players: Dictionary = {}
 ## Clan ids whose members' skills changed, held until `SKILL_PUSH_SEC` after that clan's last skill push.
 var _skill_dirty: Dictionary = {}
 var _skill_pushed: Dictionary = {}
+## Phase 210 — clan id -> the tier its members last heard and when (`mono_sec`); the clans whose tier moved inside
+## that window, told on a later `tick`; and the clans loaded without a tier (a save from before Phase 210), whose
+## first score sets the tier without a line.
+var _rank_told: Dictionary = {}
+var _rank_pending: Dictionary = {}
+var _rank_quiet: Dictionary = {}
 ## Client view: what the host last sent.
 var _view: Dictionary = {}
 
@@ -173,7 +182,8 @@ func tier_of(id: String) -> String:
 
 ## Host: the structure index says clan `id` scores `score`. Its tier follows; a change tells its online members
 ## ("clan.rank_up.<tier>" or "clan.rank_down.<tier>") once. Members see the score in their next view (at most
-## once per `SKILL_PUSH_SEC`, a tier change at once). An unknown clan (disbanded) is ignored.
+## once per `SKILL_PUSH_SEC`, a tier change at once), and hear at most one line per `RANK_NOTICE_SEC`. A clan
+## loaded without a tier takes its first one quietly. An unknown clan (disbanded) is ignored.
 func set_score(id: String, score: float) -> void:
 	if not is_host or not _clans.has(id):
 		return
@@ -184,16 +194,37 @@ func set_score(id: String, score: float) -> void:
 	c["score"] = v
 	var was := str(c.get("tier", tier_for(0.0)))
 	var now := tier_for(v)
+	var quiet := _rank_quiet.has(id)
+	_rank_quiet.erase(id)
+	if not _rank_told.has(id) or quiet:
+		_rank_told[id] = [now if quiet else was, -1.0e12]
+	c["tier"] = now
 	if now == was:
-		c["tier"] = now
 		_skill_dirty[id] = true   # the roster's score line, throttled like a skill change
 		return
-	c["tier"] = now
-	var key := ("clan.rank_up." if tier_rank(now) > tier_rank(was) else "clan.rank_down.") + now
-	for m: String in (c["members"] as Dictionary):
-		if _is_online(m):
-			GameBus.system_message.emit(key, [], m)
 	_changed(id)
+	if not quiet:
+		_rank_pending[id] = true
+		_tell_ranks()
+
+## Tell each clan whose tier moved the tier it now holds, when its last line is `RANK_NOTICE_SEC` old: up or
+## down from the tier its members last heard, nothing when it came back to that one.
+func _tell_ranks() -> void:
+	var at := float(mono_sec.call())
+	for id: String in _rank_pending.keys():
+		var told: Array = _rank_told[id]
+		if at - float(told[1]) < RANK_NOTICE_SEC:
+			continue
+		_rank_pending.erase(id)
+		var c: Dictionary = _clans[id]
+		var now := str(c["tier"])
+		if now == str(told[0]):
+			continue
+		_rank_told[id] = [now, at]
+		var key := ("clan.rank_up." if tier_rank(now) > tier_rank(str(told[0])) else "clan.rank_down.") + now
+		for m: String in (c["members"] as Dictionary):
+			if _is_online(m):
+				GameBus.system_message.emit(key, [], m)
 
 ## The name rule's bounds for `CreationRules.name_refusal`.
 func _name_limits() -> Dictionary:
@@ -471,6 +502,9 @@ func _disband(id: String) -> void:
 	_clans.erase(id)
 	_skill_dirty.erase(id)
 	_skill_pushed.erase(id)
+	_rank_told.erase(id)
+	_rank_pending.erase(id)
+	_rank_quiet.erase(id)
 	GameBus.clan_disbanded.emit(id, heir)   # Phase 208 — its chests and doors go to its last member
 
 ## Remove `target` from the actor's clan. The founder is never kicked, and an actor kicks only members ranked
@@ -523,13 +557,16 @@ func set_role(actor: String, target: String, role: String) -> String:
 	_changed(id)
 	return ""
 
-## Lapse old invites as of `now`. Returns true when anything changed.
+## Lapse old invites as of `now`, and (host) send the tier lines `RANK_NOTICE_SEC` held back. Returns true when
+## anything changed.
 func tick(now: float) -> bool:
 	var changed := false
 	for id: String in ids():
 		if _lapse_invites(_clans[id], now):
 			_dirty_clans[id] = true
 			changed = true
+	if is_host:
+		_tell_ranks()
 	if changed:
 		GameBus.clans_changed.emit()
 	return changed
@@ -665,6 +702,9 @@ func from_data(data: Variant) -> void:
 	_dirty_players.clear()
 	_skill_dirty.clear()
 	_skill_pushed.clear()
+	_rank_told.clear()
+	_rank_pending.clear()
+	_rank_quiet.clear()
 	_next_id = 1
 	if not (data is Dictionary):
 		return
@@ -707,6 +747,8 @@ func from_data(data: Variant) -> void:
 		var tier: Variant = c.get("tier", null)
 		if tier is String and tiers().any(func(e: Dictionary) -> bool: return str(e["tier"]) == tier):
 			_clans[id]["tier"] = tier
+		else:
+			_rank_quiet[id] = true   # saved before Phase 210: its buildings set a tier nobody earned just now
 		var score: Variant = c.get("score", null)
 		if (score is float or score is int) and is_finite(float(score)) and float(score) >= 0.0:
 			_clans[id]["score"] = float(score)
