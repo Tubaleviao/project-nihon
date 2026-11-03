@@ -41,6 +41,11 @@ d = fresh(); d.upkeep = { periodHours: 24 };
 expect('an upkeep table fails', d, /"upkeep": raids and upkeep were removed/);
 d = fresh(); d.projects.projects.workshop.places.stations = ['spaceport'];
 expect('a project placing an unknown station fails', d, /"spaceport" is not a placeable station type/);
+// Phase 212 — a project places whole floors, no more than its block's class carries.
+d = fresh(); d.projects.projects.palisade.places.floors = 3;
+expect('a wood project of three floors fails', d, /palisade\.places\.floors 3 is more than its block's structural class carries \(2\)/);
+d = fresh(); d.projects.projects.storehouse.places.blocks = 24;
+expect('a project still counting blocks fails', d, /storehouse\.places\.blocks: a project places whole floors/);
 d = fresh(); d.projects.projects.watchtower.minTier = 'city';
 expect('a project with an unknown minTier fails', d, /watchtower\.minTier "city" is not a settlement tier/);
 

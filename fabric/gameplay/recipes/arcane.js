@@ -149,4 +149,40 @@ module.exports = {
     },
   }),
 
+  // ─── RecipeLeyframe ────────────────────────────────────────────────────────
+  // Phase 212 — a material above stone.
+  RecipeLeyframe: defineEntity({
+    tags: ['recipe'],
+    description: 'Bind two steel and two raw aethermite into two leyframe at an arcane forge.',
+    goal: 'Leyframe: the only material that carries 163 floors, gated by the ley lines (Phase 212)',
+    fields: {
+      id:     { type: 'uuid', primaryKey: true },
+      domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
+      outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
+      recipe: recipeData({
+        domain: 'arcane',
+        station: 'arcane forge',
+        inputs: [{ item: 'Steel', quantity: 2 }, { item: 'Aethermite', quantity: 2 }],
+        outputs: [{ item: 'Leyframe', quantity: 2 }],
+        skillGuards: [{ skill: 'ArcaneForging', tier: 'journeyman' }],
+      }),
+    },
+    relations: {
+      inputSteel: { name: 'inputSteel', kind: 'hasOne', target: 'Steel' },
+      inputAethermite: { name: 'inputAethermite', kind: 'hasOne', target: 'Aethermite' },
+      output: { name: 'output', kind: 'hasOne', target: 'Leyframe' },
+    },
+    behaviors: {
+      craft: {
+        description: 'Bind two steel and two raw aethermite into two leyframe at an arcane forge.',
+        rules: [
+          'Requires ArcaneForging: Journeyman',
+          'Requires an arcane forge structure',
+          'Two steel and two raw aethermite yield two leyframe',
+        ],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
 }

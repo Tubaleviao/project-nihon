@@ -96,7 +96,7 @@ func push_views() -> void:
 			root._networking.send_own_state(peer, { "settlement_view": view })
 
 ## Phase 198 — place a finished project's structure at `site` ({x, z} ground metres, doubles): its blocks
-## through the voxel edit path (recorded like any edit and synced to peers in range as `block_changed`),
+## through the voxel edit path, at their layout heights (Phase 212) (recorded like any edit and synced to peers in range as `block_changed`),
 ## then its stations on the ground inside it. Phase 206 — a block or station whose spot has since come inside
 ## the circle of a clan the project's starter is not in is left out, as their own placement would be.
 func place_structure(id: String, key: String, site: Dictionary) -> void:
@@ -108,12 +108,15 @@ func place_structure(id: String, key: String, site: Dictionary) -> void:
 	var by := str((root._settlements.projects_of(id).get(key, {}) as Dictionary).get("by", ""))
 	var blocked: Callable = root._settlements.build_blocked
 	if mat != "":
-		for c: Vector3i in ProjectRules.layout_cells(str(places.get("layout", "shed")), int(places.get("blocks", 0))):
+		# Phase 212 — each block at its layout height (dy above its column's ground), placed in one batch.
+		var cells: Array = []
+		for c: Vector3i in ProjectRules.layout_cells(str(places.get("layout", "shed")), int(places.get("floors", 1))):
 			var bx := x0 + (float(c.x) + 0.5) * tile
 			var bz := z0 + (float(c.z) + 0.5) * tile
 			if blocked.is_valid() and bool(blocked.call(by, Vector2(bx, bz))):
 				continue
-			root._voxel.place_structure_block(_exact_at(bx, bz), mat)
+			cells.append({ "exact": _exact_at(bx, bz), "dy": c.y })
+		root._voxel.place_structure_blocks(cells, mat)
 	var stations: Array = places.get("stations", [])
 	var offsets := ProjectRules.station_offsets(stations.size())
 	for i in stations.size():

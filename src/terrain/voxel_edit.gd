@@ -227,14 +227,18 @@ func place_block(world_pos: Vector3, normal: Vector3, material: String = "", pla
 	# leaves no side effect to roll back.
 	var probe = s._resolve_edit_tile("place", world_pos, normal, exact)
 	var tile: Vector2i = probe["tile"]
-	var span = s._place_span(s.get_runs_at_tile(tile), world_pos, normal)
+	var runs: Array = s.get_runs_at_tile(tile)
+	var span = s._place_span(runs, world_pos, normal)
 	if span.is_empty():
 		return false
 	# Phase 205 — a block placed against a structure the actor may not edit is refused; otherwise it joins the
 	# touching structure its builder's mode names, or starts one.
 	var plan: Dictionary = {}
 	if s.structures != null:
-		plan = s.structures.plan_place(player_id, tile, float(span["bottom"]), normal, chosen)
+		# Phase 212 — whether the host's own column is solid right under the block: what holds it up is read from
+		# the world and the index, never from the message.
+		var supported: bool = s.VoxelRuns.runs_cover_y(runs, float(span["bottom"]) - s.STEP_HEIGHT * 0.5)
+		plan = s.structures.plan_place(player_id, tile, float(span["bottom"]), normal, chosen, supported)
 		if str(plan["verdict"]) == "refused":
 			# Phase 206 — the builder is told why (a keyed line), not left with a block that never appears.
 			GameBus.structure_resolved.emit(str(plan.get("player_id", player_id)), "place", false, str(plan["reason"]))
@@ -261,28 +265,49 @@ func place_block(world_pos: Vector3, normal: Vector3, material: String = "", pla
 	GameBus.block_changed.emit("place", world_pos, normal, chosen)
 	return true
 
-## Phase 198 — the host builds one block of a finished settlement structure on top of the column at
-## `exact` (`{chunk, local}`; only x and z count): no pack is debited (the project took its materials) and
-## no claim guard asks (the structure stands in its own claim). The same edit record and `block_changed`
-## sync as a placement, so peers in range see an ordinary world edit. False when the material is unknown
-## or the column is full.
-func place_structure_block(exact: Dictionary, material: String) -> bool:
-	if not GameData.MATERIALS.has(material) or not (exact.get("chunk", null) is Vector2i) or not (exact.get("local", null) is Vector3):
-		return false
-	var probe = s._resolve_edit_tile("place", Vector3.ZERO, Vector3.UP, exact)
-	var tile: Vector2i = probe["tile"]
-	# A y above every run top: the span lands on the column's own surface.
-	var span = s._place_span(s.get_runs_at_tile(tile), Vector3(0.0, 1.0e9, 0.0), Vector3.UP)
-	if span.is_empty():
-		return false
-	s._append_edit(tile, { "op": "add", "bottom": span["bottom"], "top": span["top"], "material": material })
-	s._mark_dirty(tile)
-	s._settle_note(tile)
-	s._rebuild_chunk_at_tile(tile)
-	var pos := Vector3(probe["xz"].x, float(span["bottom"]), probe["xz"].y)
-	GameBus.block_edit_resolved.emit(tile, float(span["top"]))
-	GameBus.block_changed.emit("place", pos, Vector3.UP, material)
-	return true
+## Phase 198 — the host builds a finished settlement structure: no pack is debited (the project took its
+## materials) and no claim guard asks. Phase 212 — every block goes at its exact height, `dy` blocks above the
+## surface its column had before the batch (so a lintel stays over an open doorway, and courses follow uneven
+## ground), and the whole batch is one pass: each block is recorded as an ordinary edit and synced as
+## `block_changed` (a side fill at that height, the same span the clients' replay resolves), and each touched
+## chunk is rebuilt once at the end. `cells` is `[{ exact: {chunk, local}, dy: int }]` (only x and z of the
+## exact point count). Returns the blocks placed: a cell already solid, past the build cap, or malformed is left out.
+func place_structure_blocks(cells: Array, material: String) -> int:
+	if not GameData.MATERIALS.has(material):
+		return 0
+	var ground: Dictionary = {}
+	var touched: Dictionary = {}
+	var placed := 0
+	for c: Variant in cells:
+		if not (c is Dictionary) or not (c.get("exact", null) is Dictionary) or not (c.get("dy", null) is int):
+			continue
+		var exact: Dictionary = c["exact"]
+		if not (exact.get("chunk", null) is Vector2i) or not (exact.get("local", null) is Vector3):
+			continue
+		var tile: Vector2i = s._resolve_edit_tile("place", Vector3.ZERO, Vector3.UP, exact)["tile"]
+		if not ground.has(tile):
+			var runs: Array = s.get_runs_at_tile(tile)
+			ground[tile] = float(runs[-1]["top"]) if not runs.is_empty() else s.BEDROCK_DEPTH
+		var bottom: float = float(ground[tile]) + float(maxi(0, int(c["dy"]))) * s.STEP_HEIGHT
+		# A side fill aimed at the cell's middle from its -x face: `_place_span` fills exactly that step.
+		var pos := Vector3(float(tile.x) * s.TILE_SIZE, bottom + s.STEP_HEIGHT * 0.5, (float(tile.y) + 0.5) * s.TILE_SIZE)
+		var span = s._place_span(s.get_runs_at_tile(tile), pos, Vector3.RIGHT)
+		if span.is_empty():
+			continue
+		s._append_edit(tile, { "op": "add", "bottom": span["bottom"], "top": span["top"], "material": material })
+		s._mark_dirty(tile)
+		s._settle_note(tile)
+		touched[tile] = true
+		placed += 1
+		GameBus.block_changed.emit("place", pos, Vector3.RIGHT, material)
+	var chunks: Dictionary = {}
+	for tile: Vector2i in touched:
+		for chunk: Vector2i in s._touched_chunks(tile):
+			chunks[chunk] = true
+		GameBus.block_edit_resolved.emit(tile, s.column_top_at_tile(tile))
+	for chunk: Vector2i in chunks:
+		s._rebuild_chunk(chunk)
+	return placed
 
 ## Phase 205 — the host removes one structure block worn to nothing (`StructureSlice.tick`): no pack is
 ## credited. It is aimed as a side hit at the block's middle, so the clients' `block_changed` replay resolves

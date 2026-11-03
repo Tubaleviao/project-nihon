@@ -112,10 +112,14 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [BookTechArcaneForging](entities/booktecharcaneforging.md) — A book that teaches the technology TechArcaneForging
 - [BookTechBasicCarpentry](entities/booktechbasiccarpentry.md) — A book that teaches the technology TechBasicCarpentry
 - [BookTechBasicSmithing](entities/booktechbasicsmithing.md) — A book that teaches the technology TechBasicSmithing
+- [BookTechConcrete](entities/booktechconcrete.md) — A book that teaches the technology TechConcrete
+- [BookTechLeyframe](entities/booktechleyframe.md) — A book that teaches the technology TechLeyframe
 - [BookTechMasterForge](entities/booktechmasterforge.md) — A book that teaches the technology TechMasterForge
+- [BookTechSteel](entities/booktechsteel.md) — A book that teaches the technology TechSteel
 - [BookTechTextileWeaving](entities/booktechtextileweaving.md) — A book that teaches the technology TechTextileWeaving
 - [BookTechVoidMastery](entities/booktechvoidmastery.md) — A book that teaches the technology TechVoidMastery
 - [CarpenterAxe](entities/carpenteraxe.md) — Felling axe with a weighted ferrite head and a duskfiber-wrapped thornwood handle
+- [Cement](entities/cement.md) — Ashite ground to a fine grey powder at a masonry bench
 - [Chest](entities/chest.md) — A plank box with a ferrite band and lock
 - [Door](entities/door.md) — A plank door on ferrite hinges with a lock
 - [DuskfiberCloak](entities/duskfibercloak.md) — Hooded cloak woven from duskfiber bast
@@ -149,13 +153,16 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 
 - [Aethermite](entities/aethermite.md) — Pale silver ore that hums faintly in the presence of active magic
 - [Ashite](entities/ashite.md) — Pale grey volcanic rock formed from compressed volcanic ash
+- [Concrete](entities/concrete.md) — Grey poured stone of ground ashite and soil, cast into blocks at a masonry bench
 - [Duskfiber](entities/duskfiber.md) — Fibrous bark harvested from the Duskwood trees that grow only in twilight biomes where day and night cycle at unusual speeds
 - [Ferrite](entities/ferrite.md) — Common dark-grey metal found in surface veins across temperate biomes, volcanic lava-tube edges, and stabilised sections of void rifts
 - [Grass](entities/grass.md) — Living turf that covers temperate ground (forest and grassland)
+- [Leyframe](entities/leyframe.md) — A composite of steel lattice bound with aethermite shards at an arcane forge, light and nearly unbending
 - [Lumenfite](entities/lumenfite.md) — Translucent crystalline mineral that absorbs ambient light during the day and releases it slowly at night
 - [Sand](entities/sand.md) — Loose grains that cover beaches, deserts and the sea floor
 - [Snow](entities/snow.md) — Packed snow that caps alpine peaks and the polar ground
 - [Soil](entities/soil.md) — Loose earth under a biome's cover, down to its `topsoilDepth`
+- [Steel](entities/steel.md) — Ferrite refined twice over a master forge into rolled beams
 - [Thornwood](entities/thornwood.md) — Dense, dark-veined wood from the Thornwood tree that grows in lowland forests
 - [Veilsteel](entities/veilsteel.md) — Blue-black alloy smelted from ferrite ingots and aethermite shards under high heat
 - [Voidite](entities/voidite.md) — Jet-black crystalline ore found only in void-touched biomes and deep rifts
@@ -187,7 +194,9 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [RecipeBed](entities/recipebed.md) — Lash six thornwood planks into a bed frame with a straw pallet, by hand
 - [RecipeBoneSaw](entities/recipebonesaw.md) — Craft a bone saw from two ferrite ingots and one thornwood plank
 - [RecipeCarpenterAxe](entities/recipecarpenteraxe.md) — Assemble a carpenter axe from one ferrite ingot, one thornwood plank, and one duskfiber strand
+- [RecipeCement](entities/recipecement.md) — Grind two raw ashite into two sacks of cement at a masonry bench
 - [RecipeChest](entities/recipechest.md) — Box eight thornwood planks and band them with a ferrite ingot, by hand
+- [RecipeConcrete](entities/recipeconcrete.md) — Cast two sacks of cement and one soil into four concrete at a masonry bench
 - [RecipeDoor](entities/recipedoor.md) — Join six thornwood planks into a door on ferrite hinges, by hand
 - [RecipeDuskfiberCloak](entities/recipeduskfibercloak.md) — Weave three duskfiber strands into a duskfiber cloak at a carpentry bench
 - [RecipeEnchantedAethermiteShard](entities/recipeenchantedaethermiteshard.md) — Imbue a refined aethermite shard with magical energy at an arcane forge to produce an enchanted catalyst
@@ -196,12 +205,14 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [RecipeFerriteShortSword](entities/recipeferriteshortsword.md) — Forge a ferrite short sword from one refined ferrite ingot
 - [RecipeHealthPotion](entities/recipehealthpotion.md) — Brew a health-restoring potion from aethermite dust and harvested herbs at an alchemy bench
 - [RecipeHearth](entities/recipehearth.md) — Lay a hearth from six thornwood planks and four ferrite ingots at a carpentry bench
+- [RecipeLeyframe](entities/recipeleyframe.md) — Bind two steel and two raw aethermite into two leyframe at an arcane forge
 - [RecipeLockpick](entities/recipelockpick.md) — Draw a ferrite ingot into a lockpick on a thornwood grip
 - [RecipeLumenfiteOrb](entities/recipelumenfiteorb.md) — Polish a lumenfite stone into a charged spell-focus orb at an arcane forge
 - [RecipeNoviceTunic](entities/recipenovicetunic.md) — Sew two duskfiber strands into a plain tunic at a carpentry bench
 - [RecipeRefinedVoiditeShard](entities/reciperefinedvoiditeshard.md) — Stabilise one raw voidite crystal into a refined voidite shard at a forge
 - [RecipeSkinningKnife](entities/recipeskinningknife.md) — Craft a skinning knife from one ferrite ingot and one thornwood plank
 - [RecipeStaminaPotion](entities/recipestaminapotion.md) — Brew a stamina-restoring potion from aethermite dust and root reagents
+- [RecipeSteel](entities/recipesteel.md) — Roll two ferrite ingots into two steel beams at a master forge
 - [RecipeThornwoodPlank](entities/recipethornwoodplank.md) — Mill two thornwood logs into three thornwood planks at a carpentry bench
 - [RecipeVeilsteelChestplate](entities/recipeveilsteelchestplate.md) — Forge a veilsteel chestplate from four veilsteel ingots and two ferrite ingots
 - [RecipeVeilsteelIngot](entities/recipeveilsteelingot.md) — Alloy three ferrite ingots and one refined aethermite shard into one veilsteel ingot at a master forge
@@ -266,7 +277,10 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [TechArcaneForging](entities/techarcaneforging.md) — Magical metallurgy principles
 - [TechBasicCarpentry](entities/techbasiccarpentry.md) — Foundation woodworking knowledge
 - [TechBasicSmithing](entities/techbasicsmithing.md) — Foundational metalworking knowledge
+- [TechConcrete](entities/techconcrete.md) — Grinding ashite to cement and casting it with soil
+- [TechLeyframe](entities/techleyframe.md) — Binding a steel lattice with aethermite at an arcane forge
 - [TechMasterForge](entities/techmasterforge.md) — Advanced forge construction and temperature-control techniques
+- [TechSteel](entities/techsteel.md) — Rolling ferrite into beams over a master forge
 - [TechTextileWeaving](entities/techtextileweaving.md) — Fiber processing and loom construction techniques
 - [TechVoidMastery](entities/techvoidmastery.md) — Esoteric void-smithing and void-brewing techniques
 

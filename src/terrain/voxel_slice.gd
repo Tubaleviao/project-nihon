@@ -178,6 +178,8 @@ const MATERIAL_COLORS: Dictionary = {
 	"Lumenfite":  Color(0.92, 0.80, 0.30),  # gold
 	"Voidite":    Color(0.38, 0.24, 0.50),  # deep violet
 	"Veilsteel":  Color(0.30, 0.34, 0.42),  # blue-black alloy
+	# Phase 212 — the made materials: poured grey concrete, rolled steel beam, ley-bound lattice.
+	"Concrete": Color(0.62, 0.61, 0.59), "Steel": Color(0.50, 0.53, 0.58), "Leyframe": Color(0.38, 0.77, 0.84),
 }
 
 ## Colour used for any material without an explicit entry above.
@@ -890,8 +892,8 @@ func _vein_from_id(id: String) -> Dictionary:
 func place_block(world_pos: Vector3, normal: Vector3, material: String = "", player_id: String = "", exact: Dictionary = {}) -> bool:
 	return _edit.place_block(world_pos, normal, material, player_id, exact)
 
-func place_structure_block(exact: Dictionary, material: String) -> bool:
-	return _edit.place_structure_block(exact, material)
+func place_structure_blocks(cells: Array, material: String) -> int:
+	return _edit.place_structure_blocks(cells, material)
 
 func remove_structure_block(tile: Vector2i, bottom: float, top: float) -> void:
 	_edit.remove_structure_block(tile, bottom, top)

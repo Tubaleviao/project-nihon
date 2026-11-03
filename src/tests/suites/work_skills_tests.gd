@@ -218,7 +218,7 @@ func _test_undo() -> void:
 		reg.get_inventory("p2").add_item("Ashite", 1)
 		assert_true(v.place_block(pos + Vector3(0.0, 0.125 * i, 0.0), Vector3.UP, "Ashite", "p2"), "p2 builds block %d" % i)
 	var data: Dictionary = JSON.parse_string(JSON.stringify(st.to_data()))
-	assert_eq(int(data["format"]), 2, "the save is format 2")
+	assert_eq(int(data["format"]), 3, "the save is format 3 (Phase 212)")
 	var cells: Array = data["structures"][0]["cells"]
 	assert_eq(cells.size(), 2, "two cells saved")
 	for c: Array in cells:

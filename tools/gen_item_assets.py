@@ -60,6 +60,9 @@ MATERIAL_COLORS = {
     "Grass": (95, 154, 72),
     "Lumenfite": (240, 216, 96),
     "Voidite": (91, 47, 138),
+    "Concrete": (158, 156, 150),
+    "Steel": (128, 136, 148),
+    "Leyframe": (96, 196, 214),
 }
 
 # Archetype -> maximum AABB size (x, y, z) in metres at scale 1.

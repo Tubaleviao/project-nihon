@@ -935,11 +935,14 @@ func _test_zero_durability_sweep() -> void:
 # ── Phase 210: clan tiers ────────────────────────────────────────────────
 
 ## `pid` adds `n` blocks of `mat` to the column at `tile` straight through the index (no world edit: a
-## building far from any loaded ground), from `bottom` up. Returns the structure id.
+## building far from any loaded ground), from `bottom` up. Returns the structure id. Phase 212 — the column is
+## planned as leyframe, which any one-column height up to 163 floors allows, and indexed as `mat`: these tests
+## count score, not what holds a post up (structure_limits_tests.gd does).
 func _index_column(st: StructureSlice, pid: String, tile: Vector2i, n: int, mat: String = "Ashite", bottom: float = 2.0) -> int:
 	var sid := 0
 	for i in n:
-		var plan := st.plan_place(pid, tile, bottom + VoxelConsts.STEP_HEIGHT * i, Vector3.UP, mat)
+		var plan := st.plan_place(pid, tile, bottom + VoxelConsts.STEP_HEIGHT * i, Vector3.UP, "Leyframe")
+		plan["material"] = mat
 		sid = st.commit_place(plan)
 		assert_true(sid != 0, "block %d of the column is indexed" % i)
 	return sid

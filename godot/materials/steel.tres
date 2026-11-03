@@ -1,0 +1,19 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/materials/steel.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+density = 7.8
+hardness = 6.0
+conductivity = 0.45
+magicAffinity = 0.08
+depthBand = {"min":0,"max":0}
+leyGated = false
+granular = false
+rarity = 1
+durability = 340
+structuralClass = 4
+description = "Ferrite refined twice over a master forge into rolled beams. The frame of every building taller than ten floors, up to forty."
+tags = ["material"]

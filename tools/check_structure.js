@@ -3,7 +3,8 @@
 // grow, no space kept around a structure, an abandoned clan structure kept from everyone, floor limits other than the owner's (wood 2, stone 5, concrete 10, top 163), classes out of order, a
 // shape threshold that needs a weaker class, a rarer material with less durability, a build ceiling below the
 // peak plus the tallest tower, a cheap offline destruction, a destroyer who gets materials, a dismantle share
-// off its two fixed points or rising as durability falls, and an unlimited respawn all fail; the shipped
+// off its two fixed points or rising as durability falls, an unlimited respawn, a class past stone with no
+// craftable material and a top-class recipe without a ley-gated ingredient (Phase 212) all fail; the shipped
 // tables pass and dismantling returns 100% and 50% at the fixed points.
 //   node tools/check_structure.js
 'use strict';
@@ -46,6 +47,10 @@ expect('collapsing existing builds fails', (d) => { d.structure.existingBuilds =
 expect('a rarer material with less durability fails', () => {}, /Voidite \(legendary\) has durability 50/, (r) => { r.materials.Voidite.durability = 50; });
 expect('a material with no structural class fails', () => {}, /Thornwood\.structuralClass "undefined"/, (r) => { delete r.materials.Thornwood.structuralClass; });
 expect('a build ceiling below the peak plus 163 floors fails', () => {}, /buildCeiling 9000 must be at least/, (r) => { r.buildCeiling = 9000; });
+// Phase 212 — every class past stone has a craftable material, and the top class needs the ley lines.
+expect('a class with no craftable material fails', () => {}, /classes\.steel has no craftable material/, (r) => { delete r.recipes.RecipeSteel; });
+expect('a class whose recipe no technology unlocks fails', () => {}, /classes\.concrete has no craftable material/, (r) => { r.unlocked = r.unlocked.filter((k) => k !== 'RecipeConcrete'); });
+expect('a top-class recipe without a ley-gated ingredient fails', () => {}, /RecipeLeyframe makes Leyframe .* without a ley-gated ingredient/, (r) => { r.materials.Aethermite.leyGated = false; });
 expect('a cheap offline destruction fails', (d) => { d.durability.methods.pick.offlineFactor = 2; }, /offlineFactor must be >= 10/);
 expect('a weather state with no loss rate fails', (d) => { delete d.durability.loss.weather.rain; }, /loss\.weather\.rain must be in/);
 expect('an unknown weather state fails', (d) => { d.durability.loss.weather.hail = 0.1; }, /unknown weather state "hail"/);

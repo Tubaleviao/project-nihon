@@ -311,4 +311,75 @@ module.exports = {
       },
     },
   }),
+  // ─── RecipeCement ──────────────────────────────────────────────────────────
+  // Phase 212 — a material above stone.
+  RecipeCement: defineEntity({
+    tags: ['recipe'],
+    description: 'Grind two raw ashite into two sacks of cement at a masonry bench.',
+    goal: 'The first step of concrete (Phase 212)',
+    fields: {
+      id:     { type: 'uuid', primaryKey: true },
+      domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
+      outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
+      recipe: recipeData({
+        domain: 'carpentry',
+        station: 'masonry bench',
+        inputs: [{ item: 'Ashite', quantity: 2 }],
+        outputs: [{ item: 'Cement', quantity: 2 }],
+        skillGuards: [{ skill: 'Carpentry', tier: 'apprentice' }],
+      }),
+    },
+    relations: {
+      inputAshite: { name: 'inputAshite', kind: 'hasOne', target: 'Ashite' },
+      output: { name: 'output', kind: 'hasOne', target: 'Cement' },
+    },
+    behaviors: {
+      craft: {
+        description: 'Grind two raw ashite into two sacks of cement at a masonry bench.',
+        rules: [
+          'Requires Carpentry: Apprentice',
+          'Requires a masonry bench structure',
+          'Two raw ashite yield two sacks of cement',
+        ],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
+  // ─── RecipeConcrete ────────────────────────────────────────────────────────
+  // Phase 212 — a material above stone.
+  RecipeConcrete: defineEntity({
+    tags: ['recipe'],
+    description: 'Cast two sacks of cement and one soil into four concrete at a masonry bench.',
+    goal: 'Concrete: a ten-floor building from common ingredients (Phase 212)',
+    fields: {
+      id:     { type: 'uuid', primaryKey: true },
+      domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
+      outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
+      recipe: recipeData({
+        domain: 'carpentry',
+        station: 'masonry bench',
+        inputs: [{ item: 'Cement', quantity: 2 }, { item: 'Soil', quantity: 1 }],
+        outputs: [{ item: 'Concrete', quantity: 4 }],
+        skillGuards: [{ skill: 'Carpentry', tier: 'journeyman' }],
+      }),
+    },
+    relations: {
+      inputCement: { name: 'inputCement', kind: 'hasOne', target: 'Cement' },
+      inputSoil: { name: 'inputSoil', kind: 'hasOne', target: 'Soil' },
+      output: { name: 'output', kind: 'hasOne', target: 'Concrete' },
+    },
+    behaviors: {
+      craft: {
+        description: 'Cast two sacks of cement and one soil into four concrete at a masonry bench.',
+        rules: [
+          'Requires Carpentry: Journeyman',
+          'Requires a masonry bench structure',
+          'Two cement and one soil yield four concrete',
+        ],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
 }

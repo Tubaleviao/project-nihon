@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–199 and 203–211 are done. Their specs and acceptance criteria, and the introductions of
+Phases 1–199 and 203–212 are done. Their specs and acceptance criteria, and the introductions of
 the arcs they belonged to, are archived in [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Next: follow-up debt burn II (Phases 194–196)
@@ -125,7 +125,7 @@ Smithing). Phase 203 models all of it in the fabric before any runtime phase sta
 | 209 | Books and blueprints: research shared by writing | Done | [phases-209.md](docs/roadmap-history/phases-209.md) |
 | 210 | Clan tiers from buildings and material rarity | Done | [phases-210.md](docs/roadmap-history/phases-210.md) |
 | 211 | Earth-scale mountains: peaks to about 8,850 m on unrecorded land | Done | [phases-211.md](docs/roadmap-history/phases-211.md) |
-| 212 | Floors and structural limits at runtime, and the materials above stone | Planned | below |
+| 212 | Floors and structural limits at runtime, and the materials above stone | Done | [phases-212.md](docs/roadmap-history/phases-212.md) |
 | 213 | A clan's tower on a mountain: the arc, played | Planned | below |
 
 ### Out of arc: Alt window shortcuts (Phase 214)
@@ -167,42 +167,6 @@ must stay under one hour.
 - [ ] CI: the four bots end with at least two different specialties, one completed project, one
   defended raid and one paid upkeep, as read from the host's world record.
 - [ ] The scenario passes 3 CI runs in a row on an unchanged commit.
-- [ ] Suite green on both boot paths, harness green.
-
----
-
-## Phase 212 — Floors and structural limits at runtime, and the materials above stone
-
-**Goal:** the host refuses a build its material cannot hold up: too many floors, or a shape too
-unusual for its class. Concrete, steel and composites exist, so every class has something to build
-with. Clan projects become real buildings with floors.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phases 205 and 211.
-
-**Deliverables:**
-- `src/building/structure_rules.gd`: pure, incremental functions over the Phase 205 structure
-  index. Floors above ground, the weakest class carrying each block, and the shape measures. A
-  163-floor tower is not rescanned on every placement.
-- The host refuses a placement that breaks a limit, with a localized reason.
-- Fabric materials, items, recipes and technologies for concrete, steel and at least one composite,
-  with their durability and class, and block placeholders in `assets/` (placeholder rule). The top
-  class needs a ley-gated ingredient.
-- Project layouts get real heights: a wood shed is one 3 m floor. Each block is placed at its exact
-  height, `dy` included (Phase 198 drops every block on its column's top, which closes a doorway
-  above the second course). A project's blocks go out in batched edits and rebuilds.
-
-**Acceptance criteria:**
-- [ ] Suite: a third wood floor, a sixth stone floor and an eleventh concrete floor are refused, and
-  the top class stops at floor 163.
-- [ ] Suite: an overhang past a class's threshold is refused for that class and allowed for the
-  next one.
-- [ ] Suite: a finished project's doorway is open on every course it should be, and its blocks sit
-  at their layout heights over uneven ground.
-- [ ] `npm run validate` passes, and every class up to 163 floors has a craftable material.
-- [ ] Suite (audit): no structural value is read from a client message.
-- [ ] Every new string is in both catalogs, and the i18n key check passes.
 - [ ] Suite green on both boot paths, harness green.
 
 ---

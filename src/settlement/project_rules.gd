@@ -94,31 +94,49 @@ static func building_count(projects: Dictionary) -> int:
 			n += 1
 	return n
 
-## The cells a finished structure fills, as offsets `(dx, dy, dz)` from its site (dy above the ground),
-## exactly `blocks` of them: courses of the layout's outline stacked upward, with a doorway left open in
-## the two lowest courses of everything but the tower.
-static func layout_cells(layout: String, blocks: int) -> Array:
-	var half := Vector2i(4, 4)
-	match layout:
-		"tower": half = Vector2i(1, 1)
-		"hall": half = Vector2i(3, 2)
-		"shed": half = Vector2i(2, 2)
+## Phase 212 — a doorway is this many tiles wide (centred on the front wall) and this many blocks high (2 m).
+const DOOR_TILES := 3
+const DOOR_COURSES := 16
+
+## Blocks (STEP_HEIGHT courses) per floor: the fabric's `Structure.floorHeight` (3 m = 24 blocks).
+static func courses_per_floor() -> int:
+	var res: Resource = GameData.WORLD_SYSTEMS.get("Structure", null)
+	var r: Variant = res.get("rules") if res != null else null
+	var h := float((r as Dictionary).get("floorHeight", 3.0)) if r is Dictionary else 3.0
+	return maxi(1, roundi(h / 0.125))
+
+## The cells a finished structure fills, as offsets `(dx, dy, dz)` from its site, dy in blocks above the
+## ground of the cell's own column: `floors` floors (Phase 212: a shed is one 3 m floor) of the layout's outline,
+## a course per block, with a doorway `DOOR_TILES` wide and `DOOR_COURSES` high left open in the front wall of
+## everything but the tower.
+static func layout_cells(layout: String, floors: int) -> Array:
+	var half := half_of(layout)
 	var course: Array = []
 	for x in range(-half.x, half.x + 1):
 		for z in range(-half.y, half.y + 1):
 			if absi(x) == half.x or absi(z) == half.y:
 				course.append(Vector2i(x, z))
 	var out: Array = []
-	var y := 0
-	while out.size() < blocks and y < 64:
+	for y in clampi(floors, 0, 8) * courses_per_floor():
 		for c: Vector2i in course:
-			if out.size() >= blocks:
-				break
-			if layout != "tower" and y < 2 and c == Vector2i(0, -half.y):
-				continue   # the doorway
+			if is_doorway(layout, c, y):
+				continue
 			out.append(Vector3i(c.x, y, c.y))
-		y += 1
 	return out
+
+## Whether the cell at outline column `c` and course `y` of `layout` is the doorway (left open).
+static func is_doorway(layout: String, c: Vector2i, y: int) -> bool:
+	if layout == "tower" or y >= DOOR_COURSES:
+		return false
+	return c.y == -half_of(layout).y and absi(c.x) <= DOOR_TILES / 2
+
+## The outline's half extents in tiles (x, z); the ring is the default.
+static func half_of(layout: String) -> Vector2i:
+	match layout:
+		"tower": return Vector2i(1, 1)
+		"hall": return Vector2i(3, 2)
+		"shed": return Vector2i(2, 2)
+	return Vector2i(4, 4)
 
 ## The voxel material a structure's `places.block` builds with: the key itself when it is a material, else
 ## the body material of the item (an AshiteBlock builds Ashite). "" when neither.

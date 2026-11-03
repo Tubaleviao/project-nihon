@@ -1952,7 +1952,8 @@ func _step_settlement_project() -> void:
 	var given: bool = await _await_until(func(): return int((_project_view(settlements).get("given", {}) as Dictionary).get("ThornwoodPlank", 0)) >= 40, _step_timeout())
 	# Phase 207 — the last planks complete it: no labour stage.
 	var built: bool = await _await_until(func(): return str(_project_view(settlements).get("status", "")) == "done", _step_timeout())
-	var blocks := int(ProjectRules.def_of(PROJECT_KEY)["places"]["blocks"])
+	var pl: Dictionary = ProjectRules.def_of(PROJECT_KEY)["places"]
+	var blocks: int = ProjectRules.layout_cells(str(pl["layout"]), int(pl["floors"])).size()
 	var placed: bool = await _await_until(func(): return _project_edits >= blocks, _step_timeout())
 	GameBus.block_changed.disconnect(_on_project_edit)
 	await _await_settle(1.5 * _time_scale)

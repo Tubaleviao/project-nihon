@@ -45,7 +45,7 @@ A member adds materials to an unfinished project
 The contribution that brings in the last material completes the project and places it
 
 **Rules:**
-- Places places.blocks of places.block in the layout, plus places.stations
+- Places places.floors floors of places.block in the layout, each block at its height, plus places.stations
 - Counts toward no tier and credits no clan
 
 **Auth:** `maintainer`

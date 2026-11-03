@@ -1,0 +1,15 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/technologies/techconcrete.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+status = 0
+researchCost = 6
+tier = 0
+tech = {"unlocks":["RecipeCement","RecipeConcrete"],"requires":["TechMasterForge"],"researchDuration":45,"researchMaterials":[{"item":"Ashite","quantity":10}]}
+state_machine_field = "status"
+initial_state = "locked"
+description = "Grinding ashite to cement and casting it with soil. Unlocks concrete, which carries ten floors."
+tags = ["technology"]

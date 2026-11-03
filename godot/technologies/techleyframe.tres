@@ -1,0 +1,15 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/technologies/techleyframe.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+status = 0
+researchCost = 12
+tier = 0
+tech = {"unlocks":["RecipeLeyframe"],"requires":["TechSteel","TechArcaneForging"],"researchDuration":90,"researchMaterials":[{"item":"Aethermite","quantity":6}]}
+state_machine_field = "status"
+initial_state = "locked"
+description = "Binding a steel lattice with aethermite at an arcane forge. Unlocks leyframe, the only material that carries 163 floors."
+tags = ["technology"]

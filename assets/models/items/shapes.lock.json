@@ -229,10 +229,25 @@
       "scale": 1,
       "hash": "02db3bb482676eed"
     },
+    "BookTechConcrete": {
+      "archetype": "tablet",
+      "scale": 1,
+      "hash": "d99d30317de71c84"
+    },
+    "BookTechLeyframe": {
+      "archetype": "tablet",
+      "scale": 1,
+      "hash": "fe95ef71827e707b"
+    },
     "BookTechMasterForge": {
       "archetype": "tablet",
       "scale": 1,
       "hash": "344c2b9a08d499ac"
+    },
+    "BookTechSteel": {
+      "archetype": "tablet",
+      "scale": 1,
+      "hash": "2b13145246cbc0d2"
     },
     "BookTechTextileWeaving": {
       "archetype": "tablet",
@@ -248,6 +263,11 @@
       "archetype": "axe",
       "scale": 1,
       "hash": "8289389542f31c32"
+    },
+    "Cement": {
+      "archetype": "dust",
+      "scale": 1,
+      "hash": "b3058ee298f341a2"
     },
     "Chest": {
       "archetype": "chest",

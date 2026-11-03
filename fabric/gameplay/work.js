@@ -54,6 +54,8 @@ const WORK = {
 
 const SINGLE_KINDS = ['build', 'dismantle', 'repair', 'lockpick']
 const FAMILY_FILES = { metal: 'metals', stone: 'stones', wood: 'woods', soil: 'soils' }
+// Phase 212 — the made materials (materials/built.js) are gathered as what they are made of.
+const BUILT_FAMILIES = { Concrete: 'stone', Steel: 'metal', Leyframe: 'metal' }
 
 /** Phase 207 — every material's gather family, { <material>: 'metal' | 'stone' | 'wood' | 'soil' }, from the
  *  file that defines it, so the runtime picks WorkSkills.gather[family] for a mined or chopped block. */
@@ -61,6 +63,10 @@ function materialFamilies() {
   const out = {}
   for (const [fam, file] of Object.entries(FAMILY_FILES)) {
     for (const m of Object.keys(require(`../world/materials/${file}`))) out[m] = fam
+  }
+  for (const m of Object.keys(require('../world/materials/built'))) {
+    if (!BUILT_FAMILIES[m]) throw new Error(`WorkSkills: made material ${m} has no gather family (BUILT_FAMILIES)`)
+    out[m] = BUILT_FAMILIES[m]
   }
   return out
 }

@@ -110,7 +110,7 @@ function validateSettlement(rules, itemKeys) {
 //   `projects`: key -> {
 //     minTier    the lowest settlement tier that may start it
 //     materials  [{ item, quantity }] existing item keys, taken from the stockpile or a member as given
-//     places     { block, blocks, layout, stations } what is placed when it completes: `blocks` of
+//     places     { block, floors, layout, stations } what is placed when it completes: `floors` floors of
 //                `block` (an item or material key) in the `layout` shape, plus `stations`
 //   }
 // SPECIALTIES — what each member is good at. A specialty's score is the sum of weight × skill tier rank
@@ -126,22 +126,22 @@ const PROJECTS = {
     palisade: {
       minTier: 'founded',
       materials: [{ item: 'ThornwoodPlank', quantity: 40 }, { item: 'FerriteIngot', quantity: 4 }],
-      places: { block: 'ThornwoodPlank', blocks: 48, layout: 'ring', stations: [] },
+      places: { block: 'ThornwoodPlank', floors: 1, layout: 'ring', stations: [] },
     },
     storehouse: {
       minTier: 'founded',
       materials: [{ item: 'ThornwoodPlank', quantity: 30 }, { item: 'AshiteBlock', quantity: 12 }],
-      places: { block: 'AshiteBlock', blocks: 24, layout: 'shed', stations: [] },
+      places: { block: 'AshiteBlock', floors: 1, layout: 'shed', stations: [] },
     },
     workshop: {
       minTier: 'founded',
       materials: [{ item: 'ThornwoodPlank', quantity: 20 }, { item: 'FerriteIngot', quantity: 10 }, { item: 'AshiteBlock', quantity: 10 }],
-      places: { block: 'AshiteBlock', blocks: 32, layout: 'hall', stations: ['carpentry bench', 'forge'] },
+      places: { block: 'AshiteBlock', floors: 1, layout: 'hall', stations: ['carpentry bench', 'forge'] },
     },
     watchtower: {
       minTier: 'growing',
       materials: [{ item: 'ThornwoodPlank', quantity: 24 }, { item: 'AshiteBlock', quantity: 16 }, { item: 'FerriteIngot', quantity: 6 }],
-      places: { block: 'AshiteBlock', blocks: 40, layout: 'tower', stations: [] },
+      places: { block: 'AshiteBlock', floors: 2, layout: 'tower', stations: [] },
     },
   },
 }
@@ -184,7 +184,27 @@ function settlementLoopRefs() {
     biomes: Object.keys(biomes),
     creatureBiome,
     stationTypes: tutorial.tutorialRefs().stationTypes,
+    blockFloors: blockFloors(items, materials),
   }
+}
+
+/** Phase 212 — item or material key -> the floors its material's structural class carries (Structure.classes):
+ *  a material's own class, an item's by the material of its body. */
+function blockFloors(items, materials) {
+  const { STRUCTURE } = require('./structure')
+  const floorsOf = (m) => {
+    const e = materials[m]
+    const c = e && e.fields.structuralClass && e.fields.structuralClass.defaultValue
+    return c && STRUCTURE.classes[c] ? STRUCTURE.classes[c].maxFloors : undefined
+  }
+  const out = {}
+  for (const k of Object.keys(materials)) if (floorsOf(k) !== undefined) out[k] = floorsOf(k)
+  for (const [k, e] of Object.entries(items)) {
+    const shape = e && e.fields && e.fields.shape && e.fields.shape.defaultValue
+    const body = shape && shape.parts && shape.parts.body
+    if (floorsOf(body) !== undefined) out[k] = floorsOf(body)
+  }
+  return out
 }
 
 function costProblems(at, list, items) {
@@ -218,7 +238,9 @@ function settlementLoopProblems(data, refs) {
     const pl = proj.places
     if (!isObj(pl)) { p.push(`${at}.places must be an object`); continue }
     if (![...refs.items, ...refs.materials].includes(pl.block)) p.push(`${at}.places.block "${pl.block}" is not an item or material`)
-    if (!Number.isInteger(pl.blocks) || pl.blocks < 1) p.push(`${at}.places.blocks must be an integer >= 1`)
+    if ('blocks' in pl) p.push(`${at}.places.blocks: a project places whole floors (places.floors, Phase 212)`)
+    if (!Number.isInteger(pl.floors) || pl.floors < 1) p.push(`${at}.places.floors must be an integer >= 1`)
+    else if (refs.blockFloors && pl.floors > (refs.blockFloors[pl.block] || 0)) p.push(`${at}.places.floors ${pl.floors} is more than its block's structural class carries (${refs.blockFloors[pl.block] || 0})`)
     if (!LAYOUTS.includes(pl.layout)) p.push(`${at}.places.layout must be one of ${LAYOUTS.join(', ')}`)
     if (!Array.isArray(pl.stations)) p.push(`${at}.places.stations must be a list`)
     else for (const st of pl.stations) if (!refs.stationTypes.includes(st)) p.push(`${at}.places.stations: "${st}" is not a placeable station type`)
@@ -285,7 +307,7 @@ const SettlementProjects = loopEntity(
     },
     complete: {
       description: 'The contribution that brings in the last material completes the project and places it',
-      rules: ['Places places.blocks of places.block in the layout, plus places.stations', 'Counts toward no tier and credits no clan'],
+      rules: ['Places places.floors floors of places.block in the layout, each block at its height, plus places.stations', 'Counts toward no tier and credits no clan'],
       auth: { roles: ['maintainer'] },
     },
   },
