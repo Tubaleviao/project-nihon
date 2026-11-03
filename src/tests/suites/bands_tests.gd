@@ -18,6 +18,8 @@ func register() -> void:
 	_run_test("bands: the playtest far_peak vantage scores its sight line", _test_bands_ridge_clearance)
 	_run_test("bands: the playtest far_peak reader counts rock and snow above the ring", _test_bands_far_peak_reader)
 	_run_test("bands: no collision body, vertices within budget, far plane reaches them", _test_bands_budget_and_far)
+	_run_test("bands: at most two band builds hold workers at once (Phase 211)", _test_bands_running_cap)
+	_run_test("bands: shared samples draw each vertex at its cell_height (Phase 211)", _test_bands_shared_samples)
 
 func _ring_radius() -> float:
 	return DistantTerrainScript.outer_radius_for(DistantTerrainScript.ring_half_extent(PlayerSlice.DEFAULT_RING_RADIUS))
@@ -29,7 +31,7 @@ func _test_bands_outer_radius() -> void:
 	var r := Horizon.planet_radius()
 	var closed := sqrt(2.0 * r * eye + eye * eye) + sqrt(2.0 * r * WorldShape.max_height() + pow(WorldShape.max_height(), 2.0))
 	assert_true(absf(Bands.outer_radius() - closed) < 1e-3, "and equals √(2Rh + h²) + √(2RH + H²) (%.0f m)" % closed)
-	assert_true(absf(Bands.outer_radius() - 85000.0) < 1500.0, "about 85 km at the default 512 m (%.0f m)" % Bands.outer_radius())
+	assert_true(absf(Bands.outer_radius() - 340000.0) < 5000.0, "about 340 km at the fabric's 8,850 m (Phase 211; %.0f m)" % Bands.outer_radius())
 	assert_true(Bands.outer_radius(-1.0, eye, WorldShape.max_height() * 2.0) > Bands.outer_radius() + 20000.0, "a taller maxHeight reaches farther")
 	assert_true(Bands.outer_radius(-1.0, eye, WorldShape.max_height() / 2.0) < Bands.outer_radius() - 20000.0, "a lower one reaches less far")
 	var specs := Bands.plan(_ring_radius(), Bands.outer_radius())
@@ -254,6 +256,14 @@ func _test_bands_far_peak_reader() -> void:
 	img.set_pixel(30, 18, Color(0.5, 0.48, 0.45))   # one rock pixel
 	assert_eq(PB.rock_pixels_above(img, ring_rows, key), 31, "rock counts, green does not")
 	assert_eq(PB.rock_pixels_above(img, ring_rows, key, 0.08, true), 36, "any_colour counts the green too")
+	# Phase 211 — holes: key pixels between a column's first drawn row and the ring's skyline.
+	assert_eq(PB.hole_pixels(img, ring_rows, key), 6, "the one-pixel hill tops float over a keyed row: 6 holes")
+	for x in range(25, 31):
+		img.set_pixel(x, 19, Color(0.3, 0.5, 0.2))
+	assert_eq(PB.hole_pixels(img, ring_rows, key), 0, "a solid peak and land have no holes")
+	img.set_pixel(12, 18, key)   # a gap inside the snow cap
+	img.set_pixel(5, 25, key)    # below the ring's skyline (the voxel window's hole): not counted
+	assert_eq(PB.hole_pixels(img, ring_rows, key), 1, "a key pixel under the drawn skyline is a hole")
 
 func _test_bands_ridge_clearance() -> void:
 	var PB := preload("res://src/tests/playtest_bot.gd")
@@ -271,6 +281,51 @@ func _test_bands_ridge_clearance() -> void:
 	assert_true(PB.ridge_clearance(hill, from, peak, r) < 0.0, "a nearer hill taller in angle than the ridge hides it")
 	assert_true(PB.ridge_clearance(flat, from, peak, r) < 0.0, "flat ground: the curve hides the ridge's base")
 	assert_eq(PB.ridge_clearance(ridge, from, from, r), 0.0, "a ridge on the eye has no sight line to score")
+
+## Phase 211 — the five bands an 8,850 m horizon needs do not all hold workers at once: the first
+## request starts MAX_RUNNING_BUILDS of them, inner first, the rest wait, and a blocking poll builds all.
+func _test_bands_running_cap() -> void:
+	var b := Bands.new()
+	b.world_seed = SEED
+	add_child(b)
+	b.update(Vector2(16.0, 16.0), _ring_radius())
+	assert_true(b.band_count() >= 5, "an Earth-scale horizon takes five bands (%d)" % b.band_count())
+	var running := 0
+	for band in b._bands:
+		if band.task >= 0:
+			running += 1
+	assert_eq(running, Bands.MAX_RUNNING_BUILDS, "only %d start" % Bands.MAX_RUNNING_BUILDS)
+	assert_true(b._bands[0].task >= 0 and b._bands[1].task >= 0, "the inner bands first")
+	assert_true(b.is_building(), "a band still waiting counts as building")
+	b.poll(true)
+	assert_false(b.is_building(), "a blocking poll builds every band")
+	for k in b.band_count():
+		assert_eq(b.band_builds_completed(k), 1, "band %d built once" % k)
+	b.free()
+
+## Phase 211 — a band shares its vertices' samples (each taken once) and still draws every vertex at
+## `cell_height`, the highest of its own SUB × SUB samples.
+func _test_bands_shared_samples() -> void:
+	var w: float = float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
+	var spec: Dictionary = Bands.plan(_ring_radius(), Bands.outer_radius())[2]
+	var cell: float = spec["cell"]
+	var origin := Bands.origin_for(spec, Vector2(5.39e6, -222000.0))
+	var mesh := Bands.build_band(SEED, w, spec, origin, true)
+	var verts := mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] as PackedVector3Array
+	var sh := roundi(float(spec["half"]) / cell)
+	var oc := Vector2i(floori(float(origin.x) / 2.0) * 2, floori(float(origin.y) / 2.0) * 2)
+	var checked := 0
+	var off := 0
+	for i in range(0, verts.size(), 53):
+		var ix := roundi(verts[i].x / cell)
+		var iz := roundi(verts[i].z / cell)
+		if absi(ix - oc.x) == sh or absi(iz - oc.y) == sh:
+			continue   # the outer edge follows the coarser band
+		checked += 1
+		if verts[i].y != Bands.band_y(Bands.cell_height(SEED, w, cell, ix, iz), WorldShape.sea_level()):
+			off += 1
+	assert_true(checked > 100, "interior vertices checked (%d)" % checked)
+	assert_eq(off, 0, "every one is drawn at its cell_height")
 
 func _test_bands_budget_and_far() -> void:
 	var b := Bands.new()

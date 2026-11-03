@@ -32,7 +32,13 @@ const EYE_HEIGHT := 1.7
 ## A render layer only the bands are on (besides layer 1), so the playtest bot can draw them alone.
 const BANDS_RENDER_LAYER := 1 << 20
 ## All bands together stay within this many vertices at the default view distance (the suite checks it).
-const VERTEX_BUDGET := 120000
+## Phase 211: 8,850 m peaks are seen 340 km out, which takes five bands of ~26k vertices (three reached
+## 85 km); each further band covers four times the ground for the same count and rebuilds a quarter as often.
+const VERTEX_BUDGET := 160000
+## Phase 211 — band builds that run on the worker pool at once, inner band first; the others wait in
+## `queued`. Five bands started together held five workers for seconds, and a client's first ring of
+## chunks (normal-priority tasks behind them) went unbuilt for 15 s on a small machine.
+const MAX_RUNNING_BUILDS := 2
 
 var world_seed: int = 0
 var circumference_m: float = 40000.0 * 1000.0
@@ -64,6 +70,7 @@ class BuildControl extends RefCounted:
 
 var _bands: Array[Band] = []
 var _plan_key := ""
+var _next_start := 0   ## the band `_start_waiting` looks at first
 var _plan_ring := -1.0
 var _plan_circ := -1.0
 var _warmed := false
@@ -71,7 +78,7 @@ var _origin: SceneOffset = SceneOffset.new()
 const SceneOffset := preload("res://src/core/scene_offset.gd")
 
 ## Outermost radius: the horizon of an eye `eye_h` high plus the horizon of the tallest terrain
-## (`WorldShape.max_height`), about 85 km at the fabric's 512 m.
+## (`WorldShape.max_height`), about 340 km at the fabric's 8,850 m (85 km at the 512 m before Phase 211).
 ## `tallest` replaces the fabric's `maxHeight` when positive (the suite).
 static func outer_radius(circ: float = -1.0, eye_h: float = EYE_HEIGHT, tallest: float = -1.0) -> float:
 	var top := tallest if tallest > 0.0 else WorldShape.max_height()
@@ -152,10 +159,22 @@ static func build_band(seed_v: int, w: float, spec: Dictionary, origin: Vector2i
 	var vertices := PackedVector3Array()
 	var colors := PackedColorArray()
 	var heights := PackedFloat32Array()
+	# Phase 211 — a vertex's SUB × SUB samples lie on a lattice of `cell / (SUB - 1)` that its neighbours
+	# share (a 3 × 3 window's edge row is the next window's), so each sample is taken once and kept in its
+	# row: about 4 samples a vertex instead of 9, the same heights. Five bands reach an 8,850 m horizon.
+	var div := SUB - 1
+	@warning_ignore("integer_division")
+	var lead := div / 2
+	var sx0 := div * (oc.x - sh) - lead   # the first sample column
+	var row_len := div * (side - 1) + SUB
+	var rows := {}   # sample row -> Array of heights (null: not sampled yet)
 	for j in side:
 		if control != null and control.aborted:
 			return null
 		var iz := oc.y - sh + j
+		for gone in rows.keys():
+			if int(gone) < div * iz - lead:
+				rows.erase(gone)
 		for i in side:
 			var ix := oc.x - sh + i
 			if absi(ix - origin.x) < hh and absi(iz - origin.y) < hh:
@@ -168,7 +187,20 @@ static func build_band(seed_v: int, w: float, spec: Dictionary, origin: Vector2i
 			elif under_r > 0.0 and Vector2(float(ix - origin.x), float(iz - origin.y)).length() * cell < under_r:
 				h = point_height(seed_v, w, float(ix) * cell, float(iz) * cell, height_fn)   # under the ring: no peaks through it
 			else:
-				h = cell_height(seed_v, w, cell, ix, iz, height_fn)
+				h = -INF   # `cell_height`, from the shared samples
+				for b in SUB:
+					var sz := div * iz - lead + b
+					var row: Array = rows.get(sz, [])
+					if row.is_empty():
+						row.resize(row_len)
+						rows[sz] = row
+					for a in SUB:
+						var k := div * ix - lead + a - sx0
+						var v: Variant = row[k]
+						if v == null:
+							v = point_height(seed_v, w, float(div * ix - lead + a) * cell / float(div), float(sz) * cell / float(div), height_fn)
+							row[k] = v
+						h = maxf(h, float(v))
 			index[j * side + i] = vertices.size()
 			var x := float(ix) * cell
 			var z := float(iz) * cell
@@ -276,7 +308,7 @@ func scene_offset() -> Vector3:
 ## True while any band's build is in flight.
 func is_building() -> bool:
 	for b in _bands:
-		if b.task >= 0:
+		if b.task >= 0 or not b.queued.is_empty():
 			return true
 	return false
 
@@ -309,11 +341,30 @@ func update(center: Vector2, ring_radius: float) -> bool:
 		b.want = req
 		b.discarded = {}
 		any = true
-		if b.task >= 0:
-			b.queued = req
-		else:
-			_start(b, req)
+		b.queued = req
+	_start_waiting()
 	return any
+
+## Start the waiting requests while fewer than MAX_RUNNING_BUILDS run, round-robin from the band after the
+## last one started: at boot the inner bands start first, and a fast mover whose inner bands always wait
+## again does not starve the outer ones.
+func _start_waiting() -> void:
+	var running := 0
+	for b in _bands:
+		if b.task >= 0:
+			running += 1
+	var n := _bands.size()
+	var first := _next_start
+	for i in n:
+		if running >= MAX_RUNNING_BUILDS:
+			return
+		var b := _bands[(first + i) % n]
+		if b.task < 0 and not b.queued.is_empty():
+			var next := b.queued
+			b.queued = {}
+			_start(b, next)
+			_next_start = (b.index + 1) % n
+			running += 1
 
 func _reset_bands(specs: Array) -> void:
 	for b in _bands:
@@ -321,6 +372,7 @@ func _reset_bands(specs: Array) -> void:
 		if b.mesh_inst != null:
 			b.mesh_inst.queue_free()
 	_bands.clear()
+	_next_start = 0
 	for k in specs.size():
 		var b := Band.new()
 		b.index = k
@@ -340,17 +392,26 @@ static func _build_job(spec: Dictionary, req: Dictionary, control: BuildControl,
 ## Swap in finished builds (non-blocking; `block` waits for all). Returns true when any mesh was swapped in.
 func poll(block: bool = false) -> bool:
 	var swapped := false
+	while true:
+		swapped = _poll_once(block) or swapped
+		_start_waiting()
+		if not block or not is_building():
+			return swapped
+	return swapped
+
+func _poll_once(block: bool) -> bool:
+	var swapped := false
 	for b in _bands:
-		while b.task >= 0:
+		if b.task >= 0:
 			if not block and not WorkerThreadPool.is_task_completed(b.task):
-				break
+				continue
 			WorkerThreadPool.wait_for_task_completion(b.task)
 			b.task = -1
 			var mesh: ArrayMesh = b.control.mesh if b.control != null else null
 			b.last_thread = b.control.thread if b.control != null else -1
 			if mesh == null:
 				b.queued = {}
-				break
+				continue
 			# A superseded build still swaps in (#444): it is nearer than the mesh it replaces, and
 			# discarding it would starve a fast mover's band of swaps. Then the newest request builds.
 			# A build for another world seed is not nearer, it is the old world's horizon (#448): drop it.
@@ -360,10 +421,6 @@ func poll(block: bool = false) -> bool:
 				b.built = b.running
 				b.builds_completed += 1
 				swapped = true
-			if not b.queued.is_empty():
-				var next := b.queued
-				b.queued = {}
-				_start(b, next)
 	return swapped
 
 func _swap_in(b: Band, mesh: ArrayMesh) -> void:
@@ -392,7 +449,7 @@ func _abort(b: Band) -> void:
 ## Leaving the tree aborts the in-flight builds; the requests are remembered so a reparent rebuilds them.
 func _exit_tree() -> void:
 	for b in _bands:
-		if b.task >= 0:
+		if b.task >= 0 or not b.queued.is_empty():
 			b.discarded = b.queued if not b.queued.is_empty() else b.running
 			_abort(b)
 			b.queued = {}
@@ -400,9 +457,9 @@ func _exit_tree() -> void:
 func _enter_tree() -> void:
 	for b in _bands:
 		if not b.discarded.is_empty() and b.task < 0:
-			var r := b.discarded
+			b.queued = b.discarded
 			b.discarded = {}
-			_start(b, r)
+	_start_waiting()
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_PREDELETE:

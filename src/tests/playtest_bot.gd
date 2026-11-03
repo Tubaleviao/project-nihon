@@ -44,8 +44,8 @@ const SAVE_DIR := "user://playtest/server/"
 const TUTORIAL_FILE := "user://playtest/tutorial.json"
 ## The world seed every run plays, so a step's verdict depends on the commit, not on a random world:
 ## on a fresh `randi()` seed far_peak, travel and horizon passed or failed by luck (a seed's tallest
-## ridge is ~350 m against far_peak's 330). Where the bot stands still varies run to run (builder,
-## walk distance), so far_peak also hops between search origins (`FAR_PEAK_HOP_M`). 42, 31 and 7
+## ridge was ~350 m against far_peak's 330 before Phase 211). Where the bot stands still varies run to run
+## (builder, walk distance); since Phase 211 far_peak looks at the planet's summits, not near the body. 42, 31 and 7
 ## passed every step locally; 162 failed walk. `--playtest-seed <n>` plays another seed.
 const WORLD_SEED := 42
 ## Phase 181 — the name the `create` step gives the bot's character (a fresh save offers the screen).
@@ -140,15 +140,17 @@ const HORIZON_RISE_MAX := 0.002       ## radians (~1 px): land may rise this far
 const HORIZON_STAND_TOLERANCE_M := 3.0   ## the body must stand within this far under the built coast ground
 ## Phase 165 — the far_peak step: stand `FAR_PEAK_DISTANCE_M` from a tall ridge on the world seed and look
 ## at it with only the ring and the bands drawn: rock or snow must show above the ring's skyline.
-const FAR_PEAK_DISTANCE_M := 60000.0
-const FAR_PEAK_MIN_HEIGHT := 330.0    ## 80+ m over the horizon from 60 km (about 250 m for the camera's eye): a ridge barely over it shows a few pixels
-const FAR_PEAK_SEARCH_M := 2.0e6      ## the ridge is looked for this far from the body, nearest square ring first
-const FAR_PEAK_SEARCH_STEP_M := 8000.0
-const FAR_PEAK_EXTRA_RINGS := 40     ## rings searched past the first with a ridge, for more candidates
-const FAR_PEAK_CANDIDATES := 8       ## nearest ridges with a usable vantage compared (the most open sight line wins)
-const FAR_PEAK_ATTEMPTS := 3         ## vantages tried per search origin (most open sight line first): a hill beside one can hide the bands behind the ring's own skyline
+## Phase 211 — the ridge is an Earth-scale peak: one of the seed's strongest massif summits
+## (`WorldShape.massif_summits`), at least FAR_PEAK_MIN_HEIGHT tall, seen from lowland 150 km out (its
+## top stands about 7 km over the curve of the planet there), and the frame must have no holes.
+const FAR_PEAK_DISTANCE_M := 150000.0
+const FAR_PEAK_MIN_HEIGHT := 8000.0
+const FAR_PEAK_VANTAGE_MAX_M := 2000.0   ## a vantage stands on dry land below this, well under the peak
+const FAR_PEAK_SUMMIT_RADIUS_M := 12000.0   ## the crest is looked for this far around a summit node
+const FAR_PEAK_SUMMIT_STEP_M := 500.0
+const FAR_PEAK_CANDIDATES := 8       ## strongest summits with a usable vantage compared (the most open sight line wins)
+const FAR_PEAK_MAX_HOLE_PX := 0      ## key-colour pixels allowed between the drawn skyline and the ring's (holes)
 const FAR_PEAK_MAX_TRIES := 8        ## vantages tried in all, over every search origin
-const FAR_PEAK_HOP_M := 500000.0     ## when an origin's vantages all fail, search again this far N/E/S/W of the body
 const FAR_PEAK_SAME_RIDGE_M := 30000.0   ## a vantage on a peak this close to one already tried is skipped (same massif)
 const FAR_PEAK_STEP_SECS := 900.0    ## wall clock for the whole step (a try takes ~20-50 s)
 const FAR_PEAK_MIN_PX := 8            ## rock or snow pixels above the ring's skyline needed to pass
@@ -461,6 +463,29 @@ static func rock_pixels_above(img: Image, ring_rows: Array, key: Color, tol: flo
 				count += 1
 	return count
 
+## Phase 211 — holes in what the bands draw above the ring: per column, the key-colour pixels between the
+## frame's own skyline (its first non-key row) and the ring's skyline row (`ring_rows`). Terrain is a
+## heightfield seen from above it, so below a column's first drawn pixel every ray meets ground: a key
+## pixel there is a gap in the mesh. (Below the ring's skyline the voxel window's hole shows key, so the
+## count stops there.)
+static func hole_pixels(img: Image, ring_rows: Array, key: Color, tol: float = 0.08) -> int:
+	var fmt := img.duplicate() as Image
+	fmt.convert(Image.FORMAT_RGB8)
+	var data := fmt.get_data()
+	var w := fmt.get_width()
+	var limit := int(tol * 3.0 * 255.0)
+	var kr := int(roundf(key.r * 255.0))
+	var kg := int(roundf(key.g * 255.0))
+	var kb := int(roundf(key.b * 255.0))
+	var top_rows := skyline_rows(img, key, tol)
+	var count := 0
+	for x in mini(w, ring_rows.size()):
+		for y in range(int(top_rows[x]), int(ring_rows[x])):
+			var i := (y * w + x) * 3
+			if absi(data[i] - kr) + absi(data[i + 1] - kg) + absi(data[i + 2] - kb) <= limit:
+				count += 1
+	return count
+
 ## Highest minus lowest skyline row (0 for a level skyline).
 static func skyline_spread(rows: Array) -> int:
 	if rows.is_empty():
@@ -741,6 +766,13 @@ func _player_pos() -> Vector3:
 ## Hold W for a few seconds: the body must move, and the feet must swap the lead at least
 ## WALK_FOOT_MIN_SWITCHES times over the last WALK_FOOT_SECS (a clip stuck on its last key keeps one foot ahead).
 func _step_walk() -> Array:
+	# The pinned spawn has a wolf pack beside it (Phase 211's freed workers bring it in sooner): it downed the
+	# body mid-walk on CI, and the respawn's teleport read as 5,400 km walked. The step tests the gait, not the
+	# world's spawns: a downed body respawns first, then it is healed and the creatures near it removed.
+	if not _root._player.is_alive():
+		await _until(func(): return _root._player.is_alive(), PlayerSlice.RESPAWN_DELAY + STEP_TIMEOUT_SECS)
+	GameBus.admin_healed.emit()
+	_clear_creatures_near_body()
 	# A slow builder may not have the ground under the body yet: it would stand or crawl, and the
 	# clip rightly stays near idle. Wait for the ground before judging the gait.
 	var here_chunk: Vector2i = _root._player.get_world_pos()["chunk"]
@@ -1703,36 +1735,25 @@ func _step_horizon() -> Array:
 	return [worst <= SKYLINE_FLAT_PX, "coast at %.0f m, bearing %.0f°, skyline spread %s px (limit %d)" % [
 		Vector2(start.x, start.z).distance_to(spot_xz), bearing, str(spreads), SKYLINE_FLAT_PX]]
 
-## Phase 165 — a vantage `FAR_PEAK_DISTANCE_M` from a tall ridge: the search over the shape
-## on a coarse grid around `from` (nearest square ring first) for points at least `FAR_PEAK_MIN_HEIGHT` tall, then, for the
-## nearest `FAR_PEAK_CANDIDATES` of them, the dry-land bearing (of sixteen) with the most open sight line to the ridge
-## (`ridge_clearance`); most open first. Returns a list of [vantage, bearing_to_peak_deg, peak, peak_height, clearance],
-## empty when none.
-func _find_far_peak(from: Vector2) -> Array:
+## Phase 165 — a vantage `FAR_PEAK_DISTANCE_M` from a tall ridge: of the seed's strongest massif summits
+## (Phase 211), each crest at least `FAR_PEAK_MIN_HEIGHT` tall, the first `FAR_PEAK_CANDIDATES` with a dry-land
+## bearing (of sixteen) below `FAR_PEAK_VANTAGE_MAX_M`, and of each the most open sight line to the crest
+## (`ridge_clearance`); most open first. Returns a list of [vantage, bearing_to_peak_deg, peak, peak_height,
+## clearance], empty when none.
+func _find_far_peak() -> Array:
 	var seed_v: int = _root._terrain.get_world_seed()
 	var w := Horizon.default_circumference()
 	var sea := WorldShape.sea_level()
-	var peaks: Array = []   # [distance, point, height] of every grid point tall enough, nearest rings first
+	var peaks: Array = []   # [strength, crest, height] of the strongest summits whose crest is tall enough
+	await get_tree().process_frame
 	var t0 := Time.get_ticks_msec()
-	var n := int(FAR_PEAK_SEARCH_M / FAR_PEAK_SEARCH_STEP_M)
-	var last_ring := n
-	for r in range(0, n + 1):   # square rings of growing radius
-		if r > last_ring:
-			break
-		for j in range(-r, r + 1):
-			if Time.get_ticks_msec() - t0 > COAST_WORK_MS:
-				await get_tree().process_frame
-				t0 = Time.get_ticks_msec()
-			var i_step := 1 if absi(j) == r or r == 0 else 2 * r   # interior cells belong to a smaller ring
-			for i in range(-r, r + 1, i_step):
-				var p := from + Vector2(float(i), float(j)) * FAR_PEAK_SEARCH_STEP_M
-				var h := WorldShape.height(seed_v, p.x, p.y, w)
-				if h >= FAR_PEAK_MIN_HEIGHT:
-					peaks.append([p.distance_to(from), p, h])
-					last_ring = mini(last_ring, r + FAR_PEAK_EXTRA_RINGS)
-	# A ridge whose 60 km ring is all sea or highland has no vantage: take the nearest ridges that do,
-	# and of those the most open sight line first (`ridge_clearance`).
-	peaks.sort_custom(func(p1, p2): return float(p1[0]) < float(p2[0]))
+	for sm in WorldShape.massif_summits(seed_v, w, FAR_PEAK_CANDIDATES * 2):
+		var hit: Array = WorldShape.highest_near(seed_v, sm[1], w, FAR_PEAK_SUMMIT_RADIUS_M, FAR_PEAK_SUMMIT_STEP_M)
+		if float(hit[0]) >= FAR_PEAK_MIN_HEIGHT:
+			peaks.append([sm[0], hit[1], hit[0]])
+		if Time.get_ticks_msec() - t0 > COAST_WORK_MS:
+			await get_tree().process_frame
+			t0 = Time.get_ticks_msec()
 	var vantages: Array = []
 	var usable := 0
 	for k in peaks.size():
@@ -1748,7 +1769,7 @@ func _find_far_peak(from: Vector2) -> Array:
 			var dir := Vector2.from_angle(deg_to_rad(float(b) * 22.5))
 			var v := peak + dir * FAR_PEAK_DISTANCE_M
 			var vh := WorldShape.height(seed_v, v.x, v.y, w)
-			if vh > sea + 3.0 and vh < 100.0:
+			if vh > sea + 3.0 and vh < FAR_PEAK_VANTAGE_MAX_M:
 				var clear := ridge_clearance(height_at, v, peak, w / TAU)
 				if best.is_empty() or clear > float(best[4]):
 					best = [v, rad_to_deg((-dir).angle()), peak, peaks[k][2], clear]
@@ -1785,34 +1806,22 @@ func _step_far_peak() -> Array:
 	if DisplayServer.get_name() == "headless":
 		return [true, "headless: no frame to read (skipped)"]
 	var player = _root._player
-	var start: Vector3 = _player_pos()
-	var origin0 := Vector2(start.x, start.z)
-	# The body's spot when the step starts varies run to run: when every vantage near it fails (a low
-	# ridge, a hill in the way), hop to a few more origins across the world and search again.
-	var origins: Array = [origin0]
-	for d in [Vector2(0, -1), Vector2(1, 0), Vector2(0, 1), Vector2(-1, 0)]:
-		origins.append(origin0 + d * FAR_PEAK_HOP_M)
+	# Phase 211 — the summits are the planet's, not the body's surroundings, so one search serves every try.
 	var tried_peaks: Array = []
 	var fails: Array = []
-	for origin in origins:
+	for v in await _find_far_peak():
 		if tried_peaks.size() >= FAR_PEAK_MAX_TRIES:
 			break
-		var vantages: Array = await _find_far_peak(origin)
-		var tries := 0
-		for v in vantages:
-			if tries >= FAR_PEAK_ATTEMPTS or tried_peaks.size() >= FAR_PEAK_MAX_TRIES:
-				break
-			if tried_peaks.any(func(p): return (p as Vector2).distance_to(v[2]) < FAR_PEAK_SAME_RIDGE_M):
-				continue
-			tried_peaks.append(v[2])
-			tries += 1
-			var res: Array = await _far_peak_attempt(v, player)
-			print("[Playtest] far_peak try %d: %s" % [tried_peaks.size(), res[1]])
-			if res[0]:
-				return [true, "%s (try %d)" % [res[1], tried_peaks.size()]]
-			fails.append(res[1])
+		if tried_peaks.any(func(p): return (p as Vector2).distance_to(v[2]) < FAR_PEAK_SAME_RIDGE_M):
+			continue
+		tried_peaks.append(v[2])
+		var res: Array = await _far_peak_attempt(v, player)
+		print("[Playtest] far_peak try %d: %s" % [tried_peaks.size(), res[1]])
+		if res[0]:
+			return [true, "%s (try %d)" % [res[1], tried_peaks.size()]]
+		fails.append(res[1])
 	if fails.is_empty():
-		return [false, "no ridge of %.0f m within %.0f km of %d origins with dry land %.0f km from it" % [FAR_PEAK_MIN_HEIGHT, FAR_PEAK_SEARCH_M / 1000.0, origins.size(), FAR_PEAK_DISTANCE_M / 1000.0]]
+		return [false, "no massif summit of %.0f m with dry land under %.0f m %.0f km from it" % [FAR_PEAK_MIN_HEIGHT, FAR_PEAK_VANTAGE_MAX_M, FAR_PEAK_DISTANCE_M / 1000.0]]
 	return [false, "%d vantages failed; last: %s" % [fails.size(), fails[-1]]]
 
 ## One vantage of `_step_far_peak`: stand there, draw the ring alone and then the ring with the bands, count.
@@ -1879,12 +1888,13 @@ func _far_peak_attempt(found: Array, player) -> Array:
 	# pixels need only be a share (`FAR_PEAK_MIN_ROCK_SHARE`) of the band pixels, and at least `FAR_PEAK_MIN_PX`.
 	var px := rock_pixels_above(all_img, rows, SKYLINE_KEY, 0.08, true)
 	var rock_px := rock_pixels_above(all_img, rows, SKYLINE_KEY)
-	var rock_ok := far_peak_passes(px, rock_px)
+	var holes := hole_pixels(all_img, rows, SKYLINE_KEY)
+	var rock_ok := far_peak_passes(px, rock_px) and holes <= FAR_PEAK_MAX_HOLE_PX
 	var worst_ms := 0.0
 	for f in _frames:
 		worst_ms = maxf(worst_ms, float(f))
-	var detail := "ridge %.0f m at %.0f km, bearing %.0f°: %d band px above the ring's skyline, %d of them rock/snow (need %d and %.0f%%), worst frame %.0f ms" % [
-		float(found[3]), Vector2(spot_xz).distance_to(Vector2(found[2])) / 1000.0, bearing, px, rock_px, FAR_PEAK_MIN_PX, FAR_PEAK_MIN_ROCK_SHARE * 100.0, worst_ms]
+	var detail := "ridge %.0f m at %.0f km, bearing %.0f°: %d band px above the ring's skyline, %d of them rock/snow (need %d and %.0f%%), %d hole px (at most %d), worst frame %.0f ms" % [
+		float(found[3]), Vector2(spot_xz).distance_to(Vector2(found[2])) / 1000.0, bearing, px, rock_px, FAR_PEAK_MIN_PX, FAR_PEAK_MIN_ROCK_SHARE * 100.0, holes, FAR_PEAK_MAX_HOLE_PX, worst_ms]
 	return [rock_ok, detail]
 
 ## Phase 195 — the far-peak verdict from the band pixels above the ring's skyline (`band_px`) and how many of

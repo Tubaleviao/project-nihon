@@ -271,7 +271,7 @@ static func _wall_plane(chunk_pos: Vector2i, dir: String, tx: int, tz: int) -> f
 ## identical — no span merges that did not merge before. The three GEOMETRY components fit
 ## int32 by a wide margin: a wall plane is a multiple of TILE_SIZE 0.5 and bounded by the
 ## world extent (|plane·10⁴| ≤ 4.1e7), and a run's span is bounded by
-## BEDROCK_DEPTH..MAX_HEIGHT (|y·10⁴| ≤ 6.4e6).
+## BEDROCK_DEPTH..MAX_HEIGHT (|y·10⁴| ≤ 9.4e7 at the 9,400 m build ceiling, under int32's 2.1e9).
 ##
 ## Phase 42 review pass 9 — the fourth component does NOT fit, and the old comment claimed it
 ## did ("`to_rgba32()` is an int32 by definition"): it is a packed uint32, so opaque white is

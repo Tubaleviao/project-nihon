@@ -38,7 +38,9 @@ const HEIGHT_SCALE := 5.0    # world units peak-to-valley of the small-scale DET
 ## 10 = Phase 188 mountain ranges, not plateaus: ridges are 25 km cells (were 125 km) with a sharper crest
 ## profile, Alpine is chosen by temperature above a 200 m floor (it was any ground above 250 m), the land
 ## biomes reach 1,000 m, and the spawn plain is capped at 150 m, below the Alpine floor.
-const WORLDGEN_VERSION := 10
+## 11 = Phase 211 Earth-scale mountains: the fabric's `maxHeight` (8,850 m) is no longer held at 512 m, and
+## broad massifs (`WorldShape.massif`) lift rugged inland ground toward it, with taller ridges on top.
+const WORLDGEN_VERSION := 11
 
 ## Phase 106 — a hash of every fabric parameter world-gen reads that `WORLDGEN_VERSION` cannot see:
 ## the `WorldSystem` shape fields (`sea`, `min/max height`, `oceanShare`, `ridgeAmplitude`,
@@ -619,6 +621,7 @@ static func _native_cfg(pos: Vector2i, seed_v: int) -> Dictionary:
 		"min_height": WorldShape.min_height(),
 		"max_height": WorldShape.max_height(),
 		"ridge_amplitude": WorldShape.ridge_amplitude(),
+		"massif_amplitude": WorldShape.massif_amplitude(),
 		"spline": WorldShape.spline(),
 		"spawn_plain": WorldShape.spawn_plain_height(seed_v, float(c) * CHUNK_METERS),
 		"records": records,

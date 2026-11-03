@@ -60,6 +60,8 @@ func register() -> void:
 	_run_test("worldgen: fingerprint stamp on the world record", _test_worldgen_fingerprint_record)
 	_run_test("worldgen: fingerprint mismatch wiring",        _test_worldgen_fingerprint_game_root)
 	_run_test("worldgen: golden generator values",            _test_worldgen_golden)
+	_run_test("Phase 211: Earth-scale peaks reach maxHeight on the pinned seed", _test_earth_scale_peaks)
+	_run_test("Phase 211: a chunk recorded before the bump keeps its heights on a new summit", _test_earth_scale_record_kept)
 	_run_test("worldgen: the spawn plain is level with a highland", _test_spawn_plain_no_pit)
 	_run_test("worldgen: little Alpine around spawn, plain below the floor", _test_spawn_little_alpine)
 	_run_test("worldgen: mountain ranges near spawn, with valleys", _test_mountain_ranges_near_spawn)
@@ -1675,6 +1677,56 @@ func _test_spawn_plain_no_pit() -> void:
 	assert_eq(WorldShape.spawn_plain_height(2045165241, w), WorldShape.SPAWN_PLAIN_MAX, "a higher rim meets the cap")
 	assert_eq(WorldShape.spawn_plain_height(777, w), WorldShape.SPAWN_HEIGHT, "a low seed keeps the 2 m plain")
 
+## Phase 211 — on the playtest's pinned seed, the tallest surface sampled on its strongest massifs lies
+## within 5% of the fabric's `maxHeight` and never above it, and the flanks are mountain slopes, not cliffs.
+func _test_earth_scale_peaks() -> void:
+	var seed_v := 42
+	var w := float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
+	var top := WorldShape.max_height()
+	assert_true(top > 8000.0, "the fabric's maxHeight is Earth-scale (%.0f m)" % top)
+	var summits := WorldShape.massif_summits(seed_v, w, 4)
+	assert_eq(summits.size(), 4, "the seed has massifs")
+	var best := -INF
+	var steepest := 0.0
+	for sm in summits:
+		var hit: Array = WorldShape.highest_near(seed_v, sm[1], w, 12000.0, 250.0)
+		best = maxf(best, float(hit[0]))
+		# The mean slope over 2 km down from the crest, in the four directions.
+		var at: Vector2 = hit[1]
+		for d in [Vector2(2000, 0), Vector2(-2000, 0), Vector2(0, 2000), Vector2(0, -2000)]:
+			var p: Vector2 = at + d
+			steepest = maxf(steepest, (float(hit[0]) - WorldShape.height(seed_v, p.x, p.y, w)) / 2000.0)
+	assert_true(best >= top * 0.95, "the highest sampled surface %.0f m is within 5%% of maxHeight %.0f m" % [best, top])
+	assert_true(best <= top, "and none exceeds it (%.1f)" % best)
+	assert_true(steepest < 1.0, "a summit's 2 km flank is a mountain slope, not a needle (%.2f)" % steepest)
+
+## Phase 211 — the stable-world rule across the version bump: a chunk a worldgen-10 world recorded on what is
+## now an 8 km summit keeps its recorded 400 m corners and biome; only unrecorded land beside it rises.
+func _test_earth_scale_record_kept() -> void:
+	var seed_v := 42
+	var w := float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
+	var crest: Vector2 = WorldShape.highest_near(seed_v, WorldShape.massif_summits(seed_v, w, 1)[0][1], w, 12000.0, 500.0)[1]
+	var chunk := TerrainSlice.wrap_chunk(Vector2i(floori(crest.x / TerrainSlice.CHUNK_METERS), floori(crest.y / TerrainSlice.CHUNK_METERS)))
+	assert_true(TerrainSlice.generated_corner_height(chunk, seed_v) > 8000.0, "the generator now puts the chunk on a summit")
+	ChunkRecordsScript.clear()
+	var old := { "v": 10, "f": TerrainSlice.worldgen_fingerprint(), "b": "Tundra", "h": [400.0, 401.0, 402.0, 403.0] }
+	assert_true(ChunkRecordsScript.set_record(chunk, RegionStoreScript.normalize_gen(old)), "a worldgen-10 record is accepted")
+	var t := TerrainSlice.new()
+	add_child(t)
+	t.set_world_seed(seed_v)
+	var hm: Array = t.generate_heightmap(chunk)
+	var lo := INF
+	var hi := -INF
+	for h in hm:
+		lo = minf(lo, float(h))
+		hi = maxf(hi, float(h))
+	assert_true(lo >= 400.0 - 0.01 and hi <= 403.0 + TerrainSlice.HEIGHT_SCALE + 0.01, "the recorded chunk keeps its 400 m corners (%.2f..%.2f)" % [lo, hi])
+	assert_eq(TerrainSlice.biome_for_chunk(chunk, seed_v), "Tundra", "and its recorded biome")
+	var far := chunk + Vector2i(0, 40)   # 1.3 km away: unrecorded, past the frontier blend
+	assert_true(float(t.generate_heightmap(far)[0]) > 7000.0, "unrecorded land on the massif rises to the new peaks")
+	ChunkRecordsScript.clear()
+	t.free()
+
 ## Phase 106 — golden generator values. A Godot upgrade or an unversioned edit that moves any of
 ## them must bump `TerrainSlice.WORLDGEN_VERSION` and update these numbers in the same change.
 func _test_worldgen_golden() -> void:
@@ -1689,6 +1741,11 @@ func _test_worldgen_golden() -> void:
 	for i in 8:
 		var got := WorldShape.height(777 + i, 1234.5 * i * 1000.0, -5000.0 * i + 300.0, w)
 		assert_true(absf(got - float(shape[i])) < 1e-8, "shape height %d matches the golden value (got %.9f)" % [i, got])
+	# Phase 211 (worldgen 11): a crest on the pinned seed's strongest massif, and the massif's own field there.
+	var summit := WorldShape.height(42, 16563250.0, 9686750.0, w)
+	assert_true(absf(summit - 8825.057533876) < 1e-6, "the massif crest matches the golden value (got %.9f)" % summit)
+	var lift := WorldShape.massif(42, 16563250.0, 9686750.0, w)
+	assert_true(absf(lift - 0.998929489) < 1e-9, "the massif field matches the golden value (got %.9f)" % lift)
 	var biomes: Array = ["TemperateGrassland", "Ocean", "TemperateForest", "Ocean", "Ocean", "Ocean", "Ocean", "Desert",
 		"TemperateForest", "Ocean", "Ocean", "Ocean", "Ocean", "Ocean", "TemperateForest", "Ocean"]
 	for i in 16:
