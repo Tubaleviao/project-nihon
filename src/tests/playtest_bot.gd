@@ -36,6 +36,12 @@ const PlayerSlice := preload("res://src/player/player_slice.gd")
 const AdminRules := preload("res://src/admin/admin_rules.gd")
 const TickProbe := preload("res://src/core/tick_probe.gd")
 const ProcessProfiler := preload("res://src/tests/process_profiler.gd")
+const StructureRules := preload("res://src/structure/structure_rules.gd")
+const StructureLimits := preload("res://src/structure/structure_limits.gd")
+const ChatCommands := preload("res://src/core/chat_commands.gd")
+const PlayerRules := preload("res://src/core/player_rules.gd")
+const WritingRules := preload("res://src/technology/writing_rules.gd")
+const ChestRules := preload("res://src/world/chest_rules.gd")
 
 const ARG := "--playtest-bot"
 const OUT_DIR := "res://playtest"
@@ -166,6 +172,20 @@ const COAST_MARCH_M := 2000.0         ## march step on the large-scale shape
 const COAST_INLAND_M := 48.0          ## the body stands this far back from the shore
 const COAST_DEEP_M := 20.0            ## open water: the shape lies this far under the sea level
 const COAST_WORK_MS := 40             ## search work per frame before it yields
+## Phase 213 — the tower step: a clan builds past the wood floor limit on flattened ground beside home, then on in a
+## higher class, sets a chest to owner-only, reads a book, dismantles fresh blocks, respawns and flies to a peak.
+const TOWER_TIMEOUT_SECS := 420.0
+const TOWER_CLAN := "Towerfolk"
+const TOWER_SIDE := 5                ## the wood part is TOWER_SIDE × TOWER_SIDE columns (2.5 m: three floors are not too slender)
+const TOWER_WOOD := "Thornwood"
+const TOWER_HIGH := "Concrete"       ## the class above wood the step switches to: a row of TOWER_SIDE columns along the wood's +x side
+const TOWER_HIGH_FLOORS := 4         ## the concrete row is built this many floors high, one past the wood's refusal
+const TOWER_OFFSET_M := 6.0          ## candidate footprints start this far from home, on TOWER_BEARINGS bearings
+const TOWER_BEARINGS := 8
+const TOWER_MAX_SPREAD_M := 1.0      ## the flattest candidate's natural ground may differ by at most this (mined level)
+const TOWER_DISMANTLE_BLOCKS := 2    ## fresh blocks placed and dismantled at Building level 0 (half each: one comes back)
+const TOWER_VIEW_M := 9.0            ## the tower's screenshot is taken from this far west of the footprint
+const TOWER_PEAK_MIN_M := 8000.0     ## the peak the step flies to is at least this high
 
 var _root: Node
 var _frames: Array = []       ## frame times (ms) of the step in flight
@@ -195,6 +215,14 @@ var _chopped: Array = []
 var _crafted: Array = []
 var _researched: Array = []
 var _placed: Array = []
+var _home: Dictionary = {}   ## Phase 213: where the body stood after the boot (the tower is built beside it)
+var _structure_refusals: Array = []   ## per `structure_resolved`: the reason of a refused placement, else ""
+var _chest_results: Array = []   ## [action, reason] per `chest_resolved`
+var _writing_results: Array = []   ## [action, item, reason] per `writing_resolved`
+var _respawns := 0
+var _tower_started_ms := 0
+var _spawns_seen := 0   ## Phase 213: creature spawns and respawns in the session
+var _circle_spawns: Array = []   ## ... the ones whose spawn point lies inside a structure's circle
 var _steps_done: Array = []   ## finished step records, for the watchdog's partial report
 var _profiler: ProcessProfiler = null   ## Phase 183: `--playtest-profile`, else null
 var _profile_frames: Array = []   ## ... per recorded frame, its TickProbe phase table (µs)
@@ -247,6 +275,8 @@ static func _step_timeout(step: String) -> float:
 		return HORIZON_TIMEOUT_SECS
 	if step == "far_peak":
 		return FAR_PEAK_STEP_SECS
+	if step == "tower":
+		return TOWER_TIMEOUT_SECS
 	return STREAM_TIMEOUT_SECS if step == "stream" or step == "pole" or step == "flight" else STEP_TIMEOUT_SECS
 
 static func step_names() -> Array:
@@ -269,7 +299,7 @@ static func flight_speed_from_args(args: Array) -> float:
 	return FLIGHT_SPEED_MPS
 
 static func all_step_names() -> Array:
-	return ["create", "walk", "stream", "flight", "mine", "gather", "craft", "character_sheet", "place", "fight", "tutorial", "travel", "horizon", "far_peak", "pole"]
+	return ["create", "walk", "stream", "flight", "mine", "gather", "craft", "character_sheet", "place", "fight", "tutorial", "travel", "horizon", "far_peak", "pole", "tower"]
 
 # ---------------------------------------------------------------------------
 # Pure report maths
@@ -503,6 +533,12 @@ func _ready() -> void:
 	GameBus.research_resolved.connect(func(result: Dictionary): _researched.append(result))
 	GameBus.station_placed.connect(func(id: String, type: String, _p: Vector3): _placed.append([id, type]))
 	GameBus.chunk_loaded.connect(func(_c: Vector2i): _chunk_builds += 1)
+	GameBus.structure_resolved.connect(func(_p: String, action: String, ok: bool, reason: String): _structure_refusals.append(reason if action == "place" and not ok else ""))
+	GameBus.chest_resolved.connect(func(_p: String, action: String, _ok: bool, reason: String): _chest_results.append([action, reason]))
+	GameBus.writing_resolved.connect(func(_p: String, action: String, item: String, _ok: bool, reason: String): _writing_results.append([action, item, reason]))
+	GameBus.player_respawned.connect(func(_pos: Vector3): _respawns += 1)
+	GameBus.creature_spawned.connect(func(iid: String, _c: String, _pos: Vector3): _note_spawn(iid))
+	GameBus.creature_respawned.connect(func(iid: String, _c: String): _note_spawn(iid))
 	# Phase 174: the bot's callbacks run first and FrameEnd's last, so the two clocks bracket the frame's
 	# _process and _physics_process work. Performance.TIME_PROCESS cannot stand in: Godot publishes the MAX
 	# process time of the last second, once a second, so a per-frame sample of it is the step's worst frame.
@@ -582,8 +618,12 @@ func run(root: Node) -> void:
 		budget += _step_timeout(step_name)
 	get_tree().create_timer(budget).timeout.connect(_on_watchdog)
 	print("[Playtest] waiting for the world boot")
-	var booted: bool = await _until(func(): return _root._player != null and not _root._chunk_manager._first_ring.is_empty() and _root._chunk_manager.is_first_ring_ready() \
-		and not _root._pending_host_boot, BOOT_TIMEOUT_SECS)
+	# The host's own gate held the boot until the first ring was built (`_finish_host_boot`). The ring is armed round
+	# the boot centre, and once the player is placed at the spawn the window can stream those chunks away, so the
+	# ring reading ready is a race (Phase 213: a faster boot lost it every run). The ground under the body is what
+	# the steps stand on.
+	var booted: bool = await _until(func(): return _root._player != null and not _root._chunk_manager._first_ring.is_empty() \
+		and not _root._pending_host_boot and _root._chunk_manager.is_chunk_built(_root._player.get_world_pos()["chunk"]), BOOT_TIMEOUT_SECS)
 	print("[Playtest] boot wait over: %s" % str(booted))
 	var steps: Array = []
 	if not booted:
@@ -594,6 +634,7 @@ func run(root: Node) -> void:
 		_root._chunk_manager.record_store = null   # flush_records runs every frame; no frontier record of the bot may reach the player's region files
 		_root._chunk_manager._pending_records.clear()
 		_root._inventory.replace_contents({})   # a saved pack from an earlier run must not decide the result
+		_home = _root._player.get_world_pos().duplicate()
 		_seed_village()
 		for step_name in step_names():
 			var rec: Dictionary = await _run_step(step_name)
@@ -697,7 +738,7 @@ func _run_step(step: String) -> Dictionary:
 	if _profiler != null:
 		rec["profile"] = ProcessProfiler.summarize(_profile_frames)
 		rec["profile_creatures"] = _profile_creatures
-	if step != "create":   # Phase 181: that step shoots the screen itself, before it closes
+	if step != "create" and step != "tower":   # Phase 181: create shoots the screen itself, before it closes; tower its two views
 		await _screenshot(step)
 	print("[Playtest] %s %s %s" % [step, "ok" if bool(rec["ok"]) else "FAIL", rec["detail"]])
 	return rec
@@ -2066,3 +2107,371 @@ func _step_pole() -> Array:
 func _window_settled() -> bool:
 	var cm = _root._chunk_manager
 	return cm._load_queue.is_empty() and cm._rebuild_queue.is_empty() and cm._builds.is_empty() and cm._unload_queue.is_empty()
+
+# ---------------------------------------------------------------------------
+# Phase 213 — a clan's tower on a mountain: the arc, played
+# ---------------------------------------------------------------------------
+
+## Phase 213 — a creature spawn or respawn the host admitted: counted, and recorded when its spawn point lies inside
+## a structure's circle (`StructureSlice.spawn_blocked`), which no wild spawn may.
+func _note_spawn(iid: String) -> void:
+	if _root == null or _root._structures == null or _root._creature == null:
+		return
+	var inst: Dictionary = _root._creature._instances.get(iid, {})
+	var at: Variant = inst.get("spawn_exact", null)
+	if not (at is Dictionary):
+		return
+	var m := WorldPos.CHUNK_METERS
+	var xz := Vector2(float(at["chunk"].x) * m + at["local"].x, float(at["chunk"].y) * m + at["local"].z)
+	_spawns_seen += 1
+	if _root._structures.spawn_blocked(xz):
+		_circle_spawns.append("%s at (%.0f, %.0f)" % [str(inst.get("creature_id", iid)), xz.x, xz.y])
+
+## The exact point at the middle of world tile `tile`, `y` metres up, as { chunk, local }.
+static func tile_exact(tile: Vector2i, y: float) -> Dictionary:
+	var cs := VoxelSlice.CHUNK_SIZE
+	var chunk := Vector2i(floori(float(tile.x) / float(cs)), floori(float(tile.y) / float(cs)))
+	return { "chunk": chunk, "local": Vector3((float(tile.x - chunk.x * cs) + 0.5) * VoxelSlice.TILE_SIZE, y,
+		(float(tile.y - chunk.y * cs) + 0.5) * VoxelSlice.TILE_SIZE) }
+
+static func _exact_xyz(exact: Dictionary) -> Vector3:
+	var m := WorldPos.CHUNK_METERS
+	var l: Vector3 = exact["local"]
+	return Vector3(float(exact["chunk"].x) * m + l.x, l.y, float(exact["chunk"].y) * m + l.z)
+
+## The world tile under the ground point `xz`.
+static func tile_of(xz: Vector2) -> Vector2i:
+	return Vector2i(floori(xz.x / VoxelSlice.TILE_SIZE), floori(xz.y / VoxelSlice.TILE_SIZE))
+
+## The tiles of a tower footprint at `corner`: `side` + 1 columns along x (the last is the higher class's row) by
+## `side` along z.
+static func tower_tiles(corner: Vector2i, side: int) -> Array:
+	var out: Array = []
+	for x in side + 1:
+		for z in side:
+			out.append(corner + Vector2i(x, z))
+	return out
+
+## Place `material` on top of `tile`'s column with the player's own intent (a top-face click). "" when the column
+## rose by the block, else the host's refusal reason ("not placed" when it gave none).
+func _place_top(tile: Vector2i, material: String) -> String:
+	var v = _root._voxel
+	var top: float = v.column_top_at_tile(tile)
+	var exact := tile_exact(tile, top)
+	var before := _structure_refusals.size()
+	GameBus.block_place_requested.emit(_exact_xyz(exact), Vector3.UP, "", material, exact)
+	if float(v.column_top_at_tile(tile)) > top + 0.001:
+		return ""
+	for i in range(_structure_refusals.size() - 1, before - 1, -1):
+		if str(_structure_refusals[i]) != "":
+			return str(_structure_refusals[i])
+	return "not placed"
+
+## Mine the top block of `tile`'s column with the player's own intent. Whether the column went down.
+func _mine_top(tile: Vector2i) -> bool:
+	var v = _root._voxel
+	var top: float = v.column_top_at_tile(tile)
+	var exact := tile_exact(tile, top)
+	GameBus.block_mine_requested.emit(_exact_xyz(exact), Vector3.UP, "", exact)
+	return float(v.column_top_at_tile(tile)) < top - 0.001
+
+## Phase 213 — the arc, played. Beside home the bot founds a clan and builds as it, dismantles fresh blocks for half
+## their material (at Building level 0, before any of the step's work grows it), flattens a footprint and raises a
+## 5 × 5 wood tower to the top of floor 2: the next block, on floor 3, is refused. It then raises a concrete row
+## beside it to floor TOWER_HIGH_FLOORS, sets a chest to owner-only, reads a book, kills its character to respawn and
+## flies to a peak of at least TOWER_PEAK_MIN_M, screenshotting the tower and the peak. Last in the run, it also
+## checks that no creature spawned inside a structure's circle in the session.
+func _step_tower() -> Array:
+	var notes: Array = []
+	_tower_started_ms = Time.get_ticks_msec()
+	var pid: String = _root._registry.local_player_id
+	var inv: Node = _root._inventory
+	var v = _root._voxel
+	var player = _root._player
+	var was_flying: bool = player.flying
+	var speed: float = player.admin_speed_factor
+	_step_restore = _restore_flight.bind(speed, was_flying, TickProbe.enabled)
+	if was_flying:
+		GameBus.admin_moves_synced.emit(speed, false)
+	if _home.is_empty():
+		return [false, "no home position was recorded after the boot"]
+	if _root._ui.is_creation_open():   # `--playtest-only tower`: no create step ran, and the screen hides the views
+		var created: Array = await _step_create()
+		if not bool(created[0]):
+			return [false, "create: %s" % str(created[1])]
+	# The footprints lie within TOWER_OFFSET_M + 3 m of home: the 3 × 3 chunks round it hold them all.
+	var ring_built := func() -> bool:
+		for dz in range(-1, 2):
+			for dx in range(-1, 2):
+				if not _root._chunk_manager.is_chunk_built(_home["chunk"] + Vector2i(dx, dz)):
+					return false
+		return true
+	# A body the earlier steps left down respawns near the origin, where a wolf pack can down it again, and a respawn
+	# moves it off home whatever was teleported: until the chunks are built, put a living body back home, clear.
+	var at_home := func() -> bool:
+		if not player.is_alive():
+			return false
+		if player.get_world_pos()["chunk"] != _home["chunk"]:
+			_teleport_to(_home["chunk"], _home["local"])
+			_clear_creatures_near_body()
+			return false
+		return ring_built.call()
+	if not await _until(at_home, STREAM_TIMEOUT_SECS):
+		var cm = _root._chunk_manager
+		var unbuilt: Array = []
+		for dz in range(-1, 2):
+			for dx in range(-1, 2):
+				var c: Vector2i = _home["chunk"] + Vector2i(dx, dz)
+				if not cm.is_chunk_built(c):
+					unbuilt.append(str(c))
+		return [false, "the chunks round home never built (home %s, body at %s; unbuilt %s; load %d, builds %d, rebuild %d)" % [
+			str(_home["chunk"]), str(player.get_world_pos()["chunk"]), ", ".join(unbuilt), cm._load_queue.size(), cm._builds.size(), cm._rebuild_queue.size()]]
+	_teleport_to(_home["chunk"], _home["local"])
+	await _until(func(): return false, 1.0)   # the body settles
+	_clear_creatures_near_body()
+	inv.replace_contents({})   # no pick to wear out, and room for the step's materials
+
+	# A clan, and everything built from now on is its.
+	GameBus.clan_intent.emit("found", { "name": TOWER_CLAN }, pid)
+	if not await _until(func(): return _root._clans.clan_of(pid) != "", 5.0):
+		return [false, "the clan was not founded"]
+	var clan: String = _root._clans.clan_of(pid)
+	GameBus.chat_intent.emit("/%s clan" % ChatCommands.BUILDAS_NAME, "")
+	if not await _until(func(): return str(_root._structures.build_mode(pid)) == "clan", 5.0):
+		return [false, "/buildas clan left the build mode %s" % str(_root._structures.build_mode(pid))]
+	notes.append("founded %s" % TOWER_CLAN)
+	_tower_note(notes)
+
+	# The flattest footprint on a ring round home (natural ground, in a built chunk).
+	var home_xz := Vector2(float(_home["chunk"].x) * WorldPos.CHUNK_METERS + _home["local"].x, float(_home["chunk"].y) * WorldPos.CHUNK_METERS + _home["local"].z)
+	# A chunk being rebuilt reads as unbuilt for a moment: scan again until one candidate is whole. (A lambda
+	# captures locals by value, so the scan keeps its best in a dictionary.)
+	var best := { "spread": INF, "corner": Vector2i.ZERO }
+	var scan := func() -> bool:
+		best["spread"] = INF
+		for b in TOWER_BEARINGS:
+			var c := tile_of(home_xz + Vector2.from_angle(TAU * float(b) / float(TOWER_BEARINGS)) * TOWER_OFFSET_M)
+			var lo := INF
+			var hi := -INF
+			var built := true
+			for t: Vector2i in tower_tiles(c, TOWER_SIDE):
+				var chunk := Vector2i(floori(float(t.x) / float(VoxelSlice.CHUNK_SIZE)), floori(float(t.y) / float(VoxelSlice.CHUNK_SIZE)))
+				built = built and _root._chunk_manager.is_chunk_built(chunk)
+				var top: float = v.column_top_at_tile(t)
+				lo = minf(lo, top)
+				hi = maxf(hi, top)
+			if built and hi - lo < float(best["spread"]):
+				best["spread"] = hi - lo
+				best["corner"] = c
+		return float(best["spread"]) <= TOWER_MAX_SPREAD_M
+	await _until(scan, 30.0)
+	var spread: float = best["spread"]
+	var corner: Vector2i = best["corner"]
+	if spread > TOWER_MAX_SPREAD_M:
+		return [false, "no footprint near home within %.1f m of level (flattest %.2f m)" % [TOWER_MAX_SPREAD_M, spread]]
+	var tiles := tower_tiles(corner, TOWER_SIDE)
+
+	# Fresh blocks dismantled at Building level 0 come back at half: two blocks, one back.
+	var level: int = _root._structures._level_of(pid)
+	var share: float = StructureRules.dismantle_share(1.0, level)
+	var probe: Vector2i = tiles[0]
+	inv.add_item(TOWER_WOOD, TOWER_DISMANTLE_BLOCKS)
+	for i in TOWER_DISMANTLE_BLOCKS:
+		var why := _place_top(probe, TOWER_WOOD)
+		if why != "":
+			return [false, "a block to dismantle was refused: %s" % why]
+	var sid: int = _root._structures.structure_at(probe, v.column_top_at_tile(probe) - VoxelSlice.STEP_HEIGHT * 0.5)
+	var owned: Dictionary = _root._structures.get_structure(sid) if sid != 0 else {}
+	if str(owned.get("kind", "")) != "clan" or str(owned.get("owner", "")) != clan:
+		return [false, "the first block is not the clan's (%s %s)" % [str(owned.get("kind", "none")), str(owned.get("owner", ""))]]
+	var wood_before: int = inv.get_item_count(TOWER_WOOD)
+	for i in TOWER_DISMANTLE_BLOCKS:
+		if not _mine_top(probe):
+			return [false, "dismantling block %d failed" % (i + 1)]
+	var returned: int = inv.get_item_count(TOWER_WOOD) - wood_before
+	var expect := floori(float(TOWER_DISMANTLE_BLOCKS) * share + 0.000001)
+	if level != 0 or returned * 2 != TOWER_DISMANTLE_BLOCKS or returned != expect:
+		return [false, "dismantled %d fresh blocks at Building level %d (share %.2f): %d came back, %d expected" % [
+			TOWER_DISMANTLE_BLOCKS, level, share, returned, TOWER_DISMANTLE_BLOCKS / 2]]
+	notes.append("dismantled %d fresh blocks for %d (%.0f%%, Building level %d)" % [TOWER_DISMANTLE_BLOCKS, returned, 100.0 * share, level])
+	_tower_note(notes)
+
+	# Level the footprint: mine every column down to the lowest one.
+	var ground := INF
+	for t: Vector2i in tiles:
+		ground = minf(ground, v.column_top_at_tile(t))
+	var mined := 0
+	for t: Vector2i in tiles:
+		while float(v.column_top_at_tile(t)) > ground + 0.001:
+			if not _mine_top(t):
+				return [false, "the footprint could not be levelled at %s" % str(t)]
+			mined += 1
+		await get_tree().process_frame
+	inv.replace_contents({})
+	notes.append("levelled the footprint (spread %.2f m, %d blocks mined)" % [spread, mined])
+	_tower_note(notes)
+
+	# Wood, course by course, to the top of its last floor; the next block is refused.
+	var per_floor: int = StructureLimits.floor_mm() / roundi(VoxelSlice.STEP_HEIGHT * 1000.0)
+	var wood_floors: int = StructureLimits.max_floors(StructureLimits.rank_of(TOWER_WOOD))
+	var wood_tiles := tiles.filter(func(t: Vector2i) -> bool: return t.x - corner.x < TOWER_SIDE)
+	var high_tiles := tiles.filter(func(t: Vector2i) -> bool: return t.x - corner.x == TOWER_SIDE)
+	for course in wood_floors * per_floor:
+		if not inv.add_item(TOWER_WOOD, wood_tiles.size()):
+			return [false, "the pack took no %s for course %d" % [TOWER_WOOD, course]]
+		for t: Vector2i in wood_tiles:
+			var why := _place_top(t, TOWER_WOOD)
+			if why != "":
+				return [false, "wood course %d (floor %d) refused at %s: %s" % [course, course / per_floor + 1, str(t), why]]
+		await get_tree().process_frame
+	var mid: Vector2i = corner + Vector2i(TOWER_SIDE / 2, TOWER_SIDE / 2)
+	inv.add_item(TOWER_WOOD, 1)
+	var refused_floor := StructureLimits.floor_of(roundi(float(v.column_top_at_tile(mid)) * 1000.0), roundi(ground * 1000.0))
+	var refusal := _place_top(mid, TOWER_WOOD)
+	if refusal != StructureLimits.TOO_MANY_FLOORS or refused_floor != wood_floors + 1:
+		return [false, "a wood block on floor %d was %s, not refused as %s" % [refused_floor, "placed" if refusal == "" else "refused: " + refusal, StructureLimits.TOO_MANY_FLOORS]]
+	notes.append("wood to floor %d (%d blocks), floor %d refused (%s)" % [wood_floors, wood_tiles.size() * wood_floors * per_floor, refused_floor, refusal])
+	_tower_note(notes)
+
+	# A higher class from the ground beside it, on past the wood's limit.
+	for course in TOWER_HIGH_FLOORS * per_floor:
+		if not inv.add_item(TOWER_HIGH, high_tiles.size()):
+			return [false, "the pack took no %s for course %d" % [TOWER_HIGH, course]]
+		for t: Vector2i in high_tiles:
+			var why := _place_top(t, TOWER_HIGH)
+			if why != "":
+				return [false, "%s course %d (floor %d) refused at %s: %s" % [TOWER_HIGH, course, course / per_floor + 1, str(t), why]]
+		await get_tree().process_frame
+	var top_floor := StructureLimits.floor_of(roundi(float(v.column_top_at_tile(high_tiles[0]) - VoxelSlice.STEP_HEIGHT) * 1000.0), roundi(ground * 1000.0))
+	var tower: Dictionary = _root._structures.get_structure(_root._structures.structure_at(high_tiles[0], ground + VoxelSlice.STEP_HEIGHT * 0.5))
+	if top_floor != TOWER_HIGH_FLOORS or str(tower.get("owner", "")) != clan:
+		return [false, "the %s row stopped on floor %d (owner %s)" % [TOWER_HIGH, top_floor, str(tower.get("owner", "none"))]]
+	notes.append("%s on to floor %d; one clan structure of %d blocks" % [TOWER_HIGH, top_floor, int(tower.get("count", 0))])
+	_tower_note(notes)
+
+	# Stand west of the tower: a chest at the feet, set to owner-only.
+	var west := Vector2((float(corner.x) - TOWER_VIEW_M / VoxelSlice.TILE_SIZE) * VoxelSlice.TILE_SIZE, (float(corner.y) + float(TOWER_SIDE) * 0.5) * VoxelSlice.TILE_SIZE)
+	var west_chunk := Vector2i(floori(west.x / WorldPos.CHUNK_METERS), floori(west.y / WorldPos.CHUNK_METERS))
+	_teleport_to(west_chunk, Vector3(west.x - float(west_chunk.x) * WorldPos.CHUNK_METERS, 0.0, west.y - float(west_chunk.y) * WorldPos.CHUNK_METERS))
+	await _until(func(): return false, 1.0)
+	var chest := await _place_chest()
+	if chest[0] == "":
+		return [false, "chest: %s" % chest[1]]
+	var lock: Dictionary = _root._chests.get_lock(chest[0])
+	if str(lock.get("mode", "")) != "owner":
+		return [false, "the chest is in mode %s, not owner" % str(lock.get("mode", "?"))]
+	notes.append("chest %s" % chest[1])
+	_tower_note(notes)
+
+	# A book read teaches what it holds.
+	var book := ""
+	for item: String in WritingRules.items():
+		var w := WritingRules.of(item)
+		var t: String = str(w["teaches"])
+		if str(w["kind"]) == "technology" and not _root._technology.is_unlocked(t, pid) \
+				and (_root._technology.get_tech_data(t).get("requires", []) as Array).all(func(r) -> bool: return _root._technology.is_unlocked(str(r), pid)):
+			book = item
+			break
+	if book == "":
+		return [false, "no book teaches a technology the bot could learn"]
+	inv.add_item(book, 1)
+	var reads := _writing_results.size()
+	GameBus.writing_intent.emit("read", book, "")
+	var taught := str(WritingRules.of(book)["teaches"])
+	if _writing_results.size() == reads or str(_writing_results.back()[2]) != "" or not _root._technology.is_unlocked(taught, pid) or inv.get_item_count(book) != 1:
+		return [false, "reading %s: %s" % [book, str(_writing_results.back()[2]) if _writing_results.size() > reads else "no writing_resolved"]]
+	notes.append("read %s (learnt %s, kept it)" % [book, taught])
+	_tower_note(notes)
+
+	# The tower, from the west.
+	var pivot: Node3D = player._pivot
+	var arm: Node3D = player._cam_arm
+	var old_pitch := arm.rotation_degrees.x
+	pivot.global_rotation.y = -PI * 0.5   # facing +x
+	arm.rotation_degrees.x = 10.0
+	await _until(func(): return false, 1.0)
+	await _screenshot("tower")
+	arm.rotation_degrees.x = old_pitch
+
+	# A way out: kill the character and come back at the bed or the world spawn.
+	var respawns := _respawns
+	GameBus.chat_intent.emit("/%s" % ChatCommands.RESPAWN_NAME, "")
+	if not await _until(func(): return not player.is_alive(), 5.0):
+		return [false, "/respawn did not kill the character"]
+	if not await _until(func(): return _respawns > respawns and player.is_alive(), PlayerRules.RESPAWN_DELAY + 15.0):
+		return [false, "the character did not respawn"]
+	notes.append("respawned")
+	_tower_note(notes)
+
+	# Fly to the tallest summit of the strongest massifs.
+	var peak := await _find_peak()
+	if peak.is_empty():
+		return [false, "no massif summit of %.0f m" % TOWER_PEAK_MIN_M]
+	GameBus.admin_moves_synced.emit(speed, true)   # what `/fly` sends
+	var pxz: Vector2 = peak[1]
+	var pchunk := Vector2i(floori(pxz.x / WorldPos.CHUNK_METERS), floori(pxz.y / WorldPos.CHUNK_METERS))
+	var plocal := Vector3(pxz.x - float(pchunk.x) * WorldPos.CHUNK_METERS, 0.0, pxz.y - float(pchunk.y) * WorldPos.CHUNK_METERS)
+	_teleport_to(pchunk, plocal)
+	if not await _until(func(): return _root._chunk_manager.is_chunk_built(pchunk), STREAM_TIMEOUT_SECS):
+		return [false, "the summit chunk never built"]
+	_teleport_to(pchunk, plocal)
+	await _until(func(): return false, 1.5)
+	var ground_m: float = v.get_voxel_height_at(pxz)
+	var body_m: float = float(player.get_world_pos()["local"].y)
+	if ground_m < TOWER_PEAK_MIN_M or body_m < ground_m - 1.0:
+		return [false, "at the summit the ground is %.0f m and the body %.0f m (need %.0f m)" % [ground_m, body_m, TOWER_PEAK_MIN_M]]
+	pivot.global_rotation.y = 0.0
+	await _until(func(): return false, 1.0)
+	await _screenshot("tower_peak")
+	notes.append("flew to a %.0f m peak (body at %.0f m)" % [ground_m, body_m])
+	_tower_note(notes)
+
+	notes.append("%d creature spawns in the session, %d inside a circle" % [_spawns_seen, _circle_spawns.size()])
+	_tower_note(notes)
+	if not _circle_spawns.is_empty():
+		return [false, "; ".join(notes) + ": " + ", ".join(_circle_spawns.slice(0, 5))]
+	return [true, "; ".join(notes)]
+
+## Print the tower step's latest note with the step's wall time so far: a slow or hung phase shows in the log.
+func _tower_note(notes: Array) -> void:
+	print("[Playtest] tower %.1f s: %s" % [float(Time.get_ticks_msec() - _tower_started_ms) / 1000.0, str(notes.back())])
+
+## Place a chest beside the body with the player's own intent, open it and set it to clan, then owner-only.
+## [id, note], or ["", why] when it failed.
+func _place_chest() -> Array:
+	_root._inventory.add_item(ChestRules.placement_item("chest"), 1)
+	var here := _player_pos()
+	var off := Vector3.ZERO
+	for b in 8:
+		var d := Vector3(cos(TAU * float(b) / 8.0), 0.0, sin(TAU * float(b) / 8.0)) * 1.5 + Vector3(0.0, -0.4, 0.0)
+		if _root._station.placement_blocker("chest", _root._station.snap_to_grid(here + d), _root._registry.local_player_id) == "":
+			off = d
+			break
+	if off == Vector3.ZERO:
+		return ["", "no free spot round the body"]
+	var placed := _placed.size()
+	var results := _chest_results.size()
+	GameBus.chest_intent.emit("place", { "type": "chest", "ox": off.x, "oy": off.y, "oz": off.z }, "")
+	if _placed.size() == placed:
+		return ["", "placement refused (%s)" % (str(_chest_results.back()[1]) if _chest_results.size() > results else "no reply")]
+	var id := str(_placed.back()[0])
+	for row: Array in [["use", {}], ["mode", { "mode": "clan" }], ["mode", { "mode": "owner" }], ["close", {}]]:
+		var n := _chest_results.size()
+		GameBus.chest_intent.emit(str(row[0]), row[1], "")
+		if _chest_results.size() == n or str(_chest_results.back()[1]) != "":
+			return ["", "%s refused (%s)" % [str(row[0]), str(_chest_results.back()[1]) if _chest_results.size() > n else "no reply"]]
+	return [id, "%s placed, set to clan and then owner-only" % id]
+
+## The tallest crest at least TOWER_PEAK_MIN_M high near the strongest massif summits: [height, xz], or [].
+func _find_peak() -> Array:
+	var seed_v: int = _root._terrain.get_world_seed()
+	var w := Horizon.default_circumference()
+	var t0 := Time.get_ticks_msec()
+	for sm in WorldShape.massif_summits(seed_v, w, FAR_PEAK_CANDIDATES * 2):
+		var hit: Array = WorldShape.highest_near(seed_v, sm[1], w, FAR_PEAK_SUMMIT_RADIUS_M, FAR_PEAK_SUMMIT_STEP_M)
+		if float(hit[0]) >= TOWER_PEAK_MIN_M:
+			return hit
+		if Time.get_ticks_msec() - t0 > COAST_WORK_MS:
+			await get_tree().process_frame
+			t0 = Time.get_ticks_msec()
+	return []

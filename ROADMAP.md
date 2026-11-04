@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–199 and 203–212 are done. Their specs and acceptance criteria, and the introductions of
+Phases 1–199 and 203–213 are done. Their specs and acceptance criteria, and the introductions of
 the arcs they belonged to, are archived in [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Next: follow-up debt burn II (Phases 194–196)
@@ -126,7 +126,7 @@ Smithing). Phase 203 models all of it in the fabric before any runtime phase sta
 | 210 | Clan tiers from buildings and material rarity | Done | [phases-210.md](docs/roadmap-history/phases-210.md) |
 | 211 | Earth-scale mountains: peaks to about 8,850 m on unrecorded land | Done | [phases-211.md](docs/roadmap-history/phases-211.md) |
 | 212 | Floors and structural limits at runtime, and the materials above stone | Done | [phases-212.md](docs/roadmap-history/phases-212.md) |
-| 213 | A clan's tower on a mountain: the arc, played | Planned | below |
+| 213 | A clan's tower on a mountain: the arc, played | Done | [phases-213.md](docs/roadmap-history/phases-213.md) |
 
 ### Out of arc: Alt window shortcuts (Phase 214)
 
@@ -167,28 +167,6 @@ must stay under one hour.
 - [ ] CI: the four bots end with at least two different specialties, one completed project, one
   defended raid and one paid upkeep, as read from the host's world record.
 - [ ] The scenario passes 3 CI runs in a row on an unchanged commit.
-- [ ] Suite green on both boot paths, harness green.
-
----
-
-## Phase 213 — A clan's tower on a mountain: the arc, played
-
-**Goal:** prove the arc with the playtest bot.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phases 206–212.
-
-**Deliverables:**
-- A `tower` playtest step: the bot founds a clan, builds a clan structure past the wood floor limit
-  (refused), switches to a higher class and builds on, sets a chest to owner-only, reads a book,
-  dismantles a fresh block for half its material, kills its character to respawn, and flies to an 8 km peak, screenshotting the
-  tower and the peak.
-
-**Acceptance criteria:**
-- [ ] Playtest: the step passes, with the wood refusal at floor 3 and a 50% return, and
-  walk/craft/fight stay within budget.
-- [ ] Playtest: no creature spawns inside any building's circle during the session.
 - [ ] Suite green on both boot paths, harness green.
 
 ---

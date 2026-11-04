@@ -717,8 +717,10 @@ func _slenderness(sid: int, tile: Vector2i, mm: int) -> float:
 	var tall := lo + Limits.floor_mm()
 	var cols := 1
 	var tops: Dictionary = s.get("tops", {})
+	# A column counts once it stands a full floor tall: one raised course by course reaches exactly `tall` before
+	# the next course starts, and a strict `>` read the first block of every second floor as a lone needle.
 	for t: Vector2i in tops:
-		if t != tile and int(tops[t]) > tall:
+		if t != tile and int(tops[t]) >= tall:
 			cols += 1
 	return Limits.slenderness(height, cols)
 
