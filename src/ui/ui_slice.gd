@@ -1168,7 +1168,9 @@ func _on_item_picked_up(_item_id: String, _quantity: int) -> void:
 func _on_inventory_changed() -> void:
 	refresh_inventory()
 	refresh_hud()
-	refresh_crafting()
+	# Phase 213 — a row per recipe (~200 ms) on every pack change, any player's: a closed list is rebuilt on open.
+	if is_window_open(WINDOW_CRAFTING):
+		refresh_crafting()
 	_refresh_market_item_selector()
 
 func _on_block_mined(_material: String, _quantity: int, _position: Vector3) -> void:

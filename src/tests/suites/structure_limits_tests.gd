@@ -28,6 +28,7 @@ func register() -> void:
 	_run_test("structure limits: a needle raised from a wide slab is measured on its own footprint", _test_needle_on_slab)
 	_run_test("structure limits: a project places every floor its table names, a floor of courses the limits count", _test_project_floors)
 	_run_test("structure limits: a project column is one edit and one sync, replayed to the same runs, from natural ground", _test_project_batch)
+	_run_test("structure limits: a 5 x 5 wood tower raised course by course reaches its last floor, and the next is refused", _test_course_by_course)
 
 # ── rig ──────────────────────────────────────────────────────────────────
 
@@ -495,3 +496,24 @@ func _test_project_batch() -> void:
 	_free_rig(r)
 	v.free()
 	client.free()
+
+## Phase 213 — what a builder does (and the playtest's tower step found refused): every column of a 5 × 5 footprint
+## one course at a time. The first block of floor 2 rose over 24 columns exactly a floor tall, which a strict count
+## left out, so it read as a one-column needle.
+func _test_course_by_course() -> void:
+	var r := _rig()
+	var st: StructureSlice = r["st"]
+	var per_floor := Limits.floor_mm() / 125
+	var refused := ""
+	for course in 2 * per_floor:
+		for x in 5:
+			for z in 5:
+				var plan := _put(st, "p1", Vector2i(x, z), 2.0 + 0.125 * course, "Thornwood")
+				if refused == "" and str(plan["verdict"]) == "refused":
+					refused = "course %d: %s" % [course, plan["reason"]]
+	assert_eq(refused, "", "every course of two wood floors is allowed")
+	var sid := st.structure_at(Vector2i(0, 0), 2.0625)
+	assert_eq(int(st.get_structure(sid)["count"]), 25 * 2 * per_floor, "one structure of every block")
+	assert_eq(str(st.plan_place("p1", Vector2i(2, 2), 2.0 + 0.125 * 2 * per_floor, Vector3.UP, "Thornwood").get("reason", "")), "too_many_floors",
+		"the first block of floor 3 is refused for its floors")
+	_free_rig(r)
