@@ -2290,9 +2290,13 @@ func _step_tower() -> Array:
 			return [false, "dismantling block %d failed" % (i + 1)]
 	var returned: int = inv.get_item_count(TOWER_WOOD) - wood_before
 	var expect := floori(float(TOWER_DISMANTLE_BLOCKS) * share + 0.000001)
-	if level != 0 or returned * 2 != TOWER_DISMANTLE_BLOCKS or returned != expect:
+	# The share is whatever the rules give at the bot's level; the half-back check holds only at level 0 (an
+	# earlier step that grows Building moves the share, which is not this step's failure).
+	if level == 0 and expect * 2 != TOWER_DISMANTLE_BLOCKS:
+		return [false, "at Building level 0 the dismantle share is %.2f, not a half" % share]
+	if returned != expect:
 		return [false, "dismantled %d fresh blocks at Building level %d (share %.2f): %d came back, %d expected" % [
-			TOWER_DISMANTLE_BLOCKS, level, share, returned, TOWER_DISMANTLE_BLOCKS / 2]]
+			TOWER_DISMANTLE_BLOCKS, level, share, returned, expect]]
 	notes.append("dismantled %d fresh blocks for %d (%.0f%%, Building level %d)" % [TOWER_DISMANTLE_BLOCKS, returned, 100.0 * share, level])
 	_tower_note(notes)
 
