@@ -1895,8 +1895,9 @@ const PROJECT_KEY := "palisade"
 const PROJECT_PLANKS := 4
 var _project_edits: int = 0
 
-func _on_project_edit(_action: String, _pos: Vector3, _normal: Vector3, _material: String) -> void:
-	_project_edits += 1
+func _on_project_edit(action: String, _pos: Vector3, normal: Vector3, _material: String) -> void:
+	# Phase 212 review — a "fill" is a column span of the project's blocks: count its blocks.
+	_project_edits += maxi(1, roundi(normal.y / 0.125)) if action == "fill" else 1
 
 func _project_view(settlements: Node) -> Dictionary:
 	for p: Variant in ((settlements.view().get("mine", {}) as Dictionary).get("projects", []) as Array):
@@ -1952,7 +1953,8 @@ func _step_settlement_project() -> void:
 	var given: bool = await _await_until(func(): return int((_project_view(settlements).get("given", {}) as Dictionary).get("ThornwoodPlank", 0)) >= 40, _step_timeout())
 	# Phase 207 — the last planks complete it: no labour stage.
 	var built: bool = await _await_until(func(): return str(_project_view(settlements).get("status", "")) == "done", _step_timeout())
-	var blocks := int(ProjectRules.def_of(PROJECT_KEY)["places"]["blocks"])
+	var pl: Dictionary = ProjectRules.def_of(PROJECT_KEY)["places"]
+	var blocks: int = ProjectRules.layout_cells(str(pl["layout"]), int(pl["floors"])).size()
 	var placed: bool = await _await_until(func(): return _project_edits >= blocks, _step_timeout())
 	GameBus.block_changed.disconnect(_on_project_edit)
 	await _await_settle(1.5 * _time_scale)

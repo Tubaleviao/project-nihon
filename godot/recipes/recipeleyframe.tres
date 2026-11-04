@@ -1,0 +1,12 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/recipes/recipeleyframe.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+domain = 0
+outputCount = 0
+recipe = {"domain":"arcane","station":"arcane forge","inputs":[{"item":"Steel","quantity":2},{"item":"Aethermite","quantity":2}],"outputs":[{"item":"Leyframe","quantity":2}],"skillGuards":[{"skill":"ArcaneForging","tier":"journeyman"}]}
+description = "Bind two steel and two raw aethermite into two leyframe at an arcane forge."
+tags = ["recipe"]

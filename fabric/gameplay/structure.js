@@ -126,6 +126,8 @@ function structureRefs() {
   const weather = require('../world/weather')
   const world = require('../world/world')
   const skills = require('./skills')
+  const recipes = require('./recipes')
+  const technology = require('./technology')
   const tagged = (table, tag) => Object.entries(table).filter(([, e]) => e && (e.tags || []).includes(tag))
   const RARITY_ORDER = materials.Ferrite.fields.rarity.values
   const wf = world.WorldSystem.fields
@@ -136,7 +138,14 @@ function structureRefs() {
       rarity: e.fields.rarity && e.fields.rarity.defaultValue,
       durability: e.fields.durability && e.fields.durability.defaultValue,
       structuralClass: e.fields.structuralClass && e.fields.structuralClass.defaultValue,
+      leyGated: !!(e.fields.leyGated && e.fields.leyGated.defaultValue),
     }])),
+    // Phase 212 — what a recipe makes and from what, and which recipes a technology unlocks.
+    recipes: Object.fromEntries(tagged(recipes, 'recipe').map(([k, e]) => {
+      const r = (e.fields.recipe && e.fields.recipe.defaultValue) || {}
+      return [k, { inputs: (r.inputs || []).map((i) => i.item), outputs: (r.outputs || []).map((o) => o.item) }]
+    })),
+    unlocked: [...new Set(tagged(technology, 'technology').flatMap(([, e]) => (e.fields.tech && e.fields.tech.defaultValue.unlocks) || []))],
     weatherStates: Object.keys(weather.RULES.states),
     skills: tagged(skills, 'skill').map(([k]) => k),
     maxHeight: wf.maxHeight.defaultValue,
@@ -207,6 +216,25 @@ function structureProblems(data, refs) {
   for (const [a, ma] of mats) for (const [b, mb] of mats) {
     if (refs.rarityOrder.indexOf(ma.rarity) > refs.rarityOrder.indexOf(mb.rarity) && ma.durability < mb.durability) {
       p.push(`${a} (${ma.rarity}) has durability ${ma.durability}, below ${b} (${mb.rarity}) at ${mb.durability}: a rarer material never has less`)
+    }
+  }
+
+  // Phase 212 — every class past stone has a material a player can make: the output of a recipe some
+  // technology unlocks. The top class's every such recipe reaches a ley-gated material through its inputs.
+  const makers = (key) => Object.entries(refs.recipes || {}).filter(([r, rec]) => rec.outputs.includes(key) && (refs.unlocked || []).includes(r))
+  const leyRooted = (key, seen = new Set()) => {
+    if (seen.has(key)) return false
+    seen.add(key)
+    if (refs.materials[key] && refs.materials[key].leyGated) return true
+    return Object.values(refs.recipes || {}).some((rec) => rec.outputs.includes(key) && rec.inputs.some((i) => leyRooted(i, seen)))
+  }
+  for (const name of order.slice(order.indexOf('stone') + 1)) {
+    const made = mats.filter(([k, m]) => m.structuralClass === name && makers(k).length > 0)
+    if (made.length === 0) p.push(`Structure.classes.${name} has no craftable material: no unlocked recipe makes a ${name}-class material`)
+    if (name === order[order.length - 1]) {
+      for (const [k] of made) for (const [r, rec] of makers(k)) {
+        if (!rec.inputs.some((i) => leyRooted(i))) p.push(`${r} makes ${k} (the top class, ${name}) without a ley-gated ingredient`)
+      }
     }
   }
 

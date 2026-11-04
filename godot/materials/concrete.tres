@@ -1,0 +1,19 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/materials/concrete.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+density = 2.4
+hardness = 4.0
+conductivity = 0.3
+magicAffinity = 0.02
+depthBand = {"min":0,"max":0}
+leyGated = false
+granular = false
+rarity = 0
+durability = 300
+structuralClass = 3
+description = "Grey poured stone of ground ashite and soil, cast into blocks at a masonry bench. Heavy and plain; it carries ten floors where dressed stone carries five."
+tags = ["material"]

@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:b57b1f2bceeecee78baa15e1f6c51fb9ccf1ee2e04205c071d74738c8d7fc4e8",
+  "schemaHash": "sha256:fe22ea1d47069d64644d25526e8493125e49d765ef2aaf99368658bff76862de",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -4369,6 +4369,393 @@
             ],
             "pii": false,
             "defaultValue": "earth"
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "Concrete": {
+        "name": "Concrete",
+        "tags": [
+          "material"
+        ],
+        "description": "Grey poured stone of ground ashite and soil, cast into blocks at a masonry bench. Heavy and plain; it carries ten floors where dressed stone carries five.",
+        "goal": "The first material past stone: a ten-floor building from common ingredients",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "density": {
+            "name": "density",
+            "type": "decimal",
+            "description": "g/cm³",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 2.4
+          },
+          "hardness": {
+            "name": "hardness",
+            "type": "decimal",
+            "description": "Mohs equivalent 1–10",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 4
+          },
+          "conductivity": {
+            "name": "conductivity",
+            "type": "decimal",
+            "description": "Thermal conductivity rating 0–1",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.3
+          },
+          "magicAffinity": {
+            "name": "magicAffinity",
+            "type": "decimal",
+            "description": "Capacity to hold enchantment 0–1",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.02
+          },
+          "depthBand": {
+            "name": "depthBand",
+            "type": "json",
+            "description": "Depth band [min, max) in world units below the natural surface where a vein may form; empty when max <= min. Cast at a bench from ashite and soil: no concrete lies in the ground.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0,
+              "max": 0
+            }
+          },
+          "leyGated": {
+            "name": "leyGated",
+            "type": "boolean",
+            "description": "True when a vein of this material forms only near a ley line",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "granular": {
+            "name": "granular",
+            "type": "boolean",
+            "description": "True when a placed span of this material falls to the first support below it when undermined (Phase 137); rock, ores and metals stay put",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "description": "How rare the material is (the item rarity scale); clan tiers weigh buildings by it (Phase 203)",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "common"
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Base durability of a placed block; weather, age and damage lower it (StructureDurability, Phase 203). Cast stone: as tough as crude iron.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 300
+          },
+          "structuralClass": {
+            "name": "structuralClass",
+            "type": "enum",
+            "description": "Structural class: the most floors a structure carrying this material may have (Structure.classes, Phase 203)",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "earth",
+              "wood",
+              "stone",
+              "concrete",
+              "steel",
+              "composite"
+            ],
+            "pii": false,
+            "defaultValue": "concrete"
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "Steel": {
+        "name": "Steel",
+        "tags": [
+          "material"
+        ],
+        "description": "Ferrite refined twice over a master forge into rolled beams. The frame of every building taller than ten floors, up to forty.",
+        "goal": "The frame metal: a forty-floor building from worked ferrite",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "density": {
+            "name": "density",
+            "type": "decimal",
+            "description": "g/cm³",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 7.8
+          },
+          "hardness": {
+            "name": "hardness",
+            "type": "decimal",
+            "description": "Mohs equivalent 1–10",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 6
+          },
+          "conductivity": {
+            "name": "conductivity",
+            "type": "decimal",
+            "description": "Thermal conductivity rating 0–1",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.45
+          },
+          "magicAffinity": {
+            "name": "magicAffinity",
+            "type": "decimal",
+            "description": "Capacity to hold enchantment 0–1",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.08
+          },
+          "depthBand": {
+            "name": "depthBand",
+            "type": "json",
+            "description": "Depth band [min, max) in world units below the natural surface where a vein may form; empty when max <= min. Rolled from ferrite ingots at a master forge: no steel ore exists.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0,
+              "max": 0
+            }
+          },
+          "leyGated": {
+            "name": "leyGated",
+            "type": "boolean",
+            "description": "True when a vein of this material forms only near a ley line",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "granular": {
+            "name": "granular",
+            "type": "boolean",
+            "description": "True when a placed span of this material falls to the first support below it when undermined (Phase 137); rock, ores and metals stay put",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "description": "How rare the material is (the item rarity scale); clan tiers weigh buildings by it (Phase 203)",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "uncommon"
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Base durability of a placed block; weather, age and damage lower it (StructureDurability, Phase 203). Rolled beams: tougher than cast stone.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 340
+          },
+          "structuralClass": {
+            "name": "structuralClass",
+            "type": "enum",
+            "description": "Structural class: the most floors a structure carrying this material may have (Structure.classes, Phase 203)",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "earth",
+              "wood",
+              "stone",
+              "concrete",
+              "steel",
+              "composite"
+            ],
+            "pii": false,
+            "defaultValue": "steel"
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "Leyframe": {
+        "name": "Leyframe",
+        "tags": [
+          "material"
+        ],
+        "description": "A composite of steel lattice bound with aethermite shards at an arcane forge, light and nearly unbending. The only material that carries a building to 163 floors; its aethermite forms only near ley lines.",
+        "goal": "The top structural class: the tallest towers need steel, an arcane forge and the ley lines",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "density": {
+            "name": "density",
+            "type": "decimal",
+            "description": "g/cm³",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 3.1
+          },
+          "hardness": {
+            "name": "hardness",
+            "type": "decimal",
+            "description": "Mohs equivalent 1–10",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 7.5
+          },
+          "conductivity": {
+            "name": "conductivity",
+            "type": "decimal",
+            "description": "Thermal conductivity rating 0–1",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "magicAffinity": {
+            "name": "magicAffinity",
+            "type": "decimal",
+            "description": "Capacity to hold enchantment 0–1",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.6
+          },
+          "depthBand": {
+            "name": "depthBand",
+            "type": "json",
+            "description": "Depth band [min, max) in world units below the natural surface where a vein may form; empty when max <= min. Woven at an arcane forge: no leyframe lies in the ground.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "min": 0,
+              "max": 0
+            }
+          },
+          "leyGated": {
+            "name": "leyGated",
+            "type": "boolean",
+            "description": "True when a vein of this material forms only near a ley line",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "granular": {
+            "name": "granular",
+            "type": "boolean",
+            "description": "True when a placed span of this material falls to the first support below it when undermined (Phase 137); rock, ores and metals stay put",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "description": "How rare the material is (the item rarity scale); clan tiers weigh buildings by it (Phase 203)",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "epic"
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Base durability of a placed block; weather, age and damage lower it (StructureDurability, Phase 203). A ley-bound lattice: stronger than any alloy.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1000
+          },
+          "structuralClass": {
+            "name": "structuralClass",
+            "type": "enum",
+            "description": "Structural class: the most floors a structure carrying this material may have (Structure.classes, Phase 203)",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "earth",
+              "wood",
+              "stone",
+              "concrete",
+              "steel",
+              "composite"
+            ],
+            "pii": false,
+            "defaultValue": "composite"
           }
         },
         "relations": {},
@@ -19764,6 +20151,210 @@
         "pii": [],
         "gdpr": {}
       },
+      "Cement": {
+        "name": "Cement",
+        "tags": [
+          "item"
+        ],
+        "description": "Ashite ground to a fine grey powder at a masonry bench. Mixed with soil and cast, it sets into concrete.",
+        "goal": "The intermediate of concrete: ties volcanic ashite to the first material past stone (Phase 212)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per sack",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 2
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "common"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "True; stacks up to 40 per slot",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "dust",
+              "parts": {
+                "body": "Ashite"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Structural integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 50
+          }
+        },
+        "relations": {
+          "ashite": {
+            "name": "ashite",
+            "kind": "hasOne",
+            "target": "Ashite"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "Cement left in the rain sets into a useless lump",
+            "rules": [
+              "Cement kept in a pack or a chest never degrades"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Regrind a set lump back to cement at a masonry bench",
+            "rules": [
+              "Requires a masonry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Cement kept in a pack or a chest never degrades"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Cement kept in a pack or a chest never degrades"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Cement kept in a pack or a chest never degrades"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a masonry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a masonry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a masonry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
       "EnchantedAethermiteShard": {
         "name": "EnchantedAethermiteShard",
         "tags": [
@@ -22579,6 +23170,720 @@
             "name": "voidite",
             "kind": "hasOne",
             "target": "Voidite"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A book does not wear while carried or read",
+            "rules": [
+              "Reading never consumes or wears it"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-bind a worn book at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "BookTechConcrete": {
+        "name": "BookTechConcrete",
+        "tags": [
+          "item",
+          "writing"
+        ],
+        "description": "A book that teaches the technology TechConcrete. Reading it teaches it and keeps it, so it can be read again or lent.",
+        "goal": "Research shared by writing, never through a clan (ResearchSharedByWriting, Phase 209)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per book",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "uncommon"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "True; copies of one writing stack",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "writing": {
+            "name": "writing",
+            "type": "string",
+            "description": "The writing rule it follows (GameData.WRITINGS)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Book"
+          },
+          "teaches": {
+            "name": "teaches",
+            "type": "string",
+            "description": "The technology, recipe or project key it teaches",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "TechConcrete"
+          },
+          "teachesKind": {
+            "name": "teachesKind",
+            "type": "string",
+            "description": "technology, station or project",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "technology"
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "tablet",
+              "parts": {
+                "slab": "Duskfiber",
+                "rune": "Concrete"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Binding integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100
+          }
+        },
+        "relations": {
+          "duskfiber": {
+            "name": "duskfiber",
+            "kind": "hasOne",
+            "target": "Duskfiber"
+          },
+          "concrete": {
+            "name": "concrete",
+            "kind": "hasOne",
+            "target": "Concrete"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A book does not wear while carried or read",
+            "rules": [
+              "Reading never consumes or wears it"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-bind a worn book at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "BookTechSteel": {
+        "name": "BookTechSteel",
+        "tags": [
+          "item",
+          "writing"
+        ],
+        "description": "A book that teaches the technology TechSteel. Reading it teaches it and keeps it, so it can be read again or lent.",
+        "goal": "Research shared by writing, never through a clan (ResearchSharedByWriting, Phase 209)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per book",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "uncommon"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "True; copies of one writing stack",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "writing": {
+            "name": "writing",
+            "type": "string",
+            "description": "The writing rule it follows (GameData.WRITINGS)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Book"
+          },
+          "teaches": {
+            "name": "teaches",
+            "type": "string",
+            "description": "The technology, recipe or project key it teaches",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "TechSteel"
+          },
+          "teachesKind": {
+            "name": "teachesKind",
+            "type": "string",
+            "description": "technology, station or project",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "technology"
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "tablet",
+              "parts": {
+                "slab": "Duskfiber",
+                "rune": "Steel"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Binding integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100
+          }
+        },
+        "relations": {
+          "duskfiber": {
+            "name": "duskfiber",
+            "kind": "hasOne",
+            "target": "Duskfiber"
+          },
+          "steel": {
+            "name": "steel",
+            "kind": "hasOne",
+            "target": "Steel"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A book does not wear while carried or read",
+            "rules": [
+              "Reading never consumes or wears it"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-bind a worn book at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "BookTechLeyframe": {
+        "name": "BookTechLeyframe",
+        "tags": [
+          "item",
+          "writing"
+        ],
+        "description": "A book that teaches the technology TechLeyframe. Reading it teaches it and keeps it, so it can be read again or lent.",
+        "goal": "Research shared by writing, never through a clan (ResearchSharedByWriting, Phase 209)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per book",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "uncommon"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "True; copies of one writing stack",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "writing": {
+            "name": "writing",
+            "type": "string",
+            "description": "The writing rule it follows (GameData.WRITINGS)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Book"
+          },
+          "teaches": {
+            "name": "teaches",
+            "type": "string",
+            "description": "The technology, recipe or project key it teaches",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "TechLeyframe"
+          },
+          "teachesKind": {
+            "name": "teachesKind",
+            "type": "string",
+            "description": "technology, station or project",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "technology"
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "tablet",
+              "parts": {
+                "slab": "Duskfiber",
+                "rune": "Leyframe"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Binding integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100
+          }
+        },
+        "relations": {
+          "duskfiber": {
+            "name": "duskfiber",
+            "kind": "hasOne",
+            "target": "Duskfiber"
+          },
+          "leyframe": {
+            "name": "leyframe",
+            "kind": "hasOne",
+            "target": "Leyframe"
           }
         },
         "behaviors": {
@@ -27932,6 +29237,420 @@
         "pii": [],
         "gdpr": {}
       },
+      "RecipeCement": {
+        "name": "RecipeCement",
+        "tags": [
+          "recipe"
+        ],
+        "description": "Grind two raw ashite into two sacks of cement at a masonry bench.",
+        "goal": "The first step of concrete (Phase 212)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "domain": {
+            "name": "domain",
+            "type": "enum",
+            "description": "Crafting station required",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "smithing",
+              "alchemy",
+              "arcane",
+              "carpentry"
+            ],
+            "pii": false
+          },
+          "outputCount": {
+            "name": "outputCount",
+            "type": "integer",
+            "description": "Number of output items produced per craft",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "carpentry",
+              "station": "masonry bench",
+              "inputs": [
+                {
+                  "item": "Ashite",
+                  "quantity": 2
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "Cement",
+                  "quantity": 2
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Carpentry",
+                  "tier": "apprentice"
+                }
+              ]
+            }
+          }
+        },
+        "relations": {
+          "inputAshite": {
+            "name": "inputAshite",
+            "kind": "hasOne",
+            "target": "Ashite"
+          },
+          "output": {
+            "name": "output",
+            "kind": "hasOne",
+            "target": "Cement"
+          }
+        },
+        "behaviors": {
+          "craft": {
+            "name": "craft",
+            "description": "Grind two raw ashite into two sacks of cement at a masonry bench.",
+            "rules": [
+              "Requires Carpentry: Apprentice",
+              "Requires a masonry bench structure",
+              "Two raw ashite yield two sacks of cement"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "RecipeConcrete": {
+        "name": "RecipeConcrete",
+        "tags": [
+          "recipe"
+        ],
+        "description": "Cast two sacks of cement and one soil into four concrete at a masonry bench.",
+        "goal": "Concrete: a ten-floor building from common ingredients (Phase 212)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "domain": {
+            "name": "domain",
+            "type": "enum",
+            "description": "Crafting station required",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "smithing",
+              "alchemy",
+              "arcane",
+              "carpentry"
+            ],
+            "pii": false
+          },
+          "outputCount": {
+            "name": "outputCount",
+            "type": "integer",
+            "description": "Number of output items produced per craft",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "carpentry",
+              "station": "masonry bench",
+              "inputs": [
+                {
+                  "item": "Cement",
+                  "quantity": 2
+                },
+                {
+                  "item": "Soil",
+                  "quantity": 1
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "Concrete",
+                  "quantity": 4
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Carpentry",
+                  "tier": "journeyman"
+                }
+              ]
+            }
+          }
+        },
+        "relations": {
+          "inputCement": {
+            "name": "inputCement",
+            "kind": "hasOne",
+            "target": "Cement"
+          },
+          "inputSoil": {
+            "name": "inputSoil",
+            "kind": "hasOne",
+            "target": "Soil"
+          },
+          "output": {
+            "name": "output",
+            "kind": "hasOne",
+            "target": "Concrete"
+          }
+        },
+        "behaviors": {
+          "craft": {
+            "name": "craft",
+            "description": "Cast two sacks of cement and one soil into four concrete at a masonry bench.",
+            "rules": [
+              "Requires Carpentry: Journeyman",
+              "Requires a masonry bench structure",
+              "Two cement and one soil yield four concrete"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "RecipeSteel": {
+        "name": "RecipeSteel",
+        "tags": [
+          "recipe"
+        ],
+        "description": "Roll two ferrite ingots into two steel beams at a master forge.",
+        "goal": "Steel: the frame of a forty-floor building (Phase 212)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "domain": {
+            "name": "domain",
+            "type": "enum",
+            "description": "Crafting station required",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "smithing",
+              "alchemy",
+              "arcane",
+              "carpentry"
+            ],
+            "pii": false
+          },
+          "outputCount": {
+            "name": "outputCount",
+            "type": "integer",
+            "description": "Number of output items produced per craft",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "smithing",
+              "station": "master forge",
+              "inputs": [
+                {
+                  "item": "FerriteIngot",
+                  "quantity": 2
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "Steel",
+                  "quantity": 2
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Smithing",
+                  "tier": "journeyman"
+                }
+              ]
+            }
+          }
+        },
+        "relations": {
+          "inputFerrite": {
+            "name": "inputFerrite",
+            "kind": "hasOne",
+            "target": "FerriteIngot"
+          },
+          "output": {
+            "name": "output",
+            "kind": "hasOne",
+            "target": "Steel"
+          }
+        },
+        "behaviors": {
+          "craft": {
+            "name": "craft",
+            "description": "Roll two ferrite ingots into two steel beams at a master forge.",
+            "rules": [
+              "Requires Smithing: Journeyman",
+              "Requires a master forge structure",
+              "Two ferrite ingots yield two steel"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "RecipeLeyframe": {
+        "name": "RecipeLeyframe",
+        "tags": [
+          "recipe"
+        ],
+        "description": "Bind two steel and two raw aethermite into two leyframe at an arcane forge.",
+        "goal": "Leyframe: the only material that carries 163 floors, gated by the ley lines (Phase 212)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "domain": {
+            "name": "domain",
+            "type": "enum",
+            "description": "Crafting station required",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "smithing",
+              "alchemy",
+              "arcane",
+              "carpentry"
+            ],
+            "pii": false
+          },
+          "outputCount": {
+            "name": "outputCount",
+            "type": "integer",
+            "description": "Number of output items produced per craft",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "arcane",
+              "station": "arcane forge",
+              "inputs": [
+                {
+                  "item": "Steel",
+                  "quantity": 2
+                },
+                {
+                  "item": "Aethermite",
+                  "quantity": 2
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "Leyframe",
+                  "quantity": 2
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "ArcaneForging",
+                  "tier": "journeyman"
+                }
+              ]
+            }
+          }
+        },
+        "relations": {
+          "inputSteel": {
+            "name": "inputSteel",
+            "kind": "hasOne",
+            "target": "Steel"
+          },
+          "inputAethermite": {
+            "name": "inputAethermite",
+            "kind": "hasOne",
+            "target": "Aethermite"
+          },
+          "output": {
+            "name": "output",
+            "kind": "hasOne",
+            "target": "Leyframe"
+          }
+        },
+        "behaviors": {
+          "craft": {
+            "name": "craft",
+            "description": "Bind two steel and two raw aethermite into two leyframe at an arcane forge.",
+            "rules": [
+              "Requires ArcaneForging: Journeyman",
+              "Requires an arcane forge structure",
+              "Two steel and two raw aethermite yield two leyframe"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
       "RecipeBed": {
         "name": "RecipeBed",
         "tags": [
@@ -29414,6 +31133,470 @@
         "pii": [],
         "gdpr": {}
       },
+      "TechConcrete": {
+        "name": "TechConcrete",
+        "tags": [
+          "technology"
+        ],
+        "description": "Grinding ashite to cement and casting it with soil. Unlocks concrete, which carries ten floors.",
+        "goal": "The first material past stone (Phase 212)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "status": {
+            "name": "status",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "locked",
+              "researching",
+              "unlocked"
+            ],
+            "pii": false
+          },
+          "researchCost": {
+            "name": "researchCost",
+            "type": "integer",
+            "description": "Research points spent to begin research (Phase 124); earned by the ResearchPointRule table",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 6
+          },
+          "tier": {
+            "name": "tier",
+            "type": "integer",
+            "description": "Technology tree tier",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "tech": {
+            "name": "tech",
+            "type": "json",
+            "description": "Structured technology data: recipe unlocks, prerequisite technologies, research duration (seconds), and material cost consumed to begin research.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "unlocks": [
+                "RecipeCement",
+                "RecipeConcrete"
+              ],
+              "requires": [
+                "TechMasterForge"
+              ],
+              "researchDuration": 45,
+              "researchMaterials": [
+                {
+                  "item": "Ashite",
+                  "quantity": 10
+                }
+              ]
+            }
+          }
+        },
+        "relations": {
+          "requiresTechMasterForge": {
+            "name": "requiresTechMasterForge",
+            "kind": "hasOne",
+            "target": "TechMasterForge"
+          },
+          "unlocksRecipeCement": {
+            "name": "unlocksRecipeCement",
+            "kind": "hasOne",
+            "target": "RecipeCement"
+          },
+          "unlocksRecipeConcrete": {
+            "name": "unlocksRecipeConcrete",
+            "kind": "hasOne",
+            "target": "RecipeConcrete"
+          }
+        },
+        "behaviors": {
+          "beginResearch": {
+            "name": "beginResearch",
+            "description": "Commit resources to concrete research",
+            "rules": [
+              "Requires TechMasterForge: unlocked"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "completeResearch": {
+            "name": "completeResearch",
+            "description": "Finish research; its recipes become craftable",
+            "rules": [
+              "Research cost fully paid"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "status",
+          "initial": "locked",
+          "states": {
+            "locked": {
+              "name": "locked",
+              "description": "Prerequisites not yet met; technology is not visible in the research interface",
+              "terminal": false
+            },
+            "researching": {
+              "name": "researching",
+              "description": "Player or guild has committed resources; research progresses over time",
+              "terminal": false
+            },
+            "unlocked": {
+              "name": "unlocked",
+              "description": "Research complete; all associated recipes and abilities are available",
+              "terminal": true
+            }
+          },
+          "transitions": [
+            {
+              "from": "locked",
+              "to": "researching",
+              "trigger": "beginResearch",
+              "guards": [
+                "Requires TechMasterForge: unlocked"
+              ],
+              "effects": []
+            },
+            {
+              "from": "researching",
+              "to": "unlocked",
+              "trigger": "completeResearch",
+              "guards": [
+                "Research cost fully paid"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "TechSteel": {
+        "name": "TechSteel",
+        "tags": [
+          "technology"
+        ],
+        "description": "Rolling ferrite into beams over a master forge. Unlocks steel, which carries forty floors.",
+        "goal": "The frame metal (Phase 212)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "status": {
+            "name": "status",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "locked",
+              "researching",
+              "unlocked"
+            ],
+            "pii": false
+          },
+          "researchCost": {
+            "name": "researchCost",
+            "type": "integer",
+            "description": "Research points spent to begin research (Phase 124); earned by the ResearchPointRule table",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 8
+          },
+          "tier": {
+            "name": "tier",
+            "type": "integer",
+            "description": "Technology tree tier",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "tech": {
+            "name": "tech",
+            "type": "json",
+            "description": "Structured technology data: recipe unlocks, prerequisite technologies, research duration (seconds), and material cost consumed to begin research.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "unlocks": [
+                "RecipeSteel"
+              ],
+              "requires": [
+                "TechMasterForge"
+              ],
+              "researchDuration": 60,
+              "researchMaterials": [
+                {
+                  "item": "FerriteIngot",
+                  "quantity": 6
+                }
+              ]
+            }
+          }
+        },
+        "relations": {
+          "requiresTechMasterForge": {
+            "name": "requiresTechMasterForge",
+            "kind": "hasOne",
+            "target": "TechMasterForge"
+          },
+          "unlocksRecipeSteel": {
+            "name": "unlocksRecipeSteel",
+            "kind": "hasOne",
+            "target": "RecipeSteel"
+          }
+        },
+        "behaviors": {
+          "beginResearch": {
+            "name": "beginResearch",
+            "description": "Commit resources to steel research",
+            "rules": [
+              "Requires TechMasterForge: unlocked"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "completeResearch": {
+            "name": "completeResearch",
+            "description": "Finish research; its recipes become craftable",
+            "rules": [
+              "Research cost fully paid"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "status",
+          "initial": "locked",
+          "states": {
+            "locked": {
+              "name": "locked",
+              "description": "Prerequisites not yet met; technology is not visible in the research interface",
+              "terminal": false
+            },
+            "researching": {
+              "name": "researching",
+              "description": "Player or guild has committed resources; research progresses over time",
+              "terminal": false
+            },
+            "unlocked": {
+              "name": "unlocked",
+              "description": "Research complete; all associated recipes and abilities are available",
+              "terminal": true
+            }
+          },
+          "transitions": [
+            {
+              "from": "locked",
+              "to": "researching",
+              "trigger": "beginResearch",
+              "guards": [
+                "Requires TechMasterForge: unlocked"
+              ],
+              "effects": []
+            },
+            {
+              "from": "researching",
+              "to": "unlocked",
+              "trigger": "completeResearch",
+              "guards": [
+                "Research cost fully paid"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "TechLeyframe": {
+        "name": "TechLeyframe",
+        "tags": [
+          "technology"
+        ],
+        "description": "Binding a steel lattice with aethermite at an arcane forge. Unlocks leyframe, the only material that carries 163 floors.",
+        "goal": "The top structural class, gated by the ley lines (Phase 212)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "status": {
+            "name": "status",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "locked",
+              "researching",
+              "unlocked"
+            ],
+            "pii": false
+          },
+          "researchCost": {
+            "name": "researchCost",
+            "type": "integer",
+            "description": "Research points spent to begin research (Phase 124); earned by the ResearchPointRule table",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 12
+          },
+          "tier": {
+            "name": "tier",
+            "type": "integer",
+            "description": "Technology tree tier",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "tech": {
+            "name": "tech",
+            "type": "json",
+            "description": "Structured technology data: recipe unlocks, prerequisite technologies, research duration (seconds), and material cost consumed to begin research.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "unlocks": [
+                "RecipeLeyframe"
+              ],
+              "requires": [
+                "TechSteel",
+                "TechArcaneForging"
+              ],
+              "researchDuration": 90,
+              "researchMaterials": [
+                {
+                  "item": "Aethermite",
+                  "quantity": 6
+                }
+              ]
+            }
+          }
+        },
+        "relations": {
+          "requiresTechSteel": {
+            "name": "requiresTechSteel",
+            "kind": "hasOne",
+            "target": "TechSteel"
+          },
+          "requiresTechArcaneForging": {
+            "name": "requiresTechArcaneForging",
+            "kind": "hasOne",
+            "target": "TechArcaneForging"
+          },
+          "unlocksRecipeLeyframe": {
+            "name": "unlocksRecipeLeyframe",
+            "kind": "hasOne",
+            "target": "RecipeLeyframe"
+          }
+        },
+        "behaviors": {
+          "beginResearch": {
+            "name": "beginResearch",
+            "description": "Commit resources to leyframe research",
+            "rules": [
+              "Requires TechSteel: unlocked",
+              "Requires TechArcaneForging: unlocked"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "completeResearch": {
+            "name": "completeResearch",
+            "description": "Finish research; its recipes become craftable",
+            "rules": [
+              "Research cost fully paid"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "status",
+          "initial": "locked",
+          "states": {
+            "locked": {
+              "name": "locked",
+              "description": "Prerequisites not yet met; technology is not visible in the research interface",
+              "terminal": false
+            },
+            "researching": {
+              "name": "researching",
+              "description": "Player or guild has committed resources; research progresses over time",
+              "terminal": false
+            },
+            "unlocked": {
+              "name": "unlocked",
+              "description": "Research complete; all associated recipes and abilities are available",
+              "terminal": true
+            }
+          },
+          "transitions": [
+            {
+              "from": "locked",
+              "to": "researching",
+              "trigger": "beginResearch",
+              "guards": [
+                "Requires TechSteel: unlocked",
+                "Requires TechArcaneForging: unlocked"
+              ],
+              "effects": []
+            },
+            {
+              "from": "researching",
+              "to": "unlocked",
+              "trigger": "completeResearch",
+              "guards": [
+                "Research cost fully paid"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
       "ResearchPointRule": {
         "name": "ResearchPointRule",
         "tags": [
@@ -30388,7 +32571,7 @@
                   ],
                   "places": {
                     "block": "ThornwoodPlank",
-                    "blocks": 48,
+                    "floors": 1,
                     "layout": "ring",
                     "stations": []
                   }
@@ -30407,7 +32590,7 @@
                   ],
                   "places": {
                     "block": "AshiteBlock",
-                    "blocks": 24,
+                    "floors": 1,
                     "layout": "shed",
                     "stations": []
                   }
@@ -30430,7 +32613,7 @@
                   ],
                   "places": {
                     "block": "AshiteBlock",
-                    "blocks": 32,
+                    "floors": 1,
                     "layout": "hall",
                     "stations": [
                       "carpentry bench",
@@ -30456,7 +32639,7 @@
                   ],
                   "places": {
                     "block": "AshiteBlock",
-                    "blocks": 40,
+                    "floors": 2,
                     "layout": "tower",
                     "stations": []
                   }
@@ -30501,7 +32684,7 @@
             "name": "complete",
             "description": "The contribution that brings in the last material completes the project and places it",
             "rules": [
-              "Places places.blocks of places.block in the layout, plus places.stations",
+              "Places places.floors floors of places.block in the layout, each block at its height, plus places.stations",
               "Counts toward no tier and credits no clan"
             ],
             "auth": {
@@ -31833,7 +34016,10 @@
               "Grass": "soil",
               "Soil": "soil",
               "Sand": "soil",
-              "Snow": "soil"
+              "Snow": "soil",
+              "Concrete": "stone",
+              "Steel": "metal",
+              "Leyframe": "metal"
             }
           }
         },

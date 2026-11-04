@@ -36,6 +36,7 @@ MATERIAL_FORMS = {
     "Aethermite": "ore", "Ferrite": "ore", "Lumenfite": "ore", "Veilsteel": "ore", "Voidite": "ore",
     "Grass": "block", "Thornwood": "log", "Duskfiber": "sheaf",
     "Ashite": "pile", "Sand": "pile", "Snow": "pile", "Soil": "pile",
+    "Concrete": "block", "Steel": "ore", "Leyframe": "block",
 }
 
 # harvest/loot output -> (kind, colour)

@@ -360,6 +360,129 @@ module.exports = {
     },
   }),
 
+  // ─── TechConcrete ──────────────────────────────────────────────────────────
+  // Phase 212 — the materials above stone: concrete (10 floors), steel (40) and leyframe (163).
+  TechConcrete: defineEntity({
+    tags: ['technology'],
+    description:
+      'Grinding ashite to cement and casting it with soil. Unlocks concrete, which carries ten floors.',
+    goal: 'The first material past stone (Phase 212)',
+    fields: {
+      id:     { type: 'uuid', primaryKey: true },
+      status: { type: 'enum', values: TECH_STATES },
+      researchCost: { type: 'integer', description: 'Research points spent to begin research (Phase 124); earned by the ResearchPointRule table', defaultValue: 6 },
+      tier:   { type: 'integer', description: 'Technology tree tier' },
+      tech: techData({
+        unlocks: ['RecipeCement', 'RecipeConcrete'],
+        requires: ['TechMasterForge'],
+        researchDuration: 45,
+        researchMaterials: [{ item: 'Ashite', quantity: 10 }],
+      }),
+    },
+    relations: {
+      requiresTechMasterForge: { name: 'requiresTechMasterForge', kind: 'hasOne', target: 'TechMasterForge' },
+      unlocksRecipeCement: { name: 'unlocksRecipeCement', kind: 'hasOne', target: 'RecipeCement' },
+      unlocksRecipeConcrete: { name: 'unlocksRecipeConcrete', kind: 'hasOne', target: 'RecipeConcrete' },
+    },
+    stateMachine: technologyStateMachine(),
+    behaviors: {
+      beginResearch: {
+        description: 'Commit resources to concrete research',
+        rules: [
+          'Requires TechMasterForge: unlocked',
+        ],
+        auth: { roles: ['maintainer'] },
+      },
+      completeResearch: {
+        description: 'Finish research; its recipes become craftable',
+        rules: ['Research cost fully paid'],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
+  // ─── TechSteel ─────────────────────────────────────────────────────────────
+  // Phase 212 — the materials above stone: concrete (10 floors), steel (40) and leyframe (163).
+  TechSteel: defineEntity({
+    tags: ['technology'],
+    description:
+      'Rolling ferrite into beams over a master forge. Unlocks steel, which carries forty floors.',
+    goal: 'The frame metal (Phase 212)',
+    fields: {
+      id:     { type: 'uuid', primaryKey: true },
+      status: { type: 'enum', values: TECH_STATES },
+      researchCost: { type: 'integer', description: 'Research points spent to begin research (Phase 124); earned by the ResearchPointRule table', defaultValue: 8 },
+      tier:   { type: 'integer', description: 'Technology tree tier' },
+      tech: techData({
+        unlocks: ['RecipeSteel'],
+        requires: ['TechMasterForge'],
+        researchDuration: 60,
+        researchMaterials: [{ item: 'FerriteIngot', quantity: 6 }],
+      }),
+    },
+    relations: {
+      requiresTechMasterForge: { name: 'requiresTechMasterForge', kind: 'hasOne', target: 'TechMasterForge' },
+      unlocksRecipeSteel: { name: 'unlocksRecipeSteel', kind: 'hasOne', target: 'RecipeSteel' },
+    },
+    stateMachine: technologyStateMachine(),
+    behaviors: {
+      beginResearch: {
+        description: 'Commit resources to steel research',
+        rules: [
+          'Requires TechMasterForge: unlocked',
+        ],
+        auth: { roles: ['maintainer'] },
+      },
+      completeResearch: {
+        description: 'Finish research; its recipes become craftable',
+        rules: ['Research cost fully paid'],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
+  // ─── TechLeyframe ──────────────────────────────────────────────────────────
+  // Phase 212 — the materials above stone: concrete (10 floors), steel (40) and leyframe (163).
+  TechLeyframe: defineEntity({
+    tags: ['technology'],
+    description:
+      'Binding a steel lattice with aethermite at an arcane forge. Unlocks leyframe, the only material that carries 163 floors.',
+    goal: 'The top structural class, gated by the ley lines (Phase 212)',
+    fields: {
+      id:     { type: 'uuid', primaryKey: true },
+      status: { type: 'enum', values: TECH_STATES },
+      researchCost: { type: 'integer', description: 'Research points spent to begin research (Phase 124); earned by the ResearchPointRule table', defaultValue: 12 },
+      tier:   { type: 'integer', description: 'Technology tree tier' },
+      tech: techData({
+        unlocks: ['RecipeLeyframe'],
+        requires: ['TechSteel', 'TechArcaneForging'],
+        researchDuration: 90,
+        researchMaterials: [{ item: 'Aethermite', quantity: 6 }],
+      }),
+    },
+    relations: {
+      requiresTechSteel: { name: 'requiresTechSteel', kind: 'hasOne', target: 'TechSteel' },
+      requiresTechArcaneForging: { name: 'requiresTechArcaneForging', kind: 'hasOne', target: 'TechArcaneForging' },
+      unlocksRecipeLeyframe: { name: 'unlocksRecipeLeyframe', kind: 'hasOne', target: 'RecipeLeyframe' },
+    },
+    stateMachine: technologyStateMachine(),
+    behaviors: {
+      beginResearch: {
+        description: 'Commit resources to leyframe research',
+        rules: [
+          'Requires TechSteel: unlocked',
+          'Requires TechArcaneForging: unlocked',
+        ],
+        auth: { roles: ['maintainer'] },
+      },
+      completeResearch: {
+        description: 'Finish research; its recipes become craftable',
+        rules: ['Research cost fully paid'],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
 }
 
 // Phase 124 — every technology's `researchCost` must be reachable; throwing here makes

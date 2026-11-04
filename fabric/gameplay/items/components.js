@@ -197,6 +197,40 @@ module.exports = {
     },
   }),
 
+  // ─── Cement ───────────────────────────────────────────────────────────────
+  // Phase 212 — ground ashite: with soil it casts Concrete, the first material past stone.
+  Cement: defineEntity({
+    tags: ['item'],
+    description:
+      'Ashite ground to a fine grey powder at a masonry bench. Mixed with soil and cast, it sets into concrete.',
+    goal: 'The intermediate of concrete: ties volcanic ashite to the first material past stone (Phase 212)',
+    fields: {
+      id:        { type: 'uuid', primaryKey: true },
+      condition: { type: 'enum', values: DURABILITY_STATES },
+      weight:    { type: 'decimal', description: 'kg per sack', defaultValue: 2.0 },
+      rarity:    { type: 'enum', values: RARITIES, defaultValue: 'common' },
+      stackable: { type: 'boolean', description: 'True; stacks up to 40 per slot', defaultValue: true },
+      shape: itemShape({ archetype: 'dust', parts: { body: 'Ashite' } }),
+      durability: { type: 'integer', description: 'Structural integrity', defaultValue: 50 },
+    },
+    relations: {
+      ashite: { name: 'ashite', kind: 'hasOne', target: 'Ashite' },
+    },
+    stateMachine: itemStateMachine(),
+    behaviors: {
+      degrade: {
+        description: 'Cement left in the rain sets into a useless lump',
+        rules: ['Cement kept in a pack or a chest never degrades'],
+        auth: { roles: ['maintainer'] },
+      },
+      repair: {
+        description: 'Regrind a set lump back to cement at a masonry bench',
+        rules: ['Requires a masonry bench; no additional materials consumed'],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
   // ─── AshiteBlock ──────────────────────────────────────────────────────────
   AshiteBlock: defineEntity({
     tags: ['item'],

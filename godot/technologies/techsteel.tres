@@ -1,0 +1,15 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/technologies/techsteel.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+status = 0
+researchCost = 8
+tier = 0
+tech = {"unlocks":["RecipeSteel"],"requires":["TechMasterForge"],"researchDuration":60,"researchMaterials":[{"item":"FerriteIngot","quantity":6}]}
+state_machine_field = "status"
+initial_state = "locked"
+description = "Rolling ferrite into beams over a master forge. Unlocks steel, which carries forty floors."
+tags = ["technology"]

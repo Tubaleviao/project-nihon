@@ -87,12 +87,14 @@ func _test_rules_shape() -> void:
 	assert_false(ProjectRules.def_of("storehouse").has("effects"), "no project carries effects")
 	assert_eq(ProjectRules.building_count(done), 1, "one still building")
 	for layout in ["ring", "tower", "hall", "shed"]:
-		var cells := ProjectRules.layout_cells(layout, 40)
-		assert_eq(cells.size(), 40, "%s fills exactly its block count" % layout)
+		var cells := ProjectRules.layout_cells(layout, 1)
 		var seen := {}
+		var top := 0
 		for c: Vector3i in cells:
 			seen[c] = true
-		assert_eq(seen.size(), 40, "%s cells are distinct" % layout)
+			top = maxi(top, c.y)
+		assert_eq(seen.size(), cells.size(), "%s cells are distinct" % layout)
+		assert_eq(top + 1, ProjectRules.courses_per_floor(), "%s is one 3 m floor high" % layout)
 	assert_eq(ProjectRules.station_offsets(2), [Vector2i(-1, 0), Vector2i(1, 0)], "two stations side by side")
 	assert_eq(ProjectRules.block_material("AshiteBlock"), "Ashite", "an AshiteBlock builds Ashite")
 	assert_eq(ProjectRules.block_material("ThornwoodPlank"), "Thornwood", "a plank builds Thornwood")

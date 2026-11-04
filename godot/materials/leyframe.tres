@@ -1,0 +1,19 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/materials/leyframe.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+density = 3.1
+hardness = 7.5
+conductivity = 0.5
+magicAffinity = 0.6
+depthBand = {"min":0,"max":0}
+leyGated = false
+granular = false
+rarity = 3
+durability = 1000
+structuralClass = 5
+description = "A composite of steel lattice bound with aethermite shards at an arcane forge, light and nearly unbending. The only material that carries a building to 163 floors; its aethermite forms only near ley lines."
+tags = ["material"]

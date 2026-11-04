@@ -343,4 +343,39 @@ module.exports = {
       },
     },
   }),
+  // ─── RecipeSteel ───────────────────────────────────────────────────────────
+  // Phase 212 — a material above stone.
+  RecipeSteel: defineEntity({
+    tags: ['recipe'],
+    description: 'Roll two ferrite ingots into two steel beams at a master forge.',
+    goal: 'Steel: the frame of a forty-floor building (Phase 212)',
+    fields: {
+      id:     { type: 'uuid', primaryKey: true },
+      domain: { type: 'enum', values: ['smithing', 'alchemy', 'arcane', 'carpentry'], description: 'Crafting station required' },
+      outputCount:  { type: 'integer', description: 'Number of output items produced per craft' },
+      recipe: recipeData({
+        domain: 'smithing',
+        station: 'master forge',
+        inputs: [{ item: 'FerriteIngot', quantity: 2 }],
+        outputs: [{ item: 'Steel', quantity: 2 }],
+        skillGuards: [{ skill: 'Smithing', tier: 'journeyman' }],
+      }),
+    },
+    relations: {
+      inputFerrite: { name: 'inputFerrite', kind: 'hasOne', target: 'FerriteIngot' },
+      output: { name: 'output', kind: 'hasOne', target: 'Steel' },
+    },
+    behaviors: {
+      craft: {
+        description: 'Roll two ferrite ingots into two steel beams at a master forge.',
+        rules: [
+          'Requires Smithing: Journeyman',
+          'Requires a master forge structure',
+          'Two ferrite ingots yield two steel',
+        ],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
 }

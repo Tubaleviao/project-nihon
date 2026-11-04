@@ -35,6 +35,7 @@ extends Node
 ## Everything here is host-side except `note_damage_seen` (the client's mirror of `block_damaged`).
 
 const Rules := preload("res://src/structure/structure_rules.gd")
+const Limits := preload("res://src/structure/structure_limits.gd")
 const VoxelConsts := preload("res://src/terrain/voxel_consts.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
@@ -42,7 +43,7 @@ const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 const WorkSkills := preload("res://src/character/work_skills.gd")
 
 ## 2 (Phase 207 review): a saved cell carries its placer as a seventh field; a format-1 cell of six still loads.
-const DATA_FORMAT := 2
+const DATA_FORMAT := 3   # Phase 212: a cell saves base, reach and carry
 const OWNER_KINDS := ["private", "clan"]
 ## Memory bounds: every indexed block costs two dictionary entries. Past them a new structure (or block) is
 ## refused rather than placed unowned.
@@ -70,7 +71,8 @@ const BUCKET_M := 64.0
 ## The most foreign circles one client is sent at a time (`foreign_circles_near`).
 const MAX_VIEW_CIRCLES := 32
 const REASONS := ["not_owner", "no_permission", "structures_full", "no_clan", "bad_args", "no_structure",
-	"intact", "missing_materials", "no_inventory", "rate_limited", "unknown_action", "unknown_player", "foreign_circle"]
+	"intact", "missing_materials", "no_inventory", "rate_limited", "unknown_action", "unknown_player", "foreign_circle",
+	"too_many_floors", "overhang_too_far", "span_too_long", "too_slender"]
 
 ## Set by the wiring (host): the player registry (identity, packs, online, skills) and the clan slice.
 var registry: Node = null
@@ -85,8 +87,11 @@ var remove_block: Callable = Callable()
 var mono_sec: Callable = func() -> float: return Time.get_ticks_msec() / 1000.0
 
 ## sid -> { id, kind, owner, builder, anchor: Vector2i, wear, wear_hour, credit {material: f},
-##          cells { tile: { mm: [material, damage, wear_at_place, placed_by] } }, count, hurt, sx, sz, levels }
+##          cells { tile: { mm: [material, damage, wear_at_place, placed_by, base, reach, carry] } }, count, hurt,
+##          sx, sz, levels, lo, hi }
 ## `placed_by` (Phase 207 review) is the player who placed the block, "" for a block saved before it was kept.
+## `base`, `reach` and `carry` (Phase 212, `StructureLimits`) are what holds the block up, set when it is placed;
+## `lo`/`hi` cache the lowest bottom and highest top (mm) of its blocks, dropped when a block at either goes.
 ## `hurt` is at least the largest damage / base of any of its blocks (never under it): the sweep reads a
 ## structure's blocks only once its wear could bring one to zero.
 ## `sx`/`sz` sum its columns' tile offsets from `anchor` (round the seam) and `levels` counts its blocks per
@@ -180,6 +185,9 @@ func cell_at(tile: Vector2i, y: float) -> Dictionary:
 	var col: Dictionary = _tiles.get(t, {})
 	var step_mm := mm_of(VoxelConsts.STEP_HEIGHT)
 	var at := mm_of(y)
+	var aligned := at - posmod(at, step_mm)   # blocks sit on whole steps: one lookup finds nearly every one
+	if col.has(aligned):
+		return { "sid": int(col[aligned]), "tile": t, "mm": aligned }
 	for mm: int in col:
 		if at >= mm and at < mm + step_mm:
 			return { "sid": int(col[mm]), "tile": t, "mm": mm }
@@ -496,6 +504,10 @@ func plan_mine(player_id: String, tile: Vector2i, bottom: float, top: float, met
 		var credit := float((s["credit"] as Dictionary).get(material, 0.0)) \
 			+ Rules.dismantle_share(left / base if base > 0.0 else 0.0, _level_of(_pid(player_id)))
 		var qty := floori(credit + 0.000001)
+		if bool(s.get("project", false)):
+			# A settlement project's block: the project took its materials, so taking it apart returns none.
+			qty = 0
+			credit = float((s["credit"] as Dictionary).get(material, 0.0))
 		plan.merge({ "verdict": "dismantle", "quantity": qty, "credit": maxf(0.0, credit - float(qty)) })
 		return plan
 	if may_edit(player_id, sid):
@@ -582,9 +594,15 @@ func _foreign_near(pid: String, tile: Vector2i, bottom: float) -> int:
 ##   new      the block starts a structure for `kind`/`owner`
 ##   refused  `reason`: placed against, or within `Structure.ownership.buffer` blocks of, a structure the actor
 ##            may not edit (`not_owner`); inside the circle of a clan the actor is not in (`foreign_circle`,
-##            Phase 206: a new structure or a block added to one alike); or the index is full
+##            Phase 206: a new structure or a block added to one alike); the index is full; or (Phase 212) more
+##            than its material can hold up (`StructureLimits`: floors, overhang, span or slenderness)
 ## Where structures of different owners touch (a clan's and a member's own), each keeps its own blocks.
-func plan_place(player_id: String, tile: Vector2i, bottom: float, normal: Vector3, material: String) -> Dictionary:
+## `supported` is whether the host's own world holds something solid right under the block (the voxel edit
+## reads it from its runs): a block on ground starts a new load path, one hung in the air takes its support's.
+## `ground_mm` is, when the block rests on or against placed blocks the index does not hold (and on no natural
+## ground), the top of its column's natural ground: its floors count from there, not from its own bottom.
+func plan_place(player_id: String, tile: Vector2i, bottom: float, normal: Vector3, material: String, supported: bool = true,
+		ground_mm: int = 1 << 40) -> Dictionary:
 	var pid := _pid(player_id)
 	var target := _target_of(tile, bottom, normal)
 	if not target.is_empty() and not may_edit(pid, int(target["sid"])):
@@ -597,15 +615,124 @@ func plan_place(player_id: String, tile: Vector2i, bottom: float, normal: Vector
 		return { "verdict": "refused", "reason": "structures_full", "player_id": pid }
 	var want := _desired_owner(pid)
 	var plan := { "tile": canonical(tile), "mm": mm_of(bottom), "material": material, "player_id": pid }
+	var join := 0
 	for sid: int in _touching(tile, bottom):
 		var s: Dictionary = _structures[sid]
 		if str(s["kind"]) == want["kind"] and str(s["owner"]) == want["owner"]:
-			plan.merge({ "verdict": "join", "sid": sid })
-			return plan
-	if _structures.size() >= MAX_STRUCTURES:
+			join = sid
+			break
+	if join == 0 and _structures.size() >= MAX_STRUCTURES:
 		return { "verdict": "refused", "reason": "structures_full", "player_id": pid }
-	plan.merge({ "verdict": "new", "kind": want["kind"], "owner": want["owner"] })
+	# Phase 212 — what holds it up, and whether its material can.
+	var hold := _support(canonical(tile), bottom, Limits.rank_of(material), supported, ground_mm)
+	var why := Limits.refusal(int(hold["carry"]), Limits.floor_of(int(plan["mm"]), int(hold["base"])), int(hold["reach"]),
+		_unsupported_span(canonical(tile), int(plan["mm"]), int(hold["reach"])), _slenderness(join, canonical(tile), int(plan["mm"])))
+	if why != "":
+		return { "verdict": "refused", "reason": why, "player_id": pid }
+	plan.merge(hold)
+	if join != 0:
+		plan.merge({ "verdict": "join", "sid": join })
+	else:
+		plan.merge({ "verdict": "new", "kind": want["kind"], "owner": want["owner"] })
 	return plan
+
+## Phase 212 — `{ base, reach, carry }` of the indexed block whose bottom is `mm` in `tile` (any structure), or
+## {}. Blocks sit on whole steps, so this is one lookup, never a column search (most probes are misses).
+func _hold_at(tile: Vector2i, mm: int) -> Dictionary:
+	var t := canonical(tile)
+	var col: Dictionary = _tiles.get(t, {})
+	var at := mm
+	if not col.has(at):
+		return {}
+	var s: Dictionary = _structures.get(int(col[at]), {})
+	var cell: Variant = (s.get("cells", {}) as Dictionary).get(t, {}).get(at, null)
+	if not (cell is Array):
+		return {}
+	return _hold_of(cell, at)
+
+## A cell record's `{ base, reach, carry }`; a block loaded without them stands on ground (`existingBuilds`).
+static func _hold_of(cell: Array, mm: int) -> Dictionary:
+	if cell.size() >= 7:
+		return { "base": int(cell[4]), "reach": int(cell[5]), "carry": int(cell[6]) }
+	return { "base": mm, "reach": 0, "carry": Limits.rank_of(str(cell[0])) }
+
+## What carries a new block of class index `rank` at [`bottom`, +STEP] in `tile`: the block right under it; else
+## the ground when the world is solid there (`supported`); else, hung in the air, the block over it (a ceiling)
+## or the side neighbour nearest a column. Its `carry` is the weaker of its own class and its support's. A block
+## held only by placed blocks outside the index counts its floors from `ground_mm` (see `plan_place`).
+func _support(tile: Vector2i, bottom: float, rank: int, supported: bool, ground_mm: int = 1 << 40) -> Dictionary:
+	var step_mm := mm_of(VoxelConsts.STEP_HEIGHT)
+	var mm := mm_of(bottom)
+	var below := _hold_at(tile, mm - step_mm)
+	if not below.is_empty():
+		return { "base": int(below["base"]), "reach": int(below["reach"]), "carry": mini(rank, int(below["carry"])) }
+	var own := { "base": mini(mm, ground_mm), "reach": 0, "carry": rank }
+	if supported:
+		return own
+	var best := _hold_at(tile, mm + step_mm)
+	for d: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+		var n := _hold_at(tile + d, mm)
+		if not n.is_empty() and (best.is_empty() or int(n["reach"]) + 1 < int(best["reach"])):
+			best = { "base": int(n["base"]), "reach": int(n["reach"]) + 1, "carry": int(n["carry"]) }
+	if best.is_empty():
+		return own   # against ground or a block outside the index: that carries it
+	return { "base": int(best["base"]), "reach": int(best["reach"]), "carry": mini(rank, int(best["carry"])) }
+
+## The longest straight run (along x or z, at the block's bottom `mm`) of hung blocks a new hung block at `reach`
+## would join, itself included; 0 for a block on a column. The walk stops past the last span threshold.
+func _unsupported_span(tile: Vector2i, mm: int, reach: int) -> int:
+	if reach <= 0:
+		return 0
+	var cap := int(Limits.last_threshold("unsupportedSpan")) + 1
+	var longest := 1
+	for axis: Vector2i in [Vector2i(1, 0), Vector2i(0, 1)]:
+		var run := 1
+		for sign: int in [1, -1]:
+			var at := tile
+			while run < cap:
+				at += axis * sign
+				var n := _hold_at(at, mm)
+				if n.is_empty() or int(n["reach"]) <= 0:
+					break
+				run += 1
+		longest = maxi(longest, run)
+	return longest
+
+## Height over footprint width of structure `sid` with a new block at (`tile`, `mm`), when the block raises it
+## past one floor; else 0 (a wall, a fence or a post no taller than a floor is no tower, and a new structure is
+## one block). The footprint is the structure's columns that rise past its first floor, the new block's
+## included: a needle raised from a wide slab stands on its own column, not on the slab.
+func _slenderness(sid: int, tile: Vector2i, mm: int) -> float:
+	if not _structures.has(sid):
+		return 0.0
+	var s: Dictionary = _structures[sid]
+	var b := _bounds(s)
+	var top := mm + mm_of(VoxelConsts.STEP_HEIGHT)
+	if top <= b.y:
+		return 0.0
+	var lo := mini(b.x, mm)
+	var height := float(top - lo) / 1000.0
+	if height <= float(Limits.floor_mm()) / 1000.0:
+		return 0.0
+	var tall := lo + Limits.floor_mm()
+	var cols := 1
+	var tops: Dictionary = s.get("tops", {})
+	for t: Vector2i in tops:
+		if t != tile and int(tops[t]) > tall:
+			cols += 1
+	return Limits.slenderness(height, cols)
+
+## `(lo, hi)`: the lowest bottom and highest top (mm) of `s`'s blocks, from its level counts when not cached.
+func _bounds(s: Dictionary) -> Vector2i:
+	if not s.has("lo"):
+		var lo := 1 << 40
+		var hi := -(1 << 40)
+		for mm: int in s.get("levels", {}):
+			lo = mini(lo, mm)
+			hi = maxi(hi, mm + mm_of(VoxelConsts.STEP_HEIGHT))
+		s["lo"] = lo
+		s["hi"] = hi
+	return Vector2i(int(s["lo"]), int(s["hi"]))
 
 ## Record a `plan_place` result the world edit followed. Returns the structure id (0 when nothing was recorded).
 func commit_place(plan: Dictionary) -> int:
@@ -623,7 +750,34 @@ func commit_place(plan: Dictionary) -> int:
 			return 0
 	var s: Dictionary = _structures[sid]
 	_advance(s)
-	_add_cell(sid, plan["tile"], int(plan["mm"]), [str(plan["material"]), 0.0, float(s["wear"]), str(plan["player_id"])])
+	var mm := int(plan["mm"])
+	_add_cell(sid, plan["tile"], mm, [str(plan["material"]), 0.0, float(s["wear"]), str(plan["player_id"]),
+		int(plan.get("base", mm)), int(plan.get("reach", 0)), int(plan.get("carry", Limits.rank_of(str(plan["material"]))))])
+	return sid
+
+## Phase 212 — host: index a finished settlement project's blocks (`VoxelSlice.place_structure_blocks`'s
+## `{ tile, mm, base }`) as one structure of `material`. It belongs to the project's starter `by` (their clan's
+## when they have one), wears and can be hit like any other, but it is the project's: it adds nothing to a clan's
+## score (Phase 207: a project carries no clan value) and taking it apart returns nothing (the project took the
+## materials). Each block stands on its column's ground (`base`), straight up (`reach` 0). Returns its id, or 0.
+func index_project(by: String, material: String, placed: Array) -> int:
+	if not is_host or placed.is_empty() or by == "" or _structures.size() >= MAX_STRUCTURES:
+		return 0
+	var clan := _clan_of(by)
+	var sid := _next_id
+	_next_id += 1
+	var first: Dictionary = placed[0]
+	_structures[sid] = { "id": sid, "kind": "clan" if clan != "" else "private", "owner": clan if clan != "" else by,
+		"builder": by, "anchor": canonical(first["tile"]), "wear": 0.0, "wear_hour": int(now_hour.call()), "credit": {},
+		"cells": {}, "count": 0, "project": true }
+	var rank := Limits.rank_of(material)
+	for p: Dictionary in placed:
+		if _cell_count >= MAX_CELLS:
+			break
+		_add_cell(sid, canonical(p["tile"]), int(p["mm"]), [material, 0.0, 0.0, by, mini(int(p["base"]), int(p["mm"])), 0, rank])
+	if not _structures.has(sid) or int(_structures[sid]["count"]) <= 0:
+		_structures.erase(sid)
+		return 0
 	return sid
 
 ## Index `cell` at (`tile`, `mm`) for `sid`. A block another structure still held there (a stale record) is
@@ -646,7 +800,13 @@ func _add_cell(sid: int, tile: Vector2i, mm: int, cell: Array) -> void:
 		if not s.has("levels"):
 			s["levels"] = {}
 		s["levels"][mm] = int(s["levels"].get(mm, 0)) + 1
+		if s.has("lo"):
+			s["lo"] = mini(int(s["lo"]), mm)
+			s["hi"] = maxi(int(s["hi"]), mm + mm_of(VoxelConsts.STEP_HEIGHT))
 	s["cells"][tile][mm] = cell
+	if not s.has("tops"):
+		s["tops"] = {}
+	s["tops"][tile] = maxi(int(s["tops"].get(tile, -(1 << 40))), mm + mm_of(VoxelConsts.STEP_HEIGHT))
 	_add_points(s, _points_of(str(cell[0])))
 	_note_hurt(s, cell)
 	if not _tiles.has(tile):
@@ -673,8 +833,19 @@ func _remove_cell(sid: int, tile: Vector2i, mm: int) -> void:
 		levels[mm] = int(levels.get(mm, 0)) - 1
 		if int(levels[mm]) <= 0:
 			levels.erase(mm)
+			if s.has("lo") and (mm == int(s["lo"]) or mm + mm_of(VoxelConsts.STEP_HEIGHT) == int(s["hi"])):
+				s.erase("lo")
+				s.erase("hi")
 	if col.is_empty() and (s["cells"] as Dictionary).erase(tile):
 		_sum_column(s, tile, -1)
+	var tops: Dictionary = s.get("tops", {})
+	if col.is_empty():
+		tops.erase(tile)
+	elif int(tops.get(tile, 0)) == mm + mm_of(VoxelConsts.STEP_HEIGHT):
+		var hi := -(1 << 40)
+		for m: int in col:
+			hi = maxi(hi, m)
+		tops[tile] = hi + mm_of(VoxelConsts.STEP_HEIGHT)
 	var tcol: Dictionary = _tiles.get(tile, {})
 	if int(tcol.get(mm, 0)) == sid:
 		tcol.erase(mm)
@@ -685,7 +856,7 @@ func _remove_cell(sid: int, tile: Vector2i, mm: int) -> void:
 
 ## A clan structure's block of `points` came or went: its clan's score moves with it.
 func _add_points(s: Dictionary, points: int) -> void:
-	if str(s["kind"]) != "clan" or points == 0:
+	if str(s["kind"]) != "clan" or points == 0 or bool(s.get("project", false)):
 		return
 	var id := str(s["owner"])
 	var total := int(_clan_points.get(id, 0)) + points
@@ -710,7 +881,7 @@ func recount_clan_scores() -> Dictionary:
 	var points := {}
 	for sid: int in _structures:
 		var s: Dictionary = _structures[sid]
-		if str(s["kind"]) != "clan":
+		if str(s["kind"]) != "clan" or bool(s.get("project", false)):
 			continue
 		for t: Vector2i in s["cells"]:
 			for mm: int in s["cells"][t]:
@@ -769,12 +940,27 @@ func shift_span(tile: Vector2i, from_bottom: float, from_top: float, to_bottom: 
 	cells.sort_custom(func(x: Array, y: Array) -> bool: return int(x[1]) < int(y[1]))
 	# Lowest first, each added at its new height before its old one goes: a falling block's new place is below
 	# every block of the run still waiting, and a structure never empties (and vanishes) mid-move.
+	# A block that fell has landed: it rests on what is under its new place (the block of the run moved before it,
+	# another indexed block, or ground), so its base, reach and carry are taken again from there.
+	var step_mm := mm_of(VoxelConsts.STEP_HEIGHT)
 	for c: Array in cells:
 		var sid := int(c[0])
 		var mm := int(c[1])
 		if not _structures.has(sid):
 			continue
-		_add_cell(sid, t, mm + delta, _structures[sid]["cells"][t][mm])
+		var cell: Array = (_structures[sid]["cells"][t][mm] as Array).duplicate()
+		var rank := Limits.rank_of(str(cell[0]))
+		var under := _hold_at(t, mm + delta - step_mm)
+		var hold := { "base": mm + delta, "reach": 0, "carry": rank } if under.is_empty() \
+			else { "base": int(under["base"]), "reach": int(under["reach"]), "carry": mini(rank, int(under["carry"])) }
+		if cell.size() < 7:
+			cell.resize(7)
+			if cell[3] == null:
+				cell[3] = ""
+		cell[4] = hold["base"]
+		cell[5] = hold["reach"]
+		cell[6] = hold["carry"]
+		_add_cell(sid, t, mm + delta, cell)
 		_remove_cell(sid, t, mm)
 
 ## Forget any record of a block in [`bottom`, `top`) of `tile`: the world holds natural ground there (a record
@@ -1011,10 +1197,14 @@ func to_data() -> Dictionary:
 		for t: Vector2i in s["cells"]:
 			for mm: int in s["cells"][t]:
 				var c: Array = s["cells"][t][mm]
-				cells.append([t.x, t.y, mm, c[0], c[1], c[2], c[3] if c.size() > 3 else ""])
+				var hold := _hold_of(c, mm)
+				cells.append([t.x, t.y, mm, c[0], c[1], c[2], c[3] if c.size() > 3 else "", hold["base"], hold["reach"], hold["carry"]])
 		var a: Vector2i = s["anchor"]
-		list.append({ "id": sid, "kind": s["kind"], "owner": s["owner"], "builder": s["builder"], "anchor": [a.x, a.y],
-			"wear": s["wear"], "wear_hour": s["wear_hour"], "credit": (s["credit"] as Dictionary).duplicate(), "cells": cells })
+		var row := { "id": sid, "kind": s["kind"], "owner": s["owner"], "builder": s["builder"], "anchor": [a.x, a.y],
+			"wear": s["wear"], "wear_hour": s["wear_hour"], "credit": (s["credit"] as Dictionary).duplicate(), "cells": cells }
+		if bool(s.get("project", false)):
+			row["project"] = true
+		list.append(row)
 	return { "format": DATA_FORMAT, "next_id": _next_id, "structures": list, "modes": _build_mode.duplicate() }
 
 ## Load a saved index. `downtime_hours` is the in-game hours the server was down since the save: each
@@ -1070,18 +1260,26 @@ func _load_one(raw: Variant) -> void:
 	_structures[sid] = { "id": sid, "kind": str(r["kind"]), "owner": str(r["owner"]), "builder": str(r.get("builder", r["owner"])),
 		"anchor": Vector2i(int(r["anchor"][0]), int(r["anchor"][1])), "wear": clampf(float(r.get("wear", 0.0)) if _num(r.get("wear")) else 0.0, 0.0, 2.0),
 		"wear_hour": int(r.get("wear_hour", 0)) if _num(r.get("wear_hour")) else int(now_hour.call()), "credit": credit, "cells": {}, "count": 0 }
+	if r.get("project", false) == true:
+		_structures[sid]["project"] = true
 	for c: Variant in r["cells"]:
 		if _cell_count >= MAX_CELLS:
 			break
-		# Six fields before Phase 207's review added `placed_by` (that block's placer is unknown: "").
-		if not (c is Array) or not ((c as Array).size() == 6 or (c as Array).size() == 7) or not _num(c[0]) or not _num(c[1]) or not _num(c[2]) \
+		# Six fields before Phase 207's review added `placed_by` (that block's placer is unknown: ""), seven before
+		# Phase 212 added `base`, `reach` and `carry` (such a block stands on ground).
+		var n := (c as Array).size() if c is Array else 0
+		if not (n == 6 or n == 7 or n == 10) or not _num(c[0]) or not _num(c[1]) or not _num(c[2]) \
 				or not GameData.MATERIALS.has(c[3]) or not _num(c[4]) or not _num(c[5]):
 			continue
-		var by := str(c[6]).left(64) if (c as Array).size() == 7 and c[6] is String else ""
+		var by := str(c[6]).left(64) if n >= 7 and c[6] is String else ""
 		var t := Vector2i(int(c[0]), int(c[1]))
 		if int(_tiles.get(t, {}).get(int(c[2]), 0)) != 0:
 			continue   # two records claim one block: the first keeps it
-		_add_cell(sid, t, int(c[2]), [str(c[3]), maxf(0.0, float(c[4])), clampf(float(c[5]), 0.0, 2.0), by])
+		var mm := int(c[2])
+		var hold := { "base": mm, "reach": 0, "carry": Limits.rank_of(str(c[3])) }
+		if n == 10 and _num(c[7]) and _num(c[8]) and _num(c[9]):
+			hold = { "base": mini(int(c[7]), mm), "reach": clampi(int(c[8]), 0, 1 << 20), "carry": clampi(int(c[9]), 0, int(hold["carry"])) }
+		_add_cell(sid, t, mm, [str(c[3]), maxf(0.0, float(c[4])), clampf(float(c[5]), 0.0, 2.0), by, hold["base"], hold["reach"], hold["carry"]])
 	if int(_structures[sid]["count"]) <= 0:
 		_structures.erase(sid)
 		return

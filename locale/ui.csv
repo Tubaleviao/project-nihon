@@ -659,6 +659,10 @@ structure.refused.no_inventory,No pack to pay from.,Sem mochila para pagar.
 structure.refused.rate_limited,Too fast — wait a moment.,Rápido demais — espere um pouco.
 structure.refused.unknown_action,Unknown action.,Ação desconhecida.
 structure.refused.unknown_player,Unknown player.,Jogador desconhecido.
+structure.refused.too_many_floors,"Its weakest material cannot carry another floor: build it with a stronger class (wood 2 floors, stone 5, concrete 10, steel 40, leyframe 163).","O material mais fraco não aguenta mais um andar: construa com uma classe mais forte (madeira 2 andares, pedra 5, concreto 10, aço 40, leyframe 163)."
+structure.refused.overhang_too_far,That reaches too far out from a support for its material.,Isso se projeta longe demais de um apoio para o seu material.
+structure.refused.span_too_long,That span is too long to hang unsupported in its material.,Esse vão é longo demais para ficar sem apoio nesse material.
+structure.refused.too_slender,Too tall for its footprint in this material: widen it or use a stronger one.,Alto demais para a base nesse material: alargue-a ou use um mais forte.
 structure.respawn_button,Respawn,Renascer
 structure.build_private,Build: private,Construir: privado
 structure.build_clan,Build: clan,Construir: clã

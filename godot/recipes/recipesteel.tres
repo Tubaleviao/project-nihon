@@ -1,0 +1,12 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/recipes/recipesteel.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+domain = 0
+outputCount = 0
+recipe = {"domain":"smithing","station":"master forge","inputs":[{"item":"FerriteIngot","quantity":2}],"outputs":[{"item":"Steel","quantity":2}],"skillGuards":[{"skill":"Smithing","tier":"journeyman"}]}
+description = "Roll two ferrite ingots into two steel beams at a master forge."
+tags = ["recipe"]

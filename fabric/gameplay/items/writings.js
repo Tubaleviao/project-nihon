@@ -9,6 +9,7 @@ const SLAB = { Book: 'Duskfiber', Blueprint: 'Sand' }
 const RUNE = {
   TechBasicSmithing: 'Ferrite', TechMasterForge: 'Veilsteel', TechBasicCarpentry: 'Thornwood', TechTextileWeaving: 'Grass',
   TechArcaneForging: 'Aethermite', TechAlchemy: 'Lumenfite', TechVoidMastery: 'Voidite',
+  TechConcrete: 'Concrete', TechSteel: 'Steel', TechLeyframe: 'Leyframe',
   RecipeBed: 'Grass', RecipeChest: 'Ferrite', RecipeDoor: 'Thornwood', RecipeHearth: 'Ashite',
   palisade: 'Duskfiber', storehouse: 'Veilsteel', workshop: 'Aethermite', watchtower: 'Lumenfite',
 }

@@ -14,7 +14,7 @@ const WRITING = {
 // BlueprintPalisade). The item names what it teaches, so a written book is an ordinary pack item that a chest,
 // a trade or a drop carries like any other. The validator checks the list covers every technology, station
 // recipe and project and nothing else.
-const TECHNOLOGIES = ['TechBasicSmithing', 'TechMasterForge', 'TechBasicCarpentry', 'TechTextileWeaving', 'TechArcaneForging', 'TechAlchemy', 'TechVoidMastery']
+const TECHNOLOGIES = ['TechBasicSmithing', 'TechMasterForge', 'TechBasicCarpentry', 'TechTextileWeaving', 'TechArcaneForging', 'TechAlchemy', 'TechVoidMastery', 'TechConcrete', 'TechSteel', 'TechLeyframe']
 const STATION_RECIPES = ['RecipeBed', 'RecipeChest', 'RecipeDoor', 'RecipeHearth']
 const PROJECTS = ['palisade', 'storehouse', 'workshop', 'watchtower']
 const capital = (k) => k.charAt(0).toUpperCase() + k.slice(1)
