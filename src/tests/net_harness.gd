@@ -2156,6 +2156,8 @@ func _step_peer_attack_animated() -> void:
 ## and the client's own avatar and the host's avatar of it show that same lift. The peer starts hurt, and the
 ## host's restRegen reaches its own client (its HP rises).
 const HARNESS_SEAT_LIFT := 0.4
+## The prefix of the id a client's harvest intent carries to tell the host it reached a step (`_announce_ready`).
+const READY_ID_PREFIX := "harness_ready:"
 
 func _step_gesture_synced() -> void:
 	if _role == "host":
@@ -2163,6 +2165,10 @@ func _step_gesture_synced() -> void:
 		var pid: String = _root._networking.get_player_id(peers[0]) if peers.size() > 0 else ""
 		if pid == "":
 			_report("gesture_synced", "fail", "no_connected_peer")
+			return
+		# A client that reaches this step after the rest heal has already topped the peer up sees no heal.
+		if not await _await_client_ready("gesture", pid):
+			_report("gesture_synced", "fail", "client_never_arrived")
 			return
 		await _await_settle(1.0)
 		# The host checks `requiresGround` against the terrain under the peer's last report; the harness
@@ -2200,7 +2206,10 @@ func _step_gesture_synced() -> void:
 	_root._player.set_hp(_root._player.max_hp * 0.5)   # hurt, so the host's rest heal has room
 	var hp0: float = _root._player.get_hp()
 	var loco = ch._instances[iid]["locomotion"]
-	var own: bool = await _await_until(func(): return loco.is_gesture_held() and loco.gesture_clip == "sit", _step_timeout())
+	var announced := {}
+	var own: bool = await _await_until(func():
+		_announce_ready("gesture", announced)   # the host seats this peer only after this
+		return loco.is_gesture_held() and loco.gesture_clip == "sit", _step_timeout() * 4.0)
 	var lift: float = float(ch._instances[iid].get("seat_lift", -1.0))
 	var same_lift: bool = absf(lift - HARNESS_SEAT_LIFT) < 0.001
 	var healed: bool = await _await_until(func(): return _root._player.get_hp() > hp0, _step_timeout())
@@ -2219,6 +2228,10 @@ func _step_carcass_synced() -> void:
 			_report("carcass_synced", "fail", "no_peer_position")
 			return
 		var pid: String = _root._networking.get_player_id(peer)
+		# Under wan_bad the client ran this step 25 s behind the host: the whole carry was over before it looked.
+		if not await _await_client_ready("carcass", pid):
+			_report("carcass_synced", "fail", "client_never_arrived")
+			return
 		var at: Vector3 = _root._networking.get_last_known_state(peer) + Vector3(2.0, 0.0, 0.0)
 		var cid: String = _root._carcass.create_for_death("ForestBoar", at, "harness")
 		await _await_settle(2.0)
@@ -2254,7 +2267,9 @@ func _step_carcass_synced() -> void:
 		if (list.is_empty() or (list[-1] as Vector3).distance_to(at) > 0.25) and list.size() < 64:
 			list.append(at)
 		seen_at[id] = list
+	var announced := {}
 	var saw_worked: bool = await _await_until(func():
+		_announce_ready("carcass", announced)   # until the worked body shows: the host plants it only after this
 		for id in slice.ids():
 			note.call(id)
 			var left: Array = slice.get_carcass(id)["entries"]
@@ -2435,6 +2450,29 @@ func _await_until(predicate: Callable, timeout: float) -> bool:
 		_keepalive()
 		await get_tree().process_frame
 	return bool(predicate.call())
+
+## Host: wait until the client `pid` announces it reached step `tag` (`_announce_ready`). Steps have no
+## barrier, so on a slow link the client can run a step well after the host; a step whose host side acts
+## once and moves on waits here first. False when the client never came.
+func _await_client_ready(tag: String, pid: String) -> bool:
+	var ready := { "seen": false }
+	var on_intent := func(id: String, who: String) -> void:
+		if id == READY_ID_PREFIX + tag and who == pid:
+			ready["seen"] = true
+	GameBus.harvest_intent.connect(on_intent)
+	var came: bool = await _await_until(func() -> bool: return bool(ready["seen"]), _step_timeout() * 4.0)
+	GameBus.harvest_intent.disconnect(on_intent)
+	return came
+
+## Client: tell the host this peer reached step `tag`, at most once a second (`state` keeps the clock; call it
+## from the step's wait predicate). It rides the client's own harvest intent, bound to its connection by the
+## host, which refuses the unknown carcass id and changes nothing.
+func _announce_ready(tag: String, state: Dictionary) -> void:
+	var now := Time.get_ticks_msec()
+	if state.has("at") and now - int(state["at"]) < 1000:
+		return
+	state["at"] = now
+	GameBus.harvest_intent.emit(READY_ID_PREFIX + tag, "")
 
 ## Burn real frames (delivery, not wall-clock-only) for `secs`.
 ##
