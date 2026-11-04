@@ -892,8 +892,8 @@ func _vein_from_id(id: String) -> Dictionary:
 func place_block(world_pos: Vector3, normal: Vector3, material: String = "", player_id: String = "", exact: Dictionary = {}) -> bool:
 	return _edit.place_block(world_pos, normal, material, player_id, exact)
 
-func place_structure_blocks(cells: Array, material: String) -> int:
-	return _edit.place_structure_blocks(cells, material)
+func place_structure_blocks(cells: Array, material: String, placed_out: Array = []) -> int:
+	return _edit.place_structure_blocks(cells, material, placed_out)
 
 func remove_structure_block(tile: Vector2i, bottom: float, top: float) -> void:
 	_edit.remove_structure_block(tile, bottom, top)

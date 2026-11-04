@@ -1895,8 +1895,9 @@ const PROJECT_KEY := "palisade"
 const PROJECT_PLANKS := 4
 var _project_edits: int = 0
 
-func _on_project_edit(_action: String, _pos: Vector3, _normal: Vector3, _material: String) -> void:
-	_project_edits += 1
+func _on_project_edit(action: String, _pos: Vector3, normal: Vector3, _material: String) -> void:
+	# Phase 212 review — a "fill" is a column span of the project's blocks: count its blocks.
+	_project_edits += maxi(1, roundi(normal.y / 0.125)) if action == "fill" else 1
 
 func _project_view(settlements: Node) -> Dictionary:
 	for p: Variant in ((settlements.view().get("mine", {}) as Dictionary).get("projects", []) as Array):

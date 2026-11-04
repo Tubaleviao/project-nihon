@@ -92,6 +92,8 @@ signal block_edit_intent(action: String, position: Vector3, normal: Vector3, mat
 ## VoxelSlice.apply_block_change().
 ## Phase 137 — action "settle": a granular span fell onto its support. position = (tile centre x, old
 ## bottom, tile centre z), normal = (old top, new bottom, 0), material = the span's material.
+## Phase 212 — action "fill": a settlement structure's blocks in one column. position = (tile centre x, span
+## bottom, tile centre z), normal = (1, span height, 0), material = the block material.
 signal block_changed(action: String, position: Vector3, normal: Vector3, material: String)
 
 ## Host only (Phase 126): the tile `VoxelSlice._resolve_edit_tile` resolved for an edit that just applied

@@ -238,7 +238,8 @@ func place_block(world_pos: Vector3, normal: Vector3, material: String = "", pla
 		# Phase 212 — whether the host's own column is solid right under the block: what holds it up is read from
 		# the world and the index, never from the message.
 		var supported: bool = s.VoxelRuns.runs_cover_y(runs, float(span["bottom"]) - s.STEP_HEIGHT * 0.5)
-		plan = s.structures.plan_place(player_id, tile, float(span["bottom"]), normal, chosen, supported)
+		plan = s.structures.plan_place(player_id, tile, float(span["bottom"]), normal, chosen, supported,
+			_unindexed_ground_mm(tile, runs, float(span["bottom"])))
 		if str(plan["verdict"]) == "refused":
 			# Phase 206 — the builder is told why (a keyed line), not left with a block that never appears.
 			GameBus.structure_resolved.emit(str(plan.get("player_id", player_id)), "place", false, str(plan["reason"]))
@@ -267,16 +268,19 @@ func place_block(world_pos: Vector3, normal: Vector3, material: String = "", pla
 
 ## Phase 198 — the host builds a finished settlement structure: no pack is debited (the project took its
 ## materials) and no claim guard asks. Phase 212 — every block goes at its exact height, `dy` blocks above the
-## surface its column had before the batch (so a lintel stays over an open doorway, and courses follow uneven
-## ground), and the whole batch is one pass: each block is recorded as an ordinary edit and synced as
-## `block_changed` (a side fill at that height, the same span the clients' replay resolves), and each touched
-## chunk is rebuilt once at the end. `cells` is `[{ exact: {chunk, local}, dy: int }]` (only x and z of the
-## exact point count). Returns the blocks placed: a cell already solid, past the build cap, or malformed is left out.
-func place_structure_blocks(cells: Array, material: String) -> int:
+## natural ground of its column (the top of its highest natural run, so a block floating over the site or a
+## ledge built there does not lift the wall; a lintel stays over an open doorway, and courses follow uneven
+## ground), and the whole batch is one pass. The blocks of a column that touch each other are one edit
+## (`add` over the whole span), synced as one `block_changed("fill")` (see `_apply_edit`), and each column's log
+## is compacted once at the end; each touched chunk is rebuilt once. `cells` is `[{ exact: {chunk, local}, dy: int }]`
+## (only x and z of the exact point count). Returns the blocks placed: a cell already solid, past the build cap,
+## or malformed is left out. `placed_out`, when given, gets `{ tile, mm, base }` per block placed (its bottom and
+## its column's ground, in mm), so the structure index can record them.
+func place_structure_blocks(cells: Array, material: String, placed_out: Array = []) -> int:
 	if not GameData.MATERIALS.has(material):
 		return 0
 	var ground: Dictionary = {}
-	var touched: Dictionary = {}
+	var spans: Dictionary = {}   # tile -> [bottom, ...] of the blocks placed in it
 	var placed := 0
 	for c: Variant in cells:
 		if not (c is Dictionary) or not (c.get("exact", null) is Dictionary) or not (c.get("dy", null) is int):
@@ -286,28 +290,73 @@ func place_structure_blocks(cells: Array, material: String) -> int:
 			continue
 		var tile: Vector2i = s._resolve_edit_tile("place", Vector3.ZERO, Vector3.UP, exact)["tile"]
 		if not ground.has(tile):
-			var runs: Array = s.get_runs_at_tile(tile)
-			ground[tile] = float(runs[-1]["top"]) if not runs.is_empty() else s.BEDROCK_DEPTH
+			ground[tile] = _natural_ground(s.get_runs_at_tile(tile))
 		var bottom: float = float(ground[tile]) + float(maxi(0, int(c["dy"]))) * s.STEP_HEIGHT
-		# A side fill aimed at the cell's middle from its -x face: `_place_span` fills exactly that step.
+		# A side fill aimed at the cell's middle from its -x face: `_place_span` takes exactly that step. The
+		# batch's own blocks are not in the runs yet, and no two of them share a cell (one `dy` per course).
 		var pos := Vector3(float(tile.x) * s.TILE_SIZE, bottom + s.STEP_HEIGHT * 0.5, (float(tile.y) + 0.5) * s.TILE_SIZE)
 		var span = s._place_span(s.get_runs_at_tile(tile), pos, Vector3.RIGHT)
-		if span.is_empty():
+		if span.is_empty() or (spans.get(tile, []) as Array).has(float(span["bottom"])):
 			continue
-		s._append_edit(tile, { "op": "add", "bottom": span["bottom"], "top": span["top"], "material": material })
+		if not spans.has(tile):
+			spans[tile] = []
+		spans[tile].append(float(span["bottom"]))
+		placed += 1
+		placed_out.append({ "tile": tile, "mm": roundi(float(span["bottom"]) * 1000.0), "base": roundi(float(ground[tile]) * 1000.0) })
+	var chunks: Dictionary = {}
+	for tile: Vector2i in spans:
+		for run: Vector2 in _merge_steps(spans[tile]):
+			_append_edit(tile, { "op": "add", "bottom": run.x, "top": run.y, "material": material }, false)
+			GameBus.block_changed.emit("fill", Vector3((float(tile.x) + 0.5) * s.TILE_SIZE, run.x, (float(tile.y) + 0.5) * s.TILE_SIZE),
+				Vector3(1.0, run.y - run.x, 0.0), material)
+		_compact_if_long(tile)
 		s._mark_dirty(tile)
 		s._settle_note(tile)
-		touched[tile] = true
-		placed += 1
-		GameBus.block_changed.emit("place", pos, Vector3.RIGHT, material)
-	var chunks: Dictionary = {}
-	for tile: Vector2i in touched:
 		for chunk: Vector2i in s._touched_chunks(tile):
 			chunks[chunk] = true
 		GameBus.block_edit_resolved.emit(tile, s.column_top_at_tile(tile))
 	for chunk: Vector2i in chunks:
 		s._rebuild_chunk(chunk)
 	return placed
+
+## Phase 212 — for a block at [`bottom`, +STEP] in `tile`, held by no natural ground (none under it, none beside or
+## over it at its height): the top of its column's natural ground in mm, where the floors of whatever placed
+## blocks hold it are counted from. Else a value above any bottom (the index, or the ground, decides).
+func _unindexed_ground_mm(tile: Vector2i, runs: Array, bottom: float) -> int:
+	var mid: float = bottom + s.STEP_HEIGHT * 0.5
+	if _natural_at(runs, mid - s.STEP_HEIGHT) or _natural_at(runs, mid + s.STEP_HEIGHT):
+		return 1 << 40
+	for d: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+		if _natural_at(s.get_runs_at_tile(tile + d), mid):
+			return 1 << 40
+	return roundi(_natural_ground(runs) * 1000.0)
+
+## Whether natural ground (a run with no material) holds height `y` in `runs`.
+func _natural_at(runs: Array, y: float) -> bool:
+	for run: Dictionary in runs:
+		if y >= float(run["bottom"]) and y < float(run["top"]):
+			return str(run.get("material", "")) == ""
+	return false
+
+## The top of the highest natural run of a column (placed blocks are named runs; natural ground has no
+## material), else its top, else bedrock.
+func _natural_ground(runs: Array) -> float:
+	for i in range(runs.size() - 1, -1, -1):
+		if str(runs[i].get("material", "")) == "":
+			return float(runs[i]["top"])
+	return float(runs[-1]["top"]) if not runs.is_empty() else s.BEDROCK_DEPTH
+
+## Step bottoms (any order) as the runs of touching steps they make: `[Vector2(bottom, top), ...]`, lowest first.
+func _merge_steps(bottoms: Array) -> Array:
+	var sorted := bottoms.duplicate()
+	sorted.sort()
+	var out: Array = []
+	for b: float in sorted:
+		if not out.is_empty() and absf(out[-1].y - b) < s.STEP_HEIGHT * 0.25:
+			out[-1].y = b + s.STEP_HEIGHT
+		else:
+			out.append(Vector2(b, b + s.STEP_HEIGHT))
+	return out
 
 ## Phase 205 — the host removes one structure block worn to nothing (`StructureSlice.tick`): no pack is
 ## credited. It is aimed as a side hit at the block's middle, so the clients' `block_changed` replay resolves
@@ -423,7 +472,9 @@ func _place_span(runs: Array, world_pos: Vector3, normal: Vector3) -> Dictionary
 ## (a plain column carrying one placed stack is one remove plus two adds), which
 ## bounds the log until the next compaction. A column that has been mined and put
 ## back is compacted to NOTHING, because it is its natural self again.
-func _append_edit(tile: Vector2i, op: Dictionary) -> void:
+## `compact` false leaves the compaction to the caller (`_compact_if_long`), for a batch adding many ops to one
+## column at once.
+func _append_edit(tile: Vector2i, op: Dictionary, compact: bool = true) -> void:
 	var key = s._tile_key(tile)
 	if not s._edits.has(key):
 		s._edits[key] = []
@@ -433,7 +484,13 @@ func _append_edit(tile: Vector2i, op: Dictionary) -> void:
 	# Phase 194 (#512) — a dig or a place is an edit like any other: the chunk cache signs a build with
 	# the revisions of the chunk and its neighbours, so one not bumped here let a cached mesh outlive it.
 	s._bump_edit_rev(key)
-	if ops.size() <= s.MAX_TILE_OPS:
+	if compact:
+		_compact_if_long(tile)
+
+## Rewrite `tile`'s log as `_compact_ops` once it is past MAX_TILE_OPS.
+func _compact_if_long(tile: Vector2i) -> void:
+	var key = s._tile_key(tile)
+	if (s._edits.get(key, []) as Array).size() <= s.MAX_TILE_OPS:
 		return
 	var compacted = s._compact_ops(tile)
 	if compacted.is_empty():
@@ -590,6 +647,18 @@ func _apply_edit(action: String, position: Vector3, normal: Vector3, material: S
 			"pos": Vector3(position.x, float(span["top"]), position.z),
 			"material": str(span["material"]),
 		}
+	if action == "fill":
+		# Phase 212 — a settlement structure's column span (`place_structure_blocks`): `position` is the middle of
+		# the tile at the span's bottom (as the host's op has it), `normal.y` its height in whole steps, clamped
+		# under the build ceiling.
+		var t := Vector2i(floori(position.x / s.TILE_SIZE), floori(position.z / s.TILE_SIZE))
+		var bottom := maxf(position.y, s.BEDROCK_DEPTH)
+		var top := minf(bottom + maxf(1.0, roundf(normal.y / s.STEP_HEIGHT)) * s.STEP_HEIGHT, s.build_ceiling())
+		if top <= bottom or not GameData.MATERIALS.has(material):
+			return { "applied": false }
+		s._append_edit(t, { "op": "add", "bottom": bottom, "top": top, "material": material })
+		s._rebuild_chunk_at_tile(t)
+		return { "applied": true, "tile": t, "new_h": top, "pos": Vector3(position.x, top, position.z), "material": material }
 	if action == "place":
 		var span = s._place_span(s.get_runs_at_tile(tile), position, normal)
 		if span.is_empty():

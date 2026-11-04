@@ -9,6 +9,9 @@ extends RefCounted
 ##   { key, by, started, site {x, z}, given {item: n}, status "building" | "done", done_at,
 ##     contributors {pid: {items: n}} }
 
+const Limits := preload("res://src/structure/structure_limits.gd")
+const VoxelConsts := preload("res://src/terrain/voxel_consts.gd")
+
 const TIER_ORDER := ["founded", "growing", "town"]
 ## Projects a settlement may have under construction at once.
 const MAX_BUILDING := 3
@@ -98,12 +101,15 @@ static func building_count(projects: Dictionary) -> int:
 const DOOR_TILES := 3
 const DOOR_COURSES := 16
 
-## Blocks (STEP_HEIGHT courses) per floor: the fabric's `Structure.floorHeight` (3 m = 24 blocks).
+## Blocks (STEP_HEIGHT courses) per floor: the fabric's `Structure.floorHeight` (3 m = 24 blocks), read where
+## the structure limits read it, so a project floor is the floor the limits count.
 static func courses_per_floor() -> int:
-	var res: Resource = GameData.WORLD_SYSTEMS.get("Structure", null)
-	var r: Variant = res.get("rules") if res != null else null
-	var h := float((r as Dictionary).get("floorHeight", 3.0)) if r is Dictionary else 3.0
-	return maxi(1, roundi(h / 0.125))
+	return maxi(1, roundi(float(Limits.floor_mm()) / (VoxelConsts.STEP_HEIGHT * 1000.0)))
+
+## The most floors a project may place: what the strongest class carries. The fabric validator holds each
+## project to its own block's class, so this only bounds a table the validator never saw.
+static func max_floors() -> int:
+	return Limits.max_floors(Limits.Rules.CLASSES.size() - 1)
 
 ## The cells a finished structure fills, as offsets `(dx, dy, dz)` from its site, dy in blocks above the
 ## ground of the cell's own column: `floors` floors (Phase 212: a shed is one 3 m floor) of the layout's outline,
@@ -117,7 +123,7 @@ static func layout_cells(layout: String, floors: int) -> Array:
 			if absi(x) == half.x or absi(z) == half.y:
 				course.append(Vector2i(x, z))
 	var out: Array = []
-	for y in clampi(floors, 0, 8) * courses_per_floor():
+	for y in clampi(floors, 0, max_floors()) * courses_per_floor():
 		for c: Vector2i in course:
 			if is_doorway(layout, c, y):
 				continue

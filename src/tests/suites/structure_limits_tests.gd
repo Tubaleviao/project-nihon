@@ -23,6 +23,11 @@ func register() -> void:
 	_run_test("structure limits: every class has a material, concrete steel and leyframe are craftable, every project fits its class", _test_materials_above_stone)
 	_run_test("structure limits (audit): no structural value is read from a client message", _test_audit_no_client_values)
 	_run_test("structure limits: every refusal reason has a line in both catalogs", _test_reason_lines)
+	_run_test("structure limits: a finished project's blocks are indexed, give nothing back and carry floors from their ground", _test_project_indexed)
+	_run_test("structure limits: a block that falls takes its support again from where it lands", _test_fall_resets_hold)
+	_run_test("structure limits: a needle raised from a wide slab is measured on its own footprint", _test_needle_on_slab)
+	_run_test("structure limits: a project places every floor its table names, a floor of courses the limits count", _test_project_floors)
+	_run_test("structure limits: a project column is one edit and one sync, replayed to the same runs, from natural ground", _test_project_batch)
 
 # ── rig ──────────────────────────────────────────────────────────────────
 
@@ -70,6 +75,13 @@ func _seat(st: StructureSlice, sid: int, tile: Vector2i, mm: int, mat: String, b
 	st.commit_place({ "verdict": "join", "sid": sid, "tile": tile, "mm": mm, "material": mat, "player_id": "p1",
 		"base": base_mm, "reach": 0, "carry": carry if carry >= 0 else Limits.rank_of(mat) })
 
+## Seat a block of `mat` at bottom `mm` in every column of the `side` × `side` slab at `corner`: the slab risen to
+## there, so its whole footprint is tall (a lone column over a one-block slab is a needle).
+func _raise(st: StructureSlice, sid: int, corner: Vector2i, side: int, mm: int, mat: String) -> void:
+	for x in side:
+		for z in side:
+			_seat(st, sid, corner + Vector2i(x, z), mm, mat, 2000)
+
 ## The verdict (or refusal reason) of putting `mat` on top of a seated block at floor height `floors` × 3 m − STEP.
 func _on_floor(st: StructureSlice, sid: int, tile: Vector2i, floor: int, mat: String) -> String:
 	var floor_mm := Limits.floor_mm()
@@ -89,6 +101,8 @@ func _test_floor_limits() -> void:
 		var sid := _slab(st, Vector2i(100, 100), 12, mat)   # 6 m wide: 40 steel floors are not too slender
 		assert_true(sid != 0, "%s: a ground slab" % mat)
 		assert_eq(Limits.max_floors(Limits.rank_of(mat)), top, "%s carries %d floors" % [mat, top])
+		_raise(st, sid, Vector2i(100, 100), 12, 2000 + (top - 1) * Limits.floor_mm() - 125, mat)
+		_raise(st, sid, Vector2i(100, 100), 12, 2000 + top * Limits.floor_mm() - 125, mat)
 		assert_eq(_on_floor(st, sid, Vector2i(101, 101), top, mat), "join", "%s: floor %d is allowed" % [mat, top])
 		assert_eq(_on_floor(st, sid, Vector2i(102, 102), top + 1, mat), "too_many_floors", "%s: floor %d is refused" % [mat, top + 1])
 		_free_rig(r)
@@ -110,6 +124,7 @@ func _test_weakest_carries() -> void:
 	_seat(st, sid, post, top_mm, "Ashite", 2000, Limits.rank_of("Thornwood"))
 	assert_eq(str(st.plan_place("p1", post, float(top_mm + 125) / 1000.0, Vector3.UP, "Ashite").get("reason", "")), "too_many_floors",
 		"a third floor over the wooden post is refused, even in stone")
+	_raise(st, sid, Vector2i(0, 0), 8, 2000 + 2 * Limits.floor_mm() - 125, "Ashite")
 	assert_eq(_on_floor(st, sid, Vector2i(5, 5), 3, "Ashite"), "join", "a stone column beside it reaches the third floor")
 	# A basement below the slab is floor 0: no class limits it.
 	assert_eq(Limits.floor_of(1000, 2000), 0, "a block a metre below its base is on floor 0")
@@ -269,14 +284,14 @@ func _test_project_heights() -> void:
 		if not ground.has(t):
 			ground[t] = v.column_top_at_tile(t)
 	var changes := [0]
-	var on_change := func(action: String, _p: Vector3, _n: Vector3, _m: String) -> void:
-		if action == "place":
-			changes[0] += 1
+	var on_change := func(action: String, _p: Vector3, n: Vector3, _m: String) -> void:
+		if action == "fill":
+			changes[0] += roundi(n.y / 0.125)
 	GameBus.block_changed.connect(on_change)
 	var placed := v.place_structure_blocks(batch, "Ashite")
 	GameBus.block_changed.disconnect(on_change)
 	assert_eq(placed, cells.size(), "every block of the shed is placed")
-	assert_eq(changes[0], placed, "each is synced as an ordinary edit")
+	assert_eq(changes[0], placed, "each is synced, in its column's span")
 	var heights := {}
 	for g: float in ground.values():
 		heights[g] = true
@@ -341,7 +356,8 @@ func _test_audit_no_client_values() -> void:
 		assert_false(net.contains("payload.get(\"%s\"" % field), "no client payload's \"%s\" is read" % field)
 	var edit := FileAccess.get_file_as_string("res://src/terrain/voxel_edit.gd")
 	assert_true(edit.contains("var supported: bool = s.VoxelRuns.runs_cover_y(runs,"), "whether a block is supported is read from the host's runs")
-	assert_true(edit.contains("plan_place(player_id, tile, float(span[\"bottom\"]), normal, chosen, supported)"), "and handed to the host's index")
+	assert_true(edit.contains("plan_place(player_id, tile, float(span[\"bottom\"]), normal, chosen, supported,\n\t\t\t_unindexed_ground_mm(tile, runs, float(span[\"bottom\"])))"),
+		"and handed to the host's index with the ground read from the same runs")
 	var slice := FileAccess.get_file_as_string("res://src/structure/structure_slice.gd")
 	for field: String in ["base", "reach", "carry"]:
 		assert_false(slice.contains("args.get(\"%s\"" % field), "no structure intent names a block's %s" % field)
@@ -355,3 +371,127 @@ func _test_reason_lines() -> void:
 		var key := "structure.refused.%s" % reason
 		for lang: String in ["en", "pt_BR"]:
 			assert_true(str((catalog.get(lang, {}) as Dictionary).get(key, "")) != "", "%s has a %s line" % [key, lang])
+
+# ── Phase 212 review ─────────────────────────────────────────────────────
+
+## A voxel world on `r`'s index, flat ground at 2 m, host.
+func _world(r: Dictionary) -> VoxelSlice:
+	var v := _make_voxel()
+	v.is_authoritative = true
+	v.player_registry = r["reg"]
+	v.structures = r["st"]
+	r["st"].remove_block = v.remove_structure_block
+	return v
+
+## A batch of `layout_cells(layout, floors)` sited at (8, 8) m.
+func _batch(layout: String, floors: int) -> Array:
+	var batch: Array = []
+	for c: Vector3i in ProjectRules.layout_cells(layout, floors):
+		batch.append({ "exact": SettlementWiring._exact_at(8.0 + (float(c.x) + 0.5) * 0.5, 8.0 + (float(c.z) + 0.5) * 0.5), "dy": c.y })
+	return batch
+
+func _test_project_indexed() -> void:
+	var r := _rig()
+	var st: StructureSlice = r["st"]
+	var v := _world(r)
+	r["clans"].found("p1", "Builders")
+	var placed: Array = []
+	var n := v.place_structure_blocks(_batch("shed", 1), "Ashite", placed)
+	assert_eq(placed.size(), n, "every block placed is reported")
+	var sid := st.index_project("p1", "Ashite", placed)
+	assert_true(sid != 0, "the project is indexed")
+	assert_eq(int(st.get_structure(sid)["count"]), n, "every block of it")
+	assert_eq(st.clan_score(r["clans"].clan_of("p1")), 0.0, "a project adds nothing to its clan's score")
+	assert_eq(st.recount_clan_scores(), {}, "nor does a recount")
+	# The starter takes a block apart: the project took the materials, none come back.
+	var top := 2.0 + 0.125 * float(ProjectRules.courses_per_floor())
+	var wall := Vector2i(16, 16 + ProjectRules.half_of("shed").y)
+	var got: Dictionary = v.mine_block(Vector3((float(wall.x) + 0.5) * 0.5, top, (float(wall.y) + 0.5) * 0.5), Vector3.UP, "p1")
+	assert_true(bool(got.get("success", false)), "its owner may take a block apart")
+	assert_eq(int(got.get("quantity", -1)), 0, "and gets nothing back")
+	assert_eq(int(r["reg"].get_inventory("p1").get_item_count("Ashite")), 0, "nothing is banked")
+	# An outsider's mine is a hit, not a free block.
+	var hit: Dictionary = v.mine_block(Vector3((float(wall.x) + 1.5) * 0.5, top, (float(wall.y) + 0.5) * 0.5), Vector3.UP, "p2")
+	assert_eq(int(hit.get("quantity", -1)), 0, "an outsider gets nothing either")
+	# A block hung off the wall's top course is carried from the wall's ground, not from where it hangs.
+	var out := wall + Vector2i(0, 1)
+	var plan := st.plan_place("p1", out, top - 0.25, Vector3(0, 0, 1), "Ashite", false)
+	assert_eq(int(plan.get("base", -1)), 2000, "a block hung on the project counts its floors from the ground")
+	var data := st.to_data()
+	st.from_data(data)
+	assert_true(bool(st.get_structure(sid).get("project", false)), "a project stays a project through a save")
+	_free_rig(r)
+	v.free()
+
+func _test_fall_resets_hold() -> void:
+	var r := _rig()
+	var st: StructureSlice = r["st"]
+	_put(st, "p1", Vector2i(0, 0), 2.0, "Ashite")
+	var sid := st.structure_at(Vector2i(0, 0), 2.0625)
+	# A block hung beside it, with a block on top of it, falls 1 m onto the ground.
+	_seat(st, sid, Vector2i(1, 0), 4000, "Sand", 5000, 0)
+	st.commit_place({ "verdict": "join", "sid": sid, "tile": Vector2i(1, 0), "mm": 4125, "material": "Sand", "player_id": "p1",
+		"base": 5000, "reach": 1, "carry": 0 })
+	st.shift_span(Vector2i(1, 0), 4.0, 4.25, 3.0)
+	var cells: Dictionary = st.get_structure(sid)["cells"][Vector2i(1, 0)]
+	assert_eq(cells.keys().size(), 2, "both blocks fell")
+	assert_eq([int(cells[3000][4]), int(cells[3000][5])], [3000, 0], "the lower landed on ground: its own base, reaching nothing")
+	assert_eq([int(cells[3125][4]), int(cells[3125][5])], [3000, 0], "the one on it stands on it")
+	# One landing on an indexed block takes that block's base.
+	_seat(st, sid, Vector2i(2, 0), 2125, "Ashite", 1000)
+	_seat(st, sid, Vector2i(2, 0), 4000, "Sand", 9000)
+	st.shift_span(Vector2i(2, 0), 4.0, 4.125, 2.25)
+	assert_eq(int(st.get_structure(sid)["cells"][Vector2i(2, 0)][2250][4]), 1000, "a block landing on another takes its base")
+	_free_rig(r)
+
+func _test_needle_on_slab() -> void:
+	var r := _rig()
+	var st: StructureSlice = r["st"]
+	var sid := _slab(st, Vector2i(0, 0), 10, "Ashite")
+	var n := Limits.floor_mm() / 125
+	var tile := Vector2i(5, 5)
+	for i in n - 1:
+		assert_true(str(_put(st, "p1", tile, 2.125 + 0.125 * i, "Ashite")["verdict"]) != "refused", "needle block %d (a floor high)" % i)
+	assert_eq(str(st.plan_place("p1", tile, 2.0 + 0.125 * n, Vector3.UP, "Ashite").get("reason", "")), "too_slender",
+		"a one-column stone needle on a hundred-column slab is too slender")
+	assert_eq(st.structure_at(tile, 2.0625), sid, "the needle is part of the slab's structure")
+	_free_rig(r)
+
+func _test_project_floors() -> void:
+	assert_eq(ProjectRules.courses_per_floor() * 125, Limits.floor_mm(), "a project floor is the floor the limits count")
+	var per := ProjectRules.layout_cells("tower", 1).size()
+	assert_eq(ProjectRules.layout_cells("tower", 10).size(), 10 * per, "ten concrete floors place ten floors")
+	assert_eq(ProjectRules.max_floors(), Limits.max_floors(StructureRules.CLASSES.size() - 1), "a table past the top class is cut there")
+
+func _test_project_batch() -> void:
+	var r := _rig()
+	var v := _world(r)
+	# A player's block floating 5 m over one column of the site.
+	var t := Vector2i(16 + ProjectRules.half_of("shed").x, 16)
+	v._append_edit(t, { "op": "add", "bottom": 7.0, "top": 7.125, "material": "Soil" })
+	var client := _make_voxel()
+	client._append_edit(t, { "op": "add", "bottom": 7.0, "top": 7.125, "material": "Soil" })
+	var fills := []
+	var on_change := func(action: String, p: Vector3, nrm: Vector3, m: String) -> void:
+		fills.append([action, p, nrm, m])
+	GameBus.block_changed.connect(on_change)
+	var placed := v.place_structure_blocks(_batch("shed", 1), "Ashite")
+	GameBus.block_changed.disconnect(on_change)
+	var cols := {}
+	for c: Vector3i in ProjectRules.layout_cells("shed", 1):
+		cols[Vector2i(c.x, c.z)] = true
+	assert_true(placed > 0, "the shed is placed")
+	assert_true(fills.size() <= cols.size() * 2, "a sync per column span, not per block (%d for %d blocks)" % [fills.size(), placed])
+	assert_true(v.VoxelRuns.runs_cover_y(v.get_runs_at_tile(t), 2.0625), "the wall under the floating block starts on the ground")
+	assert_eq((v.get_edits()[v._tile_key(t)] as Array).size() <= v.MAX_TILE_OPS, true, "its log stays compact")
+	for f: Array in fills:
+		client.apply_block_change(f[0], f[1], f[2], f[3])
+	var same := true
+	for c: Vector2i in cols:
+		var tile := Vector2i(16 + c.x, 16 + c.y)
+		if not v._runs_equal(v.get_runs_at_tile(tile), client.get_runs_at_tile(tile)):
+			same = false
+	assert_true(same, "the client's replay resolves every column to the host's runs")
+	_free_rig(r)
+	v.free()
+	client.free()
