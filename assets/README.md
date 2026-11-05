@@ -63,6 +63,16 @@ bound by key through `AssetOverlay.load_texture`: `textures/characters/player.pn
 `textures/characters/player_channel.png.raw` (R/G/B = metal/emission/wear). The public masks are
 black, so colour reduces to the character's skin index.
 
+Chibi body sheets: each creation body (`chibi_body_m`, `chibi_body_f`) has its own 64×64 sheets
+`textures/characters/bodies/<body>.png.raw` (detail), `<body>_color_mask.png.raw` (R/G/B =
+primary/secondary/accent) and `<body>_channel.png.raw` (R/G/B = metal/emission/wear). The game binds
+them by the character's body key (`CharacterSlice`), one material per body; a body with no sheets
+falls back to the `player*` sheets above. Skin colour is the palette index `base_index`, which shows
+wherever the colour mask is black; the mask's channels paint over it, so skin needs no separate
+material. **Novice outfit region:** pixels x 0–63, y 20–51 (`CharacterMaterial.NOVICE_OUTFIT_REGION`)
+of each body's sheets, the band with the torso, arms and legs islands. Paint the NoviceTunic there
+in place; keep the head and hands islands outside the band skin-only (mask black).
+
 ## The model
 
 - **Canonical keys.** Every asset is referenced by a stable relative key (e.g.

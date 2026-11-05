@@ -1025,3 +1025,11 @@ UVs + controlled palettes + stylized materials + modern lighting**
 This foundation allows Project Nihon to maintain a strong, coherent visual
 identity while its architecture remains prepared for the scale, diversity, and
 evolution expected of a sandbox MMORPG.
+
+## Chibi body sheets and the novice outfit region (Phase 215)
+
+Each creation body (`chibi_body_m`, `chibi_body_f`) draws with its own 64×64 sheets under
+`textures/characters/bodies/` (detail, colour mask, channel); a body without sheets falls back to the
+`player*` sheets. Skin colour is the palette index shown wherever the colour mask is black, so it is
+driven through the mask's base channel, not a separate material. The novice outfit occupies pixels
+x 0–63, y 20–51 of the sheets (`CharacterMaterial.NOVICE_OUTFIT_REGION`); the art repo paints it in place.

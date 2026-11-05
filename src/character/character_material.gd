@@ -30,6 +30,10 @@ static var _shared_material: ShaderMaterial = null
 ## channel mask) are never bound onto the procedural parts. One per kind, not one per character.
 static var _rig_material: ShaderMaterial = null
 
+## One rig material per creation body (`chibi_body_m`, ...) whose own sheets are bound (Phase 215).
+## A body without sheets uses `_rig_material` and the `player*` sheets.
+static var _body_materials: Dictionary = {}
+
 # ---------------------------------------------------------------------------
 # Palette texture
 # ---------------------------------------------------------------------------
@@ -99,11 +103,27 @@ static func rig_material(colors: Array) -> ShaderMaterial:
 		_refresh_palette(_rig_material, colors)
 	return _rig_material
 
+## The rig material of one creation body. Same shader and palette as `rig_material`, a separate
+## resource per body id so each keeps its own three sheets. An empty id returns `rig_material`.
+static func body_material(colors: Array, body_id: String) -> ShaderMaterial:
+	if body_id == "":
+		return rig_material(colors)
+	if not _body_materials.has(body_id):
+		_body_materials[body_id] = _make_material(colors)
+	else:
+		_refresh_palette(_body_materials[body_id], colors)
+	return _body_materials[body_id]
+
 ## A fresh rig-style ShaderMaterial for one creature type (Phase 143). The avatar's rig material is
 ## shared and its three sheets are bound once, so a creature's own sheets need their own material;
 ## the caller caches it per type and binds the sheets with `bind_rig_textures`.
 static func creature_material(colors: Array) -> ShaderMaterial:
 	return _make_material(colors)
+
+## The novice outfit's region of a 64x64 body sheet, in pixels (x, y, w, h): the band holding the
+## torso, arms and legs UV islands. The art repo paints the NoviceTunic here in place; documented in
+## assets/README.md ("Chibi body sheets") and characters.md (Phase 215).
+const NOVICE_OUTFIT_REGION := Rect2i(0, 20, 64, 32)
 
 ## The three sheet keys (detail, colour mask, channel) of a creation body such as `chibi_body_m`,
 ## in the order `bind_rig_textures` takes them. The public masks are black, so the body shows its
@@ -111,6 +131,20 @@ static func creature_material(colors: Array) -> ShaderMaterial:
 static func body_sheet_keys(body_id: String) -> Array:
 	var base := "textures/characters/bodies/%s" % body_id
 	return [base + ".png.raw", base + "_color_mask.png.raw", base + "_channel.png.raw"]
+
+## The own sheets of a creation body as { id, detail, color_mask, channel }, or {} when any of the
+## three is not in the manifest or does not decode (the caller falls back to the `player*` sheets).
+static func body_sheets(body_id: String) -> Dictionary:
+	if body_id == "":
+		return {}
+	var texs: Array = []
+	for k in body_sheet_keys(body_id):
+		if not AssetOverlay.has_key("textures", k):
+			return {}
+		texs.append(AssetOverlay.load_texture(k))
+	if texs.has(null):
+		return {}
+	return { "id": body_id, "detail": texs[0], "color_mask": texs[1], "channel": texs[2] }
 
 ## Bind the three body sheets on the rig material. Idempotent and write-free when the
 ## textures are already bound, so a rig attach does not rebind the same three.
