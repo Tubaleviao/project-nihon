@@ -63,6 +63,7 @@ func _ready() -> void:
 	GameBus.dismount_intent.connect(_on_dismount_intent)
 	GameBus.creature_died.connect(_on_creature_died)
 	GameBus.player_left.connect(_on_player_left)
+	GameBus.combat_hit_resolved.connect(_on_combat_hit)
 	GameBus.mount_resolved.connect(_on_local_resolved)
 	GameBus.player_died.connect(_on_local_died)
 
@@ -239,6 +240,14 @@ func _on_creature_died(entity_id: String, _position: Vector3, _killer: String, _
 	if not is_host:
 		return
 	var rider := rider_of(entity_id)
+	if rider != "":
+		force_dismount(rider)
+
+## Damage to the mount throws the rider (a hit that landed; a miss does nothing).
+func _on_combat_hit(_attacker_id: String, defender_id: String, outcome: String, damage: float) -> void:
+	if not is_host or outcome == "miss" or damage <= 0.0:
+		return
+	var rider := rider_of(defender_id)
 	if rider != "":
 		force_dismount(rider)
 

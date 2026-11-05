@@ -150,6 +150,14 @@ func _test_mount_forced_dismount() -> void:
 	m.local_player_id = func() -> String: return "p1"
 	GameBus.player_died.emit(Vector3.ZERO, "", Vector3.ZERO)
 	assert_false(m.is_mounted("p1"), "the local player's death dismounts")
+	_creatures["w2"]["owner"] = "p1"
+	m.mount("p1", "w2")
+	GameBus.combat_hit_resolved.emit("p2", "w2", "miss", 0.0)
+	assert_true(m.is_mounted("p1"), "a miss does not throw the rider")
+	GameBus.combat_hit_resolved.emit("p2", "w2", "hit", 3.0)
+	assert_false(m.is_mounted("p1"), "damage to the mount dismounts the rider")
+	_creatures["w2"]["owner"] = "p1"
+	m.mount("p1", "w2")
 	# A listen host ignores other players' answers.
 	GameBus.mount_resolved.emit("p9", "mount", true, "")
 	assert_false(m._local_mounted, "another player's answer leaves this machine's state alone")
