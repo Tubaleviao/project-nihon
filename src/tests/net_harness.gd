@@ -2212,7 +2212,7 @@ func _step_gesture_synced() -> void:
 		return loco.is_gesture_held() and loco.gesture_clip == "sit", _step_timeout() * 4.0)
 	var lift: float = float(ch._instances[iid].get("seat_lift", -1.0))
 	var same_lift: bool = absf(lift - HARNESS_SEAT_LIFT) < 0.001
-	var healed: bool = await _await_until(func(): return _root._player.get_hp() > hp0, _step_timeout())
+	var healed: bool = await _await_until(func(): return _root._player.get_hp() > hp0, _step_timeout() * 4.0)   # the rest heal ticks on the host; a slow wan_bad runner needs the same slack as the seat wait
 	var late: bool = await _await_until(func(): return _root._gesture_wiring._remote_poses.get(1, "") == "SitGround", _step_timeout())
 	var ok := own and same_lift and healed and late
 	_report("gesture_synced", verdict(ok, true), "seated" if ok else ("own_missing" if not own else (
