@@ -25,7 +25,7 @@ the rig changes nothing in a public clone.
 Item icons and models are not written here: ``tools/gen_item_assets.py`` owns item art. The GraywolfPack creature
 textures (``textures/creatures/GraywolfPack*.png.raw``) are the checkerboard (base) and
 two black masks (``_channel``, ``_color_mask``), like the player's. The nine roster creatures
-(``CREATURE_SIZES``) get the same three sheets at 128x128 or 64x64; so do the twenty-eight item meshes
+(``CREATURE_SIZES``) get the same three sheets at 128x128 or 64x64; so do the item meshes
 (``ITEM_TEXTURE_SIZES``, ``textures/items/``). The character-creation eyes (Phase 180,
 ``textures/characters/eyes/<id>.png.raw``, ``EYES``) are two dark ovals on a transparent 32x32 sheet. The chibi
 bodies (``textures/characters/bodies/chibi_body_{m,f}{,_color_mask,_channel}.png.raw``, ``CHIBI_BODIES``) get the
@@ -73,6 +73,8 @@ ITEM_TEXTURE_SIZES = {
     "FerriteIngot": 32, "VeilsteelIngot": 32, "RefinedVoiditeShard": 32, "VoidRuneTablet": 32,
     # Phase 209 — written books and blueprints.
     "BookTechBasicSmithing": 32, "BookTechMasterForge": 32, "BookTechBasicCarpentry": 32, "BookTechTextileWeaving": 32, "BookTechArcaneForging": 32, "BookTechAlchemy": 32, "BookTechVoidMastery": 32, "BlueprintRecipeBed": 32, "BlueprintRecipeChest": 32, "BlueprintRecipeDoor": 32, "BlueprintRecipeHearth": 32, "BlueprintPalisade": 32, "BlueprintStorehouse": 32, "BlueprintWorkshop": 32, "BlueprintWatchtower": 32,
+    # Cement and the construction-tech books (project-nihon-assets#73).
+    "Cement": 64, "BookTechConcrete": 32, "BookTechLeyframe": 32, "BookTechSteel": 32,
 }
 ITEM_TEXTURE_DIR = ROOT / "assets/textures/items"
 # Phase 180 — the eyes of the creation gender presets (fabric/gameplay/characters/appearances.js).
