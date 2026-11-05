@@ -1030,9 +1030,9 @@ func _test_hud_hotbar_pure() -> void:
 	assert_eq(_HotbarScript.digit_slot(KEY_1), 0, "1 fires the first box")
 	assert_eq(_HotbarScript.digit_slot(KEY_9), 8, "9 fires the ninth box")
 	assert_eq(_HotbarScript.digit_slot(KEY_0), -1, "0 is not a bottom-row key")
-	for k in [KEY_W, KEY_I, KEY_C, KEY_H, KEY_M, KEY_P, KEY_1, KEY_ESCAPE, KEY_SPACE]:
+	for k in [KEY_W, KEY_R, KEY_E, KEY_G, KEY_Q, KEY_1, KEY_ESCAPE, KEY_SPACE]:
 		assert_false(_HotbarScript.bind_allowed(k), "game key %d cannot be a shortcut" % k)
-	for k in [KEY_F7, KEY_F5, KEY_0]:
+	for k in [KEY_F7, KEY_F5, KEY_0, KEY_I, KEY_K]:
 		assert_true(_HotbarScript.bind_allowed(k), "key %d may be a shortcut" % k)
 	for k in [KEY_X, KEY_Z]:
 		assert_false(_HotbarScript.bind_allowed(k), "harvest and carry keys %d cannot be a shortcut" % k)
@@ -1221,9 +1221,10 @@ func _test_hud_skills_rows_and_window_keys() -> void:
 	var rows := UiSlice.skills_rows({"Archery": "novice", "Smithing": "master", "Alchemy": "expert"})
 	assert_eq(rows.map(func(r): return r["id"]), ["Smithing", "Alchemy", "Archery"], "skills list best tier first")
 	var ui := _new_hud_ui()
-	for pair in [[KEY_C, "character"], [KEY_K, "skills"], [KEY_H, "crafting"], [KEY_P, "market"], [KEY_I, "inventory"]]:
+	for pair in [[KEY_A, "attributes"], [KEY_S, "skills"], [KEY_H, "crafting"], [KEY_P, "market"], [KEY_E, "inventory"]]:
 		var e := InputEventKey.new()
 		e.pressed = true
+		e.alt_pressed = true
 		e.keycode = pair[0]
 		ui._input(e)
 		assert_true(ui.is_window_open(pair[1]), "key %d opens %s" % [pair[0], pair[1]])
@@ -1232,13 +1233,13 @@ func _test_hud_skills_rows_and_window_keys() -> void:
 func _test_hud_window_dock() -> void:
 	var seen := {}
 	for e in _WindowDockScript.entries():
-		assert_false(seen.has(e["letter"]), "shortcut letters are unique: %s" % e["letter"])
-		seen[e["letter"]] = true
+		var chip: String = _WindowDockScript.chip(str(e["key"]))
+		assert_false(seen.has(chip), "shortcut chips are unique: %s" % chip)
+		seen[chip] = true
 		assert_true(UiSlice.WINDOW_KEYS.has(e["key"]), "dock window exists: %s" % e["key"])
-		assert_false(_HotbarScript.bind_allowed(OS.find_keycode_from_string(str(e["letter"]))) , "dock letter %s is reserved from box shortcuts" % e["letter"])
-	assert_true(seen.has("M"), "M is the map window")
-	assert_true(seen.has("K"), "K is Skills")
-	assert_true(seen.has("C") and seen.has("H"), "C is Character, H is Crafting")
+	assert_true(seen.has("Alt+M"), "Alt+M is the map window")
+	assert_true(seen.has("Alt+S"), "Alt+S is Skills")
+	assert_true(seen.has("Alt+A") and seen.has("Alt+H"), "Alt+A is Attributes, Alt+H is Crafting")
 	var ui := _new_hud_ui()
 	var toggled: Array = []
 	ui.window_dock.window_toggled.connect(func(k: String) -> void: toggled.append(k))
@@ -1812,17 +1813,18 @@ func _test_map_window_key() -> void:
 	var e := InputEventKey.new()
 	e.pressed = true
 	e.keycode = KEY_M
+	e.alt_pressed = true
 	ui._input(e)
-	assert_true(ui.is_window_open("map"), "M opens the Map window")
+	assert_true(ui.is_window_open("map"), "Alt+M opens the Map window")
 	ui._input(e)
-	assert_false(ui.is_window_open("map"), "M closes it again")
+	assert_false(ui.is_window_open("map"), "Alt+M closes it again")
 	ui.window_dock.window_toggled.emit("map")
-	assert_true(ui.is_window_open("map"), "the dock's M box opens it")
+	assert_true(ui.is_window_open("map"), "the dock's Alt+M box opens it")
 	var users := 0
 	for entry in _WindowDockScript.entries():
-		if entry["letter"] == "M":
+		if _WindowDockScript.chip(str(entry["key"])) == "Alt+M":
 			users += 1
-	assert_eq(users, 1, "no other window uses M")
+	assert_eq(users, 1, "no other window uses Alt+M")
 	ui.free()
 
 ## Waypoints on the horizon: one ahead projects onto the screen at the horizon toward it, one behind
@@ -2278,7 +2280,7 @@ func _test_dock_icons_and_badges() -> void:
 		assert_true(b.icon != null, "the %s dock button carries a texture" % e["key"])
 		assert_true(b.text.length() != 1, "the %s dock button text is not a bare letter" % e["key"])
 		var badge := b.get_node_or_null("Badge") as Label
-		assert_true(badge != null and badge.text == str(e["letter"]), "the %s button has a badge with %s" % [e["key"], e["letter"]])
+		assert_true(badge != null and badge.text == _WindowDockScript.chip(str(e["key"])), "the %s button has a badge with its chip" % e["key"])
 		assert_true(b.tooltip_text.begins_with(I18nScript.t(str(e["name"]))), "the tooltip keeps the translated name")
 	ui.free()
 

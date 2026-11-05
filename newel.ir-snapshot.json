@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:fe22ea1d47069d64644d25526e8493125e49d765ef2aaf99368658bff76862de",
+  "schemaHash": "sha256:fba791b5ed5ad11cd434a689789ae27ccd9f9ede47199c27cb9c988b8f9929f2",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -44282,7 +44282,7 @@
                 ],
                 "trigger": {
                   "kind": "window_opened",
-                  "window": "character"
+                  "window": "attributes"
                 }
               },
               {
@@ -44472,7 +44472,8 @@
               "market",
               "proposals",
               "controls",
-              "character",
+              "attributes",
+              "equipment",
               "skills",
               "map",
               "settlement",

@@ -1,7 +1,7 @@
 extends Node
 ## UI slice — window system exposing inventory, technology, crafting, trade,
 ## market, and proposals. Each window is a PanelContainer on a shared CanvasLayer,
-## toggled with I / T / H (crafting) / C (character) / Y (trade) / P (market) / G (proposals) / ? (controls)
+## toggled with Alt + a letter (`WindowShortcuts.TABLE`) or ? (controls)
 ## and closed with ESC or the window's ✕ button. Every window drags by its title
 ## bar and reopens where it was left (Phase 46). Opening a window
 ## never touches the mouse: the pointer is always free (Phase 85) and only
@@ -39,7 +39,8 @@ const WINDOW_TRADE      := "trade"
 const WINDOW_MARKET     := "market"
 const WINDOW_PROPOSALS  := "proposals"
 const WINDOW_CONTROLS   := "controls"
-const WINDOW_CHARACTER  := "character"
+const WINDOW_ATTRIBUTES := "attributes"   # Phase 214 — the Phase 179 character window, split in two
+const WINDOW_EQUIPMENT  := "equipment"
 const WINDOW_SKILLS     := "skills"
 const WINDOW_MAP        := "map"
 const WINDOW_SETTLEMENT := "settlement"
@@ -48,9 +49,12 @@ const WINDOW_CHEST      := "chest"  # Phase 208 — opened by using a chest or d
 const WINDOW_GESTURES  := "gestures"
 const WINDOW_ADMIN     := "admin"   # Phase 182 — admins only (`is_admin`)
 
+const WindowShortcuts := preload("res://src/ui/window_shortcuts.gd")
+## Phase 214 — {window, keycode} rows, Alt implied; the only place a window letter is written.
+const WINDOW_SHORTCUTS: Array = WindowShortcuts.TABLE
 const TutorialCard := preload("res://src/tutorial/tutorial_card.gd")
 const WINDOW_KEYS := [WINDOW_INVENTORY, WINDOW_TECHNOLOGY, WINDOW_CRAFTING, WINDOW_TRADE, WINDOW_MARKET, WINDOW_PROPOSALS,
-	WINDOW_CONTROLS, WINDOW_CHARACTER, WINDOW_SKILLS, WINDOW_MAP, WINDOW_SETTLEMENT, WINDOW_CLAN, WINDOW_CHEST, WINDOW_GESTURES, WINDOW_ADMIN]
+	WINDOW_CONTROLS, WINDOW_ATTRIBUTES, WINDOW_EQUIPMENT, WINDOW_SKILLS, WINDOW_MAP, WINDOW_SETTLEMENT, WINDOW_CLAN, WINDOW_CHEST, WINDOW_GESTURES, WINDOW_ADMIN]
 
 const MouseIconScript := preload("res://src/ui/mouse_icon.gd")
 const EquipmentRules := preload("res://src/character/equipment_rules.gd")
@@ -224,6 +228,16 @@ func _input(event: InputEvent) -> void:
 		var focus := get_viewport().gui_get_focus_owner() if is_inside_tree() else null
 		if (focus is LineEdit or focus is TextEdit) and event.keycode != KEY_ESCAPE:
 			return
+		# Phase 214 — Alt + a letter opens a window. Matched before the wheel and the hotbar so Alt+Q is Equipment, not
+		# the wheel; not while the hotbar waits for a box key (it swallows a modified key itself).
+		if (hotbar == null or not hotbar.is_binding()) and not GesturePanelScript.awaiting_key:
+			var shortcut := WindowShortcuts.window_for_event(event)
+			if shortcut != "":
+				if not event.echo:   # a held key repeats: one press, one toggle
+					toggle_window(shortcut)
+				if is_inside_tree():
+					get_viewport().set_input_as_handled()
+				return
 		# Phase 159 — the gesture wheel (Q by default, rebindable) outranks a hotbar box on the same key, except
 		# while the hotbar waits for a box's key. Phase 196: a rebind takes the next key (see `handle_key`).
 		var wheel: int = GesturePanelScript.handle_key(event, hotbar != null and hotbar.is_binding())
@@ -245,30 +259,6 @@ func _input(event: InputEvent) -> void:
 			toggle_window(WINDOW_CONTROLS)
 			return
 		match event.keycode:
-			KEY_I:
-				toggle_window(WINDOW_INVENTORY)
-			KEY_T:
-				toggle_window(WINDOW_TECHNOLOGY)
-			KEY_H:
-				toggle_window(WINDOW_CRAFTING)
-			KEY_Y:
-				toggle_window(WINDOW_TRADE)
-			KEY_P:
-				toggle_window(WINDOW_MARKET)
-			KEY_G:
-				toggle_window(WINDOW_PROPOSALS)
-			KEY_C:
-				toggle_window(WINDOW_CHARACTER)
-			KEY_K:
-				toggle_window(WINDOW_SKILLS)
-			KEY_M:
-				toggle_window(WINDOW_MAP)
-			KEY_L:
-				toggle_window(WINDOW_SETTLEMENT)
-			KEY_J:
-				toggle_window(WINDOW_CLAN)
-			KEY_O:
-				toggle_window(WINDOW_ADMIN)
 			KEY_ESCAPE:
 				_close_all_windows()
 
@@ -669,7 +659,7 @@ static func controls_rows() -> Array:
 		{"action": "tame", "keys": "G", "desc": I18n.t("controls.row12"), "mouse": 0},
 		{"action": "equipment", "keys": "E", "desc": I18n.t("controls.row13"), "mouse": 0},
 		{"action": "chest", "keys": "U · Shift+U · Ctrl+U", "desc": I18n.t("controls.row18"), "mouse": 0},
-		{"action": "windows", "keys": "I · C · K · H · T · Y · P · G", "desc": I18n.t("controls.row14"), "mouse": 0},
+		{"action": "windows", "keys": WindowShortcuts.all_labels(), "desc": I18n.t("controls.row14"), "mouse": 0},
 		{"action": "controls", "keys": "?", "desc": I18n.t("controls.row15"), "mouse": 0},
 		{"action": "chat", "keys": "Enter · /", "desc": I18n.t("controls.row16"), "mouse": 0},
 		{"action": "close", "keys": "ESC", "desc": I18n.t("controls.row17"), "mouse": 0},

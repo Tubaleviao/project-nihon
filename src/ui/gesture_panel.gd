@@ -45,6 +45,8 @@ static func handle_key(event: InputEventKey, hotbar_binding: bool) -> int:
 	if awaiting_key:
 		if event.echo:
 			return KEY_SWALLOWED
+		if event.keycode != KEY_ESCAPE and (event.alt_pressed or event.ctrl_pressed or event.meta_pressed):
+			return KEY_SWALLOWED   # Phase 214: a modified press (Alt+H opens a window) is not a wheel key; keep waiting
 		return KEY_REBOUND if take_rebind_key(event.keycode) else KEY_SWALLOWED
 	if event.keycode != key_code() or hotbar_binding or event.echo \
 			or event.ctrl_pressed or event.alt_pressed or event.shift_pressed or event.meta_pressed:

@@ -436,6 +436,14 @@ def s_bust(c):
     c.poly([(50, 16), (60, 6), (66, 24)], "red")
 
 
+def s_armor(c):
+    """Equipment window: a breastplate with a belt."""
+    c.poly([(14, 24), (34, 14), (66, 14), (86, 24), (80, 46), (70, 44), (70, 90), (30, 90), (30, 44), (20, 46)], "steel")
+    c.poly([(40, 14), (50, 28), (60, 14)], "steel_d")
+    c.rect(30, 62, 70, 70, "red_d")
+    c.rect(46, 60, 54, 72, "cream")
+
+
 def s_book(c):
     c.poly([(8, 24), (48, 30), (48, 86), (8, 80)], "cream")
     c.poly([(92, 24), (52, 30), (52, 86), (92, 80)], "cream")
@@ -572,7 +580,7 @@ def d_clan(c):
 
 # Window key -> drawing; every WindowDock entry needs one.
 WINDOWS = {
-    "inventory": s_bag, "character": s_bust, "skills": s_book, "crafting": d_craft,
+    "inventory": s_bag, "attributes": s_bust, "equipment": s_armor, "skills": s_book, "crafting": d_craft,
     "technology": d_tech, "trade": s_swap, "market": s_coins, "map": s_globe,
     "proposals": s_scroll, "settlement": s_house, "clan": d_clan, "controls": s_keyboard, "admin": s_crown_window,
 }
@@ -756,7 +764,7 @@ def draw_skill(category, skill):
 # Inputs read from the repo: dock entries, skill categories and skills, status effects.
 # ---------------------------------------------------------------------------
 def read_windows():
-    keys = re.findall(r'\{"key": "(\w+)",\s+"letter"', DOCK_GD.read_text())
+    keys = re.findall(r'\{"key": "(\w+)",\s+"name"', DOCK_GD.read_text())
     if not keys:
         sys.exit(f"{DOCK_GD}: no dock entries found")
     return keys

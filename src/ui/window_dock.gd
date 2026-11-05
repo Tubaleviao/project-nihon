@@ -9,24 +9,26 @@ extends VBoxContainer
 
 signal window_toggled(window_key: String)
 
-## Dock order. Each entry: { key (window key), letter (shortcut), name }.
-## The letters must match the key map in `UiSlice._input`.
+## Dock order. Each entry: { key (window key), name }. The shortcut chip comes from `WindowShortcuts.TABLE`
+## (Phase 214: Alt + a letter; `?` for the controls window); no letter is written here.
 const I18n := preload("res://src/core/i18n.gd")
 const UiIcons := preload("res://src/ui/ui_icons.gd")
+const WindowShortcuts := preload("res://src/ui/window_shortcuts.gd")
 const ENTRIES: Array = [
-	{"key": "inventory",  "letter": "I", "name": "dock.inventory"},
-	{"key": "character",  "letter": "C", "name": "dock.character"},
-	{"key": "skills",     "letter": "K", "name": "dock.skills"},
-	{"key": "crafting",   "letter": "H", "name": "dock.crafting"},
-	{"key": "technology", "letter": "T", "name": "dock.technology"},
-	{"key": "trade",      "letter": "Y", "name": "dock.trade"},
-	{"key": "market",     "letter": "P", "name": "dock.market"},
-	{"key": "map",        "letter": "M", "name": "dock.map"},
-	{"key": "proposals",  "letter": "G", "name": "dock.proposals"},
-	{"key": "settlement", "letter": "L", "name": "dock.settlement"},
-	{"key": "clan",       "letter": "J", "name": "dock.clan"},
-	{"key": "controls",   "letter": "?", "name": "dock.controls"},
-	{"key": "admin",      "letter": "O", "name": "dock.admin"},
+	{"key": "inventory",  "name": "dock.inventory"},
+	{"key": "attributes", "name": "dock.attributes"},
+	{"key": "equipment",  "name": "dock.equipment"},
+	{"key": "skills",     "name": "dock.skills"},
+	{"key": "crafting",   "name": "dock.crafting"},
+	{"key": "technology", "name": "dock.technology"},
+	{"key": "trade",      "name": "dock.trade"},
+	{"key": "market",     "name": "dock.market"},
+	{"key": "map",        "name": "dock.map"},
+	{"key": "proposals",  "name": "dock.proposals"},
+	{"key": "settlement", "name": "dock.settlement"},
+	{"key": "clan",       "name": "dock.clan"},
+	{"key": "controls",   "name": "dock.controls"},
+	{"key": "admin",      "name": "dock.admin"},
 ]
 ## Phase 182 — boxes hidden until `set_entry_visible` shows them (the Admin window, for admins only).
 const HIDDEN_BY_DEFAULT := ["admin"]
@@ -64,9 +66,9 @@ func build() -> void:
 		b.icon = UiIcons.load_icon(UiIcons.window_key(str(e["key"])))
 		b.expand_icon = true
 		b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		b.add_child(_badge(str(e["letter"])))
+		b.add_child(_badge(chip(str(e["key"]))))
 		b.focus_mode = Control.FOCUS_NONE
-		b.tooltip_text = "%s  (%s)" % [I18n.t(e["name"]), e["letter"]]
+		b.tooltip_text = "%s  (%s)" % [I18n.t(e["name"]), chip(str(e["key"]))]
 		b.pressed.connect(func(): window_toggled.emit(str(e["key"])))
 		_grid.add_child(b)
 		_boxes[str(e["key"])] = b
@@ -80,11 +82,12 @@ static func _badge(letter: String) -> Label:
 	badge.text = letter
 	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	badge.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	badge.offset_left = -12.0
-	badge.offset_top = -14.0
+	badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	badge.offset_left = -31.0
+	badge.offset_top = -12.0
 	badge.offset_right = -1.0
 	badge.offset_bottom = 0.0
-	badge.add_theme_font_size_override("font_size", 11)
+	badge.add_theme_font_size_override("font_size", 9)
 	badge.add_theme_color_override("font_color", Color(1, 1, 1))
 	badge.add_theme_color_override("font_outline_color", Color(0, 0, 0))
 	badge.add_theme_constant_override("outline_size", 4)
@@ -97,7 +100,11 @@ func relocalize() -> void:
 	_apply_expanded(is_expanded())
 	_toggle.tooltip_text = I18n.t("dock.tip")
 	for e in entries():
-		(_boxes[str(e["key"])] as Button).tooltip_text = "%s  (%s)" % [I18n.t(e["name"]), e["letter"]]
+		var key := str(e["key"])
+		(_boxes[key] as Button).tooltip_text = "%s  (%s)" % [I18n.t(e["name"]), chip(key)]
+		var badge := (_boxes[key] as Button).get_node_or_null("Badge") as Label
+		if badge != null:
+			badge.text = chip(key)
 
 ## Show or hide one window's box (Phase 182: the Admin box follows the admin status).
 func set_entry_visible(window_key: String, shown: bool) -> void:
@@ -116,6 +123,12 @@ func box(window_key: String) -> Button:
 func is_entry_visible(window_key: String) -> bool:
 	var b: Button = _boxes.get(window_key, null)
 	return b != null and b.visible
+
+## The shortcut chip of a window: "Alt+A", "?" for the controls window, "" for any other window without a row.
+static func chip(window_key: String) -> String:
+	if window_key == "controls":
+		return "?"
+	return WindowShortcuts.label_of(window_key)
 
 static func entries() -> Array:
 	return ENTRIES
