@@ -167,7 +167,7 @@ time skipped with admin commands, must stay under one hour.
 
 **Progress (2026-11-05, not done):** `tools/clan_scenario.sh` boots a dedicated server and five bots
 (`--stress-bots 5 --stress-scenario clan`); `src/tests/clan_scenario.gd` plays found, invite and join,
-roster with skills, whisper and the outsider's refused join over ENet and judges each from what the host
+a mining `work` beat (all four gain Building from the ground under their feet, so the different-skills check is still unmet: Smithing and Carpentry need ore and trees, whose ids a bot without terrain cannot name), roster with skills, whisper and the outsider's refused join over ENet and judges each from what the host
 sent back. The pure rules, report and verdict are in `src/tests/clan_scenario_rules.gd` (suite-tested).
 Still to do: the work, trade, build, chest and dismantle beats (a bot starts with an empty pack, so it
 must mine, chop, smelt and craft its way to a Chest and blocks through the host's own checks), the
