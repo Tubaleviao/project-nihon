@@ -55,7 +55,7 @@ const INPUT_ACTIONS = [
 
 // UI windows a step may wait for (UiSlice.WINDOW_KEYS; the suite checks every one exists there).
 const WINDOWS = [
-  'inventory', 'technology', 'crafting', 'trade', 'market', 'proposals', 'controls', 'character',
+  'inventory', 'technology', 'crafting', 'trade', 'market', 'proposals', 'controls', 'attributes', 'equipment',
   'skills', 'map', 'settlement', 'gestures',
 ]
 
@@ -99,7 +99,7 @@ const STEPS = [
   // Growing
   step('skills', 'growing', [], ['chop'], { kind: 'window_opened', window: 'skills' }),
   step('tier_up', 'growing', [], ['skills'], { kind: 'skill_tier_up' }),
-  step('character', 'growing', [], ['skills'], { kind: 'window_opened', window: 'character' }),
+  step('character', 'growing', [], ['skills'], { kind: 'window_opened', window: 'attributes' }),
   // Other people
   step('chat', 'other_people', ['chat'], ['controls'], { kind: 'chat_sent' }),
   step('trade', 'other_people', [], ['chat'], { kind: 'window_opened', window: 'trade' }),

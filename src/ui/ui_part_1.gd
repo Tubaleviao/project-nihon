@@ -279,7 +279,10 @@ func slot_drag(_at: Vector2, item_id: String, source: Control) -> Variant:
 	sl._drag_payload = {"kind": "equipped", "id": item_id}
 	return sl._drag_payload
 
-func build_character_content() -> Control:
+## Phase 214 — the Phase 179 character window, split in two. Attributes: the name, friend code, the six attributes,
+## derived stats and skills. Equipment (below): the paper doll and the equipment slots. `refresh_character` fills
+## both through the same member fields.
+func build_attributes_content() -> Control:
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 6)
 	sl._character_stats = Label.new()
@@ -319,6 +322,19 @@ func build_character_content() -> Control:
 		b.pressed.connect(func() -> void: GameBus.chat_intent.emit(line, ""))
 		own_row.add_child(b)
 	vbox.add_child(own_row)
+	sl._sheet_attributes = VBoxContainer.new()
+	vbox.add_child(sl._sheet_attributes)
+	sl._sheet_stats = GridContainer.new()
+	sl._sheet_stats.columns = 2
+	sl._sheet_stats.add_theme_constant_override("h_separation", 14)
+	vbox.add_child(sl._sheet_stats)
+	sl._sheet_skills = HBoxContainer.new()
+	vbox.add_child(sl._sheet_skills)
+	return vbox
+
+func build_equipment_content() -> Control:
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
 	var body := HBoxContainer.new()
 	body.alignment = BoxContainer.ALIGNMENT_CENTER
 	sl._sheet_left = VBoxContainer.new()
@@ -331,14 +347,6 @@ func build_character_content() -> Control:
 	sl._character_grid = GridContainer.new()
 	sl._character_grid.columns = sl.INVENTORY_COLUMNS
 	vbox.add_child(sl._character_grid)
-	sl._sheet_attributes = VBoxContainer.new()
-	vbox.add_child(sl._sheet_attributes)
-	sl._sheet_stats = GridContainer.new()
-	sl._sheet_stats.columns = 2
-	sl._sheet_stats.add_theme_constant_override("h_separation", 14)
-	vbox.add_child(sl._sheet_stats)
-	sl._sheet_skills = HBoxContainer.new()
-	vbox.add_child(sl._sheet_skills)
 	return vbox
 
 func _build_ui() -> void:
@@ -357,7 +365,8 @@ func _build_ui() -> void:
 	sl._panels[sl.WINDOW_PROPOSALS] = sl._build_window(sl.WINDOW_PROPOSALS, "win.proposals", sl._build_proposals_content(), Vector2(470, 700))
 	sl._panels[sl.WINDOW_CONTROLS] = sl._build_window(sl.WINDOW_CONTROLS, "win.controls", sl._build_controls_content(), Vector2(916, 24))
 
-	sl._panels[sl.WINDOW_CHARACTER] = sl._build_window(sl.WINDOW_CHARACTER, "win.character", build_character_content(), Vector2(916, 360))
+	sl._panels[sl.WINDOW_ATTRIBUTES] = sl._build_window(sl.WINDOW_ATTRIBUTES, "win.attributes", build_attributes_content(), Vector2(916, 360))
+	sl._panels[sl.WINDOW_EQUIPMENT] = sl._build_window(sl.WINDOW_EQUIPMENT, "win.equipment", build_equipment_content(), Vector2(560, 360))
 	sl._panels[sl.WINDOW_SKILLS] = sl._build_window(sl.WINDOW_SKILLS, "win.skills", sl._build_skills_content(), Vector2(916, 700))
 	sl._panels[sl.WINDOW_SETTLEMENT] = sl._build_window(sl.WINDOW_SETTLEMENT, "win.settlement", sl._m2._build_settlement_content(), Vector2(916, 80))
 	sl._panels[sl.WINDOW_CLAN] = sl._build_window(sl.WINDOW_CLAN, "win.clan", sl._m2._build_clan_content(), Vector2(700, 80))

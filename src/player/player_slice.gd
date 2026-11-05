@@ -469,22 +469,22 @@ func _unhandled_input(event: InputEvent) -> void:
 			# `block_edit_intent` carrying that selection (see `_on_place_requested`).
 			GameBus.block_place_requested.emit(_aimed_block_pos, _aimed_block_normal, "", "", _aimed_block_exact)
 	# R key → cycle the build material.
-	if event is InputEventKey and event.pressed and event.keycode == KEY_R:
+	if event is InputEventKey and event.pressed and not event.alt_pressed and event.keycode == KEY_R:
 		GameBus.block_cycle_material_requested.emit()
 	# B key → cycle the station type to place.
-	if event is InputEventKey and event.pressed and event.keycode == KEY_B:
+	if event is InputEventKey and event.pressed and not event.alt_pressed and event.keycode == KEY_B:
 		_cycle_station_type()
 	# N key → toggle the station placement preview ghost.
-	if event is InputEventKey and event.pressed and event.keycode == KEY_N:
+	if event is InputEventKey and event.pressed and not event.alt_pressed and event.keycode == KEY_N:
 		_station_preview_on = not _station_preview_on
 		if not _station_preview_on and station_slice != null and station_slice.has_method("hide_preview"):
 			station_slice.hide_preview()
 	# V key → place the selected station at the aimed spot (or the player's feet).
-	if event is InputEventKey and event.pressed and event.keycode == KEY_V:
+	if event is InputEventKey and event.pressed and not event.alt_pressed and event.keycode == KEY_V:
 		_place_station()
 	# G key → tame the nearest creature in range (Phase 35). The rules live in
 	# TamingSlice (fabric-driven); this is only the player-facing affordance.
-	if event is InputEventKey and event.pressed and event.keycode == KEY_G:
+	if event is InputEventKey and event.pressed and not event.alt_pressed and event.keycode == KEY_G:
 		_try_tame()
 	# X key → work the nearest body with the tool in hand; Z key → carry it, or put the carried one down.
 	if event is InputEventKey and event.pressed and not event.echo and (event.keycode == KEY_X or event.keycode == KEY_Z):
@@ -493,7 +493,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_U and _alive:
 		GameBus.chest_intent.emit("pick" if event.shift_pressed else ("hit" if event.ctrl_pressed else "use"), {}, "")
 	# E key → toggle all equipment on/off (inspect the naked body under the gear).
-	if event is InputEventKey and event.pressed and event.keycode == KEY_E:
+	if event is InputEventKey and event.pressed and not event.alt_pressed and event.keycode == KEY_E:
 		GameBus.character_equipment_toggle_requested.emit()
 
 ## Where a dropped item lands: a little in front of the body (away from the camera), at the feet.

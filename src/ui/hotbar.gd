@@ -43,11 +43,13 @@ const MAX_ENTRY_LEN := 64
 const FLASH_SECONDS := 0.18
 
 ## Keys the game already uses; a box shortcut can never take them (so a bound key cannot
-## fire two things). Letters are the keys of the window dock, movement, combat and building.
+## fire two things). Letters are movement, combat and building. Phase 214: the window letters are Alt+letter now
+## (`WindowShortcuts`), so the bare ones (I, K, H, T...) are free for a box; a box key is always a bare letter,
+## so an Alt+letter can never be bound.
 const RESERVED_KEYS: Array = [
 	KEY_W, KEY_A, KEY_S, KEY_D, KEY_F, KEY_R, KEY_B, KEY_N, KEY_V, KEY_E, KEY_G,
-	KEY_I, KEY_C, KEY_H, KEY_T, KEY_Y, KEY_P, KEY_M, KEY_Q,
-	KEY_K, KEY_L, KEY_J, KEY_O, KEY_X, KEY_Z, KEY_U, KEY_ESCAPE, KEY_ENTER, KEY_KP_ENTER, KEY_SPACE, KEY_TAB, KEY_SLASH, KEY_BACKSPACE,
+	KEY_Q,
+	KEY_X, KEY_Z, KEY_U, KEY_ESCAPE, KEY_ENTER, KEY_KP_ENTER, KEY_SPACE, KEY_TAB, KEY_SLASH, KEY_BACKSPACE,
 	KEY_SHIFT, KEY_CTRL, KEY_ALT, KEY_META, KEY_QUESTION,
 	KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9,
 ]
@@ -379,10 +381,13 @@ func handle_key(event: InputEventKey) -> bool:
 	if not event.pressed or event.echo:
 		return false
 	var keycode := int(event.keycode)
+	var modified: bool = event.ctrl_pressed or event.alt_pressed or event.meta_pressed
 	if _binding >= 0:
+		if modified:
+			return true   # Phase 214: a box key is a bare key; Alt+letter is a window, never a binding
 		_finish_binding(keycode)
 		return true
-	if event.ctrl_pressed or event.alt_pressed or event.meta_pressed:
+	if modified:
 		return false
 	var d := digit_slot(keycode)
 	if d != -1:

@@ -782,6 +782,16 @@ func _write_report(report: Dictionary) -> bool:
 # Steps. Each returns [ok: bool, detail: String].
 # ---------------------------------------------------------------------------
 
+## A key tapped with Alt held (a window shortcut, Phase 214).
+func _alt_key(keycode: Key) -> void:
+	for pressed in [true, false]:
+		var ev := InputEventKey.new()
+		ev.keycode = keycode
+		ev.physical_keycode = keycode
+		ev.alt_pressed = true
+		ev.pressed = pressed
+		Input.parse_input_event(ev)
+
 func _key(keycode: Key, pressed: bool) -> void:
 	var ev := InputEventKey.new()
 	ev.keycode = keycode
@@ -1387,9 +1397,13 @@ func _step_create() -> Array:
 ## a display) that the doll's viewport is not blank. The step's screenshot shows the sheet.
 func _step_character_sheet() -> Array:
 	var ui: Node = _root._ui
-	ui.open_window(ui.WINDOW_CHARACTER)
-	ui.refresh_character()
+	# Phase 214 — the sheet is two windows, opened by the player's own keys: Alt+A (Attributes), Alt+Q (Equipment).
+	_alt_key(KEY_A)
+	_alt_key(KEY_Q)
 	await _until(func(): return false, 0.5)
+	if not ui.is_window_open(ui.WINDOW_ATTRIBUTES) or not ui.is_window_open(ui.WINDOW_EQUIPMENT):
+		return [false, "Alt+A / Alt+Q did not open Attributes (%s) and Equipment (%s)" % [str(ui.is_window_open(ui.WINDOW_ATTRIBUTES)), str(ui.is_window_open(ui.WINDOW_EQUIPMENT))]]
+	ui.refresh_character()
 	var rows: Array = ui.character_sheet_rows()
 	var attrs := rows.filter(func(r): return str(r["section"]) == "attribute").size()
 	var slots := rows.filter(func(r): return str(r["section"]) == "slot").size()

@@ -51,9 +51,9 @@ controls.row0,Move,Mover
 controls.row1,Jump,Pular
 controls.row10,Next placeable block,Próximo bloco colocável
 controls.row11,Station cycle / place,Alternar / colocar estação
-controls.row12,Tame nearest creature (G is shared with Proposals),Domar a criatura mais próxima (G é compartilhada com Propostas)
-controls.row13,Toggle equipment,Alternar equipamento
-controls.row14,Inventory · Character · Skills · Crafting · Tech · Trade · Market · Proposals (or click the boxes under your health),Inventário · Personagem · Habilidades · Criação · Tecnologia · Troca · Mercado · Propostas (ou clique nas caixas sob sua vida)
+controls.row12,Tame nearest creature,Domar a criatura mais próxima
+controls.row13,Toggle worn equipment on and off,Mostrar ou ocultar o equipamento vestido
+controls.row14,Windows: Alt + the letter (or click the boxes under your health),Janelas: Alt + a letra (ou clique nas caixas sob a sua vida)
 controls.row15,This panel,Este painel
 controls.row16,Chat and commands (/help),Conversa e comandos (/help)
 controls.row17,Close windows,Fechar janelas
@@ -65,7 +65,6 @@ controls.row6,"Inventory item onto a box, or onto the ground to drop it (Shift: 
 controls.row7,Click: Attack / Pick up / Chop,Clique: Atacar / Pegar / Cortar
 controls.row8,Mine,Minerar
 controls.row9,Place,Colocar
-dock.character,Character,Personagem
 dock.controls,Controls,Controles
 dock.crafting,Crafting,Criação
 dock.inventory,Inventory,Inventário
@@ -197,21 +196,20 @@ waystone.same_stone,You are already at that waystone.,Você já está nessa pedr
 waystone.too_far,Stand closer to the waystone.,Chegue mais perto da pedra-guia.
 waystone.unknown_player,The waystone does not know you.,A pedra-guia não conhece você.
 waystone.unreachable,The journey failed; nothing was spent.,A jornada falhou; nada foi gasto.
-win.character,Character (C),Personagem (C)
 win.controls,Controls (?),Controles (?)
-win.crafting,Crafting (H),Criação (H)
+win.crafting,Crafting,Criação
 win.gestures,Gestures ({0}),Gestos ({0})
 controls.gesture_key.rebind,"Wheel key: {0} (click to change)","Tecla da roda: {0} (clique para trocar)"
 controls.gesture_key.waiting,"Press a key for the wheel (Esc cancels)","Pressione uma tecla para a roda (Esc cancela)"
 win.inventory,Inventory,Inventário
-win.map,Map (M),Mapa (M)
-win.market,Market (P),Mercado (P)
+win.map,Map,Mapa
+win.market,Market,Mercado
 win.proposals,Proposals,Propostas
-win.skills,Skills (K),Habilidades (K)
+win.skills,Skills,Habilidades
 win.technology,Technology,Tecnologia
 win.trade,Trade,Troca
 dock.settlement,Settlement,Assentamento
-win.settlement,Settlement (L),Assentamento (L)
+win.settlement,Settlement,Assentamento
 settlement.default_name,Settlement {0},Assentamento {0}
 settlement.player_ph,Player id,Id do jogador
 settlement.item_ph,Item,Item
@@ -356,7 +354,7 @@ chat.fly_off,{0} walks again.,{0} voltou a caminhar.
 chat.heal_downed,{0} is down; healing does not revive.,{0} está caído; curar não revive.
 chat.healed,{0} is back to full health.,{0} está com a vida toda de novo.
 dock.admin,Admin,Administração
-win.admin,Admin (O),Administração (O)
+win.admin,Admin,Administração
 admin.weather,Weather (your cell · hours),Clima (sua célula · horas)
 admin.time,Time of day (hour),Hora do dia (hora)
 admin.speed,Speed,Velocidade
@@ -538,7 +536,7 @@ settlement.specialty.builder,builder,construtor
 settlement.specialty.forager,forager,coletor
 settlement.specialty.none,none,nenhuma
 character.specialty,Specialty: {0},Especialidade: {0}
-win.clan,Clan (J),Clã (J)
+win.clan,Clan,Clã
 dock.clan,Clan,Clã
 clan.none,"You are in no clan. Found one, or accept an invite.",Você não está em nenhum clã. Funde um ou aceite um convite.
 clan.status,{0} — your role: {1},{0} — seu papel: {1}
@@ -741,3 +739,8 @@ writing.refused.already_known,You already know {0}.,Você já conhece {0}.
 writing.refused.researching,You are researching {0} already; finish it first.,Você já está pesquisando {0}; termine primeiro.
 writing.refused.prerequisite_locked,You need to know its prerequisites first.,Você precisa conhecer os pré-requisitos primeiro.
 writing.refused.rate,Slow down.,Mais devagar.
+dock.attributes,Attributes,Atributos
+dock.equipment,Equipment,Equipamento
+win.attributes,Attributes,Atributos
+win.equipment,Equipment,Equipamento
+controls.key.alt,Alt,Alt
