@@ -5,6 +5,7 @@ extends "res://src/tests/test_support.gd"
 const StressRules := preload("res://src/tests/stress_rules.gd")
 const StressBotSlice := preload("res://src/tests/stress_bot_slice.gd")
 const StressRecorder := preload("res://src/tests/stress_recorder.gd")
+const ClanScenario := preload("res://src/tests/clan_scenario_rules.gd")
 const StressBots := preload("res://src/tests/stress_bots.gd")
 const TickProbe := preload("res://src/core/tick_probe.gd")
 const RelayBatch := preload("res://src/networking/relay_batch.gd")
@@ -22,6 +23,7 @@ func register() -> void:
 	_run_test("stress: tick probe phases are exclusive and its counters reset", _test_stress_tick_probe)
 	_run_test("stress: a disconnect drops the peer's receive channels", _test_stress_disconnect_drops_channels)
 	_run_test("stress: the stress args are parsed", _test_stress_args)
+	_run_test("clan scenario: play time excludes admin skips; verdict and world checks", _test_clan_scenario_rules)
 
 func _test_stress_report_statistics() -> void:
 	var samples := [4.0, 1.0, 3.0, 2.0, 5.0]
@@ -305,3 +307,33 @@ func _test_stress_args() -> void:
 	for p in StressRules.PATTERNS:
 		assert_true(StressRules.is_pattern(p), "%s is a pattern" % p)
 	assert_false(StressRules.is_pattern("stampede"), "an unknown pattern is refused")
+
+func _test_clan_scenario_rules() -> void:
+	assert_eq(ClanScenario.play_seconds(5000.0, [{ "at_s": 10.0, "skipped_s": 2000.0 }, { "skipped_s": -50.0 }]), 3000.0,
+		"an admin skip is taken off the clock and a negative one counts for nothing")
+	assert_eq(ClanScenario.play_seconds(100.0, [{ "skipped_s": 900.0 }]), 0.0, "play time never goes negative")
+	var world := {
+		"clan": { "members": ["a", "b", "c", "d"], "chest_access": "clan", "chest_items": { "wood": 3 } },
+		"skills": { "a": { "gathering": 3, "sewing": 1 }, "b": { "sewing": 4 }, "c": { "building": 2 }, "d": {} },
+		"trades_completed": 1, "structures": [{ "owner_kind": "clan" }], "refusals": ["chest_refused", "build_refused"],
+	}
+	var checks := ClanScenario.world_checks(world)
+	for k in checks:
+		assert_true(bool(checks[k]), "world check %s holds on a good record" % k)
+	var bad: Dictionary = world.duplicate(true)
+	bad["clan"]["chest_access"] = "owner"
+	bad["clan"]["members"] = ["a", "b", "c"]
+	bad["refusals"] = []
+	var bad_checks := ClanScenario.world_checks(bad)
+	assert_false(bool(bad_checks["chest_clan_with_item"]), "an owner-only chest is not a clan chest")
+	assert_false(bool(bad_checks["clan_has_4_members"]), "three members are not four")
+	assert_false(bool(bad_checks["outsider_chest_refused"]), "no refusal key, no refusal")
+	var beats: Array = []
+	for id in ClanScenario.beat_ids():
+		beats.append({ "id": id, "pass": true, "game_s": 1.0, "wall_s": 1.0, "evidence": "ok" })
+	var good := ClanScenario.build_report(beats, [], 600.0, world)
+	assert_true(bool(good["pass"]), "every beat, a short run and a good record pass")
+	assert_true(ClanScenario.report_markdown(good).begins_with("# Clan loop scenario: PASS"), "the markdown leads with the verdict")
+	assert_false(bool(ClanScenario.build_report(beats, [], 3600.0, world)["pass"]), "an hour of play is over the budget")
+	assert_false(bool(ClanScenario.build_report(beats.slice(1), [], 600.0, world)["pass"]), "a beat that never ran fails")
+	assert_false(bool(ClanScenario.build_report(beats, [], 600.0, bad)["pass"]), "a bad world record fails")
