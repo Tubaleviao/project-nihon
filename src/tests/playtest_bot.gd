@@ -1748,10 +1748,18 @@ func _step_mount() -> Array:
 	# runs slower than the wall clock, which would read as a slow mount.
 	var tps := float(Engine.physics_ticks_per_second)
 	var last := [_root._player.get_world_pos(), Engine.get_physics_frames()]
+	var throws := 0
 	var rode: bool = await _until(func():
 		_root._player.set_hp(PlayerSlice.MAX_HP)
 		var now_ms := Engine.get_physics_frames()
-		if float(now_ms - int(last[1])) / tps >= 0.5:
+		if not _root._mount_wiring.slice.is_mounted(me):
+			# A creature hit the wolf and threw the rider (Phase 216 spec): get back on, and drop the leg that
+			# was on foot so the cruising speed is judged on the mounted legs only.
+			throws += 1
+			GameBus.mount_intent.emit(iid, "")
+			last[0] = _root._player.get_world_pos()
+			last[1] = now_ms
+		elif float(now_ms - int(last[1])) / tps >= 0.5:
 			var here: Dictionary = _root._player.get_world_pos()
 			var leg: float = WaystoneSlice.distance_m(here, last[0]) / (float(now_ms - int(last[1])) / tps)
 			legs.append(leg)
@@ -1769,7 +1777,7 @@ func _step_mount() -> Array:
 	var off: bool = await _until(func(): return not _root._mount_wiring.slice.is_mounted(me), STEP_TIMEOUT_SECS * 0.25)
 	var need := factor * PlayerSlice.SPEED * MOUNT_SPEED_SLACK
 	var ok: bool = rode and off and factor > 1.0 and avg >= need and metres < MOUNT_RIDE_M * 2.0
-	return [ok, "rode %.0f m, cruising at %.1f m/s (need %.1f), dismounted %s" % [metres, avg, need, str(off)]]
+	return [ok, "rode %.0f m, cruising at %.1f m/s (need %.1f), dismounted %s, thrown %d times" % [metres, avg, need, str(off), throws]]
 
 ## Phase 164 — the horizon: find the nearest coast with open sea across four headings, stand there and
 ## look out at the shallowest pitch. Each heading's frame is drawn with the camera seeing only the
