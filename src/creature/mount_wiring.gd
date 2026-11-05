@@ -5,6 +5,7 @@ extends "res://src/core/wiring.gd"
 
 const MountSlice := preload("res://src/creature/mount_slice.gd")
 const AdminRules := preload("res://src/admin/admin_rules.gd")
+const PlayerRegistry := preload("res://src/persistence/player_registry.gd")
 const PlayerSlice := preload("res://src/player/player_slice.gd")
 ## Slack over the exact mounted speed, as for a carried body (`CarcassWiring.CARRY_SPEED_SLACK`).
 const SPEED_SLACK := 1.25
@@ -20,6 +21,7 @@ func make_slice(ctx: GameRoot) -> Node:
 	m.creature_of = func(iid: String) -> String: return root._creature.get_instance_creature_id(iid)
 	m.owner_of = func(iid: String) -> String: return root._creature.get_tamed_by(iid)
 	m.alive = func(iid: String) -> bool: return not root._taming._instance_is_dead(iid)
+	m.rider_downed = func(pid: String) -> bool: return PlayerRegistry.is_downed(root._registry.get_hp(pid))
 	m.position_of = func(iid: String) -> Variant: return root._creature.get_instance_position(iid)
 	m.player_pos = _player_position
 	m.local_body = root._player

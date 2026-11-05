@@ -29,6 +29,8 @@ var creature_of: Callable = Callable()
 var owner_of: Callable = Callable()
 ## `(instance_id) -> bool`: whether the creature is alive.
 var alive: Callable = Callable()
+## `(player_id) -> bool`: whether the player's body is downed (the host's record of a remote rider's health).
+var rider_downed: Callable = Callable()
 ## `(instance_id) -> Variant`: the creature's Vector3 position, or null.
 var position_of: Callable = Callable()
 ## `(player_id) -> Variant`: the player's Vector3 position, or null.
@@ -190,7 +192,8 @@ func validate_riders() -> void:
 	for pid: String in _riding.keys():
 		var iid: String = _riding[pid]
 		var gone := not creature_of.is_valid() or str(creature_of.call(iid)) == ""
-		if gone or not owner_of.is_valid() or str(owner_of.call(iid)) != pid:
+		var downed := rider_downed.is_valid() and bool(rider_downed.call(pid))
+		if gone or downed or not owner_of.is_valid() or str(owner_of.call(iid)) != pid:
 			force_dismount(pid)
 
 ## Put `player_id` back on foot. Returns whether they were mounted.
@@ -251,8 +254,8 @@ func _on_combat_hit(_attacker_id: String, defender_id: String, outcome: String, 
 	if rider != "":
 		force_dismount(rider)
 
-## The host's own player dying puts them on foot (a remote rider's death is caught by `validate_riders` only if
-## the companion is lost; the host's own body is the one that emits `player_died`).
+## The host's own player dying puts them on foot (a remote rider's death is caught by `validate_riders` through
+## `rider_downed`; the host's own body is the one that emits `player_died`).
 func _on_local_died(_position: Vector3, _killer: String, _landing: Vector3) -> void:
 	if is_host and local_player_id.is_valid():
 		force_dismount(str(local_player_id.call()))

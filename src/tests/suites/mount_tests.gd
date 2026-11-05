@@ -147,6 +147,17 @@ func _test_mount_forced_dismount() -> void:
 	assert_false(m.is_mounted("p1"), "a released companion dismounts the rider")
 	_creatures["w2"]["owner"] = "p1"
 	m.mount("p1", "w2")
+	var downed := {"p1": false}
+	m.rider_downed = func(pid: String) -> bool: return bool(downed.get(pid, false))
+	m.validate_riders()
+	assert_true(m.is_mounted("p1"), "a living rider stays mounted")
+	downed["p1"] = true
+	m.validate_riders()
+	assert_false(m.is_mounted("p1"), "a downed remote rider is dismounted")
+	assert_eq(_resolved.back(), ["p1", "dismount", true, ""], "the downed rider is told")
+	downed["p1"] = false
+	_creatures["w2"]["owner"] = "p1"
+	m.mount("p1", "w2")
 	m.local_player_id = func() -> String: return "p1"
 	GameBus.player_died.emit(Vector3.ZERO, "", Vector3.ZERO)
 	assert_false(m.is_mounted("p1"), "the local player's death dismounts")
