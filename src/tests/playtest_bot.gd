@@ -1403,8 +1403,11 @@ func _step_character_sheet() -> Array:
 		ui.open_window(ui.WINDOW_ATTRIBUTES)
 		ui.open_window(ui.WINDOW_EQUIPMENT)
 	else:
-		_alt_key(KEY_A)
-		_alt_key(KEY_Q)
+		# Keys toggle: press only for a window that is not already open.
+		if not ui.is_window_open(ui.WINDOW_ATTRIBUTES):
+			_alt_key(KEY_A)
+		if not ui.is_window_open(ui.WINDOW_EQUIPMENT):
+			_alt_key(KEY_Q)
 	await _until(func(): return false, 0.5)
 	if not ui.is_window_open(ui.WINDOW_ATTRIBUTES) or not ui.is_window_open(ui.WINDOW_EQUIPMENT):
 		return [false, "Alt+A / Alt+Q did not open Attributes (%s) and Equipment (%s) " % [str(ui.is_window_open(ui.WINDOW_ATTRIBUTES)), str(ui.is_window_open(ui.WINDOW_EQUIPMENT))]]

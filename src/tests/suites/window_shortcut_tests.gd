@@ -6,6 +6,7 @@ const _Dock := preload("res://src/ui/window_dock.gd")
 
 func register() -> void:
 	_run_test("shortcuts: every table row opens its window from Alt+key and a second press closes it; bare keys open nothing", _test_rows_toggle)
+	_run_test("shortcuts: a held Alt+key (echo) toggles once", _test_echo_ignored)
 	_run_test("shortcuts: Alt+E is the inventory (no equipment toggle), Alt+Q is Equipment, Alt+G is the clan", _test_conflicts)
 	_run_test("shortcuts: Ctrl+Alt and a focused text field open nothing, and an Option character still matches on keycode", _test_modifiers_and_focus)
 	_run_test("shortcuts: no window letter outside the table; dock and controls rows come from it; one row per window", _test_audit)
@@ -34,6 +35,16 @@ func _test_rows_toggle() -> void:
 		assert_true(ui.is_window_open(w), "Alt+%s opens %s" % [OS.get_keycode_string(code), w])
 		ui._input(_key(code, true))
 		assert_false(ui.is_window_open(w), "a second press closes %s" % w)
+	ui.free()
+
+func _test_echo_ignored() -> void:
+	var ui := _new_hud_ui()
+	ui._input(_key(KEY_E, true))
+	var e := _key(KEY_E, true)
+	e.echo = true
+	ui._input(e)
+	ui._input(e)
+	assert_true(ui.is_window_open("inventory"), "key repeat (echo) does not toggle the window again")
 	ui.free()
 
 func _test_conflicts() -> void:

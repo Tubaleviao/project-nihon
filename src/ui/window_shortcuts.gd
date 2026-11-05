@@ -1,7 +1,7 @@
 extends RefCounted
 ## Phase 214 — the one table of window shortcuts. Every window opens with Alt plus a letter, so the bare
-## letters stay free for movement, combat and the hotbar. The key handler, the window dock's chips, the `?`
-## controls rows and the hotbar's reserved-key list are all built from `TABLE`; no window letter is written
+## letters stay free for movement, combat and the hotbar. The key handler, the window dock's chips, and the `?`
+## controls rows are built from `TABLE`; no window letter is written
 ## anywhere else. A window added later gets a row here.
 ##
 ## Kept apart from `UiSlice` (which exposes it as `WINDOW_SHORTCUTS`) so the dock and the hotbar can read it
@@ -60,11 +60,3 @@ static func all_labels() -> String:
 	for row: Dictionary in TABLE:
 		parts.append(label_of(str(row["window"])))
 	return " · ".join(parts)
-
-## Keycodes of the table, for the hotbar's reserved list: Alt+letter can never be a box key, and a bare letter
-## the table used is free again.
-static func keycodes() -> Array:
-	var out: Array = []
-	for row: Dictionary in TABLE:
-		out.append(int(row["keycode"]))
-	return out

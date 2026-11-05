@@ -935,10 +935,11 @@ func _move(delta: float) -> void:
 
 	# Horizontal movement relative to camera yaw.
 	var dir := Vector3.ZERO
-	if Input.is_key_pressed(KEY_W): dir.z -= 1.0
-	if Input.is_key_pressed(KEY_S): dir.z += 1.0
-	if Input.is_key_pressed(KEY_A): dir.x -= 1.0
-	if Input.is_key_pressed(KEY_D): dir.x += 1.0
+	if not Input.is_key_pressed(KEY_ALT):   # Phase 214: Alt+A / Alt+S open windows, they must not also walk
+		if Input.is_key_pressed(KEY_W): dir.z -= 1.0
+		if Input.is_key_pressed(KEY_S): dir.z += 1.0
+		if Input.is_key_pressed(KEY_A): dir.x -= 1.0
+		if Input.is_key_pressed(KEY_D): dir.x += 1.0
 	if creation_hold:
 		dir = Vector3.ZERO
 
