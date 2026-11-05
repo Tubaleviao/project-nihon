@@ -165,6 +165,15 @@ server found a clan, join it, grow different skills from work, see each other's 
 build a clan-owned building with a clan chest. The in-game time they spend playing, not counting
 time skipped with admin commands, must stay under one hour.
 
+**Progress (2026-11-05, not done):** `tools/clan_scenario.sh` boots a dedicated server and five bots
+(`--stress-bots 5 --stress-scenario clan`); `src/tests/clan_scenario.gd` plays found, invite and join,
+roster with skills, whisper and the outsider's refused join over ENet and judges each from what the host
+sent back. The pure rules, report and verdict are in `src/tests/clan_scenario_rules.gd` (suite-tested).
+Still to do: the work, trade, build, chest and dismantle beats (a bot starts with an empty pack, so it
+must mine, chop, smelt and craft its way to a Chest and blocks through the host's own checks), the
+outsider's chest and build refusals, the host-side world record for the `checks`, the CI job and the
+3-run check.
+
 **Newel dependency:** NO.
 
 **Depends on:** Phases 204–213, the stress bot process (Phase 162).
