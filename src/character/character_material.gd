@@ -105,6 +105,13 @@ static func rig_material(colors: Array) -> ShaderMaterial:
 static func creature_material(colors: Array) -> ShaderMaterial:
 	return _make_material(colors)
 
+## The three sheet keys (detail, colour mask, channel) of a creation body such as `chibi_body_m`,
+## in the order `bind_rig_textures` takes them. The public masks are black, so the body shows its
+## skin index; the production pack overrides the keys by name.
+static func body_sheet_keys(body_id: String) -> Array:
+	var base := "textures/characters/bodies/%s" % body_id
+	return [base + ".png.raw", base + "_color_mask.png.raw", base + "_channel.png.raw"]
+
 ## Bind the three body sheets on the rig material. Idempotent and write-free when the
 ## textures are already bound, so a rig attach does not rebind the same three.
 static func bind_rig_textures(mat: ShaderMaterial, detail: Texture2D, color_mask: Texture2D, channel: Texture2D) -> void:

@@ -714,14 +714,6 @@ const RIG_DETAIL_KEY := "textures/characters/player.png.raw"
 const RIG_COLOR_MASK_KEY := "textures/characters/player_color_mask.png.raw"
 const RIG_CHANNEL_KEY := "textures/characters/player_channel.png.raw"
 
-## The three sheet keys (detail, colour mask, channel) of a creation body such as `chibi_body_m`,
-## in the order `CharacterMaterial.bind_rig_textures` takes them. The colour mask's R/G/B are
-## primary/secondary/accent, the channel's metal/emission/wear; the public masks are black, so the
-## body shows its skin index. The production pack overrides the keys by name.
-static func body_sheet_keys(body_id: String) -> Array:
-	var base := "textures/characters/bodies/%s" % body_id
-	return [base + ".png.raw", base + "_color_mask.png.raw", base + "_channel.png.raw"]
-
 ## Give every mesh of a freshly attached rig the character shader and its palette indices.
 ## The rig material is shared by all rigs; only the instance parameters differ per character.
 func _dress_rig(rig_root: Node, appearance: Dictionary) -> void:
