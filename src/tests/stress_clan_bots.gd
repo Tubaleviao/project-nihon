@@ -151,30 +151,8 @@ func run() -> void:
 	_beat("build", t, "host lists %d clan structure(s)" % int(live().get("world", {}).get("structures", 0)), built)
 	if not built:
 		return _finish()
-	# chest: bot 2 chops thornwood, researches carpentry and smithing, places a bench and a forge,
-	# mills planks, smelts an ingot and crafts a Chest. Every step is a packet the host validates.
-	t = _wall_s()
-	var smith := 2
-	var smith_pid := str(_slice(smith).claimed_player_id)
-	var trees: Array = live().get("world", {}).get("trees", [])
-	for tid: Variant in trees:
-		if _count(smith_pid, "Thornwood") >= 6:
-			break
-		_slice(smith).send_raw({ "type": "tree_chop_intent", "tree_id": str(tid) })
-		await get_tree().create_timer(0.5).timeout
-	print("[Clan] chop: %d Thornwood from %d trees; inv %s" % [_count(smith_pid, "Thornwood"), trees.size(), JSON.stringify(live().get("world", {}).get("inventories", {}).get(smith_pid, {}))])
-	_slice(smith).send_raw({ "type": "research_intent", "tech_id": "TechBasicCarpentry" })
-	await get_tree().create_timer(12.0).timeout
-	print("[Clan] techs %s" % JSON.stringify(live().get("world", {}).get("techs", {}).get(smith_pid, {})))
-	_slice(smith).send_chest("place", { "type": "carpentry bench", "ox": 2.0, "oy": 0.0, "oz": 0.0 })
-	await get_tree().create_timer(1.0).timeout
-	_slice(smith).send_raw({ "type": "craft_intent", "recipe_id": "RecipeThornwoodPlank" })
-	await get_tree().create_timer(1.0).timeout
-	print("[Clan] stations %s inv %s" % [JSON.stringify(live().get("world", {}).get("stations", {})), JSON.stringify(live().get("world", {}).get("inventories", {}).get(smith_pid, {}))])
-	print("[Clan] events %s trees %s" % [JSON.stringify(live().get("world", {}).get("events", [])), str(live().get("world", {}).get("tree_total", -1))])
-	print("[Clan] sysmsgs %s" % JSON.stringify(live().get("refusals", [])))
-	return _finish()
-
+	# chest beats (chest_clan, chest_move, outsider_chest) are not played yet: see ROADMAP Phase 202 (the chest
+	# chain needs a character kit, forest to chop and a tutorial-free research path over the wire).
 	# dismantle_private: bot 3 builds one private block well outside the clan's circle, then takes it apart.
 	t = _wall_s()
 	var solo := 1
