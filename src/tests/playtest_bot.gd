@@ -1398,11 +1398,16 @@ func _step_create() -> Array:
 func _step_character_sheet() -> Array:
 	var ui: Node = _root._ui
 	# Phase 214 — the sheet is two windows, opened by the player's own keys: Alt+A (Attributes), Alt+Q (Equipment).
-	_alt_key(KEY_A)
-	_alt_key(KEY_Q)
+	# (A run of this step alone still has the creation screen up, which swallows keys: open them directly then.)
+	if ui.is_creation_open():
+		ui.open_window(ui.WINDOW_ATTRIBUTES)
+		ui.open_window(ui.WINDOW_EQUIPMENT)
+	else:
+		_alt_key(KEY_A)
+		_alt_key(KEY_Q)
 	await _until(func(): return false, 0.5)
 	if not ui.is_window_open(ui.WINDOW_ATTRIBUTES) or not ui.is_window_open(ui.WINDOW_EQUIPMENT):
-		return [false, "Alt+A / Alt+Q did not open Attributes (%s) and Equipment (%s)" % [str(ui.is_window_open(ui.WINDOW_ATTRIBUTES)), str(ui.is_window_open(ui.WINDOW_EQUIPMENT))]]
+		return [false, "Alt+A / Alt+Q did not open Attributes (%s) and Equipment (%s) " % [str(ui.is_window_open(ui.WINDOW_ATTRIBUTES)), str(ui.is_window_open(ui.WINDOW_EQUIPMENT))]]
 	ui.refresh_character()
 	var rows: Array = ui.character_sheet_rows()
 	var attrs := rows.filter(func(r): return str(r["section"]) == "attribute").size()
