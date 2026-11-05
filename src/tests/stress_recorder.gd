@@ -115,6 +115,9 @@ static func _clear_dir(path: String) -> void:
 static func attach(root: Node) -> void:
 	var args := Array(OS.get_cmdline_user_args())
 	var r := role_from_args(args)
+	if r == "host":
+		# Phase 202 — the clan scenario's host-side probe (no-op without `--stress-clan`).
+		(load("res://src/tests/stress_clan_probe.gd") as GDScript).attach(root)
 	if r == "" or (r == "host" and not root._is_server) or (r == "watch" and not root._is_client):
 		return
 	var rec: Node = (load("res://src/tests/stress_recorder.gd") as GDScript).new()
