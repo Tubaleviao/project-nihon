@@ -21,7 +21,7 @@ func make_slice(ctx: GameRoot) -> Node:
 	m.creature_of = func(iid: String) -> String: return root._creature.get_instance_creature_id(iid)
 	m.owner_of = func(iid: String) -> String: return root._creature.get_tamed_by(iid)
 	m.alive = func(iid: String) -> bool: return not root._taming._instance_is_dead(iid)
-	m.rider_downed = func(pid: String) -> bool: return PlayerRegistry.is_downed(root._registry.get_hp(pid))
+	m.rider_downed = _rider_downed
 	m.position_of = func(iid: String) -> Variant: return root._creature.get_instance_position(iid)
 	m.player_pos = _player_position
 	m.local_body = root._player
@@ -30,6 +30,14 @@ func make_slice(ctx: GameRoot) -> Node:
 	m.own_position = func() -> Vector3: return root._player.get_position()
 	m.local_player_id = func() -> String: return str(root._registry.local_player_id)
 	return m
+
+## Whether `player_id` is down. The host's own rider is read off the live body: its registry HP is only folded in
+## at a save, so a stale zero (a past death) would dismount the rider on every tick (PR #563 CI: 137 mount/dismount
+## cycles, 0 m ridden). A remote rider's HP is the host-simulated registry value.
+func _rider_downed(player_id: String) -> bool:
+	if player_id == str(root._registry.local_player_id):
+		return root._player != null and not root._player.is_alive()
+	return PlayerRegistry.is_downed(root._registry.get_hp(player_id))
 
 func _player_position(player_id: String) -> Variant:
 	if player_id == str(root._registry.local_player_id):
