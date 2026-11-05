@@ -384,6 +384,30 @@ func set_instance_pos(instance_id: String, pos: Dictionary) -> void:
 	_spatial.update(instance_id, inst["pos"])
 	_place_box(instance_id, inst["position"])
 
+## Phase 216 — file an instance under the chunk it stands in now. An instance stays indexed under the chunk it
+## spawned in (`_by_chunk`, `inst["chunk"]`), so `despawn_for_chunk` drops it when that chunk streams out. A ridden
+## mount is carried away from its spawn chunk and would be despawned under its rider (PR #563: about 170 m into
+## the playtest bot's ride). Returns whether the index changed.
+func rehome_instance(instance_id: String) -> bool:
+	if not _instances.has(instance_id):
+		return false
+	var inst: Dictionary = _instances[instance_id]
+	var now: Vector2i = inst["pos"]["chunk"]
+	var was: Vector2i = inst["chunk"]
+	if now == was:
+		return false
+	if _by_chunk.has(was):
+		var held: Array = _by_chunk[was]
+		held.erase(instance_id)
+		if held.is_empty():
+			_by_chunk.erase(was)
+	if not _by_chunk.has(now):
+		_by_chunk[now] = []
+	(_by_chunk[now] as Array).append(instance_id)
+	inst["chunk"] = now
+	_invalidate_view()
+	return true
+
 ## Move an instance by `delta` metres. The offset is added to `local` and carried into the chunk index, so a
 ## 0.1 m step is 0.1 m at any distance from the origin.
 func move_instance(instance_id: String, delta: Vector3) -> void:

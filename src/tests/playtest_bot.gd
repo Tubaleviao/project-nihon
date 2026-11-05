@@ -1748,27 +1748,57 @@ func _step_mount() -> Array:
 	# runs slower than the wall clock, which would read as a slow mount.
 	var tps := float(Engine.physics_ticks_per_second)
 	var last := [_root._player.get_world_pos(), Engine.get_physics_frames()]
-	var throws := 0
+	var throws := [0]   # an Array: a lambda captures an int by value, so += 1 inside it was never seen here
+	# Path ridden on the mounted legs, the same way. The ride is judged on it, not on the straight line from the
+	# start: each stall on a tree turns the wolf 0.9 rad, and on PR #563's CI run the straight-line distance
+	# reached 173 m in 45 s while the wolf cruised at 9.3 m/s.
+	var ridden := [0.0]
+	# Who threw the rider, for the report: a landed hit on the wolf ends the ride (Phase 216 spec).
+	var hitters := {}
+	var on_hit := func(attacker: String, defender: String, outcome: String, damage: float) -> void:
+		if defender == iid and outcome != "miss" and damage > 0.0:
+			hitters[attacker] = int(hitters.get(attacker, 0)) + 1
+	GameBus.combat_hit_resolved.connect(on_hit)
+	# Why the host put the rider on foot or refused a remount, for the report.
+	var answers := {}
+	var on_resolved := func(pid: String, action: String, ok: bool, reason: String) -> void:
+		if pid == me:
+			var k := "%s:%s" % [action, "ok" if ok else reason]
+			answers[k] = int(answers.get(k, 0)) + 1
+	GameBus.mount_resolved.connect(on_resolved)
+	var was_on := [true]
 	var rode: bool = await _until(func():
 		_root._player.set_hp(PlayerSlice.MAX_HP)
 		var now_ms := Engine.get_physics_frames()
 		if not _root._mount_wiring.slice.is_mounted(me):
 			# A creature hit the wolf and threw the rider (Phase 216 spec): get back on, and drop the leg that
 			# was on foot so the cruising speed is judged on the mounted legs only.
-			throws += 1
+			if bool(was_on[0]):
+				throws[0] = int(throws[0]) + 1
+			was_on[0] = false
+			# The wolf may have been knocked or wandered off while the rider was on foot: stand it beside
+			# them again, or the remount is refused as too_far.
+			_root._creature.set_instance_position(iid, _player_pos())
 			GameBus.mount_intent.emit(iid, "")
+			last[0] = _root._player.get_world_pos()
+			last[1] = now_ms
+		elif not bool(was_on[0]):
+			was_on[0] = true
 			last[0] = _root._player.get_world_pos()
 			last[1] = now_ms
 		elif float(now_ms - int(last[1])) / tps >= 0.5:
 			var here: Dictionary = _root._player.get_world_pos()
 			var leg: float = WaystoneSlice.distance_m(here, last[0]) / (float(now_ms - int(last[1])) / tps)
 			legs.append(leg)
+			ridden[0] = float(ridden[0]) + WaystoneSlice.distance_m(here, last[0])
 			if leg < 1.0:
 				_root._player._pivot.rotate_y(0.9)   # stalled on a tree or a ledge: turn and go on
 			last[0] = here
 			last[1] = now_ms
-		return WaystoneSlice.distance_m(_root._player.get_world_pos(), start) >= MOUNT_RIDE_M, MOUNT_RIDE_SECS)
+		return float(ridden[0]) >= MOUNT_RIDE_M, MOUNT_RIDE_SECS)
 	_key(KEY_W, false)
+	GameBus.combat_hit_resolved.disconnect(on_hit)
+	GameBus.mount_resolved.disconnect(on_resolved)
 	var metres: float = WaystoneSlice.distance_m(_root._player.get_world_pos(), start)
 	var moving: Array = legs.filter(func(v: float) -> bool: return v >= 1.0)
 	moving.sort()
@@ -1776,8 +1806,8 @@ func _step_mount() -> Array:
 	GameBus.dismount_intent.emit("")
 	var off: bool = await _until(func(): return not _root._mount_wiring.slice.is_mounted(me), STEP_TIMEOUT_SECS * 0.25)
 	var need := factor * PlayerSlice.SPEED * MOUNT_SPEED_SLACK
-	var ok: bool = rode and off and factor > 1.0 and avg >= need and metres < MOUNT_RIDE_M * 2.0
-	return [ok, "rode %.0f m, cruising at %.1f m/s (need %.1f), dismounted %s, thrown %d times" % [metres, avg, need, str(off), throws]]
+	var ok: bool = rode and off and factor > 1.0 and avg >= need and float(ridden[0]) < MOUNT_RIDE_M * 2.0
+	return [ok, "rode %.0f m (%.0f m from the start), cruising at %.1f m/s (need %.1f), dismounted %s, thrown %d times by %s, host answers %s" % [float(ridden[0]), metres, avg, need, str(off), int(throws[0]), str(hitters), str(answers)]]
 
 ## Phase 164 — the horizon: find the nearest coast with open sea across four headings, stand there and
 ## look out at the shallowest pitch. Each heading's frame is drawn with the camera seeing only the

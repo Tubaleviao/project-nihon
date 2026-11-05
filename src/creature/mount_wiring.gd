@@ -104,3 +104,5 @@ func tick(_delta: float) -> void:
 			exact = root._networking.get_last_known_exact(peer) if peer != 0 else {}
 		if not exact.is_empty():
 			root._creature.set_instance_pos(iid, exact)
+			# Carried out of its spawn chunk, the mount must not be despawned with it under the rider.
+			root._creature.rehome_instance(iid)
