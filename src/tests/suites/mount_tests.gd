@@ -69,6 +69,8 @@ func _test_mount_refusals() -> void:
 	assert_eq(m.mount("p1", "w4"), "dead", "a dead companion")
 	assert_eq(m.mount("p1", "w5"), "too_far", "a companion out of reach")
 	assert_eq(m.mount("", "w1"), "unknown_player", "no player")
+	assert_true(MountSlice.in_reach(Vector3(0, 12, 0), Vector3(1, 5, 0)), "a few metres of height difference is within reach")
+	assert_false(MountSlice.in_reach(Vector3(0, 40, 0), Vector3(1, 5, 0)), "a creature far below is out of reach")
 	assert_eq(m.mounted_instance("p1"), "", "nothing was recorded")
 	assert_true(_changes.is_empty(), "no change was announced")
 	for reason in ["unknown_instance", "not_mountable", "not_yours", "dead", "too_far"]:

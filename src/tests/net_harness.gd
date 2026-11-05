@@ -208,6 +208,7 @@ static func steps() -> Array:
 		{ "name": "chest_take_refused", "compare": true },
 		{ "name": "book_teaches_client", "compare": true },
 		{ "name": "self_respawn", "compare": true },
+		{ "name": "mount_dismount", "compare": true },
 	]
 
 ## The step names, comma-joined — the payload of the `plan` line the runner prints
@@ -461,6 +462,7 @@ func run(root: Node, role: String) -> void:
 	await LateSteps.new().chest_take_refused(self)
 	await LateSteps.new().book_teaches_client(self)
 	await _step_self_respawn()
+	await LateSteps.new().mount_dismount(self)
 	_finish()
 
 ## End this process, with the run's own verdict carried in the exit code.

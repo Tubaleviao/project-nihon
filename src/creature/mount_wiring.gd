@@ -22,6 +22,7 @@ func make_slice(ctx: GameRoot) -> Node:
 	m.alive = func(iid: String) -> bool: return not root._taming._instance_is_dead(iid)
 	m.position_of = func(iid: String) -> Variant: return root._creature.get_instance_position(iid)
 	m.player_pos = _player_position
+	m.local_body = root._player
 	m.input_allowed = func() -> bool: return root._player != null and root._player.world_input_allowed()
 	m.nearest_to = func(at: Vector3, within: float) -> String: return str(root._creature.nearest_creature(at, within))
 	m.own_position = func() -> Vector3: return root._player.get_position()
@@ -85,3 +86,18 @@ func mounted_speed_cap(peer: int) -> float:
 func peer_speed_cap(peer: int) -> float:
 	var mounted := mounted_speed_cap(peer)
 	return mounted if mounted > 0.0 else root._carcass_wiring.peer_speed_cap(peer)
+
+## The companion follows its rider's exact position (Phase 171 `{chunk, local}`) every frame.
+func tick(_delta: float) -> void:
+	if root._is_client or slice == null:
+		return
+	for pid: String in slice.riders():
+		var iid: String = slice.mounted_instance(pid)
+		var exact: Dictionary = {}
+		if pid == str(root._registry.local_player_id):
+			exact = root._player.get_world_pos() if root._player != null else {}
+		else:
+			var peer: int = root._registry.get_peer_id(pid)
+			exact = root._networking.get_last_known_exact(peer) if peer != 0 else {}
+		if not exact.is_empty():
+			root._creature.set_instance_pos(iid, exact)

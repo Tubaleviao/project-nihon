@@ -17,6 +17,8 @@ const REASONS := ["unknown_instance", "not_mountable", "not_yours", "dead", "too
 	"unknown_player", "rate_limited"]
 ## Metres from the creature at which a player may mount it.
 const MOUNT_RANGE := 4.0
+## The most the rider and the creature may differ in height (metres) and still be within reach.
+const MAX_STEP_M := 8.0
 ## Seconds between two intents of one player.
 const INTENT_GAP_SEC := 0.25
 
@@ -43,6 +45,9 @@ var nearest_to: Callable = Callable()
 var own_position: Callable = Callable()
 ## Whether the host last said this machine's player is mounted (M toggles).
 var _local_mounted := false
+## This machine's player body: it walks at the mounted creature's fabric factor times the walking speed while mounted.
+var local_body: Node = null
+var _last_asked := ""
 ## `() -> float` monotonic seconds. Test seam.
 var mono_sec: Callable = Callable()
 
@@ -77,6 +82,9 @@ func _unhandled_input(event: InputEvent) -> void:
 func _on_local_resolved(_player_id: String, action: String, ok: bool, _reason: String) -> void:
 	if ok:
 		_local_mounted = action == "mount"
+		if local_body != null:
+			var cid: String = str(creature_of.call(_last_asked)) if creature_of.is_valid() else ""
+			local_body.mount_speed_factor = maxf(1.0, float(_spec(cid).get("speedFactor", 1.0))) if _local_mounted else 1.0
 
 ## The fabric `mount` field of `creature_id` as a Dictionary ({} when it has none).
 static func fabric_spec(creature_id: String) -> Dictionary:
@@ -94,11 +102,19 @@ func _spec(creature_id: String) -> Dictionary:
 func _now() -> float:
 	return float(mono_sec.call()) if mono_sec.is_valid() else Time.get_ticks_msec() / 1000.0
 
+## The fabric mount spec of a creature id ({} when it cannot be ridden).
+func spec_of_creature(creature_id: String) -> Dictionary:
+	return _spec(creature_id)
+
 func mounted_instance(player_id: String) -> String:
 	return str(_riding.get(player_id, ""))
 
 func rider_of(instance_id: String) -> String:
 	return str(_ridden.get(instance_id, ""))
+
+## The ids of the players now mounted.
+func riders() -> Array:
+	return _riding.keys()
 
 func is_mounted(player_id: String) -> bool:
 	return _riding.has(player_id)
@@ -127,6 +143,11 @@ func rider_position(player_id: String) -> Variant:
 		return at
 	return (at as Vector3) + Vector3(float(o[0]), float(o[1]), float(o[2]))
 
+## Whether `rider` stands within reach of `creature` on the ground plane (a creature on the surface below a
+## platform is within `MAX_STEP_M` of vertical difference at most, like a tree on the XZ plane).
+static func in_reach(rider: Vector3, creature: Vector3) -> bool:
+	return Vector2(rider.x - creature.x, rider.z - creature.z).length() <= MOUNT_RANGE and absf(rider.y - creature.y) <= MAX_STEP_M
+
 ## Validate and apply a mount. Returns "" on success, else a key from `REASONS`.
 func mount(player_id: String, instance_id: String) -> String:
 	if player_id == "":
@@ -146,7 +167,7 @@ func mount(player_id: String, instance_id: String) -> String:
 		return "occupied"
 	var me: Variant = player_pos.call(player_id) if player_pos.is_valid() else null
 	var it: Variant = position_of.call(instance_id) if position_of.is_valid() else null
-	if not (me is Vector3 and it is Vector3) or (me as Vector3).distance_to(it as Vector3) > MOUNT_RANGE:
+	if not (me is Vector3 and it is Vector3) or not in_reach(me, it):
 		return "too_far"
 	_riding[player_id] = instance_id
 	_ridden[instance_id] = player_id
@@ -171,6 +192,9 @@ func _gate(player_id: String) -> bool:
 	return true
 
 func _on_mount_intent(instance_id: String, player_id: String) -> void:
+
+	if player_id == "":
+		_last_asked = instance_id   # this machine's own request: the answer will say which creature it was
 	if not is_host:
 		return
 	if player_id == "" and local_player_id.is_valid():

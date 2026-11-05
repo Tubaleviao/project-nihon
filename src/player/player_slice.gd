@@ -182,8 +182,8 @@ var carcass_slice: Node = null
 ## Phase 161 — set by the host's carry state: a carried body blocks attacking and slows walking.
 var carrying: bool = false
 var carry_speed_factor: float = 1.0
-## Phase 182 — the admin moves the host set for this body (`/speed`, `/fly`); see `set_admin_moves`.
-var admin_speed_factor: float = 1.0
+var mount_speed_factor: float = 1.0   # Phase 216: the riding factor while mounted (MountSlice)
+var admin_speed_factor: float = 1.0   # Phase 182: the admin moves the host set (`/speed`, `/fly`); see `set_admin_moves`
 var flying: bool = false
 var voxel_slice: Node = null
 ## Phase 128 — outdoor walking speed follows the weather under the body (null: no weather).
@@ -951,7 +951,7 @@ func _move(delta: float) -> void:
 
 	var speed := walking_speed(swimming, _weather_factor_now())
 	speed = held_speed(speed, is_immobilized()) * clampf(carry_speed_factor, 0.0, 1.0)
-	speed *= stat("moveSpeedFactor") * admin_speed_factor * (AdminRules.FLY_SPEED_FACTOR if flying else 1.0)
+	speed *= stat("moveSpeedFactor") * admin_speed_factor * mount_speed_factor * (AdminRules.FLY_SPEED_FACTOR if flying else 1.0)
 	_vel.x = dir.x * speed
 	_vel.z = dir.z * speed
 
