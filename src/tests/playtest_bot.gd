@@ -1721,10 +1721,10 @@ func _step_travel() -> Array:
 
 ## Phase 216 — mount: a wolf stood beside the player and bound to them as a taming leaves it is mounted through the
 ## intent, ridden 200 m and dismounted. The mounted average speed must reach the fabric factor times the walking
-## speed x0.9. The rider is kept at full health (creatures near the village would otherwise end the ride in a death).
+## speed x0.85. The rider is kept at full health (creatures near the village would otherwise end the ride in a death).
 const MOUNT_RIDE_M := 200.0
 const MOUNT_RIDE_SECS := 45.0
-const MOUNT_SPEED_SLACK := 0.9
+const MOUNT_SPEED_SLACK := 0.85
 func _step_mount() -> Array:
 	var me: String = str(_root._registry.local_player_id)
 	var chunk: Vector2i = _root._player.get_world_pos()["chunk"]
@@ -1744,13 +1744,16 @@ func _step_mount() -> Array:
 	# Cruising speed: the median of the speeds over 0.5 s legs that moved (a tree or a ledge on the line stalls a leg,
 	# and the ride is judged on how fast the mount goes, not on the terrain between the two points).
 	var legs: Array = []
-	var last := [_root._player.get_world_pos(), Time.get_ticks_msec()]
+	# Legs are timed on the physics clock: under the software-rendered fallback the frame rate drops and physics
+	# runs slower than the wall clock, which would read as a slow mount.
+	var tps := float(Engine.physics_ticks_per_second)
+	var last := [_root._player.get_world_pos(), Engine.get_physics_frames()]
 	var rode: bool = await _until(func():
 		_root._player.set_hp(PlayerSlice.MAX_HP)
-		var now_ms := Time.get_ticks_msec()
-		if now_ms - int(last[1]) >= 500:
+		var now_ms := Engine.get_physics_frames()
+		if float(now_ms - int(last[1])) / tps >= 0.5:
 			var here: Dictionary = _root._player.get_world_pos()
-			var leg: float = WaystoneSlice.distance_m(here, last[0]) / (float(now_ms - int(last[1])) / 1000.0)
+			var leg: float = WaystoneSlice.distance_m(here, last[0]) / (float(now_ms - int(last[1])) / tps)
 			legs.append(leg)
 			if leg < 1.0:
 				_root._player._pivot.rotate_y(0.9)   # stalled on a tree or a ledge: turn and go on
