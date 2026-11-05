@@ -177,8 +177,8 @@ var _client_boot_done: bool = false
 ## player anyway. The gate is a BUILD ON A WORKER, and a stalled or dead task must not
 ## hang the boot for good with the loading screen up and no player: past this the tail
 ## runs regardless and the warning says the ring was incomplete. Mirrors SNAPSHOT_TIMEOUT
-## on the client side, which is the same shape for the same reason.
-const FIRST_RING_TIMEOUT := 15.0
+## on the client side, which is the same shape. 60 s: the GDScript builder fallback needs ~18 s on CI.
+const FIRST_RING_TIMEOUT := 60.0
 
 ## Host-side global cap on live creature instances (Phase 44); see CreatureSlice.set_population_cap.
 const CREATURE_POPULATION_CAP := 512
