@@ -52,7 +52,9 @@ Character creation (Phase 180): `tools/gen_placeholder_glb.py` writes the two ch
 the heads `models/characters/heads/chibi_head_{m,f}.glb.raw` and one static mesh per hair style at
 `models/characters/hair/<hair>.glb.raw` (origin at the Head joint, drawn from the style's `shape` in
 `fabric/gameplay/characters/creation.js`); `tools/gen_placeholder.py` writes the eyes
-`textures/characters/eyes/chibi_eyes_{m,f}.png.raw`. `node tools/check_creation.js` fails when a preset part
+`textures/characters/eyes/chibi_eyes_{m,f}.png.raw` and each body's 64x64 sheets
+`textures/characters/bodies/chibi_body_{m,f}{,_color_mask,_channel}.png.raw` (checkerboard detail, two black masks;
+keys from `CharacterSlice.body_sheet_keys`). `node tools/check_creation.js` fails when a preset part
 or hair style has no placeholder or manifest entry.
 
 Rig textures: an attached player rig is drawn with the character shader, whose three sheets are

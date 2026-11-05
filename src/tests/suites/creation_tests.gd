@@ -55,6 +55,10 @@ func _test_parts_resolve() -> void:
 			assert_true(_exists(key), "%s: %s has a public placeholder" % [g, key])
 		assert_true(AssetOverlay.has_key("meshes", body) and AssetOverlay.has_key("animations", body), "%s body is in the manifest" % g)
 		assert_true(AssetOverlay.load_texture(eyes) != null, "%s eyes decode" % g)
+		for sheet in CharacterSlice.body_sheet_keys(str(app.get("body"))):
+			assert_true(_exists(sheet) and AssetOverlay.has_key("textures", sheet), "%s body sheet %s is public and in the manifest" % [g, sheet])
+			var tex := AssetOverlay.load_texture(sheet)
+			assert_true(tex != null and tex.get_width() == 64 and tex.get_height() == 64, "%s decodes at 64x64" % sheet)
 		var hair := str(app.get("hair"))
 		assert_eq(str((d.get("hairStyles") as Dictionary).get(hair, {}).get("gender", "")), str(g), "%s preset's default hair is its own" % g)
 	for id in d.get("hairStyles"):

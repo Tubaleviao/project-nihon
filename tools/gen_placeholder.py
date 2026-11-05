@@ -27,7 +27,9 @@ textures (``textures/creatures/GraywolfPack*.png.raw``) are the checkerboard (ba
 two black masks (``_channel``, ``_color_mask``), like the player's. The nine roster creatures
 (``CREATURE_SIZES``) get the same three sheets at 128x128 or 64x64; so do the twenty-eight item meshes
 (``ITEM_TEXTURE_SIZES``, ``textures/items/``). The character-creation eyes (Phase 180,
-``textures/characters/eyes/<id>.png.raw``, ``EYES``) are two dark ovals on a transparent 32x32 sheet.
+``textures/characters/eyes/<id>.png.raw``, ``EYES``) are two dark ovals on a transparent 32x32 sheet. The chibi
+bodies (``textures/characters/bodies/chibi_body_{m,f}{,_color_mask,_channel}.png.raw``, ``CHIBI_BODIES``) get the
+checkerboard and two black masks at 64x64.
 
 A bare ``<out>`` writes the sheet its default path gets (black for the mask
 files, white for the rig detail file) and the checkerboard for any other path.
@@ -77,6 +79,11 @@ ITEM_TEXTURE_DIR = ROOT / "assets/textures/items"
 EYES = ("chibi_eyes_m", "chibi_eyes_f")
 EYES_DIR = ROOT / "assets/textures/characters/eyes"
 EYES_SIZE = 32
+# Phase A20 batch 3 — the chibi bodies' sheets (64x64 on the body's UV grid): the checkerboard detail
+# sheet and two black masks, like the player rig's. The art repo ships `models/characters/bodies/<id>.glb.raw`.
+CHIBI_BODIES = ("chibi_body_m", "chibi_body_f")
+BODIES_DIR = ROOT / "assets/textures/characters/bodies"
+BODY_SIZE = 64
 
 
 def _chunk(ctype: bytes, data: bytes) -> bytes:
@@ -153,6 +160,11 @@ CREATURE_OUTPUTS += [
     for suffix, sheet in (("", checker), ("_color_mask", black), ("_channel", black))
 ]
 CREATURE_OUTPUTS += [(EYES_DIR / f"{name}.png.raw", eyes, EYES_SIZE) for name in EYES]
+CREATURE_OUTPUTS += [
+    (BODIES_DIR / f"{name}{suffix}.png.raw", sheet, BODY_SIZE)
+    for name in CHIBI_BODIES
+    for suffix, sheet in (("", checker), ("_color_mask", black), ("_channel", black))
+]
 FLAGS = {"--mask": black, "--white": white}
 
 
