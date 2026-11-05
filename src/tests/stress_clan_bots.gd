@@ -74,6 +74,7 @@ func run() -> void:
 	for i in range(bots.size()):
 		_slice(i).send_create("Stressbot" + char(97 + i))
 		await get_tree().create_timer(0.2).timeout
+	await get_tree().create_timer(1.0).timeout
 	# found: bot 0 founds the clan by name; the host's clan list is the evidence.
 	t = _wall_s()
 	_slice(FOUNDER).send_clan("found", { "name": clan_name })
@@ -95,6 +96,7 @@ func run() -> void:
 		await get_tree().create_timer(0.6).timeout
 	var full := await _until(func(): return _seen("members_4"), 15.0)
 	_beat("accept", t, "host clan has %d members" % int(live().get("world", {}).get("members", 0)), full)
+	print("[Clan] created %s inv %s" % [JSON.stringify(live().get("world", {}).get("created", {})), JSON.stringify(live().get("world", {}).get("inventories", {}))])
 	# work: bots 0-2 mine the top layers, bot 3 digs deeper, so ore and soil grow different skills.
 	t = _wall_s()
 	for i in range(StressClanRules.MEMBERS):

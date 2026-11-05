@@ -153,7 +153,11 @@ func world_record() -> Dictionary:
 	var stations := {}
 	for sid: Variant in _root._station._stations.keys():
 		stations[str(sid)] = str(_root._station._stations[sid].get("type", ""))
+	var created := {}
+	for pid: Variant in members.keys():
+		created[str(pid)] = _root._registry.creation_of(str(pid))
 	return {
+		"created": created,
 		"events": _events.slice(-14), "tree_total": _root._tree.get_all_trees().size(), "techs": techs, "trees": trees.slice(0, 24), "stations": stations,
 		"inventories": inventories, "trade_ids": _root._trade._trades.keys(),
 		"clans": clans.count(), "clan_id": best_id, "members": members.size(), "member_ids": members.keys(),
