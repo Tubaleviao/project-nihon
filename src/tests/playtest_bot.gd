@@ -299,7 +299,7 @@ static func flight_speed_from_args(args: Array) -> float:
 	return FLIGHT_SPEED_MPS
 
 static func all_step_names() -> Array:
-	return ["create", "walk", "stream", "flight", "mine", "gather", "craft", "character_sheet", "place", "fight", "tutorial", "travel", "horizon", "far_peak", "pole", "tower"]
+	return ["create", "walk", "stream", "flight", "mine", "gather", "craft", "character_sheet", "place", "fight", "tutorial", "travel", "mount", "horizon", "far_peak", "pole", "tower"]
 
 # ---------------------------------------------------------------------------
 # Pure report maths
@@ -1718,6 +1718,55 @@ func _step_travel() -> Array:
 	var ok: bool = await _until(func():
 		return WaystoneSlice.distance_m(_root._player.get_world_pos(), dest) < ARRIVE_TOLERANCE_M, STEP_TIMEOUT_SECS)
 	return [ok, "travelled to the second stone" if ok else "body did not reach the second stone"]
+
+## Phase 216 — mount: a wolf stood beside the player and bound to them as a taming leaves it is mounted through the
+## intent, ridden 200 m and dismounted. The mounted average speed must reach the fabric factor times the walking
+## speed x0.9. The rider is kept at full health (creatures near the village would otherwise end the ride in a death).
+const MOUNT_RIDE_M := 200.0
+const MOUNT_RIDE_SECS := 45.0
+const MOUNT_SPEED_SLACK := 0.9
+func _step_mount() -> Array:
+	var me: String = str(_root._registry.local_player_id)
+	var chunk: Vector2i = _root._player.get_world_pos()["chunk"]
+	var iid: String = _root._creature._spawn("GraywolfPack", chunk, 98)
+	if iid == "" or not _root._creature.mark_tamed(iid, me):
+		return [false, "no wolf to tame"]
+	_root._creature.set_instance_position(iid, _player_pos())
+	var factor: float = float(_root._mount_wiring.slice.spec_of_creature("GraywolfPack").get("speedFactor", 0.0))
+	GameBus.mount_intent.emit(iid, "")
+	if not await _until(func(): return _root._mount_wiring.slice.is_mounted(me), STEP_TIMEOUT_SECS * 0.25):
+		return [false, "the host did not mount the wolf"]
+	await _until(func(): return false, 1.0)   # the body settles after the mount; the start is read after it
+	_key(KEY_W, true)
+	await _until(func(): return false, 0.5)   # up to speed before the clock starts
+	var start: Dictionary = _root._player.get_world_pos()
+	var t0 := Time.get_ticks_msec()
+	# Cruising speed: the median of the speeds over 0.5 s legs that moved (a tree or a ledge on the line stalls a leg,
+	# and the ride is judged on how fast the mount goes, not on the terrain between the two points).
+	var legs: Array = []
+	var last := [_root._player.get_world_pos(), Time.get_ticks_msec()]
+	var rode: bool = await _until(func():
+		_root._player.set_hp(PlayerSlice.MAX_HP)
+		var now_ms := Time.get_ticks_msec()
+		if now_ms - int(last[1]) >= 500:
+			var here: Dictionary = _root._player.get_world_pos()
+			var leg: float = WaystoneSlice.distance_m(here, last[0]) / (float(now_ms - int(last[1])) / 1000.0)
+			legs.append(leg)
+			if leg < 1.0:
+				_root._player._pivot.rotate_y(0.9)   # stalled on a tree or a ledge: turn and go on
+			last[0] = here
+			last[1] = now_ms
+		return WaystoneSlice.distance_m(_root._player.get_world_pos(), start) >= MOUNT_RIDE_M, MOUNT_RIDE_SECS)
+	_key(KEY_W, false)
+	var metres: float = WaystoneSlice.distance_m(_root._player.get_world_pos(), start)
+	var moving: Array = legs.filter(func(v: float) -> bool: return v >= 1.0)
+	moving.sort()
+	var avg: float = float(moving[moving.size() / 2]) if not moving.is_empty() else 0.0
+	GameBus.dismount_intent.emit("")
+	var off: bool = await _until(func(): return not _root._mount_wiring.slice.is_mounted(me), STEP_TIMEOUT_SECS * 0.25)
+	var need := factor * PlayerSlice.SPEED * MOUNT_SPEED_SLACK
+	var ok: bool = rode and off and factor > 1.0 and avg >= need and metres < MOUNT_RIDE_M * 2.0
+	return [ok, "rode %.0f m, cruising at %.1f m/s (need %.1f), dismounted %s" % [metres, avg, need, str(off)]]
 
 ## Phase 164 — the horizon: find the nearest coast with open sea across four headings, stand there and
 ## look out at the shallowest pitch. Each heading's frame is drawn with the camera seeing only the
