@@ -59,6 +59,7 @@ func register() -> void:
 	_run_test("taming: record round-trip keeps flag + companion", _test_taming_record_round_trip)
 	_run_test("creature: respawns share one cap budget",         _test_creature_respawns_share_cap)
 	_run_test("creature: chunk index matches the instance table", _test_creature_chunk_index)
+	_run_test("creature: a carried instance is re-filed under its chunk and survives its spawn chunk unloading", _test_creature_rehome)
 	_run_test("ai: idle→alert when player within alertRadius", _test_ai_idle_to_alert)
 	_run_test("ai: alert→aggressive when player within attackRadius", _test_ai_alert_to_aggressive)
 	_run_test("ai: aggressive→fleeing below flee threshold",   _test_ai_aggressive_to_fleeing)
@@ -1256,6 +1257,30 @@ func _test_creature_chunk_index() -> void:
 	c.despawn_for_chunk(b)
 	assert_false(c._by_chunk.has(a), "an emptied chunk drops its index entry")
 	assert_eq(c.get_all_instances().size(), 0, "nothing is left once every chunk is despawned")
+	c.free()
+
+## Phase 216 (PR #563) — a ridden mount is carried away from its spawn chunk. Re-filed under the chunk it
+## stands in, it survives the spawn chunk streaming out and goes with the chunk it is in now.
+func _test_creature_rehome() -> void:
+	var c := CreatureSlice.new()
+	add_child(c)
+	var a := Vector2i(4, 4)
+	var far := Vector2i(9, 4)
+	c.spawn_for_chunk(a)
+	assert_true(c._by_chunk.has(a), "the fixture chunk carries creatures")
+	var iid: String = str((c._by_chunk[a] as Array)[0])
+	assert_false(c.rehome_instance(iid), "an instance in its own chunk is not moved")
+	c.set_instance_pos(iid, {"chunk": far, "local": Vector3(1, 0, 1)})
+	assert_true(c.rehome_instance(iid), "a carried instance is re-filed")
+	assert_eq(c._instances[iid]["chunk"], far, "its record names the new chunk")
+	assert_true((c._by_chunk[far] as Array).has(iid), "the new chunk indexes it")
+	assert_false((c._by_chunk.get(a, []) as Array).has(iid), "the spawn chunk no longer does")
+	assert_false(c.rehome_instance("nope"), "an unknown id is ignored")
+	c.despawn_for_chunk(a)
+	assert_true(c._instances.has(iid), "the spawn chunk unloading leaves it")
+	c.despawn_for_chunk(far)
+	assert_false(c._instances.has(iid), "the chunk it stands in takes it when that unloads")
+	assert_false(c._by_chunk.has(far), "and drops its index entry")
 	c.free()
 
 func _test_ai_idle_to_alert() -> void:

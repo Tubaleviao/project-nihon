@@ -161,6 +161,23 @@ func nearest_creature(from_pos: Variant, radius: float) -> String:
 			best_id = iid
 	return best_id
 
+## The nearest living creature within `radius` of `from_pos` that is a tamed companion of `player_id`, "" when none.
+func nearest_tamed_by(from_pos: Variant, radius: float, player_id: String) -> String:
+	if player_id == "":
+		return ""
+	var from := _exact_of(from_pos)
+	var best_id := ""
+	var best_dist := radius + 1.0
+	for iid in _spatial.query_radius(from, radius):
+		var inst: Dictionary = _instances[iid]
+		if inst["state"] == "dead" or str(inst.get("tamed_by", "")) != player_id:
+			continue
+		var d: float = WorldPos.offset_between(from, inst["pos"]).length()
+		if d < best_dist:
+			best_dist = d
+			best_id = iid
+	return best_id
+
 ## Instance ids within `radius` of `pos` (any state). The AI's neighbour /
 ## proximity queries route through the hash via this (Phase 28). Phase 195 — `pos` is an exact
 ## `{chunk, local}` (what the AI holds) or a world-metres Vector3 (split here, coarse far out).
@@ -366,6 +383,30 @@ func set_instance_pos(instance_id: String, pos: Dictionary) -> void:
 	_store_pos(inst, pos)
 	_spatial.update(instance_id, inst["pos"])
 	_place_box(instance_id, inst["position"])
+
+## Phase 216 — file an instance under the chunk it stands in now. An instance stays indexed under the chunk it
+## spawned in (`_by_chunk`, `inst["chunk"]`), so `despawn_for_chunk` drops it when that chunk streams out. A ridden
+## mount is carried away from its spawn chunk and would be despawned under its rider (PR #563: about 170 m into
+## the playtest bot's ride). Returns whether the index changed.
+func rehome_instance(instance_id: String) -> bool:
+	if not _instances.has(instance_id):
+		return false
+	var inst: Dictionary = _instances[instance_id]
+	var now: Vector2i = inst["pos"]["chunk"]
+	var was: Vector2i = inst["chunk"]
+	if now == was:
+		return false
+	if _by_chunk.has(was):
+		var held: Array = _by_chunk[was]
+		held.erase(instance_id)
+		if held.is_empty():
+			_by_chunk.erase(was)
+	if not _by_chunk.has(now):
+		_by_chunk[now] = []
+	(_by_chunk[now] as Array).append(instance_id)
+	inst["chunk"] = now
+	_invalidate_view()
+	return true
 
 ## Move an instance by `delta` metres. The offset is added to `local` and carried into the chunk index, so a
 ## 0.1 m step is 0.1 m at any distance from the origin.

@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–199 and 203–214 are done. Phases 202 and 215–218 are open. Their specs and acceptance criteria, and the introductions of
+Phases 1–199, 203–214 and 216 are done. Phases 202, 215, 217 and 218 are open. Their specs and acceptance criteria, and the introductions of
 the arcs they belonged to, are archived in [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Next: follow-up debt burn II (Phases 194–196)
@@ -150,7 +150,7 @@ burns down the four open `autopilot-followup` issues. Phase 202 (above) is the f
 | Phase | Title | Status | Spec |
 |---|---|---|---|
 | 215 | Chibi body sheets: public placeholders, the colour mask bound to skin, and the novice outfit region (#559) | Planned | below |
-| 216 | Mounts: ride a tamed creature | Planned | below |
+| 216 | Mounts: ride a tamed creature | Done | [phases-216.md](docs/roadmap-history/phases-216.md) |
 | 217 | Lakes and rivers on unrecorded land (static water, no flow) | Planned | below |
 | 218 | Follow-up cleanup sweep: exact creature positions, the spatial hash, relay and window shortcuts | Planned | below |
 
@@ -228,44 +228,6 @@ the placeholder rule forbids the art repo from adding them, and the game binds o
   reads, on both genders.
 - [ ] Suite green on both boot paths, harness green; the `--playtest-bot` character_sheet and create
   steps still pass.
-
----
-
-## Phase 216 — Mounts: ride a tamed creature
-
-**Goal:** the first fast travel beyond waystones (Deferred: "Fast travel beyond waystones"). A
-player who has tamed a mountable creature can mount it, travel faster than on foot, and dismount.
-Taming (`src/creature/taming_slice.gd`) already binds a creature to its tamer as a companion.
-
-**Newel dependency:** NO.
-
-**Deliverables:**
-- Fabric: a `mount` field on creatures (speed factor, stamina or none, which terrain it can cross,
-  rider offset), set on at least one existing tameable creature; a validator with
-  `tools/check_mounts.js` proving it rejects bad tables (speed factor ≤ 1, mount on a non-tameable
-  creature), and a CI step. Separate fabric PR, as the convention asks.
-- Runtime: mount and dismount intents on `GameBus`, validated on the host (the creature is the
-  player's own tamed companion, within reach, alive, not already ridden). While mounted the player's
-  movement speed is the mount's factor times the walking speed, the companion follows the rider's
-  exact position (Phase 171 `{chunk, local}`), and the host rejects movement faster than the mount
-  allows. Damage to the mount or its death dismounts the rider; logging out dismounts and leaves the
-  companion beside the player.
-- A Mount/Dismount entry in the gesture or companion UI and a key binding, with `en` and `pt_BR`
-  strings in `locale/ui.csv`.
-- A `mount` step in `--playtest-bot`, after `travel`: tame, mount, ride 200 m, dismount.
-
-**Acceptance criteria:**
-- [ ] `npm run validate` and `node tools/check_mounts.js` pass; the checker rejects each bad fixture.
-- [ ] Suite: mounting someone else's companion, a wild creature, a dead one or one out of reach is
-  refused with a key; a valid mount succeeds and is synced to other peers.
-- [ ] Suite: a mounted player's accepted speed is the mount factor times walking speed, and a client
-  reporting more is clamped by the host.
-- [ ] Suite: the mount's death and the rider's logout each dismount; no orphan nodes.
-- [ ] Harness: a client mounts on the host, a second client sees the rider on the mount, the rider
-  dismounts.
-- [ ] Playtest: the `mount` step passes and its mounted average speed is at least the fabric factor
-  × walking speed × 0.9.
-- [ ] Suite green on both boot paths, harness green; locale key-parity test passes.
 
 ---
 

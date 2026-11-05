@@ -206,4 +206,51 @@ function validateSkeletonFields(creatures, skeletons = CREATURE_SKELETONS) {
   }
 }
 
-module.exports = { bodyFields, bodyFieldProblems, validateBodyFields, BODY_RADIUS_MIN, BODY_RADIUS_MAX, SQUASH_MAX, skeletonField, validateSkeletonFields, CREATURE_SKELETONS, pathFields, validatePathFields, PATH_RADIUS_MAX, MOVEMENT_KINDS, defineEntity, creatureStateMachine, creatureStateValues, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS, GROUP_BEHAVIORS, dropsData, tameData }
+// Mounts (Phase 216), consumed by the mount slice. A creature that can be ridden declares a `mount` field,
+// and only a creature that can become a companion (`tame.result === 'companion'`) may.
+//   speedFactor     times the walking speed while mounted (> 1, up to MOUNT_SPEED_MAX)
+//   staminaSeconds  seconds of riding at full speed before the mount tires, or 0 for no stamina limit (reserved: validated and recorded, no runtime consumer yet)
+//   terrain         what the mount crosses: any of MOUNT_TERRAIN ('ground', 'water') (reserved: no runtime consumer yet)
+//   riderOffset     [x, y, z] metres from the creature's origin to the rider's feet; y in 0..3
+const MOUNT_SPEED_MAX = 6
+const MOUNT_TERRAIN = ['ground', 'water']
+function mountData(mount) {
+  return {
+    type: 'json',
+    description: 'Mount spec: speed factor over walking speed, stamina seconds (0 = none), terrain crossed and the rider offset.',
+    defaultValue: mount,
+  }
+}
+
+// The problems with each creature's mount spec (empty when none declares one or all are valid).
+function mountProblems(creatures) {
+  const out = []
+  for (const [name, entity] of Object.entries(creatures)) {
+    const f = (entity && entity.fields) || {}
+    if (!f.mount) continue
+    const m = f.mount.defaultValue
+    if (!m || typeof m !== 'object') { out.push(`${name}: mount must be an object`); continue }
+    const tame = f.tame && f.tame.defaultValue
+    if (!tame || tame.result !== 'companion') out.push(`${name}: only a tameable creature (tame.result 'companion') can be a mount`)
+    if (!(typeof m.speedFactor === 'number' && m.speedFactor > 1 && m.speedFactor <= MOUNT_SPEED_MAX)) {
+      out.push(`${name}: mount.speedFactor must be greater than 1 and at most ${MOUNT_SPEED_MAX} (got ${m.speedFactor})`)
+    }
+    if (!(Number.isFinite(m.staminaSeconds) && m.staminaSeconds >= 0)) out.push(`${name}: mount.staminaSeconds must be 0 or more (got ${m.staminaSeconds})`)
+    if (!(Array.isArray(m.terrain) && m.terrain.length > 0 && m.terrain.every((t) => MOUNT_TERRAIN.includes(t)))) {
+      out.push(`${name}: mount.terrain must be a non-empty list of ${MOUNT_TERRAIN.join(', ')}`)
+    }
+    const o = m.riderOffset
+    if (!(Array.isArray(o) && o.length === 3 && o.every(Number.isFinite) && o[1] >= 0 && o[1] <= 3 && Math.abs(o[0]) <= 2 && Math.abs(o[2]) <= 2)) {
+      out.push(`${name}: mount.riderOffset must be [x, y, z] with y in 0..3 and x, z within 2 metres`)
+    }
+  }
+  return out
+}
+
+// Throws (failing `npm run validate`) when a creature's mount spec is invalid.
+function validateMounts(creatures) {
+  const problems = mountProblems(creatures)
+  if (problems.length) throw new Error(problems.join('\n'))
+}
+
+module.exports = { mountData, mountProblems, validateMounts, MOUNT_SPEED_MAX, MOUNT_TERRAIN, bodyFields, bodyFieldProblems, validateBodyFields, BODY_RADIUS_MIN, BODY_RADIUS_MAX, SQUASH_MAX, skeletonField, validateSkeletonFields, CREATURE_SKELETONS, pathFields, validatePathFields, PATH_RADIUS_MAX, MOVEMENT_KINDS, defineEntity, creatureStateMachine, creatureStateValues, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS, GROUP_BEHAVIORS, dropsData, tameData }

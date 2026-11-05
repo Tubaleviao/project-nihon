@@ -78,3 +78,54 @@ func book_teaches_client(h: Node) -> void:
 	var kept: bool = h._root._inventory.get_item_count(BOOK_ITEM) >= 1
 	var ok: bool = learnt and kept
 	h._report("book_teaches_client", h.verdict(ok, true), "client-learnt-host-unchanged" if ok else "got%d-learnt%d-kept%d" % [int(got), int(learnt), int(kept)])
+
+## Phase 216 — the host gives the client's player a tamed wolf beside them. The client asks to mount: the host
+## records the rider, the client is told and sees the broadcast; the client asks to get off and the host records it.
+## The wolf is a fixed instance id both sides know, so the client can name it; the host keeps it beside the client.
+const MOUNT_CREATURE := "GraywolfPack"
+const MOUNT_CHUNK := Vector2i(0, 0)
+const MOUNT_INDEX := 99
+func mount_dismount(h: Node) -> void:
+	var iid: String = h._root._creature._instance_id(MOUNT_CHUNK, MOUNT_CREATURE, MOUNT_INDEX)
+	await h._await_settle(1.0 * h._time_scale)
+	if h._role == "host":
+		var peer: int = h._peer_id()
+		var bound: String = h._live_bound_id()
+		var made: String = h._root._creature._spawn(MOUNT_CREATURE, MOUNT_CHUNK, MOUNT_INDEX)
+		var tamed: bool = made == iid and bound != "" and h._root._creature.mark_tamed(iid, bound)
+		var slice: Node = h._root._mount_wiring.slice
+		var mounted := false
+		var deadline := Time.get_ticks_msec() + int(h._step_timeout() * 2.0 * 1000.0)
+		while tamed and not mounted and Time.get_ticks_msec() < deadline:
+			var at: Variant = h._root._networking.get_last_known_state(peer) if h._root._networking.has_last_known_state(peer) else null
+			if at is Vector3:
+				h._root._creature.set_instance_position(iid, at)   # keep the wolf at its tamer's feet
+			mounted = slice.mounted_instance(bound) == iid
+			await h._await_settle(0.2)
+		var off: bool = mounted and await h._await_until(func(): return not slice.is_mounted(bound), h._step_timeout() * 2.0)
+		var ok: bool = tamed and mounted and off
+		h._report("mount_dismount", h.verdict(ok, true), "mounted-then-dismounted" if ok else "tamed%d-mounted%d-off%d" % [int(tamed), int(mounted), int(off)])
+		return
+	var told := { "mount": false, "off": false, "seen": false, "last": "" }
+	var on_resolved := func(_pid: String, action: String, ok: bool, reason: String) -> void:
+		told["last"] = reason
+		if ok:
+			told["mount" if action == "mount" else "off"] = true
+	var on_changed := func(_player: String, instance: String) -> void:
+		if instance == iid:
+			told["seen"] = true
+	GameBus.mount_resolved.connect(on_resolved)
+	GameBus.mount_changed.connect(on_changed)
+	var deadline := Time.get_ticks_msec() + int(h._step_timeout() * 2.0 * 1000.0)
+	while not told["mount"] and Time.get_ticks_msec() < deadline:
+		GameBus.mount_intent.emit(iid, "")   # refused until the host has stood the wolf beside us: try again
+		await h._await_settle(1.0)
+	var seen: bool = told["mount"] and await h._await_until(func(): return told["seen"], h._step_timeout())
+	deadline = Time.get_ticks_msec() + int(h._step_timeout() * 2.0 * 1000.0)
+	while told["mount"] and not told["off"] and Time.get_ticks_msec() < deadline:
+		GameBus.dismount_intent.emit("")
+		await h._await_settle(1.0)
+	GameBus.mount_resolved.disconnect(on_resolved)
+	GameBus.mount_changed.disconnect(on_changed)
+	var ok: bool = told["mount"] and seen and told["off"]
+	h._report("mount_dismount", h.verdict(ok, true), "mounted-then-dismounted" if ok else "mount%d-seen%d-off%d-last-%s" % [int(told["mount"]), int(seen), int(told["off"]), str(told["last"]).replace(" ", "_")])

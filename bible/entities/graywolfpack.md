@@ -40,6 +40,7 @@ A coordinated hunting pack of gray wolves that roam temperate forest edges and c
 | `carryRule` | enum (`carry`, `drag`, `immovable`) | yes | `carry` (fits the carry capacity), `drag` (heavier, slower) or `immovable` |
 | `drops` | json | yes | Structured harvest table: raw item key, base chance (0-1), quantity range [minQty, maxQty], the tool category that works it (knife, bonetool, none) and the scaling skill. Each entry is rolled independently per harvest. |
 | `tame` | json | yes | Structured taming spec: result kind (companion / yield), bare-hands and skill requirements, the offered item consumed, the defeated-alpha gate, the granted player flag, shed items, cooldown (seconds) and whether a tamed instance respawns. |
+| `mount` | json | yes | Mount spec: speed factor over walking speed, stamina seconds (0 = none), terrain crossed and the rider offset. |
 
 ### State machine
 

@@ -207,6 +207,7 @@ static func steps() -> Array:
 		{ "name": "structure_damage", "compare": true },
 		{ "name": "chest_take_refused", "compare": true },
 		{ "name": "book_teaches_client", "compare": true },
+		{ "name": "mount_dismount", "compare": true },
 		{ "name": "self_respawn", "compare": true },
 	]
 
@@ -460,6 +461,7 @@ func run(root: Node, role: String) -> void:
 	await _step_structure_damage()
 	await LateSteps.new().chest_take_refused(self)
 	await LateSteps.new().book_teaches_client(self)
+	await LateSteps.new().mount_dismount(self)
 	await _step_self_respawn()
 	_finish()
 

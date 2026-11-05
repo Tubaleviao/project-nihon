@@ -66,6 +66,8 @@ require('./world/creatures/shared').validatePathFields(creatures)
 require('./world/creatures/shared').validateSkeletonFields(creatures)
 // Phase 192 — every creature declares a body footprint and squash in range.
 require('./world/creatures/shared').validateBodyFields(creatures)
+// Phase 216 — a mount spec is valid and sits only on a tameable creature.
+require('./world/creatures/shared').validateMounts(creatures)
 
 // Phase 137 — every biome's `surfaceMaterial` must declare whether it is `granular` (settles when undermined).
 require('./world/materials/granular').validateGranular(require('./world/biomes'), materials)
