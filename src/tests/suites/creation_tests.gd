@@ -183,7 +183,8 @@ func _test_body_sheet_binding() -> void:
 		for pair in [["detail_tex", keys[0]], ["color_mask_tex", keys[1]], ["channel_tex", keys[2]]]:
 			var tex := mat.get_shader_parameter(pair[0]) as Texture2D
 			assert_true(tex != null and AssetOverlay.has_key("textures", pair[1]), "%s binds %s" % [body, pair[1]])
-			assert_true(tex == AssetOverlay.load_texture(pair[1]) or tex.get_width() == 64, "%s is the body's own 64x64 sheet" % pair[0])
+			assert_eq(tex, ch._sheets_for_body(body)[["detail", "color_mask", "channel"][["detail_tex", "color_mask_tex", "channel_tex"].find(pair[0])]], "%s is the body's own sheet" % pair[0])
+			assert_eq(tex.get_width(), 64, "%s is 64 wide" % pair[0])
 	assert_true(mats["chibi_body_m"] != mats["chibi_body_f"], "each body keeps its own material")
 	assert_true(mats["chibi_body_m"].get_shader_parameter("detail_tex") != mats["chibi_body_f"].get_shader_parameter("detail_tex"),
 		"the two bodies bind different detail textures")
@@ -212,7 +213,13 @@ func _test_body_skin_through_mask() -> void:
 		# The mask is the public black one: every pixel keeps the base (skin) colour.
 		var mask := AssetOverlay.load_texture(CharacterMaterial.body_sheet_keys(body)[1])
 		var img := mask.get_image()
-		assert_eq(img.get_pixel(5, 30).r + img.get_pixel(5, 30).g + img.get_pixel(5, 30).b, 0.0, "%s: public mask is black, skin shows" % body)
+		var lit := 0
+		for y in img.get_height():
+			for x in img.get_width():
+				var p := img.get_pixel(x, y)
+				if p.r + p.g + p.b > 0.0:
+					lit += 1
+		assert_eq(lit, 0, "%s: public mask is black everywhere, skin shows" % body)
 	ch.free()
 
 
@@ -223,3 +230,5 @@ func _test_novice_region() -> void:
 	for path in ["res://assets/README.md", "res://characters.md"]:
 		var f := FileAccess.open(path, FileAccess.READ)
 		assert_true(f != null and f.get_as_text().contains(needle), "%s documents the novice outfit region" % path)
+		if f != null:
+			f.close()

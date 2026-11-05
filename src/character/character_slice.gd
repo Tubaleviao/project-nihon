@@ -154,7 +154,7 @@ var _rig_detail: ImageTexture = null
 var _rig_color_mask: ImageTexture = null
 var _rig_channel: ImageTexture = null
 var _rig_textures_loaded: bool = false
-var _body_sheets := {}
+var _body_sheets := {}   # body id -> own sheets (Phase 215)
 
 ## Instance id of the player's own character avatar (set by game_root) — the
 ## target for combat- and death-driven animation triggers.
@@ -715,26 +715,25 @@ const RIG_DETAIL_KEY := "textures/characters/player.png.raw"
 const RIG_COLOR_MASK_KEY := "textures/characters/player_color_mask.png.raw"
 const RIG_CHANNEL_KEY := "textures/characters/player_channel.png.raw"
 
-## Sheet set a body draws with (Phase 215): its own, else the `player*` sheets (id ""). Cached per body id.
+## Sheet set a body draws with (Phase 215): its own, else the `player*` sheets (id ""). Only bodies with
+## real sheets are cached, so the unvalidated `body` string cannot grow the cache or pin the fallback.
 func _sheets_for_body(body_id: String) -> Dictionary:
-	if not _body_sheets.has(body_id):
-		var set := CharacterMaterial.body_sheets(body_id)
-		if set.is_empty():
-			if not _rig_textures_loaded:
-				_rig_textures_loaded = true
-				_rig_detail = AssetOverlay.load_texture(RIG_DETAIL_KEY)
-				_rig_color_mask = AssetOverlay.load_texture(RIG_COLOR_MASK_KEY)
-				_rig_channel = AssetOverlay.load_texture(RIG_CHANNEL_KEY)
-			set = { "id": "", "detail": _rig_detail, "color_mask": _rig_color_mask, "channel": _rig_channel }
-		_body_sheets[body_id] = set
-	return _body_sheets[body_id]
+	if _body_sheets.has(body_id): return _body_sheets[body_id]
+	var set := CharacterMaterial.body_sheets(body_id)
+	if not set.is_empty(): _body_sheets[body_id] = set; return set
+	if not _rig_textures_loaded:
+		_rig_textures_loaded = true   # once, even if a sheet is missing (null is a settled answer)
+		_rig_detail = AssetOverlay.load_texture(RIG_DETAIL_KEY)
+		_rig_color_mask = AssetOverlay.load_texture(RIG_COLOR_MASK_KEY)
+		_rig_channel = AssetOverlay.load_texture(RIG_CHANNEL_KEY)
+	return { "id": "", "detail": _rig_detail, "color_mask": _rig_color_mask, "channel": _rig_channel }
 
 ## Give every mesh of a freshly attached rig the character shader and its palette indices.
 func _dress_rig(rig_root: Node, appearance: Dictionary) -> void:
 	var sheets := _sheets_for_body(str(appearance.get("body", "")))
 	var mat := CharacterMaterial.body_material(_palette_colors(), str(sheets["id"]))
 	CharacterMaterial.bind_rig_textures(mat, sheets["detail"], sheets["color_mask"], sheets["channel"])
-	var skin: int = int(appearance.get("skinColor", 12))   # mask regions: primary hair, secondary eye, accent beard
+	var skin: int = int(appearance.get("skinColor", 12))   # mask: primary hair, secondary eye, accent beard
 	for node in rig_root.find_children("*", "MeshInstance3D", true, false):
 		var mesh := node as MeshInstance3D
 		mesh.material_override = mat
