@@ -142,6 +142,9 @@ func world_record() -> Dictionary:
 		inventories[str(pid)] = (inv._contents as Dictionary).duplicate() if inv != null and "_contents" in inv else {}
 		if inv != null:
 			inventories[str(pid)]["_w"] = "%s/%s %s" % [str(inv._current_weight), str(inv._max_weight), str(inv._item_weight("Thornwood"))]
+			for held: String in ["Chest", "FerriteIngot"]:
+				if inv.get_item_count(held) > 0:
+					inventories[str(pid)][held] = inv.get_item_count(held)
 			inventories[str(pid)]["_axe"] = str(inv.find_tool("axe"))
 			inventories[str(pid)]["_carpenter_axe_count"] = inv.get_item_count("CarpenterAxe")
 	var techs := {}

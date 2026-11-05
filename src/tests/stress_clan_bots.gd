@@ -162,6 +162,10 @@ func run() -> void:
 	var smith_pid := str(_slice(smith).claimed_player_id)
 	var trees: Array = live().get("world", {}).get("trees", [])
 	var goal := Vector2(float((trees[0] as Array)[1]), float((trees[0] as Array)[2]) - 4.0) if not trees.is_empty() else Vector2(16.0, 16.0)
+	# The smith carries too much ore to receive wood (50 kg cap): researching smithing first spends 4 Ferrite and
+	# leaves the 2 one ingot needs.
+	_slice(smith).send_raw({ "type": "research_intent", "tech_id": "TechBasicSmithing" })
+	await get_tree().create_timer(13.0).timeout
 	(bots[smith] as Dictionary)["hold"] = true
 	await _walk(smith, goal)
 	# An axe breaks after two chops (4 Thornwood): the smith chops two trees, two clan mates chop two more each
@@ -175,7 +179,6 @@ func run() -> void:
 		await _gift(mate, smith, "Thornwood", 4)
 	print("[Clan] chop: %d Thornwood" % _count(smith_pid, "Thornwood"))
 	_slice(smith).send_raw({ "type": "research_intent", "tech_id": "TechBasicCarpentry" })
-	_slice(smith).send_raw({ "type": "research_intent", "tech_id": "TechBasicSmithing" })
 	await get_tree().create_timer(14.0).timeout
 	print("[Clan] events %s" % JSON.stringify(live().get("world", {}).get("events", [])))
 	_slice(smith).send_chest("place", { "type": "carpentry bench", "ox": 2.0, "oy": 0.0, "oz": 0.0 })
@@ -186,7 +189,7 @@ func run() -> void:
 		_slice(smith).send_raw({ "type": "craft_intent", "recipe_id": rid })
 		await get_tree().create_timer(0.8).timeout
 	print("[Clan] chain inv %s stations %s" % [JSON.stringify(live().get("world", {}).get("inventories", {}).get(smith_pid, {})), JSON.stringify(live().get("world", {}).get("stations", {}))])
-	var made := _count(smith_pid, "Chest") > 0
+	var made := await _until(func(): return _count(smith_pid, "Chest") > 0, 8.0)
 	var chest_ok := false
 	var moved := false
 	if made:
