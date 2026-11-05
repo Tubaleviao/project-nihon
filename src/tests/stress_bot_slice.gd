@@ -25,6 +25,9 @@ var clan_view: Dictionary = {}
 var clan_results: Array = []
 ## The latest own inventory the host sent ({ item: count }).
 var inventory: Dictionary = {}
+## The latest `trade_synced` data and how many `trade_completed` packets arrived.
+var trade_data: Dictionary = {}
+var trades_completed := 0
 var chat_lines: Array = []
 ## Host → bot packets routed, all types.
 var packets_in := 0
@@ -71,6 +74,11 @@ func send_clan(action: String, args: Dictionary) -> void:
 func send_mine(exact: Dictionary) -> void:
 	_on_block_edit_intent("mine", WorldPos.to_scene(exact, Vector2i.ZERO), Vector3.UP, "", exact)
 
+func send_trade(type: String, fields: Dictionary) -> void:
+	var packet := { "type": type }
+	packet.merge(fields)
+	_broadcast(packet)
+
 func send_chat(text: String) -> void:
 	_broadcast({ "type": "chat_intent", "text": text })
 
@@ -92,6 +100,14 @@ func _route_h2c(payload: Dictionary) -> void:
 					inventory = (data as Dictionary)["inventory"]
 				if (data as Dictionary).get("clan_result", null) is Dictionary:
 					clan_results.append((data as Dictionary)["clan_result"])
+		"inventory_synced":
+			if payload.get("contents", null) is Dictionary:
+				inventory = payload["contents"]
+		"trade_synced":
+			if payload.get("data", null) is Dictionary:
+				trade_data = payload["data"]
+		"trade_completed":
+			trades_completed += 1
 		"chat_message":
 			if chat_lines.size() < 200:
 				chat_lines.append({ "channel": str(payload.get("channel", "")), "sender": str(payload.get("sender", "")),

@@ -22,6 +22,7 @@ var _started := -1
 ## Per-beat scratch.
 var _mark := 0
 var _clock := 0.0
+var _trade_id := ""
 var _next_send_s := 0.0
 var _invite_again_s := [0.0, 0.0, 0.0, 0.0, 0.0]
 ## The host limits each player to one clan intent per `ClanSlice.INTENT_INTERVAL`; space them wider.
@@ -29,7 +30,7 @@ const SEND_GAP_S := 0.4
 
 ## Beat ids this driver plays today; the rest of `Rules.BEATS` report `not_implemented`.
 static func implemented() -> Array:
-	return ["found", "invite_accept", "work", "see_skills", "whisper", "outsider"]
+	return ["found", "invite_accept", "work", "see_skills", "whisper", "trade", "outsider"]
 
 func step(bots: Array, clock_s: float) -> void:
 	if done:
@@ -53,7 +54,7 @@ func step(bots: Array, clock_s: float) -> void:
 		_finish_beat(false, "not_implemented", clock_s)
 		return
 	if clock_s - _beat_start_s > BEAT_TIMEOUT_S:
-		_finish_beat(false, "timeout; host answers: %s" % [_answers(bots)], clock_s)
+		_finish_beat(false, "timeout at step %d; trade %s; packs %s %s; host answers: %s" % [_mark, str(_slice(bots, 1).trade_data), str(_slice(bots, 1).inventory), str(_slice(bots, 2).inventory), _answers(bots)], clock_s)
 		return
 	var result: String = call("_beat_" + id, bots)
 	if result != "":
@@ -116,10 +117,10 @@ static func _invited_to(s: Node, clan_id: String) -> bool:
 ## Each member mines the ground under their feet for a while; the host's own roster then shows who
 ## gained which skill. (Experiment: prints what the host sent so the beat can be shaped around it.)
 func _beat_work(bots: Array) -> String:
-	# Each member mines 20 times (one per 0.3 s). The host digs one block deeper per mine whatever
+	# Each member mines 8 times (one per 0.3 s). The host digs one block deeper per mine whatever
 	# depth the claim names, so every member gains the same: Building from soil and stone, then 6 Smithing
 	# from the first metal. Passes once every member's own roster row shows a gain from the host's record.
-	if _mark < 20 and _clock >= _next_send_s:
+	if _mark < 8 and _clock >= _next_send_s:
 		_next_send_s = _clock + 0.3
 		for i in range(Rules.MEMBERS):
 			var at: Dictionary = (_slice(bots, i).spawn as Dictionary).duplicate(true)
@@ -129,7 +130,7 @@ func _beat_work(bots: Array) -> String:
 			at["local"] = Vector3(l.x + 3.0 * i, l.y - 0.5 - float(_mark) * 0.5, l.z)
 			_slice(bots, i).send_mine(at)
 		_mark += 1
-	if _mark < 20:
+	if _mark < 8:
 		return ""
 	var gains: Array = []
 	for i in range(Rules.MEMBERS):
@@ -137,7 +138,7 @@ func _beat_work(bots: Array) -> String:
 		if xp <= 0.0:
 			return ""
 		gains.append("bot%d Building %.0f Smithing %.0f" % [i, xp, maxf(0.0, _xp_of(bots, i, "Smithing"))])
-	return "; ".join(PackedStringArray(gains))
+	return "; ".join(PackedStringArray(gains)) + " | inv " + str(_slice(bots, 1).inventory)
 
 func _xp_of(bots: Array, i: int, skill: String) -> float:
 	var h := str(_slice(bots, i).claimed_handle)
@@ -171,6 +172,41 @@ func _beat_whisper(bots: Array) -> String:
 	return ""
 
 ## A non-member cannot join the clan uninvited; the host's refusal reason is the evidence.
+## Bot 1 and bot 2 swap mined goods through the trade window's protocol: start, both propose, both accept.
+## The host's own `trade_completed` packet is the evidence.
+func _beat_trade(bots: Array) -> String:
+	var a := _slice(bots, 1)
+	var b := _slice(bots, 2)
+	if a.trades_completed > 0 and b.trades_completed > 0:
+		return "trade completed; bot1 pack now %s" % str(a.inventory)
+	if _clock < _next_send_s:
+		return ""
+	_next_send_s = _clock + 0.6
+	var trades: Dictionary = a.trade_data.get("trades", {}) if a.trade_data.get("trades", null) is Dictionary else {}
+	match _mark:
+		0:
+			a.send_trade("trade_start_intent", { "party_b": str(b.claimed_handle) })
+			_mark = 1
+		1:
+			if not trades.is_empty():
+				_trade_id = str(trades.keys()[0])
+				a.send_trade("trade_propose_intent", { "trade_id": _trade_id, "give": { "Soil": 2 }, "want": { "Soil": 1 } })
+				_mark = 2
+		2:
+			b.send_trade("trade_propose_intent", { "trade_id": _trade_id, "give": { "Soil": 1 }, "want": { "Soil": 2 } })
+			_mark = 3
+		3:
+			a.send_trade("trade_accept_intent", { "trade_id": _trade_id })
+			_mark = 4
+		4:
+			b.send_trade("trade_accept_intent", { "trade_id": _trade_id })
+			_mark = 5
+		5:
+			# An accept the host dropped (rate limit) is simply sent again until the trade completes.
+			b.send_trade("trade_accept_intent", { "trade_id": _trade_id })
+			a.send_trade("trade_accept_intent", { "trade_id": _trade_id })
+	return ""
+
 func _beat_outsider(bots: Array) -> String:
 	var s := _slice(bots, 4)
 	if not _sent:
