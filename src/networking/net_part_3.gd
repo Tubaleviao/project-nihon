@@ -254,6 +254,9 @@ func _route_h2c(payload: Dictionary) -> void:
 				str(payload.get("text", "")),
 				""
 			)
+		"mount_changed":
+			# Phase 216 — who rides what, as the host decided it (a handle, never a player id).
+			GameBus.mount_changed.emit(str(payload.get("player", "")).left(64), str(payload.get("instance_id", "")).left(64))
 		"system_message":
 			# Phase 131 — a keyed host line; an unknown key, too many args or an oversize arg becomes the
 			# generic fallback line, never the raw input.

@@ -322,6 +322,8 @@ func _ready() -> void:
 	GameBus.writing_intent.connect(_m2.forward_writing_intent)
 	# Phase 35 — taming is per-player as well (the flag and companion live on the tamer's record), so it travels the same way.
 	GameBus.tame_intent.connect(_on_tame_intent)
+	GameBus.mount_intent.connect(_on_mount_intent)
+	GameBus.dismount_intent.connect(_on_dismount_intent)
 	# Phase 85 — chat lines travel client → host as an intent; the host's posts (chat, announcements,
 	# command replies) travel back.
 	GameBus.chat_intent.connect(_on_chat_intent)
@@ -737,6 +739,23 @@ func _on_tame_intent(instance_id: String, _player_id: String) -> void:
 	if _role != Role.CLIENT:
 		return
 	_broadcast({ "type": "tame_intent", "instance_id": instance_id })
+
+## Phase 216 — client → host: ride one of my companions, or get off. No identity rides along; the host binds it.
+func _on_mount_intent(instance_id: String, _player_id: String) -> void:
+	if _role != Role.CLIENT:
+		return
+	_broadcast({ "type": "mount_intent", "instance_id": instance_id })
+
+func _on_dismount_intent(_player_id: String) -> void:
+	if _role != Role.CLIENT:
+		return
+	_broadcast({ "type": "dismount_intent" })
+
+## Phase 216 — host → every peer: `player_id` (as the public handle) now rides `instance_id`, or "" for none.
+func broadcast_mount(player_id: String, instance_id: String) -> void:
+	if _role != Role.HOST:
+		return
+	_broadcast({ "type": "mount_changed", "player": redact_for_client(player_id), "instance_id": instance_id })
 
 ## Phase 85 — client → host: a chat line or slash command. Carries no identity: the host binds the
 ## sender to the connection and decides whether a command is theirs to run.

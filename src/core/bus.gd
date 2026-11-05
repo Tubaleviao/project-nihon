@@ -821,6 +821,15 @@ signal tame_resolved(result: Dictionary)
 ## player_id   : String — the companion's owner
 signal creature_tamed(instance_id: String, creature_id: String, player_id: String)
 
+## Phase 216 — a player asks to ride one of their tamed companions (client → host with "" as the player; the
+## host re-emits with the identity bound to the connection), or to get off.
+signal mount_intent(instance_id: String, player_id: String)
+signal dismount_intent(player_id: String)
+## The host's answer: `action` is "mount" or "dismount"; `reason` a `MountSlice.REASONS` key when refused.
+signal mount_resolved(player_id: String, action: String, ok: bool, reason: String)
+## `instance_id` is the creature the player now rides, or "" once they are on foot.
+signal mount_changed(player_id: String, instance_id: String)
+
 # ---------------------------------------------------------------------------
 # Chat and admin commands (Phase 85)
 # ---------------------------------------------------------------------------

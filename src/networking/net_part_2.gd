@@ -490,6 +490,19 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 				sl._refuse_unhandshaked(sender, "tame_intent")
 				return
 			GameBus.tame_intent.emit(str(payload.get("instance_id", "")), tamer)
+		"mount_intent":
+			# Phase 216 — the rider is the connection's player; the creature must be that player's own companion.
+			var rider = sl._actor_id(sender)
+			if rider == "":
+				sl._refuse_unhandshaked(sender, "mount_intent")
+				return
+			GameBus.mount_intent.emit(str(payload.get("instance_id", "")).left(64), rider)
+		"dismount_intent":
+			var dismounter = sl._actor_id(sender)
+			if dismounter == "":
+				sl._refuse_unhandshaked(sender, "dismount_intent")
+				return
+			GameBus.dismount_intent.emit(dismounter)
 		"chat_intent":
 			# Phase 85 — a chat line or command is said BY the connection's player; the host's
 			# ChatSlice decides whether a command is theirs to run.

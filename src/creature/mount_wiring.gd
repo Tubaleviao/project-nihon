@@ -1,0 +1,69 @@
+extends "res://src/core/wiring.gd"
+## Mount wiring (Phase 216) — gives the mount slice its facts from the creature population and the player
+## registry, answers a rider with their result, tells other peers who rides what, and lifts the host's speed
+## cap for a mounted player to the mount's factor times the walking speed.
+
+const MountSlice := preload("res://src/creature/mount_slice.gd")
+const AdminRules := preload("res://src/admin/admin_rules.gd")
+const PlayerSlice := preload("res://src/player/player_slice.gd")
+## Slack over the exact mounted speed, as for a carried body (`CarcassWiring.CARRY_SPEED_SLACK`).
+const SPEED_SLACK := 1.25
+
+func make_slice(ctx: GameRoot) -> Node:
+	root = ctx
+	var m := MountSlice.new()
+	m.is_host = not root._is_client
+	m.creature_of = func(iid: String) -> String: return root._creature.get_instance_creature_id(iid)
+	m.owner_of = func(iid: String) -> String: return root._creature.get_tamed_by(iid)
+	m.alive = func(iid: String) -> bool: return not root._taming._instance_is_dead(iid)
+	m.position_of = func(iid: String) -> Variant: return root._creature.get_instance_position(iid)
+	m.player_pos = _player_position
+	m.local_player_id = func() -> String: return str(root._registry.local_player_id)
+	return m
+
+func _player_position(player_id: String) -> Variant:
+	if player_id == str(root._registry.local_player_id):
+		return root._player.get_position() if root._player != null else null
+	var peer: int = root._registry.get_peer_id(player_id)
+	if peer != 0 and root._networking.has_last_known_state(peer):
+		return root._networking.get_last_known_state(peer)
+	return null
+
+func _connect_all() -> void:
+	connect_bus(GameBus.mount_resolved, _on_resolved)
+	connect_bus(GameBus.mount_changed, _on_changed)
+
+## Host: answer the rider who asked.
+func _on_resolved(player_id: String, action: String, ok: bool, reason: String) -> void:
+	if not root._is_client and player_id != "":
+		GameBus.system_message.emit(("mount.ok." + action) if ok else ("mount.refused." + reason), [], player_id)
+	if root._is_client or player_id == "" or player_id == str(root._registry.local_player_id):
+		return
+	var peer: int = root._registry.get_peer_id(player_id)
+	if peer != 0:
+		root._networking.send_own_state(peer, { "mount_result": { "action": action.left(16), "ok": ok, "reason": reason.left(32) } })
+
+## Host: every peer learns who rides what (the rider's handle is the public one the wire already uses).
+func _on_changed(player_id: String, instance_id: String) -> void:
+	if root._is_client or root._networking == null:
+		return
+	root._networking.broadcast_mount(player_id, instance_id)
+
+## The fastest horizontal speed (m/s) `peer` may move at while mounted; 0 when it is on foot (no mount cap).
+func mounted_speed_cap(peer: int) -> float:
+	if root._is_client or root._mount == null or root._networking == null:
+		return 0.0
+	var pid: String = root._networking.get_player_id(peer)
+	if pid == "" or not root._mount.is_mounted(pid):
+		return 0.0
+	var rate: float = root._mount.accepted_speed(pid, PlayerSlice.SPEED * root._registry.stat_of(pid, "moveSpeedFactor")) * SPEED_SLACK
+	# The admin moves the host set for the player (`/speed`, `/fly`) apply on a mount as on foot.
+	if root._chat != null:
+		var moves: Dictionary = root._chat.admin_moves_of(pid)
+		rate *= float(moves["speed"]) * (AdminRules.FLY_SPEED_FACTOR if bool(moves["fly"]) else 1.0)
+	return rate
+
+## The host's speed cap for `peer`: the mount's when mounted, else the carried body's.
+func peer_speed_cap(peer: int) -> float:
+	var mounted := mounted_speed_cap(peer)
+	return mounted if mounted > 0.0 else root._carcass_wiring.peer_speed_cap(peer)

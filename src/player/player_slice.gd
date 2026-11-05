@@ -115,6 +115,8 @@ var max_hp: float = MAX_HP
 var _vel:    Vector3 = Vector3.ZERO
 var _sync_tick: int = 0
 var _alive: bool = true
+## Phase 216 — whether the host last said this player is mounted (M toggles).
+var _mounted: bool = false
 ## Phase 85 — right button held: the camera orbits and the mouse is captured.
 var _looking: bool = false
 var _look_restore_pos: Vector2 = Vector2.ZERO
@@ -287,6 +289,7 @@ static func status_icon_ids(effects: Array) -> Array:
 	return ids
 
 func _ready() -> void:
+	GameBus.mount_resolved.connect(_on_mount_resolved)
 	GameBus.status_effects_synced.connect(_on_status_effects_synced)
 	GameBus.locale_changed.connect(_on_locale_changed)
 	if render_visuals:
@@ -487,6 +490,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	# TamingSlice (fabric-driven); this is only the player-facing affordance.
 	if event is InputEventKey and event.pressed and not WindowShortcuts.is_window_key(event) and event.keycode == KEY_G:
 		_try_tame()
+	# Phase 216 — M mounts the nearest creature in range, or gets off. The host decides: it must be your own
+	# tamed companion (MountSlice), and it answers with a keyed notice.
+	if event is InputEventKey and event.pressed and not event.echo and not WindowShortcuts.is_window_key(event) and event.keycode == KEY_M and _alive:
+		_toggle_mount()
 	# X key → work the nearest body with the tool in hand; Z key → carry it, or put the carried one down.
 	if event is InputEventKey and event.pressed and not event.echo and (event.keycode == KEY_X or event.keycode == KEY_Z):
 		_try_carcass(event.keycode == KEY_X)
@@ -1400,6 +1407,21 @@ func _try_tame() -> void:
 	if iid == "":
 		return
 	GameBus.tame_requested.emit(iid)
+
+## Phase 216 — M: get off when mounted, else ask to ride the nearest creature within TAME_RANGE.
+func _toggle_mount() -> void:
+	if _mounted:
+		GameBus.dismount_intent.emit("")
+		return
+	if creature_slice == null or not creature_slice.has_method("nearest_creature"):
+		return
+	var iid := str(creature_slice.nearest_creature(get_position(), TAME_RANGE))
+	if iid != "":
+		GameBus.mount_intent.emit(iid, "")
+
+func _on_mount_resolved(_player_id: String, action: String, ok: bool, _reason: String) -> void:
+	if ok:
+		_mounted = action == "mount"
 
 ## True unless `item` is durable and every copy is at 0 durability.
 static func _has_usable_copy(durability: Dictionary, item: String) -> bool:

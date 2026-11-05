@@ -667,6 +667,9 @@ func on_own_state_synced(data: Dictionary) -> void:
 	if data.get("clan_result", null) is Dictionary:
 		var cres: Dictionary = data["clan_result"]
 		GameBus.clan_resolved.emit(root._registry.local_player_id, str(cres.get("action", "")).left(16), bool(cres.get("ok", false)), str(cres.get("reason", "")).left(32))
+	if data.get("mount_result", null) is Dictionary:
+		var mres: Dictionary = data["mount_result"]
+		GameBus.mount_resolved.emit(root._registry.local_player_id, str(mres.get("action", "")).left(16), bool(mres.get("ok", false)), str(mres.get("reason", "")).left(32))
 	root._creation_wiring.apply_own(data)
 	if data.get("settlement_result", null) is Dictionary:
 		var sres: Dictionary = data["settlement_result"]

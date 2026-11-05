@@ -27,6 +27,7 @@ const PlayerSlice      := preload("res://src/player/player_slice.gd")
 const LootSlice        := preload("res://src/loot/loot_slice.gd")
 const CarcassSlice     := preload("res://src/loot/carcass_slice.gd")
 const CarcassWiring    := preload("res://src/loot/carcass_wiring.gd")
+const MountWiring      := preload("res://src/creature/mount_wiring.gd")
 const InventorySlice   := preload("res://src/inventory/inventory_slice.gd")
 const CharacterSlice   := preload("res://src/character/character_slice.gd")
 const CraftingSlice    := preload("res://src/crafting/crafting_slice.gd")
@@ -91,6 +92,8 @@ var _character_wiring := CharacterWiring.new()
 var _gesture_wiring := GestureWiring.new()
 var _creation_wiring := CreationWiring.new()
 var _carcass_wiring := CarcassWiring.new()
+var _mount_wiring := MountWiring.new()
+var _mount:       Node
 var _peer_wiring := PeerWiring.new()
 var _snapshot_wiring := SnapshotWiring.new()
 var _persistence_wiring := PersistenceWiring.new()
@@ -259,7 +262,7 @@ var _handshake_retries: int = 0
 
 ## Phase 132 — wiring modules know their root from construction (the suite builds roots without `_ready`).
 func _init() -> void:
-	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _bed_wiring, _tutorial_wiring, _settlement_wiring, _clan_wiring, _structure_wiring, _chest_wiring, _writing_wiring, _crafting_wiring, _character_wiring, _gesture_wiring, _creation_wiring, _carcass_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring, _admin_wiring]
+	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _bed_wiring, _tutorial_wiring, _settlement_wiring, _clan_wiring, _structure_wiring, _chest_wiring, _writing_wiring, _crafting_wiring, _character_wiring, _gesture_wiring, _creation_wiring, _carcass_wiring, _mount_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring, _admin_wiring]
 	for w in _wirings:
 		w.root = self
 
@@ -326,6 +329,7 @@ func _ready() -> void:
 	_bed         = BedSlice.new()
 	_settlements = _settlement_wiring.make_slice(self)
 	_clans       = _clan_wiring.make_slice(self)
+	_mount       = _mount_wiring.make_slice(self)
 	_weather     = WeatherSlice.new()
 	_structures  = _structure_wiring.make_slice(self)
 	_chests      = _chest_wiring.make_slice(self)
@@ -370,7 +374,7 @@ func _ready() -> void:
 
 	# The UI (Phase 14) is presentation only, so a headless dedicated server (Phase 27) keeps it out of the
 	# tree — its _ready() would otherwise build windows nothing can render or click.
-	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _registry, _player, _loot, _carcass, _inventory, _character, _crafting, _technology, _taming, _professions, _station, _tree, _market, _trade, _proposal, _chat, _gesture, _waystones, _bed, _settlements, _clans, _weather, _structures, _chests, _writing]
+	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _registry, _player, _loot, _carcass, _inventory, _character, _crafting, _technology, _taming, _professions, _station, _tree, _market, _trade, _proposal, _chat, _gesture, _waystones, _bed, _settlements, _clans, _mount, _weather, _structures, _chests, _writing]
 	if not _is_server:
 		slices.append(_ui)
 	if not _is_server:
@@ -439,7 +443,7 @@ func _ready() -> void:
 	_networking.tree_slice      = _tree
 	_networking.player_registry = _registry
 	_networking.peer_held = _peer_wiring.peer_is_held
-	_networking.peer_speed_cap = _carcass_wiring.peer_speed_cap
+	_networking.peer_speed_cap = _mount_wiring.peer_speed_cap
 	# Phase 85 — chat and admin commands act on the registry's players, the local body and pack,
 	# and reach a remote player through the networking slice's host → peer doors. A headless
 	# server builds no box.
