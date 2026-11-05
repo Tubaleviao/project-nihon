@@ -6,6 +6,7 @@ extends "res://src/tests/test_support.gd"
 
 const CreationRules := preload("res://src/character/creation_rules.gd")
 const CharacterSliceScript := preload("res://src/character/character_slice.gd")
+const CharacterMaterial := preload("res://src/character/character_material.gd")
 
 
 func register() -> void:
