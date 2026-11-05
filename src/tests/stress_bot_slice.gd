@@ -23,6 +23,8 @@ var teleported: Dictionary = {}
 ## `clan_result` (`{ action, ok, reason }`) and every chat line (`{ channel, sender, text }`) in order.
 var clan_view: Dictionary = {}
 var clan_results: Array = []
+## The latest own inventory the host sent ({ item: count }).
+var inventory: Dictionary = {}
 var chat_lines: Array = []
 ## Host → bot packets routed, all types.
 var packets_in := 0
@@ -65,6 +67,10 @@ func report(exact: Dictionary) -> String:
 func send_clan(action: String, args: Dictionary) -> void:
 	_m2.forward_clan_intent(action, args, "")
 
+## Mine the block `exact` names (a `{chunk, local}` world position), aimed from above.
+func send_mine(exact: Dictionary) -> void:
+	_on_block_edit_intent("mine", WorldPos.to_scene(exact, Vector2i.ZERO), Vector3.UP, "", exact)
+
 func send_chat(text: String) -> void:
 	_broadcast({ "type": "chat_intent", "text": text })
 
@@ -82,6 +88,8 @@ func _route_h2c(payload: Dictionary) -> void:
 			if data is Dictionary:
 				if (data as Dictionary).get("clan_view", null) is Dictionary:
 					clan_view = (data as Dictionary)["clan_view"]
+				if (data as Dictionary).get("inventory", null) is Dictionary:
+					inventory = (data as Dictionary)["inventory"]
 				if (data as Dictionary).get("clan_result", null) is Dictionary:
 					clan_results.append((data as Dictionary)["clan_result"])
 		"chat_message":

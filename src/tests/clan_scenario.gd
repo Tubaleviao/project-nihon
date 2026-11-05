@@ -29,7 +29,7 @@ const SEND_GAP_S := 0.4
 
 ## Beat ids this driver plays today; the rest of `Rules.BEATS` report `not_implemented`.
 static func implemented() -> Array:
-	return ["found", "invite_accept", "see_skills", "whisper", "outsider"]
+	return ["found", "invite_accept", "work", "see_skills", "whisper", "outsider"]
 
 func step(bots: Array, clock_s: float) -> void:
 	if done:
@@ -112,6 +112,28 @@ static func _invited_to(s: Node, clan_id: String) -> bool:
 		if str((inv as Dictionary).get("id", "")) == clan_id:
 			return true
 	return false
+
+## Each member mines the ground under their feet for a while; the host's own roster then shows who
+## gained which skill. (Experiment: prints what the host sent so the beat can be shaped around it.)
+func _beat_work(bots: Array) -> String:
+	if _clock >= _next_send_s:
+		_next_send_s = _clock + 0.5
+		for i in range(Rules.MEMBERS):
+			var s := _slice(bots, i)
+			var at: Dictionary = (s.spawn as Dictionary).duplicate(true)
+			if at.is_empty():
+				continue
+			var local: Vector3 = at["local"]
+			at["local"] = Vector3(local.x, local.y - 0.5 - float(_mark) * 0.125, local.z)
+			s.send_mine(at)
+		_mark += 1
+	if _mark < 6:
+		return ""
+	var out: Array = []
+	for i in range(Rules.MEMBERS):
+		out.append("bot%d inv %s" % [i, str(_slice(bots, i).inventory)])
+	var roster: Array = (((_slice(bots, 0).clan_view as Dictionary).get("mine", {}) as Dictionary).get("roster", []))
+	return "; ".join(PackedStringArray(out)) + " | roster " + str(roster)
 
 func _beat_see_skills(bots: Array) -> String:
 	# Every member's view lists every member with a skills table, the host's own record.
