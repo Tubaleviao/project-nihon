@@ -22,6 +22,10 @@ var _started := -1
 ## Per-beat scratch.
 var _mark := 0
 var _clock := 0.0
+var _mark2 := 0
+var _soil_before := 0
+var _soil_mid := 0
+var _xp_before := 0.0
 var _marks_seen := 0
 var _refusals: Array = []
 var _trade_id := ""
@@ -32,7 +36,7 @@ const SEND_GAP_S := 0.4
 
 ## Beat ids this driver plays today; the rest of `Rules.BEATS` report `not_implemented`.
 static func implemented() -> Array:
-	return ["found", "invite_accept", "work", "see_skills", "whisper", "trade", "build", "outsider"]
+	return ["found", "invite_accept", "work", "see_skills", "whisper", "trade", "build", "dismantle", "outsider"]
 
 func step(bots: Array, clock_s: float) -> void:
 	if done:
@@ -228,6 +232,48 @@ func _beat_build(bots: Array) -> String:
 		return ""
 	if not (_slice(bots, 4).circle_view as Array).is_empty():
 		return "outsider is shown %d circle(s); keys %s" % [(_slice(bots, 4).circle_view as Array).size(), str(a.system_keys)]
+	return ""
+
+## Bot 3 builds one private block of its own (`/buildas private`), then mines it again. Evidence: its pack
+## count of Soil falls by one on the place and the host's roster shows its Building xp rising on the mine.
+func _beat_dismantle(bots: Array) -> String:
+	var c := _slice(bots, 3)
+	if _clock < _next_send_s:
+		return ""
+	_next_send_s = _clock + 1.2
+	var at: Dictionary = (c.spawn as Dictionary).duplicate(true)
+	var l: Vector3 = at["local"]
+	at["local"] = Vector3(l.x - 8.0, l.y, l.z - 8.0)
+	match _mark:
+		0:
+			c.send_chat("/buildas private")
+			_mark = 1
+		1:
+			_soil_before = int(c.inventory.get("Soil", 0))
+			c.send_place(at, "Soil")
+			_mark = 2
+		2:
+			if int(c.inventory.get("Soil", 0)) >= _soil_before:
+				c.send_place(at, "Soil")   # the place did not land yet
+				return ""
+			_xp_before = _xp_of(bots, 3, "Building")
+			_soil_mid = int(c.inventory.get("Soil", 0))
+			var hit: Dictionary = at.duplicate(true)
+			hit["local"] = Vector3(l.x - 8.0, l.y + 0.0625, l.z - 8.0)
+			c.send_mine(hit)
+			_mark = 3
+		3:
+			# Until the block is gone, aim at each step height near the ground in turn.
+			if _xp_of(bots, 3, "Building") <= _xp_before:
+				var hit2: Dictionary = at.duplicate(true)
+				hit2["local"] = Vector3(l.x - 8.0, l.y + [0.0625, 0.1875, -0.0625, 0.3125, 0.4375, 0.0, 0.25][_mark2 % 7], l.z - 8.0)
+				_mark2 += 1
+				c.send_mine(hit2)
+				_next_send_s = _clock + 1.3
+				return ""
+			if _xp_of(bots, 3, "Building") > _xp_before:
+				return "placed one private block (Soil %d -> %d) and mined it back (Soil %d, Building xp %.0f -> %.0f; keys %s)" % [
+					_soil_before, _soil_mid, int(c.inventory.get("Soil", 0)), _xp_before, _xp_of(bots, 3, "Building"), str(c.system_keys)]
 	return ""
 
 ## The fifth bot is not in the clan: its join is refused, and so is a block placed in the clan's circle.

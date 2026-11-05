@@ -166,13 +166,25 @@ build a clan-owned building with a clan chest. The in-game time they spend playi
 time skipped with admin commands, must stay under one hour.
 
 **Progress (2026-11-05, not done):** `tools/clan_scenario.sh` boots a dedicated server and five bots
-(`--stress-bots 5 --stress-scenario clan`); `src/tests/clan_scenario.gd` plays found, invite and join,
-a mining `work` beat (all four gain Building from the ground under their feet, so the different-skills check is still unmet. Measured: a bot's mine claim digs one block deeper whatever depth it names, so every miner gains the same Building and 6 Smithing; a member with another top skill needs trees (Carpentry), whose ids a bot without terrain cannot name, or crafting), roster with skills, whisper and the outsider's refused join over ENet and judges each from what the host
-sent back. The pure rules, report and verdict are in `src/tests/clan_scenario_rules.gd` (suite-tested).
-Still to do: the work, trade, build, chest and dismantle beats (a bot starts with an empty pack, so it
-must mine, chop, smelt and craft its way to a Chest and blocks through the host's own checks), the
-outsider's chest and build refusals, the host-side world record for the `checks`, the CI job and the
-3-run check.
+(`--stress-bots 5 --stress-scenario clan`); `src/tests/clan_scenario.gd` plays eight beats over ENet and
+judges each from what the host sent back, never from what a bot did: found, invite and join (roster of 4),
+`work` (each bot mines eight times and the host's roster shows the gain), roster with skills, whisper, a
+trade of mined Soil through the trade protocol (`trade_completed`), a clan-owned build (`/buildas clan`, then
+blocks placed; the outsider is shown the clan's circle), a private block placed and mined again, and the
+outsider's refused join (`not_invited`) and refused build (`structure.refused.not_owner`). The pure rules,
+report and verdict are in `src/tests/clan_scenario_rules.gd` (suite-tested).
+
+Still to do, with what was measured:
+- **Chest beat.** A bot needs a `Chest`, which is eight Thornwood planks and a ferrite ingot: trees (ids a
+  bot without terrain cannot name) and smelting. The chest, the clan access mode, the moved item and the
+  outsider's refused chest open are all behind it.
+- **Different top skills.** A mine claim digs one block deeper whatever depth it names, so every miner
+  gains the same Building (and 6 Smithing from the first metal). A member with another top skill needs
+  Carpentry (trees), Tailoring or Lockpicking (a chest).
+- The dismantle beat's evidence is Building xp rising after the mine; it does not yet prove the mined block was
+  the placed one.
+- The host-side world record for the `checks`, the CI job (not added while the scenario cannot pass) and the
+  3-run check.
 
 **Newel dependency:** NO.
 
