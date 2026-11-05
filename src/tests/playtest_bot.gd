@@ -299,7 +299,7 @@ static func flight_speed_from_args(args: Array) -> float:
 	return FLIGHT_SPEED_MPS
 
 static func all_step_names() -> Array:
-	return ["create", "walk", "stream", "flight", "mine", "gather", "craft", "character_sheet", "place", "fight", "tutorial", "travel", "mount", "horizon", "far_peak", "pole", "tower"]
+	return ["create", "walk", "stream", "flight", "mine", "gather", "craft", "character_sheet", "place", "fight", "tutorial", "travel", "horizon", "far_peak", "pole", "tower"]
 
 # ---------------------------------------------------------------------------
 # Pure report maths
@@ -1718,37 +1718,6 @@ func _step_travel() -> Array:
 	var ok: bool = await _until(func():
 		return WaystoneSlice.distance_m(_root._player.get_world_pos(), dest) < ARRIVE_TOLERANCE_M, STEP_TIMEOUT_SECS)
 	return [ok, "travelled to the second stone" if ok else "body did not reach the second stone"]
-
-## Phase 216 — mount: tame a wolf (stood beside the player and bound to them the way a taming leaves it), mount it
-## through the intent, ride 200 m and dismount. The mounted average speed must reach the fabric factor times the
-## walking speed (x0.9): the body walks at the mount's factor while mounted.
-const MOUNT_RIDE_M := 200.0
-const MOUNT_RIDE_SECS := 45.0
-const MOUNT_SPEED_SLACK := 0.9
-func _step_mount() -> Array:
-	var me: String = str(_root._registry.local_player_id)
-	var chunk: Vector2i = _root._player.get_world_pos()["chunk"]
-	var iid: String = _root._creature._spawn("GraywolfPack", chunk, 98)
-	if iid == "" or not _root._creature.mark_tamed(iid, me):
-		return [false, "no wolf to tame"]
-	_root._creature.set_instance_position(iid, _player_pos())
-	var factor: float = float(_root._mount_wiring.slice.spec_of_creature("GraywolfPack").get("speedFactor", 0.0))
-	GameBus.mount_intent.emit(iid, "")
-	if not await _until(func(): return _root._mount_wiring.slice.is_mounted(me), STEP_TIMEOUT_SECS * 0.25):
-		return [false, "the host did not mount the wolf"]
-	var start := _player_pos()
-	var t0 := Time.get_ticks_msec()
-	_key(KEY_W, true)
-	var rode: bool = await _until(func(): return Vector2(_player_pos().x - start.x, _player_pos().z - start.z).length() >= MOUNT_RIDE_M, MOUNT_RIDE_SECS)
-	_key(KEY_W, false)
-	var secs := float(Time.get_ticks_msec() - t0) / 1000.0
-	var metres := Vector2(_player_pos().x - start.x, _player_pos().z - start.z).length()
-	GameBus.dismount_intent.emit("")
-	var off: bool = await _until(func(): return not _root._mount_wiring.slice.is_mounted(me), STEP_TIMEOUT_SECS * 0.25)
-	var avg := metres / maxf(secs, 0.001)
-	var need := factor * PlayerSlice.SPEED * MOUNT_SPEED_SLACK
-	var ok: bool = rode and off and factor > 1.0 and avg >= need
-	return [ok, "rode %.0f m at %.1f m/s (need %.1f), dismounted %s" % [metres, avg, need, str(off)]]
 
 ## Phase 164 — the horizon: find the nearest coast with open sea across four headings, stand there and
 ## look out at the shallowest pitch. Each heading's frame is drawn with the camera seeing only the

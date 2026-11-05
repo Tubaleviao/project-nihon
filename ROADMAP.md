@@ -237,6 +237,16 @@ the placeholder rule forbids the art repo from adding them, and the game binds o
 player who has tamed a mountable creature can mount it, travel faster than on foot, and dismount.
 Taming (`src/creature/taming_slice.gd`) already binds a creature to its tamer as a companion.
 
+**Progress (2026-11-05, not done):** done and green: the fabric `mount` field on `GraywolfPack` with
+`tools/check_mounts.js` and its CI step; `MountSlice` and `MountWiring` (mount and dismount intents, the host's
+refusal keys, the speed cap for a mounted player, the companion following the rider, death and logout
+dismount); the `M` key, the `mount` input action in the tutorial table and the `en`/`pt_BR` strings; suite
+`mount_tests.gd`; harness step `mount_dismount` (49/49 steps agree). Still to do: the harness's second client
+seeing the rider (the harness has one client, so today the client sees the host's `mount_changed` broadcast
+for itself); the playtest `mount` step (tried: standing in the village the rider is attacked and dies before
+the 200 m ride ends, so the step needs a quiet spot or a heal); the fabric PR and the runtime PR are not yet
+split; tick the acceptance criteria when they are all green.
+
 **Newel dependency:** NO.
 
 **Deliverables:**
