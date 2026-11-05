@@ -28,6 +28,10 @@ var inventory: Dictionary = {}
 ## The latest `trade_synced` data and how many `trade_completed` packets arrived.
 var trade_data: Dictionary = {}
 var trades_completed := 0
+## The latest `circle_view` (foreign circles the host says this bot may not build in) and the keys of every
+## `system_message` line in order.
+var circle_view: Array = []
+var system_keys: Array = []
 var chat_lines: Array = []
 ## Host → bot packets routed, all types.
 var packets_in := 0
@@ -79,6 +83,10 @@ func send_trade(type: String, fields: Dictionary) -> void:
 	packet.merge(fields)
 	_broadcast(packet)
 
+## Place one block of `material` against the ground at `exact` (a `{chunk, local}` position), aimed from above.
+func send_place(exact: Dictionary, material: String) -> void:
+	_on_block_edit_intent("place", WorldPos.to_scene(exact, Vector2i.ZERO), Vector3.UP, material, exact)
+
 func send_chat(text: String) -> void:
 	_broadcast({ "type": "chat_intent", "text": text })
 
@@ -96,10 +104,15 @@ func _route_h2c(payload: Dictionary) -> void:
 			if data is Dictionary:
 				if (data as Dictionary).get("clan_view", null) is Dictionary:
 					clan_view = (data as Dictionary)["clan_view"]
+				if (data as Dictionary).get("circle_view", null) is Array:
+					circle_view = (data as Dictionary)["circle_view"]
 				if (data as Dictionary).get("inventory", null) is Dictionary:
 					inventory = (data as Dictionary)["inventory"]
 				if (data as Dictionary).get("clan_result", null) is Dictionary:
 					clan_results.append((data as Dictionary)["clan_result"])
+		"system_message":
+			if system_keys.size() < 200:
+				system_keys.append(str(payload.get("key", "")))
 		"inventory_synced":
 			if payload.get("contents", null) is Dictionary:
 				inventory = payload["contents"]

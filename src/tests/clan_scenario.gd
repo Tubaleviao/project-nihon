@@ -22,6 +22,8 @@ var _started := -1
 ## Per-beat scratch.
 var _mark := 0
 var _clock := 0.0
+var _marks_seen := 0
+var _refusals: Array = []
 var _trade_id := ""
 var _next_send_s := 0.0
 var _invite_again_s := [0.0, 0.0, 0.0, 0.0, 0.0]
@@ -30,7 +32,7 @@ const SEND_GAP_S := 0.4
 
 ## Beat ids this driver plays today; the rest of `Rules.BEATS` report `not_implemented`.
 static func implemented() -> Array:
-	return ["found", "invite_accept", "work", "see_skills", "whisper", "trade", "outsider"]
+	return ["found", "invite_accept", "work", "see_skills", "whisper", "trade", "build", "outsider"]
 
 func step(bots: Array, clock_s: float) -> void:
 	if done:
@@ -54,7 +56,7 @@ func step(bots: Array, clock_s: float) -> void:
 		_finish_beat(false, "not_implemented", clock_s)
 		return
 	if clock_s - _beat_start_s > BEAT_TIMEOUT_S:
-		_finish_beat(false, "timeout at step %d; trade %s; packs %s %s; host answers: %s" % [_mark, str(_slice(bots, 1).trade_data), str(_slice(bots, 1).inventory), str(_slice(bots, 2).inventory), _answers(bots)], clock_s)
+		_finish_beat(false, "timeout at step %d; sys %s %s; trade %s; packs %s %s; host answers: %s" % [_mark, str(_slice(bots, 0).system_keys), str(_slice(bots, 4).system_keys), str(_slice(bots, 1).trade_data), str(_slice(bots, 1).inventory), str(_slice(bots, 2).inventory), _answers(bots)], clock_s)
 		return
 	var result: String = call("_beat_" + id, bots)
 	if result != "":
@@ -122,7 +124,7 @@ func _beat_work(bots: Array) -> String:
 	# from the first metal. Passes once every member's own roster row shows a gain from the host's record.
 	if _mark < 8 and _clock >= _next_send_s:
 		_next_send_s = _clock + 0.3
-		for i in range(Rules.MEMBERS):
+		for i in range(Rules.BOT_COUNT):
 			var at: Dictionary = (_slice(bots, i).spawn as Dictionary).duplicate(true)
 			if at.is_empty():
 				continue
@@ -171,7 +173,6 @@ func _beat_whisper(bots: Array) -> String:
 			return "recipient got a whisper line"
 	return ""
 
-## A non-member cannot join the clan uninvited; the host's refusal reason is the evidence.
 ## Bot 1 and bot 2 swap mined goods through the trade window's protocol: start, both propose, both accept.
 ## The host's own `trade_completed` packet is the evidence.
 func _beat_trade(bots: Array) -> String:
@@ -207,16 +208,63 @@ func _beat_trade(bots: Array) -> String:
 			a.send_trade("trade_accept_intent", { "trade_id": _trade_id })
 	return ""
 
+## Bot 0 builds as the clan, then places a small row of Soil blocks beside the spawn. Evidence: the host's
+## `circle_view` shows the outsider (bot 4) a circle it may not build in.
+func _beat_build(bots: Array) -> String:
+	var a := _slice(bots, 0)
+	if _clock < _next_send_s:
+		return ""
+	_next_send_s = _clock + 0.5
+	if _mark == 0:
+		a.send_chat("/buildas clan")
+		_mark = 1
+		return ""
+	if _mark <= 4:
+		var at: Dictionary = (a.spawn as Dictionary).duplicate(true)
+		var l: Vector3 = at["local"]
+		at["local"] = Vector3(l.x + 2.0 + 0.125 * float(_mark), l.y, l.z + 6.0)
+		a.send_place(at, "Soil")
+		_mark += 1
+		return ""
+	if not (_slice(bots, 4).circle_view as Array).is_empty():
+		return "outsider is shown %d circle(s); keys %s" % [(_slice(bots, 4).circle_view as Array).size(), str(a.system_keys)]
+	return ""
+
+## The fifth bot is not in the clan: its join is refused, and so is a block placed in the clan's circle.
+## The host's refusal reason or key is the evidence. Mark: 0 join, 1 place, 2 done.
 func _beat_outsider(bots: Array) -> String:
 	var s := _slice(bots, 4)
-	if not _sent:
-		_sent = true
-		_mark = s.clan_results.size()
+	if _clock < _next_send_s:
+		return ""
+	_next_send_s = _clock + 0.5
+	if _mark == 0:
+		_marks_seen = s.clan_results.size()
 		s.send_clan("join", { "id": _clan_id(bots, 0) })
-	for k in range(_mark, s.clan_results.size()):
-		var r: Dictionary = s.clan_results[k]
-		if str(r.get("action", "")) == "join" and not bool(r.get("ok", true)) and str(r.get("reason", "")) != "rate_limited":
-			return "refused: %s" % str(r.get("reason", ""))
+		_mark = 1
+		return ""
+	if _mark == 1:
+		for k in range(_marks_seen, s.clan_results.size()):
+			var r: Dictionary = s.clan_results[k]
+			if str(r.get("action", "")) == "join" and not bool(r.get("ok", true)) and str(r.get("reason", "")) != "rate_limited":
+				_refusals.append("clan_" + str(r.get("reason", "")))
+				_mark = 2
+				_marks_seen = s.system_keys.size()
+				break
+		if _mark == 1:
+			s.send_clan("join", { "id": _clan_id(bots, 0) })
+		return ""
+	if _mark == 2:
+		var at: Dictionary = (s.spawn as Dictionary).duplicate(true)
+		var l: Vector3 = at["local"]
+		at["local"] = Vector3(l.x + 2.0 + 0.125 * 2.0, l.y, l.z + 6.0)
+		s.send_place(at, "Soil")
+		_mark = 3
+		return ""
+	for k in range(_marks_seen, s.system_keys.size()):
+		var key := str(s.system_keys[k])
+		if key.contains("refused") or key.contains("circle"):
+			_refusals.append(key)
+			return "refusals: %s" % str(_refusals)
 	return ""
 
 ## What the host told each bot so far, for a failed beat's evidence.
@@ -226,7 +274,7 @@ func _answers(bots: Array) -> String:
 		var rs: Array = []
 		for r in _slice(bots, i).clan_results:
 			rs.append("%s:%s" % [str((r as Dictionary).get("action", "")), str((r as Dictionary).get("reason", "ok"))])
-		out.append("bot%d(%s) %s" % [i, str(_slice(bots, i).claimed_handle), ",".join(PackedStringArray(rs))])
+		out.append("bot%d %s" % [i, ",".join(PackedStringArray(rs))])
 	return "; ".join(PackedStringArray(out))
 
 func report(game_s: float) -> Dictionary:
