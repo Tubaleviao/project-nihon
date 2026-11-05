@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–199, 203–214 and 216 are done. Phases 202, 215, 217 and 218 are open. Their specs and acceptance criteria, and the introductions of
+Phases 1–199, 203–216 are done. Phases 202, 217 and 218 are open. Their specs and acceptance criteria, and the introductions of
 the arcs they belonged to, are archived in [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Next: follow-up debt burn II (Phases 194–196)
@@ -149,7 +149,7 @@ burns down the four open `autopilot-followup` issues. Phase 202 (above) is the f
 
 | Phase | Title | Status | Spec |
 |---|---|---|---|
-| 215 | Chibi body sheets: public placeholders, the colour mask bound to skin, and the novice outfit region (#559) | Planned | below |
+| 215 | Chibi body sheets: public placeholders, the colour mask bound to skin, and the novice outfit region (#559) | Done | [phases-215.md](docs/roadmap-history/phases-215.md) |
 | 216 | Mounts: ride a tamed creature | Done | [phases-216.md](docs/roadmap-history/phases-216.md) |
 | 217 | Lakes and rivers on unrecorded land (static water, no flow) | Planned | below |
 | 218 | Follow-up cleanup sweep: exact creature positions, the spatial hash, relay and window shortcuts | Planned | below |
@@ -193,41 +193,6 @@ time skipped with admin commands, must stay under one hour.
   circle is refused by the host (the refusal key is in the report).
 - [ ] The scenario passes 3 CI runs in a row on an unchanged commit.
 - [ ] Suite green on both boot paths, harness green.
-
----
-
-## Phase 215 — Chibi body sheets: public placeholders, the colour mask bound to skin, and the novice outfit region
-
-**Closes:** #559.
-
-**Goal:** the private art repo can ship the chibi bodies' texture sheets. Today
-`models/characters/bodies/chibi_body_{m,f}.glb.raw` exist in `assets/`, but their sheets do not, so
-the placeholder rule forbids the art repo from adding them, and the game binds only the old
-`textures/characters/player*` sheets to every rig.
-
-**Newel dependency:** NO.
-
-**Deliverables:**
-- `tools/gen_placeholder.py` makes `assets/textures/characters/bodies/chibi_body_{m,f}.png.raw`,
-  `chibi_body_{m,f}_color_mask.png.raw` and `chibi_body_{m,f}_channel.png.raw` (64×64; mask R/G/B =
-  Primary/Secondary/Accent, channel R/G/B = Metal/Emission/Wear, as the `player*` sheets), listed under
-  `textures` in `assets/manifest.json`.
-- `CharacterSlice` picks the sheet set by the rig's body key (the gender's chibi body), falling back to
-  the `player*` sheets for any body without its own, and binds them through
-  `CharacterMaterial.bind_rig_textures`. Skin colour from the look is driven through the mask's skin
-  channel, not a separate material.
-- The novice outfit occupies a documented UV region of the sheet (`assets/README.md` and the
-  characters bible section), so the art repo paints it in place.
-
-**Acceptance criteria:**
-- [ ] Suite: every new key exists in `assets/`, is in `assets/manifest.json`, is 64×64 and decodes;
-  the placeholder-rule audit passes.
-- [ ] Suite: a male and a female look bind their own body's `detail_tex`, `color_mask_tex` and
-  `channel_tex`; a body key with no sheets binds the `player*` sheets.
-- [ ] Suite: changing a look's skin colour changes the material parameter the mask's skin channel
-  reads, on both genders.
-- [ ] Suite green on both boot paths, harness green; the `--playtest-bot` character_sheet and create
-  steps still pass.
 
 ---
 
