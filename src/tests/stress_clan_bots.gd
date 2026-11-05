@@ -227,6 +227,7 @@ func run() -> void:
 			if str((r as Dictionary).get("who", "")) == str(_slice(OUTSIDER).claimed_player_id) and str((r as Dictionary).get("kind", "")).begins_with("chest"):
 				okey = str((r as Dictionary).get("key", ""))
 		_beat("outsider_chest", t, "host refused the non-member at the clan chest" if okey != "" else "no refusal seen", okey != "", okey)
+	print("[Clan] chestdump %s" % JSON.stringify(live().get("world", {}).get("chest_dump", {})))
 	print("[Clan] trades %s ids %s" % [str(live().get("world", {}).get("trades", 0)), str(live().get("world", {}).get("trade_ids", []))])
 	# dismantle_private: bot 3 builds one private block well outside the clan's circle, then takes it apart.
 	t = _wall_s()

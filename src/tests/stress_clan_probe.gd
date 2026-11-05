@@ -136,6 +136,9 @@ func world_record() -> Dictionary:
 			access = str(lock.get("mode", ""))
 			for q: Variant in (_root._chests.items_of(str(cid)) as Dictionary).values():
 				items += int(q)
+	var chest_dump := {}
+	for cid: Variant in _root._chests.ids():
+		chest_dump[str(cid)] = _root._chests.get_lock(str(cid)).duplicate()
 	var inventories := {}
 	for pid: Variant in members.keys():
 		var inv: Node = _root._registry.get_inventory(str(pid))
@@ -172,7 +175,7 @@ func world_record() -> Dictionary:
 		"inventories": inventories, "trade_ids": _root._trade._trades.keys(), "trade_dump": _root._trade._trades.duplicate(true),
 		"clans": clans.count(), "clan_id": best_id, "members": members.size(), "member_ids": members.keys(),
 		"skills": skills, "skilled_members": skilled, "trades": _trades, "structures": owned,
-		"chest_access": access, "chest_items": items, "whispers": _whispers(),
+		"chest_dump": chest_dump, "chest_access": access, "chest_items": items, "whispers": _whispers(),
 	}
 
 func _whispers() -> int:
