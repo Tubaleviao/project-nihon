@@ -139,6 +139,10 @@ func world_record() -> Dictionary:
 	var chest_dump := {}
 	for cid: Variant in _root._chests.ids():
 		chest_dump[str(cid)] = _root._chests.get_lock(str(cid)).duplicate()
+	var modes := {}
+	for pid: Variant in members.keys():
+		modes[str(pid).right(6)] = _root._structures.build_mode(str(pid))
+	chest_dump["_build_modes"] = modes
 	var inventories := {}
 	for pid: Variant in members.keys():
 		var inv: Node = _root._registry.get_inventory(str(pid))

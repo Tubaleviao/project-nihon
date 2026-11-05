@@ -189,11 +189,15 @@ func run() -> void:
 		_slice(smith).send_raw({ "type": "craft_intent", "recipe_id": rid })
 		await get_tree().create_timer(0.8).timeout
 	print("[Clan] chain inv %s stations %s" % [JSON.stringify(live().get("world", {}).get("inventories", {}).get(smith_pid, {})), JSON.stringify(live().get("world", {}).get("stations", {}))])
+	var out_home := WorldPos.to_scene((bots[OUTSIDER] as Dictionary)["anchor"], Vector2i.ZERO)
 	var made := await _until(func(): return _count(smith_pid, "Chest") > 0, 8.0)
 	var chest_ok := false
 	var moved := false
 	if made:
 		t = _wall_s()
+		for _try in range(2):
+			_slice(smith).send_chat("/buildas clan")
+			await get_tree().create_timer(1.0).timeout
 		_slice(smith).send_chest("place", { "type": "chest", "ox": 0.0, "oy": 0.0, "oz": 2.0 })
 		await get_tree().create_timer(1.0).timeout
 		_slice(smith).send_chest("use", {})
@@ -245,6 +249,8 @@ func run() -> void:
 	# outsider: bot 4 (no clan) digs one soil, then tries to build on the clan's blocks.
 	t = _wall_s()
 	var out := OUTSIDER
+	(bots[out] as Dictionary)["hold"] = true
+	await _walk(out, Vector2(out_home.x, out_home.z))   # back beside the clan's structure after the chest beat
 	var at4: Dictionary = (bots[out] as Dictionary)["anchor"]
 	_slice(out).send_edit("mine", WorldPos.normalized({ "chunk": at4["chunk"], "local": (at4["local"] as Vector3) + Vector3(-4.0, -0.5, 0.0) }), Vector3.UP)
 	await get_tree().create_timer(1.0).timeout
