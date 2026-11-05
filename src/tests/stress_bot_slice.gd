@@ -19,6 +19,11 @@ var snapshot_done := false
 var spawn: Dictionary = {}
 ## Where an admin teleport put the bot (empty when none is pending); the driver adopts it.
 var teleported: Dictionary = {}
+## Phase 202 — what the clan scenario reads back: the latest `clan_view` the host sent this bot, every
+## `clan_result` (`{ action, ok, reason }`) and every chat line (`{ channel, sender, text }`) in order.
+var clan_view: Dictionary = {}
+var clan_results: Array = []
+var chat_lines: Array = []
 ## Host → bot packets routed, all types.
 var packets_in := 0
 ## Snapshot reassembly for the JOIN snapshot only: id -> { count, got, parts }.
@@ -56,6 +61,13 @@ func report(exact: Dictionary) -> String:
 	})
 	return TickProbe.position_key(WorldPos.pos_from_compact(WorldPos.pos_to_packet_text(exact)))
 
+## Phase 202 — the intents the clan scenario sends, built the way a client builds them.
+func send_clan(action: String, args: Dictionary) -> void:
+	_m2.forward_clan_intent(action, args, "")
+
+func send_chat(text: String) -> void:
+	_broadcast({ "type": "chat_intent", "text": text })
+
 func _route_h2c(payload: Dictionary) -> void:
 	packets_in += 1
 	match str(payload.get("type", "")):
@@ -65,6 +77,17 @@ func _route_h2c(payload: Dictionary) -> void:
 			joined = true
 		"snapshot_chunk":
 			_take_join_chunk(payload)
+		"own_state_synced":
+			var data: Variant = payload.get("data", {})
+			if data is Dictionary:
+				if (data as Dictionary).get("clan_view", null) is Dictionary:
+					clan_view = (data as Dictionary)["clan_view"]
+				if (data as Dictionary).get("clan_result", null) is Dictionary:
+					clan_results.append((data as Dictionary)["clan_result"])
+		"chat_message":
+			if chat_lines.size() < 200:
+				chat_lines.append({ "channel": str(payload.get("channel", "")), "sender": str(payload.get("sender", "")),
+					"text": str(payload.get("text", "")) })
 		"teleport":
 			var spot: Dictionary = WorldPos.pos_from_wire(payload.get("position", null))
 			if not spot.is_empty():

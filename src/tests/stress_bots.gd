@@ -24,6 +24,8 @@ const WorldPos := preload("res://src/terrain/world_pos.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const NetworkingSlice := preload("res://src/networking/networking_slice.gd")
 const Diag := preload("res://src/core/diag.gd")
+const ClanScenario := preload("res://src/tests/clan_scenario.gd")
+const ClanRules := preload("res://src/tests/clan_scenario_rules.gd")
 
 const ARG := "--stress-bots"
 const JOIN_PER_SECOND := 20.0
@@ -45,6 +47,11 @@ var seconds := 20.0
 var out_path := ""
 var steady_path := ""
 var address := "127.0.0.1"
+## Phase 202 — `--stress-scenario clan`: five bots play the clan loop instead of walking a pattern.
+var scenario := ""
+var _clan: ClanScenario = null
+var _clan_out := ""
+var _clan_failed := false
 
 ## One entry per bot: { holder, slice, index, online, leaving, joined_once, connect_s, walk_s,
 ## next_send_s, retries, anchor, failed }.
@@ -78,6 +85,12 @@ func _ready() -> void:
 	out_path = arg_value(args, "--stress-out", "")
 	steady_path = arg_value(args, "--stress-steady", "")
 	address = arg_value(args, "--stress-addr", "127.0.0.1")
+	scenario = arg_value(args, "--stress-scenario", "")
+	_clan_out = arg_value(args, "--stress-scenario-out", "stress/clan")
+	if scenario == "clan":
+		n = ClanRules.BOT_COUNT
+		pattern = "cluster"   # the five stand together at the spawn anchor
+		_clan = ClanScenario.new()
 	if n <= 0 or not StressRules.is_pattern(pattern):
 		push_error("stress-bots: need --stress-bots <n> > 0 and a --stress-pattern in %s" % [StressRules.PATTERNS])
 		get_tree().quit(2)
@@ -144,7 +157,16 @@ func _process(delta: float) -> void:
 			else:
 				push_warning("[Stress] cannot write the steady file %s" % steady_path)
 		print("[Stress] steady: %d/%d bots joined at %.1f s" % [_joined_count(), n, _clock_s])
+	if _clan != null and _steady_s >= 0.0:
+		_clan.step(_bots, _clock_s - _steady_s)
+		if _clan.done:
+			_write_clan_report(_clock_s - _steady_s)
+			_finish()
+			return
 	if _steady_s >= 0.0 and _clock_s - _steady_s >= seconds:
+		if _clan != null:
+			_clan.done = true
+			_write_clan_report(_clock_s - _steady_s)
 		_finish()
 
 func _leaving_count() -> int:
@@ -257,6 +279,23 @@ func _position(bot: Dictionary, t_pattern: float) -> Dictionary:
 	var raw := WorldPos.normalized({ "chunk": anchor["chunk"], "local": Vector3(local.x + off.x, local.y, local.z + off.y) })
 	return TerrainSlice.fold_world_pos(raw)["pos"]
 
+## `<stress-scenario-out>.json` and `.md`: each beat with its time, evidence and verdict. The host-side
+## world checks are filled in by the host recorder once it reports them (Phase 202, still open).
+func _write_clan_report(game_s: float) -> void:
+	var report := _clan.report(game_s)
+	report["checks"] = {}
+	DirAccess.make_dir_recursive_absolute(_clan_out.get_base_dir())
+	var fj := FileAccess.open(_clan_out + ".json", FileAccess.WRITE)
+	if fj != null:
+		fj.store_string(JSON.stringify(report, "  "))
+		fj.close()
+	var fm := FileAccess.open(_clan_out + ".md", FileAccess.WRITE)
+	if fm != null:
+		fm.store_string(ClanRules.report_markdown(report))
+		fm.close()
+	print("[Stress] clan scenario: %s" % ("PASS" if bool(report["pass"]) else "FAIL %s" % [report["failures"]]))
+	_clan_failed = not bool(report["pass"])
+
 func _finish() -> void:
 	_done = true
 	if steady_path != "":
@@ -295,4 +334,4 @@ func _finish() -> void:
 			f.close()
 	print("[Stress] bots done: %d joined, %d join failures, %d dropped, %d reconnects, %d reports" % [
 		_joined_count(), _join_failures, _dropped_unexpected, _reconnects, _reports])
-	get_tree().quit(0)
+	get_tree().quit(1 if _clan_failed else 0)
