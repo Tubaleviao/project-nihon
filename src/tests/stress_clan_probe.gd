@@ -27,6 +27,7 @@ var _refusals: Array = []
 var _private_seen := false
 var _private_gone := false
 var _written := false
+var _last_full: Dictionary = {}
 
 static func attach(root: Node) -> void:
 	var args := Array(OS.get_cmdline_user_args())
@@ -67,11 +68,14 @@ func _process(delta: float) -> void:
 	_poll = 0.0
 	var world := world_record()
 	_note(world)
+	# Once the bots leave their pack and skill records go; the final record is the last one with every member's skills.
+	if int(world["members"]) >= StressClanRules.MEMBERS and int(world["skilled_members"]) >= int(world["members"]):
+		_last_full = world
 	var live := { "seen": _seen, "world": world, "refusals": _refusals }
 	_write(out_path + ".live", live)
 	if stop_path != "" and FileAccess.file_exists(stop_path) and not _written:
 		_written = true
-		_write(out_path, { "world": world, "seen": _seen, "refusals": _refusals })
+		_write(out_path, { "world": _last_full if not _last_full.is_empty() else world, "seen": _seen, "refusals": _refusals })
 
 func _note(world: Dictionary) -> void:
 	var flags := {

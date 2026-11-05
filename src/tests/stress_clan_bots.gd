@@ -133,7 +133,50 @@ func run() -> void:
 		_slice(taker).send_trade("accept", { "trade_id": tid, "party": "x" })
 	var traded := await _until(func(): return _seen("trade"), 10.0)
 	_beat("trade", t, "host completed %d trade(s); offered %s" % [int(live().get("world", {}).get("trades", 0)), JSON.stringify(held)], traded)
+	# build: bot 0 builds as the clan (`/buildas clan`) and stacks soil beside the dug column.
+	t = _wall_s()
+	var builder := FOUNDER
+	_slice(builder).send_chat("/buildas clan")
+	await get_tree().create_timer(0.8).timeout
+	var at0: Dictionary = (bots[builder] as Dictionary)["anchor"]
+	for k in range(3):
+		var pos := WorldPos.normalized({ "chunk": at0["chunk"], "local": (at0["local"] as Vector3) + Vector3(4.0, -0.5 + float(k) * 0.5, 0.0) })
+		_slice(builder).send_edit("place", pos, Vector3.UP, "Soil")
+		await get_tree().create_timer(0.4).timeout
+	var built := await _until(func(): return _seen("structure"), 10.0)
+	_beat("build", t, "host lists %d clan structure(s)" % int(live().get("world", {}).get("structures", 0)), built)
+	if not built:
+		return _finish()
+	# dismantle_private: bot 3 builds one private block well outside the clan's circle, then takes it apart.
+	t = _wall_s()
+	var solo := 1
+	_slice(solo).send_chat("/buildas private")
+	await get_tree().create_timer(0.8).timeout
+	var at3: Dictionary = (bots[solo] as Dictionary)["anchor"]
+	var far := WorldPos.normalized({ "chunk": at3["chunk"], "local": (at3["local"] as Vector3) + Vector3(-1.0, -0.5, -45.0) })
+	_slice(solo).send_edit("place", far, Vector3.UP, "Soil")
+	var placed := await _until(func(): return _seen("private"), 8.0)
+	if placed:
+		_slice(solo).send_edit("mine", WorldPos.normalized({ "chunk": at3["chunk"], "local": (at3["local"] as Vector3) + Vector3(-1.0, 0.0, -45.0) }), Vector3.UP)
+	var gone := placed and await _until(func(): return _seen("private_gone"), 8.0)
+	_beat("dismantle_private", t, "host saw a private block placed (%s) and taken apart (%s)" % [str(placed), str(gone)], gone)
+	# outsider: bot 4 (no clan) digs one soil, then tries to build on the clan's blocks.
+	t = _wall_s()
+	var out := OUTSIDER
+	var at4: Dictionary = (bots[out] as Dictionary)["anchor"]
+	_slice(out).send_edit("mine", WorldPos.normalized({ "chunk": at4["chunk"], "local": (at4["local"] as Vector3) + Vector3(-4.0, -0.5, 0.0) }), Vector3.UP)
+	await get_tree().create_timer(1.0).timeout
+	var before: int = (live().get("refusals", []) as Array).size()
+	_slice(out).send_edit("place", WorldPos.normalized({ "chunk": at4["chunk"], "local": (at4["local"] as Vector3) + Vector3(4.0, 0.5, 0.0) }), Vector3.UP, "Soil")
+	await _until(func(): return (live().get("refusals", []) as Array).size() > before, 6.0)
+	var key := ""
+	for r: Variant in (live().get("refusals", []) as Array).slice(before):
+		if str((r as Dictionary).get("who", "")) == str(_slice(out).claimed_player_id):
+			key = str((r as Dictionary).get("key", ""))
+	_beat("outsider_build", t, "host refused the non-member's block on the clan's structure" if key != "" else "no refusal seen", key != "", key)
+	print("[Clan] refusals %s" % JSON.stringify(live().get("refusals", [])))
 	print("[Clan] world %s" % JSON.stringify(live().get("world", {})))
+	print("[Clan] refusals %s" % JSON.stringify(live().get("refusals", [])))
 	_finish()
 
 ## The bot index whose host-bound player id is `pid`.
