@@ -192,7 +192,7 @@ dismantle_private and outsider_build (`structure.refused.not_owner`). **Blocked:
 `outsider_chest`). A `Chest` needs 8 `ThornwoodPlank` (carpentry bench) and a `FerriteIngot` (forge), and stations are placed
 client-side only: no `station` intent exists in `net_part_2.gd`, so a remote player cannot place a bench or forge and cannot craft
 the chest. This phase needs a validated, networked station-placement intent (host checks reach, item and `placement_blocker`) first,
-or a fabric chest recipe with no station. The CI job and the 3-run criterion wait on that.
+or a fabric chest recipe with no station. 2026-11-05 (resume): the host now judges a crafter's station gate at the crafter's own position (`CraftingSlice.position_of`, test in `economy_tests.gd`) and accepts a free bench or forge placed for a remote player through `chest_intent place` (`ChestWiring._place_free_station`); the UI client still places stations locally. The chest chain is still not played: bots must also create a character for the starting `CarpenterAxe` (the `creation_intent` produced no resolution in the probe), find forest (only one tree stands near the pinned spawn) and gather 4 Thornwood for the carpentry research plus 6 for planks. The CI job and the 3-run criterion wait on that.
 
 **Acceptance criteria:**
 - [ ] CI: the scenario passes every beat, and its reported in-game play time (excluding admin time

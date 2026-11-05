@@ -70,6 +70,16 @@ func send_trade(kind: String, fields: Dictionary) -> void:
 	packet.merge(fields)
 	_broadcast(packet)
 
+func send_chest(action: String, args: Dictionary) -> void:
+	_broadcast({ "type": "chest_intent", "action": action, "args": args })
+
+func send_create(char_name: String) -> void:
+	var fields: Dictionary = CreationRules.default_choice()
+	fields["name"] = char_name
+	var packet := { "type": "creation_intent", "action": "create" }
+	packet.merge(fields)
+	_broadcast(packet)
+
 func send_chat(text: String) -> void:
 	_broadcast({ "type": "chat_intent", "text": text })
 

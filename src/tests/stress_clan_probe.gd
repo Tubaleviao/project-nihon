@@ -19,6 +19,7 @@ var _root: Node = null
 var _poll := 0.0
 var _t0_ms := 0
 var _trades := 0
+var _events: Array = []
 var _whisper_count := 0
 ## First wall second (since attach) each flag became true.
 var _seen: Dictionary = {}
@@ -50,6 +51,8 @@ func _ready() -> void:
 	GameBus.chat_posted.connect(func(channel: String, _s: String, _t: String, _target: String):
 		if channel == "whisper":
 			_whisper_count += 1)
+	GameBus.research_resolved.connect(func(r: Dictionary): _events.append({ "kind": "research", "r": r }))
+	GameBus.character_creation_resolved.connect(func(pid: String, a: String, reason: String, _st: Dictionary): _events.append({ "kind": "creation", "who": pid, "a": a, "reason": reason }))
 	GameBus.trade_completed.connect(func(_t: Dictionary): _trades += 1)
 	GameBus.chest_resolved.connect(func(pid: String, action: String, ok: bool, reason: String):
 		if not ok:
@@ -137,7 +140,21 @@ func world_record() -> Dictionary:
 	for pid: Variant in members.keys():
 		var inv: Node = _root._registry.get_inventory(str(pid))
 		inventories[str(pid)] = (inv._contents as Dictionary).duplicate() if inv != null and "_contents" in inv else {}
+	var techs := {}
+	for pid: Variant in members.keys():
+		techs[str(pid)] = _root._technology.get_statuses(str(pid))
+	var trees: Array = []
+	for dx in range(-1, 2):
+		for dz in range(-1, 2):
+			trees.append_array(_root._tree.trees_in_chunk(Vector2i(dx, dz)))
+	if trees.is_empty() and _root._tree != null:
+		for rec: Variant in _root._tree.get_all_trees().slice(0, 24):
+			trees.append(str((rec as Dictionary).get("id", "")))
+	var stations := {}
+	for sid: Variant in _root._station._stations.keys():
+		stations[str(sid)] = str(_root._station._stations[sid].get("type", ""))
 	return {
+		"events": _events.slice(-14), "tree_total": _root._tree.get_all_trees().size(), "techs": techs, "trees": trees.slice(0, 24), "stations": stations,
 		"inventories": inventories, "trade_ids": _root._trade._trades.keys(),
 		"clans": clans.count(), "clan_id": best_id, "members": members.size(), "member_ids": members.keys(),
 		"skills": skills, "skilled_members": skilled, "trades": _trades, "structures": owned,

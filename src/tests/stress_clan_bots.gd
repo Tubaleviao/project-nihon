@@ -70,6 +70,10 @@ func run() -> void:
 	_beat("join", t, "5 of 5 bots hold a join snapshot" if ready else "bots without a join snapshot", ready)
 	if not ready:
 		return _finish()
+	# Every bot creates its character (the starting kit: tools to chop and mine with).
+	for i in range(bots.size()):
+		_slice(i).send_create("Stressbot" + char(97 + i))
+		await get_tree().create_timer(0.2).timeout
 	# found: bot 0 founds the clan by name; the host's clan list is the evidence.
 	t = _wall_s()
 	_slice(FOUNDER).send_clan("found", { "name": clan_name })
@@ -147,6 +151,30 @@ func run() -> void:
 	_beat("build", t, "host lists %d clan structure(s)" % int(live().get("world", {}).get("structures", 0)), built)
 	if not built:
 		return _finish()
+	# chest: bot 2 chops thornwood, researches carpentry and smithing, places a bench and a forge,
+	# mills planks, smelts an ingot and crafts a Chest. Every step is a packet the host validates.
+	t = _wall_s()
+	var smith := 2
+	var smith_pid := str(_slice(smith).claimed_player_id)
+	var trees: Array = live().get("world", {}).get("trees", [])
+	for tid: Variant in trees:
+		if _count(smith_pid, "Thornwood") >= 6:
+			break
+		_slice(smith).send_raw({ "type": "tree_chop_intent", "tree_id": str(tid) })
+		await get_tree().create_timer(0.5).timeout
+	print("[Clan] chop: %d Thornwood from %d trees; inv %s" % [_count(smith_pid, "Thornwood"), trees.size(), JSON.stringify(live().get("world", {}).get("inventories", {}).get(smith_pid, {}))])
+	_slice(smith).send_raw({ "type": "research_intent", "tech_id": "TechBasicCarpentry" })
+	await get_tree().create_timer(12.0).timeout
+	print("[Clan] techs %s" % JSON.stringify(live().get("world", {}).get("techs", {}).get(smith_pid, {})))
+	_slice(smith).send_chest("place", { "type": "carpentry bench", "ox": 2.0, "oy": 0.0, "oz": 0.0 })
+	await get_tree().create_timer(1.0).timeout
+	_slice(smith).send_raw({ "type": "craft_intent", "recipe_id": "RecipeThornwoodPlank" })
+	await get_tree().create_timer(1.0).timeout
+	print("[Clan] stations %s inv %s" % [JSON.stringify(live().get("world", {}).get("stations", {})), JSON.stringify(live().get("world", {}).get("inventories", {}).get(smith_pid, {}))])
+	print("[Clan] events %s trees %s" % [JSON.stringify(live().get("world", {}).get("events", [])), str(live().get("world", {}).get("tree_total", -1))])
+	print("[Clan] sysmsgs %s" % JSON.stringify(live().get("refusals", [])))
+	return _finish()
+
 	# dismantle_private: bot 3 builds one private block well outside the clan's circle, then takes it apart.
 	t = _wall_s()
 	var solo := 1
@@ -178,6 +206,10 @@ func run() -> void:
 	print("[Clan] world %s" % JSON.stringify(live().get("world", {})))
 	print("[Clan] refusals %s" % JSON.stringify(live().get("refusals", [])))
 	_finish()
+
+func _count(pid: String, item: String) -> int:
+	var inv: Dictionary = live().get("world", {}).get("inventories", {})
+	return int((inv.get(pid, {}) as Dictionary).get(item, 0))
 
 ## The bot index whose host-bound player id is `pid`.
 func _bot_of(pid: String) -> int:
