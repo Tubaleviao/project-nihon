@@ -15,6 +15,7 @@ extends SceneTree
 ##       Exits 0 when the run should be run once more (`StressRules.needs_retry`), 1 otherwise.
 
 const StressRules := preload("res://src/tests/stress_rules.gd")
+const StressClanRules := preload("res://src/tests/stress_clan_rules.gd")
 
 func _init() -> void:
 	var args := OS.get_cmdline_user_args()
@@ -25,6 +26,8 @@ func _init() -> void:
 		quit(_continue(str(args[1])))
 	elif mode == "retry" and args.size() >= 5:
 		quit(_retry(str(args[1]), str(args[2]), str(args[3]), int(args[4])))
+	elif mode == "clan" and args.size() >= 3:
+		quit(_clan(str(args[1]), str(args[2])))
 	else:
 		printerr("usage: stress_report.gd -- build <runs_dir> <out_dir> [k=v …] | continue <run_dir> | retry <run_dir> <profile> <pattern> <size>")
 		quit(2)
@@ -43,6 +46,24 @@ static func _row(run_dir: String, profile: String, pattern: String, size: int) -
 	row["pattern"] = pattern
 	row["size"] = size
 	return row
+
+func _clan(raw_path: String, out_dir: String) -> int:
+	var raw := _read(raw_path)
+	if raw.is_empty():
+		printerr("stress_report: no clan scenario output at %s" % raw_path)
+		return 1
+	var report := StressClanRules.build_report(raw.get("beats", []), raw.get("admin", []), raw.get("world", {}))
+	DirAccess.make_dir_recursive_absolute(out_dir)
+	var fj := FileAccess.open(out_dir.path_join("clan.json"), FileAccess.WRITE)
+	var fm := FileAccess.open(out_dir.path_join("clan.md"), FileAccess.WRITE)
+	if fj == null or fm == null:
+		return 1
+	fj.store_string(JSON.stringify(report, "  "))
+	fm.store_string(StressClanRules.markdown(report))
+	for f in report["failures"]:
+		print("STRESS_CLAN_FAILURE %s" % str(f))
+	print("STRESS_CLAN %s %.0f" % ["pass" if report["passed"] else "fail", float(report["play_time_s"])])
+	return 0 if report["passed"] else 1
 
 func _continue(run_dir: String) -> int:
 	var host := _read(run_dir.path_join("host.json"))

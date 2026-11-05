@@ -5,11 +5,13 @@ extends "res://src/tests/test_support.gd"
 const StressRules := preload("res://src/tests/stress_rules.gd")
 const StressBotSlice := preload("res://src/tests/stress_bot_slice.gd")
 const StressRecorder := preload("res://src/tests/stress_recorder.gd")
+const StressClanRules := preload("res://src/tests/stress_clan_rules.gd")
 const StressBots := preload("res://src/tests/stress_bots.gd")
 const TickProbe := preload("res://src/core/tick_probe.gd")
 const RelayBatch := preload("res://src/networking/relay_batch.gd")
 
 func register() -> void:
+	_run_test("stress: clan scenario verdict reads beats, play time and the host record", _test_stress_clan_verdict)
 	_run_test("stress: percentiles, phase shares and per-peer rates from fixed samples", _test_stress_report_statistics)
 	_run_test("stress: hot spots rank a fixed set of growth curves", _test_stress_hot_spot_ranking)
 	_run_test("stress: the largest passing size is the last size that met every budget", _test_stress_largest_passing)
@@ -305,3 +307,45 @@ func _test_stress_args() -> void:
 	for p in StressRules.PATTERNS:
 		assert_true(StressRules.is_pattern(p), "%s is a pattern" % p)
 	assert_false(StressRules.is_pattern("stampede"), "an unknown pattern is refused")
+
+func _clan_beats() -> Array:
+	var beats: Array = []
+	for id in StressClanRules.BEATS:
+		var refusal: String = "refused_not_member" if id in StressClanRules.REFUSAL_BEATS else ""
+		beats.append(StressClanRules.beat(id, 100.0, 5.0, 0.0, "host saw it", true, refusal))
+	return beats
+
+func _clan_world() -> Dictionary:
+	return { "members": 4, "skills": { "a": { "gathering": 5 }, "b": { "smithing": 4 } },
+		"trades": 1, "structures": 1, "chest_access": "clan", "chest_items": 1 }
+
+func _test_stress_clan_verdict() -> void:
+	var ok := StressClanRules.build_report(_clan_beats(), ["/time 3600"], _clan_world())
+	assert_true(bool(ok["passed"]), "a full clean run passes: %s" % [ok["failures"]])
+	assert_eq(float(ok["play_time_s"]), 1300.0, "13 beats of 100 s")
+	# Admin skips are not play time.
+	var skipped := _clan_beats()
+	skipped[4] = StressClanRules.beat("work", 5000.0, 5.0, 4900.0, "skills grew", true)
+	assert_eq(StressClanRules.play_time_s(skipped), 1300.0, "a skip is subtracted")
+	assert_true(bool(StressClanRules.build_report(skipped, ["/time 3600"], _clan_world())["passed"]), "skipped time stays under budget")
+	var slow := _clan_beats()
+	slow[0] = StressClanRules.beat("join", 4000.0, 1.0, 0.0, "x", true)
+	assert_false(bool(StressClanRules.build_report(slow, [], _clan_world())["passed"]), "an hour or more of play fails")
+	var missing := _clan_beats()
+	missing.pop_back()
+	assert_false(bool(StressClanRules.build_report(missing, [], _clan_world())["passed"]), "a missing beat fails")
+	var no_key := _clan_beats()
+	no_key[11] = StressClanRules.beat("outsider_chest", 1.0, 1.0, 0.0, "refused", true, "")
+	assert_false(bool(StressClanRules.build_report(no_key, [], _clan_world())["passed"]), "a refusal without a key fails")
+	assert_false(bool(StressClanRules.build_report(_clan_beats(), ["/give wood"], _clan_world())["passed"]), "an admin command other than /time fails")
+	for key in ["members", "trades", "structures", "chest_items"]:
+		var w := _clan_world()
+		w[key] = 0
+		assert_false(bool(StressClanRules.build_report(_clan_beats(), [], w)["passed"]), "world record %s=0 fails" % key)
+	var open := _clan_world()
+	open["chest_access"] = "owner"
+	assert_false(bool(StressClanRules.build_report(_clan_beats(), [], open)["passed"]), "chest access must be clan")
+	var same := _clan_world()
+	same["skills"] = { "a": { "gathering": 5 }, "b": { "gathering": 4, "smithing": 1 } }
+	assert_false(bool(StressClanRules.build_report(_clan_beats(), [], same)["passed"]), "two members with the same top skill fail")
+	assert_true(StressClanRules.markdown(ok).contains("PASS"), "the markdown names the verdict")
