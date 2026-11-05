@@ -26,6 +26,8 @@ func _init() -> void:
 		quit(_continue(str(args[1])))
 	elif mode == "retry" and args.size() >= 5:
 		quit(_retry(str(args[1]), str(args[2]), str(args[3]), int(args[4])))
+	elif mode == "clan-merge" and args.size() >= 4:
+		quit(_clan_merge(str(args[1]), str(args[2]), str(args[3])))
 	elif mode == "clan" and args.size() >= 3:
 		quit(_clan(str(args[1]), str(args[2])))
 	else:
@@ -46,6 +48,18 @@ static func _row(run_dir: String, profile: String, pattern: String, size: int) -
 	row["pattern"] = pattern
 	row["size"] = size
 	return row
+
+## Phase 202 — the bots' beats plus the host probe's world record (and the refusal keys it saw) in one raw file.
+func _clan_merge(bots_path: String, host_path: String, out_path: String) -> int:
+	var bots := _read(bots_path)
+	var host := _read(host_path)
+	var raw := { "beats": bots.get("beats", []), "admin": bots.get("admin", []), "world": host.get("world", {}),
+		"refusals": host.get("refusals", []), "seen": host.get("seen", {}) }
+	var f := FileAccess.open(out_path, FileAccess.WRITE)
+	if f == null:
+		return 1
+	f.store_string(JSON.stringify(raw))
+	return 0
 
 func _clan(raw_path: String, out_dir: String) -> int:
 	var raw := _read(raw_path)

@@ -56,6 +56,16 @@ func report(exact: Dictionary) -> String:
 	})
 	return TickProbe.position_key(WorldPos.pos_from_compact(WorldPos.pos_to_packet_text(exact)))
 
+## Phase 202 — the packets a player's client sends for the clan scenario (the host binds the identity).
+func send_clan(action: String, args: Dictionary) -> void:
+	_broadcast({ "type": "clan_intent", "action": action, "args": args })
+
+func send_chat(text: String) -> void:
+	_broadcast({ "type": "chat_intent", "text": text })
+
+func send_raw(payload: Dictionary) -> void:
+	_broadcast(payload)
+
 func _route_h2c(payload: Dictionary) -> void:
 	packets_in += 1
 	match str(payload.get("type", "")):

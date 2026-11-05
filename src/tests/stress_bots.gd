@@ -52,6 +52,7 @@ var _bots: Array = []
 var _clock_s := 0.0
 var _steady_s := -1.0
 var _done := false
+var _scenario: Node = null
 ## send key "<peer>|<position key>" -> unix ms, for the relay-lag join.
 var _sends: Dictionary = {}
 var _dropped_unexpected := 0
@@ -90,6 +91,18 @@ func _ready() -> void:
 	print("[Stress] bots: %d, pattern %s, seed %d, %.0f s steady, host %s" % [n, pattern, run_seed, seconds, address])
 	for i in range(n):
 		_bots.append(_make_bot(i))
+	# Phase 202 — `--stress-scenario clan`: the bots also play the clan loop (needs 5 bots and a host probe).
+	if arg_value(args, "--stress-scenario", "") == "clan":
+		_start_clan_scenario(args)
+
+func _start_clan_scenario(args: Array) -> void:
+	_scenario = (load("res://src/tests/stress_clan_bots.gd") as GDScript).new()
+	_scenario.name = "ClanScenario"
+	_scenario.bots = _bots
+	_scenario.live_path = arg_value(args, "--stress-live", "")
+	_scenario.out_path = arg_value(args, "--stress-clan-out", "")
+	add_child(_scenario)
+	_scenario.run.call_deferred()
 
 func _make_bot(i: int) -> Dictionary:
 	var holder := Node.new()
@@ -144,6 +157,11 @@ func _process(delta: float) -> void:
 			else:
 				push_warning("[Stress] cannot write the steady file %s" % steady_path)
 		print("[Stress] steady: %d/%d bots joined at %.1f s" % [_joined_count(), n, _clock_s])
+	if _scenario != null:
+		# The scenario decides how long the run is: it ends when the last beat is written.
+		if _scenario.done:
+			_finish()
+		return
 	if _steady_s >= 0.0 and _clock_s - _steady_s >= seconds:
 		_finish()
 
