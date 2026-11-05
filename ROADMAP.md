@@ -183,6 +183,17 @@ time skipped with admin commands, must stay under one hour.
   verdict. `tools/stress_report.gd` renders it.
 - A CI job (`xvfb` not needed: dedicated server and headless bots) that runs the scenario.
 
+**Progress (2026-11-05, branch `autopilot/1105-5cb32d-clan-loop-bots`, no PR yet):** `tools/stress_clan.sh` runs a dedicated
+server with the clan probe (`src/tests/stress_clan_probe.gd`, reads the host's own clans, skills, structures, chests, trades,
+whispers and refusals) and five bots (`src/tests/stress_clan_bots.gd`, `--stress-scenario clan`); `StressClanRules`
+(`src/tests/stress_clan_rules.gd`) judges the report and `stress_report.gd -- clan` renders `clan.{json,md}`. Played over ENet and
+green on the host's evidence: join, found, invite, accept, work (two different top skills), whisper, trade, build (clan structure),
+dismantle_private and outsider_build (`structure.refused.not_owner`). **Blocked:** the chest beats (`chest_clan`, `chest_move`,
+`outsider_chest`). A `Chest` needs 8 `ThornwoodPlank` (carpentry bench) and a `FerriteIngot` (forge), and stations are placed
+client-side only: no `station` intent exists in `net_part_2.gd`, so a remote player cannot place a bench or forge and cannot craft
+the chest. This phase needs a validated, networked station-placement intent (host checks reach, item and `placement_blocker`) first,
+or a fabric chest recipe with no station. The CI job and the 3-run criterion wait on that.
+
 **Acceptance criteria:**
 - [ ] CI: the scenario passes every beat, and its reported in-game play time (excluding admin time
   skips) is under 60 minutes.
