@@ -60,6 +60,16 @@ func report(exact: Dictionary) -> String:
 func send_clan(action: String, args: Dictionary) -> void:
 	_broadcast({ "type": "clan_intent", "action": action, "args": args })
 
+## A block edit at `exact` (`{chunk, local}`), the packet `_on_block_edit_intent` builds.
+func send_edit(action: String, exact: Dictionary, normal: Vector3, material: String = "") -> void:
+	_broadcast({ "type": "block_edit_intent", "action": action, "normal": [normal.x, normal.y, normal.z],
+		"material": material, "pk": WorldPos.pos_to_packet_text(exact) })
+
+func send_trade(kind: String, fields: Dictionary) -> void:
+	var packet := { "type": "trade_%s_intent" % kind }
+	packet.merge(fields)
+	_broadcast(packet)
+
 func send_chat(text: String) -> void:
 	_broadcast({ "type": "chat_intent", "text": text })
 

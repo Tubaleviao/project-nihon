@@ -7,6 +7,7 @@ extends Node
 ## A beat starts when the host's probe (`StressClanProbe`, `<live>` file) shows the last one happened, and
 ## passes when the host's own record shows this one did. The bots never decide a verdict from what they sent.
 
+const WorldPos := preload("res://src/terrain/world_pos.gd")
 const StressClanRules := preload("res://src/tests/stress_clan_rules.gd")
 
 const FOUNDER := 0
@@ -90,7 +91,57 @@ func run() -> void:
 		await get_tree().create_timer(0.6).timeout
 	var full := await _until(func(): return _seen("members_4"), 15.0)
 	_beat("accept", t, "host clan has %d members" % int(live().get("world", {}).get("members", 0)), full)
+	# work: bots 0-2 mine the top layers, bot 3 digs deeper, so ore and soil grow different skills.
+	t = _wall_s()
+	for i in range(StressClanRules.MEMBERS):
+		var at: Dictionary = (bots[i] as Dictionary)["anchor"]
+		for k in range(6):
+			var depth := 0.5 + float(k) + (4.0 if i == StressClanRules.MEMBERS - 1 else 0.0)
+			var pos := WorldPos.normalized({ "chunk": at["chunk"], "local": (at["local"] as Vector3) + Vector3(0.0, -depth, 0.0) })
+			_slice(i).send_edit("mine", pos, Vector3.UP)
+			await get_tree().create_timer(0.3).timeout
+	var differ := await _until(func(): return _seen("skills_differ"), 20.0)
+	_beat("work", t, "host skills: %s" % JSON.stringify(live().get("world", {}).get("skills", {})), differ)
+	if not differ:
+		return _finish()
+	# whisper: bot 0 whispers bot 1 by handle (the chat command, Phase 204).
+	t = _wall_s()
+	_slice(FOUNDER).send_chat("/msg %s hello from the clan" % str(_slice(1).claimed_handle))
+	var whispered := await _until(func(): return _seen("whisper"), 10.0)
+	_beat("whisper", t, "host chat holds a whisper line", whispered)
+	# trade: bot 0 offers one of the items it holds to bot 1 for nothing; both accept.
+	t = _wall_s()
+	var held: Dictionary = {}
+	var inv: Dictionary = live().get("world", {}).get("inventories", {})
+	var pid0 := str((live().get("world", {}).get("member_ids", [""]) as Array)[0])
+	for pid: Variant in inv.keys():
+		if (inv[pid] as Dictionary).size() > 0 and held.is_empty():
+			held = { str((inv[pid] as Dictionary).keys()[0]): 1 }
+			pid0 = str(pid)
+	var giver := _bot_of(pid0)
+	var taker := 1 if giver != 1 else 0
+	var ids_before: Array = live().get("world", {}).get("trade_ids", [])
+	_slice(giver).send_trade("start", { "party_b": str(_slice(taker).claimed_handle) })
+	var opened := await _until(func(): return (live().get("world", {}).get("trade_ids", []) as Array).size() > ids_before.size(), 10.0)
+	if opened and not held.is_empty():
+		var tid := str((live().get("world", {}).get("trade_ids", []) as Array).back())
+		_slice(giver).send_trade("propose", { "trade_id": tid, "party": "x", "give": held, "want": {} })
+		await get_tree().create_timer(0.6).timeout
+		_slice(taker).send_trade("propose", { "trade_id": tid, "party": "x", "give": {}, "want": {} })
+		await get_tree().create_timer(0.6).timeout
+		_slice(giver).send_trade("accept", { "trade_id": tid, "party": "x" })
+		_slice(taker).send_trade("accept", { "trade_id": tid, "party": "x" })
+	var traded := await _until(func(): return _seen("trade"), 10.0)
+	_beat("trade", t, "host completed %d trade(s); offered %s" % [int(live().get("world", {}).get("trades", 0)), JSON.stringify(held)], traded)
+	print("[Clan] world %s" % JSON.stringify(live().get("world", {})))
 	_finish()
+
+## The bot index whose host-bound player id is `pid`.
+func _bot_of(pid: String) -> int:
+	for i in range(bots.size()):
+		if str(_slice(i).claimed_player_id) == pid:
+			return i
+	return 0
 
 func _finish() -> void:
 	var f := FileAccess.open(out_path, FileAccess.WRITE) if out_path != "" else null

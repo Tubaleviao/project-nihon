@@ -19,6 +19,7 @@ var _root: Node = null
 var _poll := 0.0
 var _t0_ms := 0
 var _trades := 0
+var _whisper_count := 0
 ## First wall second (since attach) each flag became true.
 var _seen: Dictionary = {}
 ## Refusals: [{ "who", "kind", "key" }] from chest_resolved and system_message.
@@ -45,6 +46,9 @@ static func attach(root: Node) -> void:
 
 func _ready() -> void:
 	_t0_ms = Time.get_ticks_msec()
+	GameBus.chat_posted.connect(func(channel: String, _s: String, _t: String, _target: String):
+		if channel == "whisper":
+			_whisper_count += 1)
 	GameBus.trade_completed.connect(func(_t: Dictionary): _trades += 1)
 	GameBus.chest_resolved.connect(func(pid: String, action: String, ok: bool, reason: String):
 		if not ok:
@@ -74,6 +78,7 @@ func _note(world: Dictionary) -> void:
 		"found": int(world["clans"]) > 0,
 		"members_4": int(world["members"]) >= StressClanRules.MEMBERS,
 		"skills_4": int(world["skilled_members"]) >= StressClanRules.MEMBERS,
+		"skills_differ": StressClanRules.distinct_top_skills(world["skills"]) >= 2,
 		"whisper": int(world["whispers"]) > 0,
 		"trade": int(world["trades"]) > 0,
 		"structure": int(world["structures"]) > 0,
@@ -124,19 +129,19 @@ func world_record() -> Dictionary:
 			access = str(lock.get("mode", ""))
 			for q: Variant in (_root._chests.items_of(str(cid)) as Dictionary).values():
 				items += int(q)
+	var inventories := {}
+	for pid: Variant in members.keys():
+		var inv: Node = _root._registry.get_inventory(str(pid))
+		inventories[str(pid)] = (inv._contents as Dictionary).duplicate() if inv != null and "_contents" in inv else {}
 	return {
+		"inventories": inventories, "trade_ids": _root._trade._trades.keys(),
 		"clans": clans.count(), "clan_id": best_id, "members": members.size(), "member_ids": members.keys(),
 		"skills": skills, "skilled_members": skilled, "trades": _trades, "structures": owned,
 		"chest_access": access, "chest_items": items, "whispers": _whispers(),
 	}
 
 func _whispers() -> int:
-	var c := 0
-	if _root._chat != null and "_lines" in _root._chat:
-		for line: Variant in _root._chat._lines:
-			if line is Dictionary and str((line as Dictionary).get("channel", "")) == "whisper":
-				c += 1
-	return c
+	return _whisper_count
 
 func _write(path: String, data: Dictionary) -> void:
 	var tmp := path + ".tmp"
