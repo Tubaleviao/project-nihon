@@ -270,6 +270,9 @@ func _anchor_for(spawn: Dictionary) -> Dictionary:
 ## onto the planet the way a walking client folds itself (`TerrainSlice.fold_world_pos`).
 func _position(bot: Dictionary, t_pattern: float) -> Dictionary:
 	var anchor: Dictionary = bot["anchor"]
+	if bool(bot.get("hold", false)):
+		# Phase 202 — the scenario walks this bot itself: it stands exactly on its anchor.
+		return TerrainSlice.fold_world_pos(anchor)["pos"]
 	var off := StressRules.bot_offset(pattern, run_seed, int(bot["index"]), t_pattern - float(bot["walk_s"]))
 	var local: Vector3 = anchor["local"]
 	var raw := WorldPos.normalized({ "chunk": anchor["chunk"], "local": Vector3(local.x + off.x, local.y, local.z + off.y) })

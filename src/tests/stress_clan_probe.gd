@@ -140,26 +140,33 @@ func world_record() -> Dictionary:
 	for pid: Variant in members.keys():
 		var inv: Node = _root._registry.get_inventory(str(pid))
 		inventories[str(pid)] = (inv._contents as Dictionary).duplicate() if inv != null and "_contents" in inv else {}
+		if inv != null:
+			inventories[str(pid)]["_w"] = "%s/%s %s" % [str(inv._current_weight), str(inv._max_weight), str(inv._item_weight("Thornwood"))]
+			inventories[str(pid)]["_axe"] = str(inv.find_tool("axe"))
+			inventories[str(pid)]["_carpenter_axe_count"] = inv.get_item_count("CarpenterAxe")
 	var techs := {}
 	for pid: Variant in members.keys():
 		techs[str(pid)] = _root._technology.get_statuses(str(pid))
-	var trees: Array = []
-	for dx in range(-1, 2):
-		for dz in range(-1, 2):
-			trees.append_array(_root._tree.trees_in_chunk(Vector2i(dx, dz)))
-	if trees.is_empty() and _root._tree != null:
-		for rec: Variant in _root._tree.get_all_trees().slice(0, 24):
-			trees.append(str((rec as Dictionary).get("id", "")))
+	var near: Array = []
+	for tid: Variant in _root._tree._trees.keys():
+		var tp: Vector3 = _root._tree._trees[tid]["position"]
+		near.append([str(tid), tp.x, tp.z, Vector2(tp.x - 16.0, tp.z - 16.0).length()])
+	near.sort_custom(func(a, b): return float(a[3]) < float(b[3]))
+	var trees: Array = near.slice(0, 12)
 	var stations := {}
 	for sid: Variant in _root._station._stations.keys():
 		stations[str(sid)] = str(_root._station._stations[sid].get("type", ""))
 	var created := {}
 	for pid: Variant in members.keys():
 		created[str(pid)] = _root._registry.creation_of(str(pid))
+	var at := {}
+	for pid: Variant in members.keys():
+		at[str(pid)] = str(_root._chest_wiring.player_pos(str(pid)))
 	return {
+		"at": at,
 		"created": created,
-		"events": _events.slice(-14), "tree_total": _root._tree.get_all_trees().size(), "techs": techs, "trees": trees.slice(0, 24), "stations": stations,
-		"inventories": inventories, "trade_ids": _root._trade._trades.keys(),
+		"events": _events.slice(-14), "tree_total": _root._tree.get_all_trees().size(),  "techs": techs, "trees": trees.slice(0, 24), "stations": stations,
+		"inventories": inventories, "trade_ids": _root._trade._trades.keys(), "trade_dump": _root._trade._trades.duplicate(true),
 		"clans": clans.count(), "clan_id": best_id, "members": members.size(), "member_ids": members.keys(),
 		"skills": skills, "skilled_members": skilled, "trades": _trades, "structures": owned,
 		"chest_access": access, "chest_items": items, "whispers": _whispers(),

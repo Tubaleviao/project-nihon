@@ -155,6 +155,76 @@ func run() -> void:
 		return _finish()
 	# chest beats (chest_clan, chest_move, outsider_chest) are not played yet: see ROADMAP Phase 202 (the chest
 	# chain needs a character kit, forest to chop and a tutorial-free research path over the wire).
+	# chest chain: bot 3 (it holds the Ferrite) walks to the forest, chops, researches, builds a bench and a forge,
+	# mills planks, smelts an ingot and crafts a Chest. Every step is a packet the host validates.
+	t = _wall_s()
+	var smith := StressClanRules.MEMBERS - 1
+	var smith_pid := str(_slice(smith).claimed_player_id)
+	var trees: Array = live().get("world", {}).get("trees", [])
+	var goal := Vector2(float((trees[0] as Array)[1]), float((trees[0] as Array)[2]) - 4.0) if not trees.is_empty() else Vector2(16.0, 16.0)
+	(bots[smith] as Dictionary)["hold"] = true
+	await _walk(smith, goal)
+	# An axe breaks after two chops (4 Thornwood): the smith chops two trees, two clan mates chop two more each
+	# and hand their wood over through the trade window.
+	await _chop(smith, trees, 0, 2)
+	for k in range(2):
+		var mate := k
+		await _chop(mate, trees, 2 + 2 * k, 2)
+		var sp := WorldPos.to_scene((bots[smith] as Dictionary)["anchor"], Vector2i.ZERO)
+		await _walk(mate, Vector2(sp.x + 2.0, sp.z))
+		await _gift(mate, smith, "Thornwood", 4)
+	print("[Clan] chop: %d Thornwood" % _count(smith_pid, "Thornwood"))
+	_slice(smith).send_raw({ "type": "research_intent", "tech_id": "TechBasicCarpentry" })
+	_slice(smith).send_raw({ "type": "research_intent", "tech_id": "TechBasicSmithing" })
+	await get_tree().create_timer(14.0).timeout
+	print("[Clan] events %s" % JSON.stringify(live().get("world", {}).get("events", [])))
+	_slice(smith).send_chest("place", { "type": "carpentry bench", "ox": 2.0, "oy": 0.0, "oz": 0.0 })
+	await get_tree().create_timer(0.8).timeout
+	_slice(smith).send_chest("place", { "type": "forge", "ox": -2.0, "oy": 0.0, "oz": 0.0 })
+	await get_tree().create_timer(0.8).timeout
+	for rid in ["RecipeThornwoodPlank", "RecipeThornwoodPlank", "RecipeThornwoodPlank", "RecipeFerriteIngot", "RecipeChest"]:
+		_slice(smith).send_raw({ "type": "craft_intent", "recipe_id": rid })
+		await get_tree().create_timer(0.8).timeout
+	print("[Clan] chain inv %s stations %s" % [JSON.stringify(live().get("world", {}).get("inventories", {}).get(smith_pid, {})), JSON.stringify(live().get("world", {}).get("stations", {}))])
+	var made := _count(smith_pid, "Chest") > 0
+	var chest_ok := false
+	var moved := false
+	if made:
+		t = _wall_s()
+		_slice(smith).send_chest("place", { "type": "chest", "ox": 0.0, "oy": 0.0, "oz": 2.0 })
+		await get_tree().create_timer(1.0).timeout
+		_slice(smith).send_chest("use", {})
+		await get_tree().create_timer(0.8).timeout
+		_slice(smith).send_chest("mode", { "mode": "clan" })
+		chest_ok = await _until(func(): return _seen("chest_clan"), 8.0)
+		_beat("chest_clan", t, "host lists a clan chest in access mode clan", chest_ok)
+		t = _wall_s()
+		var pack: Dictionary = live().get("world", {}).get("inventories", {}).get(smith_pid, {})
+		var put_item := ""
+		for k: Variant in pack.keys():
+			if not str(k).begins_with("_") and int(pack[k]) > 0:
+				put_item = str(k)
+				break
+		if put_item != "":
+			_slice(smith).send_chest("put", { "item": put_item, "qty": 1 })
+		moved = put_item != "" and await _until(func(): return _seen("chest_item"), 8.0)
+		_beat("chest_move", t, "host chest holds %s" % put_item, moved)
+		# outsider: bot 4 walks to the chest and tries to open it and take from it.
+		t = _wall_s()
+		(bots[OUTSIDER] as Dictionary)["hold"] = true
+		var cp := WorldPos.to_scene((bots[smith] as Dictionary)["anchor"], Vector2i.ZERO)
+		await _walk(OUTSIDER, Vector2(cp.x + 1.0, cp.z))
+		var n0: int = (live().get("refusals", []) as Array).size()
+		_slice(OUTSIDER).send_chest("use", {})
+		await get_tree().create_timer(0.8).timeout
+		_slice(OUTSIDER).send_chest("take", { "item": put_item, "qty": 1 })
+		await _until(func(): return (live().get("refusals", []) as Array).size() > n0, 6.0)
+		var okey := ""
+		for r: Variant in (live().get("refusals", []) as Array).slice(n0):
+			if str((r as Dictionary).get("who", "")) == str(_slice(OUTSIDER).claimed_player_id) and str((r as Dictionary).get("kind", "")).begins_with("chest"):
+				okey = str((r as Dictionary).get("key", ""))
+		_beat("outsider_chest", t, "host refused the non-member at the clan chest" if okey != "" else "no refusal seen", okey != "", okey)
+	print("[Clan] trades %s ids %s" % [str(live().get("world", {}).get("trades", 0)), str(live().get("world", {}).get("trade_ids", []))])
 	# dismantle_private: bot 3 builds one private block well outside the clan's circle, then takes it apart.
 	t = _wall_s()
 	var solo := 1
@@ -186,6 +256,49 @@ func run() -> void:
 	print("[Clan] world %s" % JSON.stringify(live().get("world", {})))
 	print("[Clan] refusals %s" % JSON.stringify(live().get("refusals", [])))
 	_finish()
+
+## Bot `i` walks to and chops `count` trees from `trees[first]` on.
+func _chop(i: int, trees: Array, first: int, count: int) -> void:
+	(bots[i] as Dictionary)["hold"] = true
+	for k in range(first, mini(first + count, trees.size())):
+		var tr: Array = trees[k]
+		await _walk(i, Vector2(float(tr[1]), float(tr[2]) - 3.0))
+		_slice(i).send_raw({ "type": "tree_chop_intent", "tree_id": str(tr[0]) })
+		await get_tree().create_timer(0.8).timeout
+		print("[Clan] mate %d chopped %s: Thornwood %d" % [i, str(tr[0]), _count(str(_slice(i).claimed_player_id), "Thornwood")])
+
+## `giver` hands `qty` of `item` to `taker` through the trade window (start, propose, propose, accept, accept).
+func _gift(giver: int, taker: int, item: String, qty: int) -> void:
+	var before: Array = live().get("world", {}).get("trade_ids", [])
+	_slice(giver).send_trade("start", { "party_b": str(_slice(taker).claimed_handle) })
+	await _until(func(): return (live().get("world", {}).get("trade_ids", []) as Array).size() > before.size(), 10.0)
+	var ids: Array = live().get("world", {}).get("trade_ids", [])
+	if ids.is_empty():
+		return
+	var tid := str(ids.back())
+	_slice(giver).send_trade("propose", { "trade_id": tid, "party": "x", "give": { item: qty }, "want": {} })
+	await get_tree().create_timer(0.6).timeout
+	_slice(taker).send_trade("propose", { "trade_id": tid, "party": "x", "give": {}, "want": {} })
+	await get_tree().create_timer(0.6).timeout
+	_slice(giver).send_trade("accept", { "trade_id": tid, "party": "x" })
+	_slice(taker).send_trade("accept", { "trade_id": tid, "party": "x" })
+	await get_tree().create_timer(1.0).timeout
+	print("[Clan] tradedump %s" % JSON.stringify(live().get("world", {}).get("trade_dump", {})))
+	print("[Clan] gift %s %d from %d to %d: giver %d taker %d, trades %s" % [item, qty, giver, taker, _count(str(_slice(giver).claimed_player_id), item), _count(str(_slice(taker).claimed_player_id), item), str(live().get("world", {}).get("trades", 0))])
+
+## Walk bot `i` (held on its anchor) to ground point `goal` (x, z in metres) at 6 m/s, one report-sized step at a time.
+func _walk(i: int, goal: Vector2) -> void:
+	var bot: Dictionary = bots[i]
+	for _step in range(200):
+		var anchor: Dictionary = bot["anchor"]
+		var here := WorldPos.to_scene(anchor, Vector2i.ZERO)
+		var d := goal - Vector2(here.x, here.z)
+		if d.length() < 1.0:
+			return
+		var step := d.normalized() * minf(3.0, d.length())
+		var local: Vector3 = anchor["local"]
+		bot["anchor"] = WorldPos.normalized({ "chunk": anchor["chunk"], "local": Vector3(local.x + step.x, local.y, local.z + step.y) })
+		await get_tree().create_timer(0.5).timeout
 
 func _count(pid: String, item: String) -> int:
 	var inv: Dictionary = live().get("world", {}).get("inventories", {})
