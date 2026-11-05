@@ -35,6 +35,14 @@ var player_pos: Callable = Callable()
 var spec_of: Callable = Callable()
 ## `() -> String`: the id of the player on this machine (a listen host's own player), "" when none.
 var local_player_id: Callable = Callable()
+## `() -> bool`: whether the world takes keys now (no menu or chat open), and `(origin: Vector3, range: float) ->
+## String`: the nearest creature's instance id, "" when none. Both set by the wiring; unset, M does nothing.
+var input_allowed: Callable = Callable()
+var nearest_to: Callable = Callable()
+## `() -> Vector3`: where this machine's player stands.
+var own_position: Callable = Callable()
+## Whether the host last said this machine's player is mounted (M toggles).
+var _local_mounted := false
 ## `() -> float` monotonic seconds. Test seam.
 var mono_sec: Callable = Callable()
 
@@ -50,6 +58,25 @@ func _ready() -> void:
 	GameBus.dismount_intent.connect(_on_dismount_intent)
 	GameBus.creature_died.connect(_on_creature_died)
 	GameBus.player_left.connect(_on_player_left)
+	GameBus.mount_resolved.connect(_on_local_resolved)
+
+## M mounts the nearest creature within `MOUNT_RANGE`, or gets off. The host decides (it must be the player's own
+## tamed companion) and answers with a keyed notice.
+func _unhandled_input(event: InputEvent) -> void:
+	if not (event is InputEventKey and event.pressed and not event.echo and not event.alt_pressed and event.keycode == KEY_M):
+		return
+	if not input_allowed.is_valid() or not bool(input_allowed.call()):
+		return
+	if _local_mounted:
+		GameBus.dismount_intent.emit("")
+	elif nearest_to.is_valid() and own_position.is_valid():
+		var iid := str(nearest_to.call(own_position.call(), MOUNT_RANGE))
+		if iid != "":
+			GameBus.mount_intent.emit(iid, "")
+
+func _on_local_resolved(_player_id: String, action: String, ok: bool, _reason: String) -> void:
+	if ok:
+		_local_mounted = action == "mount"
 
 ## The fabric `mount` field of `creature_id` as a Dictionary ({} when it has none).
 static func fabric_spec(creature_id: String) -> Dictionary:

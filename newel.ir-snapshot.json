@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:afd3f2ee4f879ce4b7ae720e26287e7f08d090077430b961866bdaf63bf44334",
+  "schemaHash": "sha256:34447bfea9c51d47328645422e009d2e8949a0552d658669e0065ff683e745bd",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -44469,6 +44469,7 @@
               "next_block",
               "station",
               "tame",
+              "mount",
               "equipment",
               "chest",
               "windows",

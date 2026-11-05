@@ -93,7 +93,6 @@ var _gesture_wiring := GestureWiring.new()
 var _creation_wiring := CreationWiring.new()
 var _carcass_wiring := CarcassWiring.new()
 var _mount_wiring := MountWiring.new()
-var _mount:       Node
 var _peer_wiring := PeerWiring.new()
 var _snapshot_wiring := SnapshotWiring.new()
 var _persistence_wiring := PersistenceWiring.new()
@@ -251,10 +250,8 @@ const SNAPSHOT_TIMEOUT := 10.0
 var _snapshot_elapsed: float = 0.0
 
 ## Client-side: how long to wait for a snapshot before re-presenting the join
-## intent, and how many times to do so. The handshake is the only route to an
-## identity and a world, so a lost join_intent (or a lost snapshot) must be
-## retried rather than ending in an empty client: retries are spaced so a slow
-## host is not flooded, and the total budget stays inside SNAPSHOT_TIMEOUT.
+## intent, and how many times to do so. The handshake is the only route to an identity and a world, so a
+## lost join_intent (or snapshot) is retried, spaced so a slow host is not flooded, inside SNAPSHOT_TIMEOUT.
 const HANDSHAKE_RETRY_SECS := 3.0
 const MAX_HANDSHAKE_RETRIES := 3
 var _handshake_elapsed: float = 0.0
@@ -329,7 +326,6 @@ func _ready() -> void:
 	_bed         = BedSlice.new()
 	_settlements = _settlement_wiring.make_slice(self)
 	_clans       = _clan_wiring.make_slice(self)
-	_mount       = _mount_wiring.make_slice(self)
 	_weather     = WeatherSlice.new()
 	_structures  = _structure_wiring.make_slice(self)
 	_chests      = _chest_wiring.make_slice(self)
@@ -374,7 +370,7 @@ func _ready() -> void:
 
 	# The UI (Phase 14) is presentation only, so a headless dedicated server (Phase 27) keeps it out of the
 	# tree — its _ready() would otherwise build windows nothing can render or click.
-	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _registry, _player, _loot, _carcass, _inventory, _character, _crafting, _technology, _taming, _professions, _station, _tree, _market, _trade, _proposal, _chat, _gesture, _waystones, _bed, _settlements, _clans, _mount, _weather, _structures, _chests, _writing]
+	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _registry, _player, _loot, _carcass, _inventory, _character, _crafting, _technology, _taming, _professions, _station, _tree, _market, _trade, _proposal, _chat, _gesture, _waystones, _bed, _settlements, _clans, _mount_wiring.make_slice(self), _weather, _structures, _chests, _writing]
 	if not _is_server:
 		slices.append(_ui)
 	if not _is_server:

@@ -9,15 +9,22 @@ const PlayerSlice := preload("res://src/player/player_slice.gd")
 ## Slack over the exact mounted speed, as for a carried body (`CarcassWiring.CARRY_SPEED_SLACK`).
 const SPEED_SLACK := 1.25
 
+## The host's mount slice, built by `make_slice`.
+var slice: Node = null
+
 func make_slice(ctx: GameRoot) -> Node:
 	root = ctx
 	var m := MountSlice.new()
+	slice = m
 	m.is_host = not root._is_client
 	m.creature_of = func(iid: String) -> String: return root._creature.get_instance_creature_id(iid)
 	m.owner_of = func(iid: String) -> String: return root._creature.get_tamed_by(iid)
 	m.alive = func(iid: String) -> bool: return not root._taming._instance_is_dead(iid)
 	m.position_of = func(iid: String) -> Variant: return root._creature.get_instance_position(iid)
 	m.player_pos = _player_position
+	m.input_allowed = func() -> bool: return root._player != null and root._player.world_input_allowed()
+	m.nearest_to = func(at: Vector3, within: float) -> String: return str(root._creature.nearest_creature(at, within))
+	m.own_position = func() -> Vector3: return root._player.get_position()
 	m.local_player_id = func() -> String: return str(root._registry.local_player_id)
 	return m
 
@@ -32,6 +39,17 @@ func _player_position(player_id: String) -> Variant:
 func _connect_all() -> void:
 	connect_bus(GameBus.mount_resolved, _on_resolved)
 	connect_bus(GameBus.mount_changed, _on_changed)
+	connect_bus(GameBus.mount_intent, _forward_mount)
+	connect_bus(GameBus.dismount_intent, _forward_dismount)
+
+## Client → host: ride one of my companions, or get off. No identity rides along; the host binds it.
+func _forward_mount(instance_id: String, _player_id: String) -> void:
+	if root._is_client:
+		root._networking._broadcast({ "type": "mount_intent", "instance_id": instance_id })
+
+func _forward_dismount(_player_id: String) -> void:
+	if root._is_client:
+		root._networking._broadcast({ "type": "dismount_intent" })
 
 ## Host: answer the rider who asked.
 func _on_resolved(player_id: String, action: String, ok: bool, reason: String) -> void:
@@ -47,16 +65,16 @@ func _on_resolved(player_id: String, action: String, ok: bool, reason: String) -
 func _on_changed(player_id: String, instance_id: String) -> void:
 	if root._is_client or root._networking == null:
 		return
-	root._networking.broadcast_mount(player_id, instance_id)
+	root._networking._broadcast({ "type": "mount_changed", "player": root._networking.redact_for_client(player_id), "instance_id": instance_id })
 
 ## The fastest horizontal speed (m/s) `peer` may move at while mounted; 0 when it is on foot (no mount cap).
 func mounted_speed_cap(peer: int) -> float:
-	if root._is_client or root._mount == null or root._networking == null:
+	if root._is_client or slice == null or root._networking == null:
 		return 0.0
 	var pid: String = root._networking.get_player_id(peer)
-	if pid == "" or not root._mount.is_mounted(pid):
+	if pid == "" or not slice.is_mounted(pid):
 		return 0.0
-	var rate: float = root._mount.accepted_speed(pid, PlayerSlice.SPEED * root._registry.stat_of(pid, "moveSpeedFactor")) * SPEED_SLACK
+	var rate: float = slice.accepted_speed(pid, PlayerSlice.SPEED * root._registry.stat_of(pid, "moveSpeedFactor")) * SPEED_SLACK
 	# The admin moves the host set for the player (`/speed`, `/fly`) apply on a mount as on foot.
 	if root._chat != null:
 		var moves: Dictionary = root._chat.admin_moves_of(pid)
