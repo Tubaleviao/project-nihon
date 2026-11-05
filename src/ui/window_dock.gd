@@ -124,10 +124,11 @@ func is_entry_visible(window_key: String) -> bool:
 	var b: Button = _boxes.get(window_key, null)
 	return b != null and b.visible
 
-## The shortcut chip of a window: "Alt+A", or "?" for the controls window.
+## The shortcut chip of a window: "Alt+A", "?" for the controls window, "" for any other window without a row.
 static func chip(window_key: String) -> String:
-	var label := WindowShortcuts.label_of(window_key)
-	return label if label != "" else "?"
+	if window_key == "controls":
+		return "?"
+	return WindowShortcuts.label_of(window_key)
 
 static func entries() -> Array:
 	return ENTRIES

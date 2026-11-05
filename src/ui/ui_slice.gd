@@ -1,7 +1,7 @@
 extends Node
 ## UI slice — window system exposing inventory, technology, crafting, trade,
 ## market, and proposals. Each window is a PanelContainer on a shared CanvasLayer,
-## toggled with I / T / H (crafting) / C (character) / Y (trade) / P (market) / G (proposals) / ? (controls)
+## toggled with Alt + a letter (`WindowShortcuts.TABLE`) or ? (controls)
 ## and closed with ESC or the window's ✕ button. Every window drags by its title
 ## bar and reopens where it was left (Phase 46). Opening a window
 ## never touches the mouse: the pointer is always free (Phase 85) and only

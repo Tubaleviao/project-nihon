@@ -40,6 +40,14 @@ static func window_for(keycode: int, alt: bool, ctrl: bool, meta: bool) -> Strin
 static func window_for_event(event: InputEventKey) -> String:
 	return window_for(int(event.keycode), event.alt_pressed, event.ctrl_pressed, event.meta_pressed)
 
+## True for an Alt+letter that opens a window: the bare-letter action of the same key must not fire.
+static func is_window_key(event: InputEventKey) -> bool:
+	return window_for_event(event) != ""
+
+## Whether a movement key counts as held: not while Alt is down and Alt+key is a window shortcut (Alt+A, Alt+S).
+static func walk_down(keycode: int) -> bool:
+	return Input.is_key_pressed(keycode) and not (Input.is_key_pressed(KEY_ALT) and window_for(keycode, true, false, false) != "")
+
 ## The keycode of a window's shortcut, or 0.
 static func keycode_of(window: String) -> int:
 	for row: Dictionary in TABLE:

@@ -383,7 +383,7 @@ func handle_key(event: InputEventKey) -> bool:
 	var keycode := int(event.keycode)
 	var modified: bool = event.ctrl_pressed or event.alt_pressed or event.meta_pressed
 	if _binding >= 0:
-		if modified:
+		if modified and keycode != KEY_ESCAPE:   # Esc (even with a modifier) still cancels
 			return true   # Phase 214: a box key is a bare key; Alt+letter is a window, never a binding
 		_finish_binding(keycode)
 		return true

@@ -10,6 +10,7 @@ func register() -> void:
 	_run_test("shortcuts: Alt+E is the inventory (no equipment toggle), Alt+Q is Equipment, Alt+G is the clan", _test_conflicts)
 	_run_test("shortcuts: Ctrl+Alt and a focused text field open nothing, and an Option character still matches on keycode", _test_modifiers_and_focus)
 	_run_test("shortcuts: no window letter outside the table; dock and controls rows come from it; one row per window", _test_audit)
+	_run_test("shortcuts: a wheel rebind ignores an Alt+letter", _test_wheel_rebind_modified)
 	_run_test("shortcuts: a hotbar box takes a freed letter and refuses an Alt+letter", _test_hotbar)
 	_run_test("shortcuts: Attributes lists every attribute and derived stat, Equipment every slot", _test_split_windows)
 
@@ -106,7 +107,7 @@ func _test_audit() -> void:
 	for e in _Dock.entries():
 		var key := str(e["key"])
 		var want := WindowShortcuts.label_of(key)
-		assert_eq(_Dock.chip(key), want if want != "" else "?", "the dock chip of %s comes from the table" % key)
+		assert_eq(_Dock.chip(key), "?" if key == "controls" else want, "the dock chip of %s comes from the table" % key)
 	# the `?` row lists the table
 	var windows_row := {}
 	for r in UiSlice.controls_rows():
@@ -132,10 +133,22 @@ func _test_hotbar() -> void:
 	hb.begin_binding(HB.COLUMNS)
 	assert_true(hb.handle_key(_key(KEY_A, true)), "an Alt+letter is swallowed while binding")
 	assert_true(hb.is_binding(), "and binds nothing")
+	assert_true(hb.handle_key(_key(KEY_ESCAPE, true)), "Alt+Esc is handled")
+	assert_false(hb.is_binding(), "and still cancels the binding")
+	hb.begin_binding(HB.COLUMNS)
 	assert_true(hb.handle_key(_key(KEY_I, false)), "a bare freed letter binds")
 	assert_false(hb.is_binding(), "binding ended")
 	assert_eq(hb.binds[HB.COLUMNS], KEY_I, "the first second-row box is I")
 	hb.free()
+
+func _test_wheel_rebind_modified() -> void:
+	var GP := preload("res://src/ui/gesture_panel.gd")
+	var before: int = GP.key_code()
+	GP.awaiting_key = true
+	assert_eq(GP.handle_key(_key(KEY_H, true), false), GP.KEY_SWALLOWED, "Alt+H is not taken as the wheel key")
+	assert_true(GP.awaiting_key, "the rebind keeps waiting")
+	assert_eq(GP.key_code(), before, "the wheel key is unchanged")
+	GP.awaiting_key = false
 
 func _test_split_windows() -> void:
 	var ui := _new_hud_ui()

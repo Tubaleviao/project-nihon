@@ -222,6 +222,9 @@ func _refill_controls() -> void:
 			key_label.add_theme_font_size_override("font_size", 15)
 			key_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
 			key_label.custom_minimum_size = Vector2(90, 0)
+			if key_label.text.length() > 30:   # the windows row lists every Alt+letter: wrap it instead of widening the panel
+				key_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+				key_label.custom_minimum_size = Vector2(300, 0)
 			line.add_child(key_label)
 		var desc = Label.new()
 		desc.text = str(row["desc"])
