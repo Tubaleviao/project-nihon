@@ -24,7 +24,7 @@ func make_slice(ctx: GameRoot) -> Node:
 	m.player_pos = _player_position
 	m.local_body = root._player
 	m.input_allowed = func() -> bool: return root._player != null and root._player.world_input_allowed()
-	m.nearest_to = func(at: Vector3, within: float) -> String: return str(root._creature.nearest_creature(at, within))
+	m.nearest_to = func(at: Vector3, within: float) -> String: return str(root._creature.nearest_tamed_by(at, within, str(root._registry.local_player_id)))
 	m.own_position = func() -> Vector3: return root._player.get_position()
 	m.local_player_id = func() -> String: return str(root._registry.local_player_id)
 	return m
@@ -91,6 +91,7 @@ func peer_speed_cap(peer: int) -> float:
 func tick(_delta: float) -> void:
 	if root._is_client or slice == null:
 		return
+	slice.validate_riders()
 	for pid: String in slice.riders():
 		var iid: String = slice.mounted_instance(pid)
 		var exact: Dictionary = {}

@@ -64,6 +64,7 @@ func _ready() -> void:
 	GameBus.creature_died.connect(_on_creature_died)
 	GameBus.player_left.connect(_on_player_left)
 	GameBus.mount_resolved.connect(_on_local_resolved)
+	GameBus.player_died.connect(_on_local_died)
 
 ## M mounts the nearest creature within `MOUNT_RANGE`, or gets off. The host decides (it must be the player's own
 ## tamed companion) and answers with a keyed notice.
@@ -79,7 +80,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		if iid != "":
 			GameBus.mount_intent.emit(iid, "")
 
-func _on_local_resolved(_player_id: String, action: String, ok: bool, _reason: String) -> void:
+func _on_local_resolved(player_id: String, action: String, ok: bool, _reason: String) -> void:
+	# Only the answer about this machine's own player (a listen host also sees every remote rider's answer).
+	if not local_player_id.is_valid() or player_id != str(local_player_id.call()):
+		return
 	if ok:
 		_local_mounted = action == "mount"
 		if local_body != null:
@@ -174,6 +178,20 @@ func mount(player_id: String, instance_id: String) -> String:
 	GameBus.mount_changed.emit(player_id, instance_id)
 	return ""
 
+## Put `player_id` back on foot because of something that happened to them or the mount (death, despawn,
+## release): unlike `dismount`, the rider is told, so a client drops its riding speed.
+func force_dismount(player_id: String) -> void:
+	if dismount(player_id):
+		GameBus.mount_resolved.emit(player_id, "dismount", true, "")
+
+## Host: dismount every rider whose creature is gone or no longer theirs (despawned, released, re-tamed).
+func validate_riders() -> void:
+	for pid: String in _riding.keys():
+		var iid: String = _riding[pid]
+		var gone := not creature_of.is_valid() or str(creature_of.call(iid)) == ""
+		if gone or not owner_of.is_valid() or str(owner_of.call(iid)) != pid:
+			force_dismount(pid)
+
 ## Put `player_id` back on foot. Returns whether they were mounted.
 func dismount(player_id: String) -> bool:
 	if not _riding.has(player_id):
@@ -209,7 +227,10 @@ func _on_dismount_intent(player_id: String) -> void:
 		return
 	if player_id == "" and local_player_id.is_valid():
 		player_id = str(local_player_id.call())
-	if player_id == "" or not _gate(player_id):
+	if player_id == "":
+		return
+	if not _gate(player_id):
+		GameBus.mount_resolved.emit(player_id, "dismount", false, "rate_limited")
 		return
 	GameBus.mount_resolved.emit(player_id, "dismount", dismount(player_id), "")
 
@@ -219,7 +240,13 @@ func _on_creature_died(entity_id: String, _position: Vector3, _killer: String, _
 		return
 	var rider := rider_of(entity_id)
 	if rider != "":
-		dismount(rider)
+		force_dismount(rider)
+
+## The host's own player dying puts them on foot (a remote rider's death is caught by `validate_riders` only if
+## the companion is lost; the host's own body is the one that emits `player_died`).
+func _on_local_died(_position: Vector3, _killer: String, _landing: Vector3) -> void:
+	if is_host and local_player_id.is_valid():
+		force_dismount(str(local_player_id.call()))
 
 ## Logging out dismounts; the companion stays where it is beside the player.
 func _on_player_left(player_id: String) -> void:

@@ -161,6 +161,23 @@ func nearest_creature(from_pos: Variant, radius: float) -> String:
 			best_id = iid
 	return best_id
 
+## The nearest living creature within `radius` of `from_pos` that is a tamed companion of `player_id`, "" when none.
+func nearest_tamed_by(from_pos: Variant, radius: float, player_id: String) -> String:
+	if player_id == "":
+		return ""
+	var from := _exact_of(from_pos)
+	var best_id := ""
+	var best_dist := radius + 1.0
+	for iid in _spatial.query_radius(from, radius):
+		var inst: Dictionary = _instances[iid]
+		if inst["state"] == "dead" or str(inst.get("tamed_by", "")) != player_id:
+			continue
+		var d: float = WorldPos.offset_between(from, inst["pos"]).length()
+		if d < best_dist:
+			best_dist = d
+			best_id = iid
+	return best_id
+
 ## Instance ids within `radius` of `pos` (any state). The AI's neighbour /
 ## proximity queries route through the hash via this (Phase 28). Phase 195 — `pos` is an exact
 ## `{chunk, local}` (what the AI holds) or a world-metres Vector3 (split here, coarse far out).

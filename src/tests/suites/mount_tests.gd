@@ -17,6 +17,7 @@ func register() -> void:
 	_run_test("mount: a valid mount is recorded, announced and puts the rider on the creature", _test_mount_success)
 	_run_test("mount: the accepted speed is the fabric factor times walking speed", _test_mount_speed)
 	_run_test("mount: the mount's death and the rider's logout each dismount", _test_mount_dismounts)
+	_run_test("mount: forced dismounts tell the rider", _test_mount_forced_dismount)
 	_run_test("mount: the intents answer with mount_resolved and are rate limited", _test_mount_intents)
 	_run_test("mount: a client reporting more than the mounted speed is clamped by the host", _test_mount_clamp)
 	_run_test("mount: the shipped fabric declares a mount on a tameable creature", _test_mount_fabric)
@@ -130,6 +131,28 @@ func _test_mount_intents() -> void:
 	assert_eq(_resolved.back(), ["p1", "dismount", true, ""], "the dismount intent is answered")
 	GameBus.mount_intent.emit("w1", "")
 	assert_eq(_resolved.size(), 4, "an intent with no player is ignored")
+	_drop(m)
+
+func _test_mount_forced_dismount() -> void:
+	var m := _rig()
+	m.mount("p1", "w1")
+	_creatures.erase("w1")
+	m.validate_riders()
+	assert_false(m.is_mounted("p1"), "a despawned mount dismounts the rider")
+	assert_eq(_resolved.back(), ["p1", "dismount", true, ""], "the rider is told")
+	_creatures["w2"]["owner"] = "p1"
+	m.mount("p1", "w2")
+	_creatures["w2"]["owner"] = ""
+	m.validate_riders()
+	assert_false(m.is_mounted("p1"), "a released companion dismounts the rider")
+	_creatures["w2"]["owner"] = "p1"
+	m.mount("p1", "w2")
+	m.local_player_id = func() -> String: return "p1"
+	GameBus.player_died.emit(Vector3.ZERO, "", Vector3.ZERO)
+	assert_false(m.is_mounted("p1"), "the local player's death dismounts")
+	# A listen host ignores other players' answers.
+	GameBus.mount_resolved.emit("p9", "mount", true, "")
+	assert_false(m._local_mounted, "another player's answer leaves this machine's state alone")
 	_drop(m)
 
 func _test_mount_clamp() -> void:
