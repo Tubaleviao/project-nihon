@@ -54,6 +54,7 @@ expect('accent fold covers é, ã, ç, ñ, ё and ά', ['é', 'ã', 'ç', 'ñ', 
     const a = apps[g.appearance];
     keys.push(['meshes', `models/characters/bodies/${a.body}.glb.raw`], ['meshes', `models/characters/heads/${a.head}.glb.raw`],
       ['textures', `textures/characters/eyes/${a.eyes}.png.raw`]);
+    for (const suffix of ['', '_color_mask', '_channel']) keys.push(['textures', `textures/characters/bodies/${a.body}${suffix}.png.raw`]);
   }
   for (const id of Object.keys(d.hairStyles)) keys.push(['meshes', `models/characters/hair/${id}.glb.raw`], ['textures', `icons/hair/${id}.png.raw`]);
   // Item icons are read by key without a manifest entry (gen_item_assets.py), so only the file is required.
