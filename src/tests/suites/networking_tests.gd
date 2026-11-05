@@ -2054,6 +2054,9 @@ func _test_net_harness_step_table() -> void:
 	assert_eq(str(steps[0].get("name", "")), "handshake", "the scenario starts with the handshake")
 	assert_eq(str(steps[steps.size() - 1].get("name", "")), "self_respawn",
 		"and ends with a player respawned outside a stranger's walls (Phase 205)")
+	assert_eq(str(steps[steps.size() - 2].get("name", "")), "mount_dismount",
+		"after a tamed wolf mounted and left (Phase 216)")
+	steps = steps.slice(0, steps.size() - 2) + [steps[steps.size() - 1]]
 	assert_eq(str(steps[steps.size() - 2].get("name", "")), "book_teaches_client",
 		"after a book handed to the client teaching the client, not the host (Phase 209)")
 	steps = steps.slice(0, steps.size() - 2) + [steps[steps.size() - 1]]
