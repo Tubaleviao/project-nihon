@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–199 and 203–214 are done. Their specs and acceptance criteria, and the introductions of
+Phases 1–199 and 203–214 are done. Phases 202 and 215–218 are open. Their specs and acceptance criteria, and the introductions of
 the arcs they belonged to, are archived in [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Next: follow-up debt burn II (Phases 194–196)
@@ -51,6 +51,8 @@ hour. This arc gives a village shared projects, a specialty for each member, rai
 against and upkeep to pay. Its last phase proves the loop with four bots on a dedicated server.
 Raids come from creatures only. Settlement-against-settlement conflict stays deferred.
 
+**Changed 2026-11-05:** Phase 213 is done, so Phase 202 is rewritten below as the clan loop (a clan, skills from work, a trade, an owned building and a shared chest) instead of a raid and upkeep.
+
 **Changed 2026-10-31 (Phases 203–213):** the owner replaced settlements' claim area with clans and owned structures, and dropped raids. Phase 200 (raids) moved to Deferred, and Phase 201 (upkeep) and project labour are removed. Phase 202 (the loop played, which plays a raid and upkeep) is on hold until it is rewritten as a clan loop after Phase 213. Phase 199 shipped (#539) with a specialty labour bonus, which Phase 207 removes with project labour: specialties then follow from skills alone, which Phase 207 grows from work.
 
 | Phase | Title | Status | Spec |
@@ -60,7 +62,7 @@ Raids come from creatures only. Settlement-against-settlement conflict stays def
 | 199 | Specialties at runtime: what each member is good at | Done | [phases-199.md](docs/roadmap-history/phases-199.md) |
 | 200 | Raids: a warned, bounded attack the village can defend | Aborted | Deferred |
 | 201 | Upkeep: a village that has to keep going | Aborted | — |
-| 202 | The settlement loop, played: four bots found, specialize, trade and defend a village | On hold | below |
+| 202 | The clan loop, played: four bots found a clan, specialize, trade and build | Planned | below |
 
 ### Arc: clans, owned buildings, an Earth-scale world and buildings that stand up (Phases 203–213)
 
@@ -138,45 +140,216 @@ system, so it can run before, between or after the clan arc's phases.
 |---|---|---|---|
 | 214 | Alt window shortcuts: Alt+A attributes, Alt+S skills, Alt+E inventory, Alt+Q equipment, Alt+G clan | Done | [phases-214.md](docs/roadmap-history/phases-214.md) |
 
+
+### Next batch (Phases 215–218)
+
+Added 2026-11-05 after Phase 214. One step is owner-filed work (#559), two take the top of the
+Deferred list (fast travel, rivers and lakes) as far as they go without a design decision, and one
+burns down the four open `autopilot-followup` issues. Phase 202 (above) is the fifth.
+
+| Phase | Title | Status | Spec |
+|---|---|---|---|
+| 215 | Chibi body sheets: public placeholders, the colour mask bound to skin, and the novice outfit region (#559) | Planned | below |
+| 216 | Mounts: ride a tamed creature | Planned | below |
+| 217 | Lakes and rivers on unrecorded land (static water, no flow) | Planned | below |
+| 218 | Follow-up cleanup sweep: exact creature positions, the spatial hash, relay and window shortcuts | Planned | below |
+
 ---
 
-## Phase 202 — The settlement loop, played: four bots found, specialize, trade and defend a village
+## Phase 202 — The clan loop, played: four bots found a clan, specialize, trade and build
 
-**On hold:** it plays a raid and upkeep, which are dropped. It will be rewritten as a clan loop (found a clan, specialize, trade, build) after Phase 213.
+**Rewritten 2026-11-05** (was the settlement loop with a raid and upkeep, both dropped 2026-10-31).
 
-**Goal:** prove the arc's goal with an automated gate. Four scripted players on a dedicated server
-found a village, join it, take different specialties, trade, complete a project, defend a raid and
-pay upkeep. The in-game time they spend playing, not counting time skipped with admin commands,
-must stay under one hour.
+**Goal:** prove the clan arc's goal with an automated gate. Four scripted players on a dedicated
+server found a clan, join it, grow different skills from work, see each other's skills, trade, and
+build a clan-owned building with a clan chest. The in-game time they spend playing, not counting
+time skipped with admin commands, must stay under one hour.
 
 **Newel dependency:** NO.
 
-**Depends on:** Phases 198–201.
+**Depends on:** Phases 204–213, the stress bot process (Phase 162).
 
 **Deliverables:**
-- A `settlement` scenario in the stress bot process (Phase 162): four bots on the pinned playtest
-  seed. One founds and the others join. Each grows a different skill toward a specialty, they trade
-  one item through the trade window protocol and complete a storehouse or palisade. A `/raid` is
-  defended, and `/time` advances a day so upkeep is paid.
-- `stress/settlement.{md,json}`: each loop beat with its in-game and wall time, and a verdict.
-- A CI job that runs the scenario.
+- A `clan` scenario in the stress bot process (`src/tests/stress_bots.gd`, today movement only): four
+  bots on the pinned playtest seed and `PlaytestBot.PLAYER_ID`-style pinned ids. Bot 1 founds a clan
+  by name and invites the others, who accept. Each bot works a different kind of work (gathering,
+  crafting, building, sewing or smithing) until its skill for it grows. One bot whispers another
+  (Phase 204) and they trade one item through the trade window protocol. Together they place a
+  clan-owned building inside the floor limits (Phase 212), set a chest in it to clan access and move
+  an item through it, and one bot dismantles a private block of its own.
+- Every intent goes over ENet through the same host validation a real client meets; the scenario
+  sends no admin command except `/time` skips, which it records.
+- `stress/clan.{md,json}`: each beat with its in-game and wall time, its host-side evidence and a
+  verdict. `tools/stress_report.gd` renders it.
+- A CI job (`xvfb` not needed: dedicated server and headless bots) that runs the scenario.
 
 **Acceptance criteria:**
 - [ ] CI: the scenario passes every beat, and its reported in-game play time (excluding admin time
   skips) is under 60 minutes.
-- [ ] CI: the four bots end with at least two different specialties, one completed project, one
-  defended raid and one paid upkeep, as read from the host's world record.
+- [ ] CI: read from the host's world record at the end, the clan has 4 members, at least two members
+  have a different highest skill, one trade completed, the clan owns at least one structure, and the
+  clan chest's access mode is `clan` with the moved item in it.
+- [ ] CI: a fifth, non-member bot's attempt to open the clan chest and to build inside the clan's
+  circle is refused by the host (the refusal key is in the report).
 - [ ] The scenario passes 3 CI runs in a row on an unchanged commit.
+- [ ] Suite green on both boot paths, harness green.
+
+---
+
+## Phase 215 — Chibi body sheets: public placeholders, the colour mask bound to skin, and the novice outfit region
+
+**Closes:** #559.
+
+**Goal:** the private art repo can ship the chibi bodies' texture sheets. Today
+`models/characters/bodies/chibi_body_{m,f}.glb.raw` exist in `assets/`, but their sheets do not, so
+the placeholder rule forbids the art repo from adding them, and the game binds only the old
+`textures/characters/player*` sheets to every rig.
+
+**Newel dependency:** NO.
+
+**Deliverables:**
+- `tools/gen_placeholder.py` makes `assets/textures/characters/bodies/chibi_body_{m,f}.png.raw`,
+  `chibi_body_{m,f}_color_mask.png.raw` and `chibi_body_{m,f}_channel.png.raw` (64×64; mask R/G/B =
+  Primary/Secondary/Accent, channel R/G/B = Metal/Emission/Wear, as the `player*` sheets), listed under
+  `textures` in `assets/manifest.json`.
+- `CharacterSlice` picks the sheet set by the rig's body key (the gender's chibi body), falling back to
+  the `player*` sheets for any body without its own, and binds them through
+  `CharacterMaterial.bind_rig_textures`. Skin colour from the look is driven through the mask's skin
+  channel, not a separate material.
+- The novice outfit occupies a documented UV region of the sheet (`assets/README.md` and the
+  characters bible section), so the art repo paints it in place.
+
+**Acceptance criteria:**
+- [ ] Suite: every new key exists in `assets/`, is in `assets/manifest.json`, is 64×64 and decodes;
+  the placeholder-rule audit passes.
+- [ ] Suite: a male and a female look bind their own body's `detail_tex`, `color_mask_tex` and
+  `channel_tex`; a body key with no sheets binds the `player*` sheets.
+- [ ] Suite: changing a look's skin colour changes the material parameter the mask's skin channel
+  reads, on both genders.
+- [ ] Suite green on both boot paths, harness green; the `--playtest-bot` character_sheet and create
+  steps still pass.
+
+---
+
+## Phase 216 — Mounts: ride a tamed creature
+
+**Goal:** the first fast travel beyond waystones (Deferred: "Fast travel beyond waystones"). A
+player who has tamed a mountable creature can mount it, travel faster than on foot, and dismount.
+Taming (`src/creature/taming_slice.gd`) already binds a creature to its tamer as a companion.
+
+**Newel dependency:** NO.
+
+**Deliverables:**
+- Fabric: a `mount` field on creatures (speed factor, stamina or none, which terrain it can cross,
+  rider offset), set on at least one existing tameable creature; a validator with
+  `tools/check_mounts.js` proving it rejects bad tables (speed factor ≤ 1, mount on a non-tameable
+  creature), and a CI step. Separate fabric PR, as the convention asks.
+- Runtime: mount and dismount intents on `GameBus`, validated on the host (the creature is the
+  player's own tamed companion, within reach, alive, not already ridden). While mounted the player's
+  movement speed is the mount's factor times the walking speed, the companion follows the rider's
+  exact position (Phase 171 `{chunk, local}`), and the host rejects movement faster than the mount
+  allows. Damage to the mount or its death dismounts the rider; logging out dismounts and leaves the
+  companion beside the player.
+- A Mount/Dismount entry in the gesture or companion UI and a key binding, with `en` and `pt_BR`
+  strings in `locale/ui.csv`.
+- A `mount` step in `--playtest-bot`, after `travel`: tame, mount, ride 200 m, dismount.
+
+**Acceptance criteria:**
+- [ ] `npm run validate` and `node tools/check_mounts.js` pass; the checker rejects each bad fixture.
+- [ ] Suite: mounting someone else's companion, a wild creature, a dead one or one out of reach is
+  refused with a key; a valid mount succeeds and is synced to other peers.
+- [ ] Suite: a mounted player's accepted speed is the mount factor times walking speed, and a client
+  reporting more is clamped by the host.
+- [ ] Suite: the mount's death and the rider's logout each dismount; no orphan nodes.
+- [ ] Harness: a client mounts on the host, a second client sees the rider on the mount, the rider
+  dismounts.
+- [ ] Playtest: the `mount` step passes and its mounted average speed is at least the fabric factor
+  × walking speed × 0.9.
+- [ ] Suite green on both boot paths, harness green; locale key-parity test passes.
+
+---
+
+## Phase 217 — Lakes and rivers on unrecorded land (static water, no flow)
+
+**Goal:** fresh water above sea level, the first half of the Deferred "Rivers, lakes and fluid flow"
+item. Today the only water is the ocean at `WorldSystem.seaLevel`. This phase generates lakes in
+basins and rivers down valleys on unrecorded land only, as static water; flow (a cellular automaton)
+stays deferred.
+
+**Newel dependency:** NO.
+
+**Deliverables:**
+- Fabric: `WorldSystem` (or a new `Hydrology` entity) parameters for lake frequency, minimum basin
+  depth, river source height, river width by catchment and the biomes rivers cannot cross, with a
+  validator and `tools/check_hydrology.js`.
+- `src/terrain/`: a deterministic hydrology field (per region, from the seed) that marks lake
+  surfaces and river beds; world-gen carves beds and fills them with water voxels at the lake/river
+  surface height. Rivers run downhill to a lake or the sea and never climb.
+- The stable-world rule holds: recorded chunks never change, and a river reaching a recorded chunk
+  ends at its edge (the frontier, `src/terrain/frontier.gd`, closes it in its blend). Bump
+  `TerrainSlice.WORLDGEN_VERSION`, add the history line, update `_test_worldgen_golden`.
+- The player's swim/underwater state and the creature path cost treat fresh water like sea water.
+- The distant terrain ring draws lake and river surfaces.
+
+**Acceptance criteria:**
+- [ ] `npm run validate` and `node tools/check_hydrology.js` pass; the checker rejects each bad fixture.
+- [ ] Suite: on the pinned seed, a sampled 64×64-chunk area holds at least one lake and one river;
+  each river cell's surface is at or below its upstream neighbour's.
+- [ ] Suite: the hydrology field is deterministic (same seed and region → same cells, twice, and
+  on a worker thread).
+- [ ] Suite: a recorded chunk's voxels are byte-identical before and after the version bump, and no
+  water voxel is generated inside a recorded chunk.
+- [ ] Suite: a player standing in a lake reports the swimming state; a creature path avoids a river
+  wider than its crossing limit.
+- [ ] Suite green on both boot paths, harness green; `--playtest-bot` walk, stream and flight steps
+  still pass.
+
+---
+
+## Phase 218 — Follow-up cleanup sweep: exact creature positions, the spatial hash, relay and window shortcuts
+
+**Closes:** #531, #537, #542, #558.
+
+**Goal:** burn down every open `autopilot-followup` issue. Each item is fixed, or closed with a
+one-line reason when the code it names is gone (for example #542's raider code, removed with raids,
+and #537's settlement claim check, removed by Phase 205). Re-check each item against `main` first.
+
+**Newel dependency:** NO.
+
+**Deliverables:**
+- #531: relay batch held-entry recipients refreshed; snapshot re-scope retried when dropped;
+  `transport.peer_set` cached and read-only, test counters moved off the production base and out of
+  `broadcast_aoi`; `ExactSpatialHash` and `SpatialHash` share a base; `creature_ai` passes the exact
+  target into `_tick_instance` and steers patrol and companion targets from exact positions; carcass
+  comment fixed; `creature_slice` position parameters typed and the `_exact_of` duplicates merged;
+  playtest harvest step pins the carcass and retries `out_of_range`.
+- #537: `ExactSpatialHash` copies stored position dicts and its header describes the cell-local
+  snapshot; a randomized brute-force test of `query_radius` against `WorldPos.offset_between`; a test
+  for `separate_bodies`' cross-chunk branch; the project footprint item fixed or closed.
+- #542: raider reach judging fixed with exact positions, or closed if no raider code remains.
+- #558: `FIRST_RING_TIMEOUT` change recorded in the Phase 214 history; window shortcuts stop walking
+  when Alt is released while the letter is held, with an AltGr case tested; the controls rows note
+  that Alt+G replaced J for the clan window.
+
+**Acceptance criteria:**
+- [ ] #531: every item fixed or closed with a reason; suite tests cover the relay hold, the re-scope
+  retry and exact patrol steering.
+- [ ] #537: the randomized `query_radius` test (Z edge, corner, negative chunks, same-cell update)
+  and the cross-chunk separation test pass.
+- [ ] #542: fixed with a test, or closed with the reason recorded in the issue.
+- [ ] #558: a test releases Alt before the letter and asserts no walk resumes; an AltGr event opens
+  no window.
+- [ ] All four issues closed; `tools/check_followups.sh` reports 0 open from this batch.
 - [ ] Suite green on both boot paths, harness green.
 
 ---
 
 ## Deferred (in priority order)
 
-- **Rivers, lakes and fluid flow** — water above sea level and flowing water (a cellular
-  automaton on dirty chunks only) after Phase 51's static sea level and Phase 137's falling sand.
+- **Fluid flow** — flowing water (a cellular automaton on dirty chunks only) after Phase 51's
+  static sea level, Phase 137's falling sand and Phase 217's static lakes and rivers.
 - **Fast travel beyond waystones** — a planet takes about 90 days to walk around. Phase 125 added
-  waystones; roads, mounts (taming exists) and boats remain.
+  waystones and Phase 216 mounts; roads and boats remain.
 - **Physics ragdolls** — Phase 157 animates deaths with a host-chosen landing spot and authored
   clips, so the headless server stays deterministic. A client-only ragdoll blend on top is later
   polish.
