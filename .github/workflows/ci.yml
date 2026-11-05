@@ -429,6 +429,9 @@ jobs:
       - name: Check the creature body validation rejects bad fabric
         run: node tools/check_bodies.js
 
+      - name: Check the mount validation rejects bad tables
+        run: node tools/check_mounts.js
+
       - name: Check the item-shape validation rejects bad shapes
         run: node tools/check_item_shapes.js
 

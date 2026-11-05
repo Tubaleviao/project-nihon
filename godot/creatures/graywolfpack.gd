@@ -88,3 +88,4 @@ enum State {
 @export var carryRule: int
 @export var drops: Array
 @export var tame: Dictionary
+@export var mount: Dictionary

@@ -1,4 +1,4 @@
-const { defineEntity, bodyFields, skeletonField, creatureStateMachine, dropsData, tameData, pathFields, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS, GROUP_BEHAVIORS } = require('./shared')
+const { defineEntity, bodyFields, skeletonField, creatureStateMachine, dropsData, tameData, mountData, pathFields, CREATURE_TIERS, AGGRESSION_LEVELS, CREATURE_STATES, BIOME_KEYS, GROUP_BEHAVIORS } = require('./shared')
 const { carcassFields } = require('../../gameplay/harvest')
 
 module.exports = {
@@ -131,6 +131,7 @@ module.exports = {
         cooldownSeconds: 0,
         suppressRespawn: true,
       }),
+      mount: mountData({ speedFactor: 2.0, staminaSeconds: 0, terrain: ['ground'], riderOffset: [0, 0.8, 0] }),
     },
     stateMachine: creatureStateMachine({ conditionalAlertSkip: true }),
     behaviors: {

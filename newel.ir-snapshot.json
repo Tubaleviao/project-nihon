@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:fba791b5ed5ad11cd434a689789ae27ccd9f9ede47199c27cb9c988b8f9929f2",
+  "schemaHash": "sha256:afd3f2ee4f879ce4b7ae720e26287e7f08d090077430b961866bdaf63bf44334",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -34972,6 +34972,26 @@
               "yields": [],
               "cooldownSeconds": 0,
               "suppressRespawn": true
+            }
+          },
+          "mount": {
+            "name": "mount",
+            "type": "json",
+            "description": "Mount spec: speed factor over walking speed, stamina seconds (0 = none), terrain crossed and the rider offset.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "speedFactor": 2,
+              "staminaSeconds": 0,
+              "terrain": [
+                "ground"
+              ],
+              "riderOffset": [
+                0,
+                0.8,
+                0
+              ]
             }
           }
         },
