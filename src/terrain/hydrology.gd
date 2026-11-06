@@ -31,11 +31,13 @@ const RIVER_MAX_STEPS := 60
 const RIVER_BED_DEPTH := 1.5
 const POND_FACTOR := 2.0            ## a river's terminal pond radius, in river widths
 const CACHE_MAX := 4096
-const FEATURE_CACHE_MAX := 1024
+const FEATURE_CACHE_MAX := 8192   ## the distant ring samples hundreds of chunks per rebuild
 
 static var _mutex := Mutex.new()
-static var _rivers: Dictionary = {}   # "seed:cx:cz" → river Dictionary or null
-static var _features: Dictionary = {}   # "seed:cx:cz" → features of a chunk
+static var _rivers: Dictionary = {}   # seed → { Vector2i cell → river Dictionary }
+static var _features: Dictionary = {}   # seed → { Vector2i chunk → features }
+static var _rivers_n := 0
+static var _features_n := 0
 static var _gen := 0
 
 ## Forget cached rivers (the fabric or the seed changed).
@@ -154,10 +156,11 @@ static func lake_of_cell(seed_v: int, cx: int, cz: int) -> Dictionary:
 ## wid: PackedFloat64Array, pond: Dictionary }`, or {} when the cell has none. Cached; pure.
 static func river_of_cell(seed_v: int, cx: int, cz: int) -> Dictionary:
 	warm()
-	var key := "%d:%d:%d" % [seed_v, cx, cz]
+	var key := Vector2i(cx, cz)
 	_mutex.lock()
-	if _rivers.has(key):
-		var hit: Dictionary = _rivers[key]
+	var by_seed: Variant = _rivers.get(seed_v)
+	if by_seed != null and (by_seed as Dictionary).has(key):
+		var hit: Dictionary = (by_seed as Dictionary)[key]
 		_mutex.unlock()
 		return hit
 	var gen := _gen
@@ -165,9 +168,13 @@ static func river_of_cell(seed_v: int, cx: int, cz: int) -> Dictionary:
 	var river := _trace_river(seed_v, cx, cz)
 	_mutex.lock()
 	if gen == _gen:
-		if _rivers.size() >= CACHE_MAX:
+		if _rivers_n >= CACHE_MAX:
 			_rivers.clear()
-		_rivers[key] = river
+			_rivers_n = 0
+		if not _rivers.has(seed_v):
+			_rivers[seed_v] = {}
+		(_rivers[seed_v] as Dictionary)[key] = river
+		_rivers_n += 1
 	_mutex.unlock()
 	return river
 
@@ -233,17 +240,21 @@ static func _pond_at(p: Vector2, surface: float, width: float) -> Dictionary:
 static func features_for_chunk(chunk: Vector2i, seed_v: int) -> Dictionary:
 	if not chunk_active(chunk):
 		return { "lakes": [], "segs": [] }
-	var key := "%d:%d:%d" % [seed_v, chunk.x, chunk.y]
 	_mutex.lock()
-	var hit: Variant = _features.get(key)
+	var by_seed: Variant = _features.get(seed_v)
+	var hit: Variant = (by_seed as Dictionary).get(chunk) if by_seed != null else null
 	_mutex.unlock()
 	if hit != null:
 		return hit
 	var built := _build_features(chunk, seed_v)
 	_mutex.lock()
-	if _features.size() >= FEATURE_CACHE_MAX:
+	if _features_n >= FEATURE_CACHE_MAX:
 		_features.clear()
-	_features[key] = built
+		_features_n = 0
+	if not _features.has(seed_v):
+		_features[seed_v] = {}
+	(_features[seed_v] as Dictionary)[chunk] = built
+	_features_n += 1
 	_mutex.unlock()
 	return built
 
