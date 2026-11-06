@@ -640,6 +640,7 @@ static func item_description(item_id: String) -> String:
 func inventory_rows() -> Array:
 	return _m2.inventory_rows()
 
+
 ## The `?` legend, moved here from the always-on HUD panel. Each row:
 ## { action, keys, desc, mouse } where `mouse` is a MouseButton for a drawn cue, or 0. `action` is the
 ## id a tutorial step names in `inputs` (Phase 184, `Tutorial.inputActions`), in this row order.
@@ -864,8 +865,14 @@ func _load_item_icon(key: String) -> Texture2D:
 	_icon_cache[path] = tex
 	return tex
 
+
 func _on_slot_gui_input(event: InputEvent, item_id: String, actions: Array) -> void:
-	if not (event is InputEventMouseButton) or not event.pressed or event.button_index != MOUSE_BUTTON_RIGHT:
+	if not (event is InputEventMouseButton) or not event.pressed:
+		return
+	if event.button_index == MOUSE_BUTTON_LEFT and event.double_click:
+		dispatch_item_action(item_id, UiPart2.primary_action(actions))   # "" (nothing to do) is refused
+		return
+	if event.button_index != MOUSE_BUTTON_RIGHT:
 		return
 	if actions.is_empty() or _slot_menu == null:
 		return
@@ -888,6 +895,7 @@ func _on_slot_menu_pressed(index: int) -> void:
 func _on_character_appearance_changed(iid: String, _appearance: Dictionary) -> void:
 	if character_slice == null or str(iid) == str(character_slice.get_player_character()):
 		refresh_character()
+		refresh_inventory()   # worn gear leaves the Inventory grid, unworn gear comes back
 
 ## The friend-code line of the Character window. Pure.
 static func friend_code_text(handle: String) -> String:

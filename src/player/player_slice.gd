@@ -16,6 +16,7 @@ const Diag := preload("res://src/core/diag.gd")
 const I18n := preload("res://src/core/i18n.gd")
 const UiIcons := preload("res://src/ui/ui_icons.gd")
 const CarcassRules := preload("res://src/loot/carcass_rules.gd")
+const CarcassHover := preload("res://src/player/carcass_hover.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const StatusEffects := preload("res://src/battle/status_effects.gd")
 const AdminRules := preload("res://src/admin/admin_rules.gd")
@@ -1410,13 +1411,11 @@ static func _has_usable_copy(durability: Dictionary, item: String) -> bool:
 			return true
 	return false
 
-## Phase 161 — the prompt for the body at hand (or the one being carried), through I18n; "" when none.
+## Phase 161 — the prompt for the body under the pointer (or the one being carried), through I18n; "" when none.
 func _carcass_prompt() -> String:
-	if carcass_slice == null:
-		return ""
 	if carrying:
 		return I18n.t("hud.carcass.carrying")
-	var cid := str(carcass_slice.nearest(get_position(), CarcassRules.rule_f("harvestRangeMetres", 3.0)))
+	var cid := CarcassHover.at_pointer(carcass_slice, get_position(), _origin.value, _camera)   # only the body under it
 	if cid == "":
 		return ""
 	var held: Array = []

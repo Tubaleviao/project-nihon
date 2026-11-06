@@ -1,5 +1,5 @@
 extends PanelContainer
-## Tutorial card (Phase 186) — one small card in a screen corner that does not block play: chapter, title, body
+## Tutorial card (Phase 186) — one small card at the top centre of the screen that does not block play: chapter, title, body
 ## with the player's own keys, a step counter, **Dismiss** and **Turn off tutorial**. A completed step shows a
 ## short check, then the next card. Only the display; `TutorialSlice` owns the state.
 
@@ -9,6 +9,10 @@ const Rules := preload("res://src/tutorial/tutorial_rules.gd")
 var slice: Node = null
 ## The slice the `?` panel's controls drive (set by `bind`).
 static var active: Node = null
+## Top centre, on a layer above the minimap (20) and the horizon markers (10) but under the windows (30):
+## in the top-right corner the minimap covered it.
+const LAYER := 25
+const PRESET := Control.PRESET_CENTER_TOP
 ## Seconds the check stays after a step completes.
 const CHECK_SECONDS := 1.5
 

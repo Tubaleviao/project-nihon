@@ -60,10 +60,10 @@ func attach() -> void:
 	root.add_child(slice)
 	slice.load_saved()
 	_layer = CanvasLayer.new()
-	_layer.layer = 5
+	_layer.layer = TutorialCard.LAYER
 	root.add_child(_layer)
 	card = TutorialCard.new()
-	card.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE, 12)
+	card.set_anchors_and_offsets_preset(TutorialCard.PRESET, Control.PRESET_MODE_MINSIZE, 12)
 	_layer.add_child(card)
 	card.bind(slice)
 

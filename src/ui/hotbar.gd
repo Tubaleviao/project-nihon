@@ -358,8 +358,13 @@ func clear_slot(index: int) -> void:
 	_set_slots(place(slots, index, ""))
 
 ## Put `entry` (an item id or `skill:<Key>`) into a box.
+## An item it displaces counts as taken off by hand, so `fill` does not put it straight back in the next free box.
 func assign(index: int, entry: String) -> void:
 	_declined.erase(entry)
+	if index >= 0 and index < SLOT_COUNT:
+		var displaced := str(slots[index])
+		if displaced != "" and displaced != entry and not is_skill(displaced):
+			_declined[displaced] = true
 	_set_slots(place(slots, index, entry))
 	GameBus.tutorial_event.emit("hotbar_bound", {})   # Phase 186
 
