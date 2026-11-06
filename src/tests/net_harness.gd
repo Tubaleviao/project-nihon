@@ -2098,23 +2098,8 @@ func _step_creature_far_delta() -> void:
 			_report("creature_far_delta", "fail", "no_connected_peer")
 			return
 		await _await_settle(1.0)
-		var net = _root._networking
-		var peer := int(peers[0])
-		var sent := 0   # a spy on the raw sender (below the AOI path) counts packets to this peer naming the probe
-		var transport = net._ensure_transport()
-		var real_send: Callable = transport._send_raw
-		var deliveries := [0]
-		transport._send_raw = func(to: int, json: String) -> void:
-			deliveries[0] += 1 if to == peer and json.contains(iid) else 0
-			real_send.call(to, json)
-		for p in [far, next]:
-			var before: int = deliveries[0]
-			net._peer_spatial.update(peer, WorldPos.to_scene(p, Vector2i.ZERO))
-			GameBus.creature_state_changed.emit(iid, "ForestBoar", "idle", p)
-			net._peer_spatial.update(peer, net.get_aoi_center(peer))
-			sent += 1 if deliveries[0] == before + 1 else 0
-			await _await_settle(0.5)
-		transport._send_raw = real_send; _report("creature_far_delta", verdict(sent == 2, true), "within_1cm" if sent == 2 else "far_delta_not_relayed")
+		var sent: int = await LateSteps.new().far_delta_sent(self, peers[0], iid, [far, next])
+		_report("creature_far_delta", verdict(sent == 2, true), "within_1cm" if sent == 2 else "far_delta_not_relayed")
 		return
 	# The fold step left this client in a folded frame, which would replay onto the host's positions: set it
 	# aside for the probe and put it back.
