@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–199, 202–216 are done. Phases 217 and 218 are open. Their specs and acceptance criteria, and the introductions of
+Phases 1–199, 202–216 and 218 are done. Phase 217 is open. Their specs and acceptance criteria, and the introductions of
 the arcs they belonged to, are archived in [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Next: follow-up debt burn II (Phases 194–196)
@@ -152,7 +152,7 @@ burns down the four open `autopilot-followup` issues. Phase 202 is done.
 | 215 | Chibi body sheets: public placeholders, the colour mask bound to skin, and the novice outfit region (#559) | Done | [phases-215.md](docs/roadmap-history/phases-215.md) |
 | 216 | Mounts: ride a tamed creature | Done | [phases-216.md](docs/roadmap-history/phases-216.md) |
 | 217 | Lakes and rivers on unrecorded land (static water, no flow) | Planned | below |
-| 218 | Follow-up cleanup sweep: exact creature positions, the spatial hash, relay and window shortcuts | Planned | below |
+| 218 | Follow-up cleanup sweep: exact creature positions, the spatial hash, relay and window shortcuts | Done | [phases-218.md](docs/roadmap-history/phases-218.md) |
 
 ---
 
@@ -190,44 +190,6 @@ stays deferred.
   wider than its crossing limit.
 - [ ] Suite green on both boot paths, harness green; `--playtest-bot` walk, stream and flight steps
   still pass.
-
----
-
-## Phase 218 — Follow-up cleanup sweep: exact creature positions, the spatial hash, relay and window shortcuts
-
-**Closes:** #531, #537, #542, #558.
-
-**Goal:** burn down every open `autopilot-followup` issue. Each item is fixed, or closed with a
-one-line reason when the code it names is gone (for example #542's raider code, removed with raids,
-and #537's settlement claim check, removed by Phase 205). Re-check each item against `main` first.
-
-**Newel dependency:** NO.
-
-**Deliverables:**
-- #531: relay batch held-entry recipients refreshed; snapshot re-scope retried when dropped;
-  `transport.peer_set` cached and read-only, test counters moved off the production base and out of
-  `broadcast_aoi`; `ExactSpatialHash` and `SpatialHash` share a base; `creature_ai` passes the exact
-  target into `_tick_instance` and steers patrol and companion targets from exact positions; carcass
-  comment fixed; `creature_slice` position parameters typed and the `_exact_of` duplicates merged;
-  playtest harvest step pins the carcass and retries `out_of_range`.
-- #537: `ExactSpatialHash` copies stored position dicts and its header describes the cell-local
-  snapshot; a randomized brute-force test of `query_radius` against `WorldPos.offset_between`; a test
-  for `separate_bodies`' cross-chunk branch; the project footprint item fixed or closed.
-- #542: raider reach judging fixed with exact positions, or closed if no raider code remains.
-- #558: `FIRST_RING_TIMEOUT` change recorded in the Phase 214 history; window shortcuts stop walking
-  when Alt is released while the letter is held, with an AltGr case tested; the controls rows note
-  that Alt+G replaced J for the clan window.
-
-**Acceptance criteria:**
-- [ ] #531: every item fixed or closed with a reason; suite tests cover the relay hold, the re-scope
-  retry and exact patrol steering.
-- [ ] #537: the randomized `query_radius` test (Z edge, corner, negative chunks, same-cell update)
-  and the cross-chunk separation test pass.
-- [ ] #542: fixed with a test, or closed with the reason recorded in the issue.
-- [ ] #558: a test releases Alt before the letter and asserts no walk resumes; an AltGr event opens
-  no window.
-- [ ] All four issues closed; `tools/check_followups.sh` reports 0 open from this batch.
-- [ ] Suite green on both boot paths, harness green.
 
 ---
 
