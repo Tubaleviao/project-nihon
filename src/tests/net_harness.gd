@@ -2086,10 +2086,8 @@ func _step_fold_carries_creatures() -> void:
 
 ## Phase 171 — a creature delta for a creature half a lap from the origin lands on the client within 1 cm; the
 ## client's record must follow a 0.1 m step, not the float32 grid (about 2 m there).
-## Phase 195 — the host's half sends both deltas the way a creature's do: `creature_state_changed` on the bus,
-## relayed by the networking slice through the AOI broadcast (#464). The AOI would drop a packet that far from
-## the harness players, so the peer's AOI entry stands at the probe for the two emits (synchronous: no report
-## can move it between) and is put back. It passes only when the AOI path delivered both packets to the peer.
+## Phase 195 — the host sends both deltas as a creature does (`creature_state_changed`, relayed through the AOI
+## broadcast, #464). The peer's AOI entry stands at the probe for the two emits and is put back.
 func _step_creature_far_delta() -> void:
 	var iid := "creature_harness_far_probe"
 	var far := { "chunk": Vector2i(625000, 3), "local": Vector3(5.0, 2.0, 5.0) }
@@ -2102,26 +2100,21 @@ func _step_creature_far_delta() -> void:
 		await _await_settle(1.0)
 		var net = _root._networking
 		var peer := int(peers[0])
-		var sent := 0
-		# A spy on the transport's raw sender counts the packets to this peer that name the probe creature: it
-		# sits below the AOI path, so it sees only what `broadcast_aoi` really delivered.
+		var sent := 0   # a spy on the raw sender (below the AOI path) counts packets to this peer naming the probe
 		var transport = net._ensure_transport()
 		var real_send: Callable = transport._send_raw
 		var deliveries := [0]
-		transport._send_raw = func(to_peer: int, json: String) -> void:
-			if to_peer == peer and json.contains(iid):
-				deliveries[0] += 1
-			real_send.call(to_peer, json)
+		transport._send_raw = func(to: int, json: String) -> void:
+			deliveries[0] += 1 if to == peer and json.contains(iid) else 0
+			real_send.call(to, json)
 		for p in [far, next]:
 			var before: int = deliveries[0]
 			net._peer_spatial.update(peer, WorldPos.to_scene(p, Vector2i.ZERO))
 			GameBus.creature_state_changed.emit(iid, "ForestBoar", "idle", p)
 			net._peer_spatial.update(peer, net.get_aoi_center(peer))
-			if deliveries[0] == before + 1:
-				sent += 1
+			sent += 1 if deliveries[0] == before + 1 else 0
 			await _await_settle(0.5)
-		transport._send_raw = real_send
-		_report("creature_far_delta", verdict(sent == 2, true), "within_1cm" if sent == 2 else "far_delta_not_relayed")
+		transport._send_raw = real_send; _report("creature_far_delta", verdict(sent == 2, true), "within_1cm" if sent == 2 else "far_delta_not_relayed")
 		return
 	# The fold step left this client in a folded frame, which would replay onto the host's positions: set it
 	# aside for the probe and put it back.
