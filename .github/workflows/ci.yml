@@ -614,6 +614,40 @@ jobs:
           path: stress/
           if-no-files-found: warn
 
+  clan-loop:
+    name: Clan loop (four bots found a clan, specialize, trade and build)
+    # Phase 202 — a dedicated server and headless bots, no display. Fails on any missing beat or world-record check.
+    if: github.event_name != 'workflow_dispatch'
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Godot 4.7
+        run: |
+          mkdir -p /tmp/godot
+          curl -fsSL -o /tmp/godot/godot.zip \
+            https://github.com/godotengine/godot/releases/download/4.7-stable/Godot_v4.7-stable_linux.x86_64.zip
+          unzip -o /tmp/godot/godot.zip -d /tmp/godot
+          chmod +x /tmp/godot/Godot_v4.7-stable_linux.x86_64
+
+      - name: Run the clan scenario
+        env:
+          GODOT: /tmp/godot/Godot_v4.7-stable_linux.x86_64
+          STRESS_OUT: stress-clan
+        run: |
+          tools/stress_clan.sh
+          cat stress-clan/clan.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the clan report and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clan-loop
+          path: stress-clan/
+          if-no-files-found: warn
+
   playtest:
     name: Playtest bot (rendered session under xvfb)
     # A manual dispatch is for the crowd stress run only.

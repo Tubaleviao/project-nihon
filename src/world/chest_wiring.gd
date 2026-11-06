@@ -46,6 +46,7 @@ func make_slice(ctx: GameRoot) -> Node:
 	slice.spill = func(item: String, qty: int, pos: Vector3) -> void: root._loot.spawn_pickup(item, qty, pos)
 	slice.remove_station = root._station.remove_station
 	slice.place_for = self.place_for
+	root._crafting.position_of = self.crafter_pos   # Phase 202 — a station gate judges the crafter's own position
 	for t: String in ChestRules.station_types():
 		if not ChestRules.holds_items(t):
 			root._station.blocking_types.append(t)
@@ -73,6 +74,14 @@ func player_pos(player_id: String) -> Variant:
 		return null
 	return WorldPos.to_scene(here, Vector2i.ZERO)
 
+## Phase 202 — where the craft gate judges `player_id`: their own position, or a point no station is near when a
+## remote player's position is not known yet (fail closed, never fall back to the host's own player).
+func crafter_pos(player_id: String) -> Variant:
+	var here: Variant = player_pos(player_id)
+	if here is Vector3 or player_id == root._registry.local_player_id:
+		return here
+	return Vector3(1.0e12, 1.0e12, 1.0e12)
+
 # --- placement -------------------------------------------------------------------------------------------
 
 ## Client: a chest or door goes to the host as a `place` intent; false lets other types go their own way.
@@ -85,8 +94,10 @@ func _place_remote(type: String, target: Vector3) -> bool:
 
 ## Host: place a chest or door of `type` at `offset` from `pid` for them. "" when placed, else a REASONS code.
 func place_for(pid: String, type: String, offset: Vector3) -> String:
-	if not ChestRules.is_lock_type(type) or not offset.is_finite():
+	if not offset.is_finite():
 		return "bad_args"
+	if not ChestRules.is_lock_type(type):
+		return _place_free_station(pid, type, offset)
 	var now := Time.get_ticks_msec() / 1000.0
 	if now - float(_last_place.get(pid, -1.0e12)) < PLACE_GAP_SEC:
 		return "rate"
@@ -114,6 +125,26 @@ func place_for(pid: String, type: String, offset: Vector3) -> String:
 		inv.add_item(item, 1)
 		return "blocked"
 	_push_inventory(pid)
+	return ""
+
+## Phase 202 — a free crafting station (a bench or a forge: no placement item) placed for a remote player, so a
+## remote player can craft where the host judges them to stand. Same rate, reach, position and blocker checks as a chest.
+func _place_free_station(pid: String, type: String, offset: Vector3) -> String:
+	if type == "" or not root._station.placeable_station_types().has(type) or root._station.placement_item(type) != "":
+		return "bad_args"
+	var now := Time.get_ticks_msec() / 1000.0
+	if now - float(_last_place.get(pid, -1.0e12)) < PLACE_GAP_SEC:
+		return "rate"
+	_last_place[pid] = now
+	if offset.length() > PLACE_REACH:
+		return "far"
+	var here: Variant = player_pos(pid)
+	if not (here is Vector3):
+		return "far"
+	var target: Vector3 = root._station.snap_to_grid((here as Vector3) + offset)
+	if root._station.placement_blocker(type, target, pid) != "":
+		return "blocked"
+	root._station.place_station(type, target)
 	return ""
 
 ## Host: a chest or door station was placed, for a client (`place_for`) or by the host's own player.

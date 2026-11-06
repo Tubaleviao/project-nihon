@@ -18,6 +18,7 @@ func register() -> void:
 	_run_test("crafting: can_craft does not mutate",          _test_crafting_can_craft_no_mutate)
 	_run_test("crafting: skill tiers are per-player",         _test_craft_skill_tiers_are_per_player)
 	_run_test("station: gate blocks without nearby station",           _test_station_gate_blocks)
+	_run_test("station: the gate judges the crafter's own position, not the host's player", _test_station_gate_crafter_position)
 	_run_test("station: gate passes when station nearby",             _test_station_gate_passes)
 	_run_test("station: wrong station type still blocks",             _test_station_wrong_type_blocks)
 	_run_test("station: carpentry bench gates carpentry recipe",      _test_station_carpentry_bench)
@@ -428,6 +429,29 @@ func _test_station_gate_blocks() -> void:
 	var result := craft.craft("RecipeFerriteIngot")
 	assert_false(result["success"], "craft blocked without a nearby forge")
 	assert_true(str(result["reason"]).begins_with("station_required"), "reason is station_required")
+	station.free()
+	craft.free()
+	inv.free()
+
+## Phase 202 — a remote crafter is judged where the host believes it stands.
+func _test_station_gate_crafter_position() -> void:
+	var station := StationSlice.new()
+	add_child(station)
+	var craft := CraftingSlice.new()
+	add_child(craft)
+	var inv := InventorySlice.new()
+	add_child(inv)
+	craft.inventory_slice = inv
+	craft.station_slice = station
+	inv.add_item("Ferrite", 2)
+	craft.set_skill("Smithing", "novice")
+	station.set_player_position(Vector3.ZERO)
+	station.place_station("forge", Vector3(100.0, 0.0, 100.0))
+	var where := { "near": Vector3(100.0, 0.0, 100.0), "far": Vector3.ZERO }
+	craft.position_of = func(pid: String) -> Variant: return where.get(pid, null)
+	var spec := { "station": "forge" }
+	assert_eq(craft._check_station_gate(spec, "far"), "station_required:forge", "a crafter far from the forge is refused even when the host's player stands at it")
+	assert_eq(craft._check_station_gate(spec, "near"), "", "a crafter at the forge passes though the host's player is elsewhere")
 	station.free()
 	craft.free()
 	inv.free()

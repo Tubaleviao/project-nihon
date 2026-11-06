@@ -56,6 +56,36 @@ func report(exact: Dictionary) -> String:
 	})
 	return TickProbe.position_key(WorldPos.pos_from_compact(WorldPos.pos_to_packet_text(exact)))
 
+## Phase 202 — the packets a player's client sends for the clan scenario (the host binds the identity).
+func send_clan(action: String, args: Dictionary) -> void:
+	_broadcast({ "type": "clan_intent", "action": action, "args": args })
+
+## A block edit at `exact` (`{chunk, local}`), the packet `_on_block_edit_intent` builds.
+func send_edit(action: String, exact: Dictionary, normal: Vector3, material: String = "") -> void:
+	_broadcast({ "type": "block_edit_intent", "action": action, "normal": [normal.x, normal.y, normal.z],
+		"material": material, "pk": WorldPos.pos_to_packet_text(exact) })
+
+func send_trade(kind: String, fields: Dictionary) -> void:
+	var packet := { "type": "trade_%s_intent" % kind }
+	packet.merge(fields)
+	_broadcast(packet)
+
+func send_chest(action: String, args: Dictionary) -> void:
+	_broadcast({ "type": "chest_intent", "action": action, "args": args })
+
+func send_create(char_name: String) -> void:
+	var fields: Dictionary = CreationRules.default_choice()
+	fields["name"] = char_name
+	var packet := { "type": "creation_intent", "action": "create" }
+	packet.merge(fields)
+	_broadcast(packet)
+
+func send_chat(text: String) -> void:
+	_broadcast({ "type": "chat_intent", "text": text })
+
+func send_raw(payload: Dictionary) -> void:
+	_broadcast(payload)
+
 func _route_h2c(payload: Dictionary) -> void:
 	packets_in += 1
 	match str(payload.get("type", "")):

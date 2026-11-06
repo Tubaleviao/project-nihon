@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–199, 203–216 are done. Phases 202, 217 and 218 are open. Their specs and acceptance criteria, and the introductions of
+Phases 1–199, 202–216 are done. Phases 217 and 218 are open. Their specs and acceptance criteria, and the introductions of
 the arcs they belonged to, are archived in [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Next: follow-up debt burn II (Phases 194–196)
@@ -62,7 +62,7 @@ Raids come from creatures only. Settlement-against-settlement conflict stays def
 | 199 | Specialties at runtime: what each member is good at | Done | [phases-199.md](docs/roadmap-history/phases-199.md) |
 | 200 | Raids: a warned, bounded attack the village can defend | Aborted | Deferred |
 | 201 | Upkeep: a village that has to keep going | Aborted | — |
-| 202 | The clan loop, played: four bots found a clan, specialize, trade and build | Planned | below |
+| 202 | The clan loop, played: four bots found a clan, specialize, trade and build | Done | [phases-202.md](docs/roadmap-history/phases-202.md) |
 
 ### Arc: clans, owned buildings, an Earth-scale world and buildings that stand up (Phases 203–213)
 
@@ -145,7 +145,7 @@ system, so it can run before, between or after the clan arc's phases.
 
 Added 2026-11-05 after Phase 214. One step is owner-filed work (#559), two take the top of the
 Deferred list (fast travel, rivers and lakes) as far as they go without a design decision, and one
-burns down the four open `autopilot-followup` issues. Phase 202 (above) is the fifth.
+burns down the four open `autopilot-followup` issues. Phase 202 is done.
 
 | Phase | Title | Status | Spec |
 |---|---|---|---|
@@ -153,46 +153,6 @@ burns down the four open `autopilot-followup` issues. Phase 202 (above) is the f
 | 216 | Mounts: ride a tamed creature | Done | [phases-216.md](docs/roadmap-history/phases-216.md) |
 | 217 | Lakes and rivers on unrecorded land (static water, no flow) | Planned | below |
 | 218 | Follow-up cleanup sweep: exact creature positions, the spatial hash, relay and window shortcuts | Planned | below |
-
----
-
-## Phase 202 — The clan loop, played: four bots found a clan, specialize, trade and build
-
-**Rewritten 2026-11-05** (was the settlement loop with a raid and upkeep, both dropped 2026-10-31).
-
-**Goal:** prove the clan arc's goal with an automated gate. Four scripted players on a dedicated
-server found a clan, join it, grow different skills from work, see each other's skills, trade, and
-build a clan-owned building with a clan chest. The in-game time they spend playing, not counting
-time skipped with admin commands, must stay under one hour.
-
-**Newel dependency:** NO.
-
-**Depends on:** Phases 204–213, the stress bot process (Phase 162).
-
-**Deliverables:**
-- A `clan` scenario in the stress bot process (`src/tests/stress_bots.gd`, today movement only): four
-  bots on the pinned playtest seed and `PlaytestBot.PLAYER_ID`-style pinned ids. Bot 1 founds a clan
-  by name and invites the others, who accept. Each bot works a different kind of work (gathering,
-  crafting, building, sewing or smithing) until its skill for it grows. One bot whispers another
-  (Phase 204) and they trade one item through the trade window protocol. Together they place a
-  clan-owned building inside the floor limits (Phase 212), set a chest in it to clan access and move
-  an item through it, and one bot dismantles a private block of its own.
-- Every intent goes over ENet through the same host validation a real client meets; the scenario
-  sends no admin command except `/time` skips, which it records.
-- `stress/clan.{md,json}`: each beat with its in-game and wall time, its host-side evidence and a
-  verdict. `tools/stress_report.gd` renders it.
-- A CI job (`xvfb` not needed: dedicated server and headless bots) that runs the scenario.
-
-**Acceptance criteria:**
-- [ ] CI: the scenario passes every beat, and its reported in-game play time (excluding admin time
-  skips) is under 60 minutes.
-- [ ] CI: read from the host's world record at the end, the clan has 4 members, at least two members
-  have a different highest skill, one trade completed, the clan owns at least one structure, and the
-  clan chest's access mode is `clan` with the moved item in it.
-- [ ] CI: a fifth, non-member bot's attempt to open the clan chest and to build inside the clan's
-  circle is refused by the host (the refusal key is in the report).
-- [ ] The scenario passes 3 CI runs in a row on an unchanged commit.
-- [ ] Suite green on both boot paths, harness green.
 
 ---
 

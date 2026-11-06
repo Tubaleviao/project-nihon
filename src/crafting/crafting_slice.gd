@@ -86,6 +86,8 @@ var technology_slice: Node = null
 ## Set by game_root so recipes are gated behind a nearby crafting station. When
 ## null (isolated unit tests) the gate is not applied.
 var station_slice: Node = null
+## Phase 202 — `(player_id) -> Vector3 | null`: where the host believes a player stands (set by game_root).
+var position_of: Callable = Callable()
 
 ## Phase 118 — collaborators of the void-burst chain, set by game_root. `flag_store`
 ## (TamingSlice) owns the player flags (`has_flag` / `grant_flag`); `profession_slice`
@@ -147,7 +149,7 @@ func craft(recipe_id: String, player_id: String = "") -> Dictionary:
 	if tech_reason != "":
 		return _fail(recipe_id, tech_reason, pid)
 
-	var station_reason := _check_station_gate(recipe)
+	var station_reason := _check_station_gate(recipe, pid)
 	if station_reason != "":
 		return _fail(recipe_id, station_reason, pid)
 
@@ -225,7 +227,7 @@ func can_craft(recipe_id: String, player_id: String = "") -> Dictionary:
 	var tech_reason := _check_tech_gate(recipe_id, pid)
 	if tech_reason != "":
 		return _result(recipe_id, false, [], tech_reason, pid)
-	var station_reason := _check_station_gate(recipe)
+	var station_reason := _check_station_gate(recipe, pid)
 	if station_reason != "":
 		return _result(recipe_id, false, [], station_reason, pid)
 	var profession_reason := _check_profession_gate(recipe, pid)
@@ -421,7 +423,7 @@ func _resolve_repair(item_id: String, mutate: bool, spec: Dictionary, player_id:
 	var guard_reason := _check_skill_guards(spec, pid)
 	if guard_reason != "":
 		return _repair_result(item_id, false, guard_reason, pid)
-	var station_reason := _check_station_gate(spec)
+	var station_reason := _check_station_gate(spec, pid)
 	if station_reason != "":
 		return _repair_result(item_id, false, station_reason, pid)
 	# Material cost scales with the number of condition tiers restored. Durability
@@ -625,12 +627,20 @@ func _check_tech_gate(recipe_id: String, player_id: String = "") -> String:
 ## `station_required:<type>` reason string. Recipes without a station field are
 ## not gated. When no station slice is wired (isolated unit tests) the gate is
 ## skipped — mirroring the technology gate's isolated-test behaviour.
-func _check_station_gate(recipe: Dictionary) -> String:
+func _check_station_gate(recipe: Dictionary, pid: String = "") -> String:
 	var station: String = str(recipe.get("station", ""))
 	if station == "":
 		return ""
 	if station_slice == null or not station_slice.has_method("station_near_player"):
 		return ""
+	# Phase 202 — the host judges a crafter's own position (a remote player stands elsewhere than the
+	# host's player), not the machine's local player.
+	if pid != "" and position_of.is_valid() and station_slice.has_method("nearest_station"):
+		var at: Variant = position_of.call(pid)
+		if at is Vector3:
+			if str(station_slice.nearest_station(at, station, STATION_RADIUS)) != "":
+				return ""
+			return "station_required:%s" % station
 	if station_slice.station_near_player(station, STATION_RADIUS):
 		return ""
 	return "station_required:%s" % station
