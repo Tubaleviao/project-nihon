@@ -1,11 +1,13 @@
-extends RefCounted
+extends "res://src/core/spatial_hash_base.gd"
 ## Phase 195 — `SpatialHash` over exact `{chunk, local}` positions (#464).
 ##
 ## The float hash buckets world metres, which a float32 holds only to a metre 10,000 km out, so a
 ## creature far from the origin was hashed and range-checked on that grid. Here a cell is an exact
 ## integer: the chunk index times the cells per chunk, plus the cell inside the chunk from the small
-## `local`. Distances are `WorldPos.offset_between` (an integer chunk difference plus a small float
-## remainder), so a query is as exact at chunk 312,500 as at the origin.
+## `local`. A query measures from a snapshot taken at insert/update: each candidate's `local` re-expressed
+## in its cell's chunk, plus the integer chunk step to the query's chunk (the same result as
+## `WorldPos.offset_between`, with one lookup per candidate), so a query is as exact at chunk 312,500 as at the origin.
+## Positions are copied on the way in; `position_of` returns the hash's own copy (read, never edit).
 ##
 ## Cells are XZ squares of `CELL_METERS`, which divides a chunk. X is not wrapped at the seam: the
 ## records it holds are in one frame (the slice's), as the float hash's were.
@@ -14,21 +16,6 @@ const WorldPos := preload("res://src/terrain/world_pos.gd")
 
 const CELL_METERS := 8.0
 const CELLS_PER_CHUNK := int(WorldPos.CHUNK_METERS / CELL_METERS)
-
-## id → cell (Vector2i), id → exact position, cell → { id: local in the cell's chunk } (a cell lies
-## inside one chunk, so that local with the cell's chunk is the exact position, and a query reads each
-## candidate with one lookup).
-var _id_to_cell: Dictionary = {}
-var _positions: Dictionary = {}
-var _cells: Dictionary = {}
-## Cells probed by `query_radius` since construction (a test counter, as in `SpatialHash`).
-var probes := 0
-
-func size() -> int:
-	return _positions.size()
-
-func has(id) -> bool:
-	return _positions.has(id)
 
 ## The exact position stored for `id` (empty when unknown). The hash's own record: read, never edit.
 func position_of(id) -> Dictionary:
@@ -39,21 +26,10 @@ func insert(id, pos: Dictionary) -> void:
 	remove(id)
 	var c := cell_of(pos)
 	_id_to_cell[id] = c
-	_positions[id] = pos
+	_positions[id] = pos.duplicate()   # a copy: the cell-local snapshot below must not drift if the caller edits `pos`
 	if not _cells.has(c):
 		_cells[c] = {}
 	_cells[c][id] = _local_in_cell(pos, c)
-
-func remove(id) -> void:
-	if not _positions.has(id):
-		return
-	var c: Vector2i = _id_to_cell[id]
-	_positions.erase(id)
-	_id_to_cell.erase(id)
-	if _cells.has(c):
-		_cells[c].erase(id)
-		if _cells[c].is_empty():
-			_cells.erase(c)
 
 ## Move an entity, re-hashing only when its cell changed.
 func update(id, pos: Dictionary) -> void:
@@ -62,7 +38,7 @@ func update(id, pos: Dictionary) -> void:
 		return
 	var c := cell_of(pos)
 	if c == _id_to_cell[id]:
-		_positions[id] = pos
+		_positions[id] = pos.duplicate()
 		_cells[c][id] = _local_in_cell(pos, c)
 		return
 	insert(id, pos)

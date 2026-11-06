@@ -233,6 +233,7 @@ func _input(event: InputEvent) -> void:
 		if (hotbar == null or not hotbar.is_binding()) and not GesturePanelScript.awaiting_key:
 			var shortcut := WindowShortcuts.window_for_event(event)
 			if shortcut != "":
+				WindowShortcuts.consume(int(event.keycode))   # #558: releasing Alt first must not resume walking
 				if not event.echo:   # a held key repeats: one press, one toggle
 					toggle_window(shortcut)
 				if is_inside_tree():

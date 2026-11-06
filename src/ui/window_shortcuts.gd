@@ -44,9 +44,31 @@ static func window_for_event(event: InputEventKey) -> String:
 static func is_window_key(event: InputEventKey) -> bool:
 	return window_for_event(event) != ""
 
-## Whether a movement key counts as held: not while Alt is down and Alt+key is a window shortcut (Alt+A, Alt+S).
+## Keys pressed as part of an Alt+letter window shortcut and not yet released (#558). Such a key must not walk
+## even after Alt is released while the letter is still held.
+static var _consumed: Dictionary = {}
+
+## Record that `keycode` was pressed as a window shortcut (called by the key handler on a match).
+static func consume(keycode: int) -> void:
+	_consumed[keycode] = true
+
+static func clear_consumed() -> void:
+	_consumed.clear()
+
+## Pure form of `walk_down`: `pressed` is the key's state, `alt` the Alt state. A key consumed by a window
+## shortcut stays silent until it is released once; Alt held with a window letter is silent too.
+static func walk_held(keycode: int, pressed: bool, alt: bool) -> bool:
+	if not pressed:
+		_consumed.erase(keycode)
+		return false
+	if _consumed.has(keycode):
+		return false
+	return not (alt and window_for(keycode, true, false, false) != "")
+
+## Whether a movement key counts as held: not while Alt is down and Alt+key is a window shortcut (Alt+A, Alt+S),
+## nor after Alt is released while that letter is still down.
 static func walk_down(keycode: int) -> bool:
-	return Input.is_key_pressed(keycode) and not (Input.is_key_pressed(KEY_ALT) and window_for(keycode, true, false, false) != "")
+	return walk_held(keycode, Input.is_key_pressed(keycode), Input.is_key_pressed(KEY_ALT))
 
 ## The keycode of a window's shortcut, or 0.
 static func keycode_of(window: String) -> int:
