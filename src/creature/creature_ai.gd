@@ -606,6 +606,8 @@ func _path_rules_of(cid: String) -> Dictionary:
 		"max_step": DEFAULT_MAX_STEP, "can_swim": false, "radius": DEFAULT_PATH_RADIUS,
 		"sea_level": WorldShape.sea_level(), "lap_tiles": _lap_tiles(), "max_usec": PATH_MAX_USEC,
 	}
+	if creature_slice != null and creature_slice.has_method("is_fresh_water_tile"):
+		rules["fresh_water"] = Callable(creature_slice, "is_fresh_water_tile")
 	if res != null:
 		var step: Variant = res.get("maxStepMetres")
 		var swim: Variant = res.get("canSwim")

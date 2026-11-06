@@ -40,7 +40,9 @@ const HEIGHT_SCALE := 5.0    # world units peak-to-valley of the small-scale DET
 ## biomes reach 1,000 m, and the spawn plain is capped at 150 m, below the Alpine floor.
 ## 11 = Phase 211 Earth-scale mountains: the fabric's `maxHeight` (8,850 m) is no longer held at 512 m, and
 ## broad massifs (`WorldShape.massif`) lift rugged inland ground toward it, with taller ridges on top.
-const WORLDGEN_VERSION := 11
+## 12 = Phase 217 static lakes and rivers (`Hydrology`): beds are carved and fresh water laid on unrecorded
+## land and on land recorded at version 12 or later; land recorded earlier stays dry.
+const WORLDGEN_VERSION := 12
 
 ## Phase 106 — a hash of every fabric parameter world-gen reads that `WORLDGEN_VERSION` cannot see:
 ## the `WorldSystem` shape fields (`sea`, `min/max height`, `oceanShare`, `ridgeAmplitude`,
@@ -71,6 +73,8 @@ static func compute_worldgen_fingerprint() -> int:
 			parts.append("|".join(pts))
 		else:
 			parts.append("%.6f" % float(f))
+	for hf in Hydrology.fingerprint_fields():
+		parts.append(str(hf) if hf is String else "%.6f" % float(hf))
 	parts.append(ClimateField.envelope_signature())
 	var h := 2166136261
 	for b in "#".join(parts).to_utf8_buffer():
@@ -84,6 +88,7 @@ const WorldShape := preload("res://src/terrain/world_shape.gd")
 const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
 const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 const NativeBuilder := preload("res://src/terrain/native_builder.gd")
+const Hydrology := preload("res://src/terrain/hydrology.gd")
 
 ## The starting area is flattened into a plain field so the player can walk
 ## freely from spawn without jumping. Spawn centre + radius + flat height below.
@@ -596,7 +601,7 @@ func _generate(pos: Vector2i) -> Array:
 ## Recorded corner heights are read from `ChunkRecords`, which locks its own table.
 static func heightmap_for(pos: Vector2i, seed_v: int, noise: FastNoiseLite) -> Array:
 	if NativeBuilder.use_native("heightmap_for"):   # Phase 167: same result, computed in C++
-		return NativeBuilder.builder().call("heightmap_for", pos, seed_v, noise, _native_cfg(pos, seed_v)) as Array
+		return Hydrology.carve(pos, seed_v, NativeBuilder.builder().call("heightmap_for", pos, seed_v, noise, _native_cfg(pos, seed_v)) as Array)
 	return heightmap_for_gd(pos, seed_v, noise)
 
 ## Phase 167 — what the native `heightmap_for` cannot read itself: the fabric's shape parameters, the spawn
@@ -640,7 +645,7 @@ static func heightmap_for_gd(pos: Vector2i, seed_v: int, noise: FastNoiseLite) -
 	for ty in range(CHUNK_SIZE):
 		for tx in range(CHUNK_SIZE):
 			out[ty * CHUNK_SIZE + tx] = height_wrapped_in(seed_v, noise, origin_x + tx * TILE_SIZE, origin_z + ty * TILE_SIZE, w, cache, row)
-	return out
+	return Hydrology.carve(pos, seed_v, out)   # Phase 217: fresh-water beds
 
 ## Phase 141 — only the edge of chunk `pos` that a neighbour's one-tile seam ring reads. `side`
 ## names the edge (each component in -1..1): side.x = -1 is the west column (x = 0), 1 the east one
@@ -661,13 +666,14 @@ static func heightmap_strip_for(pos: Vector2i, side: Vector2i, seed_v: int, nois
 	for ty in zs:
 		for tx in xs:
 			out[ty * CHUNK_SIZE + tx] = height_wrapped_in(seed_v, noise, origin_x + tx * TILE_SIZE, origin_z + ty * TILE_SIZE, w, cache, row)
-	return out
+	return Hydrology.carve(pos, seed_v, out)
 
 ## Continuous terrain height at a world XZ position: the large-scale shape plus the detail noise.
 ## Shared by _generate and get_height_at so
 ## the heightmap and direct samples always agree.
 func _height_at(x: float, z: float) -> float:
-	return _height_wrapped(x, z, float(circumference_chunks()) * CHUNK_METERS, _corner_cache())
+	var h := _height_wrapped(x, z, float(circumference_chunks()) * CHUNK_METERS, _corner_cache())
+	return Hydrology.carved_height(_world_seed, x, z, h)   # Phase 217: lake and river beds
 
 ## `_height_at` with the circumference `w` (metres) and this thread's corner `cache` already
 ## resolved, so a whole heightmap takes the cache lock once rather than once per tile.

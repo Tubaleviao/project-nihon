@@ -895,7 +895,7 @@ func _swimming_now() -> bool:
 	if terrain_slice == null or not terrain_slice.has_method("get_height_at"):
 		return false
 	var p := get_position()
-	var sea := WorldShape.sea_level()
+	var sea := TerrainSlice.Hydrology.level_for(terrain_slice, p.x, p.z)   # Phase 217: lakes and rivers float a body too
 	# Only a body at or below the surface swims: one on a platform or falling in from a cliff does not.
 	if p.y > sea + WADE_DEPTH:
 		return false
@@ -922,7 +922,7 @@ func _move(delta: float) -> void:
 		# Phase 182 — no gravity: Space climbs, Ctrl sinks, neither hovers.
 		_vel.y = fly_vertical(Input.is_action_pressed("ui_accept") and not creation_hold, Input.is_key_pressed(KEY_CTRL) and not creation_hold)
 	elif swimming:
-		_vel.y = swim_vertical_velocity(_body.global_position.y, WorldShape.sea_level())
+		_vel.y = swim_vertical_velocity(_body.global_position.y, TerrainSlice.Hydrology.level_for(terrain_slice, _body.global_position.x, _body.global_position.z))
 	elif not _body.is_on_floor():
 		_vel.y += GRAVITY * delta
 	else:
