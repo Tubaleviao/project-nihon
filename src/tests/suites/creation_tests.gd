@@ -180,11 +180,19 @@ func _test_body_sheet_binding() -> void:
 		var mat := _rig_mat(ch, iid)
 		mats[body] = mat
 		var keys := CharacterMaterial.body_sheet_keys(body)
-		for pair in [["detail_tex", keys[0]], ["color_mask_tex", keys[1]], ["channel_tex", keys[2]]]:
-			var tex := mat.get_shader_parameter(pair[0]) as Texture2D
-			assert_true(tex != null and AssetOverlay.has_key("textures", pair[1]), "%s binds %s" % [body, pair[1]])
-			assert_eq(tex, ch._sheets_for_body(body)[["detail", "color_mask", "channel"][["detail_tex", "color_mask_tex", "channel_tex"].find(pair[0])]], "%s is the body's own sheet" % pair[0])
-			assert_eq(tex.get_width(), 64, "%s is 64 wide" % pair[0])
+		var own: Dictionary = ch._sheets_for_body(body)
+		# shader parameter -> [asset key, field of the body's own sheets]
+		var binds := {
+			"detail_tex": [keys[0], "detail"],
+			"color_mask_tex": [keys[1], "color_mask"],
+			"channel_tex": [keys[2], "channel"],
+		}
+		for param in binds:
+			var key: String = binds[param][0]
+			var tex := mat.get_shader_parameter(param) as Texture2D
+			assert_true(tex != null and AssetOverlay.has_key("textures", key), "%s binds %s" % [body, key])
+			assert_eq(tex, own[binds[param][1]], "%s is the body's own sheet" % param)
+			assert_eq(tex.get_width(), 64, "%s is 64 wide" % param)
 	assert_true(mats["chibi_body_m"] != mats["chibi_body_f"], "each body keeps its own material")
 	assert_true(mats["chibi_body_m"].get_shader_parameter("detail_tex") != mats["chibi_body_f"].get_shader_parameter("detail_tex"),
 		"the two bodies bind different detail textures")
@@ -204,12 +212,32 @@ func _test_body_skin_through_mask() -> void:
 	add_child(ch)
 	for body in ["chibi_body_m", "chibi_body_f"]:
 		var seen: Array = []
+		var palette: Array = ch._palette_colors()
 		for skin in [10, 77]:
 			var iid := ch.create_character_from_recipe({"skeleton": "HumanoidSkeleton", "body": body, "skinColor": skin}, Vector3.ZERO)
 			assert_true(ch.attach_rig(iid, "models/player_rig.glb.raw"), "%s rig attaches" % body)
 			var meshes: Array = ch._instances[iid]["rig_node"].find_children("*", "MeshInstance3D", true, false)
-			seen.append(int((meshes[0] as MeshInstance3D).get_instance_shader_parameter("base_index")))
+			var mesh := meshes[0] as MeshInstance3D
+			seen.append(int(mesh.get_instance_shader_parameter("base_index")))
+			var idx: Dictionary = {}
+			for k in CharacterMaterial.INDEX_KEYS:
+				idx[k] = int(mesh.get_instance_shader_parameter(k))
+			idx["primary_index"] = (skin + 40) % palette.size()
+			# A black mask pixel shows the skin; a lit R pixel shows the primary colour instead.
+			assert_eq(CharacterMaterial.mask_albedo(palette, idx, Color.BLACK), palette[skin],
+				"%s: a black mask pixel shows skin %d" % [body, skin])
+			var lit_px := CharacterMaterial.mask_albedo(palette, idx, Color(1, 0, 0))
+			assert_true(lit_px.is_equal_approx(palette[idx["primary_index"]]), "%s: a lit mask pixel shows its channel colour" % body)
+			assert_true(lit_px != palette[skin], "%s: a lit mask pixel overrides skin %d" % [body, skin])
 		assert_eq(seen, [10, 77], "%s: skin colour sets the base index the mask shows through" % body)
+	# mask_albedo mirrors the shader; fail if the shader's blend order changes under it.
+	var src := FileAccess.get_file_as_string("res://src/character/character_material.gdshader")
+	for line in ["vec3 col = palette_sample(base_index);",
+			"col = mix(col, palette_sample(primary_index), cmask.r);",
+			"col = mix(col, palette_sample(secondary_index), cmask.g);",
+			"col = mix(col, palette_sample(accent_index), cmask.b);"]:
+		assert_true(src.contains(line), "the shader still blends: %s" % line)
+	for body in ["chibi_body_m", "chibi_body_f"]:
 		# The mask is the public black one: every pixel keeps the base (skin) colour.
 		var mask := AssetOverlay.load_texture(CharacterMaterial.body_sheet_keys(body)[1])
 		var img := mask.get_image()

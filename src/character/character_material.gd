@@ -168,6 +168,21 @@ static func apply_instance(mesh: GeometryInstance3D, base_index: int, opts: Dict
 	mesh.set_instance_shader_parameter("roughness", clampf(float(opts.get("roughness", 0.55)), 0.0, 1.0))
 	mesh.set_instance_shader_parameter("wear", clampf(float(opts.get("wear", 0.0)), 0.0, 1.0))
 
+## CPU mirror of the shader's colour-mask blend (before detail and wear): the base
+## palette colour, then each mask channel mixes toward its own index (R primary,
+## G secondary, B accent). `indices` holds the INDEX_KEYS of a part mesh. Tests use
+## it to prove a lit mask pixel overrides skin without rendering a frame.
+static func mask_albedo(colors: Array, indices: Dictionary, mask: Color) -> Color:
+	var pick := func(key: String) -> Color:
+		if colors.is_empty():
+			return Color.BLACK
+		return colors[clampi(int(indices.get(key, 0)), 0, colors.size() - 1)]
+	var col: Color = pick.call("base_index")
+	col = col.lerp(pick.call("primary_index"), mask.r)
+	col = col.lerp(pick.call("secondary_index"), mask.g)
+	col = col.lerp(pick.call("accent_index"), mask.b)
+	return col
+
 # ---------------------------------------------------------------------------
 # Per-instance palette swap (§20)
 # ---------------------------------------------------------------------------
