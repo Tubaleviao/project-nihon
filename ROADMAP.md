@@ -26,12 +26,13 @@ Phases 1–218 are done (200 and 201 were aborted). Their specs and acceptance c
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
-### Next: playtest fixes and the game's front door (Phases 219–225)
+### Next: playtest fixes and the game's front door (Phases 219–226)
 
 Filed by the owner on 2026-11-06 after playing `main`. Four are bugs found in play (typing in the
 chat box, Enter jumping, re-creating a character, an overfull character window). Three give the game
 what every game has and this one does not: a main menu, a pause menu on Esc and an options window.
-The bugs come first, because the menus reuse the keyboard routing Phase 219 fixes.
+The last lets a player keep several characters and pick one from the main menu. The bugs come first,
+because the menus reuse the keyboard routing Phase 219 fixes.
 
 | Phase | Title | Status |
 |---|---|---|
@@ -42,6 +43,7 @@ The bugs come first, because the menus reuse the keyboard routing Phase 219 fixe
 | 223 | A main menu: play a local world or join a server | Open |
 | 224 | The Esc menu: resume, options, exit to main menu, quit | Open |
 | 225 | The options window: sound, graphics and game settings | Open |
+| 226 | Several characters per player: a new one starts from scratch, chosen in the main menu | Open |
 
 ## Phase 219 — A focused text field owns the keyboard
 
@@ -95,10 +97,10 @@ created while the host has it as created, and the screen has no way out after a 
 - Find where the client's creation state and the host's diverge (a skipped creation, a state synced
   before the record loaded, or a local listen host reading another player's record) and make the
   button's visibility follow the host's synced state.
-- Decide what the button means once a character exists. Default, unless the owner says otherwise: it
-  is hidden, because a character is created once (`already_created` is the host's rule). If the owner
-  wants re-creation, it becomes a host intent with its own rule (cooldown, what is kept) designed in
-  the fabric first.
+- Once a character exists the button is hidden (decided by the owner, 2026-11-06): a character is
+  created once and never re-created in place (`already_created` stays the host's rule). Another
+  character, starting from scratch, is made from the main menu (Phase 226). Changing hair style or
+  colour later is a separate screen gated on crafted items (Deferred).
 - The creation screen can always be closed back to the world (a Back button and Esc) when it was
   opened from the Character window, and a host refusal leaves it usable, showing the reason.
 
@@ -184,6 +186,39 @@ admin-only tools). They get one window, reachable from the main menu and the Esc
   flag).
 - A suite test asserts every options label is a key in both `en` and `pt_BR`.
 
+## Phase 226 — Several characters per player
+
+Decided by the owner (2026-11-06): a player cannot re-create a character in place (Phase 221), but
+can create other characters from the main menu, and each new one starts from scratch. Today a
+player id is one character: the registry, the creation record, inventory, skills, attributes,
+research, clan membership and owned structures all key on the player id.
+
+- **Fabric first** (separate PR): a character entity under the player (account), what belongs to the
+  character (body, name, inventory, equipment, skills, attributes, research, books learned, clan
+  membership, owned structures, spawn bed) and what belongs to the player (friend code, settings,
+  admin flag). A character limit per player per server, and whether a deleted character's
+  structures fall to its clan or become ownerless.
+- **Runtime:** the registry keys character state by character id. The host refuses a new character
+  over the limit, and a new character gets no items, skills, research or memberships from the
+  player's other characters. Names stay unique per server across all characters (`name_taken`).
+- **Main menu:** after choosing a local world or joining a server, a character list (name, body
+  preview, last played) with **Play**, **New character** (the creation screen) and **Delete** (with a
+  confirmation typed as the character's name). The host sends the list; the client never decides
+  which characters exist.
+- Existing saves migrate: each player's one character becomes their first character, unchanged.
+
+**Acceptance criteria**
+- `npm run validate` and `check-drift` pass with the character entity; a `tools/check_*.js` rejects
+  a table that puts inventory or skills on the player instead of the character.
+- A suite test creates two characters for one player: the second has an empty inventory, base
+  attributes, no skills, no research and no clan, and the first is unchanged.
+- A suite test refuses a character over the limit and a name already used by another character on
+  the server.
+- A suite test loads a pre-Phase-226 save and finds each player's character as their first, with
+  the same state.
+- A net harness step: a client lists its characters, creates a second, enters with it, reconnects
+  and enters with the first.
+
 ---
 
 ## Deferred (in priority order)
@@ -207,6 +242,9 @@ admin-only tools). They get one window, reachable from the main menu and the Esc
   becomes the bottleneck.
 - **Raids** (dropped 2026-10-31, was Phase 200) — a warned, bounded creature attack on a village. Not wanted for now. Its spec is in git history (ROADMAP.md before PR #540).
 - **Clan skills** — abilities (such as teleporting every member to one place) for the two or three members who contribute most to a clan. Contribution is to be defined, probably as a share of members' experience given to the clan. Clan tiers (Phase 210) give nothing until then.
+- **Changing hair style and colour** (owner, 2026-11-06) — a separate screen, not the creation
+  screen, open only to a player who has crafted scissors (style) or dye chemicals (colour), which are
+  consumed or worn on use. Needs the items and their recipes in the fabric first.
 - **Elder buildings** — buildings only a clan's top contributors can build. To be designed.
 - **Settlement against settlement** — Phase 205 lets anyone destroy a structure they do not own. Organized sieges, wars and disputes between clans need governance and fairness rules first.
 - **Real cross-region multiplayer run** — Phase 135 emulates WAN profiles in the harness. A run
