@@ -1,11 +1,31 @@
 extends RefCounted
 ## Phase 217 — the render mesh of a chunk's lake and river surfaces.
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
+const Hydrology := preload("res://src/terrain/hydrology.gd")
+
+## The worker's half: the surface arrays of chunk `chunk_pos` for world `seed_v` (`arrays_for`), so the main
+## thread only wraps them in a mesh (`mesh_from`). Walking the chunk's 4096 tiles on the main thread at every
+## attach cost the native builder, which lands many chunks a frame, most of its stream-step hitches.
+static func worker_arrays(chunk_pos: Vector2i, seed_v: int, local: bool) -> Array:
+	return arrays_for(chunk_pos, Hydrology.surfaces_for_chunk(chunk_pos, seed_v), local)
+
+## `mesh_from(arrays_for(...))`: the whole build in one call (the synchronous path and the suite).
+static func mesh_for(chunk_pos: Vector2i, surfaces: PackedFloat64Array, local: bool = false) -> ArrayMesh:
+	return mesh_from(arrays_for(chunk_pos, surfaces, local))
+
+## The mesh of `arrays` (an `arrays_for` result); null when they are empty (no fresh water).
+static func mesh_from(arrays: Array) -> ArrayMesh:
+	if arrays.is_empty():
+		return null
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
 
 ## Phase 217 — the chunk's lake and river surfaces: `surfaces` (`Hydrology.surfaces_for_chunk`) holds each
 ## tile's water level or NAN. Runs of tiles in a row at one level merge into one quad. Coordinates as
-## `VoxelSlice.water_mesh_for`. Render-only, like the sea. Null when the chunk holds no fresh water.
-static func mesh_for(chunk_pos: Vector2i, surfaces: PackedFloat64Array, local: bool = false) -> ArrayMesh:
+## `VoxelSlice.water_mesh_for`. Render-only, like the sea. Mesh arrays (`Mesh.ARRAY_MAX` long), or [] when the
+## chunk holds no fresh water. Pure: worker-safe.
+static func arrays_for(chunk_pos: Vector2i, surfaces: PackedFloat64Array, local: bool = false) -> Array:
 	var vertices := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var indices := PackedInt32Array()
@@ -31,12 +51,10 @@ static func mesh_for(chunk_pos: Vector2i, surfaces: PackedFloat64Array, local: b
 				start = tx
 				level = lv
 	if vertices.is_empty():
-		return null
+		return []
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = vertices
 	arrays[Mesh.ARRAY_NORMAL] = normals
 	arrays[Mesh.ARRAY_INDEX] = indices
-	var mesh := ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	return mesh
+	return arrays
