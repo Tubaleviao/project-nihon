@@ -94,8 +94,23 @@ func run() -> void:
 	for i in range(1, StressClanRules.MEMBERS):
 		_slice(i).send_clan("join", { "id": clan_id })
 		await get_tree().create_timer(0.6).timeout
-	var full := await _until(func(): return _seen("members_4"), 15.0)
+	var full := await _until(func(): return _seen("members_4"), 6.0)
+	# A dropped or rate-limited intent leaves a bot out: invite and join again for whoever is not a member yet.
+	for _round in range(4):
+		if full:
+			break
+		var member_ids: Array = live().get("world", {}).get("member_ids", [])
+		for i in range(1, StressClanRules.MEMBERS):
+			if member_ids.has(str(_slice(i).claimed_player_id)):
+				continue
+			_slice(FOUNDER).send_clan("invite", { "target": str(_slice(i).claimed_handle) })
+			await get_tree().create_timer(0.6).timeout
+			_slice(i).send_clan("join", { "id": clan_id })
+			await get_tree().create_timer(0.6).timeout
+		full = await _until(func(): return _seen("members_4"), 4.0)
 	_beat("accept", t, "host clan has %d members" % int(live().get("world", {}).get("members", 0)), full)
+	if not full:
+		return _finish()
 	print("[Clan] created %s inv %s" % [JSON.stringify(live().get("world", {}).get("created", {})), JSON.stringify(live().get("world", {}).get("inventories", {}))])
 	# work: bots 0-2 mine the top layers, bot 3 digs deeper, so ore and soil grow different skills.
 	t = _wall_s()
@@ -160,12 +175,15 @@ func run() -> void:
 	t = _wall_s()
 	var smith := StressClanRules.MEMBERS - 1
 	var smith_pid := str(_slice(smith).claimed_player_id)
+	# Trees come with the chunks the bots stream in: wait (up to two minutes) until the eight this chain chops are listed.
+	await _until(func(): return (live().get("world", {}).get("trees", []) as Array).size() >= 8, 120.0)
 	var trees: Array = live().get("world", {}).get("trees", [])
+	print("[Clan] trees listed %d of %d on the host" % [trees.size(), int(live().get("world", {}).get("tree_total", 0))])
 	var goal := Vector2(float((trees[0] as Array)[1]), float((trees[0] as Array)[2]) - 4.0) if not trees.is_empty() else Vector2(16.0, 16.0)
 	# The smith carries too much ore to receive wood (50 kg cap): researching smithing first spends 4 Ferrite and
 	# leaves the 2 one ingot needs.
 	_slice(smith).send_raw({ "type": "research_intent", "tech_id": "TechBasicSmithing" })
-	await get_tree().create_timer(13.0).timeout
+	await _until(func(): return _tech(smith_pid, "TechBasicSmithing") == "unlocked", 45.0)
 	(bots[smith] as Dictionary)["hold"] = true
 	await _walk(smith, goal)
 	# An axe breaks after two chops (4 Thornwood): the smith chops two trees, two clan mates chop two more each
@@ -179,7 +197,7 @@ func run() -> void:
 		await _gift(mate, smith, "Thornwood", 4)
 	print("[Clan] chop: %d Thornwood" % _count(smith_pid, "Thornwood"))
 	_slice(smith).send_raw({ "type": "research_intent", "tech_id": "TechBasicCarpentry" })
-	await get_tree().create_timer(14.0).timeout
+	await _until(func(): return _tech(smith_pid, "TechBasicCarpentry") == "unlocked", 45.0)
 	print("[Clan] events %s" % JSON.stringify(live().get("world", {}).get("events", [])))
 	_slice(smith).send_chest("place", { "type": "carpentry bench", "ox": 2.0, "oy": 0.0, "oz": 0.0 })
 	await get_tree().create_timer(0.8).timeout
@@ -309,6 +327,11 @@ func _walk(i: int, goal: Vector2) -> void:
 		var local: Vector3 = anchor["local"]
 		bot["anchor"] = WorldPos.normalized({ "chunk": anchor["chunk"], "local": Vector3(local.x + step.x, local.y, local.z + step.y) })
 		await get_tree().create_timer(0.5).timeout
+
+## The host's research status of `tech` for `pid` ("" before it is known).
+func _tech(pid: String, tech: String) -> String:
+	var techs: Dictionary = live().get("world", {}).get("techs", {})
+	return str((techs.get(pid, {}) as Dictionary).get(tech, ""))
 
 func _count(pid: String, item: String) -> int:
 	var inv: Dictionary = live().get("world", {}).get("inventories", {})
