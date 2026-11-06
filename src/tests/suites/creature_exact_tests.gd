@@ -15,6 +15,10 @@ func register() -> void:
 	_run_test("creature exact: a far creature flees with the origin's heading", _test_far_flee_heading)
 	_run_test("creature exact: creatures_in_radius finds a creature across a far chunk seam", _test_far_radius_seam)
 	_run_test("creature exact: the exact hash buckets and measures on chunk + local", _test_exact_hash)
+	_run_test("creature exact: query_radius agrees with WorldPos.offset_between on random positions (edges, corners, negative chunks, moves)", _test_hash_randomized)
+	_run_test("creature exact: a far patrol steps toward its exact waypoint with the origin's heading", _test_far_patrol_heading)
+	_run_test("creature exact: separate_bodies pushes a pair apart across a chunk seam", _test_separate_cross_chunk)
+	_run_test("creature exact: the hash copies a stored position, so editing the caller's dict cannot drift it", _test_hash_copies)
 	_run_test("creature exact: a fold-log replay far out restores the exact chunk and local", _test_far_fold_log_replay)
 	_run_test("creature exact: fold_contents folds the exact pair far out", _test_far_fold_contents)
 	_run_test("creature exact: an entry with a refused position still applies hp, state and death", _test_refused_pos_keeps_fields)
@@ -51,11 +55,10 @@ func _moved(start: Dictionary, offset: Vector3, flee: bool) -> Vector3:
 	var c: Node = rig["c"]
 	var ai: Node = rig["ai"]
 	var target := WorldPos.normalized({"chunk": start["chunk"], "local": (start["local"] as Vector3) + offset})
-	ai._exact_targets = {"player": target}
 	var inst: Dictionary = c._instances["b0"]
 	var player_world := WorldPos.to_scene(target, Vector2i.ZERO)   # float32-coarse far out: must not steer
 	if flee:
-		ai._flee("b0", inst, player_world, 0.1, "player")
+		ai._flee("b0", inst, player_world, 0.1, target)
 	else:
 		ai._step_toward(inst, "b0", player_world, 4.0, 0.1, target)
 	var out := WorldPos.offset_between(start, c.get_instance_pos("b0"))
@@ -271,3 +274,90 @@ func _test_audit_store_pos() -> void:
 func _test_audit_bot_carcasses() -> void:
 	var re := RegEx.create_from_string("_carcasses")
 	assert_eq(_matching_lines("res://src/tests/playtest_bot.gd", re), [], "playtest_bot.gd never reaches into _carcasses")
+
+## A random exact position in or around chunks (-2..2), biased to the chunk edges and corners.
+func _rand_pos(rng: RandomNumberGenerator) -> Dictionary:
+	var edge := [0.0, 0.001, WorldPos.CHUNK_METERS - 0.001, 7.999, 8.001, 15.9, 16.1]
+	var lx: float = edge[rng.randi() % edge.size()] if rng.randf() < 0.5 else rng.randf() * WorldPos.CHUNK_METERS
+	var lz: float = edge[rng.randi() % edge.size()] if rng.randf() < 0.5 else rng.randf() * WorldPos.CHUNK_METERS
+	return {"chunk": Vector2i(rng.randi_range(-2, 2), rng.randi_range(-2, 2)),
+		"local": Vector3(minf(lx, WorldPos.CHUNK_METERS - 0.001), rng.randf() * 4.0, minf(lz, WorldPos.CHUNK_METERS - 0.001))}
+
+func _test_hash_randomized() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 195537
+	var h := ExactSpatialHash.new()
+	var truth := {}
+	for i in 120:
+		var p := _rand_pos(rng)
+		h.insert(i, p)
+		truth[i] = p
+	# Same-cell updates (a nudge inside the cell) and cross-cell moves.
+	for i in 60:
+		var p: Dictionary = truth[i]
+		var q: Dictionary
+		if i % 2 == 0:
+			q = WorldPos.normalized({"chunk": p["chunk"], "local": (p["local"] as Vector3) + Vector3(0.05, 0.0, 0.05)})
+		else:
+			q = _rand_pos(rng)
+		h.update(i, q)
+		truth[i] = q
+	var bad := 0
+	for n in 150:
+		var q := _rand_pos(rng)
+		var radius := 0.5 + rng.randf() * 9.0
+		var got: Array = h.query_radius(q, radius)
+		got.sort()
+		var want: Array = []
+		for id in truth:
+			if WorldPos.offset_between(q, truth[id]).length() <= radius:
+				want.append(id)
+		want.sort()
+		# A candidate within a float epsilon of the radius may fall either side: compare the rest.
+		for id in got:
+			if not want.has(id) and absf(WorldPos.offset_between(q, truth[id]).length() - radius) > 1e-3:
+				bad += 1
+		for id in want:
+			if not got.has(id) and absf(WorldPos.offset_between(q, truth[id]).length() - radius) > 1e-3:
+				bad += 1
+	assert_eq(bad, 0, "the hash and a brute-force offset_between scan agree on every query")
+
+func _test_hash_copies() -> void:
+	var h := ExactSpatialHash.new()
+	var p := {"chunk": Vector2i(1, 1), "local": Vector3(4.0, 0.0, 4.0)}
+	h.insert("a", p)
+	p["local"] = Vector3(20.0, 0.0, 20.0)   # the caller edits its own dict in place
+	assert_eq((h.position_of("a")["local"] as Vector3), Vector3(4.0, 0.0, 4.0), "the stored position is unchanged")
+	assert_true(h.query_radius({"chunk": Vector2i(1, 1), "local": Vector3(4.0, 0.0, 4.0)}, 0.5).has("a"), "and still found where it was inserted")
+
+func _test_separate_cross_chunk() -> void:
+	var c := CreatureSlice.new()
+	add_child(c)
+	var ai := CreatureAI.new()
+	ai.creature_slice = c
+	var edge := WorldPos.CHUNK_METERS
+	c.apply_creature_pos("a", "ForestBoar", "idle", {"chunk": FAR, "local": Vector3(edge - 0.1, 0.0, 5.0)})
+	c.apply_creature_pos("b", "ForestBoar", "idle", {"chunk": FAR + Vector2i(1, 0), "local": Vector3(0.1, 0.0, 5.0)})
+	var before := WorldPos.offset_between(c.get_instance_pos("a"), c.get_instance_pos("b")).length()
+	for i in 20:
+		ai.separate_bodies(c.instances_view(), {})
+	var after := WorldPos.offset_between(c.get_instance_pos("a"), c.get_instance_pos("b")).length()
+	assert_true(after > before + 0.1, "bodies 0.2 m apart over a seam are pushed apart (%.3f -> %.3f)" % [before, after])
+	ai.free()
+	c.free()
+
+## #531: the patrol waypoint is spawn's exact position plus a small offset, so the heading far out is the offset's.
+func _test_far_patrol_heading() -> void:
+	var rig := _rig({"chunk": FAR, "local": Vector3(10.0, 2.0, 10.0)})
+	var c: Node = rig["c"]
+	var ai: Node = rig["ai"]
+	var inst: Dictionary = c._instances["b0"]
+	ai._ensure_ai_record("b0", inst["position"], CreatureSlice.exact_of_record(inst))
+	var rec: Dictionary = ai._ai["b0"]
+	assert_eq(rec["patrol_exact_for"], rec["patrol_target"], "the exact waypoint belongs to the current target")
+	var want := WorldPos.offset_between(CreatureSlice.exact_of_record(inst), rec["patrol_exact"])
+	var before := WorldPos.offset_between({"chunk": FAR, "local": Vector3.ZERO}, c.get_instance_pos("b0"))
+	ai._patrol("b0", inst, 0.1)
+	var step := WorldPos.offset_between({"chunk": FAR, "local": Vector3.ZERO}, c.get_instance_pos("b0")) - before
+	assert_true(_angle(step, want) < 1.0, "heading within 1 degree of the exact offset (%.3f deg)" % _angle(step, want))
+	_free(rig)

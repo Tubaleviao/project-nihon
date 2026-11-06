@@ -2,6 +2,8 @@
 ## takes the running harness `h` and uses its role, root, waits and report exactly as a step there does.
 extends RefCounted
 
+const WorldPos := preload("res://src/terrain/world_pos.gd")
+
 ## Phase 208 — the host stands a chest of its own clan (the client is not in it) at the client's feet, holding five
 ## Thornwood. The client uses it and asks to take one: both are refused, the chest still holds five, the
 ## client's pack gains nothing and it was never sent a view of the chest.
@@ -129,3 +131,38 @@ func mount_dismount(h: Node) -> void:
 	GameBus.mount_changed.disconnect(on_changed)
 	var ok: bool = told["mount"] and seen and told["off"]
 	h._report("mount_dismount", h.verdict(ok, true), "mounted-then-dismounted" if ok else "mount%d-seen%d-off%d-last-%s" % [int(told["mount"]), int(seen), int(told["off"]), str(told["last"]).replace(" ", "_")])
+
+## Phase 195 — host half of `creature_far_delta`: how many of `points` went out to `peer` as exactly one packet naming
+## `iid`, counted below the AOI path. A packet is sent at once (a spy on the raw sender) or, under a link emulator
+## (`wan_bad`), queued in `_pending` and sent by `_drain_emulator` later, so both are counted.
+func far_delta_sent(h: Node, peer_id: int, iid: String, points: Array) -> int:
+	var net = h._root._networking
+	var peer := int(peer_id)
+	var transport = net._ensure_transport()
+	var real_send: Callable = transport._send_raw
+	var counting := [false, 0]
+	transport._send_raw = func(to: int, json: String) -> void:
+		if counting[0] and to == peer and json.contains(iid):
+			counting[1] += 1
+		real_send.call(to, json)
+	var sent := 0
+	for p in points:
+		var queued_before := _queued_for(net, peer, iid)
+		counting[0] = true
+		counting[1] = 0
+		net._peer_spatial.update(peer, WorldPos.to_scene(p, Vector2i.ZERO))
+		GameBus.creature_state_changed.emit(iid, "ForestBoar", "idle", p)
+		net._peer_spatial.update(peer, net.get_aoi_center(peer))
+		counting[0] = false
+		if int(counting[1]) + _queued_for(net, peer, iid) - queued_before == 1:
+			sent += 1
+		await h._await_settle(0.5)
+	transport._send_raw = real_send
+	return sent
+
+func _queued_for(net: Object, peer: int, needle: String) -> int:
+	var n := 0
+	for e: Dictionary in net._pending:
+		if int(e.get("peer_id", -1)) == peer and str(e.get("payload", "")).contains(needle):
+			n += 1
+	return n

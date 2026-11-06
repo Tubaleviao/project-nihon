@@ -400,7 +400,11 @@ func flush_rescopes() -> int:
 	# position may lag it, so get_aoi_center() can be stale.
 	TickProbe.begin("snapshots")
 	for peer_id: int in ready:
-		root._snapshot_wiring.send_snapshot(peer_id, root._snapshot_wiring.build_snapshot(peer_id, false, crossings[peer_id], false))
+		if not root._snapshot_wiring.send_snapshot(peer_id, root._snapshot_wiring.build_snapshot(peer_id, false, crossings[peer_id], false)):
+			# #531 — a re-scope that was not sent whole (the emulator dropped a chunk) never reaches the client:
+			# forget the crossing and the "window served" stamp, so the next state packet retries it at once.
+			root._peer_aoi_regions.erase(peer_id)
+			root._peer_records_msec.erase(peer_id)
 	TickProbe.end()
 	return ready.size()
 

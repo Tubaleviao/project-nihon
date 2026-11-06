@@ -10,7 +10,7 @@ extends Node
 ##   OUT : creature_spawned(instance_id, creature_id, position)
 ##
 ## Public API:
-##   nearest_creature(from_pos: Vector3, radius: float) -> String   (instance_id or "")
+##   nearest_creature(from_pos: Vector3 | {chunk, local}, radius: float) -> String   (instance_id or "")
 ##   get_instance_creature_id(instance_id: String)      -> String   (fabric key)
 ##   get_all_instances()                                -> Array[Dictionary]  (a COPY)
 ##   instances_view()                                   -> Array  (Phase 37: cached,
@@ -189,7 +189,18 @@ func creatures_in_radius(pos: Variant, radius: float) -> Array:
 static func _exact_of(pos: Variant) -> Dictionary:
 	if pos is Dictionary:
 		return pos
+	if not (pos is Vector3):
+		push_error("CreatureSlice: a query position must be a {chunk, local} Dictionary or a Vector3, got %s" % type_string(typeof(pos)))
+		return WorldPos.from_world(0.0, 0.0, 0.0)
 	var v: Vector3 = pos
+	return WorldPos.from_world(v.x, v.y, v.z)
+
+## A live record's exact position (`pos`), or its world metres split when a test's record has none.
+static func exact_of_record(inst: Dictionary) -> Dictionary:
+	var exact: Variant = inst.get("pos")
+	if exact is Dictionary and not (exact as Dictionary).is_empty():
+		return exact
+	var v: Vector3 = inst["position"]
 	return WorldPos.from_world(v.x, v.y, v.z)
 
 # ---------------------------------------------------------------------------
