@@ -175,8 +175,8 @@ func run() -> void:
 	t = _wall_s()
 	var smith := StressClanRules.MEMBERS - 1
 	var smith_pid := str(_slice(smith).claimed_player_id)
-	# Trees come with the chunks the bots stream in: wait (up to two minutes) until the eight this chain chops are listed.
-	await _until(func(): return (live().get("world", {}).get("trees", []) as Array).size() >= 8, 120.0)
+	# Trees come with the chunks the bots stream in: wait (up to 400 s: a two-core CI runner builds chunks slowly) until the eight this chain chops are listed.
+	await _until(func(): return (live().get("world", {}).get("trees", []) as Array).size() >= 8, 400.0)
 	var trees: Array = live().get("world", {}).get("trees", [])
 	print("[Clan] trees listed %d of %d on the host" % [trees.size(), int(live().get("world", {}).get("tree_total", 0))])
 	var goal := Vector2(float((trees[0] as Array)[1]), float((trees[0] as Array)[2]) - 4.0) if not trees.is_empty() else Vector2(16.0, 16.0)
