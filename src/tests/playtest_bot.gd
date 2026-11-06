@@ -1548,8 +1548,10 @@ func _harvest_after_kill(creature_key: String) -> Array:
 		for item in held_before:
 			if _root._inventory.get_item_count(str(item)) > int(held_before[item]):
 				got.append(item)
-		# Only a cancelled try is retried; "out_of_range" is a real failure the step reports (#493).
-		if not got.is_empty() or verdict.size() <= seen or not ["damaged", "moved"].has(str(verdict.back())):
+		# A cancelled try is retried, and so is "out_of_range" (#531): the body can still be settling when the
+		# first try is judged, and the next try starts only after `_hold_still`. A refusal that repeats on every
+		# try is still a failure the step reports.
+		if not got.is_empty() or verdict.size() <= seen or not ["damaged", "moved", "out_of_range"].has(str(verdict.back())):
 			break
 	GameBus.harvest_resolved.disconnect(on_resolved)
 	GameBus.player_damaged.disconnect(on_damaged)

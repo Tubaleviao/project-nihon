@@ -2103,14 +2103,24 @@ func _step_creature_far_delta() -> void:
 		var net = _root._networking
 		var peer := int(peers[0])
 		var sent := 0
+		# A spy on the transport's raw sender counts the packets to this peer that name the probe creature: it
+		# sits below the AOI path, so it sees only what `broadcast_aoi` really delivered.
+		var transport = net._ensure_transport()
+		var real_send: Callable = transport._send_raw
+		var deliveries := [0]
+		transport._send_raw = func(to_peer: int, json: String) -> void:
+			if to_peer == peer and json.contains(iid):
+				deliveries[0] += 1
+			real_send.call(to_peer, json)
 		for p in [far, next]:
-			var before := int(net._m1.aoi_deliveries.get(peer, 0))
+			var before: int = deliveries[0]
 			net._peer_spatial.update(peer, WorldPos.to_scene(p, Vector2i.ZERO))
 			GameBus.creature_state_changed.emit(iid, "ForestBoar", "idle", p)
 			net._peer_spatial.update(peer, net.get_aoi_center(peer))
-			if int(net._m1.aoi_deliveries.get(peer, 0)) == before + 1:
+			if deliveries[0] == before + 1:
 				sent += 1
 			await _await_settle(0.5)
+		transport._send_raw = real_send
 		_report("creature_far_delta", verdict(sent == 2, true), "within_1cm" if sent == 2 else "far_delta_not_relayed")
 		return
 	# The fold step left this client in a folded frame, which would replay onto the host's positions: set it

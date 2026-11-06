@@ -403,17 +403,12 @@ func push_look(player_id: String, look: Dictionary) -> void:
 		sl._deliver(int(pid), { "type": "peer_look", "peer_id": owner_peer, "look": look.duplicate() })
 
 ## Broadcast a spatial delta only to peers whose AOI contains `position` (a client forwards it to the host).
-## Phase 195 — host: peer id -> packets `broadcast_aoi` delivered to it (the harness checks a creature delta
-## went out through the AOI path, not around it). Dropped with the peer.
-var aoi_deliveries: Dictionary = {}
-
 func broadcast_aoi(payload: Dictionary, position: Vector3) -> void:
 	if not sl._connected():
 		return
 	if sl._role == sl.Role.HOST:
 		for pid in sl.aoi_recipients(position, sl._ensure_transport().peer_set()):
-			if sl._deliver(int(pid), payload.duplicate(true)):
-				aoi_deliveries[int(pid)] = int(aoi_deliveries.get(int(pid), 0)) + 1
+			sl._deliver(int(pid), payload.duplicate(true))
 	elif sl._role == sl.Role.CLIENT:
 		sl._deliver(1, payload)
 

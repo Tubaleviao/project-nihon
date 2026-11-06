@@ -143,7 +143,8 @@ var _staged_records: Dictionary = {}
 
 ## Send a snapshot built by `build_snapshot`. Phase 195 — only a snapshot that went out whole advances
 ## `records_sent` to the scope it carries; one that did not never reaches the client, so the table is left
-## as it was and the next delta carries the records this one held (#444, #493).
+## as it was and the next delta carries the records this one held (#444, #493). A re-scope that was dropped is
+## retried by `PeerWiring.flush_rescopes`, which forgets the crossing (#531).
 func send_snapshot(peer_id: int, snapshot: Dictionary) -> bool:
 	var sent: bool = root._networking.send_snapshot(peer_id, snapshot)
 	if sent:

@@ -11,6 +11,12 @@ var _send_raw: Callable
 func _init(multiplayer_api: MultiplayerAPI, send_raw: Callable) -> void:
 	_multiplayer = multiplayer_api
 	_send_raw = send_raw
+	if _multiplayer != null:   # #531: the peer list changes only through these two signals
+		_multiplayer.peer_connected.connect(func(_id: int) -> void: invalidate_peer_set())
+		_multiplayer.peer_disconnected.connect(func(_id: int) -> void: invalidate_peer_set())
+
+func watches_peers() -> bool:
+	return _multiplayer != null
 
 func uses(api: MultiplayerAPI) -> bool:
 	return _multiplayer == api
