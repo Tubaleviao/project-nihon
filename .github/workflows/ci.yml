@@ -620,7 +620,7 @@ jobs:
   clan-loop:
     name: Clan loop (four bots found a clan, specialize, trade and build)
     # Phase 202 — a dedicated server and headless bots, no display. Fails on any missing beat or world-record check.
-    if: github.event_name != 'workflow_dispatch'
+    if: github.event_name != 'workflow_dispatch' && needs.changes.outputs.light != 'true'
     needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 30
