@@ -3,6 +3,8 @@ extends RefCounted
 ## `s` is the owning slice; every moved method keeps a forwarder on the slice.
 
 const TickProbe := preload("res://src/core/tick_probe.gd")
+const Hydrology := preload("res://src/terrain/hydrology.gd")
+const FreshWaterMesh := preload("res://src/terrain/fresh_water_mesh.gd")
 var s: Node
 
 func _init(slice: Node) -> void:
@@ -101,6 +103,14 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 			water_inst.mesh = water_mesh
 			water_inst.material_override = s._ice_material() if s.is_frozen_chunk(chunk_pos) else s._water_material()
 			root.add_child(water_inst)
+		# Phase 217: lake and river surfaces, at their own level.
+		var fresh_mesh = FreshWaterMesh.mesh_for(chunk_pos, Hydrology.surfaces_for_chunk(chunk_pos, int(s._world_seed())), bool(built.get("local", false)))
+		if fresh_mesh != null:
+			var fresh_inst := MeshInstance3D.new()
+			fresh_inst.name = "FreshWater"
+			fresh_inst.mesh = fresh_mesh
+			fresh_inst.material_override = s._water_material()
+			root.add_child(fresh_inst)
 
 		# --- Rare-vein deposits: a SECOND mesh, from arrays the build already carries. ---
 		# Phase 42 review pass 8 — this used to call `vein_deposits()` HERE, on the main thread,

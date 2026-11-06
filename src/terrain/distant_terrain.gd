@@ -18,6 +18,7 @@ const TerrainSliceScript := preload("res://src/terrain/terrain_slice.gd")
 const VoxelSliceScript := preload("res://src/terrain/voxel_slice.gd")
 const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
 const TickProbe := preload("res://src/core/tick_probe.gd")
+const Hydrology := preload("res://src/terrain/hydrology.gd")
 const Horizon := preload("res://src/terrain/horizon.gd")
 const CHUNK_METERS := 32.0   # TerrainSlice.CHUNK_SIZE * TILE_SIZE
 const RING_FACTOR := 10      ## the ring reaches this many times the voxel window's extent
@@ -543,7 +544,10 @@ static func build_mesh(seed_v: int, w: float, ring_center: Vector2, half_m: floa
 ## shape plus the detail noise, clamped to the fabric's height range.
 static func ground_at(noise: FastNoiseLite, seed_v: int, x: float, z: float, w: float, snap: Dictionary = {}) -> float:
 	var h := TerrainSliceScript.shape_height_in(snap, seed_v, x, z, w) + TerrainSliceScript.detail_of(noise, x, z)
-	return TerrainSliceScript.polar_ground(seed_v, clampf(h, WorldShape.min_height(), WorldShape.max_height()), x, z, w)
+	var ground := TerrainSliceScript.polar_ground(seed_v, clampf(h, WorldShape.min_height(), WorldShape.max_height()), x, z, w)
+	# Phase 217: a lake or river is drawn as its flat surface (the ring is a backdrop, the bed is under the window).
+	var fresh := Hydrology.surface_at(seed_v, x, z)
+	return ground if is_nan(fresh) else fresh
 
 ## The y a ring vertex at ground height `h` is drawn at.
 static func ring_y(h: float, sea: float) -> float:

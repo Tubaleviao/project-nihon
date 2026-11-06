@@ -21,4 +21,11 @@ extends Resource
 @export var axialTilt: float
 @export var clearRadiusTiles: int
 @export var clearRadiusMetres: float
+@export var lakeFrequency: float
+@export var lakeMinDepth: float
+@export var riverSourceHeight: float
+@export var riverWidthMin: float
+@export var riverWidthMax: float
+@export var riverCatchmentSteps: int
+@export var riverBlockedBiomes: Array
 @export var friendSpawnRadius: float

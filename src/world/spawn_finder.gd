@@ -11,6 +11,7 @@ const WorldShape := preload("res://src/terrain/world_shape.gd")
 const ColonizationMap := preload("res://src/world/colonization_map.gd")
 const PlayerRegistry := preload("res://src/persistence/player_registry.gd")
 const BedStore := preload("res://src/world/bed_store.gd")
+const Hydrology := preload("res://src/terrain/hydrology.gd")
 
 ## Phase 185 — the respawn point a player RECORD implies: the bed (with `runs_at`, the nearest free cell if it is
 ## blocked), else the original spawn.
@@ -78,6 +79,8 @@ static func is_standable(world_seed: int, x: float, z: float, biomes: Array, hei
 	var h: float = height_fn.call(Vector2(x, z))
 	if h < WorldShape.sea_level() + 1.0:
 		return false
+	if not is_nan(Hydrology.surface_at(world_seed, x, z)):
+		return false   # Phase 217: a lake or river bed is not dry land
 	for off in [Vector2(3, 0), Vector2(-3, 0), Vector2(0, 3), Vector2(0, -3)]:
 		if absf(float(height_fn.call(Vector2(x, z) + off)) - h) > MAX_STEP:
 			return false

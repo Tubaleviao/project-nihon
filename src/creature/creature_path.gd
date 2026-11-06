@@ -13,6 +13,7 @@ extends RefCounted
 ##   can_swim     water tiles (ground below `sea_level`) are walkable (default false)
 ##   radius       search window in tiles around the start (default 24)
 ##   sea_level    metres (default 0.0)
+##   fresh_water  Callable(tile) -> bool, true for a lake or river tile (Phase 217; unwalkable unless can_swim)
 ##   lap_tiles    tiles in one lap of the world; 0 = no seam (default 0)
 ##   max_expansions  node-expansion cap (default DEFAULT_MAX_EXPANSIONS)
 ##   max_usec     wall-clock cap in µs, checked between expansions (default 0: none); a capped search
@@ -49,6 +50,13 @@ static func search(from_tile: Vector2i, to_tile: Vector2i, rules: Dictionary, su
 	var sea := float(rules.get("sea_level", 0.0))
 	var lap := int(rules.get("lap_tiles", 0))
 	var cap := maxi(int(rules.get("max_expansions", DEFAULT_MAX_EXPANSIONS)), 1)
+	# Phase 217 — fresh water (a lake or river) is water: a creature that cannot swim treats it as unwalkable,
+	# except under its own feet.
+	var fresh: Variant = rules.get("fresh_water", null)
+	if fresh is Callable and not can_swim:
+		var base_surface := surface
+		surface = func(tile: Vector2i) -> float:
+			return NAN if tile != from_tile and bool((fresh as Callable).call(tile)) else float(base_surface.call(tile))
 
 	var goal := Vector2i(to_tile.x - from_tile.x, to_tile.y - from_tile.y)
 	if lap > 0:
