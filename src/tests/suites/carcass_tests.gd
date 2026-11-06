@@ -364,9 +364,9 @@ func _test_load_cap_and_worn_tool() -> void:
 	g.from_data({"carcasses": [{"id": "far", "creature": "ForestBoar", "pos": [2.0e7, 0, 0], "entries": [{"item": item}], "remaining": 10.0}]})
 	assert_eq(g.count(), 1, "a far-out body on a planet-scale world survives a reload")
 	g.free()
-	assert_false(PlayerSlice._has_usable_copy({"SkinningKnife": [0.0]}, "SkinningKnife"), "a fully worn tool is not usable")
-	assert_true(PlayerSlice._has_usable_copy({"SkinningKnife": [0.0, 5.0]}, "SkinningKnife"), "one good copy is enough")
-	assert_true(PlayerSlice._has_usable_copy({}, "SkinningKnife"), "a non-durable item is usable")
+	assert_false(PlayerSlice.CarcassHover.has_usable_copy({"SkinningKnife": [0.0]}, "SkinningKnife"), "a fully worn tool is not usable")
+	assert_true(PlayerSlice.CarcassHover.has_usable_copy({"SkinningKnife": [0.0, 5.0]}, "SkinningKnife"), "one good copy is enough")
+	assert_true(PlayerSlice.CarcassHover.has_usable_copy({}, "SkinningKnife"), "a non-durable item is usable")
 
 
 func _test_peer_harvest_syncs_bag() -> void:

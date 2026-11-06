@@ -16,6 +16,7 @@ const Diag := preload("res://src/core/diag.gd")
 const I18n := preload("res://src/core/i18n.gd")
 const UiIcons := preload("res://src/ui/ui_icons.gd")
 const CarcassRules := preload("res://src/loot/carcass_rules.gd")
+const CarcassHover := preload("res://src/player/carcass_hover.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const StatusEffects := preload("res://src/battle/status_effects.gd")
 const AdminRules := preload("res://src/admin/admin_rules.gd")
@@ -139,6 +140,9 @@ var _aimed_block_normal: Vector3 = Vector3.UP
 ## under the crosshair — the id and species ride as metadata on the trunk body.
 var _aimed_tree_id: String = ""
 var _aimed_tree_species: String = ""
+## The uncarried body in harvest range under the pointer (not behind terrain), updated with the other aims:
+## the harvest prompt names it and the harvest/carry keys act on it. "" when none.
+var _aimed_carcass_id: String = ""
 
 ## HP bar label — updated on every damage/heal event.
 var _hp_label: Label = null
@@ -1234,6 +1238,7 @@ func _update_aim() -> void:
 	var item_id := ""
 	var tid := ""
 	var tspecies := ""
+	var cid := ""
 	_aimed_block_hit = false
 	_aimed_block_pos = Vector3.ZERO
 	_aimed_block_exact = {}
@@ -1286,7 +1291,12 @@ func _update_aim() -> void:
 				if tcollider != null and tcollider.has_meta("tree_id") and from.distance_to(tpos) <= block_dist:
 					tid = str(tcollider.get_meta("tree_id"))
 					tspecies = str(tcollider.get_meta("species", ""))
+
+			# Body under the pointer (harvest / carry target): not behind the terrain the block ray hit.
+			if carcass_slice != null and not carrying:
+				cid = CarcassHover.hovered(carcass_slice, get_position(), _origin.value, from, dir, block_dist)
 	_aimed_pickup_id = pid
+	_aimed_carcass_id = cid
 	_aimed_item_id = item_id
 	_aimed_tree_id = tid
 	_aimed_tree_species = tspecies
@@ -1401,49 +1411,21 @@ func _try_tame() -> void:
 		return
 	GameBus.tame_requested.emit(iid)
 
-## True unless `item` is durable and every copy is at 0 durability.
-static func _has_usable_copy(durability: Dictionary, item: String) -> bool:
-	if not durability.has(item):
-		return true
-	for v in durability[item]:
-		if float(v) > 0.0:
-			return true
-	return false
-
-## Phase 161 — the prompt for the body at hand (or the one being carried), through I18n; "" when none.
+## Phase 161 — the prompt for the body under the pointer (or the one being carried), through I18n; "" when none.
 func _carcass_prompt() -> String:
-	if carcass_slice == null:
-		return ""
 	if carrying:
 		return I18n.t("hud.carcass.carrying")
-	var cid := str(carcass_slice.nearest(get_position(), CarcassRules.rule_f("harvestRangeMetres", 3.0)))
-	if cid == "":
-		return ""
-	var held: Array = []
-	if inventory_slice != null:
-		# A fully worn tool does not count: the host refuses it too.
-		var worn: Dictionary = inventory_slice.get_durability_data()
-		for item in inventory_slice.get_contents():
-			var t := CarcassRules.tool_of(str(item))
-			if not t.is_empty() and _has_usable_copy(worn, str(item)):
-				held.append(t["tool"])
-	var p: Array = CarcassRules.prompt_for(carcass_slice.get_carcass(cid)["entries"], held, false)
-	var args: Array = []
-	for a in p[1]:
-		args.append(I18n.t(a) if str(a).begins_with("tool.") else a)
-	return I18n.t(p[0], args)
+	return CarcassHover.prompt(carcass_slice, CarcassHover.live(carcass_slice, _aimed_carcass_id), inventory_slice)
 
-## Phase 161 — ask the host to harvest or carry the nearest body, or put the carried one down. The host
-## re-checks range, tool and capacity; this is only the affordance.
+## Phase 161 — ask the host to harvest or carry the body under the pointer (the one the prompt names), or put
+## the carried one down. The host re-checks range, tool and capacity; this is only the affordance.
 func _try_carcass(harvest: bool) -> void:
 	if not _alive:
 		return
 	if not harvest and carrying:
 		GameBus.carcass_drop_intent.emit("")
 		return
-	if carcass_slice == null or carrying:
-		return
-	var cid := str(carcass_slice.nearest(get_position(), CarcassRules.rule_f("harvestRangeMetres", 3.0)))
+	var cid := "" if carrying else CarcassHover.live(carcass_slice, _aimed_carcass_id)
 	if cid != "":
 		(GameBus.harvest_intent if harvest else GameBus.carry_intent).emit(cid, "")
 

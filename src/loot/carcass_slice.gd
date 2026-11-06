@@ -86,6 +86,14 @@ func ids() -> Array:
 func position_of(id: String) -> Vector3:
 	return (_carcasses[id]["position"] as Vector3) if _carcasses.has(id) else Vector3(INF, INF, INF)
 
+## Who carries body `id` ("" when nobody does or there is no such body).
+func carrier_of(id: String) -> String:
+	return str(_carcasses[id]["carrier"]) if _carcasses.has(id) else ""
+
+## The carcass mass (kg) of body `id` (0 when there is no such body).
+func body_mass(id: String) -> float:
+	return float(_carcasses[id].get("mass", 0.0)) if _carcasses.has(id) else 0.0
+
 ## A snapshot of the bodies for a client view: ids and what a prompt needs, no host-only fields.
 func view_of(id: String) -> Dictionary:
 	if not _carcasses.has(id):

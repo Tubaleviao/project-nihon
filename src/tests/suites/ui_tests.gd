@@ -80,6 +80,13 @@ func register() -> void:
 	_run_test("p179: dropping a bag item on a slot equips like the context menu", _test_p179_slot_drop)
 	_run_test("p179: the sheet renders in both locales and the window builds a doll", _test_p179_locales_and_window)
 	_run_test("p148: every reason code has a catalog key",             _test_p148_reason_codes_have_keys)
+	_run_test("ui: worn gear shows only in the Character window, not the Inventory grid", _test_ui_worn_hidden_from_bag)
+	_run_test("ui: double-clicking a slot equips, unequips or reads", _test_ui_double_click_primary)
+	_run_test("hud: an item dropped on a full box does not push the old one into the next box", _test_hud_hotbar_displaced_stays_off)
+	_run_test("hud: a body's prompt needs the pointer over it", _test_hud_carcass_under_ray)
+	_run_test("hud: a big body is easier to point at, and terrain in front hides it", _test_hud_carcass_size_and_terrain)
+	_run_test("ui: a spare copy of worn gear can be put on, worn gear is not for sale", _test_ui_worn_spare_and_sale)
+	_run_test("hud: the tutorial card sits top centre, above the minimap", _test_hud_tutorial_card_placement)
 	_run_test("p148: reason codes render with params",             _test_p148_reason_text)
 	_run_test("p148: multi-digit and numeric placeholders",        _test_p148_number_placeholders)
 	_run_test("p148: a missing catalog logs once and retries",     _test_p148_catalog_retry)
@@ -2393,3 +2400,132 @@ func _test_p179_locales_and_window() -> void:
 	assert_eq(ui._sheet_left.get_child_count() + ui._sheet_right.get_child_count() + ui._character_grid.get_child_count(),
 		EquipmentRules.slots(GameData.ITEMS).size(), "every slot sits around the doll")
 	_p179_free(f)
+
+func _worn_fixture() -> Dictionary:
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var cid := ch.create_character("TravellerHuman", Vector3.ZERO)
+	ch.set_player_character(cid)
+	for slot in ch.get_equipment_set(cid).keys():
+		ch.clear_equipment(cid, str(slot))
+	var ui := _new_test_ui()
+	ui.character_slice = ch
+	var bag := InventorySlice.new()
+	add_child(bag)
+	ui.inventory_slice = bag
+	return { "ui": ui, "ch": ch, "bag": bag, "cid": cid }
+
+func _free_worn_fixture(f: Dictionary) -> void:
+	f["bag"].free()
+	f["ui"].free()
+	f["ch"].free()
+
+func _test_ui_worn_hidden_from_bag() -> void:
+	assert_eq(UiSlice.UiPart2.without_worn({ "A": 2, "B": 1 }, { "Head": "A", "Feet": "B" }), { "A": 1 }, "one copy per worn slot leaves the grid")
+	assert_eq(UiSlice.UiPart2.without_worn({ "A": 1 }, { "Head": "C" }), { "A": 1 }, "worn ids the bag lacks change nothing")
+	var f := _worn_fixture()
+	var ui = f["ui"]
+	f["bag"].add_item("FerriteHelmet", 1)
+	f["bag"].add_item("Thornwood", 3)
+	assert_eq(_ui_row(ui.inventory_rows(), "FerriteHelmet").get("quantity", 0), 1, "an unworn helmet is in the grid")
+	assert_true(ui.dispatch_item_action("FerriteHelmet", "equip"), "it is worn")
+	assert_true(_ui_row(ui.inventory_rows(), "FerriteHelmet").is_empty(), "the worn helmet leaves the grid")
+	assert_true(not _ui_row(ui.inventory_rows(), "Thornwood").is_empty(), "the rest of the bag stays")
+	assert_eq(f["bag"].get_item_count("FerriteHelmet"), 1, "it still counts as carried")
+	var in_sheet: Array = ui.character_rows().filter(func(r): return str(r.get("item", "")) == "FerriteHelmet")
+	assert_eq(in_sheet.size(), 1, "the Character window shows it")
+	ui.dispatch_item_action("FerriteHelmet", "unequip")
+	assert_false(_ui_row(ui.inventory_rows(), "FerriteHelmet").is_empty(), "taken off, it is back in the grid")
+	_free_worn_fixture(f)
+
+func _test_ui_double_click_primary() -> void:
+	assert_eq(UiSlice.UiPart2.primary_action([{ "action": "repair" }, { "action": "equip" }]), "equip", "equip beats repair")
+	assert_eq(UiSlice.UiPart2.primary_action([{ "action": "read" }]), "read", "a book is read")
+	assert_eq(UiSlice.UiPart2.primary_action([{ "action": "repair" }]), "", "repair alone is not a double-click action")
+	var f := _worn_fixture()
+	var ui = f["ui"]
+	f["bag"].add_item("FerriteHelmet", 1)
+	var ev := InputEventMouseButton.new()
+	ev.button_index = MOUSE_BUTTON_LEFT
+	ev.pressed = true
+	ev.double_click = true
+	ui._on_slot_gui_input(ev, "FerriteHelmet", ui.item_actions("FerriteHelmet", {}))
+	assert_eq(f["ch"].get_equipment_set(f["cid"]).get("Head", ""), "FerriteHelmet", "a double-click in the bag wears it")
+	ui._on_slot_gui_input(ev, "FerriteHelmet", [{ "action": "unequip" }])
+	assert_false(f["ch"].get_equipment_set(f["cid"]).has("Head"), "a double-click on the worn slot takes it off")
+	var single := InputEventMouseButton.new()
+	single.button_index = MOUSE_BUTTON_LEFT
+	single.pressed = true
+	ui._on_slot_gui_input(single, "FerriteHelmet", ui.item_actions("FerriteHelmet", {}))
+	assert_false(f["ch"].get_equipment_set(f["cid"]).has("Head"), "a single click does nothing")
+	_free_worn_fixture(f)
+
+func _test_hud_hotbar_displaced_stays_off() -> void:
+	var ui := _new_hud_ui()
+	var inv := InventorySlice.new()
+	add_child(inv)
+	ui.inventory_slice = inv
+	var block := _first_block()
+	inv.add_item(block, 4)
+	inv.add_item("FerriteHelmet", 1)
+	ui.refresh_hud()
+	var at: int = ui.hotbar.slots.find(block)
+	assert_true(at != -1, "the block has a box")
+	ui.hotbar._drop(Vector2.ZERO, { "kind": "item", "id": "FerriteHelmet" }, at)
+	ui.refresh_hud()   # what closing the Inventory window does
+	assert_eq(ui.hotbar.slots[at], "FerriteHelmet", "the dropped item holds the box")
+	assert_false(ui.hotbar.slots.has(block), "the displaced block does not reappear in the next free box")
+	ui.hotbar._drop(Vector2.ZERO, { "kind": "item", "id": block }, at + 1)
+	assert_eq(ui.hotbar.slots[at + 1], block, "dragging it back in by hand still works")
+	inv.free()
+	ui.free()
+
+func _test_hud_carcass_under_ray() -> void:
+	var bodies := [{ "id": "a", "point": Vector3(0, 0, -10) }, { "id": "b", "point": Vector3(5, 0, -10) }]
+	assert_eq(PlayerSlice.CarcassHover.under_ray(Vector3.ZERO, Vector3(0, 0, -1), bodies, 0.9), "a", "the pointer on a body names it")
+	assert_eq(PlayerSlice.CarcassHover.under_ray(Vector3.ZERO, Vector3(0.5, 0, -1), bodies, 0.9), "b", "the other body when aimed at it")
+	assert_eq(PlayerSlice.CarcassHover.under_ray(Vector3.ZERO, Vector3(0, 1, -1), bodies, 0.9), "", "the pointer elsewhere names none")
+	assert_eq(PlayerSlice.CarcassHover.under_ray(Vector3.ZERO, Vector3(0, 0, 1), bodies, 0.9), "", "a body behind the camera is not hovered")
+
+func _test_hud_tutorial_card_placement() -> void:
+	const Card := preload("res://src/tutorial/tutorial_card.gd")
+	assert_eq(Card.PRESET, Control.PRESET_CENTER_TOP, "the card is centred at the top")
+	assert_true(Card.LAYER > 20 and Card.LAYER < 30, "above the minimap (20), under the windows (30)")
+
+func _test_hud_carcass_size_and_terrain() -> void:
+	var small := PlayerSlice.CarcassHover.radius_for(8.0)
+	var big := PlayerSlice.CarcassHover.radius_for(900.0)
+	assert_eq(small, PlayerSlice.CarcassHover.RADIUS_M, "a small body keeps the minimum radius")
+	assert_true(big > 2.5, "a 900 kg body is picked well off its centre")
+	var bodies := [{ "id": "big", "point": Vector3(0, 0, -10), "radius": big }]
+	assert_eq(PlayerSlice.CarcassHover.under_ray(Vector3.ZERO, Vector3(0.2, 0, -1), bodies), "big", "the flank of a big body is on it")
+	assert_eq(PlayerSlice.CarcassHover.under_ray(Vector3.ZERO, Vector3(0.2, 0, -1), [{ "id": "s", "point": Vector3(0, 0, -10) }]), "", "the same offset misses a small one")
+	assert_eq(PlayerSlice.CarcassHover.under_ray(Vector3.ZERO, Vector3(0, 0, -1), bodies, 0.9, 5.0), "", "a hill 5 m away hides a body at 10 m")
+	assert_eq(PlayerSlice.CarcassHover.under_ray(Vector3.ZERO, Vector3(0, 0, -1), bodies, 0.9, 10.5), "big", "the ground right under it does not")
+	var carcasses := CarcassSlice.new()
+	add_child(carcasses)
+	var keys: Array = GameData.CREATURES.keys()
+	var cid := ""
+	for k in keys:
+		cid = carcasses.create_for_death(str(k), Vector3(0, 0, -2), "p1")
+		if cid != "":
+			break
+	assert_true(cid != "", "a creature leaves a body")
+	var dir := Vector3(0, 0, -1)
+	assert_eq(PlayerSlice.CarcassHover.hovered(carcasses, Vector3.ZERO, Vector3.ZERO, Vector3(0, 0.5, 0), dir), cid, "the body in reach under the pointer is hovered")
+	assert_eq(PlayerSlice.CarcassHover.hovered(carcasses, Vector3(0, 0, 50), Vector3.ZERO, Vector3(0, 0.5, 0), dir), "", "out of harvest range it is not")
+	carcasses.free()
+
+func _test_ui_worn_spare_and_sale() -> void:
+	var f := _worn_fixture()
+	var ui = f["ui"]
+	f["bag"].add_item("FerriteHelmet", 2)
+	assert_true(ui.dispatch_item_action("FerriteHelmet", "equip"), "one is worn")
+	assert_eq(_ui_row(ui.inventory_rows(), "FerriteHelmet").get("quantity", 0), 1, "the spare stays in the grid")
+	var acts: Array = ui.item_actions("FerriteHelmet", {}).map(func(a): return str(a["action"]))
+	assert_true(acts.has("equip"), "the spare can be put on")
+	assert_true(ui.listable_items().has("FerriteHelmet"), "the spare may be sold")
+	f["bag"].consume_items({ "FerriteHelmet": 1 })
+	assert_false(ui.listable_items().has("FerriteHelmet"), "the worn helmet is not offered for sale")
+	assert_false(ui.item_actions("FerriteHelmet", {}).any(func(a): return str(a["action"]) == "equip"), "and no Equip for the worn copy alone")
+	_free_worn_fixture(f)
