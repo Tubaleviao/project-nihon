@@ -46,7 +46,7 @@ func make_slice(ctx: GameRoot) -> Node:
 	slice.spill = func(item: String, qty: int, pos: Vector3) -> void: root._loot.spawn_pickup(item, qty, pos)
 	slice.remove_station = root._station.remove_station
 	slice.place_for = self.place_for
-	root._crafting.position_of = self.player_pos   # Phase 202 — a station gate judges the crafter's own position
+	root._crafting.position_of = self.crafter_pos   # Phase 202 — a station gate judges the crafter's own position
 	for t: String in ChestRules.station_types():
 		if not ChestRules.holds_items(t):
 			root._station.blocking_types.append(t)
@@ -73,6 +73,14 @@ func player_pos(player_id: String) -> Variant:
 	if here.is_empty():
 		return null
 	return WorldPos.to_scene(here, Vector2i.ZERO)
+
+## Phase 202 — where the craft gate judges `player_id`: their own position, or a point no station is near when a
+## remote player's position is not known yet (fail closed, never fall back to the host's own player).
+func crafter_pos(player_id: String) -> Variant:
+	var here: Variant = player_pos(player_id)
+	if here is Vector3 or player_id == root._registry.local_player_id:
+		return here
+	return Vector3(1.0e12, 1.0e12, 1.0e12)
 
 # --- placement -------------------------------------------------------------------------------------------
 
