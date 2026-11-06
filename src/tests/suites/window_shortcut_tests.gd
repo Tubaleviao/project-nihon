@@ -9,6 +9,7 @@ func register() -> void:
 	_run_test("shortcuts: a held Alt+key (echo) toggles once", _test_echo_ignored)
 	_run_test("shortcuts: Alt+E is the inventory (no equipment toggle), Alt+Q is Equipment, Alt+G is the clan", _test_conflicts)
 	_run_test("shortcuts: Ctrl+Alt and a focused text field open nothing, and an Option character still matches on keycode", _test_modifiers_and_focus)
+	_run_test("shortcuts: releasing Alt before the letter does not resume walking; AltGr opens no window", _test_alt_release_and_altgr)
 	_run_test("shortcuts: no window letter outside the table; dock and controls rows come from it; one row per window", _test_audit)
 	_run_test("shortcuts: a wheel rebind ignores an Alt+letter", _test_wheel_rebind_modified)
 	_run_test("shortcuts: a hotbar box takes a freed letter and refuses an Alt+letter", _test_hotbar)
@@ -161,3 +162,23 @@ func _test_split_windows() -> void:
 	assert_true(ui._panels[UiSlice.WINDOW_EQUIPMENT].is_ancestor_of(ui._character_grid), "the slots live in Equipment")
 	assert_false(ui._panels[UiSlice.WINDOW_ATTRIBUTES].is_ancestor_of(ui._sheet_doll), "and not in Attributes")
 	ui.free()
+
+## #558: Alt+A opens Attributes; releasing Alt while A is still held must not walk, until A is let go once.
+func _test_alt_release_and_altgr() -> void:
+	const WS := preload("res://src/ui/window_shortcuts.gd")
+	WS.clear_consumed()
+	var ui := _new_hud_ui()
+	ui._input(_key(KEY_A, true))
+	assert_true(ui.is_window_open("attributes"), "Alt+A opens Attributes")
+	assert_false(WS.walk_held(KEY_A, true, true), "Alt down, A held: no walk")
+	assert_false(WS.walk_held(KEY_A, true, false), "Alt released, A still held: no walk resumes")
+	assert_false(WS.walk_held(KEY_A, false, false), "A released")
+	assert_true(WS.walk_held(KEY_A, true, false), "a fresh A press walks again")
+	assert_true(WS.walk_held(KEY_W, true, false), "an unrelated key walks")
+	# AltGr layouts report Ctrl+Alt together: no window opens.
+	ui._input(_key(KEY_A, true, true))
+	ui._input(_key(KEY_S, true, true))
+	assert_false(ui.is_window_open("attributes") and ui.is_window_open("skills"), "AltGr+letter opens no window")
+	assert_eq(WS.window_for(KEY_G, true, true, false), "", "Ctrl+Alt (AltGr) matches no row")
+	ui.free()
+	WS.clear_consumed()

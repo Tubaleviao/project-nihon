@@ -8,23 +8,39 @@ extends RefCounted
 func peers() -> Array:
 	return []
 
-## Phase 195 — `peers()` as a set (peer id -> true), rebuilt only when the peer list changed (#444): the
-## AOI fan-out asks for it once per relayed packet, and building it per call was a dictionary per creature
-## delta. The list is compared to a copy, so a list edited in place is still seen as changed.
+## Phase 195 — `peers()` as a set (peer id -> true), cached and read-only (#444, #531): the AOI fan-out asks for it
+## once per relayed packet, and building it per call was a dictionary per creature delta. A transport whose peer list
+## changes only through events (`watches_peers`) reuses the set until `invalidate_peer_set`; any other compares
+## `peers()` with the list the set was built from, so a list edited in place is still seen as changed. The returned
+## dictionary is shared and locked: copy it to edit.
 func peer_set() -> Dictionary:
+	if watches_peers() and not _set_stale:
+		return _set
 	var now := peers()
-	if now != _set_of:
+	if _set_stale or now != _set_of:
 		_set_of = now.duplicate()
 		_set = {}
-		peer_set_builds += 1
+		_set_stale = false
 		for p in now:
 			_set[int(p)] = true
+		_set.make_read_only()
+		_set_rebuilt()
 	return _set
+
+## True when the transport calls `invalidate_peer_set` on every change to `peers()` (so `peer_set` need not ask).
+func watches_peers() -> bool:
+	return false
+
+func invalidate_peer_set() -> void:
+	_set_stale = true
+
+## Called after each rebuild of the set (a hook for a test spy; the production base keeps no counters).
+func _set_rebuilt() -> void:
+	pass
 
 var _set_of: Array = []
 var _set: Dictionary = {}
-## Times `peer_set` rebuilt the set (the suite pins that an unchanged list reuses it).
-var peer_set_builds := 0
+var _set_stale := true
 
 ## True while the wire is up (a connected peer, or an in-memory stand-in).
 func is_up() -> bool:

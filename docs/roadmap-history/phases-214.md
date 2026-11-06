@@ -76,3 +76,5 @@ window, and then opens the clan window.
 
 **Implementation notes:** the table lives in `src/ui/window_shortcuts.gd` (`UiSlice.WINDOW_SHORTCUTS` aliases it) so the dock and the hotbar can read it without a circular preload. Settlement keeps Alt+L (it has no row in the spec table and the clan window took Alt+G); the chest window has no hotkey. The window dock's icon generator reads the dock keys, so `attributes` and `equipment` have drawings in `tools/gen_ui_icons.py`. Suite: `src/tests/suites/window_shortcut_tests.gd`.
 
+
+**Follow-up #558 (Phase 218):** the `FIRST_RING_TIMEOUT` change from 15 s to 60 s in `game_root.gd` rode along with the Phase 214 PR; it is unrelated to window shortcuts (the first-ring wait was too short for CI runners). A key consumed by an Alt shortcut now stays silent for walking until it is released once (`WindowShortcuts.consume` / `walk_held`). The old J key for the clan window is gone; the controls row now says Alt+G opens the clan.

@@ -1,4 +1,4 @@
-extends RefCounted
+extends "res://src/core/spatial_hash_base.gd"
 ## SpatialHash — O(1) spatial queries over a population of positioned entities.
 ##
 ## Entities are keyed by id and bucketed into a uniform grid of `cell_size`
@@ -17,24 +17,8 @@ extends RefCounted
 ## the 3 m attack range and most AI alert radii in a single cell.
 var cell_size: float = 8.0
 
-## id → cell coordinate (Vector2i), for O(1) removal / re-hash.
-var _id_to_cell: Dictionary = {}
-## id → world position (Vector3), so queries need no external lookup.
-var _positions: Dictionary = {}
-## cell coordinate (Vector2i) → { id: true } (an id set).
-var _cells: Dictionary = {}
-## Phase 163 — cells probed by `query_radius` since construction (the suite pins the AOI query cost).
-var probes := 0
-
 func _init(p_cell_size: float = 8.0) -> void:
 	cell_size = maxf(p_cell_size, 0.0001)
-
-## Number of live entities in the hash.
-func size() -> int:
-	return _positions.size()
-
-func has(id) -> bool:
-	return _positions.has(id)
 
 ## Add an entity at `pos`. Replaces any existing entry under the same id.
 func insert(id, pos: Vector3) -> void:
@@ -45,18 +29,6 @@ func insert(id, pos: Vector3) -> void:
 	if not _cells.has(c):
 		_cells[c] = {}
 	_cells[c][id] = true
-
-## Drop an entity (no-op if unknown).
-func remove(id) -> void:
-	if not _positions.has(id):
-		return
-	var c: Vector2i = _id_to_cell[id]
-	_positions.erase(id)
-	_id_to_cell.erase(id)
-	if _cells.has(c):
-		_cells[c].erase(id)
-		if _cells[c].is_empty():
-			_cells.erase(c)
 
 ## Move an entity to `pos`, re-hashing its cell only when the cell changed.
 func update(id, pos: Vector3) -> void:

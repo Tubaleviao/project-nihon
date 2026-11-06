@@ -317,7 +317,7 @@ func _on_player_left(player_id: String) -> void:
 	if root._carcass == null or root._is_client:
 		return
 	_actions.erase(player_id)
-	_drop_in_place(player_id)   # the body stays where it last followed its carrier
+	_drop_in_place(player_id)   # the body drops at the leaver's carrier position on the host (see _drop_in_place)
 
 func _on_carrier_lost(player_id: String) -> void:
 	if root._is_client or root._carcass == null:

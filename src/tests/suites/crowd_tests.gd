@@ -23,7 +23,8 @@ func register() -> void:
 	_run_test("crowd: a dropped snapshot leaves records_sent unchanged and the next delta carries its records", _test_crowd_rescope_dropped_send)
 	_run_test("crowd: send_snapshot stops at the first dropped chunk", _test_crowd_snapshot_stops_at_first_drop)
 	_run_test("crowd: the peer set is rebuilt only when the peer list changes", _test_crowd_peer_set_reused)
-	_run_test("crowd: a held relay reuses its recipients instead of querying again", _test_crowd_relay_held_reuses_recipients)
+	_run_test("crowd: a held relay re-queries its recipients, so a peer entering during the hold gets the final report (#531)", _test_crowd_relay_held_reuses_recipients)
+	_run_test("crowd: a dropped re-scope snapshot is retried on the next state packet (#531)", _test_crowd_rescope_dropped_retry)
 	_run_test("crowd: the stress report fails a series below the baseline", _test_crowd_baseline_gate)
 	_run_test("crowd: a budget miss at or below the baseline gets one rerun", _test_crowd_baseline_retry)
 	_run_test("crowd: the faster region lookup names the same regions", _test_crowd_regions_for_chunks_same)
@@ -374,35 +375,36 @@ func _test_crowd_snapshot_stops_at_first_drop() -> void:
 
 ## Phase 195 (#444) — the AOI fan-out reuses one peer set until the transport's peer list changes.
 func _test_crowd_peer_set_reused() -> void:
-	var t := _StampingTransport.new([2, 3])
+	var t := _CountingTransport.new([2, 3])
 	var a: Dictionary = t.peer_set()
 	assert_eq(a, {2: true, 3: true}, "the set holds every peer")
 	for _i in 5:
 		t.peer_set()
-	assert_eq(t.peer_set_builds, 1, "an unchanged list is not rebuilt")
+	assert_eq(t.builds, 1, "an unchanged list is not rebuilt")
 	t.connected.append(4)   # edited in place, as a test transport does
 	assert_true(t.peer_set().has(4), "a list edited in place is seen")
-	assert_eq(t.peer_set_builds, 2, "and rebuilt once")
+	assert_eq(t.builds, 2, "and rebuilt once")
+	assert_true(t.peer_set().is_read_only(), "the shared set is read-only")
 
-## Phase 195 (#444) — a report held back from a far recipient is not re-queried on every flush until it is due.
+## #531 — a report held back from a far recipient re-queries its recipients on every flush, so a peer that enters
+## the subject's AOI during the hold still gets the final report when the subject has stopped reporting.
 func _test_crowd_relay_held_reuses_recipients() -> void:
 	var b := RelayBatch.new()
-	var connected := { 2: true }
-	var queries := [0]
-	var recipients := func(_pos: Vector3) -> Array:
-		queries[0] += 1
-		return [2]
+	var connected := { 2: true, 4: true }
+	var audience := [[2]]
+	var recipients := func(_pos: Vector3) -> Array: return audience[0]
 	var center := func(_peer: int) -> Vector3: return Vector3.ZERO
 	var far := Vector3(80.0, 0.0, 0.0)
 	b.offer(3, "a", far)
 	b.build(0.0, connected, recipients, center)
 	b.offer(3, "b", far)
-	for k in 6:   # held: inside FAR_GAP_MS
-		b.build(10.0 + float(k) * 100.0, connected, recipients, center)
-	assert_eq(queries[0], 2, "one query per report, not one per flush while it is held")
+	b.build(10.0, connected, recipients, center)   # held for peer 2 (inside FAR_GAP_MS)
+	audience[0] = [2, 4]   # peer 4 walks into the AOI during the hold; the subject reports no more
+	var at4: Dictionary = b.build(110.0, connected, recipients, center)
+	assert_eq(at4.get(4, []), [3, "b"], "the newcomer gets the held report at once (first relay)")
+	assert_false(at4.has(2), "while peer 2 still waits out FAR_GAP_MS")
 	var late: Dictionary = b.build(RelayBatch.FAR_GAP_MS + 1.0, connected, recipients, center)
 	assert_eq(late.get(2, []), [3, "b"], "the held report still goes out once due")
-	assert_eq(queries[0], 2, "with the recipients it was queried with")
 
 func _test_crowd_baseline_gate() -> void:
 	var at := func(n: int) -> Dictionary: return { "largest_passing": n }
@@ -631,3 +633,45 @@ static func _triangle_keys(faces: PackedVector3Array) -> Array:
 		out.append("%s|%s|%s" % [faces[i], faces[i + 1], faces[i + 2]])
 	out.sort()
 	return out
+
+## #531 — a re-scope the emulator dropped is forgotten, so the next state packet re-serves the crossing.
+func _test_crowd_rescope_dropped_retry() -> void:
+	var src := GDScript.new()
+	src.source_code = "extends \"res://src/persistence/snapshot_wiring.gd\"\nvar ok := false\nfunc build_snapshot(_p, _o = true, _c = null, _f = null) -> Dictionary:\n\treturn { \"stub\": true }\nfunc send_snapshot(_p, _s) -> bool:\n\treturn ok\n"
+	src.reload()
+	var gr: Node = (load("res://src/core/game_root.gd") as GDScript).new()
+	var stub = src.new()
+	stub.root = gr
+	gr._snapshot_wiring = stub
+	var n := _host([2])
+	var reg := PlayerRegistry.new()
+	_own(reg)
+	var cm := ChunkManager.new()
+	var t := [0]
+	cm.now_msec = func(): return t[0]
+	reg.resolve_identity(2)
+	cm.set_peer_center(2, Vector2i(0, 0), true)
+	gr._networking = n
+	gr._registry = reg
+	gr._chunk_manager = cm
+	gr._is_client = false
+	t[0] = 10000
+	var there := Vector3(100.0, 0.0, 12.0)
+	gr._peer_wiring.on_remote_player_state(2, there)
+	assert_eq(gr._peer_wiring.flush_rescopes(), 1, "the crossing is served")
+	assert_false(gr._peer_aoi_regions.has(2), "a drop forgets the crossing")
+	assert_false(gr._peer_records_msec.has(2), "and the served stamp, so no interval delays the retry")
+	stub.ok = true
+	gr._peer_wiring.on_remote_player_state(2, there)
+	assert_eq(gr._peer_wiring.flush_rescopes(), 1, "the next state packet retries it")
+	assert_true(gr._peer_aoi_regions.has(2), "and a delivered re-scope stays recorded")
+	gr._chunk_manager = null
+	cm.free()
+	gr.free()
+	n.free()
+
+## A transport whose set rebuilds are counted by the hook, so the production base keeps no test state.
+class _CountingTransport extends _StampingTransport:
+	var builds := 0
+	func _set_rebuilt() -> void:
+		builds += 1
