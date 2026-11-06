@@ -459,8 +459,9 @@ func on_creation_resolved(_player_id: String, action: String, reason: String, st
 	if action == "create":
 		sl.push_toast(sl.I18n.t("creation.welcome", [sl.own_display_name()]))
 
-## What the Inventory window shows: the bag's contents minus the copies the local avatar wears (worn gear
-## stays in the bag for weight and trade checks, but it is shown only in the Character window).
+## The bag as the player sees it: carried items less the copies the local avatar wears (worn gear stays in the bag
+## for weight checks but shows only in the Character window). Feeds the Inventory grid, the text lines and the
+## sale list; the hotbar and repair keep the whole bag, since a worn tool is still used and repaired.
 func bag_contents() -> Dictionary:
 	if sl.inventory_slice == null:
 		return {}
@@ -486,3 +487,27 @@ static func primary_action(actions: Array) -> String:
 			if str(a.get("action", "")) == want:
 				return want
 	return ""
+
+## Phase 47 — one row per fabric `equipmentSlot` (sorted): { slot, item, icon_key, tooltip, actions }. `item` is "" for an empty slot.
+func character_rows() -> Array:
+	var worn: Dictionary = sl._local_worn()
+	var repairable := {}
+	for r in sl.repair_rows():
+		repairable[str(r["id"])] = true
+	var rows: Array = []
+	for slot in sl.EquipmentRules.slots(GameData.ITEMS):
+		var item := str(worn.get(slot, ""))
+		# Worn gear is shown only here, so its repair action is offered here too.
+		var actions: Array = []
+		if item != "":
+			if repairable.has(item):
+				actions.append({"action": "repair", "label": sl.I18n.t("ui.repair")})
+			actions.append({"action": "unequip", "label": sl.I18n.t("ui.unequip")})
+		rows.append({
+			"slot": slot,
+			"item": item,
+			"icon_key": sl.item_icon_key(item) if item != "" else "",
+			"tooltip": ("%s: %s" % [slot, sl.item_description(item)]) if item != "" else sl.I18n.t("ui.slot_empty", [slot]),
+			"actions": actions,
+		})
+	return rows

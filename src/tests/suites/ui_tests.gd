@@ -84,6 +84,8 @@ func register() -> void:
 	_run_test("ui: double-clicking a slot equips, unequips or reads", _test_ui_double_click_primary)
 	_run_test("hud: an item dropped on a full box does not push the old one into the next box", _test_hud_hotbar_displaced_stays_off)
 	_run_test("hud: a body's prompt needs the pointer over it", _test_hud_carcass_under_ray)
+	_run_test("hud: a big body is easier to point at, and terrain in front hides it", _test_hud_carcass_size_and_terrain)
+	_run_test("ui: a spare copy of worn gear can be put on, worn gear is not for sale", _test_ui_worn_spare_and_sale)
 	_run_test("hud: the tutorial card sits top centre, above the minimap", _test_hud_tutorial_card_placement)
 	_run_test("p148: reason codes render with params",             _test_p148_reason_text)
 	_run_test("p148: multi-digit and numeric placeholders",        _test_p148_number_placeholders)
@@ -2489,3 +2491,41 @@ func _test_hud_tutorial_card_placement() -> void:
 	const Card := preload("res://src/tutorial/tutorial_card.gd")
 	assert_eq(Card.PRESET, Control.PRESET_CENTER_TOP, "the card is centred at the top")
 	assert_true(Card.LAYER > 20 and Card.LAYER < 30, "above the minimap (20), under the windows (30)")
+
+func _test_hud_carcass_size_and_terrain() -> void:
+	var small := PlayerSlice.CarcassHover.radius_for(8.0)
+	var big := PlayerSlice.CarcassHover.radius_for(900.0)
+	assert_eq(small, PlayerSlice.CarcassHover.RADIUS_M, "a small body keeps the minimum radius")
+	assert_true(big > 2.5, "a 900 kg body is picked well off its centre")
+	var bodies := [{ "id": "big", "point": Vector3(0, 0, -10), "radius": big }]
+	assert_eq(PlayerSlice.CarcassHover.under_ray(Vector3.ZERO, Vector3(0.2, 0, -1), bodies), "big", "the flank of a big body is on it")
+	assert_eq(PlayerSlice.CarcassHover.under_ray(Vector3.ZERO, Vector3(0.2, 0, -1), [{ "id": "s", "point": Vector3(0, 0, -10) }]), "", "the same offset misses a small one")
+	assert_eq(PlayerSlice.CarcassHover.under_ray(Vector3.ZERO, Vector3(0, 0, -1), bodies, 0.9, 5.0), "", "a hill 5 m away hides a body at 10 m")
+	assert_eq(PlayerSlice.CarcassHover.under_ray(Vector3.ZERO, Vector3(0, 0, -1), bodies, 0.9, 10.5), "big", "the ground right under it does not")
+	var carcasses := CarcassSlice.new()
+	add_child(carcasses)
+	var keys: Array = GameData.CREATURES.keys()
+	var cid := ""
+	for k in keys:
+		cid = carcasses.create_for_death(str(k), Vector3(0, 0, -2), "p1")
+		if cid != "":
+			break
+	assert_true(cid != "", "a creature leaves a body")
+	var dir := Vector3(0, 0, -1)
+	assert_eq(PlayerSlice.CarcassHover.hovered(carcasses, Vector3.ZERO, Vector3.ZERO, Vector3(0, 0.5, 0), dir), cid, "the body in reach under the pointer is hovered")
+	assert_eq(PlayerSlice.CarcassHover.hovered(carcasses, Vector3(0, 0, 50), Vector3.ZERO, Vector3(0, 0.5, 0), dir), "", "out of harvest range it is not")
+	carcasses.free()
+
+func _test_ui_worn_spare_and_sale() -> void:
+	var f := _worn_fixture()
+	var ui = f["ui"]
+	f["bag"].add_item("FerriteHelmet", 2)
+	assert_true(ui.dispatch_item_action("FerriteHelmet", "equip"), "one is worn")
+	assert_eq(_ui_row(ui.inventory_rows(), "FerriteHelmet").get("quantity", 0), 1, "the spare stays in the grid")
+	var acts: Array = ui.item_actions("FerriteHelmet", {}).map(func(a): return str(a["action"]))
+	assert_true(acts.has("equip"), "the spare can be put on")
+	assert_true(ui.listable_items().has("FerriteHelmet"), "the spare may be sold")
+	f["bag"].consume_items({ "FerriteHelmet": 1 })
+	assert_false(ui.listable_items().has("FerriteHelmet"), "the worn helmet is not offered for sale")
+	assert_false(ui.item_actions("FerriteHelmet", {}).any(func(a): return str(a["action"]) == "equip"), "and no Equip for the worn copy alone")
+	_free_worn_fixture(f)

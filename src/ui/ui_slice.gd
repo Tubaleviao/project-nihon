@@ -463,7 +463,7 @@ func inventory_lines() -> Array:
 	var lines: Array = []
 	if inventory_slice == null:
 		return lines
-	var contents: Dictionary = inventory_slice.get_contents()
+	var contents: Dictionary = bag_contents()
 	if contents.is_empty():
 		return lines
 	var keys: Array = contents.keys()
@@ -545,8 +545,9 @@ func item_actions(item_id: String, repairable = null) -> Array:
 		actions.append({"action": "repair", "label": I18n.t("ui.repair")})
 	actions.append_array(_m2.writing_actions(item_id))
 	var slot := EquipmentRules.slot_of(item_id, GameData.ITEMS)
-	# An item already on the avatar offers Unequip in the Character window, not Equip.
-	if slot != "" and character_slice != null and str(_local_worn().get(slot, "")) != item_id:
+	# The worn copy offers Unequip in the Character window, not Equip; a spare copy of the worn item may still
+	# be put on in its place.
+	if slot != "" and character_slice != null and (str(_local_worn().get(slot, "")) != item_id or int(bag_contents().get(item_id, 0)) > 0):
 		actions.append({"action": "equip", "label": I18n.t("ui.equip_slot", [slot])})
 	return actions
 
@@ -598,20 +599,7 @@ func _dispatch_equipment(kind: String, item_id: String) -> bool:
 
 ## Phase 47 — one row per fabric `equipmentSlot` (sorted): { slot, item, icon_key,
 ## tooltip, actions }. `item` is "" for an empty slot.
-func character_rows() -> Array:
-	var worn := _local_worn()
-	var rows: Array = []
-	for slot in EquipmentRules.slots(GameData.ITEMS):
-		var item := str(worn.get(slot, ""))
-		rows.append({
-			"slot": slot,
-			"item": item,
-			"icon_key": item_icon_key(item) if item != "" else "",
-			"tooltip": ("%s: %s" % [slot, item_description(item)]) if item != "" else I18n.t("ui.slot_empty", [slot]),
-			"actions": [{"action": "unequip", "label": I18n.t("ui.unequip")}] if item != "" else [],
-		})
-	return rows
-
+func character_rows() -> Array: return _m2.character_rows()
 func character_sheet_rows() -> Array: return _m1.character_sheet_rows()
 func slot_accepts_drop(slot: String, data: Variant) -> bool: return _m1.slot_accepts_drop(slot, data)
 func drop_on_slot(slot: String, data: Variant) -> bool: return _m1.drop_on_slot(slot, data)
@@ -639,6 +627,8 @@ static func item_description(item_id: String) -> String:
 
 func inventory_rows() -> Array:
 	return _m2.inventory_rows()
+
+func bag_contents() -> Dictionary: return _m2.bag_contents()
 
 
 ## The `?` legend, moved here from the always-on HUD panel. Each row:
@@ -771,7 +761,7 @@ func listable_items() -> Array:
 	var out: Array = []
 	if inventory_slice == null:
 		return out
-	var contents: Dictionary = inventory_slice.get_contents()
+	var contents: Dictionary = bag_contents()   # worn gear is not offered for sale
 	for item_id in contents:
 		if int(contents[item_id]) > 0:
 			out.append(str(item_id))
