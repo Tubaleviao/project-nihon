@@ -68,6 +68,7 @@ require('./world/creatures/shared').validateSkeletonFields(creatures)
 require('./world/creatures/shared').validateBodyFields(creatures)
 // Phase 216 — a mount spec is valid and sits only on a tameable creature.
 require('./world/creatures/shared').validateMounts(creatures)
+require('./world/hydrology').validateHydrology(require('./world/hydrology').shippedWorld())
 
 // Phase 137 — every biome's `surfaceMaterial` must declare whether it is `granular` (settles when undermined).
 require('./world/materials/granular').validateGranular(require('./world/biomes'), materials)

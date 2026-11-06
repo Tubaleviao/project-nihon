@@ -432,6 +432,9 @@ jobs:
       - name: Check the mount validation rejects bad tables
         run: node tools/check_mounts.js
 
+      - name: Check the hydrology validation rejects bad parameters
+        run: node tools/check_hydrology.js
+
       - name: Check the item-shape validation rejects bad shapes
         run: node tools/check_item_shapes.js
 

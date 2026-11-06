@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:34447bfea9c51d47328645422e009d2e8949a0552d658669e0065ff683e745bd",
+  "schemaHash": "sha256:9ed041c7a7d626491a1f15298c640a02acb927978029fe23630f6441cfaf2d67",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -8137,6 +8137,75 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 3
+          },
+          "lakeFrequency": {
+            "name": "lakeFrequency",
+            "type": "decimal",
+            "description": "Chance, 0–1, that a 6.4 km lake cell holds a lake when its basin is deep enough (Phase 217)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.35
+          },
+          "lakeMinDepth": {
+            "name": "lakeMinDepth",
+            "type": "decimal",
+            "description": "Metres a lake basin is carved below its surface at the centre, at least 1 (Phase 217)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 4
+          },
+          "riverSourceHeight": {
+            "name": "riverSourceHeight",
+            "type": "decimal",
+            "description": "World Y in metres a river may start at or above: above seaLevel and below maxHeight (Phase 217)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 60
+          },
+          "riverWidthMin": {
+            "name": "riverWidthMin",
+            "type": "decimal",
+            "description": "Metres wide a river is at its source, at least 2 (Phase 217)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 4
+          },
+          "riverWidthMax": {
+            "name": "riverWidthMax",
+            "type": "decimal",
+            "description": "Metres wide a river grows to once its catchment is full, not below riverWidthMin (Phase 217)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 16
+          },
+          "riverCatchmentSteps": {
+            "name": "riverCatchmentSteps",
+            "type": "integer",
+            "description": "River steps (64 m each) after which the river has reached riverWidthMax (Phase 217)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 60
+          },
+          "riverBlockedBiomes": {
+            "name": "riverBlockedBiomes",
+            "type": "json",
+            "description": "Biomes a river cannot cross: it ends at their edge (Phase 217)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "Desert",
+              "Alpine",
+              "VoidRift",
+              "VolcanicBadlands",
+              "Ocean"
+            ]
           },
           "friendSpawnRadius": {
             "name": "friendSpawnRadius",
