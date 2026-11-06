@@ -213,7 +213,13 @@ static func _trace_river(seed_v: int, cx: int, cz: int) -> Dictionary:
 			break
 	if pts.size() < 2:
 		return {}
-	return { "pts": pts, "surf": surf, "wid": wid, "pond": pond }
+	var lo := pts[0]
+	var hi := pts[0]
+	for q in pts:
+		lo = Vector2(minf(lo.x, q.x), minf(lo.y, q.y))
+		hi = Vector2(maxf(hi.x, q.x), maxf(hi.y, q.y))
+	var pad := _wmax * 0.5 + (float(pond["r"]) if not pond.is_empty() else 0.0)
+	return { "pts": pts, "surf": surf, "wid": wid, "pond": pond, "x0": lo.x - pad, "z0": lo.y - pad, "x1": hi.x + pad, "z1": hi.y + pad }
 
 static func _pond_at(p: Vector2, surface: float, width: float) -> Dictionary:
 	return { "x": p.x, "z": p.y, "r": width * POND_FACTOR, "surface": surface, "depth": 2.0 }
@@ -266,7 +272,7 @@ static func _build_features(chunk: Vector2i, seed_v: int) -> Dictionary:
 	for cz in range(rcz0, rcz1 + 1):
 		for cx in range(rcx0, rcx1 + 1):
 			var rv := river_of_cell(seed_v, cx, cz)
-			if rv.is_empty():
+			if rv.is_empty() or float(rv["x1"]) < x0 or float(rv["x0"]) > x1 or float(rv["z1"]) < z0 or float(rv["z0"]) > z1:
 				continue
 			var pts: PackedVector2Array = rv["pts"]
 			var surf: PackedFloat64Array = rv["surf"]
