@@ -30,7 +30,7 @@ module.exports = {
       axialTilt:        { type: 'decimal', description: 'Degrees the planet\'s axis leans from its orbit: the sun\'s declination swings ±axialTilt over a year, which sets day length and season strength by latitude (Phase 54)', defaultValue: 23.5 },
       clearRadiusTiles:   { type: 'integer', description: 'Tiles (Chebyshev) around a built-on tile within which trees are cleared for good (Phase 116)', defaultValue: 1 },
       clearRadiusMetres:  { type: 'decimal', description: 'Metres (horizontal) around a placed station within which trees are cleared for good (Phase 116)', defaultValue: 3 },
-      lakeFrequency:    { type: 'decimal', description: 'Chance, 0–1, that a 6.4 km lake cell holds a lake when its basin is deep enough (Phase 217)', defaultValue: 0.35 },
+      lakeFrequency:    { type: 'decimal', description: 'Chance, 0–1, that a 512 m lake cell holds a lake when its basin is deep enough (Phase 217)', defaultValue: 0.35 },
       lakeMinDepth:     { type: 'decimal', description: 'Metres a lake basin is carved below its surface at the centre, at least 1 (Phase 217)', defaultValue: 4 },
       riverSourceHeight: { type: 'decimal', description: 'World Y in metres a river may start at or above: above seaLevel and below maxHeight (Phase 217)', defaultValue: 60 },
       riverWidthMin:    { type: 'decimal', description: 'Metres wide a river is at its source, at least 2 (Phase 217)', defaultValue: 4 },

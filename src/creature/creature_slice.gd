@@ -301,12 +301,12 @@ func use_surface(voxel: Node, built: Callable) -> void:
 func has_surface() -> bool:
 	return voxel_slice != null
 
-## The walkable height (column top) of `tile`, or NAN when there is no surface or the chunk is not loaded.
 ## Phase 217 — true when the tile's centre lies in a lake or river (fresh water is water to a creature's path).
 func is_fresh_water_tile(tile: Vector2i) -> bool:
 	var ts := _tile_size()
 	return not is_nan(Hydrology.surface_at(_world_seed(), (float(tile.x) + 0.5) * ts, (float(tile.y) + 0.5) * ts))
 
+## The walkable height (column top) of `tile`, or NAN when there is no surface or the chunk is not loaded.
 func surface_at_tile(tile: Vector2i) -> float:
 	if voxel_slice == null:
 		return NAN

@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:9ed041c7a7d626491a1f15298c640a02acb927978029fe23630f6441cfaf2d67",
+  "schemaHash": "sha256:8d501116487b387742ebd6756d62a191a6e12e45f19cc18d2828c0e1edbf6388",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -8141,7 +8141,7 @@
           "lakeFrequency": {
             "name": "lakeFrequency",
             "type": "decimal",
-            "description": "Chance, 0–1, that a 6.4 km lake cell holds a lake when its basin is deep enough (Phase 217)",
+            "description": "Chance, 0–1, that a 512 m lake cell holds a lake when its basin is deep enough (Phase 217)",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
