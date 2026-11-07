@@ -200,16 +200,19 @@ func _build_map_content() -> Control:
 	sl._friend_code_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sl._friend_code_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	row.add_child(sl._friend_code_label)
-	sl._friend_code_copy = Button.new()
-	sl._set_tr(sl._friend_code_copy, "text", "ui.copy")
-	sl._friend_code_copy.focus_mode = Control.FOCUS_NONE
-	sl._friend_code_copy.pressed.connect(sl._on_copy_friend_code_pressed)
-	row.add_child(sl._friend_code_copy)
+	sl._m1.friend_code_copy = Button.new()
+	sl._set_tr(sl._m1.friend_code_copy, "text", "ui.copy")
+	sl._m1.friend_code_copy.focus_mode = Control.FOCUS_NONE
+	sl._m1.friend_code_copy.pressed.connect(sl._on_copy_friend_code_pressed)
+	row.add_child(sl._m1.friend_code_copy)
 	sl._spawn_notice_label = Label.new()
 	sl._spawn_notice_label.add_theme_font_size_override("font_size", 13)
 	sl._spawn_notice_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	# An autowrap label measured with no width wraps every word onto its own line: give it the map's width.
 	sl._spawn_notice_label.custom_minimum_size = Vector2(sl.map_window.custom_minimum_size.x, 0)
+	# At most two lines, so no notice can push the map window past the minimum viewport; the tooltip has it all.
+	sl._spawn_notice_label.max_lines_visible = 2
+	sl._spawn_notice_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	box.add_child(sl._spawn_notice_label)
 	return box
 

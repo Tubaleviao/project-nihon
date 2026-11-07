@@ -42,7 +42,6 @@ const WINDOW_PROPOSALS  := "proposals"
 const WINDOW_CONTROLS   := "controls"
 const WINDOW_ATTRIBUTES := "attributes"   # Phase 214 — the Phase 179 character window, split in two
 const WINDOW_EQUIPMENT  := "equipment"
-const MIN_VIEWPORT_SIZE := Vector2(1152, 648)   # Phase 222 — the base size; `canvas_items` + `expand` never goes below
 const WINDOW_SKILLS     := "skills"
 const WINDOW_MAP        := "map"
 const WINDOW_SETTLEMENT := "settlement"
@@ -50,7 +49,6 @@ const WINDOW_CLAN       := "clan"   # Phase 204
 const WINDOW_CHEST      := "chest"  # Phase 208 — opened by using a chest or door (U), never by a hotkey
 const WINDOW_GESTURES  := "gestures"
 const WINDOW_ADMIN     := "admin"   # Phase 182 — admins only (`is_admin`)
-const FIT_ON_OPEN := [WINDOW_ATTRIBUTES, WINDOW_EQUIPMENT, WINDOW_MAP]
 
 const WindowShortcuts := preload("res://src/ui/window_shortcuts.gd")
 ## Phase 214 — {window, keycode} rows, Alt implied; the only place a window letter is written.
@@ -127,8 +125,7 @@ var _inventory_empty: Label = null
 var _character_stats: Label = null
 ## Phase 53 — the player's own public handle (their friend code) and the spawn note.
 var own_handle: String = ""
-var _friend_code_label: Label = null   # Phase 222 — it, its Copy button and the notice live in the map window
-var _friend_code_copy: Button = null
+var _friend_code_label: Label = null   # Phase 222 — it, its Copy button (`_m1`) and the notice live in the map window
 var _spawn_notice_label: Label = null
 ## Phase 117 — the HUD toast channel: a bounded, de-duplicated queue shown one at a time.
 const TOAST_MAX := 8
@@ -150,8 +147,6 @@ var _sheet_name: Label = null
 var _sheet_attributes: VBoxContainer = null
 var _sheet_stats: GridContainer = null
 var _sheet_skills: HBoxContainer = null
-var _sheet_specialty: VBoxContainer = null   # Phase 222 — in the scroll below the attributes; the respawn / build-as row
-var _sheet_own_row: HBoxContainer = null
 var _sheet_signature: int = 0
 var _doll_signature: int = 0
 var _slot_menu: PopupMenu = null
@@ -408,12 +403,8 @@ func open_window(panel: String) -> void:
 	if panel == WINDOW_CRAFTING and _repair_feedback != null:
 		_repair_feedback.text = ""
 	p.visible = true
-	p.position = clamp_window_position(p.position, p.size, _viewport_size())
 	refresh_all()
-	# Phase 222 — the Character windows open wholly on screen, at the size their refreshed content needs.
-	if panel in FIT_ON_OPEN:
-		p.reset_size()   # to the size the refreshed content needs, not a stale one
-		p.position = fit_window_position(p.position, p.size, _viewport_size())
+	_m1.place_on_open(panel, p)   # Phase 222 — kept on screen; some wholly
 	GameBus.tutorial_event.emit("window_opened", { "window": panel })   # Phase 186
 
 func close_window(panel: String) -> void:
@@ -943,8 +934,7 @@ func _on_copy_friend_code_pressed() -> void:
 		DisplayServer.clipboard_set(own_handle)
 
 func _on_spawn_notice(message: String) -> void:
-	if _spawn_notice_label != null:
-		_spawn_notice_label.text = message
+	_m1.show_spawn_notice(message)
 
 ## Phase 71 — the host's world record came from another generator version.
 func _on_worldgen_version_mismatch(recorded: int, running: int) -> void:
