@@ -45,6 +45,36 @@ because the menus reuse the keyboard routing Phase 219 fixes.
 | 225 | The options window: sound, graphics and game settings | Open |
 | 226 | Several characters per player: a new one starts from scratch, chosen in the main menu | Open |
 
+### Arc: one character across worlds (Phases 227–231)
+
+Decided by the owner on 2026-11-07. A player can take a character into a friend's world, level up
+there, and keep that progress in their own world. Enshrouded does this by trusting a character file
+held by the client. That breaks this game's trust rule (the host never trusts client-reported
+state), and it would let one world flood another's economy. So only the character's **knowledge**
+moves between worlds, and only as **evidence the host can verify**:
+
+- **Travels:** the player's identity (a keypair), name, appearance, skill XP and cosmetics.
+- **Stays in the world:** inventory, equipment, research (technology is per player, but it is
+  discovered again in each world, never ported), books learned, position, spawn bed, clan
+  membership and owned structures.
+- **Skills are capped by the weapon:** a skill's advanced abilities need a weapon of the same tier,
+  and weapons are crafted in the world. A ported master swordsman still has to research, gather and
+  forge a master-tier blade in the new world first, so its early game stays intact.
+- **Cosmetics** are bound to the player's key. They travel to every world because they do nothing
+  to the economy, and they can never be traded, dropped, gifted or worn by another player.
+- No trophy items for now.
+
+The arc starts after Phase 226, because the keypair identifies the player (the account) and Phase
+226 separates player from character.
+
+| Phase | Title | Status |
+|---|---|---|
+| 227 | Identity and portability in the fabric: keypair identity, what travels, weapon-gated skills, bound cosmetics | Open |
+| 228 | Keypair identity at runtime: a challenge-response join replaces the cached player id | Open |
+| 229 | Skills capped by the weapon: advanced abilities need a weapon of their tier | Open |
+| 230 | Characters across worlds: signed progress, an import policy per world | Open |
+| 231 | Cosmetics bound to the key: they travel and cannot be shared | Open |
+
 ## Phase 219 — A focused text field owns the keyboard
 
 Found in play: clicking the chat bar puts the caret at the start of the field, and a word typed there
@@ -218,6 +248,129 @@ research, clan membership and owned structures all key on the player id.
   the same state.
 - A net harness step: a client lists its characters, creates a second, enters with it, reconnects
   and enters with the first.
+
+## Phase 227 — Identity and portability in the fabric
+
+Design-only (a fabric PR, no GDScript). Everything after it reads from this phase's entities.
+
+- **`PlayerKeyIdentity` decision**, superseding `PlayerIdentityModel`: a player is a public key.
+  The client generates a signing keypair once and keeps the private key in `user://`, never sent
+  anywhere. The id the host stores is the key's fingerprint. On join the host sends a fresh random
+  nonce and the client signs it, so presenting someone else's id without their private key fails.
+  The decision names the algorithm: RSA through Godot's built-in `Crypto`/`CryptoKey`, or Ed25519,
+  which needs a GDExtension. Record the trade-off (key and signature size, a dependency, the
+  headless server). It also names the migration of saves keyed by a minted `player_id`.
+- **Portability table:** each character field (from Phase 226's character entity) is marked
+  `portable` or `world_bound`, following the arc introduction. Technology/research, inventory,
+  equipment, books learned, clan membership and owned structures are `world_bound`.
+- **World import policy:** `local` (default; every character starts from scratch, as today),
+  `trusted` (accepts progress signed by listed host keys), `open` (accepts progress signed by any
+  host). A **progress delta** entity: player key, character id, issuing host key, world id, skill
+  XP gained per skill, sequence number, and the host's signature.
+- **Weapon-gated skills:** every weapon gets a `tier` (from `SKILL_TIERS`) and each skill ability
+  gets a `requiredTier`. A rule says an ability is usable only when both the skill and the equipped
+  weapon reach that tier.
+- **Bound cosmetics:** a cosmetic entity kind (skin, emote, decoration, pet, per
+  `MonetizationModel`) and a **cosmetic grant**: cosmetic id, owner key, issuer key, signature. A
+  rule says cosmetics are never items: they have no stack, no trade, no drop, no chest, no loot.
+
+**Acceptance criteria**
+- `npm run validate` and `npm run check-drift` pass with the new entities, and
+  `PlayerIdentityModel` is `superseded`.
+- A new `tools/check_portability.js` (and its CI step) rejects a table that marks technology,
+  inventory, equipment or owned structures as portable, a weapon with no tier, and a cosmetic that
+  can be traded, dropped or stored.
+
+## Phase 228 — Keypair identity at runtime
+
+- The client creates its keypair on first boot (`user://identity/`, private key file readable only
+  by the user where the OS allows it) and reuses it after that. Losing the file means a new player,
+  as losing a save does.
+- The join handshake: the client sends its public key, the host replies with a single-use nonce
+  with an expiry, and the client returns the signature. The host verifies it before binding the peer.
+  It refuses a key already bound to a live peer, an expired or reused nonce, an oversized key and a
+  bad signature, and it rate-limits failed attempts per address.
+- `PlayerRegistry` keys records by the key fingerprint. The cached-id claim is removed.
+- **Migration:** an existing save's minted `player_id` records are bound once to the first key
+  that joins and presents the old cached id. After that the old id is refused. A dedicated server
+  logs every binding.
+- The friend code (Phase 222 moves it to the map) keeps working; it does not reveal the key.
+
+**Acceptance criteria**
+- A suite test generates a key, signs a host nonce, and joins. Another test fails to join with: a
+  replayed nonce, an expired nonce, a signature from another key, a key held by a live peer, and a
+  key over the size limit.
+- A suite test loads a pre-Phase-228 save, joins with the old cached id and a new key, finds the
+  same record, and is refused when it presents the same old id with a second key.
+- A net harness step: a client joins with its key, disconnects, reconnects and gets the same
+  record. A second client that copies the first's public key but not its private key is refused.
+
+## Phase 229 — Skills capped by the weapon
+
+- Generated weapon tiers and ability tiers from Phase 227 load through `GameData`.
+- The host decides an ability's use from the skill tier **and** the equipped weapon's tier. An
+  ability above the weapon's tier is refused with a localized reason key (`combat.refuse.weapon_tier`)
+  and greyed in the hotbar and skill UI, with the needed tier shown.
+- Skill XP still grows with any weapon. Only use is capped, so progress is never lost by carrying a
+  weaker weapon.
+
+**Acceptance criteria**
+- A suite test gives a character master Swordsmanship and a novice sword: novice abilities resolve,
+  and higher abilities are refused with `combat.refuse.weapon_tier`. With a master sword, all of
+  them resolve.
+- A suite test: a client that sends an ability intent above its weapon's tier is refused by the
+  host, and no damage is applied.
+- A suite test asserts the refusal and tier labels are keys in both `en` and `pt_BR`.
+
+## Phase 230 — Characters across worlds
+
+- Every host has its own signing key (`user://` for a listen host, the save folder for a dedicated
+  server) and a world id.
+- When a portable character leaves a world (logout, disconnect, host shutdown), the host sends it
+  a signed **progress delta** for the skill XP gained there since the last delta. The client stores
+  the deltas in `user://characters/<id>/`. The skill XP never comes from the client; it comes from
+  the host's signature over the host's own count.
+- **Import:** joining a world with policy `trusted` or `open`, the client presents the character's
+  base and its deltas. The host verifies every signature, keeps only issuers its policy accepts,
+  skips duplicates by (issuer, sequence) and sums the XP. The character arrives with its name,
+  appearance, skills and cosmetics, and with no items, research, books or memberships. A world with
+  policy `local` ignores the import and offers a fresh character.
+- **Going home:** the character's home world accepts deltas from the hosts it trusts the same way,
+  so XP earned at a friend's comes back.
+- The import is bounded: a maximum number of deltas, a maximum file size, a cap on XP per delta
+  (from the fabric), and a rate limit on imports per key.
+- The policy is a host setting in the options window (Phase 225) and a `--import-policy` flag for a
+  dedicated server. All text through `I18n.t()`.
+
+**Acceptance criteria**
+- A suite test: host A signs a delta, host B with policy `trusted` listing A imports it and finds
+  the XP. With policy `local` the character starts fresh. With `trusted` not listing A, the delta is
+  ignored.
+- A suite test refuses a delta with a bad signature, a duplicate (issuer, sequence), XP over the
+  cap, and an import over the size or count limit. None of them changes the record.
+- A suite test asserts an imported character has an empty inventory, no research and no clan.
+- A net harness step: a client plays on host A, gains skill XP, leaves, joins host B (`trusted` with
+  A) and has the XP, then goes back to A and has the XP earned on B.
+
+## Phase 231 — Cosmetics bound to the key
+
+- A cosmetic is owned by a **grant** signed by an issuer key. The official shop's public key is
+  pinned in the game. A host may add its own issuer key for cosmetics earned in its world.
+- On join the client presents its grants. The host verifies each signature and that the grant's
+  owner key is the key that signed the join nonce (Phase 228). A grant held by another key is
+  refused, so copying a friend's grant file does nothing.
+- Cosmetics travel to every world whatever the import policy, because they have no economic effect.
+  They are applied only to the owner's own characters.
+- Trade, drop, chest, loot and gift paths refuse a cosmetic. It never becomes an inventory item.
+
+**Acceptance criteria**
+- A suite test: a grant signed by the pinned shop key for the joining key is accepted and the
+  cosmetic shows on that player's character. The same grant presented by another key is refused, and
+  so is a grant with a bad signature or an unknown issuer.
+- A suite test: trading, dropping, storing in a chest and gifting a cosmetic are all refused by the
+  host.
+- A net harness step: a client joins host B (policy `local`) and its cosmetics are present; a second
+  client given a copy of the first's grant files has none.
 
 ---
 
