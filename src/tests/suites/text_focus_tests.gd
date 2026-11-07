@@ -148,6 +148,10 @@ func _test_fields_swallow_keys() -> void:
 		assert_eq(ui.hotbar.selected, slot_before, "%s: the hotbar slot is unchanged" % label)
 		assert_eq(_windows(ui), windows_before, "%s: no window opens or closes" % label)
 		_release_all()
+		_press(KEY_ESCAPE)
+		_release(KEY_ESCAPE)
+		assert_false(field.has_focus(), "%s: Esc leaves the field" % label)
+		assert_false(UiSlice.is_typing(), "%s: and nothing is typing" % label)
 		field.release_focus()
 		if window == "creation":
 			ui.hide_creation()

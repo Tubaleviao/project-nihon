@@ -24,6 +24,7 @@ extends Node
 ##   open_input() / is_typing() / lines() -> Array
 const ChatCommands := preload("res://src/core/chat_commands.gd")
 const I18n := preload("res://src/core/i18n.gd")
+const TextFocus := preload("res://src/ui/text_focus.gd")
 const Diag := preload("res://src/core/diag.gd")
 const PlayerRules := preload("res://src/core/player_rules.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
@@ -152,8 +153,7 @@ func _input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 		return
 	# Enter opens the box; `/` opens it with a slash already typed. Neither fires over another field.
-	var focus := get_viewport().gui_get_focus_owner()
-	if focus is LineEdit or focus is TextEdit:
+	if TextFocus.is_typing():
 		return
 	if event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER:
 		open_input()

@@ -227,6 +227,11 @@ static func is_typing() -> bool:
 	return TextFocus.is_typing()
 
 func _input(event: InputEvent) -> void:
+	# Phase 219 — Esc in any text field leaves the field first (a second Esc closes the windows).
+	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE and TextFocus.leave():
+		if is_inside_tree():
+			get_viewport().set_input_as_handled()
+		return
 	if _world_input_frozen or is_creation_open():
 		return
 	if event is InputEventKey and event.pressed:
