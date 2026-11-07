@@ -184,16 +184,22 @@ func run() -> void:
 	# mills planks, smelts an ingot and crafts a Chest. Every step is a packet the host validates.
 	var smith := StressClanRules.MEMBERS - 1
 	var smith_pid := str(_slice(smith).claimed_player_id)
-	# Trees come with the chunks the bots stream in: wait (up to 400 s: a two-core CI runner builds chunks slowly) until the eight this chain chops are listed.
-	await _until(func(): return (live().get("world", {}).get("trees", []) as Array).size() >= 8, 400.0)
-	var trees: Array = live().get("world", {}).get("trees", [])
-	var goal := Vector2(float((trees[0] as Array)[1]), float((trees[0] as Array)[2]) - 4.0) if not trees.is_empty() else Vector2(16.0, 16.0)
 	# The smith carries too much ore to receive wood (50 kg cap): researching smithing first spends 4 Ferrite and
 	# leaves the 2 one ingot needs.
 	_slice(smith).send_raw({ "type": "research_intent", "tech_id": "TechBasicSmithing" })
 	await _until(func(): return _tech(smith_pid, "TechBasicSmithing") == "unlocked", 45.0)
+	# Trees exist on the host only in chunks a player streams in, and the clan's spawn can be treeless: the smith
+	# walks to the forest the host's generator names (`forest`), then waits (up to 400 s: a two-core CI runner
+	# builds chunks slowly) until the eight this chain chops are listed around it.
 	(bots[smith] as Dictionary)["hold"] = true
-	await _walk(smith, goal)
+	await _until(func(): return not (live().get("world", {}).get("forest", []) as Array).is_empty(), 10.0)
+	var forest: Array = live().get("world", {}).get("forest", [])
+	if forest.size() == 2:
+		await _walk(smith, Vector2(float(forest[0]), float(forest[1])))
+	await _until(func(): return (live().get("world", {}).get("trees", []) as Array).size() >= 8, 400.0)
+	var trees: Array = live().get("world", {}).get("trees", [])
+	if not trees.is_empty():
+		await _walk(smith, Vector2(float((trees[0] as Array)[1]), float((trees[0] as Array)[2]) - 4.0))
 	# An axe breaks after two chops (4 Thornwood): the smith chops two trees, two clan mates chop two more each
 	# and hand their wood over through the trade window.
 	await _chop(smith, trees, 0, 2)

@@ -13,6 +13,13 @@ const POLL_S := 0.25
 ## The nearest trees are listed at most this often (the bots read them once; sorting every tree each poll is waste).
 const TREES_EVERY_S := 2.0
 const TREES_LISTED := 12
+## #571 flake: the clan's spawn can stand on treeless land and a tree exists on the host only once a player
+## streams its chunk in, so waiting for trees where the bots wander (30 m) was a race on a slow runner. The
+## chop chain walks to the nearest chunk, within this Chebyshev radius, whose 3x3 neighbourhood the
+## generator grows at least FOREST_TREES trees in.
+const FOREST_RADIUS_CHUNKS := 10
+const FOREST_TREES := 12
+const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const CLAN_NAME_ARG := "--stress-clan-name"
 
 var out_path := ""
@@ -24,6 +31,8 @@ var _t0_ms := 0
 var _trades := 0
 var _trees: Array = []
 var _trees_at := -INF
+## [x, z] of the forest the chop chain walks to (`_find_forest`), found once the clan is full; [] before.
+var _forest: Array = []
 var _whisper_count := 0
 ## First wall second (since attach) each flag became true.
 var _seen: Dictionary = {}
@@ -151,11 +160,13 @@ func world_record() -> Dictionary:
 	var techs := {}
 	for pid: Variant in members.keys():
 		techs[str(pid)] = _root._technology.get_statuses(str(pid))
+	if _forest.is_empty() and members.size() >= StressClanRules.MEMBERS:
+		_forest = _find_forest(_clan_centre(members))
 	if _wall_s() - _trees_at >= TREES_EVERY_S:
 		_trees_at = _wall_s()
-		_trees = _nearest_trees(_clan_centre(members))
+		_trees = _nearest_trees(Vector2(float(_forest[0]), float(_forest[1])) if not _forest.is_empty() else _clan_centre(members))
 	return {
-		"techs": techs, "trees": _trees, "inventories": inventories, "trade_ids": _root._trade._trades.keys(),
+		"techs": techs, "trees": _trees, "forest": _forest, "inventories": inventories, "trade_ids": _root._trade._trades.keys(),
 		"clans": clans.count(), "clan_id": best_id, "members": members.size(), "member_ids": members.keys(),
 		"invited_ids": invited, "skills": skills, "skilled_members": skilled, "trades": _trades, "structures": owned,
 		"chest_access": access, "chest_items": items, "whispers": _whispers(),
@@ -171,6 +182,36 @@ func _clan_centre(members: Dictionary) -> Vector2:
 			sum += Vector2((p as Vector3).x, (p as Vector3).z)
 			n += 1
 	return sum / float(n) if n > 0 else Vector2.ZERO
+
+## The ground point [x, z] at the centre of the chunk nearest `centre` whose 3x3 neighbourhood the generator
+## grows at least `FOREST_TREES` trees in (`TreeSlice._budget_of`, so it does not wait on streaming); the
+## centre of the clan's own chunk when none is within `FOREST_RADIUS_CHUNKS`.
+func _find_forest(centre: Vector2) -> Array:
+	var tree: Node = _root._tree
+	var size := float(TerrainSlice.CHUNK_METERS)
+	var c0 := Vector2i(floori(centre.x / size), floori(centre.y / size))
+	var counts := {}
+	var r := FOREST_RADIUS_CHUNKS + 1
+	for dz in range(-r, r + 1):
+		for dx in range(-r, r + 1):
+			var c := c0 + Vector2i(dx, dz)
+			counts[c] = int(tree._budget_of(c, tree._chunk_biome(c)))
+	var best := c0
+	var best_d := INF
+	for dz in range(-FOREST_RADIUS_CHUNKS, FOREST_RADIUS_CHUNKS + 1):
+		for dx in range(-FOREST_RADIUS_CHUNKS, FOREST_RADIUS_CHUNKS + 1):
+			var c := c0 + Vector2i(dx, dz)
+			var d := Vector2(float(dx), float(dz)).length()
+			if d >= best_d:
+				continue
+			var sum := 0
+			for oz in range(-1, 2):
+				for ox in range(-1, 2):
+					sum += int(counts[c + Vector2i(ox, oz)])
+			if sum >= FOREST_TREES:
+				best_d = d
+				best = c
+	return [(float(best.x) + 0.5) * size, (float(best.y) + 0.5) * size]
 
 ## The `TREES_LISTED` trees nearest `centre` as [id, x, z], nearest first, kept by insertion (no full sort).
 func _nearest_trees(centre: Vector2) -> Array:
