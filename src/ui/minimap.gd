@@ -16,6 +16,7 @@ extends Control
 ## are what the automated test suite asserts against.
 
 const I18n := preload("res://src/core/i18n.gd")
+const TextFocus := preload("res://src/ui/text_focus.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const BiomeBlend := preload("res://src/terrain/biome_blend.gd")
 const RevealedStore := preload("res://src/persistence/revealed_store.gd")
@@ -426,7 +427,7 @@ func _gui_input(event: InputEvent) -> void:
 			accept_event()
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed:
+	if event is InputEventKey and event.pressed and not TextFocus.is_typing():
 		if event.keycode == KEY_MINUS:
 			zoom_out()
 			get_viewport().set_input_as_handled()
