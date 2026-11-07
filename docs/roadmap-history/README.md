@@ -66,6 +66,7 @@ Completed phases moved out of [ROADMAP.md](../../ROADMAP.md) to keep it short. T
 | 197 | [phases-197.md](phases-197.md) |
 | 198 | [phases-198.md](phases-198.md) |
 | 199 | [phases-199.md](phases-199.md) |
+| 202 | [phases-202.md](phases-202.md) |
 | 203 | [phases-203.md](phases-203.md) |
 | 204 | [phases-204.md](phases-204.md) |
 | 205 | [phases-205.md](phases-205.md) |
@@ -79,7 +80,6 @@ Completed phases moved out of [ROADMAP.md](../../ROADMAP.md) to keep it short. T
 | 213 | [phases-213.md](phases-213.md) |
 | 214 | [phases-214.md](phases-214.md) |
 | 215 | [phases-215.md](phases-215.md) |
-| 202 | [phases-202.md](phases-202.md) |
 | 216 | [phases-216.md](phases-216.md) |
 | 217 | [phases-217.md](phases-217.md) |
 | 218 | [phases-218.md](phases-218.md) |
@@ -187,7 +187,7 @@ Raids come from creatures only. Settlement-against-settlement conflict stays def
 
 **Changed 2026-11-05:** Phase 213 is done, so Phase 202 is rewritten below as the clan loop (a clan, skills from work, a trade, an owned building and a shared chest) instead of a raid and upkeep.
 
-**Changed 2026-10-31 (Phases 203–213):** the owner replaced settlements' claim area with clans and owned structures, and dropped raids. Phase 200 (raids) moved to Deferred, and Phase 201 (upkeep) and project labour are removed. Phase 202 (the loop played, which plays a raid and upkeep) is on hold until it is rewritten as a clan loop after Phase 213. Phase 199 shipped (#539) with a specialty labour bonus, which Phase 207 removes with project labour: specialties then follow from skills alone, which Phase 207 grows from work.
+**Changed 2026-10-31 (Phases 203–213):** the owner replaced settlements' claim area with clans and owned structures, and dropped raids. Phase 200 (raids) moved to Deferred, and Phase 201 (upkeep) and project labour are removed. Phase 202 (the loop played, which played a raid and upkeep) was put on hold, then rewritten as the clan loop on 2026-11-05 (above) and done in #570. Phase 199 shipped (#539) with a specialty labour bonus, which Phase 207 removes with project labour: specialties then follow from skills alone, which Phase 207 grows from work.
 
 | Phase | Title | Status | Spec |
 |---|---|---|---|
