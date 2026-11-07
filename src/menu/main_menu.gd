@@ -63,8 +63,9 @@ static func host_choice(w: Dictionary) -> Dictionary:
 ## What a list row reads as: the name (the legacy save has a localized one), seed and last played.
 static func world_row_text(w: Dictionary) -> String:
 	var world_name: String = I18n.t("menu.world.legacy_name") if bool(w.get("legacy", false)) else str(w["name"])
-	var played: String = I18n.t("menu.world.never_played") if int(w["last_played"]) <= 0 else I18n.date(int(w["last_played"]))
-	return I18n.t("menu.world.row", [world_name, str(int(w["seed"])), played])
+	if int(w["last_played"]) <= 0:
+		return I18n.t("menu.world.row_never", [world_name, str(int(w["seed"]))])
+	return I18n.t("menu.world.row", [world_name, str(int(w["seed"])), I18n.date(int(w["last_played"]))])
 
 func _ready() -> void:
 	layer = LAYER

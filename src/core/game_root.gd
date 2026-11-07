@@ -47,8 +47,6 @@ const StatusEffects    := preload("res://src/battle/status_effects.gd")
 const Minimap          := preload("res://src/ui/minimap.gd")
 const LoadingScreen    := preload("res://src/ui/loading_screen.gd")
 const WaypointHorizon  := preload("res://src/ui/waypoint_horizon.gd")
-const TestSuite        := preload("res://src/tests/test_suite.gd")
-const NetHarness       := preload("res://src/tests/net_harness.gd")
 const SpawnFinder      := preload("res://src/world/spawn_finder.gd")
 const ColonizationMap  := preload("res://src/world/colonization_map.gd")
 const WorldClock       := preload("res://src/world/world_clock.gd")
@@ -199,7 +197,7 @@ var _host_boot_wait_elapsed: float = 0.0
 var _client_boot_wait_elapsed: float = 0.0
 
 ## Phase 39 — which side of the two-client network harness this boot drives ("" for a
-## normal boot). Set by `_boot_wiring.parse_network_args`; see `_run_net_harness`.
+## normal boot). Set by `_boot_wiring.parse_network_args`; see `BootWiring.run_net_harness`.
 var _net_harness_role: String = ""
 
 ## Phase 53 — how settled each region is; new-player spawns keep away from the settled ones.
@@ -292,7 +290,7 @@ func _ready() -> void:
 	# suite's own GameBus emissions would arrive at the harness's slices before the
 	# scenario started.
 	if _net_harness_role == "" and should_run_tests(OS.get_cmdline_user_args(), OS.is_debug_build()):
-		_run_tests()
+		_boot_wiring.run_tests()
 	await _build_and_boot()
 
 ## The slices, their wiring and the role boot; run by `_ready`, or by the main menu (Phase 223).
@@ -615,9 +613,9 @@ func _build_and_boot() -> void:
 	# Boot terrain — creatures are spawned by CreatureSlice._ready() via GameData.
 	# Phase 39 — the two-client network harness boots in place of the world boot: it is
 	# an `await`-driven scenario over a real socket, so it drives the role's OWN boot
-	# half itself (see `_run_net_harness`) and nothing after it in `_ready()` may run.
+	# half itself (see `BootWiring.run_net_harness`) and nothing after it in `_ready()` may run.
 	if _net_harness_role != "":
-		await _run_net_harness(_net_harness_role)
+		await _boot_wiring.run_net_harness(_net_harness_role)
 		return
 
 	_boot_wiring.prepare_stress_role()
@@ -626,32 +624,6 @@ func _build_and_boot() -> void:
 	_boot_world()
 	_boot_wiring.start_stress_recorder()
 	_boot_wiring.start_playtest_bot()
-
-## Phase 39 — run the two-client network harness and let it end this process.
-##
-## Placed here, after every slice is built and wired and BEFORE the role boot, for the
-## same reason the suite is: the slices have to exist for the scenario to drive them, and
-## the boot half the role needs is the one the harness itself invokes (`_boot_server()` /
-## `join()`) so what runs is the shipped boot path, not a harness-only arrangement. The
-## scenario quits the process when it finishes, which is what makes the driver's "did
-## this side exit cleanly" check mean something.
-func _run_net_harness(role: String) -> void:
-	var harness := NetHarness.new()
-	harness.name = "NetHarness"
-	add_child(harness)
-	await harness.run(self, role)
-	harness.queue_free()
-
-# ---------------------------------------------------------------------------
-# Automated tests
-# ---------------------------------------------------------------------------
-
-func _run_tests() -> void:
-	var suite := TestSuite.new()
-	suite.name = "TestSuite"
-	add_child(suite)
-	suite.run()
-	suite.queue_free()
 
 ## Phase 36 — the user arg that asks for the suite explicitly.
 const RUN_TESTS_ARG := "--run-tests"
@@ -671,9 +643,23 @@ const QUIT_AFTER_BOOT_ARG := "--quit-after-boot"
 ## Phase 42 review pass 3 — see QUIT_AFTER_BOOT_ARG. Read in `_ready()`.
 var _quit_after_boot: bool = false
 
-## Phase 36 — should THIS boot run the automated suite? Only when `--run-tests` is a user arg (the suite
-## is a CI tool, not a boot step). `is_debug_build` is kept for callers and decides nothing. A pure
-## predicate so the suite asserts it directly (`_test_boot_suite_is_gated`).
+## Phase 36 — should THIS boot run the automated suite?
+##
+## It used to run unconditionally, so every boot of every build executed a
+## 7000-assertion suite inside `_ready()` — a production boot paid for the whole
+## development harness on every launch, and the world boot had to be sequenced
+## around its GameBus emissions. The suite is a development and CI tool, not a
+## boot step, so it now runs when either:
+##
+##   • `--run-tests` is passed on the user-args command line — and only then.
+##
+## A debug build (editor F5) used to run it too; the suite takes minutes, so every
+## editor launch waited on it before the world could boot. `is_debug_build` is kept in
+## the signature for callers, but no longer decides anything.
+##
+## Static and argument-driven on purpose: the rule is a pure predicate the suite
+## can assert directly, rather than something that can only be observed by booting
+## twice. See `_test_boot_suite_is_gated`.
 static func should_run_tests(args: Array, _is_debug_build: bool) -> bool:
 	return RUN_TESTS_ARG in args
 

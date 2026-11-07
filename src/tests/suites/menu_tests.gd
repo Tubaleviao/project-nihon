@@ -72,7 +72,14 @@ func _test_local_worlds() -> void:
 	assert_eq(int(a.get("seed", 0)), 42, "an integer seed is kept")
 	var b := LocalWorlds.create(base, "My World", "nihon", 200)
 	assert_eq(str(b.get("id", "")), "my-world-2", "a second world of the same name gets its own folder")
-	assert_eq(int(b.get("seed", 0)), "nihon".hash(), "a text seed is a stable hash")
+	assert_eq(int(b.get("seed", 0)), "nihon".hash() & LocalWorlds.SEED_MAX, "a text seed is a stable hash")
+	assert_eq(str(LocalWorlds.create(base, "Big", "2147483648", 0).get("error", "")), "menu.world.error_seed", "a seed past int32 is refused")
+	assert_eq(str(LocalWorlds.create(base, "Huge", "99999999999999999999", 0).get("error", "")), "menu.world.error_seed", "a seed past int64 is refused")
+	assert_eq(int(LocalWorlds.create(base, "Low", "-2147483648", 0).get("seed", 0)), LocalWorlds.SEED_MIN, "int32's lowest seed is kept")
+	assert_true(LocalWorlds.delete(base, "low"), "(fixture removed)")
+	for i in 20:
+		var r: Variant = LocalWorlds.parse_seed("")
+		assert_true(LocalWorlds.valid_seed(r), "a random seed fits int32")
 	assert_eq(str(LocalWorlds.create(base, "   ", "", 0).get("error", "")), "menu.world.error_name", "a blank name is refused")
 	assert_eq(str(LocalWorlds.create(base, "x".repeat(LocalWorlds.NAME_MAX + 1), "", 0).get("error", "")), "menu.world.error_name", "an overlong name is refused")
 	assert_eq(str(LocalWorlds.create(base, "Ok", "9".repeat(65), 0).get("error", "")), "menu.world.error_seed", "an overlong seed is refused")
@@ -86,6 +93,14 @@ func _test_local_worlds() -> void:
 	assert_eq(int(list[0]["seed"]), 42, "the seed is listed")
 	assert_eq(int(list[0]["last_played"]), 500, "last played is listed")
 	assert_true(MainMenu.world_row_text(list[0]).contains("My World"), "the row reads the name")
+	assert_eq(MainMenu.world_row_text(list[1]), I18n.t("menu.world.row_never", ["My World", str("nihon".hash() & LocalWorlds.SEED_MAX)]),
+		"a world never played reads its own line, not a date")
+	# A meta whose seed is not an int32 (a hand-edited file) is not listed.
+	DirAccess.make_dir_recursive_absolute(base + "badseed")
+	var bs := FileAccess.open(base + "badseed/meta.json", FileAccess.WRITE)
+	bs.store_string(JSON.stringify({ "name": "Bad seed", "seed": 1.0e15, "last_played": 0 }))
+	bs.close()
+	assert_eq(LocalWorlds.list(base, "").size(), 2, "a world whose seed is past int32 is not listed")
 	# A folder without a meta, or with a name that is not one, is not a world.
 	DirAccess.make_dir_recursive_absolute(base + "stray")
 	DirAccess.make_dir_recursive_absolute(base + "Bad Name")
@@ -232,7 +247,7 @@ func _test_catalog() -> void:
 	var keys := ["menu.title", "menu.play", "menu.join", "menu.options", "menu.quit", "menu.world.new",
 		"menu.world.delete_confirm", "menu.world.error_name", "menu.world.error_seed", "menu.world.error_write",
 		"menu.join.error_address", "menu.join.error_friend", "menu.join.fail_connect", "menu.join.fail_unreachable",
-		"menu.join.fail_disconnected", "menu.join.fail_timeout", "menu.world.legacy_name", "menu.world.row"]
+		"menu.join.fail_disconnected", "menu.join.fail_timeout", "menu.world.legacy_name", "menu.world.row", "menu.world.row_never"]
 	for loc in ["en", "pt_BR"]:
 		for k in keys:
 			assert_true((cats.get(loc, {}) as Dictionary).has(k), "%s has %s" % [loc, k])

@@ -781,7 +781,7 @@ menu.world.delete_confirm,Delete the world {0}? This cannot be undone.,Excluir o
 menu.world.delete_yes,"Yes, delete it","Sim, excluir"
 menu.world.none,No worlds yet. Create one below.,Nenhum mundo ainda. Crie um abaixo.
 menu.world.row,{0} · seed {1} · last played {2},{0} · semente {1} · jogado em {2}
-menu.world.never_played,never,nunca
+menu.world.row_never,{0} · seed {1} · never played,{0} · semente {1} · nunca jogado
 menu.world.legacy_name,Saved world,Mundo salvo
 menu.world.error_name,A world name needs 1 to 32 characters.,Um nome de mundo precisa ter de 1 a 32 caracteres.
 menu.world.error_seed,That seed is too long.,Essa semente é longa demais.

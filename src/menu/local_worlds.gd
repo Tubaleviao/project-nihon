@@ -30,17 +30,28 @@ static func clean_name(raw: String) -> String:
 			return ""
 	return s
 
+## Seeds are 32-bit signed: the noise seed is, and a value this size round-trips through `meta.json` exactly.
+const SEED_MIN := -2147483648
+const SEED_MAX := 2147483647
+
 ## The seed typed in the New world form: "" → a random one; an integer → itself; any other text →
-## a stable hash of it (so "nihon" is always the same world). Null when it is too long to be a seed.
+## a stable hash of it (so "nihon" is always the same world). Null when it is too long, or an integer
+## outside SEED_MIN..SEED_MAX.
 static func parse_seed(raw: String) -> Variant:
 	var s := raw.strip_edges()
 	if s.length() > 64:
 		return null
 	if s.is_empty():
-		return randi()
+		return randi() & SEED_MAX
 	if s.is_valid_int():
-		return s.to_int()
-	return s.hash()
+		if s.length() > 11:
+			return null   # past any int32, and past what to_int() reads exactly
+		var v := s.to_int()
+		return v if v >= SEED_MIN and v <= SEED_MAX else null
+	return s.hash() & SEED_MAX
+
+static func valid_seed(v: Variant) -> bool:
+	return (v is int or v is float) and float(v) == floorf(float(v)) and float(v) >= SEED_MIN and float(v) <= SEED_MAX
 
 static func valid_id(id: String) -> bool:
 	return RegEx.create_from_string(ID_PATTERN).search(id) != null and not id.contains("..")
@@ -91,7 +102,7 @@ static func list(base: String, legacy_dir: String = PersistenceSlice.DEFAULT_SER
 		var dir := base.path_join(id) + "/"
 		var meta := _read_json(dir + META_FILE)
 		var world_name := clean_name(str(meta.get("name", "")))
-		if world_name == "":
+		if world_name == "" or not valid_seed(meta.get("seed", null)):
 			continue
 		out.append({ "id": id, "dir": dir, "name": world_name, "seed": int(meta.get("seed", 0)),
 			"last_played": int(meta.get("last_played", 0)), "legacy": false })
