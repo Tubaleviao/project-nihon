@@ -66,6 +66,9 @@ var _last_intent: Dictionary = {}
 ## player_id -> when the ride started; instance_id -> when a tired mount may be ridden again.
 var _ride_started: Dictionary = {}
 var _rested_at: Dictionary = {}
+## instance_id -> [seconds ridden, when it got off]: a mount recovers one second per second off, so getting off
+## and back on before `staminaSeconds` does not reset its stamina.
+var _fatigue: Dictionary = {}
 
 func _ready() -> void:
 	GameBus.mount_intent.connect(_on_mount_intent)
@@ -214,7 +217,8 @@ func mount(player_id: String, instance_id: String) -> String:
 		return "too_far"
 	_riding[player_id] = instance_id
 	_ridden[instance_id] = player_id
-	_ride_started[player_id] = _now()
+	_ride_started[player_id] = _now() - _fatigue_left(instance_id)
+	_fatigue.erase(instance_id)
 	GameBus.mount_changed.emit(player_id, instance_id)
 	return ""
 
@@ -231,6 +235,9 @@ func validate_riders() -> void:
 	for iid: String in _rested_at.keys():
 		if now >= float(_rested_at[iid]):
 			_rested_at.erase(iid)
+	for iid: String in _fatigue.keys():
+		if _fatigue_left(iid) <= 0.0:
+			_fatigue.erase(iid)
 	for pid: String in _riding.keys():
 		var iid: String = _riding[pid]
 		var cid: String = str(creature_of.call(iid)) if creature_of.is_valid() else ""
@@ -255,9 +262,18 @@ func dismount(player_id: String) -> bool:
 	var iid: String = _riding[player_id]
 	_riding.erase(player_id)
 	_ridden.erase(iid)
+	var now := _now()
+	_fatigue[iid] = [now - float(_ride_started.get(player_id, now)), now]
 	_ride_started.erase(player_id)
 	GameBus.mount_changed.emit(player_id, "")
 	return true
+
+## Seconds of riding `instance_id` still carries from earlier rides (ridden minus time rested since), 0 when rested.
+func _fatigue_left(instance_id: String) -> float:
+	var f: Variant = _fatigue.get(instance_id)
+	if not (f is Array and (f as Array).size() == 2):
+		return 0.0
+	return maxf(0.0, float(f[0]) - (_now() - float(f[1])))
 
 func _gate(player_id: String) -> bool:
 	var now := _now()

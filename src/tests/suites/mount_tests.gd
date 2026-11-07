@@ -253,6 +253,19 @@ func _test_mount_565_stamina_terrain() -> void:
 	assert_eq(m.mount("p1", "w1"), "tired", "a tired mount refuses until it rested as long as it ran")
 	clock[0] = 60.0
 	assert_eq(m.mount("p1", "w1"), "", "a rested mount can be ridden again")
+	# Getting off before it tires and straight back on keeps what it ran (it recovers a second per second off).
+	clock[0] = 80.0
+	m.dismount("p1")
+	clock[0] = 85.0
+	assert_eq(m.mount("p1", "w1"), "", "remounts after a short stop")
+	clock[0] = 99.0
+	m.validate_riders()
+	assert_true(m.is_mounted("p1"), "20 s ridden, 5 s off, 14 s more: still within its stamina")
+	clock[0] = 100.0
+	m.validate_riders()
+	assert_false(m.is_mounted("p1"), "a dismount and remount does not reset the mount's stamina")
+	clock[0] = 200.0
+	assert_eq(m.mount("p1", "w1"), "", "rested again")
 	m.dismount("p1")
 	spec["staminaSeconds"] = 0
 	var wet := {"w1": true}
