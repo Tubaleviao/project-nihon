@@ -26,7 +26,8 @@ extends Node
 ## Durability = base (the material's) × (1 − wear since the block was placed) − damage. Wear is per
 ## structure, a fraction of base, advanced from the clock's in-game hour when the structure is read or swept
 ## (`tick`), never by touching every block every frame: `loss.perDay` per day of age plus `loss.weather[state]`
-## per hour of the weather rolled at the structure's anchor. Server downtime counts once, on load.
+## per hour of the weather rolled at the structure's anchor. Only time the world runs wears (#546): the clock is
+## saved and resumes on load, so server downtime wears nothing.
 ##
 ## Plug contract (GameBus):
 ##   IN  : structure_intent(action, args, player_id)   ("build_as" {mode}, "repair")
@@ -60,8 +61,6 @@ const COLLAPSE_PER_TICK := 32
 const NOTICE_GAP_SEC := 30.0
 ## Metres around the player `/repair` looks for a structure they own.
 const REPAIR_REACH_M := 3.0
-## Downtime counted on load is capped (a clock set wrong must not ruin every structure at once twice over).
-const MAX_DOWNTIME_HOURS := 24.0 * 3650.0
 const INTENT_INTERVAL := 0.25
 ## Seconds between one player's hits on someone else's blocks. The host keeps the pace, not the client:
 ## a client sending mine intents as fast as the network bucket allows would undo `offlineFactor`.
@@ -1209,9 +1208,9 @@ func to_data() -> Dictionary:
 		list.append(row)
 	return { "format": DATA_FORMAT, "next_id": _next_id, "structures": list, "modes": _build_mode.duplicate() }
 
-## Load a saved index. `downtime_hours` is the in-game hours the server was down since the save: each
-## structure wears for them once (age, and the weather rolled for those past hours at its anchor).
-func from_data(data: Variant, downtime_hours: float = 0.0) -> void:
+## Load a saved index. Server downtime does not wear structures (#546): wear resumes from each one's
+## `wear_hour` on the saved clock.
+func from_data(data: Variant) -> void:
 	_clear_points()
 	_structures.clear()
 	_tiles.clear()
@@ -1234,12 +1233,6 @@ func from_data(data: Variant, downtime_hours: float = 0.0) -> void:
 		for pid: Variant in modes:
 			if pid is String and OWNER_KINDS.has(modes[pid]):
 				_build_mode[pid] = modes[pid]
-	var down := clampf(downtime_hours, 0.0, MAX_DOWNTIME_HOURS)
-	if down > 0.0:
-		var now := int(now_hour.call())
-		for sid: int in _structures:
-			var s: Dictionary = _structures[sid]
-			s["wear"] = minf(2.0, float(s["wear"]) + Rules.age_wear(down) + _weather_wear(s["anchor"], now - ceili(down), down))
 
 static func _num(v: Variant) -> bool:
 	return v is int or v is float

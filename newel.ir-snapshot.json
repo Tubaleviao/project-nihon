@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:8d501116487b387742ebd6756d62a191a6e12e45f19cc18d2828c0e1edbf6388",
+  "schemaHash": "sha256:e3eb7bfd9108f00ea827ded55ba5d126f0d74d9076afdb8ecdb13fb9301bb66f",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -33391,16 +33391,16 @@
             "pii": false,
             "defaultValue": {
               "loss": {
-                "perDay": 0.002,
+                "perDay": 0.0002,
                 "weather": {
                   "clear": 0,
-                  "fog": 0.0001,
-                  "rain": 0.0005,
-                  "storm": 0.001,
-                  "blizzard": 0.001,
-                  "ash_fall": 0.0008,
-                  "electrical_storm": 0.0012,
-                  "void_storm": 0.002
+                  "fog": 0.00001,
+                  "rain": 0.00005,
+                  "storm": 0.0001,
+                  "blizzard": 0.0001,
+                  "ash_fall": 0.00008,
+                  "electrical_storm": 0.00012,
+                  "void_storm": 0.0002
                 },
                 "perDamage": 1
               },
