@@ -934,8 +934,16 @@ func _build_ui() -> void:
 
 ## A `/msg` line may run to MAX_PRIVATE_LINE_CHARS; any other line stops at MAX_MESSAGE_CHARS, the length the
 ## host keeps, so nothing typed is cut off unseen.
+## Phase 219 — setting `max_length` re-sets the LineEdit's text, which puts the caret back at column 0. It ran on
+## every keystroke (text_changed arrives after the key), so each letter landed before the last and a word came out
+## reversed. The limit is set only when it changes, and the caret is put back where it was.
 func _on_field_text_changed(text: String) -> void:
-	_field.max_length = field_limit(text)
+	var limit := field_limit(text)
+	if _field.max_length == limit:
+		return
+	var caret := _field.caret_column
+	_field.max_length = limit
+	_field.caret_column = caret
 
 static func field_limit(text: String) -> int:
 	return ChatCommands.MAX_PRIVATE_LINE_CHARS if ChatCommands.is_private(text) else ChatCommands.MAX_MESSAGE_CHARS

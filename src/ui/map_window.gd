@@ -263,17 +263,23 @@ func begin_rename(offset: Vector2) -> void:
 	if hit < 0 or minimap == null:
 		return
 	_rename_index = hit
+	var edit := rename_field()
+	edit.text = str(minimap.get_waypoints()[hit]["name"])
+	edit.position = size * 0.5 + offset + Vector2(8, 8)
+	edit.visible = true
+	edit.grab_focus()
+
+## The waypoint rename box, built on first use (hidden until a rename begins).
+func rename_field() -> LineEdit:
 	if _rename_edit == null:
 		_rename_edit = LineEdit.new()
 		_rename_edit.name = "RenameEdit"
 		_rename_edit.max_length = 32
 		_rename_edit.custom_minimum_size = Vector2(180, 0)
+		_rename_edit.visible = false
 		_rename_edit.text_submitted.connect(_on_rename_submitted)
 		add_child(_rename_edit)
-	_rename_edit.text = str(minimap.get_waypoints()[hit]["name"])
-	_rename_edit.position = size * 0.5 + offset + Vector2(8, 8)
-	_rename_edit.visible = true
-	_rename_edit.grab_focus()
+	return _rename_edit
 
 func _on_rename_submitted(text: String) -> void:
 	if minimap != null and minimap.has_method("rename_waypoint"):
