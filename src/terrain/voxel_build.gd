@@ -3,7 +3,6 @@ extends RefCounted
 ## `s` is the owning slice; every moved method keeps a forwarder on the slice.
 
 const TickProbe := preload("res://src/core/tick_probe.gd")
-const Hydrology := preload("res://src/terrain/hydrology.gd")
 const FreshWaterMesh := preload("res://src/terrain/fresh_water_mesh.gd")
 var s: Node
 
@@ -104,7 +103,10 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 			water_inst.material_override = s._ice_material() if s.is_frozen_chunk(chunk_pos) else s._water_material()
 			root.add_child(water_inst)
 		# Phase 217: lake and river surfaces, at their own level.
-		var fresh_mesh = FreshWaterMesh.mesh_for(chunk_pos, Hydrology.surfaces_for_chunk(chunk_pos, int(s._world_seed())), bool(built.get("local", false)))
+		# A streamed build brings the arrays from its worker (`fresh_water`); only the synchronous path walks the tiles here.
+		var fresh_arrays: Array = built["fresh_water"] if built.has("fresh_water") \
+			else FreshWaterMesh.worker_arrays(chunk_pos, int(s._world_seed()), bool(built.get("local", false)))
+		var fresh_mesh = FreshWaterMesh.mesh_from(fresh_arrays)
 		if fresh_mesh != null:
 			var fresh_inst := MeshInstance3D.new()
 			fresh_inst.name = "FreshWater"

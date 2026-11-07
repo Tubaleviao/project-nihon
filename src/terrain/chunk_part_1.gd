@@ -5,6 +5,7 @@ extends RefCounted
 const VoxelBuilder := preload("res://src/terrain/voxel_slice.gd")
 const VoxelMesh := preload("res://src/terrain/voxel_mesh.gd")
 const VoxelCoarse := preload("res://src/terrain/voxel_coarse.gd")
+const FreshWaterMesh := preload("res://src/terrain/fresh_water_mesh.gd")
 const TerrainSliceScript := preload("res://src/terrain/terrain_slice.gd")
 const SeamWrapScript := preload("res://src/terrain/seam_wrap.gd")
 ## PR #529 — a fast flyer's chunk off its lane ranks this many lane chunks per ring from the body (`off_lane_rank`).
@@ -317,6 +318,7 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 	var gathered: Dictionary = sl.voxel_slice.gather_build_input(chunk_pos, heightmap) if geometry else {}
 	var keep_render: bool = sl.keeps_render()
 	var revision: int = int(sl.voxel_slice.chunk_revision(chunk_pos))
+	var seed_v: int = int(sl.terrain_slice.get_world_seed())
 	var result: Array = [null]
 	var job := func() -> void:
 		if not geometry:
@@ -324,6 +326,7 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 			return
 		result[0] = VoxelMesh.build_worker_arrays(chunk_pos, heightmap,
 			VoxelBuilder.build_runs(chunk_pos, heightmap, gathered), keep_render)
+		_add_fresh_water(result[0], chunk_pos, seed_v, keep_render)
 	var task_id = WorkerThreadPool.add_task(job, sl.build_high_priority(chunk_pos), "chunk build %s" % key)
 	sl._builds[task_id] = {
 		"chunk":     chunk_pos,
@@ -449,9 +452,11 @@ func dispatch_worker_noise_build(chunk_pos: Vector2i, key: String) -> void:
 			var coarse := VoxelCoarse.build_coarse_arrays(chunk_pos, hm, gathered, lod, true)
 			coarse["shape"] = VoxelMesh.collision_shape(coarse["collision"])
 			result[0] = coarse
+			_add_fresh_water(result[0], chunk_pos, seed_v, keep_render)
 		else:
 			VoxelBuilder.fill_seam_strips(chunk_pos, gathered, seed_v, noise)
 			result[0] = VoxelMesh.build_worker_arrays(chunk_pos, hm, VoxelBuilder.build_runs(chunk_pos, hm, gathered), keep_render)
+			_add_fresh_water(result[0], chunk_pos, seed_v, keep_render)
 		result[2] = Time.get_ticks_usec() - t0
 	# A low-priority task may only use `low_priority_thread_ratio` of the pool (0.3 by default: three or
 	# four threads on most machines, which is what really capped the build rate). Phase 141 raised only the
@@ -466,3 +471,11 @@ func dispatch_worker_noise_build(chunk_pos: Vector2i, key: String) -> void:
 		"revision":  revision,
 		"result":    result,
 	}
+
+## Phase 217 follow-up — on the worker: the chunk's lake and river surface arrays ride with its build
+## (`fresh_water`), so attaching it on the main thread no longer walks the chunk's tiles. Skipped when the
+## build keeps no render arrays (a headless host draws no water).
+static func _add_fresh_water(built: Variant, chunk_pos: Vector2i, seed_v: int, keep_render: bool) -> void:
+	if not keep_render or not (built is Dictionary):
+		return
+	(built as Dictionary)["fresh_water"] = FreshWaterMesh.worker_arrays(chunk_pos, seed_v, bool((built as Dictionary).get("local", true)))
