@@ -26,7 +26,7 @@ const VoxelConsts := preload("res://src/terrain/voxel_consts.gd")
 
 const DATA_FORMAT := 1
 const REASONS := ["no_lock", "far", "locked", "not_owner", "bad_mode", "bad_args", "no_stock", "full", "durable",
-	"no_tool", "busy", "not_locked", "rate", "no_inventory", "not_open", "blocked", "protected"]
+	"no_tool", "busy", "not_locked", "rate", "no_inventory", "not_open", "blocked", "protected", "cap"]
 ## Metres from a chest or door at which a player may use, pick or hit it.
 const REACH_M := 3.0
 ## A pick is cancelled when its picker moves this far from where they started.
