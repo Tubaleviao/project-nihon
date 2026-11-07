@@ -10,6 +10,9 @@ extends Node
 const StressClanRules := preload("res://src/tests/stress_clan_rules.gd")
 
 const POLL_S := 0.25
+## The nearest trees are listed at most this often (the bots read them once; sorting every tree each poll is waste).
+const TREES_EVERY_S := 2.0
+const TREES_LISTED := 12
 const CLAN_NAME_ARG := "--stress-clan-name"
 
 var out_path := ""
@@ -19,7 +22,8 @@ var _root: Node = null
 var _poll := 0.0
 var _t0_ms := 0
 var _trades := 0
-var _events: Array = []
+var _trees: Array = []
+var _trees_at := -INF
 var _whisper_count := 0
 ## First wall second (since attach) each flag became true.
 var _seen: Dictionary = {}
@@ -51,8 +55,6 @@ func _ready() -> void:
 	GameBus.chat_posted.connect(func(channel: String, _s: String, _t: String, _target: String):
 		if channel == "whisper":
 			_whisper_count += 1)
-	GameBus.research_resolved.connect(func(r: Dictionary): _events.append({ "kind": "research", "r": r }))
-	GameBus.character_creation_resolved.connect(func(pid: String, a: String, reason: String, _st: Dictionary): _events.append({ "kind": "creation", "who": pid, "a": a, "reason": reason }))
 	GameBus.trade_completed.connect(func(_t: Dictionary): _trades += 1)
 	GameBus.chest_resolved.connect(func(pid: String, action: String, ok: bool, reason: String):
 		if not ok:
@@ -83,6 +85,7 @@ func _process(delta: float) -> void:
 func _note(world: Dictionary) -> void:
 	var flags := {
 		"found": int(world["clans"]) > 0,
+		"invites_3": int(world["members"]) + (world["invited_ids"] as Array).size() >= StressClanRules.MEMBERS,
 		"members_4": int(world["members"]) >= StressClanRules.MEMBERS,
 		"skills_4": int(world["skilled_members"]) >= StressClanRules.MEMBERS,
 		"skills_differ": StressClanRules.distinct_top_skills(world["skills"]) >= 2,
@@ -136,51 +139,54 @@ func world_record() -> Dictionary:
 			access = str(lock.get("mode", ""))
 			for q: Variant in (_root._chests.items_of(str(cid)) as Dictionary).values():
 				items += int(q)
-	var chest_dump := {}
-	for cid: Variant in _root._chests.ids():
-		chest_dump[str(cid)] = _root._chests.get_lock(str(cid)).duplicate()
-	var modes := {}
-	for pid: Variant in members.keys():
-		modes[str(pid).right(6)] = _root._structures.build_mode(str(pid))
-	chest_dump["_build_modes"] = modes
+	var invited: Array = (clans.get_clan(best_id).get("invites", {}) as Dictionary).keys() if best_id != "" else []
 	var inventories := {}
 	for pid: Variant in members.keys():
 		var inv: Node = _root._registry.get_inventory(str(pid))
 		inventories[str(pid)] = (inv._contents as Dictionary).duplicate() if inv != null and "_contents" in inv else {}
 		if inv != null:
-			inventories[str(pid)]["_w"] = "%s/%s %s" % [str(inv._current_weight), str(inv._max_weight), str(inv._item_weight("Thornwood"))]
 			for held: String in ["Chest", "FerriteIngot"]:
 				if inv.get_item_count(held) > 0:
 					inventories[str(pid)][held] = inv.get_item_count(held)
-			inventories[str(pid)]["_axe"] = str(inv.find_tool("axe"))
-			inventories[str(pid)]["_carpenter_axe_count"] = inv.get_item_count("CarpenterAxe")
 	var techs := {}
 	for pid: Variant in members.keys():
 		techs[str(pid)] = _root._technology.get_statuses(str(pid))
-	var near: Array = []
+	if _wall_s() - _trees_at >= TREES_EVERY_S:
+		_trees_at = _wall_s()
+		_trees = _nearest_trees(_clan_centre(members))
+	return {
+		"techs": techs, "trees": _trees, "inventories": inventories, "trade_ids": _root._trade._trades.keys(),
+		"clans": clans.count(), "clan_id": best_id, "members": members.size(), "member_ids": members.keys(),
+		"invited_ids": invited, "skills": skills, "skilled_members": skilled, "trades": _trades, "structures": owned,
+		"chest_access": access, "chest_items": items, "whispers": _whispers(),
+	}
+
+## Where the clan stands: the mean ground position of its members the host knows, the world origin before that.
+func _clan_centre(members: Dictionary) -> Vector2:
+	var sum := Vector2.ZERO
+	var n := 0
+	for pid: Variant in members.keys():
+		var p: Variant = _root._chest_wiring.player_pos(str(pid))
+		if p is Vector3:
+			sum += Vector2((p as Vector3).x, (p as Vector3).z)
+			n += 1
+	return sum / float(n) if n > 0 else Vector2.ZERO
+
+## The `TREES_LISTED` trees nearest `centre` as [id, x, z], nearest first, kept by insertion (no full sort).
+func _nearest_trees(centre: Vector2) -> Array:
+	var best: Array = []   # [id, x, z, distance]
 	for tid: Variant in _root._tree._trees.keys():
 		var tp: Vector3 = _root._tree._trees[tid]["position"]
-		near.append([str(tid), tp.x, tp.z, Vector2(tp.x - 16.0, tp.z - 16.0).length()])
-	near.sort_custom(func(a, b): return float(a[3]) < float(b[3]))
-	var trees: Array = near.slice(0, 12)
-	var stations := {}
-	for sid: Variant in _root._station._stations.keys():
-		stations[str(sid)] = str(_root._station._stations[sid].get("type", ""))
-	var created := {}
-	for pid: Variant in members.keys():
-		created[str(pid)] = _root._registry.creation_of(str(pid))
-	var at := {}
-	for pid: Variant in members.keys():
-		at[str(pid)] = str(_root._chest_wiring.player_pos(str(pid)))
-	return {
-		"at": at,
-		"created": created,
-		"events": _events.slice(-14), "tree_total": _root._tree.get_all_trees().size(),  "techs": techs, "trees": trees.slice(0, 24), "stations": stations,
-		"inventories": inventories, "trade_ids": _root._trade._trades.keys(), "trade_dump": _root._trade._trades.duplicate(true),
-		"clans": clans.count(), "clan_id": best_id, "members": members.size(), "member_ids": members.keys(),
-		"skills": skills, "skilled_members": skilled, "trades": _trades, "structures": owned,
-		"chest_dump": chest_dump, "chest_access": access, "chest_items": items, "whispers": _whispers(),
-	}
+		var d := Vector2(tp.x, tp.z).distance_to(centre)
+		if best.size() >= TREES_LISTED and d >= float((best.back() as Array)[3]):
+			continue
+		var at := best.size()
+		while at > 0 and float((best[at - 1] as Array)[3]) > d:
+			at -= 1
+		best.insert(at, [str(tid), tp.x, tp.z, d])
+		if best.size() > TREES_LISTED:
+			best.pop_back()
+	return best.map(func(t: Array) -> Array: return t.slice(0, 3))
 
 func _whispers() -> int:
 	return _whisper_count
