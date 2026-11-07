@@ -530,6 +530,10 @@ func tick_client_handshake(delta: float) -> void:
 	if root._snapshot_elapsed >= root.SNAPSHOT_TIMEOUT * scale:
 		Diag.error("[Networking] world snapshot timed out after %.1fs — giving up" % (root.SNAPSHOT_TIMEOUT * scale))
 		root._snapshot_pending = false
+		# Phase 223 — a join from the menu goes back to it: no answer at all, or a host that never sent the world.
+		var mp: MultiplayerPeer = root.multiplayer.multiplayer_peer
+		var reached: bool = mp != null and mp.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED
+		root._menu_wiring.join_failed("menu.join.fail_timeout" if reached else "menu.join.fail_unreachable")
 
 ## Drive the player's visual avatar from the real player controller every
 ## frame — position/facing, locomotion state, and approximate foot IK
@@ -568,6 +572,7 @@ func _on_connection_failed() -> void:
 		return
 	Diag.error("[Networking] connection to host failed")
 	root._snapshot_pending = false
+	root._menu_wiring.join_failed("menu.join.fail_unreachable")   # Phase 223
 
 func _on_server_disconnected() -> void:
 	if not root._is_client:
@@ -576,6 +581,7 @@ func _on_server_disconnected() -> void:
 	root._snapshot_pending = false
 	if root._creature != null:
 		root._creature.reset_fold_log()
+	root._menu_wiring.join_failed("menu.join.fail_disconnected")   # Phase 223
 
 ## Host → the peer whose own record just changed. Nothing to do for a local player
 ## (its state is already live in this process) and nothing to send for a failed

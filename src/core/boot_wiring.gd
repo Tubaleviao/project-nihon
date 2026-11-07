@@ -8,6 +8,8 @@ const PLAYTEST_BOT_PATH := "res://src/tests/playtest_bot.gd"
 const STRESS_BOTS_PATH := "res://src/tests/stress_bots.gd"
 const STRESS_RECORDER_PATH := "res://src/tests/stress_recorder.gd"
 const NetworkingSlice := preload("res://src/networking/networking_slice.gd")
+const TestSuite := preload("res://src/tests/test_suite.gd")
+const NetHarness := preload("res://src/tests/net_harness.gd")
 
 ## Phase 162 — the dedicated server's connection cap (a stress host raises it past the ladder's top).
 var max_clients: int = NetworkingSlice.DEFAULT_MAX_CLIENTS
@@ -140,3 +142,29 @@ func start_playtest_bot() -> void:
 	bot.name = "PlaytestBot"
 	root.add_child(bot)
 	bot.run(root)
+
+## Phase 39 — run the two-client network harness and let it end this process.
+##
+## Called from GameRoot after every slice is built and wired and BEFORE the role boot, for the
+## same reason the suite is: the slices have to exist for the scenario to drive them, and
+## the boot half the role needs is the one the harness itself invokes (`_boot_server()` /
+## `join()`) so what runs is the shipped boot path, not a harness-only arrangement. The
+## scenario quits the process when it finishes, which is what makes the driver's "did
+## this side exit cleanly" check mean something.
+func run_net_harness(role: String) -> void:
+	var harness := NetHarness.new()
+	harness.name = "NetHarness"
+	root.add_child(harness)
+	await harness.run(root, role)
+	harness.queue_free()
+
+# ---------------------------------------------------------------------------
+# Automated tests
+# ---------------------------------------------------------------------------
+
+func run_tests() -> void:
+	var suite := TestSuite.new()
+	suite.name = "TestSuite"
+	root.add_child(suite)
+	suite.run()
+	suite.queue_free()
