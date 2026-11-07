@@ -42,7 +42,6 @@ const WINDOW_CONTROLS   := "controls"
 const WINDOW_ATTRIBUTES := "attributes"   # Phase 214 — the Phase 179 character window, split in two
 const WINDOW_EQUIPMENT  := "equipment"
 const MIN_VIEWPORT_SIZE := Vector2(1152, 648)   # Phase 222 — the base size; `canvas_items` + `expand` never goes below
-const FIT_ON_OPEN := [WINDOW_ATTRIBUTES, WINDOW_EQUIPMENT]
 const WINDOW_SKILLS     := "skills"
 const WINDOW_MAP        := "map"
 const WINDOW_SETTLEMENT := "settlement"
@@ -50,6 +49,7 @@ const WINDOW_CLAN       := "clan"   # Phase 204
 const WINDOW_CHEST      := "chest"  # Phase 208 — opened by using a chest or door (U), never by a hotkey
 const WINDOW_GESTURES  := "gestures"
 const WINDOW_ADMIN     := "admin"   # Phase 182 — admins only (`is_admin`)
+const FIT_ON_OPEN := [WINDOW_ATTRIBUTES, WINDOW_EQUIPMENT, WINDOW_MAP]
 
 const WindowShortcuts := preload("res://src/ui/window_shortcuts.gd")
 ## Phase 214 — {window, keycode} rows, Alt implied; the only place a window letter is written.
@@ -402,7 +402,8 @@ func open_window(panel: String) -> void:
 	refresh_all()
 	# Phase 222 — the Character windows open wholly on screen, at the size their refreshed content needs.
 	if panel in FIT_ON_OPEN:
-		p.position = fit_window_position(p.position, p.custom_minimum_size.max(p.get_combined_minimum_size()), _viewport_size())
+		p.reset_size()   # to the size the refreshed content needs, not a stale one
+		p.position = fit_window_position(p.position, p.size, _viewport_size())
 	GameBus.tutorial_event.emit("window_opened", { "window": panel })   # Phase 186
 
 func close_window(panel: String) -> void:
