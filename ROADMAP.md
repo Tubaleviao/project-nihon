@@ -120,7 +120,6 @@ created while the host has it as created, and the screen has no way out after a 
 - A net harness step: a client that skipped creation and one that created both see the button state
   the host's record implies.
 
-
 ## Phase 224 — The Esc menu
 
 Esc today only closes the focused window or field. With nothing open, it does nothing.
