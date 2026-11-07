@@ -30,6 +30,7 @@ extends Node
 ## accumulates and there is no per-connection state to evict.
 const Diag := preload("res://src/core/diag.gd")
 const I18n := preload("res://src/core/i18n.gd")
+const TextFocus := preload("res://src/ui/text_focus.gd")
 const LocaleSettings := preload("res://src/core/locale_settings.gd")
 
 const WINDOW_INVENTORY  := "inventory"
@@ -223,13 +224,22 @@ func _ready() -> void:
 func _on_world_input_frozen(frozen: bool) -> void:
 	_world_input_frozen = frozen
 
+## Phase 219 — the ONE query for "a text field has the keyboard" (see `text_focus.gd`): while it is true no world
+## input reaches the game (movement, jump, fly, hotbar keys, window shortcuts, mouse-look).
+static func is_typing() -> bool:
+	return TextFocus.is_typing()
+
 func _input(event: InputEvent) -> void:
+	# Phase 219 — Esc in any text field leaves the field first (a second Esc closes the windows).
+	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE and TextFocus.leave():
+		if is_inside_tree():
+			get_viewport().set_input_as_handled()
+		return
 	if _world_input_frozen or is_creation_open():
 		return
 	if event is InputEventKey and event.pressed:
-		# Typing into a text field must not trigger window hotkeys.
-		var focus := get_viewport().gui_get_focus_owner() if is_inside_tree() else null
-		if (focus is LineEdit or focus is TextEdit) and event.keycode != KEY_ESCAPE:
+		# Typing into a text field must not trigger window hotkeys (Esc still leaves the field).
+		if is_typing() and event.keycode != KEY_ESCAPE:
 			return
 		# Phase 214 — Alt + a letter opens a window. Matched before the wheel and the hotbar so Alt+Q is Equipment, not
 		# the wheel; not while the hotbar waits for a box key (it swallows a modified key itself).
