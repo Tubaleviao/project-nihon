@@ -111,7 +111,7 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 			var fresh_inst := MeshInstance3D.new()
 			fresh_inst.name = "FreshWater"
 			fresh_inst.mesh = fresh_mesh
-			fresh_inst.material_override = s._water_material()
+			fresh_inst.material_override = s._ice_material() if s.is_frozen_chunk(chunk_pos) else s._water_material()   # #573: frozen like the sea
 			root.add_child(fresh_inst)
 
 		# --- Rare-vein deposits: a SECOND mesh, from arrays the build already carries. ---

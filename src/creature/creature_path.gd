@@ -13,7 +13,9 @@ extends RefCounted
 ##   can_swim     water tiles (ground below `sea_level`) are walkable (default false)
 ##   radius       search window in tiles around the start (default 24)
 ##   sea_level    metres (default 0.0)
-##   fresh_water  Callable(tile) -> bool, true for a lake or river tile (Phase 217; unwalkable unless can_swim)
+##   fresh_water  Callable(tile) -> float, the fresh water's width there in metres (0 dry, INF a lake), or
+##                -> bool (true = water of any width) (Phase 217; unwalkable unless can_swim or fordable)
+##   ford_width_m  a river narrower than this is forded, walkable without swimming (default 0: none)
 ##   lap_tiles    tiles in one lap of the world; 0 = no seam (default 0)
 ##   max_expansions  node-expansion cap (default DEFAULT_MAX_EXPANSIONS)
 ##   max_usec     wall-clock cap in µs, checked between expansions (default 0: none); a capped search
@@ -43,6 +45,14 @@ const _DIRS: Array[Vector2i] = [
 ## its whole expansion cap (~20 ms) proving it. It aims at the point where the straight line to the goal
 ## leaves the window instead; `window` is true when the path ends there (reached stays false: the goal is
 ## further), so the caller plans again from there at once.
+## Whether fresh water described by `wet` (a width in metres, or a bool for water of any width) stops a
+## creature that cannot swim: any water at least `ford_width_m` wide does (#573: a narrow stream is forded).
+static func blocks_water(wet: Variant, ford_width_m: float) -> bool:
+	if wet is bool:
+		return wet
+	var w := float(wet)
+	return w > 0.0 and w >= ford_width_m
+
 static func search(from_tile: Vector2i, to_tile: Vector2i, rules: Dictionary, surface: Callable) -> Dictionary:
 	var max_step := float(rules.get("max_step", DEFAULT_MAX_STEP))
 	var can_swim := bool(rules.get("can_swim", false))
@@ -55,8 +65,9 @@ static func search(from_tile: Vector2i, to_tile: Vector2i, rules: Dictionary, su
 	var fresh: Variant = rules.get("fresh_water", null)
 	if fresh is Callable and not can_swim:
 		var base_surface := surface
+		var ford := float(rules.get("ford_width_m", 0.0))
 		surface = func(tile: Vector2i) -> float:
-			return NAN if tile != from_tile and bool((fresh as Callable).call(tile)) else float(base_surface.call(tile))
+			return NAN if tile != from_tile and blocks_water((fresh as Callable).call(tile), ford) else float(base_surface.call(tile))
 
 	var goal := Vector2i(to_tile.x - from_tile.x, to_tile.y - from_tile.y)
 	if lap > 0:
