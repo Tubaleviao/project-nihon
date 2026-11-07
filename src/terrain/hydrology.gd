@@ -316,7 +316,7 @@ static func _disc_touches(d: Dictionary, x0: float, z0: float, x1: float, z1: fl
 # Per-point queries
 # ---------------------------------------------------------------------------
 
-## `{ "surface": float, "bed": float }` for the water at (x, z) given `features`, or {} when dry. The bed
+## `{ "surface": float, "bed": float, "width": float }` for the water at (x, z) (width: the river's there, INF in a lake) given `features`, or {} when dry. The bed
 ## is the highest the ground may be there; the surface is the water level. Where a lake and a river
 ## overlap the lower surface wins nothing: the first feature found is used (all are static).
 static func water_at(features: Dictionary, x: float, z: float) -> Dictionary:
@@ -374,16 +374,18 @@ static func carved_height(seed_v: int, x: float, z: float, h: float) -> float:
 ## The fresh-water surface at (x, z) (metres), or NAN when there is none. Used for swimming, the
 ## creature path cost and the water mesh.
 static func surface_at(seed_v: int, x: float, z: float) -> float:
-	var cm := TerrainSlice.CHUNK_METERS
-	var f := features_for_chunk(Vector2i(floori(x / cm), floori(z / cm)), seed_v)
-	var wt := water_at(f, x, z)
+	var wt := _water_point(seed_v, x, z)
 	return NAN if wt.is_empty() else float(wt["surface"])
+
+## `water_at` for one point, from the features its point queries read (`surface_at`, `water_width_at`).
+static func _water_point(seed_v: int, x: float, z: float) -> Dictionary:
+	var cm := TerrainSlice.CHUNK_METERS
+	return water_at(features_for_chunk(Vector2i(floori(x / cm), floori(z / cm)), seed_v), x, z)
 
 ## How wide the fresh water at (x, z) is (metres): a river's width there, INF for a lake or pond, 0 when dry.
 ## A creature fords a river narrower than its path's `ford_width_m`.
 static func water_width_at(seed_v: int, x: float, z: float) -> float:
-	var cm := TerrainSlice.CHUNK_METERS
-	var wt := water_at(features_for_chunk(Vector2i(floori(x / cm), floori(z / cm)), seed_v), x, z)
+	var wt := _water_point(seed_v, x, z)
 	return 0.0 if wt.is_empty() else float(wt["width"])
 
 ## The level a body floats on at (x, z): the fresh-water surface where there is one, else the sea.

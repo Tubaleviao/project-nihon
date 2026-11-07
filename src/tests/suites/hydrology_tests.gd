@@ -230,6 +230,20 @@ func _test_ford_width() -> void:
 	rules["radius"] = 12
 	assert_false(CreaturePath.search(Vector2i(0, 0), Vector2i(20, 0), rules, flat)["reached"], "without a ford it cannot cross")
 	assert_eq(CreatureAI.FORD_WIDTH_M, 6.0, "creatures ford rivers under 6 m")
+	# The AI hands its paths the slice's width query and the ford width.
+	var c := CreatureSlice.new()
+	var ai := CreatureAI.new()
+	ai.creature_slice = c
+	var ai_rules := ai._path_rules_of("")
+	assert_true(ai_rules.get("fresh_water") is Callable and (ai_rules["fresh_water"] as Callable).get_method() == &"fresh_water_width",
+		"a creature path reads the fresh water's width")
+	assert_eq(float(ai_rules.get("ford_width_m", 0.0)), CreatureAI.FORD_WIDTH_M, "and fords under FORD_WIDTH_M")
+	var ts := TerrainSlice.TILE_SIZE
+	var lake_tile := Vector2i(floori(float(lk["x"]) / ts), floori(float(lk["z"]) / ts))
+	assert_eq(c.fresh_water_width(lake_tile), Hydrology.water_width_at(0, (float(lake_tile.x) + 0.5) * ts, (float(lake_tile.y) + 0.5) * ts),
+		"the slice's width is Hydrology's at the tile centre")
+	ai.free()
+	c.free()
 
 func _test_fresh_water_ice() -> void:
 	var src := FileAccess.get_file_as_string("res://src/terrain/voxel_build.gd")
