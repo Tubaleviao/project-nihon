@@ -592,7 +592,3 @@ func _on_load_completed(_slot: int, data: Dictionary) -> void:
 		if saved_trade is Dictionary:
 			root._trade.apply_trade_data(saved_trade)
 
-# ---------------------------------------------------------------------------
-# GameData smoke test
-# ---------------------------------------------------------------------------
-
