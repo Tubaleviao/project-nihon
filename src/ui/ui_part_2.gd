@@ -437,6 +437,12 @@ func show_creation(state: Dictionary, from_sheet: bool = false) -> void:
 	if sl.player_slice != null:
 		sl.player_slice.creation_hold = true
 
+## Phase 221 — the Character window offers the creation screen only while the authority's state for this player is
+## known (`_creation_known`: the registry on a host, the join snapshot on a client) and no character exists; a
+## character is created once (`already_created` stays the host's rule).
+func creation_button_shown() -> bool:
+	return sl._creation_known and not sl.CreationRules.is_created(sl._creation_state)
+
 func hide_creation() -> void:
 	if sl.creation_screen != null:
 		sl.creation_screen.visible = false
