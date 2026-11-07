@@ -24,6 +24,7 @@ extends Node
 ##   open_input() / is_typing() / lines() -> Array
 const ChatCommands := preload("res://src/core/chat_commands.gd")
 const I18n := preload("res://src/core/i18n.gd")
+const TextFocus := preload("res://src/ui/text_focus.gd")
 const Diag := preload("res://src/core/diag.gd")
 const PlayerRules := preload("res://src/core/player_rules.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
@@ -152,8 +153,7 @@ func _input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 		return
 	# Enter opens the box; `/` opens it with a slash already typed. Neither fires over another field.
-	var focus := get_viewport().gui_get_focus_owner()
-	if focus is LineEdit or focus is TextEdit:
+	if TextFocus.is_typing():
 		return
 	if event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER:
 		open_input()
@@ -934,8 +934,16 @@ func _build_ui() -> void:
 
 ## A `/msg` line may run to MAX_PRIVATE_LINE_CHARS; any other line stops at MAX_MESSAGE_CHARS, the length the
 ## host keeps, so nothing typed is cut off unseen.
+## Phase 219 — setting `max_length` re-sets the LineEdit's text, which puts the caret back at column 0. It ran on
+## every keystroke (text_changed arrives after the key), so each letter landed before the last and a word came out
+## reversed. The limit is set only when it changes, and the caret is put back where it was.
 func _on_field_text_changed(text: String) -> void:
-	_field.max_length = field_limit(text)
+	var limit := field_limit(text)
+	if _field.max_length == limit:
+		return
+	var caret := _field.caret_column
+	_field.max_length = limit
+	_field.caret_column = caret
 
 static func field_limit(text: String) -> int:
 	return ChatCommands.MAX_PRIVATE_LINE_CHARS if ChatCommands.is_private(text) else ChatCommands.MAX_MESSAGE_CHARS
