@@ -45,6 +45,8 @@ static func reset_cache() -> void:
 	_mutex.lock()
 	_rivers.clear()
 	_features.clear()
+	_rivers_n = 0
+	_features_n = 0
 	_gen += 1
 	_mutex.unlock()
 
@@ -237,17 +239,23 @@ static func _pond_at(p: Vector2, surface: float, width: float) -> Dictionary:
 
 ## The water features that can touch chunk `chunk`: `{ "lakes": [lake, ...], "segs": [[ax, az, bx, bz, sa, sb, half_width], ...] }`
 ## (ponds count as lakes). Empty when the chunk may not hold water (recorded by an older generator).
+## The cache holds only the seed's pure features; `chunk_active` is read on every call before it, so a
+## record loaded or replaced later (ChunkRecords) takes effect at once without a reset.
 static func features_for_chunk(chunk: Vector2i, seed_v: int) -> Dictionary:
 	if not chunk_active(chunk):
 		return { "lakes": [], "segs": [] }
 	_mutex.lock()
 	var by_seed: Variant = _features.get(seed_v)
 	var hit: Variant = (by_seed as Dictionary).get(chunk) if by_seed != null else null
+	var gen := _gen
 	_mutex.unlock()
 	if hit != null:
 		return hit
 	var built := _build_features(chunk, seed_v)
 	_mutex.lock()
+	if gen != _gen:   # reset while building: the result may use old parameters, so it is not stored
+		_mutex.unlock()
+		return built
 	if _features_n >= FEATURE_CACHE_MAX:
 		_features.clear()
 		_features_n = 0
@@ -320,7 +328,7 @@ static func water_at(features: Dictionary, x: float, z: float) -> Dictionary:
 		if d2 < r * r:
 			var t := d2 / (r * r)
 			var s := float(lk["surface"])
-			return { "surface": s, "bed": s - float(lk["depth"]) * (1.0 - t) - 0.05 }
+			return { "surface": s, "bed": s - float(lk["depth"]) * (1.0 - t) - 0.05, "width": INF }
 	for sg in features["segs"]:
 		var ax: float = sg[0]
 		var az: float = sg[1]
@@ -335,7 +343,7 @@ static func water_at(features: Dictionary, x: float, z: float) -> Dictionary:
 		if d < half:
 			var s := lerpf(float(sg[4]), float(sg[5]), t)
 			var f := d / half
-			return { "surface": s, "bed": s - RIVER_BED_DEPTH * (1.0 - f * f) - 0.05 }
+			return { "surface": s, "bed": s - RIVER_BED_DEPTH * (1.0 - f * f) - 0.05, "width": 2.0 * half }
 	return {}
 
 ## Lower every tile of `hm` (a chunk heightmap, indexed `tz * CHUNK_SIZE + tx`; null tiles are skipped)
@@ -370,6 +378,13 @@ static func surface_at(seed_v: int, x: float, z: float) -> float:
 	var f := features_for_chunk(Vector2i(floori(x / cm), floori(z / cm)), seed_v)
 	var wt := water_at(f, x, z)
 	return NAN if wt.is_empty() else float(wt["surface"])
+
+## How wide the fresh water at (x, z) is (metres): a river's width there, INF for a lake or pond, 0 when dry.
+## A creature fords a river narrower than its path's `ford_width_m`.
+static func water_width_at(seed_v: int, x: float, z: float) -> float:
+	var cm := TerrainSlice.CHUNK_METERS
+	var wt := water_at(features_for_chunk(Vector2i(floori(x / cm), floori(z / cm)), seed_v), x, z)
+	return 0.0 if wt.is_empty() else float(wt["width"])
 
 ## The level a body floats on at (x, z): the fresh-water surface where there is one, else the sea.
 static func water_level(seed_v: int, x: float, z: float) -> float:
