@@ -209,8 +209,8 @@ function validateSkeletonFields(creatures, skeletons = CREATURE_SKELETONS) {
 // Mounts (Phase 216), consumed by the mount slice. A creature that can be ridden declares a `mount` field,
 // and only a creature that can become a companion (`tame.result === 'companion'`) may.
 //   speedFactor     times the walking speed while mounted (> 1, up to MOUNT_SPEED_MAX)
-//   staminaSeconds  seconds of riding at full speed before the mount tires, or 0 for no stamina limit (reserved: validated and recorded, no runtime consumer yet)
-//   terrain         what the mount crosses: any of MOUNT_TERRAIN ('ground', 'water') (reserved: no runtime consumer yet)
+//   staminaSeconds  seconds of riding at full speed before the mount tires, or 0 for no stamina limit (the mount then rests as long as it was ridden)
+//   terrain         what the mount crosses: any of MOUNT_TERRAIN ('ground', 'water') (a mount without 'water' throws its rider in the sea or a lake or river)
 //   riderOffset     [x, y, z] metres from the creature's origin to the rider's feet; y in 0..3
 const MOUNT_SPEED_MAX = 6
 const MOUNT_TERRAIN = ['ground', 'water']
