@@ -85,6 +85,9 @@ skill allow. The hearth claim is gone.
   returns less than full and a year less still. An in-game day is 24 real minutes, so an untouched building
   wears away in about 500 in-game days (about 8 real days). This is a tuning question for the fabric, and it
   is filed as a follow-up.
+- **Changed by #546 (2026-11-06):** the owner chose rates a tenth of these (`perDay` 0.0002, `rain` 0.00005)
+  and wear from running time only: server downtime no longer wears structures on load (the clock is saved
+  and resumes). Age alone now takes about 80 real days of running world, steady rain about 14.
 - A member's private structure is "in the clan's territory" when its centre lies inside the circle
   (`Structure.circle`) of a structure that clan owns. A circle has a 0.5 m² footprint per column and a height
   from its lowest to its highest block. `may_enter` exists for Phase 208's doors. A clan structure is
