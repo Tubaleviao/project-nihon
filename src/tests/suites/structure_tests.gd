@@ -30,7 +30,7 @@ func register() -> void:
 	_run_test("structure: a block indexed again is taken from its old structure; a natural span is nobody's", _test_stale_records)
 	_run_test("structure: an axe hit on someone else's block wears the axe", _test_axe_wears)
 	_run_test("structure: a repair restores durability for its share of materials, only by the owner", _test_repair)
-	_run_test("structure: the index saves and loads, wears for downtime once and drops malformed entries", _test_persistence)
+	_run_test("structure: the index saves and loads, server downtime wears nothing, and malformed entries drop", _test_persistence)
 	_run_test("structure: blocks worn to nothing collapse in a bounded sweep, and the owner is told", _test_collapse_sweep)
 	_run_test("structure: a station or a chop on someone else's structure is refused", _test_station_tree_guard)
 	_run_test("structure: /buildas and /repair resolve on the host from its own records", _test_intents)
@@ -312,6 +312,10 @@ func _test_hit_pace() -> void:
 	assert_true(bool(own["success"]), "the owner dismantling is not held to the outsider's pace")
 	_free_rig(r)
 
+## In-game hours of age that wear `fraction` of a block's base at the fabric's `loss.perDay`.
+func _hours_to_wear(fraction: float) -> int:
+	return roundi(fraction / float(StructureRules.durability_rules()["loss"]["perDay"]) * 24.0)
+
 func _test_repair() -> void:
 	var r := _rig()
 	var st: StructureSlice = r["st"]
@@ -319,7 +323,7 @@ func _test_repair() -> void:
 		assert_true(_place(r, "p1", 30, 2, 2.0 + 0.125 * i), "block %d" % i)
 	var sid := _sid(r, 30, 2, 2.0)
 	assert_eq(st.repair("p1", sid), "intact", "a new structure needs no repair")
-	r["hour"][0] += 24 * 125   # 125 days: a quarter of base lost to age
+	r["hour"][0] += _hours_to_wear(0.25)   # a quarter of base lost to age
 	var d: Dictionary = st.block_durability(Vector2i(30, 2), 2.0625)
 	assert_true(absf(float(d["fraction"]) - 0.75) < 0.001, "a quarter worn (%.3f)" % float(d["fraction"]))
 	var cost: Dictionary = st.repair_cost(sid)
@@ -354,11 +358,10 @@ func _test_persistence() -> void:
 	assert_eq(fresh.get_structure(_sid(r, 14, 6, 2.0))["owner"], "clan_1", "and their owners")
 	assert_eq(fresh.block_durability(Vector2i(16, 6), 2.0625)["durability"], dmg, "and their damage")
 	assert_eq(fresh.build_mode("p1"), "clan", "and each builder's mode")
-	# Ten days down: worn for them once, on this load.
-	fresh.from_data(data, 240.0)
+	# #546: only time the world runs wears. The clock resumes from the save, so a reload wears nothing.
+	fresh.from_data(data)
 	var worn: float = fresh.block_durability(Vector2i(14, 6), 2.0625)["fraction"]
-	assert_true(absf(worn - (1.0 - StructureRules.age_wear(240.0))) < 0.0001, "ten days of downtime wear the block (%.4f)" % worn)
-	assert_eq(fresh.block_durability(Vector2i(14, 6), 2.0625)["fraction"], worn, "reading again wears nothing more")
+	assert_eq(worn, 1.0, "a reload after any downtime leaves the block unworn")
 	fresh.from_data({ "structures": [
 		"junk",
 		{ "id": 1, "kind": "tribe", "owner": "p1", "anchor": [0, 0], "cells": [[0, 0, 2000, "Ashite", 0, 0]] },
@@ -383,7 +386,7 @@ func _test_collapse_sweep() -> void:
 	GameBus.system_message.connect(cb)
 	assert_true(_place(r, "p1", 50, 2, 2.0, "Soil"), "p1 builds")
 	assert_true(_place(r, "p1", 50, 2, 2.125, "Soil"), "two blocks")
-	r["hour"][0] += 24 * 600   # 600 days: worn away
+	r["hour"][0] += _hours_to_wear(1.2)   # worn away
 	st.tick()
 	assert_eq(st.count(), 0, "the worn-out structure is gone from the index")
 	assert_eq(r["v"].column_top_at_tile(Vector2i(50, 2)), 2.0, "and its blocks from the world")

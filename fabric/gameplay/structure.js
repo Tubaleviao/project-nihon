@@ -30,7 +30,9 @@ const { LEVEL_CAP } = require('./work')
 // DURABILITY
 //   A block's durability starts at its material's `durability` and falls by fractions of that base:
 //   `loss.perDay` per in-game day of age, `loss.weather[state]` per in-game hour of each weather state
-//   (Phase 128) on an exposed block, and `loss.perDamage` durability points per point of damage. At 0 the
+//   (Phase 128) on an exposed block (#546: an in-game day is 24 real minutes, so age alone takes about 80
+//   real days of running world to wear a block away and steady rain about 14 real days; only time the
+//   world runs counts, never server downtime), and `loss.perDamage` durability points per point of damage. At 0 the
 //   block is destroyed.
 //   `methods`    destruction method -> { damage per hit, offlineFactor, classes { <class>: multiplier } }:
 //                tools and weapons now. While every owner is offline (for a clan structure: every member)
@@ -76,8 +78,8 @@ const STRUCTURE = {
 
 const DURABILITY = {
   loss: {
-    perDay: 0.002,
-    weather: { clear: 0, fog: 0.0001, rain: 0.0005, storm: 0.001, blizzard: 0.001, ash_fall: 0.0008, electrical_storm: 0.0012, void_storm: 0.002 },
+    perDay: 0.0002,
+    weather: { clear: 0, fog: 0.00001, rain: 0.00005, storm: 0.0001, blizzard: 0.0001, ash_fall: 0.00008, electrical_storm: 0.00012, void_storm: 0.0002 },
     perDamage: 1,
   },
   methods: {
