@@ -753,6 +753,10 @@ mount.refused.occupied,Someone is already riding it.,Alguém já está montado.
 mount.refused.already_mounted,You are already mounted.,Você já está montado.
 mount.refused.unknown_player,You cannot mount right now.,Você não pode montar agora.
 mount.refused.rate_limited,Slow down.,Calma.
+mount.refused.not_mounted,You are not mounted.,Você não está montado.
+mount.refused.downed,You cannot mount while down.,Você não pode montar caído.
+mount.refused.tired,Your mount is tired. Let it rest.,Sua montaria está cansada. Deixe-a descansar.
+mount.refused.terrain,Your mount cannot stand here.,Sua montaria não consegue ficar aqui.
 mount.ok.mount,You mount up.,Você montou.
 mount.ok.dismount,You get off.,Você desmontou.
 controls.row19,Mount your companion or get off,Montar no seu companheiro ou desmontar
