@@ -4,6 +4,7 @@ extends "res://src/tests/test_support.gd"
 const Hydrology := preload("res://src/terrain/hydrology.gd")
 const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
 const FreshWaterMesh := preload("res://src/terrain/fresh_water_mesh.gd")
+const ChunkPart1 := preload("res://src/terrain/chunk_part_1.gd")
 const CreaturePath := preload("res://src/creature/creature_path.gd")
 const SEED := 42
 ## A pinned 64×64-chunk window (2 km square) on seed 42 that holds both a lake and a river.
@@ -19,6 +20,7 @@ func register() -> void:
 	_run_test("hydrology: a body in a lake swims", _test_player_swims_in_lake)
 	_run_test("hydrology: a non-swimming creature path avoids a river", _test_creature_path_avoids_river)
 	_run_test("hydrology: the fresh-water mesh covers exactly the wet tiles", _test_fresh_water_mesh)
+	_run_test("hydrology: a streamed build carries its fresh-water arrays from the worker", _test_fresh_water_worker_arrays)
 
 func _window_features() -> Dictionary:
 	var lakes := []
@@ -183,3 +185,21 @@ func _test_fresh_water_mesh() -> void:
 	dry.fill(NAN)
 	assert_true(FreshWaterMesh.mesh_for(chunk, dry, true) == null, "a dry chunk has none")
 	mesh = null
+
+func _test_fresh_water_worker_arrays() -> void:
+	var chunk := _wet_chunk()
+	var main_side := FreshWaterMesh.arrays_for(chunk, Hydrology.surfaces_for_chunk(chunk, SEED), true)
+	var out: Array = [null]
+	var task := WorkerThreadPool.add_task(func() -> void:
+		var built := { "local": true }
+		ChunkPart1._add_fresh_water(built, chunk, SEED, true)
+		out[0] = built)
+	WorkerThreadPool.wait_for_task_completion(task)
+	var built: Dictionary = out[0]
+	assert_true(built.has("fresh_water"), "the worker adds the fresh-water arrays to the build")
+	assert_eq((built["fresh_water"] as Array)[Mesh.ARRAY_VERTEX], main_side[Mesh.ARRAY_VERTEX], "the same surface as a main-thread build")
+	assert_true(FreshWaterMesh.mesh_from(built["fresh_water"]) != null, "attach only wraps them in a mesh")
+	var headless := { "local": true }
+	ChunkPart1._add_fresh_water(headless, chunk, SEED, false)
+	assert_false(headless.has("fresh_water"), "a build that keeps no render arrays carries none")
+	assert_true(FreshWaterMesh.mesh_from([]) == null, "a dry chunk's empty arrays make no mesh")
