@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–218 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–219 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -36,7 +36,7 @@ because the menus reuse the keyboard routing Phase 219 fixes.
 
 | Phase | Title | Status |
 |---|---|---|
-| 219 | A focused text field owns the keyboard: no reversed text, no movement, jumps or hotkeys while typing | Open |
+| 219 | A focused text field owns the keyboard: no reversed text, no movement, jumps or hotkeys while typing | Done ([phases-219.md](docs/roadmap-history/phases-219.md)) |
 | 220 | Enter never jumps: a `jump` action on Space only | Open |
 | 221 | Re-creating a character from the Character window | Open |
 | 222 | The Character window fits: fewer rows, the friend code moves to the map | Open |
@@ -77,31 +77,6 @@ The arc starts after Phase 226, because the keypair identifies the player (the a
 | 229 | Skills capped by the gear: advanced abilities need a weapon of their tier, advanced recipes a tool and station of theirs | Open |
 | 230 | Characters across worlds: signed progress, an import policy per world | Open |
 | 231 | Cosmetics bound to the key: they travel and cannot be shared | Open |
-
-## Phase 219 — A focused text field owns the keyboard
-
-Found in play: clicking the chat bar puts the caret at the start of the field, and a word typed there
-comes out reversed (each letter is inserted before the last, so the caret is being reset to column 0
-after every keystroke). While the field has focus, W/A/S/D still move the character and Space still
-jumps, because movement and jump are polled with `Input.is_action_pressed` /
-`Input.is_key_pressed` in `player_slice.gd`, which ignores GUI focus.
-
-- Find what resets the caret (something writing `_field.text` or `caret_column` while typing, or a
-  refresh rebuilding the field) and stop it. A click places the caret where clicked, as in any
-  `LineEdit`.
-- One rule for every text field (chat, clan, chest, settlement, map rename, market, proposal,
-  creation name): while a `LineEdit` or `TextEdit` has focus, no world input reaches the game:
-  movement, jump, fly up/down, hotbar keys, window shortcuts and mouse-look stay quiet. The player
-  slice asks one query (for example `UiSlice.is_typing()`) instead of each slice checking its own
-  field. Esc still leaves the field.
-- Movement already held when the field takes focus stops (no character walking off while you type).
-
-**Acceptance criteria**
-- A suite test types "hello" into the chat field through `InputEventKey` events after a click at
-  column 0 and reads back `hello`, caret at column 5.
-- A suite test focuses each text field above in turn and feeds W, A, S, D, Space, a hotbar digit and
-  Alt+A: the player's wish direction stays zero, no jump starts, no hotbar slot or window changes.
-- With no field focused, the same keys still move, jump and open windows (no regression).
 
 ## Phase 220 — Enter never jumps
 
