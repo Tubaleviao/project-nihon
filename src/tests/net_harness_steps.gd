@@ -169,8 +169,9 @@ func _queued_for(net: Object, peer: int, needle: String) -> int:
 
 ## Phase 223 — the main menu's join path connects. The client drops its connection, fills the menu's Join form
 ## with the host's address (`MainMenu.join_choice`), applies the choice the way the menu's start does
-## (`MenuWiring.apply_choice`) and runs the shipped client boot (`GameRoot._boot_client`). The host sees a
-## new peer connect and bind an identity; the client gets its world snapshot.
+## (`MenuWiring.apply_choice`) and runs the shipped client boot (`GameRoot._boot_client`). The client gets its
+## world snapshot and then reports its position; the host sees a new peer connect, bind an identity and report
+## (so the host does not quit under a client whose snapshot is still crossing a slow link).
 const MainMenu := preload("res://src/menu/main_menu.gd")
 func menu_join(h: Node) -> void:
 	await h._await_settle(1.0 * h._time_scale)
@@ -179,8 +180,11 @@ func menu_join(h: Node) -> void:
 		var on_connected := func(id: int) -> void: fresh.append(id)
 		h._root.multiplayer.peer_connected.connect(on_connected)
 		var bound: bool = await h._await_until(func():
-			return fresh.any(func(p: int) -> bool: return str(h._root._networking.get_player_id(p)) != ""), h._step_timeout() * 3.0)
+			return fresh.any(func(p: int) -> bool:
+				return str(h._root._networking.get_player_id(p)) != "" and h._root._networking.has_last_known_state(p)), h._step_timeout() * 3.0)
 		h._root.multiplayer.peer_connected.disconnect(on_connected)
+		await h._await_link_drained()
+		await h._await_settle(2.0 * h._time_scale)
 		h._report("menu_join", h.verdict(bound, true), "joined-from-menu" if bound else "connected%d-bound0" % fresh.size())
 		return
 	h._root._networking.disconnect_all()
@@ -195,4 +199,8 @@ func menu_join(h: Node) -> void:
 	var joined: bool = applied and await h._await_until(func():
 		return snapshots[0] > 0 and str(h._root._networking.claimed_player_id) != "", h._step_timeout() * 3.0)
 	GameBus.world_snapshot_received.disconnect(on_snapshot)
+	if joined:
+		for i in 3:   # the host's verdict waits on this report
+			h._report_position()
+			await h._await_settle(1.0 * h._time_scale)
 	h._report("menu_join", h.verdict(joined, true), "joined-from-menu" if joined else "applied%d-snapshots%d" % [int(applied), snapshots[0]])
