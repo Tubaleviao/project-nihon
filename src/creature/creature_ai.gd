@@ -63,6 +63,10 @@ const GROUP_HERD := 2
 ## (`CreaturePath`) and stand on the column top; with no voxel surface wired (isolated tests) they keep
 ## the straight 3D step.
 const CreaturePath := preload("res://src/creature/creature_path.gd")
+## A river narrower than this (metres) is forded by a creature that cannot swim (#573); wider rivers and
+## every lake still stop it. Rivers run 4–16 m wide (WorldSystem riverWidthMin/Max), so streams near their
+## source are crossed and the lower course is not.
+const FORD_WIDTH_M := 6.0
 ## Phase 192 — creature footprints: overlapping bodies are pushed apart once per tick.
 const CreatureBody := preload("res://src/creature/creature_body.gd")
 const CreatureSlice := preload("res://src/creature/creature_slice.gd")
@@ -625,8 +629,9 @@ func _path_rules_of(cid: String) -> Dictionary:
 		"max_step": DEFAULT_MAX_STEP, "can_swim": false, "radius": DEFAULT_PATH_RADIUS,
 		"sea_level": WorldShape.sea_level(), "lap_tiles": _lap_tiles(), "max_usec": PATH_MAX_USEC,
 	}
-	if creature_slice != null and creature_slice.has_method("is_fresh_water_tile"):
-		rules["fresh_water"] = Callable(creature_slice, "is_fresh_water_tile")
+	if creature_slice != null and creature_slice.has_method("fresh_water_width"):
+		rules["fresh_water"] = Callable(creature_slice, "fresh_water_width")
+		rules["ford_width_m"] = FORD_WIDTH_M
 	if res != null:
 		var step: Variant = res.get("maxStepMetres")
 		var swim: Variant = res.get("canSwim")

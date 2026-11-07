@@ -19,6 +19,9 @@ func register() -> void:
 	_run_test("hydrology: a body in a lake swims", _test_player_swims_in_lake)
 	_run_test("hydrology: a non-swimming creature path avoids a river", _test_creature_path_avoids_river)
 	_run_test("hydrology: the fresh-water mesh covers exactly the wet tiles", _test_fresh_water_mesh)
+	_run_test("hydrology (#573): a reset clears the caches and their counters; a record loaded later dries a cached chunk", _test_cache_reset)
+	_run_test("hydrology (#573): a creature fords a narrow river, not a wide one or a lake", _test_ford_width)
+	_run_test("hydrology (#573): fresh water in a frozen chunk is ice, like the sea", _test_fresh_water_ice)
 
 func _window_features() -> Dictionary:
 	var lakes := []
@@ -183,3 +186,51 @@ func _test_fresh_water_mesh() -> void:
 	dry.fill(NAN)
 	assert_true(FreshWaterMesh.mesh_for(chunk, dry, true) == null, "a dry chunk has none")
 	mesh = null
+
+func _test_cache_reset() -> void:
+	var chunk := _wet_chunk()
+	var wet := Hydrology.surfaces_for_chunk(chunk, SEED)
+	assert_true(Hydrology._features_n > 0 and Hydrology._rivers_n > 0, "reading a chunk fills both caches")
+	Hydrology.reset_cache()
+	assert_eq([Hydrology._features_n, Hydrology._rivers_n], [0, 0], "a reset zeroes both counters")
+	assert_true(Hydrology._features.is_empty() and Hydrology._rivers.is_empty(), "and empties both stores")
+	assert_eq(Hydrology.surfaces_for_chunk(chunk, SEED).to_byte_array(), wet.to_byte_array(), "the field rebuilds the same")
+	# The feature cache now holds this chunk; a record from before hydrology still dries it at once.
+	ChunkRecords.clear()
+	var old := TerrainSlice.generation_record(chunk, SEED)
+	old["v"] = Hydrology.HYDROLOGY_VERSION - 1
+	ChunkRecords.set_record(chunk, old)
+	assert_true(Hydrology.features_for_chunk(chunk, SEED)["lakes"].is_empty() and Hydrology.features_for_chunk(chunk, SEED)["segs"].is_empty(),
+		"a cached chunk recorded later by an older generator has no features")
+	ChunkRecords.clear()
+	assert_eq(Hydrology.surfaces_for_chunk(chunk, SEED).to_byte_array(), wet.to_byte_array(), "and its water returns with the record gone")
+
+func _test_ford_width() -> void:
+	assert_false(CreaturePath.blocks_water(0.0, 6.0), "dry ground never blocks")
+	assert_false(CreaturePath.blocks_water(4.0, 6.0), "a 4 m stream is forded")
+	assert_true(CreaturePath.blocks_water(12.0, 6.0), "a 12 m river blocks")
+	assert_true(CreaturePath.blocks_water(INF, 6.0), "a lake blocks")
+	assert_true(CreaturePath.blocks_water(4.0, 0.0), "with no ford width every river blocks")
+	assert_true(CreaturePath.blocks_water(true, 6.0) and not CreaturePath.blocks_water(false, 6.0), "a bool water test still works")
+	var sg: Array = _window_features()["segs"][0]
+	var mid := Vector2((float(sg[0]) + float(sg[2])) * 0.5, (float(sg[1]) + float(sg[3])) * 0.5)
+	var width := Hydrology.water_width_at(SEED, mid.x, mid.y)
+	assert_true(width > 0.0 and width < INF, "a river point reports its width (%.1f m)" % width)
+	var lk: Dictionary = _window_features()["lakes"][0]
+	assert_eq(Hydrology.water_width_at(SEED, float(lk["x"]), float(lk["z"])), INF, "a lake centre reports no ford")
+	assert_eq(Hydrology.water_width_at(SEED, WorldShape.SPAWN_CENTER.x, WorldShape.SPAWN_CENTER.y), 0.0, "dry land reports 0")
+	# A path across a band of shallow water 4 m wide: forded with a 6 m ford, refused without one.
+	var band := func(tile: Vector2i) -> float: return 4.0 if tile.x >= 5 and tile.x <= 12 else 0.0
+	var flat := func(_t: Vector2i) -> float: return 10.0
+	var rules := { "max_step": 100.0, "can_swim": false, "radius": 30, "sea_level": -1000.0, "lap_tiles": 0, "fresh_water": band, "ford_width_m": 6.0 }
+	assert_true(CreaturePath.search(Vector2i(0, 0), Vector2i(20, 0), rules, flat)["reached"], "a creature fords the stream")
+	rules["ford_width_m"] = 0.0
+	rules["radius"] = 12
+	assert_false(CreaturePath.search(Vector2i(0, 0), Vector2i(20, 0), rules, flat)["reached"], "without a ford it cannot cross")
+	assert_eq(CreatureAI.FORD_WIDTH_M, 6.0, "creatures ford rivers under 6 m")
+
+func _test_fresh_water_ice() -> void:
+	var src := FileAccess.get_file_as_string("res://src/terrain/voxel_build.gd")
+	var at := src.find("fresh_inst.material_override")
+	assert_true(at >= 0 and src.substr(at, 120).contains("_ice_material() if s.is_frozen_chunk(chunk_pos)"),
+		"the fresh-water surface takes the ice material in a frozen chunk, like the sea")

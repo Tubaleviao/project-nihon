@@ -306,6 +306,11 @@ func is_fresh_water_tile(tile: Vector2i) -> bool:
 	var ts := _tile_size()
 	return not is_nan(Hydrology.surface_at(_world_seed(), (float(tile.x) + 0.5) * ts, (float(tile.y) + 0.5) * ts))
 
+## How wide the fresh water at the tile's centre is (metres): 0 dry, INF a lake (`Hydrology.water_width_at`).
+func fresh_water_width(tile: Vector2i) -> float:
+	var ts := _tile_size()
+	return Hydrology.water_width_at(_world_seed(), (float(tile.x) + 0.5) * ts, (float(tile.y) + 0.5) * ts)
+
 ## The walkable height (column top) of `tile`, or NAN when there is no surface or the chunk is not loaded.
 func surface_at_tile(tile: Vector2i) -> float:
 	if voxel_slice == null:
