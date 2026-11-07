@@ -2052,6 +2052,9 @@ func _test_net_harness_step_table() -> void:
 		names[str(s.get("name", ""))] = true
 	assert_eq(names.size(), steps.size(), "step names are unique — the driver keys on them")
 	assert_eq(str(steps[0].get("name", "")), "handshake", "the scenario starts with the handshake")
+	assert_eq(str(steps[steps.size() - 1].get("name", "")), "menu_join",
+		"and ends with a client re-joining through the main menu's join path (Phase 223)")
+	steps = steps.slice(0, steps.size() - 1)
 	assert_eq(str(steps[steps.size() - 1].get("name", "")), "self_respawn",
 		"and ends with a player respawned outside a stranger's walls (Phase 205)")
 	assert_eq(str(steps[steps.size() - 2].get("name", "")), "mount_dismount",
