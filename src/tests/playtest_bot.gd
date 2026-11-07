@@ -1723,10 +1723,10 @@ func _step_travel() -> Array:
 
 ## Phase 216 — mount: a wolf stood beside the player and bound to them as a taming leaves it is mounted through the
 ## intent, ridden 200 m and dismounted. The mounted average speed must reach the fabric factor times the walking
-## speed x0.85. The rider is kept at full health (creatures near the village would otherwise end the ride in a death).
+## speed x0.9 (the Phase 216 spec). The rider is kept at full health (creatures near the village would otherwise end the ride in a death).
 const MOUNT_RIDE_M := 200.0
 const MOUNT_RIDE_SECS := 45.0
-const MOUNT_SPEED_SLACK := 0.85
+const MOUNT_SPEED_SLACK := 0.9
 func _step_mount() -> Array:
 	var me: String = str(_root._registry.local_player_id)
 	var chunk: Vector2i = _root._player.get_world_pos()["chunk"]

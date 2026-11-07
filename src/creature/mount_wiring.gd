@@ -7,6 +7,8 @@ const MountSlice := preload("res://src/creature/mount_slice.gd")
 const AdminRules := preload("res://src/admin/admin_rules.gd")
 const PlayerRegistry := preload("res://src/persistence/player_registry.gd")
 const PlayerSlice := preload("res://src/player/player_slice.gd")
+const WorldPos := preload("res://src/terrain/world_pos.gd")
+const WorldShape := preload("res://src/terrain/world_shape.gd")
 ## Slack over the exact mounted speed, as for a carried body (`CarcassWiring.CARRY_SPEED_SLACK`).
 const SPEED_SLACK := 1.25
 
@@ -22,6 +24,7 @@ func make_slice(ctx: GameRoot) -> Node:
 	m.owner_of = func(iid: String) -> String: return root._creature.get_tamed_by(iid)
 	m.alive = func(iid: String) -> bool: return not root._taming._instance_is_dead(iid)
 	m.rider_downed = _rider_downed
+	m.in_water = _in_water
 	m.position_of = func(iid: String) -> Variant: return root._creature.get_instance_position(iid)
 	m.player_pos = _player_position
 	m.local_body = root._player
@@ -39,6 +42,17 @@ func _rider_downed(player_id: String) -> bool:
 		return root._player != null and not root._player.is_alive()
 	return PlayerRegistry.is_downed(root._registry.get_hp(player_id))
 
+## Whether the creature stands in the sea or in a lake or river (Phase 217).
+func _in_water(iid: String) -> bool:
+	var pos: Dictionary = root._creature.get_instance_pos(iid)
+	if pos.is_empty():
+		return false
+	var tile: Vector2i = root._creature.tile_of_pos(pos)
+	if root._creature.is_fresh_water_tile(tile):
+		return true
+	var h: float = root._creature.surface_at_tile(tile)
+	return not is_nan(h) and h < WorldShape.sea_level()
+
 func _player_position(player_id: String) -> Variant:
 	if player_id == str(root._registry.local_player_id):
 		return root._player.get_position() if root._player != null else null
@@ -52,6 +66,7 @@ func _connect_all() -> void:
 	connect_bus(GameBus.mount_changed, _on_changed)
 	connect_bus(GameBus.mount_intent, _forward_mount)
 	connect_bus(GameBus.dismount_intent, _forward_dismount)
+	connect_bus(GameBus.player_joined, _on_player_joined)
 
 ## Client → host: ride one of my companions, or get off. No identity rides along; the host binds it.
 func _forward_mount(instance_id: String, _player_id: String) -> void:
@@ -78,6 +93,13 @@ func _on_changed(player_id: String, instance_id: String) -> void:
 		return
 	root._networking._broadcast({ "type": "mount_changed", "player": root._networking.redact_for_client(player_id), "instance_id": instance_id })
 
+## Host: a late joiner learns who already rides what (the broadcast only reaches peers connected at the time).
+func _on_player_joined(peer_id: int, _player_id: String, _reconnected: bool) -> void:
+	if root._is_client or slice == null or root._networking == null:
+		return
+	for pid: String in slice.riders():
+		root._networking._deliver(peer_id, { "type": "mount_changed", "player": root._networking.redact_for_client(pid), "instance_id": slice.mounted_instance(pid) })
+
 ## The fastest horizontal speed (m/s) `peer` may move at while mounted; 0 when it is on foot (no mount cap).
 func mounted_speed_cap(peer: int) -> float:
 	if root._is_client or slice == null or root._networking == null:
@@ -92,10 +114,15 @@ func mounted_speed_cap(peer: int) -> float:
 		rate *= float(moves["speed"]) * (AdminRules.FLY_SPEED_FACTOR if bool(moves["fly"]) else 1.0)
 	return rate
 
-## The host's speed cap for `peer`: the mount's when mounted, else the carried body's.
+## The host's speed cap for `peer`: the lower of the mount's and the carried body's (0 = that cap does not apply).
 func peer_speed_cap(peer: int) -> float:
-	var mounted := mounted_speed_cap(peer)
-	return mounted if mounted > 0.0 else root._carcass_wiring.peer_speed_cap(peer)
+	return combine_caps(mounted_speed_cap(peer), root._carcass_wiring.peer_speed_cap(peer))
+
+## Two speed caps where 0 means "none": the lower of the ones that apply, 0 when neither does.
+static func combine_caps(a: float, b: float) -> float:
+	if a <= 0.0:
+		return maxf(b, 0.0)
+	return a if b <= 0.0 else minf(a, b)
 
 ## The companion follows its rider's exact position (Phase 171 `{chunk, local}`) every frame.
 func tick(_delta: float) -> void:
@@ -111,6 +138,10 @@ func tick(_delta: float) -> void:
 			var peer: int = root._registry.get_peer_id(pid)
 			exact = root._networking.get_last_known_exact(peer) if peer != 0 else {}
 		if not exact.is_empty():
+			# The creature stands the fabric's rider offset behind the rider (height comes from the ground).
+			var off: Vector3 = slice.rider_offset(pid)
+			if off != Vector3.ZERO:
+				exact = WorldPos.normalized({ "chunk": exact["chunk"], "local": (exact["local"] as Vector3) - off })
 			root._creature.set_instance_pos(iid, exact)
 			# Carried out of its spawn chunk, the mount must not be despawned with it under the rider.
 			root._creature.rehome_instance(iid)

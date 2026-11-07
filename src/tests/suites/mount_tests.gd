@@ -22,6 +22,9 @@ func register() -> void:
 	_run_test("mount: a client reporting more than the mounted speed is clamped by the host", _test_mount_clamp)
 	_run_test("mount: the shipped fabric declares a mount on a tameable creature", _test_mount_fabric)
 	_run_test("mount: every refusal key is in both catalog columns", _test_mount_catalog)
+	_run_test("mount: #565 not-mounted and downed refusals, a dead mount, desync recovery", _test_mount_565_refusals)
+	_run_test("mount: #565 stamina tires the mount and terrain throws the rider", _test_mount_565_stamina_terrain)
+	_run_test("mount: #565 rider offset, combined speed caps and Ctrl+M", _test_mount_565_offset_caps_keys)
 
 func _rig() -> Node:
 	_changes = []
@@ -207,3 +210,105 @@ func _test_mount_catalog() -> void:
 	for reason in MountSlice.REASONS:
 		var key := "mount.refused.%s" % reason
 		assert_true(I18n.has_key(key) and I18n.t(key) != key and I18n.t(key).length() > 4, "%s has text" % key)
+
+const MountWiring := preload("res://src/creature/mount_wiring.gd")
+
+func _test_mount_565_refusals() -> void:
+	var m := _rig()
+	m.local_player_id = func() -> String: return "p1"
+	GameBus.dismount_intent.emit("p1")
+	assert_eq(_resolved.back(), ["p1", "dismount", false, "not_mounted"], "a dismount on foot names its reason")
+	var downed := {"p1": true}
+	m.rider_downed = func(pid: String) -> bool: return bool(downed.get(pid, false))
+	assert_eq(m.mount("p1", "w1"), "downed", "a downed rider is refused up front")
+	downed["p1"] = false
+	assert_eq(m.mount("p1", "w1"), "", "a living rider mounts")
+	_creatures["w1"]["alive"] = false
+	m.validate_riders()
+	assert_false(m.is_mounted("p1"), "a mount that is no longer alive dismounts its rider")
+	_creatures["w1"]["alive"] = true
+	# The client believes it rides; the host says it is on foot: it walks again.
+	m._local_mounted = true
+	GameBus.mount_resolved.emit("p1", "dismount", false, "rate_limited")
+	assert_true(m._local_mounted, "a rate-limited dismount keeps the rider mounted")
+	GameBus.mount_resolved.emit("p1", "dismount", false, "not_mounted")
+	assert_false(m._local_mounted, "a not-mounted answer puts this machine's rider on foot")
+	_drop(m)
+
+func _test_mount_565_stamina_terrain() -> void:
+	var m := _rig()
+	var clock: Array = m.get_meta("clock")
+	var spec := SPEC.duplicate()
+	spec["staminaSeconds"] = 30
+	m.spec_of = func(c: String) -> Dictionary: return spec if c == "Horse" else {}
+	assert_eq(m.mount("p1", "w1"), "", "mounts")
+	clock[0] = 29.0
+	m.validate_riders()
+	assert_true(m.is_mounted("p1"), "within its stamina the mount carries on")
+	clock[0] = 30.0
+	m.validate_riders()
+	assert_false(m.is_mounted("p1"), "past its stamina the mount tires and the rider is put down")
+	assert_eq(_resolved.back(), ["p1", "dismount", true, ""], "the tired rider is told")
+	clock[0] = 45.0
+	assert_eq(m.mount("p1", "w1"), "tired", "a tired mount refuses until it rested as long as it ran")
+	clock[0] = 60.0
+	assert_eq(m.mount("p1", "w1"), "", "a rested mount can be ridden again")
+	# Getting off before it tires and straight back on keeps what it ran (it recovers a second per second off).
+	clock[0] = 80.0
+	m.dismount("p1")
+	clock[0] = 85.0
+	assert_eq(m.mount("p1", "w1"), "", "remounts after a short stop")
+	clock[0] = 99.0
+	m.validate_riders()
+	assert_true(m.is_mounted("p1"), "20 s ridden, 5 s off, 14 s more: still within its stamina")
+	clock[0] = 100.0
+	m.validate_riders()
+	assert_false(m.is_mounted("p1"), "a dismount and remount does not reset the mount's stamina")
+	clock[0] = 200.0
+	assert_eq(m.mount("p1", "w1"), "", "rested again")
+	m.dismount("p1")
+	spec["staminaSeconds"] = 0
+	var wet := {"w1": true}
+	m.in_water = func(i: String) -> bool: return bool(wet.get(i, false))
+	assert_eq(m.mount("p1", "w1"), "terrain", "a ground mount standing in water refuses")
+	wet["w1"] = false
+	assert_eq(m.mount("p1", "w1"), "", "on dry ground it mounts")
+	wet["w1"] = true
+	m.validate_riders()
+	assert_false(m.is_mounted("p1"), "a ground mount ridden into water throws its rider")
+	spec["terrain"] = ["ground", "water"]
+	assert_eq(m.mount("p1", "w1"), "", "a mount that crosses water may stand in it")
+	m.validate_riders()
+	assert_true(m.is_mounted("p1"), "and stays ridden there")
+	_drop(m)
+
+func _test_mount_565_offset_caps_keys() -> void:
+	var m := _rig()
+	var spec := SPEC.duplicate()
+	spec["riderOffset"] = [0.5, 0.8, -1.0]
+	m.spec_of = func(c: String) -> Dictionary: return spec if c == "Horse" else {}
+	assert_eq(m.rider_offset("p1"), Vector3.ZERO, "no offset on foot")
+	m.mount("p1", "w1")
+	assert_eq(m.rider_offset("p1"), Vector3(0.5, 0, -1.0), "the horizontal fabric offset keeps the creature beside its rider")
+	m.dismount("p1")
+	assert_eq(MountWiring.combine_caps(9.0, 0.0), 9.0, "mounted only: the mount cap")
+	assert_eq(MountWiring.combine_caps(0.0, 3.0), 3.0, "carrying only: the carry cap")
+	assert_eq(MountWiring.combine_caps(9.0, 3.0), 3.0, "mounted and carrying: the lower cap")
+	assert_eq(MountWiring.combine_caps(0.0, 0.0), 0.0, "neither: no cap")
+	m.local_player_id = func() -> String: return "p1"
+	m.input_allowed = func() -> bool: return true
+	m.own_position = func() -> Vector3: return Vector3.ZERO
+	m.nearest_to = func(_at: Vector3, _r: float) -> String: return "w1"
+	for mod in ["ctrl_pressed", "meta_pressed", "alt_pressed"]:
+		var ev := InputEventKey.new()
+		ev.keycode = KEY_M
+		ev.pressed = true
+		ev.set(mod, true)
+		m._unhandled_input(ev)
+		assert_true(_resolved.is_empty(), "%s + M does nothing" % mod)
+	var plain := InputEventKey.new()
+	plain.keycode = KEY_M
+	plain.pressed = true
+	m._unhandled_input(plain)
+	assert_eq(_resolved.back(), ["p1", "mount", true, ""], "plain M mounts the nearest companion")
+	_drop(m)
