@@ -166,3 +166,33 @@ func _queued_for(net: Object, peer: int, needle: String) -> int:
 		if int(e.get("peer_id", -1)) == peer and str(e.get("payload", "")).contains(needle):
 			n += 1
 	return n
+
+## Phase 223 — the main menu's join path connects. The client drops its connection, fills the menu's Join form
+## with the host's address (`MainMenu.join_choice`), applies the choice the way the menu's start does
+## (`MenuWiring.apply_choice`) and runs the shipped client boot (`GameRoot._boot_client`). The host sees a
+## new peer connect and bind an identity; the client gets its world snapshot.
+const MainMenu := preload("res://src/menu/main_menu.gd")
+func menu_join(h: Node) -> void:
+	await h._await_settle(1.0 * h._time_scale)
+	if h._role == "host":
+		var fresh: Array = []
+		var on_connected := func(id: int) -> void: fresh.append(id)
+		h._root.multiplayer.peer_connected.connect(on_connected)
+		var bound: bool = await h._await_until(func():
+			return fresh.any(func(p: int) -> bool: return str(h._root._networking.get_player_id(p)) != ""), h._step_timeout() * 3.0)
+		h._root.multiplayer.peer_connected.disconnect(on_connected)
+		h._report("menu_join", h.verdict(bound, true), "joined-from-menu" if bound else "connected%d-bound0" % fresh.size())
+		return
+	h._root._networking.disconnect_all()
+	await h._await_settle(h.RECONNECT_WAIT_SECS * h._time_scale)
+	var snapshots := [0]
+	var on_snapshot := func(_data: Dictionary) -> void: snapshots[0] += 1
+	GameBus.world_snapshot_received.connect(on_snapshot)
+	var choice: Dictionary = MainMenu.join_choice(h._root._host_address, "")
+	var applied: bool = bool(choice["ok"]) and h._root._menu_wiring.apply_choice(choice)
+	if applied:
+		h._root._boot_client()
+	var joined: bool = applied and await h._await_until(func():
+		return snapshots[0] > 0 and str(h._root._networking.claimed_player_id) != "", h._step_timeout() * 3.0)
+	GameBus.world_snapshot_received.disconnect(on_snapshot)
+	h._report("menu_join", h.verdict(joined, true), "joined-from-menu" if joined else "applied%d-snapshots%d" % [int(applied), snapshots[0]])

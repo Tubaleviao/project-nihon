@@ -761,3 +761,39 @@ mount.refused.terrain,Your mount cannot stand here.,Sua montaria não consegue f
 mount.ok.mount,You mount up.,Você montou.
 mount.ok.dismount,You get off.,Você desmontou.
 controls.row19,Mount your companion or get off,Montar no seu companheiro ou desmontar
+menu.title,Project Nihon,Project Nihon
+menu.play,Play,Jogar
+menu.join,Join server,Entrar em servidor
+menu.options,Options,Opções
+menu.options_soon,Options arrive in a later update.,As opções chegam em uma próxima atualização.
+menu.quit,Quit,Sair
+menu.back,Back,Voltar
+menu.cancel,Cancel,Cancelar
+menu.play_title,Your worlds,Seus mundos
+menu.join_title,Join a server,Entrar em um servidor
+menu.world.new,New world,Novo mundo
+menu.world.name,World name,Nome do mundo
+menu.world.seed,Seed (optional),Semente (opcional)
+menu.world.create,Create world,Criar mundo
+menu.world.play,Play,Jogar
+menu.world.delete,Delete,Excluir
+menu.world.delete_confirm,Delete the world {0}? This cannot be undone.,Excluir o mundo {0}? Isso não pode ser desfeito.
+menu.world.delete_yes,"Yes, delete it","Sim, excluir"
+menu.world.none,No worlds yet. Create one below.,Nenhum mundo ainda. Crie um abaixo.
+menu.world.row,{0} · seed {1} · last played {2},{0} · semente {1} · jogado em {2}
+menu.world.never_played,never,nunca
+menu.world.legacy_name,Saved world,Mundo salvo
+menu.world.error_name,A world name needs 1 to 32 characters.,Um nome de mundo precisa ter de 1 a 32 caracteres.
+menu.world.error_seed,That seed is too long.,Essa semente é longa demais.
+menu.world.error_write,The world could not be saved.,Não foi possível salvar o mundo.
+menu.join.address,Server address,Endereço do servidor
+menu.join.friend,Friend code (optional),Código de amigo (opcional)
+menu.join.connect,Connect,Conectar
+menu.join.recent,Recent servers,Servidores recentes
+menu.join.recent_row,{0} · friend {1},{0} · amigo {1}
+menu.join.error_address,Enter a server address or IP.,Digite um endereço ou IP de servidor.
+menu.join.error_friend,That friend code is not valid.,Esse código de amigo não é válido.
+menu.join.fail_connect,Could not start the connection.,Não foi possível iniciar a conexão.
+menu.join.fail_unreachable,The server did not answer.,O servidor não respondeu.
+menu.join.fail_disconnected,The server closed the connection.,O servidor encerrou a conexão.
+menu.join.fail_timeout,The server never sent the world.,O servidor não enviou o mundo.
