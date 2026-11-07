@@ -16,6 +16,12 @@ const OUTSIDERS := 1
 const PLAY_BUDGET_S := 3600.0
 ## Beats that must carry the host's refusal key.
 const REFUSAL_BEATS: Array[String] = ["outsider_chest", "outsider_build"]
+## The refusal keys that prove each outsider beat was refused for not being in the clan (#571): a chest locked
+## to them, a block on a structure that is not theirs or inside the clan's circle. Any other key fails the beat.
+const REFUSAL_KEYS := {
+	"outsider_chest": ["locked"],
+	"outsider_build": ["structure.refused.not_owner", "structure.refused.foreign_circle"],
+}
 ## The only admin command the scenario may send.
 const ALLOWED_ADMIN := "/time"
 
@@ -70,8 +76,11 @@ static func failures(report: Dictionary) -> Array[String]:
 		elif not bool((by_id[id] as Dictionary).get("ok", false)):
 			out.append("beat %s failed: %s" % [id, str((by_id[id] as Dictionary).get("evidence", ""))])
 	for id in REFUSAL_BEATS:
-		if by_id.has(id) and str((by_id[id] as Dictionary).get("refusal", "")) == "":
+		var key := str((by_id[id] as Dictionary).get("refusal", "")) if by_id.has(id) else ""
+		if by_id.has(id) and key == "":
 			out.append("beat %s has no refusal key" % id)
+		elif by_id.has(id) and not (REFUSAL_KEYS.get(id, []) as Array).has(key):
+			out.append("beat %s was refused with %s, not a membership refusal" % [id, key])
 	var play := play_time_s(beats)
 	if play >= PLAY_BUDGET_S:
 		out.append("play time %.0f s is not under %.0f s" % [play, PLAY_BUDGET_S])

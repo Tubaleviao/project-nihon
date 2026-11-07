@@ -17,6 +17,10 @@ const I18n := preload("res://src/core/i18n.gd")
 ## Metres from the placer a client may put a chest or door (the station reach of a bed).
 const PLACE_REACH := 6.0
 const PLACE_GAP_SEC := 0.5
+## Free stations (a bench or a forge) placed for remote players this session: at most this many standing per
+## player and in all, so a client cannot grow the station list (and the O(n) blocker scan) without bound.
+const MAX_FREE_STATIONS_PER_PLAYER := 8
+const MAX_FREE_STATIONS := 256
 ## Seconds a door stays open on the machine of the player it let through, and the metres they must then be
 ## from it before it shuts (never on top of them).
 const DOOR_OPEN_SEC := 3.0
@@ -26,6 +30,8 @@ const DOOR_CLEAR_M := 1.5
 var _placing_for: String = ""
 var _migrating: bool = false
 var _last_place: Dictionary = {}
+## Host: pid -> ids of the free stations placed for them (`_place_free_station`), pruned as stations go.
+var _free_stations: Dictionary = {}
 ## Host: pid -> the view last sent to that peer (sent again only when it changes).
 var _sent: Dictionary = {}
 ## Client: the host's last view of what this player has open.
@@ -77,8 +83,11 @@ func player_pos(player_id: String) -> Variant:
 ## Phase 202 — where the craft gate judges `player_id`: their own position, or a point no station is near when a
 ## remote player's position is not known yet (fail closed, never fall back to the host's own player).
 func crafter_pos(player_id: String) -> Variant:
-	var here: Variant = player_pos(player_id)
-	if here is Vector3 or player_id == root._registry.local_player_id:
+	return judged_pos(player_pos(player_id), player_id == root._registry.local_player_id)
+
+## Where a crafter is judged: `here` when known or for the host's own player, else a point far from every station.
+static func judged_pos(here: Variant, is_local: bool) -> Variant:
+	if here is Vector3 or is_local:
 		return here
 	return Vector3(1.0e12, 1.0e12, 1.0e12)
 
@@ -98,15 +107,10 @@ func place_for(pid: String, type: String, offset: Vector3) -> String:
 		return "bad_args"
 	if not ChestRules.is_lock_type(type):
 		return _place_free_station(pid, type, offset)
-	var now := Time.get_ticks_msec() / 1000.0
-	if now - float(_last_place.get(pid, -1.0e12)) < PLACE_GAP_SEC:
-		return "rate"
-	_last_place[pid] = now
-	if offset.length() > PLACE_REACH:
-		return "far"
 	var here: Variant = player_pos(pid)
-	if not (here is Vector3):
-		return "far"
+	var why := placement_check(_last_place, pid, offset, here, Time.get_ticks_msec() / 1000.0)
+	if why != "":
+		return why
 	var inv: Node = root._registry.get_inventory(pid)
 	var item := ChestRules.placement_item(type)
 	if inv == null or int(inv.get_item_count(item)) < 1:
@@ -128,23 +132,53 @@ func place_for(pid: String, type: String, offset: Vector3) -> String:
 	return ""
 
 ## Phase 202 — a free crafting station (a bench or a forge: no placement item) placed for a remote player, so a
-## remote player can craft where the host judges them to stand. Same rate, reach, position and blocker checks as a chest.
+## remote player can craft where the host judges them to stand. Same rate, reach, position and blocker checks as a
+## chest, and capped per player and in all (`MAX_FREE_STATIONS_PER_PLAYER`, `MAX_FREE_STATIONS`).
 func _place_free_station(pid: String, type: String, offset: Vector3) -> String:
 	if type == "" or not root._station.placeable_station_types().has(type) or root._station.placement_item(type) != "":
 		return "bad_args"
-	var now := Time.get_ticks_msec() / 1000.0
-	if now - float(_last_place.get(pid, -1.0e12)) < PLACE_GAP_SEC:
-		return "rate"
-	_last_place[pid] = now
-	if offset.length() > PLACE_REACH:
-		return "far"
 	var here: Variant = player_pos(pid)
-	if not (here is Vector3):
-		return "far"
+	var why := placement_check(_last_place, pid, offset, here, Time.get_ticks_msec() / 1000.0)
+	if why != "":
+		return why
+	why = free_station_cap(_free_stations, pid, func(id: String) -> bool: return not root._station.get_station(id).is_empty())
+	if why != "":
+		return why
 	var target: Vector3 = root._station.snap_to_grid((here as Vector3) + offset)
 	if root._station.placement_blocker(type, target, pid) != "":
 		return "blocked"
-	root._station.place_station(type, target)
+	var id: String = root._station.place_station(type, target)
+	if id != "":
+		if not _free_stations.has(pid):
+			_free_stations[pid] = []
+		(_free_stations[pid] as Array).append(id)
+	return ""
+
+## The shared preamble of a placement for `pid` at `offset` from `here` (their known position, or null): the rate
+## gate (recorded in `last` at `now`), the reach and a known position. "" to go on, else a REASONS code.
+static func placement_check(last: Dictionary, pid: String, offset: Vector3, here: Variant, now: float) -> String:
+	if now - float(last.get(pid, -1.0e12)) < PLACE_GAP_SEC:
+		return "rate"
+	last[pid] = now
+	if offset.length() > PLACE_REACH:
+		return "far"
+	if not (here is Vector3):
+		return "far"   # an unknown remote position fails closed
+	return ""
+
+## Whether `pid` may have one more free station: `placed` is pid -> station ids, pruned here of the ids
+## `exists` no longer knows. "" when under both caps, else "cap".
+static func free_station_cap(placed: Dictionary, pid: String, exists: Callable) -> String:
+	var total := 0
+	for who: String in placed.keys():
+		var alive: Array = (placed[who] as Array).filter(exists)
+		if alive.is_empty():
+			placed.erase(who)
+		else:
+			placed[who] = alive
+			total += alive.size()
+	if total >= MAX_FREE_STATIONS or (placed.get(pid, []) as Array).size() >= MAX_FREE_STATIONS_PER_PLAYER:
+		return "cap"
 	return ""
 
 ## Host: a chest or door station was placed, for a client (`place_for`) or by the host's own player.
