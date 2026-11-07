@@ -311,7 +311,7 @@ func _test_stress_args() -> void:
 func _clan_beats() -> Array:
 	var beats: Array = []
 	for id in StressClanRules.BEATS:
-		var refusal: String = "refused_not_member" if id in StressClanRules.REFUSAL_BEATS else ""
+		var refusal: String = str(StressClanRules.REFUSAL_KEYS[id][0]) if id in StressClanRules.REFUSAL_BEATS else ""
 		beats.append(StressClanRules.beat(id, 100.0, 5.0, 0.0, "host saw it", true, refusal))
 	return beats
 
@@ -328,6 +328,11 @@ func _test_stress_clan_verdict() -> void:
 	skipped[4] = StressClanRules.beat("work", 5000.0, 5.0, 4900.0, "skills grew", true)
 	assert_eq(StressClanRules.play_time_s(skipped), 1300.0, "a skip is subtracted")
 	assert_true(bool(StressClanRules.build_report(skipped, ["/time 3600"], _clan_world())["passed"]), "skipped time stays under budget")
+	# #571: an outsider beat refused for another reason (rate, reach) does not prove membership was checked.
+	var wrong := _clan_beats()
+	wrong[wrong.size() - 1] = StressClanRules.beat("outsider_build", 100.0, 5.0, 0.0, "host refused", true, "structure.refused.rate_limited")
+	var wr := StressClanRules.build_report(wrong, ["/time 3600"], _clan_world())
+	assert_false(bool(wr["passed"]), "a non-membership refusal key fails the outsider beat")
 	var slow := _clan_beats()
 	slow[0] = StressClanRules.beat("join", 4000.0, 1.0, 0.0, "x", true)
 	assert_false(bool(StressClanRules.build_report(slow, [], _clan_world())["passed"]), "an hour or more of play fails")

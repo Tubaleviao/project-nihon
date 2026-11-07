@@ -639,9 +639,14 @@ jobs:
         env:
           GODOT: /tmp/godot/Godot_v4.7-stable_linux.x86_64
           STRESS_OUT: stress-clan
+          # Under the job's 30 minutes (setup included), so a hung scenario still reaches the report steps.
+          CLAN_TIMEOUT: "1500"
+        run: tools/stress_clan.sh
+
+      - name: Clan report in the job summary
+        if: always()
         run: |
-          tools/stress_clan.sh
-          cat stress-clan/clan.md >> "$GITHUB_STEP_SUMMARY"
+          if [ -f stress-clan/clan.md ]; then cat stress-clan/clan.md >> "$GITHUB_STEP_SUMMARY"; else echo "No clan report was written." >> "$GITHUB_STEP_SUMMARY"; fi
 
       - name: Upload the clan report and logs
         if: always()

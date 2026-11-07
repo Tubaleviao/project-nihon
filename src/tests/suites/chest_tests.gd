@@ -36,6 +36,8 @@ func register() -> void:
 	_run_test("chest (review): a refused placement takes its station back out of the world", _test_place_refused)
 	_run_test("chest (review): only an outsider hits: never the owner, a clan member or anyone it opens for", _test_hit_protected)
 	_run_test("chest (review): views are pushed only to players whose open chest changed", _test_dirty_views)
+	_run_test("chest (#571): a free station for a remote player is rate limited, reach and position checked, blocked and capped", _test_free_station_host_branches)
+	_run_test("chest (#571): every refusal code has text in both catalog columns", _test_reason_catalog)
 
 # ── rig ──────────────────────────────────────────────────────────────────
 
@@ -621,3 +623,45 @@ func _test_dirty_views() -> void:
 	assert_true(FileAccess.get_file_as_string("res://src/ui/chest_panel.gd").contains("I18n.t(\"chest.item_entry\""),
 		"the chest window's item list goes through I18n")
 	_free_rig(r)
+
+func _test_free_station_host_branches() -> void:
+	var last := {}
+	var here := Vector3(10, 2, 10)
+	assert_eq(ChestWiring.placement_check(last, "p1", Vector3(1, 0, 0), here, 100.0), "", "the first placement in reach goes on")
+	assert_eq(ChestWiring.placement_check(last, "p1", Vector3(1, 0, 0), here, 100.2), "rate", "another within the gap is rate limited")
+	assert_eq(ChestWiring.placement_check(last, "p2", Vector3(1, 0, 0), here, 100.2), "", "the gap is per player")
+	assert_eq(ChestWiring.placement_check(last, "p1", Vector3(ChestWiring.PLACE_REACH + 1.0, 0, 0), here, 101.0), "far", "an offset past reach is far")
+	assert_eq(ChestWiring.placement_check(last, "p1", Vector3(1, 0, 0), null, 102.0), "far", "an unknown remote position fails closed")
+	assert_eq(ChestWiring.judged_pos(null, false), Vector3(1.0e12, 1.0e12, 1.0e12), "an unknown remote crafter is judged far from every station")
+	assert_eq(ChestWiring.judged_pos(here, false), here, "a known remote crafter is judged where they stand")
+	assert_eq(ChestWiring.judged_pos(null, true), null, "the host's own player is never moved away")
+	# Blocked: a station already stands there.
+	var st := StationSlice.new()
+	add_child(st)
+	var bench := st.place_station("bench", st.snap_to_grid(here))
+	assert_true(st.placement_blocker("bench", st.snap_to_grid(here), "p1") != "", "a spot with a station is blocked")
+	# Caps: per player, then in all; a removed station frees its slot.
+	var placed := {}
+	var exists := func(id: String) -> bool: return not st.get_station(id).is_empty()
+	placed["p1"] = [bench]
+	for i in ChestWiring.MAX_FREE_STATIONS_PER_PLAYER - 1:
+		(placed["p1"] as Array).append(st.place_station("bench", Vector3(40 + 4 * i, 2, 40)))
+	assert_eq(ChestWiring.free_station_cap(placed, "p1", exists), "cap", "a player at the per-player cap is refused")
+	assert_eq(ChestWiring.free_station_cap(placed, "p2", exists), "", "another player is not")
+	st.remove_station(bench)
+	assert_eq(ChestWiring.free_station_cap(placed, "p1", exists), "", "a station taken down frees its slot")
+	assert_eq((placed["p1"] as Array).size(), ChestWiring.MAX_FREE_STATIONS_PER_PLAYER - 1, "and is pruned from the record")
+	var many := {}
+	var always := func(_id: String) -> bool: return true
+	for i in ChestWiring.MAX_FREE_STATIONS:
+		var who := "q%d" % (i % 100)
+		if not many.has(who):
+			many[who] = []
+		(many[who] as Array).append("s%d" % i)
+	assert_eq(ChestWiring.free_station_cap(many, "new", always), "cap", "the global cap holds for a player with none")
+	st.free()
+
+func _test_reason_catalog() -> void:
+	for code in ChestSlice.REASONS:
+		var key := "chest.refused.%s" % code
+		assert_true(I18nScript.has_key(key) and I18nScript.t(key) != key, "%s has text" % key)
