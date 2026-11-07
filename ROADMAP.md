@@ -57,9 +57,12 @@ moves between worlds, and only as **evidence the host can verify**:
 - **Stays in the world:** inventory, equipment, research (technology is per player, but it is
   discovered again in each world, never ported), books learned, position, spawn bed, clan
   membership and owned structures.
-- **Skills are capped by the weapon:** a skill's advanced abilities need a weapon of the same tier,
-  and weapons are crafted in the world. A ported master swordsman still has to research, gather and
-  forge a master-tier blade in the new world first, so its early game stays intact.
+- **Skills are capped by the gear:** a combat skill's advanced abilities need a weapon of the same
+  tier, and a crafting skill's advanced recipes need a tool and a crafting station of the same tier.
+  Weapons, tools and stations are all made in the world. A ported master swordsman still has to
+  research, gather and forge a master-tier blade in the new world first, and a ported master smith
+  has to build a master-tier forge and hammer before making master-tier goods, so the new world's
+  early game stays intact.
 - **Cosmetics** are bound to the player's key. They travel to every world because they do nothing
   to the economy, and they can never be traded, dropped, gifted or worn by another player.
 - No trophy items for now.
@@ -69,9 +72,9 @@ The arc starts after Phase 226, because the keypair identifies the player (the a
 
 | Phase | Title | Status |
 |---|---|---|
-| 227 | Identity and portability in the fabric: keypair identity, what travels, weapon-gated skills, bound cosmetics | Open |
+| 227 | Identity and portability in the fabric: keypair identity, what travels, gear-gated skills, bound cosmetics | Open |
 | 228 | Keypair identity at runtime: a challenge-response join replaces the cached player id | Open |
-| 229 | Skills capped by the weapon: advanced abilities need a weapon of their tier | Open |
+| 229 | Skills capped by the gear: advanced abilities need a weapon of their tier, advanced recipes a tool and station of theirs | Open |
 | 230 | Characters across worlds: signed progress, an import policy per world | Open |
 | 231 | Cosmetics bound to the key: they travel and cannot be shared | Open |
 
@@ -267,9 +270,11 @@ Design-only (a fabric PR, no GDScript). Everything after it reads from this phas
   `trusted` (accepts progress signed by listed host keys), `open` (accepts progress signed by any
   host). A **progress delta** entity: player key, character id, issuing host key, world id, skill
   XP gained per skill, sequence number, and the host's signature.
-- **Weapon-gated skills:** every weapon gets a `tier` (from `SKILL_TIERS`) and each skill ability
-  gets a `requiredTier`. A rule says an ability is usable only when both the skill and the equipped
-  weapon reach that tier.
+- **Gear-gated skills:** every weapon, crafting tool and crafting station gets a `tier` (from
+  `SKILL_TIERS`). Each combat ability and each recipe gets a `requiredTier`. A rule says a combat
+  ability is usable only when both the skill and the equipped weapon reach that tier, and a recipe
+  can be crafted only when the crafting skill, the tool it uses and the station it is made at all
+  reach that tier. Recipes that need no tool or no station skip that check.
 - **Bound cosmetics:** a cosmetic entity kind (skin, emote, decoration, pet, per
   `MonetizationModel`) and a **cosmetic grant**: cosmetic id, owner key, issuer key, signature. A
   rule says cosmetics are never items: they have no stack, no trade, no drop, no chest, no loot.
@@ -278,7 +283,8 @@ Design-only (a fabric PR, no GDScript). Everything after it reads from this phas
 - `npm run validate` and `npm run check-drift` pass with the new entities, and
   `PlayerIdentityModel` is `superseded`.
 - A new `tools/check_portability.js` (and its CI step) rejects a table that marks technology,
-  inventory, equipment or owned structures as portable, a weapon with no tier, and a cosmetic that
+  inventory, equipment or owned structures as portable, a weapon, crafting tool or crafting station
+  with no tier, a recipe with no `requiredTier`, and a cosmetic that
   can be traded, dropped or stored.
 
 ## Phase 228 — Keypair identity at runtime
@@ -305,21 +311,32 @@ Design-only (a fabric PR, no GDScript). Everything after it reads from this phas
 - A net harness step: a client joins with its key, disconnects, reconnects and gets the same
   record. A second client that copies the first's public key but not its private key is refused.
 
-## Phase 229 — Skills capped by the weapon
+## Phase 229 — Skills capped by the gear
 
-- Generated weapon tiers and ability tiers from Phase 227 load through `GameData`.
-- The host decides an ability's use from the skill tier **and** the equipped weapon's tier. An
-  ability above the weapon's tier is refused with a localized reason key (`combat.refuse.weapon_tier`)
-  and greyed in the hotbar and skill UI, with the needed tier shown.
-- Skill XP still grows with any weapon. Only use is capped, so progress is never lost by carrying a
-  weaker weapon.
+- The weapon, tool, station, ability and recipe tiers generated in Phase 227 load through `GameData`.
+- **Combat:** the host decides whether an ability can be used from the skill tier **and** the
+  equipped weapon's tier. An ability above the weapon's tier is refused with a localized reason key
+  (`combat.refuse.weapon_tier`) and greyed out in the hotbar and skill UI, which show the tier needed.
+- **Crafting:** the host decides whether a recipe can be crafted from the crafting skill's tier, the
+  tier of the tool it uses (from the crafter's inventory or hand) **and** the tier of the station it
+  is crafted at. A recipe above either is refused with `craft.refuse.tool_tier` or
+  `craft.refuse.station_tier` and greyed out in the crafting window, which shows the tool or station
+  tier needed. The host reads the station's tier from its own placed-structure record, never from the
+  client.
+- Skill XP still grows with any weapon, tool or station. Only use is capped, so carrying weaker gear
+  never loses progress.
 
 **Acceptance criteria**
-- A suite test gives a character master Swordsmanship and a novice sword: novice abilities resolve,
+- A suite test gives a character master Swordsmanship and a novice sword. Novice abilities resolve
   and higher abilities are refused with `combat.refuse.weapon_tier`. With a master sword, all of
   them resolve.
-- A suite test: a client that sends an ability intent above its weapon's tier is refused by the
-  host, and no damage is applied.
+- A suite test gives a character master Smithing. A master-tier recipe is refused with a novice
+  hammer at a master forge (`craft.refuse.tool_tier`) and with a master hammer at a novice forge
+  (`craft.refuse.station_tier`), and crafts with both at master tier. No materials are consumed by a
+  refused craft.
+- A suite test: a client that sends an ability intent above its weapon's tier, or a craft intent
+  naming a station tier it does not have, is refused by the host. No damage is applied and no item
+  is made.
 - A suite test asserts the refusal and tier labels are keys in both `en` and `pt_BR`.
 
 ## Phase 230 — Characters across worlds
