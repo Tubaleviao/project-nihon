@@ -47,8 +47,6 @@ const StatusEffects    := preload("res://src/battle/status_effects.gd")
 const Minimap          := preload("res://src/ui/minimap.gd")
 const LoadingScreen    := preload("res://src/ui/loading_screen.gd")
 const WaypointHorizon  := preload("res://src/ui/waypoint_horizon.gd")
-const TestSuite        := preload("res://src/tests/test_suite.gd")
-const NetHarness       := preload("res://src/tests/net_harness.gd")
 const SpawnFinder      := preload("res://src/world/spawn_finder.gd")
 const ColonizationMap  := preload("res://src/world/colonization_map.gd")
 const WorldClock       := preload("res://src/world/world_clock.gd")
@@ -73,6 +71,7 @@ const PeerWiring := preload("res://src/networking/peer_wiring.gd")
 const SnapshotWiring := preload("res://src/persistence/snapshot_wiring.gd")
 const PersistenceWiring := preload("res://src/persistence/persistence_wiring.gd")
 const AdminWiring := preload("res://src/admin/admin_wiring.gd")
+const MenuWiring := preload("res://src/menu/menu_wiring.gd")
 
 ## Phase 132 — per-system wiring modules (see `src/core/wiring.gd`), wired in this fixed order.
 var _wirings: Array = []
@@ -97,6 +96,9 @@ var _peer_wiring := PeerWiring.new()
 var _snapshot_wiring := SnapshotWiring.new()
 var _persistence_wiring := PersistenceWiring.new()
 var _admin_wiring := AdminWiring.new()
+var _menu_wiring := MenuWiring.new()   # Phase 223 — the main menu
+## Phase 223 — a join started from the menu failed: `main.gd` swaps in a fresh root whose menu shows why.
+signal menu_return_requested(reason_key: String)
 
 var _terrain:     TerrainSlice
 var _voxel:       VoxelSlice
@@ -195,7 +197,7 @@ var _host_boot_wait_elapsed: float = 0.0
 var _client_boot_wait_elapsed: float = 0.0
 
 ## Phase 39 — which side of the two-client network harness this boot drives ("" for a
-## normal boot). Set by `_boot_wiring.parse_network_args`; see `_run_net_harness`.
+## normal boot). Set by `_boot_wiring.parse_network_args`; see `BootWiring.run_net_harness`.
 var _net_harness_role: String = ""
 
 ## Phase 53 — how settled each region is; new-player spawns keep away from the settled ones.
@@ -259,11 +261,13 @@ var _handshake_retries: int = 0
 
 ## Phase 132 — wiring modules know their root from construction (the suite builds roots without `_ready`).
 func _init() -> void:
-	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _bed_wiring, _tutorial_wiring, _settlement_wiring, _clan_wiring, _structure_wiring, _chest_wiring, _writing_wiring, _crafting_wiring, _character_wiring, _gesture_wiring, _creation_wiring, _carcass_wiring, _mount_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring, _admin_wiring]
+	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _bed_wiring, _tutorial_wiring, _settlement_wiring, _clan_wiring, _structure_wiring, _chest_wiring, _writing_wiring, _crafting_wiring, _character_wiring, _gesture_wiring, _creation_wiring, _carcass_wiring, _mount_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring, _admin_wiring, _menu_wiring]
 	for w in _wirings:
 		w.root = self
 
 func _ready() -> void:
+	if _menu_wiring.open_if_no_boot_args():
+		return   # Phase 223 — no boot user args: the main menu, and no world until it asks for one
 	# Phase 36 — the role flags are read FIRST, because they decide whether the
 	# automated suite runs on this boot (see should_run_tests).
 	_boot_wiring.parse_network_args()
@@ -286,8 +290,11 @@ func _ready() -> void:
 	# suite's own GameBus emissions would arrive at the harness's slices before the
 	# scenario started.
 	if _net_harness_role == "" and should_run_tests(OS.get_cmdline_user_args(), OS.is_debug_build()):
-		_run_tests()
+		_boot_wiring.run_tests()
+	await _build_and_boot()
 
+## The slices, their wiring and the role boot; run by `_ready`, or by the main menu (Phase 223).
+func _build_and_boot() -> void:
 	# Phase 33 — intercept the quit so records are written first.
 	_boot_wiring.install_quit_guard()
 
@@ -606,42 +613,17 @@ func _ready() -> void:
 	# Boot terrain — creatures are spawned by CreatureSlice._ready() via GameData.
 	# Phase 39 — the two-client network harness boots in place of the world boot: it is
 	# an `await`-driven scenario over a real socket, so it drives the role's OWN boot
-	# half itself (see `_run_net_harness`) and nothing after it in `_ready()` may run.
+	# half itself (see `BootWiring.run_net_harness`) and nothing after it in `_ready()` may run.
 	if _net_harness_role != "":
-		await _run_net_harness(_net_harness_role)
+		await _boot_wiring.run_net_harness(_net_harness_role)
 		return
 
 	_boot_wiring.prepare_stress_role()
 	_boot_wiring.prepare_playtest_bot()
+	_menu_wiring.apply_world()
 	_boot_world()
 	_boot_wiring.start_stress_recorder()
 	_boot_wiring.start_playtest_bot()
-
-## Phase 39 — run the two-client network harness and let it end this process.
-##
-## Placed here, after every slice is built and wired and BEFORE the role boot, for the
-## same reason the suite is: the slices have to exist for the scenario to drive them, and
-## the boot half the role needs is the one the harness itself invokes (`_boot_server()` /
-## `join()`) so what runs is the shipped boot path, not a harness-only arrangement. The
-## scenario quits the process when it finishes, which is what makes the driver's "did
-## this side exit cleanly" check mean something.
-func _run_net_harness(role: String) -> void:
-	var harness := NetHarness.new()
-	harness.name = "NetHarness"
-	add_child(harness)
-	await harness.run(self, role)
-	harness.queue_free()
-
-# ---------------------------------------------------------------------------
-# Automated tests
-# ---------------------------------------------------------------------------
-
-func _run_tests() -> void:
-	var suite := TestSuite.new()
-	suite.name = "TestSuite"
-	add_child(suite)
-	suite.run()
-	suite.queue_free()
 
 ## Phase 36 — the user arg that asks for the suite explicitly.
 const RUN_TESTS_ARG := "--run-tests"
@@ -701,7 +683,9 @@ static func net_harness_role(args: Array) -> String:
 	return role if role == "host" or role == "client" else ""
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST and _persistence == null:
+		get_tree().quit()   # Phase 223 — the main menu: no world to save
+	elif what == NOTIFICATION_WM_CLOSE_REQUEST:
 		print("[Server] window close requested — saving before quit")
 		if _minimap != null and _minimap.revealed_dir != "" and _minimap.is_revealed_loaded():
 			_minimap.save_revealed()
@@ -1010,6 +994,7 @@ func _boot_client() -> void:
 	if err != OK:
 		Diag.error("[Networking] client failed to connect to %s — %s" % [_host_address, error_string(err)])
 		_snapshot_pending = false
+		_menu_wiring.join_failed("menu.join.fail_connect")
 		return
 	_snapshot_pending = true
 	_client_boot_done = false

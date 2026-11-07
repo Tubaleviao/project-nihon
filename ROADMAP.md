@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–219 and 222 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–219, 222 and 223 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -40,7 +40,7 @@ because the menus reuse the keyboard routing Phase 219 fixes.
 | 220 | Enter never jumps: a `jump` action on Space only | Open |
 | 221 | Re-creating a character from the Character window | Open |
 | 222 | The Character window fits: fewer rows, the friend code moves to the map | Done ([phases-222.md](docs/roadmap-history/phases-222.md)) |
-| 223 | A main menu: play a local world or join a server | Open |
+| 223 | A main menu: play a local world or join a server | Done ([phases-223.md](docs/roadmap-history/phases-223.md)) |
 | 224 | The Esc menu: resume, options, exit to main menu, quit | Open |
 | 225 | The options window: sound, graphics and game settings | Open |
 | 226 | Several characters per player: a new one starts from scratch, chosen in the main menu | Open |
@@ -120,27 +120,6 @@ created while the host has it as created, and the screen has no way out after a 
 - A net harness step: a client that skipped creation and one that created both see the button state
   the host's record implies.
 
-## Phase 223 — A main menu
-
-The game boots straight into a listen-host world. A player has no way to choose a world or a server.
-
-- With no boot user args, the game opens a main menu: **Play** (local world), **Join server**,
-  **Options** (Phase 225, greyed until then), **Quit**. Every boot flag CI uses (`--server`,
-  `--client`, `--run-tests`, `--quit-after-boot`, `--playtest-bot`, `--net-harness`, `--friend`)
-  skips the menu and behaves as today.
-- **Play** lists local worlds saved under `user://` (name, seed, last played), and offers **New
-  world** (name, optional seed) and **Delete** (with a confirmation). Choosing one boots the existing
-  listen-host path on that save.
-- **Join server** takes an address or friend code, remembers recent servers, and boots the existing
-  client path. A failed connection returns to the menu with a localized reason.
-- All text through `I18n.t()`, keys in `en` and `pt_BR`.
-
-**Acceptance criteria**
-- A suite test boots the root with no args and asserts the main menu is shown and no world is built.
-- A suite test creates, lists and deletes a local world in a temp `user://` folder.
-- The existing boot checks (`--server`, `--quit-after-boot`, net harness, playtest bot) still pass
-  unchanged in CI.
-- A net harness step: a client started from the menu's join path with the host's address connects.
 
 ## Phase 224 — The Esc menu
 
