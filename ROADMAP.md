@@ -262,7 +262,8 @@ Design-only (a fabric PR, no GDScript). Everything after it reads from this phas
   nonce and the client signs it, so presenting someone else's id without their private key fails.
   The decision names the algorithm: RSA through Godot's built-in `Crypto`/`CryptoKey`, or Ed25519,
   which needs a GDExtension. Record the trade-off (key and signature size, a dependency, the
-  headless server). It also names the migration of saves keyed by a minted `player_id`.
+  headless server). It also names the migration of saves keyed by a minted `player_id`, and that
+  every host has a key too, whose fingerprint the client signs into the join answer (Phase 228).
 - **Portability table:** each character field (from Phase 226's character entity) is marked
   `portable` or `world_bound`, following the arc introduction. Technology/research, inventory,
   equipment, books learned, clan membership and owned structures are `world_bound`.
@@ -278,6 +279,7 @@ Design-only (a fabric PR, no GDScript). Everything after it reads from this phas
 - **Bound cosmetics:** a cosmetic entity kind (skin, emote, decoration, pet, per
   `MonetizationModel`) and a **cosmetic grant**: cosmetic id, owner key, issuer key, signature. A
   rule says cosmetics are never items: they have no stack, no trade, no drop, no chest, no loot.
+  Cosmetic names are i18n keys, not prose.
 
 **Acceptance criteria**
 - `npm run validate` and `npm run check-drift` pass with the new entities, and
@@ -292,20 +294,29 @@ Design-only (a fabric PR, no GDScript). Everything after it reads from this phas
 - The client creates its keypair on first boot (`user://identity/`, private key file readable only
   by the user where the OS allows it) and reuses it after that. Losing the file means a new player,
   as losing a save does.
-- The join handshake: the client sends its public key, the host replies with a single-use nonce
-  with an expiry, and the client returns the signature. The host verifies it before binding the peer.
-  It refuses a key already bound to a live peer, an expired or reused nonce, an oversized key and a
-  bad signature, and it rate-limits failed attempts per address.
+- Every host gets its own signing key here (`user://` for a listen host, the save folder for a
+  dedicated server) and a world id; Phase 230 reuses them.
+- The join handshake: the client sends its public key, the host replies with its own public key and
+  a single-use nonce with an expiry, and the client signs `join | host key fingerprint | nonce`.
+  Binding the host's key into the signed message stops a malicious host from relaying a nonce from
+  another host and replaying the victim's answer there. The host verifies the signature and that the
+  fingerprint is its own before binding the peer, and accepts no other intent from the peer until
+  then. It refuses a key already bound to a live peer, an expired or reused nonce, an oversized key,
+  a signature over another host's fingerprint and a bad signature, and it rate-limits failed
+  attempts per address. Refusals reach the client as reason keys shown through `I18n.t()`.
 - `PlayerRegistry` keys records by the key fingerprint. The cached-id claim is removed.
 - **Migration:** an existing save's minted `player_id` records are bound once to the first key
-  that joins and presents the old cached id. After that the old id is refused. A dedicated server
-  logs every binding.
+  that joins and presents the old cached id. After that the old id is refused. The old id is a
+  bearer secret only its client holds (the friend code never reveals it), so this is no weaker than
+  today. A dedicated server logs every binding.
 - The friend code (Phase 222 moves it to the map) keeps working; it does not reveal the key.
 
 **Acceptance criteria**
 - A suite test generates a key, signs a host nonce, and joins. Another test fails to join with: a
-  replayed nonce, an expired nonce, a signature from another key, a key held by a live peer, and a
-  key over the size limit.
+  replayed nonce, an expired nonce, a signature from another key, a signature over another host's
+  key fingerprint, a key held by a live peer, and a key over the size limit. A peer that sends a
+  gameplay intent before the handshake completes has it dropped. The refusal reason keys exist in
+  both `en` and `pt_BR`.
 - A suite test loads a pre-Phase-228 save, joins with the old cached id and a new key, finds the
   same record, and is refused when it presents the same old id with a second key.
 - A net harness step: a client joins with its key, disconnects, reconnects and gets the same
@@ -337,25 +348,34 @@ Design-only (a fabric PR, no GDScript). Everything after it reads from this phas
 - A suite test: a client that sends an ability intent above its weapon's tier, or a craft intent
   naming a station tier it does not have, is refused by the host. No damage is applied and no item
   is made.
+- A suite test: the hotbar and crafting window projections mark an ability or recipe above the
+  equipped weapon, held tool or station tier as unavailable and carry the tier needed.
 - A suite test asserts the refusal and tier labels are keys in both `en` and `pt_BR`.
 
 ## Phase 230 — Characters across worlds
 
-- Every host has its own signing key (`user://` for a listen host, the save folder for a dedicated
-  server) and a world id.
-- When a portable character leaves a world (logout, disconnect, host shutdown), the host sends it
-  a signed **progress delta** for the skill XP gained there since the last delta. The client stores
-  the deltas in `user://characters/<id>/`. The skill XP never comes from the client; it comes from
-  the host's signature over the host's own count.
+- Each host signs with the key and world id from Phase 228.
+- While a portable character is in a world, the host sends it a signed **progress delta** for the
+  skill XP gained there since the last delta: at every autosave and on a clean logout or host
+  shutdown. A dropped connection cannot be sent to, so it loses at most one autosave interval. The
+  client stores the deltas in `user://characters/<id>/`. The skill XP never comes from the client;
+  it comes from the host's signature over the host's own count.
 - **Import:** joining a world with policy `trusted` or `open`, the client presents the character's
-  base and its deltas. The host verifies every signature, keeps only issuers its policy accepts,
-  skips duplicates by (issuer, sequence) and sums the XP. The character arrives with its name,
-  appearance, skills and cosmetics, and with no items, research, books or memberships. A world with
-  policy `local` ignores the import and offers a fresh character.
-- **Going home:** the character's home world accepts deltas from the hosts it trusts the same way,
-  so XP earned at a friend's comes back.
-- The import is bounded: a maximum number of deltas, a maximum file size, a cap on XP per delta
-  (from the fabric), and a rate limit on imports per key.
+  name, appearance and its deltas. Skill XP comes only from verified deltas, never from a
+  client-held total. The host verifies every signature, refuses a delta whose player key is not the
+  key that signed the join (Phase 228), keeps only issuers its policy accepts, skips deltas it signed
+  itself (its own record already holds that XP), skips duplicates by (issuer, sequence) and adds the
+  XP. It records the applied (issuer, sequence) pairs per player key in its save, so presenting the
+  same deltas on the next join adds nothing. The character arrives with its name, appearance, skills
+  and cosmetics, and with no items, research, books or memberships. A world with policy `local`
+  ignores the import and offers a fresh character.
+- **Going home:** the home world applies its own policy the same way, so XP earned at a friend's
+  comes back only if home is `trusted` with that friend's host key (or `open`). A `local` home
+  keeps only its own XP.
+- **`open` trusts anyone who runs a host**, since anyone can make a host key and sign any count. It
+  is never the default, the options window says so, and it is bounded like every import.
+- The import is bounded: a maximum number of deltas, a maximum file size, a cap on XP per delta and
+  on XP imported per key per day (both from the fabric), and a rate limit on imports per key.
 - The policy is a host setting in the options window (Phase 225) and a `--import-policy` flag for a
   dedicated server. All text through `I18n.t()`.
 
@@ -363,22 +383,27 @@ Design-only (a fabric PR, no GDScript). Everything after it reads from this phas
 - A suite test: host A signs a delta, host B with policy `trusted` listing A imports it and finds
   the XP. With policy `local` the character starts fresh. With `trusted` not listing A, the delta is
   ignored.
-- A suite test refuses a delta with a bad signature, a duplicate (issuer, sequence), XP over the
-  cap, and an import over the size or count limit. None of them changes the record.
+- A suite test refuses a delta with a bad signature, a delta issued to another player key, a
+  duplicate (issuer, sequence), XP over the per-delta or per-day cap, and an import over the size
+  or count limit. None of them changes the record. Presenting an already applied delta set on a
+  second join, or a delta the importing host signed itself, adds no XP.
 - A suite test asserts an imported character has an empty inventory, no research and no clan.
 - A net harness step: a client plays on host A, gains skill XP, leaves, joins host B (`trusted` with
-  A) and has the XP, then goes back to A and has the XP earned on B.
+  A) and has the XP, then goes back to A (`trusted` with B) and has the XP earned on B.
 
 ## Phase 231 — Cosmetics bound to the key
 
 - A cosmetic is owned by a **grant** signed by an issuer key. The official shop's public key is
-  pinned in the game. A host may add its own issuer key for cosmetics earned in its world.
+  pinned in the game (the suite pins a test issuer key in its place). A host may add its own issuer
+  key for cosmetics earned in its world; those show in that world and in worlds whose import policy
+  trusts that host, and an unknown issuer's grant is refused.
 - On join the client presents its grants. The host verifies each signature and that the grant's
   owner key is the key that signed the join nonce (Phase 228). A grant held by another key is
   refused, so copying a friend's grant file does nothing.
 - Cosmetics travel to every world whatever the import policy, because they have no economic effect.
   They are applied only to the owner's own characters.
 - Trade, drop, chest, loot and gift paths refuse a cosmetic. It never becomes an inventory item.
+- Cosmetic names and the refusal reasons are keys shown through `I18n.t()`.
 
 **Acceptance criteria**
 - A suite test: a grant signed by the pinned shop key for the joining key is accepted and the
@@ -386,6 +411,7 @@ Design-only (a fabric PR, no GDScript). Everything after it reads from this phas
   so is a grant with a bad signature or an unknown issuer.
 - A suite test: trading, dropping, storing in a chest and gifting a cosmetic are all refused by the
   host.
+- A suite test asserts every cosmetic name and refusal key exists in both `en` and `pt_BR`.
 - A net harness step: a client joins host B (policy `local`) and its cosmetics are present; a second
   client given a copy of the first's grant files has none.
 
