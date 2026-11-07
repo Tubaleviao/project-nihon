@@ -21,6 +21,7 @@ func register() -> void:
 	_run_test("hydrology: a non-swimming creature path avoids a river", _test_creature_path_avoids_river)
 	_run_test("hydrology: the fresh-water mesh covers exactly the wet tiles", _test_fresh_water_mesh)
 	_run_test("hydrology: a streamed build carries its fresh-water arrays from the worker", _test_fresh_water_worker_arrays)
+	_run_test("hydrology: a point query reads its block and agrees with its chunk", _test_surface_at_blocks)
 
 func _window_features() -> Dictionary:
 	var lakes := []
@@ -203,3 +204,29 @@ func _test_fresh_water_worker_arrays() -> void:
 	ChunkPart1._add_fresh_water(headless, chunk, SEED, false)
 	assert_false(headless.has("fresh_water"), "a build that keeps no render arrays carries none")
 	assert_true(FreshWaterMesh.mesh_from([]) == null, "a dry chunk's empty arrays make no mesh")
+
+## The distant ring samples one point in thousands of far chunks per rebuild: `surface_at` answers each from
+## the cached features of its BLOCK_M block, the same water its chunk's features give, building one
+## feature set per block instead of one per chunk.
+func _test_surface_at_blocks() -> void:
+	Hydrology.reset_cache()
+	var wet := 0
+	var cm := TerrainSlice.CHUNK_METERS
+	for i in 4096:
+		# a 2 km window, every point in another chunk and off the tile grid
+		var x := float(WINDOW.x) * cm + float(i % 64) * cm + 0.37 * cm + float(i % 7) * 3.1
+		var z := float(WINDOW.y) * cm + float(i / 64) * cm + 0.61 * cm + float(i % 5) * 2.3
+		var by_chunk := Hydrology.water_at(Hydrology.features_for_chunk(Vector2i(floori(x / cm), floori(z / cm)), SEED), x, z)
+		var s := Hydrology.surface_at(SEED, x, z)
+		if by_chunk.is_empty():
+			if not is_nan(s):
+				assert_true(false, "dry at (%.1f, %.1f) by its chunk, %.2f by its block" % [x, z, s])
+				return
+		else:
+			wet += 1
+			if s != float(by_chunk["surface"]):
+				assert_eq(s, float(by_chunk["surface"]), "the block's surface at (%.1f, %.1f) is its chunk's" % [x, z])
+				return
+	assert_true(wet > 0, "the window's samples cross water")
+	assert_true(Hydrology._blocks_n <= 25, "4096 chunks of a 2 km window read %d blocks (at most 25)" % Hydrology._blocks_n)
+	Hydrology.reset_cache()
