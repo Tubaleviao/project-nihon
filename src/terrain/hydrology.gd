@@ -31,13 +31,20 @@ const RIVER_MAX_STEPS := 60
 const RIVER_BED_DEPTH := 1.5
 const POND_FACTOR := 2.0            ## a river's terminal pond radius, in river widths
 const CACHE_MAX := 4096
-const FEATURE_CACHE_MAX := 8192   ## the distant ring samples hundreds of chunks per rebuild
+const FEATURE_CACHE_MAX := 8192
+## Point queries (`surface_at`: the distant ring, swimming) read the features of the BLOCK_M square around
+## the point, cached apart from the chunk features: a ring rebuild samples over 8,000 distinct far chunks,
+## which cleared the chunk cache every rebuild and cost one ~0.2 ms feature build per sample.
+const BLOCK_M := 512.0
+const BLOCK_CACHE_MAX := 16384   ## a ring rebuild reads about 3,000 blocks, a moved one about 650 new ones; ~2 KB each, so ~32 MB at most
 
 static var _mutex := Mutex.new()
 static var _rivers: Dictionary = {}   # seed → { Vector2i cell → river Dictionary }
 static var _features: Dictionary = {}   # seed → { Vector2i chunk → features }
 static var _rivers_n := 0
 static var _features_n := 0
+static var _blocks: Dictionary = {}   # seed → { Vector2i block → features }
+static var _blocks_n := 0
 static var _gen := 0
 
 ## Forget cached rivers (the fabric or the seed changed).
@@ -45,6 +52,9 @@ static func reset_cache() -> void:
 	_mutex.lock()
 	_rivers.clear()
 	_features.clear()
+	_blocks.clear()
+	_features_n = 0
+	_blocks_n = 0
 	_gen += 1
 	_mutex.unlock()
 
@@ -258,15 +268,41 @@ static func features_for_chunk(chunk: Vector2i, seed_v: int) -> Dictionary:
 	_mutex.unlock()
 	return built
 
+## The features of block `block` (a BLOCK_M square, `floori(x / BLOCK_M)`), cached. A superset of the features of
+## every chunk inside it, in the same order, so `water_at` answers any point in the block as its chunk's features do.
+static func block_features(block: Vector2i, seed_v: int) -> Dictionary:
+	_mutex.lock()
+	var by_seed: Variant = _blocks.get(seed_v)
+	var hit: Variant = (by_seed as Dictionary).get(block) if by_seed != null else null
+	var gen := _gen
+	_mutex.unlock()
+	if hit != null:
+		return hit
+	var x0 := float(block.x) * BLOCK_M
+	var z0 := float(block.y) * BLOCK_M
+	var built := _features_in(seed_v, x0, z0, x0 + BLOCK_M, z0 + BLOCK_M)
+	_mutex.lock()
+	if gen != _gen:   # reset while building (a worker outlived it): the result is returned, not stored
+		_mutex.unlock()
+		return built
+	if _blocks_n >= BLOCK_CACHE_MAX:
+		_blocks.clear()
+		_blocks_n = 0
+	if not _blocks.has(seed_v):
+		_blocks[seed_v] = {}
+	(_blocks[seed_v] as Dictionary)[block] = built
+	_blocks_n += 1
+	_mutex.unlock()
+	return built
+
 static func _build_features(chunk: Vector2i, seed_v: int) -> Dictionary:
+	var cm := TerrainSlice.CHUNK_METERS
+	return _features_in(seed_v, float(chunk.x) * cm, float(chunk.y) * cm, float(chunk.x + 1) * cm, float(chunk.y + 1) * cm)
+
+## The lakes and river segments that reach the rectangle [x0, x1] × [z0, z1], in cell order.
+static func _features_in(seed_v: int, x0: float, z0: float, x1: float, z1: float) -> Dictionary:
 	var out := { "lakes": [], "segs": [] }
 	warm()
-	var cm := TerrainSlice.CHUNK_METERS
-	var w := float(TerrainSlice.circumference_chunks()) * cm
-	var x0 := float(chunk.x) * cm
-	var z0 := float(chunk.y) * cm
-	var x1 := x0 + cm
-	var z1 := z0 + cm
 	var pad := _wmax + LAKE_RADIUS_MAX
 	# Lakes: the cells whose disc can reach the chunk.
 	for cz in range(floori((z0 - pad) / LAKE_CELL_M), floori((z1 + pad) / LAKE_CELL_M) + 1):
@@ -367,8 +403,9 @@ static func carved_height(seed_v: int, x: float, z: float, h: float) -> float:
 ## creature path cost and the water mesh.
 static func surface_at(seed_v: int, x: float, z: float) -> float:
 	var cm := TerrainSlice.CHUNK_METERS
-	var f := features_for_chunk(Vector2i(floori(x / cm), floori(z / cm)), seed_v)
-	var wt := water_at(f, x, z)
+	if not chunk_active(Vector2i(floori(x / cm), floori(z / cm))):
+		return NAN
+	var wt := water_at(block_features(Vector2i(floori(x / BLOCK_M), floori(z / BLOCK_M)), seed_v), x, z)
 	return NAN if wt.is_empty() else float(wt["surface"])
 
 ## The level a body floats on at (x, z): the fresh-water surface where there is one, else the sea.
