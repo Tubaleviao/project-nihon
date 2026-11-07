@@ -30,6 +30,7 @@ extends Node
 ## accumulates and there is no per-connection state to evict.
 const Diag := preload("res://src/core/diag.gd")
 const I18n := preload("res://src/core/i18n.gd")
+const TextFocus := preload("res://src/ui/text_focus.gd")
 const LocaleSettings := preload("res://src/core/locale_settings.gd")
 
 const WINDOW_INVENTORY  := "inventory"
@@ -221,13 +222,22 @@ func _ready() -> void:
 func _on_world_input_frozen(frozen: bool) -> void:
 	_world_input_frozen = frozen
 
+## Phase 219 — the ONE query for "a text field has the keyboard" (see `text_focus.gd`): while it is true no world
+## input reaches the game (movement, jump, fly, hotbar keys, window shortcuts, mouse-look).
+static func is_typing() -> bool:
+	return TextFocus.is_typing()
+
 func _input(event: InputEvent) -> void:
+	# Phase 219 — Esc in any text field leaves the field first (a second Esc closes the windows).
+	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE and TextFocus.leave():
+		if is_inside_tree():
+			get_viewport().set_input_as_handled()
+		return
 	if _world_input_frozen or is_creation_open():
 		return
 	if event is InputEventKey and event.pressed:
-		# Typing into a text field must not trigger window hotkeys.
-		var focus := get_viewport().gui_get_focus_owner() if is_inside_tree() else null
-		if (focus is LineEdit or focus is TextEdit) and event.keycode != KEY_ESCAPE:
+		# Typing into a text field must not trigger window hotkeys (Esc still leaves the field).
+		if is_typing() and event.keycode != KEY_ESCAPE:
 			return
 		# Phase 214 — Alt + a letter opens a window. Matched before the wheel and the hotbar so Alt+Q is Equipment, not
 		# the wheel; not while the hotbar waits for a box key (it swallows a modified key itself).
@@ -632,32 +642,8 @@ func inventory_rows() -> Array:
 func bag_contents() -> Dictionary: return _m2.bag_contents()
 
 
-## The `?` legend, moved here from the always-on HUD panel. Each row:
-## { action, keys, desc, mouse } where `mouse` is a MouseButton for a drawn cue, or 0. `action` is the
-## id a tutorial step names in `inputs` (Phase 184, `Tutorial.inputActions`), in this row order.
-static func controls_rows() -> Array:
-	return [
-		{"action": "move", "keys": "WASD", "desc": I18n.t("controls.row0"), "mouse": 0},
-		{"action": "jump", "keys": InputLabels.action_keys("jump"), "desc": I18n.t("controls.row1"), "mouse": 0},
-		{"action": "look", "keys": I18n.t("controls.key.hold"), "desc": I18n.t("controls.row2"), "mouse": MOUSE_BUTTON_RIGHT},
-		{"action": "zoom", "keys": I18n.t("controls.key.scroll"), "desc": I18n.t("controls.row3"), "mouse": 0},
-		{"action": "hotbar_use", "keys": "1 – 9", "desc": I18n.t("controls.row4"), "mouse": 0},
-		{"action": "hotbar_expand", "keys": "▴", "desc": I18n.t("controls.row5"), "mouse": 0},
-		{"action": "drag", "keys": I18n.t("controls.key.drag"), "desc": I18n.t("controls.row6"), "mouse": 0},
-		{"action": "attack", "keys": "", "desc": I18n.t("controls.row7"), "mouse": MOUSE_BUTTON_LEFT},
-		{"action": "mine", "keys": "Shift +", "desc": I18n.t("controls.row8"), "mouse": MOUSE_BUTTON_LEFT},
-		{"action": "place", "keys": "", "desc": I18n.t("controls.row9"), "mouse": MOUSE_BUTTON_MIDDLE},
-		{"action": "next_block", "keys": "R", "desc": I18n.t("controls.row10"), "mouse": 0},
-		{"action": "station", "keys": "B · V", "desc": I18n.t("controls.row11"), "mouse": 0},
-		{"action": "tame", "keys": "G", "desc": I18n.t("controls.row12"), "mouse": 0},
-		{"action": "mount", "keys": "M", "desc": I18n.t("controls.row19"), "mouse": 0},
-		{"action": "equipment", "keys": "E", "desc": I18n.t("controls.row13"), "mouse": 0},
-		{"action": "chest", "keys": "U · Shift+U · Ctrl+U", "desc": I18n.t("controls.row18"), "mouse": 0},
-		{"action": "windows", "keys": WindowShortcuts.all_labels(), "desc": I18n.t("controls.row14"), "mouse": 0},
-		{"action": "controls", "keys": "?", "desc": I18n.t("controls.row15"), "mouse": 0},
-		{"action": "chat", "keys": "Enter · /", "desc": I18n.t("controls.row16"), "mouse": 0},
-		{"action": "close", "keys": "ESC", "desc": I18n.t("controls.row17"), "mouse": 0},
-	]
+## The `?` legend rows ({ action, keys, desc, mouse }); built in `input_labels.gd` (Phase 220).
+static func controls_rows() -> Array: return InputLabels.controls_rows()
 
 func inventory_usage_text() -> String:
 	if inventory_slice == null:

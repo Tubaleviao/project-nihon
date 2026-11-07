@@ -48,7 +48,7 @@ func _in_water(iid: String) -> bool:
 	if pos.is_empty():
 		return false
 	var tile: Vector2i = root._creature.tile_of_pos(pos)
-	if root._creature.is_fresh_water_tile(tile):
+	if root._creature.fresh_water_width(tile) > 0.0:
 		return true
 	var h: float = root._creature.surface_at_tile(tile)
 	return not is_nan(h) and h < WorldShape.sea_level()

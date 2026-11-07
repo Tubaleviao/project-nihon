@@ -11,6 +11,7 @@ extends Node
 ##   get_hp()         -> float
 ##   take_damage(dmg) -> void
 const WindowShortcuts := preload("res://src/ui/window_shortcuts.gd")
+const TextFocus := preload("res://src/ui/text_focus.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const Diag := preload("res://src/core/diag.gd")
 const I18n := preload("res://src/core/i18n.gd")
@@ -324,11 +325,30 @@ var creation_hold: bool = false
 func world_input_allowed() -> bool:
 	if _world_input_frozen or creation_hold:
 		return false
-	if is_inside_tree():
-		var focus := get_viewport().gui_get_focus_owner()
-		if focus is LineEdit or focus is TextEdit:
-			return false
-	return true
+	return not TextFocus.is_typing()
+
+## Phase 219 — polled keys ignore GUI focus: the body reads them only with no creation screen and no focused field.
+func keys_live() -> bool:
+	return not creation_hold and not TextFocus.is_typing()
+
+## W/A/S/D as a wish direction (x right, z back, before the yaw turn), zero while the keys are not live. Keys held
+## then are marked consumed, so they stay quiet until released once (no walking off when the field closes).
+func wish_direction() -> Vector3:
+	if not keys_live():
+		for k in [KEY_W, KEY_A, KEY_S, KEY_D]:
+			if Input.is_key_pressed(k):
+				WindowShortcuts.consume(k)
+		return Vector3.ZERO
+	var dir := Vector3.ZERO
+	if WindowShortcuts.walk_down(KEY_W): dir.z -= 1.0   # Phase 214: walk_down ignores Alt+A / Alt+S (windows)
+	if WindowShortcuts.walk_down(KEY_S): dir.z += 1.0
+	if WindowShortcuts.walk_down(KEY_A): dir.x -= 1.0
+	if WindowShortcuts.walk_down(KEY_D): dir.x += 1.0
+	return dir
+
+## True when the `jump` action (Space, never Enter: Phase 220) starts a jump this frame; the body must still be on the floor.
+func jump_requested() -> bool:
+	return keys_live() and Input.is_action_just_pressed("jump")
 
 ## Phase 85 — true while the right button is held: the mouse is captured and moves the camera.
 func is_looking() -> bool:
@@ -421,6 +441,9 @@ func _input(event: InputEvent) -> void:
 	# The look is owned here, not in `_unhandled_input`: releasing the button over a window must still
 	# end it, and a captured pointer reports motion no control would see.
 	if _looking:
+		if TextFocus.is_typing():   # Phase 219: a field that takes the keyboard takes the mouse back too
+			_end_look()
+			return
 		if event is InputEventMouseMotion:
 			# Yaw (horizontal) — rotate the body pivot
 			_pivot.rotate_y(-event.relative.x * MOUSE_SENS)
@@ -919,21 +942,12 @@ func _ground_top_at(xz: Vector2, natural: float) -> float:
 		return float(runs[-1]["top"]) if not runs.is_empty() else VoxelSliceScript.BEDROCK_DEPTH
 	return natural
 
-## Phase 220 — jump and fly-up read their own action, bound to Space (and a pad's south button) in
-## project.godot. The GUI accept action also answers Enter, which opens chat, so it is never read here.
-const JUMP_ACTION := "jump"
-
-## A jump starts this frame: the jump action was just pressed, the body stands on the floor, and it is not
-## flying, swimming or held by the creation screen.
-static func jump_starts(on_floor: bool, flying_now: bool, swimming: bool, hold: bool) -> bool:
-	return not hold and not flying_now and not swimming and on_floor and Input.is_action_just_pressed(JUMP_ACTION)
-
 func _move(delta: float) -> void:
 	var swimming := _swimming_now() and not flying
 	# Apply gravity.
 	if flying:
 		# Phase 182 — no gravity: Space climbs, Ctrl sinks, neither hovers.
-		_vel.y = fly_vertical(Input.is_action_pressed(JUMP_ACTION) and not creation_hold, Input.is_key_pressed(KEY_CTRL) and not creation_hold)
+		_vel.y = fly_vertical(Input.is_action_pressed("jump") and keys_live(), Input.is_key_pressed(KEY_CTRL) and keys_live())
 	elif swimming:
 		_vel.y = swim_vertical_velocity(_body.global_position.y, TerrainSlice.Hydrology.level_for(terrain_slice, _body.global_position.x, _body.global_position.z))
 	elif not _body.is_on_floor():
@@ -943,18 +957,12 @@ func _move(delta: float) -> void:
 			_vel.y = 0.0
 
 	# Jump.
-	if jump_starts(_body.is_on_floor(), flying, swimming, creation_hold):
+	if not flying and not swimming and jump_requested() and _body.is_on_floor():
 		_vel.y = JUMP_FORCE
 		GameBus.tutorial_event.emit("jumped", {})   # Phase 186 — a local notification, never sent
 
 	# Horizontal movement relative to camera yaw.
-	var dir := Vector3.ZERO
-	if WindowShortcuts.walk_down(KEY_W): dir.z -= 1.0   # Phase 214: walk_down ignores Alt+A / Alt+S (windows)
-	if WindowShortcuts.walk_down(KEY_S): dir.z += 1.0
-	if WindowShortcuts.walk_down(KEY_A): dir.x -= 1.0
-	if WindowShortcuts.walk_down(KEY_D): dir.x += 1.0
-	if creation_hold:
-		dir = Vector3.ZERO
+	var dir := wish_direction()
 
 	if dir.length_squared() > 0.0:
 		dir = dir.normalized()

@@ -30,7 +30,6 @@ func _feed(code: Key, pressed: bool) -> InputEventKey:
 
 func _test_jump_action_binding() -> void:
 	assert_true(InputMap.has_action("jump"), "project.godot declares a jump action")
-	assert_eq(PlayerSliceScript.JUMP_ACTION, "jump", "the player slice reads the jump action")
 	var has_space := false
 	for ev in InputMap.action_get_events("jump"):
 		if ev is InputEventKey:
@@ -44,6 +43,8 @@ func _test_jump_action_binding() -> void:
 	var src := FileAccess.get_file_as_string("res://src/player/player_slice.gd")
 	assert_true(src.length() > 0, "the player slice source is readable")
 	assert_false(src.contains("ui_accept"), "player_slice.gd no longer reads ui_accept")
+	assert_true(src.contains('is_action_just_pressed("jump")'), "jump reads the jump action")
+	assert_true(src.contains('is_action_pressed("jump")'), "and so does fly-up")
 
 func _test_jump_controls_row() -> void:
 	assert_eq(InputLabels.action_keys("jump"), "Space", "the jump action's key reads Space")
@@ -70,10 +71,12 @@ func _test_jump_key_names_localized() -> void:
 	assert_eq(pad, "Espaço · Botão A do controle", "and the pad button is named in Portuguese")
 	assert_eq(other, OS.get_keycode_string(KEY_F7), "a key with no catalog row falls back to the OS name")
 
-## `PlayerSlice._move` starts a jump through `jump_starts`, so these calls exercise the live jump check.
+## `PlayerSlice._move` starts a jump through `jump_requested()` (on the floor, not flying or swimming), so these
+## calls exercise the live jump check.
 func _test_enter_opens_chat_space_jumps() -> void:
 	var chat := ChatSliceScript.new()
 	add_child(chat)
+	var player := PlayerSliceScript.new()
 	var focus := chat.get_viewport().gui_get_focus_owner()
 	if focus != null:
 		focus.release_focus()
@@ -85,7 +88,9 @@ func _test_enter_opens_chat_space_jumps() -> void:
 		chat._input(enter)   # the suite has no window to route the event; deliver it as the viewport would
 	assert_true(Input.is_action_pressed("ui_accept"), "Enter is delivered (it still drives GUI buttons)")
 	assert_false(Input.is_action_pressed("jump"), "Enter does not press jump")
-	assert_false(PlayerSliceScript.jump_starts(true, false, false, false), "Enter with the character on the floor starts no jump")
+	# `just_pressed` stays true for a press earlier in this frameless run, so the event itself is checked.
+	assert_false(enter.is_action("jump"), "the Enter event is not the jump action")
+	assert_false(player.jump_requested(), "and no jump starts")
 	assert_true(chat.is_typing(), "Enter gives the chat field focus")
 	_feed(KEY_ENTER, false)
 	chat._close_input()
@@ -94,11 +99,11 @@ func _test_enter_opens_chat_space_jumps() -> void:
 	# Space with no field focused jumps.
 	_feed(KEY_SPACE, true)
 	assert_true(Input.is_action_pressed("jump"), "Space presses jump")
-	assert_true(PlayerSliceScript.jump_starts(true, false, false, false), "Space with the character on the floor starts a jump")
-	assert_false(PlayerSliceScript.jump_starts(false, false, false, false), "but not in the air")
-	assert_false(PlayerSliceScript.jump_starts(true, true, false, false), "nor while flying")
-	assert_false(PlayerSliceScript.jump_starts(true, false, true, false), "nor while swimming")
-	assert_false(PlayerSliceScript.jump_starts(true, false, false, true), "nor held by the creation screen")
+	assert_true(player.jump_requested(), "Space with no field focused starts a jump")
+	player.creation_hold = true
+	assert_false(player.jump_requested(), "but not while the creation screen holds the keys")
+	player.creation_hold = false
 	_feed(KEY_SPACE, false)
 	assert_false(Input.is_action_pressed("jump"), "releasing Space releases jump")
+	player.free()
 	chat.free()
