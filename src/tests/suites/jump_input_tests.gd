@@ -11,6 +11,7 @@ const ChatSliceScript := preload("res://src/chat/chat_slice.gd")
 func register() -> void:
 	_run_test("jump: the jump action is Space only, never Enter, and the player slice reads it", _test_jump_action_binding)
 	_run_test("jump: the controls legend shows the jump binding from the action map", _test_jump_controls_row)
+	_run_test("jump: the jump key names come from the catalog (pt_BR reads Espaço)", _test_jump_key_names_localized)
 	_run_test("jump: Enter on the floor opens chat and starts no jump; Space jumps", _test_enter_opens_chat_space_jumps)
 
 func _key_event(code: Key, pressed: bool) -> InputEventKey:
@@ -54,6 +55,22 @@ func _test_jump_controls_row() -> void:
 			assert_eq(str(row["keys"]), InputLabels.action_keys("jump"), "the jump row shows the action map's binding")
 	assert_true(found, "the legend has a jump row")
 
+func _test_jump_key_names_localized() -> void:
+	TranslationServer.set_locale("en")
+	assert_eq(InputLabels.action_keys("jump", true), "Space · Pad A", "with the pad, jump reads Space and the south button")
+	TranslationServer.set_locale("pt_BR")
+	var row_keys := ""
+	for row in UiSliceScript.controls_rows():
+		if str(row["action"]) == "jump":
+			row_keys = str(row["keys"])
+	var pad := InputLabels.action_keys("jump", true)
+	var other := InputLabels.key_name(KEY_F7)
+	TranslationServer.set_locale("en")
+	assert_eq(row_keys, "Espaço", "the pt_BR jump row reads Espaço")
+	assert_eq(pad, "Espaço · Botão A do controle", "and the pad button is named in Portuguese")
+	assert_eq(other, OS.get_keycode_string(KEY_F7), "a key with no catalog row falls back to the OS name")
+
+## `PlayerSlice._move` starts a jump through `jump_starts`, so these calls exercise the live jump check.
 func _test_enter_opens_chat_space_jumps() -> void:
 	var chat := ChatSliceScript.new()
 	add_child(chat)
