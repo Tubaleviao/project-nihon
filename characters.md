@@ -1030,6 +1030,6 @@ evolution expected of a sandbox MMORPG.
 
 Each creation body (`chibi_body_m`, `chibi_body_f`) draws with its own 64×64 sheets under
 `textures/characters/bodies/` (detail, colour mask, channel); a body without sheets falls back to the
-`player*` sheets. Skin colour is the palette index shown wherever the colour mask is black, so it is
-driven through the colour mask (the `base_index` shows wherever the mask is black), not a separate material. The novice outfit occupies pixels
+`player*` sheets. Skin colour is the `base_index` palette colour, shown wherever the colour mask is black and
+replaced wherever a mask channel is lit; it is not a separate material. The novice outfit occupies pixels
 x 0–63, y 20–51 of the sheets (`CharacterMaterial.NOVICE_OUTFIT_REGION`); the art repo paints it in place.
