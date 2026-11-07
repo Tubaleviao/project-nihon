@@ -22,6 +22,8 @@ func register() -> void:
 	_run_test("creation runtime: every skin and icon key has a public placeholder at its size, and no orphan exists", _test_skin_placeholders)
 	_run_test("creation runtime: the screen builds from the public tree and sends what the player chose", _test_screen)
 	_run_test("creation runtime: the UI holds the body while the screen is up and the sheet offers it until created", _test_ui_flow)
+	_run_test("creation runtime: the sheet's create button follows the host's state and hides once created (Phase 221)", _test_button_follows_host)
+	_run_test("creation runtime: a screen opened from the sheet closes with Back and Esc, also after already_created (Phase 221)", _test_back_closes)
 	_run_test("creation runtime: chat and settlement lists show the display name, the friend code stays the handle", _test_display_names)
 	_run_test("creation runtime: every new string is in both catalogs", _test_catalog)
 
@@ -358,6 +360,98 @@ func _test_ui_flow() -> void:
 	_free_rig(rig)
 
 
+## Phase 221 — a client's sheet shows the button only as the host's synced state implies, and a listen host whose
+## handle the boot set first still learns its own record (the divergence found in play).
+func _test_button_follows_host() -> void:
+	var host := _reg()
+	var made: Array = _created(host, VALID, 1000)
+	var host_pid := str(made[0])
+	var rig := _root_rig(true)
+	var gr: Node = rig["gr"]
+	var ui: Node = rig["ui"]
+	gr._creation_wiring.sync_ui()
+	ui.refresh_character()
+	assert_false(ui._sheet_create_button.visible, "a client offers nothing before the host said its state")
+	gr._creation_wiring.apply_own({ "creation": { "state": CreationRules.STATE_SKIPPED } })
+	ui.refresh_character()
+	assert_true(ui._sheet_create_button.visible, "a skipped player is offered creation")
+	gr._creation_wiring.apply_own({ "creation": host.creation_of(host_pid) })
+	ui.refresh_character()
+	assert_false(ui._sheet_create_button.visible, "a created character's sheet hides the button")
+	assert_eq(ui._sheet_name.text, "Akira", "and names the character")
+	_free_rig(rig)
+	host.free()
+	# A listen host: the boot sets the handle before the wiring ticks; the record already holds a character.
+	rig = _root_rig(false)
+	gr = rig["gr"]
+	ui = rig["ui"]
+	var reg: PlayerRegistry = gr._registry
+	var pid := reg.mint_player_id()
+	reg.set_local_player(pid)
+	assert_eq(reg.create_character(pid, VALID, 1000), "", "the host's record holds a character")
+	ui.set_own_handle(reg.public_handle(pid))
+	gr._creation_wiring.tick(0.0)
+	ui.refresh_character()
+	assert_false(ui._sheet_create_button.visible, "the host's own sheet hides the button once its record is created")
+	assert_false(gr._creation_wiring.sync_ui(), "and stays in step without re-rendering every frame")
+	_free_rig(rig)
+
+
+## Phase 221 — Back and Esc close a screen opened from the sheet and free the body; a host refusal keeps it usable
+## with the reason, and `already_created` offers the way back even on the first-join offer.
+func _test_back_closes() -> void:
+	var rig := _root_rig(false)
+	var gr: Node = rig["gr"]
+	var ui: Node = rig["ui"]
+	var reg: PlayerRegistry = gr._registry
+	var pid := reg.mint_player_id()
+	reg.set_local_player(pid)
+	gr._creation_wiring.sync_ui()
+	ui.refresh_character()
+	ui._sheet_create_button.pressed.emit()
+	assert_true(ui.is_creation_open(), "the sheet's button opens the screen")
+	assert_true(gr._player.creation_hold, "and holds the body")
+	var back: Button = ui.creation_screen.find_child("Back", true, false)
+	assert_true(back != null and back.visible, "with a Back button")
+	back.pressed.emit()
+	assert_false(ui.is_creation_open(), "Back hides the screen")
+	assert_false(gr._player.creation_hold, "and world input is unfrozen")
+	ui._sheet_create_button.pressed.emit()
+	var esc := InputEventKey.new()
+	esc.keycode = KEY_ESCAPE
+	esc.pressed = true
+	assert_true(ui.creation_screen.handle_key(esc), "Esc is taken")
+	assert_false(ui.is_creation_open(), "and hides the screen")
+	assert_false(gr._player.creation_hold, "and unfreezes world input")
+	# The first-join offer has no Back: it is left by entering or skipping.
+	ui.show_creation()
+	assert_false(back.visible, "the first-join offer has no Back")
+	assert_false(ui.creation_screen.handle_key(esc), "nor closes on Esc")
+	# The host already holds a character this screen did not know about: it refuses, the screen stays usable.
+	assert_eq(reg.create_character(pid, VALID, 1000), "", "the record gains a character elsewhere")
+	reg._creation_tries.clear()
+	var other := VALID.duplicate()
+	other["name"] = "Hikari"
+	GameBus.character_creation_intent.emit("create", other, "")
+	assert_true(ui.is_creation_open(), "a host refusal keeps the screen up")
+	assert_eq(ui.creation_screen.error_text(), I18nScript.t("creation.refuse.already_created"), "showing the reason")
+	assert_true(back.visible, "with the way back")
+	ui.refresh_character()
+	assert_false(ui._sheet_create_button.visible, "the sheet follows the host's answer")
+	assert_true(ui.creation_screen.handle_key(esc), "Esc closes it")
+	assert_false(ui.is_creation_open(), "the screen is hidden")
+	assert_false(gr._player.creation_hold, "and world input is unfrozen")
+	# Opened from the sheet, the same refusal leaves Back working.
+	ui.show_creation({}, true)
+	reg._creation_tries.clear()
+	GameBus.character_creation_intent.emit("create", other, "")
+	assert_true(ui.is_creation_open() and back.visible, "refused from the sheet, the screen stays with Back")
+	back.pressed.emit()
+	assert_false(ui.is_creation_open(), "Back hides it")
+	assert_false(gr._player.creation_hold, "and world input is unfrozen")
+	_free_rig(rig)
+
+
 func _test_display_names() -> void:
 	var reg := _reg()
 	var made: Array = _created(reg, VALID, 1000)
@@ -383,7 +477,7 @@ func _test_display_names() -> void:
 func _test_catalog() -> void:
 	var cats: Dictionary = I18nScript.parse_csv("res://locale/ui.csv")["catalog"]
 	var keys := ["creation.title", "creation.hair", "creation.hair_color", "creation.randomize", "creation.skip",
-		"creation.name", "creation.enter", "creation.open", "creation.welcome",
+		"creation.name", "creation.enter", "creation.open", "creation.welcome", "creation.back",
 		"creation.refuse.rate_limited", "creation.refuse.already_created"]
 	for loc in ["en", "pt_BR"]:
 		for k in keys:

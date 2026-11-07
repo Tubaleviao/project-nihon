@@ -189,6 +189,9 @@ var _character_rows_signature: int = 0
 var creation_screen: Control = null
 var _creation_layer: CanvasLayer = null
 var _creation_state: Dictionary = { "state": CreationRules.STATE_NONE }
+## Phase 221 — false until this machine's own creation state was set (the registry on a host, the join snapshot on
+## a client): until then the sheet offers nothing, so a state not yet known never shows the create button.
+var _creation_known: bool = false
 var _sheet_create_button: Button = null
 
 func _ready() -> void:
@@ -896,8 +899,9 @@ static func friend_code_text(handle: String) -> String:
 # ---------------------------------------------------------------------------
 
 ## Show the creation screen (built on first use, bodies in ui_part_2). The body takes no keys while it is up.
-func show_creation(state: Dictionary = {}) -> void:
-	_m2.show_creation(state)
+## Phase 221 — `from_sheet`: opened from the Character window, so Back and Esc close it again.
+func show_creation(state: Dictionary = {}, from_sheet: bool = false) -> void:
+	_m2.show_creation(state, from_sheet)
 
 func hide_creation() -> void:
 	_m2.hide_creation()
@@ -908,7 +912,13 @@ func is_creation_open() -> bool:
 ## This machine's own creation state changed (the host's answer, or the join snapshot).
 func set_creation_state(state: Dictionary) -> void:
 	_creation_state = CreationRules.sanitize_state(state)
+	_creation_known = true
 	refresh_character()
+
+## Phase 221 — the Character window offers the creation screen only while the host's state for this player is
+## known and no character exists (a character is created once; `already_created` stays the host's rule).
+func creation_button_shown() -> bool:
+	return _creation_known and not CreationRules.is_created(_creation_state)
 
 ## The name the local player is shown by on the character sheet.
 func own_display_name() -> String:

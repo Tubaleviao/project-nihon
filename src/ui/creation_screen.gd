@@ -37,6 +37,9 @@ const ICONS := {
 const HAIR_ICON_FORMAT := "icons/hair/%s.png.raw"
 ## 9-slice patch margins (px), the same on every side.
 const PANEL_MARGIN := 12
+## Phase 221 — Back (or Esc) on a screen opened from the Character window; the UI hides it and frees the body.
+signal back_requested
+
 const FRAME_MARGIN := 16
 const BUTTON_MARGIN := 8
 ## Layout sizes (px).
@@ -68,6 +71,10 @@ var _colors: GridContainer
 var _gender_buttons: Dictionary = {}
 var _texts: Array = []   # [control, property, key] re-rendered on a locale change
 var _doll_key := ""
+## Phase 221 — true when the screen may be closed back to the world (opened from the Character window, or the host
+## said the character already exists). The first-join offer is left by entering or skipping.
+var closable: bool = false
+var _back: Button
 
 
 func _init() -> void:
@@ -229,6 +236,13 @@ func _build() -> void:
 	_tr(random_button, "tooltip_text", "creation.randomize")
 	_skin_button(random_button)
 	random_button.pressed.connect(func() -> void: randomize_choice())
+	_back = Button.new()
+	_back.name = "Back"
+	_tr(_back, "text", "creation.back")
+	_skin_button(_back)
+	_back.pressed.connect(back)
+	_back.visible = closable
+	bottom.add_child(_back)
 	bottom.add_child(random_button)
 	var skip_button := Button.new()
 	skip_button.name = "Skip"
@@ -410,6 +424,35 @@ func submit() -> void:
 		return
 	show_refusal("")
 	GameBus.character_creation_intent.emit("create", c, "")
+
+
+## Phase 221 — offer (or withdraw) the way back to the world.
+func set_closable(on: bool) -> void:
+	closable = on
+	if _back != null:
+		_back.visible = on
+
+
+## Phase 221 — leave the screen without creating: only when it is closable.
+func back() -> void:
+	if closable:
+		back_requested.emit()
+
+
+## Phase 221 — Esc closes a closable screen. True when the key was taken.
+func handle_key(event: InputEvent) -> bool:
+	if not visible or not closable or not (event is InputEventKey):
+		return false
+	var key := event as InputEventKey
+	if not key.pressed or key.echo or key.keycode != KEY_ESCAPE:
+		return false
+	back()
+	return true
+
+
+func _input(event: InputEvent) -> void:
+	if handle_key(event) and is_inside_tree():
+		get_viewport().set_input_as_handled()
 
 
 func skip() -> void:

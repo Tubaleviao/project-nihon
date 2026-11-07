@@ -415,7 +415,8 @@ func build_trade_content() -> Control:
 # ---------------------------------------------------------------------------
 
 ## Show the creation screen, built on first use on its own layer above the windows; the body takes no keys.
-func show_creation(state: Dictionary) -> void:
+## Phase 221 — `from_sheet`: opened from the Character window, so the screen offers Back and closes on Esc.
+func show_creation(state: Dictionary, from_sheet: bool = false) -> void:
 	if not state.is_empty():
 		sl.set_creation_state(state)
 	if sl.creation_screen == null:
@@ -425,9 +426,12 @@ func show_creation(state: Dictionary) -> void:
 		sl.add_child(sl._creation_layer)
 		sl.creation_screen = sl.CreationScreen.new()
 		sl.creation_screen.visual_builder = _creation_visual
+		sl.creation_screen.back_requested.connect(hide_creation)
 		if sl.character_slice != null:
 			sl.creation_screen.palette = sl.character_slice.palette_color
 		sl._creation_layer.add_child(sl.creation_screen)
+	sl.creation_screen.set_closable(from_sheet)
+	sl.creation_screen.show_refusal("")
 	sl.creation_screen.visible = true
 	sl.creation_screen.refresh()
 	if sl.player_slice != null:
@@ -454,6 +458,9 @@ func on_creation_resolved(_player_id: String, action: String, reason: String, st
 	if reason != "":
 		if sl.creation_screen != null:
 			sl.creation_screen.show_refusal(reason)
+			# Phase 221 — the character already exists: nothing is left to do here, so the way back is offered.
+			if reason == "already_created":
+				sl.creation_screen.set_closable(true)
 		return
 	hide_creation()
 	if action == "create":

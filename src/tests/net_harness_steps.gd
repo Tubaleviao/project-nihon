@@ -53,6 +53,60 @@ func chest_take_refused(h: Node) -> void:
 	var ok: bool = pack_same and no_view
 	h._report("chest_take_refused", h.verdict(ok, true), "take-refused-chest-unchanged" if ok else "pack%d-view%d" % [int(pack_same), int(no_view)])
 
+## Phase 221 — the Character window's create button follows the host's record. Before `create_character` the client
+## skips: the host records "skipped" and the client's sheet offers the button. After it, the host records a character
+## and the client's sheet hides it. A listen host's own sheet is judged the same way; a dedicated one has none.
+const CreationRules := preload("res://src/character/creation_rules.gd")
+func _button_matches(h: Node, state: Dictionary) -> bool:
+	var ui: Node = h._root._ui
+	if ui == null:
+		return false
+	ui.refresh_character()
+	var want: bool = not CreationRules.is_created(state)
+	var button_ok: bool = ui._sheet_create_button == null or ui._sheet_create_button.visible == want
+	return ui._creation_known and ui.creation_button_shown() == want and button_ok
+
+func _ui_state(h: Node) -> String:
+	var ui: Node = h._root._ui
+	if ui == null:
+		return "no_ui"
+	return "known%d-shown%d-button%s-ui_%s-own_%s" % [int(ui._creation_known), int(ui.creation_button_shown()),
+		"none" if ui._sheet_create_button == null else str(int(ui._sheet_create_button.visible)),
+		str(ui._creation_state.get("state", "")), str(h._root._creation_wiring.own_state().get("state", ""))]
+
+func creation_skip_button(h: Node) -> void:
+	const DETAIL := "skipped-button-offered"
+	if h._role == "host":
+		var bound: String = h._live_bound_id()
+		var skipped: bool = await h._await_until(func():
+			return str(h._root._registry.creation_of(bound).get("state", "")) == CreationRules.STATE_SKIPPED, h._step_timeout())
+		# A dedicated host has no sheet of its own: only its record of the client is judged there.
+		var own_ok: bool = h._root._is_server or await h._await_until(func(): return _button_matches(h, h._root._creation_wiring.own_state()), h._step_timeout())
+		var ok: bool = skipped and own_ok
+		h._report("creation_skip_button", h.verdict(ok, true), DETAIL if ok else "skipped%d-own%d-%s" % [int(skipped), int(own_ok), _ui_state(h)])
+		return
+	h._creations_seen.clear()
+	GameBus.character_creation_intent.emit("skip", {}, "")
+	var answered: bool = await h._await_until(func(): return not h._creations_seen.is_empty(), h._step_timeout())
+	var skipped: bool = answered and str(h._creations_seen[0][1]) == ""
+	var state: Dictionary = h._root._creation_wiring.own_state()
+	var button_ok: bool = str(state.get("state", "")) == CreationRules.STATE_SKIPPED and _button_matches(h, state)
+	await h._await_settle(1.0)   # past the host's per-player creation rate limit, before `create_character`
+	var ok: bool = skipped and button_ok
+	h._report("creation_skip_button", h.verdict(ok, true), DETAIL if ok else "skipped%d-button%d-%s" % [int(skipped), int(button_ok), str(h._creations_seen)])
+
+func creation_button_synced(h: Node) -> void:
+	const DETAIL := "created-button-hidden"
+	var created := func() -> bool:
+		var state: Dictionary = h._root._creation_wiring.own_state()
+		return CreationRules.is_created(state) and (h._root._is_server or _button_matches(h, state))
+	var ok: bool = await h._await_until(created, h._step_timeout())
+	if h._role == "host":
+		var peer_created: bool = CreationRules.is_created(h._root._registry.creation_of(h._live_bound_id()))
+		h._report("creation_button_synced", h.verdict(ok and peer_created, true), DETAIL if ok and peer_created else "own%d-peer%d-%s" % [int(ok), int(peer_created), _ui_state(h)])
+		return
+	h._report("creation_button_synced", h.verdict(ok, true), DETAIL if ok else "button_shown-%s" % str(h._root._creation_wiring.own_state().get("state", "")))
+
 ## Phase 209 — the host hands the client's player a book about a technology neither of them knows. The client
 ## reads it: the client's player learns it (host record and client mirror), and the host's own player does not.
 const BOOK_ITEM := "BookTechBasicSmithing"

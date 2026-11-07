@@ -39,8 +39,25 @@ func tick(_delta: float) -> void:
 	# The host's own player has no handshake to learn its handle from: the registry derives it.
 	if not root._is_client and root._ui != null and root._ui.own_handle == "" and root._registry.local_player_id != "":
 		root._ui.set_own_handle(root._registry.public_handle(root._registry.local_player_id))
-		root._ui.set_creation_state(own_state())
+	sync_ui()
 	maybe_offer()
+
+## Phase 221 — the UI's copy of this machine's creation state follows the authority: the registry on a host, the
+## host's last word on a client (once known). The boot used to set the host's handle before this ran, which left the
+## UI at "none" while the record said "created", so the sheet offered a creation the host then refused.
+## Returns true when the UI was updated now.
+func sync_ui() -> bool:
+	if root._ui == null or root._is_server:
+		return false
+	if root._is_client and not _own_known:
+		return false
+	if not root._is_client and root._registry.local_player_id == "":
+		return false
+	var state := own_state()
+	if root._ui._creation_known and root._ui._creation_state == state:
+		return false
+	root._ui.set_creation_state(state)
+	return true
 
 ## Show the creation screen when this machine has one, its boot is over and its own state is still "none".
 ## Returns true when it was shown now.

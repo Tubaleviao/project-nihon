@@ -431,6 +431,7 @@ creation.skip,Skip for now,Pular por enquanto
 creation.name,Name,Nome
 creation.enter,Enter the world,Entrar no mundo
 creation.open,Create character,Criar personagem
+creation.back,Back,Voltar
 creation.welcome,"Welcome, {0}!","Bem-vindo(a), {0}!"
 bed.placed,Your bed is now where you come back after death.,Sua cama agora é onde você volta depois de morrer.
 bed.lost,"Your bed is gone, so you will come back at the world spawn.","Sua cama sumiu, então você voltará ao ponto de entrada do mundo."

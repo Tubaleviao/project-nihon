@@ -202,7 +202,9 @@ static func steps() -> Array:
 		{ "name": "carcass_synced", "compare": true },
 		{ "name": "admin_moves_synced", "compare": true },
 		{ "name": "attributes_synced", "compare": true },
+		{ "name": "creation_skip_button", "compare": true },
 		{ "name": "create_character", "compare": true },
+		{ "name": "creation_button_synced", "compare": true },
 		{ "name": "world_regen_synced", "compare": true },
 		{ "name": "structure_damage", "compare": true },
 		{ "name": "chest_take_refused", "compare": true },
@@ -456,7 +458,9 @@ func run(root: Node, role: String) -> void:
 	await _step_carcass_synced()
 	await _step_admin_moves_synced()
 	await _step_attributes_synced()
+	await LateSteps.new().creation_skip_button(self)
 	await _step_create_character()
+	await LateSteps.new().creation_button_synced(self)
 	await _step_world_regen_synced()
 	await _step_structure_damage()
 	await LateSteps.new().chest_take_refused(self)
