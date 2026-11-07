@@ -193,6 +193,23 @@ func _build_map_content() -> Control:
 	here.focus_mode = Control.FOCUS_NONE
 	here.pressed.connect(func() -> void: sl.map_window.center_on_player())
 	row.add_child(here)
+	# Phase 53 — the friend code: the handle another player enters to spawn beside this one. Phase 222 — it and
+	# the spawn notice sit here, beside the player's place in the world, so the Character window fits.
+	var code_row := HBoxContainer.new()
+	code_row.add_theme_constant_override("separation", 6)
+	sl._friend_code_label = Label.new()
+	sl._friend_code_label.text = sl.friend_code_text(sl.own_handle)
+	code_row.add_child(sl._friend_code_label)
+	sl._friend_code_copy = Button.new()
+	sl._set_tr(sl._friend_code_copy, "text", "ui.copy")
+	sl._friend_code_copy.focus_mode = Control.FOCUS_NONE
+	sl._friend_code_copy.pressed.connect(sl._on_copy_friend_code_pressed)
+	code_row.add_child(sl._friend_code_copy)
+	box.add_child(code_row)
+	sl._spawn_notice_label = Label.new()
+	sl._spawn_notice_label.add_theme_font_size_override("font_size", 13)
+	sl._spawn_notice_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(sl._spawn_notice_label)
 	return box
 
 ## (Re)build the control rows in the active language.

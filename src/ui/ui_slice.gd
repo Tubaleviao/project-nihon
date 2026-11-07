@@ -41,6 +41,8 @@ const WINDOW_PROPOSALS  := "proposals"
 const WINDOW_CONTROLS   := "controls"
 const WINDOW_ATTRIBUTES := "attributes"   # Phase 214 — the Phase 179 character window, split in two
 const WINDOW_EQUIPMENT  := "equipment"
+const MIN_VIEWPORT_SIZE := Vector2(1152, 648)   # Phase 222 — the base size; `canvas_items` + `expand` never goes below
+const FIT_ON_OPEN := [WINDOW_ATTRIBUTES, WINDOW_EQUIPMENT]
 const WINDOW_SKILLS     := "skills"
 const WINDOW_MAP        := "map"
 const WINDOW_SETTLEMENT := "settlement"
@@ -124,7 +126,8 @@ var _inventory_empty: Label = null
 var _character_stats: Label = null
 ## Phase 53 — the player's own public handle (their friend code) and the spawn note.
 var own_handle: String = ""
-var _friend_code_label: Label = null
+var _friend_code_label: Label = null   # Phase 222 — it, its Copy button and the notice live in the map window
+var _friend_code_copy: Button = null
 var _spawn_notice_label: Label = null
 ## Phase 117 — the HUD toast channel: a bounded, de-duplicated queue shown one at a time.
 const TOAST_MAX := 8
@@ -146,6 +149,8 @@ var _sheet_name: Label = null
 var _sheet_attributes: VBoxContainer = null
 var _sheet_stats: GridContainer = null
 var _sheet_skills: HBoxContainer = null
+var _sheet_specialty: VBoxContainer = null   # Phase 222 — in the scroll below the attributes; the respawn / build-as row
+var _sheet_own_row: HBoxContainer = null
 var _sheet_signature: int = 0
 var _doll_signature: int = 0
 var _slot_menu: PopupMenu = null
@@ -395,6 +400,9 @@ func open_window(panel: String) -> void:
 	p.visible = true
 	p.position = clamp_window_position(p.position, p.size, _viewport_size())
 	refresh_all()
+	# Phase 222 — the Character windows open wholly on screen, at the size their refreshed content needs.
+	if panel in FIT_ON_OPEN:
+		p.position = fit_window_position(p.position, p.custom_minimum_size.max(p.get_combined_minimum_size()), _viewport_size())
 	GameBus.tutorial_event.emit("window_opened", { "window": panel })   # Phase 186
 
 func close_window(panel: String) -> void:
