@@ -50,6 +50,7 @@ const WINDOW_GESTURES  := "gestures"
 const WINDOW_ADMIN     := "admin"   # Phase 182 — admins only (`is_admin`)
 
 const WindowShortcuts := preload("res://src/ui/window_shortcuts.gd")
+const InputLabels := preload("res://src/ui/input_labels.gd")   # Phase 220
 ## Phase 214 — {window, keycode} rows, Alt implied; the only place a window letter is written.
 const WINDOW_SHORTCUTS: Array = WindowShortcuts.TABLE
 const TutorialCard := preload("res://src/tutorial/tutorial_card.gd")
@@ -634,23 +635,10 @@ func bag_contents() -> Dictionary: return _m2.bag_contents()
 ## The `?` legend, moved here from the always-on HUD panel. Each row:
 ## { action, keys, desc, mouse } where `mouse` is a MouseButton for a drawn cue, or 0. `action` is the
 ## id a tutorial step names in `inputs` (Phase 184, `Tutorial.inputActions`), in this row order.
-## Phase 220 — the keyboard keys bound to an input action in the action map, joined with " · " ("Space"),
-## so the legend follows project.godot. "" for an unknown action or one with no key bound.
-static func action_keys(action: String) -> String:
-	if not InputMap.has_action(action):
-		return ""
-	var out: PackedStringArray = []
-	for ev in InputMap.action_get_events(action):
-		if ev is InputEventKey:
-			var code: Key = ev.keycode if ev.keycode != KEY_NONE else ev.physical_keycode
-			if code != KEY_NONE:
-				out.append(OS.get_keycode_string(code))
-	return " · ".join(out)
-
 static func controls_rows() -> Array:
 	return [
 		{"action": "move", "keys": "WASD", "desc": I18n.t("controls.row0"), "mouse": 0},
-		{"action": "jump", "keys": action_keys("jump"), "desc": I18n.t("controls.row1"), "mouse": 0},
+		{"action": "jump", "keys": InputLabels.action_keys("jump"), "desc": I18n.t("controls.row1"), "mouse": 0},
 		{"action": "look", "keys": I18n.t("controls.key.hold"), "desc": I18n.t("controls.row2"), "mouse": MOUSE_BUTTON_RIGHT},
 		{"action": "zoom", "keys": I18n.t("controls.key.scroll"), "desc": I18n.t("controls.row3"), "mouse": 0},
 		{"action": "hotbar_use", "keys": "1 – 9", "desc": I18n.t("controls.row4"), "mouse": 0},

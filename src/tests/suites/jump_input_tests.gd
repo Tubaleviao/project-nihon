@@ -4,6 +4,7 @@ extends "res://src/tests/test_support.gd"
 ## Enter on the floor opens chat without starting a jump while Space jumps.
 
 const UiSliceScript := preload("res://src/ui/ui_slice.gd")
+const InputLabels := preload("res://src/ui/input_labels.gd")
 const PlayerSliceScript := preload("res://src/player/player_slice.gd")
 const ChatSliceScript := preload("res://src/chat/chat_slice.gd")
 
@@ -44,13 +45,13 @@ func _test_jump_action_binding() -> void:
 	assert_false(src.contains("ui_accept"), "player_slice.gd no longer reads ui_accept")
 
 func _test_jump_controls_row() -> void:
-	assert_eq(UiSliceScript.action_keys("jump"), "Space", "the jump action's key reads Space")
-	assert_eq(UiSliceScript.action_keys("no_such_action"), "", "an unknown action has no keys")
+	assert_eq(InputLabels.action_keys("jump"), "Space", "the jump action's key reads Space")
+	assert_eq(InputLabels.action_keys("no_such_action"), "", "an unknown action has no keys")
 	var found := false
 	for row in UiSliceScript.controls_rows():
 		if str(row["action"]) == "jump":
 			found = true
-			assert_eq(str(row["keys"]), UiSliceScript.action_keys("jump"), "the jump row shows the action map's binding")
+			assert_eq(str(row["keys"]), InputLabels.action_keys("jump"), "the jump row shows the action map's binding")
 	assert_true(found, "the legend has a jump row")
 
 func _test_enter_opens_chat_space_jumps() -> void:
