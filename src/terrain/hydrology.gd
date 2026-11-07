@@ -36,7 +36,7 @@ const FEATURE_CACHE_MAX := 8192
 ## the point, cached apart from the chunk features: a ring rebuild samples over 8,000 distinct far chunks,
 ## which cleared the chunk cache every rebuild and cost one ~0.2 ms feature build per sample.
 const BLOCK_M := 512.0
-const BLOCK_CACHE_MAX := 16384   ## a ring rebuild reads about 3,000 blocks, a moved one about 650 new ones
+const BLOCK_CACHE_MAX := 16384   ## a ring rebuild reads about 3,000 blocks, a moved one about 650 new ones; ~2 KB each, so ~32 MB at most
 
 static var _mutex := Mutex.new()
 static var _rivers: Dictionary = {}   # seed → { Vector2i cell → river Dictionary }
@@ -274,6 +274,7 @@ static func block_features(block: Vector2i, seed_v: int) -> Dictionary:
 	_mutex.lock()
 	var by_seed: Variant = _blocks.get(seed_v)
 	var hit: Variant = (by_seed as Dictionary).get(block) if by_seed != null else null
+	var gen := _gen
 	_mutex.unlock()
 	if hit != null:
 		return hit
@@ -281,6 +282,9 @@ static func block_features(block: Vector2i, seed_v: int) -> Dictionary:
 	var z0 := float(block.y) * BLOCK_M
 	var built := _features_in(seed_v, x0, z0, x0 + BLOCK_M, z0 + BLOCK_M)
 	_mutex.lock()
+	if gen != _gen:   # reset while building (a worker outlived it): the result is returned, not stored
+		_mutex.unlock()
+		return built
 	if _blocks_n >= BLOCK_CACHE_MAX:
 		_blocks.clear()
 		_blocks_n = 0
