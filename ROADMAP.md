@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–219, 222 and 223 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–220 and 223 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -37,7 +37,7 @@ because the menus reuse the keyboard routing Phase 219 fixes.
 | Phase | Title | Status |
 |---|---|---|
 | 219 | A focused text field owns the keyboard: no reversed text, no movement, jumps or hotkeys while typing | Done ([phases-219.md](docs/roadmap-history/phases-219.md)) |
-| 220 | Enter never jumps: a `jump` action on Space only | Open |
+| 220 | Enter never jumps: a `jump` action on Space only | Done ([phases-220.md](docs/roadmap-history/phases-220.md)) |
 | 221 | Re-creating a character from the Character window | Open |
 | 222 | The Character window fits: fewer rows, the friend code moves to the map | Done ([phases-222.md](docs/roadmap-history/phases-222.md)) |
 | 223 | A main menu: play a local world or join a server | Done ([phases-223.md](docs/roadmap-history/phases-223.md)) |
@@ -77,22 +77,6 @@ The arc starts after Phase 226, because the keypair identifies the player (the a
 | 229 | Skills capped by the gear: advanced abilities need a weapon of their tier, advanced recipes a tool and station of theirs | Open |
 | 230 | Characters across worlds: signed progress, an import policy per world | Open |
 | 231 | Cosmetics bound to the key: they travel and cannot be shared | Open |
-
-## Phase 220 — Enter never jumps
-
-Jump is read from the built-in `ui_accept` action, which Godot binds to Enter, Keypad Enter and
-Space, so Enter both opens chat and jumps. Flight's "up" uses the same action.
-
-- Add a `jump` input action bound to Space only (and the gamepad's south button, if a pad is mapped)
-  in `project.godot`, and read it for jump and fly-up instead of `ui_accept`. `ui_accept` stays for
-  GUI buttons.
-- The controls list in the UI (`ui_slice.gd`, the `jump` row) shows the binding from the action map.
-
-**Acceptance criteria**
-- A suite test asserts the `jump` action has Space and not Enter or Keypad Enter, and that
-  `player_slice.gd` no longer reads `ui_accept`.
-- A suite test presses Enter with the character on the floor and no field focused: the chat field
-  takes focus and no jump starts. Pressing Space jumps.
 
 ## Phase 221 — Re-creating a character from the Character window
 

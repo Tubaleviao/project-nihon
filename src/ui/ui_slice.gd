@@ -51,6 +51,7 @@ const WINDOW_GESTURES  := "gestures"
 const WINDOW_ADMIN     := "admin"   # Phase 182 — admins only (`is_admin`)
 
 const WindowShortcuts := preload("res://src/ui/window_shortcuts.gd")
+const InputLabels := preload("res://src/ui/input_labels.gd")   # Phase 220
 ## Phase 214 — {window, keycode} rows, Alt implied; the only place a window letter is written.
 const WINDOW_SHORTCUTS: Array = WindowShortcuts.TABLE
 const TutorialCard := preload("res://src/tutorial/tutorial_card.gd")
@@ -641,32 +642,8 @@ func inventory_rows() -> Array:
 func bag_contents() -> Dictionary: return _m2.bag_contents()
 
 
-## The `?` legend, moved here from the always-on HUD panel. Each row:
-## { action, keys, desc, mouse } where `mouse` is a MouseButton for a drawn cue, or 0. `action` is the
-## id a tutorial step names in `inputs` (Phase 184, `Tutorial.inputActions`), in this row order.
-static func controls_rows() -> Array:
-	return [
-		{"action": "move", "keys": "WASD", "desc": I18n.t("controls.row0"), "mouse": 0},
-		{"action": "jump", "keys": "Space", "desc": I18n.t("controls.row1"), "mouse": 0},
-		{"action": "look", "keys": I18n.t("controls.key.hold"), "desc": I18n.t("controls.row2"), "mouse": MOUSE_BUTTON_RIGHT},
-		{"action": "zoom", "keys": I18n.t("controls.key.scroll"), "desc": I18n.t("controls.row3"), "mouse": 0},
-		{"action": "hotbar_use", "keys": "1 – 9", "desc": I18n.t("controls.row4"), "mouse": 0},
-		{"action": "hotbar_expand", "keys": "▴", "desc": I18n.t("controls.row5"), "mouse": 0},
-		{"action": "drag", "keys": I18n.t("controls.key.drag"), "desc": I18n.t("controls.row6"), "mouse": 0},
-		{"action": "attack", "keys": "", "desc": I18n.t("controls.row7"), "mouse": MOUSE_BUTTON_LEFT},
-		{"action": "mine", "keys": "Shift +", "desc": I18n.t("controls.row8"), "mouse": MOUSE_BUTTON_LEFT},
-		{"action": "place", "keys": "", "desc": I18n.t("controls.row9"), "mouse": MOUSE_BUTTON_MIDDLE},
-		{"action": "next_block", "keys": "R", "desc": I18n.t("controls.row10"), "mouse": 0},
-		{"action": "station", "keys": "B · V", "desc": I18n.t("controls.row11"), "mouse": 0},
-		{"action": "tame", "keys": "G", "desc": I18n.t("controls.row12"), "mouse": 0},
-		{"action": "mount", "keys": "M", "desc": I18n.t("controls.row19"), "mouse": 0},
-		{"action": "equipment", "keys": "E", "desc": I18n.t("controls.row13"), "mouse": 0},
-		{"action": "chest", "keys": "U · Shift+U · Ctrl+U", "desc": I18n.t("controls.row18"), "mouse": 0},
-		{"action": "windows", "keys": WindowShortcuts.all_labels(), "desc": I18n.t("controls.row14"), "mouse": 0},
-		{"action": "controls", "keys": "?", "desc": I18n.t("controls.row15"), "mouse": 0},
-		{"action": "chat", "keys": "Enter · /", "desc": I18n.t("controls.row16"), "mouse": 0},
-		{"action": "close", "keys": "ESC", "desc": I18n.t("controls.row17"), "mouse": 0},
-	]
+## The `?` legend rows ({ action, keys, desc, mouse }); built in `input_labels.gd` (Phase 220).
+static func controls_rows() -> Array: return InputLabels.controls_rows()
 
 func inventory_usage_text() -> String:
 	if inventory_slice == null:

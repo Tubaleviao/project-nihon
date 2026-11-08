@@ -47,6 +47,8 @@ chat.your_pos_unknown,Your position is unknown.,Sua posição é desconhecida.
 controls.key.drag,Drag,Arrastar
 controls.key.hold,Hold,Segurar
 controls.key.scroll,Scroll,Rolar
+controls.key.space,Space,Espaço
+controls.key.pad_south,Pad A,Botão A do controle
 controls.row0,Move,Mover
 controls.row1,Jump,Pular
 controls.row10,Next placeable block,Próximo bloco colocável

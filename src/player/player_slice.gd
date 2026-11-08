@@ -346,9 +346,9 @@ func wish_direction() -> Vector3:
 	if WindowShortcuts.walk_down(KEY_D): dir.x += 1.0
 	return dir
 
-## True when a jump starts this frame (the body still has to be on the floor and not flying or swimming).
+## True when the `jump` action (Space, never Enter: Phase 220) starts a jump this frame; the body must still be on the floor.
 func jump_requested() -> bool:
-	return keys_live() and Input.is_action_just_pressed("ui_accept")
+	return keys_live() and Input.is_action_just_pressed("jump")
 
 ## Phase 85 — true while the right button is held: the mouse is captured and moves the camera.
 func is_looking() -> bool:
@@ -947,7 +947,7 @@ func _move(delta: float) -> void:
 	# Apply gravity.
 	if flying:
 		# Phase 182 — no gravity: Space climbs, Ctrl sinks, neither hovers.
-		_vel.y = fly_vertical(Input.is_action_pressed("ui_accept") and keys_live(), Input.is_key_pressed(KEY_CTRL) and keys_live())
+		_vel.y = fly_vertical(Input.is_action_pressed("jump") and keys_live(), Input.is_key_pressed(KEY_CTRL) and keys_live())
 	elif swimming:
 		_vel.y = swim_vertical_velocity(_body.global_position.y, TerrainSlice.Hydrology.level_for(terrain_slice, _body.global_position.x, _body.global_position.z))
 	elif not _body.is_on_floor():
