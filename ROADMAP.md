@@ -38,7 +38,7 @@ because the menus reuse the keyboard routing Phase 219 fixes.
 |---|---|---|
 | 219 | A focused text field owns the keyboard: no reversed text, no movement, jumps or hotkeys while typing | Done ([phases-219.md](docs/roadmap-history/phases-219.md)) |
 | 220 | Enter never jumps: a `jump` action on Space only | Done ([phases-220.md](docs/roadmap-history/phases-220.md)) |
-| 221 | Re-creating a character from the Character window | Open |
+| 221 | Re-creating a character from the Character window | Done ([phases-221.md](docs/roadmap-history/phases-221.md)) |
 | 222 | The Character window fits: fewer rows, the friend code moves to the map | Done ([phases-222.md](docs/roadmap-history/phases-222.md)) |
 | 223 | A main menu: play a local world or join a server | Done ([phases-223.md](docs/roadmap-history/phases-223.md)) |
 | 224 | The Esc menu: resume, options, exit to main menu, quit | Open |
@@ -77,32 +77,6 @@ The arc starts after Phase 226, because the keypair identifies the player (the a
 | 229 | Skills capped by the gear: advanced abilities need a weapon of their tier, advanced recipes a tool and station of theirs | Open |
 | 230 | Characters across worlds: signed progress, an import policy per world | Open |
 | 231 | Cosmetics bound to the key: they travel and cannot be shared | Open |
-
-## Phase 221 — Re-creating a character from the Character window
-
-Found in play: the Character window's "Create character" button (`ui_part_1.gd`, shown while
-`CreationRules.is_created` is false for this machine's creation state) opens the creation screen, but
-the player is stuck on it, and "Enter the world" is refused with `creation.refuse.already_created`
-("This character already exists") whatever the name. So the client believes the character is not
-created while the host has it as created, and the screen has no way out after a refusal.
-
-- Find where the client's creation state and the host's diverge (a skipped creation, a state synced
-  before the record loaded, or a local listen host reading another player's record) and make the
-  button's visibility follow the host's synced state.
-- Once a character exists the button is hidden (decided by the owner, 2026-11-06): a character is
-  created once and never re-created in place (`already_created` stays the host's rule). Another
-  character, starting from scratch, is made from the main menu (Phase 226). Changing hair style or
-  colour later is a separate screen gated on crafted items (Deferred).
-- The creation screen can always be closed back to the world (a Back button and Esc) when it was
-  opened from the Character window, and a host refusal leaves it usable, showing the reason.
-
-**Acceptance criteria**
-- A suite test creates a character, syncs the state to a client UI and asserts the Character
-  window's create button is hidden.
-- A suite test opens the creation screen from the Character window, presses Back and asserts the
-  screen is hidden and world input is unfrozen; the same after a host `already_created` refusal.
-- A net harness step: a client that skipped creation and one that created both see the button state
-  the host's record implies.
 
 ## Phase 224 — The Esc menu
 

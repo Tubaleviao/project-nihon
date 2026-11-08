@@ -177,9 +177,10 @@ func _refresh_sheet() -> void:
 	var panel_rows := rows.filter(func(r): return str(r["section"]) != "slot")
 	var signature: int = panel_rows.hash()
 	sl._sheet_name.text = sl.own_display_name()
-	# Phase 181 — the creation screen stays reachable from the sheet until a character exists.
+	# Phase 181 — the creation screen stays reachable from the sheet until a character exists (Phase 221: as the
+	# host's synced state says).
 	if sl._sheet_create_button != null:
-		sl._sheet_create_button.visible = not sl.CreationRules.is_created(sl._creation_state)
+		sl._sheet_create_button.visible = sl.creation_button_shown()
 	_refresh_doll()
 	if signature == sl._sheet_signature and sl._sheet_attributes.get_child_count() > 0:
 		return
@@ -318,7 +319,7 @@ func build_attributes_content() -> Control:
 	vbox.add_child(sl._sheet_name)
 	sl._sheet_create_button = Button.new()
 	sl._set_tr(sl._sheet_create_button, "text", "creation.open")
-	sl._sheet_create_button.pressed.connect(func() -> void: sl.show_creation())
+	sl._sheet_create_button.pressed.connect(func() -> void: sl.show_creation({}, true))
 	vbox.add_child(sl._sheet_create_button)
 	# Phase 205 — respawn at will (`SelfRespawn.menuButton`), and who owns what the player builds next. Each is
 	# the matching chat command, so the host applies its own rules (cooldown, clan membership) either way.
