@@ -4,6 +4,31 @@ extends RefCounted
 const UiIcons := preload("res://src/ui/ui_icons.gd")
 
 var sl: Node
+## Phase 222 — the friend code's Copy button (in the map window), the specialty (in the Attributes scroll, below
+## the attributes) and the respawn / build-as row.
+var friend_code_copy: Button = null
+var sheet_specialty: VBoxContainer = null
+var sheet_own_row: HBoxContainer = null
+## Phase 222 — windows that open wholly on screen, at the size their refreshed content needs. The others
+## only keep a margin on screen (`clamp_window_position`), so a window dragged half off stays there.
+const FIT_ON_OPEN := ["attributes", "equipment", "map"]
+
+func place_on_open(key: String, p: Control) -> void:
+	if key in FIT_ON_OPEN:
+		p.reset_size()   # the size the refreshed content needs, not a stale one
+		p.position = sl.fit_window_position(p.position, p.size, sl._viewport_size())
+	else:
+		p.position = sl.clamp_window_position(p.position, p.size, sl._viewport_size())
+
+## Phase 222 — the spawn notice (in the map window). A longer notice can make an open map taller: re-fit it.
+func show_spawn_notice(message: String) -> void:
+	if sl._spawn_notice_label == null:
+		return
+	sl._spawn_notice_label.text = message
+	sl._spawn_notice_label.tooltip_text = message
+	var map: Control = sl._panels.get("map", null)
+	if map != null and map.visible:
+		place_on_open("map", map)
 
 func _init(slice: Node) -> void:
 	sl = slice
@@ -160,7 +185,7 @@ func _refresh_sheet() -> void:
 	if signature == sl._sheet_signature and sl._sheet_attributes.get_child_count() > 0:
 		return
 	sl._sheet_signature = signature
-	for holder in [sl._sheet_attributes, sl._sheet_stats, sl._sheet_skills]:
+	for holder in [sl._sheet_attributes, sheet_specialty, sl._sheet_stats, sl._sheet_skills]:
 		for c in holder.get_children():
 			holder.remove_child(c)
 			sl._retire(c)
@@ -199,7 +224,7 @@ func _refresh_sheet() -> void:
 				var slabel := Label.new()
 				slabel.text = str(row["name"])
 				sline.add_child(slabel)
-				sl._sheet_attributes.add_child(sline)
+				sheet_specialty.add_child(sline)
 			"stat":
 				var name_label := Label.new()
 				name_label.text = str(row["label"])
@@ -280,29 +305,14 @@ func slot_drag(_at: Vector2, item_id: String, source: Control) -> Variant:
 	sl._drag_payload = {"kind": "equipped", "id": item_id}
 	return sl._drag_payload
 
-## Phase 214 — the Phase 179 character window, split in two. Attributes: the name, friend code, the six attributes,
+## Phase 214 — the Phase 179 character window, split in two. Attributes: the name, the six attributes,
 ## derived stats and skills. Equipment (below): the paper doll and the equipment slots. `refresh_character` fills
 ## both through the same member fields.
+## Phase 222 — it fits its frame: the friend code and spawn notice moved to the map window; the name, the
+## respawn / build-as row and the attributes stay in view, and the specialty, derived stats and skills scroll.
 func build_attributes_content() -> Control:
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 6)
-	sl._character_stats = Label.new()
-	sl._character_stats.add_theme_font_size_override("font_size", 15)
-	vbox.add_child(sl._character_stats)
-	# Phase 53 — the friend code: the handle another player enters to spawn beside this one.
-	var code_row := HBoxContainer.new()
-	code_row.add_theme_constant_override("separation", 6)
-	sl._friend_code_label = Label.new()
-	sl._friend_code_label.text = sl.friend_code_text(sl.own_handle)
-	code_row.add_child(sl._friend_code_label)
-	var copy_btn := Button.new()
-	sl._set_tr(copy_btn, "text", "ui.copy")
-	copy_btn.pressed.connect(sl._on_copy_friend_code_pressed)
-	code_row.add_child(copy_btn)
-	vbox.add_child(code_row)
-	sl._spawn_notice_label = Label.new()
-	sl._spawn_notice_label.add_theme_font_size_override("font_size", 13)
-	vbox.add_child(sl._spawn_notice_label)
 	sl._sheet_name = Label.new()
 	sl._sheet_name.add_theme_font_size_override("font_size", 16)
 	sl._sheet_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -313,25 +323,41 @@ func build_attributes_content() -> Control:
 	vbox.add_child(sl._sheet_create_button)
 	# Phase 205 — respawn at will (`SelfRespawn.menuButton`), and who owns what the player builds next. Each is
 	# the matching chat command, so the host applies its own rules (cooldown, clan membership) either way.
-	var own_row := HBoxContainer.new()
-	own_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	sheet_own_row = HBoxContainer.new()
+	sheet_own_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	for entry: Array in [["structure.respawn_button", "/respawn"], ["structure.build_private", "/buildas private"], ["structure.build_clan", "/buildas clan"]]:
 		var b := Button.new()
 		sl._set_tr(b, "text", str(entry[0]))
 		b.focus_mode = Control.FOCUS_NONE
 		var line := str(entry[1])
 		b.pressed.connect(func() -> void: GameBus.chat_intent.emit(line, ""))
-		own_row.add_child(b)
-	vbox.add_child(own_row)
+		sheet_own_row.add_child(b)
+	vbox.add_child(sheet_own_row)
+	sl._character_stats = Label.new()
+	sl._character_stats.add_theme_font_size_override("font_size", 15)
+	vbox.add_child(sl._character_stats)
 	sl._sheet_attributes = VBoxContainer.new()
 	vbox.add_child(sl._sheet_attributes)
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.custom_minimum_size = Vector2(0, ATTRIBUTES_SCROLL_HEIGHT)
+	var rest := VBoxContainer.new()
+	rest.add_theme_constant_override("separation", 6)
+	rest.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(rest)
+	sheet_specialty = VBoxContainer.new()
+	rest.add_child(sheet_specialty)
 	sl._sheet_stats = GridContainer.new()
 	sl._sheet_stats.columns = 2
 	sl._sheet_stats.add_theme_constant_override("h_separation", 14)
-	vbox.add_child(sl._sheet_stats)
+	rest.add_child(sl._sheet_stats)
 	sl._sheet_skills = HBoxContainer.new()
-	vbox.add_child(sl._sheet_skills)
+	rest.add_child(sl._sheet_skills)
+	vbox.add_child(scroll)
 	return vbox
+
+## Phase 222 — the scroll's height: the window stays inside the 648 px minimum viewport.
+const ATTRIBUTES_SCROLL_HEIGHT := 200.0
 
 func build_equipment_content() -> Control:
 	var vbox := VBoxContainer.new()

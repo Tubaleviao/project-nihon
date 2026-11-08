@@ -125,7 +125,7 @@ var _inventory_empty: Label = null
 var _character_stats: Label = null
 ## Phase 53 — the player's own public handle (their friend code) and the spawn note.
 var own_handle: String = ""
-var _friend_code_label: Label = null
+var _friend_code_label: Label = null   # Phase 222 — it, its Copy button (`_m1`) and the notice live in the map window
 var _spawn_notice_label: Label = null
 ## Phase 117 — the HUD toast channel: a bounded, de-duplicated queue shown one at a time.
 const TOAST_MAX := 8
@@ -404,8 +404,8 @@ func open_window(panel: String) -> void:
 	if panel == WINDOW_CRAFTING and _repair_feedback != null:
 		_repair_feedback.text = ""
 	p.visible = true
-	p.position = clamp_window_position(p.position, p.size, _viewport_size())
 	refresh_all()
+	_m1.place_on_open(panel, p)   # Phase 222 — kept on screen; some wholly
 	GameBus.tutorial_event.emit("window_opened", { "window": panel })   # Phase 186
 
 func close_window(panel: String) -> void:
@@ -932,8 +932,7 @@ func _on_copy_friend_code_pressed() -> void:
 		DisplayServer.clipboard_set(own_handle)
 
 func _on_spawn_notice(message: String) -> void:
-	if _spawn_notice_label != null:
-		_spawn_notice_label.text = message
+	_m1.show_spawn_notice(message)
 
 ## Phase 71 — the host's world record came from another generator version.
 func _on_worldgen_version_mismatch(recorded: int, running: int) -> void:
