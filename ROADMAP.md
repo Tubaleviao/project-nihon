@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–220 and 223 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–224 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -41,7 +41,7 @@ because the menus reuse the keyboard routing Phase 219 fixes.
 | 221 | Re-creating a character from the Character window | Done ([phases-221.md](docs/roadmap-history/phases-221.md)) |
 | 222 | The Character window fits: fewer rows, the friend code moves to the map | Done ([phases-222.md](docs/roadmap-history/phases-222.md)) |
 | 223 | A main menu: play a local world or join a server | Done ([phases-223.md](docs/roadmap-history/phases-223.md)) |
-| 224 | The Esc menu: resume, options, exit to main menu, quit | Open |
+| 224 | The Esc menu: resume, options, exit to main menu, quit | Done ([phases-224.md](docs/roadmap-history/phases-224.md)) |
 | 225 | The options window: sound, graphics and game settings | Open |
 | 226 | Several characters per player: a new one starts from scratch, chosen in the main menu | Open |
 
@@ -138,33 +138,6 @@ this list.
 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km | Open |
 | 246 | The regional bake: 2 m erosion detail in 4 km regions, on demand around players | Open |
 | 247 | Ground cover: grass and bushes by biome, culled by distance | Open |
-
-## Phase 224 — The Esc menu
-
-Esc today only closes the focused window or field. With nothing open, it does nothing.
-
-- Esc closes, in order: a focused text field, the top open window, then opens a pause menu:
-  **Resume**, **Options**, **Exit to main menu**, **Quit game**. Esc again closes the menu.
-- On a listen host the world keeps running for connected players (it is an MMO); leaving saves
-  first. On a client, exit disconnects cleanly.
-- While the menu is open, world input is frozen (Phase 219's rule).
-
-**Acceptance criteria**
-- A suite test presses Esc with a window open (it closes, no menu), then again (menu opens), then
-  again (menu closes).
-- A suite test runs Exit to main menu on a listen host and asserts the save was written and the main
-  menu is shown with no world nodes left (no orphans).
-- #599 (swap-back): the root swap in `main.gd` (`_back_to_menu`) that Exit to main menu reuses
-  moves into a testable static, and a suite test drives it with a stub root (old root freed, a fresh
-  `GameRoot` with the notice).
-- #599 (address rule): `RecentServers.valid_address` and `BootWiring._valid_host_address` are one
-  function; a suite test feeds both paths the same addresses.
-- #599 (explored map): a local world's revealed map is keyed by its world folder; a suite test
-  creates two local worlds with the same seed and finds separate explored maps.
-- #599 (menu join): a net harness step boots a client from a real main menu (no `--net-harness`
-  role) through `MenuWiring.start` and joins the host.
-
-**Closes:** #599
 
 ## Phase 225 — The options window
 

@@ -545,3 +545,57 @@ func character_rows() -> Array:
 			"actions": actions,
 		})
 	return rows
+
+## Phase 224 — Esc with no text field focused (the field is left first, in `UiSlice._input`): close the top open
+## window, else open the Esc menu, else (the menu is up) close it. Returns what it did: "window", "menu_open",
+## "menu_close".
+func handle_escape() -> String:
+	if sl.is_pause_menu_open():
+		close_pause_menu()
+		return "menu_close"
+	if close_top_window():
+		return "window"
+	open_pause_menu()
+	return "menu_open"
+
+## Close the most recently opened window still open; one shown some other way (no open order) closes too.
+func close_top_window() -> bool:
+	while not sl._open_order.is_empty():
+		var top := str(sl._open_order.pop_back())
+		if sl.is_window_open(top):
+			sl.close_window(top)
+			return true
+	if sl.any_window_open():
+		sl._close_all_windows()
+		return true
+	return false
+
+## Open the Esc menu: world input stops (the body's `pause_hold`, Phase 219's rule) and a held look ends.
+func open_pause_menu() -> void:
+	if sl.pause_menu == null:
+		sl._pause_layer = CanvasLayer.new()
+		sl._pause_layer.name = "Pause"
+		sl._pause_layer.layer = 45   # above the creation screen (40)
+		sl.add_child(sl._pause_layer)
+		sl.pause_menu = sl.PauseMenuScript.new()
+		sl.pause_menu.resume_requested.connect(close_pause_menu)
+		sl.pause_menu.exit_requested.connect(_on_pause_choice.bind(GameBus.exit_to_menu_requested))
+		sl.pause_menu.quit_requested.connect(_on_pause_choice.bind(GameBus.quit_game_requested))
+		sl._pause_layer.add_child(sl.pause_menu)
+	sl.pause_menu.open()
+	if sl.player_slice != null:
+		sl.player_slice.pause_hold = true
+	GameBus.pause_menu_toggled.emit(true)
+
+func close_pause_menu() -> void:
+	if not sl.is_pause_menu_open():
+		return
+	sl.pause_menu.close()
+	if sl.player_slice != null:
+		sl.player_slice.pause_hold = false
+	GameBus.pause_menu_toggled.emit(false)
+
+## Exit to main menu / Quit game: the menu closes and the choice goes out as a local bus intent (MenuWiring).
+func _on_pause_choice(intent: Signal) -> void:
+	close_pause_menu()
+	intent.emit()

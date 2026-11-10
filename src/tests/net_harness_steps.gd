@@ -221,12 +221,12 @@ func _queued_for(net: Object, peer: int, needle: String) -> int:
 			n += 1
 	return n
 
-## Phase 223 — the main menu's join path connects. The client drops its connection, fills the menu's Join form
-## with the host's address (`MainMenu.join_choice`), applies the choice the way the menu's start does
-## (`MenuWiring.apply_choice`) and runs the shipped client boot (`GameRoot._boot_client`). The client gets its
-## world snapshot and then reports its position; the host sees a new peer connect, bind an identity and report
-## (so the host does not quit under a client whose snapshot is still crossing a slow link).
-const MainMenu := preload("res://src/menu/main_menu.gd")
+## Phase 223 — the main menu's join path connects; since Phase 224 (#599) through a real main menu. The harness
+## client drops its connection and boots a third process with no role (`--menu-join <host>`): the main menu opens,
+## the Join form's choice (`MainMenu.join_choice`) goes through `MenuWiring.start` and `GameRoot._build_and_boot`,
+## the world snapshot arrives and that process reports its position, then exits 0. The host sees a new peer
+## connect, bind an identity and report (so it does not quit under a client whose snapshot is still crossing).
+const MenuWiring := preload("res://src/menu/menu_wiring.gd")
 func menu_join(h: Node) -> void:
 	await h._await_settle(1.0 * h._time_scale)
 	if h._role == "host":
@@ -241,20 +241,18 @@ func menu_join(h: Node) -> void:
 		await h._await_settle(2.0 * h._time_scale)
 		h._report("menu_join", h.verdict(bound, true), "joined-from-menu" if bound else "connected%d-bound0" % fresh.size())
 		return
+	# Phase 224 (#599) — the joining side is a THIRD process booted with no role at all: it opens the real main
+	# menu and joins through `MenuWiring.start` (`--menu-join`, see menu_wiring.gd). This process steps aside
+	# first, so the host's fresh peer is that one.
 	h._root._networking.disconnect_all()
 	await h._await_settle(h.RECONNECT_WAIT_SECS * h._time_scale)
-	var snapshots := [0]
-	var on_snapshot := func(_data: Dictionary) -> void: snapshots[0] += 1
-	GameBus.world_snapshot_received.connect(on_snapshot)
-	var choice: Dictionary = MainMenu.join_choice(h._root._host_address, "")
-	var applied: bool = bool(choice["ok"]) and h._root._menu_wiring.apply_choice(choice)
-	if applied:
-		h._root._boot_client()
-	var joined: bool = applied and await h._await_until(func():
-		return snapshots[0] > 0 and str(h._root._networking.claimed_player_id) != "", h._step_timeout() * 3.0)
-	GameBus.world_snapshot_received.disconnect(on_snapshot)
-	if joined:
-		for i in 3:   # the host's verdict waits on this report
-			h._report_position()
-			await h._await_settle(1.0 * h._time_scale)
-	h._report("menu_join", h.verdict(joined, true), "joined-from-menu" if joined else "applied%d-snapshots%d" % [int(applied), snapshots[0]])
+	var args := PackedStringArray(["--headless", "--path", ProjectSettings.globalize_path("res://"), "--",
+		MenuWiring.MENU_JOIN_ARG, h._root._host_address])
+	var pid := OS.create_process(OS.get_executable_path(), args)
+	var exited: bool = pid > 0 and await h._await_until(func(): return not OS.is_process_running(pid),
+		h._step_timeout() * 3.0 + MenuWiring.MENU_JOIN_SETTLE)
+	var code := OS.get_process_exit_code(pid) if exited else -1
+	if pid > 0 and not exited:
+		OS.kill(pid)
+	h._report("menu_join", h.verdict(exited and code == 0, true),
+		"joined-from-menu" if exited and code == 0 else "spawned%d-exit%d" % [int(pid > 0), code])

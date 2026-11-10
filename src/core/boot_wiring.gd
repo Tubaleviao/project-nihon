@@ -10,6 +10,7 @@ const STRESS_RECORDER_PATH := "res://src/tests/stress_recorder.gd"
 const NetworkingSlice := preload("res://src/networking/networking_slice.gd")
 const TestSuite := preload("res://src/tests/test_suite.gd")
 const NetHarness := preload("res://src/tests/net_harness.gd")
+const RecentServers := preload("res://src/menu/recent_servers.gd")
 
 ## Phase 162 — the dedicated server's connection cap (a stress host raises it past the ladder's top).
 var max_clients: int = NetworkingSlice.DEFAULT_MAX_CLIENTS
@@ -26,12 +27,7 @@ func parse_network_args() -> void:
 		if args[i] == "--client":
 			root._is_client = true
 			if i + 1 < args.size() and not str(args[i + 1]).begins_with("--"):
-				var addr := str(args[i + 1])
-				if _valid_host_address(addr):
-					root._host_address = addr
-				else:
-					Diag.warn("[Networking] invalid --client address '%s' — using 127.0.0.1" % addr)
-					root._host_address = "127.0.0.1"
+				root._host_address = client_address(str(args[i + 1]))
 	for i in range(args.size()):
 		if args[i] == "--friend" and i + 1 < args.size():
 			root._friend_code_arg = str(args[i + 1])
@@ -61,17 +57,14 @@ func install_quit_guard() -> void:
 	if not root._is_client:
 		root.get_tree().auto_accept_quit = false
 
-## True when `addr` is a literal IP or a plain hostname (no scheme, path, or
-## whitespace). Rejects empty and obviously malformed values so a bad --client
-## argument fails loudly instead of silently joining 127.0.0.1.
-func _valid_host_address(addr: String) -> bool:
-	if addr.is_empty():
-		return false
-	if addr.contains("://") or addr.contains("/") or addr.contains(" ") or addr.contains("	"):
-		return false
-	var re := RegEx.new()
-	re.compile("^[A-Za-z0-9][A-Za-z0-9.:-]*$")
-	return re.search(addr) != null
+## The host a `--client <addr>` boot joins. The address rule is the main menu's Join form's
+## (`RecentServers.valid_address`, one function since Phase 224 / #599): a literal IP or a plain hostname,
+## no scheme, path or whitespace. A malformed value warns loudly and falls back to 127.0.0.1.
+static func client_address(addr: String) -> String:
+	if RecentServers.valid_address(addr):
+		return addr
+	Diag.warn("[Networking] invalid --client address '%s' — using 127.0.0.1" % addr)
+	return "127.0.0.1"
 
 # ---------------------------------------------------------------------------
 # World boot

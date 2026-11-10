@@ -315,6 +315,7 @@ func is_world_input_frozen() -> bool:
 ## Phase 181 — set while the character creation screen is up: the body takes no keys (typing a name must not
 ## walk it) and no world action resolves.
 var creation_hold: bool = false
+var pause_hold: bool = false   ## Phase 224 — the Esc menu is up: the same hold as the creation screen's
 
 ## The ONE predicate a world action consults before it resolves: the world input freeze must be off
 ## (the loading screen blocks it until the ground the body stands on exists) and no text field may
@@ -323,13 +324,13 @@ var creation_hold: bool = false
 ## by that control before it reaches `_unhandled_input`, which is what keeps a menu click out of the
 ## world. Public so the freeze is assertable without a display server.
 func world_input_allowed() -> bool:
-	if _world_input_frozen or creation_hold:
+	if _world_input_frozen or creation_hold or pause_hold:
 		return false
 	return not TextFocus.is_typing()
 
 ## Phase 219 — polled keys ignore GUI focus: the body reads them only with no creation screen and no focused field.
 func keys_live() -> bool:
-	return not creation_hold and not TextFocus.is_typing()
+	return not creation_hold and not pause_hold and not TextFocus.is_typing()
 
 ## W/A/S/D as a wish direction (x right, z back, before the yaw turn), zero while the keys are not live. Keys held
 ## then are marked consumed, so they stay quiet until released once (no walking off when the field closes).
@@ -441,7 +442,7 @@ func _input(event: InputEvent) -> void:
 	# The look is owned here, not in `_unhandled_input`: releasing the button over a window must still
 	# end it, and a captured pointer reports motion no control would see.
 	if _looking:
-		if TextFocus.is_typing():   # Phase 219: a field that takes the keyboard takes the mouse back too
+		if TextFocus.is_typing() or pause_hold:   # Phase 219: a field that takes the keyboard takes the mouse back too
 			_end_look()
 			return
 		if event is InputEventMouseMotion:
