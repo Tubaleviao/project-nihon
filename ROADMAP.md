@@ -78,6 +78,22 @@ The arc starts after Phase 226, because the keypair identifies the player (the a
 | 230 | Characters across worlds: signed progress, an import policy per world | Open |
 | 231 | Cosmetics bound to the key: they travel and cannot be shared | Open |
 
+### Next: water, travel and the barber (Phases 232–236)
+
+Filed by autopilot on 2026-11-10 from the Deferred list and the open review follow-ups. Phase 232
+finishes the review notes on Phase 217's lakes and rivers (#573) and the mount follow-ups (#593).
+Phase 233 makes water flow where players dig. Phases 234 and 235 are the boats and roads the
+deferred fast-travel item names. Phase 236 is the hair and dye screen the owner deferred on
+2026-11-06. They follow Phase 231.
+
+| Phase | Title | Status |
+|---|---|---|
+| 232 | Water that holds up: lake shores, the river seam and mounts at fords | Open |
+| 233 | Flowing water: a bounded cellular automaton on edited chunks | Open |
+| 234 | Boats: crossing lakes, rivers and the sea | Open |
+| 235 | Roads: built paths that speed travel on foot and on a mount | Open |
+| 236 | Changing hair style and colour: scissors and dye | Open |
+
 ## Phase 224 — The Esc menu
 
 Esc today only closes the focused window or field. With nothing open, it does nothing.
@@ -93,6 +109,17 @@ Esc today only closes the focused window or field. With nothing open, it does no
   again (menu closes).
 - A suite test runs Exit to main menu on a listen host and asserts the save was written and the main
   menu is shown with no world nodes left (no orphans).
+- #599 (swap-back): the root swap in `main.gd` (`_back_to_menu`) that Exit to main menu reuses
+  moves into a testable static, and a suite test drives it with a stub root (old root freed, a fresh
+  `GameRoot` with the notice).
+- #599 (address rule): `RecentServers.valid_address` and `BootWiring._valid_host_address` are one
+  function; a suite test feeds both paths the same addresses.
+- #599 (explored map): a local world's revealed map is keyed by its world folder; a suite test
+  creates two local worlds with the same seed and finds separate explored maps.
+- #599 (menu join): a net harness step boots a client from a real main menu (no `--net-harness`
+  role) through `MenuWiring.start` and joins the host.
+
+**Closes:** #599
 
 ## Phase 225 — The options window
 
@@ -307,14 +334,188 @@ Design-only (a fabric PR, no GDScript). Everything after it reads from this phas
 - A net harness step: a client joins host B (policy `local`) and its cosmetics are present; a second
   client given a copy of the first's grant files has none.
 
+## Phase 232 — Water that holds up: lake shores, the river seam and mounts at fords
+
+Phase 217 put lakes and rivers on unrecorded land, and #589 fixed half of its review notes. The rest
+are visible in play (a lake edge hanging as a wall of water, rivers jumping 512 m at the X seam,
+water stopping dead at an older recorded chunk) or cost frame time (fresh water meshed on the main
+thread for every chunk). Mounts still refuse any river, even a stream their own creature fords.
+
+- **Lake shores:** `Hydrology.lake_of_cell` samples the ground with detail noise and massifs, not the
+  shape alone, and the surface is clamped so no ground outside the disc lies below it. A lake whose
+  rim cannot hold the surface is dropped.
+- **River seam:** the river cell wrap period is an exact divisor of the circumference (or rivers are
+  traced in seam-wrapped coordinates, `seam_wrap.gd`), so a river crossing the X seam continues on
+  the other side.
+- **Frontier:** a lake or river that reaches a recorded chunk of an older generator ends at a shore,
+  not a cut: `frontier.gd` eases the water surface down to the recorded ground over `BLEND_CHUNKS`,
+  as it already eases heights.
+- **Spawn plain:** lake discs and river segments are excluded by their full extent, not their centre
+  or vertices.
+- **Build cost:** `voxel_build.build_chunk` skips fresh water when the chunk has no features, and
+  builds the fresh-water surface on the worker thread with the rest of the chunk.
+- **Mounts at fords:** `MountWiring._in_water` uses `CreaturePath.blocks_water(width,
+  CreatureAI.FORD_WIDTH_M)`, so a ground mount carries its rider across a stream its creature would
+  ford, and still refuses a wide river or a lake.
+- Any change to world-gen output bumps `TerrainSlice.WORLDGEN_VERSION` with a history line and
+  updates `_test_worldgen_golden`.
+
+**Closes:** #573, #593
+
+**Acceptance criteria**
+- #573 (lake edge): a suite test samples the rim of 50 lakes on the pinned seed and finds no ground
+  sample outside a disc below its surface.
+- #573 (river seam): a suite test traces a river across the X seam and finds its two ends within one
+  river width of each other.
+- #573 (frontier): a suite test records an older-version chunk beside a lake and asserts the water
+  surface meets the recorded ground with no vertical step over 0.5 m.
+- #573 (spawn plain): a suite test asserts no lake disc or river segment overlaps the spawn plain on
+  20 seeds.
+- #573 (build cost): a suite test builds a chunk with no features and asserts no fresh-water node is
+  made; the playtest `flight` step's worker and main-thread budgets still pass.
+- #573: the items fixed by #589 (cache reset, record changes, crossing width, ice material) keep
+  their tests; the issue's checklist is ticked in full.
+- #593: a suite test calls the real `MountWiring._in_water` against a wired `CreatureSlice` (no
+  stub): a stream narrower than `FORD_WIDTH_M` is not water, a wide river and a lake are.
+- `WORLDGEN_VERSION` bumped and golden values updated if world-gen output changed; suite, both boot
+  paths and `tools/net_harness.sh` green.
+
+## Phase 233 — Flowing water: a bounded cellular automaton on edited chunks
+
+Deferred since Phase 51, now possible because Phase 137 has a dirty-chunk pass for falling sand and
+Phase 217 has fresh water. Today water is a static surface: a pit dug beside a lake stays dry and a
+dam does nothing.
+
+- **Fabric first** (separate PR): a `FluidFlow` table with the levels a cell can hold (8), the cells
+  updated per tick per chunk, the flow budget per tick for the whole server, how far a source spreads
+  over flat ground before it stops, and which materials water passes (none of the solids, sand
+  falls through as in Phase 137).
+- **Runtime:** water cells live only in chunks a player has edited near water. The static sea, lakes
+  and rivers act as infinite sources at their surface; an edit that opens a hole in a shore, river
+  bed or sea floor marks the chunk dirty and water flows in, down then sideways, level by level. A
+  dam (a placed block) stops it; removing the dam starts it again. Untouched land never runs the
+  automaton, so a fresh world costs nothing.
+- **Authority:** the host runs the automaton on the server tick, deterministic per chunk (fixed
+  update order, no floats in the cell state). Clients receive per-chunk water deltas through the
+  existing chunk record sync, scoped to peers in range, and never compute flow themselves.
+- **Persistence:** water cells are saved with the chunk's edits in the region store, so a flooded
+  pit is still flooded after a restart. A chunk that settles (no change over a whole pass) leaves
+  the dirty set.
+- Swimming (`PlayerSlice._swimming_now`) and creature paths read the water cells as they read the
+  static surface. Water cells are meshed with the fresh-water material (ice in a frozen chunk, where
+  flow is off).
+
+**Acceptance criteria**
+- `npm run validate` and `check-drift` pass; a `tools/check_fluid.js` rejects a table with zero
+  levels, a negative budget or an unknown material, and CI runs it.
+- A suite test digs a channel from a lake into a dry pit and, after N host ticks, the pit holds water
+  level with the lake; placing a block across the channel first leaves it dry.
+- A suite test runs the same edits twice from the same seed and gets identical water cells
+  (determinism), and asserts a world with no edits near water has an empty dirty set.
+- A suite test asserts a settled chunk leaves the dirty set and that the tick's cell updates never
+  exceed the fabric budget.
+- A suite test saves a flooded chunk, reloads the region and finds the same water cells; a player
+  in the flooded pit reports the swimming state.
+- A net harness step: the host floods a pit and a client in range receives the water cells; a client
+  out of range receives none.
+
+## Phase 234 — Boats: crossing lakes, rivers and the sea
+
+Deferred "Fast travel beyond waystones" names roads and boats. With lakes and rivers (Phase 217),
+water is now the main obstacle on foot, and ground mounts (Phase 216) refuse it.
+
+- **Fabric first** (separate PR): a raft (wood and fibre, carpentry, early tier) and a boat (planks
+  and nails, later tier) as placeable vehicles, with speed on water, seats, durability, the water
+  depth each needs, and their recipes and technologies. A `tools/check_*.js` proves the table rejects
+  a vehicle with no seats or a speed under swimming speed.
+- **Runtime:** a vehicle is a world entity placed on water deeper than its draft, owned by the
+  player who placed it (structure ownership rules, Phase 205). Mounting reuses the mount flow
+  (Phase 216): interact to board, the vehicle moves with the rider's input, dismount on shore. A
+  second seat carries a passenger.
+- **Authority:** the host moves the vehicle, rate-limits and validates input like a mount, refuses
+  boarding from out of reach, and beaches it (stops it) on ground shallower than its draft. A
+  client never reports the vehicle's position.
+- **Persistence:** a placed vehicle and its durability are saved with the world; picking it up
+  returns the item.
+- Labels and refusal reasons (`boat_too_shallow`, `boat_full`, …) are `I18n.t()` keys in `en` and
+  `pt_BR`.
+
+**Acceptance criteria**
+- `npm run validate` and `check-drift` pass; the new check is in CI.
+- A suite test places a raft on a lake, boards it, drives it across and asserts it moves at the
+  fabric speed and stops at the shore; placing it on dry land or in water shallower than its draft is
+  refused.
+- A suite test: a passenger boards the second seat and moves with the boat; a third player is
+  refused with `boat_full`.
+- A suite test saves and reloads a world with a placed boat and finds it at the same position with
+  the same durability; picking it up returns the item.
+- A suite test asserts every vehicle label and refusal key exists in both `en` and `pt_BR`.
+- A net harness step: a client crafts and places a raft, boards and crosses a lake; the host's
+  position for it matches the client's within one tick, and a forged position update is ignored.
+
+## Phase 235 — Roads: built paths that speed travel on foot and on a mount
+
+The other half of the deferred fast-travel item. A clan that wants its villages close builds roads
+between them, which costs work instead of being free like a waystone.
+
+- **Fabric first** (separate PR): road surfaces (packed dirt, gravel, stone paving, by tier) with a
+  walking and mount speed multiplier each, their recipes, the skill they grow (Building) and the
+  durability lost to traffic.
+- **Runtime:** a road is laid with a tool on the ground's top voxel layer (a voxel edit with a road
+  material, Phase 205 ownership and dismantling rules apply). `PlayerSlice.walking_speed` and the
+  mount speed read the surface under the body; off road nothing changes. Weather's speed factor
+  (Phase 128) still applies on top.
+- **Authority:** the host computes the speed from its own voxel data. The client predicts with the
+  same function but the host's position is authoritative; a client claiming road speed off road is
+  corrected.
+- Roads show on the minimap and the map (Phase 222) as lines.
+- Road names and prompts are `I18n.t()` keys in `en` and `pt_BR`.
+
+**Acceptance criteria**
+- `npm run validate` and `check-drift` pass; a `tools/check_roads.js` rejects a multiplier below 1 or
+  a road with no recipe, and CI runs it.
+- A suite test lays a stone road and asserts walking speed on it is the fabric multiplier times
+  `SPEED` and unchanged one voxel beside it; rain still slows the walk on the road.
+- A suite test asserts a mount on a road moves at its speed times the road multiplier.
+- A suite test asserts a road voxel survives save and reload and is drawn on the minimap.
+- A net harness step: a client walks along a road and the host accepts the speed; a client sending
+  road-speed movement off road is corrected by the host.
+
+## Phase 236 — Changing hair style and colour: scissors and dye
+
+Decided by the owner on 2026-11-06 (Deferred): not the creation screen, but a separate screen, open
+only to a player who has crafted scissors (style) or dye (colour).
+
+- **Fabric first** (separate PR): scissors (smithing, worn on use, durability) and dyes (alchemy,
+  one per colour family, consumed on use), with their recipes, technologies and the hair styles and
+  colours each unlocks. Styles and colours are the ones the creation screen already offers (Phase
+  181); no new art.
+- **Runtime:** a **Barber** window, opened from the Character window, shows the styles (needs
+  scissors in the inventory) and colours (needs the matching dye). The client sends the choice; the
+  host checks the item, wears the scissors or consumes the dye, updates the character's appearance
+  and syncs it to peers in range. A choice without the item, or a style or colour not in the table,
+  is refused.
+- The doll in the Character window and the player's body in the world show the change at once.
+- Labels and refusals (`needs_scissors`, `needs_dye`) are `I18n.t()` keys in `en` and `pt_BR`.
+
+**Acceptance criteria**
+- `npm run validate` and `check-drift` pass; a `tools/check_barber.js` rejects a dye whose colour is
+  not a creation colour, and CI runs it.
+- A suite test changes the hair style with scissors (durability drops by one) and the colour with a
+  dye (one dye consumed), and asserts the appearance saved on the character is the new one.
+- A suite test asserts the host refuses a style change without scissors, a colour change without the
+  matching dye, and a style or colour id not in the table.
+- A suite test asserts every Barber label and refusal key exists in both `en` and `pt_BR`.
+- A net harness step: a client changes its hair colour and a second client sees the new colour on
+  that body.
+
 ---
 
 ## Deferred (in priority order)
 
-- **Fluid flow** — flowing water (a cellular automaton on dirty chunks only) after Phase 51's
-  static sea level, Phase 137's falling sand and Phase 217's static lakes and rivers.
 - **Fast travel beyond waystones** — a planet takes about 90 days to walk around. Phase 125 added
-  waystones and Phase 216 mounts; roads and boats remain.
+  waystones, Phase 216 mounts, and boats and roads are Phases 234–235. Ships for crossing oceans
+  between continents remain.
 - **Physics ragdolls** — Phase 157 animates deaths with a host-chosen landing spot and authored
   clips, so the headless server stays deterministic. A client-only ragdoll blend on top is later
   polish.
@@ -330,9 +531,6 @@ Design-only (a fabric PR, no GDScript). Everything after it reads from this phas
   becomes the bottleneck.
 - **Raids** (dropped 2026-10-31, was Phase 200) — a warned, bounded creature attack on a village. Not wanted for now. Its spec is in git history (ROADMAP.md before PR #540).
 - **Clan skills** — abilities (such as teleporting every member to one place) for the two or three members who contribute most to a clan. Contribution is to be defined, probably as a share of members' experience given to the clan. Clan tiers (Phase 210) give nothing until then.
-- **Changing hair style and colour** (owner, 2026-11-06) — a separate screen, not the creation
-  screen, open only to a player who has crafted scissors (style) or dye chemicals (colour), which are
-  consumed or worn on use. Needs the items and their recipes in the fabric first.
 - **Elder buildings** — buildings only a clan's top contributors can build. To be designed.
 - **Settlement against settlement** — Phase 205 lets anyone destroy a structure they do not own. Organized sieges, wars and disputes between clans need governance and fairness rules first.
 - **Real cross-region multiplayer run** — Phase 135 emulates WAN profiles in the harness. A run
