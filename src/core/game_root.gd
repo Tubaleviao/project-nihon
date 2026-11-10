@@ -687,12 +687,7 @@ func _notification(what: int) -> void:
 		get_tree().quit()   # Phase 223 — the main menu: no world to save
 	elif what == NOTIFICATION_WM_CLOSE_REQUEST:
 		print("[Server] window close requested — saving before quit")
-		if _minimap != null and _minimap.revealed_dir != "" and _minimap.is_revealed_loaded():
-			_minimap.save_revealed()
-		_persistence_wiring.save_everything(true)
-		# The write is threaded, so quitting here would race it: block until it lands.
-		_persistence_wiring.flush_save()
-		get_tree().quit()
+		quit_game()
 	elif what == NOTIFICATION_PREDELETE:
 		# Wired once in `_ready`: unwire at free time, so a reparent keeps the handlers.
 		for w in _wirings:
@@ -792,6 +787,23 @@ func _tick_pending_host_boot(delta: float) -> void:
 ## the tail may run once the ring is built, or once the wait has run past the timeout.
 ## An UNARMED ring is "ready" (see ChunkManager.is_first_ring_ready), so a boot with no
 ## gate to wait for completes on the first tick.
+## Leaving the world (window close, the Esc menu's Quit or Exit to main menu, Phase 224): write the explored
+## map and, on an authoritative boot, the world and player records, and wait for both writes to land. A client
+## writes no records (`save_everything` returns at once). A no-op under the main menu (no world built).
+func save_before_leave() -> void:
+	if _persistence == null:
+		return
+	if _minimap != null and _minimap.revealed_dir != "" and _minimap.is_revealed_loaded():
+		_minimap.save_revealed(true)
+	_persistence_wiring.save_everything(true)
+	# The write is threaded, so leaving here would race it: block until it lands.
+	_persistence_wiring.flush_save()
+
+## Save, then quit the process.
+func quit_game() -> void:
+	save_before_leave()
+	get_tree().quit()
+
 static func host_boot_may_proceed(ring_ready: bool, elapsed: float) -> bool:
 	return ring_ready or elapsed >= FIRST_RING_TIMEOUT
 

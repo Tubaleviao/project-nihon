@@ -855,6 +855,16 @@ signal system_message(key: String, args: Array, target_id: String)
 ## Phase 131 — the player switched language (or it was set at boot); open UI re-renders its text.
 signal locale_changed(locale: String)
 
+## Phase 224 — the Esc menu opened or closed on THIS machine (local presentation; world input holds while open).
+signal pause_menu_toggled(open: bool)
+
+## Phase 224 — the Esc menu's "Exit to main menu": a listen host saves first, a client disconnects, then
+## `MenuWiring` asks `main.gd` for a fresh root on the main menu. Local only, never sent over the network.
+signal exit_to_menu_requested()
+
+## Phase 224 — the Esc menu's "Quit game": the same save-then-quit as closing the window.
+signal quit_game_requested()
+
 ## Move THIS machine's own player to a world position (an admin teleport). The host emits it for
 ## itself and sends a `teleport` packet to a remote player's client, which re-emits it here.
 signal player_teleport(position: Dictionary)

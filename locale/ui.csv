@@ -58,7 +58,7 @@ controls.row13,Toggle worn equipment on and off,Mostrar ou ocultar o equipamento
 controls.row14,Windows: Alt + the letter (or click the boxes under your health); Alt+G opens the clan (J no longer does),Janelas: Alt + a letra (ou clique nas caixas sob a sua vida); Alt+G abre o clã (J não abre mais)
 controls.row15,This panel,Este painel
 controls.row16,Chat and commands (/help),Conversa e comandos (/help)
-controls.row17,Close windows,Fechar janelas
+controls.row17,"Close the top window, else open the menu","Fechar a janela do topo, senão abrir o menu"
 controls.row2,Look around (the cursor hides while held),Olhar ao redor (o cursor some enquanto segura)
 controls.row3,Zoom,Zoom
 controls.row4,"Use the box on the bottom row (a block, gear or a skill)","Usar a caixa da barra inferior (um bloco, equipamento ou habilidade)"
@@ -800,3 +800,8 @@ menu.join.fail_connect,Could not start the connection.,Não foi possível inicia
 menu.join.fail_unreachable,The server did not answer.,O servidor não respondeu.
 menu.join.fail_disconnected,The server closed the connection.,O servidor encerrou a conexão.
 menu.join.fail_timeout,The server never sent the world.,O servidor não enviou o mundo.
+pause.title,Paused,Pausa
+pause.resume,Resume,Continuar
+pause.options,Options,Opções
+pause.exit_menu,Exit to main menu,Sair para o menu principal
+pause.quit,Quit game,Sair do jogo

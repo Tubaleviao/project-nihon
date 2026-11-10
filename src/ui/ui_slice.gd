@@ -31,6 +31,7 @@ extends Node
 const Diag := preload("res://src/core/diag.gd")
 const I18n := preload("res://src/core/i18n.gd")
 const TextFocus := preload("res://src/ui/text_focus.gd")
+const PauseMenuScript := preload("res://src/ui/pause_menu.gd")
 const LocaleSettings := preload("res://src/core/locale_settings.gd")
 
 const WINDOW_INVENTORY  := "inventory"
@@ -194,6 +195,11 @@ var _creation_state: Dictionary = { "state": CreationRules.STATE_NONE }
 var _creation_known: bool = false   # Phase 221: set once the authority's state arrived (see ui_part_2)
 var _sheet_create_button: Button = null
 
+## Phase 224 — the Esc menu (built on first open) and the open windows in opening order (Esc closes the top one).
+var pause_menu: Control = null
+var _pause_layer: CanvasLayer = null
+var _open_order: Array = []
+
 func _ready() -> void:
 	_build_ui()
 	GameBus.locale_changed.connect(_on_locale_changed)
@@ -236,6 +242,13 @@ func _input(event: InputEvent) -> void:
 		return
 	if _world_input_frozen or is_creation_open():
 		return
+	# Phase 224 — the Esc menu holds the keyboard: Esc closes it, nothing else reaches a window or the hotbar.
+	if is_pause_menu_open():
+		if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+			close_pause_menu()
+			if is_inside_tree():
+				get_viewport().set_input_as_handled()
+		return
 	if event is InputEventKey and event.pressed:
 		# Typing into a text field must not trigger window hotkeys (Esc still leaves the field).
 		if is_typing() and event.keycode != KEY_ESCAPE:
@@ -271,9 +284,10 @@ func _input(event: InputEvent) -> void:
 		if event.unicode == 63:
 			toggle_window(WINDOW_CONTROLS)
 			return
-		match event.keycode:
-			KEY_ESCAPE:
-				_close_all_windows()
+		if event.keycode == KEY_ESCAPE and not event.echo:
+			handle_escape()
+			if is_inside_tree():
+				get_viewport().set_input_as_handled()
 
 # ---------------------------------------------------------------------------
 # HUD: hotbar / skill bar / window dock
@@ -405,6 +419,8 @@ func open_window(panel: String) -> void:
 	if panel == WINDOW_CRAFTING and _repair_feedback != null:
 		_repair_feedback.text = ""
 	p.visible = true
+	_open_order.erase(panel)
+	_open_order.append(panel)
 	refresh_all()
 	_m1.place_on_open(panel, p)   # Phase 222 — kept on screen; some wholly
 	GameBus.tutorial_event.emit("window_opened", { "window": panel })   # Phase 186
@@ -414,6 +430,7 @@ func close_window(panel: String) -> void:
 	if p == null:
 		return
 	p.visible = false
+	_open_order.erase(panel)
 	_drag_key = ""
 	refresh_hud()
 
@@ -426,8 +443,16 @@ func toggle_window(panel: String) -> void:
 func _close_all_windows() -> void:
 	for panel in _panels:
 		_panels[panel].visible = false
+	_open_order.clear()
 	_drag_key = ""
 	refresh_hud()
+
+## Phase 224 — the Esc menu and Esc's order (field, top window, menu): see `ui_part_2.gd`.
+func handle_escape() -> String: return _m2.handle_escape()
+func close_top_window() -> bool: return _m2.close_top_window()
+func is_pause_menu_open() -> bool: return pause_menu != null and pause_menu.is_open()
+func open_pause_menu() -> void: _m2.open_pause_menu()
+func close_pause_menu() -> void: _m2.close_pause_menu()
 
 ## Phase 131 — set a control's text from a catalog key and remember it, so a language switch can
 ## re-apply it. `prop` is the property name ("text", "tooltip_text", "placeholder_text").
