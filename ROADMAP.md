@@ -26,6 +26,47 @@ Phases 1–224 are done (200 and 201 were aborted). Their specs and acceptance c
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
+### Priority order
+
+Set by the owner on 2026-11-10. Work the open phases top to bottom; the arc tables below keep their
+numbers and specs, but this list decides what comes next. A phase that needs an earlier one still
+waits for it. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
+[Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
+others are not in it.
+
+| Priority | Phase | Title |
+|---|---|---|
+| 1 | 248 | The native library base and a release build |
+| 2 | 238 | One world: a fixed seed, a 2,000 km planet and one continent |
+| 3 | 239 | Streaming that keeps up |
+| 4 | 249 | What to reuse from Zylann's godot_voxel |
+| 5 | 240 | Smooth natural ground |
+| 6 | 241 | The native smooth mesher, and coarse chunks built smooth |
+| 7 | 242 | Terrain materials: blend weights, a triplanar shader and CC0 textures |
+| 8 | 243 | Level of detail past the window |
+| 9 | 244 | A chunk cache on disk |
+| 10 | 225 | The options window |
+| 11 | 237 | Flight that handles like flight |
+| 12 | 250 | The server's ceiling: one machine serving, another running the bots |
+| 13 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
+| 14 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
+| 15 | 226 | Several characters per player |
+| 16 | 229 | Skills capped by the gear |
+| 17 | 247 | Ground cover: grass and bushes by biome |
+| 18 | 235 | Roads |
+| 19 | 234 | Boats |
+| 20 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
+| 21 | 251 | A human playtest: what would make the game fun |
+
+Order notes that differ from the arcs' own order:
+
+- Phase 242's low-end fallback and Phase 243's view distance are options of Phase 225, which now
+  comes after them. They ship as project settings first, and Phase 225 puts them in the window.
+- Phase 245 replaces Phase 217's river trace and now comes before Phase 232. Phase 232's river-seam
+  fix applies to the baked rivers instead, and its lake-shore and ford work stays as written.
+- Phase 229 used to take its tiers from Phase 227, which is parked. It now carries its own fabric PR
+  (see its spec).
+
 ### Next: playtest fixes and the game's front door (Phases 219–226)
 
 Filed by the owner on 2026-11-06 after playing `main`. Four are bugs found in play (typing in the
@@ -46,6 +87,8 @@ because the menus reuse the keyboard routing Phase 219 fixes.
 | 226 | Several characters per player: a new one starts from scratch, chosen in the main menu | Open |
 
 ### Arc: one character across worlds (Phases 227–231)
+
+Parked on 2026-11-10 except Phase 229. The design below stands for when the arc is picked up again.
 
 Decided by the owner on 2026-11-07. A player can take a character into a friend's world, level up
 there, and keep that progress in their own world. Enshrouded does this by trusting a character file
@@ -72,11 +115,13 @@ The arc starts after Phase 226, because the keypair identifies the player (the a
 
 | Phase | Title | Status |
 |---|---|---|
-| 227 | Identity and portability in the fabric: keypair identity, what travels, gear-gated skills, bound cosmetics | Open |
-| 228 | Keypair identity at runtime: a challenge-response join replaces the cached player id | Open |
+| 227 | Identity and portability in the fabric: keypair identity, what travels, gear-gated skills, bound cosmetics | Parked |
+| 228 | Keypair identity at runtime: a challenge-response join replaces the cached player id | Parked |
 | 229 | Skills capped by the gear: advanced abilities need a weapon of their tier, advanced recipes a tool and station of theirs | Open |
-| 230 | Characters across worlds: signed progress, an import policy per world | Open |
-| 231 | Cosmetics bound to the key: they travel and cannot be shared | Open |
+| 230 | Characters across worlds: signed progress, an import policy per world | Parked |
+| 231 | Cosmetics bound to the key: they travel and cannot be shared | Parked |
+
+Parked by the owner on 2026-11-10, except Phase 229, which stands on its own (see the priority order).
 
 ### Next: water, travel and the barber (Phases 232–236)
 
@@ -84,15 +129,17 @@ Filed by autopilot on 2026-11-10 from the Deferred list and the open review foll
 finishes the review notes on Phase 217's lakes and rivers (#573) and the mount follow-ups (#593).
 Phase 233 makes water flow where players dig. Phases 234 and 235 are the boats and roads the
 deferred fast-travel item names. Phase 236 is the hair and dye screen the owner deferred on
-2026-11-06. They follow Phase 231.
+2026-11-06. Their order is now set by the priority order.
 
 | Phase | Title | Status |
 |---|---|---|
 | 232 | Water that holds up: lake shores, the river seam and mounts at fords | Open |
-| 233 | Flowing water: a bounded cellular automaton on edited chunks | Open |
+| 233 | Flowing water: a bounded cellular automaton on edited chunks | Parked |
 | 234 | Boats: crossing lakes, rivers and the sea | Open |
 | 235 | Roads: built paths that speed travel on foot and on a mount | Open |
-| 236 | Changing hair style and colour: scissors and dye | Open |
+| 236 | Changing hair style and colour: scissors and dye | Parked |
+
+Phases 233 and 236 were parked by the owner on 2026-11-10.
 
 ### Arc: terrain that looks, flies and streams well (Phases 237–247)
 
@@ -104,8 +151,8 @@ Filed by the owner on 2026-11-10 after comparing flight and terrain with Enshrou
 - **Streaming costs too much.** The voxel window is 9×9 chunks of 32 m (Phase 42), coarse inside it
   past the reach ring (Phase 190). Past the window there is nothing between it and the shape-only
   distant ring (Phases 51, 164, 165), so a flyer outruns the window and every crossing rebuilds. The
-  build workers take every core but one, and `release.yml` ships only a `template_debug` native
-  library.
+  build workers take every core but one, and no release export is ever measured: CI and the
+  playtest run the editor binary with the `template_debug` native library.
 - **The ground looks blocky.** Natural ground is meshed as stepped columns with vertex colour. There
   are no terrain textures.
 
@@ -113,31 +160,47 @@ Decided by the owner on 2026-11-10:
 
 - **One world seed** for every world, in the fabric. Worlds differ by their players and edits, not by
   their terrain.
-- **A planet a quarter of Earth's surface**: the equator becomes 20,000 km.
+- **A small planet with one continent** (revised the same day; first decided as a quarter of Earth):
+  the equator becomes 2,000 km, and one continent is open at launch. The others are reserved by the
+  seed and opened later as fabric data, so the world can grow with its players.
 - **Smooth natural ground** with blended, triplanar-textured materials. Placed blocks stay blocky.
 - **Bake what a seed decides, in two layers.** The whole planet at 2 km cells (continents, rivers
   with flow, erosion, biomes), and 2 m erosion detail in 4 km regions, baked on demand around
-  players and kept on disk. A full planet at 2 m would be about 250 TB, so it is never baked whole.
+  players and kept on disk. A full planet at 2 m would be about 2.5 TB, so it is never baked whole.
+  The regional bake (Phase 246) is parked; the planet bake (Phase 245) stays.
 - **CC0 terrain textures** (ambientCG / Poly Haven) to start, replaceable by production art later.
 
-The order is: feel first (237), the world's size and seed (238), streaming (239), then the look (240–242),
-level of detail and caching (243–244), the bakes (245–246) and ground cover (247). Phase 245 replaces
-the river trace of Phase 217, so it comes after Phase 232. Phases 237 and 239 depend on nothing else in
-this list.
+The order is set by the [priority order](#priority-order): the native base (248) and the world's size
+and seed (238) first, then streaming (239), the godot_voxel review (249), the look (240–242), level of
+detail and caching (243–244), and later flight (237), the planet bake (245) and ground cover (247).
 
 | Phase | Title | Status |
 |---|---|---|
 | 237 | Flight that handles like flight: inertia, steering by the camera, no ground-walking fixes in the air | Open |
-| 238 | One world: a fixed seed and a quarter-Earth planet | Open |
-| 239 | Streaming that keeps up: a speed-scaled lead, adaptive workers, an attach budget, a release build | Open |
+| 238 | One world: a fixed seed, a 2,000 km planet and one continent | Open |
+| 239 | Streaming that keeps up: a speed-scaled lead, adaptive workers, an attach budget | Open |
 | 240 | Smooth natural ground: a surface-nets mesher (GDScript reference) | Open |
 | 241 | The native smooth mesher, and coarse chunks built smooth | Open |
 | 242 | Terrain materials: blend weights, a triplanar shader and CC0 textures | Open |
 | 243 | Level of detail past the window: voxel rings out to the distant ring, faded, under the haze | Open |
 | 244 | A chunk cache on disk: the host keeps generated chunks, the client keeps built meshes | Open |
 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km | Open |
-| 246 | The regional bake: 2 m erosion detail in 4 km regions, on demand around players | Open |
+| 246 | The regional bake: 2 m erosion detail in 4 km regions, on demand around players | Parked |
 | 247 | Ground cover: grass and bushes by biome, culled by distance | Open |
+
+### Next: foundations, the server's ceiling and a human playtest (Phases 248–251)
+
+Filed by the owner on 2026-11-10 with the priority order. Phase 248 splits the release build out of
+Phase 239 and gives every later native port (241, 245, and whatever 249 adopts) one shared base.
+Phase 249 checks what Zylann's voxel engine already solves before Phases 240–244 build it. Phase 250
+measures how many players one server holds on real hardware. Phase 251 is the owner playing the game.
+
+| Phase | Title | Status |
+|---|---|---|
+| 248 | The native library base and a release build | Open |
+| 249 | What to reuse from Zylann's godot_voxel: a review, then the parts that fit | Open |
+| 250 | The server's ceiling: one machine serving, another running the bots | Open |
+| 251 | A human playtest: what would make the game fun | Open |
 
 ## Phase 225 — The options window
 
@@ -192,79 +255,14 @@ research, clan membership and owned structures all key on the player id.
 - A net harness step: a client lists its characters, creates a second, enters with it, reconnects
   and enters with the first.
 
-## Phase 227 — Identity and portability in the fabric
-
-Design-only (a fabric PR, no GDScript). Everything after it reads from this phase's entities.
-
-- **`PlayerKeyIdentity` decision**, superseding `PlayerIdentityModel`: a player is a public key.
-  The client generates a signing keypair once and keeps the private key in `user://`, never sent
-  anywhere. The id the host stores is the key's fingerprint. On join the host sends a fresh random
-  nonce and the client signs it, so presenting someone else's id without their private key fails.
-  The decision names the algorithm: RSA through Godot's built-in `Crypto`/`CryptoKey`, or Ed25519,
-  which needs a GDExtension. Record the trade-off (key and signature size, a dependency, the
-  headless server). It also names the migration of saves keyed by a minted `player_id`, and that
-  every host has a key too, whose fingerprint the client signs into the join answer (Phase 228).
-- **Portability table:** each character field (from Phase 226's character entity) is marked
-  `portable` or `world_bound`, following the arc introduction. Technology/research, inventory,
-  equipment, books learned, clan membership and owned structures are `world_bound`.
-- **World import policy:** `local` (default; every character starts from scratch, as today),
-  `trusted` (accepts progress signed by listed host keys), `open` (accepts progress signed by any
-  host). A **progress delta** entity: player key, character id, issuing host key, world id, skill
-  XP gained per skill, sequence number, and the host's signature.
-- **Gear-gated skills:** every weapon, crafting tool and crafting station gets a `tier` (from
-  `SKILL_TIERS`). Each combat ability and each recipe gets a `requiredTier`. A rule says a combat
-  ability is usable only when both the skill and the equipped weapon reach that tier, and a recipe
-  can be crafted only when the crafting skill, the tool it uses and the station it is made at all
-  reach that tier. Recipes that need no tool or no station skip that check.
-- **Bound cosmetics:** a cosmetic entity kind (skin, emote, decoration, pet, per
-  `MonetizationModel`) and a **cosmetic grant**: cosmetic id, owner key, issuer key, signature. A
-  rule says cosmetics are never items: they have no stack, no trade, no drop, no chest, no loot.
-  Cosmetic names are i18n keys, not prose.
-
-**Acceptance criteria**
-- `npm run validate` and `npm run check-drift` pass with the new entities, and
-  `PlayerIdentityModel` is `superseded`.
-- A new `tools/check_portability.js` (and its CI step) rejects a table that marks technology,
-  inventory, equipment or owned structures as portable, a weapon, crafting tool or crafting station
-  with no tier, a recipe with no `requiredTier`, and a cosmetic that
-  can be traded, dropped or stored.
-
-## Phase 228 — Keypair identity at runtime
-
-- The client creates its keypair on first boot (`user://identity/`, private key file readable only
-  by the user where the OS allows it) and reuses it after that. Losing the file means a new player,
-  as losing a save does.
-- Every host gets its own signing key here (`user://` for a listen host, the save folder for a
-  dedicated server) and a world id; Phase 230 reuses them.
-- The join handshake: the client sends its public key, the host replies with its own public key and
-  a single-use nonce with an expiry, and the client signs `join | host key fingerprint | nonce`.
-  Binding the host's key into the signed message stops a malicious host from relaying a nonce from
-  another host and replaying the victim's answer there. The host verifies the signature and that the
-  fingerprint is its own before binding the peer, and accepts no other intent from the peer until
-  then. It refuses a key already bound to a live peer, an expired or reused nonce, an oversized key,
-  a signature over another host's fingerprint and a bad signature, and it rate-limits failed
-  attempts per address. Refusals reach the client as reason keys shown through `I18n.t()`.
-- `PlayerRegistry` keys records by the key fingerprint. The cached-id claim is removed.
-- **Migration:** an existing save's minted `player_id` records are bound once to the first key
-  that joins and presents the old cached id. After that the old id is refused. The old id is a
-  bearer secret only its client holds (the friend code never reveals it), so this is no weaker than
-  today. A dedicated server logs every binding.
-- The friend code (Phase 222 moves it to the map) keeps working; it does not reveal the key.
-
-**Acceptance criteria**
-- A suite test generates a key, signs a host nonce, and joins. Another test fails to join with: a
-  replayed nonce, an expired nonce, a signature from another key, a signature over another host's
-  key fingerprint, a key held by a live peer, and a key over the size limit. A peer that sends a
-  gameplay intent before the handshake completes has it dropped. The refusal reason keys exist in
-  both `en` and `pt_BR`.
-- A suite test loads a pre-Phase-228 save, joins with the old cached id and a new key, finds the
-  same record, and is refused when it presents the same old id with a second key.
-- A net harness step: a client joins with its key, disconnects, reconnects and gets the same
-  record. A second client that copies the first's public key but not its private key is refused.
-
 ## Phase 229 — Skills capped by the gear
 
-- The weapon, tool, station, ability and recipe tiers generated in Phase 227 load through `GameData`.
+- **Fabric first** (separate PR): Phase 227 is parked, so this phase takes over its gear-gated-skills
+  part only: every weapon, crafting tool and crafting station gets a `tier` (from `SKILL_TIERS`), each
+  combat ability and each recipe a `requiredTier`, with a `tools/check_*.js` that rejects a weapon,
+  tool or station with no tier and an ability or recipe with no `requiredTier`. Identity, travel and
+  cosmetics stay in Phase 227.
+- The weapon, tool, station, ability and recipe tiers load through `GameData`.
 - **Combat:** the host decides whether an ability can be used from the skill tier **and** the
   equipped weapon's tier. An ability above the weapon's tier is refused with a localized reason key
   (`combat.refuse.weapon_tier`) and greyed out in the hotbar and skill UI, which show the tier needed.
@@ -292,69 +290,6 @@ Design-only (a fabric PR, no GDScript). Everything after it reads from this phas
   equipped weapon, held tool or station tier as unavailable and carry the tier needed.
 - A suite test asserts the refusal and tier labels are keys in both `en` and `pt_BR`.
 
-## Phase 230 — Characters across worlds
-
-- Each host signs with the key and world id from Phase 228.
-- While a portable character is in a world, the host sends it a signed **progress delta** for the
-  skill XP gained there since the last delta: at every autosave and on a clean logout or host
-  shutdown. A dropped connection cannot be sent to, so it loses at most one autosave interval. The
-  client stores the deltas in `user://characters/<id>/`. The skill XP never comes from the client;
-  it comes from the host's signature over the host's own count.
-- **Import:** joining a world with policy `trusted` or `open`, the client presents the character's
-  name, appearance and its deltas. Skill XP comes only from verified deltas, never from a
-  client-held total. The host verifies every signature, refuses a delta whose player key is not the
-  key that signed the join (Phase 228), keeps only issuers its policy accepts, skips deltas it signed
-  itself (its own record already holds that XP), skips duplicates by (issuer, sequence) and adds the
-  XP. It records the applied (issuer, sequence) pairs per player key in its save, so presenting the
-  same deltas on the next join adds nothing. The character arrives with its name, appearance, skills
-  and cosmetics, and with no items, research, books or memberships. A world with policy `local`
-  ignores the import and offers a fresh character.
-- **Going home:** the home world applies its own policy the same way, so XP earned at a friend's
-  comes back only if home is `trusted` with that friend's host key (or `open`). A `local` home
-  keeps only its own XP.
-- **`open` trusts anyone who runs a host**, since anyone can make a host key and sign any count. It
-  is never the default, the options window says so, and it is bounded like every import.
-- The import is bounded: a maximum number of deltas, a maximum file size, a cap on XP per delta and
-  on XP imported per key per day (both from the fabric), and a rate limit on imports per key.
-- The policy is a host setting in the options window (Phase 225) and a `--import-policy` flag for a
-  dedicated server. All text through `I18n.t()`.
-
-**Acceptance criteria**
-- A suite test: host A signs a delta, host B with policy `trusted` listing A imports it and finds
-  the XP. With policy `local` the character starts fresh. With `trusted` not listing A, the delta is
-  ignored.
-- A suite test refuses a delta with a bad signature, a delta issued to another player key, a
-  duplicate (issuer, sequence), XP over the per-delta or per-day cap, and an import over the size
-  or count limit. None of them changes the record. Presenting an already applied delta set on a
-  second join, or a delta the importing host signed itself, adds no XP.
-- A suite test asserts an imported character has an empty inventory, no research and no clan.
-- A net harness step: a client plays on host A, gains skill XP, leaves, joins host B (`trusted` with
-  A) and has the XP, then goes back to A (`trusted` with B) and has the XP earned on B.
-
-## Phase 231 — Cosmetics bound to the key
-
-- A cosmetic is owned by a **grant** signed by an issuer key. The official shop's public key is
-  pinned in the game (the suite pins a test issuer key in its place). A host may add its own issuer
-  key for cosmetics earned in its world; those show in that world and in worlds whose import policy
-  trusts that host, and an unknown issuer's grant is refused.
-- On join the client presents its grants. The host verifies each signature and that the grant's
-  owner key is the key that signed the join nonce (Phase 228). A grant held by another key is
-  refused, so copying a friend's grant file does nothing.
-- Cosmetics travel to every world whatever the import policy, because they have no economic effect.
-  They are applied only to the owner's own characters.
-- Trade, drop, chest, loot and gift paths refuse a cosmetic. It never becomes an inventory item.
-- Cosmetic names and the refusal reasons are keys shown through `I18n.t()`.
-
-**Acceptance criteria**
-- A suite test: a grant signed by the pinned shop key for the joining key is accepted and the
-  cosmetic shows on that player's character. The same grant presented by another key is refused, and
-  so is a grant with a bad signature or an unknown issuer.
-- A suite test: trading, dropping, storing in a chest and gifting a cosmetic are all refused by the
-  host.
-- A suite test asserts every cosmetic name and refusal key exists in both `en` and `pt_BR`.
-- A net harness step: a client joins host B (policy `local`) and its cosmetics are present; a second
-  client given a copy of the first's grant files has none.
-
 ## Phase 232 — Water that holds up: lake shores, the river seam and mounts at fords
 
 Phase 217 put lakes and rivers on unrecorded land, and #589 fixed half of its review notes. The rest
@@ -367,7 +302,8 @@ thread for every chunk). Mounts still refuse any river, even a stream their own 
   rim cannot hold the surface is dropped.
 - **River seam:** the river cell wrap period is an exact divisor of the circumference (or rivers are
   traced in seam-wrapped coordinates, `seam_wrap.gd`), so a river crossing the X seam continues on
-  the other side.
+  the other side. Phase 245 now runs first and replaces the local trace with baked rivers, so check
+  the seam on the baked rivers; if the bake already wraps, this bullet reduces to its test.
 - **Frontier:** a lake or river that reaches a recorded chunk of an older generator ends at a shore,
   not a cut: `frontier.gd` eases the water surface down to the recorded ground over `BLEND_CHUNKS`,
   as it already eases heights.
@@ -400,45 +336,6 @@ thread for every chunk). Mounts still refuse any river, even a stream their own 
   stub): a stream narrower than `FORD_WIDTH_M` is not water, a wide river and a lake are.
 - `WORLDGEN_VERSION` bumped and golden values updated if world-gen output changed; suite, both boot
   paths and `tools/net_harness.sh` green.
-
-## Phase 233 — Flowing water: a bounded cellular automaton on edited chunks
-
-Deferred since Phase 51, now possible because Phase 137 has a dirty-chunk pass for falling sand and
-Phase 217 has fresh water. Today water is a static surface: a pit dug beside a lake stays dry and a
-dam does nothing.
-
-- **Fabric first** (separate PR): a `FluidFlow` table with the levels a cell can hold (8), the cells
-  updated per tick per chunk, the flow budget per tick for the whole server, how far a source spreads
-  over flat ground before it stops, and which materials water passes (none of the solids, sand
-  falls through as in Phase 137).
-- **Runtime:** water cells live only in chunks a player has edited near water. The static sea, lakes
-  and rivers act as infinite sources at their surface; an edit that opens a hole in a shore, river
-  bed or sea floor marks the chunk dirty and water flows in, down then sideways, level by level. A
-  dam (a placed block) stops it; removing the dam starts it again. Untouched land never runs the
-  automaton, so a fresh world costs nothing.
-- **Authority:** the host runs the automaton on the server tick, deterministic per chunk (fixed
-  update order, no floats in the cell state). Clients receive per-chunk water deltas through the
-  existing chunk record sync, scoped to peers in range, and never compute flow themselves.
-- **Persistence:** water cells are saved with the chunk's edits in the region store, so a flooded
-  pit is still flooded after a restart. A chunk that settles (no change over a whole pass) leaves
-  the dirty set.
-- Swimming (`PlayerSlice._swimming_now`) and creature paths read the water cells as they read the
-  static surface. Water cells are meshed with the fresh-water material (ice in a frozen chunk, where
-  flow is off).
-
-**Acceptance criteria**
-- `npm run validate` and `check-drift` pass; a `tools/check_fluid.js` rejects a table with zero
-  levels, a negative budget or an unknown material, and CI runs it.
-- A suite test digs a channel from a lake into a dry pit and, after N host ticks, the pit holds water
-  level with the lake; placing a block across the channel first leaves it dry.
-- A suite test runs the same edits twice from the same seed and gets identical water cells
-  (determinism), and asserts a world with no edits near water has an empty dirty set.
-- A suite test asserts a settled chunk leaves the dirty set and that the tick's cell updates never
-  exceed the fabric budget.
-- A suite test saves a flooded chunk, reloads the region and finds the same water cells; a player
-  in the flooded pit reports the swimming state.
-- A net harness step: the host floods a pit and a client in range receives the water cells; a client
-  out of range receives none.
 
 ## Phase 234 — Boats: crossing lakes, rivers and the sea
 
@@ -502,34 +399,6 @@ between them, which costs work instead of being free like a waystone.
 - A net harness step: a client walks along a road and the host accepts the speed; a client sending
   road-speed movement off road is corrected by the host.
 
-## Phase 236 — Changing hair style and colour: scissors and dye
-
-Decided by the owner on 2026-11-06 (Deferred): not the creation screen, but a separate screen, open
-only to a player who has crafted scissors (style) or dye (colour).
-
-- **Fabric first** (separate PR): scissors (smithing, worn on use, durability) and dyes (alchemy,
-  one per colour family, consumed on use), with their recipes, technologies and the hair styles and
-  colours each unlocks. Styles and colours are the ones the creation screen already offers (Phase
-  181); no new art.
-- **Runtime:** a **Barber** window, opened from the Character window, shows the styles (needs
-  scissors in the inventory) and colours (needs the matching dye). The client sends the choice; the
-  host checks the item, wears the scissors or consumes the dye, updates the character's appearance
-  and syncs it to peers in range. A choice without the item, or a style or colour not in the table,
-  is refused.
-- The doll in the Character window and the player's body in the world show the change at once.
-- Labels and refusals (`needs_scissors`, `needs_dye`) are `I18n.t()` keys in `en` and `pt_BR`.
-
-**Acceptance criteria**
-- `npm run validate` and `check-drift` pass; a `tools/check_barber.js` rejects a dye whose colour is
-  not a creation colour, and CI runs it.
-- A suite test changes the hair style with scissors (durability drops by one) and the colour with a
-  dye (one dye consumed), and asserts the appearance saved on the character is the new one.
-- A suite test asserts the host refuses a style change without scissors, a colour change without the
-  matching dye, and a style or colour id not in the table.
-- A suite test asserts every Barber label and refusal key exists in both `en` and `pt_BR`.
-- A net harness step: a client changes its hair colour and a second client sees the new colour on
-  that body.
-
 ## Phase 237 — Flight that handles like flight
 
 `PlayerSlice._move` sets horizontal velocity straight from WASD each frame, and Space/Ctrl give a fixed
@@ -558,33 +427,59 @@ buried-lift rescue.
   body ends outside solid ground.
 - The playtest `flight` step passes at its current floors.
 
-## Phase 238 — One world: a fixed seed and a quarter-Earth planet
+## Phase 238 — One world: a fixed seed, a 2,000 km planet and one continent
 
-Decided by the owner on 2026-11-10. Every world uses the same seed, and the planet has a quarter of
-Earth's surface. Today `TerrainSlice` draws `randi()` for a new world, the Phase 223 New world dialog
-takes an optional seed, and `WorldSystem.circumferenceKm` defaults to 40,000.
+Decided by the owner on 2026-11-10. Every world uses the same seed. The planet is small, a 2,000 km
+equator, and only one continent is open at launch; more are opened later as data, so the world grows
+with its players. Today `TerrainSlice` draws `randi()` for a new world, the Phase 223 New world dialog
+takes an optional seed, `WorldSystem.circumferenceKm` defaults to 40,000, and continents come from
+noise everywhere (`WorldShape.continentalness`, `CONTINENT_CELLS` counted across the circumference).
 
-- **Fabric first** (separate PR): `WorldSystem.worldSeed` (an integer) and `circumferenceKm` 20,000.
-  Check whether `ridgeAmplitude`, `spawnMinColonizedDistance` and the hydrology cell sizes (Phase 217)
-  still fit a smaller planet, and record the decision in the field descriptions.
-- **Runtime:** a new world takes `worldSeed` and the fabric circumference, and records both in its
-  world record. The New world dialog has no seed field any more. `--playtest-seed` and an admin user
-  arg stay as dev overrides. `PlaytestBot.WORLD_SEED` becomes the fabric seed, and every playtest step
-  is re-checked on it (spawn, far_peak, pole, travel and tower read the world).
+- **Fabric first** (separate PR): `WorldSystem.worldSeed` (an integer), `circumferenceKm` 2,000, and a
+  `continents` list. Each continent has an id, a centre (latitude, longitude), a radius in km and an
+  `open` flag. At launch the list holds one open continent around the spawn, about 600 km across
+  (tuned in the PR), and may list closed sites reserved for later.
+- **Re-tune for the small planet**, and record each decision in the field description:
+  `CONTINENT_CELLS` (counted across the circumference, so a 16-cell layer is now 125 km), the
+  massif clearance around spawn (`MASSIF_SPAWN_CLEAR_M`, 100 km, is now 5% of the equator),
+  `ridgeAmplitude`, `spawnMinColonizedDistance`, `oceanShare` and the hydrology cell sizes (Phase 217;
+  the river wrap period must still divide the circumference). The open continent must hold at least
+  one summit of 8 km or more for the playtest `far_peak` and `tower` steps.
+- **One continent:** continentalness is masked by the open continents. Inside one, today's noise is
+  kept and eased to the shelf over a rim; outside every open continent the ground is deep ocean.
+  Closed sites are ocean too.
+- **Room to add continents:** the host never records a chunk inside a closed site (its radius plus
+  the rim) and refuses edits and placements there, so opening a site later (set `open`, bump
+  `WORLDGEN_VERSION`) changes only unrecorded land, per the stable-world rule. The spawn search and
+  the colonized-distance rule look only inside open continents.
+- **Runtime:** a new world takes `worldSeed`, the fabric circumference and the continent list, and
+  records the seed and circumference in its world record. The New world dialog has no seed field any
+  more. `--playtest-seed` and an admin user arg stay as dev overrides. `PlaytestBot.WORLD_SEED`
+  becomes the fabric seed, and every playtest step is re-checked on it (spawn, far_peak, pole, travel
+  and tower read the world).
 - **Saves:** a world created before this phase keeps the seed and circumference in its record, so its
   recorded chunks never move (the stable-world rule). A record without a circumference reads as
-  40,000 km. Bump `WORLDGEN_VERSION`, add a history line and update `_test_worldgen_golden`.
+  40,000 km with no continent mask. Bump `WORLDGEN_VERSION`, add a history line and update
+  `_test_worldgen_golden`.
 - With one public seed anyone can compute ore and spawn positions offline. That was already true for
   a known seed in an open-source game. It is accepted, not hidden.
-- Update the Deferred fast-travel note (about 45 days to walk around the planet, not 90).
+- Update the Deferred fast-travel note: walking around the planet takes about 4.5 days, not 90, and
+  the open continent is crossed in about a day and a half.
 
 **Acceptance criteria**
 - `npm run validate` and `check-drift` pass. A `tools/check_*.js` rejects a `worldSeed` that is not an
-  integer and a `circumferenceKm` that is not positive.
+  integer, a `circumferenceKm` that is not positive, a continent list with no open continent, and
+  two continents whose areas overlap.
 - A suite test creates two new worlds and finds the same seed and the same heightmap for a sample of
-  chunks. `TerrainSlice.circumference_chunks()` equals 20,000 km / 32 m.
-- A suite test loads a pre-Phase-238 world record and finds its own seed and a 40,000 km
-  circumference, and its recorded chunks unchanged.
+  chunks. `TerrainSlice.circumference_chunks()` equals 2,000 km / 32 m (62,500).
+- A suite test samples the planet: every sample outside the open continents and their rims is below
+  sea level, and most samples in the open continent's core are land.
+- A suite test: the host does not record a chunk inside a closed site and refuses an edit there. With
+  that site marked open in a fixture, heights change only inside it, and every recorded chunk
+  elsewhere is unchanged.
+- A suite test: every spawn the search picks lies inside an open continent.
+- A suite test loads a pre-Phase-238 world record and finds its own seed, a 40,000 km circumference,
+  no continent mask, and its recorded chunks unchanged.
 - A menu suite test finds no seed field in the New world dialog.
 - The playtest passes every step on the fabric seed.
 
@@ -592,8 +487,7 @@ takes an optional seed, and `WorldSystem.circumferenceKm` defaults to 40,000.
 
 The window loads a fixed one-chunk lead whatever the speed (Phase 42), and Phase 194 orders the queue
 along a fast flyer's lane. The pool runs every core but one all the time (`default_builds_in_flight`).
-Attached meshes and collision land on the main thread as whole nodes. The native library ships only as
-`template_debug`.
+Attached meshes and collision land on the main thread as whole nodes.
 
 - **Lead by speed:** the prefetch distance grows with the local body's speed (`ceil(speed ×
   LEAD_SECONDS / 32 m)`, capped), and the extra ring is queued only in a cone along the velocity. A
@@ -604,10 +498,9 @@ Attached meshes and collision land on the main thread as whole nodes. The native
 - **Attach budget:** at most `ATTACH_BUDGET_MS` of mesh and collision attach per frame. The chunk under
   a body attaches at once, whatever the budget. Meshes go in through `RenderingServer`
   (`mesh_add_surface_from_arrays`, an instance) instead of a new `MeshInstance3D` per chunk.
-- **Release native build:** `release.yml` also builds `target=template_release` for every platform,
-  and `native_builder.gd` loads the release library in an exported build. A CI job exports a release
-  Linux build and runs the playtest `flight` step once, report-only, so the budget table records
-  release numbers beside the editor ones.
+- The release build and its measured `flight` numbers come from Phase 248, which runs first: this
+  phase's budgets are checked on the editor build as before, and the release numbers are recorded
+  beside them.
 
 **Acceptance criteria**
 - Suite tests on the pure lead function: 0 m/s gives today's window, 90 m/s gives a deeper lead only
@@ -618,7 +511,6 @@ Attached meshes and collision land on the main thread as whole nodes. The native
   body and what fits the budget attach, and the rest attach on later ticks, nearest first.
 - The playtest `flight` step: ground under the body in at least as many samples as the current floor,
   and the worker ms per crossing no worse than its budget.
-- `release.yml` lists `template_release` for linux, windows and macos.
 
 ## Phase 240 — Smooth natural ground
 
@@ -656,7 +548,8 @@ run. Placed blocks are runs too, with a non-empty material and an entry in the s
 
 ## Phase 241 — The native smooth mesher, and coarse chunks built smooth
 
-- Port `voxel_smooth.gd` to `native/` as `build_smooth_arrays`, added to `NativeChunkBuilder.functions()`
+- Port `voxel_smooth.gd` to `native/` on the Phase 248 base (or the Transvoxel code Phase 249 adopts) as
+  `build_smooth_arrays`, added to `NativeChunkBuilder.functions()`
   and routed by `native_builder.gd` like the Phase 166–169 builders. Bump `REQUIRED_VERSION`.
 - Coarse builds (Phase 190, `voxel_coarse.gd`) run the same mesher on a downsampled density (2× and
   4× cells), with the edge skirts kept.
@@ -751,16 +644,20 @@ region (`region_store`).
 Phase 217 traces rivers locally (steepest descent in 64 m steps from a source cell) with no flow or
 erosion, and continents come straight from noise.
 
-- A native, deterministic bake of the whole planet on a 2 km grid (about 32 M cells on the Phase 238
-  planet): base height from `WorldShape`, then flow accumulation, river networks from source to sea,
+- A native, deterministic bake of the whole planet on a 2 km grid (about 0.5 M cells on the Phase 238
+  planet, a 2,000 × 1,000 km grid): base height from `WorldShape`, then flow accumulation, river networks from source to sea,
   hydraulic and thermal erosion, and the climate and biome fields read from the result. The arithmetic
   is fixed-point/integer, so every machine bakes the same bytes.
 - Output: one file per world seed and worldgen version (height, flow, river ids, biome; about 8 bytes
-  a cell, about 250 MB, compressed on disk). CI bakes it for the fabric seed and publishes it as a
+  a cell, about 4 MB before compression). CI bakes it for the fabric seed and publishes it as a
   release asset. A host that does not find it bakes it at world creation, with a progress screen. A
   client downloads it from the host or bakes it itself, and checks the hash either way.
 - The runtime reads macro height and rivers from the bake (interpolated). The detail noise stays on
-  top. Phase 217's river trace is replaced. Lakes stay as Phase 232 left them, fed by the baked flow.
+  top. Phase 217's river trace is replaced. Lakes keep Phase 217's placement, fed by the baked flow;
+  Phase 232, which now comes after this phase, fixes their shores and fords on top of it.
+- Continents come from Phase 238's mask (open continents only); a closed site bakes as ocean until it
+  is opened, and opening one re-bakes the planet under the bumped `WORLDGEN_VERSION`.
+- Built on the Phase 248 native base (fixed-point helpers, parity harness).
 - A world-gen change: bump `WORLDGEN_VERSION` (only unrecorded land changes, per the stable-world
   rule; `frontier.gd` blends at recorded borders).
 
@@ -772,6 +669,337 @@ erosion, and continents come straight from noise.
 - A suite test: a client with a corrupted bake file (wrong hash) refuses it and bakes or re-downloads.
 - CI publishes the bake for the fabric seed, and the playtest `travel`, `far_peak` and `pole` steps
   pass on it.
+
+## Phase 247 — Ground cover: grass and bushes by biome, culled by distance
+
+Trees use `multimesh_pool.gd` and impostors (Phase 23). Natural ground has no grass or bushes.
+
+- Ground cover per biome in the fabric (separate PR): plant kinds, density, and the terrain materials
+  they grow on (grass on grass, none on rock or snow).
+- Placement is a pure function of (seed, tile), so every client puts the same tufts in the same places.
+  It is client-only, never synced, and absent on the headless server.
+- Drawn with the MultiMesh pool in cells around the camera, with a density that falls with distance,
+  and gone past a fade distance set by the graphics option. A wind sway in the vertex shader. A placed
+  block or a mined tile removes the cover there.
+
+**Acceptance criteria**
+- `npm run validate` and `check-drift` pass. A `tools/check_*.js` rejects ground cover on a material
+  that is not a terrain material.
+- Suite tests: placement is identical for the same seed and tile, nothing grows on rock, snow, water
+  or a placed block, and density falls with distance.
+- The playtest `walk` and `flight` steps meet their budgets with ground cover on.
+
+## Phase 248 — The native library base and a release build
+
+`native/` holds one GDExtension class, `NativeChunkBuilder` (Phases 166–169, 190), and
+`src/terrain/native_builder.gd` loads it and routes the functions its `functions()` lists. CI and
+`release.yml` already compile `template_release` beside `template_debug`, but nothing runs or measures
+a release export: the playtest and its budgets use the editor binary with the debug library. Phases
+241 (smooth mesher), 245 (planet bake) and whatever Phase 249 adopts all add native code, so they
+should share one base instead of each growing `NativeChunkBuilder`.
+
+- **One base for every native port:** shared headers for fixed-point and integer arithmetic, the
+  seeded hash and noise `WorldShape` uses (bit-exact with GDScript), and run/array marshalling, used
+  by `NativeChunkBuilder` and every later class. Each native class reports `version()` and
+  `functions()`.
+- **One loader:** `native_builder.gd` becomes a general loader (`src/core/native_loader.gd` or
+  equivalent) that loads the extension once, checks each class's required version and routes per
+  function, so a new class needs no new loader. The chunk builder keeps its log line and fallback.
+- **One parity harness:** `native_tests.gd`'s bit-exact GDScript-versus-native check becomes a helper
+  any suite can call with a function name and a list of inputs.
+- **Release build, measured:** a CI job exports a release Linux build with the release library and
+  runs the playtest `flight` step once, report-only. The budget table (`docs/perf/playtest-baseline.md`)
+  records the release numbers beside the editor ones. Phase 239 uses them.
+- Document the base in `native/README.md` (how to add a class, a function and its parity test).
+
+**Acceptance criteria**
+- The suite passes with and without the native extension (`--expect-native` in CI, fallback in the
+  `export-check` job), and the chunk builder's parity tests run through the shared harness.
+- A suite test on the loader: a class below its required version, a missing class and a function not
+  in `functions()` each fall back to GDScript; a present one routes native.
+- A parity test on the shared hash and noise: native and GDScript give identical values for 10,000
+  seeded samples.
+- The CI release-export job runs the `flight` step and writes its numbers to the report;
+  `docs/perf/playtest-baseline.md` has a release column.
+
+## Phase 249 — What to reuse from Zylann's godot_voxel
+
+[Zylann/godot_voxel](https://github.com/Zylann/godot_voxel) (MIT) is a mature voxel engine for Godot:
+smooth meshing (Transvoxel), LOD, streaming, region files, generators and instancing. It ships mainly
+as a C++ engine module (a custom Godot build), with a GDExtension build in progress. This project has
+its own run-based voxel storage, a headless authoritative server, the stable-world rule and a
+GDScript reference for every native function, so the engine as a whole does not fit, but parts of it
+may save Phases 240–244 a lot of work.
+
+- **Review** (`docs/research/godot-voxel.md`): for each of Transvoxel and its LOD seams, the LOD
+  octree/clipmap, streaming and task scheduling, region/block storage and compression, mesh
+  instancing for ground cover, and the SDF/edit tools, say what it does, which open phase it touches
+  (239–244, 247), whether it fits (Godot 4.7, GDExtension rather than a custom engine, deterministic
+  and safe on a worker, works on runs, headless server) and the verdict: adopt the code, port the
+  algorithm, or skip.
+- **Then implement what passes**, on the Phase 248 base, each part with its GDScript reference or
+  parity test as this project requires. Code taken from the project keeps its MIT notice
+  (`native/THIRD_PARTY.md` or equivalent). If a verdict changes how a later phase is built, update
+  that phase's spec in this file in the same PR.
+- If nothing fits, the review is the deliverable and the phase is done.
+
+**Acceptance criteria**
+- `docs/research/godot-voxel.md` exists with a verdict and its reason for each part listed above.
+- Every adopted file carries its licence notice, and `native/THIRD_PARTY.md` lists its source commit.
+- Each adopted part has a parity test (GDScript against native) or a suite test per behaviour it adds.
+- The suite, the harness and the playtest pass.
+
+## Phase 250 — The server's ceiling: one machine serving, another running the bots
+
+The crowd numbers in the README (Phase 163) come from one desktop machine running the server, the
+watching client and every bot at once, so the bots steal the server's CPU and the link is loopback.
+How many players one dedicated server holds is unknown.
+
+- `tools/stress.sh` gains a split mode: `STRESS_ROLE=server` boots only the dedicated server and the
+  host recorder and waits for bots; `STRESS_ROLE=bots STRESS_SERVER=<addr>` runs the watcher and the
+  bot process against a remote server. The "steady" and "stop" handshake goes over the network
+  (a control message or a small TCP side channel) instead of shared files.
+- Run the ladder (every pattern, crowd sizes up past the first failure) with the server on one
+  machine and the bots on another over a real LAN, then over the `wan_br` profile.
+- The report records each machine (CPU, cores, RAM, OS, Godot build, native on or off, release or
+  debug), and per pattern: the largest crowd that met every budget, tick time, CPU and memory per
+  player, bandwidth per player up and down, and the first bottleneck.
+- Write `docs/perf/server-ceiling.md`: the measured limits, the machines, the command to repeat it,
+  and how many players one server can hold with headroom for play. The README's crowd line points
+  to it.
+
+**Acceptance criteria**
+- A suite test on the split-mode parsing: a bots role with no server address is refused, and the
+  control messages round-trip.
+- A loopback CI run of the split mode (both roles on one runner) reaches "steady", runs one small
+  pattern and writes a report with the machine fields filled.
+- `docs/perf/server-ceiling.md` exists with numbers from a two-machine run. The run itself needs two
+  machines, so if none are available to automation it is filed as a GitHub issue (per the rule at
+  the top of this file) and the document records the loopback numbers until the issue is closed.
+
+## Phase 251 — A human playtest: what would make the game fun
+
+The owner plays the game, as a new player would, to find what keeps it from being fun. Per the rule
+at the top of this file this is not an automated criterion: it is tracked as a GitHub issue, and its
+findings come back as new phases.
+
+- Before the session: a release build from Phase 248 on the fabric world of Phase 238, a fresh
+  character, and a checklist in the issue (first hour, gathering and crafting, building, combat,
+  travel, playing with a friend, performance, anything confusing or dull).
+- After: each finding becomes a GitHub issue (bug, polish or feature), and the ones worth a phase
+  are written into this file with automated acceptance criteria.
+
+**Acceptance criteria**
+- A GitHub issue for the playtest exists with the checklist, and this phase records its number.
+- The phase is done when the issue is closed and every finding is filed as an issue or a new phase.
+
+---
+
+## Parked phases
+
+Parked by the owner on 2026-11-10. Their specs are kept as written so a phase can be picked up
+again; check each against the phases done since before un-parking it. Phase 236 is also the
+second-to-last entry of the priority order, which it keeps when un-parked.
+
+## Phase 227 — Identity and portability in the fabric
+
+Design-only (a fabric PR, no GDScript). Everything after it reads from this phase's entities.
+
+- **`PlayerKeyIdentity` decision**, superseding `PlayerIdentityModel`: a player is a public key.
+  The client generates a signing keypair once and keeps the private key in `user://`, never sent
+  anywhere. The id the host stores is the key's fingerprint. On join the host sends a fresh random
+  nonce and the client signs it, so presenting someone else's id without their private key fails.
+  The decision names the algorithm: RSA through Godot's built-in `Crypto`/`CryptoKey`, or Ed25519,
+  which needs a GDExtension. Record the trade-off (key and signature size, a dependency, the
+  headless server). It also names the migration of saves keyed by a minted `player_id`, and that
+  every host has a key too, whose fingerprint the client signs into the join answer (Phase 228).
+- **Portability table:** each character field (from Phase 226's character entity) is marked
+  `portable` or `world_bound`, following the arc introduction. Technology/research, inventory,
+  equipment, books learned, clan membership and owned structures are `world_bound`.
+- **World import policy:** `local` (default; every character starts from scratch, as today),
+  `trusted` (accepts progress signed by listed host keys), `open` (accepts progress signed by any
+  host). A **progress delta** entity: player key, character id, issuing host key, world id, skill
+  XP gained per skill, sequence number, and the host's signature.
+- **Gear-gated skills:** every weapon, crafting tool and crafting station gets a `tier` (from
+  `SKILL_TIERS`). Each combat ability and each recipe gets a `requiredTier`. A rule says a combat
+  ability is usable only when both the skill and the equipped weapon reach that tier, and a recipe
+  can be crafted only when the crafting skill, the tool it uses and the station it is made at all
+  reach that tier. Recipes that need no tool or no station skip that check.
+- **Bound cosmetics:** a cosmetic entity kind (skin, emote, decoration, pet, per
+  `MonetizationModel`) and a **cosmetic grant**: cosmetic id, owner key, issuer key, signature. A
+  rule says cosmetics are never items: they have no stack, no trade, no drop, no chest, no loot.
+  Cosmetic names are i18n keys, not prose.
+
+**Acceptance criteria**
+- `npm run validate` and `npm run check-drift` pass with the new entities, and
+  `PlayerIdentityModel` is `superseded`.
+- A new `tools/check_portability.js` (and its CI step) rejects a table that marks technology,
+  inventory, equipment or owned structures as portable, a weapon, crafting tool or crafting station
+  with no tier, a recipe with no `requiredTier`, and a cosmetic that
+  can be traded, dropped or stored.
+
+## Phase 228 — Keypair identity at runtime
+
+- The client creates its keypair on first boot (`user://identity/`, private key file readable only
+  by the user where the OS allows it) and reuses it after that. Losing the file means a new player,
+  as losing a save does.
+- Every host gets its own signing key here (`user://` for a listen host, the save folder for a
+  dedicated server) and a world id; Phase 230 reuses them.
+- The join handshake: the client sends its public key, the host replies with its own public key and
+  a single-use nonce with an expiry, and the client signs `join | host key fingerprint | nonce`.
+  Binding the host's key into the signed message stops a malicious host from relaying a nonce from
+  another host and replaying the victim's answer there. The host verifies the signature and that the
+  fingerprint is its own before binding the peer, and accepts no other intent from the peer until
+  then. It refuses a key already bound to a live peer, an expired or reused nonce, an oversized key,
+  a signature over another host's fingerprint and a bad signature, and it rate-limits failed
+  attempts per address. Refusals reach the client as reason keys shown through `I18n.t()`.
+- `PlayerRegistry` keys records by the key fingerprint. The cached-id claim is removed.
+- **Migration:** an existing save's minted `player_id` records are bound once to the first key
+  that joins and presents the old cached id. After that the old id is refused. The old id is a
+  bearer secret only its client holds (the friend code never reveals it), so this is no weaker than
+  today. A dedicated server logs every binding.
+- The friend code (Phase 222 moves it to the map) keeps working; it does not reveal the key.
+
+**Acceptance criteria**
+- A suite test generates a key, signs a host nonce, and joins. Another test fails to join with: a
+  replayed nonce, an expired nonce, a signature from another key, a signature over another host's
+  key fingerprint, a key held by a live peer, and a key over the size limit. A peer that sends a
+  gameplay intent before the handshake completes has it dropped. The refusal reason keys exist in
+  both `en` and `pt_BR`.
+- A suite test loads a pre-Phase-228 save, joins with the old cached id and a new key, finds the
+  same record, and is refused when it presents the same old id with a second key.
+- A net harness step: a client joins with its key, disconnects, reconnects and gets the same
+  record. A second client that copies the first's public key but not its private key is refused.
+
+## Phase 230 — Characters across worlds
+
+- Each host signs with the key and world id from Phase 228.
+- While a portable character is in a world, the host sends it a signed **progress delta** for the
+  skill XP gained there since the last delta: at every autosave and on a clean logout or host
+  shutdown. A dropped connection cannot be sent to, so it loses at most one autosave interval. The
+  client stores the deltas in `user://characters/<id>/`. The skill XP never comes from the client;
+  it comes from the host's signature over the host's own count.
+- **Import:** joining a world with policy `trusted` or `open`, the client presents the character's
+  name, appearance and its deltas. Skill XP comes only from verified deltas, never from a
+  client-held total. The host verifies every signature, refuses a delta whose player key is not the
+  key that signed the join (Phase 228), keeps only issuers its policy accepts, skips deltas it signed
+  itself (its own record already holds that XP), skips duplicates by (issuer, sequence) and adds the
+  XP. It records the applied (issuer, sequence) pairs per player key in its save, so presenting the
+  same deltas on the next join adds nothing. The character arrives with its name, appearance, skills
+  and cosmetics, and with no items, research, books or memberships. A world with policy `local`
+  ignores the import and offers a fresh character.
+- **Going home:** the home world applies its own policy the same way, so XP earned at a friend's
+  comes back only if home is `trusted` with that friend's host key (or `open`). A `local` home
+  keeps only its own XP.
+- **`open` trusts anyone who runs a host**, since anyone can make a host key and sign any count. It
+  is never the default, the options window says so, and it is bounded like every import.
+- The import is bounded: a maximum number of deltas, a maximum file size, a cap on XP per delta and
+  on XP imported per key per day (both from the fabric), and a rate limit on imports per key.
+- The policy is a host setting in the options window (Phase 225) and a `--import-policy` flag for a
+  dedicated server. All text through `I18n.t()`.
+
+**Acceptance criteria**
+- A suite test: host A signs a delta, host B with policy `trusted` listing A imports it and finds
+  the XP. With policy `local` the character starts fresh. With `trusted` not listing A, the delta is
+  ignored.
+- A suite test refuses a delta with a bad signature, a delta issued to another player key, a
+  duplicate (issuer, sequence), XP over the per-delta or per-day cap, and an import over the size
+  or count limit. None of them changes the record. Presenting an already applied delta set on a
+  second join, or a delta the importing host signed itself, adds no XP.
+- A suite test asserts an imported character has an empty inventory, no research and no clan.
+- A net harness step: a client plays on host A, gains skill XP, leaves, joins host B (`trusted` with
+  A) and has the XP, then goes back to A (`trusted` with B) and has the XP earned on B.
+
+## Phase 231 — Cosmetics bound to the key
+
+- A cosmetic is owned by a **grant** signed by an issuer key. The official shop's public key is
+  pinned in the game (the suite pins a test issuer key in its place). A host may add its own issuer
+  key for cosmetics earned in its world; those show in that world and in worlds whose import policy
+  trusts that host, and an unknown issuer's grant is refused.
+- On join the client presents its grants. The host verifies each signature and that the grant's
+  owner key is the key that signed the join nonce (Phase 228). A grant held by another key is
+  refused, so copying a friend's grant file does nothing.
+- Cosmetics travel to every world whatever the import policy, because they have no economic effect.
+  They are applied only to the owner's own characters.
+- Trade, drop, chest, loot and gift paths refuse a cosmetic. It never becomes an inventory item.
+- Cosmetic names and the refusal reasons are keys shown through `I18n.t()`.
+
+**Acceptance criteria**
+- A suite test: a grant signed by the pinned shop key for the joining key is accepted and the
+  cosmetic shows on that player's character. The same grant presented by another key is refused, and
+  so is a grant with a bad signature or an unknown issuer.
+- A suite test: trading, dropping, storing in a chest and gifting a cosmetic are all refused by the
+  host.
+- A suite test asserts every cosmetic name and refusal key exists in both `en` and `pt_BR`.
+- A net harness step: a client joins host B (policy `local`) and its cosmetics are present; a second
+  client given a copy of the first's grant files has none.
+
+## Phase 233 — Flowing water: a bounded cellular automaton on edited chunks
+
+Deferred since Phase 51, now possible because Phase 137 has a dirty-chunk pass for falling sand and
+Phase 217 has fresh water. Today water is a static surface: a pit dug beside a lake stays dry and a
+dam does nothing.
+
+- **Fabric first** (separate PR): a `FluidFlow` table with the levels a cell can hold (8), the cells
+  updated per tick per chunk, the flow budget per tick for the whole server, how far a source spreads
+  over flat ground before it stops, and which materials water passes (none of the solids, sand
+  falls through as in Phase 137).
+- **Runtime:** water cells live only in chunks a player has edited near water. The static sea, lakes
+  and rivers act as infinite sources at their surface; an edit that opens a hole in a shore, river
+  bed or sea floor marks the chunk dirty and water flows in, down then sideways, level by level. A
+  dam (a placed block) stops it; removing the dam starts it again. Untouched land never runs the
+  automaton, so a fresh world costs nothing.
+- **Authority:** the host runs the automaton on the server tick, deterministic per chunk (fixed
+  update order, no floats in the cell state). Clients receive per-chunk water deltas through the
+  existing chunk record sync, scoped to peers in range, and never compute flow themselves.
+- **Persistence:** water cells are saved with the chunk's edits in the region store, so a flooded
+  pit is still flooded after a restart. A chunk that settles (no change over a whole pass) leaves
+  the dirty set.
+- Swimming (`PlayerSlice._swimming_now`) and creature paths read the water cells as they read the
+  static surface. Water cells are meshed with the fresh-water material (ice in a frozen chunk, where
+  flow is off).
+
+**Acceptance criteria**
+- `npm run validate` and `check-drift` pass; a `tools/check_fluid.js` rejects a table with zero
+  levels, a negative budget or an unknown material, and CI runs it.
+- A suite test digs a channel from a lake into a dry pit and, after N host ticks, the pit holds water
+  level with the lake; placing a block across the channel first leaves it dry.
+- A suite test runs the same edits twice from the same seed and gets identical water cells
+  (determinism), and asserts a world with no edits near water has an empty dirty set.
+- A suite test asserts a settled chunk leaves the dirty set and that the tick's cell updates never
+  exceed the fabric budget.
+- A suite test saves a flooded chunk, reloads the region and finds the same water cells; a player
+  in the flooded pit reports the swimming state.
+- A net harness step: the host floods a pit and a client in range receives the water cells; a client
+  out of range receives none.
+
+## Phase 236 — Changing hair style and colour: scissors and dye
+
+Decided by the owner on 2026-11-06 (Deferred): not the creation screen, but a separate screen, open
+only to a player who has crafted scissors (style) or dye (colour).
+
+- **Fabric first** (separate PR): scissors (smithing, worn on use, durability) and dyes (alchemy,
+  one per colour family, consumed on use), with their recipes, technologies and the hair styles and
+  colours each unlocks. Styles and colours are the ones the creation screen already offers (Phase
+  181); no new art.
+- **Runtime:** a **Barber** window, opened from the Character window, shows the styles (needs
+  scissors in the inventory) and colours (needs the matching dye). The client sends the choice; the
+  host checks the item, wears the scissors or consumes the dye, updates the character's appearance
+  and syncs it to peers in range. A choice without the item, or a style or colour not in the table,
+  is refused.
+- The doll in the Character window and the player's body in the world show the change at once.
+- Labels and refusals (`needs_scissors`, `needs_dye`) are `I18n.t()` keys in `en` and `pt_BR`.
+
+**Acceptance criteria**
+- `npm run validate` and `check-drift` pass; a `tools/check_barber.js` rejects a dye whose colour is
+  not a creation colour, and CI runs it.
+- A suite test changes the hair style with scissors (durability drops by one) and the colour with a
+  dye (one dye consumed), and asserts the appearance saved on the character is the new one.
+- A suite test asserts the host refuses a style change without scissors, a colour change without the
+  matching dye, and a style or colour id not in the table.
+- A suite test asserts every Barber label and refusal key exists in both `en` and `pt_BR`.
+- A net harness step: a client changes its hair colour and a second client sees the new colour on
+  that body.
 
 ## Phase 246 — The regional bake: 2 m erosion detail in 4 km regions
 
@@ -799,27 +1027,6 @@ metres, which a whole planet cannot afford (about 250 TB at 2 m).
   started with `--no-regional-bake` receives it from the host.
 - The playtest `flight` step meets its budgets with the regional bake on (the bake runs ahead of the
   body).
-
-## Phase 247 — Ground cover: grass and bushes by biome, culled by distance
-
-Trees use `multimesh_pool.gd` and impostors (Phase 23). Natural ground has no grass or bushes.
-
-- Ground cover per biome in the fabric (separate PR): plant kinds, density, and the terrain materials
-  they grow on (grass on grass, none on rock or snow).
-- Placement is a pure function of (seed, tile), so every client puts the same tufts in the same places.
-  It is client-only, never synced, and absent on the headless server.
-- Drawn with the MultiMesh pool in cells around the camera, with a density that falls with distance,
-  and gone past a fade distance set by the graphics option. A wind sway in the vertex shader. A placed
-  block or a mined tile removes the cover there.
-
-**Acceptance criteria**
-- `npm run validate` and `check-drift` pass. A `tools/check_*.js` rejects ground cover on a material
-  that is not a terrain material.
-- Suite tests: placement is identical for the same seed and tile, nothing grows on rock, snow, water
-  or a placed block, and density falls with distance.
-- The playtest `walk` and `flight` steps meet their budgets with ground cover on.
-
----
 
 ## Deferred (in priority order)
 
