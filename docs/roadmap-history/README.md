@@ -293,3 +293,18 @@ burns down the four open `autopilot-followup` issues. Phase 202 is done.
 | 216 | Mounts: ride a tamed creature | Done | [phases-216.md](phases-216.md) |
 | 217 | Lakes and rivers on unrecorded land (static water, no flow) | Done | [phases-217.md](phases-217.md) |
 | 218 | Follow-up cleanup sweep: exact creature positions, the spatial hash, relay and window shortcuts | Done | [phases-218.md](phases-218.md) |
+
+### Playtest fixes and the game's front door (Phases 219–224)
+
+Filed by the owner on 2026-11-06 after playing `main`: four bugs found in play, a main menu and a
+pause menu on Esc. Phases 225 (options window) and 226 (several characters) are still open in
+[ROADMAP.md](../../ROADMAP.md).
+
+| Phase | Title | Status | Spec |
+|---|---|---|---|
+| 219 | A focused text field owns the keyboard: no reversed text, no movement, jumps or hotkeys while typing | Done | [phases-219.md](phases-219.md) |
+| 220 | Enter never jumps: a `jump` action on Space only | Done | [phases-220.md](phases-220.md) |
+| 221 | Re-creating a character from the Character window | Done | [phases-221.md](phases-221.md) |
+| 222 | The Character window fits: fewer rows, the friend code moves to the map | Done | [phases-222.md](phases-222.md) |
+| 223 | A main menu: play a local world or join a server | Done | [phases-223.md](phases-223.md) |
+| 224 | The Esc menu: resume, options, exit to main menu, quit | Done | [phases-224.md](phases-224.md) |

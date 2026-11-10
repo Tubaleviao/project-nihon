@@ -30,11 +30,13 @@ Slices do **not** hold each other by default. The bus carries every *event* and 
 
 ## Testing
 
-Two entry points, deliberately separate:
+Four entry points; the first two are deliberately separate:
 
 ```bash
 # 1. The unit suite. Runs synchronously on boot — no frames, no sockets — so it is fast
-#    and its GameBus emissions cannot leak into world state. 7,000+ assertions.
+#    and its GameBus emissions cannot leak into world state. About 26,000 assertions.
+#    Add --test-filter=<substring> after `--` to run only matching tests while iterating
+#    (the registration and orphan audits still run; a filter that matches nothing fails).
 /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --quit -- --run-tests
 
 # 2. The two-client network harness (Phase 39). Boots one host process and one client
