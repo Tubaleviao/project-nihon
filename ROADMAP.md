@@ -94,6 +94,51 @@ deferred fast-travel item names. Phase 236 is the hair and dye screen the owner 
 | 235 | Roads: built paths that speed travel on foot and on a mount | Open |
 | 236 | Changing hair style and colour: scissors and dye | Open |
 
+### Arc: terrain that looks, flies and streams well (Phases 237–247)
+
+Filed by the owner on 2026-11-10 after comparing flight and terrain with Enshrouded. Three problems:
+
+- **Flight is clumsy.** `/fly` is the walking controller with gravity off. Velocity follows the keys
+  with no inertia, the look direction does not steer, and the capsule's step-up, dive guard and
+  buried-lift rescue snap the body near the ground.
+- **Streaming costs too much.** The voxel window is 9×9 chunks of 32 m (Phase 42), coarse inside it
+  past the reach ring (Phase 190). Past the window there is nothing between it and the shape-only
+  distant ring (Phases 51, 164, 165), so a flyer outruns the window and every crossing rebuilds. The
+  build workers take every core but one, and `release.yml` ships only a `template_debug` native
+  library.
+- **The ground looks blocky.** Natural ground is meshed as stepped columns with vertex colour. There
+  are no terrain textures.
+
+Decided by the owner on 2026-11-10:
+
+- **One world seed** for every world, in the fabric. Worlds differ by their players and edits, not by
+  their terrain.
+- **A planet a quarter of Earth's surface**: the equator becomes 20,000 km.
+- **Smooth natural ground** with blended, triplanar-textured materials. Placed blocks stay blocky.
+- **Bake what a seed decides, in two layers.** The whole planet at 2 km cells (continents, rivers
+  with flow, erosion, biomes), and 2 m erosion detail in 4 km regions, baked on demand around
+  players and kept on disk. A full planet at 2 m would be about 250 TB, so it is never baked whole.
+- **CC0 terrain textures** (ambientCG / Poly Haven) to start, replaceable by production art later.
+
+The order is: feel first (237), the world's size and seed (238), streaming (239), then the look (240–242),
+level of detail and caching (243–244), the bakes (245–246) and ground cover (247). Phase 245 replaces
+the river trace of Phase 217, so it comes after Phase 232. Phases 237 and 239 depend on nothing else in
+this list.
+
+| Phase | Title | Status |
+|---|---|---|
+| 237 | Flight that handles like flight: inertia, steering by the camera, no ground-walking fixes in the air | Open |
+| 238 | One world: a fixed seed and a quarter-Earth planet | Open |
+| 239 | Streaming that keeps up: a speed-scaled lead, adaptive workers, an attach budget, a release build | Open |
+| 240 | Smooth natural ground: a surface-nets mesher (GDScript reference) | Open |
+| 241 | The native smooth mesher, and coarse chunks built smooth | Open |
+| 242 | Terrain materials: blend weights, a triplanar shader and CC0 textures | Open |
+| 243 | Level of detail past the window: voxel rings out to the distant ring, faded, under the haze | Open |
+| 244 | A chunk cache on disk: the host keeps generated chunks, the client keeps built meshes | Open |
+| 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km | Open |
+| 246 | The regional bake: 2 m erosion detail in 4 km regions, on demand around players | Open |
+| 247 | Ground cover: grass and bushes by biome, culled by distance | Open |
+
 ## Phase 224 — The Esc menu
 
 Esc today only closes the focused window or field. With nothing open, it does nothing.
@@ -127,7 +172,10 @@ Settings exist in scattered places (language since Phase 131, the tutorial switc
 admin-only tools). They get one window, reachable from the main menu and the Esc menu.
 
 - **Sound**: master, music, effects volume (audio buses).
-- **Graphics**: window mode, resolution, VSync, view distance (the near/far ring policy), FPS cap.
+- **Graphics**: window mode, resolution, VSync, view distance (the near/far ring policy), FPS cap,
+  render scale with FSR 2 upscaling (Godot's built-in `Viewport.scaling_3d_mode`), and terrain
+  quality (Phase 242's triplanar fallback, Phase 243's LOD rings, Phase 247's ground cover, each
+  read once those phases land).
 - **Game**: language, tutorial on/off and reset, mouse sensitivity and invert, controls list.
 - Saved to the existing user settings file and applied at once. Language follows the CLAUDE.md
   order: saved preference, then OS locale, then `en`.
@@ -508,6 +556,295 @@ only to a player who has crafted scissors (style) or dye (colour).
 - A suite test asserts every Barber label and refusal key exists in both `en` and `pt_BR`.
 - A net harness step: a client changes its hair colour and a second client sees the new colour on
   that body.
+
+## Phase 237 — Flight that handles like flight
+
+`PlayerSlice._move` sets horizontal velocity straight from WASD each frame, and Space/Ctrl give a fixed
+`AdminRules.FLY_VERTICAL_SPEED`. Releasing a key stops the body at once, pitching the camera does
+nothing, and while flying the capsule still runs the stair step-up, the Phase 193 dive guard and the
+buried-lift rescue.
+
+- A pure `FlightRules` (new file, `src/player/flight_rules.gd`):
+  `step(velocity, wish, look_basis, delta, params) -> Vector3`. W/S push along the camera's forward
+  vector **including its pitch**, A/D strafe, and Space/Ctrl add up/down. Velocity eases toward the
+  wish with an acceleration and a drag. Default: top speed in about 0.6 s, and a stop from top speed
+  in about 1 s with no input. Speeds keep today's scale (`SPEED` × `/speed` × `FLY_SPEED_FACTOR`),
+  so the playtest's 90 m/s flight is unchanged.
+- While flying, the step-up probe, the dive guard and the buried-lift rescue are skipped. The body
+  still collides (`move_and_slide`), and a collision kills only the velocity into the surface.
+- Camera: a short follow lag on the pivot, and FOV widened by up to 12° at top speed (eased). The
+  camera's height smoothing stays. Both are off in the headless server.
+- Leaving flight keeps the current velocity, and gravity takes over from there.
+
+**Acceptance criteria**
+- Suite tests on `FlightRules.step`: from rest with W held, the body reaches 95% of top speed in
+  0.5–0.8 s of steps. With no input it falls below 5% of top speed in 0.8–1.5 s. W with the camera
+  pitched 30° up climbs at sin 30° of the speed (±5%). Opposite input reverses smoothly, never in one
+  step.
+- A suite test flies a body into a wall and a hillside: no step-up lift, no buried-lift jump, and the
+  body ends outside solid ground.
+- The playtest `flight` step passes at its current floors.
+
+## Phase 238 — One world: a fixed seed and a quarter-Earth planet
+
+Decided by the owner on 2026-11-10. Every world uses the same seed, and the planet has a quarter of
+Earth's surface. Today `TerrainSlice` draws `randi()` for a new world, the Phase 223 New world dialog
+takes an optional seed, and `WorldSystem.circumferenceKm` defaults to 40,000.
+
+- **Fabric first** (separate PR): `WorldSystem.worldSeed` (an integer) and `circumferenceKm` 20,000.
+  Check whether `ridgeAmplitude`, `spawnMinColonizedDistance` and the hydrology cell sizes (Phase 217)
+  still fit a smaller planet, and record the decision in the field descriptions.
+- **Runtime:** a new world takes `worldSeed` and the fabric circumference, and records both in its
+  world record. The New world dialog has no seed field any more. `--playtest-seed` and an admin user
+  arg stay as dev overrides. `PlaytestBot.WORLD_SEED` becomes the fabric seed, and every playtest step
+  is re-checked on it (spawn, far_peak, pole, travel and tower read the world).
+- **Saves:** a world created before this phase keeps the seed and circumference in its record, so its
+  recorded chunks never move (the stable-world rule). A record without a circumference reads as
+  40,000 km. Bump `WORLDGEN_VERSION`, add a history line and update `_test_worldgen_golden`.
+- With one public seed anyone can compute ore and spawn positions offline. That was already true for
+  a known seed in an open-source game. It is accepted, not hidden.
+- Update the Deferred fast-travel note (about 45 days to walk around the planet, not 90).
+
+**Acceptance criteria**
+- `npm run validate` and `check-drift` pass. A `tools/check_*.js` rejects a `worldSeed` that is not an
+  integer and a `circumferenceKm` that is not positive.
+- A suite test creates two new worlds and finds the same seed and the same heightmap for a sample of
+  chunks. `TerrainSlice.circumference_chunks()` equals 20,000 km / 32 m.
+- A suite test loads a pre-Phase-238 world record and finds its own seed and a 40,000 km
+  circumference, and its recorded chunks unchanged.
+- A menu suite test finds no seed field in the New world dialog.
+- The playtest passes every step on the fabric seed.
+
+## Phase 239 — Streaming that keeps up
+
+The window loads a fixed one-chunk lead whatever the speed (Phase 42), and Phase 194 orders the queue
+along a fast flyer's lane. The pool runs every core but one all the time (`default_builds_in_flight`).
+Attached meshes and collision land on the main thread as whole nodes. The native library ships only as
+`template_debug`.
+
+- **Lead by speed:** the prefetch distance grows with the local body's speed (`ceil(speed ×
+  LEAD_SECONDS / 32 m)`, capped), and the extra ring is queued only in a cone along the velocity. A
+  standing player keeps today's window.
+- **Adaptive workers:** the in-flight cap starts at half the cores (at least 2). It rises toward cores
+  − 1 while the queue grows or the ground under the body is missing, and falls back after a few
+  seconds with an empty queue. Fewer busy cores at rest is what keeps the fans down.
+- **Attach budget:** at most `ATTACH_BUDGET_MS` of mesh and collision attach per frame. The chunk under
+  a body attaches at once, whatever the budget. Meshes go in through `RenderingServer`
+  (`mesh_add_surface_from_arrays`, an instance) instead of a new `MeshInstance3D` per chunk.
+- **Release native build:** `release.yml` also builds `target=template_release` for every platform,
+  and `native_builder.gd` loads the release library in an exported build. A CI job exports a release
+  Linux build and runs the playtest `flight` step once, report-only, so the budget table records
+  release numbers beside the editor ones.
+
+**Acceptance criteria**
+- Suite tests on the pure lead function: 0 m/s gives today's window, 90 m/s gives a deeper lead only
+  inside the velocity cone, and the cap holds.
+- A suite test on the pure worker-cap function: it rises under a growing queue, falls after the idle
+  time, and never leaves [2, cores − 1].
+- A suite test attaches 20 built chunks in one tick with the budget set low: only the chunk under the
+  body and what fits the budget attach, and the rest attach on later ticks, nearest first.
+- The playtest `flight` step: ground under the body in at least as many samples as the current floor,
+  and the worker ms per crossing no worse than its budget.
+- `release.yml` lists `template_release` for linux, windows and macos.
+
+## Phase 240 — Smooth natural ground
+
+Natural ground is meshed as stepped columns: each 0.5 m tile's runs become flat tops and vertical
+walls at 0.125 m steps (`voxel_mesh.gd`). The runs already carry overhangs, caves and a material per
+run. Placed blocks are runs too, with a non-empty material and an entry in the structure index.
+
+- A surface-nets mesher in GDScript as the reference (`src/terrain/voxel_smooth.gd`), pure and safe on
+  a worker, like `voxel_mesh.gd`. The density is sampled on a 0.5 m grid (tiles in XZ, 0.5 m in Y)
+  from the resolved runs. A vertex's height on a column top comes from the run's exact top, so the
+  ground stands where the runs say it does (±0.125 m), not on the grid.
+- **Natural runs only.** A placed block (a run with a structure entry) is still meshed by the block
+  mesher, in the same chunk, so walls, floors and roofs stay square. Where natural ground meets a
+  placed block, the smooth surface stops at the block's faces with no gap.
+- **Collision** is the same triangles (one shape per chunk, as today). On smooth slopes the body walks
+  by `floor_max_angle`. The step-up probe stays for placed blocks. The dive guard and buried-lift
+  rescue keep reading the runs, which have not changed.
+- **Edits** still change 0.5 m cells. A mined pit shows rounded edges.
+- Behind a project setting (`terrain/smooth_mesh`, on by default) until Phase 241. The block mesher
+  stays for placed blocks and for tests.
+- No world-gen change: runs, records and saves are untouched, so `WORLDGEN_VERSION` stays.
+
+**Acceptance criteria**
+- Suite tests on the mesher: a flat column gives a flat surface at the run's top. A 45° ramp of runs
+  gives normals within 5° of the ramp. An overhang and a one-tile tunnel give a closed surface (every
+  edge shared by exactly two triangles inside the chunk). Two neighbouring chunks share their border
+  vertices exactly (no crack).
+- A suite test: on 1,000 random natural tiles of the pinned seed, the mesh height above the tile's
+  centre is within 0.125 m of the column's top run.
+- A suite test builds a chunk with a 3×3 placed wall on natural ground: the wall's faces are the block
+  mesher's, axis-aligned, and the ground around it is smooth.
+- A suite test walks a body up a 30° natural slope with no step-up lift, and onto a placed block with
+  one.
+- The playtest walk, mine, place and tower steps pass.
+
+## Phase 241 — The native smooth mesher, and coarse chunks built smooth
+
+- Port `voxel_smooth.gd` to `native/` as `build_smooth_arrays`, added to `NativeChunkBuilder.functions()`
+  and routed by `native_builder.gd` like the Phase 166–169 builders. Bump `REQUIRED_VERSION`.
+- Coarse builds (Phase 190, `voxel_coarse.gd`) run the same mesher on a downsampled density (2× and
+  4× cells), with the edge skirts kept.
+- Remove the `terrain/smooth_mesh` setting: smooth is the only natural-ground mesher.
+
+**Acceptance criteria**
+- A native parity suite test (as in `native_tests.gd`): GDScript and native give identical vertex,
+  normal and index arrays for 50 chunks of the pinned seed, including edited chunks and chunks with
+  placed blocks.
+- A suite test: a coarse chunk next to a full one leaves no visible gap (the skirt covers the border
+  height difference).
+- The playtest `flight` and `stream` steps meet their budgets with the native mesher (worker ms per
+  crossing no worse than the Phase 190 floor).
+
+## Phase 242 — Terrain materials: blend weights, a triplanar shader and CC0 textures
+
+Natural ground is drawn in vertex colour from the biome, and `assets/` holds no terrain textures.
+
+- **Material weights per vertex:** up to four terrain materials per vertex (for example grass, dirt,
+  rock, sand, snow, mud), stored in `CUSTOM0` (material ids) and `CUSTOM1` (weights). The weights are
+  a pure function of the biome blend (Phase 120's `biome_blend`), slope (rock on steep ground),
+  altitude (snow above the biome's snow line) and wetness (mud and sand near water, Phase 217). A
+  placed block keeps its own material.
+- **Terrain materials in the fabric** (separate PR): each with its texture key, scale and which biomes
+  and slopes use it. A validator checks every biome resolves to at least one material.
+- **Shader:** triplanar projection (no stretching on cliffs) with a texture array per map (albedo,
+  normal, roughness), blended by the weights with height-based blending at the borders, and a detail
+  texture fading in near the camera.
+- **Textures:** a CC0 set (ambientCG or Poly Haven, 1K, credited in `assets/README.md`) in the public
+  `assets/textures/terrain/`. CC0 can ship in the public repo, so it is also the placeholder for later
+  production art (the placeholder rule holds).
+- A low-end fallback: the graphics option from Phase 225 can drop to biplanar sampling and no detail
+  texture.
+
+**Acceptance criteria**
+- `npm run validate` and `check-drift` pass. A `tools/check_*.js` rejects a biome with no terrain
+  material and a material whose texture key has no file in `assets/`.
+- Suite tests on the weight function: weights sum to 1. Ground steeper than the rock slope is mostly
+  rock. Ground above the snow line is mostly snow. A biome border blends over the same width as
+  Phase 120.
+- A suite test builds a chunk and finds `CUSTOM0`/`CUSTOM1` on every vertex, and the terrain material's
+  shader compiling with every texture array set.
+- `assets/README.md` lists each texture's source URL and licence.
+
+## Phase 243 — Level of detail past the window
+
+Past the 9×9 window, the distant ring (Phases 51, 164) and the bands (Phase 165) draw only
+`WorldShape`, with no detail noise, records or edits. A flyer sees the near ground pop in, and the far
+ground does not match it.
+
+- **LOD rings** between the window and the distant ring: rings of chunks meshed with the smooth mesher
+  on a downsampled density (4×, 8×, 16× cells), in the clipmap style of Phase 165. Each ring's cell
+  doubles, so the cost per ring stays about flat. They use the same heights the full chunks use (detail
+  noise, records, and edits summarised to the cell). The distant ring's hole grows to the outer LOD
+  ring.
+- **No pop:** a chunk changing level cross-fades (`visibility_range` fade, dithered) instead of
+  swapping in one frame. The same fade applies to the window's coarse-to-full upgrade.
+- **Haze hides the edge:** the clear-weather fog density is derived from the outer LOD radius, so the
+  last LOD ring is mostly hazed. Weather still thickens it (Phase 128).
+- **Render only** (no collision), and nothing on the headless server.
+- The view-distance option (Phase 225) sets how many LOD rings a client draws.
+
+**Acceptance criteria**
+- A suite test builds an LOD-ring chunk and the full chunk at the same place: heights agree within the
+  ring's cell size, and an edited tile's summary shows in the LOD mesh.
+- A suite test: rings nest with no overlap and no gap, and the ring border has a skirt.
+- A suite test on the haze function: fog reaches at least 90% at the outer LOD radius on clear weather.
+- The playtest `horizon` and `far_peak` steps pass. The `flight` step meets its budgets.
+
+## Phase 244 — A chunk cache on disk
+
+Every visit rebuilds a chunk from noise. The host already stores edits and generation records per
+region (`region_store`).
+
+- **Host:** the resolved runs of a generated chunk are written next to its region the first time the
+  chunk is built, keyed by `WORLDGEN_VERSION`, the worldgen fingerprint and the chunk's edit revision.
+  A later build reads them instead of generating. Edits update the entry.
+- **Client:** built mesh arrays (full, coarse and LOD levels) are cached under `user://cache/` with the
+  same key plus the mesher version, capped in size with least-recently-used eviction. A revisit loads
+  arrays from disk on a worker instead of meshing.
+- A stale key is a miss, never an error. Deleting the cache only costs time.
+
+**Acceptance criteria**
+- Suite tests: a cached chunk and a freshly built one give identical runs and arrays. Bumping any key
+  part turns the entry into a miss. An edit invalidates the entry.
+- A suite test fills the client cache past its cap and finds the least recently used entries evicted.
+- A playtest step flies a loop twice: the second pass's worker ms per crossing is at most half the
+  first's.
+
+## Phase 245 — The planet bake: continents, rivers with flow, erosion and biomes at 2 km
+
+Phase 217 traces rivers locally (steepest descent in 64 m steps from a source cell) with no flow or
+erosion, and continents come straight from noise.
+
+- A native, deterministic bake of the whole planet on a 2 km grid (about 32 M cells on the Phase 238
+  planet): base height from `WorldShape`, then flow accumulation, river networks from source to sea,
+  hydraulic and thermal erosion, and the climate and biome fields read from the result. The arithmetic
+  is fixed-point/integer, so every machine bakes the same bytes.
+- Output: one file per world seed and worldgen version (height, flow, river ids, biome; about 8 bytes
+  a cell, about 250 MB, compressed on disk). CI bakes it for the fabric seed and publishes it as a
+  release asset. A host that does not find it bakes it at world creation, with a progress screen. A
+  client downloads it from the host or bakes it itself, and checks the hash either way.
+- The runtime reads macro height and rivers from the bake (interpolated). The detail noise stays on
+  top. Phase 217's river trace is replaced. Lakes stay as Phase 232 left them, fed by the baked flow.
+- A world-gen change: bump `WORLDGEN_VERSION` (only unrecorded land changes, per the stable-world
+  rule; `frontier.gd` blends at recorded borders).
+
+**Acceptance criteria**
+- A suite test bakes a small planet (a test circumference) twice and gets identical bytes, and the
+  same bytes from the GDScript reference and the native bake.
+- Suite tests on the baked rivers: every river reaches the sea or a lake, never flows uphill, and its
+  width grows with flow.
+- A suite test: a client with a corrupted bake file (wrong hash) refuses it and bakes or re-downloads.
+- CI publishes the bake for the fabric seed, and the playtest `travel`, `far_peak` and `pole` steps
+  pass on it.
+
+## Phase 246 — The regional bake: 2 m erosion detail in 4 km regions
+
+The planet bake decides the large shapes. Carved ridges, gullies and sediment fans need erosion at
+metres, which a whole planet cannot afford (about 250 TB at 2 m).
+
+- The planet is split into fixed 4 km regions. A region is baked at 2 m cells when a body comes near
+  it: the region it is in, then its neighbours along the body's heading. The planet bake is the input
+  (heights, river paths), and regions overlap by a margin blended across, so borders do not show.
+- Native and fixed-point, so the host and every client bake the same region from the same seed
+  without sending terrain. A client too slow to keep up asks the host for the baked region
+  (compressed heights, a few MB).
+- Baked regions are kept on disk (host: next to the region store; client: in the Phase 244 cache), so
+  a region is baked once per machine.
+- Heights from the regional bake replace the detail noise inside baked regions. Before a region is
+  baked, a chunk there is not built from noise: it waits, and the region is queued ahead of the body.
+  Recorded chunks keep their records (the stable-world rule). Bump `WORLDGEN_VERSION`.
+
+**Acceptance criteria**
+- A suite test bakes the same region twice, with 1 and with 8 threads, and gets identical bytes.
+- A suite test bakes two neighbouring regions and finds heights along the shared border equal within
+  one height step.
+- A suite test: a region's baked rivers follow the planet bake's paths within one 2 km cell.
+- A net harness step: a client bakes a region, the host bakes it too, and their hashes match. A client
+  started with `--no-regional-bake` receives it from the host.
+- The playtest `flight` step meets its budgets with the regional bake on (the bake runs ahead of the
+  body).
+
+## Phase 247 — Ground cover: grass and bushes by biome, culled by distance
+
+Trees use `multimesh_pool.gd` and impostors (Phase 23). Natural ground has no grass or bushes.
+
+- Ground cover per biome in the fabric (separate PR): plant kinds, density, and the terrain materials
+  they grow on (grass on grass, none on rock or snow).
+- Placement is a pure function of (seed, tile), so every client puts the same tufts in the same places.
+  It is client-only, never synced, and absent on the headless server.
+- Drawn with the MultiMesh pool in cells around the camera, with a density that falls with distance,
+  and gone past a fade distance set by the graphics option. A wind sway in the vertex shader. A placed
+  block or a mined tile removes the cover there.
+
+**Acceptance criteria**
+- `npm run validate` and `check-drift` pass. A `tools/check_*.js` rejects ground cover on a material
+  that is not a terrain material.
+- Suite tests: placement is identical for the same seed and tile, nothing grows on rock, snow, water
+  or a placed block, and density falls with distance.
+- The playtest `walk` and `flight` steps meet their budgets with ground cover on.
 
 ---
 
