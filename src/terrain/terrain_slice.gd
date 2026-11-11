@@ -669,6 +669,11 @@ static func _native_cfg(pos: Vector2i, seed_v: int) -> Dictionary:
 		"spline": WorldShape.spline(),
 		"spawn_plain": WorldShape.spawn_plain_height(seed_v, float(c) * CHUNK_METERS),
 		"records": records,
+		"ridge_cells": WorldShape.ridge_cells(float(c) * CHUNK_METERS),   # Phase 238
+		"massif_cells": WorldShape.massif_cells(float(c) * CHUNK_METERS),
+		"massif_clear": WorldShape.massif_clear_m(float(c) * CHUNK_METERS),
+		"mask_on": WorldShape.mask_enabled(),
+		"continents": WorldShape.open_continents_m(),
 	}
 
 ## The GDScript reference of `heightmap_for`: the fallback without the native extension, and what the

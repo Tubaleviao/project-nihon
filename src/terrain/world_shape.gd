@@ -420,6 +420,15 @@ static func highest_near(seed_v: int, centre: Vector2, w: float, radius: float, 
 				at = p
 	return [best, at]
 
+## The open continents as `[latitude, longitude, radius in metres]`, for the native shape (it mirrors the mask).
+static func open_continents_m() -> Array:
+	warm()
+	var out: Array = []
+	for c in _continents:
+		if bool(c[3]):
+			out.append([float(c[0]), float(c[1]), float(c[2]) * 1000.0])
+	return out
+
 ## Replace the continent list (tests and tools; the fabric's list is read by `warm`). Main thread only.
 static func set_continents(list: Array) -> void:
 	warm()
