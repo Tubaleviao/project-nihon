@@ -564,13 +564,12 @@ func gather_build_input_deferred(chunk_pos: Vector2i) -> Dictionary:
 ## Phase 141 — the worker half of `gather_build_input_deferred`: give every `missing_neighbours`
 ## chunk of `input` the edge strip `chunk_pos`'s ring reads (`TerrainSlice.heightmap_strip_for`),
 ## so `build_runs` sees the same seam heights a full guess map would give it. Pure; `noise` is the
-## terrain's detail noise for `seed_v`, owned by the calling task.
+## terrain's detail noise for `seed_v`, owned by the calling task. Phase 240: strips as deep as `pad`.
 static func fill_seam_strips(chunk_pos: Vector2i, input: Dictionary, seed_v: int, noise: FastNoiseLite) -> void:
 	var known: Dictionary = input.get("neighbour_heightmaps", {})
-	var depth := clampi(int(input.get("pad", 1)), 1, 2)   # Phase 240: as deep as `build_runs` reads
 	for chunk in input.get("missing_neighbours", []):
 		var c: Vector2i = chunk
-		known[_chunk_key(c)] = TerrainSlice.heightmap_strip_for(c, chunk_pos - c, seed_v, noise, depth)
+		known[_chunk_key(c)] = TerrainSlice.heightmap_strip_for(c, chunk_pos - c, seed_v, noise, clampi(int(input.get("pad", 1)), 1, 2))
 	input["neighbour_heightmaps"] = known
 
 func _sync_guess_seed() -> void:
