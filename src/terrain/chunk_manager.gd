@@ -634,6 +634,8 @@ func _record_generation(chunk_pos: Vector2i) -> void:
 	if record_store == null or terrain_slice == null or not terrain_slice.has_method("get_world_seed"):
 		return
 	var canon := TerrainSlice.wrap_chunk(chunk_pos)
+	if TerrainSlice.chunk_in_closed_site(canon):
+		return   # Phase 238: a closed continent site is never recorded, so opening it later changes only unrecorded land
 	if ChunkRecords.has_record(canon):
 		_deferred_records.erase(ChunkRecords.key_of(canon))
 		_deferred_since.erase(ChunkRecords.key_of(canon))

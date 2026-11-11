@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:d1c6e2fc9d8f5cc6d3fd024ce1557ea51c09f65c512dffca94a2448f6c7896d8",
+  "schemaHash": "sha256:8c477fcb45fc8291a52749154e139e762caced7982b8d8cedf15c09323f136d5",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -7952,7 +7952,7 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false,
-            "defaultValue": 40000
+            "defaultValue": 2000
           },
           "worldSeed": {
             "name": "worldSeed",

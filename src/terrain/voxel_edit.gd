@@ -3,6 +3,7 @@ extends RefCounted
 ## `s` is the owning slice; every moved method keeps a forwarder on the slice.
 
 const WorkSkills := preload("res://src/character/work_skills.gd")
+const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 
 var s: Node
 
@@ -14,6 +15,8 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: Str
 	# consumes the held pick (the repo's standing atomic-refusal rule).
 	var probe = s._resolve_edit_tile("mine", world_pos, normal, exact)
 	var tile: Vector2i = probe["tile"]
+	if TerrainSlice.in_closed_site(probe["xz"]):   # Phase 238: a closed site is reserved ocean, never edited
+		return { "success": false, "material": "", "quantity": 0, "position": world_pos, "player_id": player_id }
 	var span = s._mine_span(s.get_runs_at_tile(tile), world_pos, normal)
 	if span.is_empty():
 		return { "success": false, "material": "", "quantity": 0, "position": world_pos, "player_id": player_id }
@@ -227,6 +230,8 @@ func place_block(world_pos: Vector3, normal: Vector3, material: String = "", pla
 	# leaves no side effect to roll back.
 	var probe = s._resolve_edit_tile("place", world_pos, normal, exact)
 	var tile: Vector2i = probe["tile"]
+	if TerrainSlice.in_closed_site(probe["xz"]):   # Phase 238
+		return false
 	var runs: Array = s.get_runs_at_tile(tile)
 	var span = s._place_span(runs, world_pos, normal)
 	if span.is_empty():

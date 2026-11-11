@@ -5,6 +5,7 @@ extends "res://src/core/wiring.gd"
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const Diag := preload("res://src/core/diag.gd")
 const WorldShape       := preload("res://src/terrain/world_shape.gd")
+const TerrainSlice     := preload("res://src/terrain/terrain_slice.gd")
 const ChunkManager     := preload("res://src/terrain/chunk_manager.gd")
 const ChunkRecordSync  := preload("res://src/terrain/chunk_record_sync.gd")
 const ChunkRecords     := preload("res://src/terrain/chunk_records.gd")
@@ -70,6 +71,8 @@ func build_snapshot(peer_id: int, include_own_record: bool = true,
 		# column of every loaded chunk. It is the world's identity, so it is small,
 		# exact, and the only thing that has to travel.
 		"seed":      root._terrain.get_world_seed(),
+		"circumferenceKm": TerrainSlice.circumference_km(),   # Phase 238
+		"continentMask":   WorldShape.mask_enabled(),
 		# Phase 54 — the host's clock, so the client starts in step and only slews afterwards.
 		"clock":     root._clock.to_data(),
 		# Phase 128 — the host's weather overrides; the weather itself is computed from the seed.
@@ -262,6 +265,7 @@ func on_world_snapshot_received(data: Dictionary) -> void:
 	if not root._is_client:
 		return
 	if data.has("seed"):
+		TerrainSlice.adopt_record_circumference(data)   # Phase 238: before any chunk is streamed
 		# Phase 41 — adopt the host's world seed BEFORE anything is streamed (a
 		# chunk built from this machine's own random seed would be a different
 		# world, and every voxel edit the host sends would land elsewhere).
