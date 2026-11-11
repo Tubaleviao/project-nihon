@@ -5,6 +5,8 @@ extends Resource
 
 @export var id: String
 @export var circumferenceKm: float
+@export var worldSeed: int
+@export var continents: Array
 @export var polarLatitude: float
 @export var seaLevel: float
 @export var minHeight: float

@@ -434,7 +434,7 @@ with its players. Today `TerrainSlice` draws `randi()` for a new world, the Phas
 takes an optional seed, `WorldSystem.circumferenceKm` defaults to 40,000, and continents come from
 noise everywhere (`WorldShape.continentalness`, `CONTINENT_CELLS` counted across the circumference).
 
-- **Fabric first** (separate PR): `WorldSystem.worldSeed` (an integer), `circumferenceKm` 2,000, and a
+- **Fabric first** (separate PR; landed with `worldSeed` and `continents`, `tools/check_world_shape.js`; `circumferenceKm` moves to 2,000 in the runtime PR because the runtime reads it): `WorldSystem.worldSeed` (an integer), `circumferenceKm` 2,000, and a
   `continents` list. Each continent has an id, a centre (latitude, longitude), a radius in km and an
   `open` flag. At launch the list holds one open continent around the spawn, about 600 km across
   (tuned in the PR), and may list closed sites reserved for later.

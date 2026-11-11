@@ -6,6 +6,8 @@
 script = ExtResource("1")
 id = ""
 circumferenceKm = 40000.0
+worldSeed = 238
+continents = [{"id":"home","latitude":0,"longitude":0,"radiusKm":300,"open":true},{"id":"east","latitude":0,"longitude":180,"radiusKm":250,"open":false},{"id":"north","latitude":55,"longitude":90,"radiusKm":150,"open":false}]
 polarLatitude = 85.0
 seaLevel = 0.0
 minHeight = -64.0
