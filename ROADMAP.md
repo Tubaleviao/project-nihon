@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–224 and 248 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–224, 238 and 248 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -176,7 +176,7 @@ detail and caching (243–244), and later flight (237), the planet bake (245) an
 | Phase | Title | Status |
 |---|---|---|
 | 237 | Flight that handles like flight: inertia, steering by the camera, no ground-walking fixes in the air | Open |
-| 238 | One world: a fixed seed, a 2,000 km planet and one continent | Open |
+| 238 | One world: a fixed seed, a 2,000 km planet and one continent | Done (runtime PR; spec below) |
 | 239 | Streaming that keeps up: a speed-scaled lead, adaptive workers, an attach budget | Done |
 | 240 | Smooth natural ground: a surface-nets mesher (GDScript reference) | Open |
 | 241 | The native smooth mesher, and coarse chunks built smooth | Open |
@@ -427,6 +427,8 @@ buried-lift rescue.
 - The playtest `flight` step passes at its current floors.
 
 ## Phase 238 — One world: a fixed seed, a 2,000 km planet and one continent
+
+**Done.** Runtime landed with the fabric PR (#606): `WorldShape.continent_mask` (open continents only, a land core and a highland ring, deep ocean elsewhere), `TerrainSlice.set_world_circumference` / `adopt_record_circumference` (a record without a circumference reads as 40,000 km with no mask), closed sites never recorded or edited (`in_closed_site`), spawns inside open continents, no seed field in New world, `PlaytestBot.WORLD_SEED` = 238, `WORLDGEN_VERSION` 13, the native chunk builder mirrors the mask (`NativeChunkBuilder` version 9), tests in `one_world_tests.gd`. Re-tune: ridge and massif lattices keep their metre sizes on the small planet (`ridge_cells`, `massif_cells`), massif spawn clearance 40 km, hydrology cells 500 m and 1,000 m (divide 2,000 km). The suite pins a pre-238 world (40,000 km, no mask) for its older goldens; a test of the new planet passes `modern_world`. The playtest passes every step on the fabric seed.
 
 Decided by the owner on 2026-11-10. Every world uses the same seed. The planet is small, a 2,000 km
 equator, and only one continent is open at launch; more are opened later as data, so the world grows
@@ -1004,7 +1006,7 @@ metres, which a whole planet cannot afford (about 250 TB at 2 m).
 
 ## Deferred (in priority order)
 
-- **Fast travel beyond waystones** — a planet takes about 90 days to walk around. Phase 125 added
+- **Fast travel beyond waystones** — a planet takes about 4.5 days to walk around (Phase 238: 2,000 km; the open continent is crossed in about a day and a half). Phase 125 added
   waystones, Phase 216 mounts, and boats and roads are Phases 234–235. Ships for crossing oceans
   between continents remain.
 - **Physics ragdolls** — Phase 157 animates deaths with a host-chosen landing spot and authored

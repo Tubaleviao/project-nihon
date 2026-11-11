@@ -14,6 +14,7 @@ func register() -> void:
 	_run_test("voxel: an unreadable legacy op is dropped and a plain tile round-trips", _test_legacy_op_unreadable_dropped)
 	_run_test("voxel: corner blends are symmetric, deep ocean keeps vein depth", _test_phase122_blend_and_bedrock)
 	_run_test("voxel: mine lowers height and yields material", _test_voxel_mine_yields_material)
+	_run_test("voxel: a closed continent site refuses mining and placing (Phase 238)", _test_closed_site_refuses_edits, true)
 	_run_test("voxel: mine at bedrock fails",                  _test_voxel_mine_bedrock)
 	_run_test("voxel: side-face mine targets hit block",       _test_voxel_mine_side_face)
 	_run_test("voxel: cycle filters to held materials",        _test_voxel_cycle_inventory_filtered)
@@ -300,6 +301,20 @@ func _test_phase122_blend_and_bedrock() -> void:
 		if band is Dictionary:
 			deepest = maxf(deepest, float((band as Dictionary).get("max", 0.0)))
 	assert_true(WorldShape.min_height() - deepest > VoxelSlice.BEDROCK_DEPTH, "the deepest vein band (%.0f m) fits above bedrock under the deepest ocean floor" % deepest)
+
+func _test_closed_site_refuses_edits() -> void:
+	var v := _make_voxel()
+	var inv := InventorySlice.new()
+	add_child(inv)
+	v.inventory_slice = inv
+	var w := float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
+	var site := Vector3(w * 0.5, 0.0, 16.0)   # the closed "east" site
+	assert_true(TerrainSlice.in_closed_site(Vector2(site.x, site.z)), "the spot is in a closed site")
+	assert_true(not bool(v.mine_block(site).get("success", false)), "mining there is refused")
+	assert_true(not v.place_block(site, Vector3.UP, "Soil"), "placing there is refused")
+	assert_true(not TerrainSlice.in_closed_site(Vector2(16.0, 16.0)), "the open continent is editable")
+	v.free()
+	inv.free()
 
 func _test_voxel_mine_yields_material() -> void:
 	var v := _make_voxel()

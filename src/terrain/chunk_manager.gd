@@ -642,7 +642,7 @@ func load_chunk(chunk_pos: Vector2i) -> void:
 ## remembered in `_deferred_records` and retried by `_record_deferred`, and a record made after the
 ## chunk was built rebuilds it. Host and dedicated server only; the distant ring never calls this.
 func _record_generation(chunk_pos: Vector2i) -> void:
-	if record_store == null or terrain_slice == null or not terrain_slice.has_method("get_world_seed"):
+	if record_store == null or terrain_slice == null or not terrain_slice.has_method("get_world_seed") or TerrainSlice.chunk_in_closed_site(chunk_pos):   # Phase 238: closed sites are never recorded
 		return
 	var canon := TerrainSlice.wrap_chunk(chunk_pos)
 	if ChunkRecords.has_record(canon):

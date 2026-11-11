@@ -141,6 +141,7 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 		var deposit_vertices: PackedVector3Array = built.get("deposit_vertices", PackedVector3Array())
 		if not deposit_vertices.is_empty():
 			var deposit_inst := MeshInstance3D.new()
+			deposit_inst.name = "Deposits"
 			deposit_inst.mesh = s._mesh_from_arrays({
 				"vertices": built["deposit_vertices"],
 				"normals":  built["deposit_normals"],

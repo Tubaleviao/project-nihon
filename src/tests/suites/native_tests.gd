@@ -22,6 +22,7 @@ func register() -> void:
 	_run_test("native: the general loader routes per class and function",                           _test_native_loader_routing)
 	_run_test("native: the shared hash and noise match WorldShape on 10,000 samples",              _test_native_world_shape_parity)
 	_run_test("native: heightmap_for matches the GDScript reference on the fixed chunk set",       _test_native_heightmap_parity)
+	_run_test("native: heightmap_for matches on the 2,000 km planet inside, at and past the continent edge (Phase 238)", _test_native_heightmap_parity_small_planet, true)
 	_run_test("native: build_runs matches the GDScript reference on the fixed chunk set",          _test_native_build_runs_parity)
 	_run_test("native: build_chunk_arrays matches the GDScript reference on the fixed chunk set",  _test_native_chunk_arrays_parity)
 	_run_test("native: a rejected build_chunk_arrays falls back to the GDScript reference",        _test_native_chunk_arrays_rejection_falls_back)
@@ -147,6 +148,16 @@ func _native_parity_chunks() -> Array:
 		Vector2i(0, 0),                      # spawn plain
 		Vector2i(2047, -2047),               # far detail-noise cell
 	]
+
+func _test_native_heightmap_parity_small_planet() -> void:
+	var seed_v := 238
+	var noise := FastNoiseLite.new()
+	TerrainSlice.configure_noise(noise, seed_v)
+	var cases: Array = []
+	for pos in [Vector2i(0, 0), Vector2i(2000, 500), Vector2i(-4000, 2500), Vector2i(3000, 4000), Vector2i(8000, 0), Vector2i(9000, 0), Vector2i(10500, 0), Vector2i(31249, 0), Vector2i(-31250, 2000)]:
+		cases.append([pos, seed_v, noise])
+	ChunkRecordsScript.clear()
+	assert_native_parity(CHUNK_BUILDER, "heightmap_for", cases, TerrainSlice.heightmap_for_gd, TerrainSlice.heightmap_for, "heightmap_for, masked small planet")
 
 func _test_native_heightmap_parity() -> void:
 	var seed_v := 777001

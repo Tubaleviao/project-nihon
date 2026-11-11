@@ -6,6 +6,7 @@ const WorldPos := preload("res://src/terrain/world_pos.gd")
 const Diag := preload("res://src/core/diag.gd")
 const TickProbe := preload("res://src/core/tick_probe.gd")
 const TerrainSlice     := preload("res://src/terrain/terrain_slice.gd")
+const WorldShape       := preload("res://src/terrain/world_shape.gd")
 const VoxelSlice       := preload("res://src/terrain/voxel_slice.gd")
 const ChunkRecords     := preload("res://src/terrain/chunk_records.gd")
 const PersistenceSlice := preload("res://src/persistence/persistence_slice.gd")
@@ -123,6 +124,8 @@ func collect_save_job(incremental: bool) -> Dictionary:
 		# two players in one world must regenerate the same ground, and a reload
 		# that picked a fresh seed would land every saved edit on a different hill.
 		"seed":            root._terrain.get_world_seed(),
+		"circumferenceKm": TerrainSlice.circumference_km(),   # Phase 238; a record without it is 40,000 km, unmasked
+		"continentMask":   WorldShape.mask_enabled(),
 		"worldgenVersion": root._worldgen_stamp,
 		"worldgenFingerprint": root._worldgen_fp_stamp if root._worldgen_fp_stamp >= 0 else TerrainSlice.worldgen_fingerprint(),
 		"worldgenFingerprintHistory": root._worldgen_fp_history if not root._worldgen_fp_history.is_empty() else [TerrainSlice.worldgen_fingerprint()],
@@ -481,6 +484,7 @@ func load_world_records() -> void:
 		# edit is migrated: the ground a save was written against is the ground a
 		# reload must regenerate, and the migration of a pre-Phase-41 edit needs
 		# the tile's natural height, which comes from this noise field.
+		TerrainSlice.adopt_record_circumference(root._loaded_world)   # Phase 238
 		var recorded_seed: Variant = root._loaded_world.get("seed", null)
 		if recorded_seed != null:
 			root._terrain.set_world_seed(int(recorded_seed))

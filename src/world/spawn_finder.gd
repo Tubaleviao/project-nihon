@@ -71,6 +71,8 @@ static func _rng(player_id: String, salt: int) -> RandomNumberGenerator:
 ## True when world (x, z) is dry land, flat enough to stand on, and in one of `biomes`.
 static func is_standable(world_seed: int, x: float, z: float, biomes: Array, height_fn: Callable) -> bool:
 	var w := float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
+	if WorldShape.mask_enabled() and WorldShape.continent_at(x, z, w, 0.0, true) < 0:
+		return false   # Phase 238: spawns lie inside an open continent
 	if WorldShape.altitude(world_seed, x, z, w) < MIN_LAND_ALTITUDE:
 		return false
 	var chunk := Vector2i(floori(x / TerrainSlice.CHUNK_METERS), floori(z / TerrainSlice.CHUNK_METERS))

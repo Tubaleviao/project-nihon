@@ -56,6 +56,12 @@ struct Cfg {
 	double ridge_amp = 400.0;
 	double massif_amp = 0.0;   // `WorldShape.massif_amplitude()`, computed in GDScript
 	double spawn_plain = SPAWN_HEIGHT;   // `WorldShape.spawn_plain_height` for this seed, computed in GDScript
+	// Phase 238: the lattices follow the planet's size and the continent mask (`WorldShape.continentalness`).
+	int ridge_cells = RIDGE_CELLS;
+	int massif_cells = MASSIF_CELLS;
+	double massif_clear = MASSIF_SPAWN_CLEAR_M;
+	bool mask_on = false;
+	std::vector<double> cont;   // per open continent: latitude deg, longitude deg, radius m
 	std::vector<double> spline_x;
 	std::vector<double> spline_y;
 	Dictionary records;
@@ -63,16 +69,40 @@ struct Cfg {
 
 // WorldShape ---------------------------------------------------------------------------------
 
-double continentalness(int64_t seed_v, double x, double z, double w) {
+double continentalness(const Cfg &cfg, int64_t seed_v, double x, double z, double w) {
 	double v = 0.0;
 	for (int i = 0; i < 3; i++) {
 		v += CONTINENT_WEIGHTS[i] * shape_noise(seed_v, x, z, w, CONTINENT_CELLS[i], 21 + i);
 	}
-	return clampf(0.5 + (v - 0.5) * CONTRAST, 0.0, 1.0);
+	double c = clampf(0.5 + (v - 0.5) * CONTRAST, 0.0, 1.0);
+	if (!cfg.mask_on) {
+		return c;
+	}
+	double m = 0.0, core = 0.0, ring = 0.0;
+	for (size_t k = 0; k + 2 < cfg.cont.size(); k += 3) {
+		double r = cfg.cont[k + 2];
+		double cx = cfg.cont[k + 1] / 360.0 * w;
+		double cz = cfg.cont[k] / 360.0 * w;
+		double dx = std::fmod(std::fmod(x - cx, w) + w, w);   // SeamWrap.wrap_f(v, lap): into [-w/2, w/2)
+		if (dx >= w * 0.5) {
+			dx -= w;
+		}
+		double d = Vector2(dx, z - cz).length();   // float32, as GDScript's Vector2
+		if (d >= r) {
+			continue;
+		}
+		m = std::fmax(m, 1.0 - smoothstep(r * 0.8, r, d));
+		core = std::fmax(core, 1.0 - smoothstep(r * 0.5, r * 0.8, d));
+		ring = std::fmax(ring, smoothstep(r * 0.1, r * 0.25, d) * (1.0 - smoothstep(r * 0.55, r * 0.75, d)));
+	}
+	if (m <= 0.0) {
+		return 0.0;
+	}
+	return std::fmax(std::fmax(c, 0.74 * core), 0.97 * ring) * m;
 }
 
-double ridges(int64_t seed_v, double x, double z, double w) {
-	double n = shape_noise(seed_v, x, z, w, RIDGE_CELLS, 41) * 0.7 + shape_noise(seed_v, x, z, w, RIDGE_CELLS * 3, 42) * 0.3;
+double ridges(const Cfg &cfg, int64_t seed_v, double x, double z, double w) {
+	double n = shape_noise(seed_v, x, z, w, cfg.ridge_cells, 41) * 0.7 + shape_noise(seed_v, x, z, w, cfg.ridge_cells * 3, 42) * 0.3;
 	return std::pow(1.0 - std::fabs(n * 2.0 - 1.0), RIDGE_SHARPNESS);
 }
 
@@ -93,19 +123,19 @@ double spline_height(const Cfg &cfg, double c) {
 }
 
 double shape_height(const Cfg &cfg, int64_t seed_v, double x, double z, double w) {
-	double c = continentalness(seed_v, x, z, w);
+	double c = continentalness(cfg, seed_v, x, z, w);
 	double e = shape_noise(seed_v, x, z, w, EROSION_CELLS, 31);
 	double base = spline_height(cfg, c);
 	double inland = smoothstep(0.68, 0.9, c);
 	double rugged = 1.0 - smoothstep(0.35, 0.8, e);
 	double d = Vector2(x - SPAWN_CENTER_X, z - SPAWN_CENTER_Z).length();   // float32, as GDScript's Vector2
 	double m = 0.0;
-	if (inland * rugged > 0.0 && d > MASSIF_SPAWN_CLEAR_M) {
-		double s = smoothstep(MASSIF_FLOOR, 1.0, shape_noise(seed_v, x, z, w, MASSIF_CELLS, 51));
-		m = s * s * smoothstep(MASSIF_SPAWN_CLEAR_M, MASSIF_SPAWN_CLEAR_M * 2.0, d);
+	if (inland * rugged > 0.0 && d > cfg.massif_clear) {
+		double s = smoothstep(MASSIF_FLOOR, 1.0, shape_noise(seed_v, x, z, w, cfg.massif_cells, 51));
+		m = s * s * smoothstep(cfg.massif_clear, cfg.massif_clear * 2.0, d);
 	}
 	double ridge_amp = cfg.ridge_amp * lerpf(1.0, MASSIF_RIDGE_GAIN, m);
-	double peaks = (ridges(seed_v, x, z, w) * ridge_amp + m * cfg.massif_amp) * inland * rugged;
+	double peaks = (ridges(cfg, seed_v, x, z, w) * ridge_amp + m * cfg.massif_amp) * inland * rugged;
 	double h = clampf(base + peaks, cfg.min_h, cfg.max_h);
 	if (d < SPAWN_EASE_M) {
 		h = lerpf(cfg.spawn_plain, h, smoothstep(SPAWN_PLAIN_M, SPAWN_EASE_M, d));
@@ -321,7 +351,7 @@ void NativeChunkBuilder::_bind_methods() {
 }
 
 int NativeChunkBuilder::version() const {
-	return 8;   // 8 = worldgen 11 massifs (Phase 211); 7 = build_coarse_arrays (Phase 190); 6 = worldgen 10 ridges (Phase 188); 5 = heightmap_for reads the spawn plain from `cfg.spawn_plain` (worldgen 9)
+	return 9;   // 9 = Phase 238 continent mask and planet-size lattices (`cfg.continents`); 8 = worldgen 11 massifs (Phase 211); 7 = build_coarse_arrays (Phase 190); 6 = worldgen 10 ridges (Phase 188); 5 = heightmap_for reads the spawn plain from `cfg.spawn_plain` (worldgen 9)
 }
 
 PackedStringArray NativeChunkBuilder::functions() const {
@@ -345,6 +375,17 @@ Array NativeChunkBuilder::heightmap_for(const Vector2i &p_pos, int64_t p_seed, c
 	cfg.massif_amp = p_cfg.get("massif_amplitude", 0.0);
 	cfg.spawn_plain = p_cfg.get("spawn_plain", SPAWN_HEIGHT);
 	cfg.records = p_cfg.get("records", Dictionary());
+	cfg.ridge_cells = (int)(int64_t)p_cfg.get("ridge_cells", RIDGE_CELLS);
+	cfg.massif_cells = (int)(int64_t)p_cfg.get("massif_cells", MASSIF_CELLS);
+	cfg.massif_clear = p_cfg.get("massif_clear", MASSIF_SPAWN_CLEAR_M);
+	cfg.mask_on = (bool)p_cfg.get("mask_on", false);
+	Array conts = p_cfg.get("continents", Array());
+	for (int i = 0; i < conts.size(); i++) {
+		Array k = conts[i];   // [latitude, longitude, radius m]
+		cfg.cont.push_back((double)k[0]);
+		cfg.cont.push_back((double)k[1]);
+		cfg.cont.push_back((double)k[2]);
+	}
 	Array spline = p_cfg.get("spline", Array());
 	for (int i = 0; i < spline.size(); i++) {
 		Array pt = spline[i];

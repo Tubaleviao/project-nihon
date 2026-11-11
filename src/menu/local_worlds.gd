@@ -34,7 +34,17 @@ static func clean_name(raw: String) -> String:
 const SEED_MIN := -2147483648
 const SEED_MAX := 2147483647
 
-## The seed typed in the New world form: "" → a random one; an integer → itself; any other text →
+## Phase 238 — the one seed every new world uses: `WorldSystem.worldSeed` in the fabric.
+const FALLBACK_SEED := 238
+
+static func fabric_seed() -> int:
+	var ws: Variant = GameData.WORLD_SYSTEMS.get("WorldSystem", null)
+	if ws == null or ws.get("worldSeed") == null:
+		return FALLBACK_SEED
+	return int(ws.get("worldSeed"))
+
+## The seed given to a new world: "" → the fabric seed (Phase 238; the New world form has no seed field,
+## a typed seed is a dev override for tests and tools); an integer → itself; any other text →
 ## a stable hash of it (so "nihon" is always the same world). Null when it is too long, or an integer
 ## outside SEED_MIN..SEED_MAX.
 static func parse_seed(raw: String) -> Variant:
@@ -42,7 +52,7 @@ static func parse_seed(raw: String) -> Variant:
 	if s.length() > 64:
 		return null
 	if s.is_empty():
-		return randi() & SEED_MAX
+		return fabric_seed()
 	if s.is_valid_int():
 		if s.length() > 11:
 			return null   # past any int32, and past what to_int() reads exactly

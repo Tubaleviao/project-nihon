@@ -776,7 +776,6 @@ menu.play_title,Your worlds,Seus mundos
 menu.join_title,Join a server,Entrar em um servidor
 menu.world.new,New world,Novo mundo
 menu.world.name,World name,Nome do mundo
-menu.world.seed,Seed (optional),Semente (opcional)
 menu.world.create,Create world,Criar mundo
 menu.world.play,Play,Jogar
 menu.world.delete,Delete,Excluir

@@ -42,7 +42,9 @@ const HEIGHT_SCALE := 5.0    # world units peak-to-valley of the small-scale DET
 ## broad massifs (`WorldShape.massif`) lift rugged inland ground toward it, with taller ridges on top.
 ## 12 = Phase 217 static lakes and rivers (`Hydrology`): beds are carved and fresh water laid on unrecorded
 ## land and on land recorded at version 12 or later; land recorded earlier stays dry.
-const WORLDGEN_VERSION := 12
+## 13 = Phase 238 one world: a 2,000 km planet with one open continent (`WorldShape.continent_mask`); ridge
+## and massif lattices rescaled to the small circumference. Worlds saved earlier keep their own circumference.
+const WORLDGEN_VERSION := 13
 
 ## Phase 106 — a hash of every fabric parameter world-gen reads that `WORLDGEN_VERSION` cannot see:
 ## the `WorldSystem` shape fields (`sea`, `min/max height`, `oceanShare`, `ridgeAmplitude`,
@@ -200,6 +202,43 @@ static func detail_of(n: FastNoiseLite, x: float, z: float) -> float:
 			var off := cell_offset(seed_v, cx, cz)
 			total += wx * wz * n.get_noise_2d(lx + off.x, lz + off.y)
 	return (total + 1.0) * 0.5 * HEIGHT_SCALE
+
+## Phase 238 — adopt a world's circumference (km) and whether the continent mask applies. A new world takes
+## the fabric's; a record without a circumference (pre-238) is 40,000 km with no mask. Main thread, before
+## any chunk worker builds (the value is a process static).
+static func set_world_circumference(km: float, masked: bool) -> void:
+	_circumference_cache = maxi(4, roundi(km * 1000.0 / CHUNK_METERS / 4.0) * 4)
+	_polar_cache = -1
+	WorldShape.set_mask_enabled(masked)
+	WorldShape.reset_plain_cache()
+	Hydrology.reset_cache()   # its cell size follows the planet's size
+
+## The circumference in km this process generates (what `world_record_fields` writes).
+static func circumference_km() -> float:
+	return float(circumference_chunks()) * CHUNK_METERS / 1000.0
+
+## Fabric circumference in km (a new world's).
+static func fabric_circumference_km() -> float:
+	return _world_field("circumferenceKm", DEFAULT_CIRCUMFERENCE_KM)
+
+## Phase 238 — whether world (x, z) metres lies inside a closed continent site (its radius plus the rim): the
+## host never records a chunk there and refuses edits and placements. False when the mask is off (old worlds).
+static func in_closed_site(xz: Vector2) -> bool:
+	if not WorldShape.mask_enabled():
+		return false
+	return WorldShape.closed_site_at(xz.x, xz.y, float(circumference_chunks()) * CHUNK_METERS)
+
+## The same for a chunk (its centre; the rim is wider than a chunk).
+static func chunk_in_closed_site(chunk: Vector2i) -> bool:
+	var c := (Vector2(chunk) + Vector2(0.5, 0.5)) * CHUNK_METERS
+	return in_closed_site(c)
+
+## Adopt a loaded record's circumference: none recorded means a pre-Phase-238 world.
+static func adopt_record_circumference(rec: Dictionary) -> void:
+	if rec.has("circumferenceKm"):
+		set_world_circumference(float(rec["circumferenceKm"]), bool(rec.get("continentMask", true)))
+	else:
+		set_world_circumference(DEFAULT_CIRCUMFERENCE_KM, false)
 
 ## Adopt `seed` as the world's identity. Called by game_root with the seed read
 ## off the world record (authoritative boot) or out of the host's join snapshot
@@ -630,6 +669,11 @@ static func _native_cfg(pos: Vector2i, seed_v: int) -> Dictionary:
 		"spline": WorldShape.spline(),
 		"spawn_plain": WorldShape.spawn_plain_height(seed_v, float(c) * CHUNK_METERS),
 		"records": records,
+		"ridge_cells": WorldShape.ridge_cells(float(c) * CHUNK_METERS),   # Phase 238
+		"massif_cells": WorldShape.massif_cells(float(c) * CHUNK_METERS),
+		"massif_clear": WorldShape.massif_clear_m(float(c) * CHUNK_METERS),
+		"mask_on": WorldShape.mask_enabled(),
+		"continents": WorldShape.open_continents_m(),
 	}
 
 ## The GDScript reference of `heightmap_for`: the fallback without the native extension, and what the

@@ -12,6 +12,7 @@ extends RefCounted
 ## The lattices wrap east-west (their cell counts divide the circumference), so the shape has no
 ## seam at the antimeridian.
 
+const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 const SEA_LEVEL_DEFAULT := 0.0
 const MIN_HEIGHT_DEFAULT := -64.0
 const MAX_HEIGHT_DEFAULT := 8850.0
@@ -30,6 +31,21 @@ const EROSION_CELLS := 64
 ## was ~125 km wide, so inland it was a plateau hundreds of kilometres across; now ranges are thin lines
 ## of peaks with valleys between them.
 const RIDGE_CELLS := 1600
+## Phase 238: the same cell sizes in metres on the 2,000 km planet (25 km ridges, 31 km massifs), 40 km spawn clearance.
+## A planet past SMALL_PLANET_M round (a pre-238 world, 40,000 km) keeps the lattices above.
+const RIDGE_CELLS_SMALL := 80
+const MASSIF_CELLS_SMALL := 64
+const MASSIF_SPAWN_CLEAR_M_SMALL := 40000.0
+const SMALL_PLANET_M := 1.0e7
+
+static func ridge_cells(w: float) -> int:
+	return RIDGE_CELLS_SMALL if w < SMALL_PLANET_M else RIDGE_CELLS
+
+static func massif_cells(w: float) -> int:
+	return MASSIF_CELLS_SMALL if w < SMALL_PLANET_M else MASSIF_CELLS
+
+static func massif_clear_m(w: float) -> float:
+	return MASSIF_SPAWN_CLEAR_M_SMALL if w < SMALL_PLANET_M else MASSIF_SPAWN_CLEAR_M
 ## Exponent on the ridge profile. The two-octave noise clusters near 0.5, so the old square kept most
 ## rugged inland ground near full ridge height; a high power keeps only the crest lines.
 const RIDGE_SHARPNESS := 10.0
@@ -81,6 +97,11 @@ static func warm() -> void:
 		_ceiling = _num(ws, "buildCeiling", _ceiling)
 		_ocean_share = _num(ws, "oceanShare", _ocean_share)
 		_ridge_amp = _num(ws, "ridgeAmplitude", _ridge_amp)
+		var cs: Variant = ws.get("continents")
+		if cs is Array and not (cs as Array).is_empty():
+			_continents = []
+			for k in cs:
+				_continents.append([float(k["latitude"]), float(k["longitude"]), float(k["radiusKm"]), bool(k["open"])])
 		var sp: Variant = ws.get("heightSpline")
 		if sp is Array and (sp as Array).size() >= 2:
 			_spline = sp
@@ -91,7 +112,7 @@ static func warm() -> void:
 ## `TerrainSlice.worldgen_fingerprint`.
 static func fingerprint_fields() -> Array:
 	warm()
-	return [_sea, _min_h, _max_h, _ocean_share, _ridge_amp, _spline]
+	return [_sea, _min_h, _max_h, _ocean_share, _ridge_amp, _spline, _continents]
 
 static func _num(res: Variant, field: String, fallback: float) -> float:
 	var v: Variant = res.get(field)
@@ -154,12 +175,99 @@ static func _noise(seed_v: int, x: float, z: float, w: float, cells_x: int, salt
 	var v11 := float(_mix(seed_v, x1, iz + 1, salt) % 10000) / 9999.0
 	return lerpf(lerpf(v00, v10, fx), lerpf(v01, v11, fx), fz)
 
+## Phase 238 — the continent mask. Continents are `[latitude, longitude, radiusKm, open]` (fabric
+## `WorldSystem.continents`). Only open ones have land: inside one the noise is kept (and lifted to a land
+## core so most of the core is dry), eased to the basin over the last fifth of the radius; outside every
+## open continent the ground is deep ocean. A closed site is ocean too. A world saved before Phase 238
+## has no mask (`set_mask_enabled(false)`).
+const CONTINENT_CORE := 0.5      ## fraction of the radius inside which the land core is full strength
+const CONTINENT_RIM := 0.8       ## fraction of the radius where the shelf begins to ease to the basin
+const CORE_CONTINENTALNESS := 0.74   ## the core's floor: just above the coast (0.64–0.68) on the spline
+## A ring of highland between the core and the rim, so the open continent holds inland ranges and summits.
+const HIGHLAND_CONTINENTALNESS := 0.97
+const DEFAULT_CONTINENTS: Array = [[0.0, 0.0, 300.0, true], [0.0, 180.0, 250.0, false], [55.0, 90.0, 150.0, false]]
+static var _continents: Array = DEFAULT_CONTINENTS
+static var _mask_on := true
+
+static func set_mask_enabled(on: bool) -> void:
+	_mask_on = on
+
+static func mask_enabled() -> bool:
+	return _mask_on
+
+## The continent list in the form the mask reads.
+static func continents() -> Array:
+	warm()
+	return _continents
+
+## Distance in metres from (x, z) to the centre of continent `c` on a planet of circumference `w` m: X
+## wraps, latitude and longitude are degrees of the circumference (360 degrees round, 90 pole to equator).
+static func continent_distance_m(c: Array, x: float, z: float, w: float) -> float:
+	var cx := float(c[1]) / 360.0 * w
+	var cz := float(c[0]) / 360.0 * w
+	var dx := SeamWrap.delta_f(x, cx, w)
+	return Vector2(dx, z - cz).length()
+
+## Index of the continent whose disc (radius plus `extra_m`) holds (x, z), or -1.
+static func continent_at(x: float, z: float, w: float, extra_m: float = 0.0, open_only: bool = false) -> int:
+	warm()
+	for i in _continents.size():
+		var c: Array = _continents[i]
+		if open_only and not bool(c[3]):
+			continue
+		if continent_distance_m(c, x, z, w) <= float(c[2]) * 1000.0 + extra_m:
+			return i
+	return -1
+
+## Whether (x, z) lies inside a closed site's disc widened by its rim (the last fifth of the radius).
+static func closed_site_at(x: float, z: float, w: float) -> bool:
+	warm()
+	for c in _continents:
+		if bool(c[3]):
+			continue
+		if continent_distance_m(c, x, z, w) <= float(c[2]) * 1000.0 * (1.0 + (1.0 - CONTINENT_RIM)):
+			return true
+	return false
+
+## 1 at the heart of an open continent, easing to 0 at its edge; 0 outside every open one.
+static func continent_mask(x: float, z: float, w: float) -> float:
+	warm()
+	var best := 0.0
+	for c in _continents:
+		if not bool(c[3]):
+			continue
+		var r := float(c[2]) * 1000.0
+		var d := continent_distance_m(c, x, z, w)
+		if d >= r:
+			continue
+		best = maxf(best, 1.0 - smoothstep(r * CONTINENT_RIM, r, d))
+	return best
+
 ## Continentalness in [0, 1]: 0 deep basin, 1 deep inland.
 static func continentalness(seed_v: int, x: float, z: float, w: float) -> float:
 	var v := 0.0
 	for i in CONTINENT_CELLS.size():
 		v += CONTINENT_WEIGHTS[i] * _noise(seed_v, x, z, w, CONTINENT_CELLS[i], 21 + i)
-	return clampf(0.5 + (v - 0.5) * CONTRAST, 0.0, 1.0)
+	var c := clampf(0.5 + (v - 0.5) * CONTRAST, 0.0, 1.0)
+	if not _mask_on:
+		return c
+	warm()
+	var m := 0.0
+	var core := 0.0
+	var ring := 0.0
+	for k in _continents:
+		if not bool(k[3]):
+			continue
+		var r := float(k[2]) * 1000.0
+		var d := continent_distance_m(k, x, z, w)
+		if d >= r:
+			continue
+		m = maxf(m, 1.0 - smoothstep(r * CONTINENT_RIM, r, d))
+		core = maxf(core, 1.0 - smoothstep(r * CONTINENT_CORE, r * CONTINENT_RIM, d))
+		ring = maxf(ring, smoothstep(r * 0.1, r * 0.25, d) * (1.0 - smoothstep(r * 0.55, r * 0.75, d)))
+	if m <= 0.0:
+		return 0.0
+	return maxf(maxf(c, CORE_CONTINENTALNESS * core), HIGHLAND_CONTINENTALNESS * ring) * m
 
 ## Erosion in [0, 1]: 1 flat plains, 0 rugged.
 static func erosion(seed_v: int, x: float, z: float, w: float) -> float:
@@ -167,13 +275,13 @@ static func erosion(seed_v: int, x: float, z: float, w: float) -> float:
 
 ## Ridge value in [0, 1]: peaks on thin lines where the underlying noise crosses 0.5.
 static func ridges(seed_v: int, x: float, z: float, w: float) -> float:
-	var n := _noise(seed_v, x, z, w, RIDGE_CELLS, 41) * 0.7 + _noise(seed_v, x, z, w, RIDGE_CELLS * 3, 42) * 0.3
+	var n := _noise(seed_v, x, z, w, ridge_cells(w), 41) * 0.7 + _noise(seed_v, x, z, w, ridge_cells(w) * 3, 42) * 0.3
 	return pow(1.0 - absf(n * 2.0 - 1.0), RIDGE_SHARPNESS)
 
 ## Phase 211 — massif uplift in [0, 1]: 0 below MASSIF_FLOOR, rising to 1 on the lattice's highest nodes.
 ## The squared smoothstep keeps the flanks long and the summit a plateau, as Earth's great ranges stand.
 static func massif(seed_v: int, x: float, z: float, w: float) -> float:
-	var s := smoothstep(MASSIF_FLOOR, 1.0, _noise(seed_v, x, z, w, MASSIF_CELLS, 51))
+	var s := smoothstep(MASSIF_FLOOR, 1.0, _noise(seed_v, x, z, w, massif_cells(w), 51))
 	return s * s
 
 ## Metres the massif lifts at full strength: what is left of `maxHeight` above the spline's top and the
@@ -219,8 +327,9 @@ static func natural_height(seed_v: int, x: float, z: float, w: float) -> float:
 	var m := 0.0
 	if inland * rugged > 0.0:
 		var d := Vector2(x - SPAWN_CENTER.x, z - SPAWN_CENTER.y).length()
-		if d > MASSIF_SPAWN_CLEAR_M:
-			m = massif(seed_v, x, z, w) * smoothstep(MASSIF_SPAWN_CLEAR_M, MASSIF_SPAWN_CLEAR_M * 2.0, d)
+		var clear := massif_clear_m(w)
+		if d > clear:
+			m = massif(seed_v, x, z, w) * smoothstep(clear, clear * 2.0, d)
 	var ridge_amp := _ridge_amp * lerpf(1.0, MASSIF_RIDGE_GAIN, m)
 	var peaks := (ridges(seed_v, x, z, w) * ridge_amp + m * massif_amplitude()) * inland * rugged
 	return clampf(base + peaks, _min_h, _max_h)
@@ -276,14 +385,16 @@ static func altitude(seed_v: int, x: float, z: float, w: float) -> float:
 ## `[[strength, Vector2(x, z)], ...]`. Rows span pole to pole (z in ±w/4). About 33k nodes, each a few
 ## lattice lookups, so the suite and the playtest bot can find Earth-scale peaks without a planet scan.
 static func massif_summits(seed_v: int, w: float, count: int) -> Array:
-	var cell := w / float(MASSIF_CELLS)
+	var mc := massif_cells(w)
+	var clear := massif_clear_m(w)
+	var cell := w / float(mc)
 	var rows := int(w * 0.25 / cell)
 	var out: Array = []
 	for j in range(-rows, rows + 1):
-		for i in range(-MASSIF_CELLS / 2, MASSIF_CELLS / 2):
+		for i in range(-mc / 2, mc / 2):
 			var x := float(i) * cell   # canonical: x in [-w/2, w/2)
 			var z := float(j) * cell
-			var m := massif(seed_v, x, z, w) * smoothstep(MASSIF_SPAWN_CLEAR_M, MASSIF_SPAWN_CLEAR_M * 2.0, Vector2(x - SPAWN_CENTER.x, z - SPAWN_CENTER.y).length())
+			var m := massif(seed_v, x, z, w) * smoothstep(clear, clear * 2.0, Vector2(x - SPAWN_CENTER.x, z - SPAWN_CENTER.y).length())
 			if m <= 0.0:
 				continue
 			var c := continentalness(seed_v, x, z, w)
@@ -308,3 +419,18 @@ static func highest_near(seed_v: int, centre: Vector2, w: float, radius: float, 
 				best = h
 				at = p
 	return [best, at]
+
+## The open continents as `[latitude, longitude, radius in metres]`, for the native shape (it mirrors the mask).
+static func open_continents_m() -> Array:
+	warm()
+	var out: Array = []
+	for c in _continents:
+		if bool(c[3]):
+			out.append([float(c[0]), float(c[1]), float(c[2]) * 1000.0])
+	return out
+
+## Replace the continent list (tests and tools; the fabric's list is read by `warm`). Main thread only.
+static func set_continents(list: Array) -> void:
+	warm()
+	_continents = list
+	reset_plain_cache()

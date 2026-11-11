@@ -17,6 +17,7 @@ const SUITES: Array[String] = [
 	"res://src/tests/suites/window_shortcut_tests.gd",
 	"res://src/tests/suites/character_window_tests.gd",
 	"res://src/tests/suites/menu_tests.gd",
+	"res://src/tests/suites/one_world_tests.gd",
 	"res://src/tests/suites/text_focus_tests.gd",
 	"res://src/tests/suites/pause_menu_tests.gd",
 	"res://src/tests/suites/debt_burn_iv_tests.gd",
@@ -128,6 +129,7 @@ func run() -> void:
 	print("║       Project Nihon — Test Suite     ║")
 	print("╚══════════════════════════════════════╝\n")
 	Diag.quiet = true
+	pin_legacy_world()   # Phase 238: the suite runs on a pre-238 world unless a test asks for the new planet
 	# Phase 131 — the suite reads English text and must not see the developer's saved language.
 	LocaleSettingsScript.settings_path = "user://test_settings_suite.json"
 	TranslationServer.set_locale("en")
