@@ -4,7 +4,12 @@ extends RefCounted
 
 const TickProbe := preload("res://src/core/tick_probe.gd")
 const FreshWaterMesh := preload("res://src/terrain/fresh_water_mesh.gd")
+const ChunkSurface := preload("res://src/terrain/chunk_surface.gd")
 var s: Node
+
+## Phase 239 — draw each chunk's ground through the RenderingServer (`ChunkSurface`) instead of a
+## `MeshInstance3D`. Off by default so the suite's rigs keep their node-based meshes; the game turns it on.
+var render_server_surfaces := false
 
 func _init(slice: Node) -> void:
 	s = slice
@@ -87,12 +92,23 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 	var chunk_mat = null
 	TickProbe.begin("chunk_attach_mesh")
 	if s.attach_geometry:
-		var surface = s._mesh_from_arrays(built)
-		var mesh_inst := MeshInstance3D.new()
-		mesh_inst.mesh = surface
 		chunk_mat = s._terrain_material_for(s._biome_at(s._chunk_center_xz(chunk_pos)))
-		mesh_inst.material_override = chunk_mat
-		root.add_child(mesh_inst)
+		var drawn := false
+		if render_server_surfaces:
+			# Phase 239: the ground goes in through the RenderingServer, no MeshInstance3D per chunk.
+			var surface_node: Node3D = ChunkSurface.new()
+			surface_node.name = "Surface"
+			if surface_node.setup(built, chunk_mat):
+				root.add_child(surface_node)
+				drawn = true
+			else:
+				surface_node.free()
+		if not drawn:
+			var surface = s._mesh_from_arrays(built)
+			var mesh_inst := MeshInstance3D.new()
+			mesh_inst.mesh = surface
+			mesh_inst.material_override = chunk_mat
+			root.add_child(mesh_inst)
 
 		# --- Water (Phase 51): a flat, collision-free surface where the ground is below sea level. ---
 		var water_mesh = s.water_mesh_for(chunk_pos, heightmap, bool(built.get("local", false)))

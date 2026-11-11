@@ -5,6 +5,7 @@ extends "res://src/tests/test_support.gd"
 ## Phase 189 — collision and contents only near a body.
 
 const VoxelMesh := preload("res://src/terrain/voxel_mesh.gd")
+const ChunkStreamPolicy := preload("res://src/terrain/chunk_stream_policy.gd")
 
 func register() -> void:
 	_run_test("stream: the static generator matches generate_heightmap", _test_stream_static_generator_matches)
@@ -13,7 +14,11 @@ func register() -> void:
 	_run_test("stream: a deferred gather builds the same chunk as a full one", _test_stream_deferred_gather_same_build)
 	_run_test("stream: a dispatch generates no map on the main thread", _test_stream_dispatch_no_main_thread_noise)
 	_run_test("stream: a frame's pump stops at its time budget and bounds its applies", _test_stream_pump_budget)
-	_run_test("stream: the steady build cap defaults to the core count minus one", _test_stream_builds_in_flight_default)
+	_run_test("stream: the steady build cap starts at half the cores", _test_stream_builds_in_flight_default)
+	_run_test("stream: lead by speed (pure)", _test_stream_lead_by_speed)
+	_run_test("stream: worker cap rises, falls and stays in bounds (pure)", _test_stream_worker_cap)
+	_run_test("stream: a chunk's ground goes in through the RenderingServer", _test_stream_render_server_surface)
+	_run_test("stream: the attach budget defers chunks, body first", _test_stream_attach_budget)
 	_run_test("stream: a restream bursts the build cap until the window is rebuilt", _test_stream_fold_catchup)
 	_run_test("stream: the local window builds high while moving fast, a peer window low", _test_stream_builds_high_priority)
 	_run_test("stream: finished builds attach nearest the body first", _test_stream_apply_nearest_first)
@@ -204,8 +209,80 @@ func _test_stream_pump_budget() -> void:
 
 func _test_stream_builds_in_flight_default() -> void:
 	var cm := ChunkManager.new()
-	assert_eq(cm.max_builds_in_flight, maxi(4, OS.get_processor_count() - 1), "the steady cap is every core but one, at least four")
+	assert_eq(cm.max_builds_in_flight, maxi(2, OS.get_processor_count() / 2), "the steady cap starts at half the cores, at least two")
 	cm.free()
+
+func _test_stream_lead_by_speed() -> void:
+	var c := Vector2i(100, 100)
+	var base := ChunkManager.DEFAULT_PREFETCH_DISTANCE + 3
+	assert_eq(ChunkStreamPolicy.lead_prefetch(0.0), ChunkManager.DEFAULT_PREFETCH_DISTANCE, "standing: today's prefetch")
+	assert_eq(ChunkStreamPolicy.lead_chunks(c, Vector2.ZERO, base).size(), 0, "standing adds no chunks")
+	assert_true(ChunkStreamPolicy.lead_prefetch(90.0) > ChunkManager.DEFAULT_PREFETCH_DISTANCE, "90 m/s leads deeper")
+	var ahead := ChunkStreamPolicy.lead_chunks(c, Vector2(90.0, 0.0), base)
+	assert_true(ahead.size() > 0, "90 m/s adds chunks")
+	var all_in_cone := true
+	var beyond := true
+	for a: Vector2i in ahead:
+		all_in_cone = all_in_cone and ChunkStreamPolicy.in_lead_cone(a - c, Vector2(1, 0))
+		beyond = beyond and maxi(absi(a.x - c.x), absi(a.y - c.y)) > base
+	assert_true(all_in_cone, "the extra ring is only inside the velocity cone")
+	assert_true(beyond, "and lies beyond the standing window")
+	assert_false(ahead.has(c + Vector2i(-(base + 1), 0)), "nothing behind the body")
+	assert_true(ahead.has(c + Vector2i(base + 1, 0)), "the lane ahead is covered")
+	assert_eq(ChunkStreamPolicy.lead_prefetch(100000.0), ChunkStreamPolicy.LEAD_MAX, "the lead is capped")
+
+func _test_stream_worker_cap() -> void:
+	var cores := 8
+	assert_eq(ChunkStreamPolicy.starting_builds(cores), 4, "starts at half the cores")
+	assert_eq(ChunkStreamPolicy.starting_builds(1), 2, "never under two")
+	assert_eq(ChunkStreamPolicy.next_worker_cap(4, cores, 40, false, 0), 5, "a growing queue raises the cap")
+	assert_eq(ChunkStreamPolicy.next_worker_cap(4, cores, 0, true, 0), 5, "missing ground under the body raises it")
+	assert_eq(ChunkStreamPolicy.next_worker_cap(7, cores, 99, true, 0), 7, "never over cores - 1")
+	assert_eq(ChunkStreamPolicy.next_worker_cap(5, cores, 0, false, 1000), 5, "a short idle keeps the cap")
+	assert_eq(ChunkStreamPolicy.next_worker_cap(5, cores, 0, false, ChunkStreamPolicy.WORKER_IDLE_MSEC), 4, "an idle queue lowers it")
+	assert_eq(ChunkStreamPolicy.next_worker_cap(2, cores, 0, false, 99999), 2, "never under two")
+	for cc in [1, 2, 3, 16]:
+		var cap := ChunkStreamPolicy.next_worker_cap(50, cc, 0, false, 99999)
+		assert_true(cap >= 2 and cap <= maxi(2, cc - 1), "cap in bounds for %d cores" % cc)
+
+func _test_stream_attach_budget() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var ticks := [0]
+	cm.pump_clock_usec = func() -> int:
+		var t: int = ticks[0]
+		ticks[0] = t + 1000
+		return t
+	cm.adaptive_workers = false
+	cm.pump_budget_msec = 0
+	cm.loads_per_frame = 100
+	cm.max_builds_in_flight = 100
+	cm.applies_per_frame = 100
+	cm.view_distance = 2
+	cm.prefetch_distance = 0
+	cm.refresh()
+	cm._drain_load_queue()
+	var total := cm._builds.size()
+	assert_true(total >= 20, "a window of builds is in flight")
+	for task_id in cm._builds.keys():
+		while not WorkerThreadPool.is_task_completed(task_id):
+			OS.delay_msec(1)
+	cm.attach_budget_msec = 2
+	cm._apply_finished_builds()
+	var first := cm._built.size()
+	assert_true(first >= 1 and first < total, "the budget attaches some chunks and defers the rest")
+	assert_true(cm.is_chunk_built(cm.player_chunk()), "the chunk under the body attaches in that tick")
+	var rounds := 0
+	while cm._built.size() < total and rounds < 100:
+		cm._apply_finished_builds()
+		rounds += 1
+	assert_eq(cm._built.size(), total, "the rest attach on later ticks")
+	cm.flush_builds()
+	_wait_for_builds(cm)
+	cm.free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()
 
 func _test_stream_fold_catchup() -> void:
 	var rig := _make_chunk_build_rig()
@@ -858,3 +935,25 @@ func _test_near_toggle_flushes_waiting() -> void:
 	assert_true(cm._contents_spawned.has(cm._chunk_key(far)), "and spawns its contents then")
 	cm.set_near_ring_enabled(true)
 	_free_build_rig(rig)
+
+func _test_stream_render_server_surface() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	var voxel: VoxelSlice = rig["voxel"]
+	voxel._build.render_server_surfaces = true
+	cm.adaptive_workers = false
+	cm.view_distance = 0
+	cm.prefetch_distance = 0
+	cm.refresh()
+	_wait_for_builds(cm)
+	var chunk := cm.player_chunk()
+	var root: Node3D = voxel._chunks["%d,%d" % [chunk.x, chunk.y]]
+	var surface := root.get_node_or_null("Surface")
+	assert_true(surface != null and surface.has_surface() and surface.vertex_count() > 0, "the ground is a RenderingServer surface")
+	assert_eq(_chunk_mesh_instances(voxel, chunk).size(), 0, "no MeshInstance3D carries the terrain surface")
+	var mesh_rid: RID = surface._mesh
+	assert_true(mesh_rid.is_valid(), "the surface holds a server mesh")
+	cm.free()
+	rig["voxel"].free()
+	rig["terrain"].free()
+	rig["player"].free()

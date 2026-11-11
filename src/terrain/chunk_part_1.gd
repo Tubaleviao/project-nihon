@@ -8,6 +8,7 @@ const VoxelCoarse := preload("res://src/terrain/voxel_coarse.gd")
 const FreshWaterMesh := preload("res://src/terrain/fresh_water_mesh.gd")
 const TerrainSliceScript := preload("res://src/terrain/terrain_slice.gd")
 const SeamWrapScript := preload("res://src/terrain/seam_wrap.gd")
+const ChunkStreamPolicy := preload("res://src/terrain/chunk_stream_policy.gd")
 ## PR #529 — a fast flyer's chunk off its lane ranks this many lane chunks per ring from the body (`off_lane_rank`).
 const LANE_RING_WEIGHT := 2.0
 
@@ -82,6 +83,14 @@ func refresh(unload_now: bool = true) -> void:
 				desired.append(c)
 				counts[canon] = 0
 			counts[canon] += 1
+	# Phase 239 — the lead by speed: a moving local body also wants the ground in a cone along its velocity,
+	# deeper than the standing prefetch. A standing body adds nothing.
+	for c in ChunkStreamPolicy.lead_chunks(centers[0], local_velocity(), radius):
+		var lcanon := Vector2i(SeamWrapScript.wrap_i(c.x, circumference), c.y)
+		if not counts.has(lcanon):
+			desired.append(c)
+			counts[lcanon] = 0
+		counts[lcanon] += 1
 	var refs: Dictionary = {}
 	var desired_keys: Array = []
 	for c in desired:
@@ -227,8 +236,8 @@ func drain_load_queue() -> void:
 		# its `_pending` mark was still set, so it was silently skipped instead. Dropping
 		# it here clears that mark, so a chunk that leaves range and returns is queued
 		# again rather than left as a hole.
-		if not sl._within_windows(centers, radius, chunk):
-			continue
+		if not sl._within_windows(centers, radius, chunk) and not sl._chunk_refs.has(sl._chunk_key(chunk)):
+			continue   # Phase 239: a lead-cone chunk is outside the radius but still wanted (it is in the refs)
 		# Phase 142 — the chunk's regions read on a worker; it waits at the back of the queue
 		# until they land (a failed region does not hold it: see `regions_settled`).
 		if sl._reads_async() and not sl.region_streamer.regions_settled(chunk, sl.Frontier.BLEND_CHUNKS):
@@ -479,3 +488,55 @@ static func _add_fresh_water(built: Variant, chunk_pos: Vector2i, seed_v: int, k
 	if not keep_render or not (built is Dictionary):
 		return
 	(built as Dictionary)["fresh_water"] = FreshWaterMesh.worker_arrays(chunk_pos, seed_v, bool((built as Dictionary).get("local", true)))
+
+
+## Phase 239 — the local body's horizontal velocity in m/s, for the lead (a standing body: zero).
+func local_velocity() -> Vector2:
+	if sl.player_slice != null and sl.player_slice.has_method("get_velocity"):
+		var v: Vector3 = sl.player_slice.get_velocity()
+		return Vector2(v.x, v.z)
+	return Vector2.ZERO
+
+## Phase 239 — once a second, move the steady cap (see `ChunkStreamPolicy.next_worker_cap`).
+func adapt_workers() -> void:
+	if not sl.adaptive_workers:
+		return
+	var now: int = sl._now_msec()
+	var queue_len: int = sl._load_queue.size() + sl._rebuild_queue.size()
+	if queue_len > 0:
+		sl._idle_since_msec = -1
+	elif sl._idle_since_msec < 0:
+		sl._idle_since_msec = now
+	if sl._last_adapt_msec >= 0 and now - sl._last_adapt_msec < 1000:
+		return
+	sl._last_adapt_msec = now
+	var missing := false
+	if not sl._last_centers.is_empty():
+		missing = not sl._built.has(sl._chunk_key(sl._last_centers[0]))
+	var idle: int = 0 if sl._idle_since_msec < 0 else now - sl._idle_since_msec
+	sl.max_builds_in_flight = ChunkStreamPolicy.next_worker_cap(sl.max_builds_in_flight, OS.get_processor_count(), queue_len, missing, idle)
+
+## Phase 187/239 — attach finished builds: nearest-first (`apply_order`), at most `applies_per_frame`, within the pump
+## budget and the attach budget; the chunk under the body attaches whatever the budget.
+func apply_finished_builds() -> void:
+	if sl._builds.is_empty():
+		return
+	var done: Array = []
+	for task_id in sl._builds.keys():
+		if task_id < 0 or WorkerThreadPool.is_task_completed(task_id):   # a cache hit is done already
+			done.append(task_id)
+	var applied := 0
+	var attach_start := int(sl.pump_clock_usec.call())
+	var body: Vector2i = sl._last_centers[0] if not sl._last_centers.is_empty() else Vector2i(1 << 30, 1 << 30)
+	for task_id in apply_order(done):
+		if applied >= maxi(sl.applies_per_frame, 1) or (applied > 0 and sl._pump_over()):
+			return   # the rest stay finished in the table and apply next frame
+		var entry: Dictionary = sl._builds.get(task_id, {})
+		var under_body: bool = not entry.is_empty() and entry["chunk"] == body
+		# Phase 239 — the attach budget: the chunk under the body attaches at once, whatever the budget.
+		if applied > 0 and not under_body and sl.attach_budget_msec > 0 \
+				and int(sl.pump_clock_usec.call()) - attach_start >= sl.attach_budget_msec * 1000:
+			return
+		sl._apply_build_entry(task_id)
+		applied += 1
+

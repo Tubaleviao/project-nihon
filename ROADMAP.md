@@ -177,7 +177,7 @@ detail and caching (243–244), and later flight (237), the planet bake (245) an
 |---|---|---|
 | 237 | Flight that handles like flight: inertia, steering by the camera, no ground-walking fixes in the air | Open |
 | 238 | One world: a fixed seed, a 2,000 km planet and one continent | Open |
-| 239 | Streaming that keeps up: a speed-scaled lead, adaptive workers, an attach budget | Open |
+| 239 | Streaming that keeps up: a speed-scaled lead, adaptive workers, an attach budget | Done |
 | 240 | Smooth natural ground: a surface-nets mesher (GDScript reference) | Open |
 | 241 | The native smooth mesher, and coarse chunks built smooth | Open |
 | 242 | Terrain materials: blend weights, a triplanar shader and CC0 textures | Open |
@@ -510,6 +510,14 @@ Attached meshes and collision land on the main thread as whole nodes.
   body and what fits the budget attach, and the rest attach on later ticks, nearest first.
 - The playtest `flight` step: ground under the body in at least as many samples as the current floor,
   and the worker ms per crossing no worse than its budget.
+
+**Implemented** (pure policy in `src/terrain/chunk_stream_policy.gd`; wiring in `chunk_part_1.gd`): the
+lead is `ceil(speed × 1.5 s / 32 m)` chunks, capped at 6, queued in a 45° cone along the body's
+velocity; the steady worker cap starts at half the cores and moves once a second inside
+[2, cores − 1]; `apply_finished_builds` stops at `ATTACH_BUDGET_MS` (3 ms) except for the chunk under
+the body; the ground surface of a chunk is a `ChunkSurface` (RenderingServer mesh and instance) when
+`VoxelBuild.render_server_surfaces` is on (the game, not the suite's rigs). The `flight` step is gated
+by CI's playtest run; no release-build numbers were recorded in this PR.
 
 ## Phase 240 — Smooth natural ground
 
