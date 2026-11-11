@@ -653,15 +653,17 @@ func _rebuild_chunk(chunk: Vector2i) -> void:
 	if s._chunks.has(ckey):
 		s.build_chunk(chunk, s._heightmaps[ckey])
 
-## The chunks whose mesh reads `tile`, deduplicated: the tile's own chunk plus each
-## edge-adjacent one the tile sits on the edge of. A corner tile names three distinct
-## chunks; an interior tile names one.
+## The chunks whose mesh reads `tile`, deduplicated: the tile's own chunk plus every neighbour
+## (edge or diagonal) within `VoxelMesh.terrain_pad()` tiles of it. The smooth mesher reads two tiles past its
+## edge, so a tile in the outer two rows of a chunk is read by the neighbour across that edge, and
+## one in the outer two of both by the diagonal one too. An interior tile names one chunk.
 func _touched_chunks(tile: Vector2i) -> Array:
 	var out: Array = []
 	var seen: Dictionary = {}
 	var m := VoxelMesh.terrain_pad()   # Phase 240: the smooth mesher reads two tiles past a chunk's edge
-	for probe in [tile, Vector2i(tile.x - m, tile.y), Vector2i(tile.x + m, tile.y),
-			Vector2i(tile.x, tile.y - m), Vector2i(tile.x, tile.y + m)]:
+	for probe in [tile, tile + Vector2i(-m, 0), tile + Vector2i(m, 0), tile + Vector2i(0, -m),
+			tile + Vector2i(0, m), tile + Vector2i(-m, -m), tile + Vector2i(m, -m),
+			tile + Vector2i(-m, m), tile + Vector2i(m, m)]:
 		var chunk = s._tile_to_chunk(probe)
 		var ckey = s._chunk_key(chunk)
 		if seen.has(ckey):

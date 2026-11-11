@@ -150,7 +150,8 @@ static func native_arrays_cfg() -> Dictionary:
 ## Phase 240 — `placed_only` meshes only the placed runs (a material set), for the smooth mesher: their
 ## faces are still hidden by anything solid above or below, but their walls subtract only placed
 ## neighbours (natural ground beside them is drawn smooth, not up to the block), and a block resting on
-## natural ground hangs its walls `VoxelSmooth.PLACED_SKIRT` lower, into the ground.
+## natural ground hangs each wall `VoxelSmooth.PLACED_SKIRT` lower, or down to the neighbour's natural top
+## when that is lower (a cliff edge).
 static func build_chunk_arrays_gd(chunk_pos: Vector2i, heightmap: Array, resolved: Dictionary, local: bool = false, placed_only: bool = false) -> Dictionary:
 	var corner_x := chunk_pos.x * CHUNK_SIZE * TILE_SIZE
 	var corner_z := chunk_pos.y * CHUNK_SIZE * TILE_SIZE
@@ -168,7 +169,13 @@ static func build_chunk_arrays_gd(chunk_pos: Vector2i, heightmap: Array, resolve
 
 	for tz in range(CHUNK_SIZE):
 		for tx in range(CHUNK_SIZE):
-			var col := _column_for_cell(chunk_pos, heightmap, runs, tx, tz)
+			# Placed-only: a column missing from the table is the natural fallback, never a placed run,
+			# so skip it before building that fallback (most of a chunk's 4096 columns).
+			var col: Array
+			if placed_only:
+				col = runs.get(VoxelConsts.tile_key(Vector2i(chunk_pos.x * CHUNK_SIZE + tx, chunk_pos.y * CHUNK_SIZE + tz)), [])
+			else:
+				col = _column_for_cell(chunk_pos, heightmap, runs, tx, tz)
 			if col.is_empty():
 				continue
 			for run in col:
@@ -276,19 +283,30 @@ static func _wall_cells(groups: Dictionary, chunk_pos: Vector2i, heightmap: Arra
 
 ## Phase 240 — a placed run's walls for the smooth mesher (see `build_chunk_arrays_gd`).
 static func _placed_wall_cells(groups: Dictionary, chunk_pos: Vector2i, heightmap: Array, runs: Dictionary, tx: int, tz: int, run: Dictionary, col: Array, color: Color) -> void:
-	var walled := run
 	var bottom := float(run["bottom"])
+	var grounded := false
 	for other in col:
 		if str(other.get("material", "")) == "" and absf(float(other["top"]) - bottom) < STEP_HEIGHT * 0.25:
-			walled = run.duplicate()
-			walled["bottom"] = bottom - VoxelSmooth.PLACED_SKIRT
+			grounded = true
 			break
 	for d in [Vector2i(0, -1), Vector2i(0, 1), Vector2i(-1, 0), Vector2i(1, 0)]:
 		var dir: String = "north" if d.y < 0 else ("south" if d.y > 0 else ("west" if d.x < 0 else "east"))
 		var placed: Array = []
+		# The smooth ground crosses this face between the block's own ground and the neighbour's, so
+		# a grounded wall reaches the lower of `PLACED_SKIRT` down and the neighbour's natural top
+		# under the block (a cliff edge would otherwise leave a gap under the face).
+		var ground := -INF
 		for other in _column_for_tile(chunk_pos, heightmap, runs, tx + d.x, tz + d.y):
 			if str(other.get("material", "")) != "":
 				placed.append(other)
+			elif float(other["top"]) <= bottom:
+				ground = maxf(ground, float(other["top"]))
+		var walled := run
+		if grounded:
+			walled = run.duplicate()
+			walled["bottom"] = bottom - VoxelSmooth.PLACED_SKIRT
+			if ground > -INF:
+				walled["bottom"] = minf(float(walled["bottom"]), ground)
 		for seg in VoxelRuns.subtract_runs(walled, placed):
 			if float(seg["top"]) > float(seg["bottom"]):
 				group_cell(groups, dir, _wall_plane(chunk_pos, dir, tx, tz), float(seg["bottom"]), float(seg["top"]), color, tx, tz)

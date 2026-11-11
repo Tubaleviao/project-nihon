@@ -373,7 +373,7 @@ public:
 			sum += corner(a).lerp(corner(b), real_t(t));
 			n++;
 		}
-		Vector3 u = n > 0 ? sum / real_t(std::max(n, 1)) : Vector3(0.5, 0.5, 0.5);
+		Vector3 u = n > 0 ? sum / real_t(n) : Vector3(0.5, 0.5, 0.5);
 		Vector3 p = pos(cx, cz, j) + Vector3(double(u.x) * TILE_SIZE, double(u.y) * GRID, double(u.z) * TILE_SIZE);
 		Vector3 g;
 		for (int c = 0; c < 8; c++) {

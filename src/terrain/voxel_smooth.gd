@@ -15,8 +15,9 @@ extends RefCounted
 ##
 ## Natural runs only: a placed block (a run with a material) reads as air here and is meshed by the
 ## block mesher (`VoxelMesh.build_chunk_arrays_gd(..., placed_only = true)`), so walls stay square. Its
-## walls reach `PLACED_SKIRT` below a block resting on natural ground, so the smooth ground, which
-## slopes between tile centres, never shows a gap under a block's face.
+## walls reach `PLACED_SKIRT` below a block resting on natural ground, or down to the neighbour's natural
+## top when that is lower, so the smooth ground, which slopes between tile centres, never shows a gap
+## under a block's face.
 ##
 ## Normals are the density gradient (central differences) at each cell corner, interpolated to the
 ## vertex, not the mean of the triangles: both chunks at a border sample the same corners, so the
@@ -37,6 +38,8 @@ extends RefCounted
 ##   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
 
 const VoxelConsts := preload("res://src/terrain/voxel_consts.gd")
+const MeshUtil := preload("res://src/core/mesh_util.gd")
+const NativeBuilder := preload("res://src/terrain/native_builder.gd")
 const CHUNK_SIZE := VoxelConsts.CHUNK_SIZE
 const TILE_SIZE := VoxelConsts.TILE_SIZE
 const BEDROCK_DEPTH := VoxelConsts.BEDROCK_DEPTH
@@ -59,24 +62,37 @@ const TOP_BAND := 0.3
 const LEVEL_OFFSET := 1024
 
 ## The project setting that turns the smooth mesher on (Phase 241 removes it). Read once and kept, so a
-## worker never touches ProjectSettings; the gather step's `VoxelMesh.terrain_pad()` warms it on the main thread.
+## worker never touches ProjectSettings; `VoxelSlice._ready` and the gather step's `VoxelMesh.terrain_pad()`
+## warm it on the main thread.
 const SETTING := "terrain/smooth_mesh"
 static var _enabled: int = -1
 
 static func enabled() -> bool:
 	if _enabled < 0:
 		_enabled = 1 if bool(ProjectSettings.get_setting(SETTING, true)) else 0
+		_voxel_mesh()
 	return _enabled == 1
 
-## Tests flip the mesher on or off; `null` goes back to the project setting.
+## `voxel_mesh.gd` preloads this script, so it cannot be a `const` here. Resolved once, on the main
+## thread with the flag above, so the worker hot path never goes back to the ResourceLoader.
+static var _voxel_mesh_script: GDScript = null
+
+static func _voxel_mesh() -> GDScript:
+	if _voxel_mesh_script == null:
+		_voxel_mesh_script = load("res://src/terrain/voxel_mesh.gd")
+	return _voxel_mesh_script
+
+## Tests flip the mesher on or off; `null` goes back to the project setting, read here on the caller's
+## (main) thread rather than left for the next `enabled()`, which may run on a worker.
 static func set_enabled(on: Variant) -> void:
 	_enabled = -1 if on == null else (1 if bool(on) else 0)
+	enabled()
 
 ## The smooth natural ground plus the placed blocks' square faces, as one result in the shape of
 ## `VoxelMesh.build_chunk_arrays`: vertices, normals, colours, indices, the collision triangle soup
 ## (the same triangles), counts and the deposit boxes.
 static func build_smooth_arrays(chunk_pos: Vector2i, heightmap: Array, resolved: Dictionary, local: bool = false) -> Dictionary:
-	var VoxelMesh: GDScript = load("res://src/terrain/voxel_mesh.gd")
+	var VoxelMesh: GDScript = _voxel_mesh()
 	var placed: Dictionary = VoxelMesh.build_chunk_arrays_gd(chunk_pos, heightmap, resolved, local, true) \
 		if _has_placed(resolved) else _deposits_only(resolved, local)
 	var smooth := build_natural_arrays(chunk_pos, heightmap, resolved, local)
@@ -115,7 +131,6 @@ static func _has_placed(resolved: Dictionary) -> bool:
 
 ## The block pass's result for a chunk with no placed run: no faces, only the deposit boxes.
 static func _deposits_only(resolved: Dictionary, local: bool) -> Dictionary:
-	var MeshUtil: GDScript = load("res://src/core/mesh_util.gd")
 	var dv := PackedVector3Array()
 	var dn := PackedVector3Array()
 	var dc := PackedColorArray()
@@ -130,9 +145,8 @@ static func _deposits_only(resolved: Dictionary, local: bool) -> Dictionary:
 
 ## The smooth half alone: the natural runs' surface. `quad_count` counts sample edges crossed.
 static func build_natural_arrays(chunk_pos: Vector2i, heightmap: Array, resolved: Dictionary, local: bool = false) -> Dictionary:
-	var NativeBuilder: GDScript = load("res://src/terrain/native_builder.gd")
 	if NativeBuilder.use_native("build_smooth_arrays"):   # the same arrays, built in C++
-		var VoxelMesh: GDScript = load("res://src/terrain/voxel_mesh.gd")
+		var VoxelMesh: GDScript = _voxel_mesh()
 		var native := NativeBuilder.builder().call("build_smooth_arrays", chunk_pos, heightmap, resolved, local, VoxelMesh.native_arrays_cfg()) as Dictionary
 		if native.has("vertices"):   # a rejected input comes back empty: use the reference
 			return native
@@ -140,7 +154,7 @@ static func build_natural_arrays(chunk_pos: Vector2i, heightmap: Array, resolved
 
 ## The GDScript reference of `build_natural_arrays`: the fallback and the parity test's baseline.
 static func build_natural_arrays_gd(chunk_pos: Vector2i, heightmap: Array, resolved: Dictionary, local: bool = false) -> Dictionary:
-	var m := _Mesher.new(chunk_pos, heightmap, resolved.get("runs", {}), local)
+	var m := _Mesher.new(chunk_pos, heightmap, resolved.get("runs", {}), local, _voxel_mesh())
 	m.build()
 	return {
 		"vertices": m.vertices, "normals": m.normals, "colors": m.colors, "indices": m.indices,
@@ -168,12 +182,13 @@ class _Mesher extends RefCounted:
 	var collision := PackedVector3Array()
 	var quads := 0
 
-	func _init(p_chunk: Vector2i, heightmap: Array, runs: Dictionary, local: bool) -> void:
+	func _init(p_chunk: Vector2i, heightmap: Array, runs: Dictionary, local: bool, VoxelMesh: GDScript = null) -> void:
+		if VoxelMesh == null:   # a test building one directly
+			VoxelMesh = load("res://src/terrain/voxel_mesh.gd")
 		chunk_pos = p_chunk
 		if not local:
 			origin_x = chunk_pos.x * CHUNK_SIZE * TILE_SIZE
 			origin_z = chunk_pos.y * CHUNK_SIZE * TILE_SIZE
-		var VoxelMesh: GDScript = load("res://src/terrain/voxel_mesh.gd")
 		col_runs.resize(SPAN * SPAN)
 		col_vals.resize(SPAN * SPAN)
 		col_known.resize(SPAN * SPAN)
@@ -331,7 +346,7 @@ class _Mesher extends RefCounted:
 			var t := v[a] / (v[a] - v[b])
 			sum += _corner(a).lerp(_corner(b), t)
 			n += 1
-		var u := sum / float(maxi(n, 1)) if n > 0 else Vector3(0.5, 0.5, 0.5)
+		var u := sum / float(n) if n > 0 else Vector3(0.5, 0.5, 0.5)
 		var p := _pos(cx, cz, j) + Vector3(u.x * TILE_SIZE, u.y * GRID, u.z * TILE_SIZE)
 		# Trilinear blend of the eight corners' gradients at the vertex.
 		var g := Vector3.ZERO

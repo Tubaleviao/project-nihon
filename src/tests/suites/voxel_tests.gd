@@ -1,6 +1,8 @@
 extends "res://src/tests/test_support.gd"
 ## Phase 133 — the voxel tests, moved unchanged from the old single-file suite.
 
+const VoxelSmooth := preload("res://src/terrain/voxel_smooth.gd")
+
 
 func register() -> void:
 	_run_test("voxel: a chunk-local build keeps far-from-origin vertices small and exact", _test_voxel_local_build_far_chunk)
@@ -870,6 +872,7 @@ func _test_voxel_terrain_material_is_one_instance() -> void:
 ## (ROADMAP §Phase 39). What is asserted here is the geometry the trimesh is built
 ## from — the same triangles the mesh shows.
 func _test_voxel_tunnel_runs() -> void:
+	VoxelSmooth.set_enabled(false)   # Phase 240: these read the block mesher's wall planes through collision_faces
 	var v := _make_voxel()
 	var inv := InventorySlice.new()
 	add_child(inv)
@@ -901,6 +904,7 @@ func _test_voxel_tunnel_runs() -> void:
 	assert_eq(after.size(), 2, "still two runs — the tunnel is still a tunnel")
 	assert_true(is_equal_approx(float(after[0]["top"]), 1.5), "the tunnel floor is untouched")
 	assert_true(float(after[1]["bottom"]) > 1.625, "only the roof's lowest step went")
+	VoxelSmooth.set_enabled(null)
 	v.free()
 	inv.free()
 
@@ -966,6 +970,7 @@ func _test_voxel_legacy_edit_migration() -> void:
 ## facing wall — and the pair of facing walls is still emitted exactly once,
 ## whichever chunk was built first.
 func _test_voxel_seam_wall_order_independent() -> void:
+	VoxelSmooth.set_enabled(false)   # Phase 240: these read the block mesher's wall planes through collision_faces
 	var v := VoxelSlice.new()
 	add_child(v)
 	var west: Array = []
@@ -995,6 +1000,7 @@ func _test_voxel_seam_wall_order_independent() -> void:
 	# plane, because it has no material the higher side lacks.
 	assert_eq(_plane_x_spans(v.collision_faces(Vector2i(1, 0), east), 32.0), [],
 		"the lower side emits no wall at the shared plane")
+	VoxelSmooth.set_enabled(null)
 	v.free()
 
 ## Phase 49 — a chunk built BEFORE its neighbour reads the neighbour's generated surface,
@@ -1298,6 +1304,7 @@ func _test_voxel_legacy_migration_keeps_materials() -> void:
 ## neighbour drawing its old wall — here, a blind face where the carve opened the
 ## seam and the tunnel's mouth should be visible.
 func _test_voxel_edge_edit_rebuilds_neighbour_chunk() -> void:
+	VoxelSmooth.set_enabled(false)   # Phase 240: these read the block mesher's wall planes through collision_faces
 	var v := VoxelSlice.new()
 	add_child(v)
 	var low: Array = []
@@ -1319,6 +1326,7 @@ func _test_voxel_edge_edit_rebuilds_neighbour_chunk() -> void:
 		"the low column now emits the wall the carve exposed, and only there")
 	assert_false(is_same(v._chunks["0,0"], neighbour_node),
 		"because the neighbour chunk was rebuilt, not left with its old wall")
+	VoxelSmooth.set_enabled(null)
 	v.free()
 
 ## Review pass — the base heightmaps are bounded by the loaded window plus its

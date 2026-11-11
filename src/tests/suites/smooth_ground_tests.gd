@@ -22,6 +22,9 @@ func register() -> void:
 	_run_test("smooth ground: build_runs resolves a two-tile ring when asked for pad 2", _test_pad_two)
 	_run_test("smooth ground: the native mesher equals the GDScript reference on 24 chunks, edited and with placed blocks", _test_native_parity, true)
 	_run_test("smooth ground: the setting routes the game's mesher, on by default", _test_setting)
+	_run_test("smooth ground: an edit two tiles from a chunk edge rebuilds the neighbour that reads it", _test_seam_reach)
+	_run_test("smooth ground: a block on a cliff edge walls down to the lower neighbour's ground", _test_cliff_skirt)
+	_run_test("smooth ground: a diagonal push into a block's face still allows the step-up", _test_diagonal_step)
 	# The native build_runs cfg this suite's resolves snapshot is dropped, so a later suite fills its own.
 	NativeBuilder.forget_memo("build_runs")
 
@@ -408,3 +411,54 @@ func _test_native_parity() -> void:
 		i += 1
 	assert_native_parity("NativeChunkBuilder", "build_smooth_arrays", cases, VoxelSmooth.build_natural_arrays_gd,
 		VoxelSmooth.build_natural_arrays, "build_smooth_arrays")
+
+func _test_seam_reach() -> void:
+	VoxelSmooth.set_enabled(true)
+	assert_eq(VoxelSlice._border_offsets(Vector2i(62, 10)), [Vector2i(1, 0)], "tile 62 is read by the east neighbour")
+	assert_eq(VoxelSlice._border_offsets(Vector2i(1, 10)), [Vector2i(-1, 0)], "tile 1 is read by the west neighbour")
+	assert_eq(VoxelSlice._border_offsets(Vector2i(61, 10)), [], "tile 61 is read by no neighbour")
+	assert_eq(VoxelSlice._border_offsets(Vector2i(62, 1)).size(), 3, "a tile two from a corner names both edges and the diagonal")
+	var v := VoxelSlice.new()
+	assert_eq(v._touched_chunks(Vector2i(62, 10)).size(), 2, "an edit at x = 62 rebuilds its chunk and the east one")
+	assert_eq(v._touched_chunks(Vector2i(1, 62)).size(), 4, "an edit near a corner rebuilds the diagonal chunk too")
+	assert_eq(v._touched_chunks(Vector2i(30, 30)).size(), 1, "an interior edit rebuilds only its chunk")
+	VoxelSmooth.set_enabled(null)
+	v.free()
+
+func _test_cliff_skirt() -> void:
+	var block := func(gx: int, gz: int) -> Array:
+		if gx == 21:
+			return [_ground(8.0)]   # the cliff: two metres lower east of the block
+		var runs: Array = [_ground(10.0)]
+		if gx == 20 and gz == 16:
+			runs.append({ "bottom": 10.0, "top": 10.5, "material": "Stone", "color": STONE })
+		return runs
+	var placed := VoxelMesh.build_chunk_arrays_gd(Vector2i.ZERO, _flat_heightmap(10.0), _table(block), false, true)
+	var east := INF
+	var west := INF
+	for p in (placed["vertices"] as PackedVector3Array):
+		if absf(p.x - 21 * VoxelConsts.TILE_SIZE) < 0.0001:
+			east = minf(east, p.y)
+		elif absf(p.x - 20 * VoxelConsts.TILE_SIZE) < 0.0001:
+			west = minf(west, p.y)
+	assert_true(east <= 8.0 + 0.0001, "the cliff-side wall reaches the lower ground (%.2f)" % east)
+	assert_true(absf(west - (10.0 - VoxelSmooth.PLACED_SKIRT)) < 0.0001, "the other walls keep the plain skirt (%.2f)" % west)
+
+class _Column extends Node:
+	var runs: Dictionary = {}
+	func get_runs_at_tile(tile: Vector2i) -> Array:
+		return runs.get(tile, [])
+
+func _test_diagonal_step() -> void:
+	var voxel := _Column.new()
+	var tile := 1.0 / VoxelConsts.TILE_SIZE
+	voxel.runs[Vector2i(20, 16)] = [{ "bottom": 4.0, "top": 4.25, "material": "Stone", "color": STONE }]
+	VoxelSmooth.set_enabled(true)
+	# Against the block's west face, near its +Z side: the diagonal point lands in tile (20, 17).
+	var pos := Vector3(20.0 / tile - 0.25, 4.0, 16.0 / tile + 0.45)
+	var diag := Vector3(1, 0, 1).normalized()
+	assert_true(StepUpGate.allowed(voxel, pos, diag, Vector3.ZERO, 4.0, PlayerSlice.STEP_UP_HEIGHT), "a diagonal push steps onto the block")
+	assert_true(StepUpGate.allowed(voxel, pos, Vector3(1, 0, 0), Vector3.ZERO, 4.0, PlayerSlice.STEP_UP_HEIGHT), "a straight push does too")
+	assert_false(StepUpGate.allowed(voxel, pos, Vector3(-1, 0, 1).normalized(), Vector3.ZERO, 4.0, PlayerSlice.STEP_UP_HEIGHT), "walking away from it does not")
+	VoxelSmooth.set_enabled(null)
+	voxel.free()

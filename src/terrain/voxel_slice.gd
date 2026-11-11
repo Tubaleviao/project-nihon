@@ -415,10 +415,10 @@ func _ready() -> void:
 	# worker can exist. It replaces the Phase 42 per-biome roll table and inherits its contract:
 	# a `static var` on a script a chunk-build task reaches (`build_runs` → `natural_color` →
 	# `material_for_biome` → `OreField.vein_at` → `OreField.allows` → `OreField.band_of`), so it
-	# is WRITTEN here, before the tree streams anything, and read-only afterwards. The bands
-	# come off the generated fabric resources (`depthBand`, `leyGated`), which is why this
-	# cannot be a `const`.
+	# is WRITTEN here, before the tree streams anything, and read-only afterwards. The bands come
+	# off the generated fabric resources (`depthBand`, `leyGated`), so this cannot be a `const`.
 	OreField.warm()
+	VoxelMesh.terrain_pad()   # Phase 240: reads VoxelSmooth.enabled() here, so no worker reads ProjectSettings
 	native_runs_cfg()   # Phase 168: snapshot the native build_runs tables on the main thread
 	WorldShape.warm()
 	_world_floor = StaticBody3D.new()
@@ -799,7 +799,8 @@ static func _merge_rects(cells: Dictionary) -> Array:
 static func _group_cell(groups: Dictionary, dir: String, plane: float, bottom: float, top: float, color: Color, a: int, b: int) -> void:
 	VoxelMesh.group_cell(groups, dir, plane, bottom, top, color, a, b)
 
-## The collision triangle soup for one chunk: exactly the triangles the build emits.
+## The collision triangle soup for one chunk: exactly the triangles the build emits (the smooth
+## mesher when `terrain/smooth_mesh` is on, as in game).
 ## `build_chunk` taps the arrays it ALREADY has (one build per chunk, not two); this
 ## entry point exists so a caller that has no chunk node — the suite — can assert the
 ## trimesh's SHAPE headlessly. Physics itself is INERT inside the suite (`_run_tests()`
@@ -807,9 +808,8 @@ static func _group_cell(groups: Dictionary, dir: String, plane: float, bottom: f
 ## registers a collision, verified in ROADMAP §Phase 39), so "the trimesh stops a body"
 ## is exercised in GAME only and this proves the geometry it is built from.
 func collision_faces(chunk_pos: Vector2i, heightmap: Array) -> PackedVector3Array:
-	var built := build_chunk_arrays(chunk_pos, heightmap, collect_build_runs(chunk_pos, heightmap))
-	var collision: PackedVector3Array = built["collision"]
-	return collision
+	var built := VoxelMesh.build_terrain_arrays(chunk_pos, heightmap, collect_build_runs(chunk_pos, heightmap))
+	return built["collision"]
 
 ## How many times a chunk has been (re)built. A build dispatched to a worker carries
 ## the revision it was dispatched AT, and `build_chunk` refuses a result whose revision

@@ -13,8 +13,20 @@ const BODY_RADIUS := 0.25
 static func allowed(voxel: Node, pos: Vector3, dir: Vector3, offset: Vector3, feet: float, step: float) -> bool:
 	if not VoxelSmooth.enabled() or voxel == null or not voxel.has_method("get_runs_at_tile"):
 		return true
-	var ahead := pos + Vector3(dir.x, 0.0, dir.z).normalized() * (BODY_RADIUS + VoxelRay.TILE * 0.5)
-	return placed_step(voxel.get_runs_at_tile(VoxelRay.tile_of(ahead, offset)), feet, step)
+	# The column along `dir` and, for a diagonal push, the one along each axis component too: walking
+	# into a block's face at an angle puts the `dir` point in the diagonal tile beside it.
+	var reach := BODY_RADIUS + VoxelRay.TILE * 0.5
+	var seen: Dictionary = {}
+	for d in [Vector3(dir.x, 0.0, dir.z), Vector3(dir.x, 0.0, 0.0), Vector3(0.0, 0.0, dir.z)]:
+		if d.length_squared() < 0.0001:
+			continue
+		var tile: Vector2i = VoxelRay.tile_of(pos + d.normalized() * reach, offset)
+		if seen.has(tile):
+			continue
+		seen[tile] = true
+		if placed_step(voxel.get_runs_at_tile(tile), feet, step):
+			return true
+	return false
 
 ## Pure: does `runs` (the column ahead) hold a placed run (a material) whose top is above `feet` by at
 ## most `step`?
