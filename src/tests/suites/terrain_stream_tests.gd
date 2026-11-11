@@ -968,7 +968,9 @@ func _test_stream_render_server_surface() -> void:
 	var root: Node3D = voxel._chunks["%d,%d" % [chunk.x, chunk.y]]
 	var surface := root.get_node_or_null("Surface")
 	assert_true(surface != null and surface.has_surface() and surface.vertex_count() > 0, "the ground is a RenderingServer surface")
-	assert_eq(_chunk_mesh_instances(voxel, chunk).size(), 0, "no MeshInstance3D carries the terrain surface")
+	# Water, fresh water and vein deposits stay MeshInstance3D decorations; only the ground moved to the server.
+	var ground_meshes := _chunk_mesh_instances(voxel, chunk).filter(func(m): return not (str(m.name) in ["Water", "FreshWater", "Deposits"]))
+	assert_eq(ground_meshes.size(), 0, "no MeshInstance3D carries the terrain surface")
 	var mesh_rid: RID = surface._mesh
 	assert_true(mesh_rid.is_valid(), "the surface holds a server mesh")
 	cm.free()

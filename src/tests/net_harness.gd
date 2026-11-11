@@ -378,6 +378,10 @@ func run(root: Node, role: String) -> void:
 		return
 	if _role == "host":
 		_fresh_save_dir()
+		# Phase 238: the scenario's geometry (RENDEZVOUS on a ~2 m spawn plain, the far peer 100 km east on
+		# creature land, a half-lap creature probe) is the 40,000 km planet's, so the host plays a pre-238
+		# world, as the suite does (`pin_legacy_world`). The client adopts it from the join snapshot.
+		TerrainSlice.set_world_circumference(40000.0, false)
 		_pin_world_seed()
 		if _failed:
 			return
