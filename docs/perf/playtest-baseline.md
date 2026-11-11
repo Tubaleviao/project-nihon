@@ -69,6 +69,26 @@ is report-only: mesh upload and dispatch are not the near ring's to cut, and the
 (a 2-core llvmpipe runner pays ~4 ms more per chunk on both flights). The record is measured in the same
 run, so the gate holds on any machine.
 
+## Release build: flight (Phase 248)
+
+Every number above is the editor binary with the debug library. CI's `release-export` job exports the
+Linux preset with `--export-release` and the `template_release` library, then runs the exported binary
+with `--playtest-bot --playtest-no-budget --playtest-only flight` once, **report only** (it gates
+nothing; the numbers feed Phase 239). It prints the line below to the job summary and uploads the
+`playtest-release` artifact. `tools/check_playtest_budget.py` is not run on it.
+
+| Flight metric | Editor, debug library | Release export, release library |
+|---|---|---|
+| main ms per attached chunk (`main_ms_per_attach`) | 14.8 ms with the near ring off (record); see Phase 189 above | 3.8 ms (near ring on), 14.8 ms (record) |
+| worker ms per crossing (`worker_ms_per_crossing`) | 10.8 ms local, see Phase 190 above | 9.5 ms (9 ms in the log line; 46 ms with coarse chunks off) |
+| ground under the body at 270 m/s | >= 50% gate | 86% of 42 samples |
+
+Release column: one local run (2026-11-11, llvmpipe `opengl3`, native release library, seed pinned); the
+CI job's summary line replaces it per run. A release export ignores `--playtest-bot` unless it is also
+given `--playtest-release` and `NIHON_PLAYTEST_RELEASE=1` is set (`BootWiring.playtest_allowed`), and it
+writes its report to `user://playtest` (`PlaytestBot.out_dir()`).
+
+
 ## Flight: worker ms per crossing (Phase 190)
 
 Each flight also records the worker time of every build reaped after the warm-up

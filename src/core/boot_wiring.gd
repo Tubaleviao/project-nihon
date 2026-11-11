@@ -119,13 +119,22 @@ func start_stress_recorder() -> void:
 
 ## `--playtest-bot`: the bot's emptied save directory and pinned seed, before the world boot.
 func prepare_playtest_bot() -> void:
-	if OS.is_debug_build():
+	if playtest_allowed(OS.is_debug_build(), OS.get_cmdline_user_args(), OS.get_environment(RELEASE_PLAYTEST_ENV)):
 		(load(PLAYTEST_BOT_PATH) as GDScript).prepare(root)
 
+## Phase 248 — a release export plays the bot only when asked twice: the `--playtest-release` user arg and
+## `NIHON_PLAYTEST_RELEASE=1` in the environment (CI's `release-export` job sets both to measure the release
+## build). A player's shortcut or launcher sets neither, so a shipped build still ignores `--playtest-bot`.
+const RELEASE_PLAYTEST_ARG := "--playtest-release"
+const RELEASE_PLAYTEST_ENV := "NIHON_PLAYTEST_RELEASE"
+
+static func playtest_allowed(is_debug_build: bool, args: Array, env_value: String) -> bool:
+	return is_debug_build or (args.has(RELEASE_PLAYTEST_ARG) and env_value == "1")
+
 ## Phase 134 — `--playtest-bot`: a scripted bot plays the rendered listen host, then quits the process.
-## Debug builds only: it empties the pack and edits the world, so a release build ignores the flag.
+## Debug builds only (a release export needs `playtest_allowed`'s double opt-in): it empties the pack and edits the world, so a release build ignores the flag.
 func start_playtest_bot() -> void:
-	if not OS.is_debug_build() or root._is_client or root._is_server:
+	if not playtest_allowed(OS.is_debug_build(), OS.get_cmdline_user_args(), OS.get_environment(RELEASE_PLAYTEST_ENV)) or root._is_client or root._is_server:
 		return
 	# Loaded here, not preloaded: a release build never parses the bot.
 	var PlaytestBot: GDScript = load(PLAYTEST_BOT_PATH)

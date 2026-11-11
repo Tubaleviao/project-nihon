@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–224 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–224 and 248 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -36,27 +36,26 @@ others are not in it.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 1 | 248 | The native library base and a release build |
-| 2 | 238 | One world: a fixed seed, a 2,000 km planet and one continent |
-| 3 | 239 | Streaming that keeps up |
-| 4 | 249 | What to reuse from Zylann's godot_voxel |
-| 5 | 240 | Smooth natural ground |
-| 6 | 241 | The native smooth mesher, and coarse chunks built smooth |
-| 7 | 242 | Terrain materials: blend weights, a triplanar shader and CC0 textures |
-| 8 | 243 | Level of detail past the window |
-| 9 | 244 | A chunk cache on disk |
-| 10 | 225 | The options window |
-| 11 | 237 | Flight that handles like flight |
-| 12 | 250 | The server's ceiling: one machine serving, another running the bots |
-| 13 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
-| 14 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
-| 15 | 226 | Several characters per player |
-| 16 | 229 | Skills capped by the gear |
-| 17 | 247 | Ground cover: grass and bushes by biome |
-| 18 | 235 | Roads |
-| 19 | 234 | Boats |
-| 20 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
-| 21 | 251 | A human playtest: what would make the game fun |
+| 1 | 238 | One world: a fixed seed, a 2,000 km planet and one continent |
+| 2 | 239 | Streaming that keeps up |
+| 3 | 249 | What to reuse from Zylann's godot_voxel |
+| 4 | 240 | Smooth natural ground |
+| 5 | 241 | The native smooth mesher, and coarse chunks built smooth |
+| 6 | 242 | Terrain materials: blend weights, a triplanar shader and CC0 textures |
+| 7 | 243 | Level of detail past the window |
+| 8 | 244 | A chunk cache on disk |
+| 9 | 225 | The options window |
+| 10 | 237 | Flight that handles like flight |
+| 11 | 250 | The server's ceiling: one machine serving, another running the bots |
+| 12 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
+| 13 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
+| 14 | 226 | Several characters per player |
+| 15 | 229 | Skills capped by the gear |
+| 16 | 247 | Ground cover: grass and bushes by biome |
+| 17 | 235 | Roads |
+| 18 | 234 | Boats |
+| 19 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
+| 20 | 251 | A human playtest: what would make the game fun |
 
 Order notes that differ from the arcs' own order:
 
@@ -197,7 +196,7 @@ measures how many players one server holds on real hardware. Phase 251 is the ow
 
 | Phase | Title | Status |
 |---|---|---|
-| 248 | The native library base and a release build | Open |
+| 248 | The native library base and a release build | Done ([phases-248.md](docs/roadmap-history/phases-248.md)) |
 | 249 | What to reuse from Zylann's godot_voxel: a review, then the parts that fit | Open |
 | 250 | The server's ceiling: one machine serving, another running the bots | Open |
 | 251 | A human playtest: what would make the game fun | Open |
@@ -688,39 +687,6 @@ Trees use `multimesh_pool.gd` and impostors (Phase 23). Natural ground has no gr
 - Suite tests: placement is identical for the same seed and tile, nothing grows on rock, snow, water
   or a placed block, and density falls with distance.
 - The playtest `walk` and `flight` steps meet their budgets with ground cover on.
-
-## Phase 248 — The native library base and a release build
-
-`native/` holds one GDExtension class, `NativeChunkBuilder` (Phases 166–169, 190), and
-`src/terrain/native_builder.gd` loads it and routes the functions its `functions()` lists. CI and
-`release.yml` already compile `template_release` beside `template_debug`, but nothing runs or measures
-a release export: the playtest and its budgets use the editor binary with the debug library. Phases
-241 (smooth mesher), 245 (planet bake) and whatever Phase 249 adopts all add native code, so they
-should share one base instead of each growing `NativeChunkBuilder`.
-
-- **One base for every native port:** shared headers for fixed-point and integer arithmetic, the
-  seeded hash and noise `WorldShape` uses (bit-exact with GDScript), and run/array marshalling, used
-  by `NativeChunkBuilder` and every later class. Each native class reports `version()` and
-  `functions()`.
-- **One loader:** `native_builder.gd` becomes a general loader (`src/core/native_loader.gd` or
-  equivalent) that loads the extension once, checks each class's required version and routes per
-  function, so a new class needs no new loader. The chunk builder keeps its log line and fallback.
-- **One parity harness:** `native_tests.gd`'s bit-exact GDScript-versus-native check becomes a helper
-  any suite can call with a function name and a list of inputs.
-- **Release build, measured:** a CI job exports a release Linux build with the release library and
-  runs the playtest `flight` step once, report-only. The budget table (`docs/perf/playtest-baseline.md`)
-  records the release numbers beside the editor ones. Phase 239 uses them.
-- Document the base in `native/README.md` (how to add a class, a function and its parity test).
-
-**Acceptance criteria**
-- The suite passes with and without the native extension (`--expect-native` in CI, fallback in the
-  `export-check` job), and the chunk builder's parity tests run through the shared harness.
-- A suite test on the loader: a class below its required version, a missing class and a function not
-  in `functions()` each fall back to GDScript; a present one routes native.
-- A parity test on the shared hash and noise: native and GDScript give identical values for 10,000
-  seeded samples.
-- The CI release-export job runs the `flight` step and writes its numbers to the report;
-  `docs/perf/playtest-baseline.md` has a release column.
 
 ## Phase 249 — What to reuse from Zylann's godot_voxel
 

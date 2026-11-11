@@ -16,6 +16,10 @@ func register() -> void:
 	_run_test("native: the loader picks native only when the extension loaded and the class exists", _test_native_mode_decision)
 	_run_test("native: the real loader matches the build (native present or fallback)",             _test_native_real_loader)
 	_run_test("native: only ported functions are routed natively",                                 _test_native_routes_only_ported)
+	_run_test("native: the loader falls back for an old class, a missing class and an unlisted function", _test_native_loader_routing)
+	_run_test("native: the shared hash and noise match WorldShape on 10,000 seeded samples",       _test_native_shape_parity)
+	_run_test("native: the parity harness skips cleanly and catches a difference",                 _test_native_parity_helper)
+	_run_test("native: the release-export CI job runs the flight step and the baseline has a release column", _test_native_release_export_job)
 	_run_test("native: heightmap_for matches the GDScript reference on the fixed chunk set",       _test_native_heightmap_parity)
 	_run_test("native: build_runs matches the GDScript reference on the fixed chunk set",          _test_native_build_runs_parity)
 	_run_test("native: build_chunk_arrays matches the GDScript reference on the fixed chunk set",  _test_native_chunk_arrays_parity)
@@ -363,3 +367,104 @@ func _test_native_release_workflow() -> void:
 	for p in ["linux", "windows", "macos"]:
 		assert_true(text.contains("name: " + p), "the release builds the %s binary" % p)
 	assert_true(text.contains("gh release create"), "the release workflow creates the GitHub Release")
+
+## Phase 248 — the loader's decisions on any build: a class below its required version, a missing class
+## and a function not in `functions()` each fall back; a present, current, listed one routes native.
+func _test_native_loader_routing() -> void:
+	var L := preload("res://src/core/native_loader.gd")
+	var listed := PackedStringArray(["a", "b"])
+	assert_true(L.class_usable(true, 8, 8), "a class at its required version is usable")
+	assert_true(L.class_usable(true, 9, 8), "a class above its required version is usable")
+	assert_false(L.class_usable(true, 7, 8), "a class below its required version falls back")
+	assert_false(L.class_usable(true, -1, 8), "a missing class falls back")
+	assert_false(L.class_usable(false, 8, 8), "an extension that did not load falls back")
+	assert_true(L.routes(true, listed, "a"), "a usable class routes a listed function native")
+	assert_false(L.routes(true, listed, "c"), "a function not in functions() falls back")
+	assert_false(L.routes(false, listed, "a"), "an unusable class routes nothing")
+	# The real loader: an unknown class and an unknown function are never native, whatever the build.
+	assert_false(L.is_native("NoSuchNativeClass"), "an unknown class is not native")
+	assert_true(L.instance("NoSuchNativeClass") == null, "an unknown class has no instance")
+	assert_eq(L.version("NoSuchNativeClass"), -1, "an unknown class has no version")
+	assert_false(L.use_native("NativeChunkBuilder", "not_a_function"), "a function the class does not list is not native")
+	assert_false(L.use_native("NativeShape", "not_a_function"), "same for the shape class")
+	for cls: String in L.REQUIRED:
+		assert_eq(L.is_native(cls), L.version(cls) >= int(L.REQUIRED[cls]), "%s is native exactly when its version is current" % cls)
+		if _expects_native():
+			assert_true(L.is_native(cls), "%s loads in a --expect-native run" % cls)
+		if _expects_fallback():
+			assert_false(L.is_native(cls), "%s falls back in a --expect-fallback run" % cls)
+
+func _expects_native() -> bool:
+	return EXPECT_NATIVE_ARG in OS.get_cmdline_user_args()
+
+func _expects_fallback() -> bool:
+	return EXPECT_FALLBACK_ARG in OS.get_cmdline_user_args()
+
+## 10,000 seeded samples of `WorldShape._mix` and `_noise`: identical values native and GDScript.
+func _test_native_shape_parity() -> void:
+	var L := preload("res://src/core/native_loader.gd")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 248
+	var count := 10000
+	var seed_v := 777001
+	var circumference := 4194304.0
+	var a := PackedInt64Array()
+	var b := PackedInt64Array()
+	var xs := PackedFloat64Array()
+	var zs := PackedFloat64Array()
+	for i in count:
+		a.append(rng.randi_range(-2000000, 2000000))
+		b.append(rng.randi_range(-2000000, 2000000))
+		xs.append(rng.randf_range(-circumference, 2.0 * circumference))
+		zs.append(rng.randf_range(-circumference, circumference))
+	var idx: Array = range(count)
+	var compared := assert_native_parity("NativeShape", "mix_batch", idx,
+		func(i): return WorldShapeScript._mix(seed_v, a[i], b[i], 21),
+		func(i): return (L.instance("NativeShape").call("mix_batch", seed_v, PackedInt64Array([a[i]]), PackedInt64Array([b[i]]), 21) as PackedInt64Array)[0], "WorldShape._mix")
+	if compared == 0:
+		return
+	# Whole-batch calls too: the same arrays in one go, so the batch path is the one measured.
+	var shape: RefCounted = L.instance("NativeShape")
+	var mixed: PackedInt64Array = shape.call("mix_batch", seed_v, a, b, 21)
+	var noised: PackedFloat64Array = shape.call("noise_batch", seed_v, xs, zs, circumference, 1600, 41)
+	assert_eq(mixed.size(), count, "a batch gives one hash per input")
+	assert_eq(noised.size(), count, "a batch gives one noise value per input")
+	var bad := 0
+	for i in count:
+		if mixed[i] != WorldShapeScript._mix(seed_v, a[i], b[i], 21):
+			bad += 1
+		if noised[i] != WorldShapeScript._noise(seed_v, xs[i], zs[i], circumference, 1600, 41):
+			bad += 1
+	assert_eq(bad, 0, "the batch hash and noise equal WorldShape on %d samples" % count)
+	assert_eq((shape.call("mix_batch", seed_v, PackedInt64Array([1]), PackedInt64Array([1, 2]), 0) as PackedInt64Array).size(), 0, "mismatched input lengths give an empty result")
+
+func _test_native_parity_helper() -> void:
+	# Whatever the build: an unrouted function skips and compares nothing.
+	assert_eq(assert_native_parity("NoSuchNativeClass", "nope", [1, 2], func(x): return x, func(x): return x), 0, "an unrouted function skips")
+	if not NativeLoader.use_native("NativeShape", "mix_batch"):
+		return
+	var shape: RefCounted = NativeLoader.instance("NativeShape")
+	var same := assert_native_parity("NativeShape", "mix_batch", [1, 2, 3],
+		func(i): return WorldShapeScript._mix(5, i, i, 1),
+		func(i): return (shape.call("mix_batch", 5, PackedInt64Array([i]), PackedInt64Array([i]), 1) as PackedInt64Array)[0])
+	assert_eq(same, 3, "a routed function compares every input")
+
+func _test_native_release_export_job() -> void:
+	var f := FileAccess.open("res://.github/workflows/ci.yml", FileAccess.READ)
+	if f != null:
+		var live := ""
+		for line in f.get_as_text().split("\n"):
+			if not line.strip_edges().begins_with("#"):
+				live += line + "\n"
+		assert_true(live.contains("release-export"), "CI has a release-export job")
+		assert_true(live.contains("export-release"), "the job exports a release build")
+		assert_true(live.contains("--playtest-only flight") and live.contains("--playtest-release") and live.contains("NIHON_PLAYTEST_RELEASE=1"), "the job runs the flight step")
+	var BW := preload("res://src/core/boot_wiring.gd")
+	assert_true(BW.playtest_allowed(true, [], ""), "a debug build always allows the bot")
+	assert_false(BW.playtest_allowed(false, ["--playtest-bot"], ""), "a release build ignores --playtest-bot alone")
+	assert_false(BW.playtest_allowed(false, ["--playtest-bot", "--playtest-release"], ""), "the arg without the environment is not enough")
+	assert_false(BW.playtest_allowed(false, ["--playtest-bot"], "1"), "the environment without the arg is not enough")
+	assert_true(BW.playtest_allowed(false, ["--playtest-bot", "--playtest-release"], "1"), "arg and environment together allow the bot in a release build")
+	var b := FileAccess.open("res://docs/perf/playtest-baseline.md", FileAccess.READ)
+	if b != null:
+		assert_true(b.get_as_text().contains("Release"), "the baseline table has a release column")

@@ -8,74 +8,45 @@ extends RefCounted
 ## loaded AND the native class reports it (`functions()`), so this scaffold, which implements none,
 ## routes nothing and every chunk is still built by GDScript.
 
-const EXTENSION_PATH := "res://native/nihon_native.gdextension"
+const Loader := preload("res://src/core/native_loader.gd")
+
+const EXTENSION_PATH := Loader.EXTENSION_PATH
 const CLASS_NAME := "NativeChunkBuilder"
 const MODE_NATIVE := "native"
 const MODE_FALLBACK := "gdscript"
 
 ## User arg that forces the GDScript fallback even with the binary present (CI times both builders).
-const NO_NATIVE_ARG := "--no-native"
+const NO_NATIVE_ARG := Loader.NO_NATIVE_ARG
 ## Functions a later step may route natively, in step order.
 const FUNCTIONS: Array[String] = ["heightmap_for", "build_runs", "build_chunk_arrays", "build_coarse_arrays"]
-## The oldest native builder whose results match this GDScript. A stale binary (an older build left in
-## `native/bin`) would compute different terrain than its peers, so it is not used. 5 = worldgen 9's spawn plain; 6 = worldgen 10 ridges;
-## 7 = Phase 190 coarse builds; 8 = worldgen 11 massifs (Phase 211).
-const REQUIRED_VERSION := 8
+## The oldest native builder whose results match this GDScript (see `NativeLoader.REQUIRED`).
+const REQUIRED_VERSION: int = Loader.REQUIRED["NativeChunkBuilder"]
 
-static var _loaded := false
-static var _mode := MODE_FALLBACK
-static var _builder: RefCounted = null
+static var _logged := false
 
 ## The mode for a given availability. Pure, so both outcomes are testable on any build.
 static func mode_for(extension_loaded: bool, class_available: bool) -> String:
 	return MODE_NATIVE if extension_loaded and class_available else MODE_FALLBACK
 
-## True when `--no-native` (a user arg) forces the GDScript fallback.
 static func forced_fallback() -> bool:
-	return NO_NATIVE_ARG in OS.get_cmdline_user_args()
+	return Loader.forced_fallback()
 
-## True when the .gdextension lists a binary for this platform and build that exists on disk.
-## Checked first so a checkout without the binaries boots silently on the fallback instead of
-## logging an engine error for the missing library.
 static func library_present() -> bool:
-	if forced_fallback():
-		return false
-	var cfg := ConfigFile.new()
-	if cfg.load(EXTENSION_PATH) != OK:
-		return false
-	var platform := OS.get_name().to_lower()
-	var build := "debug" if OS.is_debug_build() else "release"
-	for key in cfg.get_section_keys("libraries"):
-		var parts := key.split(".")
-		if parts.size() >= 2 and parts[0] == platform and parts[1] == build and FileAccess.file_exists(str(cfg.get_value("libraries", key))):
-			return true
-	return false
+	return Loader.library_present()
 
-## Load the extension if its binary exists and report the mode. Idempotent; logs once.
+## Load the extension through the shared loader and report the chunk builder's mode. Idempotent; logs once.
 static func init() -> String:
-	if _loaded:
-		return _mode
-	_loaded = true
-	var ext_loaded := false
-	if ClassDB.class_exists(CLASS_NAME):
-		ext_loaded = true   # already registered, e.g. through the editor's extension list
-	elif library_present():
-		var status := GDExtensionManager.load_extension(EXTENSION_PATH)
-		ext_loaded = status == GDExtensionManager.LOAD_STATUS_OK or status == GDExtensionManager.LOAD_STATUS_ALREADY_LOADED
-	# `--no-native` forces the fallback even when the class is registered (library_present() checks it too).
-	_mode = mode_for(ext_loaded and not forced_fallback(), ClassDB.class_exists(CLASS_NAME))
-	if _mode == MODE_NATIVE:
-		var b: RefCounted = ClassDB.instantiate(CLASS_NAME)
-		var v := int(b.call("version"))
-		if v < REQUIRED_VERSION:
-			_mode = MODE_FALLBACK
-			print("[Native] chunk builder: gdscript fallback (native version %d is older than %d; rebuild native/)" % [v, REQUIRED_VERSION])
+	Loader.init()
+	var native := Loader.is_native(CLASS_NAME)
+	if not _logged:
+		_logged = true
+		if native:
+			print("[Native] chunk builder: native (version %d)" % Loader.version(CLASS_NAME))
+		elif Loader.version(CLASS_NAME) >= 0:
+			print("[Native] chunk builder: gdscript fallback (native version %d is older than %d; rebuild native/)" % [Loader.version(CLASS_NAME), REQUIRED_VERSION])
 		else:
-			_builder = b
-			print("[Native] chunk builder: native (version %d)" % v)
-	else:
-		print("[Native] chunk builder: gdscript fallback (no native extension)")
-	return _mode
+			print("[Native] chunk builder: gdscript fallback (no native extension)")
+	return MODE_NATIVE if native else MODE_FALLBACK
 
 static func mode() -> String:
 	return init()
@@ -83,19 +54,19 @@ static func mode() -> String:
 static func is_native() -> bool:
 	return init() == MODE_NATIVE
 
-## True when `fn` should run in native code. False for everything until a step ports it.
+## True when `fn` should run in native code: the extension loaded, the class is current and lists `fn`.
 static func use_native(fn: String) -> bool:
 	if not is_native() or not FUNCTIONS.has(fn):
 		return false
-	return (_builder.call("functions") as PackedStringArray).has(fn)
+	return Loader.use_native(CLASS_NAME, fn)
 
 ## The native builder instance for `use_native` callers. Stateless, so any thread may call it.
 static func builder() -> RefCounted:
-	return _builder
+	return Loader.instance(CLASS_NAME)
 
 ## Native builder version, or -1 on the fallback.
 static func version() -> int:
-	return int(_builder.call("version")) if is_native() else -1
+	return Loader.version(CLASS_NAME) if is_native() else -1
 
 static var _memo: Dictionary = {}
 static var _memo_lock := Mutex.new()
@@ -121,6 +92,5 @@ static func forget_memo(key: String = "") -> void:
 
 ## Test hook: forget the cached decision so `init()` runs again.
 static func reset_for_tests() -> void:
-	_loaded = false
-	_mode = MODE_FALLBACK
-	_builder = null
+	Loader.reset_for_tests()
+	_logged = false

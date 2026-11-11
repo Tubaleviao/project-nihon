@@ -2,6 +2,7 @@ extends Node
 ## Shared state, assertion helpers and fixtures for the suite files in `suites/`.
 ## Moved out of the old single-file suite (Phase 133); every suite extends this.
 const Diag := preload("res://src/core/diag.gd")
+const NativeLoader := preload("res://src/core/native_loader.gd")
 const MemoryTransport := preload("res://src/tests/memory_transport.gd")
 
 # Preload slices so tests are isolated from the main scene tree.
@@ -786,6 +787,26 @@ func _collect_volcanic_counts(seed_v: int, counts: Array) -> void:
 				break
 		if counts.size() >= 16:
 			break
+
+## Phase 248 — the shared GDScript-versus-native parity check. Runs `reference.call(input)` and
+## `native.call(input)` for each input and asserts the results are identical (`==`, so floats are
+## bit-exact). Skips with one log line, returning 0, when `cls`.`fn` is not routed native in this run
+## (no extension, `--no-native`, a stale version or a function the class does not list). Returns the
+## number of inputs compared. `label` names the function in the assertion messages.
+func assert_native_parity(cls: String, fn: String, inputs: Array, reference: Callable, native: Callable, label: String = "") -> int:
+	if not NativeLoader.use_native(cls, fn):
+		print("[Native] %s parity skipped: %s.%s is not native in this run" % [fn, cls, fn])
+		return 0
+	var tag := label if not label.is_empty() else fn
+	var bad := 0
+	for input in inputs:
+		if reference.call(input) != native.call(input):
+			bad += 1
+			if bad <= 3:
+				assert_true(false, "native %s differs from the GDScript reference on %s" % [tag, str(input)])
+	if bad == 0:
+		assert_true(true, "native %s equals the GDScript reference on %d inputs" % [tag, inputs.size()])
+	return inputs.size()
 
 func assert_eq(a, b, msg: String = "") -> void:
 	if a == b:
