@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–224, 238 and 248 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–224, 238, 248 and 249 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -197,7 +197,7 @@ measures how many players one server holds on real hardware. Phase 251 is the ow
 | Phase | Title | Status |
 |---|---|---|
 | 248 | The native library base and a release build | Done ([phases-248.md](docs/roadmap-history/phases-248.md)) |
-| 249 | What to reuse from Zylann's godot_voxel: a review, then the parts that fit | Open |
+| 249 | What to reuse from Zylann's godot_voxel: a review, then the parts that fit | Done ([phases-249.md](docs/roadmap-history/phases-249.md)) |
 | 250 | The server's ceiling: one machine serving, another running the bots | Open |
 | 251 | A human playtest: what would make the game fun | Open |
 
@@ -531,6 +531,14 @@ run. Placed blocks are runs too, with a non-empty material and an entry in the s
   a worker, like `voxel_mesh.gd`. The density is sampled on a 0.5 m grid (tiles in XZ, 0.5 m in Y)
   from the resolved runs. A vertex's height on a column top comes from the run's exact top, so the
   ground stands where the runs say it does (±0.125 m), not on the grid.
+- **Normals from the density** (Phase 249, ported from godot_voxel's Transvoxel, MIT notice in the
+  file and a row in `native/THIRD_PARTY.md`): each cell corner's normal is the central-difference
+  gradient of the density, interpolated to the vertex, not the average of the triangles. The chunk is
+  sampled with one cell of padding below and two above on X and Z, so both chunks at a border compute
+  the same normals and the shading has no seam. If the closure test fails on a one-tile tunnel or a
+  thin overhang (surface nets give one vertex where a cell holds two sheets) and splitting that cell
+  does not fix it, the mesher becomes Lengyel's Transvoxel regular cells, credited as his licence asks
+  (see `docs/research/godot-voxel.md`).
 - **Natural runs only.** A placed block (a run with a structure entry) is still meshed by the block
   mesher, in the same chunk, so walls, floors and roofs stay square. Where natural ground meets a
   placed block, the smooth surface stops at the block's faces with no gap.
@@ -557,7 +565,7 @@ run. Placed blocks are runs too, with a non-empty material and an entry in the s
 
 ## Phase 241 — The native smooth mesher, and coarse chunks built smooth
 
-- Port `voxel_smooth.gd` to `native/` on the Phase 248 base (or the Transvoxel code Phase 249 adopts) as
+- Port `voxel_smooth.gd` to `native/` on the Phase 248 base (Phase 249 adopted no Transvoxel code) as
   `build_smooth_arrays`, added to `NativeChunkBuilder.functions()`
   and routed by `native_builder.gd` like the Phase 166–169 builders. Bump `REQUIRED_VERSION`.
 - Coarse builds (Phase 190, `voxel_coarse.gd`) run the same mesher on a downsampled density (2× and
@@ -614,6 +622,12 @@ ground does not match it.
   doubles, so the cost per ring stays about flat. They use the same heights the full chunks use (detail
   noise, records, and edits summarised to the cell). The distant ring's hole grows to the outer LOD
   ring.
+- **Ring boxes** (Phase 249, ported from godot_voxel's clipbox streaming, MIT notice in the file and a
+  row in `native/THIRD_PARTY.md`): a pure policy gives each ring a box of its own chunks around the
+  viewer, rounded outwards to even coordinates so the next ring's grid holds it exactly, and grown to
+  at least the finer ring's box halved and padded by one chunk, so a ring never borders one two levels
+  away. Ring k reaches `(ring-0 distance >> k) + ring-n distance` of its own chunks, and the outer ring
+  stretches to the view distance.
 - **No pop:** a chunk changing level cross-fades (`visibility_range` fade, dithered) instead of
   swapping in one frame. The same fade applies to the window's coarse-to-full upgrade.
 - **Haze hides the edge:** the clear-weather fog density is derived from the outer LOD radius, so the
@@ -639,6 +653,13 @@ region (`region_store`).
 - **Client:** built mesh arrays (full, coarse and LOD levels) are cached under `user://cache/` with the
   same key plus the mesher version, capped in size with least-recently-used eviction. A revisit loads
   arrays from disk on a worker instead of meshing.
+- **One file per region and layer** (Phase 249, the region-file layout ported from godot_voxel, MIT
+  notice in the file and a row in `native/THIRD_PARTY.md`): a header with a sector table (one 32-bit
+  entry per chunk of the 32×32 region: a 24-bit sector index and an 8-bit sector count, 0 for absent),
+  entries at fixed-size sector boundaries, compressed with Godot's `compress(COMPRESSION_ZSTD)`. An
+  entry that outgrows its sectors is moved to the end and the following sectors close the gap. Each
+  entry starts with its own key, so a stale entry is a miss without reading the rest. The
+  authoritative `region_store` JSON files do not change.
 - A stale key is a miss, never an error. Deleting the cache only costs time.
 
 **Acceptance criteria**
@@ -687,6 +708,12 @@ Trees use `multimesh_pool.gd` and impostors (Phase 23). Natural ground has no gr
   they grow on (grass on grass, none on rock or snow).
 - Placement is a pure function of (seed, tile), so every client puts the same tufts in the same places.
   It is client-only, never synced, and absent on the headless server.
+- **On the drawn surface** (Phase 249, ported from godot_voxel's instancer, MIT notice in the file and
+  a row in `native/THIRD_PARTY.md`): (seed, tile) decides whether and what grows and its jitter; the
+  height and normal come from the chunk's built mesh (the triangle under that point), so a tuft never
+  floats or sinks where the smooth surface sits off the run top. Each plant kind has a level of detail:
+  grass only on full-detail chunks, bushes on coarse ones too. A rebuilt chunk re-emits from its new
+  mesh, so nothing is saved.
 - Drawn with the MultiMesh pool in cells around the camera, with a density that falls with distance,
   and gone past a fade distance set by the graphics option. A wind sway in the vertex shader. A placed
   block or a mined tile removes the cover there.
@@ -697,33 +724,6 @@ Trees use `multimesh_pool.gd` and impostors (Phase 23). Natural ground has no gr
 - Suite tests: placement is identical for the same seed and tile, nothing grows on rock, snow, water
   or a placed block, and density falls with distance.
 - The playtest `walk` and `flight` steps meet their budgets with ground cover on.
-
-## Phase 249 — What to reuse from Zylann's godot_voxel
-
-[Zylann/godot_voxel](https://github.com/Zylann/godot_voxel) (MIT) is a mature voxel engine for Godot:
-smooth meshing (Transvoxel), LOD, streaming, region files, generators and instancing. It ships mainly
-as a C++ engine module (a custom Godot build), with a GDExtension build in progress. This project has
-its own run-based voxel storage, a headless authoritative server, the stable-world rule and a
-GDScript reference for every native function, so the engine as a whole does not fit, but parts of it
-may save Phases 240–244 a lot of work.
-
-- **Review** (`docs/research/godot-voxel.md`): for each of Transvoxel and its LOD seams, the LOD
-  octree/clipmap, streaming and task scheduling, region/block storage and compression, mesh
-  instancing for ground cover, and the SDF/edit tools, say what it does, which open phase it touches
-  (239–244, 247), whether it fits (Godot 4.7, GDExtension rather than a custom engine, deterministic
-  and safe on a worker, works on runs, headless server) and the verdict: adopt the code, port the
-  algorithm, or skip.
-- **Then implement what passes**, on the Phase 248 base, each part with its GDScript reference or
-  parity test as this project requires. Code taken from the project keeps its MIT notice
-  (`native/THIRD_PARTY.md` or equivalent). If a verdict changes how a later phase is built, update
-  that phase's spec in this file in the same PR.
-- If nothing fits, the review is the deliverable and the phase is done.
-
-**Acceptance criteria**
-- `docs/research/godot-voxel.md` exists with a verdict and its reason for each part listed above.
-- Every adopted file carries its licence notice, and `native/THIRD_PARTY.md` lists its source commit.
-- Each adopted part has a parity test (GDScript against native) or a suite test per behaviour it adds.
-- The suite, the harness and the playtest pass.
 
 ## Phase 250 — The server's ceiling: one machine serving, another running the bots
 
