@@ -12,6 +12,7 @@ extends RefCounted
 ## The lattices wrap east-west (their cell counts divide the circumference), so the shape has no
 ## seam at the antimeridian.
 
+const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
 const SEA_LEVEL_DEFAULT := 0.0
 const MIN_HEIGHT_DEFAULT := -64.0
 const MAX_HEIGHT_DEFAULT := 8850.0
@@ -29,7 +30,22 @@ const EROSION_CELLS := 64
 ## Phase 188: 1,600 cells (25 km at 40,000 km), with a second octave at 8.3 km. At 320 cells one ridge
 ## was ~125 km wide, so inland it was a plateau hundreds of kilometres across; now ranges are thin lines
 ## of peaks with valleys between them.
-const RIDGE_CELLS := 80
+const RIDGE_CELLS := 1600
+## Phase 238: the same cell sizes in metres on the 2,000 km planet (25 km ridges, 31 km massifs), 40 km spawn clearance.
+## A planet past SMALL_PLANET_M round (a pre-238 world, 40,000 km) keeps the lattices above.
+const RIDGE_CELLS_SMALL := 80
+const MASSIF_CELLS_SMALL := 64
+const MASSIF_SPAWN_CLEAR_M_SMALL := 40000.0
+const SMALL_PLANET_M := 1.0e7
+
+static func ridge_cells(w: float) -> int:
+	return RIDGE_CELLS_SMALL if w < SMALL_PLANET_M else RIDGE_CELLS
+
+static func massif_cells(w: float) -> int:
+	return MASSIF_CELLS_SMALL if w < SMALL_PLANET_M else MASSIF_CELLS
+
+static func massif_clear_m(w: float) -> float:
+	return MASSIF_SPAWN_CLEAR_M_SMALL if w < SMALL_PLANET_M else MASSIF_SPAWN_CLEAR_M
 ## Exponent on the ridge profile. The two-octave noise clusters near 0.5, so the old square kept most
 ## rugged inland ground near full ridge height; a high power keeps only the crest lines.
 const RIDGE_SHARPNESS := 10.0
@@ -38,12 +54,12 @@ const RIDGE_SHARPNESS := 10.0
 ## massif instead: a 156 km lattice (256 cells) whose high nodes lift rugged inland ground into plateaus
 ## up to `maxHeight`, with the ridges on top grown to MASSIF_RIDGE_GAIN × `ridgeAmplitude` at the summit.
 ## Only nodes above MASSIF_FLOOR rise at all, so most land keeps the Phase 188 ranges.
-const MASSIF_CELLS := 64
+const MASSIF_CELLS := 256
 const MASSIF_FLOOR := 0.8
 const MASSIF_RIDGE_GAIN := 2.0
 ## The massifs stay away from the origin as the spawn plain does (some seeds put a summit node on it): none
 ## within MASSIF_SPAWN_CLEAR_M of the spawn centre, full strength from twice that.
-const MASSIF_SPAWN_CLEAR_M := 40000.0
+const MASSIF_SPAWN_CLEAR_M := 100000.0
 const CONTRAST := 1.9 ## stretches the fbm (which clusters near 0.5) toward the extremes
 
 ## Phase 53 retired the 20 m flattened disc in `TerrainSlice`; this large-scale plain stays, so the
@@ -167,6 +183,8 @@ static func _noise(seed_v: int, x: float, z: float, w: float, cells_x: int, salt
 const CONTINENT_CORE := 0.5      ## fraction of the radius inside which the land core is full strength
 const CONTINENT_RIM := 0.8       ## fraction of the radius where the shelf begins to ease to the basin
 const CORE_CONTINENTALNESS := 0.74   ## the core's floor: just above the coast (0.64–0.68) on the spline
+## A ring of highland between the core and the rim, so the open continent holds inland ranges and summits.
+const HIGHLAND_CONTINENTALNESS := 0.97
 const DEFAULT_CONTINENTS: Array = [[0.0, 0.0, 300.0, true], [0.0, 180.0, 250.0, false], [55.0, 90.0, 150.0, false]]
 static var _continents: Array = DEFAULT_CONTINENTS
 static var _mask_on := true
@@ -187,7 +205,7 @@ static func continents() -> Array:
 static func continent_distance_m(c: Array, x: float, z: float, w: float) -> float:
 	var cx := float(c[1]) / 360.0 * w
 	var cz := float(c[0]) / 360.0 * w
-	var dx := fposmod(x - cx + w * 0.5, w) - w * 0.5
+	var dx := SeamWrap.delta_f(x, cx, w)
 	return Vector2(dx, z - cz).length()
 
 ## Index of the continent whose disc (radius plus `extra_m`) holds (x, z), or -1.
@@ -236,6 +254,7 @@ static func continentalness(seed_v: int, x: float, z: float, w: float) -> float:
 	warm()
 	var m := 0.0
 	var core := 0.0
+	var ring := 0.0
 	for k in _continents:
 		if not bool(k[3]):
 			continue
@@ -245,9 +264,10 @@ static func continentalness(seed_v: int, x: float, z: float, w: float) -> float:
 			continue
 		m = maxf(m, 1.0 - smoothstep(r * CONTINENT_RIM, r, d))
 		core = maxf(core, 1.0 - smoothstep(r * CONTINENT_CORE, r * CONTINENT_RIM, d))
+		ring = maxf(ring, smoothstep(r * 0.1, r * 0.25, d) * (1.0 - smoothstep(r * 0.55, r * 0.75, d)))
 	if m <= 0.0:
 		return 0.0
-	return maxf(c, CORE_CONTINENTALNESS * core) * m
+	return maxf(maxf(c, CORE_CONTINENTALNESS * core), HIGHLAND_CONTINENTALNESS * ring) * m
 
 ## Erosion in [0, 1]: 1 flat plains, 0 rugged.
 static func erosion(seed_v: int, x: float, z: float, w: float) -> float:
@@ -255,13 +275,13 @@ static func erosion(seed_v: int, x: float, z: float, w: float) -> float:
 
 ## Ridge value in [0, 1]: peaks on thin lines where the underlying noise crosses 0.5.
 static func ridges(seed_v: int, x: float, z: float, w: float) -> float:
-	var n := _noise(seed_v, x, z, w, RIDGE_CELLS, 41) * 0.7 + _noise(seed_v, x, z, w, RIDGE_CELLS * 3, 42) * 0.3
+	var n := _noise(seed_v, x, z, w, ridge_cells(w), 41) * 0.7 + _noise(seed_v, x, z, w, ridge_cells(w) * 3, 42) * 0.3
 	return pow(1.0 - absf(n * 2.0 - 1.0), RIDGE_SHARPNESS)
 
 ## Phase 211 — massif uplift in [0, 1]: 0 below MASSIF_FLOOR, rising to 1 on the lattice's highest nodes.
 ## The squared smoothstep keeps the flanks long and the summit a plateau, as Earth's great ranges stand.
 static func massif(seed_v: int, x: float, z: float, w: float) -> float:
-	var s := smoothstep(MASSIF_FLOOR, 1.0, _noise(seed_v, x, z, w, MASSIF_CELLS, 51))
+	var s := smoothstep(MASSIF_FLOOR, 1.0, _noise(seed_v, x, z, w, massif_cells(w), 51))
 	return s * s
 
 ## Metres the massif lifts at full strength: what is left of `maxHeight` above the spline's top and the
@@ -307,8 +327,9 @@ static func natural_height(seed_v: int, x: float, z: float, w: float) -> float:
 	var m := 0.0
 	if inland * rugged > 0.0:
 		var d := Vector2(x - SPAWN_CENTER.x, z - SPAWN_CENTER.y).length()
-		if d > MASSIF_SPAWN_CLEAR_M:
-			m = massif(seed_v, x, z, w) * smoothstep(MASSIF_SPAWN_CLEAR_M, MASSIF_SPAWN_CLEAR_M * 2.0, d)
+		var clear := massif_clear_m(w)
+		if d > clear:
+			m = massif(seed_v, x, z, w) * smoothstep(clear, clear * 2.0, d)
 	var ridge_amp := _ridge_amp * lerpf(1.0, MASSIF_RIDGE_GAIN, m)
 	var peaks := (ridges(seed_v, x, z, w) * ridge_amp + m * massif_amplitude()) * inland * rugged
 	return clampf(base + peaks, _min_h, _max_h)
@@ -364,14 +385,16 @@ static func altitude(seed_v: int, x: float, z: float, w: float) -> float:
 ## `[[strength, Vector2(x, z)], ...]`. Rows span pole to pole (z in ±w/4). About 33k nodes, each a few
 ## lattice lookups, so the suite and the playtest bot can find Earth-scale peaks without a planet scan.
 static func massif_summits(seed_v: int, w: float, count: int) -> Array:
-	var cell := w / float(MASSIF_CELLS)
+	var mc := massif_cells(w)
+	var clear := massif_clear_m(w)
+	var cell := w / float(mc)
 	var rows := int(w * 0.25 / cell)
 	var out: Array = []
 	for j in range(-rows, rows + 1):
-		for i in range(-MASSIF_CELLS / 2, MASSIF_CELLS / 2):
+		for i in range(-mc / 2, mc / 2):
 			var x := float(i) * cell   # canonical: x in [-w/2, w/2)
 			var z := float(j) * cell
-			var m := massif(seed_v, x, z, w) * smoothstep(MASSIF_SPAWN_CLEAR_M, MASSIF_SPAWN_CLEAR_M * 2.0, Vector2(x - SPAWN_CENTER.x, z - SPAWN_CENTER.y).length())
+			var m := massif(seed_v, x, z, w) * smoothstep(clear, clear * 2.0, Vector2(x - SPAWN_CENTER.x, z - SPAWN_CENTER.y).length())
 			if m <= 0.0:
 				continue
 			var c := continentalness(seed_v, x, z, w)

@@ -6,12 +6,13 @@ const Spawn := preload("res://src/world/spawn_finder.gd")
 const LocalWorlds := preload("res://src/menu/local_worlds.gd")
 
 func register() -> void:
-	_run_test("one world: two new worlds share the fabric seed and the heights", _test_same_seed)
-	_run_test("one world: the planet is 2,000 km round", _test_circumference)
-	_run_test("one world: ocean outside the open continent, land in its core", _test_continent_sample)
-	_run_test("one world: a closed site is never recorded or edited; opened, only it changes", _test_closed_site)
-	_run_test("one world: every spawn lies inside an open continent", _test_spawn_inside)
-	_run_test("one world: a pre-238 record keeps 40,000 km and no mask", _test_legacy_record)
+	_run_test("one world: two new worlds share the fabric seed and the heights", _test_same_seed, true)
+	_run_test("one world: the planet is 2,000 km round", _test_circumference, true)
+	_run_test("one world: ocean outside the open continent, land in its core", _test_continent_sample, true)
+	_run_test("one world: a closed site is never recorded or edited; opened, only it changes", _test_closed_site, true)
+	_run_test("one world: the horizon reads the 2,000 km planet", _test_horizon_small_planet, true)
+	_run_test("one world: every spawn lies inside an open continent", _test_spawn_inside, true)
+	_run_test("one world: a pre-238 record keeps 40,000 km and no mask", _test_legacy_record, true)
 
 func _w() -> float:
 	return float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
@@ -104,8 +105,6 @@ func _test_spawn_inside() -> void:
 
 func _test_legacy_record() -> void:
 	var ts := TerrainSlice
-	var km := ts.circumference_km()
-	var mask := WorldShape.mask_enabled()
 	ts.adopt_record_circumference({ "seed": 7 })
 	assert_eq(ts.circumference_chunks(), 1250000, "a record without a circumference is 40,000 km")
 	assert_true(not WorldShape.mask_enabled(), "and has no continent mask")
@@ -114,4 +113,8 @@ func _test_legacy_record() -> void:
 	ts.adopt_record_circumference({ "seed": 7, "circumferenceKm": 2000.0, "continentMask": true })
 	assert_eq(ts.circumference_chunks(), 62500, "a 238 record keeps 2,000 km")
 	assert_true(WorldShape.mask_enabled(), "with the mask")
-	ts.set_world_circumference(km, mask)
+	ts.set_world_circumference(ts.fabric_circumference_km(), true)
+
+func _test_horizon_small_planet() -> void:
+	const Horizon := preload("res://src/terrain/horizon.gd")
+	assert_eq(Horizon.default_circumference(), 2000.0 * 1000.0, "the default circumference is the fabric's 2,000 km")

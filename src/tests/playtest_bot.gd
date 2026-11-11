@@ -53,7 +53,8 @@ const TUTORIAL_FILE := "user://playtest/tutorial.json"
 ## ridge was ~350 m against far_peak's 330 before Phase 211). Where the bot stands still varies run to run
 ## (builder, walk distance); since Phase 211 far_peak looks at the planet's summits, not near the body. 42, 31 and 7
 ## passed every step locally; 162 failed walk. `--playtest-seed <n>` plays another seed.
-const WORLD_SEED := 42
+## Phase 238: it is the fabric `worldSeed` (every new world uses it), pinned by a suite test.
+const WORLD_SEED := 238
 ## Phase 181 — the name the `create` step gives the bot's character (a fresh save offers the screen).
 const CREATE_NAME := "Hikari"
 const SEED_ARG := "--playtest-seed"

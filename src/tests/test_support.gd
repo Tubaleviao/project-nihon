@@ -1406,7 +1406,11 @@ func _assert_no_orphan_nodes() -> void:
 static func matches_filter(test_name: String, filter: String) -> bool:
 	return filter == "" or test_name.to_lower().contains(filter.to_lower())
 
-func _run_test(test_name: String, fn: Callable) -> void:
+## The suite's default world: 40,000 km, no continent mask (what a record saved before Phase 238 reads as).
+static func pin_legacy_world() -> void:
+	TerrainSlice.set_world_circumference(40000.0, false)
+
+func _run_test(test_name: String, fn: Callable, modern_world: bool = false) -> void:
 	_registered_names[str(fn.get_method())] = true
 	_registered += 1
 	if not matches_filter(test_name, test_filter):
@@ -1414,7 +1418,14 @@ func _run_test(test_name: String, fn: Callable) -> void:
 	_ran += 1
 	_current_test = test_name
 	var fails_before := _fail
+	# Phase 238: the suite's goldens and planet-scale geometry were written on the 40,000 km planet, so the
+	# runner pins a pre-238 world (`pin_legacy_world`); a test of the new planet passes `modern_world` and runs
+	# on the fabric's circumference with the continent mask.
+	if modern_world:
+		TerrainSlice.set_world_circumference(TerrainSlice.fabric_circumference_km(), true)
 	fn.call()
+	if modern_world:
+		pin_legacy_world()
 	_free_owned()
 	var outcome := "✓" if _fail == fails_before else "✗"
 	print("  %s %s" % [outcome, test_name])
