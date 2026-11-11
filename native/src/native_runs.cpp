@@ -5,6 +5,9 @@
 // when a position goes through a `Vector2` / `Vector3` / `Color`.
 #include "native_chunk_builder.h"
 
+#include "base/marshal.h"
+#include "base/nihon_math.h"
+
 #include <godot_cpp/core/math.hpp>
 #include <godot_cpp/variant/color.hpp>
 #include <godot_cpp/variant/packed_color_array.hpp>
@@ -23,6 +26,8 @@
 using namespace godot;
 
 namespace {
+
+using namespace nihon;   // Phase 248: the shared arithmetic (native/src/base/)
 
 const int CHUNK_SIZE = 64;
 const double TILE_SIZE = 0.5;
@@ -49,36 +54,8 @@ const double LEY_THRESHOLD = 0.8;
 const int64_t SALT_SHAPE = 10;
 const int64_t SALT_LEY = 11;
 
-inline int64_t mul(int64_t a, int64_t b) {
-	return (int64_t)((uint64_t)a * (uint64_t)b);
-}
-inline int64_t add(int64_t a, int64_t b) {
-	return (int64_t)((uint64_t)a + (uint64_t)b);
-}
-inline double lerpf(double a, double b, double t) {
-	return a + (b - a) * t;
-}
-inline double smoothstep(double from, double to, double x) {
-	if (Math::is_equal_approx(from, to)) {
-		return from;
-	}
-	double s = (x - from) / (to - from);
-	s = s < 0.0 ? 0.0 : (s > 1.0 ? 1.0 : s);
-	return s * s * (3.0 - 2.0 * s);
-}
-inline int64_t posmod(int64_t a, int64_t b) {
-	int64_t v = a % b;
-	if ((v < 0 && b > 0) || (v > 0 && b < 0)) {
-		v += b;
-	}
-	return v;
-}
 inline int64_t floor_div64(int64_t x) {
 	return (int64_t)std::floor(double(x) / double(CHUNK_SIZE));
-}
-// A value stored in a Vector2 / Vector3 / Color component: GDScript holds it as float32.
-inline double f32(double v) {
-	return (double)(float)v;
 }
 inline double voxel_height(double raw) {
 	return std::floor(raw / STEP_HEIGHT) * STEP_HEIGHT;
@@ -673,12 +650,8 @@ Dictionary NativeChunkBuilder::coarse_columns(const Vector2i &p_chunk, const Arr
 	ERR_FAIL_COND_V(p_step < 1 || CHUNK_SIZE % p_step != 0, result);
 	Ctx ctx;
 	ERR_FAIL_COND_V(!load_ctx(ctx, p_input, p_cfg), result);
-	std::vector<double> hm(CHUNK_SIZE * CHUNK_SIZE);
-	for (int i = 0; i < CHUNK_SIZE * CHUNK_SIZE; i++) {
-		Variant h = p_heightmap[i];
-		ERR_FAIL_COND_V(h.get_type() != Variant::FLOAT && h.get_type() != Variant::INT, result);
-		hm[i] = double(h);
-	}
+	std::vector<double> hm;
+	ERR_FAIL_COND_V(!read_numbers(p_heightmap, CHUNK_SIZE * CHUNK_SIZE, hm), result);
 	const int64_t n = CHUNK_SIZE / p_step;
 	PackedFloat64Array tops, soil_depths;
 	PackedColorArray colors, top_colors, soil_colors;

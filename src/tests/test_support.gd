@@ -54,6 +54,7 @@ const EquipmentRules   := preload("res://src/character/equipment_rules.gd")
 const GameDataReader   := preload("res://src/core/game_data_reader.gd")
 const NetHarness      := preload("res://src/tests/net_harness.gd")
 const OreField        := preload("res://src/terrain/ore_field.gd")
+const NativeLoaderScript := preload("res://src/core/native_loader.gd")
 
 var _pass: int = 0
 var _fail: int = 0
@@ -792,6 +793,29 @@ func assert_eq(a, b, msg: String = "") -> void:
 		_ok()
 	else:
 		_ko("assert_eq FAILED [%s]: expected %s, got %s" % [msg, str(b), str(a)])
+
+## Phase 248 — the shared native parity harness. Calls `native` and `reference` with each argument list in
+## `cases` and asserts the results are equal (`==`: bit-exact floats, element-wise arrays and
+## dictionaries, same order). `native` defaults to calling `fn` on the loader's instance of `cls`; a
+## routed wrapper (e.g. `TerrainSlice.heightmap_for`, which picks native itself) can be passed instead.
+## Skips with one log line when the loader does not route `cls.fn` natively in this run, and returns -1;
+## otherwise returns the number of cases compared. The first few mismatches are reported one by one.
+func assert_native_parity(cls: String, fn: String, cases: Array, reference: Callable, native := Callable(), what := "") -> int:
+	if not NativeLoaderScript.use_native(cls, fn):
+		print("[Native] %s.%s parity skipped: not routed native in this run" % [cls, fn])
+		return -1
+	var label := what if not what.is_empty() else "%s.%s" % [cls, fn]
+	var mismatches := 0
+	for args: Array in cases:
+		var got: Variant = native.callv(args) if native.is_valid() else NativeLoaderScript.instance(cls).callv(fn, args)
+		var want: Variant = reference.callv(args)
+		var same_kind := typeof(got) == typeof(want) or (typeof(got) in [TYPE_INT, TYPE_FLOAT] and typeof(want) in [TYPE_INT, TYPE_FLOAT])
+		if not (same_kind and got == want):
+			mismatches += 1
+			if mismatches <= 3:
+				_ko("native parity FAILED [%s %s]: native %s, reference %s" % [label, str(args).left(200), str(got).left(200), str(want).left(200)])
+	assert_eq(mismatches, 0, "%s: native equals the GDScript reference on %d inputs" % [label, cases.size()])
+	return cases.size()
 
 func assert_true(cond: bool, msg: String = "") -> void:
 	if cond:
