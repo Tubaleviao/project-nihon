@@ -1,7 +1,7 @@
 #include "register_types.h"
 
 #include "native_chunk_builder.h"
-#include "native_shape.h"
+#include "native_world_shape.h"
 
 #include <godot_cpp/godot.hpp>
 
@@ -12,7 +12,7 @@ void initialize_nihon_native(ModuleInitializationLevel p_level) {
 		return;
 	}
 	GDREGISTER_CLASS(NativeChunkBuilder);
-	GDREGISTER_CLASS(NativeShape);
+	GDREGISTER_CLASS(NativeWorldShape);   // Phase 248
 }
 
 void uninitialize_nihon_native(ModuleInitializationLevel p_level) {

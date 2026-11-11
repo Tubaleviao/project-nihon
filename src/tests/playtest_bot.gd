@@ -45,12 +45,6 @@ const ChestRules := preload("res://src/world/chest_rules.gd")
 
 const ARG := "--playtest-bot"
 const OUT_DIR := "res://playtest"
-## Phase 248 — an exported build cannot write to res:// (it is the .pck), so a release export keeps its report
-## in the user data directory (`user://playtest`); the editor binary keeps writing next to the project.
-const EXPORT_OUT_DIR := "user://playtest"
-
-static func out_dir() -> String:
-	return OUT_DIR if OS.has_feature("editor") else EXPORT_OUT_DIR
 ## The bot's own save directory, emptied before the boot: a saved world must not pick the seed.
 const SAVE_DIR := "user://playtest/server/"
 const TUTORIAL_FILE := "user://playtest/tutorial.json"
@@ -637,7 +631,7 @@ func run(root: Node) -> void:
 	if not booted:
 		steps.append(step_record("boot", false, "world boot did not finish in %ds" % int(BOOT_TIMEOUT_SECS), [], 0))
 	else:
-		DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(out_dir()))
+		DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT_DIR))
 		_root._persistence.autosave_interval = 1.0e9   # the bot's edits must never reach the player's save
 		_root._chunk_manager.record_store = null   # flush_records runs every frame; no frontier record of the bot may reach the player's region files
 		_root._chunk_manager._pending_records.clear()
@@ -697,7 +691,7 @@ func _finish(steps: Array) -> void:
 	report["budget_ms"] = budgets
 	if not _write_report(report):
 		report["ok"] = false
-		(report["failures"] as Array).append("the report could not be written to %s" % out_dir())
+		(report["failures"] as Array).append("the report could not be written to %s" % OUT_DIR)
 	if _root != null and is_instance_valid(_root._chunk_manager):
 		_root._chunk_manager._pending_records.clear()
 	for f in report["failures"]:
@@ -771,14 +765,14 @@ func _screenshot(step: String) -> void:
 	await RenderingServer.frame_post_draw
 	var img := get_viewport().get_texture().get_image()
 	if img != null:
-		img.save_png(ProjectSettings.globalize_path(out_dir().path_join(step + ".png")))
+		img.save_png(ProjectSettings.globalize_path(OUT_DIR.path_join(step + ".png")))
 
 ## True when both files were written; a failure is printed, not swallowed.
 func _write_report(report: Dictionary) -> bool:
-	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(out_dir()))
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT_DIR))
 	var ok := true
 	for entry in [["report.json", JSON.stringify(report, "\t")], ["report.md", report_markdown(report)]]:
-		var f := FileAccess.open(out_dir().path_join(entry[0]), FileAccess.WRITE)
+		var f := FileAccess.open(OUT_DIR.path_join(entry[0]), FileAccess.WRITE)
 		if f == null:
 			print("[Playtest] cannot write %s: %s" % [entry[0], error_string(FileAccess.get_open_error())])
 			ok = false
@@ -1879,7 +1873,7 @@ func _step_horizon() -> Array:
 		var img := get_viewport().get_texture().get_image()
 		if img == null:
 			continue
-		img.save_png(ProjectSettings.globalize_path(out_dir().path_join("horizon_%+d.png" % int(h))))
+		img.save_png(ProjectSettings.globalize_path(OUT_DIR.path_join("horizon_%+d.png" % int(h))))
 		var rows := skyline_rows(img, SKYLINE_KEY)
 		var spread := skyline_spread(rows)
 		if int(rows.min()) >= img.get_height():
@@ -2043,8 +2037,8 @@ func _far_peak_attempt(found: Array, player) -> Array:
 			pair[0].visible = pair[1]
 	if ring_img == null or all_img == null:
 		return [false, "no frame read"]
-	ring_img.save_png(ProjectSettings.globalize_path(out_dir().path_join("far_peak_ring.png")))
-	all_img.save_png(ProjectSettings.globalize_path(out_dir().path_join("far_peak_bands.png")))
+	ring_img.save_png(ProjectSettings.globalize_path(OUT_DIR.path_join("far_peak_ring.png")))
+	all_img.save_png(ProjectSettings.globalize_path(OUT_DIR.path_join("far_peak_bands.png")))
 	var rows := skyline_rows(ring_img, SKYLINE_KEY)
 	# Phase 195 — the pass needs rock or snow, not any band pixel (#444): a near hill drawn by the bands also
 	# rises above the ring. The tallest ridge on the seed is only ~350 m and partly grass, so the rock/snow

@@ -894,46 +894,23 @@ jobs:
           grep -q "\[Native\] chunk builder: native" /tmp/export-native.log
           grep -q "\[World\] first ring built" /tmp/export-native.log
 
-  release-export:
-    name: Release export, flight step (report only, Phase 248)
-    # The playtest and its budgets run the editor binary with the debug library. This job exports the
-    # release Linux build with the release library and plays the `flight` step once on it, report only,
-    # so the release numbers sit beside the editor ones (docs/perf/playtest-baseline.md).
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-    needs: changes
+  release-flight:
+    name: Release export plays the flight step (report only)
+    # Phase 248: every other playtest run uses the editor binary with the template_debug library. This
+    # one exports the Linux preset as a release build (template_release export template and native
+    # library) and plays the `flight` step once on it. Report only: the numbers go to the step summary
+    # and the uploaded report, beside the editor's in docs/perf/playtest-baseline.md; nothing is gated
+    # but a crash, a missing report or the release library not loading.
+    if: github.event_name != 'workflow_dispatch'
+    needs: native-linux
     runs-on: ubuntu-latest
-    env:
-      SCONS_CACHE: ${{ github.workspace }}/.scons-cache
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache godot-cpp
-        uses: actions/cache@v4
+      - uses: actions/download-artifact@v4
         with:
-          path: native/godot-cpp
-          key: godot-cpp-godot-4.5-stable-ubuntu-latest
-
-      - name: Cache the SCons build
-        uses: actions/cache@v4
-        with:
-          path: .scons-cache
-          key: scons-godot-4.5-stable-ubuntu-latest-${{ hashFiles('native/src/**', 'native/SConstruct') }}
-          restore-keys: scons-godot-4.5-stable-ubuntu-latest-
-
-      - name: Fetch godot-cpp
-        run: tools/fetch_godot_cpp.sh
-
-      - name: Install SCons
-        run: python -m pip install scons
-
-      - name: Build the release library
-        working-directory: native
-        run: |
-          scons platform=linux arch=x86_64 target=template_release -j4
-          # The export packs the project and lists every library the preset's platform names, so the
-          # debug one must exist too; a copy is enough, the release export loads only the release one.
-          cp bin/libnihon_native.linux.template_release.x86_64.so bin/libnihon_native.linux.template_debug.x86_64.so
-          ls bin
+          name: native-linux
+          path: native/bin
 
       - name: Install a software renderer and X server
         run: |
@@ -954,50 +931,52 @@ jobs:
           unzip -o /tmp/godot/templates.tpz -d /tmp/godot/templates
           cp -r /tmp/godot/templates/templates/* ~/.local/share/godot/export_templates/4.7.stable/
 
-      - name: Export-release the Linux preset
+      - name: Export a release build with the release library
+        # "Linux Playtest" is the Linux preset plus the `playtest` feature tag, the only thing that lets a
+        # release build run `--playtest-bot` (BootWiring.playtest_allowed); the shipped "Linux" preset ignores it.
         run: |
-          mkdir -p build/linux
+          mkdir -p build/release
           /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --import || true
-          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --export-release "Linux" build/linux/nihon.x86_64
-          test -s build/linux/nihon.x86_64
+          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --export-release "Linux Playtest" build/release/nihon.x86_64
+          test -s build/release/nihon.x86_64
+          test -s build/release/libnihon_native.linux.template_release.x86_64.so
 
-      - name: Play the flight step on the release build (report only)
-        working-directory: build/linux
+      - name: Fly the flight step on the release build
+        working-directory: build/release
         run: |
-          # Report only: a failing step or a missing native library does not fail the job, but the
-          # report must exist and say it ran the native release builder.
+          python3 ../../tools/flight_report.py --self-test
+          # The exported game writes res://playtest next to the executable.
           set +e
-          # A release export ignores --playtest-bot unless asked twice (BootWiring.playtest_allowed).
-          NIHON_PLAYTEST_RELEASE=1 timeout 900 xvfb-run -a -s "-screen 0 1280x720x24" \
-            ./nihon.x86_64 --rendering-driver opengl3 -- --playtest-bot --playtest-release --playtest-no-budget \
-            --playtest-only flight 2>&1 | tee /tmp/release-flight.log
+          timeout 1500 xvfb-run -a -s "-screen 0 1280x720x24" \
+            ./nihon.x86_64 --rendering-driver opengl3 -- --playtest-bot --playtest-no-budget --playtest-only flight \
+            2>&1 | tee /tmp/release-flight.log
+          status=${PIPESTATUS[0]}
           set -e
-          grep -q "\[Native\] chunk builder: native" /tmp/release-flight.log
-          python3 - <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
-          import glob, json, os, sys
-          paths = glob.glob(os.path.expanduser("~/.local/share/godot/app_userdata/*/playtest/report.json"))
-          if not paths:
-              print("::error::the release flight run wrote no report"); sys.exit(1)
-          r = json.load(open(paths[0]))
-          f = [s for s in r["steps"] if s["step"] == "flight"]
-          if not f or "flight" not in f[0]:
-              print("::error::the release run recorded no flight step"); sys.exit(1)
-          fl = f[0]["flight"]
-          print("Release build (%s builder): flight %.0f m/s, under cover %.0f%%, main ms/attach %.2f, worker ms/crossing %.2f" % (
-              r.get("builder"), fl.get("speed_mps", 0), 100 * fl.get("under_cover", 0),
-              fl.get("main_ms_per_attach", 0), fl.get("worker_ms_per_crossing", 0)))
-          PY
-          mkdir -p /tmp/release-playtest
-          cp -r ~/.local/share/godot/app_userdata/*/playtest/. /tmp/release-playtest/ 2>/dev/null || true
+          if [ ! -f playtest/report.json ]; then
+            echo "::error::the release build wrote no report (crash or boot failure)"
+            exit 1
+          fi
+          if ! grep -q "\[Native\] chunk builder: native" /tmp/release-flight.log; then
+            echo "::error::the release build did not load the release native library"
+            exit 1
+          fi
+          if grep -qE "SCRIPT ERROR|Parse Error|Compile Error" /tmp/release-flight.log; then
+            echo "::error::script/parse/compile errors in the release build"
+            exit 1
+          fi
+          echo "Release flight exit status: $status (report only)"
+          {
+            echo "### Release build: the flight step (Phase 248, report only)"
+            python3 ../../tools/flight_report.py playtest/report.json
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          test "${PIPESTATUS[0]}" -eq 0
 
-      - name: Upload the release report
+      - name: Upload the release flight report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playtest-release
-          path: |
-            /tmp/release-playtest/
-            /tmp/release-flight.log
+          path: build/release/playtest/
           if-no-files-found: warn
 
   build:

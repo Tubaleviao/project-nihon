@@ -2,7 +2,6 @@ extends Node
 ## Shared state, assertion helpers and fixtures for the suite files in `suites/`.
 ## Moved out of the old single-file suite (Phase 133); every suite extends this.
 const Diag := preload("res://src/core/diag.gd")
-const NativeLoader := preload("res://src/core/native_loader.gd")
 const MemoryTransport := preload("res://src/tests/memory_transport.gd")
 
 # Preload slices so tests are isolated from the main scene tree.
@@ -55,6 +54,7 @@ const EquipmentRules   := preload("res://src/character/equipment_rules.gd")
 const GameDataReader   := preload("res://src/core/game_data_reader.gd")
 const NetHarness      := preload("res://src/tests/net_harness.gd")
 const OreField        := preload("res://src/terrain/ore_field.gd")
+const NativeLoaderScript := preload("res://src/core/native_loader.gd")
 
 var _pass: int = 0
 var _fail: int = 0
@@ -788,31 +788,34 @@ func _collect_volcanic_counts(seed_v: int, counts: Array) -> void:
 		if counts.size() >= 16:
 			break
 
-## Phase 248 — the shared GDScript-versus-native parity check. Runs `reference.call(input)` and
-## `native.call(input)` for each input and asserts the results are identical (`==`, so floats are
-## bit-exact). Skips with one log line, returning 0, when `cls`.`fn` is not routed native in this run
-## (no extension, `--no-native`, a stale version or a function the class does not list). Returns the
-## number of inputs compared. `label` names the function in the assertion messages.
-func assert_native_parity(cls: String, fn: String, inputs: Array, reference: Callable, native: Callable, label: String = "") -> int:
-	if not NativeLoader.use_native(cls, fn):
-		print("[Native] %s parity skipped: %s.%s is not native in this run" % [fn, cls, fn])
-		return 0
-	var tag := label if not label.is_empty() else fn
-	var bad := 0
-	for input in inputs:
-		if reference.call(input) != native.call(input):
-			bad += 1
-			if bad <= 3:
-				assert_true(false, "native %s differs from the GDScript reference on %s" % [tag, str(input)])
-	if bad == 0:
-		assert_true(true, "native %s equals the GDScript reference on %d inputs" % [tag, inputs.size()])
-	return inputs.size()
-
 func assert_eq(a, b, msg: String = "") -> void:
 	if a == b:
 		_ok()
 	else:
 		_ko("assert_eq FAILED [%s]: expected %s, got %s" % [msg, str(b), str(a)])
+
+## Phase 248 — the shared native parity harness. Calls `native` and `reference` with each argument list in
+## `cases` and asserts the results are equal (`==`: bit-exact floats, element-wise arrays and
+## dictionaries, same order). `native` defaults to calling `fn` on the loader's instance of `cls`; a
+## routed wrapper (e.g. `TerrainSlice.heightmap_for`, which picks native itself) can be passed instead.
+## Skips with one log line when the loader does not route `cls.fn` natively in this run, and returns -1;
+## otherwise returns the number of cases compared. The first few mismatches are reported one by one.
+func assert_native_parity(cls: String, fn: String, cases: Array, reference: Callable, native := Callable(), what := "") -> int:
+	if not NativeLoaderScript.use_native(cls, fn):
+		print("[Native] %s.%s parity skipped: not routed native in this run" % [cls, fn])
+		return -1
+	var label := what if not what.is_empty() else "%s.%s" % [cls, fn]
+	var mismatches := 0
+	for args: Array in cases:
+		var got: Variant = native.callv(args) if native.is_valid() else NativeLoaderScript.instance(cls).callv(fn, args)
+		var want: Variant = reference.callv(args)
+		var same_kind := typeof(got) == typeof(want) or (typeof(got) in [TYPE_INT, TYPE_FLOAT] and typeof(want) in [TYPE_INT, TYPE_FLOAT])
+		if not (same_kind and got == want):
+			mismatches += 1
+			if mismatches <= 3:
+				_ko("native parity FAILED [%s %s]: native %s, reference %s" % [label, str(args).left(200), str(got).left(200), str(want).left(200)])
+	assert_eq(mismatches, 0, "%s: native equals the GDScript reference on %d inputs" % [label, cases.size()])
+	return cases.size()
 
 func assert_true(cond: bool, msg: String = "") -> void:
 	if cond:

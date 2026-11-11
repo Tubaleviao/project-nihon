@@ -4,6 +4,8 @@
 // order, the merge sweep and the float32 narrowing of a Vector3 / Color mirror it.
 #include "native_chunk_builder.h"
 
+#include "base/marshal.h"
+
 #include <godot_cpp/variant/color.hpp>
 #include <godot_cpp/variant/packed_color_array.hpp>
 #include <godot_cpp/variant/packed_float64_array.hpp>
@@ -21,6 +23,8 @@
 using namespace godot;
 
 namespace {
+
+using namespace nihon;   // Phase 248: the shared marshalling (native/src/base/)
 
 const int CHUNK_SIZE = 64;
 const double TILE_SIZE = 0.5;
@@ -114,16 +118,6 @@ std::vector<Rect> merge_rects(std::vector<int> &cells, int n) {
 			}
 		}
 		out.push_back({ tx, tz, w, h });
-	}
-	return out;
-}
-
-template <typename P, typename T>
-P to_packed(const std::vector<T> &v) {
-	P out;
-	out.resize((int64_t)v.size());
-	if (!v.empty()) {
-		std::copy(v.begin(), v.end(), out.ptrw());
 	}
 	return out;
 }

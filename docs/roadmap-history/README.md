@@ -309,3 +309,12 @@ pause menu on Esc. Phases 225 (options window) and 226 (several characters) are 
 | 222 | The Character window fits: fewer rows, the friend code moves to the map | Done | [phases-222.md](phases-222.md) |
 | 223 | A main menu: play a local world or join a server | Done | [phases-223.md](phases-223.md) |
 | 224 | The Esc menu: resume, options, exit to main menu, quit | Done | [phases-224.md](phases-224.md) |
+
+### Foundations (Phase 248)
+
+Filed by the owner on 2026-11-10 with the priority order, as its first entry. Phases 249–251 are still
+open in [ROADMAP.md](../../ROADMAP.md).
+
+| Phase | Title | Status | Spec |
+|---|---|---|---|
+| 248 | The native library base and a release build | Done | [phases-248.md](phases-248.md) |

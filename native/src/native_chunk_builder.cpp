@@ -1,5 +1,7 @@
 #include "native_chunk_builder.h"
-#include "native_common.h"
+
+#include "base/nihon_math.h"
+#include "base/world_hash.h"
 
 #include <godot_cpp/core/math.hpp>
 #include <godot_cpp/variant/packed_float64_array.hpp>
@@ -9,9 +11,10 @@
 #include <vector>
 
 using namespace godot;
-using namespace nihon;
 
 namespace {
+
+using namespace nihon;   // Phase 248: the shared arithmetic, hash and noise (native/src/base/)
 
 // Mirrors of the GDScript constants (terrain_slice.gd, world_shape.gd).
 const int CHUNK_SIZE = 64;
@@ -63,13 +66,13 @@ struct Cfg {
 double continentalness(int64_t seed_v, double x, double z, double w) {
 	double v = 0.0;
 	for (int i = 0; i < 3; i++) {
-		v += CONTINENT_WEIGHTS[i] * nihon::value_noise(seed_v, x, z, w, CONTINENT_CELLS[i], 21 + i);
+		v += CONTINENT_WEIGHTS[i] * shape_noise(seed_v, x, z, w, CONTINENT_CELLS[i], 21 + i);
 	}
 	return clampf(0.5 + (v - 0.5) * CONTRAST, 0.0, 1.0);
 }
 
 double ridges(int64_t seed_v, double x, double z, double w) {
-	double n = nihon::value_noise(seed_v, x, z, w, RIDGE_CELLS, 41) * 0.7 + nihon::value_noise(seed_v, x, z, w, RIDGE_CELLS * 3, 42) * 0.3;
+	double n = shape_noise(seed_v, x, z, w, RIDGE_CELLS, 41) * 0.7 + shape_noise(seed_v, x, z, w, RIDGE_CELLS * 3, 42) * 0.3;
 	return std::pow(1.0 - std::fabs(n * 2.0 - 1.0), RIDGE_SHARPNESS);
 }
 
@@ -91,14 +94,14 @@ double spline_height(const Cfg &cfg, double c) {
 
 double shape_height(const Cfg &cfg, int64_t seed_v, double x, double z, double w) {
 	double c = continentalness(seed_v, x, z, w);
-	double e = nihon::value_noise(seed_v, x, z, w, EROSION_CELLS, 31);
+	double e = shape_noise(seed_v, x, z, w, EROSION_CELLS, 31);
 	double base = spline_height(cfg, c);
 	double inland = smoothstep(0.68, 0.9, c);
 	double rugged = 1.0 - smoothstep(0.35, 0.8, e);
 	double d = Vector2(x - SPAWN_CENTER_X, z - SPAWN_CENTER_Z).length();   // float32, as GDScript's Vector2
 	double m = 0.0;
 	if (inland * rugged > 0.0 && d > MASSIF_SPAWN_CLEAR_M) {
-		double s = smoothstep(MASSIF_FLOOR, 1.0, nihon::value_noise(seed_v, x, z, w, MASSIF_CELLS, 51));
+		double s = smoothstep(MASSIF_FLOOR, 1.0, shape_noise(seed_v, x, z, w, MASSIF_CELLS, 51));
 		m = s * s * smoothstep(MASSIF_SPAWN_CLEAR_M, MASSIF_SPAWN_CLEAR_M * 2.0, d);
 	}
 	double ridge_amp = cfg.ridge_amp * lerpf(1.0, MASSIF_RIDGE_GAIN, m);
@@ -250,7 +253,7 @@ double polar_ground(const Cfg &cfg, int64_t seed_v, double h, double x, double z
 	}
 	if (h < cfg.sea + ICE_SHELF_M + ICE_RELIEF_M) {
 		int64_t cells = std::max<int64_t>(1, (int64_t)std::llround(w / ICE_RELIEF_CELL_M));
-		double shelf = cfg.sea + ICE_SHELF_M + ICE_RELIEF_M * nihon::value_noise(seed_v, x, z, w, cells, 61);
+		double shelf = cfg.sea + ICE_SHELF_M + ICE_RELIEF_M * shape_noise(seed_v, x, z, w, cells, 61);
 		h = std::fmax(h, shelf);
 	}
 	if (!row.valid || row.z != z) {

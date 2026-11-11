@@ -1,4 +1,10 @@
-## Phase 248 — The native library base and a release build
+# Roadmap history — Phase 248
+
+Completed phase, archived from [ROADMAP.md](../../ROADMAP.md). See the [index](README.md).
+
+---
+
+## Phase 248 — The native library base and a release build ✅ Done
 
 `native/` holds one GDExtension class, `NativeChunkBuilder` (Phases 166–169, 190), and
 `src/terrain/native_builder.gd` loads it and routes the functions its `functions()` lists. CI and
@@ -22,26 +28,36 @@ should share one base instead of each growing `NativeChunkBuilder`.
 - Document the base in `native/README.md` (how to add a class, a function and its parity test).
 
 **Acceptance criteria**
-- The suite passes with and without the native extension (`--expect-native` in CI, fallback in the
+- [x] The suite passes with and without the native extension (`--expect-native` in CI, fallback in the
   `export-check` job), and the chunk builder's parity tests run through the shared harness.
-- A suite test on the loader: a class below its required version, a missing class and a function not
+- [x] A suite test on the loader: a class below its required version, a missing class and a function not
   in `functions()` each fall back to GDScript; a present one routes native.
-- A parity test on the shared hash and noise: native and GDScript give identical values for 10,000
+- [x] A parity test on the shared hash and noise: native and GDScript give identical values for 10,000
   seeded samples.
-- The CI release-export job runs the `flight` step and writes its numbers to the report;
+- [x] The CI release-export job runs the `flight` step and writes its numbers to the report;
   `docs/perf/playtest-baseline.md` has a release column.
 
-**Done:** `native/src/native_common.h` (namespace `nihon`) holds GDScript's wrapping 64-bit arithmetic,
-`posmod`/`fposmod`/`lerpf`/`smoothstep`/`clampf` and `WorldShape`'s seeded hash and value noise
-(`shape_mix`, `value_noise`); `NativeChunkBuilder` now uses them instead of its own copies. A second
-class, `NativeShape` (`mix_batch`, `noise_batch`; version 1), reports `version()` and `functions()` and
-is the parity target. `src/core/native_loader.gd` is the one loader (a `REQUIRED` class -> version table,
-`use_native(class, fn)`); `NativeBuilder` is a thin wrapper keeping the chunk builder's log line and
-`--no-native`. `assert_native_parity(cls, fn, inputs, reference, native)` in `test_support.gd` is the
-shared parity helper. CI's `release-export` job exports the release Linux build with the release library
-and plays `--playtest-only flight` on it once, report only (an exported build writes its report to
-`user://playtest`, `PlaytestBot.out_dir()`); `docs/perf/playtest-baseline.md` has a "Release build"
-section whose numbers come from that job's summary. `native/README.md` documents the base and how to add
-a class, a function and its parity test. Tests: `src/tests/suites/native_tests.gd`
-(`_test_native_loader_routing`, `_test_native_shape_parity`, `_test_native_parity_helper`,
-`_test_native_release_export_job`).
+**What shipped**
+
+- `native/src/base/`: `nihon_math.h` (GDScript's `lerpf`, `smoothstep`, `fposmod`, `posmod`, `clampf`,
+  wrapping `mul` / `add`, `f32`), `world_hash.h` (`shape_mix`, `shape_noise`: `WorldShape._mix` / `_noise`)
+  and `marshal.h` (`is_number`, `read_numbers`, `to_packed`). The four `NativeChunkBuilder` sources
+  dropped their private copies and use them; the refactored binary passed the old per-case parity tests
+  before they moved to the harness.
+- `NativeWorldShape` (version 1): `mix` and `noise` bound from the shared header, the second class the
+  loader routes.
+- `src/core/native_loader.gd`: loads the extension once, resolves every class in `CLASSES` (required
+  version, log label) and routes per class and function (`use_native`, `instance`, `version`, `memo`).
+  `src/terrain/native_builder.gd` is now a thin view of it for `NativeChunkBuilder`; its call sites and
+  the `[Native] chunk builder: native|gdscript fallback` line are unchanged, and a `--no-native` run
+  now says `(--no-native)`.
+- `assert_native_parity(class, function, cases, reference, native?)` in `src/tests/test_support.gd`;
+  the four chunk-builder parity tests use it.
+- The release build: a "Linux Playtest" export preset (the `playtest` feature tag;
+  `BootWiring.playtest_allowed`) because a release build ignores `--playtest-bot`, the `release-flight`
+  CI job and `tools/flight_report.py`. The numbers are in `docs/perf/playtest-baseline.md` (Phase 248
+  section): locally the release build attached 228 chunks at 2.66 ms each against the editor's 145 at
+  4.46 ms.
+
+Tests: `native_tests.gd` — the loader with stand-in classes (current, old, missing, unlisted function),
+10,000-sample hash and noise parity, the CI job and preset wiring.
