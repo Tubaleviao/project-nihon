@@ -31,18 +31,22 @@ Completed phase, archived from [ROADMAP.md](../../ROADMAP.md). See the [index](R
   columns (a cell's highest tile, its biome colours) and mesh them with
   `VoxelSmooth.mesh_coarse_columns` / native `mesh_coarse_columns`, in place of the greedy column
   mesher. The padding repeats the edge columns, so the ground runs flat to the chunk's edge plane.
-- Skirts: every triangle edge lying along an edge plane drops a quad to bedrock, facing out. Each end
-  stands as high as the tallest column round its cell, so a full neighbour's ground at the plane is
-  never above the skirt even where the smoothed edge dips between two cells (the first try, skirting
-  from the mesh edge itself, left 1–12 open tiles a seam). The cost is a thin fin above the ground
-  where the slope runs along the edge, on coarse chunks only.
+- Conservative coarse ground (review fix): the coarse mesher pins each shared vertex to its cell corner,
+  as high as the tallest of the four cells round it, at every level. A cell's ground is then a fan from
+  its own top up to its corners, never under any of its tiles, so a body on coarse collision is never
+  inside the true ground when the chunk upgrades (plain surface nets averaged the corners and dipped up to
+  several metres under a cliff-edge tile). A cliff's upright quads collapse onto the corners and are
+  dropped. The edge-plane bookkeeping is kept for coarse builds only.
+- Skirts: every triangle edge lying along an edge plane drops a quad from the edge to bedrock, facing
+  out. The edge's ends stand on corners as high as the tallest column round them, so a full neighbour's
+  ground at the plane is never above the skirt and no fin rises above the ground.
 - `terrain/smooth_mesh`, `VoxelSmooth.enabled()` and `set_enabled()` are gone. The block mesher stays
   for placed blocks and for the suite's wall-plane tests, which call `VoxelMesh.build_chunk_arrays`
   directly.
 - Native version 11 (required by the loader).
 - Tests: `smooth ground: native parity` covers 50 builds (25 land chunks of the pinned seed, each
   plain and with a tunnel, a pit and placed blocks). The Phase 190 coarse tests were rewritten for
-  triangle meshes: the mean height over every tile centre (none dips under the true mean, none over
+  triangle meshes: the height over every tile centre (none under that tile's true top, the mean none over
   0.5 / 1.0 m above it, no hole), and the seam closure for full | coarse 32, coarse 32 | full,
   full | coarse 16 and coarse 32 | coarse 16 on four probe seams.
 - Measured locally (xvfb playtest with budgets, exit 0): `stream` 38.7 chunks/s with the native

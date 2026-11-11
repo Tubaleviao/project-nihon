@@ -13,7 +13,7 @@ const NearRing := preload("res://src/terrain/near_ring.gd")
 const MEAN_TOLERANCE := { 2: 0.5, 4: 1.0 }
 
 func register() -> void:
-	_run_test("lod: a coarse chunk's mean height matches the full chunk's", _test_lod_mean_height)
+	_run_test("lod: a coarse chunk's mean height matches the full chunk's, never under a tile", _test_lod_mean_height)
 	_run_test("lod: no gap at a seam between levels (full|coarse, coarse|coarse)", _test_lod_seams_closed)
 	_run_test("lod: a coarse chunk meshes fewer quads, with a conservative collision", _test_lod_coarse_fewer_quads)
 	_run_test("lod: the level per ring around a walking body", _test_lod_walking_rings)
@@ -40,10 +40,18 @@ func _coarse_input(chunk: Vector2i, seed_v: int) -> Dictionary:
 ## Phase 241 — the coarse build is smooth (triangles, not quads). The highest up-facing triangle of
 ## `arrays` over each point of a `count`×`count` grid starting at `origin` (x, z), `spacing` apart, or NAN.
 static func _surface_grid(arrays: Dictionary, origin: Vector2, spacing: float, count: int) -> PackedFloat32Array:
+	var points := PackedVector2Array()
+	for iz in count:
+		for ix in count:
+			points.append(origin + Vector2(ix, iz) * spacing)
+	return _surface_at(arrays, points)
+
+## The highest up-facing triangle of `arrays` over each of `points` (x, z), or NAN.
+static func _surface_at(arrays: Dictionary, points: PackedVector2Array) -> PackedFloat32Array:
 	var v: PackedVector3Array = arrays["vertices"]
 	var idx: PackedInt32Array = arrays["indices"]
 	var out := PackedFloat32Array()
-	out.resize(count * count)
+	out.resize(points.size())
 	out.fill(NAN)
 	for t in range(0, idx.size(), 3):
 		var a := v[idx[t]]
@@ -51,16 +59,15 @@ static func _surface_grid(arrays: Dictionary, origin: Vector2, spacing: float, c
 		var c := v[idx[t + 2]]
 		if (b - a).cross(c - a).y <= 0.0:
 			continue
-		var x0 := maxi(ceili((minf(a.x, minf(b.x, c.x)) - origin.x) / spacing), 0)
-		var x1 := mini(floori((maxf(a.x, maxf(b.x, c.x)) - origin.x) / spacing), count - 1)
-		var z0 := maxi(ceili((minf(a.z, minf(b.z, c.z)) - origin.y) / spacing), 0)
-		var z1 := mini(floori((maxf(a.z, maxf(b.z, c.z)) - origin.y) / spacing), count - 1)
-		for iz in range(z0, z1 + 1):
-			for ix in range(x0, x1 + 1):
-				var h := _tri_height(a, b, c, origin.x + ix * spacing, origin.y + iz * spacing)
-				if not is_nan(h):
-					var k := iz * count + ix
-					out[k] = h if is_nan(out[k]) else maxf(out[k], h)
+		var lo := Vector2(minf(a.x, minf(b.x, c.x)), minf(a.z, minf(b.z, c.z)))
+		var hi := Vector2(maxf(a.x, maxf(b.x, c.x)), maxf(a.z, maxf(b.z, c.z)))
+		for k in points.size():
+			var pt := points[k]
+			if pt.x < lo.x or pt.x > hi.x or pt.y < lo.y or pt.y > hi.y:
+				continue
+			var h := _tri_height(a, b, c, pt.x, pt.y)
+			if not is_nan(h):
+				out[k] = h if is_nan(out[k]) else maxf(out[k], h)
 	return out
 
 ## The height of triangle (a, b, c) over (x, z), or NAN when the point is outside its projection.
@@ -90,14 +97,18 @@ func _test_lod_mean_height() -> void:
 				Vector2(0.25, 0.25), 0.5, 64)
 			var mean := 0.0
 			var holes := 0
-			for h in grid:
+			var dips := 0
+			for k in grid.size():
+				var h := grid[k]
 				if is_nan(h):
 					holes += 1
-				else:
-					mean += h
+					continue
+				mean += h
+				if h < VoxelSlice._voxel_height(float(hm[k])) - 0.001:
+					dips += 1
 			mean /= float(maxi(grid.size() - holes, 1))
 			assert_eq(holes, 0, "step %d at %s covers every tile centre" % [step, str(chunk)])
-			assert_true(mean >= full - 0.001, "step %d at %s never dips under the true surface (%.3f vs %.3f)" % [step, str(chunk), mean, full])
+			assert_eq(dips, 0, "step %d at %s never dips under a true tile (conservative collision)" % [step, str(chunk)])
 			assert_true(mean - full <= float(MEAN_TOLERANCE[step]), "step %d at %s: mean %.3f within %.2f m of the full chunk's %.3f" % [step, str(chunk), mean, MEAN_TOLERANCE[step], full])
 
 ## The upright triangles of `arrays` lying on the plane `axis` == `plane`, as (along, y) triangles.
@@ -159,29 +170,10 @@ func _assert_seam_closed(label: String, a: Dictionary, b: Dictionary, axis: int,
 
 ## The surface height of `arrays` at 64 points 0.5 m apart from `origin` along the seam.
 static func _surface_line(arrays: Dictionary, origin: Vector2, axis: int) -> PackedFloat32Array:
-	var out := PackedFloat32Array()
-	var v: PackedVector3Array = arrays["vertices"]
-	var idx: PackedInt32Array = arrays["indices"]
-	out.resize(64)
-	out.fill(NAN)
-	for t in range(0, idx.size(), 3):
-		var pa := v[idx[t]]
-		var pb := v[idx[t + 1]]
-		var pc := v[idx[t + 2]]
-		if (pb - pa).cross(pc - pa).y <= 0.0:
-			continue
-		var fixed := origin.x if axis == 0 else origin.y
-		var lo_f := minf(pa.x, minf(pb.x, pc.x)) if axis == 0 else minf(pa.z, minf(pb.z, pc.z))
-		var hi_f := maxf(pa.x, maxf(pb.x, pc.x)) if axis == 0 else maxf(pa.z, maxf(pb.z, pc.z))
-		if fixed < lo_f or fixed > hi_f:
-			continue
-		for i in 64:
-			var x := origin.x if axis == 0 else origin.x + i * 0.5
-			var z := origin.y + i * 0.5 if axis == 0 else origin.y
-			var h := _tri_height(pa, pb, pc, x, z)
-			if not is_nan(h):
-				out[i] = h if is_nan(out[i]) else maxf(out[i], h)
-	return out
+	var points := PackedVector2Array()
+	for i in 64:
+		points.append(origin + (Vector2(0, i * 0.5) if axis == 0 else Vector2(i * 0.5, 0)))
+	return _surface_at(arrays, points)
 
 func _full_arrays(chunk: Vector2i, hm: Array, seed_v: int, noise: FastNoiseLite) -> Dictionary:
 	var input := _coarse_input(chunk, seed_v)

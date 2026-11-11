@@ -105,7 +105,6 @@ public:
 	std::vector<Color> colors;
 	std::vector<int32_t> indices;
 	std::vector<uint8_t> sides;
-	std::unordered_map<int32_t, double> caps;
 	int64_t quads = 0;
 
 	void set_step(int step) {
@@ -384,7 +383,9 @@ public:
 		vertices.push_back(Vector3(double(p.x) + origin_x, p.y, double(p.z) + origin_z));
 		normals.push_back(double(g.length_squared()) > 1e-12 ? g.normalized() : Vector3(0, 1, 0));
 		colors.push_back(color);
-		sides.push_back(side);
+		if (skirted) {
+			sides.push_back(side);
+		}
 		return int32_t(vertices.size()) - 1;
 	}
 
@@ -444,6 +445,16 @@ public:
 		}
 		Vector3 u = count > 0 ? sum / real_t(count) : Vector3(0.5, 0.5, 0.5);
 		Vector3 p = pos(cx, cz, j) + Vector3(double(u.x) * cell, double(u.y) * grid, double(u.z) * cell);
+		if (skirted) {
+			// Coarse: pinned to the shared cell corner, as high as the tallest cell round it (see `_vertex`).
+			double cap = double(p.y);
+			for (int c = 0; c < 4; c++) {
+				for (const SRun &r : col_runs[(cz + (c >> 1) + PAD) * span + (cx + (c & 1) + PAD)]) {
+					cap = std::max(cap, r.top);
+				}
+			}
+			p = Vector3((cx + 1) * cell, cap, (cz + 1) * cell);
+		}
 		Vector3 g;
 		for (int c = 0; c < 8; c++) {
 			int dx = c & 1;
@@ -456,31 +467,27 @@ public:
 		}
 		Color color = cell_color(cx, cz, p, u);
 		uint8_t side = 0;
-		if (cx == -1) {
-			side |= SIDE_WEST;
-		} else if (cx == n - 1) {
-			side |= SIDE_EAST;
-		}
-		if (cz == -1) {
-			side |= SIDE_NORTH;
-		} else if (cz == n - 1) {
-			side |= SIDE_SOUTH;
+		if (skirted) {
+			if (cx == -1) {
+				side |= SIDE_WEST;
+			} else if (cx == n - 1) {
+				side |= SIDE_EAST;
+			}
+			if (cz == -1) {
+				side |= SIDE_NORTH;
+			} else if (cz == n - 1) {
+				side |= SIDE_SOUTH;
+			}
 		}
 		int32_t idx = add_vertex(p, g, color, side);
-		if (skirted && side != 0) {
-			double cap = -INFINITY;
-			for (int c = 0; c < 4; c++) {
-				for (const SRun &r : col_runs[(cz + (c >> 1) + PAD) * span + (cx + (c & 1) + PAD)]) {
-					cap = std::max(cap, r.top);
-				}
-			}
-			caps[idx] = std::max(cap, double(p.y));
-		}
 		cells[key] = idx;
 		return idx;
 	}
 
 	void tri(int32_t a, int32_t b, int32_t c) {
+		if (skirted && (vertices[a] == vertices[b] || vertices[b] == vertices[c] || vertices[a] == vertices[c])) {
+			return; // a coarse cliff's collapsed quad
+		}
 		indices.push_back(a);
 		indices.push_back(b);
 		indices.push_back(c);
@@ -610,7 +617,7 @@ public:
 		Color color = double(pa.y) >= double(pb.y) ? colors[a] : colors[b];
 		int32_t base = int32_t(vertices.size());
 		const Vector3 quad_pts[4] = {
-			Vector3(pa.x, caps[a], pa.z), Vector3(pb.x, caps[b], pb.z),
+			pa, pb,
 			Vector3(pb.x, BEDROCK_DEPTH, pb.z), Vector3(pa.x, BEDROCK_DEPTH, pa.z)
 		};
 		for (const Vector3 &p : quad_pts) {

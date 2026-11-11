@@ -22,9 +22,12 @@ extends RefCounted
 ##
 ## Phase 241 — coarse chunks (`VoxelCoarse`, 2× and 4× cells) run the same mesher on a downsampled
 ## density: one column per cell, every spacing and the clamp scaled by the step (`mesh_coarse_columns`).
-## The columns past the chunk's edge repeat its edge columns, so the surface runs flat to the edge plane,
-## and every mesh edge lying on that plane drops a skirt to bedrock: a full neighbour's ground, which
-## the coarse ground never sits below, meets the skirt whatever order the two were built in.
+## Its shared vertices are pinned to the cell corners, as high as the tallest cell round each, so the
+## ground over a cell (a fan from its top in the middle) never dips under a true tile: the coarse
+## collision stays conservative. The columns past the chunk's edge repeat its edge columns, so the
+## surface runs to the edge plane, and every mesh edge lying on that plane drops a skirt to bedrock: a
+## full neighbour's ground, which the coarse ground never sits below, meets the skirt whatever order the
+## two were built in.
 ##
 ## Normals are the density gradient (central differences) at each cell corner, interpolated to the
 ## vertex, not the mean of the triangles: both chunks at a border sample the same corners, so the
@@ -196,12 +199,10 @@ class _Mesher extends RefCounted:
 	var colors := PackedColorArray()
 	var indices := PackedInt32Array()
 	var collision := PackedVector3Array()
-	## Per vertex, the chunk-edge planes it lies on (`SIDE_*` bits); a run's own top vertex lies on none.
-	var sides := PackedByteArray()
-	## Coarse builds only: per edge vertex, the highest top of the columns round its cell, where its skirt
-	## stands to (see `add_skirts`).
+	## Coarse builds only (`skirted`): per vertex, the chunk-edge planes it lies on (`SIDE_*` bits); a run's
+	## own top vertex lies on none. A full build fills none of it.
 	var skirted := false
-	var caps: Dictionary = {}
+	var sides := PackedByteArray()
 	var quads := 0
 
 	const SIDE_WEST := 1
@@ -414,6 +415,16 @@ class _Mesher extends RefCounted:
 			count += 1
 		var u := sum / float(count) if count > 0 else Vector3(0.5, 0.5, 0.5)
 		var p := _pos(cx, cz, j) + Vector3(u.x * cell, u.y * grid, u.z * cell)
+		if skirted:
+			# Coarse: the vertex sits on the corner the four cells share, as high as the tallest of them, at
+			# every level. A cell is its tiles' highest, so the fan over each cell (its own top in the middle,
+			# corners at or above it) never dips under a true tile, and a cliff's upright quads, whose ends
+			# all land on the same corners, have no area (`_tri` drops them).
+			var cap := p.y
+			for k in 4:
+				for run in col_runs[(cz + (k >> 1) + PAD) * span + (cx + (k & 1) + PAD)]:
+					cap = maxf(cap, float(run["top"]))
+			p = Vector3((cx + 1) * cell, cap, (cz + 1) * cell)
 		# Trilinear blend of the eight corners' gradients at the vertex.
 		var g := Vector3.ZERO
 		for k in 8:
@@ -425,21 +436,16 @@ class _Mesher extends RefCounted:
 				g += _gradient(cx + dx, cz + dz, j + dy) * w
 		var color := _cell_color(cx, cz, p, u)
 		var side := 0
-		if cx == -1:
-			side |= SIDE_WEST
-		elif cx == n - 1:
-			side |= SIDE_EAST
-		if cz == -1:
-			side |= SIDE_NORTH
-		elif cz == n - 1:
-			side |= SIDE_SOUTH
+		if skirted:
+			if cx == -1:
+				side |= SIDE_WEST
+			elif cx == n - 1:
+				side |= SIDE_EAST
+			if cz == -1:
+				side |= SIDE_NORTH
+			elif cz == n - 1:
+				side |= SIDE_SOUTH
 		var idx := _add_vertex(p, g, color, side)
-		if skirted and side != 0:
-			var cap := -INF
-			for k in 4:
-				for run in col_runs[(cz + (k >> 1) + PAD) * span + (cx + (k & 1) + PAD)]:
-					cap = maxf(cap, float(run["top"]))
-			caps[idx] = maxf(cap, p.y)
 		cells[key] = idx
 		return idx
 
@@ -451,7 +457,8 @@ class _Mesher extends RefCounted:
 		vertices.append(Vector3(p.x + origin_x, p.y, p.z + origin_z))
 		normals.append(g.normalized() if g.length_squared() > 1e-12 else Vector3.UP)
 		colors.append(color)
-		sides.append(side)
+		if skirted:
+			sides.append(side)
 		return vertices.size() - 1
 
 	## The colour of the natural column nearest the vertex, at the vertex's height.
@@ -536,6 +543,8 @@ class _Mesher extends RefCounted:
 
 	## One triangle, wound so `(b - a) × (c - a)` faces out (the block mesher's convention).
 	func _tri(a: int, b: int, c: int) -> void:
+		if skirted and (vertices[a] == vertices[b] or vertices[b] == vertices[c] or vertices[a] == vertices[c]):
+			return   # a coarse cliff's collapsed quad (see `_vertex`)
 		indices.append(a)
 		indices.append(b)
 		indices.append(c)
@@ -543,12 +552,12 @@ class _Mesher extends RefCounted:
 		collision.append(vertices[b])
 		collision.append(vertices[c])
 
-	## Phase 241 — a skirt under every triangle edge that lies along a chunk-edge plane: a quad down to
-	## bedrock, facing out of the chunk, in the upper end's colour. An edge standing upright on the plane
-	## (a cliff's) has no width and drops none. Each end stands as high as the tallest column round its
-	## cell, which is at least every true tile there (a cell is its tiles' highest), so a full neighbour's
-	## ground at the plane never stands above the skirt, even where the smoothed edge dips between two
-	## cells. Returns the skirt quads made.
+	## Phase 241 — a skirt under every triangle edge that lies along a chunk-edge plane: a quad from the
+	## edge down to bedrock, facing out of the chunk, in the upper end's colour. An edge standing upright on
+	## the plane has no width and drops none. The edge's ends stand on cell corners as high as the tallest
+	## column round them (`_vertex`), and between them over a cell at least as high as its top, which is
+	## every true tile there, so a full neighbour's ground at the plane never stands above the skirt.
+	## Returns the skirt quads made.
 	func add_skirts() -> int:
 		var made := 0
 		var seen: Dictionary = {}
@@ -593,9 +602,7 @@ class _Mesher extends RefCounted:
 			else (Vector3(0, 0, -1) if side == SIDE_NORTH else Vector3(0, 0, 1)))
 		var color := colors[a] if pa.y >= pb.y else colors[b]
 		var base := vertices.size()
-		var top_a := Vector3(pa.x, float(caps[a]), pa.z)
-		var top_b := Vector3(pb.x, float(caps[b]), pb.z)
-		for p in [top_a, top_b, Vector3(pb.x, BEDROCK_DEPTH, pb.z), Vector3(pa.x, BEDROCK_DEPTH, pa.z)]:
+		for p in [pa, pb, Vector3(pb.x, BEDROCK_DEPTH, pb.z), Vector3(pa.x, BEDROCK_DEPTH, pa.z)]:
 			vertices.append(p)
 			normals.append(normal)
 			colors.append(color)

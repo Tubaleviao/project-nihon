@@ -17,8 +17,10 @@ extends RefCounted
 ##     the true surface: at a chunk edge it is at least as high as every true column on its side, which is
 ##     the height a full neighbour subtracts its own walls against.
 ##   * Phase 241: the cells are meshed smooth, by the full build's surface-nets mesher on the scaled grid
-##     (`VoxelSmooth.mesh_coarse_columns`). The columns past the edge repeat the edge column, so the ground
-##     runs flat to the chunk's edge plane, and every mesh edge on that plane drops a skirt to bedrock. A
+##     (`VoxelSmooth.mesh_coarse_columns`), with its shared vertices pinned to the cell corners as high as
+##     the tallest cell round each: the ground over a cell is a fan from its top up to its corners, never
+##     under any of its tiles. The columns past the edge repeat the edge column, so the ground runs to the
+##     chunk's edge plane, and every mesh edge on that plane drops a skirt to bedrock. A
 ##     full neighbour's ground, which the coarse ground stands above, meets the skirt, so no gap opens
 ##     between levels whatever order they were built in. Two coarse neighbours both skirt.
 ##   * No deposits, no edits, and only a conservative collision: the same triangles as a soup, so a
