@@ -530,13 +530,13 @@ func edit_revision(chunk_pos: Vector2i) -> int:
 func seam_borders(chunk_pos: Vector2i) -> Array:
 	return _build.seam_borders(chunk_pos)
 
-## Phase 69 — the neighbour offsets `tile` sits against: one per chunk edge it is on, plus the
-## diagonal when it is on a corner (the one place that offset math lives).
+## Phase 69 — the neighbour offsets `tile` sits against: one per chunk edge it is on, plus the diagonal on a corner.
 static func _border_offsets(tile: Vector2i) -> Array:
 	var lx := posmod(tile.x, CHUNK_SIZE)
 	var lz := posmod(tile.y, CHUNK_SIZE)
-	var dx := -1 if lx == 0 else (1 if lx == CHUNK_SIZE - 1 else 0)
-	var dz := -1 if lz == 0 else (1 if lz == CHUNK_SIZE - 1 else 0)
+	var m := VoxelMesh.terrain_pad()   # Phase 240: smooth normals read 2 tiles out
+	var dx := -1 if lx < m else (1 if lx >= CHUNK_SIZE - m else 0)
+	var dz := -1 if lz < m else (1 if lz >= CHUNK_SIZE - m else 0)
 	var out: Array = []
 	if dx != 0:
 		out.append(Vector2i(dx, 0))

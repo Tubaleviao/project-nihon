@@ -20,7 +20,8 @@ const NO_NATIVE_ARG := "--no-native"
 ## Every native class the game routes: the oldest version whose results match this GDScript, and the
 ## name its `[Native] <label>: native|gdscript fallback` boot log line uses.
 ## NativeChunkBuilder: 5 = worldgen 9's spawn plain; 6 = worldgen 10 ridges; 7 = Phase 190 coarse
-## builds; 8 = worldgen 11 massifs (Phase 211). NativeWorldShape: 1 = Phase 248 mix and noise.
+## builds; 8 = worldgen 11 massifs (Phase 211); 9 = Phase 238 continent mask and planet-size lattices;
+## 10 = Phase 240 `build_smooth_arrays`. NativeWorldShape: 1 = Phase 248 mix and noise.
 const CLASSES := {
 	"NativeChunkBuilder": {"required": 10, "label": "chunk builder"},
 	"NativeWorldShape": {"required": 1, "label": "world shape"},

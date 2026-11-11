@@ -59,7 +59,7 @@ const TOP_BAND := 0.3
 const LEVEL_OFFSET := 1024
 
 ## The project setting that turns the smooth mesher on (Phase 241 removes it). Read once and kept, so a
-## worker never touches ProjectSettings; `VoxelSlice._ready` warms it on the main thread.
+## worker never touches ProjectSettings; the gather step's `VoxelMesh.terrain_pad()` warms it on the main thread.
 const SETTING := "terrain/smooth_mesh"
 static var _enabled: int = -1
 

@@ -659,8 +659,9 @@ func _rebuild_chunk(chunk: Vector2i) -> void:
 func _touched_chunks(tile: Vector2i) -> Array:
 	var out: Array = []
 	var seen: Dictionary = {}
-	for probe in [tile, Vector2i(tile.x - 1, tile.y), Vector2i(tile.x + 1, tile.y),
-			Vector2i(tile.x, tile.y - 1), Vector2i(tile.x, tile.y + 1)]:
+	var m := VoxelMesh.terrain_pad()   # Phase 240: the smooth mesher reads two tiles past a chunk's edge
+	for probe in [tile, Vector2i(tile.x - m, tile.y), Vector2i(tile.x + m, tile.y),
+			Vector2i(tile.x, tile.y - m), Vector2i(tile.x, tile.y + m)]:
 		var chunk = s._tile_to_chunk(probe)
 		var ckey = s._chunk_key(chunk)
 		if seen.has(ckey):
