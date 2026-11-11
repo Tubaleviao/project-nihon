@@ -3,6 +3,7 @@ extends RefCounted
 ## `s` is the owning slice; every moved method keeps a forwarder on the slice.
 
 const TickProbe := preload("res://src/core/tick_probe.gd")
+const VoxelMesh := preload("res://src/terrain/voxel_mesh.gd")
 const FreshWaterMesh := preload("res://src/terrain/fresh_water_mesh.gd")
 const ChunkSurface := preload("res://src/terrain/chunk_surface.gd")
 var s: Node
@@ -70,7 +71,7 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 	elif built.is_empty():
 		# Only the SYNCHRONOUS path reaches this now: a worker result that carried nothing
 		# was refused above rather than quietly rebuilt here (Phase 42 review).
-		built = s.build_chunk_arrays(chunk_pos, heightmap, s.collect_build_runs(chunk_pos, heightmap), true)
+		built = VoxelMesh.build_terrain_arrays(chunk_pos, heightmap, s.collect_build_runs(chunk_pos, heightmap), true)
 	# A chunk-local build puts the node at the chunk's corner: the corner is summed with the scene
 	# offset in double precision, so far from the origin the node's position is small and exact and
 	# the vertices stay small too (float32 vertices at 2e7 m would snap to 2 m and shatter the ground).
@@ -368,6 +369,7 @@ func gather_build_input(chunk_pos: Vector2i, _heightmap: Array) -> Dictionary:
 		"biomes":               s.gather_biomes_for(chunk_pos),
 		"seed":                 s._world_seed(),
 		"depleted":             s._vein_taken.duplicate(),
+		"pad":                  VoxelMesh.terrain_pad(),   # Phase 240: the smooth mesher reads two tiles out
 	}
 
 ## The edited tiles of the chunk + its one-tile ring, deep-copied. It walks the CHUNK INDEX
@@ -497,6 +499,7 @@ func gather_build_input_deferred(chunk_pos: Vector2i) -> Dictionary:
 		"biomes":               s.gather_biomes_for(chunk_pos),
 		"seed":                 s._world_seed(),
 		"depleted":             s._vein_taken.duplicate(),
+		"pad":                  VoxelMesh.terrain_pad(),   # Phase 240: the smooth mesher reads two tiles out
 	}
 
 ## Drop every cached guess when the world seed changed under them (`set_world_seed` runs

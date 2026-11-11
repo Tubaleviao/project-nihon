@@ -22,7 +22,7 @@ const NO_NATIVE_ARG := "--no-native"
 ## NativeChunkBuilder: 5 = worldgen 9's spawn plain; 6 = worldgen 10 ridges; 7 = Phase 190 coarse
 ## builds; 8 = worldgen 11 massifs (Phase 211). NativeWorldShape: 1 = Phase 248 mix and noise.
 const CLASSES := {
-	"NativeChunkBuilder": {"required": 9, "label": "chunk builder"},
+	"NativeChunkBuilder": {"required": 10, "label": "chunk builder"},
 	"NativeWorldShape": {"required": 1, "label": "world shape"},
 }
 

@@ -319,3 +319,11 @@ open in [ROADMAP.md](../../ROADMAP.md).
 |---|---|---|---|
 | 248 | The native library base and a release build | Done | [phases-248.md](phases-248.md) |
 | 249 | What to reuse from Zylann's godot_voxel | Done | [phases-249.md](phases-249.md) |
+
+### Terrain that looks, flies and streams well (Phases 237–247)
+
+Filed by the owner on 2026-11-10. The other phases of the arc are open in [ROADMAP.md](../../ROADMAP.md).
+
+| Phase | Title | Status | Spec |
+|---|---|---|---|
+| 240 | Smooth natural ground: a surface-nets mesher (GDScript reference) | Done | [phases-240.md](phases-240.md) |

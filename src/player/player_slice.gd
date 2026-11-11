@@ -986,7 +986,7 @@ func _move(delta: float) -> void:
 	# `move_and_slide()` (with `floor_snap_length = STEP_UP_HEIGHT`) settles it
 	# back down onto the new surface. Horizontal velocity is untouched and no
 	# vertical velocity is added, so the player WALKS up — never jumps.
-	if dir.length_squared() > 0.0 and _body.is_on_floor() and _body.is_on_wall():
+	if dir.length_squared() > 0.0 and _body.is_on_floor() and _body.is_on_wall() and preload("res://src/player/step_up_gate.gd").allowed(voxel_slice, _body.global_position, dir, _origin.value, _feet_world_y(), STEP_UP_HEIGHT):
 		var climbed: Transform3D = resolve_step_up(
 			func(xform: Transform3D, motion: Vector3) -> bool: return _body.test_move(xform, motion),
 			_body.global_transform,

@@ -1929,8 +1929,8 @@ func _test_chunk_edit_during_build_is_not_lost() -> void:
 	# The mesh that landed must be the POST-edit one: a fresh build of the chunk's current
 	# columns (the edit log included) is exactly what the attached mesh has to agree with.
 	var hm: Array = voxel._heightmaps["0,0"]
-	var expected: Dictionary = VoxelSlice.build_chunk_arrays(Vector2i(0, 0), hm,
-		voxel.collect_build_runs(Vector2i(0, 0), hm))
+	var expected: Dictionary = VoxelSlice.VoxelMesh.build_terrain_arrays(Vector2i(0, 0), hm,
+		voxel.collect_build_runs(Vector2i(0, 0), hm))   # Phase 240: the mesher the game draws
 	assert_eq(_chunk_surface_vertices(voxel, Vector2i(0, 0)),
 		int(expected["vertices"].size()) + _chunk_vein_vertices(voxel, Vector2i(0, 0)),
 		"the attached mesh is the post-edit build, not the pre-edit arrays")

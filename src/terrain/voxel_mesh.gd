@@ -7,6 +7,7 @@ const VoxelRuns := preload("res://src/terrain/voxel_runs.gd")
 const MeshUtil := preload("res://src/core/mesh_util.gd")
 const NativeBuilder := preload("res://src/terrain/native_builder.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
+const VoxelSmooth := preload("res://src/terrain/voxel_smooth.gd")
 const CHUNK_SIZE := VoxelConsts.CHUNK_SIZE
 const TILE_SIZE := VoxelConsts.TILE_SIZE
 const STEP_HEIGHT := VoxelConsts.STEP_HEIGHT
@@ -66,12 +67,25 @@ static func build_chunk_arrays(chunk_pos: Vector2i, heightmap: Array, resolved: 
 			return native
 	return build_chunk_arrays_gd(chunk_pos, heightmap, resolved, local)
 
+## Phase 240 — the mesher the game draws: smooth natural ground with square placed blocks while
+## `terrain/smooth_mesh` is on (`VoxelSmooth`), else the block mesher. `build_chunk_arrays` stays the
+## block mesher, which the suite's seam and parity tests read.
+static func build_terrain_arrays(chunk_pos: Vector2i, heightmap: Array, resolved: Dictionary, local: bool = false) -> Dictionary:
+	if VoxelSmooth.enabled():
+		return VoxelSmooth.build_smooth_arrays(chunk_pos, heightmap, resolved, local)
+	return build_chunk_arrays(chunk_pos, heightmap, resolved, local)
+
+## Phase 240 — the columns past the chunk's edge `build_runs` resolves: two for the smooth mesher's
+## normals, one for the block mesher's walls.
+static func terrain_pad() -> int:
+	return VoxelSmooth.PAD if VoxelSmooth.enabled() else 1
+
 ## Phase 172 — the worker's half of a streamed build: the arrays, plus the collision shape made here
 ## so the main thread only attaches it. `keep_render` false (a headless host) drops the mesh and
 ## deposit arrays, leaving `collision`, the shape and the `local` flag. A shape is a Resource and
 ## `set_faces` only fills it, so it is built on the worker; it is unused until a body holds it.
 static func build_worker_arrays(chunk_pos: Vector2i, heightmap: Array, resolved: Dictionary, keep_render: bool) -> Dictionary:
-	var built := build_chunk_arrays(chunk_pos, heightmap, resolved, true)
+	var built := build_terrain_arrays(chunk_pos, heightmap, resolved, true)
 	var parts := collision_parts(built["collision"]) if bool(built.get("local", false)) else []
 	if parts.is_empty():
 		built["shape"] = collision_shape(built["collision"])
@@ -133,7 +147,11 @@ static func native_arrays_cfg() -> Dictionary:
 	return { "circumference_chunks": TerrainSlice.circumference_chunks(), "fallback_color": FALLBACK_TERRAIN_COLOR }
 
 ## The GDScript reference of `build_chunk_arrays`: the fallback and the parity suite's baseline.
-static func build_chunk_arrays_gd(chunk_pos: Vector2i, heightmap: Array, resolved: Dictionary, local: bool = false) -> Dictionary:
+## Phase 240 — `placed_only` meshes only the placed runs (a material set), for the smooth mesher: their
+## faces are still hidden by anything solid above or below, but their walls subtract only placed
+## neighbours (natural ground beside them is drawn smooth, not up to the block), and a block resting on
+## natural ground hangs its walls `VoxelSmooth.PLACED_SKIRT` lower, into the ground.
+static func build_chunk_arrays_gd(chunk_pos: Vector2i, heightmap: Array, resolved: Dictionary, local: bool = false, placed_only: bool = false) -> Dictionary:
 	var corner_x := chunk_pos.x * CHUNK_SIZE * TILE_SIZE
 	var corner_z := chunk_pos.y * CHUNK_SIZE * TILE_SIZE
 	var origin_x := 0.0 if local else corner_x
@@ -154,6 +172,8 @@ static func build_chunk_arrays_gd(chunk_pos: Vector2i, heightmap: Array, resolve
 			if col.is_empty():
 				continue
 			for run in col:
+				if placed_only and str(run.get("material", "")) == "":
+					continue
 				var rbottom := float(run["bottom"])
 				var rtop := float(run["top"])
 				var color: Color = run.get("color", FALLBACK_TERRAIN_COLOR)
@@ -175,6 +195,9 @@ static func build_chunk_arrays_gd(chunk_pos: Vector2i, heightmap: Array, resolve
 				# Subtracting per neighbour is what keeps a higher neighbour's own wall
 				# (it emits that one) from being drawn twice, and what lets a wall span a
 				# tunnel's height in one piece.
+				if placed_only:
+					_placed_wall_cells(groups, chunk_pos, heightmap, runs, tx, tz, run, col, color)
+					continue
 				_wall_cells(groups, chunk_pos, heightmap, runs, tx, tz, run, color,
 					run.get("soil_color", color), rtop - float(run.get("soil_depth", 0.0)))
 
@@ -250,6 +273,25 @@ static func _wall_cells(groups: Dictionary, chunk_pos: Vector2i, heightmap: Arra
 			else:
 				group_cell(groups, dir, plane, bottom, soil_line, color, tx, tz)
 				group_cell(groups, dir, plane, soil_line, top, soil_color, tx, tz)
+
+## Phase 240 — a placed run's walls for the smooth mesher (see `build_chunk_arrays_gd`).
+static func _placed_wall_cells(groups: Dictionary, chunk_pos: Vector2i, heightmap: Array, runs: Dictionary, tx: int, tz: int, run: Dictionary, col: Array, color: Color) -> void:
+	var walled := run
+	var bottom := float(run["bottom"])
+	for other in col:
+		if str(other.get("material", "")) == "" and absf(float(other["top"]) - bottom) < STEP_HEIGHT * 0.25:
+			walled = run.duplicate()
+			walled["bottom"] = bottom - VoxelSmooth.PLACED_SKIRT
+			break
+	for d in [Vector2i(0, -1), Vector2i(0, 1), Vector2i(-1, 0), Vector2i(1, 0)]:
+		var dir: String = "north" if d.y < 0 else ("south" if d.y > 0 else ("west" if d.x < 0 else "east"))
+		var placed: Array = []
+		for other in _column_for_tile(chunk_pos, heightmap, runs, tx + d.x, tz + d.y):
+			if str(other.get("material", "")) != "":
+				placed.append(other)
+		for seg in VoxelRuns.subtract_runs(walled, placed):
+			if float(seg["top"]) > float(seg["bottom"]):
+				group_cell(groups, dir, _wall_plane(chunk_pos, dir, tx, tz), float(seg["bottom"]), float(seg["top"]), color, tx, tz)
 
 ## The world coordinate a wall's plane sits at — its grouping coordinate, so two tiles'
 ## walls only ever merge when they are actually coplanar.

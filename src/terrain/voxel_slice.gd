@@ -596,9 +596,8 @@ static func _chunk_world_center(chunk_pos: Vector2i) -> Vector2:
 	var extent := float(CHUNK_SIZE * TILE_SIZE)
 	return Vector2((float(chunk_pos.x) + 0.5) * extent, (float(chunk_pos.y) + 0.5) * extent)
 
-## PURE resolve — no node, no bus, no slice state, so it is legal on a worker thread. The only
-## inputs are the chunk, its heightmap and the payload `gather_build_input` copied off the
-## slice; `build_chunk_arrays` consumes what this returns.
+## PURE resolve (no node, bus or slice state: legal on a worker) of the chunk, its heightmap and the
+## payload `gather_build_input` copied off the slice; the chunk meshers consume what this returns.
 static func build_runs(chunk_pos: Vector2i, heightmap: Array, input: Dictionary) -> Dictionary:
 	if NativeBuilder.use_native("build_runs"):   # Phase 168: same result, computed in C++
 		var native := NativeBuilder.builder().call("build_runs", chunk_pos, heightmap, input, native_runs_cfg()) as Dictionary
@@ -641,6 +640,7 @@ static func build_runs_gd(chunk_pos: Vector2i, heightmap: Array, input: Dictiona
 	# chunk asks the same few cells thousands of times.
 	var field := _field(int(input.get("seed", 0)), input.get("depleted", {}))
 	var out: Dictionary = {}
+	var pad := clampi(int(input.get("pad", 1)), 1, 2)   # Phase 240: the ring past the edge (2 for the smooth mesher)
 	# A memo private to this call, for the plain (uncoloured) resolution. It is
 	# deliberately NOT the table handed out: a tile's runs are read by the tile itself
 	# and by each neighbour's subtraction, and only the table carries colours.
@@ -649,8 +649,8 @@ static func build_runs_gd(chunk_pos: Vector2i, heightmap: Array, input: Dictiona
 	# Surface style per biome, resolved once per build: it is a function of the biome alone
 	# and a chunk's ring touches at most four biomes, against ~4000 runs that each asked.
 	var styles: Dictionary = {}
-	for tz in range(-1, CHUNK_SIZE + 1):
-		for tx in range(-1, CHUNK_SIZE + 1):
+	for tz in range(-pad, CHUNK_SIZE + pad):
+		for tx in range(-pad, CHUNK_SIZE + pad):
 			var gx := chunk_pos.x * CHUNK_SIZE + tx
 			var gz := chunk_pos.y * CHUNK_SIZE + tz
 			var world_xz := Vector2(gx * TILE_SIZE + TILE_SIZE * 0.5, gz * TILE_SIZE + TILE_SIZE * 0.5)
