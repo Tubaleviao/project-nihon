@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–224, 238, 240, 248 and 249 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–224, 238, 240, 241, 248 and 249 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -179,7 +179,7 @@ detail and caching (243–244), and later flight (237), the planet bake (245) an
 | 238 | One world: a fixed seed, a 2,000 km planet and one continent | Done (runtime PR; spec below) |
 | 239 | Streaming that keeps up: a speed-scaled lead, adaptive workers, an attach budget | Done |
 | 240 | Smooth natural ground: a surface-nets mesher (GDScript reference) | Done ([phases-240.md](docs/roadmap-history/phases-240.md)) |
-| 241 | The native smooth mesher, and coarse chunks built smooth | Open |
+| 241 | The native smooth mesher, and coarse chunks built smooth | Done ([phases-241.md](docs/roadmap-history/phases-241.md)) |
 | 242 | Terrain materials: blend weights, a triplanar shader and CC0 textures | Open |
 | 243 | Level of detail past the window: voxel rings out to the distant ring, faded, under the haze | Open |
 | 244 | A chunk cache on disk: the host keeps generated chunks, the client keeps built meshes | Open |
@@ -520,24 +520,6 @@ velocity; the steady worker cap starts at half the cores and moves once a second
 the body; the ground surface of a chunk is a `ChunkSurface` (RenderingServer mesh and instance) when
 `VoxelBuild.render_server_surfaces` is on (the game, not the suite's rigs). The `flight` step is gated
 by CI's playtest run; no release-build numbers were recorded in this PR.
-
-## Phase 241 — The native smooth mesher, and coarse chunks built smooth
-
-- The native port of `voxel_smooth.gd` (`build_smooth_arrays`, native version 10) landed with Phase 240,
-  because the GDScript mesher alone (about 165 ms a chunk) could not hold CI's stream-rate and
-  slow-machine flight gates. Phase 240's parity test covers 24 chunks; this phase widens it to 50.
-- Coarse builds (Phase 190, `voxel_coarse.gd`) run the same mesher on a downsampled density (2× and
-  4× cells), with the edge skirts kept.
-- Remove the `terrain/smooth_mesh` setting: smooth is the only natural-ground mesher.
-
-**Acceptance criteria**
-- A native parity suite test (as in `native_tests.gd`): GDScript and native give identical vertex,
-  normal and index arrays for 50 chunks of the pinned seed, including edited chunks and chunks with
-  placed blocks.
-- A suite test: a coarse chunk next to a full one leaves no visible gap (the skirt covers the border
-  height difference).
-- The playtest `flight` and `stream` steps meet their budgets with the native mesher (worker ms per
-  crossing no worse than the Phase 190 floor).
 
 ## Phase 242 — Terrain materials: blend weights, a triplanar shader and CC0 textures
 

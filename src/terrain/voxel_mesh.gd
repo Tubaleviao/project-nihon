@@ -67,18 +67,17 @@ static func build_chunk_arrays(chunk_pos: Vector2i, heightmap: Array, resolved: 
 			return native
 	return build_chunk_arrays_gd(chunk_pos, heightmap, resolved, local)
 
-## Phase 240 — the mesher the game draws: smooth natural ground with square placed blocks while
-## `terrain/smooth_mesh` is on (`VoxelSmooth`), else the block mesher. `build_chunk_arrays` stays the
-## block mesher, which the suite's seam and parity tests read.
+## Phase 240 — the mesher the game draws: smooth natural ground with square placed blocks
+## (`VoxelSmooth`; Phase 241 made it the only one). `build_chunk_arrays` stays the block mesher, which
+## the suite's seam and parity tests read.
 static func build_terrain_arrays(chunk_pos: Vector2i, heightmap: Array, resolved: Dictionary, local: bool = false) -> Dictionary:
-	if VoxelSmooth.enabled():
-		return VoxelSmooth.build_smooth_arrays(chunk_pos, heightmap, resolved, local)
-	return build_chunk_arrays(chunk_pos, heightmap, resolved, local)
+	return VoxelSmooth.build_smooth_arrays(chunk_pos, heightmap, resolved, local)
 
-## Phase 240 — the columns past the chunk's edge `build_runs` resolves: two for the smooth mesher's
-## normals, one for the block mesher's walls.
+## Phase 240 — the columns past the chunk's edge `build_runs` resolves: two, for the smooth mesher's
+## normals. Also warms `VoxelSmooth` on the caller's (main) thread.
 static func terrain_pad() -> int:
-	return VoxelSmooth.PAD if VoxelSmooth.enabled() else 1
+	VoxelSmooth.warm()
+	return VoxelSmooth.PAD
 
 ## Phase 172 — the worker's half of a streamed build: the arrays, plus the collision shape made here
 ## so the main thread only attaches it. `keep_render` false (a headless host) drops the mesh and

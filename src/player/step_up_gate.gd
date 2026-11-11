@@ -1,9 +1,8 @@
 extends RefCounted
 ## Phase 240 — on smooth ground a natural slope is walked by `floor_max_angle`, and one too steep is a
 ## wall, so the step-up only climbs a PLACED block: the column just ahead must hold a placed run whose
-## top is a step above the feet. The block mesher's stepped ground climbs every rise, as before.
+## top is a step above the feet.
 
-const VoxelSmooth := preload("res://src/terrain/voxel_smooth.gd")
 const VoxelRay := preload("res://src/terrain/voxel_ray.gd")
 ## The capsule's radius: the column read is the one just past the body's front.
 const BODY_RADIUS := 0.25
@@ -11,7 +10,7 @@ const BODY_RADIUS := 0.25
 ## May the body at `pos` (scene), walking along `dir`, take the step-up? `voxel` answers
 ## `get_runs_at_tile`; `offset` is the scene offset (world = scene - offset).
 static func allowed(voxel: Node, pos: Vector3, dir: Vector3, offset: Vector3, feet: float, step: float) -> bool:
-	if not VoxelSmooth.enabled() or voxel == null or not voxel.has_method("get_runs_at_tile"):
+	if voxel == null or not voxel.has_method("get_runs_at_tile"):
 		return true
 	# The column along `dir` and, for a diagonal push, the one along each axis component too: walking
 	# into a block's face at an angle puts the `dir` point in the diagonal tile beside it.

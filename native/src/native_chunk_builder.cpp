@@ -352,7 +352,7 @@ void NativeChunkBuilder::_bind_methods() {
 }
 
 int NativeChunkBuilder::version() const {
-	return 10;   // 10 = build_runs reads `pad` and build_smooth_arrays (Phase 240); 9 = Phase 238 continent mask and planet-size lattices (`cfg.continents`); 8 = worldgen 11 massifs (Phase 211); 7 = build_coarse_arrays (Phase 190); 6 = worldgen 10 ridges (Phase 188); 5 = heightmap_for reads the spawn plain from `cfg.spawn_plain` (worldgen 9)
+	return 11;   // 11 = build_coarse_arrays meshes smooth with skirts (Phase 241); 10 = build_runs reads `pad` and build_smooth_arrays (Phase 240); 9 = Phase 238 continent mask and planet-size lattices (`cfg.continents`); 8 = worldgen 11 massifs (Phase 211); 7 = build_coarse_arrays (Phase 190); 6 = worldgen 10 ridges (Phase 188); 5 = heightmap_for reads the spawn plain from `cfg.spawn_plain` (worldgen 9)
 }
 
 PackedStringArray NativeChunkBuilder::functions() const {

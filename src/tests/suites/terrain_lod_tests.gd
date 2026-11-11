@@ -37,19 +37,42 @@ func _coarse_input(chunk: Vector2i, seed_v: int) -> Dictionary:
 			biomes[VoxelSlice._chunk_key(c)] = TerrainSlice.biome_for_chunk(c, seed_v)
 	return { "biomes": biomes, "seed": seed_v, "depleted": {} }
 
-## Area-weighted mean height of the up-facing quads in `arrays`.
-static func _mean_top(arrays: Dictionary) -> float:
+## Phase 241 — the coarse build is smooth (triangles, not quads). The highest up-facing triangle of
+## `arrays` over each point of a `count`×`count` grid starting at `origin` (x, z), `spacing` apart, or NAN.
+static func _surface_grid(arrays: Dictionary, origin: Vector2, spacing: float, count: int) -> PackedFloat32Array:
 	var v: PackedVector3Array = arrays["vertices"]
-	var n: PackedVector3Array = arrays["normals"]
-	var area := 0.0
-	var sum := 0.0
-	for q in range(0, v.size(), 4):
-		if n[q] != Vector3.UP:
+	var idx: PackedInt32Array = arrays["indices"]
+	var out := PackedFloat32Array()
+	out.resize(count * count)
+	out.fill(NAN)
+	for t in range(0, idx.size(), 3):
+		var a := v[idx[t]]
+		var b := v[idx[t + 1]]
+		var c := v[idx[t + 2]]
+		if (b - a).cross(c - a).y <= 0.0:
 			continue
-		var a := absf((v[q + 2].x - v[q].x) * (v[q + 2].z - v[q].z))
-		area += a
-		sum += a * v[q].y
-	return sum / area if area > 0.0 else NAN
+		var x0 := maxi(ceili((minf(a.x, minf(b.x, c.x)) - origin.x) / spacing), 0)
+		var x1 := mini(floori((maxf(a.x, maxf(b.x, c.x)) - origin.x) / spacing), count - 1)
+		var z0 := maxi(ceili((minf(a.z, minf(b.z, c.z)) - origin.y) / spacing), 0)
+		var z1 := mini(floori((maxf(a.z, maxf(b.z, c.z)) - origin.y) / spacing), count - 1)
+		for iz in range(z0, z1 + 1):
+			for ix in range(x0, x1 + 1):
+				var h := _tri_height(a, b, c, origin.x + ix * spacing, origin.y + iz * spacing)
+				if not is_nan(h):
+					var k := iz * count + ix
+					out[k] = h if is_nan(out[k]) else maxf(out[k], h)
+	return out
+
+## The height of triangle (a, b, c) over (x, z), or NAN when the point is outside its projection.
+static func _tri_height(a: Vector3, b: Vector3, c: Vector3, x: float, z: float) -> float:
+	var d := (b.x - a.x) * (c.z - a.z) - (c.x - a.x) * (b.z - a.z)
+	if absf(d) < 1e-9:
+		return NAN
+	var u := ((x - a.x) * (c.z - a.z) - (c.x - a.x) * (z - a.z)) / d
+	var w := ((b.x - a.x) * (z - a.z) - (x - a.x) * (b.z - a.z)) / d
+	if u < -1e-5 or w < -1e-5 or u + w > 1.0 + 1e-5:
+		return NAN
+	return a.y + u * (b.y - a.y) + w * (c.y - a.y)
 
 func _test_lod_mean_height() -> void:
 	var seed_v := 424242
@@ -63,75 +86,102 @@ func _test_lod_mean_height() -> void:
 			full += VoxelSlice._voxel_height(float(h))
 		full /= float(hm.size())
 		for step: int in VoxelCoarse.STEPS:
-			var mean := _mean_top(VoxelCoarse.build_coarse_arrays(chunk, hm, _coarse_input(chunk, seed_v), step, true))
+			var grid := _surface_grid(VoxelCoarse.build_coarse_arrays(chunk, hm, _coarse_input(chunk, seed_v), step, true),
+				Vector2(0.25, 0.25), 0.5, 64)
+			var mean := 0.0
+			var holes := 0
+			for h in grid:
+				if is_nan(h):
+					holes += 1
+				else:
+					mean += h
+			mean /= float(maxi(grid.size() - holes, 1))
+			assert_eq(holes, 0, "step %d at %s covers every tile centre" % [step, str(chunk)])
 			assert_true(mean >= full - 0.001, "step %d at %s never dips under the true surface (%.3f vs %.3f)" % [step, str(chunk), mean, full])
 			assert_true(mean - full <= float(MEAN_TOLERANCE[step]), "step %d at %s: mean %.3f within %.2f m of the full chunk's %.3f" % [step, str(chunk), mean, MEAN_TOLERANCE[step], full])
 
-## Vertical spans [bottom, top] of the wall quads of `arrays` on the plane `axis` == `plane`, that cover
-## the coordinate `along` on the other horizontal axis.
-static func _walls_at(arrays: Dictionary, axis: int, plane: float, along: float) -> Array:
+## The upright triangles of `arrays` lying on the plane `axis` == `plane`, as (along, y) triangles.
+static func _walls_on(arrays: Dictionary, axis: int, plane: float) -> Array:
 	var v: PackedVector3Array = arrays["vertices"]
-	var n: PackedVector3Array = arrays["normals"]
-	var out: Array = []
+	var idx: PackedInt32Array = arrays["indices"]
 	var other := 2 if axis == 0 else 0
-	for q in range(0, v.size(), 4):
-		if absf(n[q][axis]) < 0.5:
-			continue
-		if absf(v[q][axis] - plane) > 0.001:
-			continue
-		var lo := INF
-		var hi := -INF
-		var a0 := INF
-		var a1 := -INF
-		for k in 4:
-			lo = minf(lo, v[q + k].y)
-			hi = maxf(hi, v[q + k].y)
-			a0 = minf(a0, v[q + k][other])
-			a1 = maxf(a1, v[q + k][other])
-		if along > a0 + 0.001 and along < a1 - 0.001:
-			out.append([lo, hi])
+	var out: Array = []
+	for t in range(0, idx.size(), 3):
+		var tri: Array = []
+		for k in 3:
+			var p := v[idx[t + k]]
+			if absf(p[axis] - plane) > 0.001:
+				break
+			tri.append(Vector2(p[other], p.y))
+		if tri.size() == 3:
+			out.append(tri)
 	return out
 
-static func _covered(spans: Array, y: float) -> bool:
-	for s in spans:
-		if y >= float(s[0]) - 0.0005 and y <= float(s[1]) + 0.0005:
+static func _covered(walls: Array, along: float, y: float) -> bool:
+	for tri in walls:
+		var a: Vector2 = tri[0]
+		var b: Vector2 = tri[1]
+		var c: Vector2 = tri[2]
+		var d := (b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y)
+		if absf(d) < 1e-9:
+			continue
+		var u := ((along - a.x) * (c.y - a.y) - (c.x - a.x) * (y - a.y)) / d
+		var w := ((b.x - a.x) * (y - a.y) - (along - a.x) * (b.y - a.y)) / d
+		if u >= -1e-4 and w >= -1e-4 and u + w <= 1.0 + 1e-4:
 			return true
 	return false
 
-## The top of the up-facing quad of `arrays` over (x, z), or NAN.
-static func _top_at(arrays: Dictionary, x: float, z: float) -> float:
-	var v: PackedVector3Array = arrays["vertices"]
-	var n: PackedVector3Array = arrays["normals"]
-	var best := NAN
-	for q in range(0, v.size(), 4):
-		if n[q] != Vector3.UP:
-			continue
-		if x > minf(v[q].x, v[q + 2].x) and x < maxf(v[q].x, v[q + 2].x) and z > minf(v[q].z, v[q + 2].z) and z < maxf(v[q].z, v[q + 2].z):
-			best = v[q].y if is_nan(best) else maxf(best, v[q].y)
-	return best
-
-## Every point of the seam between `a` (the lower chunk on `axis`) and `b` (the next one) from the lower
-## surface to the higher one is on a wall of either side: nothing can be seen through.
+## Every point of the seam between `a` (the lower chunk on `axis`) and `b` (the next one), from the lower
+## surface just either side of the plane to the higher one, is on a wall of either side (a coarse
+## side's skirt): nothing can be seen through. Probed at every tile centre along the seam.
 func _assert_seam_closed(label: String, a: Dictionary, b: Dictionary, axis: int, plane: float, from: float) -> void:
 	var gaps := 0
 	var eps := 0.05
+	var walls := _walls_on(a, axis, plane) + _walls_on(b, axis, plane)
+	var origin_a := Vector2(plane - eps, from + 0.25) if axis == 0 else Vector2(from + 0.25, plane - eps)
+	var origin_b := Vector2(plane + eps, from + 0.25) if axis == 0 else Vector2(from + 0.25, plane + eps)
+	var line_a := _surface_line(a, origin_a, axis)
+	var line_b := _surface_line(b, origin_b, axis)
 	for i in 64:
 		var along := from + (float(i) + 0.5) * 0.5
-		var pa := Vector2(plane - eps, along) if axis == 0 else Vector2(along, plane - eps)
-		var pb := Vector2(plane + eps, along) if axis == 0 else Vector2(along, plane + eps)
-		var ha := _top_at(a, pa.x, pa.y)
-		var hb := _top_at(b, pb.x, pb.y)
+		var ha := line_a[i]
+		var hb := line_b[i]
 		if is_nan(ha) or is_nan(hb):
 			gaps += 1
 			continue
-		var spans := _walls_at(a, axis, plane, along) + _walls_at(b, axis, plane, along)
 		var y := minf(ha, hb) + 0.01
 		while y < maxf(ha, hb) - 0.005:
-			if not _covered(spans, y):
+			if not _covered(walls, along, y):
 				gaps += 1
 				break
 			y += 0.03
 	assert_eq(gaps, 0, "%s: the seam is closed at every tile (%d open)" % [label, gaps])
+
+## The surface height of `arrays` at 64 points 0.5 m apart from `origin` along the seam.
+static func _surface_line(arrays: Dictionary, origin: Vector2, axis: int) -> PackedFloat32Array:
+	var out := PackedFloat32Array()
+	var v: PackedVector3Array = arrays["vertices"]
+	var idx: PackedInt32Array = arrays["indices"]
+	out.resize(64)
+	out.fill(NAN)
+	for t in range(0, idx.size(), 3):
+		var pa := v[idx[t]]
+		var pb := v[idx[t + 1]]
+		var pc := v[idx[t + 2]]
+		if (pb - pa).cross(pc - pa).y <= 0.0:
+			continue
+		var fixed := origin.x if axis == 0 else origin.y
+		var lo_f := minf(pa.x, minf(pb.x, pc.x)) if axis == 0 else minf(pa.z, minf(pb.z, pc.z))
+		var hi_f := maxf(pa.x, maxf(pb.x, pc.x)) if axis == 0 else maxf(pa.z, maxf(pb.z, pc.z))
+		if fixed < lo_f or fixed > hi_f:
+			continue
+		for i in 64:
+			var x := origin.x if axis == 0 else origin.x + i * 0.5
+			var z := origin.y + i * 0.5 if axis == 0 else origin.y
+			var h := _tri_height(pa, pb, pc, x, z)
+			if not is_nan(h):
+				out[i] = h if is_nan(out[i]) else maxf(out[i], h)
+	return out
 
 func _full_arrays(chunk: Vector2i, hm: Array, seed_v: int, noise: FastNoiseLite) -> Dictionary:
 	var input := _coarse_input(chunk, seed_v)
@@ -192,7 +242,8 @@ func _test_lod_coarse_fewer_quads() -> void:
 	var last := int(full["quad_count"])
 	for step: int in VoxelCoarse.STEPS:
 		var c := VoxelCoarse.build_coarse_arrays(chunk, hm, _coarse_input(chunk, seed_v), step, true)
-		assert_eq((c["collision"] as PackedVector3Array).size(), int(c["quad_count"]) * 6, "step %d collides with the quads it draws" % step)
+		assert_eq((c["collision"] as PackedVector3Array).size(), (c["indices"] as PackedInt32Array).size(), "step %d collides with the triangles it draws" % step)
+		assert_true(int(c["skirt_quads"]) > 0, "step %d skirts its edges" % step)
 		assert_eq(int(c["lod"]), step, "step %d reports its level" % step)
 		assert_true(int(c["quad_count"]) < last, "step %d meshes fewer quads (%d) than the level before (%d)" % [step, c["quad_count"], last])
 		last = int(c["quad_count"])
