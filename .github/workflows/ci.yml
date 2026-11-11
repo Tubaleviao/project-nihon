@@ -435,6 +435,9 @@ jobs:
       - name: Check the hydrology validation rejects bad parameters
         run: node tools/check_hydrology.js
 
+      - name: Check the world-shape validation rejects bad seeds and continents
+        run: node tools/check_world_shape.js
+
       - name: Check the item-shape validation rejects bad shapes
         run: node tools/check_item_shapes.js
 

@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:e3eb7bfd9108f00ea827ded55ba5d126f0d74d9076afdb8ecdb13fb9301bb66f",
+  "schemaHash": "sha256:d1c6e2fc9d8f5cc6d3fd024ce1557ea51c09f65c512dffca94a2448f6c7896d8",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -7948,11 +7948,51 @@
           "circumferenceKm": {
             "name": "circumferenceKm",
             "type": "decimal",
-            "description": "Length of the equator in km; X wraps after this distance (Phase 50)",
+            "description": "Length of the equator in km; X wraps after this distance (Phase 50). Phase 238 moves this to 2,000 km (a small planet that grows by opening continents) in the runtime PR, together with the re-tune of CONTINENT_CELLS, MASSIF_SPAWN_CLEAR_M, ridgeAmplitude, spawnMinColonizedDistance, oceanShare and the hydrology cells, because the runtime reads this field and every golden moves with it. Worlds saved before Phase 238 keep 40,000 km in their record",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": 40000
+          },
+          "worldSeed": {
+            "name": "worldSeed",
+            "type": "integer",
+            "description": "The one seed every new world uses (Phase 238); saved worlds keep their own seed. --playtest-seed and an admin user arg stay as dev overrides",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 238
+          },
+          "continents": {
+            "name": "continents",
+            "type": "json",
+            "description": "Continents of the planet (Phase 238): [{id, latitude, longitude, radiusKm, open}]. Latitude and longitude in degrees, radius in km on the surface. Only open continents have land and spawns; a closed site is deep ocean that the host never records or edits, reserved for later. Opening one is data (set open, bump WORLDGEN_VERSION). At least one is open and no two overlap (checked by tools/check_world_shape.js). Launch: one open continent of about 600 km across around the spawn",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              {
+                "id": "home",
+                "latitude": 0,
+                "longitude": 0,
+                "radiusKm": 300,
+                "open": true
+              },
+              {
+                "id": "east",
+                "latitude": 0,
+                "longitude": 180,
+                "radiusKm": 250,
+                "open": false
+              },
+              {
+                "id": "north",
+                "latitude": 55,
+                "longitude": 90,
+                "radiusKm": 150,
+                "open": false
+              }
+            ]
           },
           "polarLatitude": {
             "name": "polarLatitude",
