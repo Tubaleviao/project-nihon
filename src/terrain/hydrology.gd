@@ -20,11 +20,22 @@ const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
 
 const HYDROLOGY_VERSION := 12   ## the first `TerrainSlice.WORLDGEN_VERSION` with water
 
-const LAKE_CELL_M := 512.0
+const LAKE_CELL_M := 512.0   ## the cell on a pre-238 planet; `lake_cell()` is the one in use
+const LAKE_CELL_SMALL_M := 500.0   ## Phase 238: divides the 2,000 km circumference (4,000 cells), so the wrap is exact
 const LAKE_RADIUS_MIN := 40.0
 const LAKE_RADIUS_MAX := 100.0
 const LAKE_MIN_ALTITUDE := 3.0      ## the lake surface lies at least this far above the sea
-const RIVER_CELL_M := 1024.0
+const RIVER_CELL_M := 1024.0   ## see `river_cell()`
+const RIVER_CELL_SMALL_M := 1000.0   ## Phase 238: 2,000 cells round the small planet
+
+static func _small_planet() -> bool:
+	return float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS < WorldShape.SMALL_PLANET_M
+
+static func lake_cell() -> float:
+	return LAKE_CELL_SMALL_M if _small_planet() else LAKE_CELL_M
+
+static func river_cell() -> float:
+	return RIVER_CELL_SMALL_M if _small_planet() else RIVER_CELL_M
 const RIVER_CHANCE := 0.3
 const RIVER_STEP_M := 64.0
 const RIVER_MAX_STEPS := 60
@@ -141,11 +152,11 @@ static func _biome_blocked(seed_v: int, x: float, z: float) -> bool:
 static func lake_of_cell(seed_v: int, cx: int, cz: int) -> Dictionary:
 	warm()
 	var w := float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
-	var ccx := posmod(cx, _cells(w, LAKE_CELL_M))
+	var ccx := posmod(cx, _cells(w, lake_cell()))
 	if _rand(seed_v, ccx, cz, 1) >= _lake_freq:
 		return {}
-	var x := (float(cx) + 0.3 + 0.4 * _rand(seed_v, ccx, cz, 2)) * LAKE_CELL_M
-	var z := (float(cz) + 0.3 + 0.4 * _rand(seed_v, ccx, cz, 3)) * LAKE_CELL_M
+	var x := (float(cx) + 0.3 + 0.4 * _rand(seed_v, ccx, cz, 2)) * lake_cell()
+	var z := (float(cz) + 0.3 + 0.4 * _rand(seed_v, ccx, cz, 3)) * lake_cell()
 	var r := LAKE_RADIUS_MIN + (LAKE_RADIUS_MAX - LAKE_RADIUS_MIN) * _rand(seed_v, ccx, cz, 4)
 	if Vector2(x - WorldShape.SPAWN_CENTER.x, z - WorldShape.SPAWN_CENTER.y).length() < WorldShape.SPAWN_PLAIN_M:
 		return {}   # the spawn plain stays dry
@@ -191,10 +202,10 @@ static func river_of_cell(seed_v: int, cx: int, cz: int) -> Dictionary:
 
 static func _trace_river(seed_v: int, cx: int, cz: int) -> Dictionary:
 	var w := float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
-	var ccx := posmod(cx, _cells(w, RIVER_CELL_M))
+	var ccx := posmod(cx, _cells(w, river_cell()))
 	if _rand(seed_v, ccx, cz, 11) >= RIVER_CHANCE:
 		return {}
-	var p := Vector2((float(cx) + _rand(seed_v, ccx, cz, 12)) * RIVER_CELL_M, (float(cz) + _rand(seed_v, ccx, cz, 13)) * RIVER_CELL_M)
+	var p := Vector2((float(cx) + _rand(seed_v, ccx, cz, 12)) * river_cell(), (float(cz) + _rand(seed_v, ccx, cz, 13)) * river_cell())
 	var h := _shape(seed_v, p.x, p.y, w)
 	if h < _source_h or h > WorldShape.max_height() * 0.5 or (p - WorldShape.SPAWN_CENTER).length() < WorldShape.SPAWN_PLAIN_M or _biome_blocked(seed_v, p.x, p.y):
 		return {}
@@ -312,17 +323,17 @@ static func _features_in(seed_v: int, x0: float, z0: float, x1: float, z1: float
 	warm()
 	var pad := _wmax + LAKE_RADIUS_MAX
 	# Lakes: the cells whose disc can reach the chunk.
-	for cz in range(floori((z0 - pad) / LAKE_CELL_M), floori((z1 + pad) / LAKE_CELL_M) + 1):
-		for cx in range(floori((x0 - pad) / LAKE_CELL_M), floori((x1 + pad) / LAKE_CELL_M) + 1):
+	for cz in range(floori((z0 - pad) / lake_cell()), floori((z1 + pad) / lake_cell()) + 1):
+		for cx in range(floori((x0 - pad) / lake_cell()), floori((x1 + pad) / lake_cell()) + 1):
 			var lk := lake_of_cell(seed_v, cx, cz)
 			if not lk.is_empty() and _disc_touches(lk, x0, z0, x1, z1):
 				out["lakes"].append(lk)
 	# Rivers: a river of RIVER_MAX_STEPS steps reaches that far from its source cell.
 	var reach := RIVER_STEP_M * float(RIVER_MAX_STEPS) + _wmax
-	var rcx0 := floori((x0 - reach) / RIVER_CELL_M)
-	var rcx1 := floori((x1 + reach) / RIVER_CELL_M)
-	var rcz0 := floori((z0 - reach) / RIVER_CELL_M)
-	var rcz1 := floori((z1 + reach) / RIVER_CELL_M)
+	var rcx0 := floori((x0 - reach) / river_cell())
+	var rcx1 := floori((x1 + reach) / river_cell())
+	var rcz0 := floori((z0 - reach) / river_cell())
+	var rcz1 := floori((z1 + reach) / river_cell())
 	for cz in range(rcz0, rcz1 + 1):
 		for cx in range(rcx0, rcx1 + 1):
 			var rv := river_of_cell(seed_v, cx, cz)

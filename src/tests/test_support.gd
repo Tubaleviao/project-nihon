@@ -1408,7 +1408,8 @@ static func matches_filter(test_name: String, filter: String) -> bool:
 
 ## The suite's default world: 40,000 km, no continent mask (what a record saved before Phase 238 reads as).
 static func pin_legacy_world() -> void:
-	TerrainSlice.set_world_circumference(40000.0, false)
+	if TerrainSlice.circumference_km() != 40000.0 or WorldShape.mask_enabled():
+		TerrainSlice.set_world_circumference(40000.0, false)
 
 func _run_test(test_name: String, fn: Callable, modern_world: bool = false) -> void:
 	_registered_names[str(fn.get_method())] = true
@@ -1423,6 +1424,8 @@ func _run_test(test_name: String, fn: Callable, modern_world: bool = false) -> v
 	# on the fabric's circumference with the continent mask.
 	if modern_world:
 		TerrainSlice.set_world_circumference(TerrainSlice.fabric_circumference_km(), true)
+	else:
+		pin_legacy_world()   # a test that reset the process caches must not leave the next on another planet
 	fn.call()
 	if modern_world:
 		pin_legacy_world()

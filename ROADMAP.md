@@ -996,7 +996,7 @@ metres, which a whole planet cannot afford (about 250 TB at 2 m).
 
 ## Deferred (in priority order)
 
-- **Fast travel beyond waystones** — a planet takes about 90 days to walk around. Phase 125 added
+- **Fast travel beyond waystones** — a planet takes about 4.5 days to walk around (Phase 238: 2,000 km; the open continent is crossed in about a day and a half). Phase 125 added
   waystones, Phase 216 mounts, and boats and roads are Phases 234–235. Ships for crossing oceans
   between continents remain.
 - **Physics ragdolls** — Phase 157 animates deaths with a host-chosen landing spot and authored

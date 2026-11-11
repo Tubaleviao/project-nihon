@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:8c477fcb45fc8291a52749154e139e762caced7982b8d8cedf15c09323f136d5",
+  "schemaHash": "sha256:5a986efa29c0e88ecfe4f55e22a9317ce88306b7f0c6d49f9a5e3f973c792bb8",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -7948,7 +7948,7 @@
           "circumferenceKm": {
             "name": "circumferenceKm",
             "type": "decimal",
-            "description": "Length of the equator in km; X wraps after this distance (Phase 50). Phase 238 moves this to 2,000 km (a small planet that grows by opening continents) in the runtime PR, together with the re-tune of CONTINENT_CELLS, MASSIF_SPAWN_CLEAR_M, ridgeAmplitude, spawnMinColonizedDistance, oceanShare and the hydrology cells, because the runtime reads this field and every golden moves with it. Worlds saved before Phase 238 keep 40,000 km in their record",
+            "description": "Length of the equator in km; X wraps after this distance (Phase 50). Phase 238: 2,000 km, a small planet that grows by opening continents. The ridge and massif lattices keep their metre sizes (25 km ridges, 31 km massifs, 40 km spawn clearance), the hydrology cells are 500 m and 1,000 m so they divide the circumference, and a continent mask gives deep ocean outside the open continents. Worlds saved before Phase 238 keep 40,000 km in their record",
             "nullable": false,
             "primaryKey": false,
             "pii": false,

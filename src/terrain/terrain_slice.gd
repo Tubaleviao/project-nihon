@@ -211,6 +211,7 @@ static func set_world_circumference(km: float, masked: bool) -> void:
 	_polar_cache = -1
 	WorldShape.set_mask_enabled(masked)
 	WorldShape.reset_plain_cache()
+	Hydrology.reset_cache()   # its cell size follows the planet's size
 
 ## The circumference in km this process generates (what `world_record_fields` writes).
 static func circumference_km() -> float:
