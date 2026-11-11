@@ -18,6 +18,7 @@ func register() -> void:
 	_run_test("records: no records leaves 64 chunks as before",  _test_records_none_unchanged)
 	_run_test("records: a record overrides biome and corner heights", _test_records_override)
 	_run_test("records: a streamed chunk is recorded exactly once", _test_records_written_once)
+	_run_test("records: a chunk in a closed continent site is never recorded (Phase 238)", _test_closed_site_not_recorded, true)
 	_run_test("records: ring and client write none",              _test_records_ring_and_client)
 	_run_test("records: ore field reads the recorded biome on a worker", _test_records_ore_worker)
 	_run_test("records: an older record version changes nothing", _test_records_old_version)
@@ -485,6 +486,20 @@ func _test_records_override() -> void:
 	assert_true(t.generate_heightmap(c) == before, "dropping the record restores the generator's ground")
 	ChunkRecordsScript.clear()
 	t.free()
+
+func _test_closed_site_not_recorded() -> void:
+	var rig := _records_rig("test_p238_closed")
+	var cm: ChunkManager = rig["cm"]
+	var w_chunks := TerrainSlice.circumference_chunks()
+	@warning_ignore("integer_division")
+	var closed := Vector2i(w_chunks / 2, 0)   # the closed "east" site, longitude 180
+	cm.load_chunk(closed)
+	assert_eq(cm.records_created, 0, "no record inside a closed site")
+	cm.load_chunk(Vector2i(10, 10))
+	assert_eq(cm.records_created, 1, "land in the open continent is still recorded")
+	cm.free()
+	(rig["t"] as Node).free()
+	ChunkRecordsScript.clear()
 
 func _test_records_written_once() -> void:
 	var rig := _records_rig("test_p108_once")
