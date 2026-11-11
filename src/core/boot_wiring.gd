@@ -117,15 +117,25 @@ func start_stress_recorder() -> void:
 	if OS.is_debug_build():
 		(load(STRESS_RECORDER_PATH) as GDScript).attach(root)
 
+## Phase 248 — the bot runs in debug builds, and in a release build exported with the `playtest` feature
+## (the "Linux Playtest" preset, which CI uses to measure the release build). A shipped release build has
+## neither, so it ignores the flag.
+static func playtest_allowed(is_debug_build: bool, has_playtest_feature: bool) -> bool:
+	return is_debug_build or has_playtest_feature
+
+static func _playtest_allowed() -> bool:
+	return playtest_allowed(OS.is_debug_build(), OS.has_feature("playtest"))
+
 ## `--playtest-bot`: the bot's emptied save directory and pinned seed, before the world boot.
 func prepare_playtest_bot() -> void:
-	if OS.is_debug_build():
+	if _playtest_allowed():
 		(load(PLAYTEST_BOT_PATH) as GDScript).prepare(root)
 
 ## Phase 134 — `--playtest-bot`: a scripted bot plays the rendered listen host, then quits the process.
-## Debug builds only: it empties the pack and edits the world, so a release build ignores the flag.
+## Debug builds and `playtest` exports only: it empties the pack and edits the world, so a shipped release
+## build ignores the flag.
 func start_playtest_bot() -> void:
-	if not OS.is_debug_build() or root._is_client or root._is_server:
+	if not _playtest_allowed() or root._is_client or root._is_server:
 		return
 	# Loaded here, not preloaded: a release build never parses the bot.
 	var PlaytestBot: GDScript = load(PLAYTEST_BOT_PATH)

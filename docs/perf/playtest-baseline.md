@@ -135,3 +135,39 @@ What is left in walk (profiled means): creature walking and position updates ~3 
 - Physics is under 1.5 ms p95 in every gated step.
 - Phase 174: all three gated steps were over the 16 ms target. Phase 183 brought them under it (see
   "Process time (Phase 183)").
+
+## Release build: the flight step (Phase 248)
+
+Every other playtest run uses the editor binary with the `template_debug` native library. The
+`release-flight` CI job exports the **Linux Playtest** preset (the Linux preset plus the `playtest`
+feature tag, the only thing that lets a release build run `--playtest-bot`; the shipped Linux preset
+ignores the flag) with the `template_release` export template and native library, plays
+`--playtest-only flight` once, and writes the table below to the step summary with
+`tools/flight_report.py`. Report only: nothing is gated but a crash, a missing report or the release
+library not loading. Phase 239 sets its streaming targets from the release column.
+
+Local box, 2026-11-10, llvmpipe, `opengl3`, one run each on the same commit, pinned seed and player:
+
+| Flight step | Release export (template_release) | Editor (template_debug) |
+|---|---|---|
+| Builder (native library) | True | True |
+| Step verdict | True | True |
+| Speed (m/s) | 270 | 270 |
+| Ground under the body built (% of samples) | 100 | 98 |
+| Reach ring built, mean (%) | 52 | 31 |
+| Reach ring built, worst (%) | 33 | 11 |
+| Chunks attached | 228 | 145 |
+| Main-thread ms per attached chunk | 2.66 | 4.46 |
+| Window crossings | 88 | 89 |
+| Worker ms per crossing | 11.7 | 10.3 |
+| p50 process (ms) | 12.9 | 17.8 |
+| p95 process (ms) | 25.3 | 33.1 |
+| p95 render (ms) | 137.9 | 165.8 |
+| Chunk builds | 400 | 277 |
+
+The release build attaches about 1.6× the chunks in the same 12 s flight for about 60% of the
+main-thread time per chunk, and keeps the reach ring better built (52% against 31% on average). The
+editor numbers in every other section of this file therefore understate what a player's build does.
+Worker time per crossing is about equal: the native builder does that work, and its release and
+debug libraries are both optimised builds of the same code. One run each; CI's runner numbers come
+from the job's summary.

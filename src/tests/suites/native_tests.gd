@@ -10,12 +10,17 @@ const VoxelMesh := preload("res://src/terrain/voxel_mesh.gd")
 const VoxelCoarse := preload("res://src/terrain/voxel_coarse.gd")
 
 const EXPECT_NATIVE_ARG := "--expect-native"
+const CHUNK_BUILDER := "NativeChunkBuilder"
+const BootWiringScript := preload("res://src/core/boot_wiring.gd")
+const WORLD_SHAPE := "NativeWorldShape"
 const EXPECT_FALLBACK_ARG := "--expect-fallback"
 
 func register() -> void:
 	_run_test("native: the loader picks native only when the extension loaded and the class exists", _test_native_mode_decision)
 	_run_test("native: the real loader matches the build (native present or fallback)",             _test_native_real_loader)
 	_run_test("native: only ported functions are routed natively",                                 _test_native_routes_only_ported)
+	_run_test("native: the general loader routes per class and function",                           _test_native_loader_routing)
+	_run_test("native: the shared hash and noise match WorldShape on 10,000 samples",              _test_native_world_shape_parity)
 	_run_test("native: heightmap_for matches the GDScript reference on the fixed chunk set",       _test_native_heightmap_parity)
 	_run_test("native: build_runs matches the GDScript reference on the fixed chunk set",          _test_native_build_runs_parity)
 	_run_test("native: build_chunk_arrays matches the GDScript reference on the fixed chunk set",  _test_native_chunk_arrays_parity)
@@ -28,6 +33,70 @@ func register() -> void:
 	_run_test("native: CI times the playtest stream step once per builder",                         _test_native_speed_gate_wired)
 	_run_test("native: the build breakdown decides on the heightmap share",                         _test_native_build_breakdown)
 	_run_test("native: the release workflow is tag-triggered and builds three platforms",           _test_native_release_workflow)
+	_run_test("native: CI flies the flight step on a release export",                              _test_native_release_flight_wired)
+
+## Phase 248 — a stand-in native class for the loader tests: any object with `version()` and `functions()`.
+class FakeNative extends RefCounted:
+	var v := 1
+	var fns := PackedStringArray()
+	func _init(p_v: int, p_fns: Array) -> void:
+		v = p_v
+		fns = PackedStringArray(p_fns)
+	func version() -> int:
+		return v
+	func functions() -> PackedStringArray:
+		return fns
+	func probe(x: int) -> int:
+		return x * 2
+
+## Phase 248 — the general loader routes per class and function: a class below its required version,
+## a missing class and a function not in `functions()` each fall back; a current one routes native.
+func _test_native_loader_routing() -> void:
+	NativeLoaderScript.reset_for_tests()
+	NativeLoaderScript.install_for_tests("FakeCurrent", FakeNative.new(3, ["probe"]), 2)
+	NativeLoaderScript.install_for_tests("FakeOld", FakeNative.new(1, ["probe"]), 2)
+	NativeLoaderScript.install_for_tests("FakeMissing", null, 1)
+	assert_true(NativeLoaderScript.use_native("FakeCurrent", "probe"), "a current class routes a listed function native")
+	assert_eq(NativeLoaderScript.mode("FakeCurrent"), NativeLoaderScript.MODE_NATIVE, "a current class reports native")
+	assert_eq(NativeLoaderScript.version("FakeCurrent"), 3, "a current class reports its version")
+	assert_eq(int(NativeLoaderScript.instance("FakeCurrent").call("probe", 4)), 8, "the routed instance is the class's")
+	assert_false(NativeLoaderScript.use_native("FakeCurrent", "unlisted"), "a function not in functions() falls back")
+	assert_false(NativeLoaderScript.use_native("FakeOld", "probe"), "a class below its required version falls back")
+	assert_eq(NativeLoaderScript.mode("FakeOld"), NativeLoaderScript.MODE_FALLBACK, "an old class reports the fallback")
+	assert_eq(NativeLoaderScript.version("FakeOld"), -1, "no native version on the fallback")
+	assert_true(NativeLoaderScript.instance("FakeOld") == null, "an old class hands out no instance")
+	assert_false(NativeLoaderScript.use_native("FakeMissing", "probe"), "a missing class falls back")
+	assert_false(NativeLoaderScript.use_native("NeverListed", "probe"), "a class the loader never heard of falls back")
+	var old := NativeLoaderScript.resolve(FakeNative.new(1, []), 2)
+	assert_true(NativeLoaderScript.log_line("thing", old, 2).contains("gdscript fallback (native version 1 is older than 2"), "an old class logs why it fell back")
+	assert_true(NativeLoaderScript.log_line("thing", NativeLoaderScript.resolve(null, 1), 1).contains("gdscript fallback (no native extension)"), "a missing class logs the fallback")
+	assert_eq(NativeLoaderScript.log_line("chunk builder", NativeLoaderScript.resolve(FakeNative.new(8, []), 8), 8), "[Native] chunk builder: native (version 8)", "the chunk builder keeps its log line")
+	# The shared harness: a routed class is compared, a fallen-back one is skipped.
+	assert_eq(assert_native_parity("FakeCurrent", "probe", [[1], [-7], [1 << 40]], func(x: int) -> int: return x * 2), 3, "the harness compares every case of a routed function")
+	assert_eq(assert_native_parity("FakeOld", "probe", [[1]], func(x: int) -> int: return x * 2), -1, "the harness skips a function that is not routed")
+	NativeLoaderScript.reset_for_tests()
+	NativeLoaderScript.init()
+	for cls: String in NativeLoaderScript.CLASSES:
+		assert_false(NativeLoaderScript.use_native(cls, "probe"), "%s does not route a function it does not list" % cls)
+
+## Phase 248 — the shared seeded hash and noise (`native/src/base/world_hash.h`) are bit-exact with
+## `WorldShape._mix` and `WorldShape._noise` on 10,000 seeded samples each, with 64-bit seeds that
+## overflow the multiplies and coordinates on both sides of the origin and the wrap.
+func _test_native_world_shape_parity() -> void:
+	if EXPECT_NATIVE_ARG in OS.get_cmdline_user_args():
+		assert_true(NativeLoaderScript.is_native(WORLD_SHAPE), "NativeWorldShape is registered and current in the native run")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 248
+	var w := float(TerrainSlice.circumference_chunks()) * 32.0
+	var cells := [WorldShape.EROSION_CELLS, WorldShape.RIDGE_CELLS, WorldShape.MASSIF_CELLS, 16, 44, 128, 3, 1]
+	var mix_cases: Array = []
+	var noise_cases: Array = []
+	for i in range(10000):
+		var seed_v := (rng.randi() << 32) | rng.randi()   # full 64-bit, negative half the time
+		mix_cases.append([seed_v, rng.randi_range(-2000000000, 2000000000), (rng.randi() << 32) | rng.randi(), rng.randi_range(0, 100)])
+		noise_cases.append([seed_v, rng.randf_range(-1.5 * w, 1.5 * w), rng.randf_range(-0.5 * w, 0.5 * w), w, cells[i % cells.size()], rng.randi_range(0, 100)])
+	assert_native_parity(WORLD_SHAPE, "mix", mix_cases, WorldShape._mix)
+	assert_native_parity(WORLD_SHAPE, "noise", noise_cases, WorldShape._noise)
 
 func _test_native_mode_decision() -> void:
 	assert_eq(NativeBuilder.mode_for(true, true), NativeBuilder.MODE_NATIVE, "loaded and registered: native")
@@ -80,34 +149,29 @@ func _native_parity_chunks() -> Array:
 	]
 
 func _test_native_heightmap_parity() -> void:
-	NativeBuilder.init()
-	if not NativeBuilder.is_native():
-		print("[Native] heightmap parity skipped: no native extension in this run")
-		return
 	var seed_v := 777001
 	var noise := FastNoiseLite.new()
 	TerrainSlice.configure_noise(noise, seed_v)
 	var chunks := _native_parity_chunks()
-	var c := TerrainSlice.circumference_chunks()
+	var cases: Array = []
+	for pos: Vector2i in chunks:
+		cases.append([pos, seed_v, noise])
 	ChunkRecordsScript.clear()
-	for round_i in range(2):
-		if round_i == 1:
-			# An edited chunk: records keep their own corner heights, here lifted off the generator's.
-			for pos: Vector2i in [chunks[0], chunks[5], chunks[6]]:
-				ChunkRecordsScript.set_record(pos, {"b": "TemperateForest", "h": [3.25, 4.5, -2.0, 9.125], "v": TerrainSlice.WORLDGEN_VERSION})
-		for pos: Vector2i in chunks:
-			var want := TerrainSlice.heightmap_for_gd(pos, seed_v, noise)
-			var got := TerrainSlice.heightmap_for(pos, seed_v, noise)
-			assert_eq(got.size(), want.size(), "native heightmap_for %s has the same size (records %d)" % [str(pos), round_i])
-			assert_true(got == want, "native heightmap_for %s equals the GDScript reference (records %d)" % [str(pos), round_i])
+	if assert_native_parity(CHUNK_BUILDER, "heightmap_for", cases, TerrainSlice.heightmap_for_gd, TerrainSlice.heightmap_for, "heightmap_for, no records") < 0:
+		return
+	# An edited chunk: records keep their own corner heights, here lifted off the generator's.
+	for pos: Vector2i in [chunks[0], chunks[5], chunks[6]]:
+		ChunkRecordsScript.set_record(pos, {"b": "TemperateForest", "h": [3.25, 4.5, -2.0, 9.125], "v": TerrainSlice.WORLDGEN_VERSION})
+	assert_native_parity(CHUNK_BUILDER, "heightmap_for", cases, TerrainSlice.heightmap_for_gd, TerrainSlice.heightmap_for, "heightmap_for, with records")
 	ChunkRecordsScript.clear()
 	# Worldgen 9: a highland seed's spawn plain is not 2 m; the native side takes it from the GDScript one.
 	var high := 2045165241
 	var high_noise := FastNoiseLite.new()
 	TerrainSlice.configure_noise(high_noise, high)
+	var high_cases: Array = []
 	for pos: Vector2i in [Vector2i(0, 0), Vector2i(60, -20), Vector2i(-100, 40)]:   # on the plain, in the ease
-		assert_true(TerrainSlice.heightmap_for(pos, high, high_noise) == TerrainSlice.heightmap_for_gd(pos, high, high_noise),
-			"native heightmap_for %s matches on a highland spawn plain" % str(pos))
+		high_cases.append([pos, high, high_noise])
+	assert_native_parity(CHUNK_BUILDER, "heightmap_for", high_cases, TerrainSlice.heightmap_for_gd, TerrainSlice.heightmap_for, "heightmap_for, highland spawn plain")
 
 ## One build input for `chunk`: the 3x3 ring's heightmaps (the +x column left unknown for the odd
 ## chunks, so unknown-neighbour reads are covered), their biomes, the seed, edits and a depletion
@@ -137,17 +201,14 @@ func _native_runs_edits(chunk: Vector2i) -> Dictionary:
 	return edits
 
 func _test_native_build_runs_parity() -> void:
-	NativeBuilder.init()
-	if not NativeBuilder.is_native():
-		print("[Native] build_runs parity skipped: no native extension in this run")
+	if not NativeLoaderScript.use_native(CHUNK_BUILDER, "build_runs"):
+		print("[Native] %s.build_runs parity skipped: not routed native in this run" % CHUNK_BUILDER)
 		return
 	var seed_v := 777001
 	var noise := FastNoiseLite.new()
 	TerrainSlice.configure_noise(noise, seed_v)
 	ChunkRecordsScript.clear()
-	var deposits_seen := 0
-	var vein_colours := 0
-	var topsoil := 0
+	var cases: Array = []
 	for chunk: Vector2i in _native_parity_chunks():
 		var hm := TerrainSlice.heightmap_for(chunk, seed_v, noise)
 		for variant in range(3):
@@ -163,35 +224,36 @@ func _test_native_build_runs_parity() -> void:
 						if (cx + cz) % 2 == 0:
 							for cy in range(0, 3):
 								depleted["%d,%d,%d" % [cx, cy, cz]] = 99
-			var input := _native_runs_input(chunk, seed_v, noise, edits, depleted, variant == 2)
-			var want := VoxelSlice.build_runs_gd(chunk, hm, input)
-			var got := VoxelSlice.build_runs(chunk, hm, input)
-			assert_eq((got["runs"] as Dictionary).keys(), (want["runs"] as Dictionary).keys(), "native build_runs %s v%d has the same tiles in the same order" % [str(chunk), variant])
-			assert_true(got["runs"] == want["runs"], "native build_runs %s v%d runs equal the GDScript reference" % [str(chunk), variant])
-			assert_true(got["deposits"] == want["deposits"], "native build_runs %s v%d deposits equal the reference, same order" % [str(chunk), variant])
-			deposits_seen += (want["deposits"] as Array).size()
-			for key in (want["runs"] as Dictionary):
-				for entry: Dictionary in want["runs"][key]:
-					if entry.has("top_color"):
-						topsoil += 1
-	assert_true(deposits_seen > 0, "the fixed chunk set holds vein deposits, so the ore path is compared (%d)" % deposits_seen)
-	assert_true(topsoil > 0, "the fixed chunk set holds topsoiled runs, so the topsoil path is compared (%d)" % topsoil)
+			cases.append([chunk, hm, _native_runs_input(chunk, seed_v, noise, edits, depleted, variant == 2)])
+	# Compared as [tile keys in order, result]: a Dictionary's == ignores its order, the build's does not.
+	var seen := {"deposits": 0, "topsoil": 0}
+	var reference := func(chunk: Vector2i, hm: Array, input: Dictionary) -> Array:
+		var want := VoxelSlice.build_runs_gd(chunk, hm, input)
+		seen["deposits"] += (want["deposits"] as Array).size()
+		for key in (want["runs"] as Dictionary):
+			for entry: Dictionary in want["runs"][key]:
+				if entry.has("top_color"):
+					seen["topsoil"] += 1
+		return [(want["runs"] as Dictionary).keys(), want]
+	var routed := func(chunk: Vector2i, hm: Array, input: Dictionary) -> Array:
+		var got := VoxelSlice.build_runs(chunk, hm, input)
+		return [(got["runs"] as Dictionary).keys(), got]
+	assert_native_parity(CHUNK_BUILDER, "build_runs", cases, reference, routed, "build_runs, tiles in order, runs and deposits")
+	assert_true(int(seen["deposits"]) > 0, "the fixed chunk set holds vein deposits, so the ore path is compared (%d)" % int(seen["deposits"]))
+	assert_true(int(seen["topsoil"]) > 0, "the fixed chunk set holds topsoiled runs, so the topsoil path is compared (%d)" % int(seen["topsoil"]))
 
 ## Phase 169 — the native greedy mesher gives the same arrays, in the same order, as the reference:
 ## resolved runs (plain, edited, unknown east ring), a bare natural-column build, absolute and
 ## chunk-local vertices.
 func _test_native_chunk_arrays_parity() -> void:
-	NativeBuilder.init()
-	if not NativeBuilder.is_native():
-		print("[Native] build_chunk_arrays parity skipped: no native extension in this run")
+	if not NativeLoaderScript.use_native(CHUNK_BUILDER, "build_chunk_arrays"):
+		print("[Native] %s.build_chunk_arrays parity skipped: not routed native in this run" % CHUNK_BUILDER)
 		return
 	var seed_v := 777001
 	var noise := FastNoiseLite.new()
 	TerrainSlice.configure_noise(noise, seed_v)
 	ChunkRecordsScript.clear()
-	var deposits_seen := 0
-	var quads := 0
-	var walls_with_soil := 0
+	var cases: Array = []
 	for chunk: Vector2i in _native_parity_chunks():
 		var hm := TerrainSlice.heightmap_for(chunk, seed_v, noise)
 		for variant in range(3):
@@ -199,32 +261,30 @@ func _test_native_chunk_arrays_parity() -> void:
 			var input := _native_runs_input(chunk, seed_v, noise, edits, {}, variant == 2)
 			var resolved := VoxelSlice.build_runs_gd(chunk, hm, input)
 			for local in [false, true]:
-				var want := VoxelMesh.build_chunk_arrays_gd(chunk, hm, resolved, local)
-				var got := VoxelSlice.build_chunk_arrays(chunk, hm, resolved, local)
-				assert_true(got == want, "native build_chunk_arrays %s v%d local=%s equals the GDScript reference" % [str(chunk), variant, str(local)])
-				assert_eq(got["quad_count"], want["quad_count"], "same quad count %s v%d" % [str(chunk), variant])
-				assert_eq((got["vertices"] as PackedVector3Array).size(), (want["vertices"] as PackedVector3Array).size(), "same vertex count %s v%d" % [str(chunk), variant])
-				if not local:
-					quads += int(want["quad_count"])
-					deposits_seen += (want["deposit_vertices"] as PackedVector3Array).size()
-		# A bare build: no resolved tiles, every column natural off the heightmap.
-		var bare_want := VoxelMesh.build_chunk_arrays_gd(chunk, hm, {"runs": {}})
-		assert_true(VoxelSlice.build_chunk_arrays(chunk, hm, {"runs": {}}) == bare_want, "native bare build %s equals the reference" % str(chunk))
-	assert_true(quads > 0, "the fixed chunk set meshes quads (%d)" % quads)
-	assert_true(deposits_seen > 0, "the fixed chunk set meshes vein deposit boxes (%d)" % deposits_seen)
+				cases.append([chunk, hm, resolved, local])
+		cases.append([chunk, hm, {"runs": {}}, false])   # a bare build: every column natural off the heightmap
+	var seen := {"quads": 0, "deposits": 0}
+	var reference := func(chunk: Vector2i, hm: Array, resolved: Dictionary, local: bool) -> Dictionary:
+		var want := VoxelMesh.build_chunk_arrays_gd(chunk, hm, resolved, local)
+		if not local:
+			seen["quads"] += int(want["quad_count"])
+			seen["deposits"] += (want["deposit_vertices"] as PackedVector3Array).size()
+		return want
+	assert_native_parity(CHUNK_BUILDER, "build_chunk_arrays", cases, reference, VoxelSlice.build_chunk_arrays, "build_chunk_arrays")
+	assert_true(int(seen["quads"]) > 0, "the fixed chunk set meshes quads (%d)" % int(seen["quads"]))
+	assert_true(int(seen["deposits"]) > 0, "the fixed chunk set meshes vein deposit boxes (%d)" % int(seen["deposits"]))
 
 ## Phase 190 — the native coarse build gives the same arrays, in the same order, as the reference: both
 ## coarse levels, absolute and chunk-local vertices, a full biome ring and one missing its east column.
 func _test_native_coarse_parity() -> void:
-	NativeBuilder.init()
-	if not NativeBuilder.is_native():
-		print("[Native] build_coarse_arrays parity skipped: no native extension in this run")
+	if not NativeLoaderScript.use_native(CHUNK_BUILDER, "build_coarse_arrays"):
+		print("[Native] %s.build_coarse_arrays parity skipped: not routed native in this run" % CHUNK_BUILDER)
 		return
 	var seed_v := 777001
 	var noise := FastNoiseLite.new()
 	TerrainSlice.configure_noise(noise, seed_v)
 	ChunkRecordsScript.clear()
-	var quads := 0
+	var cases: Array = []
 	var topsoil := 0
 	for chunk: Vector2i in _native_parity_chunks():
 		var hm := TerrainSlice.heightmap_for(chunk, seed_v, noise)
@@ -239,12 +299,14 @@ func _test_native_coarse_parity() -> void:
 					if cols["top_colors"][i] != cols["colors"][i]:
 						topsoil += 1
 				for local in [false, true]:
-					var want := VoxelCoarse.build_coarse_arrays_gd(chunk, hm, input, step, local)
-					var got := VoxelCoarse.build_coarse_arrays(chunk, hm, input, step, local)
-					assert_true(got == want, "native build_coarse_arrays %s v%d step %d local=%s equals the GDScript reference" % [str(chunk), variant, step, str(local)])
-					assert_eq(got["quad_count"], want["quad_count"], "same quad count %s step %d" % [str(chunk), step])
-					quads += int(want["quad_count"])
-	assert_true(quads > 0, "the fixed chunk set meshes coarse quads (%d)" % quads)
+					cases.append([chunk, hm, input, step, local])
+	var seen := {"quads": 0}
+	var reference := func(chunk: Vector2i, hm: Array, input: Dictionary, step: int, local: bool) -> Dictionary:
+		var want := VoxelCoarse.build_coarse_arrays_gd(chunk, hm, input, step, local)
+		seen["quads"] += int(want["quad_count"])
+		return want
+	assert_native_parity(CHUNK_BUILDER, "build_coarse_arrays", cases, reference, VoxelCoarse.build_coarse_arrays, "build_coarse_arrays")
+	assert_true(int(seen["quads"]) > 0, "the fixed chunk set meshes coarse quads (%d)" % int(seen["quads"]))
 	assert_true(topsoil > 0, "the fixed chunk set holds topsoiled cells, so the topsoil path is compared (%d)" % topsoil)
 	var bad := NativeBuilder.builder().call("build_coarse_arrays", Vector2i(1, 1), [1.0, 2.0], {}, 2, true, VoxelSlice.native_runs_cfg()) as Dictionary
 	assert_true(bad.is_empty(), "a malformed heightmap is rejected by the native coarse build")
@@ -286,9 +348,9 @@ func _test_native_build_runs_rejection_falls_back() -> void:
 	var good := VoxelSlice.native_runs_cfg()
 	var bad := good.duplicate()
 	bad["vein_cell"] = Callable()   # the native side fails its vein-callable check
-	NativeBuilder._memo["build_runs"] = bad
+	NativeLoaderScript._memo["build_runs"] = bad
 	var got := VoxelSlice.build_runs(chunk, hm, input)
-	NativeBuilder._memo["build_runs"] = good
+	NativeLoaderScript._memo["build_runs"] = good
 	var want := VoxelSlice.build_runs_gd(chunk, hm, input)
 	assert_true(got.has("runs"), "a rejected native build still returns runs")
 	assert_true(got["runs"] == want["runs"], "the fallback runs are the GDScript reference")
@@ -363,3 +425,35 @@ func _test_native_release_workflow() -> void:
 	for p in ["linux", "windows", "macos"]:
 		assert_true(text.contains("name: " + p), "the release builds the %s binary" % p)
 	assert_true(text.contains("gh release create"), "the release workflow creates the GitHub Release")
+
+## Phase 248 — a CI job exports a release build with the release library and plays the `flight` step on it,
+## report only, and the baseline doc carries a release column.
+func _test_native_release_flight_wired() -> void:
+	var f := FileAccess.open("res://.github/workflows/ci.yml", FileAccess.READ)
+	if f == null:
+		return   # an export does not carry .github; the suite runs from the project tree
+	var live := ""
+	for line in f.get_as_text().split("\n"):
+		if not line.strip_edges().begins_with("#"):
+			live += line + "\n"
+	var at := live.find("  release-flight:")
+	assert_true(at >= 0, "CI has the release-flight job")
+	var job := live.substr(at, live.find("\n  build:", at) - at)
+	assert_true(job.contains("--export-release \"Linux Playtest\""), "the job exports the Linux Playtest preset as a release build")
+	assert_true(job.contains("libnihon_native.linux.template_release.x86_64.so"), "the export carries the release library")
+	assert_true(job.contains("--playtest-bot --playtest-no-budget --playtest-only flight"), "the job plays only the flight step, report only")
+	assert_true(job.contains("chunk builder: native"), "the job checks the release library loaded")
+	assert_true(job.contains("tools/flight_report.py playtest/report.json"), "the job writes the flight numbers to the summary")
+	assert_true(FileAccess.file_exists("res://tools/flight_report.py"), "the flight report script is in the tree")
+	var presets := ConfigFile.new()
+	assert_eq(presets.load("res://export_presets.cfg"), OK, "export_presets.cfg parses")
+	var tagged: Array = []
+	for section in presets.get_sections():
+		if presets.has_section_key(section, "name") and str(presets.get_value(section, "custom_features", "")).split(",").has("playtest"):
+			tagged.append(str(presets.get_value(section, "name")))
+	assert_eq(tagged, ["Linux Playtest"], "only the Linux Playtest preset carries the playtest feature")
+	assert_true(BootWiringScript.playtest_allowed(true, false), "a debug build runs the bot")
+	assert_true(BootWiringScript.playtest_allowed(false, true), "a playtest-tagged release build runs the bot")
+	assert_false(BootWiringScript.playtest_allowed(false, false), "a shipped release build ignores --playtest-bot")
+	var md := FileAccess.get_file_as_string("res://docs/perf/playtest-baseline.md")
+	assert_true(md.contains("Release export (template_release)"), "playtest-baseline.md has a release column")

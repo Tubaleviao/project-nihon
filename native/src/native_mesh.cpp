@@ -4,6 +4,9 @@
 // GDScript Dictionary's insertion order does) and the float32 narrowing of a Vector3 / Color.
 #include "native_chunk_builder.h"
 
+#include "base/marshal.h"
+#include "base/nihon_math.h"
+
 #include <godot_cpp/variant/color.hpp>
 #include <godot_cpp/variant/packed_color_array.hpp>
 #include <godot_cpp/variant/packed_int32_array.hpp>
@@ -20,6 +23,8 @@
 using namespace godot;
 
 namespace {
+
+using namespace nihon;   // Phase 248: the shared arithmetic and marshalling (native/src/base/)
 
 const int CHUNK_SIZE = 64;
 const double TILE_SIZE = 0.5;
@@ -54,14 +59,6 @@ struct Bucket {
 	std::map<GroupKey, size_t> index;
 	std::vector<Group> groups;   // insertion order
 };
-
-inline int64_t posmod(int64_t a, int64_t b) {
-	int64_t v = a % b;
-	if ((v < 0 && b > 0) || (v > 0 && b < 0)) {
-		v += b;
-	}
-	return v;
-}
 
 inline double voxel_height(double raw) {
 	return std::floor(raw / STEP_HEIGHT) * STEP_HEIGHT;
@@ -152,7 +149,7 @@ public:
 			Run r;
 			Variant b = d.get(k.bottom, Variant());
 			Variant t = d.get(k.top, Variant());
-			if ((b.get_type() != Variant::FLOAT && b.get_type() != Variant::INT) || (t.get_type() != Variant::FLOAT && t.get_type() != Variant::INT)) {
+			if (!is_number(b) || !is_number(t)) {
 				return false;
 			}
 			r.bottom = double(b);
@@ -170,7 +167,7 @@ public:
 			r.top_color = tc;
 			r.soil_color = sc;
 			Variant sd = d.get(k.soil_depth, 0.0);
-			if (sd.get_type() != Variant::FLOAT && sd.get_type() != Variant::INT) {
+			if (!is_number(sd)) {
 				return false;
 			}
 			r.soil_depth = double(sd);
@@ -351,18 +348,6 @@ std::vector<Rect> merge_rects(std::vector<int> &cells, MergeScratch &sc) {
 	return out;
 }
 
-// One bulk copy into a Packed array: a push_back per element is an engine call each, and a chunk
-// carries tens of thousands of vertices.
-template <typename P, typename T>
-P to_packed(const std::vector<T> &v) {
-	P out;
-	out.resize((int64_t)v.size());
-	if (!v.empty()) {
-		std::copy(v.begin(), v.end(), out.ptrw());
-	}
-	return out;
-}
-
 } // namespace
 
 Dictionary NativeChunkBuilder::build_chunk_arrays(const Vector2i &p_chunk, const Array &p_heightmap, const Dictionary &p_resolved, bool p_local, const Dictionary &p_cfg) const {
@@ -383,12 +368,7 @@ Dictionary NativeChunkBuilder::build_chunk_arrays(const Vector2i &p_chunk, const
 	m.lap_tiles = circumference * CHUNK_SIZE;
 	m.fallback = fb;
 	m.runs = &runs;
-	m.hm.resize(CHUNK_SIZE * CHUNK_SIZE);
-	for (int i = 0; i < CHUNK_SIZE * CHUNK_SIZE; i++) {
-		Variant h = p_heightmap[i];
-		ERR_FAIL_COND_V(h.get_type() != Variant::FLOAT && h.get_type() != Variant::INT, empty);
-		m.hm[i] = double(h);
-	}
+	ERR_FAIL_COND_V(!read_numbers(p_heightmap, CHUNK_SIZE * CHUNK_SIZE, m.hm), empty);
 	if (!m.load_ring()) {
 		return empty;
 	}
