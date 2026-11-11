@@ -16,6 +16,7 @@ func register() -> void:
 	_run_test("stream: a frame's pump stops at its time budget and bounds its applies", _test_stream_pump_budget)
 	_run_test("stream: the steady build cap starts at half the cores", _test_stream_builds_in_flight_default)
 	_run_test("stream: lead by speed (pure)", _test_stream_lead_by_speed)
+	_run_test("stream: a fast flyer bursts to the worker ceiling; a failed body chunk does not ratchet", _test_stream_fast_burst_and_no_ratchet)
 	_run_test("stream: worker cap rises, falls and stays in bounds (pure)", _test_stream_worker_cap)
 	_run_test("stream: a chunk's ground goes in through the RenderingServer", _test_stream_render_server_surface)
 	_run_test("stream: the attach budget defers chunks, body first", _test_stream_attach_budget)
@@ -230,6 +231,23 @@ func _test_stream_lead_by_speed() -> void:
 	assert_false(ahead.has(c + Vector2i(-(base + 1), 0)), "nothing behind the body")
 	assert_true(ahead.has(c + Vector2i(base + 1, 0)), "the lane ahead is covered")
 	assert_eq(ChunkStreamPolicy.lead_prefetch(100000.0), ChunkStreamPolicy.LEAD_MAX, "the lead is capped")
+
+func _test_stream_fast_burst_and_no_ratchet() -> void:
+	var cm := ChunkManager.new()
+	var ceiling := ChunkStreamPolicy.worker_ceiling(OS.get_processor_count())
+	cm.max_builds_in_flight = ChunkStreamPolicy.WORKER_MIN
+	assert_eq(cm.build_cap(), ChunkStreamPolicy.WORKER_MIN, "standing: the steady cap")
+	cm._fast_until_msec = cm._now_msec() + 100000
+	assert_eq(cm.build_cap(), maxi(ChunkStreamPolicy.WORKER_MIN, ceiling), "fast: the ceiling at once")
+	cm._fast_until_msec = -1
+	# A body chunk that never builds, with nothing queued or building, must not raise the cap.
+	cm.max_builds_in_flight = ChunkStreamPolicy.WORKER_MIN
+	cm._last_centers = [Vector2i(5, 5)]
+	for i in 5:
+		cm._last_adapt_msec = -1
+		cm._m1.adapt_workers()
+	assert_eq(cm.max_builds_in_flight, ChunkStreamPolicy.WORKER_MIN, "no ratchet for a chunk nothing is building")
+	cm.free()
 
 func _test_stream_worker_cap() -> void:
 	var cores := 8

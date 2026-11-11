@@ -42,6 +42,10 @@ func refresh(unload_now: bool = true) -> void:
 	var center = sl.player_chunk()
 	var centers = sl._centers_around(center)
 	var window_moved = centers != sl._last_centers
+	# Phase 239 — a change of lead depth (the body speeding up or slowing down) re-derives the desired set too.
+	var lead_extra: int = ChunkStreamPolicy.lead_prefetch(local_velocity().length()) - ChunkStreamPolicy.DEFAULT_PREFETCH_DISTANCE
+	if lead_extra != sl._lead_extra:
+		window_moved = true
 	# Phase 194 (#512) — a queue sorted for a fast flyer's lane is re-sorted by distance once it slows: the lane
 	# order put the ground beside and behind a body that has stopped after the whole lane ahead of it.
 	if sl._queue_in_lane and not sl.is_moving_fast():
@@ -66,6 +70,7 @@ func refresh(unload_now: bool = true) -> void:
 		if heading != Vector2.ZERO:
 			sl.note_local_crossing()
 	sl._last_centers = centers
+	sl._lead_extra = lead_extra
 	# ONE radius for WANTED and DESIRED on purpose (ninth review pass): `wanted` — what a
 	# crossing retains — is the same radius the queue spans, so no chunk that was queued (and
 	# therefore built) is released while it is still inside the window it was built for. See
@@ -511,7 +516,9 @@ func adapt_workers() -> void:
 		return
 	sl._last_adapt_msec = now
 	var missing := false
-	if not sl._last_centers.is_empty():
+	# Missing ground only asks for more workers while something is queued or building: a chunk that failed
+	# (awaiting its self-heal) is not helped by a bigger pool.
+	if not sl._last_centers.is_empty() and (queue_len > 0 or not sl._builds.is_empty()):
 		missing = not sl._built.has(sl._chunk_key(sl._last_centers[0]))
 	var idle: int = 0 if sl._idle_since_msec < 0 else now - sl._idle_since_msec
 	sl.max_builds_in_flight = ChunkStreamPolicy.next_worker_cap(sl.max_builds_in_flight, OS.get_processor_count(), queue_len, missing, idle)
@@ -540,3 +547,12 @@ func apply_finished_builds() -> void:
 		sl._apply_build_entry(task_id)
 		applied += 1
 
+
+## Phase 141/239 — the in-flight cap: the catch-up burst, or the ceiling at once for a fast flyer (the adaptive
+## steady cap only ramps for the rest).
+func build_cap() -> int:
+	if sl._catchup:
+		return maxi(sl.max_builds_in_flight, sl.catchup_builds_in_flight)
+	if sl.adaptive_workers and sl.is_moving_fast():
+		return maxi(sl.max_builds_in_flight, ChunkStreamPolicy.worker_ceiling(OS.get_processor_count()))
+	return sl.max_builds_in_flight

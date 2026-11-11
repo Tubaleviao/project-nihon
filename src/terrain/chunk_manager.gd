@@ -101,7 +101,6 @@ const DEFAULT_VIEW_DISTANCE := 3       # Chebyshev radius, in chunks
 ## otherwise call into a freed node — `Nonexistent function … in base 'previously
 ## freed'`, and a crash. A static call through this constant touches no node at all,
 ## and the lambda's captured value keeps the script resource alive for the task.
-const ChunkStreamPolicy := preload("res://src/terrain/chunk_stream_policy.gd")
 const VoxelBuilder := preload("res://src/terrain/voxel_slice.gd")
 const VoxelMesh := preload("res://src/terrain/voxel_mesh.gd")
 
@@ -115,7 +114,8 @@ const VoxelMesh := preload("res://src/terrain/voxel_mesh.gd")
 ## view ring (49) plus a one-chunk lead: 81 chunks (9×9) against the 121 (11×11) that pass 8
 ## was avoiding, and no chunk is built and then thrown away. A one-chunk lead is already
 ## enough for the ring a crossing walks into to be built when it arrives.
-const DEFAULT_PREFETCH_DISTANCE := 1
+const ChunkStreamPolicy := preload("res://src/terrain/chunk_stream_policy.gd")
+const DEFAULT_PREFETCH_DISTANCE := ChunkStreamPolicy.DEFAULT_PREFETCH_DISTANCE
 
 ## Phase 42 — the boot gate's radius: Chebyshev 0..1 around the centre, the chunk the
 ## body stands in plus its eight neighbours. Wider would make the loading screen a
@@ -257,7 +257,7 @@ var max_builds_in_flight: int = ChunkStreamPolicy.starting_builds(OS.get_process
 ## Phase 239 — false pins the steady cap; true lets `ChunkPart1.adapt_workers` move it.
 var adaptive_workers := true
 var _idle_since_msec: int = -1
-var _last_adapt_msec: int = -1
+var _last_adapt_msec: int = -1; var _lead_extra: int = 0   # _lead_extra: lead depth the desired set was computed for
 
 ## Phase 142 — see DEFAULT_PUMP_BUDGET_MSEC. `pump_clock_usec` is the clock the budget reads
 ## (a stub in the suite).
@@ -307,7 +307,7 @@ func is_catching_up() -> bool:
 
 ## The in-flight cap in force: the steady one, or the catch-up one after a fold.
 func build_cap() -> int:
-	return maxi(max_builds_in_flight, catchup_builds_in_flight) if _catchup else max_builds_in_flight
+	return _m1.build_cap()
 
 ## Phase 187 — high priority for a fold's catch-up and for the local window while moving fast; the rest
 ## low. All high, the crowd stress run (host, watcher, bots on one 4-core runner) missed its host tick
@@ -595,7 +595,7 @@ func _self_heal_failed(centers: Array, window_moved: bool) -> void:
 	_last_self_heal_msec = now
 	var radius := stream_radius()
 	for key in _failed.keys():
-		if _within_windows(centers, radius, _key_to_chunk(key)) and not _has_in_flight(key):
+		if (_within_windows(centers, radius, _key_to_chunk(key)) or _chunk_refs.has(key)) and not _has_in_flight(key):
 			_failed.erase(key)
 			_build_attempts.erase(key)
 			_queue_rebuild(_key_to_chunk(key))
