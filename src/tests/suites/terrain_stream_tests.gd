@@ -71,27 +71,30 @@ func _test_stream_seam_strip_is_edge() -> void:
 	var n: int = TerrainSlice.CHUNK_SIZE
 	var c := Vector2i(5, TerrainSlice.pole_chunks() - 4)
 	var full: Array = t.generate_heightmap(c)
-	for side in [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1), Vector2i(1, 1), Vector2i(-1, 1)]:
-		var strip: Array = TerrainSlice.heightmap_strip_for(c, side, 99, t.detail_noise_copy())
-		assert_eq(strip.size(), full.size(), "strip %s has the full map's shape" % str(side))
-		var filled := 0
-		var wrong := 0
-		var stray := 0
-		for tz in n:
-			for tx in n:
-				var on_edge: bool = (side.x == 0 or tx == (0 if side.x < 0 else n - 1)) \
-					and (side.y == 0 or tz == (0 if side.y < 0 else n - 1))
-				var v: Variant = strip[tz * n + tx]
-				if on_edge:
-					filled += 1
-					if v == null or float(v) != float(full[tz * n + tx]):
-						wrong += 1
-				elif v != null:
-					stray += 1
-		var want_filled := (n if side.x == 0 else 1) * (n if side.y == 0 else 1)
-		assert_eq(filled, want_filled, "strip %s covers exactly its edge" % str(side))
-		assert_eq(wrong, 0, "strip %s matches the full map on its edge" % str(side))
-		assert_eq(stray, 0, "strip %s computes nothing off its edge" % str(side))
+	# Phase 240: depth 2 is the smooth mesher's two-tile ring.
+	for depth in [1, 2]:
+		for side in [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1), Vector2i(1, 1), Vector2i(-1, 1)]:
+			var strip: Array = TerrainSlice.heightmap_strip_for(c, side, 99, t.detail_noise_copy(), depth)
+			var tag := "%s depth %d" % [str(side), depth]
+			assert_eq(strip.size(), full.size(), "strip %s has the full map's shape" % tag)
+			var filled := 0
+			var wrong := 0
+			var stray := 0
+			for tz in n:
+				for tx in n:
+					var on_edge: bool = (side.x == 0 or (tx < depth if side.x < 0 else tx >= n - depth)) \
+						and (side.y == 0 or (tz < depth if side.y < 0 else tz >= n - depth))
+					var v: Variant = strip[tz * n + tx]
+					if on_edge:
+						filled += 1
+						if v == null or float(v) != float(full[tz * n + tx]):
+							wrong += 1
+					elif v != null:
+						stray += 1
+			var want_filled: int = (n if side.x == 0 else depth) * (n if side.y == 0 else depth)
+			assert_eq(filled, want_filled, "strip %s covers exactly its edge" % tag)
+			assert_eq(wrong, 0, "strip %s matches the full map on its edge" % tag)
+			assert_eq(stray, 0, "strip %s computes nothing off its edge" % tag)
 	t.free()
 
 func _test_stream_polar_shortcuts_exact() -> void:

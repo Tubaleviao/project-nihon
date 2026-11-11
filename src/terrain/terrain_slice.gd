@@ -697,7 +697,7 @@ static func heightmap_for_gd(pos: Vector2i, seed_v: int, noise: FastNoiseLite) -
 ## one corner tile. The neighbour at offset `d` from a chunk reads this chunk's `-d` edge. The result
 ## has the full map's shape and indexing, with null in every tile the ring never reads: 64 noise
 ## samples instead of 4096. Pure.
-static func heightmap_strip_for(pos: Vector2i, side: Vector2i, seed_v: int, noise: FastNoiseLite) -> Array:
+static func heightmap_strip_for(pos: Vector2i, side: Vector2i, seed_v: int, noise: FastNoiseLite, depth: int = 1) -> Array:
 	var out: Array = []
 	out.resize(CHUNK_SIZE * CHUNK_SIZE)
 	var origin_x := pos.x * CHUNK_SIZE * TILE_SIZE
@@ -705,8 +705,10 @@ static func heightmap_strip_for(pos: Vector2i, side: Vector2i, seed_v: int, nois
 	var w := float(circumference_chunks()) * CHUNK_METERS
 	var cache := new_corner_cache()
 	var row := new_polar_row()
-	var xs: Array = range(CHUNK_SIZE) if side.x == 0 else [0 if side.x < 0 else CHUNK_SIZE - 1]
-	var zs: Array = range(CHUNK_SIZE) if side.y == 0 else [0 if side.y < 0 else CHUNK_SIZE - 1]
+	# Phase 240: `depth` rows in from the shared edge (the smooth mesher's ring is two tiles deep).
+	var d := clampi(depth, 1, CHUNK_SIZE)
+	var xs: Array = range(CHUNK_SIZE) if side.x == 0 else (range(d) if side.x < 0 else range(CHUNK_SIZE - d, CHUNK_SIZE))
+	var zs: Array = range(CHUNK_SIZE) if side.y == 0 else (range(d) if side.y < 0 else range(CHUNK_SIZE - d, CHUNK_SIZE))
 	for ty in zs:
 		for tx in xs:
 			out[ty * CHUNK_SIZE + tx] = height_wrapped_in(seed_v, noise, origin_x + tx * TILE_SIZE, origin_z + ty * TILE_SIZE, w, cache, row)
