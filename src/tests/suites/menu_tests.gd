@@ -77,9 +77,15 @@ func _test_local_worlds() -> void:
 	assert_eq(str(LocalWorlds.create(base, "Huge", "99999999999999999999", 0).get("error", "")), "menu.world.error_seed", "a seed past int64 is refused")
 	assert_eq(int(LocalWorlds.create(base, "Low", "-2147483648", 0).get("seed", 0)), LocalWorlds.SEED_MIN, "int32's lowest seed is kept")
 	assert_true(LocalWorlds.delete(base, "low"), "(fixture removed)")
-	for i in 20:
+	for i in 3:
 		var r: Variant = LocalWorlds.parse_seed("")
-		assert_true(LocalWorlds.valid_seed(r), "a random seed fits int32")
+		assert_eq(int(r), LocalWorlds.fabric_seed(), "a blank seed is the one fabric seed (Phase 238)")
+	assert_eq(LocalWorlds.fabric_seed(), 238, "the fabric seed is WorldSystem.worldSeed")
+	var w1 := LocalWorlds.create(base, "Same1", "", 0)
+	var w2 := LocalWorlds.create(base, "Same2", "", 0)
+	assert_eq(int(w1.get("seed", -1)), int(w2.get("seed", -2)), "two new worlds share the seed")
+	LocalWorlds.delete(base, str(w1.get("id", "")))
+	LocalWorlds.delete(base, str(w2.get("id", "")))
 	assert_eq(str(LocalWorlds.create(base, "   ", "", 0).get("error", "")), "menu.world.error_name", "a blank name is refused")
 	assert_eq(str(LocalWorlds.create(base, "x".repeat(LocalWorlds.NAME_MAX + 1), "", 0).get("error", "")), "menu.world.error_name", "an overlong name is refused")
 	assert_eq(str(LocalWorlds.create(base, "Ok", "9".repeat(65), 0).get("error", "")), "menu.world.error_seed", "an overlong seed is refused")
@@ -138,6 +144,7 @@ func _test_play_page() -> void:
 	var chosen: Array = []
 	menu.start_requested.connect(func(c: Dictionary) -> void: chosen.append(c))
 	menu.show_page(MainMenu.PAGE_PLAY)
+	assert_eq(menu._pages[MainMenu.PAGE_PLAY].find_children("*", "LineEdit", true, false).size(), 1, "the New world dialog has only a name field, no seed (Phase 238)")
 	assert_true(bool(menu.create_world("Alpha", "11")["ok"]), "New world creates one")
 	assert_true(not bool(menu.create_world("", "")["ok"]), "and refuses a blank name")
 	assert_eq(menu.worlds().size(), 1, "the list shows it")

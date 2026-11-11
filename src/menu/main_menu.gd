@@ -2,7 +2,7 @@ extends CanvasLayer
 ## Phase 223 — the main menu a boot with no boot user args opens (see GameRoot.should_show_main_menu).
 ##
 ## Home: Play, Join server, Options (greyed until Phase 225), Quit.
-##   Play — the local worlds (LocalWorlds: name, seed, last played), New world (name, optional seed)
+##   Play — the local worlds (LocalWorlds: name, seed, last played), New world (name only; Phase 238: one fabric seed)
 ##          and Delete with a confirmation. Choosing one asks the root to boot the listen host on it.
 ##   Join — an address and an optional friend code, plus the recent servers (RecentServers). Asks the
 ##          root to boot the client path; a failed join comes back here with a localized reason.
@@ -37,7 +37,6 @@ var _notice: Label = null
 var _world_list: VBoxContainer = null
 var _world_error: Label = null
 var _name_edit: LineEdit = null
-var _seed_edit: LineEdit = null
 var _confirm_label: Label = null
 var _pending_delete: String = ""
 var _address_edit: LineEdit = null
@@ -102,13 +101,12 @@ func worlds() -> Array:
 	return LocalWorlds.list(worlds_base, legacy_dir)
 
 ## Create a world from the New world form; on success the list refreshes. Returns the result.
-func create_world(raw_name: String, raw_seed: String) -> Dictionary:
+func create_world(raw_name: String, raw_seed: String = "") -> Dictionary:
 	DirAccess.make_dir_recursive_absolute(worlds_base)
 	var res := LocalWorlds.create(worlds_base, raw_name, raw_seed)
 	_world_error.text = "" if bool(res["ok"]) else I18n.t(str(res["error"]))
 	if bool(res["ok"]):
 		_name_edit.text = ""
-		_seed_edit.text = ""
 	refresh_worlds()
 	return res
 
@@ -252,9 +250,8 @@ func _build_play(parent: Control) -> Control:
 	new_head.text = I18n.t("menu.world.new")
 	box.add_child(new_head)
 	_name_edit = _line(box, "menu.world.name", LocalWorlds.NAME_MAX)
-	_seed_edit = _line(box, "menu.world.seed", 64)
 	_world_error = _error_label(box)
-	_button(box, "menu.world.create", func() -> void: create_world(_name_edit.text, _seed_edit.text))
+	_button(box, "menu.world.create", func() -> void: create_world(_name_edit.text))
 	_button(box, "menu.back", func() -> void: show_page(PAGE_HOME))
 	return box
 
