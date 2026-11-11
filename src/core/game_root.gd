@@ -374,6 +374,7 @@ func _build_and_boot() -> void:
 	for presenter in [_creature, _player, _tree, _chat, _character, _carcass]:
 		presenter.render_visuals = not _is_server
 	_voxel.attach_geometry = not _is_server
+	_voxel._build.render_server_surfaces = not _is_server
 
 	# The UI (Phase 14) is presentation only, so a headless dedicated server (Phase 27) keeps it out of the
 	# tree — its _ready() would otherwise build windows nothing can render or click.

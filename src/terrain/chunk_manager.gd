@@ -114,7 +114,8 @@ const VoxelMesh := preload("res://src/terrain/voxel_mesh.gd")
 ## view ring (49) plus a one-chunk lead: 81 chunks (9×9) against the 121 (11×11) that pass 8
 ## was avoiding, and no chunk is built and then thrown away. A one-chunk lead is already
 ## enough for the ring a crossing walks into to be built when it arrives.
-const DEFAULT_PREFETCH_DISTANCE := 1
+const ChunkStreamPolicy := preload("res://src/terrain/chunk_stream_policy.gd")
+const DEFAULT_PREFETCH_DISTANCE := ChunkStreamPolicy.DEFAULT_PREFETCH_DISTANCE
 
 ## Phase 42 — the boot gate's radius: Chebyshev 0..1 around the centre, the chunk the
 ## body stands in plus its eight neighbours. Wider would make the loading screen a
@@ -135,6 +136,10 @@ const DEFAULT_MAX_BUILDS_IN_FLIGHT := 4
 ## thread's), never under the old fixed four.
 static func default_builds_in_flight() -> int:
 	return maxi(DEFAULT_MAX_BUILDS_IN_FLIGHT, OS.get_processor_count() - 1)
+
+## Phase 239 — ms of main thread a frame may spend attaching built chunks; the body's chunk is exempt, `0` = unbounded.
+const ATTACH_BUDGET_MS := 3
+var attach_budget_msec: int = ATTACH_BUDGET_MS
 
 ## Phase 142 — main-thread time one frame's pump (dispatch + apply) may spend, in milliseconds,
 ## and how many finished builds one frame applies. A frame always makes progress (one dispatch and
@@ -247,7 +252,12 @@ var loads_per_frame: int = DEFAULT_LOADS_PER_FRAME
 var unloads_per_frame: int = DEFAULT_UNLOADS_PER_FRAME
 
 ## Worker builds allowed in flight at once (see DEFAULT_MAX_BUILDS_IN_FLIGHT).
-var max_builds_in_flight: int = default_builds_in_flight()
+var max_builds_in_flight: int = ChunkStreamPolicy.starting_builds(OS.get_processor_count())
+
+## Phase 239 — false pins the steady cap; true lets `ChunkPart1.adapt_workers` move it.
+var adaptive_workers := true
+var _idle_since_msec: int = -1
+var _last_adapt_msec: int = -1; var _lead_extra: int = 0   # _lead_extra: lead depth the desired set was computed for
 
 ## Phase 142 — see DEFAULT_PUMP_BUDGET_MSEC. `pump_clock_usec` is the clock the budget reads
 ## (a stub in the suite).
@@ -297,7 +307,7 @@ func is_catching_up() -> bool:
 
 ## The in-flight cap in force: the steady one, or the catch-up one after a fold.
 func build_cap() -> int:
-	return maxi(max_builds_in_flight, catchup_builds_in_flight) if _catchup else max_builds_in_flight
+	return _m1.build_cap()
 
 ## Phase 187 — high priority for a fold's catch-up and for the local window while moving fast; the rest
 ## low. All high, the crowd stress run (host, watcher, bots on one 4-core runner) missed its host tick
@@ -486,6 +496,7 @@ func _process(_delta: float) -> void:
 	TickProbe.begin("chunks")   # Phase 162 — the stress run's per-phase tick cost
 	begin_pump()
 	_apply_finished_builds()
+	_m1.adapt_workers()
 	_near.tick()
 	_poll_region_reads()
 	flush_records()
@@ -584,7 +595,7 @@ func _self_heal_failed(centers: Array, window_moved: bool) -> void:
 	_last_self_heal_msec = now
 	var radius := stream_radius()
 	for key in _failed.keys():
-		if _within_windows(centers, radius, _key_to_chunk(key)) and not _has_in_flight(key):
+		if (_within_windows(centers, radius, _key_to_chunk(key)) or _chunk_refs.has(key)) and not _has_in_flight(key):
 			_failed.erase(key)
 			_build_attempts.erase(key)
 			_queue_rebuild(_key_to_chunk(key))
@@ -1146,18 +1157,7 @@ func flush_records_final() -> void:
 ## has moved on (`VoxelSlice.build_chunk` refuses those itself — an edit rebuilt the
 ## chunk synchronously in the meantime).
 func _apply_finished_builds() -> void:
-	if _builds.is_empty():
-		return
-	var done: Array = []
-	for task_id in _builds.keys():
-		if task_id < 0 or WorkerThreadPool.is_task_completed(task_id):   # a cache hit is done already
-			done.append(task_id)
-	var applied := 0
-	for task_id in _apply_order(done):
-		if applied >= maxi(applies_per_frame, 1) or (applied > 0 and _pump_over()):
-			return   # the rest stay finished in the table and apply next frame
-		_apply_build_entry(task_id)
-		applied += 1
+	_m1.apply_finished_builds()
 
 ## Phase 187 — the order finished builds attach in (see `ChunkPart1.apply_order`).
 func _apply_order(done: Array) -> Array:
