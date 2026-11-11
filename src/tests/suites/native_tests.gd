@@ -115,7 +115,7 @@ func _test_native_real_loader() -> void:
 		assert_true(ClassDB.class_exists(NativeBuilder.CLASS_NAME), "NativeChunkBuilder is registered")
 		assert_eq(NativeBuilder.version(), NativeBuilder.REQUIRED_VERSION, "the native class reports its version")
 		var b: RefCounted = ClassDB.instantiate(NativeBuilder.CLASS_NAME)
-		assert_eq(b.call("functions") as PackedStringArray, PackedStringArray(["heightmap_for", "build_runs", "build_chunk_arrays", "build_coarse_arrays"]), "Phases 167-169 and 190 port heightmap_for, build_runs, build_chunk_arrays and build_coarse_arrays")
+		assert_eq(b.call("functions") as PackedStringArray, PackedStringArray(["heightmap_for", "build_runs", "build_chunk_arrays", "build_coarse_arrays", "build_smooth_arrays"]), "Phases 167-169, 190 and 240 port heightmap_for, build_runs, build_chunk_arrays, build_coarse_arrays and build_smooth_arrays")
 	if EXPECT_FALLBACK_ARG in args:
 		assert_eq(mode, NativeBuilder.MODE_FALLBACK, "no binary: the loader reports the GDScript fallback")
 		assert_eq(NativeBuilder.version(), -1, "no native version on the fallback")
@@ -235,7 +235,10 @@ func _test_native_build_runs_parity() -> void:
 						if (cx + cz) % 2 == 0:
 							for cy in range(0, 3):
 								depleted["%d,%d,%d" % [cx, cy, cz]] = 99
-			cases.append([chunk, hm, _native_runs_input(chunk, seed_v, noise, edits, depleted, variant == 2)])
+			var input := _native_runs_input(chunk, seed_v, noise, edits, depleted, variant == 2)
+			if variant == 1:
+				input["pad"] = 2   # Phase 240: the smooth mesher's two-tile ring
+			cases.append([chunk, hm, input])
 	# Compared as [tile keys in order, result]: a Dictionary's == ignores its order, the build's does not.
 	var seen := {"deposits": 0, "topsoil": 0}
 	var reference := func(chunk: Vector2i, hm: Array, input: Dictionary) -> Array:

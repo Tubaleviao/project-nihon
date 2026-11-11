@@ -415,10 +415,10 @@ func _ready() -> void:
 	# worker can exist. It replaces the Phase 42 per-biome roll table and inherits its contract:
 	# a `static var` on a script a chunk-build task reaches (`build_runs` → `natural_color` →
 	# `material_for_biome` → `OreField.vein_at` → `OreField.allows` → `OreField.band_of`), so it
-	# is WRITTEN here, before the tree streams anything, and read-only afterwards. The bands
-	# come off the generated fabric resources (`depthBand`, `leyGated`), which is why this
-	# cannot be a `const`.
+	# is WRITTEN here, before the tree streams anything, and read-only afterwards. The bands come
+	# off the generated fabric resources (`depthBand`, `leyGated`), so this cannot be a `const`.
 	OreField.warm()
+	VoxelMesh.terrain_pad()   # Phase 240: reads VoxelSmooth.enabled() here, so no worker reads ProjectSettings
 	native_runs_cfg()   # Phase 168: snapshot the native build_runs tables on the main thread
 	WorldShape.warm()
 	_world_floor = StaticBody3D.new()
@@ -530,13 +530,13 @@ func edit_revision(chunk_pos: Vector2i) -> int:
 func seam_borders(chunk_pos: Vector2i) -> Array:
 	return _build.seam_borders(chunk_pos)
 
-## Phase 69 — the neighbour offsets `tile` sits against: one per chunk edge it is on, plus the
-## diagonal when it is on a corner (the one place that offset math lives).
+## Phase 69 — the neighbour offsets `tile` sits against: one per chunk edge it is on, plus the diagonal on a corner.
 static func _border_offsets(tile: Vector2i) -> Array:
 	var lx := posmod(tile.x, CHUNK_SIZE)
 	var lz := posmod(tile.y, CHUNK_SIZE)
-	var dx := -1 if lx == 0 else (1 if lx == CHUNK_SIZE - 1 else 0)
-	var dz := -1 if lz == 0 else (1 if lz == CHUNK_SIZE - 1 else 0)
+	var m := VoxelMesh.terrain_pad()   # Phase 240: smooth normals read 2 tiles out
+	var dx := -1 if lx < m else (1 if lx >= CHUNK_SIZE - m else 0)
+	var dz := -1 if lz < m else (1 if lz >= CHUNK_SIZE - m else 0)
 	var out: Array = []
 	if dx != 0:
 		out.append(Vector2i(dx, 0))
@@ -564,12 +564,12 @@ func gather_build_input_deferred(chunk_pos: Vector2i) -> Dictionary:
 ## Phase 141 — the worker half of `gather_build_input_deferred`: give every `missing_neighbours`
 ## chunk of `input` the edge strip `chunk_pos`'s ring reads (`TerrainSlice.heightmap_strip_for`),
 ## so `build_runs` sees the same seam heights a full guess map would give it. Pure; `noise` is the
-## terrain's detail noise for `seed_v`, owned by the calling task.
+## terrain's detail noise for `seed_v`, owned by the calling task. Phase 240: strips as deep as `pad`.
 static func fill_seam_strips(chunk_pos: Vector2i, input: Dictionary, seed_v: int, noise: FastNoiseLite) -> void:
 	var known: Dictionary = input.get("neighbour_heightmaps", {})
 	for chunk in input.get("missing_neighbours", []):
 		var c: Vector2i = chunk
-		known[_chunk_key(c)] = TerrainSlice.heightmap_strip_for(c, chunk_pos - c, seed_v, noise)
+		known[_chunk_key(c)] = TerrainSlice.heightmap_strip_for(c, chunk_pos - c, seed_v, noise, clampi(int(input.get("pad", 1)), 1, 2))
 	input["neighbour_heightmaps"] = known
 
 func _sync_guess_seed() -> void:
@@ -596,9 +596,8 @@ static func _chunk_world_center(chunk_pos: Vector2i) -> Vector2:
 	var extent := float(CHUNK_SIZE * TILE_SIZE)
 	return Vector2((float(chunk_pos.x) + 0.5) * extent, (float(chunk_pos.y) + 0.5) * extent)
 
-## PURE resolve — no node, no bus, no slice state, so it is legal on a worker thread. The only
-## inputs are the chunk, its heightmap and the payload `gather_build_input` copied off the
-## slice; `build_chunk_arrays` consumes what this returns.
+## PURE resolve (no node, bus or slice state: legal on a worker) of the chunk, its heightmap and the
+## payload `gather_build_input` copied off the slice; the chunk meshers consume what this returns.
 static func build_runs(chunk_pos: Vector2i, heightmap: Array, input: Dictionary) -> Dictionary:
 	if NativeBuilder.use_native("build_runs"):   # Phase 168: same result, computed in C++
 		var native := NativeBuilder.builder().call("build_runs", chunk_pos, heightmap, input, native_runs_cfg()) as Dictionary
@@ -641,6 +640,7 @@ static func build_runs_gd(chunk_pos: Vector2i, heightmap: Array, input: Dictiona
 	# chunk asks the same few cells thousands of times.
 	var field := _field(int(input.get("seed", 0)), input.get("depleted", {}))
 	var out: Dictionary = {}
+	var pad := clampi(int(input.get("pad", 1)), 1, 2)   # Phase 240: the ring past the edge (2 for the smooth mesher)
 	# A memo private to this call, for the plain (uncoloured) resolution. It is
 	# deliberately NOT the table handed out: a tile's runs are read by the tile itself
 	# and by each neighbour's subtraction, and only the table carries colours.
@@ -649,8 +649,8 @@ static func build_runs_gd(chunk_pos: Vector2i, heightmap: Array, input: Dictiona
 	# Surface style per biome, resolved once per build: it is a function of the biome alone
 	# and a chunk's ring touches at most four biomes, against ~4000 runs that each asked.
 	var styles: Dictionary = {}
-	for tz in range(-1, CHUNK_SIZE + 1):
-		for tx in range(-1, CHUNK_SIZE + 1):
+	for tz in range(-pad, CHUNK_SIZE + pad):
+		for tx in range(-pad, CHUNK_SIZE + pad):
 			var gx := chunk_pos.x * CHUNK_SIZE + tx
 			var gz := chunk_pos.y * CHUNK_SIZE + tz
 			var world_xz := Vector2(gx * TILE_SIZE + TILE_SIZE * 0.5, gz * TILE_SIZE + TILE_SIZE * 0.5)
@@ -799,7 +799,8 @@ static func _merge_rects(cells: Dictionary) -> Array:
 static func _group_cell(groups: Dictionary, dir: String, plane: float, bottom: float, top: float, color: Color, a: int, b: int) -> void:
 	VoxelMesh.group_cell(groups, dir, plane, bottom, top, color, a, b)
 
-## The collision triangle soup for one chunk: exactly the triangles the build emits.
+## The collision triangle soup for one chunk: exactly the triangles the build emits (the smooth
+## mesher when `terrain/smooth_mesh` is on, as in game).
 ## `build_chunk` taps the arrays it ALREADY has (one build per chunk, not two); this
 ## entry point exists so a caller that has no chunk node — the suite — can assert the
 ## trimesh's SHAPE headlessly. Physics itself is INERT inside the suite (`_run_tests()`
@@ -807,9 +808,8 @@ static func _group_cell(groups: Dictionary, dir: String, plane: float, bottom: f
 ## registers a collision, verified in ROADMAP §Phase 39), so "the trimesh stops a body"
 ## is exercised in GAME only and this proves the geometry it is built from.
 func collision_faces(chunk_pos: Vector2i, heightmap: Array) -> PackedVector3Array:
-	var built := build_chunk_arrays(chunk_pos, heightmap, collect_build_runs(chunk_pos, heightmap))
-	var collision: PackedVector3Array = built["collision"]
-	return collision
+	var built := VoxelMesh.build_terrain_arrays(chunk_pos, heightmap, collect_build_runs(chunk_pos, heightmap))
+	return built["collision"]
 
 ## How many times a chunk has been (re)built. A build dispatched to a worker carries
 ## the revision it was dispatched AT, and `build_chunk` refuses a result whose revision

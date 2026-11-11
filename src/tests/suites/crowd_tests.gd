@@ -564,7 +564,7 @@ func _test_crowd_worker_collision_equals_main_thread() -> void:
 		add_child(main)
 		var resolved: Dictionary = main.collect_build_runs(chunk, flat)
 		var worker: Dictionary = VoxelMesh.build_worker_arrays(chunk, flat, resolved, false)
-		var reference: Dictionary = VoxelSlice.build_chunk_arrays(chunk, flat, resolved, true)
+		var reference: Dictionary = VoxelMesh.build_terrain_arrays(chunk, flat, resolved, true)   # Phase 240: what the worker builds
 		assert_true(worker["collision"] == reference["collision"], "worker collision faces equal the main-thread ones at %s" % chunk)
 		var shapes: Array = worker.get("shape_parts", [worker.get("shape")])
 		var faces := PackedVector3Array()

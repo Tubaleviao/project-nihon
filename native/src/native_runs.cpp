@@ -584,8 +584,10 @@ Dictionary NativeChunkBuilder::build_runs(const Vector2i &p_chunk, const Array &
 	const int64_t cpx = p_chunk.x;
 	const int64_t cpz = p_chunk.y;
 	Dictionary out;
-	for (int64_t tz = -1; tz < CHUNK_SIZE + 1; tz++) {
-		for (int64_t tx = -1; tx < CHUNK_SIZE + 1; tx++) {
+	// Phase 240: the ring resolved past the chunk's edge (2 for the smooth mesher), as in build_runs_gd.
+	const int64_t pad = CLAMP((int64_t)p_input.get("pad", 1), (int64_t)1, (int64_t)2);
+	for (int64_t tz = -pad; tz < CHUNK_SIZE + pad; tz++) {
+		for (int64_t tx = -pad; tx < CHUNK_SIZE + pad; tx++) {
 			int64_t gx = cpx * CHUNK_SIZE + tx;
 			int64_t gz = cpz * CHUNK_SIZE + tz;
 			double wx = f32(double(gx) * TILE_SIZE + TILE_SIZE * 0.5);

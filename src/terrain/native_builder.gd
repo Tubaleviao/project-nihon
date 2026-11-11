@@ -15,7 +15,7 @@ const MODE_NATIVE := NativeLoader.MODE_NATIVE
 const MODE_FALLBACK := NativeLoader.MODE_FALLBACK
 const NO_NATIVE_ARG := NativeLoader.NO_NATIVE_ARG
 ## Functions the game may route natively, in step order.
-const FUNCTIONS: Array[String] = ["heightmap_for", "build_runs", "build_chunk_arrays", "build_coarse_arrays"]
+const FUNCTIONS: Array[String] = ["heightmap_for", "build_runs", "build_chunk_arrays", "build_coarse_arrays", "build_smooth_arrays"]
 ## The oldest native builder whose results match this GDScript (history in `NativeLoader.CLASSES`).
 const REQUIRED_VERSION: int = NativeLoader.CLASSES["NativeChunkBuilder"]["required"]
 

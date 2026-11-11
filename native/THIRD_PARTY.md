@@ -11,8 +11,12 @@ with its source commit. `native/godot-cpp` is fetched by `tools/fetch_godot_cpp.
 
 ## Ported or adopted files
 
-None yet. Phase 249 adopted no code. Its algorithm ports land in later phases, which add a row here
-for each file they port (file, source path, commit, licence):
+| File | Ports | Source path | Commit | Licence |
+|---|---|---|---|---|
+| `src/terrain/voxel_smooth.gd` (Phase 240) | Normals from the density gradient at cell corners, interpolated to the vertex; sample padding so both chunks at a border compute the same normals (the algorithm, not the code) | `meshers/transvoxel/transvoxel.cpp` | `dfb0f81c7fd766f68d78715b2138f4e336cd9737` | MIT, © 2016-2024 Marc Gilleron (notice in the file) |
+
+Phase 249 adopted no code. Its algorithm ports land in the phases below, which add a row above for
+each file they port:
 
 | Phase | Ports | Source path |
 |---|---|---|
