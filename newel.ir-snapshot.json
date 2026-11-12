@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:5a986efa29c0e88ecfe4f55e22a9317ce88306b7f0c6d49f9a5e3f973c792bb8",
+  "schemaHash": "sha256:ab7205dd48d7e342801c1eb3064cec408154c045ccd4d3811f265e6677a577eb",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -4898,6 +4898,15 @@
             "pii": false,
             "defaultValue": 3
           },
+          "snowLine": {
+            "name": "snowLine",
+            "type": "decimal",
+            "description": "Metres above sea level over which natural ground is drawn as snow (Phase 242); 100000 = never",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 700
+          },
           "soilMaterial": {
             "name": "soilMaterial",
             "type": "string",
@@ -5147,6 +5156,15 @@
             "pii": false,
             "defaultValue": 4
           },
+          "snowLine": {
+            "name": "snowLine",
+            "type": "decimal",
+            "description": "Metres above sea level over which natural ground is drawn as snow (Phase 242); 100000 = never",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 700
+          },
           "soilMaterial": {
             "name": "soilMaterial",
             "type": "string",
@@ -5395,6 +5413,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 1
+          },
+          "snowLine": {
+            "name": "snowLine",
+            "type": "decimal",
+            "description": "Metres above sea level over which natural ground is drawn as snow (Phase 242); 100000 = never",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100000
           },
           "soilMaterial": {
             "name": "soilMaterial",
@@ -5661,6 +5688,15 @@
             "pii": false,
             "defaultValue": 2
           },
+          "snowLine": {
+            "name": "snowLine",
+            "type": "decimal",
+            "description": "Metres above sea level over which natural ground is drawn as snow (Phase 242); 100000 = never",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100000
+          },
           "soilMaterial": {
             "name": "soilMaterial",
             "type": "string",
@@ -5920,6 +5956,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 1
+          },
+          "snowLine": {
+            "name": "snowLine",
+            "type": "decimal",
+            "description": "Metres above sea level over which natural ground is drawn as snow (Phase 242); 100000 = never",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100000
           },
           "soilMaterial": {
             "name": "soilMaterial",
@@ -6188,6 +6233,15 @@
             "pii": false,
             "defaultValue": 6
           },
+          "snowLine": {
+            "name": "snowLine",
+            "type": "decimal",
+            "description": "Metres above sea level over which natural ground is drawn as snow (Phase 242); 100000 = never",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100000
+          },
           "soilMaterial": {
             "name": "soilMaterial",
             "type": "string",
@@ -6427,6 +6481,15 @@
             "pii": false,
             "defaultValue": 3
           },
+          "snowLine": {
+            "name": "snowLine",
+            "type": "decimal",
+            "description": "Metres above sea level over which natural ground is drawn as snow (Phase 242); 100000 = never",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100000
+          },
           "soilMaterial": {
             "name": "soilMaterial",
             "type": "string",
@@ -6665,6 +6728,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 2
+          },
+          "snowLine": {
+            "name": "snowLine",
+            "type": "decimal",
+            "description": "Metres above sea level over which natural ground is drawn as snow (Phase 242); 100000 = never",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100000
           },
           "soilMaterial": {
             "name": "soilMaterial",
@@ -6906,6 +6978,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 1.5
+          },
+          "snowLine": {
+            "name": "snowLine",
+            "type": "decimal",
+            "description": "Metres above sea level over which natural ground is drawn as snow (Phase 242); 100000 = never",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
           },
           "soilMaterial": {
             "name": "soilMaterial",
@@ -7149,6 +7230,15 @@
             "pii": false,
             "defaultValue": 1
           },
+          "snowLine": {
+            "name": "snowLine",
+            "type": "decimal",
+            "description": "Metres above sea level over which natural ground is drawn as snow (Phase 242); 100000 = never",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
+          },
           "soilMaterial": {
             "name": "soilMaterial",
             "type": "string",
@@ -7387,6 +7477,15 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 2.5
+          },
+          "snowLine": {
+            "name": "snowLine",
+            "type": "decimal",
+            "description": "Metres above sea level over which natural ground is drawn as snow (Phase 242); 100000 = never",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 400
           },
           "soilMaterial": {
             "name": "soilMaterial",
@@ -7627,6 +7726,15 @@
             "pii": false,
             "defaultValue": 3
           },
+          "snowLine": {
+            "name": "snowLine",
+            "type": "decimal",
+            "description": "Metres above sea level over which natural ground is drawn as snow (Phase 242); 100000 = never",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100000
+          },
           "soilMaterial": {
             "name": "soilMaterial",
             "type": "string",
@@ -7725,6 +7833,612 @@
             }
           }
         },
+        "pii": [],
+        "gdpr": {}
+      },
+      "TerrainGrass": {
+        "name": "TerrainGrass",
+        "tags": [
+          "terrain_material"
+        ],
+        "description": "Short green turf: the ground of the temperate belt, the taiga and the savanna.",
+        "goal": "The most common ground a player walks on",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "layer": {
+            "name": "layer",
+            "type": "integer",
+            "description": "Index of this material in the terrain shader's texture arrays and its weight channel in CUSTOM0/CUSTOM1 (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
+          },
+          "textureKey": {
+            "name": "textureKey",
+            "type": "string",
+            "description": "Asset key prefix; the maps are <key>_albedo/_normal/_roughness.jpg.raw under assets/ (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "textures/terrain/grass"
+          },
+          "scale": {
+            "name": "scale",
+            "type": "decimal",
+            "description": "Metres of ground one texture tile covers (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 4
+          },
+          "biomes": {
+            "name": "biomes",
+            "type": "json",
+            "description": "Biomes whose flat ground this material covers (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "TemperateForest",
+              "TemperateGrassland",
+              "Taiga",
+              "Savanna"
+            ]
+          },
+          "slopeMin": {
+            "name": "slopeMin",
+            "type": "decimal",
+            "description": "Degrees from flat above which ground is this material whatever the biome; -1 = never (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": -1
+          },
+          "aboveSnowLine": {
+            "name": "aboveSnowLine",
+            "type": "boolean",
+            "description": "Whether this material covers ground above the biome's snowLine (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "nearWater": {
+            "name": "nearWater",
+            "type": "decimal",
+            "description": "Metres from open water within which this material covers wet ground; -1 = never (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": -1
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "TerrainDirt": {
+        "name": "TerrainDirt",
+        "tags": [
+          "terrain_material"
+        ],
+        "description": "Dry brown soil and ash: the volcanic badlands.",
+        "goal": "Bare earth where nothing grows",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "layer": {
+            "name": "layer",
+            "type": "integer",
+            "description": "Index of this material in the terrain shader's texture arrays and its weight channel in CUSTOM0/CUSTOM1 (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          },
+          "textureKey": {
+            "name": "textureKey",
+            "type": "string",
+            "description": "Asset key prefix; the maps are <key>_albedo/_normal/_roughness.jpg.raw under assets/ (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "textures/terrain/dirt"
+          },
+          "scale": {
+            "name": "scale",
+            "type": "decimal",
+            "description": "Metres of ground one texture tile covers (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 4
+          },
+          "biomes": {
+            "name": "biomes",
+            "type": "json",
+            "description": "Biomes whose flat ground this material covers (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "VolcanicBadlands"
+            ]
+          },
+          "slopeMin": {
+            "name": "slopeMin",
+            "type": "decimal",
+            "description": "Degrees from flat above which ground is this material whatever the biome; -1 = never (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": -1
+          },
+          "aboveSnowLine": {
+            "name": "aboveSnowLine",
+            "type": "boolean",
+            "description": "Whether this material covers ground above the biome's snowLine (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "nearWater": {
+            "name": "nearWater",
+            "type": "decimal",
+            "description": "Metres from open water within which this material covers wet ground; -1 = never (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": -1
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "TerrainMoss": {
+        "name": "TerrainMoss",
+        "tags": [
+          "terrain_material"
+        ],
+        "description": "Mossy forest floor under the twilight canopy.",
+        "goal": "Give the twilight grove its own ground",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "layer": {
+            "name": "layer",
+            "type": "integer",
+            "description": "Index of this material in the terrain shader's texture arrays and its weight channel in CUSTOM0/CUSTOM1 (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 2
+          },
+          "textureKey": {
+            "name": "textureKey",
+            "type": "string",
+            "description": "Asset key prefix; the maps are <key>_albedo/_normal/_roughness.jpg.raw under assets/ (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "textures/terrain/moss"
+          },
+          "scale": {
+            "name": "scale",
+            "type": "decimal",
+            "description": "Metres of ground one texture tile covers (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 4
+          },
+          "biomes": {
+            "name": "biomes",
+            "type": "json",
+            "description": "Biomes whose flat ground this material covers (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "TwilightGrove"
+            ]
+          },
+          "slopeMin": {
+            "name": "slopeMin",
+            "type": "decimal",
+            "description": "Degrees from flat above which ground is this material whatever the biome; -1 = never (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": -1
+          },
+          "aboveSnowLine": {
+            "name": "aboveSnowLine",
+            "type": "boolean",
+            "description": "Whether this material covers ground above the biome's snowLine (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "nearWater": {
+            "name": "nearWater",
+            "type": "decimal",
+            "description": "Metres from open water within which this material covers wet ground; -1 = never (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": -1
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "TerrainRock": {
+        "name": "TerrainRock",
+        "tags": [
+          "terrain_material"
+        ],
+        "description": "Bare grey rock: cliffs and steep slopes everywhere, and the floor of the void rift.",
+        "goal": "Read steep ground as stone, not as stretched grass",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "layer": {
+            "name": "layer",
+            "type": "integer",
+            "description": "Index of this material in the terrain shader's texture arrays and its weight channel in CUSTOM0/CUSTOM1 (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 3
+          },
+          "textureKey": {
+            "name": "textureKey",
+            "type": "string",
+            "description": "Asset key prefix; the maps are <key>_albedo/_normal/_roughness.jpg.raw under assets/ (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "textures/terrain/rock"
+          },
+          "scale": {
+            "name": "scale",
+            "type": "decimal",
+            "description": "Metres of ground one texture tile covers (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 6.4
+          },
+          "biomes": {
+            "name": "biomes",
+            "type": "json",
+            "description": "Biomes whose flat ground this material covers (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "VoidRift"
+            ]
+          },
+          "slopeMin": {
+            "name": "slopeMin",
+            "type": "decimal",
+            "description": "Degrees from flat above which ground is this material whatever the biome; -1 = never (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 40
+          },
+          "aboveSnowLine": {
+            "name": "aboveSnowLine",
+            "type": "boolean",
+            "description": "Whether this material covers ground above the biome's snowLine (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "nearWater": {
+            "name": "nearWater",
+            "type": "decimal",
+            "description": "Metres from open water within which this material covers wet ground; -1 = never (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": -1
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "TerrainSand": {
+        "name": "TerrainSand",
+        "tags": [
+          "terrain_material"
+        ],
+        "description": "Pale sand: beaches, deserts and the sea floor.",
+        "goal": "Make shores and deserts readable from a distance",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "layer": {
+            "name": "layer",
+            "type": "integer",
+            "description": "Index of this material in the terrain shader's texture arrays and its weight channel in CUSTOM0/CUSTOM1 (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 4
+          },
+          "textureKey": {
+            "name": "textureKey",
+            "type": "string",
+            "description": "Asset key prefix; the maps are <key>_albedo/_normal/_roughness.jpg.raw under assets/ (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "textures/terrain/sand"
+          },
+          "scale": {
+            "name": "scale",
+            "type": "decimal",
+            "description": "Metres of ground one texture tile covers (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 4
+          },
+          "biomes": {
+            "name": "biomes",
+            "type": "json",
+            "description": "Biomes whose flat ground this material covers (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "Ocean",
+              "Beach",
+              "Desert"
+            ]
+          },
+          "slopeMin": {
+            "name": "slopeMin",
+            "type": "decimal",
+            "description": "Degrees from flat above which ground is this material whatever the biome; -1 = never (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": -1
+          },
+          "aboveSnowLine": {
+            "name": "aboveSnowLine",
+            "type": "boolean",
+            "description": "Whether this material covers ground above the biome's snowLine (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "nearWater": {
+            "name": "nearWater",
+            "type": "decimal",
+            "description": "Metres from open water within which this material covers wet ground; -1 = never (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": -1
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "TerrainSnow": {
+        "name": "TerrainSnow",
+        "tags": [
+          "terrain_material"
+        ],
+        "description": "Packed snow: the tundra, the alpine peaks and any ground above its biome's snow line.",
+        "goal": "Mark cold and high ground",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "layer": {
+            "name": "layer",
+            "type": "integer",
+            "description": "Index of this material in the terrain shader's texture arrays and its weight channel in CUSTOM0/CUSTOM1 (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 5
+          },
+          "textureKey": {
+            "name": "textureKey",
+            "type": "string",
+            "description": "Asset key prefix; the maps are <key>_albedo/_normal/_roughness.jpg.raw under assets/ (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "textures/terrain/snow"
+          },
+          "scale": {
+            "name": "scale",
+            "type": "decimal",
+            "description": "Metres of ground one texture tile covers (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 6.4
+          },
+          "biomes": {
+            "name": "biomes",
+            "type": "json",
+            "description": "Biomes whose flat ground this material covers (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "Tundra",
+              "Alpine"
+            ]
+          },
+          "slopeMin": {
+            "name": "slopeMin",
+            "type": "decimal",
+            "description": "Degrees from flat above which ground is this material whatever the biome; -1 = never (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": -1
+          },
+          "aboveSnowLine": {
+            "name": "aboveSnowLine",
+            "type": "boolean",
+            "description": "Whether this material covers ground above the biome's snowLine (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "nearWater": {
+            "name": "nearWater",
+            "type": "decimal",
+            "description": "Metres from open water within which this material covers wet ground; -1 = never (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": -1
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "TerrainMud": {
+        "name": "TerrainMud",
+        "tags": [
+          "terrain_material"
+        ],
+        "description": "Wet dark mud along lake shores and river banks.",
+        "goal": "Show where the ground meets fresh water",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "layer": {
+            "name": "layer",
+            "type": "integer",
+            "description": "Index of this material in the terrain shader's texture arrays and its weight channel in CUSTOM0/CUSTOM1 (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 6
+          },
+          "textureKey": {
+            "name": "textureKey",
+            "type": "string",
+            "description": "Asset key prefix; the maps are <key>_albedo/_normal/_roughness.jpg.raw under assets/ (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "textures/terrain/mud"
+          },
+          "scale": {
+            "name": "scale",
+            "type": "decimal",
+            "description": "Metres of ground one texture tile covers (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 3.2
+          },
+          "biomes": {
+            "name": "biomes",
+            "type": "json",
+            "description": "Biomes whose flat ground this material covers (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": []
+          },
+          "slopeMin": {
+            "name": "slopeMin",
+            "type": "decimal",
+            "description": "Degrees from flat above which ground is this material whatever the biome; -1 = never (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": -1
+          },
+          "aboveSnowLine": {
+            "name": "aboveSnowLine",
+            "type": "boolean",
+            "description": "Whether this material covers ground above the biome's snowLine (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "nearWater": {
+            "name": "nearWater",
+            "type": "decimal",
+            "description": "Metres from open water within which this material covers wet ground; -1 = never (Phase 242)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 3
+          }
+        },
+        "relations": {},
+        "behaviors": {},
         "pii": [],
         "gdpr": {}
       },

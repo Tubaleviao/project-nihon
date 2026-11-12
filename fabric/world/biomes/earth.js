@@ -8,7 +8,8 @@ const { adjacencyFields } = require('./adjacency')
 // ground above ALPINE_FLOOR; Tundra is the cold ground below it. So the tree line falls toward the
 // poles, and warm high ground keeps its forest or grassland instead of turning to snow.
 function earthBiome({ key, description, goal, treeDensity, surfaceMaterial, surfaceTint, soilTint, topsoilDepth,
-  temperature, moisture, altitude, avgTemperature, avgRainfall, soilFertility, surfaceVeinChance, rules, season = {} }) {
+  temperature, moisture, altitude, avgTemperature, avgRainfall, soilFertility, surfaceVeinChance, rules, season = {},
+  snowLine = NO_SNOW_LINE }) {
   const S = { swing: 10, summer: '#ffffff', winter: '#c9d3dc', growth: { summer: 1.25, winter: 0.5 }, spawn: { summer: 1.15, winter: 0.7 }, ...season }
   return defineEntity({
     tags: ['biome'],
@@ -29,6 +30,7 @@ function earthBiome({ key, description, goal, treeDensity, surfaceMaterial, surf
       surfaceTint:    { type: 'string', description: 'Hex colour of the natural top face', defaultValue: surfaceTint },
       soilTint:       { type: 'string', description: 'Hex colour of the side wall down to topsoilDepth; rock below', defaultValue: soilTint },
       topsoilDepth:   { type: 'decimal', description: 'World units of soil under the surface before rock shows on a wall', defaultValue: topsoilDepth },
+      snowLine:       { type: 'decimal', description: 'Metres above sea level over which natural ground is drawn as snow (Phase 242); 100000 = never', defaultValue: snowLine },
       soilMaterial:   { type: 'string', description: 'Material a mined slice of this biome\'s topsoil yields, within topsoilDepth of the surface (Phase 49)', defaultValue: 'Soil' },
       temperature:    { type: 'json', description: 'Climate envelope, normalised 0 (coldest) to 1 (hottest): the climate field selects this biome where its temperature lies in [min, max] (Phase 49)', defaultValue: temperature },
       moisture:       { type: 'json', description: 'Climate envelope, normalised 0 (driest) to 1 (wettest), as for temperature', defaultValue: moisture },
@@ -47,6 +49,8 @@ function earthBiome({ key, description, goal, treeDensity, surfaceMaterial, surf
   })
 }
 
+// Phase 242: a snowLine this high never shows; most biomes have none.
+const NO_SNOW_LINE = 100000
 const ALL = { min: 0, max: 1 }
 const LAND = { min: 1.5, max: 1000 }
 // The lowest ground Alpine can claim, in metres. The spawn plain is capped below it
@@ -90,7 +94,7 @@ module.exports = {
     goal: 'The cold pole of the climate: cold ground with little to harvest',
     treeDensity: 0, surfaceMaterial: 'Snow', surfaceTint: '#dfe8ea', soilTint: '#7d7a6e', topsoilDepth: 1.5,
     temperature: { min: 0, max: 0.2 }, moisture: ALL, altitude: { min: LAND.min, max: ALPINE_FLOOR },
-    season: { swing: 14 }, avgTemperature: -12, avgRainfall: 250, soilFertility: 0.05, surfaceVeinChance: 0.2,
+    season: { swing: 14 }, snowLine: 0, avgTemperature: -12, avgRainfall: 250, soilFertility: 0.05, surfaceVeinChance: 0.2,
     rules: ['No trees grow on the tundra', 'Ferrite veins outcrop at weight 0.3'],
   }),
 
@@ -99,7 +103,7 @@ module.exports = {
     goal: 'Make mountains a biome of their own: cold, bare and high',
     treeDensity: 0, surfaceMaterial: 'Snow', surfaceTint: '#f2f6f7', soilTint: '#8c8c93', topsoilDepth: 1,
     temperature: { min: 0, max: TREE_LINE_TEMPERATURE }, moisture: ALL, altitude: { min: ALPINE_FLOOR, max: 100000 },
-    season: { swing: 14 }, avgTemperature: -5, avgRainfall: 900, soilFertility: 0, surfaceVeinChance: 0.4,
+    season: { swing: 14 }, snowLine: 0, avgTemperature: -5, avgRainfall: 900, soilFertility: 0, surfaceVeinChance: 0.4,
     rules: ['No trees grow above the tree line', 'Ferrite and Aethermite veins outcrop at weight 0.5 on bare peaks'],
   }),
 
@@ -108,7 +112,7 @@ module.exports = {
     goal: 'A northern timber biome: thinner stands than the temperate forest',
     treeDensity: 5, surfaceMaterial: 'Grass', surfaceTint: '#3f6b4a', soilTint: '#5a4632', topsoilDepth: 2.5,
     temperature: { min: 0.15, max: 0.35 }, moisture: { min: 0.3, max: 1 }, altitude: LAND,
-    avgTemperature: 0, avgRainfall: 600, soilFertility: 0.3, surfaceVeinChance: 0.15,
+    snowLine: 400, avgTemperature: 0, avgRainfall: 600, soilFertility: 0.3, surfaceVeinChance: 0.15,
     rules: ['Thornwood trees grow at about two thirds of the temperate forest\'s density', 'Ferrite veins outcrop at weight 0.3'],
   }),
 

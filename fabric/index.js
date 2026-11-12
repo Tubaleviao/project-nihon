@@ -74,6 +74,10 @@ require('./world/world_shape').validateWorldShape(require('./world/hydrology').s
 // Phase 137 — every biome's `surfaceMaterial` must declare whether it is `granular` (settles when undermined).
 require('./world/materials/granular').validateGranular(require('./world/biomes'), materials)
 
+// Phase 242 — every biome resolves to a terrain material and every material's maps are in assets/.
+const terrainMaterials = require('./world/terrain_materials')
+terrainMaterials.validateTerrainMaterials(terrainMaterials.TERRAIN_MATERIALS, biomes)
+
 // Phase 158 — the gesture table must be well formed (known kinds, unique chat commands, restRegen >= 1).
 gestures.validateGestures(gestures.gestureTable())
 
@@ -176,6 +180,7 @@ module.exports = defineFabric({
       Alpine:             biomes.Alpine,
       Taiga:              biomes.Taiga,
       Savanna:            biomes.Savanna,
+      ...terrainMaterials.TERRAIN_MATERIALS,
       WeatherSystem:      weather.WeatherSystem,
       WorldSystem:        world.WorldSystem,
     },

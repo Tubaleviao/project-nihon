@@ -28,6 +28,7 @@ The first metre and a half of shore above the waterline: pale sand and no trees.
 | surfaceTint | string | Hex colour of the natural top face |
 | soilTint | string | Hex colour of the side wall down to topsoilDepth; rock below |
 | topsoilDepth | decimal | World units of soil under the surface before rock shows on a wall |
+| snowLine | decimal | Metres above sea level over which natural ground is drawn as snow (Phase 242); 100000 = never |
 | soilMaterial | string | Material a mined slice of this biome's topsoil yields, within topsoilDepth of the surface (Phase 49) |
 | temperature | json | Climate envelope, normalised 0 (coldest) to 1 (hottest): the climate field selects this biome where its temperature lies in [min, max] (Phase 49) |
 | moisture | json | Climate envelope, normalised 0 (driest) to 1 (wettest), as for temperature |

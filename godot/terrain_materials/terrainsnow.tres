@@ -1,0 +1,16 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/terrain_materials/terrainsnow.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+layer = 5
+textureKey = "textures/terrain/snow"
+scale = 6.4
+biomes = ["Tundra","Alpine"]
+slopeMin = -1.0
+aboveSnowLine = true
+nearWater = -1.0
+description = "Packed snow: the tundra, the alpine peaks and any ground above its biome's snow line."
+tags = ["terrain_material"]

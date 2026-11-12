@@ -1,0 +1,16 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/terrain_materials/terraindirt.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+layer = 1
+textureKey = "textures/terrain/dirt"
+scale = 4.0
+biomes = ["VolcanicBadlands"]
+slopeMin = -1.0
+aboveSnowLine = false
+nearWater = -1.0
+description = "Dry brown soil and ash: the volcanic badlands."
+tags = ["terrain_material"]

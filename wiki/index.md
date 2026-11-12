@@ -284,6 +284,16 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [TechTextileWeaving](entities/techtextileweaving.md) — Fiber processing and loom construction techniques
 - [TechVoidMastery](entities/techvoidmastery.md) — Esoteric void-smithing and void-brewing techniques
 
+## Terrain_material
+
+- [TerrainDirt](entities/terraindirt.md) — Dry brown soil and ash: the volcanic badlands
+- [TerrainGrass](entities/terraingrass.md) — Short green turf: the ground of the temperate belt, the taiga and the savanna
+- [TerrainMoss](entities/terrainmoss.md) — Mossy forest floor under the twilight canopy
+- [TerrainMud](entities/terrainmud.md) — Wet dark mud along lake shores and river banks
+- [TerrainRock](entities/terrainrock.md) — Bare grey rock: cliffs and steep slopes everywhere, and the floor of the void rift
+- [TerrainSand](entities/terrainsand.md) — Pale sand: beaches, deserts and the sea floor
+- [TerrainSnow](entities/terrainsnow.md) — Packed snow: the tundra, the alpine peaks and any ground above its biome's snow line
+
 ## Tutorial
 
 - [Tutorial](entities/tutorial.md) — The first-steps tutorial: an ordered list of small steps that teach a new player to move, gather, build the first stations and tools, make a shelter with a bed, hunt, stay alive, find their way, grow and meet other people

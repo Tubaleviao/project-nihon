@@ -25,6 +25,7 @@ Open rolling plains ideal for large settlements, agriculture, and mounted travel
 | `surfaceTint` | string | yes | Hex colour of the natural top face |
 | `soilTint` | string | yes | Hex colour of the side wall down to topsoilDepth; rock below |
 | `topsoilDepth` | decimal | yes | World units of soil under the surface before rock shows on a wall |
+| `snowLine` | decimal | yes | Metres above sea level over which natural ground is drawn as snow (Phase 242); 100000 = never |
 | `soilMaterial` | string | yes | Material a mined slice of this biome's topsoil yields, within topsoilDepth of the surface (Phase 49). The surface-material → soil-material mapping, authored here so no GDScript branch decides it |
 | `temperature` | json | yes | Climate envelope, normalised 0 (coldest) to 1 (hottest): the climate field selects this biome where its temperature lies in [min, max] (Phase 49) |
 | `moisture` | json | yes | Climate envelope, normalised 0 (driest) to 1 (wettest), as for temperature |

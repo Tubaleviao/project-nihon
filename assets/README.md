@@ -144,6 +144,25 @@ pool, as does any creature whose model key is absent. Each type binds its own bo
 `textures/creatures/<Entity>{,_color_mask,_channel}.png.raw` through the character shader.
 Regenerate all of them with `python3 tools/gen_placeholder_glb.py`.
 
+## Terrain textures (Phase 242)
+
+`textures/terrain/<name>_{albedo,normal,roughness}.jpg.raw` are the maps of the terrain materials in
+`fabric/world/terrain_materials.js` (`textureKey`). They are CC0, so they ship in the public repo and are
+also the placeholder for later production art: a production set in `assets-prod/` must keep the same
+keys, 1024×1024, OpenGL (Y+) normals and a single-channel roughness. They were re-encoded from the
+ambientCG 1K-JPG downloads (colour, NormalGL and roughness maps; JPEG quality ~85, roughness grey).
+`node tools/check_terrain_materials.js` and `npm run validate` fail if a material's map has no file here.
+
+| Key | Source | Licence |
+|---|---|---|
+| `grass` | ambientCG Grass004 — https://ambientcg.com/view?id=Grass004 | CC0 1.0 |
+| `dirt` | ambientCG Ground048 — https://ambientcg.com/view?id=Ground048 | CC0 1.0 |
+| `moss` | ambientCG Ground037 — https://ambientcg.com/view?id=Ground037 | CC0 1.0 |
+| `rock` | ambientCG Rock030 — https://ambientcg.com/view?id=Rock030 | CC0 1.0 |
+| `sand` | ambientCG Ground054 — https://ambientcg.com/view?id=Ground054 | CC0 1.0 |
+| `snow` | ambientCG Snow006 — https://ambientcg.com/view?id=Snow006 | CC0 1.0 |
+| `mud` | ambientCG Ground036 — https://ambientcg.com/view?id=Ground036 | CC0 1.0 |
+
 ## Regenerating a placeholder
 
 ```bash

@@ -1,0 +1,16 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/terrain_materials/terrainmoss.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+layer = 2
+textureKey = "textures/terrain/moss"
+scale = 4.0
+biomes = ["TwilightGrove"]
+slopeMin = -1.0
+aboveSnowLine = false
+nearWater = -1.0
+description = "Mossy forest floor under the twilight canopy."
+tags = ["terrain_material"]

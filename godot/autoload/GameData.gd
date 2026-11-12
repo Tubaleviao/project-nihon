@@ -279,6 +279,16 @@ const TECHNOLOGIES: Dictionary = {
 		"TechVoidMastery": preload("res://godot/technologies/techvoidmastery.tres")
 }
 
+const TERRAIN_MATERIALS: Dictionary = {
+		"TerrainDirt": preload("res://godot/terrain_materials/terraindirt.tres"),
+		"TerrainGrass": preload("res://godot/terrain_materials/terraingrass.tres"),
+		"TerrainMoss": preload("res://godot/terrain_materials/terrainmoss.tres"),
+		"TerrainMud": preload("res://godot/terrain_materials/terrainmud.tres"),
+		"TerrainRock": preload("res://godot/terrain_materials/terrainrock.tres"),
+		"TerrainSand": preload("res://godot/terrain_materials/terrainsand.tres"),
+		"TerrainSnow": preload("res://godot/terrain_materials/terrainsnow.tres")
+}
+
 const TUTORIALS: Dictionary = {
 		"Tutorial": preload("res://godot/tutorials/tutorial.tres")
 }
