@@ -22,6 +22,10 @@ const ASSETS = path.join(__dirname, '..', '..', 'assets')
 // layers 4-7), so weights interpolate correctly across a triangle whose corners use different
 // materials; that caps the table at eight layers. A vertex still blends at most four of them.
 const MAX_LAYERS = 8
+// Metres along one chunk edge (TerrainSlice.CHUNK_METERS: 64 tiles x 0.5 m). The shader maps textures
+// from scene positions, and an origin rebase shifts the scene by whole chunks, so a texture tile that
+// does not fit a chunk a whole number of times would jump at every rebase: `scale` must divide it.
+const CHUNK_METRES = 32
 
 function terrainMaterial({ description, goal, layer, textureKey, scale, biomes = [], slopeMin = -1,
   aboveSnowLine = false, nearWater = -1 }) {
@@ -64,7 +68,7 @@ const TERRAIN_MATERIALS = {
   TerrainRock: terrainMaterial({
     description: 'Bare grey rock: cliffs and steep slopes everywhere, and the floor of the void rift.',
     goal: 'Read steep ground as stone, not as stretched grass',
-    layer: 3, textureKey: 'textures/terrain/rock', scale: 6,
+    layer: 3, textureKey: 'textures/terrain/rock', scale: 6.4,
     biomes: ['VoidRift'], slopeMin: 40,
   }),
   TerrainSand: terrainMaterial({
@@ -76,13 +80,13 @@ const TERRAIN_MATERIALS = {
   TerrainSnow: terrainMaterial({
     description: 'Packed snow: the tundra, the alpine peaks and any ground above its biome\'s snow line.',
     goal: 'Mark cold and high ground',
-    layer: 5, textureKey: 'textures/terrain/snow', scale: 5,
+    layer: 5, textureKey: 'textures/terrain/snow', scale: 6.4,
     biomes: ['Tundra', 'Alpine'], aboveSnowLine: true,
   }),
   TerrainMud: terrainMaterial({
     description: 'Wet dark mud along lake shores and river banks.',
     goal: 'Show where the ground meets fresh water',
-    layer: 6, textureKey: 'textures/terrain/mud', scale: 3,
+    layer: 6, textureKey: 'textures/terrain/mud', scale: 3.2,
     nearWater: 3,
   }),
 }
@@ -102,6 +106,7 @@ function terrainMaterialProblems(materials, biomes, assetsDir = ASSETS) {
     else layers.set(layer, name)
     const scale = value(m, 'scale')
     if (!(typeof scale === 'number' && scale > 0)) problems.push(`terrain material ${name}: scale must be a positive number of metres`)
+    else if (Math.abs(CHUNK_METRES / scale - Math.round(CHUNK_METRES / scale)) > 1e-9) problems.push(`terrain material ${name}: scale ${scale} must fit a ${CHUNK_METRES} m chunk a whole number of times (the texture would jump at an origin rebase)`)
     const list = value(m, 'biomes')
     if (!Array.isArray(list)) problems.push(`terrain material ${name}: biomes must be a list`)
     else for (const b of list) {
@@ -135,4 +140,4 @@ function validateTerrainMaterials(materials, biomes, assetsDir = ASSETS) {
   if (problems.length) throw new Error(`Terrain materials: ${problems.join('; ')}`)
 }
 
-module.exports = { TERRAIN_MATERIALS, MAPS, terrainMaterialProblems, validateTerrainMaterials }
+module.exports = { TERRAIN_MATERIALS, MAPS, CHUNK_METRES, terrainMaterialProblems, validateTerrainMaterials }
