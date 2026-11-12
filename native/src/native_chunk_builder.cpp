@@ -345,6 +345,7 @@ void NativeChunkBuilder::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("version"), &NativeChunkBuilder::version);
 	ClassDB::bind_method(D_METHOD("functions"), &NativeChunkBuilder::functions);
 	ClassDB::bind_method(D_METHOD("heightmap_for", "pos", "seed", "noise", "cfg"), &NativeChunkBuilder::heightmap_for);
+	ClassDB::bind_method(D_METHOD("heightmap_strip_for", "pos", "side", "depth", "seed", "noise", "cfg"), &NativeChunkBuilder::heightmap_strip_for);
 	ClassDB::bind_method(D_METHOD("build_runs", "chunk_pos", "heightmap", "input", "cfg"), &NativeChunkBuilder::build_runs);
 	ClassDB::bind_method(D_METHOD("build_chunk_arrays", "chunk_pos", "heightmap", "resolved", "local", "cfg"), &NativeChunkBuilder::build_chunk_arrays);
 	ClassDB::bind_method(D_METHOD("build_smooth_arrays", "chunk_pos", "heightmap", "resolved", "local", "cfg"), &NativeChunkBuilder::build_smooth_arrays);
@@ -352,7 +353,7 @@ void NativeChunkBuilder::_bind_methods() {
 }
 
 int NativeChunkBuilder::version() const {
-	return 10;   // 10 = build_runs reads `pad` and build_smooth_arrays (Phase 240); 9 = Phase 238 continent mask and planet-size lattices (`cfg.continents`); 8 = worldgen 11 massifs (Phase 211); 7 = build_coarse_arrays (Phase 190); 6 = worldgen 10 ridges (Phase 188); 5 = heightmap_for reads the spawn plain from `cfg.spawn_plain` (worldgen 9)
+	return 13;   // 13 = heightmap_strip_for (Phase 241 review: a coarse build's seam strips); 12 = coarse corners on the edge plane capped by the neighbours' edge tiles (`edge_tops`), one vertex per coarse cell (Phase 241 review); 11 = build_coarse_arrays meshes smooth with skirts (Phase 241); 10 = build_runs reads `pad` and build_smooth_arrays (Phase 240); 9 = Phase 238 continent mask and planet-size lattices (`cfg.continents`); 8 = worldgen 11 massifs (Phase 211); 7 = build_coarse_arrays (Phase 190); 6 = worldgen 10 ridges (Phase 188); 5 = heightmap_for reads the spawn plain from `cfg.spawn_plain` (worldgen 9)
 }
 
 PackedStringArray NativeChunkBuilder::functions() const {
@@ -362,10 +363,25 @@ PackedStringArray NativeChunkBuilder::functions() const {
 	out.push_back("build_chunk_arrays");
 	out.push_back("build_coarse_arrays");
 	out.push_back("build_smooth_arrays");
+	out.push_back("heightmap_strip_for");
 	return out;
 }
 
 Array NativeChunkBuilder::heightmap_for(const Vector2i &p_pos, int64_t p_seed, const Ref<FastNoiseLite> &p_noise, const Dictionary &p_cfg) const {
+	return heightmap_range(p_pos, p_seed, p_noise, p_cfg, 0, CHUNK_SIZE, 0, CHUNK_SIZE);
+}
+
+Array NativeChunkBuilder::heightmap_strip_for(const Vector2i &p_pos, const Vector2i &p_side, int64_t p_depth, int64_t p_seed, const Ref<FastNoiseLite> &p_noise, const Dictionary &p_cfg) const {
+	const int d = int(p_depth < 1 ? 1 : (p_depth > CHUNK_SIZE ? CHUNK_SIZE : p_depth));
+	const int x0 = p_side.x > 0 ? CHUNK_SIZE - d : 0;
+	const int x1 = p_side.x < 0 ? d : CHUNK_SIZE;
+	const int z0 = p_side.y > 0 ? CHUNK_SIZE - d : 0;
+	const int z1 = p_side.y < 0 ? d : CHUNK_SIZE;
+	return heightmap_range(p_pos, p_seed, p_noise, p_cfg, x0, x1, z0, z1);
+}
+
+// The tiles [x0, x1) x [z0, z1) of chunk `pos`; null in every other tile.
+Array NativeChunkBuilder::heightmap_range(const Vector2i &p_pos, int64_t p_seed, const Ref<FastNoiseLite> &p_noise, const Dictionary &p_cfg, int p_x0, int p_x1, int p_z0, int p_z1) const {
 	Array out;
 	ERR_FAIL_COND_V(p_noise.is_null(), out);
 	Cfg cfg;
@@ -401,8 +417,8 @@ Array NativeChunkBuilder::heightmap_for(const Vector2i &p_pos, int64_t p_seed, c
 	double origin_z = double(p_pos.y * CHUNK_SIZE) * TILE_SIZE;
 	Ctx ctx(cfg, p_seed, p_noise, w);
 	out.resize(CHUNK_SIZE * CHUNK_SIZE);
-	for (int ty = 0; ty < CHUNK_SIZE; ty++) {
-		for (int tx = 0; tx < CHUNK_SIZE; tx++) {
+	for (int ty = p_z0; ty < p_z1; ty++) {
+		for (int tx = p_x0; tx < p_x1; tx++) {
 			out[ty * CHUNK_SIZE + tx] = ctx.height_wrapped(origin_x + tx * TILE_SIZE, origin_z + ty * TILE_SIZE);
 		}
 	}

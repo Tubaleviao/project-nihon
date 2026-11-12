@@ -1,5 +1,7 @@
 // Phase 240 — NativeChunkBuilder::build_smooth_arrays, the port of `VoxelSmooth.build_natural_arrays`:
-// the surface-nets mesher over the natural runs. The GDScript (src/terrain/voxel_smooth.gd) is the
+// the surface-nets mesher over the natural runs. Phase 241 — `mesh_coarse_columns`, the port of
+// `VoxelSmooth.mesh_coarse_columns`: the same mesher on a coarse build's columns (every spacing scaled by
+// the step, the padding repeating the edge columns), with skirts down to bedrock under the chunk's edge. The GDScript (src/terrain/voxel_smooth.gd) is the
 // reference and every expression mirrors it, including where a value is narrowed to float32 (a
 // PackedFloat32Array sample, a Vector3 component) and the order vertices are made in, so the parity
 // test can compare the arrays exactly.
@@ -16,6 +18,7 @@
 
 #include <godot_cpp/variant/color.hpp>
 #include <godot_cpp/variant/packed_color_array.hpp>
+#include <godot_cpp/variant/packed_float64_array.hpp>
 #include <godot_cpp/variant/packed_int32_array.hpp>
 #include <godot_cpp/variant/packed_vector3_array.hpp>
 #include <godot_cpp/variant/vector3.hpp>
@@ -23,6 +26,7 @@
 #include <algorithm>
 #include <cmath>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 using namespace godot;
@@ -68,9 +72,21 @@ inline int64_t floori(double x) { return (int64_t)std::floor(x); }
 inline int64_t ceili(double x) { return (int64_t)std::ceil(x); }
 inline int64_t roundi(double x) { return (int64_t)std::round(x); }
 
+const uint8_t SIDE_WEST = 1;
+const uint8_t SIDE_EAST = 2;
+const uint8_t SIDE_NORTH = 4;
+const uint8_t SIDE_SOUTH = 8;
+
 class Smooth {
 public:
 	SKeys k;
+	// The grid (see `_Mesher` in voxel_smooth.gd): step 1 for a full build.
+	int n = CHUNK_SIZE;
+	int span = SPAN;
+	double cell = TILE_SIZE;
+	double grid = GRID;
+	double clamp_d = CLAMP;
+	bool skirted = false;
 	Vector2i chunk;
 	int64_t lap_tiles = 0;
 	Color fallback;
@@ -88,7 +104,18 @@ public:
 	std::vector<Vector3> vertices, normals, collision;
 	std::vector<Color> colors;
 	std::vector<int32_t> indices;
+	std::vector<uint8_t> sides;
+	// Coarse builds only: the cap each padding column one cell past the edge puts on a corner (`pad_caps`).
+	std::vector<double> pad_caps;
 	int64_t quads = 0;
+
+	void set_step(int step) {
+		n = CHUNK_SIZE / step;
+		span = n + 2 * PAD;
+		cell = TILE_SIZE * double(step);
+		grid = GRID * double(step);
+		clamp_d = CLAMP * double(step);
+	}
 
 	String tile_key(int64_t gx, int64_t gz) const {
 		int64_t half = lap_tiles / 2;
@@ -139,14 +166,64 @@ public:
 		return true;
 	}
 
+	void alloc() {
+		col_runs.assign(span * span, std::vector<SRun>());
+		col_known.assign(span * span, 0);
+		col_lo.assign(span * span, 0);
+		col_vals.assign(span * span, std::vector<float>());
+	}
+
+	// A coarse build's columns: one run from bedrock to each cell's top (none at or below bedrock); the
+	// padding repeats the nearest edge column.
+	void load_columns(const PackedFloat64Array &tops, const PackedColorArray &c_colors, const PackedColorArray &top_colors,
+			const PackedColorArray &soil_colors, const PackedFloat64Array &soil_depths, const PackedFloat64Array &edge_tops) {
+		alloc();
+		for (int tz = 0; tz < n; tz++) {
+			for (int tx = 0; tx < n; tx++) {
+				int i = tz * n + tx;
+				int ci = (tz + PAD) * span + (tx + PAD);
+				if (tops[i] > BEDROCK_DEPTH) {
+					SRun r;
+					r.bottom = BEDROCK_DEPTH;
+					r.top = tops[i];
+					r.color = c_colors[i];
+					r.top_color = top_colors[i];
+					r.soil_color = soil_colors[i];
+					r.soil_depth = soil_depths[i];
+					col_runs[ci].push_back(r);
+				}
+				col_known[ci] = 1;
+				sample_column(ci);
+			}
+		}
+		for (int tz = -PAD; tz < n + PAD; tz++) {
+			for (int tx = -PAD; tx < n + PAD; tx++) {
+				if (tx >= 0 && tx < n && tz >= 0 && tz < n) {
+					continue;
+				}
+				int ci = (tz + PAD) * span + (tx + PAD);
+				int src = (std::clamp(tz, 0, n - 1) + PAD) * span + (std::clamp(tx, 0, n - 1) + PAD);
+				col_runs[ci] = col_runs[src];
+				col_known[ci] = col_known[src];
+				col_lo[ci] = col_lo[src];
+				col_vals[ci] = col_vals[src];
+			}
+		}
+		pad_caps.assign(span * span, -INFINITY);
+		if (edge_tops.size() == int64_t(n + 2) * (n + 2)) {
+			for (int tz = -1; tz <= n; tz++) {
+				for (int tx = -1; tx <= n; tx++) {
+					pad_caps[(tz + PAD) * span + (tx + PAD)] = edge_tops[(tz + 1) * (n + 2) + (tx + 1)];
+				}
+			}
+		}
+	}
+
 	bool load() {
-		col_runs.assign(SPAN * SPAN, std::vector<SRun>());
-		col_known.assign(SPAN * SPAN, 0);
-		col_lo.assign(SPAN * SPAN, 0);
-		col_vals.assign(SPAN * SPAN, std::vector<float>());
+		alloc();
 		for (int tz = -PAD; tz < CHUNK_SIZE + PAD; tz++) {
 			for (int tx = -PAD; tx < CHUNK_SIZE + PAD; tx++) {
-				int ci = (tz + PAD) * SPAN + (tx + PAD);
+				int ci = (tz + PAD) * span + (tx + PAD);
 				bool inside = tx >= 0 && tx < CHUNK_SIZE && tz >= 0 && tz < CHUNK_SIZE;
 				Variant key = tile_key(int64_t(chunk.x) * CHUNK_SIZE + tx, int64_t(chunk.y) * CHUNK_SIZE + tz);
 				bool any = false;
@@ -172,8 +249,8 @@ public:
 		return true;
 	}
 
-	static double density(const std::vector<SRun> &rs, double y) {
-		double best = CLAMP;
+	static double density(const std::vector<SRun> &rs, double y, double limit) {
+		double best = limit;
 		for (const SRun &r : rs) {
 			bool floor_open = r.bottom > BEDROCK_DEPTH;
 			if (y < r.top && (y >= r.bottom || !floor_open)) {
@@ -181,7 +258,7 @@ public:
 				if (floor_open) {
 					d = std::min(d, y - r.bottom);
 				}
-				return -std::clamp(d, INSIDE_MIN, CLAMP);
+				return -std::clamp(d, INSIDE_MIN, limit);
 			}
 			if (y >= r.top) {
 				best = std::min(best, y - r.top);
@@ -207,20 +284,20 @@ public:
 		std::vector<float> &vals = col_vals[ci];
 		if (lo_y == INFINITY) {
 			col_lo[ci] = 0;
-			vals.push_back(float(CLAMP));
+			vals.push_back(float(clamp_d));
 			return;
 		}
-		int64_t lo = floori((lo_y - CLAMP) / GRID) - 1;
-		int64_t hi = ceili((hi_y + CLAMP) / GRID) + 1;
+		int64_t lo = floori((lo_y - clamp_d) / grid) - 1;
+		int64_t hi = ceili((hi_y + clamp_d) / grid) + 1;
 		col_lo[ci] = lo;
 		vals.resize(hi - lo + 1);
 		for (int64_t j = lo; j <= hi; j++) {
-			vals[j - lo] = float(density(rs, double(j) * GRID));
+			vals[j - lo] = float(density(rs, double(j) * grid, clamp_d));
 		}
 	}
 
 	double s(int tx, int tz, int64_t j) const {
-		int ci = (tz + PAD) * SPAN + (tx + PAD);
+		int ci = (tz + PAD) * span + (tx + PAD);
 		const std::vector<float> &vals = col_vals[ci];
 		return double(vals[std::clamp<int64_t>(j - col_lo[ci], 0, int64_t(vals.size()) - 1)]);
 	}
@@ -237,9 +314,9 @@ public:
 	}
 
 	void build() {
-		for (int tz = 0; tz < CHUNK_SIZE; tz++) {
-			for (int tx = 0; tx < CHUNK_SIZE; tx++) {
-				int ci = (tz + PAD) * SPAN + (tx + PAD);
+		for (int tz = 0; tz < n; tz++) {
+			for (int tx = 0; tx < n; tx++) {
+				int ci = (tz + PAD) * span + (tx + PAD);
 				int64_t olo, ohi;
 				range(ci, olo, ohi);
 				const std::vector<float> &vals = col_vals[ci];
@@ -249,8 +326,11 @@ public:
 						y_quad(tx, tz, j);
 					}
 				}
+				if (skirted) {
+					continue; // a coarse build's upright quads have no area (see `_vertex`)
+				}
 				side_edges(tx, tz, ci, ci + 1, olo, ohi, 0);
-				side_edges(tx, tz, ci, ci + SPAN, olo, ohi, 1);
+				side_edges(tx, tz, ci, ci + span, olo, ohi, 1);
 			}
 		}
 	}
@@ -286,23 +366,23 @@ public:
 		}
 	}
 
-	static Vector3 pos(int sx, int sz, int64_t j) {
-		return Vector3((sx + 0.5) * TILE_SIZE, double(j) * GRID, (sz + 0.5) * TILE_SIZE);
+	Vector3 pos(int sx, int sz, int64_t j) const {
+		return Vector3((sx + 0.5) * cell, double(j) * grid, (sz + 0.5) * cell);
 	}
 
 	Vector3 gradient(int sx, int sz, int64_t j) {
-		int64_t key = ((j + LEVEL_OFFSET) * SPAN + (sz + PAD)) * SPAN + (sx + PAD);
+		int64_t key = ((j + LEVEL_OFFSET) * span + (sz + PAD)) * span + (sx + PAD);
 		auto it = grads.find(key);
 		if (it != grads.end()) {
 			return it->second;
 		}
-		int ci = (sz + PAD) * SPAN + (sx + PAD);
+		int ci = (sz + PAD) * span + (sx + PAD);
 		const std::vector<float> &vals = col_vals[ci];
 		int64_t lo = col_lo[ci];
-		int64_t n = int64_t(vals.size()) - 1;
+		int64_t last = int64_t(vals.size()) - 1;
 		Vector3 g(
 				s(sx + 1, sz, j) - s(sx - 1, sz, j),
-				double(vals[std::clamp<int64_t>(j + 1 - lo, 0, n)]) - double(vals[std::clamp<int64_t>(j - 1 - lo, 0, n)]),
+				double(vals[std::clamp<int64_t>(j + 1 - lo, 0, last)]) - double(vals[std::clamp<int64_t>(j - 1 - lo, 0, last)]),
 				s(sx, sz + 1, j) - s(sx, sz - 1, j));
 		grads[key] = g;
 		return g;
@@ -312,10 +392,13 @@ public:
 		return Vector3(c & 1, (c >> 1) & 1, (c >> 2) & 1);
 	}
 
-	int32_t add_vertex(const Vector3 &p, const Vector3 &g, const Color &color) {
+	int32_t add_vertex(const Vector3 &p, const Vector3 &g, const Color &color, uint8_t side = 0) {
 		vertices.push_back(Vector3(double(p.x) + origin_x, p.y, double(p.z) + origin_z));
 		normals.push_back(double(g.length_squared()) > 1e-12 ? g.normalized() : Vector3(0, 1, 0));
 		colors.push_back(color);
+		if (skirted) {
+			sides.push_back(side);
+		}
 		return int32_t(vertices.size()) - 1;
 	}
 
@@ -343,7 +426,7 @@ public:
 		int rz = int(roundi(double(u.z)));
 		const int order[4][2] = { { rx, rz }, { rx, 1 - rz }, { 1 - rx, rz }, { 1 - rx, 1 - rz } };
 		for (const auto &o : order) {
-			const std::vector<SRun> &rs = col_runs[(cz + o[1] + PAD) * SPAN + (cx + o[0] + PAD)];
+			const std::vector<SRun> &rs = col_runs[(cz + o[1] + PAD) * span + (cx + o[0] + PAD)];
 			if (!rs.empty()) {
 				return color_at(rs, double(p.y));
 			}
@@ -352,7 +435,7 @@ public:
 	}
 
 	int32_t vertex(int cx, int cz, int64_t j) {
-		int64_t key = ((j + LEVEL_OFFSET) * SPAN + (cz + PAD)) * SPAN + (cx + PAD);
+		int64_t key = ((skirted ? 0 : j + LEVEL_OFFSET) * span + (cz + PAD)) * span + (cx + PAD);
 		auto it = cells.find(key);
 		if (it != cells.end()) {
 			return it->second;
@@ -362,7 +445,7 @@ public:
 			v[c] = s(cx + (c & 1), cz + ((c >> 2) & 1), j + ((c >> 1) & 1));
 		}
 		Vector3 sum;
-		int n = 0;
+		int count = 0;
 		for (const auto &e : EDGES) {
 			int a = e[0];
 			int b = e[1];
@@ -371,10 +454,22 @@ public:
 			}
 			double t = v[a] / (v[a] - v[b]);
 			sum += corner(a).lerp(corner(b), real_t(t));
-			n++;
+			count++;
 		}
-		Vector3 u = n > 0 ? sum / real_t(n) : Vector3(0.5, 0.5, 0.5);
-		Vector3 p = pos(cx, cz, j) + Vector3(double(u.x) * TILE_SIZE, double(u.y) * GRID, double(u.z) * TILE_SIZE);
+		Vector3 u = count > 0 ? sum / real_t(count) : Vector3(0.5, 0.5, 0.5);
+		Vector3 p = pos(cx, cz, j) + Vector3(double(u.x) * cell, double(u.y) * grid, double(u.z) * cell);
+		if (skirted) {
+			// Coarse: pinned to the shared cell corner, as high as the tallest cell round it (see `_vertex`).
+			double cap = double(p.y);
+			for (int c = 0; c < 4; c++) {
+				int ci = (cz + (c >> 1) + PAD) * span + (cx + (c & 1) + PAD);
+				cap = std::max(cap, pad_caps[ci]);
+				for (const SRun &r : col_runs[ci]) {
+					cap = std::max(cap, r.top);
+				}
+			}
+			p = Vector3((cx + 1) * cell, cap, (cz + 1) * cell);
+		}
 		Vector3 g;
 		for (int c = 0; c < 8; c++) {
 			int dx = c & 1;
@@ -386,7 +481,20 @@ public:
 			}
 		}
 		Color color = cell_color(cx, cz, p, u);
-		int32_t idx = add_vertex(p, g, color);
+		uint8_t side = 0;
+		if (skirted) {
+			if (cx == -1) {
+				side |= SIDE_WEST;
+			} else if (cx == n - 1) {
+				side |= SIDE_EAST;
+			}
+			if (cz == -1) {
+				side |= SIDE_NORTH;
+			} else if (cz == n - 1) {
+				side |= SIDE_SOUTH;
+			}
+		}
+		int32_t idx = add_vertex(p, g, color, side);
 		cells[key] = idx;
 		return idx;
 	}
@@ -404,14 +512,14 @@ public:
 		double below = s(tx, tz, j);
 		double above = s(tx, tz, j + 1);
 		bool up = below < 0.0;
-		const std::vector<SRun> &rs = col_runs[(tz + PAD) * SPAN + (tx + PAD)];
-		double y0 = double(j) * GRID;
-		double y = y0 + GRID * (below / (below - above));
+		const std::vector<SRun> &rs = col_runs[(tz + PAD) * span + (tx + PAD)];
+		double y0 = double(j) * grid;
+		double y = y0 + grid * (below / (below - above));
 		Color color = fallback;
 		int found = 0;
 		for (const SRun &r : rs) {
 			double b = up ? r.top : r.bottom;
-			if (b > y0 && b <= y0 + GRID && (up || b > BEDROCK_DEPTH)) {
+			if (b > y0 && b <= y0 + grid && (up || b > BEDROCK_DEPTH)) {
 				found++;
 				y = b;
 				color = up ? r.top_color : r.color;
@@ -420,11 +528,11 @@ public:
 		if (found != 1) {
 			color = rs.empty() ? fallback : color_at(rs, y);
 		}
-		double t = std::clamp((y - y0) / GRID, 0.0, 1.0);
+		double t = std::clamp((y - y0) / grid, 0.0, 1.0);
 		Vector3 g0 = gradient(tx, tz, j);
 		Vector3 g1 = gradient(tx, tz, j + 1);
 		Vector3 g = g0.lerp(g1, real_t(t));
-		int32_t centre = add_vertex(Vector3((tx + 0.5) * TILE_SIZE, y, (tz + 0.5) * TILE_SIZE), g, color);
+		int32_t centre = add_vertex(Vector3((tx + 0.5) * cell, y, (tz + 0.5) * cell), g, color);
 		int32_t ring[4];
 		ring[0] = vertex(tx - 1, tz - 1, j);
 		ring[1] = vertex(tx, tz - 1, j);
@@ -468,6 +576,81 @@ public:
 		}
 		quad(ring);
 	}
+
+	// Phase 241 — the skirts (see `add_skirts` in voxel_smooth.gd). Returns the skirt quads made.
+	int64_t add_skirts() {
+		int64_t made = 0;
+		std::unordered_set<int64_t> seen;
+		size_t tri_end = indices.size();
+		int64_t vcount = int64_t(vertices.size());
+		static const uint8_t order[4] = { SIDE_WEST, SIDE_EAST, SIDE_NORTH, SIDE_SOUTH };
+		for (size_t t = 0; t < tri_end; t += 3) {
+			for (int e = 0; e < 3; e++) {
+				int32_t a = indices[t + e];
+				int32_t b = indices[t + (e + 1) % 3];
+				uint8_t common = sides[a] & sides[b];
+				if (common == 0) {
+					continue;
+				}
+				for (uint8_t side : order) {
+					if ((common & side) == 0) {
+						continue;
+					}
+					int64_t key = (int64_t(std::min(a, b)) * vcount + int64_t(std::max(a, b))) * 16 + side;
+					if (!seen.insert(key).second) {
+						continue;
+					}
+					if (skirt(a, b, side)) {
+						made++;
+					}
+				}
+			}
+		}
+		return made;
+	}
+
+	bool skirt(int32_t a, int32_t b, uint8_t side) {
+		Vector3 pa = vertices[a];
+		Vector3 pb = vertices[b];
+		bool along_z = side == SIDE_WEST || side == SIDE_EAST;
+		double along = along_z ? double(pb.z) - double(pa.z) : double(pb.x) - double(pa.x);
+		if (std::abs(along) < 1e-6) {
+			return false;
+		}
+		bool flip = along < 0.0;
+		if (side == SIDE_WEST || side == SIDE_SOUTH) {
+			flip = !flip;
+		}
+		if (flip) {
+			std::swap(pa, pb);
+			std::swap(a, b);
+		}
+		Vector3 normal = side == SIDE_WEST ? Vector3(-1, 0, 0) : (side == SIDE_EAST ? Vector3(1, 0, 0) : (side == SIDE_NORTH ? Vector3(0, 0, -1) : Vector3(0, 0, 1)));
+		if (double(pa.y) <= BEDROCK_DEPTH && double(pb.y) <= BEDROCK_DEPTH) {
+			return false; // nothing above the floor to cover
+		}
+		Color color = double(pa.y) >= double(pb.y) ? colors[a] : colors[b];
+		int32_t base = int32_t(vertices.size());
+		const Vector3 quad_pts[4] = {
+			pa, pb,
+			Vector3(pb.x, BEDROCK_DEPTH, pb.z), Vector3(pa.x, BEDROCK_DEPTH, pa.z)
+		};
+		for (const Vector3 &p : quad_pts) {
+			vertices.push_back(p);
+			normals.push_back(normal);
+			colors.push_back(color);
+			sides.push_back(0);
+		}
+		// A skirt with one end on the floor is one triangle (the other would have no area).
+		if (double(pb.y) > BEDROCK_DEPTH) {
+			tri(base, base + 1, base + 2);
+		}
+		if (double(pa.y) > BEDROCK_DEPTH) {
+			tri(base, base + 2, base + 3);
+		}
+		quads++;
+		return true;
+	}
 };
 
 } // namespace
@@ -507,5 +690,46 @@ Dictionary NativeChunkBuilder::build_smooth_arrays(const Vector2i &p_chunk, cons
 	out["quad_count"] = m.quads;
 	out["cell_count"] = int64_t(m.cells.size());
 	out["local"] = p_local;
+	return out;
+}
+
+Dictionary NativeChunkBuilder::mesh_coarse_columns(const Vector2i &p_chunk, const Dictionary &p_cols, int64_t p_step, bool p_local, const Color &p_fallback) const {
+	Dictionary empty;
+	ERR_FAIL_COND_V(p_step < 1 || CHUNK_SIZE % p_step != 0, empty);
+	const int n = CHUNK_SIZE / int(p_step);
+	// Phase 194 (#509) — const: a non-const packed array's operator[] goes through ptrw() (copy-on-write).
+	const PackedFloat64Array tops = p_cols.get("tops", PackedFloat64Array());
+	const PackedColorArray colors = p_cols.get("colors", PackedColorArray());
+	const PackedColorArray top_colors = p_cols.get("top_colors", PackedColorArray());
+	const PackedColorArray soil_colors = p_cols.get("soil_colors", PackedColorArray());
+	const PackedFloat64Array soil_depths = p_cols.get("soil_depths", PackedFloat64Array());
+	const PackedFloat64Array edge_tops = p_cols.get("edge_tops", PackedFloat64Array());
+	const int64_t cells = int64_t(n) * n;
+	ERR_FAIL_COND_V(tops.size() != cells || colors.size() != cells || top_colors.size() != cells || soil_colors.size() != cells || soil_depths.size() != cells, empty);
+
+	Smooth m;
+	m.chunk = p_chunk;
+	m.fallback = p_fallback;
+	m.skirted = true;
+	m.set_step(int(p_step));
+	if (!p_local) {
+		m.origin_x = double(int64_t(p_chunk.x) * CHUNK_SIZE) * TILE_SIZE;
+		m.origin_z = double(int64_t(p_chunk.y) * CHUNK_SIZE) * TILE_SIZE;
+	}
+	m.load_columns(tops, colors, top_colors, soil_colors, soil_depths, edge_tops);
+	m.build();
+	int64_t skirts = m.add_skirts();
+
+	Dictionary out;
+	out["vertices"] = to_packed<PackedVector3Array>(m.vertices);
+	out["normals"] = to_packed<PackedVector3Array>(m.normals);
+	out["colors"] = to_packed<PackedColorArray>(m.colors);
+	out["indices"] = to_packed<PackedInt32Array>(m.indices);
+	out["collision"] = to_packed<PackedVector3Array>(m.collision);
+	out["quad_count"] = m.quads;
+	out["cell_count"] = int64_t(m.cells.size());
+	out["skirt_quads"] = skirts;
+	out["local"] = p_local;
+	out["lod"] = p_step;
 	return out;
 }

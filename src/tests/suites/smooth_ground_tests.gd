@@ -21,7 +21,7 @@ func register() -> void:
 	_run_test("smooth ground: a body walks a 30 degree slope with no step-up, and steps onto a placed block", _test_walk)
 	_run_test("smooth ground: build_runs resolves a two-tile ring when asked for pad 2", _test_pad_two)
 	_run_test("smooth ground: the native mesher equals the GDScript reference on 24 chunks, edited and with placed blocks", _test_native_parity, true)
-	_run_test("smooth ground: the setting routes the game's mesher, on by default", _test_setting)
+	_run_test("smooth ground: the only natural-ground mesher, no setting", _test_smooth_only)
 	_run_test("smooth ground: an edit two tiles from a chunk edge rebuilds the neighbour that reads it", _test_seam_reach)
 	_run_test("smooth ground: a block on a cliff edge walls down to the lower neighbour's ground", _test_cliff_skirt)
 	_run_test("smooth ground: a diagonal push into a block's face still allows the step-up", _test_diagonal_step)
@@ -163,8 +163,10 @@ func _test_seam() -> void:
 		var b_pos := a_pos + step
 		var a_hm: Array = land[0][1]
 		var b_hm := TerrainSlice.heightmap_for(b_pos, seed_v, noise)
-		var a := VoxelSmooth._Mesher.new(a_pos, a_hm, VoxelSlice.build_runs(a_pos, a_hm, _seed_input(a_pos, seed_v, noise))["runs"], false)
-		var b := VoxelSmooth._Mesher.new(b_pos, b_hm, VoxelSlice.build_runs(b_pos, b_hm, _seed_input(b_pos, seed_v, noise))["runs"], false)
+		var a := VoxelSmooth._Mesher.new(a_pos, false)
+		a.load_tiles(a_hm, VoxelSlice.build_runs(a_pos, a_hm, _seed_input(a_pos, seed_v, noise))["runs"])
+		var b := VoxelSmooth._Mesher.new(b_pos, false)
+		b.load_tiles(b_hm, VoxelSlice.build_runs(b_pos, b_hm, _seed_input(b_pos, seed_v, noise))["runs"])
 		a.build()
 		b.build()
 		# A's last column of cells is B's cell -1: every one A made, B must make identically.
@@ -362,19 +364,13 @@ func _test_pad_two() -> void:
 	input["pad"] = 1
 	assert_eq((VoxelSlice.build_runs(c, hm, input)["runs"] as Dictionary).size(), 66 * 66, "pad 1 keeps the one-tile ring")
 
-func _test_setting() -> void:
-	assert_true(bool(ProjectSettings.get_setting(VoxelSmooth.SETTING, false)), "terrain/smooth_mesh is on in project.godot")
+## Phase 241 — smooth is the only natural-ground mesher: no setting turns it off.
+func _test_smooth_only() -> void:
+	assert_false(ProjectSettings.has_setting("terrain/smooth_mesh"), "the terrain/smooth_mesh setting is gone")
 	var table := _table(func(_x, _z): return [_ground(2.0)])
-	VoxelSmooth.set_enabled(true)
-	assert_eq(VoxelMesh.terrain_pad(), 2, "smooth asks build_runs for the two-tile ring")
+	assert_eq(VoxelMesh.terrain_pad(), 2, "build_runs resolves the two-tile ring")
 	var smooth := VoxelMesh.build_terrain_arrays(Vector2i.ZERO, _flat_heightmap(2.0), table)
-	assert_true(smooth.has("smooth_quads"), "on: the game's mesher is the smooth one")
-	VoxelSmooth.set_enabled(false)
-	assert_eq(VoxelMesh.terrain_pad(), 1, "off: the one-tile ring")
-	var blocky := VoxelMesh.build_terrain_arrays(Vector2i.ZERO, _flat_heightmap(2.0), table)
-	assert_false(blocky.has("smooth_quads"), "off: the block mesher")
-	VoxelSmooth.set_enabled(null)
-	assert_true(VoxelSmooth.enabled(), "back to the project setting")
+	assert_true(smooth.has("smooth_quads"), "the game's mesher is the smooth one")
 
 ## Edits on chunk `c`: a tunnel, a mined pit, a placed wall and a block on an overhang ledge.
 func _parity_edits(c: Vector2i, hm: Array) -> Dictionary:
@@ -400,7 +396,8 @@ func _test_native_parity() -> void:
 	ChunkRecordsScript.clear()
 	var cases: Array = []
 	var i := 0
-	for entry in _land_chunks(seed_v, noise, 12):
+	# Phase 241: 25 land chunks, each plain and edited (a tunnel, a pit, placed blocks), so 50 builds.
+	for entry in _land_chunks(seed_v, noise, 25):
 		var c: Vector2i = entry[0]
 		var hm: Array = entry[1]
 		var plain := _seed_input(c, seed_v, noise)
@@ -413,7 +410,6 @@ func _test_native_parity() -> void:
 		VoxelSmooth.build_natural_arrays, "build_smooth_arrays")
 
 func _test_seam_reach() -> void:
-	VoxelSmooth.set_enabled(true)
 	assert_eq(VoxelSlice._border_offsets(Vector2i(62, 10)), [Vector2i(1, 0)], "tile 62 is read by the east neighbour")
 	assert_eq(VoxelSlice._border_offsets(Vector2i(1, 10)), [Vector2i(-1, 0)], "tile 1 is read by the west neighbour")
 	assert_eq(VoxelSlice._border_offsets(Vector2i(61, 10)), [], "tile 61 is read by no neighbour")
@@ -422,7 +418,6 @@ func _test_seam_reach() -> void:
 	assert_eq(v._touched_chunks(Vector2i(62, 10)).size(), 2, "an edit at x = 62 rebuilds its chunk and the east one")
 	assert_eq(v._touched_chunks(Vector2i(1, 62)).size(), 4, "an edit near a corner rebuilds the diagonal chunk too")
 	assert_eq(v._touched_chunks(Vector2i(30, 30)).size(), 1, "an interior edit rebuilds only its chunk")
-	VoxelSmooth.set_enabled(null)
 	v.free()
 
 func _test_cliff_skirt() -> void:
@@ -453,12 +448,10 @@ func _test_diagonal_step() -> void:
 	var voxel := _Column.new()
 	var tile := 1.0 / VoxelConsts.TILE_SIZE
 	voxel.runs[Vector2i(20, 16)] = [{ "bottom": 4.0, "top": 4.25, "material": "Stone", "color": STONE }]
-	VoxelSmooth.set_enabled(true)
 	# Against the block's west face, near its +Z side: the diagonal point lands in tile (20, 17).
 	var pos := Vector3(20.0 / tile - 0.25, 4.0, 16.0 / tile + 0.45)
 	var diag := Vector3(1, 0, 1).normalized()
 	assert_true(StepUpGate.allowed(voxel, pos, diag, Vector3.ZERO, 4.0, PlayerSlice.STEP_UP_HEIGHT), "a diagonal push steps onto the block")
 	assert_true(StepUpGate.allowed(voxel, pos, Vector3(1, 0, 0), Vector3.ZERO, 4.0, PlayerSlice.STEP_UP_HEIGHT), "a straight push does too")
 	assert_false(StepUpGate.allowed(voxel, pos, Vector3(-1, 0, 1).normalized(), Vector3.ZERO, 4.0, PlayerSlice.STEP_UP_HEIGHT), "walking away from it does not")
-	VoxelSmooth.set_enabled(null)
 	voxel.free()

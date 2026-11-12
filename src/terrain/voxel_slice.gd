@@ -418,7 +418,7 @@ func _ready() -> void:
 	# is WRITTEN here, before the tree streams anything, and read-only afterwards. The bands come
 	# off the generated fabric resources (`depthBand`, `leyGated`), so this cannot be a `const`.
 	OreField.warm()
-	VoxelMesh.terrain_pad()   # Phase 240: reads VoxelSmooth.enabled() here, so no worker reads ProjectSettings
+	VoxelMesh.VoxelSmooth.warm()   # Phase 240: resolved here, so no worker reaches the ResourceLoader
 	native_runs_cfg()   # Phase 168: snapshot the native build_runs tables on the main thread
 	WorldShape.warm()
 	_world_floor = StaticBody3D.new()
@@ -558,8 +558,8 @@ func take_heightmap_for_build(chunk: Vector2i) -> Array:
 func take_cached_heightmap(chunk: Vector2i) -> Array:
 	return _build.take_cached_heightmap(chunk)
 
-func gather_build_input_deferred(chunk_pos: Vector2i) -> Dictionary:
-	return _build.gather_build_input_deferred(chunk_pos)
+func gather_build_input_deferred(chunk_pos: Vector2i, coarse: bool = false) -> Dictionary:   # Phase 241: `coarse` → biomes + ring maps
+	return _build.gather_coarse_input(chunk_pos) if coarse else _build.gather_build_input_deferred(chunk_pos)
 
 ## Phase 141 — the worker half of `gather_build_input_deferred`: give every `missing_neighbours`
 ## chunk of `input` the edge strip `chunk_pos`'s ring reads (`TerrainSlice.heightmap_strip_for`),
@@ -800,7 +800,7 @@ static func _group_cell(groups: Dictionary, dir: String, plane: float, bottom: f
 	VoxelMesh.group_cell(groups, dir, plane, bottom, top, color, a, b)
 
 ## The collision triangle soup for one chunk: exactly the triangles the build emits (the smooth
-## mesher when `terrain/smooth_mesh` is on, as in game).
+## mesher, as in game).
 ## `build_chunk` taps the arrays it ALREADY has (one build per chunk, not two); this
 ## entry point exists so a caller that has no chunk node — the suite — can assert the
 ## trimesh's SHAPE headlessly. Physics itself is INERT inside the suite (`_run_tests()`

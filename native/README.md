@@ -13,7 +13,7 @@ or `gdscript fallback (no native extension | native version N is older than M; r
 
 | Class | What it holds | Routed by |
 |---|---|---|
-| `NativeChunkBuilder` | `heightmap_for` (Phase 167), `build_runs` (168), `build_chunk_arrays` (169), `build_coarse_arrays` (190), `build_smooth_arrays` (240) | `src/terrain/native_builder.gd` (a thin view of the loader) |
+| `NativeChunkBuilder` | `heightmap_for` (Phase 167), `build_runs` (168), `build_chunk_arrays` (169), `build_coarse_arrays` (190; meshed smooth since 241), `build_smooth_arrays` (240) | `src/terrain/native_builder.gd` (a thin view of the loader) |
 | `NativeWorldShape` | `mix` and `noise`, the seeded hash and value noise of `WorldShape` (Phase 248) | the parity suite; later ports call the shared header directly |
 
 ## Build

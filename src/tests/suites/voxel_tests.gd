@@ -1,7 +1,7 @@
 extends "res://src/tests/test_support.gd"
 ## Phase 133 — the voxel tests, moved unchanged from the old single-file suite.
 
-const VoxelSmooth := preload("res://src/terrain/voxel_smooth.gd")
+const VoxelMesh := preload("res://src/terrain/voxel_mesh.gd")
 
 
 func register() -> void:
@@ -871,8 +871,12 @@ func _test_voxel_terrain_material_is_one_instance() -> void:
 ## inside `GameRoot._ready()`, where a `move_and_slide()` never registers a collision
 ## (ROADMAP §Phase 39). What is asserted here is the geometry the trimesh is built
 ## from — the same triangles the mesh shows.
+## Phase 241 — the block mesher's collision for a chunk: these tests read its wall planes, and the game's
+## mesher is now always the smooth one.
+func _block_faces(v: Node, chunk_pos: Vector2i, heightmap: Array) -> PackedVector3Array:
+	return VoxelMesh.build_chunk_arrays(chunk_pos, heightmap, v.collect_build_runs(chunk_pos, heightmap))["collision"]
+
 func _test_voxel_tunnel_runs() -> void:
-	VoxelSmooth.set_enabled(false)   # Phase 240: these read the block mesher's wall planes through collision_faces
 	var v := _make_voxel()
 	var inv := InventorySlice.new()
 	add_child(inv)
@@ -891,7 +895,7 @@ func _test_voxel_tunnel_runs() -> void:
 	assert_eq(v.get_voxel_height_at(xz), 2.0, "the column top is still the roof")
 	# The collision triangle soup carries the roof's underside: all three vertices of
 	# a triangle at y = 1.625, which is the downward face of the ceiling.
-	var faces: PackedVector3Array = v.collision_faces(Vector2i(0, 0), v._heightmaps["0,0"])
+	var faces: PackedVector3Array = _block_faces(v, Vector2i(0, 0), v._heightmaps["0,0"])
 	var ceiling_faces := 0
 	for i in range(0, faces.size() - 2, 3):
 		if is_equal_approx(faces[i].y, 1.625) and is_equal_approx(faces[i + 1].y, 1.625) and is_equal_approx(faces[i + 2].y, 1.625):
@@ -904,7 +908,6 @@ func _test_voxel_tunnel_runs() -> void:
 	assert_eq(after.size(), 2, "still two runs — the tunnel is still a tunnel")
 	assert_true(is_equal_approx(float(after[0]["top"]), 1.5), "the tunnel floor is untouched")
 	assert_true(float(after[1]["bottom"]) > 1.625, "only the roof's lowest step went")
-	VoxelSmooth.set_enabled(null)
 	v.free()
 	inv.free()
 
@@ -970,7 +973,6 @@ func _test_voxel_legacy_edit_migration() -> void:
 ## facing wall — and the pair of facing walls is still emitted exactly once,
 ## whichever chunk was built first.
 func _test_voxel_seam_wall_order_independent() -> void:
-	VoxelSmooth.set_enabled(false)   # Phase 240: these read the block mesher's wall planes through collision_faces
 	var v := VoxelSlice.new()
 	add_child(v)
 	var west: Array = []
@@ -981,7 +983,7 @@ func _test_voxel_seam_wall_order_independent() -> void:
 	east.fill(1.0)
 	# The west chunk is built FIRST, while its lower neighbour is unknown.
 	v.build_chunk(Vector2i(0, 0), west)
-	var before := _plane_x_wall_spans(v.collision_faces(Vector2i(0, 0), west), 32.0)
+	var before := _plane_x_wall_spans(_block_faces(v, Vector2i(0, 0), west), 32.0)
 	assert_true(before.size() > 0, "a chunk built before its lower neighbour still emits the seam wall")
 	assert_eq(before, [[VoxelSlice.BEDROCK_DEPTH, 2.0]],
 		"and it spans the whole column while the neighbour is still unknown")
@@ -993,14 +995,13 @@ func _test_voxel_seam_wall_order_independent() -> void:
 	# triangle count: a wall emitted across the wrong ordinates has the same count.
 	v.build_chunk(Vector2i(1, 0), east)
 	v.build_chunk(Vector2i(0, 0), west)
-	var after := _plane_x_wall_spans(v.collision_faces(Vector2i(0, 0), west), 32.0)
+	var after := _plane_x_wall_spans(_block_faces(v, Vector2i(0, 0), west), 32.0)
 	assert_eq(after, [[1.0, 2.0]], "the seam converges on the exposed span when its neighbour arrives")
 	assert_eq(after.size(), before.size(), "and it is still ONE wall along the seam, not two")
 	# Duplicate-free from the other side: the lower chunk emits nothing at the same
 	# plane, because it has no material the higher side lacks.
-	assert_eq(_plane_x_spans(v.collision_faces(Vector2i(1, 0), east), 32.0), [],
+	assert_eq(_plane_x_spans(_block_faces(v, Vector2i(1, 0), east), 32.0), [],
 		"the lower side emits no wall at the shared plane")
-	VoxelSmooth.set_enabled(null)
 	v.free()
 
 ## Phase 49 — a chunk built BEFORE its neighbour reads the neighbour's generated surface,
@@ -1304,7 +1305,6 @@ func _test_voxel_legacy_migration_keeps_materials() -> void:
 ## neighbour drawing its old wall — here, a blind face where the carve opened the
 ## seam and the tunnel's mouth should be visible.
 func _test_voxel_edge_edit_rebuilds_neighbour_chunk() -> void:
-	VoxelSmooth.set_enabled(false)   # Phase 240: these read the block mesher's wall planes through collision_faces
 	var v := VoxelSlice.new()
 	add_child(v)
 	var low: Array = []
@@ -1315,18 +1315,17 @@ func _test_voxel_edge_edit_rebuilds_neighbour_chunk() -> void:
 	high.fill(3.0)
 	v.build_chunk(Vector2i(0, 0), low)     # the seam's LOW side (tiles 0..63)
 	v.build_chunk(Vector2i(1, 0), high)    # the HIGH side (tiles 64..)
-	assert_eq(_plane_x_spans(v.collision_faces(Vector2i(0, 0), low), 32.0), [],
+	assert_eq(_plane_x_spans(_block_faces(v, Vector2i(0, 0), low), 32.0), [],
 		"the low side is buried inside the high column to begin with")
 	var neighbour_node: Node3D = v._chunks["0,0"]
 	# A -X face hit at x = 32.0 steps EAST into tile (64, 32), the high side's seam
 	# tile, and carves the step the ray is inside.
 	assert_true(v.mine_block(Vector3(32.0, 1.5, 16.25), Vector3(-1, 0, 0)).get("success", false),
 		"mining the high side's seam tile succeeds")
-	assert_eq(_plane_x_spans(v.collision_faces(Vector2i(0, 0), low), 32.0), [[1.5, 1.625]],
+	assert_eq(_plane_x_spans(_block_faces(v, Vector2i(0, 0), low), 32.0), [[1.5, 1.625]],
 		"the low column now emits the wall the carve exposed, and only there")
 	assert_false(is_same(v._chunks["0,0"], neighbour_node),
 		"because the neighbour chunk was rebuilt, not left with its old wall")
-	VoxelSmooth.set_enabled(null)
 	v.free()
 
 ## Review pass — the base heightmaps are bounded by the loaded window plus its

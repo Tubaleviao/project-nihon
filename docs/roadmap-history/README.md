@@ -89,6 +89,7 @@ Completed phases moved out of [ROADMAP.md](../../ROADMAP.md) to keep it short. T
 | 222 | [phases-222.md](phases-222.md) |
 | 223 | [phases-223.md](phases-223.md) |
 | 224 | [phases-224.md](phases-224.md) |
+| 241 | [phases-241.md](phases-241.md) |
 | 248 | [phases-248.md](phases-248.md) |
 
 Phases with no section of their own were merged into another phase:
@@ -327,3 +328,4 @@ Filed by the owner on 2026-11-10. The other phases of the arc are open in [ROADM
 | Phase | Title | Status | Spec |
 |---|---|---|---|
 | 240 | Smooth natural ground: a surface-nets mesher (GDScript reference) | Done | [phases-240.md](phases-240.md) |
+| 241 | The native smooth mesher, and coarse chunks built smooth | Done | [phases-241.md](phases-241.md) |
