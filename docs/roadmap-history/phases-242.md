@@ -63,11 +63,16 @@ Natural ground is drawn in vertex colour from the biome, and `assets/` holds no 
   season tint is a `tint` uniform on the per-biome `ShaderMaterial`.
 - Low-end fallback: the project setting `nihon/graphics/terrain_quality` (0 = biplanar, no detail;
   1 = high; -1 = auto, the default: low on the Compatibility renderer, high otherwise). Phase 225 puts
-  it in the options window. Any texture projection weighing under 12% of the blend is skipped.
+  it in the options window. Any texture projection weighing under 12% of the blend is skipped. The low
+  path is a separate lean shader (see the CI fix below).
 - CI fix: the first CI playtest ran the high path on llvmpipe (software GL) and starved the chunk
   workers (`flight` 17%, `mount` 149 m). With auto quality and projection culling, a local run pinned
   to 4 cores passed `flight` at 100% and `mount` at 204 m. NativeChunkBuilder's required version is
-  now 14.
+  now 14. CI still failed (`flight` 5%): the high shader's loops and arrays cost llvmpipe dearly even
+  on the low settings. Pinned to 2 cores locally, `flight` read 62% on main, 24% with the full shader
+  and 86% with plain vertex colour, so the low path is now its own lean shader,
+  `terrain_material_low.gdshader`: the two heaviest layers, albedo only, biplanar, 256 px arrays, no
+  loops (62–79% on 2 cores).
 - Tests (`terrain_material_tests.gd`): the table, weights summing to 1 over a sweep, rock on steep
   ground, snow above the snow line, mud at a lake edge, the border blend width, packing, CUSTOM0/1 on
   every vertex of a built chunk (zero on placed blocks), native parity, the shader's uniforms with

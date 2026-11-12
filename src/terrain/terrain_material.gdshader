@@ -6,7 +6,7 @@
 // are blended by weight with height-based borders (the brighter texel of two wins at the seam), and a
 // detail sample of the same layer at a finer scale fades in near the camera. `biplanar` (the low-end
 // fallback, `nihon/graphics/terrain_quality` low, the default on the Compatibility renderer) drops the
-// weakest projection and the detail sample. A projection weighing under `plane_cut` is skipped always.
+// weakest projection, the detail sample and the normal and roughness maps, and binds 256 px arrays. A projection weighing under `plane_cut` is skipped always.
 shader_type spatial;
 render_mode cull_disabled;
 
@@ -21,6 +21,8 @@ uniform float layer_scale[LAYERS];
 uniform vec4 tint : source_color = vec4(1.0);
 uniform bool biplanar = false;
 uniform bool detail = true;
+// Normal and roughness maps; off on the low path, which samples albedo only.
+uniform bool surface_maps = true;
 uniform float detail_distance = 24.0;
 uniform float detail_repeat = 4.0;
 uniform float blend_depth = 0.2;
@@ -139,13 +141,19 @@ void fragment() {
 			if (b > 0.0) {
 				vec3 p = world_pos / layer_scale[i];
 				col += albedo[i] * b;
-				nrm += sample_normal(p, bw, n, float(i)) * b;
-				rough += sample_roughness(p, bw, float(i)) * b;
+				if (surface_maps) {
+					nrm += sample_normal(p, bw, n, float(i)) * b;
+					rough += sample_roughness(p, bw, float(i)) * b;
+				}
 				sum += b;
 			}
 		}
 		ALBEDO = col / sum * tint.rgb;
-		ROUGHNESS = rough / sum;
-		NORMAL = normalize((VIEW_MATRIX * vec4(normalize(nrm), 0.0)).xyz);
+		if (surface_maps) {
+			ROUGHNESS = rough / sum;
+			NORMAL = normalize((VIEW_MATRIX * vec4(normalize(nrm), 0.0)).xyz);
+		} else {
+			ROUGHNESS = 0.9;
+		}
 	}
 }

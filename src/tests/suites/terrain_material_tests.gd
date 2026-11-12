@@ -199,7 +199,7 @@ func _test_shader() -> void:
 	var names := {}
 	for u in mat.shader.get_shader_uniform_list():
 		names[str(u["name"])] = true
-	for u in ["albedo_maps", "normal_maps", "roughness_maps", "layer_scale", "tint", "biplanar", "detail"]:
+	for u in ["albedo_maps", "normal_maps", "roughness_maps", "layer_scale", "tint", "biplanar", "detail", "surface_maps"]:
 		assert_true(names.has(u), "the terrain shader compiles and declares '%s'" % u)
 	var layers := GameData.TERRAIN_MATERIALS.size()
 	for map in TerrainMaterial.MAPS:
@@ -227,11 +227,20 @@ func _test_low_quality() -> void:
 	ProjectSettings.set_setting(TerrainMaterial.QUALITY_SETTING, was)
 	assert_true(bool(low.get_shader_parameter("biplanar")), "low quality samples biplanar")
 	assert_false(bool(low.get_shader_parameter("detail")), "low quality has no detail texture")
+	assert_false(bool(low.get_shader_parameter("surface_maps")), "low quality samples albedo only")
+	assert_true(low.shader == TerrainMaterial.LOW_SHADER, "low quality uses the lean shader")
+	var low_names := {}
+	for u in low.shader.get_shader_uniform_list():
+		low_names[str(u["name"])] = true
+	for u in ["albedo_maps", "layer_scale", "tint"]:
+		assert_true(low_names.has(u), "the lean shader compiles and declares '%s'" % u)
+	assert_eq((low.get_shader_parameter("albedo_maps") as Texture2DArray).get_width(), TerrainMaterial.LOW_SIZE, "low quality binds the small arrays")
 	ProjectSettings.set_setting(TerrainMaterial.QUALITY_SETTING, TerrainMaterial.QUALITY_HIGH)
 	var high := TerrainMaterial.make()
 	ProjectSettings.set_setting(TerrainMaterial.QUALITY_SETTING, was)
 	assert_false(bool(high.get_shader_parameter("biplanar")), "high quality samples triplanar")
 	assert_true(bool(high.get_shader_parameter("detail")), "high quality fades in the detail texture")
+	assert_true(bool(high.get_shader_parameter("surface_maps")), "high quality samples the normal and roughness maps")
 
 ## Land chunks round the spawn on the pinned seed, and among them up to `wet_count` that hold water features.
 func _parity_chunks(seed_v: int, noise: FastNoiseLite, dry_count: int, wet_count: int) -> Array:

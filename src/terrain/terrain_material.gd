@@ -9,6 +9,8 @@ extends RefCounted
 ## and software-GL path, high otherwise). Phase 225's options window will put it in front of the player.
 
 const SHADER := preload("res://src/terrain/terrain_material.gdshader")
+## Phase 242 CI fix: the low path is its own lean shader (two layers, albedo, biplanar, no loops).
+const LOW_SHADER := preload("res://src/terrain/terrain_material_low.gdshader")
 const TerrainWeights := preload("res://src/terrain/terrain_weights.gd")
 
 const QUALITY_SETTING := "nihon/graphics/terrain_quality"
@@ -16,10 +18,12 @@ const QUALITY_LOW := 0
 const QUALITY_HIGH := 1
 const QUALITY_AUTO := -1
 const MAPS := ["albedo", "normal", "roughness"]
-## Every map is resized to this edge before it goes in an array (the arrays need one size).
+## Every map is resized to this edge before it goes in an array (the arrays need one size); the low path
+## binds `LOW_SIZE` arrays, which a software rasteriser samples far faster.
 const SIZE := 1024
+const LOW_SIZE := 256
 
-static var _arrays: Dictionary = {}
+static var _arrays: Dictionary = {}   # size -> { map: Texture2DArray }
 
 ## The terrain quality in effect: the project setting, with auto resolved for the current renderer.
 static func quality() -> int:
@@ -35,19 +39,21 @@ static func quality_for(setting: int, method: String) -> int:
 
 ## `{ albedo, normal, roughness }` Texture2DArrays, built on first use (main thread). A map that fails
 ## to load is a flat mid-grey layer, so a missing file draws grey ground rather than breaking the array.
-static func texture_arrays() -> Dictionary:
-	if _arrays.is_empty():
+static func texture_arrays(size: int = SIZE) -> Dictionary:
+	if not _arrays.has(size):
 		var layers: Array = TerrainWeights.table()["layers"]
+		var by_map := {}
 		for map in MAPS:
 			var images: Array[Image] = []
 			for entry in layers:
-				images.append(_layer_image(str(entry["key"]), map))
+				images.append(_layer_image(str(entry["key"]), map, size))
 			var arr := Texture2DArray.new()
 			arr.create_from_images(images)
-			_arrays[map] = arr
-	return _arrays
+			by_map[map] = arr
+		_arrays[size] = by_map
+	return _arrays[size]
 
-static func _layer_image(key: String, map: String) -> Image:
+static func _layer_image(key: String, map: String, size: int) -> Image:
 	var img: Image = null
 	var overlay: Node = _overlay()
 	if overlay != null:
@@ -57,8 +63,8 @@ static func _layer_image(key: String, map: String) -> Image:
 		img.fill(Color(0.5, 0.5, 1.0) if map == "normal" else Color(0.5, 0.5, 0.5))
 	if img.get_format() != Image.FORMAT_RGB8:
 		img.convert(Image.FORMAT_RGB8)
-	if img.get_width() != SIZE or img.get_height() != SIZE:
-		img.resize(SIZE, SIZE, Image.INTERPOLATE_BILINEAR)
+	if img.get_width() != size or img.get_height() != size:
+		img.resize(size, size, Image.INTERPOLATE_BILINEAR if size >= img.get_width() else Image.INTERPOLATE_LANCZOS)
 	img.generate_mipmaps(map == "normal")
 	return img
 
@@ -69,8 +75,9 @@ static func _overlay() -> Node:
 ## A new terrain material: the shared arrays, each layer's scale, the quality switches and `tint`.
 static func make(tint: Color = Color.WHITE) -> ShaderMaterial:
 	var mat := ShaderMaterial.new()
-	mat.shader = SHADER
-	var arrays := texture_arrays()
+	var low := quality() == QUALITY_LOW
+	mat.shader = LOW_SHADER if low else SHADER
+	var arrays := texture_arrays(LOW_SIZE if low else SIZE)
 	for map in MAPS:
 		mat.set_shader_parameter("%s_maps" % map, arrays[map])
 	var scales := PackedFloat32Array()
@@ -81,9 +88,9 @@ static func make(tint: Color = Color.WHITE) -> ShaderMaterial:
 		if layer >= 0 and layer < TerrainWeights.LAYERS:
 			scales[layer] = maxf(float(entry["scale"]), 0.01)
 	mat.set_shader_parameter("layer_scale", scales)
-	var low := quality() == QUALITY_LOW
 	mat.set_shader_parameter("biplanar", low)
 	mat.set_shader_parameter("detail", not low)
+	mat.set_shader_parameter("surface_maps", not low)
 	set_tint(mat, tint)
 	return mat
 
