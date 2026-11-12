@@ -711,5 +711,38 @@ Dictionary NativeChunkBuilder::coarse_columns(const Vector2i &p_chunk, const Arr
 	result["top_colors"] = top_colors;
 	result["soil_colors"] = soil_colors;
 	result["soil_depths"] = soil_depths;
+	// Phase 241 review — `VoxelCoarse.edge_tops`: per cell of the ring one cell out, the highest natural top
+	// of the neighbour tiles one tile past the edge within a tile of it; -INF where none is known.
+	const int64_t w = CHUNK_SIZE + 2;
+	std::vector<double> ring(w * w, -INFINITY);
+	if (!ctx.neighbours.is_empty()) {
+		for (int64_t tz = -1; tz <= CHUNK_SIZE; tz++) {
+			for (int64_t tx = -1; tx <= CHUNK_SIZE; tx++) {
+				if (tx >= 0 && tx < CHUNK_SIZE && tz >= 0 && tz < CHUNK_SIZE) {
+					continue;
+				}
+				double h = ctx.natural_top(p_heightmap, p_chunk.x, p_chunk.y, tx, tz);
+				if (!std::isnan(h)) {
+					ring[(tz + 1) * w + (tx + 1)] = h;
+				}
+			}
+		}
+	}
+	PackedFloat64Array edge_tops;
+	edge_tops.resize((n + 2) * (n + 2));
+	for (int64_t cz = -1; cz <= n; cz++) {
+		for (int64_t cx = -1; cx <= n; cx++) {
+			double best = -INFINITY;
+			if (cx < 0 || cx >= n || cz < 0 || cz >= n) {
+				for (int64_t tz = std::max<int64_t>(cz * p_step - 1, -1); tz <= std::min<int64_t>((cz + 1) * p_step, CHUNK_SIZE); tz++) {
+					for (int64_t tx = std::max<int64_t>(cx * p_step - 1, -1); tx <= std::min<int64_t>((cx + 1) * p_step, CHUNK_SIZE); tx++) {
+						best = std::max(best, ring[(tz + 1) * w + (tx + 1)]);
+					}
+				}
+			}
+			edge_tops.set((cz + 1) * (n + 2) + (cx + 1), best);
+		}
+	}
+	result["edge_tops"] = edge_tops;
 	return result;
 }

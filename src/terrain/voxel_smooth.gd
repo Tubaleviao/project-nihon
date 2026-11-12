@@ -25,9 +25,13 @@ extends RefCounted
 ## Its shared vertices are pinned to the cell corners, as high as the tallest cell round each, so the
 ## ground over a cell (a fan from its top in the middle) never dips under a true tile: the coarse
 ## collision stays conservative. The columns past the chunk's edge repeat its edge columns, so the
-## surface runs to the edge plane, and every mesh edge lying on that plane drops a skirt to bedrock: a
-## full neighbour's ground, which the coarse ground never sits below, meets the skirt whatever order the
-## two were built in.
+## surface runs to the edge plane, and every mesh edge lying on that plane drops a skirt to bedrock. A
+## corner on the edge plane is also as high as the neighbours' tiles beside it (`edge_tops`, the ring one
+## tile past the edge): a full neighbour owns no wall on its west and north edges, so its border vertex,
+## a blend of its own tile and ours, may stand above our cells, and the skirt must reach it. So a full
+## neighbour's ground meets the skirt whatever order the two were built in. Every level of a corner is the
+## same point, so a coarse cell has one vertex (keyed without its level) and a cliff's upright quads, which
+## would have no area, are never made.
 ##
 ## Normals are the density gradient (central differences) at each cell corner, interpolated to the
 ## vertex, not the mean of the triangles: both chunks at a border sample the same corners, so the
@@ -72,8 +76,7 @@ const TOP_BAND := 0.3
 const LEVEL_OFFSET := 1024
 
 ## `voxel_mesh.gd` preloads this script, so it cannot be a `const` here. Resolved once on the main thread
-## (`warm`, from `VoxelSlice._ready` and the gather step's `VoxelMesh.terrain_pad()`), so the worker hot
-## path never goes back to the ResourceLoader.
+## (`warm`, from `VoxelSlice._ready`), so the worker hot path never goes back to the ResourceLoader.
 static var _voxel_mesh_script: GDScript = null
 
 static func warm() -> void:
@@ -203,6 +206,9 @@ class _Mesher extends RefCounted:
 	## own top vertex lies on none. A full build fills none of it.
 	var skirted := false
 	var sides := PackedByteArray()
+	## Coarse builds only: per padding column one tile past the edge, the highest true tile beside it
+	## (`VoxelCoarse.coarse_columns`' `edge_tops`); -INF where none is known.
+	var pad_caps := PackedFloat64Array()
 	var quads := 0
 
 	const SIDE_WEST := 1
@@ -243,7 +249,8 @@ class _Mesher extends RefCounted:
 				_sample_column(ci, natural)
 
 	## A coarse build's columns: one run from bedrock to each cell's top, in that cell's colours (a cell at
-	## or below bedrock holds none). The padding repeats the nearest edge column.
+	## or below bedrock holds none). The padding repeats the nearest edge column; `edge_tops`, when given
+	## ((n + 2)² row-major, the ring one cell out), caps the corners on the edge plane (`pad_caps`).
 	func load_columns(cols: Dictionary) -> void:
 		var tops: PackedFloat64Array = cols["tops"]
 		var c_colors: PackedColorArray = cols["colors"]
@@ -271,6 +278,13 @@ class _Mesher extends RefCounted:
 				col_known[ci] = col_known[src]
 				col_lo[ci] = col_lo[src]
 				col_vals[ci] = col_vals[src]
+		pad_caps.resize(span * span)
+		pad_caps.fill(-INF)
+		var edge_tops: PackedFloat64Array = cols.get("edge_tops", PackedFloat64Array())
+		if edge_tops.size() == (n + 2) * (n + 2):
+			for tz in range(-1, n + 1):
+				for tx in range(-1, n + 1):
+					pad_caps[(tz + PAD) * span + (tx + PAD)] = edge_tops[(tz + 1) * (n + 2) + (tx + 1)]
 
 	## Sample one column from `clamp_d` + one level below its lowest boundary to as far above its highest.
 	func _sample_column(ci: int, runs: Array) -> void:
@@ -341,7 +355,10 @@ class _Mesher extends RefCounted:
 				for j in range(own.x, own.y):
 					if (vals[j - lo] < 0.0) != (vals[j + 1 - lo] < 0.0):
 						_y_quad(tx, tz, j)
-				# Edges to the +X and +Z sample: walls and slopes steeper than a cell.
+				# Edges to the +X and +Z sample: walls and slopes steeper than a cell. A coarse build's ends
+				# all land on the same corners (`_vertex`), so its upright quads would have no area.
+				if skirted:
+					continue
 				_side_edges(tx, tz, ci, ci + 1, own, 0)
 				_side_edges(tx, tz, ci, ci + span, own, 1)
 
@@ -393,9 +410,10 @@ class _Mesher extends RefCounted:
 		return g
 
 	## The vertex of cell (cx, cz, j), whose corners are samples cx..cx+1, cz..cz+1, j..j+1. Made on
-	## first use: every cell a quad names holds a crossing, so it always has one.
+	## first use: every cell a quad names holds a crossing, so it always has one. A coarse build pins every
+	## level of a cell to one corner, so its key leaves the level out.
 	func _vertex(cx: int, cz: int, j: int) -> int:
-		var key := ((j + LEVEL_OFFSET) * span + (cz + PAD)) * span + (cx + PAD)
+		var key := ((0 if skirted else j + LEVEL_OFFSET) * span + (cz + PAD)) * span + (cx + PAD)
 		var found: Variant = cells.get(key)
 		if found != null:
 			return int(found)
@@ -416,13 +434,15 @@ class _Mesher extends RefCounted:
 		var u := sum / float(count) if count > 0 else Vector3(0.5, 0.5, 0.5)
 		var p := _pos(cx, cz, j) + Vector3(u.x * cell, u.y * grid, u.z * cell)
 		if skirted:
-			# Coarse: the vertex sits on the corner the four cells share, as high as the tallest of them, at
-			# every level. A cell is its tiles' highest, so the fan over each cell (its own top in the middle,
-			# corners at or above it) never dips under a true tile, and a cliff's upright quads, whose ends
-			# all land on the same corners, have no area (`_tri` drops them).
+			# Coarse: the vertex sits on the corner the four cells share, as high as the tallest of them (and,
+			# on the edge plane, the neighbours' tiles beside it), at every level. A cell is its tiles'
+			# highest, so the fan over each cell (its own top in the middle, corners at or above it) never
+			# dips under a true tile.
 			var cap := p.y
 			for k in 4:
-				for run in col_runs[(cz + (k >> 1) + PAD) * span + (cx + (k & 1) + PAD)]:
+				var ci := (cz + (k >> 1) + PAD) * span + (cx + (k & 1) + PAD)
+				cap = maxf(cap, pad_caps[ci])
+				for run in col_runs[ci]:
 					cap = maxf(cap, float(run["top"]))
 			p = Vector3((cx + 1) * cell, cap, (cz + 1) * cell)
 		# Trilinear blend of the eight corners' gradients at the vertex.
@@ -543,8 +563,6 @@ class _Mesher extends RefCounted:
 
 	## One triangle, wound so `(b - a) × (c - a)` faces out (the block mesher's convention).
 	func _tri(a: int, b: int, c: int) -> void:
-		if skirted and (vertices[a] == vertices[b] or vertices[b] == vertices[c] or vertices[a] == vertices[c]):
-			return   # a coarse cliff's collapsed quad (see `_vertex`)
 		indices.append(a)
 		indices.append(b)
 		indices.append(c)
@@ -555,8 +573,8 @@ class _Mesher extends RefCounted:
 	## Phase 241 — a skirt under every triangle edge that lies along a chunk-edge plane: a quad from the
 	## edge down to bedrock, facing out of the chunk, in the upper end's colour. An edge standing upright on
 	## the plane has no width and drops none. The edge's ends stand on cell corners as high as the tallest
-	## column round them (`_vertex`), and between them over a cell at least as high as its top, which is
-	## every true tile there, so a full neighbour's ground at the plane never stands above the skirt.
+	## column round them and the neighbours' edge tiles beside them (`_vertex`, `pad_caps`), so a full
+	## neighbour's border ground, which blends its first tile with ours, never stands above the skirt.
 	## Returns the skirt quads made.
 	func add_skirts() -> int:
 		var made := 0
@@ -600,6 +618,8 @@ class _Mesher extends RefCounted:
 			b = ia
 		var normal := Vector3(-1, 0, 0) if side == SIDE_WEST else (Vector3(1, 0, 0) if side == SIDE_EAST
 			else (Vector3(0, 0, -1) if side == SIDE_NORTH else Vector3(0, 0, 1)))
+		if pa.y <= BEDROCK_DEPTH and pb.y <= BEDROCK_DEPTH:
+			return false   # nothing above the floor to cover
 		var color := colors[a] if pa.y >= pb.y else colors[b]
 		var base := vertices.size()
 		for p in [pa, pb, Vector3(pb.x, BEDROCK_DEPTH, pb.z), Vector3(pa.x, BEDROCK_DEPTH, pa.z)]:
@@ -607,8 +627,11 @@ class _Mesher extends RefCounted:
 			normals.append(normal)
 			colors.append(color)
 			sides.append(0)
-		_tri(base, base + 1, base + 2)
-		_tri(base, base + 2, base + 3)
+		# A skirt with one end on the floor is one triangle (the other would have no area).
+		if pb.y > BEDROCK_DEPTH:
+			_tri(base, base + 1, base + 2)
+		if pa.y > BEDROCK_DEPTH:
+			_tri(base, base + 2, base + 3)
 		quads += 1
 		return true
 

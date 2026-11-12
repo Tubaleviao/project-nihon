@@ -502,6 +502,30 @@ func gather_build_input_deferred(chunk_pos: Vector2i) -> Dictionary:
 		"pad":                  VoxelMesh.terrain_pad(),   # Phase 240: the smooth mesher reads two tiles out
 	}
 
+## Phase 241 review — a COARSE build's gather: the biomes, and the ring's known maps (no copy, no
+## generation) with the rest listed under `missing_neighbours` for `fill_seam_strips` to fill one tile
+## deep on the worker. The coarse mesher reads only the tile ring past the edge (`VoxelCoarse.edge_tops`).
+func gather_coarse_input(chunk_pos: Vector2i) -> Dictionary:
+	s._sync_guess_seed()
+	var known: Dictionary = {}
+	var missing: Array = []
+	for chunk in s._ring_chunks(chunk_pos):
+		if chunk == chunk_pos:
+			continue
+		var ckey = s._chunk_key(chunk)
+		if s._heightmaps.has(ckey):
+			known[ckey] = s._heightmaps[ckey]
+		elif s._guess_heightmaps.has(ckey):
+			known[ckey] = s._guess_heightmaps[ckey]
+		else:
+			missing.append(chunk)
+	return {
+		"biomes":               s.gather_biomes_for(chunk_pos),
+		"neighbour_heightmaps": known,
+		"missing_neighbours":   missing,
+		"pad":                  1,
+	}
+
 ## Drop every cached guess when the world seed changed under them (`set_world_seed` runs
 ## before any chunk streams in production, but a re-seed mid-session must not serve a map
 ## of the old world).

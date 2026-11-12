@@ -74,9 +74,8 @@ static func build_terrain_arrays(chunk_pos: Vector2i, heightmap: Array, resolved
 	return VoxelSmooth.build_smooth_arrays(chunk_pos, heightmap, resolved, local)
 
 ## Phase 240 — the columns past the chunk's edge `build_runs` resolves: two, for the smooth mesher's
-## normals. Also warms `VoxelSmooth` on the caller's (main) thread.
+## normals. Pure: `VoxelSlice._ready` warms `VoxelSmooth` itself.
 static func terrain_pad() -> int:
-	VoxelSmooth.warm()
 	return VoxelSmooth.PAD
 
 ## Phase 172 — the worker's half of a streamed build: the arrays, plus the collision shape made here

@@ -436,8 +436,8 @@ func _lane_order(done: Array, centers: Array) -> Array:
 ## `result[1]`, and `_apply_build_entry` stores that one.
 ##
 ## Phase 190 — a chunk `NearRing.lod_for` puts beyond the detail ring is built coarse instead
-## (`VoxelCoarse`): no seam strips, no full resolve, a small conservative collision shape. Its gather is
-## only the biomes. The task's own time comes back in `result[2]` (µs) for the flight step's worker ms per crossing.
+## (`VoxelCoarse`): no full resolve, a small conservative collision shape. Its gather is the biomes and
+## the ring's known maps; the missing ones get a one-tile seam strip on the worker (the skirt's height). The task's own time comes back in `result[2]` (µs) for the flight step's worker ms per crossing.
 func dispatch_worker_noise_build(chunk_pos: Vector2i, key: String) -> void:
 	TerrainSliceScript.warm_polar_caches()   # the static caches the generator reads, filled here on the main thread
 	var voxel: Node = sl.voxel_slice
@@ -450,7 +450,7 @@ func dispatch_worker_noise_build(chunk_pos: Vector2i, key: String) -> void:
 	var revision: int = int(voxel.chunk_revision(chunk_pos))
 	var gathered: Dictionary = {}
 	if lod != VoxelCoarse.FULL:
-		gathered = { "biomes": voxel.gather_biomes_for(chunk_pos) }
+		gathered = voxel.gather_build_input_deferred(chunk_pos, true)
 	elif geometry:
 		gathered = voxel.gather_build_input_deferred(chunk_pos)
 	var seed_v: int = int(sl.terrain_slice.get_world_seed())
@@ -463,6 +463,7 @@ func dispatch_worker_noise_build(chunk_pos: Vector2i, key: String) -> void:
 		if not geometry:
 			result[0] = VoxelBuilder.no_geometry_arrays()
 		elif lod != VoxelCoarse.FULL:
+			VoxelBuilder.fill_seam_strips(chunk_pos, gathered, seed_v, noise)
 			var coarse := VoxelCoarse.build_coarse_arrays(chunk_pos, hm, gathered, lod, true)
 			coarse["shape"] = VoxelMesh.collision_shape(coarse["collision"])
 			result[0] = coarse

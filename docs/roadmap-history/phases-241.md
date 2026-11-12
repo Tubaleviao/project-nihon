@@ -43,7 +43,16 @@ Completed phase, archived from [ROADMAP.md](../../ROADMAP.md). See the [index](R
 - `terrain/smooth_mesh`, `VoxelSmooth.enabled()` and `set_enabled()` are gone. The block mesher stays
   for placed blocks and for the suite's wall-plane tests, which call `VoxelMesh.build_chunk_arrays`
   directly.
-- Native version 11 (required by the loader).
+- Native version 12 (required by the loader).
+- Review pass (PR #613): a full chunk east or south of a coarse one owns no wall on that edge, and its
+  smooth border vertex blends its first tile with the coarse side's, so it could stand above the coarse
+  corner and leave a slit under its edge. The coarse build now gathers the ring's maps (known ones by
+  reference, one-tile seam strips on the worker for the rest) and `VoxelCoarse.edge_tops` caps every
+  corner on the edge plane at the neighbours' edge tiles beside it. A coarse cell has one vertex for all
+  levels and no side quads (they had no area), so `quad_count` and `skirt_quads` count only quads with
+  triangles, and `_tri` lost its per-triangle position check. `VoxelMesh.terrain_pad()` is pure again;
+  `VoxelSlice._ready` warms `VoxelSmooth` itself. New test `lod: a coarse skirt reaches a smooth full
+  neighbour's border ground` (fails without the cap).
 - Tests: `smooth ground: native parity` covers 50 builds (25 land chunks of the pinned seed, each
   plain and with a tunnel, a pit and placed blocks). The Phase 190 coarse tests were rewritten for
   triangle meshes: the height over every tile centre (none under that tile's true top, the mean none over

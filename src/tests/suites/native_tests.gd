@@ -289,7 +289,7 @@ func _test_native_chunk_arrays_parity() -> void:
 	assert_true(int(seen["deposits"]) > 0, "the fixed chunk set meshes vein deposit boxes (%d)" % int(seen["deposits"]))
 
 ## Phase 190 — the native coarse build gives the same arrays, in the same order, as the reference: both
-## coarse levels, absolute and chunk-local vertices, a full biome ring and one missing its east column.
+## coarse levels, absolute and chunk-local vertices, a full biome and map ring and one missing its east column.
 func _test_native_coarse_parity() -> void:
 	if not NativeLoaderScript.use_native(CHUNK_BUILDER, "build_coarse_arrays"):
 		print("[Native] %s.build_coarse_arrays parity skipped: not routed native in this run" % CHUNK_BUILDER)
@@ -305,8 +305,9 @@ func _test_native_coarse_parity() -> void:
 		for variant in range(2):
 			var input := _native_runs_input(chunk, seed_v, noise, {}, {}, false)
 			if variant == 1:
-				for dz in range(-1, 2):   # a ring chunk with no biome: the blend reads its own
+				for dz in range(-1, 2):   # a ring chunk with no biome or map: the blend reads its own, no edge cap
 					(input["biomes"] as Dictionary).erase(VoxelSlice._chunk_key(chunk + Vector2i(1, dz)))
+					(input["neighbour_heightmaps"] as Dictionary).erase(VoxelSlice._chunk_key(chunk + Vector2i(1, dz)))
 			for step: int in VoxelCoarse.STEPS:
 				var cols := VoxelCoarse.coarse_columns(chunk, hm, input, step)
 				for i in (cols["tops"] as PackedFloat64Array).size():

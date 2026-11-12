@@ -15,6 +15,7 @@ const MEAN_TOLERANCE := { 2: 0.5, 4: 1.0 }
 func register() -> void:
 	_run_test("lod: a coarse chunk's mean height matches the full chunk's, never under a tile", _test_lod_mean_height)
 	_run_test("lod: no gap at a seam between levels (full|coarse, coarse|coarse)", _test_lod_seams_closed)
+	_run_test("lod: a coarse skirt reaches a smooth full neighbour's border ground", _test_lod_skirt_reaches_smooth_neighbour)
 	_run_test("lod: a coarse chunk meshes fewer quads, with a conservative collision", _test_lod_coarse_fewer_quads)
 	_run_test("lod: the level per ring around a walking body", _test_lod_walking_rings)
 	_run_test("lod: a fast flyer stands on coarse ground, upgraded once it slows", _test_lod_flying_rings)
@@ -223,6 +224,63 @@ func _test_lod_seams_closed() -> void:
 			if absf(a - b) >= 0.25:
 				relief += 1
 	assert_true(relief > 0, "the probe seams have height steps across them, so the closure is tested (%d)" % relief)
+
+## `chunk`'s coarse input as the dispatch gathers it: the biomes and the ring's maps (whole maps here,
+## where the worker fills one-tile strips for the unknown ones).
+func _coarse_ring_input(chunk: Vector2i, seed_v: int, noise: FastNoiseLite) -> Dictionary:
+	var input := _coarse_input(chunk, seed_v)
+	var neighbours := {}
+	for dz in range(-1, 2):
+		for dx in range(-1, 2):
+			var c := Vector2i(chunk.x + dx, chunk.y + dz)
+			if c != chunk:
+				neighbours[VoxelSlice._chunk_key(c)] = TerrainSlice.heightmap_for(c, seed_v, noise)
+	input["neighbour_heightmaps"] = neighbours
+	return input
+
+## The game's full build (smooth natural ground) of `chunk`, in world coordinates.
+func _full_smooth_arrays(chunk: Vector2i, hm: Array, seed_v: int, noise: FastNoiseLite) -> Dictionary:
+	var input := _coarse_ring_input(chunk, seed_v, noise)
+	input["edits"] = {}
+	input["pad"] = VoxelMesh.terrain_pad()
+	return VoxelMesh.build_terrain_arrays(chunk, hm, VoxelSlice.build_runs(chunk, hm, input), false)
+
+## Phase 241 review — a full chunk east or south of a coarse one owns no wall on that edge, and its
+## border vertices blend its first tile with ours, so they can stand above every coarse cell. The coarse
+## skirt on the plane must reach each of them, or a slit opens under the full ground's edge.
+func _test_lod_skirt_reaches_smooth_neighbour() -> void:
+	var seed_v := 424242
+	var noise := FastNoiseLite.new()
+	TerrainSlice.configure_noise(noise, seed_v)
+	ChunkRecordsScript.clear()
+	var m := TerrainSlice.CHUNK_METERS
+	var probed := 0
+	var blind := 0   # border vertices a coarse build without the ring's maps leaves above its skirt
+	for base: Vector2i in [Vector2i(3, 2), Vector2i(300, 7), Vector2i(-1234, -90), Vector2i(-150, 60)]:
+		var hm := TerrainSlice.heightmap_for(base, seed_v, noise)
+		for d: Vector2i in [Vector2i(1, 0), Vector2i(0, 1)]:
+			var other := base + d
+			var axis := 0 if d.x == 1 else 2
+			var plane := float(other.x) * m if axis == 0 else float(other.y) * m
+			var lo := float(base.y) * m if axis == 0 else float(base.x) * m
+			var full := _full_smooth_arrays(other, TerrainSlice.heightmap_for(other, seed_v, noise), seed_v, noise)
+			for step: int in VoxelCoarse.STEPS:
+				var coarse := VoxelCoarse.build_coarse_arrays(base, hm, _coarse_ring_input(base, seed_v, noise), step, false)
+				var walls := _walls_on(coarse, axis, plane)
+				var blind_walls := _walls_on(VoxelCoarse.build_coarse_arrays(base, hm, _coarse_input(base, seed_v), step, false), axis, plane)
+				var gaps := 0
+				for p: Vector3 in (full["vertices"] as PackedVector3Array):
+					var along := p.z if axis == 0 else p.x
+					if absf(p[axis] - plane) > TerrainSlice.TILE_SIZE * 0.5 or along < lo + 0.01 or along > lo + m - 0.01:
+						continue
+					probed += 1
+					if not _covered(blind_walls, along, p.y - 0.01):
+						blind += 1
+					if not _covered(walls, along, p.y - 0.01):
+						gaps += 1
+				assert_eq(gaps, 0, "step %d at %s: the skirt reaches the %s neighbour's border ground (%d short)" % [step, str(base), "east" if axis == 0 else "south", gaps])
+	assert_true(probed > 0, "the full neighbours have border vertices to probe (%d)" % probed)
+	assert_true(blind > 0, "without the neighbours' edge tiles some stand above the skirt, so the cap is tested (%d)" % blind)
 
 func _test_lod_coarse_fewer_quads() -> void:
 	var seed_v := 424242

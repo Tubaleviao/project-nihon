@@ -105,6 +105,8 @@ public:
 	std::vector<Color> colors;
 	std::vector<int32_t> indices;
 	std::vector<uint8_t> sides;
+	// Coarse builds only: the cap each padding column one cell past the edge puts on a corner (`pad_caps`).
+	std::vector<double> pad_caps;
 	int64_t quads = 0;
 
 	void set_step(int step) {
@@ -174,7 +176,7 @@ public:
 	// A coarse build's columns: one run from bedrock to each cell's top (none at or below bedrock); the
 	// padding repeats the nearest edge column.
 	void load_columns(const PackedFloat64Array &tops, const PackedColorArray &c_colors, const PackedColorArray &top_colors,
-			const PackedColorArray &soil_colors, const PackedFloat64Array &soil_depths) {
+			const PackedColorArray &soil_colors, const PackedFloat64Array &soil_depths, const PackedFloat64Array &edge_tops) {
 		alloc();
 		for (int tz = 0; tz < n; tz++) {
 			for (int tx = 0; tx < n; tx++) {
@@ -205,6 +207,14 @@ public:
 				col_known[ci] = col_known[src];
 				col_lo[ci] = col_lo[src];
 				col_vals[ci] = col_vals[src];
+			}
+		}
+		pad_caps.assign(span * span, -INFINITY);
+		if (edge_tops.size() == int64_t(n + 2) * (n + 2)) {
+			for (int tz = -1; tz <= n; tz++) {
+				for (int tx = -1; tx <= n; tx++) {
+					pad_caps[(tz + PAD) * span + (tx + PAD)] = edge_tops[(tz + 1) * (n + 2) + (tx + 1)];
+				}
 			}
 		}
 	}
@@ -316,6 +326,9 @@ public:
 						y_quad(tx, tz, j);
 					}
 				}
+				if (skirted) {
+					continue; // a coarse build's upright quads have no area (see `_vertex`)
+				}
 				side_edges(tx, tz, ci, ci + 1, olo, ohi, 0);
 				side_edges(tx, tz, ci, ci + span, olo, ohi, 1);
 			}
@@ -422,7 +435,7 @@ public:
 	}
 
 	int32_t vertex(int cx, int cz, int64_t j) {
-		int64_t key = ((j + LEVEL_OFFSET) * span + (cz + PAD)) * span + (cx + PAD);
+		int64_t key = ((skirted ? 0 : j + LEVEL_OFFSET) * span + (cz + PAD)) * span + (cx + PAD);
 		auto it = cells.find(key);
 		if (it != cells.end()) {
 			return it->second;
@@ -449,7 +462,9 @@ public:
 			// Coarse: pinned to the shared cell corner, as high as the tallest cell round it (see `_vertex`).
 			double cap = double(p.y);
 			for (int c = 0; c < 4; c++) {
-				for (const SRun &r : col_runs[(cz + (c >> 1) + PAD) * span + (cx + (c & 1) + PAD)]) {
+				int ci = (cz + (c >> 1) + PAD) * span + (cx + (c & 1) + PAD);
+				cap = std::max(cap, pad_caps[ci]);
+				for (const SRun &r : col_runs[ci]) {
 					cap = std::max(cap, r.top);
 				}
 			}
@@ -485,9 +500,6 @@ public:
 	}
 
 	void tri(int32_t a, int32_t b, int32_t c) {
-		if (skirted && (vertices[a] == vertices[b] || vertices[b] == vertices[c] || vertices[a] == vertices[c])) {
-			return; // a coarse cliff's collapsed quad
-		}
 		indices.push_back(a);
 		indices.push_back(b);
 		indices.push_back(c);
@@ -614,6 +626,9 @@ public:
 			std::swap(a, b);
 		}
 		Vector3 normal = side == SIDE_WEST ? Vector3(-1, 0, 0) : (side == SIDE_EAST ? Vector3(1, 0, 0) : (side == SIDE_NORTH ? Vector3(0, 0, -1) : Vector3(0, 0, 1)));
+		if (double(pa.y) <= BEDROCK_DEPTH && double(pb.y) <= BEDROCK_DEPTH) {
+			return false; // nothing above the floor to cover
+		}
 		Color color = double(pa.y) >= double(pb.y) ? colors[a] : colors[b];
 		int32_t base = int32_t(vertices.size());
 		const Vector3 quad_pts[4] = {
@@ -626,8 +641,13 @@ public:
 			colors.push_back(color);
 			sides.push_back(0);
 		}
-		tri(base, base + 1, base + 2);
-		tri(base, base + 2, base + 3);
+		// A skirt with one end on the floor is one triangle (the other would have no area).
+		if (double(pb.y) > BEDROCK_DEPTH) {
+			tri(base, base + 1, base + 2);
+		}
+		if (double(pa.y) > BEDROCK_DEPTH) {
+			tri(base, base + 2, base + 3);
+		}
 		quads++;
 		return true;
 	}
@@ -683,6 +703,7 @@ Dictionary NativeChunkBuilder::mesh_coarse_columns(const Vector2i &p_chunk, cons
 	const PackedColorArray top_colors = p_cols.get("top_colors", PackedColorArray());
 	const PackedColorArray soil_colors = p_cols.get("soil_colors", PackedColorArray());
 	const PackedFloat64Array soil_depths = p_cols.get("soil_depths", PackedFloat64Array());
+	const PackedFloat64Array edge_tops = p_cols.get("edge_tops", PackedFloat64Array());
 	const int64_t cells = int64_t(n) * n;
 	ERR_FAIL_COND_V(tops.size() != cells || colors.size() != cells || top_colors.size() != cells || soil_colors.size() != cells || soil_depths.size() != cells, empty);
 
@@ -695,7 +716,7 @@ Dictionary NativeChunkBuilder::mesh_coarse_columns(const Vector2i &p_chunk, cons
 		m.origin_x = double(int64_t(p_chunk.x) * CHUNK_SIZE) * TILE_SIZE;
 		m.origin_z = double(int64_t(p_chunk.y) * CHUNK_SIZE) * TILE_SIZE;
 	}
-	m.load_columns(tops, colors, top_colors, soil_colors, soil_depths);
+	m.load_columns(tops, colors, top_colors, soil_colors, soil_depths, edge_tops);
 	m.build();
 	int64_t skirts = m.add_skirts();
 

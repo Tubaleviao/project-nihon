@@ -20,9 +20,11 @@ extends RefCounted
 ##     (`VoxelSmooth.mesh_coarse_columns`), with its shared vertices pinned to the cell corners as high as
 ##     the tallest cell round each: the ground over a cell is a fan from its top up to its corners, never
 ##     under any of its tiles. The columns past the edge repeat the edge column, so the ground runs to the
-##     chunk's edge plane, and every mesh edge on that plane drops a skirt to bedrock. A
-##     full neighbour's ground, which the coarse ground stands above, meets the skirt, so no gap opens
-##     between levels whatever order they were built in. Two coarse neighbours both skirt.
+##     chunk's edge plane, and every mesh edge on that plane drops a skirt to bedrock. A corner on that
+##     plane also stands as high as the neighbours' tiles beside it (`edge_tops`, from the gathered
+##     `neighbour_heightmaps`): a full neighbour owns no wall on its west and north edges, and its border
+##     ground, a blend of its first tile and ours, meets the skirt, so no gap opens between levels
+##     whatever order they were built in. Two coarse neighbours both skirt.
 ##   * No deposits, no edits, and only a conservative collision: the same triangles as a soup, so a
 ##     body on coarse ground stands at or above the true surface, never inside it. It is parked like a full
 ##     chunk's (Phase 189) and attached only where the near ring wants collision before the full build lands
@@ -47,8 +49,8 @@ const FULL := 1
 ## The coarse levels, in tiles per cell side: 32×32 cells of 1 m, then 16×16 cells of 2 m.
 const STEPS: Array[int] = [2, 4]
 
-## The chunk's coarse arrays at `step` (one of `STEPS`). `input` carries the build's `biomes` (edits,
-## neighbour maps and the ore field's inputs are not read). `local` as in
+## The chunk's coarse arrays at `step` (one of `STEPS`). `input` carries the build's `biomes` and the
+## `neighbour_heightmaps` (only the tile ring past the edge is read; edits and the ore field's inputs are not). `local` as in
 ## `VoxelMesh.build_chunk_arrays`.
 static func build_coarse_arrays(chunk_pos: Vector2i, heightmap: Array, input: Dictionary, step: int, local: bool = true) -> Dictionary:
 	if NativeBuilder.use_native("build_coarse_arrays"):
@@ -113,4 +115,40 @@ static func coarse_columns(chunk_pos: Vector2i, heightmap: Array, input: Diction
 				top_colors.append(VoxelSlice.icy(style["top"], world_xz.y))
 				soil_colors.append(VoxelSlice.icy(style["soil"], world_xz.y))
 				soil_depths.append(float(style["depth"]))
-	return { "tops": tops, "colors": colors, "top_colors": top_colors, "soil_colors": soil_colors, "soil_depths": soil_depths }
+	return { "tops": tops, "colors": colors, "top_colors": top_colors, "soil_colors": soil_colors, "soil_depths": soil_depths,
+		"edge_tops": edge_tops(chunk_pos, heightmap, input.get("neighbour_heightmaps", {}), step) }
+
+## Phase 241 review — the cap a corner on the chunk's edge plane takes from the neighbours: per cell of
+## the ring one cell past the edge ((n + 2)² row-major, the inside unused at -INF), the highest natural
+## top of the neighbour tiles one tile past the edge within a tile of that cell. A full neighbour's border
+## vertex blends its first tile with ours and owns no wall on its west and north edges, so the coarse
+## skirt must stand as high as that tile. A neighbour with no known map adds nothing (-INF).
+static func edge_tops(chunk_pos: Vector2i, heightmap: Array, neighbours: Dictionary, step: int) -> PackedFloat64Array:
+	@warning_ignore("integer_division")
+	var n := CHUNK_SIZE / step
+	var w := CHUNK_SIZE + 2
+	# The true tops of the tile ring just past the edge, indexed (tz + 1) * w + (tx + 1).
+	var ring := PackedFloat64Array()
+	ring.resize(w * w)
+	ring.fill(-INF)
+	if not neighbours.is_empty():
+		for tz in range(-1, CHUNK_SIZE + 1):
+			for tx in range(-1, CHUNK_SIZE + 1):
+				if tx >= 0 and tx < CHUNK_SIZE and tz >= 0 and tz < CHUNK_SIZE:
+					continue
+				var h := VoxelSlice._natural_top(heightmap, chunk_pos, tx, tz, neighbours)
+				if not is_nan(h):
+					ring[(tz + 1) * w + (tx + 1)] = h
+	var out := PackedFloat64Array()
+	out.resize((n + 2) * (n + 2))
+	out.fill(-INF)
+	for cz in range(-1, n + 1):
+		for cx in range(-1, n + 1):
+			if cx >= 0 and cx < n and cz >= 0 and cz < n:
+				continue
+			var best := -INF
+			for tz in range(maxi(cz * step - 1, -1), mini((cz + 1) * step, CHUNK_SIZE) + 1):
+				for tx in range(maxi(cx * step - 1, -1), mini((cx + 1) * step, CHUNK_SIZE) + 1):
+					best = maxf(best, ring[(tz + 1) * w + (tx + 1)])
+			out[(cz + 1) * (n + 2) + (cx + 1)] = best
+	return out
