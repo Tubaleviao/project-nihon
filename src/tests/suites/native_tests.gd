@@ -22,6 +22,7 @@ func register() -> void:
 	_run_test("native: the general loader routes per class and function",                           _test_native_loader_routing)
 	_run_test("native: the shared hash and noise match WorldShape on 10,000 samples",              _test_native_world_shape_parity)
 	_run_test("native: heightmap_for matches the GDScript reference on the fixed chunk set",       _test_native_heightmap_parity)
+	_run_test("native: heightmap_strip_for matches the GDScript reference on every side and depth (Phase 241 review)", _test_native_heightmap_strip_parity)
 	_run_test("native: heightmap_for matches on the 2,000 km planet inside, at and past the continent edge (Phase 238)", _test_native_heightmap_parity_small_planet, true)
 	_run_test("native: build_runs matches the GDScript reference on the fixed chunk set",          _test_native_build_runs_parity)
 	_run_test("native: build_chunk_arrays matches the GDScript reference on the fixed chunk set",  _test_native_chunk_arrays_parity)
@@ -115,7 +116,7 @@ func _test_native_real_loader() -> void:
 		assert_true(ClassDB.class_exists(NativeBuilder.CLASS_NAME), "NativeChunkBuilder is registered")
 		assert_eq(NativeBuilder.version(), NativeBuilder.REQUIRED_VERSION, "the native class reports its version")
 		var b: RefCounted = ClassDB.instantiate(NativeBuilder.CLASS_NAME)
-		assert_eq(b.call("functions") as PackedStringArray, PackedStringArray(["heightmap_for", "build_runs", "build_chunk_arrays", "build_coarse_arrays", "build_smooth_arrays"]), "Phases 167-169, 190 and 240 port heightmap_for, build_runs, build_chunk_arrays, build_coarse_arrays and build_smooth_arrays")
+		assert_eq(b.call("functions") as PackedStringArray, PackedStringArray(["heightmap_for", "build_runs", "build_chunk_arrays", "build_coarse_arrays", "build_smooth_arrays", "heightmap_strip_for"]), "Phases 167-169, 190, 240 and 241 port heightmap_for, build_runs, build_chunk_arrays, build_coarse_arrays, build_smooth_arrays and heightmap_strip_for")
 	if EXPECT_FALLBACK_ARG in args:
 		assert_eq(mode, NativeBuilder.MODE_FALLBACK, "no binary: the loader reports the GDScript fallback")
 		assert_eq(NativeBuilder.version(), -1, "no native version on the fallback")
@@ -158,6 +159,21 @@ func _test_native_heightmap_parity_small_planet() -> void:
 		cases.append([pos, seed_v, noise])
 	ChunkRecordsScript.clear()
 	assert_native_parity(CHUNK_BUILDER, "heightmap_for", cases, TerrainSlice.heightmap_for_gd, TerrainSlice.heightmap_for, "heightmap_for, masked small planet")
+
+func _test_native_heightmap_strip_parity() -> void:
+	var seed_v := 777001
+	var noise := FastNoiseLite.new()
+	TerrainSlice.configure_noise(noise, seed_v)
+	var cases: Array = []
+	for pos: Vector2i in _native_parity_chunks().slice(0, 4):
+		for sz in [-1, 0, 1]:
+			for sx in [-1, 0, 1]:
+				if sx == 0 and sz == 0:
+					continue
+				for depth in [1, 2]:
+					cases.append([pos, Vector2i(sx, sz), seed_v, noise, depth])
+	ChunkRecordsScript.clear()
+	assert_native_parity(CHUNK_BUILDER, "heightmap_strip_for", cases, TerrainSlice.heightmap_strip_for_gd, TerrainSlice.heightmap_strip_for, "heightmap_strip_for")
 
 func _test_native_heightmap_parity() -> void:
 	var seed_v := 777001

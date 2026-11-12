@@ -698,6 +698,12 @@ static func heightmap_for_gd(pos: Vector2i, seed_v: int, noise: FastNoiseLite) -
 ## has the full map's shape and indexing, with null in every tile the ring never reads: 64 noise
 ## samples instead of 4096. Pure.
 static func heightmap_strip_for(pos: Vector2i, side: Vector2i, seed_v: int, noise: FastNoiseLite, depth: int = 1) -> Array:
+	if NativeBuilder.use_native("heightmap_strip_for"):   # Phase 241 review: a coarse build fills eight strips per chunk
+		return Hydrology.carve(pos, seed_v, NativeBuilder.builder().call("heightmap_strip_for", pos, side, depth, seed_v, noise, _native_cfg(pos, seed_v)) as Array)
+	return heightmap_strip_for_gd(pos, side, seed_v, noise, depth)
+
+## The GDScript `heightmap_strip_for`, the reference the native port is checked against.
+static func heightmap_strip_for_gd(pos: Vector2i, side: Vector2i, seed_v: int, noise: FastNoiseLite, depth: int = 1) -> Array:
 	var out: Array = []
 	out.resize(CHUNK_SIZE * CHUNK_SIZE)
 	var origin_x := pos.x * CHUNK_SIZE * TILE_SIZE

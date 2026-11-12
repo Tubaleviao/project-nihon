@@ -58,6 +58,13 @@ public:
 	Dictionary mesh_coarse_columns(const Vector2i &p_chunk, const Dictionary &p_cols, int64_t p_step, bool p_local, const Color &p_fallback) const;
 
 	Array heightmap_for(const Vector2i &p_pos, int64_t p_seed, const Ref<FastNoiseLite> &p_noise, const Dictionary &p_cfg) const;
+	// Phase 241 review. Port of `TerrainSlice.heightmap_strip_for_gd`: only the `depth` rows of chunk `pos`
+	// along edge `side` (each component -1..1, 0 = every row/column), null elsewhere, uncarved like
+	// `heightmap_for`. A coarse build's seam strips are 64 samples per neighbour, too slow in GDScript.
+	Array heightmap_strip_for(const Vector2i &p_pos, const Vector2i &p_side, int64_t p_depth, int64_t p_seed, const Ref<FastNoiseLite> &p_noise, const Dictionary &p_cfg) const;
+
+private:
+	Array heightmap_range(const Vector2i &p_pos, int64_t p_seed, const Ref<FastNoiseLite> &p_noise, const Dictionary &p_cfg, int p_x0, int p_x1, int p_z0, int p_z1) const;
 };
 
 } // namespace godot

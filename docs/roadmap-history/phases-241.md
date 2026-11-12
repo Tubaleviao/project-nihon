@@ -62,3 +62,10 @@ Completed phase, archived from [ROADMAP.md](../../ROADMAP.md). See the [index](R
   builder; `flight` at 270 m/s had the ground under the body built in 100% of 42 samples, and the
   worker spent 16 ms per crossing against 71 ms with coarse chunks off (the Phase 190 floor is a
   third, 23.7 ms). CI gates the median of three runs.
+- CI fix (playtest flight gate): the review's coarse seam strips were sampled in GDScript, eight per
+  coarse chunk, and pushed the flight step's worker time to 21.5 ms per crossing on CI, over the
+  21.1 ms floor (locally 29.7 ms against 25.4 ms). `TerrainSlice.heightmap_strip_for` now runs in C++
+  (`NativeChunkBuilder.heightmap_strip_for`, native version 13; the GDScript body stays as
+  `heightmap_strip_for_gd`, the reference). New test `native: heightmap_strip_for matches the GDScript
+  reference on every side and depth`. Measured locally, three flight-only runs: worker 21.8 ms per
+  crossing against a 23.7 ms floor.
