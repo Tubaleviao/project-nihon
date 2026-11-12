@@ -15,7 +15,7 @@ Packed snow: the tundra, the alpine peaks and any ground above its biome's snow 
 
 | Field | Type | Description |
 | ----- | ---- | ----------- |
-| layer | integer | Index of this material in the terrain shader's texture arrays and in the CUSTOM0 ids (Phase 242) |
+| layer | integer | Index of this material in the terrain shader's texture arrays and its weight channel in CUSTOM0/CUSTOM1 (Phase 242) |
 | textureKey | string | Asset key prefix; the maps are <key>_albedo/_normal/_roughness.jpg.raw under assets/ (Phase 242) |
 | scale | decimal | Metres of ground one texture tile covers (Phase 242) |
 | biomes | json | Biomes whose flat ground this material covers (Phase 242) |

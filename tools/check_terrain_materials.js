@@ -29,8 +29,11 @@ expect('a texture key with no file fails', problems(missing), /swamp_albedo\.jpg
 const twice = fresh(); set(twice.materials.TerrainMud, 'layer', 0);
 expect('a repeated layer fails', problems(twice), /layer 0 is also/);
 
-const gap = fresh(); set(gap.materials.TerrainMud, 'layer', 9);
+const gap = fresh(); set(gap.materials.TerrainMud, 'layer', 7);
 expect('a skipped layer fails', problems(gap), /layers skip 6/);
+
+const high = fresh(); set(high.materials.TerrainMud, 'layer', 8);
+expect('a layer past the eight weight channels fails', problems(high), /layer 8 is outside 0..7/);
 
 const ghost = fresh(); ghost.materials.TerrainGrass.fields.biomes.defaultValue.push('Atlantis');
 expect('an unknown biome fails', problems(ghost), /unknown biome "Atlantis"/);

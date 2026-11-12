@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:23e7c6356a8b0f7e6900cd1a6f362a520587039c0ad4f06f11ab89003b9750e9",
+  "schemaHash": "sha256:b397fc268e5f465198b166f26028c901e0135af5449b39783c9aaa6fbe4b8d8e",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -7854,7 +7854,7 @@
           "layer": {
             "name": "layer",
             "type": "integer",
-            "description": "Index of this material in the terrain shader's texture arrays and in the CUSTOM0 ids (Phase 242)",
+            "description": "Index of this material in the terrain shader's texture arrays and its weight channel in CUSTOM0/CUSTOM1 (Phase 242)",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -7943,7 +7943,7 @@
           "layer": {
             "name": "layer",
             "type": "integer",
-            "description": "Index of this material in the terrain shader's texture arrays and in the CUSTOM0 ids (Phase 242)",
+            "description": "Index of this material in the terrain shader's texture arrays and its weight channel in CUSTOM0/CUSTOM1 (Phase 242)",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -8029,7 +8029,7 @@
           "layer": {
             "name": "layer",
             "type": "integer",
-            "description": "Index of this material in the terrain shader's texture arrays and in the CUSTOM0 ids (Phase 242)",
+            "description": "Index of this material in the terrain shader's texture arrays and its weight channel in CUSTOM0/CUSTOM1 (Phase 242)",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -8115,7 +8115,7 @@
           "layer": {
             "name": "layer",
             "type": "integer",
-            "description": "Index of this material in the terrain shader's texture arrays and in the CUSTOM0 ids (Phase 242)",
+            "description": "Index of this material in the terrain shader's texture arrays and its weight channel in CUSTOM0/CUSTOM1 (Phase 242)",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -8201,7 +8201,7 @@
           "layer": {
             "name": "layer",
             "type": "integer",
-            "description": "Index of this material in the terrain shader's texture arrays and in the CUSTOM0 ids (Phase 242)",
+            "description": "Index of this material in the terrain shader's texture arrays and its weight channel in CUSTOM0/CUSTOM1 (Phase 242)",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -8289,7 +8289,7 @@
           "layer": {
             "name": "layer",
             "type": "integer",
-            "description": "Index of this material in the terrain shader's texture arrays and in the CUSTOM0 ids (Phase 242)",
+            "description": "Index of this material in the terrain shader's texture arrays and its weight channel in CUSTOM0/CUSTOM1 (Phase 242)",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -8376,7 +8376,7 @@
           "layer": {
             "name": "layer",
             "type": "integer",
-            "description": "Index of this material in the terrain shader's texture arrays and in the CUSTOM0 ids (Phase 242)",
+            "description": "Index of this material in the terrain shader's texture arrays and its weight channel in CUSTOM0/CUSTOM1 (Phase 242)",
             "nullable": false,
             "primaryKey": false,
             "pii": false,

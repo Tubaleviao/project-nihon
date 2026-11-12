@@ -18,9 +18,10 @@ const { defineEntity } = require('@newel/core')
 
 const MAPS = ['albedo', 'normal', 'roughness']
 const ASSETS = path.join(__dirname, '..', '..', 'assets')
-// Layers per texture array. A vertex blends at most four of them; sixteen 1K maps per array keeps
-// the arrays small.
-const MAX_LAYERS = 16
+// The mesh carries every layer's weight per vertex in two RGBA8 arrays (CUSTOM0 = layers 0-3, CUSTOM1 =
+// layers 4-7), so weights interpolate correctly across a triangle whose corners use different
+// materials; that caps the table at eight layers. A vertex still blends at most four of them.
+const MAX_LAYERS = 8
 
 function terrainMaterial({ description, goal, layer, textureKey, scale, biomes = [], slopeMin = -1,
   aboveSnowLine = false, nearWater = -1 }) {
@@ -30,7 +31,7 @@ function terrainMaterial({ description, goal, layer, textureKey, scale, biomes =
     goal,
     fields: {
       id:            { type: 'uuid', primaryKey: true },
-      layer:         { type: 'integer', description: 'Index of this material in the terrain shader\'s texture arrays and in the CUSTOM0 ids (Phase 242)', defaultValue: layer },
+      layer:         { type: 'integer', description: 'Index of this material in the terrain shader\'s texture arrays and its weight channel in CUSTOM0/CUSTOM1 (Phase 242)', defaultValue: layer },
       textureKey:    { type: 'string', description: 'Asset key prefix; the maps are <key>_albedo/_normal/_roughness.jpg.raw under assets/ (Phase 242)', defaultValue: textureKey },
       scale:         { type: 'decimal', description: 'Metres of ground one texture tile covers (Phase 242)', defaultValue: scale },
       biomes:        { type: 'json', description: 'Biomes whose flat ground this material covers (Phase 242)', defaultValue: biomes },
