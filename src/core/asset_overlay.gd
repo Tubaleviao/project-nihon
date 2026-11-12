@@ -69,14 +69,21 @@ func resolve_path(rel: String) -> String:
 ## machinery and do not see pack-mounted overrides at the bare `res://` path;
 ## see the module comment above).
 func load_texture(rel: String) -> ImageTexture:
+	var img := load_image(rel)
+	return ImageTexture.create_from_image(img) if img != null else null
+
+
+## The decoded image behind a canonical key, or null. PNG, and since Phase 242 JPEG (the terrain
+## maps, `*.jpg.raw`), chosen by the key's extension.
+func load_image(rel: String) -> Image:
 	var path := resolve_path(rel)
 	var bytes := FileAccess.get_file_as_bytes(path)
 	var img := Image.new()
-	var err := img.load_png_from_buffer(bytes)
+	var err := img.load_jpg_from_buffer(bytes) if rel.trim_suffix(".raw").ends_with(".jpg") else img.load_png_from_buffer(bytes)
 	if err != OK:
 		Diag.warn("[AssetOverlay] failed to decode %s: %s" % [path, error_string(err)])
 		return null
-	return ImageTexture.create_from_image(img)
+	return img
 
 
 ## Committed public manifest: canonical key -> relative path, per asset kind

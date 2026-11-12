@@ -19,6 +19,7 @@ const SUITES: Array[String] = [
 	"res://src/tests/suites/menu_tests.gd",
 	"res://src/tests/suites/one_world_tests.gd",
 	"res://src/tests/suites/smooth_ground_tests.gd",
+	"res://src/tests/suites/terrain_material_tests.gd",
 	"res://src/tests/suites/text_focus_tests.gd",
 	"res://src/tests/suites/pause_menu_tests.gd",
 	"res://src/tests/suites/debt_burn_iv_tests.gd",

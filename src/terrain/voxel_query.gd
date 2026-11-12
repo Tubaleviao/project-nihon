@@ -1,4 +1,5 @@
 extends RefCounted
+const TerrainMaterial := preload("res://src/terrain/terrain_material.gd")
 ## Column, biome and material queries, moved out of `VoxelSlice` verbatim (Phase 154).
 ## `s` is the owning slice; every moved method keeps a forwarder on the slice.
 
@@ -166,18 +167,19 @@ func _biomes_or_lookup(world_xz: Vector2, biomes: Dictionary) -> Dictionary:
 func set_season_tints(tints: Dictionary) -> void:
 	s._season_tints = tints.duplicate()
 	for biome in s._biome_mats:
-		var mat: StandardMaterial3D = s._biome_mats[biome]
+		var mat: ShaderMaterial = s._biome_mats[biome]
 		var tint: Color = s._season_tints.get(biome, Color.WHITE)
-		if not mat.albedo_color.is_equal_approx(tint):
-			mat.albedo_color = tint
+		if not TerrainMaterial.tint_of(mat).is_equal_approx(tint):
+			TerrainMaterial.set_tint(mat, tint)
 
 ## The terrain material the chunks of `biome` share. ONE instance per biome for the slice's life.
 ## A chunk's material is chosen when it is BUILT: one built before `terrain_slice` is assigned
 ## resolves `DEFAULT_BIOME` and keeps that biome's material until its next rebuild.
-func _terrain_material_for(biome: String) -> StandardMaterial3D:
+## Phase 242: a `TerrainMaterial` (the triplanar terrain shader) whose `tint` is the season tint.
+func _terrain_material_for(biome: String) -> ShaderMaterial:
 	if not s._biome_mats.has(biome):
-		var mat = s._make_terrain_material()
-		mat.albedo_color = s._season_tints.get(biome, Color.WHITE)
+		var mat: ShaderMaterial = s._make_terrain_material()
+		TerrainMaterial.set_tint(mat, s._season_tints.get(biome, Color.WHITE))
 		s._biome_mats[biome] = mat
 	return s._biome_mats[biome]
 

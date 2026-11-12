@@ -6,6 +6,7 @@
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/packed_string_array.hpp>
+#include <godot_cpp/variant/packed_vector3_array.hpp>
 #include <godot_cpp/variant/string.hpp>
 #include <godot_cpp/variant/vector2i.hpp>
 
@@ -62,6 +63,11 @@ public:
 	// along edge `side` (each component -1..1, 0 = every row/column), null elsewhere, uncarved like
 	// `heightmap_for`. A coarse build's seam strips are 64 samples per neighbour, too slow in GDScript.
 	Array heightmap_strip_for(const Vector2i &p_pos, const Vector2i &p_side, int64_t p_depth, int64_t p_seed, const Ref<FastNoiseLite> &p_noise, const Dictionary &p_cfg) const;
+
+	// Phase 242. Port of `TerrainWeights.apply_gd`: the first `natural` vertices' terrain-material weights,
+	// as `[custom0, custom1]` (RGBA8, one channel per layer 0-7, each vertex's eight bytes summing to 255;
+	// the rest zero). `params` is `TerrainWeights.native_params`. Empty on an input it cannot read.
+	Array terrain_weights(const PackedVector3Array &p_vertices, const PackedVector3Array &p_normals, int64_t p_natural, const Dictionary &p_params) const;
 
 private:
 	Array heightmap_range(const Vector2i &p_pos, int64_t p_seed, const Ref<FastNoiseLite> &p_noise, const Dictionary &p_cfg, int p_x0, int p_x1, int p_z0, int p_z1) const;

@@ -350,10 +350,11 @@ void NativeChunkBuilder::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("build_chunk_arrays", "chunk_pos", "heightmap", "resolved", "local", "cfg"), &NativeChunkBuilder::build_chunk_arrays);
 	ClassDB::bind_method(D_METHOD("build_smooth_arrays", "chunk_pos", "heightmap", "resolved", "local", "cfg"), &NativeChunkBuilder::build_smooth_arrays);
 	ClassDB::bind_method(D_METHOD("build_coarse_arrays", "chunk_pos", "heightmap", "input", "step", "local", "cfg"), &NativeChunkBuilder::build_coarse_arrays);
+	ClassDB::bind_method(D_METHOD("terrain_weights", "vertices", "normals", "natural", "params"), &NativeChunkBuilder::terrain_weights);
 }
 
 int NativeChunkBuilder::version() const {
-	return 13;   // 13 = heightmap_strip_for (Phase 241 review: a coarse build's seam strips); 12 = coarse corners on the edge plane capped by the neighbours' edge tiles (`edge_tops`), one vertex per coarse cell (Phase 241 review); 11 = build_coarse_arrays meshes smooth with skirts (Phase 241); 10 = build_runs reads `pad` and build_smooth_arrays (Phase 240); 9 = Phase 238 continent mask and planet-size lattices (`cfg.continents`); 8 = worldgen 11 massifs (Phase 211); 7 = build_coarse_arrays (Phase 190); 6 = worldgen 10 ridges (Phase 188); 5 = heightmap_for reads the spawn plain from `cfg.spawn_plain` (worldgen 9)
+	return 14;   // 14 = terrain_weights (Phase 242); 13 = heightmap_strip_for (Phase 241 review: a coarse build's seam strips); 12 = coarse corners on the edge plane capped by the neighbours' edge tiles (`edge_tops`), one vertex per coarse cell (Phase 241 review); 11 = build_coarse_arrays meshes smooth with skirts (Phase 241); 10 = build_runs reads `pad` and build_smooth_arrays (Phase 240); 9 = Phase 238 continent mask and planet-size lattices (`cfg.continents`); 8 = worldgen 11 massifs (Phase 211); 7 = build_coarse_arrays (Phase 190); 6 = worldgen 10 ridges (Phase 188); 5 = heightmap_for reads the spawn plain from `cfg.spawn_plain` (worldgen 9)
 }
 
 PackedStringArray NativeChunkBuilder::functions() const {
@@ -364,6 +365,7 @@ PackedStringArray NativeChunkBuilder::functions() const {
 	out.push_back("build_coarse_arrays");
 	out.push_back("build_smooth_arrays");
 	out.push_back("heightmap_strip_for");
+	out.push_back("terrain_weights");
 	return out;
 }
 

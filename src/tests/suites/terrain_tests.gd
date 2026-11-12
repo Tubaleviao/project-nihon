@@ -1,4 +1,5 @@
 extends "res://src/tests/test_support.gd"
+const TerrainMaterialScript := preload("res://src/terrain/terrain_material.gd")
 ## Phase 133 — the terrain tests, moved unchanged from the old single-file suite.
 
 
@@ -2408,11 +2409,11 @@ func _test_clock_season_tint_per_chunk() -> void:
 	v.build_chunk(t_chunks[0], flat)
 	v.build_chunk(f_chunks[0], flat)
 	v.set_season_tints({ "Tundra": snow, "TemperateForest": green })
-	var t_mat: StandardMaterial3D = (_chunk_mesh_instances(v, t_chunks[0])[0] as MeshInstance3D).material_override
-	var f_mat: StandardMaterial3D = (_chunk_mesh_instances(v, f_chunks[0])[0] as MeshInstance3D).material_override
+	var t_mat: ShaderMaterial = (_chunk_mesh_instances(v, t_chunks[0])[0] as MeshInstance3D).material_override
+	var f_mat: ShaderMaterial = (_chunk_mesh_instances(v, f_chunks[0])[0] as MeshInstance3D).material_override
 	assert_false(is_same(t_mat, f_mat), "the two biomes' chunks wear different materials")
-	assert_true(t_mat.albedo_color.is_equal_approx(snow), "the tundra chunk is snow-tinted")
-	assert_true(f_mat.albedo_color.is_equal_approx(green), "the forest chunk keeps its non-snow tint")
+	assert_true(TerrainMaterialScript.tint_of(t_mat).is_equal_approx(snow), "the tundra chunk is snow-tinted")
+	assert_true(TerrainMaterialScript.tint_of(f_mat).is_equal_approx(green), "the forest chunk keeps its non-snow tint")
 	v.free()
 	terrain.free()
 

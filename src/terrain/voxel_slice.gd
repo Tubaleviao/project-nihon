@@ -102,6 +102,8 @@ const MeshUtil := preload("res://src/core/mesh_util.gd")
 const OreField := preload("res://src/terrain/ore_field.gd")
 const NativeBuilder := preload("res://src/terrain/native_builder.gd")
 const BiomeBlend := preload("res://src/terrain/biome_blend.gd")
+const TerrainMaterial := preload("res://src/terrain/terrain_material.gd")
+const TerrainWeights := preload("res://src/terrain/terrain_weights.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
 const SeamWrap := preload("res://src/terrain/seam_wrap.gd")
@@ -1243,18 +1245,14 @@ func _run_color(run: Dictionary, world_xz: Vector2, biomes: Dictionary = {}, col
 func set_season_tints(tints: Dictionary) -> void:
 	_query.set_season_tints(tints)
 
-func _terrain_material_for(biome: String) -> StandardMaterial3D:
+func _terrain_material_for(biome: String) -> ShaderMaterial:
 	return _query._terrain_material_for(biome)
 
-## The terrain's per-chunk material: per-column vertex colour, both faces
-## rendered, so the shell is never see-through regardless of triangle winding.
-func _make_terrain_material() -> StandardMaterial3D:
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color.WHITE
-	mat.vertex_color_use_as_albedo = true
-	mat.roughness    = 0.9
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	return mat
+## The terrain's per-chunk material. Phase 242: the triplanar terrain shader (`TerrainMaterial`),
+## weighted per vertex by `TerrainWeights`; a placed block (no weights) keeps its vertex colour. Both
+## faces are rendered, so the shell is never see-through regardless of triangle winding.
+func _make_terrain_material() -> ShaderMaterial:
+	return TerrainMaterial.make()
 
 func _on_chunk_ready(chunk_pos: Vector2i, heightmap: Array) -> void:
 	build_chunk(chunk_pos, heightmap)

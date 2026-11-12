@@ -5,6 +5,7 @@ extends RefCounted
 const VoxelBuilder := preload("res://src/terrain/voxel_slice.gd")
 const VoxelMesh := preload("res://src/terrain/voxel_mesh.gd")
 const VoxelCoarse := preload("res://src/terrain/voxel_coarse.gd")
+const TerrainWeights := preload("res://src/terrain/terrain_weights.gd")
 const FreshWaterMesh := preload("res://src/terrain/fresh_water_mesh.gd")
 const TerrainSliceScript := preload("res://src/terrain/terrain_slice.gd")
 const SeamWrapScript := preload("res://src/terrain/seam_wrap.gd")
@@ -333,6 +334,7 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 	var keep_render: bool = sl.keeps_render()
 	var revision: int = int(sl.voxel_slice.chunk_revision(chunk_pos))
 	var seed_v: int = int(sl.terrain_slice.get_world_seed())
+	TerrainWeights.warm()   # Phase 242: the material table the worker's weights read
 	var result: Array = [null]
 	var job := func() -> void:
 		if not geometry:
@@ -340,6 +342,8 @@ func _dispatch_build(chunk_pos: Vector2i) -> void:
 			return
 		result[0] = VoxelMesh.build_worker_arrays(chunk_pos, heightmap,
 			VoxelBuilder.build_runs(chunk_pos, heightmap, gathered), keep_render)
+		if keep_render:
+			TerrainWeights.apply(result[0], chunk_pos, gathered.get("biomes", {}), seed_v)
 		_add_fresh_water(result[0], chunk_pos, seed_v, keep_render)
 	var task_id = WorkerThreadPool.add_task(job, sl.build_high_priority(chunk_pos), "chunk build %s" % key)
 	sl._builds[task_id] = {
@@ -440,6 +444,7 @@ func _lane_order(done: Array, centers: Array) -> Array:
 ## the ring's known maps; the missing ones get a one-tile seam strip on the worker (the skirt's height). The task's own time comes back in `result[2]` (µs) for the flight step's worker ms per crossing.
 func dispatch_worker_noise_build(chunk_pos: Vector2i, key: String) -> void:
 	TerrainSliceScript.warm_polar_caches()   # the static caches the generator reads, filled here on the main thread
+	TerrainWeights.warm()   # Phase 242: the material table the worker's weights read
 	var voxel: Node = sl.voxel_slice
 	var cached: Array = voxel.take_cached_heightmap(chunk_pos)
 	# #437 — a dedicated server attaches no geometry, so its task only generates the map: no gather,
@@ -466,11 +471,15 @@ func dispatch_worker_noise_build(chunk_pos: Vector2i, key: String) -> void:
 			VoxelBuilder.fill_seam_strips(chunk_pos, gathered, seed_v, noise)
 			var coarse := VoxelCoarse.build_coarse_arrays(chunk_pos, hm, gathered, lod, true)
 			coarse["shape"] = VoxelMesh.collision_shape(coarse["collision"])
+			if keep_render:
+				TerrainWeights.apply(coarse, chunk_pos, gathered.get("biomes", {}), seed_v)
 			result[0] = coarse
 			_add_fresh_water(result[0], chunk_pos, seed_v, keep_render)
 		else:
 			VoxelBuilder.fill_seam_strips(chunk_pos, gathered, seed_v, noise)
 			result[0] = VoxelMesh.build_worker_arrays(chunk_pos, hm, VoxelBuilder.build_runs(chunk_pos, hm, gathered), keep_render)
+			if keep_render:
+				TerrainWeights.apply(result[0], chunk_pos, gathered.get("biomes", {}), seed_v)
 			_add_fresh_water(result[0], chunk_pos, seed_v, keep_render)
 		result[2] = Time.get_ticks_usec() - t0
 	# A low-priority task may only use `low_priority_thread_ratio` of the pool (0.3 by default: three or
