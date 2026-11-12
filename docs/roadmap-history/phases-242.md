@@ -40,7 +40,10 @@ Natural ground is drawn in vertex colour from the biome, and `assets/` holds no 
   `aboveSnowLine` (snow) and `nearWater` (mud, 3 m); every biome has a `snowLine` (Alpine and Tundra 0,
   Taiga 400 m, the temperate pair 700 m, the rest never). `validateTerrainMaterials` and
   `tools/check_terrain_materials.js` reject a biome with no material, a map with no file in `assets/`,
-  a repeated or skipped layer, an unknown biome, a missing snow line and a table with no snow material.
+  a repeated or skipped layer, an unknown biome, a missing snow line, a table with no snow material and
+  (review) a `scale` that does not fit a 32 m chunk a whole number of times: textures map from scene
+  positions and an origin rebase shifts the scene by whole chunks, so rock, snow and mud went from 6, 5
+  and 3 m to 6.4, 6.4 and 3.2 m.
 - Textures: ambientCG CC0 1K sets (Grass004, Ground048, Ground037, Rock030, Ground054, Snow006,
   Ground036) re-encoded as `assets/textures/terrain/<name>_{albedo,normal,roughness}.jpg.raw` (8.7 MB),
   credited in `assets/README.md`. `AssetOverlay.load_image` decodes JPEG keys.
@@ -51,9 +54,10 @@ Natural ground is drawn in vertex colour from the biome, and `assets/` holds no 
   most four.
 - Weights: `src/terrain/terrain_weights.gd` (pure). The biome blend is Phase 64's border (`BiomeBlend.chance`
   over `VoxelSlice.BLEND_TILES`; the spec's "Phase 120" meant this), then wetness (distance to a lake or
-  river edge from `Hydrology.features_for_chunk`), then the snow line (±15 m), then slope (±8° round
+  river edge from `Hydrology.features_for_chunk`), then the snow line (±15 m, each blended biome by its
+  own line: averaging lines let a lineless neighbour erase snow in the border band, review), then slope (±8° round
   `slopeMin`), each taking its share from what came before. Placed-block vertices weigh zero and the
-  shader draws their vertex colour. The loop is native (`NativeChunkBuilder.terrain_weights`, native
+  shader draws their vertex colour under the season tint. The loop is native (`NativeChunkBuilder.terrain_weights`, native
   version 14, about 1 ms a chunk against about 35 ms in GDScript); `apply_gd` is the reference and a
   parity test compares 16 chunks, local and absolute, with and without water. Weights are added on the
   worker in every build path (full, coarse, the synchronous rebuild).
