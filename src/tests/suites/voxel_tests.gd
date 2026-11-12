@@ -841,10 +841,11 @@ func _test_voxel_terrain_material_is_one_instance() -> void:
 	assert_eq(meshes.size(), 2, "the chunk carries a surface and a deposit overlay")
 	var surface_mat: Material = (meshes[0] as MeshInstance3D).material_override
 	var deposit_mat: Material = (meshes[1] as MeshInstance3D).material_override
-	assert_true(surface_mat is StandardMaterial3D, "the surface carries a terrain material")
+	# Phase 242: the terrain shader; the deposit overlay carries no weights, so it draws its vertex colour.
+	assert_true(surface_mat is ShaderMaterial, "the surface carries a terrain material")
 	assert_true(is_same(surface_mat, deposit_mat),
 		"the surface and the deposit overlay share ONE material instance")
-	assert_eq((surface_mat as StandardMaterial3D).cull_mode, BaseMaterial3D.CULL_DISABLED,
+	assert_true(surface_mat is ShaderMaterial and (surface_mat as ShaderMaterial).shader.code.contains("cull_disabled"),
 		"and it is the terrain material (both faces rendered)")
 
 	# A rebuild — an edit, a re-stream, the self-heal — must not mint another one.

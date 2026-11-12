@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–224, 238, 240, 241, 248 and 249 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–224, 238, 240–242, 248 and 249 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -180,7 +180,7 @@ detail and caching (243–244), and later flight (237), the planet bake (245) an
 | 239 | Streaming that keeps up: a speed-scaled lead, adaptive workers, an attach budget | Done |
 | 240 | Smooth natural ground: a surface-nets mesher (GDScript reference) | Done ([phases-240.md](docs/roadmap-history/phases-240.md)) |
 | 241 | The native smooth mesher, and coarse chunks built smooth | Done ([phases-241.md](docs/roadmap-history/phases-241.md)) |
-| 242 | Terrain materials: blend weights, a triplanar shader and CC0 textures | Open |
+| 242 | Terrain materials: blend weights, a triplanar shader and CC0 textures | Done ([phases-242.md](docs/roadmap-history/phases-242.md)) |
 | 243 | Level of detail past the window: voxel rings out to the distant ring, faded, under the haze | Open |
 | 244 | A chunk cache on disk: the host keeps generated chunks, the client keeps built meshes | Open |
 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km | Open |
@@ -520,36 +520,6 @@ velocity; the steady worker cap starts at half the cores and moves once a second
 the body; the ground surface of a chunk is a `ChunkSurface` (RenderingServer mesh and instance) when
 `VoxelBuild.render_server_surfaces` is on (the game, not the suite's rigs). The `flight` step is gated
 by CI's playtest run; no release-build numbers were recorded in this PR.
-
-## Phase 242 — Terrain materials: blend weights, a triplanar shader and CC0 textures
-
-Natural ground is drawn in vertex colour from the biome, and `assets/` holds no terrain textures.
-
-- **Material weights per vertex:** up to four terrain materials per vertex (for example grass, dirt,
-  rock, sand, snow, mud), stored in `CUSTOM0` (material ids) and `CUSTOM1` (weights). The weights are
-  a pure function of the biome blend (Phase 120's `biome_blend`), slope (rock on steep ground),
-  altitude (snow above the biome's snow line) and wetness (mud and sand near water, Phase 217). A
-  placed block keeps its own material.
-- **Terrain materials in the fabric** (separate PR): each with its texture key, scale and which biomes
-  and slopes use it. A validator checks every biome resolves to at least one material.
-- **Shader:** triplanar projection (no stretching on cliffs) with a texture array per map (albedo,
-  normal, roughness), blended by the weights with height-based blending at the borders, and a detail
-  texture fading in near the camera.
-- **Textures:** a CC0 set (ambientCG or Poly Haven, 1K, credited in `assets/README.md`) in the public
-  `assets/textures/terrain/`. CC0 can ship in the public repo, so it is also the placeholder for later
-  production art (the placeholder rule holds).
-- A low-end fallback: the graphics option from Phase 225 can drop to biplanar sampling and no detail
-  texture.
-
-**Acceptance criteria**
-- `npm run validate` and `check-drift` pass. A `tools/check_*.js` rejects a biome with no terrain
-  material and a material whose texture key has no file in `assets/`.
-- Suite tests on the weight function: weights sum to 1. Ground steeper than the rock slope is mostly
-  rock. Ground above the snow line is mostly snow. A biome border blends over the same width as
-  Phase 120.
-- A suite test builds a chunk and finds `CUSTOM0`/`CUSTOM1` on every vertex, and the terrain material's
-  shader compiling with every texture array set.
-- `assets/README.md` lists each texture's source URL and licence.
 
 ## Phase 243 — Level of detail past the window
 

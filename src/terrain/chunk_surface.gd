@@ -1,4 +1,5 @@
 extends Node3D
+const TerrainWeights := preload("res://src/terrain/terrain_weights.gd")
 ## Phase 239 — one chunk's ground surface, drawn through the RenderingServer instead of a
 ## `MeshInstance3D`. The mesh is a server resource (`mesh_add_surface_from_arrays`) and the instance
 ## is placed in the node's world and follows its transform, so a streamed chunk costs two server
@@ -20,8 +21,9 @@ func setup(arrays: Dictionary, material: Material) -> bool:
 	surface[Mesh.ARRAY_NORMAL] = arrays["normals"]
 	surface[Mesh.ARRAY_COLOR] = arrays["colors"]
 	surface[Mesh.ARRAY_INDEX] = arrays["indices"]
+	var flags := TerrainWeights.fill_surface(surface, arrays)   # Phase 242: the material weights, when built
 	_mesh = RenderingServer.mesh_create()
-	RenderingServer.mesh_add_surface_from_arrays(_mesh, RenderingServer.PRIMITIVE_TRIANGLES, surface)
+	RenderingServer.mesh_add_surface_from_arrays(_mesh, RenderingServer.PRIMITIVE_TRIANGLES, surface, [], {}, flags)
 	if material != null:
 		RenderingServer.mesh_surface_set_material(_mesh, 0, material.get_rid())
 	_instance = RenderingServer.instance_create()

@@ -3,6 +3,7 @@ extends RefCounted
 ## `VoxelSlice.build_chunk_arrays` forwards here; nothing in this file touches node state.
 
 const VoxelConsts := preload("res://src/terrain/voxel_consts.gd")
+const TerrainWeights := preload("res://src/terrain/terrain_weights.gd")
 const VoxelRuns := preload("res://src/terrain/voxel_runs.gd")
 const MeshUtil := preload("res://src/core/mesh_util.gd")
 const NativeBuilder := preload("res://src/terrain/native_builder.gd")
@@ -491,6 +492,7 @@ static func mesh_from_arrays(arrays: Dictionary) -> ArrayMesh:
 	surface[Mesh.ARRAY_NORMAL] = arrays["normals"]
 	surface[Mesh.ARRAY_COLOR]  = arrays["colors"]
 	surface[Mesh.ARRAY_INDEX]  = arrays["indices"]
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, surface)
+	var flags := TerrainWeights.fill_surface(surface, arrays)   # Phase 242: the material weights, when built
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, surface, [], {}, flags)
 	return mesh
 

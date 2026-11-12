@@ -6,6 +6,7 @@ const TickProbe := preload("res://src/core/tick_probe.gd")
 const VoxelMesh := preload("res://src/terrain/voxel_mesh.gd")
 const FreshWaterMesh := preload("res://src/terrain/fresh_water_mesh.gd")
 const ChunkSurface := preload("res://src/terrain/chunk_surface.gd")
+const TerrainWeights := preload("res://src/terrain/terrain_weights.gd")
 var s: Node
 
 ## Phase 239 — draw each chunk's ground through the RenderingServer (`ChunkSurface`) instead of a
@@ -72,6 +73,8 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 		# Only the SYNCHRONOUS path reaches this now: a worker result that carried nothing
 		# was refused above rather than quietly rebuilt here (Phase 42 review).
 		built = VoxelMesh.build_terrain_arrays(chunk_pos, heightmap, s.collect_build_runs(chunk_pos, heightmap), true)
+		if s.attach_geometry:
+			TerrainWeights.apply(built, chunk_pos, s.gather_biomes_for(chunk_pos), s._world_seed())   # Phase 242
 	# A chunk-local build puts the node at the chunk's corner: the corner is summed with the scene
 	# offset in double precision, so far from the origin the node's position is small and exact and
 	# the vertices stay small too (float32 vertices at 2e7 m would snap to 2 m and shatter the ground).

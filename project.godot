@@ -44,3 +44,7 @@ jump={
 rendering_device/driver.windows="d3d12"
 textures/vram_compression/import_etc2_astc=true
 
+
+[nihon]
+
+graphics/terrain_quality=-1
