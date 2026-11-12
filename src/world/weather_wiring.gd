@@ -12,7 +12,11 @@ const SKY_TOP_DAY := Color(0.3, 0.5, 0.82)
 const SKY_TOP_NIGHT := Color(0.01, 0.015, 0.04)
 const HAZE_DAY := Color(0.66, 0.74, 0.84)
 const HAZE_NIGHT := Color(0.02, 0.03, 0.08)
-const HAZE_DENSITY := 0.00015   ## clear-weather exponential fog: ~14% at 1 km, ~95% at 20 km
+const HAZE_DENSITY := 0.00015   ## clear-weather exponential fog with no LOD rings: ~14% at 1 km, ~95% at 20 km
+## Phase 243 — with LOD rings, the clear haze is fitted to the outer LOD radius: the fog reaches
+## HAZE_AT_OUTER there, so the last ring and the shape-only ground past it are mostly hazed.
+const HAZE_AT_OUTER := 0.9
+const LodRingPolicy := preload("res://src/terrain/lod_ring_policy.gd")
 const HAZE_AERIAL := 0.5        ## how much the fog takes its colour from the sky behind it
 ## How steeply weather thickens the haze: the fog density is the clear haze's times (1 / visibilityFactor)
 ## to this power, so rain (0.8) is a light veil (~2.4x), fog (0.5) closes in to about a kilometre (16x)
@@ -77,7 +81,19 @@ func _apply_weather_look(state: String) -> void:
 ## forty times the haze, so everything past ~300 m became one flat band of haze colour under the horizon.
 static func weather_fog_density(vis: float) -> float:
 	var v := clampf(vis, WEATHER_VIS_FLOOR, 1.0)
-	return HAZE_DENSITY * pow(1.0 / v, WEATHER_FOG_EXPONENT)
+	return haze_density() * pow(1.0 / v, WEATHER_FOG_EXPONENT)
+
+## Phase 243 — the clear-weather fog density in effect: fitted to the outer LOD radius of the rings the
+## client draws (`LodRingPolicy.rings()`), or HAZE_DENSITY with none.
+static func haze_density() -> float:
+	return haze_density_for(LodRingPolicy.rings())
+
+## Pure: the clear haze for `ring_count` LOD rings. Exponential fog covers 1 − e^(−density·d) at distance
+## d, so it is HAZE_AT_OUTER at the outer radius R when density = −ln(1 − HAZE_AT_OUTER) / R.
+static func haze_density_for(ring_count: int) -> float:
+	if ring_count <= 0:
+		return HAZE_DENSITY
+	return -log(1.0 - HAZE_AT_OUTER) / LodRingPolicy.outer_radius_m(ring_count, LodRingPolicy.WINDOW_RADIUS)
 
 ## Phase 164 — the fog for a weather `vis` (visibilityFactor, 1 = clear), and in thick weather the sky is
 ## fogged too (with the same colour as its horizon).

@@ -37,6 +37,7 @@ const SUITES: Array[String] = [
 	"res://src/tests/suites/tutorial_runtime_tests.gd",
 	"res://src/tests/suites/terrain_stream_tests.gd",
 	"res://src/tests/suites/terrain_lod_tests.gd",
+	"res://src/tests/suites/lod_rings_tests.gd",
 	"res://src/tests/suites/chunk_cache_tests.gd",
 	"res://src/tests/suites/voxel_ray_tests.gd",
 	"res://src/tests/suites/horizon_tests.gd",

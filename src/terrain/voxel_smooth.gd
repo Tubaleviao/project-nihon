@@ -176,6 +176,20 @@ static func mesh_coarse_columns(chunk_pos: Vector2i, cols: Dictionary, step: int
 		"skirt_quads": skirts, "local": local, "lod": step,
 	}
 
+## Phase 243 — an LOD-ring chunk's mesh: `cols` (`VoxelLod.lod_columns`, `cells`² columns of `step` tiles)
+## meshed smooth like a coarse chunk, skirted under every edge, always chunk-local (the caller places the
+## node at the LOD chunk's corner). Render only: the collision soup is dropped.
+static func mesh_lod_columns(cols: Dictionary, step: int, cells: int) -> Dictionary:
+	var m := _Mesher.new(Vector2i.ZERO, true, step, cells)
+	m.skirted = true
+	m.load_columns(cols)
+	m.build()
+	var skirts := m.add_skirts()
+	return {
+		"vertices": m.vertices, "normals": m.normals, "colors": m.colors, "indices": m.indices,
+		"quad_count": m.quads, "cell_count": m.cells.size(), "skirt_quads": skirts, "local": true, "lod": step,
+	}
+
 ## One chunk's build state. A RefCounted made and dropped inside one call, so a worker owns it alone.
 class _Mesher extends RefCounted:
 	var chunk_pos: Vector2i
@@ -216,13 +230,13 @@ class _Mesher extends RefCounted:
 	const SIDE_NORTH := 4
 	const SIDE_SOUTH := 8
 
-	func _init(p_chunk: Vector2i, local: bool, step: int = 1) -> void:
+	func _init(p_chunk: Vector2i, local: bool, step: int = 1, cells: int = 0) -> void:
 		chunk_pos = p_chunk
 		if not local:
 			origin_x = chunk_pos.x * CHUNK_SIZE * TILE_SIZE
 			origin_z = chunk_pos.y * CHUNK_SIZE * TILE_SIZE
 		@warning_ignore("integer_division")
-		n = CHUNK_SIZE / step
+		n = CHUNK_SIZE / step if cells <= 0 else cells   # Phase 243: an LOD chunk sets its own cell count
 		span = n + 2 * PAD
 		cell = TILE_SIZE * step
 		grid = GRID * step

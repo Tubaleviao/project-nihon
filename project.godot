@@ -47,4 +47,5 @@ textures/vram_compression/import_etc2_astc=true
 
 [nihon]
 
+graphics/lod_rings=5
 graphics/terrain_quality=-1

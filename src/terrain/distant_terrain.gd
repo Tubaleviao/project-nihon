@@ -39,6 +39,9 @@ const HORIZON_MARGIN := 1.1  ## the outer radius reaches this far past the horiz
 ## A render layer only the ring is on (besides layer 1), so a camera can draw the ring alone (the
 ## playtest bot's horizon step reads its silhouette that way).
 const RING_RENDER_LAYER := 1 << 19
+## Phase 243 — the ring's square half-extent round an LOD hole, as a multiple of the hole's half-extent plus its
+## offset from the viewer (`lod_ring_half`).
+const LOD_HOLE_MARGIN := 1.25
 
 var world_seed: int = 0
 var circumference_m: float = 40000.0 * 1000.0
@@ -62,10 +65,13 @@ class Request extends RefCounted:
 	var window := Vector2(INF, INF)
 	var records_rev := -1
 	var window_rev := 0   # ChunkRecords.window_revision when this request was made
+	var hole := Rect2()   # Phase 243 — the LOD hole it was asked for (empty: the window)
+	var half := 0.0       # the square's half-extent
 	var args: Dictionary = {}
 
-	func same_target(o: Vector2i, win: Vector2, rad: int, sd: int, c: float) -> bool:
-		return origin == o and window == win and radius == rad and world_seed == sd and circ == c
+	func same_target(o: Vector2i, win: Vector2, rad: int, sd: int, c: float, h: Rect2 = Rect2(), hm: float = 0.0) -> bool:
+		return origin == o and window == win and radius == rad and world_seed == sd and circ == c \
+			and hole == h and half == hm
 
 ## Phase 120 — the whole request lifecycle in one record (it replaces `_built_*`, `_task_args`,
 ## `_queued` and `_discarded`): `built` is the newest accepted request (what the mesh is, or will be,
@@ -137,6 +143,8 @@ var _fills: Dictionary = {}   ## Vector2i chunk -> MeshInstance3D
 ## Phase 194 — the inputs `rebuild` last made patches for, and whether it left some unmade.
 var _unbuilt_key: Array = []
 var _fills_owed := false
+## Phase 243 — the request the drawn mesh was built for.
+var _drawn_req: Request = null
 ## Phase 194 — what `rebuild` last asked the bands for.
 var _bands_key: Array = []
 
@@ -244,6 +252,25 @@ func reach_m() -> float:
 	return maxf(outer_radius_m, bands.outer_radius_m) if bands != null else outer_radius_m
 
 ## Ring half-extent in metres for a voxel window of `radius_chunks` (Chebyshev radius).
+## Phase 243 — the LOD hole the drawn mesh cuts (world metres; empty: the window, or nothing drawn yet).
+## `LodTerrain` swaps a moved set of rings in once this is its new outer box.
+func drawn_hole() -> Rect2:
+	return _drawn_req.hole if _drawn_req != null and _mesh_inst != null else Rect2()
+
+## Phase 243 — the square's half-extent round LOD hole `hole` for a viewer at `center`: the square is
+## centred on the viewer's lattice cell but the hole on the LOD box, which can sit off the viewer by most
+## of its half-width, so the square takes LOD_HOLE_MARGIN times the hole plus that offset. The offset is
+## rounded up to an eighth of the hole, so walking across the box resizes the square a few times, not
+## every frame; LOD_HOLE_MARGIN's quarter covers the lattice cell the centre snaps by.
+static func lod_ring_half(hole: Rect2, center: Vector2) -> float:
+	var h := hole.size.x * 0.5
+	if h <= 0.0:
+		return 0.0
+	var off := (hole.get_center() - center).abs()
+	var step := h / 8.0
+	var drift := ceilf(maxf(off.x, off.y) / step) * step
+	return (h + drift) * LOD_HOLE_MARGIN
+
 static func ring_half_extent(radius_chunks: int) -> float:
 	return float(RING_FACTOR) * (float(radius_chunks) + 0.5) * CHUNK_METERS
 
@@ -281,7 +308,10 @@ static func _altitude_color(alt: float) -> Color:
 ## when a build was started or queued (the centre moved a whole cell, or first call); the finished
 ## mesh is swapped in by `poll` (called every frame from `_process`).
 ## Phase 191 — `chunks` (the chunk manager) also keeps a patch under each unbuilt chunk of its window.
-func rebuild(center: Vector2, radius_chunks: int, chunks: Node = null) -> bool:
+##
+## Phase 243 — with LOD rings, `hole` (the outer LOD box in world metres, square) is the ring's hole
+## instead of the window, and the square grows to LOD_HOLE_MARGIN times the hole when the hole needs it.
+func rebuild(center: Vector2, radius_chunks: int, chunks: Node = null, hole: Rect2 = Rect2()) -> bool:
 	if chunks != null:
 		# Phase 194 (#512) — the window's unbuilt list (string keys, a dict per call) is read only when it can
 		# have changed, or while patches are still owed to it (`set_unbuilt` makes a few a call).
@@ -292,8 +322,11 @@ func rebuild(center: Vector2, radius_chunks: int, chunks: Node = null) -> bool:
 			var unbuilt: Array = chunks.unbuilt_window_chunks()
 			_fills_owed = set_unbuilt(unbuilt, chunks.player_chunk(), FILL_BUDGET_USEC) < unbuilt.size()
 			TickProbe.end()
-	window_half_m = (float(radius_chunks) + 0.5) * CHUNK_METERS
-	ring_half_m = ring_half_extent(radius_chunks)
+	var lod_hole := hole.size.x > 0.0
+	window_half_m = hole.size.x * 0.5 if lod_hole else (float(radius_chunks) + 0.5) * CHUNK_METERS
+	# The square grows only as far as the hole needs (a quarter past it), so the polar rings and the bands
+	# past it keep the shape they have round a window.
+	ring_half_m = maxf(ring_half_extent(radius_chunks), lod_ring_half(hole, center) if lod_hole else 0.0)
 	outer_radius_m = outer_radius_for(ring_half_m, circumference_m)
 	if bands != null:
 		# Phase 194 (#444) — every band's lattice is a power-of-two multiple of band 0's, so the bands can only
@@ -311,9 +344,11 @@ func rebuild(center: Vector2, radius_chunks: int, chunks: Node = null) -> bool:
 	# ring rebuilds when the player's chunk changes as well as when the lattice cell does.
 	var win_center := Vector2((floorf(center.x / CHUNK_METERS) + 0.5) * CHUNK_METERS,
 		(floorf(center.y / CHUNK_METERS) + 0.5) * CHUNK_METERS)
+	if lod_hole:
+		win_center = hole.get_center()
 	var rev := ChunkRecords.revision()
 	var built := _req.built
-	var same := built != null and built.same_target(origin, win_center, radius_chunks, world_seed, circumference_m) \
+	var same := built != null and built.same_target(origin, win_center, radius_chunks, world_seed, circumference_m, hole, ring_half_m) \
 		and (_mesh_inst != null or _task >= 0)
 	# Same target: only a newer set of recorded chunks can still ask for a rebuild, debounced.
 	if same and (built.records_rev == rev or Time.get_ticks_msec() - _last_start_ms < record_debounce_ms):
@@ -325,6 +360,8 @@ func rebuild(center: Vector2, radius_chunks: int, chunks: Node = null) -> bool:
 	r.radius = radius_chunks
 	r.circ = circumference_m
 	r.records_rev = rev
+	r.hole = hole
+	r.half = ring_half_m
 	WorldShape.warm()   # the fabric snapshot is taken here, never first on a worker
 	TerrainSliceScript.warm_polar_caches()   # and the polar caches `polar_ground` reads
 	var snap: Dictionary = {}
@@ -392,6 +429,7 @@ func poll(block: bool = false) -> bool:
 			_req.queued = null
 			break
 		if _req.queued == null:
+			_drawn_req = _req.running
 			_swap_in(mesh)
 			rebuilds_completed += 1
 			swapped = true

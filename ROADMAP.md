@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–224, 238, 240–242, 248 and 249 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–224, 238, 240–243, 248 and 249 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -181,7 +181,7 @@ detail and caching (243–244), and later flight (237), the planet bake (245) an
 | 240 | Smooth natural ground: a surface-nets mesher (GDScript reference) | Done ([phases-240.md](docs/roadmap-history/phases-240.md)) |
 | 241 | The native smooth mesher, and coarse chunks built smooth | Done ([phases-241.md](docs/roadmap-history/phases-241.md)) |
 | 242 | Terrain materials: blend weights, a triplanar shader and CC0 textures | Done ([phases-242.md](docs/roadmap-history/phases-242.md)) |
-| 243 | Level of detail past the window: voxel rings out to the distant ring, faded, under the haze | Open |
+| 243 | Level of detail past the window: voxel rings out to the distant ring, faded, under the haze | Done ([phases-243.md](docs/roadmap-history/phases-243.md)) |
 | 244 | A chunk cache on disk: the host keeps generated chunks, the client keeps built meshes | Open |
 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km | Open |
 | 246 | The regional bake: 2 m erosion detail in 4 km regions, on demand around players | Parked |
@@ -520,37 +520,6 @@ velocity; the steady worker cap starts at half the cores and moves once a second
 the body; the ground surface of a chunk is a `ChunkSurface` (RenderingServer mesh and instance) when
 `VoxelBuild.render_server_surfaces` is on (the game, not the suite's rigs). The `flight` step is gated
 by CI's playtest run; no release-build numbers were recorded in this PR.
-
-## Phase 243 — Level of detail past the window
-
-Past the 9×9 window, the distant ring (Phases 51, 164) and the bands (Phase 165) draw only
-`WorldShape`, with no detail noise, records or edits. A flyer sees the near ground pop in, and the far
-ground does not match it.
-
-- **LOD rings** between the window and the distant ring: rings of chunks meshed with the smooth mesher
-  on a downsampled density (4×, 8×, 16× cells), in the clipmap style of Phase 165. Each ring's cell
-  doubles, so the cost per ring stays about flat. They use the same heights the full chunks use (detail
-  noise, records, and edits summarised to the cell). The distant ring's hole grows to the outer LOD
-  ring.
-- **Ring boxes** (Phase 249, ported from godot_voxel's clipbox streaming, MIT notice in the file and a
-  row in `native/THIRD_PARTY.md`): a pure policy gives each ring a box of its own chunks around the
-  viewer, rounded outwards to even coordinates so the next ring's grid holds it exactly, and grown to
-  at least the finer ring's box halved and padded by one chunk, so a ring never borders one two levels
-  away. Ring k reaches `(ring-0 distance >> k) + ring-n distance` of its own chunks, and the outer ring
-  stretches to the view distance.
-- **No pop:** a chunk changing level cross-fades (`visibility_range` fade, dithered) instead of
-  swapping in one frame. The same fade applies to the window's coarse-to-full upgrade.
-- **Haze hides the edge:** the clear-weather fog density is derived from the outer LOD radius, so the
-  last LOD ring is mostly hazed. Weather still thickens it (Phase 128).
-- **Render only** (no collision), and nothing on the headless server.
-- The view-distance option (Phase 225) sets how many LOD rings a client draws.
-
-**Acceptance criteria**
-- A suite test builds an LOD-ring chunk and the full chunk at the same place: heights agree within the
-  ring's cell size, and an edited tile's summary shows in the LOD mesh.
-- A suite test: rings nest with no overlap and no gap, and the ring border has a skirt.
-- A suite test on the haze function: fog reaches at least 90% at the outer LOD radius on clear weather.
-- The playtest `horizon` and `far_peak` steps pass. The `flight` step meets its budgets.
 
 ## Phase 244 — A chunk cache on disk
 

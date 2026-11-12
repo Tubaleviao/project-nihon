@@ -105,6 +105,7 @@ var _voxel:       VoxelSlice
 var _chunk_manager: ChunkManager
 var _minimap:     Minimap
 var _distant:     Node   # Phase 51 — render-only coarse ring outside the voxel window
+var _lod:         Node   # Phase 243 — render-only LOD rings between the window and the distant ring
 var _loading_screen: LoadingScreen
 var _battle:      BattleSlice
 var _creature:    CreatureSlice
@@ -551,6 +552,7 @@ func _build_and_boot() -> void:
 		add_child(_distant)
 		# #444: no null guard, so the bands are always made (`_rebase` exists whenever this is not a server)
 		_rebase.targets.append_array([_distant, _distant.make_bands(self)])
+		_lod = preload("res://src/terrain/lod_terrain.gd").attach(self, _voxel, _rebase, _distant)
 		var minimap_layer := CanvasLayer.new()
 		minimap_layer.name = "MinimapLayer"
 		minimap_layer.layer = 20
@@ -1120,7 +1122,7 @@ func _process(delta: float) -> void:
 	if _distant != null and _player != null and _chunk_manager != null:
 		_distant.world_seed = _terrain.get_world_seed()
 		var pp := _player.get_position()
-		_distant.rebuild(Vector2(pp.x, pp.z), _chunk_manager.stream_radius(), _chunk_manager)
+		_distant.rebuild(Vector2(pp.x, pp.z), _chunk_manager.stream_radius(), _chunk_manager, _lod.follow(_chunk_manager, pp, _distant.world_seed))
 		if _distant.outer_radius_m > 0.0 and not is_equal_approx(_player.view_far(), PlayerSlice.view_far_for(_distant.reach_m())):
 			_player.set_view_far(_distant.reach_m())
 	if _is_client:

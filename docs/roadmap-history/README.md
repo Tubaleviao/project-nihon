@@ -91,6 +91,7 @@ Completed phases moved out of [ROADMAP.md](../../ROADMAP.md) to keep it short. T
 | 224 | [phases-224.md](phases-224.md) |
 | 241 | [phases-241.md](phases-241.md) |
 | 242 | [phases-242.md](phases-242.md) |
+| 243 | [phases-243.md](phases-243.md) |
 | 248 | [phases-248.md](phases-248.md) |
 
 Phases with no section of their own were merged into another phase:
@@ -331,3 +332,4 @@ Filed by the owner on 2026-11-10. The other phases of the arc are open in [ROADM
 | 240 | Smooth natural ground: a surface-nets mesher (GDScript reference) | Done | [phases-240.md](phases-240.md) |
 | 241 | The native smooth mesher, and coarse chunks built smooth | Done | [phases-241.md](phases-241.md) |
 | 242 | Terrain materials: blend weights, a triplanar shader and CC0 textures | Done | [phases-242.md](phases-242.md) |
+| 243 | Level of detail past the window: voxel rings out to the distant ring, faded, under the haze | Done | [phases-243.md](phases-243.md) |

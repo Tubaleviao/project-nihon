@@ -208,15 +208,17 @@ func _test_horizon_sky_matches_haze() -> void:
 	# Weather thickens the fog on top of the haze and never changes its colour.
 	var before := env.fog_light_color
 	WeatherWiring.apply_weather_fog(env, 0.3)
-	assert_true(absf(env.fog_density - WeatherWiring.weather_fog_density(0.3)) < 1e-9, "weather thickens the haze base")
+	# Relative: Phase 243's fitted haze puts thick weather's density where float32 storage is off by ~1e-9.
+	assert_true(absf(env.fog_density / WeatherWiring.weather_fog_density(0.3) - 1.0) < 1e-6, "weather thickens the haze base")
 	assert_true(env.fog_sky_affect > 0.0, "thick weather fogs the sky too")
 	assert_eq(env.fog_light_color, before, "the fog colour stays the sky's")
 	assert_eq(mat.sky_horizon_color, env.fog_light_color, "and still matches the horizon")
 	WeatherWiring.apply_weather_fog(env, 1.0)
-	assert_true(absf(env.fog_density - WeatherWiring.HAZE_DENSITY) < 1e-9, "clear weather returns to the base haze")
-	# Light rain is a veil, not a wall: ground 2 km out keeps most of its colour (the old flat 0.03 share
-	# washed everything past ~300 m into one band of haze under the horizon).
-	assert_true(exp(-WeatherWiring.weather_fog_density(0.8) * 2000.0) > 0.4, "rain leaves 2 km of ground in view")
+	assert_true(absf(env.fog_density - WeatherWiring.haze_density()) < 1e-9, "clear weather returns to the base haze")
+	# Light rain is a veil, not a wall: ground 1 km out keeps a good share of its colour (the old flat 0.03
+	# share washed everything past ~300 m into one band of haze under the horizon). Phase 243 fitted the
+	# clear haze to the outer LOD radius (90% there), so the old 2 km mark is now the rings' business.
+	assert_true(exp(-WeatherWiring.weather_fog_density(0.8) * 1000.0) > 0.2, "rain leaves 1 km of ground in view")
 	# Thicker weather closes in further, and the thickest stays a finite fog.
 	var last := 0.0
 	for vis in [1.0, 0.8, 0.6, 0.5, 0.4, 0.0]:

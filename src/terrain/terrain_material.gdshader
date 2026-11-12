@@ -29,6 +29,13 @@ uniform float blend_depth = 0.2;
 uniform float normal_strength = 1.0;
 uniform float plane_cut = 0.12;
 
+// Phase 243: an LOD-ring material cuts out the ground the finer level draws (x0, z0, x1, z1 in scene
+// metres, edges included so a skirt standing on the window's edge goes too; an empty rect cuts nothing).
+uniform vec4 lod_hole = vec4(0.0);
+// Phase 243: a chunk changing level cross-fades, dithered: 0..1 fades in (1 = drawn whole), 2..3 fades
+// out (2 = drawn whole, 3 = gone), the two complementary at the same progress.
+instance uniform float lod_fade = 1.0;
+
 varying vec3 world_pos;
 varying vec3 world_nrm;
 varying vec4 w_lo;
@@ -103,6 +110,16 @@ float layer_weight(int i) {
 }
 
 void fragment() {
+	if (lod_hole.z > lod_hole.x && world_pos.x >= lod_hole.x && world_pos.x <= lod_hole.z
+			&& world_pos.z >= lod_hole.y && world_pos.z <= lod_hole.w) {
+		discard;
+	}
+	if (lod_fade != 1.0) {
+		float dith = fract(52.9829189 * fract(dot(FRAGCOORD.xy, vec2(0.06711056, 0.00583715))));
+		if (lod_fade > 1.5 ? dith < lod_fade - 2.0 : dith >= lod_fade) {
+			discard;
+		}
+	}
 	float total = dot(w_lo, vec4(1.0)) + dot(w_hi, vec4(1.0));
 	if (total < 0.01) {
 		ALBEDO = COLOR.rgb * tint.rgb;   // a placed block keeps the season tint, as before Phase 242

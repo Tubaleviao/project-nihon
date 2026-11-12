@@ -13,6 +13,7 @@ with its source commit. `native/godot-cpp` is fetched by `tools/fetch_godot_cpp.
 
 | File | Ports | Source path | Commit | Licence |
 |---|---|---|---|---|
+| `src/terrain/lod_ring_policy.gd` (Phase 243) | Clipbox ring boxes: the base box rounded outwards to even coordinates, the minimal parent box (halved, padded by one chunk), the neighbouring rule, the distance per level (the algorithm, not the code) | `terrain/variable_lod/voxel_lod_terrain_update_clipbox_streaming.cpp` | `dfb0f81c7fd766f68d78715b2138f4e336cd9737` | MIT, © 2016-2024 Marc Gilleron (notice in the file) |
 | `src/terrain/voxel_smooth.gd` (Phase 240) | Normals from the density gradient at cell corners, interpolated to the vertex; sample padding so both chunks at a border compute the same normals (the algorithm, not the code) | `meshers/transvoxel/transvoxel.cpp` | `dfb0f81c7fd766f68d78715b2138f4e336cd9737` | MIT, © 2016-2024 Marc Gilleron (notice in the file) |
 
 Phase 249 adopted no code. Its algorithm ports land in the phases below, which add a row above for

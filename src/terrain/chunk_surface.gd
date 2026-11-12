@@ -34,6 +34,18 @@ func setup(arrays: Dictionary, material: Material) -> bool:
 		_enter()
 	return true
 
+## Phase 243 — the dithered level-change fade (the terrain shader's `lod_fade` instance uniform):
+## 0..1 fading in, 2..3 fading out, 1 drawn whole. Only the high terrain shader declares it, so the
+## caller sets it only on that path (`LodFade.enabled`).
+func set_fade(f: float) -> void:
+	if _instance.is_valid():
+		RenderingServer.instance_geometry_set_shader_parameter(_instance, "lod_fade", f)
+
+## Phase 243 — the render layers the surface is drawn on (an LOD ring's join the distant ring's layer).
+func set_layers(mask: int) -> void:
+	if _instance.is_valid():
+		RenderingServer.instance_set_layer_mask(_instance, mask)
+
 func has_surface() -> bool:
 	return _instance.is_valid()
 
@@ -64,3 +76,6 @@ func _notification(what: int) -> void:
 				RenderingServer.free_rid(_instance)
 			if _mesh.is_valid():
 				RenderingServer.free_rid(_mesh)
+			# Phase 243: a node freed while in the tree gets EXIT_TREE after this; it must not touch freed RIDs.
+			_instance = RID()
+			_mesh = RID()
