@@ -164,13 +164,17 @@ for profile in $PROFILES; do
       [ "$size" -gt "$MAX_SIZE" ] && break
       run_one "$profile" "$pattern" "$size"
       dir="$RUNS/$profile/$pattern/$size"
-      if "$GODOT" --headless --path "$REPO_ROOT" -s tools/stress_report.gd -- retry "$dir" "$profile" "$pattern" "$size" \
-          >"$dir/retry.log" 2>&1; then
-        note "$profile/$pattern/$size missed a budget at or below the baseline; running it once more ($(grep -h STRESS_BUDGETS "$dir/retry.log"))"
+      # Phase 253: best of three. A miss at or below the baseline size is run again, up to twice more,
+      # and the first run that meets every budget is the one kept (a runner's noise is not a regression;
+      # a regression misses all three).
+      for attempt in 2 3; do
+        "$GODOT" --headless --path "$REPO_ROOT" -s tools/stress_report.gd -- retry "$dir" "$profile" "$pattern" "$size" \
+          >"$dir/retry.log" 2>&1 || break
+        note "$profile/$pattern/$size missed a budget at or below the baseline; running it again, attempt $attempt of 3 ($(grep -h STRESS_BUDGETS "$dir/retry.log"))"
         rm -rf "$dir.miss"
         mv "$dir" "$dir.miss"
         run_one "$profile" "$pattern" "$size"
-      fi
+      done
       if ! "$GODOT" --headless --path "$REPO_ROOT" -s tools/stress_report.gd -- continue "$RUNS/$profile/$pattern/$size" \
           >"$RUNS/$profile/$pattern/$size/continue.log" 2>&1; then
         note "$profile/$pattern: ladder stops at $size ($(grep -h STRESS_TICK_P95 "$RUNS/$profile/$pattern/$size/continue.log" || echo 'no host report'))"

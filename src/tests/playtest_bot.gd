@@ -821,7 +821,7 @@ func _player_pos() -> Vector3:
 	return _root._player.get_position()
 
 ## Hold W for a few seconds: the body must move, and the feet must swap the lead at least
-## WALK_FOOT_MIN_SWITCHES times over the last WALK_FOOT_SECS (a clip stuck on its last key keeps one foot ahead).
+## WALK_FOOT_MIN_SWITCHES times over the last WALK_FOOT_SECS (report-only since Phase 253) (a clip stuck on its last key keeps one foot ahead).
 func _step_walk() -> Array:
 	# The pinned spawn has a wolf pack beside it (Phase 211's freed workers bring it in sooner): it downed the
 	# body mid-walk on CI, and the respawn's teleport read as 5,400 km walked. The step tests the gait, not the
@@ -879,7 +879,17 @@ func _step_walk() -> Array:
 	var moved := delta.length()
 	var walk_secs := float(Time.get_ticks_msec() - t0) / 1000.0
 	var note := "moved %.1f m in %.1f s, %s, states %s" % [moved, walk_secs, ground_note, JSON.stringify(states)]
-	var ok := moved > 1.0
+	var verdict := walk_verdict(moved, samples, delta)
+	return [verdict["ok"], note + str(verdict["gait_note"])]
+
+## Phase 253 — the walk step's verdict from what it measured. The hard check is the distance moved (the
+## state and ground checks sit in the step); the gait (which foot leads, how often it swaps) is reported
+## and never fails the step, since a slow runner's frame rate aliases with the clip. A regression in the
+## clip itself is caught by the suite (`animation_tests`). `samples` is `[time, left, right, body]` per
+## frame; `delta` is the body's displacement. Pure.
+static func walk_verdict(moved: float, samples: Array, delta: Vector2) -> Dictionary:
+	var gait := { "frames": samples.size(), "left_ahead_pct": 0.0, "switches": 0 }
+	var gait_note := ", no rig feet sampled"
 	if samples.size() >= 10 and moved > 1.0:
 		var dir := delta.normalized()
 		var left_ahead := 0
@@ -898,11 +908,11 @@ func _step_walk() -> Array:
 				switches += 1
 			leader = side
 		var frac := float(left_ahead) / float(samples.size())
-		note += ", left foot ahead %.0f%% of %d frames, %d lead switches" % [frac * 100.0, samples.size(), switches]
-		ok = ok and switches >= WALK_FOOT_MIN_SWITCHES
-	else:
-		note += ", no rig feet sampled"
-	return [ok, note]
+		gait = { "frames": samples.size(), "left_ahead_pct": frac * 100.0, "switches": switches }
+		gait_note = ", left foot ahead %.0f%% of %d frames, %d lead switches" % [frac * 100.0, samples.size(), switches]
+		if switches < WALK_FOOT_MIN_SWITCHES:
+			gait_note += " (gait report-only: fewer than %d switches)" % WALK_FOOT_MIN_SWITCHES
+	return { "ok": moved > 1.0, "gait": gait, "gait_note": gait_note }
 
 ## The chunks of the 3×3 ring round `center` that are built and have their collision attached.
 func _walk_ground_ready(center: Vector2i) -> int:

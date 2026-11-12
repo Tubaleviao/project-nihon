@@ -1,0 +1,26 @@
+name: Gate health
+
+# Phase 253: the failure rate per CI job over the last 40 runs of `main`. The scheduled run fails when
+# any job is over 10%, so a flaky gate shows up as a red run here before it is the normal state.
+# See "Flaky gates" in docs/DEVELOPMENT.md for what to do about one.
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  gate-health:
+    name: Failure rate per CI job
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the last 40 runs of main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GATE_REPO: ${{ github.repository }}
+        run: tools/check_gate_health.sh

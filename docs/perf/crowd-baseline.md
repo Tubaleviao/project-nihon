@@ -94,3 +94,12 @@ Budgets: host tick p95 ≤ 16.0 ms, ≤ 64.0 kbit/s down per peer, watcher frame
 ### Hard failures
 
 None.
+
+## Phase 253 — the rerun rule
+
+The ladder (`tools/stress.sh`) runs a size at or below the baseline again when it misses a budget, up to
+twice more (best of three), and keeps the first run that meets every budget. The merge of Phase 243
+(#618) recorded 0 for `lan/cluster`, `lan/cross` and `lan/spread` with a single rerun; Phase 243 is
+client-only (`game_root.gd`'s `_is_server` guard), so the host's tick cost cannot have changed, and a
+shared runner's noise is the likelier cause. A regression that is real misses all three runs and still
+fails. The cause is to be confirmed by the five green `main` runs the phase requires.

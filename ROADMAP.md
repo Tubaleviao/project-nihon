@@ -715,6 +715,10 @@ anything, and this roadmap's whole method is that gates are the acceptance crite
   GitHub API and prints the failure count per job; CI runs it on a schedule and fails the scheduled
   run when any job is over 10%, so the trend is visible before it is normal.
 
+**Status (2026-11-12):** the gait is report-only, the clip and verdict tests, `tools/check_gate_health.sh`, the
+scheduled `Gate health` workflow, the flake rule and the best-of-three stress rerun are in. Open: five green
+stress runs on `main` after the merge, and confirming the cause in `docs/perf/crowd-baseline.md`.
+
 **Acceptance criteria**
 - A suite test on the walk step's verdict: a sample set with zero lead switches but the distance and
   states met passes, and the report carries the gait numbers.
