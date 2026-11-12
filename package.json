@@ -2,6 +2,7 @@
   "name": "project-nihon",
   "version": "0.0.1",
   "private": true,
+  "license": "MIT",
   "description": "Open-source sandbox MMORPG — game design fabric powered by newel",
   "scripts": {
     "validate": "newel validate -s ./fabric/index.js",

@@ -2,6 +2,8 @@
 
 An open-source sandbox MMORPG where players build a civilization. The world is persistent, expands over time, and evolves entirely through player interaction — no scripted quests, no scripted economies, no pay-to-win.
 
+Licensed under the [MIT licence](LICENSE). Want to help? Read [CONTRIBUTING.md](CONTRIBUTING.md). The private `assets-prod/` art submodule is not covered by this licence.
+
 The entire game design bible — materials, skills, creatures, items, world systems — is authored as a [Newel](https://github.com/Tubaleviao/newel) fabric and generated into documentation, runtime assets, and Godot resources.
 
 ---
@@ -47,12 +49,14 @@ The crowd the host supports today (Phase 163, `lan`, one desktop machine): 64 pl
 
 220+ phases shipped so far: voxel terrain on a whole planet with continents, biomes, mountain ranges, lakes and rivers, day/night and weather; mining, building and station-gated crafting; a technology tree and research; rigged, animated creatures with pack behavior, bodies that collide, combat, taming, mounts and harvesting; settlements and clans; character creation, attributes and a character sheet; a guided first hour with a tutorial and a bed that sets your spawn point; host-authoritative multiplayer with persistence; waystone fast travel; fast admin flight; a main menu and an Esc menu; and English and Brazilian Portuguese UI.
 
-Next, in the owner's priority order: a licence and a contributor's front door, a `main` whose CI gates stay green, repository hygiene, a first tagged release, a human playtest, the options window, a chunk cache on disk, a binary wire format for the hot packets, a measured server ceiling, flight, and the planet bake. See [ROADMAP.md](ROADMAP.md) for the open phases and deferred work. Completed phases are archived in [docs/roadmap-history/](docs/roadmap-history/README.md) with their full spec and acceptance criteria.
+Next, in the owner's priority order: a `main` whose CI gates stay green, repository hygiene, a first tagged release, a human playtest, the options window, a chunk cache on disk, a binary wire format for the hot packets, a measured server ceiling, flight, and the planet bake. See [ROADMAP.md](ROADMAP.md) for the open phases and deferred work. Completed phases are archived in [docs/roadmap-history/](docs/roadmap-history/README.md) with their full spec and acceptance criteria.
 
 Production art lives in a private `assets-prod/` git submodule (Git LFS); the public repo ships placeholders. See [assets/README.md](assets/README.md).
 
 ---
 
 ## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build, test and open a pull request, [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for how we work together and [SECURITY.md](SECURITY.md) for reporting a vulnerability privately. Third-party material is listed in [THIRD_PARTY.md](THIRD_PARTY.md).
 
 Major design decisions follow the community governance process described in the `CommunityOwnsTheFuture` principle — propose publicly, ratify by contributor consensus. See the constitution fabric for the full set of principles and current decisions, and [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for branching, PR and testing conventions.
