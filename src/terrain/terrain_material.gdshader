@@ -5,7 +5,8 @@
 // sampled from three planar projections (no stretching on cliffs) of three texture arrays, the layers
 // are blended by weight with height-based borders (the brighter texel of two wins at the seam), and a
 // detail sample of the same layer at a finer scale fades in near the camera. `biplanar` (the low-end
-// fallback, `nihon/graphics/terrain_quality` = 0) drops the weakest projection and the detail sample.
+// fallback, `nihon/graphics/terrain_quality` low, the default on the Compatibility renderer) drops the
+// weakest projection and the detail sample. A projection weighing under `plane_cut` is skipped always.
 shader_type spatial;
 render_mode cull_disabled;
 
@@ -24,6 +25,7 @@ uniform float detail_distance = 24.0;
 uniform float detail_repeat = 4.0;
 uniform float blend_depth = 0.2;
 uniform float normal_strength = 1.0;
+uniform float plane_cut = 0.12;
 
 varying vec3 world_pos;
 varying vec3 world_nrm;
@@ -39,11 +41,15 @@ void vertex() {
 
 vec3 plane_weights(vec3 n) {
 	vec3 b = pow(abs(n), vec3(4.0));
+	b /= max(b.x + b.y + b.z, 1e-5);
 	if (biplanar) {
 		// Keep the two strongest projections.
 		float lo = min(b.x, min(b.y, b.z));
 		b = max(b - vec3(lo), vec3(0.0));
+		b /= max(b.x + b.y + b.z, 1e-5);
 	}
+	// A projection under `plane_cut` of the blend is not sampled: flat ground reads one plane, not three.
+	b = max(b - vec3(plane_cut), vec3(0.0));
 	return b / max(b.x + b.y + b.z, 1e-5);
 }
 

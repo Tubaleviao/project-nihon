@@ -22,7 +22,7 @@ func register() -> void:
 	_run_test("terrain materials: a built chunk carries CUSTOM0/CUSTOM1 on every vertex, zero on placed blocks", _test_chunk_arrays)
 	_run_test("terrain materials: the native weights equal the GDScript reference on 16 chunks, local and absolute, wet and dry", _test_native_parity, true)
 	_run_test("terrain materials: the shader material compiles with every texture array set", _test_shader)
-	_run_test("terrain materials: the low quality setting drops to biplanar with no detail", _test_low_quality)
+	_run_test("terrain materials: the low quality setting drops to biplanar with no detail, and auto is low on the Compatibility renderer", _test_low_quality)
 
 func _near(a: float, b: float, tol: float, msg: String) -> void:
 	assert_true(absf(a - b) <= tol, "%s (%f vs %f)" % [msg, a, b])
@@ -218,13 +218,18 @@ func _test_shader() -> void:
 
 func _test_low_quality() -> void:
 	var was: Variant = ProjectSettings.get_setting(TerrainMaterial.QUALITY_SETTING, TerrainMaterial.QUALITY_HIGH)
-	assert_eq(TerrainMaterial.quality(), TerrainMaterial.QUALITY_HIGH, "high quality by default")
+	assert_eq(int(was), TerrainMaterial.QUALITY_AUTO, "the shipped setting is auto")
+	assert_eq(TerrainMaterial.quality_for(TerrainMaterial.QUALITY_AUTO, "gl_compatibility"), TerrainMaterial.QUALITY_LOW, "auto is low on the Compatibility renderer")
+	assert_eq(TerrainMaterial.quality_for(TerrainMaterial.QUALITY_AUTO, "forward_plus"), TerrainMaterial.QUALITY_HIGH, "auto is high on Forward+")
+	assert_eq(TerrainMaterial.quality_for(TerrainMaterial.QUALITY_HIGH, "gl_compatibility"), TerrainMaterial.QUALITY_HIGH, "an explicit high holds on any renderer")
 	ProjectSettings.set_setting(TerrainMaterial.QUALITY_SETTING, TerrainMaterial.QUALITY_LOW)
 	var low := TerrainMaterial.make()
 	ProjectSettings.set_setting(TerrainMaterial.QUALITY_SETTING, was)
 	assert_true(bool(low.get_shader_parameter("biplanar")), "low quality samples biplanar")
 	assert_false(bool(low.get_shader_parameter("detail")), "low quality has no detail texture")
+	ProjectSettings.set_setting(TerrainMaterial.QUALITY_SETTING, TerrainMaterial.QUALITY_HIGH)
 	var high := TerrainMaterial.make()
+	ProjectSettings.set_setting(TerrainMaterial.QUALITY_SETTING, was)
 	assert_false(bool(high.get_shader_parameter("biplanar")), "high quality samples triplanar")
 	assert_true(bool(high.get_shader_parameter("detail")), "high quality fades in the detail texture")
 

@@ -116,7 +116,7 @@ func _test_native_real_loader() -> void:
 		assert_true(ClassDB.class_exists(NativeBuilder.CLASS_NAME), "NativeChunkBuilder is registered")
 		assert_eq(NativeBuilder.version(), NativeBuilder.REQUIRED_VERSION, "the native class reports its version")
 		var b: RefCounted = ClassDB.instantiate(NativeBuilder.CLASS_NAME)
-		assert_eq(b.call("functions") as PackedStringArray, PackedStringArray(["heightmap_for", "build_runs", "build_chunk_arrays", "build_coarse_arrays", "build_smooth_arrays", "heightmap_strip_for"]), "Phases 167-169, 190, 240 and 241 port heightmap_for, build_runs, build_chunk_arrays, build_coarse_arrays, build_smooth_arrays and heightmap_strip_for")
+		assert_eq(b.call("functions") as PackedStringArray, PackedStringArray(["heightmap_for", "build_runs", "build_chunk_arrays", "build_coarse_arrays", "build_smooth_arrays", "heightmap_strip_for", "terrain_weights"]), "Phases 167-169, 190, 240, 241 and 242 port heightmap_for, build_runs, build_chunk_arrays, build_coarse_arrays, build_smooth_arrays, heightmap_strip_for and terrain_weights")
 	if EXPECT_FALLBACK_ARG in args:
 		assert_eq(mode, NativeBuilder.MODE_FALLBACK, "no binary: the loader reports the GDScript fallback")
 		assert_eq(NativeBuilder.version(), -1, "no native version on the fallback")

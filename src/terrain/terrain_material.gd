@@ -5,7 +5,8 @@ extends RefCounted
 ## one `ShaderMaterial` per biome carrying that biome's season tint.
 ##
 ## Low-end fallback: the project setting `nihon/graphics/terrain_quality` (0 = low: biplanar sampling,
-## no detail texture; 1 = high, the default). Phase 225's options window will put it in front of the player.
+## no detail texture; 1 = high; -1 = auto, the default: low on the Compatibility renderer, the low-end
+## and software-GL path, high otherwise). Phase 225's options window will put it in front of the player.
 
 const SHADER := preload("res://src/terrain/terrain_material.gdshader")
 const TerrainWeights := preload("res://src/terrain/terrain_weights.gd")
@@ -13,16 +14,24 @@ const TerrainWeights := preload("res://src/terrain/terrain_weights.gd")
 const QUALITY_SETTING := "nihon/graphics/terrain_quality"
 const QUALITY_LOW := 0
 const QUALITY_HIGH := 1
+const QUALITY_AUTO := -1
 const MAPS := ["albedo", "normal", "roughness"]
 ## Every map is resized to this edge before it goes in an array (the arrays need one size).
 const SIZE := 1024
 
 static var _arrays: Dictionary = {}
 
-## The terrain quality from the project settings (high when unset or out of range).
+## The terrain quality in effect: the project setting, with auto resolved for the current renderer.
 static func quality() -> int:
-	var q := int(ProjectSettings.get_setting(QUALITY_SETTING, QUALITY_HIGH))
-	return q if q == QUALITY_LOW or q == QUALITY_HIGH else QUALITY_HIGH
+	return quality_for(int(ProjectSettings.get_setting(QUALITY_SETTING, QUALITY_AUTO)),
+		RenderingServer.get_current_rendering_method())
+
+## Pure: low or high for a setting and a rendering method (auto, or a value out of range, is low on
+## `gl_compatibility` and high on the others).
+static func quality_for(setting: int, method: String) -> int:
+	if setting == QUALITY_LOW or setting == QUALITY_HIGH:
+		return setting
+	return QUALITY_LOW if method == "gl_compatibility" else QUALITY_HIGH
 
 ## `{ albedo, normal, roughness }` Texture2DArrays, built on first use (main thread). A map that fails
 ## to load is a flat mid-grey layer, so a missing file draws grey ground rather than breaking the array.

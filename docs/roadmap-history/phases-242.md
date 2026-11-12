@@ -62,7 +62,12 @@ Natural ground is drawn in vertex colour from the biome, and `assets/` holds no 
   borders (texel brightness plus weight), and a detail sample at 4× fading in within 24 m. The biome's
   season tint is a `tint` uniform on the per-biome `ShaderMaterial`.
 - Low-end fallback: the project setting `nihon/graphics/terrain_quality` (0 = biplanar, no detail;
-  1 = high, the default). Phase 225 puts it in the options window.
+  1 = high; -1 = auto, the default: low on the Compatibility renderer, high otherwise). Phase 225 puts
+  it in the options window. Any texture projection weighing under 12% of the blend is skipped.
+- CI fix: the first CI playtest ran the high path on llvmpipe (software GL) and starved the chunk
+  workers (`flight` 17%, `mount` 149 m). With auto quality and projection culling, a local run pinned
+  to 4 cores passed `flight` at 100% and `mount` at 204 m. NativeChunkBuilder's required version is
+  now 14.
 - Tests (`terrain_material_tests.gd`): the table, weights summing to 1 over a sweep, rock on steep
   ground, snow above the snow line, mud at a lake edge, the border blend width, packing, CUSTOM0/1 on
   every vertex of a built chunk (zero on placed blocks), native parity, the shader's uniforms with
