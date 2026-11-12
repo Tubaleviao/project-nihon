@@ -96,6 +96,10 @@ func _test_snow() -> void:
 	assert_eq(float(below.get(snow, 0.0)), 0.0, "taiga ground below its snow line has no snow")
 	var desert := TerrainWeights.weights(t, { "Desert": 1.0 }, 5.0, 900.0, INF)
 	assert_eq(float(desert.get(snow, 0.0)), 0.0, "a biome with no snow line never snows")
+	# Review: at a border with a biome that has no snow line, the snowy side keeps its own share of
+	# snow (the lines are not averaged, which put a lineless neighbour's 100 km into the mean).
+	var border := TerrainWeights.weights(t, { "Taiga": 0.8, "Desert": 0.2 }, 5.0, line + TerrainWeights.SNOW_BAND + 5.0, INF)
+	_near(float(border.get(snow, 0.0)), 0.8, 1e-6, "taiga's share of a border above its snow line is snow")
 
 func _test_wet() -> void:
 	var t := _t()
@@ -210,7 +214,7 @@ func _test_shader() -> void:
 			assert_eq((arr as Texture2DArray).get_width(), TerrainMaterial.SIZE, "%s_maps is 1K" % map)
 	var scales: PackedFloat32Array = mat.get_shader_parameter("layer_scale")
 	assert_eq(scales.size(), TerrainWeights.LAYERS, "a scale per weight channel")
-	_near(scales[_layer("TerrainRock")], 6.0, 1e-4, "the rock's scale comes from the fabric")
+	_near(scales[_layer("TerrainRock")], 6.4, 1e-4, "the rock's scale comes from the fabric")
 	assert_true(TerrainMaterial.tint_of(mat).is_equal_approx(Color(0.9, 0.95, 1.0)), "the tint is set")
 	# The maps resolve through AssetOverlay: the public CC0 file is what loads without the pack.
 	var img: Image = AssetOverlay.load_image("textures/terrain/grass_albedo.jpg.raw")

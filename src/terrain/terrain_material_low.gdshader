@@ -39,7 +39,7 @@ vec3 sample_layer(vec3 p, vec3 b, float layer) {
 void fragment() {
 	float total = dot(w_lo, vec4(1.0)) + dot(w_hi, vec4(1.0));
 	if (total < 0.01) {
-		ALBEDO = COLOR.rgb;
+		ALBEDO = COLOR.rgb * tint.rgb;   // a placed block keeps the season tint, as before Phase 242
 	} else {
 		// The two heaviest layers, unrolled.
 		float wa = w_lo.x; float ia = 0.0;

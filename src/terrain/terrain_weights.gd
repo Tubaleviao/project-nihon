@@ -9,7 +9,7 @@ extends RefCounted
 ##   across it, falling from half and half at the border to none at the band's inner edge (the same
 ##   falloff and width as the dithered border, `BiomeBlend.chance`);
 ## - wetness: within a material's `nearWater` metres of a lake or river edge (Phase 217);
-## - altitude: above the biome's `snowLine` (metres above sea level), snow;
+## - altitude: above the biome's `snowLine` (metres above sea level), snow (each blended biome by its own line);
 ## - slope: steeper than a material's `slopeMin` degrees, rock, whatever is above.
 ## Each later rule takes its share from the ones before it. A placed block's vertices get weight zero
 ## everywhere, which the terrain shader reads as "draw the vertex colour" (a block keeps its material).
@@ -142,18 +142,22 @@ static func _key(c: Vector2i) -> String:
 ## river (INF when none). Returns `{ layer: weight }` with at most `SLOTS` entries, summing to 1.
 static func weights(t: Dictionary, ground: Dictionary, slope_deg: float, altitude: float, water_dist: float) -> Dictionary:
 	var w := {}
-	var line := 0.0
+	# Each biome's own snow share, weighed by its part of the blend: averaging the lines instead would
+	# let a biome with none (NO_LINE) lift a snowy neighbour's line out of reach inside the border band.
+	var snowy := 0.0
 	for b in ground:
 		var g := float(ground[b])
 		var layer := biome_layer(t, str(b))
 		w[layer] = float(w.get(layer, 0.0)) + g
-		line += g * float((t["snow_line"] as Dictionary).get(str(b), NO_LINE))
+		var line := float((t["snow_line"] as Dictionary).get(str(b), NO_LINE))
+		if line < NO_LINE:
+			snowy += g * smoothstep(line - SNOW_BAND, line + SNOW_BAND, altitude)
 	var wet := int(t["wet"])
 	if wet >= 0 and water_dist < float(t["wet_dist"]):
 		_take(w, wet, 1.0 - smoothstep(0.0, float(t["wet_dist"]), maxf(water_dist, 0.0)))
 	var snow := int(t["snow"])
-	if snow >= 0 and line < NO_LINE:
-		_take(w, snow, smoothstep(line - SNOW_BAND, line + SNOW_BAND, altitude))
+	if snow >= 0:
+		_take(w, snow, snowy)
 	var rock := int(t["rock"])
 	if rock >= 0:
 		var s := float(t["rock_slope"])

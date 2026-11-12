@@ -105,7 +105,7 @@ float layer_weight(int i) {
 void fragment() {
 	float total = dot(w_lo, vec4(1.0)) + dot(w_hi, vec4(1.0));
 	if (total < 0.01) {
-		ALBEDO = COLOR.rgb;
+		ALBEDO = COLOR.rgb * tint.rgb;   // a placed block keeps the season tint, as before Phase 242
 		ROUGHNESS = 0.9;
 	} else {
 		vec3 n = normalize(world_nrm);

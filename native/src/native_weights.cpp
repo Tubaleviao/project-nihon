@@ -171,19 +171,22 @@ double water_distance(const Params &p, double x, double z) {
 // `TerrainWeights.weights` then `_top` then `pack`, writing vertex `vi`'s eight channels.
 void weigh_and_pack(const Params &p, const OrderedMap &ground, double slope, double altitude, double wd, uint8_t *w0, uint8_t *w1, int64_t vi) {
 	OrderedMap w;
-	double line = 0.0;
+	double snowy = 0.0;   // each biome's own snow share, weighed by its part of the blend
 	for (int i = 0; i < ground.n; i++) {
 		const double g = ground.e[i].w;
 		const int b = ground.e[i].key;
 		const int layer = b < p.layer.size() ? p.layer[b] : 0;
 		w.add(layer, g);
-		line += g * (b < p.snow_line.size() ? p.snow_line[b] : p.no_line);
+		const double line = b < p.snow_line.size() ? p.snow_line[b] : p.no_line;
+		if (line < p.no_line) {
+			snowy += g * smoothstep(line - p.snow_band, line + p.snow_band, altitude);
+		}
 	}
 	if (p.wet >= 0 && wd < p.wet_dist) {
 		take(w, p.wet, 1.0 - smoothstep(0.0, p.wet_dist, std::max(wd, 0.0)));
 	}
-	if (p.snow >= 0 && line < p.no_line) {
-		take(w, p.snow, smoothstep(line - p.snow_band, line + p.snow_band, altitude));
+	if (p.snow >= 0) {
+		take(w, p.snow, snowy);
 	}
 	if (p.rock >= 0) {
 		take(w, p.rock, smoothstep(p.rock_slope - p.slope_band, p.rock_slope + p.slope_band, slope));
