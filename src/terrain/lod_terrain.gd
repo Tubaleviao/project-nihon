@@ -57,13 +57,26 @@ var builds_done := 0
 ## While true no new build starts (the window is still building: the ground near the body comes first).
 var hold := false
 var _drawn_outer := Rect2()
+## The distant ring (null in a bare rig): a moved set swaps in only once the ring draws the new hole, so
+## the ground between the two never shows the sky or doubles. `HOLE_WAIT_MS` caps the wait.
+var distant: Node = null
+const HOLE_WAIT_MS := 3000
+var _hole_wait_since := -1
+## Bumped by `reset`: a build started before it is dropped when it lands (its records, edits and frame
+## are the old world's).
+var _gen := 0
+## Edited chunks the client held at the last plan, parsed once: `[Vector2i chunk, key]` each.
+var _edit_chunks: Array = []
+var _hold_key: Array = []
+var _hold_unbuilt := false
 
 ## Make the rings under `root` (a client's game root), reading `voxel`'s materials and edits, rebased by
-## `rebase`; on the high terrain shader the window's own level changes cross-fade too (`VoxelBuild.lod_fade`).
-static func attach(root: Node, voxel_slice: Node, rebase: Variant) -> Node:
+## `rebase`, swapping moved sets in step with `distant_ring`'s hole; on the high terrain shader the window's own level changes cross-fade too (`VoxelBuild.lod_fade`).
+static func attach(root: Node, voxel_slice: Node, rebase: Variant, distant_ring: Node = null) -> Node:
 	var lod: Node = (load("res://src/terrain/lod_terrain.gd") as GDScript).new()
 	lod.name = "LodTerrain"
 	lod.voxel = voxel_slice
+	lod.distant = distant_ring
 	root.add_child(lod)
 	rebase.targets.append(lod)
 	if LodFade.enabled() and voxel_slice != null:
@@ -78,7 +91,12 @@ static func attach(root: Node, voxel_slice: Node, rebase: Variant) -> Node:
 ## ground near the body always comes first.
 func follow(chunks: Node, pp: Vector3, seed_v: int) -> Rect2:
 	world_seed = seed_v
-	hold = not chunks._load_queue.is_empty() or not chunks.unbuilt_window_chunks().is_empty()
+	# The window's unbuilt list is walked only when it can have changed (Phase 194, #512).
+	var key: Array = chunks.unbuilt_window_key()
+	if key != _hold_key:
+		_hold_key = key
+		_hold_unbuilt = not chunks.unbuilt_window_chunks().is_empty()
+	hold = not chunks._load_queue.is_empty() or _hold_unbuilt
 	var r: int = chunks.stream_radius()
 	var pc: Vector2i = chunks.player_chunk()
 	update(Vector2(pp.x, pp.z), Rect2i(pc - Vector2i(r, r), Vector2i(2 * r + 1, 2 * r + 1)))
@@ -111,7 +129,8 @@ func outer_radius_m() -> float:
 
 ## The outer box of the rings DRAWN now, in world metres (x, z): the distant ring's hole. Empty until a
 ## first complete set is attached (the distant ring keeps its window-sized hole until then, so the ground
-## between never shows the sky); after a move it is the old box until the new set swaps in.
+## between never shows the sky); after a move it is the old box until the new set is built, and the new
+## set swaps in once the distant ring draws this box (`_hole_ready`).
 func outer_rect_m() -> Rect2:
 	return _drawn_outer
 
@@ -146,6 +165,7 @@ func update(viewer_xz: Vector2, window: Rect2i) -> bool:
 	var mid := (outer.position + outer.size / 2) * span
 	var reach := outer.size.x * span / 2 + 2
 	_snap = {} if ChunkRecords.is_empty() else ChunkRecords.snapshot_near(mid, reach, TerrainSlice.circumference_chunks())
+	_index_edits()
 	var wanted := {}
 	var order: Array = []
 	for k in range(1, ring_count + 1):
@@ -170,9 +190,9 @@ func update(viewer_xz: Vector2, window: Rect2i) -> bool:
 ## Shift every node by `shift` (a client rebase); world positions are unchanged.
 func shift_scene(shift: Vector3) -> void:
 	_origin.value += shift
-	for s in _chunks.values():
+	for s in _chunks.values():   # `_fresh` surfaces are in `_chunks` too: moved once here
 		(s as Node3D).position += shift
-	for s in _retiring + _fresh:
+	for s in _retiring:
 		if is_instance_valid(s):
 			(s as Node3D).position += shift
 	if _fade != null:
@@ -194,6 +214,8 @@ func reset() -> void:
 	_wanted.clear()
 	_boxes = []
 	_drawn_outer = Rect2()
+	_hole_wait_since = -1
+	_gen += 1   # builds still running land in the old world: `_collect` drops them
 	if _fade != null:
 		_fade.finish_all()
 
@@ -210,15 +232,34 @@ func pump() -> void:
 		var level := key.x
 		var lchunk := Vector2i(key.y, key.z)
 		var edits := edit_tops(level, lchunk)
-		var task := WorkerThreadPool.add_task(_build_task.bind(key, world_seed, _snap, edits), false, "lod_chunk")
+		var task := WorkerThreadPool.add_task(_build_task.bind(key, world_seed, _snap, edits, _gen), false, "lod_chunk")
 		_in_flight[key] = task
+	_sync_hole_tint()
 	if _queue.is_empty() and _in_flight.is_empty() and not _boxes.is_empty():
-		if not _retiring.is_empty() or not _fresh.is_empty():
-			_swap_in()
 		_drawn_outer = planned_outer_rect_m()
+		if (not _retiring.is_empty() or not _fresh.is_empty()) and _hole_ready():
+			_swap_in()
 
-func _build_task(key: Vector3i, seed_v: int, snap: Dictionary, edits: Dictionary) -> void:
+## True once the distant ring draws the hole of the set about to swap in (or there is no ring, or it has
+## been waited on for `HOLE_WAIT_MS`): swapping earlier leaves sky where the old hole was, or the old
+## ring over the new chunks.
+func _hole_ready() -> bool:
+	if distant == null or not is_instance_valid(distant) or not distant.has_method("drawn_hole"):
+		return true
+	if distant.drawn_hole() == _drawn_outer:
+		_hole_wait_since = -1
+		return true
+	var now := Time.get_ticks_msec()
+	if _hole_wait_since < 0:
+		_hole_wait_since = now
+	if now - _hole_wait_since >= HOLE_WAIT_MS:
+		_hole_wait_since = -1
+		return true
+	return false
+
+func _build_task(key: Vector3i, seed_v: int, snap: Dictionary, edits: Dictionary, gen: int) -> void:
 	var built := VoxelLod.build_lod_arrays(key.x, Vector2i(key.y, key.z), seed_v, snap, edits)
+	built["gen"] = gen
 	_mutex.lock()
 	_results[key] = built
 	_mutex.unlock()
@@ -239,9 +280,13 @@ func _collect() -> void:
 		_results.erase(key)
 		_mutex.unlock()
 		builds_done += 1
-		if _wanted.has(key) and not _chunks.has(key):
-			_attach(key, built)
-			attached += 1
+		if not _wanted.has(key) or _chunks.has(key):
+			continue
+		if int(built.get("gen", -1)) != _gen:
+			_queue.append(key)   # built before a reset, from the old world: build it again
+			continue
+		_attach(key, built)
+		attached += 1
 
 func _attach(key: Vector3i, built: Dictionary) -> void:
 	var surface := ChunkSurface.new()
@@ -265,12 +310,16 @@ func _attach(key: Vector3i, built: Dictionary) -> void:
 		_fresh.append(surface)
 
 func _swap_in() -> void:
+	# Undo either way of holding back (the shader quality may have changed since a chunk was attached).
+	for s in _fresh:
+		if is_instance_valid(s):
+			(s as Node3D).visible = true
 	if LodFade.enabled() and _fade != null:
 		_fade.cross_fade(_retiring, _fresh)
 	else:
 		for s in _fresh:
 			if is_instance_valid(s):
-				(s as Node3D).visible = true
+				s.set_fade(1.0)
 		for s in _retiring:
 			if is_instance_valid(s):
 				(s as Node).queue_free()
@@ -278,18 +327,20 @@ func _swap_in() -> void:
 	_fresh.clear()
 
 ## The client's edited tiles inside LOD chunk `lchunk` of `level`, as `{ tile: top }` (see `VoxelLod`).
+## Reads the chunks indexed at the last plan (`_index_edits`): a chunk first edited since shows when the
+## rings next move, like any other later edit.
 func edit_tops(level: int, lchunk: Vector2i) -> Dictionary:
 	var out := {}
-	if voxel == null or not ("_edits_by_chunk" in voxel):
+	if voxel == null or not ("_edits_by_chunk" in voxel) or _edit_chunks.is_empty():
 		return out
 	var span := 1 << level
 	var lo := lchunk * span
 	var circ := TerrainSlice.circumference_chunks()
-	for ckey in voxel._edits_by_chunk:
-		var parts := str(ckey).split(",")
-		if parts.size() != 2:
+	for entry in _edit_chunks:
+		var c: Vector2i = entry[0]
+		var ckey: Variant = entry[1]
+		if not voxel._edits_by_chunk.has(ckey):
 			continue
-		var c := Vector2i(int(parts[0]), int(parts[1]))
 		# A chunk key is canonical (wrapped); match it against the LOD chunk's span in the same frame.
 		var dx := posmod(c.x - lo.x, circ) if circ > 0 else c.x - lo.x
 		var dz := c.y - lo.y
@@ -333,3 +384,22 @@ func _refresh_holes() -> void:
 		var mat: ShaderMaterial = entry["mat"]
 		mat.set_shader_parameter("lod_hole", h)
 		mat.set_shader_parameter("tint", (entry["base"] as ShaderMaterial).get_shader_parameter("tint"))
+
+## Parse the edited chunks' keys once a plan, so `edit_tops` (once per build started) never splits them.
+func _index_edits() -> void:
+	_edit_chunks.clear()
+	if voxel == null or not ("_edits_by_chunk" in voxel):
+		return
+	for ckey in voxel._edits_by_chunk:
+		var parts := str(ckey).split(",")
+		if parts.size() == 2:
+			_edit_chunks.append([Vector2i(int(parts[0]), int(parts[1])), ckey])
+
+## Ring 1's hole materials copy their base material's season tint whenever it changes.
+func _sync_hole_tint() -> void:
+	for biome in _hole_mats:
+		var entry: Dictionary = _hole_mats[biome]
+		var tint: Variant = (entry["base"] as ShaderMaterial).get_shader_parameter("tint")
+		var mat: ShaderMaterial = entry["mat"]
+		if mat.get_shader_parameter("tint") != tint:
+			mat.set_shader_parameter("tint", tint)

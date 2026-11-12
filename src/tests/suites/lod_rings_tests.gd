@@ -9,6 +9,7 @@ const LodFade := preload("res://src/terrain/lod_fade.gd")
 const LodTerrain := preload("res://src/terrain/lod_terrain.gd")
 const ChunkSurface := preload("res://src/terrain/chunk_surface.gd")
 const WeatherWiring := preload("res://src/world/weather_wiring.gd")
+const DistantTerrain := preload("res://src/terrain/distant_terrain.gd")
 const TerrainLodTests := preload("res://src/tests/suites/terrain_lod_tests.gd")
 
 const SEED := 424242
@@ -23,6 +24,9 @@ func register() -> void:
 	_run_test("lod rings: clear haze reaches 90% at the outer LOD radius", _test_lod_rings_haze)
 	_run_test("lod rings: a level change cross-fades, complementary, then frees the old surface", _test_lod_rings_fade)
 	_run_test("lod rings: the node queues each ring's chunks and the distant hole is the outer box", _test_lod_rings_node)
+	_run_test("lod rings: the distant square covers an LOD hole off the viewer", _test_lod_rings_hole_cover)
+	_run_test("lod rings: a rebase moves a held-back chunk once", _test_lod_rings_shift_once)
+	_run_test("lod rings: a build started before a reset is dropped and queued again", _test_lod_rings_stale_build)
 
 ## The full chunks' surface heights over the LOD chunk, at each tile middle: `{ Vector2i(tile x, z) local: h }`.
 func _full_heights(level: int, lchunk: Vector2i) -> Dictionary:
@@ -235,4 +239,56 @@ func _test_lod_rings_node() -> void:
 	var h := lod.hole_rect()
 	assert_eq(h, Vector4(pair[1].position.x * 32.0, pair[1].position.y * 32.0, pair[1].end.x * 32.0, pair[1].end.y * 32.0),
 		"ring 1's cut is the window")
+	lod.free()
+
+func _test_lod_rings_hole_cover() -> void:
+	# A 12 km hole centred 4.5 km off the viewer on each axis (the box grows on its far side).
+	var hole := Rect2(Vector2(-5000.0, -5000.0), Vector2(12000.0, 12000.0))
+	var viewer := Vector2(-3500.0, -3500.0)
+	var half := DistantTerrain.lod_ring_half(hole, viewer)
+	var cell := half * 2.0 / float(DistantTerrain.GRID)
+	var o := Vector2(floorf(viewer.x / cell), floorf(viewer.y / cell)) * cell
+	var square := Rect2(o - Vector2(half, half), Vector2(half, half) * 2.0)
+	assert_true(square.encloses(hole), "the ring's square encloses the hole")
+	assert_eq(DistantTerrain.lod_ring_half(hole, viewer + Vector2(10.0, 0.0)), half, "a small step keeps the square")
+	var r := DistantTerrain.Request.new()
+	r.hole = hole
+	r.half = half
+	assert_false(r.same_target(r.origin, r.window, r.radius, r.world_seed, r.circ, hole.grow(1024.0), half),
+		"a resized hole round the same centre is a new request")
+	assert_true(r.same_target(r.origin, r.window, r.radius, r.world_seed, r.circ, hole, half), "the same hole is not")
+
+func _test_lod_rings_shift_once() -> void:
+	var lod := LodTerrain.new()
+	var fresh := Node3D.new()
+	var old := Node3D.new()
+	lod._chunks[Vector3i(1, 0, 0)] = fresh
+	lod._fresh.append(fresh)
+	lod._retiring.append(old)
+	lod.shift_scene(Vector3(10.0, 0.0, 0.0))
+	assert_eq(fresh.position.x, 10.0, "a held-back chunk (in both lists) moves once")
+	assert_eq(old.position.x, 10.0, "a retiring chunk moves once")
+	lod._chunks.clear()
+	lod._fresh.clear()
+	lod._retiring.clear()
+	fresh.free()
+	old.free()
+	lod.free()
+
+func _test_lod_rings_stale_build() -> void:
+	ChunkRecordsScript.clear()
+	var lod := LodTerrain.new()
+	lod.ring_count = 3
+	var key := Vector3i(3, 0, 0)
+	lod._build_task(key, SEED, {}, {}, lod._gen)   # started in the old world
+	lod.reset()
+	lod._wanted[key] = true
+	var task := WorkerThreadPool.add_task(func() -> void: pass)
+	lod._in_flight[key] = task
+	while not WorkerThreadPool.is_task_completed(task):
+		OS.delay_msec(1)
+	lod._collect()
+	assert_eq(lod.drawn_count(), 0, "the old world's build is not drawn")
+	assert_true(lod._queue.has(key), "the chunk is queued to build again")
+	assert_true(lod._in_flight.is_empty(), "nothing left in flight")
 	lod.free()

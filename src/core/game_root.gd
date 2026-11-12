@@ -552,7 +552,7 @@ func _build_and_boot() -> void:
 		add_child(_distant)
 		# #444: no null guard, so the bands are always made (`_rebase` exists whenever this is not a server)
 		_rebase.targets.append_array([_distant, _distant.make_bands(self)])
-		_lod = preload("res://src/terrain/lod_terrain.gd").attach(self, _voxel, _rebase)
+		_lod = preload("res://src/terrain/lod_terrain.gd").attach(self, _voxel, _rebase, _distant)
 		var minimap_layer := CanvasLayer.new()
 		minimap_layer.name = "MinimapLayer"
 		minimap_layer.layer = 20
