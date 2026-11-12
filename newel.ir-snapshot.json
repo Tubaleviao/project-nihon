@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:b397fc268e5f465198b166f26028c901e0135af5449b39783c9aaa6fbe4b8d8e",
+  "schemaHash": "sha256:ab7205dd48d7e342801c1eb3064cec408154c045ccd4d3811f265e6677a577eb",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -8137,7 +8137,7 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false,
-            "defaultValue": 6
+            "defaultValue": 6.4
           },
           "biomes": {
             "name": "biomes",
@@ -8311,7 +8311,7 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false,
-            "defaultValue": 5
+            "defaultValue": 6.4
           },
           "biomes": {
             "name": "biomes",
@@ -8398,7 +8398,7 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false,
-            "defaultValue": 3
+            "defaultValue": 3.2
           },
           "biomes": {
             "name": "biomes",

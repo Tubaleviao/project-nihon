@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Phase 242 — proves the terrain-material validator catches bad data: a biome no material covers, a
 // texture key with no file in assets/, a repeated or skipped layer, an unknown biome, a biome with no
-// snowLine and a table with no snow material all fail, and the shipped fabric passes.
+// snowLine, a table with no snow material and a scale that does not tile a chunk all fail, and the shipped fabric passes.
 //   node tools/check_terrain_materials.js
 'use strict';
 const tm = require('../fabric/world/terrain_materials');
@@ -43,6 +43,9 @@ expect('a biome with no snowLine fails', problems(noLine), /biome Taiga declares
 
 const noSnow = fresh(); set(noSnow.materials.TerrainSnow, 'aboveSnowLine', false);
 expect('a table with no snow material fails', problems(noSnow), /no terrain material covers ground above the snow line/);
+
+const odd = fresh(); set(odd.materials.TerrainRock, 'scale', 6);
+expect('a scale that does not tile a chunk fails', problems(odd), /scale 6 must fit a 32 m chunk/);
 
 const flat = fresh(); set(flat.materials.TerrainRock, 'slopeMin', 95);
 expect('a slope outside (0, 90) fails', problems(flat), /slopeMin must be -1 or in \(0, 90\)/);
