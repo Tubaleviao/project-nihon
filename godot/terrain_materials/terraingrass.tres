@@ -1,0 +1,16 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/terrain_materials/terraingrass.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+layer = 0
+textureKey = "textures/terrain/grass"
+scale = 4.0
+biomes = ["TemperateForest","TemperateGrassland","Taiga","Savanna"]
+slopeMin = -1.0
+aboveSnowLine = false
+nearWater = -1.0
+description = "Short green turf: the ground of the temperate belt, the taiga and the savanna."
+tags = ["terrain_material"]

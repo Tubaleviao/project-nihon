@@ -1,0 +1,16 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/terrain_materials/terrainrock.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+layer = 3
+textureKey = "textures/terrain/rock"
+scale = 6.0
+biomes = ["VoidRift"]
+slopeMin = 40.0
+aboveSnowLine = false
+nearWater = -1.0
+description = "Bare grey rock: cliffs and steep slopes everywhere, and the floor of the void rift."
+tags = ["terrain_material"]

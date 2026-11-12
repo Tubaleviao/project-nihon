@@ -1,0 +1,16 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/terrain_materials/terrainmud.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+layer = 6
+textureKey = "textures/terrain/mud"
+scale = 3.0
+biomes = []
+slopeMin = -1.0
+aboveSnowLine = false
+nearWater = 3.0
+description = "Wet dark mud along lake shores and river banks."
+tags = ["terrain_material"]

@@ -1,0 +1,16 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/terrain_materials/terrainsand.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+layer = 4
+textureKey = "textures/terrain/sand"
+scale = 4.0
+biomes = ["Ocean","Beach","Desert"]
+slopeMin = -1.0
+aboveSnowLine = false
+nearWater = -1.0
+description = "Pale sand: beaches, deserts and the sea floor."
+tags = ["terrain_material"]

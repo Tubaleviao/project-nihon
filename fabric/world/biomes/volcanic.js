@@ -25,6 +25,7 @@ module.exports = {
       surfaceTint:    { type: 'string', description: 'Hex colour of the natural top face', defaultValue: '#3a3a3e' },
       soilTint:       { type: 'string', description: 'Hex colour of the side wall down to topsoilDepth; rock below', defaultValue: '#2c2a2c' },
       topsoilDepth:   { type: 'decimal', description: 'World units of soil under the surface before rock shows on a wall', defaultValue: 1 },
+      snowLine:       { type: 'decimal', description: 'Metres above sea level over which natural ground is drawn as snow (Phase 242); 100000 = never', defaultValue: 100000 },
       soilMaterial:   { type: 'string', description: 'Material a mined slice of this biome\'s topsoil yields, within topsoilDepth of the surface (Phase 49). The surface-material → soil-material mapping, authored here so no GDScript branch decides it', defaultValue: 'Soil' },
       temperature:    { type: 'json', description: 'Climate envelope, normalised 0 (coldest) to 1 (hottest): the climate field selects this biome where its temperature lies in [min, max] (Phase 49)', defaultValue: { min: 0.8, max: 1 } },
       moisture:       { type: 'json', description: 'Climate envelope, normalised 0 (driest) to 1 (wettest), as for temperature', defaultValue: { min: 0, max: 0.6 } },

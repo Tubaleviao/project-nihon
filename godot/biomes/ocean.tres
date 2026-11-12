@@ -18,6 +18,7 @@ surfaceMaterial = "Sand"
 surfaceTint = "#c9b97a"
 soilTint = "#8a7d55"
 topsoilDepth = 6.0
+snowLine = 100000.0
 soilMaterial = "Soil"
 temperature = {"min":0,"max":1}
 moisture = {"min":0,"max":1}
