@@ -70,6 +70,7 @@ jobs:
               case "$f" in
                 ROADMAP.md|docs/roadmap-history/*|README.md|AGENTS.md|CLAUDE.md|characters.md) ;;
                 assets/README.md|native/README.md|docs/DEVELOPMENT.md|docs/media/*) ;;
+                LICENSE|CONTRIBUTING.md|CODE_OF_CONDUCT.md|SECURITY.md|THIRD_PARTY.md|native/THIRD_PARTY.md) ;;
                 *) light=false; echo "runs full CI: $f"; break ;;
               esac
             done <<< "$files"
@@ -389,6 +390,11 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Check the licence and the contributor files (Phase 252)
+        run: |
+          tools/check_front_door.sh --self-test
+          tools/check_front_door.sh
 
       - name: Validate fabric schema
         run: npm run validate

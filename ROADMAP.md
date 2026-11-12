@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–224, 238–243, 248 and 249 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–224, 238–243, 248, 249 and 252 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -31,33 +31,32 @@ introductions of the arcs they belonged to, are archived in
 Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
 see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
 phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
-comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249)
+comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252)
 have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
 [Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
 others are not in it.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 1 | 252 | A licence and a contributor's front door |
-| 2 | 253 | A green `main`: flaky gates demoted, the stress regression explained |
-| 3 | 254 | Repository hygiene: `.uid` files tracked, one lockfile, nothing stray |
-| 4 | 255 | The first release: `v0.1.0` from the release workflow |
-| 5 | 251 | A human playtest: what would make the game fun |
-| 6 | 225 | The options window |
-| 7 | 244 | A chunk cache on disk |
-| 8 | 256 | A binary wire format for the hot packets |
-| 9 | 250 | The server's ceiling: one machine serving, another running the bots |
-| 10 | 237 | Flight that handles like flight |
-| 11 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
-| 12 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
-| 13 | 226 | Several characters per player |
-| 14 | 229 | Skills capped by the gear |
-| 15 | 247 | Ground cover: grass and bushes by biome |
-| 16 | 235 | Roads |
-| 17 | 234 | Boats |
-| 18 | 257 | Split files named by what they do |
-| 19 | 258 | The public wiki and the community channels |
-| 20 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
+| 1 | 253 | A green `main`: flaky gates demoted, the stress regression explained |
+| 2 | 254 | Repository hygiene: `.uid` files tracked, one lockfile, nothing stray |
+| 3 | 255 | The first release: `v0.1.0` from the release workflow |
+| 4 | 251 | A human playtest: what would make the game fun |
+| 5 | 225 | The options window |
+| 6 | 244 | A chunk cache on disk |
+| 7 | 256 | A binary wire format for the hot packets |
+| 8 | 250 | The server's ceiling: one machine serving, another running the bots |
+| 9 | 237 | Flight that handles like flight |
+| 10 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
+| 11 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
+| 12 | 226 | Several characters per player |
+| 13 | 229 | Skills capped by the gear |
+| 14 | 247 | Ground cover: grass and bushes by biome |
+| 15 | 235 | Roads |
+| 16 | 234 | Boats |
+| 17 | 257 | Split files named by what they do |
+| 18 | 258 | The public wiki and the community channels |
+| 19 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
 
 Order notes that differ from the arcs' own order:
 
@@ -232,7 +231,7 @@ says decisions are proposed publicly.
 
 | Phase | Title | Status |
 |---|---|---|
-| 252 | A licence and a contributor's front door | Open |
+| 252 | A licence and a contributor's front door | Done ([phases-252.md](docs/roadmap-history/phases-252.md)) |
 | 253 | A green `main`: flaky gates demoted, the stress regression explained | Open |
 | 254 | Repository hygiene: `.uid` files tracked, one lockfile, nothing stray | Open |
 | 255 | The first release: `v0.1.0` from the release workflow | Open |
@@ -689,34 +688,6 @@ findings come back as new phases.
 - Revised 2026-11-12: the playtest repeats. After every five feature phases closed since the last
   one, a new issue is opened from the same checklist and this phase's number is reused; a phase that
   starts while such an issue is overdue is noted in its PR.
-
-## Phase 252 — A licence and a contributor's front door
-
-The README, `package.json` and the constitution call the project open-source, and the repository is
-public, but there is no `LICENSE` file and GitHub reports no licence. By default that is "all rights
-reserved": nobody may legally fork, build on or redistribute the code, and no contribution has a
-licence to be accepted under. There is also no `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md` or
-`SECURITY.md`, so the `CommunityOwnsTheFuture` principle has no door.
-
-- **Licence** (the owner's choice; MIT or Apache-2.0 fit a code base that already vendors MIT and CC0
-  work): `LICENSE` at the root, `"license"` in `package.json`, a licence line in the README, and
-  `native/THIRD_PARTY.md` extended to the whole repository (`THIRD_PARTY.md` at the root: godot-cpp,
-  the CC0 textures with their sources, any other borrowed code). The fabric, bible and wiki are
-  covered by the same licence unless the owner chooses a documentation licence for them; the private
-  `assets-prod/` submodule is not covered and the README says so.
-- **Front door:** `CONTRIBUTING.md` (how to build, test and open a PR, pointing at
-  `docs/DEVELOPMENT.md`; the fabric-first rule; the trust-boundary rule; the i18n rule),
-  `CODE_OF_CONDUCT.md` and `SECURITY.md` (how to report a host exploit privately).
-- **Branch protection on `main`:** pull requests only, the `fabric` and suite checks required. This
-  is a repository setting, not a file, so it is filed as a GitHub issue for the owner and the phase
-  records its number.
-
-**Acceptance criteria**
-- `LICENSE`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md` and `THIRD_PARTY.md` exist at
-  the root; a CI step (`tools/check_front_door.sh`) fails when any is missing or empty, and when
-  `package.json` has no `license` field or it differs from the `LICENSE` file's SPDX identifier.
-- The README's first screen names the licence and links `CONTRIBUTING.md`.
-- A GitHub issue asks the owner to enable branch protection; this phase records its number.
 
 ## Phase 253 — A green `main`: flaky gates demoted, the stress regression explained
 
