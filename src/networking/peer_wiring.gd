@@ -458,6 +458,10 @@ func fold_local_player() -> void:
 	root._tree.fold_contents(turned, pole_sign)
 	var standins: Array = root._voxel.detach_standins() if root._voxel != null else []
 	var ring: Node3D = root._distant.detach_ring() if root._distant != null and root._distant.has_method("detach_ring") else null
+	if root._lod != null:
+		root._lod.reset()   # Phase 243: the rings rebuild round the folded viewer
+	if root._voxel != null and root._voxel._build.lod_fade != null:
+		root._voxel._build.lod_fade.finish_all()
 	if root._chunk_manager != null:
 		root._chunk_manager.restream()
 	root._rebase.rebase_to(pos["chunk"])

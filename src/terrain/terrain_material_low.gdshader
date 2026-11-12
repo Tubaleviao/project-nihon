@@ -16,6 +16,10 @@ uniform bool detail = false;
 uniform bool surface_maps = false;
 uniform float plane_cut = 0.12;
 
+// Phase 243: an LOD-ring material cuts out the ground the finer level draws (x0, z0, x1, z1 in scene
+// metres, edges included so a skirt standing on the window's edge goes too; an empty rect cuts nothing).
+uniform vec4 lod_hole = vec4(0.0);
+
 varying vec3 world_pos;
 varying vec3 world_nrm;
 varying vec4 w_lo;
@@ -37,6 +41,10 @@ vec3 sample_layer(vec3 p, vec3 b, float layer) {
 }
 
 void fragment() {
+	if (lod_hole.z > lod_hole.x && world_pos.x >= lod_hole.x && world_pos.x <= lod_hole.z
+			&& world_pos.z >= lod_hole.y && world_pos.z <= lod_hole.w) {
+		discard;
+	}
 	float total = dot(w_lo, vec4(1.0)) + dot(w_hi, vec4(1.0));
 	if (total < 0.01) {
 		ALBEDO = COLOR.rgb * tint.rgb;   // a placed block keeps the season tint, as before Phase 242

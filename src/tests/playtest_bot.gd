@@ -32,6 +32,7 @@ const WorldShape := preload("res://src/terrain/world_shape.gd")
 const Horizon := preload("res://src/terrain/horizon.gd")
 const DistantTerrain := preload("res://src/terrain/distant_terrain.gd")
 const DistantBands := preload("res://src/terrain/distant_bands.gd")
+const LodTerrain := preload("res://src/terrain/lod_terrain.gd")
 const PlayerSlice := preload("res://src/player/player_slice.gd")
 const AdminRules := preload("res://src/admin/admin_rules.gd")
 const TickProbe := preload("res://src/core/tick_probe.gd")
@@ -2044,15 +2045,20 @@ func _far_peak_attempt(found: Array, player) -> Array:
 	pivot.global_rotation.y = atan2(-dir.x, -dir.y)
 	var ring_img: Image = null
 	var all_img: Image = null
-	for pass_i in 2:
-		cam.cull_mask = DistantTerrain.RING_RENDER_LAYER if pass_i == 0 else (DistantTerrain.RING_RENDER_LAYER | DistantBands.BANDS_RENDER_LAYER)
+	var lod_img: Image = null   # Phase 243: the LOD rings fill the ring's hole, so the holes are counted with them
+	var masks := [DistantTerrain.RING_RENDER_LAYER, DistantTerrain.RING_RENDER_LAYER | DistantBands.BANDS_RENDER_LAYER,
+		DistantTerrain.RING_RENDER_LAYER | DistantBands.BANDS_RENDER_LAYER | LodTerrain.RENDER_LAYER]
+	for pass_i in 3:
+		cam.cull_mask = masks[pass_i]
 		for _f in 3:
 			await RenderingServer.frame_post_draw
 		var img := get_viewport().get_texture().get_image()
 		if pass_i == 0:
 			ring_img = img
-		else:
+		elif pass_i == 1:
 			all_img = img
+		else:
+			lod_img = img
 	cam.environment = null
 	cam.cull_mask = old_mask
 	arm.rotation_degrees.x = old_pitch
@@ -2060,7 +2066,7 @@ func _far_peak_attempt(found: Array, player) -> Array:
 	for pair in layers:
 		if is_instance_valid(pair[0]):
 			pair[0].visible = pair[1]
-	if ring_img == null or all_img == null:
+	if ring_img == null or all_img == null or lod_img == null:
 		return [false, "no frame read"]
 	ring_img.save_png(ProjectSettings.globalize_path(OUT_DIR.path_join("far_peak_ring.png")))
 	all_img.save_png(ProjectSettings.globalize_path(OUT_DIR.path_join("far_peak_bands.png")))
@@ -2070,7 +2076,7 @@ func _far_peak_attempt(found: Array, player) -> Array:
 	# pixels need only be a share (`FAR_PEAK_MIN_ROCK_SHARE`) of the band pixels, and at least `FAR_PEAK_MIN_PX`.
 	var px := rock_pixels_above(all_img, rows, SKYLINE_KEY, 0.08, true)
 	var rock_px := rock_pixels_above(all_img, rows, SKYLINE_KEY)
-	var holes := hole_pixels(all_img, rows, SKYLINE_KEY)
+	var holes := hole_pixels(lod_img, rows, SKYLINE_KEY)
 	var rock_ok := far_peak_passes(px, rock_px) and holes <= FAR_PEAK_MAX_HOLE_PX
 	var worst_ms := 0.0
 	for f in _frames:

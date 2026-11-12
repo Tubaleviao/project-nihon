@@ -343,6 +343,8 @@ func shift_scene(shift: Vector3) -> void:
 		_chunks[key].position += shift
 	if _world_floor != null:
 		_world_floor.position += shift
+	if _build.lod_fade != null and is_instance_valid(_build.lod_fade):
+		_build.lod_fade.shift_scene(shift)   # Phase 243: surfaces still fading out
 
 func scene_offset() -> Vector3:
 	return _origin.value

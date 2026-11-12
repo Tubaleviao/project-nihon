@@ -39,6 +39,8 @@ const HORIZON_MARGIN := 1.1  ## the outer radius reaches this far past the horiz
 ## A render layer only the ring is on (besides layer 1), so a camera can draw the ring alone (the
 ## playtest bot's horizon step reads its silhouette that way).
 const RING_RENDER_LAYER := 1 << 19
+## Phase 243 — the ring's square half-extent round an LOD hole, as a multiple of the hole's half-extent.
+const LOD_HOLE_MARGIN := 1.25
 
 var world_seed: int = 0
 var circumference_m: float = 40000.0 * 1000.0
@@ -281,7 +283,10 @@ static func _altitude_color(alt: float) -> Color:
 ## when a build was started or queued (the centre moved a whole cell, or first call); the finished
 ## mesh is swapped in by `poll` (called every frame from `_process`).
 ## Phase 191 — `chunks` (the chunk manager) also keeps a patch under each unbuilt chunk of its window.
-func rebuild(center: Vector2, radius_chunks: int, chunks: Node = null) -> bool:
+##
+## Phase 243 — with LOD rings, `hole` (the outer LOD box in world metres, square) is the ring's hole
+## instead of the window, and the square grows to LOD_HOLE_MARGIN times the hole when the hole needs it.
+func rebuild(center: Vector2, radius_chunks: int, chunks: Node = null, hole: Rect2 = Rect2()) -> bool:
 	if chunks != null:
 		# Phase 194 (#512) — the window's unbuilt list (string keys, a dict per call) is read only when it can
 		# have changed, or while patches are still owed to it (`set_unbuilt` makes a few a call).
@@ -292,8 +297,11 @@ func rebuild(center: Vector2, radius_chunks: int, chunks: Node = null) -> bool:
 			var unbuilt: Array = chunks.unbuilt_window_chunks()
 			_fills_owed = set_unbuilt(unbuilt, chunks.player_chunk(), FILL_BUDGET_USEC) < unbuilt.size()
 			TickProbe.end()
-	window_half_m = (float(radius_chunks) + 0.5) * CHUNK_METERS
-	ring_half_m = ring_half_extent(radius_chunks)
+	var lod_hole := hole.size.x > 0.0
+	window_half_m = hole.size.x * 0.5 if lod_hole else (float(radius_chunks) + 0.5) * CHUNK_METERS
+	# The square grows only as far as the hole needs (a quarter past it), so the polar rings and the bands
+	# past it keep the shape they have round a window.
+	ring_half_m = maxf(ring_half_extent(radius_chunks), window_half_m * LOD_HOLE_MARGIN)
 	outer_radius_m = outer_radius_for(ring_half_m, circumference_m)
 	if bands != null:
 		# Phase 194 (#444) — every band's lattice is a power-of-two multiple of band 0's, so the bands can only
@@ -311,6 +319,8 @@ func rebuild(center: Vector2, radius_chunks: int, chunks: Node = null) -> bool:
 	# ring rebuilds when the player's chunk changes as well as when the lattice cell does.
 	var win_center := Vector2((floorf(center.x / CHUNK_METERS) + 0.5) * CHUNK_METERS,
 		(floorf(center.y / CHUNK_METERS) + 0.5) * CHUNK_METERS)
+	if lod_hole:
+		win_center = hole.get_center()
 	var rev := ChunkRecords.revision()
 	var built := _req.built
 	var same := built != null and built.same_target(origin, win_center, radius_chunks, world_seed, circumference_m) \

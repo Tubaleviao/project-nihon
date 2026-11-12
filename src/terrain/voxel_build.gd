@@ -12,6 +12,9 @@ var s: Node
 ## Phase 239 — draw each chunk's ground through the RenderingServer (`ChunkSurface`) instead of a
 ## `MeshInstance3D`. Off by default so the suite's rigs keep their node-based meshes; the game turns it on.
 var render_server_surfaces := false
+## Phase 243 — when set (a rendered client on the high terrain shader), a rebuilt chunk's old surface is
+## handed to this `LodFade` and cross-fades with the new one instead of vanishing in one frame.
+var lod_fade: Node = null
 
 func _init(slice: Node) -> void:
 	s = slice
@@ -48,8 +51,11 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 			s.Diag.warn("VoxelSlice: chunk %s was built from a heightmap that differs from the guess its neighbours were built against; seams may show" % key)
 		s._guess_heightmaps.erase(key)
 
-	# Remove any previous version of this chunk.
+	# Remove any previous version of this chunk (Phase 243: its drawn surface cross-fades out).
+	var old_surface: Node = null
 	if s._chunks.has(key):
+		if lod_fade != null and is_instance_valid(lod_fade):
+			old_surface = (s._chunks[key] as Node).get_node_or_null("Surface")   # freed with its root unless handed over
 		s._chunks[key].queue_free()
 		s._chunks.erase(key)
 
@@ -105,6 +111,9 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 			if surface_node.setup(built, chunk_mat):
 				root.add_child(surface_node)
 				drawn = true
+				if old_surface != null:
+					lod_fade.cross_fade([old_surface], [surface_node])
+					old_surface = null
 			else:
 				surface_node.free()
 		if not drawn:

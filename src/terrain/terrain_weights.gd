@@ -297,6 +297,26 @@ static func apply_gd(built: Dictionary, chunk_pos: Vector2i, biomes: Dictionary,
 	built["custom0"] = w0
 	built["custom1"] = w1
 
+## Phase 243 — the weights of an LOD-ring chunk's vertices (chunk-local to `corner`, world metres):
+## every vertex reads the biome blend at its own place (an LOD chunk spans many level-0 chunks), and no
+## wetness (the far rings draw no lake shores). Same weight function as `apply`, GDScript only.
+static func apply_at(built: Dictionary, corner: Vector2, biomes: Dictionary) -> void:
+	var verts: PackedVector3Array = built.get("vertices", PackedVector3Array())
+	var normals: PackedVector3Array = built.get("normals", PackedVector3Array())
+	var n := verts.size()
+	var w0 := PackedByteArray()
+	var w1 := PackedByteArray()
+	w0.resize(n * 4)
+	w1.resize(n * 4)
+	var t := table()
+	var sea := WorldShape.sea_level()
+	for i in n:
+		var v := verts[i]
+		var slope := rad_to_deg(acos(clampf(normals[i].y, -1.0, 1.0))) if i < normals.size() else 0.0
+		pack(weights(t, biome_weights(Vector2(v.x + corner.x, v.z + corner.y), biomes), slope, v.y - sea, INF), w0, w1, i)
+	built["custom0"] = w0
+	built["custom1"] = w1
+
 static func _features(t: Dictionary, chunk_pos: Vector2i, seed_v: int) -> Dictionary:
 	return Hydrology.features_for_chunk(chunk_pos, seed_v) if int(t["wet"]) >= 0 else { "lakes": [], "segs": [] }
 
