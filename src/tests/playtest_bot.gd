@@ -839,6 +839,8 @@ func _step_walk() -> Array:
 	var foot_l := skeleton.find_bone("Foot_L") if skeleton != null else -1
 	var foot_r := skeleton.find_bone("Foot_R") if skeleton != null else -1
 	var samples: Array = []  # [time, left, right] foot positions in world space; the last WALK_FOOT_SECS are kept, but never fewer than WALK_FOOT_MIN_FRAMES
+	var states := {}   # locomotion state name (plus "air" when off the floor) -> frames, for the note
+	var player_char: String = _root._character.get_player_character()
 	_key(KEY_W, true)
 	var t0 := Time.get_ticks_msec()
 	# A slow runner (the world still loading under the body) walks late, so keep walking until the body has
@@ -848,6 +850,8 @@ func _step_walk() -> Array:
 		var elapsed := float(Time.get_ticks_msec() - t0) / 1000.0
 		var here := _player_pos()
 		var travelled := Vector2(here.x - start.x, here.z - start.z).length()
+		var st: String = _root._character.get_locomotion_state_name(player_char) + ("" if _root._player.is_grounded() else "/air")
+		states[st] = int(states.get(st, 0)) + 1
 		if foot_l >= 0 and foot_r >= 0:
 			samples.append([elapsed, skeleton.to_global(skeleton.get_bone_global_pose(foot_l).origin),
 				skeleton.to_global(skeleton.get_bone_global_pose(foot_r).origin), here])
@@ -862,7 +866,8 @@ func _step_walk() -> Array:
 	_key(KEY_W, false)
 	var delta := Vector2(_player_pos().x - start.x, _player_pos().z - start.z)
 	var moved := delta.length()
-	var note := "moved %.1f m" % moved
+	var walk_secs := float(Time.get_ticks_msec() - t0) / 1000.0
+	var note := "moved %.1f m in %.1f s, states %s" % [moved, walk_secs, JSON.stringify(states)]
 	var ok := moved > 1.0
 	if samples.size() >= 10 and moved > 1.0:
 		var dir := delta.normalized()
