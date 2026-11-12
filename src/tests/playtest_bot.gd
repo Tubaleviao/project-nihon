@@ -80,7 +80,9 @@ const WALK_SECS := 3.0
 const WALK_MIN_M := 4.0        ## the walk step keeps going until the body has moved this far
 const WALK_MAX_SECS := 20.0   ## ... but not past this
 const WALK_WINDOW_MIN_M := 1.5   ## ... and the body must have covered this much inside the feet window
-const WALK_GROUND_SECS := 15.0   ## the walk step waits this long for the chunk under the body
+const WALK_GROUND_SECS := 15.0   ## the walk step waits this long for the ring round the body to be built and collidable
+const WALK_RING: Array[Vector2i] = [Vector2i(-1, -1), Vector2i(0, -1), Vector2i(1, -1), Vector2i(-1, 0), Vector2i(0, 0),
+	Vector2i(1, 0), Vector2i(-1, 1), Vector2i(0, 1), Vector2i(1, 1)]   ## the walk (~15 m) stays inside this ring of 32 m chunks
 const WALK_FOOT_SECS := 2.0   ## the walk step samples the feet over the last this many seconds
 ## The feet must swap the lead at least this often over the window. A share-of-frames check flaked
 ## under xvfb: ~10 fps samples alias with the gait, so a cycling walk could read 14% one foot ahead.
@@ -828,9 +830,17 @@ func _step_walk() -> Array:
 	GameBus.admin_healed.emit()
 	_clear_creatures_near_body()
 	# A slow builder may not have the ground under the body yet: it would stand or crawl, and the
-	# clip rightly stays near idle. Wait for the ground before judging the gait.
+	# clip rightly stays near idle. Wait for the ground before judging the gait. Built is not enough:
+	# collision attaches later (Phase 189), and the walk covers ~15 m, so it can leave its chunk.
+	# The GDScript fallback failed CI with the feet frozen after a long wait for the chunk under
+	# the body; the ring round the body must be built and collidable, and the body on the floor.
 	var here_chunk: Vector2i = _root._player.get_world_pos()["chunk"]
-	await _until(func(): return _root._chunk_manager.is_chunk_built(here_chunk), WALK_GROUND_SECS)
+	var ground_t0 := Time.get_ticks_msec()
+	var ground_ready: bool = await _until(func(): return _walk_ground_ready(here_chunk) == WALK_RING.size() \
+		and _root._player.is_grounded(), WALK_GROUND_SECS)
+	var ground_note := "ground ready in %.1f s" % (float(Time.get_ticks_msec() - ground_t0) / 1000.0) if ground_ready \
+		else "ground not ready after %.1f s (%d of %d chunks collidable, on floor %s)" % [float(Time.get_ticks_msec() - ground_t0) / 1000.0,
+			_walk_ground_ready(here_chunk), WALK_RING.size(), str(_root._player.is_grounded())]
 	var start := _player_pos()
 	var rig := _player_rig()
 	var skeleton: Skeleton3D = null
@@ -867,7 +877,7 @@ func _step_walk() -> Array:
 	var delta := Vector2(_player_pos().x - start.x, _player_pos().z - start.z)
 	var moved := delta.length()
 	var walk_secs := float(Time.get_ticks_msec() - t0) / 1000.0
-	var note := "moved %.1f m in %.1f s, states %s" % [moved, walk_secs, JSON.stringify(states)]
+	var note := "moved %.1f m in %.1f s, %s, states %s" % [moved, walk_secs, ground_note, JSON.stringify(states)]
 	var ok := moved > 1.0
 	if samples.size() >= 10 and moved > 1.0:
 		var dir := delta.normalized()
@@ -892,6 +902,15 @@ func _step_walk() -> Array:
 	else:
 		note += ", no rig feet sampled"
 	return [ok, note]
+
+## The chunks of the 3×3 ring round `center` that are built and have their collision attached.
+func _walk_ground_ready(center: Vector2i) -> int:
+	var ready := 0
+	for off in WALK_RING:
+		var c: Vector2i = center + off
+		if _root._chunk_manager.is_chunk_built(c) and _root._voxel.has_collision(c):
+			ready += 1
+	return ready
 
 func _player_rig() -> Node:
 	var inst: Dictionary = _root._character._instances.get(_root._character.get_player_character(), {})
