@@ -547,8 +547,26 @@ func _test_crowd_headless_worker_builds_collision_only() -> void:
 	assert_eq(root.get_children().filter(func(c): return c is MeshInstance3D), [], "no render mesh on the host")
 	var bodies: Array = root.get_children().filter(func(c): return c is StaticBody3D)
 	assert_eq(bodies.size(), 1, "one collision body")
+	# Phase 253 — a host staggers too: one quadrant on the build, the rest a pump step each from the near ring.
 	var held: Array = bodies[0].get_children().map(func(c): return c.shape)
-	assert_eq(held, shapes, "it holds the worker's shapes, all of them (a host draws nothing, so nothing is staggered)")
+	assert_eq(held, shapes.slice(0, 1), "the build attaches the first of the worker's shapes only")
+	assert_eq(voxel.has_parked_collision(Vector2i(2, 3)), shapes.size() > 1, "the rest are parked")
+	var clock := [0]
+	cm.pump_budget_msec = ChunkManager.DEFAULT_PUMP_BUDGET_MSEC
+	cm.pump_clock_usec = func() -> int:
+		clock[0] += 5000   # every step overruns the budget
+		return clock[0]
+	cm.begin_pump()
+	cm._near.tick()
+	held = bodies[0].get_children().map(func(c): return c.shape)
+	assert_eq(held, shapes.slice(0, mini(2, shapes.size())), "a frame over budget still attaches one more, and only one")
+	for i in shapes.size():
+		cm.begin_pump()
+		cm._near.tick()
+	cm._pump_open = false
+	held = bodies[0].get_children().map(func(c): return c.shape)
+	assert_eq(held, shapes, "the near ring attaches the rest, in order, all of them")
+	assert_false(voxel.has_parked_collision(Vector2i(2, 3)), "nothing stays parked")
 	cm.free()
 	voxel.free()
 	rig["terrain"].free()

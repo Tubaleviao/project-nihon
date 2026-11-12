@@ -95,11 +95,28 @@ Budgets: host tick p95 ≤ 16.0 ms, ≤ 64.0 kbit/s down per peer, watcher frame
 
 None.
 
-## Phase 253 — the rerun rule
+## Phase 253 — the stress regression: a whole chunk's collision in one frame
 
-The ladder (`tools/stress.sh`) runs a size at or below the baseline again when it misses a budget, up to
-twice more (best of three), and keeps the first run that meets every budget. The merge of Phase 243
-(#618) recorded 0 for `lan/cluster`, `lan/cross` and `lan/spread` with a single rerun; Phase 243 is
-client-only (`game_root.gd`'s `_is_server` guard), so the host's tick cost cannot have changed, and a
-shared runner's noise is the likelier cause. A regression that is real misses all three runs and still
-fails. The cause is to be confirmed by the five green `main` runs the phase requires.
+The merge of Phase 243 (#618) recorded 0 for `lan/cluster`, `lan/cross` and `lan/spread`. It was not
+runner noise: on this branch the same sizes missed on all three runs of the best-of-three rerun, and
+every miss was `host_tick_p95_ms` alone (bandwidth, relay lag and the watcher's frame all passed).
+
+- **The cost.** Host tick p50 ~1 ms but p95 ~18 ms, p99 ~21 ms, max ~27 ms, the same at 16 and 64
+  bots: a periodic spike, not load. Of 327 slow host frames in the 16-bot runs, 315 had
+  `chunk_attach_collision` as their largest phase, ~83% of the frame (17.3 ms of a 20.5 ms one).
+- **The mechanism.** Jolt builds a `ConcavePolygonShape3D`'s mesh on the main thread when its body
+  enters the world. A client staggers a smooth chunk's four quadrant shapes (Phase 183) over pump
+  steps; the dedicated server never did (`NearRing.staggers_collision` was false without a render),
+  so each streamed chunk cost ~17–20 ms in one frame.
+- **Why #618.** It was there before: on Phase 242 (`f8a53c4`) the 16-bot runs already had ~45 slow
+  frames of 1,200 (3.6%, so p95 stayed ~4 ms), each up to ~26 ms of collision. On #618 the host
+  attached ~45% more collision in the window (0.77 s → 1.12 s in `lan/cross/16`) and ~69 frames
+  went slow (5.75%), past the 5% that sets p95. Nothing in #618 runs on the server; the threshold
+  was crossed by the margin, not by a new cost.
+- **The fix.** The headless host now staggers every chunk: the build attaches one quadrant and the
+  near ring's `_attach_server_collision` attaches the rest one a pump step, oldest chunk first, at
+  least one a frame. Locally, 16 bots on `lan`: `cross` p95 15.7 → 8.0 ms, max 23.0 → 15.8 ms,
+  frames over 16 ms 51 → 0; `spread` p95 14.7 → 8.2 ms, 25 → 0. Total collision time is unchanged.
+
+The best-of-three rerun stays (a size at or below the baseline that misses a budget runs up to twice
+more and keeps the first run that meets every budget): a real regression still misses all three.
