@@ -22,43 +22,55 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–224, 238, 240–243, 248 and 249 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–224, 238–243, 248 and 249 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
 ### Priority order
 
-Set by the owner on 2026-11-10. Work the open phases top to bottom; the arc tables below keep their
-numbers and specs, but this list decides what comes next. A phase that needs an earlier one still
-waits for it. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
+Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
+see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
+phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
+comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249)
+have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
 [Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
 others are not in it.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 1 | 238 | One world: a fixed seed, a 2,000 km planet and one continent |
-| 2 | 239 | Streaming that keeps up |
-| 3 | 249 | What to reuse from Zylann's godot_voxel |
-| 4 | 240 | Smooth natural ground |
-| 5 | 241 | The native smooth mesher, and coarse chunks built smooth |
-| 6 | 242 | Terrain materials: blend weights, a triplanar shader and CC0 textures |
-| 7 | 243 | Level of detail past the window |
-| 8 | 244 | A chunk cache on disk |
-| 9 | 225 | The options window |
+| 1 | 252 | A licence and a contributor's front door |
+| 2 | 253 | A green `main`: flaky gates demoted, the stress regression explained |
+| 3 | 254 | Repository hygiene: `.uid` files tracked, one lockfile, nothing stray |
+| 4 | 255 | The first release: `v0.1.0` from the release workflow |
+| 5 | 251 | A human playtest: what would make the game fun |
+| 6 | 225 | The options window |
+| 7 | 244 | A chunk cache on disk |
+| 8 | 256 | A binary wire format for the hot packets |
+| 9 | 250 | The server's ceiling: one machine serving, another running the bots |
 | 10 | 237 | Flight that handles like flight |
-| 11 | 250 | The server's ceiling: one machine serving, another running the bots |
-| 12 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
-| 13 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
-| 14 | 226 | Several characters per player |
-| 15 | 229 | Skills capped by the gear |
-| 16 | 247 | Ground cover: grass and bushes by biome |
-| 17 | 235 | Roads |
-| 18 | 234 | Boats |
-| 19 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
-| 20 | 251 | A human playtest: what would make the game fun |
+| 11 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
+| 12 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
+| 13 | 226 | Several characters per player |
+| 14 | 229 | Skills capped by the gear |
+| 15 | 247 | Ground cover: grass and bushes by biome |
+| 16 | 235 | Roads |
+| 17 | 234 | Boats |
+| 18 | 257 | Split files named by what they do |
+| 19 | 258 | The public wiki and the community channels |
+| 20 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
 
 Order notes that differ from the arcs' own order:
 
+- Phases 252–255 come first because each is small and each unblocks something no feature phase can:
+  252 makes the "open-source" claim true, 253 makes a red `main` mean something again, 254 removes
+  the ways a routine commit damages the repository, and 255 gives Phase 251 a build to play.
+- Phase 251 moves from last to fifth. The owner's one session on 2026-11-06 produced four bugs and
+  three menus (Phases 219–224) in an evening; nothing else on the list finds problems that cheaply.
+  It repeats: after every five feature phases, a new playtest issue is opened from the same
+  checklist.
+- Phase 256 comes before Phase 250. The stress report's first two hot spots are `remote_player_state`
+  (611% of the per-peer bandwidth budget at 200 bots) and `snapshot_chunk` (229%), both JSON text.
+  Measuring the server's ceiling before the encoding changes would measure the encoding.
 - Phase 242's low-end fallback and Phase 243's view distance are options of Phase 225, which now
   comes after them. They ship as project settings first, and Phase 225 puts them in the window.
 - Phase 245 replaces Phase 217's river trace and now comes before Phase 232. Phase 232's river-seam
@@ -200,6 +212,33 @@ measures how many players one server holds on real hardware. Phase 251 is the ow
 | 249 | What to reuse from Zylann's godot_voxel: a review, then the parts that fit | Done ([phases-249.md](docs/roadmap-history/phases-249.md)) |
 | 250 | The server's ceiling: one machine serving, another running the bots | Open |
 | 251 | A human playtest: what would make the game fun | Open |
+
+### Next: a licence, a green `main` and a first release (Phases 252–258)
+
+Filed on 2026-11-12 from a read-only review of the repository (its findings, ranked by impact, are
+the order of this table). The repository is public and says "open-source" but has no licence file,
+so legally nobody may fork, build on or redistribute it. `main` was red in 18 of its last 40 CI
+runs: 7 of the last 8 failures were the playtest bot's gait assertion on the `walk` step ("left foot
+ahead 100% of 36 frames, 0 lead switches"), a presentation check that fails the whole gate, and the
+latest was the stress job finding a largest passing crowd of 0 for `cluster`, `cross` and `spread`
+(baseline 16) and 16 for `pole` (baseline 32) on the merge of Phase 243 (#618). The release workflow
+exists but no tag has ever been pushed, so no one but the owner has ever run a build. The working
+tree carried an unignored `.claude/` folder of 600 MB, eight untracked `.uid` files, two lockfiles
+and a submodule pointer rewound three commits. The 1,500-line cap on source files is met by nine
+files named `*_part_1.gd`, `*_part_2.gd`, `*_part_3.gd`, split by line count rather than by what
+they do. The deployed wiki deferred since Phase 9 is still deferred, and the repository has no
+`CONTRIBUTING.md` and no Discussions, although the constitution's `CommunityOwnsTheFuture` principle
+says decisions are proposed publicly.
+
+| Phase | Title | Status |
+|---|---|---|
+| 252 | A licence and a contributor's front door | Open |
+| 253 | A green `main`: flaky gates demoted, the stress regression explained | Open |
+| 254 | Repository hygiene: `.uid` files tracked, one lockfile, nothing stray | Open |
+| 255 | The first release: `v0.1.0` from the release workflow | Open |
+| 256 | A binary wire format for the hot packets | Open |
+| 257 | Split files named by what they do | Open |
+| 258 | The public wiki and the community channels | Open |
 
 ## Phase 225 — The options window
 
@@ -647,6 +686,199 @@ findings come back as new phases.
 **Acceptance criteria**
 - A GitHub issue for the playtest exists with the checklist, and this phase records its number.
 - The phase is done when the issue is closed and every finding is filed as an issue or a new phase.
+- Revised 2026-11-12: the playtest repeats. After every five feature phases closed since the last
+  one, a new issue is opened from the same checklist and this phase's number is reused; a phase that
+  starts while such an issue is overdue is noted in its PR.
+
+## Phase 252 — A licence and a contributor's front door
+
+The README, `package.json` and the constitution call the project open-source, and the repository is
+public, but there is no `LICENSE` file and GitHub reports no licence. By default that is "all rights
+reserved": nobody may legally fork, build on or redistribute the code, and no contribution has a
+licence to be accepted under. There is also no `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md` or
+`SECURITY.md`, so the `CommunityOwnsTheFuture` principle has no door.
+
+- **Licence** (the owner's choice; MIT or Apache-2.0 fit a code base that already vendors MIT and CC0
+  work): `LICENSE` at the root, `"license"` in `package.json`, a licence line in the README, and
+  `native/THIRD_PARTY.md` extended to the whole repository (`THIRD_PARTY.md` at the root: godot-cpp,
+  the CC0 textures with their sources, any other borrowed code). The fabric, bible and wiki are
+  covered by the same licence unless the owner chooses a documentation licence for them; the private
+  `assets-prod/` submodule is not covered and the README says so.
+- **Front door:** `CONTRIBUTING.md` (how to build, test and open a PR, pointing at
+  `docs/DEVELOPMENT.md`; the fabric-first rule; the trust-boundary rule; the i18n rule),
+  `CODE_OF_CONDUCT.md` and `SECURITY.md` (how to report a host exploit privately).
+- **Branch protection on `main`:** pull requests only, the `fabric` and suite checks required. This
+  is a repository setting, not a file, so it is filed as a GitHub issue for the owner and the phase
+  records its number.
+
+**Acceptance criteria**
+- `LICENSE`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md` and `THIRD_PARTY.md` exist at
+  the root; a CI step (`tools/check_front_door.sh`) fails when any is missing or empty, and when
+  `package.json` has no `license` field or it differs from the `LICENSE` file's SPDX identifier.
+- The README's first screen names the licence and links `CONTRIBUTING.md`.
+- A GitHub issue asks the owner to enable branch protection; this phase records its number.
+
+## Phase 253 — A green `main`: flaky gates demoted, the stress regression explained
+
+Of the last 40 CI runs on `main` (to 2026-11-12), 18 failed. Seven of the last eight were the
+playtest bot's `walk` step failing its gait assertion (`_step_walk`: `left foot ahead 100% of N
+frames, 0 lead switches`) while the distance and state checks passed; the clip aliasing with a slow
+runner's sample rate has been widened twice already (`WALK_FOOT_MIN_FRAMES`). The latest was the
+stress job: largest passing crowd 0 for `lan/cluster`, `lan/cross` and `lan/spread` against a
+baseline of 16, and 16 for `lan/pole` against 32, on the merge of Phase 243 (#618), with
+`host_tick_p95_ms` the budget missed at 16 bots. A gate that is red half the time stops meaning
+anything, and this roadmap's whole method is that gates are the acceptance criteria.
+
+- **Gait check report-only.** The `walk` step keeps its hard checks (distance moved, ground under the
+  body, the state machine reaching `RUN`) and writes the gait numbers to the report without failing
+  on them, like the chunk pump since Phase 189. A gait regression is caught by a suite test on the
+  animation clip instead (the walk clip's foot bones alternate lead within one cycle).
+- **The stress regression.** Re-run the stress job on the merge commit of #618 and on its parent. If
+  the regression holds, find it (Phase 243 is client-only by `game_root.gd`'s `_is_server` guard, so
+  the suspects are the watcher client's frame time, the attach budget of Phase 239, or the runner)
+  and fix it in this phase; if it does not, the ladder's rerun rule (`stress: … missed a budget at or
+  below the baseline; running it once more`) widens to a best-of-three for the baseline sizes.
+- **A flake rule, written down.** `docs/DEVELOPMENT.md` gains the rule: a gate that fails three times
+  on `main` without a code change explaining it is demoted to report-only the same day, with an issue
+  to make it decisive again. `tools/check_gate_health.sh` reads the last 40 `main` runs through the
+  GitHub API and prints the failure count per job; CI runs it on a schedule and fails the scheduled
+  run when any job is over 10%, so the trend is visible before it is normal.
+
+**Acceptance criteria**
+- A suite test on the walk step's verdict: a sample set with zero lead switches but the distance and
+  states met passes, and the report carries the gait numbers.
+- A suite test on the walk clip asserts the feet alternate lead within one cycle.
+- The stress job is green on `main` for five consecutive runs after this phase merges, and either the
+  fix or the rerun widening is in the PR with the cause written in `docs/perf/crowd-baseline.md`.
+- `tools/check_gate_health.sh` exists, a scheduled workflow runs it, and the suite's workflow lint
+  passes with the new job.
+
+## Phase 254 — Repository hygiene: `.uid` files tracked, one lockfile, nothing stray
+
+Found in the working tree on 2026-11-12: `.claude/` (600 MB, thirteen agent worktrees) not in
+`.gitignore`, one `git add -A` from being committed; eight `.uid` files untracked and
+`lod_rings_tests.gd` with none at all (Godot 4.4+ keys scripts by `.uid`, so an untracked one is
+regenerated differently on every clone and the editor rewrites references); both `package-lock.json`
+and `pnpm-lock.yaml` tracked while the README says `npm ci` and this file says `pnpm`; and the
+`assets-prod` submodule pointer rewound three commits with modified content, which the next commit
+touching it would publish as a regression.
+
+- `.gitignore` gains `.claude/` and `*.uid` is never ignored.
+- Every `.gd`, `.gdshader` and `.tscn` under `src/`, `godot/`, `tools/` and the root has its `.uid`
+  tracked. A CI step (`tools/check_uids.sh`) lists tracked scripts without a tracked `.uid` and fails
+  on any; the generator's `godot/` output includes its `.uid` files already and the check covers
+  them too.
+- One lockfile. The README and CI use `npm ci`, so `package-lock.json` stays and `pnpm-lock.yaml`
+  goes; this file's gate names (`pnpm validate`, `pnpm check-drift`) become `npm run …`.
+- The submodule pointer is set on purpose: either back to the commit `main` records or forward to
+  the current head of `assets-prod` with the change named in the PR. `tools/check_submodule.sh`
+  fails CI when the recorded pointer is not an ancestor-or-equal of the previous commit's, unless the
+  PR title carries `assets-prod:`.
+
+**Acceptance criteria**
+- `tools/check_uids.sh` and `tools/check_submodule.sh` run in the `fabric` CI job; each has a fixture
+  it rejects (an untracked `.uid`; a rewound pointer without the title marker).
+- `git ls-files | grep -c lock` is 1 for the package manager's lockfile; `npm ci` succeeds in CI.
+- `git check-ignore .claude` succeeds.
+
+## Phase 255 — The first release: `v0.1.0` from the release workflow
+
+`release.yml` builds the native library on three platforms and attaches Linux, Windows and macOS
+exports to a GitHub Release when a `v*` tag is pushed. It has never run: the repository has no tags.
+Nobody but the owner has ever run a build, Phase 251 has nothing to hand a tester, and the
+"public game must build and be fully playable without the submodule" rule has never been checked
+by a player.
+
+- A `CHANGELOG.md` with a `v0.1.0` entry (the arcs shipped, in a paragraph each) and a release
+  checklist in `docs/DEVELOPMENT.md`: bump `config/version` in `project.godot`, write the changelog
+  entry, tag, push, watch the workflow, smoke-test each download.
+- `project.godot` gains `application/config/version` and the main menu shows it in a corner.
+- The README's first screen gets a **Download** line pointing at the latest release, with the
+  placeholder-art caveat.
+- The release workflow runs the playtest bot's `create`, `walk` and `mine` steps against the Linux
+  export under xvfb before publishing, so a broken export never becomes a release.
+- Tag `v0.1.0` on the merge commit of this phase.
+
+**Acceptance criteria**
+- A suite test reads `application/config/version` and asserts it parses as `major.minor.patch`.
+- The release workflow has a `workflow_dispatch` dry run (no tag, no publish) that CI exercises on
+  pull requests touching it, and it runs the three playtest steps on the export.
+- `CHANGELOG.md` exists and a CI step fails when the version in `project.godot` has no entry.
+- A GitHub Release `v0.1.0` exists with three assets; the README download link resolves to it.
+
+## Phase 256 — A binary wire format for the hot packets
+
+Every packet is a JSON string carried by two RPCs (`_rpc_c2h`, `_rpc_h2c`), parsed with `_parse`
+and capped at `MAX_CLIENT_PACKET_BYTES`. The stress report ranks `remote_player_state` first among
+hot spots (+2.01 kbit/s per peer per bot, 611% of the 64 kbit/s per-peer budget at 200 bots) and
+`snapshot_chunk` second (229%). Phase 250 measures the server's ceiling; with text encoding it would
+measure the encoding. The guards at `_accept_c2h` (size cap, token bucket, dedup) stay in front of
+whatever is parsed.
+
+- A `PacketCodec` (`src/networking/packet_codec.gd`, native port optional later) with a fixed
+  layout per hot type: a one-byte type tag, a `u16` seq, and for `remote_player_state` the peer id
+  and position quantised to centimetres as three `i32` (the rebase origin is sent with the chunk
+  window, not per packet); `snapshot_chunk` carries its index, count and the chunk's bytes as a
+  `PackedByteArray` instead of a base-64 string. Every other type stays JSON until it earns a layout.
+- The two RPCs take a `PackedByteArray`; the first byte says binary or JSON (`{`), so a peer that
+  predates the codec is read correctly and refused with the usual version mismatch.
+- The host rejects a binary packet whose length does not match its type's layout, with the same
+  silent drop and rate-limited warning as an oversized one.
+- The stress baseline (`docs/perf/crowd-baseline.md`, `StressRules.BASELINE_LARGEST`) is re-recorded
+  after the change, and the hot-spot table in this file's Phase 250 is updated from it.
+
+**Acceptance criteria**
+- A suite test round-trips each binary type through the codec, including positions at ±1,000 km
+  from the origin, and rejects a packet one byte short and one byte long.
+- A suite test asserts a `remote_player_state` packet is at most 20 bytes on the wire.
+- The net harness passes under `lan`, `wan_br` and `wan_bad`; the `wan_bad` run no longer mutes
+  creature position deltas for bandwidth (or the harness records why it still must).
+- The stress run's `down_kbps_per_peer` at 16 bots in `lan/cluster` falls by at least 3× against the
+  baseline recorded before this phase, and no series' largest passing size falls.
+
+## Phase 257 — Split files named by what they do
+
+Phase 154's 1,500-line cap is met: seven files sit at 1,497–1,500 lines and nine are named by
+number (`net_part_1.gd`, `net_part_2.gd`, `net_part_3.gd`, `ui_part_1.gd`, `ui_part_2.gd`,
+`chunk_part_1.gd`, `character_part_1.gd`, `character_part_2.gd`, `character_part_3.gd`; 4,038
+lines). The split satisfies the cap's letter: a reader must know which part holds a function, which
+is harder than one long file. The cap stays; the parts get names.
+
+- Each `*_part_N.gd` is renamed for its responsibility (for example `net_part_2.gd` →
+  `net_player_state.gd` if that is what it holds) and its header comment says what belongs there and
+  what does not. Functions that landed in a part only because the slice was full move to the file
+  whose name fits.
+- The suite's source audit (`MAX_SOURCE_LINES`) also refuses any `.gd` whose name matches
+  `_part_\d+` or ends in a digit, and refuses a file within 50 lines of the cap unless its header
+  names the split that is planned for it.
+- `CLAUDE.md`'s architecture section names the new files where it names the slices.
+
+**Acceptance criteria**
+- No file under `src/` matches `_part_\d+\.gd`; the audit test proves it rejects a fixture that
+  does.
+- The suite, the net harness and the playtest bot pass unchanged (a rename is behaviour-free).
+- `grep -c` of the old names in `src/`, `tools/`, `docs/` and `CLAUDE.md` is 0.
+
+## Phase 258 — The public wiki and the community channels
+
+`npm run generate` writes `wiki/` from the fabric on every merge and nobody can read it without a
+clone; "Public wiki deployment" has been in the Deferred list since Phase 9. The constitution's
+`CommunityOwnsTheFuture` says decisions are proposed publicly and ratified by contributor consensus,
+and the repository has no Discussions and no place a proposal could be made. This phase comes after
+Phases 252 and 255 because a wiki and a forum for a project nobody may legally fork or download
+would be empty.
+
+- A GitHub Pages workflow (`pages.yml`) builds `wiki/` with VitePress (or the static generator
+  Newel's wiki generator targets) on every push to `main` and deploys it; the bible is linked from it.
+- The README links the wiki and the Discussions, and `CONTRIBUTING.md` says where proposals go.
+- Enabling Discussions and Pages are repository settings: filed as a GitHub issue for the owner, the
+  number recorded here.
+
+**Acceptance criteria**
+- `pages.yml` builds the site in CI on pull requests touching `wiki/`, `fabric/` or the workflow,
+  and fails on a broken internal link (the generator's link check, or `lychee` over the output).
+- A GitHub issue asks the owner to enable Pages and Discussions; this phase records its number.
+- After the issue closes, the README's wiki link returns 200 from a CI step on `main`.
 
 ---
 
@@ -894,8 +1126,7 @@ metres, which a whole planet cannot afford (about 250 TB at 2 m).
 - **Localized fabric content** — entity names and descriptions (items, creatures, skills,
   technologies) translated through catalogs generated by Newel (`../newel/ROADMAP.md` Phase 15),
   consumed with the Phase 131 locale settings.
-- **Public wiki deployment** — VitePress (or equivalent) static-site deployment and CI-triggered
-  wiki regeneration from the fabric (deferred from Phase 9).
+- **Public wiki deployment** — now Phase 258 (filed 2026-11-12; deferred from Phase 9 until then).
 - **Voxel techniques from GDVoxelPlayground** — <https://github.com/JorisAR/GDVoxelPlayground>
   (MIT) was evaluated and not adopted wholesale: it ray-marches a fixed 128³ GPU grid, which does
   not fit an unbounded streamed world with a headless server. Worth borrowing later, CPU-side and
