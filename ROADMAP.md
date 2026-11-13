@@ -38,32 +38,50 @@ others are not in it.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 1 | 255 | The first release: `v0.1.0` from the release workflow |
-| 2 | 251 | A human playtest: what would make the game fun |
-| 4 | 244 | A chunk cache on disk |
-| 5 | 256 | A binary wire format for the hot packets |
-| 6 | 250 | The server's ceiling: one machine serving, another running the bots |
-| 7 | 237 | Flight that handles like flight |
-| 8 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
-| 9 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
-| 10 | 226 | Several characters per player |
-| 11 | 229 | Skills capped by the gear |
-| 12 | 247 | Ground cover: grass and bushes by biome |
-| 13 | 235 | Roads |
-| 14 | 234 | Boats |
-| 15 | 257 | Split files named by what they do |
-| 16 | 258 | The public wiki and the community channels |
-| 17 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
+| 1 | 259 | Work takes time: bare hands, tools and a progress bar |
+| 2 | 260 | Stone tools: an axe, a pick and a shovel from wood and stone, no bench |
+| 3 | 261 | The newcomer grounds: a large, gentle spawn area with loose stones and branches |
+| 4 | 262 | Starting with nothing, and a tutorial that begins from bare hands |
+| 5 | 263 | Digging that shows at once: a predicted edit and a priority remesh |
+| 6 | 264 | Dropping part of a stack: a quantity slider |
+| 7 | 265 | One body everywhere: the creation screen, the Character window and the world draw the same avatar |
+| 8 | 266 | A chibi character worth looking at: the art direction and the player rig |
+| 9 | 255 | The first release: `v0.1.0` from the release workflow |
+| 10 | 244 | A chunk cache on disk |
+| 11 | 256 | A binary wire format for the hot packets |
+| 12 | 250 | The server's ceiling: one machine serving, another running the bots |
+| 13 | 237 | Flight that handles like flight |
+| 14 | 251 | A human playtest: what would make the game fun (a standing checkpoint) |
+| 15 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
+| 16 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
+| 17 | 226 | Several characters per player |
+| 18 | 229 | Skills capped by the gear |
+| 19 | 247 | Ground cover: grass and bushes by biome |
+| 20 | 235 | Roads |
+| 21 | 234 | Boats |
+| 22 | 257 | Split files named by what they do |
+| 23 | 258 | The public wiki and the community channels |
+| 24 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
 
 Order notes that differ from the arcs' own order:
+
+- Phases 259–266 come first. They are the owner's playtest findings of 2026-11-13 (Phase 251), filed
+  as top priority: a new player should start with nothing and grow from bare hands, in a gentle
+  area, with work that shows its progress, digging that shows at once, a drop that asks how many,
+  and a character that looks the same everywhere and looks good. 259–262 depend on each other in
+  that order (work time, then the tools it rewards, then the ground they are used on, then the
+  empty start that needs all three); 263–266 stand alone.
+- Phase 251 moved five places down on 2026-11-13, behind 225, 244, 256, 250 and 237, instead of
+  being closed. It is a standing checkpoint: it is never closed, and each session's findings become
+  new phases placed where the owner says.
 
 - Phases 252–255 come first because each is small and each unblocks something no feature phase can:
   252 makes the "open-source" claim true, 253 makes a red `main` mean something again, 254 removes
   the ways a routine commit damages the repository, and 255 gives Phase 251 a build to play.
-- Phase 251 moves from last to fifth. The owner's one session on 2026-11-06 produced four bugs and
-  three menus (Phases 219–224) in an evening; nothing else on the list finds problems that cheaply.
-  It repeats: after every five feature phases, a new playtest issue is opened from the same
-  checklist.
+- Phase 251 moved from last to fifth on 2026-11-12. The owner's one session on 2026-11-06 produced
+  four bugs and three menus (Phases 219–224) in an evening; nothing else on the list finds problems
+  that cheaply. It repeats: after every five feature phases, a new playtest issue is opened from the
+  same checklist. (Moved again on 2026-11-13, see above.)
 - Phase 256 comes before Phase 250. The stress report's first two hot spots are `remote_player_state`
   (611% of the per-peer bandwidth budget at 200 bots) and `snapshot_chunk` (229%), both JSON text.
   Measuring the server's ceiling before the encoding changes would measure the encoding.
@@ -207,7 +225,7 @@ measures how many players one server holds on real hardware. Phase 251 is the ow
 | 248 | The native library base and a release build | Done ([phases-248.md](docs/roadmap-history/phases-248.md)) |
 | 249 | What to reuse from Zylann's godot_voxel: a review, then the parts that fit | Done ([phases-249.md](docs/roadmap-history/phases-249.md)) |
 | 250 | The server's ceiling: one machine serving, another running the bots | Open |
-| 251 | A human playtest: what would make the game fun | Open |
+| 251 | A human playtest: what would make the game fun | Ongoing (a standing checkpoint, never closed) |
 
 ### Next: a licence, a green `main` and a first release (Phases 252–258)
 
@@ -235,6 +253,36 @@ says decisions are proposed publicly.
 | 256 | A binary wire format for the hot packets | Open |
 | 257 | Split files named by what they do | Open |
 | 258 | The public wiki and the community channels | Open |
+
+### Next: the first hour, from nothing (Phases 259–266)
+
+Filed by the owner on 2026-11-13 from a Phase 251 playtest session, as top priority. A new character
+is handed a tunic and a carpenter's axe (Phase 180, Phase 184) and spawns wherever the per-player
+spawn search lands (Phase 53, `spawn_finder.gd`), among whatever creatures live there. Mining and
+chopping are one click each with no wait (`voxel_edit.gd` `mine_block`, `tree_slice.gd`
+`chop_tree`); a tree refuses bare hands (`axe_required`), and the first pick needs a carpentry bench
+and a forge (the tutorial's `first_stations` and `first_tools` chapters). A dig reaches the screen
+only after the host applies it and the chunk is re-meshed on a worker. Dropping from the inventory
+drops one unit, or the whole stack with Shift (`ui_slice.gd` `finish_world_drop`). The world avatar
+is the `models/player_rig.glb` rig (`attach_default_rig`), while the creation screen and the
+Character window's doll are built by the older procedural body (`character_part_2.gd`
+`_make_visual`), which draws hair as one box tinted by the colour and ignores the chosen style; the
+per-style hair meshes (`models/characters/hair/<id>.glb.raw`) are generated but never loaded.
+
+The owner wants the game to start from nothing: bare hands, loose stones and branches, stone tools
+made on the spot, then trees, rock and weak creatures in a large gentle area with enough of
+everything for the whole tutorial.
+
+| Phase | Title | Status |
+|---|---|---|
+| 259 | Work takes time: bare hands, tools and a progress bar | Open |
+| 260 | Stone tools: an axe, a pick and a shovel from wood and stone, no bench | Open |
+| 261 | The newcomer grounds: a large, gentle spawn area with loose stones and branches | Open |
+| 262 | Starting with nothing, and a tutorial that begins from bare hands | Open |
+| 263 | Digging that shows at once: a predicted edit and a priority remesh | Open |
+| 264 | Dropping part of a stack: a quantity slider | Open |
+| 265 | One body everywhere: the creation screen, the Character window and the world draw the same avatar | Open |
+| 266 | A chibi character worth looking at: the art direction and the player rig | Open |
 
 ## Phase 225 — The options window
 
@@ -692,6 +740,19 @@ findings come back as new phases.
 - Revised 2026-11-12: the playtest repeats. After every five feature phases closed since the last
   one, a new issue is opened from the same checklist and this phase's number is reused; a phase that
   starts while such an issue is overdue is noted in its PR.
+- Revised 2026-11-13: this phase is a standing checkpoint and is never closed. Each session's issue
+  is closed when its findings are filed; the phase itself stays in the priority order, where the
+  owner places it.
+
+**Sessions**
+- 2026-11-06: four bugs and three menus, filed as Phases 219–226.
+- 2026-11-13: the first hour and the character, filed as Phases 259–266 (top of the priority
+  order). Findings: the character starts with a tunic and an axe instead of nothing; there is no
+  gentle area to start in; tools need a bench and bare hands cannot chop; gathering is one click
+  with no sense of how long it takes; a dig takes a visible while to change the ground; a drop of a
+  stack has no way to choose how many; the character is ugly and not the chibi style the owner
+  wants; the creation screen does not show the chosen hair style; the Character window shows a
+  different body from the one walking in the world.
 
 ## Phase 255 — The first release: `v0.1.0` from the release workflow
 
@@ -798,13 +859,260 @@ would be empty.
 - A GitHub issue asks the owner to enable Pages and Discussions; this phase records its number.
 - After the issue closes, the README's wiki link returns 200 from a CI step on `main`.
 
+## Phase 259 — Work takes time: bare hands, tools and a progress bar
+
+Mining a span and chopping a tree each finish on one click, so nothing tells a player that a pick is
+better than a fist, and a tree refuses bare hands outright (`tree_slice.gd` `chop_tree`,
+`axe_required`). Every gathering action becomes timed work: held, shown as progress, and faster with
+the right tool.
+
+- **Fabric (separate PR):** a `WorkTimes` table. Each material has a `workSeconds` base (soil and
+  sand low, host rock higher, ores by tier, each wood by tree). Each action (`dig`, `mine`, `chop`)
+  names the tool class that suits it (`shovel` digs soil, `pick` mines rock and ore, `axe` chops).
+  Each tool item gets a `workSpeed` per class it serves; bare hands are a fixed slow factor (about
+  4× the base, tuned so the first stone tool feels like a real step). A tool of the wrong class
+  counts as bare hands. Ores above a tier refuse bare hands and tools below it, as deep seams do
+  today. A `tools/check_work_times.js` rejects a material with no time, a tool with no speed for its
+  own class, and bare hands faster than any tool.
+- **Bare hands chop:** a tree no longer refuses an empty hand; it takes the bare-hands time. The
+  `axe_required` refusal is removed (its locale keys go with it).
+- **Hold to work:** pressing the gather input on a target starts the work; holding it fills
+  progress; releasing, turning to another target, leaving reach or being hit cancels it and the
+  progress is lost. On completion the existing `mine_block` / `chop_tree` run unchanged. Holding on
+  after a completion starts the next target under the crosshair, so digging a trench is one hold.
+- **The host times it (trust boundary):** the client sends a work start (target, action); the host
+  checks reach and the held tool, records the start tick and the duration it computed itself, and
+  completes the work when that time has passed while the player still holds it. A completion the
+  client claims early is never accepted; a cancel is accepted at any time. Start intents are
+  rate-limited like other gather intents.
+- **The progress bar:** a small radial bar around the crosshair (or a thin bar under it) fills over
+  the duration, with the target's name and a rough time left (`~3 s`, through `I18n.t`). A fist,
+  pick, axe or shovel icon shows which tool is being used. A crack overlay on the targeted block
+  and a shake on the tree mark the same progress in the world, for other players too.
+- Skills (Phase 207) are granted as before, on completion.
+
+**Acceptance criteria**
+- `npm run validate` and `check-drift` pass; `tools/check_work_times.js` passes its own bad tables.
+- Suite tests: a work time is a pure function of (material, action, held tool); bare hands on soil,
+  rock and wood are slower than every tool of the right class; a wrong-class tool equals bare hands.
+- Suite tests: a tree is chopped bare-handed; the host refuses a completion before the duration,
+  completes on time with the input held, and cancels on release, retarget and leaving reach,
+  spending no durability on a cancel.
+- Net harness step: a client holds work on a span and the host completes it once, at the host's
+  time, with a forged early completion dropped.
+- The playtest `mine` and `gather` steps hold work instead of clicking and still pass, and record
+  the time each work took.
+- Every new string is in both `en` and `pt_BR` in `locale/ui.csv`.
+
+## Phase 260 — Stone tools: an axe, a pick and a shovel from wood and stone, no bench
+
+The first pick is a ferrite pick from a forge (Phase 184's `first_tools` chapter), and the axe came
+from the starting kit. A newcomer makes simple tools on the spot instead.
+
+- **Fabric (separate PR):** items `Branch` (a stick picked off the ground or from a felled tree) and
+  `LooseStone` (a stone picked off the ground or knocked from rock), both stackable and light.
+  Tools `StoneAxe`, `StonePick`, `StoneShovel`, plus `StoneKnife` (Phase 160's `knife` harvest tool
+  at a low `efficiency`) and `StoneHammer` if building needs one. Each is `Branch` + `LooseStone` in
+  small amounts, with **no station**, under a free technology (research cost 0, no prerequisite,
+  like `TechBasicCarpentry`) and a novice skill guard. Low durability; their `workSpeed` sits
+  between bare hands and the ferrite tools (Phase 259).
+- **The shovel** gives a new tool class, `shovel`, that digs soil, sand and gravel fastest;
+  `voxel_edit.gd` reads the held shovel like it reads the pick.
+- Felling a tree also yields a few branches; mining host rock has a chance to yield a loose stone
+  beside its material, so the inputs never run out where there is rock and wood.
+- The crafting window lists station-free recipes without a station, as the bed already is
+  (Phase 184).
+
+**Acceptance criteria**
+- `npm run validate` and `check-drift` pass; a `check_*.js` rejects a stone tool with a station or a
+  technology that costs research points.
+- Suite tests: each stone tool is craftable with no station from `Branch` and `LooseStone` only, on
+  a fresh character's known technologies; the shovel digs soil faster than the pick and the pick
+  mines rock faster than the shovel.
+- `tutorial_tests.gd` `_first_hour_items`: with an empty starting kit and only loose stones and
+  branches, every stone tool is reachable.
+- Every new string is in both locales.
+
+## Phase 261 — The newcomer grounds: a large, gentle spawn area with loose stones and branches
+
+A new character spawns wherever the spawn search seeded by the player id lands, among whatever lives
+there. Newcomers get their own ground instead.
+
+- **Fabric (separate PR):** a `NewcomerGrounds` entry in `WorldSystem`: how many grounds there are on
+  the open continent (a few, so players meet but do not crowd), their radius (about 1 km), the
+  biomes they may sit in (temperate forest and grassland edges: trees, open ground and rock in
+  reach), the creatures allowed inside (passive or weak ones only, by a fabric level or danger
+  cap), and the density of loose items.
+- **Placement:** the grounds' centres are a pure function of the world seed (Phase 238), chosen on
+  habitable land with trees and surface rock within each ground. The spawn search places a new
+  character at a point inside one ground (picked by the player id, as now), never in water or on a
+  steep slope.
+- **Creatures:** spawning inside a ground draws only from its allowed list; an aggressive creature
+  that wanders in turns back at the edge (a no-go zone for its AI, as structures' circles are since
+  Phase 213). Enough weak creatures live there for the tutorial's first hunt.
+- **Loose stones and branches:** small pickable props on the ground, denser inside the grounds and
+  sparse elsewhere, placed as a pure function of (seed, tile) like trees (no world-gen change, so no
+  `WORLDGEN_VERSION` bump). Picking one up is the interact input, instant, and grants the item.
+  The host keeps which were taken and regrows them after a fabric delay, so the ground never runs
+  dry for the next newcomer. They are drawn with the MultiMesh pool and synced like tree state.
+- **Resources:** the guarantee is checked, not hoped for: every ground has, within a fabric radius of
+  each spawn point, trees, surface rock, soil, loose items and the creatures the tutorial needs.
+- Claims: no structure may be placed within a small radius of a ground's centre, so a newcomer's
+  spawn is never walled in. Building elsewhere in the ground is allowed.
+
+**Acceptance criteria**
+- `npm run validate` and `check-drift` pass; a `check_*.js` rejects an aggressive creature in the
+  allowed list and a radius below the tutorial's needs.
+- Suite tests: the grounds' centres are identical for the same seed; a new character's spawn lies
+  inside a ground on dry, walkable land; within the fabric radius of sampled spawn points there are
+  trees, rock, soil, loose stones, branches and an allowed creature spawn.
+- Suite tests: loose-item placement is identical for the same (seed, tile); a picked item is gone
+  for every peer and regrows after the delay; a pick-up out of reach or of an item already taken is
+  refused by the host.
+- Suite test: no creature outside the allowed list spawns inside a ground, and placement within the
+  protected radius is refused.
+- Net harness step: a client picks up a loose stone and the second client sees it gone.
+
+## Phase 262 — Starting with nothing, and a tutorial that begins from bare hands
+
+Depends on Phases 259–261.
+
+- `CharacterCreation.startingKit` becomes empty. The `NoviceTunic` stays an item that can be made
+  (a cheap fibre or hide recipe) but is not handed out; a new character wears the base body's
+  plain clothes, which are part of the appearance, not an item, so nobody is shown naked and nothing
+  is given.
+- The tutorial (`fabric/gameplay/tutorial.js`) is rewritten to start from nothing: move, look, pick
+  up a branch and a stone, open the inventory, craft a stone axe (the crafting window), chop a tree,
+  craft a stone pick and shovel, dig soil, mine stone, then the existing stations, bed, shelter,
+  first hunt (with a stone knife for the harvest), map and the rest. Each step's card names the
+  input and, where it helps, the place (for example "loose stones lie on the ground nearby").
+- `_first_hour_items` (`tutorial_tests.gd`) starts from an empty kit plus what bare hands, loose
+  items and the newcomer grounds give, and still reaches the bed, the first ferrite pick and the
+  first weapon.
+- Stress and playtest bots, which relied on the starting kit (`stress_clan_bots.gd`), gather or
+  craft what they need first, or are given items through a test-only path that real play cannot
+  reach.
+
+**Acceptance criteria**
+- `npm run validate` and `check-drift` pass; the creation validator accepts an empty kit.
+- Suite tests: a new character's bag and equipment are empty; the first-hour reach test passes from
+  an empty kit; every tutorial step's requirements name earlier steps (as now).
+- The playtest `create` step asserts an empty bag, and the `tutorial` step completes the moving,
+  gathering, first-tools, first-stations and first-hunt chapters from bare hands.
+
+## Phase 263 — Digging that shows at once: a predicted edit and a priority remesh
+
+A dig waits for the host to apply it, then for the chunk's rebuild to come out of the worker queue
+behind streaming work. The ground should change the frame the work completes.
+
+- **Measure first:** the playtest `mine` step records, per edit, the time from completion to the
+  edited mesh on screen, split into network, queue wait and build, on the listen host and on a
+  client under `lan` and `wan_br`.
+- **A priority remesh:** an edited chunk (and the neighbour whose seam it touches) jumps the build
+  queue, ahead of streaming. If the build is short enough (native smooth mesher), it runs on the
+  main thread at once for that one chunk; otherwise it takes the next worker. Collision follows the
+  same path, so the player never falls into a hole they cannot see, or stands on one they can.
+- **Prediction on the client:** when the host's timer (Phase 259) is about to complete, the client
+  applies the edit to its own copy and remeshes as above, marked pending. The host's
+  `block_changed` confirms it; a refusal (or no answer within a timeout) rolls the chunk back and
+  shows the refusal. Inventory and durability stay host-only: the item appears when the host says
+  so.
+- Placement gets the same path.
+
+**Acceptance criteria**
+- Suite tests: an edited chunk is built before every queued streaming chunk; a predicted edit is
+  applied to the client's voxel data and rolled back on a host refusal, leaving the chunk byte-equal
+  to before; inventory never changes on prediction alone.
+- The playtest `mine` step reports edit-to-visible time; its p95 on the listen host is at most two
+  frames at the target frame rate, gated in `docs/perf/playtest-budget.json`.
+- The net harness's `wan_br` run shows a client's predicted edit visible before the host's
+  confirmation arrives, and a refused edit rolled back.
+
+## Phase 264 — Dropping part of a stack: a quantity slider
+
+Dragging a stack into the world drops one unit, or all of it with Shift. There is no way to drop,
+say, 7 of 20.
+
+- Dropping a stack of more than one (drag to the world, or a Drop entry where the inventory offers
+  one) opens a small dialog: the item's icon and name, a slider from 1 to the stack size, a number
+  field kept in sync with it, buttons for 1, half and all, then Drop and Cancel. Enter confirms and
+  Esc cancels; the number field owns the keyboard while focused (Phase 219).
+- The slider starts at the whole stack. Shift-drag keeps dropping the whole stack without the
+  dialog, and a stack of one never opens it.
+- The request goes through `request_drop`, and the host clamps the quantity to what the bag holds,
+  as now.
+
+**Acceptance criteria**
+- Suite tests: a drag of a stack above one opens the dialog with its range 1..count; a stack of one
+  and a Shift-drag drop without it; the slider and the field stay equal; confirming emits one drop
+  of the chosen quantity, cancelling emits none; Enter and Esc do the same while the field has focus.
+- Suite test: the host clamps a drop request above the bag's count.
+- Every new string is in both locales.
+
+## Phase 265 — One body everywhere: the creation screen, the Character window and the world draw the same avatar
+
+The world avatar is the `models/player_rig.glb` rig with its material and palette
+(`attach_default_rig`). The creation screen and the Character window's doll are built by the older
+procedural body in `character_part_2.gd` `_make_visual`, so they show a different character. That
+body draws hair as one box tinted by the hair colour and never reads the style, which is why picking
+a hair style changes nothing on the right of the creation screen. The per-style hair meshes
+(`models/characters/hair/<id>.glb.raw`, drawn by `gen_placeholder_glb.py`) are never loaded.
+
+- **One builder:** an avatar builder (for example `src/character/avatar_builder.gd`) takes an
+  appearance and a worn set and returns the rig the world uses: the player rig, its material and
+  palette indices, the hair style's mesh on the head socket, and the worn equipment on their
+  sockets. The world avatar, the creation screen's rig and the Character window's doll all call it.
+  The procedural box body remains only as the fallback when no rig is listed in the manifest.
+- **Hair:** the chosen style's mesh is loaded from its key and tinted by the hair colour; a style
+  change on the creation screen swaps it on the next frame. The same mesh is what other players see.
+- **The doll and the creation rig animate** with the idle clip, lit like the world's camera sees the
+  avatar, so the three views match.
+
+**Acceptance criteria**
+- Suite tests: for the same appearance and worn set, the world avatar, the creation rig and the
+  doll have the same mesh resources, the same material parameters and the same attached nodes.
+- Suite tests: every hair style in `CharacterCreation.hairStyles` loads its own mesh on the head
+  socket; two different styles give different meshes; changing the style on the creation screen
+  replaces the hair mesh.
+- Every hair key has a placeholder in `assets/` (the placeholder rule), checked by the suite.
+- The playtest `create` and `character_sheet` steps assert the rig's hair mesh matches the chosen
+  style, and still render non-blank.
+
+## Phase 266 — A chibi character worth looking at: the art direction and the player rig
+
+The owner finds the player character ugly and not the style they want: the cute, big-headed chibi
+look of classic 2000s isometric MMOs (the owner's reference is Ragnarok Online). The goal is that
+feel in this game's own art; no assets, sprites or likenesses are taken from any other game.
+
+- **An art direction document** (`docs/art/character-style.md`): proportions (head to body about
+  1:2 to 1:2.5, within `CharacterCreation.headRatio`), silhouette rules, big expressive eyes, simple
+  shapes, flat or toon shading with an outline, a limited palette (the existing `DefaultPalette`
+  regions), and how hair and equipment read at the default camera distance.
+- **The decision to make first** (owner, filed as an issue): a toon-shaded 3D chibi rig, or
+  pre-rendered sprites in 8 directions drawn over the 3D world (the classic look, harder to combine
+  with free camera rotation and equipment). The document records the choice and the reason.
+- **The placeholder rig** (`gen_placeholder_glb.py`) is redrawn to those proportions so the public
+  build already has the shape, and the production rig in `assets-prod/` follows with the same bones
+  and clips. A toon shader and outline for characters, if chosen, live in `character_material`.
+- The hair meshes (Phase 265) are redrawn to the same style.
+
+**Acceptance criteria**
+- `docs/art/character-style.md` exists with the proportions, and the choice between 3D and
+  sprites is recorded in it.
+- A suite test measures the placeholder rig's head height against its full height and asserts it
+  is within `CharacterCreation.headRatio`.
+- The placeholder rig keeps every bone and clip the production rig has (the placeholder rule), and
+  the playtest `walk` and `create` steps pass with it.
+- Whether the result looks good is a human judgement: filed as a GitHub issue per the rule at the
+  top of this file, and this phase records its number.
+
 ---
 
 ## Parked phases
 
 Parked by the owner on 2026-11-10. Their specs are kept as written so a phase can be picked up
 again; check each against the phases done since before un-parking it. Phase 236 is also the
-second-to-last entry of the priority order, which it keeps when un-parked.
+last entry of the priority order, which it keeps when un-parked.
 
 ## Phase 227 — Identity and portability in the fabric
 
