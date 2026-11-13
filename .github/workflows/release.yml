@@ -1,10 +1,19 @@
 name: Release
 
 # Pushing a `v*` tag builds the native extension on the three platforms, exports the game with the
-# binaries bundled and attaches everything to a GitHub Release. Nothing is committed to git or LFS.
+# binaries bundled, plays the bot's `create`, `walk` and `mine` steps on the Linux export and attaches
+# everything to a GitHub Release. Nothing is committed to git or LFS.
+#
+# Phase 255 — a dry run does everything but publish: a manual dispatch, or a pull request that touches
+# this workflow or the export presets. It uploads the packages as a workflow artifact instead.
 on:
   push:
     tags: ["v*"]
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - export_presets.cfg
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -47,9 +56,23 @@ jobs:
     name: Exports and GitHub Release
     needs: native
     runs-on: ubuntu-latest
+    env:
+      # The tag on a release; a dry run names its packages after the commit (a PR's ref name has a slash).
+      RELEASE_NAME: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('dryrun-{0}', github.sha) }}
+      PUBLISH: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
     steps:
       - uses: actions/checkout@v4
         # No submodule: the release carries the committed placeholders only.
+
+      - name: The tag matches the project version and has a changelog entry
+        run: |
+          tools/check_changelog.sh
+          version="$(awk '/^\[/{ app = ($0 == "[application]") } app && /^config\/version=/{ gsub(/^config\/version="|"$/, ""); print; exit }' project.godot)"
+          echo "project.godot version: $version"
+          if [ "$PUBLISH" = true ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match application/config/version v$version"
+            exit 1
+          fi
 
       - uses: actions/download-artifact@v4
         with:
@@ -75,6 +98,12 @@ jobs:
           unzip -o /tmp/godot/templates.tpz -d /tmp/godot/templates
           cp -r /tmp/godot/templates/templates/* ~/.local/share/godot/export_templates/4.7.stable/
 
+      - name: Install a software renderer and X server
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0 mesa-vulkan-drivers \
+            libxcursor1 libxinerama1 libxi6 libxrandr2 libxkbcommon0 libasound2t64 libfontconfig1
+
       - name: Export the three presets
         run: |
           mkdir -p build/linux build/windows build/macos
@@ -86,18 +115,75 @@ jobs:
           test -s build/windows/nihon.exe
           test -s build/macos/nihon.zip
 
+      - name: Play create, walk and mine on the Linux export
+        # Phase 255 — a broken export never becomes a release. "Linux Playtest" is the Linux preset plus the
+        # `playtest` feature tag, the only thing that lets a release build run `--playtest-bot`
+        # (BootWiring.playtest_allowed); the shipped "Linux" preset ignores the flag. Steps are gated, the
+        # frame budgets are not (`--playtest-no-budget`: a runner's speed is not the export's fault).
+        run: |
+          mkdir -p build/playtest
+          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --export-release "Linux Playtest" build/playtest/nihon.x86_64
+          test -s build/playtest/nihon.x86_64
+          cd build/playtest
+          set +e
+          timeout 1500 xvfb-run -a -s "-screen 0 1280x720x24" \
+            ./nihon.x86_64 --rendering-driver opengl3 -- --playtest-bot --playtest-no-budget --playtest-only create,walk,mine \
+            2>&1 | tee /tmp/release-playtest.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ -f playtest/report.md ]; then
+            cat playtest/report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ ! -f playtest/report.json ]; then
+            echo "::error::the Linux export wrote no playtest report (crash or boot failure)"
+            exit 1
+          fi
+          if ! grep -q "\[Native\] chunk builder: native" /tmp/release-playtest.log; then
+            echo "::error::the Linux export did not load the release native library"
+            exit 1
+          fi
+          if grep -qE "SCRIPT ERROR|Parse Error|Compile Error" /tmp/release-playtest.log; then
+            echo "::error::script/parse/compile errors in the Linux export"
+            exit 1
+          fi
+          if [ "$status" -ne 0 ]; then
+            echo "::error::the playtest bot failed on the Linux export (exit $status)"
+            exit 1
+          fi
+
+      - name: Upload the export playtest report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playtest-release-export
+          path: build/playtest/playtest/
+          if-no-files-found: warn
+
       - name: Package
         run: |
           mkdir -p dist
-          tar -czf "dist/nihon-linux-${GITHUB_REF_NAME}.tar.gz" -C build/linux .
-          (cd build/windows && zip -qr "../../dist/nihon-windows-${GITHUB_REF_NAME}.zip" .)
-          cp build/macos/nihon.zip "dist/nihon-macos-${GITHUB_REF_NAME}.zip"
-          tar -czf "dist/nihon-native-linux-${GITHUB_REF_NAME}.tar.gz" -C native-binaries/native-linux .
-          (cd native-binaries/native-windows && zip -qr "../../dist/nihon-native-windows-${GITHUB_REF_NAME}.zip" .)
-          (cd native-binaries/native-macos && zip -qr "../../dist/nihon-native-macos-${GITHUB_REF_NAME}.zip" .)
+          tar -czf "dist/nihon-linux-${RELEASE_NAME}.tar.gz" -C build/linux .
+          (cd build/windows && zip -qr "../../dist/nihon-windows-${RELEASE_NAME}.zip" .)
+          cp build/macos/nihon.zip "dist/nihon-macos-${RELEASE_NAME}.zip"
+          tar -czf "dist/nihon-native-linux-${RELEASE_NAME}.tar.gz" -C native-binaries/native-linux .
+          (cd native-binaries/native-windows && zip -qr "../../dist/nihon-native-windows-${RELEASE_NAME}.zip" .)
+          (cd native-binaries/native-macos && zip -qr "../../dist/nihon-native-macos-${RELEASE_NAME}.zip" .)
           ls -l dist
 
+      - name: Upload the dry run's packages
+        if: env.PUBLISH != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dry-run
+          path: dist/
+          if-no-files-found: error
+
       - name: Create the release
+        if: env.PUBLISH == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --generate-notes
+        run: |
+          # The notes are the version's CHANGELOG.md entry (its `## vX.Y.Z` section, heading left out).
+          awk -v h="## $GITHUB_REF_NAME" '$0 == h { on = 1; next } on && /^## / { exit } on' CHANGELOG.md > /tmp/notes.md
+          test -s /tmp/notes.md
+          gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --notes-file /tmp/notes.md

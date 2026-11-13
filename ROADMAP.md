@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–224, 238–243, 248, 249, 252 and 254 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–224, 238–243, 248, 249 and 252–254 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -31,31 +31,30 @@ introductions of the arcs they belonged to, are archived in
 Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
 see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
 phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
-comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252)
+comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–254)
 have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
 [Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
 others are not in it.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 1 | 253 | A green `main`: flaky gates demoted, the stress regression explained |
-| 2 | 255 | The first release: `v0.1.0` from the release workflow |
-| 3 | 251 | A human playtest: what would make the game fun |
-| 4 | 225 | The options window |
-| 5 | 244 | A chunk cache on disk |
-| 6 | 256 | A binary wire format for the hot packets |
-| 7 | 250 | The server's ceiling: one machine serving, another running the bots |
-| 8 | 237 | Flight that handles like flight |
-| 9 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
-| 10 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
-| 11 | 226 | Several characters per player |
-| 12 | 229 | Skills capped by the gear |
-| 13 | 247 | Ground cover: grass and bushes by biome |
-| 14 | 235 | Roads |
-| 15 | 234 | Boats |
-| 16 | 257 | Split files named by what they do |
-| 17 | 258 | The public wiki and the community channels |
-| 18 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
+| 1 | 255 | The first release: `v0.1.0` from the release workflow |
+| 2 | 251 | A human playtest: what would make the game fun |
+| 3 | 225 | The options window |
+| 4 | 244 | A chunk cache on disk |
+| 5 | 256 | A binary wire format for the hot packets |
+| 6 | 250 | The server's ceiling: one machine serving, another running the bots |
+| 7 | 237 | Flight that handles like flight |
+| 8 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
+| 9 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
+| 10 | 226 | Several characters per player |
+| 11 | 229 | Skills capped by the gear |
+| 12 | 247 | Ground cover: grass and bushes by biome |
+| 13 | 235 | Roads |
+| 14 | 234 | Boats |
+| 15 | 257 | Split files named by what they do |
+| 16 | 258 | The public wiki and the community channels |
+| 17 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
 
 Order notes that differ from the arcs' own order:
 
@@ -231,7 +230,7 @@ says decisions are proposed publicly.
 | Phase | Title | Status |
 |---|---|---|
 | 252 | A licence and a contributor's front door | Done ([phases-252.md](docs/roadmap-history/phases-252.md)) |
-| 253 | A green `main`: flaky gates demoted, the stress regression explained | Open |
+| 253 | A green `main`: flaky gates demoted, the stress regression explained | Done ([phases-253.md](docs/roadmap-history/phases-253.md)) |
 | 254 | Repository hygiene: `.uid` files tracked, one lockfile, nothing stray | Done ([phases-254.md](docs/roadmap-history/phases-254.md)) |
 | 255 | The first release: `v0.1.0` from the release workflow | Open |
 | 256 | A binary wire format for the hot packets | Open |
@@ -688,47 +687,6 @@ findings come back as new phases.
   one, a new issue is opened from the same checklist and this phase's number is reused; a phase that
   starts while such an issue is overdue is noted in its PR.
 
-## Phase 253 — A green `main`: flaky gates demoted, the stress regression explained
-
-Of the last 40 CI runs on `main` (to 2026-11-12), 18 failed. Seven of the last eight were the
-playtest bot's `walk` step failing its gait assertion (`_step_walk`: `left foot ahead 100% of N
-frames, 0 lead switches`) while the distance and state checks passed; the clip aliasing with a slow
-runner's sample rate has been widened twice already (`WALK_FOOT_MIN_FRAMES`). The latest was the
-stress job: largest passing crowd 0 for `lan/cluster`, `lan/cross` and `lan/spread` against a
-baseline of 16, and 16 for `lan/pole` against 32, on the merge of Phase 243 (#618), with
-`host_tick_p95_ms` the budget missed at 16 bots. A gate that is red half the time stops meaning
-anything, and this roadmap's whole method is that gates are the acceptance criteria.
-
-- **Gait check report-only.** The `walk` step keeps its hard checks (distance moved, ground under the
-  body, the state machine reaching `RUN`) and writes the gait numbers to the report without failing
-  on them, like the chunk pump since Phase 189. A gait regression is caught by a suite test on the
-  animation clip instead (the walk clip's foot bones alternate lead within one cycle).
-- **The stress regression.** Re-run the stress job on the merge commit of #618 and on its parent. If
-  the regression holds, find it (Phase 243 is client-only by `game_root.gd`'s `_is_server` guard, so
-  the suspects are the watcher client's frame time, the attach budget of Phase 239, or the runner)
-  and fix it in this phase; if it does not, the ladder's rerun rule (`stress: … missed a budget at or
-  below the baseline; running it once more`) widens to a best-of-three for the baseline sizes.
-- **A flake rule, written down.** `docs/DEVELOPMENT.md` gains the rule: a gate that fails three times
-  on `main` without a code change explaining it is demoted to report-only the same day, with an issue
-  to make it decisive again. `tools/check_gate_health.sh` reads the last 40 `main` runs through the
-  GitHub API and prints the failure count per job; CI runs it on a schedule and fails the scheduled
-  run when any job is over 10%, so the trend is visible before it is normal.
-
-**Status (2026-11-12):** the gait is report-only, the clip and verdict tests, `tools/check_gate_health.sh`, the
-scheduled `Gate health` workflow, the flake rule and the best-of-three stress rerun are in. The stress
-regression was real: the dedicated server attached a smooth chunk's four collision quadrants in one frame
-(~17–20 ms of Jolt mesh building); it now staggers them like a client (`NearRing._attach_server_collision`),
-cause and numbers in `docs/perf/crowd-baseline.md`. Open: five green stress runs on `main` after the merge.
-
-**Acceptance criteria**
-- A suite test on the walk step's verdict: a sample set with zero lead switches but the distance and
-  states met passes, and the report carries the gait numbers.
-- A suite test on the walk clip asserts the feet alternate lead within one cycle.
-- The stress job is green on `main` for five consecutive runs after this phase merges, and either the
-  fix or the rerun widening is in the PR with the cause written in `docs/perf/crowd-baseline.md`.
-- `tools/check_gate_health.sh` exists, a scheduled workflow runs it, and the suite's workflow lint
-  passes with the new job.
-
 ## Phase 255 — The first release: `v0.1.0` from the release workflow
 
 `release.yml` builds the native library on three platforms and attaches Linux, Windows and macOS
@@ -746,6 +704,11 @@ by a player.
 - The release workflow runs the playtest bot's `create`, `walk` and `mine` steps against the Linux
   export under xvfb before publishing, so a broken export never becomes a release.
 - Tag `v0.1.0` on the merge commit of this phase.
+
+**Status (2026-11-13):** the version (`0.1.0`) and its menu label, `CHANGELOG.md` with `tools/check_changelog.sh` in
+the `fabric` job, the release checklist, the README download line and the release workflow's dry run (manual or
+on a PR touching it, with `create`, `walk` and `mine` played on the Linux export via `--playtest-only
+create,walk,mine`) are in. Open: tag `v0.1.0` on the merge commit and check the release's assets.
 
 **Acceptance criteria**
 - A suite test reads `application/config/version` and asserts it parses as `major.minor.patch`.

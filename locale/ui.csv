@@ -765,6 +765,7 @@ mount.ok.mount,You mount up.,Você montou.
 mount.ok.dismount,You get off.,Você desmontou.
 controls.row19,Mount your companion or get off,Montar no seu companheiro ou desmontar
 menu.title,Project Nihon,Project Nihon
+menu.version,Version {0},Versão {0}
 menu.play,Play,Jogar
 menu.join,Join server,Entrar em servidor
 menu.options,Options,Opções

@@ -512,6 +512,11 @@ jobs:
       - name: Check the roadmap index matches the phase specs
         run: node tools/check_roadmap.js
 
+      - name: Check the project version has a changelog entry (Phase 255)
+        run: |
+          tools/check_changelog.sh --self-test
+          tools/check_changelog.sh
+
   net-harness:
     name: Two-client network harness (loopback ENet)
     # A manual dispatch is for the crowd stress run only.

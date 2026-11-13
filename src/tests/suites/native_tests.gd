@@ -457,6 +457,13 @@ func _test_native_release_workflow() -> void:
 	for p in ["linux", "windows", "macos"]:
 		assert_true(text.contains("name: " + p), "the release builds the %s binary" % p)
 	assert_true(text.contains("gh release create"), "the release workflow creates the GitHub Release")
+	# Phase 255 — a dry run (manual, or a PR touching the workflow) that never publishes, and the bot on the export.
+	assert_true(text.contains("workflow_dispatch:") and text.contains("pull_request:"), "the release workflow has a dry run")
+	assert_true(text.contains("if: env.PUBLISH == 'true'") and text.contains("PUBLISH: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}"),
+		"only a pushed v* tag publishes")
+	assert_true(text.contains("--export-release \"Linux Playtest\""), "the dry run exports the Linux preset with the playtest tag")
+	assert_true(text.contains("--playtest-bot --playtest-no-budget --playtest-only create,walk,mine"), "and plays create, walk and mine on it")
+	assert_true(text.contains("tools/check_changelog.sh"), "the release checks the version has a changelog entry")
 
 ## Phase 253 — the gate-health script and its scheduled workflow exist, and the flake rule is written down.
 func _test_gate_health_wired() -> void:
