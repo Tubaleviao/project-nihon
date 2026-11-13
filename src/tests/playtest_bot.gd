@@ -1668,9 +1668,22 @@ func _step_tutorial() -> Array:
 		return [false, "no tutorial slice"]
 	# What the earlier steps never do, done the player's way: a jump, a look around with the right button held,
 	# smithing researched and a pick crafted at the place step's forge.
-	_key(KEY_SPACE, true)
-	await _until(func(): return false, 0.3)
-	_key(KEY_SPACE, false)
+	# A jump starts only on the frame Space goes down with the body on the floor. On the GDScript fallback the
+	# body was still settling after the fight step, the one press fell on an airborne frame and `jump` stayed
+	# open: wait for the floor before each press and press again until the slice has a `jumped` event.
+	var jumped := func() -> bool:
+		for ev in wiring.slice.history:
+			if str(ev["kind"]) == "jumped":
+				return true
+		return false
+	for _try in 3:
+		await _until(func(): return _root._player.is_grounded(), 5.0)
+		_key(KEY_SPACE, true)
+		await _until(jumped, 0.3)
+		_key(KEY_SPACE, false)
+		if jumped.call():
+			break
+		await _until(func(): return false, 0.2)
 	_look_around()
 	await _until(func(): return false, 0.2)
 	var tech: String = await _unlock("TechBasicSmithing")
