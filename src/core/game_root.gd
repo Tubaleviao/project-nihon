@@ -4,7 +4,6 @@ extends Node
 ## Slices communicate exclusively through GameBus signals. This script
 ## instantiates slices, sets cross-slice references that cannot travel the bus,
 ## and drives the startup sequence (tests → GameData check → terrain boot).
-const GameSettings := preload("res://src/core/game_settings.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const RebaseDriver := preload("res://src/terrain/rebase_driver.gd")
 const EquipmentRules := preload("res://src/character/equipment_rules.gd")
@@ -275,9 +274,7 @@ func _ready() -> void:
 	_boot_wiring.parse_network_args()
 	if _boot_wiring.start_stress_bots():
 		return   # Phase 162 — a crowd of stress bots, not a game
-	# Phase 131 — saved language, else the OS locale, else English.
-	LocaleSettings.apply_startup()
-	GameSettings.apply_startup()   # Phase 225 — saved sound, graphics and look options
+	LocaleSettings.apply_startup(); _menu_wiring.apply_options()   # Phase 131 saved language, else OS, else English; Phase 225 saved options
 	# Phase 42 review pass 3 — and whether this boot quits itself once its world is up
 	# (`--quit-after-boot`; see QUIT_AFTER_BOOT_ARG).
 	_quit_after_boot = should_quit_after_boot(OS.get_cmdline_user_args())

@@ -453,10 +453,7 @@ func _input(event: InputEvent) -> void:
 			look_degrees += rad_to_deg(absf(event.relative.x) * sens)
 			# Pitch (vertical) — rotate only the camera arm
 			var cam_arm: Node3D = _camera.get_parent()
-			cam_arm.rotation_degrees.x = clamp(
-				cam_arm.rotation_degrees.x - event.relative.y * rad_to_deg(sens) * GameSettings.look_y_sign(),
-				CAMERA_PITCH_MIN, CAMERA_PITCH_MAX
-			)
+			cam_arm.rotation_degrees.x = clamp(cam_arm.rotation_degrees.x - event.relative.y * rad_to_deg(sens) * GameSettings.look_y_sign(), CAMERA_PITCH_MIN, CAMERA_PITCH_MAX)
 		elif event is InputEventMouseButton and not event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
 			_end_look()
 

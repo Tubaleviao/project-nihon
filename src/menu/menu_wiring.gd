@@ -60,6 +60,9 @@ func boot_user_args() -> Array:
 	return Array(OS.get_cmdline_user_args())
 
 ## Open the menu when this boot has no boot user args. True when it did (the caller then stops).
+func apply_options() -> void:
+	GameSettings.apply_startup()
+
 func open_if_no_boot_args() -> bool:
 	if not should_show_main_menu(boot_user_args()):
 		return false
