@@ -22,7 +22,7 @@ extends Node
 ##   step_record(name, ok, detail, frames_ms, chunk_builds) -> Dictionary  — static
 ##   build_report(steps) -> Dictionary        — static: steps + run verdict + hard failures
 ##   report_markdown(report) -> String        — static
-##   step_names() -> Array                    — static, the fixed step order
+##   step_names() -> Array                    — static, the fixed step order (filtered by `--playtest-only a,b`)
 
 const VoxelSlice := preload("res://src/terrain/voxel_slice.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
@@ -286,8 +286,28 @@ static func _step_timeout(step: String) -> float:
 	return STREAM_TIMEOUT_SECS if step == "stream" or step == "pole" or step == "flight" else STEP_TIMEOUT_SECS
 
 static func step_names() -> Array:
-	var only := only_from_args(Array(OS.get_cmdline_user_args()))
-	return [only] if only != "" else all_step_names()
+	return steps_from_only(only_from_args(Array(OS.get_cmdline_user_args())))
+
+## Phase 255 — `--playtest-only create,walk,mine` plays several steps (the release workflow's export check). The
+## steps run in the fixed order whatever order the list gives, so `create` always comes before `walk`.
+static func steps_from_only(only: String) -> Array:
+	if only == "":
+		return all_step_names()
+	var named := only_names(only)
+	return all_step_names().filter(func(n): return n in named)
+
+## The names in a `--playtest-only` value, split on commas, blanks dropped.
+static func only_names(only: String) -> Array:
+	var out: Array = []
+	for part in only.split(","):
+		var n := part.strip_edges()
+		if n != "" and not n in out:
+			out.append(n)
+	return out
+
+## Phase 194 (#512) — the names in a `--playtest-only` value that are no step (the run exits 1 on any).
+static func unknown_steps(only: String) -> Array:
+	return only_names(only).filter(func(n): return not n in all_step_names())
 
 ## Phase 191 — the step `--playtest-only <step>` names (or `flag` names), or "".
 static func only_from_args(args: Array, flag: String = ONLY_ARG) -> String:
@@ -608,8 +628,10 @@ func run(root: Node) -> void:
 	_root = root
 	# Phase 194 (#512) — an unknown `--playtest-only` name is a mistake, not a request for every step.
 	var only := only_from_args(Array(OS.get_cmdline_user_args()))
-	if only != "" and not only in all_step_names():
-		print("[Playtest] FAILURE: --playtest-only names no step: %s (steps: %s)" % [only, ", ".join(all_step_names())])
+	var unknown := unknown_steps(only)
+	if only != "" and (not unknown.is_empty() or only_names(only).is_empty()):
+		var what := ("unknown step(s): %s" % ", ".join(unknown)) if not unknown.is_empty() else ("names no step: %s" % only)
+		print("[Playtest] FAILURE: --playtest-only %s (steps: %s)" % [what, ", ".join(all_step_names())])
 		print("[Playtest] FAIL")
 		get_tree().quit(1)
 		return

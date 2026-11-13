@@ -261,6 +261,13 @@ func _test_playtest_flight_verdict() -> void:
 	assert_eq(Bot.state_leaks({ "flying": false }, { "flying": false }), [], "nothing changed, nothing named")
 	assert_eq(Bot.only_from_args(["--playtest-abort", "flight"], Bot.ABORT_ARG), "flight", "--playtest-abort names a step")
 	assert_false("nosuch" in Bot.all_step_names(), "an unknown name is no step (the run exits 1 on it)")
+	# Phase 255 — the release workflow plays three steps on the export with one comma list, in the fixed order.
+	assert_eq(Bot.steps_from_only("mine,create,walk"), ["create", "walk", "mine"], "a list runs in the fixed order")
+	assert_eq(Bot.steps_from_only("flight"), ["flight"], "one name is one step")
+	assert_eq(Bot.steps_from_only(""), Bot.all_step_names(), "no flag, every step")
+	assert_eq(Bot.only_names(" create, ,walk,create"), ["create", "walk"], "blanks and repeats dropped")
+	assert_eq(Bot.unknown_steps("create,nosuch"), ["nosuch"], "an unknown name in a list is named")
+	assert_eq(Bot.unknown_steps("create,walk,mine"), [], "the release workflow's list is all steps")
 
 ## Phase 183 — `--playtest-profile`: per phase, the mean ms over every frame and over the worst 5% by total.
 func _test_playtest_profiler_summary() -> void:

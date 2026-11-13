@@ -2,6 +2,8 @@
 
 An open-source sandbox MMORPG where players build a civilization. The world is persistent, expands over time, and evolves entirely through player interaction — no scripted quests, no scripted economies, no pay-to-win.
 
+**Download:** the latest build for Linux, Windows and macOS is on the [releases page](https://github.com/Tubaleviao/project-nihon/releases/latest). It ships with placeholder art (simple shapes and CC0 textures), since the production art is private; the game is fully playable with it. See [CHANGELOG.md](CHANGELOG.md) for what each version holds.
+
 Licensed under the [MIT licence](LICENSE). Want to help? Read [CONTRIBUTING.md](CONTRIBUTING.md). The private `assets-prod/` art submodule is not covered by this licence.
 
 The entire game design bible — materials, skills, creatures, items, world systems — is authored as a [Newel](https://github.com/Tubaleviao/newel) fabric and generated into documentation, runtime assets, and Godot resources.

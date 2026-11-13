@@ -512,6 +512,11 @@ jobs:
       - name: Check the roadmap index matches the phase specs
         run: node tools/check_roadmap.js
 
+      - name: Check the project version has a changelog entry (Phase 255)
+        run: |
+          tools/check_changelog.sh --self-test
+          tools/check_changelog.sh
+
   net-harness:
     name: Two-client network harness (loopback ENet)
     # A manual dispatch is for the crowd stress run only.
@@ -967,32 +972,13 @@ jobs:
           test -s build/release/libnihon_native.linux.template_release.x86_64.so
 
       - name: Fly the flight step on the release build
-        working-directory: build/release
         run: |
-          python3 ../../tools/flight_report.py --self-test
-          # The exported game writes res://playtest next to the executable.
-          set +e
-          timeout 1500 xvfb-run -a -s "-screen 0 1280x720x24" \
-            ./nihon.x86_64 --rendering-driver opengl3 -- --playtest-bot --playtest-no-budget --playtest-only flight \
-            2>&1 | tee /tmp/release-flight.log
-          status=${PIPESTATUS[0]}
-          set -e
-          if [ ! -f playtest/report.json ]; then
-            echo "::error::the release build wrote no report (crash or boot failure)"
-            exit 1
-          fi
-          if ! grep -q "\[Native\] chunk builder: native" /tmp/release-flight.log; then
-            echo "::error::the release build did not load the release native library"
-            exit 1
-          fi
-          if grep -qE "SCRIPT ERROR|Parse Error|Compile Error" /tmp/release-flight.log; then
-            echo "::error::script/parse/compile errors in the release build"
-            exit 1
-          fi
-          echo "Release flight exit status: $status (report only)"
+          python3 tools/flight_report.py --self-test
+          # Shared with release.yml: report, native library and script-error gates; the bot's verdict is report only.
+          tools/run_export_playtest.sh --report-only build/release/nihon.x86_64 flight /tmp/release-flight.log
           {
             echo "### Release build: the flight step (Phase 248, report only)"
-            python3 ../../tools/flight_report.py playtest/report.json
+            python3 tools/flight_report.py build/release/playtest/report.json
           } | tee -a "$GITHUB_STEP_SUMMARY"
           test "${PIPESTATUS[0]}" -eq 0
 

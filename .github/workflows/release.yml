@@ -1,17 +1,55 @@
 name: Release
 
 # Pushing a `v*` tag builds the native extension on the three platforms, exports the game with the
-# binaries bundled and attaches everything to a GitHub Release. Nothing is committed to git or LFS.
+# binaries bundled, plays the bot's `create`, `walk` and `mine` steps on the Linux export and attaches
+# everything to a GitHub Release. Nothing is committed to git or LFS.
+#
+# Phase 255 — a dry run does everything but publish: a manual dispatch, or a pull request that touches
+# anything a release depends on (this workflow, the presets, the version, the changelog and its check,
+# the export playtest runner, the bot's gated steps and their boot gate, the native library). It uploads
+# the packages as a workflow artifact instead.
 on:
   push:
     tags: ["v*"]
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - export_presets.cfg
+      - project.godot
+      - CHANGELOG.md
+      - tools/check_changelog.sh
+      - tools/run_export_playtest.sh
+      - tools/fetch_godot_cpp.sh
+      - src/tests/playtest_bot.gd
+      - src/core/boot_wiring.gd
+      - native/**
+  workflow_dispatch:
 
+# Read-only by default: pull requests run this workflow, and only the publish job (a pushed v* tag) writes.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
+  version:
+    # First and cheap, so a wrong tag or a missing changelog entry fails before the three native builds.
+    name: Version and changelog
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: The tag matches the project version and has a changelog entry
+        run: |
+          tools/check_changelog.sh
+          version="$(tools/check_changelog.sh --print-version)"
+          echo "project.godot version: $version"
+          if [ "$GITHUB_EVENT_NAME" = push ] && [[ "$GITHUB_REF" == refs/tags/v* ]] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match application/config/version v$version"
+            exit 1
+          fi
+
   native:
     name: Native builder (${{ matrix.name }})
+    needs: version
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: true
@@ -44,9 +82,12 @@ jobs:
           if-no-files-found: error
 
   release:
-    name: Exports and GitHub Release
+    name: Exports and packages
     needs: native
     runs-on: ubuntu-latest
+    env:
+      # The tag on a release; a dry run names its packages after the commit (a PR's ref name has a slash).
+      RELEASE_NAME: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('dryrun-{0}', github.sha) }}
     steps:
       - uses: actions/checkout@v4
         # No submodule: the release carries the committed placeholders only.
@@ -75,6 +116,12 @@ jobs:
           unzip -o /tmp/godot/templates.tpz -d /tmp/godot/templates
           cp -r /tmp/godot/templates/templates/* ~/.local/share/godot/export_templates/4.7.stable/
 
+      - name: Install a software renderer and X server
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0 mesa-vulkan-drivers \
+            libxcursor1 libxinerama1 libxi6 libxrandr2 libxkbcommon0 libasound2t64 libfontconfig1
+
       - name: Export the three presets
         run: |
           mkdir -p build/linux build/windows build/macos
@@ -86,18 +133,64 @@ jobs:
           test -s build/windows/nihon.exe
           test -s build/macos/nihon.zip
 
+      - name: Play create, walk and mine on the Linux export
+        # Phase 255 — a broken export never becomes a release. "Linux Playtest" is the Linux preset plus the
+        # `playtest` feature tag, the only thing that lets a release build run `--playtest-bot`
+        # (BootWiring.playtest_allowed); the shipped "Linux" preset ignores the flag. Steps are gated, the
+        # frame budgets are not (`--playtest-no-budget`: a runner's speed is not the export's fault).
+        run: |
+          mkdir -p build/playtest
+          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --export-release "Linux Playtest" build/playtest/nihon.x86_64
+          test -s build/playtest/nihon.x86_64
+          tools/run_export_playtest.sh build/playtest/nihon.x86_64 create,walk,mine /tmp/release-playtest.log
+
+      - name: Upload the export playtest report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playtest-release-export
+          path: build/playtest/playtest/
+          if-no-files-found: warn
+
       - name: Package
         run: |
           mkdir -p dist
-          tar -czf "dist/nihon-linux-${GITHUB_REF_NAME}.tar.gz" -C build/linux .
-          (cd build/windows && zip -qr "../../dist/nihon-windows-${GITHUB_REF_NAME}.zip" .)
-          cp build/macos/nihon.zip "dist/nihon-macos-${GITHUB_REF_NAME}.zip"
-          tar -czf "dist/nihon-native-linux-${GITHUB_REF_NAME}.tar.gz" -C native-binaries/native-linux .
-          (cd native-binaries/native-windows && zip -qr "../../dist/nihon-native-windows-${GITHUB_REF_NAME}.zip" .)
-          (cd native-binaries/native-macos && zip -qr "../../dist/nihon-native-macos-${GITHUB_REF_NAME}.zip" .)
+          tar -czf "dist/nihon-linux-${RELEASE_NAME}.tar.gz" -C build/linux .
+          (cd build/windows && zip -qr "../../dist/nihon-windows-${RELEASE_NAME}.zip" .)
+          cp build/macos/nihon.zip "dist/nihon-macos-${RELEASE_NAME}.zip"
+          tar -czf "dist/nihon-native-linux-${RELEASE_NAME}.tar.gz" -C native-binaries/native-linux .
+          (cd native-binaries/native-windows && zip -qr "../../dist/nihon-native-windows-${RELEASE_NAME}.zip" .)
+          (cd native-binaries/native-macos && zip -qr "../../dist/nihon-native-macos-${RELEASE_NAME}.zip" .)
           ls -l dist
+
+      - name: Upload the packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-packages
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    # The only job with write access, and only on a pushed v* tag (never a pull request): it runs nothing but
+    # tools/check_changelog.sh --notes and gh, on the packages the release job built.
+    name: GitHub Release
+    needs: release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-packages
+          path: dist
 
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --generate-notes
+        run: |
+          # The notes are the version's CHANGELOG.md entry, read by the same heading rule the check uses.
+          tools/check_changelog.sh --notes "$GITHUB_REF_NAME" > /tmp/notes.md
+          gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --notes-file /tmp/notes.md

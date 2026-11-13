@@ -125,6 +125,27 @@ The playtest `walk` step is the worked example (Phase 253): its distance, ground
 decisive, its gait numbers are report-only, and the clip itself is pinned by a suite test
 (`animation: the walk clip's feet alternate lead within one cycle`).
 
+## Releasing
+
+A release is a `v*` tag on `main`; `.github/workflows/release.yml` does the rest. The version lives in one
+place, `application/config/version` in `project.godot` (the main menu shows it in a corner).
+
+1. Bump `config/version` in `project.godot` (`major.minor.patch`).
+2. Add a `## v<version>` entry at the top of `CHANGELOG.md`: what shipped, a paragraph per arc. CI fails
+   (`tools/check_changelog.sh`) while the version has no entry, and the entry becomes the release notes.
+3. Merge through a pull request as usual. A PR that touches something a release depends on (`release.yml`,
+   `export_presets.cfg`, `project.godot`, `CHANGELOG.md`, the changelog and export-playtest scripts, the playtest
+   bot, `native/`; the list is the workflow's `pull_request.paths`) runs the release workflow as a dry run; any branch can run one by hand
+   (`gh workflow run Release --ref <branch>`).
+   A dry run builds, exports, plays the bot and uploads the packages as an artifact, but publishes nothing.
+4. Tag the merge commit and push the tag: `git tag v<version> <sha> && git push origin v<version>`. The
+   workflow refuses a tag that does not match the project version, in its first job, before any build.
+5. Watch the run (`gh run watch`). It builds the native library on three platforms, exports Linux, Windows
+   and macOS, plays the bot's `create`, `walk` and `mine` steps on the Linux export under xvfb, and only
+   then creates the GitHub Release with six assets (three games, three native libraries).
+6. Smoke-test each download on its platform: it starts, the menu shows the new version, a new world loads.
+   File what breaks as an issue against the release.
+
 ## Design decisions
 
 Major design decisions follow the community governance process described in the `CommunityOwnsTheFuture` constitution principle. Proposals are tracked as fabric entities in `fabric/constitution/decisions.js` with a state machine (`proposed → accepted → superseded`). Significant decisions must be ratified by contributor consensus before implementation begins.
