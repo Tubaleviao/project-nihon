@@ -313,6 +313,7 @@ const WORLD_SYSTEMS: Dictionary = {
 		"WaystoneTravel": preload("res://godot/world_systems/waystonetravel.tres"),
 		"WeatherSystem": preload("res://godot/world_systems/weathersystem.tres"),
 		"WorkSkills": preload("res://godot/world_systems/workskills.tres"),
+		"WorkTimes": preload("res://godot/world_systems/worktimes.tres"),
 		"WorldSystem": preload("res://godot/world_systems/worldsystem.tres")
 }
 

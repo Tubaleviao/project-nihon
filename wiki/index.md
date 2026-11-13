@@ -319,6 +319,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [WaystoneTravel](entities/waystonetravel.md) — Fast travel between waystones: a player attunes to a stone by standing at it, then travels between two attuned stones for a cost in items per 1,000 km, once per cooldown
 - [WeatherSystem](entities/weathersystem.md) — Simulates weather across biomes as an emergent world system
 - [WorkSkills](entities/workskills.md) — Which skill each kind of work grows, and by how much: crafting in each domain, gathering each family of material, plants and carcasses, building, dismantling, repairing and picking locks
+- [WorkTimes](entities/worktimes.md) — How long gathering takes: a base time per material, the tool class each action wants, a speed per tool and class, and the slow factor of bare hands (also the speed of a tool of the wrong class)
 - [WorldSystem](entities/worldsystem.md) — The planet as a fact of the fabric
 
 ## Writing

@@ -31,6 +31,7 @@ const creation     = require('./gameplay/characters/creation')
 const bed          = require('./gameplay/bed')
 const tutorial     = require('./gameplay/tutorial')
 const work         = require('./gameplay/work')
+const workTimes    = require('./gameplay/work_times')
 const clan         = require('./gameplay/clan')
 const structure    = require('./gameplay/structure')
 const chests       = require('./gameplay/chests')
@@ -57,6 +58,7 @@ structure.validateStructure(structure.structureData(), structure.structureRefs()
 chests.validateChests(chests.chestsData(), chests.chestsRefs())
 writing.validateWriting(writing.writingData(), writing.writingRefs())
 work.validateWork(work.workData(), work.workRefs())
+workTimes.validateWorkTimes(workTimes.workTimesData(), workTimes.workTimesRefs()) // Phase 259
 
 // Phase 129 — the status-effect table must be well formed and every creature's `onHitEffects` must name a defined effect.
 combat.validateCombat(combat.STATUS_EFFECTS, combat.creatureOnHit(creatures), Object.keys(weather.RULES.states))
@@ -332,6 +334,7 @@ module.exports = defineFabric({
       Book:                writing.Book,
       Blueprint:           writing.Blueprint,
       WorkSkills:          work.WorkSkills,
+      WorkTimes:           workTimes.WorkTimes,
     },
     // World — Creatures
     {
