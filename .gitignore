@@ -25,3 +25,6 @@ __pycache__/
 *.os
 *.obj
 *.o
+
+# Agent worktrees (Phase 254): hundreds of MB, never committed
+.claude/

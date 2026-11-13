@@ -94,6 +94,7 @@ Completed phases moved out of [ROADMAP.md](../../ROADMAP.md) to keep it short. T
 | 243 | [phases-243.md](phases-243.md) |
 | 248 | [phases-248.md](phases-248.md) |
 | 252 | [phases-252.md](phases-252.md) |
+| 254 | [phases-254.md](phases-254.md) |
 
 Phases with no section of their own were merged into another phase:
 
