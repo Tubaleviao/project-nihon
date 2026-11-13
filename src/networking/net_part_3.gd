@@ -235,6 +235,10 @@ func _route_h2c(payload: Dictionary) -> void:
 			var fraction: Variant = payload.get("fraction", 0.0)
 			if (fraction is float or fraction is int) and is_finite(float(fraction)):
 				GameBus.block_damaged.emit(sl._vec3(payload.get("position", [])), clampf(float(fraction), 0.0, 1.0))
+		"work_started":
+			var dur: Variant = payload.get("duration", 0.0)
+			if (dur is float or dur is int) and is_finite(float(dur)) and float(dur) > 0.0:
+				GameBus.work_started.emit(str(payload.get("key", "")), float(dur), str(payload.get("action", "")), str(payload.get("material", "")))
 		"tree_chopped":
 			GameBus.tree_chopped.emit(
 				str(payload.get("tree_id", "")),

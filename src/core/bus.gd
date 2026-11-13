@@ -565,6 +565,14 @@ signal technology_unlocked(tech_id: String, player_id: String)
 ## player_id : String — the acting player; "" means the local player
 signal tree_chop_requested(tree_id: String, player_id: String)
 
+## Phase 259 — timed work. The player starts work on a target (`kind` "tree" with `tree_id`, or "block" with the
+## aimed point); the host computes the duration itself and answers with `work_started`. A release, retarget or
+## leaving reach sends `work_cancel_requested`. The completion is the existing chop / mine request.
+signal work_start_requested(kind: String, tree_id: String, position: Vector3, normal: Vector3, exact: Dictionary, player_id: String)
+signal work_cancel_requested(player_id: String)
+## Host -> the worker alone: the duration the host will wait, the action (`dig` / `mine` / `chop`) and the material.
+signal work_started(key: String, duration: float, action: String, material: String)
+
 ## Emitted by TreeSlice with the authoritative result of a chop. A client applies
 ## this instead of chopping locally.
 ## tree_id    : String — TreeSlice tree id

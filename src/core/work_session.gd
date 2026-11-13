@@ -12,7 +12,7 @@ var _sessions: Dictionary = {}
 ## repeated start on the same target keeps the original start time, so re-sending a start never shortens it.
 ## `duration` <= 0 is refused (an unknown material has no time).
 func start(player_id: String, target: String, action: String, duration: float, now: float) -> bool:
-	if player_id == "" or target == "" or duration <= 0.0:
+	if target == "" or duration <= 0.0:
 		return false
 	var cur: Dictionary = _sessions.get(player_id, {})
 	if not cur.is_empty() and cur["target"] == target and cur["action"] == action:

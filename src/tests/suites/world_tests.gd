@@ -27,6 +27,8 @@ func register() -> void:
 	_run_test("tree: chop bare handed",                         _test_tree_chop_bare_handed)
 	_run_test("work time: pure function",                       _test_work_time_pure)
 	_run_test("work session: host timing",                      _test_work_session)
+	_run_test("work host: tree timing",                         _test_work_host_tree)
+	_run_test("work hold: same target",                         _test_work_hold_same_target)
 	_run_test("tree: stump regrows on its cooldown",            _test_tree_stump_regrows_on_cooldown)
 	_run_test("tree: despawn is per chunk",                     _test_tree_despawn_is_per_chunk)
 	_run_test("tree: chunk hop keeps the stump cooldown",       _test_tree_chunk_hop_keeps_stump_cooldown)
@@ -1579,3 +1581,45 @@ func _test_work_session() -> void:
 	w.start("p", "u", "chop", 3.0, 0.0)
 	assert_true(w.cancel("p"), "a cancel is accepted at any time")
 	assert_false(w.cancel("p"), "a second cancel finds nothing")
+
+func _test_work_host_tree() -> void:
+	# Phase 259 — the host computes the duration from the worker's held tool, refuses a claim before it and
+	# accepts one on time exactly once; a cancel spends nothing.
+	var Host := preload("res://src/core/work_host.gd")
+	var t := _make_tree_slice()
+	var inv := InventorySlice.new()
+	add_child(inv)
+	t.inventory_slice = inv
+	t.spawn_for_chunk(Vector2i(0, 0))
+	var tid: String = str(t.get_all_trees()[0]["tree_id"])
+	var h := Host.new()
+	h.tree_slice = t
+	var bare: Dictionary = h.start("", "tree", tid, Vector3.ZERO, Vector3.UP, {}, 100.0)
+	assert_true(bare["ok"], "a tree can be worked bare-handed")
+	assert_eq(str(bare["action"]), "chop", "the action is chop")
+	inv.add_item("CarpenterAxe", 1)
+	var with_axe: Dictionary = h.resolve("", "tree", tid, Vector3.ZERO, Vector3.UP, {})
+	assert_true(float(with_axe["duration"]) < float(bare["duration"]), "an axe shortens the host's duration")
+	assert_false(h.claim("", Host.tree_key(tid), 100.0 + float(bare["duration"]) - 0.5), "an early claim is refused")
+	assert_true(h.sessions.has_session(""), "the early claim leaves the work running")
+	assert_false(h.claim("", Host.tree_key("other"), 200.0), "a claim on another target is refused")
+	assert_true(h.claim("", Host.tree_key(tid), 100.0 + float(bare["duration"]) + 0.01), "an on-time claim is accepted")
+	assert_false(h.claim("", Host.tree_key(tid), 300.0), "a claim is accepted once")
+	h.start("", "tree", tid, Vector3.ZERO, Vector3.UP, {}, 0.0)
+	var wear_before := inv.get_item_count("CarpenterAxe")
+	assert_true(h.cancel(""), "a cancel is accepted")
+	assert_eq(inv.get_item_count("CarpenterAxe"), wear_before, "a cancel spends nothing")
+	assert_false(h.start("", "tree", "no-such-tree", Vector3.ZERO, Vector3.UP, {}, 0.0)["ok"], "an unknown tree cannot be worked")
+	assert_false(h.start("", "ghost", "", Vector3.ZERO, Vector3.UP, {}, 0.0)["ok"], "an unknown kind cannot be worked")
+	t.free()
+	inv.free()
+
+func _test_work_hold_same_target() -> void:
+	var Hold := preload("res://src/player/work_hold.gd")
+	var a := { "kind": "tree", "tree_id": "t1" }
+	assert_true(Hold.same_target(a, { "kind": "tree", "tree_id": "t1" }), "the same tree is the same target")
+	assert_false(Hold.same_target(a, { "kind": "tree", "tree_id": "t2" }), "another tree is a retarget")
+	var b := { "kind": "block", "position": Vector3(1, 2, 3) }
+	assert_true(Hold.same_target(b, { "kind": "block", "position": Vector3(1.4, 2, 3) }), "a nearby aim point is the same block")
+	assert_false(Hold.same_target(b, { "kind": "block", "position": Vector3(5, 2, 3) }), "a far aim point is a retarget")
+	assert_false(Hold.same_target(a, b), "a tree is not a block")

@@ -52,3 +52,21 @@ static func seconds(material: String, action: String, tool_item: String = "") ->
 	if base <= 0.0 or s <= 0.0:
 		return 0.0
 	return base / s
+
+## What a work time falls back to for a material the table does not name (a made block, say): this many seconds at speed 1.
+const FALLBACK_SECONDS := 2.0
+
+## The duration the host uses: `seconds`, or the fallback over the speed for an unlisted material.
+static func duration(material: String, action: String, tool_item: String = "") -> float:
+	var t := seconds(material, action, tool_item)
+	if t > 0.0:
+		return t
+	var s := speed(action, tool_item)
+	return FALLBACK_SECONDS / s if s > 0.0 else 0.0
+
+## The tool the player holds for `action`'s class ("" = bare hands): the inventory's first usable tool of it.
+static func held_tool(inventory: Node, action: String) -> String:
+	var cls := tool_class(action)
+	if inventory == null or cls == "" or not inventory.has_method("find_tool"):
+		return ""
+	return str(inventory.find_tool(cls))

@@ -604,6 +604,9 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 				sl.Diag.warn("NetworkingSlice: block_edit_intent from peer %d is out of reach — dropped" % sender)
 				return
 			if action == "mine":
+				# Phase 259 — a mine is the completion of timed work the host started and timed itself.
+				if not _work_claimed(sender, "block", "", ipos, inorm, iexact):
+					return
 				GameBus.block_mine_requested.emit(ipos, inorm, sl._actor_id(sender), iexact)
 			elif action == "place":
 				GameBus.block_place_requested.emit(
@@ -626,7 +629,11 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 			if not sl._chop_is_in_reach(sender, tree_id):
 				sl.Diag.warn("NetworkingSlice: tree_chop_intent from peer %d is out of reach — dropped" % sender)
 				return
+			if not _work_claimed(sender, "tree", tree_id, Vector3.ZERO, Vector3.UP, {}):
+				return
 			GameBus.tree_chop_requested.emit(tree_id, sl._actor_id(sender))
+		"work_start_intent", "work_cancel_intent":
+			_work_intent(sender, payload)
 		"market_list_intent":
 			# Phase 36 — a listing is the CONNECTION's player selling. `seller` used
 			# to be passed through verbatim unless it read exactly "player", so a
@@ -817,3 +824,52 @@ func forward_writing_intent(action: String, item_id: String, _player_id: String)
 	if sl._role != sl.Role.CLIENT:
 		return
 	sl._broadcast({ "type": "writing_intent", "action": action, "item_id": item_id })
+
+# ---------------------------------------------------------------------------
+# Phase 259 — timed work. The host starts a session with the duration it computed itself and accepts the
+# chop / mine only once that time has passed. Unwired (no WorkHost) the old one-click path stands.
+# ---------------------------------------------------------------------------
+
+func _work_host() -> Variant:
+	return sl.get_meta("work_host") if sl.has_meta("work_host") else null
+
+## A completion claim: true when no WorkHost is wired, or the sender's own session on this target has run out.
+func _work_claimed(sender: int, kind: String, tree_id: String, pos: Vector3, normal: Vector3, exact: Dictionary) -> bool:
+	var host: Variant = _work_host()
+	if host == null:
+		return true
+	var actor: String = sl._actor_id(sender)
+	var t: Dictionary = host.resolve(actor, kind, tree_id, pos, normal, exact)
+	if t.is_empty() or not host.claim(actor, str(t["key"]), Time.get_ticks_msec() * 0.001):
+		sl.Diag.warn("NetworkingSlice: %s completion from peer %d before the host's timer — dropped" % [kind, sender])
+		return false
+	return true
+
+func _work_intent(sender: int, payload: Dictionary) -> void:
+	var host: Variant = _work_host()
+	var actor: String = sl._actor_id(sender)
+	if host == null or actor == "":
+		return
+	if str(payload.get("type", "")) == "work_cancel_intent":
+		host.cancel(actor)
+		return
+	var kind := str(payload.get("kind", ""))
+	var tree_id := str(payload.get("tree_id", ""))
+	var pos := Vector3.ZERO
+	var exact := {}
+	if kind == "tree":
+		if not sl._chop_is_in_reach(sender, tree_id):
+			return
+	elif kind == "block":
+		if payload.has("pk") and not sl.WorldPos.packet_has_pos(payload):
+			sl._warn_malformed_position(sender)
+			return
+		pos = sl.WorldPos.packet_world(payload, sl._vec3(payload.get("position", [])))
+		exact = sl.WorldPos.pos_from_packet(payload) if payload.has("pk") else {}
+		if not sl._within_reach(sender, pos, sl.MAX_EDIT_REACH):
+			return
+	else:
+		return
+	var r: Dictionary = host.start(actor, kind, tree_id, pos, sl._vec3(payload.get("normal", [0, 1, 0])), exact, Time.get_ticks_msec() * 0.001)
+	if bool(r["ok"]):
+		sl._deliver(sender, { "type": "work_started", "key": r["key"], "duration": r["duration"], "action": r["action"], "material": r["material"] })

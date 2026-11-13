@@ -828,3 +828,19 @@ func _on_place_requested(position: Vector3, normal: Vector3, player_id: String, 
 ## tile and span from the same math.
 func apply_block_change(action: String, position: Vector3, normal: Vector3, material: String) -> void:
 	s._apply_edit(action, position, normal, material)
+
+## Phase 259 — what mining here would take, without touching anything: `{ material, key }` for the span `mine_block`
+## would remove (a placed block's own material, else the natural yield), or `{}` when there is nothing to mine.
+## `key` names the span (tile and bottom), so work on one block is never completed on another.
+func work_target(world_pos: Vector3, normal: Vector3, exact: Dictionary = {}) -> Dictionary:
+	var probe = s._resolve_edit_tile("mine", world_pos, normal, exact)
+	var tile: Vector2i = probe["tile"]
+	if TerrainSlice.in_closed_site(probe["xz"]):
+		return {}
+	var span = s._mine_span(s.get_runs_at_tile(tile), world_pos, normal)
+	if span.is_empty():
+		return {}
+	var material := str(span["material"])
+	if material == "":
+		material = str(_natural_yield(tile, span)["material"])
+	return { "material": material, "key": "block:%d,%d,%.2f" % [tile.x, tile.y, float(span["bottom"])] }
