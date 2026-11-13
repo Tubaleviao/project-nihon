@@ -816,7 +816,7 @@ options.vsync,VSync,Sincronização vertical
 options.view_distance,View distance,Distância de visão
 options.fps_cap,FPS cap (0 = none),Limite de FPS (0 = sem limite)
 options.render_scale,Render scale,Escala de renderização
-options.scale_mode,Upscaling (native, bilinear, FSR 2),Ampliação (nativo, bilinear, FSR 2)
+options.scale_mode,Upscaling,Ampliação
 options.terrain_quality,Terrain quality,Qualidade do terreno
 options.tutorial,Tutorial,Tutorial
 options.mouse_sensitivity,Mouse sensitivity,Sensibilidade do mouse
@@ -825,3 +825,13 @@ options.language,Language,Idioma
 options.tutorial_reset,Reset tutorial,Reiniciar o tutorial
 options.close,Close,Fechar
 options.mouse_button,Mouse,Mouse
+options.window_mode.windowed,Windowed,Janela
+options.window_mode.fullscreen,Fullscreen,Tela cheia
+options.window_mode.borderless,Borderless fullscreen,Tela cheia sem bordas
+options.scale_mode.native,Native,Nativa
+options.scale_mode.bilinear,Bilinear,Bilinear
+options.scale_mode.fsr2,FSR 2,FSR 2
+options.terrain_quality.auto,Automatic,Automática
+options.terrain_quality.low,Low,Baixa
+options.terrain_quality.high,High,Alta
+options.next_world,View distance and terrain quality take effect in the next world.,A distância de visão e a qualidade do terreno valem a partir do próximo mundo.

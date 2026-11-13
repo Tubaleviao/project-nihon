@@ -76,6 +76,7 @@ func relocalize() -> void:
 func _open_options() -> void:
 	if _options == null:
 		_options = OptionsWindow.new()
+		_options.in_world = true
 		add_child(_options)
 	_options.open()
 	options_requested.emit()

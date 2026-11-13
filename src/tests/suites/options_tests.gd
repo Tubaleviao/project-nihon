@@ -117,6 +117,26 @@ func _test_window() -> void:
 		opt.select(1)
 		opt.item_selected.emit(1)
 		assert_eq(GameSettings.load_values()["scale_mode"], "bilinear", "a choice saves")
+		assert_eq(opt.get_item_text(2), I18n.t("options.scale_mode.fsr2"), "choices show catalog text, not ids")
+		# A drag applies live and writes the file once, when it ends.
+		var fps := w.control("fps_cap") as HSlider
+		fps.drag_started.emit()
+		fps.value = 45
+		assert_eq(Engine.max_fps, 45, "a drag applies live")
+		assert_eq(int(GameSettings._read_file()["options"]["fps_cap"]), 90, "but does not write mid-drag")
+		fps.drag_ended.emit(true)
+		assert_eq(int(GameSettings._read_file()["options"]["fps_cap"]), 45, "the drag's end saves")
+		# Reset tutorial with no live slice turns the switch on and the checkbox shows it.
+		(w.control("tutorial") as CheckButton).button_pressed = false
+		w.reset_tutorial()
+		assert_true((w.control("tutorial") as CheckButton).button_pressed, "reset re-syncs the tutorial switch")
+		# In a live world, view distance is saved for the next world but not applied.
+		var rings_before: Variant = ProjectSettings.get_setting("nihon/graphics/lod_rings")
+		w.in_world = true
+		var vd := w.control("view_distance") as HSlider
+		vd.value = 1 if int(vd.value) != 1 else 2
+		assert_eq(ProjectSettings.get_setting("nihon/graphics/lod_rings"), rings_before, "a live world keeps its rings")
+		assert_eq(GameSettings.load_values()["view_distance"], int(vd.value), "the new view distance is saved")
 		w.close()
 		assert_false(w.is_open(), "close hides it")
 		w.free()
@@ -132,9 +152,13 @@ func _test_window() -> void:
 
 func _test_catalog() -> void:
 	var cats: Dictionary = I18n.parse_csv("res://locale/ui.csv")["catalog"]
-	var keys: Array = ["options.close", "options.language", "options.tutorial_reset", "options.mouse_button"]
+	var keys: Array = ["options.close", "options.language", "options.tutorial_reset", "options.mouse_button", "options.next_world"]
 	for k in GameSettings.SPEC:
 		keys.append("options." + str(k))
+		var rule: Dictionary = GameSettings.SPEC[k]
+		if str(rule["type"]) == "choice" and k != "resolution":
+			for v in rule["values"]:
+				keys.append("options.%s.%s" % [k, v])
 	for t in OptionsWindow.TABS:
 		keys.append("options.tab." + str(t))
 	for k in keys:

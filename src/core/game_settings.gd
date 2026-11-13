@@ -20,6 +20,10 @@ const RESOLUTIONS := ["1280x720", "1600x900", "1920x1080", "2560x1440"]
 const SCALE_MODES := ["native", "bilinear", "fsr2"]
 const TERRAIN_QUALITIES := ["auto", "low", "high"]
 
+## Read once when a world's terrain is built: changed in a live world they are saved but applied only to
+## the next one (the haze reads the rings live, so applying mid-world would split fog from terrain).
+const WORLD_KEYS := ["view_distance", "terrain_quality"]
+
 ## key → rule, grouped by the tab that shows it. The label key of each is `options.<key>`.
 const SPEC := {
 	"volume_master": { "tab": "sound", "type": "float", "default": 1.0, "min": 0.0, "max": 1.0 },
@@ -105,8 +109,9 @@ static func save() -> bool:
 	return true
 
 ## Change one option: validate, apply, save. False for an unknown key. `viewport` is the one the
-## render scale applies to (the root window when null and the tree is up).
-static func set_value(key: String, raw: Variant, viewport: Viewport = null) -> bool:
+## render scale applies to (the root window when null and the tree is up). `persist` false skips the
+## file write (a slider mid-drag; `save` runs when it ends). `apply_now` false only saves it.
+static func set_value(key: String, raw: Variant, viewport: Viewport = null, persist := true, apply_now := true) -> bool:
 	if not SPEC.has(key):
 		return false
 	if values.is_empty():
@@ -116,9 +121,10 @@ static func set_value(key: String, raw: Variant, viewport: Viewport = null) -> b
 		var st := TutorialState.load_state()
 		st["enabled"] = values[key]
 		TutorialState.save_state(st)
-	else:
+	elif persist:
 		save()
-	apply(key, viewport)
+	if apply_now:
+		apply(key, viewport)
 	return true
 
 ## Boot: load the file and apply only what the player has saved, so a fresh install keeps the engine's
@@ -147,12 +153,8 @@ static func apply(key: String, viewport: Viewport = null) -> void:
 			_set_bus_volume(BUS_MUSIC, float(v))
 		"volume_effects":
 			_set_bus_volume(BUS_EFFECTS, float(v))
-		"window_mode":
-			DisplayServer.window_set_mode(window_mode_enum(str(v)))
-			DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_BORDERLESS, str(v) == "borderless")
-		"resolution":
-			if DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_WINDOWED:
-				DisplayServer.window_set_size(resolution_size(str(v)))
+		"window_mode", "resolution":
+			_apply_window()
 		"vsync":
 			DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if bool(v) else DisplayServer.VSYNC_DISABLED)
 		"view_distance":
@@ -172,8 +174,24 @@ static func apply(key: String, viewport: Viewport = null) -> void:
 		_:
 			pass   # tutorial: saved in the tutorial state; sensitivity and invert are read where used
 
+## Godot's WINDOW_MODE_FULLSCREEN is already a borderless window over the screen; "fullscreen" here is
+## the exclusive one.
 static func window_mode_enum(mode: String) -> int:
-	return DisplayServer.WINDOW_MODE_FULLSCREEN if mode == "fullscreen" else DisplayServer.WINDOW_MODE_WINDOWED
+	match mode:
+		"fullscreen":
+			return DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN
+		"borderless":
+			return DisplayServer.WINDOW_MODE_FULLSCREEN
+	return DisplayServer.WINDOW_MODE_WINDOWED
+
+## Mode and resolution together: the saved resolution is the windowed size, so going back to windowed
+## restores it.
+static func _apply_window() -> void:
+	var mode := window_mode_enum(str(get_value("window_mode")))
+	DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_BORDERLESS, false)
+	DisplayServer.window_set_mode(mode)
+	if mode == DisplayServer.WINDOW_MODE_WINDOWED:
+		DisplayServer.window_set_size(resolution_size(str(get_value("resolution"))))
 
 static func resolution_size(res: String) -> Vector2i:
 	var p := res.split("x")
@@ -210,7 +228,7 @@ static func look_scale() -> float:
 static func look_y_sign() -> float:
 	return -1.0 if bool(get_value("invert_y")) else 1.0
 
-## Tutorial reset: nothing done, nothing dismissed, the switch as it is.
+## Tutorial reset: nothing done, nothing dismissed. The switch is left as it is (the window turns it on).
 static func reset_tutorial() -> void:
 	var st := TutorialState.load_state()
 	st["done"] = []
