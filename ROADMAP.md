@@ -891,6 +891,8 @@ the right tool.
   and a shake on the tree mark the same progress in the world, for other players too.
 - Skills (Phase 207) are granted as before, on completion.
 
+**Progress (in flight):** done — fabric `WorkTimes` + `tools/check_work_times.js` (CI step), `src/core/work_time.gd` (pure time), `src/core/work_session.gd` (host timer), bare-handed chop (`axe_required` gone). Left — bus/net work start/cancel/complete intents with rate limit, hold-to-work input, progress bar + crack/shake, net harness step, playtest `mine`/`gather` holds, locale strings.
+
 **Acceptance criteria**
 - `npm run validate` and `check-drift` pass; `tools/check_work_times.js` passes its own bad tables.
 - Suite tests: a work time is a pure function of (material, action, held tool); bare hands on soil,
