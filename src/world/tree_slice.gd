@@ -567,8 +567,7 @@ func chop_tree(tree_id: String, player_id: String = "") -> Dictionary:
 		return _fail("not_owner")
 	var inventory := inventory_for(player_id)
 	var axe := _held_axe(inventory)
-	if axe == "":
-		return _fail("axe_required")
+	# Phase 259 — bare hands chop too (slowly, on the host's timer); no axe means no wear to spend.
 	var wood: String = str(tree["wood"])
 	# Refuse before spending durability so a full inventory never costs the axe.
 	if inventory != null and inventory.has_method("can_add_items"):
@@ -576,7 +575,7 @@ func chop_tree(tree_id: String, player_id: String = "") -> Dictionary:
 			return _fail("no_inventory")
 	# Spend the axe's wear BEFORE the tree changes state, so a broken axe can
 	# never fell a tree for free (the ordering mine_block uses for the pick).
-	if inventory != null and inventory.has_method("use_item"):
+	if axe != "" and inventory != null and inventory.has_method("use_item"):
 		if not inventory.use_item(axe, "chop"):
 			return _fail("axe_broken")
 	if inventory != null and inventory.has_method("add_item"):

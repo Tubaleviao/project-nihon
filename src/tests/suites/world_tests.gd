@@ -24,7 +24,9 @@ func register() -> void:
 	_run_test("tree: spawns the per-chunk budget",              _test_tree_spawn_for_chunk)
 	_run_test("tree: per-biome species and density",            _test_tree_per_biome_table)
 	_run_test("tree: chop yields wood and wears the axe",       _test_tree_chop_yields_wood_and_wears_axe)
-	_run_test("tree: chop requires an axe",                     _test_tree_chop_requires_axe)
+	_run_test("tree: chop bare handed",                         _test_tree_chop_bare_handed)
+	_run_test("work time: pure function",                       _test_work_time_pure)
+	_run_test("work session: host timing",                      _test_work_session)
 	_run_test("tree: stump regrows on its cooldown",            _test_tree_stump_regrows_on_cooldown)
 	_run_test("tree: despawn is per chunk",                     _test_tree_despawn_is_per_chunk)
 	_run_test("tree: chunk hop keeps the stump cooldown",       _test_tree_chunk_hop_keeps_stump_cooldown)
@@ -481,23 +483,40 @@ func _test_tree_chop_yields_wood_and_wears_axe() -> void:
 	t.free()
 	inv.free()
 
-func _test_tree_chop_requires_axe() -> void:
+func _test_tree_chop_bare_handed() -> void:
+	# Phase 259 — a tree no longer refuses an empty hand; a wrong-class tool chops too, and neither wears.
 	var t := _make_tree_slice()
 	var inv := InventorySlice.new()
 	add_child(inv)
 	t.inventory_slice = inv
 	t.spawn_for_chunk(Vector2i(0, 0))
-	var tid: String = str(t.get_all_trees()[0]["tree_id"])
+	var trees: Array = t.get_all_trees()
+	var tid: String = str(trees[0]["tree_id"])
 	var bare: Dictionary = t.chop_tree(tid)
-	assert_false(bare["success"], "a bare-handed chop is refused")
-	assert_eq(str(bare["reason"]), "axe_required", "the refusal names the missing axe")
-	assert_eq(str(t.get_tree_record(tid)["state"]), "standing", "a refused chop leaves the tree standing")
-	# The fabric's toolType is the discriminator: a pick is not an axe.
-	inv.add_item("FerritePick", 1)
-	assert_eq(str(t.chop_tree(tid)["reason"]), "axe_required", "a pick does not fell a tree")
-	assert_eq(inv.get_item_count("Thornwood"), 0, "a refused chop yields no wood")
+	assert_true(bare["success"], "a bare-handed chop fells the tree")
+	assert_eq(str(bare["reason"]), "", "no refusal reason")
+	assert_eq(str(t.get_tree_record(tid)["state"]), "stump", "the tree is down")
+	assert_true(inv.get_item_count(str(bare["wood"])) > 0, "bare hands still yield wood")
 	t.free()
 	inv.free()
+
+func _test_work_time_pure() -> void:
+	# Phase 259 — a work time is a pure function of (material, action, held tool).
+	var WT := preload("res://src/core/work_time.gd")
+	assert_eq(WT.action_for_material("Soil"), "dig", "soil is dug")
+	assert_eq(WT.action_for_material("Ferrite"), "mine", "ore is mined")
+	assert_eq(WT.action_for_material("Thornwood"), "chop", "wood is chopped")
+	assert_eq(WT.action_for_material("Nothing"), "", "an unknown material has no action")
+	for m in ["Ferrite", "Ashite", "Veilsteel"]:
+		var bare := WT.seconds(m, "mine")
+		assert_true(bare > 0.0, "%s has a time" % m)
+		assert_true(WT.seconds(m, "mine", "FerritePick") < bare, "a pick beats bare hands on %s" % m)
+		assert_true(WT.seconds(m, "mine", "VeilsteelPick") < WT.seconds(m, "mine", "FerritePick"), "the better pick is faster")
+		assert_eq(WT.seconds(m, "mine", "CarpenterAxe"), bare, "a wrong-class tool equals bare hands")
+	assert_true(WT.seconds("Thornwood", "chop", "CarpenterAxe") < WT.seconds("Thornwood", "chop"), "an axe beats bare hands on wood")
+	assert_eq(WT.seconds("Soil", "dig", "FerritePick"), WT.seconds("Soil", "dig"), "a pick digs soil like bare hands")
+	assert_eq(WT.seconds("Soil", "dig", "FerritePick"), WT.seconds("Soil", "dig", ""), "pure: same input, same time")
+	assert_eq(WT.seconds("Nothing", "mine"), 0.0, "an unknown material has no time")
 
 func _test_tree_stump_regrows_on_cooldown() -> void:
 	var t := _make_tree_slice()
@@ -1534,3 +1553,29 @@ func _test_rig_tree_xfades() -> void:
 	assert_eq(RigTree.xfade_for("Locomotion", "Fall"), 0.12, "locomotion")
 	tree.free()
 	player.free()
+
+func _test_work_session() -> void:
+	# Phase 259 — the host times work: an early completion is refused, an on-time one accepted once, a cancel any time.
+	var S := preload("res://src/core/work_session.gd")
+	var w := S.new()
+	assert_false(w.start("p", "t", "chop", 0.0, 0.0), "a zero duration is refused")
+	assert_true(w.start("p", "t", "chop", 3.0, 10.0), "start")
+	assert_false(w.try_complete("p", "t", 11.0, true, true), "an early completion is refused")
+	assert_true(w.has_session("p"), "an early claim leaves the work running")
+	assert_true(w.start("p", "t", "chop", 3.0, 12.5), "a repeated start is accepted")
+	assert_eq(float(w.session("p")["started"]), 10.0, "a repeated start never restarts or shortens the timer")
+	assert_true(absf(w.progress("p", 11.5) - 0.5) < 0.001, "progress is elapsed over duration")
+	assert_false(w.try_complete("p", "other", 14.0, true, true), "a completion for another target is refused")
+	assert_true(w.try_complete("p", "t", 13.0, true, true), "on time with the input held, it completes")
+	assert_false(w.try_complete("p", "t", 14.0, true, true), "it completes once")
+	w.start("p", "t", "chop", 3.0, 0.0)
+	w.start("p", "u", "chop", 3.0, 1.0)
+	assert_eq(str(w.session("p")["target"]), "u", "retarget replaces the session")
+	assert_false(w.try_complete("p", "u", 10.0, false, true), "released: no completion")
+	assert_false(w.has_session("p"), "released cancels")
+	w.start("p", "u", "chop", 3.0, 0.0)
+	assert_false(w.try_complete("p", "u", 10.0, true, false), "out of reach: no completion")
+	assert_false(w.has_session("p"), "leaving reach cancels")
+	w.start("p", "u", "chop", 3.0, 0.0)
+	assert_true(w.cancel("p"), "a cancel is accepted at any time")
+	assert_false(w.cancel("p"), "a second cancel finds nothing")
