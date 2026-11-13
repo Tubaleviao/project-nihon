@@ -9,7 +9,7 @@ runtime assets, and Godot resources.
 See `../newel/ROADMAP.md` for the Newel-side changes each phase depends on.
 
 **Human verification is not an acceptance criterion.** A criterion must be decidable by the
-automated gates — `pnpm validate`, `pnpm check-drift`, the headless suite on both boot paths,
+automated gates — `npm run validate`, `npm run check-drift`, the headless suite on both boot paths,
 `tools/net_harness.sh`, CI. A check that needs a person at the keyboard (a playtest, a screenshot
 judgement, a visual inspection) is not a criterion: it is filed as a GitHub issue and the phase
 proceeds without it, so unpublished human work never parks the roadmap. The phase records the
@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–224, 238–243, 248, 249 and 252 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–224, 238–243, 248, 249, 252 and 254 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -39,24 +39,23 @@ others are not in it.
 | Priority | Phase | Title |
 |---|---|---|
 | 1 | 253 | A green `main`: flaky gates demoted, the stress regression explained |
-| 2 | 254 | Repository hygiene: `.uid` files tracked, one lockfile, nothing stray |
-| 3 | 255 | The first release: `v0.1.0` from the release workflow |
-| 4 | 251 | A human playtest: what would make the game fun |
-| 5 | 225 | The options window |
-| 6 | 244 | A chunk cache on disk |
-| 7 | 256 | A binary wire format for the hot packets |
-| 8 | 250 | The server's ceiling: one machine serving, another running the bots |
-| 9 | 237 | Flight that handles like flight |
-| 10 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
-| 11 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
-| 12 | 226 | Several characters per player |
-| 13 | 229 | Skills capped by the gear |
-| 14 | 247 | Ground cover: grass and bushes by biome |
-| 15 | 235 | Roads |
-| 16 | 234 | Boats |
-| 17 | 257 | Split files named by what they do |
-| 18 | 258 | The public wiki and the community channels |
-| 19 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
+| 2 | 255 | The first release: `v0.1.0` from the release workflow |
+| 3 | 251 | A human playtest: what would make the game fun |
+| 4 | 225 | The options window |
+| 5 | 244 | A chunk cache on disk |
+| 6 | 256 | A binary wire format for the hot packets |
+| 7 | 250 | The server's ceiling: one machine serving, another running the bots |
+| 8 | 237 | Flight that handles like flight |
+| 9 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
+| 10 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
+| 11 | 226 | Several characters per player |
+| 12 | 229 | Skills capped by the gear |
+| 13 | 247 | Ground cover: grass and bushes by biome |
+| 14 | 235 | Roads |
+| 15 | 234 | Boats |
+| 16 | 257 | Split files named by what they do |
+| 17 | 258 | The public wiki and the community channels |
+| 18 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
 
 Order notes that differ from the arcs' own order:
 
@@ -233,7 +232,7 @@ says decisions are proposed publicly.
 |---|---|---|
 | 252 | A licence and a contributor's front door | Done ([phases-252.md](docs/roadmap-history/phases-252.md)) |
 | 253 | A green `main`: flaky gates demoted, the stress regression explained | Open |
-| 254 | Repository hygiene: `.uid` files tracked, one lockfile, nothing stray | Open |
+| 254 | Repository hygiene: `.uid` files tracked, one lockfile, nothing stray | Done ([phases-254.md](docs/roadmap-history/phases-254.md)) |
 | 255 | The first release: `v0.1.0` from the release workflow | Open |
 | 256 | A binary wire format for the hot packets | Open |
 | 257 | Split files named by what they do | Open |
@@ -729,34 +728,6 @@ cause and numbers in `docs/perf/crowd-baseline.md`. Open: five green stress runs
   fix or the rerun widening is in the PR with the cause written in `docs/perf/crowd-baseline.md`.
 - `tools/check_gate_health.sh` exists, a scheduled workflow runs it, and the suite's workflow lint
   passes with the new job.
-
-## Phase 254 — Repository hygiene: `.uid` files tracked, one lockfile, nothing stray
-
-Found in the working tree on 2026-11-12: `.claude/` (600 MB, thirteen agent worktrees) not in
-`.gitignore`, one `git add -A` from being committed; eight `.uid` files untracked and
-`lod_rings_tests.gd` with none at all (Godot 4.4+ keys scripts by `.uid`, so an untracked one is
-regenerated differently on every clone and the editor rewrites references); both `package-lock.json`
-and `pnpm-lock.yaml` tracked while the README says `npm ci` and this file says `pnpm`; and the
-`assets-prod` submodule pointer rewound three commits with modified content, which the next commit
-touching it would publish as a regression.
-
-- `.gitignore` gains `.claude/` and `*.uid` is never ignored.
-- Every `.gd`, `.gdshader` and `.tscn` under `src/`, `godot/`, `tools/` and the root has its `.uid`
-  tracked. A CI step (`tools/check_uids.sh`) lists tracked scripts without a tracked `.uid` and fails
-  on any; the generator's `godot/` output includes its `.uid` files already and the check covers
-  them too.
-- One lockfile. The README and CI use `npm ci`, so `package-lock.json` stays and `pnpm-lock.yaml`
-  goes; this file's gate names (`pnpm validate`, `pnpm check-drift`) become `npm run …`.
-- The submodule pointer is set on purpose: either back to the commit `main` records or forward to
-  the current head of `assets-prod` with the change named in the PR. `tools/check_submodule.sh`
-  fails CI when the recorded pointer is not an ancestor-or-equal of the previous commit's, unless the
-  PR title carries `assets-prod:`.
-
-**Acceptance criteria**
-- `tools/check_uids.sh` and `tools/check_submodule.sh` run in the `fabric` CI job; each has a fixture
-  it rejects (an untracked `.uid`; a rewound pointer without the title marker).
-- `git ls-files | grep -c lock` is 1 for the package manager's lockfile; `npm ci` succeeds in CI.
-- `git check-ignore .claude` succeeds.
 
 ## Phase 255 — The first release: `v0.1.0` from the release workflow
 
