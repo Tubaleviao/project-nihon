@@ -6,6 +6,7 @@ extends "res://src/core/wiring.gd"
 ## `GameRoot._build_and_boot` runs only once the menu asks for a world or a server. Every flag CI and
 ## the tools pass skips the menu, so those boots are what they were before it.
 
+const GameSettings := preload("res://src/core/game_settings.gd")
 const MainMenu := preload("res://src/menu/main_menu.gd")
 const LocalWorlds := preload("res://src/menu/local_worlds.gd")
 const NativeBuilder := preload("res://src/terrain/native_builder.gd")
@@ -63,6 +64,7 @@ func open_if_no_boot_args() -> bool:
 	if not should_show_main_menu(boot_user_args()):
 		return false
 	LocaleSettings.apply_startup()
+	GameSettings.apply_startup()   # Phase 225 — saved sound, graphics and look options
 	root.set_process(false)
 	root.set_physics_process(false)
 	menu = MainMenu.new()

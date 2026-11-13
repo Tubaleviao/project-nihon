@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–224, 238–243, 248, 249 and 252–254 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–225, 238–243, 248, 249 and 252–254 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -40,7 +40,6 @@ others are not in it.
 |---|---|---|
 | 1 | 255 | The first release: `v0.1.0` from the release workflow |
 | 2 | 251 | A human playtest: what would make the game fun |
-| 3 | 225 | The options window |
 | 4 | 244 | A chunk cache on disk |
 | 5 | 256 | A binary wire format for the hot packets |
 | 6 | 250 | The server's ceiling: one machine serving, another running the bots |
@@ -91,7 +90,7 @@ because the menus reuse the keyboard routing Phase 219 fixes.
 | 222 | The Character window fits: fewer rows, the friend code moves to the map | Done ([phases-222.md](docs/roadmap-history/phases-222.md)) |
 | 223 | A main menu: play a local world or join a server | Done ([phases-223.md](docs/roadmap-history/phases-223.md)) |
 | 224 | The Esc menu: resume, options, exit to main menu, quit | Done ([phases-224.md](docs/roadmap-history/phases-224.md)) |
-| 225 | The options window: sound, graphics and game settings | Open |
+| 225 | The options window: sound, graphics and game settings | Done |
 | 226 | Several characters per player: a new one starts from scratch, chosen in the main menu | Open |
 
 ### Arc: one character across worlds (Phases 227–231)
@@ -251,11 +250,18 @@ admin-only tools). They get one window, reachable from the main menu and the Esc
 - Saved to the existing user settings file and applied at once. Language follows the CLAUDE.md
   order: saved preference, then OS locale, then `en`.
 
+**Status (2026-11-13): done.** `src/core/game_settings.gd` (spec, validation, save under `options` in
+`user://settings.json`, apply) and `src/ui/options_window.gd` (Sound / Graphics / Game tabs), opened from the
+main menu and the Esc menu. View distance sets `nihon/graphics/lod_rings`, terrain quality sets
+`nihon/graphics/terrain_quality`; render scale and FSR 2 set the root viewport's `scaling_3d_*`; the Music and
+Effects buses are created on first use. Only saved options are applied at boot, so a fresh install keeps the
+engine's own window and scale. Phase 247's ground-cover option waits for that phase (it adds a `SPEC` entry).
+
 **Acceptance criteria**
-- A suite test changes each setting, saves, reloads the settings in a fresh object and reads back the
+- [x] A suite test changes each setting, saves, reloads the settings in a fresh object and reads back the
   same values, and asserts the change was applied (bus volume, `TranslationServer` locale, tutorial
-  flag).
-- A suite test asserts every options label is a key in both `en` and `pt_BR`.
+  flag). (`options_tests.gd`)
+- [x] A suite test asserts every options label is a key in both `en` and `pt_BR`.
 
 ## Phase 226 — Several characters per player
 

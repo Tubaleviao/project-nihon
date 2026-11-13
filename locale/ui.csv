@@ -769,7 +769,6 @@ menu.version,Version {0},Versão {0}
 menu.play,Play,Jogar
 menu.join,Join server,Entrar em servidor
 menu.options,Options,Opções
-menu.options_soon,Options arrive in a later update.,As opções chegam em uma próxima atualização.
 menu.quit,Quit,Sair
 menu.back,Back,Voltar
 menu.cancel,Cancel,Cancelar
@@ -805,3 +804,24 @@ pause.resume,Resume,Continuar
 pause.options,Options,Opções
 pause.exit_menu,Exit to main menu,Sair para o menu principal
 pause.quit,Quit game,Sair do jogo
+options.tab.sound,Sound,Som
+options.tab.graphics,Graphics,Gráficos
+options.tab.game,Game,Jogo
+options.volume_master,Master volume,Volume geral
+options.volume_music,Music volume,Volume da música
+options.volume_effects,Effects volume,Volume dos efeitos
+options.window_mode,Window mode,Modo de janela
+options.resolution,Resolution,Resolução
+options.vsync,VSync,Sincronização vertical
+options.view_distance,View distance,Distância de visão
+options.fps_cap,FPS cap (0 = none),Limite de FPS (0 = sem limite)
+options.render_scale,Render scale,Escala de renderização
+options.scale_mode,Upscaling (native, bilinear, FSR 2),Ampliação (nativo, bilinear, FSR 2)
+options.terrain_quality,Terrain quality,Qualidade do terreno
+options.tutorial,Tutorial,Tutorial
+options.mouse_sensitivity,Mouse sensitivity,Sensibilidade do mouse
+options.invert_y,Invert vertical look,Inverter o olhar vertical
+options.language,Language,Idioma
+options.tutorial_reset,Reset tutorial,Reiniciar o tutorial
+options.close,Close,Fechar
+options.mouse_button,Mouse,Mouse

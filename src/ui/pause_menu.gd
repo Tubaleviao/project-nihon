@@ -7,6 +7,7 @@ extends Control
 ## the tree: on a listen host the world keeps running for the players connected to it.
 
 const I18n := preload("res://src/core/i18n.gd")
+const OptionsWindow := preload("res://src/ui/options_window.gd")
 
 signal resume_requested
 signal options_requested
@@ -18,6 +19,7 @@ var _texts: Array = []
 var _title: Label = null
 var _options_button: Button = null
 var _resume_button: Button = null
+var _options: Control = null   # Phase 225 — the options window, built on first use
 
 func _init() -> void:
 	name = "PauseMenu"
@@ -43,8 +45,7 @@ func _init() -> void:
 	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(_title)
 	_resume_button = _button(box, "pause.resume", resume_requested.emit)
-	_options_button = _button(box, "pause.options", options_requested.emit)
-	_options_button.disabled = true   # Phase 225 brings the options window
+	_options_button = _button(box, "pause.options", _open_options)
 	_button(box, "pause.exit_menu", exit_requested.emit)
 	_button(box, "pause.quit", quit_requested.emit)
 	relocalize()
@@ -71,7 +72,16 @@ func relocalize() -> void:
 	_title.text = I18n.t("pause.title")
 	for e in _texts:
 		(e["button"] as Button).text = I18n.t(str(e["key"]))
-	_options_button.tooltip_text = I18n.t("menu.options_soon")
+
+func _open_options() -> void:
+	if _options == null:
+		_options = OptionsWindow.new()
+		add_child(_options)
+	_options.open()
+	options_requested.emit()
+
+func options_window() -> Control:
+	return _options
 
 func is_open() -> bool:
 	return visible
@@ -82,6 +92,8 @@ func open() -> void:
 
 func close() -> void:
 	visible = false
+	if _options != null:
+		_options.close()
 
 func options_enabled() -> bool:
 	return not _options_button.disabled

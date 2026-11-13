@@ -45,7 +45,7 @@ func _test_no_args_boot_shows_menu() -> void:
 	assert_true(menu != null and menu.is_inside_tree(), "the main menu is shown")
 	if menu != null:
 		assert_eq(menu.page(), MainMenu.PAGE_HOME, "it opens on the home page")
-		assert_true(not menu.options_enabled(), "Options is greyed until Phase 225")
+		assert_true(menu.options_enabled(), "Options opens the options window (Phase 225)")
 	assert_true(root._terrain == null and root._chunk_manager == null and root._persistence == null and root._player == null,
 		"no world slice is built")
 	assert_eq(root.get_child_count(), 1, "the menu is the root's only child")

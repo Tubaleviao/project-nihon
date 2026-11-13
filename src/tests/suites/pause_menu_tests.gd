@@ -154,7 +154,7 @@ func _test_buttons() -> void:
 	GameBus.quit_game_requested.connect(on_quit)
 	ui.open_pause_menu()
 	var m: PauseMenu = ui.pause_menu
-	assert_false(m.options_enabled(), "Options is greyed until Phase 225")
+	assert_true(m.options_enabled(), "Options opens the options window (Phase 225)")
 	m.button("resume").pressed.emit()
 	assert_false(ui.is_pause_menu_open(), "Resume closes the menu")
 	ui.open_pause_menu()
@@ -274,6 +274,6 @@ func _test_menu_join_arg() -> void:
 
 func _test_catalog() -> void:
 	var cats: Dictionary = I18n.parse_csv("res://locale/ui.csv")["catalog"]
-	for key in ["pause.title", "pause.resume", "pause.options", "pause.exit_menu", "pause.quit", "menu.options_soon"]:
+	for key in ["pause.title", "pause.resume", "pause.options", "pause.exit_menu", "pause.quit"]:
 		for loc in ["en", "pt_BR"]:
 			assert_true(cats.has(loc) and str((cats[loc] as Dictionary).get(key, "")) != "", "%s has %s" % [loc, key])
