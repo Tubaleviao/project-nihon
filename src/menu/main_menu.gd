@@ -14,6 +14,7 @@ extends CanvasLayer
 signal start_requested(choice: Dictionary)
 
 const I18n := preload("res://src/core/i18n.gd")
+const OptionsWindow := preload("res://src/ui/options_window.gd")
 const LocalWorlds := preload("res://src/menu/local_worlds.gd")
 const RecentServers := preload("res://src/menu/recent_servers.gd")
 const PersistenceSlice := preload("res://src/persistence/persistence_slice.gd")
@@ -44,6 +45,7 @@ var _friend_edit: LineEdit = null
 var _join_error: Label = null
 var _recent_list: VBoxContainer = null
 var _options_button: Button = null
+var _options_window: Control = null   # Phase 225 — built on first use
 var _version_label: Label = null
 
 ## Phase 255 — the game's version (`application/config/version` in project.godot), "" when unset.
@@ -227,6 +229,15 @@ func _button(parent: Control, key: String, cb: Callable) -> Button:
 	parent.add_child(b)
 	return b
 
+func _open_options() -> void:
+	if _options_window == null:
+		_options_window = OptionsWindow.new()
+		add_child(_options_window)
+	_options_window.open()
+
+func options_window() -> Control:
+	return _options_window
+
 func _page_box(parent: Control, page_name: String) -> VBoxContainer:
 	var box := VBoxContainer.new()
 	box.name = "Page_" + page_name
@@ -254,9 +265,7 @@ func _build_home(parent: Control) -> Control:
 	_notice.visible = false
 	_button(box, "menu.play", func() -> void: show_page(PAGE_PLAY))
 	_button(box, "menu.join", func() -> void: show_page(PAGE_JOIN))
-	_options_button = _button(box, "menu.options", func() -> void: pass)
-	_options_button.disabled = true   # Phase 225 brings the options window
-	_options_button.tooltip_text = I18n.t("menu.options_soon")
+	_options_button = _button(box, "menu.options", _open_options)
 	_button(box, "menu.quit", _quit)
 	return box
 

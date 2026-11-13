@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–224, 238–243, 248, 249 and 252–254 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–225, 238–243, 248, 249 and 252–254 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -47,22 +47,21 @@ others are not in it.
 | 7 | 265 | One body everywhere: the creation screen, the Character window and the world draw the same avatar |
 | 8 | 266 | A chibi character worth looking at: the art direction and the player rig |
 | 9 | 255 | The first release: `v0.1.0` from the release workflow |
-| 10 | 225 | The options window |
-| 11 | 244 | A chunk cache on disk |
-| 12 | 256 | A binary wire format for the hot packets |
-| 13 | 250 | The server's ceiling: one machine serving, another running the bots |
-| 14 | 237 | Flight that handles like flight |
-| 15 | 251 | A human playtest: what would make the game fun (a standing checkpoint) |
-| 16 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
-| 17 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
-| 18 | 226 | Several characters per player |
-| 19 | 229 | Skills capped by the gear |
-| 20 | 247 | Ground cover: grass and bushes by biome |
-| 21 | 235 | Roads |
-| 22 | 234 | Boats |
-| 23 | 257 | Split files named by what they do |
-| 24 | 258 | The public wiki and the community channels |
-| 25 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
+| 10 | 244 | A chunk cache on disk |
+| 11 | 256 | A binary wire format for the hot packets |
+| 12 | 250 | The server's ceiling: one machine serving, another running the bots |
+| 13 | 237 | Flight that handles like flight |
+| 14 | 251 | A human playtest: what would make the game fun (a standing checkpoint) |
+| 15 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
+| 16 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
+| 17 | 226 | Several characters per player |
+| 18 | 229 | Skills capped by the gear |
+| 19 | 247 | Ground cover: grass and bushes by biome |
+| 20 | 235 | Roads |
+| 21 | 234 | Boats |
+| 22 | 257 | Split files named by what they do |
+| 23 | 258 | The public wiki and the community channels |
+| 24 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
 
 Order notes that differ from the arcs' own order:
 
@@ -109,7 +108,7 @@ because the menus reuse the keyboard routing Phase 219 fixes.
 | 222 | The Character window fits: fewer rows, the friend code moves to the map | Done ([phases-222.md](docs/roadmap-history/phases-222.md)) |
 | 223 | A main menu: play a local world or join a server | Done ([phases-223.md](docs/roadmap-history/phases-223.md)) |
 | 224 | The Esc menu: resume, options, exit to main menu, quit | Done ([phases-224.md](docs/roadmap-history/phases-224.md)) |
-| 225 | The options window: sound, graphics and game settings | Open |
+| 225 | The options window: sound, graphics and game settings | Done |
 | 226 | Several characters per player: a new one starts from scratch, chosen in the main menu | Open |
 
 ### Arc: one character across worlds (Phases 227–231)
@@ -299,11 +298,18 @@ admin-only tools). They get one window, reachable from the main menu and the Esc
 - Saved to the existing user settings file and applied at once. Language follows the CLAUDE.md
   order: saved preference, then OS locale, then `en`.
 
+**Status (2026-11-13): done.** `src/core/game_settings.gd` (spec, validation, save under `options` in
+`user://settings.json`, apply) and `src/ui/options_window.gd` (Sound / Graphics / Game tabs), opened from the
+main menu and the Esc menu. View distance sets `nihon/graphics/lod_rings`, terrain quality sets
+`nihon/graphics/terrain_quality`; render scale and FSR 2 set the root viewport's `scaling_3d_*`; the Music and
+Effects buses are created on first use. Only saved options are applied at boot, so a fresh install keeps the
+engine's own window and scale. Phase 247's ground-cover option waits for that phase (it adds a `SPEC` entry).
+
 **Acceptance criteria**
-- A suite test changes each setting, saves, reloads the settings in a fresh object and reads back the
+- [x] A suite test changes each setting, saves, reloads the settings in a fresh object and reads back the
   same values, and asserts the change was applied (bus volume, `TranslationServer` locale, tutorial
-  flag).
-- A suite test asserts every options label is a key in both `en` and `pt_BR`.
+  flag). (`options_tests.gd`)
+- [x] A suite test asserts every options label is a key in both `en` and `pt_BR`.
 
 ## Phase 226 — Several characters per player
 

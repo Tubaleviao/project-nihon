@@ -274,7 +274,7 @@ func _ready() -> void:
 	_boot_wiring.parse_network_args()
 	if _boot_wiring.start_stress_bots():
 		return   # Phase 162 — a crowd of stress bots, not a game
-	# Phase 131 — saved language, else the OS locale, else English.
+	# Phase 131 — saved language, else the OS locale, else English. (Phase 225 options: menu path only.)
 	LocaleSettings.apply_startup()
 	# Phase 42 review pass 3 — and whether this boot quits itself once its world is up
 	# (`--quit-after-boot`; see QUIT_AFTER_BOOT_ARG).

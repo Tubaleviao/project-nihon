@@ -10,6 +10,7 @@ extends Node
 ##   get_position()   -> Vector3
 ##   get_hp()         -> float
 ##   take_damage(dmg) -> void
+const GameSettings := preload("res://src/core/game_settings.gd")
 const WindowShortcuts := preload("res://src/ui/window_shortcuts.gd")
 const TextFocus := preload("res://src/ui/text_focus.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
@@ -447,14 +448,12 @@ func _input(event: InputEvent) -> void:
 			return
 		if event is InputEventMouseMotion:
 			# Yaw (horizontal) — rotate the body pivot
-			_pivot.rotate_y(-event.relative.x * MOUSE_SENS)
-			look_degrees += rad_to_deg(absf(event.relative.x) * MOUSE_SENS)
+			var sens := MOUSE_SENS * GameSettings.look_scale()   # Phase 225 — the options' sensitivity
+			_pivot.rotate_y(-event.relative.x * sens)
+			look_degrees += rad_to_deg(absf(event.relative.x) * sens)
 			# Pitch (vertical) — rotate only the camera arm
 			var cam_arm: Node3D = _camera.get_parent()
-			cam_arm.rotation_degrees.x = clamp(
-				cam_arm.rotation_degrees.x - event.relative.y * rad_to_deg(MOUSE_SENS),
-				CAMERA_PITCH_MIN, CAMERA_PITCH_MAX
-			)
+			cam_arm.rotation_degrees.x = clamp(cam_arm.rotation_degrees.x - event.relative.y * rad_to_deg(sens) * GameSettings.look_y_sign(), CAMERA_PITCH_MIN, CAMERA_PITCH_MAX)
 		elif event is InputEventMouseButton and not event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
 			_end_look()
 
