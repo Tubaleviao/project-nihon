@@ -1684,6 +1684,15 @@ func _look_around() -> void:
 	release.pressed = false
 	Input.parse_input_event(release)
 
+## What can stop a jump, read when the bot presses Space (`PlayerSlice._move` / `jump_requested`).
+func _jump_state() -> Dictionary:
+	var p = _root._player
+	return {
+		"grounded": p.is_grounded(), "alive": p._alive, "flying": p.flying, "swimming": p._swimming_now(),
+		"keys_live": p.keys_live(), "frozen": p._world_input_frozen, "ground_hold": p.ground_hold,
+		"vel_y": snappedf(p.get_velocity().y, 0.01),
+	}
+
 func _step_tutorial() -> Array:
 	var wiring = _root._tutorial_wiring
 	if wiring.slice == null:
@@ -1698,14 +1707,24 @@ func _step_tutorial() -> Array:
 			if str(ev["kind"]) == "jumped":
 				return true
 		return false
-	for _try in 3:
-		await _until(func(): return _root._player.is_grounded(), 5.0)
+	# Wait for everything `_move` needs to start a jump, not just the floor: in CI's fallback run the player had
+	# died and respawned during the session, and a dead body (or one held for its ground after the respawn
+	# teleport) never runs `_move` although `is_on_floor()` still reads true.
+	var jump_ready := func() -> bool:
+		var s := _jump_state()
+		return s["grounded"] and s["alive"] and s["keys_live"] and not (s["flying"] or s["swimming"] or s["frozen"] or s["ground_hold"])
+	var jump_tries: Array = []
+	for _try in 5:
+		await _until(jump_ready, 10.0)
+		jump_tries.append(_jump_state())
 		_key(KEY_SPACE, true)
 		await _until(jumped, 0.3)
 		_key(KEY_SPACE, false)
 		if jumped.call():
 			break
 		await _until(func(): return false, 0.2)
+	if not jumped.call():
+		print("[Playtest] tutorial jump never started; player state at each press: %s" % [jump_tries])
 	_look_around()
 	await _until(func(): return false, 0.2)
 	var tech: String = await _unlock("TechBasicSmithing")
