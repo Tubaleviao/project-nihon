@@ -5,6 +5,8 @@ const RigTree := preload("res://src/character/rig_tree.gd")
 const DeathPush := preload("res://src/battle/death_push.gd")
 
 
+const Bot := preload("res://src/tests/playtest_bot.gd")
+
 func register() -> void:
 	_run_test("gestures: GameData lists every gesture with its clip and chat command", _test_p158_gesture_data)
 	_run_test("gestures: every gesture name key is in both catalogs", _test_p158_gesture_catalog)
@@ -14,6 +16,7 @@ func register() -> void:
 	_run_test("animation: the swing follows the main hand and mining uses the tool swing", _test_attack_variant_follows_hand)
 	_run_test("animation: the idle variant waits for its seeded delay and never plays while moving", _test_idle_variant)
 	_run_test("animation: every rig has idle, hit and an attack, and every clip is visible", _test_rig_clips_present_and_visible)
+	_run_test("animation: the walk clip's feet alternate lead within one cycle", _test_walk_clip_feet_alternate)
 	_run_test("animation: a rig missing a variant falls back to attack", _test_attack_fallback)
 	_run_test("animation: a killing blow does not queue a flinch on a player avatar", _test_kill_no_flinch)
 	_run_test("death: the attacker position needs a body and knows the local player's id", _test_death_attacker_pos_guards)
@@ -223,6 +226,46 @@ func _test_rig_clips_present_and_visible() -> void:
 		assert_true(pp.has_animation(clip), "the player rig has %s" % clip)
 	proot.free()
 
+
+## Phase 253 — the playtest walk step no longer fails on the gait, so the clip itself is pinned here: sampled
+## across one and a half cycles, the left and right feet each lead (along -Z, the rig's forward) at least once
+## and the lead changes hands at least twice.
+func _test_walk_clip_feet_alternate() -> void:
+	var proot := AssetOverlay.load_rig_scene("models/player_rig.glb.raw")
+	add_child(proot)
+	var pp := proot.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	var skel := proot.find_child("Skeleton3D", true, false) as Skeleton3D
+	assert_true(pp != null and skel != null and pp.has_animation("walk"), "the player rig has a skeleton and a walk clip")
+	if pp == null or skel == null or not pp.has_animation("walk"):
+		proot.queue_free()
+		return
+	var fl := skel.find_bone("Foot_L")
+	var fr := skel.find_bone("Foot_R")
+	assert_true(fl >= 0 and fr >= 0, "the rig has both foot bones")
+	if fl < 0 or fr < 0:
+		proot.queue_free()
+		return
+	var length := pp.get_animation("walk").length
+	pp.play("walk")
+	var steps := 30
+	var leader := 0
+	var switches := 0
+	var left_led := false
+	var right_led := false
+	for i in steps + 1:
+		pp.seek(1.5 * length * float(i) / float(steps), true)
+		var lead := skel.get_bone_global_pose(fr).origin.z - skel.get_bone_global_pose(fl).origin.z   # forward is -Z
+		if absf(lead) < Bot.WALK_FOOT_DEADBAND_M:
+			continue
+		var side := 1 if lead > 0.0 else -1
+		left_led = left_led or side > 0
+		right_led = right_led or side < 0
+		if leader != 0 and side != leader:
+			switches += 1
+		leader = side
+	assert_true(left_led and right_led, "both feet take the lead during the walk clip")
+	assert_true(switches >= 2, "the lead changes hands at least twice in 1.5 cycles (%d)" % switches)
+	proot.free()
 
 func _test_attack_fallback() -> void:
 	# The wolf has no `attack_1h`: the Attack node falls back to `attack`.

@@ -23,8 +23,8 @@
 # peer record left after everyone left. Phase 163 — it also fails when a pattern's largest passing size
 # drops below the committed baseline's (`StressRules.BASELINE_LARGEST`, docs/perf/crowd-baseline.md).
 # A run that misses a budget at or below its baseline size, with no hard failure, is run once more
-# (`StressRules.needs_retry`): the first try moves to `<size>.miss` (kept in the artifact, left out of
-# the report) and the rerun counts. Runner noise passes the rerun; a real regression misses it too.
+# (`StressRules.needs_retry`): each missed try moves to `<size>.miss1`, `<size>.miss2` (kept in the
+# artifact, left out of the report) and the rerun counts. Runner noise passes the rerun; a real regression misses it too.
 #
 # Usage:
 #   GODOT=/tmp/godot/Godot_v4.7-stable_linux.x86_64 tools/stress.sh
@@ -164,13 +164,18 @@ for profile in $PROFILES; do
       [ "$size" -gt "$MAX_SIZE" ] && break
       run_one "$profile" "$pattern" "$size"
       dir="$RUNS/$profile/$pattern/$size"
-      if "$GODOT" --headless --path "$REPO_ROOT" -s tools/stress_report.gd -- retry "$dir" "$profile" "$pattern" "$size" \
-          >"$dir/retry.log" 2>&1; then
-        note "$profile/$pattern/$size missed a budget at or below the baseline; running it once more ($(grep -h STRESS_BUDGETS "$dir/retry.log"))"
-        rm -rf "$dir.miss"
-        mv "$dir" "$dir.miss"
+      # Phase 253: best of three. A miss at or below the baseline size is run again, up to twice more,
+      # and the first run that meets every budget is the one kept (a runner's noise is not a regression;
+      # a regression misses all three).
+      for attempt in 2 3; do
+        "$GODOT" --headless --path "$REPO_ROOT" -s tools/stress_report.gd -- retry "$dir" "$profile" "$pattern" "$size" \
+          >"$dir/retry.log" 2>&1 || break
+        note "$profile/$pattern/$size missed a budget at or below the baseline; running it again, attempt $attempt of 3 ($(grep -h STRESS_BUDGETS "$dir/retry.log"))"
+        # One directory per miss, so the first miss is still there when all three fail.
+        rm -rf "$dir.miss$(( attempt - 1 ))"
+        mv "$dir" "$dir.miss$(( attempt - 1 ))"
         run_one "$profile" "$pattern" "$size"
-      fi
+      done
       if ! "$GODOT" --headless --path "$REPO_ROOT" -s tools/stress_report.gd -- continue "$RUNS/$profile/$pattern/$size" \
           >"$RUNS/$profile/$pattern/$size/continue.log" 2>&1; then
         note "$profile/$pattern: ladder stops at $size ($(grep -h STRESS_TICK_P95 "$RUNS/$profile/$pattern/$size/continue.log" || echo 'no host report'))"

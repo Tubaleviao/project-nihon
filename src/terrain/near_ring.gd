@@ -88,9 +88,14 @@ func bodies() -> Array:
 ## off the local body's own chunk and off every peer's ring (`NEAR_RADIUS`). A neighbour of the local body
 ## takes the rest in the same near-ring tick while the pump budget lasts (`_attach_near_collision`): all four
 ## at once overran the frame by ~6 ms on every walk across a chunk line.
+## Phase 253 — a headless host staggers every chunk: it has no body to keep collision near, and a smooth
+## chunk's four quadrants in one frame cost ~17-20 ms of Jolt mesh building, which set the stress run's
+## host tick p95. `_attach_server_collision` drains the parked quadrants.
 func staggers_collision(chunk: Vector2i) -> bool:
-	if not enabled or not cm.keeps_render():
+	if not enabled:
 		return false
+	if not cm.keeps_render():
+		return true
 	var near: Array = [[cm.player_chunk(), 0]]
 	for peer_id in cm._peer_centers:
 		near.append([cm._peer_centers[peer_id], NEAR_RADIUS])
@@ -242,6 +247,9 @@ func _attach_near_collision() -> void:
 		return
 	if voxel._parked_shapes.is_empty():
 		return
+	if not cm.keeps_render():
+		_attach_server_collision(voxel)
+		return
 	var near := bodies()
 	var scan := [near, voxel._build.parked_rev]
 	if scan == _idle_scan:
@@ -267,6 +275,17 @@ func _attach_near_collision() -> void:
 			cm._pump_steps += 1
 			if d[0] > NEAR_RADIUS:
 				break
+		if cm._pump_exhausted():
+			return
+
+## Phase 253 — a headless host's parked quadrants (`staggers_collision`), oldest chunk first, one a pump
+## step until the budget is spent: one always goes, so the backlog drains a quadrant a frame at least.
+func _attach_server_collision(voxel: Node) -> void:
+	for c in voxel._build.parked_chunks():
+		while not cm._pump_exhausted():
+			if not voxel.attach_parked_collision(c, false):
+				break
+			cm._pump_steps += 1
 		if cm._pump_exhausted():
 			return
 

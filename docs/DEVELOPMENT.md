@@ -113,6 +113,18 @@ empties the host's memory of the old ground and tells every client to drop its c
 
 `main` is the stable branch. All work goes through pull requests; direct pushes to `main` are not permitted except for generated artifact updates (`bible/`, `wiki/`, `godot/`).
 
+## Flaky gates
+
+A gate that fails three times on `main` with no code change that explains it is demoted to report-only
+the same day (its numbers still go in the report), and an issue is opened to make it decisive again.
+A gate that is red half the time stops meaning anything. `tools/check_gate_health.sh` prints the
+failure count per job over the last 40 `main` runs of `ci.yml`; the scheduled `Gate health` workflow
+runs it daily and fails when any job is over 10%.
+
+The playtest `walk` step is the worked example (Phase 253): its distance, ground and state checks are
+decisive, its gait numbers are report-only, and the clip itself is pinned by a suite test
+(`animation: the walk clip's feet alternate lead within one cycle`).
+
 ## Design decisions
 
 Major design decisions follow the community governance process described in the `CommunityOwnsTheFuture` constitution principle. Proposals are tracked as fabric entities in `fabric/constitution/decisions.js` with a state machine (`proposed → accepted → superseded`). Significant decisions must be ratified by contributor consensus before implementation begins.

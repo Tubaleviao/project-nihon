@@ -13,6 +13,7 @@ func register() -> void:
 	_run_test("playtest: report percentiles and hitch counts", _test_playtest_report_percentiles_and_hitches)
 	_run_test("playtest: p95 process budget gate", _test_playtest_budget_gate)
 	_run_test("playtest: step failure, hard frame and missing step fail the run", _test_playtest_report_verdicts)
+	_run_test("playtest: the walk verdict fails on distance only, the gait is reported", _test_playtest_walk_verdict)
 	_run_test("playtest: --playtest-bot is parsed", _test_playtest_bot_arg)
 	_run_test("playtest: the world seed is pinned unless --playtest-seed names one", _test_playtest_seed_arg)
 	_run_test("playtest: the bot mutates no slice directly", _test_playtest_bot_uses_intents)
@@ -91,6 +92,25 @@ func _test_runner_source_size_audit() -> void:
 # Phase 134 — the playtest bot's report maths.
 const Bot := preload("res://src/tests/playtest_bot.gd")
 const ProcessProfiler := preload("res://src/tests/process_profiler.gd")
+
+func _test_playtest_walk_verdict() -> void:
+	# 20 frames walking along +X with the left foot always ahead: zero lead switches.
+	var stuck: Array = []
+	for i in 20:
+		stuck.append([float(i) * 0.1, Vector3(0.3, 0, 0), Vector3(-0.3, 0, 0), Vector3(float(i) * 0.1, 0, 0)])
+	var v: Dictionary = Bot.walk_verdict(6.0, stuck, Vector2(6.0, 0.0))
+	assert_true(v["ok"], "distance met, zero lead switches: the step still passes")
+	assert_eq(int(v["gait"]["switches"]), 0, "the report carries the switch count")
+	assert_eq(int(v["gait"]["frames"]), 20, "the report carries the frame count")
+	assert_true(float(v["gait"]["left_ahead_pct"]) > 99.0, "the report carries the left-ahead share")
+	assert_true(str(v["gait_note"]).contains("0 lead switches"), "the note names the gait numbers")
+	var alternating: Array = []
+	for i in 20:
+		var s := 0.3 if (i / 5) % 2 == 0 else -0.3
+		alternating.append([float(i) * 0.1, Vector3(s, 0, 0), Vector3(-s, 0, 0), Vector3.ZERO])
+	var w: Dictionary = Bot.walk_verdict(6.0, alternating, Vector2(6.0, 0.0))
+	assert_true(w["ok"] and int(w["gait"]["switches"]) >= 2, "an alternating gait passes with its switches counted")
+	assert_false(Bot.walk_verdict(0.5, stuck, Vector2(0.5, 0.0))["ok"], "a body that did not move fails the step")
 
 func _test_playtest_report_percentiles_and_hitches() -> void:
 	var frames: Array = []

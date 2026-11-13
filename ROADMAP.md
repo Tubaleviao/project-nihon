@@ -715,6 +715,12 @@ anything, and this roadmap's whole method is that gates are the acceptance crite
   GitHub API and prints the failure count per job; CI runs it on a schedule and fails the scheduled
   run when any job is over 10%, so the trend is visible before it is normal.
 
+**Status (2026-11-12):** the gait is report-only, the clip and verdict tests, `tools/check_gate_health.sh`, the
+scheduled `Gate health` workflow, the flake rule and the best-of-three stress rerun are in. The stress
+regression was real: the dedicated server attached a smooth chunk's four collision quadrants in one frame
+(~17–20 ms of Jolt mesh building); it now staggers them like a client (`NearRing._attach_server_collision`),
+cause and numbers in `docs/perf/crowd-baseline.md`. Open: five green stress runs on `main` after the merge.
+
 **Acceptance criteria**
 - A suite test on the walk step's verdict: a sample set with zero lead switches but the distance and
   states met passes, and the report carries the gait numbers.

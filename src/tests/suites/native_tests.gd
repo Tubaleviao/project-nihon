@@ -36,6 +36,7 @@ func register() -> void:
 	_run_test("native: the build breakdown decides on the heightmap share",                         _test_native_build_breakdown)
 	_run_test("native: the release workflow is tag-triggered and builds three platforms",           _test_native_release_workflow)
 	_run_test("native: CI flies the flight step on a release export",                              _test_native_release_flight_wired)
+	_run_test("native: the gate-health script, its scheduled workflow and the flake rule exist",    _test_gate_health_wired)
 
 ## Phase 248 — a stand-in native class for the loader tests: any object with `version()` and `functions()`.
 class FakeNative extends RefCounted:
@@ -456,6 +457,17 @@ func _test_native_release_workflow() -> void:
 	for p in ["linux", "windows", "macos"]:
 		assert_true(text.contains("name: " + p), "the release builds the %s binary" % p)
 	assert_true(text.contains("gh release create"), "the release workflow creates the GitHub Release")
+
+## Phase 253 — the gate-health script and its scheduled workflow exist, and the flake rule is written down.
+func _test_gate_health_wired() -> void:
+	var wf := FileAccess.open("res://.github/workflows/gate-health.yml", FileAccess.READ)
+	if wf == null:
+		return   # an export does not carry .github
+	var text := wf.get_as_text()
+	assert_true(text.contains("schedule:") and text.contains("tools/check_gate_health.sh"), "a scheduled workflow runs the gate-health script")
+	assert_true(FileAccess.file_exists("res://tools/check_gate_health.sh"), "tools/check_gate_health.sh exists")
+	var dev := FileAccess.get_file_as_string("res://docs/DEVELOPMENT.md")
+	assert_true(dev.contains("fails three times on `main`"), "docs/DEVELOPMENT.md states the flake rule")
 
 ## Phase 248 — a CI job exports a release build with the release library and plays the `flight` step on it,
 ## report only, and the baseline doc carries a release column.
