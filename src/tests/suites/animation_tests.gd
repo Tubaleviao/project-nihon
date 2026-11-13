@@ -242,6 +242,9 @@ func _test_walk_clip_feet_alternate() -> void:
 	var fl := skel.find_bone("Foot_L")
 	var fr := skel.find_bone("Foot_R")
 	assert_true(fl >= 0 and fr >= 0, "the rig has both foot bones")
+	if fl < 0 or fr < 0:
+		proot.queue_free()
+		return
 	var length := pp.get_animation("walk").length
 	pp.play("walk")
 	var steps := 30
