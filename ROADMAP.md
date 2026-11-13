@@ -707,8 +707,9 @@ by a player.
 
 **Status (2026-11-13):** the version (`0.1.0`) and its menu label, `CHANGELOG.md` with `tools/check_changelog.sh` in
 the `fabric` job, the release checklist, the README download line and the release workflow's dry run (manual or
-on a PR touching it, with `create`, `walk` and `mine` played on the Linux export via `--playtest-only
-create,walk,mine`) are in. Open: tag `v0.1.0` on the merge commit and check the release's assets.
+on a PR touching anything a release depends on, with `create`, `walk` and `mine` played on the Linux export
+through `tools/run_export_playtest.sh`, shared with CI's release-flight job) are in. Only the tag-only publish
+job has a write token; the tag check runs before the native builds. Open: tag `v0.1.0` on the merge commit and check the release's assets.
 
 **Acceptance criteria**
 - A suite test reads `application/config/version` and asserts it parses as `major.minor.patch`.

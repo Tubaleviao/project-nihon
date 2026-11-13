@@ -50,13 +50,14 @@ var _version_label: Label = null
 static func game_version() -> String:
 	return str(ProjectSettings.get_setting("application/config/version", ""))
 
-## Phase 255 — true when `v` is `major.minor.patch`, three non-negative integers without leading zeros.
-static func is_semver(v: String) -> bool:
-	return RegEx.create_from_string("^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$").search(v) != null
-
-## Phase 255 — the corner label's text: the version through the catalog (a release report names it).
+## Phase 255 — the corner label's text: the version through the catalog (a release report names it), ""
+## when the label is hidden (no `application/config/version`, e.g. a fork that never set one).
 func version_text() -> String:
-	return _version_label.text if _version_label != null else ""
+	return _version_label.text if _version_label != null and _version_label.visible else ""
+
+## Phase 255 — the corner label's text for `version`: "" (label hidden) when there is no version.
+static func version_label_text(version: String) -> String:
+	return I18n.t("menu.version", [version]) if version != "" else ""
 
 ## Validate a Join form. Returns {ok: true, mode: "join", address, friend} or {ok: false, error: <key>}.
 static func join_choice(raw_address: String, raw_friend: String) -> Dictionary:
@@ -210,7 +211,8 @@ func _build() -> void:
 	# Phase 255 — the version in the bottom-right corner, so a tester's screenshot says which build it was.
 	_version_label = Label.new()
 	_version_label.name = "VersionLabel"
-	_version_label.text = I18n.t("menu.version", [game_version()])
+	_version_label.text = version_label_text(game_version())
+	_version_label.visible = _version_label.text != ""
 	_version_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_version_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, 12)
 	_version_label.grow_horizontal = Control.GROW_DIRECTION_BEGIN

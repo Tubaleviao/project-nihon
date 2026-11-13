@@ -459,11 +459,23 @@ func _test_native_release_workflow() -> void:
 	assert_true(text.contains("gh release create"), "the release workflow creates the GitHub Release")
 	# Phase 255 — a dry run (manual, or a PR touching the workflow) that never publishes, and the bot on the export.
 	assert_true(text.contains("workflow_dispatch:") and text.contains("pull_request:"), "the release workflow has a dry run")
-	assert_true(text.contains("if: env.PUBLISH == 'true'") and text.contains("PUBLISH: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}"),
-		"only a pushed v* tag publishes")
+	# Only the publish job writes, and only on a pushed v* tag; pull requests run with a read-only token.
+	var top := text.substr(0, text.find("\njobs:"))
+	assert_true(top.contains("permissions:\n  contents: read"), "the workflow's token is read-only by default")
+	var pub_at := text.find("\n  publish:")
+	assert_true(pub_at >= 0, "a separate publish job creates the release")
+	var pub := text.substr(pub_at)
+	assert_true(pub.contains("if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')"), "only a pushed v* tag publishes")
+	assert_true(pub.contains("contents: write") and pub.contains("gh release create"), "the publish job alone has write access")
+	assert_eq(text.count("contents: write"), 1, "no other job asks for write access")
+	assert_true(pub.contains("tools/check_changelog.sh --notes"), "the notes use the changelog check's heading rule")
+	# A wrong tag fails in the version job, before the native matrix.
+	assert_true(text.contains("needs: version") and text.contains("tools/check_changelog.sh --print-version"), "the tag check runs first, through the changelog script")
+	# The dry run runs on PRs touching what a release depends on.
+	for path in ["project.godot", "CHANGELOG.md", "tools/check_changelog.sh", "tools/run_export_playtest.sh", "src/tests/playtest_bot.gd", "native/**"]:
+		assert_true(text.contains("      - " + path + "\n"), "a PR touching %s runs the dry run" % path)
 	assert_true(text.contains("--export-release \"Linux Playtest\""), "the dry run exports the Linux preset with the playtest tag")
-	assert_true(text.contains("--playtest-bot --playtest-no-budget --playtest-only create,walk,mine"), "and plays create, walk and mine on it")
-	assert_true(text.contains("tools/check_changelog.sh"), "the release checks the version has a changelog entry")
+	assert_true(text.contains("tools/run_export_playtest.sh build/playtest/nihon.x86_64 create,walk,mine"), "and plays create, walk and mine on it")
 
 ## Phase 253 — the gate-health script and its scheduled workflow exist, and the flake rule is written down.
 func _test_gate_health_wired() -> void:
@@ -491,9 +503,11 @@ func _test_native_release_flight_wired() -> void:
 	var job := live.substr(at, live.find("\n  build:", at) - at)
 	assert_true(job.contains("--export-release \"Linux Playtest\""), "the job exports the Linux Playtest preset as a release build")
 	assert_true(job.contains("libnihon_native.linux.template_release.x86_64.so"), "the export carries the release library")
-	assert_true(job.contains("--playtest-bot --playtest-no-budget --playtest-only flight"), "the job plays only the flight step, report only")
-	assert_true(job.contains("chunk builder: native"), "the job checks the release library loaded")
-	assert_true(job.contains("tools/flight_report.py playtest/report.json"), "the job writes the flight numbers to the summary")
+	assert_true(job.contains("tools/run_export_playtest.sh --report-only build/release/nihon.x86_64 flight"), "the job plays only the flight step, report only")
+	var runner := FileAccess.get_file_as_string("res://tools/run_export_playtest.sh")
+	assert_true(runner.contains("--playtest-bot --playtest-no-budget --playtest-only"), "the shared runner plays the bot with no frame budget")
+	assert_true(runner.contains("chunk builder: native"), "the shared runner checks the release library loaded")
+	assert_true(job.contains("tools/flight_report.py build/release/playtest/report.json"), "the job writes the flight numbers to the summary")
 	assert_true(FileAccess.file_exists("res://tools/flight_report.py"), "the flight report script is in the tree")
 	var presets := ConfigFile.new()
 	assert_eq(presets.load("res://export_presets.cfg"), OK, "export_presets.cfg parses")

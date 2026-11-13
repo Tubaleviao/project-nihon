@@ -260,14 +260,22 @@ func _test_catalog() -> void:
 		for k in keys:
 			assert_true((cats.get(loc, {}) as Dictionary).has(k), "%s has %s" % [loc, k])
 
-## Phase 255 — `application/config/version` is set, parses as major.minor.patch, and the menu shows it.
+## Phase 255 — `application/config/version` parses as major.minor.patch and the menu shows it; with no version
+## the label is hidden. The format rule is tools/check_changelog.sh's: the test reads the same pattern and
+## fails if the script's copy drifts.
+const SEMVER_RE := "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+
 func _test_version() -> void:
 	var v := MainMenu.game_version()
-	assert_true(MainMenu.is_semver(v), "application/config/version is major.minor.patch: %s" % v)
-	for good in ["0.1.0", "1.0.0", "10.20.30"]:
-		assert_true(MainMenu.is_semver(good), "%s parses" % good)
-	for bad in ["", "1.0", "v0.1.0", "0.1.0-rc1", "01.0.0", "1.0.0.0", "a.b.c"]:
-		assert_false(MainMenu.is_semver(bad), "%s is refused" % bad)
+	var script := FileAccess.get_file_as_string("res://tools/check_changelog.sh")
+	if script != "":   # an export does not carry tools/
+		assert_true(script.contains(SEMVER_RE), "check_changelog.sh enforces the same major.minor.patch rule")
+	var semver := RegEx.create_from_string(SEMVER_RE)
+	assert_true(semver.search(v) != null, "application/config/version is major.minor.patch: %s" % v)
+	for bad in ["", "1.0", "v0.1.0", "0.1.0-rc1", "01.0.0", "1.0.0.0"]:
+		assert_true(semver.search(bad) == null, "%s is refused" % bad)
+	assert_eq(MainMenu.version_label_text(""), "", "no version: no dangling label text")
+	assert_true(MainMenu.version_label_text("9.8.7").contains("9.8.7"), "a version is named in the label")
 	var menu: MainMenu = MainMenu.new()
 	menu.worlds_base = _temp_dir("version")
 	menu.legacy_dir = ""

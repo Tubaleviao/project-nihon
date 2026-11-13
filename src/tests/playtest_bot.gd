@@ -628,8 +628,10 @@ func run(root: Node) -> void:
 	_root = root
 	# Phase 194 (#512) — an unknown `--playtest-only` name is a mistake, not a request for every step.
 	var only := only_from_args(Array(OS.get_cmdline_user_args()))
-	if only != "" and (not unknown_steps(only).is_empty() or only_names(only).is_empty()):
-		print("[Playtest] FAILURE: --playtest-only names no step: %s (steps: %s)" % [only, ", ".join(all_step_names())])
+	var unknown := unknown_steps(only)
+	if only != "" and (not unknown.is_empty() or only_names(only).is_empty()):
+		var what := ("unknown step(s): %s" % ", ".join(unknown)) if not unknown.is_empty() else ("names no step: %s" % only)
+		print("[Playtest] FAILURE: --playtest-only %s (steps: %s)" % [what, ", ".join(all_step_names())])
 		print("[Playtest] FAIL")
 		get_tree().quit(1)
 		return
