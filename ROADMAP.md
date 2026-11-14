@@ -259,7 +259,7 @@ Filed by the owner on 2026-11-13 from a Phase 251 playtest session, as top prior
 is handed a tunic and a carpenter's axe (Phase 180, Phase 184) and spawns wherever the per-player
 spawn search lands (Phase 53, `spawn_finder.gd`), among whatever creatures live there. Mining and
 chopping are one click each with no wait (`voxel_edit.gd` `mine_block`, `tree_slice.gd`
-`chop_tree`); a tree refuses bare hands (`axe_required`), and the first pick needs a carpentry bench
+`chop_tree`); a tree takes bare hands, slowly, and the first pick needs a carpentry bench
 and a forge (the tutorial's `first_stations` and `first_tools` chapters). A dig reaches the screen
 only after the host applies it and the chunk is re-meshed on a worker. Dropping from the inventory
 drops one unit, or the whole stack with Shift (`ui_slice.gd` `finish_world_drop`). The world avatar

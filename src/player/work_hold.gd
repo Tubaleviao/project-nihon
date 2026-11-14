@@ -60,10 +60,15 @@ func release() -> void:
 func tick(delta: float, aimed_tree: String, aimed_block: Dictionary) -> void:
 	if not _held:
 		return
-	# The next target is of the kind being worked: a tree while chopping, the aimed face while mining.
-	var aimed: Dictionary = aimed_block
-	if _kind == "tree":
-		aimed = { "kind": "tree", "tree_id": aimed_tree } if aimed_tree != "" else {}
+	# Working a target: the aim of its kind. Between targets: a tree, else the aimed face (a Shift hold keeps mining).
+	var tree_aim: Dictionary = { "kind": "tree", "tree_id": aimed_tree } if aimed_tree != "" else {}
+	var aimed: Dictionary
+	if not _target.is_empty():
+		aimed = tree_aim if _kind == "tree" else aimed_block
+	elif _kind == "block":
+		aimed = aimed_block
+	else:
+		aimed = tree_aim if not tree_aim.is_empty() else aimed_block
 	if _target.is_empty():
 		if not aimed.is_empty() and not _gave_up:
 			_begin(aimed)
@@ -103,8 +108,11 @@ func _begin(target: Dictionary) -> void:
 	GameBus.work_start_requested.emit(str(target["kind"]), str(target.get("tree_id", "")), target.get("position", Vector3.ZERO),
 		target.get("normal", Vector3.UP), target.get("exact", {}), "")
 
-func _on_started(_key: String, duration: float, action: String, material: String) -> void:
+func _on_started(key: String, duration: float, action: String, material: String) -> void:
 	if _target.is_empty() or _started:
+		return
+	# An answer for a target we have left (retarget while it was in flight) is stale.
+	if _target["kind"] == "tree" and key != "tree:" + str(_target["tree_id"]):
 		return
 	_started = true
 	_duration = duration

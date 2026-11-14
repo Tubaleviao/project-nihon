@@ -827,16 +827,19 @@ func forward_writing_intent(action: String, item_id: String, _player_id: String)
 
 # ---------------------------------------------------------------------------
 # Phase 259 — timed work. The host starts a session with the duration it computed itself and accepts the
-# chop / mine only once that time has passed. Unwired (no WorkHost) the old one-click path stands.
+# chop / mine only once that time has passed. Without a WorkHost a remote chop / mine is refused.
 # ---------------------------------------------------------------------------
 
 func _work_host() -> Variant:
 	return sl.get_meta("work_host") if sl.has_meta("work_host") else null
 
-## A completion claim: true when no WorkHost is wired, or the sender's own session on this target has run out.
+## A completion claim: true only when the sender's own session on this target has run out. No WorkHost wired
+## refuses (fails closed); `WorkHost.enforce = false` is a test-only switch.
 func _work_claimed(sender: int, kind: String, tree_id: String, pos: Vector3, normal: Vector3, exact: Dictionary) -> bool:
 	var host: Variant = _work_host()
 	if host == null:
+		return false
+	if not host.enforce:
 		return true
 	var actor: String = sl._actor_id(sender)
 	var t: Dictionary = host.resolve(actor, kind, tree_id, pos, normal, exact)

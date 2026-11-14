@@ -9,6 +9,8 @@ const WorkSession := preload("res://src/core/work_session.gd")
 var sessions := WorkSession.new()
 var tree_slice: Node = null
 var voxel_slice: Node = null
+## Off only for a test that must probe the wire with bare intents; production always enforces.
+var enforce := true
 
 ## Tree key for a completion claim.
 static func tree_key(tree_id: String) -> String:
@@ -51,6 +53,10 @@ func resolve(player_id: String, kind: String, tree_id: String, pos: Vector3, nor
 		if action == "":
 			action = "mine"
 		inventory = voxel_slice.inventory_for(player_id)
+		# `mine_block` spends the held pick on any block and the axe only when no pick is held, so a wood block
+		# is timed with the pick when one is held.
+		if action == "chop" and WorkTime.held_tool(inventory, "mine") != "":
+			action = "mine"
 	else:
 		return {}
 	var tool := WorkTime.held_tool(inventory, action)

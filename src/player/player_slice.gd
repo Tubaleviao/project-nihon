@@ -443,6 +443,9 @@ static func follow_height(current: float, target: float, delta: float) -> float:
 	return lerpf(current, target, 1.0 - exp(-CAMERA_Y_SMOOTH * delta))
 
 func _input(event: InputEvent) -> void:
+	# Phase 259: releasing the gather button anywhere (over a window, with a window open) ends the work.
+	if event is InputEventMouseButton and not event.pressed and event.button_index == MOUSE_BUTTON_LEFT and _work_hold != null:
+		_work_hold.release()
 	# The look is owned here, not in `_unhandled_input`: releasing the button over a window must still
 	# end it, and a captured pointer reports motion no control would see.
 	if _looking:
@@ -487,8 +490,6 @@ func _unhandled_input(event: InputEvent) -> void:
 			_work_press({ "kind": "tree", "tree_id": _aimed_tree_id })
 		else:
 			_try_attack()
-	if event is InputEventMouseButton and not event.pressed and event.button_index == MOUSE_BUTTON_LEFT and _work_hold != null:
-		_work_hold.release()
 	# F key → melee attack the nearest creature in range.
 	if event is InputEventKey and event.pressed and event.keycode == KEY_F:
 		_try_attack()

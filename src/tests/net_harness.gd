@@ -603,7 +603,7 @@ func _step_chop_in_reach() -> void:
 		var ok: bool = await _await_until(func(): return _chop_count(t) >= 1, _step_timeout() * 2.0)
 		await _await_settle(1.0)
 		# The gate is proven here; later steps probe the wire with bare chop intents, so the host stops gating.
-		_root._networking.remove_meta("work_host")
+		_root._networking.get_meta("work_host").enforce = false
 		_report("chop_in_reach", verdict(ok and _chop_count(t) == 1, true), t if ok and _chop_count(t) == 1 else ("not_consumed" if not ok else "early_claim_accepted"))
 		return
 	_report_position()
