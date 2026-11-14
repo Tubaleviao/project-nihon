@@ -307,14 +307,14 @@ func _on_drag_began(payload: Dictionary) -> void:
 ## The drag source for an inventory slot: carries the item id; hold Shift on release to drop the whole stack.
 func _inventory_drag(_at: Vector2, item_id: String, qty: int, source: Control) -> Variant:
 	var label := Label.new()
-	label.text = "%s ×%d" % [item_id, qty] if qty > 1 else item_id
+	label.text = "%s ×%d" % [I18n.content("item", item_id), qty] if qty > 1 else I18n.content("item", item_id)
 	source.set_drag_preview(label)
 	_drag_payload = {"kind": "item", "id": item_id, "quantity": qty}
 	return _drag_payload
 
 func _skill_drag(_at: Vector2, skill: String, source: Control) -> Variant:
 	var label := Label.new()
-	label.text = skill
+	label.text = I18n.content("skill", skill)
 	source.set_drag_preview(label)
 	_drag_payload = {"kind": "skill", "id": skill}
 	return _drag_payload
@@ -507,7 +507,7 @@ func inventory_lines() -> Array:
 	var keys: Array = contents.keys()
 	keys.sort()
 	for item_id in keys:
-		lines.append("%s ×%d%s" % [item_id, contents[item_id], durability_bar(item_id)])
+		lines.append("%s ×%d%s" % [I18n.content("item", str(item_id)), contents[item_id], durability_bar(item_id)])
 	return lines
 
 ## Where a dragged window may sit: at least DRAG_VISIBLE_MARGIN px of it stays
@@ -657,11 +657,8 @@ func _local_worn() -> Dictionary:
 
 ## Fabric description of an item ("" when the item has no definition).
 static func item_description(item_id: String) -> String:
-	var res: Resource = GameData.ITEMS.get(item_id, null)
-	if res == null:
-		return ""
-	var d = res.get("description")
-	return str(d) if d != null else ""
+	# Phase 267 — the catalog's description in the active locale, not the fabric's design prose.
+	return I18n.content("item", item_id, "desc") if I18n.has_content("item", item_id, "desc") else ""
 
 func inventory_rows() -> Array:
 	return _m2.inventory_rows()
@@ -991,7 +988,7 @@ func _process(delta: float) -> void:
 static func skills_rows(tiers: Dictionary) -> Array:
 	var rows: Array = []
 	for skill in HotbarScript.ordered_skills(tiers):
-		rows.append({"id": skill, "tier": str(tiers[skill]), "tooltip": I18n.t("ui.skill_tip", [skill, tiers[skill]])})
+		rows.append({"id": skill, "tier": str(tiers[skill]), "tooltip": I18n.t("ui.skill_tip", [I18n.content("skill", str(skill)), tiers[skill]])})
 	return rows
 
 func _refresh_skills() -> void:
@@ -1041,7 +1038,7 @@ func refresh_market() -> void:
 			hbox.add_child(btn)
 			_add_row_icon(hbox, str(r["icon_key"]))
 			var lbl := Label.new()
-			lbl.text = I18n.t("ui.listing", [r["id"], r["item_id"], r["quantity"], I18n.number(r["price"], 2), r["seller"]])
+			lbl.text = I18n.t("ui.listing", [r["id"], I18n.content("item", str(r["item_id"])), r["quantity"], I18n.number(r["price"], 2), r["seller"]])
 			hbox.add_child(lbl)
 			_market_box.add_child(hbox)
 	_refresh_market_item_selector()
@@ -1052,7 +1049,8 @@ func _refresh_market_item_selector() -> void:
 	var selected: int = _market_item_select.selected
 	_market_item_select.clear()
 	for item_id in listable_items():
-		_market_item_select.add_item(str(item_id))
+		_market_item_select.add_item(I18n.content("item", str(item_id)))
+		_market_item_select.set_item_metadata(_market_item_select.item_count - 1, str(item_id))
 	if _market_item_select.item_count > 0:
 		_market_item_select.selected = clampi(selected, 0, _market_item_select.item_count - 1)
 
@@ -1127,9 +1125,9 @@ func _on_craft_resolved(result: Dictionary) -> void:
 func _on_repair_resolved(result: Dictionary) -> void:
 	if _repair_feedback != null and _belongs_to_local_player(result):
 		if result.get("success", false):
-			_repair_feedback.text = I18n.t("ui.repaired", [result.get("item_id", "?")])
+			_repair_feedback.text = I18n.t("ui.repaired", [I18n.content("item", str(result.get("item_id", "")))])
 		else:
-			_repair_feedback.text = "%s: %s" % [result.get("item_id", "?"), I18n.reason_text(str(result.get("reason", "?")))]
+			_repair_feedback.text = "%s: %s" % [I18n.content("item", str(result.get("item_id", ""))), I18n.reason_text(str(result.get("reason", "?")))]
 	refresh_crafting()
 	refresh_inventory()
 
@@ -1138,9 +1136,9 @@ func _on_research_resolved(result: Dictionary) -> void:
 	if _technology_feedback != null and _belongs_to_local_player(result) and str(result.get("reason", "")) != "discovered":
 		if result.get("success", false):
 			var key := "ui.tech_unlocked" if str(result.get("status", "")) == "unlocked" else "ui.researching"  # Phase 209: a read book
-			_technology_feedback.text = I18n.t(key, [result.get("tech_id", "?")])
+			_technology_feedback.text = I18n.t(key, [I18n.content("tech", str(result.get("tech_id", "")))])
 		else:
-			_technology_feedback.text = "%s: %s" % [result.get("tech_id", "?"), I18n.reason_text(str(result.get("reason", "?")))]
+			_technology_feedback.text = "%s: %s" % [I18n.content("tech", str(result.get("tech_id", ""))), I18n.reason_text(str(result.get("reason", "?")))]
 	refresh_technology()
 
 func _on_research_points_synced(player_id: String, _points: int) -> void:
@@ -1224,7 +1222,7 @@ func _on_market_list_pressed() -> void:
 		return
 	if _market_item_select.item_count == 0:
 		return
-	var item_id: String = _market_item_select.get_item_text(_market_item_select.selected)
+	var item_id: String = str(_market_item_select.get_item_metadata(_market_item_select.selected))
 	var qty: int = int(_market_qty.text) if _market_qty != null else 1
 	var price: float = float(_market_price.text) if _market_price != null else 1.0
 	if qty <= 0:
@@ -1234,9 +1232,9 @@ func _on_market_list_pressed() -> void:
 	var id: String = market_slice.list_item("player", item_id, qty, price)
 	if _market_feedback != null:
 		if id != "":
-			_market_feedback.text = I18n.t("market.listed", [item_id, qty, I18n.number(price, 2)])
+			_market_feedback.text = I18n.t("market.listed", [I18n.content("item", item_id), qty, I18n.number(price, 2)])
 		else:
-			_market_feedback.text = I18n.t("market.list_failed", [item_id])
+			_market_feedback.text = I18n.t("market.list_failed", [I18n.content("item", item_id)])
 	refresh_market()
 
 func _on_proposal_submit_pressed() -> void:
@@ -1494,7 +1492,4 @@ func _add_row_icon(hbox: HBoxContainer, key: String) -> void:
 	hbox.add_child(rect)
 
 func _fmt_entries(entries: Array) -> String:
-	var parts: Array = []
-	for e in entries:
-		parts.append("%s ×%d" % [str(e.get("item", "")), int(e.get("quantity", 1))])
-	return ", ".join(parts)
+	return I18n.content_entries(entries)

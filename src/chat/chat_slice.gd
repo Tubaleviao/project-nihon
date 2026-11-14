@@ -489,13 +489,13 @@ func _cmd_give(speaker: String, args: Array) -> void:
 		_reply(speaker, "chat.no_inventory", [_handle_of(target)])
 		return
 	if not inv.add_item(item, qty):
-		_reply(speaker, "chat.cannot_carry", [_handle_of(target), qty, item])
+		_reply(speaker, "chat.cannot_carry", [_handle_of(target), qty, I18n.ref("item", item)])
 		return
 	if not _is_local(target):
 		GameBus.inventory_synced.emit(target, inv.get_contents(), inv.get_durability_data())
-	_reply(speaker, "chat.gave", [qty, item, _handle_of(target)])
+	_reply(speaker, "chat.gave", [qty, I18n.ref("item", item), _handle_of(target)])
 	if target != speaker:
-		_reply(target, "chat.admin_gave", [qty, item])
+		_reply(target, "chat.admin_gave", [qty, I18n.ref("item", item)])
 
 ## Phase 128 — `/weather <state> <hours>`: override the weather of the admin's own cell. The slice
 ## bounds the duration by the fabric's `overrideMaxHours`.

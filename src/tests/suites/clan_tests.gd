@@ -589,12 +589,12 @@ func _test_clan_member_invites_dropped() -> void:
 	_free_rig(rig)
 
 func _test_clan_skill_labels() -> void:
-	var cats: Dictionary = I18n.parse_csv("res://locale/ui.csv")["catalog"]
+	var cats: Dictionary = I18n.parse_csv(I18n.CONTENT_PATH)["catalog"]
 	for skill: String in ClanPanel.skill_keys():
 		for loc in cats:
-			assert_true(str((cats[loc] as Dictionary).get("skill." + skill.to_lower(), "")).strip_edges() != "", "%s has skill.%s" % [loc, skill.to_lower()])
-	assert_eq(ClanPanel.skill_label("Tailoring"), I18n.t("skill.tailoring"), "a skill shows its catalog name")
-	assert_eq(ClanPanel.skill_label("NoSuchSkill"), "NoSuchSkill", "an unknown skill shows its key")
+			assert_true(str((cats[loc] as Dictionary).get(I18n.content_key("skill", skill), "")).strip_edges() != "", "%s has skill.%s.name" % [loc, skill])
+	assert_eq(ClanPanel.skill_label("Tailoring"), I18n.t("skill.Tailoring.name"), "a skill shows its catalog name")
+	assert_true(ClanPanel.skill_label("NoSuchSkill") != "NoSuchSkill", "an unknown skill never shows its bare id")
 
 func _test_chat_field_limit() -> void:
 	assert_eq(ChatSlice.field_limit("hello"), ChatCommandsScript.MAX_MESSAGE_CHARS, "a plain line stops where the host cuts it")

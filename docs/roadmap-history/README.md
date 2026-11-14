@@ -346,3 +346,11 @@ Filed by the owner on 2026-11-13. The other phases of the arc are open in [ROADM
 | 259 | Work takes time: bare hands, tools and a progress bar | Done | [phases-259.md](phases-259.md) |
 | 260 | Stone tools: an axe, a pick and a shovel from wood and stone, no bench | Done | [phases-260.md](phases-260.md) |
 | 261 | The newcomer grounds: a large, gentle spawn area with loose stones and branches | Done | [phases-261.md](phases-261.md) |
+
+### Stations you make, and windows a player can read (Phases 267–274)
+
+Filed by the owner on 2026-11-14. The other phases of the arc are open in [ROADMAP.md](../../ROADMAP.md).
+
+| Phase | Title | Status | Spec |
+|---|---|---|---|
+| 267 | Names a player can read: localized names for items, recipes, technologies, skills and professions | Done | [phases-267.md](phases-267.md) |

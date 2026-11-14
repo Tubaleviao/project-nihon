@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–225, 238–243, 248, 249, 252–254 and 259–261 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–225, 238–243, 248, 249, 252–254, 259–261 and 267 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -31,7 +31,7 @@ introductions of the arcs they belonged to, are archived in
 Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
 see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
 phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
-comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–254, 259–261)
+comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–254, 259–261, 267)
 have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
 [Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
 others are not in it.
@@ -42,7 +42,6 @@ others are not in it.
 | 5 | 262 | Starting with nothing, and a tutorial that begins from bare hands |
 | 6 | 263 | Digging that shows at once: a predicted edit and a priority remesh |
 | 7 | 264 | Dropping part of a stack: a quantity slider |
-| 8 | 267 | Names a player can read: localized names for items, recipes, technologies, skills and professions |
 | 9 | 269 | Crafting by hand, and at the station |
 | 10 | 270 | The technology tree: nodes, lines, zoom |
 | 11 | 274 | Gathering: Mining, Woodcutting, Foraging and Skinning are their own skills |
@@ -319,7 +318,7 @@ tiers, several at once, and the UI calls them professions.
 
 | Phase | Title | Status |
 |---|---|---|
-| 267 | Names a player can read: localized names for items, recipes, technologies, skills and professions | Open |
+| 267 | Names a player can read: localized names for items, recipes, technologies, skills and professions | Done |
 | 268 | Stations are made, carried and placed from the hotbar | Open |
 | 269 | Crafting by hand, and at the station | Open |
 | 270 | The technology tree: nodes, lines, zoom | Open |
@@ -1035,33 +1034,6 @@ feel in this game's own art; no assets, sprites or likenesses are taken from any
   the playtest `walk` and `create` steps pass with it.
 - Whether the result looks good is a human judgement: filed as a GitHub issue per the rule at the
   top of this file, and this phase records its number.
-
-## Phase 267 — Names a player can read: localized names for items, recipes, technologies, skills and professions
-
-The crafting and technology windows show entity ids ("RecipeAethermiteBow", "TechBasicSmithing") and
-nothing in them is translated. Fabric content was deferred to Newel's catalog generator, which Newel's
-roadmap no longer carries, so the game keeps its own content catalog instead.
-
-- **A content catalog:** `locale/content.csv` with the same columns as `locale/ui.csv` (`en`,
-  `pt_BR`), keyed by entity: `item.<Id>.name`, `item.<Id>.desc`, `recipe.<Id>.name` (falls back to
-  its first output's name when absent), `tech.<Id>.name`, `tech.<Id>.desc`, `skill.<Id>.name`,
-  `skill.<Id>.desc`, `profession.<Id>.name`, `station.<type>.name`. Adding a language stays a new column,
-  no code change.
-- **One lookup:** `I18n.content(kind, id, field)` returns the localized text, and in a debug build a
-  visible `⟨id⟩` marker when the key is missing (never the bare id in a release build: the generic
-  "Unknown" string instead). Every window that shows content (crafting, technology, skills, inventory
-  tooltips, hotbar, chests, trade, toasts) goes through it.
-- **A fabric gate:** `tools/check_content_locale.js` fails when a player-visible entity (every item,
-  recipe, technology, skill, profession and placeable station in the fabric) has no name in every
-  locale column, or the catalog holds a key for an entity that no longer exists. CI runs it.
-- The Deferred entry "Localized fabric content" is replaced by this phase.
-
-**Acceptance criteria**
-- `node tools/check_content_locale.js` passes on the catalog and rejects a missing `pt_BR` name and a
-  stale key (its own self-check, like the other `check_*.js`).
-- Suite tests: every content key resolves in `en` and `pt_BR`; switching the locale changes a recipe's
-  shown name; no label in the crafting, technology or skills window equals an entity id (an audit over
-  each window's built tree).
 
 ## Phase 268 — Stations are made, carried and placed from the hotbar
 

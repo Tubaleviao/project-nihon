@@ -13,6 +13,7 @@ const CarcassRules := preload("res://src/loot/carcass_rules.gd")
 const PlayerRegistry := preload("res://src/persistence/player_registry.gd")
 const PlayerSlice := preload("res://src/player/player_slice.gd")
 const AdminRules := preload("res://src/admin/admin_rules.gd")
+const I18n := preload("res://src/core/i18n.gd")
 
 ## How far a harvester may drift from where the action began before it is cancelled.
 const MOVE_CANCEL_M := 0.6
@@ -260,7 +261,7 @@ func _on_resolved(player_id: String, _carcass_id: String, reason: String, items:
 		GameBus.system_message.emit("hud.carcass.nothing", [], player_id)
 		return
 	for it in items:
-		GameBus.system_message.emit("hud.carcass.done", [int(it["quantity"]), str(it["item"])], player_id)
+		GameBus.system_message.emit("hud.carcass.done", [int(it["quantity"]), I18n.ref("item", str(it["item"]))], player_id)
 
 func _on_carry_intent(carcass_id: String, player_id: String) -> void:
 	if root._is_client or root._carcass == null:

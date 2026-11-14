@@ -68,10 +68,9 @@ static func skill_keys() -> Array:
 	out.sort()
 	return out
 
-## A skill's display name in the active locale (`skill.<key>`); a skill the catalog has no line for shows its key.
+## A skill's display name in the active locale (Phase 267: the content catalog's `skill.<Id>.name`).
 static func skill_label(skill: String) -> String:
-	var key := "skill." + skill.to_lower()
-	return I18n.t(key) if I18n.has_key(key) else skill
+	return I18n.content("skill", skill)
 
 func picked_sort() -> String:
 	return str(_sort_pick.get_item_metadata(_sort_pick.selected)) if _sort_pick.selected >= 0 else ""

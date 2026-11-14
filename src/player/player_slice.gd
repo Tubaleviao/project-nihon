@@ -1344,7 +1344,7 @@ func _update_aim_hud() -> void:
 	if _aimed_item_id == "" and _aimed_tree_id == "":
 		carcass_text = _carcass_prompt()
 	if _aimed_item_id != "":
-		_aim_label.text = I18n.t("hud.pickup", [_aimed_item_id])
+		_aim_label.text = I18n.t("hud.pickup", [I18n.content("item", _aimed_item_id)])
 		_aim_label.visible = true
 	elif _aimed_tree_id != "":
 		_aim_label.text = I18n.t("hud.chop", [_aimed_tree_species])
@@ -1363,7 +1363,7 @@ func _refresh_build_hint() -> void:
 			stype = str(station_slice.get_place_station_type())
 		if stype == "":
 			stype = "none"
-		_station_label.text = "" if stype == "none" else I18n.t("hud.station", [stype])
+		_station_label.text = "" if stype == "none" else I18n.t("hud.station", [I18n.content("station", stype)])
 
 func _cycle_station_type() -> void:
 	if station_slice == null or not station_slice.has_method("cycle_station_type"):

@@ -11,6 +11,12 @@ static func of(item_id: String) -> Dictionary:
 		return {}
 	return { "writing": str(res.get("writing")), "teaches": str(res.get("teaches")), "kind": str(res.get("teachesKind")) }
 
+## Phase 267 — what a writing teaches as a message arg each client names in its own locale (`I18n.ref`).
+static func teaches_arg(w: Dictionary) -> String:
+	var kind := {"technology": "tech", "station": "recipe", "project": "project"}.get(str(w.get("kind", "")), "") as String
+	var teaches := str(w.get("teaches", ""))
+	return preload("res://src/core/i18n.gd").ref(kind, teaches) if kind != "" and teaches != "" else teaches
+
 static func is_writing(item_id: String) -> bool:
 	return not of(item_id).is_empty()
 

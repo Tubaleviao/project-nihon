@@ -29,6 +29,6 @@ func _on_resolved(player_id: String, action: String, item_id: String, ok: bool, 
 		var key := "writing.refused." + reason
 		if ok:
 			key = "writing.ok.read" if action == "read" else "writing.ok.write_%s" % str(w.get("writing", "")).to_lower()
-		GameBus.system_message.emit(key, [str(w.get("teaches", ""))], player_id)
+		GameBus.system_message.emit(key, [WritingRules.teaches_arg(w)], player_id)
 	if ok and action == "write":
 		root._chest_wiring._push_inventory(player_id)

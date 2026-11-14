@@ -1096,8 +1096,8 @@ func _test_hud_hotbar_skills_and_binding() -> void:
 	var ui := _new_hud_ui()
 	var hb = ui.hotbar
 	# Button i is box i (the numbered row is first), so a swapped item renders in its own box.
-	hb.assign(3, "skill:Mining")
-	assert_eq((hb._buttons[3] as Button).text, "Mini", "box 3 draws its own contents")
+	hb.assign(3, "skill:Smithing")
+	assert_eq((hb._buttons[3] as Button).text, I18n.content("skill", "Smithing").substr(0, 4), "box 3 draws its own contents (the skill's localized name)")
 	assert_eq((hb._buttons[12] as Button).text, "", "box 12 stays empty")
 	assert_true(hb._buttons[0].get_parent() == hb._row1 and hb._buttons[9].get_parent() == hb._row2, "numbered row first, extra row second")
 	assert_true(hb.get_child(0) == hb._row1, "the numbered row sits above the extra row")
@@ -2021,7 +2021,7 @@ func _p148_audit_source(path: String, src: String, allow: Dictionary) -> Array:
 		if line.begins_with("#") or line.begins_with("func ") or rx.search(line) == null:
 			continue
 		var rhs := line.substr(line.find("=") + 1) if line.contains(".text") or line.contains("_text") or line.contains(".title") else line
-		if rhs.contains("I18n.t(") or rhs.contains("I18n.render(") or rhs.contains("tr("):
+		if rhs.contains("I18n.t(") or rhs.contains("I18n.render(") or rhs.contains("I18n.content(") or rhs.contains("tr("):
 			continue
 		# Dictionary keys (`row["quantity"]`, `get("reason", ...)`) are not text; only real literals count.
 		var has_words := false

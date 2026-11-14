@@ -5,6 +5,7 @@ extends RefCounted
 ## number lives here.
 
 const SKILL := "Skinning"
+const I18n := preload("res://src/core/i18n.gd")
 const CARRY_RULES := ["carry", "drag", "immovable"]
 
 static func rules() -> Resource:
@@ -157,7 +158,7 @@ static func prompt_for(entries: Array, held: Array, carrying: bool) -> Array:
 		elif missing == "":
 			missing = need
 	if not can.is_empty():
-		return ["hud.carcass.harvest", [", ".join(can)]]
+		return ["hud.carcass.harvest", [I18n.ref("item", can)]]
 	if missing != "":
 		return ["hud.carcass.needs", ["tool." + missing]]
 	return ["hud.carcass.empty", []]

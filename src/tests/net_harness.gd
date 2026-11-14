@@ -802,7 +802,7 @@ func _on_chat_posted(channel: String, sender: String, text: String, target: Stri
 
 ## Phase 131 — a keyed host line, kept with the text it renders to in this process's locale.
 func _on_system_message(key: String, args: Array, target: String) -> void:
-	_chat_seen.append({ "channel": "system", "sender": "", "text": I18n.t(key, args), "key": key, "target": target })
+	_chat_seen.append({ "channel": "system", "sender": "", "text": I18n.render(I18n.msg(key, args)), "key": key, "target": target })
 
 func _on_player_teleport(pos: Dictionary) -> void:
 	_teleports_seen.append(pos)

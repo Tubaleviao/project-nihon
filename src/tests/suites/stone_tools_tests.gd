@@ -115,7 +115,7 @@ func _test_discovery() -> void:
 	assert_eq(notices.size(), 1, "one notice")
 	assert_eq(str(notices[0][0]), "notice.tech_discovered", "keyed, never prose")
 	assert_eq(str(notices[0][2]), "p1", "addressed to p1 alone")
-	assert_eq(str(notices[0][1][0]), "TechStoneTools", "it names the technology")
+	assert_eq(str(notices[0][1][0]), I18nScript.ref("tech", "TechStoneTools"), "it names the technology (a ref each client names)")
 	for tool in StoneTools.tools():
 		assert_true(str(notices[0][1][1]).contains(str(tool)), "and what it makes: %s" % tool)
 	inv.add_item(StoneTools.LOOSE_STONE, 1)
@@ -150,10 +150,10 @@ func _test_discovery_toast() -> void:
 	var r := _tech_rig()
 	var ui := _new_test_ui()
 	ui.technology_slice = r["tech"]
-	GameBus.system_message.emit("notice.tech_discovered", ["TechStoneTools", "StoneAxe"], "p1")
+	GameBus.system_message.emit("notice.tech_discovered", [I18nScript.ref("tech", "TechStoneTools"), I18nScript.ref("item", ["StoneAxe"])], "p1")
 	assert_eq(ui.toast_shown(), "", "another player's notice is not shown here")
-	GameBus.system_message.emit("notice.tech_discovered", ["TechStoneTools", "StoneAxe"], "host")
-	assert_true(ui.toast_shown().contains("TechStoneTools") and ui.toast_shown().contains("StoneAxe"), "this machine's player sees a toast naming it")
+	GameBus.system_message.emit("notice.tech_discovered", [I18nScript.ref("tech", "TechStoneTools"), I18nScript.ref("item", ["StoneAxe"])], "host")
+	assert_true(ui.toast_shown().contains(I18nScript.content("tech", "TechStoneTools")) and ui.toast_shown().contains(I18nScript.content("item", "StoneAxe")), "this machine's player sees a toast naming it")
 	GameBus.system_message.emit("structure.ok.repair", [], "")
 	assert_eq(ui.toast_queue().size(), 0, "other system lines are not toasts")
 	ui.free()
@@ -181,7 +181,7 @@ func _test_discovery_panel_quiet() -> void:
 	GameBus.research_resolved.emit({ "tech_id": "TechStoneTools", "success": true, "reason": "discovered", "status": "unlocked", "player_id": "" })
 	assert_eq(ui._technology_feedback.text, "before", "a discovery does not also write the panel label")
 	GameBus.research_resolved.emit({ "tech_id": "TechBasicSmithing", "success": true, "reason": "", "status": "unlocked", "player_id": "" })
-	assert_eq(ui._technology_feedback.text, I18nScript.t("ui.tech_unlocked", ["TechBasicSmithing"]), "other unlocks still do")
+	assert_eq(ui._technology_feedback.text, I18nScript.t("ui.tech_unlocked", [I18nScript.content("tech", "TechBasicSmithing")]), "other unlocks still do")
 	ui._technology_feedback.free()
 	ui.free()
 
