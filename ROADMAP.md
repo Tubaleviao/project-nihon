@@ -45,27 +45,28 @@ others are not in it.
 | 8 | 267 | Names a player can read: localized names for items, recipes, technologies, skills and professions |
 | 9 | 269 | Crafting by hand, and at the station |
 | 10 | 270 | The technology tree: nodes, lines, zoom |
-| 11 | 271 | The skill wheel: professions around the edge, shared skills in the centre |
-| 12 | 272 | A skill's own page, and where the player's focus went |
-| 13 | 273 | Titles: professions unlock them, the player chooses one |
-| 14 | 265 | One body everywhere: the creation screen, the Character window and the world draw the same avatar |
-| 15 | 266 | A chibi character worth looking at: the art direction and the player rig |
-| 16 | 255 | The first release: `v0.1.0` from the release workflow |
-| 17 | 244 | A chunk cache on disk |
-| 18 | 256 | A binary wire format for the hot packets |
-| 19 | 250 | The server's ceiling: one machine serving, another running the bots |
-| 20 | 237 | Flight that handles like flight |
-| 21 | 251 | A human playtest: what would make the game fun (a standing checkpoint) |
-| 22 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
-| 23 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
-| 24 | 226 | Several characters per player |
-| 25 | 229 | Skills capped by the gear |
-| 26 | 247 | Ground cover: grass and bushes by biome |
-| 27 | 235 | Roads |
-| 28 | 234 | Boats |
-| 29 | 257 | Split files named by what they do |
-| 30 | 258 | The public wiki and the community channels |
-| 31 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
+| 11 | 274 | Gathering: Mining, Woodcutting, Foraging and Skinning are their own skills |
+| 12 | 271 | The skill wheel: professions around the edge, shared skills in the centre |
+| 13 | 272 | A skill's own page, and where the player's focus went |
+| 14 | 273 | Titles: professions unlock them, the player chooses one |
+| 15 | 265 | One body everywhere: the creation screen, the Character window and the world draw the same avatar |
+| 16 | 266 | A chibi character worth looking at: the art direction and the player rig |
+| 17 | 255 | The first release: `v0.1.0` from the release workflow |
+| 18 | 244 | A chunk cache on disk |
+| 19 | 256 | A binary wire format for the hot packets |
+| 20 | 250 | The server's ceiling: one machine serving, another running the bots |
+| 21 | 237 | Flight that handles like flight |
+| 22 | 251 | A human playtest: what would make the game fun (a standing checkpoint) |
+| 23 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
+| 24 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
+| 25 | 226 | Several characters per player |
+| 26 | 229 | Skills capped by the gear |
+| 27 | 247 | Ground cover: grass and bushes by biome |
+| 28 | 235 | Roads |
+| 29 | 234 | Boats |
+| 30 | 257 | Split files named by what they do |
+| 31 | 258 | The public wiki and the community channels |
+| 32 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
 
 Order notes that differ from the arcs' own order:
 
@@ -75,12 +76,14 @@ Order notes that differ from the arcs' own order:
   and a character that looks the same everywhere and looks good. 259–262 depend on each other in
   that order (work time, then the tools it rewards, then the ground they are used on, then the
   empty start that needs all three); 263–266 stand alone.
-- Phases 267–273 are the owner's second set of Phase 251 findings (2026-11-14): stations are free
+- Phases 267–274 are the owner's second set of Phase 251 findings (2026-11-14): stations are free
   through B/V instead of made, the crafting window lists every station's recipes, and the crafting,
   technology and skills windows show entity ids, no translation and no tree. Phase 268 comes right
   after 261 and before 262, so the tutorial is rewritten once, with stations that are crafted.
   Phase 267 comes before the window phases (269–273), which all show its names. 271 needs 270's
-  zoomable canvas, 272 needs 271's wheel, and 273's titles use 267's catalog and 272's toast. They come before 265 and 266, because they are the
+  zoomable canvas, 272 needs 271's wheel, and 273's titles use 267's catalog and 272's toast.
+  274 (gathering skills) comes after 270 and before 271, because the wheel and the focus display
+  show its category. Phases 267–274 come before 265 and 266, because they are the
   first hour's loop and the avatar is its look.
 - Phase 251 moved five places down on 2026-11-13, behind 225, 244, 256, 250 and 237, instead of
   being closed. It is a standing checkpoint: it is never closed, and each session's findings become
@@ -295,7 +298,7 @@ everything for the whole tutorial.
 | 265 | One body everywhere: the creation screen, the Character window and the world draw the same avatar | Open |
 | 266 | A chibi character worth looking at: the art direction and the player rig | Open |
 
-### Next: stations you make, and windows a player can read (Phases 267–273)
+### Next: stations you make, and windows a player can read (Phases 267–274)
 
 Filed by the owner on 2026-11-14 from a Phase 251 playtest session. Every station is placed from
 the start with B (cycle), N (ghost) and V (place); only waystones, beds, chests, doors and the
@@ -310,7 +313,8 @@ The owner wants stations crafted, carried in the hotbar and placed with a ghost;
 window and one window per station; a technology tree with lines and zoom; a skill wheel with the
 shared skills in the centre and the professions on the rim, each skill placed toward the professions
 it belongs to and outward as it grows advanced and unique, with its own page and the player's focus;
-and professions that unlock titles the player chooses to wear. The game has no classes (the
+professions that unlock titles the player chooses to wear; and gathering skills of their own
+(Mining, Woodcutting, Foraging, Skinning) instead of gathering raising crafting skills. The game has no classes (the
 constitution's "no hard class system"): professions stay earned from skill tiers, several at once,
 and the UI calls them professions.
 
@@ -323,6 +327,7 @@ and the UI calls them professions.
 | 271 | The skill wheel: professions around the edge, shared skills in the centre | Open |
 | 272 | A skill's own page, and where the player's focus went | Open |
 | 273 | Titles: professions unlock them, the player chooses one | Open |
+| 274 | Gathering: Mining, Woodcutting, Foraging and Skinning are their own skills | Open |
 
 ## Phase 225 — The options window
 
@@ -1194,7 +1199,7 @@ skills anyone uses sit, with no label.
   player and skill (persisted with focus) and paid when it reaches a whole point, instead of being
   rounded away.
 - **Display:** the details page and the wheel's centre show focus as shares by skill, grouped by the
-  skill categories (combat, crafting, magic, exploration, social, survival), so a player who spent
+  skill categories (combat, crafting, magic, exploration, social, gathering; Phase 274), so a player who spent
   the evening forging sees Smithing lead and the Blacksmith side of the wheel light up.
 - A newly unlocked node pulses on the wheel and the toast (Phase 260) opens its page.
 
@@ -1244,6 +1249,50 @@ show.
 - Every new string is in both locales.
 
 ---
+
+## Phase 274 — Gathering: Mining, Woodcutting, Foraging and Skinning are their own skills
+
+Today gathering raises crafting skills (`fabric/gameplay/work.js` `gather`): mined ore gives
+Smithing, stone and soil give Building, wood gives Carpentry, plants give Alchemy. A player can
+reach master Smithing without touching a forge, and nothing records that they are a miner. The
+`survival` category holds one skill, Skinning.
+
+- **Fabric (separate PR):** a `gathering` category replaces `survival` in `SKILL_CATEGORIES`
+  (`skills/shared.js`) and in the attribute weights (`attributes.js` `categories`, today's
+  `survival` weights move to it). Three new skills join Skinning in it: **Mining**, **Woodcutting**
+  and **Foraging**, each with an XP curve in `SKILL_CURVES` and the shared `TIER_XP`. Skinning moves
+  to the category unchanged. `skills/survival.js` becomes `skills/gathering.js`.
+- **Work goes by tool:** the `gather` rows become pick (`stone`, `metal`) and shovel (`soil`) →
+  Mining, axe (`wood`) → Woodcutting, `plant` → Foraging, `carcass` → Skinning, with today's XP per
+  unit. Crafting skills grow only from crafting (`craft` rows), and Building only from placing,
+  dismantling and repairing. The XP curves of Smithing, Carpentry, Alchemy and Building are
+  rebalanced in the same PR so their tiers are still reached in play, and the Phase 213 tower step
+  still passes.
+- **Each tier gives something** (Phase 271 needs a node per tier): Mining, Woodcutting and Foraging
+  tiers lower that work's time (Phase 259, on top of the tool's speed) or raise its yield; the
+  fabric names the bonus per tier.
+- **No profession changes:** gathering skills name no profession, so profession unlocks and mastery
+  (Phase 118, "all constituent skills at master") stay as they are, and on the wheel (Phase 271)
+  they sit in the centre disc as skills anyone uses. Their master tiers still give titles
+  (Phase 273: "Master Miner").
+- **Code reads the fabric:** `attribute_rules.gd`'s hard-coded `SKILL_CATEGORIES` is read from
+  `GameData` instead, so a category change is data-only. The village `forager` specialty
+  (`settlement.js`) weighs Foraging instead of Tracking, Navigation and Alchemy.
+- **Saves:** XP already earned stays in the skill it was earned in; no migration (the game is in
+  playtest).
+- New skill and category names have keys in both locales (Phase 267).
+- Fishing and Farming will join this category with their systems (see Deferred).
+
+**Acceptance criteria**
+- `npm run validate` and `check-drift` pass; the validator rejects a skill whose category is not in
+  `SKILL_CATEGORIES` and a `gather` row naming a skill outside `gathering`; its self-check proves
+  both.
+- Suite tests: mining stone, ore and soil grants Mining XP and no Building or Smithing XP; chopping
+  grants Woodcutting, foraging grants Foraging, skinning grants Skinning; crafting still grants its
+  crafting skill; a Mining tier lowers mining time as the fabric says; `attribute_rules.gd`'s
+  categories equal the fabric's; a save with old Smithing XP loads with it unchanged.
+- The playtest bot's mine, gather, craft and tower steps pass.
+- Every new string is in both locales.
 
 ## Parked phases
 
@@ -1496,6 +1545,8 @@ metres, which a whole planet cannot afford (about 250 TB at 2 m).
 - **Clan skills** — abilities (such as teleporting every member to one place) for the two or three members who contribute most to a clan. Contribution is to be defined, probably as a share of members' experience given to the clan. Clan tiers (Phase 210) give nothing until then.
 - **Elder buildings** — buildings only a clan's top contributors can build. To be designed.
 - **Settlement against settlement** — Phase 205 lets anyone destroy a structure they do not own. Organized sieges, wars and disputes between clans need governance and fairness rules first.
+- **Fishing and Farming** (owner, 2026-11-14) — two more `gathering` skills (Phase 274). Neither
+  system exists yet; each skill is added with its system so no skill is filed without an XP source.
 - **Real cross-region multiplayer run** — Phase 135 emulates WAN profiles in the harness. A run
   between real regions remains.
 - **Automatic LOD mesh decimation** — simplified meshes are hand-authored (Phase 23).
