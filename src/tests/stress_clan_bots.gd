@@ -125,11 +125,14 @@ func run() -> void:
 	if not full:
 		return _finish()
 	# work: bots 0-2 mine the top layers, bot 3 digs deeper, so ore and soil grow different skills.
+	# Phase 259: each mine is timed work the host starts and times. The bots stand on one tile, so they work one
+	# after another (a second worker on the same block would find it gone when the first completes).
 	for i in range(StressClanRules.MEMBERS):
 		var at: Dictionary = (bots[i] as Dictionary)["anchor"]
 		for k in range(6):
 			var depth := 0.5 + float(k) + (4.0 if i == StressClanRules.MEMBERS - 1 else 0.0)
 			var pos := WorldPos.normalized({ "chunk": at["chunk"], "local": (at["local"] as Vector3) + Vector3(0.0, -depth, 0.0) })
+			await _hold_work([[i, "block", "", pos]])
 			_slice(i).send_edit("mine", pos, Vector3.UP)
 			await get_tree().create_timer(0.3).timeout
 	var differ := await _until(func(): return _seen("skills_differ"), 20.0)
@@ -263,7 +266,9 @@ func run() -> void:
 	_slice(solo).send_edit("place", far, Vector3.UP, "Soil")
 	var placed := await _until(func(): return _seen("private"), 8.0)
 	if placed:
-		_slice(solo).send_edit("mine", WorldPos.normalized({ "chunk": at3["chunk"], "local": (at3["local"] as Vector3) + Vector3(-1.0, 0.0, -45.0) }), Vector3.UP)
+		var placed_at := WorldPos.normalized({ "chunk": at3["chunk"], "local": (at3["local"] as Vector3) + Vector3(-1.0, 0.0, -45.0) })
+		await _work_until([solo, "block", "", placed_at], func(): _slice(solo).send_edit("mine", placed_at, Vector3.UP),
+			func(): return _seen("private_gone"))
 	var gone := placed and await _until(func(): return _seen("private_gone"), 8.0)
 	_beat("dismantle_private", "host saw a private block placed (%s) and taken apart (%s)" % [str(placed), str(gone)], gone)
 	# outsider: bot 4 (no clan) digs one soil, then tries to build on the clan's blocks.
@@ -271,7 +276,9 @@ func run() -> void:
 	(bots[out] as Dictionary)["hold"] = true
 	await _walk(out, Vector2(out_home.x, out_home.z))   # back beside the clan's structure after the chest beat
 	var at4: Dictionary = (bots[out] as Dictionary)["anchor"]
-	_slice(out).send_edit("mine", WorldPos.normalized({ "chunk": at4["chunk"], "local": (at4["local"] as Vector3) + Vector3(-4.0, -0.5, 0.0) }), Vector3.UP)
+	var dig_at := WorldPos.normalized({ "chunk": at4["chunk"], "local": (at4["local"] as Vector3) + Vector3(-4.0, -0.5, 0.0) })
+	await _hold_work([[out, "block", "", dig_at]])
+	_slice(out).send_edit("mine", dig_at, Vector3.UP)
 	await get_tree().create_timer(1.0).timeout
 	var before: int = (live().get("refusals", []) as Array).size()
 	_slice(out).send_edit("place", WorldPos.normalized({ "chunk": at4["chunk"], "local": (at4["local"] as Vector3) + Vector3(4.0, 0.5, 0.0) }), Vector3.UP, "Soil")
@@ -287,8 +294,38 @@ func _chop(i: int, trees: Array, first: int, count: int) -> void:
 	for k in range(first, mini(first + count, trees.size())):
 		var tr: Array = trees[k]
 		await _walk(i, Vector2(float(tr[1]), float(tr[2]) - 3.0))
-		_slice(i).send_raw({ "type": "tree_chop_intent", "tree_id": str(tr[0]) })
+		var pid := str(_slice(i).claimed_player_id)
+		var held := _carried(pid)
+		await _work_until([i, "tree", str(tr[0]), {}],
+			func(): _slice(i).send_raw({ "type": "tree_chop_intent", "tree_id": str(tr[0]) }),
+			func(): return _carried(pid) > held)
 		await get_tree().create_timer(0.8).timeout
+
+## Phase 259 — hold timed work for each job `[bot, kind, tree_id, exact]` (one job per bot): start it on the host, wait
+## for every answer, then for the longest duration the host gave (plus a margin). The completions are the caller's.
+func _hold_work(jobs: Array) -> void:
+	for j: Array in jobs:
+		_slice(int(j[0])).send_work_start(str(j[1]), str(j[2]), j[3])
+	var answered := func() -> bool:
+		for j: Array in jobs:
+			if float(_slice(int(j[0])).work_duration) <= 0.0:
+				return false
+		return true
+	await _until(answered, 6.0)
+	var longest := 0.0
+	for j: Array in jobs:
+		longest = maxf(longest, _slice(int(j[0])).work_duration)
+	await get_tree().create_timer(longest + 0.4).timeout
+
+## Phase 259 — hold `job` and send its completion (`complete`) until `done` reads true, up to three tries: the host
+## cancels work on a hit, and a creature at the forest edge can hit a bot mid-hold.
+func _work_until(job: Array, complete: Callable, done: Callable) -> bool:
+	for _try in range(3):
+		await _hold_work([job])
+		complete.call()
+		if await _until(done, 4.0):
+			return true
+	return false
 
 ## `giver` hands `qty` of `item` to `taker` through the trade window (start, propose, propose, accept, accept).
 func _gift(giver: int, taker: int, item: String, qty: int) -> void:
@@ -345,6 +382,14 @@ func _tech(pid: String, tech: String) -> String:
 func _count(pid: String, item: String) -> int:
 	var inv: Dictionary = live().get("world", {}).get("inventories", {})
 	return int((inv.get(pid, {}) as Dictionary).get(item, 0))
+
+## Items `pid` carries on the host, all kinds together (a chop adds wood).
+func _carried(pid: String) -> int:
+	var n := 0
+	var bag: Dictionary = (live().get("world", {}).get("inventories", {}) as Dictionary).get(pid, {})
+	for k: Variant in bag:
+		n += int(bag[k])
+	return n
 
 ## The bot index whose host-bound player id is `pid`.
 func _bot_of(pid: String) -> int:

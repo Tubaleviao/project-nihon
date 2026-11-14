@@ -21,6 +21,8 @@ var spawn: Dictionary = {}
 var teleported: Dictionary = {}
 ## Host → bot packets routed, all types.
 var packets_in := 0
+## Phase 259 — the duration the host answered the last work start with (0 until it answers).
+var work_duration := 0.0
 ## Snapshot reassembly for the JOIN snapshot only: id -> { count, got, parts }.
 var _join_parts: Dictionary = {}
 var _join_snapshot_id := -1
@@ -86,6 +88,16 @@ func send_chat(text: String) -> void:
 func send_raw(payload: Dictionary) -> void:
 	_broadcast(payload)
 
+## Phase 259 — start timed work, the packet `WorkWiring._on_start` builds: `kind` "tree" (`tree_id`) or "block"
+## (`exact`). The host answers with `work_started` (read into `work_duration`); the mine / chop after that
+## duration is the completion.
+func send_work_start(kind: String, tree_id: String, exact: Dictionary, normal: Vector3 = Vector3.UP) -> void:
+	work_duration = 0.0
+	var packet := { "type": "work_start_intent", "work": kind, "tree_id": tree_id, "normal": [normal.x, normal.y, normal.z] }
+	if kind == "block":
+		packet["pk"] = WorldPos.pos_to_packet_text(exact)
+	_broadcast(packet)
+
 func _route_h2c(payload: Dictionary) -> void:
 	packets_in += 1
 	match str(payload.get("type", "")):
@@ -95,6 +107,10 @@ func _route_h2c(payload: Dictionary) -> void:
 			joined = true
 		"snapshot_chunk":
 			_take_join_chunk(payload)
+		"work_started":
+			var dur: Variant = payload.get("duration", 0.0)
+			if (dur is float or dur is int) and is_finite(float(dur)) and float(dur) > 0.0:
+				work_duration = float(dur)
 		"teleport":
 			var spot: Dictionary = WorldPos.pos_from_wire(payload.get("position", null))
 			if not spot.is_empty():

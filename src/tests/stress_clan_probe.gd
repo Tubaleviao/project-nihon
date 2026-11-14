@@ -162,6 +162,8 @@ func world_record() -> Dictionary:
 		techs[str(pid)] = _root._technology.get_statuses(str(pid))
 	if _forest.is_empty() and members.size() >= StressClanRules.MEMBERS:
 		_forest = _find_forest(_clan_centre(members))
+	if not _forest.is_empty():
+		_clear_creatures_near(members)
 	if _wall_s() - _trees_at >= TREES_EVERY_S:
 		_trees_at = _wall_s()
 		_trees = _nearest_trees(Vector2(float(_forest[0]), float(_forest[1])) if not _forest.is_empty() else _clan_centre(members))
@@ -173,6 +175,22 @@ func world_record() -> Dictionary:
 	}
 
 ## Where the clan stands: the mean ground position of its members the host knows, the world origin before that.
+## Phase 259 — a hit cancels timed work, and the forest's hawks hit a chopping bot every second, so the chop chain
+## never finished a 4 s hold. The scenario tests the clan loop, not combat: once the bots head for the forest, the
+## host removes creatures within `CREATURE_CLEAR_M` of a member (the playtest bot clears round its body the same way).
+const CREATURE_CLEAR_M := 40.0
+
+func _clear_creatures_near(members: Dictionary) -> void:
+	var creatures: Node = _root._creature
+	for pid: Variant in members.keys():
+		var p: Variant = _root._chest_wiring.player_pos(str(pid))
+		if not p is Vector3:
+			continue
+		for iid: Variant in creatures._instances.keys():
+			var c: Vector3 = (creatures._instances[iid] as Dictionary)["position"]
+			if Vector2(c.x - (p as Vector3).x, c.z - (p as Vector3).z).length() <= CREATURE_CLEAR_M:
+				creatures.despawn_instance(str(iid))
+
 func _clan_centre(members: Dictionary) -> Vector2:
 	var sum := Vector2.ZERO
 	var n := 0

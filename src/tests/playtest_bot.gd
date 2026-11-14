@@ -1730,6 +1730,13 @@ func _step_tutorial() -> Array:
 	var jump_ready := func() -> bool:
 		var s := _jump_state()
 		return s["grounded"] and s["alive"] and s["keys_live"] and not (s["flying"] or s["swimming"] or s["frozen"] or s["ground_hold"])
+	# CI (PR #630) reached this step with the body downed and respawned at chunk (0, 0), where it read dead at
+	# every press for the whole step: the jump loop ate the step's deadline and research had 6 s left. A downed
+	# body is let respawn, healed and carried home first, the way the flight step's return does.
+	if not _root._player.is_alive() and not _home.is_empty():
+		if not await _return_home(_home["chunk"], _home["local"]):
+			return [false, "the body was downed before the tutorial and never came home (alive %s)" % str(_root._player.is_alive())]
+		await _until(func(): return _root._player.is_grounded(), 10.0)
 	var jump_tries: Array = []
 	for _try in 5:
 		await _until(jump_ready, 10.0)
