@@ -1,0 +1,13 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/items/branch.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+weight = 0.3
+rarity = 0
+stackable = true
+shape = {"archetype":"stick","parts":{"body":"Thornwood"},"scale":1}
+description = "A straight stick picked off the ground or trimmed from a felled tree. The handle of every stone tool."
+tags = ["item"]

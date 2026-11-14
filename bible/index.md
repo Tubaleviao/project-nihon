@@ -116,6 +116,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [BookTechSteel](entities/booktechsteel.md) — A book that teaches the technology TechSteel
 - [BookTechTextileWeaving](entities/booktechtextileweaving.md) — A book that teaches the technology TechTextileWeaving
 - [BookTechVoidMastery](entities/booktechvoidmastery.md) — A book that teaches the technology TechVoidMastery
+- [Branch](entities/branch.md) — A straight stick picked off the ground or trimmed from a felled tree
 - [CarpenterAxe](entities/carpenteraxe.md) — Felling axe with a weighted ferrite head and a duskfiber-wrapped thornwood handle
 - [Cement](entities/cement.md) — Ashite ground to a fine grey powder at a masonry bench
 - [Chest](entities/chest.md) — A plank box with a ferrite band and lock
@@ -130,10 +131,15 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [FieldRations](entities/fieldrations.md) — Dried grain-and-herb ration pack prepared from temperate grassland crops
 - [Hearth](entities/hearth.md) — A stone-ringed fire pit that founds a settlement when placed
 - [Lockpick](entities/lockpick.md) — A bent ferrite pin on a thornwood grip
+- [LooseStone](entities/loosestone.md) — A fist-sized stone picked off the ground or knocked loose from host rock
 - [LumenfiteOrb](entities/lumenfiteorb.md) — A polished lumenfite sphere charged with stored magical energy by an Arcanist
 - [NoviceTunic](entities/novicetunic.md) — Plain woven tunic with a belted waist, given to every new character
 - [RefinedVoiditeShard](entities/refinedvoiditeshard.md) — Raw voidite stabilised in a forge into a crystalline shard
 - [SkinningKnife](entities/skinningknife.md) — Short ferrite blade on a thornwood grip, ground for pelts and meat
+- [StoneAxe](entities/stoneaxe.md) — A knapped stone lashed into a split branch
+- [StoneKnife](entities/stoneknife.md) — A sharp flake of stone in a branch grip
+- [StonePick](entities/stonepick.md) — A pointed stone bound across a branch
+- [StoneShovel](entities/stoneshovel.md) — A flat stone tied to a long branch
 - [ThornwoodPlank](entities/thornwoodplank.md) — Rough-cut plank milled from thornwood logs
 - [VeilsteelChestplate](entities/veilsteelchestplate.md) — Full torso armour forged from veilsteel plates over a ferrite under-layer
 - [VeilsteelIngot](entities/veilsteelingot.md) — Refined veilsteel bar alloyed in a master forge from ferrite ingots and an aethermite shard
@@ -211,6 +217,10 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [RecipeSkinningKnife](entities/recipeskinningknife.md) — Craft a skinning knife from one ferrite ingot and one thornwood plank
 - [RecipeStaminaPotion](entities/recipestaminapotion.md) — Brew a stamina-restoring potion from aethermite dust and root reagents
 - [RecipeSteel](entities/recipesteel.md) — Roll two ferrite ingots into two steel beams at a master forge
+- [RecipeStoneAxe](entities/recipestoneaxe.md) — Lash a knapped stone into a split branch: a stone axe
+- [RecipeStoneKnife](entities/recipestoneknife.md) — Set a sharp stone flake in a branch grip: a stone knife
+- [RecipeStonePick](entities/recipestonepick.md) — Bind a pointed stone across a branch: a stone pick
+- [RecipeStoneShovel](entities/recipestoneshovel.md) — Tie a flat stone to a long branch: a stone shovel
 - [RecipeThornwoodPlank](entities/recipethornwoodplank.md) — Mill two thornwood logs into three thornwood planks at a carpentry bench
 - [RecipeVeilsteelChestplate](entities/recipeveilsteelchestplate.md) — Forge a veilsteel chestplate from four veilsteel ingots and two ferrite ingots
 - [RecipeVeilsteelIngot](entities/recipeveilsteelingot.md) — Alloy three ferrite ingots and one refined aethermite shard into one veilsteel ingot at a master forge
@@ -279,6 +289,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [TechLeyframe](entities/techleyframe.md) — Binding a steel lattice with aethermite at an arcane forge
 - [TechMasterForge](entities/techmasterforge.md) — Advanced forge construction and temperature-control techniques
 - [TechSteel](entities/techsteel.md) — Rolling ferrite into beams over a master forge
+- [TechStoneTools](entities/techstonetools.md) — Lashing a stone to a branch
 - [TechTextileWeaving](entities/techtextileweaving.md) — Fiber processing and loom construction techniques
 - [TechVoidMastery](entities/techvoidmastery.md) — Esoteric void-smithing and void-brewing techniques
 
@@ -311,6 +322,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [Settlement](entities/settlement.md) — A player-founded village: a Hearth, members with roles and a shared Stockpile
 - [SettlementProjects](entities/settlementprojects.md) — Structures a village builds together: a palisade, a storehouse, a workshop, a watchtower
 - [SettlementSpecialties](entities/settlementspecialties.md) — What each member of a village is good at: woodworker, smith, hunter, builder or forager
+- [StoneTools](entities/stonetools.md) — The stone tools a newcomer makes by hand, the two inputs they take, and where those inputs come from: branches from a felled tree, loose stones knocked from host rock
 - [Structure](entities/structure.md) — A connected set of placed blocks and the stations on them, owned by its builder or the builder's clan
 - [StructureDurability](entities/structuredurability.md) — How a placed block wears and comes apart
 - [TradeSystem](entities/tradesystem.md) — Defines the rules governing player-to-player trade

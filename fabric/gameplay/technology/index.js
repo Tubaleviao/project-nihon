@@ -143,6 +143,49 @@ module.exports = {
     },
   }),
 
+  // ─── TechStoneTools ───────────────────────────────────────────────────────
+  // Phase 260 — every character is born knowing it (`innate`): no research, no points, no materials, no
+  // prerequisite, so a newcomer with an empty pack can make a first tool.
+  TechStoneTools: defineEntity({
+    tags: ['technology'],
+    description:
+      'Lashing a stone to a branch. Every person knows it from the start: the stone axe, pick, shovel ' +
+      'and knife need no station and no research.',
+    goal: 'Root of everything: the first tools a newcomer makes with bare hands (Phase 260)',
+    fields: {
+      id:     { type: 'uuid', primaryKey: true },
+      status: { type: 'enum', values: TECH_STATES },
+      researchCost: { type: 'integer', description: 'Research points spent to begin research (Phase 124); earned by the ResearchPointRule table', defaultValue: 0 },
+      tier:   { type: 'integer', description: 'Technology tree tier (1 = root)' },
+      tech: techData({
+        unlocks: ['RecipeStoneAxe', 'RecipeStonePick', 'RecipeStoneShovel', 'RecipeStoneKnife'],
+        requires: [],
+        researchDuration: 0,
+        researchMaterials: [],
+        innate: true,
+      }),
+    },
+    relations: {
+      unlocksRecipeStoneAxe:    { name: 'unlocksRecipeStoneAxe',    kind: 'hasOne', target: 'RecipeStoneAxe' },
+      unlocksRecipeStonePick:   { name: 'unlocksRecipeStonePick',   kind: 'hasOne', target: 'RecipeStonePick' },
+      unlocksRecipeStoneShovel: { name: 'unlocksRecipeStoneShovel', kind: 'hasOne', target: 'RecipeStoneShovel' },
+      unlocksRecipeStoneKnife:  { name: 'unlocksRecipeStoneKnife',  kind: 'hasOne', target: 'RecipeStoneKnife' },
+    },
+    stateMachine: technologyStateMachine(),
+    behaviors: {
+      beginResearch: {
+        description: 'Never begun: an innate technology is unlocked from the start',
+        rules: ['Innate: nothing to research'],
+        auth: { roles: ['maintainer'] },
+      },
+      completeResearch: {
+        description: 'Known from birth: every character starts with it unlocked',
+        rules: ['Innate: never researched, never locked'],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
   // ─── TechBasicCarpentry ───────────────────────────────────────────────────
   TechBasicCarpentry: defineEntity({
     tags: ['technology'],

@@ -75,6 +75,7 @@ ARCHETYPE_BOUNDS = {
     "tablet": (0.34, 0.44, 0.10), "potion": (0.18, 0.30, 0.18), "rations": (0.22, 0.12, 0.18),
     "hearth": (0.70, 0.30, 0.70), "waystone": (0.50, 1.20, 0.40), "bed": (0.60, 0.40, 1.00),
     "chest": (0.80, 0.60, 0.70), "door": (0.90, 2.00, 0.16), "lockpick": (0.04, 0.22, 0.04),
+    "shovel": (0.16, 1.00, 0.06), "stick": (0.05, 0.05, 0.62), "pebble": (0.16, 0.10, 0.16),
 }
 
 
@@ -360,6 +361,19 @@ def _lockpick(rng):
             "pin": prism(1, 0.03, 0.14, (0, 0), (0.002, 0.003)) + prism(2, -0.002, 0.012, (0, 0.145), (0.002, 0.006))}
 
 
+def _shovel(rng):
+    return {"handle": cylinder(1, -0.1, 0.7, (0, 0), 0.022, n=6),
+            "head": prism(1, 0.68, 0.9, (0, 0), (0.012, 0.07), (0.008, 0.05))}
+
+
+def _stick(rng):
+    return {"body": cylinder(2, -0.28, 0.28, (0, 0.02), 0.018, 0.012, n=6)}
+
+
+def _pebble(rng):
+    return {"body": sphere((0, 0.04, 0), 0.07, 4, 7, 0.6)}
+
+
 ARCHETYPES = {
     "pick": _pick, "axe": _axe, "sword": _blade_weapon(0.58), "longsword": _blade_weapon(0.9),
     "knife": _knife, "saw": _saw, "bow": _bow,
@@ -367,6 +381,7 @@ ARCHETYPES = {
     "shard": _shard, "dust": _dust, "plank": _plank, "block": _block, "orb": _orb, "tablet": _tablet,
     "potion": _potion, "rations": _rations, "hearth": _hearth, "waystone": _waystone,
     "bed": _bed, "chest": _chest, "door": _door, "lockpick": _lockpick,
+    "shovel": _shovel, "stick": _stick, "pebble": _pebble,
 }
 
 

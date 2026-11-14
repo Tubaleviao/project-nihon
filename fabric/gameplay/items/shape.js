@@ -31,6 +31,9 @@ const ARCHETYPES = {
   chest:      ['box', 'band'],
   door:       ['panel', 'hinge'],
   lockpick:   ['pin', 'grip'],
+  shovel:     ['head', 'handle'],
+  stick:      ['body'],
+  pebble:     ['body'],
 }
 
 // Materials an item's `hasOne` relations name but its shape deliberately does not draw (e.g. an

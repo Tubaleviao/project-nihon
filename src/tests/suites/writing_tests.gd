@@ -76,8 +76,12 @@ func _give_cost(r: Dictionary, pid: String, item_id: String) -> void:
 
 func _test_rules() -> void:
 	var items := WritingRules.items()
-	assert_eq(items.size(), GameData.TECHNOLOGIES.size() + 8, "a book per technology, a blueprint per station recipe and project")
-	for tid: String in GameData.TECHNOLOGIES:
+	# Phase 260 — an innate technology (known from birth) has no book.
+	var taught: Array = GameData.TECHNOLOGIES.keys().filter(func(t): return not bool((GameData.TECHNOLOGIES[t].get("tech") as Dictionary).get("innate", false)))
+	assert_eq(taught.size(), GameData.TECHNOLOGIES.size() - 1, "one innate technology (TechStoneTools)")
+	assert_eq(items.size(), taught.size() + 8, "a book per learnable technology, a blueprint per station recipe and project")
+	assert_eq(WritingRules.item_for("TechStoneTools"), "", "an innate technology has no book")
+	for tid: String in taught:
 		var book := WritingRules.item_for(tid)
 		assert_eq(book, "Book" + tid, "%s has a book" % tid)
 		assert_eq(WritingRules.of(book), { "writing": "Book", "teaches": tid, "kind": "technology" }, "which teaches it")

@@ -40,7 +40,9 @@ function writingRefs() {
   return {
     goods: [...tagged(items, 'item'), ...tagged(require('../world/materials'), 'material'), 'Hearth'],
     stationTypes: require('./tutorial').tutorialRefs().stationTypes,
-    technologies: tagged(require('./technology'), 'technology'),
+    // Phase 260 — an innate technology (known from birth) has no book: there is nothing to learn.
+    technologies: tagged(require('./technology'), 'technology')
+      .filter((k) => !require('./technology')[k].fields.tech.defaultValue.innate),
     stationRecipes,
     projects: Object.keys(settlement.PROJECTS.projects),
   }

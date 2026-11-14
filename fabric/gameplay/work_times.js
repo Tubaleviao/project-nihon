@@ -28,6 +28,10 @@ const TOOL_SPEEDS = {
   FerritePick:   { pick: 1.0 },
   VeilsteelPick: { pick: 1.5 },
   CarpenterAxe:  { axe: 1.0 },
+  // Phase 260 — stone tools sit between bare hands (0.25) and the forged tools (1.0).
+  StonePick:     { pick: 0.6 },
+  StoneAxe:      { axe: 0.6 },
+  StoneShovel:   { shovel: 0.6 },
 }
 
 const WORK_CLASSES = ['pick', 'axe', 'shovel']

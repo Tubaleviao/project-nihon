@@ -1,0 +1,19 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/items/stoneshovel.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+condition = 0
+weight = 1.5
+rarity = 0
+stackable = false
+shape = {"archetype":"shovel","parts":{"head":"Ashite","handle":"Thornwood"},"scale":1}
+durability = 40
+toolType = "shovel"
+repair = {"station":"","materials":[{"item":"LooseStone","quantity":1}],"skillGuards":[{"skill":"Carpentry","tier":"novice"}]}
+state_machine_field = "condition"
+initial_state = "pristine"
+description = "A flat stone tied to a long branch. Digs soil, sand and gravel faster than any pick."
+tags = ["item"]
