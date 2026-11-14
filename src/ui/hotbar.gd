@@ -47,7 +47,7 @@ const FLASH_SECONDS := 0.18
 ## (`WindowShortcuts`), so the bare ones (I, K, H, T...) are free for a box; a box key is always a bare letter,
 ## so an Alt+letter can never be bound.
 const RESERVED_KEYS: Array = [
-	KEY_W, KEY_A, KEY_S, KEY_D, KEY_F, KEY_R, KEY_B, KEY_N, KEY_V, KEY_E, KEY_G,
+	KEY_W, KEY_A, KEY_S, KEY_D, KEY_F, KEY_R, KEY_B, KEY_N, KEY_V, KEY_E, KEY_G, KEY_T,
 	KEY_Q,
 	KEY_X, KEY_Z, KEY_U, KEY_ESCAPE, KEY_ENTER, KEY_KP_ENTER, KEY_SPACE, KEY_TAB, KEY_SLASH, KEY_BACKSPACE,
 	KEY_SHIFT, KEY_CTRL, KEY_ALT, KEY_META, KEY_QUESTION,

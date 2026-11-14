@@ -109,8 +109,9 @@ static func find_new(world_seed: int, player_id: String, colonization: Colonizat
 
 ## Phase 261 — where a NEW character starts: inside one of the newcomer grounds when the world has any (the
 ## player id picks the ground and the point), else the open-land search of `find_new`.
-static func find_start(world_seed: int, player_id: String, colonization: ColonizationMap, height_fn: Callable, now: float = 0.0) -> Variant:
-	var ground: Variant = newcomer_spawn(world_seed, player_id, height_fn)
+## `blocked` (optional, `(Vector2) -> bool`): a point inside a structure's circle, skipped by the ground search.
+static func find_start(world_seed: int, player_id: String, colonization: ColonizationMap, height_fn: Callable, now: float = 0.0, blocked: Callable = Callable()) -> Variant:
+	var ground: Variant = newcomer_spawn(world_seed, player_id, height_fn, blocked)
 	if ground != null:
 		return ground
 	return find_new(world_seed, player_id, colonization, height_fn, now)
@@ -127,8 +128,8 @@ static func prime_grounds(world_seed: int, height_fn: Callable) -> void:
 		NewcomerGrounds.centres(world_seed, ground_standable(world_seed, height_fn))
 
 ## Phase 261 — `player_id`'s spawn inside a newcomer ground (picked by the id), or null.
-static func newcomer_spawn(world_seed: int, player_id: String, height_fn: Callable) -> Variant:
-	return NewcomerGrounds.spawn_for(world_seed, player_id, ground_standable(world_seed, height_fn), height_fn)
+static func newcomer_spawn(world_seed: int, player_id: String, height_fn: Callable, blocked: Callable = Callable()) -> Variant:
+	return NewcomerGrounds.spawn_for(world_seed, player_id, ground_standable(world_seed, height_fn), height_fn, blocked)
 
 ## A friend-code spawn: safe ground within `radius` of `center` (world XZ). The ground must be
 ## dry and flat, and not Ocean or VoidRift; it need not be a habitable biome (a friend in the

@@ -304,6 +304,7 @@ reason.not_repairable,Cannot be repaired.,Não pode ser reparado.
 reason.unknown_technology,Unknown technology.,Tecnologia desconhecida.
 reason.already_unlocked,Already unlocked.,Já desbloqueado.
 reason.already_researching,Already being researched.,Já em pesquisa.
+reason.discovery_only,Discovered by holding what it is made from; it cannot be researched.,Descoberta quando se tem aquilo de que é feita; não pode ser pesquisada.
 reason.not_researching,Not being researched.,Não está em pesquisa.
 reason.prerequisite_locked,Needs {0} first.,Exige {0} antes.
 reason.insufficient_points,Not enough research points.,Pontos de pesquisa insuficientes.
@@ -769,6 +770,7 @@ mount.refused.terrain,Your mount cannot stand here.,Sua montaria não consegue f
 mount.ok.mount,You mount up.,Você montou.
 mount.ok.dismount,You get off.,Você desmontou.
 controls.row19,Mount your companion or get off,Montar no seu companheiro ou desmontar
+controls.row20,Pick up the loose stone or branch at your feet,Pegar a pedra solta ou o galho aos seus pés
 menu.title,Project Nihon,Project Nihon
 menu.version,Version {0},Versão {0}
 menu.play,Play,Jogar

@@ -48,6 +48,7 @@ static func controls_rows() -> Array:
 		{"action": "station", "keys": "B · V", "desc": I18n.t("controls.row11"), "mouse": 0},
 		{"action": "tame", "keys": "G", "desc": I18n.t("controls.row12"), "mouse": 0},
 		{"action": "mount", "keys": "M", "desc": I18n.t("controls.row19"), "mouse": 0},
+		{"action": "pick_up", "keys": "T", "desc": I18n.t("controls.row20"), "mouse": 0},
 		{"action": "equipment", "keys": "E", "desc": I18n.t("controls.row13"), "mouse": 0},
 		{"action": "chest", "keys": "U · Shift+U · Ctrl+U", "desc": I18n.t("controls.row18"), "mouse": 0},
 		{"action": "windows", "keys": WindowShortcuts.all_labels(), "desc": I18n.t("controls.row14"), "mouse": 0},

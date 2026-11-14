@@ -267,14 +267,41 @@ func loose_pick_synced(h: Node) -> void:
 	if items.is_empty():
 		h._report("loose_pick_synced", "fail", "no_item")
 		return
+	# The nearest one (both peers compute the same items, so they agree on it).
 	var it: Dictionary = items[0]
+	for c in items:
+		if (c["xz"] as Vector2).distance_to(from) < (it["xz"] as Vector2).distance_to(from):
+			it = c
 	var id: String = str(it["id"])
 	if h._role == "host":
 		var taken: bool = await h._await_until(func(): return loose.is_taken(id), h._step_timeout() * 3.0)
 		h._report("loose_pick_synced", h.verdict(taken, true), id if taken else "never_taken")
 		return
+	# The host checks a remote pick against the fabric's pick reach from the peer's reported position, and this
+	# client reports RENDEZVOUS unless told otherwise: it walks its body from RENDEZVOUS to the item under the
+	# host's speed cap (1 m per 0.3 s) and reports where the body really is on each leg.
+	var target: Vector2 = it["xz"]
+	var start := from
+	var legs := maxi(1, ceili(start.distance_to(target)))
+	h._report_actual = true
+	for i in range(0, legs + 1):
+		var p := start.lerp(target, float(i) / float(legs))
+		var ground: float = float(loose.height_fn.call(p)) if loose.height_fn.is_valid() else float(h.RENDEZVOUS.y)
+		h._root._player.place_at_world_pos(WorldPos.from_world(p.x, ground + 1.0, p.y))
+		h._report_position()
+		await h._await_settle(0.3)
+	h._report_position()
 	await h._await_settle(1.0 * h._time_scale)
 	var before: int = h._root._inventory.get_item_count(str(it["kind"]))
 	GameBus.loose_pick_requested.emit(id, "")
 	var gone: bool = await h._await_until(func(): return loose.is_taken(id) and h._root._inventory.get_item_count(str(it["kind"])) > before, h._step_timeout() * 3.0)
+	# Walk back to RENDEZVOUS the same way, so the reports that follow are not a jump the speed cap pulls back.
+	for i in range(legs, -1, -1):
+		var p := start.lerp(target, float(i) / float(legs))
+		var ground: float = float(loose.height_fn.call(p)) if loose.height_fn.is_valid() else float(h.RENDEZVOUS.y)
+		h._root._player.place_at_world_pos(WorldPos.from_world(p.x, ground + 1.0, p.y))
+		h._report_position()
+		await h._await_settle(0.3)
+	h._report_actual = false
+	h._report_position()
 	h._report("loose_pick_synced", h.verdict(gone, true), id if gone else "never_taken")

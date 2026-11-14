@@ -14,12 +14,23 @@ const StoneTools := preload("res://src/world/stone_tools.gd")
 const SpawnFinder := preload("res://src/world/spawn_finder.gd")
 const Diag := preload("res://src/core/diag.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
+const WindowShortcuts := preload("res://src/ui/window_shortcuts.gd")
+const WorldPos := preload("res://src/terrain/world_pos.gd")
 
 const TILE := 4.0
 ## Items closer than this to the local player are drawn.
 const DRAW_RADIUS := 48.0
 const MAX_TILE := 20000000   # an id naming a tile past the planet is refused
 const KINDS := [StoneTools.BRANCH, StoneTools.LOOSE_STONE]
+## The pick-up key (bare; Alt+letter is a window). G tames, so the loose items take T ("take").
+const PICK_KEY := KEY_T
+## A remote pick is checked against the peer's last reported position, which trails the body by a report
+## interval: this much is allowed over the fabric's pick reach.
+const REMOTE_REACH_SLACK := 4.0
+## A player picks at most one item per this many seconds (the host refuses faster intents).
+const PICK_COOLDOWN := 0.25
+## Most taken entries a join snapshot carries (and a client adopts).
+const MAX_SYNCED_TAKEN := 4096
 
 var world_seed: int = 0
 ## When set, its world seed is the one used (the seed can change after wiring: a loaded save, a menu world).
@@ -37,6 +48,8 @@ var clock: Callable = Callable()
 
 ## id -> regrow_at (unix seconds) of every item picked and not yet regrown.
 var _taken: Dictionary = {}
+## actor -> unix seconds of their last accepted pick (the host's rate limit).
+var _last_pick: Dictionary = {}
 var _mmi: MultiMeshInstance3D = null
 var _drawn_from := Vector2(INF, INF)
 
@@ -54,10 +67,16 @@ func attach(root: Node) -> void:
 	player_registry = root._registry
 	networking = root._networking
 	local_position = func() -> Vector3: return root._player.get_position()
+	local_exact = func() -> Dictionary: return root._player.get_world_pos()
+	scene_position = func() -> Vector3: return root._player.get_scene_position()
 	render_visuals = not root._is_server
 
 ## The networking slice: a client forwards its pick-up intent through it, the host broadcasts what it resolved.
 var networking: Node = null
+## `() -> Dictionary`: the local player's exact world position `{ chunk, local }` (drawing far from the origin).
+var local_exact: Callable = Callable()
+## `() -> Vector3`: the local player's body in scene space (the drawn items are placed relative to it).
+var scene_position: Callable = Callable()
 
 func _process(_delta: float) -> void:
 	if is_authoritative:
@@ -98,9 +117,12 @@ static func item_at(seed_v: int, tx: int, tz: int) -> Dictionary:
 	if float(posmod(h, 10000)) / 10000.0 >= density:
 		return {}
 	var kind: String = KINDS[posmod(h >> 16, KINDS.size())]
-	var jx := 0.5 + float(posmod(h >> 24, 300)) / 100.0
-	var jz := 0.5 + float(posmod(h >> 36, 300)) / 100.0
-	return { "id": tile_id(tx, tz), "kind": kind, "xz": Vector2(float(tx) * TILE + jx, float(tz) * TILE + jz) }
+	# hash() is 32 bits: the offset in the tile comes from a second hash (one 16-bit half per axis).
+	var j := hash([seed_v, tx, tz, "loose_xz"])
+	var jx := 0.5 + float(posmod(j & 0xFFFF, 300)) / 100.0
+	var jz := 0.5 + float(posmod((j >> 16) & 0xFFFF, 300)) / 100.0
+	return { "id": tile_id(tx, tz), "kind": kind, "xz": Vector2(float(tx) * TILE + jx, float(tz) * TILE + jz),
+		"tile": Vector2i(tx, tz), "jitter": Vector2(jx, jz) }
 
 ## The world seed in force; the grounds' centres for it are found once (cached) before any placement is asked.
 func _seed() -> int:
@@ -180,6 +202,8 @@ func pick(id: String, player_id: String = "") -> Dictionary:
 		return { "success": false, "reason": "no_item" }
 	if _taken.has(id):
 		return { "success": false, "reason": "taken" }
+	if _now() - float(_last_pick.get(player_id, -INF)) < PICK_COOLDOWN:
+		return { "success": false, "reason": "rate_limited" }
 	if player_id == "" and local_position.is_valid():
 		var p: Vector3 = local_position.call()
 		if Vector2(p.x, p.z).distance_to(it["xz"]) > float(NewcomerGrounds.rule()["pickReachMetres"]) + 1.0:
@@ -189,6 +213,7 @@ func pick(id: String, player_id: String = "") -> Dictionary:
 		return { "success": false, "reason": "no_inventory" }
 	var regrow_at := _now() + float(NewcomerGrounds.rule()["looseRegrowSeconds"])
 	_taken[id] = regrow_at
+	_last_pick[player_id] = _now()
 	_push_inventory(player_id, inv)
 	GameBus.loose_picked.emit(id, regrow_at)
 	_broadcast_state({ "type": "loose_picked", "id": id, "regrow_at": regrow_at })
@@ -243,7 +268,9 @@ func _on_pick_intent(peer: int, id: String) -> void:
 		return
 	var xz: Vector2 = it["xz"]
 	var y := float(height_fn.call(xz)) if height_fn.is_valid() else 0.0
-	if networking._within_reach(peer, Vector3(xz.x, y, xz.y), networking.MAX_EDIT_REACH):
+	# The fabric's pick reach (plus the report lag), the same rule the local player has: never the 60 m edit reach.
+	var reach := float(NewcomerGrounds.rule()["pickReachMetres"]) + REMOTE_REACH_SLACK
+	if networking._within_reach(peer, Vector3(xz.x, y, xz.y), reach):
 		GameBus.loose_pick_requested.emit(id, actor)
 	else:
 		Diag.warn("[Loose] pick intent for %s from peer %d is out of reach — dropped" % [id, peer])
@@ -279,21 +306,60 @@ func _on_interact() -> void:
 		return
 	GameBus.loose_pick_requested.emit(str(it["id"]), "")
 
-## G picks up the loose stone or branch at the player's feet.
+## T picks up the loose stone or branch at the player's feet (Alt+T is the technology window, not a pick).
 func _unhandled_input(event: InputEvent) -> void:
-	if render_visuals and event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_G:
+	if render_visuals and event is InputEventKey and event.pressed and not event.echo and event.keycode == PICK_KEY \
+			and not WindowShortcuts.is_window_key(event):
 		_on_interact()
+
+# ---------------------------------------------------------------------------
+# Join sync
+# ---------------------------------------------------------------------------
+
+## Host: the taken items for a join snapshot (id -> regrow_at), at most MAX_SYNCED_TAKEN of them.
+func taken_data() -> Dictionary:
+	var out := {}
+	for id in _taken:
+		if out.size() >= MAX_SYNCED_TAKEN:
+			break
+		out[id] = _taken[id]
+	return out
+
+## Client: adopt the host's taken items from a join snapshot (malformed entries are dropped).
+func apply_taken(data: Variant) -> void:
+	if is_authoritative or not (data is Dictionary):
+		return
+	_taken.clear()
+	for id in data:
+		if _taken.size() >= MAX_SYNCED_TAKEN:
+			break
+		var at: Variant = data[id]
+		if id is String and parse_id(id) != null and (at is float or at is int) and is_finite(float(at)):
+			_taken[id] = float(at)
+	if render_visuals:
+		redraw()
 
 # ---------------------------------------------------------------------------
 # Visuals (one MultiMesh, rebuilt around the local player)
 # ---------------------------------------------------------------------------
 
+## The items are placed relative to the body: the instance is at the body's scene X/Z and each item at its exact
+## world offset from the body (tile and jitter in 64-bit floats), so they land right however far from the origin
+## the player is and whatever rebase shifted the scene (`shift_scene` moves the instance with the world).
 func redraw() -> void:
 	if not render_visuals or not local_position.is_valid() or not is_inside_tree():
 		return
 	var p: Vector3 = local_position.call()
 	_drawn_from = Vector2(p.x, p.z)
 	var items := items_near(_drawn_from, DRAW_RADIUS)
+	# The body's exact world X/Z as 64-bit floats (a Vector3 is 32-bit: metres apart at 20,000 km).
+	var ax := float(p.x)
+	var az := float(p.z)
+	if local_exact.is_valid():
+		var wp: Dictionary = local_exact.call()
+		ax = float((wp["chunk"] as Vector2i).x) * WorldPos.CHUNK_METERS + float((wp["local"] as Vector3).x)
+		az = float((wp["chunk"] as Vector2i).y) * WorldPos.CHUNK_METERS + float((wp["local"] as Vector3).z)
+	var anchor: Vector3 = scene_position.call() if scene_position.is_valid() else p
 	if _mmi == null:
 		_mmi = MultiMeshInstance3D.new()
 		var mm := MultiMesh.new()
@@ -303,11 +369,22 @@ func redraw() -> void:
 		mesh.size = Vector3(0.35, 0.18, 0.35)
 		mm.mesh = mesh
 		_mmi.multimesh = mm
+		_mmi.top_level = true
 		add_child(_mmi)
+	_mmi.global_position = Vector3(anchor.x, 0.0, anchor.z)
 	var mm2: MultiMesh = _mmi.multimesh
 	mm2.instance_count = items.size()
 	for i in items.size():
 		var xz: Vector2 = items[i]["xz"]
+		var t: Vector2i = items[i]["tile"]
+		var jit: Vector2 = items[i]["jitter"]
+		var dx := float(t.x) * TILE + float(jit.x) - ax
+		var dz := float(t.y) * TILE + float(jit.y) - az
 		var y := float(height_fn.call(xz)) if height_fn.is_valid() else p.y
-		mm2.set_instance_transform(i, Transform3D(Basis(), Vector3(xz.x, y + 0.09, xz.y)))
+		mm2.set_instance_transform(i, Transform3D(Basis(), Vector3(dx, y + 0.09, dz)))
 		mm2.set_instance_color(i, Color(0.45, 0.32, 0.18) if items[i]["kind"] == StoneTools.BRANCH else Color(0.55, 0.55, 0.58))
+
+## A rebase moved the scene by `shift`: the drawn instance moves with it (the items keep their world places).
+func shift_scene(shift: Vector3) -> void:
+	if _mmi != null:
+		_mmi.global_position += shift

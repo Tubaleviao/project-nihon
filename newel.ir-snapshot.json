@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:0d7fcb7ff598e9e5ed5722e3d35acc0e88e54d1ae72503684ac8355a72ee20a8",
+  "schemaHash": "sha256:cc4b01fcd1c310ddfb6b6ce7d09fe1e525825c04326700218234f86de807d30f",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -47718,6 +47718,7 @@
               "station",
               "tame",
               "mount",
+              "pick_up",
               "equipment",
               "chest",
               "windows",

@@ -669,8 +669,11 @@ func _spawn_members(creature_id: String, chunk_pos: Vector2i, count: int) -> int
 	var blocked: int = 0
 	while spawned < count:
 		if not _instances.has(_instance_id(chunk_pos, creature_id, idx)):
-			if _spawn_blocked_at(chunk_pos, _deterministic_chunk_local(chunk_pos, creature_id, 0) + _pack_member_offset(idx)):
+			var spot := _deterministic_chunk_local(chunk_pos, creature_id, 0) + _pack_member_offset(idx)
+			if _spawn_blocked_at(chunk_pos, spot):
 				blocked += 1
+			elif _outside_ground_list(creature_id, chunk_pos, spot):
+				pass   # Phase 261: a member whose spot falls inside a ground it is not allowed in is never spawned
 			else:
 				_spawn(creature_id, chunk_pos, idx)
 			spawned += 1
@@ -680,6 +683,15 @@ func _spawn_members(creature_id: String, chunk_pos: Vector2i, count: int) -> int
 ## Phase 206 — `(world_xz: Vector2) -> bool`: true where no creature may spawn (inside a structure's circle).
 ## Set on the host by the structure wiring; unset, nothing is blocked. A creature that walks in is not removed.
 var spawn_blocked: Callable = Callable()
+
+## Phase 261 — whether `creature_id` may not spawn at `local` (metres from `chunk`'s corner): the spot lies inside a
+## newcomer ground and the creature is not on its allowed list (a chunk whose centre is outside the ground can still
+## reach over its edge, and a pack's offsets can carry a member in).
+func _outside_ground_list(creature_id: String, chunk: Vector2i, local: Vector2) -> bool:
+	if NewcomerGrounds.creature_allowed(creature_id):
+		return false
+	var m := WorldPos.CHUNK_METERS
+	return NewcomerGrounds.inside(_world_seed(), float(chunk.x) * m + local.x, float(chunk.y) * m + local.y)
 
 ## Whether the spot `local` (metres from `chunk`'s origin corner) is inside a circle.
 func _spawn_blocked_at(chunk: Vector2i, local: Vector2) -> bool:

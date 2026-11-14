@@ -1897,6 +1897,10 @@ func _step_mount() -> Array:
 			answers[k] = int(answers.get(k, 0)) + 1
 	GameBus.mount_resolved.connect(on_resolved)
 	var was_on := [true]
+	# Where the wolf last stood mounted: a ride into water puts the rider on foot (the wolf's terrain is
+	# ground only) and every remount there is refused as terrain, so a throw stands the rider back here,
+	# turned around (Phase 261's newcomer grounds put the pinned spawn beside water).
+	var dry := [start]
 	var rode: bool = await _until(func():
 		_root._player.set_hp(PlayerSlice.MAX_HP)
 		var now_ms := Engine.get_physics_frames()
@@ -1905,6 +1909,8 @@ func _step_mount() -> Array:
 			# was on foot so the cruising speed is judged on the mounted legs only.
 			if bool(was_on[0]):
 				throws[0] = int(throws[0]) + 1
+				_teleport_to((dry[0] as Dictionary)["chunk"], (dry[0] as Dictionary)["local"])
+				_root._player._pivot.rotate_y(PI)
 			was_on[0] = false
 			# The wolf may have been knocked or wandered off while the rider was on foot: stand it beside
 			# them again, or the remount is refused as too_far.
@@ -1921,6 +1927,7 @@ func _step_mount() -> Array:
 			var leg: float = WaystoneSlice.distance_m(here, last[0]) / (float(now_ms - int(last[1])) / tps)
 			legs.append(leg)
 			ridden[0] = float(ridden[0]) + WaystoneSlice.distance_m(here, last[0])
+			dry[0] = last[0]   # the start of a leg that ended mounted: the wolf stood there on ground
 			if leg < 1.0:
 				_root._player._pivot.rotate_y(0.9)   # stalled on a tree or a ledge: turn and go on
 			last[0] = here

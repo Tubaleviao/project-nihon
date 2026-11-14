@@ -18,6 +18,9 @@ func register() -> void:
 	_run_test("newcomer grounds: only allowed creatures spawn inside a ground", _test_creature_spawns)
 	_run_test("newcomer grounds: an aggressive creature turns back at the edge, a weak one walks in", _test_turn_back)
 	_run_test("newcomer grounds: no structure is placed within the claim radius of a centre", _test_claim_zone)
+	_run_test("newcomer grounds: a spawn skips structure circles and falls back to the protected centre", _test_spawn_skips_structures)
+	_run_test("newcomer grounds: loose items are jittered over both axes of their tile", _test_loose_jitter)
+	_run_test("newcomer grounds: picks are rate limited; a join snapshot carries the taken items", _test_pick_rate_and_join)
 
 ## A terrain at SEED and the grounds primed for it.
 func _world() -> Dictionary:
@@ -226,3 +229,74 @@ func _test_claim_zone() -> void:
 	assert_false(NewcomerGrounds.in_claim_zone(SEED, c.x + claim + 2.0, c.y), "building elsewhere in the ground is allowed")
 	assert_true(NewcomerGrounds.inside(SEED, c.x + claim + 2.0, c.y), "still inside the ground")
 	assert_true(w != null, "world built")
+
+func _test_spawn_skips_structures() -> void:
+	var w := _world()
+	var pid := "walled_in"
+	var free: Vector3 = SpawnFinderScript.find_start(SEED, pid, null, w["height_fn"], 0.0, func(_p: Vector2) -> bool: return false)
+	assert_eq(free, SpawnFinderScript.find_start(SEED, pid, null, w["height_fn"]), "nothing built: the same spawn as before")
+	# A circle over the spawn point: the search goes on to another point.
+	var around := func(p: Vector2) -> bool: return p.distance_to(Vector2(free.x, free.z)) < 40.0
+	var moved: Vector3 = SpawnFinderScript.find_start(SEED, pid, null, w["height_fn"], 0.0, around)
+	assert_true(Vector2(moved.x, moved.z).distance_to(Vector2(free.x, free.z)) >= 40.0, "a point inside a structure circle is skipped")
+	assert_true(NewcomerGrounds.inside(SEED, moved.x, moved.z), "and the spawn is still in a ground")
+	# Everything outside the protected centre is built over: the spawn falls back to the centre.
+	var all_built := func(p: Vector2) -> bool: return not NewcomerGrounds.in_claim_zone(SEED, p.x, p.y)
+	var c: Variant = SpawnFinderScript.find_start(SEED, pid, null, w["height_fn"], 0.0, all_built)
+	assert_true(c != null, "a spawn is still found")
+	assert_true(NewcomerGrounds.in_claim_zone(SEED, c.x, c.z), "on the protected centre, which no structure may hold")
+
+func _test_loose_jitter() -> void:
+	var xs := {}
+	var zs := {}
+	for tx in 200:
+		var j := hash([SEED, tx, 0, "loose_xz"])
+		xs[posmod(j & 0xFFFF, 300)] = true
+		zs[posmod((j >> 16) & 0xFFFF, 300)] = true
+	assert_true(xs.size() > 50 and zs.size() > 50, "both offsets vary across tiles (%d, %d)" % [xs.size(), zs.size()])
+	var w := _world()
+	var c: Vector2 = NewcomerGrounds.centres(SEED)[0]
+	var lo := INF
+	var hi := -INF
+	var ctx := floori(c.x / LooseItemSlice.TILE)
+	var ctz := floori(c.y / LooseItemSlice.TILE)
+	for dx in 40:
+		for dz in 40:
+			var it := LooseItemSlice.item_at(SEED, ctx + dx, ctz + dz)
+			if not it.is_empty():
+				var jz: float = (it["jitter"] as Vector2).y
+				lo = minf(lo, jz)
+				hi = maxf(hi, jz)
+	assert_true(hi - lo > 1.5, "items spread across the tile in z, not one row (%.2f..%.2f)" % [lo, hi])
+	assert_true(w != null, "world built")
+
+func _test_pick_rate_and_join() -> void:
+	var w := _world()
+	var host := _loose(w)
+	var client := _loose(w)
+	client.is_authoritative = false
+	var inv := InventorySlice.new()
+	add_child(inv)
+	host.inventory_slice = inv
+	var now := [5000.0]
+	host.clock = func() -> float: return now[0]
+	var p: Vector3 = SpawnFinderScript.find_start(SEED, "rate", null, w["height_fn"])
+	var items: Array = host.items_near(Vector2(p.x, p.z), 100.0)
+	assert_true(items.size() >= 2, "two items near the spawn")
+	host.local_position = func() -> Vector3: return Vector3((items[0]["xz"] as Vector2).x, 0.0, (items[0]["xz"] as Vector2).y)
+	assert_true(bool(host.pick(str(items[0]["id"]), "")["success"]), "the first pick is taken")
+	host.local_position = func() -> Vector3: return Vector3((items[1]["xz"] as Vector2).x, 0.0, (items[1]["xz"] as Vector2).y)
+	assert_eq(str(host.pick(str(items[1]["id"]), "")["reason"]), "rate_limited", "a second pick in the same instant is refused")
+	now[0] += LooseItemSlice.PICK_COOLDOWN + 0.01
+	assert_true(bool(host.pick(str(items[1]["id"]), "")["success"]), "after the cooldown it is taken")
+	# A peer that joins later learns both from the snapshot.
+	var late := _loose(w)
+	late.is_authoritative = false
+	late.apply_taken(host.taken_data())
+	assert_true(late.is_taken(str(items[0]["id"])) and late.is_taken(str(items[1]["id"])), "a late joiner sees both taken")
+	late.apply_taken({ "bad id": 1.0, "1:2": "x", 3: 4.0 })
+	assert_eq(late._taken.size(), 0, "malformed entries are dropped")
+	host.free()
+	client.free()
+	late.free()
+	inv.free()

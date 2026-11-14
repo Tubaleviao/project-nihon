@@ -20,19 +20,30 @@ const FALLBACK := {
 ## seed -> Array of Vector2 centres (world X/Z). Filled by `centres`.
 static var _cache: Dictionary = {}
 
-## The fabric's table (defaults for a rig without generated resources).
+## The table `rule()` read last, and the resource it was read from (rebuilt when GameData holds another one).
+static var _rule: Dictionary = {}
+static var _rule_from: Variant = null
+
+## The fabric's table (defaults for a rig without generated resources). Read once per resource and shared: it is
+## asked on every creature step and loose-item tile, so callers must not change the dictionary.
 static func rule() -> Dictionary:
-	var out: Dictionary = FALLBACK.duplicate(true)
 	var res: Resource = GameData.WORLD_SYSTEMS.get("NewcomerGrounds", null)
+	if not _rule.is_empty() and _rule_from == res:
+		return _rule
+	var out: Dictionary = FALLBACK.duplicate(true)
 	if res != null:
 		for k in out.keys():
 			var v: Variant = res.get(k)
 			if v != null:
 				out[k] = v
+	_rule = out
+	_rule_from = res
 	return out
 
 static func clear_cache() -> void:
 	_cache.clear()
+	_rule = {}
+	_rule_from = null
 
 static func _circumference() -> float:
 	return float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
@@ -111,8 +122,11 @@ static func aggression_allowed(level: String) -> bool:
 	return (rule()["allowedAggression"] as Array).has(level)
 
 ## A spawn point for `player_id` inside one of the grounds, or null. The ground is picked by the player id;
-## `standable` is as for `centres`, `height_fn` gives the ground height at a Vector2.
-static func spawn_for(world_seed: int, player_id: String, standable: Callable, height_fn: Callable) -> Variant:
+## `standable` is as for `centres`, `height_fn` gives the ground height at a Vector2. `blocked` (optional,
+## `(Vector2) -> bool`) refuses a point inside a structure's circle: the claim radius keeps only the centre free, so
+## a point among buildings is skipped, and when every candidate is blocked the spawn falls back to the protected
+## centre, which no structure may hold (a newcomer is never walled in).
+static func spawn_for(world_seed: int, player_id: String, standable: Callable, height_fn: Callable, blocked: Callable = Callable()) -> Variant:
 	var cs := centres(world_seed, standable)
 	if cs.is_empty():
 		return null
@@ -126,6 +140,11 @@ static func spawn_for(world_seed: int, player_id: String, standable: Callable, h
 		var d := claim + 6.0 + sqrt(rng.randf()) * (spawn_r - claim - 6.0)
 		var a := rng.randf() * TAU
 		var p := centre + Vector2(cos(a), sin(a)) * d
-		if standable.call(p.x, p.y):
+		if standable.call(p.x, p.y) and not (blocked.is_valid() and bool(blocked.call(p))):
 			return Vector3(p.x, float(height_fn.call(p)) + 1.0, p.y)
+	if blocked.is_valid():
+		for _i in 64:
+			var p := centre + Vector2.from_angle(rng.randf() * TAU) * sqrt(rng.randf()) * (claim - 2.0)
+			if standable.call(p.x, p.y):
+				return Vector3(p.x, float(height_fn.call(p)) + 1.0, p.y)
 	return null

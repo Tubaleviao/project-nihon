@@ -711,7 +711,8 @@ func _walk_path(iid: String, inst: Dictionary, target: Vector3, speed: float, de
 	flat.y = 0.0
 	var step := speed * delta
 	if flat.length() <= step:
-		creature_slice.set_instance_pos(iid, center_pos)
+		# A move, not a snap: the step goes through the newcomer-ground edge check (Phase 261) like any other.
+		creature_slice.move_instance(iid, flat)
 		ai["path_idx"] = idx + 1
 	else:
 		creature_slice.move_instance(iid, flat.normalized() * step)
