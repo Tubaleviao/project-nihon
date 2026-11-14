@@ -61,6 +61,8 @@ const CRAFTED_KEY := "_first_crafts"
 ## Fallback rule table when GameData has no ResearchPointRule (a slice built before
 ## GameData loads); mirrors the fabric default.
 const DEFAULT_RULES := { "craft": 1, "gather": 1, "firstCraftOfRecipe": 3, "maxPoints": 5000, "windowSeconds": 600, "windowCap": 60 }
+## Phase 260 — the reserved snapshot key for the discovery inputs a player has held.
+const SEEN_KEY := "_seen"
 ## Phase 209 — the reserved snapshot key for the station recipes and settlement projects a player learnt from a
 ## blueprint (a technology learnt from a book is simply "unlocked").
 const LEARNT_KEY := "_learnt"
@@ -83,6 +85,10 @@ var is_authoritative: bool = true
 
 ## player_id -> { tech key -> state string }. Created lazily per player.
 var _status: Dictionary = {}
+## Phase 260 — pid -> { item: true }: the discovery inputs each player has held.
+var _seen: Dictionary = {}
+var _discovery_items: Dictionary = {}
+var _discovery_items_built := false
 
 ## player_id -> { tech key -> wall-clock deadline (Unix seconds) } for
 ## auto-completion in _process.
@@ -111,6 +117,7 @@ var _item_recipe: Dictionary = {}
 
 func _ready() -> void:
 	_build_recipe_index()
+	GameBus.item_obtained.connect(_on_item_obtained)
 	GameBus.research_requested.connect(_on_research_requested)
 	GameBus.research_intent.connect(_on_research_intent)
 
@@ -153,6 +160,107 @@ func _status_for(player_id: String) -> Dictionary:
 			seeded[tech_key] = STATE_LOCKED
 		_status[player_id] = seeded
 	return _status[player_id]
+
+## Phase 260 — a discovery technology (fabric `tech.discovery`) is never researched: a player who has held
+## every input of the recipes it unlocks (each at some time, not necessarily together) knows it.
+static func is_discovery(tech_id: String) -> bool:
+	var res: Resource = GameData.TECHNOLOGIES.get(tech_id, null)
+	var tech: Variant = res.get("tech") if res != null else null
+	return tech is Dictionary and bool((tech as Dictionary).get("discovery", false))
+
+## The items a discovery technology waits for: every input of every recipe it unlocks (sorted, deduplicated).
+static func discovery_inputs(tech_id: String) -> Array:
+	var res: Resource = GameData.TECHNOLOGIES.get(tech_id, null)
+	var tech: Variant = res.get("tech") if res != null else null
+	if not (tech is Dictionary):
+		return []
+	var out: Array = []
+	for rid in (tech as Dictionary).get("unlocks", []):
+		var r: Resource = GameData.RECIPES.get(str(rid), null)
+		var recipe: Variant = r.get("recipe") if r != null else null
+		if recipe is Dictionary:
+			for i in (recipe as Dictionary).get("inputs", []):
+				if not out.has(str(i["item"])):
+					out.append(str(i["item"]))
+	out.sort()
+	return out
+
+## What a discovery technology lets the player make: the first output of each recipe it unlocks.
+static func discovery_outputs(tech_id: String) -> Array:
+	var res: Resource = GameData.TECHNOLOGIES.get(tech_id, null)
+	var tech: Variant = res.get("tech") if res != null else null
+	var out: Array = []
+	if tech is Dictionary:
+		for rid in (tech as Dictionary).get("unlocks", []):
+			var r: Resource = GameData.RECIPES.get(str(rid), null)
+			var recipe: Variant = r.get("recipe") if r != null else null
+			if recipe is Dictionary and not ((recipe as Dictionary).get("outputs", []) as Array).is_empty():
+				out.append(str(recipe["outputs"][0]["item"]))
+	return out
+
+## Every item some discovery technology waits for, as a set.
+static func discovery_items() -> Dictionary:
+	var out: Dictionary = {}
+	for key in GameData.TECHNOLOGIES:
+		if is_discovery(str(key)):
+			for item in discovery_inputs(str(key)):
+				out[item] = true
+	return out
+
+## The discovery inputs `player_id` has held (a set); empty for a player who has held none.
+func seen_items(player_id: String = "") -> Dictionary:
+	return _seen.get(resolve_player(player_id), {})
+
+## Host-only: `player_id` now holds `item_id`. A discovery input is remembered (it counts even after it is
+## dropped), and every discovery technology whose inputs have all been held is unlocked: announced like
+## finished research, plus a `notice.tech_discovered` system message naming it and what it makes. Returns
+## the technologies discovered.
+func note_obtained(player_id: String, item_id: String) -> Array:
+	if not is_authoritative:
+		return []
+	if not _discovery_items_built:
+		_discovery_items = discovery_items()
+		_discovery_items_built = true
+	if not _discovery_items.has(item_id):
+		return []
+	var pid := resolve_player(player_id)
+	# A machine with a registry but no local player (a dedicated server) has no one behind an unowned pack:
+	# "" would make the notice a broadcast to every client.
+	if pid == "" and player_registry != null:
+		return []
+	# A pack that is no player's (a merchant's stock) discovers nothing.
+	if player_registry != null and player_registry.has_method("has_player") and pid != local_player_id() \
+			and not player_registry.has_player(pid):
+		return []
+	var seen: Dictionary = _seen.get(pid, {})
+	if seen.has(item_id):
+		return []
+	seen[item_id] = true
+	_seen[pid] = seen
+	var found: Array = []
+	for key in GameData.TECHNOLOGIES:
+		var tid := str(key)
+		if not is_discovery(tid) or get_status(tid, pid) != STATE_LOCKED:
+			continue
+		var ok := true
+		for item in discovery_inputs(tid):
+			ok = ok and seen.has(item)
+		for req in _get_tech_data(tid).get("requires", []):
+			ok = ok and is_unlocked(str(req), pid)
+		if not ok:
+			continue
+		_status_for(pid)[tid] = STATE_UNLOCKED
+		found.append(tid)
+		GameBus.technology_unlocked.emit(tid, pid)
+		_emit(_result(tid, true, "discovered", STATE_UNLOCKED, pid))
+		GameBus.system_message.emit("notice.tech_discovered", [tid, ", ".join(discovery_outputs(tid))], pid)
+	if found.is_empty():
+		# Nothing unlocked, but the held input must reach the player's record (it counts after a drop or a reload).
+		GameBus.technology_record_changed.emit(pid)
+	return found
+
+func _on_item_obtained(owner_id: String, item_id: String) -> void:
+	note_obtained(owner_id, item_id)
 
 ## The wall-clock deadlines for `player_id`, created on first use.
 func _deadlines_for(player_id: String) -> Dictionary:
@@ -354,6 +462,10 @@ func get_statuses(player_id: String = "") -> Dictionary:
 		var learnt: Array = _learnt[pid].keys()
 		learnt.sort()
 		snap[LEARNT_KEY] = learnt
+	if not _seen.get(pid, {}).is_empty():
+		var seen: Array = _seen[pid].keys()
+		seen.sort()
+		snap[SEEN_KEY] = seen
 	return snap
 
 # ---------------------------------------------------------------------------
@@ -498,6 +610,15 @@ func apply_statuses(statuses: Dictionary, player_id: String = "") -> void:
 			if GameData.RECIPES.has(str(key)) or not ProjectRules.def_of(str(key)).is_empty():
 				learnt[str(key)] = true
 	_learnt[pid] = learnt
+	# Phase 260 — bounded to the items some discovery technology waits for.
+	var seen: Dictionary = {}
+	var seen_v: Variant = statuses.get(SEEN_KEY, [])
+	if seen_v is Array:
+		var wanted := discovery_items()
+		for item in seen_v:
+			if wanted.has(str(item)):
+				seen[str(item)] = true
+	_seen[pid] = seen
 	_research_end_at[pid] = {}
 	# Re-schedule auto-completion for any tech restored mid-research so it does not
 	# stay stuck in "researching" forever after a reload (elapsed time is not

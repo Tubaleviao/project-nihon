@@ -211,6 +211,7 @@ func _ready() -> void:
 	GameBus.research_resolved.connect(_on_research_resolved)
 	GameBus.research_points_synced.connect(_on_research_points_synced)
 	GameBus.technology_unlocked.connect(_on_technology_unlocked)
+	GameBus.system_message.connect(_on_system_notice)   # Phase 260: a notice is also a toast
 	GameBus.item_picked_up.connect(_on_item_picked_up)
 	GameBus.inventory_changed.connect(_on_inventory_changed)
 	GameBus.character_appearance_changed.connect(_on_character_appearance_changed)
@@ -666,7 +667,7 @@ func inventory_rows() -> Array:
 	return _m2.inventory_rows()
 
 func bag_contents() -> Dictionary: return _m2.bag_contents()
-
+func _on_system_notice(k: String, a: Array, t: String) -> void: _m2.on_system_notice(k, a, t)
 
 ## The `?` legend rows ({ action, keys, desc, mouse }); built in `input_labels.gd` (Phase 220).
 static func controls_rows() -> Array: return InputLabels.controls_rows()
@@ -867,7 +868,6 @@ func _load_item_icon(key: String) -> Texture2D:
 		tex = AssetOverlay.load_texture(key)
 	_icon_cache[path] = tex
 	return tex
-
 
 func _on_slot_gui_input(event: InputEvent, item_id: String, actions: Array) -> void:
 	if not (event is InputEventMouseButton) or not event.pressed:
@@ -1134,7 +1134,8 @@ func _on_repair_resolved(result: Dictionary) -> void:
 	refresh_inventory()
 
 func _on_research_resolved(result: Dictionary) -> void:
-	if _technology_feedback != null and _belongs_to_local_player(result):
+	# Phase 260 — a discovery is announced by its notice toast; the panel label would say it twice.
+	if _technology_feedback != null and _belongs_to_local_player(result) and str(result.get("reason", "")) != "discovered":
 		if result.get("success", false):
 			var key := "ui.tech_unlocked" if str(result.get("status", "")) == "unlocked" else "ui.researching"  # Phase 209: a read book
 			_technology_feedback.text = I18n.t(key, [result.get("tech_id", "?")])

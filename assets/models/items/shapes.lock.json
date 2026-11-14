@@ -47,6 +47,11 @@
       0.14,
       0.3
     ],
+    "hammer": [
+      0.08,
+      0.55,
+      0.2
+    ],
     "hearth": [
       0.7,
       0.3,
@@ -82,6 +87,11 @@
       0.3,
       0.25
     ],
+    "pebble": [
+      0.16,
+      0.1,
+      0.16
+    ],
     "pick": [
       0.12,
       0.8,
@@ -116,6 +126,16 @@
       0.6,
       0.6,
       0.12
+    ],
+    "shovel": [
+      0.16,
+      1.0,
+      0.06
+    ],
+    "stick": [
+      0.05,
+      0.05,
+      0.62
     ],
     "sword": [
       0.2,
@@ -259,6 +279,11 @@
       "scale": 1,
       "hash": "2283de388a010100"
     },
+    "Branch": {
+      "archetype": "stick",
+      "scale": 1,
+      "hash": "9f1c34891927e85c"
+    },
     "CarpenterAxe": {
       "archetype": "axe",
       "scale": 1,
@@ -329,6 +354,11 @@
       "scale": 1,
       "hash": "89e1ba14433de331"
     },
+    "LooseStone": {
+      "archetype": "pebble",
+      "scale": 1,
+      "hash": "f6f09c7cf900134a"
+    },
     "LumenfiteOrb": {
       "archetype": "orb",
       "scale": 1,
@@ -348,6 +378,31 @@
       "archetype": "knife",
       "scale": 1,
       "hash": "4b2de4fbde3133f9"
+    },
+    "StoneAxe": {
+      "archetype": "axe",
+      "scale": 1,
+      "hash": "5c777c4c11243ccd"
+    },
+    "StoneHammer": {
+      "archetype": "hammer",
+      "scale": 1,
+      "hash": "0e40ebc4997f64ef"
+    },
+    "StoneKnife": {
+      "archetype": "knife",
+      "scale": 1,
+      "hash": "cfcc1c562c5979e1"
+    },
+    "StonePick": {
+      "archetype": "pick",
+      "scale": 1,
+      "hash": "53204b62d8910f5d"
+    },
+    "StoneShovel": {
+      "archetype": "shovel",
+      "scale": 1,
+      "hash": "42f1c3721938aec0"
     },
     "ThornwoodPlank": {
       "archetype": "plank",

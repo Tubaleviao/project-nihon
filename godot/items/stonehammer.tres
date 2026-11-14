@@ -1,0 +1,19 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/items/stonehammer.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+condition = 0
+weight = 1.2
+rarity = 0
+stackable = false
+shape = {"archetype":"hammer","parts":{"head":"Ashite","handle":"Thornwood"},"scale":1}
+durability = 40
+toolType = "hammer"
+repair = {"station":"","materials":[{"item":"LooseStone","quantity":1}],"skillGuards":[{"skill":"Carpentry","tier":"novice"}]}
+state_machine_field = "condition"
+initial_state = "pristine"
+description = "A heavy round stone bound to a short branch. Held to build walls, floors and roofs; benches need none."
+tags = ["item"]

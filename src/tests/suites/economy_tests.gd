@@ -224,8 +224,8 @@ func _test_item_shapes_in_gamedata() -> void:
 	# Phase 151 — each item carries an archetype, a material per part and a scale.
 	const ARCHETYPES := ["pick", "axe", "sword", "longsword", "knife", "saw", "bow", "shield", "helmet", "chestplate",
 		"cloak", "ingot", "shard", "dust", "plank", "block", "orb", "tablet", "potion", "rations",
-		"hearth", "waystone", "bed", "chest", "door", "lockpick"]
-	assert_eq(GameData.ITEMS.size(), 51, "GameData.ITEMS holds 51 items (Phase 209: 15 books and blueprints; Phase 212: Cement and 3 books)")
+		"hearth", "waystone", "bed", "chest", "door", "lockpick", "shovel", "hammer", "stick", "pebble"]
+	assert_eq(GameData.ITEMS.size(), 58, "GameData.ITEMS holds 58 items (Phase 209: 15 books and blueprints; Phase 212: Cement and 3 books; Phase 260: 2 inputs and 5 stone tools)")
 	for item_id in GameData.ITEMS:
 		var shape: Dictionary = GameData.ITEMS[item_id].shape
 		assert_true(not shape.is_empty(), "%s has a shape" % item_id)
@@ -744,11 +744,12 @@ func _test_durability_find_tool() -> void:
 	inv.add_item("VeilsteelPick", 1)
 	inv.add_item("CarpenterAxe", 1)
 	# find_tool matches on the fabric toolType, not the item name.
-	assert_eq(inv.find_tool("pick"), "FerritePick", "find_tool returns a held pick")
+	# Phase 260 — of several held picks the fastest (WorkTimes.toolSpeeds) is used.
+	assert_eq(inv.find_tool("pick"), "VeilsteelPick", "find_tool returns the fastest held pick")
 	assert_eq(inv.find_tool("axe"), "CarpenterAxe", "find_tool returns the held axe")
 	# A non-tool durable item (a weapon) has no toolType and never matches.
 	inv.add_item("FerriteShortSword", 1)
-	assert_eq(inv.find_tool("pick"), "FerritePick", "a weapon is not a mining tool")
+	assert_eq(inv.find_tool("pick"), "VeilsteelPick", "a weapon is not a mining tool")
 	inv.free()
 
 func _test_durability_find_tool_skips_broken() -> void:
@@ -1154,7 +1155,8 @@ func _test_repair_specs_resolve() -> void:
 		var spec := c.get_repair_spec(str(item_id))
 		if spec.is_empty():
 			continue
-		assert_true(str(spec.get("station", "")) != "", "repair spec for %s names a station" % item_id)
+		# Phase 260 — "" is a repair by hand (the stone tools), as a station-free recipe is.
+		assert_true(spec.get("station", null) is String, "repair spec for %s names a station or none" % item_id)
 		for mat in spec.get("materials", []):
 			var mid := str(mat.get("item", ""))
 			assert_true(

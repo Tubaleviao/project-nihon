@@ -7,5 +7,6 @@ const components = require('./components')
 const magical    = require('./magical')
 const furniture  = require('./furniture')
 const writings   = require('./writings')
+const primitive  = require('./primitive')
 
-module.exports = safeMerge('item', tools, weapons, armor, food, components, magical, furniture, writings)
+module.exports = safeMerge('item', tools, weapons, armor, food, components, magical, furniture, writings, primitive)

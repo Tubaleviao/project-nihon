@@ -1,0 +1,12 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/world_systems/stonetools.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+tools = ["StoneAxe","StonePick","StoneShovel","StoneKnife","StoneHammer"]
+inputs = ["Branch","LooseStone"]
+yields = {"fellBranches":2,"looseStoneChance":0.25}
+description = "The stone tools a newcomer makes by hand (the only tools made or repaired without a bench), the two inputs they take, and where those inputs come from: branches from a felled tree, loose stones knocked from host rock."
+tags = ["world-system"]

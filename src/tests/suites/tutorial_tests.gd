@@ -29,6 +29,7 @@ func register() -> void:
 	_run_test("tutorial: every step and chapter has a title and body in every locale, and so do the bed notices", _test_catalog_keys)
 	_run_test("bed: placeable through the station path as type bed, consuming one Bed", _test_bed_station)
 	_run_test("bed: the recipe is craftable in the first hour from gathered materials and early recipes", _test_bed_first_hour)
+	_run_test("stone tools: every one is reachable from an empty kit with only loose stones and branches", _test_stone_tools_first_hour)
 	_run_test("shelter: a roofed room passes, an open spot and a roof alone do not", _test_shelter_rule)
 	_run_test("shelter: three closed sides are enough, two are not, and a low lip is no wall", _test_shelter_sides)
 
@@ -165,14 +166,19 @@ func _recipe_techs() -> Dictionary:
 ## mine and the kit's axe chops in a spawn biome, then every recipe whose technology is free (no
 ## research-point cost, every prerequisite reachable, research materials in hand), whose station is
 ## free to place, whose skill guard is novice, and whose inputs are reachable.
-func _first_hour_items() -> Dictionary:
+## Phase 260 — `kit` (a list of item keys) replaces the starting kit when given, `extra` adds items picked off
+## the ground, and any axe in hand, crafted ones too, reaches the spawn biomes' wood.
+func _first_hour_items(kit: Variant = null, extra: Array = []) -> Dictionary:
 	var have := {}
-	var has_axe := false
-	for k in CreationRules.starting_kit():
-		have[str(k["item"])] = true
-		var res: Resource = GameData.ITEMS.get(str(k["item"]), null)
-		if res != null and str(res.get("toolType") if res.get("toolType") != null else "") == "axe":
-			has_axe = true
+	var kit_items: Array = []
+	if kit is Array:
+		kit_items = kit
+	else:
+		for k in CreationRules.starting_kit():
+			kit_items.append(str(k["item"]))
+	for item in kit_items + extra:
+		have[str(item)] = true
+	var woods: Array = []
 	var ws: Resource = GameData.WORLD_SYSTEMS.get("WorldSystem", null)
 	for biome in Array(ws.get("spawnHabitableBiomes")):
 		var b: Resource = GameData.BIOMES.get(str(biome), null)
@@ -180,8 +186,8 @@ func _first_hour_items() -> Dictionary:
 			have[str(b.get("soilMaterial"))] = true
 		have[OreField.host_material(str(biome))] = true
 		var tree: Dictionary = TreeSlice.TREES_BY_BIOME.get(str(biome), {})
-		if has_axe and not tree.is_empty():
-			have[str(tree["wood"])] = true
+		if not tree.is_empty():
+			woods.append(str(tree["wood"]))
 	var stations: Node = StationSlice.new()
 	var free_stations := {}
 	for st in stations.placeable_station_types():
@@ -193,12 +199,21 @@ func _first_hour_items() -> Dictionary:
 	var changed := true
 	while changed:
 		changed = false
+		if _has_axe(have):
+			for wood in woods:
+				if not have.has(wood):
+					have[wood] = true
+					changed = true
 		for key in GameData.TECHNOLOGIES:
 			if known.has(key):
 				continue
 			var res: Resource = GameData.TECHNOLOGIES[key]
 			var tech: Dictionary = res.get("tech")
 			var ok: bool = int(res.get("researchCost")) == 0
+			# Phase 260 — a discovery technology is known once its recipes' inputs have been held.
+			if bool(tech.get("discovery", false)):
+				for item in TechnologySlice.discovery_inputs(str(key)):
+					ok = ok and have.has(str(item))
 			for r in tech.get("requires", []):
 				ok = ok and known.has(str(r))
 			for m in tech.get("researchMaterials", []):
@@ -223,6 +238,27 @@ func _first_hour_items() -> Dictionary:
 					have[str(o["item"])] = true
 				changed = true
 	return have
+
+
+func _has_axe(have: Dictionary) -> bool:
+	for item in have:
+		var res: Resource = GameData.ITEMS.get(str(item), null)
+		if res != null and str(res.get("toolType") if res.get("toolType") != null else "") == "axe":
+			return true
+	return false
+
+
+## Phase 260 — from an empty pack and only loose stones and branches, every stone tool is reachable, and the
+## stone axe then reaches wood.
+func _test_stone_tools_first_hour() -> void:
+	var have := _first_hour_items([], ["Branch", "LooseStone"])
+	var tools: Array = GameData.WORLD_SYSTEMS["StoneTools"].get("tools")
+	assert_eq(tools.size(), 5, "five stone tools")
+	for tool in tools:
+		assert_true(have.has(str(tool)), "%s is reachable from an empty kit" % tool)
+	assert_true(have.has("Thornwood"), "the stone axe reaches wood")
+	var none := _first_hour_items([], [])
+	assert_false(none.has("StoneAxe"), "with nothing picked up, no stone tool is made")
 
 
 func _test_bed_first_hour() -> void:

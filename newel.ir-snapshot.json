@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:de75e5969a3a84353ad0625d12eb54442e54ec7ec3bfbc6058681e9cef1050fb",
+  "schemaHash": "sha256:a086103306d23841ee454844bdee088424154d0716b2c717bf7c6b410ee5cb4f",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -16326,6 +16326,1395 @@
         "pii": [],
         "gdpr": {}
       },
+      "Branch": {
+        "name": "Branch",
+        "tags": [
+          "item"
+        ],
+        "description": "A straight stick picked off the ground or trimmed from a felled tree. The handle of every stone tool.",
+        "goal": "A first-hour input that needs no tool: the haft of the stone tools (Phase 260)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per branch",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.3
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "common"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "True; branches stack",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "stick",
+              "parts": {
+                "body": "Thornwood"
+              },
+              "scale": 1
+            }
+          }
+        },
+        "relations": {
+          "thornwood": {
+            "name": "thornwood",
+            "kind": "hasOne",
+            "target": "Thornwood"
+          }
+        },
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "LooseStone": {
+        "name": "LooseStone",
+        "tags": [
+          "item"
+        ],
+        "description": "A fist-sized stone picked off the ground or knocked loose from host rock. The head of every stone tool.",
+        "goal": "A first-hour input that needs no tool: the head of the stone tools (Phase 260)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per stone",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "common"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "True; stones stack",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "pebble",
+              "parts": {
+                "body": "Ashite"
+              },
+              "scale": 1
+            }
+          }
+        },
+        "relations": {
+          "ashite": {
+            "name": "ashite",
+            "kind": "hasOne",
+            "target": "Ashite"
+          }
+        },
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "StoneAxe": {
+        "name": "StoneAxe",
+        "tags": [
+          "item"
+        ],
+        "description": "A knapped stone lashed into a split branch. Fells a tree, slowly.",
+        "goal": "The first axe, made by hand from a branch and a stone (Phase 260)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg; affects carry capacity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1.4
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "common"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "Whether multiple instances stack in inventory",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "axe",
+              "parts": {
+                "head": "Ashite",
+                "handle": "Thornwood"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Remaining durability points before condition degrades",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 30
+          },
+          "toolType": {
+            "name": "toolType",
+            "type": "string",
+            "description": "Tool class — the action this tool performs. \"pick\" mines, \"axe\" chops, \"shovel\" digs, \"hammer\" builds.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "axe"
+          },
+          "repair": {
+            "name": "repair",
+            "type": "json",
+            "description": "Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "station": "",
+              "materials": [
+                {
+                  "item": "LooseStone",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Carpentry",
+                  "tier": "novice"
+                }
+              ]
+            }
+          }
+        },
+        "relations": {
+          "ashite": {
+            "name": "ashite",
+            "kind": "hasOne",
+            "target": "Ashite"
+          },
+          "thornwood": {
+            "name": "thornwood",
+            "kind": "hasOne",
+            "target": "Thornwood"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "Reduce durability with each use; a stone head chips quickly",
+            "rules": [
+              "Each use consumes one durability point"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Knap a fresh edge onto the head with a loose stone, anywhere",
+            "rules": [
+              "Needs no station",
+              "Repair costs one loose stone per condition tier restored"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Each use consumes one durability point"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Each use consumes one durability point"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Each use consumes one durability point"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Needs no station",
+                "Repair costs one loose stone per condition tier restored"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Needs no station",
+                "Repair costs one loose stone per condition tier restored"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Needs no station",
+                "Repair costs one loose stone per condition tier restored"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "StonePick": {
+        "name": "StonePick",
+        "tags": [
+          "item"
+        ],
+        "description": "A pointed stone bound across a branch. Breaks rock faster than bare hands; ore wears it fast.",
+        "goal": "The first pick, made by hand from a branch and two stones (Phase 260)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg; affects carry capacity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1.6
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "common"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "Whether multiple instances stack in inventory",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "pick",
+              "parts": {
+                "head": "Ashite",
+                "handle": "Thornwood"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Remaining durability points before condition degrades",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 30
+          },
+          "toolType": {
+            "name": "toolType",
+            "type": "string",
+            "description": "Tool class — the action this tool performs. \"pick\" mines, \"axe\" chops, \"shovel\" digs, \"hammer\" builds.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "pick"
+          },
+          "repair": {
+            "name": "repair",
+            "type": "json",
+            "description": "Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "station": "",
+              "materials": [
+                {
+                  "item": "LooseStone",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Carpentry",
+                  "tier": "novice"
+                }
+              ]
+            }
+          }
+        },
+        "relations": {
+          "ashite": {
+            "name": "ashite",
+            "kind": "hasOne",
+            "target": "Ashite"
+          },
+          "thornwood": {
+            "name": "thornwood",
+            "kind": "hasOne",
+            "target": "Thornwood"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "Reduce durability with each use; a stone head chips quickly",
+            "rules": [
+              "Each use consumes one durability point"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Knap a fresh edge onto the head with a loose stone, anywhere",
+            "rules": [
+              "Needs no station",
+              "Repair costs one loose stone per condition tier restored"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Each use consumes one durability point"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Each use consumes one durability point"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Each use consumes one durability point"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Needs no station",
+                "Repair costs one loose stone per condition tier restored"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Needs no station",
+                "Repair costs one loose stone per condition tier restored"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Needs no station",
+                "Repair costs one loose stone per condition tier restored"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "StoneShovel": {
+        "name": "StoneShovel",
+        "tags": [
+          "item"
+        ],
+        "description": "A flat stone tied to a long branch. Digs soil, sand and gravel faster than any pick.",
+        "goal": "The shovel tool class: the fastest way through soft ground (Phase 260)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg; affects carry capacity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1.5
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "common"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "Whether multiple instances stack in inventory",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "shovel",
+              "parts": {
+                "head": "Ashite",
+                "handle": "Thornwood"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Remaining durability points before condition degrades",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 40
+          },
+          "toolType": {
+            "name": "toolType",
+            "type": "string",
+            "description": "Tool class — the action this tool performs. \"pick\" mines, \"axe\" chops, \"shovel\" digs, \"hammer\" builds.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "shovel"
+          },
+          "repair": {
+            "name": "repair",
+            "type": "json",
+            "description": "Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "station": "",
+              "materials": [
+                {
+                  "item": "LooseStone",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Carpentry",
+                  "tier": "novice"
+                }
+              ]
+            }
+          }
+        },
+        "relations": {
+          "ashite": {
+            "name": "ashite",
+            "kind": "hasOne",
+            "target": "Ashite"
+          },
+          "thornwood": {
+            "name": "thornwood",
+            "kind": "hasOne",
+            "target": "Thornwood"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "Reduce durability with each use; a stone head chips quickly",
+            "rules": [
+              "Each use consumes one durability point"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Knap a fresh edge onto the head with a loose stone, anywhere",
+            "rules": [
+              "Needs no station",
+              "Repair costs one loose stone per condition tier restored"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Each use consumes one durability point"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Each use consumes one durability point"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Each use consumes one durability point"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Needs no station",
+                "Repair costs one loose stone per condition tier restored"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Needs no station",
+                "Repair costs one loose stone per condition tier restored"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Needs no station",
+                "Repair costs one loose stone per condition tier restored"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "StoneKnife": {
+        "name": "StoneKnife",
+        "tags": [
+          "item"
+        ],
+        "description": "A sharp flake of stone in a branch grip. Skins and butchers, poorly.",
+        "goal": "A first knife for harvesting a kill before the forge (Phase 260)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg; affects carry capacity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.3
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "common"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "Whether multiple instances stack in inventory",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "knife",
+              "parts": {
+                "blade": "Ashite",
+                "grip": "Thornwood"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Remaining durability points before condition degrades",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 25
+          },
+          "harvestTool": {
+            "name": "harvestTool",
+            "type": "string",
+            "description": "Harvest tool category this item provides (Phase 160): knife or bonetool",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "knife"
+          },
+          "efficiency": {
+            "name": "efficiency",
+            "type": "decimal",
+            "description": "How well it works that category, in (0, 1]; below 1.0 is a poor substitute",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "repair": {
+            "name": "repair",
+            "type": "json",
+            "description": "Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "station": "",
+              "materials": [
+                {
+                  "item": "LooseStone",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Carpentry",
+                  "tier": "novice"
+                }
+              ]
+            }
+          }
+        },
+        "relations": {
+          "ashite": {
+            "name": "ashite",
+            "kind": "hasOne",
+            "target": "Ashite"
+          },
+          "thornwood": {
+            "name": "thornwood",
+            "kind": "hasOne",
+            "target": "Thornwood"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "Reduce durability with each use; a stone head chips quickly",
+            "rules": [
+              "Each use consumes one durability point"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Knap a fresh edge onto the head with a loose stone, anywhere",
+            "rules": [
+              "Needs no station",
+              "Repair costs one loose stone per condition tier restored"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Each use consumes one durability point"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Each use consumes one durability point"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Each use consumes one durability point"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Needs no station",
+                "Repair costs one loose stone per condition tier restored"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Needs no station",
+                "Repair costs one loose stone per condition tier restored"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Needs no station",
+                "Repair costs one loose stone per condition tier restored"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "StoneHammer": {
+        "name": "StoneHammer",
+        "tags": [
+          "item"
+        ],
+        "description": "A heavy round stone bound to a short branch. Held to build walls, floors and roofs; benches need none.",
+        "goal": "The building tool: a shelter needs a hammer in hand, a bench does not (Phase 260)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg; affects carry capacity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1.2
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "common"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "Whether multiple instances stack in inventory",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "hammer",
+              "parts": {
+                "head": "Ashite",
+                "handle": "Thornwood"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Remaining durability points before condition degrades",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 40
+          },
+          "toolType": {
+            "name": "toolType",
+            "type": "string",
+            "description": "Tool class — the action this tool performs. \"pick\" mines, \"axe\" chops, \"shovel\" digs, \"hammer\" builds.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "hammer"
+          },
+          "repair": {
+            "name": "repair",
+            "type": "json",
+            "description": "Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "station": "",
+              "materials": [
+                {
+                  "item": "LooseStone",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Carpentry",
+                  "tier": "novice"
+                }
+              ]
+            }
+          }
+        },
+        "relations": {
+          "ashite": {
+            "name": "ashite",
+            "kind": "hasOne",
+            "target": "Ashite"
+          },
+          "thornwood": {
+            "name": "thornwood",
+            "kind": "hasOne",
+            "target": "Thornwood"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "Reduce durability with each use; a stone head chips quickly",
+            "rules": [
+              "Each use consumes one durability point"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Knap a fresh edge onto the head with a loose stone, anywhere",
+            "rules": [
+              "Needs no station",
+              "Repair costs one loose stone per condition tier restored"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Each use consumes one durability point"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Each use consumes one durability point"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Each use consumes one durability point"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Needs no station",
+                "Repair costs one loose stone per condition tier restored"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Needs no station",
+                "Repair costs one loose stone per condition tier restored"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Needs no station",
+                "Repair costs one loose stone per condition tier restored"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
       "FerriteShortSword": {
         "name": "FerriteShortSword",
         "tags": [
@@ -30787,6 +32176,546 @@
         "pii": [],
         "gdpr": {}
       },
+      "RecipeStoneAxe": {
+        "name": "RecipeStoneAxe",
+        "tags": [
+          "recipe"
+        ],
+        "description": "Lash a knapped stone into a split branch: a stone axe.",
+        "goal": "A first-hour tool with no station and no research cost (Phase 260)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "domain": {
+            "name": "domain",
+            "type": "enum",
+            "description": "Crafting station required",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "smithing",
+              "alchemy",
+              "arcane",
+              "carpentry"
+            ],
+            "pii": false
+          },
+          "outputCount": {
+            "name": "outputCount",
+            "type": "integer",
+            "description": "Number of output items produced per craft",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "carpentry",
+              "station": "",
+              "inputs": [
+                {
+                  "item": "Branch",
+                  "quantity": 1
+                },
+                {
+                  "item": "LooseStone",
+                  "quantity": 1
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "StoneAxe",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Carpentry",
+                  "tier": "novice"
+                }
+              ]
+            }
+          }
+        },
+        "relations": {
+          "inputBranch": {
+            "name": "inputBranch",
+            "kind": "hasOne",
+            "target": "Branch"
+          },
+          "inputStone": {
+            "name": "inputStone",
+            "kind": "hasOne",
+            "target": "LooseStone"
+          },
+          "output": {
+            "name": "output",
+            "kind": "hasOne",
+            "target": "StoneAxe"
+          }
+        },
+        "behaviors": {
+          "craft": {
+            "name": "craft",
+            "description": "Lash a stone to a branch anywhere, with no station",
+            "rules": [
+              "Requires Carpentry: Novice",
+              "Needs no station",
+              "One branch and one stone yield one stone axe"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "RecipeStonePick": {
+        "name": "RecipeStonePick",
+        "tags": [
+          "recipe"
+        ],
+        "description": "Bind a pointed stone across a branch: a stone pick.",
+        "goal": "A first-hour tool with no station and no research cost (Phase 260)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "domain": {
+            "name": "domain",
+            "type": "enum",
+            "description": "Crafting station required",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "smithing",
+              "alchemy",
+              "arcane",
+              "carpentry"
+            ],
+            "pii": false
+          },
+          "outputCount": {
+            "name": "outputCount",
+            "type": "integer",
+            "description": "Number of output items produced per craft",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "carpentry",
+              "station": "",
+              "inputs": [
+                {
+                  "item": "Branch",
+                  "quantity": 1
+                },
+                {
+                  "item": "LooseStone",
+                  "quantity": 2
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "StonePick",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Carpentry",
+                  "tier": "novice"
+                }
+              ]
+            }
+          }
+        },
+        "relations": {
+          "inputBranch": {
+            "name": "inputBranch",
+            "kind": "hasOne",
+            "target": "Branch"
+          },
+          "inputStone": {
+            "name": "inputStone",
+            "kind": "hasOne",
+            "target": "LooseStone"
+          },
+          "output": {
+            "name": "output",
+            "kind": "hasOne",
+            "target": "StonePick"
+          }
+        },
+        "behaviors": {
+          "craft": {
+            "name": "craft",
+            "description": "Lash a stone to a branch anywhere, with no station",
+            "rules": [
+              "Requires Carpentry: Novice",
+              "Needs no station",
+              "One branch and two stones yield one stone pick"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "RecipeStoneShovel": {
+        "name": "RecipeStoneShovel",
+        "tags": [
+          "recipe"
+        ],
+        "description": "Tie a flat stone to a long branch: a stone shovel.",
+        "goal": "A first-hour tool with no station and no research cost (Phase 260)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "domain": {
+            "name": "domain",
+            "type": "enum",
+            "description": "Crafting station required",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "smithing",
+              "alchemy",
+              "arcane",
+              "carpentry"
+            ],
+            "pii": false
+          },
+          "outputCount": {
+            "name": "outputCount",
+            "type": "integer",
+            "description": "Number of output items produced per craft",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "carpentry",
+              "station": "",
+              "inputs": [
+                {
+                  "item": "Branch",
+                  "quantity": 2
+                },
+                {
+                  "item": "LooseStone",
+                  "quantity": 1
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "StoneShovel",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Carpentry",
+                  "tier": "novice"
+                }
+              ]
+            }
+          }
+        },
+        "relations": {
+          "inputBranch": {
+            "name": "inputBranch",
+            "kind": "hasOne",
+            "target": "Branch"
+          },
+          "inputStone": {
+            "name": "inputStone",
+            "kind": "hasOne",
+            "target": "LooseStone"
+          },
+          "output": {
+            "name": "output",
+            "kind": "hasOne",
+            "target": "StoneShovel"
+          }
+        },
+        "behaviors": {
+          "craft": {
+            "name": "craft",
+            "description": "Lash a stone to a branch anywhere, with no station",
+            "rules": [
+              "Requires Carpentry: Novice",
+              "Needs no station",
+              "Two branches and one stone yield one stone shovel"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "RecipeStoneKnife": {
+        "name": "RecipeStoneKnife",
+        "tags": [
+          "recipe"
+        ],
+        "description": "Set a sharp stone flake in a branch grip: a stone knife.",
+        "goal": "A first-hour tool with no station and no research cost (Phase 260)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "domain": {
+            "name": "domain",
+            "type": "enum",
+            "description": "Crafting station required",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "smithing",
+              "alchemy",
+              "arcane",
+              "carpentry"
+            ],
+            "pii": false
+          },
+          "outputCount": {
+            "name": "outputCount",
+            "type": "integer",
+            "description": "Number of output items produced per craft",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "carpentry",
+              "station": "",
+              "inputs": [
+                {
+                  "item": "Branch",
+                  "quantity": 1
+                },
+                {
+                  "item": "LooseStone",
+                  "quantity": 1
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "StoneKnife",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Carpentry",
+                  "tier": "novice"
+                }
+              ]
+            }
+          }
+        },
+        "relations": {
+          "inputBranch": {
+            "name": "inputBranch",
+            "kind": "hasOne",
+            "target": "Branch"
+          },
+          "inputStone": {
+            "name": "inputStone",
+            "kind": "hasOne",
+            "target": "LooseStone"
+          },
+          "output": {
+            "name": "output",
+            "kind": "hasOne",
+            "target": "StoneKnife"
+          }
+        },
+        "behaviors": {
+          "craft": {
+            "name": "craft",
+            "description": "Lash a stone to a branch anywhere, with no station",
+            "rules": [
+              "Requires Carpentry: Novice",
+              "Needs no station",
+              "One branch and one stone yield one stone knife"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "RecipeStoneHammer": {
+        "name": "RecipeStoneHammer",
+        "tags": [
+          "recipe"
+        ],
+        "description": "Bind a heavy round stone to a short branch: a stone hammer.",
+        "goal": "A first-hour tool with no station and no research cost (Phase 260)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "domain": {
+            "name": "domain",
+            "type": "enum",
+            "description": "Crafting station required",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "smithing",
+              "alchemy",
+              "arcane",
+              "carpentry"
+            ],
+            "pii": false
+          },
+          "outputCount": {
+            "name": "outputCount",
+            "type": "integer",
+            "description": "Number of output items produced per craft",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "carpentry",
+              "station": "",
+              "inputs": [
+                {
+                  "item": "Branch",
+                  "quantity": 1
+                },
+                {
+                  "item": "LooseStone",
+                  "quantity": 1
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "StoneHammer",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Carpentry",
+                  "tier": "novice"
+                }
+              ]
+            }
+          }
+        },
+        "relations": {
+          "inputBranch": {
+            "name": "inputBranch",
+            "kind": "hasOne",
+            "target": "Branch"
+          },
+          "inputStone": {
+            "name": "inputStone",
+            "kind": "hasOne",
+            "target": "LooseStone"
+          },
+          "output": {
+            "name": "output",
+            "kind": "hasOne",
+            "target": "StoneHammer"
+          }
+        },
+        "behaviors": {
+          "craft": {
+            "name": "craft",
+            "description": "Lash a stone to a branch anywhere, with no station",
+            "rules": [
+              "Requires Carpentry: Novice",
+              "Needs no station",
+              "One branch and one stone yield one stone hammer"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
       "TechBasicSmithing": {
         "name": "TechBasicSmithing",
         "tags": [
@@ -31132,6 +33061,171 @@
               "trigger": "completeResearch",
               "guards": [
                 "Research cost fully paid"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "TechStoneTools": {
+        "name": "TechStoneTools",
+        "tags": [
+          "technology"
+        ],
+        "description": "Lashing a stone to a branch. Discovered the moment a player has held both a branch and a loose stone: the stone axe, pick, shovel, knife and hammer need no station and no research.",
+        "goal": "Root of everything: the first tools a newcomer makes with bare hands (Phase 260)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "status": {
+            "name": "status",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "locked",
+              "researching",
+              "unlocked"
+            ],
+            "pii": false
+          },
+          "researchCost": {
+            "name": "researchCost",
+            "type": "integer",
+            "description": "Research points spent to begin research (Phase 124); earned by the ResearchPointRule table",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0
+          },
+          "tier": {
+            "name": "tier",
+            "type": "integer",
+            "description": "Technology tree tier (1 = root)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "tech": {
+            "name": "tech",
+            "type": "json",
+            "description": "Structured technology data: recipe unlocks, prerequisite technologies, research duration (seconds), and material cost consumed to begin research.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "unlocks": [
+                "RecipeStoneAxe",
+                "RecipeStonePick",
+                "RecipeStoneShovel",
+                "RecipeStoneKnife",
+                "RecipeStoneHammer"
+              ],
+              "requires": [],
+              "researchDuration": 0,
+              "researchMaterials": [],
+              "discovery": true
+            }
+          }
+        },
+        "relations": {
+          "unlocksRecipeStoneAxe": {
+            "name": "unlocksRecipeStoneAxe",
+            "kind": "hasOne",
+            "target": "RecipeStoneAxe"
+          },
+          "unlocksRecipeStonePick": {
+            "name": "unlocksRecipeStonePick",
+            "kind": "hasOne",
+            "target": "RecipeStonePick"
+          },
+          "unlocksRecipeStoneShovel": {
+            "name": "unlocksRecipeStoneShovel",
+            "kind": "hasOne",
+            "target": "RecipeStoneShovel"
+          },
+          "unlocksRecipeStoneKnife": {
+            "name": "unlocksRecipeStoneKnife",
+            "kind": "hasOne",
+            "target": "RecipeStoneKnife"
+          },
+          "unlocksRecipeStoneHammer": {
+            "name": "unlocksRecipeStoneHammer",
+            "kind": "hasOne",
+            "target": "RecipeStoneHammer"
+          }
+        },
+        "behaviors": {
+          "beginResearch": {
+            "name": "beginResearch",
+            "description": "Never begun by hand: a discovery technology is found by holding its inputs",
+            "rules": [
+              "Discovery: nothing to research"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "completeResearch": {
+            "name": "completeResearch",
+            "description": "Discovered once the player has held every input of its recipes; the player is told",
+            "rules": [
+              "Every input held at least once, at any time",
+              "A notice names the technology and what it makes"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "status",
+          "initial": "locked",
+          "states": {
+            "locked": {
+              "name": "locked",
+              "description": "Prerequisites not yet met; technology is not visible in the research interface",
+              "terminal": false
+            },
+            "researching": {
+              "name": "researching",
+              "description": "Player or guild has committed resources; research progresses over time",
+              "terminal": false
+            },
+            "unlocked": {
+              "name": "unlocked",
+              "description": "Research complete; all associated recipes and abilities are available",
+              "terminal": true
+            }
+          },
+          "transitions": [
+            {
+              "from": "locked",
+              "to": "researching",
+              "trigger": "beginResearch",
+              "guards": [
+                "Discovery: nothing to research"
+              ],
+              "effects": []
+            },
+            {
+              "from": "researching",
+              "to": "unlocked",
+              "trigger": "completeResearch",
+              "guards": [
+                "Every input held at least once, at any time",
+                "A notice names the technology and what it makes"
               ],
               "effects": []
             }
@@ -34070,6 +36164,15 @@
               },
               "existingBuilds": "kept"
             }
+          },
+          "buildTool": {
+            "name": "buildTool",
+            "type": "string",
+            "description": "Phase 260 — the tool class a builder must hold to place a block (a shelter); placing a station (a bench) needs none. Holding it does not wear it.",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "hammer"
           }
         },
         "relations": {
@@ -34965,7 +37068,76 @@
               },
               "CarpenterAxe": {
                 "axe": 1
+              },
+              "StonePick": {
+                "pick": 0.6
+              },
+              "StoneAxe": {
+                "axe": 0.6
+              },
+              "StoneShovel": {
+                "shovel": 0.6
               }
+            }
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "StoneTools": {
+        "name": "StoneTools",
+        "tags": [
+          "world-system"
+        ],
+        "description": "The stone tools a newcomer makes by hand (the only tools made or repaired without a bench), the two inputs they take, and where those inputs come from: branches from a felled tree, loose stones knocked from host rock.",
+        "goal": "A first tool with nothing in the pack: no station, no research, inputs that never run out (Phase 260)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "tools": {
+            "name": "tools",
+            "type": "json",
+            "description": "Item keys of the stone tools",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "StoneAxe",
+              "StonePick",
+              "StoneShovel",
+              "StoneKnife",
+              "StoneHammer"
+            ]
+          },
+          "inputs": {
+            "name": "inputs",
+            "type": "json",
+            "description": "The only items a stone tool recipe takes",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "Branch",
+              "LooseStone"
+            ]
+          },
+          "yields": {
+            "name": "yields",
+            "type": "json",
+            "description": "{ fellBranches, looseStoneChance }",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "fellBranches": 2,
+              "looseStoneChance": 0.25
             }
           }
         },
@@ -44743,6 +46915,10 @@
               },
               {
                 "item": "CarpenterAxe",
+                "quantity": 1
+              },
+              {
+                "item": "StoneHammer",
                 "quantity": 1
               }
             ]

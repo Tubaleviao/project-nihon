@@ -1,0 +1,13 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/items/loosestone.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+weight = 0.5
+rarity = 0
+stackable = true
+shape = {"archetype":"pebble","parts":{"body":"Ashite"},"scale":1}
+description = "A fist-sized stone picked off the ground or knocked loose from host rock. The head of every stone tool."
+tags = ["item"]

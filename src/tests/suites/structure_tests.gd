@@ -61,6 +61,7 @@ func _rig() -> Dictionary:
 	reg.set_local_player("host")
 	for p in ["p1", "p2", "p3", "p4"]:
 		reg.ensure_player(p)
+		reg.get_inventory(p).add_item("StoneHammer", 1)   # Phase 260 — building needs a hammer in hand
 	var clans := ClanSlice.new()
 	clans.registry = reg
 	add_child(clans)

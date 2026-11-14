@@ -344,3 +344,4 @@ Filed by the owner on 2026-11-13. The other phases of the arc are open in [ROADM
 | Phase | Title | Status | Spec |
 |---|---|---|---|
 | 259 | Work takes time: bare hands, tools and a progress bar | Done | [phases-259.md](phases-259.md) |
+| 260 | Stone tools: an axe, a pick and a shovel from wood and stone, no bench | Done | [phases-260.md](phases-260.md) |

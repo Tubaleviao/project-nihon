@@ -1813,6 +1813,7 @@ func _step_sand_settles() -> void:
 	var base: float = voxel.get_voxel_height_at(centre)
 	if _role == "host":
 		_root._inventory.add_item("Sand", 1)
+		_root._inventory.add_item("StoneHammer", 1)   # Phase 260: building needs a hammer in hand
 		var placed: bool = voxel.place_block(Vector3(centre.x, base, centre.y), Vector3.UP, "Sand")
 		var mined: Dictionary = voxel.mine_block(Vector3((SAND_TILE.x + 1) * VoxelSlice.TILE_SIZE, base - VoxelSlice.STEP_HEIGHT * 0.5, centre.y), Vector3(1, 0, 0))
 		if not placed or not bool(mined.get("success", false)):

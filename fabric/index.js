@@ -32,6 +32,7 @@ const bed          = require('./gameplay/bed')
 const tutorial     = require('./gameplay/tutorial')
 const work         = require('./gameplay/work')
 const workTimes    = require('./gameplay/work_times')
+const stoneTools   = require('./gameplay/stone_tools')
 const clan         = require('./gameplay/clan')
 const structure    = require('./gameplay/structure')
 const chests       = require('./gameplay/chests')
@@ -59,6 +60,7 @@ chests.validateChests(chests.chestsData(), chests.chestsRefs())
 writing.validateWriting(writing.writingData(), writing.writingRefs())
 work.validateWork(work.workData(), work.workRefs())
 workTimes.validateWorkTimes(workTimes.workTimesData(), workTimes.workTimesRefs()) // Phase 259
+stoneTools.validateStoneTools(stoneTools.stoneToolsData(), stoneTools.stoneToolsRefs()) // Phase 260
 
 // Phase 129 — the status-effect table must be well formed and every creature's `onHitEffects` must name a defined effect.
 combat.validateCombat(combat.STATUS_EFFECTS, combat.creatureOnHit(creatures), Object.keys(weather.RULES.states))
@@ -233,6 +235,13 @@ module.exports = defineFabric({
       SkinningKnife:            items.SkinningKnife,
       BoneSaw:                  items.BoneSaw,
       Lockpick:                 items.Lockpick,
+      Branch:                   items.Branch,
+      LooseStone:               items.LooseStone,
+      StoneAxe:                 items.StoneAxe,
+      StonePick:                items.StonePick,
+      StoneShovel:              items.StoneShovel,
+      StoneKnife:               items.StoneKnife,
+      StoneHammer:              items.StoneHammer,
       FerriteShortSword:        items.FerriteShortSword,
       VeilsteelLongsword:       items.VeilsteelLongsword,
       AethermiteBow:            items.AethermiteBow,
@@ -296,11 +305,17 @@ module.exports = defineFabric({
       RecipeBed:                       recipes.RecipeBed,
       RecipeChest:                     recipes.RecipeChest,
       RecipeDoor:                      recipes.RecipeDoor,
+      RecipeStoneAxe:                  recipes.RecipeStoneAxe,
+      RecipeStonePick:                 recipes.RecipeStonePick,
+      RecipeStoneShovel:               recipes.RecipeStoneShovel,
+      RecipeStoneKnife:                recipes.RecipeStoneKnife,
+      RecipeStoneHammer:               recipes.RecipeStoneHammer,
     },
     // Gameplay — Technology
     {
       TechBasicSmithing:  technology.TechBasicSmithing,
       TechMasterForge:    technology.TechMasterForge,
+      TechStoneTools:     technology.TechStoneTools,
       TechBasicCarpentry: technology.TechBasicCarpentry,
       TechTextileWeaving: technology.TechTextileWeaving,
       TechArcaneForging:  technology.TechArcaneForging,
@@ -335,6 +350,7 @@ module.exports = defineFabric({
       Blueprint:           writing.Blueprint,
       WorkSkills:          work.WorkSkills,
       WorkTimes:           workTimes.WorkTimes,
+      StoneTools:          stoneTools.StoneTools,
     },
     // World — Creatures
     {

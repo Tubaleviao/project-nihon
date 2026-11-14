@@ -143,6 +143,51 @@ module.exports = {
     },
   }),
 
+  // ─── TechStoneTools ───────────────────────────────────────────────────────
+  // Phase 260 — discovered, not researched (`discovery`): a player who has held every input of its recipes
+  // (a branch and a loose stone, at any time, not necessarily together) knows it. No points, no materials,
+  // no prerequisite, no book.
+  TechStoneTools: defineEntity({
+    tags: ['technology'],
+    description:
+      'Lashing a stone to a branch. Discovered the moment a player has held both a branch and a loose stone: ' +
+      'the stone axe, pick, shovel, knife and hammer need no station and no research.',
+    goal: 'Root of everything: the first tools a newcomer makes with bare hands (Phase 260)',
+    fields: {
+      id:     { type: 'uuid', primaryKey: true },
+      status: { type: 'enum', values: TECH_STATES },
+      researchCost: { type: 'integer', description: 'Research points spent to begin research (Phase 124); earned by the ResearchPointRule table', defaultValue: 0 },
+      tier:   { type: 'integer', description: 'Technology tree tier (1 = root)' },
+      tech: techData({
+        unlocks: ['RecipeStoneAxe', 'RecipeStonePick', 'RecipeStoneShovel', 'RecipeStoneKnife', 'RecipeStoneHammer'],
+        requires: [],
+        researchDuration: 0,
+        researchMaterials: [],
+        discovery: true,
+      }),
+    },
+    relations: {
+      unlocksRecipeStoneAxe:    { name: 'unlocksRecipeStoneAxe',    kind: 'hasOne', target: 'RecipeStoneAxe' },
+      unlocksRecipeStonePick:   { name: 'unlocksRecipeStonePick',   kind: 'hasOne', target: 'RecipeStonePick' },
+      unlocksRecipeStoneShovel: { name: 'unlocksRecipeStoneShovel', kind: 'hasOne', target: 'RecipeStoneShovel' },
+      unlocksRecipeStoneKnife:  { name: 'unlocksRecipeStoneKnife',  kind: 'hasOne', target: 'RecipeStoneKnife' },
+      unlocksRecipeStoneHammer: { name: 'unlocksRecipeStoneHammer', kind: 'hasOne', target: 'RecipeStoneHammer' },
+    },
+    stateMachine: technologyStateMachine(),
+    behaviors: {
+      beginResearch: {
+        description: 'Never begun by hand: a discovery technology is found by holding its inputs',
+        rules: ['Discovery: nothing to research'],
+        auth: { roles: ['maintainer'] },
+      },
+      completeResearch: {
+        description: 'Discovered once the player has held every input of its recipes; the player is told',
+        rules: ['Every input held at least once, at any time', 'A notice names the technology and what it makes'],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
   // ─── TechBasicCarpentry ───────────────────────────────────────────────────
   TechBasicCarpentry: defineEntity({
     tags: ['technology'],

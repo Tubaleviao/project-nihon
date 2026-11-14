@@ -23,6 +23,7 @@ func _registry() -> PlayerRegistry:
 	reg.set_local_player("host")
 	for p in ["p1", "p2", "p3"]:
 		reg.ensure_player(p)
+		reg.get_inventory(p).add_item("StoneHammer", 1)   # Phase 260 — building needs a hammer in hand
 	return reg
 
 ## Every player's skill XP, as a comparable snapshot.

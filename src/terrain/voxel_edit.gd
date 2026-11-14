@@ -4,6 +4,8 @@ extends RefCounted
 
 const WorkSkills := preload("res://src/character/work_skills.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
+const WorkTime := preload("res://src/core/work_time.gd")
+const StoneTools := preload("res://src/world/stone_tools.gd")
 
 var s: Node
 
@@ -37,12 +39,37 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: Str
 	if verdict == "refused":
 		return { "success": false, "material": "", "quantity": 0, "position": world_pos, "player_id": player_id }
 
+	# Phase 43 — a NATURAL span yields what the ore field holds there: a live vein's
+	# material and per-slice quantity (capped by what is left of its reserve), else the
+	# biome's host rock, one unit. Resolved BEFORE the remove is appended, because the
+	# depth it reads is the span's, measured from the tile's natural surface. Pure, so it is
+	# read before any wear is spent (Phase 260: the yield decides whether a shovel digs it).
+	var material := str(span["material"])
+	var quantity := 1
+	var vein: Dictionary = {}
+	var host_rock := false
+	var natural := material == ""
+	if natural:
+		var yielded = s._natural_yield(tile, span)
+		material = str(yielded["material"])
+		quantity = int(yielded["quantity"])
+		vein = yielded["vein"]
+		host_rock = bool(yielded.get("host", false))
+
 	# Tool durability: mining consumes the held pick. A broken pick blocks the
 	# mine; bare-handed (no pick) mining is still allowed. A hit on someone else's
-	# block with an axe (no pick held) wears that axe instead.
+	# block with an axe (no pick held) wears that axe instead. Phase 260 — natural
+	# ground the table digs (soil, sand) wears a held shovel instead of the pick, the
+	# tool `WorkHost` timed it with.
 	var tool: String = pick if pick != "" else (axe if verdict == "damage" or verdict == "destroy" else "")
+	var verb := "mine" if tool == pick else "chop"
+	if natural and WorkTime.action_for_material(material) == "dig":
+		var shovel := _held_shovel(inventory)
+		if shovel != "":
+			tool = shovel
+			verb = "dig"
 	if tool != "" and inventory != null and inventory.has_method("use_item"):
-		if not inventory.use_item(tool, "mine" if tool == pick else "chop"):
+		if not inventory.use_item(tool, verb):
 			return { "success": false, "material": "", "quantity": 0, "position": world_pos, "player_id": player_id }
 
 	# A hit that leaves the block standing changes no ground: the owners are told, peers in range see it.
@@ -53,22 +80,9 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: Str
 		return { "success": false, "damaged": true, "fraction": float(plan["fraction"]), "material": str(plan["material"]),
 			"quantity": 0, "position": world_pos, "player_id": player_id }
 
-	# Phase 43 — a NATURAL span yields what the ore field holds there: a live vein's
-	# material and per-slice quantity (capped by what is left of its reserve), else the
-	# biome's host rock, one unit. Resolved BEFORE the remove is appended, because the
-	# depth it reads is the span's, measured from the tile's natural surface.
-	var material := str(span["material"])
-	var quantity := 1
-	var vein: Dictionary = {}
-	var natural := material == ""
-	if natural:
-		var yielded = s._natural_yield(tile, span)
-		material = str(yielded["material"])
-		quantity = int(yielded["quantity"])
-		vein = yielded["vein"]
-	elif verdict == "dismantle":
+	if not natural and verdict == "dismantle":
 		quantity = int(plan["quantity"])   # the share the block's durability and the dismantler's skill allow
-	elif verdict == "destroy":
+	elif not natural and verdict == "destroy":
 		quantity = 0   # a destroyer gets nothing (`StructureDurability.destroyerGets`)
 	s._append_edit(tile, { "op": "remove", "bottom": span["bottom"], "top": span["top"] })
 	if verdict == "dismantle" or verdict == "destroy":
@@ -89,6 +103,10 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: Str
 		banked = inventory.add_item(material, quantity)
 		if not banked and not s._is_remote_actor(player_id):
 			GameBus.inventory_full.emit()
+		# Phase 260 — natural host rock sometimes knocks a loose stone loose: the input of the stone tools
+		# never runs out where there is rock. A pack too full for it simply leaves it.
+		if banked and host_rock and StoneTools.loose_stone_at(tile, float(span["bottom"])):
+			inventory.add_item(StoneTools.LOOSE_STONE, 1)
 	s._push_inventory(player_id)
 
 	var pos = Vector3(world_pos.x, float(span["top"]), world_pos.z)
@@ -140,7 +158,7 @@ func _natural_yield(tile: Vector2i, span: Dictionary) -> Dictionary:
 		if b != null and b.get("soilMaterial") != null \
 				and depth < float(topsoil if topsoil != null else 0.0):
 			return { "material": str(b.get("soilMaterial")), "quantity": 1, "vein": {} }
-		return { "material": s.OreField.host_material(biome), "quantity": 1, "vein": {} }
+		return { "material": s.OreField.host_material(biome), "quantity": 1, "vein": {}, "host": true }
 	var take = mini(int(vein["quantity"]), s.OreField.remaining(vein, s._vein_taken))
 	return { "material": str(vein["material"]), "quantity": take, "vein": vein }
 
@@ -251,6 +269,12 @@ func place_block(world_pos: Vector3, normal: Vector3, material: String = "", pla
 			return false
 
 	var inventory = s.inventory_for(player_id)
+	# Phase 260 — a builder holds the fabric's build tool (a hammer) to place a block; a station (a bench) is
+	# placed through the station path and needs none. Holding it does not wear it.
+	var build_tool := build_tool_class()
+	if build_tool != "" and inventory != null and inventory.has_method("find_tool") and str(inventory.find_tool(build_tool)) == "":
+		GameBus.structure_resolved.emit(str(plan.get("player_id", player_id)), "place", false, "%s_required" % build_tool)
+		return false
 	if inventory != null and inventory.has_method("drop_item"):
 		if not inventory.drop_item(chosen, 1):
 			return false
@@ -806,6 +830,18 @@ func _held_axe(inventory: Node) -> String:
 	if inventory == null or not inventory.has_method("find_tool"):
 		return ""
 	return str(inventory.find_tool("axe"))
+
+## Phase 260 — the tool class a builder must hold to place a block (fabric `Structure.buildTool`), "" for none.
+static func build_tool_class() -> String:
+	var res: Resource = GameData.WORLD_SYSTEMS.get("Structure", null)
+	var v: Variant = res.get("buildTool") if res != null else null
+	return str(v) if v != null else ""
+
+## Phase 260 — the held shovel's item id, or "" when `inventory` holds none.
+func _held_shovel(inventory: Node) -> String:
+	if inventory == null or not inventory.has_method("find_tool"):
+		return ""
+	return str(inventory.find_tool("shovel"))
 
 ## The held mining pick's item id, or "" when `inventory` holds none. Delegates to the
 ## inventory's fabric-driven tool lookup ("pick" → FerritePick/VeilsteelPick).
