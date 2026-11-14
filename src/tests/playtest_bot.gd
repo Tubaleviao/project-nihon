@@ -564,6 +564,7 @@ func _ready() -> void:
 	GameBus.chest_resolved.connect(func(_p: String, action: String, _ok: bool, reason: String): _chest_results.append([action, reason]))
 	GameBus.writing_resolved.connect(func(_p: String, action: String, item: String, _ok: bool, reason: String): _writing_results.append([action, item, reason]))
 	GameBus.player_respawned.connect(func(_pos: Vector3): _respawns += 1)
+	GameBus.player_damaged.connect(func(d: float, a: String, t: String): print("DBG damaged %.1f by '%s' target %s at %s" % [d, a, t, str(_root._player.get_world_pos())]))
 	GameBus.creature_spawned.connect(func(iid: String, _c: String, _pos: Vector3): _note_spawn(iid))
 	GameBus.creature_respawned.connect(func(iid: String, _c: String): _note_spawn(iid))
 	# Phase 174: the bot's callbacks run first and FrameEnd's last, so the two clocks bracket the frame's
@@ -1243,6 +1244,9 @@ func _step_mine() -> Array:
 ## Phase 259 — hold work on a target the way the player does: ask the host to start it, wait for its duration, and
 ## return the seconds the work took (-1.0 when the host never answered). The completion request is the caller's.
 func _hold_work(kind: String, tree_id: String, pos: Vector3) -> float:
+	# A hit cancels the work (and the spawn's wolf pack downed the body during a hold on CI): heal and clear first.
+	GameBus.admin_healed.emit()
+	_clear_creatures_near_body()
 	_work_secs = 0.0
 	GameBus.work_start_requested.emit(kind, tree_id, pos, Vector3.UP, {}, "")
 	if not await _until(func(): return _work_secs > 0.0, STEP_TIMEOUT_SECS):
@@ -1649,6 +1653,15 @@ func _hold_still(max_secs: float) -> void:
 
 ## The world's own creatures (a wolf pack) can reach the body and cancel every harvest try with a hit; the
 ## step tests the harvest, not the world's spawns, so the ones near the body are removed first.
+## A downed body is let respawn; then it is healed and the creatures round it removed, and it waits for the floor.
+func _settle_unharmed() -> void:
+	if not _root._player.is_alive():
+		await _until(func(): return _root._player.is_alive(), PlayerSlice.RESPAWN_DELAY + 5.0)
+		_skip_until_ms = Time.get_ticks_msec() + TELEPORT_SETTLE_MS
+	GameBus.admin_healed.emit()
+	_clear_creatures_near_body()
+	await _until(func(): return _root._player.is_grounded(), 10.0)
+
 func _clear_creatures_near_body() -> void:
 	var here := _player_pos()
 	for iid in _root._creature._instances.keys():
@@ -1730,15 +1743,15 @@ func _step_tutorial() -> Array:
 	var jump_ready := func() -> bool:
 		var s := _jump_state()
 		return s["grounded"] and s["alive"] and s["keys_live"] and not (s["flying"] or s["swimming"] or s["frozen"] or s["ground_hold"])
-	# CI (PR #630) reached this step with the body downed and respawned at chunk (0, 0), where it read dead at
-	# every press for the whole step: the jump loop ate the step's deadline and research had 6 s left. A downed
-	# body is let respawn, healed and carried home first, the way the flight step's return does.
-	if not _root._player.is_alive() and not _home.is_empty():
-		if not await _return_home(_home["chunk"], _home["local"]):
-			return [false, "the body was downed before the tutorial and never came home (alive %s)" % str(_root._player.is_alive())]
-		await _until(func(): return _root._player.is_grounded(), 10.0)
+	# PR #630: with timed work (Phase 259) the mine and gather steps hold for seconds beside the spawn's wolf pack;
+	# the body was downed, respawned at chunk (0, 0) beside another pack and downed again at every press, so the
+	# jump loop ate the step's deadline and research had 6 s left. A downed body is let respawn, then healed and
+	# the creatures round it removed (the walk step's way), before each press too.
+	await _settle_unharmed()
 	var jump_tries: Array = []
 	for _try in 5:
+		if not _root._player.is_alive():
+			await _settle_unharmed()
 		await _until(jump_ready, 10.0)
 		jump_tries.append(_jump_state())
 		_key(KEY_SPACE, true)
