@@ -12,6 +12,7 @@ extends Node
 const NewcomerGrounds := preload("res://src/world/newcomer_grounds.gd")
 const StoneTools := preload("res://src/world/stone_tools.gd")
 const SpawnFinder := preload("res://src/world/spawn_finder.gd")
+const Diag := preload("res://src/core/diag.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
 
 const TILE := 4.0
@@ -53,7 +54,6 @@ func attach(root: Node) -> void:
 	player_registry = root._registry
 	networking = root._networking
 	local_position = func() -> Vector3: return root._player.get_position()
-	is_authoritative = not root._is_client
 	render_visuals = not root._is_server
 
 ## The networking slice: a client forwards its pick-up intent through it, the host broadcasts what it resolved.
@@ -223,7 +223,9 @@ func tick() -> void:
 
 func _on_pick_requested(id: String, player_id: String) -> void:
 	if is_authoritative:
-		pick(id, player_id)
+		var res := pick(id, player_id)
+		if not bool(res["success"]):
+			Diag.warn("[Loose] pick of %s by '%s' refused: %s" % [id, player_id, str(res["reason"])])
 	elif networking != null and networking._role == networking.Role.CLIENT:
 		# The actor is dropped on purpose: the host binds it to the connection (a client naming one is only a claim).
 		networking._broadcast({ "type": "loose_pick_intent", "id": id })
@@ -243,6 +245,8 @@ func _on_pick_intent(peer: int, id: String) -> void:
 	var y := float(height_fn.call(xz)) if height_fn.is_valid() else 0.0
 	if networking._within_reach(peer, Vector3(xz.x, y, xz.y), networking.MAX_EDIT_REACH):
 		GameBus.loose_pick_requested.emit(id, actor)
+	else:
+		Diag.warn("[Loose] pick intent for %s from peer %d is out of reach — dropped" % [id, peer])
 
 func _broadcast_state(msg: Dictionary) -> void:
 	if is_authoritative and networking != null and networking._role == networking.Role.HOST:
