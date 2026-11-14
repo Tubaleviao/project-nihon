@@ -302,9 +302,8 @@ everything for the whole tutorial.
 
 Filed by the owner on 2026-11-14 from a Phase 251 playtest session. Every station is placed from
 the start with B (cycle), N (ghost) and V (place); only waystones, beds, chests, doors and the
-hearth cost an item. The crafting
-window lists every recipe, whatever station it needs, as text rows that show entity ids
-("RecipeAethermiteBow", "TechBasicSmithing") with no translation: fabric names were left to Newel's
+hearth cost an item. The crafting window lists every recipe, whatever station it needs, as text
+rows that show entity ids ("RecipeAethermiteBow", "TechBasicSmithing") with no translation: fabric names were left to Newel's
 catalog generator (the Deferred "Localized fabric content"), which Newel no longer plans. The
 technology window is a list, not a tree. The skills window is a grid of buttons labelled by tier, so
 every skill reads "novice", and nothing shows the professions skills lead to.
@@ -314,9 +313,9 @@ window and one window per station; a technology tree with lines and zoom; a skil
 shared skills in the centre and the professions on the rim, each skill placed toward the professions
 it belongs to and outward as it grows advanced and unique, with its own page and the player's focus;
 professions that unlock titles the player chooses to wear; and gathering skills of their own
-(Mining, Woodcutting, Foraging, Skinning) instead of gathering raising crafting skills. The game has no classes (the
-constitution's "no hard class system"): professions stay earned from skill tiers, several at once,
-and the UI calls them professions.
+(Mining, Woodcutting, Foraging, Skinning) instead of gathering raising crafting skills. The game
+has no classes (the constitution's "no hard class system"): professions stay earned from skill
+tiers, several at once, and the UI calls them professions.
 
 | Phase | Title | Status |
 |---|---|---|
@@ -1217,7 +1216,8 @@ skills anyone uses sit, with no label.
 ## Phase 273 — Titles: professions unlock them, the player chooses one
 
 Professions unlock by themselves from skill tiers (`locked → active → mastered` in the fabric,
-several at once; the host stores them per player since Phase 118) and are never shown. They become the source of titles the player chooses to
+several at once; the host stores them per player since Phase 118). Until Phase 271 puts them on the
+wheel's rim no window shows them; this phase makes them the source of titles the player chooses to
 show.
 
 - **Fabric (separate PR):** each profession names a title for `active` (for example "Blacksmith")
@@ -1248,8 +1248,6 @@ show.
   request for a locked title is refused.
 - Every new string is in both locales.
 
----
-
 ## Phase 274 — Gathering: Mining, Woodcutting, Foraging and Skinning are their own skills
 
 Today gathering raises crafting skills (`fabric/gameplay/work.js` `gather`): mined ore gives
@@ -1261,7 +1259,8 @@ reach master Smithing without touching a forge, and nothing records that they ar
   (`skills/shared.js`) and in the attribute weights (`attributes.js` `categories`, today's
   `survival` weights move to it). Three new skills join Skinning in it: **Mining**, **Woodcutting**
   and **Foraging**, each with an XP curve in `SKILL_CURVES` and the shared `TIER_XP`. Skinning moves
-  to the category unchanged. `skills/survival.js` becomes `skills/gathering.js`.
+  to the category unchanged. `skills/survival.js` becomes `skills/gathering.js`. `gathering` takes `survival`'s place (index 5)
+  in the list, because skill resources load the category as an index.
 - **Work goes by tool:** the `gather` rows become pick (`stone`, `metal`) and shovel (`soil`) →
   Mining, axe (`wood`) → Woodcutting, `plant` → Foraging, `carcass` → Skinning, with today's XP per
   unit. Crafting skills grow only from crafting (`craft` rows), and Building only from placing,
@@ -1273,10 +1272,11 @@ reach master Smithing without touching a forge, and nothing records that they ar
   fabric names the bonus per tier.
 - **No profession changes:** gathering skills name no profession, so profession unlocks and mastery
   (Phase 118, "all constituent skills at master") stay as they are, and on the wheel (Phase 271)
-  they sit in the centre disc as skills anyone uses. Their master tiers still give titles
-  (Phase 273: "Master Miner").
+  they sit in the centre disc as skills anyone uses. Their master tiers give titles once Phase 273
+  lands ("Master Miner").
 - **Code reads the fabric:** `attribute_rules.gd`'s hard-coded `SKILL_CATEGORIES` is read from
-  `GameData` instead, so a category change is data-only. The village `forager` specialty
+  `GameData` instead, so a category change is data-only; the suite's copy
+  (`attribute_tests.gd` `SKILL_CATEGORIES`) is read the same way. The village `forager` specialty
   (`settlement.js`) weighs Foraging instead of Tracking, Navigation and Alchemy.
 - **Saves:** XP already earned stays in the skill it was earned in; no migration (the game is in
   playtest).
@@ -1293,6 +1293,8 @@ reach master Smithing without touching a forge, and nothing records that they ar
   categories equal the fabric's; a save with old Smithing XP loads with it unchanged.
 - The playtest bot's mine, gather, craft and tower steps pass.
 - Every new string is in both locales.
+
+---
 
 ## Parked phases
 
