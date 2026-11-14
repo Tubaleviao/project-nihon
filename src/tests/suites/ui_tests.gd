@@ -45,6 +45,11 @@ func register() -> void:
 	_run_test("hud: skills and shortcut keys on the bar",      _test_hud_hotbar_skills_and_binding)
 	_run_test("hud: drag and drop to boxes and the ground",    _test_hud_drag_and_drop)
 	_run_test("hud: a dropped tool keeps its wear",            _test_hud_drop_keeps_durability)
+	_run_test("drop dialog: a stack opens it, one or Shift skip it", _test_drop_dialog_opens)
+	_run_test("drop dialog: slider and field stay equal",      _test_drop_dialog_sync)
+	_run_test("drop dialog: confirm drops the chosen amount, cancel none", _test_drop_dialog_confirm_cancel)
+	_run_test("drop dialog: Enter and Esc in the focused field", _test_drop_dialog_keys)
+	_run_test("drop: the host clamps a request above the bag", _test_drop_host_clamps)
 	_run_test("hud: skills list + window keys",                _test_hud_skills_rows_and_window_keys)
 	_run_test("hud: window dock letters match the key map",    _test_hud_window_dock)
 	_run_test("icons: every window, skill, status and HP has a valid UI icon", _test_ui_icons_cover_everything)
@@ -1173,8 +1178,10 @@ func _test_hud_drag_and_drop() -> void:
 	var seen: Array = []
 	var cb := func(id: String, qty: int, _pos: Vector3) -> void: seen.append([id, qty])
 	GameBus.item_drop_requested.connect(cb)
-	assert_eq(ui.finish_world_drop({"kind": "item", "id": "Ferrite", "quantity": 5}, false), "dropped", "an item dragged to the world is dropped")
-	assert_eq(inv.get_item_count("Ferrite"), 4, "a plain drag drops one unit")
+	assert_eq(ui.finish_world_drop({"kind": "item", "id": "Ferrite", "quantity": 5}, false), "dialog", "a stack dragged to the world asks how many")
+	ui.drop_dialog.set_quantity(1)
+	ui.drop_dialog.confirm()
+	assert_eq(inv.get_item_count("Ferrite"), 4, "confirming one drops one unit")
 	assert_eq(ui.finish_world_drop({"kind": "item", "id": "Ferrite", "quantity": 4}, true), "dropped", "shift drops the stack")
 	assert_eq(inv.get_item_count("Ferrite"), 0, "and the whole stack leaves the pack")
 	assert_eq(ui.request_drop("Ferrite", 1), "none", "an item not held is refused")
@@ -1197,6 +1204,155 @@ func _test_hud_drag_and_drop() -> void:
 	inv.free()
 	ui.free()
 	DirAccess.remove_absolute(_TEST_HOTBAR_FILE)
+
+# --- Phase 264: the drop quantity dialog ---------------------------------------------------------
+
+## A HUD UI with an inventory holding `qty` Ferrite and a loot slice to drop onto. Returns [ui, inv, loot].
+func _drop_fixture(qty: int) -> Array:
+	var ui := _new_hud_ui()
+	var inv := InventorySlice.new()
+	add_child(inv)
+	var loot := LootSlice.new()
+	add_child(loot)
+	inv.loot_slice = loot
+	ui.inventory_slice = inv
+	inv._max_weight = 1.0e6   # a stack of 20 ore outweighs the default carry limit
+	if qty > 0:
+		inv.add_item("Ferrite", qty)
+	return [ui, inv, loot]
+
+func _drop_fixture_free(f: Array) -> void:
+	for n in [f[2], f[1], f[0]]:
+		(n as Node).free()
+	DirAccess.remove_absolute(_TEST_HOTBAR_FILE)
+
+func _test_drop_dialog_opens() -> void:
+	var f := _drop_fixture(20)
+	var ui = f[0]
+	var inv = f[1]
+	var seen: Array = []
+	var cb := func(id: String, qty: int, _pos: Vector3) -> void: seen.append([id, qty])
+	GameBus.item_drop_requested.connect(cb)
+	assert_eq(ui.finish_world_drop({"kind": "item", "id": "Ferrite", "quantity": 20}, false), "dialog", "a stack of 20 dragged out asks")
+	assert_true(ui.is_drop_dialog_open(), "the dialog is open")
+	var sl: HSlider = ui.drop_dialog.slider()
+	assert_eq([int(sl.min_value), int(sl.max_value)], [1, 20], "its range is 1..count")
+	assert_eq(ui.drop_dialog.quantity(), 20, "it starts at the whole stack")
+	assert_eq(ui.drop_dialog.item_id, "Ferrite", "for the dragged item")
+	assert_eq(seen, [], "nothing is dropped while it asks")
+	ui.drop_dialog.cancel()
+	assert_eq(ui.finish_world_drop({"kind": "item", "id": "Ferrite", "quantity": 20}, true), "dropped", "Shift-drag drops at once")
+	assert_false(ui.is_drop_dialog_open(), "without the dialog")
+	assert_eq(inv.get_item_count("Ferrite"), 0, "the whole stack")
+	inv.add_item("Ferrite", 1)
+	assert_eq(ui.finish_world_drop({"kind": "item", "id": "Ferrite", "quantity": 1}, false), "dropped", "a stack of one drops at once")
+	assert_false(ui.is_drop_dialog_open(), "a stack of one never opens it")
+	assert_eq(seen, [["Ferrite", 20], ["Ferrite", 1]], "two drops on the bus, none from the cancelled dialog")
+	ui.drops_enabled = false
+	inv.add_item("Ferrite", 5)
+	assert_eq(ui.finish_world_drop({"kind": "item", "id": "Ferrite", "quantity": 5}, false), "client", "a client is refused before the dialog")
+	assert_false(ui.is_drop_dialog_open(), "and no dialog opens")
+	GameBus.item_drop_requested.disconnect(cb)
+	_drop_fixture_free(f)
+
+func _test_drop_dialog_sync() -> void:
+	var f := _drop_fixture(20)
+	var ui = f[0]
+	ui.finish_world_drop({"kind": "item", "id": "Ferrite", "quantity": 20}, false)
+	var d = ui.drop_dialog
+	var sl: HSlider = d.slider()
+	var fld: LineEdit = d.field()
+	assert_eq(fld.text, "20", "the field starts with the stack")
+	sl.value = 7
+	assert_eq([int(sl.value), fld.text], [7, "7"], "moving the slider updates the field")
+	fld.text = "12"
+	fld.text_changed.emit("12")
+	assert_eq([int(sl.value), fld.text], [12, "12"], "typing moves the slider")
+	fld.text = "99"
+	fld.text_changed.emit("99")
+	assert_eq([int(sl.value), fld.text], [20, "20"], "a number above the stack is clamped in both")
+	fld.text = "0"
+	fld.text_changed.emit("0")
+	assert_eq([int(sl.value), fld.text], [1, "1"], "and below 1 too")
+	d.button("half").pressed.emit()
+	assert_eq([int(sl.value), fld.text], [10, "10"], "half")
+	d.button("one").pressed.emit()
+	assert_eq([int(sl.value), fld.text], [1, "1"], "one")
+	d.button("all").pressed.emit()
+	assert_eq([int(sl.value), fld.text], [20, "20"], "all")
+	assert_eq(d.half_of(7), 4, "half of an odd stack rounds up")
+	assert_eq(d.half_of(1), 1, "half is never 0")
+	d.cancel()
+	_drop_fixture_free(f)
+
+func _test_drop_dialog_confirm_cancel() -> void:
+	var f := _drop_fixture(20)
+	var ui = f[0]
+	var inv = f[1]
+	var loot = f[2]
+	var seen: Array = []
+	var cb := func(id: String, qty: int, _pos: Vector3) -> void: seen.append([id, qty])
+	GameBus.item_drop_requested.connect(cb)
+	ui.finish_world_drop({"kind": "item", "id": "Ferrite", "quantity": 20}, false)
+	ui.drop_dialog.set_quantity(7)
+	ui.drop_dialog.button("confirm").pressed.emit()
+	assert_eq(seen, [["Ferrite", 7]], "Drop emits one drop of the chosen quantity")
+	assert_false(ui.is_drop_dialog_open(), "and closes")
+	assert_eq(inv.get_item_count("Ferrite"), 13, "7 of 20 left the pack")
+	assert_eq(loot.get_pickups_near(Vector3.ZERO, 100.0).size(), 1, "as one pile on the ground")
+	ui.finish_world_drop({"kind": "item", "id": "Ferrite", "quantity": 13}, false)
+	ui.drop_dialog.set_quantity(5)
+	ui.drop_dialog.button("cancel").pressed.emit()
+	assert_eq(seen.size(), 1, "Cancel emits no drop")
+	assert_false(ui.is_drop_dialog_open(), "and closes")
+	assert_eq(inv.get_item_count("Ferrite"), 13, "the pack is untouched")
+	GameBus.item_drop_requested.disconnect(cb)
+	_drop_fixture_free(f)
+
+func _drop_key(code: Key) -> InputEventKey:
+	var e := InputEventKey.new()
+	e.keycode = code
+	e.pressed = true
+	return e
+
+func _test_drop_dialog_keys() -> void:
+	var f := _drop_fixture(20)
+	var ui = f[0]
+	var seen: Array = []
+	var cb := func(id: String, qty: int, _pos: Vector3) -> void: seen.append([id, qty])
+	GameBus.item_drop_requested.connect(cb)
+	ui.finish_world_drop({"kind": "item", "id": "Ferrite", "quantity": 20}, false)
+	var fld: LineEdit = ui.drop_dialog.field()
+	assert_true(fld.has_focus(), "the number field takes the keyboard when the dialog opens")
+	assert_true(ui.is_typing(), "so no world input reaches the game (Phase 219)")
+	fld.text = "6"
+	fld.text_changed.emit("6")
+	ui._input(_drop_key(KEY_ENTER))
+	assert_eq(seen, [["Ferrite", 6]], "Enter in the field drops the chosen quantity")
+	assert_false(ui.is_drop_dialog_open(), "and closes")
+	assert_false(fld.has_focus(), "the field lets the keyboard go")
+	ui.finish_world_drop({"kind": "item", "id": "Ferrite", "quantity": 14}, false)
+	assert_true(fld.has_focus(), "focused again on the next open")
+	ui._input(_drop_key(KEY_ESCAPE))
+	assert_eq(seen.size(), 1, "Esc in the field drops nothing")
+	assert_false(ui.is_drop_dialog_open(), "and closes the dialog")
+	assert_false(ui.is_pause_menu_open(), "without opening the Esc menu")
+	ui.finish_world_drop({"kind": "item", "id": "Ferrite", "quantity": 14}, false)
+	ui._input(_drop_key(KEY_KP_ENTER))
+	assert_eq(seen, [["Ferrite", 6], ["Ferrite", 14]], "keypad Enter confirms too")
+	GameBus.item_drop_requested.disconnect(cb)
+	_drop_fixture_free(f)
+
+func _test_drop_host_clamps() -> void:
+	var f := _drop_fixture(5)
+	var inv = f[1]
+	var loot = f[2]
+	GameBus.item_drop_requested.emit("Ferrite", 50, Vector3(2, 0, 2))
+	assert_eq(inv.get_item_count("Ferrite"), 0, "a request for 50 empties a bag of 5")
+	var near: Array = loot.get_pickups_near(Vector3(2, 0, 2), 1.0)
+	assert_eq(near.size(), 1, "one pile")
+	assert_eq(int(near[0]["quantity"]), 5, "of what the bag held, never more")
+	_drop_fixture_free(f)
 
 func _test_hud_drop_keeps_durability() -> void:
 	var inv := InventorySlice.new()
