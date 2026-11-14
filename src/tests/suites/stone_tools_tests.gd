@@ -12,6 +12,8 @@ func register() -> void:
 	_run_test("stone tools: holding stones, dropping them, then a branch discovers the technology with a notice", _test_discovery)
 	_run_test("stone tools: stones alone discover nothing; the held inputs survive a snapshot", _test_discovery_partial)
 	_run_test("stone tools: a discovery notice is a toast for its player only", _test_discovery_toast)
+	_run_test("stone tools: a dedicated server's unowned pack discovers nothing and broadcasts nothing", _test_discovery_no_local_player)
+	_run_test("stone tools: a discovery leaves the technology panel label to the toast", _test_discovery_panel_quiet)
 	_run_test("stone tools: placing a block needs a hammer in hand and does not wear it", _test_hammer_to_build)
 	_run_test("stone tools: every other tool is crafted and repaired at a station", _test_others_need_bench)
 	_run_test("stone tools: the shovel digs soil faster than the pick; the pick mines rock faster than the shovel", _test_shovel_vs_pick)
@@ -155,6 +157,32 @@ func _test_discovery_toast() -> void:
 	assert_eq(ui.toast_queue().size(), 0, "other system lines are not toasts")
 	ui.free()
 	_free_tech_rig(r)
+
+func _test_discovery_no_local_player() -> void:
+	var r := _tech_rig()
+	var tech: Node = r["tech"]
+	r["reg"].local_player_id = ""   # a dedicated server: a registry, no local player
+	var notices: Array = []
+	var on_notice := func(k: String, a: Array, t: String) -> void: notices.append([k, a, t])
+	GameBus.system_message.connect(on_notice)
+	tech.note_obtained("", StoneTools.LOOSE_STONE)
+	tech.note_obtained("", StoneTools.BRANCH)
+	GameBus.system_message.disconnect(on_notice)
+	assert_eq(notices.size(), 0, "no notice, so no broadcast to every client")
+	assert_false(tech.is_unlocked("TechStoneTools", ""), "and nothing unlocked for nobody")
+	assert_eq(tech.seen_items("").size(), 0, "nor any input remembered")
+	_free_tech_rig(r)
+
+func _test_discovery_panel_quiet() -> void:
+	var ui := _new_test_ui()
+	ui._technology_feedback = Label.new()
+	ui._technology_feedback.text = "before"
+	GameBus.research_resolved.emit({ "tech_id": "TechStoneTools", "success": true, "reason": "discovered", "status": "unlocked", "player_id": "" })
+	assert_eq(ui._technology_feedback.text, "before", "a discovery does not also write the panel label")
+	GameBus.research_resolved.emit({ "tech_id": "TechBasicSmithing", "success": true, "reason": "", "status": "unlocked", "player_id": "" })
+	assert_eq(ui._technology_feedback.text, I18nScript.t("ui.tech_unlocked", ["TechBasicSmithing"]), "other unlocks still do")
+	ui._technology_feedback.free()
+	ui.free()
 
 func _test_shovel_vs_pick() -> void:
 	assert_eq(WorkTime.action_for_material("Soil"), "dig", "soil is dug")

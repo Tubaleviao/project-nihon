@@ -88,6 +88,7 @@ var _status: Dictionary = {}
 ## Phase 260 — pid -> { item: true }: the discovery inputs each player has held.
 var _seen: Dictionary = {}
 var _discovery_items: Dictionary = {}
+var _discovery_items_built := false
 
 ## player_id -> { tech key -> wall-clock deadline (Unix seconds) } for
 ## auto-completion in _process.
@@ -217,11 +218,16 @@ func seen_items(player_id: String = "") -> Dictionary:
 func note_obtained(player_id: String, item_id: String) -> Array:
 	if not is_authoritative:
 		return []
-	if _discovery_items.is_empty():
+	if not _discovery_items_built:
 		_discovery_items = discovery_items()
+		_discovery_items_built = true
 	if not _discovery_items.has(item_id):
 		return []
 	var pid := resolve_player(player_id)
+	# A machine with a registry but no local player (a dedicated server) has no one behind an unowned pack:
+	# "" would make the notice a broadcast to every client.
+	if pid == "" and player_registry != null:
+		return []
 	# A pack that is no player's (a merchant's stock) discovers nothing.
 	if player_registry != null and player_registry.has_method("has_player") and pid != local_player_id() \
 			and not player_registry.has_player(pid):

@@ -306,10 +306,7 @@ func _test_phase122_blend_and_bedrock() -> void:
 
 func _test_closed_site_refuses_edits() -> void:
 	var v := _make_voxel()
-	var inv := InventorySlice.new()
-	add_child(inv)
-	v.inventory_slice = inv
-	inv.add_item("StoneHammer", 1)   # Phase 260 — building needs a hammer in hand
+	var inv := _builder_inventory(v)
 	var w := float(TerrainSlice.circumference_chunks()) * TerrainSlice.CHUNK_METERS
 	var site := Vector3(w * 0.5, 0.0, 16.0)   # the closed "east" site
 	assert_true(TerrainSlice.in_closed_site(Vector2(site.x, site.z)), "the spot is in a closed site")
@@ -321,10 +318,7 @@ func _test_closed_site_refuses_edits() -> void:
 
 func _test_voxel_mine_yields_material() -> void:
 	var v := _make_voxel()
-	var inv := InventorySlice.new()
-	add_child(inv)
-	v.inventory_slice = inv
-	inv.add_item("StoneHammer", 1)   # Phase 260 — building needs a hammer in hand
+	var inv := _builder_inventory(v)
 	assert_eq(v.get_voxel_height_at(Vector2(16.0, 16.0)), 2.0, "flat chunk height is 2.0")
 	var r := v.mine_block(Vector3(16.0, 2.0, 16.0))
 	assert_true(r.get("success", false), "mine succeeds on a 2.0-tall column")
@@ -358,10 +352,7 @@ func _test_voxel_mine_bedrock() -> void:
 ## leaves a floor run and a roof run: a tunnel.
 func _test_voxel_mine_side_face() -> void:
 	var v := _make_voxel()
-	var inv := InventorySlice.new()
-	add_child(inv)
-	v.inventory_slice = inv
-	inv.add_item("StoneHammer", 1)   # Phase 260 — building needs a hammer in hand
+	var inv := _builder_inventory(v)
 	# East-facing face (normal +X) at x=17.0: the hit block is tile 33 (west, world [16.5,17.0)).
 	v.mine_block(Vector3(17.0, 1.5, 16.5), Vector3(1, 0, 0))
 	assert_eq(v.get_column_runs_at(Vector2(16.75, 16.75)).size(), 2, "+X face carves the block west of the boundary")
@@ -376,10 +367,7 @@ func _test_voxel_mine_side_face() -> void:
 
 func _test_voxel_cycle_inventory_filtered() -> void:
 	var v := _make_voxel()
-	var inv := InventorySlice.new()
-	add_child(inv)
-	v.inventory_slice = inv
-	inv.add_item("StoneHammer", 1)   # Phase 260 — building needs a hammer in hand
+	var inv := _builder_inventory(v)
 	inv.add_item("Ashite", 2)
 	inv.add_item("Thornwood", 1)
 	v.set_place_material("Ashite")
@@ -390,10 +378,7 @@ func _test_voxel_cycle_inventory_filtered() -> void:
 
 func _test_voxel_place_consumes() -> void:
 	var v := _make_voxel()
-	var inv := InventorySlice.new()
-	add_child(inv)
-	v.inventory_slice = inv
-	inv.add_item("StoneHammer", 1)   # Phase 260 — building needs a hammer in hand
+	var inv := _builder_inventory(v)
 	v.set_place_material("Ashite")
 	inv.add_item("Ashite", 3)
 	var ok := v.place_block(Vector3(16.0, 2.0, 16.0), Vector3.UP)
@@ -405,10 +390,7 @@ func _test_voxel_place_consumes() -> void:
 
 func _test_voxel_place_cap() -> void:
 	var v := _make_voxel()
-	var inv := InventorySlice.new()
-	add_child(inv)
-	v.inventory_slice = inv
-	inv.add_item("StoneHammer", 1)   # Phase 260 — building needs a hammer in hand
+	var inv := _builder_inventory(v)
 	v.set_place_material("Ashite")
 	inv.add_item("Ashite", 2)
 	# Phase 211 — the cap is the fabric's `buildCeiling`: a block whose top reaches it is placed, the next is not.
@@ -668,10 +650,7 @@ func _test_voxel_edits_round_trip() -> void:
 
 func _test_voxel_placed_block_keeps_material_color() -> void:
 	var v := _make_voxel()
-	var inv := InventorySlice.new()
-	add_child(inv)
-	v.inventory_slice = inv
-	inv.add_item("StoneHammer", 1)   # Phase 260 — building needs a hammer in hand
+	var inv := _builder_inventory(v)
 	# The synthetic chunk has no terrain_slice, so its biome is TemperateForest
 	# (fabric prose: ferrite outcrops only — no rare ground ore). Place a
 	# DIFFERENT material so the colour change is unambiguous: the column must
@@ -689,10 +668,7 @@ func _test_voxel_placed_block_keeps_material_color() -> void:
 
 func _test_voxel_mine_placed_block_yields_material() -> void:
 	var v := _make_voxel()
-	var inv := InventorySlice.new()
-	add_child(inv)
-	v.inventory_slice = inv
-	inv.add_item("StoneHammer", 1)   # Phase 260 — building needs a hammer in hand
+	var inv := _builder_inventory(v)
 	v.set_place_material("Thornwood")
 	inv.add_item("Thornwood", 1)
 	assert_true(v.place_block(Vector3(16.0, 2.0, 16.0), Vector3.UP), "place Thornwood succeeds")
@@ -705,10 +681,7 @@ func _test_voxel_mine_placed_block_yields_material() -> void:
 
 func _test_voxel_placed_block_preserves_base_colour() -> void:
 	var v := _make_voxel()
-	var inv := InventorySlice.new()
-	add_child(inv)
-	v.inventory_slice = inv
-	inv.add_item("StoneHammer", 1)   # Phase 260 — building needs a hammer in hand
+	var inv := _builder_inventory(v)
 	# Place Ashite on a temperate (ferrite) column, then check the column renders
 	# as two distinct layers: natural base (biome colour) + the placed block
 	# (Ashite colour) — the base must NOT be recoloured.
@@ -729,10 +702,7 @@ func _test_voxel_placed_block_preserves_base_colour() -> void:
 
 func _test_voxel_place_after_mine_keeps_colour() -> void:
 	var v := _make_voxel()
-	var inv := InventorySlice.new()
-	add_child(inv)
-	v.inventory_slice = inv
-	inv.add_item("StoneHammer", 1)   # Phase 260 — building needs a hammer in hand
+	var inv := _builder_inventory(v)
 	# Mine the natural top block of a temperate column (yields the biome
 	# material — ferrite here), then place a different material back on it.
 	var center := Vector2(16.0, 16.0)
@@ -889,10 +859,7 @@ func _block_faces(v: Node, chunk_pos: Vector2i, heightmap: Array) -> PackedVecto
 
 func _test_voxel_tunnel_runs() -> void:
 	var v := _make_voxel()
-	var inv := InventorySlice.new()
-	add_child(inv)
-	v.inventory_slice = inv
-	inv.add_item("StoneHammer", 1)   # Phase 260 — building needs a hammer in hand
+	var inv := _builder_inventory(v)
 	# A side-face hit at y = 1.5 on the east face of tile (32,32): the ray lands on
 	# the boundary x = 16.5, so the block it aimed at is the one west of it.
 	var r := v.mine_block(Vector3(16.5, 1.5, 16.25), Vector3(1, 0, 0))
@@ -928,10 +895,7 @@ func _test_voxel_tunnel_runs() -> void:
 ## would stand the avatar on the ceiling it is walking under.
 func _test_voxel_support_sampler_under_ceiling() -> void:
 	var v := _make_voxel()
-	var inv := InventorySlice.new()
-	add_child(inv)
-	v.inventory_slice = inv
-	inv.add_item("StoneHammer", 1)   # Phase 260 — building needs a hammer in hand
+	var inv := _builder_inventory(v)
 	v.mine_block(Vector3(16.5, 1.5, 16.25), Vector3(1, 0, 0))
 	var xz := Vector2(16.25, 16.25)
 	assert_eq(v.get_voxel_height_at(xz), 2.0, "the column top is the roof")
@@ -1197,10 +1161,7 @@ func _test_voxel_abandoned_guess_swept() -> void:
 ## floor has to be aimable.
 func _test_voxel_tunnel_floor_top_face() -> void:
 	var v := _make_voxel()
-	var inv := InventorySlice.new()
-	add_child(inv)
-	v.inventory_slice = inv
-	inv.add_item("StoneHammer", 1)   # Phase 260 — building needs a hammer in hand
+	var inv := _builder_inventory(v)
 	# Carve a tunnel: a side-face hit at y = 1.5 on the east face of tile (32,32).
 	var r := v.mine_block(Vector3(16.5, 1.5, 16.25), Vector3(1, 0, 0))
 	assert_true(r.get("success", false), "the side-face mine succeeds")
@@ -1237,10 +1198,7 @@ func _test_voxel_tunnel_floor_top_face() -> void:
 ## IS; a column that is back to its natural self compacts away entirely.
 func _test_voxel_edit_log_is_compacted() -> void:
 	var v := _make_voxel()
-	var inv := InventorySlice.new()
-	add_child(inv)
-	v.inventory_slice = inv
-	inv.add_item("StoneHammer", 1)   # Phase 260 — building needs a hammer in hand
+	var inv := _builder_inventory(v)
 	var tile := Vector2i(32, 32)
 	var key := VoxelSlice._tile_key(tile)
 	var xz := Vector2(16.25, 16.25)
@@ -1549,10 +1507,7 @@ func _test_chunk_load_queue_respects_budget() -> void:
 func _test_chunk_voxel_edits_isolated() -> void:
 	var v := VoxelSlice.new()
 	add_child(v)
-	var inv := InventorySlice.new()
-	add_child(inv)
-	v.inventory_slice = inv
-	inv.add_item("StoneHammer", 1)   # Phase 260 — building needs a hammer in hand
+	var inv := _builder_inventory(v)
 	var flat: Array = []
 	flat.resize(64 * 64)
 	flat.fill(2.0)
@@ -1629,10 +1584,7 @@ func _test_chunk_reload_engaged_budget() -> void:
 func _test_apply_edits_preserves_dirty_chunks() -> void:
 	var v := VoxelSlice.new()
 	add_child(v)
-	var inv := InventorySlice.new()
-	add_child(inv)
-	v.inventory_slice = inv
-	inv.add_item("StoneHammer", 1)   # Phase 260 — building needs a hammer in hand
+	var inv := _builder_inventory(v)
 	var flat: Array = []
 	flat.resize(64 * 64)
 	flat.fill(2.0)
@@ -2992,3 +2944,11 @@ func _test_dirty_keys_clear_and_remark() -> void:
 	voxel.mine_block(Vector3(20.0, 2.0, 16.0))   # chunk "0,0" again
 	assert_eq(voxel.get_dirty_chunk_keys(), ["0,0"], "a later edit re-marks its own chunk only")
 	voxel.free()
+
+## A fresh inventory wired to `v`, holding a hammer (Phase 260: building needs one in hand). The caller frees it.
+func _builder_inventory(v) -> InventorySlice:
+	var inv := InventorySlice.new()
+	add_child(inv)
+	v.inventory_slice = inv
+	inv.add_item("StoneHammer", 1)
+	return inv

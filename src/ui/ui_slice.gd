@@ -1134,7 +1134,8 @@ func _on_repair_resolved(result: Dictionary) -> void:
 	refresh_inventory()
 
 func _on_research_resolved(result: Dictionary) -> void:
-	if _technology_feedback != null and _belongs_to_local_player(result):
+	# Phase 260 — a discovery is announced by its notice toast; the panel label would say it twice.
+	if _technology_feedback != null and _belongs_to_local_player(result) and str(result.get("reason", "")) != "discovered":
 		if result.get("success", false):
 			var key := "ui.tech_unlocked" if str(result.get("status", "")) == "unlocked" else "ui.researching"  # Phase 209: a read book
 			_technology_feedback.text = I18n.t(key, [result.get("tech_id", "?")])
