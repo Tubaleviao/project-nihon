@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–225, 238–243, 248, 249, 252–254, 259 and 260 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–225, 238–243, 248, 249, 252–254 and 259–261 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -31,14 +31,13 @@ introductions of the arcs they belonged to, are archived in
 Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
 see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
 phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
-comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–254, 259, 260)
+comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–254, 259–261)
 have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
 [Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
 others are not in it.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 3 | 261 | The newcomer grounds: a large, gentle spawn area with loose stones and branches |
 | 4 | 262 | Starting with nothing, and a tutorial that begins from bare hands |
 | 5 | 263 | Digging that shows at once: a predicted edit and a priority remesh |
 | 6 | 264 | Dropping part of a stack: a quantity slider |
@@ -275,7 +274,7 @@ everything for the whole tutorial.
 |---|---|---|
 | 259 | Work takes time: bare hands, tools and a progress bar | Done |
 | 260 | Stone tools: an axe, a pick and a shovel from wood and stone, no bench | Done |
-| 261 | The newcomer grounds: a large, gentle spawn area with loose stones and branches | Open |
+| 261 | The newcomer grounds: a large, gentle spawn area with loose stones and branches | Done |
 | 262 | Starting with nothing, and a tutorial that begins from bare hands | Open |
 | 263 | Digging that shows at once: a predicted edit and a priority remesh | Open |
 | 264 | Dropping part of a stack: a quantity slider | Open |
@@ -856,46 +855,6 @@ would be empty.
   and fails on a broken internal link (the generator's link check, or `lychee` over the output).
 - A GitHub issue asks the owner to enable Pages and Discussions; this phase records its number.
 - After the issue closes, the README's wiki link returns 200 from a CI step on `main`.
-
-## Phase 261 — The newcomer grounds: a large, gentle spawn area with loose stones and branches
-
-A new character spawns wherever the spawn search seeded by the player id lands, among whatever lives
-there. Newcomers get their own ground instead.
-
-- **Fabric (separate PR):** a `NewcomerGrounds` entry in `WorldSystem`: how many grounds there are on
-  the open continent (a few, so players meet but do not crowd), their radius (about 1 km), the
-  biomes they may sit in (temperate forest and grassland edges: trees, open ground and rock in
-  reach), the creatures allowed inside (passive or weak ones only, by a fabric level or danger
-  cap), and the density of loose items.
-- **Placement:** the grounds' centres are a pure function of the world seed (Phase 238), chosen on
-  habitable land with trees and surface rock within each ground. The spawn search places a new
-  character at a point inside one ground (picked by the player id, as now), never in water or on a
-  steep slope.
-- **Creatures:** spawning inside a ground draws only from its allowed list; an aggressive creature
-  that wanders in turns back at the edge (a no-go zone for its AI, as structures' circles are since
-  Phase 213). Enough weak creatures live there for the tutorial's first hunt.
-- **Loose stones and branches:** small pickable props on the ground, denser inside the grounds and
-  sparse elsewhere, placed as a pure function of (seed, tile) like trees (no world-gen change, so no
-  `WORLDGEN_VERSION` bump). Picking one up is the interact input, instant, and grants the item.
-  The host keeps which were taken and regrows them after a fabric delay, so the ground never runs
-  dry for the next newcomer. They are drawn with the MultiMesh pool and synced like tree state.
-- **Resources:** the guarantee is checked, not hoped for: every ground has, within a fabric radius of
-  each spawn point, trees, surface rock, soil, loose items and the creatures the tutorial needs.
-- Claims: no structure may be placed within a small radius of a ground's centre, so a newcomer's
-  spawn is never walled in. Building elsewhere in the ground is allowed.
-
-**Acceptance criteria**
-- `npm run validate` and `check-drift` pass; a `check_*.js` rejects an aggressive creature in the
-  allowed list and a radius below the tutorial's needs.
-- Suite tests: the grounds' centres are identical for the same seed; a new character's spawn lies
-  inside a ground on dry, walkable land; within the fabric radius of sampled spawn points there are
-  trees, rock, soil, loose stones, branches and an allowed creature spawn.
-- Suite tests: loose-item placement is identical for the same (seed, tile); a picked item is gone
-  for every peer and regrows after the delay; a pick-up out of reach or of an item already taken is
-  refused by the host.
-- Suite test: no creature outside the allowed list spawns inside a ground, and placement within the
-  protected radius is refused.
-- Net harness step: a client picks up a loose stone and the second client sees it gone.
 
 ## Phase 262 — Starting with nothing, and a tutorial that begins from bare hands
 

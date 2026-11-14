@@ -2,6 +2,7 @@ extends RefCounted
 ## Mine/place/settle edit authority, moved out of `VoxelSlice` verbatim (Phase 154).
 ## `s` is the owning slice; every moved method keeps a forwarder on the slice.
 
+const NewcomerGrounds := preload("res://src/world/newcomer_grounds.gd")
 const WorkSkills := preload("res://src/character/work_skills.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const WorkTime := preload("res://src/core/work_time.gd")
@@ -249,6 +250,11 @@ func place_block(world_pos: Vector3, normal: Vector3, material: String = "", pla
 	var probe = s._resolve_edit_tile("place", world_pos, normal, exact)
 	var tile: Vector2i = probe["tile"]
 	if TerrainSlice.in_closed_site(probe["xz"]):   # Phase 238
+		return false
+	# Phase 261 — nothing is built on a newcomer ground's centre, so a spawn is never walled in.
+	if s.terrain_slice != null and s.terrain_slice.has_method("get_world_seed") \
+			and NewcomerGrounds.in_claim_zone(int(s.terrain_slice.get_world_seed()), (probe["xz"] as Vector2).x, (probe["xz"] as Vector2).y):
+		GameBus.structure_resolved.emit(player_id, "place", false, "newcomer_ground")
 		return false
 	var runs: Array = s.get_runs_at_tile(tile)
 	var span = s._place_span(runs, world_pos, normal)
