@@ -78,7 +78,7 @@ Order notes that differ from the arcs' own order:
   through B/V instead of made, the crafting window lists every station's recipes, and the crafting,
   technology and skills windows show entity ids, no translation and no tree. Phase 268 comes right
   after 261 and before 262, so the tutorial is rewritten once, with stations that are crafted.
-  Phase 267 comes before the three window phases (269–272), which all show its names. 271 needs 270's
+  Phase 267 comes before the window phases (269–272), which all show its names. 271 needs 270's
   zoomable canvas, and 272 needs 271's wheel. They come before 265 and 266, because they are the
   first hour's loop and the avatar is its look.
 - Phase 251 moved five places down on 2026-11-13, behind 225, 244, 256, 250 and 237, instead of
@@ -297,7 +297,8 @@ everything for the whole tutorial.
 ### Next: stations you make, and windows a player can read (Phases 267–272)
 
 Filed by the owner on 2026-11-14 from a Phase 251 playtest session. Every station is placed from
-the start with B (cycle), N (ghost) and V (place); only beds and chests cost an item. The crafting
+the start with B (cycle), N (ghost) and V (place); only waystones, beds, chests, doors and the
+hearth cost an item. The crafting
 window lists every recipe, whatever station it needs, as text rows that show entity ids
 ("RecipeAethermiteBow", "TechBasicSmithing") with no translation: fabric names were left to Newel's
 catalog generator (the Deferred "Localized fabric content"), which Newel no longer plans. The
@@ -895,7 +896,7 @@ would be empty.
 
 ## Phase 262 — Starting with nothing, and a tutorial that begins from bare hands
 
-Depends on Phases 259–261.
+Depends on Phases 259–261 and 268 (stations are crafted before this rewrite).
 
 - `CharacterCreation.startingKit` becomes empty. The `NoviceTunic` stays an item that can be made
   (a cheap fibre or hide recipe) but is not handed out; a new character wears the base body's
@@ -903,7 +904,7 @@ Depends on Phases 259–261.
   is given.
 - The tutorial (`fabric/gameplay/tutorial.js`) is rewritten to start from nothing: move, look, pick
   up a branch and a stone, open the inventory, craft a stone axe (the crafting window), chop a tree,
-  craft a stone pick and shovel, dig soil, mine stone, then the existing stations, bed, shelter,
+  craft a stone pick and shovel, dig soil, mine stone, then crafting and placing the first stations (Phase 268), bed, shelter,
   first hunt (with a stone knife for the harvest), map and the rest. Each step's card names the
   input and, where it helps, the place (for example "loose stones lie on the ground nearby").
 - `_first_hour_items` (`tutorial_tests.gd`) starts from an empty kit plus what bare hands, loose
@@ -1056,12 +1057,15 @@ roadmap no longer carries, so the game keeps its own content catalog instead.
 ## Phase 268 — Stations are made, carried and placed from the hotbar
 
 B cycles a station type, N toggles a ghost and V places it, so every station is available from the
-start. Only the types with a fabric placement item (Phase 130: bed, chest) cost anything.
+start. Only the types with a fabric placement item cost anything (the waystone since Phase 130, the
+bed, chest and door, the settlement hearth); forges and benches are free (`station_slice.gd`
+`placement_item`).
 
 - **Fabric (separate PR):** every placeable station type names a `placementItem` tagged `station`,
-  and each item has a recipe. The first stations (carpentry bench, campfire or hearth, workbench) are
-  hand-made from what the newcomer grounds give; later ones need an earlier station, as their recipes
-  say. The `ChestsAndDoors` rule that a placement item must be tagged `station` extends to every type.
+  and each item has a recipe. The first station (the carpentry bench) is hand-made from what the
+  newcomer grounds give; later ones (forge, masonry bench, alchemy bench, arcane forge…) need an
+  earlier station, as their recipes say. The rule `ChestsAndDoors` checks for chests and doors (a
+  placement item must be tagged `station`) extends to every placeable type.
 - **No shortcuts:** the B, N and V station handlers in `player_slice.gd` (`_cycle_station_type`,
   the preview toggle, `_place_station`) and their input labels are removed. V stays the proposals
   window shortcut. Host-side placement for NPC villages (`settlement_wiring.gd`) keeps its own path.
@@ -1070,8 +1074,9 @@ start. Only the types with a fabric placement item (Phase 130: bed, chest) cost 
   the use input places it. The host consumes one item and refuses without it, as now. A rotate input
   (the build material's R is reused while a station item is selected) turns the ghost in 90° steps,
   and the rotation travels with the request.
-- **Picking up again:** the owner dismantles a placed station (the structure dismantle path of Phase
-  213) and gets its item back.
+- **Picking up again:** a new host-checked intent lets a station's owner, within reach, pick up a
+  placed station and get its item back (there is no player path today: `remove_station` is host-only;
+  Phase 213's dismantle covers structure blocks). A chest keeps its `spillsOnDestroy` rule.
 - The tutorial's `first_stations` chapter names crafting the station item before placing it.
 
 **Acceptance criteria**
@@ -1083,6 +1088,8 @@ start. Only the types with a fabric placement item (Phase 130: bed, chest) cost 
   in the bag, and consumes it on success.
 - Net harness step: a client crafts a station item, selects it, places it, and the second client sees
   the station; a placement request without the item is refused.
+- Suite test: the owner picks up a placed station and gets its item back; another player, or the owner
+  out of reach, is refused.
 - The playtest `place` step places from the hotbar.
 
 ## Phase 269 — Crafting by hand, and at the station
@@ -1130,6 +1137,7 @@ The crafting window lists every recipe, whatever station it needs, as rows of te
   across two runs; each `requires` edge is drawn exactly once; zoom stays within its clamp and zooms
   around the cursor; a node's state follows the player's research.
 - No node or panel shows an entity id (Phase 267 audit).
+- Every new string is in both locales.
 
 ## Phase 271 — The skill wheel: classes around the edge, novice in the centre
 
@@ -1145,7 +1153,7 @@ The skills window is a grid of buttons labelled by tier ("novice"), not by skill
 - **Layout as a pure function:** classes sit on an outer circle, evenly spaced; Novice is the centre.
   A node's angle is the affinity-weighted mean of its classes' angles, and its radius grows with
   depth, so an advanced, blacksmith-only smithing passive sits next to Blacksmith on the rim while a
-  skill shared by Blacksmith and Carpenter sits between them, nearer the centre. Lines join a node to
+  skill shared by Blacksmith and Warrior sits between them, nearer the centre. Lines join a node to
   the node it requires.
 - **Drawing:** each node shows the skill's localized name (never the tier or class), an icon and a
   state (unlocked, available, locked); each class on the rim shows its name, icon and whether it is
@@ -1157,6 +1165,7 @@ The skills window is a grid of buttons labelled by tier ("novice"), not by skill
 - Suite tests: the layout is identical across runs; a node with all affinity on one class lies on that
   class's ray; a deeper node of the same class lies farther from the centre; Novice nodes lie inside
   the innermost ring; no node label equals a tier name or an entity id.
+- Every new string is in both locales.
 
 ## Phase 272 — A skill's own page, and where the player's focus went
 
