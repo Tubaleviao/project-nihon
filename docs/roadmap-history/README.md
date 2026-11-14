@@ -336,3 +336,11 @@ Filed by the owner on 2026-11-10. The other phases of the arc are open in [ROADM
 | 241 | The native smooth mesher, and coarse chunks built smooth | Done | [phases-241.md](phases-241.md) |
 | 242 | Terrain materials: blend weights, a triplanar shader and CC0 textures | Done | [phases-242.md](phases-242.md) |
 | 243 | Level of detail past the window: voxel rings out to the distant ring, faded, under the haze | Done | [phases-243.md](phases-243.md) |
+
+### The first hour, from nothing (Phases 259–266)
+
+Filed by the owner on 2026-11-13. The other phases of the arc are open in [ROADMAP.md](../../ROADMAP.md).
+
+| Phase | Title | Status | Spec |
+|---|---|---|---|
+| 259 | Work takes time: bare hands, tools and a progress bar | Done | [phases-259.md](phases-259.md) |
