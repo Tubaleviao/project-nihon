@@ -304,6 +304,7 @@ reason.not_repairable,Cannot be repaired.,Não pode ser reparado.
 reason.unknown_technology,Unknown technology.,Tecnologia desconhecida.
 reason.already_unlocked,Already unlocked.,Já desbloqueado.
 reason.already_researching,Already being researched.,Já em pesquisa.
+reason.discovery_only,Discovered by holding what it is made from; it cannot be researched.,Descoberta quando se tem aquilo de que é feita; não pode ser pesquisada.
 reason.not_researching,Not being researched.,Não está em pesquisa.
 reason.prerequisite_locked,Needs {0} first.,Exige {0} antes.
 reason.insufficient_points,Not enough research points.,Pontos de pesquisa insuficientes.
@@ -654,6 +655,9 @@ structure.refused.no_permission,Your clan role may not do that.,Seu papel no cl�
 structure.refused.structures_full,The world holds no more structures.,O mundo não comporta mais estruturas.
 structure.refused.no_clan,You are in no clan.,Você não está em nenhum clã.
 structure.refused.hammer_required,You need a hammer in hand to build. A stone hammer is a branch and a stone.,Você precisa de um martelo na mão para construir. Um martelo de pedra é um galho e uma pedra.
+structure.refused.newcomer_ground,Nothing may be built on the heart of a newcomer ground. Build a little further out.,Nada pode ser construído no centro de um terreno de recém-chegados. Construa um pouco mais longe.
+hud.loose.picked,You pick up {0}.,Você pega {0}.
+hud.loose.nothing,Nothing to pick up here.,Nada para pegar aqui.
 structure.refused.bad_args,Use /buildas private or /buildas clan.,Use /buildas private ou /buildas clan.
 structure.refused.no_structure,Stand at a structure you own.,Fique junto de uma estrutura sua.
 structure.refused.intact,It needs no repair.,Não precisa de reparo.
@@ -766,6 +770,7 @@ mount.refused.terrain,Your mount cannot stand here.,Sua montaria não consegue f
 mount.ok.mount,You mount up.,Você montou.
 mount.ok.dismount,You get off.,Você desmontou.
 controls.row19,Mount your companion or get off,Montar no seu companheiro ou desmontar
+controls.row20,Pick up the loose stone or branch at your feet,Pegar a pedra solta ou o galho aos seus pés
 menu.title,Project Nihon,Project Nihon
 menu.version,Version {0},Versão {0}
 menu.play,Play,Jogar

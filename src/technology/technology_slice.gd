@@ -253,11 +253,23 @@ func note_obtained(player_id: String, item_id: String) -> Array:
 		found.append(tid)
 		GameBus.technology_unlocked.emit(tid, pid)
 		_emit(_result(tid, true, "discovered", STATE_UNLOCKED, pid))
-		GameBus.system_message.emit("notice.tech_discovered", [tid, ", ".join(discovery_outputs(tid))], pid)
+		GameBus.system_message.emit("notice.tech_discovered", [tid, _outputs_arg(discovery_outputs(tid))], pid)
 	if found.is_empty():
 		# Nothing unlocked, but the held input must reach the player's record (it counts after a drop or a reload).
 		GameBus.technology_record_changed.emit(pid)
 	return found
+
+## The outputs as one message argument that always fits `I18n.MAX_ARG_LEN` (a longer one would make the client
+## drop the whole notice for the fallback line): the ids that fit, then "…". Item names are fabric ids until
+## fabric content is translated (the Deferred i18n item).
+static func _outputs_arg(outputs: Array) -> String:
+	var out := ""
+	for i in outputs.size():
+		var next := str(outputs[i]) if out == "" else out + ", " + str(outputs[i])
+		if next.length() > preload("res://src/core/i18n.gd").MAX_ARG_LEN - 2:
+			return out + " …"
+		out = next
+	return out
 
 func _on_item_obtained(owner_id: String, item_id: String) -> void:
 	note_obtained(owner_id, item_id)
@@ -285,6 +297,10 @@ func begin_research(tech_id: String, player_id: String = "") -> Dictionary:
 		return _emit(_result(tech_id, false, "already_unlocked", cur, pid))
 	if cur == STATE_RESEARCHING:
 		return _emit(_result(tech_id, false, "already_researching", cur, pid))
+	# A discovery technology is unlocked by holding its inputs (note_obtained), never researched: a research
+	# started on one has no cost and no deadline, so it would sit in "researching" and block the discovery.
+	if is_discovery(tech_id):
+		return _emit(_result(tech_id, false, "discovery_only", cur, pid))
 
 	var tech := _get_tech_data(tech_id)
 	for req in tech.get("requires", []):

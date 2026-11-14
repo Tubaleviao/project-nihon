@@ -591,6 +591,16 @@ signal tree_chopped(tree_id: String, wood: String, state: String, respawn_at: fl
 ## tree_id : String — TreeSlice tree id
 signal tree_respawned(tree_id: String)
 
+## Phase 261 — loose stones and branches on the ground. A player picks one up (`id` is its tile, "tx:tz");
+## the host answers with `loose_picked` (and the regrow deadline, wall-clock unix seconds) and later
+## `loose_regrown`, so every peer sees it gone and back.
+signal loose_pick_requested(id: String, player_id: String)
+signal loose_picked(id: String, regrow_at: float)
+signal loose_regrown(id: String)
+
+## Phase 261 — host: a client's pick-up intent arrived from `peer` (the loose-item slice checks reach and binds the actor).
+signal loose_pick_intent(peer: int, id: String)
+
 ## Phase 110 — emitted by TreeSlice (host) when building cleared a tree for good: the tree is
 ## removed (collision and MultiMesh slot) and never regrows. A client frees it on receipt.
 ## tree_id : String — TreeSlice tree id

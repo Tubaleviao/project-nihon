@@ -31,6 +31,8 @@ extends Node
 ## listings and tree regrowth use, so a deadline persisted in the world record
 ## still means what it says after a restart. (It used to be process uptime via
 ## Time.get_ticks_msec(), which is meaningless in a new process.)
+const NewcomerGrounds := preload("res://src/world/newcomer_grounds.gd")
+const SpawnFinder := preload("res://src/world/spawn_finder.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const Hydrology := preload("res://src/terrain/hydrology.gd")
 const Diag := preload("res://src/core/diag.gd")
@@ -432,7 +434,29 @@ func move_instance(instance_id: String, delta: Vector3) -> void:
 	if not _instances.has(instance_id):
 		return
 	var cur: Dictionary = _instances[instance_id]["pos"]
+	if _turned_back_at_ground(instance_id, cur, delta):
+		return
 	set_instance_pos(instance_id, WorldPos.normalized({"chunk": cur["chunk"], "local": (cur["local"] as Vector3) + delta}))
+
+## Phase 261 — a wild creature whose aggression a newcomer ground does not tolerate turns back at its edge:
+## a step from outside to inside is refused (one already inside may leave). A tamed creature is not wild.
+func _turned_back_at_ground(instance_id: String, cur: Dictionary, delta: Vector3) -> bool:
+	var seed_v := _world_seed()
+	if not NewcomerGrounds.has_grounds(seed_v):
+		return false
+	var inst: Dictionary = _instances[instance_id]
+	if str(inst.get("tamed_by", "")) != "":
+		return false
+	var res: Resource = creature_table.get(str(inst.get("creature_id", "")), null)
+	if res == null or NewcomerGrounds.aggression_allowed(NewcomerGrounds.LEVELS[clampi(int(res.get("aggressionLevel")), 0, 3)]):
+		return false
+	var m := WorldPos.CHUNK_METERS
+	var local: Vector3 = cur["local"]
+	var from_x := float((cur["chunk"] as Vector2i).x) * m + local.x
+	var from_z := float((cur["chunk"] as Vector2i).y) * m + local.z
+	if NewcomerGrounds.inside(seed_v, from_x, from_z):
+		return false
+	return NewcomerGrounds.inside(seed_v, from_x + delta.x, from_z + delta.z)
 
 ## Return a snapshot of all active instances (for HUD / minimap use).
 ##
@@ -572,6 +596,8 @@ func _warn_missing_spawn_fields(creature_id: String, chance: Variant, density: V
 func spawn_for_chunk(chunk_pos: Vector2i) -> void:
 	if not is_authoritative:
 		return   # clients receive creatures from host broadcasts
+	if terrain_slice != null and terrain_slice.has_method("get_height_at"):
+		SpawnFinder.prime_grounds(_world_seed(), terrain_slice.get_height_at)   # Phase 261
 	var chunk_biome := _chunk_biome(chunk_pos)
 	var biome_keys: Array = _biome_keys()
 	# Survivors per species come from this chunk's index alone; the live count the cap is
@@ -584,16 +610,23 @@ func spawn_for_chunk(chunk_pos: Vector2i) -> void:
 		surviving_by_species[cid] = int(surviving_by_species.get(cid, 0)) + 1
 	var live: int = live_population() if _population_cap > 0 else 0
 	var season_mult: float = season_spawn_multiplier(chunk_pos, chunk_biome)
+	var half_chunk := WorldPos.CHUNK_METERS * 0.5
+	var in_ground := NewcomerGrounds.inside(_world_seed(), float(chunk_pos.x) * WorldPos.CHUNK_METERS + half_chunk, float(chunk_pos.y) * WorldPos.CHUNK_METERS + half_chunk)
 	for creature_id in creature_table:
 		var res: Resource = creature_table[creature_id]
 		if res == null:
 			continue
 		var biome_idx: int = int(res.get("biome"))
 		var biome_key: String = biome_keys[biome_idx] if biome_idx < biome_keys.size() else biome_keys[0]
-		if chunk_biome != "" and biome_key != chunk_biome:
+		# Phase 261 — inside a newcomer ground only its allowed creatures spawn, whatever the chunk's biome,
+		# and they roll a pack every time so the first hunt is never short of one.
+		var ground_chunk := in_ground
+		if ground_chunk and not NewcomerGrounds.creature_allowed(str(creature_id)):
+			continue
+		if not ground_chunk and chunk_biome != "" and biome_key != chunk_biome:
 			continue
 		var pack: int = int(res.get("spawnCount"))
-		if chunk_biome != "":
+		if chunk_biome != "" and not ground_chunk:
 			# A resource lacking the Phase 44 fields keeps spawning (always, no noise)
 			# rather than silently vanishing from the world; it warns once.
 			var chance: Variant = spawn_chance_of(res)
@@ -636,8 +669,11 @@ func _spawn_members(creature_id: String, chunk_pos: Vector2i, count: int) -> int
 	var blocked: int = 0
 	while spawned < count:
 		if not _instances.has(_instance_id(chunk_pos, creature_id, idx)):
-			if _spawn_blocked_at(chunk_pos, _deterministic_chunk_local(chunk_pos, creature_id, 0) + _pack_member_offset(idx)):
+			var spot := _deterministic_chunk_local(chunk_pos, creature_id, 0) + _pack_member_offset(idx)
+			if _spawn_blocked_at(chunk_pos, spot):
 				blocked += 1
+			elif _outside_ground_list(creature_id, chunk_pos, spot):
+				pass   # Phase 261: a member whose spot falls inside a ground it is not allowed in is never spawned
 			else:
 				_spawn(creature_id, chunk_pos, idx)
 			spawned += 1
@@ -647,6 +683,15 @@ func _spawn_members(creature_id: String, chunk_pos: Vector2i, count: int) -> int
 ## Phase 206 — `(world_xz: Vector2) -> bool`: true where no creature may spawn (inside a structure's circle).
 ## Set on the host by the structure wiring; unset, nothing is blocked. A creature that walks in is not removed.
 var spawn_blocked: Callable = Callable()
+
+## Phase 261 — whether `creature_id` may not spawn at `local` (metres from `chunk`'s corner): the spot lies inside a
+## newcomer ground and the creature is not on its allowed list (a chunk whose centre is outside the ground can still
+## reach over its edge, and a pack's offsets can carry a member in).
+func _outside_ground_list(creature_id: String, chunk: Vector2i, local: Vector2) -> bool:
+	if NewcomerGrounds.creature_allowed(creature_id):
+		return false
+	var m := WorldPos.CHUNK_METERS
+	return NewcomerGrounds.inside(_world_seed(), float(chunk.x) * m + local.x, float(chunk.y) * m + local.y)
 
 ## Whether the spot `local` (metres from `chunk`'s origin corner) is inside a circle.
 func _spawn_blocked_at(chunk: Vector2i, local: Vector2) -> bool:

@@ -21,6 +21,7 @@ func register() -> void:
 	_run_test("stone tools: a loose stone is decided by the span's position at the fabric chance", _test_loose_stone_rate)
 	_run_test("stone tools: a felled tree drops branches beside its wood, bare-handed too", _test_fell_branches)
 	_run_test("stone tools: with a stone pick and a ferrite pick held, the ferrite one is used", _test_fastest_tool)
+	_run_test("stone tools: a discovery technology cannot be researched, so holding its inputs still discovers it", _test_discovery_not_researched)
 
 func _recipe_for(item: String) -> String:
 	for key in GameData.RECIPES:
@@ -329,3 +330,19 @@ func _test_fastest_tool() -> void:
 	inv.add_item("StoneShovel", 1)
 	assert_eq(inv.find_tool("shovel"), "StoneShovel", "the shovel is its own class")
 	inv.free()
+
+func _test_discovery_not_researched() -> void:
+	var r := _tech_rig()
+	var tech: Node = r["tech"]
+	var res: Dictionary = tech.begin_research("TechStoneTools", "p1")
+	assert_false(bool(res.get("success", true)), "a research of a discovery technology is refused")
+	assert_eq(str(res.get("reason", "")), "discovery_only", "with its own reason")
+	assert_true(I18nScript.has_key("reason.discovery_only"), "which the catalog renders")
+	assert_eq(tech.get_status("TechStoneTools", "p1"), TechnologySlice.STATE_LOCKED, "and it stays locked, not researching")
+	r["inv"].add_item(StoneTools.BRANCH, 1)
+	r["inv"].add_item(StoneTools.LOOSE_STONE, 1)
+	assert_true(tech.is_unlocked("TechStoneTools", "p1"), "holding the inputs then discovers it")
+	var long_arg := TechnologySlice._outputs_arg(["AAAAAAAAAAAAAAAAAAAA", "BBBBBBBBBBBBBBBBBBBB", "CCCCCCCCCCCCCCCCCCCC", "DDDD"])
+	assert_true(long_arg.length() <= I18nScript.MAX_ARG_LEN, "the outputs argument always fits a message (%d)" % long_arg.length())
+	assert_true(long_arg.ends_with("…"), "and says when it was cut")
+	_free_tech_rig(r)

@@ -110,7 +110,8 @@ func place_new_player(player_id: String, friend_code: String) -> Dictionary:
 		else:
 			message = "spawn.unknown_friend"
 		source = "friend_unknown"
-	var found: Variant = SpawnFinder.find_new(world_seed, player_id, root._colonization, height_fn, Time.get_unix_time_from_system())
+	var blocked: Callable = root._structures.spawn_blocked if root._structures != null else Callable()
+	var found: Variant = SpawnFinder.find_start(world_seed, player_id, root._colonization, height_fn, Time.get_unix_time_from_system(), blocked)
 	if found == null:
 		return {}
 	root._colonization.note_home(Vector2i(floori(found.x / TerrainSlice.CHUNK_METERS), floori(found.z / TerrainSlice.CHUNK_METERS)))

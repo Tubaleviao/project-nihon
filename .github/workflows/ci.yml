@@ -503,6 +503,9 @@ jobs:
       - name: Check the stone-tool validation rejects bad tables
         run: node tools/check_stone_tools.js
 
+      - name: Check the newcomer-grounds validation rejects bad tables
+        run: node tools/check_newcomer_grounds.js
+
       - name: Check the terrain material validation rejects bad tables
         run: node tools/check_terrain_materials.js
 

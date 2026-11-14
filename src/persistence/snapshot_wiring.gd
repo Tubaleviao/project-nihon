@@ -83,6 +83,7 @@ func build_snapshot(peer_id: int, include_own_record: bool = true,
 				else root._voxel.get_chunk_manifest_in_radius(aoi_center, NetworkingSlice.EDITS_SCOPE_RADIUS)),
 		"creatures": _scoped_creatures(aoi_center),
 		"stations":  root._station.get_station_data(),
+		"loose":     root._loose.taken_data(),   # Phase 261 — the loose items taken and not yet regrown
 		"players":   players,
 	}
 	# Phase 36/38 — the social/economy state the snapshot carries is redacted the same
@@ -308,6 +309,8 @@ func on_world_snapshot_received(data: Dictionary) -> void:
 	# technologies). Stations are world data, so a client mirrors the host's set.
 	if data.has("stations") and data["stations"] is Array:
 		root._station.apply_station_data(data["stations"])
+	if data.has("loose"):
+		root._loose.apply_taken(data["loose"])   # Phase 261
 	if data.has("technology") and data["technology"] is Dictionary:
 		# A client has no registry identity: its own tree is the only one it holds,
 		# which is the "" bucket resolve_player() falls back to.
