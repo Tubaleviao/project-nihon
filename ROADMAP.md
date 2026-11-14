@@ -38,27 +38,33 @@ others are not in it.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 4 | 262 | Starting with nothing, and a tutorial that begins from bare hands |
-| 5 | 263 | Digging that shows at once: a predicted edit and a priority remesh |
-| 6 | 264 | Dropping part of a stack: a quantity slider |
-| 7 | 265 | One body everywhere: the creation screen, the Character window and the world draw the same avatar |
-| 8 | 266 | A chibi character worth looking at: the art direction and the player rig |
-| 9 | 255 | The first release: `v0.1.0` from the release workflow |
-| 10 | 244 | A chunk cache on disk |
-| 11 | 256 | A binary wire format for the hot packets |
-| 12 | 250 | The server's ceiling: one machine serving, another running the bots |
-| 13 | 237 | Flight that handles like flight |
-| 14 | 251 | A human playtest: what would make the game fun (a standing checkpoint) |
-| 15 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
-| 16 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
-| 17 | 226 | Several characters per player |
-| 18 | 229 | Skills capped by the gear |
-| 19 | 247 | Ground cover: grass and bushes by biome |
-| 20 | 235 | Roads |
-| 21 | 234 | Boats |
-| 22 | 257 | Split files named by what they do |
-| 23 | 258 | The public wiki and the community channels |
-| 24 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
+| 4 | 268 | Stations are made, carried and placed from the hotbar |
+| 5 | 262 | Starting with nothing, and a tutorial that begins from bare hands |
+| 6 | 263 | Digging that shows at once: a predicted edit and a priority remesh |
+| 7 | 264 | Dropping part of a stack: a quantity slider |
+| 8 | 267 | Names a player can read: localized names for items, recipes, technologies, skills and classes |
+| 9 | 269 | Crafting by hand, and at the station |
+| 10 | 270 | The technology tree: nodes, lines, zoom |
+| 11 | 271 | The skill wheel: classes around the edge, novice in the centre |
+| 12 | 272 | A skill's own page, and where the player's focus went |
+| 13 | 265 | One body everywhere: the creation screen, the Character window and the world draw the same avatar |
+| 14 | 266 | A chibi character worth looking at: the art direction and the player rig |
+| 15 | 255 | The first release: `v0.1.0` from the release workflow |
+| 16 | 244 | A chunk cache on disk |
+| 17 | 256 | A binary wire format for the hot packets |
+| 18 | 250 | The server's ceiling: one machine serving, another running the bots |
+| 19 | 237 | Flight that handles like flight |
+| 20 | 251 | A human playtest: what would make the game fun (a standing checkpoint) |
+| 21 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
+| 22 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
+| 23 | 226 | Several characters per player |
+| 24 | 229 | Skills capped by the gear |
+| 25 | 247 | Ground cover: grass and bushes by biome |
+| 26 | 235 | Roads |
+| 27 | 234 | Boats |
+| 28 | 257 | Split files named by what they do |
+| 29 | 258 | The public wiki and the community channels |
+| 30 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
 
 Order notes that differ from the arcs' own order:
 
@@ -68,6 +74,13 @@ Order notes that differ from the arcs' own order:
   and a character that looks the same everywhere and looks good. 259–262 depend on each other in
   that order (work time, then the tools it rewards, then the ground they are used on, then the
   empty start that needs all three); 263–266 stand alone.
+- Phases 267–272 are the owner's second set of Phase 251 findings (2026-11-14): stations are free
+  through B/V instead of made, the crafting window lists every station's recipes, and the crafting,
+  technology and skills windows show entity ids, no translation and no tree. Phase 268 comes right
+  after 261 and before 262, so the tutorial is rewritten once, with stations that are crafted.
+  Phase 267 comes before the three window phases (269–272), which all show its names. 271 needs 270's
+  zoomable canvas, and 272 needs 271's wheel. They come before 265 and 266, because they are the
+  first hour's loop and the avatar is its look.
 - Phase 251 moved five places down on 2026-11-13, behind 225, 244, 256, 250 and 237, instead of
   being closed. It is a standing checkpoint: it is never closed, and each session's findings become
   new phases placed where the owner says.
@@ -280,6 +293,30 @@ everything for the whole tutorial.
 | 264 | Dropping part of a stack: a quantity slider | Open |
 | 265 | One body everywhere: the creation screen, the Character window and the world draw the same avatar | Open |
 | 266 | A chibi character worth looking at: the art direction and the player rig | Open |
+
+### Next: stations you make, and windows a player can read (Phases 267–272)
+
+Filed by the owner on 2026-11-14 from a Phase 251 playtest session. Every station is placed from
+the start with B (cycle), N (ghost) and V (place); only beds and chests cost an item. The crafting
+window lists every recipe, whatever station it needs, as text rows that show entity ids
+("RecipeAethermiteBow", "TechBasicSmithing") with no translation: fabric names were left to Newel's
+catalog generator (the Deferred "Localized fabric content"), which Newel no longer plans. The
+technology window is a list, not a tree. The skills window is a grid of buttons labelled by tier, so
+every skill reads "novice", and nothing shows the classes (professions) skills lead to.
+
+The owner wants stations crafted, carried in the hotbar and placed with a ghost; a hand crafting
+window and one window per station; a technology tree with lines and zoom; and a skill wheel with
+Novice in the centre and the classes on the rim, each skill placed toward the classes it belongs to
+and outward as it grows advanced and unique, with its own page and the player's focus.
+
+| Phase | Title | Status |
+|---|---|---|
+| 267 | Names a player can read: localized names for items, recipes, technologies, skills and classes | Open |
+| 268 | Stations are made, carried and placed from the hotbar | Open |
+| 269 | Crafting by hand, and at the station | Open |
+| 270 | The technology tree: nodes, lines, zoom | Open |
+| 271 | The skill wheel: classes around the edge, novice in the centre | Open |
+| 272 | A skill's own page, and where the player's focus went | Open |
 
 ## Phase 225 — The options window
 
@@ -989,6 +1026,158 @@ feel in this game's own art; no assets, sprites or likenesses are taken from any
 - Whether the result looks good is a human judgement: filed as a GitHub issue per the rule at the
   top of this file, and this phase records its number.
 
+## Phase 267 — Names a player can read: localized names for items, recipes, technologies, skills and classes
+
+The crafting and technology windows show entity ids ("RecipeAethermiteBow", "TechBasicSmithing") and
+nothing in them is translated. Fabric content was deferred to Newel's catalog generator, which Newel's
+roadmap no longer carries, so the game keeps its own content catalog instead.
+
+- **A content catalog:** `locale/content.csv` with the same columns as `locale/ui.csv` (`en`,
+  `pt_BR`), keyed by entity: `item.<Id>.name`, `item.<Id>.desc`, `recipe.<Id>.name` (falls back to
+  its first output's name when absent), `tech.<Id>.name`, `tech.<Id>.desc`, `skill.<Id>.name`,
+  `skill.<Id>.desc`, `class.<Id>.name`, `station.<type>.name`. Adding a language stays a new column,
+  no code change.
+- **One lookup:** `I18n.content(kind, id, field)` returns the localized text, and in a debug build a
+  visible `⟨id⟩` marker when the key is missing (never the bare id in a release build: the generic
+  "Unknown" string instead). Every window that shows content (crafting, technology, skills, inventory
+  tooltips, hotbar, chests, trade, toasts) goes through it.
+- **A fabric gate:** `tools/check_content_locale.js` fails when a player-visible entity (every item,
+  recipe, technology, skill, profession and placeable station in the fabric) has no name in every
+  locale column, or the catalog holds a key for an entity that no longer exists. CI runs it.
+- The Deferred entry "Localized fabric content" is replaced by this phase.
+
+**Acceptance criteria**
+- `node tools/check_content_locale.js` passes on the catalog and rejects a missing `pt_BR` name and a
+  stale key (its own self-check, like the other `check_*.js`).
+- Suite tests: every content key resolves in `en` and `pt_BR`; switching the locale changes a recipe's
+  shown name; no label in the crafting, technology or skills window equals an entity id (an audit over
+  each window's built tree).
+
+## Phase 268 — Stations are made, carried and placed from the hotbar
+
+B cycles a station type, N toggles a ghost and V places it, so every station is available from the
+start. Only the types with a fabric placement item (Phase 130: bed, chest) cost anything.
+
+- **Fabric (separate PR):** every placeable station type names a `placementItem` tagged `station`,
+  and each item has a recipe. The first stations (carpentry bench, campfire or hearth, workbench) are
+  hand-made from what the newcomer grounds give; later ones need an earlier station, as their recipes
+  say. The `ChestsAndDoors` rule that a placement item must be tagged `station` extends to every type.
+- **No shortcuts:** the B, N and V station handlers in `player_slice.gd` (`_cycle_station_type`,
+  the preview toggle, `_place_station`) and their input labels are removed. V stays the proposals
+  window shortcut. Host-side placement for NPC villages (`settlement_wiring.gd`) keeps its own path.
+- **Hotbar placement:** a station item in the selected hotbar slot shows its ghost at the aimed spot
+  every frame, tinted by `place_refusal` (valid or refused, with the refusal's reason as a hint), and
+  the use input places it. The host consumes one item and refuses without it, as now. A rotate input
+  (the build material's R is reused while a station item is selected) turns the ghost in 90° steps,
+  and the rotation travels with the request.
+- **Picking up again:** the owner dismantles a placed station (the structure dismantle path of Phase
+  213) and gets its item back.
+- The tutorial's `first_stations` chapter names crafting the station item before placing it.
+
+**Acceptance criteria**
+- `npm run validate` and `check-drift` pass; a `check_*.js` rejects a placeable station type with no
+  placement item, and a placement item with no recipe.
+- Suite tests: B, N and V no longer place or cycle stations; with no station item selected no ghost is
+  shown; with one selected, the ghost follows the aim and reports the same refusal as the host; the use
+  input emits one placement request with the rotation; the host refuses a placement whose item is not
+  in the bag, and consumes it on success.
+- Net harness step: a client crafts a station item, selects it, places it, and the second client sees
+  the station; a placement request without the item is refused.
+- The playtest `place` step places from the hotbar.
+
+## Phase 269 — Crafting by hand, and at the station
+
+The crafting window lists every recipe, whatever station it needs, as rows of text.
+
+- **The hand window** (the crafting shortcut) lists only recipes with no station: what a player makes
+  on the spot.
+- **A station window:** the interact input on a placed station opens that station's window, listing
+  only its recipes, titled with the station's name. It closes when the player walks out of the
+  station's reach. Chests and beds keep their own interactions.
+- **Visual:** a grid of recipe cards, each with the output's icon, its localized name (Phase 267) and
+  count. Selecting a card shows the inputs as icons with have/need counts (red when short), the work
+  time (Phase 259), the skill it trains, and a Craft button with a quantity. Recipes not yet known
+  (technology, discovery) are hidden; known ones the player cannot afford are dimmed, not hidden. A
+  search field and category tabs (tools, weapons, building, food…) from the recipe's tags.
+- The host's station check stays as it is (`crafting_slice.gd`: a matching station within
+  `STATION_RADIUS`, else `station_required:<type>`); the window only stops offering what would be
+  refused.
+
+**Acceptance criteria**
+- Suite tests: the hand window lists exactly the station-less known recipes; a station's window lists
+  exactly that station's known recipes; a station recipe requested with no station in reach is refused
+  by the host; a card's have/need counts follow the bag; no card shows an entity id.
+- Suite test: the station window closes when the player leaves reach.
+- Net harness step: a client opens a station, crafts one of its recipes and gets the item; the same
+  request away from the station is refused.
+- Every new string is in both locales.
+
+## Phase 270 — The technology tree: nodes, lines, zoom
+
+- **Layout as a pure function:** a technology's column is the length of its longest prerequisite
+  chain (fabric `requires`), and rows within a column are ordered to reduce crossings (barycentre
+  passes). The same fabric gives the same layout, so it can be tested and cached.
+- **Drawing:** each technology is a node with an icon, its localized name and state (researched,
+  available, locked), and a line runs from each prerequisite to it, highlighted when the prerequisite
+  is researched. Selecting a node shows its description, cost in research points and materials, time,
+  the recipes it unlocks (icons) and a Research button when available.
+- **Navigation:** mouse wheel and pinch zoom around the cursor (clamped), drag to pan, a button to fit
+  the whole tree, and the view centres on the newest available technology when the window opens.
+- Research requests stay host-checked as now.
+
+**Acceptance criteria**
+- Suite tests: every technology's column is greater than each prerequisite's; the layout is identical
+  across two runs; each `requires` edge is drawn exactly once; zoom stays within its clamp and zooms
+  around the cursor; a node's state follows the player's research.
+- No node or panel shows an entity id (Phase 267 audit).
+
+## Phase 271 — The skill wheel: classes around the edge, novice in the centre
+
+The skills window is a grid of buttons labelled by tier ("novice"), not by skill.
+
+- **Fabric (separate PR):** a `Novice` class joins the professions (Blacksmith, Arcanist and the
+  rest), which the window calls classes. Each skill and each tier unlock it grants (recipes,
+  abilities and passive bonuses already in the fabric; a tier with nothing to show gets a passive bonus
+  in the same PR) becomes a node with an **affinity** per class (derived from the professions'
+  `relations`, overridable in the fabric) and a **depth** from 0 (anyone's) to 1 (unique to a class,
+  advanced). A validator rejects a node with no class, or depth that does not grow along a skill's
+  tiers.
+- **Layout as a pure function:** classes sit on an outer circle, evenly spaced; Novice is the centre.
+  A node's angle is the affinity-weighted mean of its classes' angles, and its radius grows with
+  depth, so an advanced, blacksmith-only smithing passive sits next to Blacksmith on the rim while a
+  skill shared by Blacksmith and Carpenter sits between them, nearer the centre. Lines join a node to
+  the node it requires.
+- **Drawing:** each node shows the skill's localized name (never the tier or class), an icon and a
+  state (unlocked, available, locked); each class on the rim shows its name, icon and whether it is
+  active. Zoom and pan as in Phase 270.
+
+**Acceptance criteria**
+- `npm run validate` and `check-drift` pass; the validator's self-check rejects a node with no class
+  affinity and a depth that decreases along a skill.
+- Suite tests: the layout is identical across runs; a node with all affinity on one class lies on that
+  class's ray; a deeper node of the same class lies farther from the centre; Novice nodes lie inside
+  the innermost ring; no node label equals a tier name or an entity id.
+
+## Phase 272 — A skill's own page, and where the player's focus went
+
+- **Details window:** selecting a skill node opens its page: name, description, level and XP with a
+  bar to the next level, what the next tiers unlock (passive or active), what trains it (the work
+  kinds of Phase 207 and the recipes, creatures or materials that give it XP), and its class.
+- **Focus:** the host keeps a rolling record of where each player's skill XP came from over a fabric
+  window of play time (for example the last 10 hours), by skill category (combat, crafting,
+  gathering, magic, social, exploration). The details page and the wheel's centre show it as shares,
+  so a player who spent the evening forging sees smithing lead and the Blacksmith side of the wheel
+  light up. Whether focus also changes how fast XP is earned is an owner decision, filed as an issue;
+  until then it is shown, not applied.
+- A newly unlocked node pulses on the wheel and the toast (Phase 260) opens its page.
+
+**Acceptance criteria**
+- `npm run validate` and `check-drift` pass with the focus window in the fabric.
+- Suite tests: the page's level and XP match the skill state; focus shares sum to 1 and follow the
+  XP sources in the window, dropping sources older than it; focus is synced only to its own player;
+  an unlock emits the toast that opens its page.
+- Every new string is in both locales.
+
 ---
 
 ## Parked phases
@@ -1232,9 +1421,6 @@ metres, which a whole planet cannot afford (about 250 TB at 2 m).
 - **Physics ragdolls** — Phase 157 animates deaths with a host-chosen landing spot and authored
   clips, so the headless server stays deterministic. A client-only ragdoll blend on top is later
   polish.
-- **Localized fabric content** — entity names and descriptions (items, creatures, skills,
-  technologies) translated through catalogs generated by Newel (`../newel/ROADMAP.md` Phase 15),
-  consumed with the Phase 131 locale settings.
 - **Public wiki deployment** — now Phase 258 (filed 2026-11-12; deferred from Phase 9 until then).
 - **Voxel techniques from GDVoxelPlayground** — <https://github.com/JorisAR/GDVoxelPlayground>
   (MIT) was evaluated and not adopted wholesale: it ray-marches a fixed 128³ GPU grid, which does
