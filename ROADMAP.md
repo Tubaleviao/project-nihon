@@ -42,29 +42,30 @@ others are not in it.
 | 5 | 262 | Starting with nothing, and a tutorial that begins from bare hands |
 | 6 | 263 | Digging that shows at once: a predicted edit and a priority remesh |
 | 7 | 264 | Dropping part of a stack: a quantity slider |
-| 8 | 267 | Names a player can read: localized names for items, recipes, technologies, skills and classes |
+| 8 | 267 | Names a player can read: localized names for items, recipes, technologies, skills and professions |
 | 9 | 269 | Crafting by hand, and at the station |
 | 10 | 270 | The technology tree: nodes, lines, zoom |
-| 11 | 271 | The skill wheel: classes around the edge, novice in the centre |
+| 11 | 271 | The skill wheel: professions around the edge, shared skills in the centre |
 | 12 | 272 | A skill's own page, and where the player's focus went |
-| 13 | 265 | One body everywhere: the creation screen, the Character window and the world draw the same avatar |
-| 14 | 266 | A chibi character worth looking at: the art direction and the player rig |
-| 15 | 255 | The first release: `v0.1.0` from the release workflow |
-| 16 | 244 | A chunk cache on disk |
-| 17 | 256 | A binary wire format for the hot packets |
-| 18 | 250 | The server's ceiling: one machine serving, another running the bots |
-| 19 | 237 | Flight that handles like flight |
-| 20 | 251 | A human playtest: what would make the game fun (a standing checkpoint) |
-| 21 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
-| 22 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
-| 23 | 226 | Several characters per player |
-| 24 | 229 | Skills capped by the gear |
-| 25 | 247 | Ground cover: grass and bushes by biome |
-| 26 | 235 | Roads |
-| 27 | 234 | Boats |
-| 28 | 257 | Split files named by what they do |
-| 29 | 258 | The public wiki and the community channels |
-| 30 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
+| 13 | 273 | Titles: professions unlock them, the player chooses one |
+| 14 | 265 | One body everywhere: the creation screen, the Character window and the world draw the same avatar |
+| 15 | 266 | A chibi character worth looking at: the art direction and the player rig |
+| 16 | 255 | The first release: `v0.1.0` from the release workflow |
+| 17 | 244 | A chunk cache on disk |
+| 18 | 256 | A binary wire format for the hot packets |
+| 19 | 250 | The server's ceiling: one machine serving, another running the bots |
+| 20 | 237 | Flight that handles like flight |
+| 21 | 251 | A human playtest: what would make the game fun (a standing checkpoint) |
+| 22 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
+| 23 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
+| 24 | 226 | Several characters per player |
+| 25 | 229 | Skills capped by the gear |
+| 26 | 247 | Ground cover: grass and bushes by biome |
+| 27 | 235 | Roads |
+| 28 | 234 | Boats |
+| 29 | 257 | Split files named by what they do |
+| 30 | 258 | The public wiki and the community channels |
+| 31 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
 
 Order notes that differ from the arcs' own order:
 
@@ -74,12 +75,12 @@ Order notes that differ from the arcs' own order:
   and a character that looks the same everywhere and looks good. 259–262 depend on each other in
   that order (work time, then the tools it rewards, then the ground they are used on, then the
   empty start that needs all three); 263–266 stand alone.
-- Phases 267–272 are the owner's second set of Phase 251 findings (2026-11-14): stations are free
+- Phases 267–273 are the owner's second set of Phase 251 findings (2026-11-14): stations are free
   through B/V instead of made, the crafting window lists every station's recipes, and the crafting,
   technology and skills windows show entity ids, no translation and no tree. Phase 268 comes right
   after 261 and before 262, so the tutorial is rewritten once, with stations that are crafted.
-  Phase 267 comes before the window phases (269–272), which all show its names. 271 needs 270's
-  zoomable canvas, and 272 needs 271's wheel. They come before 265 and 266, because they are the
+  Phase 267 comes before the window phases (269–273), which all show its names. 271 needs 270's
+  zoomable canvas, 272 needs 271's wheel, and 273's titles use 267's catalog and 272's toast. They come before 265 and 266, because they are the
   first hour's loop and the avatar is its look.
 - Phase 251 moved five places down on 2026-11-13, behind 225, 244, 256, 250 and 237, instead of
   being closed. It is a standing checkpoint: it is never closed, and each session's findings become
@@ -294,7 +295,7 @@ everything for the whole tutorial.
 | 265 | One body everywhere: the creation screen, the Character window and the world draw the same avatar | Open |
 | 266 | A chibi character worth looking at: the art direction and the player rig | Open |
 
-### Next: stations you make, and windows a player can read (Phases 267–272)
+### Next: stations you make, and windows a player can read (Phases 267–273)
 
 Filed by the owner on 2026-11-14 from a Phase 251 playtest session. Every station is placed from
 the start with B (cycle), N (ghost) and V (place); only waystones, beds, chests, doors and the
@@ -303,21 +304,25 @@ window lists every recipe, whatever station it needs, as text rows that show ent
 ("RecipeAethermiteBow", "TechBasicSmithing") with no translation: fabric names were left to Newel's
 catalog generator (the Deferred "Localized fabric content"), which Newel no longer plans. The
 technology window is a list, not a tree. The skills window is a grid of buttons labelled by tier, so
-every skill reads "novice", and nothing shows the classes (professions) skills lead to.
+every skill reads "novice", and nothing shows the professions skills lead to.
 
 The owner wants stations crafted, carried in the hotbar and placed with a ghost; a hand crafting
-window and one window per station; a technology tree with lines and zoom; and a skill wheel with
-Novice in the centre and the classes on the rim, each skill placed toward the classes it belongs to
-and outward as it grows advanced and unique, with its own page and the player's focus.
+window and one window per station; a technology tree with lines and zoom; a skill wheel with the
+shared skills in the centre and the professions on the rim, each skill placed toward the professions
+it belongs to and outward as it grows advanced and unique, with its own page and the player's focus;
+and professions that unlock titles the player chooses to wear. The game has no classes (the
+constitution's "no hard class system"): professions stay earned from skill tiers, several at once,
+and the UI calls them professions.
 
 | Phase | Title | Status |
 |---|---|---|
-| 267 | Names a player can read: localized names for items, recipes, technologies, skills and classes | Open |
+| 267 | Names a player can read: localized names for items, recipes, technologies, skills and professions | Open |
 | 268 | Stations are made, carried and placed from the hotbar | Open |
 | 269 | Crafting by hand, and at the station | Open |
 | 270 | The technology tree: nodes, lines, zoom | Open |
-| 271 | The skill wheel: classes around the edge, novice in the centre | Open |
+| 271 | The skill wheel: professions around the edge, shared skills in the centre | Open |
 | 272 | A skill's own page, and where the player's focus went | Open |
+| 273 | Titles: professions unlock them, the player chooses one | Open |
 
 ## Phase 225 — The options window
 
@@ -1027,7 +1032,7 @@ feel in this game's own art; no assets, sprites or likenesses are taken from any
 - Whether the result looks good is a human judgement: filed as a GitHub issue per the rule at the
   top of this file, and this phase records its number.
 
-## Phase 267 — Names a player can read: localized names for items, recipes, technologies, skills and classes
+## Phase 267 — Names a player can read: localized names for items, recipes, technologies, skills and professions
 
 The crafting and technology windows show entity ids ("RecipeAethermiteBow", "TechBasicSmithing") and
 nothing in them is translated. Fabric content was deferred to Newel's catalog generator, which Newel's
@@ -1036,7 +1041,7 @@ roadmap no longer carries, so the game keeps its own content catalog instead.
 - **A content catalog:** `locale/content.csv` with the same columns as `locale/ui.csv` (`en`,
   `pt_BR`), keyed by entity: `item.<Id>.name`, `item.<Id>.desc`, `recipe.<Id>.name` (falls back to
   its first output's name when absent), `tech.<Id>.name`, `tech.<Id>.desc`, `skill.<Id>.name`,
-  `skill.<Id>.desc`, `class.<Id>.name`, `station.<type>.name`. Adding a language stays a new column,
+  `skill.<Id>.desc`, `profession.<Id>.name`, `station.<type>.name`. Adding a language stays a new column,
   no code change.
 - **One lookup:** `I18n.content(kind, id, field)` returns the localized text, and in a debug build a
   visible `⟨id⟩` marker when the key is missing (never the bare id in a release build: the generic
@@ -1139,52 +1144,99 @@ The crafting window lists every recipe, whatever station it needs, as rows of te
 - No node or panel shows an entity id (Phase 267 audit).
 - Every new string is in both locales.
 
-## Phase 271 — The skill wheel: classes around the edge, novice in the centre
+## Phase 271 — The skill wheel: professions around the edge, shared skills in the centre
 
-The skills window is a grid of buttons labelled by tier ("novice"), not by skill.
+The skills window is a grid of buttons labelled by tier ("novice"), not by skill. The game has no
+classes: the rim shows the professions (Blacksmith, Arcanist, Ranger and the rest), which a player
+earns from skill tiers and can hold several of. There is no `Novice` entity; the centre is where the
+skills anyone uses sit, with no label.
 
-- **Fabric (separate PR):** a `Novice` class joins the professions (Blacksmith, Arcanist and the
-  rest), which the window calls classes. Each skill and each tier unlock it grants (recipes,
-  abilities and passive bonuses already in the fabric; a tier with nothing to show gets a passive bonus
-  in the same PR) becomes a node with an **affinity** per class (derived from the professions'
-  `relations`, overridable in the fabric) and a **depth** from 0 (anyone's) to 1 (unique to a class,
-  advanced). A validator rejects a node with no class, or depth that does not grow along a skill's
-  tiers.
-- **Layout as a pure function:** classes sit on an outer circle, evenly spaced; Novice is the centre.
-  A node's angle is the affinity-weighted mean of its classes' angles, and its radius grows with
-  depth, so an advanced, blacksmith-only smithing passive sits next to Blacksmith on the rim while a
-  skill shared by Blacksmith and Warrior sits between them, nearer the centre. Lines join a node to
-  the node it requires.
-- **Drawing:** each node shows the skill's localized name (never the tier or class), an icon and a
-  state (unlocked, available, locked); each class on the rim shows its name, icon and whether it is
-  active. Zoom and pan as in Phase 270.
+- **Fabric (separate PR):** each skill and each tier unlock it grants (recipes, abilities and passive
+  bonuses already in the fabric; a tier with nothing to show gets a passive bonus in the same PR)
+  becomes a node with an **affinity** per profession (derived from the professions' `relations`,
+  overridable in the fabric; a skill no profession names has none) and a **depth** from 0 (anyone's)
+  to 1 (unique to a profession, advanced). A validator rejects affinities that sum to neither 0 nor
+  1, an affinity to an unknown profession, or depth that does not grow along a skill's tiers.
+- **Layout as a pure function:** professions sit on an outer circle, evenly spaced. A node's angle is
+  the affinity-weighted mean of its professions' angles, and its radius grows with depth, so an
+  advanced, blacksmith-only smithing passive sits next to Blacksmith on the rim while a skill shared
+  by Blacksmith and Warrior sits between them, nearer the centre. A node with no affinity sits in the
+  centre disc. Lines join a node to the node it requires.
+- **Drawing:** each node shows the skill's localized name (never the tier), an icon and a state
+  (unlocked, available, locked); each profession on the rim shows its name, icon and state (locked,
+  active, mastered). Zoom and pan as in Phase 270.
 
 **Acceptance criteria**
-- `npm run validate` and `check-drift` pass; the validator's self-check rejects a node with no class
-  affinity and a depth that decreases along a skill.
-- Suite tests: the layout is identical across runs; a node with all affinity on one class lies on that
-  class's ray; a deeper node of the same class lies farther from the centre; Novice nodes lie inside
-  the innermost ring; no node label equals a tier name or an entity id.
+- `npm run validate` and `check-drift` pass; the validator's self-check rejects affinities that sum
+  to neither 0 nor 1, an unknown profession and a depth that decreases along a skill.
+- Suite tests: the layout is identical across runs; a node with all affinity on one profession lies
+  on that profession's ray; a deeper node of the same profession lies farther from the centre; nodes
+  with no affinity lie inside the centre disc; no node label equals a tier name or an entity id.
 - Every new string is in both locales.
 
 ## Phase 272 — A skill's own page, and where the player's focus went
 
 - **Details window:** selecting a skill node opens its page: name, description, level and XP with a
   bar to the next level, what the next tiers unlock (passive or active), what trains it (the work
-  kinds of Phase 207 and the recipes, creatures or materials that give it XP), and its class.
-- **Focus:** the host keeps a rolling record of where each player's skill XP came from over a fabric
-  window of play time (for example the last 10 hours), by skill category (combat, crafting,
-  gathering, magic, social, exploration). The details page and the wheel's centre show it as shares,
-  so a player who spent the evening forging sees smithing lead and the Blacksmith side of the wheel
-  light up. Whether focus also changes how fast XP is earned is an owner decision, filed as an issue;
-  until then it is shown, not applied.
+  kinds of Phase 207 and the recipes, creatures or materials that give it XP), the professions it
+  leads to, and the player's focus on it with the bonus it gives now.
+- **Focus:** the host counts, per player and per skill, the **active minutes** in the last
+  `FocusWindow` of play time (fabric, default 10 hours): a minute counts for a skill when the player
+  earned host-granted XP in that skill during it (one minute can count for several skills). It is
+  play time, not wall-clock time: time logged off neither adds focus nor ages it. Minutes older
+  than the window drop out.
+- **The dedication bonus:** XP granted in a skill is multiplied by
+  `1 + maxBonus × activeMinutes(skill) / windowMinutes` (fabric, default `maxBonus` 0.25), so ten
+  straight hours on one skill earn +25% in it and five hours earn +12.5%. It is a bonus only: a skill
+  with no focus earns the normal rate, never less, so trying something new costs nothing. The host
+  applies it once, in `grant_skill_xp`, so every XP source gets it and none gets it twice.
+- **Display:** the details page and the wheel's centre show focus as shares by skill, grouped by the
+  skill categories (combat, crafting, magic, exploration, social, survival), so a player who spent
+  the evening forging sees Smithing lead and the Blacksmith side of the wheel light up.
 - A newly unlocked node pulses on the wheel and the toast (Phase 260) opens its page.
 
 **Acceptance criteria**
-- `npm run validate` and `check-drift` pass with the focus window in the fabric.
-- Suite tests: the page's level and XP match the skill state; focus shares sum to 1 and follow the
-  XP sources in the window, dropping sources older than it; focus is synced only to its own player;
-  an unlock emits the toast that opens its page.
+- `npm run validate` and `check-drift` pass with `FocusWindow` and `maxBonus` in the fabric; the
+  validator rejects a negative bonus and a window of zero.
+- Suite tests: the page's level and XP match the skill state; a minute with XP in a skill counts once
+  for it; minutes older than the window drop out and time logged off does not age them; the
+  multiplier is 1 with no focus, `1 + maxBonus` with a full window on one skill and never below 1; a
+  grant is multiplied exactly once; focus is synced only to its own player; an unlock emits the toast
+  that opens its page.
+- Every new string is in both locales.
+
+## Phase 273 — Titles: professions unlock them, the player chooses one
+
+Professions unlock by themselves from skill tiers (`locked → active → mastered` in the fabric,
+several at once; the host stores them per player since Phase 118) and are never shown. They become the source of titles the player chooses to
+show.
+
+- **Fabric (separate PR):** each profession names a title for `active` (for example "Blacksmith")
+  and one for `mastered` ("Master Blacksmith"); each skill names a title for its master tier ("Master
+  Smelter"); a built-in `Newcomer` title every character has from creation. Every title has a
+  `title.<Id>.name` key in `locale/content.csv` (Phase 267); the validator rejects a title with no
+  name in a locale and two sources that give the same title.
+- **Unlock:** when the host records a profession transition or a skill reaching master, it adds the
+  titles that unlocks to the player's unlocked set (durable in `player_registry.gd`, synced to its
+  own player only) and sends a notice key the client shows as a toast ("New title: Master
+  Smelter"); clicking it opens the title list.
+- **Choosing:** the Character window lists the unlocked titles; the player picks one, or none. The
+  request goes to the host, which refuses a title not in that player's unlocked set, stores the
+  choice and syncs it to the peers that see that player, so it shows under the name on the nameplate
+  and in the Character window. A new character wears `Newcomer` until they choose another.
+- **Gates stay on professions:** recipe gates (`crafting_slice.gd` `_check_profession_gate`,
+  `requires_profession:<id>`) keep checking unlocked professions, never the chosen title, so wearing
+  a title never changes what a player can craft.
+
+**Acceptance criteria**
+- `npm run validate` and `check-drift` pass; the validator's self-check rejects a title with no
+  `pt_BR` name and a duplicated title.
+- Suite tests: a new character has exactly `Newcomer` unlocked and chosen; unlocking a profession and
+  mastering a skill add their titles once and emit the toast; the host refuses a title that is not
+  unlocked and accepts clearing it; the chosen title survives save and load; changing the title does
+  not change a profession-gated recipe's result.
+- Net harness step: a client chooses an unlocked title and the second client's nameplate shows it; a
+  request for a locked title is refused.
 - Every new string is in both locales.
 
 ---
