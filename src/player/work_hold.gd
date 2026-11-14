@@ -42,6 +42,7 @@ func _ready() -> void:
 	_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_label)
 	GameBus.work_started.connect(_on_started)
+	GameBus.player_damaged.connect(_on_damaged)
 	visible = false
 
 ## The gather input went down on `target` (`{}` = nothing aimed).
@@ -111,6 +112,12 @@ func _on_started(_key: String, duration: float, action: String, material: String
 	_material = material
 	_elapsed = 0.0
 	_refresh()
+
+## Being hit cancels the work; it restarts only on a fresh press.
+func _on_damaged(_damage: float, _attacker: String, target: String) -> void:
+	if target == "player" and not _target.is_empty():
+		_cancel()
+		_gave_up = true
 
 func _cancel() -> void:
 	if not _target.is_empty():

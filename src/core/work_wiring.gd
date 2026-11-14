@@ -13,6 +13,7 @@ func _connect_all() -> void:
 	root._networking.set_meta("work_host", host)
 	connect_bus(GameBus.work_start_requested, _on_start)
 	connect_bus(GameBus.work_cancel_requested, _on_cancel)
+	connect_bus(GameBus.player_damaged, _on_damaged)
 
 func _on_start(kind: String, tree_id: String, position: Vector3, normal: Vector3, exact: Dictionary, player_id: String) -> void:
 	if root._is_client:
@@ -34,3 +35,7 @@ func _on_cancel(player_id: String) -> void:
 		root._networking._broadcast({ "type": "work_cancel_intent" })
 	else:
 		host.cancel(player_id)
+
+## Being hit cancels the work (the progress is lost, nothing is spent).
+func _on_damaged(_damage: float, _attacker: String, target_id: String) -> void:
+	host.cancel("" if target_id == "player" else target_id)

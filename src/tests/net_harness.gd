@@ -143,6 +143,8 @@ var _bound_player_id: String = ""
 ## inside `_route_c2h`, and its pass/fail decision is exactly "did GameBus.tree_chop_requested
 ## fire". Counted over the whole run (see `_chop_count`).
 var _chops: Array = []
+## Phase 259 — the duration the host answered a work start with (0 = none yet), read by the client's chop step.
+var _work_dur: float = 0.0
 
 # ---------------------------------------------------------------------------
 # Pure helpers (registered in TestSuite)
@@ -349,6 +351,7 @@ func run(root: Node, role: String) -> void:
 	# an intent the reach check let through. Connected (not watching a payload) so the
 	# observation cannot be faked by the other side: only the host's own router emits it.
 	GameBus.tree_chop_requested.connect(_on_chop_requested)
+	GameBus.work_started.connect(func(_key: String, duration: float, _action: String, _material: String) -> void: _work_dur = duration)
 	# Deaths are observed the same way, and for the same reason (see `_deaths`).
 	GameBus.player_died.connect(_on_player_died)
 	# `/heal` landings are counted over the whole run too (see `_admin_heals`).
@@ -599,10 +602,25 @@ func _step_chop_in_reach() -> void:
 	var t := str(targets[0])
 	if _role == "host":
 		var ok: bool = await _await_until(func(): return _chop_count(t) >= 1, _step_timeout() * 2.0)
-		_report("chop_in_reach", verdict(ok, true), t if ok else "not_consumed")
+		# Phase 259 — the work was timed by the host: the forged early claim was dropped, so exactly one chop landed.
+		await _await_settle(1.0)
+		# The timed-work gate is proven above; the later steps probe the wire with bare chop / mine intents, so the
+		# host stops gating them (the gate itself is the subject of this step only).
+		_root._networking.remove_meta("work_host")
+		_report("chop_in_reach", verdict(ok and _chop_count(t) == 1, true), t if ok and _chop_count(t) == 1 else ("not_consumed" if not ok else "early_claim_accepted"))
 		return
 	_report_position()
 	await _await_settle(1.0)
+	# Phase 259 — hold work on the tree: the host answers with its own duration; a claim before it is forged and
+	# dropped; the real claim goes after the host's time has passed.
+	_work_dur = 0.0
+	GameBus.work_start_requested.emit("tree", t, Vector3.ZERO, Vector3.UP, {}, "")
+	var started: bool = await _await_until(func(): return _work_dur > 0.0, _step_timeout())
+	if not started:
+		_report("chop_in_reach", "fail", "no_work_started")
+		return
+	GameBus.tree_chop_requested.emit(t, "")   # forged early completion
+	await _await_settle(_work_dur + 1.0)
 	GameBus.tree_chop_requested.emit(t, "")
 	await _await_settle(1.5)
 	_report("chop_in_reach", "ok", t)
