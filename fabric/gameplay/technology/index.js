@@ -144,13 +144,14 @@ module.exports = {
   }),
 
   // ─── TechStoneTools ───────────────────────────────────────────────────────
-  // Phase 260 — every character is born knowing it (`innate`): no research, no points, no materials, no
-  // prerequisite, so a newcomer with an empty pack can make a first tool.
+  // Phase 260 — discovered, not researched (`discovery`): a player who has held every input of its recipes
+  // (a branch and a loose stone, at any time, not necessarily together) knows it. No points, no materials,
+  // no prerequisite, no book.
   TechStoneTools: defineEntity({
     tags: ['technology'],
     description:
-      'Lashing a stone to a branch. Every person knows it from the start: the stone axe, pick, shovel ' +
-      'and knife need no station and no research.',
+      'Lashing a stone to a branch. Discovered the moment a player has held both a branch and a loose stone: ' +
+      'the stone axe, pick, shovel, knife and hammer need no station and no research.',
     goal: 'Root of everything: the first tools a newcomer makes with bare hands (Phase 260)',
     fields: {
       id:     { type: 'uuid', primaryKey: true },
@@ -158,11 +159,11 @@ module.exports = {
       researchCost: { type: 'integer', description: 'Research points spent to begin research (Phase 124); earned by the ResearchPointRule table', defaultValue: 0 },
       tier:   { type: 'integer', description: 'Technology tree tier (1 = root)' },
       tech: techData({
-        unlocks: ['RecipeStoneAxe', 'RecipeStonePick', 'RecipeStoneShovel', 'RecipeStoneKnife'],
+        unlocks: ['RecipeStoneAxe', 'RecipeStonePick', 'RecipeStoneShovel', 'RecipeStoneKnife', 'RecipeStoneHammer'],
         requires: [],
         researchDuration: 0,
         researchMaterials: [],
-        innate: true,
+        discovery: true,
       }),
     },
     relations: {
@@ -170,17 +171,18 @@ module.exports = {
       unlocksRecipeStonePick:   { name: 'unlocksRecipeStonePick',   kind: 'hasOne', target: 'RecipeStonePick' },
       unlocksRecipeStoneShovel: { name: 'unlocksRecipeStoneShovel', kind: 'hasOne', target: 'RecipeStoneShovel' },
       unlocksRecipeStoneKnife:  { name: 'unlocksRecipeStoneKnife',  kind: 'hasOne', target: 'RecipeStoneKnife' },
+      unlocksRecipeStoneHammer: { name: 'unlocksRecipeStoneHammer', kind: 'hasOne', target: 'RecipeStoneHammer' },
     },
     stateMachine: technologyStateMachine(),
     behaviors: {
       beginResearch: {
-        description: 'Never begun: an innate technology is unlocked from the start',
-        rules: ['Innate: nothing to research'],
+        description: 'Never begun by hand: a discovery technology is found by holding its inputs',
+        rules: ['Discovery: nothing to research'],
         auth: { roles: ['maintainer'] },
       },
       completeResearch: {
-        description: 'Known from birth: every character starts with it unlocked',
-        rules: ['Innate: never researched, never locked'],
+        description: 'Discovered once the player has held every input of its recipes; the player is told',
+        rules: ['Every input held at least once, at any time', 'A notice names the technology and what it makes'],
         auth: { roles: ['maintainer'] },
       },
     },

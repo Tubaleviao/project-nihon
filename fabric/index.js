@@ -241,6 +241,7 @@ module.exports = defineFabric({
       StonePick:                items.StonePick,
       StoneShovel:              items.StoneShovel,
       StoneKnife:               items.StoneKnife,
+      StoneHammer:              items.StoneHammer,
       FerriteShortSword:        items.FerriteShortSword,
       VeilsteelLongsword:       items.VeilsteelLongsword,
       AethermiteBow:            items.AethermiteBow,
@@ -308,6 +309,7 @@ module.exports = defineFabric({
       RecipeStonePick:                 recipes.RecipeStonePick,
       RecipeStoneShovel:               recipes.RecipeStoneShovel,
       RecipeStoneKnife:                recipes.RecipeStoneKnife,
+      RecipeStoneHammer:               recipes.RecipeStoneHammer,
     },
     // Gameplay — Technology
     {

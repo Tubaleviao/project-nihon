@@ -1,10 +1,11 @@
 const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine, repairData, itemShape } = require('./shared')
 
 // Phase 260 — stone tools. A newcomer with nothing picks up branches and loose stones and lashes them into
-// an axe, a pick, a shovel and a knife by hand: no station, no research points, no starting kit. They are
-// slower than the forged tools and wear out fast; the forge is the next step, not the first one.
+// an axe, a pick, a shovel, a knife and a hammer by hand: no station, no research points, no starting kit.
+// They are slower than the forged tools and wear out fast; the forge is the next step, not the first one.
+// The hammer is what a builder holds to place blocks (Structure `buildTool`); stations need none.
 
-const TOOL_TYPE_DESC = 'Tool class — the action this tool performs. "pick" mines, "axe" chops, "shovel" digs.'
+const TOOL_TYPE_DESC = 'Tool class — the action this tool performs. "pick" mines, "axe" chops, "shovel" digs, "hammer" builds.'
 
 function stoneTool({ archetype, parts, toolType, weight, durability, description, goal, extra = {} }) {
   return defineEntity({
@@ -102,6 +103,13 @@ module.exports = {
     archetype: 'shovel', parts: { head: 'Ashite', handle: 'Thornwood' }, toolType: 'shovel', weight: 1.5, durability: 40,
     description: 'A flat stone tied to a long branch. Digs soil, sand and gravel faster than any pick.',
     goal: 'The shovel tool class: the fastest way through soft ground (Phase 260)',
+  }),
+
+  // ─── StoneHammer ──────────────────────────────────────────────────────────
+  StoneHammer: stoneTool({
+    archetype: 'hammer', parts: { head: 'Ashite', handle: 'Thornwood' }, toolType: 'hammer', weight: 1.2, durability: 40,
+    description: 'A heavy round stone bound to a short branch. Held to build walls, floors and roofs; benches need none.',
+    goal: 'The building tool: a shelter needs a hammer in hand, a bench does not (Phase 260)',
   }),
 
   // ─── StoneKnife ───────────────────────────────────────────────────────────

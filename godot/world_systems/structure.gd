@@ -14,3 +14,4 @@ enum OwnerKind {
 @export var floorHeight: float
 @export var maxFloors: int
 @export var rules: Dictionary
+@export var buildTool: String

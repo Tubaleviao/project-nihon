@@ -32,6 +32,7 @@ const ARCHETYPES = {
   door:       ['panel', 'hinge'],
   lockpick:   ['pin', 'grip'],
   shovel:     ['head', 'handle'],
+  hammer:     ['head', 'handle'],
   stick:      ['body'],
   pebble:     ['body'],
 }

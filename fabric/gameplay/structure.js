@@ -317,6 +317,7 @@ const Structure = defineEntity({
     floorHeight: { type: 'decimal', description: 'Metres per floor: 24 blocks of 0.125 m', defaultValue: STRUCTURE.floorHeight },
     maxFloors:   { type: 'integer', description: 'Floors of the tallest structure (the top structural class)', defaultValue: STRUCTURE.maxFloors },
     rules:       { type: 'json', description: 'Structure table: { ownership, circle, floorHeight, maxFloors, classes, shapes, existingBuilds } (validated at fabric load)', defaultValue: STRUCTURE },
+    buildTool:   { type: 'string', description: 'Phase 260 — the tool class a builder must hold to place a block (a shelter); placing a station (a bench) needs none. Holding it does not wear it.', defaultValue: 'hammer' },
   },
   relations: {
     durability: { name: 'durability', kind: 'hasOne', target: 'StructureDurability' },

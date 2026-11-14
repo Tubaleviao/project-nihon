@@ -3,7 +3,7 @@
 
 **Tags:** `world-system`
 
-The stone tools a newcomer makes by hand, the two inputs they take, and where those inputs come from: branches from a felled tree, loose stones knocked from host rock.
+The stone tools a newcomer makes by hand (the only tools made or repaired without a bench), the two inputs they take, and where those inputs come from: branches from a felled tree, loose stones knocked from host rock.
 
 > **Goal:** A first tool with nothing in the pack: no station, no research, inputs that never run out (Phase 260)
 

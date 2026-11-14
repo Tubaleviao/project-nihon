@@ -1,12 +1,12 @@
 const { defineEntity } = require('@newel/core')
 
-// Phase 260 — stone tools: a newcomer makes an axe, a pick, a shovel and a knife on the spot from branches
-// and loose stones. This table names the tools, their inputs, and where the inputs come from in the world
+// Phase 260 — stone tools: a newcomer makes an axe, a pick, a shovel, a knife and a hammer on the spot from
+// branches and loose stones. Only they need no bench: every other tool is crafted and repaired at a station. This table names the tools, their inputs, and where the inputs come from in the world
 // so they never run out where there is rock and wood: a felled tree drops branches beside its wood, and
 // mining natural host rock knocks a loose stone loose at `looseStoneChance` (decided by the mined span's
 // position, so the host and a replay agree).
 
-const TOOLS = ['StoneAxe', 'StonePick', 'StoneShovel', 'StoneKnife']
+const TOOLS = ['StoneAxe', 'StonePick', 'StoneShovel', 'StoneKnife', 'StoneHammer']
 const INPUTS = ['Branch', 'LooseStone']
 
 const YIELDS = {
@@ -33,7 +33,21 @@ function stoneToolsRefs() {
     const t = e && e.fields && e.fields.tech && e.fields.tech.defaultValue
     if (t) techRows[k] = { ...t, researchCost: e.fields.researchCost.defaultValue }
   }
-  return { items: Object.keys(items), recipes: recipeRows, technologies: techRows }
+  // Every tool (an item with a tool class or a harvest tool) and its repair station, for the bench rule.
+  const toolItems = {}
+  for (const [k, e] of Object.entries(items)) {
+    const f = (e && e.fields) || {}
+    if (!f.toolType && !f.harvestTool) continue
+    toolItems[k] = { repairStation: f.repair ? f.repair.defaultValue.station : null }
+  }
+  const structure = require('./structure').Structure
+  const toolTypes = {}
+  for (const [k, e] of Object.entries(items)) {
+    const t = e && e.fields && e.fields.toolType && e.fields.toolType.defaultValue
+    if (t) toolTypes[k] = t
+  }
+  return { items: Object.keys(items), recipes: recipeRows, technologies: techRows, tools: toolItems, toolTypes,
+    buildTool: structure.fields.buildTool.defaultValue }
 }
 
 /** Problems with the stone-tool table against the fabric, as strings. */
@@ -57,10 +71,21 @@ function stoneToolsProblems(d, refs) {
         if (t.researchCost !== 0) p.push(`${tk}: the technology of a stone tool costs no research points, got ${t.researchCost}`)
         if ((t.requires || []).length) p.push(`${tk}: the technology of a stone tool has no prerequisite`)
         if ((t.researchMaterials || []).length) p.push(`${tk}: the technology of a stone tool takes no materials`)
-        if (t.innate !== true) p.push(`${tk}: the technology of a stone tool is innate (known from the start)`)
+        if (t.discovery !== true) p.push(`${tk}: the technology of a stone tool is a discovery (found by holding its inputs)`)
       }
     }
   }
+  // Only stone tools skip the bench: every other tool is crafted and repaired at a station.
+  for (const [tool, row] of Object.entries(refs.tools || {})) {
+    if ((d.tools || []).includes(tool)) continue
+    for (const [rk, r] of Object.entries(refs.recipes)) {
+      if ((r.outputs || []).some((o) => o.item === tool) && !r.station) p.push(`${rk}: ${tool} is not a stone tool, so it is crafted at a station`)
+    }
+    if (row.repairStation === '') p.push(`${tool}: not a stone tool, so it is repaired at a station`)
+  }
+  // The build tool is one a newcomer can make: some stone tool has its class.
+  if (!refs.buildTool) p.push('Structure.buildTool is missing')
+  else if (!(d.tools || []).some((t) => refs.toolTypes[t] === refs.buildTool)) p.push(`no stone tool is a ${refs.buildTool}, the class a builder holds`)
   return p
 }
 
@@ -72,7 +97,7 @@ function validateStoneTools(d, refs) {
 const StoneTools = defineEntity({
   tags: ['world-system'],
   description:
-    'The stone tools a newcomer makes by hand, the two inputs they take, and where those inputs come from: ' +
+    'The stone tools a newcomer makes by hand (the only tools made or repaired without a bench), the two inputs they take, and where those inputs come from: ' +
     'branches from a felled tree, loose stones knocked from host rock.',
   goal: 'A first tool with nothing in the pack: no station, no research, inputs that never run out (Phase 260)',
   fields: {

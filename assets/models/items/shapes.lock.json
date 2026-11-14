@@ -47,6 +47,11 @@
       0.14,
       0.3
     ],
+    "hammer": [
+      0.08,
+      0.55,
+      0.2
+    ],
     "hearth": [
       0.7,
       0.3,
@@ -378,6 +383,11 @@
       "archetype": "axe",
       "scale": 1,
       "hash": "5c777c4c11243ccd"
+    },
+    "StoneHammer": {
+      "archetype": "hammer",
+      "scale": 1,
+      "hash": "0e40ebc4997f64ef"
     },
     "StoneKnife": {
       "archetype": "knife",

@@ -139,6 +139,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [RefinedVoiditeShard](entities/refinedvoiditeshard.md) — Raw voidite stabilised in a forge into a crystalline shard
 - [SkinningKnife](entities/skinningknife.md) — Short ferrite blade on a thornwood grip, ground for pelts and meat
 - [StoneAxe](entities/stoneaxe.md) — A knapped stone lashed into a split branch
+- [StoneHammer](entities/stonehammer.md) — A heavy round stone bound to a short branch
 - [StoneKnife](entities/stoneknife.md) — A sharp flake of stone in a branch grip
 - [StonePick](entities/stonepick.md) — A pointed stone bound across a branch
 - [StoneShovel](entities/stoneshovel.md) — A flat stone tied to a long branch
@@ -220,6 +221,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [RecipeStaminaPotion](entities/recipestaminapotion.md) — Brew a stamina-restoring potion from aethermite dust and root reagents
 - [RecipeSteel](entities/recipesteel.md) — Roll two ferrite ingots into two steel beams at a master forge
 - [RecipeStoneAxe](entities/recipestoneaxe.md) — Lash a knapped stone into a split branch: a stone axe
+- [RecipeStoneHammer](entities/recipestonehammer.md) — Bind a heavy round stone to a short branch: a stone hammer
 - [RecipeStoneKnife](entities/recipestoneknife.md) — Set a sharp stone flake in a branch grip: a stone knife
 - [RecipeStonePick](entities/recipestonepick.md) — Bind a pointed stone across a branch: a stone pick
 - [RecipeStoneShovel](entities/recipestoneshovel.md) — Tie a flat stone to a long branch: a stone shovel
@@ -324,7 +326,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [Settlement](entities/settlement.md) — A player-founded village: a Hearth, members with roles and a shared Stockpile
 - [SettlementProjects](entities/settlementprojects.md) — Structures a village builds together: a palisade, a storehouse, a workshop, a watchtower
 - [SettlementSpecialties](entities/settlementspecialties.md) — What each member of a village is good at: woodworker, smith, hunter, builder or forager
-- [StoneTools](entities/stonetools.md) — The stone tools a newcomer makes by hand, the two inputs they take, and where those inputs come from: branches from a felled tree, loose stones knocked from host rock
+- [StoneTools](entities/stonetools.md) — The stone tools a newcomer makes by hand (the only tools made or repaired without a bench), the two inputs they take, and where those inputs come from: branches from a felled tree, loose stones knocked from host rock
 - [Structure](entities/structure.md) — A connected set of placed blocks and the stations on them, owned by its builder or the builder's clan
 - [StructureDurability](entities/structuredurability.md) — How a placed block wears and comes apart
 - [TradeSystem](entities/tradesystem.md) — Defines the rules governing player-to-player trade

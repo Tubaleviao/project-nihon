@@ -3,7 +3,7 @@
 
 **Tags:** `technology`
 
-Lashing a stone to a branch. Every person knows it from the start: the stone axe, pick, shovel and knife need no station and no research.
+Lashing a stone to a branch. Discovered the moment a player has held both a branch and a loose stone: the stone axe, pick, shovel, knife and hammer need no station and no research.
 
 > **Goal:** Root of everything: the first tools a newcomer makes with bare hands (Phase 260)
 
@@ -25,6 +25,7 @@ Lashing a stone to a branch. Every person knows it from the start: the stone axe
 | `unlocksRecipeStonePick` | hasOne | [RecipeStonePick](recipestonepick.md) |  |
 | `unlocksRecipeStoneShovel` | hasOne | [RecipeStoneShovel](recipestoneshovel.md) |  |
 | `unlocksRecipeStoneKnife` | hasOne | [RecipeStoneKnife](recipestoneknife.md) |  |
+| `unlocksRecipeStoneHammer` | hasOne | [RecipeStoneHammer](recipestonehammer.md) |  |
 
 ### State machine
 
@@ -33,8 +34,8 @@ Lashing a stone to a branch. Every person knows it from the start: the stone axe
 ```mermaid
 stateDiagram-v2
   [*] --> locked
-  locked --> researching : beginResearch\n[Innate: nothing to research]
-  researching --> unlocked : completeResearch\n[Innate: never researched, never locked]
+  locked --> researching : beginResearch\n[Discovery: nothing to research]
+  researching --> unlocked : completeResearch\n[Every input held at least once, at any time; A notice names the technology and what it makes]
   unlocked --> [*]
 ```
 
@@ -46,26 +47,27 @@ stateDiagram-v2
 
 | From | To | Trigger | Guards | Effects |
 | ---- | --- | ------- | ------ | ------- |
-| `locked` | `researching` | `beginResearch` | Innate: nothing to research |  |
-| `researching` | `unlocked` | `completeResearch` | Innate: never researched, never locked |  |
+| `locked` | `researching` | `beginResearch` | Discovery: nothing to research |  |
+| `researching` | `unlocked` | `completeResearch` | Every input held at least once, at any time; A notice names the technology and what it makes |  |
 
 ## Behaviors
 
 ### `beginResearch`
 
-Never begun: an innate technology is unlocked from the start
+Never begun by hand: a discovery technology is found by holding its inputs
 
 **Rules:**
-- Innate: nothing to research
+- Discovery: nothing to research
 
 **Auth:** `maintainer`
 
 ### `completeResearch`
 
-Known from birth: every character starts with it unlocked
+Discovered once the player has held every input of its recipes; the player is told
 
 **Rules:**
-- Innate: never researched, never locked
+- Every input held at least once, at any time
+- A notice names the technology and what it makes
 
 **Auth:** `maintainer`
 

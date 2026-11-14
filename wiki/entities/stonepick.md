@@ -21,7 +21,7 @@ A pointed stone bound across a branch. Breaks rock faster than bare hands; ore w
 | stackable | boolean | Whether multiple instances stack in inventory |
 | shape | json | Item shape: archetype, material per named part, and uniform scale (Phase 151) |
 | durability | integer | Remaining durability points before condition degrades |
-| toolType | string | Tool class — the action this tool performs. "pick" mines, "axe" chops, "shovel" digs. |
+| toolType | string | Tool class — the action this tool performs. "pick" mines, "axe" chops, "shovel" digs, "hammer" builds. |
 | repair | json | Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier). |
 
 ## Related

@@ -7,7 +7,7 @@ title: "TechStoneTools"
 
 `technology`
 
-Lashing a stone to a branch. Every person knows it from the start: the stone axe, pick, shovel and knife need no station and no research.
+Lashing a stone to a branch. Discovered the moment a player has held both a branch and a loose stone: the stone axe, pick, shovel, knife and hammer need no station and no research.
 
 > Root of everything: the first tools a newcomer makes with bare hands (Phase 260)
 
@@ -28,14 +28,15 @@ Lashing a stone to a branch. Every person knows it from the start: the stone axe
 | unlocksRecipeStonePick | hasOne | [RecipeStonePick](recipestonepick.md) |
 | unlocksRecipeStoneShovel | hasOne | [RecipeStoneShovel](recipestoneshovel.md) |
 | unlocksRecipeStoneKnife | hasOne | [RecipeStoneKnife](recipestoneknife.md) |
+| unlocksRecipeStoneHammer | hasOne | [RecipeStoneHammer](recipestonehammer.md) |
 
 ## States
 
 ```mermaid
 stateDiagram-v2
   [*] --> locked
-  locked --> researching : beginResearch [Innate nothing to research]
-  researching --> unlocked : completeResearch [Innate never researched, never locked]
+  locked --> researching : beginResearch [Discovery nothing to research]
+  researching --> unlocked : completeResearch [Every input held at least once, at any time; A notice names the technology and what it makes]
   unlocked --> [*]
 ```
 
@@ -49,16 +50,17 @@ stateDiagram-v2
 
 ### beginResearch
 
-Never begun: an innate technology is unlocked from the start
+Never begun by hand: a discovery technology is found by holding its inputs
 
 **Conditions:**
-- Innate: nothing to research
+- Discovery: nothing to research
 
 ### completeResearch
 
-Known from birth: every character starts with it unlocked
+Discovered once the player has held every input of its recipes; the player is told
 
 **Conditions:**
-- Innate: never researched, never locked
+- Every input held at least once, at any time
+- A notice names the technology and what it makes
 
 

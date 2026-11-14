@@ -75,7 +75,7 @@ ARCHETYPE_BOUNDS = {
     "tablet": (0.34, 0.44, 0.10), "potion": (0.18, 0.30, 0.18), "rations": (0.22, 0.12, 0.18),
     "hearth": (0.70, 0.30, 0.70), "waystone": (0.50, 1.20, 0.40), "bed": (0.60, 0.40, 1.00),
     "chest": (0.80, 0.60, 0.70), "door": (0.90, 2.00, 0.16), "lockpick": (0.04, 0.22, 0.04),
-    "shovel": (0.16, 1.00, 0.06), "stick": (0.05, 0.05, 0.62), "pebble": (0.16, 0.10, 0.16),
+    "shovel": (0.16, 1.00, 0.06), "stick": (0.05, 0.05, 0.62), "hammer": (0.08, 0.55, 0.20), "pebble": (0.16, 0.10, 0.16),
 }
 
 
@@ -366,6 +366,11 @@ def _shovel(rng):
             "head": prism(1, 0.68, 0.9, (0, 0), (0.012, 0.07), (0.008, 0.05))}
 
 
+def _hammer(rng):
+    return {"handle": cylinder(1, -0.08, 0.4, (0, 0), 0.02, n=6),
+            "head": prism(2, -0.08, 0.08, (0, 0.4), (0.035, 0.04))}
+
+
 def _stick(rng):
     return {"body": cylinder(2, -0.28, 0.28, (0, 0.02), 0.018, 0.012, n=6)}
 
@@ -381,7 +386,7 @@ ARCHETYPES = {
     "shard": _shard, "dust": _dust, "plank": _plank, "block": _block, "orb": _orb, "tablet": _tablet,
     "potion": _potion, "rations": _rations, "hearth": _hearth, "waystone": _waystone,
     "bed": _bed, "chest": _chest, "door": _door, "lockpick": _lockpick,
-    "shovel": _shovel, "stick": _stick, "pebble": _pebble,
+    "shovel": _shovel, "hammer": _hammer, "stick": _stick, "pebble": _pebble,
 }
 
 

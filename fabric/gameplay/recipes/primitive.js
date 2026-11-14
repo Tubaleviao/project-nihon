@@ -51,6 +51,11 @@ module.exports = {
     description: 'Tie a flat stone to a long branch: a stone shovel.',
     rule: 'Two branches and one stone yield one stone shovel',
   }),
+  RecipeStoneHammer: stoneRecipe({
+    output: 'StoneHammer', branches: 1, stones: 1,
+    description: 'Bind a heavy round stone to a short branch: a stone hammer.',
+    rule: 'One branch and one stone yield one stone hammer',
+  }),
   RecipeStoneKnife: stoneRecipe({
     output: 'StoneKnife', branches: 1, stones: 1,
     description: 'Set a sharp stone flake in a branch grip: a stone knife.',
