@@ -6,15 +6,18 @@ extends "res://src/tests/test_support.gd"
 
 const CreationRules := preload("res://src/character/creation_rules.gd")
 const ShelterRule := preload("res://src/world/shelter_rule.gd")
+const StoneTools := preload("res://src/world/stone_tools.gd")
 
 ## fabric/gameplay/tutorial.js STEPS, in order.
+## Phase 262: from bare hands — loose items, stone tools, then the stations.
 const STEP_IDS := [
 	"move", "jump", "look", "controls",
-	"mine", "chop", "inventory", "hotbar",
-	"technology", "research_carpentry", "place_bench", "crafting", "craft_planks",
-	"place_forge", "research_smithing", "craft_tool", "use_tool",
-	"craft_bed", "place_bed", "build_shelter",
-	"equip_weapon", "kill", "harvest",
+	"pick_branch", "pick_stone", "inventory", "hotbar",
+	"crafting", "craft_axe", "chop", "craft_pick", "craft_shovel", "dig", "mine_stone",
+	"technology", "research_carpentry", "craft_bench", "place_bench", "craft_planks",
+	"research_smithing", "craft_forge", "place_forge", "craft_tool", "use_tool",
+	"craft_bed", "place_bed", "craft_hammer", "build_shelter",
+	"equip_weapon", "kill", "craft_knife", "harvest",
 	"respawn",
 	"map", "waystone",
 	"skills", "tier_up", "character",
@@ -30,6 +33,7 @@ func register() -> void:
 	_run_test("bed: placeable through the station path as type bed, consuming one Bed", _test_bed_station)
 	_run_test("bed: the recipe is craftable in the first hour from gathered materials and early recipes", _test_bed_first_hour)
 	_run_test("stone tools: every one is reachable from an empty kit with only loose stones and branches", _test_stone_tools_first_hour)
+	_run_test("tutorial: the first stone tools come from the loose items, before the first station is placed", _test_bare_hands_order)
 	_run_test("shelter: a roofed room passes, an open spot and a roof alone do not", _test_shelter_rule)
 	_run_test("shelter: three closed sides are enough, two are not, and a low lip is no wall", _test_shelter_sides)
 
@@ -163,12 +167,14 @@ func _recipe_techs() -> Dictionary:
 
 
 ## What a new player can reach in the first hour, as a fixed point: the starting kit, what bare hands
-## mine and the kit's axe chops in a spawn biome, then every recipe whose technology is free (no
-## research-point cost, every prerequisite reachable, research materials in hand), whose station is
-## free to place, whose skill guard is novice, and whose inputs are reachable.
+## mine and an axe chops in a spawn biome, then every recipe whose technology is free (no
+## research-point cost, every prerequisite reachable, research materials in hand), whose station can be
+## placed (free, or its placement item reached), whose skill guard is novice, and whose inputs are reachable.
 ## Phase 260 — `kit` (a list of item keys) replaces the starting kit when given, `extra` adds items picked off
 ## the ground, and any axe in hand, crafted ones too, reaches the spawn biomes' wood.
-func _first_hour_items(kit: Variant = null, extra: Array = []) -> Dictionary:
+## Phase 262 — the starting kit is empty; with no `extra`, the newcomer grounds' loose items (a branch and a
+## loose stone, Phase 261) are what the player picks up.
+func _first_hour_items(kit: Variant = null, extra: Variant = null) -> Dictionary:
 	var have := {}
 	var kit_items: Array = []
 	if kit is Array:
@@ -176,7 +182,8 @@ func _first_hour_items(kit: Variant = null, extra: Array = []) -> Dictionary:
 	else:
 		for k in CreationRules.starting_kit():
 			kit_items.append(str(k["item"]))
-	for item in kit_items + extra:
+	var picked: Array = extra if extra is Array else [StoneTools.BRANCH, StoneTools.LOOSE_STONE]
+	for item in kit_items + picked:
 		have[str(item)] = true
 	var woods: Array = []
 	var ws: Resource = GameData.WORLD_SYSTEMS.get("WorldSystem", null)
@@ -188,7 +195,7 @@ func _first_hour_items(kit: Variant = null, extra: Array = []) -> Dictionary:
 		var tree: Dictionary = TreeSlice.TREES_BY_BIOME.get(str(biome), {})
 		if not tree.is_empty():
 			woods.append(str(tree["wood"]))
-	# Phase 268 — a station is usable once its placement item is in hand (none is free any more).
+	# Station type -> the item placing it consumes ("" when free); a station counts once that item is reached.
 	var stations: Node = StationSlice.new()
 	var station_items := {}
 	for st in stations.placeable_station_types():
@@ -228,7 +235,7 @@ func _first_hour_items(kit: Variant = null, extra: Array = []) -> Dictionary:
 				continue
 			var ok: bool = known.has(str(techs.get(key, "")))
 			var station := str(recipe.get("station", ""))
-			ok = ok and (station == "" or str(station_items.get(station, "")) == "" or have.has(str(station_items[station])))
+			ok = ok and (station == "" or (station_items.has(station) and (station_items[station] == "" or have.has(station_items[station]))))
 			for g in recipe.get("skillGuards", []):
 				ok = ok and str(g["tier"]) == "novice"
 			for i in recipe.get("inputs", []):
@@ -261,6 +268,33 @@ func _test_stone_tools_first_hour() -> void:
 	assert_false(none.has("StoneAxe"), "with nothing picked up, no stone tool is made")
 
 
+## Phase 262 — the tutorial's tool steps need only what lies on the ground, and placing the first station needs
+## the first wood: the loose items come first, the stone axe before the tree, the tree before the bench.
+func _test_bare_hands_order() -> void:
+	var at := {}
+	var steps := _steps()
+	for i in steps.size():
+		at[str(steps[i]["id"])] = i
+	var trig := func(id: String) -> Dictionary: return steps[int(at[id])]["trigger"]
+	assert_eq(str(trig.call("pick_branch").get("item", "")), StoneTools.BRANCH, "the first gathering step picks up a branch")
+	assert_eq(str(trig.call("pick_stone").get("item", "")), StoneTools.LOOSE_STONE, "and a loose stone")
+	for id in ["craft_axe", "craft_pick", "craft_shovel", "craft_hammer", "craft_knife"]:
+		var item := str(trig.call(id).get("item", ""))
+		var recipe: Dictionary = GameData.RECIPES["Recipe" + item].get("recipe")
+		assert_eq(str(recipe["station"]), "", "%s needs no station" % item)
+		for inp in recipe["inputs"]:
+			assert_true([StoneTools.BRANCH, StoneTools.LOOSE_STONE].has(str(inp["item"])), "%s is made from loose items only" % item)
+	assert_true(int(at["pick_branch"]) < int(at["craft_axe"]) and int(at["craft_axe"]) < int(at["chop"]), "branch, then axe, then tree")
+	assert_true(int(at["chop"]) < int(at["place_bench"]), "the tree comes before the first station")
+	# Phase 268 — a station is an item: each place step requires crafting that item first.
+	assert_true(Array(steps[int(at["place_bench"])]["requires"]).has("craft_bench"), "the bench is crafted before it is placed")
+	assert_true(Array(steps[int(at["place_forge"])]["requires"]).has("craft_forge"), "the forge is crafted before it is placed")
+	assert_eq(str(trig.call("craft_bench").get("item", "")), "CarpentryBench", "the first station is the hand-made carpentry bench")
+	assert_true(Array(steps[int(at["chop"])]["requires"]).has("craft_axe"), "chopping requires the stone axe step")
+	assert_true(Array(steps[int(at["build_shelter"])]["requires"]).has("craft_hammer"), "building requires the hammer step")
+	assert_true(Array(steps[int(at["harvest"])]["requires"]).has("craft_knife"), "the harvest requires the stone knife step")
+
+
 func _test_bed_first_hour() -> void:
 	var recipe: Dictionary = GameData.RECIPES["RecipeBed"].get("recipe")
 	assert_eq(str(recipe["station"]), "", "the bed needs no station")
@@ -268,10 +302,13 @@ func _test_bed_first_hour() -> void:
 	assert_eq(tech, "TechBasicCarpentry", "Basic Carpentry unlocks the bed")
 	assert_eq(int(GameData.TECHNOLOGIES[tech].get("researchCost")), 0, "Basic Carpentry costs no research points")
 	assert_eq(Array(GameData.TECHNOLOGIES[tech].get("tech")["requires"]), [], "Basic Carpentry has no prerequisite")
-	var have := _first_hour_items(null, ["Branch", "LooseStone"])   # Phase 268 — the grounds' loose items make the bench
-	assert_true(have.has("CarpentryBench"), "the carpentry bench is made by hand from them")
-	assert_true(have.has("Thornwood"), "the starting axe reaches wood")
+	assert_eq(CreationRules.starting_kit(), [], "the starting kit is empty (Phase 262)")
+	var have := _first_hour_items()
+	assert_true(have.has("StoneAxe"), "a stone axe is lashed from the loose items")
+	assert_true(have.has("Thornwood"), "the stone axe reaches wood")
 	assert_true(have.has("ThornwoodPlank"), "planks are reachable")
+	assert_true(have.has("CarpentryBench"), "the carpentry bench item is reachable by hand")
+	assert_true(have.has("Forge"), "and the forge item from it")
 	assert_true(have.has("Bed"), "the bed is reachable in the first hour")
 	assert_true(have.has("FerritePick"), "the tutorial's first pick is reachable")
 	assert_true(have.has("FerriteShortSword"), "the tutorial's first weapon is reachable")
