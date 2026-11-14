@@ -125,6 +125,7 @@ var look_degrees: float = 0.0   ## Phase 186 — degrees the look has turned the
 
 ## Aim raycast state + HUD.
 var _hud: CanvasLayer = null
+var _work_hold: Control = null   # Phase 259 — hold-to-work input and bar
 var _aim_label: Label = null
 var _aimed_pickup_id: String = ""
 var _aimed_item_id: String = ""
@@ -402,6 +403,8 @@ func _process(delta: float) -> void:
 		_update_camera_clearance()
 		_update_aim()
 		_update_station_preview()
+		if _work_hold != null:
+			_work_hold.tick(delta, _aimed_tree_id, _block_aim() if _aimed_block_hit else {})
 	_tick_ghosts(delta)
 
 ## Ease the camera arm toward the body's height (see CAMERA_Y_SMOOTH). The arm is a child of
@@ -440,6 +443,9 @@ static func follow_height(current: float, target: float, delta: float) -> float:
 	return lerpf(current, target, 1.0 - exp(-CAMERA_Y_SMOOTH * delta))
 
 func _input(event: InputEvent) -> void:
+	# Phase 259: releasing the gather button anywhere (over a window, with a window open) ends the work.
+	if event is InputEventMouseButton and not event.pressed and event.button_index == MOUSE_BUTTON_LEFT and _work_hold != null:
+		_work_hold.release()
 	# The look is owned here, not in `_unhandled_input`: releasing the button over a window must still
 	# end it, and a captured pointer reports motion no control would see.
 	if _looking:
@@ -477,13 +483,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.shift_pressed:
 			if _aimed_block_hit:
-				GameBus.block_mine_requested.emit(_aimed_block_pos, _aimed_block_normal, "", _aimed_block_exact)
+				_work_press(_block_aim())
 		elif _aimed_pickup_id != "":
 			_try_pickup_aimed()
 		elif _aimed_tree_id != "":
-			# "" = this machine's own player; the host binds the real actor to the
-			# connection when the intent reaches it (see bus.gd's signal note).
-			GameBus.tree_chop_requested.emit(_aimed_tree_id, "")
+			_work_press({ "kind": "tree", "tree_id": _aimed_tree_id })
 		else:
 			_try_attack()
 	# F key → melee attack the nearest creature in range.
@@ -826,21 +830,17 @@ func _build_body() -> void:
 	_body = CharacterBody3D.new()
 	_body.name = "PlayerBody"
 	add_child(_body)
-
 	# Terrain collision lives on layer 2 (see VoxelSlice.TERRAIN_COLLISION_LAYER);
 	# the body must collide with that layer to stand on the ground.
 	_body.collision_layer = 1
 	_body.collision_mask = 3   # layer 1 (default) + layer 2 (terrain)
-
 	# Snap the body to the floor over more than one quantised voxel step
 	# (STEP_HEIGHT 0.125) — the default 0.1 is shorter than the rise the step-up
 	# in `_move` climbs, so the body would step UP onto a voxel and then lose the
 	# floor, briefly going airborne on every stair.
 	_body.floor_snap_length = STEP_UP_HEIGHT
-
 	# Spawn above the terrain origin so the player lands on the voxel surface.
 	_body.global_position = TerrainSlice.spawn_point(12.0)
-
 	var col := CollisionShape3D.new()
 	var cap := CapsuleShape3D.new()
 	# Radius 0.25 (diameter 0.5) matches TILE_SIZE so the body doesn't sink into
@@ -851,12 +851,10 @@ func _build_body() -> void:
 	col.shape   = cap
 	col.position = Vector3(0, 0.9, 0)
 	_body.add_child(col)
-
 	# Yaw pivot (child of body so it inherits position but NOT rotation from physics).
 	_pivot = Node3D.new()
 	_pivot.name = "YawPivot"
 	_body.add_child(_pivot)
-
 	# Camera arm (controls pitch) — pitched down for the isometric view.
 	var cam_arm := Node3D.new()
 	cam_arm.name = "CamArm"
@@ -864,7 +862,6 @@ func _build_body() -> void:
 	cam_arm.rotation_degrees.x = CAMERA_PITCH
 	_pivot.add_child(cam_arm)
 	_cam_arm = cam_arm
-
 	# Camera sits back along the arm's +Z (behind/above the pivot) so it looks
 	# down at the player from an isometric angle. Zoom adjusts this distance.
 	_camera = Camera3D.new()
@@ -955,7 +952,6 @@ func _move(delta: float) -> void:
 	else:
 		if _vel.y < 0.0:
 			_vel.y = 0.0
-
 	# Jump.
 	if not flying and not swimming and jump_requested() and _body.is_on_floor():
 		_vel.y = JUMP_FORCE
@@ -1148,7 +1144,6 @@ func _build_hud() -> void:
 	_hud = CanvasLayer.new()
 	_hud.name = "HUD"
 	_hud.layer = 10
-
 	# HP bar — top-left corner, updates on every damage/heal event. The window dock sits under it.
 	var hp_label := Label.new()
 	hp_label.name = "HpLabel"
@@ -1176,7 +1171,6 @@ func _build_hud() -> void:
 	hp_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	hp_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hud.add_child(hp_icon)
-
 	# Phase 129 — active status effects with their remaining time, top-right.
 	_status_label = Label.new()
 	_status_label.name = "StatusLabel"
@@ -1205,7 +1199,6 @@ func _build_hud() -> void:
 	_status_icons.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hud.add_child(_status_icons)
 	_update_hp_bar()
-
 	# Aimed item name: a tooltip that follows the pointer (see `_update_aim_hud`).
 	var aim_label := Label.new()
 	aim_label.name = "AimLabel"
@@ -1216,7 +1209,6 @@ func _build_hud() -> void:
 	aim_label.visible = false
 	_hud.add_child(aim_label)
 	_aim_label = aim_label
-
 	# Station selection (B cycles, V places) shows in the bottom-right corner; the hotbar the UI
 	# slice builds carries everything else the old instruction row said.
 	_station_label = Label.new()
@@ -1236,9 +1228,9 @@ func _build_hud() -> void:
 	_station_label.add_theme_color_override("font_outline_color", Color(0, 0, 0))
 	_station_label.add_theme_constant_override("outline_size", 5)
 	_hud.add_child(_station_label)
-
 	_refresh_build_hint()
-
+	_work_hold = preload("res://src/player/work_hold.gd").new()
+	_hud.add_child(_work_hold)
 	add_child(_hud)
 
 func _update_hp_bar() -> void:
@@ -1271,7 +1263,6 @@ func _update_aim() -> void:
 			var dir := _camera.project_ray_normal(aim_point)
 			var space := _camera.get_world_3d().direct_space_state
 			var block_dist := INF
-
 			# Pickup ray (layer 3).
 			var to := from + dir * PICKUP_RANGE
 			var query := PhysicsRayQueryParameters3D.create(from, to, PICKUP_COLLISION_MASK)
@@ -1283,7 +1274,6 @@ func _update_aim() -> void:
 				if collider != null and collider.has_meta("pickup_id"):
 					pid = str(collider.get_meta("pickup_id"))
 					item_id = str(collider.get_meta("item_id"))
-
 			# Block ray — mine/build target. Phase 193: walked through the voxel columns (`VoxelRay`), not the
 			# terrain collision layer, which a walking body keeps only on its own 3×3 chunks.
 			var bhit := _terrain_ray(from, dir, BUILD_RANGE)
@@ -1293,7 +1283,6 @@ func _update_aim() -> void:
 				_aimed_block_exact = WorldPos.from_scene(bhit.get("position", Vector3.ZERO), _scene_origin_chunk)
 				_aimed_block_normal = bhit.get("normal", Vector3.UP)
 				block_dist = from.distance_to(_aimed_block_pos + _origin.value)
-
 			# Tree ray (layer 4) — chop target. Trees are not on the terrain
 			# layer, so this is its own ray; a trunk is only accepted when it is
 			# not behind the terrain the block ray already hit.
@@ -1308,7 +1297,6 @@ func _update_aim() -> void:
 				if tcollider != null and tcollider.has_meta("tree_id") and from.distance_to(tpos) <= block_dist:
 					tid = str(tcollider.get_meta("tree_id"))
 					tspecies = str(tcollider.get_meta("species", ""))
-
 			# Body under the pointer (harvest / carry target): not behind the terrain the block ray hit.
 			if carcass_slice != null and not carrying:
 				cid = CarcassHover.hovered(carcass_slice, get_position(), _origin.value, from, dir, block_dist)
@@ -1331,6 +1319,19 @@ func _terrain_ray(from: Vector3, dir: Vector3, range_m: float) -> Dictionary:
 	query.collide_with_areas = false
 	query.collide_with_bodies = true
 	return _camera.get_world_3d().direct_space_state.intersect_ray(query)
+
+## Phase 259 — the aimed terrain face as a work target.
+func _block_aim() -> Dictionary:
+	return { "kind": "block", "position": _aimed_block_pos, "normal": _aimed_block_normal, "exact": _aimed_block_exact }
+
+## Gather input pressed on `t`: timed work when the bar exists, else (no HUD) the one-click request.
+func _work_press(t: Dictionary) -> void:
+	if _work_hold != null:
+		_work_hold.press(t)
+	elif t["kind"] == "tree":
+		GameBus.tree_chop_requested.emit(t["tree_id"], "")
+	else:
+		GameBus.block_mine_requested.emit(t["position"], t["normal"], "", t["exact"])
 
 func _update_aim_hud() -> void:
 	if _aim_label == null:

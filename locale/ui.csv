@@ -835,3 +835,8 @@ options.terrain_quality.auto,Automatic,Automática
 options.terrain_quality.low,Low,Baixa
 options.terrain_quality.high,High,Alta
 options.next_world,View distance and terrain quality take effect in the next world.,A distância de visão e a qualidade do terreno valem a partir do próximo mundo.
+work.progress,{0}  ~{1} s  ({2}),{0}  ~{1} s  ({2})
+work.tool.hands,Bare hands,Mãos nuas
+work.tool.pick,Pick,Picareta
+work.tool.axe,Axe,Machado
+work.tool.shovel,Shovel,Pá

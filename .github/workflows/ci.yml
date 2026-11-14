@@ -497,6 +497,9 @@ jobs:
       - name: Check the harvest validation rejects bad tables
         run: node tools/check_harvest.js
 
+      - name: Check the work-time validation rejects bad tables
+        run: node tools/check_work_times.js
+
       - name: Check the terrain material validation rejects bad tables
         run: node tools/check_terrain_materials.js
 

@@ -492,6 +492,7 @@ func _test_equip_seq_and_edit_arity() -> void:
 	GameBus.block_place_requested.connect(pcb)
 	n.remember_player_state(5, Vector3.ZERO)
 	var aimed := { "chunk": Vector2i(0, 0), "local": Vector3(10.5, 3.0, 4.25) }
+	_open_work_gate(n)
 	n._route_c2h(5, { "type": "block_edit_intent", "action": "mine", "pk": WorldPos.pos_to_packet_text(aimed), "normal": [0, 1, 0] })
 	n._route_c2h(5, { "type": "block_edit_intent", "action": "place", "pk": WorldPos.pos_to_packet_text(aimed), "normal": [0, 1, 0], "material": "Stone" })
 	GameBus.block_mine_requested.disconnect(mcb)
@@ -652,6 +653,7 @@ func _test_net_remote_mine_credits_the_actor() -> void:
 		synced.append(synced_owner)
 	GameBus.inventory_synced.connect(on_synced)
 
+	_open_work_gate(n)
 	n._route_c2h(7, { "type": "block_edit_intent", "action": "mine",
 		"position": [16.0, 2.0, 16.0], "normal": [0, 1, 0] })
 
@@ -763,6 +765,7 @@ func _test_net_remote_chop_credits_the_actor() -> void:
 		synced.append(synced_owner)
 	GameBus.inventory_synced.connect(on_synced)
 
+	_open_work_gate(n)
 	n._route_c2h(7, { "type": "tree_chop_intent", "tree_id": tid })
 
 	assert_eq(str(t.get_tree_record(tid)["state"]), "stump", "the chop resolved on the host")
@@ -1284,6 +1287,7 @@ func _test_net_block_intent_requires_handshake_and_reach() -> void:
 	GameBus.block_mine_requested.connect(on_mine)
 
 	var near := Vector3(30.0, 4.0, 0.0)
+	_open_work_gate(n)
 	var edit := { "type": "block_edit_intent", "action": "mine", "position": [near.x, near.y, near.z], "normal": [0, 1, 0] }
 	n._route_c2h(7, edit)
 	assert_eq(mined.size(), 0, "an un-handshaked peer cannot edit the world")
@@ -1324,6 +1328,7 @@ func _test_net_tree_intent_requires_handshake_and_reach() -> void:
 		chops.append(tree_id)
 	GameBus.tree_chop_requested.connect(on_chop)
 
+	_open_work_gate(n)
 	var intent := { "type": "tree_chop_intent", "tree_id": str(target["tree_id"]) }
 	n._route_c2h(7, intent)
 	assert_eq(chops.size(), 0, "an un-handshaked peer cannot chop")
@@ -2324,3 +2329,10 @@ func _test_net_profiles() -> void:
 	assert_true(n.apply_profile("loopback"), "loopback applies")
 	assert_false(n.emulate_network, "loopback turns the emulator off")
 	n.free()
+
+
+## These tests drive the wire without a booted `WorkHost`; the gate fails closed, so open it (`enforce = false`).
+func _open_work_gate(n: Node) -> void:
+	var host = preload("res://src/core/work_host.gd").new()
+	host.enforce = false
+	n.set_meta("work_host", host)

@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:ab7205dd48d7e342801c1eb3064cec408154c045ccd4d3811f265e6677a577eb",
+  "schemaHash": "sha256:de75e5969a3a84353ad0625d12eb54442e54ec7ec3bfbc6058681e9cef1050fb",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -34868,6 +34868,109 @@
             }
           }
         },
+        "pii": [],
+        "gdpr": {}
+      },
+      "WorkTimes": {
+        "name": "WorkTimes",
+        "tags": [
+          "world-system"
+        ],
+        "description": "How long gathering takes: a base time per material, the tool class each action wants, a speed per tool and class, and the slow factor of bare hands (also the speed of a tool of the wrong class).",
+        "goal": "Make a better tool a felt step: timed, held work instead of one-click gathering (Phase 259)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "bareHandsSpeed": {
+            "name": "bareHandsSpeed",
+            "type": "decimal",
+            "description": "Speed multiplier of bare hands and of a wrong-class tool (1.0 = a right tool at base speed)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.25
+          },
+          "actions": {
+            "name": "actions",
+            "type": "json",
+            "description": "{ <dig|mine|chop>: { toolClass, families } }",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "dig": {
+                "toolClass": "shovel",
+                "families": [
+                  "soil"
+                ]
+              },
+              "mine": {
+                "toolClass": "pick",
+                "families": [
+                  "stone",
+                  "metal"
+                ]
+              },
+              "chop": {
+                "toolClass": "axe",
+                "families": [
+                  "wood"
+                ]
+              }
+            }
+          },
+          "workSeconds": {
+            "name": "workSeconds",
+            "type": "json",
+            "description": "{ <material>: base seconds at speed 1.0 }",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "Grass": 0.6,
+              "Soil": 0.8,
+              "Sand": 0.6,
+              "Snow": 0.5,
+              "Ashite": 2.5,
+              "Lumenfite": 3.5,
+              "Ferrite": 3,
+              "Veilsteel": 5,
+              "Aethermite": 7,
+              "Voidite": 9,
+              "Concrete": 4,
+              "Steel": 6,
+              "Leyframe": 6,
+              "Thornwood": 4,
+              "Duskfiber": 5
+            }
+          },
+          "toolSpeeds": {
+            "name": "toolSpeeds",
+            "type": "json",
+            "description": "{ <tool item>: { <class>: speed } }",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "FerritePick": {
+                "pick": 1
+              },
+              "VeilsteelPick": {
+                "pick": 1.5
+              },
+              "CarpenterAxe": {
+                "axe": 1
+              }
+            }
+          }
+        },
+        "relations": {},
+        "behaviors": {},
         "pii": [],
         "gdpr": {}
       },
