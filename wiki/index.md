@@ -320,6 +320,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [CombatSystem](entities/combatsystem.md) — Defines the rules governing all combat interactions — player vs creature, player vs player, and structure damage
 - [GovernanceSystem](entities/governancesystem.md) — Defines the rules of in-game community governance
 - [MarketSystem](entities/marketsystem.md) — Defines the rules of the persistent player-run market
+- [NewcomerGrounds](entities/newcomergrounds.md) — Where a new character starts: a few large, gentle grounds on the open continent with trees, rock and soil in reach, only weak creatures, loose stones and branches on the ground, and a protected centre
 - [PersistenceSystem](entities/persistencesystem.md) — Defines the authoritative save lifecycle: which directory the world and per-player records live in, how often the server autosaves, how a headless server is asked to shut down cleanly, and how a record is written so a kill mid-write cannot truncate it
 - [ResearchPointRule](entities/researchpointrule.md) — Points of research a player earns per source: a craft, a gathered resource, and a one-time bonus for the first craft of each recipe
 - [SelfRespawn](entities/selfrespawn.md) — Any player may kill their own character to respawn at their bed or the world spawn, with the normal death rules, from a command or a menu button, so no one can be trapped inside another's structure

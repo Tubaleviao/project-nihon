@@ -1,0 +1,22 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/world_systems/newcomergrounds.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+count = 4
+radiusMetres = 1000.0
+biomes = ["TemperateForest","TemperateGrassland"]
+allowedCreatures = ["ForestBoar"]
+allowedAggression = ["passive","neutral"]
+maxCreatureTier = 1
+looseDensityInside = 0.35
+looseDensityOutside = 0.02
+looseRegrowSeconds = 180.0
+pickReachMetres = 3.0
+claimRadiusMetres = 24.0
+resourceRadiusMetres = 120.0
+spawnRadiusMetres = 300.0
+description = "Where a new character starts: a few large, gentle grounds on the open continent with trees, rock and soil in reach, only weak creatures, loose stones and branches on the ground, and a protected centre."
+tags = ["world-system"]
