@@ -131,6 +131,7 @@ var _taming:      TamingSlice
 var _professions: ProfessionSlice
 var _station:     StationSlice
 var _tree:        TreeSlice
+var _loose:       Node   # Phase 261 — LooseItemSlice
 ## Phase 63: the origin-rebase driver (see rebase_driver.gd); built once the slices exist.
 var _rebase: RebaseDriver = null
 var _market:      MarketSlice
@@ -359,6 +360,7 @@ func _build_and_boot() -> void:
 	_creature.use_surface(_voxel, _chunk_manager.is_chunk_built)
 	_creature.world_clock = _clock
 	_tree.terrain_slice = _terrain
+	_loose = preload("res://src/world/loose_item_slice.gd").new(); _loose.attach(self)   # Phase 261
 	_tree.world_clock = _clock
 
 	# CreatureAI needs creature_slice, player_slice, and battle_slice for queries.
@@ -379,7 +381,7 @@ func _build_and_boot() -> void:
 
 	# The UI (Phase 14) is presentation only, so a headless dedicated server (Phase 27) keeps it out of the
 	# tree — its _ready() would otherwise build windows nothing can render or click.
-	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _registry, _player, _loot, _carcass, _inventory, _character, _crafting, _technology, _taming, _professions, _station, _tree, _market, _trade, _proposal, _chat, _gesture, _waystones, _bed, _settlements, _clans, _mount_wiring.make_slice(self), _weather, _structures, _chests, _writing]
+	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _registry, _player, _loot, _carcass, _inventory, _character, _crafting, _technology, _taming, _professions, _station, _tree, _loose, _market, _trade, _proposal, _chat, _gesture, _waystones, _bed, _settlements, _clans, _mount_wiring.make_slice(self), _weather, _structures, _chests, _writing]
 	if not _is_server:
 		slices.append(_ui)
 	if not _is_server:
@@ -603,7 +605,6 @@ func _build_and_boot() -> void:
 		sun.light_energy = 1.4
 		sun.shadow_enabled = true
 		add_child(sun)
-
 		var env := WorldEnvironment.new()
 		env.name = "Environment"
 		# Phase 164 — a sky whose horizon is the haze colour, with distance fog over the far ring.
@@ -620,7 +621,6 @@ func _build_and_boot() -> void:
 	if _net_harness_role != "":
 		await _boot_wiring.run_net_harness(_net_harness_role)
 		return
-
 	_boot_wiring.prepare_stress_role()
 	_boot_wiring.prepare_playtest_bot()
 	_menu_wiring.apply_world()

@@ -246,6 +246,12 @@ func _route_h2c(payload: Dictionary) -> void:
 				str(payload.get("state", "")),
 				float(payload.get("respawn_at", 0.0))
 			)
+		"loose_picked":
+			var regrow: Variant = payload.get("regrow_at", 0.0)
+			if (regrow is float or regrow is int) and is_finite(float(regrow)):
+				GameBus.loose_picked.emit(str(payload.get("id", "")), float(regrow))
+		"loose_regrown":
+			GameBus.loose_regrown.emit(str(payload.get("id", "")))
 		"tree_respawned":
 			GameBus.tree_respawned.emit(str(payload.get("tree_id", "")))
 		"tree_cleared":

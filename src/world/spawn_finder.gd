@@ -12,6 +12,7 @@ const ColonizationMap := preload("res://src/world/colonization_map.gd")
 const PlayerRegistry := preload("res://src/persistence/player_registry.gd")
 const BedStore := preload("res://src/world/bed_store.gd")
 const Hydrology := preload("res://src/terrain/hydrology.gd")
+const NewcomerGrounds := preload("res://src/world/newcomer_grounds.gd")
 
 ## Phase 185 — the respawn point a player RECORD implies: the bed (with `runs_at`, the nearest free cell if it is
 ## blocked), else the original spawn.
@@ -105,6 +106,29 @@ static func find_new(world_seed: int, player_id: String, colonization: Colonizat
 			continue
 		return Vector3(x, float(height_fn.call(Vector2(x, z))) + GROUND_CLEARANCE, z)
 	return null
+
+## Phase 261 — where a NEW character starts: inside one of the newcomer grounds when the world has any (the
+## player id picks the ground and the point), else the open-land search of `find_new`.
+static func find_start(world_seed: int, player_id: String, colonization: ColonizationMap, height_fn: Callable, now: float = 0.0) -> Variant:
+	var ground: Variant = newcomer_spawn(world_seed, player_id, height_fn)
+	if ground != null:
+		return ground
+	return find_new(world_seed, player_id, colonization, height_fn, now)
+
+## Phase 261 — the standable test of a newcomer ground: dry, flat land in the ground's biomes.
+static func ground_standable(world_seed: int, height_fn: Callable) -> Callable:
+	var biomes: Array = NewcomerGrounds.rule()["biomes"]
+	return func(x: float, z: float) -> bool: return is_standable(world_seed, x, z, biomes, height_fn)
+
+## Phase 261 — find the grounds' centres for `world_seed` once (cached), so the creature, claim and loose-item
+## rules can answer "inside a ground?" on every peer. `height_fn` is the terrain's ground height.
+static func prime_grounds(world_seed: int, height_fn: Callable) -> void:
+	if not NewcomerGrounds.cached(world_seed):
+		NewcomerGrounds.centres(world_seed, ground_standable(world_seed, height_fn))
+
+## Phase 261 — `player_id`'s spawn inside a newcomer ground (picked by the id), or null.
+static func newcomer_spawn(world_seed: int, player_id: String, height_fn: Callable) -> Variant:
+	return NewcomerGrounds.spawn_for(world_seed, player_id, ground_standable(world_seed, height_fn), height_fn)
 
 ## A friend-code spawn: safe ground within `radius` of `center` (world XZ). The ground must be
 ## dry and flat, and not Ocean or VoidRift; it need not be a habitable biome (a friend in the

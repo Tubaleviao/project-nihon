@@ -632,6 +632,9 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 			if not _work_claimed(sender, "tree", tree_id, Vector3.ZERO, Vector3.UP, {}):
 				return
 			GameBus.tree_chop_requested.emit(tree_id, sl._actor_id(sender))
+		"loose_pick_intent":
+			# Phase 261 — LooseItemSlice answers: it checks the item exists, the sender's reach, and binds the actor.
+			GameBus.loose_pick_intent.emit(sender, str(payload.get("id", "")))
 		"work_start_intent", "work_cancel_intent":
 			_work_intent(sender, payload)
 		"market_list_intent":
