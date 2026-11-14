@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:a086103306d23841ee454844bdee088424154d0716b2c717bf7c6b410ee5cb4f",
+  "schemaHash": "sha256:0d7fcb7ff598e9e5ed5722e3d35acc0e88e54d1ae72503684ac8355a72ee20a8",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -37139,6 +37139,152 @@
               "fellBranches": 2,
               "looseStoneChance": 0.25
             }
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "NewcomerGrounds": {
+        "name": "NewcomerGrounds",
+        "tags": [
+          "world-system"
+        ],
+        "description": "Where a new character starts: a few large, gentle grounds on the open continent with trees, rock and soil in reach, only weak creatures, loose stones and branches on the ground, and a protected centre.",
+        "goal": "A newcomer lands in a place built for a first hour, never among whatever lives where a search landed (Phase 261)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "count": {
+            "name": "count",
+            "type": "integer",
+            "description": "Grounds on the open continent",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 4
+          },
+          "radiusMetres": {
+            "name": "radiusMetres",
+            "type": "decimal",
+            "description": "Radius of a ground, m",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1000
+          },
+          "biomes": {
+            "name": "biomes",
+            "type": "json",
+            "description": "Biomes a ground may sit in",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "TemperateForest",
+              "TemperateGrassland"
+            ]
+          },
+          "allowedCreatures": {
+            "name": "allowedCreatures",
+            "type": "json",
+            "description": "Creature keys that may spawn inside a ground",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "ForestBoar"
+            ]
+          },
+          "allowedAggression": {
+            "name": "allowedAggression",
+            "type": "json",
+            "description": "Aggression levels a ground tolerates",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "passive",
+              "neutral"
+            ]
+          },
+          "maxCreatureTier": {
+            "name": "maxCreatureTier",
+            "type": "integer",
+            "description": "Danger cap: highest creature tier",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
+          },
+          "looseDensityInside": {
+            "name": "looseDensityInside",
+            "type": "decimal",
+            "description": "Chance of a loose item per 4 m tile inside a ground",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.35
+          },
+          "looseDensityOutside": {
+            "name": "looseDensityOutside",
+            "type": "decimal",
+            "description": "Chance of a loose item per 4 m tile elsewhere",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.02
+          },
+          "looseRegrowSeconds": {
+            "name": "looseRegrowSeconds",
+            "type": "decimal",
+            "description": "Seconds until a picked loose item is back",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 180
+          },
+          "pickReachMetres": {
+            "name": "pickReachMetres",
+            "type": "decimal",
+            "description": "Reach for picking a loose item up, m",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 3
+          },
+          "claimRadiusMetres": {
+            "name": "claimRadiusMetres",
+            "type": "decimal",
+            "description": "No structure within this of a ground centre, m",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 24
+          },
+          "resourceRadiusMetres": {
+            "name": "resourceRadiusMetres",
+            "type": "decimal",
+            "description": "Resource guarantee radius around each spawn point, m",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 120
+          },
+          "spawnRadiusMetres": {
+            "name": "spawnRadiusMetres",
+            "type": "decimal",
+            "description": "A spawn lies within this of a ground centre, m",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 300
           }
         },
         "relations": {},

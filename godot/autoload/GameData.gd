@@ -314,6 +314,7 @@ const WORLD_SYSTEMS: Dictionary = {
 		"CombatSystem": preload("res://godot/world_systems/combatsystem.tres"),
 		"GovernanceSystem": preload("res://godot/world_systems/governancesystem.tres"),
 		"MarketSystem": preload("res://godot/world_systems/marketsystem.tres"),
+		"NewcomerGrounds": preload("res://godot/world_systems/newcomergrounds.tres"),
 		"PersistenceSystem": preload("res://godot/world_systems/persistencesystem.tres"),
 		"ResearchPointRule": preload("res://godot/world_systems/researchpointrule.tres"),
 		"SelfRespawn": preload("res://godot/world_systems/selfrespawn.tres"),
