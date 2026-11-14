@@ -744,11 +744,12 @@ func _test_durability_find_tool() -> void:
 	inv.add_item("VeilsteelPick", 1)
 	inv.add_item("CarpenterAxe", 1)
 	# find_tool matches on the fabric toolType, not the item name.
-	assert_eq(inv.find_tool("pick"), "FerritePick", "find_tool returns a held pick")
+	# Phase 260 — of several held picks the fastest (WorkTimes.toolSpeeds) is used.
+	assert_eq(inv.find_tool("pick"), "VeilsteelPick", "find_tool returns the fastest held pick")
 	assert_eq(inv.find_tool("axe"), "CarpenterAxe", "find_tool returns the held axe")
 	# A non-tool durable item (a weapon) has no toolType and never matches.
 	inv.add_item("FerriteShortSword", 1)
-	assert_eq(inv.find_tool("pick"), "FerritePick", "a weapon is not a mining tool")
+	assert_eq(inv.find_tool("pick"), "VeilsteelPick", "a weapon is not a mining tool")
 	inv.free()
 
 func _test_durability_find_tool_skips_broken() -> void:

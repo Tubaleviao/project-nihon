@@ -13,6 +13,7 @@ func _connect_all() -> void:
 	connect_bus(GameBus.profession_unlocked, _on_profession_unlocked)
 	connect_bus(GameBus.research_resolved, _on_research_resolved)
 	connect_bus(GameBus.research_points_synced, _on_research_points_synced)
+	connect_bus(GameBus.technology_record_changed, _on_technology_record_changed)
 	connect_bus(GameBus.resource_gathered, _on_resource_gathered)
 	connect_bus(GameBus.tame_resolved, _on_tame_resolved)
 	connect_bus(GameBus.skill_tier_recorded, _on_skill_tier_recorded)
@@ -73,6 +74,10 @@ func _on_research_points_synced(player_id: String, _points: int) -> void:
 	if peer == 0:
 		return
 	root._networking.send_own_state(peer, { "technology": root._technology.get_statuses(player_id) })
+
+## Phase 260 — a discovery input was first held: the record and the owner's mirror take it like a balance change.
+func _on_technology_record_changed(player_id: String) -> void:
+	_on_research_points_synced(player_id, 0)
 
 ## Phase 124 — the host resolved a gather: pay the fabric's `gather` research points.
 func _on_resource_gathered(player_id: String, _material: String, quantity: int) -> void:

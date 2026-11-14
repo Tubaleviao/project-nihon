@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–225, 238–243, 248, 249, 252–254 and 259 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–225, 238–243, 248, 249, 252–254, 259 and 260 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -31,14 +31,13 @@ introductions of the arcs they belonged to, are archived in
 Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
 see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
 phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
-comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–254)
+comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–254, 259, 260)
 have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
 [Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
 others are not in it.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 2 | 260 | Stone tools: an axe, a pick and a shovel from wood and stone, no bench |
 | 3 | 261 | The newcomer grounds: a large, gentle spawn area with loose stones and branches |
 | 4 | 262 | Starting with nothing, and a tutorial that begins from bare hands |
 | 5 | 263 | Digging that shows at once: a predicted edit and a priority remesh |
@@ -275,7 +274,7 @@ everything for the whole tutorial.
 | Phase | Title | Status |
 |---|---|---|
 | 259 | Work takes time: bare hands, tools and a progress bar | Done |
-| 260 | Stone tools: an axe, a pick and a shovel from wood and stone, no bench | Open |
+| 260 | Stone tools: an axe, a pick and a shovel from wood and stone, no bench | Done |
 | 261 | The newcomer grounds: a large, gentle spawn area with loose stones and branches | Open |
 | 262 | Starting with nothing, and a tutorial that begins from bare hands | Open |
 | 263 | Digging that shows at once: a predicted edit and a priority remesh | Open |
@@ -857,35 +856,6 @@ would be empty.
   and fails on a broken internal link (the generator's link check, or `lychee` over the output).
 - A GitHub issue asks the owner to enable Pages and Discussions; this phase records its number.
 - After the issue closes, the README's wiki link returns 200 from a CI step on `main`.
-
-## Phase 260 — Stone tools: an axe, a pick and a shovel from wood and stone, no bench
-
-The first pick is a ferrite pick from a forge (Phase 184's `first_tools` chapter), and the axe came
-from the starting kit. A newcomer makes simple tools on the spot instead.
-
-- **Fabric (separate PR):** items `Branch` (a stick picked off the ground or from a felled tree) and
-  `LooseStone` (a stone picked off the ground or knocked from rock), both stackable and light.
-  Tools `StoneAxe`, `StonePick`, `StoneShovel`, plus `StoneKnife` (Phase 160's `knife` harvest tool
-  at a low `efficiency`) and `StoneHammer` if building needs one. Each is `Branch` + `LooseStone` in
-  small amounts, with **no station**, under a free technology (research cost 0, no prerequisite,
-  like `TechBasicCarpentry`) and a novice skill guard. Low durability; their `workSpeed` sits
-  between bare hands and the ferrite tools (Phase 259).
-- **The shovel** gives a new tool class, `shovel`, that digs soil, sand and gravel fastest;
-  `voxel_edit.gd` reads the held shovel like it reads the pick.
-- Felling a tree also yields a few branches; mining host rock has a chance to yield a loose stone
-  beside its material, so the inputs never run out where there is rock and wood.
-- The crafting window lists station-free recipes without a station, as the bed already is
-  (Phase 184).
-
-**Acceptance criteria**
-- `npm run validate` and `check-drift` pass; a `check_*.js` rejects a stone tool with a station or a
-  technology that costs research points.
-- Suite tests: each stone tool is craftable with no station from `Branch` and `LooseStone` only, on
-  a fresh character's known technologies; the shovel digs soil faster than the pick and the pick
-  mines rock faster than the shovel.
-- `tutorial_tests.gd` `_first_hour_items`: with an empty starting kit and only loose stones and
-  branches, every stone tool is reachable.
-- Every new string is in both locales.
 
 ## Phase 261 — The newcomer grounds: a large, gentle spawn area with loose stones and branches
 

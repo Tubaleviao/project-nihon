@@ -173,6 +173,7 @@ ui.research,Research,Pesquisar
 ui.research_points,Research points: {0},Pontos de pesquisa: {0}
 ui.researching,Researching {0}…,Pesquisando {0}…
 ui.tech_unlocked,You know {0} now.,Agora você conhece {0}.
+notice.tech_discovered,"New technology: {0}. You can now make {1}.","Nova tecnologia: {0}. Agora você pode fazer {1}."
 ui.skill_tip,{0} ({1}),{0} ({1})
 ui.skills_title,Skills,Habilidades
 ui.slot_empty,{0}: empty,{0}: vazio
@@ -652,6 +653,7 @@ structure.refused.foreign_circle,Only that clan's members build this close to it
 structure.refused.no_permission,Your clan role may not do that.,Seu papel no clã não permite isso.
 structure.refused.structures_full,The world holds no more structures.,O mundo não comporta mais estruturas.
 structure.refused.no_clan,You are in no clan.,Você não está em nenhum clã.
+structure.refused.hammer_required,You need a hammer in hand to build. A stone hammer is a branch and a stone.,Você precisa de um martelo na mão para construir. Um martelo de pedra é um galho e uma pedra.
 structure.refused.bad_args,Use /buildas private or /buildas clan.,Use /buildas private ou /buildas clan.
 structure.refused.no_structure,Stand at a structure you own.,Fique junto de uma estrutura sua.
 structure.refused.intact,It needs no repair.,Não precisa de reparo.
