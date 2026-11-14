@@ -33,6 +33,7 @@ extends Node
 ##   apply_chop_state(tree_id, respawn_at) -> void   (client-side host state)
 const Diag := preload("res://src/core/diag.gd")
 const WorkSkills := preload("res://src/character/work_skills.gd")
+const StoneTools := preload("res://src/world/stone_tools.gd")
 
 const MultimeshPool := preload("res://src/core/multimesh_pool.gd")
 const MeshUtil      := preload("res://src/core/mesh_util.gd")
@@ -581,6 +582,11 @@ func chop_tree(tree_id: String, player_id: String = "") -> Dictionary:
 	if inventory != null and inventory.has_method("add_item"):
 		if not inventory.add_item(wood, CHOP_YIELD):
 			return _fail("no_inventory")
+		# Phase 260 — a felled tree also drops branches, the haft of every stone tool. A pack with room for
+		# the wood but not the branches still fells the tree; the branches are left.
+		var branches := StoneTools.fell_branches()
+		if branches > 0:
+			inventory.add_item(StoneTools.BRANCH, branches)
 	WorkSkills.grant(player_registry, player_id, WorkSkills.gather_row(wood), CHOP_YIELD)   # Phase 207 — per unit, as mining
 	_push_inventory(player_id)
 	_set_chopped(tree_id)

@@ -108,6 +108,7 @@ const DURABILITY_DECREMENT: float = 1.0
 const ACTION_DECREMENT: Dictionary = {
 	"mine": 1.0,
 	"chop": 1.0,
+	"dig": 1.0,
 	"place": 1.0,
 	"attack": 1.0,
 }
@@ -332,7 +333,16 @@ func can_add_items(counts: Dictionary) -> bool:
 ## Find the first held durable tool whose fabric `toolType` matches `tool_type`
 ## (e.g. "pick" for mining, "axe" for chopping). Broken tools (durability == 0)
 ## are skipped. Returns the item_id, or "" when no usable tool is held.
+##
+## Phase 260 — with several held (a stone pick and a ferrite pick), the fastest one for its class in the fabric
+## `WorkTimes.toolSpeeds` wins, so a forged tool is used as soon as it is in the pack; ties keep fabric order.
 func find_tool(tool_type: String) -> String:
+	var best := ""
+	var best_speed := -1.0
+	var speeds: Dictionary = {}
+	var wt: Resource = GameData.WORLD_SYSTEMS.get("WorkTimes", null)
+	if wt != null and wt.get("toolSpeeds") is Dictionary:
+		speeds = wt.get("toolSpeeds")
 	for item_id in _item_durability_cache:
 		if get_item_count(item_id) <= 0:
 			continue
@@ -341,8 +351,11 @@ func find_tool(tool_type: String) -> String:
 			continue
 		if not _has_usable_instance(item_id):
 			continue
-		return str(item_id)
-	return ""
+		var sp := float((speeds.get(item_id, {}) as Dictionary).get(tool_type, 0.0))
+		if sp > best_speed:
+			best = str(item_id)
+			best_speed = sp
+	return best
 
 ## Whether `item_id` has a durability field in the fabric (tools/weapons/armor).
 func is_durable(item_id: String) -> bool:

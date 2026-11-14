@@ -150,9 +150,16 @@ func _status_for(player_id: String) -> Dictionary:
 	if not _status.has(player_id):
 		var seeded: Dictionary = {}
 		for tech_key in GameData.TECHNOLOGIES:
-			seeded[tech_key] = STATE_LOCKED
+			seeded[tech_key] = STATE_UNLOCKED if is_innate(str(tech_key)) else STATE_LOCKED
 		_status[player_id] = seeded
 	return _status[player_id]
+
+## Phase 260 — an innate technology (fabric `tech.innate`) is known from birth: seeded unlocked for every
+## player and never locked again by a restored snapshot.
+static func is_innate(tech_id: String) -> bool:
+	var res: Resource = GameData.TECHNOLOGIES.get(tech_id, null)
+	var tech: Variant = res.get("tech") if res != null else null
+	return tech is Dictionary and bool((tech as Dictionary).get("innate", false))
 
 ## The wall-clock deadlines for `player_id`, created on first use.
 func _deadlines_for(player_id: String) -> Dictionary:
@@ -477,7 +484,7 @@ func apply_statuses(statuses: Dictionary, player_id: String = "") -> void:
 	var pid := resolve_player(player_id)
 	var bucket := _status_for(pid)
 	for tech_id in statuses:
-		if GameData.TECHNOLOGIES.has(tech_id):
+		if GameData.TECHNOLOGIES.has(tech_id) and not is_innate(str(tech_id)):
 			bucket[tech_id] = str(statuses[tech_id])
 	# Phase 124 — a snapshot without the reserved keys (a legacy save) restores 0 / none.
 	var points_v: Variant = statuses.get(POINTS_KEY, 0)
