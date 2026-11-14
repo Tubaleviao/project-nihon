@@ -1,0 +1,10 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/world_systems/stationplacement.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+rules = {"first":"carpentry bench","handInputs":["Branch","LooseStone"],"pickUp":{"reachMetres":4,"ownerOnly":true},"stations":{"carpentry bench":{"placementItem":"CarpentryBench"},"forge":{"placementItem":"Forge"},"masonry bench":{"placementItem":"MasonryBench"},"alchemy bench":{"placementItem":"AlchemyBench"},"master forge":{"placementItem":"MasterForge"},"arcane forge":{"placementItem":"ArcaneForge"},"void-shielded workshop":{"placementItem":"VoidShieldedWorkshop"},"waystone":{"placementItem":"Waystone"},"hearth":{"placementItem":"Hearth"},"bed":{"placementItem":"Bed"},"chest":{"placementItem":"Chest"},"door":{"placementItem":"Door"}}}
+description = "Every station is an item: crafted (the first by hand, the rest at an earlier station), carried in the pack, placed from the hotbar and picked up again by its owner."
+tags = ["world-system"]

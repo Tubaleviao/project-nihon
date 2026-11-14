@@ -21,6 +21,7 @@ Esoteric void-smithing and void-brewing techniques. Unlocks void-resist potion b
 
 | Name | Kind | Target | Foreign Key |
 | ---- | ---- | ------ | ----------- |
+| `unlocksRecipeVoidShieldedWorkshop` | hasOne | [RecipeVoidShieldedWorkshop](recipevoidshieldedworkshop.md) |  |
 | `requiresTechArcaneForging` | hasOne | [TechArcaneForging](techarcaneforging.md) |  |
 | `requiresTechAlchemy` | hasOne | [TechAlchemy](techalchemy.md) |  |
 | `unlocksRecipeVoidResistPotion` | hasOne | [RecipeVoidResistPotion](recipevoidresistpotion.md) |  |

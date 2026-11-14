@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:cc4b01fcd1c310ddfb6b6ce7d09fe1e525825c04326700218234f86de807d30f",
+  "schemaHash": "sha256:67edb3b49f441be7d629fcc5ce2a07356d635d2be2431879c09fbea856061266",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -21462,7 +21462,8 @@
       "Waystone": {
         "name": "Waystone",
         "tags": [
-          "item"
+          "item",
+          "station"
         ],
         "description": "A carved marker stone that anchors a fast-travel network. Placed as a waystone station; a player attunes to it by standing at it.",
         "goal": "The craftable node of the waystone travel network (Phase 125)",
@@ -23794,6 +23795,1483 @@
               "trigger": "degrade",
               "guards": [
                 "Normal inventory storage never degrades a door"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "CarpentryBench": {
+        "name": "CarpentryBench",
+        "tags": [
+          "item",
+          "station"
+        ],
+        "description": "A work top of lashed branches on stone feet, where logs become planks. Placed from the hotbar as a carpentry bench station; its owner can pick it up again.",
+        "goal": "The first station: made by hand from what the newcomer grounds give (Phase 268)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per carpentry bench",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 20
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "common"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "False; one carpentry bench per slot",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "chest",
+              "parts": {
+                "box": "Thornwood",
+                "band": "Ashite"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Structural integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 400
+          }
+        },
+        "relations": {
+          "thornwood": {
+            "name": "thornwood",
+            "kind": "hasOne",
+            "target": "Thornwood"
+          },
+          "ashite": {
+            "name": "ashite",
+            "kind": "hasOne",
+            "target": "Ashite"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A carpentry bench does not wear while carried",
+            "rules": [
+              "Normal inventory storage never degrades a carpentry bench"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-join a worn carpentry bench at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Normal inventory storage never degrades a carpentry bench"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Normal inventory storage never degrades a carpentry bench"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Normal inventory storage never degrades a carpentry bench"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "Forge": {
+        "name": "Forge",
+        "tags": [
+          "item",
+          "station"
+        ],
+        "description": "A stone hearth with a plank bellows, hot enough to smelt ferrite. Placed from the hotbar as a forge station; its owner can pick it up again.",
+        "goal": "The smithing station, built at a carpentry bench (Phase 268)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per forge",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 40
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "common"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "False; one forge per slot",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "hearth",
+              "parts": {
+                "base": "Ashite",
+                "fuel": "Thornwood"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Structural integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 400
+          }
+        },
+        "relations": {
+          "ashite": {
+            "name": "ashite",
+            "kind": "hasOne",
+            "target": "Ashite"
+          },
+          "thornwood": {
+            "name": "thornwood",
+            "kind": "hasOne",
+            "target": "Thornwood"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A forge does not wear while carried",
+            "rules": [
+              "Normal inventory storage never degrades a forge"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-join a worn forge at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Normal inventory storage never degrades a forge"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Normal inventory storage never degrades a forge"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Normal inventory storage never degrades a forge"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "MasonryBench": {
+        "name": "MasonryBench",
+        "tags": [
+          "item",
+          "station"
+        ],
+        "description": "A stone slab on a plank frame for cutting blocks and mixing cement. Placed from the hotbar as a masonry bench station; its owner can pick it up again.",
+        "goal": "The masonry station, built at a carpentry bench (Phase 268)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per masonry bench",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 30
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "common"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "False; one masonry bench per slot",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "chest",
+              "parts": {
+                "box": "Ashite",
+                "band": "Thornwood"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Structural integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 400
+          }
+        },
+        "relations": {
+          "ashite": {
+            "name": "ashite",
+            "kind": "hasOne",
+            "target": "Ashite"
+          },
+          "thornwood": {
+            "name": "thornwood",
+            "kind": "hasOne",
+            "target": "Thornwood"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A masonry bench does not wear while carried",
+            "rules": [
+              "Normal inventory storage never degrades a masonry bench"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-join a worn masonry bench at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Normal inventory storage never degrades a masonry bench"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Normal inventory storage never degrades a masonry bench"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Normal inventory storage never degrades a masonry bench"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "AlchemyBench": {
+        "name": "AlchemyBench",
+        "tags": [
+          "item",
+          "station"
+        ],
+        "description": "A plank table set with aethermite-lined bowls for brewing. Placed from the hotbar as a alchemy bench station; its owner can pick it up again.",
+        "goal": "The alchemy station, built at a carpentry bench (Phase 268)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per alchemy bench",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 18
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "common"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "False; one alchemy bench per slot",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "chest",
+              "parts": {
+                "box": "Thornwood",
+                "band": "Aethermite"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Structural integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 400
+          }
+        },
+        "relations": {
+          "thornwood": {
+            "name": "thornwood",
+            "kind": "hasOne",
+            "target": "Thornwood"
+          },
+          "aethermite": {
+            "name": "aethermite",
+            "kind": "hasOne",
+            "target": "Aethermite"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A alchemy bench does not wear while carried",
+            "rules": [
+              "Normal inventory storage never degrades a alchemy bench"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-join a worn alchemy bench at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Normal inventory storage never degrades a alchemy bench"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Normal inventory storage never degrades a alchemy bench"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Normal inventory storage never degrades a alchemy bench"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "MasterForge": {
+        "name": "MasterForge",
+        "tags": [
+          "item",
+          "station"
+        ],
+        "description": "A ferrite-clad forge on cut stone that holds the heat veilsteel needs. Placed from the hotbar as a master forge station; its owner can pick it up again.",
+        "goal": "The master smithing station, built at a forge (Phase 268)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per master forge",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 60
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "common"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "False; one master forge per slot",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "hearth",
+              "parts": {
+                "base": "Ferrite",
+                "fuel": "Ashite"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Structural integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 400
+          }
+        },
+        "relations": {
+          "ferrite": {
+            "name": "ferrite",
+            "kind": "hasOne",
+            "target": "Ferrite"
+          },
+          "ashite": {
+            "name": "ashite",
+            "kind": "hasOne",
+            "target": "Ashite"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A master forge does not wear while carried",
+            "rules": [
+              "Normal inventory storage never degrades a master forge"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-join a worn master forge at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Normal inventory storage never degrades a master forge"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Normal inventory storage never degrades a master forge"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Normal inventory storage never degrades a master forge"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "ArcaneForge": {
+        "name": "ArcaneForge",
+        "tags": [
+          "item",
+          "station"
+        ],
+        "description": "A ferrite forge fed with aethermite, for binding magic into metal. Placed from the hotbar as a arcane forge station; its owner can pick it up again.",
+        "goal": "The arcane forging station, built at a forge (Phase 268)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per arcane forge",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 50
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "common"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "False; one arcane forge per slot",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "hearth",
+              "parts": {
+                "base": "Ferrite",
+                "fuel": "Aethermite"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Structural integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 400
+          }
+        },
+        "relations": {
+          "ferrite": {
+            "name": "ferrite",
+            "kind": "hasOne",
+            "target": "Ferrite"
+          },
+          "aethermite": {
+            "name": "aethermite",
+            "kind": "hasOne",
+            "target": "Aethermite"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A arcane forge does not wear while carried",
+            "rules": [
+              "Normal inventory storage never degrades a arcane forge"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-join a worn arcane forge at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Normal inventory storage never degrades a arcane forge"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Normal inventory storage never degrades a arcane forge"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Normal inventory storage never degrades a arcane forge"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "VoidShieldedWorkshop": {
+        "name": "VoidShieldedWorkshop",
+        "tags": [
+          "item",
+          "station"
+        ],
+        "description": "A veilsteel cabinet lined with refined voidite, shielded for void work. Placed from the hotbar as a void-shielded workshop station; its owner can pick it up again.",
+        "goal": "The void smithing station, built at an arcane forge (Phase 268)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per void-shielded workshop",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 70
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "common"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "False; one void-shielded workshop per slot",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": false
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "chest",
+              "parts": {
+                "box": "Veilsteel",
+                "band": "Voidite"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Structural integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 400
+          }
+        },
+        "relations": {
+          "veilsteel": {
+            "name": "veilsteel",
+            "kind": "hasOne",
+            "target": "Veilsteel"
+          },
+          "voidite": {
+            "name": "voidite",
+            "kind": "hasOne",
+            "target": "Voidite"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A void-shielded workshop does not wear while carried",
+            "rules": [
+              "Normal inventory storage never degrades a void-shielded workshop"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-join a worn void-shielded workshop at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Normal inventory storage never degrades a void-shielded workshop"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Normal inventory storage never degrades a void-shielded workshop"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Normal inventory storage never degrades a void-shielded workshop"
               ],
               "effects": []
             },
@@ -27048,6 +28526,1910 @@
             "name": "ashite",
             "kind": "hasOne",
             "target": "Ashite"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A blueprint does not wear while carried or read",
+            "rules": [
+              "Reading never consumes or wears it"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-bind a worn blueprint at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "BlueprintRecipeWaystone": {
+        "name": "BlueprintRecipeWaystone",
+        "tags": [
+          "item",
+          "writing"
+        ],
+        "description": "A blueprint that teaches how to build the station of RecipeWaystone. Reading it teaches it and keeps it, so it can be read again or lent.",
+        "goal": "Research shared by writing, never through a clan (ResearchSharedByWriting, Phase 209)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per blueprint",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "uncommon"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "True; copies of one writing stack",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "writing": {
+            "name": "writing",
+            "type": "string",
+            "description": "The writing rule it follows (GameData.WRITINGS)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Blueprint"
+          },
+          "teaches": {
+            "name": "teaches",
+            "type": "string",
+            "description": "The technology, recipe or project key it teaches",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "RecipeWaystone"
+          },
+          "teachesKind": {
+            "name": "teachesKind",
+            "type": "string",
+            "description": "technology, station or project",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "station"
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "tablet",
+              "parts": {
+                "slab": "Snow",
+                "rune": "Lumenfite"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Binding integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100
+          }
+        },
+        "relations": {
+          "snow": {
+            "name": "snow",
+            "kind": "hasOne",
+            "target": "Snow"
+          },
+          "lumenfite": {
+            "name": "lumenfite",
+            "kind": "hasOne",
+            "target": "Lumenfite"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A blueprint does not wear while carried or read",
+            "rules": [
+              "Reading never consumes or wears it"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-bind a worn blueprint at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "BlueprintRecipeCarpentryBench": {
+        "name": "BlueprintRecipeCarpentryBench",
+        "tags": [
+          "item",
+          "writing"
+        ],
+        "description": "A blueprint that teaches how to build the station of RecipeCarpentryBench. Reading it teaches it and keeps it, so it can be read again or lent.",
+        "goal": "Research shared by writing, never through a clan (ResearchSharedByWriting, Phase 209)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per blueprint",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "uncommon"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "True; copies of one writing stack",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "writing": {
+            "name": "writing",
+            "type": "string",
+            "description": "The writing rule it follows (GameData.WRITINGS)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Blueprint"
+          },
+          "teaches": {
+            "name": "teaches",
+            "type": "string",
+            "description": "The technology, recipe or project key it teaches",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "RecipeCarpentryBench"
+          },
+          "teachesKind": {
+            "name": "teachesKind",
+            "type": "string",
+            "description": "technology, station or project",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "station"
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "tablet",
+              "parts": {
+                "slab": "Snow",
+                "rune": "Soil"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Binding integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100
+          }
+        },
+        "relations": {
+          "snow": {
+            "name": "snow",
+            "kind": "hasOne",
+            "target": "Snow"
+          },
+          "soil": {
+            "name": "soil",
+            "kind": "hasOne",
+            "target": "Soil"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A blueprint does not wear while carried or read",
+            "rules": [
+              "Reading never consumes or wears it"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-bind a worn blueprint at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "BlueprintRecipeForge": {
+        "name": "BlueprintRecipeForge",
+        "tags": [
+          "item",
+          "writing"
+        ],
+        "description": "A blueprint that teaches how to build the station of RecipeForge. Reading it teaches it and keeps it, so it can be read again or lent.",
+        "goal": "Research shared by writing, never through a clan (ResearchSharedByWriting, Phase 209)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per blueprint",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "uncommon"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "True; copies of one writing stack",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "writing": {
+            "name": "writing",
+            "type": "string",
+            "description": "The writing rule it follows (GameData.WRITINGS)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Blueprint"
+          },
+          "teaches": {
+            "name": "teaches",
+            "type": "string",
+            "description": "The technology, recipe or project key it teaches",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "RecipeForge"
+          },
+          "teachesKind": {
+            "name": "teachesKind",
+            "type": "string",
+            "description": "technology, station or project",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "station"
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "tablet",
+              "parts": {
+                "slab": "Snow",
+                "rune": "Steel"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Binding integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100
+          }
+        },
+        "relations": {
+          "snow": {
+            "name": "snow",
+            "kind": "hasOne",
+            "target": "Snow"
+          },
+          "steel": {
+            "name": "steel",
+            "kind": "hasOne",
+            "target": "Steel"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A blueprint does not wear while carried or read",
+            "rules": [
+              "Reading never consumes or wears it"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-bind a worn blueprint at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "BlueprintRecipeMasonryBench": {
+        "name": "BlueprintRecipeMasonryBench",
+        "tags": [
+          "item",
+          "writing"
+        ],
+        "description": "A blueprint that teaches how to build the station of RecipeMasonryBench. Reading it teaches it and keeps it, so it can be read again or lent.",
+        "goal": "Research shared by writing, never through a clan (ResearchSharedByWriting, Phase 209)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per blueprint",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "uncommon"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "True; copies of one writing stack",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "writing": {
+            "name": "writing",
+            "type": "string",
+            "description": "The writing rule it follows (GameData.WRITINGS)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Blueprint"
+          },
+          "teaches": {
+            "name": "teaches",
+            "type": "string",
+            "description": "The technology, recipe or project key it teaches",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "RecipeMasonryBench"
+          },
+          "teachesKind": {
+            "name": "teachesKind",
+            "type": "string",
+            "description": "technology, station or project",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "station"
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "tablet",
+              "parts": {
+                "slab": "Snow",
+                "rune": "Concrete"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Binding integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100
+          }
+        },
+        "relations": {
+          "snow": {
+            "name": "snow",
+            "kind": "hasOne",
+            "target": "Snow"
+          },
+          "concrete": {
+            "name": "concrete",
+            "kind": "hasOne",
+            "target": "Concrete"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A blueprint does not wear while carried or read",
+            "rules": [
+              "Reading never consumes or wears it"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-bind a worn blueprint at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "BlueprintRecipeAlchemyBench": {
+        "name": "BlueprintRecipeAlchemyBench",
+        "tags": [
+          "item",
+          "writing"
+        ],
+        "description": "A blueprint that teaches how to build the station of RecipeAlchemyBench. Reading it teaches it and keeps it, so it can be read again or lent.",
+        "goal": "Research shared by writing, never through a clan (ResearchSharedByWriting, Phase 209)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per blueprint",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "uncommon"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "True; copies of one writing stack",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "writing": {
+            "name": "writing",
+            "type": "string",
+            "description": "The writing rule it follows (GameData.WRITINGS)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Blueprint"
+          },
+          "teaches": {
+            "name": "teaches",
+            "type": "string",
+            "description": "The technology, recipe or project key it teaches",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "RecipeAlchemyBench"
+          },
+          "teachesKind": {
+            "name": "teachesKind",
+            "type": "string",
+            "description": "technology, station or project",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "station"
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "tablet",
+              "parts": {
+                "slab": "Snow",
+                "rune": "Aethermite"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Binding integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100
+          }
+        },
+        "relations": {
+          "snow": {
+            "name": "snow",
+            "kind": "hasOne",
+            "target": "Snow"
+          },
+          "aethermite": {
+            "name": "aethermite",
+            "kind": "hasOne",
+            "target": "Aethermite"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A blueprint does not wear while carried or read",
+            "rules": [
+              "Reading never consumes or wears it"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-bind a worn blueprint at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "BlueprintRecipeMasterForge": {
+        "name": "BlueprintRecipeMasterForge",
+        "tags": [
+          "item",
+          "writing"
+        ],
+        "description": "A blueprint that teaches how to build the station of RecipeMasterForge. Reading it teaches it and keeps it, so it can be read again or lent.",
+        "goal": "Research shared by writing, never through a clan (ResearchSharedByWriting, Phase 209)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per blueprint",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "uncommon"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "True; copies of one writing stack",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "writing": {
+            "name": "writing",
+            "type": "string",
+            "description": "The writing rule it follows (GameData.WRITINGS)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Blueprint"
+          },
+          "teaches": {
+            "name": "teaches",
+            "type": "string",
+            "description": "The technology, recipe or project key it teaches",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "RecipeMasterForge"
+          },
+          "teachesKind": {
+            "name": "teachesKind",
+            "type": "string",
+            "description": "technology, station or project",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "station"
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "tablet",
+              "parts": {
+                "slab": "Snow",
+                "rune": "Veilsteel"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Binding integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100
+          }
+        },
+        "relations": {
+          "snow": {
+            "name": "snow",
+            "kind": "hasOne",
+            "target": "Snow"
+          },
+          "veilsteel": {
+            "name": "veilsteel",
+            "kind": "hasOne",
+            "target": "Veilsteel"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A blueprint does not wear while carried or read",
+            "rules": [
+              "Reading never consumes or wears it"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-bind a worn blueprint at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "BlueprintRecipeArcaneForge": {
+        "name": "BlueprintRecipeArcaneForge",
+        "tags": [
+          "item",
+          "writing"
+        ],
+        "description": "A blueprint that teaches how to build the station of RecipeArcaneForge. Reading it teaches it and keeps it, so it can be read again or lent.",
+        "goal": "Research shared by writing, never through a clan (ResearchSharedByWriting, Phase 209)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per blueprint",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "uncommon"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "True; copies of one writing stack",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "writing": {
+            "name": "writing",
+            "type": "string",
+            "description": "The writing rule it follows (GameData.WRITINGS)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Blueprint"
+          },
+          "teaches": {
+            "name": "teaches",
+            "type": "string",
+            "description": "The technology, recipe or project key it teaches",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "RecipeArcaneForge"
+          },
+          "teachesKind": {
+            "name": "teachesKind",
+            "type": "string",
+            "description": "technology, station or project",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "station"
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "tablet",
+              "parts": {
+                "slab": "Snow",
+                "rune": "Leyframe"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Binding integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100
+          }
+        },
+        "relations": {
+          "snow": {
+            "name": "snow",
+            "kind": "hasOne",
+            "target": "Snow"
+          },
+          "leyframe": {
+            "name": "leyframe",
+            "kind": "hasOne",
+            "target": "Leyframe"
+          }
+        },
+        "behaviors": {
+          "degrade": {
+            "name": "degrade",
+            "description": "A blueprint does not wear while carried or read",
+            "rules": [
+              "Reading never consumes or wears it"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "repair": {
+            "name": "repair",
+            "description": "Re-bind a worn blueprint at a carpentry bench",
+            "rules": [
+              "Requires a carpentry bench; no additional materials consumed"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "stateMachine": {
+          "field": "condition",
+          "initial": "pristine",
+          "states": {
+            "pristine": {
+              "name": "pristine",
+              "description": "Freshly crafted or repaired; full stat effectiveness",
+              "terminal": false
+            },
+            "worn": {
+              "name": "worn",
+              "description": "Showing use; minor stat penalties apply",
+              "terminal": false
+            },
+            "damaged": {
+              "name": "damaged",
+              "description": "Significantly degraded; notable stat penalties; repair strongly advised",
+              "terminal": false
+            },
+            "broken": {
+              "name": "broken",
+              "description": "Unusable; must be repaired at a workshop before use",
+              "terminal": false
+            }
+          },
+          "transitions": [
+            {
+              "from": "pristine",
+              "to": "worn",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "damaged",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "broken",
+              "trigger": "degrade",
+              "guards": [
+                "Reading never consumes or wears it"
+              ],
+              "effects": []
+            },
+            {
+              "from": "broken",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "damaged",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            },
+            {
+              "from": "worn",
+              "to": "pristine",
+              "trigger": "repair",
+              "guards": [
+                "Requires a carpentry bench; no additional materials consumed"
+              ],
+              "effects": []
+            }
+          ]
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "BlueprintRecipeVoidShieldedWorkshop": {
+        "name": "BlueprintRecipeVoidShieldedWorkshop",
+        "tags": [
+          "item",
+          "writing"
+        ],
+        "description": "A blueprint that teaches how to build the station of RecipeVoidShieldedWorkshop. Reading it teaches it and keeps it, so it can be read again or lent.",
+        "goal": "Research shared by writing, never through a clan (ResearchSharedByWriting, Phase 209)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "condition": {
+            "name": "condition",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "pristine",
+              "worn",
+              "damaged",
+              "broken"
+            ],
+            "pii": false
+          },
+          "weight": {
+            "name": "weight",
+            "type": "decimal",
+            "description": "kg per blueprint",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
+          },
+          "rarity": {
+            "name": "rarity",
+            "type": "enum",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "common",
+              "uncommon",
+              "rare",
+              "epic",
+              "legendary"
+            ],
+            "pii": false,
+            "defaultValue": "uncommon"
+          },
+          "stackable": {
+            "name": "stackable",
+            "type": "boolean",
+            "description": "True; copies of one writing stack",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": true
+          },
+          "writing": {
+            "name": "writing",
+            "type": "string",
+            "description": "The writing rule it follows (GameData.WRITINGS)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "Blueprint"
+          },
+          "teaches": {
+            "name": "teaches",
+            "type": "string",
+            "description": "The technology, recipe or project key it teaches",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "RecipeVoidShieldedWorkshop"
+          },
+          "teachesKind": {
+            "name": "teachesKind",
+            "type": "string",
+            "description": "technology, station or project",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "station"
+          },
+          "shape": {
+            "name": "shape",
+            "type": "json",
+            "description": "Item shape: archetype, material per named part, and uniform scale (Phase 151)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "archetype": "tablet",
+              "parts": {
+                "slab": "Snow",
+                "rune": "Voidite"
+              },
+              "scale": 1
+            }
+          },
+          "durability": {
+            "name": "durability",
+            "type": "integer",
+            "description": "Binding integrity",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 100
+          }
+        },
+        "relations": {
+          "snow": {
+            "name": "snow",
+            "kind": "hasOne",
+            "target": "Snow"
+          },
+          "voidite": {
+            "name": "voidite",
+            "kind": "hasOne",
+            "target": "Voidite"
           }
         },
         "behaviors": {
@@ -32716,6 +36098,762 @@
         "pii": [],
         "gdpr": {}
       },
+      "RecipeCarpentryBench": {
+        "name": "RecipeCarpentryBench",
+        "tags": [
+          "recipe"
+        ],
+        "description": "Lash four branches onto two loose stones into a carpentry bench, by hand.",
+        "goal": "A station is an item: crafted, carried and placed from the hotbar (Phase 268)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "domain": {
+            "name": "domain",
+            "type": "enum",
+            "description": "Crafting station required",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "smithing",
+              "alchemy",
+              "arcane",
+              "carpentry"
+            ],
+            "pii": false
+          },
+          "outputCount": {
+            "name": "outputCount",
+            "type": "integer",
+            "description": "Number of output items produced per craft",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "carpentry",
+              "station": "",
+              "inputs": [
+                {
+                  "item": "Branch",
+                  "quantity": 4
+                },
+                {
+                  "item": "LooseStone",
+                  "quantity": 2
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "CarpentryBench",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Carpentry",
+                  "tier": "novice"
+                }
+              ]
+            }
+          }
+        },
+        "relations": {
+          "inputBranch": {
+            "name": "inputBranch",
+            "kind": "hasOne",
+            "target": "Branch"
+          },
+          "inputLooseStone": {
+            "name": "inputLooseStone",
+            "kind": "hasOne",
+            "target": "LooseStone"
+          },
+          "output": {
+            "name": "output",
+            "kind": "hasOne",
+            "target": "CarpentryBench"
+          }
+        },
+        "behaviors": {
+          "craft": {
+            "name": "craft",
+            "description": "Lash it together anywhere, with no station",
+            "rules": [
+              "Requires Carpentry: Novice",
+              "Needs no station",
+              "Four branches and two loose stones yield one carpentry bench"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "RecipeForge": {
+        "name": "RecipeForge",
+        "tags": [
+          "recipe"
+        ],
+        "description": "Stack eight loose stones into a hearth and fit a plank bellows at a carpentry bench.",
+        "goal": "A station is an item: crafted, carried and placed from the hotbar (Phase 268)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "domain": {
+            "name": "domain",
+            "type": "enum",
+            "description": "Crafting station required",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "smithing",
+              "alchemy",
+              "arcane",
+              "carpentry"
+            ],
+            "pii": false
+          },
+          "outputCount": {
+            "name": "outputCount",
+            "type": "integer",
+            "description": "Number of output items produced per craft",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "smithing",
+              "station": "carpentry bench",
+              "inputs": [
+                {
+                  "item": "LooseStone",
+                  "quantity": 8
+                },
+                {
+                  "item": "ThornwoodPlank",
+                  "quantity": 2
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "Forge",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Smithing",
+                  "tier": "novice"
+                }
+              ]
+            }
+          }
+        },
+        "relations": {
+          "inputLooseStone": {
+            "name": "inputLooseStone",
+            "kind": "hasOne",
+            "target": "LooseStone"
+          },
+          "inputThornwoodPlank": {
+            "name": "inputThornwoodPlank",
+            "kind": "hasOne",
+            "target": "ThornwoodPlank"
+          },
+          "output": {
+            "name": "output",
+            "kind": "hasOne",
+            "target": "Forge"
+          }
+        },
+        "behaviors": {
+          "craft": {
+            "name": "craft",
+            "description": "Build it at a carpentry bench",
+            "rules": [
+              "Requires Smithing: Novice",
+              "Requires a carpentry bench structure",
+              "Eight loose stones and two planks yield one forge"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "RecipeMasonryBench": {
+        "name": "RecipeMasonryBench",
+        "tags": [
+          "recipe"
+        ],
+        "description": "Set a slab of loose stones on a four-plank frame at a carpentry bench.",
+        "goal": "A station is an item: crafted, carried and placed from the hotbar (Phase 268)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "domain": {
+            "name": "domain",
+            "type": "enum",
+            "description": "Crafting station required",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "smithing",
+              "alchemy",
+              "arcane",
+              "carpentry"
+            ],
+            "pii": false
+          },
+          "outputCount": {
+            "name": "outputCount",
+            "type": "integer",
+            "description": "Number of output items produced per craft",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "carpentry",
+              "station": "carpentry bench",
+              "inputs": [
+                {
+                  "item": "ThornwoodPlank",
+                  "quantity": 4
+                },
+                {
+                  "item": "LooseStone",
+                  "quantity": 4
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "MasonryBench",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Carpentry",
+                  "tier": "apprentice"
+                }
+              ]
+            }
+          }
+        },
+        "relations": {
+          "inputThornwoodPlank": {
+            "name": "inputThornwoodPlank",
+            "kind": "hasOne",
+            "target": "ThornwoodPlank"
+          },
+          "inputLooseStone": {
+            "name": "inputLooseStone",
+            "kind": "hasOne",
+            "target": "LooseStone"
+          },
+          "output": {
+            "name": "output",
+            "kind": "hasOne",
+            "target": "MasonryBench"
+          }
+        },
+        "behaviors": {
+          "craft": {
+            "name": "craft",
+            "description": "Build it at a carpentry bench",
+            "rules": [
+              "Requires Carpentry: Apprentice",
+              "Requires a carpentry bench structure",
+              "Four planks and four loose stones yield one masonry bench"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "RecipeAlchemyBench": {
+        "name": "RecipeAlchemyBench",
+        "tags": [
+          "recipe"
+        ],
+        "description": "Build a plank table and line its bowls with aethermite dust at a carpentry bench.",
+        "goal": "A station is an item: crafted, carried and placed from the hotbar (Phase 268)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "domain": {
+            "name": "domain",
+            "type": "enum",
+            "description": "Crafting station required",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "smithing",
+              "alchemy",
+              "arcane",
+              "carpentry"
+            ],
+            "pii": false
+          },
+          "outputCount": {
+            "name": "outputCount",
+            "type": "integer",
+            "description": "Number of output items produced per craft",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "alchemy",
+              "station": "carpentry bench",
+              "inputs": [
+                {
+                  "item": "ThornwoodPlank",
+                  "quantity": 4
+                },
+                {
+                  "item": "AethermiteDust",
+                  "quantity": 2
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "AlchemyBench",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Alchemy",
+                  "tier": "novice"
+                }
+              ]
+            }
+          }
+        },
+        "relations": {
+          "inputThornwoodPlank": {
+            "name": "inputThornwoodPlank",
+            "kind": "hasOne",
+            "target": "ThornwoodPlank"
+          },
+          "inputAethermiteDust": {
+            "name": "inputAethermiteDust",
+            "kind": "hasOne",
+            "target": "AethermiteDust"
+          },
+          "output": {
+            "name": "output",
+            "kind": "hasOne",
+            "target": "AlchemyBench"
+          }
+        },
+        "behaviors": {
+          "craft": {
+            "name": "craft",
+            "description": "Build it at a carpentry bench",
+            "rules": [
+              "Requires Alchemy: Novice",
+              "Requires a carpentry bench structure",
+              "Four planks and two aethermite dust yield one alchemy bench"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "RecipeMasterForge": {
+        "name": "RecipeMasterForge",
+        "tags": [
+          "recipe"
+        ],
+        "description": "Clad a cut-stone hearth in six ferrite ingots at a forge.",
+        "goal": "A station is an item: crafted, carried and placed from the hotbar (Phase 268)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "domain": {
+            "name": "domain",
+            "type": "enum",
+            "description": "Crafting station required",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "smithing",
+              "alchemy",
+              "arcane",
+              "carpentry"
+            ],
+            "pii": false
+          },
+          "outputCount": {
+            "name": "outputCount",
+            "type": "integer",
+            "description": "Number of output items produced per craft",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "smithing",
+              "station": "forge",
+              "inputs": [
+                {
+                  "item": "FerriteIngot",
+                  "quantity": 6
+                },
+                {
+                  "item": "AshiteBlock",
+                  "quantity": 4
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "MasterForge",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "Smithing",
+                  "tier": "apprentice"
+                }
+              ]
+            }
+          }
+        },
+        "relations": {
+          "inputFerriteIngot": {
+            "name": "inputFerriteIngot",
+            "kind": "hasOne",
+            "target": "FerriteIngot"
+          },
+          "inputAshiteBlock": {
+            "name": "inputAshiteBlock",
+            "kind": "hasOne",
+            "target": "AshiteBlock"
+          },
+          "output": {
+            "name": "output",
+            "kind": "hasOne",
+            "target": "MasterForge"
+          }
+        },
+        "behaviors": {
+          "craft": {
+            "name": "craft",
+            "description": "Build it at a forge",
+            "rules": [
+              "Requires Smithing: Apprentice",
+              "Requires a forge structure",
+              "Six ferrite ingots and four ashite blocks yield one master forge"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "RecipeArcaneForge": {
+        "name": "RecipeArcaneForge",
+        "tags": [
+          "recipe"
+        ],
+        "description": "Forge a ferrite hearth that burns aethermite, at a forge.",
+        "goal": "A station is an item: crafted, carried and placed from the hotbar (Phase 268)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "domain": {
+            "name": "domain",
+            "type": "enum",
+            "description": "Crafting station required",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "smithing",
+              "alchemy",
+              "arcane",
+              "carpentry"
+            ],
+            "pii": false
+          },
+          "outputCount": {
+            "name": "outputCount",
+            "type": "integer",
+            "description": "Number of output items produced per craft",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "arcane",
+              "station": "forge",
+              "inputs": [
+                {
+                  "item": "FerriteIngot",
+                  "quantity": 4
+                },
+                {
+                  "item": "Aethermite",
+                  "quantity": 4
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "ArcaneForge",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "ArcaneForging",
+                  "tier": "novice"
+                }
+              ]
+            }
+          }
+        },
+        "relations": {
+          "inputFerriteIngot": {
+            "name": "inputFerriteIngot",
+            "kind": "hasOne",
+            "target": "FerriteIngot"
+          },
+          "inputAethermite": {
+            "name": "inputAethermite",
+            "kind": "hasOne",
+            "target": "Aethermite"
+          },
+          "output": {
+            "name": "output",
+            "kind": "hasOne",
+            "target": "ArcaneForge"
+          }
+        },
+        "behaviors": {
+          "craft": {
+            "name": "craft",
+            "description": "Build it at a forge",
+            "rules": [
+              "Requires ArcaneForging: Novice",
+              "Requires a forge structure",
+              "Four ferrite ingots and four aethermite yield one arcane forge"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "RecipeVoidShieldedWorkshop": {
+        "name": "RecipeVoidShieldedWorkshop",
+        "tags": [
+          "recipe"
+        ],
+        "description": "Line a veilsteel cabinet with refined voidite at an arcane forge.",
+        "goal": "A station is an item: crafted, carried and placed from the hotbar (Phase 268)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "domain": {
+            "name": "domain",
+            "type": "enum",
+            "description": "Crafting station required",
+            "nullable": false,
+            "primaryKey": false,
+            "enumValues": [
+              "smithing",
+              "alchemy",
+              "arcane",
+              "carpentry"
+            ],
+            "pii": false
+          },
+          "outputCount": {
+            "name": "outputCount",
+            "type": "integer",
+            "description": "Number of output items produced per craft",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false
+          },
+          "recipe": {
+            "name": "recipe",
+            "type": "json",
+            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "domain": "arcane",
+              "station": "arcane forge",
+              "inputs": [
+                {
+                  "item": "VeilsteelIngot",
+                  "quantity": 4
+                },
+                {
+                  "item": "RefinedVoiditeShard",
+                  "quantity": 2
+                }
+              ],
+              "outputs": [
+                {
+                  "item": "VoidShieldedWorkshop",
+                  "quantity": 1
+                }
+              ],
+              "skillGuards": [
+                {
+                  "skill": "VoidSmithing",
+                  "tier": "apprentice"
+                }
+              ]
+            }
+          }
+        },
+        "relations": {
+          "inputVeilsteelIngot": {
+            "name": "inputVeilsteelIngot",
+            "kind": "hasOne",
+            "target": "VeilsteelIngot"
+          },
+          "inputRefinedVoiditeShard": {
+            "name": "inputRefinedVoiditeShard",
+            "kind": "hasOne",
+            "target": "RefinedVoiditeShard"
+          },
+          "output": {
+            "name": "output",
+            "kind": "hasOne",
+            "target": "VoidShieldedWorkshop"
+          }
+        },
+        "behaviors": {
+          "craft": {
+            "name": "craft",
+            "description": "Build it at a arcane forge",
+            "rules": [
+              "Requires VoidSmithing: Apprentice",
+              "Requires a arcane forge structure",
+              "Four veilsteel ingots and two refined voidite shards yield one void-shielded workshop"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
       "TechBasicSmithing": {
         "name": "TechBasicSmithing",
         "tags": [
@@ -32774,7 +36912,8 @@
                 "RecipeFerritePick",
                 "RecipeSkinningKnife",
                 "RecipeBoneSaw",
-                "RecipeLockpick"
+                "RecipeLockpick",
+                "RecipeForge"
               ],
               "requires": [],
               "researchDuration": 10,
@@ -32788,6 +36927,11 @@
           }
         },
         "relations": {
+          "unlocksRecipeForge": {
+            "name": "unlocksRecipeForge",
+            "kind": "hasOne",
+            "target": "RecipeForge"
+          },
           "unlocksRecipeFerriteIngot": {
             "name": "unlocksRecipeFerriteIngot",
             "kind": "hasOne",
@@ -32948,7 +37092,9 @@
                 "RecipeVeilsteelLongsword",
                 "RecipeVeilsteelChestplate",
                 "RecipeAshiteBlock",
-                "RecipeRefinedVoiditeShard"
+                "RecipeRefinedVoiditeShard",
+                "RecipeMasonryBench",
+                "RecipeMasterForge"
               ],
               "requires": [
                 "TechBasicSmithing"
@@ -32964,6 +37110,16 @@
           }
         },
         "relations": {
+          "unlocksRecipeMasterForge": {
+            "name": "unlocksRecipeMasterForge",
+            "kind": "hasOne",
+            "target": "RecipeMasterForge"
+          },
+          "unlocksRecipeMasonryBench": {
+            "name": "unlocksRecipeMasonryBench",
+            "kind": "hasOne",
+            "target": "RecipeMasonryBench"
+          },
           "requiresTechBasicSmithing": {
             "name": "requiresTechBasicSmithing",
             "kind": "hasOne",
@@ -33126,7 +37282,8 @@
                 "RecipeStonePick",
                 "RecipeStoneShovel",
                 "RecipeStoneKnife",
-                "RecipeStoneHammer"
+                "RecipeStoneHammer",
+                "RecipeCarpentryBench"
               ],
               "requires": [],
               "researchDuration": 0,
@@ -33136,6 +37293,11 @@
           }
         },
         "relations": {
+          "unlocksRecipeCarpentryBench": {
+            "name": "unlocksRecipeCarpentryBench",
+            "kind": "hasOne",
+            "target": "RecipeCarpentryBench"
+          },
           "unlocksRecipeStoneAxe": {
             "name": "unlocksRecipeStoneAxe",
             "kind": "hasOne",
@@ -33614,7 +37776,8 @@
               "unlocks": [
                 "RecipeEnchantedAethermiteShard",
                 "RecipeAethermiteBow",
-                "RecipeLumenfiteOrb"
+                "RecipeLumenfiteOrb",
+                "RecipeArcaneForge"
               ],
               "requires": [
                 "TechBasicSmithing",
@@ -33631,6 +37794,11 @@
           }
         },
         "relations": {
+          "unlocksRecipeArcaneForge": {
+            "name": "unlocksRecipeArcaneForge",
+            "kind": "hasOne",
+            "target": "RecipeArcaneForge"
+          },
           "requiresTechBasicSmithing": {
             "name": "requiresTechBasicSmithing",
             "kind": "hasOne",
@@ -33785,7 +37953,8 @@
             "defaultValue": {
               "unlocks": [
                 "RecipeHealthPotion",
-                "RecipeStaminaPotion"
+                "RecipeStaminaPotion",
+                "RecipeAlchemyBench"
               ],
               "requires": [],
               "researchDuration": 20,
@@ -33799,6 +37968,11 @@
           }
         },
         "relations": {
+          "unlocksRecipeAlchemyBench": {
+            "name": "unlocksRecipeAlchemyBench",
+            "kind": "hasOne",
+            "target": "RecipeAlchemyBench"
+          },
           "unlocksRecipeHealthPotion": {
             "name": "unlocksRecipeHealthPotion",
             "kind": "hasOne",
@@ -33934,7 +38108,8 @@
             "defaultValue": {
               "unlocks": [
                 "RecipeVoidResistPotion",
-                "RecipeVoidRuneTablet"
+                "RecipeVoidRuneTablet",
+                "RecipeVoidShieldedWorkshop"
               ],
               "requires": [
                 "TechArcaneForging",
@@ -33951,6 +38126,11 @@
           }
         },
         "relations": {
+          "unlocksRecipeVoidShieldedWorkshop": {
+            "name": "unlocksRecipeVoidShieldedWorkshop",
+            "kind": "hasOne",
+            "target": "RecipeVoidShieldedWorkshop"
+          },
           "requiresTechArcaneForging": {
             "name": "requiresTechArcaneForging",
             "kind": "hasOne",
@@ -37289,6 +41469,112 @@
         },
         "relations": {},
         "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "StationPlacement": {
+        "name": "StationPlacement",
+        "tags": [
+          "world-system"
+        ],
+        "description": "Every station is an item: crafted (the first by hand, the rest at an earlier station), carried in the pack, placed from the hotbar and picked up again by its owner.",
+        "goal": "No free stations and no shortcut keys: a station is made before it is placed (Phase 268)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "rules": {
+            "name": "rules",
+            "type": "json",
+            "description": "Station placement table: { first, handInputs, pickUp, stations } (validated at fabric load)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "first": "carpentry bench",
+              "handInputs": [
+                "Branch",
+                "LooseStone"
+              ],
+              "pickUp": {
+                "reachMetres": 4,
+                "ownerOnly": true
+              },
+              "stations": {
+                "carpentry bench": {
+                  "placementItem": "CarpentryBench"
+                },
+                "forge": {
+                  "placementItem": "Forge"
+                },
+                "masonry bench": {
+                  "placementItem": "MasonryBench"
+                },
+                "alchemy bench": {
+                  "placementItem": "AlchemyBench"
+                },
+                "master forge": {
+                  "placementItem": "MasterForge"
+                },
+                "arcane forge": {
+                  "placementItem": "ArcaneForge"
+                },
+                "void-shielded workshop": {
+                  "placementItem": "VoidShieldedWorkshop"
+                },
+                "waystone": {
+                  "placementItem": "Waystone"
+                },
+                "hearth": {
+                  "placementItem": "Hearth"
+                },
+                "bed": {
+                  "placementItem": "Bed"
+                },
+                "chest": {
+                  "placementItem": "Chest"
+                },
+                "door": {
+                  "placementItem": "Door"
+                }
+              }
+            }
+          }
+        },
+        "relations": {},
+        "behaviors": {
+          "place": {
+            "name": "place",
+            "description": "Place the station item in the selected hotbar slot at the aimed spot",
+            "rules": [
+              "The host consumes one placement item and refuses without it",
+              "The rotation travels with the request"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          },
+          "pickUp": {
+            "name": "pickUp",
+            "description": "Pick a placed station up again",
+            "rules": [
+              "Only its owner, within reach",
+              "The item goes back to the owner's pack",
+              "A chest spills what it holds"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
         "pii": [],
         "gdpr": {}
       },

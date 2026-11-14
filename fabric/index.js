@@ -37,6 +37,7 @@ const newcomer     = require('./gameplay/newcomer_grounds')
 const clan         = require('./gameplay/clan')
 const structure    = require('./gameplay/structure')
 const chests       = require('./gameplay/chests')
+const stations     = require('./gameplay/stations')
 const writing      = require('./gameplay/writing')
 
 // Phase 125 — the travel cost must name a real item; throwing fails `npm run validate`.
@@ -63,6 +64,7 @@ work.validateWork(work.workData(), work.workRefs())
 workTimes.validateWorkTimes(workTimes.workTimesData(), workTimes.workTimesRefs()) // Phase 259
 stoneTools.validateStoneTools(stoneTools.stoneToolsData(), stoneTools.stoneToolsRefs()) // Phase 260
 newcomer.validateNewcomerGrounds(newcomer.newcomerGroundsData(), newcomer.newcomerGroundsRefs()) // Phase 261
+stations.validateStations(stations.stationsData(), stations.stationsRefs()) // Phase 268
 
 // Phase 129 — the status-effect table must be well formed and every creature's `onHitEffects` must name a defined effect.
 combat.validateCombat(combat.STATUS_EFFECTS, combat.creatureOnHit(creatures), Object.keys(weather.RULES.states))
@@ -270,6 +272,13 @@ module.exports = defineFabric({
       Bed:                      items.Bed,
       Chest:                    items.Chest,
       Door:                     items.Door,
+      CarpentryBench:           items.CarpentryBench,
+      Forge:                    items.Forge,
+      MasonryBench:             items.MasonryBench,
+      AlchemyBench:             items.AlchemyBench,
+      MasterForge:              items.MasterForge,
+      ArcaneForge:              items.ArcaneForge,
+      VoidShieldedWorkshop:     items.VoidShieldedWorkshop,
     },
     // Gameplay — Written books and blueprints, one per thing that can be written (Phase 209)
     Object.fromEntries(Object.keys(writing.WRITING_ITEMS).map((k) => [k, items[k]])),
@@ -312,6 +321,13 @@ module.exports = defineFabric({
       RecipeStoneShovel:               recipes.RecipeStoneShovel,
       RecipeStoneKnife:                recipes.RecipeStoneKnife,
       RecipeStoneHammer:               recipes.RecipeStoneHammer,
+      RecipeCarpentryBench:            recipes.RecipeCarpentryBench,
+      RecipeForge:                     recipes.RecipeForge,
+      RecipeMasonryBench:              recipes.RecipeMasonryBench,
+      RecipeAlchemyBench:              recipes.RecipeAlchemyBench,
+      RecipeMasterForge:               recipes.RecipeMasterForge,
+      RecipeArcaneForge:               recipes.RecipeArcaneForge,
+      RecipeVoidShieldedWorkshop:      recipes.RecipeVoidShieldedWorkshop,
     },
     // Gameplay — Technology
     {
@@ -354,6 +370,7 @@ module.exports = defineFabric({
       WorkTimes:           workTimes.WorkTimes,
       StoneTools:          stoneTools.StoneTools,
       NewcomerGrounds:     newcomer.NewcomerGrounds,
+      StationPlacement:    stations.StationPlacement,
     },
     // World — Creatures
     {

@@ -24,6 +24,7 @@ Foundational metalworking knowledge. Unlocks the forge structure, ferrite smelti
 
 | Name | Kind | Target |
 | ---- | ---- | ------ |
+| unlocksRecipeForge | hasOne | [RecipeForge](recipeforge.md) |
 | unlocksRecipeFerriteIngot | hasOne | [RecipeFerriteIngot](recipeferriteingot.md) |
 | unlocksRecipeFerriteShortSword | hasOne | [RecipeFerriteShortSword](recipeferriteshortsword.md) |
 | unlocksRecipeFerritePick | hasOne | [RecipeFerritePick](recipeferritepick.md) |

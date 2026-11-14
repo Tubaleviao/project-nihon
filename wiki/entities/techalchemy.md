@@ -24,6 +24,7 @@ Basic alchemical knowledge. Unlocks the alchemy bench and foundational potion re
 
 | Name | Kind | Target |
 | ---- | ---- | ------ |
+| unlocksRecipeAlchemyBench | hasOne | [RecipeAlchemyBench](recipealchemybench.md) |
 | unlocksRecipeHealthPotion | hasOne | [RecipeHealthPotion](recipehealthpotion.md) |
 | unlocksRecipeStaminaPotion | hasOne | [RecipeStaminaPotion](recipestaminapotion.md) |
 

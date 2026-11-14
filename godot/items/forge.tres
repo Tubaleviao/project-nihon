@@ -1,0 +1,17 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/items/forge.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+condition = 0
+weight = 40.0
+rarity = 0
+stackable = false
+shape = {"archetype":"hearth","parts":{"base":"Ashite","fuel":"Thornwood"},"scale":1}
+durability = 400
+state_machine_field = "condition"
+initial_state = "pristine"
+description = "A stone hearth with a plank bellows, hot enough to smelt ferrite. Placed from the hotbar as a forge station; its owner can pick it up again."
+tags = ["item", "station"]

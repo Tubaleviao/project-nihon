@@ -1,5 +1,38 @@
 const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine, itemShape } = require('./shared')
 
+// Phase 268 — a crafting station is an item too: crafted, carried in the pack and placed from the hotbar as its
+// station type (StationPlacement in gameplay/stations.js). Picking a placed one up gives the item back.
+function stationItem({ type, description, goal, weight, archetype, parts, relations }) {
+  return defineEntity({
+    tags: ['item', 'station'],
+    description: `${description} Placed from the hotbar as a ${type} station; its owner can pick it up again.`,
+    goal,
+    fields: {
+      id:        { type: 'uuid', primaryKey: true },
+      condition: { type: 'enum', values: DURABILITY_STATES },
+      weight:    { type: 'decimal', description: `kg per ${type}`, defaultValue: weight },
+      rarity:    { type: 'enum', values: RARITIES, defaultValue: 'common' },
+      stackable: { type: 'boolean', description: `False; one ${type} per slot`, defaultValue: false },
+      shape: itemShape({ archetype, parts }),
+      durability: { type: 'integer', description: 'Structural integrity', defaultValue: 400 },
+    },
+    relations: Object.fromEntries(relations.map((m) => [m.toLowerCase(), { name: m.toLowerCase(), kind: 'hasOne', target: m }])),
+    stateMachine: itemStateMachine(),
+    behaviors: {
+      degrade: {
+        description: `A ${type} does not wear while carried`,
+        rules: [`Normal inventory storage never degrades a ${type}`],
+        auth: { roles: ['maintainer'] },
+      },
+      repair: {
+        description: `Re-join a worn ${type} at a carpentry bench`,
+        rules: ['Requires a carpentry bench; no additional materials consumed'],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  })
+}
+
 module.exports = {
 
   // ─── Bed ──────────────────────────────────────────────────────────────────
@@ -107,5 +140,42 @@ module.exports = {
         auth: { roles: ['maintainer'] },
       },
     },
+  }),
+
+  // ─── Crafting stations (Phase 268) ─────────────────────────────────────────
+  CarpentryBench: stationItem({
+    type: 'carpentry bench', weight: 20.0, archetype: 'chest', parts: { box: 'Thornwood', band: 'Ashite' }, relations: ['Thornwood', 'Ashite'],
+    description: 'A work top of lashed branches on stone feet, where logs become planks.',
+    goal: 'The first station: made by hand from what the newcomer grounds give (Phase 268)',
+  }),
+  Forge: stationItem({
+    type: 'forge', weight: 40.0, archetype: 'hearth', parts: { base: 'Ashite', fuel: 'Thornwood' }, relations: ['Ashite', 'Thornwood'],
+    description: 'A stone hearth with a plank bellows, hot enough to smelt ferrite.',
+    goal: 'The smithing station, built at a carpentry bench (Phase 268)',
+  }),
+  MasonryBench: stationItem({
+    type: 'masonry bench', weight: 30.0, archetype: 'chest', parts: { box: 'Ashite', band: 'Thornwood' }, relations: ['Ashite', 'Thornwood'],
+    description: 'A stone slab on a plank frame for cutting blocks and mixing cement.',
+    goal: 'The masonry station, built at a carpentry bench (Phase 268)',
+  }),
+  AlchemyBench: stationItem({
+    type: 'alchemy bench', weight: 18.0, archetype: 'chest', parts: { box: 'Thornwood', band: 'Aethermite' }, relations: ['Thornwood', 'Aethermite'],
+    description: 'A plank table set with aethermite-lined bowls for brewing.',
+    goal: 'The alchemy station, built at a carpentry bench (Phase 268)',
+  }),
+  MasterForge: stationItem({
+    type: 'master forge', weight: 60.0, archetype: 'hearth', parts: { base: 'Ferrite', fuel: 'Ashite' }, relations: ['Ferrite', 'Ashite'],
+    description: 'A ferrite-clad forge on cut stone that holds the heat veilsteel needs.',
+    goal: 'The master smithing station, built at a forge (Phase 268)',
+  }),
+  ArcaneForge: stationItem({
+    type: 'arcane forge', weight: 50.0, archetype: 'hearth', parts: { base: 'Ferrite', fuel: 'Aethermite' }, relations: ['Ferrite', 'Aethermite'],
+    description: 'A ferrite forge fed with aethermite, for binding magic into metal.',
+    goal: 'The arcane forging station, built at a forge (Phase 268)',
+  }),
+  VoidShieldedWorkshop: stationItem({
+    type: 'void-shielded workshop', weight: 70.0, archetype: 'chest', parts: { box: 'Veilsteel', band: 'Voidite' }, relations: ['Veilsteel', 'Voidite'],
+    description: 'A veilsteel cabinet lined with refined voidite, shielded for void work.',
+    goal: 'The void smithing station, built at an arcane forge (Phase 268)',
   }),
 }

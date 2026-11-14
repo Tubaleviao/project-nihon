@@ -225,7 +225,7 @@ func _test_item_shapes_in_gamedata() -> void:
 	const ARCHETYPES := ["pick", "axe", "sword", "longsword", "knife", "saw", "bow", "shield", "helmet", "chestplate",
 		"cloak", "ingot", "shard", "dust", "plank", "block", "orb", "tablet", "potion", "rations",
 		"hearth", "waystone", "bed", "chest", "door", "lockpick", "shovel", "hammer", "stick", "pebble"]
-	assert_eq(GameData.ITEMS.size(), 58, "GameData.ITEMS holds 58 items (Phase 209: 15 books and blueprints; Phase 212: Cement and 3 books; Phase 260: 2 inputs and 5 stone tools)")
+	assert_eq(GameData.ITEMS.size(), 73, "GameData.ITEMS holds 73 items (Phase 209: 15 books and blueprints; Phase 212: Cement and 3 books; Phase 260: 2 inputs and 5 stone tools; Phase 268: 7 stations and 8 blueprints)")
 	for item_id in GameData.ITEMS:
 		var shape: Dictionary = GameData.ITEMS[item_id].shape
 		assert_true(not shape.is_empty(), "%s has a shape" % item_id)

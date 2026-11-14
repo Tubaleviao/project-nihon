@@ -15,7 +15,10 @@ const WRITING = {
 // a trade or a drop carries like any other. The validator checks the list covers every technology, station
 // recipe and project and nothing else.
 const TECHNOLOGIES = ['TechBasicSmithing', 'TechMasterForge', 'TechBasicCarpentry', 'TechTextileWeaving', 'TechArcaneForging', 'TechAlchemy', 'TechVoidMastery', 'TechConcrete', 'TechSteel', 'TechLeyframe']
-const STATION_RECIPES = ['RecipeBed', 'RecipeChest', 'RecipeDoor', 'RecipeHearth']
+const STATION_RECIPES = ['RecipeBed', 'RecipeChest', 'RecipeDoor', 'RecipeHearth',
+  // Phase 268 — every station is an item now, so each station's recipe can be written down too.
+  'RecipeWaystone', 'RecipeCarpentryBench', 'RecipeForge', 'RecipeMasonryBench', 'RecipeAlchemyBench',
+  'RecipeMasterForge', 'RecipeArcaneForge', 'RecipeVoidShieldedWorkshop']
 const PROJECTS = ['palisade', 'storehouse', 'workshop', 'watchtower']
 const capital = (k) => k.charAt(0).toUpperCase() + k.slice(1)
 const WRITING_ITEMS = Object.fromEntries([
