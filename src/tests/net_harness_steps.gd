@@ -258,24 +258,22 @@ func menu_join(h: Node) -> void:
 		"joined-from-menu" if exited and code == 0 else "spawned%d-exit%d" % [int(pid > 0), code])
 
 ## Phase 261 — a client picks up a loose item and the host (and so every peer) sees it gone. Both sides name the same
-## item (placement is a pure function of the seed and the tile); the client stands beside it and asks to pick it up.
+## item (placement is a pure function of the seed and the tile); the client (which stands near the rendezvous, within the host's edit reach of it) asks to pick it up.
 ## The host must see it taken, the client must hold it, and an immediate second pick of it is refused.
 func loose_pick_synced(h: Node) -> void:
 	var loose: Node = h._root._loose
 	var from := Vector2(h.RENDEZVOUS.x, h.RENDEZVOUS.z)
-	var items: Array = loose.items_near(from, 300.0)
+	var items: Array = loose.items_near(from, 40.0)
 	if items.is_empty():
 		h._report("loose_pick_synced", "fail", "no_item")
 		return
 	var it: Dictionary = items[0]
 	var id: String = str(it["id"])
-	var xz: Vector2 = it["xz"]
 	if h._role == "host":
 		var taken: bool = await h._await_until(func(): return loose.is_taken(id), h._step_timeout() * 3.0)
 		h._report("loose_pick_synced", h.verdict(taken, true), id if taken else "never_taken")
 		return
-	h._root._player.spawn_at(Vector3(xz.x, float(loose.height_fn.call(xz)) + 2.0, xz.y))
-	await h._await_settle(1.5 * h._time_scale)
+	await h._await_settle(1.0 * h._time_scale)
 	var before: int = h._root._inventory.get_item_count(str(it["kind"]))
 	GameBus.loose_pick_requested.emit(id, "")
 	var gone: bool = await h._await_until(func(): return loose.is_taken(id) and h._root._inventory.get_item_count(str(it["kind"])) > before, h._step_timeout() * 3.0)
