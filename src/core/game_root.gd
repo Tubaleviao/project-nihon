@@ -72,6 +72,7 @@ const SnapshotWiring := preload("res://src/persistence/snapshot_wiring.gd")
 const PersistenceWiring := preload("res://src/persistence/persistence_wiring.gd")
 const AdminWiring := preload("res://src/admin/admin_wiring.gd")
 const MenuWiring := preload("res://src/menu/menu_wiring.gd")
+const WorkWiring := preload("res://src/core/work_wiring.gd")
 ## Phase 132 — per-system wiring modules (see `src/core/wiring.gd`), wired in this fixed order.
 var _wirings: Array = []
 var _boot_wiring := BootWiring.new()
@@ -79,7 +80,7 @@ var _combat_wiring := CombatWiring.new()
 var _weather_wiring := WeatherWiring.new()
 var _waystone_wiring := WaystoneWiring.new()
 var _bed_wiring := BedWiring.new()
-var _work_wiring := preload("res://src/core/work_wiring.gd").new()   # Phase 259
+var _work_wiring := WorkWiring.new()   # Phase 259
 var _tutorial_wiring := TutorialWiring.new()
 var _settlement_wiring := SettlementWiring.new()
 var _clan_wiring := ClanWiring.new()
@@ -298,7 +299,6 @@ func _ready() -> void:
 func _build_and_boot() -> void:
 	# Phase 33 — intercept the quit so records are written first.
 	_boot_wiring.install_quit_guard()
-
 	_terrain     = TerrainSlice.new()
 	_voxel       = VoxelSlice.new()
 	_chunk_manager = ChunkManager.new()

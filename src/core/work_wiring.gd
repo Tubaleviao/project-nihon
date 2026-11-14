@@ -10,7 +10,8 @@ var host := WorkHost.new()
 func _connect_all() -> void:
 	host.tree_slice = root._tree
 	host.voxel_slice = root._voxel
-	root._networking.set_meta("work_host", host)
+	if root._networking != null:
+		root._networking.set_meta("work_host", host)
 	connect_bus(GameBus.work_start_requested, _on_start)
 	connect_bus(GameBus.work_cancel_requested, _on_cancel)
 	connect_bus(GameBus.player_damaged, _on_damaged)
@@ -19,7 +20,7 @@ func _on_start(kind: String, tree_id: String, position: Vector3, normal: Vector3
 	if root._is_client:
 		# The host binds the actor to the connection and answers with a `work_started` packet.
 		var net := root._networking
-		var packet := { "type": "work_start_intent", "kind": kind, "tree_id": tree_id, "normal": [normal.x, normal.y, normal.z] }
+		var packet := { "type": "work_start_intent", "work": kind, "tree_id": tree_id, "normal": [normal.x, normal.y, normal.z] }
 		if net._is_exact_pos(exact) and net.WorldPos.is_plausible_pos(exact):
 			packet["pk"] = net.WorldPos.pos_to_packet_text(exact)
 		else:

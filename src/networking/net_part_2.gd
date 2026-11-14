@@ -853,7 +853,7 @@ func _work_intent(sender: int, payload: Dictionary) -> void:
 	if str(payload.get("type", "")) == "work_cancel_intent":
 		host.cancel(actor)
 		return
-	var kind := str(payload.get("kind", ""))
+	var kind := str(payload.get("work", ""))
 	var tree_id := str(payload.get("tree_id", ""))
 	var pos := Vector3.ZERO
 	var exact := {}
