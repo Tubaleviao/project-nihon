@@ -210,6 +210,10 @@ func _first_hour_items(kit: Variant = null, extra: Array = []) -> Dictionary:
 			var res: Resource = GameData.TECHNOLOGIES[key]
 			var tech: Dictionary = res.get("tech")
 			var ok: bool = int(res.get("researchCost")) == 0
+			# Phase 260 — a discovery technology is known once its recipes' inputs have been held.
+			if bool(tech.get("discovery", false)):
+				for item in TechnologySlice.discovery_inputs(str(key)):
+					ok = ok and have.has(str(item))
 			for r in tech.get("requires", []):
 				ok = ok and known.has(str(r))
 			for m in tech.get("researchMaterials", []):
@@ -249,7 +253,7 @@ func _has_axe(have: Dictionary) -> bool:
 func _test_stone_tools_first_hour() -> void:
 	var have := _first_hour_items([], ["Branch", "LooseStone"])
 	var tools: Array = GameData.WORLD_SYSTEMS["StoneTools"].get("tools")
-	assert_eq(tools.size(), 4, "four stone tools")
+	assert_eq(tools.size(), 5, "five stone tools")
 	for tool in tools:
 		assert_true(have.has(str(tool)), "%s is reachable from an empty kit" % tool)
 	assert_true(have.has("Thornwood"), "the stone axe reaches wood")

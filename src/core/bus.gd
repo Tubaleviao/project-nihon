@@ -548,6 +548,12 @@ signal research_resolved(result: Dictionary)
 ## tech_id   : String — key from GameData.TECHNOLOGIES
 ## player_id : String — whose tree gained the technology
 signal technology_unlocked(tech_id: String, player_id: String)
+## Phase 260 — a pack gained an item (`owner_id` as `InventorySlice.owner_id`: "" is this machine's player).
+## The host's technology slice remembers discovery inputs from it.
+signal item_obtained(owner_id: String, item_id: String)
+## Phase 260 — a player's technology record changed without a research result (a discovery input first held):
+## the host folds it into the record and pushes it to the owner.
+signal technology_record_changed(player_id: String)
 
 # ---------------------------------------------------------------------------
 # Trees (Phase 31)

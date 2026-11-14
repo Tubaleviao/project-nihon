@@ -599,3 +599,12 @@ func close_pause_menu() -> void:
 func _on_pause_choice(intent: Signal) -> void:
 	close_pause_menu()
 	intent.emit()
+
+## Phase 260 — a host notice (`notice.*`, e.g. a technology discovered) for this machine's player is also shown
+## as a toast balloon, rendered from its key in the local locale; the chat keeps its line.
+func on_system_notice(key: String, args: Array, target_id: String) -> void:
+	if not key.begins_with("notice."):
+		return
+	if target_id != "" and not sl._belongs_to_local_player({ "player_id": target_id }):
+		return
+	sl.push_toast(sl.I18n.render(sl.I18n.sanitize_msg(key, args)))

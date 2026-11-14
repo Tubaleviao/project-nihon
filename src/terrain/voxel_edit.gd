@@ -269,6 +269,12 @@ func place_block(world_pos: Vector3, normal: Vector3, material: String = "", pla
 			return false
 
 	var inventory = s.inventory_for(player_id)
+	# Phase 260 — a builder holds the fabric's build tool (a hammer) to place a block; a station (a bench) is
+	# placed through the station path and needs none. Holding it does not wear it.
+	var build_tool := build_tool_class()
+	if build_tool != "" and inventory != null and inventory.has_method("find_tool") and str(inventory.find_tool(build_tool)) == "":
+		GameBus.structure_resolved.emit(str(plan.get("player_id", player_id)), "place", false, "%s_required" % build_tool)
+		return false
 	if inventory != null and inventory.has_method("drop_item"):
 		if not inventory.drop_item(chosen, 1):
 			return false
@@ -824,6 +830,12 @@ func _held_axe(inventory: Node) -> String:
 	if inventory == null or not inventory.has_method("find_tool"):
 		return ""
 	return str(inventory.find_tool("axe"))
+
+## Phase 260 — the tool class a builder must hold to place a block (fabric `Structure.buildTool`), "" for none.
+static func build_tool_class() -> String:
+	var res: Resource = GameData.WORLD_SYSTEMS.get("Structure", null)
+	var v: Variant = res.get("buildTool") if res != null else null
+	return str(v) if v != null else ""
 
 ## Phase 260 — the held shovel's item id, or "" when `inventory` holds none.
 func _held_shovel(inventory: Node) -> String:

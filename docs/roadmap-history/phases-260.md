@@ -28,20 +28,30 @@ from the starting kit. A newcomer makes simple tools on the spot instead.
 - Every new string is in both locales.
 
 **Implementation notes**
-- Fabric: items `Branch`, `LooseStone` and `StoneAxe`, `StonePick`, `StoneShovel`, `StoneKnife`
-  (`fabric/gameplay/items/primitive.js`, new `shovel`, `stick` and `pebble` shape archetypes); their
-  recipes (`recipes/primitive.js`, station `""`, Carpentry novice); `TechStoneTools`, an **innate**
-  technology (`tech.innate: true`: no cost, no materials, no prerequisite, no book) seeded unlocked
-  for every player by `TechnologySlice`, which a restored snapshot cannot lock. No `StoneHammer`:
-  building needs no tool. A `StoneTools` world system names the tools and the input yields
-  (`fellBranches` 2, `looseStoneChance` 0.25); `tools/check_stone_tools.js` proves its validator
-  rejects a station, a research cost, a prerequisite, materials, a non-innate technology, other
-  inputs and a non-novice guard. Stone tools work at speed 0.6 in `WorkTimes`.
+- Fabric: items `Branch`, `LooseStone` and `StoneAxe`, `StonePick`, `StoneShovel`, `StoneKnife`,
+  `StoneHammer` (`fabric/gameplay/items/primitive.js`, new `shovel`, `hammer`, `stick` and `pebble`
+  shape archetypes); their recipes (`recipes/primitive.js`, station `""`, Carpentry novice) and
+  repairs (by hand, one loose stone). Only stone tools skip the bench: every other tool is crafted
+  and repaired at a station, which the `StoneTools` validator enforces.
+- `TechStoneTools` is a **discovery** technology (`tech.discovery: true`; no cost, materials,
+  prerequisite or book). Owner decision (2026-11-14): it is known once the player has held every
+  input of its recipes, each at some time, not necessarily together (stones, dropped, then a branch
+  later still discovers it). The host's `TechnologySlice.note_obtained` reads `GameBus.item_obtained`
+  (emitted by `InventorySlice.add_item`), remembers the held inputs under the `_seen` snapshot key,
+  unlocks, and sends the keyed `notice.tech_discovered` system message naming the technology and what
+  it makes; the UI shows `notice.*` lines as a toast balloon. Any discovery technology works this way.
+- Building: placing a block needs a held tool of `Structure.buildTool` (`hammer`), refused with
+  `structure.refused.hammer_required`; holding it does not wear it. Placing a station (a bench) needs
+  none. The starting kit carries a `StoneHammer` until Phase 262 empties it.
+- `StoneTools` world system: the tool list and the input yields (`fellBranches` 2,
+  `looseStoneChance` 0.25); `tools/check_stone_tools.js` proves its validator rejects a station, a
+  research cost, a prerequisite, materials, a non-discovery technology, other inputs, a non-novice
+  guard, a forged tool made or repaired without a bench and a build tool no stone tool provides.
+  Stone tools work at speed 0.6 in `WorkTimes`.
 - `voxel_edit.gd` reads the natural yield before spending wear: ground the table digs (soil, sand)
   wears a held shovel instead of the pick; natural host rock knocks a loose stone loose when
   `StoneTools.loose_stone_at(tile, bottom)` (a hash of the span's position) says so. A felled tree
   drops its branches beside the wood (`tree_slice.gd`).
-- `InventorySlice.find_tool` returns the fastest held tool of a class (`WorkTimes.toolSpeeds`), so a
-  forged pick is used as soon as it is in the pack.
+- `InventorySlice.find_tool` returns the fastest held tool of a class (`WorkTimes.toolSpeeds`).
 - Tests: `stone_tools_tests.gd`, and `tutorial_tests.gd` `_first_hour_items(kit, extra)` reaches
-  every stone tool from an empty kit with only loose stones and branches. No new UI strings.
+  every stone tool from an empty kit with only loose stones and branches.

@@ -281,6 +281,7 @@ func add_item(item_id: String, quantity: int, durabilities: Array = [], quality:
 	_current_weight += add_weight
 	_is_full = false
 	GameBus.inventory_changed.emit()
+	GameBus.item_obtained.emit(owner_id, item_id)   # Phase 260 — a discovery input held counts
 	return true
 
 ## Consume a { item_id: quantity } map atomically: returns true only if the

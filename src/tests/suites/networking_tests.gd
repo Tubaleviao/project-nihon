@@ -697,6 +697,7 @@ func _test_net_remote_place_spends_the_actor() -> void:
 
 	var peer_inv: Node = reg.get_inventory(peer_pid)
 	peer_inv.add_item("Ashite", 2)
+	peer_inv.add_item("StoneHammer", 1)   # Phase 260 — building needs a hammer in hand
 
 	var placed: Array = []
 	var on_placed := func(material: String, _pos: Vector3) -> void:
