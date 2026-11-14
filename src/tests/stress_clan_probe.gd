@@ -25,6 +25,11 @@ const LOOSE_LISTED := 12
 const LOOSE_RADIUS := 120.0
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const CLAN_NAME_ARG := "--stress-clan-name"
+## Phase 262 — the starting kit is empty, and the clan scenario's chop and build beats need an axe and a hammer.
+## This probe exists only on a `--server --stress-host --stress-clan` boot, so it is a test-only path no real
+## play can reach: each bot, once its character is created, gets the tools the pre-262 kit gave, and (Phase 268,
+## stations cost their item) the bench and the forge the chest chain sets down.
+const BOT_TOOLS := [["CarpenterAxe", 1], ["StoneHammer", 1], ["CarpentryBench", 1], ["Forge", 1]]
 
 var out_path := ""
 var stop_path := ""
@@ -48,6 +53,8 @@ var _private_seen := false
 var _private_gone := false
 var _written := false
 var _last_full: Dictionary = {}
+## Player ids already given BOT_TOOLS.
+var _equipped: Dictionary = {}
 
 static func attach(root: Node) -> void:
 	var args := Array(OS.get_cmdline_user_args())
@@ -86,6 +93,7 @@ func _process(delta: float) -> void:
 	if _poll < POLL_S:
 		return
 	_poll = 0.0
+	_give_bot_tools()
 	var world := world_record()
 	_note(world)
 	# Once the bots leave their pack and skill records go; the final record is the last one with every member's skills.
@@ -96,6 +104,21 @@ func _process(delta: float) -> void:
 	if stop_path != "" and FileAccess.file_exists(stop_path) and not _written:
 		_written = true
 		_write(out_path, { "world": _last_full if not _last_full.is_empty() else world, "seen": _seen, "refusals": _refusals })
+
+## Test-only: every connected, created bot gets BOT_TOOLS once, mirrored to its client like any pack change.
+func _give_bot_tools() -> void:
+	var reg: Node = _root._registry
+	for peer: Variant in reg.get_bound_peer_ids():
+		var pid := str(reg._peer_ids.get(peer, ""))
+		if pid == "" or _equipped.has(pid) or str(reg.creation_of(pid).get("state", "")) != "created":
+			continue
+		var inv: Node = reg.get_inventory(pid)
+		if inv == null:
+			continue
+		_equipped[pid] = true
+		for t: Array in BOT_TOOLS:
+			inv.add_item(str(t[0]), int(t[1]))
+		GameBus.inventory_synced.emit(pid, inv.get_contents(), inv.get_durability_data())
 
 func _note(world: Dictionary) -> void:
 	var flags := {

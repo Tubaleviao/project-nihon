@@ -75,7 +75,7 @@ func run() -> void:
 	_beat("join", "5 of 5 bots hold a join snapshot" if ready else "bots without a join snapshot", ready)
 	if not ready:
 		return _finish()
-	# Every bot creates its character (the starting kit: tools to chop and mine with).
+	# Every bot creates its character. Phase 262: the kit is empty; the host probe (test-only) hands each bot an axe and a hammer.
 	for i in range(bots.size()):
 		_slice(i).send_create("Stressbot" + char(97 + i))
 		await get_tree().create_timer(0.2).timeout
