@@ -564,7 +564,6 @@ func _ready() -> void:
 	GameBus.chest_resolved.connect(func(_p: String, action: String, _ok: bool, reason: String): _chest_results.append([action, reason]))
 	GameBus.writing_resolved.connect(func(_p: String, action: String, item: String, _ok: bool, reason: String): _writing_results.append([action, item, reason]))
 	GameBus.player_respawned.connect(func(_pos: Vector3): _respawns += 1)
-	GameBus.player_damaged.connect(func(d: float, a: String, t: String): print("DBG damaged %.1f by '%s' target %s at %s" % [d, a, t, str(_root._player.get_world_pos())]))
 	GameBus.creature_spawned.connect(func(iid: String, _c: String, _pos: Vector3): _note_spawn(iid))
 	GameBus.creature_respawned.connect(func(iid: String, _c: String): _note_spawn(iid))
 	# Phase 174: the bot's callbacks run first and FrameEnd's last, so the two clocks bracket the frame's
