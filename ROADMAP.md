@@ -1181,13 +1181,13 @@ skills anyone uses sit, with no label.
   kinds of Phase 207 and the recipes, creatures or materials that give it XP), the professions it
   leads to, and the player's focus on it with the bonus it gives now.
 - **Focus:** the host counts, per player and per skill, the **active minutes** in the last
-  `FocusWindow` of play time (fabric, default 10 hours): a minute counts for a skill when the player
+  `FocusWindow` of play time (fabric, default 1 hour): a minute counts for a skill when the player
   earned host-granted XP in that skill during it (one minute can count for several skills). It is
   play time, not wall-clock time: time logged off neither adds focus nor ages it. Minutes older
   than the window drop out.
 - **The dedication bonus:** XP granted in a skill is multiplied by
-  `1 + maxBonus × activeMinutes(skill) / windowMinutes` (fabric, default `maxBonus` 0.25), so ten
-  straight hours on one skill earn +25% in it and five hours earn +12.5%. It is a bonus only: a skill
+  `1 + maxBonus × activeMinutes(skill) / windowMinutes` (fabric, default `maxBonus` 0.25), so one
+  straight hour on one skill earns +25% in it and half an hour earns +12.5%. It is a bonus only: a skill
   with no focus earns the normal rate, never less, so trying something new costs nothing. The host
   applies it once, in `grant_skill_xp`, so every XP source gets it and none gets it twice.
   `grant_skill_xp` takes whole XP and many grants are 1 or 2, so the bonus's fraction is carried per
