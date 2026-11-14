@@ -1,7 +1,7 @@
 const { defineEntity, recipeData } = require('./shared')
 
 // Phase 260 — stone tools are lashed by hand: no station, a novice guard, a branch and a stone or two.
-// The recipe list itself lives in ../stone_tools.js (STONE_TOOL_RECIPES), which the validator reads.
+// The validator (../stone_tools.js) finds them by their outputs: every stone tool has one, and no other tool skips the bench.
 
 function stoneRecipe({ output, branches, stones, description, rule }) {
   return defineEntity({
