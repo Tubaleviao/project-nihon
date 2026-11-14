@@ -1190,6 +1190,9 @@ skills anyone uses sit, with no label.
   straight hours on one skill earn +25% in it and five hours earn +12.5%. It is a bonus only: a skill
   with no focus earns the normal rate, never less, so trying something new costs nothing. The host
   applies it once, in `grant_skill_xp`, so every XP source gets it and none gets it twice.
+  `grant_skill_xp` takes whole XP and many grants are 1 or 2, so the bonus's fraction is carried per
+  player and skill (persisted with focus) and paid when it reaches a whole point, instead of being
+  rounded away.
 - **Display:** the details page and the wheel's centre show focus as shares by skill, grouped by the
   skill categories (combat, crafting, magic, exploration, social, survival), so a player who spent
   the evening forging sees Smithing lead and the Blacksmith side of the wheel light up.
@@ -1201,7 +1204,8 @@ skills anyone uses sit, with no label.
 - Suite tests: the page's level and XP match the skill state; a minute with XP in a skill counts once
   for it; minutes older than the window drop out and time logged off does not age them; the
   multiplier is 1 with no focus, `1 + maxBonus` with a full window on one skill and never below 1; a
-  grant is multiplied exactly once; focus is synced only to its own player; an unlock emits the toast
+  grant is multiplied exactly once; 100 grants of 2 XP at +25% pay exactly 250 XP (the fraction is
+  carried); focus is synced only to its own player; an unlock emits the toast
   that opens its page.
 - Every new string is in both locales.
 
