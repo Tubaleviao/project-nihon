@@ -143,7 +143,6 @@ var _bound_player_id: String = ""
 ## inside `_route_c2h`, and its pass/fail decision is exactly "did GameBus.tree_chop_requested
 ## fire". Counted over the whole run (see `_chop_count`).
 var _chops: Array = []
-## Phase 259 — the duration the host answered a work start with (0 = none yet), read by the client's chop step.
 var _work_dur: float = 0.0
 
 # ---------------------------------------------------------------------------
@@ -602,21 +601,16 @@ func _step_chop_in_reach() -> void:
 	var t := str(targets[0])
 	if _role == "host":
 		var ok: bool = await _await_until(func(): return _chop_count(t) >= 1, _step_timeout() * 2.0)
-		# Phase 259 — the work was timed by the host: the forged early claim was dropped, so exactly one chop landed.
 		await _await_settle(1.0)
-		# The timed-work gate is proven above; the later steps probe the wire with bare chop / mine intents, so the
-		# host stops gating them (the gate itself is the subject of this step only).
+		# The gate is proven here; later steps probe the wire with bare chop intents, so the host stops gating.
 		_root._networking.remove_meta("work_host")
 		_report("chop_in_reach", verdict(ok and _chop_count(t) == 1, true), t if ok and _chop_count(t) == 1 else ("not_consumed" if not ok else "early_claim_accepted"))
 		return
 	_report_position()
 	await _await_settle(1.0)
-	# Phase 259 — hold work on the tree: the host answers with its own duration; a claim before it is forged and
-	# dropped; the real claim goes after the host's time has passed.
 	_work_dur = 0.0
 	GameBus.work_start_requested.emit("tree", t, Vector3.ZERO, Vector3.UP, {}, "")
-	var started: bool = await _await_until(func(): return _work_dur > 0.0, _step_timeout())
-	if not started:
+	if not await _await_until(func(): return _work_dur > 0.0, _step_timeout()):
 		_report("chop_in_reach", "fail", "no_work_started")
 		return
 	GameBus.tree_chop_requested.emit(t, "")   # forged early completion
@@ -628,15 +622,7 @@ func _step_chop_in_reach() -> void:
 ## Step 4 — the reach guard, refusing half: a chop of a tree the peer cannot reach is
 ## dropped, and nothing else about the peer changes.
 func _step_chop_out_of_reach() -> void:
-	# Phase 42 review — the target is drawn from THIS side's own tree table, and on a
-	# freshly-booted world (CI's, or any first run) the client's table is only what its
-	# snapshot seeded: the host streams chunks on a per-frame budget, so a tree beyond
-	# `TARGET_BEYOND` may simply not have arrived yet when the scenario reaches this step.
-	# Reporting `no_distant_tree` at that instant makes the step a race against the
-	# streamer rather than a test of the guard. Wait for the table to carry one, bounded by
-	# `_step_timeout()`, and only then judge the guard. The await is re-derived rather
-	# than captured: a GDScript lambda snapshots its captures by value, so a `t` assigned
-	# inside the predicate would not be visible here.
+	# Phase 42 review — wait (bounded) for this side's own table to carry a distant tree before judging the guard.
 	var found: bool = await _await_until(
 		func(): return beyond_reach_target(_trees(), RENDEZVOUS, TARGET_BEYOND) != "",
 		_step_timeout())
