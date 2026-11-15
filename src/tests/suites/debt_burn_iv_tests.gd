@@ -129,7 +129,7 @@ func _test_waystone_needs_item() -> void:
 	assert_eq(st.try_place_station("waystone", Vector3(0.5, 1.0, 0.5), inv), "", "and nothing is placed")
 	assert_true(inv.add_item("Waystone", 1), "stock a stone")
 	assert_eq(st.place_refusal("waystone", Vector3(0.5, 1.0, 0.5), inv), "", "with the item there is no refusal")
-	assert_eq(st.place_refusal("forge", Vector3(9.5, 1.0, 9.5)), "", "a forge needs no item")
+	assert_eq(st.place_refusal("forge", Vector3(9.5, 1.0, 9.5)), "no_placement_item:Forge", "Phase 268: a forge needs its item too")
 	_free_waystone_rig(rig)
 
 

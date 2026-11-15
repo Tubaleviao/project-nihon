@@ -28,6 +28,7 @@ const VoxelSlice := preload("res://src/terrain/voxel_slice.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const WaystoneSlice := preload("res://src/world/waystone_slice.gd")
+const StationRules := preload("res://src/world/station_rules.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
 const Horizon := preload("res://src/terrain/horizon.gd")
 const DistantTerrain := preload("res://src/terrain/distant_terrain.gd")
@@ -1369,19 +1370,31 @@ func _tap(keycode: Key) -> void:
 	_key(keycode, true)
 	_key(keycode, false)
 
-## Place `station_type` with the player's own keys: B cycles the selection, V places it at the feet.
-## Returns the number of stations placed (0 when refused).
+## Place `station_type` from the hotbar as a player does (Phase 268): its station item goes in the first box (the
+## bot's kit holds one, as a crafted one would), key 1 selects it, the ghost follows the aim and a left click over
+## the view asks the host to place it. Returns the number of stations placed (0 when refused).
 func _place_with_keys(station_type: String) -> int:
-	var station = _root._station
-	for _i in range(32):
-		if station.get_place_station_type() == station_type:
-			break
-		_tap(KEY_B)
-		await get_tree().process_frame
-	if station.get_place_station_type() != station_type:
+	var item := StationRules.placement_item(station_type)
+	if item == "":
+		return 0
+	if int(_root._inventory.get_item_count(item)) < 1:
+		_root._inventory.add_item(item, 1)
+	var ui: Node = _root._ui
+	ui.hotbar.assign(0, item)
+	_tap(KEY_1)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if _root._player._station_placer.item != item:
 		return 0
 	var before := _placed.size()
-	_tap(KEY_V)
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	click.position = get_viewport().get_visible_rect().size * 0.5
+	Input.parse_input_event(click)
+	var release := click.duplicate()
+	release.pressed = false
+	Input.parse_input_event(release)
 	await _until(func(): return _placed.size() > before, 2.0)
 	return _placed.size() - before
 
@@ -1510,7 +1523,7 @@ func _step_character_sheet() -> Array:
 	var ok := seen.size() > 3
 	return [ok, "%d attributes, %d slots, doll viewport %d colours" % [attrs, slots, seen.size()]]
 
-## Place a station with the player's own keys, a few metres from the bench so the two do not overlap.
+## Place a forge from the hotbar (Phase 268), a few metres from the bench so the two do not overlap.
 func _step_place() -> Array:
 	var placed := 0
 	for attempt in range(3):

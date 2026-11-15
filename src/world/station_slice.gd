@@ -24,12 +24,15 @@ extends Node
 ##   nearest_station(pos, type, radius) -> String    ("" if none in radius)
 ##   station_near_player(type, radius)  -> bool
 ##   placeable_station_types()          -> Array     (fabric-derived, sorted)
-##   get_place_station_type()           -> String    (current placement selection)
-##   cycle_station_type()               -> String    (advance the selection)
+##   placement_item(type)               -> String    (Phase 268: every type's StationPlacement item)
+##
+## Phase 268 — a station is placed from the hotbar (`StationPlacer` -> `station_intent` -> `StationWiring` on the
+## host). Each placed station keeps its `owner` (the placer, "" for a village's) and its `rotation` (quarter turns).
 
 ## Set by game_root so station_near_player can resolve the player's position.
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const ChestRules := preload("res://src/world/chest_rules.gd")
+const StationRules := preload("res://src/world/station_rules.gd")
 
 var player_slice: Node = null
 
@@ -56,18 +59,13 @@ func scene_offset() -> Vector3:
 	return _origin.value
 var _next_id: int = 0
 
-## Phase 185 — set on a client: `(type, target) -> bool`, true when the host places that type on the
-## client's behalf (the bed), so nothing is placed locally.
-var remote_placer: Callable = Callable()
-
-func place_remote(type: String, target: Vector3) -> bool:
-	return remote_placer.is_valid() and bool(remote_placer.call(type, target))
-
 ## Visual markers keyed by station id (MeshInstance3D).
 var _markers: Dictionary = {}
 
-## Currently selected station type for placement (cycled via cycle_station_type).
-var _place_type: String = ""
+## Phase 268 — the owner and rotation the next `place_station` gives its station when its caller names none (a
+## chest, door or bed placed on a player's behalf through its own path). Set and cleared by `StationWiring`.
+var placing_owner: String = ""
+var placing_rotation: int = 0
 
 ## Translucent placement ghost (lazily built; null until the first preview).
 var _preview: MeshInstance3D = null
@@ -129,6 +127,9 @@ func _compute_placeable_station_types() -> Array:
 	# Phase 208 — and the chest and the door (ChestsAndDoors.stations).
 	for t: String in ChestRules.station_types():
 		types[t] = true
+	# Phase 268 — and every type the station placement table names.
+	for t: String in StationRules.station_types():
+		types[t] = true
 	var out: Array = types.keys()
 	out.sort()
 	return out
@@ -140,31 +141,13 @@ static func _bed_rules() -> Dictionary:
 		return {}
 	return res.get("rules")
 
-## The currently selected station type for placement, lazily initialised to the
-## first fabric-derived type. Returns "" when no station type exists.
-func get_place_station_type() -> String:
-	if _place_type == "":
-		var types := placeable_station_types()
-		if not types.is_empty():
-			_place_type = str(types[0])
-	return _place_type
-
-## Advance the placement selection to the next fabric-derived station type.
-func cycle_station_type() -> String:
-	var types := placeable_station_types()
-	if types.is_empty():
-		_place_type = ""
-	else:
-		var idx: int = types.find(_place_type)
-		idx = (idx + 1) % types.size()
-		_place_type = str(types[idx])
-	return _place_type
-
-## Place a station of `type` at `position`; returns its unique id.
-func place_station(type: String, position: Vector3) -> String:
+## Place a station of `type` at `position`; returns its unique id. Its owner and rotation are `placing_owner` and
+## `placing_rotation` (Phase 268) unless named.
+func place_station(type: String, position: Vector3, owner: String = "", rotation: int = -1) -> String:
 	var id := "station_%d" % _next_id
 	_next_id += 1
-	_insert_station(id, type, position)
+	_insert_station(id, type, position, owner if owner != "" else placing_owner,
+		StationRules.clean_rotation(rotation if rotation >= 0 else placing_rotation))
 	GameBus.station_placed.emit(id, type, position)
 	return id
 
@@ -219,11 +202,12 @@ func place_refusal(type: String, position: Vector3, inventory: Node = null, play
 		return "no_placement_item:%s" % item
 	return ""
 
-## The item one placement of a `type` station consumes, or "" for a free placement (the fabric's
-## `WaystoneTravel.placementItem` for the waystone type, `BedSpawn.placementItem` for the bed, the
-## `ChestsAndDoors.stations` row's for a chest or door; forges and
-## benches stay free).
+## The item one placement of a `type` station consumes: Phase 268's `StationPlacement` row (every placeable type
+## has one), else the type's own rule (`WaystoneTravel`, `BedSpawn`, the hearth, `ChestsAndDoors`), else "".
 func placement_item(type: String) -> String:
+	var row := StationRules.placement_item(type)
+	if row != "":
+		return row
 	var settle: Resource = GameData.WORLD_SYSTEMS.get("Settlement", null)
 	if settle != null and settle.get("rules") is Dictionary and type == str(settle.get("rules").get("hearthStation", "")):
 		return str(settle.get("rules").get("hearthItem", ""))
@@ -249,14 +233,15 @@ func restore_next_id(n: int) -> void:
 	if n > 0 and n < 1 << 40:
 		_next_id = maxi(_next_id, n)
 
-## Show (or move) the translucent placement ghost at the snapped `position`;
-## green when placeable, red when blocked. No-op without a rendering context.
-func show_preview(type: String, position: Vector3) -> void:
+## Show (or move) the translucent placement ghost at the snapped `position`, turned `rotation` quarter turns;
+## green when `refusal` is "" (placeable), red otherwise. `refusal` "?" asks the slice's own blocker.
+func show_preview(type: String, position: Vector3, rotation: int = 0, refusal: String = "?") -> void:
 	var pos := snap_to_grid(position)
-	var ok := placement_blocker(type, pos) == ""
+	var ok := (placement_blocker(type, pos) if refusal == "?" else refusal) == ""
+	_preview_ok = ok
 	if _preview == null:
 		var mesh := BoxMesh.new()
-		mesh.size = Vector3(1.0, 1.0, 1.0)
+		mesh.size = MARKER_SIZE
 		var mat := StandardMaterial3D.new()
 		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -266,6 +251,8 @@ func show_preview(type: String, position: Vector3) -> void:
 		_preview.name = "StationPreview"
 		add_child(_preview)
 	_preview.position = pos + _origin.value
+	_preview.rotation = Vector3(0.0, rotation * PI * 0.5, 0.0)
+	_preview_pos = pos
 	_preview.visible = true
 	(_preview.material_override as StandardMaterial3D).albedo_color = \
 		Color(0.2, 0.9, 0.3, 0.4) if ok else Color(0.95, 0.2, 0.2, 0.4)
@@ -277,34 +264,57 @@ func hide_preview() -> void:
 func is_preview_visible() -> bool:
 	return _preview != null and _preview.visible
 
+## Where the ghost was last shown (snapped), and whether it was tinted placeable.
+var _preview_pos: Vector3 = Vector3.ZERO
+var _preview_ok: bool = false
+
+func preview_position() -> Vector3:
+	return _preview_pos
+
+func preview_ok() -> bool:
+	return _preview_ok
+
+## A station's marker and ghost: 1 m wide and tall, shallower front to back so its rotation shows.
+const MARKER_SIZE := Vector3(1.0, 1.0, 0.7)
+
 ## Insert a station under a KNOWN id and keep the allocator above it. Used by
 ## apply_station_data so a restored station keeps its saved id rather than being
 ## renumbered by load order.
-func _insert_station(id: String, type: String, position: Vector3) -> void:
-	_stations[id] = { "id": id, "type": type, "position": position }
+func _insert_station(id: String, type: String, position: Vector3, owner: String = "", rotation: int = 0) -> void:
+	_stations[id] = { "id": id, "type": type, "position": position, "owner": owner, "rotation": rotation }
 	var suffix := id.trim_prefix("station_")
 	if suffix.is_valid_int():
 		_next_id = maxi(_next_id, int(suffix) + 1)
-	_add_marker(id, type, position)
+	_add_marker(id, type, position, rotation)
 
 # ---------------------------------------------------------------------------
 # Phase 33 — world-record serialization
 # ---------------------------------------------------------------------------
 
 ## Every placed station as a serializable list of
-## { id, type, position:[x,y,z] }, ordered by id so the payload is stable.
-func get_station_data() -> Array:
+## { id, type, position:[x,y,z], rot, owner? }, ordered by id so the payload is stable. `with_owner` false leaves
+## the owner out (a client's copy: a player id never travels to a client).
+func get_station_data(with_owner: bool = true) -> Array:
 	var out: Array = []
 	for id in _stations:
-		var s: Dictionary = _stations[id]
-		var pos: Vector3 = s["position"]
-		out.append({
-			"id":       str(s["id"]),
-			"type":     str(s["type"]),
-			"position": WorldPos.to_wire(pos),
-		})
+		out.append(station_entry(str(id), with_owner))
 	out.sort_custom(func(a, b): return str(a["id"]) < str(b["id"]))
 	return out
+
+## One station's wire entry (see get_station_data), {} for an unknown id.
+func station_entry(station_id: String, with_owner: bool = true) -> Dictionary:
+	if not _stations.has(station_id):
+		return {}
+	var s: Dictionary = _stations[station_id]
+	var e := {
+		"id":       str(s["id"]),
+		"type":     str(s["type"]),
+		"position": WorldPos.to_wire(s["position"]),
+		"rot":      int(s.get("rotation", 0)),
+	}
+	if with_owner and str(s.get("owner", "")) != "":
+		e["owner"] = str(s["owner"])
+	return e
 
 ## Replace the placed set from a saved payload. The current stations (and their
 ## markers) are dropped first, so a load is authoritative rather than additive.
@@ -325,7 +335,24 @@ func apply_station_data(data: Array) -> void:
 		if id.is_empty():
 			id = "station_%d" % _next_id
 			_next_id += 1
-		_insert_station(id, stype, pos)
+		_insert_station(id, stype, pos, _clean_owner(entry.get("owner", "")), StationRules.clean_rotation(entry.get("rot", 0)))
+
+static func _clean_owner(v: Variant) -> String:
+	return str(v).left(64) if v is String else ""
+
+## Client (Phase 268): the host stood up the station `entry` (a wire entry). Replaces one with the same id.
+func apply_station_entry(entry: Dictionary) -> void:
+	var stype := str(entry.get("type", "")).left(32)
+	var arr: Variant = entry.get("position", [])
+	var id := str(entry.get("id", "")).left(32)
+	if stype.is_empty() or id.is_empty() or not WorldPos.is_wire(arr) or not placeable_station_types().has(stype):
+		return
+	_drop_station(id)
+	_insert_station(id, stype, WorldPos.from_wire(arr), "", StationRules.clean_rotation(entry.get("rot", 0)))
+
+## Client (Phase 268): the host took the station `station_id` down.
+func drop_synced(station_id: String) -> void:
+	_drop_station(station_id)
 
 func remove_station(station_id: String) -> void:
 	var existed := _stations.has(station_id)
@@ -399,9 +426,9 @@ func _block_shape(id: String) -> CollisionShape3D:
 ## Spawn a small coloured box marker so a placed station is visible in-world.
 ## The colour is derived deterministically from the type string, so every
 ## station type gets a stable, distinct tint with no hardcoded palette.
-func _add_marker(id: String, type: String, position: Vector3) -> void:
+func _add_marker(id: String, type: String, position: Vector3, rotation: int = 0) -> void:
 	var mesh := BoxMesh.new()
-	mesh.size = Vector3(1.0, 1.0, 1.0)
+	mesh.size = MARKER_SIZE
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = _station_color(type)
 	mat.roughness = 0.5
@@ -409,6 +436,7 @@ func _add_marker(id: String, type: String, position: Vector3) -> void:
 	inst.mesh = mesh
 	inst.material_override = mat
 	inst.position = position + _origin.value
+	inst.rotation = Vector3(0.0, rotation * PI * 0.5, 0.0)
 	inst.name = "Station_%s" % id
 	if blocking_types.has(type):
 		var body := StaticBody3D.new()

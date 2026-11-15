@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–225, 238–243, 248, 249, 252–254 and 259–261 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–225, 238–243, 248, 249, 252–254, 259–261 and 268 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -31,14 +31,13 @@ introductions of the arcs they belonged to, are archived in
 Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
 see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
 phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
-comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–254, 259–261)
+comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–254, 259–261, 268)
 have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
 [Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
 others are not in it.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 4 | 268 | Stations are made, carried and placed from the hotbar |
 | 5 | 262 | Starting with nothing, and a tutorial that begins from bare hands |
 | 6 | 263 | Digging that shows at once: a predicted edit and a priority remesh |
 | 7 | 264 | Dropping part of a stack: a quantity slider |
@@ -320,7 +319,7 @@ tiers, several at once, and the UI calls them professions.
 | Phase | Title | Status |
 |---|---|---|
 | 267 | Names a player can read: localized names for items, recipes, technologies, skills and professions | Open |
-| 268 | Stations are made, carried and placed from the hotbar | Open |
+| 268 | Stations are made, carried and placed from the hotbar | Done |
 | 269 | Crafting by hand, and at the station | Open |
 | 270 | The technology tree: nodes, lines, zoom | Open |
 | 271 | The skill wheel: professions around the edge, shared skills in the centre | Open |
@@ -1062,44 +1061,6 @@ roadmap no longer carries, so the game keeps its own content catalog instead.
 - Suite tests: every content key resolves in `en` and `pt_BR`; switching the locale changes a recipe's
   shown name; no label in the crafting, technology or skills window equals an entity id (an audit over
   each window's built tree).
-
-## Phase 268 — Stations are made, carried and placed from the hotbar
-
-B cycles a station type, N toggles a ghost and V places it, so every station is available from the
-start. Only the types with a fabric placement item cost anything (the waystone since Phase 130, the
-bed, chest and door, the settlement hearth); forges and benches are free (`station_slice.gd`
-`placement_item`).
-
-- **Fabric (separate PR):** every placeable station type names a `placementItem` tagged `station`,
-  and each item has a recipe. The first station (the carpentry bench) is hand-made from what the
-  newcomer grounds give; later ones (forge, masonry bench, alchemy bench, arcane forge…) need an
-  earlier station, as their recipes say. The rule `ChestsAndDoors` checks for chests and doors (a
-  placement item must be tagged `station`) extends to every placeable type.
-- **No shortcuts:** the B, N and V station handlers in `player_slice.gd` (`_cycle_station_type`,
-  the preview toggle, `_place_station`) and their input labels are removed. V stays the proposals
-  window shortcut. Host-side placement for NPC villages (`settlement_wiring.gd`) keeps its own path.
-- **Hotbar placement:** a station item in the selected hotbar slot shows its ghost at the aimed spot
-  every frame, tinted by `place_refusal` (valid or refused, with the refusal's reason as a hint), and
-  the use input places it. The host consumes one item and refuses without it, as now. A rotate input
-  (the build material's R is reused while a station item is selected) turns the ghost in 90° steps,
-  and the rotation travels with the request.
-- **Picking up again:** a new host-checked intent lets a station's owner, within reach, pick up a
-  placed station and get its item back (there is no player path today: `remove_station` is host-only;
-  Phase 213's dismantle covers structure blocks). A chest keeps its `spillsOnDestroy` rule.
-- The tutorial's `first_stations` chapter names crafting the station item before placing it.
-
-**Acceptance criteria**
-- `npm run validate` and `check-drift` pass; a `check_*.js` rejects a placeable station type with no
-  placement item, and a placement item with no recipe.
-- Suite tests: B, N and V no longer place or cycle stations; with no station item selected no ghost is
-  shown; with one selected, the ghost follows the aim and reports the same refusal as the host; the use
-  input emits one placement request with the rotation; the host refuses a placement whose item is not
-  in the bag, and consumes it on success.
-- Net harness step: a client crafts a station item, selects it, places it, and the second client sees
-  the station; a placement request without the item is refused.
-- Suite test: the owner picks up a placed station and gets its item back; another player, or the owner
-  out of reach, is refused.
-- The playtest `place` step places from the hotbar.
 
 ## Phase 269 — Crafting by hand, and at the station
 

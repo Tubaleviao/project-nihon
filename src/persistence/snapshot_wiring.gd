@@ -82,7 +82,7 @@ func build_snapshot(peer_id: int, include_own_record: bool = true,
 		"edits":     (root._voxel.get_chunk_manifest() if full_edits
 				else root._voxel.get_chunk_manifest_in_radius(aoi_center, NetworkingSlice.EDITS_SCOPE_RADIUS)),
 		"creatures": _scoped_creatures(aoi_center),
-		"stations":  root._station.get_station_data(),
+		"stations":  root._station.get_station_data(false),   # Phase 268 — no owner ids to a client
 		"loose":     root._loose.taken_data(),   # Phase 261 — the loose items taken and not yet regrown
 		"players":   players,
 	}

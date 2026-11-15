@@ -254,6 +254,12 @@ func _route_h2c(payload: Dictionary) -> void:
 			GameBus.loose_regrown.emit(str(payload.get("id", "")))
 		"tree_respawned":
 			GameBus.tree_respawned.emit(str(payload.get("tree_id", "")))
+		"station_added":
+			var entry: Variant = payload.get("station", {})
+			if entry is Dictionary:
+				GameBus.station_synced.emit("add", entry)
+		"station_gone":
+			GameBus.station_synced.emit("remove", { "id": str(payload.get("id", "")).left(32) })
 		"tree_cleared":
 			GameBus.tree_cleared.emit(str(payload.get("tree_id", "")))
 		"chat_message":

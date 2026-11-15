@@ -23,6 +23,7 @@ extends VBoxContainer
 const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 const I18n := preload("res://src/core/i18n.gd")
 const SkillTiers := preload("res://src/core/skill_tiers.gd")
+const StationRules := preload("res://src/world/station_rules.gd")
 
 signal slot_selected(index: int, item_id: String)
 ## A drag began from a box; the UI slice uses it to empty the box if it is dropped in the world.
@@ -37,6 +38,7 @@ const MORE_PX := 28.0
 const KIND_BLOCK := "block"
 const KIND_GEAR := "gear"
 const KIND_SKILL := "skill"
+const KIND_STATION := "station"   # Phase 268 — a station item: selecting it arms the placement ghost
 const KIND_NONE := ""
 const SKILL_PREFIX := "skill:"
 const MAX_ENTRY_LEN := 64
@@ -160,6 +162,8 @@ static func kind_of(entry: String, materials: Dictionary, equip_slot: String) ->
 		return KIND_BLOCK
 	if equip_slot != "":
 		return KIND_GEAR
+	if StationRules.is_station_item(entry):
+		return KIND_STATION
 	return KIND_NONE
 
 static func is_skill(entry: String) -> bool:
@@ -321,6 +325,8 @@ func select_slot(index: int) -> void:
 	selected = clampi(index, 0, SLOT_COUNT - 1)
 	_render()
 	slot_selected.emit(selected, selected_item())
+	# Phase 268 — a station item arms the player's placement ghost; anything else disarms it.
+	GameBus.hotbar_station_selected.emit(selected_item() if kind_at(selected) == KIND_STATION else "")
 
 ## Select the box holding `item_id`, without re-announcing when it already is selected.
 func select_item(item_id: String) -> bool:

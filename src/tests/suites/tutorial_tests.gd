@@ -143,7 +143,7 @@ func _test_bed_station() -> void:
 	var stations: Node = StationSlice.new()
 	assert_true(stations.placeable_station_types().has("bed"), "bed is a placeable station type")
 	assert_eq(stations.placement_item("bed"), "Bed", "placing a bed consumes a Bed")
-	assert_eq(stations.placement_item("carpentry bench"), "", "a bench stays free")
+	assert_eq(stations.placement_item("carpentry bench"), "CarpentryBench", "Phase 268: a bench costs its item")
 	stations.free()
 	var bed: Resource = GameData.ITEMS.get("Bed", null)
 	assert_true(bed != null, "GameData.ITEMS has the Bed")
@@ -188,11 +188,11 @@ func _first_hour_items(kit: Variant = null, extra: Array = []) -> Dictionary:
 		var tree: Dictionary = TreeSlice.TREES_BY_BIOME.get(str(biome), {})
 		if not tree.is_empty():
 			woods.append(str(tree["wood"]))
+	# Phase 268 — a station is usable once its placement item is in hand (none is free any more).
 	var stations: Node = StationSlice.new()
-	var free_stations := {}
+	var station_items := {}
 	for st in stations.placeable_station_types():
-		if stations.placement_item(st) == "":
-			free_stations[st] = true
+		station_items[st] = stations.placement_item(st)
 	stations.free()
 	var techs := _recipe_techs()
 	var known := {}
@@ -228,7 +228,7 @@ func _first_hour_items(kit: Variant = null, extra: Array = []) -> Dictionary:
 				continue
 			var ok: bool = known.has(str(techs.get(key, "")))
 			var station := str(recipe.get("station", ""))
-			ok = ok and (station == "" or free_stations.has(station))
+			ok = ok and (station == "" or str(station_items.get(station, "")) == "" or have.has(str(station_items[station])))
 			for g in recipe.get("skillGuards", []):
 				ok = ok and str(g["tier"]) == "novice"
 			for i in recipe.get("inputs", []):
@@ -268,7 +268,8 @@ func _test_bed_first_hour() -> void:
 	assert_eq(tech, "TechBasicCarpentry", "Basic Carpentry unlocks the bed")
 	assert_eq(int(GameData.TECHNOLOGIES[tech].get("researchCost")), 0, "Basic Carpentry costs no research points")
 	assert_eq(Array(GameData.TECHNOLOGIES[tech].get("tech")["requires"]), [], "Basic Carpentry has no prerequisite")
-	var have := _first_hour_items()
+	var have := _first_hour_items(null, ["Branch", "LooseStone"])   # Phase 268 — the grounds' loose items make the bench
+	assert_true(have.has("CarpentryBench"), "the carpentry bench is made by hand from them")
 	assert_true(have.has("Thornwood"), "the starting axe reaches wood")
 	assert_true(have.has("ThornwoodPlank"), "planks are reachable")
 	assert_true(have.has("Bed"), "the bed is reachable in the first hour")
