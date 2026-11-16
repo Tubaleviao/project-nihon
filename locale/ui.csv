@@ -157,6 +157,12 @@ ui.copy,Copy,Copiar
 ui.craft,Craft,Criar
 ui.defense,Defense {0},Defesa {0}
 ui.drop_blocked,Items can't be dropped while joined to another player's world yet,Itens não podem ser largados enquanto você está no mundo de outro jogador
+ui.drop_qty_all,All,Tudo
+ui.drop_qty_cancel,Cancel,Cancelar
+ui.drop_qty_confirm,Drop,Largar
+ui.drop_qty_half,Half,Metade
+ui.drop_qty_one,1,1
+ui.drop_qty_title,How many to drop?,Quantos largar?
 ui.empty,(empty),(vazio)
 ui.equip_slot,Equip ({0}),Equipar ({0})
 ui.for,For,A favor

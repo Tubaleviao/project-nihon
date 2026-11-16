@@ -22,7 +22,8 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–225, 238–243, 248, 249, 252–254, 259–261 and 267 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–225, 238–243, 248, 249, 252–254, 259–261, 264 and 267 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -31,7 +32,7 @@ introductions of the arcs they belonged to, are archived in
 Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
 see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
 phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
-comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–254, 259–261, 267)
+comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–254, 259–261, 264, 267)
 have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
 [Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
 others are not in it.
@@ -41,7 +42,6 @@ others are not in it.
 | 4 | 268 | Stations are made, carried and placed from the hotbar |
 | 5 | 262 | Starting with nothing, and a tutorial that begins from bare hands |
 | 6 | 263 | Digging that shows at once: a predicted edit and a priority remesh |
-| 7 | 264 | Dropping part of a stack: a quantity slider |
 | 9 | 269 | Crafting by hand, and at the station |
 | 10 | 270 | The technology tree: nodes, lines, zoom |
 | 11 | 274 | Gathering: Mining, Woodcutting, Foraging and Skinning are their own skills |
@@ -293,7 +293,7 @@ everything for the whole tutorial.
 | 261 | The newcomer grounds: a large, gentle spawn area with loose stones and branches | Done |
 | 262 | Starting with nothing, and a tutorial that begins from bare hands | Open |
 | 263 | Digging that shows at once: a predicted edit and a priority remesh | Open |
-| 264 | Dropping part of a stack: a quantity slider | Open |
+| 264 | Dropping part of a stack: a quantity slider | Done |
 | 265 | One body everywhere: the creation screen, the Character window and the world draw the same avatar | Open |
 | 266 | A chibi character worth looking at: the art direction and the player rig | Open |
 
@@ -956,27 +956,6 @@ behind streaming work. The ground should change the frame the work completes.
   frames at the target frame rate, gated in `docs/perf/playtest-budget.json`.
 - The net harness's `wan_br` run shows a client's predicted edit visible before the host's
   confirmation arrives, and a refused edit rolled back.
-
-## Phase 264 — Dropping part of a stack: a quantity slider
-
-Dragging a stack into the world drops one unit, or all of it with Shift. There is no way to drop,
-say, 7 of 20.
-
-- Dropping a stack of more than one (drag to the world, or a Drop entry where the inventory offers
-  one) opens a small dialog: the item's icon and name, a slider from 1 to the stack size, a number
-  field kept in sync with it, buttons for 1, half and all, then Drop and Cancel. Enter confirms and
-  Esc cancels; the number field owns the keyboard while focused (Phase 219).
-- The slider starts at the whole stack. Shift-drag keeps dropping the whole stack without the
-  dialog, and a stack of one never opens it.
-- The request goes through `request_drop`, and the host clamps the quantity to what the bag holds,
-  as now.
-
-**Acceptance criteria**
-- Suite tests: a drag of a stack above one opens the dialog with its range 1..count; a stack of one
-  and a Shift-drag drop without it; the slider and the field stay equal; confirming emits one drop
-  of the chosen quantity, cancelling emits none; Enter and Esc do the same while the field has focus.
-- Suite test: the host clamps a drop request above the bag's count.
-- Every new string is in both locales.
 
 ## Phase 265 — One body everywhere: the creation screen, the Character window and the world draw the same avatar
 
