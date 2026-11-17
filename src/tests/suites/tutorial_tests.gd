@@ -10,11 +10,11 @@ const ShelterRule := preload("res://src/world/shelter_rule.gd")
 ## fabric/gameplay/tutorial.js STEPS, in order.
 const STEP_IDS := [
 	"move", "jump", "look", "controls",
-	"mine", "chop", "inventory", "hotbar",
-	"technology", "research_carpentry", "place_bench", "crafting", "craft_planks",
-	"place_forge", "research_smithing", "craft_tool", "use_tool",
-	"craft_bed", "place_bed", "build_shelter",
-	"equip_weapon", "kill", "harvest",
+	"pick_branch", "pick_stone", "inventory", "crafting", "craft_axe", "chop", "craft_pick", "craft_shovel", "dig", "mine_stone", "hotbar",
+	"technology", "research_carpentry", "craft_bench", "place_bench", "craft_planks",
+	"craft_forge", "place_forge", "research_smithing", "craft_tool", "use_tool",
+	"craft_bed", "place_bed", "craft_hammer", "build_shelter",
+	"craft_knife", "equip_weapon", "kill", "harvest",
 	"respawn",
 	"map", "waystone",
 	"skills", "tier_up", "character",

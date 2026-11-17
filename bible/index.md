@@ -147,7 +147,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [LumenfiteOrb](entities/lumenfiteorb.md) — A polished lumenfite sphere charged with stored magical energy by an Arcanist
 - [MasonryBench](entities/masonrybench.md) — A stone slab on a plank frame for cutting blocks and mixing cement
 - [MasterForge](entities/masterforge.md) — A ferrite-clad forge on cut stone that holds the heat veilsteel needs
-- [NoviceTunic](entities/novicetunic.md) — Plain woven tunic with a belted waist, given to every new character
+- [NoviceTunic](entities/novicetunic.md) — Plain woven tunic with a belted waist, cheap to make
 - [RefinedVoiditeShard](entities/refinedvoiditeshard.md) — Raw voidite stabilised in a forge into a crystalline shard
 - [SkinningKnife](entities/skinningknife.md) — Short ferrite blade on a thornwood grip, ground for pelts and meat
 - [StoneAxe](entities/stoneaxe.md) — A knapped stone lashed into a split branch

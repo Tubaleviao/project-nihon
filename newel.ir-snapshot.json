@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:43777f22ae97370382d17ca25c94003109b50afa8f8ac3b419f48631733f6c71",
+  "schemaHash": "sha256:911e6fd60f8dec04659881f359e577add57577ed5c3fc1b50cf53745e6df4d4a",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -19831,8 +19831,8 @@
         "tags": [
           "item"
         ],
-        "description": "Plain woven tunic with a belted waist, given to every new character. Barely armour at all; it marks a newcomer and is replaced as soon as anything better is made.",
-        "goal": "The starting outfit: a newcomer is dressed without being given a head start (NoPayToWin, no class kits)",
+        "description": "Plain woven tunic with a belted waist, cheap to make. Barely armour at all; it marks a newcomer and is replaced as soon as anything better is made.",
+        "goal": "A cheap first outfit worth making, with no head start handed out (NoPayToWin, no class kits)",
         "fields": {
           "id": {
             "name": "id",
@@ -51335,25 +51335,11 @@
           "startingKit": {
             "name": "startingKit",
             "type": "json",
-            "description": "Items given once at creation: [{ item, quantity, equip }]; a server rule may replace it",
+            "description": "Items given once at creation: [{ item, quantity, equip }]; empty since Phase 262 (a newcomer starts with nothing), a server rule may fill it",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
-            "defaultValue": [
-              {
-                "item": "NoviceTunic",
-                "quantity": 1,
-                "equip": true
-              },
-              {
-                "item": "CarpenterAxe",
-                "quantity": 1
-              },
-              {
-                "item": "StoneHammer",
-                "quantity": 1
-              }
-            ]
+            "defaultValue": []
           },
           "proportionPreset": {
             "name": "proportionPreset",
@@ -51519,18 +51505,70 @@
                 }
               },
               {
-                "id": "mine",
+                "id": "pick_branch",
                 "chapter": "gathering",
                 "inputs": [
-                  "mine"
+                  "pick_up"
                 ],
                 "requires": [
                   "move"
                 ],
                 "trigger": {
                   "kind": "item_gathered",
-                  "tag": "material",
+                  "item": "Branch",
                   "count": 1
+                }
+              },
+              {
+                "id": "pick_stone",
+                "chapter": "gathering",
+                "inputs": [
+                  "pick_up"
+                ],
+                "requires": [
+                  "move"
+                ],
+                "trigger": {
+                  "kind": "item_gathered",
+                  "item": "LooseStone",
+                  "count": 1
+                }
+              },
+              {
+                "id": "inventory",
+                "chapter": "gathering",
+                "inputs": [],
+                "requires": [
+                  "pick_branch",
+                  "pick_stone"
+                ],
+                "trigger": {
+                  "kind": "window_opened",
+                  "window": "inventory"
+                }
+              },
+              {
+                "id": "crafting",
+                "chapter": "gathering",
+                "inputs": [],
+                "requires": [
+                  "inventory"
+                ],
+                "trigger": {
+                  "kind": "window_opened",
+                  "window": "crafting"
+                }
+              },
+              {
+                "id": "craft_axe",
+                "chapter": "gathering",
+                "inputs": [],
+                "requires": [
+                  "crafting"
+                ],
+                "trigger": {
+                  "kind": "item_crafted",
+                  "item": "StoneAxe"
                 }
               },
               {
@@ -51540,7 +51578,7 @@
                   "attack"
                 ],
                 "requires": [
-                  "mine"
+                  "craft_axe"
                 ],
                 "trigger": {
                   "kind": "item_gathered",
@@ -51549,15 +51587,57 @@
                 }
               },
               {
-                "id": "inventory",
+                "id": "craft_pick",
                 "chapter": "gathering",
                 "inputs": [],
                 "requires": [
-                  "mine"
+                  "chop"
                 ],
                 "trigger": {
-                  "kind": "window_opened",
-                  "window": "inventory"
+                  "kind": "item_crafted",
+                  "item": "StonePick"
+                }
+              },
+              {
+                "id": "craft_shovel",
+                "chapter": "gathering",
+                "inputs": [],
+                "requires": [
+                  "chop"
+                ],
+                "trigger": {
+                  "kind": "item_crafted",
+                  "item": "StoneShovel"
+                }
+              },
+              {
+                "id": "dig",
+                "chapter": "gathering",
+                "inputs": [
+                  "mine"
+                ],
+                "requires": [
+                  "craft_shovel"
+                ],
+                "trigger": {
+                  "kind": "item_gathered",
+                  "item": "Soil",
+                  "count": 1
+                }
+              },
+              {
+                "id": "mine_stone",
+                "chapter": "gathering",
+                "inputs": [
+                  "mine"
+                ],
+                "requires": [
+                  "craft_pick"
+                ],
+                "trigger": {
+                  "kind": "item_gathered",
+                  "item": "Ferrite",
+                  "count": 1
                 }
               },
               {
@@ -51600,29 +51680,29 @@
                 }
               },
               {
-                "id": "place_bench",
-                "chapter": "first_stations",
-                "inputs": [
-                  "station"
-                ],
-                "requires": [
-                  "chop"
-                ],
-                "trigger": {
-                  "kind": "station_placed",
-                  "type": "carpentry bench"
-                }
-              },
-              {
-                "id": "crafting",
+                "id": "craft_bench",
                 "chapter": "first_stations",
                 "inputs": [],
                 "requires": [
                   "chop"
                 ],
                 "trigger": {
-                  "kind": "window_opened",
-                  "window": "crafting"
+                  "kind": "item_crafted",
+                  "item": "CarpentryBench"
+                }
+              },
+              {
+                "id": "place_bench",
+                "chapter": "first_stations",
+                "inputs": [
+                  "station"
+                ],
+                "requires": [
+                  "craft_bench"
+                ],
+                "trigger": {
+                  "kind": "station_placed",
+                  "type": "carpentry bench"
                 }
               },
               {
@@ -51631,12 +51711,23 @@
                 "inputs": [],
                 "requires": [
                   "place_bench",
-                  "research_carpentry",
-                  "crafting"
+                  "research_carpentry"
                 ],
                 "trigger": {
                   "kind": "item_crafted",
                   "item": "ThornwoodPlank"
+                }
+              },
+              {
+                "id": "craft_forge",
+                "chapter": "first_tools",
+                "inputs": [],
+                "requires": [
+                  "craft_planks"
+                ],
+                "trigger": {
+                  "kind": "item_crafted",
+                  "item": "Forge"
                 }
               },
               {
@@ -51646,7 +51737,7 @@
                   "station"
                 ],
                 "requires": [
-                  "craft_planks"
+                  "craft_forge"
                 ],
                 "trigger": {
                   "kind": "station_placed",
@@ -51718,6 +51809,18 @@
                 }
               },
               {
+                "id": "craft_hammer",
+                "chapter": "shelter",
+                "inputs": [],
+                "requires": [
+                  "place_bed"
+                ],
+                "trigger": {
+                  "kind": "item_crafted",
+                  "item": "StoneHammer"
+                }
+              },
+              {
                 "id": "build_shelter",
                 "chapter": "shelter",
                 "inputs": [
@@ -51725,10 +51828,22 @@
                   "place"
                 ],
                 "requires": [
-                  "place_bed"
+                  "craft_hammer"
                 ],
                 "trigger": {
                   "kind": "shelter_complete"
+                }
+              },
+              {
+                "id": "craft_knife",
+                "chapter": "first_hunt",
+                "inputs": [],
+                "requires": [
+                  "craft_axe"
+                ],
+                "trigger": {
+                  "kind": "item_crafted",
+                  "item": "StoneKnife"
                 }
               },
               {
@@ -51764,7 +51879,8 @@
                 "chapter": "first_hunt",
                 "inputs": [],
                 "requires": [
-                  "kill"
+                  "kill",
+                  "craft_knife"
                 ],
                 "trigger": {
                   "kind": "carcass_harvested"

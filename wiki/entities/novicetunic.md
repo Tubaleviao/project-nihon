@@ -7,9 +7,9 @@ title: "NoviceTunic"
 
 `item`
 
-Plain woven tunic with a belted waist, given to every new character. Barely armour at all; it marks a newcomer and is replaced as soon as anything better is made.
+Plain woven tunic with a belted waist, cheap to make. Barely armour at all; it marks a newcomer and is replaced as soon as anything better is made.
 
-> The starting outfit: a newcomer is dressed without being given a head start (NoPayToWin, no class kits)
+> A cheap first outfit worth making, with no head start handed out (NoPayToWin, no class kits)
 
 ## Attributes
 

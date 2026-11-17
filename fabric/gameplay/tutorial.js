@@ -67,30 +67,40 @@ const STEPS = [
   step('jump', 'moving', ['jump'], ['move'], { kind: 'jumped' }),
   step('look', 'moving', ['look', 'zoom'], ['move'], { kind: 'camera_turned' }),
   step('controls', 'moving', ['controls'], ['look'], { kind: 'window_opened', window: 'controls' }),
-  // Gathering (bare hands mine; the starting axe chops)
-  step('mine', 'gathering', ['mine'], ['move'], { kind: 'item_gathered', tag: 'material', count: 1 }),
-  step('chop', 'gathering', ['attack'], ['mine'], { kind: 'item_gathered', item: 'Thornwood', count: 4 }),
-  step('inventory', 'gathering', [], ['mine'], { kind: 'window_opened', window: 'inventory' }),
+  // Gathering (Phase 262): from bare hands. Pick up what lies on the ground, make a stone axe, chop, then the pick and shovel
+  step('pick_branch', 'gathering', ['pick_up'], ['move'], { kind: 'item_gathered', item: 'Branch', count: 1 }),
+  step('pick_stone', 'gathering', ['pick_up'], ['move'], { kind: 'item_gathered', item: 'LooseStone', count: 1 }),
+  step('inventory', 'gathering', [], ['pick_branch', 'pick_stone'], { kind: 'window_opened', window: 'inventory' }),
+  step('crafting', 'gathering', [], ['inventory'], { kind: 'window_opened', window: 'crafting' }),
+  step('craft_axe', 'gathering', [], ['crafting'], { kind: 'item_crafted', item: 'StoneAxe' }),
+  step('chop', 'gathering', ['attack'], ['craft_axe'], { kind: 'item_gathered', item: 'Thornwood', count: 4 }),
+  step('craft_pick', 'gathering', [], ['chop'], { kind: 'item_crafted', item: 'StonePick' }),
+  step('craft_shovel', 'gathering', [], ['chop'], { kind: 'item_crafted', item: 'StoneShovel' }),
+  step('dig', 'gathering', ['mine'], ['craft_shovel'], { kind: 'item_gathered', item: 'Soil', count: 1 }),
+  step('mine_stone', 'gathering', ['mine'], ['craft_pick'], { kind: 'item_gathered', item: 'Ferrite', count: 1 }),
   step('hotbar', 'gathering', ['drag', 'hotbar_expand', 'hotbar_use'], ['inventory'], { kind: 'hotbar_bound' }),
-  // First stations: research, a carpentry bench and its first recipe
+  // First stations: research, then a carpentry bench made by hand, placed, and its first recipe
   step('technology', 'first_stations', [], ['chop'], { kind: 'window_opened', window: 'technology' }),
   step('research_carpentry', 'first_stations', [], ['technology'], { kind: 'technology_researched', technology: 'TechBasicCarpentry' }),
-  step('place_bench', 'first_stations', ['station'], ['chop'], { kind: 'station_placed', type: 'carpentry bench' }),
-  step('crafting', 'first_stations', [], ['chop'], { kind: 'window_opened', window: 'crafting' }),
-  step('craft_planks', 'first_stations', [], ['place_bench', 'research_carpentry', 'crafting'], { kind: 'item_crafted', item: 'ThornwoodPlank' }),
+  step('craft_bench', 'first_stations', [], ['chop'], { kind: 'item_crafted', item: 'CarpentryBench' }),
+  step('place_bench', 'first_stations', ['station'], ['craft_bench'], { kind: 'station_placed', type: 'carpentry bench' }),
+  step('craft_planks', 'first_stations', [], ['place_bench', 'research_carpentry'], { kind: 'item_crafted', item: 'ThornwoodPlank' }),
   // First tools: a forge, smithing and a pick that mines faster
-  step('place_forge', 'first_tools', ['station'], ['craft_planks'], { kind: 'station_placed', type: 'forge' }),
+  step('craft_forge', 'first_tools', [], ['craft_planks'], { kind: 'item_crafted', item: 'Forge' }),
+  step('place_forge', 'first_tools', ['station'], ['craft_forge'], { kind: 'station_placed', type: 'forge' }),
   step('research_smithing', 'first_tools', [], ['place_forge'], { kind: 'technology_researched', technology: 'TechBasicSmithing' }),
   step('craft_tool', 'first_tools', [], ['research_smithing'], { kind: 'item_crafted', tag: 'pick' }),
   step('use_tool', 'first_tools', ['mine'], ['craft_tool'], { kind: 'item_gathered', tag: 'material', count: 5 }),
   // Shelter: a bed, placed, then walled and roofed
   step('craft_bed', 'shelter', [], ['craft_planks'], { kind: 'item_crafted', item: 'Bed' }),
   step('place_bed', 'shelter', ['station'], ['craft_bed'], { kind: 'bed_placed' }),
-  step('build_shelter', 'shelter', ['next_block', 'place'], ['place_bed'], { kind: 'shelter_complete' }),
+  step('craft_hammer', 'shelter', [], ['place_bed'], { kind: 'item_crafted', item: 'StoneHammer' }),
+  step('build_shelter', 'shelter', ['next_block', 'place'], ['craft_hammer'], { kind: 'shelter_complete' }),
   // First hunt
+  step('craft_knife', 'first_hunt', [], ['craft_axe'], { kind: 'item_crafted', item: 'StoneKnife' }),
   step('equip_weapon', 'first_hunt', ['equipment'], ['research_smithing'], { kind: 'item_equipped', slot: 'MainHand' }),
   step('kill', 'first_hunt', ['attack'], ['equip_weapon'], { kind: 'creature_killed', tag: 'creature' }),
-  step('harvest', 'first_hunt', [], ['kill'], { kind: 'carcass_harvested' }),
+  step('harvest', 'first_hunt', [], ['kill', 'craft_knife'], { kind: 'carcass_harvested' }),
   // Staying alive
   step('respawn', 'staying_alive', [], ['place_bed'], { kind: 'respawned' }),
   // Finding your way

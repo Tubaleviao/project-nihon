@@ -464,10 +464,22 @@ tutorial.look.title,Look around,Olhe ao redor
 tutorial.look.body,Hold to turn the camera and scroll to zoom in and out.,Segure para girar a câmera e role para aproximar ou afastar.
 tutorial.controls.title,Controls,Controles
 tutorial.controls.body,Open the controls panel. It lists every key and stays there when the tutorial is off.,Abra o painel de controles. Ele lista todas as teclas e continua lá quando o tutorial está desligado.
-tutorial.mine.title,Dig,Cave
-tutorial.mine.body,Dig into the ground with your bare hands. What you dig goes into your pack.,Cave o chão com as próprias mãos. O que você cavar vai para a sua mochila.
+tutorial.pick_branch.title,Pick up a branch,Pegue um galho
+tutorial.pick_branch.body,Branches lie on the ground under trees. Walk up and press the pick-up key (T).,Galhos ficam no chão sob as árvores. Chegue perto e aperte a tecla de pegar (T).
+tutorial.pick_stone.title,Pick up a stone,Pegue uma pedra
+tutorial.pick_stone.body,Loose stones lie on the ground nearby. Pick one up the same way.,Pedras soltas ficam no chão por perto. Pegue uma do mesmo jeito.
+tutorial.craft_axe.title,A stone axe,Um machado de pedra
+tutorial.craft_axe.body,"In the crafting window, make a stone axe from a branch and a stone. It needs no bench.","Na janela de criação, faça um machado de pedra com um galho e uma pedra. Não precisa de bancada."
 tutorial.chop.title,Chop a tree,Corte uma árvore
-tutorial.chop.body,"You start with an axe. Click a tree trunk to chop it, and collect four logs.","Você começa com um machado. Clique no tronco de uma árvore para cortá-la e junte quatro toras."
+tutorial.chop.body,"Click a tree trunk with your stone axe to chop it, and collect four logs.","Clique no tronco de uma árvore com o machado de pedra para cortá-la e junte quatro toras."
+tutorial.craft_pick.title,A stone pick,Uma picareta de pedra
+tutorial.craft_pick.body,Make a stone pick in the crafting window. It digs rock faster than bare hands.,Faça uma picareta de pedra na janela de criação. Ela cava rocha mais rápido que as mãos.
+tutorial.craft_shovel.title,A stone shovel,Uma pá de pedra
+tutorial.craft_shovel.body,Make a stone shovel in the crafting window. It digs soil faster.,Faça uma pá de pedra na janela de criação. Ela cava terra mais rápido.
+tutorial.dig.title,Dig soil,Cave terra
+tutorial.dig.body,Dig the ground with the shovel in hand. The soil goes into your pack.,Cave o chão com a pá na mão. A terra vai para a sua mochila.
+tutorial.mine_stone.title,Mine stone,Minere pedra
+tutorial.mine_stone.body,Mine bare rock with the pick in hand. Rock outcrops show on hillsides.,Minere rocha exposta com a picareta na mão. Afloramentos aparecem nas encostas.
 tutorial.inventory.title,Your pack,Sua mochila
 tutorial.inventory.body,Open the inventory to see what you carry and how heavy it is.,Abra o inventário para ver o que você carrega e quanto pesa.
 tutorial.hotbar.title,The bottom bar,A barra inferior
@@ -476,12 +488,16 @@ tutorial.technology.title,Technology,Tecnologia
 tutorial.technology.body,Open the technology window. Research unlocks new recipes.,Abra a janela de tecnologia. A pesquisa libera novas receitas.
 tutorial.research_carpentry.title,Learn carpentry,Aprenda carpintaria
 tutorial.research_carpentry.body,Research Basic Carpentry. It costs four logs and a little time.,Pesquise Carpintaria Básica. Custa quatro toras e um pouco de tempo.
+tutorial.craft_bench.title,Make a bench,Faça uma bancada
+tutorial.craft_bench.body,"Craft a carpentry bench from the crafting window. Stations are made by hand, then placed.",Crie uma bancada de carpintaria na janela de criação. Estações são feitas à mão e depois colocadas.
 tutorial.place_bench.title,A carpentry bench,Uma bancada de carpintaria
 tutorial.place_bench.body,"Cycle the station type to the carpentry bench, then place it near you.","Alterne o tipo de estação até a bancada de carpintaria e coloque-a perto de você."
 tutorial.crafting.title,Crafting,Criação
 tutorial.crafting.body,Open the crafting window. It lists every recipe and what it needs.,Abra a janela de criação. Ela lista todas as receitas e o que cada uma exige.
 tutorial.craft_planks.title,Planks,Tábuas
 tutorial.craft_planks.body,"Stand by your bench and craft planks from logs. Planks build almost everything.","Fique perto da bancada e crie tábuas a partir de toras. As tábuas constroem quase tudo."
+tutorial.craft_forge.title,Make a forge,Faça uma forja
+tutorial.craft_forge.body,"Craft a forge in the crafting window, then you can place it.",Crie uma forja na janela de criação para poder colocá-la.
 tutorial.place_forge.title,A forge,Uma forja
 tutorial.place_forge.body,Place a forge. Metal tools and weapons are made at a forge.,Coloque uma forja. Ferramentas e armas de metal são feitas na forja.
 tutorial.research_smithing.title,Learn smithing,Aprenda ferraria
@@ -494,8 +510,12 @@ tutorial.craft_bed.title,A bed,Uma cama
 tutorial.craft_bed.body,Craft a bed from planks. It needs no station.,Crie uma cama com tábuas. Ela não precisa de estação.
 tutorial.place_bed.title,Place your bed,Coloque sua cama
 tutorial.place_bed.body,"Cycle the station type to the bed and place it. From now on, you come back at your bed after death.","Alterne o tipo de estação até a cama e coloque-a. A partir de agora, você volta à sua cama depois de morrer."
+tutorial.craft_hammer.title,A stone hammer,Um martelo de pedra
+tutorial.craft_hammer.body,Make a stone hammer. Placing blocks needs one in hand.,Faça um martelo de pedra. Para colocar blocos é preciso segurar um.
 tutorial.build_shelter.title,A roof over your bed,Um teto sobre a cama
 tutorial.build_shelter.body,"Place blocks to wall in your bed on at least three sides, and put a roof over it.","Coloque blocos para cercar a cama em pelo menos três lados e cubra-a com um teto."
+tutorial.craft_knife.title,A stone knife,Uma faca de pedra
+tutorial.craft_knife.body,Make a stone knife. It lets you harvest meat and hide from a kill.,Faça uma faca de pedra. Com ela você aproveita carne e couro de uma caça.
 tutorial.equip_weapon.title,Arm yourself,Arme-se
 tutorial.equip_weapon.body,Craft a sword at the forge and equip it in your main hand.,Crie uma espada na forja e equipe-a na mão principal.
 tutorial.kill.title,Hunt,Cace

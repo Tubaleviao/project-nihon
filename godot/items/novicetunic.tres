@@ -25,5 +25,5 @@ compatibleTags = ["humanoid"]
 defense = 1
 state_machine_field = "condition"
 initial_state = "pristine"
-description = "Plain woven tunic with a belted waist, given to every new character. Barely armour at all; it marks a newcomer and is replaced as soon as anything better is made."
+description = "Plain woven tunic with a belted waist, cheap to make. Barely armour at all; it marks a newcomer and is replaced as soon as anything better is made."
 tags = ["item"]

@@ -33,6 +33,7 @@ expect('the shipped creation data is valid', check(fresh()), null);
 { const d = fresh(); d.hairColors.push(d.hairColors[0]); expect('a duplicate hair colour is refused', check(d), /duplicate index/); }
 { const d = fresh(); d.defaultCreation.hair = 'hair_f_bob'; expect('a default with the other gender\'s hair is refused', check(d), /defaultCreation: refused \(hair_gender\)/); }
 { const d = fresh(); d.defaultCreation.hairColor = 0; expect('a default with an unlisted colour is refused', check(d), /defaultCreation: refused \(hair_color\)/); }
+{ const d = fresh(); d.startingKit = []; expect('Phase 262: an empty starting kit is accepted', check(d), null); }
 { const d = fresh(); d.startingKit = [{ item: 'GoldenCrown', quantity: 1 }]; expect('a starting kit naming no item is refused', check(d), /GoldenCrown is not an item/); }
 { const r = refs(); r.appearances.NoviceMasculine = { ...r.appearances.NoviceMasculine, proportions: { height: 1, legLength: 1, headScale: 1 } };
   expect('a preset with adult proportions is outside the chibi head ratio', check(fresh(), r), /gender masculine: head-to-height ratio/); }

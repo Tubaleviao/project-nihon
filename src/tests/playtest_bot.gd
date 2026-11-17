@@ -1497,10 +1497,15 @@ func _step_create() -> Array:
 	screen.submit()
 	var closed: bool = await _until(func(): return not ui.is_creation_open(), 5.0)
 	var state: Dictionary = _root._registry.creation_of(_root._registry.local_player_id)
-	var ok: bool = closed and rig and str(state.get("state", "")) == "created" and str(state.get("name", "")) == CREATE_NAME \
+	# Phase 262 — a new character starts with nothing: an empty bag and nothing worn.
+	var bag: Dictionary = _root._inventory.get_contents()
+	var worn: Dictionary = _root._registry.get_equipment(_root._registry.local_player_id)
+	var empty: bool = bag.is_empty() and worn.values().all(func(v): return str(v) == "")
+	var ok: bool = closed and rig and empty and str(state.get("state", "")) == "created" and str(state.get("name", "")) == CREATE_NAME \
 		and not _root._player.creation_hold
-	return [ok, "created %s (%s, %s, colour %d); screen %s, rig %s" % [str(state.get("name", "?")), str(state.get("gender", "?")),
-		str(state.get("hair", "?")), int(state.get("hairColor", -1)), "closed" if closed else "STILL OPEN: " + str(screen.error_text()), str(rig)]]
+	return [ok, "created %s (%s, %s, colour %d); screen %s, rig %s, bag %s" % [str(state.get("name", "?")), str(state.get("gender", "?")),
+		str(state.get("hair", "?")), int(state.get("hairColor", -1)), "closed" if closed else "STILL OPEN: " + str(screen.error_text()), str(rig),
+		"empty" if empty else "NOT EMPTY: %s / %s" % [str(bag), str(worn)]]]
 
 ## Phase 179: open the Character window, check every attribute and slot is listed and the doll holds a rig, and (on
 ## a display) that the doll's viewport is not blank. The step's screenshot shows the sheet.
@@ -1808,6 +1813,32 @@ func _step_tutorial() -> Array:
 	GameBus.craft_requested.emit("RecipeFerritePick")
 	if not await _until(func(): return _crafted.size() > crafted, STEP_TIMEOUT_SECS) or not bool(_crafted.back().get("success", false)):
 		return [false, "pick craft: %s" % (str(_crafted.back().get("reason", "")) if _crafted.size() > crafted else "no craft_resolved")]
+	# Phase 262 — the chapters now begin from bare hands. What the earlier steps do not cover is done the player's
+	# way: the branches and stones are put in the pack (a test-only grant standing for the pick-ups on the ground; the
+	# pack scan reads them as gathered), then every stone tool and the carpentry bench are crafted by hand.
+	_root._inventory.add_item("Branch", 12)
+	_root._inventory.add_item("LooseStone", 14)
+	_root._inventory.add_item("Soil", 1)   # the dig the shovel makes
+	await _until(func(): return false, 0.3)
+	for recipe in ["RecipeStoneAxe", "RecipeStonePick", "RecipeStoneShovel", "RecipeStoneKnife", "RecipeStoneHammer", "RecipeCarpentryBench"]:
+		var made := _crafted.size()
+		GameBus.craft_requested.emit(recipe)
+		if not await _until(func(): return _crafted.size() > made, STEP_TIMEOUT_SECS) or not bool(_crafted.back().get("success", false)):
+			return [false, "%s: %s" % [recipe, str(_crafted.back().get("reason", "")) if _crafted.size() > made else "no craft_resolved"]]
+	var bench := ""
+	for p in _placed:
+		if str(p[1]) == "carpentry bench":
+			bench = str(p[0])
+	if bench == "" or not await _reach_station("carpentry bench", bench):
+		return [false, "no carpentry bench in reach for the forge"]
+	_root._inventory.add_item("ThornwoodPlank", 2)
+	_root._inventory.add_item("LooseStone", 8)   # the forge's hearth
+	_root._crafting.set_skill("Smithing", "novice")
+	var forged := _crafted.size()
+	GameBus.craft_requested.emit("RecipeForge")
+	if not await _until(func(): return _crafted.size() > forged, STEP_TIMEOUT_SECS) or not bool(_crafted.back().get("success", false)):
+		return [false, "forge craft: %s" % (str(_crafted.back().get("reason", "")) if _crafted.size() > forged else "no craft_resolved")]
+	await _until(func(): return false, 0.3)
 	var ui: Node = _root._ui
 	for w in ["controls", "inventory", "technology", "crafting"]:
 		ui.open_window(w)
