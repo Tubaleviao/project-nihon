@@ -15,7 +15,7 @@ Opening a locked chest or door without breaking it. A higher level picks harder 
 | `tier` | enum (`novice`, `apprentice`, `journeyman`, `expert`, `master`) | yes |  |
 | `xpCurve` | enum (`linear`, `quadratic`, `exponential`) | yes | XP required per tier |
 | `maxLevel` | integer | yes | Maximum XP level within a tier before tier advance is required; the same as levelCap |
-| `category` | enum (`combat`, `crafting`, `magic`, `exploration`, `social`, `survival`) | yes | Skill domain: exploration |
+| `category` | enum (`combat`, `crafting`, `magic`, `exploration`, `social`, `gathering`) | yes | Skill domain: exploration |
 | `levelCap` | integer | yes | Highest Lockpicking level (WorkSkills.curves) |
 | `xpToLevel` | json | yes | Cumulative XP needed to reach each level, index = level (WorkSkills.curves) |
 

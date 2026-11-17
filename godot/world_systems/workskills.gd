@@ -8,3 +8,4 @@ extends Resource
 @export var curves: Dictionary
 @export var tiers: Dictionary
 @export var families: Dictionary
+@export var bonuses: Dictionary

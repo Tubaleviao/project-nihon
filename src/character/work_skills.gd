@@ -52,6 +52,30 @@ static func gather_row(key: String) -> Dictionary:
 static func row(kind: String) -> Dictionary:
 	return _row(table().get(kind, null)) if SINGLE_KINDS.has(kind) else {}
 
+## Phase 274 — what each tier of a gathering skill gives: `{ skill: { work: [action], effect: "speed" | "yield",
+## byTier: { tier: factor } } }` from the fabric's `bonuses` ({} when absent).
+static func bonuses() -> Dictionary:
+	var res := _res()
+	var b: Variant = res.get("bonuses") if res != null else null
+	return b if b is Dictionary else {}
+
+## The skill whose tiers give `effect` ("speed" or "yield") on `work` (an action: dig, mine, chop, forage), or "".
+static func bonus_skill(work: String, effect: String) -> String:
+	var b := bonuses()
+	for skill: String in b:
+		var row: Variant = b[skill]
+		if row is Dictionary and str(row.get("effect", "")) == effect and (row.get("work", []) as Array).has(work):
+			return skill
+	return ""
+
+## The factor `tier` of `skill` gives (1.0 for an unknown skill or tier, and for a novice).
+static func bonus_factor(skill: String, tier: String) -> float:
+	var row: Variant = bonuses().get(skill, null)
+	if not row is Dictionary:
+		return 1.0
+	var v: Variant = (row.get("byTier", {}) as Dictionary).get(tier, 1.0)
+	return float(v) if (v is float or v is int) and float(v) > 0.0 else 1.0
+
 ## `{ tier: cumulative XP }` from the fabric's `tiers` ({} when absent).
 static func tiers() -> Dictionary:
 	var res := _res()

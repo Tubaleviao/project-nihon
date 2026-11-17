@@ -8,8 +8,12 @@ extends RefCounted
 ## needs `xpPerPoint * (1 + costStep * g)` weighted XP for the next one; growth stops at `hardCap` per attribute
 ## and `totalPointsCap` across all six.
 
-## The skill-category enum as an index (fabric/gameplay/skills/shared.js SKILL_CATEGORIES).
-const SKILL_CATEGORIES := ["combat", "crafting", "magic", "exploration", "social", "survival"]
+## Phase 274 — the skill-category enum in index order, read from the fabric (`AttributeSystem.skillCategories`,
+## fabric/gameplay/skills/shared.js SKILL_CATEGORIES), so a category change is data-only.
+static func skill_categories() -> Array:
+	var s := system()
+	var c: Variant = s.get("skillCategories") if s != null else null
+	return Array(c) if c is Array else []
 
 ## Largest XP grant a single call counts, so one absurd grant cannot jump several points through the cap check.
 const MAX_GRANT_XP := 100000.0
@@ -91,7 +95,8 @@ static func all_stats(attributes: Dictionary) -> Dictionary:
 
 
 static func category_name(index: int) -> String:
-	return SKILL_CATEGORIES[index] if index >= 0 and index < SKILL_CATEGORIES.size() else ""
+	var cats := skill_categories()
+	return str(cats[index]) if index >= 0 and index < cats.size() else ""
 
 
 ## The category name of a skill entity key ("" for an unknown skill).

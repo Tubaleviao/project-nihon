@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–225, 238–243, 248, 249, 252–254, 259–262, 264, 267 and 268 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–225, 238–243, 248, 249, 252–254, 259–262, 264, 267, 268 and 274 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -31,7 +31,7 @@ introductions of the arcs they belonged to, are archived in
 Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
 see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
 phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
-comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–254, 259–262, 264, 267, 268)
+comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–254, 259–262, 264, 267, 268, 274)
 have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
 [Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
 others are not in it.
@@ -41,7 +41,6 @@ others are not in it.
 | 6 | 263 | Digging that shows at once: a predicted edit and a priority remesh |
 | 9 | 269 | Crafting by hand, and at the station |
 | 10 | 270 | The technology tree: nodes, lines, zoom |
-| 11 | 274 | Gathering: Mining, Woodcutting, Foraging and Skinning are their own skills |
 | 12 | 271 | The skill wheel: professions around the edge, shared skills in the centre |
 | 13 | 272 | A skill's own page, and where the player's focus went |
 | 14 | 273 | Titles: professions unlock them, the player chooses one |
@@ -322,7 +321,7 @@ tiers, several at once, and the UI calls them professions.
 | 271 | The skill wheel: professions around the edge, shared skills in the centre | Open |
 | 272 | A skill's own page, and where the player's focus went | Open |
 | 273 | Titles: professions unlock them, the player chooses one | Open |
-| 274 | Gathering: Mining, Woodcutting, Foraging and Skinning are their own skills | Open |
+| 274 | Gathering: Mining, Woodcutting, Foraging and Skinning are their own skills | Done |
 
 ## Phase 225 — The options window
 
@@ -1130,52 +1129,6 @@ show.
   not change a profession-gated recipe's result.
 - Net harness step: a client chooses an unlocked title and the second client's nameplate shows it; a
   request for a locked title is refused.
-- Every new string is in both locales.
-
-## Phase 274 — Gathering: Mining, Woodcutting, Foraging and Skinning are their own skills
-
-Today gathering raises crafting skills (`fabric/gameplay/work.js` `gather`): mined ore gives
-Smithing, stone and soil give Building, wood gives Carpentry, plants give Alchemy. A player can
-reach master Smithing without touching a forge, and nothing records that they are a miner. The
-`survival` category holds one skill, Skinning.
-
-- **Fabric (separate PR):** a `gathering` category replaces `survival` in `SKILL_CATEGORIES`
-  (`skills/shared.js`) and in the attribute weights (`attributes.js` `categories`, today's
-  `survival` weights move to it). Three new skills join Skinning in it: **Mining**, **Woodcutting**
-  and **Foraging**, each with an XP curve in `SKILL_CURVES` and the shared `TIER_XP`. Skinning moves
-  to the category unchanged. `skills/survival.js` becomes `skills/gathering.js`. `gathering` takes `survival`'s place (index 5)
-  in the list, because skill resources load the category as an index.
-- **Work goes by tool:** the `gather` rows become pick (`stone`, `metal`) and shovel (`soil`) →
-  Mining, axe (`wood`) → Woodcutting, `plant` → Foraging, `carcass` → Skinning, with today's XP per
-  unit. Crafting skills grow only from crafting (`craft` rows), and Building only from placing,
-  dismantling and repairing. The XP curves of Smithing, Carpentry, Alchemy and Building are
-  rebalanced in the same PR so their tiers are still reached in play, and the Phase 213 tower step
-  still passes.
-- **Each tier gives something** (Phase 271 needs a node per tier): Mining, Woodcutting and Foraging
-  tiers lower that work's time (Phase 259, on top of the tool's speed) or raise its yield; the
-  fabric names the bonus per tier.
-- **No profession changes:** gathering skills name no profession, so profession unlocks and mastery
-  (Phase 118, "all constituent skills at master") stay as they are, and on the wheel (Phase 271)
-  they sit in the centre disc as skills anyone uses. Their master tiers give titles once Phase 273
-  lands ("Master Miner").
-- **Code reads the fabric:** `attribute_rules.gd`'s hard-coded `SKILL_CATEGORIES` is read from
-  `GameData` instead, so a category change is data-only; the suite's copy
-  (`attribute_tests.gd` `SKILL_CATEGORIES`) is read the same way. The village `forager` specialty
-  (`settlement.js`) weighs Foraging instead of Tracking, Navigation and Alchemy.
-- **Saves:** XP already earned stays in the skill it was earned in; no migration (the game is in
-  playtest).
-- New skill and category names have keys in both locales (Phase 267).
-- Fishing and Farming will join this category with their systems (see Deferred).
-
-**Acceptance criteria**
-- `npm run validate` and `check-drift` pass; the validator rejects a skill whose category is not in
-  `SKILL_CATEGORIES` and a `gather` row naming a skill outside `gathering`; its self-check proves
-  both.
-- Suite tests: mining stone, ore and soil grants Mining XP and no Building or Smithing XP; chopping
-  grants Woodcutting, foraging grants Foraging, skinning grants Skinning; crafting still grants its
-  crafting skill; a Mining tier lowers mining time as the fabric says; `attribute_rules.gd`'s
-  categories equal the fabric's; a save with old Smithing XP loads with it unchanged.
-- The playtest bot's mine, gather, craft and tower steps pass.
 - Every new string is in both locales.
 
 ---

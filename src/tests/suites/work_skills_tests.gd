@@ -58,8 +58,8 @@ func _test_table() -> void:
 	for m: String in GameData.MATERIALS:
 		assert_true(WorkSkills.family_of(m) in ["metal", "stone", "wood", "soil"], "%s has a gather family" % m)
 		assert_false(WorkSkills.gather_row(m).is_empty(), "gathering %s grows a skill" % m)
-	assert_eq(str(WorkSkills.gather_row("Ferrite")["skill"]), "Smithing", "ore grows Smithing")
-	assert_eq(str(WorkSkills.gather_row("Thornwood")["skill"]), "Carpentry", "wood grows Carpentry")
+	assert_eq(str(WorkSkills.gather_row("Ferrite")["skill"]), "Mining", "ore grows Mining (Phase 274)")
+	assert_eq(str(WorkSkills.gather_row("Thornwood")["skill"]), "Woodcutting", "wood grows Woodcutting (Phase 274)")
 	assert_eq(str(WorkSkills.gather_row("carcass").get("skill", "")), "Skinning", "a carcass grows Skinning")
 	assert_false("xpPerHarvest" in GameData.SKILLS["Skinning"], "by the WorkSkills row alone, not a second number on the skill")
 	for kind in WorkSkills.SINGLE_KINDS:

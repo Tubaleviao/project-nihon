@@ -4,6 +4,6 @@ const crafting    = require('./crafting')
 const magic       = require('./magic')
 const exploration = require('./exploration')
 const social      = require('./social')
-const survival    = require('./survival')
+const gathering   = require('./gathering')
 
-module.exports = safeMerge('skill', combat, crafting, magic, exploration, social, survival)
+module.exports = safeMerge('skill', combat, crafting, magic, exploration, social, gathering)

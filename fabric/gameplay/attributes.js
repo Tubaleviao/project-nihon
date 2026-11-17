@@ -77,7 +77,7 @@ const GROWTH = {
     combat:      { strength: 0.5, agility: 0.5 },
     crafting:    { strength: 0.5, intelligence: 0.5 },
     exploration: { perception: 0.5, agility: 0.5 },
-    survival:    { vitality: 0.5, perception: 0.5 },
+    gathering:   { vitality: 0.5, perception: 0.5 },
     magic:       { intelligence: 0.5, resistance: 0.5 },
     social:      { perception: 1.0 },
   },
@@ -234,6 +234,12 @@ const AttributeSystem = defineEntity({
       description: 'Growth from skill XP: { xpPerPoint, costStep, totalPointsCap, categories: { <skill category>: { <attribute>: weight } } }; ' +
         'the next point of an attribute that has grown g points costs xpPerPoint * (1 + costStep * g) weighted XP',
       defaultValue: GROWTH,
+    },
+    skillCategories: {
+      type: 'json',
+      description: 'Phase 274 — the skill-category enum in index order (skills/shared.js SKILL_CATEGORIES); a skill resource ' +
+        'holds its category as an index into this list, so the runtime reads the names here instead of keeping a copy',
+      defaultValue: SKILL_CATEGORIES,
     },
   },
   behaviors: {

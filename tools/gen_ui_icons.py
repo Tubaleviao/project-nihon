@@ -78,7 +78,7 @@ FRAMES = {
     "magic": ("purple", "purple_d"),
     "exploration": ("teal", "blue_d"),
     "social": ("gold", "gold_d"),
-    "survival": ("green", "green_d"),
+    "gathering": ("green", "green_d"),
 }
 
 
@@ -387,6 +387,27 @@ def s_knife(c):
     c.poly([(84, 12), (40, 40), (50, 40)], "steel_l")
     c.line((30, 62), (14, 86), 9, "wood_d")
     c.line((34, 56), (46, 66), 5, "gold_d")
+
+
+# Phase 274 — the gathering skills.
+def s_pickaxe(c):
+    c.line((30, 86), (62, 30), 8, "wood")
+    c.poly([(18, 34), (40, 14), (62, 22), (86, 14), (92, 26), (62, 34), (40, 30)], "steel")
+    c.poly([(40, 14), (62, 22), (86, 14), (62, 18)], "steel_l")
+
+
+def s_axe(c):
+    c.line((26, 88), (64, 22), 8, "wood")
+    c.poly([(54, 22), (84, 12), (90, 46), (62, 42)], "steel")
+    c.poly([(84, 12), (90, 46), (86, 46), (80, 16)], "steel_l")
+
+
+def s_leaf(c):
+    c.ellipse(50, 44, 26, 34, "yellow")
+    c.line((50, 14), (50, 92), 5, "wood_d")
+    for y in (30, 44, 58):
+        c.line((50, y + 8), (34, y), 4, "wood_d")
+        c.line((50, y + 8), (66, y), 4, "wood_d")
 
 
 def s_bricks(c):
@@ -718,6 +739,7 @@ SYMBOLS = {
     "Navigation": s_compass, "ElementalMagic": s_flame, "VoidMagic": s_voidorb,
     "RestorationMagic": s_plus, "Enchanting": s_sparkle, "Diplomacy": s_flag, "Trade": s_scales,
     "Speechcraft": s_speech, "Leadership": s_crown, "Skinning": s_knife,
+    "Mining": s_pickaxe, "Woodcutting": s_axe, "Foraging": s_leaf,
     "Building": s_bricks, "Tailoring": s_needle, "Lockpicking": s_lockpick,
 }
 
@@ -783,7 +805,7 @@ def read_skills(categories):
     for cat in categories:
         f = SKILLS_DIR / f"{cat}.js"
         if f.exists():
-            for name in re.findall(r"^  (\w+): defineEntity\(", f.read_text(), re.M):
+            for name in re.findall(r"^  ([A-Z]\w*): \w+\(", f.read_text(), re.M):   # defineEntity or a helper (gathering.js)
                 skills[name] = cat
     return skills
 

@@ -175,6 +175,18 @@ skill.Leadership.name,Leadership,Liderança
 skill.Leadership.desc,Inspiring and coordinating allies.,Inspirar e coordenar aliados.
 skill.Skinning.name,Skinning,Esfola
 skill.Skinning.desc,Working a creature's body with a knife.,Trabalhar o corpo de uma criatura com uma faca.
+skill.Mining.name,Mining,Mineração
+skill.Mining.desc,"Breaking stone, ore and soil with a pick or a shovel.","Quebrar pedra, minério e terra com uma picareta ou uma pá."
+skill.Woodcutting.name,Woodcutting,Lenharia
+skill.Woodcutting.desc,Felling trees and cutting wood with an axe.,Derrubar árvores e cortar madeira com um machado.
+skill.Foraging.name,Foraging,Coleta
+skill.Foraging.desc,"Gathering plants, herbs and fruit by hand.","Colher plantas, ervas e frutos com as mãos."
+category.combat.name,Combat,Combate
+category.crafting.name,Crafting,Artesanato
+category.magic.name,Magic,Magia
+category.exploration.name,Exploration,Exploração
+category.social.name,Social,Social
+category.gathering.name,Gathering,Coleta de recursos
 skill.Building.name,Building,Construção
 skill.Building.desc,"Placing, dismantling and repairing structures.","Colocar, desmontar e reparar estruturas."
 skill.Tailoring.name,Tailoring,Alfaiataria

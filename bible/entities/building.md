@@ -15,7 +15,7 @@ Putting up and taking down structures: placing blocks, dismantling them cleanly 
 | `tier` | enum (`novice`, `apprentice`, `journeyman`, `expert`, `master`) | yes |  |
 | `xpCurve` | enum (`linear`, `quadratic`, `exponential`) | yes | XP required per tier |
 | `maxLevel` | integer | yes | Maximum XP level within a tier before tier advance is required; the same as levelCap |
-| `category` | enum (`combat`, `crafting`, `magic`, `exploration`, `social`, `survival`) | yes | Skill domain: crafting |
+| `category` | enum (`combat`, `crafting`, `magic`, `exploration`, `social`, `gathering`) | yes | Skill domain: crafting |
 | `levelCap` | integer | yes | Highest Building level (WorkSkills.curves) |
 | `xpToLevel` | json | yes | Cumulative XP needed to reach each level, index = level (WorkSkills.curves) |
 

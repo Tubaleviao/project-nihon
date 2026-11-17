@@ -153,7 +153,7 @@ const SPECIALTIES = {
     smith:      { skills: { Smithing: 1, ArcaneForging: 0.5 }, attributes: { strength: 0.25 } },
     hunter:     { skills: { Archery: 0.5, Swordsmanship: 0.5, Skinning: 0.5, Tracking: 0.5 }, attributes: { agility: 0.25 } },
     builder:    { skills: { Carpentry: 0.5, Leadership: 0.5 }, attributes: { vitality: 0.25, strength: 0.25 } },
-    forager:    { skills: { Tracking: 0.5, Navigation: 0.5, Alchemy: 0.5 }, attributes: { perception: 0.25 } },
+    forager:    { skills: { Foraging: 1 }, attributes: { perception: 0.25 } },   // Phase 274: Foraging, not Tracking, Navigation and Alchemy
   },
 }
 
