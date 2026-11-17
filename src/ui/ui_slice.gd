@@ -173,6 +173,10 @@ var _crafting_box: VBoxContainer = null
 var _repair_feedback: Label = null
 var _technology_box: VBoxContainer = null
 var _technology_feedback: Label = null
+# Phase 270 — the technology tree (zoom canvas), its toolbar balance and the selected node's details.
+var _tech_tree: Control = null
+var _tech_balance: Label = null
+var _tech_detail: VBoxContainer = null
 var _market_box: VBoxContainer = null
 var _proposal_box: VBoxContainer = null
 # Phase 24 social/economy window widgets (trade / market / proposals).
@@ -1436,6 +1440,7 @@ func _build_technology_content() -> Control:
 	_technology_feedback = Label.new()
 	_technology_feedback.add_theme_font_size_override("font_size", 14)
 	vbox.add_child(_technology_feedback)
+	_m2.build_tech_tree(vbox)
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_technology_box = VBoxContainer.new()
