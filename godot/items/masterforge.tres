@@ -6,7 +6,7 @@
 script = ExtResource("1")
 id = ""
 condition = 0
-weight = 60.0
+weight = 20.0
 rarity = 0
 stackable = false
 shape = {"archetype":"hearth","parts":{"base":"Ferrite","fuel":"Ashite"},"scale":1}

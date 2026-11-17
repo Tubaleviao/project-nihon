@@ -1377,8 +1377,9 @@ func _place_with_keys(station_type: String) -> int:
 	var item := StationRules.placement_item(station_type)
 	if item == "":
 		return 0
-	if int(_root._inventory.get_item_count(item)) < 1:
-		_root._inventory.add_item(item, 1)
+	if int(_root._inventory.get_item_count(item)) < 1 and not _root._inventory.add_item(item, 1):
+		push_warning("[Playtest] the pack refused one %s (%.1f of %.1f kg)" % [item, _root._inventory.get_current_weight(), _root._inventory.get_max_weight()])
+		return 0
 	var ui: Node = _root._ui
 	ui.hotbar.assign(0, item)
 	_tap(KEY_1)

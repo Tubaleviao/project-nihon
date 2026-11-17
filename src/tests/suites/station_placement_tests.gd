@@ -15,7 +15,7 @@ const I18n := preload("res://src/core/i18n.gd")
 const AT := Vector3(10.5, 2.0, 10.5)
 
 func register() -> void:
-	_run_test("stations: every placeable type has a placement item tagged station, and each item a recipe", _test_table)
+	_run_test("stations: every placeable type has a placement item tagged station, each item a recipe, and it fits half a pack", _test_table)
 	_run_test("stations: B, N and V no longer place or cycle stations, and no label names them", _test_no_shortcuts)
 	_run_test("stations: no station item selected, no ghost; one selected, the ghost follows the aim with the host's refusal", _test_ghost)
 	_run_test("stations: the use input emits one placement request with the rotation R turned", _test_request)
@@ -76,6 +76,13 @@ func _test_table() -> void:
 			for o: Dictionary in (GameData.RECIPES[k].get("recipe") as Dictionary).get("outputs", []):
 				made = made or str(o.get("item", "")) == item
 		assert_true(made or item == "Hearth", "a recipe makes %s" % item)
+		# A crafted or picked-up station goes into the pack: one must fit an empty pack with room for a kit.
+		var inv := InventorySlice.new()
+		add_child(inv)
+		assert_true(inv.add_item(item, 1), "an empty pack takes one %s" % item)
+		assert_true(inv.get_current_weight() <= inv.get_max_weight() * 0.5,
+			"%s weighs at most half the pack (%.1f of %.1f kg)" % [item, inv.get_current_weight(), inv.get_max_weight()])
+		inv.free()
 	assert_eq(StationRules.placement_item("carpentry bench"), "CarpentryBench", "the first station is the carpentry bench")
 	var bench: Dictionary = GameData.RECIPES["RecipeCarpentryBench"].get("recipe")
 	assert_eq(str(bench.get("station", "x")), "", "made by hand")
@@ -261,6 +268,15 @@ func _test_hotbar_kind() -> void:
 	assert_eq(p._station_placer.item, "Forge", "selecting a station box arms the player")
 	GameBus.hotbar_station_selected.emit("Thornwood")
 	assert_eq(p._station_placer.item, "", "selecting anything else disarms it")
+	# A station item put into (or taken out of) the box already selected arms (or disarms) it without a re-select.
+	var bar := Hotbar.new()
+	add_child(bar)
+	bar.select_slot(0)
+	bar.assign(0, "Forge")
+	assert_eq(p._station_placer.item, "Forge", "a station item assigned to the selected box arms the player")
+	bar.assign(0, "Thornwood")
+	assert_eq(p._station_placer.item, "", "and replacing it disarms the player")
+	bar.free()
 	p.free()
 
 func _test_catalog() -> void:

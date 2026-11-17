@@ -324,8 +324,13 @@ func activate(index: int) -> void:
 func select_slot(index: int) -> void:
 	selected = clampi(index, 0, SLOT_COUNT - 1)
 	_render()
+	_announce_selection()
+
+## Tell listeners what the selected box holds: `slot_selected`, and (Phase 268) the station item that arms the
+## player's placement ghost ("" disarms it). Called whenever the selected box or its item changes, so an item
+## filled into or taken out of the selected box arms or disarms the ghost without a re-select.
+func _announce_selection() -> void:
 	slot_selected.emit(selected, selected_item())
-	# Phase 268 — a station item arms the player's placement ghost; anything else disarms it.
 	GameBus.hotbar_station_selected.emit(selected_item() if kind_at(selected) == KIND_STATION else "")
 
 ## Select the box holding `item_id`, without re-announcing when it already is selected.
@@ -352,7 +357,7 @@ func refresh() -> void:
 	slots = fill(slots, held, _is_usable, _declined)
 	_render(held)
 	if selected_item() != before:
-		slot_selected.emit(selected, selected_item())
+		_announce_selection()
 
 ## Empty a box by hand. An item taken off stays off until it is used up.
 func clear_slot(index: int) -> void:
@@ -380,7 +385,7 @@ func _set_slots(next: Array) -> void:
 	_render()
 	save_state()
 	if selected_item() != before:
-		slot_selected.emit(selected, selected_item())
+		_announce_selection()
 
 # ---------------------------------------------------------------------------
 # Keys

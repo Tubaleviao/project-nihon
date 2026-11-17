@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:67edb3b49f441be7d629fcc5ce2a07356d635d2be2431879c09fbea856061266",
+  "schemaHash": "sha256:43777f22ae97370382d17ca25c94003109b50afa8f8ac3b419f48631733f6c71",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -23866,7 +23866,7 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false,
-            "defaultValue": 20
+            "defaultValue": 8
           },
           "rarity": {
             "name": "rarity",
@@ -24077,7 +24077,7 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false,
-            "defaultValue": 40
+            "defaultValue": 15
           },
           "rarity": {
             "name": "rarity",
@@ -24288,7 +24288,7 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false,
-            "defaultValue": 30
+            "defaultValue": 12
           },
           "rarity": {
             "name": "rarity",
@@ -24499,7 +24499,7 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false,
-            "defaultValue": 18
+            "defaultValue": 6
           },
           "rarity": {
             "name": "rarity",
@@ -24710,7 +24710,7 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false,
-            "defaultValue": 60
+            "defaultValue": 20
           },
           "rarity": {
             "name": "rarity",
@@ -24921,7 +24921,7 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false,
-            "defaultValue": 50
+            "defaultValue": 20
           },
           "rarity": {
             "name": "rarity",
@@ -25132,7 +25132,7 @@
             "nullable": false,
             "primaryKey": false,
             "pii": false,
-            "defaultValue": 70
+            "defaultValue": 25
           },
           "rarity": {
             "name": "rarity",
