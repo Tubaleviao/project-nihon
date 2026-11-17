@@ -5,7 +5,7 @@ title: "Waystone"
 
 # Waystone
 
-`item`
+`item` · `station`
 
 A carved marker stone that anchors a fast-travel network. Placed as a waystone station; a player attunes to it by standing at it.
 

@@ -45,7 +45,7 @@ static func controls_rows() -> Array:
 		{"action": "mine", "keys": "Shift +", "desc": I18n.t("controls.row8"), "mouse": MOUSE_BUTTON_LEFT},
 		{"action": "place", "keys": "", "desc": I18n.t("controls.row9"), "mouse": MOUSE_BUTTON_MIDDLE},
 		{"action": "next_block", "keys": "R", "desc": I18n.t("controls.row10"), "mouse": 0},
-		{"action": "station", "keys": "B · V", "desc": I18n.t("controls.row11"), "mouse": 0},
+		{"action": "station", "keys": "R · B", "desc": I18n.t("controls.row11"), "mouse": MOUSE_BUTTON_LEFT},
 		{"action": "tame", "keys": "G", "desc": I18n.t("controls.row12"), "mouse": 0},
 		{"action": "mount", "keys": "M", "desc": I18n.t("controls.row19"), "mouse": 0},
 		{"action": "pick_up", "keys": "T", "desc": I18n.t("controls.row20"), "mouse": 0},

@@ -119,10 +119,10 @@ const GENDERS = {
 const DEFAULT_CREATION = { gender: 'masculine', hair: 'hair_m_crop', hairColor: 41 }
 
 // Items given once at creation. Server rules may replace the list; the sandbox has no class kits.
-// Phase 184 — a carpenter's axe: trees are the only wood source and need an axe, and every axe recipe
-// needs wood, so without one a new player could never reach planks, stations or a bed.
-// Phase 260 — a stone hammer: placing a block needs one in hand (Structure.buildTool). Phase 262 empties the kit.
-const STARTING_KIT = [{ item: 'NoviceTunic', quantity: 1, equip: true }, { item: 'CarpenterAxe', quantity: 1 }, { item: 'StoneHammer', quantity: 1 }]
+// Phase 262 — empty: a new character starts with nothing. Branches and loose stones on the newcomer grounds
+// (Phase 261) make the stone tools (Phase 260), which reach wood, soil and rock; the plain clothes a new
+// character wears are painted on the base body (Phase 215), part of the appearance, not an item.
+const STARTING_KIT = []
 
 // Refusal keys the host sends; the client renders them through I18n.t (locale/ui.csv).
 const REFUSALS = [
@@ -261,7 +261,7 @@ const CharacterCreation = defineEntity({
     hairStyles: { type: 'json', description: '{ <hair id>: { gender, shape } }; mesh models/characters/hair/<id>.glb.raw, icon icons/hair/<id>.png.raw', defaultValue: HAIR_STYLES },
     hairColors: { type: 'json', description: 'Curated hair colours as DefaultPalette indices', defaultValue: HAIR_COLORS },
     defaultCreation: { type: 'json', description: 'The creation a player who skips the screen gets: { gender, hair, hairColor }', defaultValue: DEFAULT_CREATION },
-    startingKit: { type: 'json', description: 'Items given once at creation: [{ item, quantity, equip }]; a server rule may replace it', defaultValue: STARTING_KIT },
+    startingKit: { type: 'json', description: 'Items given once at creation: [{ item, quantity, equip }]; empty in the shipped game (Phase 262), a server rule may fill it', defaultValue: STARTING_KIT },
     proportionPreset: { type: 'string', description: 'Body proportion preset both gender presets use', defaultValue: 'chibi' },
     headRatio: { type: 'json', description: 'Allowed head-to-height ratio of a created rig: { min, max }', defaultValue: CHIBI_RANGE },
     refusals: { type: 'json', description: 'Refusal reasons; the catalog key is creation.refuse.<reason>', defaultValue: REFUSALS },

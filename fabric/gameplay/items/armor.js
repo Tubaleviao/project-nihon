@@ -112,13 +112,14 @@ module.exports = {
   }),
 
   // ─── NoviceTunic ──────────────────────────────────────────────────────────
-  // Phase 180 — the starting kit (CharacterCreation.startingKit): every new character wears one.
+  // Phase 180 — the starting outfit. Phase 262: no longer given (the starting kit is empty); it is sewn at a
+  // carpentry bench (RecipeNoviceTunic), and a new character wears the plain clothes painted on the body.
   NoviceTunic: defineEntity({
     tags: ['item'],
     description:
-      'Plain woven tunic with a belted waist, given to every new character. ' +
+      'Plain woven tunic with a belted waist, sewn from duskfiber at a carpentry bench. ' +
       'Barely armour at all; it marks a newcomer and is replaced as soon as anything better is made.',
-    goal: 'The starting outfit: a newcomer is dressed without being given a head start (NoPayToWin, no class kits)',
+    goal: 'A cheap first garment anyone can sew; nobody is handed one (NoPayToWin, no class kits, Phase 262)',
     fields: {
       id:        { type: 'uuid', primaryKey: true },
       condition: { type: 'enum', values: DURABILITY_STATES },

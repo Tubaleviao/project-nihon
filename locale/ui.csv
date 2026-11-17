@@ -52,7 +52,7 @@ controls.key.pad_south,Pad A,Botão A do controle
 controls.row0,Move,Mover
 controls.row1,Jump,Pular
 controls.row10,Next placeable block,Próximo bloco colocável
-controls.row11,Station cycle / place,Alternar / colocar estação
+controls.row11,"Station item in the hotbar: click places, R turns, B picks up","Estação na barra: clique coloca, R gira, B recolhe"
 controls.row12,Tame nearest creature,Domar a criatura mais próxima
 controls.row13,Toggle worn equipment on and off,Mostrar ou ocultar o equipamento vestido
 controls.row14,Windows: Alt + the letter (or click the boxes under your health); Alt+G opens the clan (J no longer does),Janelas: Alt + a letra (ou clique nas caixas sob a sua vida); Alt+G abre o clã (J não abre mais)
@@ -100,7 +100,7 @@ hotbar.press_key,Binding this box  ·  Esc cancels  ·  Backspace clears,Definin
 hud.chop,Chop: {0} (axe),Cortar: {0} (machado)
 hud.hp,HP {0} {1}/{2},PV {0} {1}/{2}
 hud.pickup,Pick up: {0},Pegar: {0}
-hud.station,Station: {0}  (B change · V place),Estação: {0}  (B alterar · V colocar)
+hud.station_place,Placing: {0},Colocando: {0}
 hud.status,{0} {1}s,{0} {1}s
 load.building,Building the world…,Construindo o mundo…
 load.building_pct,Building the world…  {0}%,Construindo o mundo…  {0}%
@@ -464,44 +464,64 @@ tutorial.look.title,Look around,Olhe ao redor
 tutorial.look.body,Hold to turn the camera and scroll to zoom in and out.,Segure para girar a câmera e role para aproximar ou afastar.
 tutorial.controls.title,Controls,Controles
 tutorial.controls.body,Open the controls panel. It lists every key and stays there when the tutorial is off.,Abra o painel de controles. Ele lista todas as teclas e continua lá quando o tutorial está desligado.
-tutorial.mine.title,Dig,Cave
-tutorial.mine.body,Dig into the ground with your bare hands. What you dig goes into your pack.,Cave o chão com as próprias mãos. O que você cavar vai para a sua mochila.
-tutorial.chop.title,Chop a tree,Corte uma árvore
-tutorial.chop.body,"You start with an axe. Click a tree trunk to chop it, and collect four logs.","Você começa com um machado. Clique no tronco de uma árvore para cortá-la e junte quatro toras."
+tutorial.pick_branch.title,A branch,Um galho
+tutorial.pick_branch.body,"Branches lie on the ground nearby, under the trees. Walk up to one and press the key to pick it up.","Há galhos no chão aqui perto, embaixo das árvores. Chegue perto de um e pressione a tecla para pegá-lo."
+tutorial.pick_stone.title,A stone,Uma pedra
+tutorial.pick_stone.body,"Loose stones lie on the ground nearby, more of them near bare rock. Pick one up.","Há pedras soltas no chão aqui perto, mais perto da rocha exposta. Pegue uma."
 tutorial.inventory.title,Your pack,Sua mochila
-tutorial.inventory.body,Open the inventory to see what you carry and how heavy it is.,Abra o inventário para ver o que você carrega e quanto pesa.
+tutorial.inventory.body,You start with nothing. Open the inventory to see what you have picked up and how heavy it is.,Você começa sem nada. Abra o inventário para ver o que pegou e quanto pesa.
 tutorial.hotbar.title,The bottom bar,A barra inferior
 tutorial.hotbar.body,"Expand the bottom bar and drag an item onto a box. Press the box's key to use it.","Expanda a barra inferior e arraste um item para uma caixa. Pressione a tecla da caixa para usá-lo."
+tutorial.crafting.title,Crafting,Criação
+tutorial.crafting.body,Open the crafting window. It lists every recipe and what it needs; stone tools need no station.,Abra a janela de criação. Ela lista todas as receitas e o que cada uma exige; ferramentas de pedra não precisam de estação.
+tutorial.craft_axe.title,A stone axe,Um machado de pedra
+tutorial.craft_axe.body,"Craft a stone axe from a branch and a loose stone, anywhere.","Crie um machado de pedra com um galho e uma pedra solta, em qualquer lugar."
+tutorial.chop.title,Chop a tree,Corte uma árvore
+tutorial.chop.body,"Hold the stone axe, click a tree trunk to chop it, and collect four logs. A felled tree drops branches too.","Segure o machado de pedra, clique no tronco de uma árvore para cortá-la e junte quatro toras. A árvore derrubada também solta galhos."
+tutorial.craft_pick.title,A stone pick,Uma picareta de pedra
+tutorial.craft_pick.body,Craft a stone pick from a branch and loose stones. It mines rock.,Crie uma picareta de pedra com um galho e pedras soltas. Ela minera rocha.
+tutorial.craft_shovel.title,A stone shovel,Uma pá de pedra
+tutorial.craft_shovel.body,Craft a stone shovel from a branch and a loose stone. It digs soil and sand.,Crie uma pá de pedra com um galho e uma pedra solta. Ela cava terra e areia.
+tutorial.dig.title,Dig,Cave
+tutorial.dig.body,Dig into the ground with the shovel. What you dig goes into your pack.,Cave o chão com a pá. O que você cavar vai para a sua mochila.
+tutorial.mine_stone.title,Mine rock,Minere rocha
+tutorial.mine_stone.body,"Dig through the soil and mine the rock under it with the pick. Here the rock is ferrite ore, which the forge smelts.","Cave através da terra e minere a rocha embaixo dela com a picareta. Aqui a rocha é minério de ferrita, que a forja funde."
 tutorial.technology.title,Technology,Tecnologia
 tutorial.technology.body,Open the technology window. Research unlocks new recipes.,Abra a janela de tecnologia. A pesquisa libera novas receitas.
 tutorial.research_carpentry.title,Learn carpentry,Aprenda carpintaria
 tutorial.research_carpentry.body,Research Basic Carpentry. It costs four logs and a little time.,Pesquise Carpintaria Básica. Custa quatro toras e um pouco de tempo.
-tutorial.place_bench.title,A carpentry bench,Uma bancada de carpintaria
-tutorial.place_bench.body,"Cycle the station type to the carpentry bench, then place it near you.","Alterne o tipo de estação até a bancada de carpintaria e coloque-a perto de você."
-tutorial.crafting.title,Crafting,Criação
-tutorial.crafting.body,Open the crafting window. It lists every recipe and what it needs.,Abra a janela de criação. Ela lista todas as receitas e o que cada uma exige.
+tutorial.craft_bench.title,A carpentry bench,Uma bancada de carpintaria
+tutorial.craft_bench.body,"Make a carpentry bench by hand from four branches and two loose stones. Stations are made, carried and placed.","Faça uma bancada de carpintaria à mão com quatro galhos e duas pedras soltas. As estações são feitas, carregadas e colocadas."
+tutorial.place_bench.title,Place the bench,Coloque a bancada
+tutorial.place_bench.body,Select the carpentry bench in the bottom bar: its outline follows your aim. Use it to place the bench near you.,Selecione a bancada de carpintaria na barra inferior: o contorno dela segue a sua mira. Use-a para colocar a bancada perto de você.
 tutorial.craft_planks.title,Planks,Tábuas
 tutorial.craft_planks.body,"Stand by your bench and craft planks from logs. Planks build almost everything.","Fique perto da bancada e crie tábuas a partir de toras. As tábuas constroem quase tudo."
-tutorial.place_forge.title,A forge,Uma forja
-tutorial.place_forge.body,Place a forge. Metal tools and weapons are made at a forge.,Coloque uma forja. Ferramentas e armas de metal são feitas na forja.
+tutorial.craft_forge.title,Make a forge,Faça uma forja
+tutorial.craft_forge.body,"At the carpentry bench, build a forge from loose stones and planks.","Na bancada de carpintaria, construa uma forja com pedras soltas e tábuas."
+tutorial.place_forge.title,Place the forge,Coloque a forja
+tutorial.place_forge.body,Select the forge in the bottom bar and place it. Metal tools and weapons are made at a forge.,Selecione a forja na barra inferior e coloque-a. Ferramentas e armas de metal são feitas na forja.
 tutorial.research_smithing.title,Learn smithing,Aprenda ferraria
-tutorial.research_smithing.body,Research Basic Smithing to unlock ingots and the first metal tools.,Pesquise Ferraria Básica para liberar lingotes e as primeiras ferramentas de metal.
-tutorial.craft_tool.title,A pick,Uma picareta
-tutorial.craft_tool.body,"Dig up ferrite ore, smelt it into ingots and craft a pick. Its tooltip shows how much use it has left.","Cave minério de ferrita, funda-o em lingotes e crie uma picareta. A dica dela mostra quanto uso ainda resta."
+tutorial.research_smithing.body,"Research Basic Smithing to unlock the forge, ingots and the first metal tools.","Pesquise Ferraria Básica para liberar a forja, os lingotes e as primeiras ferramentas de metal."
+tutorial.craft_tool.title,A metal pick,Uma picareta de metal
+tutorial.craft_tool.body,"At the forge, smelt the ferrite ore into ingots and craft a ferrite pick. Its tooltip shows how much use it has left.","Na forja, funda o minério de ferrita em lingotes e crie uma picareta de ferrita. A dica dela mostra quanto uso ainda resta."
 tutorial.use_tool.title,Better tools,Ferramentas melhores
 tutorial.use_tool.body,Dig with the pick in your pack. A better tool digs faster and wears out with use.,Cave com a picareta na mochila. Uma ferramenta melhor cava mais rápido e se desgasta com o uso.
 tutorial.craft_bed.title,A bed,Uma cama
 tutorial.craft_bed.body,Craft a bed from planks. It needs no station.,Crie uma cama com tábuas. Ela não precisa de estação.
 tutorial.place_bed.title,Place your bed,Coloque sua cama
-tutorial.place_bed.body,"Cycle the station type to the bed and place it. From now on, you come back at your bed after death.","Alterne o tipo de estação até a cama e coloque-a. A partir de agora, você volta à sua cama depois de morrer."
+tutorial.place_bed.body,"Select the bed in the bottom bar and place it. From now on, you come back at your bed after death.","Selecione a cama na barra inferior e coloque-a. A partir de agora, você volta à sua cama depois de morrer."
+tutorial.craft_hammer.title,A stone hammer,Um martelo de pedra
+tutorial.craft_hammer.body,"Craft a stone hammer. Walls, floors and roofs are built with a hammer in hand.","Crie um martelo de pedra. Paredes, pisos e tetos são construídos com um martelo na mão."
 tutorial.build_shelter.title,A roof over your bed,Um teto sobre a cama
 tutorial.build_shelter.body,"Place blocks to wall in your bed on at least three sides, and put a roof over it.","Coloque blocos para cercar a cama em pelo menos três lados e cubra-a com um teto."
 tutorial.equip_weapon.title,Arm yourself,Arme-se
 tutorial.equip_weapon.body,Craft a sword at the forge and equip it in your main hand.,Crie uma espada na forja e equipe-a na mão principal.
 tutorial.kill.title,Hunt,Cace
 tutorial.kill.body,Attack a creature until it falls. Some creatures fight back.,Ataque uma criatura até ela cair. Algumas criaturas revidam.
+tutorial.craft_knife.title,A stone knife,Uma faca de pedra
+tutorial.craft_knife.body,Craft a stone knife from a branch and a loose stone. It skins and butchers what you hunt.,Crie uma faca de pedra com um galho e uma pedra solta. Ela esfola e corta o que você caçar.
 tutorial.harvest.title,Harvest,Aproveite a caça
-tutorial.harvest.body,"Harvest the carcass for meat and hide, or carry it home. A knife yields more.","Aproveite a carcaça para obter carne e couro, ou carregue-a para casa. Uma faca rende mais."
+tutorial.harvest.body,"Harvest the carcass with your knife for meat and hide, or carry it home. A better knife yields more.","Aproveite a carcaça com a faca para obter carne e couro, ou carregue-a para casa. Uma faca melhor rende mais."
 tutorial.respawn.title,Death is not the end,A morte não é o fim
 tutorial.respawn.body,"Your health regenerates over time, but nights and storms are dangerous. If you die, you come back at your bed.","Sua vida se regenera com o tempo, mas as noites e as tempestades são perigosas. Se você morrer, volta à sua cama."
 tutorial.map.title,The map,O mapa
@@ -521,7 +541,7 @@ tutorial.trade.body,Open the trade window to swap items with another player.,Abr
 tutorial.settlement.title,Settlements,Assentamentos
 tutorial.settlement.body,"Open the settlement window. With friends and a Hearth, a shelter can grow into a village.","Abra a janela de assentamento. Com amigos e uma Lareira, um abrigo pode virar uma vila."
 tutorial.found_village.title,Found a village,Funde uma vila
-tutorial.found_village.body,Place a Hearth on free land to claim it for your village.,Coloque uma Lareira em terra livre para reivindicá-la para sua vila.
+tutorial.found_village.body,"Craft a Hearth, select it in the bottom bar and place it on free land to claim it for your village.","Crie uma Lareira, selecione-a na barra inferior e coloque-a em terra livre para reivindicá-la para sua vila."
 tutorial.start_project.title,Start a project,Comece um projeto
 tutorial.start_project.body,"In the settlement window, pick a project and start it where it should stand.","Na janela de assentamento, escolha um projeto e comece-o onde ele deve ficar."
 tutorial.contribute_project.title,Build together,Construam juntos
@@ -701,6 +721,16 @@ chest.refused.not_open,Open the chest first.,Abra o baú primeiro.
 chest.refused.blocked,There is no room for it there.,Não há espaço para isso ali.
 chest.refused.cap,You have placed too many stations. Take one down first.,Você colocou estações demais. Desmonte uma primeiro.
 chest.refused.protected,You cannot break a chest or door that opens for you or belongs to your clan.,Você não pode quebrar um baú ou porta que abre para você ou pertence ao seu clã.
+placing.ok.place,The station stands.,A estação está de pé.
+placing.ok.pick_up,You picked the station up.,Você recolheu a estação.
+placing.refused.bad_args,That cannot be placed.,Isso não pode ser colocado.
+placing.refused.no_item,You need the station's item in your pack.,Você precisa do item da estação na mochila.
+placing.refused.far,That is too far away.,Isso está longe demais.
+placing.refused.blocked,There is no room for it there.,Não há espaço para isso ali.
+placing.refused.cap,You have placed too many stations. Pick one up first.,Você colocou estações demais. Recolha uma primeiro.
+placing.refused.not_owner,Only its owner picks a station up.,Só o dono recolhe uma estação.
+placing.refused.no_station,There is no station within reach.,Não há estação ao seu alcance.
+placing.refused.full,Your pack has no room for it.,Sua mochila não tem espaço para isso.
 chest.item_entry,{0} × {1},{0} × {1}
 lock.pick_started,Picking the lock ({0} s). Stand still.,Arrombando a fechadura ({0} s). Fique parado.
 lock.pick_opened,The lock gives. It opens for you once.,A fechadura cede. Abre para você uma vez.

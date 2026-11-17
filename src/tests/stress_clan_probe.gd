@@ -19,8 +19,18 @@ const TREES_LISTED := 12
 ## generator grows at least FOREST_TREES trees in.
 const FOREST_RADIUS_CHUNKS := 10
 const FOREST_TREES := 12
+## Phase 268 — the smith makes its carpentry bench and forge from loose branches and stones: the nearest untaken
+## loose items of each kind around the forest, listed with the trees, at most this many per kind, within this radius.
+const LOOSE_LISTED := 12
+const LOOSE_RADIUS := 120.0
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const CLAN_NAME_ARG := "--stress-clan-name"
+## Phase 262 — the starting kit is empty, and the clan scenario's chop and build beats need an axe and a hammer.
+## This probe exists only on a `--server --stress-host --stress-clan` boot, so it is a test-only path no real
+## play can reach: each bot, once its character is created, gets the tools the pre-262 kit gave. The bench and
+## the forge are not given: the chest chain makes and places its own (Phase 268), and a spare forge in every
+## pack weighed the smith past its cap, so its loose-item pickups were refused and no chest was made.
+const BOT_TOOLS := [["CarpenterAxe", 1], ["StoneHammer", 1]]
 
 var out_path := ""
 var stop_path := ""
@@ -31,6 +41,8 @@ var _t0_ms := 0
 var _trades := 0
 var _trees: Array = []
 var _trees_at := -INF
+## [id, kind, x, z] of the nearest loose items (`_nearest_loose`), refreshed with the trees.
+var _loose: Array = []
 ## [x, z] of the forest the chop chain walks to (`_find_forest`), found once the clan is full; [] before.
 var _forest: Array = []
 var _whisper_count := 0
@@ -42,6 +54,8 @@ var _private_seen := false
 var _private_gone := false
 var _written := false
 var _last_full: Dictionary = {}
+## Player ids already given BOT_TOOLS.
+var _equipped: Dictionary = {}
 
 static func attach(root: Node) -> void:
 	var args := Array(OS.get_cmdline_user_args())
@@ -80,6 +94,7 @@ func _process(delta: float) -> void:
 	if _poll < POLL_S:
 		return
 	_poll = 0.0
+	_give_bot_tools()
 	var world := world_record()
 	_note(world)
 	# Once the bots leave their pack and skill records go; the final record is the last one with every member's skills.
@@ -90,6 +105,21 @@ func _process(delta: float) -> void:
 	if stop_path != "" and FileAccess.file_exists(stop_path) and not _written:
 		_written = true
 		_write(out_path, { "world": _last_full if not _last_full.is_empty() else world, "seen": _seen, "refusals": _refusals })
+
+## Test-only: every connected, created bot gets BOT_TOOLS once, mirrored to its client like any pack change.
+func _give_bot_tools() -> void:
+	var reg: Node = _root._registry
+	for peer: Variant in reg.get_bound_peer_ids():
+		var pid := str(reg._peer_ids.get(peer, ""))
+		if pid == "" or _equipped.has(pid) or str(reg.creation_of(pid).get("state", "")) != "created":
+			continue
+		var inv: Node = reg.get_inventory(pid)
+		if inv == null:
+			continue
+		_equipped[pid] = true
+		for t: Array in BOT_TOOLS:
+			inv.add_item(str(t[0]), int(t[1]))
+		GameBus.inventory_synced.emit(pid, inv.get_contents(), inv.get_durability_data())
 
 func _note(world: Dictionary) -> void:
 	var flags := {
@@ -154,7 +184,7 @@ func world_record() -> Dictionary:
 		var inv: Node = _root._registry.get_inventory(str(pid))
 		inventories[str(pid)] = (inv._contents as Dictionary).duplicate() if inv != null and "_contents" in inv else {}
 		if inv != null:
-			for held: String in ["Chest", "FerriteIngot"]:
+			for held: String in ["Chest", "FerriteIngot", "CarpentryBench", "Forge"]:
 				if inv.get_item_count(held) > 0:
 					inventories[str(pid)][held] = inv.get_item_count(held)
 	var techs := {}
@@ -166,9 +196,11 @@ func world_record() -> Dictionary:
 		_clear_creatures_near(members)
 	if _wall_s() - _trees_at >= TREES_EVERY_S:
 		_trees_at = _wall_s()
-		_trees = _nearest_trees(Vector2(float(_forest[0]), float(_forest[1])) if not _forest.is_empty() else _clan_centre(members))
+		var at := Vector2(float(_forest[0]), float(_forest[1])) if not _forest.is_empty() else _clan_centre(members)
+		_trees = _nearest_trees(at)
+		_loose = _nearest_loose(at)
 	return {
-		"techs": techs, "trees": _trees, "forest": _forest, "inventories": inventories, "trade_ids": _root._trade._trades.keys(),
+		"techs": techs, "trees": _trees, "forest": _forest, "loose": _loose, "inventories": inventories, "trade_ids": _root._trade._trades.keys(),
 		"clans": clans.count(), "clan_id": best_id, "members": members.size(), "member_ids": members.keys(),
 		"invited_ids": invited, "skills": skills, "skilled_members": skilled, "trades": _trades, "structures": owned,
 		"chest_access": access, "chest_items": items, "whispers": _whispers(),
@@ -230,6 +262,24 @@ func _find_forest(centre: Vector2) -> Array:
 				best_d = d
 				best = c
 	return [(float(best.x) + 0.5) * size, (float(best.y) + 0.5) * size]
+
+## The `LOOSE_LISTED` untaken loose items of each kind nearest `centre` (within `LOOSE_RADIUS`), as [id, kind, x, z],
+## nearest first. The host's own `LooseItemSlice` names them, so a bot picks only what the host would give.
+func _nearest_loose(centre: Vector2) -> Array:
+	if _root._loose == null:
+		return []
+	var items: Array = _root._loose.items_near(centre, LOOSE_RADIUS)
+	items.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return (a["xz"] as Vector2).distance_to(centre) < (b["xz"] as Vector2).distance_to(centre))
+	var per_kind := {}
+	var out: Array = []
+	for it: Dictionary in items:
+		var kind := str(it["kind"])
+		if int(per_kind.get(kind, 0)) >= LOOSE_LISTED:
+			continue
+		per_kind[kind] = int(per_kind.get(kind, 0)) + 1
+		out.append([str(it["id"]), kind, (it["xz"] as Vector2).x, (it["xz"] as Vector2).y])
+	return out
 
 ## The `TREES_LISTED` trees nearest `centre` as [id, x, z], nearest first, kept by insertion (no full sort).
 func _nearest_trees(centre: Vector2) -> Array:

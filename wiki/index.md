@@ -10,8 +10,8 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 ## Appearance
 
 - [BoarRider](entities/boarrider.md) — A quadruped boar — the same character system driving a non-humanoid skeleton
-- [NoviceFeminine](entities/novicefeminine.md) — The feminine character-creation preset: a chibi body in the plain novice tunic
-- [NoviceMasculine](entities/novicemasculine.md) — The masculine character-creation preset: a chibi body in the plain novice tunic
+- [NoviceFeminine](entities/novicefeminine.md) — The feminine character-creation preset: a chibi body in the plain clothes painted on its sheet
+- [NoviceMasculine](entities/novicemasculine.md) — The masculine character-creation preset: a chibi body in the plain clothes painted on its sheet
 - [TravellerHuman](entities/travellerhuman.md) — The default humanoid traveller: veilsteel chestplate, a sheathed veilsteel longsword, and a stored ferrite shield
 
 ## Attribute
@@ -96,14 +96,24 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [AethermiteBow](entities/aethermitebow.md) — Recurve bow with an aethermite-treated thornwood stave and duskfiber string
 - [AethermiteDust](entities/aethermitedust.md) — Fine powder ground from raw aethermite ore at an arcane forge
 - [AethermiteShard](entities/aethermiteshard.md) — Raw aethermite refined into a crystalline shard at an arcane forge
+- [AlchemyBench](entities/alchemybench.md) — A plank table set with aethermite-lined bowls for brewing
 - [AlchemyPotion](entities/alchemypotion.md) — Sealed glass flask containing an Alchemist-brewed reagent
+- [ArcaneForge](entities/arcaneforge.md) — A ferrite forge fed with aethermite, for binding magic into metal
 - [AshiteBlock](entities/ashiteblock.md) — Quarried ashite stone block cut to standard building dimensions
 - [Bed](entities/bed.md) — A plank frame with a straw pallet
 - [BlueprintPalisade](entities/blueprintpalisade.md) — A blueprint that teaches the settlement project palisade
+- [BlueprintRecipeAlchemyBench](entities/blueprintrecipealchemybench.md) — A blueprint that teaches how to build the station of RecipeAlchemyBench
+- [BlueprintRecipeArcaneForge](entities/blueprintrecipearcaneforge.md) — A blueprint that teaches how to build the station of RecipeArcaneForge
 - [BlueprintRecipeBed](entities/blueprintrecipebed.md) — A blueprint that teaches how to build the station of RecipeBed
+- [BlueprintRecipeCarpentryBench](entities/blueprintrecipecarpentrybench.md) — A blueprint that teaches how to build the station of RecipeCarpentryBench
 - [BlueprintRecipeChest](entities/blueprintrecipechest.md) — A blueprint that teaches how to build the station of RecipeChest
 - [BlueprintRecipeDoor](entities/blueprintrecipedoor.md) — A blueprint that teaches how to build the station of RecipeDoor
+- [BlueprintRecipeForge](entities/blueprintrecipeforge.md) — A blueprint that teaches how to build the station of RecipeForge
 - [BlueprintRecipeHearth](entities/blueprintrecipehearth.md) — A blueprint that teaches how to build the station of RecipeHearth
+- [BlueprintRecipeMasonryBench](entities/blueprintrecipemasonrybench.md) — A blueprint that teaches how to build the station of RecipeMasonryBench
+- [BlueprintRecipeMasterForge](entities/blueprintrecipemasterforge.md) — A blueprint that teaches how to build the station of RecipeMasterForge
+- [BlueprintRecipeVoidShieldedWorkshop](entities/blueprintrecipevoidshieldedworkshop.md) — A blueprint that teaches how to build the station of RecipeVoidShieldedWorkshop
+- [BlueprintRecipeWaystone](entities/blueprintrecipewaystone.md) — A blueprint that teaches how to build the station of RecipeWaystone
 - [BlueprintStorehouse](entities/blueprintstorehouse.md) — A blueprint that teaches the settlement project storehouse
 - [BlueprintWatchtower](entities/blueprintwatchtower.md) — A blueprint that teaches the settlement project watchtower
 - [BlueprintWorkshop](entities/blueprintworkshop.md) — A blueprint that teaches the settlement project workshop
@@ -120,6 +130,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [BookTechVoidMastery](entities/booktechvoidmastery.md) — A book that teaches the technology TechVoidMastery
 - [Branch](entities/branch.md) — A straight stick picked off the ground or trimmed from a felled tree
 - [CarpenterAxe](entities/carpenteraxe.md) — Felling axe with a weighted ferrite head and a duskfiber-wrapped thornwood handle
+- [CarpentryBench](entities/carpentrybench.md) — A work top of lashed branches on stone feet, where logs become planks
 - [Cement](entities/cement.md) — Ashite ground to a fine grey powder at a masonry bench
 - [Chest](entities/chest.md) — A plank box with a ferrite band and lock
 - [Door](entities/door.md) — A plank door on ferrite hinges with a lock
@@ -131,11 +142,14 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [FerriteShield](entities/ferriteshield.md) — Round shield of ferrite-plated hardwood
 - [FerriteShortSword](entities/ferriteshortsword.md) — Standard single-edged blade forged from a refined ferrite ingot
 - [FieldRations](entities/fieldrations.md) — Dried grain-and-herb ration pack prepared from temperate grassland crops
+- [Forge](entities/forge.md) — A stone hearth with a plank bellows, hot enough to smelt ferrite
 - [Hearth](entities/hearth.md) — A stone-ringed fire pit that founds a settlement when placed
 - [Lockpick](entities/lockpick.md) — A bent ferrite pin on a thornwood grip
 - [LooseStone](entities/loosestone.md) — A fist-sized stone picked off the ground or knocked loose from host rock
 - [LumenfiteOrb](entities/lumenfiteorb.md) — A polished lumenfite sphere charged with stored magical energy by an Arcanist
-- [NoviceTunic](entities/novicetunic.md) — Plain woven tunic with a belted waist, given to every new character
+- [MasonryBench](entities/masonrybench.md) — A stone slab on a plank frame for cutting blocks and mixing cement
+- [MasterForge](entities/masterforge.md) — A ferrite-clad forge on cut stone that holds the heat veilsteel needs
+- [NoviceTunic](entities/novicetunic.md) — Plain woven tunic with a belted waist, sewn from duskfiber at a carpentry bench
 - [RefinedVoiditeShard](entities/refinedvoiditeshard.md) — Raw voidite stabilised in a forge into a crystalline shard
 - [SkinningKnife](entities/skinningknife.md) — Short ferrite blade on a thornwood grip, ground for pelts and meat
 - [StoneAxe](entities/stoneaxe.md) — A knapped stone lashed into a split branch
@@ -150,6 +164,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [VeilsteelPick](entities/veilsteelpick.md) — Heavy-duty pick smelted from veilsteel
 - [VoiditeEdge](entities/voiditeedge.md) — Jagged single-edged blade carved from a stabilised voidite shard
 - [VoidRuneTablet](entities/voidrunetablet.md) — Flat voidite slab etched with stabilisation runes by a Void Smithing expert
+- [VoidShieldedWorkshop](entities/voidshieldedworkshop.md) — A veilsteel cabinet lined with refined voidite, shielded for void work
 - [Waystone](entities/waystone.md) — A carved marker stone that anchors a fast-travel network
 
 ## Loot
@@ -197,10 +212,13 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 ## Recipe
 
 - [RecipeAethermiteBow](entities/recipeaethermitebow.md) — Treat a thornwood bow stave with aethermite and restring with duskfiber to produce an aethermite bow
+- [RecipeAlchemyBench](entities/recipealchemybench.md) — Build a plank table and line its bowls with aethermite dust at a carpentry bench
+- [RecipeArcaneForge](entities/recipearcaneforge.md) — Forge a ferrite hearth that burns aethermite, at a forge
 - [RecipeAshiteBlock](entities/recipeashiteblock.md) — Cut and shape raw ashite stone into standard building blocks at a masonry bench
 - [RecipeBed](entities/recipebed.md) — Lash six thornwood planks into a bed frame with a straw pallet, by hand
 - [RecipeBoneSaw](entities/recipebonesaw.md) — Craft a bone saw from two ferrite ingots and one thornwood plank
 - [RecipeCarpenterAxe](entities/recipecarpenteraxe.md) — Assemble a carpenter axe from one ferrite ingot, one thornwood plank, and one duskfiber strand
+- [RecipeCarpentryBench](entities/recipecarpentrybench.md) — Lash four branches onto two loose stones into a carpentry bench, by hand
 - [RecipeCement](entities/recipecement.md) — Grind two raw ashite into two sacks of cement at a masonry bench
 - [RecipeChest](entities/recipechest.md) — Box eight thornwood planks and band them with a ferrite ingot, by hand
 - [RecipeConcrete](entities/recipeconcrete.md) — Cast two sacks of cement and one soil into four concrete at a masonry bench
@@ -210,11 +228,14 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [RecipeFerriteIngot](entities/recipeferriteingot.md) — Smelt two raw ferrite ore into one refined ferrite ingot at a forge
 - [RecipeFerritePick](entities/recipeferritepick.md) — Craft a ferrite mining pick from two ferrite ingots and one thornwood plank
 - [RecipeFerriteShortSword](entities/recipeferriteshortsword.md) — Forge a ferrite short sword from one refined ferrite ingot
+- [RecipeForge](entities/recipeforge.md) — Stack eight loose stones into a hearth and fit a plank bellows at a carpentry bench
 - [RecipeHealthPotion](entities/recipehealthpotion.md) — Brew a health-restoring potion from aethermite dust and harvested herbs at an alchemy bench
 - [RecipeHearth](entities/recipehearth.md) — Lay a hearth from six thornwood planks and four ferrite ingots at a carpentry bench
 - [RecipeLeyframe](entities/recipeleyframe.md) — Bind two steel and two raw aethermite into two leyframe at an arcane forge
 - [RecipeLockpick](entities/recipelockpick.md) — Draw a ferrite ingot into a lockpick on a thornwood grip
 - [RecipeLumenfiteOrb](entities/recipelumenfiteorb.md) — Polish a lumenfite stone into a charged spell-focus orb at an arcane forge
+- [RecipeMasonryBench](entities/recipemasonrybench.md) — Set a slab of loose stones on a four-plank frame at a carpentry bench
+- [RecipeMasterForge](entities/recipemasterforge.md) — Clad a cut-stone hearth in six ferrite ingots at a forge
 - [RecipeNoviceTunic](entities/recipenovicetunic.md) — Sew two duskfiber strands into a plain tunic at a carpentry bench
 - [RecipeRefinedVoiditeShard](entities/reciperefinedvoiditeshard.md) — Stabilise one raw voidite crystal into a refined voidite shard at a forge
 - [RecipeSkinningKnife](entities/recipeskinningknife.md) — Craft a skinning knife from one ferrite ingot and one thornwood plank
@@ -231,6 +252,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [RecipeVeilsteelLongsword](entities/recipeveilsteellongsword.md) — Forge a veilsteel longsword from two veilsteel ingots and one ashite block at a master forge
 - [RecipeVoidResistPotion](entities/recipevoidresistpotion.md) — Brew a void-resist potion from refined voidite shard dust and aethermite dust
 - [RecipeVoidRuneTablet](entities/recipevoidrunetablet.md) — Etch stabilisation runes into a refined voidite slab at a void-shielded workshop
+- [RecipeVoidShieldedWorkshop](entities/recipevoidshieldedworkshop.md) — Line a veilsteel cabinet with refined voidite at an arcane forge
 - [RecipeWaystone](entities/recipewaystone.md) — Cut a waystone from four thornwood planks and two ferrite ingots at a carpentry bench
 
 ## Skeleton
@@ -309,7 +331,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 
 ## Tutorial
 
-- [Tutorial](entities/tutorial.md) — The first-steps tutorial: an ordered list of small steps that teach a new player to move, gather, build the first stations and tools, make a shelter with a bed, hunt, stay alive, find their way, grow and meet other people
+- [Tutorial](entities/tutorial.md) — The first-steps tutorial: an ordered list of small steps that teach a new player, who starts with nothing, to move, pick up branches and stones, make stone tools, build the first stations, make a shelter with a bed, hunt, stay alive, find their way, grow and meet other people
 
 ## World-system
 
@@ -327,6 +349,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [Settlement](entities/settlement.md) — A player-founded village: a Hearth, members with roles and a shared Stockpile
 - [SettlementProjects](entities/settlementprojects.md) — Structures a village builds together: a palisade, a storehouse, a workshop, a watchtower
 - [SettlementSpecialties](entities/settlementspecialties.md) — What each member of a village is good at: woodworker, smith, hunter, builder or forager
+- [StationPlacement](entities/stationplacement.md) — Every station is an item: crafted (the first by hand, the rest at an earlier station), carried in the pack, placed from the hotbar and picked up again by its owner
 - [StoneTools](entities/stonetools.md) — The stone tools a newcomer makes by hand (the only tools made or repaired without a bench), the two inputs they take, and where those inputs come from: branches from a felled tree, loose stones knocked from host rock
 - [Structure](entities/structure.md) — A connected set of placed blocks and the stations on them, owned by its builder or the builder's clan
 - [StructureDurability](entities/structuredurability.md) — How a placed block wears and comes apart

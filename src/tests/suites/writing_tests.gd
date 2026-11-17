@@ -79,7 +79,7 @@ func _test_rules() -> void:
 	# Phase 260 — a discovery technology (found by holding its inputs) has no book.
 	var taught: Array = GameData.TECHNOLOGIES.keys().filter(func(t): return not bool((GameData.TECHNOLOGIES[t].get("tech") as Dictionary).get("discovery", false)))
 	assert_eq(taught.size(), GameData.TECHNOLOGIES.size() - 1, "one discovery technology (TechStoneTools)")
-	assert_eq(items.size(), taught.size() + 8, "a book per learnable technology, a blueprint per station recipe and project")
+	assert_eq(items.size(), taught.size() + 16, "a book per learnable technology, a blueprint per station recipe (12 since Phase 268) and project (4)")
 	assert_eq(WritingRules.item_for("TechStoneTools"), "", "a discovery technology has no book")
 	for tid: String in taught:
 		var book := WritingRules.item_for(tid)

@@ -270,3 +270,33 @@ item.BlueprintWorkshop.name,Blueprint: Workshop,Planta: Oficina
 item.BlueprintWorkshop.desc,Read it to learn the settlement's workshop. You keep the blueprint.,Leia-a para aprender o projeto do povoado: oficina. A planta continua com você.
 item.BlueprintWatchtower.name,Blueprint: Watchtower,Planta: Torre de Vigia
 item.BlueprintWatchtower.desc,Read it to learn the settlement's watchtower. You keep the blueprint.,Leia-a para aprender o projeto do povoado: torre de vigia. A planta continua com você.
+item.CarpentryBench.name,Carpentry Bench,Bancada de Carpintaria
+item.CarpentryBench.desc,"A work top of lashed branches on stone feet, where logs become planks. Place it from the hotbar; you can pick it up again.","Um tampo de galhos amarrados sobre pés de pedra, onde toras viram tábuas. Coloque-a pela barra de atalhos; você pode recolhê-la depois."
+item.Forge.name,Forge,Forja
+item.Forge.desc,"A stone hearth with a plank bellows, hot enough to smelt ferrite. Place it from the hotbar; you can pick it up again.","Uma fornalha de pedra com fole de tábuas, quente o bastante para fundir ferrita. Coloque-a pela barra de atalhos; você pode recolhê-la depois."
+item.MasonryBench.name,Masonry Bench,Bancada de Alvenaria
+item.MasonryBench.desc,"A stone slab on a plank frame for cutting blocks and mixing cement. Place it from the hotbar; you can pick it up again.","Uma laje de pedra sobre armação de tábuas para cortar blocos e misturar cimento. Coloque-a pela barra de atalhos; você pode recolhê-la depois."
+item.AlchemyBench.name,Alchemy Bench,Bancada de Alquimia
+item.AlchemyBench.desc,"A plank table set with aethermite-lined bowls for brewing. Place it from the hotbar; you can pick it up again.","Uma mesa de tábuas com tigelas revestidas de etermita para preparar poções. Coloque-a pela barra de atalhos; você pode recolhê-la depois."
+item.MasterForge.name,Master Forge,Forja Mestra
+item.MasterForge.desc,"A ferrite-clad forge on cut stone that holds the heat veilsteel needs. Place it from the hotbar; you can pick it up again.","Uma forja revestida de ferrita sobre pedra talhada, que mantém o calor que o aço-véu exige. Coloque-a pela barra de atalhos; você pode recolhê-la depois."
+item.ArcaneForge.name,Arcane Forge,Forja Arcana
+item.ArcaneForge.desc,"A ferrite forge fed with aethermite, for binding magic into metal. Place it from the hotbar; you can pick it up again.","Uma forja de ferrita alimentada com etermita, para unir magia ao metal. Coloque-a pela barra de atalhos; você pode recolhê-la depois."
+item.VoidShieldedWorkshop.name,Void-Shielded Workshop,Oficina Blindada contra o Vazio
+item.VoidShieldedWorkshop.desc,"A veilsteel cabinet lined with refined voidite, shielded for void work. Place it from the hotbar; you can pick it up again.","Um gabinete de aço-véu revestido de vazita refinada, blindado para o trabalho com o vazio. Coloque-o pela barra de atalhos; você pode recolhê-lo depois."
+item.BlueprintRecipeWaystone.name,Blueprint: Waystone,Planta: Pedra-guia
+item.BlueprintRecipeWaystone.desc,Read it to learn to build the waystone. You keep the blueprint.,Leia-a para aprender a construir: pedra-guia. A planta continua com você.
+item.BlueprintRecipeCarpentryBench.name,Blueprint: Carpentry Bench,Planta: Bancada de Carpintaria
+item.BlueprintRecipeCarpentryBench.desc,Read it to learn to build the carpentry bench. You keep the blueprint.,Leia-a para aprender a construir: bancada de carpintaria. A planta continua com você.
+item.BlueprintRecipeForge.name,Blueprint: Forge,Planta: Forja
+item.BlueprintRecipeForge.desc,Read it to learn to build the forge. You keep the blueprint.,Leia-a para aprender a construir: forja. A planta continua com você.
+item.BlueprintRecipeMasonryBench.name,Blueprint: Masonry Bench,Planta: Bancada de Alvenaria
+item.BlueprintRecipeMasonryBench.desc,Read it to learn to build the masonry bench. You keep the blueprint.,Leia-a para aprender a construir: bancada de alvenaria. A planta continua com você.
+item.BlueprintRecipeAlchemyBench.name,Blueprint: Alchemy Bench,Planta: Bancada de Alquimia
+item.BlueprintRecipeAlchemyBench.desc,Read it to learn to build the alchemy bench. You keep the blueprint.,Leia-a para aprender a construir: bancada de alquimia. A planta continua com você.
+item.BlueprintRecipeMasterForge.name,Blueprint: Master Forge,Planta: Forja Mestra
+item.BlueprintRecipeMasterForge.desc,Read it to learn to build the master forge. You keep the blueprint.,Leia-a para aprender a construir: forja mestra. A planta continua com você.
+item.BlueprintRecipeArcaneForge.name,Blueprint: Arcane Forge,Planta: Forja Arcana
+item.BlueprintRecipeArcaneForge.desc,Read it to learn to build the arcane forge. You keep the blueprint.,Leia-a para aprender a construir: forja arcana. A planta continua com você.
+item.BlueprintRecipeVoidShieldedWorkshop.name,Blueprint: Void-Shielded Workshop,Planta: Oficina Blindada contra o Vazio
+item.BlueprintRecipeVoidShieldedWorkshop.desc,Read it to learn to build the void-shielded workshop. You keep the blueprint.,Leia-a para aprender a construir: oficina blindada contra o vazio. A planta continua com você.

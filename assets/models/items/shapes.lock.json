@@ -169,10 +169,20 @@
       "scale": 1,
       "hash": "1027716aaa3372c3"
     },
+    "AlchemyBench": {
+      "archetype": "chest",
+      "scale": 1,
+      "hash": "8ba2ffd41f625246"
+    },
     "AlchemyPotion": {
       "archetype": "potion",
       "scale": 1,
       "hash": "ab808dde5ee126ce"
+    },
+    "ArcaneForge": {
+      "archetype": "hearth",
+      "scale": 1,
+      "hash": "64f6fe3e7e57c1fe"
     },
     "AshiteBlock": {
       "archetype": "block",
@@ -189,10 +199,25 @@
       "scale": 1,
       "hash": "dcedeaa7cfa633c3"
     },
+    "BlueprintRecipeAlchemyBench": {
+      "archetype": "tablet",
+      "scale": 1,
+      "hash": "c6ccb19525e38b48"
+    },
+    "BlueprintRecipeArcaneForge": {
+      "archetype": "tablet",
+      "scale": 1,
+      "hash": "d8091836a159775a"
+    },
     "BlueprintRecipeBed": {
       "archetype": "tablet",
       "scale": 1,
       "hash": "13197aff22681aae"
+    },
+    "BlueprintRecipeCarpentryBench": {
+      "archetype": "tablet",
+      "scale": 1,
+      "hash": "9dd2c0c937276879"
     },
     "BlueprintRecipeChest": {
       "archetype": "tablet",
@@ -204,10 +229,35 @@
       "scale": 1,
       "hash": "b146c27c5d71ad27"
     },
+    "BlueprintRecipeForge": {
+      "archetype": "tablet",
+      "scale": 1,
+      "hash": "e10e0f1ae80af787"
+    },
     "BlueprintRecipeHearth": {
       "archetype": "tablet",
       "scale": 1,
       "hash": "7208649022c4182f"
+    },
+    "BlueprintRecipeMasonryBench": {
+      "archetype": "tablet",
+      "scale": 1,
+      "hash": "f671c604982227ec"
+    },
+    "BlueprintRecipeMasterForge": {
+      "archetype": "tablet",
+      "scale": 1,
+      "hash": "1ed6a0fc0ad61be7"
+    },
+    "BlueprintRecipeVoidShieldedWorkshop": {
+      "archetype": "tablet",
+      "scale": 1,
+      "hash": "4121c32343d25a49"
+    },
+    "BlueprintRecipeWaystone": {
+      "archetype": "tablet",
+      "scale": 1,
+      "hash": "93cf7e1d6af73006"
     },
     "BlueprintStorehouse": {
       "archetype": "tablet",
@@ -289,6 +339,11 @@
       "scale": 1,
       "hash": "8289389542f31c32"
     },
+    "CarpentryBench": {
+      "archetype": "chest",
+      "scale": 1,
+      "hash": "069bcb6263e179ff"
+    },
     "Cement": {
       "archetype": "dust",
       "scale": 1,
@@ -344,6 +399,11 @@
       "scale": 1,
       "hash": "a9bafcbc6d891ac0"
     },
+    "Forge": {
+      "archetype": "hearth",
+      "scale": 1,
+      "hash": "47b640bfc67108b2"
+    },
     "Hearth": {
       "archetype": "hearth",
       "scale": 1,
@@ -363,6 +423,16 @@
       "archetype": "orb",
       "scale": 1,
       "hash": "2464a132d10b133d"
+    },
+    "MasonryBench": {
+      "archetype": "chest",
+      "scale": 1,
+      "hash": "30858786469cf225"
+    },
+    "MasterForge": {
+      "archetype": "hearth",
+      "scale": 1,
+      "hash": "bef80c9b2c407cc4"
     },
     "NoviceTunic": {
       "archetype": "chestplate",
@@ -433,6 +503,11 @@
       "archetype": "tablet",
       "scale": 1,
       "hash": "4caab0811aec1312"
+    },
+    "VoidShieldedWorkshop": {
+      "archetype": "chest",
+      "scale": 1,
+      "hash": "dbb39cc9a693bbf9"
     },
     "VoiditeEdge": {
       "archetype": "sword",

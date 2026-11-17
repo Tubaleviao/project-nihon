@@ -284,14 +284,14 @@ func _test_phase130_waystone_placement() -> void:
 	var st: StationSlice = rig["stations"]
 	var inv: Node = rig["reg"].get_inventory("p1")
 	assert_eq(st.placement_item("waystone"), "Waystone", "the fabric names the waystone's placement item")
-	assert_eq(st.placement_item("forge"), "", "a forge stays free")
+	assert_eq(st.placement_item("forge"), "Forge", "Phase 268: a forge costs its item too")
 	assert_eq(st.try_place_station("waystone", Vector3(0.5, 1.0, 0.5), inv), "", "no item: refused")
 	assert_eq(st.try_place_station("waystone", Vector3(0.5, 1.0, 0.5)), "", "no inventory: refused")
 	assert_true(inv.add_item("Waystone", 1), "stock a stone")
 	var id := st.try_place_station("waystone", Vector3(0.5, 1.0, 0.5), inv)
 	assert_true(id != "", "with the item the stone is placed")
 	assert_eq(inv.get_item_count("Waystone"), 0, "and the item is consumed")
-	assert_true(st.try_place_station("forge", Vector3(9.5, 1.0, 9.5)) != "", "a forge places without an inventory")
+	assert_eq(st.try_place_station("forge", Vector3(9.5, 1.0, 9.5)), "", "Phase 268: a forge no longer places without an inventory")
 	# A removed trailing id is not reused after save/load.
 	var last := st.place_station("waystone", Vector3(20.5, 1.0, 0.5))
 	var data := st.get_station_data()

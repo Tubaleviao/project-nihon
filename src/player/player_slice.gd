@@ -199,8 +199,11 @@ var station_slice: Node = null
 ## The local player's inventory; a station whose fabric rule names a placement item pays from it.
 var inventory_slice: Node = null
 
-## Station placement preview ghost toggled by N.
-var _station_preview_on: bool = false
+## Phase 268 — a station item selected in the hotbar: its ghost, rotation and placement request.
+const StationPlacer := preload("res://src/player/station_placer.gd")
+var _station_placer: StationPlacer = StationPlacer.new()
+## This machine's player id, for the ghost's refusal (the host's structure guard judges a placer by it).
+var local_player_id: String = ""
 var terrain_slice: Node = null
 
 ## Phase 42 — set while the loading screen is up. It is its OWN gate, not a reuse of
@@ -304,6 +307,7 @@ func _ready() -> void:
 	GameBus.player_damaged.connect(_on_player_damaged)
 	GameBus.remote_player_state.connect(_on_remote_player_state)
 	GameBus.world_input_frozen.connect(set_world_input_frozen)
+	GameBus.hotbar_station_selected.connect(_on_station_selected)
 
 ## Freeze / unfreeze every world action for as long as the loading screen is up.
 func set_world_input_frozen(frozen: bool) -> void:
@@ -402,7 +406,7 @@ func _process(delta: float) -> void:
 		_update_camera_height(delta)
 		_update_camera_clearance()
 		_update_aim()
-		_update_station_preview()
+		_update_station_ghost()
 		if _work_hold != null:
 			_work_hold.tick(delta, _aimed_tree_id, _block_aim() if _aimed_block_hit else {})
 	_tick_ghosts(delta)
@@ -481,6 +485,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	# Left-click what the pointer is on: Shift mines the terrain block; otherwise pick up an
 	# item, else chop a tree, otherwise attack.
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		# Phase 268 — with a station item in the selected hotbar box, the click places it (the host decides).
+		if not event.shift_pressed and _station_placer.request(inventory_slice, _station_target(), get_position()):
+			return
 		if event.shift_pressed:
 			if _aimed_block_hit:
 				_work_press(_block_aim())
@@ -500,20 +507,15 @@ func _unhandled_input(event: InputEvent) -> void:
 			# material selection; a client's placement travels to the host as a
 			# `block_edit_intent` carrying that selection (see `_on_place_requested`).
 			GameBus.block_place_requested.emit(_aimed_block_pos, _aimed_block_normal, "", "", _aimed_block_exact)
-	# R key → cycle the build material.
+	# R key → turn the station ghost while a station item is selected (Phase 268), else cycle the build material.
 	if event is InputEventKey and event.pressed and not WindowShortcuts.is_window_key(event) and event.keycode == KEY_R:
-		GameBus.block_cycle_material_requested.emit()
-	# B key → cycle the station type to place.
-	if event is InputEventKey and event.pressed and not WindowShortcuts.is_window_key(event) and event.keycode == KEY_B:
-		_cycle_station_type()
-	# N key → toggle the station placement preview ghost.
-	if event is InputEventKey and event.pressed and not WindowShortcuts.is_window_key(event) and event.keycode == KEY_N:
-		_station_preview_on = not _station_preview_on
-		if not _station_preview_on and station_slice != null and station_slice.has_method("hide_preview"):
-			station_slice.hide_preview()
-	# V key → place the selected station at the aimed spot (or the player's feet).
-	if event is InputEventKey and event.pressed and not WindowShortcuts.is_window_key(event) and event.keycode == KEY_V:
-		_place_station()
+		if _station_placer.is_armed(inventory_slice):
+			_station_placer.rotate()
+		else:
+			GameBus.block_cycle_material_requested.emit()
+	# B key → pick up the nearest placed station in reach (Phase 268; the host checks it is ours and near).
+	if event is InputEventKey and event.pressed and not event.echo and not WindowShortcuts.is_window_key(event) and event.keycode == KEY_B:
+		StationPlacer.request_pick_up(station_slice, get_position())
 	# G key → tame the nearest creature in range (Phase 35). The rules live in
 	# TamingSlice (fabric-driven); this is only the player-facing affordance.
 	if event is InputEventKey and event.pressed and not WindowShortcuts.is_window_key(event) and event.keycode == KEY_G:
@@ -1209,8 +1211,7 @@ func _build_hud() -> void:
 	aim_label.visible = false
 	_hud.add_child(aim_label)
 	_aim_label = aim_label
-	# Station selection (B cycles, V places) shows in the bottom-right corner; the hotbar the UI
-	# slice builds carries everything else the old instruction row said.
+	# Phase 268 — the station item being placed (and why the ghost is refused) shows in the bottom-right corner.
 	_station_label = Label.new()
 	_station_label.name = "StationLabel"
 	_station_label.anchor_left = 1.0
@@ -1358,39 +1359,19 @@ func _update_aim_hud() -> void:
 
 func _refresh_build_hint() -> void:
 	if _station_label != null:
-		var stype := ""
-		if station_slice != null and station_slice.has_method("get_place_station_type"):
-			stype = str(station_slice.get_place_station_type())
-		if stype == "":
-			stype = "none"
-		_station_label.text = "" if stype == "none" else I18n.t("hud.station", [I18n.content("station", stype)])
+		_station_label.text = _station_placer.hint()
 
-func _cycle_station_type() -> void:
-	if station_slice == null or not station_slice.has_method("cycle_station_type"):
-		return
-	station_slice.cycle_station_type()
-	_refresh_build_hint()
+## Phase 268 — the hotbar selected `item_id`: a station item arms the ghost, anything else disarms it.
+func _on_station_selected(item_id: String) -> void:
+	_station_placer.select(item_id)
+	_update_station_ghost()
 
-func _place_station() -> void:
-	if station_slice == null or not station_slice.has_method("try_place_station"):
-		return
-	var stype := ""
-	if station_slice.has_method("get_place_station_type"):
-		stype = str(station_slice.get_place_station_type())
-	if stype == "":
-		return
-	# Grid-snapped and overlap-checked by the slice; a refused spot places nothing.
-	var target := _station_target()
-	# Phase 185 — on a client the host places the bed (and owns it); nothing is placed here.
-	if station_slice.has_method("place_remote") and station_slice.place_remote(stype, target):
-		return
-	var placed: String = station_slice.try_place_station(stype, target, inventory_slice)
-	_refresh_build_hint()
-	# A refused spot says why, on the same label the selection lives on.
-	if placed == "" and _station_label != null and station_slice.has_method("place_refusal"):
-		var why: String = station_slice.place_refusal(stype, target, inventory_slice)
-		if why != "":
-			_station_label.text += "  (%s)" % I18n.reason_text(why)
+## Keep the ghost on the aimed spot while a station item is selected (hidden under a menu or the loading freeze).
+func _update_station_ghost() -> void:
+	var before := _station_placer.refusal
+	_station_placer.update(station_slice, inventory_slice, _station_target(), local_player_id, world_input_allowed())
+	if _station_placer.refusal != before:
+		_refresh_build_hint()
 
 ## Where a station would go: on top of the aimed terrain block when the aimed
 ## face points up, else at the player's feet.
@@ -1400,21 +1381,6 @@ func _station_target() -> Vector3:
 	var pos := get_position()
 	pos.y -= 0.4   # feet (-0.9) plus the half-height lift the aimed branch uses
 	return pos
-
-## Keep the translucent placement ghost on the current target while the preview
-## is toggled on (N).
-func _update_station_preview() -> void:
-	if not _station_preview_on or station_slice == null or not station_slice.has_method("show_preview"):
-		return
-	# The ghost must not track the view under an open menu or the loading freeze.
-	if not world_input_allowed():
-		station_slice.hide_preview()
-		return
-	var stype := str(station_slice.get_place_station_type()) if station_slice.has_method("get_place_station_type") else ""
-	if stype == "":
-		station_slice.hide_preview()
-		return
-	station_slice.show_preview(stype, _station_target())
 
 ## Ask to tame the nearest creature within TAME_RANGE (Phase 35). The request goes
 ## on the bus and TamingSlice decides: it owns the fabric rules, the offering

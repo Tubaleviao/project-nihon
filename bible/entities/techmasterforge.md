@@ -21,6 +21,8 @@ Advanced forge construction and temperature-control techniques. Unlocks the mast
 
 | Name | Kind | Target | Foreign Key |
 | ---- | ---- | ------ | ----------- |
+| `unlocksRecipeMasterForge` | hasOne | [RecipeMasterForge](recipemasterforge.md) |  |
+| `unlocksRecipeMasonryBench` | hasOne | [RecipeMasonryBench](recipemasonrybench.md) |  |
 | `requiresTechBasicSmithing` | hasOne | [TechBasicSmithing](techbasicsmithing.md) |  |
 | `unlocksRecipeVeilsteelIngot` | hasOne | [RecipeVeilsteelIngot](recipeveilsteelingot.md) |  |
 | `unlocksRecipeVeilsteelLongsword` | hasOne | [RecipeVeilsteelLongsword](recipeveilsteellongsword.md) |  |

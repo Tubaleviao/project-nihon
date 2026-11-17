@@ -22,8 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–225, 238–243, 248, 249, 252–254, 259–261, 264 and 267 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
-
+Phases 1–225, 238–243, 248, 249, 252–254, 259–262, 264, 267 and 268 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -32,15 +31,13 @@ introductions of the arcs they belonged to, are archived in
 Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
 see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
 phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
-comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–254, 259–261, 264, 267)
+comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–254, 259–262, 264, 267, 268)
 have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
 [Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
 others are not in it.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 4 | 268 | Stations are made, carried and placed from the hotbar |
-| 5 | 262 | Starting with nothing, and a tutorial that begins from bare hands |
 | 6 | 263 | Digging that shows at once: a predicted edit and a priority remesh |
 | 9 | 269 | Crafting by hand, and at the station |
 | 10 | 270 | The technology tree: nodes, lines, zoom |
@@ -291,7 +288,7 @@ everything for the whole tutorial.
 | 259 | Work takes time: bare hands, tools and a progress bar | Done |
 | 260 | Stone tools: an axe, a pick and a shovel from wood and stone, no bench | Done |
 | 261 | The newcomer grounds: a large, gentle spawn area with loose stones and branches | Done |
-| 262 | Starting with nothing, and a tutorial that begins from bare hands | Open |
+| 262 | Starting with nothing, and a tutorial that begins from bare hands | Done |
 | 263 | Digging that shows at once: a predicted edit and a priority remesh | Open |
 | 264 | Dropping part of a stack: a quantity slider | Done |
 | 265 | One body everywhere: the creation screen, the Character window and the world draw the same avatar | Open |
@@ -319,7 +316,7 @@ tiers, several at once, and the UI calls them professions.
 | Phase | Title | Status |
 |---|---|---|
 | 267 | Names a player can read: localized names for items, recipes, technologies, skills and professions | Done |
-| 268 | Stations are made, carried and placed from the hotbar | Open |
+| 268 | Stations are made, carried and placed from the hotbar | Done |
 | 269 | Crafting by hand, and at the station | Open |
 | 270 | The technology tree: nodes, lines, zoom | Open |
 | 271 | The skill wheel: professions around the edge, shared skills in the centre | Open |
@@ -902,33 +899,6 @@ would be empty.
 - A GitHub issue asks the owner to enable Pages and Discussions; this phase records its number.
 - After the issue closes, the README's wiki link returns 200 from a CI step on `main`.
 
-## Phase 262 — Starting with nothing, and a tutorial that begins from bare hands
-
-Depends on Phases 259–261 and 268 (stations are crafted before this rewrite).
-
-- `CharacterCreation.startingKit` becomes empty. The `NoviceTunic` stays an item that can be made
-  (a cheap fibre or hide recipe) but is not handed out; a new character wears the base body's
-  plain clothes, which are part of the appearance, not an item, so nobody is shown naked and nothing
-  is given.
-- The tutorial (`fabric/gameplay/tutorial.js`) is rewritten to start from nothing: move, look, pick
-  up a branch and a stone, open the inventory, craft a stone axe (the crafting window), chop a tree,
-  craft a stone pick and shovel, dig soil, mine stone, then crafting and placing the first stations (Phase 268), bed, shelter,
-  first hunt (with a stone knife for the harvest), map and the rest. Each step's card names the
-  input and, where it helps, the place (for example "loose stones lie on the ground nearby").
-- `_first_hour_items` (`tutorial_tests.gd`) starts from an empty kit plus what bare hands, loose
-  items and the newcomer grounds give, and still reaches the bed, the first ferrite pick and the
-  first weapon.
-- Stress and playtest bots, which relied on the starting kit (`stress_clan_bots.gd`), gather or
-  craft what they need first, or are given items through a test-only path that real play cannot
-  reach.
-
-**Acceptance criteria**
-- `npm run validate` and `check-drift` pass; the creation validator accepts an empty kit.
-- Suite tests: a new character's bag and equipment are empty; the first-hour reach test passes from
-  an empty kit; every tutorial step's requirements name earlier steps (as now).
-- The playtest `create` step asserts an empty bag, and the `tutorial` step completes the moving,
-  gathering, first-tools, first-stations and first-hunt chapters from bare hands.
-
 ## Phase 263 — Digging that shows at once: a predicted edit and a priority remesh
 
 A dig waits for the host to apply it, then for the chunk's rebuild to come out of the worker queue
@@ -1014,43 +984,6 @@ feel in this game's own art; no assets, sprites or likenesses are taken from any
 - Whether the result looks good is a human judgement: filed as a GitHub issue per the rule at the
   top of this file, and this phase records its number.
 
-## Phase 268 — Stations are made, carried and placed from the hotbar
-
-B cycles a station type, N toggles a ghost and V places it, so every station is available from the
-start. Only the types with a fabric placement item cost anything (the waystone since Phase 130, the
-bed, chest and door, the settlement hearth); forges and benches are free (`station_slice.gd`
-`placement_item`).
-
-- **Fabric (separate PR):** every placeable station type names a `placementItem` tagged `station`,
-  and each item has a recipe. The first station (the carpentry bench) is hand-made from what the
-  newcomer grounds give; later ones (forge, masonry bench, alchemy bench, arcane forge…) need an
-  earlier station, as their recipes say. The rule `ChestsAndDoors` checks for chests and doors (a
-  placement item must be tagged `station`) extends to every placeable type.
-- **No shortcuts:** the B, N and V station handlers in `player_slice.gd` (`_cycle_station_type`,
-  the preview toggle, `_place_station`) and their input labels are removed. V stays the proposals
-  window shortcut. Host-side placement for NPC villages (`settlement_wiring.gd`) keeps its own path.
-- **Hotbar placement:** a station item in the selected hotbar slot shows its ghost at the aimed spot
-  every frame, tinted by `place_refusal` (valid or refused, with the refusal's reason as a hint), and
-  the use input places it. The host consumes one item and refuses without it, as now. A rotate input
-  (the build material's R is reused while a station item is selected) turns the ghost in 90° steps,
-  and the rotation travels with the request.
-- **Picking up again:** a new host-checked intent lets a station's owner, within reach, pick up a
-  placed station and get its item back (there is no player path today: `remove_station` is host-only;
-  Phase 213's dismantle covers structure blocks). A chest keeps its `spillsOnDestroy` rule.
-- The tutorial's `first_stations` chapter names crafting the station item before placing it.
-
-**Acceptance criteria**
-- `npm run validate` and `check-drift` pass; a `check_*.js` rejects a placeable station type with no
-  placement item, and a placement item with no recipe.
-- Suite tests: B, N and V no longer place or cycle stations; with no station item selected no ghost is
-  shown; with one selected, the ghost follows the aim and reports the same refusal as the host; the use
-  input emits one placement request with the rotation; the host refuses a placement whose item is not
-  in the bag, and consumes it on success.
-- Net harness step: a client crafts a station item, selects it, places it, and the second client sees
-  the station; a placement request without the item is refused.
-- Suite test: the owner picks up a placed station and gets its item back; another player, or the owner
-  out of reach, is refused.
-- The playtest `place` step places from the hotbar.
 
 ## Phase 269 — Crafting by hand, and at the station
 

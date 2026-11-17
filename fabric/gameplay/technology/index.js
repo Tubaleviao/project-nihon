@@ -64,13 +64,14 @@ module.exports = {
       researchCost: { type: 'integer', description: 'Research points spent to begin research (Phase 124); earned by the ResearchPointRule table', defaultValue: 0 },
       tier:   { type: 'integer', description: 'Technology tree tier (1 = root)' },
       tech: techData({
-        unlocks: ['RecipeFerriteIngot', 'RecipeFerriteShortSword', 'RecipeFerritePick', 'RecipeSkinningKnife', 'RecipeBoneSaw', 'RecipeLockpick'],
+        unlocks: ['RecipeFerriteIngot', 'RecipeFerriteShortSword', 'RecipeFerritePick', 'RecipeSkinningKnife', 'RecipeBoneSaw', 'RecipeLockpick', 'RecipeForge'],
         requires: [],
         researchDuration: 10,
         researchMaterials: [{ item: 'Ferrite', quantity: 4 }],
       }),
     },
     relations: {
+      unlocksRecipeForge: { name: 'unlocksRecipeForge', kind: 'hasOne', target: 'RecipeForge' },
       unlocksRecipeFerriteIngot:     { name: 'unlocksRecipeFerriteIngot',     kind: 'hasOne', target: 'RecipeFerriteIngot' },
       unlocksRecipeFerriteShortSword: { name: 'unlocksRecipeFerriteShortSword', kind: 'hasOne', target: 'RecipeFerriteShortSword' },
       unlocksRecipeFerritePick:      { name: 'unlocksRecipeFerritePick',      kind: 'hasOne', target: 'RecipeFerritePick' },
@@ -110,13 +111,15 @@ module.exports = {
       researchCost: { type: 'integer', description: 'Research points spent to begin research (Phase 124); earned by the ResearchPointRule table', defaultValue: 5 },
       tier:   { type: 'integer', description: 'Technology tree tier' },
       tech: techData({
-        unlocks: ['RecipeVeilsteelIngot', 'RecipeVeilsteelLongsword', 'RecipeVeilsteelChestplate', 'RecipeAshiteBlock', 'RecipeRefinedVoiditeShard'],
+        unlocks: ['RecipeVeilsteelIngot', 'RecipeVeilsteelLongsword', 'RecipeVeilsteelChestplate', 'RecipeAshiteBlock', 'RecipeRefinedVoiditeShard', 'RecipeMasonryBench', 'RecipeMasterForge'],
         requires: ['TechBasicSmithing'],
         researchDuration: 45,
         researchMaterials: [{ item: 'Ashite', quantity: 20 }],
       }),
     },
     relations: {
+      unlocksRecipeMasterForge: { name: 'unlocksRecipeMasterForge', kind: 'hasOne', target: 'RecipeMasterForge' },
+      unlocksRecipeMasonryBench: { name: 'unlocksRecipeMasonryBench', kind: 'hasOne', target: 'RecipeMasonryBench' },
       requiresTechBasicSmithing:        { name: 'requiresTechBasicSmithing',        kind: 'hasOne', target: 'TechBasicSmithing' },
       unlocksRecipeVeilsteelIngot:      { name: 'unlocksRecipeVeilsteelIngot',      kind: 'hasOne', target: 'RecipeVeilsteelIngot' },
       unlocksRecipeVeilsteelLongsword:  { name: 'unlocksRecipeVeilsteelLongsword',  kind: 'hasOne', target: 'RecipeVeilsteelLongsword' },
@@ -159,7 +162,7 @@ module.exports = {
       researchCost: { type: 'integer', description: 'Research points spent to begin research (Phase 124); earned by the ResearchPointRule table', defaultValue: 0 },
       tier:   { type: 'integer', description: 'Technology tree tier (1 = root)' },
       tech: techData({
-        unlocks: ['RecipeStoneAxe', 'RecipeStonePick', 'RecipeStoneShovel', 'RecipeStoneKnife', 'RecipeStoneHammer'],
+        unlocks: ['RecipeStoneAxe', 'RecipeStonePick', 'RecipeStoneShovel', 'RecipeStoneKnife', 'RecipeStoneHammer', 'RecipeCarpentryBench'],
         requires: [],
         researchDuration: 0,
         researchMaterials: [],
@@ -167,6 +170,7 @@ module.exports = {
       }),
     },
     relations: {
+      unlocksRecipeCarpentryBench: { name: 'unlocksRecipeCarpentryBench', kind: 'hasOne', target: 'RecipeCarpentryBench' },
       unlocksRecipeStoneAxe:    { name: 'unlocksRecipeStoneAxe',    kind: 'hasOne', target: 'RecipeStoneAxe' },
       unlocksRecipeStonePick:   { name: 'unlocksRecipeStonePick',   kind: 'hasOne', target: 'RecipeStonePick' },
       unlocksRecipeStoneShovel: { name: 'unlocksRecipeStoneShovel', kind: 'hasOne', target: 'RecipeStoneShovel' },
@@ -284,13 +288,14 @@ module.exports = {
       researchCost: { type: 'integer', description: 'Research points spent to begin research (Phase 124); earned by the ResearchPointRule table', defaultValue: 8 },
       tier:   { type: 'integer', description: 'Technology tree tier' },
       tech: techData({
-        unlocks: ['RecipeEnchantedAethermiteShard', 'RecipeAethermiteBow', 'RecipeLumenfiteOrb'],
+        unlocks: ['RecipeEnchantedAethermiteShard', 'RecipeAethermiteBow', 'RecipeLumenfiteOrb', 'RecipeArcaneForge'],
         requires: ['TechBasicSmithing', 'TechAlchemy'],
         researchDuration: 60,
         researchMaterials: [{ item: 'Aethermite', quantity: 8 }],
       }),
     },
     relations: {
+      unlocksRecipeArcaneForge: { name: 'unlocksRecipeArcaneForge', kind: 'hasOne', target: 'RecipeArcaneForge' },
       requiresTechBasicSmithing:            { name: 'requiresTechBasicSmithing',            kind: 'hasOne', target: 'TechBasicSmithing' },
       requiresTechAlchemy:                  { name: 'requiresTechAlchemy',                  kind: 'hasOne', target: 'TechAlchemy' },
       unlocksRecipeEnchantedAethermiteShard: { name: 'unlocksRecipeEnchantedAethermiteShard', kind: 'hasOne', target: 'RecipeEnchantedAethermiteShard' },
@@ -329,13 +334,14 @@ module.exports = {
       researchCost: { type: 'integer', description: 'Research points spent to begin research (Phase 124); earned by the ResearchPointRule table', defaultValue: 2 },
       tier:   { type: 'integer', description: 'Technology tree tier (1 = root)' },
       tech: techData({
-        unlocks: ['RecipeHealthPotion', 'RecipeStaminaPotion'],
+        unlocks: ['RecipeHealthPotion', 'RecipeStaminaPotion', 'RecipeAlchemyBench'],
         requires: [],
         researchDuration: 20,
         researchMaterials: [{ item: 'Aethermite', quantity: 2 }],
       }),
     },
     relations: {
+      unlocksRecipeAlchemyBench: { name: 'unlocksRecipeAlchemyBench', kind: 'hasOne', target: 'RecipeAlchemyBench' },
       unlocksRecipeHealthPotion:  { name: 'unlocksRecipeHealthPotion',  kind: 'hasOne', target: 'RecipeHealthPotion' },
       unlocksRecipeStaminaPotion: { name: 'unlocksRecipeStaminaPotion', kind: 'hasOne', target: 'RecipeStaminaPotion' },
     },
@@ -370,13 +376,14 @@ module.exports = {
       researchCost: { type: 'integer', description: 'Research points spent to begin research (Phase 124); earned by the ResearchPointRule table', defaultValue: 12 },
       tier:   { type: 'integer', description: 'Technology tree tier (highest)' },
       tech: techData({
-        unlocks: ['RecipeVoidResistPotion', 'RecipeVoidRuneTablet'],
+        unlocks: ['RecipeVoidResistPotion', 'RecipeVoidRuneTablet', 'RecipeVoidShieldedWorkshop'],
         requires: ['TechArcaneForging', 'TechAlchemy'],
         researchDuration: 120,
         researchMaterials: [{ item: 'Voidite', quantity: 5 }],
       }),
     },
     relations: {
+      unlocksRecipeVoidShieldedWorkshop: { name: 'unlocksRecipeVoidShieldedWorkshop', kind: 'hasOne', target: 'RecipeVoidShieldedWorkshop' },
       requiresTechArcaneForging:       { name: 'requiresTechArcaneForging',       kind: 'hasOne', target: 'TechArcaneForging' },
       requiresTechAlchemy:             { name: 'requiresTechAlchemy',             kind: 'hasOne', target: 'TechAlchemy' },
       unlocksRecipeVoidResistPotion:   { name: 'unlocksRecipeVoidResistPotion',   kind: 'hasOne', target: 'RecipeVoidResistPotion' },

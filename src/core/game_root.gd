@@ -61,6 +61,7 @@ const SettlementWiring := preload("res://src/settlement/settlement_wiring.gd")
 const ClanWiring := preload("res://src/clan/clan_wiring.gd")
 const StructureWiring := preload("res://src/structure/structure_wiring.gd")
 const ChestWiring := preload("res://src/world/chest_wiring.gd")
+const StationWiring := preload("res://src/world/station_wiring.gd")
 const WritingWiring := preload("res://src/technology/writing_wiring.gd")
 const CraftingWiring := preload("res://src/crafting/crafting_wiring.gd")
 const CharacterWiring := preload("res://src/character/character_wiring.gd")
@@ -86,6 +87,7 @@ var _settlement_wiring := SettlementWiring.new()
 var _clan_wiring := ClanWiring.new()
 var _structure_wiring := StructureWiring.new()
 var _chest_wiring := ChestWiring.new()
+var _station_wiring := StationWiring.new()   # Phase 268 — stations placed from the hotbar, picked up again
 var _writing_wiring := WritingWiring.new()
 var _crafting_wiring := CraftingWiring.new()
 var _character_wiring := CharacterWiring.new()
@@ -264,7 +266,7 @@ var _handshake_retries: int = 0
 
 ## Phase 132 — wiring modules know their root from construction (the suite builds roots without `_ready`).
 func _init() -> void:
-	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _bed_wiring, _work_wiring, _tutorial_wiring, _settlement_wiring, _clan_wiring, _structure_wiring, _chest_wiring, _writing_wiring, _crafting_wiring, _character_wiring, _gesture_wiring, _creation_wiring, _carcass_wiring, _mount_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring, _admin_wiring, _menu_wiring]
+	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _bed_wiring, _work_wiring, _tutorial_wiring, _settlement_wiring, _clan_wiring, _structure_wiring, _chest_wiring, _station_wiring, _writing_wiring, _crafting_wiring, _character_wiring, _gesture_wiring, _creation_wiring, _carcass_wiring, _mount_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring, _admin_wiring, _menu_wiring]
 	for w in _wirings:
 		w.root = self
 
@@ -460,8 +462,7 @@ func _build_and_boot() -> void:
 	_chat.networking       = _networking
 	_chat.weather_slice    = _weather
 	_player.weather_slice  = _weather
-	_bed_wiring.attach()   # Phase 185 — the bed is a station the host binds to its placer
-	_chest_wiring.attach()   # Phase 208 — and so are chests and doors (after the bed: it chains the remote placer)
+	_bed_wiring.attach(); _station_wiring.attach()   # Phase 185 the bed binds to its placer; Phase 268 hotbar stations
 	_tutorial_wiring.attach()   # Phase 186 — the card and its slice (not on a dedicated server)
 	_waystone_wiring.attach()   # Phase 125 — waystone travel reuses the exact admin teleport door
 	if not _is_server:
@@ -954,8 +955,7 @@ func _finish_host_boot() -> void:
 		GameBus.craft_requested.emit("RecipeFerriteIngot")      # FAIL: station_required:forge
 
 		var ppos: Vector3 = _player.get_position()
-		_station.try_place_station("forge", ppos + Vector3(2.0, 0.0, 0.0))
-		_station.try_place_station("carpentry bench", ppos + Vector3(-2.0, 0.0, 0.0))
+		for side in [["forge", 2.0], ["carpentry bench", -2.0]]: _station.place_station(side[0], _station.snap_to_grid(ppos + Vector3(side[1], 0.0, 0.0)))
 
 		GameBus.craft_requested.emit("RecipeFerriteIngot")
 		GameBus.craft_requested.emit("RecipeFerriteIngot")

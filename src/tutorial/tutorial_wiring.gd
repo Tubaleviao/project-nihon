@@ -39,7 +39,7 @@ var _look_from: float = 0.0
 func _connect_all() -> void:
 	connect_bus(GameBus.tutorial_event, _on_event)
 	connect_bus(GameBus.craft_resolved, _on_craft_resolved)
-	connect_bus(GameBus.station_placed, _on_station_placed)
+	connect_bus(GameBus.station_placed_by_me, _on_station_placed)   # Phase 268 — this player's own stations
 	connect_bus(GameBus.settlement_resolved, _on_settlement_resolved)
 	connect_bus(GameBus.technology_unlocked, _on_tech_unlocked)
 	connect_bus(GameBus.creature_died, _on_creature_died)
@@ -132,7 +132,7 @@ func _on_craft_resolved(result: Dictionary) -> void:
 		_crafted[key] = int(_crafted.get(key, 0)) + int(out.get("quantity", 1))
 		_note("item_crafted", { "item": key, "tags": _tags_of(key) })
 
-func _on_station_placed(_id: String, type: String, _pos: Vector3) -> void:
+func _on_station_placed(_id: String, type: String) -> void:
 	_note("station_placed", { "type": type })
 
 ## Phase 198 — the local player's project intents, once the host accepted them (a client gets the result
