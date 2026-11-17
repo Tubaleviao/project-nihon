@@ -3,9 +3,9 @@
 
 **Tags:** `item`
 
-Plain woven tunic with a belted waist, given to every new character. Barely armour at all; it marks a newcomer and is replaced as soon as anything better is made.
+Plain woven tunic with a belted waist, sewn from duskfiber at a carpentry bench. Barely armour at all; it marks a newcomer and is replaced as soon as anything better is made.
 
-> **Goal:** The starting outfit: a newcomer is dressed without being given a head start (NoPayToWin, no class kits)
+> **Goal:** A cheap first garment anyone can sew; nobody is handed one (NoPayToWin, no class kits, Phase 262)
 
 ## Fields
 

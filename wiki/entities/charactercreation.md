@@ -20,7 +20,7 @@ The choices a new player makes before entering the world: a name, a gender, a ha
 | hairStyles | json | { <hair id>: { gender, shape } }; mesh models/characters/hair/<id>.glb.raw, icon icons/hair/<id>.png.raw |
 | hairColors | json | Curated hair colours as DefaultPalette indices |
 | defaultCreation | json | The creation a player who skips the screen gets: { gender, hair, hairColor } |
-| startingKit | json | Items given once at creation: [{ item, quantity, equip }]; a server rule may replace it |
+| startingKit | json | Items given once at creation: [{ item, quantity, equip }]; empty in the shipped game (Phase 262), a server rule may fill it |
 | proportionPreset | string | Body proportion preset both gender presets use |
 | headRatio | json | Allowed head-to-height ratio of a created rig: { min, max } |
 | refusals | json | Refusal reasons; the catalog key is creation.refuse.<reason> |

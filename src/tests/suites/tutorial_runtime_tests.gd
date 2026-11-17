@@ -34,7 +34,7 @@ func _test_next_step() -> void:
 	# Dismissing a step must not strand the steps that require it.
 	var skipped := { "enabled": true, "done": [], "dismissed": ["move"] }
 	var ids: Array = Rules.eligible(skipped).map(func(x: Dictionary) -> String: return str(x["id"]))
-	assert_true(ids.has("jump") and ids.has("mine") and not ids.has("move"), "a dismissed step unlocks the steps after it")
+	assert_true(ids.has("jump") and ids.has("pick_branch") and not ids.has("move"), "a dismissed step unlocks the steps after it")
 	# A step whose requires are not done is never offered.
 	var offered := {}
 	for i in 60:
@@ -64,7 +64,12 @@ func _test_events() -> void:
 		["move", "moved_metres", { "metres": 12.0 }, { "metres": 2.0 }],
 		["jump", "jumped", {}, {}],
 		["look", "camera_turned", {}, {}],
-		["mine", "item_gathered", { "tags": ["material"], "count": 1 }, { "tags": ["creature"], "count": 1 }],
+		["pick_branch", "item_gathered", { "item": "Branch", "count": 1 }, { "item": "LooseStone", "count": 1 }],
+		["pick_stone", "item_gathered", { "item": "LooseStone", "count": 1 }, { "item": "Branch", "count": 1 }],
+		["craft_axe", "item_crafted", { "item": "StoneAxe", "tags": ["axe"] }, { "item": "StonePick", "tags": ["pick"] }],
+		["dig", "item_gathered", { "item": "Soil", "tags": ["material"], "count": 1 }, { "item": "Ferrite", "tags": ["material"], "count": 1 }],
+		["mine_stone", "item_gathered", { "item": "Ferrite", "tags": ["material"], "count": 1 }, { "item": "Soil", "tags": ["material"], "count": 1 }],
+		["craft_knife", "item_crafted", { "item": "StoneKnife", "tags": [] }, { "item": "StoneAxe", "tags": ["axe"] }],
 		["chop", "item_gathered", { "item": "Thornwood", "count": 4 }, { "item": "Thornwood", "count": 3 }],
 		["place_bench", "station_placed", { "type": "carpentry bench" }, { "type": "forge" }],
 		["controls", "window_opened", { "window": "controls" }, { "window": "map" }],
@@ -145,9 +150,13 @@ func _test_slice() -> void:
 	assert_eq(sl.note_event("moved_metres", { "metres": 6.0 }), "", "six metres is not enough")
 	assert_eq(sl.note_event("moved_metres", { "metres": 6.0 }), "move", "the metres add up to the step")
 	assert_eq(sl.current_step()["id"], "jump", "then the next card")
-	assert_eq(sl.note_event("item_gathered", { "item": "Granite", "tags": ["material"], "count": 1 }), "mine", "a gathered material completes mine")
+	assert_eq(sl.note_event("item_gathered", { "item": "Branch", "tags": [], "count": 1 }), "pick_branch", "a picked-up branch completes pick_branch")
+	assert_eq(sl.note_event("window_opened", { "window": "crafting" }), "", "crafting waits for the stone as well")
+	assert_eq(sl.note_event("item_gathered", { "item": "LooseStone", "tags": [], "count": 1 }), "pick_stone", "a loose stone completes pick_stone")
 	assert_eq(sl.note_event("item_gathered", { "item": "Thornwood", "tags": ["material"], "count": 2 }), "", "two of four Thornwood is not enough")
 	assert_eq(sl.note_event("item_gathered", { "item": "Granite", "tags": ["material"], "count": 5 }), "", "another item does not count toward Thornwood")
+	assert_eq(sl.note_event("window_opened", { "window": "crafting" }), "crafting", "then the crafting window completes crafting")
+	assert_eq(sl.note_event("item_crafted", { "item": "StoneAxe", "tags": ["axe"] }), "craft_axe", "a stone axe completes craft_axe")
 	assert_eq(sl.note_event("item_gathered", { "item": "Thornwood", "tags": ["material"], "count": 2 }), "chop", "the Thornwood adds up to chop")
 	sl.dismiss_current()
 	assert_true(sl.current_step()["id"] != "jump", "dismissing moves on")
@@ -245,6 +254,10 @@ func _test_card() -> void:
 
 func _test_replay() -> void:
 	var history := [
+		{ "kind": "item_gathered", "params": { "item": "Branch", "tags": [], "count": 2 } },
+		{ "kind": "item_gathered", "params": { "item": "LooseStone", "tags": [], "count": 1 } },
+		{ "kind": "window_opened", "params": { "window": "crafting" } },
+		{ "kind": "item_crafted", "params": { "item": "StoneAxe", "tags": ["axe"] } },
 		{ "kind": "item_gathered", "params": { "item": "Thornwood", "tags": ["material"], "count": 3 } },
 		{ "kind": "item_gathered", "params": { "item": "Thornwood", "tags": ["material"], "count": 2 } },
 		{ "kind": "moved_metres", "params": { "metres": 4.0 } },
@@ -253,7 +266,7 @@ func _test_replay() -> void:
 		{ "kind": "camera_turned", "params": {} },
 	]
 	var done: Array = Rules.replay(history)
-	for want in ["move", "jump", "look", "mine", "chop"]:
+	for want in ["move", "jump", "look", "pick_branch", "pick_stone", "crafting", "craft_axe", "chop"]:
 		assert_true(done.has(want), "%s completes from the recorded session" % want)
 	assert_false(done.has("kill"), "a step with no matching event stays open")
 	assert_eq(Rules.replay([]), [], "an empty session completes nothing")

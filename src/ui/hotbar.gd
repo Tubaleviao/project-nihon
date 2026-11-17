@@ -23,6 +23,7 @@ extends VBoxContainer
 const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 const I18n := preload("res://src/core/i18n.gd")
 const SkillTiers := preload("res://src/core/skill_tiers.gd")
+const StationRules := preload("res://src/world/station_rules.gd")
 
 signal slot_selected(index: int, item_id: String)
 ## A drag began from a box; the UI slice uses it to empty the box if it is dropped in the world.
@@ -37,6 +38,7 @@ const MORE_PX := 28.0
 const KIND_BLOCK := "block"
 const KIND_GEAR := "gear"
 const KIND_SKILL := "skill"
+const KIND_STATION := "station"   # Phase 268 — a station item: selecting it arms the placement ghost
 const KIND_NONE := ""
 const SKILL_PREFIX := "skill:"
 const MAX_ENTRY_LEN := 64
@@ -160,6 +162,8 @@ static func kind_of(entry: String, materials: Dictionary, equip_slot: String) ->
 		return KIND_BLOCK
 	if equip_slot != "":
 		return KIND_GEAR
+	if StationRules.is_station_item(entry):
+		return KIND_STATION
 	return KIND_NONE
 
 static func is_skill(entry: String) -> bool:
@@ -320,7 +324,14 @@ func activate(index: int) -> void:
 func select_slot(index: int) -> void:
 	selected = clampi(index, 0, SLOT_COUNT - 1)
 	_render()
+	_announce_selection()
+
+## Tell listeners what the selected box holds: `slot_selected`, and (Phase 268) the station item that arms the
+## player's placement ghost ("" disarms it). Called whenever the selected box or its item changes, so an item
+## filled into or taken out of the selected box arms or disarms the ghost without a re-select.
+func _announce_selection() -> void:
 	slot_selected.emit(selected, selected_item())
+	GameBus.hotbar_station_selected.emit(selected_item() if kind_at(selected) == KIND_STATION else "")
 
 ## Select the box holding `item_id`, without re-announcing when it already is selected.
 func select_item(item_id: String) -> bool:
@@ -346,7 +357,7 @@ func refresh() -> void:
 	slots = fill(slots, held, _is_usable, _declined)
 	_render(held)
 	if selected_item() != before:
-		slot_selected.emit(selected, selected_item())
+		_announce_selection()
 
 ## Empty a box by hand. An item taken off stays off until it is used up.
 func clear_slot(index: int) -> void:
@@ -374,7 +385,7 @@ func _set_slots(next: Array) -> void:
 	_render()
 	save_state()
 	if selected_item() != before:
-		slot_selected.emit(selected, selected_item())
+		_announce_selection()
 
 # ---------------------------------------------------------------------------
 # Keys

@@ -27,7 +27,7 @@ function novicePreset({ gender, body, head, eyes, hair, proportions }) {
   return defineEntity({
     tags: ['appearance'],
     description:
-      `The ${gender} character-creation preset: a chibi body in the plain novice tunic. ` +
+      `The ${gender} character-creation preset: a chibi body in the plain clothes painted on its sheet. ` +
       'The player picks hair and hair colour on top of it (CharacterCreation); everything else is fixed.',
     goal: 'Give every new character the same readable chibi silhouette, told apart by hair and name',
     fields: {
@@ -45,8 +45,9 @@ function novicePreset({ gender, body, head, eyes, hair, proportions }) {
       beardColor: { type: 'integer', description: 'Palette index for beard', defaultValue: 0 },
       equipment: {
         type: 'json',
-        description: 'Equipment instances by slot: the starting kit worn',
-        defaultValue: { Chest: { item: 'NoviceTunic', state: 'equipped', primaryColor: 96, secondaryColor: 100, accentColor: 140, durability: 1.0 } },
+        // Phase 262 — none: a new character carries nothing; the plain clothes are part of the body, not an item.
+        description: 'Equipment instances by slot: none, the plain clothes are painted on the body (Phase 262)',
+        defaultValue: {},
       },
     },
   })

@@ -6,7 +6,7 @@
 script = ExtResource("1")
 id = ""
 condition = 0
-weight = 30.0
+weight = 12.0
 rarity = 0
 stackable = false
 shape = {"archetype":"chest","parts":{"box":"Ashite","band":"Thornwood"},"scale":1}

@@ -62,6 +62,7 @@ const WINDOW_KEYS := [WINDOW_INVENTORY, WINDOW_TECHNOLOGY, WINDOW_CRAFTING, WIND
 const MouseIconScript := preload("res://src/ui/mouse_icon.gd")
 const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 const HotbarScript := preload("res://src/ui/hotbar.gd")
+const DropQuantityDialog := preload("res://src/ui/drop_quantity_dialog.gd")   # Phase 264
 const WindowDockScript := preload("res://src/ui/window_dock.gd")
 const MapWindowScript := preload("res://src/ui/map_window.gd")
 const SettlementPanelScript := preload("res://src/ui/settlement_panel.gd")
@@ -191,6 +192,8 @@ var _character_rows_signature: int = 0
 ## machine's own creation state, and the character sheet's "create character" button.
 var creation_screen: Control = null
 var _creation_layer: CanvasLayer = null
+## Phase 264 — how many of a stack a world drop lets go of; built on first use.
+var drop_dialog: Control = null
 var _creation_state: Dictionary = { "state": CreationRules.STATE_NONE }
 var _creation_known: bool = false   # Phase 221: set once the authority's state arrived (see ui_part_2)
 var _sheet_create_button: Button = null
@@ -236,6 +239,11 @@ static func is_typing() -> bool:
 	return TextFocus.is_typing()
 
 func _input(event: InputEvent) -> void:
+	# Phase 264 — the drop dialog's number field owns the keyboard: Enter drops, Esc cancels (before Esc leaves it).
+	if drop_dialog != null and drop_dialog.handle_key(event):
+		if is_inside_tree():
+			get_viewport().set_input_as_handled()
+		return
 	# Phase 219 — Esc in any text field leaves the field first (a second Esc closes the windows).
 	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE and TextFocus.leave():
 		if is_inside_tree():
@@ -336,30 +344,11 @@ func _on_drag_end() -> void:
 	if vp.gui_get_hovered_control() == null:
 		finish_world_drop(payload, Input.is_key_pressed(KEY_SHIFT))
 
-## A drag that ended in the world. An inventory item lands on the ground (one unit, or the whole
-## stack with `whole_stack`); a hotbar box is simply emptied. Returns what happened, for tests.
-func finish_world_drop(payload: Dictionary, whole_stack: bool) -> String:
-	match str(payload.get("kind", "")):
-		"hotbar":
-			hotbar.clear_slot(int(payload.get("from", -1)))
-			return "cleared"
-		"item":
-			return request_drop(str(payload.get("id", "")), int(payload.get("quantity", 1)) if whole_stack else 1)
-	return ""
-
-## Ask for `quantity` of `item_id` to be dropped in front of the player. Returns "dropped",
-## or the reason it was refused.
-func request_drop(item_id: String, quantity: int) -> String:
-	if not drops_enabled:
-		_notify(I18n.t("ui.drop_blocked"))
-		return "client"
-	if inventory_slice == null or quantity <= 0 or int(inventory_slice.get_item_count(item_id)) <= 0:
-		return "none"
-	var where := Vector3.ZERO
-	if player_slice != null and player_slice.has_method("drop_point"):
-		where = player_slice.drop_point()
-	GameBus.item_drop_requested.emit(item_id, mini(quantity, int(inventory_slice.get_item_count(item_id))), where)
-	return "dropped"
+## A drag that ended in the world (Phase 264: a stack above one asks how many first). See `ui_part_1.gd`.
+func finish_world_drop(payload: Dictionary, whole_stack: bool) -> String: return _m1.finish_world_drop(payload, whole_stack)
+func open_drop_dialog(item_id: String, qty: int) -> String: return _m1.open_drop_dialog(item_id, qty)
+func is_drop_dialog_open() -> bool: return drop_dialog != null and drop_dialog.is_open()
+func request_drop(item_id: String, quantity: int) -> String: return _m1.request_drop(item_id, quantity)
 
 func _notify(text: String) -> void:
 	if _hud_notice == null:

@@ -58,13 +58,6 @@ func make_slice(ctx: GameRoot) -> Node:
 			root._station.blocking_types.append(t)
 	return slice
 
-## After every slice exists: a client's chest or door placement goes to the host.
-func attach() -> void:
-	if root._is_client:
-		var before: Callable = root._station.remote_placer
-		root._station.remote_placer = func(type: String, target: Vector3) -> bool:
-			return _place_remote(type, target) or (before.is_valid() and bool(before.call(type, target)))
-
 func _connect_all() -> void:
 	connect_bus(GameBus.station_placed, _on_station_placed)
 	connect_bus(GameBus.station_removed, _on_station_removed)
@@ -92,14 +85,6 @@ static func judged_pos(here: Variant, is_local: bool) -> Variant:
 	return Vector3(1.0e12, 1.0e12, 1.0e12)
 
 # --- placement -------------------------------------------------------------------------------------------
-
-## Client: a chest or door goes to the host as a `place` intent; false lets other types go their own way.
-func _place_remote(type: String, target: Vector3) -> bool:
-	if not ChestRules.is_lock_type(type) or root._player == null:
-		return false
-	var off := target - root._player.get_position()
-	GameBus.chest_intent.emit("place", { "type": type, "ox": off.x, "oy": off.y, "oz": off.z }, "")
-	return true
 
 ## Host: place a chest or door of `type` at `offset` from `pid` for them. "" when placed, else a REASONS code.
 func place_for(pid: String, type: String, offset: Vector3) -> String:

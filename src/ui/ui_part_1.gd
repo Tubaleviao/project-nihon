@@ -494,3 +494,51 @@ func _build_market_content() -> Control:
 	scroll.add_child(sl._market_box)
 	vbox.add_child(scroll)
 	return vbox
+
+## A drag that ended in the world. An inventory item lands on the ground: a single item, or the whole
+## stack with `whole_stack` (Shift), goes at once; a stack above one opens the drop dialog (Phase 264), which
+## returns "dialog" and drops what it confirms. A hotbar box is simply emptied. Returns what happened, for tests.
+func finish_world_drop(payload: Dictionary, whole_stack: bool) -> String:
+	match str(payload.get("kind", "")):
+		"hotbar":
+			sl.hotbar.clear_slot(int(payload.get("from", -1)))
+			return "cleared"
+		"item":
+			var id := str(payload.get("id", ""))
+			var qty := int(payload.get("quantity", 1))
+			if whole_stack or qty <= 1:
+				return request_drop(id, maxi(qty, 1))
+			return open_drop_dialog(id, qty)
+	return ""
+
+## Phase 264 — ask how many of `qty` to drop. Refused like a drop when drops are off or nothing is held.
+func open_drop_dialog(item_id: String, qty: int) -> String:
+	var refused := _drop_refusal(item_id, 1)
+	if refused != "":
+		return refused
+	if sl.drop_dialog == null:
+		sl.drop_dialog = sl.DropQuantityDialog.new()
+		sl.drop_dialog.confirmed.connect(func(id: String, q: int) -> void: request_drop(id, q))
+		(sl._ui if sl._ui != null else sl).add_child(sl.drop_dialog)
+	sl.drop_dialog.open(item_id, qty, sl._load_item_icon(sl.item_icon_key(item_id)))
+	return "dialog"
+
+## Ask for `quantity` of `item_id` to be dropped in front of the player. Returns "dropped",
+## or the reason it was refused. The host clamps it to what the bag holds again (`InventorySlice`).
+func request_drop(item_id: String, quantity: int) -> String:
+	var refused := _drop_refusal(item_id, quantity)
+	if refused != "":
+		return refused
+	var where := Vector3.ZERO
+	if sl.player_slice != null and sl.player_slice.has_method("drop_point"):
+		where = sl.player_slice.drop_point()
+	GameBus.item_drop_requested.emit(item_id, mini(quantity, int(sl.inventory_slice.get_item_count(item_id))), where)
+	return "dropped"
+
+func _drop_refusal(item_id: String, quantity: int) -> String:
+	if not sl.drops_enabled:
+		sl._notify(sl.I18n.t("ui.drop_blocked"))
+		return "client"
+	if sl.inventory_slice == null or quantity <= 0 or int(sl.inventory_slice.get_item_count(item_id)) <= 0:
+		return "none"
+	return ""

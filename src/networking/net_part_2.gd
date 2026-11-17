@@ -470,6 +470,21 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 					if (v is String or v is int or v is float) and held.size() < 6:
 						held[str(k).left(16)] = str(v).left(64) if v is String else v
 			GameBus.chest_intent.emit(str(payload.get("action", "")).left(16), held, opener)
+		"station_intent":
+			# Phase 268 — who places or picks up is the connection's player; only short scalar args are kept, and
+			# StationWiring checks each one (the item against the pack, the offset against reach, the owner).
+			var placer = sl._actor_id(sender)
+			if placer == "":
+				sl._refuse_unhandshaked(sender, "station_intent")
+				return
+			var st_args: Variant = payload.get("args", {})
+			var kept_st := {}
+			if st_args is Dictionary:
+				for k: Variant in (st_args as Dictionary).keys():
+					var v: Variant = st_args[k]
+					if (v is String or v is int or v is float) and kept_st.size() < 6:
+						kept_st[str(k).left(16)] = str(v).left(64) if v is String else v
+			GameBus.station_intent.emit(str(payload.get("action", "")).left(16), kept_st, placer)
 		"writing_intent":
 			# Phase 209 — who writes or reads is the connection's player, never a name in the payload; the item
 			# is a short string WritingSlice checks against the fabric's writing items and that player's pack.

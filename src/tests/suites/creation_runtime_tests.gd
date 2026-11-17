@@ -15,7 +15,7 @@ func register() -> void:
 	_run_test("creation runtime: the host accepts a valid creation and refuses each invalid field with its own key", _test_fields_refused)
 	_run_test("creation runtime: a duplicate name is refused across offline players, the index survives the world record", _test_names_unique)
 	_run_test("creation runtime: creation is rate-limited, happens once, and a skipped player may still create", _test_rate_and_once)
-	_run_test("creation runtime: a created character gets the starting kit, worn", _test_starting_kit)
+	_run_test("creation runtime: a new character's bag and equipment are empty (Phase 262)", _test_starting_kit)
 	_run_test("creation runtime: a pre-181 save offers creation once and keeps inventory and skills; a skip shows the handle", _test_legacy_save)
 	_run_test("creation runtime: the intent is bound to the connection, and a look is answered only inside the AOI", _test_wire)
 	_run_test("creation runtime: a peer's look dresses its avatar and names it, whichever arrives first", _test_peer_look)
@@ -119,14 +119,20 @@ func _test_rate_and_once() -> void:
 
 
 func _test_starting_kit() -> void:
+	assert_eq(CreationRules.starting_kit(), [], "the fabric's starting kit is empty")
 	var reg := _reg()
 	var made: Array = _created(reg, VALID, 1000)
 	var pid := str(made[0])
-	for k in CreationRules.starting_kit():
-		assert_true(reg.get_inventory(pid).get_item_count(str(k["item"])) >= int(k["quantity"]), "the bag holds %s" % k["item"])
-		if bool(k.get("equip", false)):
-			var slot := EquipmentRules.slot_of(str(k["item"]), GameData.ITEMS)
-			assert_eq(reg.get_equipment(pid).get(slot, ""), str(k["item"]), "and %s is worn" % k["item"])
+	assert_eq(str(made[1]), "", "the character is created")
+	assert_true(reg.get_inventory(pid).get_contents().is_empty(), "the new character's bag is empty")
+	var worn := 0
+	for slot in reg.get_equipment(pid):
+		if str(reg.get_equipment(pid)[slot]) != "":
+			worn += 1
+	assert_eq(worn, 0, "and nothing is worn")
+	for g in ["masculine", "feminine"]:
+		var preset: Resource = CreationRules.preset(g)
+		assert_true((preset.get("equipment") as Dictionary).is_empty(), "the %s preset wears no item: its plain clothes are the body's" % g)
 	reg.free()
 
 

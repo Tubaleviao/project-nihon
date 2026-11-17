@@ -22,6 +22,10 @@ function expect(label, problems, pattern) {
 const check = (d, r = refs()) => creation.creationProblems(d, r);
 
 expect('the shipped creation data is valid', check(fresh()), null);
+// Phase 262 — a new character starts with nothing: the shipped kit is empty, and an empty kit is accepted.
+expect('the shipped starting kit is empty', fresh().startingKit.map((k) => k.item), null);
+{ const d = fresh(); d.startingKit = []; expect('an empty starting kit is accepted', check(d), null); }
+{ const d = fresh(); d.startingKit = [{ item: 'StoneAxe', quantity: 1 }]; expect('a server rule may still fill the kit', check(d), null); }
 
 { const d = fresh(); d.genders.masculine.appearance = 'NoSuchPreset'; expect('a gender naming a missing appearance is refused', check(d), /appearance NoSuchPreset does not exist/); }
 { const d = fresh(); d.hairStyles.hair_x = { gender: 'neuter', shape: 'crop' }; expect('a hair style of an unknown gender is refused', check(d), /hair hair_x: unknown gender/); }

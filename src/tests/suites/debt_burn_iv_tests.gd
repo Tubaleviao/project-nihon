@@ -129,7 +129,7 @@ func _test_waystone_needs_item() -> void:
 	assert_eq(st.try_place_station("waystone", Vector3(0.5, 1.0, 0.5), inv), "", "and nothing is placed")
 	assert_true(inv.add_item("Waystone", 1), "stock a stone")
 	assert_eq(st.place_refusal("waystone", Vector3(0.5, 1.0, 0.5), inv), "", "with the item there is no refusal")
-	assert_eq(st.place_refusal("forge", Vector3(9.5, 1.0, 9.5)), "", "a forge needs no item")
+	assert_eq(st.place_refusal("forge", Vector3(9.5, 1.0, 9.5)), "no_placement_item:Forge", "Phase 268: a forge needs its item too")
 	_free_waystone_rig(rig)
 
 
@@ -433,10 +433,15 @@ func _test_kit_overflow_drops() -> void:
 	inv._max_weight = 0.0
 	var dropped: Array = []
 	reg.set_ground_dropper(func(p: String, item: String, qty: int) -> void: dropped.append([p, item, qty]))
+	# Phase 262 — the shipped kit is empty; the overflow rule still holds for a server rule that fills it.
+	var creation: Resource = CreationRules.data()
+	var shipped: Array = (creation.get("startingKit") as Array).duplicate(true)
+	creation.set("startingKit", [{ "item": "StoneAxe", "quantity": 1 }])
 	var was_quiet := Diag.quiet
 	Diag.quiet = true
 	assert_eq(reg.create_character(pid, VALID, 1000), "", "the character is created with a full bag")
 	Diag.quiet = was_quiet
+	creation.set("startingKit", shipped)
 	assert_false(dropped.is_empty(), "the kit items that do not fit are handed to the ground")
 	assert_eq(str(dropped[0][0]), pid, "at that player's feet")
 	# The game's dropper: a pickup on the ground at a remote player's reported position.
