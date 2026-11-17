@@ -1345,7 +1345,7 @@ func _update_aim_hud() -> void:
 	if _aimed_item_id == "" and _aimed_tree_id == "":
 		carcass_text = _carcass_prompt()
 	if _aimed_item_id != "":
-		_aim_label.text = I18n.t("hud.pickup", [_aimed_item_id])
+		_aim_label.text = I18n.t("hud.pickup", [I18n.content("item", _aimed_item_id)])
 		_aim_label.visible = true
 	elif _aimed_tree_id != "":
 		_aim_label.text = I18n.t("hud.chop", [_aimed_tree_species])

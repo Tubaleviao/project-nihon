@@ -521,6 +521,9 @@ jobs:
       - name: Check the tutorial and bed validation rejects bad tables
         run: node tools/check_tutorial.js
 
+      - name: Check every player-visible entity has a localized name (Phase 267)
+        run: node tools/check_content_locale.js
+
       - name: Check the roadmap index matches the phase specs
         run: node tools/check_roadmap.js
 

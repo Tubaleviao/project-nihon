@@ -259,11 +259,11 @@ static func slot_for_key(bound: Array, keycode: int) -> int:
 static func hint_for(entry: String, kind: String, tier: String = "") -> String:
 	match kind:
 		KIND_BLOCK:
-			return I18n.t("hotbar.hint_block", [entry])
+			return I18n.t("hotbar.hint_block", [I18n.content("item", entry)])
 		KIND_GEAR:
-			return I18n.t("hotbar.hint_gear", [entry])
+			return I18n.t("hotbar.hint_gear", [I18n.content("item", entry)])
 		KIND_SKILL:
-			return I18n.t("hotbar.hint_skill", [skill_key(entry), (" (%s)" % tier) if tier != "" else ""])
+			return I18n.t("hotbar.hint_skill", [I18n.content("skill", skill_key(entry)), (" (%s)" % tier) if tier != "" else ""])
 	return entry
 
 ## Parse the saved state. Anything malformed falls back to an empty bar rather than injecting junk.
@@ -476,7 +476,7 @@ func _get_drag(_at: Vector2, index: int, source: Control) -> Variant:
 	if entry == "":
 		return null
 	var label := Label.new()
-	label.text = skill_key(entry) if is_skill(entry) else entry
+	label.text = I18n.content("skill", skill_key(entry)) if is_skill(entry) else I18n.content("item", entry)
 	source.set_drag_preview(label)
 	var payload := {"kind": "hotbar", "from": index, "id": entry}
 	drag_began.emit(payload)
@@ -567,7 +567,7 @@ func _render(held: Dictionary = {}) -> void:
 		var kind := kind_at(i)
 		if kind == KIND_SKILL:
 			var skill := skill_key(entry)
-			b.text = skill.substr(0, 4)
+			b.text = I18n.content("skill", skill).substr(0, 4)
 			b.tooltip_text = hint_for(entry, kind, str(tiers.get(skill, "")))
 			continue
 		var tex: Texture2D = icon_loader.call(entry) if icon_loader.is_valid() else null
@@ -578,7 +578,7 @@ func _render(held: Dictionary = {}) -> void:
 			b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
 		else:
-			b.text = ("%s\n%s" % [entry.substr(0, 1).to_upper(), count]).strip_edges()
+			b.text = ("%s\n%s" % [I18n.content("item", entry).substr(0, 1).to_upper(), count]).strip_edges()
 		b.tooltip_text = hint_for(entry, kind)
 
 func _box(picked: bool, hover: bool) -> StyleBoxFlat:

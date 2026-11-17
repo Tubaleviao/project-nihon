@@ -300,7 +300,7 @@ func slot_drag(_at: Vector2, item_id: String, source: Control) -> Variant:
 	if item_id == "":
 		return null
 	var label := Label.new()
-	label.text = item_id
+	label.text = sl.I18n.content("item", item_id)
 	source.set_drag_preview(label)
 	sl._drag_payload = {"kind": "equipped", "id": item_id}
 	return sl._drag_payload

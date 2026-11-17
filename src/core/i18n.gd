@@ -8,6 +8,16 @@ extends RefCounted
 ## translation may reorder them. A missing key renders as the key itself, never as an empty string.
 const Diag := preload("res://src/core/diag.gd")
 const CATALOG_PATH := "res://locale/ui.csv"
+## Phase 267 — the content catalog: names and descriptions of fabric entities, keyed
+## `<kind>.<Id>.<field>` (`item.FerritePick.name`, `station.master_forge.name`), same columns.
+const CONTENT_PATH := "res://locale/content.csv"
+const CONTENT_KINDS := ["item", "recipe", "tech", "skill", "profession", "station"]
+## What a release build shows for a content key the catalog lacks (never the bare id).
+const CONTENT_UNKNOWN_KEY := "content.unknown"
+## A message arg that names content travels as `§<kind>:<Id>[,<Id>..]` (`ref()`); each client renders it.
+const REF_PREFIX := "§"
+## The last id of a `ref()` list that was cut to fit a message; it renders as " …".
+const REF_MORE := "…"
 const FALLBACK := "en"
 ## Wire limits for a host-originated message (key + args): bounded like any network input.
 const MAX_ARGS := 4
@@ -21,6 +31,9 @@ static var _catalog: Dictionary = {}   # locale -> { key -> text }
 static var _locales: Array = []
 ## Where the catalog is read from; the suite points it at a missing file to prove the retry.
 static var catalog_path: String = CATALOG_PATH
+static var content_path: String = CONTENT_PATH
+## A debug build shows a missing content key as `⟨id⟩`, a release build as "Unknown". The suite flips it.
+static var release_names: bool = not OS.is_debug_build()
 ## How many times a load found no catalog (the suite reads it; each one also logs an error).
 static var load_failures: int = 0
 
@@ -38,6 +51,13 @@ static func ensure_loaded() -> void:
 	_loaded = true
 	_catalog = parsed["catalog"]
 	_locales = parsed["locales"]
+	# Phase 267 — the content catalog joins the same per-locale translations.
+	var content_cat := parse_csv(content_path)
+	if int(content_cat["rows"]) == 0:
+		Diag.error("I18n: content catalog %s is missing or empty — names render as unknown" % content_path)
+	for loc in content_cat["locales"]:
+		if _catalog.has(loc):
+			(_catalog[loc] as Dictionary).merge(content_cat["catalog"][loc], true)
 	for loc in _locales:
 		var tr_obj := Translation.new()
 		tr_obj.locale = str(loc)
@@ -117,6 +137,95 @@ static func fill(text: String, args: Array) -> String:
 		i += 1
 	return out
 
+## Phase 267 — the catalog key of one entity field. Station types are free strings with spaces
+## ("master forge"), keyed with underscores.
+static func content_key(kind: String, id: String, field: String = "name") -> String:
+	return "%s.%s.%s" % [kind, id.replace(" ", "_") if kind == "station" else id, field]
+
+static func has_content(kind: String, id: String, field: String = "name") -> bool:
+	return has_key(content_key(kind, id, field))
+
+## The localized `field` of a fabric entity. A recipe without its own name takes its first output's.
+## A missing key shows `⟨id⟩` in a debug build and the generic "Unknown" in a release build, never the bare id.
+static func content(kind: String, id: String, field: String = "name") -> String:
+	ensure_loaded()
+	var key := content_key(kind, id, field)
+	if has_key(key):
+		return t(key)
+	if kind == "recipe" and field == "name":
+		var out := recipe_first_output(id)
+		if out != "" and has_content("item", out):
+			return t(content_key("item", out))
+	if release_names:
+		return t(CONTENT_UNKNOWN_KEY)
+	return "⟨%s⟩" % id
+
+## Several entities' names, joined (", ").
+static func content_list(kind: String, ids: Array) -> String:
+	var names: PackedStringArray = []
+	for id in ids:
+		names.append(content(kind, str(id)))
+	return ", ".join(names)
+
+## `[{item, quantity}]` entries as "Ferrite Ingot ×2, Thornwood Plank ×1" in the active locale.
+static func content_entries(entries: Array) -> String:
+	var parts: PackedStringArray = []
+	for e in entries:
+		if e is Dictionary:
+			parts.append("%s ×%d" % [content("item", str(e.get("item", ""))), int(e.get("quantity", 1))])
+	return ", ".join(parts)
+
+## The item id of a recipe's first output, or "".
+static func recipe_first_output(recipe_id: String) -> String:
+	var res: Resource = GameData.RECIPES.get(recipe_id, null)
+	if res == null or not (res.get("recipe") is Dictionary):
+		return ""
+	var outs: Variant = (res.get("recipe") as Dictionary).get("outputs", [])
+	if outs is Array and not (outs as Array).is_empty() and (outs as Array)[0] is Dictionary:
+		return str((outs as Array)[0].get("item", ""))
+	return ""
+
+## A host message arg that names content (`ref("item", "FerritePick")`, or an Array of ids), so each
+## client shows the name in its own locale. The caller keeps a list short enough for `MAX_ARG_LEN`.
+static func ref(kind: String, ids: Variant) -> String:
+	var list: PackedStringArray = []
+	if ids is Array or ids is PackedStringArray:
+		for id in ids:
+			list.append(str(id))
+	else:
+		list.append(str(ids))
+	return "%s%s:%s" % [REF_PREFIX, kind, ",".join(list)]
+
+## A `ref()` arg rendered in the active locale; any other arg comes back unchanged.
+static func resolve_arg(a: Variant) -> Variant:
+	if not (a is String) or not (a as String).begins_with(REF_PREFIX):
+		return a
+	var body := (a as String).substr(REF_PREFIX.length())
+	var colon := body.find(":")
+	if colon <= 0:
+		return a
+	var kind := body.substr(0, colon)
+	var ids := body.substr(colon + 1)
+	if kind == "project":
+		# A settlement project (a blueprint teaches one) is named by the UI catalog.
+		return t("settlement.project." + ids) if has_key("settlement.project." + ids) else t(CONTENT_UNKNOWN_KEY)
+	if not CONTENT_KINDS.has(kind):
+		return a
+	if ids == "":
+		return ""
+	var list: Array = Array(ids.split(","))
+	var more: bool = str(list.back()) == REF_MORE
+	if more:
+		list.pop_back()
+	return content_list(kind, list) + (" " + REF_MORE if more else "")
+
+## Reason codes whose params name content, by param position: the text shows the name, not the id.
+const REASON_PARAM_KINDS := {
+	"station_required": ["station"],
+	"requires_profession": ["profession"],
+	"skill_requirement": ["skill"],
+}
+
 ## A slice `reason` code (`missing_inputs`, `station_required:forge`) as text in the active locale:
 ## the part before the first `:` picks the `reason.<code>` key and the rest are its `{0}`.. params.
 static func reason_text(code: String) -> String:
@@ -124,7 +233,11 @@ static func reason_text(code: String) -> String:
 	var key := "reason." + parts[0]
 	if parts[0] == "" or not has_key(key):
 		return t("reason.unknown", [code])
-	return t(key, Array(parts.slice(1)))
+	var params: Array = Array(parts.slice(1))
+	var kinds: Array = REASON_PARAM_KINDS.get(parts[0], [])
+	for i in mini(kinds.size(), params.size()):
+		params[i] = content(str(kinds[i]), str(params[i]))
+	return t(key, params)
 
 ## A host message as it travels: key + args, no rendered text.
 static func msg(key: String, args: Array = []) -> Dictionary:
@@ -153,7 +266,10 @@ static func sanitize_msg(key: Variant, args: Variant) -> Dictionary:
 
 ## Render a `{key, args}` message in the active locale.
 static func render(m: Dictionary) -> String:
-	return t(str(m.get("key", UNKNOWN_KEY)), m.get("args", []))
+	var args: Array = []
+	for a in m.get("args", []):
+		args.append(resolve_arg(a))
+	return t(str(m.get("key", UNKNOWN_KEY)), args)
 
 ## Numbers and dates follow the active locale: pt_BR groups with "." and uses a decimal comma,
 ## en groups with "," and uses a decimal point.

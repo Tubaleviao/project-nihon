@@ -149,4 +149,4 @@ func _refresh() -> void:
 	visible = true
 	_bar.value = progress()
 	var tool_key := "work.tool." + ("axe" if _action == "chop" else ("shovel" if _action == "dig" else "pick"))
-	_label.text = I18n.t("work.progress", [_material, int(ceil(maxf(_duration - _elapsed, 0.0))), I18n.t(tool_key)])
+	_label.text = I18n.t("work.progress", [I18n.content("item", _material), int(ceil(maxf(_duration - _elapsed, 0.0))), I18n.t(tool_key)])

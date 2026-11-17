@@ -610,31 +610,6 @@ clan.rank_down.band,Your clan lost buildings and is a band again.,Seu clã perde
 clan.rank_down.clan,Your clan lost buildings and is a clan again.,Seu clã perdeu construções e voltou a ser um clã.
 clan.rank_down.house,Your clan lost buildings and is a house again.,Seu clã perdeu construções e voltou a ser uma casa.
 clan.rank_down.dynasty,Your clan lost buildings and is a dynasty again.,Seu clã perdeu construções e voltou a ser uma dinastia.
-skill.alchemy,Alchemy,Alquimia
-skill.arcaneforging,Arcane Forging,Forja Arcana
-skill.archery,Archery,Arqueria
-skill.building,Building,Construção
-skill.carpentry,Carpentry,Carpintaria
-skill.cartography,Cartography,Cartografia
-skill.diplomacy,Diplomacy,Diplomacia
-skill.elementalmagic,Elemental Magic,Magia Elemental
-skill.enchanting,Enchanting,Encantamento
-skill.leadership,Leadership,Liderança
-skill.lockpicking,Lockpicking,Arrombamento
-skill.navigation,Navigation,Navegação
-skill.restorationmagic,Restoration Magic,Magia de Restauração
-skill.shieldcraft,Shieldcraft,Arte do Escudo
-skill.skinning,Skinning,Esfola
-skill.smithing,Smithing,Ferraria
-skill.speechcraft,Speechcraft,Oratória
-skill.stealth,Stealth,Furtividade
-skill.swordsmanship,Swordsmanship,Esgrima
-skill.tailoring,Tailoring,Alfaiataria
-skill.tracking,Tracking,Rastreamento
-skill.trade,Trade,Comércio
-skill.unarmed,Unarmed,Desarmado
-skill.voidmagic,Void Magic,Magia do Vazio
-skill.voidsmithing,Voidsmithing,Forja do Vazio
 clan.ok.found,Clan founded.,Clã fundado.
 clan.ok.invite,Invite sent.,Convite enviado.
 clan.ok.uninvite,Invite withdrawn.,Convite retirado.
@@ -774,7 +749,7 @@ writing.ok.read,You learnt {0}.,Você aprendeu {0}.
 writing.name.book,Book: {0},Livro: {0}
 writing.name.blueprint,Blueprint: {0},Planta: {0}
 station.anywhere,anywhere,qualquer lugar
-station.carpentry_bench,carpentry bench,bancada de carpintaria
+content.unknown,Unknown,Desconhecido
 writing.refused.unknown_writing,That is not a book or blueprint.,Isso não é um livro nem uma planta.
 writing.refused.not_known,You can only write about what you know.,Você só pode escrever sobre o que sabe.
 writing.refused.station_required,You need to be at the right station to write this.,Você precisa estar na estação certa para escrever isto.

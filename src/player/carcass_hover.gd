@@ -81,7 +81,7 @@ static func prompt(carcasses: Node, cid: String, inventory: Node) -> String:
 	var p: Array = CarcassRules.prompt_for(carcasses.view_of(cid)["entries"], held, false)
 	var args: Array = []
 	for a in p[1]:
-		args.append(I18n.t(a) if str(a).begins_with("tool.") else a)
+		args.append(I18n.t(a) if str(a).begins_with("tool.") else I18n.resolve_arg(a))
 	return I18n.t(p[0], args)
 
 ## True unless `item` is durable and every copy is at 0 durability.

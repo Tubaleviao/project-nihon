@@ -359,24 +359,24 @@ func _test_rate_bounded() -> void:
 
 func _test_ui_text() -> void:
 	var ui := UiSliceScript.new()
-	var row := { "writing": "Book", "teaches": "TechBasicSmithing" }
-	assert_eq(ui._m2.writing_name(row), I18nScript.t("writing.name.book", ["TechBasicSmithing"]), "a book is named from the locale")
-	assert_eq(ui._m2.station_name("carpentry bench"), I18nScript.t("station.carpentry_bench"), "a station too")
+	var row := { "writing": "Book", "teaches": "TechBasicSmithing", "kind": "technology" }
+	assert_eq(ui._m2.writing_name(row), I18nScript.t("writing.name.book", [I18nScript.content("tech", "TechBasicSmithing")]), "a book is named from the locale")
+	assert_eq(ui._m2.station_name("carpentry bench"), I18nScript.t("station.carpentry_bench.name"), "a station too")
 	assert_eq(ui._m2.station_name(""), I18nScript.t("station.anywhere"), "and anywhere")
 	for item_id: String in WritingRules.items():
 		var w := WritingRules.of(item_id)
 		var keys := ["writing.name.%s" % str(w["writing"]).to_lower(), "writing.ok.write_%s" % str(w["writing"]).to_lower()]
 		var station := WritingRules.station(str(w["writing"]))
 		if station != "":
-			keys.append("station." + station.replace(" ", "_"))
+			keys.append(I18nScript.content_key("station", station))
 		for key: String in keys:
 			assert_true(I18nScript.has_key(key), "%s has %s" % [item_id, key])
 	for code: String in WritingSlice.REASONS:
 		assert_true(I18nScript.has_key("writing.refused." + code), "writing.refused.%s is in the locale" % code)
 	ui._technology_feedback = Label.new()
 	ui._on_research_resolved({ "tech_id": "TechBasicSmithing", "success": true, "reason": "learnt", "status": "unlocked", "player_id": "" })
-	assert_eq(ui._technology_feedback.text, I18nScript.t("ui.tech_unlocked", ["TechBasicSmithing"]), "a read book says it is known, not researching")
+	assert_eq(ui._technology_feedback.text, I18nScript.t("ui.tech_unlocked", [I18nScript.content("tech", "TechBasicSmithing")]), "a read book says it is known, not researching")
 	ui._on_research_resolved({ "tech_id": "TechBasicSmithing", "success": true, "reason": "", "status": "researching", "player_id": "" })
-	assert_eq(ui._technology_feedback.text, I18nScript.t("ui.researching", ["TechBasicSmithing"]), "research begun still says researching")
+	assert_eq(ui._technology_feedback.text, I18nScript.t("ui.researching", [I18nScript.content("tech", "TechBasicSmithing")]), "research begun still says researching")
 	ui._technology_feedback.free()
 	ui.free()

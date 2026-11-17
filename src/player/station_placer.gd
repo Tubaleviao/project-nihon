@@ -83,7 +83,6 @@ func hint() -> String:
 		text += "  (%s)" % I18n.reason_text(refusal)
 	return text
 
-## A station type's player-facing name.
+## A station type's player-facing name (Phase 267: the content catalog's `station.<type>.name`).
 static func station_name(type: String) -> String:
-	var key := "station.%s" % type.replace(" ", "_")
-	return I18n.t(key) if I18n.has_key(key) else type
+	return I18n.content("station", type)

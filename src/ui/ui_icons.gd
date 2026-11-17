@@ -8,6 +8,7 @@ const HUD_FORMAT := "icons/ui/hud/%s.png.raw"
 const ATTRIBUTE_FORMAT := "icons/attributes/%s.png.raw"
 const SPECIALTY_FORMAT := "icons/specialties/%s.png.raw"
 const HP := "hp"
+const I18n := preload("res://src/core/i18n.gd")
 
 static var _cache: Dictionary = {}
 
@@ -41,7 +42,7 @@ static func load_icon(key: String) -> Texture2D:
 static func style_skill_button(b: Button, skill: String, tier: String) -> void:
 	var tex := load_icon(skill_key(skill))
 	if tex == null:
-		b.text = "%s\n%s" % [skill.substr(0, 8), tier]
+		b.text = "%s\n%s" % [I18n.content("skill", skill).substr(0, 8), tier]
 		return
 	b.icon = tex
 	b.expand_icon = true

@@ -1,0 +1,302 @@
+keys,en,pt_BR
+item.Ferrite.name,Ferrite,Ferrita
+item.Ferrite.desc,A common dark-grey metal from surface veins. Smelted into ingots at a forge.,"Metal cinza-escuro e comum, encontrado em veios na superfície. Fundido em lingotes na forja."
+item.Veilsteel.name,Veilsteel,Aço-véu
+item.Veilsteel.desc,A blue-black alloy of ferrite and aethermite. Extremely hard and resists magic.,Liga negro-azulada de ferrita e etermita. Duríssima e resistente à magia.
+item.Aethermite.name,Aethermite,Etermita
+item.Aethermite.desc,A pale silver ore that hums near active magic. Found deep underground.,Minério prateado e pálido que vibra perto de magia ativa. Encontrado no subsolo profundo.
+item.Voidite.name,Voidite,Vazita
+item.Voidite.desc,A jet-black crystal found only in void-touched lands. Rare and dangerous.,"Cristal negro como azeviche, encontrado só em terras tocadas pelo vazio. Raro e perigoso."
+item.Thornwood.name,Thornwood,Madeira-espinho
+item.Thornwood.desc,"Dense, dark-veined wood from lowland forests. The common building timber.",Madeira densa de veios escuros das florestas baixas. A madeira comum de construção.
+item.Duskfiber.name,Duskfiber,Fibra-crepúsculo
+item.Duskfiber.desc,Fibrous bark from the duskwood trees of twilight groves. Woven into cloth.,Casca fibrosa das árvores do crepúsculo. Tecida em pano.
+item.Ashite.name,Ashite,Cinzita
+item.Ashite.desc,A pale grey stone of compressed volcanic ash. Light and heat-resistant.,Pedra cinza-clara de cinza vulcânica compactada. Leve e resistente ao calor.
+item.Lumenfite.name,Lumenfite,Lumenfita
+item.Lumenfite.desc,A translucent crystal that soaks up daylight and glows at night.,Cristal translúcido que absorve a luz do dia e brilha à noite.
+item.Grass.name,Grass,Grama
+item.Grass.desc,Living turf that covers temperate ground.,Relva viva que cobre o solo temperado.
+item.Soil.name,Soil,Terra
+item.Soil.desc,Loose earth dug from under the ground cover.,Terra solta cavada sob a cobertura do solo.
+item.Sand.name,Sand,Areia
+item.Sand.desc,"Loose grains from beaches, deserts and the sea floor.","Grãos soltos das praias, dos desertos e do fundo do mar."
+item.Snow.name,Snow,Neve
+item.Snow.desc,Packed snow from peaks and polar ground.,Neve compactada dos picos e das terras polares.
+item.Concrete.name,Concrete,Concreto
+item.Concrete.desc,Poured stone of cement and soil. Carries ten floors.,Pedra moldada de cimento e terra. Sustenta dez andares.
+item.Steel.name,Steel,Aço
+item.Steel.desc,Ferrite refined twice into rolled beams. Carries forty floors.,Ferrita refinada duas vezes em vigas laminadas. Sustenta quarenta andares.
+item.Leyframe.name,Leyframe,Treliça de Ley
+item.Leyframe.desc,A steel lattice bound with aethermite. Light and nearly unbending.,Treliça de aço unida com etermita. Leve e quase inflexível.
+item.FerritePick.name,Ferrite Pick,Picareta de Ferrita
+item.FerritePick.desc,The standard tool for mining ore and stone.,A ferramenta padrão para minerar minério e pedra.
+item.VeilsteelPick.name,Veilsteel Pick,Picareta de Aço-véu
+item.VeilsteelPick.desc,A heavy pick that cuts rock a ferrite pick cannot.,Picareta pesada que corta rochas que a de ferrita não corta.
+item.CarpenterAxe.name,Carpenter's Axe,Machado de Carpinteiro
+item.CarpenterAxe.desc,A balanced felling axe for chopping trees.,Machado de corte equilibrado para derrubar árvores.
+item.SkinningKnife.name,Skinning Knife,Faca de Esfolar
+item.SkinningKnife.desc,"A short blade for taking hide, pelt and meat from a body.","Lâmina curta para tirar couro, pele e carne de um corpo."
+item.BoneSaw.name,Bone Saw,Serra de Ossos
+item.BoneSaw.desc,"A broad saw that cuts bone, tusk, horn and fang free.","Serra larga que solta ossos, presas, chifres e dentes."
+item.Lockpick.name,Lockpick,Gazua
+item.Lockpick.desc,Picks the lock of a chest or door. A failed pick can snap it.,Abre a fechadura de um baú ou porta. Uma tentativa falha pode quebrá-la.
+item.Branch.name,Branch,Galho
+item.Branch.desc,A straight stick from the ground or a felled tree. The handle of every stone tool.,Um galho reto do chão ou de uma árvore derrubada. O cabo de toda ferramenta de pedra.
+item.LooseStone.name,Loose Stone,Pedra Solta
+item.LooseStone.desc,A fist-sized stone. The head of every stone tool.,Uma pedra do tamanho de um punho. A cabeça de toda ferramenta de pedra.
+item.StoneAxe.name,Stone Axe,Machado de Pedra
+item.StoneAxe.desc,"A knapped stone lashed into a branch. Fells a tree, slowly.","Uma pedra lascada amarrada a um galho. Derruba uma árvore, devagar."
+item.StonePick.name,Stone Pick,Picareta de Pedra
+item.StonePick.desc,Breaks rock faster than bare hands. Ore wears it fast.,Quebra rocha mais rápido que as mãos nuas. Minério a desgasta depressa.
+item.StoneShovel.name,Stone Shovel,Pá de Pedra
+item.StoneShovel.desc,"Digs soil, sand and gravel faster than any pick.","Cava terra, areia e cascalho mais rápido que qualquer picareta."
+item.StoneKnife.name,Stone Knife,Faca de Pedra
+item.StoneKnife.desc,"A sharp flake of stone. Skins and butchers, poorly.","Uma lasca afiada de pedra. Esfola e corta carne, mal."
+item.StoneHammer.name,Stone Hammer,Martelo de Pedra
+item.StoneHammer.desc,"Held to build walls, floors and roofs.","Segurado para construir paredes, pisos e telhados."
+item.FerriteShortSword.name,Ferrite Short Sword,Espada Curta de Ferrita
+item.FerriteShortSword.desc,"A light, quick single-edged blade.","Lâmina de um só gume, leve e rápida."
+item.VeilsteelLongsword.name,Veilsteel Longsword,Espada Longa de Aço-véu
+item.VeilsteelLongsword.desc,A heavy two-handed sword that cracks enchanted armour.,Espada pesada de duas mãos que racha armaduras encantadas.
+item.AethermiteBow.name,Aethermite Bow,Arco de Etermita
+item.AethermiteBow.desc,A recurve bow whose arrows carry a faint magic charge.,Arco recurvo cujas flechas levam uma leve carga mágica.
+item.VoiditeEdge.name,Voidite Edge,Lâmina de Vazita
+item.VoiditeEdge.desc,A jagged blade that deals true void damage.,Lâmina serrilhada que causa dano de vazio verdadeiro.
+item.FerriteHelmet.name,Ferrite Helmet,Elmo de Ferrita
+item.FerriteHelmet.desc,A simple open-faced helmet against blunt and slashing blows.,Elmo simples e aberto contra golpes de impacto e de corte.
+item.VeilsteelChestplate.name,Veilsteel Chestplate,Peitoral de Aço-véu
+item.VeilsteelChestplate.desc,Full torso armour with exceptional physical protection.,Armadura de torso completa com proteção física excepcional.
+item.DuskfiberCloak.name,Duskfiber Cloak,Manto de Fibra-crepúsculo
+item.DuskfiberCloak.desc,A hooded cloak that helps its wearer go unseen.,Manto com capuz que ajuda quem o veste a passar despercebido.
+item.NoviceTunic.name,Novice Tunic,Túnica de Novato
+item.NoviceTunic.desc,A plain woven tunic. Barely armour at all.,Túnica simples de tecido. Quase nada de armadura.
+item.FerriteShield.name,Ferrite Shield,Escudo de Ferrita
+item.FerriteShield.desc,A round shield that blocks melee and missile strikes.,Escudo redondo que bloqueia golpes corpo a corpo e projéteis.
+item.FieldRations.name,Field Rations,Rações de Campanha
+item.FieldRations.desc,A dried grain-and-herb pack. Restores some stamina.,Pacote de grãos e ervas secos. Recupera um pouco de vigor.
+item.AlchemyPotion.name,Alchemy Potion,Poção Alquímica
+item.AlchemyPotion.desc,A sealed flask. Its effect depends on how it was brewed.,Um frasco lacrado. O efeito depende de como foi preparado.
+item.FerriteIngot.name,Ferrite Ingot,Lingote de Ferrita
+item.FerriteIngot.desc,A smelted bar ready for smithing.,Uma barra fundida pronta para a forja.
+item.VeilsteelIngot.name,Veilsteel Ingot,Lingote de Aço-véu
+item.VeilsteelIngot.desc,A refined bar alloyed at a master forge.,"Uma barra refinada, ligada na forja mestra."
+item.ThornwoodPlank.name,Thornwood Plank,Tábua de Madeira-espinho
+item.ThornwoodPlank.desc,Rough-cut lumber for building and crafting.,Madeira serrada para construir e fabricar.
+item.Waystone.name,Waystone,Pedra-guia
+item.Waystone.desc,A carved marker stone. Place it to anchor fast travel.,Uma pedra marcada e entalhada. Coloque-a para ancorar a viagem rápida.
+item.AethermiteDust.name,Aethermite Dust,Pó de Etermita
+item.AethermiteDust.desc,A fine powder used in enchanting and brewing.,Um pó fino usado em encantamentos e poções.
+item.AethermiteShard.name,Aethermite Shard,Fragmento de Etermita
+item.AethermiteShard.desc,Aethermite refined into a crystal shard.,Etermita refinada em um fragmento cristalino.
+item.RefinedVoiditeShard.name,Refined Voidite Shard,Fragmento de Vazita Refinado
+item.RefinedVoiditeShard.desc,Voidite stabilised into a crystal shard.,Vazita estabilizada em um fragmento cristalino.
+item.AshiteBlock.name,Ashite Block,Bloco de Cinzita
+item.AshiteBlock.desc,A quarried building block of volcanic stone.,Um bloco de construção talhado em pedra vulcânica.
+item.Cement.name,Cement,Cimento
+item.Cement.desc,Ground ashite. Cast with soil it sets into concrete.,Cinzita moída. Moldada com terra vira concreto.
+item.EnchantedAethermiteShard.name,Enchanted Aethermite Shard,Fragmento de Etermita Encantado
+item.EnchantedAethermiteShard.desc,A fully imbued shard that glows faintly silver.,Um fragmento totalmente imbuído que brilha prateado.
+item.VoidRuneTablet.name,Void Rune Tablet,Tábua Rúnica do Vazio
+item.VoidRuneTablet.desc,A voidite slab etched with stabilising runes.,Uma placa de vazita gravada com runas estabilizadoras.
+item.LumenfiteOrb.name,Lumenfite Orb,Orbe de Lumenfita
+item.LumenfiteOrb.desc,A charged sphere that serves as a light source.,Uma esfera carregada que serve de fonte de luz.
+item.Bed.name,Bed,Cama
+item.Bed.desc,Place it under a roof. You wake here after you fall.,Coloque-a sob um teto. Você desperta aqui quando cai.
+item.Chest.name,Chest,Baú
+item.Chest.desc,Place it to store items. You choose who may open it.,Coloque-o para guardar itens. Você escolhe quem pode abri-lo.
+item.Door.name,Door,Porta
+item.Door.desc,Place it in a wall. You choose who may pass.,Coloque-a numa parede. Você escolhe quem pode passar.
+item.Hearth.name,Hearth,Fogueira
+item.Hearth.desc,A stone-ringed fire pit. Placing it founds a settlement.,Uma fogueira cercada de pedras. Colocá-la funda um povoado.
+tech.TechBasicSmithing.name,Basic Smithing,Ferraria Básica
+tech.TechBasicSmithing.desc,"The forge, ferrite smelting and the first metal tools.","A forja, a fundição de ferrita e as primeiras ferramentas de metal."
+tech.TechMasterForge.name,Master Forge,Forja Mestra
+tech.TechMasterForge.desc,The master forge and veilsteel.,A forja mestra e o aço-véu.
+tech.TechStoneTools.name,Stone Tools,Ferramentas de Pedra
+tech.TechStoneTools.desc,Lashing a stone to a branch. Learnt by holding both.,Amarrar uma pedra a um galho. Aprendida ao segurar os dois.
+tech.TechBasicCarpentry.name,Basic Carpentry,Carpintaria Básica
+tech.TechBasicCarpentry.desc,"The carpentry bench, planks and wooden parts.","A bancada de carpintaria, as tábuas e as peças de madeira."
+tech.TechTextileWeaving.name,Textile Weaving,Tecelagem
+tech.TechTextileWeaving.desc,Weaving duskfiber into cloth and cloaks.,Tecer fibra-crepúsculo em pano e mantos.
+tech.TechArcaneForging.name,Arcane Forging,Forja Arcana
+tech.TechArcaneForging.desc,The arcane forge and aethermite crafting.,A forja arcana e o trabalho com etermita.
+tech.TechAlchemy.name,Alchemy,Alquimia
+tech.TechAlchemy.desc,The alchemy bench and the first potions.,A bancada de alquimia e as primeiras poções.
+tech.TechVoidMastery.name,Void Mastery,Domínio do Vazio
+tech.TechVoidMastery.desc,Void-resist potions and the void rune tablet.,Poções de resistência ao vazio e a tábua rúnica do vazio.
+tech.TechConcrete.name,Concrete,Concreto
+tech.TechConcrete.desc,"Cement and concrete, which carries ten floors.","Cimento e concreto, que sustenta dez andares."
+tech.TechSteel.name,Steel,Aço
+tech.TechSteel.desc,"Steel beams, which carry forty floors.","Vigas de aço, que sustentam quarenta andares."
+tech.TechLeyframe.name,Leyframe,Treliça de Ley
+tech.TechLeyframe.desc,"Leyframe, the strongest building frame.","A treliça de ley, a estrutura de construção mais forte."
+skill.Swordsmanship.name,Swordsmanship,Esgrima
+skill.Swordsmanship.desc,Fighting with bladed weapons.,Lutar com armas de lâmina.
+skill.Archery.name,Archery,Arqueria
+skill.Archery.desc,Aiming and shooting bows.,Mirar e disparar com arcos.
+skill.Shieldcraft.name,Shieldcraft,Arte do Escudo
+skill.Shieldcraft.desc,"Blocking, parrying and bashing with a shield.","Bloquear, aparar e golpear com um escudo."
+skill.Unarmed.name,Unarmed,Desarmado
+skill.Unarmed.desc,Fighting hand to hand.,Lutar com as mãos nuas.
+skill.Smithing.name,Smithing,Ferraria
+skill.Smithing.desc,Shaping metal at a forge.,Moldar metal na forja.
+skill.Carpentry.name,Carpentry,Carpintaria
+skill.Carpentry.desc,"Working wood into tools, furniture and parts.","Trabalhar madeira em ferramentas, móveis e peças."
+skill.Alchemy.name,Alchemy,Alquimia
+skill.Alchemy.desc,Brewing potions and reagents.,Preparar poções e reagentes.
+skill.ArcaneForging.name,Arcane Forging,Forja Arcana
+skill.ArcaneForging.desc,Working magical materials at an arcane forge.,Trabalhar materiais mágicos na forja arcana.
+skill.VoidSmithing.name,Voidsmithing,Forja do Vazio
+skill.VoidSmithing.desc,Working void-touched materials.,Trabalhar materiais tocados pelo vazio.
+skill.ElementalMagic.name,Elemental Magic,Magia Elemental
+skill.ElementalMagic.desc,"Commanding fire, earth, air and water.","Comandar fogo, terra, ar e água."
+skill.VoidMagic.name,Void Magic,Magia do Vazio
+skill.VoidMagic.desc,Channelling entropic void energy.,Canalizar a energia entrópica do vazio.
+skill.RestorationMagic.name,Restoration Magic,Magia de Restauração
+skill.RestorationMagic.desc,"Healing, shielding and cleansing.","Curar, proteger e purificar."
+skill.Enchanting.name,Enchanting,Encantamento
+skill.Enchanting.desc,Binding lasting magic into items.,Fixar magia duradoura nos itens.
+skill.Cartography.name,Cartography,Cartografia
+skill.Cartography.desc,Charting land and drawing maps.,Mapear terras e desenhar mapas.
+skill.Tracking.name,Tracking,Rastreamento
+skill.Tracking.desc,Reading signs to follow creatures and people.,Ler sinais para seguir criaturas e pessoas.
+skill.Stealth.name,Stealth,Furtividade
+skill.Stealth.desc,Moving and acting unseen.,Mover-se e agir sem ser visto.
+skill.Navigation.name,Navigation,Navegação
+skill.Navigation.desc,"Finding the way by stars, wind and land.","Achar o caminho pelas estrelas, pelo vento e pelo terreno."
+skill.Diplomacy.name,Diplomacy,Diplomacia
+skill.Diplomacy.desc,Negotiating terms and treaties.,Negociar acordos e tratados.
+skill.Trade.name,Trade,Comércio
+skill.Trade.desc,Buying and selling at better prices.,Comprar e vender a preços melhores.
+skill.Speechcraft.name,Speechcraft,Oratória
+skill.Speechcraft.desc,"Persuading, intimidating and deceiving.","Persuadir, intimidar e enganar."
+skill.Leadership.name,Leadership,Liderança
+skill.Leadership.desc,Inspiring and coordinating allies.,Inspirar e coordenar aliados.
+skill.Skinning.name,Skinning,Esfola
+skill.Skinning.desc,Working a creature's body with a knife.,Trabalhar o corpo de uma criatura com uma faca.
+skill.Building.name,Building,Construção
+skill.Building.desc,"Placing, dismantling and repairing structures.","Colocar, desmontar e reparar estruturas."
+skill.Tailoring.name,Tailoring,Alfaiataria
+skill.Tailoring.desc,Sewing hides and cloth into clothing.,Costurar couro e pano em roupas.
+skill.Lockpicking.name,Lockpicking,Arrombamento
+skill.Lockpicking.desc,Opening locks without breaking them.,Abrir fechaduras sem quebrá-las.
+profession.Blacksmith.name,Blacksmith,Ferreiro
+profession.Arcanist.name,Arcanist,Arcanista
+profession.Ranger.name,Ranger,Patrulheiro
+profession.Warrior.name,Warrior,Guerreiro
+profession.Alchemist.name,Alchemist,Alquimista
+profession.Merchant.name,Merchant,Mercador
+profession.Pathfinder.name,Pathfinder,Desbravador
+profession.VoidTouched.name,Void-Touched,Tocado pelo Vazio
+recipe.RecipeHealthPotion.name,Health Potion,Poção de Vida
+recipe.RecipeStaminaPotion.name,Stamina Potion,Poção de Vigor
+recipe.RecipeVoidResistPotion.name,Void Resistance Potion,Poção de Resistência ao Vazio
+station.forge.name,forge,forja
+station.master_forge.name,master forge,forja mestra
+station.arcane_forge.name,arcane forge,forja arcana
+station.carpentry_bench.name,carpentry bench,bancada de carpintaria
+station.alchemy_bench.name,alchemy bench,bancada de alquimia
+station.void-shielded_workshop.name,void-shielded workshop,oficina blindada contra o vazio
+station.masonry_bench.name,masonry bench,bancada de alvenaria
+station.waystone.name,waystone,pedra-guia
+station.hearth.name,hearth,fogueira
+station.bed.name,bed,cama
+station.chest.name,chest,baú
+station.door.name,door,porta
+item.raw_boar_meat.name,Raw Boar Meat,Carne Crua de Javali
+item.boar_hide.name,Boar Hide,Couro de Javali
+item.boar_tusk.name,Boar Tusk,Presa de Javali
+item.wolf_pelt.name,Wolf Pelt,Pele de Lobo
+item.wolf_fang.name,Wolf Fang,Dente de Lobo
+item.alpha_wolf_fang.name,Alpha Wolf Fang,Dente de Lobo Alfa
+item.bison_meat.name,Bison Meat,Carne de Bisão
+item.bison_hide.name,Bison Hide,Couro de Bisão
+item.bison_bone.name,Bison Bone,Osso de Bisão
+item.bison_horn.name,Bison Horn,Chifre de Bisão
+item.hawk_feather.name,Hawk Feather,Pena de Falcão
+item.hawk_talon.name,Hawk Talon,Garra de Falcão
+item.slug_shell_shard.name,Slug Shell Shard,Caco de Concha de Lesma
+item.superheated_slime_vial.name,Vial of Superheated Slime,Frasco de Gosma Superaquecida
+item.lava_core_organ.name,Lava Core Organ,Órgão de Núcleo de Lava
+item.gargoyle_wing_fragment.name,Gargoyle Wing Fragment,Fragmento de Asa de Gárgula
+item.petrified_binding_stone.name,Petrified Binding Stone,Pedra de Ligação Petrificada
+item.gargoyle_crest.name,Gargoyle Crest,Crista de Gárgula
+item.glimmer_pelt.name,Glimmer Pelt,Pele Cintilante
+item.luminescent_reagent.name,Luminescent Reagent,Reagente Luminescente
+item.glimmer_fur_tuft.name,Tuft of Glimmer Fur,Tufo de Pelo Cintilante
+item.veilstalker_venom_sac.name,Veilstalker Venom Sac,Bolsa de Veneno de Espreitador do Véu
+item.shadow_phase_membrane.name,Shadow-Phase Membrane,Membrana de Fase Sombria
+item.crystallised_phase_shard.name,Crystallised Phase Shard,Fragmento de Fase Cristalizado
+item.void_scale.name,Void Scale,Escama do Vazio
+item.void_serpent_fang.name,Void Serpent Fang,Presa de Serpente do Vazio
+item.phase_locked_core.name,Phase-Locked Core,Núcleo Travado em Fase
+item.rift_shard.name,Rift Shard,Fragmento da Fenda
+item.void_core_crystal.name,Void Core Crystal,Cristal de Núcleo do Vazio
+item.warden_sigil.name,Warden Sigil,Sigilo do Guardião
+item.BookTechBasicSmithing.name,Book: Basic Smithing,Livro: Ferraria Básica
+item.BookTechBasicSmithing.desc,Read it to learn Basic Smithing. You keep the book.,Leia-o para aprender Ferraria Básica. O livro continua com você.
+item.BookTechMasterForge.name,Book: Master Forge,Livro: Forja Mestra
+item.BookTechMasterForge.desc,Read it to learn Master Forge. You keep the book.,Leia-o para aprender Forja Mestra. O livro continua com você.
+item.BookTechBasicCarpentry.name,Book: Basic Carpentry,Livro: Carpintaria Básica
+item.BookTechBasicCarpentry.desc,Read it to learn Basic Carpentry. You keep the book.,Leia-o para aprender Carpintaria Básica. O livro continua com você.
+item.BookTechTextileWeaving.name,Book: Textile Weaving,Livro: Tecelagem
+item.BookTechTextileWeaving.desc,Read it to learn Textile Weaving. You keep the book.,Leia-o para aprender Tecelagem. O livro continua com você.
+item.BookTechArcaneForging.name,Book: Arcane Forging,Livro: Forja Arcana
+item.BookTechArcaneForging.desc,Read it to learn Arcane Forging. You keep the book.,Leia-o para aprender Forja Arcana. O livro continua com você.
+item.BookTechAlchemy.name,Book: Alchemy,Livro: Alquimia
+item.BookTechAlchemy.desc,Read it to learn Alchemy. You keep the book.,Leia-o para aprender Alquimia. O livro continua com você.
+item.BookTechVoidMastery.name,Book: Void Mastery,Livro: Domínio do Vazio
+item.BookTechVoidMastery.desc,Read it to learn Void Mastery. You keep the book.,Leia-o para aprender Domínio do Vazio. O livro continua com você.
+item.BookTechConcrete.name,Book: Concrete,Livro: Concreto
+item.BookTechConcrete.desc,Read it to learn Concrete. You keep the book.,Leia-o para aprender Concreto. O livro continua com você.
+item.BookTechSteel.name,Book: Steel,Livro: Aço
+item.BookTechSteel.desc,Read it to learn Steel. You keep the book.,Leia-o para aprender Aço. O livro continua com você.
+item.BookTechLeyframe.name,Book: Leyframe,Livro: Treliça de Ley
+item.BookTechLeyframe.desc,Read it to learn Leyframe. You keep the book.,Leia-o para aprender Treliça de Ley. O livro continua com você.
+item.BlueprintRecipeBed.name,Blueprint: Bed,Planta: Cama
+item.BlueprintRecipeBed.desc,Read it to learn to build the bed. You keep the blueprint.,Leia-a para aprender a construir: cama. A planta continua com você.
+item.BlueprintRecipeChest.name,Blueprint: Chest,Planta: Baú
+item.BlueprintRecipeChest.desc,Read it to learn to build the chest. You keep the blueprint.,Leia-a para aprender a construir: baú. A planta continua com você.
+item.BlueprintRecipeDoor.name,Blueprint: Door,Planta: Porta
+item.BlueprintRecipeDoor.desc,Read it to learn to build the door. You keep the blueprint.,Leia-a para aprender a construir: porta. A planta continua com você.
+item.BlueprintRecipeHearth.name,Blueprint: Hearth,Planta: Fogueira
+item.BlueprintRecipeHearth.desc,Read it to learn to build the hearth. You keep the blueprint.,Leia-a para aprender a construir: fogueira. A planta continua com você.
+item.BlueprintPalisade.name,Blueprint: Palisade,Planta: Paliçada
+item.BlueprintPalisade.desc,Read it to learn the settlement's palisade. You keep the blueprint.,Leia-a para aprender o projeto do povoado: paliçada. A planta continua com você.
+item.BlueprintStorehouse.name,Blueprint: Storehouse,Planta: Armazém
+item.BlueprintStorehouse.desc,Read it to learn the settlement's storehouse. You keep the blueprint.,Leia-a para aprender o projeto do povoado: armazém. A planta continua com você.
+item.BlueprintWorkshop.name,Blueprint: Workshop,Planta: Oficina
+item.BlueprintWorkshop.desc,Read it to learn the settlement's workshop. You keep the blueprint.,Leia-a para aprender o projeto do povoado: oficina. A planta continua com você.
+item.BlueprintWatchtower.name,Blueprint: Watchtower,Planta: Torre de Vigia
+item.BlueprintWatchtower.desc,Read it to learn the settlement's watchtower. You keep the blueprint.,Leia-a para aprender o projeto do povoado: torre de vigia. A planta continua com você.
+item.CarpentryBench.name,Carpentry Bench,Bancada de Carpintaria
+item.CarpentryBench.desc,"A work top of lashed branches on stone feet, where logs become planks. Place it from the hotbar; you can pick it up again.","Um tampo de galhos amarrados sobre pés de pedra, onde toras viram tábuas. Coloque-a pela barra de atalhos; você pode recolhê-la depois."
+item.Forge.name,Forge,Forja
+item.Forge.desc,"A stone hearth with a plank bellows, hot enough to smelt ferrite. Place it from the hotbar; you can pick it up again.","Uma fornalha de pedra com fole de tábuas, quente o bastante para fundir ferrita. Coloque-a pela barra de atalhos; você pode recolhê-la depois."
+item.MasonryBench.name,Masonry Bench,Bancada de Alvenaria
+item.MasonryBench.desc,"A stone slab on a plank frame for cutting blocks and mixing cement. Place it from the hotbar; you can pick it up again.","Uma laje de pedra sobre armação de tábuas para cortar blocos e misturar cimento. Coloque-a pela barra de atalhos; você pode recolhê-la depois."
+item.AlchemyBench.name,Alchemy Bench,Bancada de Alquimia
+item.AlchemyBench.desc,"A plank table set with aethermite-lined bowls for brewing. Place it from the hotbar; you can pick it up again.","Uma mesa de tábuas com tigelas revestidas de etermita para preparar poções. Coloque-a pela barra de atalhos; você pode recolhê-la depois."
+item.MasterForge.name,Master Forge,Forja Mestra
+item.MasterForge.desc,"A ferrite-clad forge on cut stone that holds the heat veilsteel needs. Place it from the hotbar; you can pick it up again.","Uma forja revestida de ferrita sobre pedra talhada, que mantém o calor que o aço-véu exige. Coloque-a pela barra de atalhos; você pode recolhê-la depois."
+item.ArcaneForge.name,Arcane Forge,Forja Arcana
+item.ArcaneForge.desc,"A ferrite forge fed with aethermite, for binding magic into metal. Place it from the hotbar; you can pick it up again.","Uma forja de ferrita alimentada com etermita, para unir magia ao metal. Coloque-a pela barra de atalhos; você pode recolhê-la depois."
+item.VoidShieldedWorkshop.name,Void-Shielded Workshop,Oficina Blindada contra o Vazio
+item.VoidShieldedWorkshop.desc,"A veilsteel cabinet lined with refined voidite, shielded for void work. Place it from the hotbar; you can pick it up again.","Um gabinete de aço-véu revestido de vazita refinada, blindado para o trabalho com o vazio. Coloque-o pela barra de atalhos; você pode recolhê-lo depois."
+item.BlueprintRecipeWaystone.name,Blueprint: Waystone,Planta: Pedra-guia
+item.BlueprintRecipeWaystone.desc,Read it to learn to build the waystone. You keep the blueprint.,Leia-a para aprender a construir: pedra-guia. A planta continua com você.
+item.BlueprintRecipeCarpentryBench.name,Blueprint: Carpentry Bench,Planta: Bancada de Carpintaria
+item.BlueprintRecipeCarpentryBench.desc,Read it to learn to build the carpentry bench. You keep the blueprint.,Leia-a para aprender a construir: bancada de carpintaria. A planta continua com você.
+item.BlueprintRecipeForge.name,Blueprint: Forge,Planta: Forja
+item.BlueprintRecipeForge.desc,Read it to learn to build the forge. You keep the blueprint.,Leia-a para aprender a construir: forja. A planta continua com você.
+item.BlueprintRecipeMasonryBench.name,Blueprint: Masonry Bench,Planta: Bancada de Alvenaria
+item.BlueprintRecipeMasonryBench.desc,Read it to learn to build the masonry bench. You keep the blueprint.,Leia-a para aprender a construir: bancada de alvenaria. A planta continua com você.
+item.BlueprintRecipeAlchemyBench.name,Blueprint: Alchemy Bench,Planta: Bancada de Alquimia
+item.BlueprintRecipeAlchemyBench.desc,Read it to learn to build the alchemy bench. You keep the blueprint.,Leia-a para aprender a construir: bancada de alquimia. A planta continua com você.
+item.BlueprintRecipeMasterForge.name,Blueprint: Master Forge,Planta: Forja Mestra
+item.BlueprintRecipeMasterForge.desc,Read it to learn to build the master forge. You keep the blueprint.,Leia-a para aprender a construir: forja mestra. A planta continua com você.
+item.BlueprintRecipeArcaneForge.name,Blueprint: Arcane Forge,Planta: Forja Arcana
+item.BlueprintRecipeArcaneForge.desc,Read it to learn to build the arcane forge. You keep the blueprint.,Leia-a para aprender a construir: forja arcana. A planta continua com você.
+item.BlueprintRecipeVoidShieldedWorkshop.name,Blueprint: Void-Shielded Workshop,Planta: Oficina Blindada contra o Vazio
+item.BlueprintRecipeVoidShieldedWorkshop.desc,Read it to learn to build the void-shielded workshop. You keep the blueprint.,Leia-a para aprender a construir: oficina blindada contra o vazio. A planta continua com você.

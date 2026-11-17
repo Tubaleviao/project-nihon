@@ -49,6 +49,7 @@ extends Node
 ## without them (a legacy save) loads as 0 points and no recipes crafted.
 
 const ProjectRules := preload("res://src/settlement/project_rules.gd")
+const I18n := preload("res://src/core/i18n.gd")
 
 const STATE_LOCKED := "locked"
 const STATE_RESEARCHING := "researching"
@@ -253,23 +254,23 @@ func note_obtained(player_id: String, item_id: String) -> Array:
 		found.append(tid)
 		GameBus.technology_unlocked.emit(tid, pid)
 		_emit(_result(tid, true, "discovered", STATE_UNLOCKED, pid))
-		GameBus.system_message.emit("notice.tech_discovered", [tid, _outputs_arg(discovery_outputs(tid))], pid)
+		GameBus.system_message.emit("notice.tech_discovered", [I18n.ref("tech", tid), _outputs_arg(discovery_outputs(tid))], pid)
 	if found.is_empty():
 		# Nothing unlocked, but the held input must reach the player's record (it counts after a drop or a reload).
 		GameBus.technology_record_changed.emit(pid)
 	return found
 
 ## The outputs as one message argument that always fits `I18n.MAX_ARG_LEN` (a longer one would make the client
-## drop the whole notice for the fallback line): the ids that fit, then "…". Item names are fabric ids until
-## fabric content is translated (the Deferred i18n item).
+## drop the whole notice for the fallback line): an `I18n.ref` of the item ids that fit, then "…" (Phase 267:
+## each client shows the names in its own locale).
 static func _outputs_arg(outputs: Array) -> String:
-	var out := ""
+	var ids: Array = []
 	for i in outputs.size():
-		var next := str(outputs[i]) if out == "" else out + ", " + str(outputs[i])
-		if next.length() > preload("res://src/core/i18n.gd").MAX_ARG_LEN - 2:
-			return out + " …"
-		out = next
-	return out
+		if I18n.ref("item", ids + [outputs[i], I18n.REF_MORE]).length() > I18n.MAX_ARG_LEN:
+			ids.append(I18n.REF_MORE)
+			break
+		ids.append(str(outputs[i]))
+	return I18n.ref("item", ids)
 
 func _on_item_obtained(owner_id: String, item_id: String) -> void:
 	note_obtained(owner_id, item_id)

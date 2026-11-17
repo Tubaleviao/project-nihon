@@ -179,7 +179,7 @@ static func board_text(projects: Variant, names: Dictionary) -> String:
 		var given: Dictionary = p.get("given", {}) if p.get("given", {}) is Dictionary else {}
 		var mats: Array = []
 		for item: String in need:
-			mats.append(I18n.t("settlement.project_need", [item, int(given.get(item, 0)), int(need[item])]))
+			mats.append(I18n.t("settlement.project_need", [I18n.content("item", item), int(given.get(item, 0)), int(need[item])]))
 		out.append("  " + ", ".join(mats))
 		var helpers: Array = []
 		var c: Dictionary = p.get("contributors", {}) if p.get("contributors", {}) is Dictionary else {}

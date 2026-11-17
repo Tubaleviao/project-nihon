@@ -27,7 +27,7 @@ func inventory_rows() -> Array:
 		var iid = str(item_id)
 		var qty = int(contents[item_id])
 		var dur = sl.durability_bar(iid).strip_edges()
-		var tip = sl.I18n.t("ui.tip_quantity", [iid, qty])
+		var tip = sl.I18n.t("ui.tip_quantity", [sl.I18n.content("item", iid), qty])
 		if dur != "":
 			tip += sl.I18n.t("ui.tip_durability", [dur.trim_prefix("[").trim_suffix("]")])
 		var desc = sl.item_description(iid)
@@ -112,14 +112,22 @@ func on_research_points_synced(player_id: String) -> void:
 
 ## Phase 209 — a writing row's name in the active locale: "Book: <technology>", "Blueprint: <recipe>".
 func writing_name(row: Dictionary) -> String:
-	return sl.I18n.t("writing.name.%s" % str(row["writing"]).to_lower(), [row["teaches"]])
+	return sl.I18n.t("writing.name.%s" % str(row["writing"]).to_lower(), [teaches_name(str(row["kind"]), str(row["teaches"]))])
 
-## Phase 209 — a writing's station in the active locale (`station.<type with underscores>`), or "anywhere".
+## Phase 267 — what a writing teaches, by name: a technology, a station's recipe or a settlement project.
+func teaches_name(kind: String, teaches: String) -> String:
+	match kind:
+		"technology":
+			return sl.I18n.content("tech", teaches)
+		"station":
+			return sl.I18n.content("recipe", teaches)
+	return sl.I18n.t("settlement.project." + teaches) if sl.I18n.has_key("settlement.project." + teaches) else sl.I18n.t(sl.I18n.CONTENT_UNKNOWN_KEY)
+
+## Phase 209 — a writing's station in the active locale (Phase 267: `I18n.content("station", type)`), or "anywhere".
 func station_name(type: String) -> String:
 	if type == "":
 		return sl.I18n.t("station.anywhere")
-	var key := "station." + type.replace(" ", "_")
-	return sl.I18n.t(key) if sl.I18n.has_key(key) else type
+	return sl.I18n.content("station", type)
 
 func refresh_crafting() -> void:
 	if sl._crafting_box == null:
@@ -136,9 +144,9 @@ func refresh_crafting() -> void:
 		btn.pressed.connect(sl._on_craft_pressed.bind(str(r["id"])))
 		hbox.add_child(btn)
 		sl._add_row_icon(hbox, str(r["icon_key"]))
-		var line = "%s: %s → %s" % [r["id"], r["inputs"], r["outputs"]]
+		var line = "%s: %s → %s" % [sl.I18n.content("recipe", str(r["id"])), r["inputs"], r["outputs"]]
 		if str(r.get("station", "")) != "":
-			line += "  @ %s" % r["station"]
+			line += "  @ %s" % station_name(str(r["station"]))
 		var lbl = Label.new()
 		lbl.text = line + ("" if bool(r["can_craft"]) else "  (%s)" % sl.I18n.reason_text(str(r["reason"])))
 		lbl.modulate = Color(1, 1, 1) if bool(r["can_craft"]) else Color(0.6, 0.6, 0.6)
@@ -163,9 +171,9 @@ func refresh_crafting() -> void:
 			btn.pressed.connect(sl._on_repair_pressed.bind(str(r["id"])))
 			hbox.add_child(btn)
 			sl._add_row_icon(hbox, str(r["icon_key"]))
-			var line = str(r["id"])
+			var line = sl.I18n.content("item", str(r["id"]))
 			if str(r.get("station", "")) != "":
-				line += "  @ %s" % r["station"]
+				line += "  @ %s" % station_name(str(r["station"]))
 			line += "  " + sl.I18n.t("ui.needs", [r["materials"]])
 			var lbl = Label.new()
 			lbl.text = line + ("" if bool(r["can_repair"]) else "  (%s)" % sl.I18n.reason_text(str(r["reason"])))
@@ -330,7 +338,7 @@ func refresh_trade() -> void:
 		hbox.add_theme_constant_override("separation", 8)
 		sl._add_row_icon(hbox, str(row["icon_key"]))
 		var lbl := Label.new()
-		lbl.text = sl.I18n.t("trade.entry", [row["party"], sl.I18n.t("trade.side_give" if row["side"] == "give" else "trade.side_want"), row["item_id"], row["quantity"]])
+		lbl.text = sl.I18n.t("trade.entry", [row["party"], sl.I18n.t("trade.side_give" if row["side"] == "give" else "trade.side_want"), sl.I18n.content("item", str(row["item_id"])), row["quantity"]])
 		hbox.add_child(lbl)
 		trade_box.add_child(hbox)
 
@@ -383,8 +391,8 @@ func refresh_technology() -> void:
 		hbox.add_child(btn)
 		sl._add_row_icon(hbox, str(r["icon_key"]))
 		var req_arr: Array = r.get("requires", [])
-		var reqs: String = ", ".join(req_arr) if req_arr.size() > 0 else "—"
-		var line: String = sl.I18n.t("ui.tech_line", [r["id"], r["status"], reqs, r["cost"], r["points_cost"], r["duration"]])
+		var reqs: String = sl.I18n.content_list("tech", req_arr) if req_arr.size() > 0 else "—"
+		var line: String = sl.I18n.t("ui.tech_line", [sl.I18n.content("tech", str(r["id"])),r["status"], reqs, r["cost"], r["points_cost"], r["duration"]])
 		var lbl := Label.new()
 		lbl.text = line + ("  (%s)" % sl.I18n.reason_text(str(r["reason"])) if str(r["reason"]) != "" else "")
 		hbox.add_child(lbl)
@@ -541,7 +549,7 @@ func character_rows() -> Array:
 			"slot": slot,
 			"item": item,
 			"icon_key": sl.item_icon_key(item) if item != "" else "",
-			"tooltip": ("%s: %s" % [slot, sl.item_description(item)]) if item != "" else sl.I18n.t("ui.slot_empty", [slot]),
+			"tooltip": ("%s: %s\n%s" % [slot, sl.I18n.content("item", item), sl.item_description(item)]).strip_edges() if item != "" else sl.I18n.t("ui.slot_empty", [slot]),
 			"actions": actions,
 		})
 	return rows
