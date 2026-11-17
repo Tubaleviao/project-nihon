@@ -84,6 +84,11 @@ func _apply() -> void:
 	content.scale = Vector2(zoom, zoom)
 	view_changed.emit()
 
+func _notification(what: int) -> void:
+	# Hidden mid-drag, the release never arrives: drop the drag.
+	if what == NOTIFICATION_VISIBILITY_CHANGED and not is_visible_in_tree():
+		_dragging = false
+
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
@@ -100,6 +105,10 @@ func _gui_input(event: InputEvent) -> void:
 				_dragging = mb.pressed
 				accept_event()
 	elif event is InputEventMouseMotion and _dragging:
+		# The release can be missed (the window closed while a button was held): pan only while one is.
+		if ((event as InputEventMouseMotion).button_mask & (MOUSE_BUTTON_MASK_LEFT | MOUSE_BUTTON_MASK_MIDDLE | MOUSE_BUTTON_MASK_RIGHT)) == 0:
+			_dragging = false
+			return
 		pan((event as InputEventMouseMotion).relative)
 		accept_event()
 	elif event is InputEventMagnifyGesture:

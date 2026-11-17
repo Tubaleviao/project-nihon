@@ -22,6 +22,9 @@ func register() -> void:
 	_run_test("tech tree: fit and centre on the newest available technology", _test_fit_and_centre)
 	_run_test("tech tree: a node's state follows the player's research", _test_state_follows_research)
 	_run_test("tech tree: the detail panel shows cost, time, unlocks and a Research button when available", _test_detail_panel)
+	_run_test("tech tree: the books-and-blueprints list keeps a usable height beside the tree and details", _test_writing_list_height)
+	_run_test("tech tree: selecting nodes does not grow the window", _test_detail_rows_detached)
+	_run_test("tech tree: a drag whose release was missed does not pan", _test_drag_needs_button)
 	_run_test("tech tree: no node or panel shows an entity id", _test_no_entity_ids)
 	_run_test("tech tree: every new string is in both locales", _test_locales)
 
@@ -160,6 +163,7 @@ func _test_zoom() -> void:
 	press.pressed = true
 	c._gui_input(press)
 	var move := InputEventMouseMotion.new()
+	move.button_mask = MOUSE_BUTTON_MASK_LEFT
 	move.relative = Vector2(30, -10)
 	c._gui_input(move)
 	assert_eq(c.offset, off + Vector2(30, -10), "a drag pans")
@@ -260,8 +264,70 @@ func _test_detail_panel() -> void:
 	GameBus.research_requested.disconnect(on_req)
 	assert_eq(asked, ["TechBasicSmithing"], "it sends the research request (the host checks it)")
 	tree.select("TechMasterForge")
-	assert_true(ui._tech_detail.get_children().filter(func(n: Node) -> bool: return not n.is_queued_for_deletion() and n.name == "Research").is_empty(), "a locked technology has no Research button")
+	assert_true(ui._tech_detail.get_node_or_null("Research") == null, "a locked technology has no Research button")
 	_free_all(parts)
+
+## Lays the Technology content out at its minimum size (no frames run in the suite) and returns the
+## writing list's height.
+func _writing_list_height(ui) -> float:
+	var scroll: Control = ui._technology_box.get_parent()
+	var content: Container = scroll.get_parent()
+	var row: Container = ui._tech_tree.get_parent()
+	content.size = content.get_combined_minimum_size()
+	content.notification(Container.NOTIFICATION_SORT_CHILDREN)
+	row.notification(Container.NOTIFICATION_SORT_CHILDREN)
+	return scroll.size.y
+
+func _test_writing_list_height() -> void:
+	var parts := _new_tree_ui()
+	var ui = parts[0]
+	var tech = parts[3]
+	var content: Control = (ui._technology_box.get_parent() as Control).get_parent()
+	assert_true(_writing_list_height(ui) >= 100.0, "on open the writing list has a usable height (%.0f)" % _writing_list_height(ui))
+	var before: float = content.get_combined_minimum_size().y
+	tech.grant_points("", "craft", tech.research_cost("TechBasicSmithing"))
+	ui.refresh_technology()
+	for id: String in ui._tech_tree.nodes:
+		ui._tech_tree.select(id)
+		assert_true(_writing_list_height(ui) >= 100.0, "with %s selected the writing list keeps its height" % id)
+	assert_eq(content.get_combined_minimum_size().y, before, "the details scroll: selecting never raises the content's minimum height")
+	var detail_scroll: Control = ui._tech_detail.get_parent()
+	assert_true(detail_scroll is ScrollContainer, "the details sit in their own scroll area")
+	assert_eq(ui._tech_tree.get_parent(), detail_scroll.get_parent(), "beside the tree")
+	_free_all(parts)
+
+func _test_detail_rows_detached() -> void:
+	var parts := _new_tree_ui()
+	var ui = parts[0]
+	var tree = ui._tech_tree
+	for id: String in tree.nodes:
+		tree.select(id)
+		for n: Node in ui._tech_detail.get_children():
+			assert_false(n.is_queued_for_deletion(), "%s: no old detail row is left in the panel" % id)
+	_free_all(parts)
+
+func _test_drag_needs_button() -> void:
+	var canvas: Control = ZoomCanvas.new()
+	canvas.size = Vector2(400, 300)
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	canvas._gui_input(press)
+	var held := InputEventMouseMotion.new()
+	held.button_mask = MOUSE_BUTTON_MASK_LEFT
+	held.relative = Vector2(10, 5)
+	var start: Vector2 = canvas.offset
+	canvas._gui_input(held)
+	assert_true(canvas.offset != start, "a held button pans")
+	# The release is lost (window closed mid-drag): plain motion must not pan.
+	var loose := InputEventMouseMotion.new()
+	loose.relative = Vector2(30, 30)
+	var after: Vector2 = canvas.offset
+	canvas._gui_input(loose)
+	assert_eq(canvas.offset, after, "motion with no button held does not pan")
+	canvas._gui_input(held)
+	assert_eq(canvas.offset, after, "and the stuck drag is dropped")
+	canvas.free()
 
 func _test_no_entity_ids() -> void:
 	var parts := _new_tree_ui()

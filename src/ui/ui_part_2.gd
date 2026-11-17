@@ -398,6 +398,11 @@ func tech_state_text(state: String) -> String:
 			return sl.I18n.t("ui.tech_state_available")
 	return sl.I18n.t("ui.tech_state_locked")
 
+## Width of the technology detail column beside the tree.
+const TECH_DETAIL_WIDTH := 240.0
+## Minimum height of the books-and-blueprints list under the tree, so its Write and Read actions stay reachable.
+const TECH_WRITING_MIN_HEIGHT := 140.0
+
 ## Phase 270 — the Technology window's tree: a toolbar (balance, fit button), the zoom canvas and the
 ## selected technology's details, added to `parent` above the books-and-blueprints list.
 func build_tech_tree(parent: VBoxContainer) -> void:
@@ -409,17 +414,31 @@ func build_tech_tree(parent: VBoxContainer) -> void:
 	sl._set_tr(fit, "text", "ui.tech_fit")
 	bar.add_child(fit)
 	parent.add_child(bar)
+	# The tree and the selected technology's details sit side by side; the details scroll in a
+	# fixed-width column, so a long description never pushes the books-and-blueprints list below
+	# out of the (unresizable, content-sized) window.
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	row.size_flags_stretch_ratio = 3.0
 	var tree: Control = TechTreeView.new()
 	tree.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	tree.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	tree.size_flags_stretch_ratio = 3.0
 	fit.pressed.connect(tree.fit_all)
 	tree.tech_selected.connect(func(_id: String) -> void: refresh_tech_detail())
-	parent.add_child(tree)
+	row.add_child(tree)
 	sl._tech_tree = tree
+	var detail_scroll := ScrollContainer.new()
+	detail_scroll.name = "TechDetailScroll"
+	detail_scroll.custom_minimum_size = Vector2(TECH_DETAIL_WIDTH, 0)
+	detail_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	detail_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	sl._tech_detail = VBoxContainer.new()
 	sl._tech_detail.add_theme_constant_override("separation", 4)
-	parent.add_child(sl._tech_detail)
+	sl._tech_detail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	detail_scroll.add_child(sl._tech_detail)
+	row.add_child(detail_scroll)
+	parent.add_child(row)
 
 ## The tree's node rows: localized name, state and description; the icon of what it unlocks.
 func tech_tree_rows(rows: Array) -> Array:
@@ -443,8 +462,11 @@ func tech_tree_rows(rows: Array) -> Array:
 func refresh_tech_detail() -> void:
 	if sl._tech_detail == null:
 		return
+	# Detach before freeing (as `refresh_inventory` does): rows only queued for deletion would still
+	# count toward the panel's minimum size for a frame and grow the window for good.
 	for child in sl._tech_detail.get_children():
-		child.queue_free()
+		sl._tech_detail.remove_child(child)
+		sl._retire(child)
 	var id: String = "" if sl._tech_tree == null else str(sl._tech_tree.selected)
 	var r: Dictionary = {}
 	for row: Dictionary in sl.technology_rows():

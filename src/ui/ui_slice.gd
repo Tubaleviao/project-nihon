@@ -1442,6 +1442,8 @@ func _build_technology_content() -> Control:
 	vbox.add_child(_technology_feedback)
 	_m2.build_tech_tree(vbox)
 	var scroll := ScrollContainer.new()
+	scroll.name = "TechWritingScroll"
+	scroll.custom_minimum_size = Vector2(0, _m2.TECH_WRITING_MIN_HEIGHT)
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_technology_box = VBoxContainer.new()
 	_technology_box.add_theme_constant_override("separation", 4)
