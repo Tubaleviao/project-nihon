@@ -286,6 +286,8 @@ static func _step_timeout(step: String) -> float:
 		return FAR_PEAK_STEP_SECS
 	if step == "tower":
 		return TOWER_TIMEOUT_SECS
+	if step == "mount":
+		return MOUNT_RIDE_SECS + 30.0   # the ride itself plus the mount, settle and dismount waits
 	return STREAM_TIMEOUT_SECS if step == "stream" or step == "pole" or step == "flight" else STEP_TIMEOUT_SECS
 
 static func step_names() -> Array:
@@ -2023,7 +2025,10 @@ func _step_travel() -> Array:
 ## intent, ridden 200 m and dismounted. The mounted average speed must reach the fabric factor times the walking
 ## speed x0.9 (the Phase 216 spec). The rider is kept at full health (creatures near the village would otherwise end the ride in a death).
 const MOUNT_RIDE_M := 200.0
-const MOUNT_RIDE_SECS := 45.0
+## 60 s, not 45: a throw (the newcomer grounds' water) and the walk back to dry ground cost ~20 s of the ride.
+## main passed at 203 m of 200 and PR #639 failed at 186 m with the same 8.9 m/s cruise; the speed check
+## below is what judges the mount, the deadline only has to leave room for the 200 m.
+const MOUNT_RIDE_SECS := 60.0
 const MOUNT_SPEED_SLACK := 0.9
 func _step_mount() -> Array:
 	var me: String = str(_root._registry.local_player_id)
