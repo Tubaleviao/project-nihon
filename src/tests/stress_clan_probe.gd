@@ -27,9 +27,10 @@ const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const CLAN_NAME_ARG := "--stress-clan-name"
 ## Phase 262 — the starting kit is empty, and the clan scenario's chop and build beats need an axe and a hammer.
 ## This probe exists only on a `--server --stress-host --stress-clan` boot, so it is a test-only path no real
-## play can reach: each bot, once its character is created, gets the tools the pre-262 kit gave, and (Phase 268,
-## stations cost their item) the bench and the forge the chest chain sets down.
-const BOT_TOOLS := [["CarpenterAxe", 1], ["StoneHammer", 1], ["CarpentryBench", 1], ["Forge", 1]]
+## play can reach: each bot, once its character is created, gets the tools the pre-262 kit gave. The bench and
+## the forge are not given: the chest chain makes and places its own (Phase 268), and a spare forge in every
+## pack weighed the smith past its cap, so its loose-item pickups were refused and no chest was made.
+const BOT_TOOLS := [["CarpenterAxe", 1], ["StoneHammer", 1]]
 
 var out_path := ""
 var stop_path := ""

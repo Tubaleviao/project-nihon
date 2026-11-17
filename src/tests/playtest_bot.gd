@@ -1843,6 +1843,44 @@ func _bare_hands_tools() -> String:
 	_root._inventory.consume_items(spent)
 	return ""
 
+## Craft `rid` where the body stands; "" once the host resolved it successfully, else why not.
+func _craft_now(rid: String) -> String:
+	var n := _crafted.size()
+	GameBus.craft_requested.emit(rid)
+	if not await _until(func(): return _crafted.size() > n, 5.0):
+		return "%s: no craft_resolved" % rid
+	if not bool(_crafted.back().get("success", false)):
+		return "%s: %s" % [rid, str(_crafted.back().get("reason", ""))]
+	return ""
+
+## Phase 268 — a carpentry bench lashed by hand and a forge built at the bench the craft step placed, as items.
+func _craft_stations() -> String:
+	_root._inventory.add_item(StoneTools.BRANCH, 4)
+	_root._inventory.add_item(StoneTools.LOOSE_STONE, 2)
+	_root._crafting.set_skill("Carpentry", "novice")
+	var why: String = await _craft_now("RecipeCarpentryBench")
+	if why != "":
+		return why
+	var bench := ""
+	for p in _placed:
+		if str(p[1]) == "carpentry bench":
+			bench = str(p[0])
+	if bench == "" or not await _reach_station("carpentry bench", bench):
+		return "no carpentry bench in reach for the forge"
+	_root._inventory.add_item(StoneTools.LOOSE_STONE, 8)
+	_root._inventory.add_item("ThornwoodPlank", 2)
+	_root._crafting.set_skill("Smithing", "novice")
+	why = await _craft_now("RecipeForge")
+	if why != "":
+		return why
+	await _until(func(): return false, 0.3)   # the tutorial reads the craft a frame later
+	var made := {}
+	for item in ["CarpentryBench", "Forge"]:
+		if _root._inventory.get_item_count(item) > 0:
+			made[item] = _root._inventory.get_item_count(item)
+	_root._inventory.consume_items(made)
+	return ""
+
 func _step_tutorial() -> Array:
 	var wiring = _root._tutorial_wiring
 	if wiring.slice == null:
@@ -1892,6 +1930,12 @@ func _step_tutorial() -> Array:
 	var tech: String = await _unlock("TechBasicSmithing")
 	if tech != "":
 		return [false, "research: %s" % tech]
+	# Phase 268 — the tutorial's first-stations chapter counts a bench and a forge crafted as items, not only placed
+	# (the place and craft steps set down stations from the pack): make one of each, the bench by hand and the forge
+	# at the bench, then drop them from the pack (its weight cap) as the bare-hands leftovers were.
+	var stations: String = await _craft_stations()
+	if stations != "":
+		return [false, "stations: %s" % stations]
 	var forge := ""
 	for p in _placed:
 		if str(p[1]) == "forge":
