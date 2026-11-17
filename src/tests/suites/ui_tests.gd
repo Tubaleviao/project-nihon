@@ -954,7 +954,7 @@ func _test_ui_no_glyph_for_any_holdable() -> void:
 	rows.append_array(ui.market_rows())
 	rows.append_array(ui._m2.trade_rows())
 	ui.refresh_inventory()
-	ui.refresh_crafting()
+	ui.hand_window.refresh()
 	ui.refresh_technology()
 	ui.refresh_market()
 	ui.refresh_trade()

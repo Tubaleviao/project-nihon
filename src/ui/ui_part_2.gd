@@ -107,13 +107,13 @@ func writing_rows() -> Array:
 	return rows
 
 ## The local player's points or learnt set changed: redraw the open Technology window and (Phase 209: a
-## blueprint read arrives this way and can unlock a recipe) the open Crafting window.
+## blueprint read arrives this way and can unlock a recipe) the open crafting windows, hand and station (Phase 269).
 func on_research_points_synced(player_id: String) -> void:
 	if not (player_id == "" or sl.technology_slice == null or player_id == sl.technology_slice.local_player_id()):
 		return
 	if sl._technology_box != null and sl._technology_box.is_visible_in_tree():
 		sl.refresh_technology()
-	if sl._crafting_box != null and sl._crafting_box.is_visible_in_tree():
+	if sl.is_window_open(sl.WINDOW_CRAFTING) or sl.is_window_open(sl.WINDOW_STATION):
 		sl.refresh_crafting()
 
 ## Phase 209 — a writing row's name in the active locale: "Book: <technology>", "Blueprint: <recipe>".
@@ -135,14 +135,14 @@ func station_name(type: String) -> String:
 		return sl.I18n.t("station.anywhere")
 	return sl.I18n.content("station", type)
 
-## Phase 269 — both crafting windows redraw their cards; the hand window lists the repairs under its grid.
+## Phase 269 — each OPEN crafting window redraws its cards (a closed one is rebuilt by `open_window` → `refresh_all`,
+## so a craft resolved for any peer costs nothing while both are closed); the hand window lists the repairs under its grid.
 func refresh_crafting() -> void:
-	if sl.hand_window != null:
-		sl.hand_window.refresh()
-	if sl.station_window != null:
+	if sl.station_window != null and sl.is_window_open(sl.WINDOW_STATION):
 		sl.station_window.refresh()
-	if sl.hand_window == null:
+	if sl.hand_window == null or not sl.is_window_open(sl.WINDOW_CRAFTING):
 		return
+	sl.hand_window.refresh()
 	var repairs: VBoxContainer = sl.hand_window.extra_box
 	for child in repairs.get_children():
 		child.queue_free()

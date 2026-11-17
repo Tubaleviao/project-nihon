@@ -482,7 +482,7 @@ tutorial.inventory.body,You start with nothing. Open the inventory to see what y
 tutorial.hotbar.title,The bottom bar,A barra inferior
 tutorial.hotbar.body,"Expand the bottom bar and drag an item onto a box. Press the box's key to use it.","Expanda a barra inferior e arraste um item para uma caixa. Pressione a tecla da caixa para usá-lo."
 tutorial.crafting.title,Crafting,Criação
-tutorial.crafting.body,Open the crafting window. It lists every recipe and what it needs; stone tools need no station.,Abra a janela de criação. Ela lista todas as receitas e o que cada uma exige; ferramentas de pedra não precisam de estação.
+tutorial.crafting.body,"Open the crafting window. It lists the recipes you know that need no station, like stone tools, and what each needs. A station's recipes are in its own window: use the station (U).","Abra a janela de criação. Ela lista as receitas que você conhece e que não precisam de estação, como ferramentas de pedra, e o que cada uma exige. As receitas de uma estação ficam na janela dela: use a estação (U)."
 tutorial.craft_axe.title,A stone axe,Um machado de pedra
 tutorial.craft_axe.body,"Craft a stone axe from a branch and a loose stone, anywhere.","Crie um machado de pedra com um galho e uma pedra solta, em qualquer lugar."
 tutorial.chop.title,Chop a tree,Corte uma árvore
@@ -504,9 +504,9 @@ tutorial.craft_bench.body,"Make a carpentry bench by hand from four branches and
 tutorial.place_bench.title,Place the bench,Coloque a bancada
 tutorial.place_bench.body,Select the carpentry bench in the bottom bar: its outline follows your aim. Use it to place the bench near you.,Selecione a bancada de carpintaria na barra inferior: o contorno dela segue a sua mira. Use-a para colocar a bancada perto de você.
 tutorial.craft_planks.title,Planks,Tábuas
-tutorial.craft_planks.body,"Stand by your bench and craft planks from logs. Planks build almost everything.","Fique perto da bancada e crie tábuas a partir de toras. As tábuas constroem quase tudo."
+tutorial.craft_planks.body,"Stand by your bench and use it (U) to open its recipes, then craft planks from logs. Planks build almost everything.","Fique perto da bancada e use-a (U) para abrir as receitas dela; depois crie tábuas a partir de toras. As tábuas constroem quase tudo."
 tutorial.craft_forge.title,Make a forge,Faça uma forja
-tutorial.craft_forge.body,"At the carpentry bench, build a forge from loose stones and planks.","Na bancada de carpintaria, construa uma forja com pedras soltas e tábuas."
+tutorial.craft_forge.body,"Use the carpentry bench (U) to open its recipes and build a forge from loose stones and planks.","Use a bancada de carpintaria (U) para abrir as receitas dela e construa uma forja com pedras soltas e tábuas."
 tutorial.place_forge.title,Place the forge,Coloque a forja
 tutorial.place_forge.body,Select the forge in the bottom bar and place it. Metal tools and weapons are made at a forge.,Selecione a forja na barra inferior e coloque-a. Ferramentas e armas de metal são feitas na forja.
 tutorial.research_smithing.title,Learn smithing,Aprenda ferraria

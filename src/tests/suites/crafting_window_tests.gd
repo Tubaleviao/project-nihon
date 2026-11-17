@@ -25,6 +25,8 @@ func register() -> void:
 	_run_test("crafting window: every recipe has a category; tabs and the search filter the grid", _test_categories_and_search)
 	_run_test("crafting window: the Craft button asks for the chosen quantity, at most what the bag pays for", _test_craft_quantity)
 	_run_test("crafting window: every new string is in both locales", _test_new_strings_in_both_locales)
+	_run_test("crafting window: a recipe learnt by research or a blueprint shows at once in an open station window", _test_research_redraws_station_window)
+	_run_test("crafting window: a closed window is not rebuilt, and is fresh when it opens", _test_closed_window_not_rebuilt)
 
 # ── rig ──────────────────────────────────────────────────────────────────
 
@@ -52,6 +54,7 @@ func _rig(with_tech: bool = true) -> Dictionary:
 	ui.crafting_slice = craft
 	ui.station_slice = station
 	station.set_player_position(Vector3.ZERO)
+	ui.open_window(UiSlice.WINDOW_CRAFTING)   # refresh_crafting redraws only an open window
 	return { "ui": ui, "inv": inv, "craft": craft, "tech": tech, "station": station }
 
 func _free(rig: Dictionary) -> void:
@@ -385,3 +388,49 @@ func _test_new_strings_in_both_locales() -> void:
 	for type: String in CraftCatalog.crafting_station_types():
 		for loc: String in ["en", "pt_BR"]:
 			assert_true(I18n.has_content("station", type), "%s station %s has a name" % [loc, type])
+
+## Review of PR #647 — a blueprint read or research arrives as `research_points_synced`: an open station window redraws too.
+func _test_research_redraws_station_window() -> void:
+	var rig := _rig()
+	var ui: UiSlice = rig["ui"]
+	var tech: TechnologySlice = rig["tech"]
+	var forge := (rig["station"] as StationSlice).place_station("forge", Vector3.ZERO)
+	assert_true(ui.open_station_window(forge), "the forge's window opens")
+	ui.close_window(UiSlice.WINDOW_CRAFTING)   # only the station window is open
+	assert_false(_ids(ui.station_window.shown_cards()).has("RecipeFerriteIngot"), "no ingot before smithing")
+	GameBus.set_block_signals(true)   # learnt with no technology_unlocked: only the points sync below tells the UI
+	assert_eq(tech.learn("technology", "TechBasicSmithing"), "", "basic smithing is learnt")
+	GameBus.set_block_signals(false)
+	assert_false(_ids(ui.station_window.shown_cards()).has("RecipeFerriteIngot"), "the window has not redrawn yet")
+	GameBus.research_points_synced.emit("", 0)
+	assert_true(_ids(ui.station_window.shown_cards()).has("RecipeFerriteIngot"), "the points sync redraws the open station window")
+	assert_eq(_live_children(ui.station_window.grid).size(), ui.craft_cards("forge").size(), "one card per forge recipe")
+	_free(rig)
+
+## Review of PR #647 — refresh_crafting rebuilds only open windows; opening one rebuilds it.
+func _test_closed_window_not_rebuilt() -> void:
+	var rig := _rig(false)
+	var ui: UiSlice = rig["ui"]
+	var inv: InventorySlice = rig["inv"]
+	(rig["craft"] as CraftingSlice).set_skill("Carpentry", "novice")
+	ui.refresh_crafting()
+	var forge := (rig["station"] as StationSlice).place_station("forge", Vector3.ZERO)
+	assert_true(ui.open_station_window(forge), "the forge's window opens and fills")
+	ui.close_window(UiSlice.WINDOW_STATION)
+	ui.close_window(UiSlice.WINDOW_CRAFTING)
+	var hand_cards := _live_children(ui.hand_window.grid)
+	var station_cards := _live_children(ui.station_window.grid)
+	assert_true(hand_cards.size() > 0 and station_cards.size() > 0, "both windows hold cards")
+	inv.add_item("Branch", 1)   # an inventory change and a craft result, both windows closed
+	GameBus.craft_resolved.emit({ "success": true, "recipe_id": "RecipeStonePick", "player_id": "" })
+	ui.refresh_crafting()
+	assert_eq(_live_children(ui.hand_window.grid), hand_cards, "the closed hand window keeps its cards: not rebuilt")
+	assert_eq(_live_children(ui.station_window.grid), station_cards, "the closed station window keeps its cards: not rebuilt")
+	inv.add_item("LooseStone", 2)
+	ui.open_window(UiSlice.WINDOW_CRAFTING)
+	assert_true(hand_cards.all(func(c: Node) -> bool: return c.is_queued_for_deletion()), "opening rebuilds the hand window")
+	assert_true(bool(_card(ui.hand_window.shown_cards(), "RecipeStonePick")["can_craft"]), "fresh: the pick is now affordable")
+	assert_true(ui.open_station_window(forge), "the forge's window reopens")
+	assert_true(station_cards.all(func(c: Node) -> bool: return c.is_queued_for_deletion()), "opening rebuilds the station window")
+	assert_eq(_live_children(ui.station_window.grid).size(), ui.craft_cards("forge").size(), "one card per forge recipe")
+	_free(rig)

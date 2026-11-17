@@ -168,7 +168,7 @@ func _test_window_audit() -> void:
 		windows.append(w)
 	for loc: String in ["en", "pt_BR"]:
 		_with_locale(loc, func() -> void:
-			ui.refresh_crafting()
+			ui.hand_window.refresh()   # Phase 269: the built hand window is never opened; refresh_crafting skips it
 			for w: Node in stations:
 				w.refresh()
 			ui.refresh_technology()
