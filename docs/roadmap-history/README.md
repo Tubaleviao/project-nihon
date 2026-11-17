@@ -347,6 +347,7 @@ Filed by the owner on 2026-11-13. The other phases of the arc are open in [ROADM
 | 260 | Stone tools: an axe, a pick and a shovel from wood and stone, no bench | Done | [phases-260.md](phases-260.md) |
 | 261 | The newcomer grounds: a large, gentle spawn area with loose stones and branches | Done | [phases-261.md](phases-261.md) |
 | 262 | Starting with nothing, and a tutorial that begins from bare hands | Done | [phases-262.md](phases-262.md) |
+| 263 | Digging that shows at once: a predicted edit and a priority remesh | Done | [phases-263.md](phases-263.md) |
 | 264 | Dropping part of a stack: a quantity slider | Done | [phases-264.md](phases-264.md) |
 
 ### Stations you make, and windows a player can read (Phases 267–274)

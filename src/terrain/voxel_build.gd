@@ -7,6 +7,7 @@ const VoxelMesh := preload("res://src/terrain/voxel_mesh.gd")
 const FreshWaterMesh := preload("res://src/terrain/fresh_water_mesh.gd")
 const ChunkSurface := preload("res://src/terrain/chunk_surface.gd")
 const TerrainWeights := preload("res://src/terrain/terrain_weights.gd")
+const EditRemesh := preload("res://src/terrain/edit_remesh.gd")
 var s: Node
 
 ## Phase 239 — draw each chunk's ground through the RenderingServer (`ChunkSurface`) instead of a
@@ -675,15 +676,23 @@ func _prune_heightmaps(around: Vector2i) -> void:
 ## chunk edge rebuilt — and so RESURRECTED — a chunk `ChunkManager` had already streamed
 ## away and would never stream out again. A loaded chunk always has its cached map
 ## (`build_chunk` stores it and `_prune_heightmaps` keeps it), so `_chunks` is the guard.
-func _rebuild_chunk_at_tile(tile: Vector2i) -> void:
-	for chunk in s._touched_chunks(tile):
-		s._rebuild_chunk(chunk)
+##
+## Phase 263 — a player's dig or placement (`priority`) jumps the manager's build queue: the tile's own chunk
+## first (built on the main thread when that is short enough), then the neighbours whose seam it touches
+## (`EditRemesh`). Settling and other bulk edits keep the ordinary queue.
+func _rebuild_chunk_at_tile(tile: Vector2i, priority: bool = false) -> void:
+	var touched := _touched_chunks(tile)
+	for i in touched.size():
+		s._rebuild_chunk(touched[i], (EditRemesh.PRIMARY if i == 0 else EditRemesh.NEIGHBOUR) if priority else EditRemesh.NONE)
 
 ## Rebuild ONE chunk by the route described above: dispatched through the manager when one is
 ## wired, else synchronously and only when the chunk is loaded.
-func _rebuild_chunk(chunk: Vector2i) -> void:
+func _rebuild_chunk(chunk: Vector2i, priority: int = 0) -> void:
 	if s.chunk_manager != null and s.chunk_manager.has_method("request_rebuild"):
-		s.chunk_manager.request_rebuild(chunk)
+		if priority > EditRemesh.NONE:
+			s.chunk_manager.request_rebuild(chunk, priority)
+		else:
+			s.chunk_manager.request_rebuild(chunk)
 		return
 	var ckey = s._chunk_key(chunk)
 	if s._chunks.has(ckey):

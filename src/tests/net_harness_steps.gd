@@ -481,3 +481,80 @@ static func _clear_creatures_near(h: Node, player_id: String) -> void:
 		var c: Vector3 = inst["position"]
 		if Vector2(c.x - (at as Vector3).x, c.z - (at as Vector3).z).length() <= STATION_CLEAR_M:
 			h._root._creature.despawn_instance(str(inst["instance_id"]))
+## Phase 263 — a client's predicted edit. The client digs a block beside its body: the dig is predicted (its voxel
+## data changes at once, its chunk remeshed ahead of streaming) and the host confirms it; with the native mesher on
+## a delayed link (lan, wan_br) the edited mesh is on screen BEFORE the confirmation arrives. Then it digs one out of
+## the host's reach: the host refuses it and the client's column is rolled back to exactly what it was. The host
+## sees one dig applied and one refused. The client prints its timings (network round trip, edit to visible).
+const NativeBuilderScript := preload("res://src/terrain/native_builder.gd")
+const NetProfilesScript := preload("res://src/networking/net_profiles.gd")
+const PREDICT_OFFSET_M := 1.5
+const PREDICT_FAR_M := 70.0   # past NetworkingSlice.MAX_EDIT_REACH (60 m), inside the client's loaded window
+func predicted_edit(h: Node) -> void:
+	await h._await_settle(1.0 * h._time_scale)
+	var net: Node = h._root._networking
+	if h._role == "host":
+		var mines := [0]
+		var on_changed := func(action: String, _p: Vector3, _n: Vector3, _m: String) -> void:
+			if action == "mine":
+				mines[0] += 1
+		GameBus.block_changed.connect(on_changed)
+		var refused0: int = int(net._m2.edit_refusals_sent)
+		var seen: bool = await h._await_until(func() -> bool: return mines[0] >= 1 and int(net._m2.edit_refusals_sent) > refused0, h._step_timeout() * 3.0)
+		await h._await_settle(1.0 * h._time_scale)
+		GameBus.block_changed.disconnect(on_changed)
+		var ok: bool = seen and mines[0] == 1 and int(net._m2.edit_refusals_sent) == refused0 + 1
+		h._report("predicted_edit", h.verdict(ok, true), "predicted-confirmed-refused-rolled-back" if ok
+			else "mines%d-refusals%d" % [mines[0], int(net._m2.edit_refusals_sent) - refused0])
+		return
+	var voxel: Node = h._root._voxel
+	var pred: RefCounted = voxel._predict
+	var remesh: RefCounted = h._root._chunk_manager._m1.remesh
+	var acks: Array = []
+	var on_ack := func(seq: int, accepted: bool) -> void: acks.append([seq, accepted, Time.get_ticks_usec()])
+	var rolled: Array = []
+	var on_rolled := func(_action: String, reason: String) -> void: rolled.append(reason)
+	GameBus.block_edit_acked.connect(on_ack)
+	GameBus.block_edit_rolled_back.connect(on_rolled)
+	var body: Vector3 = h._root._player.get_position()
+	# The kept dig.
+	var xz := Vector2(body.x + PREDICT_OFFSET_M, body.z)
+	var top: float = voxel.get_voxel_height_at(xz)
+	var n0: int = remesh.samples.size()
+	var t0 := Time.get_ticks_usec()
+	GameBus.block_mine_requested.emit(Vector3(xz.x, top - 0.05, xz.y), Vector3.UP, "", {})
+	var seq: int = int(pred._next_seq)
+	var predicted: bool = pred.is_pending(seq) and voxel.get_voxel_height_at(xz) < top
+	var confirmed: bool = await h._await_until(func() -> bool: return acks.any(func(a: Array) -> bool: return a[0] == seq and a[1]), h._step_timeout() * 2.0)
+	var ack_usec: int = 0
+	for a: Array in acks:
+		if a[0] == seq:
+			ack_usec = int(a[2])
+	var own: Array = remesh.samples.slice(n0).filter(func(s: Dictionary) -> bool: return bool(s["primary"]))
+	var visible_usec: int = int(own[0]["at_usec"]) if not own.is_empty() else 0
+	var visible_first: bool = visible_usec > 0 and ack_usec > 0 and visible_usec <= ack_usec
+	# On loopback the answer can beat any build; without the native mesher the build waits for a worker.
+	var profile := str(net.net_profile)
+	var must_lead: bool = NativeBuilderScript.is_native() and NetProfilesScript.rtt_ms(profile) > 0.0
+	var kept: bool = confirmed and not pred.is_pending(seq) and voxel.get_voxel_height_at(xz) < top
+	print("[Harness] predicted_edit profile=%s network %.1f ms, visible %.1f ms after the completion (%s frames, %s), %s the confirmation" % [
+		profile if profile != "" else "loopback", float(ack_usec - t0) / 1000.0, float(visible_usec - t0) / 1000.0 if visible_usec > 0 else -1.0,
+		str(own[0]["frames"]) if not own.is_empty() else "-", "main thread" if not own.is_empty() and bool(own[0]["sync"]) else "worker",
+		"before" if visible_first else "after"])
+	# The refused dig: out of the host's reach.
+	var far := Vector2(body.x + PREDICT_FAR_M, body.z)
+	var tile: Vector2i = voxel._resolve_edit_tile("mine", Vector3(far.x, 0.0, far.y), Vector3.UP)["tile"]
+	var before := var_to_bytes([voxel._edits.get(voxel._tile_key(tile), null), voxel.get_runs_at_tile(tile)])
+	var far_top: float = voxel.get_voxel_height_at(far)
+	GameBus.block_mine_requested.emit(Vector3(far.x, far_top - 0.05, far.y), Vector3.UP, "", {})
+	var seq2: int = int(pred._next_seq)
+	var predicted2: bool = seq2 > seq and pred.is_pending(seq2) and voxel.get_voxel_height_at(far) < far_top
+	var back: bool = await h._await_until(func() -> bool: return rolled.has("refused"), h._step_timeout() * 2.0)
+	var restored: bool = var_to_bytes([voxel._edits.get(voxel._tile_key(tile), null), voxel.get_runs_at_tile(tile)]) == before
+	GameBus.block_edit_acked.disconnect(on_ack)
+	GameBus.block_edit_rolled_back.disconnect(on_rolled)
+	await h._await_settle(1.0 * h._time_scale)
+	var ok: bool = predicted and kept and (visible_first or not must_lead) and predicted2 and back and restored and pred.pending_count() == 0
+	h._report("predicted_edit", h.verdict(ok, true), "predicted-confirmed-refused-rolled-back" if ok
+		else "predicted%d-kept%d-lead%d-predicted2_%d-back%d-restored%d" % [int(predicted), int(kept), int(visible_first or not must_lead),
+			int(predicted2), int(back), int(restored)])

@@ -13,10 +13,15 @@ const ChunkStreamPolicy := preload("res://src/terrain/chunk_stream_policy.gd")
 ## PR #529 — a fast flyer's chunk off its lane ranks this many lane chunks per ring from the body (`off_lane_rank`).
 const LANE_RING_WEIGHT := 2.0
 
+const EditRemesh := preload("res://src/terrain/edit_remesh.gd")
+
 var sl: Node
+## Phase 263 — an edited chunk's rebuild, ahead of streaming (see `edit_remesh.gd`).
+var remesh: EditRemesh
 
 func _init(slice: Node) -> void:
 	sl = slice
+	remesh = EditRemesh.new(slice, self)
 
 ## One streaming pass: queue missing chunks in range (nearest-first), unload
 ## chunks out of range. Skips the diff entirely when the player hasn't moved to
@@ -202,6 +207,8 @@ func drain_load_queue() -> void:
 	# does not resolve the window at all. `_process` calls this every tick, and the read
 	# below is a `PlayerSlice.get_position()` call; the empty case is the common one
 	# (a settled window drains nothing until the player crosses a chunk boundary).
+	# Phase 263 — an edited chunk waiting for a worker goes first, whatever the frame's budget.
+	remesh.drain()
 	if sl._load_queue.is_empty() and sl._rebuild_queue.is_empty():
 		if sl._catchup and sl._builds.is_empty():
 			sl._catchup = false   # the folded window is rebuilt: back to the steady cap
@@ -443,10 +450,31 @@ func _lane_order(done: Array, centers: Array) -> Array:
 ## (`VoxelCoarse`): no full resolve, a small conservative collision shape. Its gather is the biomes and
 ## the ring's known maps; the missing ones get a one-tile seam strip on the worker (the skirt's height). The task's own time comes back in `result[2]` (µs) for the flight step's worker ms per crossing.
 func dispatch_worker_noise_build(chunk_pos: Vector2i, key: String) -> void:
+	var b := noise_build_job(chunk_pos)
+	# A low-priority task may only use `low_priority_thread_ratio` of the pool (0.3 by default: three or
+	# four threads on most machines, which is what really capped the build rate). Phase 141 raised only the
+	# catch-up to high priority; Phase 187 does it for the local player's window too, because the steady
+	# stream is capped the same way: at 90 m/s (admin flight) 11 builds sat in flight while three ran. A peer's
+	# window stays low (`build_high_priority`). `build_cap()` (all cores but one) keeps a worker free.
+	# Phase 263: an edit's remesh runs high, so the next free thread takes it.
+	var job: Callable = b["job"]
+	var task_id := WorkerThreadPool.add_task(job, sl.build_high_priority(chunk_pos) or remesh.is_priority(key), "chunk build %s" % key)
+	sl._builds[task_id] = {
+		"chunk":     chunk_pos,
+		"key":       key,
+		"heightmap": [],
+		"revision":  b["revision"],
+		"result":    b["result"],
+	}
+
+## Phase 263 — the build `dispatch_worker_noise_build` hands a worker, as `{ job, result, revision }`: the main-thread
+## gather is done here, the callable does the rest (it reads only what was gathered, so any thread may run it, and
+## `EditRemesh` runs it on the main thread for an edited chunk).
+func noise_build_job(chunk_pos: Vector2i, known: Array = []) -> Dictionary:   # `known`: the chunk's own built map, reused
 	TerrainSliceScript.warm_polar_caches()   # the static caches the generator reads, filled here on the main thread
 	TerrainWeights.warm()   # Phase 242: the material table the worker's weights read
 	var voxel: Node = sl.voxel_slice
-	var cached: Array = voxel.take_cached_heightmap(chunk_pos)
+	var cached: Array = known if not known.is_empty() else voxel.take_cached_heightmap(chunk_pos)
 	# #437 — a dedicated server attaches no geometry, so its task only generates the map: no gather,
 	# no seam strips, no resolve and no mesh/collision/deposit arrays to throw away.
 	var geometry: bool = not sl.skips_geometry()
@@ -482,19 +510,7 @@ func dispatch_worker_noise_build(chunk_pos: Vector2i, key: String) -> void:
 				TerrainWeights.apply(result[0], chunk_pos, gathered.get("biomes", {}), seed_v)
 			_add_fresh_water(result[0], chunk_pos, seed_v, keep_render)
 		result[2] = Time.get_ticks_usec() - t0
-	# A low-priority task may only use `low_priority_thread_ratio` of the pool (0.3 by default: three or
-	# four threads on most machines, which is what really capped the build rate). Phase 141 raised only the
-	# catch-up to high priority; Phase 187 does it for the local player's window too, because the steady
-	# stream is capped the same way: at 90 m/s (admin flight) 11 builds sat in flight while three ran. A peer's
-	# window stays low (`build_high_priority`). `build_cap()` (all cores but one) keeps a worker free.
-	var task_id := WorkerThreadPool.add_task(job, sl.build_high_priority(chunk_pos), "chunk build %s" % key)
-	sl._builds[task_id] = {
-		"chunk":     chunk_pos,
-		"key":       key,
-		"heightmap": [],
-		"revision":  revision,
-		"result":    result,
-	}
+	return { "job": job, "result": result, "revision": revision }
 
 ## Phase 217 follow-up — on the worker: the chunk's lake and river surface arrays ride with its build
 ## (`fresh_water`), so attaching it on the main thread no longer walks the chunk's tiles. Skipped when the
@@ -545,10 +561,13 @@ func apply_finished_builds() -> void:
 	var applied := 0
 	var attach_start := int(sl.pump_clock_usec.call())
 	var body: Vector2i = sl._last_centers[0] if not sl._last_centers.is_empty() else Vector2i(1 << 30, 1 << 30)
-	for task_id in apply_order(done):
+	for task_id in remesh.first(apply_order(done)):
+		var entry: Dictionary = sl._builds.get(task_id, {})
+		if not entry.is_empty() and remesh.is_priority(str(entry["key"])):
+			sl._apply_build_entry(task_id)   # Phase 263: an edit's mesh attaches the frame it is ready, whatever the budget
+			continue
 		if applied >= maxi(sl.applies_per_frame, 1) or (applied > 0 and sl._pump_over()):
 			return   # the rest stay finished in the table and apply next frame
-		var entry: Dictionary = sl._builds.get(task_id, {})
 		var under_body: bool = not entry.is_empty() and entry["chunk"] == body
 		# Phase 239 — the attach budget: the chunk under the body attaches at once, whatever the budget.
 		if applied > 0 and not under_body and sl.attach_budget_msec > 0 \

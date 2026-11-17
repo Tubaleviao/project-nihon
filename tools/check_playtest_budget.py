@@ -18,6 +18,10 @@ and their share varies with the machine.
 Phase 190: also fails when the median worker ms per local chunk crossing of the gated flight
 (`flight.worker_ms_per_crossing`, coarse chunks beyond the near ring) is over FLIGHT_WORKER_MAX_SHARE of the
 record flight's (`flight.record_worker_ms_per_crossing`, every chunk at full detail, i.e. Phase 189).
+
+Phase 263: also fails when the median over the runs of a step's edit-to-visible p95 frames
+(`edit_visible.frames_p95`, from a dig's completion to its chunk's mesh attached) is over its entry in the
+budget file's `edit_visible_frames` table, or a step named there recorded no edit.
 """
 import json
 import os
@@ -43,6 +47,7 @@ def bot_const(name, source=None):
 
 FLIGHT_MAX_SHARE = bot_const("FLIGHT_MAX_SHARE")
 FLIGHT_WORKER_MAX_SHARE = bot_const("FLIGHT_WORKER_MAX_SHARE")
+EDIT_VISIBLE_KEY = "edit_visible_frames"
 
 
 def check(reports, budgets):
@@ -50,6 +55,8 @@ def check(reports, budgets):
     if not all(r.get("native_builder") is True for r in reports):
         failures.append("native_builder is not true in every report (the GDScript fallback ran)")
     for step, budget in budgets.items():
+        if isinstance(budget, dict):
+            continue  # a table of its own (Phase 263: edit_visible_frames)
         p95s = [s["process_ms"]["p95"] for r in reports for s in r["steps"] if s["step"] == step]
         if not p95s:
             failures.append(f"step {step} is in no report")
@@ -111,6 +118,27 @@ def check_flight_worker(reports, max_share=FLIGHT_WORKER_MAX_SHARE):
     return []
 
 
+def check_edit_visible(reports, budgets):
+    failures = []
+    for step, limit in budgets.get(EDIT_VISIBLE_KEY, {}).items():
+        recs = [s.get("edit_visible", {}) for r in reports for s in r["steps"] if s["step"] == step]
+        recs = [e for e in recs if e.get("edits", 0) > 0]
+        if not recs:
+            failures.append(f"step {step}: no report recorded an edit-to-visible time")
+            continue
+        med = statistics.median(e["frames_p95"] for e in recs)
+        ms = statistics.median(e["ms_p95"] for e in recs)
+        line = (f"{step}: median edit-to-visible p95 {med:.0f} frames / {ms:.1f} ms of {len(recs)} runs "
+                f"(queue {statistics.median(e['queue_ms_p95'] for e in recs):.1f} ms, "
+                f"build {statistics.median(e['build_ms_p95'] for e in recs):.1f} ms; limit {limit} frames)")
+        print(line)
+        if os.environ.get("GITHUB_ACTIONS") == "true":
+            print(f"::notice title=Edit to visible::{line}")
+        if med > limit:
+            failures.append(f"step {step}: median edit-to-visible p95 {med:.0f} frames is over {limit}")
+    return failures
+
+
 def self_test():
     def report(ms, record, total=10.0, total_record=15.0):
         return {"steps": [{"step": "flight", "flight": {
@@ -153,6 +181,25 @@ def self_test():
         if (not check_flight_worker(reports)) != ok:
             print(f"self-test: the flight worker gate got '{name}' wrong")
             bad += 1
+    def edit(frames, edits=6):
+        return {"steps": [{"step": "mine", "edit_visible": {
+            "edits": edits, "frames_p95": frames, "ms_p95": frames * 16.7, "queue_ms_p95": 0.0, "build_ms_p95": 5.0}}]}
+    table = {"walk": 18, EDIT_VISIBLE_KEY: {"mine": 2}}
+    edit_cases = [
+        ("one frame", [edit(1), edit(1), edit(2)], True),
+        ("one slow run of three", [edit(1), edit(9), edit(2)], True),
+        ("three frames", [edit(3), edit(3), edit(4)], False),
+        ("no edit recorded", [edit(1, 0)], False),
+        ("no mine step", [{"steps": []}], False),
+    ]
+    for name, reports, ok in edit_cases:
+        if (not check_edit_visible(reports, table)) != ok:
+            print(f"self-test: the edit-to-visible gate got '{name}' wrong")
+            bad += 1
+    if any("edit_visible" in f for f in check([{"native_builder": True, "steps": [
+            {"step": "walk", "process_ms": {"p95": 1.0}}]}], table)):
+        print("self-test: the process-time gate read the edit table as a step")
+        bad += 1
     for src, want in (("const FLIGHT_MAX_SHARE := 0.5   ## note", 0.5), ("const FLIGHT_MAX_SHARE := 1.0 / 3.0", 1.0 / 3.0)):
         if abs(bot_const("FLIGHT_MAX_SHARE", src) - want) > 1e-9:
             print(f"self-test: the bot constant reader got '{src}' wrong")
@@ -171,6 +218,7 @@ def main(argv):
     failures = check(reports, json.loads(BUDGET.read_text()))
     failures += check_flight(reports)
     failures += check_flight_worker(reports)
+    failures += check_edit_visible(reports, json.loads(BUDGET.read_text()))
     for f in failures:
         print(f"FAIL: {f}")
     return 1 if failures else 0

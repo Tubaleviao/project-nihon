@@ -54,7 +54,7 @@ func _evict_stale_states() -> void:
 			sl._last_known_timestamps.erase(pid)
 			sl._peer_spatial.remove(pid)
 
-func _on_block_edit_intent(action: String, position: Vector3, normal: Vector3, material: String, exact: Dictionary) -> void:
+func _on_block_edit_intent(action: String, position: Vector3, normal: Vector3, material: String, exact: Dictionary, seq: int = 0) -> void:
 	if sl._role != sl.Role.CLIENT:
 		# Host applies edits directly through the voxel slice; only clients
 		# forward intents to the host.
@@ -65,6 +65,8 @@ func _on_block_edit_intent(action: String, position: Vector3, normal: Vector3, m
 		"normal":   [normal.x, normal.y, normal.z],
 		"material": material,
 	}
+	if seq > 0:
+		packet["edit_seq"] = seq   # Phase 263: the prediction the host's answer names
 	# Phase 119 — the exact aimed point rides the wire when the sender holds one, not a float32 position
 	# quantised to metres far from the origin.
 	if sl._is_exact_pos(exact) and sl.WorldPos.is_plausible_pos(exact):
@@ -605,29 +607,39 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 			# a client's placement). `action`/`material` are still the client's claims,
 			# but neither grants anything — the actor is the connection, the material
 			# must be a real fabric material, and the debit lands on the actor's pack.
+			# Phase 263 — the client's prediction number, echoed in the answer: applied (`block_changed` tagged
+			# with it) or refused (`block_edit_refused`), whichever way the edit goes below.
+			var seq := edit_seq_of(payload)
 			if sl._actor_id(sender) == "":
 				sl._refuse_unhandshaked(sender, "block_edit_intent")
+				_refuse_edit(sender, seq)
 				return
 			var action := str(payload.get("action", ""))
 			if payload.has("pk") and not sl.WorldPos.packet_has_pos(payload):
 				sl._warn_malformed_position(sender)
+				_refuse_edit(sender, seq)
 				return
 			var ipos = sl.WorldPos.packet_world(payload, sl._vec3(payload.get("position", [])))
 			var iexact = sl.WorldPos.pos_from_packet(payload) if payload.has("pk") else {}
 			var inorm = sl._vec3(payload.get("normal", [0, 1, 0]))
 			if not sl._within_reach(sender, ipos, sl.MAX_EDIT_REACH):
 				sl.Diag.warn("NetworkingSlice: block_edit_intent from peer %d is out of reach — dropped" % sender)
+				_refuse_edit(sender, seq)
 				return
+			_edit_ack = { "peer": sender, "seq": seq, "action": action }
 			if action == "mine":
 				# Phase 259 — a mine is the completion of timed work the host started and timed itself.
-				if not _work_claimed(sender, "block", "", ipos, inorm, iexact):
-					return
-				GameBus.block_mine_requested.emit(ipos, inorm, sl._actor_id(sender), iexact)
+				if _work_claimed(sender, "block", "", ipos, inorm, iexact):
+					GameBus.block_mine_requested.emit(ipos, inorm, sl._actor_id(sender), iexact)
 			elif action == "place":
 				GameBus.block_place_requested.emit(
 					ipos, inorm, sl._actor_id(sender), str(payload.get("material", "")), iexact)
 			else:
 				sl.Diag.error("NetworkingSlice: unknown block_edit_intent action '%s'" % action)
+			# Nothing applied it (the edit's `block_changed` clears the mark): the prediction is refused.
+			if not _edit_ack.is_empty():
+				_edit_ack = {}
+				_refuse_edit(sender, seq)
 		"tree_chop_intent":
 			# Phase 36 — same two rules as block_edit_intent. The intent names only
 			# a tree id, so the reach check resolves the tree's own position through
@@ -894,3 +906,45 @@ func _work_intent(sender: int, payload: Dictionary) -> void:
 	var r: Dictionary = host.start(actor, kind, tree_id, pos, sl._vec3(payload.get("normal", [0, 1, 0])), exact, Time.get_ticks_msec() * 0.001)
 	if bool(r["ok"]):
 		sl._deliver(sender, { "type": "work_started", "key": r["key"], "duration": r["duration"], "action": r["action"], "material": r["material"] })
+
+# --- Phase 263: answers to a client's predicted edit ---
+
+## The edit a client's intent is being resolved for (`{ peer, seq, action }`), set only while the intent's
+## request runs: the `block_changed` that request emits is that edit's confirmation.
+var _edit_ack: Dictionary = {}
+## How many predicted edits this host refused (the net harness reads it).
+var edit_refusals_sent := 0
+
+## The prediction number an intent carries: a positive int below 2^31, else 0 (nothing to answer). It is echoed
+## back and grants nothing.
+static func edit_seq_of(payload: Dictionary) -> int:
+	var v: Variant = payload.get("edit_seq", 0)
+	if not (v is int or v is float) or not is_finite(float(v)):
+		return 0
+	var n := int(v)
+	return n if n > 0 and n < (1 << 31) and float(n) == float(v) else 0
+
+func _refuse_edit(peer: int, seq: int) -> void:
+	if seq <= 0:
+		return
+	edit_refusals_sent += 1
+	sl._deliver(peer, { "type": "block_edit_refused", "edit_seq": seq })
+
+## Host: an applied edit goes to the peers in range. The one a client's intent asked for carries its prediction
+## number and the asker's peer id, so that client keeps its prediction instead of applying the edit twice.
+func on_block_changed(action: String, position: Vector3, normal: Vector3, material: String) -> void:
+	if sl._role != sl.Role.HOST:
+		return
+	var packet := {
+		"type":     "block_changed",
+		"action":   action,
+		"position": sl.WorldPos.to_wire(position),
+		"normal":   [normal.x, normal.y, normal.z],
+		"material": material,
+	}
+	if not _edit_ack.is_empty() and str(_edit_ack["action"]) == action:
+		if int(_edit_ack["seq"]) > 0:
+			packet["edit_seq"] = int(_edit_ack["seq"])
+			packet["by"] = int(_edit_ack["peer"])
+		_edit_ack = {}
+	sl._broadcast_aoi(packet, position)

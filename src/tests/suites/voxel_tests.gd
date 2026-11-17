@@ -1926,6 +1926,9 @@ func _test_chunk_edit_dispatches_rebuild() -> void:
 	cm.load_chunk(Vector2i(0, 0))
 	_wait_for_builds(cm)
 	var before: Node3D = voxel._chunks["0,0"]
+	# Phase 263 — with the native mesher the edited chunk is built on the main thread at once (`EditRemesh`,
+	# predicted_edit_tests); this pins the worker route every other build takes.
+	cm._m1.remesh.sync_enabled = false
 	assert_true(voxel.mine_block(Vector3(16.0, 2.0, 16.0)).get("success", false), "mine succeeds")
 	assert_true(voxel._chunks["0,0"] == before, "the mesh is NOT rebuilt in the edit's own frame")
 	assert_eq(cm._builds.size(), 1, "the rebuild went to a worker instead")

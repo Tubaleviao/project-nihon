@@ -77,6 +77,9 @@ const STREAM_CHUNKS := 20
 const SHADER_SHARE_LIMIT := 0.5   ## Phase 170: heightmap share of the build above which a compute shader is justified
 const RATE_CHUNKS := 24      ## chunks the stream step times the pure worker build on (Phase 169)
 const NativeBuilder := preload("res://src/terrain/native_builder.gd")
+const EDIT_VISIBLE_KEY := "edit_visible_frames"   ## Phase 263: `{ step: frames }` in the budget file
+const EDIT_TARGET_FPS := 60   ## Phase 263: the frame rate the edit-to-visible budget is counted at
+const MINE_EXTRA_DIGS := 5   ## Phase 263: the mine step digs this many more blocks beside the timed one, for a p95
 const BUDGET_PATH := "res://docs/perf/playtest-budget.json"   ## Phase 174: per-step p95 process budget (ms), source of the table in playtest-baseline.md
 const BUDGET_HEADROOM := 1.25   ## a step fails the gate above budget * this, so a noisy shared runner does not fail unrelated PRs
 const NO_BUDGET_ARG := "--playtest-no-budget"   ## report only: CI runs the bot 3 times with this and gates the median (tools/check_playtest_budget.py)
@@ -215,6 +218,7 @@ var _chunk_builds: int = 0
 var _build_breakdown: Dictionary = {}   ## Phase 170: the stream step's per-stage build time
 var _stream_rate: float = 0.0   ## the stream step's chunk build rate (chunks/s), 0 until it ran
 var _flight: Dictionary = {}   ## Phase 187: the flight step's coverage record
+var _edit_visible: Dictionary = {}   ## Phase 263: the mine step's edit-to-visible record (`edit_visible_record`)
 var _flight_mps: float = -1.0   ## Phase 194: the flight speed, read from the command line once (`_flight_speed`)
 ## Phase 194 (#504) — what a step changed that the runner must put back whether or not the step returns (a step
 ## coroutine that hits a script error or hangs never reaches its own restore). Called once, after the step.
@@ -411,6 +415,42 @@ static func flight_share_failures(steps: Array) -> Array:
 					float(f["worker_ms_per_crossing"]), wlimit, roundi(FLIGHT_WORKER_MAX_SHARE * 100.0)])
 	return out
 
+## Phase 263 — the edit-to-visible gate: a step named under `budgets.edit_visible_frames` fails when the p95 frames
+## from an edit's completion to its chunk's mesh attached is over the budget (no headroom: frames are whole), or
+## when it recorded no edit at all. CI gates the median of three runs (`tools/check_playtest_budget.py`).
+static func edit_visible_failures(steps: Array, budgets: Dictionary) -> Array:
+	var out: Array = []
+	var table: Variant = budgets.get(EDIT_VISIBLE_KEY, {})
+	if not (table is Dictionary):
+		return out
+	for s in steps:
+		var name := str(s["step"])
+		if not (table as Dictionary).has(name):
+			continue
+		var e: Dictionary = s.get("edit_visible", {})
+		var limit := float(table[name])
+		if int(e.get("edits", 0)) == 0:
+			out.append("step %s recorded no edit-to-visible time" % name)
+		elif float(e["frames_p95"]) > limit:
+			out.append("step %s: an edit took %.0f frames (p95) to show, over %.0f (%.0f ms at %d Hz)" % [
+				name, float(e["frames_p95"]), limit, float(e["ms_p95"]), EDIT_TARGET_FPS])
+	return out
+
+## Phase 263 — one step's edit-to-visible record from `EditRemesh` samples of the edited chunks themselves
+## (`primary`): how many, p95 frames and ms to visible, and the p95 queue wait and build behind it.
+static func edit_visible_record(samples: Array) -> Dictionary:
+	var own := samples.filter(func(s: Dictionary) -> bool: return bool(s.get("primary", false)))
+	var col := func(k: String) -> Array:
+		var v: Array = own.map(func(s: Dictionary) -> float: return float(s.get(k, 0.0)))
+		v.sort()
+		return v
+	return {
+		"edits": own.size(), "target_fps": EDIT_TARGET_FPS, "network_ms_p95": 0.0,
+		"frames_p95": percentile(col.call("frames"), 95.0), "ms_p95": percentile(col.call("total_ms"), 95.0),
+		"queue_ms_p95": percentile(col.call("queue_ms"), 95.0), "build_ms_p95": percentile(col.call("build_ms"), 95.0), "job_ms_p95": percentile(col.call("job_ms"), 95.0),
+		"on_main_thread": own.filter(func(s: Dictionary) -> bool: return bool(s["sync"])).size(),
+	}
+
 static func load_budgets() -> Dictionary:
 	var parsed = JSON.parse_string(FileAccess.get_file_as_string(BUDGET_PATH))
 	return parsed if parsed is Dictionary else {}
@@ -421,6 +461,7 @@ static func load_budgets() -> Dictionary:
 static func build_report(steps: Array, budgets: Dictionary = {}) -> Dictionary:
 	var failures: Array = []
 	failures.append_array(budget_failures(steps, budgets))
+	failures.append_array(edit_visible_failures(steps, budgets))
 	if not budgets.is_empty():
 		failures.append_array(flight_share_failures(steps))
 	var seen := {}
@@ -769,6 +810,8 @@ func _run_step(step: String) -> Dictionary:
 		rec["build_breakdown"] = _build_breakdown
 	if step == "flight":
 		rec["flight"] = _flight
+	if step == "mine":
+		rec["edit_visible"] = _edit_visible
 	if _profiler != null:
 		rec["profile"] = ProcessProfiler.summarize(_profile_frames)
 		rec["profile_creatures"] = _profile_creatures
@@ -1240,10 +1283,27 @@ func _step_mine() -> Array:
 	var y: float = _root._terrain.get_height_at(Vector2(p.x, p.z))
 	var before := _mined.size()
 	var spot := Vector3(p.x, y - 0.1, p.z)
+	var remesh: RefCounted = _root._chunk_manager._m1.remesh
+	var n0: int = remesh.samples.size()
 	var held: float = await _hold_work("block", "", spot)
 	GameBus.block_mine_requested.emit(spot, Vector3.UP, "", {})
 	var ok: bool = await _until(func(): return _mined.size() > before, STEP_TIMEOUT_SECS)
-	return [ok, "mined %s after holding work %.1f s" % [str(_mined.back()), held] if ok else "no block_mined (work held %.1f s)" % held]
+	if not ok:
+		return [false, "no block_mined (work held %.1f s)" % held]
+	# Phase 263 — more digs beside it, one a frame (the local host completes its own work at once), so the step
+	# has an edit-to-visible p95: each is timed from its completion to its chunk's mesh attached.
+	for i in MINE_EXTRA_DIGS:
+		var q := Vector3(p.x + 0.5 * float(i + 2), 0.0, p.z + 0.5)
+		q.y = float(_root._voxel.get_voxel_height_at(Vector2(q.x, q.z))) - 0.1
+		GameBus.block_mine_requested.emit(q, Vector3.UP, "", {})
+		await get_tree().process_frame
+	var own := func() -> int: return remesh.samples.slice(n0).filter(func(s: Dictionary) -> bool: return bool(s["primary"])).size()
+	await _until(func(): return own.call() >= 1 + MINE_EXTRA_DIGS, STEP_TIMEOUT_SECS)
+	_edit_visible = edit_visible_record(remesh.samples.slice(n0))
+	var e := _edit_visible
+	return [int(e["edits"]) > 0, "mined %s after holding work %.1f s; %d edits visible in %.0f frames / %.1f ms p95 (queue %.1f, build %.1f of which the job %.1f, %d on the main thread)" % [
+		str(_mined.back()), held, int(e["edits"]), float(e["frames_p95"]), float(e["ms_p95"]), float(e["queue_ms_p95"]),
+		float(e["build_ms_p95"]), float(e["job_ms_p95"]), int(e["on_main_thread"])]]
 
 ## Phase 259 — hold work on a target the way the player does: ask the host to start it, wait for its duration, and
 ## return the seconds the work took (-1.0 when the host never answered). The completion request is the caller's.

@@ -11,16 +11,14 @@ extends Node
 ##   OUT : block_mined(material, quantity, position)
 ##         block_placed(material, position)
 ##         block_place_material_changed(material)
-##         inventory_synced(owner_id, contents, durabilities) — a REMOTE actor's
-##           pack after an edit resolved for it (see `_push_inventory`)
+##         inventory_synced(owner_id, contents, durabilities) — a REMOTE actor's pack after an edit (`_push_inventory`)
 ##
 ## Public API:
 ##   build_chunk(chunk_pos, heightmap) -> void
 ##   mine_block(world_pos, normal, player_id)  -> Dictionary  { success, material, quantity, position, player_id }
 ##   place_block(world_pos, normal, material, player_id) -> bool
 ##   inventory_for(player_id)          -> Node       (the actor's own pack)
-##   get_voxel_height_at(world_pos)    -> float      (the column's TOP, not the
-##                                                   footing read — see the method)
+##   get_voxel_height_at(world_pos)    -> float      (the column's TOP, not the footing read — see the method)
 ##   sample_support_height_at(world_pos, from_y) -> float
 ##   get_column_runs_at(world_xz)      -> Array      (the column's solid runs)
 ##   collision_faces(chunk_pos, heightmap) -> PackedVector3Array
@@ -199,6 +197,7 @@ var _persist := VoxelPersist.new(self)
 var _edit := VoxelEdit.new(self)
 var _build := VoxelBuild.new(self)
 var _query := VoxelQuery.new(self)
+var _predict := preload("res://src/terrain/edit_prediction.gd").new(self)   # Phase 263: a client's own edits, ahead of the host
 ## Active chunk containers keyed by "x,y" string.
 var _chunks: Dictionary = {}
 ## Base heightmaps keyed by "x,y" string (the unedited noise terrain).
@@ -295,9 +294,7 @@ var inventory_slice: Node = null
 
 ## Phase 42 review — the registry that owns one inventory PER PLAYER, so an edit the
 ## host resolves for a REMOTE actor spends and credits THAT player's pack instead of
-## this machine's. Optional: an isolated rig (the suite, a probe) leaves it null and
-## every player id falls back to `inventory_slice`, the local bucket (see
-## `inventory_for`).
+## this machine's. Optional: an isolated rig leaves it null and every player id falls back to `inventory_slice`.
 var player_registry: Node = null
 
 ## Phase 42 review — the chunk manager, so an edit can DISPATCH its rebuild instead of
@@ -306,11 +303,10 @@ var player_registry: Node = null
 ## `_rebuild_chunk_at_tile`), which is what the isolated edit tests assert against.
 var chunk_manager: Node = null
 
-## Authority mode (Phase 18). When true (host / single-player), this slice owns
-## world edits: mine/place requests are validated and applied here, and their
-## results are broadcast via block_changed. When false (client), edits are
-## forwarded to the host via block_edit_intent and applied only when the host's
-## authoritative block_changed arrives. Set by game_root before _ready().
+## Authority mode (Phase 18). When true (host / single-player), this slice owns world edits: mine/place requests
+## are validated and applied here, and their results are broadcast via block_changed. When false (client), edits
+## go to the host via block_edit_intent; Phase 263: the local player's own are predicted here at once and kept,
+## or rolled back, on the host's answer (`EditPrediction`). Set by game_root before _ready().
 var is_authoritative: bool = true
 
 ## Material used by place_block; cycled via cycle_place_material(). Empty until
@@ -442,10 +438,13 @@ func _ready() -> void:
 	GameBus.block_place_requested.connect(_on_place_requested)
 	GameBus.block_cycle_material_requested.connect(_on_cycle_requested)
 	GameBus.block_changed.connect(_on_block_changed)
+	GameBus.block_edit_acked.connect(_predict.on_acked)
 
 func _process(_delta: float) -> void:
 	if is_authoritative and not _settle.is_empty():
 		settle_tick()
+	elif not is_authoritative:
+		_predict.tick()
 
 func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {}, revision: int = -1, collide: bool = true, stagger: bool = false) -> bool:
 	return _build.build_chunk(chunk_pos, heightmap, arrays, revision, collide, stagger)
@@ -1284,8 +1283,8 @@ func _on_cycle_requested() -> void:
 ## tile-resolution and span math as mine_block/place_block, but does NOT touch
 ## the inventory or emit block_changed — the host already did both.
 func _on_block_changed(action: String, position: Vector3, normal: Vector3, material: String) -> void:
-	if is_authoritative:
-		return   # host already applied this edit locally
+	if is_authoritative or _predict.consume_confirmed(action, position, normal):
+		return   # host already applied this edit locally; or (Phase 263) this client predicted it and the host confirmed it
 	apply_block_change(action, position, normal, material)
 
 func apply_block_change(action: String, position: Vector3, normal: Vector3, material: String) -> void:
@@ -1490,11 +1489,11 @@ static func _material_color(material: String) -> Color:
 func column_top_at_tile(tile: Vector2i) -> float:
 	return _query.column_top_at_tile(tile)
 
-func _rebuild_chunk_at_tile(tile: Vector2i) -> void:
-	_build._rebuild_chunk_at_tile(tile)
+func _rebuild_chunk_at_tile(tile: Vector2i, priority: bool = false) -> void:
+	_build._rebuild_chunk_at_tile(tile, priority)
 
-func _rebuild_chunk(chunk: Vector2i) -> void:
-	_build._rebuild_chunk(chunk)
+func _rebuild_chunk(chunk: Vector2i, priority: int = 0) -> void:
+	_build._rebuild_chunk(chunk, priority)
 
 func _touched_chunks(tile: Vector2i) -> Array:
 	return _build._touched_chunks(tile)

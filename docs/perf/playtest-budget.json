@@ -1,5 +1,6 @@
 {
 	"walk": 18,
 	"craft": 16,
-	"fight": 16
+	"fight": 16,
+	"edit_visible_frames": { "mine": 2 }
 }

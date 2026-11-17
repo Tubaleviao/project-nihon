@@ -95,7 +95,7 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: Str
 	if not vein.is_empty():
 		s._record_depletion(vein, quantity)
 		s._mark_dirty(vein["anchor"])
-	s._rebuild_chunk_at_tile(tile)
+	s._rebuild_chunk_at_tile(tile, true)   # Phase 263: ahead of streaming
 
 	var banked := false
 	if quantity > 0 and inventory != null and inventory.has_method("add_item"):
@@ -290,7 +290,7 @@ func place_block(world_pos: Vector3, normal: Vector3, material: String = "", pla
 		s.structures.commit_place(plan)
 	s._mark_dirty(tile)
 	s._settle_note(tile)
-	s._rebuild_chunk_at_tile(tile)
+	s._rebuild_chunk_at_tile(tile, true)   # Phase 263: ahead of streaming
 	s._push_inventory(player_id)
 
 	var pos := Vector3(probe["xz"].x, float(span["top"]), probe["xz"].y)
@@ -676,7 +676,7 @@ func _apply_edit(action: String, position: Vector3, normal: Vector3, material: S
 		s._append_edit(tile, { "op": "remove", "bottom": span["bottom"], "top": span["top"] })
 		if not yielded.is_empty() and not (yielded["vein"] as Dictionary).is_empty():
 			s._record_depletion(yielded["vein"], int(yielded["quantity"]))
-		s._rebuild_chunk_at_tile(tile)
+		s._rebuild_chunk_at_tile(tile, true)
 		return {
 			"applied": true, "tile": tile, "new_h": s.column_top_at_tile(tile),
 			"pos": Vector3(position.x, float(span["top"]), position.z),
@@ -699,7 +699,7 @@ func _apply_edit(action: String, position: Vector3, normal: Vector3, material: S
 		if span.is_empty():
 			return { "applied": false }
 		s._append_edit(tile, { "op": "add", "bottom": span["bottom"], "top": span["top"], "material": material })
-		s._rebuild_chunk_at_tile(tile)
+		s._rebuild_chunk_at_tile(tile, true)
 		return {
 			"applied": true, "tile": tile, "new_h": float(span["top"]),
 			"pos": Vector3(xz.x, float(span["top"]), xz.y),
@@ -786,11 +786,13 @@ func _apply_settle(position: Vector3, normal: Vector3, material: String) -> Dict
 	s._rebuild_chunk_at_tile(tile)
 	return { "applied": true, "tile": tile, "new_h": s.column_top_at_tile(tile), "pos": position, "material": material }
 
+## Phase 263 — a client predicts its own player's edit (`EditPrediction.predict`: the ground changes now, the pack
+## does not) and the intent carries the prediction's number, so the host's answer keeps or rolls it back.
 func _on_mine_requested(position: Vector3, normal: Vector3, player_id: String, exact: Dictionary = {}) -> void:
 	if s.is_authoritative:
 		s.mine_block(position, normal, player_id, exact)
 	else:
-		GameBus.block_edit_intent.emit("mine", position, normal, "", exact)
+		GameBus.block_edit_intent.emit("mine", position, normal, "", exact, s._predict.predict("mine", position, normal, ""))
 
 ## The inventory an edit by `player_id` resolves against: that player's own pack from
 ## the registry when one is wired, else this slice's (`""` = this machine's own
@@ -863,7 +865,13 @@ func _on_place_requested(position: Vector3, normal: Vector3, player_id: String, 
 		s.place_block(position, normal, material, player_id, exact)
 	else:
 		var chosen = material if material != "" else s._place_material
-		GameBus.block_edit_intent.emit("place", position, normal, chosen, exact)
+		var seq: int = s._predict.predict("place", position, normal, chosen) if _holds(chosen) else 0
+		GameBus.block_edit_intent.emit("place", position, normal, chosen, exact, seq)
+
+## Phase 263 — a client predicts a placement only of a material its own pack shows (the host still decides).
+func _holds(material: String) -> bool:
+	var inv: Node = s.inventory_slice
+	return material != "" and inv != null and inv.has_method("get_item_count") and int(inv.get_item_count(material)) > 0
 
 ## Client-side application of a host-authoritative block edit (see block_changed).
 ## Delegates to the shared _apply_edit helper so host and client derive the same

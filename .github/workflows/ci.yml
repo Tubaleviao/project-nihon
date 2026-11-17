@@ -581,6 +581,47 @@ jobs:
             ${{ runner.temp }}/net-harness-wan-bad
           if-no-files-found: ignore
 
+  net-harness-wan-br:
+    name: Network harness under wan_br with the native builder (Phase 263)
+    # Phase 263 — a client's predicted dig is on screen before the host's confirmation arrives (60 ms ± 15 ms, 1%
+    # loss), which needs the native mesher's main-thread build, and a refused dig is rolled back (`predicted_edit`).
+    needs: [changes, native-linux]
+    if: github.event_name != 'workflow_dispatch' && needs.changes.outputs.light != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-linux
+          path: native/bin
+
+      - name: Download Godot 4.7
+        run: |
+          mkdir -p /tmp/godot
+          curl -fsSL -o /tmp/godot/godot.zip \
+            https://github.com/godotengine/godot/releases/download/4.7-stable/Godot_v4.7-stable_linux.x86_64.zip
+          unzip -o /tmp/godot/godot.zip -d /tmp/godot
+          chmod +x /tmp/godot/Godot_v4.7-stable_linux.x86_64
+
+      - name: Run the two-client harness under the wan_br profile
+        env:
+          GODOT: /tmp/godot/Godot_v4.7-stable_linux.x86_64
+          NET_HARNESS_LOGDIR: ${{ runner.temp }}/net-harness-wan-br
+          NET_PROFILE: wan_br
+        run: |
+          tools/net_harness.sh || exit 1
+          # The predicted edit led the confirmation on the native build (the step's verdict already requires it).
+          grep -h "\[Harness\] predicted_edit" "$NET_HARNESS_LOGDIR"/*.log || true
+
+      - name: Upload harness logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: net-harness-wan-br-logs
+          path: ${{ runner.temp }}/net-harness-wan-br
+          if-no-files-found: ignore
+
   stress:
     name: Crowd stress run and bottleneck report
     # Phase 162 — main pushes and manual runs. A pull request runs it only when it touches the host's hot
