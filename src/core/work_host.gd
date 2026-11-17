@@ -30,6 +30,7 @@ func resolve(player_id: String, kind: String, tree_id: String, pos: Vector3, nor
 	var material := ""
 	var key := ""
 	var action := ""
+	var skill_action := ""
 	var inventory: Node = null
 	var registry: Object = null
 	if kind == "tree":
@@ -41,6 +42,7 @@ func resolve(player_id: String, kind: String, tree_id: String, pos: Vector3, nor
 		material = str(rec["wood"])
 		key = tree_key(tree_id)
 		action = "chop"
+		skill_action = action
 		inventory = tree_slice.inventory_for(player_id)
 		registry = tree_slice.player_registry
 	elif kind == "block":
@@ -54,6 +56,7 @@ func resolve(player_id: String, kind: String, tree_id: String, pos: Vector3, nor
 		action = WorkTime.action_for_material(material)
 		if action == "":
 			action = "mine"
+		skill_action = action
 		inventory = voxel_slice.inventory_for(player_id)
 		registry = voxel_slice.player_registry
 		# `mine_block` spends the held pick on any block and the axe only when no pick is held, so a wood block
@@ -63,9 +66,13 @@ func resolve(player_id: String, kind: String, tree_id: String, pos: Vector3, nor
 	else:
 		return {}
 	var tool := WorkTime.held_tool(inventory, action)
-	# Phase 274 — the worker's tier in Mining / Woodcutting shortens the work, from the host's own record.
-	var tier := WorkTime.worker_tier(registry, player_id, action)
-	return { "key": key, "action": action, "material": material, "duration": WorkTime.duration(material, action, tool, tier) }
+	# Phase 274 — the worker's tier shortens the work, from the host's own record. The tier is read in the skill
+	# the material's work grows (Woodcutting for wood, Mining for stone, ore and soil), not the held tool's, so the
+	# skill that speeds a job is the one that grows from it: a wood block mined with a pick takes the pick's speed
+	# and the Woodcutting tier.
+	var tier := WorkTime.worker_tier(registry, player_id, skill_action)
+	return { "key": key, "action": action, "material": material,
+		"duration": WorkTime.duration(material, action, tool, tier, skill_action) }
 
 ## A completion claim for `key`: true once the host's own timer has run out with the work still held and in reach.
 ## `in_reach` is the caller's own check; a claim is "held" while its session exists (a release cancels it).

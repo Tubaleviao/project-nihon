@@ -7,7 +7,7 @@ extends "res://src/tests/test_support.gd"
 const WorkSkills := preload("res://src/character/work_skills.gd")
 const WorkTime := preload("res://src/core/work_time.gd")
 const WorkHost := preload("res://src/core/work_host.gd")
-const AttributeRules := preload("res://src/character/attribute_rules.gd")
+const AttributeRules :=preload("res://src/character/attribute_rules.gd")
 const I18n := preload("res://src/core/i18n.gd")
 
 const GATHERING_SKILLS := ["Mining", "Woodcutting", "Foraging", "Skinning"]
@@ -20,6 +20,7 @@ func register() -> void:
 	_run_test("gathering skills: each tier of Mining, Woodcutting and Foraging gives a bonus the fabric names", _test_tier_bonuses)
 	_run_test("gathering skills: a Mining tier lowers mining time as the fabric says", _test_mining_tier_time)
 	_run_test("gathering skills: the host times work by the worker's own recorded tier", _test_host_uses_tier)
+	_run_test("gathering skills: a wood block mined with a pick is timed by Woodcutting, the skill it grows", _test_wood_block_timed_by_woodcutting)
 	_run_test("gathering skills: a save with old Smithing XP loads with it unchanged", _test_old_save)
 	_run_test("gathering skills: the forager specialty weighs Foraging", _test_forager_specialty)
 
@@ -174,6 +175,47 @@ func _test_host_uses_tier() -> void:
 		"a master miner's duration is the novice's over %.2f (%.3f vs %.3f)" % [f, float(master["duration"]), float(novice["duration"])])
 	assert_eq(WorkTime.worker_tier(reg, "p2", "mine"), "novice", "another player's record is their own")
 	assert_eq(WorkTime.worker_tier(null, "p1", "mine"), "novice", "no registry: novice")
+	v.free()
+	reg.free()
+
+## PR #644 review — a wood block mined with a pick takes the pick's speed, but its time is set by the skill that
+## grows from it (Woodcutting), never by the pick's Mining tier.
+func _test_wood_block_timed_by_woodcutting() -> void:
+	var wood := ""
+	var fams := WorkSkills.families()
+	for m: String in fams:
+		if str(fams[m]) == "wood" and GameData.MATERIALS.has(m):
+			wood = m
+			break
+	assert_true(wood != "", "the fabric names a wood material")
+	if wood == "":
+		return
+	assert_eq(str(WorkSkills.gather_row(wood).get("skill", "")), "Woodcutting", "%s grows Woodcutting" % wood)
+	var reg := _registry()
+	var v := _make_voxel()
+	v.is_authoritative = true
+	v.player_registry = reg
+	var host := WorkHost.new()
+	host.voxel_slice = v
+	var pos := Vector3(6.25, 2.0, 1.25)
+	reg.get_inventory("p1").add_item("StoneHammer", 1)   # Phase 260 — building needs a hammer in hand
+	reg.get_inventory("p1").add_item(wood, 1)
+	assert_true(v.place_block(pos, Vector3.UP, wood, "p1"), "p1 places a %s block" % wood)
+	var top := pos + Vector3(0.0, 0.125, 0.0)   # the placed block's top face (blocks are 0.125 tall)
+	reg.get_inventory("p1").add_item("FerritePick", 1)
+	var novice := host.resolve("p1", "block", "", top, Vector3.UP, {})
+	assert_false(novice.is_empty(), "the host resolves the wood block")
+	assert_eq(str(novice.get("material", "")), wood, "the work target is the wood block")
+	assert_eq(str(novice.get("action", "")), "mine", "a held pick mines the wood block")
+	reg.record_skill("p1", "Mining", "master")
+	var miner := host.resolve("p1", "block", "", top, Vector3.UP, {})
+	assert_eq(float(miner["duration"]), float(novice["duration"]), "a Mining tier does not speed a wood block")
+	reg.record_skill("p1", "Woodcutting", "master")
+	var cutter := host.resolve("p1", "block", "", top, Vector3.UP, {})
+	var f := WorkSkills.bonus_factor("Woodcutting", "master")
+	assert_true(f > 1.0, "a master woodcutter has a speed bonus")
+	assert_true(absf(float(cutter["duration"]) - float(novice["duration"]) / f) < 0.0001,
+		"a master woodcutter mines the wood block in the novice's time over %.2f (%.3f vs %.3f)" % [f, float(cutter["duration"]), float(novice["duration"])])
 	v.free()
 	reg.free()
 

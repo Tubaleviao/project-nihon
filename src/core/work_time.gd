@@ -66,10 +66,11 @@ static func worker_tier(registry: Object, player_id: String, action: String) -> 
 	return tier if tier != "" else "novice"
 
 ## Seconds to work `material` with `action` holding `tool_item` ("" = bare hands) at skill `tier`; 0.0 for an
-## unknown material.
-static func seconds(material: String, action: String, tool_item: String = "", tier: String = "novice") -> float:
+## unknown material. `skill_action` names the action whose skill `tier` is in when it is not `action` (a wood
+## block mined with a pick: the pick's speed, the Woodcutting tier, since wood grows Woodcutting).
+static func seconds(material: String, action: String, tool_item: String = "", tier: String = "novice", skill_action: String = "") -> float:
 	var base := float(_dict("workSeconds").get(material, 0.0))
-	var s := speed(action, tool_item) * skill_speed(action, tier)
+	var s := speed(action, tool_item) * skill_speed(skill_action if skill_action != "" else action, tier)
 	if base <= 0.0 or s <= 0.0:
 		return 0.0
 	return base / s
@@ -78,11 +79,11 @@ static func seconds(material: String, action: String, tool_item: String = "", ti
 const FALLBACK_SECONDS := 2.0
 
 ## The duration the host uses: `seconds`, or the fallback over the speed for an unlisted material.
-static func duration(material: String, action: String, tool_item: String = "", tier: String = "novice") -> float:
-	var t := seconds(material, action, tool_item, tier)
+static func duration(material: String, action: String, tool_item: String = "", tier: String = "novice", skill_action: String = "") -> float:
+	var t := seconds(material, action, tool_item, tier, skill_action)
 	if t > 0.0:
 		return t
-	var s := speed(action, tool_item) * skill_speed(action, tier)
+	var s := speed(action, tool_item) * skill_speed(skill_action if skill_action != "" else action, tier)
 	return FALLBACK_SECONDS / s if s > 0.0 else 0.0
 
 ## The tool the player holds for `action`'s class ("" = bare hands): the inventory's first usable tool of it.
