@@ -471,6 +471,9 @@ signal station_synced(action: String, entry: Dictionary)
 signal station_placed_by_me(station_id: String, type: String)
 ## Phase 268 — the hotbar selection is `item_id` (a station item arms the placement ghost). Local.
 signal hotbar_station_selected(item_id: String)
+## Phase 269 — this machine's player used (the interact input) the placed crafting station `station_id`: its
+## window opens, listing that station's recipes. Local; the host's station check is unchanged.
+signal station_window_requested(station_id: String)
 
 # ---------------------------------------------------------------------------
 # Mining / building

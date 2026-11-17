@@ -50,6 +50,7 @@ const WINDOW_CLAN       := "clan"   # Phase 204
 const WINDOW_CHEST      := "chest"  # Phase 208 — opened by using a chest or door (U), never by a hotkey
 const WINDOW_GESTURES  := "gestures"
 const WINDOW_ADMIN     := "admin"   # Phase 182 — admins only (`is_admin`)
+const WINDOW_STATION   := "station" # Phase 269 — opened by using a placed crafting station (U), never by a hotkey
 
 const WindowShortcuts := preload("res://src/ui/window_shortcuts.gd")
 const InputLabels := preload("res://src/ui/input_labels.gd")   # Phase 220
@@ -57,7 +58,7 @@ const InputLabels := preload("res://src/ui/input_labels.gd")   # Phase 220
 const WINDOW_SHORTCUTS: Array = WindowShortcuts.TABLE
 const TutorialCard := preload("res://src/tutorial/tutorial_card.gd")
 const WINDOW_KEYS := [WINDOW_INVENTORY, WINDOW_TECHNOLOGY, WINDOW_CRAFTING, WINDOW_TRADE, WINDOW_MARKET, WINDOW_PROPOSALS,
-	WINDOW_CONTROLS, WINDOW_ATTRIBUTES, WINDOW_EQUIPMENT, WINDOW_SKILLS, WINDOW_MAP, WINDOW_SETTLEMENT, WINDOW_CLAN, WINDOW_CHEST, WINDOW_GESTURES, WINDOW_ADMIN]
+	WINDOW_CONTROLS, WINDOW_ATTRIBUTES, WINDOW_EQUIPMENT, WINDOW_SKILLS, WINDOW_MAP, WINDOW_SETTLEMENT, WINDOW_CLAN, WINDOW_CHEST, WINDOW_GESTURES, WINDOW_ADMIN, WINDOW_STATION]
 
 const MouseIconScript := preload("res://src/ui/mouse_icon.gd")
 const EquipmentRules := preload("res://src/character/equipment_rules.gd")
@@ -71,6 +72,7 @@ const CharacterSheet := preload("res://src/ui/character_sheet.gd")
 const CreationScreen := preload("res://src/ui/creation_screen.gd")
 const CreationRules := preload("res://src/character/creation_rules.gd")
 const AttributeRules := preload("res://src/character/attribute_rules.gd")
+const CraftWindowScript := preload("res://src/ui/craft_window.gd")   # Phase 269
 
 ## Pixels of a window that must stay reachable on every edge when dragged.
 const DRAG_VISIBLE_MARGIN := 48.0
@@ -88,6 +90,7 @@ const UiPart2 := preload("res://src/ui/ui_part_2.gd")
 var _m2 := UiPart2.new(self)
 
 var _m1 := UiPart1.new(self)
+var _crafting := preload("res://src/ui/ui_crafting.gd").new(self)   # Phase 269
 
 var inventory_slice: Node = null
 ## Phase 47 — the character slice: the Character window reads the local avatar's
@@ -170,6 +173,12 @@ var chest_panel: Control = null  # Phase 208 — bound to its view by ChestWirin
 var is_admin: bool = false   # Phase 182 — the host said this player is an admin (`set_admin`)
 var _layout: Dictionary = {}                 # window key -> Vector2
 var _crafting_box: VBoxContainer = null
+## Phase 269 — the hand and station windows' bodies, the placed stations (game_root) and the open station's id.
+var hand_window: VBoxContainer = null
+var station_window: VBoxContainer = null
+var station_slice: Node = null
+var station_id: String = ""
+var station_type: String = ""
 var _repair_feedback: Label = null
 var _technology_box: VBoxContainer = null
 var _technology_feedback: Label = null
@@ -232,6 +241,7 @@ func _ready() -> void:
 	GameBus.world_input_frozen.connect(_on_world_input_frozen)
 	GameBus.block_place_material_changed.connect(_on_place_material_changed)
 	GameBus.character_creation_resolved.connect(_m2.on_creation_resolved)
+	GameBus.station_window_requested.connect(open_station_window)   # Phase 269
 	refresh_all()
 
 func _on_world_input_frozen(frozen: bool) -> void:
@@ -412,6 +422,8 @@ func open_window(panel: String) -> void:
 		return
 	if panel == WINDOW_CRAFTING and _repair_feedback != null:
 		_repair_feedback.text = ""
+	if panel == WINDOW_STATION and station_id == "":
+		return   # Phase 269 — only a station opens its window
 	p.visible = true
 	_open_order.erase(panel)
 	_open_order.append(panel)
@@ -426,6 +438,8 @@ func close_window(panel: String) -> void:
 	p.visible = false
 	_open_order.erase(panel)
 	_drag_key = ""
+	if panel == WINDOW_STATION:
+		station_id = ""
 	refresh_hud()
 
 func toggle_window(panel: String) -> void:
@@ -712,6 +726,12 @@ func crafting_rows() -> Array:
 		})
 	return rows
 
+## Phase 269 — the crafting windows' projections and the station window (see `ui_crafting.gd`).
+func craft_cards(type: String) -> Array: return _crafting.craft_cards(type)
+func open_station_window(id: String) -> bool: return _crafting.open_station_window(id)
+func check_station_reach(pos: Vector3) -> bool: return _crafting.check_station_reach(pos)
+func _retitle(key: String) -> void: _crafting.retitle(key)
+
 func repair_rows() -> Array:
 	return _m1.repair_rows()
 
@@ -976,6 +996,8 @@ func _show_next_toast() -> void:
 func _process(delta: float) -> void:
 	if _toast_shown != "":
 		advance_toasts(delta)
+	if station_id != "" and player_slice != null and is_window_open(WINDOW_STATION):
+		check_station_reach(player_slice.get_position())
 
 ## One row per skill the player has, best tier first: { id, tier, tooltip }. Pure given the table.
 static func skills_rows(tiers: Dictionary) -> Array:
@@ -1160,7 +1182,7 @@ func _on_inventory_changed() -> void:
 	refresh_inventory()
 	refresh_hud()
 	# Phase 213 — a row per recipe (~200 ms) on every pack change, any player's: a closed list is rebuilt on open.
-	if is_window_open(WINDOW_CRAFTING):
+	if is_window_open(WINDOW_CRAFTING) or is_window_open(WINDOW_STATION):
 		refresh_crafting()
 	_refresh_market_item_selector()
 
@@ -1419,20 +1441,13 @@ func _build_skills_content() -> Control:
 	vbox.add_child(_skills_grid)
 	return vbox
 
+## Phase 269 — the hand window: a card grid of the recipes with no station (repairs listed under it).
 func _build_crafting_content() -> Control:
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 6)
-	_repair_feedback = Label.new()
-	_repair_feedback.add_theme_font_size_override("font_size", 14)
-	vbox.add_child(_repair_feedback)
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_crafting_box = VBoxContainer.new()
-	_crafting_box.add_theme_constant_override("separation", 4)
-	_crafting_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(_crafting_box)
-	vbox.add_child(scroll)
-	return vbox
+	hand_window = CraftWindowScript.new()
+	hand_window.setup(self, "")
+	_repair_feedback = hand_window.feedback
+	_crafting_box = hand_window.list_box
+	return hand_window
 
 func _build_technology_content() -> Control:
 	var vbox := VBoxContainer.new()

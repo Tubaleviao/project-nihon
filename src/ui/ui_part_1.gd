@@ -398,6 +398,10 @@ func _build_ui() -> void:
 	sl._panels[sl.WINDOW_SETTLEMENT] = sl._build_window(sl.WINDOW_SETTLEMENT, "win.settlement", sl._m2._build_settlement_content(), Vector2(916, 80))
 	sl._panels[sl.WINDOW_CLAN] = sl._build_window(sl.WINDOW_CLAN, "win.clan", sl._m2._build_clan_content(), Vector2(700, 80))
 	sl._panels[sl.WINDOW_CHEST] = sl._build_window(sl.WINDOW_CHEST, "win.chest", sl._m2._build_chest_content(), Vector2(470, 200))
+	sl.station_window = sl.CraftWindowScript.new()   # Phase 269 — the same card grid, for the open station's recipes
+	sl.station_window.setup(sl, "")
+	sl._panels[sl.WINDOW_STATION] = sl._build_window(sl.WINDOW_STATION, "win.station", sl.station_window, Vector2(470, 360),
+		func() -> Array: return [sl._m2.station_name(sl.station_type)])   # Phase 269
 	sl._panels[sl.WINDOW_GESTURES] = sl._build_window(sl.WINDOW_GESTURES, "win.gestures", sl._build_gesture_content(), Vector2(600, 200),
 		func() -> Array: return [sl.GesturePanelScript.key_label()])
 	sl._panels[sl.WINDOW_MAP] = sl._build_window(sl.WINDOW_MAP, "win.map", sl._build_map_content(), Vector2(200, 80))

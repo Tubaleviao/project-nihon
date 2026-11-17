@@ -201,6 +201,7 @@ var inventory_slice: Node = null
 
 ## Phase 268 — a station item selected in the hotbar: its ghost, rotation and placement request.
 const StationPlacer := preload("res://src/player/station_placer.gd")
+const CraftCatalog := preload("res://src/crafting/craft_catalog.gd")   # Phase 269
 var _station_placer: StationPlacer = StationPlacer.new()
 ## This machine's player id, for the ghost's refusal (the host's structure guard judges a placer by it).
 var local_player_id: String = ""
@@ -524,11 +525,23 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo and (event.keycode == KEY_X or event.keycode == KEY_Z):
 		_try_carcass(event.keycode == KEY_X)
 	# Phase 208 — U uses the nearest chest or door, Shift+U picks its lock, Ctrl+U hits it (the host finds which).
+	# Phase 269 — plain U on a placed crafting station (nearer than any chest or door) opens that station's window.
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_U and _alive:
-		GameBus.chest_intent.emit("pick" if event.shift_pressed else ("hit" if event.ctrl_pressed else "use"), {}, "")
+		var at_station := interact_station() if not (event.shift_pressed or event.ctrl_pressed) else ""
+		if at_station != "":
+			GameBus.station_window_requested.emit(at_station)
+		else:
+			GameBus.chest_intent.emit("pick" if event.shift_pressed else ("hit" if event.ctrl_pressed else "use"), {}, "")
 	# E key → toggle all equipment on/off (inspect the naked body under the gear).
 	if event is InputEventKey and event.pressed and not WindowShortcuts.is_window_key(event) and event.keycode == KEY_E:
 		GameBus.character_equipment_toggle_requested.emit()
+
+## Phase 269 — the placed crafting station the interact input uses here ("" when a chest, door or bed is nearer,
+## or no station is in reach).
+func interact_station() -> String:
+	if station_slice == null or not station_slice.has_method("get_all_stations"):
+		return ""
+	return CraftCatalog.interact_station(station_slice.get_all_stations(), get_position())
 
 ## Where a dropped item lands: a little in front of the body (away from the camera), at the feet.
 func drop_point() -> Vector3:

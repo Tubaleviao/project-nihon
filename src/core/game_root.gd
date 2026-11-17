@@ -474,7 +474,7 @@ func _build_and_boot() -> void:
 		_ui.proposal_slice        = _proposal
 		_ui.trade_slice           = _trade
 		_ui.voxel_slice           = _voxel
-		_ui.player_slice          = _player
+		_ui.player_slice          = _player; _ui.station_slice = _station   # Phase 269: the station window's stations
 		_ui.map_window.minimap       = _minimap
 		_ui.map_window.terrain_slice = _terrain
 		_ui.map_window.player_slice  = _player

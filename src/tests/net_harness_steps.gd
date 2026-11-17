@@ -369,3 +369,94 @@ func station_from_hotbar(h: Node) -> void:
 	var ok: bool = sent and seen_here and gone and one_more
 	h._report("station_from_hotbar", h.verdict(ok, true), "placed-from-hotbar-refused-without-item" if ok
 		else "sent%d-seen%d-consumed%d-one%d" % [int(sent), int(seen_here), int(gone), int(one_more)])
+
+## Phase 269 — crafting at the station. The host gives the client's player four Thornwood and the carpentry
+## technology, waits for the client to report where its body really stands, and stands a carpentry bench 1.5 m
+## from it. The client uses the bench (the interact input's own rule), its window lists the planks, and Craft
+## makes three planks. The host then moves the bench 40 m away: the client's window closes, and the same request
+## sent anyway is refused by the host (`station_required`), the client's pack unchanged.
+const STATION_RECIPE := "RecipeThornwoodPlank"
+const STATION_TYPE := "carpentry bench"
+const STATION_TECH := "TechBasicCarpentry"
+const CraftCatalog := preload("res://src/crafting/craft_catalog.gd")
+func station_craft(h: Node) -> void:
+	await h._await_settle(1.0 * h._time_scale)
+	const DETAIL := "crafted-at-station-refused-away"
+	if h._role == "host":
+		var bound: String = h._live_bound_id()
+		var pack: Node = h._root._registry.get_inventory(bound) if bound != "" else null
+		if pack == null:
+			h._report("station_craft", "fail", "no_owner")
+			return
+		var seen: Array = []
+		var on_craft := func(r: Dictionary) -> void:
+			if str(r.get("player_id", "")) == bound and str(r.get("recipe_id", "")) == STATION_RECIPE:
+				seen.append([bool(r.get("success", false)), str(r.get("reason", ""))])
+		GameBus.craft_resolved.connect(on_craft)
+		pack.add_item("Thornwood", 4)
+		h._root._technology.learn("technology", STATION_TECH, bound)
+		h._root._chest_wiring._push_inventory(bound)
+		var came: bool = await h._await_client_ready("station_craft", bound)
+		await h._await_settle(1.0 * h._time_scale)
+		var at: Variant = h._root._chest_wiring.player_pos(bound)
+		var near := ""
+		if came and at is Vector3:
+			near = h._root._station.place_station(STATION_TYPE, (at as Vector3) + Vector3(1.5, 0.0, 0.0))
+		var crafted: bool = near != "" and await h._await_until(func() -> bool:
+			return seen.any(func(e: Array) -> bool: return bool(e[0])), h._step_timeout() * 3.0)
+		var far := ""
+		if near != "":
+			h._root._station.remove_station(near)
+			far = h._root._station.place_station(STATION_TYPE, (at as Vector3) + Vector3(40.0, 0.0, 0.0))
+		var refused: bool = crafted and await h._await_until(func() -> bool:
+			return seen.any(func(e: Array) -> bool: return not bool(e[0]) and str(e[1]) == "station_required:" + STATION_TYPE), h._step_timeout() * 3.0)
+		var planks: int = int(pack.get_item_count("ThornwoodPlank"))
+		var wood: int = int(pack.get_item_count("Thornwood"))
+		GameBus.craft_resolved.disconnect(on_craft)
+		if far != "":
+			h._root._station.remove_station(far)
+		var ok: bool = crafted and refused and planks == 3 and wood == 2
+		h._report("station_craft", h.verdict(ok, true), DETAIL if ok
+			else "came%d-placed%d-crafted%d-refused%d-planks%d-wood%d" % [int(came), int(near != ""), int(crafted), int(refused), planks, wood])
+		return
+	var inv: Node = h._root._inventory
+	var ui: Node = h._root._ui
+	var player: Node = h._root._player
+	if not await h._await_until(func() -> bool: return inv.get_item_count("Thornwood") >= 4 and h._root._technology.is_unlocked(STATION_TECH), h._step_timeout() * 2.0):
+		h._report("station_craft", "fail", "no_inputs")
+		return
+	# Report where the body really is, so the host stands the bench beside it and judges the craft from there.
+	h._report_actual = true
+	h._report_position()
+	await h._await_settle(2.0 * h._time_scale)
+	var announced := {}
+	var found: bool = await h._await_until(func() -> bool:
+		h._announce_ready("station_craft", announced)
+		return player.interact_station() != "", h._step_timeout() * 4.0)
+	var sid: String = player.interact_station() if found else ""
+	if sid != "":
+		GameBus.station_window_requested.emit(sid)   # what the interact input sends at a crafting station
+	var opened: bool = sid != "" and ui.is_window_open("station")
+	var card: Dictionary = {}
+	if opened:
+		for c: Dictionary in ui.station_window.cards():
+			if str(c["id"]) == STATION_RECIPE:
+				card = c
+	var sent := 0
+	if not card.is_empty():
+		ui.station_window.select(STATION_RECIPE)
+		sent = ui.station_window.craft_selected()
+	var made: bool = sent == 1 and await h._await_until(func() -> bool: return inv.get_item_count("ThornwoodPlank") >= 3, h._step_timeout() * 3.0)
+	# The host moves the bench away: this window closes, and a bench is listed far from the body.
+	var closed: bool = made and await h._await_until(func() -> bool:
+		var benches: Array = h._root._station.get_all_stations().filter(func(st: Dictionary) -> bool: return str(st.get("type", "")) == STATION_TYPE)
+		return not ui.is_window_open("station") and not benches.is_empty() and player.interact_station() == "", h._step_timeout() * 3.0)
+	if closed:
+		GameBus.craft_requested.emit(STATION_RECIPE)   # asked anyway, as a modified client would
+		await h._await_settle(2.0 * h._time_scale)
+	var kept: bool = inv.get_item_count("ThornwoodPlank") == 3 and inv.get_item_count("Thornwood") == 2
+	h._report_actual = false
+	h._report_position()
+	var ok: bool = opened and not card.is_empty() and made and closed and kept
+	h._report("station_craft", h.verdict(ok, true), DETAIL if ok
+		else "found%d-opened%d-listed%d-sent%d-made%d-closed%d-kept%d" % [int(found), int(opened), int(not card.is_empty()), sent, int(made), int(closed), int(kept)])
