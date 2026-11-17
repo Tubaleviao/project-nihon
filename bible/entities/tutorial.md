@@ -3,7 +3,7 @@
 
 **Tags:** `tutorial`
 
-The first-steps tutorial: an ordered list of small steps that teach a new player to move, gather, build the first stations and tools, make a shelter with a bed, hunt, stay alive, find their way, grow and meet other people. Each step names the keys it teaches and the event that completes it.
+The first-steps tutorial: an ordered list of small steps that teach a new player, who starts with nothing, to move, pick up branches and stones, make stone tools, build the first stations, make a shelter with a bed, hunt, stay alive, find their way, grow and meet other people. Each step names the keys it teaches and the event that completes it.
 
 > **Goal:** One guided path for the first hour, so the tutorial is the one place that teaches
 

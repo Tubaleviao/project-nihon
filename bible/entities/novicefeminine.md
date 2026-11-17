@@ -3,7 +3,7 @@
 
 **Tags:** `appearance`
 
-The feminine character-creation preset: a chibi body in the plain novice tunic. The player picks hair and hair colour on top of it (CharacterCreation); everything else is fixed.
+The feminine character-creation preset: a chibi body in the plain clothes painted on its sheet. The player picks hair and hair colour on top of it (CharacterCreation); everything else is fixed.
 
 > **Goal:** Give every new character the same readable chibi silhouette, told apart by hair and name
 
@@ -23,5 +23,5 @@ The feminine character-creation preset: a chibi body in the plain novice tunic. 
 | `hairColor` | integer | yes | Default hair colour (CharacterCreation.hairColors) |
 | `beard` | string | yes | Beard component identifier |
 | `beardColor` | integer | yes | Palette index for beard |
-| `equipment` | json | yes | Equipment instances by slot: the starting kit worn |
+| `equipment` | json | yes | Equipment instances by slot: none, the plain clothes are painted on the body (Phase 262) |
 

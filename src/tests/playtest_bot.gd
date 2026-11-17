@@ -26,6 +26,7 @@ extends Node
 
 const VoxelSlice := preload("res://src/terrain/voxel_slice.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
+const StoneTools := preload("res://src/world/stone_tools.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const WaystoneSlice := preload("res://src/world/waystone_slice.gd")
 const StationRules := preload("res://src/world/station_rules.gd")
@@ -285,6 +286,8 @@ static func _step_timeout(step: String) -> float:
 		return FAR_PEAK_STEP_SECS
 	if step == "tower":
 		return TOWER_TIMEOUT_SECS
+	if step == "mount":
+		return MOUNT_RIDE_SECS + 30.0   # the ride itself plus the mount, settle and dismount waits
 	return STREAM_TIMEOUT_SECS if step == "stream" or step == "pole" or step == "flight" else STEP_TIMEOUT_SECS
 
 static func step_names() -> Array:
@@ -1497,10 +1500,18 @@ func _step_create() -> Array:
 	screen.submit()
 	var closed: bool = await _until(func(): return not ui.is_creation_open(), 5.0)
 	var state: Dictionary = _root._registry.creation_of(_root._registry.local_player_id)
+	# Phase 262 — a new character starts with nothing: an empty bag and nothing worn.
+	var bag: Dictionary = _root._inventory.get_contents()
+	var worn := []
+	var eq: Dictionary = _root._registry.get_equipment(_root._registry.local_player_id)
+	for slot in eq:
+		if str(eq[slot]) != "":
+			worn.append(str(eq[slot]))
 	var ok: bool = closed and rig and str(state.get("state", "")) == "created" and str(state.get("name", "")) == CREATE_NAME \
-		and not _root._player.creation_hold
-	return [ok, "created %s (%s, %s, colour %d); screen %s, rig %s" % [str(state.get("name", "?")), str(state.get("gender", "?")),
-		str(state.get("hair", "?")), int(state.get("hairColor", -1)), "closed" if closed else "STILL OPEN: " + str(screen.error_text()), str(rig)]]
+		and not _root._player.creation_hold and bag.is_empty() and worn.is_empty()
+	return [ok, "created %s (%s, %s, colour %d); screen %s, rig %s; bag %s, worn %s" % [str(state.get("name", "?")), str(state.get("gender", "?")),
+		str(state.get("hair", "?")), int(state.get("hairColor", -1)), "closed" if closed else "STILL OPEN: " + str(screen.error_text()), str(rig),
+		"empty" if bag.is_empty() else str(bag), "nothing" if worn.is_empty() else str(worn)]]
 
 ## Phase 179: open the Character window, check every attribute and slot is listed and the doll holds a rig, and (on
 ## a display) that the doll's viewport is not blank. The step's screenshot shows the sheet.
@@ -1723,7 +1734,7 @@ func _model_diag(iid: String) -> String:
 ## Phase 186 — the tutorial ran beside the session. The windows the earlier steps did not open are opened with the
 ## player's own windows keys' targets, then the events the tutorial saw are replayed: the moving, gathering,
 ## first-tools, first-stations and first-hunt chapters must all complete. The screenshot shows a card.
-const TUTORIAL_CHAPTERS := ["moving", "gathering", "first_stations", "first_tools", "first_hunt"]
+const TUTORIAL_CHAPTERS := ["moving", "gathering", "first_tools", "first_stations", "first_hunt"]
 
 ## Hold the right button over the middle of the view and drag: the camera orbits as a player's look does.
 func _look_around() -> void:
@@ -1750,6 +1761,127 @@ func _jump_state() -> Dictionary:
 		"keys_live": p.keys_live(), "frozen": p._world_input_frozen, "ground_hold": p.ground_hold,
 		"vel_y": snappedf(p.get_velocity().y, 0.01),
 	}
+
+## Phase 262 — the loose items the tutorial's tool steps need (a branch and a loose stone), picked with the T key
+## the player presses, the body set down beside each first.
+const LOOSE_SEARCH_M := 48.0
+## The stone tools the tutorial's first-tools and first-hunt chapters craft, by recipe.
+const BARE_HANDS_RECIPES := ["RecipeStoneAxe", "RecipeStonePick", "RecipeStoneShovel", "RecipeStoneKnife"]
+## Depths under the natural surface (m) tried for the rock: past the temperate biomes' 3 m of topsoil.
+const BARE_HANDS_ROCK_DEPTHS := [3.3, 3.8, 4.6, 6.0]
+
+## Pick up the nearest loose item of `kind` within LOOSE_SEARCH_M with the T key; true once the pack holds one more.
+func _pick_loose(kind: String) -> bool:
+	var loose: Node = _root._loose
+	var at: Vector3 = loose.local_position.call()
+	var best: Dictionary = {}
+	for it in loose.items_near(Vector2(at.x, at.z), LOOSE_SEARCH_M):
+		if str(it["kind"]) == kind and (best.is_empty() or (it["xz"] as Vector2).distance_to(Vector2(at.x, at.z)) < (best["xz"] as Vector2).distance_to(Vector2(at.x, at.z))):
+			best = it
+	if best.is_empty():
+		return false
+	var xz: Vector2 = best["xz"]
+	var m := WorldPos.CHUNK_METERS
+	var chunk := Vector2i(floori(xz.x / m), floori(xz.y / m))
+	_teleport_to(chunk, Vector3(xz.x - float(chunk.x) * m, 0.0, xz.y - float(chunk.y) * m))
+	await _until(func(): return false, 1.0)   # the body settles
+	var before: int = _root._inventory.get_item_count(kind)
+	_key(KEY_T, true)
+	_key(KEY_T, false)
+	return await _until(func(): return _root._inventory.get_item_count(kind) > before, 3.0)
+
+func _bare_hands_tools() -> String:
+	var picked := {}
+	for kind in [StoneTools.BRANCH, StoneTools.LOOSE_STONE]:
+		picked[kind] = await _pick_loose(kind)
+	if not picked[StoneTools.BRANCH] or not picked[StoneTools.LOOSE_STONE]:
+		return "no %s picked up within %d m" % [str(picked), int(LOOSE_SEARCH_M)]
+	# The rest of the branches and stones the four tools take (the step's deadline has no room to walk to each).
+	_root._inventory.add_item(StoneTools.BRANCH, 5)
+	_root._inventory.add_item(StoneTools.LOOSE_STONE, 5)
+	_root._crafting.set_skill("Carpentry", "novice")
+	_root._ui.open_window("crafting")
+	for rid in BARE_HANDS_RECIPES:
+		var n := _crafted.size()
+		GameBus.craft_requested.emit(rid)
+		if not await _until(func(): return _crafted.size() > n, 5.0) or not bool(_crafted.back().get("success", false)):
+			return "%s: %s" % [rid, str(_crafted.back().get("reason", "")) if _crafted.size() > n else "no craft_resolved"]
+	_root._ui.close_window("crafting")
+	# Dig soil with the shovel at the feet, then mine the rock under the topsoil with the pick: a side hit takes the
+	# cell the ray lands on (a top hit only ever takes the top step of the column).
+	await _settle_unharmed()
+	var p := _player_pos()
+	var xz := Vector2(p.x, p.z)
+	var ore: int = _root._inventory.get_item_count("Ferrite")
+	var soil: int = _root._inventory.get_item_count("Soil")
+	var t0 := Time.get_ticks_msec()
+	var top := Vector3(p.x, float(_root._voxel.get_voxel_height_at(xz)) - 0.05, p.z)
+	var n0 := _mined.size()
+	await _hold_work("block", "", top)
+	GameBus.block_mine_requested.emit(top, Vector3.UP, "", {})
+	await _until(func(): return _mined.size() > n0, 4.0)
+	if _root._inventory.get_item_count("Soil") <= soil:
+		return "the shovel dug no soil (mined %s)" % str(_mined.slice(n0))
+	var ground: float = _root._terrain.get_height_at(xz)
+	for depth in BARE_HANDS_ROCK_DEPTHS:
+		if _root._inventory.get_item_count("Ferrite") > ore:
+			break
+		var spot := Vector3(p.x, ground - float(depth), p.z)
+		var n := _mined.size()
+		await _hold_work("block", "", spot)
+		GameBus.block_mine_requested.emit(spot, Vector3.RIGHT, "", {})
+		await _until(func(): return _mined.size() > n, 4.0)
+	if _root._inventory.get_item_count("Ferrite") <= ore:
+		return "no ferrite at depths %s (mined %s)" % [str(BARE_HANDS_ROCK_DEPTHS), str(_mined.slice(n0))]
+	print("[Playtest] bare hands: picked a branch and a stone, lashed %d tools, dug to ferrite in %.1f s" % [BARE_HANDS_RECIPES.size(), float(Time.get_ticks_msec() - t0) * 0.001])
+	# The pack has a weight cap and the rest of the step adds research materials and ingots: what the bare-hands
+	# work left behind (ore, soil, spare loose items, the used stone tools; the knife stays for the harvest) goes.
+	# The tutorial reads what the pack gained a frame later (`TutorialWiring._scan_pack`): let it see the ore first.
+	await _until(func(): return false, 0.3)
+	var spent := {}
+	for item in ["Ferrite", "Soil", StoneTools.BRANCH, StoneTools.LOOSE_STONE, "StoneAxe", "StonePick", "StoneShovel"]:
+		if _root._inventory.get_item_count(item) > 0:
+			spent[item] = _root._inventory.get_item_count(item)
+	_root._inventory.consume_items(spent)
+	return ""
+
+## Craft `rid` where the body stands; "" once the host resolved it successfully, else why not.
+func _craft_now(rid: String) -> String:
+	var n := _crafted.size()
+	GameBus.craft_requested.emit(rid)
+	if not await _until(func(): return _crafted.size() > n, 5.0):
+		return "%s: no craft_resolved" % rid
+	if not bool(_crafted.back().get("success", false)):
+		return "%s: %s" % [rid, str(_crafted.back().get("reason", ""))]
+	return ""
+
+## Phase 268 — a carpentry bench lashed by hand and a forge built at the bench the craft step placed, as items.
+func _craft_stations() -> String:
+	_root._inventory.add_item(StoneTools.BRANCH, 4)
+	_root._inventory.add_item(StoneTools.LOOSE_STONE, 2)
+	_root._crafting.set_skill("Carpentry", "novice")
+	var why: String = await _craft_now("RecipeCarpentryBench")
+	if why != "":
+		return why
+	var bench := ""
+	for p in _placed:
+		if str(p[1]) == "carpentry bench":
+			bench = str(p[0])
+	if bench == "" or not await _reach_station("carpentry bench", bench):
+		return "no carpentry bench in reach for the forge"
+	_root._inventory.add_item(StoneTools.LOOSE_STONE, 8)
+	_root._inventory.add_item("ThornwoodPlank", 2)
+	_root._crafting.set_skill("Smithing", "novice")
+	why = await _craft_now("RecipeForge")
+	if why != "":
+		return why
+	await _until(func(): return false, 0.3)   # the tutorial reads the craft a frame later
+	var made := {}
+	for item in ["CarpentryBench", "Forge"]:
+		if _root._inventory.get_item_count(item) > 0:
+			made[item] = _root._inventory.get_item_count(item)
+	_root._inventory.consume_items(made)
+	return ""
 
 func _step_tutorial() -> Array:
 	var wiring = _root._tutorial_wiring
@@ -1792,9 +1924,20 @@ func _step_tutorial() -> Array:
 		print("[Playtest] tutorial jump never started; player state at each press: %s" % [jump_tries])
 	_look_around()
 	await _until(func(): return false, 0.2)
+	# Phase 262 — from bare hands: pick a branch and a loose stone off the ground, lash the stone tools, dig soil
+	# and mine the rock under it.
+	var bare: String = await _bare_hands_tools()
+	if bare != "":
+		return [false, "bare hands: %s" % bare]
 	var tech: String = await _unlock("TechBasicSmithing")
 	if tech != "":
 		return [false, "research: %s" % tech]
+	# Phase 268 — the tutorial's first-stations chapter counts a bench and a forge crafted as items, not only placed
+	# (the place and craft steps set down stations from the pack): make one of each, the bench by hand and the forge
+	# at the bench, then drop them from the pack (its weight cap) as the bare-hands leftovers were.
+	var stations: String = await _craft_stations()
+	if stations != "":
+		return [false, "stations: %s" % stations]
 	var forge := ""
 	for p in _placed:
 		if str(p[1]) == "forge":
@@ -1882,7 +2025,10 @@ func _step_travel() -> Array:
 ## intent, ridden 200 m and dismounted. The mounted average speed must reach the fabric factor times the walking
 ## speed x0.9 (the Phase 216 spec). The rider is kept at full health (creatures near the village would otherwise end the ride in a death).
 const MOUNT_RIDE_M := 200.0
-const MOUNT_RIDE_SECS := 45.0
+## 60 s, not 45: a throw (the newcomer grounds' water) and the walk back to dry ground cost ~20 s of the ride.
+## main passed at 203 m of 200 and PR #639 failed at 186 m with the same 8.9 m/s cruise; the speed check
+## below is what judges the mount, the deadline only has to leave room for the 200 m.
+const MOUNT_RIDE_SECS := 60.0
 const MOUNT_SPEED_SLACK := 0.9
 func _step_mount() -> Array:
 	var me: String = str(_root._registry.local_player_id)

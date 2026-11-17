@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–225, 238–243, 248, 249, 252–254, 259–261, 264 and 268 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–225, 238–243, 248, 249, 252–254, 259–262, 264 and 268 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -31,14 +31,13 @@ introductions of the arcs they belonged to, are archived in
 Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
 see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
 phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
-comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–254, 259–261, 264, 268)
+comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–254, 259–262, 264, 268)
 have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
 [Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
 others are not in it.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 5 | 262 | Starting with nothing, and a tutorial that begins from bare hands |
 | 6 | 263 | Digging that shows at once: a predicted edit and a priority remesh |
 | 8 | 267 | Names a player can read: localized names for items, recipes, technologies, skills and professions |
 | 9 | 269 | Crafting by hand, and at the station |
@@ -290,7 +289,7 @@ everything for the whole tutorial.
 | 259 | Work takes time: bare hands, tools and a progress bar | Done |
 | 260 | Stone tools: an axe, a pick and a shovel from wood and stone, no bench | Done |
 | 261 | The newcomer grounds: a large, gentle spawn area with loose stones and branches | Done |
-| 262 | Starting with nothing, and a tutorial that begins from bare hands | Open |
+| 262 | Starting with nothing, and a tutorial that begins from bare hands | Done |
 | 263 | Digging that shows at once: a predicted edit and a priority remesh | Open |
 | 264 | Dropping part of a stack: a quantity slider | Done |
 | 265 | One body everywhere: the creation screen, the Character window and the world draw the same avatar | Open |
@@ -900,33 +899,6 @@ would be empty.
   and fails on a broken internal link (the generator's link check, or `lychee` over the output).
 - A GitHub issue asks the owner to enable Pages and Discussions; this phase records its number.
 - After the issue closes, the README's wiki link returns 200 from a CI step on `main`.
-
-## Phase 262 — Starting with nothing, and a tutorial that begins from bare hands
-
-Depends on Phases 259–261 and 268 (stations are crafted before this rewrite).
-
-- `CharacterCreation.startingKit` becomes empty. The `NoviceTunic` stays an item that can be made
-  (a cheap fibre or hide recipe) but is not handed out; a new character wears the base body's
-  plain clothes, which are part of the appearance, not an item, so nobody is shown naked and nothing
-  is given.
-- The tutorial (`fabric/gameplay/tutorial.js`) is rewritten to start from nothing: move, look, pick
-  up a branch and a stone, open the inventory, craft a stone axe (the crafting window), chop a tree,
-  craft a stone pick and shovel, dig soil, mine stone, then crafting and placing the first stations (Phase 268), bed, shelter,
-  first hunt (with a stone knife for the harvest), map and the rest. Each step's card names the
-  input and, where it helps, the place (for example "loose stones lie on the ground nearby").
-- `_first_hour_items` (`tutorial_tests.gd`) starts from an empty kit plus what bare hands, loose
-  items and the newcomer grounds give, and still reaches the bed, the first ferrite pick and the
-  first weapon.
-- Stress and playtest bots, which relied on the starting kit (`stress_clan_bots.gd`), gather or
-  craft what they need first, or are given items through a test-only path that real play cannot
-  reach.
-
-**Acceptance criteria**
-- `npm run validate` and `check-drift` pass; the creation validator accepts an empty kit.
-- Suite tests: a new character's bag and equipment are empty; the first-hour reach test passes from
-  an empty kit; every tutorial step's requirements name earlier steps (as now).
-- The playtest `create` step asserts an empty bag, and the `tutorial` step completes the moving,
-  gathering, first-tools, first-stations and first-hunt chapters from bare hands.
 
 ## Phase 263 — Digging that shows at once: a predicted edit and a priority remesh
 
