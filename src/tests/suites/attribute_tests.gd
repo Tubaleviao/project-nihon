@@ -7,8 +7,8 @@ const PlayerRules := preload("res://src/core/player_rules.gd")
 const GestureRules := preload("res://src/character/gesture_rules.gd")
 const AttributeRules := preload("res://src/character/attribute_rules.gd")
 const ATTRIBUTES := ["strength", "vitality", "resistance", "agility", "intelligence", "perception"]
-## fabric/gameplay/skills/shared.js SKILL_CATEGORIES (skill resources load the enum as an index).
-const SKILL_CATEGORIES := ["combat", "crafting", "magic", "exploration", "social", "survival"]
+## Phase 274 — the skill categories (fabric/gameplay/skills/shared.js SKILL_CATEGORIES, loaded by skill resources
+## as an index) are read from the fabric through AttributeRules.skill_categories(), never kept as a copy here.
 
 
 func register() -> void:
@@ -17,6 +17,7 @@ func register() -> void:
 	_run_test("attributes: base 10 reproduces today's carry capacity, max HP, regeneration and every neutral factor", _test_base_reproduces_today)
 	_run_test("attributes: the player starts at base in every attribute and has no fixed carry capacity", _test_player_defaults)
 	_run_test("attributes: every attribute and derived stat has a name in every locale", _test_catalog_keys)
+	_run_test("attributes: AttributeRules' skill categories equal the fabric's, in index order", _test_categories_from_fabric)
 	_run_test("attributes: AttributeRules.stat equals the fabric formula at the minimum, base and maximum of every row", _test_rules_match_formula)
 	_run_test("attributes: growth follows the cost table, has diminishing returns and stops at the caps", _test_growth)
 	_run_test("attributes: sanitize bounds a hostile or malformed table", _test_sanitize)
@@ -77,7 +78,7 @@ func _test_table_coverage() -> void:
 	for a in ATTRIBUTES:
 		assert_true(fed.has(a), "%s feeds a derived stat" % a)
 	var rows: Dictionary = (s.get("growth") as Dictionary)["categories"]
-	for c in SKILL_CATEGORIES:
+	for c in AttributeRules.skill_categories():
 		assert_true(rows.has(c), "skill category %s has a growth row" % c)
 		var sum := 0.0
 		for a in (rows.get(c, {}) as Dictionary):
@@ -86,7 +87,29 @@ func _test_table_coverage() -> void:
 		assert_true(absf(sum - 1.0) < 0.000001, "%s weights sum to 1" % c)
 	for skill in GameData.SKILLS:
 		var cat := int((GameData.SKILLS[skill] as Resource).get("category"))
-		assert_true(cat >= 0 and cat < SKILL_CATEGORIES.size(), "%s has a category with a growth row" % skill)
+		assert_true(cat >= 0 and cat < AttributeRules.skill_categories().size(), "%s has a category with a growth row" % skill)
+
+
+## Phase 274 — the categories come from GameData, and match the enum every generated skill resource holds.
+func _test_categories_from_fabric() -> void:
+	var cats := AttributeRules.skill_categories()
+	assert_true(cats.size() >= 6, "the fabric lists the skill categories (%d)" % cats.size())
+	assert_eq(cats[5] if cats.size() > 5 else "", "gathering", "gathering takes survival's place at index 5")
+	assert_false(cats.has("survival"), "survival is gone")
+	for skill in GameData.SKILLS:
+		var res := GameData.SKILLS[skill] as Resource
+		var script := res.get_script() as Script
+		var enum_map: Variant = script.get_script_constant_map().get("Category", null) if script != null else null
+		if not enum_map is Dictionary:
+			assert_true(false, "%s's resource has a Category enum" % skill)
+			continue
+		var names: Array = []
+		for k: String in (enum_map as Dictionary):
+			names.append(k.to_lower())
+		assert_eq(names, cats, "%s's category enum equals the fabric's SKILL_CATEGORIES" % skill)
+	for s in ["Mining", "Woodcutting", "Foraging", "Skinning"]:
+		assert_eq(AttributeRules.category_of_skill(s), "gathering", "%s is a gathering skill" % s)
+	assert_eq(AttributeRules.category_of_skill("Smithing"), "crafting", "Smithing stays a crafting skill")
 
 
 func _test_base_reproduces_today() -> void:
@@ -187,7 +210,7 @@ func _test_growth() -> void:
 	var a4 := AttributeRules.defaults()
 	var g4 := AttributeRules.empty_growth()
 	for _i in 400:
-		for c in AttributeRules.SKILL_CATEGORIES:
+		for c in AttributeRules.skill_categories():
 			AttributeRules.grow(a4, g4, c, AttributeRules.MAX_GRANT_XP)
 	assert_eq(AttributeRules.total_points(g4), int(g["totalPointsCap"]), "growth stops at the total points cap")
 	var sum := 0
@@ -196,7 +219,7 @@ func _test_growth() -> void:
 		sum += int(a4[a]) - 10
 	assert_eq(sum, int(g["totalPointsCap"]), "attribute values add up to the grown points")
 	# Every skill resolves to a category with a growth row.
-	assert_eq(AttributeRules.category_of_skill("Skinning"), "survival", "Skinning is a survival skill")
+	assert_eq(AttributeRules.category_of_skill("Skinning"), "gathering", "Skinning is a gathering skill")
 	assert_eq(AttributeRules.category_of_skill("Nope"), "", "an unknown skill has no category")
 
 
@@ -238,7 +261,7 @@ func _test_registry_growth() -> void:
 	var seen := []
 	var on_sync := func(pid: String, attrs: Dictionary) -> void: seen.append([pid, attrs.duplicate()])
 	GameBus.attributes_synced.connect(on_sync)
-	var cost := int(float((_system().get("growth") as Dictionary)["xpPerPoint"]) * 2.0)   # survival: half Vitality, half Perception
+	var cost := int(float((_system().get("growth") as Dictionary)["xpPerPoint"]) * 2.0)   # gathering: half Vitality, half Perception
 	assert_eq(reg.grant_skill_xp("p", "Skinning", cost - 2), [], "not enough XP gains nothing")
 	assert_eq(seen.size(), 1, "the sync still goes out so the owner's growth bar moves")
 	assert_eq(int(seen[0][1]["vitality"]), 10, "carrying the unchanged table")

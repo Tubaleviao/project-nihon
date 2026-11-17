@@ -267,8 +267,10 @@ const SKILLS: Dictionary = {
 		"Diplomacy": preload("res://godot/skills/diplomacy.tres"),
 		"ElementalMagic": preload("res://godot/skills/elementalmagic.tres"),
 		"Enchanting": preload("res://godot/skills/enchanting.tres"),
+		"Foraging": preload("res://godot/skills/foraging.tres"),
 		"Leadership": preload("res://godot/skills/leadership.tres"),
 		"Lockpicking": preload("res://godot/skills/lockpicking.tres"),
+		"Mining": preload("res://godot/skills/mining.tres"),
 		"Navigation": preload("res://godot/skills/navigation.tres"),
 		"RestorationMagic": preload("res://godot/skills/restorationmagic.tres"),
 		"Shieldcraft": preload("res://godot/skills/shieldcraft.tres"),
@@ -282,7 +284,8 @@ const SKILLS: Dictionary = {
 		"Trade": preload("res://godot/skills/trade.tres"),
 		"Unarmed": preload("res://godot/skills/unarmed.tres"),
 		"VoidMagic": preload("res://godot/skills/voidmagic.tres"),
-		"VoidSmithing": preload("res://godot/skills/voidsmithing.tres")
+		"VoidSmithing": preload("res://godot/skills/voidsmithing.tres"),
+		"Woodcutting": preload("res://godot/skills/woodcutting.tres")
 }
 
 const SYSTEMS: Dictionary = {

@@ -2,16 +2,20 @@
 // Phase 203 — proves the work-skill validator catches bad tables: a crafting domain, a material family or a kind
 // of work (building, dismantling, repairing, lockpicking) that grows no skill, an unknown skill, a row that credits
 // a clan, an XP of zero, a new skill's XP curve that falls and a tier table that does not rise all fail; the
-// shipped tables pass.
+// shipped tables pass. Phase 274: a gather row naming a skill outside the gathering category, a skill whose
+// category is not in SKILL_CATEGORIES, a gathering skill with no tier bonus and a tier bonus that does not rise
+// or names unknown work all fail.
 //   node tools/check_work.js
 'use strict';
 const w = require('../fabric/gameplay/work');
 const refs = w.workRefs();
 let failed = 0;
-function expect(label, mutate, pattern) {
+function expect(label, mutate, pattern, mutateRefs = () => {}) {
   const d = w.workData();
   mutate(d);
-  const problems = w.workProblems(d, refs);
+  const r = JSON.parse(JSON.stringify(refs));
+  mutateRefs(r);
+  const problems = w.workProblems(d, r);
   const ok = pattern === null ? problems.length === 0 : problems.some((p) => pattern.test(p));
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${label}${ok ? '' : ' — ' + JSON.stringify(problems)}`);
   if (!ok) failed++;
@@ -35,6 +39,19 @@ expect('a tier table missing a tier fails', (d) => { delete d.tiers.master; }, /
 expect('a novice threshold above 0 fails', (d) => { d.tiers.novice = 5; }, /tiers\.novice must be 0/);
 expect('an unknown tier fails', (d) => { d.tiers.legend = 9000; }, /tiers\.legend is not a tier/);
 expect('a missing new skill curve fails', (d) => { delete d.curves.Lockpicking; }, /curves\.Lockpicking is missing/);
+
+// Phase 274 — gathering skills.
+expect('mining stone for Building fails', (d) => { d.work.gather.stone.skill = 'Building'; }, /gather\.stone\.skill "Building" is a crafting skill: gathering grows only gathering skills/);
+expect('mining ore for Smithing fails', (d) => { d.work.gather.metal.skill = 'Smithing'; }, /gather\.metal\.skill "Smithing" is a crafting skill/);
+expect('a skill whose category is not in SKILL_CATEGORIES fails', () => {}, /skill Mining: category "survival" is not in SKILL_CATEGORIES/, (r) => { r.categories.Mining = 'survival'; });
+expect('a gathering skill with no tier bonus fails', (d) => { delete d.bonuses.Woodcutting; }, /bonuses\.Woodcutting is missing/);
+expect('a tier that gives nothing fails', (d) => { d.bonuses.Mining.byTier.expert = d.bonuses.Mining.byTier.journeyman; }, /bonuses\.Mining\.byTier\.expert does not rise above journeyman/);
+expect('a novice bonus fails', (d) => { d.bonuses.Mining.byTier.novice = 1.2; }, /bonuses\.Mining\.byTier\.novice must be 1/);
+expect('an unknown bonus effect fails', (d) => { d.bonuses.Foraging.effect = 'luck'; }, /bonuses\.Foraging\.effect "luck"/);
+expect('a bonus on unknown work fails', (d) => { d.bonuses.Mining.work.push('fish'); }, /bonuses\.Mining\.work "fish"/);
+expect('two speed bonuses on one action fail', (d) => { d.bonuses.Woodcutting.work.push('mine'); }, /work "mine" already has a speed bonus from Mining/);
+expect('a tier bonus on a crafting skill fails', (d) => { d.bonuses.Smithing = JSON.parse(JSON.stringify(d.bonuses.Foraging)); }, /bonuses\.Smithing: Smithing is not a gathering skill/);
+expect('a gathering skill with no curve fails', (d) => { delete d.curves.Mining; }, /curves\.Mining is missing/);
 
 let threw = false;
 try { const d = w.workData(); delete d.work.build; w.validateWork(d, refs); } catch (e) { threw = true; }

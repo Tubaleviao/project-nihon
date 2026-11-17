@@ -16,6 +16,7 @@ Which skill each kind of work grows, and by how much: crafting in each domain, g
 | `curves` | json | yes | XP curves of the skills added in Phase 203: { <skill>: { levelCap, xpToLevel } } |
 | `tiers` | json | yes | Phase 207 review — cumulative XP in a skill at which each tier is reached: { novice: 0, apprentice, journeyman, expert, master } |
 | `families` | json | yes | Phase 207 — each material's gather family { <material>: metal \| stone \| wood \| soil }, derived from the material files |
+| `bonuses` | json | yes | Phase 274 — what each tier of a gathering skill gives: { <skill>: { work: [dig\|mine\|chop\|forage], effect: speed \| yield, byTier: { <tier>: factor } } } |
 
 ## Relations
 

@@ -11,7 +11,8 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 const CATALOG = path.join(ROOT, 'locale', 'content.csv');
-const FIELDS = { item: ['name', 'desc'], recipe: ['name'], tech: ['name', 'desc'], skill: ['name', 'desc'], profession: ['name'], station: ['name'] };
+// Phase 274 — `category.<id>.name` names each skill category (skills/shared.js SKILL_CATEGORIES).
+const FIELDS = { item: ['name', 'desc'], recipe: ['name'], tech: ['name', 'desc'], skill: ['name', 'desc'], profession: ['name'], station: ['name'], category: ['name'] };
 
 // RFC 4180: quoted cells may hold commas, quotes ("") and newlines.
 function parseCsv(text) {
@@ -86,6 +87,7 @@ function fabricRefs() {
     skill: new Set(tagged('skill')),
     profession: new Set(tagged('profession')),
     station: new Set([...stations].map(stationKey)),
+    category: new Set(require('../fabric/gameplay/skills/shared').SKILL_CATEGORIES),
   };
 }
 
@@ -104,7 +106,7 @@ function contentLocaleProblems(cat, refs) {
   }
   const named = (key, l) => have.has(key) && have.get(key)[l];
   for (const l of cat.locales) {
-    for (const kind of ['item', 'tech', 'skill', 'profession', 'station']) {
+    for (const kind of ['item', 'tech', 'skill', 'profession', 'station', 'category']) {
       for (const id of refs[kind]) if (!named(`${kind}.${id}.name`, l)) problems.push(`${kind}.${id}.name: no ${l} name`);
     }
     for (const [id, out] of refs.recipe) {
@@ -134,6 +136,7 @@ if (require.main === module) {
   expect('a stale key fails', (c) => { c.rows.push({ key: 'item.RemovedSword.name', cells: { en: 'Removed', pt_BR: 'Removida' } }); }, /item\.RemovedSword\.name: stale key/);
   expect('an unknown kind fails', (c) => { c.rows.push({ key: 'creature.ForestBoar.name', cells: { en: 'Boar', pt_BR: 'Javali' } }); }, /not <kind>/);
   expect('a duplicate key fails', (c) => { c.rows.push({ ...row(c, 'tech.TechSteel.name') }); }, /tech\.TechSteel\.name: duplicate key/);
+  expect('a skill category with no name fails', (c) => { c.rows = c.rows.filter((r) => r.key !== 'category.gathering.name'); }, /category\.gathering\.name: no en name/);
   expect('a station with no name fails', (c) => { c.rows = c.rows.filter((r) => r.key !== 'station.master_forge.name'); }, /station\.master_forge\.name: no en name/);
   expect('a recipe with neither its own nor its output name fails', (c) => {
     c.rows = c.rows.filter((r) => r.key !== 'recipe.RecipeHealthPotion.name' && r.key !== 'item.AlchemyPotion.name');

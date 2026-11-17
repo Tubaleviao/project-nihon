@@ -14,6 +14,10 @@ const FOUNDER := 0
 const OUTSIDER := 4
 ## Seconds between two reads of the probe's loose-item listing (it refreshes with the trees, every 2 s).
 const TREES_WAIT_S := 2.5
+## Ferrite the smith spends in the chest chain: 4 researching smithing, 2 for the ingot.
+const SMITH_FERRITE := 6
+## Most layers the smith digs looking for that Ferrite.
+const DIG_MAX := 10
 
 var bots: Array = []
 var live_path := ""
@@ -126,17 +130,27 @@ func run() -> void:
 	_beat("accept", "host clan has %d members" % int(live().get("world", {}).get("members", 0)), full)
 	if not full:
 		return _finish()
-	# work: bots 0-2 mine the top layers, bot 3 digs deeper, so ore and soil grow different skills.
+	# work: bots 0-1 mine the top layers, bot 3 digs deeper (its ore feeds the chest chain), and bot 2 mines a few
+	# top layers and then builds with what it dug, so the members' highest skills differ. Phase 274: stone, ore and
+	# soil all grow Mining, so mining alone gives every member the same highest skill; placing grows Building.
 	# Phase 259: each mine is timed work the host starts and times. The bots stand on one tile, so they work one
 	# after another (a second worker on the same block would find it gone when the first completes).
+	# The digger keeps going (up to `DIG_MAX` layers) until it holds the Ferrite the chest chain spends: the ore
+	# under a spawn varies with the minted player ids, and five of six layers of ore left it one ingot short.
+	var mason := StressClanRules.MEMBERS - 2
+	var digger := StressClanRules.MEMBERS - 1
 	for i in range(StressClanRules.MEMBERS):
 		var at: Dictionary = (bots[i] as Dictionary)["anchor"]
-		for k in range(6):
-			var depth := 0.5 + float(k) + (4.0 if i == StressClanRules.MEMBERS - 1 else 0.0)
+		var pid := str(_slice(i).claimed_player_id)
+		for k in range(3 if i == mason else (DIG_MAX if i == digger else 6)):
+			if i == digger and k >= 6 and await _until(func(): return _count(pid, "Ferrite") >= SMITH_FERRITE, 2.0):
+				break
+			var depth := 0.5 + float(k) + (4.0 if i == digger else 0.0)
 			var pos := WorldPos.normalized({ "chunk": at["chunk"], "local": (at["local"] as Vector3) + Vector3(0.0, -depth, 0.0) })
 			await _hold_work([[i, "block", "", pos]])
 			_slice(i).send_edit("mine", pos, Vector3.UP)
 			await get_tree().create_timer(0.3).timeout
+	await _build_with_dug(mason)
 	var differ := await _until(func(): return _seen("skills_differ"), 20.0)
 	_beat("work", "host skills: %s" % JSON.stringify(live().get("world", {}).get("skills", {})), differ)
 	if not differ:
@@ -296,6 +310,28 @@ func run() -> void:
 	_beat("outsider_build", "host refused the non-member's block on the clan's structure" if key != "" else "no refusal seen", key != "", key)
 	print("[Clan] refusals %s" % JSON.stringify(live().get("refusals", [])))
 	_finish()
+
+## PR #644 review — bot `i` builds with the ground it dug, so its highest skill is Building, not Mining. It builds
+## as the clan: a private block left standing would end the `dismantle_private` beat early (the probe would see
+## a private structure before that beat and never see it gone). Each placed block grows Building by the fabric's
+## `build` XP, more than each mined unit grows Mining, so placing what it dug puts Building on top.
+func _build_with_dug(i: int) -> void:
+	for _try in range(2):   # a rate-limited `/buildas` leaves the bot building private blocks
+		_slice(i).send_chat("/buildas clan")
+		await get_tree().create_timer(1.0).timeout
+	var pid := str(_slice(i).claimed_player_id)
+	var pack: Dictionary = live().get("world", {}).get("inventories", {}).get(pid, {})
+	var mat := "Soil"
+	var most := 0
+	for k: Variant in pack.keys():
+		if GameData.MATERIALS.has(str(k)) and int(pack[k]) > most:
+			most = int(pack[k])
+			mat = str(k)
+	var at: Dictionary = (bots[i] as Dictionary)["anchor"]
+	for k in range(maxi(most, 2)):
+		var pos := WorldPos.normalized({ "chunk": at["chunk"], "local": (at["local"] as Vector3) + Vector3(4.0, -0.5 + float(k) * 0.5, 1.0) })
+		_slice(i).send_edit("place", pos, Vector3.UP, mat)
+		await get_tree().create_timer(0.4).timeout
 
 ## Bot `i` walks to and chops `count` trees from `trees[first]` on.
 func _chop(i: int, trees: Array, first: int, count: int) -> void:

@@ -11,3 +11,4 @@ extends Resource
 @export var hardCap: int
 @export var derivation: Dictionary
 @export var growth: Dictionary
+@export var skillCategories: Array

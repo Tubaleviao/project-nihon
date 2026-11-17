@@ -273,8 +273,10 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [Diplomacy](entities/diplomacy.md) — Negotiating with NPC factions, guilds, and governing bodies to obtain favourable terms, treaties, or permissions
 - [ElementalMagic](entities/elementalmagic.md) — Manipulation of the four classical elements — fire, earth, air, and water
 - [Enchanting](entities/enchanting.md) — Imbuing refined items and materials with persistent magical effects using aethermite catalysts
+- [Foraging](entities/foraging.md) — Gathering plants, herbs and fruit by hand
 - [Leadership](entities/leadership.md) — Inspiring and coordinating allies in combat and in civic roles
 - [Lockpicking](entities/lockpicking.md) — Opening a locked chest or door without breaking it
+- [Mining](entities/mining.md) — Breaking stone, ore and soil with a pick or a shovel
 - [Navigation](entities/navigation.md) — Wayfinding without landmarks using stars, moss growth, wind direction, and terrain features
 - [RestorationMagic](entities/restorationmagic.md) — Healing, shielding, and cleansing magic
 - [Shieldcraft](entities/shieldcraft.md) — Techniques for using a shield offensively and defensively — blocking, parrying, bashing, and forming protective stances
@@ -289,6 +291,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [Unarmed](entities/unarmed.md) — Hand-to-hand fighting techniques including strikes, grapples, and throws
 - [VoidMagic](entities/voidmagic.md) — Channelling of void energy — entropic, corrupting, and capable of bypassing conventional magical resistance
 - [VoidSmithing](entities/voidsmithing.md) — Esoteric art of working with void-touched materials, primarily Voidite, inside a specially shielded forge room
+- [Woodcutting](entities/woodcutting.md) — Felling trees and cutting wood with an axe
 
 ## System
 

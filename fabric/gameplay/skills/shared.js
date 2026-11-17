@@ -2,7 +2,9 @@ const { defineEntity } = require('@newel/core')
 
 const SKILL_TIERS = ['novice', 'apprentice', 'journeyman', 'expert', 'master']
 // The one skill-category enum: every skill file reads it, and tools/gen_ui_icons.py needs a frame per entry.
-const SKILL_CATEGORIES = ['combat', 'crafting', 'magic', 'exploration', 'social', 'survival']
+// Skill resources load the category as an index, so a new category is appended (Phase 274: `gathering` took
+// `survival`'s place at index 5).
+const SKILL_CATEGORIES = ['combat', 'crafting', 'magic', 'exploration', 'social', 'gathering']
 
 function skillStateMachine() {
   return {

@@ -8,6 +8,10 @@ const { defineEntity } = require('@newel/core')
 //           the sewing domain (its recipes arrive with Phase 207).
 // `gather`: what is gathered -> { skill, xp } one row per material family (a mined or chopped unit of
 //           that family) plus `plant` (foraged) and `carcass` (a skinned body: the only Skinning XP source).
+//           Phase 274 — every gather row names a skill of the `gathering` category, by the tool the work
+//           wants: pick (stone, metal) and shovel (soil) grow Mining, the axe (wood) Woodcutting, plants
+//           Foraging and carcasses Skinning. Crafting skills grow only from `craft` rows, Building only from
+//           placing, dismantling and repairing.
 // `build`, `dismantle`, `repair`, `lockpick`: { skill, xp } per placed block, per dismantled block, per
 //           repair and per picked lock.
 // A row is exactly { skill, xp }: a row that names a clan, a target or anything else fails, so no work
@@ -22,31 +26,54 @@ const { defineEntity } = require('@newel/core')
 const LEVEL_CAP = 10
 const levels = (f) => Array.from({ length: LEVEL_CAP + 1 }, (_, l) => f(l))
 
+// Phase 274 — gathering no longer feeds Building, so its curve is gentler (50 l² before) and a placed block
+// grants 2 XP (1 before); the crafting rows grant 12 XP (8 before) for the ore, wood and plants that no longer
+// count, so Building, Smithing, Carpentry and Alchemy still reach their tiers in play. The gathering skills
+// get curves of their own.
 const SKILL_CURVES = {
-  Building:    { levelCap: LEVEL_CAP, xpToLevel: levels((l) => 50 * l * l) },
+  Building:    { levelCap: LEVEL_CAP, xpToLevel: levels((l) => 35 * l * l) },
+  Mining:      { levelCap: LEVEL_CAP, xpToLevel: levels((l) => 40 * l * l) },
+  Woodcutting: { levelCap: LEVEL_CAP, xpToLevel: levels((l) => 40 * l * l) },
+  Foraging:    { levelCap: LEVEL_CAP, xpToLevel: levels((l) => 30 * l * l) },
   Tailoring:   { levelCap: LEVEL_CAP, xpToLevel: levels((l) => 40 * l * l) },
   Lockpicking: { levelCap: LEVEL_CAP, xpToLevel: levels((l) => 60 * l * l) },
 }
 
 const TIER_XP = { novice: 0, apprentice: 100, journeyman: 400, expert: 1200, master: 3000 }
 
+// Phase 274 — what each tier of a gathering skill gives (Phase 271 shows a node per tier). `work` names the
+// actions it applies to (WorkTimes actions dig / mine / chop, or `forage`); `effect` is `speed` (a factor on
+// the work speed, on top of the held tool's: seconds = workSeconds / (toolSpeed * factor)) or `yield` (a
+// factor on the units a gather gives). Novice is 1 (no bonus) and every later tier gives more.
+// Skinning's tiers live in its own harvest curves (harvest.js), so it has no row here.
+const TIER_BONUSES = {
+  Mining:      { work: ['mine', 'dig'], effect: 'speed', byTier: { novice: 1, apprentice: 1.1, journeyman: 1.2, expert: 1.35, master: 1.5 } },
+  Woodcutting: { work: ['chop'],        effect: 'speed', byTier: { novice: 1, apprentice: 1.1, journeyman: 1.2, expert: 1.35, master: 1.5 } },
+  Foraging:    { work: ['forage'],      effect: 'yield', byTier: { novice: 1, apprentice: 1.15, journeyman: 1.3, expert: 1.5, master: 1.75 } },
+}
+const TIER_BONUS_SKILLS = ['Mining', 'Woodcutting', 'Foraging']
+const BONUS_EFFECTS = ['speed', 'yield']
+const BONUS_WORK = ['dig', 'mine', 'chop', 'forage']
+// The category every gather row's skill belongs to.
+const GATHERING = 'gathering'
+
 const WORK = {
   craft: {
-    smithing:  { skill: 'Smithing', xp: 8 },
-    carpentry: { skill: 'Carpentry', xp: 8 },
-    alchemy:   { skill: 'Alchemy', xp: 8 },
+    smithing:  { skill: 'Smithing', xp: 12 },
+    carpentry: { skill: 'Carpentry', xp: 12 },
+    alchemy:   { skill: 'Alchemy', xp: 12 },
     arcane:    { skill: 'ArcaneForging', xp: 10 },
     tailoring: { skill: 'Tailoring', xp: 8 },
   },
   gather: {
-    metal:   { skill: 'Smithing', xp: 2 },
-    stone:   { skill: 'Building', xp: 2 },
-    wood:    { skill: 'Carpentry', xp: 2 },
-    soil:    { skill: 'Building', xp: 1 },
-    plant:   { skill: 'Alchemy', xp: 2 },
+    metal:   { skill: 'Mining', xp: 2 },
+    stone:   { skill: 'Mining', xp: 2 },
+    wood:    { skill: 'Woodcutting', xp: 2 },
+    soil:    { skill: 'Mining', xp: 1 },
+    plant:   { skill: 'Foraging', xp: 2 },
     carcass: { skill: 'Skinning', xp: 10 },
   },
-  build:     { skill: 'Building', xp: 1 },
+  build:     { skill: 'Building', xp: 2 },
   dismantle: { skill: 'Building', xp: 2 },
   repair:    { skill: 'Building', xp: 3 },
   lockpick:  { skill: 'Lockpicking', xp: 15 },
@@ -76,7 +103,7 @@ const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
 
 /** The work and curve tables as plain data. */
 function workData() {
-  return JSON.parse(JSON.stringify({ work: WORK, curves: SKILL_CURVES, tiers: TIER_XP }))
+  return JSON.parse(JSON.stringify({ work: WORK, curves: SKILL_CURVES, tiers: TIER_XP, bonuses: TIER_BONUSES }))
 }
 
 /** What the work table must cover and may name (required lazily: skills require this file). */
@@ -90,8 +117,17 @@ function workRefs() {
     if (f.recipe && f.recipe.defaultValue && f.recipe.defaultValue.domain) domains.add(f.recipe.defaultValue.domain)
     for (const v of (f.domain && f.domain.values) || []) domains.add(v)
   }
+  const skillTable = require('./skills')
+  const { SKILL_CATEGORIES } = require('./skills/shared')
+  const categories = {}
+  for (const k of tagged(skillTable, 'skill')) {
+    const f = skillTable[k].fields && skillTable[k].fields.category
+    categories[k] = f ? f.defaultValue : undefined
+  }
   return {
-    skills: tagged(require('./skills'), 'skill'),
+    skills: tagged(skillTable, 'skill'),
+    categories,
+    skillCategories: [...SKILL_CATEGORIES],
     domains: [...domains],
     families: Object.fromEntries(Object.entries(FAMILY_FILES).map(([fam, file]) => [fam, Object.keys(require(`../world/materials/${file}`))])),
   }
@@ -118,7 +154,16 @@ function workProblems(data, refs) {
     if (!(fam in gather)) p.push(`WorkSkills.gather.${fam} is missing: gathering ${mats.join(', ')} must grow a skill`)
   }
   for (const k of ['plant', 'carcass']) if (!(k in gather)) p.push(`WorkSkills.gather.${k} is missing`)
-  for (const [k, row] of Object.entries(gather)) p.push(...rowProblems(`WorkSkills.gather.${k}`, row, refs.skills))
+  for (const [k, row] of Object.entries(gather)) {
+    p.push(...rowProblems(`WorkSkills.gather.${k}`, row, refs.skills))
+    if (isObj(row) && refs.skills.includes(row.skill) && refs.categories[row.skill] !== GATHERING) {
+      p.push(`WorkSkills.gather.${k}.skill "${row.skill}" is a ${refs.categories[row.skill]} skill: gathering grows only ${GATHERING} skills`)
+    }
+  }
+  // Phase 274 — every skill sits in a category of SKILL_CATEGORIES (skill resources load it as an index).
+  for (const [skill, cat] of Object.entries(refs.categories || {})) {
+    if (!(refs.skillCategories || []).includes(cat)) p.push(`skill ${skill}: category "${cat}" is not in SKILL_CATEGORIES`)
+  }
   for (const k of SINGLE_KINDS) {
     if (!(k in w)) p.push(`WorkSkills.${k} is missing: every kind of work grows a skill`)
     else p.push(...rowProblems(`WorkSkills.${k}`, w[k], refs.skills))
@@ -133,7 +178,7 @@ function workProblems(data, refs) {
     if (c.xpToLevel[0] !== 0) p.push(`${at}.xpToLevel must start at 0 for level 0`)
     for (let l = 1; l < c.xpToLevel.length; l++) if (!(c.xpToLevel[l] > c.xpToLevel[l - 1])) p.push(`${at}.xpToLevel does not rise at level ${l}`)
   }
-  for (const s of ['Building', 'Tailoring', 'Lockpicking']) if (!(s in (data.curves || {}))) p.push(`WorkSkills.curves.${s} is missing`)
+  for (const s of ['Building', 'Tailoring', 'Lockpicking', ...TIER_BONUS_SKILLS]) if (!(s in (data.curves || {}))) p.push(`WorkSkills.curves.${s} is missing`)
 
   const tiers = isObj(data.tiers) ? data.tiers : {}
   const { SKILL_TIERS } = require('./skills/shared')
@@ -143,6 +188,32 @@ function workProblems(data, refs) {
     else if (i === 0 && tiers[t] !== 0) p.push(`WorkSkills.tiers.${t} must be 0: every skill starts there`)
     else if (i > 0 && !(tiers[t] > tiers[SKILL_TIERS[i - 1]])) p.push(`WorkSkills.tiers.${t} does not rise above ${SKILL_TIERS[i - 1]}`)
   })
+
+  // Phase 274 — each tier of Mining, Woodcutting and Foraging gives something.
+  const bonuses = isObj(data.bonuses) ? data.bonuses : {}
+  for (const s of TIER_BONUS_SKILLS) if (!(s in bonuses)) p.push(`WorkSkills.bonuses.${s} is missing: each tier of a gathering skill gives a bonus`)
+  const claimed = {}
+  for (const [skill, b] of Object.entries(bonuses)) {
+    const at = `WorkSkills.bonuses.${skill}`
+    if (!refs.skills.includes(skill)) { p.push(`${at}: "${skill}" is not a skill`); continue }
+    if (refs.categories[skill] !== GATHERING) p.push(`${at}: ${skill} is not a ${GATHERING} skill`)
+    if (!isObj(b)) { p.push(`${at} must be { work, effect, byTier }`); continue }
+    if (!BONUS_EFFECTS.includes(b.effect)) p.push(`${at}.effect "${b.effect}" is not one of ${BONUS_EFFECTS.join(', ')}`)
+    if (!Array.isArray(b.work) || b.work.length === 0) p.push(`${at}.work must name the work it applies to`)
+    for (const w of Array.isArray(b.work) ? b.work : []) {
+      if (!BONUS_WORK.includes(w)) p.push(`${at}.work "${w}" is not one of ${BONUS_WORK.join(', ')}`)
+      else if (claimed[`${b.effect}:${w}`]) p.push(`${at}.work "${w}" already has a ${b.effect} bonus from ${claimed[`${b.effect}:${w}`]}`)
+      else claimed[`${b.effect}:${w}`] = skill
+    }
+    const by = isObj(b.byTier) ? b.byTier : {}
+    for (const k of Object.keys(by)) if (!SKILL_TIERS.includes(k)) p.push(`${at}.byTier.${k} is not a tier`)
+    SKILL_TIERS.forEach((t, i) => {
+      const v = by[t]
+      if (typeof v !== 'number' || !Number.isFinite(v)) p.push(`${at}.byTier.${t} must be a number`)
+      else if (i === 0 && v !== 1) p.push(`${at}.byTier.novice must be 1: a novice works at the tool's speed and yield`)
+      else if (i > 0 && !(v > by[SKILL_TIERS[i - 1]])) p.push(`${at}.byTier.${t} does not rise above ${SKILL_TIERS[i - 1]}: every tier gives something`)
+    })
+  }
   return p
 }
 
@@ -164,6 +235,7 @@ const WorkSkills = defineEntity({
     curves: { type: 'json', description: 'XP curves of the skills added in Phase 203: { <skill>: { levelCap, xpToLevel } }', defaultValue: SKILL_CURVES },
     tiers:  { type: 'json', description: 'Phase 207 review — cumulative XP in a skill at which each tier is reached: { novice: 0, apprentice, journeyman, expert, master }', defaultValue: TIER_XP },
     families: { type: 'json', description: 'Phase 207 — each material\'s gather family { <material>: metal | stone | wood | soil }, derived from the material files', defaultValue: FAMILIES },
+    bonuses:  { type: 'json', description: 'Phase 274 — what each tier of a gathering skill gives: { <skill>: { work: [dig|mine|chop|forage], effect: speed | yield, byTier: { <tier>: factor } } }', defaultValue: TIER_BONUSES },
   },
   relations: {
     decision: { name: 'decision', kind: 'hasOne', target: 'SkillsGrowFromWork' },
@@ -180,4 +252,4 @@ const WorkSkills = defineEntity({
   },
 })
 
-module.exports = { LEVEL_CAP, SKILL_CURVES, TIER_XP, WORK, FAMILIES, materialFamilies, workData, workRefs, workProblems, validateWork, WorkSkills }
+module.exports = { LEVEL_CAP, SKILL_CURVES, TIER_XP, TIER_BONUSES, GATHERING, WORK, FAMILIES, materialFamilies, workData, workRefs, workProblems, validateWork, WorkSkills }

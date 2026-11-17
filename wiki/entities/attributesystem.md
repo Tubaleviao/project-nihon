@@ -22,6 +22,7 @@ The six character attributes (Strength, Vitality, Resistance, Agility, Intellige
 | hardCap | integer | No attribute grows above this value |
 | derivation | json | Derived stats: { <stat>: { attribute, kind, base, perPoint, perPointBelow, min, max, unit? } }; stat = clamp(base + slope * (value - attribute base), min, max), slope = perPointBelow under the base, perPoint at or above it |
 | growth | json | Growth from skill XP: { xpPerPoint, costStep, totalPointsCap, categories: { <skill category>: { <attribute>: weight } } }; the next point of an attribute that has grown g points costs xpPerPoint * (1 + costStep * g) weighted XP |
+| skillCategories | json | Phase 274 — the skill-category enum in index order (skills/shared.js SKILL_CATEGORIES); a skill resource holds its category as an index into this list, so the runtime reads the names here instead of keeping a copy |
 
 ## Actions
 

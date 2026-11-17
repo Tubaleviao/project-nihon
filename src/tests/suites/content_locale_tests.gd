@@ -7,6 +7,7 @@ extends "res://src/tests/test_support.gd"
 const I18n := preload("res://src/core/i18n.gd")
 const StationSliceScript := preload("res://src/world/station_slice.gd")
 const WritingRules := preload("res://src/technology/writing_rules.gd")
+const AttributeRules := preload("res://src/character/attribute_rules.gd")
 
 func register() -> void:
 	_run_test("content locale: every content key has text in en and pt_BR, once, and none is also a UI key", _test_catalog_complete)
@@ -51,6 +52,7 @@ static func entity_ids() -> Dictionary:
 		"skill": GameData.SKILLS.keys(),
 		"profession": GameData.PROFESSIONS.keys(),
 		"station": stations,
+		"category": AttributeRules.skill_categories(),   # Phase 274
 	}
 
 func _test_every_entity_resolves() -> void:

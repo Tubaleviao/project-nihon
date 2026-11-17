@@ -1,0 +1,18 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/skills/woodcutting.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+tier = 0
+xpCurve = 0
+maxLevel = 10
+category = 5
+levelCap = 10
+xpToLevel = [0,40,160,360,640,1000,1440,1960,2560,3240,4000]
+tierBonus = {"work":["chop"],"effect":"speed","byTier":{"novice":1,"apprentice":1.1,"journeyman":1.2,"expert":1.35,"master":1.5}}
+state_machine_field = "tier"
+initial_state = "novice"
+description = "Felling trees and cutting wood with an axe. Every unit of wood cut grows it; each tier makes chopping faster, on top of the axe's own speed."
+tags = ["skill"]

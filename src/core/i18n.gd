@@ -11,7 +11,8 @@ const CATALOG_PATH := "res://locale/ui.csv"
 ## Phase 267 — the content catalog: names and descriptions of fabric entities, keyed
 ## `<kind>.<Id>.<field>` (`item.FerritePick.name`, `station.master_forge.name`), same columns.
 const CONTENT_PATH := "res://locale/content.csv"
-const CONTENT_KINDS := ["item", "recipe", "tech", "skill", "profession", "station"]
+## Phase 274 — `category.<id>.name` names a skill category (AttributeSystem.skillCategories).
+const CONTENT_KINDS := ["item", "recipe", "tech", "skill", "profession", "station", "category"]
 ## What a release build shows for a content key the catalog lacks (never the bare id).
 const CONTENT_UNKNOWN_KEY := "content.unknown"
 ## A message arg that names content travels as `§<kind>:<Id>[,<Id>..]` (`ref()`); each client renders it.
