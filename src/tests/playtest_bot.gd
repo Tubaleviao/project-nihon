@@ -1816,15 +1816,21 @@ func _step_tutorial() -> Array:
 	# Phase 262 — the chapters now begin from bare hands. What the earlier steps do not cover is done the player's
 	# way: the branches and stones are put in the pack (a test-only grant standing for the pick-ups on the ground; the
 	# pack scan reads them as gathered), then every stone tool and the carpentry bench are crafted by hand.
-	_root._inventory.add_item("Branch", 12)
-	_root._inventory.add_item("LooseStone", 14)
+	_root._inventory.add_item("Branch", 10)
+	_root._inventory.add_item("LooseStone", 8)
 	_root._inventory.add_item("Soil", 1)   # the dig the shovel makes
+	_root._inventory.add_item("Ferrite", 1)   # the rock the pick mines
 	await _until(func(): return false, 0.3)
 	for recipe in ["RecipeStoneAxe", "RecipeStonePick", "RecipeStoneShovel", "RecipeStoneKnife", "RecipeStoneHammer", "RecipeCarpentryBench"]:
 		var made := _crafted.size()
 		GameBus.craft_requested.emit(recipe)
 		if not await _until(func(): return _crafted.size() > made, STEP_TIMEOUT_SECS) or not bool(_crafted.back().get("success", false)):
 			return [false, "%s: %s" % [recipe, str(_crafted.back().get("reason", "")) if _crafted.size() > made else "no craft_resolved"]]
+	# The bench just made is not placed (the session's own bench stands): its weight must not crowd the forge out.
+	for leftover in ["CarpentryBench", "Branch", "Soil", "Ferrite"]:
+		var held: int = int(_root._inventory.get_item_count(leftover))
+		if held > 0:
+			_root._inventory.consume_items({ leftover: held })
 	var bench := ""
 	for p in _placed:
 		if str(p[1]) == "carpentry bench":
