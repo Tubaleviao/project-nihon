@@ -45,6 +45,8 @@ var _seen: Dictionary = {}
 ## Refusals: [{ "who", "kind", "key" }] from chest_resolved and system_message.
 var _refusals: Array = []
 var _private_seen := false
+## Members already handed the work tools (`_grant_tools`).
+var _tooled: Dictionary = {}
 var _private_gone := false
 var _written := false
 var _last_full: Dictionary = {}
@@ -158,6 +160,7 @@ func world_record() -> Dictionary:
 	var inventories := {}
 	for pid: Variant in members.keys():
 		var inv: Node = _root._registry.get_inventory(str(pid))
+		_grant_tools(str(pid), inv)
 		inventories[str(pid)] = (inv._contents as Dictionary).duplicate() if inv != null and "_contents" in inv else {}
 		if inv != null:
 			for held: String in ["Chest", "FerriteIngot", "CarpentryBench", "Forge"]:
@@ -181,6 +184,16 @@ func world_record() -> Dictionary:
 		"invited_ids": invited, "skills": skills, "skilled_members": skilled, "trades": _trades, "structures": owned,
 		"chest_access": access, "chest_items": items, "whispers": _whispers(),
 	}
+
+## Phase 262 — a new character starts with nothing, but this scenario tests the clan loop (chop, build), not the
+## tutorial: once per member the host puts the axe and hammer the old starting kit gave into the bag.
+func _grant_tools(pid: String, inv: Node) -> void:
+	if inv == null or _tooled.has(pid):
+		return
+	_tooled[pid] = true
+	for item in ["CarpenterAxe", "StoneHammer"]:
+		if inv.get_item_count(item) <= 0:
+			inv.add_item(item, 1)
 
 ## Where the clan stands: the mean ground position of its members the host knows, the world origin before that.
 ## Phase 259 — a hit cancels timed work, and the forest's hawks hit a chopping bot every second, so the chop chain
