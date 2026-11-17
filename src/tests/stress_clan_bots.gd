@@ -12,6 +12,8 @@ const StressClanRules := preload("res://src/tests/stress_clan_rules.gd")
 
 const FOUNDER := 0
 const OUTSIDER := 4
+## Seconds between two reads of the probe's loose-item listing (it refreshes with the trees, every 2 s).
+const TREES_WAIT_S := 2.5
 
 var bots: Array = []
 var live_path := ""
@@ -214,11 +216,18 @@ func run() -> void:
 		await _gift(mate, smith, "Thornwood", 4)
 	_slice(smith).send_raw({ "type": "research_intent", "tech_id": "TechBasicCarpentry" })
 	await _until(func(): return _tech(smith_pid, "TechBasicCarpentry") == "unlocked", 45.0)
-	_slice(smith).send_chest("place", { "type": "carpentry bench", "ox": 2.0, "oy": 0.0, "oz": 0.0 })
-	await get_tree().create_timer(0.8).timeout
-	_slice(smith).send_chest("place", { "type": "forge", "ox": -2.0, "oy": 0.0, "oz": 0.0 })
-	await get_tree().create_timer(0.8).timeout
-	for rid in ["RecipeThornwoodPlank", "RecipeThornwoodPlank", "RecipeThornwoodPlank", "RecipeFerriteIngot", "RecipeChest"]:
+	# Phase 268 — a station is an item made and placed from the pack: the smith picks up loose branches and stones
+	# (holding both discovers the stone-tools tech, which teaches the bench), makes the bench by hand and places it,
+	# mills planks, makes the forge at the bench and places it, then smelts the ingot and makes the chest.
+	await _pick_loose(smith, { "Branch": 4, "LooseStone": 10 })
+	await _craft(smith, "RecipeCarpentryBench", "CarpentryBench")
+	await _place_station(smith, "CarpentryBench", Vector3(2.0, 0.0, 0.0))
+	for rid in ["RecipeThornwoodPlank", "RecipeThornwoodPlank", "RecipeThornwoodPlank", "RecipeThornwoodPlank"]:
+		_slice(smith).send_raw({ "type": "craft_intent", "recipe_id": rid })
+		await get_tree().create_timer(0.8).timeout
+	await _craft(smith, "RecipeForge", "Forge")
+	await _place_station(smith, "Forge", Vector3(-2.0, 0.0, 0.0))
+	for rid in ["RecipeFerriteIngot", "RecipeChest"]:
 		_slice(smith).send_raw({ "type": "craft_intent", "recipe_id": rid })
 		await get_tree().create_timer(0.8).timeout
 	var out_home := WorldPos.to_scene((bots[OUTSIDER] as Dictionary)["anchor"], Vector2i.ZERO)
@@ -300,6 +309,51 @@ func _chop(i: int, trees: Array, first: int, count: int) -> void:
 			func(): _slice(i).send_raw({ "type": "tree_chop_intent", "tree_id": str(tr[0]) }),
 			func(): return _carried(pid) > held)
 		await get_tree().create_timer(0.8).timeout
+
+## Phase 268 — bot `i` walks to the host's listed loose items (`loose`: [id, kind, x, z]) and picks up `want`
+## (kind -> count) of them. Each pick is a `loose_pick_intent` the host checks against its reach.
+func _pick_loose(i: int, want: Dictionary) -> void:
+	(bots[i] as Dictionary)["hold"] = true
+	var pid := str(_slice(i).claimed_player_id)
+	await _until(func(): return not (live().get("world", {}).get("loose", []) as Array).is_empty(), 10.0)
+	var tried := {}
+	for _round in range(3):
+		for row: Variant in (live().get("world", {}).get("loose", []) as Array):
+			var it: Array = row
+			var kind := str(it[1])
+			if tried.has(str(it[0])) or _count(pid, kind) >= int(want.get(kind, 0)):
+				continue
+			tried[str(it[0])] = true
+			await _walk(i, Vector2(float(it[2]), float(it[3])))
+			var before := _count(pid, kind)
+			_slice(i).send_raw({ "type": "loose_pick_intent", "id": str(it[0]) })
+			await _until(func(): return _count(pid, kind) > before, 3.0)
+		var done := true
+		for kind: String in want:
+			done = done and _count(pid, kind) >= int(want[kind])
+		if done:
+			return
+		await get_tree().create_timer(TREES_WAIT_S).timeout   # the listing refreshes
+
+## Bot `i` crafts `recipe` and waits (a few tries) until the host shows `item` in its pack.
+func _craft(i: int, recipe: String, item: String) -> void:
+	var pid := str(_slice(i).claimed_player_id)
+	for _try in range(3):
+		if _count(pid, item) > 0:
+			return
+		_slice(i).send_raw({ "type": "craft_intent", "recipe_id": recipe })
+		await _until(func(): return _count(pid, item) > 0, 4.0)
+
+## Bot `i` places the station `item` at `offset` from its body (`station_intent` "place"), and waits until the host
+## shows the item spent.
+func _place_station(i: int, item: String, offset: Vector3) -> void:
+	var pid := str(_slice(i).claimed_player_id)
+	for _try in range(3):
+		if _count(pid, item) <= 0:
+			return
+		_slice(i).send_raw({ "type": "station_intent", "action": "place",
+			"args": { "item": item, "ox": offset.x, "oy": offset.y, "oz": offset.z, "rot": 0 } })
+		await _until(func(): return _count(pid, item) <= 0, 4.0)
 
 ## Phase 259 — hold timed work for each job `[bot, kind, tree_id, exact]` (one job per bot): start it on the host, wait
 ## for every answer, then for the longest duration the host gave (plus a margin). The completions are the caller's.

@@ -369,7 +369,7 @@ func _test_phase148_placement_codes() -> void:
 	add_child(st)
 	var codes: Array = [st.placement_blocker("", Vector3.ZERO), st.placement_blocker("no_such_station", Vector3.ZERO)]
 	var t: String = str(st.placeable_station_types()[0])
-	st.try_place_station(t, Vector3(2.5, 0.0, 2.5), null)
+	st.place_station(t, Vector3(2.5, 0.0, 2.5))
 	codes.append(st.placement_blocker(t, Vector3(2.5, 0.0, 2.5)))
 	for c in codes:
 		var key := "reason." + str(c).split(":")[0]

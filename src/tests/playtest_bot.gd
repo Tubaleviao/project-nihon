@@ -28,6 +28,7 @@ const VoxelSlice := preload("res://src/terrain/voxel_slice.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const WaystoneSlice := preload("res://src/world/waystone_slice.gd")
+const StationRules := preload("res://src/world/station_rules.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
 const Horizon := preload("res://src/terrain/horizon.gd")
 const DistantTerrain := preload("res://src/terrain/distant_terrain.gd")
@@ -43,6 +44,7 @@ const ChatCommands := preload("res://src/core/chat_commands.gd")
 const PlayerRules := preload("res://src/core/player_rules.gd")
 const WritingRules := preload("res://src/technology/writing_rules.gd")
 const ChestRules := preload("res://src/world/chest_rules.gd")
+const ChestWiring := preload("res://src/world/chest_wiring.gd")
 
 const ARG := "--playtest-bot"
 const OUT_DIR := "res://playtest"
@@ -1369,20 +1371,47 @@ func _tap(keycode: Key) -> void:
 	_key(keycode, true)
 	_key(keycode, false)
 
-## Place `station_type` with the player's own keys: B cycles the selection, V places it at the feet.
+## Place `station_type` from the hotbar as a player does (Phase 268): its station item goes in the first box (the
+## bot's kit holds one, as a crafted one would), key 1 selects it, the ghost follows the aim and a left click over
+## the view asks the host to place it. The pointer is the aim: it starts at the view's centre and is lowered
+## until the aimed spot is within the host's placement reach (`ChestWiring.PLACE_REACH`), as a player looks at
+## the ground near them; the centre's aim can lie 10 m out, which the host refuses as `far`.
 ## Returns the number of stations placed (0 when refused).
 func _place_with_keys(station_type: String) -> int:
-	var station = _root._station
-	for _i in range(32):
-		if station.get_place_station_type() == station_type:
-			break
-		_tap(KEY_B)
-		await get_tree().process_frame
-	if station.get_place_station_type() != station_type:
+	var item := StationRules.placement_item(station_type)
+	if item == "":
 		return 0
+	if int(_root._inventory.get_item_count(item)) < 1 and not _root._inventory.add_item(item, 1):
+		push_warning("[Playtest] the pack refused one %s (%.1f of %.1f kg)" % [item, _root._inventory.get_current_weight(), _root._inventory.get_max_weight()])
+		return 0
+	var ui: Node = _root._ui
+	ui.hotbar.assign(0, item)
+	_tap(KEY_1)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if _root._player._station_placer.item != item:
+		return 0
+	var view := get_viewport().get_visible_rect().size
+	var aim := view * 0.5
+	for frac in [0.5, 0.6, 0.7, 0.8, 0.9]:
+		aim = Vector2(view.x * 0.5, view.y * frac)
+		Input.warp_mouse(aim)
+		await get_tree().process_frame
+		await get_tree().process_frame
+		var player: Node = _root._player
+		if (player._station_target() - player.get_position()).length() <= ChestWiring.PLACE_REACH - 0.5:
+			break
 	var before := _placed.size()
-	_tap(KEY_V)
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	click.position = aim
+	Input.parse_input_event(click)
+	var release := click.duplicate()
+	release.pressed = false
+	Input.parse_input_event(release)
 	await _until(func(): return _placed.size() > before, 2.0)
+	Input.warp_mouse(view * 0.5)   # later steps aim from the centre
 	return _placed.size() - before
 
 ## `_place_with_keys`, walking forward 1.5 s and aiming again after each refusal, up to `tries` attempts.
@@ -1510,7 +1539,7 @@ func _step_character_sheet() -> Array:
 	var ok := seen.size() > 3
 	return [ok, "%d attributes, %d slots, doll viewport %d colours" % [attrs, slots, seen.size()]]
 
-## Place a station with the player's own keys, a few metres from the bench so the two do not overlap.
+## Place a forge from the hotbar (Phase 268), a few metres from the bench so the two do not overlap.
 func _step_place() -> Array:
 	var placed := 0
 	for attempt in range(3):

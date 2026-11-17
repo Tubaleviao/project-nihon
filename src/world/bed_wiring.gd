@@ -19,8 +19,6 @@ func attach() -> void:
 	b.position_of = root._waystone_wiring._waystone_player_pos
 	b.runs_at = self.runs_at
 	root._player.respawn_target_fn = self.respawn_target
-	if root._is_client:
-		root._station.remote_placer = self._place_remote
 
 func _connect_all() -> void:
 	connect_bus(GameBus.station_placed, _on_station_placed)
@@ -115,13 +113,6 @@ func apply_own_view(data: Dictionary) -> void:
 		GameBus.spawn_notice.emit(I18n.t(key))
 
 # --- client: placement intent ----------------------------------------------------------------------------
-
-## A client's `_place_station` of a bed goes to the host as an intent; false lets other types place locally.
-func _place_remote(type: String, target: Vector3) -> bool:
-	if root._bed == null or type != root._bed.station_type() or root._player == null:
-		return false
-	GameBus.bed_place_intent.emit(target - root._player.get_position(), "")
-	return true
 
 ## A client forwards its intent to the host, which binds the identity (net_part_2) and BedSlice checks the rest.
 func _forward_intent(offset: Vector3, _player_id: String) -> void:

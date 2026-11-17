@@ -459,6 +459,19 @@ signal repair_resolved(result: Dictionary)
 ## position   : Vector3 — world position
 signal station_placed(station_id: String, type: String, position: Vector3)
 
+## Phase 268 — a station intent: "place" {item, ox, oy, oz, rot} (the station item, the offset from the body, the
+## quarter turns) or "pick_up" {id}. A client forwards it; the host binds the identity (StationWiring.resolve).
+signal station_intent(action: String, args: Dictionary, player_id: String)
+## Phase 268 — the host resolved a station intent: `reason` "" on success, else a StationWiring.REASONS code.
+signal station_resolved(player_id: String, action: String, ok: bool, reason: String)
+## Phase 268 — client: the host stood up ("add", a wire entry) or took down ("remove", {id}) a station.
+signal station_synced(action: String, entry: Dictionary)
+## Phase 268 — this machine's player placed `station_id` (the host's own player, or a client told by its host).
+## Local; the tutorial counts it.
+signal station_placed_by_me(station_id: String, type: String)
+## Phase 268 — the hotbar selection is `item_id` (a station item arms the placement ghost). Local.
+signal hotbar_station_selected(item_id: String)
+
 # ---------------------------------------------------------------------------
 # Mining / building
 # ---------------------------------------------------------------------------

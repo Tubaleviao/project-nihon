@@ -14,4 +14,4 @@ durability = 400
 state_machine_field = "condition"
 initial_state = "pristine"
 description = "A carved marker stone that anchors a fast-travel network. Placed as a waystone station; a player attunes to it by standing at it."
-tags = ["item"]
+tags = ["item", "station"]

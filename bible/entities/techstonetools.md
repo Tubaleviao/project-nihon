@@ -21,6 +21,7 @@ Lashing a stone to a branch. Discovered the moment a player has held both a bran
 
 | Name | Kind | Target | Foreign Key |
 | ---- | ---- | ------ | ----------- |
+| `unlocksRecipeCarpentryBench` | hasOne | [RecipeCarpentryBench](recipecarpentrybench.md) |  |
 | `unlocksRecipeStoneAxe` | hasOne | [RecipeStoneAxe](recipestoneaxe.md) |  |
 | `unlocksRecipeStonePick` | hasOne | [RecipeStonePick](recipestonepick.md) |  |
 | `unlocksRecipeStoneShovel` | hasOne | [RecipeStoneShovel](recipestoneshovel.md) |  |

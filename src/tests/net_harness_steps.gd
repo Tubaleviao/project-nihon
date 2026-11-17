@@ -305,3 +305,67 @@ func loose_pick_synced(h: Node) -> void:
 	h._report_actual = false
 	h._report_position()
 	h._report("loose_pick_synced", h.verdict(gone, true), id if gone else "never_taken")
+
+## Phase 268 — a station is crafted, selected in the hotbar and placed over the socket. The host grants the client
+## what the carpentry bench is made of; the client crafts it, selects it in the hotbar and clicks: the request
+## reaches the host, which places the bench (owned by the client, the item consumed) and the client's own station
+## list gains it. Then the client asks again with no bench left: the host refuses and stands nothing up.
+func station_from_hotbar(h: Node) -> void:
+	await h._await_settle(1.0 * h._time_scale)
+	if h._role == "host":
+		var bound: String = h._live_bound_id()
+		var pack: Node = h._root._registry.get_inventory(bound) if bound != "" else null
+		if pack == null:
+			h._report("station_from_hotbar", "fail", "no_owner")
+			return
+		var seen: Array = []
+		var on_resolved := func(pid: String, action: String, ok: bool, reason: String) -> void: seen.append([pid, action, ok, reason])
+		GameBus.station_resolved.connect(on_resolved)
+		pack.add_item("Branch", 4)
+		pack.add_item("LooseStone", 2)
+		h._root._technology.note_obtained(bound, "Branch")
+		h._root._technology.note_obtained(bound, "LooseStone")
+		GameBus.inventory_synced.emit(bound, pack.get_contents(), pack.get_durability_data())
+		var owned := func() -> bool:
+			return h._root._station.get_all_stations().any(func(st: Dictionary) -> bool: return str(st.get("owner", "")) == bound)
+		var placed: bool = await h._await_until(owned, h._step_timeout() * 2.0)
+		var refused: bool = await h._await_until(func() -> bool:
+			return seen.any(func(e: Array) -> bool: return str(e[0]) == bound and str(e[1]) == "place" and not bool(e[2]) and str(e[3]) == "no_item"), h._step_timeout() * 2.0)
+		var count_ok: bool = h._root._station.get_all_stations().filter(func(st: Dictionary) -> bool: return str(st.get("owner", "")) == bound).size() == 1
+		var consumed: bool = int(pack.get_item_count("CarpentryBench")) == 0
+		GameBus.station_resolved.disconnect(on_resolved)
+		for st: Dictionary in h._root._station.get_all_stations():
+			if str(st.get("owner", "")) == bound:
+				h._root._station.remove_station(str(st["id"]))
+		var ok: bool = placed and refused and count_ok and consumed
+		h._report("station_from_hotbar", h.verdict(ok, true), "placed-from-hotbar-refused-without-item" if ok
+			else "placed%d-refused%d-one%d-consumed%d" % [int(placed), int(refused), int(count_ok), int(consumed)])
+		return
+	var inv: Node = h._root._inventory
+	if not await h._await_until(func() -> bool: return inv.get_item_count("Branch") >= 4 and inv.get_item_count("LooseStone") >= 2, h._step_timeout()):
+		h._report("station_from_hotbar", "fail", "no_inputs")
+		return
+	var tries := 0
+	while inv.get_item_count("CarpentryBench") < 1 and tries < 5:
+		GameBus.craft_requested.emit("RecipeCarpentryBench")
+		tries += 1
+		await h._await_until(func() -> bool: return inv.get_item_count("CarpentryBench") >= 1, 2.0)
+	if inv.get_item_count("CarpentryBench") < 1:
+		h._report("station_from_hotbar", "fail", "craft_failed")
+		return
+	var before: int = h._root._station.get_all_stations().size()
+	GameBus.hotbar_station_selected.emit("CarpentryBench")
+	var player: Node = h._root._player
+	var body: Vector3 = player.get_position()
+	var sent: bool = player._station_placer.request(inv, body + Vector3(2.0, -0.9, 0.0), body)
+	var seen_here: bool = await h._await_until(func() -> bool: return h._root._station.get_all_stations().size() > before, h._step_timeout() * 2.0)
+	var gone: bool = await h._await_until(func() -> bool: return inv.get_item_count("CarpentryBench") == 0, h._step_timeout())
+	# Again with no bench in the pack: the placer is no longer armed, so ask the host directly as a modified
+	# client would; the host must refuse it.
+	GameBus.station_intent.emit("place", { "item": "CarpentryBench", "ox": -2.0, "oy": -0.9, "oz": 0.0, "rot": 0 }, "")
+	await h._await_settle(1.5 * h._time_scale)
+	var one_more: bool = h._root._station.get_all_stations().size() <= before + 1
+	GameBus.hotbar_station_selected.emit("")
+	var ok: bool = sent and seen_here and gone and one_more
+	h._report("station_from_hotbar", h.verdict(ok, true), "placed-from-hotbar-refused-without-item" if ok
+		else "sent%d-seen%d-consumed%d-one%d" % [int(sent), int(seen_here), int(gone), int(one_more)])

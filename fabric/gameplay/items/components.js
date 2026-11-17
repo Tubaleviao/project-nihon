@@ -38,7 +38,7 @@ module.exports = {
 
   // ─── Waystone ─────────────────────────────────────────────────────────────
   Waystone: defineEntity({
-    tags: ['item'],
+    tags: ['item', 'station'],
     description:
       'A carved marker stone that anchors a fast-travel network. Placed as a waystone station; a player ' +
       'attunes to it by standing at it.',

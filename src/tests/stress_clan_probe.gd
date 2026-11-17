@@ -19,6 +19,10 @@ const TREES_LISTED := 12
 ## generator grows at least FOREST_TREES trees in.
 const FOREST_RADIUS_CHUNKS := 10
 const FOREST_TREES := 12
+## Phase 268 — the smith makes its carpentry bench and forge from loose branches and stones: the nearest untaken
+## loose items of each kind around the forest, listed with the trees, at most this many per kind, within this radius.
+const LOOSE_LISTED := 12
+const LOOSE_RADIUS := 120.0
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const CLAN_NAME_ARG := "--stress-clan-name"
 
@@ -31,6 +35,8 @@ var _t0_ms := 0
 var _trades := 0
 var _trees: Array = []
 var _trees_at := -INF
+## [id, kind, x, z] of the nearest loose items (`_nearest_loose`), refreshed with the trees.
+var _loose: Array = []
 ## [x, z] of the forest the chop chain walks to (`_find_forest`), found once the clan is full; [] before.
 var _forest: Array = []
 var _whisper_count := 0
@@ -154,7 +160,7 @@ func world_record() -> Dictionary:
 		var inv: Node = _root._registry.get_inventory(str(pid))
 		inventories[str(pid)] = (inv._contents as Dictionary).duplicate() if inv != null and "_contents" in inv else {}
 		if inv != null:
-			for held: String in ["Chest", "FerriteIngot"]:
+			for held: String in ["Chest", "FerriteIngot", "CarpentryBench", "Forge"]:
 				if inv.get_item_count(held) > 0:
 					inventories[str(pid)][held] = inv.get_item_count(held)
 	var techs := {}
@@ -166,9 +172,11 @@ func world_record() -> Dictionary:
 		_clear_creatures_near(members)
 	if _wall_s() - _trees_at >= TREES_EVERY_S:
 		_trees_at = _wall_s()
-		_trees = _nearest_trees(Vector2(float(_forest[0]), float(_forest[1])) if not _forest.is_empty() else _clan_centre(members))
+		var at := Vector2(float(_forest[0]), float(_forest[1])) if not _forest.is_empty() else _clan_centre(members)
+		_trees = _nearest_trees(at)
+		_loose = _nearest_loose(at)
 	return {
-		"techs": techs, "trees": _trees, "forest": _forest, "inventories": inventories, "trade_ids": _root._trade._trades.keys(),
+		"techs": techs, "trees": _trees, "forest": _forest, "loose": _loose, "inventories": inventories, "trade_ids": _root._trade._trades.keys(),
 		"clans": clans.count(), "clan_id": best_id, "members": members.size(), "member_ids": members.keys(),
 		"invited_ids": invited, "skills": skills, "skilled_members": skilled, "trades": _trades, "structures": owned,
 		"chest_access": access, "chest_items": items, "whispers": _whispers(),
@@ -230,6 +238,24 @@ func _find_forest(centre: Vector2) -> Array:
 				best_d = d
 				best = c
 	return [(float(best.x) + 0.5) * size, (float(best.y) + 0.5) * size]
+
+## The `LOOSE_LISTED` untaken loose items of each kind nearest `centre` (within `LOOSE_RADIUS`), as [id, kind, x, z],
+## nearest first. The host's own `LooseItemSlice` names them, so a bot picks only what the host would give.
+func _nearest_loose(centre: Vector2) -> Array:
+	if _root._loose == null:
+		return []
+	var items: Array = _root._loose.items_near(centre, LOOSE_RADIUS)
+	items.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return (a["xz"] as Vector2).distance_to(centre) < (b["xz"] as Vector2).distance_to(centre))
+	var per_kind := {}
+	var out: Array = []
+	for it: Dictionary in items:
+		var kind := str(it["kind"])
+		if int(per_kind.get(kind, 0)) >= LOOSE_LISTED:
+			continue
+		per_kind[kind] = int(per_kind.get(kind, 0)) + 1
+		out.append([str(it["id"]), kind, (it["xz"] as Vector2).x, (it["xz"] as Vector2).y])
+	return out
 
 ## The `TREES_LISTED` trees nearest `centre` as [id, x, z], nearest first, kept by insertion (no full sort).
 func _nearest_trees(centre: Vector2) -> Array:

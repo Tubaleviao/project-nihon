@@ -225,7 +225,7 @@ func _test_item_shapes_in_gamedata() -> void:
 	const ARCHETYPES := ["pick", "axe", "sword", "longsword", "knife", "saw", "bow", "shield", "helmet", "chestplate",
 		"cloak", "ingot", "shard", "dust", "plank", "block", "orb", "tablet", "potion", "rations",
 		"hearth", "waystone", "bed", "chest", "door", "lockpick", "shovel", "hammer", "stick", "pebble"]
-	assert_eq(GameData.ITEMS.size(), 58, "GameData.ITEMS holds 58 items (Phase 209: 15 books and blueprints; Phase 212: Cement and 3 books; Phase 260: 2 inputs and 5 stone tools)")
+	assert_eq(GameData.ITEMS.size(), 73, "GameData.ITEMS holds 73 items (Phase 209: 15 books and blueprints; Phase 212: Cement and 3 books; Phase 260: 2 inputs and 5 stone tools; Phase 268: 7 stations and 8 blueprints)")
 	for item_id in GameData.ITEMS:
 		var shape: Dictionary = GameData.ITEMS[item_id].shape
 		assert_true(not shape.is_empty(), "%s has a shape" % item_id)
@@ -575,19 +575,28 @@ func _test_station_placement_validation() -> void:
 	var station := StationSlice.new()
 	add_child(station)
 	var t: String = str(station.placeable_station_types()[0])
+	var inv := _station_stock(station, t)
 	assert_eq(station.snap_to_grid(Vector3(2.3, 1.0, -0.2)), Vector3(2.5, 1.0, -0.5), "snaps x/z to cell centre")
-	assert_true(station.try_place_station(t, Vector3(2.3, 0.0, 2.3)) != "", "first placement accepted")
-	assert_eq(station.try_place_station(t, Vector3(2.9, 0.0, 2.1)), "", "same cell refused")
+	assert_true(station.try_place_station(t, Vector3(2.3, 0.0, 2.3), inv) != "", "first placement accepted")
+	assert_eq(station.try_place_station(t, Vector3(2.9, 0.0, 2.1), inv), "", "same cell refused")
 	assert_true(station.placement_blocker(t, Vector3(2.5, 0.0, 2.5)) != "", "blocker names the overlap")
 	assert_true(station.placement_blocker(t, Vector3(2.5, 7.0, 2.5)) != "", "same cell at another height refused")
-	assert_true(station.try_place_station(t, Vector3(4.5, 0.0, 2.5)) != "", "adjacent cell accepted")
-	assert_eq(station.try_place_station("NoSuchStation", Vector3(9.5, 0.0, 9.5)), "", "unknown type refused")
+	assert_true(station.try_place_station(t, Vector3(4.5, 0.0, 2.5), inv) != "", "adjacent cell accepted")
+	assert_eq(station.try_place_station("NoSuchStation", Vector3(9.5, 0.0, 9.5), inv), "", "unknown type refused")
 	assert_eq(station.get_all_stations().size(), 2, "only accepted placements stored")
 	station.show_preview(t, Vector3(2.5, 0.0, 2.5))
 	assert_true(station.is_preview_visible(), "preview shown")
 	station.hide_preview()
 	assert_true(not station.is_preview_visible(), "preview hidden")
+	inv.free()
 	station.free()
+
+## Phase 268 — an inventory holding a few of `type`'s placement item (every station type costs one).
+func _station_stock(station: StationSlice, type: String) -> InventorySlice:
+	var inv := InventorySlice.new()
+	add_child(inv)
+	inv.add_item(station.placement_item(type), 2)
+	return inv
 
 func _test_station_types_from_fabric() -> void:
 	var station := StationSlice.new()
@@ -607,21 +616,23 @@ func _test_station_placement_cost_and_overlap() -> void:
 	add_child(station)
 	var t: String = str(station.placeable_station_types()[0])
 	assert_eq(station.placeable_scan_count, 1, "the first ask scans the fabric once")
-	assert_true(station.try_place_station(t, Vector3(5.5, 0.0, 5.5)) != "", "a station is placed")
+	var inv := _station_stock(station, t)
+	assert_true(station.try_place_station(t, Vector3(5.5, 0.0, 5.5), inv) != "", "a station is placed")
 	for i in 20:
 		station.placement_blocker(t, Vector3(7.5, 0.0, 7.5))
 		station.show_preview(t, Vector3(7.5, float(i), 7.5))
 	assert_eq(station.placeable_scan_count, 1, "twenty blocker checks and previews never rescan RECIPES/ITEMS")
-	assert_eq(station.try_place_station(t, Vector3(5.2, 9.0, 5.8)), "", "the same cell at another height collides")
+	assert_eq(station.try_place_station(t, Vector3(5.2, 9.0, 5.8), inv), "", "the same cell at another height collides")
 	assert_true(station.placement_blocker(t, Vector3(5.5, -3.0, 5.5)).begins_with("too_close_station"), "and the reason says why")
-	assert_true(station.try_place_station(t, Vector3(6.5, 0.0, 5.5)) != "", "the adjacent cell on x is free")
-	assert_true(station.try_place_station(t, Vector3(5.5, 0.0, 6.5)) != "", "the adjacent cell on z is free")
+	assert_true(station.try_place_station(t, Vector3(6.5, 0.0, 5.5), inv) != "", "the adjacent cell on x is free")
+	inv.add_item(station.placement_item(t), 1)
+	assert_true(station.try_place_station(t, Vector3(5.5, 0.0, 6.5), inv) != "", "the adjacent cell on z is free")
 	assert_eq(station.snap_to_grid(Vector3(-0.1, 2.0, 0.9)), Vector3(-0.5, 2.0, 0.5), "negative coordinates snap to their own cell")
+	inv.free()
 	station.free()
 
-## Phase 56 — the player's placement target (aimed top face, side hit, feet), the V key
-## through `try_place_station` with its refusal reason on the label, and the preview ghost
-## hidden while a menu or the loading screen owns the input.
+## Phase 56 — the player's placement target (aimed top face, side hit, feet). Phase 268 removed the V key and
+## the N preview toggle; the hotbar ghost and its request are `station_placement_tests.gd`.
 func _test_player_station_placement() -> void:
 	var station := StationSlice.new()
 	add_child(station)
@@ -644,29 +655,6 @@ func _test_player_station_placement() -> void:
 	p._aimed_block_normal = Vector3.DOWN
 	assert_eq(p._station_target(), feet, "an underside hit falls back to the feet")
 
-	# V through try_place_station: placed once, refused (with the reason) the second time.
-	p._aimed_block_hit = true
-	p._aimed_block_pos = Vector3(3.5, 2.0, 3.5)
-	p._aimed_block_normal = Vector3.UP
-	var label := Label.new()
-	p._station_label = label
-	p._place_station()
-	assert_eq(station.get_all_stations().size(), 1, "V places a station at the aimed spot")
-	p._place_station()
-	assert_eq(station.get_all_stations().size(), 1, "a second V on the same cell places nothing")
-	assert_true(label.text.contains("Too close"), "and the refusal reason shows on the station label")
-	label.free()
-
-	# The ghost follows the target while the preview is on and input is allowed; while a menu
-	# or the loading freeze holds the input it is hidden instead.
-	p._station_preview_on = true
-	p.set_world_input_frozen(true)
-	station.show_preview(str(station.placeable_station_types()[0]), Vector3(1.5, 0.0, 1.5))
-	p._update_station_preview()
-	assert_false(station.is_preview_visible(), "a frozen world hides the placement ghost")
-	p._station_preview_on = false
-	p._update_station_preview()
-	assert_false(station.is_preview_visible(), "preview off: nothing is drawn")
 	p.free()
 	station.free()
 

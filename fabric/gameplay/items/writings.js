@@ -11,9 +11,15 @@ const RUNE = {
   TechArcaneForging: 'Aethermite', TechAlchemy: 'Lumenfite', TechVoidMastery: 'Voidite',
   TechConcrete: 'Concrete', TechSteel: 'Steel', TechLeyframe: 'Leyframe',
   RecipeBed: 'Grass', RecipeChest: 'Ferrite', RecipeDoor: 'Thornwood', RecipeHearth: 'Ashite',
+  RecipeWaystone: 'Lumenfite', RecipeCarpentryBench: 'Soil', RecipeForge: 'Steel', RecipeMasonryBench: 'Concrete',
+  RecipeAlchemyBench: 'Aethermite', RecipeMasterForge: 'Veilsteel', RecipeArcaneForge: 'Leyframe', RecipeVoidShieldedWorkshop: 'Voidite',
   palisade: 'Duskfiber', storehouse: 'Veilsteel', workshop: 'Aethermite', watchtower: 'Lumenfite',
 }
-const lookOf = (writing, teaches) => ({ slab: SLAB[writing], rune: RUNE[teaches] })
+// Phase 268 — the station blueprints added with the station items sit on a Snow slab, so their runes only need
+// to differ from each other (there are more blueprints than materials).
+const SNOW_SLAB = new Set(['RecipeWaystone', 'RecipeCarpentryBench', 'RecipeForge', 'RecipeMasonryBench', 'RecipeAlchemyBench',
+  'RecipeMasterForge', 'RecipeArcaneForge', 'RecipeVoidShieldedWorkshop'])
+const lookOf = (writing, teaches) => ({ slab: SNOW_SLAB.has(teaches) ? 'Snow' : SLAB[writing], rune: RUNE[teaches] })
 const KIND_TEXT = { technology: 'the technology', station: 'how to build the station of', project: 'the settlement project' }
 
 const writingItem = (key, { writing, teaches, kind }) => { const look = lookOf(writing, teaches); return defineEntity({

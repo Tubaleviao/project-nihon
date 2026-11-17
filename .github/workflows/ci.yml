@@ -439,6 +439,9 @@ jobs:
       - name: Check the chest and door validation rejects bad tables
         run: node tools/check_chests.js
 
+      - name: Check the station placement validation rejects bad tables
+        run: node tools/check_stations.js
+
       - name: Check the writing validation rejects bad tables
         run: node tools/check_writing.js
 

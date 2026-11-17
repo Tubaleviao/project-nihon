@@ -52,7 +52,7 @@ controls.key.pad_south,Pad A,Botão A do controle
 controls.row0,Move,Mover
 controls.row1,Jump,Pular
 controls.row10,Next placeable block,Próximo bloco colocável
-controls.row11,Station cycle / place,Alternar / colocar estação
+controls.row11,"Station item in the hotbar: click places, R turns, B picks up","Estação na barra: clique coloca, R gira, B recolhe"
 controls.row12,Tame nearest creature,Domar a criatura mais próxima
 controls.row13,Toggle worn equipment on and off,Mostrar ou ocultar o equipamento vestido
 controls.row14,Windows: Alt + the letter (or click the boxes under your health); Alt+G opens the clan (J no longer does),Janelas: Alt + a letra (ou clique nas caixas sob a sua vida); Alt+G abre o clã (J não abre mais)
@@ -100,7 +100,7 @@ hotbar.press_key,Binding this box  ·  Esc cancels  ·  Backspace clears,Definin
 hud.chop,Chop: {0} (axe),Cortar: {0} (machado)
 hud.hp,HP {0} {1}/{2},PV {0} {1}/{2}
 hud.pickup,Pick up: {0},Pegar: {0}
-hud.station,Station: {0}  (B change · V place),Estação: {0}  (B alterar · V colocar)
+hud.station_place,Placing: {0},Colocando: {0}
 hud.status,{0} {1}s,{0} {1}s
 load.building,Building the world…,Construindo o mundo…
 load.building_pct,Building the world…  {0}%,Construindo o mundo…  {0}%
@@ -726,6 +726,16 @@ chest.refused.not_open,Open the chest first.,Abra o baú primeiro.
 chest.refused.blocked,There is no room for it there.,Não há espaço para isso ali.
 chest.refused.cap,You have placed too many stations. Take one down first.,Você colocou estações demais. Desmonte uma primeiro.
 chest.refused.protected,You cannot break a chest or door that opens for you or belongs to your clan.,Você não pode quebrar um baú ou porta que abre para você ou pertence ao seu clã.
+placing.ok.place,The station stands.,A estação está de pé.
+placing.ok.pick_up,You picked the station up.,Você recolheu a estação.
+placing.refused.bad_args,That cannot be placed.,Isso não pode ser colocado.
+placing.refused.no_item,You need the station's item in your pack.,Você precisa do item da estação na mochila.
+placing.refused.far,That is too far away.,Isso está longe demais.
+placing.refused.blocked,There is no room for it there.,Não há espaço para isso ali.
+placing.refused.cap,You have placed too many stations. Pick one up first.,Você colocou estações demais. Recolha uma primeiro.
+placing.refused.not_owner,Only its owner picks a station up.,Só o dono recolhe uma estação.
+placing.refused.no_station,There is no station within reach.,Não há estação ao seu alcance.
+placing.refused.full,Your pack has no room for it.,Sua mochila não tem espaço para isso.
 chest.item_entry,{0} × {1},{0} × {1}
 lock.pick_started,Picking the lock ({0} s). Stand still.,Arrombando a fechadura ({0} s). Fique parado.
 lock.pick_opened,The lock gives. It opens for you once.,A fechadura cede. Abre para você uma vez.

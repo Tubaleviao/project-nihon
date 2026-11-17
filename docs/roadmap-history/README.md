@@ -347,3 +347,4 @@ Filed by the owner on 2026-11-13. The other phases of the arc are open in [ROADM
 | 260 | Stone tools: an axe, a pick and a shovel from wood and stone, no bench | Done | [phases-260.md](phases-260.md) |
 | 261 | The newcomer grounds: a large, gentle spawn area with loose stones and branches | Done | [phases-261.md](phases-261.md) |
 | 264 | Dropping part of a stack: a quantity slider | Done | [phases-264.md](phases-264.md) |
+| 268 | Stations are made, carried and placed from the hotbar | Done | [phases-268.md](phases-268.md) |

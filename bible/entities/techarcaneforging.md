@@ -21,6 +21,7 @@ Magical metallurgy principles. Unlocks the arcane forge structure and all arcane
 
 | Name | Kind | Target | Foreign Key |
 | ---- | ---- | ------ | ----------- |
+| `unlocksRecipeArcaneForge` | hasOne | [RecipeArcaneForge](recipearcaneforge.md) |  |
 | `requiresTechBasicSmithing` | hasOne | [TechBasicSmithing](techbasicsmithing.md) |  |
 | `requiresTechAlchemy` | hasOne | [TechAlchemy](techalchemy.md) |  |
 | `unlocksRecipeEnchantedAethermiteShard` | hasOne | [RecipeEnchantedAethermiteShard](recipeenchantedaethermiteshard.md) |  |
