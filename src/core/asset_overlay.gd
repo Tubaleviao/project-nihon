@@ -93,18 +93,24 @@ var _sounds_missing: Dictionary = {}
 
 ## The Ogg Vorbis stream behind a canonical sound key (`sounds/....ogg.raw`), decoded from the raw bytes with
 ## `AudioStreamOggVorbis.load_from_buffer` (never `load()`, see the module comment) and cached, so the
-## production override wins by key like a texture's. A key with no file, or bytes that do not decode, warns
-## once and returns null every time after: the caller plays nothing and never crashes.
+## production override wins by key like a texture's. A key not ending in `.ogg.raw`, a key with no file, or
+## bytes that do not decode warn once and return null every time after: the caller plays nothing and never
+## crashes. Bytes cut off inside the headers decode to a stream of length 0 that never plays nor emits
+## `finished` (a one-shot's player would never free), so length 0 counts as not decoding.
 func load_sound(rel: String) -> AudioStream:
 	if _sounds.has(rel):
 		return _sounds[rel]
 	if _sounds_missing.has(rel):
 		return null
+	if not rel.ends_with(".ogg.raw"):
+		_sounds_missing[rel] = true
+		Diag.warn("[AssetOverlay] sound key %s is not a .ogg.raw file; it stays silent" % rel)
+		return null
 	var path := resolve_path(rel)
 	var stream: AudioStreamOggVorbis = null
 	if FileAccess.file_exists(path):
 		stream = AudioStreamOggVorbis.load_from_buffer(FileAccess.get_file_as_bytes(path))
-	if stream == null:
+	if stream == null or stream.get_length() <= 0.0:
 		_sounds_missing[rel] = true
 		Diag.warn("[AssetOverlay] no playable sound at %s (key %s); it stays silent" % [path, rel])
 		return null

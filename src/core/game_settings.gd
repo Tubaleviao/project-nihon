@@ -137,16 +137,24 @@ static func set_value(key: String, raw: Variant, viewport: Viewport = null, pers
 		apply(key, viewport)
 	return true
 
-## Boot: load the file and apply only what the player has saved, so a fresh install keeps the engine's
-## own window, scale and FPS. Nothing is applied on a headless boot (server, suite).
+## Boot: load the file and apply what the player has saved, so a fresh install keeps the engine's own window,
+## scale and FPS; every volume is applied, saved or default, so a bus never plays louder than its slider shows
+## (a fresh install, or a file older than the option). Nothing is applied on a headless boot (server, suite).
 static func apply_startup(viewport: Viewport = null) -> void:
 	load_values()
 	if DisplayServer.get_name() == "headless":
 		return
-	var saved: Variant = _read_file().get("options", {})
+	for k in startup_keys(_read_file().get("options", {})):
+		apply(k, viewport)
+
+## The options `apply_startup` applies for the file's saved `options`: every volume key, then each other
+## saved key (never the tutorial switch). Pure, so the suite pins it on a headless boot.
+static func startup_keys(saved: Variant) -> Array:
+	var out: Array = VOLUME_BUSES.keys()
 	for k in SPEC:
-		if k != "tutorial" and saved is Dictionary and (saved as Dictionary).has(k):
-			apply(k, viewport)
+		if k != "tutorial" and not VOLUME_BUSES.has(k) and saved is Dictionary and (saved as Dictionary).has(k):
+			out.append(k)
+	return out
 
 static func apply_all(viewport: Viewport = null) -> void:
 	if values.is_empty():
@@ -211,11 +219,15 @@ static func terrain_quality_setting(q: String) -> int:
 			return TerrainMaterialScript.QUALITY_HIGH
 	return TerrainMaterialScript.QUALITY_AUTO
 
-## A bus the layout lacks is reported, not created: `default_bus_layout.tres` is the one list of buses.
+static var _warned_buses: Dictionary = {}
+
+## A bus the layout lacks is reported (once), not created: `default_bus_layout.tres` is the one list of buses.
 static func _set_bus_volume(bus: String, linear: float) -> void:
 	var i := AudioServer.get_bus_index(bus)
 	if i < 0:
-		Diag.warn("GameSettings: no audio bus %s in default_bus_layout.tres" % bus)
+		if not _warned_buses.has(bus):   # once per bus, not on every slider tick
+			_warned_buses[bus] = true
+			Diag.warn("GameSettings: no audio bus %s in default_bus_layout.tres" % bus)
 		return
 	AudioServer.set_bus_volume_db(i, linear_to_db(linear))
 	AudioServer.set_bus_mute(i, linear <= 0.0)

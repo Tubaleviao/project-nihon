@@ -17,10 +17,10 @@ var max_clients: int = NetworkingSlice.DEFAULT_MAX_CLIENTS
 
 ## Parse `--client [addr]` from OS user args to determine network role. Defaults
 ## to host (authoritative single-player) when no args are present. A malformed
-## address is rejected with a warning and falls back to localhost.
-func parse_network_args() -> void:
+## address is rejected with a warning and falls back to localhost. `args` is the OS user args unless the suite
+## passes its own.
+func parse_network_args(args: PackedStringArray = OS.get_cmdline_user_args()) -> void:
 	NativeBuilder.init()   # Phase 166 — native chunk builder if its binary is present, else GDScript
-	var args := OS.get_cmdline_user_args()
 	for i in range(args.size()):
 		if args[i] == "--server":
 			root._is_server = true
@@ -43,6 +43,7 @@ func parse_network_args() -> void:
 	# Phase 162 — a stress watcher is a harness CLIENT that runs the shipped client boot, not the scenario.
 	if args.has("--stress-watch"):
 		root._net_harness_role = ""
+	Sound.enabled = not root._is_server   # Phase 275: nobody listens on a dedicated server
 
 ## Phase 33 — save-on-shutdown. `auto_accept_quit = false` turns the window
 ## manager's close request into a notification this node answers by writing the

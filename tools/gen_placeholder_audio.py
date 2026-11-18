@@ -233,7 +233,7 @@ def sound_files(root):
 
 def check(root=ROOT, quiet=False):
     """Problems with the placeholder tree under `root`, as strings."""
-    keys = expected_keys()
+    keys = expected_keys(root)
     problems = []
     lock = {}
     if (root / LOCK).exists():
@@ -272,7 +272,7 @@ def check(root=ROOT, quiet=False):
 
 
 def write(root=ROOT, force=False):
-    keys = expected_keys()
+    keys = expected_keys(root)
     old = {}
     if (root / LOCK).exists():
         old = json.loads((root / LOCK).read_text()).get("files", {})
@@ -314,6 +314,8 @@ def self_test():
             t = Path(tmp)
             shutil.copytree(ROOT / SOUND_DIR, t / SOUND_DIR)
             (t / MANIFEST).write_text((ROOT / MANIFEST).read_text())
+            (t / TABLE).parent.mkdir(parents=True, exist_ok=True)
+            (t / TABLE).write_text((ROOT / TABLE).read_text())
             breaker(t)
             probs = check(t, quiet=True)
             ok = (not probs) if pattern is None else any(pattern in p for p in probs)
