@@ -24,6 +24,8 @@ const WHEEL_RADIUS := 760.0
 const NODE_SIZE := Vector2(104, 34)
 const PROFESSION_SIZE := Vector2(136, 44)
 const LINE_WIDTH := 2.0
+const FOCUS_TINT := Color(1.5, 1.2, 0.55)
+const FOCUS_LABEL_SIZE := Vector2(180, 70)
 const LINE_LIT := Color(0.95, 0.8, 0.35)
 const LINE_DIM := Color(0.45, 0.45, 0.5, 0.55)
 const STATE_TINT := {
@@ -43,6 +45,9 @@ var nodes: Dictionary = {}
 var professions: Dictionary = {}
 var states: Dictionary = {}
 var segments: Array = []
+## Phase 272: { profession_id: share 0..1 } of the recent focus, and the centre label listing the leading skills.
+var focus_shares: Dictionary = {}
+var focus_label: Label = null
 
 func _init() -> void:
 	super._init()
@@ -86,6 +91,8 @@ func set_rows(node_rows: Array, profession_rows: Array, wheel_layout: Dictionary
 		pb.tooltip_text = str(row.get("tooltip", ""))
 		pb.self_modulate = STATE_TINT.get(str(row["state"]), Color.WHITE)
 		states["profession:" + pid] = str(row["state"])
+	if not focus_shares.is_empty():
+		set_focus(focus_shares, focus_label.text if focus_label != null else "")
 	segments.clear()
 	for e: Array in layout["edges"]:
 		if not (nodes.has(e[0]) and nodes.has(e[1])):
@@ -93,6 +100,28 @@ func set_rows(node_rows: Array, profession_rows: Array, wheel_layout: Dictionary
 		segments.append({"from": e[0], "to": e[1], "a": node_center(e[0]), "b": node_center(e[1]),
 			"lit": states.get(e[1], "") == STATE_UNLOCKED})
 	content.queue_redraw()
+
+## Phase 272 — the player's focus on the wheel: a profession whose skills had the recent play time glows in
+## proportion to its share, and the centre lists the leading skills. `profession_shares` is
+## { profession: share }; `centre_text` is the localized centre text ("" hides it).
+func set_focus(profession_shares: Dictionary, centre_text: String) -> void:
+	focus_shares = profession_shares.duplicate()
+	for pid in professions:
+		var pb: Button = professions[pid]
+		var base: Color = STATE_TINT.get(str(states.get("profession:" + str(pid), "")), Color.WHITE)
+		var share := clampf(float(focus_shares.get(pid, 0.0)), 0.0, 1.0)
+		pb.self_modulate = base.lerp(FOCUS_TINT, share)
+	if focus_label == null:
+		focus_label = Label.new()
+		focus_label.name = "FocusCentre"
+		focus_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		focus_label.size = FOCUS_LABEL_SIZE
+		focus_label.position = -FOCUS_LABEL_SIZE / 2.0
+		focus_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		focus_label.add_theme_font_size_override("font_size", 13)
+		content.add_child(focus_label)
+	focus_label.text = centre_text
+	focus_label.visible = centre_text != ""
 
 func node_center(id: String) -> Vector2:
 	return (layout["position"] as Dictionary).get(id, Vector2.ZERO) * WHEEL_RADIUS

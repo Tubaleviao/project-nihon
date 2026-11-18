@@ -999,10 +999,12 @@ func _refresh_skills() -> void:
 	if "profession_slice" in crafting_slice and crafting_slice.profession_slice != null:
 		unlocked = crafting_slice.profession_slice.get_unlocked()
 	var rows := SkillWheelView.rows(crafting_slice.get_skills(), unlocked)
-	if rows.hash() == _skills_signature:
+	var focus_sig := [rows.hash(), SkillsWindow.SkillFocus.local_view.hash()].hash()
+	if focus_sig == _skills_signature:
 		return
-	_skills_signature = rows.hash()
+	_skills_signature = focus_sig
 	_skill_wheel.set_rows(rows["nodes"], rows["professions"])
+	_skills_window.refresh_focus()
 	# A skill's node can still be dragged to the hotbar, as the old grid's buttons could.
 	for id in _skill_wheel.nodes:
 		var skill: String = str(SkillWheelLayout.fabric_nodes()[id]["skill"])

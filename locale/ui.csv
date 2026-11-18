@@ -905,6 +905,8 @@ ui.skill_page_leads,Leads to,Leva a
 ui.skill_page_focus_title,Focus,Foco
 ui.skill_page_focus_none,No focus yet: XP comes at the normal rate.,Sem foco ainda: o XP vem no ritmo normal.
 ui.skill_page_focus,{0} active minutes in the last hour: +{1}% XP,{0} minutos ativos na última hora: +{1}% de XP
+ui.skill_wheel_focus_title,Recent focus,Foco recente
+ui.skill_wheel_focus_line,{0}: {1}%,{0}: {1}%
 ui.skill_page_shares,Where your time went,Onde seu tempo foi
 ui.skill_page_share,{0}: {1}%,{0}: {1}%
 ui.skill_unlocked_toast,{0} reached {1}. Open its page.,{0} chegou a {1}. Abra a página dela.

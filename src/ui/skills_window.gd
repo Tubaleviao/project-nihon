@@ -4,6 +4,9 @@ extends VBoxContainer
 
 const SkillWheelView := preload("res://src/ui/skill_wheel_view.gd")
 const SkillPagePanel := preload("res://src/ui/skill_page_panel.gd")
+const SkillFocus := preload("res://src/character/skill_focus.gd")
+const SkillPage := preload("res://src/character/skill_page.gd")
+const I18n := preload("res://src/core/i18n.gd")
 const SkillWheelLayout := preload("res://src/ui/skill_wheel_layout.gd")
 
 var wheel: Control = null
@@ -45,3 +48,21 @@ func show_skill_of_node(node_id: String) -> void:
 ## Open a skill's page (the unlock toast) and mark its node on the wheel.
 func open_skill(skill: String) -> void:
 	page.show_skill(skill)
+
+## The wheel shows where the recent play time went: professions glow by share, the centre lists the leading skills.
+func refresh_focus() -> void:
+	var res: Resource = GameData.WORLD_SYSTEMS.get("SkillWheel", null)
+	var prof_skills: Dictionary = res.get("professionSkills") if res != null else {}
+	var view: Dictionary = SkillFocus.local_view
+	var total := 0
+	for s in view:
+		total += int(view[s])
+	var skills: Array = view.keys()
+	skills.sort_custom(func(a, b): return int(view[a]) > int(view[b]) or (int(view[a]) == int(view[b]) and str(a) < str(b)))
+	var lines: Array[String] = []
+	for s in skills.slice(0, 3):
+		lines.append(I18n.t("ui.skill_wheel_focus_line", [I18n.content("skill", str(s)), I18n.number(float(view[s]) / float(maxi(1, total)) * 100.0)]))
+	var text := ""
+	if not lines.is_empty():
+		text = I18n.t("ui.skill_wheel_focus_title") + "\n" + "\n".join(lines)
+	wheel.set_focus(SkillPage.profession_shares(view, prof_skills), text)

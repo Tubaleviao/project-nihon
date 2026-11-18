@@ -83,3 +83,20 @@ static func category_shares(focus_view: Dictionary) -> Dictionary:
 			cat = cats[i] if i >= 0 and i < cats.size() else "other"
 		out[cat] = float(out.get(cat, 0.0)) + float(focus_view[s]) / float(maxi(1, total))
 	return out
+
+## Focus by profession from a synced view: { profession: share of the window's active minutes } for the
+## professions whose skills had focus. A shared skill counts for each profession it leads to.
+static func profession_shares(focus_view: Dictionary, profession_skills: Dictionary) -> Dictionary:
+	var total := 0
+	for s in focus_view:
+		total += int(focus_view[s])
+	var out: Dictionary = {}
+	if total <= 0:
+		return out
+	for p in profession_skills:
+		var minutes := 0
+		for s in (profession_skills[p] as Array):
+			minutes += int(focus_view.get(str(s), 0))
+		if minutes > 0:
+			out[str(p)] = clampf(float(minutes) / float(total), 0.0, 1.0)
+	return out

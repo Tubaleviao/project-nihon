@@ -4,6 +4,7 @@ extends "res://src/tests/test_support.gd"
 const SkillFocus := preload("res://src/character/skill_focus.gd")
 const SkillPage := preload("res://src/character/skill_page.gd")
 const SkillPagePanel := preload("res://src/ui/skill_page_panel.gd")
+const SkillWheelView := preload("res://src/ui/skill_wheel_view.gd")
 const WorkSkills := preload("res://src/character/work_skills.gd")
 const I18n := preload("res://src/core/i18n.gd")
 
@@ -19,6 +20,7 @@ func register() -> void:
 	_run_test("skill page: level, XP, next tiers, trainers, professions and focus match the skill state", _test_page_matches_state)
 	_run_test("skill page: the panel shows names, no raw ids, a bar and category shares", _test_page_panel)
 	_run_test("skill page: a new tier of the local player toasts and opens its page", _test_toast_opens_page)
+	_run_test("skill wheel: focus shares by profession glow the rim and the centre lists the leading skills", _test_wheel_focus)
 	_run_test("skill page: every new string is in both locales", _test_locales)
 	_run_test("skill focus: the fabric defaults are an hour and +25%", _test_fabric)
 
@@ -182,11 +184,32 @@ func _test_toast_opens_page() -> void:
 	crafting.free()
 	ui.free()
 
+func _test_wheel_focus() -> void:
+	var view := {"Smithing": 30, "Mining": 10}
+	var shares := SkillPage.profession_shares(view, {"Blacksmith": ["Smithing", "Mining"], "Ranger": ["Archery"], "Arcanist": ["Smithing"]})
+	assert_true(absf(float(shares["Blacksmith"]) - 1.0) < 0.0001, "all the focus is in the Blacksmith's skills")
+	assert_true(absf(float(shares["Arcanist"]) - 0.75) < 0.0001, "a shared skill counts for each profession it leads to")
+	assert_false(shares.has("Ranger"), "a profession with no focus is absent")
+	assert_true(SkillPage.profession_shares({}, {"Blacksmith": ["Smithing"]}).is_empty(), "no focus, no shares")
+	var wheel := SkillWheelView.new()
+	var rows := SkillWheelView.rows({}, {})
+	wheel.set_rows(rows["nodes"], rows["professions"])
+	var pid := str(wheel.professions.keys()[0])
+	var rest: Color = (wheel.professions[pid] as Button).self_modulate
+	wheel.set_focus({pid: 1.0}, "Recent focus\nSmithing: 75%")
+	assert_true((wheel.professions[pid] as Button).self_modulate != rest, "a focused profession glows")
+	assert_true(wheel.focus_label.visible and wheel.focus_label.text.contains("Smithing"), "the centre lists the leading skill")
+	wheel.set_rows(rows["nodes"], rows["professions"])
+	assert_true((wheel.professions[pid] as Button).self_modulate != rest, "a refresh keeps the glow")
+	wheel.set_focus({}, "")
+	assert_true((wheel.professions[pid] as Button).self_modulate == rest and not wheel.focus_label.visible, "no focus clears both")
+	wheel.free()
+
 func _test_locales() -> void:
 	var cats: Dictionary = I18n.parse_csv(I18n.CATALOG_PATH)["catalog"]
 	var keys: Array = []
 	for k in (cats["en"] as Dictionary):
-		if str(k).begins_with("ui.skill_page") or str(k).begins_with("ui.tier_") or str(k).begins_with("ui.work.") or str(k).begins_with("ui.category_") or k == "ui.skill_unlocked_toast":
+		if str(k).begins_with("ui.skill_page") or str(k).begins_with("ui.tier_") or str(k).begins_with("ui.work.") or str(k).begins_with("ui.category_") or k == "ui.skill_unlocked_toast" or str(k).begins_with("ui.skill_wheel_focus"):
 			keys.append(k)
 	assert_true(keys.size() >= 40, "the new strings exist (%d)" % keys.size())
 	for loc: String in ["en", "pt_BR"]:
