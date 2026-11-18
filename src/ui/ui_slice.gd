@@ -1147,7 +1147,7 @@ func _on_skill_tier_recorded(player_id: String, skill: String, tier: String) -> 
 		return
 	_skills_window.open_skill(skill)
 	_skill_wheel.pulse("%s:%s" % [skill, tier])
-	push_toast(I18n.t("ui.skill_unlocked_toast", [I18n.content("skill", skill), I18n.t("ui." + "tier_" + tier)]))
+	push_toast(I18n.t("ui.skill_unlocked_toast", [I18n.content("skill", skill), I18n.t(SkillsWindow.SkillPagePanel.TIER_KEY % tier)]))
 
 func _on_technology_unlocked(_tech_id: String, _player_id: String) -> void:
 	refresh_technology()

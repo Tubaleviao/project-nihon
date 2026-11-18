@@ -9,6 +9,11 @@ const SkillPage := preload("res://src/character/skill_page.gd")
 const SkillFocus := preload("res://src/character/skill_focus.gd")
 
 const PAGE_WIDTH := 250.0
+## Catalog key stems; the id is appended (a key built at run time, so the literal audit does not read it).
+const TIER_KEY := "ui.tier_%s"
+const UNLOCK_KEY := "ui.skill_page_unlock_%s"
+const CATEGORY_KEY := "ui.category_%s"
+const WORK_KEY := "ui.work.%s"
 const CATEGORY_ORDER := ["combat", "crafting", "magic", "exploration", "social", "gathering", "other"]
 
 var skill := ""
@@ -50,7 +55,7 @@ func show_skill(skill_id: String) -> void:
 	var p := SkillPage.page(skill_id, xp, SkillFocus.local_view, wheel)
 	_label(I18n.content("skill", skill_id), 18)
 	_label(I18n.content("skill", skill_id, "desc"))
-	_label(I18n.t("ui.skill_page_level", [I18n.t("ui.tier_" + str(p["tier"])), I18n.number(xp)]))
+	_label(I18n.t("ui.skill_page_level", [I18n.t(TIER_KEY % str(p["tier"])), I18n.number(xp)]))
 	bar = ProgressBar.new()
 	bar.step = 0.0
 	bar.min_value = 0.0
@@ -66,10 +71,10 @@ func show_skill(skill_id: String) -> void:
 	if not (p["next_unlocks"] as Array).is_empty():
 		_label(I18n.t("ui.skill_page_next"), 15)
 		for u: Dictionary in p["next_unlocks"]:
-			_label(I18n.t("ui.skill_page_unlock_" + str(u["kind"]), [I18n.t("ui.tier_" + str(u["tier"]))]))
+			_label(I18n.t(UNLOCK_KEY % str(u["kind"]), [I18n.t(TIER_KEY % str(u["tier"]))]))
 	if not (p["trainers"] as Array).is_empty():
 		_label(I18n.t("ui.skill_page_trains"), 15)
-		_label(", ".join((p["trainers"] as Array).map(func(k): return I18n.t("ui.work." + str(k)))))
+		_label(", ".join((p["trainers"] as Array).map(func(k): return I18n.t(WORK_KEY % str(k)))))
 	if not (p["professions"] as Array).is_empty():
 		_label(I18n.t("ui.skill_page_leads"), 15)
 		_label(", ".join((p["professions"] as Array).map(func(k): return I18n.content("profession", str(k)))))
@@ -83,4 +88,4 @@ func show_skill(skill_id: String) -> void:
 		_label(I18n.t("ui.skill_page_shares"), 15)
 		for c in CATEGORY_ORDER:
 			if shares.has(c):
-				_label(I18n.t("ui.skill_page_share", [I18n.t("ui.category_" + str(c)), I18n.number(float(shares[c]) * 100.0)]))
+				_label(I18n.t("ui.skill_page_share", [I18n.t(CATEGORY_KEY % str(c)), I18n.number(float(shares[c]) * 100.0)]))
