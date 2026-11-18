@@ -458,6 +458,11 @@ static func edit_visible_record(samples: Array) -> Dictionary:
 		"queue_ms_p95": percentile(col.call("queue_ms"), 95.0), "build_ms_p95": percentile(col.call("build_ms"), 95.0), "job_ms_p95": percentile(col.call("job_ms"), 95.0),
 		"on_main_thread": own.filter(func(s: Dictionary) -> bool: return bool(s["sync"])).size(),
 		"prebuilt": own.filter(func(s: Dictionary) -> bool: return bool(s.get("prebuilt", false))).size(),
+		"misses": own.reduce(func(acc: Dictionary, s: Dictionary) -> Dictionary:
+			var why := str(s.get("miss", ""))
+			if why != "":
+				acc[why] = int(acc.get(why, 0)) + 1
+			return acc, {}),
 	}
 
 static func load_budgets() -> Dictionary:
@@ -1312,9 +1317,9 @@ func _step_mine() -> Array:
 	await _until(func(): return own.call() >= 1 + MINE_EXTRA_DIGS, STEP_TIMEOUT_SECS)
 	_edit_visible = edit_visible_record(remesh.samples.slice(n0))
 	var e := _edit_visible
-	return [int(e["edits"]) > 0, "mined %s after holding work %.1f s; %d edits visible in %.0f frames / %.1f ms p95 (queue %.1f, build %.1f of which the job %.1f, %d on the main thread, %d prebuilt)" % [
+	return [int(e["edits"]) > 0, "mined %s after holding work %.1f s; %d edits visible in %.0f frames / %.1f ms p95 (queue %.1f, build %.1f of which the job %.1f, %d on the main thread, %d prebuilt, misses %s)" % [
 		str(_mined.back()), held, int(e["edits"]), float(e["frames_p95"]), float(e["ms_p95"]), float(e["queue_ms_p95"]),
-		float(e["build_ms_p95"]), float(e["job_ms_p95"]), int(e["on_main_thread"]), int(e["prebuilt"])]]
+		float(e["build_ms_p95"]), float(e["job_ms_p95"]), int(e["on_main_thread"]), int(e["prebuilt"]), JSON.stringify(e["misses"])]]
 
 ## Phase 259 — hold work on a target the way the player does: ask the host to start it, wait for its duration, and
 ## return the seconds the work took (-1.0 when the host never answered). The completion request is the caller's.

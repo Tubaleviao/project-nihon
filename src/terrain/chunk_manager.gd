@@ -1261,7 +1261,7 @@ func _attach_built(key: String, chunk: Vector2i, heightmap: Array, arrays: Dicti
 	if keeps_render() and not arrays.is_empty():
 		_cache.put(key, cache_signature(chunk, lod), arrays, heightmap)
 	builds_attached += 1
-	_m1.remesh.note_attached(key)   # Phase 263: an edit rebuild is timed to here
+	_m1.remesh.note_attached(key, chunk)   # Phase 263: an edit rebuild is timed to here
 	# The ground exists now, so its contents may: creatures and trees spawn HERE rather
 	# than at load time (see `_spawn_chunk_contents`) — but ONCE per residency, not once
 	# per build. An EDIT rebuilds a loaded chunk, and re-deriving the population for it

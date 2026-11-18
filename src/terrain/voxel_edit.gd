@@ -821,7 +821,7 @@ func prebuild_edit(action: String, position: Vector3, normal: Vector3, material:
 	s._build.sink = {}
 	var started := false
 	if bool(s._apply_edit(action, position, normal, material).get("applied", false)):
-		started = cm._m1.remesh.prebuild.start(s._tile_to_chunk(tile))
+		started = cm._m1.remesh.prebuild.start(s._tile_to_chunk(tile), prebuild_edit.bind(action, position, normal, material))
 	for k in snap:
 		s._set_edit_ops(k, snap[k])
 	s._vein_taken = veins

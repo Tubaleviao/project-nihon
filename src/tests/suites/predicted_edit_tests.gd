@@ -52,6 +52,7 @@ func register() -> void:
 	_run_test("edit remesh: a chunk whose last build was slow is not built on the main thread", _test_sync_cost_bound)
 	_run_test("edit remesh: the work's dig is built ahead and attached as is at completion", _test_prebuilt_edit)
 	_run_test("edit remesh: a prebuilt dig whose chunk changed meanwhile is not used", _test_prebuilt_miss)
+	_run_test("edit remesh: a held build survives its ring streaming in during the work", _test_prebuilt_ring_streamed)
 	_run_test("edit remesh: a rebuilt chunk keeps its unchanged collision quadrants", _test_reuse_shapes)
 	_run_test("edit prediction: another player's edit of the tile survives a rollback", _test_predict_other_player_same_tile)
 	_run_test("edit prediction: vein depletion by the host survives a rollback, only the prediction's own goes", _test_predict_vein_elsewhere)
@@ -500,6 +501,40 @@ func _test_prebuilt_miss() -> void:
 	assert_false(remesh.samples.slice(n0).any(func(x: Dictionary) -> bool: return bool(x.get("prebuilt", false))), "and is not attached")
 	_pump(rig["cm"])
 	assert_true(remesh.samples.size() > n0, "the dig still rebuilt its chunk")
+	_free_rig(rig)
+
+## PR #648 CI — on a slow machine the home window still streamed while the work ran: the dug chunk's own map came
+## back as a new (equal) array from its last rebuild, and a missing ring neighbour got its map. Neither may cost the
+## held build: an equal map is the same input, and a changed ring builds it again before the completion.
+func _test_prebuilt_ring_streamed() -> void:
+	var rig := _home_rig()
+	var voxel: VoxelSlice = rig["voxel"]
+	var remesh: EditRemesh = rig["remesh"]
+	remesh.sync_enabled = true
+	remesh.prebuild.without_native = true
+	remesh._sync_frame = -1
+	var aim := _home_aim(voxel, Vector2i(16, 16))
+	assert_true(voxel._edit.prebuild_edit("mine", aim, Vector3.UP, ""), "built ahead")
+	_wait_prebuild(remesh)
+	var east := Vector2i(1, 0)
+	assert_true((remesh.prebuild._spec["sig"]["missing"] as Array).has(east), "the east neighbour was missing")
+	voxel._heightmaps["0,0"] = (voxel._heightmaps["0,0"] as Array).duplicate(true)   # a rebuild's equal map
+	remesh.note_attached("0,0", HOME)
+	remesh.prebuild.refresh()
+	assert_eq(remesh.prebuild.restarts, 0, "an equal map is the same input: nothing built again")
+	voxel._heightmaps["1,0"] = (voxel._heightmaps["0,0"] as Array).duplicate(true)   # the neighbour streamed in
+	remesh.note_attached("5,5", Vector2i(5, 5))
+	remesh.prebuild.refresh()
+	assert_eq(remesh.prebuild.restarts, 0, "an attach outside the ring changes nothing")
+	remesh.note_attached("1,0", east)
+	remesh.prebuild.refresh()
+	assert_eq(remesh.prebuild.restarts, 1, "a ring chunk's new map builds it again")
+	assert_true(remesh.prebuild.has(HOME), "still held for the dug chunk")
+	_wait_prebuild(remesh)
+	voxel.mine_block(aim, Vector3.UP)
+	assert_eq(remesh.prebuild.hits, 1, "the completion attaches the rebuilt held build")
+	assert_eq(remesh.prebuild.misses, 0, "no miss")
+	voxel._heightmaps.erase("1,0")
 	_free_rig(rig)
 
 func _test_reuse_shapes() -> void:

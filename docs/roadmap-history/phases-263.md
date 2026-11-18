@@ -66,3 +66,15 @@ attach with Jolt's shape build about 12 ms). After them, the rendered playtest (
 6.4 ms (1 frame), against the 33.3 ms budget. Headless, it was 5.2 ms. In the net harness, the client's predicted dig
 was on screen 7.7 ms after its completion on loopback (55/55 steps), and 7.9 ms after it under `wan_br` (55/55),
 while the host's confirmation came 124.5 ms after it.
+
+PR #648 CI: the rendered playtest on the CI runner (native builder, llvmpipe, frames of about 130 ms) measured an
+edit-to-visible p95 of 286 and 209 ms with 0 of 6 digs prebuilt. CI plays `walk`, `stream` and `flight` before
+`mine`, so the home window was still streaming during the work holds: the first dig's held build missed because a
+ring neighbour that was missing at the work's start had its map by the completion, it went to a worker, and its
+attach (during the next dig's hold) gave the chunk a new heightmap array, so every later held build missed too
+(maps were compared by identity). Each such worker rebuild then attached two 130 ms frames later. The fix: a map
+equal in value is the same input (`EditPrebuild._same_map`), and an attach in the held chunk's 3×3 ring (or another
+edit there) marks the held build stale; the next frame compares its world input (maps, biomes, seed) with the
+chunk's now and builds it again with the edit applied for a moment (`refresh`, `redo`). The mine detail and
+`edit_visible.misses` name each miss's reason. Locally under the CI conditions (`xvfb`, llvmpipe, 4 cores,
+`create,walk,stream,flight,mine`): 137.5 ms with 0 prebuilt before, 5.5 ms with 6 of 6 prebuilt after.

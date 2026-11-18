@@ -34,6 +34,7 @@ const MAX_COSTS := 1024
 const MAX_SAMPLES := 256
 ## An open rebuild never attached (its chunk streamed out, or an isolated rig built nothing) is forgotten after this.
 const OPEN_TTL_USEC := 10_000_000
+const NO_CHUNK := Vector2i(1 << 30, 1 << 30)
 
 var sl: Node   # the ChunkManager
 var m1: RefCounted   # its ChunkPart1
@@ -85,6 +86,8 @@ func dispatch(chunk: Vector2i, priority: int) -> void:
 	var key: String = sl._chunk_key(chunk)
 	var now := int(clock_usec.call())
 	_prune(now)
+	if priority < PRIMARY:
+		prebuild.note_changed(chunk)   # another edit in the held chunk's ring
 	_open[key] = { "t0": now, "f0": Engine.get_process_frames(), "dispatched": -1, "primary": priority >= PRIMARY, "sync": false }
 	# A deferred ordinary rebuild of the same chunk is this one now.
 	if sl._rebuild_pending.has(key):
@@ -99,6 +102,7 @@ func dispatch(chunk: Vector2i, priority: int) -> void:
 ## Hand the waiting edit rebuilds to free workers, before any streaming dispatch and outside the frame's budget.
 func drain() -> void:
 	prebuild.reap()
+	prebuild.refresh()   # PR #648 CI: the ring round a held build changed while the work ran
 	while not _queue.is_empty() and m1.worker_builds() < sl.build_cap():
 		var chunk: Vector2i = _queue.pop_front()
 		var key: String = sl._chunk_key(chunk)
@@ -124,7 +128,8 @@ func first(order: Array) -> Array:
 	return front + rest
 
 ## The manager attached `key`'s build: close its edit rebuild, if one is open, as a sample.
-func note_attached(key: String) -> void:
+func note_attached(key: String, chunk: Vector2i = NO_CHUNK) -> void:
+	prebuild.note_changed(chunk)
 	if not _open.has(key):
 		return
 	var o: Dictionary = _open[key]
@@ -138,6 +143,7 @@ func note_attached(key: String) -> void:
 		"frames": Engine.get_process_frames() - int(o["f0"]) + 1, "at_usec": now,
 		"job_ms": float(o.get("job_usec", 0)) / 1000.0,   # a main-thread build's own work, without the gather and attach
 		"prebuilt": bool(o.get("prebuilt", false)),
+		"miss": str(o.get("miss", "")),   # why a PRIMARY rebuild was not a held build (`EditPrebuild.last_miss`)
 	})
 	if samples.size() > MAX_SAMPLES:
 		samples.pop_front()
@@ -169,8 +175,10 @@ func can_build_now(chunk: Vector2i, full: bool = true) -> bool:
 func _build_now(chunk: Vector2i, key: String) -> bool:
 	if not sl._loaded.has(key):
 		return false
+	_open[key]["miss"] = "cannot attach now"
 	if can_build_now(chunk, false):
 		var ready: Dictionary = prebuild.take(chunk)
+		_open[key]["miss"] = prebuild.last_miss
 		if not ready.is_empty():
 			_sync_count += 1
 			_open[key]["dispatched"] = int(clock_usec.call())
