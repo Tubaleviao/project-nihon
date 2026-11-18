@@ -350,6 +350,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [Settlement](entities/settlement.md) — A player-founded village: a Hearth, members with roles and a shared Stockpile
 - [SettlementProjects](entities/settlementprojects.md) — Structures a village builds together: a palisade, a storehouse, a workshop, a watchtower
 - [SettlementSpecialties](entities/settlementspecialties.md) — What each member of a village is good at: woodworker, smith, hunter, builder or forager
+- [SoundEvents](entities/soundevents.md) — The sound event table: gameplay plays an event id, which names the asset key, the audio bus, whether it is positional, how many variants it picks from, its base volume and its pitch jitter
 - [StationPlacement](entities/stationplacement.md) — Every station is an item: crafted (the first by hand, the rest at an earlier station), carried in the pack, placed from the hotbar and picked up again by its owner
 - [StoneTools](entities/stonetools.md) — The stone tools a newcomer makes by hand (the only tools made or repaired without a bench), the two inputs they take, and where those inputs come from: branches from a felled tree, loose stones knocked from host rock
 - [Structure](entities/structure.md) — A connected set of placed blocks and the stations on them, owned by its builder or the builder's clan

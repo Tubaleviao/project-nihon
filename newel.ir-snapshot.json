@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:b8da767c0f7fbf82e2346c572984cff46dc51f1a0fe731a0fbe58ec212f1afa3",
+  "schemaHash": "sha256:4e3058315a7af88fcc303471cd39ce6e23ef98c12c55713bd56c8061dc9bb58e",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -42332,6 +42332,140 @@
             }
           }
         },
+        "pii": [],
+        "gdpr": {}
+      },
+      "SoundEvents": {
+        "name": "SoundEvents",
+        "tags": [
+          "world-system"
+        ],
+        "description": "The sound event table: gameplay plays an event id, which names the asset key, the audio bus, whether it is positional, how many variants it picks from, its base volume and its pitch jitter. Files live under `assets/sounds/` as `.ogg.raw`, with a generated placeholder for every key.",
+        "goal": "Sounds are data: a new sound is a row and a file, never a path in gameplay code (Phase 275)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "buses": {
+            "name": "buses",
+            "type": "json",
+            "description": "The audio buses under Master, in layout order",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "Music",
+              "Effects",
+              "Ambience",
+              "UI"
+            ]
+          },
+          "events": {
+            "name": "events",
+            "type": "json",
+            "description": "{ <event id>: { key, bus, spatial: 2d|3d, variants, volumeDb, pitchJitter, loop, maxDistance? } }",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "ui.click": {
+                "key": "sounds/ui/click",
+                "bus": "UI",
+                "spatial": "2d",
+                "variants": 1,
+                "volumeDb": -6,
+                "pitchJitter": 0,
+                "loop": false
+              },
+              "footstep.grass": {
+                "key": "sounds/sfx/player/footsteps/grass",
+                "bus": "Effects",
+                "spatial": "3d",
+                "variants": 3,
+                "volumeDb": -8,
+                "pitchJitter": 0.08,
+                "loop": false,
+                "maxDistance": 20
+              },
+              "item.StonePick.hit": {
+                "key": "sounds/sfx/items/StonePick/hit",
+                "bus": "Effects",
+                "spatial": "3d",
+                "variants": 2,
+                "volumeDb": -4,
+                "pitchJitter": 0.05,
+                "loop": false,
+                "maxDistance": 30
+              },
+              "creature.GraywolfPack.attack": {
+                "key": "sounds/sfx/creatures/GraywolfPack/attack",
+                "bus": "Effects",
+                "spatial": "3d",
+                "variants": 2,
+                "volumeDb": -2,
+                "pitchJitter": 0.06,
+                "loop": false,
+                "maxDistance": 40
+              },
+              "ambience.TemperateForest": {
+                "key": "sounds/ambience/TemperateForest",
+                "bus": "Ambience",
+                "spatial": "2d",
+                "variants": 1,
+                "volumeDb": -10,
+                "pitchJitter": 0,
+                "loop": true
+              },
+              "music.main_theme": {
+                "key": "sounds/music/main_theme",
+                "bus": "Music",
+                "spatial": "2d",
+                "variants": 1,
+                "volumeDb": -6,
+                "pitchJitter": 0,
+                "loop": true
+              }
+            }
+          },
+          "files": {
+            "name": "files",
+            "type": "json",
+            "description": "{ <event id>: [asset keys] } — `<key>.ogg.raw`, or `<key>_01.ogg.raw`.. for sfx variants",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "ui.click": [
+                "sounds/ui/click.ogg.raw"
+              ],
+              "footstep.grass": [
+                "sounds/sfx/player/footsteps/grass_01.ogg.raw",
+                "sounds/sfx/player/footsteps/grass_02.ogg.raw",
+                "sounds/sfx/player/footsteps/grass_03.ogg.raw"
+              ],
+              "item.StonePick.hit": [
+                "sounds/sfx/items/StonePick/hit_01.ogg.raw",
+                "sounds/sfx/items/StonePick/hit_02.ogg.raw"
+              ],
+              "creature.GraywolfPack.attack": [
+                "sounds/sfx/creatures/GraywolfPack/attack_01.ogg.raw",
+                "sounds/sfx/creatures/GraywolfPack/attack_02.ogg.raw"
+              ],
+              "ambience.TemperateForest": [
+                "sounds/ambience/TemperateForest.ogg.raw"
+              ],
+              "music.main_theme": [
+                "sounds/music/main_theme.ogg.raw"
+              ]
+            }
+          }
+        },
+        "relations": {},
+        "behaviors": {},
         "pii": [],
         "gdpr": {}
       },

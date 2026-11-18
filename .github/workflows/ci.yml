@@ -491,6 +491,14 @@ jobs:
           python3 tools/gen_ui_skin.py --out /tmp/ui-skin-b
           diff -r /tmp/ui-skin-a /tmp/ui-skin-b
 
+      - name: Check the sound-event validation rejects bad tables (Phase 275)
+        run: node tools/check_sounds.js
+
+      - name: Check the placeholder sounds are current (Phase 275; stdlib only, no ffmpeg)
+        run: |
+          python3 tools/gen_placeholder_audio.py --self-test
+          python3 tools/gen_placeholder_audio.py --check
+
       - name: Check the status-effect table validation rejects bad tables
         run: node tools/check_combat.js
 

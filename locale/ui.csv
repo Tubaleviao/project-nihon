@@ -837,6 +837,8 @@ options.tab.game,Game,Jogo
 options.volume_master,Master volume,Volume geral
 options.volume_music,Music volume,Volume da música
 options.volume_effects,Effects volume,Volume dos efeitos
+options.volume_ambience,Ambience volume,Volume do ambiente
+options.volume_ui,Interface volume,Volume da interface
 options.window_mode,Window mode,Modo de janela
 options.resolution,Resolution,Resolução
 options.vsync,VSync,Sincronização vertical

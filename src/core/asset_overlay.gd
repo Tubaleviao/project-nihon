@@ -86,8 +86,40 @@ func load_image(rel: String) -> Image:
 	return img
 
 
+## Phase 275 — decoded sounds by key, and the keys already reported unplayable (each warned once).
+var _sounds: Dictionary = {}
+var _sounds_missing: Dictionary = {}
+
+
+## The Ogg Vorbis stream behind a canonical sound key (`sounds/....ogg.raw`), decoded from the raw bytes with
+## `AudioStreamOggVorbis.load_from_buffer` (never `load()`, see the module comment) and cached, so the
+## production override wins by key like a texture's. A key with no file, or bytes that do not decode, warns
+## once and returns null every time after: the caller plays nothing and never crashes.
+func load_sound(rel: String) -> AudioStream:
+	if _sounds.has(rel):
+		return _sounds[rel]
+	if _sounds_missing.has(rel):
+		return null
+	var path := resolve_path(rel)
+	var stream: AudioStreamOggVorbis = null
+	if FileAccess.file_exists(path):
+		stream = AudioStreamOggVorbis.load_from_buffer(FileAccess.get_file_as_bytes(path))
+	if stream == null:
+		_sounds_missing[rel] = true
+		Diag.warn("[AssetOverlay] no playable sound at %s (key %s); it stays silent" % [path, rel])
+		return null
+	_sounds[rel] = stream
+	return stream
+
+
+## Forget decoded sounds and the warned-missing keys (after mounting another pack; the suite uses it too).
+func clear_sound_cache() -> void:
+	_sounds = {}
+	_sounds_missing = {}
+
+
 ## Committed public manifest: canonical key -> relative path, per asset kind
-## ("textures", "meshes", "animations"). Lists what EXISTS; an unlisted key is
+## ("textures", "meshes", "animations", and since Phase 275 "sounds"). Lists what EXISTS; an unlisted key is
 ## never an error — callers warn and fall back. The private pack overrides by
 ## key through `resolve_path`, so nothing branches on which side is present.
 const MANIFEST_REL := "manifest.json"
@@ -116,6 +148,7 @@ func manifest() -> Dictionary:
 func reload_manifest() -> void:
 	_manifest = {}
 	_manifest_loaded = false
+	clear_sound_cache()   # Phase 275: a newly mounted pack may override a sound key
 
 
 ## `overlay` merged over `base`, per asset kind and per key (the overlay wins a clash).
@@ -149,7 +182,7 @@ func first_key(kind: String, candidates: Array) -> String:
 	return ""
 
 
-## Keys listed for `kind` ("textures" | "meshes" | "animations"), sorted.
+## Keys listed for `kind` ("textures" | "meshes" | "animations" | "sounds"), sorted.
 func keys(kind: String) -> Array:
 	var section = manifest().get(kind, {})
 	var out: Array = section.keys() if section is Dictionary else []

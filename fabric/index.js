@@ -39,6 +39,7 @@ const structure    = require('./gameplay/structure')
 const chests       = require('./gameplay/chests')
 const stations     = require('./gameplay/stations')
 const writing      = require('./gameplay/writing')
+const sounds       = require('./gameplay/sounds')
 
 // Phase 125 — the travel cost must name a real item; throwing fails `npm run validate`.
 waystone.validateTravel(waystone.TRAVEL, Object.keys(items))
@@ -65,6 +66,7 @@ workTimes.validateWorkTimes(workTimes.workTimesData(), workTimes.workTimesRefs()
 stoneTools.validateStoneTools(stoneTools.stoneToolsData(), stoneTools.stoneToolsRefs()) // Phase 260
 newcomer.validateNewcomerGrounds(newcomer.newcomerGroundsData(), newcomer.newcomerGroundsRefs()) // Phase 261
 stations.validateStations(stations.stationsData(), stations.stationsRefs()) // Phase 268
+sounds.validateSounds(sounds.soundsData(), sounds.soundsRefs()) // Phase 275
 
 // Phase 129 — the status-effect table must be well formed and every creature's `onHitEffects` must name a defined effect.
 combat.validateCombat(combat.STATUS_EFFECTS, combat.creatureOnHit(creatures), Object.keys(weather.RULES.states))
@@ -374,6 +376,7 @@ module.exports = defineFabric({
       StoneTools:          stoneTools.StoneTools,
       NewcomerGrounds:     newcomer.NewcomerGrounds,
       StationPlacement:    stations.StationPlacement,
+      SoundEvents:         sounds.SoundEvents,
     },
     // World — Creatures
     {

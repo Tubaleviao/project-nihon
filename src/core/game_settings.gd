@@ -12,8 +12,16 @@ const LodRingPolicy := preload("res://src/terrain/lod_ring_policy.gd")
 const TerrainMaterialScript := preload("res://src/terrain/terrain_material.gd")
 const TutorialState := preload("res://src/tutorial/tutorial_state.gd")
 
+## Phase 275: the buses come from `res://default_bus_layout.tres` (Master → Music, Effects, Ambience, UI),
+## never created at runtime. Each volume option sets one bus.
 const BUS_MUSIC := "Music"
 const BUS_EFFECTS := "Effects"
+const BUS_AMBIENCE := "Ambience"
+const BUS_UI := "UI"
+const VOLUME_BUSES := {
+	"volume_master": "Master", "volume_music": BUS_MUSIC, "volume_effects": BUS_EFFECTS,
+	"volume_ambience": BUS_AMBIENCE, "volume_ui": BUS_UI,
+}
 
 const WINDOW_MODES := ["windowed", "fullscreen", "borderless"]
 const RESOLUTIONS := ["1280x720", "1600x900", "1920x1080", "2560x1440"]
@@ -29,6 +37,8 @@ const SPEC := {
 	"volume_master": { "tab": "sound", "type": "float", "default": 1.0, "min": 0.0, "max": 1.0 },
 	"volume_music": { "tab": "sound", "type": "float", "default": 0.8, "min": 0.0, "max": 1.0 },
 	"volume_effects": { "tab": "sound", "type": "float", "default": 1.0, "min": 0.0, "max": 1.0 },
+	"volume_ambience": { "tab": "sound", "type": "float", "default": 0.8, "min": 0.0, "max": 1.0 },
+	"volume_ui": { "tab": "sound", "type": "float", "default": 1.0, "min": 0.0, "max": 1.0 },
 	"window_mode": { "tab": "graphics", "type": "choice", "default": "windowed", "values": WINDOW_MODES },
 	"resolution": { "tab": "graphics", "type": "choice", "default": "1920x1080", "values": RESOLUTIONS },
 	"vsync": { "tab": "graphics", "type": "bool", "default": true },
@@ -147,12 +157,8 @@ static func apply_all(viewport: Viewport = null) -> void:
 static func apply(key: String, viewport: Viewport = null) -> void:
 	var v: Variant = get_value(key)
 	match key:
-		"volume_master":
-			_set_bus_volume("Master", float(v))
-		"volume_music":
-			_set_bus_volume(BUS_MUSIC, float(v))
-		"volume_effects":
-			_set_bus_volume(BUS_EFFECTS, float(v))
+		"volume_master", "volume_music", "volume_effects", "volume_ambience", "volume_ui":
+			_set_bus_volume(str(VOLUME_BUSES[key]), float(v))
 		"window_mode", "resolution":
 			_apply_window()
 		"vsync":
@@ -205,21 +211,14 @@ static func terrain_quality_setting(q: String) -> int:
 			return TerrainMaterialScript.QUALITY_HIGH
 	return TerrainMaterialScript.QUALITY_AUTO
 
-## The Music / Effects buses (sends to Master) are created on first use: the project ships no layout yet.
-static func ensure_buses() -> void:
-	for n in [BUS_MUSIC, BUS_EFFECTS]:
-		if AudioServer.get_bus_index(n) == -1:
-			AudioServer.add_bus()
-			var i := AudioServer.bus_count - 1
-			AudioServer.set_bus_name(i, n)
-			AudioServer.set_bus_send(i, "Master")
-
+## A bus the layout lacks is reported, not created: `default_bus_layout.tres` is the one list of buses.
 static func _set_bus_volume(bus: String, linear: float) -> void:
-	ensure_buses()
 	var i := AudioServer.get_bus_index(bus)
-	if i >= 0:
-		AudioServer.set_bus_volume_db(i, linear_to_db(linear))
-		AudioServer.set_bus_mute(i, linear <= 0.0)
+	if i < 0:
+		Diag.warn("GameSettings: no audio bus %s in default_bus_layout.tres" % bus)
+		return
+	AudioServer.set_bus_volume_db(i, linear_to_db(linear))
+	AudioServer.set_bus_mute(i, linear <= 0.0)
 
 ## Mouse look scale (1.0 = the shipped feel) and the vertical sign (-1 inverts), read by the player.
 static func look_scale() -> float:

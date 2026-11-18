@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–225, 238–243, 248, 249, 252–254, 259–264, 267–270 and 274 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–225, 238–243, 248, 249, 252–254, 259–264, 267–270, 274 and 275 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -31,7 +31,7 @@ introductions of the arcs they belonged to, are archived in
 Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
 see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
 phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
-comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–254, 259–264, 267–270, 274)
+comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–254, 259–264, 267–270, 274, 275)
 have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
 [Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
 others are not in it.
@@ -319,6 +319,19 @@ tiers, several at once, and the UI calls them professions.
 | 272 | A skill's own page, and where the player's focus went | Open |
 | 273 | Titles: professions unlock them, the player chooses one | Open |
 | 274 | Gathering: Mining, Woodcutting, Foraging and Skinning are their own skills | Done |
+
+### Next: sound (Phases 275–)
+
+Agreed with the owner on 2026-11-18. The game had no sound: no files, no playback code, and the options
+window's Music and Effects buses were created at runtime because the project shipped no bus layout. The owner
+wants a working audio pipeline before any sound art: sounds load from the `.raw` asset tree like every other
+asset, every key has a public placeholder, gameplay plays events from a fabric table, and the private assets repo
+gets audio style rules, a checker and a SuperCollider source pipeline (its Phases A30 and A31). Real sound art is
+not part of the arc. Phase 275 is the contract (keys, layout, manifest section, play API) the rest builds on.
+
+| Phase | Title | Status |
+|---|---|---|
+| 275 | Audio foundation: a sound loader, an event table, a bus layout and placeholder sounds | Done |
 
 ## Phase 225 — The options window
 

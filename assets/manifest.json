@@ -370,5 +370,17 @@
     "models/creatures/LavaSlug.glb.raw": "models/creatures/LavaSlug.glb.raw",
     "models/characters/bodies/chibi_body_f.glb.raw": "models/characters/bodies/chibi_body_f.glb.raw",
     "models/characters/bodies/chibi_body_m.glb.raw": "models/characters/bodies/chibi_body_m.glb.raw"
+  },
+  "sounds": {
+    "sounds/ambience/TemperateForest.ogg.raw": "sounds/ambience/TemperateForest.ogg.raw",
+    "sounds/music/main_theme.ogg.raw": "sounds/music/main_theme.ogg.raw",
+    "sounds/sfx/creatures/GraywolfPack/attack_01.ogg.raw": "sounds/sfx/creatures/GraywolfPack/attack_01.ogg.raw",
+    "sounds/sfx/creatures/GraywolfPack/attack_02.ogg.raw": "sounds/sfx/creatures/GraywolfPack/attack_02.ogg.raw",
+    "sounds/sfx/items/StonePick/hit_01.ogg.raw": "sounds/sfx/items/StonePick/hit_01.ogg.raw",
+    "sounds/sfx/items/StonePick/hit_02.ogg.raw": "sounds/sfx/items/StonePick/hit_02.ogg.raw",
+    "sounds/sfx/player/footsteps/grass_01.ogg.raw": "sounds/sfx/player/footsteps/grass_01.ogg.raw",
+    "sounds/sfx/player/footsteps/grass_02.ogg.raw": "sounds/sfx/player/footsteps/grass_02.ogg.raw",
+    "sounds/sfx/player/footsteps/grass_03.ogg.raw": "sounds/sfx/player/footsteps/grass_03.ogg.raw",
+    "sounds/ui/click.ogg.raw": "sounds/ui/click.ogg.raw"
   }
 }

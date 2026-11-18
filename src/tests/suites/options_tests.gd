@@ -10,6 +10,9 @@ const TutorialState := preload("res://src/tutorial/tutorial_state.gd")
 const I18n := preload("res://src/core/i18n.gd")
 const PauseMenu := preload("res://src/ui/pause_menu.gd")
 
+## Phase 275: every bus of `default_bus_layout.tres` that a volume option sets.
+const BUSES := ["Master", "Music", "Effects", "Ambience", "UI"]
+
 func register() -> void:
 	_run_test("options: each setting is saved, reloaded in a fresh load and applied", _test_round_trip)
 	_run_test("options: invalid or out-of-range values load as defaults or clamp; the file's other keys survive", _test_sanitize)
@@ -23,8 +26,7 @@ func _with_settings(fn: Callable) -> void:
 	var old_rings: Variant = ProjectSettings.get_setting("nihon/graphics/lod_rings")
 	var old_quality: Variant = ProjectSettings.get_setting("nihon/graphics/terrain_quality")
 	var old_vol: Array = []
-	GameSettings.ensure_buses()
-	for b in ["Master", "Music", "Effects"]:
+	for b in BUSES:
 		old_vol.append(AudioServer.get_bus_volume_db(AudioServer.get_bus_index(b)))
 	LocaleSettings.settings_path = "user://test_settings_p225.json"
 	if FileAccess.file_exists(LocaleSettings.settings_path):
@@ -40,7 +42,7 @@ func _with_settings(fn: Callable) -> void:
 	ProjectSettings.set_setting("nihon/graphics/lod_rings", old_rings)
 	ProjectSettings.set_setting("nihon/graphics/terrain_quality", old_quality)
 	var i := 0
-	for b in ["Master", "Music", "Effects"]:
+	for b in BUSES:
 		var idx := AudioServer.get_bus_index(b)
 		AudioServer.set_bus_volume_db(idx, old_vol[i])
 		AudioServer.set_bus_mute(idx, false)
@@ -49,7 +51,8 @@ func _with_settings(fn: Callable) -> void:
 func _test_round_trip() -> void:
 	_with_settings(func() -> void:
 		var changes := {
-			"volume_master": 0.5, "volume_music": 0.25, "volume_effects": 0.75, "window_mode": "windowed",
+			"volume_master": 0.5, "volume_music": 0.25, "volume_effects": 0.75, "volume_ambience": 0.4,
+			"volume_ui": 0.6, "window_mode": "windowed",
 			"resolution": "1600x900", "vsync": false, "view_distance": 3, "fps_cap": 120, "render_scale": 0.75,
 			"scale_mode": "fsr2", "terrain_quality": "low", "tutorial": false, "mouse_sensitivity": 1.5, "invert_y": true,
 		}
@@ -67,6 +70,8 @@ func _test_round_trip() -> void:
 		assert_true(absf(db.call("Master") - linear_to_db(0.5)) < 0.01, "master bus volume applied")
 		assert_true(absf(db.call("Music") - linear_to_db(0.25)) < 0.01, "music bus volume applied")
 		assert_true(absf(db.call("Effects") - linear_to_db(0.75)) < 0.01, "effects bus volume applied")
+		assert_true(absf(db.call("Ambience") - linear_to_db(0.4)) < 0.01, "ambience bus volume applied (Phase 275)")
+		assert_true(absf(db.call("UI") - linear_to_db(0.6)) < 0.01, "UI bus volume applied (Phase 275)")
 		assert_eq(Engine.max_fps, 120, "FPS cap applied")
 		assert_eq(int(ProjectSettings.get_setting("nihon/graphics/lod_rings")), 3, "view distance sets the LOD rings")
 		assert_eq(int(ProjectSettings.get_setting("nihon/graphics/terrain_quality")), 0, "terrain quality applied")
