@@ -886,3 +886,5 @@ craft.trains_none,Trains no skill,Não treina nenhuma habilidade
 craft.quantity,Quantity,Quantidade
 craft.pick,Select a recipe to see what it takes.,Selecione uma receita para ver o que ela exige.
 craft.none,Nothing you know is made here yet.,Nada que você conhece é feito aqui ainda.
+edit.rolled_back.refused,"The host refused that edit, so the ground was put back.","O anfitrião recusou essa edição, então o terreno voltou ao que era."
+edit.rolled_back.timeout,"The host did not answer that edit in time, so the ground was put back.","O anfitrião não respondeu a essa edição a tempo, então o terreno voltou ao que era."

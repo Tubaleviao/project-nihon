@@ -926,7 +926,7 @@ func _supersede_in_flight(key: String) -> void:
 ## each one was dispatched outright, so one corner edit put the pool over its own cap and
 ## so did every retry. It defers to the rebuild queue instead — never drops — and the
 ## supersede happens UNCONDITIONALLY so the pre-edit build cannot land while it waits.
-func request_rebuild(chunk_pos: Vector2i) -> void:
+func request_rebuild(chunk_pos: Vector2i, priority: int = 0) -> void:   # Phase 263: `priority` is an `EditRemesh` level
 	var key := _chunk_key(chunk_pos)
 	_cache.invalidate(key)   # Phase 191: the data under it changed, loaded or not
 	if not _loaded.has(key):
@@ -938,10 +938,9 @@ func request_rebuild(chunk_pos: Vector2i) -> void:
 	_build_attempts.erase(key)
 	_failed.erase(key)
 	_supersede_in_flight(key)
-	# Phase 42 review pass 9 — no cap check here: `_dispatch_build` enforces the cap itself
-	# (deferring to `_rebuild_queue`), so the rule lives in ONE place. The supersede above
-	# stays unconditional on purpose — the pre-edit build must not land while it waits.
-	_dispatch_build(chunk_pos)
+	# Phase 42 review pass 9 — no cap check here: `_dispatch_build` enforces the cap itself (one rule, one place);
+	# the supersede above stays unconditional — the pre-edit build must not land while it waits.
+	_m1.remesh.dispatch(chunk_pos, priority)
 
 ## Enqueue a build that could not be dispatched right now because the in-flight cap was
 ## reached — `_dispatch_build`'s own cap guard is the one caller (ninth review pass: a
@@ -1262,6 +1261,7 @@ func _attach_built(key: String, chunk: Vector2i, heightmap: Array, arrays: Dicti
 	if keeps_render() and not arrays.is_empty():
 		_cache.put(key, cache_signature(chunk, lod), arrays, heightmap)
 	builds_attached += 1
+	_m1.remesh.note_attached(key, chunk)   # Phase 263: an edit rebuild is timed to here
 	# The ground exists now, so its contents may: creatures and trees spawn HERE rather
 	# than at load time (see `_spawn_chunk_contents`) — but ONCE per residency, not once
 	# per build. An EDIT rebuilds a loaded chunk, and re-deriving the population for it

@@ -86,7 +86,21 @@ signal world_clock_received(host_days: float)
 ## Client → host: a player wants to mine/place a block. The host re-runs the
 ## edit authoritatively and broadcasts the result via block_changed.
 ## action : String — "mine" or "place"
-signal block_edit_intent(action: String, position: Vector3, normal: Vector3, material: String, exact: Dictionary)
+## Phase 263 — `seq` is the client's prediction number (`EditPrediction`), 0 when it predicted nothing; the host
+## echoes it back in its answer and never trusts it for anything else.
+signal block_edit_intent(action: String, position: Vector3, normal: Vector3, material: String, exact: Dictionary, seq: int)
+
+## Phase 263 — host → the editing client: its predicted edit `seq` was applied (just before the `block_changed`
+## that carries it) or refused. PR #648 review: an applied one carries the span the host resolved
+## (`{ tile: Vector2i, bottom, top }`, `{}` when the host sent none), which the client compares with its own.
+signal block_edit_acked(seq: int, accepted: bool, span: Dictionary)
+
+## PR #648 review — host: the span a mine or placement just changed (emitted just before its `block_changed`), so
+## the answer to a client's prediction can carry it.
+signal block_edit_span(tile: Vector2i, bottom: float, top: float)
+
+## Phase 263 — client: a predicted edit was rolled back (`reason`: "refused" by the host, or "timeout").
+signal block_edit_rolled_back(action: String, reason: String)
 
 ## Host → clients: authoritative result of a block edit, applied via
 ## VoxelSlice.apply_block_change().

@@ -7,6 +7,7 @@ const VoxelMesh := preload("res://src/terrain/voxel_mesh.gd")
 const FreshWaterMesh := preload("res://src/terrain/fresh_water_mesh.gd")
 const ChunkSurface := preload("res://src/terrain/chunk_surface.gd")
 const TerrainWeights := preload("res://src/terrain/terrain_weights.gd")
+const EditRemesh := preload("res://src/terrain/edit_remesh.gd")
 var s: Node
 
 ## Phase 239 — draw each chunk's ground through the RenderingServer (`ChunkSurface`) instead of a
@@ -53,6 +54,7 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 
 	# Remove any previous version of this chunk (Phase 243: its drawn surface cross-fades out).
 	var old_surface: Node = null
+	var old_shapes: Array = _shapes_of(key)   # PR #648 review: an edit's unchanged quadrants keep their built shape
 	if s._chunks.has(key):
 		if lod_fade != null and is_instance_valid(lod_fade):
 			old_surface = (s._chunks[key] as Node).get_node_or_null("Surface")   # freed with its root unless handed over
@@ -180,7 +182,7 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 	var prepared = built.get("shape")
 	var parts: Array = built.get("shape_parts", [])
 	# Phase 183 — a split build carries its collision as quadrant shapes (`VoxelMesh.collision_parts`).
-	var shape: Variant = parts.duplicate() if not parts.is_empty() \
+	var shape: Variant = reuse_shapes(old_shapes, parts) if not parts.is_empty() \
 		else (prepared if prepared is ConcavePolygonShape3D else s.VoxelMesh.collision_shape(built["collision"]))
 	# Phase 189 — a chunk no body can reach keeps its shape parked: the body is ~9 ms of main thread per
 	# chunk, and at 90 m/s most of the window is ground nobody touches. `attach_parked_collision` adds it
@@ -196,6 +198,37 @@ func build_chunk(chunk_pos: Vector2i, heightmap: Array, arrays: Dictionary = {},
 		return true
 	_attach_collision(root, shape)
 	return true
+
+## PR #648 review — the collision shapes `key`'s chunk holds now (attached or parked), before a rebuild drops them.
+func _shapes_of(key: String) -> Array:
+	var out: Array = []
+	var parked: Variant = s._parked_shapes.get(key)
+	if parked != null:
+		out.append_array(parked as Array if parked is Array else [parked])
+	var root: Node = s._chunks.get(key)
+	var body: Node = root.get_node_or_null("Collision") if root != null else null
+	if body != null:
+		for c in body.get_children():
+			if c is CollisionShape3D and (c as CollisionShape3D).shape is ConcavePolygonShape3D:
+				out.append((c as CollisionShape3D).shape)
+	return out
+
+## PR #648 review — a rebuilt chunk's quadrant shapes (`parts`), each replaced by an old shape with the same
+## faces: the physics server builds a shape's mesh the moment its body enters the world (~2.5 ms a quadrant on the
+## main thread), and an edit changes one quadrant, so the other three keep the mesh already built.
+static func reuse_shapes(old: Array, parts: Array) -> Array:
+	var out: Array = parts.duplicate()
+	if old.is_empty():
+		return out
+	for i in out.size():
+		var faces: PackedVector3Array = (out[i] as ConcavePolygonShape3D).get_faces()
+		for o in old:
+			var prev := o as ConcavePolygonShape3D
+			if prev.backface_collision == (out[i] as ConcavePolygonShape3D).backface_collision and prev.get_faces() == faces:
+				out[i] = prev
+				old.erase(prev)
+				break
+	return out
 
 ## Phase 194 (#504) — bumped by every shape parked (never by one attached or dropped): the near ring rescans the
 ## parked set only when this or its bodies moved.
@@ -675,15 +708,32 @@ func _prune_heightmaps(around: Vector2i) -> void:
 ## chunk edge rebuilt — and so RESURRECTED — a chunk `ChunkManager` had already streamed
 ## away and would never stream out again. A loaded chunk always has its cached map
 ## (`build_chunk` stores it and `_prune_heightmaps` keeps it), so `_chunks` is the guard.
-func _rebuild_chunk_at_tile(tile: Vector2i) -> void:
-	for chunk in s._touched_chunks(tile):
-		s._rebuild_chunk(chunk)
+##
+## Phase 263 — a player's dig or placement (`priority`, an `EditRemesh` level for the tile's own chunk) jumps the
+## manager's build queue: `PRIMARY` (the local player's own edit) may be attached on the main thread at once,
+## `NEIGHBOUR` (another player's edit, and every seam neighbour) takes the next worker. Settling and other bulk
+## edits keep the ordinary queue.
+func _rebuild_chunk_at_tile(tile: Vector2i, priority: int = EditRemesh.NONE) -> void:
+	var touched := _touched_chunks(tile)
+	for i in touched.size():
+		s._rebuild_chunk(touched[i], priority if i == 0 else mini(priority, EditRemesh.NEIGHBOUR))
+
+## PR #648 review — while set, rebuild requests are noted here (chunk -> highest level) instead of dispatched: an
+## edit applied for a moment (`VoxelEdit.prebuild_edit`) or a prediction's rewind and replay (`EditPrediction`),
+## whose caller decides what really changed.
+var sink: Variant = null
 
 ## Rebuild ONE chunk by the route described above: dispatched through the manager when one is
 ## wired, else synchronously and only when the chunk is loaded.
-func _rebuild_chunk(chunk: Vector2i) -> void:
+func _rebuild_chunk(chunk: Vector2i, priority: int = 0) -> void:
+	if sink is Dictionary:
+		(sink as Dictionary)[chunk] = maxi(int((sink as Dictionary).get(chunk, EditRemesh.NONE)), priority)
+		return
 	if s.chunk_manager != null and s.chunk_manager.has_method("request_rebuild"):
-		s.chunk_manager.request_rebuild(chunk)
+		if priority > EditRemesh.NONE:
+			s.chunk_manager.request_rebuild(chunk, priority)
+		else:
+			s.chunk_manager.request_rebuild(chunk)
 		return
 	var ckey = s._chunk_key(chunk)
 	if s._chunks.has(ckey):

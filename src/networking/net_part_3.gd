@@ -225,12 +225,21 @@ func _route_h2c(payload: Dictionary) -> void:
 			var pos = sl.WorldPos.packet_world(payload, sl._vec3(payload.get("position", [])))
 			GameBus.remote_player_state.emit(int(payload.get("peer_id", 1)), pos)
 		"block_changed":
+			# Phase 263 — this client's own predicted edit, confirmed: said first, so the voxel slice keeps the
+			# prediction instead of applying the edit a second time.
+			var seq: int = sl._m2.edit_seq_of(payload)
+			if seq > 0 and int(payload.get("by", 0)) == sl.multiplayer.get_unique_id():
+				GameBus.block_edit_acked.emit(seq, true, sl._m2.edit_span_of(payload))
 			GameBus.block_changed.emit(
 				str(payload.get("action", "")),
 				sl._vec3(payload.get("position", [])),
 				sl._vec3(payload.get("normal", [0, 1, 0])),
 				str(payload.get("material", ""))
 			)
+		"block_edit_refused":
+			var refused: int = sl._m2.edit_seq_of(payload)
+			if refused > 0:
+				GameBus.block_edit_acked.emit(refused, false, {})
 		"block_damaged":
 			var fraction: Variant = payload.get("fraction", 0.0)
 			if (fraction is float or fraction is int) and is_finite(float(fraction)):

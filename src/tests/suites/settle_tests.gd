@@ -6,7 +6,7 @@ const Settle := preload("res://src/terrain/settle.gd")
 ## Counts the rebuilds a settle asks for, so a 1,000-column collapse does not mesh a chunk per column.
 class RebuildCounter extends Node:
 	var rebuilds := 0
-	func request_rebuild(_chunk: Vector2i) -> void:
+	func request_rebuild(_chunk: Vector2i, _priority: int = 0) -> void:
 		rebuilds += 1
 
 func register() -> void:

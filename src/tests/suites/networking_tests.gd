@@ -782,10 +782,10 @@ func _test_net_remote_chop_credits_the_actor() -> void:
 	reg.free()
 
 func _test_net_voxel_client_forwards_intent() -> void:
-	# A non-authoritative voxel slice must NOT mutate terrain via mine_block —
-	# it forwards a block_edit_intent to the host instead. Invoke the handler
-	# directly so the shared bus (and stale slices from other tests) can't
-	# interfere with the assertion.
+	# A non-authoritative voxel slice must NOT resolve the edit itself (mine_block: the pack, the yield) —
+	# it forwards a block_edit_intent to the host instead. Phase 263: it PREDICTS the ground change, and
+	# the intent carries the prediction's number. Invoke the handler directly so the shared bus (and stale
+	# slices from other tests) can't interfere with the assertion.
 	var v := VoxelSlice.new()
 	add_child(v)
 	v.is_authoritative = false
@@ -794,13 +794,16 @@ func _test_net_voxel_client_forwards_intent() -> void:
 	flat.fill(2.0)
 	v.build_chunk(Vector2i(0, 0), flat)
 	var intent := {}
-	GameBus.block_edit_intent.connect(func(action, _pos, _normal, material, _exact):
+	var on_intent := func(action, _pos, _normal, material, _exact, seq):
 		intent["action"] = action
 		intent["material"] = material
-	)
+		intent["seq"] = seq
+	GameBus.block_edit_intent.connect(on_intent)
 	v._on_mine_requested(Vector3(16.0, 2.0, 16.0), Vector3.UP, "")
+	GameBus.block_edit_intent.disconnect(on_intent)
 	assert_eq(intent.get("action", ""), "mine", "client forwards a mine intent")
-	assert_false(v._edits.has("32,32"), "mine_block did not edit this slice directly")
+	assert_true(int(intent.get("seq", 0)) > 0 and v._predict.is_pending(int(intent["seq"])), "the intent names the pending prediction")
+	assert_true(v._edits.has("32,32"), "the ground change is predicted on this slice")
 	v.free()
 
 func _test_net_voxel_apply_block_change() -> void:
@@ -2061,6 +2064,7 @@ func _test_net_harness_step_table() -> void:
 	assert_eq(str(steps[steps.size() - 1].get("name", "")), "menu_join",
 		"and ends with a client re-joining through the main menu's join path (Phase 223)")
 	steps = steps.slice(0, steps.size() - 1)
+	assert_eq(str(steps.pop_back().get("name", "")), "predicted_edit", "after a client's predicted dig kept and a refused one rolled back (Phase 263)")
 	assert_eq(str(steps.pop_back().get("name", "")), "station_craft", "after a client crafting at a station and refused away from it (Phase 269)")
 	assert_eq(str(steps.pop_back().get("name", "")), "station_from_hotbar", "after a station crafted, placed from the hotbar and refused without its item (Phase 268)")
 	assert_eq(str(steps[steps.size() - 1].get("name", "")), "loose_pick_synced",

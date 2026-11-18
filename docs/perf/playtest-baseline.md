@@ -80,6 +80,19 @@ seed pinned): 10.8 ms against 116.7 ms (0.09). The stream is dispatch-bound at 9
 per crossing on both flights), so the ratio is close to a coarse build's cost over a full one's: about
 1–2 ms (heightmap 0.6 ms) against 24 ms.
 
+## Mine: edit to visible (Phase 263)
+
+The `mine` step holds work for the timed block and five more beside it, as a player digs, and records
+`edit_visible` from the `EditRemesh` samples of each edited chunk: frames and ms from the dig's completion to the
+chunk's mesh attached, split into queue wait, build and the main-thread job, and how many were built ahead while the
+work ran (`prebuilt`). `docs/perf/playtest-budget.json` gates the p95 ms under `edit_visible` (`mine`: 2 frames at
+60 Hz, 33.3 ms; PR #648 review: time, not frames counted, because a main-thread build attaches in the frame it was
+asked for however long that frame is); the bot and `tools/check_playtest_budget.py` (median of three runs) both fail
+over it. Local runs (native, 2026-11-17): before PR #648's review fixes, 1 frame p95 but 50–70 ms, because the
+edited chunk was built on the main thread in the frame of the dig. After them, the dug chunk is built on a worker while
+the work runs and attached as is (6 of 6 digs). The rendered runs (xvfb, opengl3) measured 5.1, 4.8 and 6.4 ms p95,
+and the headless run 5.2 ms.
+
 ## Process time (Phase 183)
 
 `--playtest-profile` (diagnostic, never the gated run) times every script `_process` of the scene tree by

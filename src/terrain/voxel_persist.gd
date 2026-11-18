@@ -111,6 +111,7 @@ func _normalise_tile_ops(key: Variant, value: Array, materials: Dictionary) -> A
 ## changed. `diff_keys` limits the change detection to those tile keys (the scoped re-scope
 ## path knows nothing outside its disc moved); null compares the whole of both logs.
 func _commit_edits(next: Dictionary, diff_keys: Variant = null) -> void:
+	s._predict.clear()   # PR #648 review: the host's log replaces the predictions made on the old one
 	var previous: Dictionary = s._edits
 	if diff_keys == null:
 		s._partial_chunks.clear()   # the log is replaced wholesale: what it holds is the whole truth

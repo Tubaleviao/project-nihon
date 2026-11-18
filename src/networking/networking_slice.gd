@@ -295,6 +295,7 @@ func _ready() -> void:
 	GameBus.player_state_sync_requested.connect(_on_player_state_sync_requested)
 	GameBus.block_edit_intent.connect(_on_block_edit_intent)
 	GameBus.block_changed.connect(_on_block_changed)
+	GameBus.block_edit_span.connect(_m2.on_block_edit_span)   # PR #648 review: the span a prediction's answer carries
 	GameBus.creature_state_changed.connect(_on_creature_state_changed)
 	GameBus.remote_player_state.connect(_on_remote_player_state)
 	GameBus.inventory_synced.connect(_on_inventory_synced)
@@ -630,20 +631,11 @@ func _warn_malformed_position(sender: int, now_ms: float = -1.0) -> bool:
 static func _is_exact_pos(pos: Variant) -> bool:
 	return pos is Dictionary and pos.get("chunk") is Vector2i and pos.get("local") is Vector3
 
-func _on_block_edit_intent(action: String, position: Vector3, normal: Vector3, material: String, exact: Dictionary) -> void:
-	_m2._on_block_edit_intent(action, position, normal, material, exact)
+func _on_block_edit_intent(action: String, position: Vector3, normal: Vector3, material: String, exact: Dictionary, seq: int = 0) -> void:
+	_m2._on_block_edit_intent(action, position, normal, material, exact, seq)
 
 func _on_block_changed(action: String, position: Vector3, normal: Vector3, material: String) -> void:
-	if _role != Role.HOST:
-		return
-	var packet := {
-		"type":     "block_changed",
-		"action":   action,
-		"position": WorldPos.to_wire(position),
-		"normal":   [normal.x, normal.y, normal.z],
-		"material": material,
-	}
-	_broadcast_aoi(packet, position)
+	_m2.on_block_changed(action, position, normal, material)
 
 func _on_tree_chop_requested(tree_id: String, _player_id: String) -> void:
 	if _role != Role.CLIENT:

@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–225, 238–243, 248, 249, 252–254, 259–262, 264, 267–270 and 274 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–225, 238–243, 248, 249, 252–254, 259–264, 267–270 and 274 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -31,14 +31,13 @@ introductions of the arcs they belonged to, are archived in
 Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
 see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
 phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
-comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–254, 259–262, 264, 267–270, 274)
+comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–254, 259–264, 267–270, 274)
 have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
 [Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
 others are not in it.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 6 | 263 | Digging that shows at once: a predicted edit and a priority remesh |
 | 12 | 271 | The skill wheel: professions around the edge, shared skills in the centre |
 | 13 | 272 | A skill's own page, and where the player's focus went |
 | 14 | 273 | Titles: professions unlock them, the player chooses one |
@@ -286,7 +285,7 @@ everything for the whole tutorial.
 | 260 | Stone tools: an axe, a pick and a shovel from wood and stone, no bench | Done |
 | 261 | The newcomer grounds: a large, gentle spawn area with loose stones and branches | Done |
 | 262 | Starting with nothing, and a tutorial that begins from bare hands | Done |
-| 263 | Digging that shows at once: a predicted edit and a priority remesh | Open |
+| 263 | Digging that shows at once: a predicted edit and a priority remesh | Done |
 | 264 | Dropping part of a stack: a quantity slider | Done |
 | 265 | One body everywhere: the creation screen, the Character window and the world draw the same avatar | Open |
 | 266 | A chibi character worth looking at: the art direction and the player rig | Open |
@@ -895,34 +894,6 @@ would be empty.
   and fails on a broken internal link (the generator's link check, or `lychee` over the output).
 - A GitHub issue asks the owner to enable Pages and Discussions; this phase records its number.
 - After the issue closes, the README's wiki link returns 200 from a CI step on `main`.
-
-## Phase 263 — Digging that shows at once: a predicted edit and a priority remesh
-
-A dig waits for the host to apply it, then for the chunk's rebuild to come out of the worker queue
-behind streaming work. The ground should change the frame the work completes.
-
-- **Measure first:** the playtest `mine` step records, per edit, the time from completion to the
-  edited mesh on screen, split into network, queue wait and build, on the listen host and on a
-  client under `lan` and `wan_br`.
-- **A priority remesh:** an edited chunk (and the neighbour whose seam it touches) jumps the build
-  queue, ahead of streaming. If the build is short enough (native smooth mesher), it runs on the
-  main thread at once for that one chunk; otherwise it takes the next worker. Collision follows the
-  same path, so the player never falls into a hole they cannot see, or stands on one they can.
-- **Prediction on the client:** when the host's timer (Phase 259) is about to complete, the client
-  applies the edit to its own copy and remeshes as above, marked pending. The host's
-  `block_changed` confirms it; a refusal (or no answer within a timeout) rolls the chunk back and
-  shows the refusal. Inventory and durability stay host-only: the item appears when the host says
-  so.
-- Placement gets the same path.
-
-**Acceptance criteria**
-- Suite tests: an edited chunk is built before every queued streaming chunk; a predicted edit is
-  applied to the client's voxel data and rolled back on a host refusal, leaving the chunk byte-equal
-  to before; inventory never changes on prediction alone.
-- The playtest `mine` step reports edit-to-visible time; its p95 on the listen host is at most two
-  frames at the target frame rate, gated in `docs/perf/playtest-budget.json`.
-- The net harness's `wan_br` run shows a client's predicted edit visible before the host's
-  confirmation arrives, and a refused edit rolled back.
 
 ## Phase 265 — One body everywhere: the creation screen, the Character window and the world draw the same avatar
 
