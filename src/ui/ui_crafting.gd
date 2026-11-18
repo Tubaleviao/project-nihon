@@ -12,6 +12,29 @@ var sl: Node
 func _init(owner: Node) -> void:
 	sl = owner
 
+## One row per recipe, sorted by id: { id, can_craft, reason, station, icon_key, inputs, outputs } (moved here from
+## the UI slice, which keeps a forwarder).
+func crafting_rows() -> Array:
+	var rows: Array = []
+	if sl.crafting_slice == null:
+		return rows
+	var ids: Array = GameData.RECIPES.keys()
+	ids.sort()
+	for recipe_id in ids:
+		var rid := str(recipe_id)
+		var check: Dictionary = sl.crafting_slice.can_craft(rid)
+		var recipe: Dictionary = sl.crafting_slice.get_recipe(rid)
+		rows.append({
+			"id": rid,
+			"can_craft": bool(check.get("success", false)),
+			"reason": str(check.get("reason", "")),
+			"station": str(recipe.get("station", "")),
+			"icon_key": sl._first_output_icon_key(recipe.get("outputs", [])),
+			"inputs": sl._fmt_entries(recipe.get("inputs", [])),
+			"outputs": sl._fmt_entries(recipe.get("outputs", [])),
+		})
+	return rows
+
 ## Phase 269 — one card per recipe a crafting window lists: the known recipes needing exactly `type` ("" = the
 ## hand window), sorted by shown name: { id, name, icon_key, output, count, category, can_craft, reason,
 ## inputs: [{ item, name, icon_key, have, need, short }], skill, skill_name, work_seconds, max_quantity }.

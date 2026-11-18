@@ -705,26 +705,7 @@ func durability_bar(item_id: String) -> String:
 	return "  [%d/%d %s]" % [int(cur), int(max_d), cond]
 
 ## One row per recipe: { id, can_craft, reason, inputs, outputs }.
-func crafting_rows() -> Array:
-	var rows: Array = []
-	if crafting_slice == null:
-		return rows
-	var ids: Array = GameData.RECIPES.keys()
-	ids.sort()
-	for recipe_id in ids:
-		var rid := str(recipe_id)
-		var check: Dictionary = crafting_slice.can_craft(rid)
-		var recipe: Dictionary = crafting_slice.get_recipe(rid)
-		rows.append({
-			"id": rid,
-			"can_craft": bool(check.get("success", false)),
-			"reason": str(check.get("reason", "")),
-			"station": str(recipe.get("station", "")),
-			"icon_key": _first_output_icon_key(recipe.get("outputs", [])),
-			"inputs": _fmt_entries(recipe.get("inputs", [])),
-			"outputs": _fmt_entries(recipe.get("outputs", [])),
-		})
-	return rows
+func crafting_rows() -> Array: return _crafting.crafting_rows()
 
 ## Phase 269 — the crafting windows' projections and the station window (see `ui_crafting.gd`).
 func craft_cards(type: String) -> Array: return _crafting.craft_cards(type)
