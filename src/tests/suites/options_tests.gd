@@ -17,6 +17,7 @@ func register() -> void:
 	_run_test("options: each setting is saved, reloaded in a fresh load and applied", _test_round_trip)
 	_run_test("options: invalid or out-of-range values load as defaults or clamp; the file's other keys survive", _test_sanitize)
 	_run_test("options: the window's controls write through and a pause menu opens it", _test_window)
+	_run_test("options: boot applies every volume, saved or default, even from a file older than the option", _test_startup_volumes)
 	_run_test("options: every label is a key in both en and pt_BR", _test_catalog)
 
 func _with_settings(fn: Callable) -> void:
@@ -104,6 +105,33 @@ func _test_sanitize() -> void:
 		assert_eq(raw["other"], 7, "unrelated keys survive a save")
 		assert_eq(raw["locale"], "en", "the locale survives a save")
 		assert_false((raw["options"] as Dictionary).has("tutorial"), "the tutorial switch is not duplicated under options"))
+
+## Phase 275: a settings file from before the Ambience and UI options (and a fresh install, for every volume)
+## still sets each bus to its slider's value at boot, not the layout's 0 dB.
+func _test_startup_volumes() -> void:
+	_with_settings(func() -> void:
+		var f := FileAccess.open(LocaleSettings.settings_path, FileAccess.WRITE)
+		f.store_string(JSON.stringify({ "options": { "volume_master": 0.5, "volume_music": 0.25, "volume_effects": 0.75,
+			"fps_cap": 120 } }))
+		f.close()
+		var keys := GameSettings.startup_keys(GameSettings._read_file().get("options", {}))
+		for k in GameSettings.VOLUME_BUSES:
+			assert_true(keys.has(k), "%s is applied at boot" % k)
+		assert_true(keys.has("fps_cap"), "a saved non-volume option is applied")
+		assert_false(keys.has("window_mode") or keys.has("render_scale") or keys.has("tutorial"),
+			"an unsaved window or render option, and the tutorial switch, are not")
+		assert_eq(GameSettings.startup_keys({}).size(), GameSettings.VOLUME_BUSES.size(), "a fresh install applies only the volumes")
+		for b in BUSES:
+			AudioServer.set_bus_volume_db(AudioServer.get_bus_index(b), 0.0)
+		GameSettings.load_values()
+		for k in keys:
+			if GameSettings.VOLUME_BUSES.has(k):
+				GameSettings.apply(k)
+		var db := func(b: String) -> float: return AudioServer.get_bus_volume_db(AudioServer.get_bus_index(b))
+		var d: Dictionary = GameSettings.defaults()
+		assert_true(absf(db.call("Music") - linear_to_db(0.25)) < 0.01, "the saved music volume is applied")
+		assert_true(absf(db.call("Ambience") - linear_to_db(float(d["volume_ambience"]))) < 0.01, "ambience gets its default")
+		assert_true(absf(db.call("UI") - linear_to_db(float(d["volume_ui"]))) < 0.01, "UI gets its default"))
 
 func _test_window() -> void:
 	_with_settings(func() -> void:

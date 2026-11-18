@@ -17,10 +17,10 @@ var max_clients: int = NetworkingSlice.DEFAULT_MAX_CLIENTS
 
 ## Parse `--client [addr]` from OS user args to determine network role. Defaults
 ## to host (authoritative single-player) when no args are present. A malformed
-## address is rejected with a warning and falls back to localhost.
-func parse_network_args() -> void:
+## address is rejected with a warning and falls back to localhost. `args` is the OS user args unless the suite
+## passes its own.
+func parse_network_args(args: PackedStringArray = OS.get_cmdline_user_args()) -> void:
 	NativeBuilder.init()   # Phase 166 — native chunk builder if its binary is present, else GDScript
-	var args := OS.get_cmdline_user_args()
 	for i in range(args.size()):
 		if args[i] == "--server":
 			root._is_server = true

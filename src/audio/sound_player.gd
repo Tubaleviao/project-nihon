@@ -59,7 +59,10 @@ func play(event_id: String, at: Variant = null) -> Node:
 	var stream := AssetOverlay.load_sound(str(p["key"]))
 	if stream == null:
 		return null   # AssetOverlay warned once for the key
-	if stream is AudioStreamOggVorbis:
+	if stream is AudioStreamOggVorbis and (stream as AudioStreamOggVorbis).loop != bool(p["loop"]):
+		# The cached stream is shared by key; the player gets its own copy rather than flipping `loop` under
+		# another player. (Today each key belongs to one event, so the copy never happens.)
+		stream = stream.duplicate() as AudioStream
 		(stream as AudioStreamOggVorbis).loop = bool(p["loop"])
 	var player: Node
 	if p["spatial"] == "3d":
