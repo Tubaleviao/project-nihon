@@ -82,6 +82,9 @@ const LAYOUT_PATH := "user://ui_layout.json"
 const UiIcons := preload("res://src/ui/ui_icons.gd")
 const SkillWheelLayout := preload("res://src/ui/skill_wheel_layout.gd")
 const SkillWheelView := preload("res://src/ui/skill_wheel_view.gd")
+const SkillsWindow := preload("res://src/ui/skills_window.gd")
+const SkillPagePanel := preload("res://src/ui/skill_page_panel.gd")
+const SkillFocus := preload("res://src/character/skill_focus.gd")
 const ICON_KEY_FORMAT := "icons/items/%s.png.raw"
 const SLOT_SIZE := Vector2(72, 72)
 const INVENTORY_COLUMNS := 5
@@ -116,6 +119,7 @@ var drops_enabled: bool = true
 ## The payload of the drag in flight (set by the drag sources), read when the drag ends.
 var _drag_payload: Dictionary = {}
 var _skill_wheel: Control = null
+var _skills_window: Control = null
 var _skills_signature: int = 0
 ## Brief line shown when a drag-drop is refused.
 var _hud_notice: Label = null
@@ -229,6 +233,7 @@ func _ready() -> void:
 	GameBus.research_resolved.connect(_on_research_resolved)
 	GameBus.research_points_synced.connect(_on_research_points_synced)
 	GameBus.technology_unlocked.connect(_on_technology_unlocked)
+	GameBus.own_skill_tier_gained.connect(_announce_tier); GameBus.skill_tier_recorded.connect(_on_skill_tier_recorded)   # Phase 272: a new tier toasts and opens its page
 	GameBus.system_message.connect(_on_system_notice)   # Phase 260: a notice is also a toast
 	GameBus.item_picked_up.connect(_on_item_picked_up)
 	GameBus.inventory_changed.connect(_on_inventory_changed)
@@ -996,10 +1001,12 @@ func _refresh_skills() -> void:
 	if "profession_slice" in crafting_slice and crafting_slice.profession_slice != null:
 		unlocked = crafting_slice.profession_slice.get_unlocked()
 	var rows := SkillWheelView.rows(crafting_slice.get_skills(), unlocked)
-	if rows.hash() == _skills_signature:
+	var focus_sig := [rows.hash(), SkillFocus.local_view.hash(), SkillsWindow.xp_hash()].hash()
+	if focus_sig == _skills_signature:
 		return
-	_skills_signature = rows.hash()
+	_skills_signature = focus_sig
 	_skill_wheel.set_rows(rows["nodes"], rows["professions"])
+	if _skills_window != null: _skills_window.refresh_focus()
 	# A skill's node can still be dragged to the hotbar, as the old grid's buttons could.
 	for id in _skill_wheel.nodes:
 		var skill: String = str(SkillWheelLayout.fabric_nodes()[id]["skill"])
@@ -1137,6 +1144,15 @@ func _on_research_resolved(result: Dictionary) -> void:
 
 func _on_research_points_synced(player_id: String, _points: int) -> void:
 	_m2.on_research_points_synced(player_id)
+
+## Phase 272 — the local player reached a new tier: a toast, the wheel's node pulses and the skill's page is open.
+func _on_skill_tier_recorded(player_id: String, skill: String, tier: String) -> void:
+	if crafting_slice != null and player_id == crafting_slice.local_player_id():
+		SkillsWindow.sync_xp(crafting_slice.get("player_registry"), player_id); _announce_tier(skill, tier)   # host: synced XP is up to 1 s old
+func _announce_tier(skill: String, tier: String) -> void:
+	if _skills_window == null: return
+	_skills_window.announce(skill, tier)
+	push_toast(I18n.t("ui.skill_unlocked_toast", [I18n.content("skill", skill), I18n.t(SkillPagePanel.TIER_KEY % tier)]))
 
 func _on_technology_unlocked(_tech_id: String, _player_id: String) -> void:
 	refresh_technology()
@@ -1409,24 +1425,15 @@ func _build_inventory_content() -> Control:
 	return vbox
 
 func _build_skills_content() -> Control:
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 6)
-	var bar := HBoxContainer.new()
 	var title := Label.new()
 	_set_tr(title, "text", "ui.skills_title")
 	title.add_theme_font_size_override("font_size", 15)
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	bar.add_child(title)
 	var fit := Button.new()
 	_set_tr(fit, "text", "ui.skills_fit")
-	bar.add_child(fit)
-	vbox.add_child(bar)
-	_skill_wheel = SkillWheelView.new()
-	_skill_wheel.custom_minimum_size = Vector2(860, 560)
-	_skill_wheel.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	fit.pressed.connect(_skill_wheel.fit_all)
-	vbox.add_child(_skill_wheel)
-	return vbox
+	_skills_window = SkillsWindow.new()
+	_skills_window.build(title, fit)
+	_skill_wheel = _skills_window.wheel
+	return _skills_window
 
 ## Phase 269 — the hand window: a card grid of the recipes with no station (repairs listed under it).
 func _build_crafting_content() -> Control:

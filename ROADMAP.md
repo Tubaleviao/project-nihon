@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–225, 238–243, 248, 249, 252–254, 259–264, 267–271 and 274 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–225, 238–243, 248, 249, 252–254, 259–264, 267–272 and 274 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -31,14 +31,13 @@ introductions of the arcs they belonged to, are archived in
 Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
 see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
 phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
-comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–254, 259–264, 267–271, 274)
+comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–254, 259–264, 267–272, 274)
 have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
 [Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
 others are not in it.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 13 | 272 | A skill's own page, and where the player's focus went |
 | 14 | 273 | Titles: professions unlock them, the player chooses one |
 | 15 | 265 | One body everywhere: the creation screen, the Character window and the world draw the same avatar |
 | 16 | 266 | A chibi character worth looking at: the art direction and the player rig |
@@ -315,7 +314,7 @@ tiers, several at once, and the UI calls them professions.
 | 269 | Crafting by hand, and at the station | Done |
 | 270 | The technology tree: nodes, lines, zoom | Done |
 | 271 | The skill wheel: professions around the edge, shared skills in the centre | Done |
-| 272 | A skill's own page, and where the player's focus went | Open |
+| 272 | A skill's own page, and where the player's focus went | Done |
 | 273 | Titles: professions unlock them, the player chooses one | Open |
 | 274 | Gathering: Mining, Woodcutting, Foraging and Skinning are their own skills | Done |
 
