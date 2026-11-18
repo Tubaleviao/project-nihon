@@ -77,6 +77,8 @@ const SUITES: Array[String] = [
 	"res://src/tests/suites/admin_tests.gd",
 	"res://src/tests/suites/content_locale_tests.gd",
 	"res://src/tests/suites/tech_tree_tests.gd",           # Phase 270
+	"res://src/tests/suites/skill_wheel_tests.gd",         # Phase 271
+	"res://src/tests/suites/skill_focus_tests.gd",         # Phase 272
 	"res://src/tests/suites/station_placement_tests.gd",   # Phase 268
 	"res://src/tests/suites/crafting_window_tests.gd",   # Phase 269
 	"res://src/tests/suites/predicted_edit_tests.gd",   # Phase 263
