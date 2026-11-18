@@ -4,6 +4,10 @@ extends "res://src/core/wiring.gd"
 
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const Diag := preload("res://src/core/diag.gd")
+const SkillFocus := preload("res://src/character/skill_focus.gd")
+const SkillPage := preload("res://src/character/skill_page.gd")
+const WorkSkills := preload("res://src/character/work_skills.gd")
+const SkillTiers := preload("res://src/core/skill_tiers.gd")
 const TerrainSlice     := preload("res://src/terrain/terrain_slice.gd")
 const CreatureAI       := preload("res://src/creature/creature_ai.gd")
 const NetworkingSlice  := preload("res://src/networking/networking_slice.gd")
@@ -358,8 +362,34 @@ func tick(delta: float) -> void:
 		flush_rescopes()
 		_attr_sync_elapsed += delta
 		if _attr_sync_elapsed >= ATTR_SYNC_SEC and root._registry != null:
+			# Phase 272: focus counts connected play time, advanced in one step per flush (not a sort per frame),
+			# and each remote owner is told their aged view when it changed (focus decays with no grant to send it).
+			SkillFocus.advance_online(root._registry, _attr_sync_elapsed)
+			_sync_focus_views()
 			_attr_sync_elapsed = 0.0
 			root._registry.flush_attribute_syncs()
+			SkillFocus.local_view = SkillFocus.view_of_record(root._registry.get_record(root._registry.local_player_id))
+			SkillPage.local_xp = root._registry.get_record(root._registry.local_player_id).get("skill_xp", {}).duplicate()
+
+## Phase 272 — last focus view sent per remote player, so only a changed one is sent again.
+var _focus_sent: Dictionary = {}
+
+func _sync_focus_views() -> void:
+	var online := {}
+	for pid: String in root._registry.get_online_player_ids():
+		online[pid] = true
+		if pid == root._registry.local_player_id:
+			continue
+		var peer: int = root._registry.get_peer_id(pid)
+		if peer == 0:
+			continue
+		var view := SkillFocus.view_of_record(root._registry.get_record(pid))
+		if _focus_sent.get(pid, null) != view:
+			_focus_sent[pid] = view
+			root._networking.send_own_state(peer, { "skill_focus_view": view })
+	for pid: String in _focus_sent.keys():
+		if not online.has(pid):
+			_focus_sent.erase(pid)
 
 ## Phase 163 — host, once a frame: serve the frame's AOI crossings. Every window moves first and the
 ## windows are refreshed ONCE, then each crossing's snapshot is built. Returns the snapshots sent.
@@ -619,6 +649,8 @@ func _own_state_payload(player_id: String) -> Dictionary:
 		"professions": own.get("professions", {}),
 		"attributes": own.get("attributes", {}),
 		"attribute_growth": own.get("attribute_growth", {}),
+		"skill_focus_view": SkillFocus.view_of_record(root._registry.get_record(player_id)),
+		"skill_xp": own.get("skill_xp", {}),
 	}
 
 ## Phase 178 — an attribute table changed on the host. The local body adopts it directly; a remote owner gets it on
@@ -634,7 +666,9 @@ func _on_attributes_synced(player_id: String, attributes: Dictionary) -> void:
 		return
 	var peer := root._registry.get_peer_id(player_id)
 	if peer != 0:
-		root._networking.send_own_state(peer, { "attributes": attributes, "attribute_growth": growth })
+		root._networking.send_own_state(peer, { "attributes": attributes, "attribute_growth": growth,
+			"skill_focus_view": SkillFocus.view_of_record(root._registry.get_record(player_id)),
+			"skill_xp": root._registry.get_record(player_id).get("skill_xp", {}) })
 
 ## Phase 178 — display this machine's own attributes (the host's own body, or a client's mirror of the host's
 ## number). Sanitised: a table that does not parse reads as base 10.
@@ -671,6 +705,20 @@ func on_own_state_synced(data: Dictionary) -> void:
 		apply_own_attributes(data["attributes"])
 	if data.get("attribute_growth", null) is Dictionary and root._player != null:
 		root._player.set_attribute_growth(data["attribute_growth"])
+	if data.has("skill_focus_view"):
+		SkillFocus.local_view = SkillFocus.sanitize_view(data["skill_focus_view"])
+	if data.has("skill_xp"):
+		var fresh := SkillPage.sanitize_xp(data["skill_xp"])
+		var before: Dictionary = SkillPage.local_xp
+		var known: bool = SkillPage.xp_known
+		SkillPage.xp_known = true
+		SkillPage.local_xp = fresh   # first, so the page a tier toast opens reads the new XP
+		if known:
+			for skill in fresh:
+				var now_tier := WorkSkills.tier_for_xp(int(fresh[skill]))
+				var was_tier := WorkSkills.tier_for_xp(int(before.get(skill, 0)))
+				if SkillTiers.rank(now_tier) > SkillTiers.rank(was_tier):
+					GameBus.own_skill_tier_gained.emit(str(skill), now_tier)
 	root._waystone_wiring.apply_own_view(data)
 	root._bed_wiring.apply_own_view(data)
 	if data.get("settlement_view", null) is Dictionary:

@@ -10,6 +10,7 @@ extends RefCounted
 ## attribute sync is batched (`PlayerRegistry.flush_attribute_syncs`) unless an attribute gained a point.
 
 const SkillTiers := preload("res://src/core/skill_tiers.gd")
+const SkillFocus := preload("res://src/character/skill_focus.gd")
 
 ## Kinds of work with a single row.
 const SINGLE_KINDS := ["build", "dismantle", "repair", "lockpick"]
@@ -109,12 +110,12 @@ static func grant(registry: Object, player_id: String, work_row: Dictionary, tim
 	_promote(registry, pid, skill)
 
 ## Host: take back what one `grant` of `work_row` gave (a block its own builder took apart again: an undo).
-## The tier and the attribute growth stay; the skill's XP never drops below 0.
+## The focus bonus the grant paid comes back too. The tier and the attribute growth stay; the skill's XP never drops below 0.
 static func revoke(registry: Object, player_id: String, work_row: Dictionary) -> void:
 	var pid := _worker(registry, player_id, work_row)
 	if pid == "" or not registry.has_method("add_skill_xp") or not bool(registry.get("is_authoritative")):
 		return
-	registry.add_skill_xp(pid, str(work_row["skill"]), -int(work_row["xp"]))
+	registry.add_skill_xp(pid, str(work_row["skill"]), -SkillFocus.revoke_amount(registry.get_record(pid), str(work_row["skill"]), int(work_row["xp"])))
 
 static func _worker(registry: Object, player_id: String, work_row: Dictionary) -> String:
 	if work_row.is_empty() or registry == null:

@@ -346,6 +346,8 @@ const WORLD_SYSTEMS: Dictionary = {
 		"Settlement": preload("res://godot/world_systems/settlement.tres"),
 		"SettlementProjects": preload("res://godot/world_systems/settlementprojects.tres"),
 		"SettlementSpecialties": preload("res://godot/world_systems/settlementspecialties.tres"),
+		"SkillFocus": preload("res://godot/world_systems/skillfocus.tres"),
+		"SkillWheel": preload("res://godot/world_systems/skillwheel.tres"),
 		"StationPlacement": preload("res://godot/world_systems/stationplacement.tres"),
 		"StoneTools": preload("res://godot/world_systems/stonetools.tres"),
 		"Structure": preload("res://godot/world_systems/structure.tres"),

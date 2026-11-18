@@ -301,6 +301,10 @@ signal specialty_changed(player_id: String, specialty: String)
 ## Phase 199 — the host recorded a new tier for a player's skill. Feeds the specialty recompute.
 signal skill_tier_recorded(player_id: String, skill: String, tier: String)
 
+## Phase 272 — a remote client's own skill XP reached a higher tier than the last sync showed (the host's
+## `skill_tier_recorded` never leaves the host); the UI toasts and opens the page.
+signal own_skill_tier_gained(skill: String, tier: String)
+
 ## Phase 204 — a clan intent: `action` is one of ClanSlice.ACTIONS (found, invite, uninvite, join, decline, leave,
 ## kick, role) and `args` its parameters (name, target, id, role). A client forwards it; the host binds the identity.
 signal clan_intent(action: String, args: Dictionary, player_id: String)

@@ -503,6 +503,12 @@ jobs:
       - name: Check the work-time validation rejects bad tables
         run: node tools/check_work_times.js
 
+      - name: Check the skill-focus validation rejects bad tables
+        run: node tools/check_skill_focus.js
+
+      - name: Check the skill-wheel validation rejects bad tables
+        run: node tools/check_skill_wheel.js
+
       - name: Check the stone-tool validation rejects bad tables
         run: node tools/check_stone_tools.js
 
