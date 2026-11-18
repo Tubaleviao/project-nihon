@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:b8da767c0f7fbf82e2346c572984cff46dc51f1a0fe731a0fbe58ec212f1afa3",
+  "schemaHash": "sha256:6c95717981950860ff086de1a7153e4bfad0feb911c8c68bd9b698f1a1aae384",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -42014,6 +42014,2060 @@
               },
               "StoneShovel": {
                 "shovel": 0.6
+              }
+            }
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "SkillWheel": {
+        "name": "SkillWheel",
+        "tags": [
+          "world-system"
+        ],
+        "description": "The skill wheel: each skill tier is a node with an affinity per profession (which pulls it toward that profession on the rim) and a depth (how far from the centre it sits), plus what the tier unlocks.",
+        "goal": "Draw skills as a wheel of professions with shared skills in the centre instead of a grid of tiers (Phase 271)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "professions": {
+            "name": "professions",
+            "type": "json",
+            "description": "Profession ids, in rim order",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "Blacksmith",
+              "Arcanist",
+              "Ranger",
+              "Warrior",
+              "Alchemist",
+              "Merchant",
+              "Pathfinder",
+              "VoidTouched"
+            ]
+          },
+          "professionSkills": {
+            "name": "professionSkills",
+            "type": "json",
+            "description": "{ <profession>: [skills it is built from] }",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "Blacksmith": [
+                "Smithing",
+                "ArcaneForging"
+              ],
+              "Arcanist": [
+                "ElementalMagic",
+                "Enchanting"
+              ],
+              "Ranger": [
+                "Archery",
+                "Tracking",
+                "Navigation",
+                "Unarmed"
+              ],
+              "Warrior": [
+                "Swordsmanship",
+                "Shieldcraft"
+              ],
+              "Alchemist": [
+                "Alchemy",
+                "ArcaneForging"
+              ],
+              "Merchant": [
+                "Trade",
+                "Diplomacy",
+                "Speechcraft"
+              ],
+              "Pathfinder": [
+                "Navigation",
+                "Cartography",
+                "Stealth"
+              ],
+              "VoidTouched": [
+                "VoidMagic",
+                "VoidSmithing"
+              ]
+            }
+          },
+          "nodes": {
+            "name": "nodes",
+            "type": "json",
+            "description": "{ \"<Skill>:<tier>\": { skill, tier, depth, affinity, requires, unlock } }",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "Swordsmanship:novice": {
+                "skill": "Swordsmanship",
+                "tier": "novice",
+                "depth": 0,
+                "affinity": {
+                  "Warrior": 1
+                },
+                "requires": [],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Swordsmanship.novice"
+                }
+              },
+              "Swordsmanship:apprentice": {
+                "skill": "Swordsmanship",
+                "tier": "apprentice",
+                "depth": 0.25,
+                "affinity": {
+                  "Warrior": 1
+                },
+                "requires": [
+                  "Swordsmanship:novice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "executePowerStrike"
+                }
+              },
+              "Swordsmanship:journeyman": {
+                "skill": "Swordsmanship",
+                "tier": "journeyman",
+                "depth": 0.5,
+                "affinity": {
+                  "Warrior": 1
+                },
+                "requires": [
+                  "Swordsmanship:apprentice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "executeCounterSlash"
+                }
+              },
+              "Swordsmanship:expert": {
+                "skill": "Swordsmanship",
+                "tier": "expert",
+                "depth": 0.75,
+                "affinity": {
+                  "Warrior": 1
+                },
+                "requires": [
+                  "Swordsmanship:journeyman"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "executeWhirlwindBlade"
+                }
+              },
+              "Swordsmanship:master": {
+                "skill": "Swordsmanship",
+                "tier": "master",
+                "depth": 1,
+                "affinity": {
+                  "Warrior": 1
+                },
+                "requires": [
+                  "Swordsmanship:expert"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Swordsmanship.master"
+                }
+              },
+              "Archery:novice": {
+                "skill": "Archery",
+                "tier": "novice",
+                "depth": 0,
+                "affinity": {
+                  "Ranger": 1
+                },
+                "requires": [],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Archery.novice"
+                }
+              },
+              "Archery:apprentice": {
+                "skill": "Archery",
+                "tier": "apprentice",
+                "depth": 0.25,
+                "affinity": {
+                  "Ranger": 1
+                },
+                "requires": [
+                  "Archery:novice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "executeSteadyShot"
+                }
+              },
+              "Archery:journeyman": {
+                "skill": "Archery",
+                "tier": "journeyman",
+                "depth": 0.5,
+                "affinity": {
+                  "Ranger": 1
+                },
+                "requires": [
+                  "Archery:apprentice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "executeMultiShot"
+                }
+              },
+              "Archery:expert": {
+                "skill": "Archery",
+                "tier": "expert",
+                "depth": 0.75,
+                "affinity": {
+                  "Ranger": 1
+                },
+                "requires": [
+                  "Archery:journeyman"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "executePierceShot"
+                }
+              },
+              "Archery:master": {
+                "skill": "Archery",
+                "tier": "master",
+                "depth": 1,
+                "affinity": {
+                  "Ranger": 1
+                },
+                "requires": [
+                  "Archery:expert"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Archery.master"
+                }
+              },
+              "Shieldcraft:novice": {
+                "skill": "Shieldcraft",
+                "tier": "novice",
+                "depth": 0,
+                "affinity": {
+                  "Warrior": 1
+                },
+                "requires": [],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Shieldcraft.novice"
+                }
+              },
+              "Shieldcraft:apprentice": {
+                "skill": "Shieldcraft",
+                "tier": "apprentice",
+                "depth": 0.25,
+                "affinity": {
+                  "Warrior": 1
+                },
+                "requires": [
+                  "Shieldcraft:novice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "executeParry"
+                }
+              },
+              "Shieldcraft:journeyman": {
+                "skill": "Shieldcraft",
+                "tier": "journeyman",
+                "depth": 0.5,
+                "affinity": {
+                  "Warrior": 1
+                },
+                "requires": [
+                  "Shieldcraft:apprentice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "executeShieldBash"
+                }
+              },
+              "Shieldcraft:expert": {
+                "skill": "Shieldcraft",
+                "tier": "expert",
+                "depth": 0.75,
+                "affinity": {
+                  "Warrior": 1
+                },
+                "requires": [
+                  "Shieldcraft:journeyman"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "activateFortify"
+                }
+              },
+              "Shieldcraft:master": {
+                "skill": "Shieldcraft",
+                "tier": "master",
+                "depth": 1,
+                "affinity": {
+                  "Warrior": 1
+                },
+                "requires": [
+                  "Shieldcraft:expert"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Shieldcraft.master"
+                }
+              },
+              "Unarmed:novice": {
+                "skill": "Unarmed",
+                "tier": "novice",
+                "depth": 0,
+                "affinity": {
+                  "Ranger": 1
+                },
+                "requires": [],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Unarmed.novice"
+                }
+              },
+              "Unarmed:apprentice": {
+                "skill": "Unarmed",
+                "tier": "apprentice",
+                "depth": 0.25,
+                "affinity": {
+                  "Ranger": 1
+                },
+                "requires": [
+                  "Unarmed:novice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "executeDisarm"
+                }
+              },
+              "Unarmed:journeyman": {
+                "skill": "Unarmed",
+                "tier": "journeyman",
+                "depth": 0.5,
+                "affinity": {
+                  "Ranger": 1
+                },
+                "requires": [
+                  "Unarmed:apprentice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "executeGrapple"
+                }
+              },
+              "Unarmed:expert": {
+                "skill": "Unarmed",
+                "tier": "expert",
+                "depth": 0.75,
+                "affinity": {
+                  "Ranger": 1
+                },
+                "requires": [
+                  "Unarmed:journeyman"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "executeKnockdown"
+                }
+              },
+              "Unarmed:master": {
+                "skill": "Unarmed",
+                "tier": "master",
+                "depth": 1,
+                "affinity": {
+                  "Ranger": 1
+                },
+                "requires": [
+                  "Unarmed:expert"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Unarmed.master"
+                }
+              },
+              "Smithing:novice": {
+                "skill": "Smithing",
+                "tier": "novice",
+                "depth": 0,
+                "affinity": {
+                  "Blacksmith": 0.7,
+                  "Warrior": 0.3
+                },
+                "requires": [],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "craftBasicWeapon"
+                }
+              },
+              "Smithing:apprentice": {
+                "skill": "Smithing",
+                "tier": "apprentice",
+                "depth": 0.25,
+                "affinity": {
+                  "Blacksmith": 0.7,
+                  "Warrior": 0.3
+                },
+                "requires": [
+                  "Smithing:novice"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Smithing.apprentice"
+                }
+              },
+              "Smithing:journeyman": {
+                "skill": "Smithing",
+                "tier": "journeyman",
+                "depth": 0.5,
+                "affinity": {
+                  "Blacksmith": 0.7,
+                  "Warrior": 0.3
+                },
+                "requires": [
+                  "Smithing:apprentice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "craftAlloyIngot"
+                }
+              },
+              "Smithing:expert": {
+                "skill": "Smithing",
+                "tier": "expert",
+                "depth": 0.75,
+                "affinity": {
+                  "Blacksmith": 0.7,
+                  "Warrior": 0.3
+                },
+                "requires": [
+                  "Smithing:journeyman"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "craftMasterwork"
+                }
+              },
+              "Smithing:master": {
+                "skill": "Smithing",
+                "tier": "master",
+                "depth": 1,
+                "affinity": {
+                  "Blacksmith": 0.7,
+                  "Warrior": 0.3
+                },
+                "requires": [
+                  "Smithing:expert"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Smithing.master"
+                }
+              },
+              "Carpentry:novice": {
+                "skill": "Carpentry",
+                "tier": "novice",
+                "depth": 0,
+                "affinity": {},
+                "requires": [],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Carpentry.novice"
+                }
+              },
+              "Carpentry:apprentice": {
+                "skill": "Carpentry",
+                "tier": "apprentice",
+                "depth": 0.25,
+                "affinity": {},
+                "requires": [
+                  "Carpentry:novice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "craftBuildingFrame"
+                }
+              },
+              "Carpentry:journeyman": {
+                "skill": "Carpentry",
+                "tier": "journeyman",
+                "depth": 0.5,
+                "affinity": {},
+                "requires": [
+                  "Carpentry:apprentice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "craftVehicleComponent"
+                }
+              },
+              "Carpentry:expert": {
+                "skill": "Carpentry",
+                "tier": "expert",
+                "depth": 0.75,
+                "affinity": {},
+                "requires": [
+                  "Carpentry:journeyman"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "craftDuskfiberLoom"
+                }
+              },
+              "Carpentry:master": {
+                "skill": "Carpentry",
+                "tier": "master",
+                "depth": 1,
+                "affinity": {},
+                "requires": [
+                  "Carpentry:expert"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Carpentry.master"
+                }
+              },
+              "Alchemy:novice": {
+                "skill": "Alchemy",
+                "tier": "novice",
+                "depth": 0,
+                "affinity": {
+                  "Alchemist": 1
+                },
+                "requires": [],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "brewBasicPotion"
+                }
+              },
+              "Alchemy:apprentice": {
+                "skill": "Alchemy",
+                "tier": "apprentice",
+                "depth": 0.25,
+                "affinity": {
+                  "Alchemist": 1
+                },
+                "requires": [
+                  "Alchemy:novice"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Alchemy.apprentice"
+                }
+              },
+              "Alchemy:journeyman": {
+                "skill": "Alchemy",
+                "tier": "journeyman",
+                "depth": 0.5,
+                "affinity": {
+                  "Alchemist": 1
+                },
+                "requires": [
+                  "Alchemy:apprentice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "brewEnchantmentCatalyst"
+                }
+              },
+              "Alchemy:expert": {
+                "skill": "Alchemy",
+                "tier": "expert",
+                "depth": 0.75,
+                "affinity": {
+                  "Alchemist": 1
+                },
+                "requires": [
+                  "Alchemy:journeyman"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "brewVoidReagent"
+                }
+              },
+              "Alchemy:master": {
+                "skill": "Alchemy",
+                "tier": "master",
+                "depth": 1,
+                "affinity": {
+                  "Alchemist": 1
+                },
+                "requires": [
+                  "Alchemy:expert"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Alchemy.master"
+                }
+              },
+              "ArcaneForging:novice": {
+                "skill": "ArcaneForging",
+                "tier": "novice",
+                "depth": 0,
+                "affinity": {
+                  "Blacksmith": 0.5,
+                  "Alchemist": 0.5
+                },
+                "requires": [],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "ArcaneForging.novice"
+                }
+              },
+              "ArcaneForging:apprentice": {
+                "skill": "ArcaneForging",
+                "tier": "apprentice",
+                "depth": 0.25,
+                "affinity": {
+                  "Blacksmith": 0.5,
+                  "Alchemist": 0.5
+                },
+                "requires": [
+                  "ArcaneForging:novice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "refineAethermite"
+                }
+              },
+              "ArcaneForging:journeyman": {
+                "skill": "ArcaneForging",
+                "tier": "journeyman",
+                "depth": 0.5,
+                "affinity": {
+                  "Blacksmith": 0.5,
+                  "Alchemist": 0.5
+                },
+                "requires": [
+                  "ArcaneForging:apprentice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "craftArcaneComponent"
+                }
+              },
+              "ArcaneForging:expert": {
+                "skill": "ArcaneForging",
+                "tier": "expert",
+                "depth": 0.75,
+                "affinity": {
+                  "Blacksmith": 0.5,
+                  "Alchemist": 0.5
+                },
+                "requires": [
+                  "ArcaneForging:journeyman"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "craftArcaneForgeUpgrade"
+                }
+              },
+              "ArcaneForging:master": {
+                "skill": "ArcaneForging",
+                "tier": "master",
+                "depth": 1,
+                "affinity": {
+                  "Blacksmith": 0.5,
+                  "Alchemist": 0.5
+                },
+                "requires": [
+                  "ArcaneForging:expert"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "ArcaneForging.master"
+                }
+              },
+              "VoidSmithing:novice": {
+                "skill": "VoidSmithing",
+                "tier": "novice",
+                "depth": 0,
+                "affinity": {
+                  "VoidTouched": 1
+                },
+                "requires": [],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "VoidSmithing.novice"
+                }
+              },
+              "VoidSmithing:apprentice": {
+                "skill": "VoidSmithing",
+                "tier": "apprentice",
+                "depth": 0.25,
+                "affinity": {
+                  "VoidTouched": 1
+                },
+                "requires": [
+                  "VoidSmithing:novice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "constructShieldedForge"
+                }
+              },
+              "VoidSmithing:journeyman": {
+                "skill": "VoidSmithing",
+                "tier": "journeyman",
+                "depth": 0.5,
+                "affinity": {
+                  "VoidTouched": 1
+                },
+                "requires": [
+                  "VoidSmithing:apprentice"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "VoidSmithing.journeyman"
+                }
+              },
+              "VoidSmithing:expert": {
+                "skill": "VoidSmithing",
+                "tier": "expert",
+                "depth": 0.75,
+                "affinity": {
+                  "VoidTouched": 1
+                },
+                "requires": [
+                  "VoidSmithing:journeyman"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "refineVoidite"
+                }
+              },
+              "VoidSmithing:master": {
+                "skill": "VoidSmithing",
+                "tier": "master",
+                "depth": 1,
+                "affinity": {
+                  "VoidTouched": 1
+                },
+                "requires": [
+                  "VoidSmithing:expert"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "VoidSmithing.master"
+                }
+              },
+              "Building:novice": {
+                "skill": "Building",
+                "tier": "novice",
+                "depth": 0,
+                "affinity": {},
+                "requires": [],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Building.novice"
+                }
+              },
+              "Building:apprentice": {
+                "skill": "Building",
+                "tier": "apprentice",
+                "depth": 0.25,
+                "affinity": {},
+                "requires": [
+                  "Building:novice"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Building.apprentice"
+                }
+              },
+              "Building:journeyman": {
+                "skill": "Building",
+                "tier": "journeyman",
+                "depth": 0.5,
+                "affinity": {},
+                "requires": [
+                  "Building:apprentice"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Building.journeyman"
+                }
+              },
+              "Building:expert": {
+                "skill": "Building",
+                "tier": "expert",
+                "depth": 0.75,
+                "affinity": {},
+                "requires": [
+                  "Building:journeyman"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Building.expert"
+                }
+              },
+              "Building:master": {
+                "skill": "Building",
+                "tier": "master",
+                "depth": 1,
+                "affinity": {},
+                "requires": [
+                  "Building:expert"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Building.master"
+                }
+              },
+              "Tailoring:novice": {
+                "skill": "Tailoring",
+                "tier": "novice",
+                "depth": 0,
+                "affinity": {},
+                "requires": [],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Tailoring.novice"
+                }
+              },
+              "Tailoring:apprentice": {
+                "skill": "Tailoring",
+                "tier": "apprentice",
+                "depth": 0.25,
+                "affinity": {},
+                "requires": [
+                  "Tailoring:novice"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Tailoring.apprentice"
+                }
+              },
+              "Tailoring:journeyman": {
+                "skill": "Tailoring",
+                "tier": "journeyman",
+                "depth": 0.5,
+                "affinity": {},
+                "requires": [
+                  "Tailoring:apprentice"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Tailoring.journeyman"
+                }
+              },
+              "Tailoring:expert": {
+                "skill": "Tailoring",
+                "tier": "expert",
+                "depth": 0.75,
+                "affinity": {},
+                "requires": [
+                  "Tailoring:journeyman"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Tailoring.expert"
+                }
+              },
+              "Tailoring:master": {
+                "skill": "Tailoring",
+                "tier": "master",
+                "depth": 1,
+                "affinity": {},
+                "requires": [
+                  "Tailoring:expert"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Tailoring.master"
+                }
+              },
+              "ElementalMagic:novice": {
+                "skill": "ElementalMagic",
+                "tier": "novice",
+                "depth": 0,
+                "affinity": {
+                  "Arcanist": 1
+                },
+                "requires": [],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "ElementalMagic.novice"
+                }
+              },
+              "ElementalMagic:apprentice": {
+                "skill": "ElementalMagic",
+                "tier": "apprentice",
+                "depth": 0.25,
+                "affinity": {
+                  "Arcanist": 1
+                },
+                "requires": [
+                  "ElementalMagic:novice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "castElementalBolt"
+                }
+              },
+              "ElementalMagic:journeyman": {
+                "skill": "ElementalMagic",
+                "tier": "journeyman",
+                "depth": 0.5,
+                "affinity": {
+                  "Arcanist": 1
+                },
+                "requires": [
+                  "ElementalMagic:apprentice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "castElementalField"
+                }
+              },
+              "ElementalMagic:expert": {
+                "skill": "ElementalMagic",
+                "tier": "expert",
+                "depth": 0.75,
+                "affinity": {
+                  "Arcanist": 1
+                },
+                "requires": [
+                  "ElementalMagic:journeyman"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "castElementalStorm"
+                }
+              },
+              "ElementalMagic:master": {
+                "skill": "ElementalMagic",
+                "tier": "master",
+                "depth": 1,
+                "affinity": {
+                  "Arcanist": 1
+                },
+                "requires": [
+                  "ElementalMagic:expert"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "ElementalMagic.master"
+                }
+              },
+              "VoidMagic:novice": {
+                "skill": "VoidMagic",
+                "tier": "novice",
+                "depth": 0,
+                "affinity": {
+                  "VoidTouched": 1
+                },
+                "requires": [],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "VoidMagic.novice"
+                }
+              },
+              "VoidMagic:apprentice": {
+                "skill": "VoidMagic",
+                "tier": "apprentice",
+                "depth": 0.25,
+                "affinity": {
+                  "VoidTouched": 1
+                },
+                "requires": [
+                  "VoidMagic:novice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "castVoidTendrils"
+                }
+              },
+              "VoidMagic:journeyman": {
+                "skill": "VoidMagic",
+                "tier": "journeyman",
+                "depth": 0.5,
+                "affinity": {
+                  "VoidTouched": 1
+                },
+                "requires": [
+                  "VoidMagic:apprentice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "castVoidRift"
+                }
+              },
+              "VoidMagic:expert": {
+                "skill": "VoidMagic",
+                "tier": "expert",
+                "depth": 0.75,
+                "affinity": {
+                  "VoidTouched": 1
+                },
+                "requires": [
+                  "VoidMagic:journeyman"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "castVoidAnnihilation"
+                }
+              },
+              "VoidMagic:master": {
+                "skill": "VoidMagic",
+                "tier": "master",
+                "depth": 1,
+                "affinity": {
+                  "VoidTouched": 1
+                },
+                "requires": [
+                  "VoidMagic:expert"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "VoidMagic.master"
+                }
+              },
+              "RestorationMagic:novice": {
+                "skill": "RestorationMagic",
+                "tier": "novice",
+                "depth": 0,
+                "affinity": {},
+                "requires": [],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "RestorationMagic.novice"
+                }
+              },
+              "RestorationMagic:apprentice": {
+                "skill": "RestorationMagic",
+                "tier": "apprentice",
+                "depth": 0.25,
+                "affinity": {},
+                "requires": [
+                  "RestorationMagic:novice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "castHeal"
+                }
+              },
+              "RestorationMagic:journeyman": {
+                "skill": "RestorationMagic",
+                "tier": "journeyman",
+                "depth": 0.5,
+                "affinity": {},
+                "requires": [
+                  "RestorationMagic:apprentice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "castCleanse"
+                }
+              },
+              "RestorationMagic:expert": {
+                "skill": "RestorationMagic",
+                "tier": "expert",
+                "depth": 0.75,
+                "affinity": {},
+                "requires": [
+                  "RestorationMagic:journeyman"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "castRegenerationField"
+                }
+              },
+              "RestorationMagic:master": {
+                "skill": "RestorationMagic",
+                "tier": "master",
+                "depth": 1,
+                "affinity": {},
+                "requires": [
+                  "RestorationMagic:expert"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "RestorationMagic.master"
+                }
+              },
+              "Enchanting:novice": {
+                "skill": "Enchanting",
+                "tier": "novice",
+                "depth": 0,
+                "affinity": {
+                  "Arcanist": 1
+                },
+                "requires": [],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Enchanting.novice"
+                }
+              },
+              "Enchanting:apprentice": {
+                "skill": "Enchanting",
+                "tier": "apprentice",
+                "depth": 0.25,
+                "affinity": {
+                  "Arcanist": 1
+                },
+                "requires": [
+                  "Enchanting:novice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "applyMinorEnchantment"
+                }
+              },
+              "Enchanting:journeyman": {
+                "skill": "Enchanting",
+                "tier": "journeyman",
+                "depth": 0.5,
+                "affinity": {
+                  "Arcanist": 1
+                },
+                "requires": [
+                  "Enchanting:apprentice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "applyCompoundEnchantment"
+                }
+              },
+              "Enchanting:expert": {
+                "skill": "Enchanting",
+                "tier": "expert",
+                "depth": 0.75,
+                "affinity": {
+                  "Arcanist": 1
+                },
+                "requires": [
+                  "Enchanting:journeyman"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "applyVoidBinding"
+                }
+              },
+              "Enchanting:master": {
+                "skill": "Enchanting",
+                "tier": "master",
+                "depth": 1,
+                "affinity": {
+                  "Arcanist": 1
+                },
+                "requires": [
+                  "Enchanting:expert"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Enchanting.master"
+                }
+              },
+              "Cartography:novice": {
+                "skill": "Cartography",
+                "tier": "novice",
+                "depth": 0,
+                "affinity": {
+                  "Pathfinder": 1
+                },
+                "requires": [],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Cartography.novice"
+                }
+              },
+              "Cartography:apprentice": {
+                "skill": "Cartography",
+                "tier": "apprentice",
+                "depth": 0.25,
+                "affinity": {
+                  "Pathfinder": 1
+                },
+                "requires": [
+                  "Cartography:novice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "draftBasicMap"
+                }
+              },
+              "Cartography:journeyman": {
+                "skill": "Cartography",
+                "tier": "journeyman",
+                "depth": 0.5,
+                "affinity": {
+                  "Pathfinder": 1
+                },
+                "requires": [
+                  "Cartography:apprentice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "draftResourceMap"
+                }
+              },
+              "Cartography:expert": {
+                "skill": "Cartography",
+                "tier": "expert",
+                "depth": 0.75,
+                "affinity": {
+                  "Pathfinder": 1
+                },
+                "requires": [
+                  "Cartography:journeyman"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "draftLeylineMap"
+                }
+              },
+              "Cartography:master": {
+                "skill": "Cartography",
+                "tier": "master",
+                "depth": 1,
+                "affinity": {
+                  "Pathfinder": 1
+                },
+                "requires": [
+                  "Cartography:expert"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Cartography.master"
+                }
+              },
+              "Tracking:novice": {
+                "skill": "Tracking",
+                "tier": "novice",
+                "depth": 0,
+                "affinity": {
+                  "Ranger": 1
+                },
+                "requires": [],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Tracking.novice"
+                }
+              },
+              "Tracking:apprentice": {
+                "skill": "Tracking",
+                "tier": "apprentice",
+                "depth": 0.25,
+                "affinity": {
+                  "Ranger": 1
+                },
+                "requires": [
+                  "Tracking:novice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "identifyTrail"
+                }
+              },
+              "Tracking:journeyman": {
+                "skill": "Tracking",
+                "tier": "journeyman",
+                "depth": 0.5,
+                "affinity": {
+                  "Ranger": 1
+                },
+                "requires": [
+                  "Tracking:apprentice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "ageTrail"
+                }
+              },
+              "Tracking:expert": {
+                "skill": "Tracking",
+                "tier": "expert",
+                "depth": 0.75,
+                "affinity": {
+                  "Ranger": 1
+                },
+                "requires": [
+                  "Tracking:journeyman"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "detectConcealedTrail"
+                }
+              },
+              "Tracking:master": {
+                "skill": "Tracking",
+                "tier": "master",
+                "depth": 1,
+                "affinity": {
+                  "Ranger": 1
+                },
+                "requires": [
+                  "Tracking:expert"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Tracking.master"
+                }
+              },
+              "Stealth:novice": {
+                "skill": "Stealth",
+                "tier": "novice",
+                "depth": 0,
+                "affinity": {
+                  "Pathfinder": 1
+                },
+                "requires": [],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Stealth.novice"
+                }
+              },
+              "Stealth:apprentice": {
+                "skill": "Stealth",
+                "tier": "apprentice",
+                "depth": 0.25,
+                "affinity": {
+                  "Pathfinder": 1
+                },
+                "requires": [
+                  "Stealth:novice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "activateCrouchHide"
+                }
+              },
+              "Stealth:journeyman": {
+                "skill": "Stealth",
+                "tier": "journeyman",
+                "depth": 0.5,
+                "affinity": {
+                  "Pathfinder": 1
+                },
+                "requires": [
+                  "Stealth:apprentice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "activateShadowMove"
+                }
+              },
+              "Stealth:expert": {
+                "skill": "Stealth",
+                "tier": "expert",
+                "depth": 0.75,
+                "affinity": {
+                  "Pathfinder": 1
+                },
+                "requires": [
+                  "Stealth:journeyman"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "executeSilentAction"
+                }
+              },
+              "Stealth:master": {
+                "skill": "Stealth",
+                "tier": "master",
+                "depth": 1,
+                "affinity": {
+                  "Pathfinder": 1
+                },
+                "requires": [
+                  "Stealth:expert"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Stealth.master"
+                }
+              },
+              "Navigation:novice": {
+                "skill": "Navigation",
+                "tier": "novice",
+                "depth": 0,
+                "affinity": {
+                  "Ranger": 0.5,
+                  "Pathfinder": 0.5
+                },
+                "requires": [],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Navigation.novice"
+                }
+              },
+              "Navigation:apprentice": {
+                "skill": "Navigation",
+                "tier": "apprentice",
+                "depth": 0.25,
+                "affinity": {
+                  "Ranger": 0.5,
+                  "Pathfinder": 0.5
+                },
+                "requires": [
+                  "Navigation:novice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "orientByStars"
+                }
+              },
+              "Navigation:journeyman": {
+                "skill": "Navigation",
+                "tier": "journeyman",
+                "depth": 0.5,
+                "affinity": {
+                  "Ranger": 0.5,
+                  "Pathfinder": 0.5
+                },
+                "requires": [
+                  "Navigation:apprentice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "plotOverlandRoute"
+                }
+              },
+              "Navigation:expert": {
+                "skill": "Navigation",
+                "tier": "expert",
+                "depth": 0.75,
+                "affinity": {
+                  "Ranger": 0.5,
+                  "Pathfinder": 0.5
+                },
+                "requires": [
+                  "Navigation:journeyman"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "leadExpedition"
+                }
+              },
+              "Navigation:master": {
+                "skill": "Navigation",
+                "tier": "master",
+                "depth": 1,
+                "affinity": {
+                  "Ranger": 0.5,
+                  "Pathfinder": 0.5
+                },
+                "requires": [
+                  "Navigation:expert"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Navigation.master"
+                }
+              },
+              "Lockpicking:novice": {
+                "skill": "Lockpicking",
+                "tier": "novice",
+                "depth": 0,
+                "affinity": {},
+                "requires": [],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Lockpicking.novice"
+                }
+              },
+              "Lockpicking:apprentice": {
+                "skill": "Lockpicking",
+                "tier": "apprentice",
+                "depth": 0.25,
+                "affinity": {},
+                "requires": [
+                  "Lockpicking:novice"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Lockpicking.apprentice"
+                }
+              },
+              "Lockpicking:journeyman": {
+                "skill": "Lockpicking",
+                "tier": "journeyman",
+                "depth": 0.5,
+                "affinity": {},
+                "requires": [
+                  "Lockpicking:apprentice"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Lockpicking.journeyman"
+                }
+              },
+              "Lockpicking:expert": {
+                "skill": "Lockpicking",
+                "tier": "expert",
+                "depth": 0.75,
+                "affinity": {},
+                "requires": [
+                  "Lockpicking:journeyman"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Lockpicking.expert"
+                }
+              },
+              "Lockpicking:master": {
+                "skill": "Lockpicking",
+                "tier": "master",
+                "depth": 1,
+                "affinity": {},
+                "requires": [
+                  "Lockpicking:expert"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Lockpicking.master"
+                }
+              },
+              "Diplomacy:novice": {
+                "skill": "Diplomacy",
+                "tier": "novice",
+                "depth": 0,
+                "affinity": {
+                  "Merchant": 1
+                },
+                "requires": [],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Diplomacy.novice"
+                }
+              },
+              "Diplomacy:apprentice": {
+                "skill": "Diplomacy",
+                "tier": "apprentice",
+                "depth": 0.25,
+                "affinity": {
+                  "Merchant": 1
+                },
+                "requires": [
+                  "Diplomacy:novice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "negotiateTrade"
+                }
+              },
+              "Diplomacy:journeyman": {
+                "skill": "Diplomacy",
+                "tier": "journeyman",
+                "depth": 0.5,
+                "affinity": {
+                  "Merchant": 1
+                },
+                "requires": [
+                  "Diplomacy:apprentice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "proposeTreaty"
+                }
+              },
+              "Diplomacy:expert": {
+                "skill": "Diplomacy",
+                "tier": "expert",
+                "depth": 0.75,
+                "affinity": {
+                  "Merchant": 1
+                },
+                "requires": [
+                  "Diplomacy:journeyman"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "requestTerritoryCession"
+                }
+              },
+              "Diplomacy:master": {
+                "skill": "Diplomacy",
+                "tier": "master",
+                "depth": 1,
+                "affinity": {
+                  "Merchant": 1
+                },
+                "requires": [
+                  "Diplomacy:expert"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Diplomacy.master"
+                }
+              },
+              "Trade:novice": {
+                "skill": "Trade",
+                "tier": "novice",
+                "depth": 0,
+                "affinity": {
+                  "Merchant": 1
+                },
+                "requires": [],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Trade.novice"
+                }
+              },
+              "Trade:apprentice": {
+                "skill": "Trade",
+                "tier": "apprentice",
+                "depth": 0.25,
+                "affinity": {
+                  "Merchant": 1
+                },
+                "requires": [
+                  "Trade:novice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "operateMarketStall"
+                }
+              },
+              "Trade:journeyman": {
+                "skill": "Trade",
+                "tier": "journeyman",
+                "depth": 0.5,
+                "affinity": {
+                  "Merchant": 1
+                },
+                "requires": [
+                  "Trade:apprentice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "executeBulkDeal"
+                }
+              },
+              "Trade:expert": {
+                "skill": "Trade",
+                "tier": "expert",
+                "depth": 0.75,
+                "affinity": {
+                  "Merchant": 1
+                },
+                "requires": [
+                  "Trade:journeyman"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "establishConsignment"
+                }
+              },
+              "Trade:master": {
+                "skill": "Trade",
+                "tier": "master",
+                "depth": 1,
+                "affinity": {
+                  "Merchant": 1
+                },
+                "requires": [
+                  "Trade:expert"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Trade.master"
+                }
+              },
+              "Speechcraft:novice": {
+                "skill": "Speechcraft",
+                "tier": "novice",
+                "depth": 0,
+                "affinity": {
+                  "Merchant": 1
+                },
+                "requires": [],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Speechcraft.novice"
+                }
+              },
+              "Speechcraft:apprentice": {
+                "skill": "Speechcraft",
+                "tier": "apprentice",
+                "depth": 0.25,
+                "affinity": {
+                  "Merchant": 1
+                },
+                "requires": [
+                  "Speechcraft:novice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "convinceNpc"
+                }
+              },
+              "Speechcraft:journeyman": {
+                "skill": "Speechcraft",
+                "tier": "journeyman",
+                "depth": 0.5,
+                "affinity": {
+                  "Merchant": 1
+                },
+                "requires": [
+                  "Speechcraft:apprentice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "intimidateNpc"
+                }
+              },
+              "Speechcraft:expert": {
+                "skill": "Speechcraft",
+                "tier": "expert",
+                "depth": 0.75,
+                "affinity": {
+                  "Merchant": 1
+                },
+                "requires": [
+                  "Speechcraft:journeyman"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "deceiveNpc"
+                }
+              },
+              "Speechcraft:master": {
+                "skill": "Speechcraft",
+                "tier": "master",
+                "depth": 1,
+                "affinity": {
+                  "Merchant": 1
+                },
+                "requires": [
+                  "Speechcraft:expert"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Speechcraft.master"
+                }
+              },
+              "Leadership:novice": {
+                "skill": "Leadership",
+                "tier": "novice",
+                "depth": 0,
+                "affinity": {},
+                "requires": [],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Leadership.novice"
+                }
+              },
+              "Leadership:apprentice": {
+                "skill": "Leadership",
+                "tier": "apprentice",
+                "depth": 0.25,
+                "affinity": {},
+                "requires": [
+                  "Leadership:novice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "rallyParty"
+                }
+              },
+              "Leadership:journeyman": {
+                "skill": "Leadership",
+                "tier": "journeyman",
+                "depth": 0.5,
+                "affinity": {},
+                "requires": [
+                  "Leadership:apprentice"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "commandFormation"
+                }
+              },
+              "Leadership:expert": {
+                "skill": "Leadership",
+                "tier": "expert",
+                "depth": 0.75,
+                "affinity": {},
+                "requires": [
+                  "Leadership:journeyman"
+                ],
+                "unlock": {
+                  "kind": "ability",
+                  "key": "inspireBreakthrough"
+                }
+              },
+              "Leadership:master": {
+                "skill": "Leadership",
+                "tier": "master",
+                "depth": 1,
+                "affinity": {},
+                "requires": [
+                  "Leadership:expert"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Leadership.master"
+                }
+              },
+              "Mining:novice": {
+                "skill": "Mining",
+                "tier": "novice",
+                "depth": 0,
+                "affinity": {},
+                "requires": [],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Mining.novice"
+                }
+              },
+              "Mining:apprentice": {
+                "skill": "Mining",
+                "tier": "apprentice",
+                "depth": 0.25,
+                "affinity": {},
+                "requires": [
+                  "Mining:novice"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Mining.apprentice"
+                }
+              },
+              "Mining:journeyman": {
+                "skill": "Mining",
+                "tier": "journeyman",
+                "depth": 0.5,
+                "affinity": {},
+                "requires": [
+                  "Mining:apprentice"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Mining.journeyman"
+                }
+              },
+              "Mining:expert": {
+                "skill": "Mining",
+                "tier": "expert",
+                "depth": 0.75,
+                "affinity": {},
+                "requires": [
+                  "Mining:journeyman"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Mining.expert"
+                }
+              },
+              "Mining:master": {
+                "skill": "Mining",
+                "tier": "master",
+                "depth": 1,
+                "affinity": {},
+                "requires": [
+                  "Mining:expert"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Mining.master"
+                }
+              },
+              "Woodcutting:novice": {
+                "skill": "Woodcutting",
+                "tier": "novice",
+                "depth": 0,
+                "affinity": {},
+                "requires": [],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Woodcutting.novice"
+                }
+              },
+              "Woodcutting:apprentice": {
+                "skill": "Woodcutting",
+                "tier": "apprentice",
+                "depth": 0.25,
+                "affinity": {},
+                "requires": [
+                  "Woodcutting:novice"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Woodcutting.apprentice"
+                }
+              },
+              "Woodcutting:journeyman": {
+                "skill": "Woodcutting",
+                "tier": "journeyman",
+                "depth": 0.5,
+                "affinity": {},
+                "requires": [
+                  "Woodcutting:apprentice"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Woodcutting.journeyman"
+                }
+              },
+              "Woodcutting:expert": {
+                "skill": "Woodcutting",
+                "tier": "expert",
+                "depth": 0.75,
+                "affinity": {},
+                "requires": [
+                  "Woodcutting:journeyman"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Woodcutting.expert"
+                }
+              },
+              "Woodcutting:master": {
+                "skill": "Woodcutting",
+                "tier": "master",
+                "depth": 1,
+                "affinity": {},
+                "requires": [
+                  "Woodcutting:expert"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Woodcutting.master"
+                }
+              },
+              "Foraging:novice": {
+                "skill": "Foraging",
+                "tier": "novice",
+                "depth": 0,
+                "affinity": {},
+                "requires": [],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Foraging.novice"
+                }
+              },
+              "Foraging:apprentice": {
+                "skill": "Foraging",
+                "tier": "apprentice",
+                "depth": 0.25,
+                "affinity": {},
+                "requires": [
+                  "Foraging:novice"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Foraging.apprentice"
+                }
+              },
+              "Foraging:journeyman": {
+                "skill": "Foraging",
+                "tier": "journeyman",
+                "depth": 0.5,
+                "affinity": {},
+                "requires": [
+                  "Foraging:apprentice"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Foraging.journeyman"
+                }
+              },
+              "Foraging:expert": {
+                "skill": "Foraging",
+                "tier": "expert",
+                "depth": 0.75,
+                "affinity": {},
+                "requires": [
+                  "Foraging:journeyman"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Foraging.expert"
+                }
+              },
+              "Foraging:master": {
+                "skill": "Foraging",
+                "tier": "master",
+                "depth": 1,
+                "affinity": {},
+                "requires": [
+                  "Foraging:expert"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Foraging.master"
+                }
+              },
+              "Skinning:novice": {
+                "skill": "Skinning",
+                "tier": "novice",
+                "depth": 0,
+                "affinity": {},
+                "requires": [],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Skinning.novice"
+                }
+              },
+              "Skinning:apprentice": {
+                "skill": "Skinning",
+                "tier": "apprentice",
+                "depth": 0.25,
+                "affinity": {},
+                "requires": [
+                  "Skinning:novice"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Skinning.apprentice"
+                }
+              },
+              "Skinning:journeyman": {
+                "skill": "Skinning",
+                "tier": "journeyman",
+                "depth": 0.5,
+                "affinity": {},
+                "requires": [
+                  "Skinning:apprentice"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Skinning.journeyman"
+                }
+              },
+              "Skinning:expert": {
+                "skill": "Skinning",
+                "tier": "expert",
+                "depth": 0.75,
+                "affinity": {},
+                "requires": [
+                  "Skinning:journeyman"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Skinning.expert"
+                }
+              },
+              "Skinning:master": {
+                "skill": "Skinning",
+                "tier": "master",
+                "depth": 1,
+                "affinity": {},
+                "requires": [
+                  "Skinning:expert"
+                ],
+                "unlock": {
+                  "kind": "passive",
+                  "key": "Skinning.master"
+                }
               }
             }
           }

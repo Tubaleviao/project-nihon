@@ -80,6 +80,9 @@ const DRAG_VISIBLE_MARGIN := 48.0
 const LAYOUT_MAX_COORD := 100000.0
 const LAYOUT_PATH := "user://ui_layout.json"
 const UiIcons := preload("res://src/ui/ui_icons.gd")
+const SkillTiers := preload("res://src/core/skill_tiers.gd")
+const SkillWheelLayout := preload("res://src/ui/skill_wheel_layout.gd")
+const SkillWheelView := preload("res://src/ui/skill_wheel_view.gd")
 const ICON_KEY_FORMAT := "icons/items/%s.png.raw"
 const SLOT_SIZE := Vector2(72, 72)
 const INVENTORY_COLUMNS := 5
@@ -113,7 +116,7 @@ var player_slice: Node = null
 var drops_enabled: bool = true
 ## The payload of the drag in flight (set by the drag sources), read when the drag ends.
 var _drag_payload: Dictionary = {}
-var _skills_grid: GridContainer = null
+var _skill_wheel: Control = null
 var _skills_signature: int = 0
 ## Brief line shown when a drag-drop is refused.
 var _hud_notice: Label = null
@@ -987,25 +990,45 @@ static func skills_rows(tiers: Dictionary) -> Array:
 		rows.append({"id": skill, "tier": str(tiers[skill]), "tooltip": I18n.t("ui.skill_tip", [I18n.content("skill", str(skill)), tiers[skill]])})
 	return rows
 
+## Phase 271 — the wheel's rows from the player's skill tiers and professions. Pure given the tables.
+static func skill_wheel_rows(tiers: Dictionary, unlocked: Dictionary) -> Dictionary:
+	var order: Array = SkillTiers.TIER_ORDER
+	var wheel_nodes: Dictionary = SkillWheelLayout.fabric_nodes()
+	var node_rows: Array = []
+	for id in wheel_nodes:
+		var n: Dictionary = wheel_nodes[id]
+		var skill := str(n["skill"])
+		var have := str(tiers.get(skill, order[0]))
+		node_rows.append({"id": id, "name": I18n.content("skill", skill),
+			"state": SkillWheelView.node_state(have, str(n["tier"]), order),
+			"icon": UiIcons.load_icon(UiIcons.skill_key(skill)),
+			"tooltip": I18n.content("skill", skill, "desc")})
+	var res: Resource = GameData.WORLD_SYSTEMS.get("SkillWheel", null)
+	var prof_skills: Dictionary = res.get("professionSkills") if res != null else {}
+	var prof_rows: Array = []
+	for p in SkillWheelLayout.fabric_professions():
+		var have_tiers: Array = (prof_skills.get(p, []) as Array).map(func(s): return str(tiers.get(str(s), order[0])))
+		var state := SkillWheelView.profession_state(unlocked.has(p), have_tiers, str(order[order.size() - 1]))
+		prof_rows.append({"id": p, "name": I18n.content("profession", str(p)), "state": state,
+			"state_text": I18n.t("ui." + state), "icon": null,
+			"tooltip": I18n.content("profession", str(p))})
+	return {"nodes": node_rows, "professions": prof_rows}
+
 func _refresh_skills() -> void:
-	if _skills_grid == null:
+	if _skill_wheel == null or crafting_slice == null:
 		return
-	var rows := skills_rows(crafting_slice.get_skills() if crafting_slice != null else {})
-	if rows.hash() == _skills_signature and _skills_grid.get_child_count() > 0:
+	var unlocked: Dictionary = {}
+	if "profession_slice" in crafting_slice and crafting_slice.profession_slice != null:
+		unlocked = crafting_slice.profession_slice.get_unlocked()
+	var rows := skill_wheel_rows(crafting_slice.get_skills(), unlocked)
+	if rows.hash() == _skills_signature:
 		return
 	_skills_signature = rows.hash()
-	for c in _skills_grid.get_children():
-		_skills_grid.remove_child(c)
-		_retire(c)
-	for row in rows:
-		var b := Button.new()
-		b.custom_minimum_size = Vector2(SLOT_SIZE.x, 64.0)
-		b.clip_text = true
-		UiIcons.style_skill_button(b, str(row["id"]), str(row["tier"]))
-		b.add_theme_font_size_override("font_size", 12)
-		b.tooltip_text = str(row["tooltip"])
-		b.set_drag_forwarding(_skill_drag.bind(str(row["id"]), b), Callable(), Callable())
-		_skills_grid.add_child(b)
+	_skill_wheel.set_rows(rows["nodes"], rows["professions"])
+	# A skill's node can still be dragged to the hotbar, as the old grid's buttons could.
+	for id in _skill_wheel.nodes:
+		var skill: String = str(SkillWheelLayout.fabric_nodes()[id]["skill"])
+		(_skill_wheel.nodes[id] as Button).set_drag_forwarding(_skill_drag.bind(skill, _skill_wheel.nodes[id]), Callable(), Callable())
 
 func refresh_character() -> void:
 	_m1.refresh_character()
@@ -1413,13 +1436,21 @@ func _build_inventory_content() -> Control:
 func _build_skills_content() -> Control:
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 6)
+	var bar := HBoxContainer.new()
 	var title := Label.new()
 	_set_tr(title, "text", "ui.skills_title")
 	title.add_theme_font_size_override("font_size", 15)
-	vbox.add_child(title)
-	_skills_grid = GridContainer.new()
-	_skills_grid.columns = INVENTORY_COLUMNS
-	vbox.add_child(_skills_grid)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.add_child(title)
+	var fit := Button.new()
+	_set_tr(fit, "text", "ui.skills_fit")
+	bar.add_child(fit)
+	vbox.add_child(bar)
+	_skill_wheel = SkillWheelView.new()
+	_skill_wheel.custom_minimum_size = Vector2(860, 560)
+	_skill_wheel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	fit.pressed.connect(_skill_wheel.fit_all)
+	vbox.add_child(_skill_wheel)
 	return vbox
 
 ## Phase 269 — the hand window: a card grid of the recipes with no station (repairs listed under it).
