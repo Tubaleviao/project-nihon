@@ -355,7 +355,9 @@ func _test_no_entity_ids() -> void:
 			assert_false(raw.has(text.strip_edges()), "%s: a label is the id '%s'" % [loc, text])
 			for word in text.split(" ", false):
 				var token := word.strip_edges().trim_suffix(",").trim_suffix(":").trim_suffix(".")
-				assert_false(raw.has(token), "%s: '%s' shows the %s id %s" % [loc, text, raw.get(token, ""), token])
+				# A skill category id (Phase 274: "crafting", "combat") is a plain English word, so prose may use it;
+				# only a whole label that is the category id betrays one.
+				assert_false(raw.has(token) and raw[token] != "category", "%s: '%s' shows the %s id %s" % [loc, text, raw.get(token, ""), token])
 		TranslationServer.set_locale(before)
 	_free_all(parts)
 
