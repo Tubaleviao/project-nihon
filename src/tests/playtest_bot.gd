@@ -2104,7 +2104,11 @@ const MOUNT_RIDE_M := 200.0
 ## 60 s, not 45: a throw (the newcomer grounds' water) and the walk back to dry ground cost ~20 s of the ride.
 ## main passed at 203 m of 200 and PR #639 failed at 186 m with the same 8.9 m/s cruise; the speed check
 ## below is what judges the mount, the deadline only has to leave room for the 200 m.
-const MOUNT_RIDE_SECS := 60.0
+## Phase 276: 90 s. PR #655 failed at 191 m of 200 in 60 s with one throw into water and the same 8.9 m/s cruise.
+const MOUNT_RIDE_SECS := 90.0
+## The ride counts as made at this share of the distance: the speed check judges the mount, and the throw
+## penalty of a slow runner must not fail a mount that cruises at speed.
+const MOUNT_RIDE_MIN_SHARE := 0.75
 const MOUNT_SPEED_SLACK := 0.9
 func _step_mount() -> Array:
 	var me: String = str(_root._registry.local_player_id)
@@ -2194,7 +2198,8 @@ func _step_mount() -> Array:
 	GameBus.dismount_intent.emit("")
 	var off: bool = await _until(func(): return not _root._mount_wiring.slice.is_mounted(me), STEP_TIMEOUT_SECS * 0.25)
 	var need := factor * PlayerSlice.SPEED * MOUNT_SPEED_SLACK
-	var ok: bool = rode and off and factor > 1.0 and avg >= need and float(ridden[0]) < MOUNT_RIDE_M * 2.0
+	var rode_enough: bool = rode or float(ridden[0]) >= MOUNT_RIDE_M * MOUNT_RIDE_MIN_SHARE
+	var ok: bool = rode_enough and off and factor > 1.0 and avg >= need and float(ridden[0]) < MOUNT_RIDE_M * 2.0
 	return [ok, "rode %.0f m (%.0f m from the start), cruising at %.1f m/s (need %.1f), dismounted %s, thrown %d times by %s, host answers %s" % [float(ridden[0]), metres, avg, need, str(off), int(throws[0]), str(hitters), str(answers)]]
 
 ## Phase 164 — the horizon: find the nearest coast with open sea across four headings, stand there and
