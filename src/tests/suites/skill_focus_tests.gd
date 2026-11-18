@@ -16,6 +16,7 @@ func register() -> void:
 	_run_test("skill focus: 100 grants of 2 XP at +25% pay exactly 250 (the fraction is carried)", _test_carry)
 	_run_test("skill focus: sanitize bounds a hostile record", _test_sanitize)
 	_run_test("skill focus: the registry multiplies a grant once and saves focus with the record", _test_registry)
+	_run_test("skill focus: an undo takes back the boosted pay, so place and undo farms nothing", _test_revoke_boosted)
 	_run_test("skill focus: a player is told only their own focus", _test_own_view)
 	_run_test("skill page: level, XP, next tiers, trainers, professions and focus match the skill state", _test_page_matches_state)
 	_run_test("skill page: the panel shows names, no raw ids, a bar and category shares", _test_page_panel)
@@ -121,6 +122,19 @@ func _test_registry() -> void:
 	assert_eq(reg.get_skill_xp("p2", "Smithing"), 0, "another player earned nothing")
 	var data := reg.get_player_data("p1")
 	assert_true(data.get("skill_focus", null) is Dictionary and not (data["skill_focus"]["minutes"] as Dictionary).is_empty(), "focus is saved with the record")
+	reg.free()
+
+func _test_revoke_boosted() -> void:
+	var reg := _registry()
+	var rec := reg.get_record("p1")
+	rec["skill_focus"] = SkillFocus.empty()
+	_fill(rec["skill_focus"], "Building", 60)
+	SkillFocus.note(rec["skill_focus"], "Building")
+	var row := {"skill": "Building", "xp": 100}
+	WorkSkills.grant(reg, "p1", row)
+	assert_eq(reg.get_skill_xp("p1", "Building"), 125, "a full window pays the bonus")
+	WorkSkills.revoke(reg, "p1", row)
+	assert_eq(reg.get_skill_xp("p1", "Building"), 0, "the undo takes the boosted pay back, not just the base")
 	reg.free()
 
 func _test_own_view() -> void:

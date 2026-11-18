@@ -83,6 +83,8 @@ const UiIcons := preload("res://src/ui/ui_icons.gd")
 const SkillWheelLayout := preload("res://src/ui/skill_wheel_layout.gd")
 const SkillWheelView := preload("res://src/ui/skill_wheel_view.gd")
 const SkillsWindow := preload("res://src/ui/skills_window.gd")
+const SkillPagePanel := preload("res://src/ui/skill_page_panel.gd")
+const SkillFocus := preload("res://src/character/skill_focus.gd")
 const ICON_KEY_FORMAT := "icons/items/%s.png.raw"
 const SLOT_SIZE := Vector2(72, 72)
 const INVENTORY_COLUMNS := 5
@@ -999,12 +1001,12 @@ func _refresh_skills() -> void:
 	if "profession_slice" in crafting_slice and crafting_slice.profession_slice != null:
 		unlocked = crafting_slice.profession_slice.get_unlocked()
 	var rows := SkillWheelView.rows(crafting_slice.get_skills(), unlocked)
-	var focus_sig := [rows.hash(), SkillsWindow.SkillFocus.local_view.hash()].hash()
+	var focus_sig := [rows.hash(), SkillFocus.local_view.hash()].hash()
 	if focus_sig == _skills_signature:
 		return
 	_skills_signature = focus_sig
 	_skill_wheel.set_rows(rows["nodes"], rows["professions"])
-	_skills_window.refresh_focus()
+	if _skills_window != null: _skills_window.refresh_focus()
 	# A skill's node can still be dragged to the hotbar, as the old grid's buttons could.
 	for id in _skill_wheel.nodes:
 		var skill: String = str(SkillWheelLayout.fabric_nodes()[id]["skill"])
@@ -1147,9 +1149,10 @@ func _on_research_points_synced(player_id: String, _points: int) -> void:
 func _on_skill_tier_recorded(player_id: String, skill: String, tier: String) -> void:
 	if _skills_window == null or crafting_slice == null or player_id != crafting_slice.local_player_id():
 		return
-	_skills_window.open_skill(skill)
-	_skill_wheel.pulse("%s:%s" % [skill, tier])
-	push_toast(I18n.t("ui.skill_unlocked_toast", [I18n.content("skill", skill), I18n.t(SkillsWindow.SkillPagePanel.TIER_KEY % tier)]))
+	var node_id := "%s:%s" % [skill, tier]
+	_skills_window.open_skill(skill, node_id)
+	_skill_wheel.pulse(node_id)
+	push_toast(I18n.t("ui.skill_unlocked_toast", [I18n.content("skill", skill), I18n.t(SkillPagePanel.TIER_KEY % tier)]))
 
 func _on_technology_unlocked(_tech_id: String, _player_id: String) -> void:
 	refresh_technology()

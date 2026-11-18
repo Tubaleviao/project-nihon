@@ -5,6 +5,7 @@ extends RefCounted
 const SkillTiers := preload("res://src/core/skill_tiers.gd")
 const WorkSkills := preload("res://src/character/work_skills.gd")
 const SkillFocus := preload("res://src/character/skill_focus.gd")
+const AttributeRules := preload("res://src/character/attribute_rules.gd")
 
 ## The local player's XP per skill as the host last told them ({ skill: xp }), or computed on the host itself.
 static var local_xp: Dictionary = {}
@@ -75,12 +76,9 @@ static func category_shares(focus_view: Dictionary) -> Dictionary:
 		total += int(focus_view[s])
 	var out: Dictionary = {}
 	for s in focus_view:
-		var res: Resource = GameData.SKILLS.get(str(s), null)
-		var cat := "other"
-		if res != null:
-			var cats: Array = ["combat", "crafting", "magic", "exploration", "social", "gathering"]
-			var i := int(res.get("category"))
-			cat = cats[i] if i >= 0 and i < cats.size() else "other"
+		var cat := AttributeRules.category_of_skill(str(s))
+		if cat == "":
+			cat = "other"
 		out[cat] = float(out.get(cat, 0.0)) + float(focus_view[s]) / float(maxi(1, total))
 	return out
 

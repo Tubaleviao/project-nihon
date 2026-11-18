@@ -132,6 +132,11 @@ static func boost_record(rec: Dictionary, skill: String, amount: int) -> int:
 		rec["skill_focus"] = empty()
 	return boost_fabric(rec["skill_focus"], skill, amount)
 
+## The XP an undo of a `base` grant takes back: what the grant paid at the focus the record has now.
+static func revoke_amount(rec: Dictionary, skill: String, base: int) -> int:
+	var f: Variant = rec.get("skill_focus", null)
+	return roundi(float(base) * (multiplier(f, skill, window_minutes(), max_bonus()) if f is Dictionary else 1.0))
+
 ## What a player is told about their own focus: { skill: active minutes in the window }.
 static func view(focus: Dictionary, window: int) -> Dictionary:
 	var out: Dictionary = {}

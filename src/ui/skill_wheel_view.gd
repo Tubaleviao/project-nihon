@@ -156,10 +156,11 @@ func pulse(node_id: String) -> void:
 	var btn: Button = nodes.get(node_id, null)
 	if btn == null or not btn.is_inside_tree():
 		return
-	var rest: Color = btn.self_modulate
+	# `modulate`, not `self_modulate`: the state tint (`self_modulate`) is set by the refresh and is never touched here.
+	btn.modulate = Color.WHITE
 	var tw := btn.create_tween()
-	tw.tween_property(btn, "self_modulate", Color(1.6, 1.4, 0.6), 0.25)
-	tw.tween_property(btn, "self_modulate", rest, 0.6)
+	tw.tween_property(btn, "modulate", Color(1.6, 1.4, 0.6), 0.25)
+	tw.tween_property(btn, "modulate", Color.WHITE, 0.6)
 	tw.set_loops(3)
 
 func _make_button(id: String, size_px: Vector2, centre: Vector2, font: int) -> Button:

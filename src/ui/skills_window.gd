@@ -45,9 +45,12 @@ func show_skill_of_node(node_id: String) -> void:
 	var n: Variant = SkillWheelLayout.fabric_nodes().get(node_id, null)
 	page.show_skill(str(n["skill"]) if n is Dictionary else "")
 
-## Open a skill's page (the unlock toast) and mark its node on the wheel.
-func open_skill(skill: String) -> void:
-	page.show_skill(skill)
+## Open a skill's page (the unlock toast) and mark `node_id` on the wheel (selecting it shows the page, so both agree).
+func open_skill(skill: String, node_id: String = "") -> void:
+	if node_id != "" and wheel.nodes.has(node_id):
+		wheel.select(node_id)
+	else:
+		page.show_skill(skill)
 
 ## The wheel shows where the recent play time went: professions glow by share, the centre lists the leading skills.
 func refresh_focus() -> void:

@@ -11,7 +11,7 @@ function skillFocusData() { return { focusWindowMinutes: FOCUS_WINDOW_MINUTES, m
 /** Problems with the focus table, as strings. */
 function skillFocusProblems(d) {
   const p = []
-  if (!(Number.isInteger(d.focusWindowMinutes) && d.focusWindowMinutes > 0)) p.push('focusWindowMinutes must be a whole number of minutes above zero')
+  if (!(Number.isInteger(d.focusWindowMinutes) && d.focusWindowMinutes > 0 && d.focusWindowMinutes <= 600)) p.push('focusWindowMinutes must be a whole number of minutes from 1 to 600 (the most a record keeps)')
   if (!(typeof d.maxBonus === 'number' && d.maxBonus >= 0 && d.maxBonus <= 5)) p.push('maxBonus must be between 0 and 5 (a negative bonus would punish trying something new)')
   return p
 }

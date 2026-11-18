@@ -358,14 +358,36 @@ var _attr_sync_elapsed := 0.0
 func tick(delta: float) -> void:
 	if not root._is_client:
 		flush_rescopes()
-		if root._registry != null:
-			SkillFocus.advance_online(root._registry, delta)   # Phase 272: focus counts connected play time
 		_attr_sync_elapsed += delta
 		if _attr_sync_elapsed >= ATTR_SYNC_SEC and root._registry != null:
+			# Phase 272: focus counts connected play time, advanced in one step per flush (not a sort per frame),
+			# and each remote owner is told their aged view when it changed (focus decays with no grant to send it).
+			SkillFocus.advance_online(root._registry, _attr_sync_elapsed)
+			_sync_focus_views()
 			_attr_sync_elapsed = 0.0
 			root._registry.flush_attribute_syncs()
 			SkillFocus.local_view = SkillFocus.view_of_record(root._registry.get_record(root._registry.local_player_id))
 			SkillPage.local_xp = root._registry.get_record(root._registry.local_player_id).get("skill_xp", {}).duplicate()
+
+## Phase 272 — last focus view sent per remote player, so only a changed one is sent again.
+var _focus_sent: Dictionary = {}
+
+func _sync_focus_views() -> void:
+	var online := {}
+	for pid: String in root._registry.get_online_player_ids():
+		online[pid] = true
+		if pid == root._registry.local_player_id:
+			continue
+		var peer: int = root._registry.get_peer_id(pid)
+		if peer == 0:
+			continue
+		var view := SkillFocus.view_of_record(root._registry.get_record(pid))
+		if _focus_sent.get(pid, null) != view:
+			_focus_sent[pid] = view
+			root._networking.send_own_state(peer, { "skill_focus_view": view })
+	for pid: String in _focus_sent.keys():
+		if not online.has(pid):
+			_focus_sent.erase(pid)
 
 ## Phase 163 — host, once a frame: serve the frame's AOI crossings. Every window moves first and the
 ## windows are refreshed ONCE, then each crossing's snapshot is built. Returns the snapshots sent.

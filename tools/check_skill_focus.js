@@ -15,6 +15,7 @@ function expect(label, mutate, pattern) {
 expect('the shipped table is valid', () => {}, null);
 expect('a window of zero fails', (d) => { d.focusWindowMinutes = 0; }, /focusWindowMinutes/);
 expect('a fractional window fails', (d) => { d.focusWindowMinutes = 1.5; }, /focusWindowMinutes/);
+expect('a window over the 600 minutes a record keeps fails', (d) => { d.focusWindowMinutes = 601; }, /focusWindowMinutes/);
 expect('a negative bonus fails', (d) => { d.maxBonus = -0.1; }, /maxBonus/);
 expect('a zero bonus is valid', (d) => { d.maxBonus = 0; }, null);
 if (failed) { console.error(`${failed} check(s) failed`); process.exit(1); }
