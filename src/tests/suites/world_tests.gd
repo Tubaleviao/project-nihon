@@ -777,7 +777,7 @@ func _test_asset_pck_round_trip_override() -> void:
 # ---------------------------------------------------------------------------
 
 func _test_asset_manifest_keys_exist() -> void:
-	for kind in ["textures", "meshes", "animations"]:
+	for kind in ["textures", "meshes", "animations", "sounds"]:
 		assert_true(AssetOverlay.keys(kind).size() > 0, "manifest has %s keys" % kind)
 		for k in AssetOverlay.keys(kind):
 			assert_true(FileAccess.file_exists(AssetOverlay.resolve_path(k)),

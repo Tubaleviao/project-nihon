@@ -2104,7 +2104,9 @@ const MOUNT_RIDE_M := 200.0
 ## 60 s, not 45: a throw (the newcomer grounds' water) and the walk back to dry ground cost ~20 s of the ride.
 ## main passed at 203 m of 200 and PR #639 failed at 186 m with the same 8.9 m/s cruise; the speed check
 ## below is what judges the mount, the deadline only has to leave room for the 200 m.
-const MOUNT_RIDE_SECS := 60.0
+## Phase 276: 90 s. PR #655 failed at 191 m of 200 in 60 s with one throw into water and the same 8.9 m/s cruise
+## (a slow runner's wall-clock deadline, not a mount regression). The full 200 m is still required.
+const MOUNT_RIDE_SECS := 90.0
 const MOUNT_SPEED_SLACK := 0.9
 func _step_mount() -> Array:
 	var me: String = str(_root._registry.local_player_id)

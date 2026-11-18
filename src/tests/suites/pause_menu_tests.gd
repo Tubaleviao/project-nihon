@@ -194,7 +194,17 @@ func _test_exit_on_listen_host() -> void:
 	assert_eq(asked, [""], "and asked for the main menu, with no notice")
 	GameBus.exit_to_menu_requested.emit()
 	assert_eq(asked.size(), 1, "a second Exit does nothing")
+	# Phase 276 — the world's music and ambience loops stop with the world (this headless boot turned Sound off;
+	# it is switched on here so the loops really play).
+	var was_enabled: bool = Sound.enabled
+	Sound.enabled = true
+	Sound.play_loop("music", "music.main_theme", 0.0)
+	Sound.play_loop("ambience", "ambience.TemperateForest", 0.0)
+	assert_eq(Sound.channel_event("music"), "music.main_theme", "the world's music plays")
 	var fresh: GameRoot = RootSwap.back_to_menu(parent, root, "")
+	assert_true(Sound.channel_event("music") == "" and Sound.channel_event("ambience") == "", "back on the menu, both loops stopped")
+	assert_true(Sound.playing("music.main_theme").is_empty() and Sound.playing("ambience.TemperateForest").is_empty(), "and freed")
+	Sound.enabled = was_enabled
 	assert_false(is_instance_valid(root), "the world's root is freed")
 	assert_eq(parent.get_child_count(), 1, "one root is left")
 	assert_eq(str(fresh.name), "GameRoot", "named GameRoot (the RPC path)")

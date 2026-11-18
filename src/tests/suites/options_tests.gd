@@ -10,10 +10,14 @@ const TutorialState := preload("res://src/tutorial/tutorial_state.gd")
 const I18n := preload("res://src/core/i18n.gd")
 const PauseMenu := preload("res://src/ui/pause_menu.gd")
 
+## Phase 275: every bus of `default_bus_layout.tres` that a volume option sets.
+const BUSES := ["Master", "Music", "Effects", "Ambience", "UI"]
+
 func register() -> void:
 	_run_test("options: each setting is saved, reloaded in a fresh load and applied", _test_round_trip)
 	_run_test("options: invalid or out-of-range values load as defaults or clamp; the file's other keys survive", _test_sanitize)
 	_run_test("options: the window's controls write through and a pause menu opens it", _test_window)
+	_run_test("options: boot applies every volume, saved or default, even from a file older than the option", _test_startup_volumes)
 	_run_test("options: every label is a key in both en and pt_BR", _test_catalog)
 
 func _with_settings(fn: Callable) -> void:
@@ -23,8 +27,7 @@ func _with_settings(fn: Callable) -> void:
 	var old_rings: Variant = ProjectSettings.get_setting("nihon/graphics/lod_rings")
 	var old_quality: Variant = ProjectSettings.get_setting("nihon/graphics/terrain_quality")
 	var old_vol: Array = []
-	GameSettings.ensure_buses()
-	for b in ["Master", "Music", "Effects"]:
+	for b in BUSES:
 		old_vol.append(AudioServer.get_bus_volume_db(AudioServer.get_bus_index(b)))
 	LocaleSettings.settings_path = "user://test_settings_p225.json"
 	if FileAccess.file_exists(LocaleSettings.settings_path):
@@ -40,7 +43,7 @@ func _with_settings(fn: Callable) -> void:
 	ProjectSettings.set_setting("nihon/graphics/lod_rings", old_rings)
 	ProjectSettings.set_setting("nihon/graphics/terrain_quality", old_quality)
 	var i := 0
-	for b in ["Master", "Music", "Effects"]:
+	for b in BUSES:
 		var idx := AudioServer.get_bus_index(b)
 		AudioServer.set_bus_volume_db(idx, old_vol[i])
 		AudioServer.set_bus_mute(idx, false)
@@ -49,7 +52,8 @@ func _with_settings(fn: Callable) -> void:
 func _test_round_trip() -> void:
 	_with_settings(func() -> void:
 		var changes := {
-			"volume_master": 0.5, "volume_music": 0.25, "volume_effects": 0.75, "window_mode": "windowed",
+			"volume_master": 0.5, "volume_music": 0.25, "volume_effects": 0.75, "volume_ambience": 0.4,
+			"volume_ui": 0.6, "window_mode": "windowed",
 			"resolution": "1600x900", "vsync": false, "view_distance": 3, "fps_cap": 120, "render_scale": 0.75,
 			"scale_mode": "fsr2", "terrain_quality": "low", "tutorial": false, "mouse_sensitivity": 1.5, "invert_y": true,
 		}
@@ -67,6 +71,8 @@ func _test_round_trip() -> void:
 		assert_true(absf(db.call("Master") - linear_to_db(0.5)) < 0.01, "master bus volume applied")
 		assert_true(absf(db.call("Music") - linear_to_db(0.25)) < 0.01, "music bus volume applied")
 		assert_true(absf(db.call("Effects") - linear_to_db(0.75)) < 0.01, "effects bus volume applied")
+		assert_true(absf(db.call("Ambience") - linear_to_db(0.4)) < 0.01, "ambience bus volume applied (Phase 275)")
+		assert_true(absf(db.call("UI") - linear_to_db(0.6)) < 0.01, "UI bus volume applied (Phase 275)")
 		assert_eq(Engine.max_fps, 120, "FPS cap applied")
 		assert_eq(int(ProjectSettings.get_setting("nihon/graphics/lod_rings")), 3, "view distance sets the LOD rings")
 		assert_eq(int(ProjectSettings.get_setting("nihon/graphics/terrain_quality")), 0, "terrain quality applied")
@@ -99,6 +105,33 @@ func _test_sanitize() -> void:
 		assert_eq(raw["other"], 7, "unrelated keys survive a save")
 		assert_eq(raw["locale"], "en", "the locale survives a save")
 		assert_false((raw["options"] as Dictionary).has("tutorial"), "the tutorial switch is not duplicated under options"))
+
+## Phase 275: a settings file from before the Ambience and UI options (and a fresh install, for every volume)
+## still sets each bus to its slider's value at boot, not the layout's 0 dB.
+func _test_startup_volumes() -> void:
+	_with_settings(func() -> void:
+		var f := FileAccess.open(LocaleSettings.settings_path, FileAccess.WRITE)
+		f.store_string(JSON.stringify({ "options": { "volume_master": 0.5, "volume_music": 0.25, "volume_effects": 0.75,
+			"fps_cap": 120 } }))
+		f.close()
+		var keys := GameSettings.startup_keys(GameSettings._read_file().get("options", {}))
+		for k in GameSettings.VOLUME_BUSES:
+			assert_true(keys.has(k), "%s is applied at boot" % k)
+		assert_true(keys.has("fps_cap"), "a saved non-volume option is applied")
+		assert_false(keys.has("window_mode") or keys.has("render_scale") or keys.has("tutorial"),
+			"an unsaved window or render option, and the tutorial switch, are not")
+		assert_eq(GameSettings.startup_keys({}).size(), GameSettings.VOLUME_BUSES.size(), "a fresh install applies only the volumes")
+		for b in BUSES:
+			AudioServer.set_bus_volume_db(AudioServer.get_bus_index(b), 0.0)
+		GameSettings.load_values()
+		for k in keys:
+			if GameSettings.VOLUME_BUSES.has(k):
+				GameSettings.apply(k)
+		var db := func(b: String) -> float: return AudioServer.get_bus_volume_db(AudioServer.get_bus_index(b))
+		var d: Dictionary = GameSettings.defaults()
+		assert_true(absf(db.call("Music") - linear_to_db(0.25)) < 0.01, "the saved music volume is applied")
+		assert_true(absf(db.call("Ambience") - linear_to_db(float(d["volume_ambience"]))) < 0.01, "ambience gets its default")
+		assert_true(absf(db.call("UI") - linear_to_db(float(d["volume_ui"]))) < 0.01, "UI gets its default"))
 
 func _test_window() -> void:
 	_with_settings(func() -> void:

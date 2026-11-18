@@ -141,6 +141,11 @@ func riders() -> Array:
 func is_mounted(player_id: String) -> bool:
 	return _riding.has(player_id)
 
+## Whether the host last said this machine's own player is mounted (on a client too, where `_riding` is keyed by the
+## host's redacted handles).
+func is_local_mounted() -> bool:
+	return _local_mounted
+
 ## The riding speed factor of `player_id`: the mount's `speedFactor`, 1.0 on foot.
 func speed_factor(player_id: String) -> float:
 	var iid := mounted_instance(player_id)

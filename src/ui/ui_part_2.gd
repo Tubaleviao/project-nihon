@@ -711,6 +711,8 @@ func open_pause_menu() -> void:
 		sl.pause_menu.exit_requested.connect(_on_pause_choice.bind(GameBus.exit_to_menu_requested))
 		sl.pause_menu.quit_requested.connect(_on_pause_choice.bind(GameBus.quit_game_requested))
 		sl._pause_layer.add_child(sl.pause_menu)
+	if not sl.is_pause_menu_open():
+		Sound.play("ui.window_open")   # Phase 276 — the Esc menu is a window too
 	sl.pause_menu.open()
 	if sl.player_slice != null:
 		sl.player_slice.pause_hold = true
@@ -719,6 +721,7 @@ func open_pause_menu() -> void:
 func close_pause_menu() -> void:
 	if not sl.is_pause_menu_open():
 		return
+	Sound.play("ui.window_close")
 	sl.pause_menu.close()
 	if sl.player_slice != null:
 		sl.player_slice.pause_hold = false

@@ -348,6 +348,7 @@ const WORLD_SYSTEMS: Dictionary = {
 		"SettlementSpecialties": preload("res://godot/world_systems/settlementspecialties.tres"),
 		"SkillFocus": preload("res://godot/world_systems/skillfocus.tres"),
 		"SkillWheel": preload("res://godot/world_systems/skillwheel.tres"),
+		"SoundEvents": preload("res://godot/world_systems/soundevents.tres"),
 		"StationPlacement": preload("res://godot/world_systems/stationplacement.tres"),
 		"StoneTools": preload("res://godot/world_systems/stonetools.tres"),
 		"Structure": preload("res://godot/world_systems/structure.tres"),
