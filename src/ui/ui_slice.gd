@@ -233,7 +233,7 @@ func _ready() -> void:
 	GameBus.research_resolved.connect(_on_research_resolved)
 	GameBus.research_points_synced.connect(_on_research_points_synced)
 	GameBus.technology_unlocked.connect(_on_technology_unlocked)
-	GameBus.skill_tier_recorded.connect(_on_skill_tier_recorded)   # Phase 272: a new tier toasts and opens its page
+	GameBus.own_skill_tier_gained.connect(_announce_tier); GameBus.skill_tier_recorded.connect(_on_skill_tier_recorded)   # Phase 272: a new tier toasts and opens its page
 	GameBus.system_message.connect(_on_system_notice)   # Phase 260: a notice is also a toast
 	GameBus.item_picked_up.connect(_on_item_picked_up)
 	GameBus.inventory_changed.connect(_on_inventory_changed)
@@ -1147,11 +1147,11 @@ func _on_research_points_synced(player_id: String, _points: int) -> void:
 
 ## Phase 272 — the local player reached a new tier: a toast, the wheel's node pulses and the skill's page is open.
 func _on_skill_tier_recorded(player_id: String, skill: String, tier: String) -> void:
-	if _skills_window == null or crafting_slice == null or player_id != crafting_slice.local_player_id():
-		return
-	var node_id := "%s:%s" % [skill, tier]
-	_skills_window.open_skill(skill, node_id)
-	_skill_wheel.pulse(node_id)
+	if crafting_slice != null and player_id == crafting_slice.local_player_id(): _announce_tier(skill, tier)
+
+func _announce_tier(skill: String, tier: String) -> void:
+	if _skills_window == null: return
+	_skills_window.announce(skill, tier)
 	push_toast(I18n.t("ui.skill_unlocked_toast", [I18n.content("skill", skill), I18n.t(SkillPagePanel.TIER_KEY % tier)]))
 
 func _on_technology_unlocked(_tech_id: String, _player_id: String) -> void:

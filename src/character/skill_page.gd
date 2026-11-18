@@ -9,6 +9,8 @@ const AttributeRules := preload("res://src/character/attribute_rules.gd")
 
 ## The local player's XP per skill as the host last told them ({ skill: xp }), or computed on the host itself.
 static var local_xp: Dictionary = {}
+## Whether a host sync has set `local_xp` (the first one only seeds it: no tier toasts for what was already earned).
+static var xp_known: bool = false
 
 ## A synced XP table, bounded.
 static func sanitize_xp(data: Variant) -> Dictionary:

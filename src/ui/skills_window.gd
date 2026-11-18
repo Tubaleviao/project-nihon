@@ -52,6 +52,11 @@ func open_skill(skill: String, node_id: String = "") -> void:
 	else:
 		page.show_skill(skill)
 
+## A tier was reached: open its page and pulse its node.
+func announce(skill: String, tier: String) -> void:
+	open_skill(skill, "%s:%s" % [skill, tier])
+	wheel.pulse("%s:%s" % [skill, tier])
+
 ## The wheel shows where the recent play time went: professions glow by share, the centre lists the leading skills.
 func refresh_focus() -> void:
 	var res: Resource = GameData.WORLD_SYSTEMS.get("SkillWheel", null)

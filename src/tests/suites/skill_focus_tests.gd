@@ -194,6 +194,8 @@ func _test_toast_opens_page() -> void:
 	assert_true(ui.toast_shown() != "", "a toast announces it")
 	GameBus.skill_tier_recorded.emit("someone-else", "Archery", "apprentice")
 	assert_eq(ui._skills_window.page.skill, "Smithing", "another player's tier opens nothing")
+	GameBus.own_skill_tier_gained.emit("Archery", "apprentice")
+	assert_eq(ui._skills_window.page.skill, "Archery", "a remote client's own tier (told by the host's sync) opens its page")
 	ui._skills_window.free()
 	crafting.free()
 	ui.free()

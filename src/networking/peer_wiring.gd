@@ -6,6 +6,8 @@ const WorldPos := preload("res://src/terrain/world_pos.gd")
 const Diag := preload("res://src/core/diag.gd")
 const SkillFocus := preload("res://src/character/skill_focus.gd")
 const SkillPage := preload("res://src/character/skill_page.gd")
+const WorkSkills := preload("res://src/character/work_skills.gd")
+const SkillTiers := preload("res://src/core/skill_tiers.gd")
 const TerrainSlice     := preload("res://src/terrain/terrain_slice.gd")
 const CreatureAI       := preload("res://src/creature/creature_ai.gd")
 const NetworkingSlice  := preload("res://src/networking/networking_slice.gd")
@@ -706,7 +708,15 @@ func on_own_state_synced(data: Dictionary) -> void:
 	if data.has("skill_focus_view"):
 		SkillFocus.local_view = SkillFocus.sanitize_view(data["skill_focus_view"])
 	if data.has("skill_xp"):
-		SkillPage.local_xp = SkillPage.sanitize_xp(data["skill_xp"])
+		var fresh := SkillPage.sanitize_xp(data["skill_xp"])
+		if SkillPage.xp_known:
+			for skill in fresh:
+				var now_tier := WorkSkills.tier_for_xp(int(fresh[skill]))
+				var was_tier := WorkSkills.tier_for_xp(int(SkillPage.local_xp.get(skill, 0)))
+				if SkillTiers.rank(now_tier) > SkillTiers.rank(was_tier):
+					GameBus.own_skill_tier_gained.emit(str(skill), now_tier)
+		SkillPage.xp_known = true
+		SkillPage.local_xp = fresh
 	root._waystone_wiring.apply_own_view(data)
 	root._bed_wiring.apply_own_view(data)
 	if data.get("settlement_view", null) is Dictionary:
