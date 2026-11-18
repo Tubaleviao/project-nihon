@@ -148,6 +148,9 @@ func playing(event_id: String) -> Array:
 ## Stop and free every player of `event_id`.
 func stop(event_id: String) -> void:
 	for c in playing(event_id):
+		for ch in _channels.keys():
+			if _channels[ch] == c:
+				_channels.erase(ch)   # no stale entry for play_loop to trip over
 		_free_player(c)
 
 
