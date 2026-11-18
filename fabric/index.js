@@ -40,6 +40,7 @@ const chests       = require('./gameplay/chests')
 const stations     = require('./gameplay/stations')
 const writing      = require('./gameplay/writing')
 const skillWheel   = require('./gameplay/skill_wheel')
+const skillFocus   = require('./gameplay/skill_focus')
 
 // Phase 125 — the travel cost must name a real item; throwing fails `npm run validate`.
 waystone.validateTravel(waystone.TRAVEL, Object.keys(items))
@@ -64,6 +65,7 @@ writing.validateWriting(writing.writingData(), writing.writingRefs())
 work.validateWork(work.workData(), work.workRefs())
 workTimes.validateWorkTimes(workTimes.workTimesData(), workTimes.workTimesRefs()) // Phase 259
 skillWheel.validateSkillWheel(skillWheel.skillWheelData(), skillWheel.skillWheelRefs()) // Phase 271
+skillFocus.validateSkillFocus(skillFocus.skillFocusData()) // Phase 272
 stoneTools.validateStoneTools(stoneTools.stoneToolsData(), stoneTools.stoneToolsRefs()) // Phase 260
 newcomer.validateNewcomerGrounds(newcomer.newcomerGroundsData(), newcomer.newcomerGroundsRefs()) // Phase 261
 stations.validateStations(stations.stationsData(), stations.stationsRefs()) // Phase 268
@@ -374,6 +376,7 @@ module.exports = defineFabric({
       WorkSkills:          work.WorkSkills,
       WorkTimes:           workTimes.WorkTimes,
       SkillWheel:          skillWheel.SkillWheel,
+      SkillFocus:          skillFocus.SkillFocus,
       StoneTools:          stoneTools.StoneTools,
       NewcomerGrounds:     newcomer.NewcomerGrounds,
       StationPlacement:    stations.StationPlacement,

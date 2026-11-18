@@ -350,6 +350,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [Settlement](entities/settlement.md) — A player-founded village: a Hearth, members with roles and a shared Stockpile
 - [SettlementProjects](entities/settlementprojects.md) — Structures a village builds together: a palisade, a storehouse, a workshop, a watchtower
 - [SettlementSpecialties](entities/settlementspecialties.md) — What each member of a village is good at: woodworker, smith, hunter, builder or forager
+- [SkillFocus](entities/skillfocus.md) — Dedication: XP in a skill is multiplied by 1 + maxBonus x (active minutes in the last focus window) / window, counted in play time
 - [SkillWheel](entities/skillwheel.md) — The skill wheel: each skill tier is a node with an affinity per profession (which pulls it toward that profession on the rim) and a depth (how far from the centre it sits), plus what the tier unlocks
 - [StationPlacement](entities/stationplacement.md) — Every station is an item: crafted (the first by hand, the rest at an earlier station), carried in the pack, placed from the hotbar and picked up again by its owner
 - [StoneTools](entities/stonetools.md) — The stone tools a newcomer makes by hand (the only tools made or repaired without a bench), the two inputs they take, and where those inputs come from: branches from a felled tree, loose stones knocked from host rock

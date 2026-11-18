@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:6c95717981950860ff086de1a7153e4bfad0feb911c8c68bd9b698f1a1aae384",
+  "schemaHash": "sha256:5333d6299fdfaa2f2003c8e13ab64696f312fbcf36d463ed220e71c92f964ae4",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -44070,6 +44070,45 @@
                 }
               }
             }
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "SkillFocus": {
+        "name": "SkillFocus",
+        "tags": [
+          "world-system"
+        ],
+        "description": "Dedication: XP in a skill is multiplied by 1 + maxBonus x (active minutes in the last focus window) / window, counted in play time. A skill with no focus earns the normal rate.",
+        "goal": "Reward a player for sticking with one skill without ever punishing trying another (Phase 272)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "focusWindowMinutes": {
+            "name": "focusWindowMinutes",
+            "type": "integer",
+            "description": "Minutes of play time the focus looks back over",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 60
+          },
+          "maxBonus": {
+            "name": "maxBonus",
+            "type": "decimal",
+            "description": "XP bonus (0.25 = +25%) with a full window of activity in one skill",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.25
           }
         },
         "relations": {},

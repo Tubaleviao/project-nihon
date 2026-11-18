@@ -1,0 +1,11 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/world_systems/skillfocus.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+focusWindowMinutes = 60
+maxBonus = 0.25
+description = "Dedication: XP in a skill is multiplied by 1 + maxBonus x (active minutes in the last focus window) / window, counted in play time. A skill with no focus earns the normal rate."
+tags = ["world-system"]
