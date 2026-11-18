@@ -406,27 +406,17 @@ func station_craft(h: Node) -> void:
 		h._root._chest_wiring._push_inventory(bound)
 		var came: bool = await h._await_client_ready("station_craft", bound)
 		await h._await_settle(1.0 * h._time_scale)
-		# The client reports its position while it waits, and a slow runner can leave it falling or settling, so the
-		# bench is stood beside the latest report and moved again when the body has drifted from it.
+		# The client keeps reporting its position while it waits (a slow runner can leave it settling), so the bench
+		# is stood beside the latest report. One placement only: moving the bench while a craft is in flight on a
+		# delayed link would refuse that craft.
 		var at: Variant = h._root._chest_wiring.player_pos(bound)
 		var near := ""
-		var picked := false
-		var crafted := false
-		for attempt in 4:
-			at = h._root._chest_wiring.player_pos(bound)
-			if not (came and at is Vector3):
-				break
+		if came and at is Vector3:
 			near = h._root._station.place_station(STATION_TYPE, (at as Vector3) + Vector3(1.5, 0.0, 0.0))
-			# The bench must be what the interact input picks where the body stands (no nearer chest, bed or waystone).
-			picked = near != "" and CraftCatalog.interact_station(h._root._station.get_all_stations(), at as Vector3) == near
-			crafted = near != "" and await h._await_until(func() -> bool:
-				return seen.any(func(e: Array) -> bool: return bool(e[0])), h._step_timeout() * 1.5)
-			if crafted:
-				break
-			if near != "":
-				h._root._station.remove_station(near)
-				near = ""
-			await h._await_settle(1.0 * h._time_scale)
+		# The bench must be what the interact input picks where the body stands (no nearer chest, bed or waystone).
+		var picked: bool = near != "" and CraftCatalog.interact_station(h._root._station.get_all_stations(), at as Vector3) == near
+		var crafted: bool = near != "" and await h._await_until(func() -> bool:
+			return seen.any(func(e: Array) -> bool: return bool(e[0])), h._step_timeout() * 3.0)
 		var far := ""
 		if near != "":
 			h._root._station.remove_station(near)
