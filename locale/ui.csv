@@ -183,7 +183,16 @@ notice.tech_discovered,"New technology: {0}. You can now make {1}.","Nova tecnol
 ui.skill_tip,{0} ({1}),{0} ({1})
 ui.skills_title,Skills,Habilidades
 ui.slot_empty,{0}: empty,{0}: vazio
-ui.tech_line,{0} [{1}]  requires: {2}  cost: {3} + {4} pts  {5}s,{0} [{1}]  requer: {2}  custo: {3} + {4} pts  {5}s
+ui.tech_state_researched,Researched,Pesquisada
+ui.tech_state_researching,Researching…,Pesquisando…
+ui.tech_state_available,Available,Disponível
+ui.tech_state_locked,Locked,Bloqueada
+ui.tech_fit,Show whole tree,Ver a árvore toda
+ui.tech_select_hint,Select a technology to see its details.,Selecione uma tecnologia para ver os detalhes.
+ui.tech_cost,"Cost: {0} research points, {1}","Custo: {0} pontos de pesquisa, {1}"
+ui.tech_time,Time: {0} s,Tempo: {0} s
+ui.tech_requires,Requires: {0},Requer: {0}
+ui.tech_unlocks,Unlocks:,Libera:
 ui.tip_durability,"
 Durability: {0}","
 Durabilidade: {0}"

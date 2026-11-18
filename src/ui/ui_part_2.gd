@@ -6,6 +6,7 @@ var trade_box: VBoxContainer = null
 
 const AdminPanelScript := preload("res://src/ui/admin_panel.gd")
 const WritingRules := preload("res://src/technology/writing_rules.gd")
+const TechTreeView := preload("res://src/ui/tech_tree_view.gd")
 
 func _init(slice: Node) -> void:
 	sl = slice
@@ -43,7 +44,9 @@ func inventory_rows() -> Array:
 		})
 	return rows
 
-## One row per technology: { id, status, can_research, requires, duration, cost }.
+## One row per technology: { id, status, state, can_research, requires, unlocks, duration, cost }.
+## `state` is what the tree shows (Phase 270): researched, researching, available (locked with every
+## prerequisite researched) or locked.
 func technology_rows() -> Array:
 	var rows: Array = []
 	if sl.technology_slice == null:
@@ -56,10 +59,13 @@ func technology_rows() -> Array:
 		var data: Dictionary = sl.technology_slice.get_tech_data(tid)
 		var points_cost: int = sl.technology_slice.research_cost(tid)
 		var short: bool = status == "locked" and sl.technology_slice.get_points() < points_cost
+		var prereqs_met: bool = sl._can_research(tid, status, data)
 		rows.append({
 			"id": tid,
 			"status": status,
-			"can_research": sl._can_research(tid, status, data) and not short,
+			"state": tech_state(status, prereqs_met),
+			"can_research": prereqs_met and not short,
+			"unlocks": data.get("unlocks", []),
 			"points_cost": points_cost,
 			"reason": "needs_points:%d" % points_cost if short else "",
 			"icon_key": unlock_icon_key(data.get("unlocks", [])),
@@ -372,31 +378,158 @@ func unlock_icon_key(unlocks: Array) -> String:
 			return key
 	return ""
 
+## Phase 270 — a technology's tree state from its research status and whether its prerequisites are met.
+static func tech_state(status: String, prereqs_met: bool) -> String:
+	match status:
+		"unlocked":
+			return TechTreeView.STATE_RESEARCHED
+		"researching":
+			return TechTreeView.STATE_RESEARCHING
+	return TechTreeView.STATE_AVAILABLE if prereqs_met else TechTreeView.STATE_LOCKED
+
+## A tree state in the active locale (each key spelled out so the catalog audit sees it).
+func tech_state_text(state: String) -> String:
+	match state:
+		TechTreeView.STATE_RESEARCHED:
+			return sl.I18n.t("ui.tech_state_researched")
+		TechTreeView.STATE_RESEARCHING:
+			return sl.I18n.t("ui.tech_state_researching")
+		TechTreeView.STATE_AVAILABLE:
+			return sl.I18n.t("ui.tech_state_available")
+	return sl.I18n.t("ui.tech_state_locked")
+
+## Width of the technology detail column beside the tree.
+const TECH_DETAIL_WIDTH := 240.0
+## Minimum height of the books-and-blueprints list under the tree, so its Write and Read actions stay reachable.
+const TECH_WRITING_MIN_HEIGHT := 140.0
+
+## Phase 270 — the Technology window's tree: a toolbar (balance, fit button), the zoom canvas and the
+## selected technology's details, added to `parent` above the books-and-blueprints list.
+func build_tech_tree(parent: VBoxContainer) -> void:
+	var bar := HBoxContainer.new()
+	sl._tech_balance = Label.new()
+	sl._tech_balance.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.add_child(sl._tech_balance)
+	var fit := Button.new()
+	sl._set_tr(fit, "text", "ui.tech_fit")
+	bar.add_child(fit)
+	parent.add_child(bar)
+	# The tree and the selected technology's details sit side by side; the details scroll in a
+	# fixed-width column, so a long description never pushes the books-and-blueprints list below
+	# out of the (unresizable, content-sized) window.
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	row.size_flags_stretch_ratio = 3.0
+	var tree: Control = TechTreeView.new()
+	tree.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	tree.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	fit.pressed.connect(tree.fit_all)
+	tree.tech_selected.connect(func(_id: String) -> void: refresh_tech_detail())
+	row.add_child(tree)
+	sl._tech_tree = tree
+	var detail_scroll := ScrollContainer.new()
+	detail_scroll.name = "TechDetailScroll"
+	detail_scroll.custom_minimum_size = Vector2(TECH_DETAIL_WIDTH, 0)
+	detail_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	detail_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	sl._tech_detail = VBoxContainer.new()
+	sl._tech_detail.add_theme_constant_override("separation", 4)
+	sl._tech_detail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	detail_scroll.add_child(sl._tech_detail)
+	row.add_child(detail_scroll)
+	parent.add_child(row)
+
+## The tree's node rows: localized name, state and description; the icon of what it unlocks.
+func tech_tree_rows(rows: Array) -> Array:
+	var out: Array = []
+	for r: Dictionary in rows:
+		var id := str(r["id"])
+		var key := str(r["icon_key"])
+		out.append({
+			"id": id,
+			"name": sl.I18n.content("tech", id),
+			"state": r["state"],
+			"state_text": tech_state_text(str(r["state"])),
+			"icon": sl._load_item_icon(key) if key != "" else null,
+			"tooltip": sl.I18n.content("tech", id, "desc"),
+		})
+	return out
+
+## Phase 270 — the selected technology's description, cost, time, prerequisites, the recipes it unlocks
+## (icons, named in their tooltips) and, when it is available, a Research button. The host still checks
+## every research request.
+func refresh_tech_detail() -> void:
+	if sl._tech_detail == null:
+		return
+	# Detach before freeing (as `refresh_inventory` does): rows only queued for deletion would still
+	# count toward the panel's minimum size for a frame and grow the window for good.
+	for child in sl._tech_detail.get_children():
+		sl._tech_detail.remove_child(child)
+		sl._retire(child)
+	var id: String = "" if sl._tech_tree == null else str(sl._tech_tree.selected)
+	var r: Dictionary = {}
+	for row: Dictionary in sl.technology_rows():
+		if str(row["id"]) == id:
+			r = row
+	if r.is_empty():
+		_detail_label(sl.I18n.t("ui.tech_select_hint"))
+		return
+	var title := _detail_label(sl.I18n.content("tech", id))
+	title.add_theme_font_size_override("font_size", 18)
+	_detail_label(tech_state_text(str(r["state"])))
+	_detail_label(sl.I18n.content("tech", id, "desc")).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_detail_label(sl.I18n.t("ui.tech_cost", [sl.I18n.number(int(r["points_cost"])), r["cost"] if str(r["cost"]) != "" else "—"]))
+	_detail_label(sl.I18n.t("ui.tech_time", [sl.I18n.number(int(r["duration"]))]))
+	var req_arr: Array = r.get("requires", [])
+	_detail_label(sl.I18n.t("ui.tech_requires", [sl.I18n.content_list("tech", req_arr) if req_arr.size() > 0 else "—"]))
+	var unlocks := HBoxContainer.new()
+	unlocks.add_theme_constant_override("separation", 4)
+	var head := Label.new()
+	head.text = sl.I18n.t("ui.tech_unlocks")
+	unlocks.add_child(head)
+	for rid in r.get("unlocks", []):
+		var key: String = "" if sl.crafting_slice == null else sl._first_output_icon_key(sl.crafting_slice.get_recipe(str(rid)).get("outputs", []))
+		var tex: Texture2D = sl._load_item_icon(key) if key != "" else null
+		if tex == null:
+			var named := Label.new()
+			named.text = sl.I18n.content("recipe", str(rid))
+			unlocks.add_child(named)
+			continue
+		var rect := TextureRect.new()
+		rect.texture = tex
+		rect.custom_minimum_size = Vector2(28, 28)
+		rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		rect.tooltip_text = sl.I18n.content("recipe", str(rid))
+		unlocks.add_child(rect)
+	sl._tech_detail.add_child(unlocks)
+	if str(r["state"]) == TechTreeView.STATE_AVAILABLE:
+		var btn := Button.new()
+		btn.name = "Research"
+		btn.text = sl.I18n.t("ui.research")
+		btn.disabled = not bool(r["can_research"])
+		btn.pressed.connect(sl._on_research_pressed.bind(id))
+		sl._tech_detail.add_child(btn)
+		if str(r["reason"]) != "":
+			_detail_label(sl.I18n.reason_text(str(r["reason"])))
+
+func _detail_label(text: String) -> Label:
+	var lbl := Label.new()
+	lbl.text = text
+	sl._tech_detail.add_child(lbl)
+	return lbl
+
 func refresh_technology() -> void:
+	if sl._tech_balance != null:
+		sl._tech_balance.text = sl.I18n.t("ui.research_points", [sl.research_points()])
+	if sl._tech_tree != null:
+		sl._tech_tree.set_rows(tech_tree_rows(sl.technology_rows()))
+	refresh_tech_detail()
 	if sl._technology_box == null:
 		return
 	for child in sl._technology_box.get_children():
 		child.queue_free()
-	var balance := Label.new()
-	balance.text = sl.I18n.t("ui.research_points", [sl.research_points()])
-	sl._technology_box.add_child(balance)
-	for row in sl.technology_rows():
-		var r: Dictionary = row
-		var hbox := HBoxContainer.new()
-		hbox.add_theme_constant_override("separation", 8)
-		var btn := Button.new()
-		btn.text = sl.I18n.t("ui.research")
-		btn.disabled = not bool(r["can_research"])
-		btn.pressed.connect(sl._on_research_pressed.bind(str(r["id"])))
-		hbox.add_child(btn)
-		sl._add_row_icon(hbox, str(r["icon_key"]))
-		var req_arr: Array = r.get("requires", [])
-		var reqs: String = sl.I18n.content_list("tech", req_arr) if req_arr.size() > 0 else "—"
-		var line: String = sl.I18n.t("ui.tech_line", [sl.I18n.content("tech", str(r["id"])),r["status"], reqs, r["cost"], r["points_cost"], r["duration"]])
-		var lbl := Label.new()
-		lbl.text = line + ("  (%s)" % sl.I18n.reason_text(str(r["reason"])) if str(r["reason"]) != "" else "")
-		hbox.add_child(lbl)
-		sl._technology_box.add_child(hbox)
 	var header := Label.new()
 	header.text = sl.I18n.t("ui.writing_header")
 	sl._technology_box.add_child(header)

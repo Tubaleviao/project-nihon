@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–225, 238–243, 248, 249, 252–254, 259–262, 264, 267, 268 and 274 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–225, 238–243, 248, 249, 252–254, 259–262, 264, 267, 268, 270 and 274 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -31,7 +31,7 @@ introductions of the arcs they belonged to, are archived in
 Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
 see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
 phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
-comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–254, 259–262, 264, 267, 268, 274)
+comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–254, 259–262, 264, 267, 268, 270, 274)
 have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
 [Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
 others are not in it.
@@ -40,7 +40,6 @@ others are not in it.
 |---|---|---|
 | 6 | 263 | Digging that shows at once: a predicted edit and a priority remesh |
 | 9 | 269 | Crafting by hand, and at the station |
-| 10 | 270 | The technology tree: nodes, lines, zoom |
 | 12 | 271 | The skill wheel: professions around the edge, shared skills in the centre |
 | 13 | 272 | A skill's own page, and where the player's focus went |
 | 14 | 273 | Titles: professions unlock them, the player chooses one |
@@ -317,7 +316,7 @@ tiers, several at once, and the UI calls them professions.
 | 267 | Names a player can read: localized names for items, recipes, technologies, skills and professions | Done |
 | 268 | Stations are made, carried and placed from the hotbar | Done |
 | 269 | Crafting by hand, and at the station | Open |
-| 270 | The technology tree: nodes, lines, zoom | Open |
+| 270 | The technology tree: nodes, lines, zoom | Done |
 | 271 | The skill wheel: professions around the edge, shared skills in the centre | Open |
 | 272 | A skill's own page, and where the player's focus went | Open |
 | 273 | Titles: professions unlock them, the player chooses one | Open |
@@ -1009,26 +1008,6 @@ The crafting window lists every recipe, whatever station it needs, as rows of te
 - Suite test: the station window closes when the player leaves reach.
 - Net harness step: a client opens a station, crafts one of its recipes and gets the item; the same
   request away from the station is refused.
-- Every new string is in both locales.
-
-## Phase 270 — The technology tree: nodes, lines, zoom
-
-- **Layout as a pure function:** a technology's column is the length of its longest prerequisite
-  chain (fabric `requires`), and rows within a column are ordered to reduce crossings (barycentre
-  passes). The same fabric gives the same layout, so it can be tested and cached.
-- **Drawing:** each technology is a node with an icon, its localized name and state (researched,
-  available, locked), and a line runs from each prerequisite to it, highlighted when the prerequisite
-  is researched. Selecting a node shows its description, cost in research points and materials, time,
-  the recipes it unlocks (icons) and a Research button when available.
-- **Navigation:** mouse wheel and pinch zoom around the cursor (clamped), drag to pan, a button to fit
-  the whole tree, and the view centres on the newest available technology when the window opens.
-- Research requests stay host-checked as now.
-
-**Acceptance criteria**
-- Suite tests: every technology's column is greater than each prerequisite's; the layout is identical
-  across two runs; each `requires` edge is drawn exactly once; zoom stays within its clamp and zooms
-  around the cursor; a node's state follows the player's research.
-- No node or panel shows an entity id (Phase 267 audit).
 - Every new string is in both locales.
 
 ## Phase 271 — The skill wheel: professions around the edge, shared skills in the centre
