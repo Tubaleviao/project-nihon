@@ -409,6 +409,11 @@ func station_craft(h: Node) -> void:
 		var at: Variant = h._root._chest_wiring.player_pos(bound)
 		var near := ""
 		if came and at is Vector3:
+			# A bench left by an earlier step (the hotbar one lands late on a slow runner) nearer the body would win the pick.
+			for st: Dictionary in h._root._station.get_all_stations():
+				var sp: Variant = st.get("position", null)
+				if sp is Vector3 and (sp as Vector3).distance_to(at as Vector3) <= CraftCatalog.INTERACT_REACH + 1.0:
+					h._root._station.remove_station(str(st["id"]))
 			near = h._root._station.place_station(STATION_TYPE, (at as Vector3) + Vector3(1.5, 0.0, 0.0))
 		# The bench must be what the interact input picks where the body stands (no nearer chest, bed or waystone).
 		var picked: bool = near != "" and CraftCatalog.interact_station(h._root._station.get_all_stations(), at as Vector3) == near
