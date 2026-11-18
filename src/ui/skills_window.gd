@@ -52,6 +52,14 @@ func open_skill(skill: String, node_id: String = "") -> void:
 	else:
 		page.show_skill(skill)
 
+## Host: copy the registry's own XP into the page's table now (the periodic copy can be a second old).
+static func sync_xp(reg: Object, pid: String) -> void:
+	if reg != null and reg.has_method("get_record"):
+		SkillPage.local_xp = (reg.get_record(pid).get("skill_xp", {}) as Dictionary).duplicate()
+
+static func xp_hash() -> int:
+	return SkillPage.local_xp.hash()
+
 ## A tier was reached: open its page and pulse its node.
 func announce(skill: String, tier: String) -> void:
 	open_skill(skill, "%s:%s" % [skill, tier])
@@ -59,6 +67,7 @@ func announce(skill: String, tier: String) -> void:
 
 ## The wheel shows where the recent play time went: professions glow by share, the centre lists the leading skills.
 func refresh_focus() -> void:
+	if page.skill != "": page.show_skill(page.skill)   # the open page follows XP and focus
 	var res: Resource = GameData.WORLD_SYSTEMS.get("SkillWheel", null)
 	var prof_skills: Dictionary = res.get("professionSkills") if res != null else {}
 	var view: Dictionary = SkillFocus.local_view

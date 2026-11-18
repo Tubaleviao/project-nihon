@@ -1001,7 +1001,7 @@ func _refresh_skills() -> void:
 	if "profession_slice" in crafting_slice and crafting_slice.profession_slice != null:
 		unlocked = crafting_slice.profession_slice.get_unlocked()
 	var rows := SkillWheelView.rows(crafting_slice.get_skills(), unlocked)
-	var focus_sig := [rows.hash(), SkillFocus.local_view.hash()].hash()
+	var focus_sig := [rows.hash(), SkillFocus.local_view.hash(), SkillsWindow.xp_hash()].hash()
 	if focus_sig == _skills_signature:
 		return
 	_skills_signature = focus_sig
@@ -1147,8 +1147,8 @@ func _on_research_points_synced(player_id: String, _points: int) -> void:
 
 ## Phase 272 — the local player reached a new tier: a toast, the wheel's node pulses and the skill's page is open.
 func _on_skill_tier_recorded(player_id: String, skill: String, tier: String) -> void:
-	if crafting_slice != null and player_id == crafting_slice.local_player_id(): _announce_tier(skill, tier)
-
+	if crafting_slice != null and player_id == crafting_slice.local_player_id():
+		SkillsWindow.sync_xp(crafting_slice.get("player_registry"), player_id); _announce_tier(skill, tier)   # host: synced XP is up to 1 s old
 func _announce_tier(skill: String, tier: String) -> void:
 	if _skills_window == null: return
 	_skills_window.announce(skill, tier)

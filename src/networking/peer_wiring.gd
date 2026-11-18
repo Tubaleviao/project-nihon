@@ -709,14 +709,16 @@ func on_own_state_synced(data: Dictionary) -> void:
 		SkillFocus.local_view = SkillFocus.sanitize_view(data["skill_focus_view"])
 	if data.has("skill_xp"):
 		var fresh := SkillPage.sanitize_xp(data["skill_xp"])
-		if SkillPage.xp_known:
+		var before: Dictionary = SkillPage.local_xp
+		var known: bool = SkillPage.xp_known
+		SkillPage.xp_known = true
+		SkillPage.local_xp = fresh   # first, so the page a tier toast opens reads the new XP
+		if known:
 			for skill in fresh:
 				var now_tier := WorkSkills.tier_for_xp(int(fresh[skill]))
-				var was_tier := WorkSkills.tier_for_xp(int(SkillPage.local_xp.get(skill, 0)))
+				var was_tier := WorkSkills.tier_for_xp(int(before.get(skill, 0)))
 				if SkillTiers.rank(now_tier) > SkillTiers.rank(was_tier):
 					GameBus.own_skill_tier_gained.emit(str(skill), now_tier)
-		SkillPage.xp_known = true
-		SkillPage.local_xp = fresh
 	root._waystone_wiring.apply_own_view(data)
 	root._bed_wiring.apply_own_view(data)
 	if data.get("settlement_view", null) is Dictionary:
