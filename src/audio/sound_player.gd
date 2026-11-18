@@ -33,7 +33,8 @@ var trace: Array = []
 
 ## A fade's floor: a channel starts and ends here.
 const FADE_FLOOR_DB := -60.0
-## The event a button press plays (Phase 276). A button with the meta `no_click_sound` stays silent.
+## The event a button press plays (Phase 276). A button with the meta `no_click_sound` stays silent (read at
+## press time, so the meta can be set after the button enters the tree).
 const CLICK_EVENT := "ui.click"
 
 var _channels: Dictionary = {}   # channel -> its current looping player
@@ -50,18 +51,20 @@ func _process(delta: float) -> void:
 
 
 func _on_node_added(n: Node) -> void:
-	if n is BaseButton and not n.has_meta("no_click_sound"):
+	if n is BaseButton:
 		hook_button(n as BaseButton)
 
 
 ## Make `button` play `ui.click` when pressed (once; a re-parented button is not hooked twice).
 func hook_button(button: BaseButton) -> void:
-	if not button.pressed.is_connected(_click):
-		button.pressed.connect(_click)
+	var cb := _click.bind(button)
+	if not button.pressed.is_connected(cb):
+		button.pressed.connect(cb)
 
 
-func _click() -> void:
-	play(CLICK_EVENT)
+func _click(button: BaseButton) -> void:
+	if not button.has_meta("no_click_sound"):
+		play(CLICK_EVENT)
 
 
 ## What `play(event_id, at)` would do, without doing it: `{ event, key, bus, spatial ("2d"|"3d"),

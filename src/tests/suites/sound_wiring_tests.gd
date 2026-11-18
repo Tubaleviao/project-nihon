@@ -3,11 +3,14 @@ extends "res://src/tests/test_support.gd"
 ## `play` resolved; nothing here listens to output): the dig and the tool strike, pickups, a creature's attack on
 ## the host and on a client, footsteps, the ambience and the music, a button click and the window open/close.
 ## Each plays on its event's bus, one the volume options set. The footstep surface follows the ground underfoot;
-## loops cross-fade; a dedicated server or a headless boot plays nothing and wires nothing.
+## loops cross-fade; a dedicated server or a headless boot plays nothing and wires nothing. Positions hold under a
+## shifted scene origin and a sound past its `maxDistance` is culled; a rider plays no footsteps; a refused loose pick
+## is silent; a music file that does not load is retried with a back-off.
 
 const SoundEvents := preload("res://src/audio/sound_events.gd")
 const AudioWiring := preload("res://src/audio/audio_wiring.gd")
 const GameSettings := preload("res://src/core/game_settings.gd")
+const MountSlice := preload("res://src/creature/mount_slice.gd")
 
 func register() -> void:
 	_run_test("sound wiring: the dig, the tool strike and pickups fire their events", _test_dig_strike_pickup)
@@ -19,8 +22,18 @@ func register() -> void:
 	_run_test("sound wiring: footsteps fall once per stride, only on the ground", _test_step_cadence)
 	_run_test("sound wiring: a loop channel cross-fades and fades out", _test_loop_channels)
 	_run_test("sound wiring: a dedicated server or a headless boot plays and wires nothing", _test_server_silent)
+	_run_test("sound wiring: under a shifted scene origin the dig, the strike and a swing land at world + offset", _test_shifted_origin)
+	_run_test("sound wiring: a 3D sound past its event's maxDistance from the listener is culled", _test_max_distance_cull)
+	_run_test("sound wiring: no footsteps while the local player rides a mount", _test_no_steps_mounted)
+	_run_test("sound wiring: a loose pick sounds only once the host confirms it", _test_loose_pick_confirmed)
+	_run_test("sound wiring: a music file that does not load backs off, without touching the rng", _test_music_back_off)
 
 ## Events this phase wires, by where they are played.
+## A player body the suite places by hand (a fixture PlayerSlice has no body: no position, never on the floor).
+const STUB_PLAYER_SRC := "extends \"res://src/player/player_slice.gd\"\nvar stub_scene := Vector3.ZERO\nvar stub_vel := Vector3.ZERO\nvar stub_grounded := false\nfunc get_scene_position() -> Vector3:\n\treturn stub_scene\nfunc get_velocity() -> Vector3:\n\treturn stub_vel\nfunc is_grounded() -> bool:\n\treturn stub_grounded\n"
+## A GameRoot that can enter the tree without booting a world (its `_ready` and frame callbacks do nothing).
+const INERT_ROOT_SRC := "extends \"res://src/core/game_root.gd\"\nfunc _ready() -> void:\n\tpass\nfunc _process(_d: float) -> void:\n\tpass\nfunc _physics_process(_d: float) -> void:\n\tpass\nfunc _exit_tree() -> void:\n\tpass\n"
+
 const WIRED := ["ui.click", "ui.window_open", "ui.window_close", "footstep.grass", "footstep.stone", "footstep.sand",
 	"world.dig", "item.StonePick.hit", "world.pickup", "creature.GraywolfPack.attack", "ambience.TemperateForest",
 	"music.main_theme"]
@@ -47,6 +60,13 @@ func _traced() -> Array:
 func _root() -> Node:
 	var gr: Node = (load("res://src/core/game_root.gd") as GDScript).new()
 	return gr
+
+
+func _script(src: String) -> GDScript:
+	var g := GDScript.new()
+	g.source_code = src
+	g.reload()
+	return g
 
 
 func _free_root(gr: Node, nodes: Array = []) -> void:
@@ -86,6 +106,7 @@ func _test_dig_strike_pickup() -> void:
 	GameBus.block_mine_requested.emit(at, Vector3.UP, "peer-player-2", {})
 	assert_eq(_traced(), [], "a remote actor's mine re-run on the host strikes nothing here")
 	GameBus.item_picked_up.emit("Branch", 1)
+	GameBus.loose_picked.emit("loose:1", 0.0)   # a host answers inside the request's emit, before this handler runs
 	GameBus.loose_pick_requested.emit("loose:1", "")
 	GameBus.loose_pick_requested.emit("loose:2", "peer-player-2")
 	assert_eq(_traced(), ["world.pickup", "world.pickup"], "a pickup and the local loose pick play; a remote pick does not")
@@ -170,7 +191,17 @@ func _test_ui_hooks() -> void:
 	Sound.trace.clear()
 	quiet.pressed.emit()
 	assert_eq(_traced(), [], "a button marked no_click_sound is silent")
+	quiet.remove_meta("no_click_sound")
+	quiet.pressed.emit()
+	assert_eq(_traced(), ["ui.click"], "the meta is read at press time: removed, the button clicks")
 	quiet.free()
+	var late := Button.new()
+	add_child(late)
+	late.set_meta("no_click_sound", true)   # set after the button entered the tree
+	Sound.trace.clear()
+	late.pressed.emit()
+	assert_eq(_traced(), [], "a meta set after add_child still silences it")
+	late.free()
 	var ui := UiSlice.new()
 	add_child(ui)
 	Sound.trace.clear()
@@ -285,11 +316,159 @@ func _test_server_silent() -> void:
 	gr._audio_wiring.tick(1.0)
 	assert_eq(Sound.trace.size(), 0, "a dig, a swing or a tick on a server root plays nothing")
 	_free_root(gr, [cr])
-	# A booting root (in the tree; a fixture root is not, and adding a GameRoot to the tree would boot it) applies
-	# its role when `_build_and_boot` wires the module, before any role boot runs.
-	var src := FileAccess.get_file_as_string("res://src/audio/audio_wiring.gd")
-	assert_true(src.contains("if root.is_inside_tree():\n\t\tapply_boot_role(root._is_server, DisplayServer.get_name() == \"headless\")"),
-		"the wiring sets Sound for the boot role")
+	# A booting root (in the tree, as `_build_and_boot` wires it) applies its role when it wires the module; a
+	# fixture root (not in the tree) leaves Sound alone. The inert root enters the tree without booting a world.
+	var inert := _script(INERT_ROOT_SRC)
+	var fixture := _root()
+	fixture._is_server = true
+	Sound.enabled = true
+	fixture._audio_wiring.wire(fixture)
+	assert_true(Sound.enabled, "a fixture server root (not in the tree) leaves Sound alone")
+	_free_root(fixture)
+	var booting: Node = inert.new()
+	booting._is_server = true
+	add_child(booting)
+	booting._audio_wiring.wire(booting)
+	assert_false(Sound.enabled, "a booting dedicated server turns Sound off")
+	assert_eq(booting._audio_wiring.connection_count(), 0, "and wires no handler")
+	booting.free()
+	Sound.enabled = true
+	var client: Node = inert.new()
+	client._is_client = true
+	add_child(client)
+	client._audio_wiring.wire(client)
+	assert_eq(Sound.enabled, DisplayServer.get_name() != "headless", "a booting client plays unless the boot is headless")
+	client.free()
 	AudioWiring.apply_boot_role(false, false)
 	assert_true(Sound.enabled, "a client boot turns it back on")
+	_end()
+
+
+## World positions under a scene origin of chunk (3, -2): each 3D sound lands at world + the player's scene offset.
+func _test_shifted_origin() -> void:
+	_begin()
+	var gr := _root()
+	var player = _script(STUB_PLAYER_SRC).new()
+	player.shift_scene_to_origin(Vector3.ZERO, Vector2i(3, -2))
+	var off: Vector3 = player.scene_offset()
+	assert_true(off.x != 0.0 and off.z != 0.0, "the origin is shifted on both axes (%s)" % off)
+	var at := Vector3(10, 4, -6)
+	player.stub_scene = at + off   # the listener stands at the dig
+	var bag := InventorySlice.new()
+	add_child(bag)
+	bag.add_item("StonePick", 1)
+	var cr := CreatureSlice.new()
+	add_child(cr)
+	var wolf_at := Vector3(5, 2, 7)
+	cr.apply_creature_state("w0", "GraywolfPack", "aggressive", wolf_at, 10.0)
+	gr._player = player
+	gr._inventory = bag
+	gr._creature = cr
+	gr._audio_wiring.wire(gr)
+	GameBus.block_changed.emit("mine", at, Vector3.UP, "Soil")
+	assert_eq(_traced(), ["world.dig"], "the dig plays")
+	assert_true((Sound.trace[-1]["position"] as Vector3).is_equal_approx(at + off), "at world + offset, not at world")
+	Sound.trace.clear()
+	GameBus.work_started.emit("block:1", 1.0, "mine", "Stone")
+	GameBus.block_mine_requested.emit(at, Vector3.UP, "", {})
+	assert_true(_traced() == ["item.StonePick.hit"] and (Sound.trace[-1]["position"] as Vector3).is_equal_approx(at + off),
+		"the strike at an aimed point lands at world + offset")
+	GameBus.block_mine_requested.emit(Vector3.ZERO, Vector3.UP, "", WorldPos.from_world(at.x, at.y, at.z))
+	assert_true((Sound.trace[-1]["position"] as Vector3).is_equal_approx(at + off), "and an exact aim too")
+	Sound.trace.clear()
+	GameBus.combat_hit_resolved.emit("w0", "player", "hit", 3.0)
+	assert_eq(_traced(), ["creature.GraywolfPack.attack"], "the wolf's swing plays")
+	assert_true((Sound.trace[-1]["position"] as Vector3).is_equal_approx(wolf_at + off), "at the wolf's world + offset")
+	_free_root(gr, [player, bag, cr])
+	_end()
+
+
+func _test_max_distance_cull() -> void:
+	_begin()
+	var gr := _root()
+	var player = _script(STUB_PLAYER_SRC).new()
+	player.stub_scene = Vector3(0, 0, 0)
+	gr._player = player
+	gr._audio_wiring.wire(gr)
+	var reach := float(SoundEvents.event("world.dig")["maxDistance"])
+	assert_true(reach > 0.0, "the dig has a range")
+	assert_true(gr._audio_wiring.play_at("world.dig", Vector3(reach - 0.5, 0, 0)) != null, "just inside the range plays")
+	assert_true(gr._audio_wiring.play_at("world.dig", Vector3(reach + 0.5, 0, 0)) == null, "just past it does not")
+	GameBus.block_changed.emit("mine", Vector3(0, 0, reach * 2.0), Vector3.UP, "Soil")
+	assert_eq(_traced(), ["world.dig"], "a far dig is culled before the registry is asked")
+	_free_root(gr, [player])
+	_end()
+
+
+func _test_no_steps_mounted() -> void:
+	_begin()
+	var gr := _root()
+	var player = _script(STUB_PLAYER_SRC).new()
+	player.stub_vel = Vector3(8.9, 0, 0)   # a mount's cruise
+	player.stub_grounded = true
+	var terrain := TerrainSlice.new()   # a biome underfoot, so a step has a surface
+	gr._terrain = terrain
+	gr._player = player
+	var mount := MountSlice.new()
+	gr._mount_wiring.slice = mount
+	gr._audio_wiring.wire(gr)
+	var aw = gr._audio_wiring
+	var steps := func() -> int: return _traced().filter(func(e: String) -> bool: return e.begins_with("footstep.")).size()
+	aw.tick(0.5)
+	assert_true(steps.call() >= 1, "on foot at that speed, steps fall")
+	mount._local_mounted = true
+	Sound.trace.clear()
+	for i in 20:
+		aw.tick(0.5)
+	assert_eq(steps.call(), 0, "riding 10 s plays no footstep")
+	assert_eq(aw._stride, AudioWiring.STRIDE_METRES * 0.5, "and the stride waits at half a stride")
+	mount._local_mounted = false
+	aw.tick(0.5)
+	assert_true(steps.call() >= 1, "off the mount, steps fall again")
+	gr._mount_wiring.slice = null
+	_free_root(gr, [player, mount, terrain])
+	_end()
+
+
+func _test_loose_pick_confirmed() -> void:
+	_begin()
+	var gr := _root()
+	gr._audio_wiring.wire(gr)
+	GameBus.loose_pick_requested.emit("loose:9", "")
+	assert_eq(_traced(), [], "a host's refused pick (no loose_picked) is silent")
+	GameBus.loose_picked.emit("loose:9", 0.0)
+	assert_eq(_traced(), [], "nor does a later pick by someone else sound here")
+	gr._is_client = true
+	GameBus.loose_pick_requested.emit("loose:3", "")
+	assert_eq(_traced(), [], "a client waits for the host")
+	GameBus.loose_picked.emit("loose:3", 0.0)
+	assert_eq(_traced(), ["world.pickup"], "and plays the pickup on its confirmation")
+	GameBus.loose_picked.emit("loose:3", 0.0)
+	GameBus.loose_picked.emit("loose:4", 0.0)
+	assert_eq(_traced(), ["world.pickup"], "once; another item taken plays nothing")
+	_free_root(gr)
+	_end()
+
+
+func _test_music_back_off() -> void:
+	_begin()
+	var gr := _root()
+	gr._audio_wiring.wire(gr)
+	var aw = gr._audio_wiring
+	var keys := SoundEvents.files(AudioWiring.MUSIC_EVENT)
+	AssetOverlay.clear_sound_cache()
+	for k in keys:
+		AssetOverlay._sounds_missing[str(k)] = true   # a bad pack: the music does not load
+	var rng_state := Sound.rng.state
+	for i in 60:
+		aw.refresh_surroundings(1.0)
+	assert_eq(Sound.channel_event(AudioWiring.CHANNEL_MUSIC), "", "no music plays")
+	assert_true(aw._music_attempts <= 6, "a minute of refreshes tries the file a handful of times, not 60 (%d)" % aw._music_attempts)
+	assert_eq(Sound.rng.state, rng_state, "a failed try does not advance the rng")
+	assert_eq(_traced(), [], "nor asks the registry for a player")
+	AssetOverlay.clear_sound_cache()   # the pack is fixed
+	for i in int(AudioWiring.MUSIC_RETRY_MAX) + 1:
+		aw.refresh_surroundings(1.0)
+	assert_eq(Sound.channel_event(AudioWiring.CHANNEL_MUSIC), AudioWiring.MUSIC_EVENT, "the music starts once it loads")
+	_free_root(gr)
 	_end()

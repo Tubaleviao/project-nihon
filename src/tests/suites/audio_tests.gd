@@ -6,7 +6,6 @@ extends "res://src/tests/test_support.gd"
 ## (The volume options applying to the new buses are pinned in `options_tests.gd`.)
 
 const SoundEvents := preload("res://src/audio/sound_events.gd")
-const GameRoot := preload("res://src/core/game_root.gd")
 
 func register() -> void:
 	_run_test("audio: the bus layout is Master → Music, Effects, Ambience, UI, as the fabric names them", _test_bus_layout)
@@ -18,7 +17,6 @@ func register() -> void:
 	_run_test("audio: a sound in a mounted pack overrides the placeholder at its key", _test_pack_override)
 	_run_test("audio: a truncated .ogg.raw (length 0) or a key not ending in .ogg.raw loads nothing, warns once", _test_truncated_and_bad_key)
 	_run_test("audio: a loop flag never changes the cached stream another event shares", _test_loop_not_shared)
-	_run_test("audio: a dedicated-server boot turns Sound off; a client boot leaves it on", _test_server_boot_disables_sound)
 
 func _test_bus_layout() -> void:
 	var want := ["Master"] + SoundEvents.buses()
@@ -196,16 +194,3 @@ func _test_loop_not_shared() -> void:
 		assert_true(AssetOverlay.load_sound("sounds/ambience/TemperateForest.ogg.raw") == cached, "and still the cached one")
 	Sound.stop_all()
 	AssetOverlay.clear_sound_cache()
-
-func _test_server_boot_disables_sound() -> void:
-	var root: GameRoot = GameRoot.new()
-	root._boot_wiring.parse_network_args(PackedStringArray(["--server"]))
-	assert_true(root._is_server, "--server is a dedicated server")
-	assert_false(Sound.enabled, "a dedicated server turns Sound off")
-	assert_true(Sound.play("ui.click") == null, "so nothing plays")
-	root.free()
-	root = GameRoot.new()
-	root._boot_wiring.parse_network_args(PackedStringArray(["--client", "127.0.0.1"]))
-	assert_true(Sound.enabled, "a client boot leaves Sound on")
-	root.free()
-	Sound.enabled = true
