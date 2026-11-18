@@ -406,12 +406,14 @@ func station_craft(h: Node) -> void:
 		h._root._chest_wiring._push_inventory(bound)
 		var came: bool = await h._await_client_ready("station_craft", bound)
 		await h._await_settle(1.0 * h._time_scale)
-		# The client keeps reporting its position while it waits (a slow runner can leave it settling), so the bench
-		# is stood beside the latest report. One placement only: moving the bench while a craft is in flight on a
-		# delayed link would refuse that craft.
 		var at: Variant = h._root._chest_wiring.player_pos(bound)
 		var near := ""
 		if came and at is Vector3:
+			# A bench left by an earlier step (the hotbar one lands late on a slow runner) nearer the body would win the pick.
+			for st: Dictionary in h._root._station.get_all_stations():
+				var sp: Variant = st.get("position", null)
+				if sp is Vector3 and (sp as Vector3).distance_to(at as Vector3) <= CraftCatalog.INTERACT_REACH + 1.0:
+					h._root._station.remove_station(str(st["id"]))
 			near = h._root._station.place_station(STATION_TYPE, (at as Vector3) + Vector3(1.5, 0.0, 0.0))
 		# The bench must be what the interact input picks where the body stands (no nearer chest, bed or waystone).
 		var picked: bool = near != "" and CraftCatalog.interact_station(h._root._station.get_all_stations(), at as Vector3) == near
@@ -444,13 +446,9 @@ func station_craft(h: Node) -> void:
 	h._report_position()
 	await h._await_settle(2.0 * h._time_scale)
 	var announced := {}
-	var last_report := 0
 	var found: bool = await h._await_until(func() -> bool:
 		h._announce_ready("station_craft", announced)
-		if Time.get_ticks_msec() - last_report > 500:   # keep the host's idea of the body current while it settles
-			last_report = Time.get_ticks_msec()
-			h._report_position()
-		return player.interact_station() != "", h._step_timeout() * 6.0)
+		return player.interact_station() != "", h._step_timeout() * 4.0)
 	var sid: String = player.interact_station() if found else ""
 	if sid != "":
 		GameBus.station_window_requested.emit(sid)   # what the interact input sends at a crafting station
