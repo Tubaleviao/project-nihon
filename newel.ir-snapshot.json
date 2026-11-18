@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:4e3058315a7af88fcc303471cd39ce6e23ef98c12c55713bd56c8061dc9bb58e",
+  "schemaHash": "sha256:21060f5f820bdfa90b98f32a8b420d185d7199f2b77ef03144fb0c401fd5d8d7",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -42381,6 +42381,24 @@
                 "pitchJitter": 0,
                 "loop": false
               },
+              "ui.window_open": {
+                "key": "sounds/ui/window_open",
+                "bus": "UI",
+                "spatial": "2d",
+                "variants": 1,
+                "volumeDb": -8,
+                "pitchJitter": 0,
+                "loop": false
+              },
+              "ui.window_close": {
+                "key": "sounds/ui/window_close",
+                "bus": "UI",
+                "spatial": "2d",
+                "variants": 1,
+                "volumeDb": -8,
+                "pitchJitter": 0,
+                "loop": false
+              },
               "footstep.grass": {
                 "key": "sounds/sfx/player/footsteps/grass",
                 "bus": "Effects",
@@ -42390,6 +42408,45 @@
                 "pitchJitter": 0.08,
                 "loop": false,
                 "maxDistance": 20
+              },
+              "footstep.stone": {
+                "key": "sounds/sfx/player/footsteps/stone",
+                "bus": "Effects",
+                "spatial": "3d",
+                "variants": 3,
+                "volumeDb": -8,
+                "pitchJitter": 0.08,
+                "loop": false,
+                "maxDistance": 20
+              },
+              "footstep.sand": {
+                "key": "sounds/sfx/player/footsteps/sand",
+                "bus": "Effects",
+                "spatial": "3d",
+                "variants": 3,
+                "volumeDb": -9,
+                "pitchJitter": 0.08,
+                "loop": false,
+                "maxDistance": 20
+              },
+              "world.dig": {
+                "key": "sounds/sfx/world/dig",
+                "bus": "Effects",
+                "spatial": "3d",
+                "variants": 3,
+                "volumeDb": -5,
+                "pitchJitter": 0.06,
+                "loop": false,
+                "maxDistance": 30
+              },
+              "world.pickup": {
+                "key": "sounds/sfx/world/pickup",
+                "bus": "Effects",
+                "spatial": "2d",
+                "variants": 2,
+                "volumeDb": -6,
+                "pitchJitter": 0.04,
+                "loop": false
               },
               "item.StonePick.hit": {
                 "key": "sounds/sfx/items/StonePick/hit",
@@ -42442,10 +42499,35 @@
               "ui.click": [
                 "sounds/ui/click.ogg.raw"
               ],
+              "ui.window_open": [
+                "sounds/ui/window_open.ogg.raw"
+              ],
+              "ui.window_close": [
+                "sounds/ui/window_close.ogg.raw"
+              ],
               "footstep.grass": [
                 "sounds/sfx/player/footsteps/grass_01.ogg.raw",
                 "sounds/sfx/player/footsteps/grass_02.ogg.raw",
                 "sounds/sfx/player/footsteps/grass_03.ogg.raw"
+              ],
+              "footstep.stone": [
+                "sounds/sfx/player/footsteps/stone_01.ogg.raw",
+                "sounds/sfx/player/footsteps/stone_02.ogg.raw",
+                "sounds/sfx/player/footsteps/stone_03.ogg.raw"
+              ],
+              "footstep.sand": [
+                "sounds/sfx/player/footsteps/sand_01.ogg.raw",
+                "sounds/sfx/player/footsteps/sand_02.ogg.raw",
+                "sounds/sfx/player/footsteps/sand_03.ogg.raw"
+              ],
+              "world.dig": [
+                "sounds/sfx/world/dig_01.ogg.raw",
+                "sounds/sfx/world/dig_02.ogg.raw",
+                "sounds/sfx/world/dig_03.ogg.raw"
+              ],
+              "world.pickup": [
+                "sounds/sfx/world/pickup_01.ogg.raw",
+                "sounds/sfx/world/pickup_02.ogg.raw"
               ],
               "item.StonePick.hit": [
                 "sounds/sfx/items/StonePick/hit_01.ogg.raw",
@@ -42461,6 +42543,26 @@
               "music.main_theme": [
                 "sounds/music/main_theme.ogg.raw"
               ]
+            }
+          },
+          "footsteps": {
+            "name": "footsteps",
+            "type": "json",
+            "description": "{ terrain: { <terrain material>: <surface> }, block: <surface> } — the footstep.<surface> event underfoot (Phase 276)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "terrain": {
+                "TerrainGrass": "grass",
+                "TerrainMoss": "grass",
+                "TerrainDirt": "grass",
+                "TerrainMud": "grass",
+                "TerrainRock": "stone",
+                "TerrainSand": "sand",
+                "TerrainSnow": "sand"
+              },
+              "block": "stone"
             }
           }
         },

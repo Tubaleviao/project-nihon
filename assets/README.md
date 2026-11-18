@@ -173,6 +173,11 @@ positional UI, ambience or music sound, and variants on a single-file folder (`n
 it). The buses come from `res://default_bus_layout.tres` (Master → Music, Effects, Ambience, UI), and each has a
 volume slider in the options window.
 
+A footstep's `<surface>` is chosen from the ground underfoot by the `footsteps` table beside `EVENTS` (Phase 276):
+each terrain material, and any placed block, names a surface whose `footstep.<surface>` event must exist. A new
+surface is a new event row plus a table entry. Where gameplay plays each event is listed in
+`src/audio/audio_wiring.gd`.
+
 Placeholders: `python3 tools/gen_placeholder_audio.py` writes one tiny tone, click or noise per key (48 kHz; mono
 for effects, stereo for UI, ambience and music; four-second loops), seeded by the key so variants differ. Python
 synthesizes the PCM and ffmpeg (libvorbis, `-bitexact`, a fixed stream serial) encodes it: two encodes on one

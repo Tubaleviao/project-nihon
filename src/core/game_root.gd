@@ -74,6 +74,7 @@ const PersistenceWiring := preload("res://src/persistence/persistence_wiring.gd"
 const AdminWiring := preload("res://src/admin/admin_wiring.gd")
 const MenuWiring := preload("res://src/menu/menu_wiring.gd")
 const WorkWiring := preload("res://src/core/work_wiring.gd")
+const AudioWiring := preload("res://src/audio/audio_wiring.gd")   # Phase 276
 ## Phase 132 — per-system wiring modules (see `src/core/wiring.gd`), wired in this fixed order.
 var _wirings: Array = []
 var _boot_wiring := BootWiring.new()
@@ -100,6 +101,7 @@ var _snapshot_wiring := SnapshotWiring.new()
 var _persistence_wiring := PersistenceWiring.new()
 var _admin_wiring := AdminWiring.new()
 var _menu_wiring := MenuWiring.new()   # Phase 223 — the main menu
+var _audio_wiring := AudioWiring.new()   # Phase 276 — the first sounds wired in
 ## Phase 223 — a join started from the menu failed: `main.gd` swaps in a fresh root whose menu shows why.
 signal menu_return_requested(reason_key: String)
 
@@ -266,7 +268,7 @@ var _handshake_retries: int = 0
 
 ## Phase 132 — wiring modules know their root from construction (the suite builds roots without `_ready`).
 func _init() -> void:
-	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _bed_wiring, _work_wiring, _tutorial_wiring, _settlement_wiring, _clan_wiring, _structure_wiring, _chest_wiring, _station_wiring, _writing_wiring, _crafting_wiring, _character_wiring, _gesture_wiring, _creation_wiring, _carcass_wiring, _mount_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring, _admin_wiring, _menu_wiring]
+	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _bed_wiring, _work_wiring, _tutorial_wiring, _settlement_wiring, _clan_wiring, _structure_wiring, _chest_wiring, _station_wiring, _writing_wiring, _crafting_wiring, _character_wiring, _gesture_wiring, _creation_wiring, _carcass_wiring, _mount_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring, _admin_wiring, _menu_wiring, _audio_wiring]
 	for w in _wirings:
 		w.root = self
 
@@ -300,8 +302,7 @@ func _ready() -> void:
 
 ## The slices, their wiring and the role boot; run by `_ready`, or by the main menu (Phase 223).
 func _build_and_boot() -> void:
-	# Phase 33 — intercept the quit so records are written first.
-	_boot_wiring.install_quit_guard()
+	_boot_wiring.install_quit_guard()   # Phase 33 — intercept the quit so records are written first.
 	_terrain     = TerrainSlice.new()
 	_voxel       = VoxelSlice.new()
 	_chunk_manager = ChunkManager.new()
@@ -386,7 +387,6 @@ func _build_and_boot() -> void:
 	var slices: Array = [_terrain, _voxel, _chunk_manager, _battle, _creature, _creature_ai, _networking, _persistence, _registry, _player, _loot, _carcass, _inventory, _character, _crafting, _technology, _taming, _professions, _station, _tree, _loose, _market, _trade, _proposal, _chat, _gesture, _waystones, _bed, _settlements, _clans, _mount_wiring.make_slice(self), _weather, _structures, _chests, _writing]
 	if not _is_server:
 		slices.append(_ui)
-	if not _is_server:
 		_rebase = RebaseDriver.new([_voxel, _tree, _creature, _station, _player, _loot, _carcass, _character, _loose])
 	for s in slices:
 		s.name = s.get_script().resource_path.get_file().get_basename()

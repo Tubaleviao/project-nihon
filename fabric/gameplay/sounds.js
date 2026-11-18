@@ -22,16 +22,38 @@ const MAX_VARIANTS = 8
 /**
  * event id -> row. `volumeDb` is the base volume, `pitchJitter` the largest pitch-scale change either way
  * (0.08 = 0.92..1.08), `maxDistance` (3d only) the metres past which a positional sound is silent.
- * Phase 275 ships a starter set, one per folder kind, so the loader, the player and the placeholder generator
- * are tested end to end; Phase 276 adds the events gameplay calls.
+ * Phase 275 shipped a starter set, one per folder kind, so the loader, the player and the placeholder generator
+ * are tested end to end; Phase 276 wires them into gameplay and adds the rest of the first set: the window
+ * open/close sounds, footsteps on stone and sand, the dig, and the pickup. Who plays what is in
+ * `src/audio/audio_wiring.gd` (and the button and window hooks in `sound_player.gd` / `ui_slice.gd`).
  */
 const EVENTS = {
   'ui.click':                   { key: 'sounds/ui/click', bus: 'UI', spatial: '2d', variants: 1, volumeDb: -6, pitchJitter: 0, loop: false },
+  'ui.window_open':             { key: 'sounds/ui/window_open', bus: 'UI', spatial: '2d', variants: 1, volumeDb: -8, pitchJitter: 0, loop: false },
+  'ui.window_close':            { key: 'sounds/ui/window_close', bus: 'UI', spatial: '2d', variants: 1, volumeDb: -8, pitchJitter: 0, loop: false },
   'footstep.grass':             { key: 'sounds/sfx/player/footsteps/grass', bus: 'Effects', spatial: '3d', variants: 3, volumeDb: -8, pitchJitter: 0.08, loop: false, maxDistance: 20 },
+  'footstep.stone':             { key: 'sounds/sfx/player/footsteps/stone', bus: 'Effects', spatial: '3d', variants: 3, volumeDb: -8, pitchJitter: 0.08, loop: false, maxDistance: 20 },
+  'footstep.sand':              { key: 'sounds/sfx/player/footsteps/sand', bus: 'Effects', spatial: '3d', variants: 3, volumeDb: -9, pitchJitter: 0.08, loop: false, maxDistance: 20 },
+  'world.dig':                  { key: 'sounds/sfx/world/dig', bus: 'Effects', spatial: '3d', variants: 3, volumeDb: -5, pitchJitter: 0.06, loop: false, maxDistance: 30 },
+  'world.pickup':               { key: 'sounds/sfx/world/pickup', bus: 'Effects', spatial: '2d', variants: 2, volumeDb: -6, pitchJitter: 0.04, loop: false },
   'item.StonePick.hit':         { key: 'sounds/sfx/items/StonePick/hit', bus: 'Effects', spatial: '3d', variants: 2, volumeDb: -4, pitchJitter: 0.05, loop: false, maxDistance: 30 },
   'creature.GraywolfPack.attack': { key: 'sounds/sfx/creatures/GraywolfPack/attack', bus: 'Effects', spatial: '3d', variants: 2, volumeDb: -2, pitchJitter: 0.06, loop: false, maxDistance: 40 },
   'ambience.TemperateForest':   { key: 'sounds/ambience/TemperateForest', bus: 'Ambience', spatial: '2d', variants: 1, volumeDb: -10, pitchJitter: 0, loop: true },
   'music.main_theme':           { key: 'sounds/music/main_theme', bus: 'Music', spatial: '2d', variants: 1, volumeDb: -6, pitchJitter: 0, loop: true },
+}
+
+/**
+ * Phase 276 — what a footstep sounds like underfoot: natural ground by its terrain material
+ * (`fabric/world/terrain_materials.js`, the material the biome's flat ground is drawn with) and any placed block,
+ * each naming a surface whose `footstep.<surface>` event is in EVENTS. Every terrain material has a surface.
+ */
+const FOOTSTEPS = {
+  terrain: {
+    TerrainGrass: 'grass', TerrainMoss: 'grass', TerrainDirt: 'grass', TerrainMud: 'grass',
+    TerrainRock: 'stone',
+    TerrainSand: 'sand', TerrainSnow: 'sand',
+  },
+  block: 'stone',
 }
 
 const NAME = '[A-Za-z0-9_]+'
@@ -60,7 +82,7 @@ function soundFiles(row) {
 }
 
 function soundsData() {
-  return JSON.parse(JSON.stringify({ buses: BUSES, events: EVENTS }))
+  return JSON.parse(JSON.stringify({ buses: BUSES, events: EVENTS, footsteps: FOOTSTEPS }))
 }
 
 function soundsRefs() {
@@ -68,6 +90,7 @@ function soundsRefs() {
     items: Object.keys(require('./items')),
     creatures: Object.keys(require('../world/creatures')),
     biomes: Object.keys(require('../world/biomes')),
+    terrain: Object.keys(require('../world/terrain_materials').TERRAIN_MATERIALS),
   }
 }
 
@@ -96,6 +119,26 @@ function soundsProblems(d, refs) {
     if (row.spatial === '3d' && !(typeof row.maxDistance === 'number' && row.maxDistance > 0)) p.push(`event ${id}: a 3d sound needs maxDistance > 0`)
     if (row.spatial !== '3d' && 'maxDistance' in row) p.push(`event ${id}: maxDistance is for 3d sounds only`)
   }
+  p.push(...footstepProblems(d, refs))
+  return p
+}
+
+/** Phase 276 — every terrain material has a surface, every named material exists, and every surface has its event. */
+function footstepProblems(d, refs) {
+  const p = []
+  const fs = d.footsteps || {}
+  const terrain = fs.terrain || {}
+  const surface = (where, s) => {
+    const ev = (d.events || {})[`footstep.${s}`]
+    if (typeof s !== 'string' || !ev) p.push(`footsteps ${where}: surface "${s}" has no footstep.${s} event`)
+    else if (ev.key !== `sounds/sfx/player/footsteps/${s}`) p.push(`footsteps ${where}: footstep.${s} must use the key sounds/sfx/player/footsteps/${s}`)
+  }
+  for (const m of refs.terrain) if (!(m in terrain)) p.push(`footsteps: terrain material ${m} has no surface`)
+  for (const [m, s] of Object.entries(terrain)) {
+    if (!refs.terrain.includes(m)) p.push(`footsteps: ${m} is not one of the fabric's terrain materials`)
+    surface(m, s)
+  }
+  surface('block', fs.block)
   return p
 }
 
@@ -123,7 +166,8 @@ const SoundEvents = defineEntity({
     buses:  { type: 'json', description: 'The audio buses under Master, in layout order', defaultValue: BUSES },
     events: { type: 'json', description: '{ <event id>: { key, bus, spatial: 2d|3d, variants, volumeDb, pitchJitter, loop, maxDistance? } }', defaultValue: EVENTS },
     files:  { type: 'json', description: '{ <event id>: [asset keys] } — `<key>.ogg.raw`, or `<key>_01.ogg.raw`.. for sfx variants', defaultValue: eventFiles(EVENTS) },
+    footsteps: { type: 'json', description: '{ terrain: { <terrain material>: <surface> }, block: <surface> } — the footstep.<surface> event underfoot (Phase 276)', defaultValue: FOOTSTEPS },
   },
 })
 
-module.exports = { BUSES, EVENTS, FOLDERS, MAX_VARIANTS, soundFiles, eventFiles, soundsData, soundsRefs, soundsProblems, validateSounds, SoundEvents }
+module.exports = { BUSES, EVENTS, FOOTSTEPS, FOLDERS, MAX_VARIANTS, soundFiles, eventFiles, soundsData, soundsRefs, soundsProblems, footstepProblems, validateSounds, SoundEvents }

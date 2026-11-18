@@ -36,9 +36,61 @@
       "ogg": "465b3dfc7f0f563a368bf21962f808ade8e664362e26ce2df0ea8135be85fa06",
       "pcm": "8893eae21c621bc2f4418d918382afa8ce4530e7b7cb7f6253dc756ffbcdadcc"
     },
+    "sounds/sfx/player/footsteps/sand_01.ogg.raw": {
+      "ogg": "2a52ee78c756ef11bb967bfe2f34f82f2bda1754d71360df731bb13ccecb3be1",
+      "pcm": "8dd8a7431996d14458c39a5a536559b74ef75c6e369f78ea1ef60f24cf9932ad"
+    },
+    "sounds/sfx/player/footsteps/sand_02.ogg.raw": {
+      "ogg": "dde38eae444780a3d2b8653ea04a786afe37f5d5e0035eb8fbf251a2f7296b79",
+      "pcm": "a9e221549e3adda81c350db5e48abdcf441b805bba0674a23bcfa72370d1ff7c"
+    },
+    "sounds/sfx/player/footsteps/sand_03.ogg.raw": {
+      "ogg": "8a5a9976d1b5169bf2c3944f960457b6511baa36ab55693b589e2f7c1aea707b",
+      "pcm": "e309a892308f1b247722207777a37aa4c51ec0c9bff6404eec8dbee1a091b57f"
+    },
+    "sounds/sfx/player/footsteps/stone_01.ogg.raw": {
+      "ogg": "d1036d9efde8bbc174710d4ebd811d9ec37f8a5277a7054525d60e7404af828c",
+      "pcm": "08b0a259c7da454dee8b2da8cc3550ff9bd55acaa2566e18d9c9aed7f52dab3c"
+    },
+    "sounds/sfx/player/footsteps/stone_02.ogg.raw": {
+      "ogg": "8f93a13773273ffa18322e0b2c973010ef63b03fdc9187b2daff926347fa4918",
+      "pcm": "c881938fdead1c11a12eb61b4079fd749633d0670addc818aa5d1a9dff560028"
+    },
+    "sounds/sfx/player/footsteps/stone_03.ogg.raw": {
+      "ogg": "f39b035b82129f5be106238741cb4fa80336739310c9d022b2a367f1f122ffc2",
+      "pcm": "ebe1ae21ba55133612302cf75af40da41edeaf0e475f4f9f60c4b7b97ad3f631"
+    },
+    "sounds/sfx/world/dig_01.ogg.raw": {
+      "ogg": "437d0d7f6fd33216ca8a06c37f87c68d472a0ffe4011b4a4c3b7de4f5110577b",
+      "pcm": "1dfe54650cc87a550b4db9caedd53bf029e96adfb4921d22ba946b2756093d1b"
+    },
+    "sounds/sfx/world/dig_02.ogg.raw": {
+      "ogg": "f75dfb5d67e8e8f933a3af04244fe5fe88cccf35ea63e691b6bedbe0df250916",
+      "pcm": "f0cfb675eeb3972387144b9fd4d6ad65a9921159212a8b363c6f35724fe0acb4"
+    },
+    "sounds/sfx/world/dig_03.ogg.raw": {
+      "ogg": "5f41cb3e56c55698641301aec2a1a86d6040db4641be03ea610fa59086133c86",
+      "pcm": "dc46865a148ded6eb133233d484d649abfcc2b31f1cd6eeca87fecce757f7b25"
+    },
+    "sounds/sfx/world/pickup_01.ogg.raw": {
+      "ogg": "36640a8abf0804a57bc354281479d57ccf60c348fadfeb6e9f509407f99f89b7",
+      "pcm": "775389cb08822cfbf811aceac6c8d18e0ef98a06561d37d590af31abed6a6794"
+    },
+    "sounds/sfx/world/pickup_02.ogg.raw": {
+      "ogg": "c1cc5a705bd2af07da025eaee0ef338c3093e142f5f2367a083051f4eb4a40f0",
+      "pcm": "368d26e8eb84110b42e52e6773c627e7fbfe2fe407e8c455e983355451e530ce"
+    },
     "sounds/ui/click.ogg.raw": {
       "ogg": "9de29bdbb4b419fa2e24616ec0191b9ee651de2cd6fc6da2c59ddc26b5f15eb7",
       "pcm": "4eeeae377c7d478197dcb729edde1c9b4eda23c5043ecd266cdb0ad135ba22e3"
+    },
+    "sounds/ui/window_close.ogg.raw": {
+      "ogg": "1b7a3aaa33409ad580708025d9a79b55348bdff066136875ad8f1f4e2d588e9a",
+      "pcm": "3f532f853a198ae1c091d2c0117c2fea6b9ee300f744990f22554633eb2f3baf"
+    },
+    "sounds/ui/window_open.ogg.raw": {
+      "ogg": "5f630296d3e9a6ecd2cb70990988e0b8d6372ffdab71046d7f7f6859251d790f",
+      "pcm": "4da7cac536d4c386744e67e06c42267cc8e816ded3a426edc00ca944dd713bac"
     }
   },
   "version": 1

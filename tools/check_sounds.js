@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Phase 275 — proves the sound-event validator rejects bad tables: a key outside the layout, a wrong bus, a
 // positional UI sound, variants on a looping file, a 3d sound with no range, an unknown item/creature/biome, a
-// shared key, a bad id or bus list; the shipped table passes. Also pins the file-name rule.
+// shared key, a bad id or bus list; Phase 276: a footstep surface table that misses a terrain material, names an
+// unknown one or a surface with no event; the shipped table passes. Also pins the file-name rule.
 //   node tools/check_sounds.js
 'use strict';
 const s = require('../fabric/gameplay/sounds');
@@ -36,6 +37,12 @@ expect('a bad event id fails', (d) => { d.events['UI click'] = { ...ev(d, 'ui.cl
 expect('a loud volume fails', (d) => { ev(d, 'ui.click').volumeDb = 12; }, /volumeDb must be/);
 expect('a huge pitch jitter fails', (d) => { ev(d, 'ui.click').pitchJitter = 0.9; }, /pitchJitter must be/);
 expect('a changed bus list fails', (d) => { d.buses = ['Music', 'Effects']; }, /buses must be/);
+// Phase 276 — the footstep surface table.
+expect('a terrain material with no surface fails', (d) => { delete d.footsteps.terrain.TerrainSnow; }, /TerrainSnow has no surface/);
+expect('an unknown terrain material fails', (d) => { d.footsteps.terrain.TerrainLava = 'stone'; }, /TerrainLava is not one of the fabric's terrain materials/);
+expect('a surface with no footstep event fails', (d) => { d.footsteps.terrain.TerrainMud = 'mud'; }, /surface "mud" has no footstep\.mud event/);
+expect('a block surface with no footstep event fails', (d) => { d.footsteps.block = 'wood'; }, /footsteps block: surface "wood"/);
+expect('a footstep event off its surface key fails', (d) => { ev(d, 'footstep.sand').key = 'sounds/sfx/player/footsteps/beach'; }, /footstep\.sand must use the key/);
 const files = s.soundFiles({ key: 'sounds/sfx/world/door', variants: 3 });
 report('sfx variants are <key>_01.. files', JSON.stringify(files) === JSON.stringify(
   ['sounds/sfx/world/door_01.ogg.raw', 'sounds/sfx/world/door_02.ogg.raw', 'sounds/sfx/world/door_03.ogg.raw']), JSON.stringify(files));

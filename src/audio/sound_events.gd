@@ -50,3 +50,12 @@ static func all_files() -> Array:
 static func buses() -> Array:
 	var t := _table()
 	return (t.buses as Array).duplicate() if t != null else []
+
+
+## Phase 276 — the footstep surface table: `{ terrain: { <terrain material>: <surface> }, block: <surface> }`,
+## each surface naming the `footstep.<surface>` event. {} without a table.
+static func footsteps() -> Dictionary:
+	var t := _table()
+	if t == null or not (t.get("footsteps") is Dictionary):
+		return {}
+	return t.footsteps

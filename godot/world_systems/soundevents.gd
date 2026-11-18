@@ -7,3 +7,4 @@ extends Resource
 @export var buses: Array
 @export var events: Dictionary
 @export var files: Dictionary
+@export var footsteps: Dictionary
