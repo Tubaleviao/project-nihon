@@ -2,5 +2,5 @@
 	"walk": 18,
 	"craft": 16,
 	"fight": 16,
-	"edit_visible_frames": { "mine": 2 }
+	"edit_visible": { "target_fps": 60, "frames": { "mine": 2 } }
 }

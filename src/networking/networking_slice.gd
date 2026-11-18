@@ -295,6 +295,7 @@ func _ready() -> void:
 	GameBus.player_state_sync_requested.connect(_on_player_state_sync_requested)
 	GameBus.block_edit_intent.connect(_on_block_edit_intent)
 	GameBus.block_changed.connect(_on_block_changed)
+	GameBus.block_edit_span.connect(_m2.on_block_edit_span)   # PR #648 review: the span a prediction's answer carries
 	GameBus.creature_state_changed.connect(_on_creature_state_changed)
 	GameBus.remote_player_state.connect(_on_remote_player_state)
 	GameBus.inventory_synced.connect(_on_inventory_synced)

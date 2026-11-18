@@ -510,7 +510,7 @@ func noise_build_job(chunk_pos: Vector2i, known: Array = []) -> Dictionary:   # 
 				TerrainWeights.apply(result[0], chunk_pos, gathered.get("biomes", {}), seed_v)
 			_add_fresh_water(result[0], chunk_pos, seed_v, keep_render)
 		result[2] = Time.get_ticks_usec() - t0
-	return { "job": job, "result": result, "revision": revision }
+	return { "job": job, "result": result, "revision": revision, "input": gathered, "known": cached, "lod": lod }
 
 ## Phase 217 follow-up — on the worker: the chunk's lake and river surface arrays ride with its build
 ## (`fresh_water`), so attaching it on the main thread no longer walks the chunk's tiles. Skipped when the
@@ -563,6 +563,7 @@ func apply_finished_builds() -> void:
 	var body: Vector2i = sl._last_centers[0] if not sl._last_centers.is_empty() else Vector2i(1 << 30, 1 << 30)
 	for task_id in remesh.first(apply_order(done)):
 		var entry: Dictionary = sl._builds.get(task_id, {})
+		_note_cost(entry)
 		if not entry.is_empty() and remesh.is_priority(str(entry["key"])):
 			sl._apply_build_entry(task_id)   # Phase 263: an edit's mesh attaches the frame it is ready, whatever the budget
 			continue
@@ -576,6 +577,13 @@ func apply_finished_builds() -> void:
 		sl._apply_build_entry(task_id)
 		applied += 1
 
+## Phase 263 review — a finished full-detail build's job time bounds the chunk's next main-thread build.
+func _note_cost(entry: Dictionary) -> void:
+	if entry.is_empty() or bool(entry.get("superseded", false)):
+		return
+	var result: Array = entry["result"]
+	if result.size() > 2 and result[0] is Dictionary and int((result[0] as Dictionary).get("lod", VoxelCoarse.FULL)) == VoxelCoarse.FULL:
+		remesh.note_cost(str(entry["key"]), int(result[2]))
 
 ## Phase 141/239 — the in-flight cap: the catch-up burst, or the ceiling at once for a fast flyer (the adaptive
 ## steady cap only ramps for the rest).

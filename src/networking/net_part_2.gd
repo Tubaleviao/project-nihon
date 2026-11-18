@@ -930,6 +930,23 @@ func _refuse_edit(peer: int, seq: int) -> void:
 	edit_refusals_sent += 1
 	sl._deliver(peer, { "type": "block_edit_refused", "edit_seq": seq })
 
+## PR #648 review — host: the span the edit an intent asked for changed, `[tile x, tile z, bottom, top]`.
+func on_block_edit_span(tile: Vector2i, bottom: float, top: float) -> void:
+	if not _edit_ack.is_empty():
+		_edit_ack["span"] = [tile.x, tile.y, bottom, top]
+
+## The span a tagged `block_changed` carries, as `{ tile, bottom, top }`; `{}` when it is missing or malformed.
+static func edit_span_of(payload: Dictionary) -> Dictionary:
+	var v: Variant = payload.get("edit_span")
+	if not (v is Array) or (v as Array).size() != 4:
+		return {}
+	for x in v:
+		if not (x is int or x is float) or not is_finite(float(x)) or absf(float(x)) > 1.0e15:
+			return {}
+	if float(v[0]) != floorf(float(v[0])) or float(v[1]) != floorf(float(v[1])) or float(v[3]) < float(v[2]):
+		return {}
+	return { "tile": Vector2i(int(v[0]), int(v[1])), "bottom": float(v[2]), "top": float(v[3]) }
+
 ## Host: an applied edit goes to the peers in range. The one a client's intent asked for carries its prediction
 ## number and the asker's peer id, so that client keeps its prediction instead of applying the edit twice.
 func on_block_changed(action: String, position: Vector3, normal: Vector3, material: String) -> void:
@@ -946,5 +963,7 @@ func on_block_changed(action: String, position: Vector3, normal: Vector3, materi
 		if int(_edit_ack["seq"]) > 0:
 			packet["edit_seq"] = int(_edit_ack["seq"])
 			packet["by"] = int(_edit_ack["peer"])
+			if _edit_ack.has("span"):
+				packet["edit_span"] = _edit_ack["span"]   # PR #648 review: what the host resolved, to compare with the prediction
 		_edit_ack = {}
 	sl._broadcast_aoi(packet, position)

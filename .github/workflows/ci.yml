@@ -584,7 +584,8 @@ jobs:
   net-harness-wan-br:
     name: Network harness under wan_br with the native builder (Phase 263)
     # Phase 263 — a client's predicted dig is on screen before the host's confirmation arrives (60 ms ± 15 ms, 1%
-    # loss), which needs the native mesher's main-thread build, and a refused dig is rolled back (`predicted_edit`).
+    # loss), its chunk built ahead on a worker while the work ran (native builder), and a refused dig is rolled back
+    # (`predicted_edit`).
     needs: [changes, native-linux]
     if: github.event_name != 'workflow_dispatch' && needs.changes.outputs.light != 'true'
     runs-on: ubuntu-latest
@@ -611,7 +612,8 @@ jobs:
           NET_PROFILE: wan_br
         run: |
           tools/net_harness.sh || exit 1
-          # The predicted edit led the confirmation on the native build (the step's verdict already requires it).
+          # Print the predicted edit's timings for the log (report only: the step's verdict above already requires
+          # the edit on screen before the confirmation on the native build).
           grep -h "\[Harness\] predicted_edit" "$NET_HARNESS_LOGDIR"/*.log || true
 
       - name: Upload harness logs
@@ -1048,7 +1050,7 @@ jobs:
 
   build:
     name: Linux, Windows and macOS exports
-    needs: [native-linux, native, native-suite, godot-tests, server-boot, host-boot, fabric, net-harness, playtest]
+    needs: [native-linux, native, native-suite, godot-tests, server-boot, host-boot, fabric, net-harness, net-harness-wan-br, playtest]
     # Pull requests export all three presets too (under a minute), so a preset only the main build used
     # (the macOS one, Phase 166) cannot break main on merge; only main uploads the builds.
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')

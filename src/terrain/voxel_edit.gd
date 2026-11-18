@@ -7,6 +7,7 @@ const WorkSkills := preload("res://src/character/work_skills.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const WorkTime := preload("res://src/core/work_time.gd")
 const StoneTools := preload("res://src/world/stone_tools.gd")
+const EditRemesh := preload("res://src/terrain/edit_remesh.gd")
 
 var s: Node
 
@@ -95,7 +96,7 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: Str
 	if not vein.is_empty():
 		s._record_depletion(vein, quantity)
 		s._mark_dirty(vein["anchor"])
-	s._rebuild_chunk_at_tile(tile, true)   # Phase 263: ahead of streaming
+	s._rebuild_chunk_at_tile(tile, _edit_level(player_id))   # Phase 263: ahead of streaming
 
 	var banked := false
 	if quantity > 0 and inventory != null and inventory.has_method("add_item"):
@@ -133,6 +134,7 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: Str
 				WorkSkills.grant(s.player_registry, worker, WorkSkills.row("dismantle"))
 	# Phase 138 — the span top, the same height `has_edit_near_at` judges on a reload, so live and reload agree.
 	GameBus.block_edit_resolved.emit(tile, float(span["top"]))
+	GameBus.block_edit_span.emit(tile, float(span["bottom"]), float(span["top"]))   # PR #648 review: echoed to a predicting client
 	GameBus.block_changed.emit("mine", world_pos, normal, material)
 	return { "success": true, "material": material, "quantity": quantity, "position": pos, "player_id": player_id,
 		"destroyed": verdict == "destroy" }
@@ -290,7 +292,7 @@ func place_block(world_pos: Vector3, normal: Vector3, material: String = "", pla
 		s.structures.commit_place(plan)
 	s._mark_dirty(tile)
 	s._settle_note(tile)
-	s._rebuild_chunk_at_tile(tile, true)   # Phase 263: ahead of streaming
+	s._rebuild_chunk_at_tile(tile, _edit_level(player_id))   # Phase 263: ahead of streaming
 	s._push_inventory(player_id)
 
 	var pos := Vector3(probe["xz"].x, float(span["top"]), probe["xz"].y)
@@ -298,6 +300,7 @@ func place_block(world_pos: Vector3, normal: Vector3, material: String = "", pla
 		WorkSkills.grant(s.player_registry, str(plan.get("player_id", player_id)), WorkSkills.row("build"))   # Phase 207
 	GameBus.block_placed.emit(chosen, pos)
 	GameBus.block_edit_resolved.emit(tile, float(span["top"]))
+	GameBus.block_edit_span.emit(tile, float(span["bottom"]), float(span["top"]))
 	GameBus.block_changed.emit("place", world_pos, normal, chosen)
 	return true
 
@@ -653,7 +656,7 @@ func _normalise_ops(ops: Array) -> Array:
 ## material from the same math. Returns { applied, tile, new_h, pos, material }.
 ## Dirty-chunk tracking is host-only and done by the callers
 ## (mine_block/place_block), never here.
-func _apply_edit(action: String, position: Vector3, normal: Vector3, material: String) -> Dictionary:
+func _apply_edit(action: String, position: Vector3, normal: Vector3, material: String, level: int = EditRemesh.NEIGHBOUR) -> Dictionary:
 	if action == "settle":
 		return s._apply_settle(position, normal, material)
 	var r = s._resolve_edit_tile(action, position, normal)
@@ -676,7 +679,7 @@ func _apply_edit(action: String, position: Vector3, normal: Vector3, material: S
 		s._append_edit(tile, { "op": "remove", "bottom": span["bottom"], "top": span["top"] })
 		if not yielded.is_empty() and not (yielded["vein"] as Dictionary).is_empty():
 			s._record_depletion(yielded["vein"], int(yielded["quantity"]))
-		s._rebuild_chunk_at_tile(tile, true)
+		s._rebuild_chunk_at_tile(tile, level)
 		return {
 			"applied": true, "tile": tile, "new_h": s.column_top_at_tile(tile),
 			"pos": Vector3(position.x, float(span["top"]), position.z),
@@ -699,7 +702,7 @@ func _apply_edit(action: String, position: Vector3, normal: Vector3, material: S
 		if span.is_empty():
 			return { "applied": false }
 		s._append_edit(tile, { "op": "add", "bottom": span["bottom"], "top": span["top"], "material": material })
-		s._rebuild_chunk_at_tile(tile, true)
+		s._rebuild_chunk_at_tile(tile, level)
 		return {
 			"applied": true, "tile": tile, "new_h": float(span["top"]),
 			"pos": Vector3(xz.x, float(span["top"]), xz.y),
@@ -785,6 +788,61 @@ func _apply_settle(position: Vector3, normal: Vector3, material: String) -> Dict
 	s._append_edit(tile, { "op": "add", "bottom": to_bottom, "top": to_bottom + height, "material": material })
 	s._rebuild_chunk_at_tile(tile)
 	return { "applied": true, "tile": tile, "new_h": s.column_top_at_tile(tile), "pos": position, "material": material }
+
+## PR #648 review — the remesh level of an edit by `player_id`: this machine's own player's may be attached on the
+## main thread at once (`PRIMARY`); a remote actor's takes the next worker, so another player's digging never
+## stalls the host's frame.
+func _edit_level(player_id: String) -> int:
+	return EditRemesh.NEIGHBOUR if _is_remote_actor(player_id) else EditRemesh.PRIMARY
+
+## PR #648 review — this machine's player started work on a block (`work_start_requested`, Phase 259): build the
+## chunk as the dig will leave it, now, on a worker (`EditPrebuild`), so the completion only attaches it.
+func prebuild_on_work(kind: String, _tree_id: String, position: Vector3, normal: Vector3, _exact: Dictionary, player_id: String) -> void:
+	if kind == "block" and player_id == "":
+		prebuild_edit("mine", position, normal, "")
+
+## Apply `action` to the voxel data for a moment (no rebuild is dispatched: `VoxelBuild.sink`), start the edited
+## chunk's build from it, and put every touched log, the depletion and the marks back. False when nothing would
+## change, the block is a placed one (the host decides a hit on it) or there is no chunk manager.
+func prebuild_edit(action: String, position: Vector3, normal: Vector3, material: String) -> bool:
+	var cm: Node = s.chunk_manager
+	if cm == null or not ("_m1" in cm) or cm._m1 == null:
+		return false
+	var tile: Vector2i = s._resolve_edit_tile(action, position, normal)["tile"]
+	var keys := _edit_keys(action, tile, position, normal)
+	if keys.is_empty():
+		return false
+	var snap: Dictionary = {}
+	for k in keys:
+		snap[k] = (s._edits[k] as Array).duplicate(true) if s._edits.has(k) else []
+	var veins: Dictionary = s._vein_taken.duplicate()
+	var partial: Dictionary = s._partial_chunks.duplicate()
+	var revs: Dictionary = s._edit_rev.duplicate()
+	s._build.sink = {}
+	var started := false
+	if bool(s._apply_edit(action, position, normal, material).get("applied", false)):
+		started = cm._m1.remesh.prebuild.start(s._tile_to_chunk(tile))
+	for k in snap:
+		s._set_edit_ops(k, snap[k])
+	s._vein_taken = veins
+	s._partial_chunks = partial
+	s._edit_rev = revs
+	s._build.sink = null
+	return started
+
+## The tile keys an edit at `tile` writes: the tile's own and, for a natural mine, its vein's anchor (where the
+## depletion op rides). Empty when there is nothing to edit, or the span is a placed block.
+func _edit_keys(action: String, tile: Vector2i, position: Vector3, normal: Vector3) -> Array:
+	var keys: Array = [s._tile_key(tile)]
+	if action != "mine":
+		return keys
+	var span: Dictionary = s._mine_span(s.get_runs_at_tile(tile), position, normal)
+	if span.is_empty() or str(span["material"]) != "":
+		return []
+	var vein: Dictionary = s._natural_yield(tile, span)["vein"]
+	if not vein.is_empty() and not keys.has(s._tile_key(vein["anchor"])):
+		keys.append(s._tile_key(vein["anchor"]))
+	return keys
 
 ## Phase 263 — a client predicts its own player's edit (`EditPrediction.predict`: the ground changes now, the pack
 ## does not) and the intent carries the prediction's number, so the host's answer keeps or rolls it back.

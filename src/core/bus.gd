@@ -91,8 +91,13 @@ signal world_clock_received(host_days: float)
 signal block_edit_intent(action: String, position: Vector3, normal: Vector3, material: String, exact: Dictionary, seq: int)
 
 ## Phase 263 — host → the editing client: its predicted edit `seq` was applied (just before the `block_changed`
-## that carries it) or refused.
-signal block_edit_acked(seq: int, accepted: bool)
+## that carries it) or refused. PR #648 review: an applied one carries the span the host resolved
+## (`{ tile: Vector2i, bottom, top }`, `{}` when the host sent none), which the client compares with its own.
+signal block_edit_acked(seq: int, accepted: bool, span: Dictionary)
+
+## PR #648 review — host: the span a mine or placement just changed (emitted just before its `block_changed`), so
+## the answer to a client's prediction can carry it.
+signal block_edit_span(tile: Vector2i, bottom: float, top: float)
 
 ## Phase 263 — client: a predicted edit was rolled back (`reason`: "refused" by the host, or "timeout").
 signal block_edit_rolled_back(action: String, reason: String)

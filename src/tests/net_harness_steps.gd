@@ -511,7 +511,7 @@ func predicted_edit(h: Node) -> void:
 	var pred: RefCounted = voxel._predict
 	var remesh: RefCounted = h._root._chunk_manager._m1.remesh
 	var acks: Array = []
-	var on_ack := func(seq: int, accepted: bool) -> void: acks.append([seq, accepted, Time.get_ticks_usec()])
+	var on_ack := func(seq: int, accepted: bool, _span: Dictionary) -> void: acks.append([seq, accepted, Time.get_ticks_usec()])
 	var rolled: Array = []
 	var on_rolled := func(_action: String, reason: String) -> void: rolled.append(reason)
 	GameBus.block_edit_acked.connect(on_ack)
@@ -520,6 +520,9 @@ func predicted_edit(h: Node) -> void:
 	# The kept dig.
 	var xz := Vector2(body.x + PREDICT_OFFSET_M, body.z)
 	var top: float = voxel.get_voxel_height_at(xz)
+	# The player's work on it built the dug chunk ahead (PR #648 review), as `work_start_requested` does.
+	voxel._edit.prebuild_edit("mine", Vector3(xz.x, top - 0.05, xz.y), Vector3.UP, "")
+	await h._await_settle(0.5 * h._time_scale)
 	var n0: int = remesh.samples.size()
 	var t0 := Time.get_ticks_usec()
 	GameBus.block_mine_requested.emit(Vector3(xz.x, top - 0.05, xz.y), Vector3.UP, "", {})
@@ -539,7 +542,8 @@ func predicted_edit(h: Node) -> void:
 	var kept: bool = confirmed and not pred.is_pending(seq) and voxel.get_voxel_height_at(xz) < top
 	print("[Harness] predicted_edit profile=%s network %.1f ms, visible %.1f ms after the completion (%s frames, %s), %s the confirmation" % [
 		profile if profile != "" else "loopback", float(ack_usec - t0) / 1000.0, float(visible_usec - t0) / 1000.0 if visible_usec > 0 else -1.0,
-		str(own[0]["frames"]) if not own.is_empty() else "-", "main thread" if not own.is_empty() and bool(own[0]["sync"]) else "worker",
+		str(own[0]["frames"]) if not own.is_empty() else "-",
+		("main thread, prebuilt" if bool(own[0].get("prebuilt", false)) else "main thread") if not own.is_empty() and bool(own[0]["sync"]) else "worker",
 		"before" if visible_first else "after"])
 	# The refused dig: out of the host's reach.
 	var far := Vector2(body.x + PREDICT_FAR_M, body.z)

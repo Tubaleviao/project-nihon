@@ -439,6 +439,7 @@ func _ready() -> void:
 	GameBus.block_cycle_material_requested.connect(_on_cycle_requested)
 	GameBus.block_changed.connect(_on_block_changed)
 	GameBus.block_edit_acked.connect(_predict.on_acked)
+	GameBus.work_start_requested.connect(_edit.prebuild_on_work)   # PR #648 review: the edit built while the work runs
 
 func _process(_delta: float) -> void:
 	if is_authoritative and not _settle.is_empty():
@@ -1283,8 +1284,8 @@ func _on_cycle_requested() -> void:
 ## tile-resolution and span math as mine_block/place_block, but does NOT touch
 ## the inventory or emit block_changed — the host already did both.
 func _on_block_changed(action: String, position: Vector3, normal: Vector3, material: String) -> void:
-	if is_authoritative or _predict.consume_confirmed(action, position, normal):
-		return   # host already applied this edit locally; or (Phase 263) this client predicted it and the host confirmed it
+	if is_authoritative or _predict.on_host_edit(action, position, normal, material):
+		return   # host already applied this edit locally; or (Phase 263) applied under this client's predictions
 	apply_block_change(action, position, normal, material)
 
 func apply_block_change(action: String, position: Vector3, normal: Vector3, material: String) -> void:
@@ -1354,8 +1355,8 @@ static func _legacy_height_of(value: Variant) -> float:
 func _normalise_ops(ops: Array) -> Array:
 	return _edit._normalise_ops(ops)
 
-func _apply_edit(action: String, position: Vector3, normal: Vector3, material: String) -> Dictionary:
-	return _edit._apply_edit(action, position, normal, material)
+func _apply_edit(action: String, position: Vector3, normal: Vector3, material: String, level: int = 1) -> Dictionary:
+	return _edit._apply_edit(action, position, normal, material, level)   # `level`: an EditRemesh level (1: not this player's)
 
 # --- Phase 137: loose ground settles ---
 
@@ -1489,7 +1490,7 @@ static func _material_color(material: String) -> Color:
 func column_top_at_tile(tile: Vector2i) -> float:
 	return _query.column_top_at_tile(tile)
 
-func _rebuild_chunk_at_tile(tile: Vector2i, priority: bool = false) -> void:
+func _rebuild_chunk_at_tile(tile: Vector2i, priority: int = 0) -> void:
 	_build._rebuild_chunk_at_tile(tile, priority)
 
 func _rebuild_chunk(chunk: Vector2i, priority: int = 0) -> void:

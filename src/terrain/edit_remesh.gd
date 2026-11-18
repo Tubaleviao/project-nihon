@@ -3,12 +3,14 @@ extends RefCounted
 ## in the build queue (`_rebuild_queue` and `_load_queue`, under the in-flight cap and the frame's pump budget),
 ## so the ground changed seconds after the work completed. Now:
 ##
-## * the edited chunk (`PRIMARY`) is built on the main thread at once when the build is short enough: the
-##   native smooth mesher is loaded and the chunk is a full-detail one. At most `SYNC_PER_FRAME` such builds
-##   run in one frame, so a burst of edits cannot stall it;
-## * otherwise, and for the neighbours whose seam the edit touches (`NEIGHBOUR`), the build waits here, ahead
-##   of every streaming chunk, and takes the next free worker (`drain`, called first by the manager's drain,
-##   whatever the frame's budget), at high priority;
+## * the chunk of the LOCAL player's own edit (`PRIMARY`) is attached on the main thread at once when that is
+##   cheap: its build was made ahead on a worker while the player's work timer ran (`EditPrebuild`: the same
+##   input, so the same arrays), or the chunk's last build took at most `max_sync_job_usec`. At most
+##   `SYNC_PER_FRAME` such attaches run in one frame, so a burst of edits cannot stall it;
+## * otherwise, and for every chunk of another player's edit (a remote actor on the host, a replayed
+##   `block_changed` on a client) and the neighbours whose seam an edit touches (`NEIGHBOUR`), the build
+##   waits here, ahead of every streaming chunk, and takes the next free worker (`drain`, called first by the
+##   manager's drain, whatever the frame's budget), at high priority;
 ## * its finished build attaches first (`first`) and is never held back by the attach budget.
 ##
 ## The collision shape rides the same build (`_attach_built` gives the chunk its shape with its mesh), so the
@@ -19,11 +21,16 @@ extends RefCounted
 
 const NativeBuilder := preload("res://src/terrain/native_builder.gd")
 const VoxelCoarse := preload("res://src/terrain/voxel_coarse.gd")
+const EditPrebuild := preload("res://src/terrain/edit_prebuild.gd")
 
 const NONE := 0
-const NEIGHBOUR := 1   ## a chunk whose seam the edit touches: first in line for a worker
-const PRIMARY := 2     ## the chunk the edited tile is in: built at once when it is short enough
+const NEIGHBOUR := 1   ## another player's edit, or a seam the edit touches: first in line for a worker
+const PRIMARY := 2     ## the chunk of the local player's own edit: attached at once when that is cheap
 const SYNC_PER_FRAME := 1
+## A chunk whose last build took longer than this is never built on the main thread (PR #648 review: a whole
+## native chunk build is 30–40 ms, two frames at 60 Hz).
+const MAX_SYNC_JOB_USEC := 6000
+const MAX_COSTS := 1024
 const MAX_SAMPLES := 256
 ## An open rebuild never attached (its chunk streamed out, or an isolated rig built nothing) is forgotten after this.
 const OPEN_TTL_USEC := 10_000_000
@@ -33,6 +40,9 @@ var m1: RefCounted   # its ChunkPart1
 ## Main-thread builds for a PRIMARY chunk. `sync_without_native` lets a test run them on the GDScript builder.
 var sync_enabled := true
 var sync_without_native := false
+var max_sync_job_usec := MAX_SYNC_JOB_USEC
+## The local player's next edit, built ahead (see `edit_prebuild.gd`).
+var prebuild: EditPrebuild
 ## `{ chunk, primary, sync, queue_ms, build_ms, total_ms, frames, at_usec }` per attached edit rebuild, oldest first.
 var samples: Array = []
 ## Clock for the samples (µs); a test may stub it.
@@ -42,10 +52,21 @@ var _queue: Array = []   # of Vector2i, waiting for a worker
 var _open: Dictionary = {}   # key -> { t0, f0, dispatched, primary, sync }
 var _sync_frame := -1
 var _sync_count := 0
+var _job_usec: Dictionary = {}   # key -> the job time of the chunk's last finished build (µs)
 
 func _init(manager: Node, part: RefCounted) -> void:
 	sl = manager
 	m1 = part
+	prebuild = EditPrebuild.new(manager, part)
+
+## A finished build of `key` took `usec` of worker time: the cost bound of its next main-thread build.
+func note_cost(key: String, usec: int) -> void:
+	if usec <= 0:
+		return
+	_job_usec.erase(key)
+	_job_usec[key] = usec   # re-inserted: the oldest entries go first below
+	while _job_usec.size() > MAX_COSTS:
+		_job_usec.erase(_job_usec.keys()[0])
 
 ## True while `key` has an edit rebuild requested and not yet attached.
 func is_priority(key: String) -> bool:
@@ -77,6 +98,7 @@ func dispatch(chunk: Vector2i, priority: int) -> void:
 
 ## Hand the waiting edit rebuilds to free workers, before any streaming dispatch and outside the frame's budget.
 func drain() -> void:
+	prebuild.reap()
 	while not _queue.is_empty() and m1.worker_builds() < sl.build_cap():
 		var chunk: Vector2i = _queue.pop_front()
 		var key: String = sl._chunk_key(chunk)
@@ -115,14 +137,20 @@ func note_attached(key: String) -> void:
 		"queue_ms": float(sent - t0) / 1000.0, "build_ms": float(now - sent) / 1000.0, "total_ms": float(now - t0) / 1000.0,
 		"frames": Engine.get_process_frames() - int(o["f0"]) + 1, "at_usec": now,
 		"job_ms": float(o.get("job_usec", 0)) / 1000.0,   # a main-thread build's own work, without the gather and attach
+		"prebuilt": bool(o.get("prebuilt", false)),
 	})
 	if samples.size() > MAX_SAMPLES:
 		samples.pop_front()
 
-## True when a PRIMARY chunk may be built on the main thread now: the native mesher is loaded (or a test said
-## so), the chunk is drawn at full detail with geometry, and this frame has not had its main-thread build yet.
-func can_build_now(chunk: Vector2i) -> bool:
-	if not sync_enabled or not (sync_without_native or NativeBuilder.is_native()):
+## True when a PRIMARY chunk may be attached on the main thread now: the chunk is drawn at full detail with
+## geometry and this frame has not had its main-thread attach yet. `full` (a whole build here, not a prebuilt
+## one) also needs the native mesher (or a test's say-so) and a last build within `max_sync_job_usec`.
+func can_build_now(chunk: Vector2i, full: bool = true) -> bool:
+	if not sync_enabled:
+		return false
+	if full and not (sync_without_native or NativeBuilder.is_native()):
+		return false
+	if full and int(_job_usec.get(sl._chunk_key(chunk), 1 << 40)) > max_sync_job_usec:
 		return false
 	if sl.terrain_slice == null or sl.voxel_slice == null or sl.skips_geometry():
 		return false
@@ -139,7 +167,19 @@ func can_build_now(chunk: Vector2i) -> bool:
 ## Build `chunk` on the main thread and attach it. False (nothing done) when it may not, or the build came back
 ## empty: the caller then queues it for a worker.
 func _build_now(chunk: Vector2i, key: String) -> bool:
-	if not sl._loaded.has(key) or not can_build_now(chunk):
+	if not sl._loaded.has(key):
+		return false
+	if can_build_now(chunk, false):
+		var ready: Dictionary = prebuild.take(chunk)
+		if not ready.is_empty():
+			_sync_count += 1
+			_open[key]["dispatched"] = int(clock_usec.call())
+			_open[key]["sync"] = true
+			_open[key]["prebuilt"] = true
+			sl._build_attempts[key] = int(sl._build_attempts.get(key, 0)) + 1
+			sl._attach_built(key, chunk, ready["heightmap"], ready["arrays"], int(sl.voxel_slice.chunk_revision(chunk)))
+			return true
+	if not can_build_now(chunk):
 		return false
 	_sync_count += 1
 	# An edit changes the runs, never the generated map: the one the chunk was built from is reused, so the
@@ -151,6 +191,7 @@ func _build_now(chunk: Vector2i, key: String) -> bool:
 	var result: Array = b["result"]
 	sl.worker_usec += int(result[2]) if result.size() > 2 else 0
 	_open[key]["job_usec"] = int(result[2]) if result.size() > 2 else 0
+	note_cost(key, int(_open[key]["job_usec"]))
 	if not (result[0] is Dictionary):
 		_open[key]["sync"] = false
 		return false
@@ -168,3 +209,5 @@ func _prune(now: int) -> void:
 func clear() -> void:
 	_queue.clear()
 	_open.clear()
+	_job_usec.clear()
+	prebuild.drop()

@@ -77,8 +77,8 @@ const STREAM_CHUNKS := 20
 const SHADER_SHARE_LIMIT := 0.5   ## Phase 170: heightmap share of the build above which a compute shader is justified
 const RATE_CHUNKS := 24      ## chunks the stream step times the pure worker build on (Phase 169)
 const NativeBuilder := preload("res://src/terrain/native_builder.gd")
-const EDIT_VISIBLE_KEY := "edit_visible_frames"   ## Phase 263: `{ step: frames }` in the budget file
-const EDIT_TARGET_FPS := 60   ## Phase 263: the frame rate the edit-to-visible budget is counted at
+const EDIT_VISIBLE_KEY := "edit_visible"   ## Phase 263: `{ target_fps, frames: { step: frames } }` in the budget file
+const EDIT_TARGET_FPS := 60   ## Phase 263: the frame rate the edit-to-visible budget is counted at, when the file names none
 const MINE_EXTRA_DIGS := 5   ## Phase 263: the mine step digs this many more blocks beside the timed one, for a p95
 const BUDGET_PATH := "res://docs/perf/playtest-budget.json"   ## Phase 174: per-step p95 process budget (ms), source of the table in playtest-baseline.md
 const BUDGET_HEADROOM := 1.25   ## a step fails the gate above budget * this, so a noisy shared runner does not fail unrelated PRs
@@ -415,26 +415,34 @@ static func flight_share_failures(steps: Array) -> Array:
 					float(f["worker_ms_per_crossing"]), wlimit, roundi(FLIGHT_WORKER_MAX_SHARE * 100.0)])
 	return out
 
-## Phase 263 — the edit-to-visible gate: a step named under `budgets.edit_visible_frames` fails when the p95 frames
-## from an edit's completion to its chunk's mesh attached is over the budget (no headroom: frames are whole), or
-## when it recorded no edit at all. CI gates the median of three runs (`tools/check_playtest_budget.py`).
+## Phase 263 — the edit-to-visible gate: a step named under `budgets.edit_visible.frames` fails when the p95 TIME
+## from an edit's completion to its chunk's mesh attached is over that many frames at `target_fps` (2 frames at
+## 60 Hz: 33.3 ms), or when it recorded no edit at all. PR #648 review: time, not frames counted, because a build
+## on the main thread attaches in the frame it was asked for however long that frame is. CI gates the median of
+## three runs (`tools/check_playtest_budget.py`).
 static func edit_visible_failures(steps: Array, budgets: Dictionary) -> Array:
 	var out: Array = []
 	var table: Variant = budgets.get(EDIT_VISIBLE_KEY, {})
-	if not (table is Dictionary):
+	if not (table is Dictionary) or not ((table as Dictionary).get("frames") is Dictionary):
 		return out
+	var frames: Dictionary = table["frames"]
+	var fps := float((table as Dictionary).get("target_fps", EDIT_TARGET_FPS))
 	for s in steps:
 		var name := str(s["step"])
-		if not (table as Dictionary).has(name):
+		if not frames.has(name):
 			continue
 		var e: Dictionary = s.get("edit_visible", {})
-		var limit := float(table[name])
+		var limit_ms := edit_visible_limit_ms(float(frames[name]), fps)
 		if int(e.get("edits", 0)) == 0:
 			out.append("step %s recorded no edit-to-visible time" % name)
-		elif float(e["frames_p95"]) > limit:
-			out.append("step %s: an edit took %.0f frames (p95) to show, over %.0f (%.0f ms at %d Hz)" % [
-				name, float(e["frames_p95"]), limit, float(e["ms_p95"]), EDIT_TARGET_FPS])
+		elif float(e["ms_p95"]) > limit_ms:
+			out.append("step %s: an edit took %.1f ms (p95, %.0f frames) to show, over %.1f ms (%.0f frames at %.0f Hz)" % [
+				name, float(e["ms_p95"]), float(e["frames_p95"]), limit_ms, float(frames[name]), fps])
 	return out
+
+## The edit-to-visible budget in ms: `frames` frames at `fps`.
+static func edit_visible_limit_ms(frames: float, fps: float) -> float:
+	return frames * 1000.0 / maxf(fps, 1.0)
 
 ## Phase 263 — one step's edit-to-visible record from `EditRemesh` samples of the edited chunks themselves
 ## (`primary`): how many, p95 frames and ms to visible, and the p95 queue wait and build behind it.
@@ -449,6 +457,7 @@ static func edit_visible_record(samples: Array) -> Dictionary:
 		"frames_p95": percentile(col.call("frames"), 95.0), "ms_p95": percentile(col.call("total_ms"), 95.0),
 		"queue_ms_p95": percentile(col.call("queue_ms"), 95.0), "build_ms_p95": percentile(col.call("build_ms"), 95.0), "job_ms_p95": percentile(col.call("job_ms"), 95.0),
 		"on_main_thread": own.filter(func(s: Dictionary) -> bool: return bool(s["sync"])).size(),
+		"prebuilt": own.filter(func(s: Dictionary) -> bool: return bool(s.get("prebuilt", false))).size(),
 	}
 
 static func load_budgets() -> Dictionary:
@@ -1290,20 +1299,22 @@ func _step_mine() -> Array:
 	var ok: bool = await _until(func(): return _mined.size() > before, STEP_TIMEOUT_SECS)
 	if not ok:
 		return [false, "no block_mined (work held %.1f s)" % held]
-	# Phase 263 — more digs beside it, one a frame (the local host completes its own work at once), so the step
-	# has an edit-to-visible p95: each is timed from its completion to its chunk's mesh attached.
+	# Phase 263 — more digs beside it, so the step has an edit-to-visible p95: each is timed from its completion to
+	# its chunk's mesh attached. PR #648 review: each one held for its work time first, as a player digs (the dug
+	# chunk is built while the work runs, `EditPrebuild`).
 	for i in MINE_EXTRA_DIGS:
 		var q := Vector3(p.x + 0.5 * float(i + 2), 0.0, p.z + 0.5)
 		q.y = float(_root._voxel.get_voxel_height_at(Vector2(q.x, q.z))) - 0.1
+		await _hold_work("block", "", q)
 		GameBus.block_mine_requested.emit(q, Vector3.UP, "", {})
 		await get_tree().process_frame
 	var own := func() -> int: return remesh.samples.slice(n0).filter(func(s: Dictionary) -> bool: return bool(s["primary"])).size()
 	await _until(func(): return own.call() >= 1 + MINE_EXTRA_DIGS, STEP_TIMEOUT_SECS)
 	_edit_visible = edit_visible_record(remesh.samples.slice(n0))
 	var e := _edit_visible
-	return [int(e["edits"]) > 0, "mined %s after holding work %.1f s; %d edits visible in %.0f frames / %.1f ms p95 (queue %.1f, build %.1f of which the job %.1f, %d on the main thread)" % [
+	return [int(e["edits"]) > 0, "mined %s after holding work %.1f s; %d edits visible in %.0f frames / %.1f ms p95 (queue %.1f, build %.1f of which the job %.1f, %d on the main thread, %d prebuilt)" % [
 		str(_mined.back()), held, int(e["edits"]), float(e["frames_p95"]), float(e["ms_p95"]), float(e["queue_ms_p95"]),
-		float(e["build_ms_p95"]), float(e["job_ms_p95"]), int(e["on_main_thread"])]]
+		float(e["build_ms_p95"]), float(e["job_ms_p95"]), int(e["on_main_thread"]), int(e["prebuilt"])]]
 
 ## Phase 259 — hold work on a target the way the player does: ask the host to start it, wait for its duration, and
 ## return the seconds the work took (-1.0 when the host never answered). The completion request is the caller's.
