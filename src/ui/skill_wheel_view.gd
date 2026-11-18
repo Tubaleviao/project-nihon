@@ -6,6 +6,9 @@ extends "res://src/ui/zoom_canvas.gd"
 ## The view holds no game state: `set_rows` gives it what to show, already localized by the UI slice.
 
 const SkillWheelLayout := preload("res://src/ui/skill_wheel_layout.gd")
+const SkillTiers := preload("res://src/core/skill_tiers.gd")
+const I18n := preload("res://src/core/i18n.gd")
+const UiIcons := preload("res://src/ui/ui_icons.gd")
 
 signal node_selected(node_id: String)
 
@@ -160,3 +163,28 @@ static func profession_state(unlocked: bool, skill_tiers: Array, last_tier: Stri
 		if str(t) != last_tier:
 			return PROF_ACTIVE
 	return PROF_MASTERED if not skill_tiers.is_empty() else PROF_ACTIVE
+
+## Phase 271 — the wheel's rows from the player's skill tiers and professions. Pure given the tables.
+static func rows(tiers: Dictionary, unlocked: Dictionary) -> Dictionary:
+	var order: Array = SkillTiers.TIER_ORDER
+	var wheel_nodes: Dictionary = SkillWheelLayout.fabric_nodes()
+	var node_rows: Array = []
+	for id in wheel_nodes:
+		var n: Dictionary = wheel_nodes[id]
+		var skill := str(n["skill"])
+		var have := str(tiers.get(skill, order[0]))
+		node_rows.append({"id": id, "name": I18n.content("skill", skill),
+			"state": node_state(have, str(n["tier"]), order),
+			"icon": UiIcons.load_icon(UiIcons.skill_key(skill)),
+			"tooltip": I18n.content("skill", skill, "desc")})
+	var res: Resource = GameData.WORLD_SYSTEMS.get("SkillWheel", null)
+	var prof_skills: Dictionary = res.get("professionSkills") if res != null else {}
+	var prof_rows: Array = []
+	for p in SkillWheelLayout.fabric_professions():
+		var have_tiers: Array = (prof_skills.get(p, []) as Array).map(func(s): return str(tiers.get(str(s), order[0])))
+		var state := profession_state(unlocked.has(p), have_tiers, str(order[order.size() - 1]))
+		prof_rows.append({"id": p, "name": I18n.content("profession", str(p)), "state": state,
+			"state_text": I18n.t("ui." + state), "icon": null,
+			"tooltip": I18n.content("profession", str(p))})
+	return {"nodes": node_rows, "professions": prof_rows}
+

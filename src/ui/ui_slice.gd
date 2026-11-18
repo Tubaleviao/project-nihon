@@ -80,7 +80,6 @@ const DRAG_VISIBLE_MARGIN := 48.0
 const LAYOUT_MAX_COORD := 100000.0
 const LAYOUT_PATH := "user://ui_layout.json"
 const UiIcons := preload("res://src/ui/ui_icons.gd")
-const SkillTiers := preload("res://src/core/skill_tiers.gd")
 const SkillWheelLayout := preload("res://src/ui/skill_wheel_layout.gd")
 const SkillWheelView := preload("res://src/ui/skill_wheel_view.gd")
 const ICON_KEY_FORMAT := "icons/items/%s.png.raw"
@@ -990,37 +989,13 @@ static func skills_rows(tiers: Dictionary) -> Array:
 		rows.append({"id": skill, "tier": str(tiers[skill]), "tooltip": I18n.t("ui.skill_tip", [I18n.content("skill", str(skill)), tiers[skill]])})
 	return rows
 
-## Phase 271 — the wheel's rows from the player's skill tiers and professions. Pure given the tables.
-static func skill_wheel_rows(tiers: Dictionary, unlocked: Dictionary) -> Dictionary:
-	var order: Array = SkillTiers.TIER_ORDER
-	var wheel_nodes: Dictionary = SkillWheelLayout.fabric_nodes()
-	var node_rows: Array = []
-	for id in wheel_nodes:
-		var n: Dictionary = wheel_nodes[id]
-		var skill := str(n["skill"])
-		var have := str(tiers.get(skill, order[0]))
-		node_rows.append({"id": id, "name": I18n.content("skill", skill),
-			"state": SkillWheelView.node_state(have, str(n["tier"]), order),
-			"icon": UiIcons.load_icon(UiIcons.skill_key(skill)),
-			"tooltip": I18n.content("skill", skill, "desc")})
-	var res: Resource = GameData.WORLD_SYSTEMS.get("SkillWheel", null)
-	var prof_skills: Dictionary = res.get("professionSkills") if res != null else {}
-	var prof_rows: Array = []
-	for p in SkillWheelLayout.fabric_professions():
-		var have_tiers: Array = (prof_skills.get(p, []) as Array).map(func(s): return str(tiers.get(str(s), order[0])))
-		var state := SkillWheelView.profession_state(unlocked.has(p), have_tiers, str(order[order.size() - 1]))
-		prof_rows.append({"id": p, "name": I18n.content("profession", str(p)), "state": state,
-			"state_text": I18n.t("ui." + state), "icon": null,
-			"tooltip": I18n.content("profession", str(p))})
-	return {"nodes": node_rows, "professions": prof_rows}
-
 func _refresh_skills() -> void:
 	if _skill_wheel == null or crafting_slice == null:
 		return
 	var unlocked: Dictionary = {}
 	if "profession_slice" in crafting_slice and crafting_slice.profession_slice != null:
 		unlocked = crafting_slice.profession_slice.get_unlocked()
-	var rows := skill_wheel_rows(crafting_slice.get_skills(), unlocked)
+	var rows := SkillWheelView.rows(crafting_slice.get_skills(), unlocked)
 	if rows.hash() == _skills_signature:
 		return
 	_skills_signature = rows.hash()

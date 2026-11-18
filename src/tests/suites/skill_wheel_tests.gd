@@ -95,7 +95,7 @@ func _test_states() -> void:
 	assert_eq(SkillWheelView.profession_state(true, ["master", "master"], "master"), SkillWheelView.PROF_MASTERED, "all master is mastered")
 
 func _test_labels() -> void:
-	var rows := UiSlice.skill_wheel_rows({}, {"Blacksmith": true})
+	var rows := SkillWheelView.rows({}, {"Blacksmith": true})
 	var tiers: Array = SkillTiers.TIER_ORDER
 	for r: Dictionary in rows["nodes"]:
 		var name := str(r["name"])
