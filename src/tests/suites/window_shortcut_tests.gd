@@ -101,7 +101,7 @@ func _test_audit() -> void:
 		seen_keys[row["keycode"]] = true
 		seen_windows[row["window"]] = true
 	for w in UiSlice.WINDOW_KEYS:
-		if w in [UiSlice.WINDOW_CONTROLS, UiSlice.WINDOW_GESTURES, UiSlice.WINDOW_CHEST]:
+		if w in [UiSlice.WINDOW_CONTROLS, UiSlice.WINDOW_GESTURES, UiSlice.WINDOW_CHEST, UiSlice.WINDOW_STATION]:
 			assert_false(seen_windows.has(w), "%s has no Alt row" % w)
 		else:
 			assert_true(seen_windows.has(w), "%s has a shortcut row" % w)

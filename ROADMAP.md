@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–225, 238–243, 248, 249, 252–254, 259–262, 264, 267, 268, 270 and 274 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–225, 238–243, 248, 249, 252–254, 259–262, 264, 267–270 and 274 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -31,7 +31,7 @@ introductions of the arcs they belonged to, are archived in
 Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
 see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
 phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
-comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–254, 259–262, 264, 267, 268, 270, 274)
+comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–254, 259–262, 264, 267–270, 274)
 have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
 [Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
 others are not in it.
@@ -39,7 +39,6 @@ others are not in it.
 | Priority | Phase | Title |
 |---|---|---|
 | 6 | 263 | Digging that shows at once: a predicted edit and a priority remesh |
-| 9 | 269 | Crafting by hand, and at the station |
 | 12 | 271 | The skill wheel: professions around the edge, shared skills in the centre |
 | 13 | 272 | A skill's own page, and where the player's focus went |
 | 14 | 273 | Titles: professions unlock them, the player chooses one |
@@ -315,7 +314,7 @@ tiers, several at once, and the UI calls them professions.
 |---|---|---|
 | 267 | Names a player can read: localized names for items, recipes, technologies, skills and professions | Done |
 | 268 | Stations are made, carried and placed from the hotbar | Done |
-| 269 | Crafting by hand, and at the station | Open |
+| 269 | Crafting by hand, and at the station | Done |
 | 270 | The technology tree: nodes, lines, zoom | Done |
 | 271 | The skill wheel: professions around the edge, shared skills in the centre | Open |
 | 272 | A skill's own page, and where the player's focus went | Open |
@@ -981,34 +980,6 @@ feel in this game's own art; no assets, sprites or likenesses are taken from any
   the playtest `walk` and `create` steps pass with it.
 - Whether the result looks good is a human judgement: filed as a GitHub issue per the rule at the
   top of this file, and this phase records its number.
-
-
-## Phase 269 — Crafting by hand, and at the station
-
-The crafting window lists every recipe, whatever station it needs, as rows of text.
-
-- **The hand window** (the crafting shortcut) lists only recipes with no station: what a player makes
-  on the spot.
-- **A station window:** the interact input on a placed station opens that station's window, listing
-  only its recipes, titled with the station's name. It closes when the player walks out of the
-  station's reach. Chests and beds keep their own interactions.
-- **Visual:** a grid of recipe cards, each with the output's icon, its localized name (Phase 267) and
-  count. Selecting a card shows the inputs as icons with have/need counts (red when short), the work
-  time (Phase 259), the skill it trains, and a Craft button with a quantity. Recipes not yet known
-  (technology, discovery) are hidden; known ones the player cannot afford are dimmed, not hidden. A
-  search field and category tabs (tools, weapons, building, food…) from the recipe's tags.
-- The host's station check stays as it is (`crafting_slice.gd`: a matching station within
-  `STATION_RADIUS`, else `station_required:<type>`); the window only stops offering what would be
-  refused.
-
-**Acceptance criteria**
-- Suite tests: the hand window lists exactly the station-less known recipes; a station's window lists
-  exactly that station's known recipes; a station recipe requested with no station in reach is refused
-  by the host; a card's have/need counts follow the bag; no card shows an entity id.
-- Suite test: the station window closes when the player leaves reach.
-- Net harness step: a client opens a station, crafts one of its recipes and gets the item; the same
-  request away from the station is refused.
-- Every new string is in both locales.
 
 ## Phase 271 — The skill wheel: professions around the edge, shared skills in the centre
 

@@ -107,13 +107,13 @@ func writing_rows() -> Array:
 	return rows
 
 ## The local player's points or learnt set changed: redraw the open Technology window and (Phase 209: a
-## blueprint read arrives this way and can unlock a recipe) the open Crafting window.
+## blueprint read arrives this way and can unlock a recipe) the open crafting windows, hand and station (Phase 269).
 func on_research_points_synced(player_id: String) -> void:
 	if not (player_id == "" or sl.technology_slice == null or player_id == sl.technology_slice.local_player_id()):
 		return
 	if sl._technology_box != null and sl._technology_box.is_visible_in_tree():
 		sl.refresh_technology()
-	if sl._crafting_box != null and sl._crafting_box.is_visible_in_tree():
+	if sl.is_window_open(sl.WINDOW_CRAFTING) or sl.is_window_open(sl.WINDOW_STATION):
 		sl.refresh_crafting()
 
 ## Phase 209 — a writing row's name in the active locale: "Book: <technology>", "Blueprint: <recipe>".
@@ -135,29 +135,17 @@ func station_name(type: String) -> String:
 		return sl.I18n.t("station.anywhere")
 	return sl.I18n.content("station", type)
 
+## Phase 269 — each OPEN crafting window redraws its cards (a closed one is rebuilt by `open_window` → `refresh_all`,
+## so a craft resolved for any peer costs nothing while both are closed); the hand window lists the repairs under its grid.
 func refresh_crafting() -> void:
-	if sl._crafting_box == null:
+	if sl.station_window != null and sl.is_window_open(sl.WINDOW_STATION):
+		sl.station_window.refresh()
+	if sl.hand_window == null or not sl.is_window_open(sl.WINDOW_CRAFTING):
 		return
-	for child in sl._crafting_box.get_children():
+	sl.hand_window.refresh()
+	var repairs: VBoxContainer = sl.hand_window.extra_box
+	for child in repairs.get_children():
 		child.queue_free()
-	for row in sl.crafting_rows():
-		var r: Dictionary = row
-		var hbox = HBoxContainer.new()
-		hbox.add_theme_constant_override("separation", 8)
-		var btn = Button.new()
-		btn.text = sl.I18n.t("ui.craft")
-		btn.disabled = not bool(r["can_craft"])
-		btn.pressed.connect(sl._on_craft_pressed.bind(str(r["id"])))
-		hbox.add_child(btn)
-		sl._add_row_icon(hbox, str(r["icon_key"]))
-		var line = "%s: %s → %s" % [sl.I18n.content("recipe", str(r["id"])), r["inputs"], r["outputs"]]
-		if str(r.get("station", "")) != "":
-			line += "  @ %s" % station_name(str(r["station"]))
-		var lbl = Label.new()
-		lbl.text = line + ("" if bool(r["can_craft"]) else "  (%s)" % sl.I18n.reason_text(str(r["reason"])))
-		lbl.modulate = Color(1, 1, 1) if bool(r["can_craft"]) else Color(0.6, 0.6, 0.6)
-		hbox.add_child(lbl)
-		sl._crafting_box.add_child(hbox)
 
 	# Repair section: one row per held, repairable, non-pristine item.
 	var repair_rows_list: Array = sl.repair_rows()
@@ -166,7 +154,7 @@ func refresh_crafting() -> void:
 		sep.text = sl.I18n.t("ui.repairs_header")
 		sep.add_theme_font_size_override("font_size", 14)
 		sep.modulate = Color(0.75, 0.75, 0.75)
-		sl._crafting_box.add_child(sep)
+		repairs.add_child(sep)
 		for row in repair_rows_list:
 			var r: Dictionary = row
 			var hbox = HBoxContainer.new()
@@ -185,7 +173,7 @@ func refresh_crafting() -> void:
 			lbl.text = line + ("" if bool(r["can_repair"]) else "  (%s)" % sl.I18n.reason_text(str(r["reason"])))
 			lbl.modulate = Color(1, 1, 1) if bool(r["can_repair"]) else Color(0.6, 0.6, 0.6)
 			hbox.add_child(lbl)
-			sl._crafting_box.add_child(hbox)
+			repairs.add_child(hbox)
 
 func _build_map_content() -> Control:
 	var box = VBoxContainer.new()

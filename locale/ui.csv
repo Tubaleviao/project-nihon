@@ -482,7 +482,7 @@ tutorial.inventory.body,You start with nothing. Open the inventory to see what y
 tutorial.hotbar.title,The bottom bar,A barra inferior
 tutorial.hotbar.body,"Expand the bottom bar and drag an item onto a box. Press the box's key to use it.","Expanda a barra inferior e arraste um item para uma caixa. Pressione a tecla da caixa para usá-lo."
 tutorial.crafting.title,Crafting,Criação
-tutorial.crafting.body,Open the crafting window. It lists every recipe and what it needs; stone tools need no station.,Abra a janela de criação. Ela lista todas as receitas e o que cada uma exige; ferramentas de pedra não precisam de estação.
+tutorial.crafting.body,"Open the crafting window. It lists the recipes you know that need no station, like stone tools, and what each needs. A station's recipes are in its own window: use the station (U).","Abra a janela de criação. Ela lista as receitas que você conhece e que não precisam de estação, como ferramentas de pedra, e o que cada uma exige. As receitas de uma estação ficam na janela dela: use a estação (U)."
 tutorial.craft_axe.title,A stone axe,Um machado de pedra
 tutorial.craft_axe.body,"Craft a stone axe from a branch and a loose stone, anywhere.","Crie um machado de pedra com um galho e uma pedra solta, em qualquer lugar."
 tutorial.chop.title,Chop a tree,Corte uma árvore
@@ -504,9 +504,9 @@ tutorial.craft_bench.body,"Make a carpentry bench by hand from four branches and
 tutorial.place_bench.title,Place the bench,Coloque a bancada
 tutorial.place_bench.body,Select the carpentry bench in the bottom bar: its outline follows your aim. Use it to place the bench near you.,Selecione a bancada de carpintaria na barra inferior: o contorno dela segue a sua mira. Use-a para colocar a bancada perto de você.
 tutorial.craft_planks.title,Planks,Tábuas
-tutorial.craft_planks.body,"Stand by your bench and craft planks from logs. Planks build almost everything.","Fique perto da bancada e crie tábuas a partir de toras. As tábuas constroem quase tudo."
+tutorial.craft_planks.body,"Stand by your bench and use it (U) to open its recipes, then craft planks from logs. Planks build almost everything.","Fique perto da bancada e use-a (U) para abrir as receitas dela; depois crie tábuas a partir de toras. As tábuas constroem quase tudo."
 tutorial.craft_forge.title,Make a forge,Faça uma forja
-tutorial.craft_forge.body,"At the carpentry bench, build a forge from loose stones and planks.","Na bancada de carpintaria, construa uma forja com pedras soltas e tábuas."
+tutorial.craft_forge.body,"Use the carpentry bench (U) to open its recipes and build a forge from loose stones and planks.","Use a bancada de carpintaria (U) para abrir as receitas dela e construa uma forja com pedras soltas e tábuas."
 tutorial.place_forge.title,Place the forge,Coloque a forja
 tutorial.place_forge.body,Select the forge in the bottom bar and place it. Metal tools and weapons are made at a forge.,Selecione a forja na barra inferior e coloque-a. Ferramentas e armas de metal são feitas na forja.
 tutorial.research_smithing.title,Learn smithing,Aprenda ferraria
@@ -693,7 +693,7 @@ reason.foreign_circle,Only that clan's members build this close to its buildings
 bed.refuse_structure,You cannot place a bed on a structure that is not yours.,Você não pode colocar uma cama em uma estrutura que não é sua.
 bed.refuse_circle,Only that clan's members may place a bed this close to its buildings.,Só os membros desse clã podem colocar uma cama tão perto das construções dele.
 win.chest,Chest,Baú
-controls.row18,Use a chest or door · pick its lock · hit it,Usar um baú ou porta · arrombar a fechadura · golpeá-lo
+controls.row18,"Use a station, chest or door · pick its lock · hit it","Usar uma estação, baú ou porta · arrombar a fechadura · golpeá-lo"
 chest.none,Nothing is open. Stand at a chest or door and use it (U).,Nada está aberto. Fique junto a um baú ou porta e use-o (U).
 chest.status,"{0}, open to {1}. Lock {2}/{3}.","{0}, aberto para {1}. Fechadura {2}/{3}."
 chest.kind.chest,Chest,Baú
@@ -867,3 +867,22 @@ work.tool.hands,Bare hands,Mãos nuas
 work.tool.pick,Pick,Picareta
 work.tool.axe,Axe,Machado
 work.tool.shovel,Shovel,Pá
+win.station,{0},{0}
+craft.search,Search recipes,Buscar receitas
+craft.cat.all,All,Tudo
+craft.cat.tools,Tools,Ferramentas
+craft.cat.weapons,Weapons,Armas
+craft.cat.armor,Armor,Armaduras
+craft.cat.building,Building,Construção
+craft.cat.consumables,Consumables,Consumíveis
+craft.cat.materials,Materials,Materiais
+craft.card_count,{0} ×{1},{0} ×{1}
+craft.card_refused,{0} — {1},{0} — {1}
+craft.have_need,{0}/{1},{0}/{1}
+craft.work_time,Work time: {0} s,Tempo de trabalho: {0} s
+craft.work_instant,Work time: instant,Tempo de trabalho: instantâneo
+craft.trains,Trains {0},Treina {0}
+craft.trains_none,Trains no skill,Não treina nenhuma habilidade
+craft.quantity,Quantity,Quantidade
+craft.pick,Select a recipe to see what it takes.,Selecione uma receita para ver o que ela exige.
+craft.none,Nothing you know is made here yet.,Nada que você conhece é feito aqui ainda.

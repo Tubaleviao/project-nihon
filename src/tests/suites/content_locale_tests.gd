@@ -75,19 +75,20 @@ func _test_locale_switch_changes_recipe_name() -> void:
 	assert_eq(names["pt_BR"], "Picareta de Ferrita", "and in pt_BR")
 	_with_locale("pt_BR", func() -> void:
 		assert_eq(I18n.content("recipe", "RecipeHealthPotion"), "Poção de Vida", "a recipe's own name wins over its output's"))
-	# The crafting window itself shows the switched name.
+	# The forge's crafting window (Phase 269: a station's recipes are on its own window) shows the switched name.
 	var ui := _new_test_ui()
 	var craft := CraftingSlice.new()
 	add_child(craft)
 	ui.crafting_slice = craft
-	var content := ui._build_crafting_content()
+	var content: Node = UiSlice.CraftWindowScript.new()
+	content.setup(ui, "forge")
 	var shown := {}
 	for loc: String in ["en", "pt_BR"]:
 		_with_locale(loc, func() -> void:
-			ui.refresh_crafting()
-			shown[loc] = _texts(ui._crafting_box).filter(func(s: String) -> bool: return s.begins_with(str(names[loc]) + ":")).size())
-	assert_true(int(shown["en"]) >= 1, "the en crafting window lists Ferrite Pick")
-	assert_true(int(shown["pt_BR"]) >= 1, "the pt_BR crafting window lists Picareta de Ferrita")
+			content.refresh()
+			shown[loc] = _texts(content.grid).filter(func(s: String) -> bool: return s == str(names[loc])).size())
+	assert_true(int(shown["en"]) >= 1, "the en forge window lists Ferrite Pick")
+	assert_true(int(shown["pt_BR"]) >= 1, "the pt_BR forge window lists Picareta de Ferrita")
 	_free_window(content)
 	craft.free()
 	ui.free()
@@ -158,9 +159,18 @@ func _test_window_audit() -> void:
 	for skill in GameData.SKILLS.keys():
 		craft.set_skill(str(skill), "novice")
 	var windows := [ui._build_crafting_content(), ui._build_technology_content(), ui._build_skills_content()]
+	# Phase 269 — every recipe is on the hand window or one station's window: audit them all.
+	var stations: Array = []
+	for type in preload("res://src/crafting/craft_catalog.gd").crafting_station_types():
+		var w: Node = UiSlice.CraftWindowScript.new()
+		w.setup(ui, str(type))
+		stations.append(w)
+		windows.append(w)
 	for loc: String in ["en", "pt_BR"]:
 		_with_locale(loc, func() -> void:
-			ui.refresh_crafting()
+			ui.hand_window.refresh()   # Phase 269: the built hand window is never opened; refresh_crafting skips it
+			for w: Node in stations:
+				w.refresh()
 			ui.refresh_technology()
 			ui._skills_signature = 0
 			ui._refresh_skills()

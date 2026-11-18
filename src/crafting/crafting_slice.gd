@@ -245,6 +245,11 @@ func can_craft(recipe_id: String, player_id: String = "") -> Dictionary:
 		return _result(recipe_id, false, [], "inventory_full", pid)
 	return _result(recipe_id, true, recipe.get("outputs", []), "", pid)
 
+## Phase 269 — whether the player knows a recipe (its technology, a discovery or a blueprint): what the crafting
+## windows list. A known recipe may still be refused (skill, station, inputs); an unknown one is not shown.
+func is_recipe_known(recipe_id: String, player_id: String = "") -> bool:
+	return not get_recipe(recipe_id).is_empty() and _check_tech_gate(recipe_id, _resolve_player(player_id)) == ""
+
 ## Return the structured recipe data for a recipe key, or {} if unknown/malformed.
 func get_recipe(recipe_id: String) -> Dictionary:
 	return _structured_field(GameData.RECIPES, recipe_id, "recipe")
