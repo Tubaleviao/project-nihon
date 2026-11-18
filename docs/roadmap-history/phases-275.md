@@ -50,7 +50,8 @@ by `reload_manifest`). The fabric table ships six starter events: `ui.click`, `f
 `item.StonePick.hit` (2, 3d), `creature.GraywolfPack.attack` (2, 3d), `ambience.TemperateForest` and
 `music.main_theme`. `Sound.play` makes an `AudioStreamPlayer` (or an `AudioStreamPlayer3D` for a 3d event given a
 `Vector3`) as its own child, sets the stream's `loop` from the event, and frees a one-shot when it finishes; it
-returns null when `enabled` is false (for a dedicated server, which no boot path sets yet). `GameSettings` maps
+returns null when `enabled` is false (a dedicated server or headless boot; Phase 276's
+`AudioWiring.apply_boot_role` sets it). `GameSettings` maps
 each volume option to its bus through `VOLUME_BUSES` and warns about a bus the layout lacks instead of creating
 it; `ensure_buses` is gone. The options window builds its rows from `GameSettings.SPEC`, so the two new sliders
 needed only the spec rows and their `options.volume_ambience` / `options.volume_ui` catalog keys.

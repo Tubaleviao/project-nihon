@@ -43,7 +43,6 @@ func parse_network_args(args: PackedStringArray = OS.get_cmdline_user_args()) ->
 	# Phase 162 — a stress watcher is a harness CLIENT that runs the shipped client boot, not the scenario.
 	if args.has("--stress-watch"):
 		root._net_harness_role = ""
-	Sound.enabled = not root._is_server   # Phase 275: nobody listens on a dedicated server
 
 ## Phase 33 — save-on-shutdown. `auto_accept_quit = false` turns the window
 ## manager's close request into a notification this node answers by writing the

@@ -1082,7 +1082,9 @@ the event table and the `Sound` API from Phase 275 as they are; new events get p
   rock. The threshold and the override live in the fabric, not in code.
 - **Music on the main menu:** the main menu plays a music track on the Music bus (a new `music.menu` event or
   `music.main_theme`, as the fabric decides) and cross-fades into the in-world music when a world loads. Leaving to
-  the menu cross-fades back. The dedicated server still plays nothing.
+  the menu cross-fades back: today `AudioWiring.unwire` (run when the world's root is freed for the menu) cuts the
+  music and ambience at once, so this phase replaces that cut with a fade into the menu track. The dedicated server
+  still plays nothing.
 
 **Acceptance criteria**
 - `npm run validate`, `check-drift`, `node tools/check_sounds.js` and `python3 tools/gen_placeholder_audio.py
@@ -1090,7 +1092,8 @@ the event table and the `Sound` API from Phase 275 as they are; new events get p
 - Suite tests (through `Sound.trace`, not audible output): a remote player walking 3.2 m on grass fires two
   `footstep.grass` events at its position; a remote player beyond `maxDistance` fires none; a teleport fires none; a
   step on a slope above the threshold picks `stone`, one below keeps the biome surface; the menu starts its track
-  and loading a world cross-fades to the world track; a server boot plays nothing.
+  and loading a world cross-fades to the world track; leaving to the menu fades back to it
+  instead of cutting; a server boot plays nothing.
 - Net harness step: the second client hears (traces) the first client's footsteps.
 - No new user-facing strings, or every new one is in both locales.
 
