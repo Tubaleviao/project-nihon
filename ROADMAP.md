@@ -326,13 +326,14 @@ Agreed with the owner on 2026-11-18. The game had no sound: no files, no playbac
 window's Music and Effects buses were created at runtime because the project shipped no bus layout. The owner
 wants a working audio pipeline before any sound art: sounds load from the `.raw` asset tree like every other
 asset, every key has a public placeholder, gameplay plays events from a fabric table, and the private assets repo
-gets audio style rules, a checker and a SuperCollider source pipeline (its Phases A30 and A31). Real sound art is
+gets audio style rules, a checker and a SuperCollider source pipeline (its Phases A38 and A39). Real sound art is
 not part of the arc. Phase 275 is the contract (keys, layout, manifest section, play API) the rest builds on.
 
 | Phase | Title | Status |
 |---|---|---|
 | 275 | Audio foundation: a sound loader, an event table, a bus layout and placeholder sounds | Done |
 | 276 | First sounds wired in: clicks, windows, footsteps, the dig, pickups, a creature's attack, ambience and music | Done |
+| 277 | Sound gaps: other players' footsteps, rock underfoot on cliffs, music on the main menu | Open |
 
 ## Phase 225 — The options window
 
@@ -1065,6 +1066,33 @@ show.
 - Net harness step: a client chooses an unlocked title and the second client's nameplate shows it; a
   request for a locked title is refused.
 - Every new string is in both locales.
+
+## Phase 277 — Sound gaps: other players' footsteps, rock underfoot on cliffs, music on the main menu
+
+Phase 276 wired the first sounds but left three gaps the owner wants closed (agreed 2026-11-18). Each one uses
+the event table and the `Sound` API from Phase 275 as they are; new events get placeholders through
+`tools/gen_placeholder_audio.py`.
+
+- **Other players' footsteps:** a remote player walking on the ground plays the same `footstep.<surface>` events
+  as the local player, at that player's feet, with the same step cadence (`step_due`, one step per 1.6 m) driven by
+  the synced position, not by local input. Steps beyond the event's `maxDistance` from the listener are skipped
+  before any player node is made. A teleport or a correction snap does not count as distance walked.
+- **Rock underfoot on cliffs:** where the ground under the feet is steeper than a slope threshold set in the
+  fabric `footsteps` table, the surface is `stone` whatever the biome's ground material, so a cliff sounds like
+  rock. The threshold and the override live in the fabric, not in code.
+- **Music on the main menu:** the main menu plays a music track on the Music bus (a new `music.menu` event or
+  `music.main_theme`, as the fabric decides) and cross-fades into the in-world music when a world loads. Leaving to
+  the menu cross-fades back. The dedicated server still plays nothing.
+
+**Acceptance criteria**
+- `npm run validate`, `check-drift`, `node tools/check_sounds.js` and `python3 tools/gen_placeholder_audio.py
+  --check` pass; the validator rejects a slope threshold outside 0–90°.
+- Suite tests (through `Sound.trace`, not audible output): a remote player walking 3.2 m on grass fires two
+  `footstep.grass` events at its position; a remote player beyond `maxDistance` fires none; a teleport fires none; a
+  step on a slope above the threshold picks `stone`, one below keeps the biome surface; the menu starts its track
+  and loading a world cross-fades to the world track; a server boot plays nothing.
+- Net harness step: the second client hears (traces) the first client's footsteps.
+- No new user-facing strings, or every new one is in both locales.
 
 ---
 
