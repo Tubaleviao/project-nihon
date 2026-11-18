@@ -429,10 +429,8 @@ func open_window(panel: String) -> void:
 		return
 	if panel == WINDOW_CRAFTING and _repair_feedback != null:
 		_repair_feedback.text = ""
-	if panel == WINDOW_STATION and station_id == "":
-		return   # Phase 269 — only a station opens its window
-	if not p.visible:
-		Sound.play("ui.window_open")   # Phase 276 — every window opens through here
+	if panel == WINDOW_STATION and station_id == "": return   # Phase 269 — only a station opens its window
+	if not p.visible: Sound.play("ui.window_open")   # Phase 276 — every window opens through here
 	p.visible = true
 	_open_order.erase(panel)
 	_open_order.append(panel)
@@ -444,24 +442,19 @@ func close_window(panel: String) -> void:
 	var p: Control = _panels.get(panel, null)
 	if p == null:
 		return
-	if p.visible:
-		Sound.play("ui.window_close")   # Phase 276 — and closes through here (or `_close_all_windows`)
+	if p.visible: Sound.play("ui.window_close")   # Phase 276 — and closes through here (or `_close_all_windows`)
 	p.visible = false
 	_open_order.erase(panel)
 	_drag_key = ""
-	if panel == WINDOW_STATION:
-		station_id = ""
+	if panel == WINDOW_STATION: station_id = ""
 	refresh_hud()
 
 func toggle_window(panel: String) -> void:
-	if is_window_open(panel):
-		close_window(panel)
-	else:
-		open_window(panel)
+	if is_window_open(panel): close_window(panel)
+	else: open_window(panel)
 
 func _close_all_windows() -> void:
-	if any_window_open():
-		Sound.play("ui.window_close")   # one close for the lot
+	if any_window_open(): Sound.play("ui.window_close")   # one close for the lot
 	for panel in _panels:
 		_panels[panel].visible = false
 	_open_order.clear()
