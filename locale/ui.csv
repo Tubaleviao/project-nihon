@@ -892,3 +892,46 @@ ui.skills_fit,Show whole wheel,Ver a roda toda
 ui.profession_locked,Locked,Bloqueada
 ui.profession_active,Active,Ativa
 ui.profession_mastered,Mastered,Dominada
+ui.skill_page_hint,Select a skill to see its page.,Selecione uma habilidade para ver a página dela.
+ui.skill_page_level,{0} - {1} XP,{0} - {1} XP
+ui.skill_page_maxed,Top tier reached.,Nível mais alto alcançado.
+ui.skill_page_progress,{0} of {1} XP to the next tier,{0} de {1} XP para o próximo nível
+ui.skill_page_next,Next tiers,Próximos níveis
+ui.skill_page_unlock_ability,{0}: unlocks an ability,{0}: libera uma habilidade ativa
+ui.skill_page_unlock_passive,{0}: gives a passive bonus,{0}: dá um bônus passivo
+ui.skill_page_unlock_recipe,{0}: unlocks a recipe,{0}: libera uma receita
+ui.skill_page_trains,Trained by,Treinada por
+ui.skill_page_leads,Leads to,Leva a
+ui.skill_page_focus_title,Focus,Foco
+ui.skill_page_focus_none,No focus yet: XP comes at the normal rate.,Sem foco ainda: o XP vem no ritmo normal.
+ui.skill_page_focus,{0} active minutes in the last hour: +{1}% XP,{0} minutos ativos na última hora: +{1}% de XP
+ui.skill_page_shares,Where your time went,Onde seu tempo foi
+ui.skill_page_share,{0}: {1}%,{0}: {1}%
+ui.skill_unlocked_toast,{0} reached {1}. Open its page.,{0} chegou a {1}. Abra a página dela.
+ui.tier_novice,Novice,Novato
+ui.tier_apprentice,Apprentice,Aprendiz
+ui.tier_journeyman,Journeyman,Oficial
+ui.tier_expert,Expert,Especialista
+ui.tier_master,Master,Mestre
+ui.category_combat,Combat,Combate
+ui.category_crafting,Crafting,Ofício
+ui.category_magic,Magic,Magia
+ui.category_exploration,Exploration,Exploração
+ui.category_social,Social,Social
+ui.category_gathering,Gathering,Coleta
+ui.category_other,Other,Outras
+ui.work.craft.smithing,crafting at a forge,forjar
+ui.work.craft.carpentry,carpentry,carpintaria
+ui.work.craft.alchemy,brewing,alquimia
+ui.work.craft.arcane,arcane forging,forja arcana
+ui.work.craft.tailoring,tailoring,costura
+ui.work.gather.metal,mining metal,minerar metal
+ui.work.gather.stone,mining stone,minerar pedra
+ui.work.gather.wood,chopping wood,cortar madeira
+ui.work.gather.soil,digging,cavar
+ui.work.gather.plant,foraging plants,colher plantas
+ui.work.gather.carcass,skinning,esfolar
+ui.work.build,building,construir
+ui.work.dismantle,dismantling,desmontar
+ui.work.repair,repairing,reparar
+ui.work.lockpick,picking locks,arrombar fechaduras

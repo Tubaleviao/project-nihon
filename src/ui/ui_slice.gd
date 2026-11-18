@@ -82,6 +82,7 @@ const LAYOUT_PATH := "user://ui_layout.json"
 const UiIcons := preload("res://src/ui/ui_icons.gd")
 const SkillWheelLayout := preload("res://src/ui/skill_wheel_layout.gd")
 const SkillWheelView := preload("res://src/ui/skill_wheel_view.gd")
+const SkillsWindow := preload("res://src/ui/skills_window.gd")
 const ICON_KEY_FORMAT := "icons/items/%s.png.raw"
 const SLOT_SIZE := Vector2(72, 72)
 const INVENTORY_COLUMNS := 5
@@ -116,6 +117,7 @@ var drops_enabled: bool = true
 ## The payload of the drag in flight (set by the drag sources), read when the drag ends.
 var _drag_payload: Dictionary = {}
 var _skill_wheel: Control = null
+var _skills_window: Control = null
 var _skills_signature: int = 0
 ## Brief line shown when a drag-drop is refused.
 var _hud_notice: Label = null
@@ -229,6 +231,7 @@ func _ready() -> void:
 	GameBus.research_resolved.connect(_on_research_resolved)
 	GameBus.research_points_synced.connect(_on_research_points_synced)
 	GameBus.technology_unlocked.connect(_on_technology_unlocked)
+	GameBus.skill_tier_recorded.connect(_on_skill_tier_recorded)   # Phase 272: a new tier toasts and opens its page
 	GameBus.system_message.connect(_on_system_notice)   # Phase 260: a notice is also a toast
 	GameBus.item_picked_up.connect(_on_item_picked_up)
 	GameBus.inventory_changed.connect(_on_inventory_changed)
@@ -1138,6 +1141,14 @@ func _on_research_resolved(result: Dictionary) -> void:
 func _on_research_points_synced(player_id: String, _points: int) -> void:
 	_m2.on_research_points_synced(player_id)
 
+## Phase 272 — the local player reached a new tier: a toast, the wheel's node pulses and the skill's page is open.
+func _on_skill_tier_recorded(player_id: String, skill: String, tier: String) -> void:
+	if _skills_window == null or crafting_slice == null or player_id != crafting_slice.local_player_id():
+		return
+	_skills_window.open_skill(skill)
+	_skill_wheel.pulse("%s:%s" % [skill, tier])
+	push_toast(I18n.t("ui.skill_unlocked_toast", [I18n.content("skill", skill), I18n.t("ui." + "tier_" + tier)]))
+
 func _on_technology_unlocked(_tech_id: String, _player_id: String) -> void:
 	refresh_technology()
 	refresh_crafting()
@@ -1409,24 +1420,15 @@ func _build_inventory_content() -> Control:
 	return vbox
 
 func _build_skills_content() -> Control:
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 6)
-	var bar := HBoxContainer.new()
 	var title := Label.new()
 	_set_tr(title, "text", "ui.skills_title")
 	title.add_theme_font_size_override("font_size", 15)
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	bar.add_child(title)
 	var fit := Button.new()
 	_set_tr(fit, "text", "ui.skills_fit")
-	bar.add_child(fit)
-	vbox.add_child(bar)
-	_skill_wheel = SkillWheelView.new()
-	_skill_wheel.custom_minimum_size = Vector2(860, 560)
-	_skill_wheel.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	fit.pressed.connect(_skill_wheel.fit_all)
-	vbox.add_child(_skill_wheel)
-	return vbox
+	_skills_window = SkillsWindow.new()
+	_skills_window.build(title, fit)
+	_skill_wheel = _skills_window.wheel
+	return _skills_window
 
 ## Phase 269 — the hand window: a card grid of the recipes with no station (repairs listed under it).
 func _build_crafting_content() -> Control:

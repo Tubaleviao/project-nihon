@@ -122,6 +122,17 @@ func select(id: String) -> void:
 		(nodes[nid] as Button).set_pressed_no_signal(nid == id)
 	node_selected.emit(id)
 
+## A newly unlocked node flashes (a short tween on its tint); the node keeps its state colour afterwards.
+func pulse(node_id: String) -> void:
+	var btn: Button = nodes.get(node_id, null)
+	if btn == null or not btn.is_inside_tree():
+		return
+	var rest: Color = btn.self_modulate
+	var tw := btn.create_tween()
+	tw.tween_property(btn, "self_modulate", Color(1.6, 1.4, 0.6), 0.25)
+	tw.tween_property(btn, "self_modulate", rest, 0.6)
+	tw.set_loops(3)
+
 func _make_button(id: String, size_px: Vector2, centre: Vector2, font: int) -> Button:
 	var btn := Button.new()
 	btn.name = "Node_%d" % (nodes.size() + professions.size())

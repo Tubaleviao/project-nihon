@@ -55,13 +55,14 @@ static func active_minutes(focus: Dictionary, skill: String, window: int) -> int
 static func multiplier(focus: Dictionary, skill: String, window: int, bonus: float) -> float:
 	return 1.0 + maxf(0.0, bonus) * float(active_minutes(focus, skill, window)) / float(maxi(1, window))
 
-## The whole XP a grant of `amount` pays now: the grant's minute is noted, the multiplier applied once, and the
+## The whole XP a grant of `amount` pays now: the multiplier applied once, then the grant's minute noted, and the
 ## fractional part carried per skill until it reaches a whole point.
 static func boost(focus: Dictionary, skill: String, amount: int, window: int, bonus: float) -> int:
 	if amount <= 0:
 		return 0
-	note(focus, skill)
+	# The grant's own minute counts for the grants after it, so a first grant is always paid at the normal rate.
 	var exact := float(amount) * multiplier(focus, skill, window, bonus)
+	note(focus, skill)
 	var carry: Dictionary = focus.get("carry", {})
 	exact += float(carry.get(skill, 0.0))
 	var paid := int(floorf(exact + 0.000001))
@@ -122,3 +123,44 @@ static func sanitize(data: Variant) -> Dictionary:
 			if is_finite(c) and (out["minutes"] as Dictionary).has(str(skill)):
 				out["carry"][str(skill)] = clampf(c, 0.0, 0.999999)
 	return out
+
+## Host: the record's own focus, created on first use. Returns the whole XP a grant of `amount` pays now.
+static func boost_record(rec: Dictionary, skill: String, amount: int) -> int:
+	if rec.is_empty() or amount <= 0:
+		return amount
+	if not rec.get("skill_focus", null) is Dictionary:
+		rec["skill_focus"] = empty()
+	return boost_fabric(rec["skill_focus"], skill, amount)
+
+## What a player is told about their own focus: { skill: active minutes in the window }.
+static func view(focus: Dictionary, window: int) -> Dictionary:
+	var out: Dictionary = {}
+	for skill in focus.get("minutes", {}):
+		var n := active_minutes(focus, str(skill), window)
+		if n > 0:
+			out[str(skill)] = n
+	return out
+
+## The local player's focus as last told by the host (or computed on the host itself): { skill: active minutes }.
+static var local_view: Dictionary = {}
+
+## A synced view, bounded (a hostile or garbled one reads as empty).
+static func sanitize_view(data: Variant) -> Dictionary:
+	var out: Dictionary = {}
+	if data is Dictionary:
+		for skill in data:
+			if out.size() < MAX_SKILLS and (data[skill] is int or data[skill] is float) and int(data[skill]) > 0:
+				out[str(skill)] = clampi(int(data[skill]), 0, 100000)
+	return out
+
+## The synced view of a player's record.
+static func view_of_record(rec: Dictionary) -> Dictionary:
+	var f: Variant = rec.get("skill_focus", null)
+	return view(f, window_minutes()) if f is Dictionary else {}
+
+## Host, once a frame: play time passes for every connected player's focus.
+static func advance_online(registry: Object, delta: float) -> void:
+	for pid in registry.get_online_player_ids():
+		var rec: Dictionary = registry.get_record(str(pid))
+		if rec.get("skill_focus", null) is Dictionary:
+			advance(rec["skill_focus"], delta)

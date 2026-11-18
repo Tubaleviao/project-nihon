@@ -4,6 +4,8 @@ extends "res://src/core/wiring.gd"
 
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const Diag := preload("res://src/core/diag.gd")
+const SkillFocus := preload("res://src/character/skill_focus.gd")
+const SkillPage := preload("res://src/character/skill_page.gd")
 const TerrainSlice     := preload("res://src/terrain/terrain_slice.gd")
 const CreatureAI       := preload("res://src/creature/creature_ai.gd")
 const NetworkingSlice  := preload("res://src/networking/networking_slice.gd")
@@ -356,10 +358,14 @@ var _attr_sync_elapsed := 0.0
 func tick(delta: float) -> void:
 	if not root._is_client:
 		flush_rescopes()
+		if root._registry != null:
+			SkillFocus.advance_online(root._registry, delta)   # Phase 272: focus counts connected play time
 		_attr_sync_elapsed += delta
 		if _attr_sync_elapsed >= ATTR_SYNC_SEC and root._registry != null:
 			_attr_sync_elapsed = 0.0
 			root._registry.flush_attribute_syncs()
+			SkillFocus.local_view = SkillFocus.view_of_record(root._registry.get_record(root._registry.local_player_id))
+			SkillPage.local_xp = root._registry.get_record(root._registry.local_player_id).get("skill_xp", {}).duplicate()
 
 ## Phase 163 — host, once a frame: serve the frame's AOI crossings. Every window moves first and the
 ## windows are refreshed ONCE, then each crossing's snapshot is built. Returns the snapshots sent.
@@ -619,6 +625,8 @@ func _own_state_payload(player_id: String) -> Dictionary:
 		"professions": own.get("professions", {}),
 		"attributes": own.get("attributes", {}),
 		"attribute_growth": own.get("attribute_growth", {}),
+		"skill_focus_view": SkillFocus.view_of_record(root._registry.get_record(player_id)),
+		"skill_xp": own.get("skill_xp", {}),
 	}
 
 ## Phase 178 — an attribute table changed on the host. The local body adopts it directly; a remote owner gets it on
@@ -634,7 +642,9 @@ func _on_attributes_synced(player_id: String, attributes: Dictionary) -> void:
 		return
 	var peer := root._registry.get_peer_id(player_id)
 	if peer != 0:
-		root._networking.send_own_state(peer, { "attributes": attributes, "attribute_growth": growth })
+		root._networking.send_own_state(peer, { "attributes": attributes, "attribute_growth": growth,
+			"skill_focus_view": SkillFocus.view_of_record(root._registry.get_record(player_id)),
+			"skill_xp": root._registry.get_record(player_id).get("skill_xp", {}) })
 
 ## Phase 178 — display this machine's own attributes (the host's own body, or a client's mirror of the host's
 ## number). Sanitised: a table that does not parse reads as base 10.
@@ -671,6 +681,10 @@ func on_own_state_synced(data: Dictionary) -> void:
 		apply_own_attributes(data["attributes"])
 	if data.get("attribute_growth", null) is Dictionary and root._player != null:
 		root._player.set_attribute_growth(data["attribute_growth"])
+	if data.has("skill_focus_view"):
+		SkillFocus.local_view = SkillFocus.sanitize_view(data["skill_focus_view"])
+	if data.has("skill_xp"):
+		SkillPage.local_xp = SkillPage.sanitize_xp(data["skill_xp"])
 	root._waystone_wiring.apply_own_view(data)
 	root._bed_wiring.apply_own_view(data)
 	if data.get("settlement_view", null) is Dictionary:

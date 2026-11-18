@@ -83,6 +83,7 @@ const PlayerRules := preload("res://src/core/player_rules.gd")
 const RecordSanitize := preload("res://src/persistence/record_sanitize.gd")
 const AttributeRules := preload("res://src/character/attribute_rules.gd")
 const CreationRules := preload("res://src/character/creation_rules.gd")
+const SkillFocus := preload("res://src/character/skill_focus.gd")
 
 ## Phase 39 — how long a host-simulated peer stays down before its health reads back
 ## full. The Phase 37 cooldown shape, applied to the one deadline a body carries.
@@ -903,10 +904,11 @@ var _attr_sync_owed: Dictionary = {}
 func grant_skill_xp(player_id: String, skill: String, amount: int, defer_sync: bool = false) -> Array:
 	if not is_authoritative or amount <= 0:
 		return []
-	add_skill_xp(player_id, skill, amount)
-	var rec := get_record(player_id)
+	var rec := ensure_player(player_id)
 	if rec.is_empty():
 		return []
+	amount = SkillFocus.boost_record(rec, skill, amount)   # Phase 272: the dedication bonus, once, here
+	add_skill_xp(player_id, skill, amount)
 	var category := AttributeRules.category_of_skill(skill)
 	var xp := float(amount)
 	if category == "magic":
@@ -1255,6 +1257,7 @@ func get_player_data(player_id: String) -> Dictionary:
 		"craft_counter": int(rec.get("craft_counter", 0)),
 		"skills":     rec.get("skills", {}),
 		"skill_xp":   rec.get("skill_xp", {}),
+		"skill_focus": SkillFocus.sanitize(rec.get("skill_focus", {})),
 		"attributes": get_attributes(player_id),
 		"attribute_growth": AttributeRules.sanitize_growth(rec.get("attribute_growth", {})),
 		"cooldowns":  live_cooldowns(rec.get("cooldowns", {})),
@@ -1330,7 +1333,7 @@ func apply_player_data(player_id: String, data: Dictionary) -> void:
 	# to the empty table — every skill then reads as its seed tier (novice).
 	rec["skills"]     = data.get("skills", {})
 	# Phase 161: skill XP rides the record; a payload from before it restores to none.
-	rec["skill_xp"]   = RecordSanitize.sanitize_skill_xp(data.get("skill_xp", {}))
+	rec["skill_xp"]   = RecordSanitize.sanitize_skill_xp(data.get("skill_xp", {})); rec["skill_focus"] = SkillFocus.sanitize(data.get("skill_focus", {}))
 	# Phase 178: attributes ride the record; a pre-178 payload carries none and restores to base 10 in everything,
 	# which derives today's carry capacity and max HP exactly.
 	rec["attributes"] = AttributeRules.sanitize(data.get("attributes", {}))
