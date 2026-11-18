@@ -375,9 +375,14 @@ func station_from_hotbar(h: Node) -> void:
 ## from it. The client uses the bench (the interact input's own rule), its window lists the planks, and Craft
 ## makes three planks. The host then moves the bench 40 m away: the client's window closes, and the same request
 ## sent anyway is refused by the host (`station_required`), the client's pack unchanged.
+## The step tests crafting, not combat: the regenerated world spawns creatures round RENDEZVOUS, and a boar's hits
+## knock the client's body about half a metre each (a host teleport) until it dies and respawns at RENDEZVOUS, on the
+## waystone `waystone_travel` left there, which the interact rule then prefers to the bench. So for the whole step the
+## host keeps creatures off the client the way the playtest bot and the clan probe do (`STATION_CLEAR_M`).
 const STATION_RECIPE := "RecipeThornwoodPlank"
 const STATION_TYPE := "carpentry bench"
 const STATION_TECH := "TechBasicCarpentry"
+const STATION_CLEAR_M := 40.0
 const CraftCatalog := preload("res://src/crafting/craft_catalog.gd")
 func station_craft(h: Node) -> void:
 	await h._await_settle(1.0 * h._time_scale)
@@ -388,6 +393,9 @@ func station_craft(h: Node) -> void:
 		if pack == null:
 			h._report("station_craft", "fail", "no_owner")
 			return
+		var keep_clear := func() -> void: _clear_creatures_near(h, bound)
+		keep_clear.call()
+		h.get_tree().process_frame.connect(keep_clear)
 		var seen: Array = []
 		var on_craft := func(r: Dictionary) -> void:
 			if str(r.get("player_id", "")) == bound and str(r.get("recipe_id", "")) == STATION_RECIPE:
@@ -402,6 +410,8 @@ func station_craft(h: Node) -> void:
 		var near := ""
 		if came and at is Vector3:
 			near = h._root._station.place_station(STATION_TYPE, (at as Vector3) + Vector3(1.5, 0.0, 0.0))
+		# The bench must be what the interact input picks where the body stands (no nearer chest, bed or waystone).
+		var picked: bool = near != "" and CraftCatalog.interact_station(h._root._station.get_all_stations(), at as Vector3) == near
 		var crafted: bool = near != "" and await h._await_until(func() -> bool:
 			return seen.any(func(e: Array) -> bool: return bool(e[0])), h._step_timeout() * 3.0)
 		var far := ""
@@ -413,11 +423,12 @@ func station_craft(h: Node) -> void:
 		var planks: int = int(pack.get_item_count("ThornwoodPlank"))
 		var wood: int = int(pack.get_item_count("Thornwood"))
 		GameBus.craft_resolved.disconnect(on_craft)
+		h.get_tree().process_frame.disconnect(keep_clear)
 		if far != "":
 			h._root._station.remove_station(far)
-		var ok: bool = crafted and refused and planks == 3 and wood == 2
+		var ok: bool = picked and crafted and refused and planks == 3 and wood == 2
 		h._report("station_craft", h.verdict(ok, true), DETAIL if ok
-			else "came%d-placed%d-crafted%d-refused%d-planks%d-wood%d" % [int(came), int(near != ""), int(crafted), int(refused), planks, wood])
+			else "came%d-placed%d-picked%d-crafted%d-refused%d-planks%d-wood%d" % [int(came), int(near != ""), int(picked), int(crafted), int(refused), planks, wood])
 		return
 	var inv: Node = h._root._inventory
 	var ui: Node = h._root._ui
@@ -460,3 +471,13 @@ func station_craft(h: Node) -> void:
 	var ok: bool = opened and not card.is_empty() and made and closed and kept
 	h._report("station_craft", h.verdict(ok, true), DETAIL if ok
 		else "found%d-opened%d-listed%d-sent%d-made%d-closed%d-kept%d" % [int(found), int(opened), int(not card.is_empty()), sent, int(made), int(closed), int(kept)])
+
+## Host: despawn every creature within `STATION_CLEAR_M` (on the x/z plane) of where the host judges `player_id`.
+static func _clear_creatures_near(h: Node, player_id: String) -> void:
+	var at: Variant = h._root._chest_wiring.player_pos(player_id)
+	if not at is Vector3:
+		return
+	for inst: Dictionary in h._root._creature.get_all_instances():
+		var c: Vector3 = inst["position"]
+		if Vector2(c.x - (at as Vector3).x, c.z - (at as Vector3).z).length() <= STATION_CLEAR_M:
+			h._root._creature.despawn_instance(str(inst["instance_id"]))
