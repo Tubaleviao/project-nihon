@@ -381,6 +381,19 @@
     "sounds/sfx/player/footsteps/grass_01.ogg.raw": "sounds/sfx/player/footsteps/grass_01.ogg.raw",
     "sounds/sfx/player/footsteps/grass_02.ogg.raw": "sounds/sfx/player/footsteps/grass_02.ogg.raw",
     "sounds/sfx/player/footsteps/grass_03.ogg.raw": "sounds/sfx/player/footsteps/grass_03.ogg.raw",
-    "sounds/ui/click.ogg.raw": "sounds/ui/click.ogg.raw"
+    "sounds/sfx/player/footsteps/sand_01.ogg.raw": "sounds/sfx/player/footsteps/sand_01.ogg.raw",
+    "sounds/sfx/player/footsteps/sand_02.ogg.raw": "sounds/sfx/player/footsteps/sand_02.ogg.raw",
+    "sounds/sfx/player/footsteps/sand_03.ogg.raw": "sounds/sfx/player/footsteps/sand_03.ogg.raw",
+    "sounds/sfx/player/footsteps/stone_01.ogg.raw": "sounds/sfx/player/footsteps/stone_01.ogg.raw",
+    "sounds/sfx/player/footsteps/stone_02.ogg.raw": "sounds/sfx/player/footsteps/stone_02.ogg.raw",
+    "sounds/sfx/player/footsteps/stone_03.ogg.raw": "sounds/sfx/player/footsteps/stone_03.ogg.raw",
+    "sounds/sfx/world/dig_01.ogg.raw": "sounds/sfx/world/dig_01.ogg.raw",
+    "sounds/sfx/world/dig_02.ogg.raw": "sounds/sfx/world/dig_02.ogg.raw",
+    "sounds/sfx/world/dig_03.ogg.raw": "sounds/sfx/world/dig_03.ogg.raw",
+    "sounds/sfx/world/pickup_01.ogg.raw": "sounds/sfx/world/pickup_01.ogg.raw",
+    "sounds/sfx/world/pickup_02.ogg.raw": "sounds/sfx/world/pickup_02.ogg.raw",
+    "sounds/ui/click.ogg.raw": "sounds/ui/click.ogg.raw",
+    "sounds/ui/window_close.ogg.raw": "sounds/ui/window_close.ogg.raw",
+    "sounds/ui/window_open.ogg.raw": "sounds/ui/window_open.ogg.raw"
   }
 }

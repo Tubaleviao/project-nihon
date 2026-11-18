@@ -53,6 +53,8 @@ func _test_placeholders_decode() -> void:
 	AssetOverlay.clear_sound_cache()
 
 func _test_missing_is_safe() -> void:
+	Sound.stop_all()   # Phase 276: earlier suites play one-shots no frame frees,
+	Sound.enabled = true   # and a headless world boot in another suite turns Sound off
 	AssetOverlay.clear_sound_cache()
 	var w := Diag.warn_count()
 	assert_true(AssetOverlay.load_sound("sounds/ui/__missing_probe.ogg.raw") == null, "a missing key loads nothing")
@@ -69,6 +71,8 @@ func _test_missing_is_safe() -> void:
 	AssetOverlay.clear_sound_cache()
 
 func _test_play() -> void:
+	Sound.stop_all()   # Phase 276: earlier suites play one-shots no frame frees,
+	Sound.enabled = true   # and a headless world boot in another suite turns Sound off
 	Sound.rng.seed = 275
 	var ui := Sound.play("ui.click")
 	assert_true(ui is AudioStreamPlayer, "a UI event is a 2D player")
@@ -100,6 +104,8 @@ func _test_play() -> void:
 	assert_eq(Sound.get_child_count(), 0, "stop_all frees every player")
 
 func _test_loops_and_stop() -> void:
+	Sound.stop_all()   # Phase 276: earlier suites play one-shots no frame frees,
+	Sound.enabled = true   # and a headless world boot in another suite turns Sound off
 	var amb := Sound.play("ambience.TemperateForest")
 	var music := Sound.play("music.main_theme")
 	assert_true(amb is AudioStreamPlayer and music is AudioStreamPlayer, "ambience and music are 2D players")

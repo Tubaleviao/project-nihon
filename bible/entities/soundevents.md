@@ -15,4 +15,5 @@ The sound event table: gameplay plays an event id, which names the asset key, th
 | `buses` | json | yes | The audio buses under Master, in layout order |
 | `events` | json | yes | { <event id>: { key, bus, spatial: 2d\|3d, variants, volumeDb, pitchJitter, loop, maxDistance? } } |
 | `files` | json | yes | { <event id>: [asset keys] } — `<key>.ogg.raw`, or `<key>_01.ogg.raw`.. for sfx variants |
+| `footsteps` | json | yes | { terrain: { <terrain material>: <surface> }, block: <surface> } — the footstep.<surface> event underfoot (Phase 276) |
 

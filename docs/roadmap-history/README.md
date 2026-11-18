@@ -362,3 +362,4 @@ Filed by the owner on 2026-11-14. The other phases of the arc are open in [ROADM
 | 270 | The technology tree: nodes, lines, zoom | Done | [phases-270.md](phases-270.md) |
 | 274 | Gathering: Mining, Woodcutting, Foraging and Skinning are their own skills | Done | [phases-274.md](phases-274.md) |
 | 275 | Audio foundation: a sound loader, an event table, a bus layout and placeholder sounds | Done | [phases-275.md](phases-275.md) |
+| 276 | First sounds wired in: clicks, windows, footsteps, the dig, pickups, a creature's attack, ambience and music | Done | [phases-276.md](phases-276.md) |
