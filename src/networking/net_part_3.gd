@@ -422,6 +422,10 @@ func _route_h2c(payload: Dictionary) -> void:
 				"survived":  bool(payload.get("survived", false)),
 				"flag":      str(payload.get("flag", "")),
 			})
+		"title_unlocked":
+			var won: Variant = payload.get("title", "")
+			if won is String and (won as String).length() <= 40:
+				GameBus.title_unlocked.emit("", won)
 		"profession_unlocked":
 			GameBus.profession_unlocked.emit("", str(payload.get("profession", "")))
 		"market_synced":

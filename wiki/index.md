@@ -359,6 +359,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [StoneTools](entities/stonetools.md) — The stone tools a newcomer makes by hand (the only tools made or repaired without a bench), the two inputs they take, and where those inputs come from: branches from a felled tree, loose stones knocked from host rock
 - [Structure](entities/structure.md) — A connected set of placed blocks and the stations on them, owned by its builder or the builder's clan
 - [StructureDurability](entities/structuredurability.md) — How a placed block wears and comes apart
+- [Titles](entities/titles.md) — Titles: names shown under a player
 - [TradeSystem](entities/tradesystem.md) — Defines the rules governing player-to-player trade
 - [WaystoneTravel](entities/waystonetravel.md) — Fast travel between waystones: a player attunes to a stone by standing at it, then travels between two attuned stones for a cost in items per 1,000 km, once per cooldown
 - [WeatherSystem](entities/weathersystem.md) — Simulates weather across biomes as an emergent world system

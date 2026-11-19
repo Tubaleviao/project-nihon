@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–225, 238–243, 248, 249, 252–254, 259–264, 267–272 and 274–276 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–225, 238–243, 248, 249, 252–254, 259–264 and 267–276 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -31,14 +31,13 @@ introductions of the arcs they belonged to, are archived in
 Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
 see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
 phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
-comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–254, 259–264, 267–272, 274–276)
+comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–254, 259–264, 267–276)
 have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
 [Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
 others are not in it.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 14 | 273 | Titles: professions unlock them, the player chooses one |
 | 15 | 265 | One body everywhere: the creation screen, the Character window and the world draw the same avatar |
 | 16 | 266 | A chibi character worth looking at: the art direction and the player rig |
 | 17 | 255 | The first release: `v0.1.0` from the release workflow |
@@ -315,7 +314,7 @@ tiers, several at once, and the UI calls them professions.
 | 270 | The technology tree: nodes, lines, zoom | Done |
 | 271 | The skill wheel: professions around the edge, shared skills in the centre | Done |
 | 272 | A skill's own page, and where the player's focus went | Done |
-| 273 | Titles: professions unlock them, the player chooses one | Open |
+| 273 | Titles: professions unlock them, the player chooses one | Done |
 | 274 | Gathering: Mining, Woodcutting, Foraging and Skinning are their own skills | Done |
 
 ### Next: sound (Phases 275–)
@@ -1028,41 +1027,6 @@ skills anyone uses sit, with no label.
   grant is multiplied exactly once; 100 grants of 2 XP at +25% pay exactly 250 XP (the fraction is
   carried); focus is synced only to its own player; an unlock emits the toast
   that opens its page.
-- Every new string is in both locales.
-
-## Phase 273 — Titles: professions unlock them, the player chooses one
-
-Professions unlock by themselves from skill tiers (`locked → active → mastered` in the fabric,
-several at once; the host stores them per player since Phase 118). Until Phase 271 puts them on the
-wheel's rim no window shows them; this phase makes them the source of titles the player chooses to
-show.
-
-- **Fabric (separate PR):** each profession names a title for `active` (for example "Blacksmith")
-  and one for `mastered` ("Master Blacksmith"); each skill names a title for its master tier ("Master
-  Smelter"); a built-in `Newcomer` title every character has from creation. Every title has a
-  `title.<Id>.name` key in `locale/content.csv` (Phase 267); the validator rejects a title with no
-  name in a locale and two sources that give the same title.
-- **Unlock:** when the host records a profession transition or a skill reaching master, it adds the
-  titles that unlocks to the player's unlocked set (durable in `player_registry.gd`, synced to its
-  own player only) and sends a notice key the client shows as a toast ("New title: Master
-  Smelter"); clicking it opens the title list.
-- **Choosing:** the Character window lists the unlocked titles; the player picks one, or none. The
-  request goes to the host, which refuses a title not in that player's unlocked set, stores the
-  choice and syncs it to the peers that see that player, so it shows under the name on the nameplate
-  and in the Character window. A new character wears `Newcomer` until they choose another.
-- **Gates stay on professions:** recipe gates (`crafting_slice.gd` `_check_profession_gate`,
-  `requires_profession:<id>`) keep checking unlocked professions, never the chosen title, so wearing
-  a title never changes what a player can craft.
-
-**Acceptance criteria**
-- `npm run validate` and `check-drift` pass; the validator's self-check rejects a title with no
-  `pt_BR` name and a duplicated title.
-- Suite tests: a new character has exactly `Newcomer` unlocked and chosen; unlocking a profession and
-  mastering a skill add their titles once and emit the toast; the host refuses a title that is not
-  unlocked and accepts clearing it; the chosen title survives save and load; changing the title does
-  not change a profession-gated recipe's result.
-- Net harness step: a client chooses an unlocked title and the second client's nameplate shows it; a
-  request for a locked title is refused.
 - Every new string is in both locales.
 
 ## Phase 277 — Sound gaps: other players' footsteps, rock underfoot on cliffs, music on the main menu

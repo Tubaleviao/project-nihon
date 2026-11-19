@@ -155,7 +155,7 @@ var _character_grid: GridContainer = null
 var _sheet_left: VBoxContainer = null
 var _sheet_right: VBoxContainer = null
 var _sheet_doll: CharacterSheet.Doll = null
-var _sheet_name: Label = null
+var _sheet_name: Label = null; var title_wiring: RefCounted = null   # Phase 273: title_wiring is set by game_root (the own title record)
 var _sheet_attributes: VBoxContainer = null
 var _sheet_stats: GridContainer = null
 var _sheet_skills: HBoxContainer = null
@@ -233,7 +233,7 @@ func _ready() -> void:
 	GameBus.research_resolved.connect(_on_research_resolved)
 	GameBus.research_points_synced.connect(_on_research_points_synced)
 	GameBus.technology_unlocked.connect(_on_technology_unlocked)
-	GameBus.own_skill_tier_gained.connect(_announce_tier); GameBus.skill_tier_recorded.connect(_on_skill_tier_recorded)   # Phase 272: a new tier toasts and opens its page
+	GameBus.own_skill_tier_gained.connect(_announce_tier); GameBus.skill_tier_recorded.connect(_on_skill_tier_recorded); GameBus.title_unlocked.connect(_m1.on_title_unlocked)   # Phase 272: a new tier toasts and opens its page; Phase 273: a new title toasts
 	GameBus.system_message.connect(_on_system_notice)   # Phase 260: a notice is also a toast
 	GameBus.item_picked_up.connect(_on_item_picked_up)
 	GameBus.inventory_changed.connect(_on_inventory_changed)

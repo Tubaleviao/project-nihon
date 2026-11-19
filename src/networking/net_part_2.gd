@@ -550,6 +550,15 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 			var action := str(payload.get("action", ""))
 			if action == "create" or action == "skip":
 				GameBus.character_creation_intent.emit(action, sl.CreationRules.intent_fields(payload), creator)
+		"title_intent":
+			# Phase 273 — a title is worn BY the connection's own player; the host refuses one not unlocked.
+			var wearer = sl._actor_id(sender)
+			if wearer == "":
+				sl._refuse_unhandshaked(sender, "title_intent")
+				return
+			var wanted_title: Variant = payload.get("title", "")
+			if wanted_title is String and (wanted_title as String).length() <= 40:
+				GameBus.title_choose_intent.emit(wanted_title, wearer)
 		"look_request":
 			# Phase 181 — a bound client asks for one peer's look; answered only inside its AOI.
 			if sl._actor_id(sender) == "":

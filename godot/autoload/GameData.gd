@@ -353,6 +353,7 @@ const WORLD_SYSTEMS: Dictionary = {
 		"StoneTools": preload("res://godot/world_systems/stonetools.tres"),
 		"Structure": preload("res://godot/world_systems/structure.tres"),
 		"StructureDurability": preload("res://godot/world_systems/structuredurability.tres"),
+		"Titles": preload("res://godot/world_systems/titles.tres"),
 		"TradeSystem": preload("res://godot/world_systems/tradesystem.tres"),
 		"WaystoneTravel": preload("res://godot/world_systems/waystonetravel.tres"),
 		"WeatherSystem": preload("res://godot/world_systems/weathersystem.tres"),

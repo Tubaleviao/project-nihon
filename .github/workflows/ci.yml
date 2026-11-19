@@ -517,6 +517,9 @@ jobs:
       - name: Check the skill-wheel validation rejects bad tables
         run: node tools/check_skill_wheel.js
 
+      - name: Check the title validation rejects bad tables
+        run: node tools/check_titles.js
+
       - name: Check the stone-tool validation rejects bad tables
         run: node tools/check_stone_tools.js
 

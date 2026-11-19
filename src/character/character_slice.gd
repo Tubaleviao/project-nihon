@@ -49,6 +49,7 @@ const GameDataReader := preload("res://src/core/game_data_reader.gd")
 const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 const CharacterMaterial := preload("res://src/character/character_material.gd")
 const CreationRules := preload("res://src/character/creation_rules.gd")
+const TitleRules := preload("res://src/character/title_rules.gd")
 
 const MIN_LOD := 0
 const MAX_LOD := 2

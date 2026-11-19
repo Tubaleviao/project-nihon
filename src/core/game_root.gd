@@ -66,7 +66,7 @@ const WritingWiring := preload("res://src/technology/writing_wiring.gd")
 const CraftingWiring := preload("res://src/crafting/crafting_wiring.gd")
 const CharacterWiring := preload("res://src/character/character_wiring.gd")
 const GestureWiring   := preload("res://src/character/gesture_wiring.gd")
-const CreationWiring  := preload("res://src/character/creation_wiring.gd")
+const CreationWiring  := preload("res://src/character/creation_wiring.gd"); const TitleWiring := preload("res://src/character/title_wiring.gd")
 const GestureSlice    := preload("res://src/character/gesture_slice.gd")
 const PeerWiring := preload("res://src/networking/peer_wiring.gd")
 const SnapshotWiring := preload("res://src/persistence/snapshot_wiring.gd")
@@ -93,7 +93,7 @@ var _writing_wiring := WritingWiring.new()
 var _crafting_wiring := CraftingWiring.new()
 var _character_wiring := CharacterWiring.new()
 var _gesture_wiring := GestureWiring.new()
-var _creation_wiring := CreationWiring.new()
+var _creation_wiring := CreationWiring.new(); var _title_wiring := TitleWiring.new()
 var _carcass_wiring := CarcassWiring.new()
 var _mount_wiring := MountWiring.new()
 var _peer_wiring := PeerWiring.new()
@@ -268,7 +268,7 @@ var _handshake_retries: int = 0
 
 ## Phase 132 — wiring modules know their root from construction (the suite builds roots without `_ready`).
 func _init() -> void:
-	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _bed_wiring, _work_wiring, _tutorial_wiring, _settlement_wiring, _clan_wiring, _structure_wiring, _chest_wiring, _station_wiring, _writing_wiring, _crafting_wiring, _character_wiring, _gesture_wiring, _creation_wiring, _carcass_wiring, _mount_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring, _admin_wiring, _menu_wiring, _audio_wiring]
+	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _bed_wiring, _work_wiring, _tutorial_wiring, _settlement_wiring, _clan_wiring, _structure_wiring, _chest_wiring, _station_wiring, _writing_wiring, _crafting_wiring, _character_wiring, _gesture_wiring, _creation_wiring, _title_wiring, _carcass_wiring, _mount_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring, _admin_wiring, _menu_wiring, _audio_wiring]
 	for w in _wirings:
 		w.root = self
 
@@ -467,7 +467,7 @@ func _build_and_boot() -> void:
 	_waystone_wiring.attach()   # Phase 125 — waystone travel reuses the exact admin teleport door
 	if not _is_server:
 		_ui.inventory_slice       = _inventory
-		_ui.character_slice       = _character
+		_ui.character_slice       = _character; _ui.title_wiring = _title_wiring
 		_ui.crafting_slice        = _crafting
 		_ui.technology_slice      = _technology
 		_ui.market_slice          = _market
