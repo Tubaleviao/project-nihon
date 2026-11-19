@@ -41,7 +41,7 @@
 # Env knobs: GODOT (binary, default `godot`), STRESS_OUT (default ./stress), STRESS_MAX (largest
 # crowd to try, default 200), STRESS_PATTERNS (default "cluster spread cross pole churn"),
 # STRESS_PROFILES (default "lan wan_br"), STRESS_SECONDS (steady seconds per run, default 20),
-# STRESS_SEED (bot path seed, default 1), STRESS_ROLE (server|bots), STRESS_SERVER, STRESS_CTL_PORT.
+# STRESS_SEED (bot path seed, default 1), STRESS_ROLE (server|bots), STRESS_SERVER, STRESS_CTL_PORT, STRESS_CTL_TOKEN (shared secret for the split control channel), STRESS_CTL_BIND (server bind address, default 0.0.0.0).
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
