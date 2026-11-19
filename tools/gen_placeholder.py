@@ -75,6 +75,9 @@ ITEM_TEXTURE_SIZES = {
     "BookTechBasicSmithing": 32, "BookTechMasterForge": 32, "BookTechBasicCarpentry": 32, "BookTechTextileWeaving": 32, "BookTechArcaneForging": 32, "BookTechAlchemy": 32, "BookTechVoidMastery": 32, "BlueprintRecipeBed": 32, "BlueprintRecipeChest": 32, "BlueprintRecipeDoor": 32, "BlueprintRecipeHearth": 32, "BlueprintPalisade": 32, "BlueprintStorehouse": 32, "BlueprintWorkshop": 32, "BlueprintWatchtower": 32,
     # Cement and the construction-tech books (project-nihon-assets#73).
     "Cement": 64, "BookTechConcrete": 32, "BookTechLeyframe": 32, "BookTechSteel": 32,
+    # Phase 268/274 — stone tools, stations and station blueprints (project-nihon#657).
+    "StoneAxe": 64, "StonePick": 64, "StoneShovel": 64, "Branch": 64, "AlchemyBench": 64, "CarpentryBench": 64, "MasonryBench": 64, "VoidShieldedWorkshop": 64, "Forge": 64, "ArcaneForge": 64, "MasterForge": 64,
+    "StoneHammer": 32, "StoneKnife": 32, "LooseStone": 32, "BlueprintRecipeAlchemyBench": 32, "BlueprintRecipeArcaneForge": 32, "BlueprintRecipeCarpentryBench": 32, "BlueprintRecipeForge": 32, "BlueprintRecipeMasonryBench": 32, "BlueprintRecipeMasterForge": 32, "BlueprintRecipeVoidShieldedWorkshop": 32, "BlueprintRecipeWaystone": 32,
 }
 ITEM_TEXTURE_DIR = ROOT / "assets/textures/items"
 # Phase 180 — the eyes of the creation gender presets (fabric/gameplay/characters/appearances.js).
