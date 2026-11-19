@@ -289,3 +289,16 @@ static func parse(file: PackedByteArray, seed_v: int, worldgen_version: int, exp
 	if h != file.slice(HEADER_BYTES, HEADER_BYTES + 32) or (expected_hex != "" and h.hex_encode() != expected_hex.to_lower()):
 		return { "ok": false, "error": "bake.bad_hash" }
 	return { "ok": true, "error": "", "cols": cols, "rows": rows, "cells": body, "sea": file.decode_s32(32) }
+
+## The bake of a world: base height from `WorldShape.height` sampled at each cell's centre (rounded to units),
+## the sea at `WorldShape.sea_level()`. The planet is `circumference_m` round and half that tall, centred on z = 0.
+static func bake_world(seed_v: int, circumference_m: float, cell_m: float, erosion_passes: int = 2) -> Dictionary:
+	var WorldShape := preload("res://src/terrain/world_shape.gd")
+	var cols := maxi(4, roundi(circumference_m / cell_m))
+	var rows := maxi(2, roundi(circumference_m * 0.5 / cell_m))
+	var sea := roundi(WorldShape.sea_level() / HEIGHT_UNIT_M)
+	var base := func(cx: int, cz: int) -> int:
+		var x := (float(cx) + 0.5) * cell_m
+		var z := (float(cz) + 0.5 - float(rows) * 0.5) * cell_m
+		return roundi(WorldShape.height(seed_v, x, z, circumference_m) / HEIGHT_UNIT_M)
+	return bake(cols, rows, sea, base, Callable(), erosion_passes)

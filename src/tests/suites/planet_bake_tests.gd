@@ -13,6 +13,7 @@ func register() -> void:
 	_run_test("planet bake: every land cell has a way down (no flat or pit left)", _test_no_pits)
 	_run_test("planet bake: a corrupted, wrong-hash or wrong-world file is refused", _test_file_refused)
 	_run_test("planet bake: a good file parses and keeps its cells", _test_file_roundtrip)
+	_run_test("planet bake: the world shape bakes deterministically", _test_bake_world)
 
 func _hash2(x: int, z: int) -> int:
 	var v := (x * 73856093) ^ (z * 19349663)
@@ -96,3 +97,9 @@ func _test_file_roundtrip() -> void:
 	assert_eq(int(r["cols"]), COLS, "columns kept")
 	var cells: PackedByteArray = r["cells"]
 	assert_eq(cells.decode_s16(0), clampi(int(b["height"][0]), -32768, 32767), "a height round-trips")
+
+func _test_bake_world() -> void:
+	var a := PlanetBake.serialize(PlanetBake.bake_world(1234, 400000.0, 20000.0), 1234, 13, 20000)
+	var b := PlanetBake.serialize(PlanetBake.bake_world(1234, 400000.0, 20000.0), 1234, 13, 20000)
+	assert_eq(a, b, "the fabric's world shape bakes to the same bytes twice")
+	assert_true(PlanetBake.parse(a, 1234, 13)["ok"], "and the file parses")
