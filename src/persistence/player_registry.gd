@@ -1333,8 +1333,7 @@ func apply_player_data(player_id: String, data: Dictionary) -> void:
 	# to the empty table — every skill then reads as its seed tier (novice).
 	rec["skills"]     = data.get("skills", {})
 	# Phase 161: skill XP rides the record; a payload from before it restores to none.
-	rec["skill_xp"]   = RecordSanitize.sanitize_skill_xp(data.get("skill_xp", {}))
-	rec["skill_focus"] = SkillFocus.sanitize(data.get("skill_focus", {}))
+	rec["skill_xp"]   = RecordSanitize.sanitize_skill_xp(data.get("skill_xp", {})); rec["skill_focus"] = SkillFocus.sanitize(data.get("skill_focus", {}))
 	# Phase 178: attributes ride the record; a pre-178 payload carries none and restores to base 10 in everything,
 	# which derives today's carry capacity and max HP exactly.
 	rec["attributes"] = AttributeRules.sanitize(data.get("attributes", {}))
