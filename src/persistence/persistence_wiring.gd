@@ -265,6 +265,8 @@ func _bind_local_identity() -> void:
 ## world). Returns the character instance id.
 func restore_or_create_player_character(pos: Vector3) -> String:
 	var pid := root._registry.local_player_id
+	if not pid.is_empty():
+		root._title_wiring.backfill(pid)   # Phase 273: titles for professions and masters reached before they shipped
 	var appearance: Variant = root._registry.get_record(pid).get("appearance", {}) if not pid.is_empty() else {}
 	# Phase 181 — a created character's look wins over a stored recipe (a save from before the creation).
 	var created: Variant = root._creation_wiring.boot_recipe(root._registry.creation_of(pid)) if not pid.is_empty() else null

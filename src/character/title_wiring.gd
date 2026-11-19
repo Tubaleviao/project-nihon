@@ -20,6 +20,7 @@ func _connect_all() -> void:
 	connect_bus(GameBus.profession_unlocked, _on_profession_unlocked)
 	connect_bus(GameBus.skill_tier_recorded, _on_skill_tier_recorded)
 	connect_bus(GameBus.title_choose_intent, _on_choose_intent)
+	connect_bus(GameBus.player_joined, _on_player_joined)
 
 ## This machine's own record: the registry's on a host, the mirror on a client.
 func own_record() -> Dictionary:
@@ -73,6 +74,27 @@ func _on_skill_tier_recorded(player_id: String, skill: String, tier: String) -> 
 		if all_master:
 			for mt in TitleRules.for_profession(str(p), "mastered"):
 				unlock(player_id, mt)
+
+## Host: unlock the titles a player already earned before titles shipped (or before this load): every
+## active profession, and every skill at master (plus the mastered title of a profession whose skills all are).
+## Idempotent: a title held already is not announced again. Returns the titles added.
+func backfill(player_id: String) -> Array:
+	var added: Array = []
+	if root._is_client or player_id == "" or not root._registry.has_player(player_id):
+		return added
+	var seen := func(_p: String, t: String) -> void: added.append(t)
+	GameBus.title_unlocked.connect(seen)
+	if root._professions != null:
+		for p in root._professions.get_unlocked(player_id):
+			_on_profession_unlocked(player_id, str(p))
+	for skill in TitleRules.master_skill_ids():
+		if str(root._crafting.get_skill_for(player_id, skill)) == MASTER_TIER:
+			_on_skill_tier_recorded(player_id, skill, MASTER_TIER)
+	GameBus.title_unlocked.disconnect(seen)
+	return added
+
+func _on_player_joined(_peer_id: int, player_id: String, _reconnected: bool) -> void:
+	backfill(player_id)
 
 ## Host: wear `title` for the local player ("") or a peer bound to its connection; "" or a refusal code.
 func choose(player_id: String, title: String) -> String:
