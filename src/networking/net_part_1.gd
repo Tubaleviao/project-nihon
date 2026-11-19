@@ -148,6 +148,12 @@ func _dedup(sender: int, payload: Dictionary) -> bool:
 
 	var last: int = sl._recv_seq.get(key, -1)
 
+	# Phase 256 — a binary layout carries `seq` as a u16: a counter far behind the frontier has wrapped, so
+	# the channel starts a new lap rather than refusing every packet until the sender catches up.
+	if last >= 0 and sl.PacketCodec.has_layout(ptype) and last - seq > sl.PacketCodec.SEQ_MOD / 2:
+		seen.clear()
+		last = -1
+
 	# Too stale: more than DEDUP_WINDOW behind the frontier — cannot reorder.
 	if last >= 0 and seq < last - sl.DEDUP_WINDOW:
 		return false
