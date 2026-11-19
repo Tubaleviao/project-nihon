@@ -57,21 +57,11 @@ others are not in it.
 
 Order notes that differ from the arcs' own order:
 
-- Phases 259–266 come first. They are the owner's playtest findings of 2026-11-13 (Phase 251), filed
-  as top priority: a new player should start with nothing and grow from bare hands, in a gentle
-  area, with work that shows its progress, digging that shows at once, a drop that asks how many,
-  and a character that looks the same everywhere and looks good. 259–262 depend on each other in
-  that order (work time, then the tools it rewards, then the ground they are used on, then the
-  empty start that needs all three); 263–266 stand alone.
-- Phases 267–274 are the owner's second set of Phase 251 findings (2026-11-14): stations are free
-  through B/V instead of made, the crafting window lists every station's recipes, and the crafting,
-  technology and skills windows show entity ids, no translation and no tree. Phase 268 comes right
-  after 261 and before 262, so the tutorial is rewritten once, with stations that are crafted.
-  Phase 267 comes before the window phases (269–273), which all show its names. 271 needs 270's
-  zoomable canvas, 272 needs 271's wheel, and 273's titles use 267's catalog and 272's toast.
-  274 (gathering skills) comes after 270 and before 271, because the wheel and the focus display
-  show its category. Phases 267–274 come before 265 and 266, because they are the
-  first hour's loop and the avatar is its look.
+- Phases 259–276 are done. 259–266 were the owner's playtest findings of 2026-11-13 (Phase 251): a new
+  player starts with nothing and grows from bare hands, in a gentle area, with work that shows its
+  progress, digging that shows at once, a drop that asks how many, and a character that looks the same
+  everywhere. 267–274 were the second set (2026-11-14): crafted stations, a crafting window that lists
+  every station's recipes, and skills, technology and crafting windows with names and a tree.
 - Phase 251 moved five places down on 2026-11-13, behind 225, 244, 256, 250 and 237, instead of
   being closed. It is a standing checkpoint: it is never closed, and each session's findings become
   new phases placed where the owner says.

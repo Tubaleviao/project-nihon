@@ -28,6 +28,8 @@ func register() -> void:
 	_run_test("sound wiring: a loose pick sounds only once the host confirms it", _test_loose_pick_confirmed)
 	_run_test("sound wiring: a disabled Sound retries nothing", _test_refresh_disabled)
 	_run_test("sound wiring: a music file that does not load backs off, without touching the rng", _test_music_back_off)
+	_run_test("sound wiring: a failed ambience load is not retried and clears on a biome change", _test_ambience_failed)
+	_run_test("sound wiring: a strike resets the work action to mine", _test_work_action_reset)
 
 ## Events this phase wires, by where they are played.
 ## A player body the suite places by hand (a fixture PlayerSlice has no body: no position, never on the floor).
@@ -487,4 +489,58 @@ func _test_refresh_disabled() -> void:
 	assert_eq(aw._music_attempts, 0, "a disabled Sound never tries the music")
 	Sound.enabled = was
 	_free_root(gr)
+	_end()
+
+
+const BIOME_STUB_SRC := "extends \"res://src/terrain/terrain_slice.gd\"\nvar stub_biome := \"TemperateForest\"\nfunc get_biome_at_chunk(_c) -> String:\n\treturn stub_biome\n"
+
+
+func _test_ambience_failed() -> void:
+	_begin()
+	var gr := _root()
+	var terrain: Node = _script(BIOME_STUB_SRC).new()
+	var player := PlayerSlice.new()
+	gr._terrain = terrain
+	gr._player = player
+	gr._audio_wiring.wire(gr)
+	var aw = gr._audio_wiring
+	var amb := AudioWiring.ambience_for("TemperateForest")
+	assert_true(amb != "", "the stub biome has an ambience")
+	AssetOverlay.clear_sound_cache()
+	for k in SoundEvents.files(amb):
+		AssetOverlay._sounds_missing[str(k)] = true   # the ambience does not load
+	aw.refresh_surroundings(0.0)
+	assert_eq(aw._ambience_failed, amb, "a failed load is remembered")
+	assert_eq(Sound.channel_event(AudioWiring.CHANNEL_AMBIENCE), "", "nothing plays")
+	var tries := _traced().count(amb)
+	for i in 5:
+		aw.refresh_surroundings(0.0)
+	assert_eq(_traced().count(amb), tries, "refreshes in the same biome do not retry it")
+	terrain.stub_biome = "Desert"   # no ambience row: the channel's target is empty
+	aw.refresh_surroundings(0.0)
+	assert_eq(aw._ambience_failed, "", "a biome change clears the failure")
+	AssetOverlay.clear_sound_cache()
+	terrain.stub_biome = "TemperateForest"
+	aw.refresh_surroundings(0.0)
+	assert_eq(Sound.channel_event(AudioWiring.CHANNEL_AMBIENCE), amb, "back in the biome, with the pack fixed, it plays")
+	_free_root(gr, [player, terrain])
+	_end()
+
+
+func _test_work_action_reset() -> void:
+	_begin()
+	var gr := _root()
+	var bag := InventorySlice.new()
+	add_child(bag)
+	gr._inventory = bag
+	gr._audio_wiring.wire(gr)
+	var aw = gr._audio_wiring
+	assert_eq(aw._work_action, "mine", "starts as mine")
+	GameBus.work_started.emit("block:1", 1.0, "dig", "Soil")
+	assert_eq(aw._work_action, "dig", "a dig work answer names the action")
+	GameBus.block_mine_requested.emit(Vector3.ZERO, Vector3.UP, "", {})
+	assert_eq(aw._work_action, "mine", "the strike resets it")
+	GameBus.work_started.emit("block:2", 1.0, "chop", "Wood")
+	assert_eq(aw._work_action, "mine", "an action the wiring does not name is ignored")
+	_free_root(gr, [bag])
 	_end()
