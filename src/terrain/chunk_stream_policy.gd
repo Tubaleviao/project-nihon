@@ -52,6 +52,17 @@ static func in_lead_cone(rel: Vector2i, heading: Vector2) -> bool:
 		return true
 	return Vector2(rel).normalized().dot(heading) >= LEAD_CONE_COS
 
+## Number of heading buckets (22.5° each): a heading change under one bucket does not re-derive the lead cone.
+const HEADING_BUCKETS := 16
+
+## The bucket of `velocity`'s heading, or -1 when it leads nothing (standing or slower than the standing lead).
+## Quantised so a steady turn re-derives the cone every bucket instead of waiting for the next chunk crossing. Pure.
+static func heading_bucket(velocity: Vector2) -> int:
+	var speed := velocity.length()
+	if lead_prefetch(speed) - DEFAULT_PREFETCH_DISTANCE <= 0:
+		return -1
+	return posmod(roundi(velocity.angle() / (TAU / float(HEADING_BUCKETS))), HEADING_BUCKETS)
+
 ## The extra chunks (beyond `base_radius`, up to base_radius + lead − DEFAULT_PREFETCH_DISTANCE) that a body at
 ## `center` moving at `velocity` (m/s, x/z) prefetches. Empty when standing or slower than the standing lead. Pure.
 static func lead_chunks(center: Vector2i, velocity: Vector2, base_radius: int) -> Array:

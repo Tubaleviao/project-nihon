@@ -50,7 +50,8 @@ func refresh(unload_now: bool = true) -> void:
 	var window_moved = centers != sl._last_centers
 	# Phase 239 — a change of lead depth (the body speeding up or slowing down) re-derives the desired set too.
 	var lead_extra: int = ChunkStreamPolicy.lead_prefetch(local_velocity().length()) - ChunkStreamPolicy.DEFAULT_PREFETCH_DISTANCE
-	if lead_extra != sl._lead_extra:
+	var lead_bucket: int = ChunkStreamPolicy.heading_bucket(local_velocity())
+	if lead_extra != sl._lead_extra or lead_bucket != sl._lead_bucket:   # a heading change at constant speed turns the cone too
 		window_moved = true
 	# Phase 194 (#512) — a queue sorted for a fast flyer's lane is re-sorted by distance once it slows: the lane
 	# order put the ground beside and behind a body that has stopped after the whole lane ahead of it.
@@ -77,6 +78,7 @@ func refresh(unload_now: bool = true) -> void:
 			sl.note_local_crossing()
 	sl._last_centers = centers
 	sl._lead_extra = lead_extra
+	sl._lead_bucket = lead_bucket
 	# ONE radius for WANTED and DESIRED on purpose (ninth review pass): `wanted` — what a
 	# crossing retains — is the same radius the queue spans, so no chunk that was queued (and
 	# therefore built) is released while it is still inside the window it was built for. See

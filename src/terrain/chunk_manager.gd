@@ -258,6 +258,7 @@ var max_builds_in_flight: int = ChunkStreamPolicy.starting_builds(OS.get_process
 var adaptive_workers := true
 var _idle_since_msec: int = -1
 var _last_adapt_msec: int = -1; var _lead_extra: int = 0   # _lead_extra: lead depth the desired set was computed for
+var _lead_bucket: int = -1   # the heading bucket (`ChunkStreamPolicy.heading_bucket`) the lead cone was derived for
 
 ## Phase 142 — see DEFAULT_PUMP_BUDGET_MSEC. `pump_clock_usec` is the clock the budget reads
 ## (a stub in the suite).

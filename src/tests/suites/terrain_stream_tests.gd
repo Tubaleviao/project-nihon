@@ -23,6 +23,7 @@ func register() -> void:
 	_run_test("stream: a restream bursts the build cap until the window is rebuilt", _test_stream_fold_catchup)
 	_run_test("stream: the local window builds high while moving fast, a peer window low", _test_stream_builds_high_priority)
 	_run_test("stream: finished builds attach nearest the body first", _test_stream_apply_nearest_first)
+	_run_test("stream: the heading bucket turns the lead cone, and the body's chunk attaches first", _test_stream_608_heading_and_body_first)
 	_run_test("stream: the queue key puts the body's chunk first and favours the heading", _test_stream_queue_priority)
 	_run_test("stream: a crossing re-sorts the whole queue around the new centre", _test_stream_queue_resorted_on_move)
 	_run_test("near: collision only within a walking body's ring, attached when a chunk enters it", _test_near_collision_ring)
@@ -490,6 +491,22 @@ func _test_stream_builds_high_priority() -> void:
 
 ## Phase 187 — one over-budget frame attaches one build, so the local player's 3×3 ring attaches first
 ## (under the body, then its neighbours) and the rest keep dispatch order, so none is starved.
+func _test_stream_608_heading_and_body_first() -> void:
+	assert_eq(ChunkStreamPolicy.heading_bucket(Vector2.ZERO), -1, "standing leads nothing")
+	var east := ChunkStreamPolicy.heading_bucket(Vector2(90.0, 0.0))
+	assert_eq(east, ChunkStreamPolicy.heading_bucket(Vector2(90.0, 3.0)), "a tiny heading change stays in its bucket")
+	assert_true(east != ChunkStreamPolicy.heading_bucket(Vector2(0.0, 90.0)), "a quarter turn at the same speed changes it")
+	assert_true(east != ChunkStreamPolicy.heading_bucket(Vector2(-90.0, 0.0)), "so does a reversal")
+	var cm := ChunkManager.new()
+	cm._builds = { 1: { "chunk": Vector2i(6, 0) }, 2: { "chunk": Vector2i(5, 0) }, 3: { "chunk": Vector2i(4, 1) }, 4: { "chunk": Vector2i(4, 0) } }
+	cm._last_centers = [Vector2i(4, 0)]
+	assert_eq(cm._apply_order([1, 2, 3, 4])[0], 4, "the body's chunk attaches first even when finished last")
+	var clock := _make_fast(cm)
+	assert_eq(cm._apply_order([1, 2, 3, 4])[0], 4, "and first while flying fast")
+	clock[0] += ChunkManager.FAST_HOLD_MSEC
+	cm._builds.clear()
+	cm.free()
+
 func _test_stream_apply_nearest_first() -> void:
 	var cm := ChunkManager.new()
 	cm._builds = { 11: { "chunk": Vector2i(7, 0) }, 12: { "chunk": Vector2i(5, 1) }, 13: { "chunk": Vector2i(1, 0) }, 14: { "chunk": Vector2i(4, 0) }, 15: { "chunk": Vector2i(6, 0) } }
