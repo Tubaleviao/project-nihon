@@ -30,6 +30,9 @@ func register() -> void:
 	_run_test("crowd: the faster region lookup names the same regions", _test_crowd_regions_for_chunks_same)
 	_run_test("crowd: a move in a crowd that wears nothing evaluates no equipment pair", _test_crowd_equipment_pairs_skipped)
 	_run_test("crowd: a dedicated server chunk keeps its data and attaches collision, no render mesh", _test_crowd_server_chunk_no_geometry)
+	_run_test("crowd: the split mode refuses a bots role with no server address", _test_crowd_split_config)
+	_run_test("crowd: the split mode's control messages round-trip", _test_crowd_control_messages)
+	_run_test("crowd: the report lists each machine", _test_crowd_report_machines)
 	_run_test("crowd: a dedicated server's chunk worker builds only the heightmap", _test_crowd_server_worker_skips_arrays)
 	_run_test("crowd: a headless host's worker builds collision and no render arrays", _test_crowd_headless_worker_builds_collision_only)
 	_run_test("crowd: worker-built collision faces equal the main-thread ones", _test_crowd_worker_collision_equals_main_thread)
@@ -693,3 +696,38 @@ class _CountingTransport extends _StampingTransport:
 	var builds := 0
 	func _set_rebuilt() -> void:
 		builds += 1
+
+func _test_crowd_split_config() -> void:
+	assert_false(StressRules.split_config("bots", "")["ok"], "a bots role with no server address is refused")
+	assert_false(StressRules.split_config("bots", "  ")["ok"], "a blank address is no address")
+	assert_true(StressRules.split_config("bots", "192.168.0.7")["ok"], "a bots role with an address runs")
+	assert_true(StressRules.split_config("server", "")["ok"], "the server role needs no address")
+	assert_false(StressRules.split_config("server", "10.0.0.1")["ok"], "the server role takes no address")
+	assert_true(StressRules.split_config("", "")["ok"], "no role is the single-machine run")
+	assert_false(StressRules.split_config("watcher", "")["ok"], "an unknown role is refused")
+
+func _test_crowd_control_messages() -> void:
+	var run := StressRules.control_encode("run", ["wan_br", "cluster", 64])
+	assert_eq(run, "run wan_br cluster 64", "a run request is one line")
+	var back := StressRules.control_decode(run)
+	assert_eq(back["verb"], "run", "it decodes to its verb")
+	assert_eq(back["args"], ["wan_br", "cluster", 64], "and its arguments, the size as a number")
+	for verb in ["ready", "steady", "stop"]:
+		assert_eq(StressRules.control_decode(StressRules.control_encode(verb))["verb"], verb, "%s round-trips" % verb)
+	var machine := StressRules.control_encode("machine", ['{"cores": 8, "os": "Linux 6"}'])
+	assert_eq(StressRules.control_decode(machine)["args"], ['{"cores": 8, "os": "Linux 6"}'], "a machine line keeps its JSON whole")
+	assert_eq(StressRules.control_encode("explode"), "", "an unknown verb is not encoded")
+	assert_true(StressRules.control_decode("explode").is_empty(), "nor decoded")
+	assert_true(StressRules.control_decode("run lan cluster").is_empty(), "a run with no size is refused")
+	assert_true(StressRules.control_decode("run dialup cluster 16").is_empty(), "a run with an unknown profile is refused")
+	assert_true(StressRules.control_decode("run lan walk 16").is_empty(), "a run with an unknown pattern is refused")
+	assert_true(StressRules.control_decode("run lan cluster -4").is_empty(), "a run with a size below one is refused")
+	assert_true(StressRules.control_decode("steady now").is_empty(), "a bare verb takes no arguments")
+	assert_true(StressRules.control_decode("").is_empty(), "a blank line is nothing")
+
+func _test_crowd_report_machines() -> void:
+	var machines := { "server": { "cpu": "Test CPU", "cores": 8, "ram_mb": 16000, "os": "Linux", "godot": "4.7", "native": true, "build": "release" } }
+	var report := StressRules.build_report([], { "machines": machines })
+	var md := StressRules.report_markdown(report)
+	assert_true(md.contains("## Machines"), "the report has a machines section")
+	assert_true(md.contains("Test CPU") and md.contains("release"), "with each machine's fields")

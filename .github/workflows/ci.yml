@@ -714,6 +714,27 @@ jobs:
             exit 1
           fi
 
+      - name: Split mode on loopback (Phase 250)
+        if: always() && steps.scope.outputs.run == 'true'
+        env:
+          GODOT: /tmp/godot/Godot_v4.7-stable_linux.x86_64
+        run: |
+          # The control channel's own round trip, then both roles on this runner over the real TCP side
+          # channel: one small pattern, a report with the machine fields filled for both roles.
+          python3 -I tools/stress_ctl.py selftest
+          STRESS_LOOPBACK_SPLIT=1 STRESS_OUT=stress/split STRESS_MAX=16 STRESS_PATTERNS=cluster \
+            STRESS_PROFILES=lan STRESS_SECONDS=8 tools/stress.sh
+          test -s stress/split/report.json
+          python3 -I - <<'PY'
+          import json
+          m = json.load(open("stress/split/machines.json"))
+          for role in ("bots", "server"):
+              f = m[role]
+              assert f["cpu"] and f["cores"] and f["ram_mb"] and f["os"] and f["godot"] and f["build"], (role, f)
+              assert isinstance(f["native"], bool), (role, f)
+          PY
+          grep -q '^## Machines' stress/split/report.md
+
       - name: Upload the stress report and run logs
         if: always() && steps.scope.outputs.run == 'true'
         uses: actions/upload-artifact@v4
