@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–225, 238–243, 248, 249, 252–254, 256, 259–276 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–225, 238–243, 248, 249, 252–256, 259–276 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -31,14 +31,13 @@ introductions of the arcs they belonged to, are archived in
 Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
 see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
 phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
-comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–254, 256, 259–276)
+comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–256, 259–276)
 have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
 [Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
 others are not in it.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 17 | 255 | The first release: `v0.1.0` from the release workflow |
 | 18 | 244 | A chunk cache on disk |
 | 20 | 250 | The server's ceiling: one machine serving, another running the bots |
 | 21 | 237 | Flight that handles like flight |
@@ -240,7 +239,7 @@ says decisions are proposed publicly.
 | 252 | A licence and a contributor's front door | Done ([phases-252.md](docs/roadmap-history/phases-252.md)) |
 | 253 | A green `main`: flaky gates demoted, the stress regression explained | Done ([phases-253.md](docs/roadmap-history/phases-253.md)) |
 | 254 | Repository hygiene: `.uid` files tracked, one lockfile, nothing stray | Done ([phases-254.md](docs/roadmap-history/phases-254.md)) |
-| 255 | The first release: `v0.1.0` from the release workflow | Open |
+| 255 | The first release: `v0.1.0` from the release workflow | Done ([phases-255.md](docs/roadmap-history/phases-255.md)) |
 | 256 | A binary wire format for the hot packets | Open |
 | 257 | Split files named by what they do | Open |
 | 258 | The public wiki and the community channels | Open |
@@ -789,37 +788,6 @@ findings come back as new phases.
   stack has no way to choose how many; the character is ugly and not the chibi style the owner
   wants; the creation screen does not show the chosen hair style; the Character window shows a
   different body from the one walking in the world.
-
-## Phase 255 — The first release: `v0.1.0` from the release workflow
-
-`release.yml` builds the native library on three platforms and attaches Linux, Windows and macOS
-exports to a GitHub Release when a `v*` tag is pushed. It has never run: the repository has no tags.
-Nobody but the owner has ever run a build, Phase 251 has nothing to hand a tester, and the
-"public game must build and be fully playable without the submodule" rule has never been checked
-by a player.
-
-- A `CHANGELOG.md` with a `v0.1.0` entry (the arcs shipped, in a paragraph each) and a release
-  checklist in `docs/DEVELOPMENT.md`: bump `config/version` in `project.godot`, write the changelog
-  entry, tag, push, watch the workflow, smoke-test each download.
-- `project.godot` gains `application/config/version` and the main menu shows it in a corner.
-- The README's first screen gets a **Download** line pointing at the latest release, with the
-  placeholder-art caveat.
-- The release workflow runs the playtest bot's `create`, `walk` and `mine` steps against the Linux
-  export under xvfb before publishing, so a broken export never becomes a release.
-- Tag `v0.1.0` on the merge commit of this phase.
-
-**Status (2026-11-13):** the version (`0.1.0`) and its menu label, `CHANGELOG.md` with `tools/check_changelog.sh` in
-the `fabric` job, the release checklist, the README download line and the release workflow's dry run (manual or
-on a PR touching anything a release depends on, with `create`, `walk` and `mine` played on the Linux export
-through `tools/run_export_playtest.sh`, shared with CI's release-flight job) are in. Only the tag-only publish
-job has a write token; the tag check runs before the native builds. Open: tag `v0.1.0` on the merge commit and check the release's assets.
-
-**Acceptance criteria**
-- A suite test reads `application/config/version` and asserts it parses as `major.minor.patch`.
-- The release workflow has a `workflow_dispatch` dry run (no tag, no publish) that CI exercises on
-  pull requests touching it, and it runs the three playtest steps on the export.
-- `CHANGELOG.md` exists and a CI step fails when the version in `project.godot` has no entry.
-- A GitHub Release `v0.1.0` exists with three assets; the README download link resolves to it.
 
 ## Phase 256 — A binary wire format for the hot packets
 
