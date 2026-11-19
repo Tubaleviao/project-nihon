@@ -14,6 +14,7 @@ func register() -> void:
 	_run_test("planet bake: a corrupted, wrong-hash or wrong-world file is refused", _test_file_refused)
 	_run_test("planet bake: a good file parses and keeps its cells", _test_file_roundtrip)
 	_run_test("planet bake: the world shape bakes deterministically", _test_bake_world)
+	_run_test("planet bake: the native bake matches the GDScript reference", _test_native_parity)
 	_run_test("planet bake: a corrupted stored bake is refused and baked again", _test_load_or_bake)
 
 func _hash2(x: int, z: int) -> int:
@@ -124,3 +125,15 @@ func _test_load_or_bake() -> void:
 	assert_eq(third["refused"], "bake.bad_hash", "with the reason")
 	assert_eq(third["file"], first["file"], "to the same bytes as the first bake")
 	DirAccess.remove_absolute(path)
+
+## The native bake gives the same bytes as the GDScript reference (skipped, with a note, on a build without it).
+func _test_native_parity() -> void:
+	var gd := PlanetBake.serialize(PlanetBake.bake(COLS, ROWS, SEA, _base, Callable(), 2, false), 5, 13, 2000)
+	if not PlanetBake.NativeBuilder.use_native("planet_bake"):
+		assert_true(true, "no native planet_bake in this build: the reference stands alone")
+		return
+	var nat := PlanetBake.serialize(PlanetBake.bake(COLS, ROWS, SEA, _base, Callable(), 2, true), 5, 13, 2000)
+	assert_eq(nat, gd, "native and GDScript bakes are byte for byte the same")
+	var w_gd := PlanetBake.serialize(PlanetBake.bake_world(77, 400000.0, 20000.0, 2, false), 77, 13, 20000)
+	var w_nat := PlanetBake.serialize(PlanetBake.bake_world(77, 400000.0, 20000.0, 2, true), 77, 13, 20000)
+	assert_eq(w_nat, w_gd, "and so is the fabric's world shape")

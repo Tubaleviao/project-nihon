@@ -24,7 +24,7 @@ const NO_NATIVE_ARG := "--no-native"
 ## 10 = Phase 240 `build_smooth_arrays`; 11 = Phase 241 smooth coarse builds; 12 = Phase 241 review,
 ## coarse edge corners capped by the neighbours' edge tiles; 13 = `heightmap_strip_for`; 14 = `terrain_weights` (Phase 242). NativeWorldShape: 1 = Phase 248 mix and noise.
 const CLASSES := {
-	"NativeChunkBuilder": {"required": 14, "label": "chunk builder"},
+	"NativeChunkBuilder": {"required": 15, "label": "chunk builder"},
 	"NativeWorldShape": {"required": 1, "label": "world shape"},
 }
 

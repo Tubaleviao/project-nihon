@@ -8,6 +8,7 @@ extends RefCounted
 ## Heights are int units of HEIGHT_UNIT_M (0.5 m). The grid wraps in x (the planet's circumference) and
 ## stops at the poles. Cell i = z * cols + x.
 
+const NativeBuilder := preload("res://src/terrain/native_builder.gd")
 const FORMAT_VERSION := 1
 const MAGIC := 0x4E424B31          # "NBK1"
 const HEIGHT_UNIT_M := 0.5
@@ -27,13 +28,28 @@ const NEIGH := [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1)
 ## Bake. `base`: Callable(cell_x:int, cell_z:int) -> int height in units (the planet's `WorldShape` height,
 ## quantised, or a test's own). `biome`: Callable(cell_x, cell_z, height_units, flow) -> int 0..255, or invalid.
 ## Returns a Dictionary of PackedInt32Array fields plus the grid's meta.
-static func bake(cols: int, rows: int, sea_units: int, base: Callable, biome: Callable = Callable(), erosion_passes: int = 2) -> Dictionary:
+static func bake(cols: int, rows: int, sea_units: int, base: Callable, biome: Callable = Callable(), erosion_passes: int = 2, use_native: bool = true) -> Dictionary:
 	var n := cols * rows
 	var h := PackedInt32Array()
 	h.resize(n)
 	for z in rows:
 		for x in cols:
 			h[z * cols + x] = int(base.call(x, z))
+	var r: Dictionary = _core_native(h, cols, rows, sea_units, erosion_passes) if (use_native and NativeBuilder.use_native("planet_bake")) else core_gd(h, cols, rows, sea_units, erosion_passes)
+	var filled: PackedInt32Array = r["height"]
+	var flow: PackedInt32Array = r["flow"]
+	var down: PackedInt32Array = r["down"]
+	var river: PackedInt32Array = r["river"]
+	var biomes := PackedInt32Array()
+	biomes.resize(n)
+	var flags: PackedInt32Array = r["flags"]
+	for i in n:
+		if biome.is_valid():
+			biomes[i] = clampi(int(biome.call(i % cols, i / cols, filled[i], flow[i])), 0, 255)
+	return { "cols": cols, "rows": rows, "sea": sea_units, "height": filled, "flow": flow, "down": down, "river": river, "biome": biomes, "flags": flags }
+
+## The GDScript reference of everything after the base heights (`h` is changed in place by erosion).
+static func core_gd(h: PackedInt32Array, cols: int, rows: int, sea_units: int, erosion_passes: int) -> Dictionary:
 	for _p in erosion_passes:
 		_thermal(h, cols, rows, sea_units)
 		var f := _fill(h, cols, rows, sea_units)
@@ -41,25 +57,23 @@ static func bake(cols: int, rows: int, sea_units: int, base: Callable, biome: Ca
 		_hydraulic(h, fl["flow"], sea_units)
 	var filled := _fill(h, cols, rows, sea_units)
 	var fr := _flow(filled, cols, rows, sea_units)
-	var flow: PackedInt32Array = fr["flow"]
-	var down: PackedInt32Array = fr["down"]
-	var river := _rivers(filled, flow, down, fr["order"], sea_units)
-	var biomes := PackedInt32Array()
-	biomes.resize(n)
+	var river := _rivers(filled, fr["flow"], fr["down"], fr["order"], sea_units)
 	var flags := PackedInt32Array()
-	flags.resize(n)
-	for i in n:
-		var fl_bits := 0
+	flags.resize(h.size())
+	for i in h.size():
+		var bits := 0
 		if filled[i] <= sea_units:
-			fl_bits |= FLAG_OCEAN
+			bits |= FLAG_OCEAN
 		elif filled[i] > h[i]:
-			fl_bits |= FLAG_LAKE
+			bits |= FLAG_LAKE
 		if river[i] != 0:
-			fl_bits |= FLAG_RIVER
-		flags[i] = fl_bits
-		if biome.is_valid():
-			biomes[i] = clampi(int(biome.call(i % cols, i / cols, filled[i], flow[i])), 0, 255)
-	return { "cols": cols, "rows": rows, "sea": sea_units, "height": filled, "flow": flow, "down": down, "river": river, "biome": biomes, "flags": flags }
+			bits |= FLAG_RIVER
+		flags[i] = bits
+	return { "height": filled, "flow": fr["flow"], "down": fr["down"], "river": river, "flags": flags }
+
+## The native port of `core_gd` (native_bake.cpp).
+static func _core_native(h: PackedInt32Array, cols: int, rows: int, sea_units: int, erosion_passes: int) -> Dictionary:
+	return NativeBuilder.builder().planet_bake(h, cols, rows, sea_units, erosion_passes)
 
 static func _nbr(i: int, k: int, cols: int, rows: int) -> int:
 	var x := i % cols
@@ -292,7 +306,7 @@ static func parse(file: PackedByteArray, seed_v: int, worldgen_version: int, exp
 
 ## The bake of a world: base height from `WorldShape.height` sampled at each cell's centre (rounded to units),
 ## the sea at `WorldShape.sea_level()`. The planet is `circumference_m` round and half that tall, centred on z = 0.
-static func bake_world(seed_v: int, circumference_m: float, cell_m: float, erosion_passes: int = 2) -> Dictionary:
+static func bake_world(seed_v: int, circumference_m: float, cell_m: float, erosion_passes: int = 2, use_native: bool = true) -> Dictionary:
 	var WorldShape := preload("res://src/terrain/world_shape.gd")
 	var cols := maxi(4, roundi(circumference_m / cell_m))
 	var rows := maxi(2, roundi(circumference_m * 0.5 / cell_m))
@@ -301,7 +315,7 @@ static func bake_world(seed_v: int, circumference_m: float, cell_m: float, erosi
 		var x := (float(cx) + 0.5) * cell_m
 		var z := (float(cz) + 0.5 - float(rows) * 0.5) * cell_m
 		return roundi(WorldShape.height(seed_v, x, z, circumference_m) / HEIGHT_UNIT_M)
-	return bake(cols, rows, sea, base, Callable(), erosion_passes)
+	return bake(cols, rows, sea, base, Callable(), erosion_passes, use_native)
 
 ## The path of a world's bake under `dir`: one file per world seed and worldgen version.
 static func file_path(dir: String, seed_v: int, worldgen_version: int) -> String:

@@ -5,6 +5,7 @@
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
+#include <godot_cpp/variant/packed_int32_array.hpp>
 #include <godot_cpp/variant/packed_string_array.hpp>
 #include <godot_cpp/variant/packed_vector3_array.hpp>
 #include <godot_cpp/variant/string.hpp>
@@ -68,6 +69,10 @@ public:
 	// as `[custom0, custom1]` (RGBA8, one channel per layer 0-7, each vertex's eight bytes summing to 255;
 	// the rest zero). `params` is `TerrainWeights.native_params`. Empty on an input it cannot read.
 	Array terrain_weights(const PackedVector3Array &p_vertices, const PackedVector3Array &p_normals, int64_t p_natural, const Dictionary &p_params) const;
+
+	// Phase 245. Port of `PlanetBake.bake` after the base heights (integer units, row-major `cols` x `rows`): erosion,
+	// fill, flow, rivers. Returns { height, flow, down, river, flags } (PackedInt32Array each), empty on a bad size.
+	Dictionary planet_bake(const PackedInt32Array &p_heights, int64_t p_cols, int64_t p_rows, int64_t p_sea, int64_t p_passes) const;
 
 private:
 	Array heightmap_range(const Vector2i &p_pos, int64_t p_seed, const Ref<FastNoiseLite> &p_noise, const Dictionary &p_cfg, int p_x0, int p_x1, int p_z0, int p_z1) const;
