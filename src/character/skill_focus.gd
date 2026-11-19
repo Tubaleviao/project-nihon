@@ -61,7 +61,12 @@ static func boost(focus: Dictionary, skill: String, amount: int, window: int, bo
 	if amount <= 0:
 		return 0
 	# The grant's own minute counts for the grants after it, so a first grant is always paid at the normal rate.
-	var exact := float(amount) * multiplier(focus, skill, window, bonus)
+	var mult := multiplier(focus, skill, window, bonus)
+	var exact := float(amount) * mult
+	# The multiplier this grant was paid at, kept (not saved) so an undo takes back the same rate.
+	var paid_mult: Dictionary = focus.get("paid_mult", {})
+	paid_mult[skill] = mult
+	focus["paid_mult"] = paid_mult
 	note(focus, skill)
 	var carry: Dictionary = focus.get("carry", {})
 	exact += float(carry.get(skill, 0.0))
@@ -132,10 +137,14 @@ static func boost_record(rec: Dictionary, skill: String, amount: int) -> int:
 		rec["skill_focus"] = empty()
 	return boost_fabric(rec["skill_focus"], skill, amount)
 
-## The XP an undo of a `base` grant takes back: what the grant paid at the focus the record has now.
+## The XP an undo of a `base` grant takes back: what the latest grant of the skill paid (its own multiplier,
+## read before its minute was noted). Without one (a reload since) the normal rate.
 static func revoke_amount(rec: Dictionary, skill: String, base: int) -> int:
 	var f: Variant = rec.get("skill_focus", null)
-	return roundi(float(base) * (multiplier(f, skill, window_minutes(), max_bonus()) if f is Dictionary else 1.0))
+	var mult := 1.0
+	if f is Dictionary and (f.get("paid_mult", null) is Dictionary):
+		mult = float((f["paid_mult"] as Dictionary).get(skill, 1.0))
+	return roundi(float(base) * mult)
 
 ## What a player is told about their own focus: { skill: active minutes in the window }.
 static func view(focus: Dictionary, window: int) -> Dictionary:

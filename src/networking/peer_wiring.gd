@@ -369,7 +369,16 @@ func tick(delta: float) -> void:
 			_attr_sync_elapsed = 0.0
 			root._registry.flush_attribute_syncs()
 			SkillFocus.local_view = SkillFocus.view_of_record(root._registry.get_record(root._registry.local_player_id))
-			SkillPage.local_xp = root._registry.get_record(root._registry.local_player_id).get("skill_xp", {}).duplicate()
+			var own_xp: Dictionary = root._registry.get_record(root._registry.local_player_id).get("skill_xp", {}).duplicate()
+			# The host's own player gets the tier toast too (a remote client's comes with its synced view).
+			if SkillPage.xp_known:
+				for skill in own_xp:
+					var now_tier := WorkSkills.tier_for_xp(int(own_xp[skill]))
+					var was_tier := WorkSkills.tier_for_xp(int(SkillPage.local_xp.get(skill, 0)))
+					if SkillTiers.rank(now_tier) > SkillTiers.rank(was_tier):
+						GameBus.own_skill_tier_gained.emit(str(skill), now_tier)
+			SkillPage.xp_known = true
+			SkillPage.local_xp = own_xp
 
 ## Phase 272 — last focus view sent per remote player, so only a changed one is sent again.
 var _focus_sent: Dictionary = {}
