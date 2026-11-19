@@ -49,5 +49,5 @@ region (`region_store`).
   edit digest and its record), not the resolved runs: the runs depend on the neighbours' seam
   strips and are cheap next to the noise, so caching them would only widen the key.
 - Playtest step `revisit` (after `flight`): flies the loop, drops the memory cache, flies it again; the gate
-  (native builder) is a second pass with chunks from disk and worker ms per crossing at most half the first's.
+  (native builder) is a second pass with chunks from disk and worker ms per crossing at most half the first's. One unmeasured warm-up flight sits between them, so levels of detail the first pass skipped are on disk too; the disk cache has one layer per level of detail.
 - Tests: `src/tests/suites/chunk_disk_cache_tests.gd`.

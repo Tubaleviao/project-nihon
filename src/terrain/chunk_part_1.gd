@@ -429,6 +429,11 @@ func edit_digest(chunk: Vector2i) -> int:
 	var q = sl.voxel_slice.get("_query") if sl.voxel_slice != null else null
 	return int(q.edit_digest(chunk)) if q != null and q.has_method("edit_digest") else 0
 
+## One layer per level of detail: a chunk has one slot per layer, and a pass over it builds it coarse and then
+## fine, so a single shared slot would overwrite the coarse entry with the fine one (and back) on every visit.
+static func mesh_layer(lod: int) -> String:
+	return "mesh%d" % lod
+
 ## Called by every attach: a fresh build is kept on disk (encoded here, written on a worker); one that came
 ## from a cache is not written again, and a disk one is counted.
 func disk_note(chunk: Vector2i, lod: int, arrays: Dictionary, heightmap: Array, entry: Dictionary) -> void:
@@ -444,7 +449,7 @@ func disk_note(chunk: Vector2i, lod: int, arrays: Dictionary, heightmap: Array, 
 		return
 	var key := DiskChunkCache.key_of(disk_signature(chunk, lod))
 	var disk := disk_cache
-	disk.run_async(func() -> void: disk.write("mesh", chunk, key, raw))
+	disk.run_async(func() -> void: disk.write(mesh_layer(lod), chunk, key, raw))
 
 ## Phase 244 — a chunk built in an earlier visit or session comes back from the disk cache: a worker decodes
 ## it (no meshing) and it attaches like any finished build. A damaged entry is dropped and the chunk builds.
@@ -453,7 +458,8 @@ func take_disk_hit(chunk_pos: Vector2i, key: String, lod: int) -> bool:
 	if disk == null:
 		return false
 	var dkey: int = disk.key_of(disk_signature(chunk_pos, lod))
-	if not disk.probe("mesh", chunk_pos, dkey):
+	var layer := mesh_layer(lod)
+	if not disk.probe(layer, chunk_pos, dkey):
 		return false
 	sl._supersede_in_flight(key)
 	if sl._rebuild_pending.has(key):
@@ -463,9 +469,9 @@ func take_disk_hit(chunk_pos: Vector2i, key: String, lod: int) -> bool:
 	var result: Array = [null, [], 0]
 	var job := func() -> void:
 		var t0 := Time.get_ticks_usec()
-		var d: Dictionary = disk.decode(disk.read("mesh", chunk_pos, dkey))
+		var d: Dictionary = disk.decode(disk.read(layer, chunk_pos, dkey))
 		if d.is_empty():
-			disk.invalidate("mesh", chunk_pos)   # unreadable: the retry builds it
+			disk.invalidate(layer, chunk_pos)   # unreadable: the retry builds it
 		else:
 			result[0] = d["arrays"]
 			result[1] = d["heightmap"]

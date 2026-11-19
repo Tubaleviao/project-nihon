@@ -1,7 +1,7 @@
 extends RefCounted
 ## Phase 244 — the playtest bot's `revisit` step: the flight loop flown twice over the same ground, with the
 ## memory chunk cache dropped between the passes. The first pass builds and writes the disk cache, the second
-## decodes from it, so its worker ms per local chunk crossing is at most MAX_SHARE of the first's.
+## decodes from it (after one unmeasured warm-up flight), so its worker ms per local chunk crossing is at most MAX_SHARE of the first's.
 ## Report-only under the GDScript builder (CI's `--no-native` run builds too slowly for a timing gate).
 
 const NativeBuilder := preload("res://src/terrain/native_builder.gd")
@@ -25,6 +25,12 @@ static func run(bot: Node) -> Array:
 	cm.chunk_cache().clear()
 	var first: Dictionary = await bot._fly_east(home_chunk, home_local)
 	var settled: bool = await bot._return_home(home_chunk, home_local)
+	disk.flush()
+	# A pass builds each chunk at the levels of detail its timing happens to pass through, so a second flight
+	# can ask for a level the first never built. This warm-up flight (not measured) fills those in.
+	cm.chunk_cache().clear()
+	await bot._fly_east(home_chunk, home_local)
+	settled = await bot._return_home(home_chunk, home_local) and settled
 	disk.flush()
 	cm.chunk_cache().clear()   # a revisit from disk, not from the memory cache
 	var disk0: int = cm._m1.disk_attaches

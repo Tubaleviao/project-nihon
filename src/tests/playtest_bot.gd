@@ -70,6 +70,7 @@ const HITCH_MS := 50.0        ## a frame over this is a hitch (counted, not a fa
 const HARD_FRAME_MS := 2000.0 ## a frame over this fails the run
 const STEP_TIMEOUT_SECS := 60.0 ## wall clock for a WHOLE step, not for one wait inside it
 const STREAM_TIMEOUT_SECS := 300.0 ## the stream step builds 20 chunks one hop at a time; software rendering is slow
+const REVISIT_TIMEOUT_SECS := 480.0 ## the revisit step flies the loop three times (cold, warm-up, from disk)
 const WARMUP_FRAMES := 3     ## the first frames of a step (shader compile, first upload) are not recorded
 const BOOT_TIMEOUT_SECS := 120.0
 const WATCHDOG_SLACK_SECS := 60.0 ## whole-run budget = boot + every step's timeout + this
@@ -292,7 +293,7 @@ static func _step_timeout(step: String) -> float:
 		return TOWER_TIMEOUT_SECS
 	if step == "mount":
 		return MOUNT_RIDE_SECS + 30.0   # the ride itself plus the mount, settle and dismount waits
-	return STREAM_TIMEOUT_SECS if step == "stream" or step == "pole" or step == "flight" or step == "revisit" else STEP_TIMEOUT_SECS
+	return REVISIT_TIMEOUT_SECS if step == "revisit" else (STREAM_TIMEOUT_SECS if step == "stream" or step == "pole" or step == "flight" else STEP_TIMEOUT_SECS)
 
 static func step_names() -> Array:
 	return steps_from_only(only_from_args(Array(OS.get_cmdline_user_args())))
