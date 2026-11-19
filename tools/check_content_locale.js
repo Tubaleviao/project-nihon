@@ -12,7 +12,7 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const CATALOG = path.join(ROOT, 'locale', 'content.csv');
 // Phase 274 — `category.<id>.name` names each skill category (skills/shared.js SKILL_CATEGORIES).
-const FIELDS = { item: ['name', 'desc'], recipe: ['name'], tech: ['name', 'desc'], skill: ['name', 'desc'], profession: ['name'], station: ['name'], category: ['name'] };
+const FIELDS = { item: ['name', 'desc'], recipe: ['name'], tech: ['name', 'desc'], skill: ['name', 'desc'], profession: ['name'], station: ['name'], category: ['name'], title: ['name'] };
 
 // RFC 4180: quoted cells may hold commas, quotes ("") and newlines.
 function parseCsv(text) {
@@ -88,6 +88,7 @@ function fabricRefs() {
     profession: new Set(tagged('profession')),
     station: new Set([...stations].map(stationKey)),
     category: new Set(require('../fabric/gameplay/skills/shared').SKILL_CATEGORIES),
+    title: new Set(Object.keys(require('../fabric/gameplay/titles').titlesData().titles)),
   };
 }
 
@@ -106,7 +107,7 @@ function contentLocaleProblems(cat, refs) {
   }
   const named = (key, l) => have.has(key) && have.get(key)[l];
   for (const l of cat.locales) {
-    for (const kind of ['item', 'tech', 'skill', 'profession', 'station', 'category']) {
+    for (const kind of ['item', 'tech', 'skill', 'profession', 'station', 'category', 'title']) {
       for (const id of refs[kind]) if (!named(`${kind}.${id}.name`, l)) problems.push(`${kind}.${id}.name: no ${l} name`);
     }
     for (const [id, out] of refs.recipe) {

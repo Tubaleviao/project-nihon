@@ -312,3 +312,48 @@ item.BlueprintRecipeArcaneForge.name,Blueprint: Arcane Forge,Planta: Forja Arcan
 item.BlueprintRecipeArcaneForge.desc,Read it to learn to build the arcane forge. You keep the blueprint.,Leia-a para aprender a construir: forja arcana. A planta continua com você.
 item.BlueprintRecipeVoidShieldedWorkshop.name,Blueprint: Void-Shielded Workshop,Planta: Oficina Blindada contra o Vazio
 item.BlueprintRecipeVoidShieldedWorkshop.desc,Read it to learn to build the void-shielded workshop. You keep the blueprint.,Leia-a para aprender a construir: oficina blindada contra o vazio. A planta continua com você.
+title.Newcomer.name,Newcomer,Novato
+title.Blacksmith.name,Blacksmith,Ferreiro
+title.MasterBlacksmith.name,Master Blacksmith,Mestre Ferreiro
+title.Arcanist.name,Arcanist,Arcanista
+title.MasterArcanist.name,Master Arcanist,Mestre Arcanista
+title.Ranger.name,Ranger,Patrulheiro
+title.MasterRanger.name,Master Ranger,Mestre Patrulheiro
+title.Warrior.name,Warrior,Guerreiro
+title.MasterWarrior.name,Master Warrior,Mestre Guerreiro
+title.Alchemist.name,Alchemist,Alquimista
+title.MasterAlchemist.name,Master Alchemist,Mestre Alquimista
+title.Merchant.name,Merchant,Mercador
+title.MasterMerchant.name,Master Merchant,Mestre Mercador
+title.Pathfinder.name,Pathfinder,Desbravador
+title.MasterPathfinder.name,Master Pathfinder,Mestre Desbravador
+title.VoidTouched.name,Void-Touched,Tocado pelo Vazio
+title.MasterVoidTouched.name,Master of the Void,Mestre do Vazio
+title.MasterSwordsmanship.name,Master Swordsman,Mestre Espadachim
+title.MasterArchery.name,Master Archer,Mestre Arqueiro
+title.MasterShieldcraft.name,Master Shieldwright,Mestre Escudeiro
+title.MasterUnarmed.name,Master Brawler,Mestre Lutador
+title.MasterSmithing.name,Master Smith,Mestre Forjador
+title.MasterCarpentry.name,Master Carpenter,Mestre Carpinteiro
+title.MasterAlchemy.name,Master Potion-Maker,Mestre Preparador de Poções
+title.MasterArcaneForging.name,Master Arcane Forger,Mestre Forjador Arcano
+title.MasterVoidSmithing.name,Master Voidsmith,Mestre Forjador do Vazio
+title.MasterElementalMagic.name,Master Elementalist,Mestre Elementalista
+title.MasterVoidMagic.name,Master Void Mage,Mestre Mago do Vazio
+title.MasterRestorationMagic.name,Master Restorer,Mestre Restaurador
+title.MasterEnchanting.name,Master Enchanter,Mestre Encantador
+title.MasterCartography.name,Master Cartographer,Mestre Cartógrafo
+title.MasterTracking.name,Master Tracker,Mestre Rastreador
+title.MasterStealth.name,Master Shadow,Mestre Sombra
+title.MasterNavigation.name,Master Navigator,Mestre Navegador
+title.MasterDiplomacy.name,Master Diplomat,Mestre Diplomata
+title.MasterTrade.name,Master Trader,Mestre Comerciante
+title.MasterSpeechcraft.name,Master Orator,Mestre Orador
+title.MasterLeadership.name,Master Leader,Mestre Líder
+title.MasterMining.name,Master Miner,Mestre Minerador
+title.MasterWoodcutting.name,Master Woodcutter,Mestre Lenhador
+title.MasterForaging.name,Master Forager,Mestre Coletor
+title.MasterSkinning.name,Master Skinner,Mestre Esfolador
+title.MasterBuilding.name,Master Builder,Mestre Construtor
+title.MasterTailoring.name,Master Tailor,Mestre Alfaiate
+title.MasterLockpicking.name,Master Lockpicker,Mestre Arrombador
