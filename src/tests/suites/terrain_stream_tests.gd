@@ -489,8 +489,6 @@ func _test_stream_builds_high_priority() -> void:
 	assert_eq(src.count("add_task(job, sl.build_high_priority(chunk_pos)"), 2, "both dispatches ask build_high_priority")
 	assert_false(FileAccess.get_file_as_string("res://src/terrain/chunk_manager.gd").contains("add_task("), "chunk_manager.gd adds no task of its own")
 
-## Phase 187 — one over-budget frame attaches one build, so the local player's 3×3 ring attaches first
-## (under the body, then its neighbours) and the rest keep dispatch order, so none is starved.
 func _test_stream_608_heading_and_body_first() -> void:
 	assert_eq(ChunkStreamPolicy.heading_bucket(Vector2.ZERO), -1, "standing leads nothing")
 	var east := ChunkStreamPolicy.heading_bucket(Vector2(90.0, 0.0))
@@ -507,6 +505,8 @@ func _test_stream_608_heading_and_body_first() -> void:
 	cm._builds.clear()
 	cm.free()
 
+## Phase 187 — one over-budget frame attaches one build, so the local player's 3×3 ring attaches first
+## (under the body, then its neighbours) and the rest keep dispatch order, so none is starved.
 func _test_stream_apply_nearest_first() -> void:
 	var cm := ChunkManager.new()
 	cm._builds = { 11: { "chunk": Vector2i(7, 0) }, 12: { "chunk": Vector2i(5, 1) }, 13: { "chunk": Vector2i(1, 0) }, 14: { "chunk": Vector2i(4, 0) }, 15: { "chunk": Vector2i(6, 0) } }

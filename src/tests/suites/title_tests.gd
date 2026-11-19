@@ -16,6 +16,7 @@ func register() -> void:
 	_run_test("titles: a profession and a skill master add their titles once and emit the toast", _test_unlocks)
 	_run_test("titles: every skill of a profession at master adds its mastered title", _test_profession_master)
 	_run_test("titles: a load or join backfills titles for masters reached before titles shipped", _test_backfill)
+	_run_test("titles: a backfill also covers active and mastered professions", _test_backfill_professions)
 	_run_test("titles: the host refuses a title not unlocked, accepts another and clearing", _test_choose)
 	_run_test("titles: the chosen title survives save and load", _test_persist)
 	_run_test("titles: a hostile record or look keeps only known titles", _test_sanitize)
@@ -100,6 +101,30 @@ func _test_backfill() -> void:
 	assert_true(seen.is_empty(), "and announces nothing")
 	assert_eq(r["w"].backfill("nobody"), [], "an unknown player is skipped")
 	GameBus.title_unlocked.disconnect(on)
+	_free_rig(r)
+
+func _test_backfill_professions() -> void:
+	var r := _rig()
+	var active := TitleRules.for_profession("Blacksmith", "active")
+	assert_true(not active.is_empty(), "Blacksmith has an active title")
+	var prof := ProfessionSlice.new()
+	prof._unlocked["p1"] = { "Blacksmith": true }
+	r["root"]._professions = prof
+	var added: Array = r["w"].backfill("p1")
+	for t in active:
+		assert_true(added.has(t), "the active profession's title %s is backfilled" % t)
+		assert_true((r["w"].titles_of("p1")["unlocked"] as Dictionary).has(t), "and held")
+	assert_eq(r["w"].backfill("p1"), [], "a second pass adds nothing")
+	for s in TitleRules.professions_of_skill("Smithing")["Blacksmith"]:
+		r["reg"].record_skill("p1", str(s), "master")
+	var mastered := TitleRules.for_profession("Blacksmith", "mastered")
+	assert_true(not mastered.is_empty(), "Blacksmith has a mastered title")
+	added = r["w"].backfill("p1")
+	for t in mastered:
+		assert_true(added.has(t), "the mastered profession's title %s is backfilled" % t)
+	assert_true(added.has("MasterSmithing"), "with the skill's master title")
+	r["root"]._professions = null
+	prof.free()
 	_free_rig(r)
 
 func _test_choose() -> void:
