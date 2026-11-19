@@ -91,6 +91,7 @@ const WorldShape := preload("res://src/terrain/world_shape.gd")
 const VoxelSliceScript := preload("res://src/terrain/voxel_slice.gd")
 const VoxelRay := preload("res://src/terrain/voxel_ray.gd")
 const DiveGuard := preload("res://src/player/dive_guard.gd")
+const FlightRules := preload("res://src/player/flight_rules.gd")
 const DistantTerrain := preload("res://src/terrain/distant_terrain.gd")
 const DistantBands := preload("res://src/terrain/distant_bands.gd")
 ## Phase 164 — the ring radius (chunks) the camera's first far plane is sized for: the default view
@@ -109,6 +110,8 @@ var _camera: Camera3D
 var _cam_distance: float = CAMERA_DISTANCE
 var _pivot:  Node3D           # horizontal yaw pivot under _body
 var _cam_arm: Node3D          # pitch arm under _pivot; its Y carries the camera's height smoothing
+var _flight_cam: Dictionary = { "lag": Vector3.ZERO, "boost": 0.0 }   # Phase 237: the eased camera trail and FOV widening
+var _flight_top: float = 0.0           # Phase 237: top speed of the last flying step (m/s)
 var _cam_follow_y: float = NAN  # the height the camera follows (eased body Y); NAN until the first frame
 var _hp:     float = MAX_HP
 ## Phase 178 — this body's attributes (a display copy: the host owns them) and the Vitality-derived HP ceiling.
@@ -405,6 +408,7 @@ func _process(delta: float) -> void:
 		_update_status_label()
 	if render_visuals:
 		_update_camera_height(delta)
+		_update_flight_camera(delta)
 		_update_camera_clearance()
 		_update_aim()
 		_update_station_ghost()
@@ -956,11 +960,11 @@ func _ground_top_at(xz: Vector2, natural: float) -> float:
 
 func _move(delta: float) -> void:
 	var swimming := _swimming_now() and not flying
-	# Apply gravity.
 	if flying:
-		# Phase 182 — no gravity: Space climbs, Ctrl sinks, neither hovers.
-		_vel.y = fly_vertical(Input.is_action_pressed("jump") and keys_live(), Input.is_key_pressed(KEY_CTRL) and keys_live())
-	elif swimming:
+		_move_flying(delta)
+		return
+	# Apply gravity.
+	if swimming:
 		_vel.y = swim_vertical_velocity(_body.global_position.y, TerrainSlice.Hydrology.level_for(terrain_slice, _body.global_position.x, _body.global_position.z))
 	elif not _body.is_on_floor():
 		_vel.y += GRAVITY * delta
@@ -968,7 +972,7 @@ func _move(delta: float) -> void:
 		if _vel.y < 0.0:
 			_vel.y = 0.0
 	# Jump.
-	if not flying and not swimming and jump_requested() and _body.is_on_floor():
+	if not swimming and jump_requested() and _body.is_on_floor():
 		_vel.y = JUMP_FORCE
 		GameBus.tutorial_event.emit("jumped", {})   # Phase 186 — a local notification, never sent
 
@@ -983,7 +987,7 @@ func _move(delta: float) -> void:
 
 	var speed := walking_speed(swimming, _weather_factor_now())
 	speed = held_speed(speed, is_immobilized()) * clampf(carry_speed_factor, 0.0, 1.0)
-	speed *= stat("moveSpeedFactor") * admin_speed_factor * mount_speed_factor * (AdminRules.FLY_SPEED_FACTOR if flying else 1.0)
+	speed *= stat("moveSpeedFactor") * admin_speed_factor * mount_speed_factor
 	_vel.x = dir.x * speed
 	_vel.z = dir.z * speed
 
@@ -1025,6 +1029,23 @@ func _move(delta: float) -> void:
 			_body.global_position.y += lift - feet
 			_vel.y = maxf(_vel.y, 0.0)
 			_body.velocity = _vel
+
+## Phase 237 — one flying step: `FlightRules.step` eases `_vel` toward the keys along the camera's pitched forward;
+## `move_and_slide` kills only the velocity into a surface. No step-up, dive guard or buried lift. Leaving flight keeps `_vel`.
+func _move_flying(delta: float) -> void:
+	_flight_top = held_speed(walking_speed(false, _weather_factor_now()), is_immobilized()) * clampf(carry_speed_factor, 0.0, 1.0)
+	_flight_top *= stat("moveSpeedFactor") * admin_speed_factor * mount_speed_factor * AdminRules.FLY_SPEED_FACTOR
+	var wish := wish_direction()
+	wish.y = signf(fly_vertical(Input.is_action_pressed("jump") and keys_live(), Input.is_key_pressed(KEY_CTRL) and keys_live()))
+	var look: Basis = _cam_arm.global_transform.basis if _cam_arm != null else Basis.IDENTITY
+	_vel = FlightRules.step(_vel, wish, look, delta, FlightRules.params(_flight_top, AdminRules.FLY_VERTICAL_SPEED * admin_speed_factor))
+	_body.velocity = _vel
+	_body.move_and_slide()
+	_vel = _body.velocity
+
+## Phase 237 — flight camera lag and FOV (`FlightRules.update_camera`).
+func _update_flight_camera(delta: float) -> void:
+	FlightRules.update_camera(_camera, _cam_arm, _pivot, _flight_cam, _vel, _flight_top if flying else 0.0, delta, CAMERA_FOV)
 
 ## Phase 193 — the solid runs of the tile under the body, or null with no voxel slice (a bare rig).
 func _runs_under_body() -> Variant:
