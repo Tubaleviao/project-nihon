@@ -1,0 +1,98 @@
+extends "res://src/tests/test_support.gd"
+## Phase 245 — the planet bake (GDScript reference): determinism, rivers, and the file's hash.
+
+const PlanetBake := preload("res://src/terrain/planet_bake.gd")
+const COLS := 48
+const ROWS := 24
+const SEA := 0
+
+
+func register() -> void:
+	_run_test("planet bake: the same planet bakes to identical bytes twice", _test_deterministic)
+	_run_test("planet bake: every river reaches the sea or a lake, never flows uphill and widens with flow", _test_rivers)
+	_run_test("planet bake: every land cell has a way down (no flat or pit left)", _test_no_pits)
+	_run_test("planet bake: a corrupted, wrong-hash or wrong-world file is refused", _test_file_refused)
+	_run_test("planet bake: a good file parses and keeps its cells", _test_file_roundtrip)
+
+func _hash2(x: int, z: int) -> int:
+	var v := (x * 73856093) ^ (z * 19349663)
+	v = (v ^ (v >> 13)) * 1274126177
+	return (v ^ (v >> 16)) & 0xFFFF
+
+## A continent with a noisy rim: high in the middle, sea at the edges, 16-unit noise on top.
+func _base(x: int, z: int) -> int:
+	var dx := (x - COLS / 2) * 100 / (COLS / 2)
+	var dz := (z - ROWS / 2) * 100 / (ROWS / 2)
+	var d2 := dx * dx + dz * dz   # 0..20000
+	return 900 - d2 / 14 + (_hash2(x, z) % 80) - 40
+
+func _bake() -> Dictionary:
+	return PlanetBake.bake(COLS, ROWS, SEA, _base)
+
+func _test_deterministic() -> void:
+	var a := PlanetBake.serialize(_bake(), 42, 13, 2000)
+	var b := PlanetBake.serialize(_bake(), 42, 13, 2000)
+	assert_eq(a, b, "two bakes give the same bytes")
+	assert_eq(a.size(), PlanetBake.HEADER_BYTES + 32 + COLS * ROWS * PlanetBake.CELL_BYTES, "8 bytes a cell")
+	assert_true(PlanetBake.file_hash_hex(a) == PlanetBake.file_hash_hex(b) and PlanetBake.file_hash_hex(a).length() == 64, "and the same hash")
+
+func _test_rivers() -> void:
+	var b := _bake()
+	var h: PackedInt32Array = b["height"]
+	var flow: PackedInt32Array = b["flow"]
+	var down: PackedInt32Array = b["down"]
+	var flags: PackedInt32Array = b["flags"]
+	var rivers := 0
+	for i in h.size():
+		if flags[i] & PlanetBake.FLAG_RIVER == 0:
+			continue
+		rivers += 1
+		var c := i
+		var steps := 0
+		while true:
+			if flags[c] & PlanetBake.FLAG_OCEAN != 0 or flags[c] & PlanetBake.FLAG_LAKE != 0:
+				break
+			var d := down[c]
+			assert_true(d >= 0, "river cell %d has a downstream cell" % c)
+			if d < 0:
+				break
+			assert_true(h[d] < h[c], "river never flows uphill (cell %d)" % c)
+			assert_true(flow[d] >= flow[c], "flow never shrinks downstream (cell %d)" % c)
+			assert_true(PlanetBake.river_width_m(flow[d]) >= PlanetBake.river_width_m(flow[c]), "and the width grows with it")
+			c = d
+			steps += 1
+			if steps > h.size():
+				assert_true(false, "a river loops")
+				break
+		assert_true(flags[c] & (PlanetBake.FLAG_OCEAN | PlanetBake.FLAG_LAKE) != 0, "river from %d ends in the sea or a lake" % i)
+	assert_true(rivers > 0, "the test planet grows rivers (%d cells)" % rivers)
+
+func _test_no_pits() -> void:
+	var b := _bake()
+	var h: PackedInt32Array = b["height"]
+	for i in h.size():
+		if h[i] > SEA:
+			assert_true(int(b["down"][i]) >= 0 and h[int(b["down"][i])] < h[i], "land cell %d drains strictly downhill" % i)
+
+func _test_file_refused() -> void:
+	var file := PlanetBake.serialize(_bake(), 42, 13, 2000)
+	var good := PlanetBake.file_hash_hex(file)
+	assert_true(PlanetBake.parse(file, 42, 13, good)["ok"], "the untouched file parses")
+	var bad := file.duplicate()
+	bad[bad.size() - 5] = bad[bad.size() - 5] ^ 0x40
+	var r := PlanetBake.parse(bad, 42, 13)
+	assert_false(r["ok"], "a flipped byte is refused")
+	assert_eq(r["error"], "bake.bad_hash", "by its hash")
+	assert_eq(PlanetBake.parse(file, 42, 13, "00".repeat(32))["error"], "bake.bad_hash", "a file that does not match the published hash is refused")
+	assert_eq(PlanetBake.parse(file, 43, 13)["error"], "bake.wrong_world", "another seed is refused")
+	assert_eq(PlanetBake.parse(file, 42, 14)["error"], "bake.wrong_world", "another worldgen version is refused")
+	assert_eq(PlanetBake.parse(file.slice(0, 20), 42, 13)["error"], "bake.bad_header", "a truncated header is refused")
+	assert_eq(PlanetBake.parse(file.slice(0, file.size() - 8), 42, 13)["error"], "bake.bad_size", "a short body is refused")
+
+func _test_file_roundtrip() -> void:
+	var b := _bake()
+	var r := PlanetBake.parse(PlanetBake.serialize(b, 7, 13, 2000), 7, 13)
+	assert_true(r["ok"], "parses")
+	assert_eq(int(r["cols"]), COLS, "columns kept")
+	var cells: PackedByteArray = r["cells"]
+	assert_eq(cells.decode_s16(0), clampi(int(b["height"][0]), -32768, 32767), "a height round-trips")
