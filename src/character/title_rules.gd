@@ -55,6 +55,23 @@ static func professions_of_skill(skill: String) -> Dictionary:
 				out[str(p)] = (ps[p] as Array).duplicate()
 	return out
 
+## Every skill id that can unlock a title: a skill-master title's source, or a skill of a profession.
+static func master_skill_ids() -> Array:
+	var out: Array = []
+	var t := table()
+	for id in t:
+		var s: Dictionary = t[id].get("source", {})
+		if str(s.get("kind", "")) == "skill" and not out.has(str(s.get("id", ""))):
+			out.append(str(s.get("id", "")))
+	var r: Resource = GameData.WORLD_SYSTEMS.get("SkillWheel", null)
+	var ps = r.get("professionSkills") if r != null else null
+	if ps is Dictionary:
+		for p in ps:
+			for sk in ps[p]:
+				if not out.has(str(sk)):
+					out.append(str(sk))
+	return out
+
 ## A record as storage or the wire carries it, reduced to known titles. Always holds the built-in title.
 static func sanitize(raw: Variant) -> Dictionary:
 	var src: Dictionary = raw if raw is Dictionary else {}

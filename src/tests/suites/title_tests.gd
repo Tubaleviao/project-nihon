@@ -15,6 +15,7 @@ func register() -> void:
 	_run_test("titles: a new character has exactly Newcomer unlocked and chosen", _test_new_character)
 	_run_test("titles: a profession and a skill master add their titles once and emit the toast", _test_unlocks)
 	_run_test("titles: every skill of a profession at master adds its mastered title", _test_profession_master)
+	_run_test("titles: a load or join backfills titles for masters reached before titles shipped", _test_backfill)
 	_run_test("titles: the host refuses a title not unlocked, accepts another and clearing", _test_choose)
 	_run_test("titles: the chosen title survives save and load", _test_persist)
 	_run_test("titles: a hostile record or look keeps only known titles", _test_sanitize)
@@ -81,6 +82,24 @@ func _test_profession_master() -> void:
 		GameBus.skill_tier_recorded.emit("p1", str(skills[i]), "master")
 		var held: bool = (r["w"].titles_of("p1")["unlocked"] as Dictionary).has("MasterBlacksmith")
 		assert_eq(held, i == skills.size() - 1, "the mastered title comes with the last skill (%d of %d)" % [i + 1, skills.size()])
+	_free_rig(r)
+
+func _test_backfill() -> void:
+	var r := _rig()
+	r["reg"].record_skill("p1", "Smithing", "master")
+	r["reg"].record_skill("p1", "Archery", "expert")
+	assert_eq(TitleRules.unlocked_ids(r["w"].titles_of("p1")), ["Newcomer"], "before: nothing is unlocked")
+	var seen: Array = []
+	var on := func(pid: String, t: String) -> void: seen.append([pid, t])
+	GameBus.title_unlocked.connect(on)
+	GameBus.player_joined.emit(2, "p1", false)
+	assert_true(seen.has(["p1", "MasterSmithing"]), "a join unlocks and announces the master title already earned")
+	assert_false(r["w"].titles_of("p1")["unlocked"].has("MasterArchery"), "a tier below master adds nothing")
+	seen.clear()
+	assert_eq(r["w"].backfill("p1"), [], "a second pass adds nothing")
+	assert_true(seen.is_empty(), "and announces nothing")
+	assert_eq(r["w"].backfill("nobody"), [], "an unknown player is skipped")
+	GameBus.title_unlocked.disconnect(on)
 	_free_rig(r)
 
 func _test_choose() -> void:
