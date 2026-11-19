@@ -695,7 +695,7 @@ erosion, and continents come straight from noise.
 - A world-gen change: bump `WORLDGEN_VERSION` (only unrecorded land changes, per the stable-world
   rule; `frontier.gd` blends at recorded borders).
 
-**Progress (autopilot, branch `autopilot/1119-4c786d-planet-bake`):** the GDScript reference bake is in (`src/terrain/planet_bake.gd`, `planet_bake_tests.gd`: integer fill/flow/erosion/rivers, 8-byte cells, hashed file, refusal of a corrupted/wrong-world file). Still open: native bake + parity test, host bake with progress screen / client download, runtime reads, replacing Phase 217's trace, `WORLDGEN_VERSION` bump, CI publish, playtest on the bake.
+**Progress (autopilot, branch `autopilot/1119-4c786d-planet-bake`):** the GDScript reference bake is in (`src/terrain/planet_bake.gd`, `planet_bake_tests.gd`: integer fill/flow/erosion/rivers, 8-byte cells, hashed file, refusal of a corrupted/wrong-world file). Also in: the native bake (`native/src/native_bake.cpp`, byte parity test) and `tools/bake_planet.gd` + a release-workflow step that bakes the fabric seed twice (hashes must agree) and ships it beside the packages. Still open: host bake at world creation with a progress screen, client download, runtime reads of macro height and rivers, replacing Phase 217's trace, the `WORLDGEN_VERSION` bump with golden values, and the playtest `travel`/`far_peak`/`pole` steps on the bake.
 
 **Acceptance criteria**
 - A suite test bakes a small planet (a test circumference) twice and gets identical bytes, and the

@@ -152,6 +152,19 @@ jobs:
           path: build/playtest/playtest/
           if-no-files-found: warn
 
+      - name: Bake the planet for the fabric seed
+        # Phase 245 — the world's bake, published beside the packages (a host that finds it skips its own bake).
+        # Baked twice, from a clean directory each time: the two hashes must agree, or the bake is not deterministic.
+        run: |
+          seed=$(grep -o 'worldSeed:[^}]*defaultValue: [0-9]*' fabric/world/world.js | grep -o '[0-9]*$')
+          echo "fabric world seed: $seed"
+          mkdir -p dist build/bake1
+          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --import || true
+          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --script tools/bake_planet.gd -- "$seed" dist 2>&1 | tee /tmp/bake.log
+          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --script tools/bake_planet.gd -- "$seed" build/bake1 2>&1 | tee /tmp/bake2.log
+          cmp dist/planet_*.nbk.sha256 build/bake1/planet_*.nbk.sha256
+          if grep -qE "SCRIPT ERROR|Parse Error|Compile Error" /tmp/bake.log; then exit 1; fi
+
       - name: Package
         run: |
           mkdir -p dist
