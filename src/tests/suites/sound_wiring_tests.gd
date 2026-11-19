@@ -20,6 +20,7 @@ func register() -> void:
 	_run_test("sound wiring: every wired event plays on a bus the volume options set", _test_wired_buses)
 	_run_test("sound wiring: the footstep surface follows the ground underfoot", _test_footstep_surface)
 	_run_test("sound wiring: footsteps fall once per stride, only on the ground", _test_step_cadence)
+	_run_test("sound player: one-shots are capped per event", _test_polyphony_cap)
 	_run_test("sound wiring: a loop channel cross-fades and fades out", _test_loop_channels)
 	_run_test("sound wiring: a dedicated server or a headless boot plays and wires nothing", _test_server_silent)
 	_run_test("sound wiring: under a shifted scene origin the dig, the strike and a swing land at world + offset", _test_shifted_origin)
@@ -544,3 +545,16 @@ func _test_work_action_reset() -> void:
 	assert_eq(aw._work_action, "mine", "an action the wiring does not name is ignored")
 	_free_root(gr, [bag])
 	_end()
+
+
+func _test_polyphony_cap() -> void:
+	Sound.stop_all()
+	Sound.enabled = true
+	var made := 0
+	for i in Sound.MAX_ONE_SHOTS_PER_EVENT + 5:
+		if Sound.play("ui.click") != null:
+			made += 1
+	assert_eq(made, Sound.MAX_ONE_SHOTS_PER_EVENT, "one event stops at its cap")
+	Sound.stop_all()
+	assert_true(Sound.play("ui.click") != null, "room again once the players are gone")
+	Sound.stop_all()
