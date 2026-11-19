@@ -257,8 +257,7 @@ var max_builds_in_flight: int = ChunkStreamPolicy.starting_builds(OS.get_process
 ## Phase 239 — false pins the steady cap; true lets `ChunkPart1.adapt_workers` move it.
 var adaptive_workers := true
 var _idle_since_msec: int = -1
-var _last_adapt_msec: int = -1; var _lead_extra: int = 0   # _lead_extra: lead depth the desired set was computed for
-var _lead_bucket: int = -1   # the heading bucket (`ChunkStreamPolicy.heading_bucket`) the lead cone was derived for
+var _last_adapt_msec: int = -1; var _lead_extra: int = 0; var _lead_bucket: int = -1   # lead depth / heading bucket (`ChunkStreamPolicy.heading_bucket`) the desired set was computed for
 
 ## Phase 142 — see DEFAULT_PUMP_BUDGET_MSEC. `pump_clock_usec` is the clock the budget reads
 ## (a stub in the suite).
