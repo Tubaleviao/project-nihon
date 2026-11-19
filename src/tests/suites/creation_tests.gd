@@ -20,6 +20,7 @@ func register() -> void:
 	_run_test("creation: the name rule refuses length, digits, emoji, separators, mixed scripts and reserved words", _test_names_refused)
 	_run_test("creation: a case-folded, accent-folded or confusable duplicate is taken", _test_names_taken)
 	_run_test("creation: a bad gender, hair style or hair colour is refused with its own reason", _test_choices_refused)
+	_run_test("creation: the placeholder body and head meshes measure within the chibi head ratio", _test_placeholder_mesh_ratio)
 	_run_test("creation: the default rig's head-to-height ratio is within the chibi range", _test_head_ratio)
 	_run_test("creation: every refusal and gender has a label in every locale", _test_catalog_keys)
 
@@ -151,6 +152,25 @@ func _test_head_ratio() -> void:
 	var adult: Dictionary = cs._normalize_proportions(GameData.APPEARANCES["TravellerHuman"].get("proportions"))
 	assert_true(CreationRules.head_ratio(adult) < float(bounds["min"]), "an adult traveller is not chibi")
 	cs.free()
+
+
+## Phase 266: the shipped placeholder meshes themselves (not just the fabric proportions) are chibi. The body
+## mesh is the whole figure (head box included), so its height is the figure's height.
+func _test_placeholder_mesh_ratio() -> void:
+	var d := _data()
+	var bounds: Dictionary = d.get("headRatio")
+	for g in d.get("genders"):
+		var app := CreationRules.preset(str(g))
+		var body := AssetOverlay.load_mesh("models/characters/bodies/%s.glb.raw" % app.get("body"))
+		var head := AssetOverlay.load_mesh("models/characters/heads/%s.glb.raw" % app.get("head"))
+		assert_true(body != null and head != null, "%s body and head meshes load" % g)
+		if body == null or head == null:
+			continue
+		var head_h: float = head.get_aabb().size.y
+		var total: float = body.get_aabb().size.y
+		var ratio := head_h / total
+		assert_true(ratio >= float(bounds["min"]) and ratio <= float(bounds["max"]),
+			"%s placeholder mesh head ratio %.3f within %s..%s" % [g, ratio, bounds["min"], bounds["max"]])
 
 
 func _test_catalog_keys() -> void:

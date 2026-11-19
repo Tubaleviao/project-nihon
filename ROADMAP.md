@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–225, 238–243, 248, 249, 252–254, 259–265 and 267–276 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–225, 238–243, 248, 249, 252–254, 259–276 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -31,14 +31,13 @@ introductions of the arcs they belonged to, are archived in
 Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
 see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
 phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
-comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–254, 259–265, 267–276)
+comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–254, 259–276)
 have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
 [Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
 others are not in it.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 16 | 266 | A chibi character worth looking at: the art direction and the player rig |
 | 17 | 255 | The first release: `v0.1.0` from the release workflow |
 | 18 | 244 | A chunk cache on disk |
 | 19 | 256 | A binary wire format for the hot packets |
@@ -284,7 +283,7 @@ everything for the whole tutorial.
 | 263 | Digging that shows at once: a predicted edit and a priority remesh | Done |
 | 264 | Dropping part of a stack: a quantity slider | Done |
 | 265 | One body everywhere: the creation screen, the Character window and the world draw the same avatar | Done |
-| 266 | A chibi character worth looking at: the art direction and the player rig | Open |
+| 266 | A chibi character worth looking at: the art direction and the player rig | Done |
 
 ### Next: stations you make, and windows a player can read (Phases 267–274)
 
@@ -905,34 +904,6 @@ would be empty.
   and fails on a broken internal link (the generator's link check, or `lychee` over the output).
 - A GitHub issue asks the owner to enable Pages and Discussions; this phase records its number.
 - After the issue closes, the README's wiki link returns 200 from a CI step on `main`.
-
-## Phase 266 — A chibi character worth looking at: the art direction and the player rig
-
-The owner finds the player character ugly and not the style they want: the cute, big-headed chibi
-look of classic 2000s isometric MMOs (the owner's reference is Ragnarok Online). The goal is that
-feel in this game's own art; no assets, sprites or likenesses are taken from any other game.
-
-- **An art direction document** (`docs/art/character-style.md`): proportions (head to body about
-  1:2 to 1:2.5, within `CharacterCreation.headRatio`), silhouette rules, big expressive eyes, simple
-  shapes, flat or toon shading with an outline, a limited palette (the existing `DefaultPalette`
-  regions), and how hair and equipment read at the default camera distance.
-- **The decision to make first** (owner, filed as an issue): a toon-shaded 3D chibi rig, or
-  pre-rendered sprites in 8 directions drawn over the 3D world (the classic look, harder to combine
-  with free camera rotation and equipment). The document records the choice and the reason.
-- **The placeholder rig** (`gen_placeholder_glb.py`) is redrawn to those proportions so the public
-  build already has the shape, and the production rig in `assets-prod/` follows with the same bones
-  and clips. A toon shader and outline for characters, if chosen, live in `character_material`.
-- The hair meshes (Phase 265) are redrawn to the same style.
-
-**Acceptance criteria**
-- `docs/art/character-style.md` exists with the proportions, and the choice between 3D and
-  sprites is recorded in it.
-- A suite test measures the placeholder rig's head height against its full height and asserts it
-  is within `CharacterCreation.headRatio`.
-- The placeholder rig keeps every bone and clip the production rig has (the placeholder rule), and
-  the playtest `walk` and `create` steps pass with it.
-- Whether the result looks good is a human judgement: filed as a GitHub issue per the rule at the
-  top of this file, and this phase records its number.
 
 ## Phase 271 — The skill wheel: professions around the edge, shared skills in the centre
 
