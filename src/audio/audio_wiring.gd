@@ -53,6 +53,7 @@ const LOOSE_CONFIRM_MS := 5000
 var _stride := STRIDE_METRES * 0.5
 var _surround_t := SURROUND_SECONDS
 var _work_action := "mine"
+var _ambience_failed := ""      # the ambience event whose last load failed (cleared on a biome change)
 var _music_wait := 0.0          # seconds before the music is tried again (after a failed load)
 var _music_retry := MUSIC_RETRY_FIRST
 var _music_attempts := 0        # loads tried (the suite reads it)
@@ -214,11 +215,16 @@ func play_footstep() -> Node:
 ## Re-read the biome underfoot for the ambience, and keep the music going. `elapsed` (s) is the time since the
 ## last refresh, counted against the music's retry back-off.
 func refresh_surroundings(elapsed: float = SURROUND_SECONDS) -> void:
+	if not Sound.enabled:
+		return   # headless or a server: nothing plays, so nothing is retried
 	if root._terrain != null and root._player != null:
 		var biome := str(root._terrain.get_biome_at_chunk(root._player.get_world_pos()["chunk"]))
 		var amb := ambience_for(biome)
-		if amb != Sound.channel_event(CHANNEL_AMBIENCE):
-			Sound.play_loop(CHANNEL_AMBIENCE, amb, AMBIENCE_FADE)
+		if amb != Sound.channel_event(CHANNEL_AMBIENCE) and amb != _ambience_failed:
+			if Sound.play_loop(CHANNEL_AMBIENCE, amb, AMBIENCE_FADE) == null and amb != "":
+				_ambience_failed = amb   # a file that does not load is not retried every second
+		elif amb == "" or amb == Sound.channel_event(CHANNEL_AMBIENCE):
+			_ambience_failed = ""
 	if Sound.channel_event(CHANNEL_MUSIC) == "" and Sound.enabled:
 		_music_wait -= elapsed
 		if _music_wait <= 0.0:
@@ -257,6 +263,7 @@ func _on_mine_requested(position: Vector3, _normal: Vector3, player_id: String, 
 	if player_id != "" and player_id != "player":
 		return   # a remote actor's request, re-run on the host: its own client plays the strike
 	var tool := WorkTime.held_tool(root._inventory, _work_action)
+	_work_action = "mine"   # the next strike names its own action again
 	var ev := "item.%s.hit" % tool
 	if tool == "" or not SoundEvents.has_event(ev):
 		return

@@ -26,6 +26,7 @@ func register() -> void:
 	_run_test("sound wiring: a 3D sound past its event's maxDistance from the listener is culled", _test_max_distance_cull)
 	_run_test("sound wiring: no footsteps while the local player rides a mount", _test_no_steps_mounted)
 	_run_test("sound wiring: a loose pick sounds only once the host confirms it", _test_loose_pick_confirmed)
+	_run_test("sound wiring: a disabled Sound retries nothing", _test_refresh_disabled)
 	_run_test("sound wiring: a music file that does not load backs off, without touching the rng", _test_music_back_off)
 
 ## Events this phase wires, by where they are played.
@@ -470,5 +471,20 @@ func _test_music_back_off() -> void:
 	for i in int(AudioWiring.MUSIC_RETRY_MAX) + 1:
 		aw.refresh_surroundings(1.0)
 	assert_eq(Sound.channel_event(AudioWiring.CHANNEL_MUSIC), AudioWiring.MUSIC_EVENT, "the music starts once it loads")
+	_free_root(gr)
+	_end()
+
+
+func _test_refresh_disabled() -> void:
+	_begin()
+	var gr := _root()
+	gr._audio_wiring.wire(gr)
+	var aw = gr._audio_wiring
+	var was: bool = Sound.enabled
+	Sound.enabled = false
+	for i in 5:
+		aw.refresh_surroundings(1.0)
+	assert_eq(aw._music_attempts, 0, "a disabled Sound never tries the music")
+	Sound.enabled = was
 	_free_root(gr)
 	_end()
