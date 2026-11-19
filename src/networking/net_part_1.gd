@@ -420,3 +420,17 @@ func packet_send_requested(peer_id: int, payload: Dictionary) -> void:
 		sl._deliver(peer_id, payload.duplicate(true))
 	else:
 		sl._deliver(1, payload)
+
+## Phase 273 — a client's title choice travels to the host; a title unlocked for a remote player is told to
+## that player alone (the toast), the record itself riding the own-state channel.
+func on_title_choose_intent(title: String, _player_id: String) -> void:
+	if sl._role != sl.Role.CLIENT:
+		return
+	sl._broadcast({ "type": "title_intent", "title": title.left(40) })
+
+func on_title_unlocked(player_id: String, title: String) -> void:
+	if sl._role != sl.Role.HOST:
+		return
+	var peer: int = sl._peer_for_inventory_owner(player_id)
+	if peer != 0:
+		sl._deliver(peer, { "type": "title_unlocked", "title": title })

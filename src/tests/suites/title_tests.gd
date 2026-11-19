@@ -48,7 +48,7 @@ func _free_rig(r: Dictionary) -> void:
 
 func _test_new_character() -> void:
 	var r := _rig()
-	var rec: Dictionary = r["reg"].titles_of("p1")
+	var rec: Dictionary = r["w"].titles_of("p1")
 	assert_eq(TitleRules.unlocked_ids(rec), ["Newcomer"], "exactly Newcomer is unlocked")
 	assert_eq(TitleRules.chosen_of(rec), "Newcomer", "and chosen")
 	assert_eq(str(r["reg"].look_of("p1")["title"]), "Newcomer", "peers get it in the look")
@@ -69,7 +69,7 @@ func _test_unlocks() -> void:
 	assert_eq(seen.count(["p1", "MasterSmithing"]), 1, "once")
 	GameBus.skill_tier_recorded.emit("p1", "Archery", "expert")
 	assert_false(seen.any(func(s): return s[1] == "MasterArchery"), "a tier below master adds nothing")
-	assert_eq(TitleRules.unlocked_ids(r["reg"].titles_of("p1")), ["MasterSmithing", "Newcomer", "VoidTouched"], "the record holds them")
+	assert_eq(TitleRules.unlocked_ids(r["w"].titles_of("p1")), ["MasterSmithing", "Newcomer", "VoidTouched"], "the record holds them")
 	GameBus.title_unlocked.disconnect(on)
 	_free_rig(r)
 
@@ -79,7 +79,7 @@ func _test_profession_master() -> void:
 	for i in skills.size():
 		r["reg"].record_skill("p1", str(skills[i]), "master")
 		GameBus.skill_tier_recorded.emit("p1", str(skills[i]), "master")
-		var held: bool = (r["reg"].titles_of("p1")["unlocked"] as Dictionary).has("MasterBlacksmith")
+		var held: bool = (r["w"].titles_of("p1")["unlocked"] as Dictionary).has("MasterBlacksmith")
 		assert_eq(held, i == skills.size() - 1, "the mastered title comes with the last skill (%d of %d)" % [i + 1, skills.size()])
 	_free_rig(r)
 
@@ -91,18 +91,18 @@ func _test_choose() -> void:
 	GameBus.player_look_changed.connect(on)
 	assert_eq(w.choose("p1", "MasterSmithing"), "title_locked", "a title not unlocked is refused")
 	assert_eq(w.choose("p1", "Nonsense"), "unknown_title", "an unknown title is refused")
-	assert_eq(TitleRules.chosen_of(r["reg"].titles_of("p1")), "Newcomer", "a refusal changes nothing")
+	assert_eq(TitleRules.chosen_of(r["w"].titles_of("p1")), "Newcomer", "a refusal changes nothing")
 	assert_true(looks.is_empty(), "and tells nobody")
 	w.unlock("p1", "MasterSmithing")
 	assert_eq(w.choose("p1", "MasterSmithing"), "", "an unlocked one is accepted")
 	assert_eq(str(looks.back()[1]["title"]), "MasterSmithing", "and goes out in the look")
 	assert_eq(w.choose("p1", ""), "", "clearing is accepted")
-	assert_eq(TitleRules.chosen_of(r["reg"].titles_of("p1")), "", "to none")
+	assert_eq(TitleRules.chosen_of(r["w"].titles_of("p1")), "", "to none")
 	assert_eq(str(looks.back()[1]["title"]), "", "which peers see")
 	GameBus.title_choose_intent.emit("Newcomer", "p1")
-	assert_eq(TitleRules.chosen_of(r["reg"].titles_of("p1")), "Newcomer", "the intent door wears it again")
+	assert_eq(TitleRules.chosen_of(r["w"].titles_of("p1")), "Newcomer", "the intent door wears it again")
 	GameBus.title_choose_intent.emit("MasterArchery", "p1")
-	assert_eq(TitleRules.chosen_of(r["reg"].titles_of("p1")), "Newcomer", "and refuses a locked one")
+	assert_eq(TitleRules.chosen_of(r["w"].titles_of("p1")), "Newcomer", "and refuses a locked one")
 	GameBus.player_look_changed.disconnect(on)
 	_free_rig(r)
 
@@ -114,13 +114,13 @@ func _test_persist() -> void:
 	var again := PlayerRegistry.new()
 	again.is_authoritative = true
 	again.apply_player_data("p1", JSON.parse_string(JSON.stringify(data)))
-	assert_eq(TitleRules.chosen_of(again.titles_of("p1")), "MasterSmithing", "the chosen title survives")
-	assert_true((again.titles_of("p1")["unlocked"] as Dictionary).has("MasterSmithing"), "and the unlocked set")
+	assert_eq(TitleRules.chosen_of(TitleRules.of_record(again.get_record("p1"))), "MasterSmithing", "the chosen title survives")
+	assert_true((TitleRules.of_record(again.get_record("p1"))["unlocked"] as Dictionary).has("MasterSmithing"), "and the unlocked set")
 	r["w"].choose("p1", "")
 	var none := PlayerRegistry.new()
 	none.is_authoritative = true
 	none.apply_player_data("p1", JSON.parse_string(JSON.stringify(r["reg"].get_player_data("p1"))))
-	assert_eq(TitleRules.chosen_of(none.titles_of("p1")), "", "wearing none survives too")
+	assert_eq(TitleRules.chosen_of(TitleRules.of_record(none.get_record("p1"))), "", "wearing none survives too")
 	again.free()
 	none.free()
 	_free_rig(r)

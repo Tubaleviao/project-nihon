@@ -593,11 +593,11 @@ func title_choice(h: Node) -> void:
 			GameBus.player_state_sync_requested.emit({ "position": here, "world_pos": WorldPos.from_world(here.x, here.y, here.z),
 				"hp": float(PlayerSlice.MAX_HP), "max_hp": float(PlayerSlice.MAX_HP) })
 			await h._await_settle(0.25)
-			chose = chose or TitleRules.chosen_of(h._root._registry.titles_of(pid)) == "MasterSmithing"
+			chose = chose or TitleRules.chosen_of(h._root._title_wiring.titles_of(pid)) == "MasterSmithing"
 			if i >= 40 and chose:
 				break   # past the client's locked request
-		var held: bool = TitleRules.chosen_of(h._root._registry.titles_of(pid)) == "MasterSmithing" \
-			and not (h._root._registry.titles_of(pid)["unlocked"] as Dictionary).has("MasterArchery")
+		var held: bool = TitleRules.chosen_of(h._root._title_wiring.titles_of(pid)) == "MasterSmithing" \
+			and not (h._root._title_wiring.titles_of(pid)["unlocked"] as Dictionary).has("MasterArchery")
 		var ok := wore and chose and held
 		h._report("title_choice", h.verdict(ok, true), DETAIL if ok else ("host_not_worn" if not wore else ("not_chosen" if not chose else "locked_changed_it")))
 		return

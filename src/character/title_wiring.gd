@@ -25,7 +25,16 @@ func _connect_all() -> void:
 func own_record() -> Dictionary:
 	if root._is_client:
 		return _own.duplicate(true)
-	return root._registry.titles_of(root._registry.local_player_id)
+	return titles_of(root._registry.local_player_id)
+
+## A player's title record, and storing one.
+func titles_of(player_id: String) -> Dictionary:
+	return TitleRules.of_record(root._registry.get_record(player_id))
+
+func record_titles(player_id: String, titles: Dictionary) -> void:
+	var rec: Dictionary = root._registry.ensure_player(player_id)
+	if not rec.is_empty():
+		rec["titles"] = TitleRules.sanitize(titles)
 
 func _pid(player_id: String) -> String:
 	return root._registry.local_player_id if player_id == "" else player_id
@@ -34,10 +43,10 @@ func _pid(player_id: String) -> String:
 func unlock(player_id: String, title: String) -> bool:
 	if root._is_client or not root._registry.has_player(player_id):
 		return false
-	var rec: Dictionary = root._registry.titles_of(player_id)
+	var rec: Dictionary = titles_of(player_id)
 	if not TitleRules.unlock(rec, title):
 		return false
-	root._registry.record_titles(player_id, rec)
+	record_titles(player_id, rec)
 	GameBus.title_unlocked.emit(player_id, title)
 	_sync_owner(player_id)
 	return true
@@ -72,15 +81,15 @@ func choose(player_id: String, title: String) -> String:
 	var pid := _pid(player_id)
 	if not root._registry.has_player(pid):
 		return "not_host"
-	var rec: Dictionary = root._registry.titles_of(pid)
+	var rec: Dictionary = titles_of(pid)
 	var reason := TitleRules.choose(rec, title)
 	if reason == "":
-		root._registry.record_titles(pid, rec)
+		record_titles(pid, rec)
 		GameBus.player_look_changed.emit(pid, root._registry.look_of(pid))
 	if pid != root._registry.local_player_id:
 		var peer: int = root._registry.get_peer_id(pid)
 		if peer != 0 and root._networking != null and root._networking.is_host():
-			root._networking.send_own_state(peer, { "titles": root._registry.titles_of(pid), "title_result": reason })
+			root._networking.send_own_state(peer, { "titles": titles_of(pid), "title_result": reason })
 	else:
 		last_refusal = reason
 	return reason

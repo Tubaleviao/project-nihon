@@ -2761,8 +2761,7 @@ func _step_create_character() -> void:
 				"hp": float(PlayerSlice.MAX_HP), "max_hp": float(PlayerSlice.MAX_HP) })
 			await _await_settle(0.25)
 		var created: bool = await _await_until(func(): return _root._registry.display_name(pid) == CLIENT_NAME, _step_timeout() * 2.0)
-		var ok := host_ok and created
-		_report("create_character", verdict(ok, true), DETAIL if ok else ("host_not_created" if not host_ok else "peer_not_created-%s" % _root._registry.display_name(pid)))
+		_report("create_character", verdict(host_ok and created, true), DETAIL if host_ok and created else ("host_not_created" if not host_ok else "peer_not_created-%s" % _root._registry.display_name(pid)))
 		return
 	var look_ok: bool = await _await_until(func(): return str(_root._character.get_peer_look(host_id).get("name", "")) == HOST_NAME, _step_timeout())
 	var avatar: String = _root._character.get_peer_character(host_id)

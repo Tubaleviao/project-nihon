@@ -464,7 +464,6 @@ func ensure_player(player_id: String) -> Dictionary:
 			"waystones":  [],
 			"companions": [],
 			"professions": {},
-			"titles": {},
 			"craft_counter": 0,
 			"skills":     {},
 			# Phase 161 — skill experience points, { skill: xp }; the level follows from the fabric's table.
@@ -1050,19 +1049,7 @@ func display_name(player_id: String) -> String:
 
 ## What peers are told about a player's character: see `CreationRules.look`.
 func look_of(player_id: String) -> Dictionary:
-	var look := CreationRules.look(creation_of(player_id), public_handle(player_id))
-	look["title"] = titles_of(player_id)["chosen"]   # Phase 273: shown under the name; "" when they wear none
-	return look
-
-## Phase 273 — a player's title record (`TitleRules.sanitize` shape; a new character holds just `Newcomer`).
-func titles_of(player_id: String) -> Dictionary:
-	return TitleRules.sanitize(get_record(player_id).get("titles", {}))
-
-func record_titles(player_id: String, titles: Dictionary) -> void:
-	var rec := ensure_player(player_id)
-	if rec.is_empty():
-		return
-	rec["titles"] = TitleRules.sanitize(titles)
+	return TitleRules.with_title(CreationRules.look(creation_of(player_id), public_handle(player_id)), get_record(player_id))
 
 func _name_free_for(player_id: String, name: String) -> bool:
 	return str(_taken.get(CreationRules.skeleton(name), player_id)) == player_id
@@ -1268,7 +1255,7 @@ func get_player_data(player_id: String) -> Dictionary:
 		"waystones":  get_waystones(player_id),
 		"companions": rec.get("companions", []),
 		"professions": rec.get("professions", {}),
-		"titles": TitleRules.sanitize(rec.get("titles", {})),
+		"titles": TitleRules.of_record(rec),
 		"craft_counter": int(rec.get("craft_counter", 0)),
 		"skills":     rec.get("skills", {}),
 		"skill_xp":   rec.get("skill_xp", {}),
@@ -1333,20 +1320,16 @@ func apply_player_data(player_id: String, data: Dictionary) -> void:
 	rec["status_effects"] = (saved_effects as Array).duplicate(true) if saved_effects is Array else []
 	rec["appearance"] = data.get("appearance", {})
 	rec["technology"] = data.get("technology", {})
-	# Phase 35: taming flags and companion bindings are per-player progression, so
-	# they ride the same record. A saved payload from before this phase simply
-	# carries neither key and restores to the empty defaults.
+	# Phase 35: taming flags and companion bindings are per-player progression; a payload without them restores empty.
 	rec["flags"]      = data.get("flags", {})
 	rec["waystones"]  = RecordSanitize.sanitize_waystones(data.get("waystones", []))
 	rec["companions"] = data.get("companions", [])
 	# Phase 118: unlocked professions and the void-burst craft counter. A payload from
 	# before this phase carries neither key and restores to the empty defaults.
 	rec["professions"] = data.get("professions", {}) if data.get("professions", {}) is Dictionary else {}
-	rec["titles"] = TitleRules.sanitize(data.get("titles", {}))   # Phase 273
+	rec["titles"] = TitleRules.of_record(data)   # Phase 273
 	rec["craft_counter"] = maxi(0, int(data.get("craft_counter", 0)))
-	# Phase 36: skill tiers are per-player progression too, so they ride the same
-	# record. A payload from before this phase carries no `skills` key and restores
-	# to the empty table — every skill then reads as its seed tier (novice).
+	# Phase 36: skill tiers ride the record too; a payload without `skills` restores empty (every skill novice).
 	rec["skills"]     = data.get("skills", {})
 	# Phase 161: skill XP rides the record; a payload from before it restores to none.
 	rec["skill_xp"]   = RecordSanitize.sanitize_skill_xp(data.get("skill_xp", {})); rec["skill_focus"] = SkillFocus.sanitize(data.get("skill_focus", {}))

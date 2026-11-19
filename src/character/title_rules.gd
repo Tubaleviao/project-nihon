@@ -73,6 +73,15 @@ static func sanitize(raw: Variant) -> Dictionary:
 		chosen = c if c == "" or unlocked.has(c) else b
 	return { "unlocked": unlocked, "chosen": chosen }
 
+## The title record held in a player record (`sanitize` shape; a new character holds just `Newcomer`).
+static func of_record(player_rec: Dictionary) -> Dictionary:
+	return sanitize(player_rec.get("titles", {}))
+
+## `look` with the worn title of `player_rec` added ("" when they wear none).
+static func with_title(look: Dictionary, player_rec: Dictionary) -> Dictionary:
+	look["title"] = of_record(player_rec)["chosen"]
+	return look
+
 static func unlocked_ids(rec: Dictionary) -> Array:
 	var ids: Array = sanitize(rec)["unlocked"].keys()
 	ids.sort()
