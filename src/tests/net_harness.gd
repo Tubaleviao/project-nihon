@@ -1,6 +1,5 @@
 extends Node
 ## Phase 39 — the two-client network harness.
-##
 ## Every guarantee Phases 34–38 landed was proven at the ROUTING level: a test called
 ## `NetworkingSlice._route_c2h(sender, payload)` with the sender handed in as an
 ## argument and read the bus. Not one byte ever crossed a socket. This runner is the
@@ -205,6 +204,7 @@ static func steps() -> Array:
 		{ "name": "attributes_synced", "compare": true },
 		{ "name": "creation_skip_button", "compare": true },
 		{ "name": "create_character", "compare": true },
+		{ "name": "title_choice", "compare": true },
 		{ "name": "creation_button_synced", "compare": true },
 		{ "name": "world_regen_synced", "compare": true },
 		{ "name": "structure_damage", "compare": true },
@@ -467,6 +467,7 @@ func run(root: Node, role: String) -> void:
 	await _step_attributes_synced()
 	await LateSteps.new().creation_skip_button(self)
 	await _step_create_character()
+	await LateSteps.new().title_choice(self)
 	await LateSteps.new().creation_button_synced(self)
 	await _step_world_regen_synced()
 	await _step_structure_damage()
@@ -2760,12 +2761,11 @@ func _step_create_character() -> void:
 				"hp": float(PlayerSlice.MAX_HP), "max_hp": float(PlayerSlice.MAX_HP) })
 			await _await_settle(0.25)
 		var created: bool = await _await_until(func(): return _root._registry.display_name(pid) == CLIENT_NAME, _step_timeout() * 2.0)
-		var ok := host_ok and created
-		_report("create_character", verdict(ok, true), DETAIL if ok else ("host_not_created" if not host_ok else "peer_not_created-%s" % _root._registry.display_name(pid)))
+		_report("create_character", verdict(host_ok and created, true), DETAIL if host_ok and created else ("host_not_created" if not host_ok else "peer_not_created-%s" % _root._registry.display_name(pid)))
 		return
 	var look_ok: bool = await _await_until(func(): return str(_root._character.get_peer_look(host_id).get("name", "")) == HOST_NAME, _step_timeout())
 	var avatar: String = _root._character.get_peer_character(host_id)
-	var plate_ok: bool = look_ok and await _await_until(func(): return _root._character.get_nameplate(_root._character.get_peer_character(host_id)) == HOST_NAME, _step_timeout())
+	var plate_ok: bool = look_ok and await _await_until(func(): return _root._character.get_nameplate(_root._character.get_peer_character(host_id)) == preload("res://src/character/title_rules.gd").nameplate(HOST_NAME, "Newcomer"), _step_timeout())   # Phase 273: Newcomer under the name
 	avatar = _root._character.get_peer_character(host_id)
 	var app: Dictionary = _root._character.get_appearance(avatar) if avatar != "" else {}
 	var body_ok: bool = int(app.get("hairColor", -1)) == int(HOST_LOOK["hairColor"]) and str(app.get("hair", "")) == str(HOST_LOOK["hair"])

@@ -3,6 +3,8 @@
 extends RefCounted
 
 const WorldPos := preload("res://src/terrain/world_pos.gd")
+const TitleRules := preload("res://src/character/title_rules.gd")
+const PlayerSlice := preload("res://src/player/player_slice.gd")
 
 ## Phase 208 — the host stands a chest of its own clan (the client is not in it) at the client's feet, holding five
 ## Thornwood. The client uses it and asks to take one: both are refused, the chest still holds five, the
@@ -567,3 +569,47 @@ func predicted_edit(h: Node) -> void:
 	h._report("predicted_edit", h.verdict(ok, true), "predicted-confirmed-refused-rolled-back" if ok
 		else "predicted%d-kept%d-lead%d-predicted2_%d-back%d-restored%d" % [int(predicted), int(kept), int(visible_first or not must_lead),
 			int(predicted2), int(back), int(restored)])
+
+## Phase 273 — titles over the socket. The host unlocks and wears a title on its own player, and the client's
+## view of that player's nameplate shows it (in the client's locale); the host unlocks one for the client, which
+## chooses it (accepted) and then asks for a locked one (refused, the choice unchanged).
+func title_choice(h: Node) -> void:
+	const DETAIL := "nameplate-title-chosen-locked-refused"
+	var host_id: int = h._root._networking.HOST_PEER_ID
+	if h._role == "host":
+		var peers: PackedInt32Array = h._root.multiplayer.get_peers()
+		var pid: String = h._root._networking.get_player_id(peers[0]) if peers.size() > 0 else ""
+		if pid == "":
+			h._report("title_choice", "fail", "no_connected_peer")
+			return
+		var me: String = h._root._registry.local_player_id
+		h._root._title_wiring.unlock(me, "MasterMining")
+		var wore: bool = h._root._title_wiring.choose("", "MasterMining") == ""
+		h._root._title_wiring.unlock(pid, "MasterSmithing")
+		# The client draws this player only while the host relays its body, so keep reporting it while the client works.
+		var chose := false
+		for i in 60:
+			var here: Vector3 = h._root._player.get_position()
+			GameBus.player_state_sync_requested.emit({ "position": here, "world_pos": WorldPos.from_world(here.x, here.y, here.z),
+				"hp": float(PlayerSlice.MAX_HP), "max_hp": float(PlayerSlice.MAX_HP) })
+			await h._await_settle(0.25)
+			chose = chose or TitleRules.chosen_of(h._root._title_wiring.titles_of(pid)) == "MasterSmithing"
+			if i >= 40 and chose:
+				break   # past the client's locked request
+		var held: bool = TitleRules.chosen_of(h._root._title_wiring.titles_of(pid)) == "MasterSmithing" \
+			and not (h._root._title_wiring.titles_of(pid)["unlocked"] as Dictionary).has("MasterArchery")
+		var ok := wore and chose and held
+		h._report("title_choice", h.verdict(ok, true), DETAIL if ok else ("host_not_worn" if not wore else ("not_chosen" if not chose else "locked_changed_it")))
+		return
+	var want: String = TitleRules.nameplate(h.HOST_NAME, "MasterMining")
+	var have: bool = await h._await_until(func(): return (h._root._title_wiring.own_record()["unlocked"] as Dictionary).has("MasterSmithing"), h._step_timeout())
+	GameBus.title_choose_intent.emit("MasterSmithing", "")
+	var chosen: bool = have and await h._await_until(func(): return TitleRules.chosen_of(h._root._title_wiring.own_record()) == "MasterSmithing", h._step_timeout())
+	h._root._title_wiring.last_refusal = ""
+	GameBus.title_choose_intent.emit("MasterArchery", "")
+	var refused: bool = await h._await_until(func(): return h._root._title_wiring.last_refusal == "title_locked", h._step_timeout())
+	var kept: bool = TitleRules.chosen_of(h._root._title_wiring.own_record()) == "MasterSmithing"
+	var seen: bool = await h._await_until(func(): return h._root._character.get_nameplate(h._root._character.get_peer_character(host_id)) == want, h._step_timeout() * 2.0)
+	var ok := seen and have and chosen and refused and kept
+	h._report("title_choice", h.verdict(ok, true), DETAIL if ok else ("nameplate_not_seen-%s" % h._root._character.get_nameplate(h._root._character.get_peer_character(host_id)).replace("\n", "/").replace(" ", "_") if not seen \
+		else ("not_unlocked" if not have else ("not_chosen" if not chosen else ("locked_not_refused" if not refused else "choice_changed")))))

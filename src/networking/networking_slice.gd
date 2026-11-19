@@ -330,6 +330,8 @@ func _ready() -> void:
 	# Phase 181 — a creation travels client → host as an intent; a look travels host → the peers in AOI.
 	GameBus.character_creation_intent.connect(_on_character_creation_intent)
 	GameBus.player_look_changed.connect(_on_player_look_changed)
+	GameBus.title_choose_intent.connect(_m1.on_title_choose_intent)   # Phase 273
+	GameBus.title_unlocked.connect(_m1.on_title_unlocked)
 	GameBus.harvest_intent.connect(_on_harvest_intent)
 	GameBus.carry_intent.connect(_on_carry_intent)
 	GameBus.carcass_drop_intent.connect(_on_carcass_drop_intent)

@@ -60,6 +60,7 @@ extends Node
 ##   apply_player_data(player_id, data) -> void
 ##   get_players_data() -> Dictionary / apply_players_data(data) -> void
 const Diag := preload("res://src/core/diag.gd")
+const TitleRules := preload("res://src/character/title_rules.gd")
 const BedStore := preload("res://src/world/bed_store.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
@@ -1048,7 +1049,7 @@ func display_name(player_id: String) -> String:
 
 ## What peers are told about a player's character: see `CreationRules.look`.
 func look_of(player_id: String) -> Dictionary:
-	return CreationRules.look(creation_of(player_id), public_handle(player_id))
+	return TitleRules.with_title(CreationRules.look(creation_of(player_id), public_handle(player_id)), get_record(player_id))
 
 func _name_free_for(player_id: String, name: String) -> bool:
 	return str(_taken.get(CreationRules.skeleton(name), player_id)) == player_id
@@ -1254,6 +1255,7 @@ func get_player_data(player_id: String) -> Dictionary:
 		"waystones":  get_waystones(player_id),
 		"companions": rec.get("companions", []),
 		"professions": rec.get("professions", {}),
+		"titles": TitleRules.of_record(rec),
 		"craft_counter": int(rec.get("craft_counter", 0)),
 		"skills":     rec.get("skills", {}),
 		"skill_xp":   rec.get("skill_xp", {}),
@@ -1318,19 +1320,16 @@ func apply_player_data(player_id: String, data: Dictionary) -> void:
 	rec["status_effects"] = (saved_effects as Array).duplicate(true) if saved_effects is Array else []
 	rec["appearance"] = data.get("appearance", {})
 	rec["technology"] = data.get("technology", {})
-	# Phase 35: taming flags and companion bindings are per-player progression, so
-	# they ride the same record. A saved payload from before this phase simply
-	# carries neither key and restores to the empty defaults.
+	# Phase 35: taming flags and companion bindings are per-player progression; a payload without them restores empty.
 	rec["flags"]      = data.get("flags", {})
 	rec["waystones"]  = RecordSanitize.sanitize_waystones(data.get("waystones", []))
 	rec["companions"] = data.get("companions", [])
 	# Phase 118: unlocked professions and the void-burst craft counter. A payload from
 	# before this phase carries neither key and restores to the empty defaults.
 	rec["professions"] = data.get("professions", {}) if data.get("professions", {}) is Dictionary else {}
+	rec["titles"] = TitleRules.of_record(data)   # Phase 273
 	rec["craft_counter"] = maxi(0, int(data.get("craft_counter", 0)))
-	# Phase 36: skill tiers are per-player progression too, so they ride the same
-	# record. A payload from before this phase carries no `skills` key and restores
-	# to the empty table — every skill then reads as its seed tier (novice).
+	# Phase 36: skill tiers ride the record too; a payload without `skills` restores empty (every skill novice).
 	rec["skills"]     = data.get("skills", {})
 	# Phase 161: skill XP rides the record; a payload from before it restores to none.
 	rec["skill_xp"]   = RecordSanitize.sanitize_skill_xp(data.get("skill_xp", {})); rec["skill_focus"] = SkillFocus.sanitize(data.get("skill_focus", {}))

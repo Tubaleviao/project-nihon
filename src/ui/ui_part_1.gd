@@ -2,8 +2,11 @@ extends RefCounted
 ## Methods moved verbatim out of `ui_slice.gd` (Phase 154). `sl` is the owning slice; each moved method keeps a forwarder there.
 
 const UiIcons := preload("res://src/ui/ui_icons.gd")
+const TitleRules := preload("res://src/character/title_rules.gd")
 
 var sl: Node
+var _sheet_title: OptionButton = null
+var _sheet_title_ids: Array = []   # Phase 273 — the ids the title picker lists, after "none"
 ## Phase 222 — the friend code's Copy button (in the map window), the specialty (in the Attributes scroll, below
 ## the attributes) and the respawn / build-as row.
 var friend_code_copy: Button = null
@@ -181,6 +184,7 @@ func _refresh_sheet() -> void:
 	# host's synced state says).
 	if sl._sheet_create_button != null:
 		sl._sheet_create_button.visible = sl.creation_button_shown()
+	_refresh_titles()
 	_refresh_doll()
 	if signature == sl._sheet_signature and sl._sheet_attributes.get_child_count() > 0:
 		return
@@ -243,6 +247,23 @@ func _refresh_sheet() -> void:
 				b.tooltip_text = str(row["tooltip"])
 				b.pressed.connect(sl.open_window.bind(sl.WINDOW_SKILLS))
 				sl._sheet_skills.add_child(b)
+
+## Phase 273 — fill the title list from the own record: "none" first, then every unlocked title, the worn one picked.
+func _refresh_titles() -> void:
+	if _sheet_title == null or sl.title_wiring == null:
+		return
+	var rec: Dictionary = sl.title_wiring.own_record()
+	var ids: Array = TitleRules.unlocked_ids(rec)
+	var chosen: String = TitleRules.chosen_of(rec)
+	if ids == _sheet_title_ids and _sheet_title.item_count == ids.size() + 1:
+		_sheet_title.select(0 if chosen == "" else ids.find(chosen) + 1)
+		return
+	_sheet_title_ids = ids
+	_sheet_title.clear()
+	_sheet_title.add_item(sl.I18n.t("ui.title_none"))
+	for id in ids:
+		_sheet_title.add_item(sl.I18n.content("title", str(id)))
+	_sheet_title.select(0 if chosen == "" else ids.find(chosen) + 1)
 
 ## Rebuild the doll's rig from the local avatar's appearance and worn set when either changed.
 func _refresh_doll() -> void:
@@ -317,6 +338,11 @@ func build_attributes_content() -> Control:
 	sl._sheet_name.add_theme_font_size_override("font_size", 16)
 	sl._sheet_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(sl._sheet_name)
+	# Phase 273 — the title shown under the name: none, or any unlocked one.
+	_sheet_title = OptionButton.new()
+	_sheet_title.tooltip_text = sl.I18n.t("ui.title_tooltip")
+	_sheet_title.item_selected.connect(on_title_picked)
+	vbox.add_child(_sheet_title)
 	sl._sheet_create_button = Button.new()
 	sl._set_tr(sl._sheet_create_button, "text", "creation.open")
 	sl._sheet_create_button.pressed.connect(func() -> void: sl.show_creation({}, true))
@@ -546,3 +572,16 @@ func _drop_refusal(item_id: String, quantity: int) -> String:
 	if sl.inventory_slice == null or quantity <= 0 or int(sl.inventory_slice.get_item_count(item_id)) <= 0:
 		return "none"
 	return ""
+
+## Phase 273 — a title unlocked for this machine's player (a remote player's, on a listen host, is not ours).
+func on_title_unlocked(player_id: String, title: String) -> void:
+	if player_id != "" and (sl.crafting_slice == null or player_id != str(sl.crafting_slice.local_player_id())):
+		return
+	sl.push_toast(sl.I18n.t("ui.title_unlocked_toast", [sl.I18n.content("title", title)]))
+	if _sheet_title != null:
+		sl._sheet_signature = 0   # the character window lists it on its next refresh
+
+func on_title_picked(index: int) -> void:
+	if index < 0 or index > _sheet_title_ids.size():
+		return
+	GameBus.title_choose_intent.emit("" if index == 0 else str(_sheet_title_ids[index - 1]), "")
