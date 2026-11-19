@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–225, 238–243, 248, 249, 252–255, 259–276 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–225, 238–243, 248, 249, 252–256, 259–276 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -31,7 +31,7 @@ introductions of the arcs they belonged to, are archived in
 Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
 see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
 phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
-comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–255, 259–276)
+comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–256, 259–276)
 have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
 [Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
 others are not in it.
@@ -39,7 +39,6 @@ others are not in it.
 | Priority | Phase | Title |
 |---|---|---|
 | 18 | 244 | A chunk cache on disk |
-| 19 | 256 | A binary wire format for the hot packets |
 | 20 | 250 | The server's ceiling: one machine serving, another running the bots |
 | 21 | 237 | Flight that handles like flight |
 | 22 | 251 | A human playtest: what would make the game fun (a standing checkpoint) |
@@ -74,6 +73,7 @@ Order notes that differ from the arcs' own order:
   same checklist. (Moved again on 2026-11-13, see above.)
 - Phase 256 comes before Phase 250. The stress report's first two hot spots are `remote_player_state`
   (611% of the per-peer bandwidth budget at 200 bots) and `snapshot_chunk` (229%), both JSON text.
+  Phase 256 is done: the same two (now `player_states` and `snapshot_chunk`) are 46% and 54% at 200 bots (`docs/perf/crowd-baseline.md`).
   Measuring the server's ceiling before the encoding changes would measure the encoding.
 - Phase 242's low-end fallback and Phase 243's view distance are options of Phase 225, which now
   comes after them. They ship as project settings first, and Phase 225 puts them in the window.
@@ -818,6 +818,15 @@ whatever is parsed.
   creature position deltas for bandwidth (or the harness records why it still must).
 - The stress run's `down_kbps_per_peer` at 16 bots in `lan/cluster` falls by at least 3× against the
   baseline recorded before this phase, and no series' largest passing size falls.
+
+**Status (2026-11-19, done):** `PacketCodec` (`src/networking/packet_codec.gd`) carries `remote_player_state`
+(19 bytes), `snapshot_chunk` and the host's `player_states` batch (the type the relay actually sends since
+Phase 163) in fixed layouts, with deflate over packets of 32 bytes or more that shrink; everything else stays
+JSON. A batch entry keeps its chunk and height exact and quantises local x and z to 0.5 mm (a position that is
+not normalised travels as JSON). `seq` is a u16 on the wire and the dedup reads its wrap. Measured at 16 bots in
+`lan/cluster` (`STRESS_MAX=16 STRESS_PATTERNS=cluster`, 20 s, seed 1): `down_kbps_per_peer` p95 19.8 before, 6.3
+after (3.1×). The `wan_bad` profile does not mute creature position deltas for bandwidth in this tree (nothing
+in the slice does: its 256 kbit/s cap only delays packets), so there was nothing to unmute.
 
 ## Phase 257 — Split files named by what they do
 

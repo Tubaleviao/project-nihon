@@ -1,9 +1,10 @@
 extends "res://src/networking/transport.gd"
-## Phase 119 — the game's transport: packets travel as JSON strings over the slice's reliable RPCs on
+## Phase 119 — the game's transport: packets travel as bytes (Phase 256: `PacketCodec`) over the slice's reliable RPCs on
 ## the engine's ENet multiplayer peer. `send_raw` is the slice's `(peer, json)` RPC sender, so the RPC
 ## declarations stay on the node that owns them.
 
 const TickProbe := preload("res://src/core/tick_probe.gd")
+const PacketCodec := preload("res://src/networking/packet_codec.gd")
 
 var _multiplayer: MultiplayerAPI
 var _send_raw: Callable
@@ -33,7 +34,7 @@ func is_up() -> bool:
 	return mp_peer != null and mp_peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED
 
 func send(peer: int, msg: Dictionary) -> void:
-	var json := JSON.stringify(msg)
+	var bytes := PacketCodec.encode(msg)   # Phase 256 — a fixed layout for the hot types, JSON for the rest
 	if TickProbe.enabled:   # Phase 162 — stress run byte counts
-		TickProbe.count_out(peer, str(msg.get("type", "")), json.to_utf8_buffer().size())
-	_send_raw.call(peer, json)
+		TickProbe.count_out(peer, str(msg.get("type", "")), bytes.size())
+	_send_raw.call(peer, bytes)

@@ -120,3 +120,18 @@ every miss was `host_tick_p95_ms` alone (bandwidth, relay lag and the watcher's 
 
 The best-of-three rerun stays (a size at or below the baseline that misses a budget runs up to twice
 more and keeps the first run that meets every budget): a real regression still misses all three.
+
+---
+
+## After Phase 256 (binary wire format), 2026-11-19
+
+Same command (`STRESS_MAX=64 STRESS_PROFILES=lan STRESS_SECONDS=20 tools/stress.sh`, seed 1), one desktop machine. The
+largest passing sizes did not fall (`StressRules.BASELINE_LARGEST` is unchanged; this run held 64 on cluster, cross,
+spread and churn, 32 on pole). The two JSON hot spots of the report above are now:
+
+| Hot spot | Budget share at 200 bots, before | after |
+|---|---|---|
+| position relays (`remote_player_state` before, the `player_states` batch after) | 611% | 46% |
+| `snapshot_chunk` | 229% | 54% |
+
+`down_kbps_per_peer` p95 at 16 bots in `lan/cluster` (`STRESS_MAX=16 STRESS_PATTERNS=cluster`): 19.8 before, 6.3 after (3.1×).

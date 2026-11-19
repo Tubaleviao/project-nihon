@@ -197,10 +197,10 @@ func far_delta_sent(h: Node, peer_id: int, iid: String, points: Array) -> int:
 	var transport = net._ensure_transport()
 	var real_send: Callable = transport._send_raw
 	var counting := [false, 0]
-	transport._send_raw = func(to: int, json: String) -> void:
-		if counting[0] and to == peer and json.contains(iid):
+	transport._send_raw = func(to: int, bytes: PackedByteArray) -> void:
+		if counting[0] and to == peer and bytes.get_string_from_utf8().contains(iid):
 			counting[1] += 1
-		real_send.call(to, json)
+		real_send.call(to, bytes)
 	var sent := 0
 	for p in points:
 		var queued_before := _queued_for(net, peer, iid)
