@@ -350,6 +350,7 @@ Filed by the owner on 2026-11-13. The other phases of the arc are open in [ROADM
 | 263 | Digging that shows at once: a predicted edit and a priority remesh | Done | [phases-263.md](phases-263.md) |
 | 264 | Dropping part of a stack: a quantity slider | Done | [phases-264.md](phases-264.md) |
 | 265 | One body everywhere: the creation screen, the Character window and the world draw the same avatar | Done | [phases-265.md](phases-265.md) |
+| 266 | A chibi character worth looking at: the art direction and the player rig | Done | [phases-266.md](phases-266.md) |
 
 ### Stations you make, and windows a player can read (Phases 267–274)
 
