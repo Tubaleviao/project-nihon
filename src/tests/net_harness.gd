@@ -2766,7 +2766,7 @@ func _step_create_character() -> void:
 		return
 	var look_ok: bool = await _await_until(func(): return str(_root._character.get_peer_look(host_id).get("name", "")) == HOST_NAME, _step_timeout())
 	var avatar: String = _root._character.get_peer_character(host_id)
-	var plate_ok: bool = look_ok and await _await_until(func(): return _root._character.get_nameplate(_root._character.get_peer_character(host_id)) == HOST_NAME, _step_timeout())
+	var plate_ok: bool = look_ok and await _await_until(func(): return _root._character.get_nameplate(_root._character.get_peer_character(host_id)) == "%s\nNewcomer" % HOST_NAME, _step_timeout())   # Phase 273: Newcomer under the name
 	avatar = _root._character.get_peer_character(host_id)
 	var app: Dictionary = _root._character.get_appearance(avatar) if avatar != "" else {}
 	var body_ok: bool = int(app.get("hairColor", -1)) == int(HOST_LOOK["hairColor"]) and str(app.get("hair", "")) == str(HOST_LOOK["hair"])
