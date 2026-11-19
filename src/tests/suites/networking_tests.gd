@@ -1370,10 +1370,10 @@ func _test_net_client_packet_size_capped() -> void:
 		crafts.append([recipe_id, player_id])
 	GameBus.craft_intent.connect(on_craft)
 
-	n._rpc_c2h(JSON.stringify({ "type": "craft_intent", "recipe_id": "R" }))
+	n._rpc_c2h(JSON.stringify({ "type": "craft_intent", "recipe_id": "R" }).to_utf8_buffer())
 	assert_eq(crafts.size(), 1, "a packet within the cap is routed")
 	var filler := "x".repeat(NetworkingSlice.MAX_CLIENT_PACKET_BYTES)
-	n._rpc_c2h(JSON.stringify({ "type": "craft_intent", "recipe_id": "R", "filler": filler }))
+	n._rpc_c2h(JSON.stringify({ "type": "craft_intent", "recipe_id": "R", "filler": filler }).to_utf8_buffer())
 	assert_eq(crafts.size(), 1, "a packet over the cap is dropped")
 
 	GameBus.craft_intent.disconnect(on_craft)

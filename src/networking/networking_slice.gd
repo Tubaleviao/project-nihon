@@ -78,6 +78,7 @@ const Diag := preload("res://src/core/diag.gd")
 const I18n := preload("res://src/core/i18n.gd")
 const GestureRules := preload("res://src/character/gesture_rules.gd")
 const TickProbe := preload("res://src/core/tick_probe.gd")
+const PacketCodec := preload("res://src/networking/packet_codec.gd")
 
 enum Role { OFFLINE, HOST, CLIENT }
 
@@ -601,13 +602,13 @@ func _deliver(peer_id: int, payload: Dictionary) -> bool:
 
 ## Perform the actual RPC send. Host → client uses _rpc_h2c (authority), client
 ## → host uses _rpc_c2h. No-op when no peer is attached (isolated tests).
-func _send_raw(peer_id: int, json: String) -> void:
+func _send_raw(peer_id: int, bytes: PackedByteArray) -> void:
 	if _peer == null:
 		return
 	if _role == Role.HOST:
-		_rpc_h2c.rpc_id(peer_id, json)
+		_rpc_h2c.rpc_id(peer_id, bytes)
 	elif _role == Role.CLIENT:
-		_rpc_c2h.rpc_id(1, json)
+		_rpc_c2h.rpc_id(1, bytes)
 
 # ---------------------------------------------------------------------------
 # GameBus → wire (outbound)
@@ -1158,35 +1159,37 @@ func _on_packet_send_requested(peer_id: int, payload: Dictionary) -> void:
 ## Phase 19 dedup only rejects replayed seqs). Both refuse silently apart from a
 ## rate-limited warning — a dropped packet is not an error the sender can fix.
 @rpc("any_peer", "reliable")
-func _rpc_c2h(json: String) -> void:
+func _rpc_c2h(bytes: PackedByteArray) -> void:
 	TickProbe.begin("net_in")   # Phase 162 — the stress run's cost of inbound client packets
-	_accept_c2h(multiplayer.get_remote_sender_id(), json)
+	_accept_c2h(multiplayer.get_remote_sender_id(), bytes)
 	TickProbe.end()
 
-func _accept_c2h(sender: int, json: String) -> void:
-	if json.length() > MAX_CLIENT_PACKET_BYTES:
-		Diag.warn("NetworkingSlice: client packet from peer %d is %d chars (cap %d) — dropped" \
-			% [sender, json.length(), MAX_CLIENT_PACKET_BYTES])
+## Phase 256 — `wire` is the packet's bytes (`PacketCodec`); a `String` is read as JSON text.
+func _accept_c2h(sender: int, wire: Variant) -> void:
+	var bytes: PackedByteArray = wire.to_utf8_buffer() if wire is String else wire
+	if bytes.size() > MAX_CLIENT_PACKET_BYTES:
+		Diag.warn("NetworkingSlice: client packet from peer %d is %d bytes (cap %d) — dropped" \
+			% [sender, bytes.size(), MAX_CLIENT_PACKET_BYTES])
 		return
 	if not _allow_packet(sender, float(Time.get_ticks_msec())):
 		return
-	var payload = _parse(json)
+	var payload = _parse(bytes)
 	if payload == null:
 		return
 	if TickProbe.enabled:
-		TickProbe.count_in(sender, str(payload.get("type", "")), json.to_utf8_buffer().size())
+		TickProbe.count_in(sender, str(payload.get("type", "")), bytes.size())
 	if not _dedup(sender, payload):
 		return
 	_route_c2h(sender, payload)
 
 ## Host → client channel: authoritative state and the world snapshot.
 @rpc("authority", "reliable")
-func _rpc_h2c(json: String) -> void:
-	var payload = _parse(json)
+func _rpc_h2c(bytes: PackedByteArray) -> void:
+	var payload = _parse(bytes)
 	if payload == null:
 		return
 	if TickProbe.enabled:
-		TickProbe.count_in(1, str(payload.get("type", "")), json.to_utf8_buffer().size())
+		TickProbe.count_in(1, str(payload.get("type", "")), bytes.size())
 	# Snapshot chunks are index-reassembled (out-of-order tolerant) and made
 	# idempotent separately; every other packet type is seq-deduplicated.
 	if str(payload.get("type", "")) != "snapshot_chunk":
@@ -1194,15 +1197,18 @@ func _rpc_h2c(json: String) -> void:
 			return
 	_route_h2c(payload)
 
-func _parse(json: String) -> Variant:
-	var payload = JSON.parse_string(json)
-	if payload == null:
-		Diag.error("NetworkingSlice: malformed JSON packet dropped")
-		return null
-	if not payload is Dictionary:
-		Diag.error("NetworkingSlice: expected Dictionary packet, got %s" % typeof(payload))
+## Phase 256 — the packet in `wire` (bytes or JSON text), or null when malformed (rate-limited warning).
+func _parse(wire: Variant) -> Variant:
+	var bytes: PackedByteArray = wire.to_utf8_buffer() if wire is String else wire
+	var payload: Dictionary = PacketCodec.decode(bytes)
+	if payload.is_empty():
+		if float(Time.get_ticks_msec()) - _malformed_warn_ms >= 1000.0:
+			_malformed_warn_ms = float(Time.get_ticks_msec())
+			Diag.error("NetworkingSlice: malformed packet dropped (%d bytes)" % bytes.size())
 		return null
 	return payload
+
+var _malformed_warn_ms := -INF
 
 func _dedup(sender: int, payload: Dictionary) -> bool:
 	return _m1._dedup(sender, payload)
