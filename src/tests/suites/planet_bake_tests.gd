@@ -14,6 +14,7 @@ func register() -> void:
 	_run_test("planet bake: a corrupted, wrong-hash or wrong-world file is refused", _test_file_refused)
 	_run_test("planet bake: a good file parses and keeps its cells", _test_file_roundtrip)
 	_run_test("planet bake: the world shape bakes deterministically", _test_bake_world)
+	_run_test("planet bake: a corrupted stored bake is refused and baked again", _test_load_or_bake)
 
 func _hash2(x: int, z: int) -> int:
 	var v := (x * 73856093) ^ (z * 19349663)
@@ -103,3 +104,23 @@ func _test_bake_world() -> void:
 	var b := PlanetBake.serialize(PlanetBake.bake_world(1234, 400000.0, 20000.0), 1234, 13, 20000)
 	assert_eq(a, b, "the fabric's world shape bakes to the same bytes twice")
 	assert_true(PlanetBake.parse(a, 1234, 13)["ok"], "and the file parses")
+
+func _test_load_or_bake() -> void:
+	var dir := "user://planet_bake_tests"
+	var path := PlanetBake.file_path(dir, 99, 13)
+	DirAccess.remove_absolute(path)
+	var first := PlanetBake.load_or_bake(path, 99, 13, 400000.0, 20000.0)
+	assert_eq(first["source"], "baked", "no file: the host bakes")
+	var second := PlanetBake.load_or_bake(path, 99, 13, 400000.0, 20000.0, PlanetBake.file_hash_hex(first["file"]))
+	assert_eq(second["source"], "file", "the stored file is used when its hash matches")
+	assert_eq(second["file"], first["file"], "and is the same bytes")
+	var bad: PackedByteArray = first["file"].duplicate()
+	bad[bad.size() - 3] = bad[bad.size() - 3] ^ 0x01
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_buffer(bad)
+	f.close()
+	var third := PlanetBake.load_or_bake(path, 99, 13, 400000.0, 20000.0, PlanetBake.file_hash_hex(first["file"]))
+	assert_eq(third["source"], "baked", "a corrupted file is refused and the world is baked again")
+	assert_eq(third["refused"], "bake.bad_hash", "with the reason")
+	assert_eq(third["file"], first["file"], "to the same bytes as the first bake")
+	DirAccess.remove_absolute(path)

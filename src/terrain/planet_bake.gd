@@ -302,3 +302,26 @@ static func bake_world(seed_v: int, circumference_m: float, cell_m: float, erosi
 		var z := (float(cz) + 0.5 - float(rows) * 0.5) * cell_m
 		return roundi(WorldShape.height(seed_v, x, z, circumference_m) / HEIGHT_UNIT_M)
 	return bake(cols, rows, sea, base, Callable(), erosion_passes)
+
+## The path of a world's bake under `dir`: one file per world seed and worldgen version.
+static func file_path(dir: String, seed_v: int, worldgen_version: int) -> String:
+	return "%s/planet_%d_v%d.nbk" % [dir.trim_suffix("/"), seed_v, worldgen_version]
+
+## Load the bake at `path` if it parses and matches `expected_hex` (empty: its own hash only); otherwise bake the
+## world with `bake_world`, write the file and return that. `source` says which happened: "file" or "baked"
+## (a refused file is replaced, never trusted). Returns { file: PackedByteArray, source, refused (error key or "") }.
+static func load_or_bake(path: String, seed_v: int, worldgen_version: int, circumference_m: float, cell_m: float, expected_hex: String = "") -> Dictionary:
+	var refused := ""
+	if FileAccess.file_exists(path):
+		var existing := FileAccess.get_file_as_bytes(path)
+		var r := parse(existing, seed_v, worldgen_version, expected_hex)
+		if bool(r["ok"]):
+			return { "file": existing, "source": "file", "refused": "" }
+		refused = str(r["error"])
+	var file := serialize(bake_world(seed_v, circumference_m, cell_m), seed_v, worldgen_version, int(cell_m))
+	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+	var out := FileAccess.open(path, FileAccess.WRITE)
+	if out != null:
+		out.store_buffer(file)
+		out.close()
+	return { "file": file, "source": "baked", "refused": refused }
