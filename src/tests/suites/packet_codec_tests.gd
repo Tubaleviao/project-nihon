@@ -10,6 +10,7 @@ func register() -> void:
 	_run_test("codec: remote_player_state is at most 20 bytes on the wire", _test_state_size)
 	_run_test("codec: snapshot_chunk and player_states round-trip", _test_chunk_and_batch)
 	_run_test("codec: a packet one byte short or long is refused", _test_length_checks)
+	_run_test("codec: a large packet is compressd and a lying length is refused", _test_compressed)
 	_run_test("codec: JSON packets and legacy peers still read", _test_json)
 	_run_test("codec: the host refuses a malformed binary packet and the seq wrap is read", _test_slice)
 
@@ -57,6 +58,20 @@ func _test_length_checks() -> void:
 		assert_true(PacketCodec.decode(long).is_empty(), "%s one long" % m["type"])
 	assert_true(PacketCodec.decode(PackedByteArray([99, 0, 0])).is_empty(), "unknown tag")
 	assert_true(PacketCodec.decode(PackedByteArray()).is_empty(), "empty")
+
+func _test_compressed() -> void:
+	var text := "{\"k\":\"%s\"}" % "abc".repeat(3000)
+	var chunk := { "type": "snapshot_chunk", "seq": 3, "snapshot_id": 1, "index": 0, "count": 1, "data": text }
+	var b := PacketCodec.encode(chunk)
+	assert_true(b.size() < text.length() / 4, "compressd: %d bytes" % b.size())
+	assert_eq(PacketCodec.decode(b).get("data"), text, "round trip")
+	assert_true(PacketCodec.decode(b.slice(0, b.size() - 1)).is_empty(), "truncated compress refused")
+	var bomb := b.duplicate()
+	bomb.encode_u32(1, 0x7FFFFFFF)
+	assert_true(PacketCodec.decode(bomb).is_empty(), "stated length over the cap refused")
+	var wrong := b.duplicate()
+	wrong[0] = PacketCodec.COMPRESSED_FLAG | PacketCodec.TAG_PLAYER_STATES
+	assert_true(PacketCodec.decode(wrong).is_empty(), "tag mismatch refused")
 
 func _test_json() -> void:
 	var m := { "type": "craft_intent", "recipe_id": "R", "seq": 100000 }

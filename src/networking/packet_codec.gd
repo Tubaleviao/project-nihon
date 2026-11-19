@@ -8,7 +8,10 @@ extends RefCounted
 ##
 ##   remote_player_state  tag(1) seq(u16) peer_id(i32) x,y,z (i32 centimetres of world position)   = 19 B
 ##   snapshot_chunk       tag(1) seq(u16) snapshot_id(u32) index(u32) count(u32) len(u32) bytes(len)
-##   player_states        tag(1) seq(u16) n(u16) n x [ subject(i32) compact position (20 B) ]
+##   player_states        tag(1) seq(u16) n(u16) byte planes: byte j of each of six words (subject, then the compact position's five) for all n entries
+##
+## A binary packet of `COMPRESS_MIN` bytes or more that compresss smaller goes out as `tag | 0x80`, the
+## original length (u32) and the compressed bytes; the decoder refuses a stated length over `INFLATE_MAX`.
 ##
 ## `seq` is the sender's per-type counter modulo 65536; the receiver's dedup reads the wrap (`SEQ_MOD`).
 
@@ -25,6 +28,10 @@ const PLAYER_STATES_ENTRY_BYTES := 24
 ## Largest world coordinate (metres) a centimetre i32 holds.
 const CM_LIMIT_M := 21474836.0
 const BATCH_MAX := 256
+const COMPRESSED_FLAG := 0x80
+const COMPRESS_MIN := 32
+## Largest inflated size a compressed packet may state (a snapshot chunk's worst case plus its header).
+const INFLATE_MAX := 16384 * 4 + 19
 ## Most data bytes in one snapshot chunk (a UTF-8 chunk of `SNAPSHOT_CHUNK_SIZE` characters, 4 bytes each, at worst).
 const SNAPSHOT_DATA_MAX := 16384 * 4
 
@@ -41,6 +48,13 @@ static func encode(msg: Dictionary) -> PackedByteArray:
 	var out := _encode_binary(msg)
 	if out.is_empty():
 		return JSON.stringify(msg).to_utf8_buffer()
+	if out.size() >= COMPRESS_MIN:
+		var packed := out.compress(FileAccess.COMPRESSION_DEFLATE)
+		if packed.size() + 5 < out.size():
+			var wrapped := PackedByteArray([out[0] | COMPRESSED_FLAG, 0, 0, 0, 0])
+			wrapped.encode_u32(1, out.size())
+			wrapped.append_array(packed)
+			return wrapped
 	return out
 
 static func _encode_binary(msg: Dictionary) -> PackedByteArray:
@@ -94,14 +108,22 @@ static func _encode_player_states(msg: Dictionary) -> PackedByteArray:
 	b.encode_u16(1, int(msg.get("seq", 0)) % SEQ_MOD)
 	b.encode_u16(3, n)
 	for i in n:
-		var at := PLAYER_STATES_HEADER_BYTES + PLAYER_STATES_ENTRY_BYTES * i
 		var raw: PackedByteArray = Marshalls.base64_to_raw(str(s[2 * i + 1]))
 		if raw.size() != 20:
 			return PackedByteArray()
-		b.encode_s32(at, int(s[2 * i]))
-		for j in 20:
-			b[at + 4 + j] = raw[j]
+		var word := PackedByteArray()
+		word.resize(4)
+		word.encode_s32(0, int(s[2 * i]))
+		for j in 4:   # byte planes: neighbours share chunk and exponent bytes, so the compress pass sees runs
+			b[_plane_at(n, 0, j, i)] = word[j]
+		for w in 5:
+			for j in 4:
+				b[_plane_at(n, w + 1, j, i)] = raw[4 * w + j]
 	return b
+
+## Offset of byte `j` of word `w` (0 = subject, 1..5 = the compact position) of entry `i` in a batch of `n`.
+static func _plane_at(n: int, w: int, j: int, i: int) -> int:
+	return PLAYER_STATES_HEADER_BYTES + (w * 4 + j) * n + i
 
 ## The packet a wire message carries, or an empty dictionary when it is not one: a binary packet of an
 ## unknown tag or of the wrong length for its layout, or JSON that does not parse to an object.
@@ -111,6 +133,19 @@ static func decode(bytes: PackedByteArray) -> Dictionary:
 	if bytes[0] == JSON_FIRST_BYTE:
 		var parsed = JSON.parse_string(bytes.get_string_from_utf8())
 		return parsed if parsed is Dictionary else {}
+	if bytes[0] & COMPRESSED_FLAG != 0:
+		if bytes.size() <= 5:
+			return {}
+		var size := bytes.decode_u32(1)
+		if size > INFLATE_MAX or size < 1:
+			return {}
+		var raw := bytes.slice(5).decompress(size, FileAccess.COMPRESSION_DEFLATE)
+		if raw.size() != size or raw[0] != (bytes[0] & ~COMPRESSED_FLAG):
+			return {}
+		return _decode_binary(raw)
+	return _decode_binary(bytes)
+
+static func _decode_binary(bytes: PackedByteArray) -> Dictionary:
 	match bytes[0]:
 		TAG_REMOTE_PLAYER_STATE:
 			if bytes.size() != REMOTE_PLAYER_STATE_BYTES:
@@ -138,8 +173,16 @@ static func decode(bytes: PackedByteArray) -> Dictionary:
 				return {}
 			var flat: Array = []
 			for i in n:
-				var at := PLAYER_STATES_HEADER_BYTES + PLAYER_STATES_ENTRY_BYTES * i
-				flat.append(bytes.decode_s32(at))
-				flat.append(Marshalls.raw_to_base64(bytes.slice(at + 4, at + PLAYER_STATES_ENTRY_BYTES)))
+				var raw := PackedByteArray()
+				raw.resize(20)
+				var word := PackedByteArray()
+				word.resize(4)
+				for j in 4:
+					word[j] = bytes[_plane_at(n, 0, j, i)]
+				for w in 5:
+					for j in 4:
+						raw[4 * w + j] = bytes[_plane_at(n, w + 1, j, i)]
+				flat.append(word.decode_s32(0))
+				flat.append(Marshalls.raw_to_base64(raw))
 			return { "type": "player_states", "seq": bytes.decode_u16(1), "s": flat }
 	return {}
