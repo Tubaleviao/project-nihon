@@ -67,7 +67,8 @@ func announce(skill: String, tier: String) -> void:
 
 ## The wheel shows where the recent play time went: professions glow by share, the centre lists the leading skills.
 func refresh_focus() -> void:
-	if page.skill != "": page.show_skill(page.skill)   # the open page follows XP and focus
+	if page.skill != "":
+		page.show_skill(page.skill)   # the open page follows XP and focus
 	var res: Resource = GameData.WORLD_SYSTEMS.get("SkillWheel", null)
 	var prof_skills: Dictionary = res.get("professionSkills") if res != null else {}
 	var view: Dictionary = SkillFocus.local_view
