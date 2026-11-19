@@ -60,9 +60,6 @@ func has_edit_near_at(tile: Vector2i, radius: int, min_y: float) -> bool:
 					return true
 	return false
 
-## Phase 116 — true when the chunk or the `radius` tiles around it hold any edit: one index lookup per
-## chunk instead of `has_edit_near`'s string keys per tree. A false answer rules every tile of the chunk
-## out for a `has_edit_near` of the same radius; a true one means "ask per tile".
 ## Phase 244 — a digest of the edits in `chunk_pos` (0 when it has none): the same edits give the same number in
 ## any session, which the `edit_revision` counter does not. Part of a disk cache key.
 func edit_digest(chunk_pos: Vector2i) -> int:
@@ -76,6 +73,9 @@ func edit_digest(chunk_pos: Vector2i) -> int:
 		parts.append([k, s._edits.get(k)])
 	return str(parts).hash()
 
+## Phase 116 — true when the chunk or the `radius` tiles around it hold any edit: one index lookup per
+## chunk instead of `has_edit_near`'s string keys per tree. A false answer rules every tile of the chunk
+## out for a `has_edit_near` of the same radius; a true one means "ask per tile".
 func has_edits_near_chunk(chunk_pos: Vector2i, radius: int = 1) -> bool:
 	if s._edits_by_chunk.is_empty():
 		return false

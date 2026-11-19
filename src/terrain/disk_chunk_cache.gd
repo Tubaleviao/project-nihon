@@ -155,6 +155,14 @@ func _evict_over_cap(keep: String) -> Array:
 
 ## Queue `job` on a worker; `flush` waits for every one.
 func run_async(job: Callable) -> void:
+	# Reap finished tasks: an id never waited on keeps its task record alive, one per chunk written.
+	var live: Array = []
+	for t in _tasks:
+		if WorkerThreadPool.is_task_completed(t):
+			WorkerThreadPool.wait_for_task_completion(t)
+		else:
+			live.append(t)
+	_tasks = live
 	_tasks.append(WorkerThreadPool.add_task(job, false, "chunk disk cache"))
 
 func flush() -> void:
