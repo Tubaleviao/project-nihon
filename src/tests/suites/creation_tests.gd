@@ -168,6 +168,7 @@ func _test_placeholder_mesh_ratio() -> void:
 			continue
 		var head_h: float = head.get_aabb().size.y
 		var total: float = body.get_aabb().size.y
+		assert_true(head_h <= total, "%s head mesh (%.3f m) is no taller than the body mesh (%.3f m): a mis-sized asset" % [g, head_h, total])
 		var ratio := head_h / total
 		assert_true(ratio >= float(bounds["min"]) and ratio <= float(bounds["max"]),
 			"%s placeholder mesh head ratio %.3f within %s..%s" % [g, ratio, bounds["min"], bounds["max"]])

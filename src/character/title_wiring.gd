@@ -53,17 +53,30 @@ func unlock(player_id: String, title: String) -> bool:
 	return true
 
 func _on_profession_unlocked(player_id: String, profession: String) -> void:
-	if root._is_client or player_id == "":
-		return
-	for t in TitleRules.for_profession(profession, "active"):
-		unlock(player_id, t)
+	_unlock_profession(player_id, profession)
 
 func _on_skill_tier_recorded(player_id: String, skill: String, tier: String) -> void:
+	_unlock_skill_tier(player_id, skill, tier)
+
+## The titles a profession now being active adds (new ones only).
+func _unlock_profession(player_id: String, profession: String) -> Array:
+	var added: Array = []
+	if root._is_client or player_id == "":
+		return added
+	for t in TitleRules.for_profession(profession, "active"):
+		if unlock(player_id, t):
+			added.append(t)
+	return added
+
+## The titles a skill reaching `tier` adds: its master title, and the mastered title of each profession whose
+## skills are now all master (new ones only).
+func _unlock_skill_tier(player_id: String, skill: String, tier: String) -> Array:
+	var added: Array = []
 	if root._is_client or player_id == "" or tier != MASTER_TIER:
-		return
+		return added
 	var t := TitleRules.for_skill_master(skill)
-	if t != "":
-		unlock(player_id, t)
+	if t != "" and unlock(player_id, t):
+		added.append(t)
 	var profs := TitleRules.professions_of_skill(skill)
 	for p in profs:
 		var all_master := true
@@ -73,7 +86,9 @@ func _on_skill_tier_recorded(player_id: String, skill: String, tier: String) -> 
 				break
 		if all_master:
 			for mt in TitleRules.for_profession(str(p), "mastered"):
-				unlock(player_id, mt)
+				if unlock(player_id, mt):
+					added.append(mt)
+	return added
 
 ## Host: unlock the titles a player already earned before titles shipped (or before this load): every
 ## active profession, and every skill at master (plus the mastered title of a profession whose skills all are).
@@ -82,15 +97,12 @@ func backfill(player_id: String) -> Array:
 	var added: Array = []
 	if root._is_client or player_id == "" or not root._registry.has_player(player_id):
 		return added
-	var seen := func(_p: String, t: String) -> void: added.append(t)
-	GameBus.title_unlocked.connect(seen)
 	if root._professions != null:
 		for p in root._professions.get_unlocked(player_id):
-			_on_profession_unlocked(player_id, str(p))
+			added.append_array(_unlock_profession(player_id, str(p)))
 	for skill in TitleRules.master_skill_ids():
 		if str(root._crafting.get_skill_for(player_id, skill)) == MASTER_TIER:
-			_on_skill_tier_recorded(player_id, skill, MASTER_TIER)
-	GameBus.title_unlocked.disconnect(seen)
+			added.append_array(_unlock_skill_tier(player_id, skill, MASTER_TIER))
 	return added
 
 func _on_player_joined(_peer_id: int, player_id: String, _reconnected: bool) -> void:
