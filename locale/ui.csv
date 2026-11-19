@@ -939,3 +939,6 @@ ui.work.build,building,construir
 ui.work.dismantle,dismantling,desmontar
 ui.work.repair,repairing,reparar
 ui.work.lockpick,picking locks,arrombar fechaduras
+ui.title_unlocked_toast,New title: {0}. Pick it in the Character window.,Novo título: {0}. Escolha-o na janela do Personagem.
+ui.title_none,(no title),(sem título)
+ui.title_tooltip,The title shown under your name,O título mostrado abaixo do seu nome

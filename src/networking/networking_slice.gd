@@ -330,6 +330,8 @@ func _ready() -> void:
 	# Phase 181 — a creation travels client → host as an intent; a look travels host → the peers in AOI.
 	GameBus.character_creation_intent.connect(_on_character_creation_intent)
 	GameBus.player_look_changed.connect(_on_player_look_changed)
+	GameBus.title_choose_intent.connect(_on_title_choose_intent)   # Phase 273
+	GameBus.title_unlocked.connect(_on_title_unlocked)
 	GameBus.harvest_intent.connect(_on_harvest_intent)
 	GameBus.carry_intent.connect(_on_carry_intent)
 	GameBus.carcass_drop_intent.connect(_on_carcass_drop_intent)
@@ -1002,6 +1004,20 @@ func _on_gesture_intent(gesture_id: String, _player_id: String) -> void:
 ## peer's look when that peer's avatar appears; the host answers inside the AOI and pushes a changed look.
 func _on_character_creation_intent(action: String, creation: Dictionary, _player_id: String) -> void:
 	_m1.forward_creation_intent(action, creation)
+
+## Phase 273 — a client's title choice travels to the host; a title unlocked for a remote player is told to
+## that player alone (the toast), the record itself riding the own-state channel.
+func _on_title_choose_intent(title: String, _player_id: String) -> void:
+	if _role != Role.CLIENT:
+		return
+	_broadcast({ "type": "title_intent", "title": title.left(40) })
+
+func _on_title_unlocked(player_id: String, title: String) -> void:
+	if _role != Role.HOST:
+		return
+	var peer := _peer_for_inventory_owner(player_id)
+	if peer != 0:
+		_deliver(peer, { "type": "title_unlocked", "title": title })
 
 func request_peer_look(peer_id: int) -> void:
 	if _role == Role.CLIENT and peer_id > 0:

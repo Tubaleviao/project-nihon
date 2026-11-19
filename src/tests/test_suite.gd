@@ -16,6 +16,7 @@ extends "res://src/tests/test_support.gd"
 const SUITES: Array[String] = [
 	"res://src/tests/suites/window_shortcut_tests.gd",
 	"res://src/tests/suites/character_window_tests.gd",
+	"res://src/tests/suites/title_tests.gd",
 	"res://src/tests/suites/menu_tests.gd",
 	"res://src/tests/suites/one_world_tests.gd",
 	"res://src/tests/suites/smooth_ground_tests.gd",

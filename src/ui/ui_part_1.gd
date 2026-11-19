@@ -181,6 +181,7 @@ func _refresh_sheet() -> void:
 	# host's synced state says).
 	if sl._sheet_create_button != null:
 		sl._sheet_create_button.visible = sl.creation_button_shown()
+	_refresh_titles()
 	_refresh_doll()
 	if signature == sl._sheet_signature and sl._sheet_attributes.get_child_count() > 0:
 		return
@@ -243,6 +244,23 @@ func _refresh_sheet() -> void:
 				b.tooltip_text = str(row["tooltip"])
 				b.pressed.connect(sl.open_window.bind(sl.WINDOW_SKILLS))
 				sl._sheet_skills.add_child(b)
+
+## Phase 273 — fill the title list from the own record: "none" first, then every unlocked title, the worn one picked.
+func _refresh_titles() -> void:
+	if sl._sheet_title == null or sl.title_wiring == null:
+		return
+	var rec: Dictionary = sl.title_wiring.own_record()
+	var ids: Array = sl.TitleRules.unlocked_ids(rec)
+	var chosen: String = sl.TitleRules.chosen_of(rec)
+	if ids == sl._sheet_title_ids and sl._sheet_title.item_count == ids.size() + 1:
+		sl._sheet_title.select(0 if chosen == "" else ids.find(chosen) + 1)
+		return
+	sl._sheet_title_ids = ids
+	sl._sheet_title.clear()
+	sl._sheet_title.add_item(sl.I18n.t("ui.title_none"))
+	for id in ids:
+		sl._sheet_title.add_item(sl.I18n.content("title", str(id)))
+	sl._sheet_title.select(0 if chosen == "" else ids.find(chosen) + 1)
 
 ## Rebuild the doll's rig from the local avatar's appearance and worn set when either changed.
 func _refresh_doll() -> void:
@@ -317,6 +335,11 @@ func build_attributes_content() -> Control:
 	sl._sheet_name.add_theme_font_size_override("font_size", 16)
 	sl._sheet_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(sl._sheet_name)
+	# Phase 273 — the title shown under the name: none, or any unlocked one.
+	sl._sheet_title = OptionButton.new()
+	sl._sheet_title.tooltip_text = sl.I18n.t("ui.title_tooltip")
+	sl._sheet_title.item_selected.connect(sl._on_title_picked)
+	vbox.add_child(sl._sheet_title)
 	sl._sheet_create_button = Button.new()
 	sl._set_tr(sl._sheet_create_button, "text", "creation.open")
 	sl._sheet_create_button.pressed.connect(func() -> void: sl.show_creation({}, true))

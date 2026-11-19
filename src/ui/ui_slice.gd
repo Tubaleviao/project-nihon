@@ -71,6 +71,7 @@ const GesturePanelScript := preload("res://src/ui/gesture_panel.gd")
 const CharacterSheet := preload("res://src/ui/character_sheet.gd")
 const CreationScreen := preload("res://src/ui/creation_screen.gd")
 const CreationRules := preload("res://src/character/creation_rules.gd")
+const TitleRules := preload("res://src/character/title_rules.gd")
 const AttributeRules := preload("res://src/character/attribute_rules.gd")
 const CraftWindowScript := preload("res://src/ui/craft_window.gd")   # Phase 269
 
@@ -156,6 +157,9 @@ var _sheet_left: VBoxContainer = null
 var _sheet_right: VBoxContainer = null
 var _sheet_doll: CharacterSheet.Doll = null
 var _sheet_name: Label = null
+var _sheet_title: OptionButton = null   # Phase 273 — the title the player wears: none, or one of the unlocked
+var title_wiring: RefCounted = null   # Phase 273 — set by game_root (the own title record and the choose request)
+var _sheet_title_ids: Array = []
 var _sheet_attributes: VBoxContainer = null
 var _sheet_stats: GridContainer = null
 var _sheet_skills: HBoxContainer = null
@@ -234,6 +238,7 @@ func _ready() -> void:
 	GameBus.research_points_synced.connect(_on_research_points_synced)
 	GameBus.technology_unlocked.connect(_on_technology_unlocked)
 	GameBus.own_skill_tier_gained.connect(_announce_tier); GameBus.skill_tier_recorded.connect(_on_skill_tier_recorded)   # Phase 272: a new tier toasts and opens its page
+	GameBus.title_unlocked.connect(_on_title_unlocked)   # Phase 273
 	GameBus.system_message.connect(_on_system_notice)   # Phase 260: a notice is also a toast
 	GameBus.item_picked_up.connect(_on_item_picked_up)
 	GameBus.inventory_changed.connect(_on_inventory_changed)
@@ -1152,6 +1157,19 @@ func _announce_tier(skill: String, tier: String) -> void:
 	if _skills_window == null: return
 	_skills_window.announce(skill, tier)
 	push_toast(I18n.t("ui.skill_unlocked_toast", [I18n.content("skill", skill), I18n.t(SkillPagePanel.TIER_KEY % tier)]))
+
+## Phase 273 — a title unlocked for this machine's player (a remote player's, on a listen host, is not ours).
+func _on_title_unlocked(player_id: String, title: String) -> void:
+	if player_id != "" and (crafting_slice == null or player_id != str(crafting_slice.local_player_id())):
+		return
+	push_toast(I18n.t("ui.title_unlocked_toast", [I18n.content("title", title)]))
+	if _sheet_title != null:
+		_sheet_signature = 0   # the character window lists it on its next refresh
+
+func _on_title_picked(index: int) -> void:
+	if index < 0 or index > _sheet_title_ids.size():
+		return
+	GameBus.title_choose_intent.emit("" if index == 0 else str(_sheet_title_ids[index - 1]), "")
 
 func _on_technology_unlocked(_tech_id: String, _player_id: String) -> void:
 	refresh_technology()

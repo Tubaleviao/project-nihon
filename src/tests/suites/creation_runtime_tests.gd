@@ -63,7 +63,7 @@ func _test_fields_refused() -> void:
 	var state := reg.creation_of(pid)
 	assert_true(CreationRules.is_created(state), "and recorded")
 	assert_eq(reg.display_name(pid), "Akira", "the display name is the created one")
-	assert_eq(reg.look_of(pid), { "name": "Akira", "gender": "feminine", "hair": "hair_f_bob", "hairColor": 129 }, "the look peers get")
+	assert_eq(reg.look_of(pid), { "name": "Akira", "gender": "feminine", "hair": "hair_f_bob", "hairColor": 129, "title": "Newcomer" }, "the look peers get")
 	var round := _reg()
 	round.apply_player_data(pid, reg.get_player_data(pid))
 	assert_eq(round.creation_of(pid), state, "the creation survives a save")

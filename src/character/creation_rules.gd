@@ -11,6 +11,7 @@ extends RefCounted
 ## the same skeleton cannot both exist on one server.
 
 const SkeletonRig := preload("res://src/character/skeleton_rig.gd")
+const TitleRules := preload("res://src/character/title_rules.gd")
 
 
 static func data() -> Resource:
@@ -231,6 +232,10 @@ static func sanitize_look(raw: Variant) -> Dictionary:
 	if not (raw is Dictionary):
 		return {}
 	var out := { "name": str((raw as Dictionary).get("name", "")).left(MAX_FIELD_LEN) }
+	# Phase 273 — the title shown under the name: a fabric title id, or "" for none; anything else is dropped.
+	var title: Variant = raw.get("title", null)
+	if title is String and (title == "" or TitleRules.is_title(title)):
+		out["title"] = title
 	var c := { "gender": str(raw.get("gender", "")), "hair": str(raw.get("hair", "")), "hairColor": raw.get("hairColor", null) }
 	if choice_refusal(c) == "":
 		c["hairColor"] = int(c["hairColor"])

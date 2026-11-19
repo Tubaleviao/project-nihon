@@ -647,6 +647,7 @@ func _own_state_payload(player_id: String) -> Dictionary:
 		"flags": own.get("flags", {}),
 		"companions": own.get("companions", []),
 		"professions": own.get("professions", {}),
+		"titles": own.get("titles", {}),
 		"attributes": own.get("attributes", {}),
 		"attribute_growth": own.get("attribute_growth", {}),
 		"skill_focus_view": SkillFocus.view_of_record(root._registry.get_record(player_id)),
@@ -699,6 +700,7 @@ func on_own_state_synced(data: Dictionary) -> void:
 			"flags":      data.get("flags", {}),
 			"companions": data.get("companions", []),
 		}, root._registry.local_player_id)
+	root._title_wiring.apply_own(data)   # Phase 273
 	if data.has("professions"):
 		root._professions.apply_record({ "professions": data["professions"] }, root._registry.local_player_id)
 	if data.get("attributes", null) is Dictionary:

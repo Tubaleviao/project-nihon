@@ -146,9 +146,11 @@ func dress_peer(peer_id: int, instance_id: String) -> void:
 	var look: Dictionary = sl._peer_looks.get(peer_id, {})
 	if look.is_empty():
 		return
-	var key := JSON.stringify(look)
+	var body := look.duplicate()
+	body.erase("title")   # a title changes the nameplate only, never the body
+	var key := JSON.stringify(body)
 	if str((sl._instances.get(instance_id, {}) as Dictionary).get("look_key", "")) != key:
 		apply_look(instance_id, look)
 		if sl._instances.has(instance_id):
 			sl._instances[instance_id]["look_key"] = key
-	set_nameplate(instance_id, str(look.get("name", "")))
+	set_nameplate(instance_id, sl.TitleRules.nameplate(str(look.get("name", "")), str(look.get("title", ""))))

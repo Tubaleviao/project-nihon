@@ -449,6 +449,14 @@ signal void_burst_resolved(result: Dictionary)
 ## the wire like `void_burst_resolved`; a client receives its own and nobody else's.
 signal profession_unlocked(player_id: String, profession: String)
 
+## Phase 273 — a title unlocked for a player (host). Owner-scoped on the wire like `profession_unlocked`;
+## a client receives its own with an empty player id.
+signal title_unlocked(player_id: String, title: String)
+
+## Phase 273 — a player asks to wear `title` ("" for none). A client's goes to the host, which refuses a title
+## the player has not unlocked; the local player's has an empty `player_id`.
+signal title_choose_intent(title: String, player_id: String)
+
 ## Request to repair a held durable item (emitted by the player/UI or any system).
 ## item_id : String — key from GameData.ITEMS (e.g. "FerritePick")
 signal repair_requested(item_id: String)

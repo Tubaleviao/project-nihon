@@ -1,6 +1,5 @@
 extends Node
 ## Phase 39 — the two-client network harness.
-##
 ## Every guarantee Phases 34–38 landed was proven at the ROUTING level: a test called
 ## `NetworkingSlice._route_c2h(sender, payload)` with the sender handed in as an
 ## argument and read the bus. Not one byte ever crossed a socket. This runner is the
@@ -205,6 +204,7 @@ static func steps() -> Array:
 		{ "name": "attributes_synced", "compare": true },
 		{ "name": "creation_skip_button", "compare": true },
 		{ "name": "create_character", "compare": true },
+		{ "name": "title_choice", "compare": true },
 		{ "name": "creation_button_synced", "compare": true },
 		{ "name": "world_regen_synced", "compare": true },
 		{ "name": "structure_damage", "compare": true },
@@ -467,6 +467,7 @@ func run(root: Node, role: String) -> void:
 	await _step_attributes_synced()
 	await LateSteps.new().creation_skip_button(self)
 	await _step_create_character()
+	await LateSteps.new().title_choice(self)
 	await LateSteps.new().creation_button_synced(self)
 	await _step_world_regen_synced()
 	await _step_structure_damage()
