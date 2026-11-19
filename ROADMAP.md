@@ -38,6 +38,16 @@ others are not in it.
 
 | Priority | Phase | Title |
 |---|---|---|
+| 8 | 279 | Pick up with E |
+| 9 | 278 | Rocks and branches that look like rocks and branches |
+| 10 | 283 | Trees that look like trees: closed faces, a trunk and a real crown |
+| 11 | 282 | A felled tree falls, then goes |
+| 12 | 281 | Chopping you can see: a work swing while the hold runs |
+| 13 | 280 | The hotbar item in the hand |
+| 14 | 284 | Hair that sits on the head |
+| 15 | 285 | Grass without black spots |
+| 16 | 286 | Men and women who look different |
+| 17 | 287 | Fighting that reads: combos, impact timing and hit reactions |
 | 18 | 244 | A chunk cache on disk |
 | 21 | 237 | Flight that handles like flight |
 | 22 | 251 | A human playtest: what would make the game fun (a standing checkpoint) |
@@ -53,6 +63,12 @@ others are not in it.
 | 32 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
 
 Order notes that differ from the arcs' own order:
+
+- Phases 278–287 are the owner's third playtest set (2026-11-19, Phase 251), filed at high priority ahead of
+  everything else open. The key change (279) comes first because it is small and every later finding is
+  played with it; trees (283) come before felling (282) because the fall animates the new tree mesh. The
+  art each needs is in the assets repo's Phases A40–A46; each game phase lands with placeholders and does
+  not wait for that art.
 
 - Phases 259–276 are done. 259–266 were the owner's playtest findings of 2026-11-13 (Phase 251): a new
   player starts with nothing and grows from bare hands, in a gentle area, with work that shows its
@@ -317,6 +333,28 @@ not part of the arc. Phase 275 is the contract (keys, layout, manifest section, 
 | 275 | Audio foundation: a sound loader, an event table, a bus layout and placeholder sounds | Done |
 | 276 | First sounds wired in: clicks, windows, footsteps, the dig, pickups, a creature's attack, ambience and music | Done |
 | 277 | Sound gaps: other players' footsteps, rock underfoot on cliffs, music on the main menu | Open |
+
+### Next: the third playtest set (Phases 278–287)
+
+Filed by the owner on 2026-11-19 after playing `main` (Phase 251), at high priority. What was found: rocks and
+branches on the ground are the same grey box; picking up is on T; the item chosen in the hotbar is not in the
+hand; chopping a tree plays no animation; a felled tree squashes into the ground and stays; the top of a tree
+can be seen into; hair floats above the head; the grass shows black spots; male and female characters look the
+same; fighting looks stiff. Each phase names the private art it pairs with (`project-nihon-assets` Phases
+A40–A46). The placeholder rule holds: each phase lands with public placeholders and is playable without the art.
+
+| Phase | Title | Status |
+|---|---|---|
+| 278 | Rocks and branches that look like rocks and branches | Open |
+| 279 | Pick up with E | Open |
+| 280 | The hotbar item in the hand | Open |
+| 281 | Chopping you can see: a work swing while the hold runs | Open |
+| 282 | A felled tree falls, then goes | Open |
+| 283 | Trees that look like trees: closed faces, a trunk and a real crown | Open |
+| 284 | Hair that sits on the head | Open |
+| 285 | Grass without black spots | Open |
+| 286 | Men and women who look different | Open |
+| 287 | Fighting that reads: combos, impact timing and hit reactions | Open |
 
 ## Phase 225 — The options window
 
@@ -898,6 +936,254 @@ the event table and the `Sound` API from Phase 275 as they are; new events get p
   instead of cutting; a server boot plays nothing.
 - Net harness step: the second client hears (traces) the first client's footsteps.
 - No new user-facing strings, or every new one is in both locales.
+
+## Phase 278 — Rocks and branches that look like rocks and branches
+
+Owner's playtest, 2026-11-19: loose stones and branches on the ground both look like the same grey box. The cause
+is in `src/world/loose_item_slice.gd` (~363–383): every kind shares one `BoxMesh` (0.35×0.18×0.35) in one
+MultiMesh, and the per-instance colours (brown, grey) never show because no material sets
+`vertex_color_use_as_albedo` (the tree pool does, `src/core/multimesh_pool.gd`). Meshes for both already exist at
+`models/items/Branch.glb.raw` and `models/items/LooseStone.glb.raw` and are not used.
+
+- One MultiMesh per loose kind, its mesh taken from the kind's item model (`AssetOverlay.item_model_key`), so a
+  branch is a long thin stick and a stone a lump. The box stays only as the fallback when a key fails to load, and
+  the fallback gets the vertex-colour material so the two kinds at least differ in colour.
+- Each instance gets a yaw and a small scale jitter (0.85–1.15) seeded by its cell, so a field of them does not
+  repeat; the jitter is deterministic, so host and client agree, and the pick-up ray still uses the logical
+  position.
+- Up to three variants per kind (`models/items/<Id>_v<n>.glb.raw`, n = 1..2, optional) are chosen by the same
+  seed when present; placeholders for each variant key land with this phase. Art: assets Phase A40.
+
+**Acceptance criteria**
+- Suite: the loose-item renderer builds one MultiMesh per kind present, with the kind's model mesh (not a
+  `BoxMesh`) when the key loads; with a missing key it falls back to the box and the material has
+  `vertex_color_use_as_albedo`; the same cell gives the same yaw, scale and variant on two builds; a variant key
+  that is absent is never picked.
+- Suite: every loose kind in the fabric has a placeholder model at its key, and every variant key has one.
+- Playtest bot `gather` step still passes (pick-up by aim is unchanged).
+
+## Phase 279 — Pick up with E
+
+Owner's playtest, 2026-11-19: picking up is on T (`PICK_KEY := KEY_T`, `loose_item_slice.gd:26`) and should be on
+E, the key most games use. Bare E today toggles all equipment on and off (`player_slice.gd`, "inspect the naked
+body"), and both keys are in `Hotbar.RESERVED_KEYS`.
+
+- Picking up moves to E. The equipment toggle moves to T (the freed key). Both stay reserved for hotbar boxes.
+- The keys become input-map actions in `project.godot` (`pick_up`, `toggle_equipment`) instead of hard-coded
+  key codes, so later rebinding (an options-window task) has something to rebind. The handlers read the action,
+  not the keycode, and still ignore Alt+letter window shortcuts and focused text fields (Phase 219).
+- Every on-screen hint that names the key (`src/ui/input_labels.gd`, tutorial texts, the help overlay) reads it
+  from the action, so no text says "T" for picking up. Locale strings that embed the letter take it as a param.
+
+**Acceptance criteria**
+- Suite: an E press with a pickup in reach emits the pick-up intent; a T press emits the equipment toggle; E in a
+  focused text field does neither; Alt+E still opens the inventory and does not pick up.
+- Suite: no `KEY_T` or `KEY_E` literal remains in the pick-up or equipment-toggle handlers (a source audit like the
+  existing ones); the input labels for `pick_up` and `toggle_equipment` resolve to E and T.
+- Playtest bot `gather` and `tutorial` steps pass with E.
+- Locale check: no new string in one locale only.
+
+## Phase 280 — The hotbar item in the hand
+
+Owner's playtest, 2026-11-19: putting an item in the hotbar and selecting it shows nothing in the character's
+hand. Today `hotbar.selected_item()` only feeds station placement; held meshes exist only for worn equipment
+(`CharacterSlice._attach_equipment`, Phase 153, `socket_weapon_r/l`).
+
+- The selected hotbar slot is the held item: its model (`AssetOverlay.item_model_key`, the box fallback when absent)
+  is attached to `socket_weapon_r`, replacing the main-hand equipment mesh while the slot holds something other
+  than the equipped main-hand item; an empty slot shows the equipped main hand (or nothing).
+- Two-handed carries and stations (Phase 268) keep their own pose; a station in the slot shows its carried
+  form in both hands, not a full-size station.
+- The held item is shown to other players. The client sends the selected slot index; the host checks the slot
+  exists and is not empty in that player's inventory, rate-limits changes, and syncs the held item id to peers
+  in range. A client never names the item id itself (trust boundary).
+- `RigTree.attack_clip_for` and the work swing (Phase 281) read the held item, so a pick held from the hotbar
+  swings as a tool.
+- Each item's grip (offset and rotation at the socket) comes from the item's model (a `grip` node when present,
+  else the model origin); no per-item offsets in code. Art: the item meshes exist (assets A8, A11, A21, A34).
+
+**Acceptance criteria**
+- Suite: selecting a slot with an item attaches that item's mesh under `socket_weapon_r`; selecting an empty slot
+  restores the main-hand equipment mesh; a missing model key gives the box fallback; switching slots frees the old
+  mesh (no orphans); a `grip` node offsets the mesh.
+- Suite (host): a selected-slot message naming an empty or out-of-range slot is refused and syncs nothing; more
+  changes than the rate limit in a second are dropped; the synced id is the inventory's, not a client value.
+- Net harness step: client B sees client A's held item id change when A selects another slot.
+
+## Phase 281 — Chopping you can see: a work swing while the hold runs
+
+Owner's playtest, 2026-11-19: holding the work input on a tree plays no animation. `work_hold.gd` emits
+`tree_chop_requested` and nothing animates; mining plays `attack_tool` once, when the block breaks.
+
+- While a work hold runs (chopping, mining, digging, carcass work), the character loops a work clip with one
+  strike per work tick: `chop` for trees, `mine` for blocks, `dig` for digging, falling back to `attack_tool`
+  when the rig lacks the clip. The clip choice is a fabric table (work kind → clip), not code.
+- The strike frame lines up with the tick that applies the work: the clip's `impact` marker (assets A41 adds it;
+  the fallback uses 40% of the clip) is the moment the tick's chips, sound (Phase 276 `chop`/`dig` events) and
+  progress bar step happen on the client.
+- The character turns to face the target when the hold starts. Releasing the hold or walking away blends back to
+  idle/locomotion within 0.2 s.
+- Other players see the swing: the host already knows a hold is running; it syncs a `working` state (kind,
+  target) to peers in range, and their copies loop the same clip.
+- New clip keys `chop`, `mine`, `dig` get placeholder clips on the public `player_rig` first. Art: assets A41.
+
+**Acceptance criteria**
+- `npm run validate` / `check-drift` pass with the work-clip table; the validator rejects a clip name not on the
+  rig contract.
+- Suite: a chop hold on a tree plays `chop` on loop; a mining hold plays `mine`; a rig without the clip plays
+  `attack_tool`; releasing the hold stops the loop; the strike signal fires once per work tick at the marker time.
+- Net harness step: client B's copy of client A plays `chop` while A chops.
+- Playtest bot `gather` step records the clip that played during the chop and fails if it was not a work clip.
+
+## Phase 282 — A felled tree falls, then goes
+
+Owner's playtest, 2026-11-19: a felled tree squashes into a dark stump in place (scale 0.7/0.18/0.7,
+`tree_slice.gd` ~1160–1172) and stays until it regrows. It should topple, and then disappear completely.
+
+- On the felled event, clients play a fall: the tree rotates about its base, away from the feller, to the ground
+  over about 2.5 s with an ease-in (a falling tree speeds up), a short bounce, then sinks and fades over 1.5 s
+  and is removed. The fall is client-side presentation only; the host's state is "felled at time t".
+- After the fall nothing of the tree remains (no stump), until it regrows on the existing timer. Regrowth shows a
+  sapling growing to full size over its first stretch of time rather than popping in.
+- A client that loads the chunk after the fall (or joins late) sees no tree and no fall; a client that loads it
+  mid-fall sees the tree already gone (no half-fall replays).
+- The falling tree is a single instance taken out of the MultiMesh into its own node for the fall, then freed;
+  the MultiMesh slot is hidden. No collision during the fall (it never hits players).
+- The fall direction is seeded from the feller's position, so all clients agree.
+- No world-gen change (placement is untouched), so no `WORLDGEN_VERSION` bump.
+
+**Acceptance criteria**
+- Suite (driving the fall with explicit time steps): after the felled event the tree's node tilts toward the side
+  away from the feller and reaches at least 85° by 2.5 s; by 4 s it is freed and its MultiMesh slot hidden; no
+  stump instance exists; orphan audit clean.
+- Suite: a chunk built with a tree already felled shows no tree; regrowth scales from sapling to full over the
+  regrow window.
+- Net harness step: both clients see the tree removed after A fells it.
+
+## Phase 283 — Trees that look like trees: closed faces, a trunk and a real crown
+
+Owner's playtest, 2026-11-19: the upper part of a tree can be seen into and does not look good. Trees are two boxes
+(`tree_slice.gd` `_tree_mesh()`, `MeshUtil.add_box`) in one MultiMesh. `MeshUtil` winds faces counter-clockwise
+seen from outside, which Godot 4 treats as back faces; with the default culling, the outside faces are culled and
+the inside shows. The voxel terrain hides the same winding with `CULL_DISABLED`; the tree material does not.
+
+- Fix `MeshUtil.add_box` (and any other `MeshUtil` builder) to Godot's front-face winding, and check every user of
+  it (trees, the loose-item fallback, any debug or placeholder boxes) still renders outward. The terrain's
+  `CULL_DISABLED` stays only where a mesh is truly two-sided.
+- Trees come from a model per tree species (`models/trees/<species>.glb.raw`, the species from the fabric's
+  biome/flora tables), with up to two variants per species, chosen by the tree's seed. Placeholders for every
+  species key are generated in the public repo: a tapered trunk and a crown of several overlapping closed lumps
+  (not one box), coloured per species.
+- The procedural mesh stays as the fallback when a key fails to load, with the fixed winding.
+- Trees get a gentle wind sway in the vertex shader (crown only, weighted by height), off on the low graphics path.
+- No world-gen change (positions and species are untouched), so no `WORLDGEN_VERSION` bump. Art: assets A42.
+
+**Acceptance criteria**
+- Suite: every triangle `MeshUtil.add_box` emits has its face normal (from the winding Godot uses) pointing away
+  from the box centre; same for the tree fallback mesh.
+- Suite: each fabric tree species has a placeholder model at its key; a tree uses its species' model when it loads
+  and the fallback otherwise; the variant pick is stable for a given tree seed.
+- Suite: the placeholder crown is closed (every edge shared by two triangles).
+- Playtest bot `travel` and `horizon` steps stay within their frame budgets with the new trees.
+
+## Phase 284 — Hair that sits on the head
+
+Owner's playtest, 2026-11-19: hair looks like it floats above the head. Hair meshes are parented to a
+`BoneAttachment3D` on the `Head` bone at the bone origin with no fit (`avatar_builder.gd` ~44–70), so the fit
+depends on each glb's origin matching the head, and the head size differs by body and proportion sliders.
+
+- Each head mesh carries a `hair_anchor` node (scalp top) and each hair mesh a matching `anchor` node; the builder
+  places the hair so the two coincide. Missing nodes fall back to today's placement.
+- The hair is scaled with the head when proportion sliders change head size, so a bigger head does not poke
+  through or leave a gap.
+- A suite check measures the gap between each hair's inner surface and the head's scalp for every hair × head
+  pair and fails above 1 cm (or any head vertex outside the hair's inner shell in its covered region, above 0.5 cm).
+- Placeholders for heads and hair gain the anchor nodes. Art: assets A43 rebuilds hair to the scalp.
+
+**Acceptance criteria**
+- Suite: for every hair id and head id (placeholders), anchors coincide after attach (≤ 1 mm); the measured
+  scalp gap is ≤ 1 cm; with head scale 1.2 the gap stays ≤ 1 cm.
+- Suite: a hair glb without an `anchor` node attaches as before (no crash, logged once).
+- Character creation tests (Phase 180/181) still pass.
+
+## Phase 285 — Grass without black spots
+
+Owner's playtest, 2026-11-19: the grass ground texture shows black spots. Suspects on the game side, in
+`src/terrain/terrain_material.gdshader`: `ALBEDO = col / sum` and `normalize(nrm)` give NaN (drawn black) when the
+weight sum or the normal is zero; the height blend uses albedo brightness, so dark texels in a layer lose to the
+others and the darkest texels can drive the sum toward zero where layers meet. On the art side, the prod
+`grass_albedo` may carry near-black texels that mipmaps spread (assets A44).
+
+- The shader guards both divisions (`max(sum, 1e-4)`, a fallback normal when the length is near zero) and never
+  outputs NaN.
+- The blend height comes from a per-layer height value (the albedo luminance remapped and clamped to a floor per
+  layer in the fabric `terrain_material` entity), not raw brightness, so no layer's dark texels all lose at once.
+- A GDScript mirror of the blend (`terrain_weights.gd` already mirrors the vertex side) computes the pixel weights
+  for tests.
+- The terrain map loader rejects (logs and uses the placeholder) a map whose mean luminance or darkest-1% texels
+  fall below fabric-set floors, so a broken prod map cannot ship black ground.
+
+**Acceptance criteria**
+- `npm run validate` / `check-drift` pass with the height floors; the validator rejects a floor outside 0–1.
+- Suite: the GDScript blend mirror returns finite weights summing to 1 for zero vertex weights, all-black
+  albedo and a zero normal; the shader source contains the two guards (source audit).
+- Suite: a synthetic map whose darkest 1% is black is rejected by the loader and the placeholder used; the public
+  grass placeholder passes.
+
+## Phase 286 — Men and women who look different
+
+Owner's playtest, 2026-11-19: male and female characters look the same. Every body uses one rig mesh
+(`DEFAULT_RIG_KEYS`); the body id only picks texture sheets. `chibi_body_m/f` and `chibi_head_m/f` exist but only the
+creation tests load them; the fabric presets differ only slightly (height 0.75 vs 0.8, shoulders 0.95 vs 1.0).
+
+- The body type picks its own body and head meshes on the shared skeleton and clips: `models/characters/bodies/
+  <id>.glb.raw` and `heads/<id>.glb.raw` are attached by `attach_rig` for the character's body and head ids, the
+  single rig mesh staying as the fallback.
+- The shapes differ in a way the stylised (chibi) look can carry, readable at gameplay distance: the male has
+  broader shoulders, narrower hips, a thicker neck, a squarer jaw and a heavier brow; the female has narrower
+  shoulders, wider hips, a narrower waist, a modest bust, a softer jaw and longer lashes. Non-sexualised, matching
+  the game's style guide.
+- The fabric presets widen the default proportion gap (shoulder and hip width, height) and the sliders keep
+  working on both bodies. The clips stay shared; the walk can take a per-body
+  hip-sway weight from the fabric.
+- Placeholders for both bodies and heads are regenerated with those differences measurable. Art: assets A45.
+- Equipment (Phase 153) still fits both bodies: socket positions come from each body's skeleton pose.
+
+**Acceptance criteria**
+- Suite: a male character attaches `chibi_body_m` and a female `chibi_body_f` (placeholders); the attached meshes
+  differ; measured on the placeholders, the male's shoulder/hip width ratio is at least 15% above the female's.
+- Suite: every equipment slot's socket exists on both bodies; a chestplate attaches on both.
+- Character creation and playtest `create`/`character_sheet` steps pass; the doll renders each body.
+
+## Phase 287 — Fighting that reads: combos, impact timing and hit reactions
+
+Owner's playtest, 2026-11-19: fighting animation could be much better. Today one clip plays per attack, picked by
+the main-hand item (`RigTree.attack_clip_for`: `attack_unarmed`, `attack_tool`, `attack_1h`), with no variation,
+no link between the clip's strike and the damage, and the target barely reacts.
+
+- Combos: repeated attacks within a window cycle through variants (`attack_1h`, `attack_1h_2`, `attack_1h_3`;
+  `attack_unarmed`, `attack_unarmed_2`; two-handed weapons get `attack_2h`, `attack_2h_2`). The chain table
+  (clip order, window, per-step damage multiplier and timing) lives in the fabric; a missing variant falls back
+  to the base clip.
+- Impact timing: the host resolves the hit at the clip's `impact` marker time (from the fabric table, which
+  mirrors the asset's marker), not at the click; the client plays hit effects and sound at the same frame.
+- Upper-body attacks: attacking while moving plays the attack on the upper body over the walk/run (a bone-mask
+  blend from the spine up), so the feet keep moving.
+- Hit reactions: a struck player or creature plays `hit` (light) or `stagger` (heavy, past a damage share set
+  in the fabric), with a short knock-back direction away from the attacker; a block/parry clip is out of scope.
+- A short camera shake and a 40 ms hit-stop on the attacker's client for a landed hit, both switchable in the
+  options window (new keys in both locales).
+- New clip keys get placeholders on the public `player_rig` first. Art: assets A46.
+
+**Acceptance criteria**
+- `npm run validate` / `check-drift` pass with the chain table; the validator rejects a chain step naming a clip
+  outside the rig contract, or an impact time outside 0–1.
+- Suite: three attacks inside the window play `attack_1h`, `attack_1h_2`, `attack_1h_3`; a pause past the window
+  restarts at the first; a rig without a variant plays the base clip.
+- Suite (host): damage is applied at the impact time, not before; a hit above the stagger share plays `stagger`
+  on the target, below it `hit`; the knock-back points away from the attacker.
+- Suite: attacking while walking keeps the lower body on `walk` (blend mask applied).
+- Playtest bot `fight` step passes and records the clip sequence.
 
 ---
 
