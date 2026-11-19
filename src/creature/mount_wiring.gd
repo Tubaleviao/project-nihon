@@ -8,6 +8,8 @@ const AdminRules := preload("res://src/admin/admin_rules.gd")
 const PlayerRegistry := preload("res://src/persistence/player_registry.gd")
 const PlayerSlice := preload("res://src/player/player_slice.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
+const CreaturePath := preload("res://src/creature/creature_path.gd")
+const CreatureAI := preload("res://src/creature/creature_ai.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
 ## Slack over the exact mounted speed, as for a carried body (`CarcassWiring.CARRY_SPEED_SLACK`).
 const SPEED_SLACK := 1.25
@@ -42,16 +44,21 @@ func _rider_downed(player_id: String) -> bool:
 		return root._player != null and not root._player.is_alive()
 	return PlayerRegistry.is_downed(root._registry.get_hp(player_id))
 
-## Whether the creature stands in the sea or in a lake or river (Phase 217).
+## Whether the creature stands in the sea or in a lake or river (Phase 217). A stream under
+## `CreatureAI.FORD_WIDTH_M` is forded by creatures on their own (#573, #589), so it is not water here either.
 func _in_water(iid: String) -> bool:
 	var pos: Dictionary = root._creature.get_instance_pos(iid)
 	if pos.is_empty():
 		return false
 	var tile: Vector2i = root._creature.tile_of_pos(pos)
-	if root._creature.fresh_water_width(tile) > 0.0:
+	return stands_in_water(root._creature.fresh_water_width(tile), root._creature.surface_at_tile(tile))
+
+## The pure rule behind `_in_water`: `width` is the fresh water's width at the tile (0 dry, INF a lake),
+## `surface` the column top (NAN when unknown).
+static func stands_in_water(width: float, surface: float) -> bool:
+	if CreaturePath.blocks_water(width, CreatureAI.FORD_WIDTH_M):
 		return true
-	var h: float = root._creature.surface_at_tile(tile)
-	return not is_nan(h) and h < WorldShape.sea_level()
+	return not is_nan(surface) and surface < WorldShape.sea_level()
 
 func _player_position(player_id: String) -> Variant:
 	if player_id == str(root._registry.local_player_id):

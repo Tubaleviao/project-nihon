@@ -24,6 +24,7 @@ func register() -> void:
 	_run_test("mount: every refusal key is in both catalog columns", _test_mount_catalog)
 	_run_test("mount: #565 not-mounted and downed refusals, a dead mount, desync recovery", _test_mount_565_refusals)
 	_run_test("mount: #565 stamina tires the mount and terrain throws the rider", _test_mount_565_stamina_terrain)
+	_run_test("mount: #593 a ford-wide stream is not water for a ground mount", _test_mount_593_ford_water)
 	_run_test("mount: #565 rider offset, combined speed caps and Ctrl+M", _test_mount_565_offset_caps_keys)
 
 func _rig() -> Node:
@@ -281,6 +282,15 @@ func _test_mount_565_stamina_terrain() -> void:
 	m.validate_riders()
 	assert_true(m.is_mounted("p1"), "and stays ridden there")
 	_drop(m)
+
+func _test_mount_593_ford_water() -> void:
+	var dry := WorldShape.sea_level() + 5.0
+	assert_false(MountWiring.stands_in_water(0.0, dry), "dry ground is not water")
+	assert_false(MountWiring.stands_in_water(4.0, dry), "a 4 m stream is forded, so a ground mount may stand in it")
+	assert_true(MountWiring.stands_in_water(CreatureAI.FORD_WIDTH_M, dry), "a river at the ford width is water")
+	assert_true(MountWiring.stands_in_water(INF, dry), "a lake is water")
+	assert_true(MountWiring.stands_in_water(0.0, WorldShape.sea_level() - 1.0), "below sea level is the sea")
+	assert_false(MountWiring.stands_in_water(0.0, NAN), "an unknown surface is not water")
 
 func _test_mount_565_offset_caps_keys() -> void:
 	var m := _rig()
