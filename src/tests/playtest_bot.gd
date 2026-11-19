@@ -1573,6 +1573,8 @@ func _step_create() -> Array:
 	await _until(func(): return false, 0.5)
 	await _screenshot("create")
 	var rig := bool(screen.has_rig())
+	# Phase 265 — the rig's hair mesh is the style the screen shows as chosen.
+	var hair_ok: bool = str(screen.doll_hair_style()) == str(screen.choice.get("hair", "?"))
 	screen.submit()
 	var closed: bool = await _until(func(): return not ui.is_creation_open(), 5.0)
 	var state: Dictionary = _root._registry.creation_of(_root._registry.local_player_id)
@@ -1583,10 +1585,10 @@ func _step_create() -> Array:
 	for slot in eq:
 		if str(eq[slot]) != "":
 			worn.append(str(eq[slot]))
-	var ok: bool = closed and rig and str(state.get("state", "")) == "created" and str(state.get("name", "")) == CREATE_NAME \
+	var ok: bool = closed and rig and hair_ok and str(state.get("state", "")) == "created" and str(state.get("name", "")) == CREATE_NAME \
 		and not _root._player.creation_hold and bag.is_empty() and worn.is_empty()
-	return [ok, "created %s (%s, %s, colour %d); screen %s, rig %s; bag %s, worn %s" % [str(state.get("name", "?")), str(state.get("gender", "?")),
-		str(state.get("hair", "?")), int(state.get("hairColor", -1)), "closed" if closed else "STILL OPEN: " + str(screen.error_text()), str(rig),
+	return [ok, "created %s (%s, %s, colour %d); screen %s, rig %s, hair mesh %s; bag %s, worn %s" % [str(state.get("name", "?")), str(state.get("gender", "?")),
+		str(state.get("hair", "?")), int(state.get("hairColor", -1)), "closed" if closed else "STILL OPEN: " + str(screen.error_text()), str(rig), "matches" if hair_ok else "DIFFERS",
 		"empty" if bag.is_empty() else str(bag), "nothing" if worn.is_empty() else str(worn)]]
 
 ## Phase 179: open the Character window, check every attribute and slot is listed and the doll holds a rig, and (on
@@ -1614,6 +1616,10 @@ func _step_character_sheet() -> Array:
 	var doll = ui._sheet_doll
 	if attrs != 6 or slots == 0 or doll == null or not doll.has_rig():
 		return [false, "sheet incomplete: %d attributes, %d slots, rig %s" % [attrs, slots, str(doll != null and doll.has_rig())]]
+	# Phase 265 — the doll's hair mesh is the style the character was created with.
+	var own: Dictionary = _root._character.get_appearance(str(_root._character.get_player_character()))
+	if str(doll.hair_style()) != str(own.get("hair", "")):
+		return [false, "doll hair mesh '%s' differs from the character's style '%s'" % [str(doll.hair_style()), str(own.get("hair", ""))]]
 	if DisplayServer.get_name() == "headless":
 		return [true, "%d attributes, %d slots, doll rig built (headless: viewport not read)" % [attrs, slots]]
 	await _until(func(): return false, 0.3)

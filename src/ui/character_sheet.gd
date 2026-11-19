@@ -121,6 +121,14 @@ class Doll extends SubViewportContainer:
 		var sun := DirectionalLight3D.new()
 		sun.rotation_degrees = Vector3(-35.0, 30.0, 0.0)
 		viewport.add_child(sun)
+		# Phase 265 — the ambient light the world's camera sees the avatar under, so the doll and the world match.
+		var env := Environment.new()
+		env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+		env.ambient_light_color = Color(0.62, 0.66, 0.72)
+		env.ambient_light_energy = 0.7
+		var we := WorldEnvironment.new()
+		we.environment = env
+		viewport.add_child(we)
 
 	func rebuild(visual: Node3D) -> void:
 		for c in pivot.get_children():
@@ -131,6 +139,12 @@ class Doll extends SubViewportContainer:
 
 	func has_rig() -> bool:
 		return pivot.get_child_count() > 0
+
+	## Phase 265 — the style id of the hair mesh the doll's rig wears ("" when bare or without a rig).
+	func hair_style() -> String:
+		for n in pivot.find_children("Hair", "MeshInstance3D", true, false):
+			return str(n.get_meta("hair_style", ""))
+		return ""
 
 	func _process(delta: float) -> void:
 		if not _dragging and is_visible_in_tree():

@@ -6,6 +6,7 @@ extends "res://src/tests/test_support.gd"
 ## tree with a placeholder for every skin and icon key, and the display name in chat and settlement lists.
 
 const CreationRules := preload("res://src/character/creation_rules.gd")
+const AvatarBuilder := preload("res://src/character/avatar_builder.gd")
 const CreationScreen := preload("res://src/ui/creation_screen.gd")
 
 const VALID := { "name": "Akira", "gender": "feminine", "hair": "hair_f_bob", "hairColor": 129 }
@@ -19,6 +20,9 @@ func register() -> void:
 	_run_test("creation runtime: a pre-181 save offers creation once and keeps inventory and skills; a skip shows the handle", _test_legacy_save)
 	_run_test("creation runtime: the intent is bound to the connection, and a look is answered only inside the AOI", _test_wire)
 	_run_test("creation runtime: a peer's look dresses its avatar and names it, whichever arrives first", _test_peer_look)
+	_run_test("creation runtime: the world avatar, the creation rig and the doll are one body (Phase 265)", _test_one_body)
+	_run_test("creation runtime: every hair style loads its own mesh on the head socket and a change swaps it (Phase 265)", _test_hair_meshes)
+	_run_test("creation runtime: every hair key has a public placeholder (Phase 265)", _test_hair_placeholders)
 	_run_test("creation runtime: every skin and icon key has a public placeholder at its size, and no orphan exists", _test_skin_placeholders)
 	_run_test("creation runtime: the screen builds from the public tree and sends what the player chose", _test_screen)
 	_run_test("creation runtime: the UI holds the body while the screen is up and the sheet offers it until created", _test_ui_flow)
@@ -272,6 +276,114 @@ func _test_peer_look() -> void:
 	ch.forget_peer(8)
 	assert_true(ch.get_peer_look(8).is_empty(), "a peer that left is forgotten")
 	ch.free()
+
+
+## Everything that makes a rig scene look the way it does: per mesh node its path, mesh shape and the palette
+## indices and material parameters written on it.
+func _rig_signature(rig_node: Node) -> Array:
+	var out: Array = []
+	for n in rig_node.find_children("*", "MeshInstance3D", true, false):
+		var m := n as MeshInstance3D
+		var params := []
+		for k in ["base_index", "primary_index", "secondary_index", "accent_index", "metalness", "roughness"]:
+			params.append(m.get_instance_shader_parameter(k))
+		out.append([str(rig_node.get_path_to(m)), m.mesh.get_surface_count(), m.mesh.get_aabb(), params,
+			m.material_override.shader if m.material_override is ShaderMaterial else null])
+	out.sort_custom(func(a, b): return str(a[0]) < str(b[0]))
+	return out
+
+
+func _hair_mesh_of(rig_node: Node) -> MeshInstance3D:
+	return AvatarBuilder.hair_node(rig_node)
+
+
+func _test_one_body() -> void:
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var look := { "name": "Akira", "gender": "feminine", "hair": "hair_f_braid", "hairColor": 129 }
+	var recipe: Dictionary = ch.creation_recipe(look)
+	recipe["equipment"] = { "main_hand": { "item": "stone_axe", "state": "equipped" } }
+	var appearance: Dictionary = ch.deserialize_appearance(recipe)
+	var iid: String = ch.create_character_from_recipe(recipe, Vector3.ZERO)
+	assert_true(ch.attach_default_rig(iid), "the world avatar wears the default rig")
+	var world: Node = ch._instances[iid]["rig_node"]
+	var creation: Dictionary = ch.build_avatar("creation_doll", appearance)
+	var doll: Dictionary = ch.build_avatar("sheet_doll", appearance)
+	assert_true(creation.has("rig_node") and doll.has("rig_node"), "both views got the rig, not the procedural body")
+	var want := _rig_signature(world)
+	assert_true(want.size() > 0, "the world rig has meshes")
+	assert_eq(_rig_signature(creation["rig_node"]), want, "the creation rig has the world's meshes, materials and hair")
+	assert_eq(_rig_signature(doll["rig_node"]), want, "the doll has the world's meshes, materials and hair")
+	var eq_world: Array = (ch._instances[iid]["equipment"] as Dictionary).keys()
+	eq_world.sort()
+	for built in [creation, doll]:
+		var eq: Array = (built["equipment"] as Dictionary).keys()
+		eq.sort()
+		assert_eq(eq, eq_world, "the same worn set is attached")
+	assert_true(((creation["rig_node"] as Node).find_child("AnimationPlayer", true, false) as AnimationPlayer).current_animation == "idle", "the creation rig plays the idle clip")
+	for built in [creation, doll]:
+		(built["root"] as Node).free()
+	ch.free()
+	# Without a rig in the manifest the procedural body is the fallback.
+	var saved: Variant = AssetOverlay._manifest
+	AssetOverlay._manifest = { "meshes": {}, "animations": {} }
+	AssetOverlay._manifest_loaded = true
+	var ch2 := CharacterSlice.new()
+	add_child(ch2)
+	var fb: Dictionary = ch2.build_avatar("x", ch2.deserialize_appearance(ch2.creation_recipe(look)))
+	assert_false(fb.has("rig_node"), "no rig listed: the procedural body stays")
+	(fb["root"] as Node).free()
+	ch2.free()
+	AssetOverlay.reload_manifest()
+
+
+func _test_hair_meshes() -> void:
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var styles: Dictionary = CreationRules.data().get("hairStyles")
+	var seen: Dictionary = {}
+	for id in styles:
+		var gender := str((styles[id] as Dictionary).get("gender"))
+		var app: Dictionary = ch.deserialize_appearance(ch.creation_recipe({ "gender": gender, "hair": id, "hairColor": 129 }))
+		var built: Dictionary = ch.build_avatar("h", app)
+		var hair := _hair_mesh_of(built["rig_node"])
+		assert_true(hair != null, "%s: a hair mesh is on the rig" % id)
+		if hair != null:
+			assert_eq(hair.get_meta("hair_style"), id, "%s: its own style" % id)
+			assert_true(hair.get_parent() is BoneAttachment3D and (hair.get_parent() as BoneAttachment3D).bone_name == "Head", "%s: on the head socket" % id)
+			assert_eq(hair.get_instance_shader_parameter("base_index"), 129.0, "%s: tinted by the hair colour" % id)
+			var sig := [hair.mesh.get_aabb(), hair.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX].size()]
+			assert_false(seen.has(str(sig)), "%s: a mesh no other style has" % id)
+			seen[str(sig)] = id
+		(built["root"] as Node).free()
+	# A change of style on the creation screen replaces the hair mesh.
+	var screen := CreationScreen.new()
+	screen.visual_builder = func(c: Dictionary) -> Node3D:
+		return ch.build_avatar("creation_doll", ch.deserialize_appearance(ch.creation_recipe(c)))["root"]
+	screen.palette = ch.palette_color
+	add_child(screen)
+	screen.set_gender("feminine")
+	var ids: Array = CreationRules.hair_options("feminine").map(func(o): return str(o["id"]) if o is Dictionary else str(o))
+	screen.set_hair(ids[0])
+	var first := _hair_mesh_of(screen._doll.pivot)
+	var first_id: String = str(first.get_meta("hair_style")) if first != null else ""
+	var had_first := first != null
+	screen.set_hair(ids[1])
+	var second := _hair_mesh_of(screen._doll.pivot)
+	assert_true(had_first and second != null, "the doll shows hair for both styles")
+	assert_eq(first_id, ids[0], "the first style's mesh")
+	assert_eq(str(second.get_meta("hair_style")), ids[1], "a style change swaps the hair mesh")
+	screen.free()
+	ch.free()
+
+
+func _test_hair_placeholders() -> void:
+	var styles: Dictionary = CreationRules.data().get("hairStyles")
+	for id in styles:
+		var key := AvatarBuilder.hair_key(str(id))
+		assert_true(key != "", "%s: its mesh key is in the manifest" % id)
+		assert_true(FileAccess.file_exists("res://assets/" + AvatarBuilder.HAIR_KEY_FORMAT % id), "%s has a public placeholder" % id)
+	assert_eq(AvatarBuilder.hair_key("none"), "", "no style, no key")
 
 
 func _test_skin_placeholders() -> void:

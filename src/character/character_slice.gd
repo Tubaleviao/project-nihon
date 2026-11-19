@@ -45,6 +45,7 @@ const Diag := preload("res://src/core/diag.gd")
 const Locomotion  := preload("res://src/character/locomotion.gd")
 const SkeletonRig := preload("res://src/character/skeleton_rig.gd")
 const RigTree := preload("res://src/character/rig_tree.gd")
+const AvatarBuilder := preload("res://src/character/avatar_builder.gd")
 const GameDataReader := preload("res://src/core/game_data_reader.gd")
 const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 const CharacterMaterial := preload("res://src/character/character_material.gd")
@@ -691,7 +692,7 @@ func attach_rig(instance_id: String, rig_key: String) -> bool:
 		if child is Node3D and child != impostor:
 			(child as Node3D).visible = false
 	root.add_child(rig_root)
-	_dress_rig(rig_root, inst["appearance"])
+	AvatarBuilder.dress(self, rig_root, inst["appearance"])
 	RigTree.prepare_library(player)
 	if player.has_animation("attack"):
 		inst["locomotion"].attack_duration = player.get_animation("attack").length
@@ -729,25 +730,13 @@ func _sheets_for_body(body_id: String) -> Dictionary:
 		_rig_channel = AssetOverlay.load_texture(RIG_CHANNEL_KEY)
 	return { "id": "", "detail": _rig_detail, "color_mask": _rig_color_mask, "channel": _rig_channel }
 
-## Give every mesh of a freshly attached rig the character shader and its palette indices.
-func _dress_rig(rig_root: Node, appearance: Dictionary) -> void:
-	var sheets := _sheets_for_body(str(appearance.get("body", "")))
-	var mat := CharacterMaterial.body_material(_palette_colors(), str(sheets["id"]))
-	CharacterMaterial.bind_rig_textures(mat, sheets["detail"], sheets["color_mask"], sheets["channel"])
-	var skin: int = int(appearance.get("skinColor", 12))   # mask: primary hair, secondary eye, accent beard
-	for node in rig_root.find_children("*", "MeshInstance3D", true, false):
-		var mesh := node as MeshInstance3D
-		mesh.material_override = mat
-		CharacterMaterial.apply_instance(mesh, skin, {
-			"primary_index": int(appearance.get("hairColor", 0)),
-			"secondary_index": int(appearance.get("eyeColor", 0)),
-			"accent_index": int(appearance.get("beardColor", 0)),
-		})
-
 ## Rig keys tried in order for an avatar: the player rig (the production pack's art, or
 ## its public placeholder), then the older unskinned placeholder body for a manifest that
 ## lists no player rig. The first one the manifest lists wins.
 const DEFAULT_RIG_KEYS := ["models/player_rig.glb.raw", "models/placeholder_rig.glb.raw"]
+
+## Phase 265 — a standalone avatar for the creation rig and the doll (`AvatarBuilder.build`).
+func build_avatar(instance_id: String, appearance: Dictionary) -> Dictionary: return AvatarBuilder.build(self, instance_id, appearance)
 
 ## Attach the first default rig the manifest lists. False (the procedural body stays)
 ## when none is listed or the scene fails to load.
