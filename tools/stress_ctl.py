@@ -21,6 +21,7 @@ local signals; this program carries them across the network.
   stress_ctl.py bye <host> <port>    asks the server to exit.
   stress_ctl.py selftest             a loopback round trip of every message.
 """
+import hmac
 import json
 import os
 import socket
@@ -31,6 +32,12 @@ import time
 
 PATTERNS = ("cluster", "spread", "cross", "pole", "churn")
 PROFILES = ("lan", "wan_br", "wan_bad")
+# The ladder's largest crowd (StressRules.LADDER); a bigger request is refused.
+MAX_SIZE = 200
+# Optional shared secret (STRESS_CTL_TOKEN): the peer must send `auth <token>` first. The bind address
+# defaults to every interface (the bots are on another machine); STRESS_CTL_BIND narrows it.
+TOKEN_ENV = "STRESS_CTL_TOKEN"
+BIND_ENV = "STRESS_CTL_BIND"
 
 
 def touch(path):
@@ -76,18 +83,38 @@ class Link:
 
 def valid_run(parts):
     return (len(parts) == 4 and parts[0] == "run" and parts[1] in PROFILES and parts[2] in PATTERNS
-            and parts[3].isdigit() and int(parts[3]) > 0)
+            and parts[3].isdigit() and 0 < int(parts[3]) <= MAX_SIZE)
+
+
+def token():
+    return os.environ.get(TOKEN_ENV, "")
+
+
+def authorized(link, secret):
+    """True when no secret is set, or the first line is `auth <secret>` (constant-time compare)."""
+    if not secret:
+        return True
+    line = link.recv(10) or ""
+    return hmac.compare_digest(line.encode(), ("auth " + secret).encode())
+
+
+def send_auth(link):
+    if token():
+        link.send("auth " + token())
 
 
 def serve(port, d, accept_secs=86400):
     os.makedirs(d, exist_ok=True)
     srv = socket.socket()
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    srv.bind(("0.0.0.0", port))
+    srv.bind((os.environ.get(BIND_ENV, "0.0.0.0"), port))
     srv.listen(1)
     srv.settimeout(accept_secs)
     conn, _ = srv.accept()
     link = Link(conn)
+    if not authorized(link, token()):
+        link.send("error unauthorized")
+        return 1
     first = link.recv(60)
     if first == "stop":
         return 3
@@ -130,6 +157,7 @@ def connect(host, port, secs=60):
 def call(host, port, d, profile, pattern, size):
     os.makedirs(d, exist_ok=True)
     link = connect(host, port)
+    send_auth(link)
     link.send("run %s %s %s" % (profile, pattern, size))
     while True:
         msg = link.recv(900)
@@ -168,7 +196,9 @@ def call(host, port, d, profile, pattern, size):
 
 
 def bye(host, port):
-    connect(host, port).send("stop")
+    link = connect(host, port)
+    send_auth(link)
+    link.send("stop")
     return 0
 
 
@@ -205,6 +235,26 @@ def selftest():
         bye("127.0.0.1", port)
         t.join(30)
         assert codes["serve"] == 3, codes
+    assert not valid_run(["run", "lan", "cluster", str(MAX_SIZE + 1)]), "an oversize crowd is refused"
+    assert valid_run(["run", "lan", "cluster", str(MAX_SIZE)]), "the ladder maximum is allowed"
+    os.environ[TOKEN_ENV] = "s3cret"
+    with tempfile.TemporaryDirectory() as root:
+        codes = {}
+        t = threading.Thread(target=lambda: codes.__setitem__("serve", serve(port, root, 30)), daemon=True)
+        t.start()
+        time.sleep(0.5)
+        raw = connect("127.0.0.1", port)
+        raw.send("stop")  # no auth: must not end the server as a bye
+        assert (raw.recv(10) or "").startswith("error"), "unauthenticated peer was not refused"
+        t.join(30)
+        assert codes["serve"] == 1, codes
+        t = threading.Thread(target=lambda: codes.__setitem__("serve", serve(port, root, 30)), daemon=True)
+        t.start()
+        time.sleep(0.5)
+        bye("127.0.0.1", port)
+        t.join(30)
+        assert codes["serve"] == 3, codes
+    del os.environ[TOKEN_ENV]
     print("stress_ctl selftest: ok")
     return 0
 

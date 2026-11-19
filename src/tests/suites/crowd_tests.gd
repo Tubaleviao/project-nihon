@@ -705,6 +705,12 @@ func _test_crowd_split_config() -> void:
 	assert_false(StressRules.split_config("server", "10.0.0.1")["ok"], "the server role takes no address")
 	assert_true(StressRules.split_config("", "")["ok"], "no role is the single-machine run")
 	assert_false(StressRules.split_config("watcher", "")["ok"], "an unknown role is refused")
+	# tools/stress.sh checks the same three rules in shell before Godot starts; its messages must stay
+	# word for word the ones split_config returns, so the two cannot drift apart unnoticed.
+	var sh := FileAccess.get_file_as_string("res://tools/stress.sh")
+	for case in [["watcher", ""], ["bots", ""], ["server", "10.0.0.1"]]:
+		var msg: String = StressRules.split_config(case[0], case[1])["error"]
+		assert_true(sh.contains(msg.replace("'watcher'", "'$ROLE'")) or sh.contains(msg), "stress.sh carries the rule: " + msg)
 
 func _test_crowd_control_messages() -> void:
 	var run := StressRules.control_encode("run", ["wan_br", "cluster", 64])
