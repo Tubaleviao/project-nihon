@@ -106,6 +106,14 @@ func _build(runs_dir: String, out_dir: String, extra: Array) -> int:
 		var parts := str(kv).split("=", true, 1)
 		if parts.size() == 2:
 			meta[parts[0]] = parts[1]
+	# Phase 250: `machines=<file>` is a JSON object of role -> machine fields, written by stress.sh.
+	if meta.has("machines"):
+		var mf := FileAccess.open(str(meta["machines"]), FileAccess.READ)
+		var parsed: Variant = JSON.parse_string(mf.get_as_text()) if mf != null else null
+		if parsed is Dictionary:
+			meta["machines"] = parsed
+		else:
+			meta.erase("machines")
 	var report := StressRules.build_report(rows, meta)
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	var fj := FileAccess.open(out_dir.path_join("report.json"), FileAccess.WRITE)
