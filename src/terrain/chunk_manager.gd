@@ -8,10 +8,8 @@ extends Node
 ## tree budgets; unloading frees the voxel mesh, despawns non-engaged creatures,
 ## and drops the chunk's trees.
 ##
-## Phase 42 — the BUILD runs on a worker. Building a chunk (surface mesh + per-column
-## collision) is the single most expensive thing this game does, and time-slicing it
-## only spread the stall across frames instead of removing it. So a load is now two
-## halves: the main thread generates the heightmap and GATHERS the plain state the resolve
+## Phase 42 — the BUILD runs on a worker (a chunk's mesh and collision are the most expensive thing
+## this game does; time-slicing only spread the stall). A load is now two halves: the main thread generates the heightmap and GATHERS the plain state the resolve
 ## reads (`VoxelSlice.gather_build_input`, which is where the mutable slice state — `_edits`,
 ## `_heightmaps`, the biome lookup — is read), and a `WorkerThreadPool` task runs the RESOLVE
 ## (`VoxelSlice.build_runs`) and the PURE build (`VoxelSlice.build_chunk_arrays`) and hands back
@@ -514,6 +512,7 @@ func _process(_delta: float) -> void:
 ## around the player's pre-spawn position (the origin) and never moves it.
 func start() -> void:
 	_active = true
+	_m1.enable_disk()   # Phase 244
 
 ## Stop automatic streaming (keeps currently loaded chunks).
 func stop() -> void:
@@ -1235,13 +1234,13 @@ func _apply_build_entry(task_id: int) -> bool:
 	var heightmap: Array = entry["heightmap"]
 	if result.size() > 1 and result[1] is Array and not (result[1] as Array).is_empty():
 		heightmap = result[1]
-	var attached := _attach_built(key, chunk, heightmap, arrays, int(entry["revision"]))
+	var attached := _attach_built(key, chunk, heightmap, arrays, int(entry["revision"]), entry)
 	if attached and bool(entry.get("cached", false)):
 		cache_attaches += 1
 	return attached
 
 ## Attach one chunk's build result (a worker's, or a cache entry's) and do the bookkeeping that follows.
-func _attach_built(key: String, chunk: Vector2i, heightmap: Array, arrays: Dictionary, revision: int) -> bool:
+func _attach_built(key: String, chunk: Vector2i, heightmap: Array, arrays: Dictionary, revision: int, entry: Dictionary = {}) -> bool:
 	if not voxel_slice.build_chunk(chunk, heightmap, arrays, revision, _near.wants_collision(chunk), _near.staggers_collision(chunk)):
 		if int(_build_attempts.get(key, 0)) < MAX_BUILD_RETRIES:
 			# A retry is a dispatch like any other, and `_dispatch_build` enforces the
@@ -1260,6 +1259,7 @@ func _attach_built(key: String, chunk: Vector2i, heightmap: Array, arrays: Dicti
 	_near.note_built(key, lod)
 	if keeps_render() and not arrays.is_empty():
 		_cache.put(key, cache_signature(chunk, lod), arrays, heightmap)
+		_m1.disk_note(chunk, lod, arrays, heightmap, entry)   # Phase 244
 	builds_attached += 1
 	_m1.remesh.note_attached(key, chunk)   # Phase 263: an edit rebuild is timed to here
 	# The ground exists now, so its contents may: creatures and trees spawn HERE rather

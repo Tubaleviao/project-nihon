@@ -8,6 +8,7 @@ const VoxelCoarse := preload("res://src/terrain/voxel_coarse.gd")
 const TerrainWeights := preload("res://src/terrain/terrain_weights.gd")
 const FreshWaterMesh := preload("res://src/terrain/fresh_water_mesh.gd")
 const TerrainSliceScript := preload("res://src/terrain/terrain_slice.gd")
+const ChunkRecords := preload("res://src/terrain/chunk_records.gd")
 const SeamWrapScript := preload("res://src/terrain/seam_wrap.gd")
 const ChunkStreamPolicy := preload("res://src/terrain/chunk_stream_policy.gd")
 ## PR #529 — a fast flyer's chunk off its lane ranks this many lane chunks per ring from the body (`off_lane_rank`).
@@ -18,6 +19,14 @@ const EditRemesh := preload("res://src/terrain/edit_remesh.gd")
 var sl: Node
 ## Phase 263 — an edited chunk's rebuild, ahead of streaming (see `edit_remesh.gd`).
 var remesh: EditRemesh
+
+## Phase 244 — built mesh arrays kept on disk across visits and sessions (where there is a screen), and the
+## generator's heightmaps (on a host). Null: off (the suite; a dedicated server's mesh layer).
+const DiskChunkCache := preload("res://src/terrain/disk_chunk_cache.gd")
+var disk_cache: DiskChunkCache = null
+var gen_cache: DiskChunkCache = null
+var disk_usec: int = 0   # worker µs spent decoding disk entries
+var disk_attaches: int = 0   # chunks attached from the disk cache instead of a worker build
 
 func _init(slice: Node) -> void:
 	sl = slice
@@ -373,7 +382,7 @@ func take_cache_hit(chunk_pos: Vector2i, key: String) -> bool:
 	var lod: int = sl._near.lod_for(chunk_pos)
 	var hit: Dictionary = sl._cache.take(key, sl.cache_signature(chunk_pos, lod))
 	if hit.is_empty():
-		return false
+		return take_disk_hit(chunk_pos, key, lod)
 	sl._cache.invalidate(key)   # re-put by the attach (a refused one must not hit again)
 	sl._supersede_in_flight(key)
 	if sl._rebuild_pending.has(key):
@@ -388,6 +397,89 @@ func take_cache_hit(chunk_pos: Vector2i, key: String) -> bool:
 		"revision":  int(sl.voxel_slice.chunk_revision(chunk_pos)),
 		"result":    [hit["arrays"], hit["heightmap"], 0],
 		"cached":    true,
+	}
+	return true
+
+## Phase 244 — opens the caches (`ChunkManager.start`). Not in the suite, which would write the player's cache.
+func enable_disk() -> void:
+	if disk_cache != null or sl.voxel_slice == null or "--run-tests" in OS.get_cmdline_user_args():
+		return
+	if sl.keeps_render():
+		disk_cache = DiskChunkCache.new("user://cache/chunks/")
+	if bool(sl.voxel_slice.get("is_authoritative")):
+		gen_cache = DiskChunkCache.new("user://saves/server/regions/cache/", 256 * 1024 * 1024)
+
+## Phase 244 — what a build of `chunk` at `lod` reads, as content rather than session counters: the level, a
+## digest of the edits of the chunk and its eight neighbours (their strips shape its seams) and the chunk's own
+## generation record, as `ChunkManager.cache_signature` does. The key of the disk entry (with the worldgen and
+## mesher versions): the same world gives the same key in another session. A neighbour's record is left out: a
+## recorded chunk never changes, and the neighbours are recorded as the ground streams in, after this one built.
+func disk_signature(chunk: Vector2i, lod: int) -> Array:
+	var digests: Array = []
+	for dz in range(-1, 2):
+		for dx in range(-1, 2):
+			digests.append(edit_digest(chunk + Vector2i(dx, dz)))
+	return [lod, digests, ChunkRecords.get_record(TerrainSliceScript.wrap_chunk(chunk)).hash()]
+
+## What the generator reads for `chunk`'s heightmap: the seed, the chunk's edit digest and its generation record.
+func gen_signature(chunk: Vector2i, seed_v: int) -> Array:
+	return [seed_v, chunk, edit_digest(chunk), ChunkRecords.get_record(TerrainSliceScript.wrap_chunk(chunk)).hash()]
+
+func edit_digest(chunk: Vector2i) -> int:
+	var q = sl.voxel_slice.get("_query") if sl.voxel_slice != null else null
+	return int(q.edit_digest(chunk)) if q != null and q.has_method("edit_digest") else 0
+
+## Called by every attach: a fresh build is kept on disk (encoded here, written on a worker); one that came
+## from a cache is not written again, and a disk one is counted.
+func disk_note(chunk: Vector2i, lod: int, arrays: Dictionary, heightmap: Array, entry: Dictionary) -> void:
+	if disk_cache == null:
+		return
+	if bool(entry.get("cached", false)):
+		if bool(entry.get("disk", false)):
+			disk_attaches += 1
+			disk_usec += int((entry["result"] as Array)[2])
+		return
+	var raw := DiskChunkCache.encode(arrays, heightmap)
+	if raw.is_empty():
+		return
+	var key := DiskChunkCache.key_of(disk_signature(chunk, lod))
+	var disk := disk_cache
+	disk.run_async(func() -> void: disk.write("mesh", chunk, key, raw))
+
+## Phase 244 — a chunk built in an earlier visit or session comes back from the disk cache: a worker decodes
+## it (no meshing) and it attaches like any finished build. A damaged entry is dropped and the chunk builds.
+func take_disk_hit(chunk_pos: Vector2i, key: String, lod: int) -> bool:
+	var disk = disk_cache
+	if disk == null:
+		return false
+	var dkey: int = disk.key_of(disk_signature(chunk_pos, lod))
+	if not disk.probe("mesh", chunk_pos, dkey):
+		return false
+	sl._supersede_in_flight(key)
+	if sl._rebuild_pending.has(key):
+		sl._rebuild_pending.erase(key)
+		sl._remove_queued_rebuild(key)
+	sl._build_attempts[key] = int(sl._build_attempts.get(key, 0)) + 1
+	var result: Array = [null, [], 0]
+	var job := func() -> void:
+		var t0 := Time.get_ticks_usec()
+		var d: Dictionary = disk.decode(disk.read("mesh", chunk_pos, dkey))
+		if d.is_empty():
+			disk.invalidate("mesh", chunk_pos)   # unreadable: the retry builds it
+		else:
+			result[0] = d["arrays"]
+			result[1] = d["heightmap"]
+		result[2] = Time.get_ticks_usec() - t0
+	var urgent: bool = sl.build_high_priority(chunk_pos)
+	var task_id := WorkerThreadPool.add_task(job, urgent, "chunk disk read %s" % key)
+	sl._builds[task_id] = {
+		"chunk":     chunk_pos,
+		"key":       key,
+		"heightmap": [],
+		"revision":  int(sl.voxel_slice.chunk_revision(chunk_pos)),
+		"result":    result,
+		"cached":    true,
+		"disk":      true,
 	}
 	return true
 
@@ -469,6 +561,13 @@ func dispatch_worker_noise_build(chunk_pos: Vector2i, key: String) -> void:
 		"result":    b["result"],
 	}
 
+## Phase 244 — the generator's heightmap for `chunk` from the host's gen layer, or [] on a miss or a bad entry.
+static func _gen_read(gen: Variant, chunk: Vector2i, key: int) -> Array:
+	if gen == null:
+		return []
+	var v: Variant = bytes_to_var(gen.read("gen", chunk, key)) if gen.probe("gen", chunk, key) else null
+	return v if v is Array and (v as Array).size() == TerrainSliceScript.CHUNK_SIZE * TerrainSliceScript.CHUNK_SIZE else []
+
 ## Phase 263 — the build `dispatch_worker_noise_build` hands a worker, as `{ job, result, revision }`: the main-thread
 ## gather is done here, the callable does the rest (it reads only what was gathered, so any thread may run it, and
 ## `EditRemesh` runs it on the main thread for an edited chunk).
@@ -491,9 +590,17 @@ func noise_build_job(chunk_pos: Vector2i, known: Array = []) -> Dictionary:   # 
 	var seed_v: int = int(sl.terrain_slice.get_world_seed())
 	var noise: FastNoiseLite = sl.terrain_slice.detail_noise_copy()
 	var result: Array = [null, cached, 0]
+	var gen = gen_cache
+	var gen_key: int = gen.gen_key_of(gen_signature(chunk_pos, seed_v)) if gen != null else 0
 	var job := func() -> void:
 		var t0 := Time.get_ticks_usec()
-		var hm: Array = cached if not cached.is_empty() else TerrainSliceScript.heightmap_for(chunk_pos, seed_v, noise)
+		var hm: Array = cached
+		if hm.is_empty():
+			hm = _gen_read(gen, chunk_pos, gen_key)
+		if hm.is_empty():
+			hm = TerrainSliceScript.heightmap_for(chunk_pos, seed_v, noise)
+			if gen != null:
+				gen.write("gen", chunk_pos, gen_key, var_to_bytes(hm))
 		result[1] = hm
 		if not geometry:
 			result[0] = VoxelBuilder.no_geometry_arrays()

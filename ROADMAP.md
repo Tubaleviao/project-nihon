@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–225, 238–243, 248, 249, 252–254, 259–276 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–225, 238–244, 248, 249, 252–254, 259–276 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -31,7 +31,7 @@ introductions of the arcs they belonged to, are archived in
 Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
 see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
 phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
-comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–254, 259–276)
+comes next. A phase that needs an earlier one still waits for it. Done phases (238–244, 248, 249, 252–254, 259–276)
 have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
 [Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
 others are not in it.
@@ -39,7 +39,6 @@ others are not in it.
 | Priority | Phase | Title |
 |---|---|---|
 | 17 | 255 | The first release: `v0.1.0` from the release workflow |
-| 18 | 244 | A chunk cache on disk |
 | 19 | 256 | A binary wire format for the hot packets |
 | 20 | 250 | The server's ceiling: one machine serving, another running the bots |
 | 21 | 237 | Flight that handles like flight |
@@ -72,7 +71,7 @@ Order notes that differ from the arcs' own order:
   274 (gathering skills) comes after 270 and before 271, because the wheel and the focus display
   show its category. Phases 267–274 come before 265 and 266, because they are the
   first hour's loop and the avatar is its look.
-- Phase 251 moved five places down on 2026-11-13, behind 225, 244, 256, 250 and 237, instead of
+- Phase 251 moved five places down on 2026-11-13, behind 225, 256, 250 and 237 (and 244, done), instead of
   being closed. It is a standing checkpoint: it is never closed, and each session's findings become
   new phases placed where the owner says.
 
@@ -209,7 +208,7 @@ detail and caching (243–244), and later flight (237), the planet bake (245) an
 | 241 | The native smooth mesher, and coarse chunks built smooth | Done ([phases-241.md](docs/roadmap-history/phases-241.md)) |
 | 242 | Terrain materials: blend weights, a triplanar shader and CC0 textures | Done ([phases-242.md](docs/roadmap-history/phases-242.md)) |
 | 243 | Level of detail past the window: voxel rings out to the distant ring, faded, under the haze | Done ([phases-243.md](docs/roadmap-history/phases-243.md)) |
-| 244 | A chunk cache on disk: the host keeps generated chunks, the client keeps built meshes | Open |
+| 244 | A chunk cache on disk: the host keeps generated chunks, the client keeps built meshes | Done ([phases-244.md](docs/roadmap-history/phases-244.md)) |
 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km | Open |
 | 246 | The regional bake: 2 m erosion detail in 4 km regions, on demand around players | Parked |
 | 247 | Ground cover: grass and bushes by biome, culled by distance | Open |
@@ -656,33 +655,6 @@ velocity; the steady worker cap starts at half the cores and moves once a second
 the body; the ground surface of a chunk is a `ChunkSurface` (RenderingServer mesh and instance) when
 `VoxelBuild.render_server_surfaces` is on (the game, not the suite's rigs). The `flight` step is gated
 by CI's playtest run; no release-build numbers were recorded in this PR.
-
-## Phase 244 — A chunk cache on disk
-
-Every visit rebuilds a chunk from noise. The host already stores edits and generation records per
-region (`region_store`).
-
-- **Host:** the resolved runs of a generated chunk are written next to its region the first time the
-  chunk is built, keyed by `WORLDGEN_VERSION`, the worldgen fingerprint and the chunk's edit revision.
-  A later build reads them instead of generating. Edits update the entry.
-- **Client:** built mesh arrays (full, coarse and LOD levels) are cached under `user://cache/` with the
-  same key plus the mesher version, capped in size with least-recently-used eviction. A revisit loads
-  arrays from disk on a worker instead of meshing.
-- **One file per region and layer** (Phase 249, the region-file layout ported from godot_voxel, MIT
-  notice in the file and a row in `native/THIRD_PARTY.md`): a header with a sector table (one 32-bit
-  entry per chunk of the 32×32 region: a 24-bit sector index and an 8-bit sector count, 0 for absent),
-  entries at fixed-size sector boundaries, compressed with Godot's `compress(COMPRESSION_ZSTD)`. An
-  entry that outgrows its sectors is moved to the end and the following sectors close the gap. Each
-  entry starts with its own key, so a stale entry is a miss without reading the rest. The
-  authoritative `region_store` JSON files do not change.
-- A stale key is a miss, never an error. Deleting the cache only costs time.
-
-**Acceptance criteria**
-- Suite tests: a cached chunk and a freshly built one give identical runs and arrays. Bumping any key
-  part turns the entry into a miss. An edit invalidates the entry.
-- A suite test fills the client cache past its cap and finds the least recently used entries evicted.
-- A playtest step flies a loop twice: the second pass's worker ms per crossing is at most half the
-  first's.
 
 ## Phase 245 — The planet bake: continents, rivers with flow, erosion and biomes at 2 km
 

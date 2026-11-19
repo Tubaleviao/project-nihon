@@ -292,7 +292,7 @@ static func _step_timeout(step: String) -> float:
 		return TOWER_TIMEOUT_SECS
 	if step == "mount":
 		return MOUNT_RIDE_SECS + 30.0   # the ride itself plus the mount, settle and dismount waits
-	return STREAM_TIMEOUT_SECS if step == "stream" or step == "pole" or step == "flight" else STEP_TIMEOUT_SECS
+	return STREAM_TIMEOUT_SECS if step == "stream" or step == "pole" or step == "flight" or step == "revisit" else STEP_TIMEOUT_SECS
 
 static func step_names() -> Array:
 	return steps_from_only(only_from_args(Array(OS.get_cmdline_user_args())))
@@ -334,7 +334,7 @@ static func flight_speed_from_args(args: Array) -> float:
 	return FLIGHT_SPEED_MPS
 
 static func all_step_names() -> Array:
-	return ["create", "walk", "stream", "flight", "mine", "gather", "craft", "character_sheet", "place", "fight", "tutorial", "travel", "mount", "horizon", "far_peak", "pole", "tower"]
+	return ["create", "walk", "stream", "flight", "revisit", "mine", "gather", "craft", "character_sheet", "place", "fight", "tutorial", "travel", "mount", "horizon", "far_peak", "pole", "tower"]
 
 # ---------------------------------------------------------------------------
 # Pure report maths
@@ -1158,8 +1158,10 @@ func _step_flight() -> Array:
 		return [true, note + " (report only: %s builder)" % NativeBuilder.mode()]
 	return [bool(_flight["ok"]), note]
 
-## One flight east from home: { under, ring } per-sample shares, and the chunks attached after the warm-up
-## with the chunk manager's main-thread ms per attached chunk.
+func _step_revisit() -> Array:   # Phase 244: the flight loop twice, memory cache dropped between (playtest_revisit.gd)
+	return await preload("res://src/tests/playtest_revisit.gd").run(self)
+
+## One flight east from home: { under, ring } per-sample shares and the chunks attached after the warm-up.
 func _fly_east(home_chunk: Vector2i, home_local: Vector3) -> Dictionary:
 	var cm = _root._chunk_manager
 	var m := WorldPos.CHUNK_METERS
