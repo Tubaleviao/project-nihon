@@ -7,6 +7,7 @@ extends RefCounted
 ## the sockets. The procedural body stays only as the fallback when the manifest lists no rig.
 
 const RigTree := preload("res://src/character/rig_tree.gd")
+const CharacterMaterial := preload("res://src/character/character_material.gd")
 const HAIR_KEY_FORMAT := "models/characters/hair/%s.glb.raw"
 const HAIR_SOCKET := "HairSocket"
 const HAIR_NODE := "Hair"
@@ -24,7 +25,18 @@ static func hair_key(hair_id: String) -> String:
 
 ## Give every mesh of a rig scene the character material, then put the appearance's hair on its head.
 static func dress(ch: Node, rig_scene: Node3D, appearance: Dictionary) -> void:
-	ch._dress_rig(rig_scene, appearance)
+	var sheets: Dictionary = ch._sheets_for_body(str(appearance.get("body", "")))
+	var mat := CharacterMaterial.body_material(ch._palette_colors(), str(sheets["id"]))
+	CharacterMaterial.bind_rig_textures(mat, sheets["detail"], sheets["color_mask"], sheets["channel"])
+	var skin: int = int(appearance.get("skinColor", 12))   # mask: primary hair, secondary eye, accent beard
+	for node in rig_scene.find_children("*", "MeshInstance3D", true, false):
+		var mesh := node as MeshInstance3D
+		mesh.material_override = mat
+		CharacterMaterial.apply_instance(mesh, skin, {
+			"primary_index": int(appearance.get("hairColor", 0)),
+			"secondary_index": int(appearance.get("eyeColor", 0)),
+			"accent_index": int(appearance.get("beardColor", 0)),
+		})
 	attach_hair(ch, rig_scene, appearance)
 
 ## Replace the rig scene's hair with the appearance's style, tinted by its hair colour. Returns the hair mesh

@@ -730,30 +730,13 @@ func _sheets_for_body(body_id: String) -> Dictionary:
 		_rig_channel = AssetOverlay.load_texture(RIG_CHANNEL_KEY)
 	return { "id": "", "detail": _rig_detail, "color_mask": _rig_color_mask, "channel": _rig_channel }
 
-## Give every mesh of a freshly attached rig the character shader and its palette indices.
-func _dress_rig(rig_root: Node, appearance: Dictionary) -> void:
-	var sheets := _sheets_for_body(str(appearance.get("body", "")))
-	var mat := CharacterMaterial.body_material(_palette_colors(), str(sheets["id"]))
-	CharacterMaterial.bind_rig_textures(mat, sheets["detail"], sheets["color_mask"], sheets["channel"])
-	var skin: int = int(appearance.get("skinColor", 12))   # mask: primary hair, secondary eye, accent beard
-	for node in rig_root.find_children("*", "MeshInstance3D", true, false):
-		var mesh := node as MeshInstance3D
-		mesh.material_override = mat
-		CharacterMaterial.apply_instance(mesh, skin, {
-			"primary_index": int(appearance.get("hairColor", 0)),
-			"secondary_index": int(appearance.get("eyeColor", 0)),
-			"accent_index": int(appearance.get("beardColor", 0)),
-		})
-
 ## Rig keys tried in order for an avatar: the player rig (the production pack's art, or
 ## its public placeholder), then the older unskinned placeholder body for a manifest that
 ## lists no player rig. The first one the manifest lists wins.
 const DEFAULT_RIG_KEYS := ["models/player_rig.glb.raw", "models/placeholder_rig.glb.raw"]
 
-## Phase 265 — a standalone avatar for a view that is not a world instance (the creation rig, the Character
-## window's doll): the same rig, material, hair and worn gear the world draws (`AvatarBuilder.build`).
-func build_avatar(instance_id: String, appearance: Dictionary) -> Dictionary:
-	return AvatarBuilder.build(self, instance_id, appearance)
+## Phase 265 — a standalone avatar for the creation rig and the doll (`AvatarBuilder.build`).
+func build_avatar(instance_id: String, appearance: Dictionary) -> Dictionary: return AvatarBuilder.build(self, instance_id, appearance)
 
 ## Attach the first default rig the manifest lists. False (the procedural body stays)
 ## when none is listed or the scene fails to load.
