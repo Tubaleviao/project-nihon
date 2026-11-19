@@ -195,12 +195,12 @@ func _test_legacy_save() -> void:
 	reg2.apply_player_data(pid, saved)
 	assert_false(CreationRules.should_offer(reg2.creation_of(pid)), "a recorded skip is not offered on the next join")
 	var look := reg2.look_of(pid)
-	assert_eq(look, { "name": reg2.public_handle(pid) }, "its look is the handle and the default body")
+	assert_eq(look, { "name": reg2.public_handle(pid), "title": "Newcomer" }, "its look is the handle and the default body")
 	var ch: CharacterSlice = gr._character
 	var iid := ch.create_character("TravellerHuman", Vector3.ZERO)
 	ch.bind_peer_character(5, iid)
 	ch.set_peer_look(5, look)
-	assert_eq(ch.get_nameplate(ch.get_peer_character(5)), reg2.public_handle(pid), "the nameplate shows the handle")
+	assert_eq(ch.get_nameplate(ch.get_peer_character(5)), reg2.public_handle(pid) + "\nNewcomer", "the nameplate shows the handle")
 	reg2.free()
 	_free_rig(rig)
 

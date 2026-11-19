@@ -66,8 +66,7 @@ const WritingWiring := preload("res://src/technology/writing_wiring.gd")
 const CraftingWiring := preload("res://src/crafting/crafting_wiring.gd")
 const CharacterWiring := preload("res://src/character/character_wiring.gd")
 const GestureWiring   := preload("res://src/character/gesture_wiring.gd")
-const CreationWiring  := preload("res://src/character/creation_wiring.gd")
-const TitleWiring     := preload("res://src/character/title_wiring.gd")
+const CreationWiring  := preload("res://src/character/creation_wiring.gd"); const TitleWiring := preload("res://src/character/title_wiring.gd")
 const GestureSlice    := preload("res://src/character/gesture_slice.gd")
 const PeerWiring := preload("res://src/networking/peer_wiring.gd")
 const SnapshotWiring := preload("res://src/persistence/snapshot_wiring.gd")
@@ -94,8 +93,7 @@ var _writing_wiring := WritingWiring.new()
 var _crafting_wiring := CraftingWiring.new()
 var _character_wiring := CharacterWiring.new()
 var _gesture_wiring := GestureWiring.new()
-var _creation_wiring := CreationWiring.new()
-var _title_wiring := TitleWiring.new()
+var _creation_wiring := CreationWiring.new(); var _title_wiring := TitleWiring.new()
 var _carcass_wiring := CarcassWiring.new()
 var _mount_wiring := MountWiring.new()
 var _peer_wiring := PeerWiring.new()
@@ -469,8 +467,7 @@ func _build_and_boot() -> void:
 	_waystone_wiring.attach()   # Phase 125 — waystone travel reuses the exact admin teleport door
 	if not _is_server:
 		_ui.inventory_slice       = _inventory
-		_ui.character_slice       = _character
-		_ui.title_wiring          = _title_wiring
+		_ui.character_slice       = _character; _ui.title_wiring = _title_wiring
 		_ui.crafting_slice        = _crafting
 		_ui.technology_slice      = _technology
 		_ui.market_slice          = _market
