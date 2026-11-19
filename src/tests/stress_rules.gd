@@ -513,7 +513,18 @@ static func report_markdown(report: Dictionary) -> String:
 	lines.append("")
 	var meta: Dictionary = report.get("meta", {})
 	if not meta.is_empty():
-		lines.append("Run: %s" % ", ".join(PackedStringArray(meta.keys().map(func(k): return "%s=%s" % [k, str(meta[k])]))))
+		lines.append("Run: %s" % ", ".join(PackedStringArray(meta.keys().filter(func(k): return k != "machines").map(func(k): return "%s=%s" % [k, str(meta[k])]))))
+		lines.append("")
+	var machines: Dictionary = meta.get("machines", {}) if meta.get("machines", {}) is Dictionary else {}
+	if not machines.is_empty():
+		lines.append("## Machines")
+		lines.append("")
+		lines.append("| Role | CPU | Cores | RAM (MB) | OS | Godot | Native | Build |")
+		lines.append("|---|---|---|---|---|---|---|---|")
+		for role in machines:
+			var m: Dictionary = machines[role]
+			lines.append("| %s | %s | %s | %s | %s | %s | %s | %s |" % [role, m.get("cpu", "?"), int(m.get("cores", 0)),
+				int(m.get("ram_mb", 0)), m.get("os", "?"), m.get("godot", "?"), "on" if m.get("native", false) else "off", m.get("build", "?")])
 		lines.append("")
 	var b: Dictionary = report.get("budgets", BUDGETS)
 	lines.append("Budgets: host tick p95 ≤ %s ms, ≤ %s kbit/s down per peer, watcher frame p95 ≤ %s ms, relay lag ≤ %s ms." % [
@@ -570,3 +581,55 @@ static func report_markdown(report: Dictionary) -> String:
 		lines.append("- %s" % str(f))
 	lines.append("")
 	return "\n".join(lines)
+
+## Phase 250 — the split mode's control channel. One line of text per message over a TCP side channel
+## between `tools/stress.sh` on the bots' machine and the one on the server's (`tools/stress_ctl.py`
+## speaks the same lines): `run <profile> <pattern> <size>` (bots → server: boot a host and a watcher
+## for this run), `ready` (server → bots: both are up), `machine <json>` (server → bots: the server's
+## machine fields), `steady` (bots → server: every bot has joined) and `stop` (bots → server: the
+## bots left), `result <json>` (server → bots: its host and watcher reports once both exited) and `error <text>` (server → bots).
+const CONTROL_VERBS: Array[String] = ["run", "ready", "machine", "steady", "stop", "result", "error"]
+const CONTROL_ROLES: Array[String] = ["", "server", "bots"]
+
+## The line for a message; an unknown verb is refused (empty string).
+static func control_encode(verb: String, args: Array = []) -> String:
+	if not CONTROL_VERBS.has(verb):
+		return ""
+	var parts: PackedStringArray = [verb]
+	for a in args:
+		parts.append(str(a))
+	return " ".join(parts)
+
+## A line back into `{ "verb", "args" }`; `{}` for an unknown verb, a blank line, or a `run` whose
+## profile, pattern or size is not one the driver knows. `machine` and `error` keep their rest-of-line
+## as one argument.
+static func control_decode(line: String) -> Dictionary:
+	var text := line.strip_edges()
+	var cut := text.find(" ")
+	var verb := text if cut < 0 else text.substr(0, cut)
+	var rest := "" if cut < 0 else text.substr(cut + 1).strip_edges()
+	if not CONTROL_VERBS.has(verb):
+		return {}
+	if verb == "machine" or verb == "error" or verb == "result":
+		return { "verb": verb, "args": [rest] }
+	var args: Array = Array(rest.split(" ", false))
+	if verb == "run":
+		if args.size() != 3 or not ["lan", "wan_br", "wan_bad"].has(args[0]) or not is_pattern(args[1]) \
+				or not str(args[2]).is_valid_int() or int(args[2]) <= 0:
+			return {}
+		args[2] = int(args[2])
+	elif not args.is_empty():
+		return {}
+	return { "verb": verb, "args": args }
+
+## The split-mode settings from `STRESS_ROLE` and `STRESS_SERVER`: `{ "ok", "role", "server", "error" }`.
+## The bots role needs the server's address (`host` or `host:port`); the server role takes none; an
+## unknown role is refused; no role is the single-machine run.
+static func split_config(role: String, server: String) -> Dictionary:
+	if not CONTROL_ROLES.has(role):
+		return { "ok": false, "role": role, "server": server, "error": "unknown STRESS_ROLE '%s' (server, bots)" % role }
+	if role == "bots" and server.strip_edges() == "":
+		return { "ok": false, "role": role, "server": server, "error": "STRESS_ROLE=bots needs STRESS_SERVER=<addr>" }
+	if role != "bots" and server.strip_edges() != "":
+		return { "ok": false, "role": role, "server": server, "error": "STRESS_SERVER only belongs to STRESS_ROLE=bots" }
+	return { "ok": true, "role": role, "server": server.strip_edges(), "error": "" }

@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–225, 238–243, 248, 249, 252–256, 259–276 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–225, 238–243, 248–250, 252–256, 259–276 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -31,7 +31,7 @@ introductions of the arcs they belonged to, are archived in
 Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
 see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
 phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
-comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–256, 259–276)
+comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248–250, 252–256, 259–276)
 have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
 [Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
 others are not in it.
@@ -39,7 +39,6 @@ others are not in it.
 | Priority | Phase | Title |
 |---|---|---|
 | 18 | 244 | A chunk cache on disk |
-| 20 | 250 | The server's ceiling: one machine serving, another running the bots |
 | 22 | 251 | A human playtest: what would make the game fun (a standing checkpoint) |
 | 23 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
 | 24 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
@@ -213,7 +212,7 @@ measures how many players one server holds on real hardware. Phase 251 is the ow
 |---|---|---|
 | 248 | The native library base and a release build | Done ([phases-248.md](docs/roadmap-history/phases-248.md)) |
 | 249 | What to reuse from Zylann's godot_voxel: a review, then the parts that fit | Done ([phases-249.md](docs/roadmap-history/phases-249.md)) |
-| 250 | The server's ceiling: one machine serving, another running the bots | Open |
+| 250 | The server's ceiling: one machine serving, another running the bots | Done ([phases-250.md](docs/roadmap-history/phases-250.md)) |
 | 251 | A human playtest: what would make the game fun | Ongoing (a standing checkpoint, never closed) |
 
 ### Next: a licence, a green `main` and a first release (Phases 252–258)
@@ -727,34 +726,6 @@ Trees use `multimesh_pool.gd` and impostors (Phase 23). Natural ground has no gr
 - Suite tests: placement is identical for the same seed and tile, nothing grows on rock, snow, water
   or a placed block, and density falls with distance.
 - The playtest `walk` and `flight` steps meet their budgets with ground cover on.
-
-## Phase 250 — The server's ceiling: one machine serving, another running the bots
-
-The crowd numbers in the README (Phase 163) come from one desktop machine running the server, the
-watching client and every bot at once, so the bots steal the server's CPU and the link is loopback.
-How many players one dedicated server holds is unknown.
-
-- `tools/stress.sh` gains a split mode: `STRESS_ROLE=server` boots only the dedicated server and the
-  host recorder and waits for bots; `STRESS_ROLE=bots STRESS_SERVER=<addr>` runs the watcher and the
-  bot process against a remote server. The "steady" and "stop" handshake goes over the network
-  (a control message or a small TCP side channel) instead of shared files.
-- Run the ladder (every pattern, crowd sizes up past the first failure) with the server on one
-  machine and the bots on another over a real LAN, then over the `wan_br` profile.
-- The report records each machine (CPU, cores, RAM, OS, Godot build, native on or off, release or
-  debug), and per pattern: the largest crowd that met every budget, tick time, CPU and memory per
-  player, bandwidth per player up and down, and the first bottleneck.
-- Write `docs/perf/server-ceiling.md`: the measured limits, the machines, the command to repeat it,
-  and how many players one server can hold with headroom for play. The README's crowd line points
-  to it.
-
-**Acceptance criteria**
-- A suite test on the split-mode parsing: a bots role with no server address is refused, and the
-  control messages round-trip.
-- A loopback CI run of the split mode (both roles on one runner) reaches "steady", runs one small
-  pattern and writes a report with the machine fields filled.
-- `docs/perf/server-ceiling.md` exists with numbers from a two-machine run. The run itself needs two
-  machines, so if none are available to automation it is filed as a GitHub issue (per the rule at
-  the top of this file) and the document records the loopback numbers until the issue is closed.
 
 ## Phase 251 — A human playtest: what would make the game fun
 
