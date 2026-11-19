@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–225, 238–243, 248, 249, 252–254, 259–264 and 267–276 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–225, 238–243, 248, 249, 252–254, 259–265 and 267–276 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -31,14 +31,13 @@ introductions of the arcs they belonged to, are archived in
 Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
 see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
 phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
-comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–254, 259–264, 267–276)
+comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248, 249, 252–254, 259–265, 267–276)
 have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
 [Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
 others are not in it.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 15 | 265 | One body everywhere: the creation screen, the Character window and the world draw the same avatar |
 | 16 | 266 | A chibi character worth looking at: the art direction and the player rig |
 | 17 | 255 | The first release: `v0.1.0` from the release workflow |
 | 18 | 244 | A chunk cache on disk |
@@ -284,7 +283,7 @@ everything for the whole tutorial.
 | 262 | Starting with nothing, and a tutorial that begins from bare hands | Done |
 | 263 | Digging that shows at once: a predicted edit and a priority remesh | Done |
 | 264 | Dropping part of a stack: a quantity slider | Done |
-| 265 | One body everywhere: the creation screen, the Character window and the world draw the same avatar | Open |
+| 265 | One body everywhere: the creation screen, the Character window and the world draw the same avatar | Done |
 | 266 | A chibi character worth looking at: the art direction and the player rig | Open |
 
 ### Next: stations you make, and windows a player can read (Phases 267–274)
@@ -906,35 +905,6 @@ would be empty.
   and fails on a broken internal link (the generator's link check, or `lychee` over the output).
 - A GitHub issue asks the owner to enable Pages and Discussions; this phase records its number.
 - After the issue closes, the README's wiki link returns 200 from a CI step on `main`.
-
-## Phase 265 — One body everywhere: the creation screen, the Character window and the world draw the same avatar
-
-The world avatar is the `models/player_rig.glb` rig with its material and palette
-(`attach_default_rig`). The creation screen and the Character window's doll are built by the older
-procedural body in `character_part_2.gd` `_make_visual`, so they show a different character. That
-body draws hair as one box tinted by the hair colour and never reads the style, which is why picking
-a hair style changes nothing on the right of the creation screen. The per-style hair meshes
-(`models/characters/hair/<id>.glb.raw`, drawn by `gen_placeholder_glb.py`) are never loaded.
-
-- **One builder:** an avatar builder (for example `src/character/avatar_builder.gd`) takes an
-  appearance and a worn set and returns the rig the world uses: the player rig, its material and
-  palette indices, the hair style's mesh on the head socket, and the worn equipment on their
-  sockets. The world avatar, the creation screen's rig and the Character window's doll all call it.
-  The procedural box body remains only as the fallback when no rig is listed in the manifest.
-- **Hair:** the chosen style's mesh is loaded from its key and tinted by the hair colour; a style
-  change on the creation screen swaps it on the next frame. The same mesh is what other players see.
-- **The doll and the creation rig animate** with the idle clip, lit like the world's camera sees the
-  avatar, so the three views match.
-
-**Acceptance criteria**
-- Suite tests: for the same appearance and worn set, the world avatar, the creation rig and the
-  doll have the same mesh resources, the same material parameters and the same attached nodes.
-- Suite tests: every hair style in `CharacterCreation.hairStyles` loads its own mesh on the head
-  socket; two different styles give different meshes; changing the style on the creation screen
-  replaces the hair mesh.
-- Every hair key has a placeholder in `assets/` (the placeholder rule), checked by the suite.
-- The playtest `create` and `character_sheet` steps assert the rig's hair mesh matches the chosen
-  style, and still render non-blank.
 
 ## Phase 266 — A chibi character worth looking at: the art direction and the player rig
 

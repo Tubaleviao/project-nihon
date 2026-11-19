@@ -364,6 +364,11 @@ func _refresh_doll() -> void:
 	_doll.rebuild(built as Node3D if built is Node3D else null)
 
 
+## Phase 265 — the style of the hair mesh the doll's rig wears.
+func doll_hair_style() -> String:
+	return _doll.hair_style() if _doll != null else ""
+
+
 ## True when the doll holds a rig.
 func has_rig() -> bool:
 	return _doll != null and _doll.has_rig()

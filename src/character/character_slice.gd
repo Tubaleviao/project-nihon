@@ -45,6 +45,7 @@ const Diag := preload("res://src/core/diag.gd")
 const Locomotion  := preload("res://src/character/locomotion.gd")
 const SkeletonRig := preload("res://src/character/skeleton_rig.gd")
 const RigTree := preload("res://src/character/rig_tree.gd")
+const AvatarBuilder := preload("res://src/character/avatar_builder.gd")
 const GameDataReader := preload("res://src/core/game_data_reader.gd")
 const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 const CharacterMaterial := preload("res://src/character/character_material.gd")
@@ -691,7 +692,7 @@ func attach_rig(instance_id: String, rig_key: String) -> bool:
 		if child is Node3D and child != impostor:
 			(child as Node3D).visible = false
 	root.add_child(rig_root)
-	_dress_rig(rig_root, inst["appearance"])
+	AvatarBuilder.dress(self, rig_root, inst["appearance"])
 	RigTree.prepare_library(player)
 	if player.has_animation("attack"):
 		inst["locomotion"].attack_duration = player.get_animation("attack").length
@@ -748,6 +749,11 @@ func _dress_rig(rig_root: Node, appearance: Dictionary) -> void:
 ## its public placeholder), then the older unskinned placeholder body for a manifest that
 ## lists no player rig. The first one the manifest lists wins.
 const DEFAULT_RIG_KEYS := ["models/player_rig.glb.raw", "models/placeholder_rig.glb.raw"]
+
+## Phase 265 — a standalone avatar for a view that is not a world instance (the creation rig, the Character
+## window's doll): the same rig, material, hair and worn gear the world draws (`AvatarBuilder.build`).
+func build_avatar(instance_id: String, appearance: Dictionary) -> Dictionary:
+	return AvatarBuilder.build(self, instance_id, appearance)
 
 ## Attach the first default rig the manifest lists. False (the procedural body stays)
 ## when none is listed or the scene fails to load.

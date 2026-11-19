@@ -604,7 +604,7 @@ func _creation_visual(choice: Dictionary) -> Node3D:
 	if sl.character_slice == null:
 		return null
 	var ch: Node = sl.character_slice
-	var built: Dictionary = ch._make_visual("creation_doll", ch.deserialize_appearance(ch.creation_recipe(choice)))
+	var built: Dictionary = ch.build_avatar("creation_doll", ch.deserialize_appearance(ch.creation_recipe(choice)))
 	return built.get("root", null)
 
 ## The host answered this machine's creation or skip: a refusal shows on the screen in this locale; a success

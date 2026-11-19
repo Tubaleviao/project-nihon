@@ -283,7 +283,7 @@ func _refresh_doll() -> void:
 	if signature == sl._doll_signature and sl._sheet_doll.has_rig():
 		return
 	sl._doll_signature = signature
-	var built: Dictionary = ch._make_visual("sheet_doll", ch.deserialize_appearance(appearance))
+	var built: Dictionary = ch.build_avatar("sheet_doll", ch.deserialize_appearance(appearance))
 	sl._sheet_doll.rebuild(built.get("root", null))
 
 ## Phase 179 — the sheet's whole projection, one row per thing it shows, each with a `section`: "slot" (every
