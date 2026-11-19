@@ -39,7 +39,6 @@ others are not in it.
 | Priority | Phase | Title |
 |---|---|---|
 | 18 | 244 | A chunk cache on disk |
-| 21 | 237 | Flight that handles like flight |
 | 22 | 251 | A human playtest: what would make the game fun (a standing checkpoint) |
 | 23 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
 | 24 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
@@ -190,7 +189,7 @@ detail and caching (243–244), and later flight (237), the planet bake (245) an
 
 | Phase | Title | Status |
 |---|---|---|
-| 237 | Flight that handles like flight: inertia, steering by the camera, no ground-walking fixes in the air | Open |
+| 237 | Flight that handles like flight: inertia, steering by the camera, no ground-walking fixes in the air | Done |
 | 238 | One world: a fixed seed, a 2,000 km planet and one continent | Done (runtime PR; spec below) |
 | 239 | Streaming that keeps up: a speed-scaled lead, adaptive workers, an attach budget | Done |
 | 240 | Smooth natural ground: a surface-nets mesher (GDScript reference) | Done ([phases-240.md](docs/roadmap-history/phases-240.md)) |
@@ -541,14 +540,14 @@ buried-lift rescue.
   camera's height smoothing stays. Both are off in the headless server.
 - Leaving flight keeps the current velocity, and gravity takes over from there.
 
-**Acceptance criteria**
-- Suite tests on `FlightRules.step`: from rest with W held, the body reaches 95% of top speed in
+**Acceptance criteria** (done: `src/player/flight_rules.gd`, `src/tests/suites/flight_tests.gd`; the wall/hillside criterion is proved on the pure collision response and a source audit, since `move_and_slide` does not run in the suite)
+- [x] Suite tests on `FlightRules.step`: from rest with W held, the body reaches 95% of top speed in
   0.5–0.8 s of steps. With no input it falls below 5% of top speed in 0.8–1.5 s. W with the camera
   pitched 30° up climbs at sin 30° of the speed (±5%). Opposite input reverses smoothly, never in one
   step.
-- A suite test flies a body into a wall and a hillside: no step-up lift, no buried-lift jump, and the
+- [x] A suite test flies a body into a wall and a hillside: no step-up lift, no buried-lift jump, and the
   body ends outside solid ground.
-- The playtest `flight` step passes at its current floors.
+- [x] The playtest `flight` step passes at its current floors.
 
 ## Phase 238 — One world: a fixed seed, a 2,000 km planet and one continent
 
