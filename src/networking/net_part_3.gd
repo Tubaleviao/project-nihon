@@ -84,6 +84,10 @@ func _deliver(peer_id: int, payload: Dictionary) -> bool:
 		sl._send_seq[ptype] = 0
 	payload["seq"] = sl._send_seq[ptype]
 	sl._send_seq[ptype] += 1
+	# A layout type wraps at SEQ_MOD whichever encoding the packet takes (a JSON fallback included), so a
+	# channel's seq is one lap-counted series and the receiver's wrap heuristic stays sound.
+	if sl.PacketCodec.has_layout(ptype):
+		payload["seq"] = int(payload["seq"]) % sl.PacketCodec.SEQ_MOD
 	if not sl.emulate_network:
 		transport.send(peer_id, payload)
 		return true

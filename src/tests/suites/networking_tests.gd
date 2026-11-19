@@ -38,6 +38,7 @@ func register() -> void:
 	_run_test("net: inventory replace_contents",                 _test_net_inventory_replace_contents)
 	_run_test("net: packets carry per-type monotonic seq",        _test_net_sequence_monotonic)
 	_run_test("net: duplicate dropped; reordered-unseen accepted", _test_net_sequence_dedup)
+	_run_test("net: layout types wrap seq at send",               _test_net_layout_seq_wraps)
 	_run_test("net: emulator queues with monotonic seq",         _test_net_emulator_delivery)
 	_run_test("net: emulator drops near loss rate",              _test_net_emulator_loss)
 	_run_test("net: emulator jitter centered around zero",       _test_net_emulator_jitter)
@@ -953,6 +954,25 @@ func _test_net_sequence_monotonic() -> void:
 	assert_eq(int(p1["seq"]), 0, "first player_moved gets seq 0")
 	assert_eq(int(p2["seq"]), 1, "second player_moved gets seq 1")
 	assert_eq(int(p3["seq"]), 0, "block_changed starts its own per-type counter at 0")
+	n.free()
+
+func _test_net_layout_seq_wraps() -> void:
+	# A layout type's seq wraps at SEQ_MOD at send (a JSON fallback included); other types count on.
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._send_seq["remote_player_state"] = NetworkingSlice.PacketCodec.SEQ_MOD - 1
+	n._send_seq["player_moved"] = NetworkingSlice.PacketCodec.SEQ_MOD - 1
+	var a := { "type": "remote_player_state" }
+	var b := { "type": "remote_player_state" }
+	var c := { "type": "player_moved" }
+	var d := { "type": "player_moved" }
+	n._deliver(1, a)
+	n._deliver(1, b)
+	n._deliver(1, c)
+	n._deliver(1, d)
+	assert_eq(int(a["seq"]), NetworkingSlice.PacketCodec.SEQ_MOD - 1, "last seq of a lap")
+	assert_eq(int(b["seq"]), 0, "next packet wraps to 0")
+	assert_eq(int(d["seq"]), NetworkingSlice.PacketCodec.SEQ_MOD, "a JSON-only type keeps counting")
 	n.free()
 
 func _test_net_sequence_dedup() -> void:
