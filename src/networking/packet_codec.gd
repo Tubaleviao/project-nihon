@@ -8,7 +8,7 @@ extends RefCounted
 ##
 ##   remote_player_state  tag(1) seq(u16) peer_id(i32) x,y,z (i32 centimetres of world position)   = 19 B
 ##   snapshot_chunk       tag(1) seq(u16) snapshot_id(u32) index(u32) count(u32) len(u32) bytes(len)
-##   player_states        tag(1) seq(u16) n(u16) byte planes: byte j of each of six words (subject, then the compact position's five) for all n entries
+##   player_states        tag(1) seq(u16) n(u16) n x 20-byte entries stored as byte planes (see `PLAYER_STATES_ENTRY_BYTES`)
 ##
 ## A binary packet of `COMPRESS_MIN` bytes or more that compresss smaller goes out as `tag | 0x80`, the
 ## original length (u32) and the compressed bytes; the decoder refuses a stated length over `INFLATE_MAX`.
@@ -24,7 +24,9 @@ const SEQ_MOD := 65536
 const REMOTE_PLAYER_STATE_BYTES := 19
 const SNAPSHOT_HEADER_BYTES := 19
 const PLAYER_STATES_HEADER_BYTES := 5
-const PLAYER_STATES_ENTRY_BYTES := 24
+## subject i32, chunk 2 x i32, local x u16 (of a chunk's width), local y f32, local z u16: x and z to under a millimetre
+const PLAYER_STATES_ENTRY_BYTES := 20
+const CHUNK_M := 32.0   # TerrainSlice.CHUNK_METERS (a suite test pins it)
 ## Largest world coordinate (metres) a centimetre i32 holds.
 const CM_LIMIT_M := 21474836.0
 const BATCH_MAX := 256
@@ -111,19 +113,26 @@ static func _encode_player_states(msg: Dictionary) -> PackedByteArray:
 		var raw: PackedByteArray = Marshalls.base64_to_raw(str(s[2 * i + 1]))
 		if raw.size() != 20:
 			return PackedByteArray()
-		var word := PackedByteArray()
-		word.resize(4)
-		word.encode_s32(0, int(s[2 * i]))
-		for j in 4:   # byte planes: neighbours share chunk and exponent bytes, so the compress pass sees runs
-			b[_plane_at(n, 0, j, i)] = word[j]
-		for w in 5:
-			for j in 4:
-				b[_plane_at(n, w + 1, j, i)] = raw[4 * w + j]
+		var lx := float(raw.decode_float(8))
+		var lz := float(raw.decode_float(16))
+		if not (lx >= 0.0 and lx < CHUNK_M and lz >= 0.0 and lz < CHUNK_M):
+			return PackedByteArray()   # not a normalised local position: JSON carries it exactly
+		var entry := PackedByteArray()
+		entry.resize(PLAYER_STATES_ENTRY_BYTES)
+		entry.encode_s32(0, int(s[2 * i]))
+		for j in 8:
+			entry[4 + j] = raw[j]
+		entry.encode_u16(12, mini(65535, roundi(lx / CHUNK_M * 65536.0)))
+		for j in 4:
+			entry[14 + j] = raw[12 + j]
+		entry.encode_u16(18, mini(65535, roundi(lz / CHUNK_M * 65536.0)))
+		for k in PLAYER_STATES_ENTRY_BYTES:
+			b[_plane_at(n, k, i)] = entry[k]
 	return b
 
-## Offset of byte `j` of word `w` (0 = subject, 1..5 = the compact position) of entry `i` in a batch of `n`.
-static func _plane_at(n: int, w: int, j: int, i: int) -> int:
-	return PLAYER_STATES_HEADER_BYTES + (w * 4 + j) * n + i
+## Offset of byte `k` of entry `i` in a batch of `n`: byte planes, so neighbours' shared bytes sit in runs.
+static func _plane_at(n: int, k: int, i: int) -> int:
+	return PLAYER_STATES_HEADER_BYTES + k * n + i
 
 ## The packet a wire message carries, or an empty dictionary when it is not one: a binary packet of an
 ## unknown tag or of the wrong length for its layout, or JSON that does not parse to an object.
@@ -173,16 +182,19 @@ static func _decode_binary(bytes: PackedByteArray) -> Dictionary:
 				return {}
 			var flat: Array = []
 			for i in n:
+				var entry := PackedByteArray()
+				entry.resize(PLAYER_STATES_ENTRY_BYTES)
+				for k in PLAYER_STATES_ENTRY_BYTES:
+					entry[k] = bytes[_plane_at(n, k, i)]
 				var raw := PackedByteArray()
 				raw.resize(20)
-				var word := PackedByteArray()
-				word.resize(4)
+				for j in 8:
+					raw[j] = entry[4 + j]
+				raw.encode_float(8, entry.decode_u16(12) * CHUNK_M / 65536.0)
 				for j in 4:
-					word[j] = bytes[_plane_at(n, 0, j, i)]
-				for w in 5:
-					for j in 4:
-						raw[4 * w + j] = bytes[_plane_at(n, w + 1, j, i)]
-				flat.append(word.decode_s32(0))
+					raw[12 + j] = entry[14 + j]
+				raw.encode_float(16, entry.decode_u16(18) * CHUNK_M / 65536.0)
+				flat.append(entry.decode_s32(0))
 				flat.append(Marshalls.raw_to_base64(raw))
 			return { "type": "player_states", "seq": bytes.decode_u16(1), "s": flat }
 	return {}

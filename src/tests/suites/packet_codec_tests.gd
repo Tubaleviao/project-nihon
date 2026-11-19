@@ -11,6 +11,7 @@ func register() -> void:
 	_run_test("codec: snapshot_chunk and player_states round-trip", _test_chunk_and_batch)
 	_run_test("codec: a packet one byte short or long is refused", _test_length_checks)
 	_run_test("codec: a large packet is compressd and a lying length is refused", _test_compressed)
+	_run_test("codec: a batch position keeps its chunk and height exactly and x, z to a millimetre", _test_batch_precision)
 	_run_test("codec: JSON packets and legacy peers still read", _test_json)
 	_run_test("codec: the host refuses a malformed binary packet and the seq wrap is read", _test_slice)
 
@@ -72,6 +73,25 @@ func _test_compressed() -> void:
 	var wrong := b.duplicate()
 	wrong[0] = PacketCodec.COMPRESSED_FLAG | PacketCodec.TAG_PLAYER_STATES
 	assert_true(PacketCodec.decode(wrong).is_empty(), "tag mismatch refused")
+
+func _test_batch_precision() -> void:
+	assert_eq(PacketCodec.CHUNK_M, TerrainSlice.CHUNK_METERS, "chunk width pinned")
+	var raw := PackedByteArray()
+	raw.resize(20)
+	raw.encode_s32(0, -7)
+	raw.encode_s32(4, 123456)
+	raw.encode_float(8, 17.3217)
+	raw.encode_float(12, 812.5)
+	raw.encode_float(16, 0.004)
+	var batch := { "type": "player_states", "seq": 1, "s": [9, Marshalls.raw_to_base64(raw)] }
+	var back: Array = PacketCodec.decode(PacketCodec.encode(batch))["s"]
+	var r2 := Marshalls.base64_to_raw(back[1])
+	assert_eq(r2.decode_s32(4), 123456, "chunk exact")
+	assert_eq(r2.decode_float(12), 812.5, "y exact")
+	assert_true(absf(r2.decode_float(8) - 17.3217) < 0.001 and absf(r2.decode_float(16) - 0.004) < 0.001, "x, z within a millimetre")
+	raw.encode_float(8, 40.0)   # not normalised: stays JSON, exact
+	var odd := PacketCodec.encode({ "type": "player_states", "seq": 1, "s": [9, Marshalls.raw_to_base64(raw)] })
+	assert_true(PacketCodec.is_json(odd), "unnormalised position travels as JSON")
 
 func _test_json() -> void:
 	var m := { "type": "craft_intent", "recipe_id": "R", "seq": 100000 }
