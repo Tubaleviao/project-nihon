@@ -410,7 +410,7 @@ func enable_disk() -> void:
 		gen_cache = DiskChunkCache.new("user://saves/server/regions/cache/", 256 * 1024 * 1024)
 
 ## Phase 244 — what a build of `chunk` at `lod` reads, as content rather than session counters: the level, a
-## digest of the edits of the chunk and its eight neighbours (their strips shape its seams) and the chunk's own
+## world seed (the mesh and its biome weights depend on it), a digest of the edits of the chunk and its eight neighbours (their strips shape its seams) and the chunk's own
 ## generation record, as `ChunkManager.cache_signature` does. The key of the disk entry (with the worldgen and
 ## mesher versions): the same world gives the same key in another session. A neighbour's record is left out: a
 ## recorded chunk never changes, and the neighbours are recorded as the ground streams in, after this one built.
@@ -419,7 +419,7 @@ func disk_signature(chunk: Vector2i, lod: int) -> Array:
 	for dz in range(-1, 2):
 		for dx in range(-1, 2):
 			digests.append(edit_digest(chunk + Vector2i(dx, dz)))
-	return [lod, digests, ChunkRecords.get_record(TerrainSliceScript.wrap_chunk(chunk)).hash()]
+	return [int(sl.terrain_slice.get_world_seed()), lod, digests, ChunkRecords.get_record(TerrainSliceScript.wrap_chunk(chunk)).hash()]
 
 ## What the generator reads for `chunk`'s heightmap: the seed, the chunk's edit digest and its generation record.
 func gen_signature(chunk: Vector2i, seed_v: int) -> Array:

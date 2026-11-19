@@ -16,6 +16,7 @@ func register() -> void:
 	_run_test("disk cache: the byte cap evicts the least recently used entries", _test_lru_cap)
 	_run_test("disk cache: a revisit attaches from disk and matches a fresh build", _test_revisit_from_disk)
 	_run_test("disk cache: an edit makes the entry a miss", _test_edit_invalidates)
+	_run_test("disk cache: the world seed is part of the mesh key", _test_mesh_key_has_seed)
 	_run_test("disk cache: a later session reads the generator's heightmap instead of generating", _test_gen_layer)
 
 func _dir() -> String:
@@ -194,6 +195,16 @@ func _test_edit_invalidates() -> void:
 	assert_true(voxel._query.edit_digest(chunk) != 0 and voxel._query.edit_digest(Vector2i(5, 5)) == 0, "the digest is per chunk, 0 without edits")
 	_free_rig(rig)
 	_rm(d)
+
+func _test_mesh_key_has_seed() -> void:
+	var rig := _make_chunk_build_rig()
+	var cm: ChunkManager = rig["cm"]
+	rig['terrain'].set_world_seed(1)
+	var a: int = DiskChunkCache.key_of(cm._m1.disk_signature(Vector2i(1, 1), 0))
+	rig['terrain'].set_world_seed(2)
+	var b: int = DiskChunkCache.key_of(cm._m1.disk_signature(Vector2i(1, 1), 0))
+	assert_true(a != b, "another world seed is another mesh key")
+	_free_rig(rig)
 
 func _test_gen_layer() -> void:
 	var d := _dir()
