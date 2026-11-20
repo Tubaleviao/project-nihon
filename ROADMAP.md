@@ -38,11 +38,14 @@ others are not in it.
 
 | Priority | Phase | Title |
 |---|---|---|
+| 5 | 289 | Hold to work, told and shown: the work bar in view, and the tutorial says hold |
+| 6 | 290 | Digging that does not drag: a faster shovel on the way to rock |
+| 7 | 288 | Recipe cards you can read: a real icon area in the crafting window |
 | 8 | 279 | Pick up with E |
 | 9 | 278 | Rocks and branches that look like rocks and branches |
 | 10 | 283 | Trees that look like trees: closed faces, a trunk and a real crown |
 | 11 | 282 | A felled tree falls, then goes |
-| 12 | 281 | Chopping you can see: a work swing while the hold runs |
+| 12 | 281 | Work you can see: chopping, mining, digging, building and dissecting animations |
 | 13 | 280 | The hotbar item in the hand |
 | 14 | 284 | Hair that sits on the head |
 | 15 | 285 | Grass without black spots |
@@ -64,8 +67,9 @@ others are not in it.
 
 Order notes that differ from the arcs' own order:
 
-- Phases 278–287 are the owner's third playtest set (2026-11-19, Phase 251), filed at high priority ahead of
-  everything else open. The key change (279) comes first because it is small and every later finding is
+- Phases 278–290 are the owner's third playtest set (2026-11-19, Phase 251), filed at high priority ahead of
+  everything else open. 288–290 (the crafting cards, the work bar and the hold wording, the shovel speed) were
+  added to the set later the same day and go first: they are small, and 289 and 290 are on the tutorial's path. The key change (279) comes first because it is small and every later finding is
   played with it; trees (283) come before felling (282) because the fall animates the new tree mesh. The
   art each needs is in the assets repo's Phases A40–A46; each game phase lands with placeholders and does
   not wait for that art.
@@ -334,13 +338,15 @@ not part of the arc. Phase 275 is the contract (keys, layout, manifest section, 
 | 276 | First sounds wired in: clicks, windows, footsteps, the dig, pickups, a creature's attack, ambience and music | Done |
 | 277 | Sound gaps: other players' footsteps, rock underfoot on cliffs, music on the main menu | Open |
 
-### Next: the third playtest set (Phases 278–287)
+### Next: the third playtest set (Phases 278–290)
 
 Filed by the owner on 2026-11-19 after playing `main` (Phase 251), at high priority. What was found: rocks and
 branches on the ground are the same grey box; picking up is on T; the item chosen in the hotbar is not in the
 hand; chopping a tree plays no animation; a felled tree squashes into the ground and stays; the top of a tree
 can be seen into; hair floats above the head; the grass shows black spots; male and female characters look the
-same; fighting looks stiff. Each phase names the private art it pairs with (`project-nihon-assets` Phases
+same; fighting looks stiff; the crafting window's icon area is a thin strip; the work bar is drawn half off
+screen in the top-left corner and the tutorial never says to hold; digging to rock with the shovel is slow;
+mining, digging, building and dissecting have no animation of their own. Each phase names the private art it pairs with (`project-nihon-assets` Phases
 A40–A46). The placeholder rule holds: each phase lands with public placeholders and is playable without the art.
 
 | Phase | Title | Status |
@@ -348,13 +354,16 @@ A40–A46). The placeholder rule holds: each phase lands with public placeholder
 | 278 | Rocks and branches that look like rocks and branches | Open |
 | 279 | Pick up with E | Open |
 | 280 | The hotbar item in the hand | Open |
-| 281 | Chopping you can see: a work swing while the hold runs | Open |
+| 281 | Work you can see: chopping, mining, digging, building and dissecting animations | Open |
 | 282 | A felled tree falls, then goes | Open |
 | 283 | Trees that look like trees: closed faces, a trunk and a real crown | Open |
 | 284 | Hair that sits on the head | Open |
 | 285 | Grass without black spots | Open |
 | 286 | Men and women who look different | Open |
 | 287 | Fighting that reads: combos, impact timing and hit reactions | Open |
+| 288 | Recipe cards you can read: a real icon area in the crafting window | Open |
+| 289 | Hold to work, told and shown: the work bar in view, and the tutorial says hold | Open |
+| 290 | Digging that does not drag: a faster shovel on the way to rock | Open |
 
 ## Phase 225 — The options window
 
@@ -1013,30 +1022,46 @@ hand. Today `hotbar.selected_item()` only feeds station placement; held meshes e
   last held item syncs empty.
 - Net harness step: client B sees client A's held item id change when A selects another slot.
 
-## Phase 281 — Chopping you can see: a work swing while the hold runs
+## Phase 281 — Work you can see: chopping, mining, digging, building and dissecting animations
 
 Owner's playtest, 2026-11-19: holding the work input on a tree plays no animation. `work_hold.gd` emits
-`tree_chop_requested` and nothing animates; mining plays `attack_tool` once, when the block breaks.
+`tree_chop_requested` and nothing animates; mining plays `attack_tool` once, when the block breaks; digging,
+building (placing a block, station or structure piece, `WorkSkills.SINGLE_KINDS` `build`) and dissecting a
+carcass (Phase 259 harvest) play nothing or the same generic `attack_tool`. Every kind of work should have its
+own animation that reads as that work.
 
-- While a work hold runs (chopping, mining, digging, carcass work), the character loops a work clip with one
-  strike per work tick: `chop` for trees, `mine` for blocks, `dig` for digging, falling back to `attack_tool`
-  when the rig lacks the clip. The clip choice is a fabric table (work kind → clip), not code.
+- Each kind of work has its own clip, each a distinct motion that reads at gameplay distance:
+  - `chop`: a side swing from the shoulder into the trunk at chest height, both hands on the haft.
+  - `mine`: an overhead two-handed swing that drives the pick down and forward into the face, a small recoil after.
+  - `dig`: the shovel pushed into the ground with a foot on the blade, levered back and the load tossed aside.
+  - `build`: a short hammering loop (two to three strikes) facing the placed piece, the off hand steadying it.
+  - `dissect`: kneeling by the carcass, a cutting loop with the knife low and in front.
+- Holds (chopping, mining, digging, dissecting) loop their clip with one strike per work tick; a single action
+  (building, dismantling, repairing) plays its clip once (`build` for all three until art splits them). A rig
+  without the clip falls back to `attack_tool`. The clip choice is a fabric table (work kind → clip, loop or
+  once), not code.
 - The strike frame lines up with the tick that applies the work: the clip's `impact` marker (assets A41 adds it;
   the fallback uses 40% of the clip) is the moment the tick's chips, sound (Phase 276 `chop`/`dig` events) and
   progress bar step happen on the client.
-- The character turns to face the target when the hold starts. Releasing the hold or walking away blends back to
-  idle/locomotion within 0.2 s.
-- Other players see the swing: the host already knows a hold is running; it syncs a `working` state (kind,
-  target) to peers in range, and their copies loop the same clip.
-- New clip keys `chop`, `mine`, `dig` get placeholder clips on the public `player_rig` first. Art: assets A41.
+- The character turns to face the target when the work starts. Releasing the hold or walking away blends back to
+  idle/locomotion within 0.2 s; the `dissect` kneel stands back up through the same blend.
+- Other players see the work: the host already knows a hold is running or a piece was placed; it syncs a
+  `working` state (kind, target) to peers in range, and their copies play the same clip.
+- New clip keys `chop`, `mine`, `dig`, `build`, `dissect` get placeholder clips on the public `player_rig` first,
+  each with the motion above in rough form (not a copy of `attack_tool`), so the public game shows the
+  difference without the art. Art: assets A41 (to be extended with `build` and `dissect`).
 
 **Acceptance criteria**
 - `npm run validate` / `check-drift` pass with the work-clip table; the validator rejects a clip name not on the
-  rig contract.
-- Suite: a chop hold on a tree plays `chop` on loop; a mining hold plays `mine`; a rig without the clip plays
-  `attack_tool`; releasing the hold stops the loop; the strike signal fires once per work tick at the marker time.
-- Net harness step: client B's copy of client A plays `chop` while A chops.
-- Playtest bot `gather` step records the clip that played during the chop and fails if it was not a work clip.
+  rig contract and a work kind with no clip.
+- Suite: a chop hold on a tree plays `chop` on loop; a mining hold plays `mine`; a digging hold plays `dig`; a
+  carcass hold plays `dissect`; placing a block plays `build` once; a rig without the clip plays `attack_tool`;
+  releasing the hold stops the loop; the strike signal fires once per work tick at the marker time.
+- Suite: the five placeholder clips are pairwise different (their right-hand bone tracks differ by more than
+  10 cm at some sampled time) and none equals `attack_tool`; `dissect` lowers the hips by at least 30 cm.
+- Net harness step: client B's copy of client A plays `chop` while A chops and `build` when A places a block.
+- Playtest bot `gather`, `mine` and `place` steps record the clip that played during the work and fail if it was
+  not that work's clip.
 
 ## Phase 282 — A felled tree falls, then goes
 
@@ -1203,6 +1228,90 @@ no link between the clip's strike and the damage, and the target barely reacts.
   no further hit; an attacker who dies, is staggered or switches weapon before impact deals nothing.
 - Suite: attacking while walking keeps the lower body on `walk` (blend mask applied).
 - Playtest bot `fight` step passes and records the clip sequence.
+
+## Phase 288 — Recipe cards you can read: a real icon area in the crafting window
+
+Owner's playtest, 2026-11-19: the crafting window does not show the items to craft properly; the part with the
+item icons is too thin. In `src/ui/craft_window.gd` the card grid sits in a `ScrollContainer` with
+`SIZE_EXPAND_FILL` and no minimum height, sharing the window's height with the search field, the tabs and the
+detail panel below, so the detail takes the space and the grid shrinks to a strip. Each card is a 92×76 `Button`
+with `expand_icon`, so the icon gets what is left of 76 px after the text line (11 px font) and shrinks further
+when the name wraps.
+
+- The card grid gets a minimum height of at least two full card rows, and the window's minimum size grows to fit
+  it; the detail panel scrolls on its own instead of squeezing the grid.
+- A card is a fixed layout, not a `Button` icon: a square icon area of at least 56×56 px (`TextureRect`,
+  `STRETCH_KEEP_ASPECT_CENTERED`), the name under it on up to two lines with ellipsis, and the count badge in a
+  corner. The selected card has a visible border; a card that cannot be crafted is dimmed but its icon stays
+  readable. Applies to the hand window and the station windows (Phase 269), which share the class.
+- The column count follows the window width (cards keep their size; a wider window shows more columns), so a
+  resized window never squeezes the icons.
+- The detail panel's input icons grow from 24 to 32 px.
+- No new user-facing strings, or every new one is in both locales.
+
+**Acceptance criteria**
+- Suite: a hand window built with the default size has a grid area at least two card rows tall; every card's
+  icon rect is at least 56×56 px and square; with a long localized name the icon rect keeps its size; the
+  column count is `floor(width / card width)` at three window widths.
+- Suite: a station window (Phase 269) gets the same card layout; the detail panel's input icons are 32 px.
+- Playtest bot `craft` step screenshot is taken with the window open and the step checks the card icon sizes.
+
+## Phase 289 — Hold to work, told and shown: the work bar in view, and the tutorial says hold
+
+Owner's playtest, 2026-11-19: the chopping, digging and mining progress bar shows in the upper-left corner of the
+game window, often cut in half, and the tutorial does not say the work input must be held until the work
+finishes. The bar is built in `src/player/work_hold.gd` `_ready`: a zero-size `Control` calls
+`set_anchors_preset(PRESET_CENTER)`, which moves the anchors but keeps the control where it was (offsets are
+recomputed to keep its position, at the top-left), and the bar and label are placed at negative x offsets from
+that point, so half of each is off screen.
+
+- The work bar sits centred below the crosshair (about 12% of the screen height under it), clear of the hotbar,
+  the minimap and the chat, at every window size and UI scale: the control is laid out with
+  `set_anchors_and_offsets_preset(PRESET_CENTER)` (or a full-rect parent with a centred container), and it is
+  re-placed when the viewport resizes.
+- The bar is wider (220 px) and taller (12 px) with the label (material, seconds left, tool) above it, and it
+  shows only while a hold runs.
+- While a hold runs, the label adds "Keep holding <input>" (the input name from `InputLabels`, a param); if the
+  hold is released before the end, a short "Released too early: hold until the bar fills" hint shows for 2 s.
+- The tutorial's work steps say to hold: `tutorial.chop.body`, `tutorial.dig.body`, `tutorial.mine_stone.body`
+  (and any other step that asks for timed work, such as carcass work) state that the button must be held until
+  the bar fills, naming the input through a param, not a literal. Both locales.
+
+**Acceptance criteria**
+- Suite: at viewport sizes 1280×720, 1920×1080 and 800×600 the work bar's global rect lies fully inside the
+  viewport, horizontally centred (±2 px) and below the screen centre; after a viewport resize it stays inside.
+- Suite: an early release shows the hint and it hides after 2 s (explicit time steps); a completed hold does not.
+- Suite: the en and pt_BR texts of the chop, dig and mine tutorial steps contain the hold wording key's text
+  (the steps reference a shared `tutorial.hold_hint` param or string); locale check passes.
+- Playtest bot `mine` step screenshot is taken mid-hold and the step checks the bar's rect is inside the viewport.
+
+## Phase 290 — Digging that does not drag: a faster shovel on the way to rock
+
+Owner's playtest, 2026-11-19: digging with the shovel takes too long, so getting through the soil to the rock the
+tutorial asks to mine (`tutorial.mine_stone`) is slow. Today (`fabric/gameplay/work_times.js`) soil is 0.8 s and
+grass 0.6 s at speed 1.0, the stone shovel works at 0.6 (1.33 s a soil block), and each block is a separate host
+round trip with its own bar.
+
+- Digging soil is about twice as fast with the first shovel: the stone shovel's `shovel` speed goes from 0.6 to
+  1.2, and the forged tools' relative step above it is kept (a later shovel stays faster than the stone one).
+  Soil, grass, sand and snow base times are left as they are, so bare hands and the pick are unchanged.
+- A dig hold carries on to the next soil block under the crosshair without a gap: the next target's
+  `work_start_requested` is sent when the current one completes, not on the next frame after the host answers,
+  so a trench feels like one continuous dig.
+- The tutorial area guarantees rock close under the surface: within the newcomer grounds (Phase 261),
+  the soil above the first rock is at most 2 blocks at the player's spawn reach, checked against world-gen and
+  not changed by it (if it fails, the tutorial step points the player to an exposed rock instead; no
+  `WORLDGEN_VERSION` bump unless world-gen changes).
+- The work-time table records the change in its comment (Phase 290) so the balance history stays readable.
+
+**Acceptance criteria**
+- `npm run validate` / `check-drift` pass; `tools/check_work_times.js` still rejects bad tables.
+- Suite: the host's dig duration for a soil block with a stone shovel at Mining novice is at most 0.7 s; bare
+  hands and pick durations on soil and rock are unchanged; every shovel is at least as fast as the stone shovel.
+- Suite: on the pinned playtest world, the columns within reach of the spawn have rock at most 2 soil blocks
+  under the surface.
+- Playtest bot `tutorial` step completes the dig and mine-rock steps within a time budget set from the new
+  speed (dig-to-rock under 5 s of holding).
 
 ---
 
