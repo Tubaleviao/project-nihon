@@ -38,7 +38,6 @@ others are not in it.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 9 | 278 | Rocks and branches that look like rocks and branches |
 | 10 | 283 | Trees that look like trees: closed faces, a trunk and a real crown |
 | 11 | 282 | A felled tree falls, then goes |
 | 12 | 281 | Work you can see: chopping, mining, digging, building and dissecting animations |
@@ -959,13 +958,13 @@ MultiMesh, and the per-instance colours (brown, grey) never show because no mate
 - Up to three variants per kind (`models/items/<Id>_v<n>.glb.raw`, n = 1..2, optional) are chosen by the same
   seed when present; placeholders for each variant key land with this phase. Art: assets Phase A40.
 
-**Acceptance criteria**
-- Suite: the loose-item renderer builds one MultiMesh per kind present, with the kind's model mesh (not a
+**Acceptance criteria** (done: `look_at_tile`, `variant_keys`, `loose_mesh` and `redraw` in `src/world/loose_item_slice.gd`, `VARIANT_ITEMS` in `tools/gen_item_assets.py`, `src/tests/suites/loose_item_visual_tests.gd`)
+- [x] Suite: the loose-item renderer builds one MultiMesh per kind present, with the kind's model mesh (not a
   `BoxMesh`) when the key loads; with a missing key it falls back to the box and the material has
   `vertex_color_use_as_albedo`; the same cell gives the same yaw, scale and variant on two builds; a variant key
   that is absent is never picked.
-- Suite: every loose kind in the fabric has a placeholder model at its key, and every variant key has one.
-- Playtest bot `tutorial` step still passes: it picks up a branch and a loose stone (`_pick_loose`), and
+- [x] Suite: every loose kind in the fabric has a placeholder model at its key, and every variant key has one.
+- [x] Playtest bot `tutorial` step still passes: it picks up a branch and a loose stone (`_pick_loose`), and
   pick-up by aim is unchanged.
 
 ## Phase 279 — Pick up with E

@@ -419,7 +419,11 @@
     "models/items/VoidRuneTablet.glb.raw": "models/items/VoidRuneTablet.glb.raw",
     "models/items/VoidShieldedWorkshop.glb.raw": "models/items/VoidShieldedWorkshop.glb.raw",
     "models/items/VoiditeEdge.glb.raw": "models/items/VoiditeEdge.glb.raw",
-    "models/items/Waystone.glb.raw": "models/items/Waystone.glb.raw"
+    "models/items/Waystone.glb.raw": "models/items/Waystone.glb.raw",
+    "models/items/Branch_v1.glb.raw": "models/items/Branch_v1.glb.raw",
+    "models/items/Branch_v2.glb.raw": "models/items/Branch_v2.glb.raw",
+    "models/items/LooseStone_v1.glb.raw": "models/items/LooseStone_v1.glb.raw",
+    "models/items/LooseStone_v2.glb.raw": "models/items/LooseStone_v2.glb.raw"
   },
   "animations": {
     "models/placeholder_rig.glb.raw": "models/placeholder_rig.glb.raw",

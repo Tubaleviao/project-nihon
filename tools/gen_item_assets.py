@@ -41,6 +41,15 @@ from gen_placeholder_glb import Blob, _glb  # noqa: E402
 ROOT = Path(__file__).resolve().parent.parent
 ITEMS_TRES = ROOT / "godot/items"
 MODEL_DIR = Path("assets/models/items")
+# Loose ground items drawn by LooseItemSlice (Phase 278): each has optional variant models
+# `<Id>_v<n>` (n = 1..VARIANTS). The placeholder variants are copies of the base model; the art
+# repo replaces them with distinct meshes.
+VARIANT_ITEMS = ("Branch", "LooseStone")
+VARIANTS = 2
+
+
+def variant_ids(items) -> list:
+    return [f"{i}_v{n}" for i in sorted(items) if i in VARIANT_ITEMS for n in range(1, VARIANTS + 1)]
 ICON_DIR = Path("assets/icons/items")
 LOCK_NAME = "shapes.lock.json"
 MANIFEST = Path("assets/manifest.json")
@@ -604,6 +613,9 @@ def outputs(items: dict) -> dict:
         if tris > MAX_TRIS:
             sys.exit(f"{item_id}: {tris} tris, budget is {MAX_TRIS}")
         files[MODEL_DIR / f"{item_id}.glb.raw"] = build_glb(built)
+        if item_id in VARIANT_ITEMS:
+            for n in range(1, VARIANTS + 1):
+                files[MODEL_DIR / f"{item_id}_v{n}.glb.raw"] = files[MODEL_DIR / f"{item_id}.glb.raw"]
         files[ICON_DIR / f"{item_id}.png.raw"] = render_icon(built)
     files[MODEL_DIR / LOCK_NAME] = (json.dumps(lock_data(items), indent=2) + "\n").encode()
     return files
@@ -614,6 +626,9 @@ def manifest_text(items: dict, root: Path) -> str:
     meshes = {k: v for k, v in manifest["meshes"].items() if not k.startswith("models/items/")}
     for item_id in sorted(items):
         key = f"models/items/{item_id}.glb.raw"
+        meshes[key] = key
+    for vid in variant_ids(items):
+        key = f"models/items/{vid}.glb.raw"
         meshes[key] = key
     manifest["meshes"] = meshes
     return json.dumps(manifest, indent=2) + "\n"
@@ -631,7 +646,7 @@ def write(items: dict, root: Path) -> None:
         path.write_bytes(data)
     if (root / MANIFEST).exists():
         (root / MANIFEST).write_text(manifest_text(items, root))
-    keep = {f"{i}.glb.raw" for i in items} | {LOCK_NAME}
+    keep = {f"{i}.glb.raw" for i in items} | {f"{v}.glb.raw" for v in variant_ids(items)} | {LOCK_NAME}
     for stale in (root / MODEL_DIR).glob("*.glb.raw"):
         if stale.name not in keep:
             stale.unlink()
@@ -661,12 +676,15 @@ def check(items: dict) -> int:
             problems.append(f"{rel} differs from the generator output")
     for d, suffix in ((MODEL_DIR, ".glb.raw"), (ICON_DIR, ".png.raw")):
         for f in sorted((ROOT / d).glob("*" + suffix)):
-            if f.name[: -len(suffix)] not in items and not (suffix == ".png.raw" and f.name[: -len(suffix)] in _other_holdables()):
+            if f.name[: -len(suffix)] not in items and not (suffix == ".glb.raw" and f.name[: -len(suffix)] in variant_ids(items)) and not (suffix == ".png.raw" and f.name[: -len(suffix)] in _other_holdables()):
                 problems.append(f"orphan {d / f.name}: not an item")
     manifest = json.loads((ROOT / MANIFEST).read_text())
     for i in items:
         if f"models/items/{i}.glb.raw" not in manifest["meshes"]:
             problems.append(f"{MANIFEST} does not list the {i} model")
+    for v in variant_ids(items):
+        if f"models/items/{v}.glb.raw" not in manifest["meshes"]:
+            problems.append(f"{MANIFEST} does not list the {v} model")
     for p in problems:
         print("FAIL", p)
     if problems:
