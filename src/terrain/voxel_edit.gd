@@ -52,7 +52,7 @@ func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: Str
 	var host_rock := false
 	var natural := material == ""
 	if natural:
-		var yielded = s._natural_yield(tile, span)
+		var yielded = s.natural_yield(tile, span)
 		material = str(yielded["material"])
 		quantity = int(yielded["quantity"])
 		vein = yielded["vein"]
@@ -675,7 +675,7 @@ func _apply_edit(action: String, position: Vector3, normal: Vector3, material: S
 		# rebuild never gathers the pre-mine column.
 		var yielded: Dictionary = {}
 		if str(span["material"]) == "":
-			yielded = s._natural_yield(tile, span)
+			yielded = s.natural_yield(tile, span)
 		s._append_edit(tile, { "op": "remove", "bottom": span["bottom"], "top": span["top"] })
 		if not yielded.is_empty() and not (yielded["vein"] as Dictionary).is_empty():
 			s._record_depletion(yielded["vein"], int(yielded["quantity"]))
@@ -839,7 +839,7 @@ func _edit_keys(action: String, tile: Vector2i, position: Vector3, normal: Vecto
 	var span: Dictionary = s._mine_span(s.get_runs_at_tile(tile), position, normal)
 	if span.is_empty() or str(span["material"]) != "":
 		return []
-	var vein: Dictionary = s._natural_yield(tile, span)["vein"]
+	var vein: Dictionary = s.natural_yield(tile, span)["vein"]
 	if not vein.is_empty() and not keys.has(s._tile_key(vein["anchor"])):
 		keys.append(s._tile_key(vein["anchor"]))
 	return keys

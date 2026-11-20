@@ -1265,7 +1265,7 @@ func _build_hud() -> void:
 	_refresh_build_hint()
 	_work_hold = preload("res://src/player/work_hold.gd").new()
 	_hud.add_child(_work_hold)
-	_work_hold.block_probe = func(t: Dictionary) -> Variant: return null if voxel_slice == null else str(voxel_slice._edit.work_target(t["position"], t["normal"], t["exact"]).get("material", ""))
+	_work_hold.block_probe = func(t: Dictionary) -> Variant: return null if voxel_slice == null else str(voxel_slice.work_target(t["position"], t["normal"], t["exact"]).get("material", ""))
 	add_child(_hud)
 
 func _update_hp_bar() -> void:

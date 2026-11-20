@@ -893,8 +893,9 @@ jobs:
         run: |
           # A machine with two worker threads must still keep the ground under a body flying at the old
           # 90 m/s (`/speed 10`). `override.cfg` beside project.godot limits the engine's worker pool; the bot
-          # plays only the flight step (`--playtest-only flight`) at that speed. The step's own verdict is the
-          # >= 90% coverage rule, so a non-zero exit or a missing `ok` fails the job.
+          # plays only the flight step (`--playtest-only flight`) at that speed. The step's own verdict uses
+          # `FLIGHT_MIN_COVER` (0.5, the floor for CI runner spread); the >= 90% slow-machine rule is enforced by
+          # the check below, so a non-zero exit, a missing `ok` or a gated coverage under 90% fails the job.
           mkdir -p /tmp/playtest-main
           cp playtest/report.json /tmp/playtest-main/report.json
           rm -f playtest/report.json   # a slow run that writes nothing must not be judged on the main run's report

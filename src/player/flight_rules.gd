@@ -3,7 +3,7 @@ extends RefCounted
 ##
 ## `step` eases a flying body's velocity toward what the keys ask for: W/S along the camera's forward
 ## vector (pitch included), A/D across it, Space/Ctrl up and down. Releasing the keys lets drag bleed
-## the speed off instead of stopping the body at once.
+## the speed off instead of stopping the body at once. Collisions are `move_and_slide`'s (`PlayerSlice._move_flying`).
 
 ## Rates (1/s) of the exponential ease: 95% of the way in 3 / rate seconds.
 const ACCEL_RATE := 4.6   ## top speed in about 0.65 s
@@ -21,20 +21,18 @@ static func params(top_speed: float, vertical_speed: float) -> Dictionary:
 	return { "top_speed": top_speed, "vertical_speed": vertical_speed, "accel": ACCEL_RATE, "drag": DRAG_RATE }
 
 ## The velocity after `delta` seconds. `wish`: x strafe (+ right), y vertical (+ up), z walk (-1 forward, +1
-## back), each in -1..1 (the keys). `look_basis`: the camera's basis (forward is -Z, pitched).
+## back), each in -1..1 (the keys). `look_basis`: the camera's basis (forward is -Z, pitched). The target's
+## length is capped at a level strafe-and-climb's (top and vertical speed at right angles), so pitched W plus
+## Space cannot add the two speeds along one line.
 static func step(velocity: Vector3, wish: Vector3, look_basis: Basis, delta: float, p: Dictionary) -> Vector3:
 	var horizontal: Vector3 = look_basis.x * wish.x + look_basis.z * wish.z
 	if horizontal.length_squared() > 1.0:
 		horizontal = horizontal.normalized()
 	var target: Vector3 = horizontal * float(p["top_speed"]) + Vector3.UP * clampf(wish.y, -1.0, 1.0) * float(p["vertical_speed"])
+	target = target.limit_length(Vector2(float(p["top_speed"]), float(p["vertical_speed"])).length())
 	var rate: float = float(p["accel"]) if wish != Vector3.ZERO else float(p["drag"])
 	var keep := exp(-rate * maxf(delta, 0.0))
 	return target + (velocity - target) * keep
-
-## A collision kills only the velocity into the surface: `normal` is the surface's outward normal.
-static func slide(velocity: Vector3, normal: Vector3) -> Vector3:
-	var into := velocity.dot(normal)
-	return velocity - normal * into if into < 0.0 else velocity
 
 ## The camera's horizontal lag offset (world axes) eased toward a trail behind `velocity`.
 static func lag_target(velocity: Vector3) -> Vector3:

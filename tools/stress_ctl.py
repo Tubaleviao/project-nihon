@@ -32,10 +32,13 @@ import time
 
 PATTERNS = ("cluster", "spread", "cross", "pole", "churn")
 PROFILES = ("lan", "wan_br", "wan_bad")
-# The ladder's largest crowd (StressRules.LADDER); a bigger request is refused.
+# The ladder's largest crowd (StressRules.LADDER); a bigger request is refused. The crowd suite
+# (`_test_stress_mirrored_constants`) pins this literal to the ladder's top.
 MAX_SIZE = 200
 # Optional shared secret (STRESS_CTL_TOKEN): the peer must send `auth <token>` first. The bind address
 # defaults to every interface (the bots are on another machine); STRESS_CTL_BIND narrows it.
+# The token travels in plaintext over TCP: it only guards against accidents (a second run, a stray
+# script) on a trusted network, not against anyone who can see the traffic. Run it on a LAN or a tunnel.
 TOKEN_ENV = "STRESS_CTL_TOKEN"
 BIND_ENV = "STRESS_CTL_BIND"
 
@@ -103,25 +106,52 @@ def send_auth(link):
         link.send("auth " + token())
 
 
+def accept_request(srv, end):
+    """Accept peers until one is authorized and sends `run ...` or `stop`: (link, words). A failed auth,
+    a bad request or a peer that sends nothing is answered (when it can be) and dropped, and the server
+    keeps listening, so a port scan or a stray connection cannot end the run. (None, None) past `end`."""
+    while True:
+        left = end - time.time()
+        if left <= 0:
+            return None, None
+        srv.settimeout(left)
+        try:
+            conn, _ = srv.accept()
+        except socket.timeout:
+            return None, None
+        link = Link(conn)
+        if not authorized(link, token()):
+            drop(link, "error unauthorized")
+            continue
+        first = link.recv(60)
+        parts = (first or "").split()
+        if parts == ["stop"] or valid_run(parts):
+            return link, parts
+        drop(link, "error bad request")
+
+
+def drop(link, line):
+    try:
+        link.send(line)
+    except OSError:
+        pass
+    link.sock.close()
+
+
 def serve(port, d, accept_secs=86400):
     os.makedirs(d, exist_ok=True)
     srv = socket.socket()
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     srv.bind((os.environ.get(BIND_ENV, "0.0.0.0"), port))
     srv.listen(1)
-    srv.settimeout(accept_secs)
-    conn, _ = srv.accept()
-    link = Link(conn)
-    if not authorized(link, token()):
-        link.send("error unauthorized")
+    try:
+        link, parts = accept_request(srv, time.time() + accept_secs)
+    finally:
+        srv.close()
+    if link is None:
         return 1
-    first = link.recv(60)
-    if first == "stop":
+    if parts == ["stop"]:
         return 3
-    parts = (first or "").split()
-    if not valid_run(parts):
-        link.send("error bad request")
-        return 1
     with open(os.path.join(d, "request"), "w") as f:
         f.write("%s %s %s\n" % tuple(parts[1:]))
     if not wait_file(os.path.join(d, "ready"), 600):
@@ -211,6 +241,14 @@ def selftest():
         codes = {}
         t = threading.Thread(target=lambda: codes.__setitem__("serve", serve(port, sd, 30)), daemon=True)
         t.start()
+        time.sleep(0.5)
+        stray = connect("127.0.0.1", port)  # a port scan: connects and hangs up without a word
+        stray.sock.close()
+        junk = connect("127.0.0.1", port)
+        junk.send("GET / HTTP/1.0")
+        assert (junk.recv(10) or "").startswith("error"), "a bad request was not refused"
+        junk.sock.close()
+        assert t.is_alive(), "a stray connection ended the server"
         c = threading.Thread(target=lambda: codes.__setitem__("call", call("127.0.0.1", port, bd, "lan", "cluster", "16")), daemon=True)
         c.start()
         assert wait_file(os.path.join(sd, "request"), 20), "no request"
@@ -246,11 +284,8 @@ def selftest():
         raw = connect("127.0.0.1", port)
         raw.send("stop")  # no auth: must not end the server as a bye
         assert (raw.recv(10) or "").startswith("error"), "unauthenticated peer was not refused"
-        t.join(30)
-        assert codes["serve"] == 1, codes
-        t = threading.Thread(target=lambda: codes.__setitem__("serve", serve(port, root, 30)), daemon=True)
-        t.start()
         time.sleep(0.5)
+        assert t.is_alive(), "a refused peer ended the server; it must keep listening"
         bye("127.0.0.1", port)
         t.join(30)
         assert codes["serve"] == 3, codes

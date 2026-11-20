@@ -12,7 +12,8 @@ func register() -> void:
 	_run_test("flight: W with the camera pitched 30 degrees up climbs at sin 30 of the speed", _test_pitch)
 	_run_test("flight: opposite input reverses smoothly, never in one step", _test_reverse)
 	_run_test("flight: strafe and Space/Ctrl add across and up/down", _test_strafe_vertical)
-	_run_test("flight: a wall and a hillside kill only the velocity into the surface", _test_slide)
+	_run_test("flight: pitched W plus Space is no faster than a level strafe-and-climb", _test_capped_climb)
+	_run_test("flight: a teleport or respawn drops the flying momentum", _test_teleport_resets_velocity)
 	_run_test("flight: the flying move skips the step-up probe, the dive guard and the buried lift", _test_flying_move_source)
 	_run_test("flight: the camera lag and FOV widening are bounded and ease", _test_camera)
 
@@ -76,15 +77,26 @@ func _test_strafe_vertical() -> void:
 	v = FlightRules.step(Vector3.ZERO, Vector3(1, 0, -1), Basis.IDENTITY, 100.0, _p())
 	assert_true(absf(v.length() - TOP) < 0.01, "a diagonal is not faster than straight")
 
-func _test_slide() -> void:
-	var wall := FlightRules.slide(Vector3(40, 0, 0), Vector3(-1, 0, 0))
-	assert_eq(wall, Vector3.ZERO, "head-on into a wall: stopped, nothing lifted")
-	var glance := FlightRules.slide(Vector3(40, 0, 30), Vector3(-1, 0, 0))
-	assert_eq(glance, Vector3(0, 0, 30), "a glancing hit keeps the part along the wall")
-	var hill_n := Vector3(-1, 1, 0).normalized()
-	var hill := FlightRules.slide(Vector3(40, 0, 0), hill_n)
-	assert_true(absf(hill.dot(hill_n)) < 0.0001, "on a hillside the velocity ends along the slope")
-	assert_eq(FlightRules.slide(Vector3(-40, 0, 0), Vector3(-1, 0, 0)), Vector3(-40, 0, 0), "moving away is untouched")
+func _test_capped_climb() -> void:
+	var cap := Vector2(TOP, 12.0).length()
+	var v := FlightRules.step(Vector3.ZERO, Vector3(0, 1, -1), _pitched(60.0), 100.0, _p())
+	assert_true(v.length() <= cap + 0.01, "pitched W plus Space stays at or under %.2f m/s (got %.2f)" % [cap, v.length()])
+	assert_true(v.y > 0.0, "and still climbs")
+	var flat := FlightRules.step(Vector3.ZERO, Vector3(0, 0, -1), _pitched(60.0), 100.0, _p())
+	assert_true(absf(flat.length() - TOP) < 0.01, "pitched W alone keeps the top speed")
+	var up := FlightRules.step(Vector3.ZERO, Vector3(0, 1, 0), Basis.IDENTITY, 100.0, _p())
+	assert_true(absf(up.y - 12.0) < 0.01, "Space alone keeps the vertical speed")
+
+func _test_teleport_resets_velocity() -> void:
+	var player := PlayerSlice.new()
+	add_child(player)
+	player._vel = Vector3(TOP, 5.0, 0.0)
+	player.spawn_at(Vector3(16.0, 40.0, 16.0))
+	assert_eq(player.get_velocity(), Vector3.ZERO, "spawn_at (respawn, headless teleport) zeroes the velocity")
+	player._vel = Vector3(TOP, 5.0, 0.0)
+	player.place_at_world_pos({ "chunk": Vector2i.ZERO, "local": Vector3(8.0, 40.0, 8.0) })
+	assert_eq(player.get_velocity(), Vector3.ZERO, "place_at_world_pos (teleport with a rebase) zeroes the velocity")
+	player.free()
 
 func _test_flying_move_source() -> void:
 	var src := FileAccess.get_file_as_string("res://src/player/player_slice.gd")

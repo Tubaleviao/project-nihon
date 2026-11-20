@@ -679,7 +679,7 @@ static func build_runs_gd(chunk_pos: Vector2i, heightmap: Array, input: Dictiona
 ## loaded (an isolated rig), which leaves the plain rock colouring. `material` is the
 ## biome's `surfaceMaterial` cover name (e.g. Grass): the mesher never reads it (colour is
 ## what it needs), and the yield it implies is the biome's own `soilMaterial`, read by
-## `_natural_yield` — the style carries the cover so a consumer has one place to read it,
+## `natural_yield` — the style carries the cover so a consumer has one place to read it,
 ## and a test pins that every biome declares one.
 ##
 ## Thread note: the worker half of the build calls this through `build_runs`. It only READS
@@ -727,7 +727,7 @@ static func _apply_topsoil(entry: Dictionary, world_xz: Vector2, biomes: Diction
 ## at the border to zero at the band's inner edge, and a coordinate hash (no RNG, no thread
 ## state) decides, so every build of the tile agrees and the border reads as a dithered band
 ## rather than a straight cut (`BiomeBlend` holds the rule, shared with the minimap). The colour
-## and the soil yield follow it (`_natural_yield`); the ore field still reads `own`.
+## and the soil yield follow it (`natural_yield`); the ore field still reads `own`.
 static func blended_biome(world_xz: Vector2, biomes: Dictionary, own: String) -> String:
 	var extent := float(CHUNK_SIZE * TILE_SIZE)
 	var cx := floori(world_xz.x / extent)
@@ -881,8 +881,8 @@ var structures: Node = null
 func mine_block(world_pos: Vector3, normal: Vector3 = Vector3.UP, player_id: String = "", exact: Dictionary = {}) -> Dictionary:
 	return _edit.mine_block(world_pos, normal, player_id, exact)
 
-func _natural_yield(tile: Vector2i, span: Dictionary) -> Dictionary:
-	return _edit._natural_yield(tile, span)
+func natural_yield(tile: Vector2i, span: Dictionary) -> Dictionary: return _edit._natural_yield(tile, span)
+func work_target(world_pos: Vector3, normal: Vector3, exact: Dictionary = {}) -> Dictionary: return _edit.work_target(world_pos, normal, exact)
 
 func _record_depletion(vein: Dictionary, take: int) -> void:
 	_edit._record_depletion(vein, take)

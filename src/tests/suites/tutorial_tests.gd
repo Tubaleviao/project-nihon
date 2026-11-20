@@ -405,7 +405,7 @@ func _test_mine_stone_marker_pinned() -> void:
 	add_child(v)
 	v.terrain_slice = terrain
 	var origin := Vector2i(floori((sp as Vector3).x / VoxelSlice.TILE_SIZE), floori((sp as Vector3).z / VoxelSlice.TILE_SIZE))
-	var yield_fn := func(t: Vector2i, span: Dictionary) -> Dictionary: return v._natural_yield(t, span)
+	var yield_fn := func(t: Vector2i, span: Dictionary) -> Dictionary: return v.natural_yield(t, span)
 	var all_close := true
 	var r := int(16.0 / VoxelSlice.TILE_SIZE)
 	for dx in range(-r, r + 1):
@@ -427,7 +427,7 @@ func _test_mine_stone_marker_pinned() -> void:
 		var top := float(hit["top"])
 		var got := ""
 		for i in range(1, int(hit["depth_blocks"]) + 1):
-			got = str(v._natural_yield(t, { "bottom": top - i * VoxelSlice.STEP_HEIGHT, "top": top - (i - 1) * VoxelSlice.STEP_HEIGHT, "material": "" })["material"])
+			got = str(v.natural_yield(t, { "bottom": top - i * VoxelSlice.STEP_HEIGHT, "top": top - (i - 1) * VoxelSlice.STEP_HEIGHT, "material": "" })["material"])
 		assert_eq(got, "Ferrite", "the marked block is Ferrite")
 	v.free()
 	NewcomerGrounds.clear_cache()
@@ -445,7 +445,7 @@ func _test_marker_rules() -> void:
 	(state["done"] as Array).append("mine_stone")
 	assert_eq(TutorialMarker.marker_step(TutorialRules.eligible(state)), {}, "and goes once it is done")
 	# Nearest first: Ferrite at (4, 0) two blocks down and at (2, 2) one block down; (2, 2) is nearer. The search reads
-	# every other tile each way, so (1, 1) alone is not seen.
+	# every other tile each way first, so (1, 1) is not seen while the grid has a hit.
 	var ore := { Vector2i(4, 0): 2, Vector2i(2, 2): 1, Vector2i(0, 10): 1, Vector2i(1, 1): 1 }
 	var runs_fn := func(_t: Vector2i) -> Array: return [{ "bottom": -96.0, "top": 2.0, "material": "" }]
 	var yield_fn := func(t: Vector2i, span: Dictionary) -> Dictionary:
@@ -464,6 +464,15 @@ func _test_marker_rules() -> void:
 		frames += 1
 	assert_true(frames > 1, "a zero budget reads one column a frame (%d frames)" % frames)
 	assert_eq(srch.hit, hit, "and finds the same spot")
+	# A strip 1 tile wide on odd tiles only (where the surface cuts a vein thin): the grid misses it, the fine pass
+	# that follows an empty grid finds it.
+	ore.clear()   # the lambda holds the same Dictionary: mutate it, never reassign
+	ore[Vector2i(3, 5)] = 1
+	ore[Vector2i(5, 5)] = 1
+	var strip := TutorialMarker.find_ore_near_surface(Vector2i.ZERO, m, runs_fn, yield_fn)
+	assert_eq(strip.get("tile", Vector2i(-1, -1)), Vector2i(3, 5), "a thin strip off the grid is still found, nearest first")
+	ore.clear()
+	assert_eq(TutorialMarker.find_ore_near_surface(Vector2i.ZERO, m, runs_fn, yield_fn), {}, "and with no ore anywhere both passes end empty")
 	var placed: Array = [{ "bottom": 1.0, "top": 2.0, "material": "Ferrite" }]
 	assert_eq(TutorialMarker.depth_of(Vector2i.ZERO, placed, "Ferrite", 2, yield_fn), 1, "a placed block is its own material")
 	# The beacon sits at the column from exact positions, so a far world or a rebase does not move it.

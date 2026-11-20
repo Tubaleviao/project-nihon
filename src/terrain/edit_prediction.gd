@@ -206,7 +206,7 @@ func _apply(e: Dictionary, level: int) -> bool:
 			_auth[k] = _log(k)
 	var span := _span_at(action, tile, e["position"], e["normal"])
 	if action == "mine" and str(span.get("material", "x")) == "":
-		var vein: Dictionary = s._natural_yield(tile, span)["vein"]
+		var vein: Dictionary = s.natural_yield(tile, span)["vein"]
 		e["vein"] = str(vein.get("id", "")) if not vein.is_empty() else ""
 	var marks: Dictionary = s._partial_chunks.duplicate()
 	if not bool(s._apply_edit(action, e["position"], e["normal"], str(e["material"]), level).get("applied", false)):
@@ -261,7 +261,7 @@ func _apply_host_span(action: String, hs: Dictionary, derived: Dictionary, mater
 	var tile: Vector2i = hs["tile"]
 	var span := { "bottom": float(hs["bottom"]), "top": float(hs["top"]), "material": str(derived.get("material", "")) }
 	if action == "mine":
-		var yielded: Dictionary = s._natural_yield(tile, span) if str(span["material"]) == "" else {}
+		var yielded: Dictionary = s.natural_yield(tile, span) if str(span["material"]) == "" else {}
 		s._append_edit(tile, { "op": "remove", "bottom": span["bottom"], "top": span["top"] })
 		if not yielded.is_empty() and not (yielded["vein"] as Dictionary).is_empty():
 			s._record_depletion(yielded["vein"], int(yielded["quantity"]))

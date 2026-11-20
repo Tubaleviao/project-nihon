@@ -37,7 +37,7 @@ static func tile_world_pos(tile: Vector2i, y: float) -> Dictionary:
 
 ## How many blocks down `item` first lies in `tile`'s column (1 = the surface block), or 0 when it is not within
 ## `max_blocks`. `runs` is the column's resolved runs (bottom → top); `yield_fn(tile, span) -> { material }` names
-## what a natural span yields (`VoxelSlice._natural_yield`). A placed block is its own material.
+## what a natural span yields (`VoxelSlice.natural_yield`). A placed block is its own material.
 static func depth_of(tile: Vector2i, runs: Array, item: String, max_blocks: int, yield_fn: Callable) -> int:
 	if runs.is_empty():
 		return 0
@@ -55,20 +55,23 @@ static func depth_of(tile: Vector2i, runs: Array, item: String, max_blocks: int,
 	return 0
 
 ## The tile offsets of a disc of `radius_tiles`, nearest first, as `Vector3i(d2, dx, dz)`; built once per radius.
-## Every other tile each way: a vein is at least 4 tiles across (`OreField.RADIUS_MIN_TILES`), so the grid still lands
-## on every one, at a quarter of the column reads (a natural span's yield is the costly read).
+## `coarse`: every other tile each way. A vein is at least 4 tiles across (`OreField.RADIUS_MIN_TILES`), so the grid
+## lands on nearly every one at a quarter of the column reads (a natural span's yield is the costly read); where the
+## surface cuts a vein to a strip 1-2 tiles wide it can miss, so a search that finds nothing on the grid goes on with
+## the other tiles (`coarse` false: the disc's tiles the grid skipped).
 static var _discs: Dictionary = {}
-static func disc(radius_tiles: int) -> Array:
-	if not _discs.has(radius_tiles):
+static func disc(radius_tiles: int, coarse: bool = true) -> Array:
+	var key := Vector2i(radius_tiles, 1 if coarse else 0)
+	if not _discs.has(key):
 		var offsets: Array = []
 		for dx in range(-radius_tiles, radius_tiles + 1):
 			for dz in range(-radius_tiles, radius_tiles + 1):
 				var d2 := dx * dx + dz * dz
-				if d2 <= radius_tiles * radius_tiles and dx % 2 == 0 and dz % 2 == 0:
+				if d2 <= radius_tiles * radius_tiles and (dx % 2 == 0 and dz % 2 == 0) == coarse:
 					offsets.append(Vector3i(d2, dx, dz))
 		offsets.sort()
-		_discs[radius_tiles] = offsets
-	return _discs[radius_tiles]
+		_discs[key] = offsets
+	return _discs[key]
 
 ## A search for an `ore_near_surface` spot that can run a slice at a time (`step`), so the client spreads the column
 ## reads over frames. Tiles are tried nearest first, so it stops at the first hit; `hit` is
@@ -81,6 +84,7 @@ class Search:
 	var runs_fn: Callable
 	var yield_fn: Callable
 	var depth_fn: Callable   ## `depth_of`
+	var fine_offsets: Array = []   ## the tiles the coarse grid skipped, tried once it finds nothing
 	var next := 0
 	var hit: Dictionary = {}
 	var done := false
@@ -90,8 +94,13 @@ class Search:
 		var t0 := Time.get_ticks_usec()
 		while not done:
 			if next >= offsets.size():
-				done = true
-				break
+				if fine_offsets.is_empty():
+					done = true
+					break
+				offsets = fine_offsets
+				fine_offsets = []
+				next = 0
+				continue
 			var o: Vector3i = offsets[next]
 			next += 1
 			var tile := origin + Vector2i(o.y, o.z)
@@ -120,6 +129,7 @@ static func ore_search(origin: Vector2i, marker: Dictionary, runs_fn: Callable, 
 		srch.done = true
 	else:
 		srch.offsets = disc(radius_tiles)
+		srch.fine_offsets = disc(radius_tiles, false)
 	return srch
 
 ## `ore_near_surface` in one go: the hit of a finished `ore_search`.
@@ -136,7 +146,7 @@ static func search(marker: Dictionary, origin: Vector2i, voxel: Object) -> Searc
 		"ore_near_surface":
 			return ore_search(origin, marker,
 				func(t: Vector2i) -> Array: return voxel.get_runs_at_tile(t),
-				func(t: Vector2i, span: Dictionary) -> Dictionary: return voxel._natural_yield(t, span))
+				func(t: Vector2i, span: Dictionary) -> Dictionary: return voxel.natural_yield(t, span))
 	return null
 
 ## Find a step's marker round `origin` in one go; `{}` for an unknown kind or no spot.

@@ -28,7 +28,8 @@ const TOOL_SPEEDS = {
   FerritePick:   { pick: 1.0 },
   VeilsteelPick: { pick: 1.5 },
   CarpenterAxe:  { axe: 1.0 },
-  // Phase 260 — stone tools sit between bare hands (0.25) and the forged tools (1.0).
+  // Phase 260 — the stone pick and axe sit between bare hands (0.25) and the forged tools (1.0); the stone
+  // shovel is above 1.0 since Phase 290 (below).
   StonePick:     { pick: 0.6 },
   StoneAxe:      { axe: 0.6 },
   // Phase 290 — the stone shovel digs at 1.2 (was 0.6): soil 0.67 s a block instead of 1.33 s, so digging down to
