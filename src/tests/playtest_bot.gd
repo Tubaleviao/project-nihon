@@ -1292,8 +1292,7 @@ static func build_breakdown(parts_usec: Dictionary, chunks: int, window_radius: 
 	return rec
 
 ## Mine the ground block under the body through the player's own intent.
-var _work_secs := 0.0   # Phase 259 — the host's answer to the last work start
-var _work_last: Array = []; var _work_bar_note := ""   # Phase 289 — its [action, material]; "" or why the mid-hold bar was not in view
+var _work_secs := 0.0; var _work_last: Array = []; var _work_bar_note := ""   # 259: the host's answer to the last work start; 289: its [action, material], and "" or why the mid-hold bar was not in view
 
 func _step_mine() -> Array:
 	var p := _player_pos()
