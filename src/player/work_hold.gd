@@ -33,7 +33,7 @@ const HINT_SECONDS := 2.0   # how long "Released too early" stays
 
 var _hint: Label = null
 var _hint_left := 0.0
-var _pressed := false   # the current target came from a press (not a hold carried on to the next target)
+var _chained := false   # a hold completed since the press: the targets held on to after it show no hint
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -121,14 +121,16 @@ func _sync_visible() -> void:
 func press(target: Dictionary) -> void:
 	_held = true
 	_gave_up = false
+	_chained = false
 	_begin(target)
-	_pressed = not _target.is_empty()
 
 ## The gather input went up: a cancel, always.
-## Phase 289: letting go of a pressed or running hold before the bar fills shows the hint for HINT_SECONDS.
+## Phase 289: letting go of a running hold before the bar fills shows the hint for HINT_SECONDS. Not before the host
+## started the work (nothing could be lost) and not once a hold of this press completed (the bar then shows the next
+## target, already carried on).
 func release() -> void:
 	_held = false
-	var early := not _target.is_empty() and (_started or _pressed)
+	var early := not _target.is_empty() and _started and not _chained
 	_cancel()
 	if early:
 		_hint.text = I18n.t("controls.work_released_early")
@@ -181,7 +183,6 @@ func _begin(target: Dictionary) -> void:
 	if target.is_empty():
 		return
 	_target = target
-	_pressed = false
 	_kind = str(target["kind"])
 	_started = false
 	_elapsed = 0.0
@@ -220,6 +221,7 @@ func _complete() -> void:
 	var t := _target
 	_target = {}
 	_started = false
+	_chained = true
 	_show_bar(false)
 	if t["kind"] == "tree":
 		GameBus.tree_chop_requested.emit(str(t["tree_id"]), "")

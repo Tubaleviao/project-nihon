@@ -13,7 +13,7 @@ const HOLD_STEPS := ["chop", "dig", "mine_stone"]
 
 func register() -> void:
 	_run_test("work bar: inside the viewport, centred and below the centre at 1280x720, 1920x1080, 800x600 and after a resize", _test_bar_in_view)
-	_run_test("work bar: an early release shows the hint for 2 s; a completed hold does not", _test_early_release_hint)
+	_run_test("work bar: an early release shows the hint for 2 s; a completed hold, one carried on after it and one never started do not", _test_early_release_hint)
 	_run_test("work bar: a running hold says to keep holding the input", _test_keep_holding_line)
 	_run_test("work bar: the chop, dig and mine tutorial steps say to hold, in en and pt_BR", _test_tutorial_says_hold)
 
@@ -71,6 +71,28 @@ func _test_early_release_hint() -> void:
 	assert_false(wh.bar_showing(), "the bar hides when the work completes")
 	wh.release()
 	assert_false(wh.hint_showing(), "a completed hold shows no hint")
+	# Still held after completing: the next target starts and the host accepts it; letting go then shows no hint.
+	wh.press(tree)
+	wh._on_started("tree:p289-tree", 3.0, "chop", "Thornwood")
+	wh.tick(3.1, "p289-tree", {})
+	var face := { "kind": "block", "position": Vector3(1, 0, 1), "normal": Vector3.UP, "exact": {} }
+	wh.tick(0.1, "", face)
+	wh._on_started("block:1,0,1", 2.0, "dig", "Dirt")
+	assert_true(wh.bar_showing(), "the hold carries on to the next target")
+	wh.release()
+	assert_false(wh.hint_showing(), "letting go after a completed hold carried on shows no hint")
+	# The host never accepts (it sends no reply on a refusal): letting go inside the give-up window shows no hint.
+	wh.press(tree)
+	wh.tick(0.5, "p289-tree", {})
+	wh.release()
+	assert_false(wh.hint_showing(), "a hold the host never started shows no hint")
+	# A fresh press after a completed one shows the hint again on an early release.
+	wh.press(tree)
+	wh._on_started("tree:p289-tree", 3.0, "chop", "Thornwood")
+	wh.tick(1.0, "p289-tree", {})
+	wh.release()
+	assert_true(wh.hint_showing(), "a fresh press released early shows the hint again")
+	wh.step_hint(2.1)
 	# A press on nothing, released, is not a hold.
 	wh.press({})
 	wh.release()
