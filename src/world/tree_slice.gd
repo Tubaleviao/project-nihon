@@ -1361,6 +1361,9 @@ func _make_pool(pool_name: String, mesh: Mesh) -> Node:
 	pool.name = pool_name
 	pool.setup(mesh, true, TreeMaterial.make(TreeMaterial.sway_enabled()))
 	add_child(pool)
+	# A pool made after a rebase starts at the accumulated shift, like the pools that were shifted.
+	if _origin.value != Vector3.ZERO:
+		pool.shift_scene(_origin.value)
 	return pool
 
 ## The procedural fallback mesh: a tapered trunk and a crown, both closed boxes wound for Godot's front

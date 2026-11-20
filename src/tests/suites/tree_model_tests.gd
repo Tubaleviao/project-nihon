@@ -10,6 +10,7 @@ func register() -> void:
 	_run_test("tree model: deposit markers face outward",                    _test_deposit_winding)
 	_run_test("tree model: every species has a placeholder model",           _test_species_models)
 	_run_test("tree model: a tree draws its species model, else the fallback", _test_model_or_fallback)
+	_run_test("tree model: a pool made after a rebase starts at the shift", _test_pool_after_rebase)
 	_run_test("tree model: the variant pick is stable for a tree id",        _test_variant_stable)
 	_run_test("tree model: the placeholder crown is closed",                 _test_crown_closed)
 	_run_test("tree model: the sway material is off on the low path",        _test_sway_material)
@@ -115,6 +116,23 @@ func _test_model_or_fallback() -> void:
 	assert_true(t2._tree_pool(rec) == t2._pool, "to the procedural pool")
 	TreeMaterial._model_meshes = saved
 	t2.free()
+
+func _test_pool_after_rebase() -> void:
+	var t := _make_tree_slice()
+	if t._pool == null:
+		assert_true(true, "no rendering pool on this path")
+		t.free()
+		return
+	var shift := Vector3(512.0, 0.0, -256.0)
+	t.shift_scene(shift)
+	t.spawn_for_chunk(Vector2i(0, 0))
+	var checked := 0
+	for k in t._model_pools:
+		if t._model_pools[k] != null:
+			assert_eq(t._model_pools[k].scene_position(), shift, "a lazily made model pool carries the rebase shift")
+			checked += 1
+	assert_true(checked > 0 or t.get_all_trees().is_empty(), "a model pool was made")
+	t.free()
 
 func _test_variant_stable() -> void:
 	var seen := {}
