@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Phase 259 — proves the work-time validator rejects bad tables: a material with no time, a tool with no speed
-// for its own class, a tool no faster than bare hands, an unknown tool class; the shipped tables pass.
+// for its own class, a tool no faster than bare hands, an unknown tool class,
+// a shovel slower than the stone one (Phase 290); the shipped tables pass.
 //   node tools/check_work_times.js
 'use strict';
 const w = require('../fabric/gameplay/work_times');
@@ -22,5 +23,17 @@ expect('a tool missing entirely fails', (d) => { delete d.toolSpeeds.FerritePick
 expect('bare hands faster than a tool fails', (d) => { d.bareHandsSpeed = 0.99; d.toolSpeeds.FerritePick.pick = 0.5; }, /must beat bare hands/);
 expect('an unknown tool class fails', (d) => { d.actions.mine.toolClass = 'spoon'; }, /not a tool class/);
 expect('a family no action works fails', (d) => { delete d.actions.chop; }, /no action works the wood family/);
+// Phase 290 — a shovel slower than the stone shovel is rejected (a made-up forged shovel stands in for the next one).
+{
+  const d = w.workTimesData();
+  const r = { ...refs, toolTypes: { ...refs.toolTypes, ForgedShovel: 'shovel' } };
+  d.toolSpeeds.ForgedShovel = { shovel: d.toolSpeeds.StoneShovel.shovel - 0.1 };
+  const slow = w.workTimesProblems(d, r);
+  d.toolSpeeds.ForgedShovel = { shovel: d.toolSpeeds.StoneShovel.shovel };
+  const even = w.workTimesProblems(d, r);
+  const ok = slow.some((p) => /ForgedShovel\.shovel .* slower than StoneShovel/.test(p)) && even.length === 0;
+  console.log(`${ok ? 'ok  ' : 'FAIL'} a shovel slower than StoneShovel fails, one as fast passes${ok ? '' : ' — ' + JSON.stringify({ slow, even })}`);
+  if (!ok) failed++;
+}
 if (failed) { console.error(`${failed} check(s) failed`); process.exit(1); }
 console.log('all work-time checks passed');

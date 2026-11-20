@@ -47,6 +47,9 @@ const WritingRules := preload("res://src/technology/writing_rules.gd")
 const ChestRules := preload("res://src/world/chest_rules.gd")
 const ChestWiring := preload("res://src/world/chest_wiring.gd")
 const InputLabels := preload("res://src/ui/input_labels.gd")
+const TutorialMarker := preload("res://src/tutorial/tutorial_marker.gd")
+const TutorialRules := preload("res://src/tutorial/tutorial_rules.gd")
+const WorkTime := preload("res://src/core/work_time.gd")
 
 const ARG := "--playtest-bot"
 const OUT_DIR := "res://playtest"
@@ -1324,12 +1327,12 @@ func _step_mine() -> Array:
 
 ## Phase 259 — hold work on a target the way the player does: ask the host to start it, wait for its duration, and
 ## return the seconds the work took (-1.0 when the host never answered). The completion request is the caller's.
-func _hold_work(kind: String, tree_id: String, pos: Vector3, shoot := false) -> float:
+func _hold_work(kind: String, tree_id: String, pos: Vector3, shoot := false, exact: Dictionary = {}) -> float:
 	# A hit cancels the work (and the spawn's wolf pack downed the body during a hold on CI): heal and clear first.
 	GameBus.admin_healed.emit()
 	_clear_creatures_near_body()
 	_work_secs = 0.0
-	GameBus.work_start_requested.emit(kind, tree_id, pos, Vector3.UP, {}, "")
+	GameBus.work_start_requested.emit(kind, tree_id, pos, Vector3.UP, exact, "")
 	if not await _until(func(): return _work_secs > 0.0, STEP_TIMEOUT_SECS):
 		return -1.0
 	var t0 := Time.get_ticks_msec()
@@ -1851,8 +1854,9 @@ func _jump_state() -> Dictionary:
 const LOOSE_SEARCH_M := 48.0
 ## The stone tools the tutorial's first-tools and first-hunt chapters craft, by recipe.
 const BARE_HANDS_RECIPES := ["RecipeStoneAxe", "RecipeStonePick", "RecipeStoneShovel", "RecipeStoneKnife"]
-## Depths under the natural surface (m) tried for the rock: past the temperate biomes' 3 m of topsoil.
-const BARE_HANDS_ROCK_DEPTHS := [3.3, 3.8, 4.6, 6.0]
+## Phase 290 — holding budgets from the new speeds: soil down to the marked rock, and the rock's stone-pick time + slack.
+const DIG_TO_ROCK_BUDGET_S := 5.0
+const ROCK_BUDGET_SLACK := 1.5
 
 ## Pick up the nearest loose item of `kind` within LOOSE_SEARCH_M with the key bound to `pick_up` (Phase 279); true once the pack holds one more.
 func _pick_loose(kind: String) -> bool:
@@ -1892,33 +1896,29 @@ func _bare_hands_tools() -> String:
 		if not await _until(func(): return _crafted.size() > n, 5.0) or not bool(_crafted.back().get("success", false)):
 			return "%s: %s" % [rid, str(_crafted.back().get("reason", "")) if _crafted.size() > n else "no craft_resolved"]
 	_root._ui.close_window("crafting")
-	# Dig soil with the shovel at the feet, then mine the rock under the topsoil with the pick: a side hit takes the
-	# cell the ray lands on (a top hit only ever takes the top step of the column).
+	# Phase 290 — where the `mine_stone` marker points, dig the soil, then mine the Ferrite, top face by top face.
 	await _settle_unharmed()
-	var p := _player_pos()
-	var xz := Vector2(p.x, p.z)
-	var ore: int = _root._inventory.get_item_count("Ferrite")
-	var soil: int = _root._inventory.get_item_count("Soil")
-	var t0 := Time.get_ticks_msec()
-	var top := Vector3(p.x, float(_root._voxel.get_voxel_height_at(xz)) - 0.05, p.z)
-	var n0 := _mined.size()
-	await _hold_work("block", "", top)
-	GameBus.block_mine_requested.emit(top, Vector3.UP, "", {})
-	await _until(func(): return _mined.size() > n0, 4.0)
-	if _root._inventory.get_item_count("Soil") <= soil:
-		return "the shovel dug no soil (mined %s)" % str(_mined.slice(n0))
-	var ground: float = _root._terrain.get_height_at(xz)
-	for depth in BARE_HANDS_ROCK_DEPTHS:
-		if _root._inventory.get_item_count("Ferrite") > ore:
-			break
-		var spot := Vector3(p.x, ground - float(depth), p.z)
+	var had := [_root._inventory.get_item_count("Soil"), _root._inventory.get_item_count("Ferrite")]
+	var spot: Dictionary = TutorialMarker.spot_for("mine_stone", _root._tutorial_wiring.marker, TutorialMarker.tile_of(_root._player.get_world_pos()), _root._voxel, TutorialRules.steps())
+	if spot.is_empty(): return "no mine_stone marker within reach of %s" % str(_root._player.get_world_pos())
+	var tile: Vector2i = spot["tile"]; var stand: Dictionary = TutorialMarker.tile_world_pos(tile, 0.0)
+	_teleport_to(stand["chunk"], stand["local"])
+	await _until(func(): return _root._chunk_manager.is_chunk_built(stand["chunk"]), STEP_TIMEOUT_SECS)   # `_hold_work` heals
+	var runs: Array = _root._voxel.get_runs_at_tile(tile)
+	var depth := TutorialMarker.depth_of(tile, runs, "Ferrite", int(spot.get("max_blocks", 6)), func(t: Vector2i, sp: Dictionary) -> Dictionary: return _root._voxel._natural_yield(t, sp))
+	var held: Array = []   # seconds held per block, the last one the rock
+	for i in depth:
+		var here := TutorialMarker.tile_world_pos(tile, float((runs[-1] as Dictionary)["top"]) - float(i) * VoxelSlice.STEP_HEIGHT)
 		var n := _mined.size()
-		await _hold_work("block", "", spot)
-		GameBus.block_mine_requested.emit(spot, Vector3.RIGHT, "", {})
+		held.append(await _hold_work("block", "", TutorialMarker.to_vector(here), false, here))
+		GameBus.block_mine_requested.emit(TutorialMarker.to_vector(here), Vector3.UP, "", here)
 		await _until(func(): return _mined.size() > n, 4.0)
-	if _root._inventory.get_item_count("Ferrite") <= ore:
-		return "no ferrite at depths %s (mined %s)" % [str(BARE_HANDS_ROCK_DEPTHS), str(_mined.slice(n0))]
-	print("[Playtest] bare hands: picked a branch and a stone, lashed %d tools, dug to ferrite in %.1f s" % [BARE_HANDS_RECIPES.size(), float(Time.get_ticks_msec() - t0) * 0.001])
+	var dig_secs: float = held.slice(0, -1).reduce(func(a, b): return a + b, 0.0) if depth > 0 else 0.0
+	var rock_budget := WorkTime.seconds("Ferrite", "mine", "StonePick") + ROCK_BUDGET_SLACK
+	if depth == 0 or held.has(-1.0) or (depth > 1 and _root._inventory.get_item_count("Soil") <= int(had[0])) \
+			or _root._inventory.get_item_count("Ferrite") <= int(had[1]) or dig_secs >= DIG_TO_ROCK_BUDGET_S or float(held[-1]) > rock_budget:
+		return "dig to rock at %s: Ferrite %d blocks down, held %s s (budgets: soil < %.1f s, rock <= %.1f s), mined %s" % [str(tile), depth, str(held), DIG_TO_ROCK_BUDGET_S, rock_budget, str(_mined.slice(-maxi(depth, 1)))]
+	print("[Playtest] bare hands: picked a branch and a stone, lashed %d tools, dug to Ferrite %d blocks down, %.1f m from the search, held %s s; %.1f s of the step left" % [BARE_HANDS_RECIPES.size(), depth, float(spot.get("distance", 0.0)), str(held), float(_step_deadline_ms - Time.get_ticks_msec()) * 0.001])
 	# The pack has a weight cap and the rest of the step adds research materials and ingots: what the bare-hands
 	# work left behind (ore, soil, spare loose items, the used stone tools; the knife stays for the harvest) goes.
 	# The tutorial reads what the pack gained a frame later (`TutorialWiring._scan_pack`): let it see the ore first.

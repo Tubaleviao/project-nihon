@@ -31,8 +31,15 @@ const TOOL_SPEEDS = {
   // Phase 260 — stone tools sit between bare hands (0.25) and the forged tools (1.0).
   StonePick:     { pick: 0.6 },
   StoneAxe:      { axe: 0.6 },
-  StoneShovel:   { shovel: 0.6 },
+  // Phase 290 — the stone shovel digs at 1.2 (was 0.6): soil 0.67 s a block instead of 1.33 s, so digging down to
+  // the rock the tutorial asks for does not drag. It is the floor for shovels: a later (forged) shovel works at 1.2
+  // or more (`workTimesProblems` rejects a shovel slower than this one). Base times are unchanged, so bare hands and
+  // the pick on soil and rock keep their durations.
+  StoneShovel:   { shovel: 1.2 },
 }
+
+/** Phase 290 — the shovel every other shovel must match or beat. */
+const SHOVEL_FLOOR_TOOL = 'StoneShovel'
 
 const WORK_CLASSES = ['pick', 'axe', 'shovel']
 
@@ -80,6 +87,15 @@ function workTimesProblems(d, refs) {
       else if (!(v > d.bareHandsSpeed)) p.push(`toolSpeeds.${item}.${cls} (${v}) must beat bare hands (${d.bareHandsSpeed})`)
     }
   }
+  // Phase 290 — no shovel digs slower than the stone one: the first shovel's speed is the floor of the class.
+  const floor = ((d.toolSpeeds || {})[SHOVEL_FLOOR_TOOL] || {}).shovel
+  if (typeof floor === 'number') {
+    for (const [item, row] of Object.entries(d.toolSpeeds || {})) {
+      if (item !== SHOVEL_FLOOR_TOOL && typeof row.shovel === 'number' && row.shovel < floor) {
+        p.push(`toolSpeeds.${item}.shovel (${row.shovel}) is slower than ${SHOVEL_FLOOR_TOOL} (${floor}): a later shovel must dig at least as fast`)
+      }
+    }
+  }
   return p
 }
 
@@ -103,4 +119,4 @@ const WorkTimes = defineEntity({
   },
 })
 
-module.exports = { BARE_HANDS_SPEED, ACTIONS, WORK_SECONDS, TOOL_SPEEDS, workTimesData, workTimesRefs, workTimesProblems, validateWorkTimes, WorkTimes }
+module.exports = { BARE_HANDS_SPEED, SHOVEL_FLOOR_TOOL, ACTIONS, WORK_SECONDS, TOOL_SPEEDS, workTimesData, workTimesRefs, workTimesProblems, validateWorkTimes, WorkTimes }

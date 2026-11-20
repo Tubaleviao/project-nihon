@@ -29,6 +29,9 @@ func register() -> void:
 	_run_test("work session: host timing",                      _test_work_session)
 	_run_test("work host: tree timing",                         _test_work_host_tree)
 	_run_test("work hold: same target",                         _test_work_hold_same_target)
+	_run_test("work hold: a dig asks for the next block in the frame it completes (Phase 290)", _test_work_hold_dig_chains)
+	_run_test("work hold: a held dig follows the crosshair to another tile (Phase 290)", _test_work_hold_dig_follows_aim)
+	_run_test("work hold: a dig never chains into what cannot be dug, nor gives up (Phase 290)", _test_work_hold_dig_chain_checked)
 	_run_test("tree: stump regrows on its cooldown",            _test_tree_stump_regrows_on_cooldown)
 	_run_test("tree: despawn is per chunk",                     _test_tree_despawn_is_per_chunk)
 	_run_test("tree: chunk hop keeps the stump cooldown",       _test_tree_chunk_hop_keeps_stump_cooldown)
@@ -1623,3 +1626,175 @@ func _test_work_hold_same_target() -> void:
 	assert_true(Hold.same_target(b, { "kind": "block", "position": Vector3(1.4, 2, 3) }), "a nearby aim point is the same block")
 	assert_false(Hold.same_target(b, { "kind": "block", "position": Vector3(5, 2, 3) }), "a far aim point is a retarget")
 	assert_false(Hold.same_target(a, b), "a tree is not a block")
+
+## Phase 290 — a held dig carries on: the completion frame sends the mine request and, right after it, the start of
+## the block under (top face) or behind (side face) the dug one. A mine does not chain, nor does a released hold.
+func _test_work_hold_dig_chains() -> void:
+	var Hold := preload("res://src/player/work_hold.gd")
+	var VoxelConsts := preload("res://src/terrain/voxel_consts.gd")
+	var starts: Array = []
+	var mines: Array = []
+	var on_start := func(kind: String, _tree: String, pos: Vector3, _n: Vector3, exact: Dictionary, _pid: String) -> void:
+		starts.append([kind, pos, exact])
+	var on_mine := func(pos: Vector3, _n: Vector3, _pid: String, _exact: Dictionary) -> void:
+		mines.append(pos)
+	GameBus.work_start_requested.connect(on_start)
+	GameBus.block_mine_requested.connect(on_mine)
+	var hold := Hold.new()
+	add_child(hold)
+	var top := { "kind": "block", "position": Vector3(4.25, 2.0, 6.25), "normal": Vector3.UP,
+		"exact": { "chunk": Vector2i(3, -2), "local": Vector3(4.25, 2.0, 6.25) } }
+	hold.press(top)
+	assert_eq(starts.size(), 1, "the press asks to start")
+	GameBus.work_started.emit("block:a", 0.6, "dig", "Soil")
+	hold.tick(0.5, "", top)
+	assert_eq(mines.size(), 0, "not done before the duration")
+	hold.tick(0.2, "", top)
+	assert_eq(mines.size(), 1, "the dig completes")
+	assert_eq(starts.size(), 2, "and the next block's start goes out in the same frame")
+	if starts.size() == 2:
+		assert_true((starts[1][1] as Vector3).is_equal_approx(Vector3(4.25, 2.0 - VoxelConsts.STEP_HEIGHT, 6.25)), "one step under the dug top (%s)" % str(starts[1][1]))
+		assert_true(((starts[1][2] as Dictionary)["local"] as Vector3).is_equal_approx(Vector3(4.25, 2.0 - VoxelConsts.STEP_HEIGHT, 6.25)), "the exact record moves with it")
+	# The stale aim (the old top, mesh not rebuilt yet) is still the same target, so the chained work goes on.
+	GameBus.work_started.emit("block:b", 0.6, "dig", "Soil")
+	hold.tick(0.1, "", top)
+	assert_true(hold.progress() > 0.0, "the chained dig runs under the old aim")
+	hold.release()
+	# A side face continues one tile further in; the exact record crosses the chunk edge cleanly.
+	var side := { "kind": "block", "position": Vector3(0.1, 1.5, 3.0), "normal": Vector3(1, 0, 0),
+		"exact": { "chunk": Vector2i(5, 0), "local": Vector3(0.1, 1.5, 3.0) } }
+	var next: Dictionary = Hold.next_dig_target(side)
+	assert_true((next["position"] as Vector3).is_equal_approx(Vector3(0.1 - VoxelConsts.TILE_SIZE, 1.5, 3.0)), "a side dig goes one tile in")
+	assert_eq((next["exact"] as Dictionary)["chunk"], Vector2i(4, 0), "into the next chunk when it crosses")
+	# A mine (rock) does not chain.
+	starts.clear()
+	mines.clear()
+	hold.press(top)
+	GameBus.work_started.emit("block:c", 0.6, "mine", "Ferrite")
+	hold.tick(0.7, "", top)
+	assert_eq(mines.size(), 1, "the mine completes")
+	assert_eq(starts.size(), 1, "and asks for nothing more in that frame")
+	hold.release()
+	GameBus.work_start_requested.disconnect(on_start)
+	GameBus.block_mine_requested.disconnect(on_mine)
+	hold.free()
+
+## A held dig run through one completion of `t` under `aim_at_end`; returns the hold (caller frees it).
+func _dig_once(t: Dictionary, aim_at_end: Dictionary, probe: Callable = Callable()) -> Control:
+	var hold: Control = preload("res://src/player/work_hold.gd").new()
+	add_child(hold)
+	hold.block_probe = probe
+	hold.press(t)
+	GameBus.work_started.emit("block:a", 0.6, "dig", "Soil")
+	hold.tick(0.5, "", t)
+	hold.tick(0.2, "", aim_at_end)
+	return hold
+
+## Phase 290 — the chain follows the crosshair: a sweep across a row of top faces digs the row (not a pit in the first
+## column), a sweep along a wall digs along it; an aim held still goes on to the next block down.
+func _test_work_hold_dig_follows_aim() -> void:
+	var VoxelConsts := preload("res://src/terrain/voxel_consts.gd")
+	var starts: Array = []
+	var cancels := [0]
+	var on_start := func(_k: String, _tree: String, pos: Vector3, _n: Vector3, _e: Dictionary, _pid: String) -> void:
+		starts.append(pos)
+	var on_cancel := func(_pid: String) -> void:
+		cancels[0] += 1
+	GameBus.work_start_requested.connect(on_start)
+	GameBus.work_cancel_requested.connect(on_cancel)
+	var top := { "kind": "block", "position": Vector3(4.25, 2.0, 6.25), "normal": Vector3.UP, "exact": {} }
+	var east := { "kind": "block", "position": Vector3(4.75, 2.0, 6.25), "normal": Vector3.UP, "exact": {} }
+	# Held still: the next block down.
+	var hold := _dig_once(top, top)
+	assert_true((starts[-1] as Vector3).is_equal_approx(Vector3(4.25, 2.0 - VoxelConsts.STEP_HEIGHT, 6.25)), "an aim held still digs on down")
+	GameBus.work_started.emit("block:b", 0.6, "dig", "Soil")
+	hold.tick(0.1, "", top)
+	assert_true(hold.progress() > 0.0 and cancels[0] == 0, "the stale aim on the dug tile keeps the chained dig")
+	# The sweep reaches the next tile of the row: the chain follows it.
+	hold.tick(0.1, "", east)
+	assert_eq(cancels[0], 1, "the chained dig under the old column is dropped")
+	assert_true((starts[-1] as Vector3).is_equal_approx(east["position"]), "and the next start is the tile under the crosshair")
+	hold.release()
+	hold.free()
+	# The crosshair already on the next tile when the dig completes: the chain starts there in that frame.
+	starts.clear()
+	hold = _dig_once(top, east)
+	assert_eq(starts.size(), 2, "the completion frame asks for one more block")
+	assert_true((starts[-1] as Vector3).is_equal_approx(east["position"]), "the one under the crosshair, not the one under the dug block")
+	hold.release()
+	hold.free()
+	# A side-face trench: the stale aim on the old face keeps the chain; aiming along the wall moves it along.
+	starts.clear()
+	var side := { "kind": "block", "position": Vector3(2.0, 1.5, 3.25), "normal": Vector3(1, 0, 0), "exact": {} }
+	var along := { "kind": "block", "position": Vector3(2.0, 1.5, 3.75), "normal": Vector3(1, 0, 0), "exact": {} }
+	hold = _dig_once(side, side)
+	assert_true((starts[-1] as Vector3).is_equal_approx(Vector3(2.0 - VoxelConsts.TILE_SIZE, 1.5, 3.25)), "an aim held still digs on into the wall")
+	cancels[0] = 0
+	hold.tick(0.1, "", side)
+	assert_eq(cancels[0], 0, "the stale aim on the dug face keeps the chain")
+	hold.tick(0.1, "", along)
+	assert_true(cancels[0] == 1 and (starts[-1] as Vector3).is_equal_approx(along["position"]), "aiming along the wall moves the dig along it")
+	hold.release()
+	hold.free()
+	# A step up or down the same wall tile is another block: the chain follows the crosshair there, both once the
+	# chained dig runs and in the completion frame; held still, it digs on into the wall at the dug height.
+	var wall := { "kind": "block", "position": Vector3(2.0, 1.5625, 3.25), "normal": Vector3(1, 0, 0), "exact": {} }
+	var deeper := Vector3(2.0 - VoxelConsts.TILE_SIZE, 1.5625, 3.25)
+	for dy in [VoxelConsts.STEP_HEIGHT, -VoxelConsts.STEP_HEIGHT]:
+		var step := { "kind": "block", "position": Vector3(2.0, 1.5625 + dy, 3.25), "normal": Vector3(1, 0, 0), "exact": {} }
+		starts.clear()
+		hold = _dig_once(wall, wall)
+		assert_true((starts[-1] as Vector3).is_equal_approx(deeper), "held still on the wall, the dig goes on in (%s)" % str(starts[-1]))
+		GameBus.work_started.emit("block:b", 0.6, "dig", "Soil")
+		cancels[0] = 0
+		hold.tick(0.1, "", wall)
+		assert_eq(cancels[0], 0, "the stale aim on the dug block keeps the chain")
+		hold.tick(0.1, "", step)
+		assert_true(cancels[0] == 1 and (starts[-1] as Vector3).is_equal_approx(step["position"]), "a step %+.3f on the same tile drops the deeper dig for that block" % dy)
+		hold.tick(0.1, "", step)
+		assert_eq(starts.size(), 3, "and keeps to it")
+		hold.release()
+		hold.free()
+		starts.clear()
+		hold = _dig_once(wall, step)
+		assert_true(starts.size() == 2 and (starts[-1] as Vector3).is_equal_approx(step["position"]), "a step %+.3f under the crosshair in the completion frame is the next block" % dy)
+		hold.release()
+		hold.free()
+	GameBus.work_start_requested.disconnect(on_start)
+	GameBus.work_cancel_requested.disconnect(on_cancel)
+
+## Phase 290 — the client checks the chained block first: air, bedrock or rock behind the dug one asks for nothing
+## (the host would never answer), and the hold waits on the crosshair instead of giving up after GIVE_UP_SECONDS.
+func _test_work_hold_dig_chain_checked() -> void:
+	var starts: Array = []
+	var on_start := func(_k: String, _tree: String, pos: Vector3, _n: Vector3, _e: Dictionary, _pid: String) -> void:
+		starts.append(pos)
+	GameBus.work_start_requested.connect(on_start)
+	var top := { "kind": "block", "position": Vector3(4.25, 2.0, 6.25), "normal": Vector3.UP, "exact": {} }
+	var east := { "kind": "block", "position": Vector3(4.75, 2.0, 6.25), "normal": Vector3.UP, "exact": {} }
+	var solid := [true]
+	# Only the top layer is soil; under it lies nothing to dig (bedrock), and `solid` turns the whole world off.
+	var probe := func(t: Dictionary) -> Variant:
+		return "Soil" if solid[0] and (t["position"] as Vector3).y > 1.95 else ""
+	var hold := _dig_once(top, top, probe)
+	assert_eq(starts.size(), 1, "no chain into the bedrock under the dug block")
+	hold.free()
+	starts.clear()
+	var rock := func(t: Dictionary) -> Variant:
+		return "Soil" if (t["position"] as Vector3).y > 1.95 else "Ferrite"
+	hold = _dig_once(top, top, rock)
+	assert_eq(starts.size(), 1, "nor into rock (a dig chain only digs)")
+	hold.free()
+	starts.clear()
+	hold = _dig_once(top, top, probe)
+	solid[0] = false
+	for _i in 4:
+		hold.tick(0.5, "", top)
+	assert_eq(starts.size(), 1, "an aim on nothing workable asks for nothing")
+	solid[0] = true
+	hold.tick(0.1, "", east)
+	assert_eq(starts.size(), 2, "and once the crosshair is on a workable block it starts there, with no re-press")
+	assert_true((starts[-1] as Vector3).is_equal_approx(east["position"]), "on the block under the crosshair")
+	hold.release()
+	hold.free()
+	GameBus.work_start_requested.disconnect(on_start)

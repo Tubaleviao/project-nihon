@@ -14,6 +14,7 @@ const HOLD_STEPS := ["chop", "dig", "mine_stone"]
 func register() -> void:
 	_run_test("work bar: inside the viewport, centred and below the centre at 1280x720, 1920x1080, 800x600 and after a resize", _test_bar_in_view)
 	_run_test("work bar: an early release shows the hint for 2 s; a completed hold, one carried on after it and one never started do not", _test_early_release_hint)
+	_run_test("work bar: a dig that completes and chains to the next block, then is released, shows no hint (Phase 290)", _test_chained_dig_no_hint)
 	_run_test("work bar: a running hold says to keep holding the input", _test_keep_holding_line)
 	_run_test("work bar: the chop, dig and mine tutorial steps say to hold, in en and pt_BR", _test_tutorial_says_hold)
 
@@ -97,6 +98,32 @@ func _test_early_release_hint() -> void:
 	wh.press({})
 	wh.release()
 	assert_false(wh.hint_showing(), "a press on nothing shows no hint")
+	rig[0].free()
+
+func _test_chained_dig_no_hint() -> void:
+	var rig := _rig(Vector2i(1280, 720))
+	var wh: Control = rig[1]
+	var face := { "kind": "block", "position": Vector3(1.0, 2.0, 1.0), "normal": Vector3.UP, "exact": {} }
+	var asked: Array = []
+	var on_ask := func(_k, _t, pos, _n, _e, _p): asked.append(pos)
+	GameBus.work_start_requested.connect(on_ask)
+	wh.press(face)
+	wh._on_started("block:1,2,1", 0.7, "dig", "Soil")
+	wh.tick(0.8, "", face)   # completes; the dig chains to the block under it in the same frame
+	GameBus.work_start_requested.disconnect(on_ask)
+	assert_eq(asked.size(), 2, "the press and the chained dig each asked the host")
+	assert_false((wh._target as Dictionary).is_empty(), "the hold carried on to the next block")
+	assert_true((asked[1] as Vector3).y < 2.0, "the chained dig is under the dug block")
+	wh.release()
+	assert_false(wh.hint_showing(), "letting go of the chained dig before the host answers shows no hint")
+	wh.press(face)
+	wh._on_started("block:1,2,1", 0.7, "dig", "Soil")
+	wh.tick(0.8, "", face)
+	wh._on_started("block:1,1,1", 0.7, "dig", "Soil")
+	wh.tick(0.3, "", face)   # the aim has not caught up with the new face: the chain holds
+	assert_true(wh.bar_showing() and wh.progress() > 0.0, "the chained dig is running")
+	wh.release()
+	assert_false(wh.hint_showing(), "letting go of a running chained dig shows no hint")
 	rig[0].free()
 
 func _test_keep_holding_line() -> void:

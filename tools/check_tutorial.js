@@ -74,6 +74,22 @@ expect('an unplaceable station type fails', check(withStep((s) => { s.find((x) =
 expect('an unknown window fails', check(withStep((s) => { s[3].trigger.window = 'cheats' })), /window "cheats" does not exist/);
 expect('an unknown equipment slot fails', check(withStep((s) => { s.find((x) => x.id === 'equip_weapon').trigger.slot = 'Tail' })), /equipment slot "Tail" does not exist/);
 expect('an unknown technology fails', check(withStep((s) => { s.find((x) => x.id === 'research_carpentry').trigger.technology = 'TechWarp' })), /technology "TechWarp" does not exist/);
+// Phase 290 — step markers.
+const mineStone = (s) => s.find((x) => x.id === 'mine_stone');
+// The soil over the marked rock is dug in under 5 s of holding with the first shovel (the playtest bot's budget).
+const workTimes = require('../fabric/gameplay/work_times');
+expect('the mine_stone step marks Ferrite within 30 m, under 5 s of stone-shovel digging down', (() => {
+  const m = mineStone(fresh().steps).marker || {};
+  const soilSecs = (m.maxDepthBlocks - 1) * workTimes.WORK_SECONDS.Soil / workTimes.TOOL_SPEEDS.StoneShovel.shovel;
+  return m.kind === 'ore_near_surface' && m.item === 'Ferrite' && m.radiusMetres <= 30 && soilSecs < 5 ? [] : [JSON.stringify(m), soilSecs];
+})(), null);
+expect('an unknown marker kind fails', check(withStep((s) => { mineStone(s).marker = { kind: 'treasure' } })), /unknown marker kind "treasure"/);
+expect('a marker missing a param fails', check(withStep((s) => { delete mineStone(s).marker.radiusMetres })), /marker ore_near_surface needs "radiusMetres"/);
+expect('a marker with an extra param fails', check(withStep((s) => { mineStone(s).marker.colour = 'red' })), /takes no "colour"/);
+expect('a marker naming no item fails', check(withStep((s) => { mineStone(s).marker.item = 'Unobtainium' })), /marker item "Unobtainium" does not exist/);
+expect('a marker depth of 0 fails', check(withStep((s) => { mineStone(s).marker.maxDepthBlocks = 0 })), /maxDepthBlocks must be an integer/);
+expect('a marker radius over 64 m fails', check(withStep((s) => { mineStone(s).marker.radiusMetres = 500 })), /radiusMetres must be in/);
+expect('a missing marker label fails', check(fresh(), { ...refs, catalog: { ...refs.catalog, en: new Set([...refs.catalog.en].filter((k) => k !== 'tutorial.marker.ore_near_surface')) } }), /catalog en has no key tutorial\.marker\.ore_near_surface/);
 expect('validateTutorial throws on a bad table', (() => { try { tutorial.validateTutorial(withStep((s) => { s[0].trigger = { kind: 'nope' } }), refs); return [] } catch (e) { return [e.message] } })(), /unknown trigger kind/);
 
 // The shipped references resolve: the bed is placeable, and the axe and pick tags name tools.
