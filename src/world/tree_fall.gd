@@ -24,7 +24,8 @@ func yaw_for(tree_id: String, tree_pos: Vector3, player_id: String) -> float:
 	if _s.feller_pos.is_valid():
 		var at: Variant = _s.feller_pos.call(player_id)
 		if at is Vector3:
-			var away: Vector3 = tree_pos - ((at as Vector3) - _s._origin.value)
+			# Both are in the unshifted frame (a tree's `position` and `ChestWiring.player_pos`), so no origin shift.
+			var away: Vector3 = tree_pos - (at as Vector3)
 			away.y = 0.0
 			if away.length_squared() > 0.0001:
 				return atan2(away.x, away.z)
@@ -88,7 +89,14 @@ func begin_fall(tree_id: String, yaw: float) -> void:
 	if pool != null and pool.has_method("mesh") and pool.mesh() != null:
 		var mi := MeshInstance3D.new()
 		mi.mesh = pool.mesh()
-		mi.material_override = pool.material()
+		# A private copy: the fallback mesh is tinted per instance in the pool, and the fade needs alpha.
+		var mat: Material = pool.material()
+		if mat is StandardMaterial3D:
+			var own := (mat as StandardMaterial3D).duplicate() as StandardMaterial3D
+			own.albedo_color = _s._tree_color(tree)
+			own.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			mat = own
+		mi.material_override = mat
 		node.add_child(mi)
 	node.position = (tree["position"] as Vector3) + _s._origin.value
 	_s.add_child(node)
@@ -143,4 +151,8 @@ func _step_fall(tree_id: String, delta: float) -> void:
 	node.position = Vector3(base.x, base.y - sink * sink * 1.2, base.z)
 	for child in node.get_children():
 		if child is GeometryInstance3D:
-			(child as GeometryInstance3D).transparency = sink
+			var m: Material = (child as GeometryInstance3D).material_override
+			if m is StandardMaterial3D:
+				var c := (m as StandardMaterial3D).albedo_color
+				c.a = 1.0 - sink
+				(m as StandardMaterial3D).albedo_color = c

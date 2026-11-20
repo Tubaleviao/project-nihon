@@ -155,7 +155,7 @@ const FALL_SECONDS := TreeFall.FALL_SECONDS
 const GROW_SECONDS := TreeFall.GROW_SECONDS
 ## A `fall_yaw` outside +-2*TAU means "no fall" (a stump restored after a chunk reload).
 const NO_FALL := 100.0
-## Where an actor stands (`(player_id) -> Variant`, a Vector3 in scene coordinates or null), wired by
+## Where an actor stands (`(player_id) -> Variant`, a Vector3 in the unshifted frame of `tree["position"]`, or null), wired by
 ## `ChestWiring`. The host reads the feller's position at the felling from it.
 var feller_pos: Callable = Callable()
 ## The trees mid-fall and the saplings.
