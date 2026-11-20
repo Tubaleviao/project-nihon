@@ -382,6 +382,9 @@ func take_cache_hit(chunk_pos: Vector2i, key: String) -> bool:
 	var lod: int = sl._near.lod_for(chunk_pos)
 	var hit: Dictionary = sl._cache.take(key, sl.cache_signature(chunk_pos, lod))
 	if hit.is_empty():
+		# A disk hit runs a real pool task, so it waits for a slot like a build (the memory hit does not).
+		if worker_builds() >= sl.build_cap():
+			return false
 		return take_disk_hit(chunk_pos, key, lod)
 	sl._cache.invalidate(key)   # re-put by the attach (a refused one must not hit again)
 	sl._supersede_in_flight(key)
@@ -419,7 +422,7 @@ func disk_signature(chunk: Vector2i, lod: int) -> Array:
 	for dz in range(-1, 2):
 		for dx in range(-1, 2):
 			digests.append(edit_digest(chunk + Vector2i(dx, dz)))
-	return [int(sl.terrain_slice.get_world_seed()), lod, digests, ChunkRecords.get_record(TerrainSliceScript.wrap_chunk(chunk)).hash()]
+	return [int(sl.terrain_slice.get_world_seed()), chunk, lod, digests, ChunkRecords.get_record(TerrainSliceScript.wrap_chunk(chunk)).hash()]
 
 ## What the generator reads for `chunk`'s heightmap: the seed, the chunk's edit digest and its generation record.
 func gen_signature(chunk: Vector2i, seed_v: int) -> Array:
