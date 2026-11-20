@@ -42,6 +42,7 @@ func register() -> void:
 	_run_test("tree: a tree felled before its chunk loads shows no fall",  _test_tree_fall_late_load)
 	_run_test("tree: a regrown tree grows from a sapling",                _test_tree_sapling_growth)
 	_run_test("tree: the host's felled sync carries a yaw away from the feller", _test_tree_host_sync_yaw)
+	_run_test("tree: falling material tints and fades for both pool materials", _test_tree_fall_material)
 	_run_test("tree: client fall uses the host's fall_yaw",               _test_tree_fall_client_yaw)
 	_run_test("tree: client forwards then applies host chop",   _test_tree_client_forwards_then_applies_host_chop)
 	_run_test("tree: ids agree across peer spawn order",        _test_tree_ids_agree_across_peer_spawn_order)
@@ -716,6 +717,21 @@ func _test_tree_host_sync_yaw() -> void:
 	assert_true(bool(res["success"]), "the host fells the tree")
 	assert_true(seen.size() == 1 and absf(float(seen[0]) + PI * 0.5) < 0.01, "the synced yaw points away from the feller")
 	t.free()
+
+func _test_tree_fall_material() -> void:
+	var TM := preload("res://src/world/tree_material.gd")
+	for sway in [true, false]:
+		var base: Material = TM.make(sway)
+		var m: Material = TM.make_falling(base, Color(0.5, 0.25, 0.1))
+		assert_true(m != base, "private copy (sway %s)" % sway)
+		TM.set_fade(m, 0.25)
+		if m is ShaderMaterial:
+			assert_eq(float((m as ShaderMaterial).get_shader_parameter("alpha")), 0.25, "shader alpha")
+			assert_eq((m as ShaderMaterial).get_shader_parameter("tint"), Color(0.5, 0.25, 0.1), "shader tint")
+			assert_true((m as ShaderMaterial).shader.code.contains("ALPHA = alpha"), "falling shader writes alpha")
+		else:
+			assert_eq((m as StandardMaterial3D).albedo_color.a, 0.25, "standard alpha")
+		assert_true(not (base is ShaderMaterial) or not (base as ShaderMaterial).shader.code.contains("ALPHA"), "pool shader stays opaque")
 
 func _test_tree_fall_client_yaw() -> void:
 	var fx := _fall_fixture(0.0)

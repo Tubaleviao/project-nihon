@@ -3,6 +3,7 @@ extends RefCounted
 ## fades, and is freed; a regrown tree grows from a sapling. Client-side only, owned by `TreeSlice`: the host's
 ## state is "felled at time t". Driven by `step(delta)`, which tests call with explicit time steps.
 
+const TreeMaterial := preload("res://src/world/tree_material.gd")
 const FALL_SECONDS := 2.5
 const SINK_SECONDS := 1.5
 const BOUNCE_SECONDS := 0.3
@@ -29,7 +30,7 @@ func yaw_for(tree_id: String, tree_pos: Vector3, player_id: String) -> float:
 			away.y = 0.0
 			if away.length_squared() > 0.0001:
 				return atan2(away.x, away.z)
-	return float(hash(tree_id) % 6283) / 1000.0 - PI
+	return float(posmod(hash(tree_id), 6283)) / 1000.0 - PI
 
 ## The instance transform of a tree that is growing back: a sapling scaled up to full size.
 func growth_transform(tree_id: String, pos: Vector3) -> Transform3D:
@@ -90,12 +91,7 @@ func begin_fall(tree_id: String, yaw: float) -> void:
 		var mi := MeshInstance3D.new()
 		mi.mesh = pool.mesh()
 		# A private copy: the fallback mesh is tinted per instance in the pool, and the fade needs alpha.
-		var mat: Material = pool.material()
-		if mat is StandardMaterial3D:
-			var own := (mat as StandardMaterial3D).duplicate() as StandardMaterial3D
-			own.albedo_color = _s._tree_color(tree)
-			own.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-			mat = own
+		var mat: Material = TreeMaterial.make_falling(pool.material(), _s._tree_color(tree))
 		mi.material_override = mat
 		node.add_child(mi)
 	node.position = (tree["position"] as Vector3) + _s._origin.value
@@ -151,8 +147,4 @@ func _step_fall(tree_id: String, delta: float) -> void:
 	node.position = Vector3(base.x, base.y - sink * sink * 1.2, base.z)
 	for child in node.get_children():
 		if child is GeometryInstance3D:
-			var m: Material = (child as GeometryInstance3D).material_override
-			if m is StandardMaterial3D:
-				var c := (m as StandardMaterial3D).albedo_color
-				c.a = 1.0 - sink
-				(m as StandardMaterial3D).albedo_color = c
+			TreeMaterial.set_fade((child as GeometryInstance3D).material_override, 1.0 - sink)
