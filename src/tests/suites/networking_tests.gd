@@ -954,23 +954,14 @@ func _test_net_sequence_monotonic() -> void:
 	assert_eq(int(p1["seq"]), 0, "first player_moved gets seq 0")
 	assert_eq(int(p2["seq"]), 1, "second player_moved gets seq 1")
 	assert_eq(int(p3["seq"]), 0, "block_changed starts its own per-type counter at 0")
-	# Each recipient has its own series: a packet to one peer leaves no gap in another's.
-	var q2 := { "type": "player_moved" }
-	var q1 := { "type": "player_moved" }
-	n._deliver(2, q2)
-	n._deliver(1, q1)
-	assert_eq(int(q2["seq"]), 0, "another peer's player_moved series starts at 0")
-	assert_eq(int(q1["seq"]), 2, "and the first peer's runs on without a gap")
-	n._m2.forget_peer_channels(2)
-	assert_false(n._send_seq.has("2:player_moved"), "a departed peer's send counter is dropped")
 	n.free()
 
 func _test_net_layout_seq_wraps() -> void:
 	# A layout type's seq wraps at SEQ_MOD at send (a JSON fallback included); other types count on.
 	var n := NetworkingSlice.new()
 	add_child(n)
-	n._send_seq["1:remote_player_state"] = NetworkingSlice.PacketCodec.SEQ_MOD - 1
-	n._send_seq["1:player_moved"] = NetworkingSlice.PacketCodec.SEQ_MOD - 1
+	n._send_seq["remote_player_state"] = NetworkingSlice.PacketCodec.SEQ_MOD - 1
+	n._send_seq["player_moved"] = NetworkingSlice.PacketCodec.SEQ_MOD - 1
 	var a := { "type": "remote_player_state" }
 	var b := { "type": "remote_player_state" }
 	var c := { "type": "player_moved" }

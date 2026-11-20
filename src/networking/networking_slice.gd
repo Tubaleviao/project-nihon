@@ -226,8 +226,8 @@ var _ordered_at_ms: Dictionary = {}
 
 ## Sequence numbering: every outbound packet carries a per-type monotonic seq;
 ## the receiver uses it to drop duplicates and detect gaps.
-## _send_seq is keyed on "peer_id:packet_type": interleaved types and recipients don't create false gaps.
-var _send_seq: Dictionary = {}          # "peer:type" -> next seq int
+## _send_seq is keyed on packet type so interleaved types don't create false gaps.
+var _send_seq: Dictionary = {}          # packet_type -> next seq int
 ## _recv_seq is keyed on "peer_id:packet_type" to namespace each type independently.
 var _recv_seq: Dictionary = {}          # "peer:type" -> highest seq seen
 ## Sliding dedup window: keeps recently-seen seqs per "peer:type" channel.
