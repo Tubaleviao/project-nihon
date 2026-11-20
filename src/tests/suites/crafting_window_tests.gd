@@ -29,7 +29,7 @@ func register() -> void:
 	_run_test("crafting window: a closed window is not rebuilt, and is fresh when it opens", _test_closed_window_not_rebuilt)
 	_run_test("crafting window: the default hand window has a grid at least two card rows tall; the detail scrolls", _test_grid_two_rows)
 	_run_test("crafting window: every card's icon area is a square of at least 56 px, even with a long name", _test_card_icon_area)
-	_run_test("crafting window: the column count is the most cards that fit the grid's width, at three widths", _test_columns_follow_width)
+	_run_test("crafting window: the column count is the most cards that fit, widening and narrowing again", _test_columns_follow_width)
 	_run_test("crafting window: a station window gets the same card layout; the detail's input icons are 32 px", _test_station_card_layout)
 	_run_test("crafting window: the selected card has a border, the others none", _test_selected_border)
 
@@ -531,9 +531,11 @@ func _test_columns_follow_width() -> void:
 	var panel := _size_panel(ui, UiSlice.WINDOW_CRAFTING)
 	var min_w := panel.size.x
 	var seen: Array = []
-	for w: float in [min_w, min_w + 260.0, min_w + 640.0]:
+	# Narrow → wide → narrow: the count comes back down, and the window's minimum width with it.
+	for w: float in [min_w, min_w + 260.0, min_w + 640.0, min_w]:
 		_size_panel(ui, UiSlice.WINDOW_CRAFTING, Vector2(w, 0))
-		var avail: float = hand.grid.size.x
+		var bar: ScrollBar = hand.grid_scroll.get_v_scroll_bar()
+		var avail: float = hand.grid_scroll.size.x - (bar.size.x if bar.visible else 0.0)
 		var sep := float(hand.grid.get_theme_constant("h_separation"))
 		var n := 0
 		while (n + 1) * CraftWindow.CARD_SIZE.x + n * sep <= avail + 0.01:
@@ -544,6 +546,10 @@ func _test_columns_follow_width() -> void:
 		seen.append(hand.grid.columns)
 	assert_true(int(seen[0]) >= CraftWindow.MIN_COLUMNS, "the default width shows at least %d columns" % CraftWindow.MIN_COLUMNS)
 	assert_true(int(seen[0]) < int(seen[1]) and int(seen[1]) < int(seen[2]), "a wider window shows more columns (%s)" % str(seen))
+	assert_eq(int(seen[3]), int(seen[0]), "narrowing the window again shows fewer columns (%s)" % str(seen))
+	assert_eq(panel.get_combined_minimum_size().x, min_w, "and its minimum width comes back down")
+	panel.reset_size()
+	assert_eq(panel.size.x, min_w, "so reset_size shrinks it back")
 	_free(rig)
 
 func _test_station_card_layout() -> void:

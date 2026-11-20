@@ -80,7 +80,10 @@ func setup(p_ui: Node, p_station_type: String = "") -> void:
 	grid_scroll.name = "CardScroll"
 	grid_scroll.custom_minimum_size = Vector2(0, MIN_ROWS * CARD_SIZE.y + (MIN_ROWS - 1) * CARD_SEP)
 	grid_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	grid_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	# Never shown, but not DISABLED: a disabled axis adds the grid's minimum width to the window's, so a window
+	# widened to more columns could never be narrowed again. The columns follow this area's width instead.
+	grid_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
+	grid_scroll.resized.connect(_fit_columns)
 	list_box = VBoxContainer.new()
 	list_box.add_theme_constant_override("separation", 4)
 	list_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -114,11 +117,16 @@ static func grid_width(n: int) -> float:
 static func columns_for_width(width: float) -> int:
 	return maxi(1, int(floor((width + CARD_SEP) / (CARD_SIZE.x + CARD_SEP))))
 
-## The column count follows the list's width: cards keep their size, a wider window shows more columns.
+## The column count follows the scroll area's width (less a shown scroll bar), never the grid's own: cards keep
+## their size, a wider window shows more columns and a narrower one fewer.
 func _fit_columns() -> void:
-	if grid == null or list_box == null or list_box.size.x <= 0.0:
+	if grid == null or grid_scroll == null or grid_scroll.size.x <= 0.0:
 		return
-	var n := columns_for_width(list_box.size.x)
+	var avail := grid_scroll.size.x
+	var bar := grid_scroll.get_v_scroll_bar()
+	if bar.visible:
+		avail -= bar.size.x
+	var n := columns_for_width(avail)
 	if grid.columns != n:
 		grid.columns = n
 
