@@ -28,3 +28,6 @@ __pycache__/
 
 # Agent worktrees (Phase 254): hundreds of MB, never committed
 .claude/
+
+# Machine-local notes (e.g. SELFHOST.local.md: where this machine hosts a server); never committed
+*.local.md

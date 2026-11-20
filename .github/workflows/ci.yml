@@ -404,6 +404,7 @@ jobs:
           tools/check_uids.sh --self-test
           tools/check_uids.sh
           tools/check_submodule.sh --self-test
+          tools/check_assets_pin.sh --self-test
           if [ -n "$BASE_SHA" ]; then
             git fetch --no-tags --depth=1 origin "$BASE_SHA"
             tools/check_submodule.sh "$BASE_SHA" HEAD

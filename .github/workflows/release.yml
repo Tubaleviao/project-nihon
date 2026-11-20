@@ -18,6 +18,7 @@ on:
       - project.godot
       - CHANGELOG.md
       - tools/check_changelog.sh
+      - tools/check_assets_pin.sh
       - tools/run_export_playtest.sh
       - tools/fetch_godot_cpp.sh
       - src/tests/playtest_bot.gd
@@ -46,6 +47,20 @@ jobs:
             echo "::error::tag $GITHUB_REF_NAME does not match application/config/version v$version"
             exit 1
           fi
+
+      - name: The tag pins the newest art
+        # Players' assets.pck is built from a release's assets-prod pin, so a tag must pin the private assets
+        # repo's main HEAD. ASSETS_DEPLOY_KEY is the private half of a read-only SSH deploy key on that repo
+        # and nothing else. Only a pushed v* tag is gated; pull requests and manual dry runs skip it.
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          ASSETS_DEPLOY_KEY: ${{ secrets.ASSETS_DEPLOY_KEY }}
+        run: |
+          if [ -z "$ASSETS_DEPLOY_KEY" ]; then
+            echo "::error::the ASSETS_DEPLOY_KEY secret is not set"
+            exit 1
+          fi
+          tools/check_assets_pin.sh
 
   native:
     name: Native builder (${{ matrix.name }})
