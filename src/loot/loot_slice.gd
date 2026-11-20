@@ -4,6 +4,10 @@ extends Node
 ## Plug contract (GameBus signals consumed / emitted):
 ##   OUT : loot_dropped(pickup_id, item_id, position, quantity)
 ##         loot_expired(pickup_id)
+##         loot_removed(pickup_id)   — taken (host); LootWiring tells the clients that could see it
+##
+## On a client (`is_authoritative` false) the pickups are views of the host's, kept by LootWiring
+## (`apply_view` / `remove_view`): nothing despawns here and nothing is taken here.
 ##
 ## Public API:
 ##   get_pickups_near(pos: Vector3, radius: float) -> Array[Dictionary]
@@ -28,13 +32,17 @@ var _despawn_ms: float = DESPAWN_SECONDS * 1000.0
 ## Set by game_root so instance IDs can be resolved to fabric creature keys.
 var creature_slice: Node = null
 
+## False on a client: its pickups mirror the host's.
+var is_authoritative: bool = true
+
 func _ready() -> void:
 	var res: Resource = GameData.LOOTS.get("LootTable", null)
 	if res != null:
 		_despawn_ms = float(res.get("despawnSeconds")) * 1000.0
 
 func _process(_delta: float) -> void:
-	_tick_despawn()
+	if is_authoritative:
+		_tick_despawn()
 
 ## Return all active pickups within radius of pos.
 func get_pickups_near(pos: Vector3, radius: float) -> Array:
@@ -53,7 +61,44 @@ func consume_pickup(pickup_id: String) -> Dictionary:
 	_pickups.erase(pickup_id)
 	if p.has("body") and p["body"] != null:
 		p["body"].queue_free()
+	if is_authoritative:
+		GameBus.loot_removed.emit(pickup_id)
 	return p
+
+## Every pickup id on the ground.
+func ids() -> Array:
+	return _pickups.keys()
+
+## What a client is told about a pickup: { id, item_id, quantity, position } (empty when unknown).
+func view_of(pickup_id: String) -> Dictionary:
+	if not _pickups.has(pickup_id):
+		return {}
+	var p: Dictionary = _pickups[pickup_id]
+	return { "id": pickup_id, "item_id": p["item_id"], "quantity": p["quantity"], "position": p["position"] }
+
+## Client: show (or update) the host's pickup `record` (a `view_of`).
+func apply_view(record: Dictionary) -> void:
+	var pid := str(record.get("id", ""))
+	if pid == "":
+		return
+	remove_view(pid)
+	var pos: Vector3 = record.get("position", Vector3.ZERO)
+	var item_id := str(record.get("item_id", ""))
+	var body := _make_pickup_visual(pid, item_id, pos)
+	add_child(body)
+	_world_nodes.append(body)
+	body.tree_exited.connect(_forget_world_node.bind(body))
+	_pickups[pid] = { "item_id": item_id, "quantity": int(record.get("quantity", 0)), "position": pos,
+		"spawned_at": Time.get_ticks_msec(), "body": body, "durabilities": [] }
+
+## Client: the host's pickup is gone (taken, expired or out of view).
+func remove_view(pickup_id: String) -> void:
+	if not _pickups.has(pickup_id):
+		return
+	var p: Dictionary = _pickups[pickup_id]
+	_pickups.erase(pickup_id)
+	if p.get("body") != null and is_instance_valid(p["body"]):
+		p["body"].queue_free()
 
 ## Return the pickup record for an id without consuming it (empty dict if unknown).
 func get_pickup(pickup_id: String) -> Dictionary:

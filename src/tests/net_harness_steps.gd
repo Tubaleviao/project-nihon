@@ -702,3 +702,60 @@ func client_attack_lands(h: Node) -> void:
 	h._report("client_attack_lands", h.verdict(got and killed, true), "host_resolved" if got and killed else (
 		"no_synced_swing-after-%d-target_%s-probe%d-carrying%d" % [int(swung["n"]), str(swung.get("target", "none")),
 		int(h._root._creature._instances.has(ATTACK_PROBE_ID)), int(h._root._player.carrying)] if not got else "kill_notice_missing"))
+
+## Ground loot across the wire. The host lays a pickup beside the peer; the client must see it, take it through
+## the player's pickup request (the host checks reach and the bag, the pickup leaves both sides and the client's
+## bag gains it), then drop one through the UI's drop request: the host takes it off the peer's bag and lays it
+## at the peer's feet, and the client sees that pickup too. Before this, pickups lived only on the host.
+const LOOT_ITEM := "Duskfiber"   # no other step moves it
+func client_loot_synced(h: Node) -> void:
+	var loot: Node = h._root._loot
+	if h._role == "host":
+		var peer: int = h._peer_id()
+		var pid: String = h._root._networking.get_player_id(peer)
+		if pid == "" or not await h._await_until(func(): return h._root._networking.has_last_known_state(peer), h._step_timeout()):
+			h._report("client_loot_synced", "fail", "no_peer_position")
+			return
+		var bag: Node = h._root._registry.get_inventory(pid)
+		var before: int = bag.get_item_count(LOOT_ITEM)
+		var laid: String = loot.spawn_pickup(LOOT_ITEM, 2, h._root._networking.get_last_known_state(peer) + Vector3(2.0, 0.0, 0.0))
+		var taken: bool = await h._await_until(func(): return loot.get_pickup(laid).is_empty() and bag.get_item_count(LOOT_ITEM) == before + 2, h._step_timeout() * 3.0)
+		var dropped: bool = taken and await h._await_until(func():
+			if bag.get_item_count(LOOT_ITEM) != before + 1:
+				return false
+			for id in loot.ids():
+				if str(loot.get_pickup(str(id))["item_id"]) == LOOT_ITEM:
+					return true
+			return false, h._step_timeout() * 3.0)
+		# Let the client see the dropped pickup before the step moves on.
+		await h._await_settle(2.0 * h._time_scale)
+		for id in loot.ids():
+			loot.consume_pickup(str(id))
+		h._report("client_loot_synced", h.verdict(taken and dropped, true), "taken-and-dropped" if taken and dropped else ("not_taken" if not taken else "not_dropped"))
+		return
+	var inv: Node = h._root._inventory
+	var seen := { "id": "" }
+	var got: bool = await h._await_until(func() -> bool:
+		for id in loot.ids():
+			if str(loot.get_pickup(str(id))["item_id"]) == LOOT_ITEM:
+				seen["id"] = str(id)
+				return true
+		return false, h._step_timeout() * 3.0)
+	if not got:
+		h._report("client_loot_synced", "fail", "pickup_never_seen")
+		return
+	var before: int = inv.get_item_count(LOOT_ITEM)
+	GameBus.pickup_requested.emit(str(seen["id"]))
+	var taken: bool = await h._await_until(func(): return inv.get_item_count(LOOT_ITEM) == before + 2 and loot.get_pickup(str(seen["id"])).is_empty(), h._step_timeout() * 3.0)
+	if not taken:
+		h._report("client_loot_synced", "fail", "not_taken-bag%d-view%s" % [inv.get_item_count(LOOT_ITEM) - before, str(not loot.get_pickup(str(seen["id"])).is_empty())])
+		return
+	GameBus.item_drop_requested.emit(LOOT_ITEM, 1, Vector3.ZERO)
+	var dropped: bool = await h._await_until(func() -> bool:
+		if inv.get_item_count(LOOT_ITEM) != before + 1:
+			return false
+		for id in loot.ids():
+			if str(id) != str(seen["id"]) and str(loot.get_pickup(str(id))["item_id"]) == LOOT_ITEM:
+				return true
+		return false, h._step_timeout() * 3.0)
+	h._report("client_loot_synced", h.verdict(dropped, true), "taken-and-dropped" if dropped else "drop_not_seen-bag%d" % (inv.get_item_count(LOOT_ITEM) - before))
