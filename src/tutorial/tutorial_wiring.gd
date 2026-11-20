@@ -7,6 +7,7 @@ const WorldPos := preload("res://src/terrain/world_pos.gd")
 const Rules := preload("res://src/tutorial/tutorial_rules.gd")
 const TutorialSlice := preload("res://src/tutorial/tutorial_slice.gd")
 const TutorialCard := preload("res://src/tutorial/tutorial_card.gd")
+const TutorialMarker := preload("res://src/tutorial/tutorial_marker.gd")
 const BedStore := preload("res://src/world/bed_store.gd")
 const ShelterRule := preload("res://src/world/shelter_rule.gd")
 
@@ -18,6 +19,12 @@ const LOOK_DEGREES := 30.0
 const SHELTER_CHECK_S := 1.0
 ## Stations farther than this (m) from the player are not counted as the player's when seeding a veteran.
 const SEED_STATION_M := 150.0
+## Phase 290 — while no spot was found for a step's marker, search again only every MARKER_RETRY_S and once the
+## player has moved MARKER_RETRY_M from the last search (the search reads every column in its radius).
+const MARKER_RETRY_S := 5.0
+const MARKER_RETRY_M := 15.0
+## Microseconds of column reads a frame gives a running marker search.
+const MARKER_BUDGET_USEC := 2000
 
 var slice: TutorialSlice = null
 var card: TutorialCard = null
@@ -35,6 +42,12 @@ var _bed: Dictionary = {}
 var _shelter_clock: float = 0.0
 var _seeded: bool = false
 var _look_from: float = 0.0
+## Phase 290 — the beacon of the step marker on show (null when none), and when the last failed search ran.
+var marker: TutorialMarker = null
+var _marker_step := ""
+var _marker_clock: float = 0.0
+var _marker_from := Vector2i(1 << 30, 0)   ## the tile the last failed search ran from
+var _search: TutorialMarker.Search = null   ## the search running for the step, a slice a frame
 
 func _connect_all() -> void:
 	connect_bus(GameBus.tutorial_event, _on_event)
@@ -243,3 +256,54 @@ func tick(delta: float) -> void:
 				_note("skill_tier_up")
 			_skills = (tiers as Dictionary).duplicate()
 		_skills_known = true
+	_update_marker(delta)
+
+## Phase 290 — show the marker of the first eligible step that has one: searched round the player when the step comes
+## up, MARKER_BUDGET_USEC a frame (again, while nothing was found, every MARKER_RETRY_S once the player has moved
+## MARKER_RETRY_M), then kept where it is until the step is done.
+func _update_marker(delta: float) -> void:
+	var step := TutorialMarker.marker_step(Rules.eligible(slice.state, slice.steps()))
+	var id := str(step.get("id", ""))
+	if id != _marker_step:
+		_marker_step = id
+		_marker_clock = MARKER_RETRY_S
+		_marker_from = Vector2i(1 << 30, 0)
+		_search = null
+		_drop_marker()
+	if id == "":
+		return
+	if marker == null:
+		if _search == null:
+			_marker_clock += delta
+			if _marker_clock < MARKER_RETRY_S or root._voxel == null:
+				return
+			var from := TutorialMarker.tile_of(root._player.get_world_pos())
+			if Vector2(from - _marker_from).length() * TutorialMarker.TILE < MARKER_RETRY_M:
+				return
+			_marker_clock = 0.0
+			_search = TutorialMarker.search(step["marker"], from, root._voxel)
+			if _search == null:
+				_marker_from = from
+				return
+		if not _search.step(MARKER_BUDGET_USEC):
+			return
+		var srch := _search
+		_search = null
+		if srch.hit.is_empty():
+			_marker_from = srch.origin
+			return
+		marker = TutorialMarker.new()
+		marker.set_target(step, srch.hit)
+		root.add_child(marker)
+	marker.follow(root._player.get_world_pos(), root._player.get_scene_position())
+
+## Phase 290 — the beacon goes with the wiring.
+func unwire() -> void:
+	_search = null
+	_drop_marker()
+	super.unwire()
+
+func _drop_marker() -> void:
+	if marker != null and is_instance_valid(marker):
+		marker.queue_free()
+	marker = null

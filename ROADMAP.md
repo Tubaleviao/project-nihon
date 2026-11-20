@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–225, 238–244, 248–250, 252–256, 259–276 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–225, 238–244, 248–250, 252–256, 259–276, 289 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -31,18 +31,13 @@ introductions of the arcs they belonged to, are archived in
 Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
 see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
 phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
-comes next. A phase that needs an earlier one still waits for it. Done phases (238–244, 248–250, 252–256, 259–276)
+comes next. A phase that needs an earlier one still waits for it. Done phases (238–244, 248–250, 252–256, 259–276, 289, 290)
 have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
 [Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
 others are not in it.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 4 | 226 | Several characters per player |
-| 5 | 289 | Hold to work, told and shown: the work bar in view, and the tutorial says hold |
-| 6 | 290 | Digging that does not drag: a faster shovel on the way to rock |
-| 7 | 288 | Recipe cards you can read: a real icon area in the crafting window |
-| 8 | 279 | Pick up with E |
 | 9 | 278 | Rocks and branches that look like rocks and branches |
 | 10 | 283 | Trees that look like trees: closed faces, a trunk and a real crown |
 | 11 | 282 | A felled tree falls, then goes |
@@ -55,6 +50,7 @@ others are not in it.
 | 22 | 251 | A human playtest: what would make the game fun (a standing checkpoint) |
 | 23 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
 | 24 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
+| 25 | 226 | Several characters per player |
 | 26 | 229 | Skills capped by the gear |
 | 27 | 247 | Ground cover: grass and bushes by biome |
 | 28 | 235 | Roads |
@@ -351,7 +347,7 @@ A40–A46). The placeholder rule holds: each phase lands with public placeholder
 | Phase | Title | Status |
 |---|---|---|
 | 278 | Rocks and branches that look like rocks and branches | Open |
-| 279 | Pick up with E | Open |
+| 279 | Pick up with E | Done |
 | 280 | The hotbar item in the hand | Open |
 | 281 | Work you can see: chopping, mining, digging, building and dissecting animations | Open |
 | 282 | A felled tree falls, then goes | Open |
@@ -360,9 +356,9 @@ A40–A46). The placeholder rule holds: each phase lands with public placeholder
 | 285 | Grass without black spots | Open |
 | 286 | Men and women who look different | Open |
 | 287 | Fighting that reads: combos, impact timing and hit reactions | Open |
-| 288 | Recipe cards you can read: a real icon area in the crafting window | Open |
-| 289 | Hold to work, told and shown: the work bar in view, and the tutorial says hold | Open |
-| 290 | Digging that does not drag: a faster shovel on the way to rock | Open |
+| 288 | Recipe cards you can read: a real icon area in the crafting window | Done |
+| 289 | Hold to work, told and shown: the work bar in view, and the tutorial says hold | Done |
+| 290 | Digging that does not drag: a faster shovel on the way to rock | Done |
 
 ## Phase 225 — The options window
 
@@ -957,14 +953,14 @@ body"), and both keys are in `Hotbar.RESERVED_KEYS`.
 - Every on-screen hint that names the key (`src/ui/input_labels.gd`, tutorial texts, the help overlay) reads it
   from the action, so no text says "T" for picking up. Locale strings that embed the letter take it as a param.
 
-**Acceptance criteria**
-- Suite: an E press with a pickup in reach emits the pick-up intent; a T press emits the equipment toggle; E in a
+**Acceptance criteria** (done: `pick_up` / `toggle_equipment` in `project.godot`, `InputLabels.is_bare_action_press` in `src/ui/input_labels.gd`, `src/tests/suites/pick_up_key_tests.gd`)
+- [x] Suite: an E press with a pickup in reach emits the pick-up intent; a T press emits the equipment toggle; E in a
   focused text field does neither; Alt+E still opens the inventory and does not pick up.
-- Suite: no `KEY_T` or `KEY_E` literal remains in the pick-up or equipment-toggle handlers (a source audit like the
+- [x] Suite: no `KEY_T` or `KEY_E` literal remains in the pick-up or equipment-toggle handlers (a source audit like the
   existing ones); the input labels for `pick_up` and `toggle_equipment` resolve to E and T.
-- Playtest bot `tutorial` step passes with E (its `_pick_loose` helper presses `KEY_T` today; it moves to
+- [x] Playtest bot `tutorial` step passes with E (its `_pick_loose` helper presses `KEY_T` today; it moves to
   the key bound to the `pick_up` action, not a literal).
-- Locale check: no new string in one locale only.
+- [x] Locale check: no new string in one locale only.
 
 ## Phase 280 — The hotbar item in the hand
 
@@ -1223,42 +1219,12 @@ when the name wraps.
 - The detail panel's input icons grow from 24 to 32 px.
 - No new user-facing strings, or every new one is in both locales.
 
-**Acceptance criteria**
-- Suite: a hand window built with the default size has a grid area at least two card rows tall; every card's
+**Acceptance criteria** (done: `src/ui/craft_window.gd`, `src/tests/suites/crafting_window_tests.gd`, the bot's `craft` step)
+- [x] Suite: a hand window built with the default size has a grid area at least two card rows tall; every card's
   icon rect is at least 56×56 px and square; with a long localized name the icon rect keeps its size; the
   column count is the most cards (with the grid's separation) that fit the grid's width, at three window widths.
-- Suite: a station window (Phase 269) gets the same card layout; the detail panel's input icons are 32 px.
-- Playtest bot `craft` step screenshot is taken with the window open and the step checks the card icon sizes.
-
-## Phase 289 — Hold to work, told and shown: the work bar in view, and the tutorial says hold
-
-Owner's playtest, 2026-11-19: the chopping, digging and mining progress bar shows in the upper-left corner of the
-game window, often cut in half, and the tutorial does not say the work input must be held until the work
-finishes. The bar is built in `src/player/work_hold.gd` `_ready`: a zero-size `Control` calls
-`set_anchors_preset(PRESET_CENTER)`, which moves the anchors but keeps the control where it was (offsets are
-recomputed to keep its position, at the top-left), and the bar and label are placed at negative x offsets from
-that point, so half of each is off screen.
-
-- The work bar sits centred below the crosshair (about 12% of the screen height under it), clear of the hotbar,
-  the minimap and the chat, at every window size and UI scale: the control is laid out with
-  `set_anchors_and_offsets_preset(PRESET_CENTER)` (or a full-rect parent with a centred container), and it is
-  re-placed when the viewport resizes.
-- The bar is wider (220 px) and taller (12 px) with the label (material, seconds left, tool) above it, and it
-  shows only while a hold runs.
-- While a hold runs, the label adds "Keep holding <input>" (the input name from `InputLabels`, a param); if the
-  hold is released before the end, a short "Released too early: hold until the bar fills" hint shows for 2 s.
-  Both are new keys in `locale/ui.csv` with en and pt_BR text.
-- The tutorial's work steps say to hold: `tutorial.chop.body`, `tutorial.dig.body`, `tutorial.mine_stone.body`
-  (and any other step that asks for timed work, such as carcass work) state that the button must be held until
-  the bar fills, naming the input through a param, not a literal. Both locales.
-
-**Acceptance criteria**
-- Suite: at viewport sizes 1280×720, 1920×1080 and 800×600 the work bar's global rect lies fully inside the
-  viewport, horizontally centred (±2 px) and below the screen centre; after a viewport resize it stays inside.
-- Suite: an early release shows the hint and it hides after 2 s (explicit time steps); a completed hold does not.
-- Suite: the en and pt_BR texts of the chop, dig and mine tutorial steps contain the hold wording key's text
-  (the steps reference a shared `tutorial.hold_hint` param or string); locale check passes.
-- Playtest bot `mine` step screenshot is taken mid-hold and the step checks the bar's rect is inside the viewport.
+- [x] Suite: a station window (Phase 269) gets the same card layout; the detail panel's input icons are 32 px.
+- [x] Playtest bot `craft` step screenshot is taken with the window open and the step checks the card icon sizes.
 
 ## Phase 290 — Digging that does not drag: a faster shovel on the way to rock
 

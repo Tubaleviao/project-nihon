@@ -14,7 +14,7 @@ var sheet_specialty: VBoxContainer = null
 var sheet_own_row: HBoxContainer = null
 ## Phase 222 — windows that open wholly on screen, at the size their refreshed content needs. The others
 ## only keep a margin on screen (`clamp_window_position`), so a window dragged half off stays there.
-const FIT_ON_OPEN := ["attributes", "equipment", "map"]
+const FIT_ON_OPEN := ["attributes", "equipment", "map", "crafting", "station"]   # Phase 288: the crafting windows are tall
 
 func place_on_open(key: String, p: Control) -> void:
 	if key in FIT_ON_OPEN:

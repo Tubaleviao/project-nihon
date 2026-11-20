@@ -15,6 +15,7 @@ extends "res://src/tests/test_support.gd"
 ## fails the run when one exists on disk but is missing from this list).
 const SUITES: Array[String] = [
 	"res://src/tests/suites/window_shortcut_tests.gd",
+	"res://src/tests/suites/pick_up_key_tests.gd",
 	"res://src/tests/suites/character_window_tests.gd",
 	"res://src/tests/suites/title_tests.gd",
 	"res://src/tests/suites/packet_codec_tests.gd",
@@ -41,6 +42,7 @@ const SUITES: Array[String] = [
 	"res://src/tests/suites/writing_tests.gd",
 	"res://src/tests/suites/creature_exact_tests.gd",
 	"res://src/tests/suites/tutorial_runtime_tests.gd",
+	"res://src/tests/suites/work_bar_tests.gd",
 	"res://src/tests/suites/terrain_stream_tests.gd",
 	"res://src/tests/suites/terrain_lod_tests.gd",
 	"res://src/tests/suites/lod_rings_tests.gd",

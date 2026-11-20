@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:3aae32b2f0bf02365290c974a8092f96dbc370359680e5545ac65369bdd18009",
+  "schemaHash": "sha256:62fe85d2f91e598faf982d163e9ab042d1f5273e577be940a3b68d265d366318",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -42013,7 +42013,7 @@
                 "axe": 0.6
               },
               "StoneShovel": {
-                "shovel": 0.6
+                "shovel": 1.2
               }
             }
           }
@@ -54883,7 +54883,7 @@
           "steps": {
             "name": "steps",
             "type": "json",
-            "description": "Ordered steps: [{ id, chapter, inputs, requires, trigger: { kind, ...params } }]; text tutorial.<id>.title / .body",
+            "description": "Ordered steps: [{ id, chapter, inputs, requires, trigger: { kind, ...params }, marker?: { kind, ...params } }]; text tutorial.<id>.title / .body, marker label tutorial.marker.<kind>",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -55090,6 +55090,12 @@
                   "kind": "item_gathered",
                   "item": "Ferrite",
                   "count": 1
+                },
+                "marker": {
+                  "kind": "ore_near_surface",
+                  "item": "Ferrite",
+                  "maxDepthBlocks": 6,
+                  "radiusMetres": 30
                 }
               },
               {
