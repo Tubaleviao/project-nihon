@@ -629,6 +629,11 @@ func client_attack_lands(h: Node) -> void:
 		if pid == "" or not await h._await_until(func(): return h._root._networking.has_last_known_state(peer), h._step_timeout()):
 			h._report("client_attack_lands", "fail", "no_peer_position")
 			return
+		# Steps have no barrier: a probe laid before the client sets its fold log aside reaches it replayed into
+		# the folded frame, metres off, and a pinned probe sends no later delta to correct it.
+		if not await h._await_client_ready("client_attack", pid):
+			h._report("client_attack_lands", "fail", "client_never_ready")
+			return
 		var rounds := { "n": 0 }
 		var on_hit := func(attacker: String, _defender: String, _outcome: String, _dmg: float) -> void:
 			if attacker == pid:
@@ -650,8 +655,12 @@ func client_attack_lands(h: Node) -> void:
 			at = { "chunk": at["chunk"], "local": (at["local"] as Vector3) + Vector3(0.75, 0.0, 0.0) }
 			if not h._root._creature._instances.has(ATTACK_PROBE_ID):
 				h._root._creature.apply_creature_state(ATTACK_PROBE_ID, "ForestBoar", "idle", WorldPos.to_scene(at, Vector2i.ZERO))
-			h._root._creature.set_instance_pos(ATTACK_PROBE_ID, at)
-			await h._await_settle(0.5)
+			# Re-pinned every frame, not once per lap: the host's AI reacts to a player this close (a flee runs
+			# 4.5 m/s), so a probe pinned twice a second spent most of the lap out of the client's 3 m reach.
+			var lap_end: int = Time.get_ticks_msec() + 500
+			while Time.get_ticks_msec() < lap_end and int(rounds["n"]) == 0:
+				h._root._creature.set_instance_pos(ATTACK_PROBE_ID, at)
+				await h.get_tree().process_frame
 			landed = int(rounds["n"]) > 0
 		GameBus.combat_hit_resolved.disconnect(on_hit)
 		GameBus.attack_intent.disconnect(on_intent)
@@ -681,9 +690,11 @@ func client_attack_lands(h: Node) -> void:
 	h._root._creature._fold_log = []
 	h._report_actual = true
 	var swung := { "n": 0 }
+	var announced := {}
 	var got: bool = await h._await_until(func() -> bool:
 		if bool(seen["hit"]):
 			return true
+		h._announce_ready("client_attack", announced)   # the host lays the probe only after this
 		# Paced like the other steps' reports: one per poll frame outruns the host's client packet bucket on a
 		# slow link (retransmits bunch packets up), and the host then drops this peer's reports and swings alike.
 		if Time.get_ticks_msec() - int(swung.get("reported", 0)) >= REPORT_INTERVAL_MS:
