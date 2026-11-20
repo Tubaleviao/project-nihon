@@ -28,7 +28,11 @@ void fragment() {
 }
 """
 
+## The same shader for a felled tree's private copy: the per-instance colour becomes `tint` and `alpha` fades it.
+static var SHADER_CODE_FALLING: String = SHADER_CODE.replace("void fragment() {\n\tALBEDO = COLOR.rgb;\n}",
+	"uniform vec4 tint : source_color = vec4(1.0);\nuniform float alpha = 1.0;\nvoid fragment() {\n\tALBEDO = COLOR.rgb * tint.rgb;\n\tALPHA = alpha;\n}")
 static var _shader: Shader = null
+static var _shader_falling: Shader = null
 const MAX_VARIANTS := 1
 static var _model_meshes: Dictionary = {}
 
@@ -51,6 +55,37 @@ static func make(sway: bool = true) -> Material:
 	mat.set_shader_parameter("sway_from", SWAY_FROM)
 	mat.set_shader_parameter("sway_to", SWAY_TO)
 	return mat
+
+## A private material for a falling tree: `base` (a pool material) with the colour and fade controls of a
+## felled tree. A ShaderMaterial gets the falling shader (`tint`, `alpha`); a StandardMaterial3D is duplicated
+## with alpha blending on and `tint` as its albedo colour.
+static func make_falling(base: Material, tint: Color) -> Material:
+	if base is ShaderMaterial:
+		if _shader_falling == null:
+			_shader_falling = Shader.new()
+			_shader_falling.code = SHADER_CODE_FALLING
+		var mat := ShaderMaterial.new()
+		mat.shader = _shader_falling
+		for k in ["amplitude", "sway_from", "sway_to"]:
+			mat.set_shader_parameter(k, (base as ShaderMaterial).get_shader_parameter(k))
+		mat.set_shader_parameter("tint", tint)
+		mat.set_shader_parameter("alpha", 1.0)
+		return mat
+	if base is StandardMaterial3D:
+		var own := (base as StandardMaterial3D).duplicate() as StandardMaterial3D
+		own.albedo_color = tint
+		own.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		return own
+	return base
+
+## Set a falling material's opacity (see `make_falling`).
+static func set_fade(m: Material, a: float) -> void:
+	if m is ShaderMaterial:
+		(m as ShaderMaterial).set_shader_parameter("alpha", a)
+	elif m is StandardMaterial3D:
+		var c := (m as StandardMaterial3D).albedo_color
+		c.a = a
+		(m as StandardMaterial3D).albedo_color = c
 
 ## Model keys a species can draw: `models/trees/<Species>.glb.raw`, then `<Species>_v1` when the
 ## manifest lists it (an absent variant is never picked).

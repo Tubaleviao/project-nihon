@@ -617,7 +617,7 @@ static func skyline_spread(rows: Array) -> int:
 
 func _ready() -> void:
 	GameBus.block_mined.connect(func(material: String, quantity: int, _p: Vector3): _mined.append([material, quantity]))
-	GameBus.tree_chopped.connect(func(id: String, wood: String, state: String, _r: float): _chopped.append([id, wood, state]))
+	GameBus.tree_chopped.connect(func(id: String, wood: String, state: String, _r: float, _y: float): _chopped.append([id, wood, state]))
 	GameBus.work_started.connect(func(_k: String, duration: float, a: String, m: String): _work_secs = duration; _work_last = [a, m])
 	GameBus.craft_resolved.connect(func(result: Dictionary): _crafted.append(result))
 	GameBus.research_resolved.connect(func(result: Dictionary): _researched.append(result))

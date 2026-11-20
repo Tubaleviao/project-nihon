@@ -188,6 +188,15 @@ func _on_void_burst_resolved(result: Dictionary) -> void:
 		"flag":      str(result.get("flag", "")),
 	})
 
+## Phase 282 — `TreeSlice.NO_FALL`, restated here (a class reference makes a script cycle): "no fall".
+const NO_TREE_FALL := 100.0
+
+## A felled tree's fall yaw off the wire: a finite number, else NO_TREE_FALL.
+func _tree_fall_yaw(raw: Variant) -> float:
+	if (raw is float or raw is int) and is_finite(float(raw)):
+		return float(raw)
+	return NO_TREE_FALL
+
 ## Phase 36 — is `position` within `reach` metres of the peer's last recorded
 ## position? The host records that position from the peer's own movement packets
 ## (see remember_player_state), so it is the host's evidence of where the peer is,
@@ -257,7 +266,8 @@ func _route_h2c(payload: Dictionary) -> void:
 				str(payload.get("tree_id", "")),
 				str(payload.get("wood", "")),
 				str(payload.get("state", "")),
-				float(payload.get("respawn_at", 0.0))
+				float(payload.get("respawn_at", 0.0)),
+				_tree_fall_yaw(payload.get("fall_yaw", NO_TREE_FALL))
 			)
 		"loose_picked":
 			var regrow: Variant = payload.get("regrow_at", 0.0)

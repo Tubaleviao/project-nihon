@@ -53,6 +53,13 @@ func setup(mesh: Mesh, use_color: bool = true, material: Material = null) -> voi
 
 	add_child(_multimesh_instance)
 
+## The pooled mesh and its material (a falling tree borrows both for its own node).
+func mesh() -> Mesh:
+	return _multimesh.mesh
+
+func material() -> Material:
+	return _multimesh_instance.material_override
+
 ## Allocate a free instance index, growing the MultiMesh when exhausted.
 func alloc() -> int:
 	if not _free.is_empty():
