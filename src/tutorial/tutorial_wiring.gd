@@ -297,6 +297,12 @@ func _update_marker(delta: float) -> void:
 		root.add_child(marker)
 	marker.follow(root._player.get_world_pos(), root._player.get_scene_position())
 
+## Phase 290 — the beacon goes with the wiring.
+func unwire() -> void:
+	_search = null
+	_drop_marker()
+	super.unwire()
+
 func _drop_marker() -> void:
 	if marker != null and is_instance_valid(marker):
 		marker.queue_free()
