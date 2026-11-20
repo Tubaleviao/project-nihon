@@ -37,6 +37,12 @@ const FADE_FLOOR_DB := -60.0
 ## press time, so the meta can be set after the button enters the tree).
 const CLICK_EVENT := "ui.click"
 
+## Most one-shot players of one event alive at once; a further one is dropped (a swarm of creatures or a burst of
+## block changes cannot build hundreds of 3D players).
+const MAX_ONE_SHOTS_PER_EVENT := 8
+## Most one-shot players alive at once across all events.
+const MAX_ONE_SHOTS := 48
+
 var _channels: Dictionary = {}   # channel -> its current looping player
 var _fades: Array = []           # [{ player, from, to, seconds, t, free }]
 
@@ -103,6 +109,8 @@ func play(event_id: String, at: Variant = null) -> Node:
 		return null
 	if tracing:
 		trace.append(p)
+	if not bool(p["loop"]) and not one_shot_room(event_id):
+		return null
 	var stream := AssetOverlay.load_sound(str(p["key"]))
 	if stream == null:
 		return null   # AssetOverlay warned once for the key
@@ -129,11 +137,25 @@ func play(event_id: String, at: Variant = null) -> Node:
 		p2.pitch_scale = float(p["pitch_scale"])
 		player = p2
 	player.set_meta("sound_event", event_id)
+	player.set_meta("sound_one_shot", not bool(p["loop"]))
 	add_child(player)
 	if not bool(p["loop"]):
 		player.connect("finished", player.queue_free)
 	player.call("play")
 	return player
+
+
+## Whether another one-shot of `event_id` fits under the polyphony caps.
+func one_shot_room(event_id: String) -> bool:
+	var same := 0
+	var all := 0
+	for c in get_children():
+		if c.is_queued_for_deletion() or c.get_meta("sound_one_shot", false) != true:
+			continue
+		all += 1
+		if str(c.get_meta("sound_event")) == event_id:
+			same += 1
+	return same < MAX_ONE_SHOTS_PER_EVENT and all < MAX_ONE_SHOTS
 
 
 ## The players of `event_id` still alive (playing or not yet freed).

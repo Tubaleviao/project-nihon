@@ -94,10 +94,12 @@ Completed phases moved out of [ROADMAP.md](../../ROADMAP.md) to keep it short. T
 | 243 | [phases-243.md](phases-243.md) |
 | 244 | [phases-244.md](phases-244.md) |
 | 248 | [phases-248.md](phases-248.md) |
+| 250 | [phases-250.md](phases-250.md) |
 | 252 | [phases-252.md](phases-252.md) |
 | 253 | [phases-253.md](phases-253.md) |
 | 254 | [phases-254.md](phases-254.md) |
 | 255 | [phases-255.md](phases-255.md) |
+| 256 | [phases-256.md](phases-256.md) |
 
 Phases with no section of their own were merged into another phase:
 
@@ -327,6 +329,7 @@ open in [ROADMAP.md](../../ROADMAP.md).
 |---|---|---|---|
 | 248 | The native library base and a release build | Done | [phases-248.md](phases-248.md) |
 | 249 | What to reuse from Zylann's godot_voxel | Done | [phases-249.md](phases-249.md) |
+| 250 | The server's ceiling: one machine serving, another running the bots | Done | [phases-250.md](phases-250.md) |
 
 ### Terrain that looks, flies and streams well (Phases 237–247)
 

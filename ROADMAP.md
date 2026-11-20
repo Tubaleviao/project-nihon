@@ -22,7 +22,7 @@ issues are open. Burn them down first (fix, fold into the next phase, or close w
 
 ## Phase index
 
-Phases 1–225, 238–244, 248, 249, 252–256, 259–276 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
+Phases 1–225, 238–244, 248–250, 252–256, 259–276 are done (200 and 201 were aborted). Their specs and acceptance criteria, and the
 introductions of the arcs they belonged to, are archived in
 [docs/roadmap-history/](docs/roadmap-history/README.md).
 
@@ -31,15 +31,13 @@ introductions of the arcs they belonged to, are archived in
 Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
 see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
 phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
-comes next. A phase that needs an earlier one still waits for it. Done phases (238–244, 248, 249, 252–256, 259–276)
+comes next. A phase that needs an earlier one still waits for it. Done phases (238–244, 248–250, 252–256, 259–276)
 have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
 [Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
 others are not in it.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 20 | 250 | The server's ceiling: one machine serving, another running the bots |
-| 21 | 237 | Flight that handles like flight |
 | 22 | 251 | A human playtest: what would make the game fun (a standing checkpoint) |
 | 23 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
 | 24 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
@@ -190,7 +188,7 @@ detail and caching (243–244), and later flight (237), the planet bake (245) an
 
 | Phase | Title | Status |
 |---|---|---|
-| 237 | Flight that handles like flight: inertia, steering by the camera, no ground-walking fixes in the air | Open |
+| 237 | Flight that handles like flight: inertia, steering by the camera, no ground-walking fixes in the air | Done |
 | 238 | One world: a fixed seed, a 2,000 km planet and one continent | Done (runtime PR; spec below) |
 | 239 | Streaming that keeps up: a speed-scaled lead, adaptive workers, an attach budget | Done |
 | 240 | Smooth natural ground: a surface-nets mesher (GDScript reference) | Done ([phases-240.md](docs/roadmap-history/phases-240.md)) |
@@ -213,7 +211,7 @@ measures how many players one server holds on real hardware. Phase 251 is the ow
 |---|---|---|
 | 248 | The native library base and a release build | Done ([phases-248.md](docs/roadmap-history/phases-248.md)) |
 | 249 | What to reuse from Zylann's godot_voxel: a review, then the parts that fit | Done ([phases-249.md](docs/roadmap-history/phases-249.md)) |
-| 250 | The server's ceiling: one machine serving, another running the bots | Open |
+| 250 | The server's ceiling: one machine serving, another running the bots | Done ([phases-250.md](docs/roadmap-history/phases-250.md)) |
 | 251 | A human playtest: what would make the game fun | Ongoing (a standing checkpoint, never closed) |
 
 ### Next: a licence, a green `main` and a first release (Phases 252–258)
@@ -239,7 +237,7 @@ says decisions are proposed publicly.
 | 253 | A green `main`: flaky gates demoted, the stress regression explained | Done ([phases-253.md](docs/roadmap-history/phases-253.md)) |
 | 254 | Repository hygiene: `.uid` files tracked, one lockfile, nothing stray | Done ([phases-254.md](docs/roadmap-history/phases-254.md)) |
 | 255 | The first release: `v0.1.0` from the release workflow | Done ([phases-255.md](docs/roadmap-history/phases-255.md)) |
-| 256 | A binary wire format for the hot packets | Open |
+| 256 | A binary wire format for the hot packets | Done ([phases-256.md](docs/roadmap-history/phases-256.md)) |
 | 257 | Split files named by what they do | Open |
 | 258 | The public wiki and the community channels | Open |
 
@@ -541,14 +539,14 @@ buried-lift rescue.
   camera's height smoothing stays. Both are off in the headless server.
 - Leaving flight keeps the current velocity, and gravity takes over from there.
 
-**Acceptance criteria**
-- Suite tests on `FlightRules.step`: from rest with W held, the body reaches 95% of top speed in
+**Acceptance criteria** (done: `src/player/flight_rules.gd`, `src/tests/suites/flight_tests.gd`; the wall/hillside criterion is proved on the pure collision response and a source audit, since `move_and_slide` does not run in the suite)
+- [x] Suite tests on `FlightRules.step`: from rest with W held, the body reaches 95% of top speed in
   0.5–0.8 s of steps. With no input it falls below 5% of top speed in 0.8–1.5 s. W with the camera
   pitched 30° up climbs at sin 30° of the speed (±5%). Opposite input reverses smoothly, never in one
   step.
-- A suite test flies a body into a wall and a hillside: no step-up lift, no buried-lift jump, and the
+- [x] A suite test flies a body into a wall and a hillside: no step-up lift, no buried-lift jump, and the
   body ends outside solid ground.
-- The playtest `flight` step passes at its current floors.
+- [x] The playtest `flight` step passes at its current floors.
 
 ## Phase 238 — One world: a fixed seed, a 2,000 km planet and one continent
 
@@ -701,34 +699,6 @@ Trees use `multimesh_pool.gd` and impostors (Phase 23). Natural ground has no gr
   or a placed block, and density falls with distance.
 - The playtest `walk` and `flight` steps meet their budgets with ground cover on.
 
-## Phase 250 — The server's ceiling: one machine serving, another running the bots
-
-The crowd numbers in the README (Phase 163) come from one desktop machine running the server, the
-watching client and every bot at once, so the bots steal the server's CPU and the link is loopback.
-How many players one dedicated server holds is unknown.
-
-- `tools/stress.sh` gains a split mode: `STRESS_ROLE=server` boots only the dedicated server and the
-  host recorder and waits for bots; `STRESS_ROLE=bots STRESS_SERVER=<addr>` runs the watcher and the
-  bot process against a remote server. The "steady" and "stop" handshake goes over the network
-  (a control message or a small TCP side channel) instead of shared files.
-- Run the ladder (every pattern, crowd sizes up past the first failure) with the server on one
-  machine and the bots on another over a real LAN, then over the `wan_br` profile.
-- The report records each machine (CPU, cores, RAM, OS, Godot build, native on or off, release or
-  debug), and per pattern: the largest crowd that met every budget, tick time, CPU and memory per
-  player, bandwidth per player up and down, and the first bottleneck.
-- Write `docs/perf/server-ceiling.md`: the measured limits, the machines, the command to repeat it,
-  and how many players one server can hold with headroom for play. The README's crowd line points
-  to it.
-
-**Acceptance criteria**
-- A suite test on the split-mode parsing: a bots role with no server address is refused, and the
-  control messages round-trip.
-- A loopback CI run of the split mode (both roles on one runner) reaches "steady", runs one small
-  pattern and writes a report with the machine fields filled.
-- `docs/perf/server-ceiling.md` exists with numbers from a two-machine run. The run itself needs two
-  machines, so if none are available to automation it is filed as a GitHub issue (per the rule at
-  the top of this file) and the document records the loopback numbers until the issue is closed.
-
 ## Phase 251 — A human playtest: what would make the game fun
 
 The owner plays the game, as a new player would, to find what keeps it from being fun. Per the rule
@@ -760,45 +730,6 @@ findings come back as new phases.
   stack has no way to choose how many; the character is ugly and not the chibi style the owner
   wants; the creation screen does not show the chosen hair style; the Character window shows a
   different body from the one walking in the world.
-
-## Phase 256 — A binary wire format for the hot packets
-
-Every packet is a JSON string carried by two RPCs (`_rpc_c2h`, `_rpc_h2c`), parsed with `_parse`
-and capped at `MAX_CLIENT_PACKET_BYTES`. The stress report ranks `remote_player_state` first among
-hot spots (+2.01 kbit/s per peer per bot, 611% of the 64 kbit/s per-peer budget at 200 bots) and
-`snapshot_chunk` second (229%). Phase 250 measures the server's ceiling; with text encoding it would
-measure the encoding. The guards at `_accept_c2h` (size cap, token bucket, dedup) stay in front of
-whatever is parsed.
-
-- A `PacketCodec` (`src/networking/packet_codec.gd`, native port optional later) with a fixed
-  layout per hot type: a one-byte type tag, a `u16` seq, and for `remote_player_state` the peer id
-  and position quantised to centimetres as three `i32` (the rebase origin is sent with the chunk
-  window, not per packet); `snapshot_chunk` carries its index, count and the chunk's bytes as a
-  `PackedByteArray` instead of a base-64 string. Every other type stays JSON until it earns a layout.
-- The two RPCs take a `PackedByteArray`; the first byte says binary or JSON (`{`), so a peer that
-  predates the codec is read correctly and refused with the usual version mismatch.
-- The host rejects a binary packet whose length does not match its type's layout, with the same
-  silent drop and rate-limited warning as an oversized one.
-- The stress baseline (`docs/perf/crowd-baseline.md`, `StressRules.BASELINE_LARGEST`) is re-recorded
-  after the change, and the hot-spot table in this file's Phase 250 is updated from it.
-
-**Acceptance criteria**
-- A suite test round-trips each binary type through the codec, including positions at ±1,000 km
-  from the origin, and rejects a packet one byte short and one byte long.
-- A suite test asserts a `remote_player_state` packet is at most 20 bytes on the wire.
-- The net harness passes under `lan`, `wan_br` and `wan_bad`; the `wan_bad` run no longer mutes
-  creature position deltas for bandwidth (or the harness records why it still must).
-- The stress run's `down_kbps_per_peer` at 16 bots in `lan/cluster` falls by at least 3× against the
-  baseline recorded before this phase, and no series' largest passing size falls.
-
-**Status (2026-11-19, done):** `PacketCodec` (`src/networking/packet_codec.gd`) carries `remote_player_state`
-(19 bytes), `snapshot_chunk` and the host's `player_states` batch (the type the relay actually sends since
-Phase 163) in fixed layouts, with deflate over packets of 32 bytes or more that shrink; everything else stays
-JSON. A batch entry keeps its chunk and height exact and quantises local x and z to 0.5 mm (a position that is
-not normalised travels as JSON). `seq` is a u16 on the wire and the dedup reads its wrap. Measured at 16 bots in
-`lan/cluster` (`STRESS_MAX=16 STRESS_PATTERNS=cluster`, 20 s, seed 1): `down_kbps_per_peer` p95 19.8 before, 6.3
-after (3.1×). The `wan_bad` profile does not mute creature position deltas for bandwidth in this tree (nothing
-in the slice does: its 256 kbit/s cap only delays packets), so there was nothing to unmute.
 
 ## Phase 257 — Split files named by what they do
 

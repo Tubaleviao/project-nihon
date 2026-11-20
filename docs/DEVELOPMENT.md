@@ -70,6 +70,13 @@ and the watcher sample only while it exists) and a "stop" file. The host recorde
 `user://stress/server/`, never a real save. The watcher, like the harness client, writes the cached
 client identity.
 
+**Split mode (Phase 250).** To measure the server without the bots stealing its CPU, run it on one
+machine and the bots on another: `STRESS_ROLE=server tools/stress.sh` on the server (UDP 7777 and TCP
+7778 open), then `STRESS_ROLE=bots STRESS_SERVER=<addr> tools/stress.sh` on the bots' machine, which
+drives the ladder and builds the report (with a Machines table for both). The "steady" and "stop"
+handshake and the host and watcher reports cross a TCP side channel (`tools/stress_ctl.py`).
+`STRESS_LOOPBACK_SPLIT=1` runs both roles on one machine, as CI does. Numbers: [docs/perf/server-ceiling.md](perf/server-ceiling.md).
+
 `--run-tests` and `--net-harness <host|client>` are **user args**, so they go after the
 `--` separator. The harness cannot live in the suite — an `ENetMultiplayerPeer` only
 delivers when the tree ticks, and the suite has no frames to give it — so it is its own

@@ -24,6 +24,7 @@ func register() -> void:
 	_run_test("mount: every refusal key is in both catalog columns", _test_mount_catalog)
 	_run_test("mount: #565 not-mounted and downed refusals, a dead mount, desync recovery", _test_mount_565_refusals)
 	_run_test("mount: #565 stamina tires the mount and terrain throws the rider", _test_mount_565_stamina_terrain)
+	_run_test("mount: #593 the real _in_water reads a wired CreatureSlice", _test_mount_593_real_in_water)
 	_run_test("mount: #593 a ford-wide stream is not water for a ground mount", _test_mount_593_ford_water)
 	_run_test("mount: #565 rider offset, combined speed caps and Ctrl+M", _test_mount_565_offset_caps_keys)
 
@@ -291,6 +292,22 @@ func _test_mount_593_ford_water() -> void:
 	assert_true(MountWiring.stands_in_water(INF, dry), "a lake is water")
 	assert_true(MountWiring.stands_in_water(0.0, WorldShape.sea_level() - 1.0), "below sea level is the sea")
 	assert_false(MountWiring.stands_in_water(0.0, NAN), "an unknown surface is not water")
+
+func _test_mount_593_real_in_water() -> void:
+	var gr: Node = (load("res://src/core/game_root.gd") as GDScript).new()
+	var cr := CreatureSlice.new()
+	add_child(cr)
+	gr._creature = cr
+	var mw := MountWiring.new()
+	mw.root = gr
+	assert_false(mw._in_water("nobody"), "an unknown creature is not in water")
+	var pos := {"chunk": Vector2i(0, 7), "local": Vector3(16.5, 2.0, 16.5)}
+	cr.apply_creature_pos("w1", "ForestBoar", "idle", pos)
+	var tile: Vector2i = cr.tile_of_pos(pos)
+	var want := MountWiring.stands_in_water(cr.fresh_water_width(tile), cr.surface_at_tile(tile))
+	assert_eq(mw._in_water("w1"), want, "it follows the creature's tile, through the real slice calls")
+	cr.free()
+	gr.free()
 
 func _test_mount_565_offset_caps_keys() -> void:
 	var m := _rig()
