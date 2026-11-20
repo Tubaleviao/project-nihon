@@ -507,6 +507,21 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 				sl._refuse_unhandshaked(sender, "tame_intent")
 				return
 			GameBus.tame_intent.emit(str(payload.get("instance_id", "")), tamer)
+		"pickup_intent", "drop_intent":
+			# The taker or dropper is the connection's player; LootWiring checks reach, the pickup and the bag.
+			var looter = sl._actor_id(sender)
+			if looter == "":
+				sl._refuse_unhandshaked(sender, str(payload["type"]))
+				return
+			var l_id: Variant = payload.get("id", "")
+			if not l_id is String:
+				return
+			if str(payload["type"]) == "pickup_intent":
+				GameBus.pickup_intent.emit((l_id as String).left(64), looter)
+			else:
+				var l_qty: Variant = payload.get("qty", 0)
+				if l_qty is int or l_qty is float:
+					GameBus.drop_intent.emit((l_id as String).left(64), clampi(int(l_qty), 0, 1000000), looter)
 		"attack_intent":
 			# The attacker is the connection's player, never a name in the payload; CombatWiring checks the
 			# target, the reach (host's own record of the sender) and the swing rate.

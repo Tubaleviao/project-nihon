@@ -353,6 +353,16 @@ func _route_h2c(payload: Dictionary) -> void:
 					"entries": payload.get("entries", []) if payload.get("entries", []) is Array else [],
 					"carrier": str(payload.get("carrier", "")), "mode": str(payload.get("mode", "")),
 					"mass": float(payload.get("mass", 0.0)), "remaining": float(payload.get("remaining", 0.0)) })
+		"pickup":
+			# A ground pickup in our AOI; LootSlice keeps a view of it.
+			var lpos: Variant = payload.get("pos", [])
+			var lid: Variant = payload.get("id", "")
+			if sl._role == sl.Role.CLIENT and lid is String and lpos is Array and (lpos as Array).size() == 3:
+				GameBus.peer_pickup_synced.emit({ "id": lid, "item_id": str(payload.get("item", "")),
+					"quantity": int(payload.get("qty", 0)), "position": Vector3(float(lpos[0]), float(lpos[1]), float(lpos[2])) })
+		"pickup_removed":
+			if sl._role == sl.Role.CLIENT and payload.get("id", "") is String:
+				GameBus.peer_pickup_removed.emit(payload["id"])
 		"carcass_removed":
 			if sl._role == sl.Role.CLIENT and payload.get("id", "") is String:
 				GameBus.peer_carcass_removed.emit(payload["id"])

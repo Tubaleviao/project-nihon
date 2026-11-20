@@ -399,6 +399,23 @@ signal loot_expired(pickup_id: String)
 ## aims at a pickup and clicks). Carries the LootSlice pickup id.
 signal pickup_requested(pickup_id: String)
 
+## A ground pickup was taken (LootSlice, host). LootWiring tells the clients that could see it.
+signal loot_removed(pickup_id: String)
+
+## Client → host: take the ground pickup `pickup_id`. A client's InventorySlice emits it (player_id "") in place
+## of taking the pickup; NetworkingSlice re-emits it on the host with the connection's player, and LootWiring
+## checks reach and room in that player's bag.
+signal pickup_intent(pickup_id: String, player_id: String)
+
+## Client → host: drop `quantity` of `item_id` at the player's feet (player_id "" outbound; bound on the host).
+signal drop_intent(item_id: String, quantity: int, player_id: String)
+
+## Host → client: a ground pickup in this client's area of interest: { id, item_id, quantity, position }.
+signal peer_pickup_synced(record: Dictionary)
+
+## Host → client: that pickup is gone, or left this client's area of interest.
+signal peer_pickup_removed(pickup_id: String)
+
 ## The local player drags `quantity` of `item_id` out of the inventory onto the ground at `position`.
 ## InventorySlice (authoritative machines only) removes it and LootSlice spawns a pickup that keeps
 ## the items' exact wear, so dropping and picking up can never repair a tool.
