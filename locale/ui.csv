@@ -879,6 +879,7 @@ craft.cat.building,Building,Construção
 craft.cat.consumables,Consumables,Consumíveis
 craft.cat.materials,Materials,Materiais
 craft.card_count,{0} ×{1},{0} ×{1}
+craft.card_badge,×{0},×{0}
 craft.card_refused,{0} — {1},{0} — {1}
 craft.have_need,{0}/{1},{0}/{1}
 craft.work_time,Work time: {0} s,Tempo de trabalho: {0} s

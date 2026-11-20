@@ -832,6 +832,7 @@ func _run_step(step: String) -> Dictionary:
 		rec["profile_creatures"] = _profile_creatures
 	if step != "create" and step != "tower":   # Phase 181: create shoots the screen itself, before it closes; tower its two views
 		await _screenshot(step)
+	if step == "craft": _root._ui.close_window(_root._ui.WINDOW_STATION)   # Phase 288 — opened for the screenshot
 	print("[Playtest] %s %s %s" % [step, "ok" if bool(rec["ok"]) else "FAIL", rec["detail"]])
 	return rec
 
@@ -1548,18 +1549,18 @@ func _step_craft() -> Array:
 	var planks: int = _root._inventory.get_item_count("ThornwoodPlank")
 	GameBus.craft_requested.emit("RecipeThornwoodPlank")
 	var ok: bool = await _until(func(): return _crafted.size() > before, STEP_TIMEOUT_SECS)
-	if not ok:
-		return [false, "no craft_resolved"]
+	if not ok: return [false, "no craft_resolved"]
 	var got: int = _root._inventory.get_item_count("ThornwoodPlank") - planks
 	var detail := "crafted %d planks (%s)" % [got, str(_crafted.back()["reason"])]
-	# Phase 153: a held weapon is drawn from its model. No recipe yields a hand-held item, so the bot
-	# puts a weapon in hand (screenshotted with this step) and checks the hand socket's node.
+	# Phase 153: a held weapon is drawn from its model; no recipe yields one, so the bot puts one in hand (screenshotted) and checks the socket.
 	var character: Node = _root._character
 	var iid: String = character.get_player_character()
 	var hand_ok: bool = iid != "" and character.apply_equipment(iid, "MainHand", "VeilsteelLongsword")
 	var node: Node = character.get_part_node(iid, "MainHand") if hand_ok else null
 	hand_ok = node != null and str(node.get_meta("item_model", "")) == "VeilsteelLongsword"
-	return [bool(_crafted.back()["success"]) and got == 3 and hand_ok, "%s; hand model %s" % [detail, "ok" if hand_ok else "MISSING"]]
+	var ui: Node = _root._ui   # Phase 288 — the bench's window, open for the screenshot (closed after), shows ≥ 56 px square card icons
+	var cards_ok: bool = ui.open_station_window(str(_placed.back()[0])) and await _until(func(): return ui.station_window.grid.get_child_count() > 0 and ui.station_window.undersized_icons().is_empty(), 1.0)
+	return [bool(_crafted.back()["success"]) and got == 3 and hand_ok and cards_ok, "%s; hand model %s; %d cards, undersized icons %s" % [detail, "ok" if hand_ok else "MISSING", ui.station_window.grid.get_child_count(), str(ui.station_window.undersized_icons())]]
 
 ## Phase 181: the first step. A fresh save offers the creation screen; the bot picks a seeded random look, types
 ## a name, saves the screenshot of the screen and enters the world. The host records the creation and the screen
