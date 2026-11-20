@@ -141,12 +141,16 @@ place, `application/config/version` in `project.godot` (the main menu shows it i
 2. Add a `## v<version>` entry at the top of `CHANGELOG.md`: what shipped, a paragraph per arc. CI fails
    (`tools/check_changelog.sh`) while the version has no entry, and the entry becomes the release notes.
 3. Merge through a pull request as usual. A PR that touches something a release depends on (`release.yml`,
-   `export_presets.cfg`, `project.godot`, `CHANGELOG.md`, the changelog and export-playtest scripts, the playtest
+   `export_presets.cfg`, `project.godot`, `CHANGELOG.md`, the changelog, assets-pin and export-playtest scripts, the playtest
    bot, `native/`; the list is the workflow's `pull_request.paths`) runs the release workflow as a dry run; any branch can run one by hand
    (`gh workflow run Release --ref <branch>`).
    A dry run builds, exports, plays the bot and uploads the packages as an artifact, but publishes nothing.
 4. Tag the merge commit and push the tag: `git tag v<version> <sha> && git push origin v<version>`. The
-   workflow refuses a tag that does not match the project version, in its first job, before any build.
+   workflow refuses a tag that does not match the project version, in its first job, before any build. It
+   also refuses a tag whose `assets-prod` pointer is not the private assets repo's `main` HEAD
+   (`tools/check_assets_pin.sh`, reading that repo with the `ASSETS_READ_TOKEN` secret, a fine-grained token
+   with read-only Contents access to it), because players' `assets.pck` is built from the release's pin: bump
+   the pointer in an `assets-prod:` pull request first. Run `tools/check_assets_pin.sh` before tagging to check.
 5. Watch the run (`gh run watch`). It builds the native library on three platforms, exports Linux, Windows
    and macOS, plays the bot's `create`, `walk` and `mine` steps on the Linux export under xvfb, and only
    then creates the GitHub Release with six assets (three games, three native libraries).
