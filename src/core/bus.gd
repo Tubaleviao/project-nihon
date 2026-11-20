@@ -49,6 +49,14 @@ signal combat_hit_synced(attacker_key: String, defender_key: String, outcome: St
 ## defender_id : String — entity key from GameData.CREATURES or "player"
 signal combat_round_requested(attacker_id: String, defender_id: String)
 
+## A player's melee swing at a creature, client → host. On a client BattleSlice emits it (with player_id "")
+## in place of resolving the round, and NetworkingSlice forwards it; on the host NetworkingSlice re-emits it
+## with the identity bound to the sending connection, and CombatWiring checks it (target alive and untamed,
+## within reach of the host's own record of the sender, swing rate) before requesting the round.
+## instance_id : String — CreatureSlice instance id
+## player_id   : String — the attacker; "" on the client's outbound emit
+signal attack_intent(instance_id: String, player_id: String)
+
 # ---------------------------------------------------------------------------
 # Networking
 # ---------------------------------------------------------------------------

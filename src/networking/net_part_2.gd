@@ -507,6 +507,16 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 				sl._refuse_unhandshaked(sender, "tame_intent")
 				return
 			GameBus.tame_intent.emit(str(payload.get("instance_id", "")), tamer)
+		"attack_intent":
+			# The attacker is the connection's player, never a name in the payload; CombatWiring checks the
+			# target, the reach (host's own record of the sender) and the swing rate.
+			var striker = sl._actor_id(sender)
+			if striker == "":
+				sl._refuse_unhandshaked(sender, "attack_intent")
+				return
+			var a_iid: Variant = payload.get("instance_id", "")
+			if a_iid is String:
+				GameBus.attack_intent.emit((a_iid as String).left(64), striker)
 		"mount_intent":
 			# Phase 216 — the rider is the connection's player; the creature must be that player's own companion.
 			var rider = sl._actor_id(sender)
@@ -854,6 +864,13 @@ func forward_intent(type: String, action: String, args: Dictionary) -> void:
 
 func forward_clan_intent(action: String, args: Dictionary, _player_id: String) -> void:
 	forward_intent("clan_intent", action, args)
+
+## Client → host: a melee swing at a creature. Like tame_intent it names only the target; the host binds the
+## attacker to the connection and checks reach against its own record of where that player is.
+func forward_attack_intent(instance_id: String, _player_id: String) -> void:
+	if sl._role != sl.Role.CLIENT:
+		return
+	sl._broadcast({ "type": "attack_intent", "instance_id": instance_id })
 
 func forward_chest_intent(action: String, args: Dictionary, _player_id: String) -> void:
 	forward_intent("chest_intent", action, args)

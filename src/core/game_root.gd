@@ -513,7 +513,7 @@ func _build_and_boot() -> void:
 	_creature.is_authoritative  = not _is_client
 	if not _is_client:
 		_creature.set_population_cap(CREATURE_POPULATION_CAP)
-	_creature_ai.is_authoritative = not _is_client
+	_creature_ai.is_authoritative = not _is_client; _battle.is_authoritative = not _is_client   # a client's swing is an attack_intent
 	_tree.is_authoritative      = not _is_client; _loose.is_authoritative = not _is_client
 	_market.is_authoritative    = not _is_client
 	_trade.is_authoritative     = not _is_client

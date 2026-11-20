@@ -613,3 +613,66 @@ func title_choice(h: Node) -> void:
 	var ok := seen and have and chosen and refused and kept
 	h._report("title_choice", h.verdict(ok, true), DETAIL if ok else ("nameplate_not_seen-%s" % h._root._character.get_nameplate(h._root._character.get_peer_character(host_id)).replace("\n", "/").replace(" ", "_") if not seen \
 		else ("not_unlocked" if not have else ("not_chosen" if not chosen else ("locked_not_refused" if not refused else "choice_changed")))))
+
+## A client's own swing reaches the host. The host stands a probe creature beside the peer's reported body; the
+## client swings with the player's real input path (`PlayerSlice._try_attack`), which on a client forwards an
+## `attack_intent`. The host must resolve a round with the peer's player id as the attacker, and the client must
+## see that swing come back as the synced hit. Before the fix, a client resolved its swings on its own copy of
+## the creature and the host never heard of them.
+const ATTACK_PROBE_ID := "creature_harness_attack_probe"
+func client_attack_lands(h: Node) -> void:
+	if h._role == "host":
+		var peer: int = h._peer_id()
+		var pid: String = h._root._networking.get_player_id(peer)
+		if pid == "" or not await h._await_until(func(): return h._root._networking.has_last_known_state(peer), h._step_timeout()):
+			h._report("client_attack_lands", "fail", "no_peer_position")
+			return
+		var rounds := { "n": 0 }
+		var on_hit := func(attacker: String, _defender: String, _outcome: String, _dmg: float) -> void:
+			if attacker == pid:
+				rounds["n"] = int(rounds["n"]) + 1
+		GameBus.combat_hit_resolved.connect(on_hit)
+		# Keep the probe pinned beside wherever the peer reports itself until a swing lands.
+		var landed := false
+		var deadline: int = Time.get_ticks_msec() + int(h._step_timeout() * 3.0 * 1000.0)
+		while Time.get_ticks_msec() < deadline and not landed:
+			# Exact `{chunk, local}`: earlier steps leave the peer far from the origin, where metres are float32-coarse.
+			var at: Dictionary = h._root._peer_wiring.peer_exact_pos(peer)
+			at = { "chunk": at["chunk"], "local": (at["local"] as Vector3) + Vector3(1.5, 0.0, 0.0) }
+			if not h._root._creature._instances.has(ATTACK_PROBE_ID):
+				h._root._creature.apply_creature_state(ATTACK_PROBE_ID, "ForestBoar", "idle", WorldPos.to_scene(at, Vector2i.ZERO))
+			h._root._creature.set_instance_pos(ATTACK_PROBE_ID, at)
+			await h._await_settle(0.5)
+			landed = int(rounds["n"]) > 0
+		GameBus.combat_hit_resolved.disconnect(on_hit)
+		# Let the client see the synced swing before the probe goes.
+		await h._await_settle(2.0 * h._time_scale)
+		h._root._creature.despawn_instance(ATTACK_PROBE_ID)
+		h._report("client_attack_lands", h.verdict(landed, true), "host_resolved" if landed else "swing_never_reached_host")
+		return
+	var own_key := "p:%d" % h._root.multiplayer.get_unique_id()
+	var seen := { "hit": false }
+	var on_synced := func(attacker_key: String, _defender_key: String, _outcome: String) -> void:
+		if attacker_key == own_key:
+			seen["hit"] = true
+	GameBus.combat_hit_synced.connect(on_synced)
+	# The fold step left this client in a folded frame that would replay onto the host's creature positions (see
+	# `_step_creature_far_delta`): set it aside for the probe and put it back.
+	var folds: Array = h._root._creature._fold_log
+	h._root._creature._fold_log = []
+	h._report_actual = true
+	var swung := { "n": 0 }
+	var got: bool = await h._await_until(func() -> bool:
+		if bool(seen["hit"]):
+			return true
+		h._report_position()
+		if Time.get_ticks_msec() - int(swung.get("at", 0)) >= 400 and h._root._player._alive:
+			swung["at"] = Time.get_ticks_msec()
+			swung["n"] = int(swung["n"]) + 1
+			h._root._player._try_attack()
+		return false, h._step_timeout() * 3.0)
+	GameBus.combat_hit_synced.disconnect(on_synced)
+	h._root._creature._fold_log = folds
+	h._report_actual = false
+	h._report_position()
+	h._report("client_attack_lands", h.verdict(got, true), "host_resolved" if got else "no_synced_swing-after-%d" % int(swung["n"]))
