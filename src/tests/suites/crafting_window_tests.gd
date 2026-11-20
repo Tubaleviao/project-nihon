@@ -551,8 +551,12 @@ func _test_station_card_layout() -> void:
 	var ui: UiSlice = rig["ui"]
 	assert_eq((rig["tech"] as TechnologySlice).learn("technology", "TechBasicSmithing"), "", "basic smithing is learnt")
 	var forge := (rig["station"] as StationSlice).place_station("forge", Vector3.ZERO)
+	ui.viewport_size_override = Vector2(1152, 648)
 	assert_true(ui.open_station_window(forge), "the forge's window opens")
 	var win = ui.station_window
+	var panel: Control = ui._panels[UiSlice.WINDOW_STATION]
+	assert_true(Rect2(Vector2.ZERO, ui.viewport_size_override).encloses(Rect2(panel.position, panel.size)),
+		"the taller window opens wholly on screen at 1152x648 (%s)" % str(Rect2(panel.position, panel.size)))
 	_size_panel(ui, UiSlice.WINDOW_STATION)
 	var cards := _live_children(win.grid)
 	assert_true(cards.size() > 0, "the forge window has cards")
