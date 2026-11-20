@@ -423,7 +423,11 @@
     "models/items/Branch_v1.glb.raw": "models/items/Branch_v1.glb.raw",
     "models/items/Branch_v2.glb.raw": "models/items/Branch_v2.glb.raw",
     "models/items/LooseStone_v1.glb.raw": "models/items/LooseStone_v1.glb.raw",
-    "models/items/LooseStone_v2.glb.raw": "models/items/LooseStone_v2.glb.raw"
+    "models/items/LooseStone_v2.glb.raw": "models/items/LooseStone_v2.glb.raw",
+    "models/trees/Duskwood.glb.raw": "models/trees/Duskwood.glb.raw",
+    "models/trees/Duskwood_v1.glb.raw": "models/trees/Duskwood_v1.glb.raw",
+    "models/trees/Thornwood.glb.raw": "models/trees/Thornwood.glb.raw",
+    "models/trees/Thornwood_v1.glb.raw": "models/trees/Thornwood_v1.glb.raw"
   },
   "animations": {
     "models/placeholder_rig.glb.raw": "models/placeholder_rig.glb.raw",

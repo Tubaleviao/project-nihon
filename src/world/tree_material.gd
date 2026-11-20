@@ -1,0 +1,48 @@
+extends RefCounted
+## The tree material (Phase 283): vertex (and per-instance) colour as albedo, plus a gentle wind sway of
+## the crown in the vertex shader. The sway is weighted by height, so the trunk's foot never moves, and is
+## off on the low graphics path (`nihon/graphics/tree_sway` = 0), where the plain colour material is used.
+
+const SWAY_SETTING := "nihon/graphics/tree_sway"
+## Metres of crown sway at the top of a tree; the weight rises from `SWAY_FROM` to `SWAY_TO` (a tree's height).
+const SWAY_AMPLITUDE := 0.06
+const SWAY_FROM := 1.8
+const SWAY_TO := 3.4
+
+const SHADER_CODE := """
+shader_type spatial;
+uniform float amplitude = 0.06;
+uniform float sway_from = 1.8;
+uniform float sway_to = 3.4;
+void vertex() {
+	float w = smoothstep(sway_from, sway_to, VERTEX.y);
+	float phase = MODEL_MATRIX[3].x * 0.7 + MODEL_MATRIX[3].z * 0.9;
+	VERTEX.x += sin(TIME * 1.3 + phase) * amplitude * w;
+	VERTEX.z += cos(TIME * 1.1 + phase * 1.3) * amplitude * 0.7 * w;
+}
+void fragment() {
+	ALBEDO = COLOR.rgb;
+}
+"""
+
+static var _shader: Shader = null
+
+static func sway_enabled() -> bool:
+	return bool(ProjectSettings.get_setting(SWAY_SETTING, true))
+
+## The material for the tree pools: the swaying shader, or a plain vertex-colour material when sway is off.
+static func make(sway: bool = true) -> Material:
+	if not sway:
+		var plain := StandardMaterial3D.new()
+		plain.vertex_color_use_as_albedo = true
+		plain.albedo_color = Color.WHITE
+		return plain
+	if _shader == null:
+		_shader = Shader.new()
+		_shader.code = SHADER_CODE
+	var mat := ShaderMaterial.new()
+	mat.shader = _shader
+	mat.set_shader_parameter("amplitude", SWAY_AMPLITUDE)
+	mat.set_shader_parameter("sway_from", SWAY_FROM)
+	mat.set_shader_parameter("sway_to", SWAY_TO)
+	return mat

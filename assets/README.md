@@ -48,6 +48,11 @@ FerriteHelmet, VeilsteelLongsword, VeilsteelPick, VoiditeEdge, AethermiteBow, Sk
 only through a code fallback (a procedural box). The asset roadmap in
 `project-nihon-assets/ROADMAP.md` adds each placeholder before the art for that key.
 
+Trees (Phase 283): `tools/gen_tree_models.py` writes `models/trees/<Species>.glb.raw` and `<Species>_v1.glb.raw` for every
+tree species of the fabric (a tapered trunk and a crown of overlapping closed lumps, one vertex colour per part, origin at
+the foot); `python3 tools/gen_tree_models.py --check` fails when a file is stale or orphaned. The procedural box tree stays
+as the fallback when a key does not load.
+
 Character creation (Phase 180): `tools/gen_placeholder_glb.py` writes the two chibi gender bodies
 `models/characters/bodies/chibi_body_{m,f}.glb.raw` (skinned to HumanoidSkeleton with every player clip),
 the heads `models/characters/heads/chibi_head_{m,f}.glb.raw` and one static mesh per hair style at

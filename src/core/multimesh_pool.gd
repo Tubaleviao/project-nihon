@@ -31,7 +31,7 @@ var _hidden: Dictionary = {}
 
 ## Build the MultiMesh from a shared mesh. `use_color` enables per-instance
 ## colour (INSTANCE COLOR → vertex color, albedo via `vertex_color_use_as_albedo`).
-func setup(mesh: Mesh, use_color: bool = true) -> void:
+func setup(mesh: Mesh, use_color: bool = true, material: Material = null) -> void:
 	_use_color = use_color
 	_multimesh_instance = MultiMeshInstance3D.new()
 	_multimesh_instance.name = "MultimeshPool"
@@ -42,7 +42,9 @@ func setup(mesh: Mesh, use_color: bool = true) -> void:
 	_multimesh.instance_count = 0
 	_multimesh_instance.multimesh = _multimesh
 
-	if use_color:
+	if material != null:
+		_multimesh_instance.material_override = material
+	elif use_color:
 		# One shared material: the instance colour drives the albedo.
 		var mat := StandardMaterial3D.new()
 		mat.vertex_color_use_as_albedo = true

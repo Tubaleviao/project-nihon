@@ -66,21 +66,20 @@ static func _box_corners(center: Vector3, size: Vector3) -> Array:
 		center + Vector3(-h.x,  h.y,  h.z),   # 7
 	]
 
-## The six faces of that box as `[a, b, c, d, normal]`, each quad counter-clockwise seen
-## from OUTSIDE, so the face normal follows from (b - a) × (c - a). Verified per face
-## against the right-hand rule.
+## The six faces of that box as `[a, b, c, d, normal]`, each quad CLOCKWISE seen
+## from OUTSIDE (Godot 4's front-face winding), so (c - a) × (b - a) is the outward normal.
 static func _box_faces(p: Array) -> Array:
 	return [
-		[p[4], p[7], p[6], p[5], Vector3.UP],          # +Y
-		[p[0], p[1], p[2], p[3], Vector3.DOWN],        # -Y
-		[p[3], p[2], p[6], p[7], Vector3(0, 0, 1)],    # +Z
-		[p[0], p[4], p[5], p[1], Vector3(0, 0, -1)],   # -Z
-		[p[1], p[5], p[6], p[2], Vector3(1, 0, 0)],    # +X
-		[p[0], p[3], p[7], p[4], Vector3(-1, 0, 0)],   # -X
+		[p[4], p[5], p[6], p[7], Vector3.UP],          # +Y
+		[p[0], p[3], p[2], p[1], Vector3.DOWN],        # -Y
+		[p[3], p[7], p[6], p[2], Vector3(0, 0, 1)],    # +Z
+		[p[0], p[1], p[5], p[4], Vector3(0, 0, -1)],   # -Z
+		[p[1], p[2], p[6], p[5], Vector3(1, 0, 0)],    # +X
+		[p[0], p[4], p[7], p[3], Vector3(-1, 0, 0)],   # -X
 	]
 
 ## Append one quad (two triangles) with an explicit normal and colour. a, b, c, d
-## are counter-clockwise seen from the normal's side.
+## are clockwise seen from the normal's side (Godot's front face).
 static func _add_face(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3, normal: Vector3, color: Color) -> void:
 	st.set_normal(normal)
 	st.set_color(color)
