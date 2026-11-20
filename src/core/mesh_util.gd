@@ -16,9 +16,9 @@ const BOX_VERTEX_COUNT := 36
 ## detail) to an in-progress SurfaceTool. `center` is the box's centre in the
 ## caller's coordinate space.
 ##
-## Winding: each face's vertices are counter-clockwise seen from OUTSIDE, so the
-## face normal follows from (b - a) × (c - a) and a backface-culling material
-## renders every face. Verified per face against the right-hand rule.
+## Winding: each face's vertices are clockwise seen from OUTSIDE (Godot's front
+## face), so the face normal follows from (c - a) × (b - a) and a backface-culling
+## material renders every face. Verified per face against the right-hand rule.
 static func add_box(st: SurfaceTool, center: Vector3, size: Vector3, color: Color) -> void:
 	var p := _box_corners(center, size)
 	for f in _box_faces(p):

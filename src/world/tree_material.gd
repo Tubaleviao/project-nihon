@@ -1,7 +1,9 @@
 extends RefCounted
 ## The tree material (Phase 283): vertex (and per-instance) colour as albedo, plus a gentle wind sway of
 ## the crown in the vertex shader. The sway is weighted by height, so the trunk's foot never moves, and is
-## off on the low graphics path (`nihon/graphics/tree_sway` = 0), where the plain colour material is used.
+## off when the project setting `nihon/graphics/tree_sway` is 0 (not exposed in the options UI yet), where
+## the plain colour material is used. The sway phase comes from the instance position, so a floating-origin
+## rebase shifts every tree's phase at once (a sub-0.1 m effect). Placeholder models stand about 3.8 m tall.
 
 const Diag := preload("res://src/core/diag.gd")
 const SWAY_SETTING := "nihon/graphics/tree_sway"
@@ -69,7 +71,7 @@ static func model_key_for(species: String, tree_id: String) -> String:
 	return keys[posmod(hash([tree_id, "tree_variant"]), keys.size())]
 
 
-## The mesh for a model key, or null (cached, warned once) when it does not load.
+## The mesh for a model key (cached), or null when it does not load (not cached, so a later mount can succeed).
 static func model_mesh(key: String) -> Mesh:
 	if _model_meshes.has(key):
 		return _model_meshes[key]
@@ -78,5 +80,6 @@ static func model_mesh(key: String) -> Mesh:
 		mesh = AssetOverlay.load_mesh(key)
 	if mesh == null:
 		Diag.warn("[Tree] no usable model %s; using the procedural tree" % key)
+		return null   # not cached: the overlay may mount later
 	_model_meshes[key] = mesh
 	return mesh
