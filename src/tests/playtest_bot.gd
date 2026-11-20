@@ -1549,12 +1549,10 @@ func _step_craft() -> Array:
 	var planks: int = _root._inventory.get_item_count("ThornwoodPlank")
 	GameBus.craft_requested.emit("RecipeThornwoodPlank")
 	var ok: bool = await _until(func(): return _crafted.size() > before, STEP_TIMEOUT_SECS)
-	if not ok:
-		return [false, "no craft_resolved"]
+	if not ok: return [false, "no craft_resolved"]
 	var got: int = _root._inventory.get_item_count("ThornwoodPlank") - planks
 	var detail := "crafted %d planks (%s)" % [got, str(_crafted.back()["reason"])]
-	# Phase 153: a held weapon is drawn from its model. No recipe yields a hand-held item, so the bot
-	# puts a weapon in hand (screenshotted with this step) and checks the hand socket's node.
+	# Phase 153: a held weapon is drawn from its model; no recipe yields one, so the bot puts one in hand (screenshotted) and checks the socket.
 	var character: Node = _root._character
 	var iid: String = character.get_player_character()
 	var hand_ok: bool = iid != "" and character.apply_equipment(iid, "MainHand", "VeilsteelLongsword")
