@@ -16,10 +16,10 @@ extends Node
 ##
 ## Plug contract (GameBus signals consumed / emitted):
 ##   IN  : tree_chop_requested(tree_id, player_id)         — player intent
-##         tree_chopped(tree_id, wood, state, respawn_at)  — host → client state
+##         tree_chopped(tree_id, wood, state, respawn_at, fall_yaw)  — host → client state
 ##         tree_respawned(tree_id)                         — host → client state
 ##   OUT : tree_chop_requested(tree_id, player_id)         — client → host
-##         tree_chopped(tree_id, wood, state, respawn_at)  — host authoritative
+##         tree_chopped(tree_id, wood, state, respawn_at, fall_yaw)  — host authoritative
 ##         tree_respawned(tree_id)                         — host authoritative
 ##         inventory_synced(owner_id, contents, durabilities) — a REMOTE actor's
 ##           pack after a chop resolved for it (see `_push_inventory`)
@@ -30,13 +30,14 @@ extends Node
 ##   get_tree_record(tree_id) -> Dictionary
 ##   get_all_trees() / trees_in_chunk(chunk_pos) -> Array
 ##   chop_tree(tree_id, player_id) -> Dictionary  { success, wood, quantity, reason }
-##   apply_chop_state(tree_id, respawn_at) -> void   (client-side host state)
+##   apply_chop_state(tree_id, respawn_at, fall_yaw) -> void   (client-side host state)
 const Diag := preload("res://src/core/diag.gd")
 const WorkSkills := preload("res://src/character/work_skills.gd")
 const StoneTools := preload("res://src/world/stone_tools.gd")
 
 const MultimeshPool := preload("res://src/core/multimesh_pool.gd")
 const MeshUtil      := preload("res://src/core/mesh_util.gd")
+const TreeFall := preload("res://src/world/tree_fall.gd")
 const TreeMaterial  := preload("res://src/world/tree_material.gd")
 
 ## Trees own a collision layer (layer 4 / bit 3) so the player's chop aim ray can
@@ -148,6 +149,18 @@ var _model_pools: Dictionary = {}
 ## built: the same records drive a bare authoritative simulation.
 var render_visuals: bool = true
 
+## Phase 282 — a felled tree topples about its base away from the feller, then sinks and goes; a regrown
+## tree grows from a sapling (`TreeFall`). Client-side presentation only: the host's state is "felled at time t".
+const FALL_SECONDS := TreeFall.FALL_SECONDS
+const GROW_SECONDS := TreeFall.GROW_SECONDS
+## A `fall_yaw` outside +-2*TAU means "no fall" (a stump restored after a chunk reload).
+const NO_FALL := 100.0
+## Where an actor stands (`(player_id) -> Variant`, a Vector3 in scene coordinates or null), wired by
+## `ChestWiring`. The host reads the feller's position at the felling from it.
+var feller_pos: Callable = Callable()
+## The trees mid-fall and the saplings.
+var _fall := TreeFall.new(self)
+
 ## Phase 110 — read-only edit queries (`has_edit_near`) for a tree standing on already-edited ground.
 var voxel_slice: Node = null
 ## Phase 110 — `(chunk: Vector2i, record: Dictionary) -> void`, set by game_root to
@@ -218,7 +231,8 @@ func _ready() -> void:
 	if render_visuals:
 		_build_pool()
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	step_visuals(delta)
 	if not is_authoritative:
 		return   # a client never regrows trees locally — the host owns the clock
 	_tick_respawn()
@@ -413,10 +427,14 @@ func place_after_fold() -> void:
 		var pos: Vector3 = tree["position"]
 		var pool := _tree_pool(tree)
 		if pool != null and int(tree["mi"]) >= 0:
-			pool.set_transform(int(tree["mi"]), _stump_transform(pos) if tree["state"] == "stump" else _visual_transform(pos))
+			if tree["state"] == "stump":
+				pool.hide(int(tree["mi"]))
+			else:
+				pool.set_transform(int(tree["mi"]), _fall.growth_transform(tid, pos))
 		var body: Variant = tree.get("body", null)
 		if body != null and is_instance_valid(body):
 			(body as Node3D).position = pos + _origin.value
+	_fall.replace_nodes()
 
 ## Drop carried trees whose chunk the folded window does not cover (`covered(chunk)`).
 ## Total released by `prune_carried` (the playtest bot tells these from a despawn).
@@ -461,6 +479,8 @@ func _remove_tree(tree_id: String, remember: bool) -> void:
 	if pool != null and int(tree["mi"]) >= 0:
 		pool.release(int(tree["mi"]))
 	_free_collision(tree)
+	_fall.end_fall(tree_id)
+	_fall.forget_growth(tree_id)
 	_stumps.erase(tree_id)
 	_trees.erase(tree_id)
 
@@ -595,7 +615,7 @@ func chop_tree(tree_id: String, player_id: String = "") -> Dictionary:
 			inventory.add_item(StoneTools.BRANCH, branches)
 	WorkSkills.grant(player_registry, player_id, WorkSkills.gather_row(wood), CHOP_YIELD)   # Phase 207 — per unit, as mining
 	_push_inventory(player_id)
-	_set_chopped(tree_id)
+	_set_chopped(tree_id, _fall.yaw_for(tree_id, tpos, player_id))
 	return { "success": true, "wood": wood, "quantity": CHOP_YIELD, "reason": "" }
 
 ## The inventory a chop by `player_id` resolves against: that player's own pack from
@@ -635,14 +655,14 @@ func _push_inventory(player_id: String) -> void:
 ## Apply a host-authoritative chopped state to a local tree (client path). The
 ## regrowth deadline arrives as a wall-clock Unix second so it stays meaningful
 ## across a restart, matching the Phase 24 market/proposal convention.
-func apply_chop_state(tree_id: String, respawn_at: float) -> void:
+func apply_chop_state(tree_id: String, respawn_at: float, fall_yaw: float = NO_FALL) -> void:
 	if not _trees.has(tree_id):
 		return
 	var tree: Dictionary = _trees[tree_id]
 	if tree["state"] != "standing":
 		return
 	tree["respawn_at"] = respawn_at
-	_set_chopped(tree_id)
+	_set_chopped(tree_id, fall_yaw)
 
 # ---------------------------------------------------------------------------
 # Phase 110 — building clears trees for good
@@ -1162,7 +1182,7 @@ func regrow_seconds(chunk_pos: Vector2i) -> float:
 	var w: float = world_clock.warmth_at(TerrainSlice.latitude_of(chunk_pos.y))
 	return RESPAWN_SECONDS / WorldClock.growth_multiplier(biome, w)
 
-func _set_chopped(tree_id: String) -> void:
+func _set_chopped(tree_id: String, fall_yaw: float = NO_FALL) -> void:
 	var tree: Dictionary = _trees.get(tree_id, {})
 	if tree.is_empty() or tree["state"] != "standing":
 		return
@@ -1171,12 +1191,13 @@ func _set_chopped(tree_id: String) -> void:
 		tree["respawn_at"] = _now() + regrow_seconds(tree["chunk"])
 	_free_collision(tree)
 	_stumps[tree_id] = true
+	_fall.forget_growth(tree_id)
 	var pool := _tree_pool(tree)
 	if pool != null and int(tree["mi"]) >= 0:
-		# Squat, dark stump shape (the shared mesh is truncated, not swapped).
-		pool.set_color(int(tree["mi"]), _stump_color())
-		pool.set_transform(int(tree["mi"]), _stump_transform(tree["position"]))
-	GameBus.tree_chopped.emit(tree_id, str(tree["wood"]), "stump", float(tree["respawn_at"]))
+		pool.hide(int(tree["mi"]))   # no stump: the slot is hidden until the tree regrows
+	if absf(fall_yaw) <= TAU * 2.0:
+		_fall.begin_fall(tree_id, fall_yaw)
+	GameBus.tree_chopped.emit(tree_id, str(tree["wood"]), "stump", float(tree["respawn_at"]), fall_yaw)
 
 func _tick_respawn() -> void:
 	if _stumps.is_empty():
@@ -1196,10 +1217,7 @@ func _regrow(tree_id: String) -> void:
 	_stumps.erase(tree_id)
 	if render_visuals:
 		tree["body"] = _build_collision(tree_id, tree["position"], str(tree["species"]))
-	var pool := _tree_pool(tree)
-	if pool != null and int(tree["mi"]) >= 0:
-		pool.set_color(int(tree["mi"]), _tree_color(tree))
-		pool.set_transform(int(tree["mi"]), _visual_transform(tree["position"]))
+	_fall.begin_growth(tree_id)
 	GameBus.tree_respawned.emit(tree_id)
 
 ## The held axe's item id, or "" when `inventory` holds none. Delegates to the
@@ -1223,10 +1241,10 @@ func _on_chop_requested(tree_id: String, player_id: String) -> void:
 	if is_authoritative:
 		chop_tree(tree_id, player_id)
 
-func _on_tree_chopped(tree_id: String, _wood: String, _state: String, respawn_at: float) -> void:
+func _on_tree_chopped(tree_id: String, _wood: String, _state: String, respawn_at: float, fall_yaw: float) -> void:
 	if is_authoritative:
 		return   # the host already applied its own chop
-	apply_chop_state(tree_id, respawn_at)
+	apply_chop_state(tree_id, respawn_at, fall_yaw)
 
 func _on_tree_respawned(tree_id: String) -> void:
 	if is_authoritative:
@@ -1240,10 +1258,7 @@ func _on_tree_respawned(tree_id: String) -> void:
 	tree["respawn_at"] = -1.0
 	if render_visuals:
 		tree["body"] = _build_collision(tree_id, tree["position"], str(tree["species"]))
-	var pool := _tree_pool(tree)
-	if pool != null and int(tree["mi"]) >= 0:
-		pool.set_color(int(tree["mi"]), _tree_color(tree))
-		pool.set_transform(int(tree["mi"]), _visual_transform(tree["position"]))
+	_fall.begin_growth(tree_id)
 
 # ---------------------------------------------------------------------------
 # Spawning / visuals
@@ -1301,7 +1316,7 @@ func _restore_remembered_stump(tree_id: String) -> void:
 		return
 	var tree: Dictionary = _trees[tree_id]
 	tree["respawn_at"] = respawn_at
-	_set_chopped(tree_id)
+	_set_chopped(tree_id, NO_FALL)
 
 ## Deterministic world XZ inside the chunk footprint (inset one tile from the
 ## edge), derived from the chunk coordinate, species, and index — the same tree
@@ -1419,19 +1434,15 @@ func _alloc_visual(species: String, pos: Vector3, tree_id: String) -> Dictionary
 func _visual_transform(pos: Vector3) -> Transform3D:
 	return Transform3D(Basis(), pos)
 
-## A chop leaves a squat stump: the same mesh scaled down and tinted dark, so the
-## pooled MultiMesh needs no second mesh (and no per-tree node).
-func _stump_transform(pos: Vector3) -> Transform3D:
-	return Transform3D(Basis().scaled(Vector3(0.7, 0.18, 0.7)), pos)
+## Advance the fall and growth presentation by `delta` seconds (see `TreeFall`).
+func step_visuals(delta: float) -> void:
+	_fall.step(delta)
 
 func _species_color(species: String) -> Color:
 	match species:
 		"Thornwood": return Color(0.45, 0.32, 0.20)
 		"Duskwood":  return Color(0.42, 0.30, 0.52)
 		_:           return Color(0.50, 0.36, 0.24)
-
-func _stump_color() -> Color:
-	return Color(0.28, 0.20, 0.13)
 
 ## One StaticBody3D per standing tree, on TREE_COLLISION_LAYER, carrying the tree
 ## id and species as metadata so the player's chop ray can resolve its target and

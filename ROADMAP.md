@@ -31,14 +31,13 @@ introductions of the arcs they belonged to, are archived in
 Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
 see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
 phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
-comes next. A phase that needs an earlier one still waits for it. Done phases (238–244, 248–250, 252–256, 259–276, 289, 290, 283)
+comes next. A phase that needs an earlier one still waits for it. Done phases (238–244, 248–250, 252–256, 259–276, 289, 290, 283, 282)
 have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
 [Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
 others are not in it.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 11 | 282 | A felled tree falls, then goes |
 | 12 | 281 | Work you can see: chopping, mining, digging, building and dissecting animations |
 | 13 | 280 | The hotbar item in the hand |
 | 14 | 284 | Hair that sits on the head |
@@ -348,7 +347,7 @@ A40–A46). The placeholder rule holds: each phase lands with public placeholder
 | 279 | Pick up with E | Done |
 | 280 | The hotbar item in the hand | Open |
 | 281 | Work you can see: chopping, mining, digging, building and dissecting animations | Open |
-| 282 | A felled tree falls, then goes | Open |
+| 282 | A felled tree falls, then goes | Done |
 | 283 | Trees that look like trees: closed faces, a trunk and a real crown | Done |
 | 284 | Hair that sits on the head | Open |
 | 285 | Grass without black spots | Open |

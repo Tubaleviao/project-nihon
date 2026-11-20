@@ -197,6 +197,12 @@ func _on_void_burst_resolved(result: Dictionary) -> void:
 ## and the edit is refused rather than measured from an assumed origin:
 ## `has_last_known_state()` is what distinguishes "never reported" from "at the
 ## origin" (get_last_known_state answers Vector3.ZERO for both).
+## Phase 282 — a felled tree's fall yaw off the wire: a finite number, else 100.0 (`TreeSlice.NO_FALL`, no fall).
+func _tree_fall_yaw(raw: Variant) -> float:
+	if (raw is float or raw is int) and is_finite(float(raw)):
+		return float(raw)
+	return 100.0
+
 func _within_reach(sender: int, position: Vector3, reach: float) -> bool:
 	if not sl.has_last_known_state(sender):
 		return false
@@ -257,7 +263,8 @@ func _route_h2c(payload: Dictionary) -> void:
 				str(payload.get("tree_id", "")),
 				str(payload.get("wood", "")),
 				str(payload.get("state", "")),
-				float(payload.get("respawn_at", 0.0))
+				float(payload.get("respawn_at", 0.0)),
+				_tree_fall_yaw(payload.get("fall_yaw", 100.0))
 			)
 		"loose_picked":
 			var regrow: Variant = payload.get("regrow_at", 0.0)
