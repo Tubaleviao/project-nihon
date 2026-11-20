@@ -926,9 +926,10 @@ func _test_p116_cleared_local() -> void:
 	t.spawn_for_chunk(Vector2i(0, 0))
 	var tid: String = str(t.get_all_trees()[0]["tree_id"])
 	var mi: int = int(t.get_tree_record(tid)["mi"])
+	var pool: Node = t._tree_pool(t.get_tree_record(tid))
 	GameBus.tree_cleared.emit(tid)
-	if t._pool != null:
-		assert_true(t._pool._free.has(mi), "the MultiMesh slot of a cleared tree is released")
+	if pool != null:
+		assert_true(pool._free.has(mi), "the MultiMesh slot of a cleared tree is released")
 	GameBus.tree_cleared.emit("tree_1_0_64")
 	GameBus.tree_cleared.emit("tree_1_0_-1")
 	assert_false(t._cleared_local.has(Vector2i(1, 0)), "out-of-range indices are refused")

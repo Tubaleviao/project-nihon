@@ -1,0 +1,85 @@
+extends RefCounted
+## The tree material (Phase 283): vertex (and per-instance) colour as albedo, plus a gentle wind sway of
+## the crown in the vertex shader. The sway is weighted by height, so the trunk's foot never moves, and is
+## off when the project setting `nihon/graphics/tree_sway` is 0 (not exposed in the options UI yet), where
+## the plain colour material is used. The sway phase comes from the instance position, so a floating-origin
+## rebase shifts every tree's phase at once (a sub-0.1 m effect). Placeholder models stand about 3.8 m tall.
+
+const Diag := preload("res://src/core/diag.gd")
+const SWAY_SETTING := "nihon/graphics/tree_sway"
+## Metres of crown sway at the top of a tree; the weight rises from `SWAY_FROM` to `SWAY_TO` (a tree's height).
+const SWAY_AMPLITUDE := 0.06
+const SWAY_FROM := 1.8
+const SWAY_TO := 3.4
+
+const SHADER_CODE := """
+shader_type spatial;
+uniform float amplitude = 0.06;
+uniform float sway_from = 1.8;
+uniform float sway_to = 3.4;
+void vertex() {
+	float w = smoothstep(sway_from, sway_to, VERTEX.y);
+	float phase = MODEL_MATRIX[3].x * 0.7 + MODEL_MATRIX[3].z * 0.9;
+	VERTEX.x += sin(TIME * 1.3 + phase) * amplitude * w;
+	VERTEX.z += cos(TIME * 1.1 + phase * 1.3) * amplitude * 0.7 * w;
+}
+void fragment() {
+	ALBEDO = COLOR.rgb;
+}
+"""
+
+static var _shader: Shader = null
+const MAX_VARIANTS := 1
+static var _model_meshes: Dictionary = {}
+
+static func sway_enabled() -> bool:
+	return bool(ProjectSettings.get_setting(SWAY_SETTING, true))
+
+## The material for the tree pools: the swaying shader, or a plain vertex-colour material when sway is off.
+static func make(sway: bool = true) -> Material:
+	if not sway:
+		var plain := StandardMaterial3D.new()
+		plain.vertex_color_use_as_albedo = true
+		plain.albedo_color = Color.WHITE
+		return plain
+	if _shader == null:
+		_shader = Shader.new()
+		_shader.code = SHADER_CODE
+	var mat := ShaderMaterial.new()
+	mat.shader = _shader
+	mat.set_shader_parameter("amplitude", SWAY_AMPLITUDE)
+	mat.set_shader_parameter("sway_from", SWAY_FROM)
+	mat.set_shader_parameter("sway_to", SWAY_TO)
+	return mat
+
+## Model keys a species can draw: `models/trees/<Species>.glb.raw`, then `<Species>_v1` when the
+## manifest lists it (an absent variant is never picked).
+static func model_keys(species: String) -> Array:
+	var out: Array = ["models/trees/%s.glb.raw" % species]
+	for n in range(1, MAX_VARIANTS + 1):
+		var key := "models/trees/%s_v%d.glb.raw" % [species, n]
+		if AssetOverlay.has_key("meshes", key):
+			out.append(key)
+	return out
+
+## The model key a tree draws, stable for its id (host and client agree), or "" when the species has
+## no model at all.
+static func model_key_for(species: String, tree_id: String) -> String:
+	var keys := model_keys(species)
+	if not AssetOverlay.has_key("meshes", keys[0]):
+		return ""
+	return keys[posmod(hash([tree_id, "tree_variant"]), keys.size())]
+
+
+## The mesh for a model key (cached), or null when it does not load (not cached, so a later mount can succeed).
+static func model_mesh(key: String) -> Mesh:
+	if _model_meshes.has(key):
+		return _model_meshes[key]
+	var mesh: Mesh = null
+	if AssetOverlay.has_key("meshes", key):
+		mesh = AssetOverlay.load_mesh(key)
+	if mesh == null:
+		Diag.warn("[Tree] no usable model %s; using the procedural tree" % key)
+		return null   # not cached: the overlay may mount later
+	_model_meshes[key] = mesh
+	return mesh

@@ -10,6 +10,7 @@ const Diag := preload("res://src/core/diag.gd")
 const LocaleSettings := preload("res://src/core/locale_settings.gd")
 const LodRingPolicy := preload("res://src/terrain/lod_ring_policy.gd")
 const TerrainMaterialScript := preload("res://src/terrain/terrain_material.gd")
+const TreeMaterialScript := preload("res://src/world/tree_material.gd")
 const TutorialState := preload("res://src/tutorial/tutorial_state.gd")
 
 ## Phase 275: the buses come from `res://default_bus_layout.tres` (Master → Music, Effects, Ambience, UI),
@@ -185,6 +186,8 @@ static func apply(key: String, viewport: Viewport = null) -> void:
 				vp.scaling_3d_scale = 1.0 if mode == "native" else float(get_value("render_scale"))
 		"terrain_quality":
 			ProjectSettings.set_setting(TerrainMaterialScript.QUALITY_SETTING, terrain_quality_setting(str(v)))
+			# Phase 283: tree sway is off on the low graphics path
+			ProjectSettings.set_setting(TreeMaterialScript.SWAY_SETTING, str(v) != "low")
 		_:
 			pass   # tutorial: saved in the tutorial state; sensitivity and invert are read where used
 

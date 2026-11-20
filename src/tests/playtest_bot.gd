@@ -1422,7 +1422,7 @@ func _step_gather() -> Array:
 	var target := _nearest_tree(standing)
 	# The pool grows past its first block once enough chunks have streamed in; a grow must not wipe the
 	# trees already drawn (a zero transform draws nothing). Only a real renderer keeps the transforms.
-	var pool = _root._tree._pool
+	var pool = _root._tree._tree_pool(_root._tree._trees[target])
 	if pool != null and DisplayServer.get_name() != "headless":
 		var xf: Transform3D = pool._multimesh.get_instance_transform(int(_root._tree._trees[target]["mi"]))
 		if is_zero_approx(xf.basis.determinant()):

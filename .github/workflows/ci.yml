@@ -470,6 +470,9 @@ jobs:
           python3 tools/gen_item_assets.py --out /tmp/items-b
           diff -r /tmp/items-a /tmp/items-b
 
+      - name: Check the placeholder tree models are current (Phase 283)
+        run: python3 tools/gen_tree_models.py --check
+
       - name: Check the holdable icons are current and the generator is deterministic
         run: |
           python3 tools/gen_holdable_icons.py --check

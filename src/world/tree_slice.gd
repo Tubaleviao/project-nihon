@@ -37,6 +37,7 @@ const StoneTools := preload("res://src/world/stone_tools.gd")
 
 const MultimeshPool := preload("res://src/core/multimesh_pool.gd")
 const MeshUtil      := preload("res://src/core/mesh_util.gd")
+const TreeMaterial  := preload("res://src/world/tree_material.gd")
 
 ## Trees own a collision layer (layer 4 / bit 3) so the player's chop aim ray can
 ## target a trunk without hitting terrain (layer 2) or loot pickups (layer 3).
@@ -138,8 +139,11 @@ var _stumps: Dictionary = {}
 ## cannot skip the regrowth cooldown. Entries expire the first time the chunk reloads.
 var _stump_memory: Dictionary = {}
 
-## Shared MultiMesh pool; null when render_visuals is false (headless server).
+## The fallback MultiMesh pool (the procedural mesh); null when render_visuals is false (headless server)
+## or until a tree needs it. Phase 283: trees whose species model loads draw from `_model_pools` instead.
 var _pool: Node = null
+## Model key -> MultiMesh pool of the trees drawn from that model (`models/trees/<Species>[_v1].glb.raw`).
+var _model_pools: Dictionary = {}
 ## When false (headless server / `--server`), no pool and no collision bodies are
 ## built: the same records drive a bare authoritative simulation.
 var render_visuals: bool = true
@@ -407,8 +411,9 @@ func place_after_fold() -> void:
 	for tid in _trees:
 		var tree: Dictionary = _trees[tid]
 		var pos: Vector3 = tree["position"]
-		if _pool != null and int(tree["mi"]) >= 0:
-			_pool.set_transform(int(tree["mi"]), _stump_transform(pos) if tree["state"] == "stump" else _visual_transform(pos))
+		var pool := _tree_pool(tree)
+		if pool != null and int(tree["mi"]) >= 0:
+			pool.set_transform(int(tree["mi"]), _stump_transform(pos) if tree["state"] == "stump" else _visual_transform(pos))
 		var body: Variant = tree.get("body", null)
 		if body != null and is_instance_valid(body):
 			(body as Node3D).position = pos + _origin.value
@@ -452,8 +457,9 @@ func _remove_tree(tree_id: String, remember: bool) -> void:
 		return
 	if remember and tree["state"] == "stump" and float(tree["respawn_at"]) > 0.0:
 		_stump_memory[tree_id] = float(tree["respawn_at"])
-	if _pool != null and int(tree["mi"]) >= 0:
-		_pool.release(int(tree["mi"]))
+	var pool := _tree_pool(tree)
+	if pool != null and int(tree["mi"]) >= 0:
+		pool.release(int(tree["mi"]))
 	_free_collision(tree)
 	_stumps.erase(tree_id)
 	_trees.erase(tree_id)
@@ -1165,10 +1171,11 @@ func _set_chopped(tree_id: String) -> void:
 		tree["respawn_at"] = _now() + regrow_seconds(tree["chunk"])
 	_free_collision(tree)
 	_stumps[tree_id] = true
-	if _pool != null and int(tree["mi"]) >= 0:
+	var pool := _tree_pool(tree)
+	if pool != null and int(tree["mi"]) >= 0:
 		# Squat, dark stump shape (the shared mesh is truncated, not swapped).
-		_pool.set_color(int(tree["mi"]), _stump_color())
-		_pool.set_transform(int(tree["mi"]), _stump_transform(tree["position"]))
+		pool.set_color(int(tree["mi"]), _stump_color())
+		pool.set_transform(int(tree["mi"]), _stump_transform(tree["position"]))
 	GameBus.tree_chopped.emit(tree_id, str(tree["wood"]), "stump", float(tree["respawn_at"]))
 
 func _tick_respawn() -> void:
@@ -1189,9 +1196,10 @@ func _regrow(tree_id: String) -> void:
 	_stumps.erase(tree_id)
 	if render_visuals:
 		tree["body"] = _build_collision(tree_id, tree["position"], str(tree["species"]))
-	if _pool != null and int(tree["mi"]) >= 0:
-		_pool.set_color(int(tree["mi"]), _species_color(str(tree["species"])))
-		_pool.set_transform(int(tree["mi"]), _visual_transform(tree["position"]))
+	var pool := _tree_pool(tree)
+	if pool != null and int(tree["mi"]) >= 0:
+		pool.set_color(int(tree["mi"]), _tree_color(tree))
+		pool.set_transform(int(tree["mi"]), _visual_transform(tree["position"]))
 	GameBus.tree_respawned.emit(tree_id)
 
 ## The held axe's item id, or "" when `inventory` holds none. Delegates to the
@@ -1232,9 +1240,10 @@ func _on_tree_respawned(tree_id: String) -> void:
 	tree["respawn_at"] = -1.0
 	if render_visuals:
 		tree["body"] = _build_collision(tree_id, tree["position"], str(tree["species"]))
-	if _pool != null and int(tree["mi"]) >= 0:
-		_pool.set_color(int(tree["mi"]), _species_color(str(tree["species"])))
-		_pool.set_transform(int(tree["mi"]), _visual_transform(tree["position"]))
+	var pool := _tree_pool(tree)
+	if pool != null and int(tree["mi"]) >= 0:
+		pool.set_color(int(tree["mi"]), _tree_color(tree))
+		pool.set_transform(int(tree["mi"]), _visual_transform(tree["position"]))
 
 # ---------------------------------------------------------------------------
 # Spawning / visuals
@@ -1252,7 +1261,8 @@ func _spawn(species: String, wood: String, chunk_pos: Vector2i, spawn_index: int
 	# between peers (whose chunk streaming order differs) and survive a chunk reload
 	# (which respawns a chunk's trees from scratch).
 	var tree_id := _tree_id(chunk_pos, spawn_index)
-	var mi := _alloc_visual(species, pos)
+	var vis := _alloc_visual(species, pos, tree_id)
+	var mi: int = vis["mi"]
 	var body: StaticBody3D = null
 	if render_visuals:
 		body = _build_collision(tree_id, pos, species)
@@ -1268,6 +1278,7 @@ func _spawn(species: String, wood: String, chunk_pos: Vector2i, spawn_index: int
 		"state":      "standing",
 		"respawn_at": -1.0,
 		"mi":         mi,
+		"pool_key":   vis["pool_key"],
 		"body":       body,
 	}
 	if not _by_chunk.has(chunk_pos):
@@ -1325,6 +1336,9 @@ func shift_scene(shift: Vector3) -> void:
 	_origin.value += shift
 	if _pool != null:
 		_pool.shift_scene(shift)
+	for k in _model_pools:
+		if _model_pools[k] != null:
+			_model_pools[k].shift_scene(shift)
 	var live: Array = []
 	for n in _world_nodes:
 		if is_instance_valid(n):
@@ -1340,11 +1354,20 @@ func scene_offset() -> Vector3:
 	return _origin.value
 
 func _build_pool() -> void:
-	_pool = MultimeshPool.new()
-	_pool.name = "TreePool"
-	_pool.setup(_tree_mesh(), true)
-	add_child(_pool)
+	_pool = _make_pool("TreePool", _tree_mesh())
 
+func _make_pool(pool_name: String, mesh: Mesh) -> Node:
+	var pool := MultimeshPool.new()
+	pool.name = pool_name
+	pool.setup(mesh, true, TreeMaterial.make(TreeMaterial.sway_enabled()))
+	add_child(pool)
+	# A pool made after a rebase starts at the accumulated shift, like the pools that were shifted.
+	if _origin.value != Vector3.ZERO:
+		pool.shift_scene(_origin.value)
+	return pool
+
+## The procedural fallback mesh: a tapered trunk and a crown, both closed boxes wound for Godot's front
+## face (`MeshUtil`), used when a species' model key does not load.
 func _tree_mesh() -> Mesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -1358,15 +1381,38 @@ func _tree_mesh() -> Mesh:
 		Color(0.45, 0.95, 0.42))
 	return st.commit()
 
-## Allocate a visual instance for a tree. Returns the MultiMesh instance index,
-## or -1 when headless (no pool).
-func _alloc_visual(species: String, pos: Vector3) -> int:
+## The pool a tree's instance lives in: its model's pool, or the fallback pool; null headless.
+func _tree_pool(tree: Dictionary) -> Node:
+	var key: String = str(tree.get("pool_key", ""))
+	if key != "" and _model_pools.has(key):
+		return _model_pools[key]
+	return _pool
+
+## The instance colour: white for a model (its colours are in the mesh), the species wood colour for
+## the fallback mesh (whose trunk is white and whose crown has its own tint).
+func _tree_color(tree: Dictionary) -> Color:
+	if str(tree.get("pool_key", "")) != "":
+		return Color.WHITE
+	return _species_color(str(tree["species"]))
+
+## Allocate a visual instance for a tree: `{mi, pool_key}`; `mi` is -1 when headless (no pool).
+func _alloc_visual(species: String, pos: Vector3, tree_id: String) -> Dictionary:
 	if _pool == null:
-		return -1
-	var idx: int = _pool.alloc()
-	_pool.set_color(idx, _species_color(species))
-	_pool.set_transform(idx, _visual_transform(pos))
-	return idx
+		return {"mi": -1, "pool_key": ""}
+	var key := TreeMaterial.model_key_for(species, tree_id)
+	var pool: Node = _pool
+	if key != "":
+		if not _model_pools.has(key):
+			var mesh := TreeMaterial.model_mesh(key)
+			_model_pools[key] = _make_pool("TreePool_" + key.get_file().get_basename().get_basename(), mesh) if mesh != null else null
+		if _model_pools[key] == null:
+			key = ""
+		else:
+			pool = _model_pools[key]
+	var idx: int = pool.alloc()
+	pool.set_color(idx, Color.WHITE if key != "" else _species_color(species))
+	pool.set_transform(idx, _visual_transform(pos))
+	return {"mi": idx, "pool_key": key}
 
 ## The shared mesh is authored above the origin, so the surface position is the
 ## instance position — no half-height offset to bake in.
