@@ -5,6 +5,7 @@ extends "res://src/tests/test_support.gd"
 const NewcomerGrounds := preload("res://src/world/newcomer_grounds.gd")
 const LooseItemSlice := preload("res://src/world/loose_item_slice.gd")
 const StoneTools := preload("res://src/world/stone_tools.gd")
+const I18n := preload("res://src/core/i18n.gd")
 
 const SEED := 7
 
@@ -20,7 +21,7 @@ func register() -> void:
 	_run_test("newcomer grounds: no structure is placed within the claim radius of a centre", _test_claim_zone)
 	_run_test("newcomer grounds: a spawn skips structure circles and falls back to the protected centre", _test_spawn_skips_structures)
 	_run_test("newcomer grounds: loose items are jittered over both axes of their tile", _test_loose_jitter)
-	_run_test("newcomer grounds: picks are rate limited; a join snapshot carries the taken items", _test_pick_rate_and_join)
+	_run_test("newcomer grounds: picks are rate limited; a join snapshot and the world record carry the taken items", _test_pick_rate_and_join)
 
 ## A terrain at SEED and the grounds primed for it.
 func _world() -> Dictionary:
@@ -168,6 +169,18 @@ func _test_pick_refused() -> void:
 	var nothing := "%d:%d" % [floori(p.x / 4.0) + 7777, 3]
 	assert_eq(str(host.pick(nothing, "")["reason"]), "no_item", "a tile with no item is refused")
 	assert_eq(inv.get_item_count(str(it["kind"])), 0, "nothing was given")
+	# The picker is told why, as a catalog key (follow-up #634), never broadcast with an empty target.
+	var told: Array = []
+	var on_msg := func(key: String, _args: Array, target: String) -> void: told.append([key, target])
+	GameBus.system_message.connect(on_msg)
+	var was_quiet: bool = Diag.quiet
+	Diag.quiet = true
+	host._on_pick_requested("not an id", "p2")
+	Diag.quiet = was_quiet
+	GameBus.system_message.disconnect(on_msg)
+	assert_eq(told, [["hud.loose.refused.no_item", "p2"]], "a refused pick tells that player the reason")
+	for reason in ["no_item", "taken", "rate_limited", "out_of_reach", "no_inventory"]:
+		assert_true(I18n.has_key("hud.loose.refused." + reason), "refusal %s has a catalog line" % reason)
 	host.free()
 	inv.free()
 
@@ -296,7 +309,20 @@ func _test_pick_rate_and_join() -> void:
 	assert_true(late.is_taken(str(items[0]["id"])) and late.is_taken(str(items[1]["id"])), "a late joiner sees both taken")
 	late.apply_taken({ "bad id": 1.0, "1:2": "x", 3: 4.0 })
 	assert_eq(late._taken.size(), 0, "malformed entries are dropped")
+	# A host restart reads them back from the world record (follow-up #634), through JSON as the save does.
+	var saved: Variant = JSON.parse_string(JSON.stringify(host.taken_data()))
+	var again := _loose(w)
+	again.clock = func() -> float: return now[0]
+	again.load_taken(saved)
+	assert_true(again.is_taken(str(items[0]["id"])) and again.is_taken(str(items[1]["id"])), "a restarted host keeps both taken")
+	var regrow := float(NewcomerGrounds.rule()["looseRegrowSeconds"])
+	again.clock = func() -> float: return now[0] + regrow
+	again.load_taken(saved)
+	assert_eq(again._taken.size(), 0, "a load after the regrow time drops them")
+	late.load_taken(saved)
+	assert_eq(late._taken.size(), 0, "a client never loads a world record's taken items")
 	host.free()
 	client.free()
 	late.free()
+	again.free()
 	inv.free()

@@ -671,6 +671,11 @@ structure.refused.hammer_required,You need a hammer in hand to build. A stone ha
 structure.refused.newcomer_ground,Nothing may be built on the heart of a newcomer ground. Build a little further out.,Nada pode ser construído no centro de um terreno de recém-chegados. Construa um pouco mais longe.
 hud.loose.picked,You pick up {0}.,Você pega {0}.
 hud.loose.nothing,Nothing to pick up here.,Nada para pegar aqui.
+hud.loose.refused.no_item,That is not there anymore.,Isso não está mais aí.
+hud.loose.refused.taken,Someone already picked that up.,Alguém já pegou isso.
+hud.loose.refused.rate_limited,Not so fast.,Não tão rápido.
+hud.loose.refused.out_of_reach,Too far to pick that up.,Longe demais para pegar isso.
+hud.loose.refused.no_inventory,Your pack has no room for that.,Sua mochila não tem espaço para isso.
 structure.refused.bad_args,Use /buildas private or /buildas clan.,Use /buildas private ou /buildas clan.
 structure.refused.no_structure,Stand at a structure you own.,Fique junto de uma estrutura sua.
 structure.refused.intact,It needs no repair.,Não precisa de reparo.
