@@ -620,6 +620,8 @@ func title_choice(h: Node) -> void:
 ## see that swing come back as the synced hit. Before the fix, a client resolved its swings on its own copy of
 ## the creature and the host never heard of them.
 const ATTACK_PROBE_ID := "creature_harness_attack_probe"
+## The client's position report interval while it swings (the host's bucket refills 40 packets a second).
+const REPORT_INTERVAL_MS := 200
 func client_attack_lands(h: Node) -> void:
 	if h._role == "host":
 		var peer: int = h._peer_id()
@@ -682,7 +684,11 @@ func client_attack_lands(h: Node) -> void:
 	var got: bool = await h._await_until(func() -> bool:
 		if bool(seen["hit"]):
 			return true
-		h._report_position()
+		# Paced like the other steps' reports: one per poll frame outruns the host's client packet bucket on a
+		# slow link (retransmits bunch packets up), and the host then drops this peer's reports and swings alike.
+		if Time.get_ticks_msec() - int(swung.get("reported", 0)) >= REPORT_INTERVAL_MS:
+			swung["reported"] = Time.get_ticks_msec()
+			h._report_position()
 		if Time.get_ticks_msec() - int(swung.get("at", 0)) >= 400 and h._root._player._alive:
 			swung["at"] = Time.get_ticks_msec()
 			swung["n"] = int(swung["n"]) + 1
