@@ -14,7 +14,6 @@ const StoneTools := preload("res://src/world/stone_tools.gd")
 const SpawnFinder := preload("res://src/world/spawn_finder.gd")
 const Diag := preload("res://src/core/diag.gd")
 const WorldShape := preload("res://src/terrain/world_shape.gd")
-const WindowShortcuts := preload("res://src/ui/window_shortcuts.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 
 const TILE := 4.0
@@ -22,8 +21,8 @@ const TILE := 4.0
 const DRAW_RADIUS := 48.0
 const MAX_TILE := 20000000   # an id naming a tile past the planet is refused
 const KINDS := [StoneTools.BRANCH, StoneTools.LOOSE_STONE]
-## The pick-up key (bare; Alt+letter is a window). G tames, so the loose items take T ("take").
-const PICK_KEY := KEY_T
+## Phase 279 — picking up is the `pick_up` input action (E by default; bare, Alt+letter is a window).
+const InputLabels := preload("res://src/ui/input_labels.gd")
 ## A remote pick is checked against the peer's last reported position, which trails the body by a report
 ## interval: this much is allowed over the fabric's pick reach.
 const REMOTE_REACH_SLACK := 4.0
@@ -306,10 +305,10 @@ func _on_interact() -> void:
 		return
 	GameBus.loose_pick_requested.emit(str(it["id"]), "")
 
-## T picks up the loose stone or branch at the player's feet (Alt+T is the technology window, not a pick).
+## The `pick_up` action (E) picks up the loose stone or branch at the player's feet (Alt+E is the inventory
+## window, not a pick; a focused text field takes the key).
 func _unhandled_input(event: InputEvent) -> void:
-	if render_visuals and event is InputEventKey and event.pressed and not event.echo and event.keycode == PICK_KEY \
-			and not WindowShortcuts.is_window_key(event):
+	if render_visuals and InputLabels.is_bare_action_press(event, InputLabels.PICK_UP):
 		_on_interact()
 
 # ---------------------------------------------------------------------------

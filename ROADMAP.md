@@ -41,7 +41,6 @@ others are not in it.
 | 5 | 289 | Hold to work, told and shown: the work bar in view, and the tutorial says hold |
 | 6 | 290 | Digging that does not drag: a faster shovel on the way to rock |
 | 7 | 288 | Recipe cards you can read: a real icon area in the crafting window |
-| 8 | 279 | Pick up with E |
 | 9 | 278 | Rocks and branches that look like rocks and branches |
 | 10 | 283 | Trees that look like trees: closed faces, a trunk and a real crown |
 | 11 | 282 | A felled tree falls, then goes |
@@ -352,7 +351,7 @@ A40–A46). The placeholder rule holds: each phase lands with public placeholder
 | Phase | Title | Status |
 |---|---|---|
 | 278 | Rocks and branches that look like rocks and branches | Open |
-| 279 | Pick up with E | Open |
+| 279 | Pick up with E | Done |
 | 280 | The hotbar item in the hand | Open |
 | 281 | Work you can see: chopping, mining, digging, building and dissecting animations | Open |
 | 282 | A felled tree falls, then goes | Open |
@@ -985,14 +984,14 @@ body"), and both keys are in `Hotbar.RESERVED_KEYS`.
 - Every on-screen hint that names the key (`src/ui/input_labels.gd`, tutorial texts, the help overlay) reads it
   from the action, so no text says "T" for picking up. Locale strings that embed the letter take it as a param.
 
-**Acceptance criteria**
-- Suite: an E press with a pickup in reach emits the pick-up intent; a T press emits the equipment toggle; E in a
+**Acceptance criteria** (done: `pick_up` / `toggle_equipment` in `project.godot`, `InputLabels.is_bare_action_press` in `src/ui/input_labels.gd`, `src/tests/suites/pick_up_key_tests.gd`)
+- [x] Suite: an E press with a pickup in reach emits the pick-up intent; a T press emits the equipment toggle; E in a
   focused text field does neither; Alt+E still opens the inventory and does not pick up.
-- Suite: no `KEY_T` or `KEY_E` literal remains in the pick-up or equipment-toggle handlers (a source audit like the
+- [x] Suite: no `KEY_T` or `KEY_E` literal remains in the pick-up or equipment-toggle handlers (a source audit like the
   existing ones); the input labels for `pick_up` and `toggle_equipment` resolve to E and T.
-- Playtest bot `tutorial` step passes with E (its `_pick_loose` helper presses `KEY_T` today; it moves to
+- [x] Playtest bot `tutorial` step passes with E (its `_pick_loose` helper presses `KEY_T` today; it moves to
   the key bound to the `pick_up` action, not a literal).
-- Locale check: no new string in one locale only.
+- [x] Locale check: no new string in one locale only.
 
 ## Phase 280 — The hotbar item in the hand
 
