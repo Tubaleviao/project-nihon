@@ -3,12 +3,15 @@ extends Control
 ## answers with the duration it computed (`work_started`), and the bar fills while the input stays held on that
 ## target. Releasing, turning to another target or losing the target cancels (progress is lost, nothing is spent).
 ## On completion the existing chop / mine request runs unchanged, and holding on starts the next target under the
-## crosshair, so a trench is one hold (Phase 290: a dig asks for the block behind it in the same frame). The host times the work independently and drops an early completion.
+## crosshair, so a trench is one hold (Phase 290: a dig asks for the next block in the same frame, the one under the
+## crosshair when it has moved to another tile, else the one behind the dug block). The host times the work
+## independently and drops an early completion.
 
 const I18n := preload("res://src/core/i18n.gd")
 const InputLabels := preload("res://src/ui/input_labels.gd")
 const VoxelConsts := preload("res://src/terrain/voxel_consts.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
+const WorkTime := preload("res://src/core/work_time.gd")
 
 const GIVE_UP_SECONDS := 1.5   # no answer from the host: stop asking until the input is pressed again
 
@@ -24,6 +27,11 @@ var _action := ""
 var _material := ""
 var _bar: ProgressBar = null
 var _label: Label = null
+## Phase 290 — the client's own read of a block target: the material mining it would take, "" when there is nothing
+## to work (air, a closed site, bedrock), null when unknown. Unset (tests, no terrain): every target is workable.
+var block_probe: Callable = Callable()
+var _chain_from: Dictionary = {}   # the dug target a chained dig continued from ({} = not chained)
+var _last_aim: Dictionary = {}     # the aimed face of the last tick
 
 ## Phase 289 — layout. The bar sits centred under the crosshair, BAR_DROP of the screen height below it, clear of the
 ## hotbar, minimap and chat; the label (material, seconds left, tool, then "Keep holding <input>") stands above it.
@@ -144,6 +152,7 @@ func release() -> void:
 func tick(delta: float, aimed_tree: String, aimed_block: Dictionary) -> void:
 	if not _held:
 		return
+	_last_aim = aimed_block
 	# Working a target: the aim of its kind. Between targets: a tree, else the aimed face (a Shift hold keeps mining).
 	var tree_aim: Dictionary = { "kind": "tree", "tree_id": aimed_tree } if aimed_tree != "" else {}
 	var aimed: Dictionary
@@ -154,10 +163,19 @@ func tick(delta: float, aimed_tree: String, aimed_block: Dictionary) -> void:
 	else:
 		aimed = tree_aim if not tree_aim.is_empty() else aimed_block
 	if _target.is_empty():
-		if not aimed.is_empty() and not _gave_up:
+		if not aimed.is_empty() and not _gave_up and _workable(aimed):
 			_begin(aimed)
 		return
-	if aimed.is_empty() or not same_target(aimed, _target):
+	if not _chain_from.is_empty() and str(aimed.get("kind", "")) == "block":
+		# Phase 290 — a chained dig goes on while the crosshair stays on the dug tile (the aim has not caught up yet)
+		# or on the chained one; another tile is where the player wants the next block, so the chain follows it.
+		var tile := tile_of(aimed)
+		if tile != tile_of(_target) and tile != tile_of(_chain_from):
+			_cancel()
+			if _workable(aimed):
+				_begin(aimed)
+			return
+	elif aimed.is_empty() or not same_target(aimed, _target):
 		_cancel()
 		return
 	if not _started:
@@ -178,6 +196,24 @@ static func same_target(a: Dictionary, b: Dictionary) -> bool:
 		return str(a["tree_id"]) == str(b["tree_id"])
 	return (a["position"] as Vector3).distance_to(b["position"]) <= 1.0
 
+## Phase 290 — the tile a block target names, the same arithmetic as the host's `_resolve_edit_tile("mine", …)`:
+## from `exact` when present, and half a tile back along a side face's normal into the aimed block.
+static func tile_of(t: Dictionary) -> Vector2i:
+	var p: Vector3 = t.get("position", Vector3.ZERO)
+	var x: float = p.x
+	var z: float = p.z
+	var exact: Dictionary = t.get("exact", {})
+	if exact.has("chunk") and exact.has("local"):
+		var c: Vector2i = exact["chunk"]
+		var l: Vector3 = exact["local"]
+		x = float(c.x) * VoxelConsts.CHUNK_SIZE * VoxelConsts.TILE_SIZE + l.x
+		z = float(c.y) * VoxelConsts.CHUNK_SIZE * VoxelConsts.TILE_SIZE + l.z
+	var n: Vector3 = t.get("normal", Vector3.UP)
+	if n.y <= 0.5:
+		x -= n.x * VoxelConsts.TILE_SIZE * 0.5
+		z -= n.z * VoxelConsts.TILE_SIZE * 0.5
+	return Vector2i(floori(x / VoxelConsts.TILE_SIZE), floori(z / VoxelConsts.TILE_SIZE))
+
 func progress() -> float:
 	return clampf(_elapsed / _duration, 0.0, 1.0) if _started and _duration > 0.0 else 0.0
 
@@ -189,6 +225,7 @@ func _begin(target: Dictionary) -> void:
 	_started = false
 	_elapsed = 0.0
 	_waiting = 0.0
+	_chain_from = {}
 	GameBus.work_start_requested.emit(str(target["kind"]), str(target.get("tree_id", "")), target.get("position", Vector3.ZERO),
 		target.get("normal", Vector3.UP), target.get("exact", {}), "")
 
@@ -215,6 +252,7 @@ func _cancel() -> void:
 	if not _target.is_empty():
 		GameBus.work_cancel_requested.emit("")
 	_target = {}
+	_chain_from = {}
 	_started = false
 	_elapsed = 0.0
 	_show_bar(false)
@@ -223,6 +261,7 @@ func _complete() -> void:
 	var t := _target
 	var dug := _action == "dig"
 	_target = {}
+	_chain_from = {}
 	_started = false
 	_chained = true
 	_show_bar(false)
@@ -230,11 +269,31 @@ func _complete() -> void:
 		GameBus.tree_chop_requested.emit(str(t["tree_id"]), "")
 	else:
 		GameBus.block_mine_requested.emit(t["position"], t["normal"], "", t["exact"])
-		# Phase 290 — a dig hold carries straight on to the block behind the one just dug (under it for a top face),
-		# asked for in the same frame instead of after the crosshair has caught up with the new face, so a trench is
-		# one continuous dig. The host resolves the new target against the column with the dug block gone.
 		if dug and _held:
-			_begin(next_dig_target(t))
+			_chain_dig(t)
+
+## Phase 290 — a dig hold carries straight on, asked for in the same frame instead of after the crosshair has caught
+## up with the new face, so a trench is one continuous dig: to the block under the crosshair when it is on another
+## diggable tile (a sweep across a row), else to the block behind the dug one (under it for a top face). Neither
+## diggable (air behind a wall, bedrock, a closed site): nothing is asked, and the tick waits for a workable aim.
+## The host resolves the new target against the column with the dug block gone.
+func _chain_dig(dug: Dictionary) -> void:
+	if not _last_aim.is_empty() and tile_of(_last_aim) != tile_of(dug) and _workable(_last_aim, true):
+		_begin(_last_aim)
+		return
+	var next := next_dig_target(dug)
+	if _workable(next, true):
+		_begin(next)
+		_chain_from = dug
+
+## Whether `t` can be worked (dug, with `dig_only`) by the client's own probe; trees and an unset probe pass.
+func _workable(t: Dictionary, dig_only := false) -> bool:
+	if str(t.get("kind", "")) != "block" or not block_probe.is_valid():
+		return true
+	var material = block_probe.call(t)
+	if material == null:
+		return true
+	return str(material) != "" and (not dig_only or WorkTime.action_for_material(str(material)) == "dig")
 
 ## Phase 290 — the block a dig continues into once `t` is dug: one step down for a top face, one tile further in for
 ## a side face. `exact` (the `{chunk, local}` world record) moves with it.

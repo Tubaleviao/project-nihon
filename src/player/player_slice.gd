@@ -413,8 +413,7 @@ func _process(delta: float) -> void:
 		_update_camera_clearance()
 		_update_aim()
 		_update_station_ghost()
-		if _work_hold != null:
-			_work_hold.tick(delta, _aimed_tree_id, _block_aim() if _aimed_block_hit else {})
+		if _work_hold != null: _work_hold.tick(delta, _aimed_tree_id, _block_aim() if _aimed_block_hit else {})
 	_tick_ghosts(delta)
 
 ## Ease the camera arm toward the body's height (see CAMERA_Y_SMOOTH). The arm is a child of
@@ -1266,6 +1265,7 @@ func _build_hud() -> void:
 	_refresh_build_hint()
 	_work_hold = preload("res://src/player/work_hold.gd").new()
 	_hud.add_child(_work_hold)
+	_work_hold.block_probe = func(t: Dictionary) -> Variant: return null if voxel_slice == null else str(voxel_slice._edit.work_target(t["position"], t["normal"], t["exact"]).get("material", ""))
 	add_child(_hud)
 
 func _update_hp_bar() -> void:
