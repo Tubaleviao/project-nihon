@@ -39,7 +39,7 @@ extends Node
 ##                                          player (host → the target's peer, Phase 37)
 ##         tree_chop_requested(tree_id, player_id)   — client wants to fell a tree
 ##                                          (the host re-emits the bound actor)
-##         tree_chopped(tree_id, wood, state, at)    — host authoritative chop
+##         tree_chopped(tree_id, wood, state, at, yaw)  — host authoritative chop
 ##         tree_respawned(tree_id)                   — host authoritative regrowth
 ##         tree_cleared(tree_id)                     — host authoritative, building cleared a tree
 ##         craft_intent(recipe_id, player_id)        — client wants to craft
@@ -650,7 +650,7 @@ func _on_tree_chop_requested(tree_id: String, _player_id: String) -> void:
 	# only be a claim. Same rule as the craft/repair/tame intent arms.
 	_broadcast({ "type": "tree_chop_intent", "tree_id": tree_id })
 
-func _on_tree_chopped(tree_id: String, wood: String, state: String, respawn_at: float) -> void:
+func _on_tree_chopped(tree_id: String, wood: String, state: String, respawn_at: float, fall_yaw: float) -> void:
 	if _role != Role.HOST:
 		return
 	# Not AOI-scoped: trees are deterministic per chunk, so a client either knows
@@ -660,7 +660,7 @@ func _on_tree_chopped(tree_id: String, wood: String, state: String, respawn_at: 
 		"tree_id":    tree_id,
 		"wood":       wood,
 		"state":      state,
-		"respawn_at": respawn_at,
+		"respawn_at": respawn_at, "fall_yaw": fall_yaw,
 	})
 
 func _on_tree_respawned(tree_id: String) -> void:
