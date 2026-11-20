@@ -46,6 +46,7 @@ const PlayerRules := preload("res://src/core/player_rules.gd")
 const WritingRules := preload("res://src/technology/writing_rules.gd")
 const ChestRules := preload("res://src/world/chest_rules.gd")
 const ChestWiring := preload("res://src/world/chest_wiring.gd")
+const InputLabels := preload("res://src/ui/input_labels.gd")
 
 const ARG := "--playtest-bot"
 const OUT_DIR := "res://playtest"
@@ -1852,7 +1853,7 @@ const BARE_HANDS_RECIPES := ["RecipeStoneAxe", "RecipeStonePick", "RecipeStoneSh
 ## Depths under the natural surface (m) tried for the rock: past the temperate biomes' 3 m of topsoil.
 const BARE_HANDS_ROCK_DEPTHS := [3.3, 3.8, 4.6, 6.0]
 
-## Pick up the nearest loose item of `kind` within LOOSE_SEARCH_M with the T key; true once the pack holds one more.
+## Pick up the nearest loose item of `kind` within LOOSE_SEARCH_M with the key bound to `pick_up` (Phase 279); true once the pack holds one more.
 func _pick_loose(kind: String) -> bool:
 	var loose: Node = _root._loose
 	var at: Vector3 = loose.local_position.call()
@@ -1868,8 +1869,9 @@ func _pick_loose(kind: String) -> bool:
 	_teleport_to(chunk, Vector3(xz.x - float(chunk.x) * m, 0.0, xz.y - float(chunk.y) * m))
 	await _until(func(): return false, 1.0)   # the body settles
 	var before: int = _root._inventory.get_item_count(kind)
-	_key(KEY_T, true)
-	_key(KEY_T, false)
+	var pick_key := InputLabels.action_keycode(InputLabels.PICK_UP)
+	_key(pick_key, true)
+	_key(pick_key, false)
 	return await _until(func(): return _root._inventory.get_item_count(kind) > before, 3.0)
 
 func _bare_hands_tools() -> String:

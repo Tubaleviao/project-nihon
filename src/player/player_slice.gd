@@ -13,6 +13,7 @@ extends Node
 const GameSettings := preload("res://src/core/game_settings.gd")
 const WindowShortcuts := preload("res://src/ui/window_shortcuts.gd")
 const TextFocus := preload("res://src/ui/text_focus.gd")
+const InputLabels := preload("res://src/ui/input_labels.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const Diag := preload("res://src/core/diag.gd")
 const I18n := preload("res://src/core/i18n.gd")
@@ -536,8 +537,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			GameBus.station_window_requested.emit(at_station)
 		else:
 			GameBus.chest_intent.emit("pick" if event.shift_pressed else ("hit" if event.ctrl_pressed else "use"), {}, "")
-	# E key → toggle all equipment on/off (inspect the naked body under the gear).
-	if event is InputEventKey and event.pressed and not WindowShortcuts.is_window_key(event) and event.keycode == KEY_E:
+	if InputLabels.is_bare_action_press(event, InputLabels.TOGGLE_EQUIPMENT):   # Phase 279: T strips/re-dons all gear
 		GameBus.character_equipment_toggle_requested.emit()
 
 ## Phase 269 — the placed crafting station the interact input uses here ("" when a chest, door or bed is nearer,
