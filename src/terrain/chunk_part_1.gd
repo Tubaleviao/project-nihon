@@ -689,8 +689,8 @@ func apply_finished_builds() -> void:
 	for task_id in remesh.first(apply_order(done)):
 		var entry: Dictionary = sl._builds.get(task_id, {})
 		_note_cost(entry)
-		if not entry.is_empty() and remesh.is_priority(str(entry["key"])):
-			sl._apply_build_entry(task_id)   # Phase 263: an edit's mesh attaches the frame it is ready, whatever the budget
+		if not entry.is_empty() and remesh.is_primary(str(entry["key"])):
+			sl._apply_build_entry(task_id)   # Phase 263: an own edit's mesh attaches the frame it is ready, whatever the budget
 			continue
 		if applied >= maxi(sl.applies_per_frame, 1) or (applied > 0 and sl._pump_over()):
 			return   # the rest stay finished in the table and apply next frame

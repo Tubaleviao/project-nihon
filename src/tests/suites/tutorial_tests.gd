@@ -9,6 +9,7 @@ const ShelterRule := preload("res://src/world/shelter_rule.gd")
 const StoneTools := preload("res://src/world/stone_tools.gd")
 const TutorialMarker := preload("res://src/tutorial/tutorial_marker.gd")
 const TutorialRules := preload("res://src/tutorial/tutorial_rules.gd")
+const TutorialWiring := preload("res://src/tutorial/tutorial_wiring.gd")
 const WorkTime := preload("res://src/core/work_time.gd")
 
 ## fabric/gameplay/tutorial.js STEPS, in order.
@@ -39,6 +40,7 @@ func register() -> void:
 	_run_test("tutorial: the first stone tools come from the loose items, before the first station is placed", _test_bare_hands_order)
 	_run_test("tutorial: on the pinned playtest world, Ferrite is at most 2 blocks down round the spawn or the mine_stone marker names Ferrite within 30 m (Phase 290)", _test_mine_stone_marker_pinned, true)
 	_run_test("tutorial: a step marker is the first eligible step's, searched nearest first, and its beacon follows a rebase (Phase 290)", _test_marker_rules)
+	_run_test("tutorial: a teleport, a waystone trip or a respawn searches the marker again; the step is recomputed only on a tutorial change (#698)", _test_marker_relocate)
 	_run_test("shelter: a roofed room passes, an open spot and a roof alone do not", _test_shelter_rule)
 	_run_test("shelter: three closed sides are enough, two are not, and a low lip is no wall", _test_shelter_sides)
 
@@ -486,3 +488,35 @@ func _test_marker_rules() -> void:
 	assert_true(beacon.position.is_equal_approx(Vector3(1.0 + 3.5 * VoxelSlice.TILE_SIZE, 10.0, 2.5 * VoxelSlice.TILE_SIZE)), "the same column from the next chunk over (%s)" % str(beacon.position))
 	assert_true(beacon._label.text.contains(I18nScript.content("item", "Ferrite")), "the label names the ore in the player's language")
 	beacon.free()
+
+## #698 — the marker is searched again round the new spot after the player is moved, and the eligible step is
+## recomputed only when the tutorial state changes, not every tick.
+func _test_marker_relocate() -> void:
+	var w := TutorialWiring.new()
+	assert_true(w._marker_dirty, "the first tick computes the step")
+	w._marker_dirty = false
+	w._on_changed()
+	assert_true(w._marker_dirty, "a tutorial change marks it for recomputing")
+	var moves := {
+		"teleport": func() -> void: w._on_teleport({}),
+		"waystone trip": func() -> void: w._on_waystone_travel("", true, ""),
+		"respawn": func() -> void: w._on_respawned(Vector3.ZERO),
+	}
+	for what in moves:
+		var beacon := TutorialMarker.new()
+		add_child(beacon)
+		w.marker = beacon
+		w._marker_clock = 0.0
+		w._marker_from = Vector2i(3, 4)
+		(moves[what] as Callable).call()
+		assert_eq(w.marker, null, "a %s drops the marker" % what)
+		assert_eq(w._marker_clock, TutorialWiring.MARKER_RETRY_S, "and the search runs on the next tick (%s)" % what)
+		assert_eq(w._marker_from, Vector2i(1 << 30, 0), "from wherever the player now is (%s)" % what)
+		beacon.free()
+	var kept := TutorialMarker.new()
+	add_child(kept)
+	w.marker = kept
+	w._on_waystone_travel("", false, "cooldown")
+	assert_eq(w.marker, kept, "a refused trip keeps the marker")
+	kept.free()
+	w.marker = null

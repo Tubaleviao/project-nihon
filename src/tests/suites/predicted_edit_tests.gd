@@ -60,6 +60,9 @@ func register() -> void:
 	_run_test("edit prediction: a re-scope snapshot or /regen world drops every prediction", _test_predict_cleared_by_snapshot)
 	_run_test("edit prediction: a hit on a placed block is not predicted", _test_predict_no_placed_block)
 	_run_test("edit prediction: the host's span is compared with the prediction, and wins", _test_predict_span_mismatch)
+	_run_test("edit remesh: another player's edit attaches first but counts against the frame's attach budget (#649)", _test_neighbour_attach_budget)
+	_run_test("edit prediction: quick placements are predicted only while the pack holds more than the pending ones (#649)", _test_predict_place_pending)
+	_run_test("edit prediction: a vein whose live state a rollback or replay flips has its whole blob rebuilt (#649)", _test_predict_vein_flip_rebuild)
 
 # --- rigs -----------------------------------------------------------------
 
@@ -693,4 +696,80 @@ func _test_predict_span_mismatch() -> void:
 	v._predict.on_acked(s2, true, { "tile": t2, "bottom": float(op["bottom"]), "top": float(op["top"]) })
 	v._on_block_changed("mine", far, Vector3.UP, "Soil")
 	assert_eq([v._predict.resyncs, v._predict.mismatches], [1, 1], "a matching span is no mismatch")
+	_free_client(c)
+
+## #649 — only this player's own edit (PRIMARY) attaches outside the budget; a NEIGHBOUR rebuild goes first and counts.
+func _test_neighbour_attach_budget() -> void:
+	var rig := _home_rig()
+	var cm: ChunkManager = rig["cm"]
+	var remesh: EditRemesh = rig["remesh"]
+	cm.adaptive_workers = false
+	cm.max_builds_in_flight = 4
+	cm.load_chunk(Vector2i(2, 0))
+	remesh.dispatch(HOME, EditRemesh.NEIGHBOUR)
+	assert_true(remesh.is_priority("0,0") and not remesh.is_primary("0,0"), "another player's edit is open, not primary")
+	var order: Array = cm._builds.keys()
+	assert_eq(order.size(), 2, "a streaming build and the neighbour's are in flight")
+	var deadline := Time.get_ticks_msec() + 20000
+	while order.any(func(id: int) -> bool: return id >= 0 and not WorkerThreadPool.is_task_completed(id)) and Time.get_ticks_msec() < deadline:
+		OS.delay_msec(2)
+	cm.applies_per_frame = 1
+	cm._last_centers = [Vector2i(5, 5)]
+	cm._apply_finished_builds()
+	assert_eq(_samples_for(remesh, "0,0").size(), 1, "the neighbour rebuild attaches first")
+	var left: Array = cm._builds.values().map(func(e: Dictionary) -> String: return str(e["key"]))
+	assert_eq(left, ["2,0"], "and uses the frame's one attach: the streaming chunk waits")
+	remesh.dispatch(HOME, EditRemesh.PRIMARY)
+	remesh.dispatch(HOME, EditRemesh.NEIGHBOUR)
+	assert_true(remesh.is_primary("0,0"), "a seam rebuild of a chunk with an own edit open keeps it primary")
+	_pump(cm)
+	_free_rig(rig)
+
+## #649 — the pack is debited on the host's answer, so pending placements of a material count against it.
+func _test_predict_place_pending() -> void:
+	var c := _client()
+	var v: VoxelSlice = c["v"]
+	var sent: Array = []
+	var on_intent := func(_a, _p, _n, _m, _e, seq) -> void: sent.append(int(seq))
+	GameBus.block_edit_intent.connect(on_intent)
+	for i in 4:
+		v._edit._on_place_requested(Vector3(4.0 + 4.0 * i, 2.0, 4.0), Vector3.UP, "", "Sand")
+	assert_eq(sent.size(), 4, "every intent goes to the host")
+	assert_true(sent[0] > 0 and sent[1] > 0 and sent[2] > 0, "three Sand in the pack: three placements predicted")
+	assert_eq(sent[3], 0, "the fourth is left to the host")
+	assert_eq(v._predict.pending_places("Sand"), 3, "three pending")
+	v._predict.on_acked(sent[0], false)
+	v._edit._on_place_requested(Vector3(24.0, 2.0, 4.0), Vector3.UP, "", "Sand")
+	assert_true(sent[4] > 0, "a refusal frees its block for the next prediction")
+	GameBus.block_edit_intent.disconnect(on_intent)
+	_free_client(c)
+
+## #649 — rewind and replay rebuild into a discarded sink; a vein they exhaust or make live again is rebuilt whole.
+func _test_predict_vein_flip_rebuild() -> void:
+	var found := _find_surface_vein(0)
+	if found.is_empty():
+		assert_true(false, "a vein breaks the surface of a flat chunk somewhere")
+		return
+	var c := _client()
+	var v: VoxelSlice = c["v"]
+	var id := str(found["vein"]["id"])
+	assert_false(v._edit._vein_from_id(id).is_empty(), "the client re-derives the vein from its id")
+	var spent := { id: 1 << 30 }
+	v._build.sink = {}
+	v._vein_taken = spent.duplicate()
+	v._predict._rebuild_flipped_veins({})
+	assert_false((v._build.sink as Dictionary).is_empty(), "exhausted: the blob's chunks are rebuilt")
+	v._build.sink = {}
+	v._predict._rebuild_flipped_veins(spent.duplicate())
+	assert_true((v._build.sink as Dictionary).is_empty(), "no change: nothing rebuilt")
+	v._vein_taken = {}
+	v._predict._rebuild_flipped_veins(spent.duplicate())
+	assert_false((v._build.sink as Dictionary).is_empty(), "made live again: rebuilt")
+	v._build.sink = {}
+	v._vein_taken = { id: 1 }
+	assert_true(OreField.is_live(found["vein"], v._vein_taken), "one block taken leaves the vein live")
+	v._predict._rebuild_flipped_veins({})
+	assert_true((v._build.sink as Dictionary).is_empty(), "a vein still live is not rebuilt")
+	v._build.sink = null
+	v._vein_taken = {}
 	_free_client(c)

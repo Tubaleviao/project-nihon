@@ -926,10 +926,12 @@ func _on_place_requested(position: Vector3, normal: Vector3, player_id: String, 
 		var seq: int = s._predict.predict("place", position, normal, chosen) if _holds(chosen) else 0
 		GameBus.block_edit_intent.emit("place", position, normal, chosen, exact, seq)
 
-## Phase 263 — a client predicts a placement only of a material its own pack shows (the host still decides).
+## Phase 263 — a client predicts a placement only of a material its own pack shows (the host still decides), less
+## the blocks of it already predicted and not yet confirmed (#649: the pack is debited on the host's answer).
 func _holds(material: String) -> bool:
 	var inv: Node = s.inventory_slice
-	return material != "" and inv != null and inv.has_method("get_item_count") and int(inv.get_item_count(material)) > 0
+	return material != "" and inv != null and inv.has_method("get_item_count") \
+		and int(inv.get_item_count(material)) > s._predict.pending_places(material)
 
 ## Client-side application of a host-authoritative block edit (see block_changed).
 ## Delegates to the shared _apply_edit helper so host and client derive the same

@@ -23,6 +23,9 @@ static func allowed(voxel: Node, pos: Vector3, dir: Vector3, offset: Vector3, fe
 		if seen.has(tile):
 			continue
 		seen[tile] = true
+		# #612 — only an edited column can hold a placed run: skip building the runs of natural ground.
+		if voxel.has_method("has_edit_near") and not voxel.has_edit_near(tile, 0):
+			continue
 		if placed_step(voxel.get_runs_at_tile(tile), feet, step):
 			return true
 	return false

@@ -27,11 +27,16 @@ var _action := ""
 var _material := ""
 var _bar: ProgressBar = null
 var _label: Label = null
-## Phase 290 — the client's own read of a block target: the material mining it would take, "" when there is nothing
-## to work (air, a closed site, bedrock), null when unknown. Unset (tests, no terrain): every target is workable.
+## Phase 290 — the client's own read of a block target, `VoxelSlice.work_target`'s `{material, key}`: material ""
+## (or `{}`) when there is nothing to work (air, a closed site, bedrock), null when unknown. Unset (tests, no terrain): every target is workable.
 var block_probe: Callable = Callable()
 var _chain_from: Dictionary = {}   # the dug target a chained dig continued from ({} = not chained)
 var _last_aim: Dictionary = {}     # the aimed face of the last tick
+## #698 — a chained dig waits while `block_probe` still gives the dug block's "key": the column is stale (a placed
+## block mined on a remote client is not predicted), and probing the next block in it would ask for the dug one again.
+var _stale_dug: Dictionary = {}   # the dug target whose column has not caught up yet ({} = none)
+var _stale_key := ""
+var _stale_wait := 0.0
 
 ## Phase 289 — layout. The bar sits centred under the crosshair, BAR_DROP of the screen height below it, clear of the
 ## hotbar, minimap and chat; the label (material, seconds left, tool, then "Keep holding <input>") stands above it.
@@ -130,6 +135,7 @@ func press(target: Dictionary) -> void:
 	_held = true
 	_gave_up = false
 	_chained = false
+	_stale_dug = {}
 	_begin(target)
 
 ## The gather input went up: a cancel, always.
@@ -151,6 +157,17 @@ func tick(delta: float, aimed_tree: String, aimed_block: Dictionary) -> void:
 	if not _held:
 		return
 	_last_aim = aimed_block
+	if not _stale_dug.is_empty():
+		# #698 — the dug block still shows: chain once the column catches up, give up as for an unanswered start.
+		_stale_wait += delta
+		if _key_of(_stale_dug) == _stale_key:
+			if _stale_wait >= GIVE_UP_SECONDS:
+				_stale_dug = {}
+				_gave_up = true
+			return
+		var dug := _stale_dug
+		_stale_dug = {}
+		_chain_dig(dug)
 	# Working a target: the aim of its kind. Between targets: a tree, else the aimed face (a Shift hold keeps mining).
 	var tree_aim: Dictionary = { "kind": "tree", "tree_id": aimed_tree } if aimed_tree != "" else {}
 	var aimed: Dictionary
@@ -260,6 +277,7 @@ func _cancel() -> void:
 		GameBus.work_cancel_requested.emit("")
 	_target = {}
 	_chain_from = {}
+	_stale_dug = {}
 	_started = false
 	_elapsed = 0.0
 	_show_bar(false)
@@ -267,6 +285,7 @@ func _cancel() -> void:
 func _complete() -> void:
 	var t := _target
 	var dug := _action == "dig"
+	var dug_key := _key_of(t) if dug else ""
 	_target = {}
 	_chain_from = {}
 	_started = false
@@ -277,7 +296,12 @@ func _complete() -> void:
 	else:
 		GameBus.block_mine_requested.emit(t["position"], t["normal"], "", t["exact"])
 		if dug and _held:
-			_chain_dig(t)
+			if dug_key != "" and _key_of(t) == dug_key:
+				_stale_dug = t
+				_stale_key = dug_key
+				_stale_wait = 0.0
+			else:
+				_chain_dig(t)
 
 ## Phase 290 — a dig hold carries straight on, asked for in the same frame instead of after the crosshair has caught
 ## up with the new face, so a trench is one continuous dig: to the block under the crosshair when it is another
@@ -294,14 +318,21 @@ func _chain_dig(dug: Dictionary) -> void:
 		_begin(next)
 		_chain_from = dug
 
+func _key_of(t: Dictionary) -> String:
+	if str(t.get("kind", "")) != "block" or not block_probe.is_valid():
+		return ""
+	var probe: Variant = block_probe.call(t)
+	return str((probe as Dictionary).get("key", "")) if probe is Dictionary else ""
+
 ## Whether `t` can be worked (dug, with `dig_only`) by the client's own probe; trees and an unset probe pass.
 func _workable(t: Dictionary, dig_only := false) -> bool:
 	if str(t.get("kind", "")) != "block" or not block_probe.is_valid():
 		return true
-	var material = block_probe.call(t)
-	if material == null:
+	var probe: Variant = block_probe.call(t)
+	if probe == null:
 		return true
-	return str(material) != "" and (not dig_only or WorkTime.action_for_material(str(material)) == "dig")
+	var material := str((probe as Dictionary).get("material", ""))
+	return material != "" and (not dig_only or WorkTime.action_for_material(str(material)) == "dig")
 
 ## Phase 290 — the block a dig continues into once `t` is dug: one step down for a top face, one tile further in for
 ## a side face. `exact` (the `{chunk, local}` world record) moves with it.

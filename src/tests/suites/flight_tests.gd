@@ -104,7 +104,7 @@ func _test_flying_move_source() -> void:
 	var b := src.find("\nfunc ", a + 10)
 	assert_true(a > 0 and b > a, "the flying move is its own function")
 	var body := src.substr(a, b - a)
-	for banned in ["resolve_step_up", "DiveGuard", "buried_lift", "step_up_gate"]:
+	for banned in ["resolve_step_up", "DiveGuard", "buried_lift", "step_up_gate", "StepUpGate"]:
 		assert_false(body.contains(banned), "the flying move does not use %s" % banned)
 	assert_true(body.contains("move_and_slide"), "but the body still collides")
 	var m := src.find("func _move(")
