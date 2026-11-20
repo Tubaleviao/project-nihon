@@ -398,6 +398,12 @@ func _route_h2c(payload: Dictionary) -> void:
 				payload.get("contents", {}),
 				payload.get("durabilities", {})
 			)
+		"creature_killed":
+			# Our swing killed a creature on the host; only the tutorial reads it. An unknown species is dropped to "".
+			var species := str(payload.get("creature", ""))
+			if sl._role == sl.Role.CLIENT:
+				GameBus.tutorial_event.emit("creature_killed",
+					{ "creature": species if GameData.CREATURES.has(species) else "", "tags": ["creature"] })
 		"player_healed":
 			# Phase 196 — the host's restRegen for our own resting body; bounded, finite, positive.
 			var amount: Variant = payload.get("amount", 0.0)

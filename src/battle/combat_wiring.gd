@@ -27,6 +27,7 @@ func _connect_all() -> void:
 	connect_bus(GameBus.player_died, _on_player_died)
 	connect_bus(GameBus.player_respawned, _on_player_respawned)
 	connect_bus(GameBus.attack_intent, on_attack_intent)
+	connect_bus(GameBus.creature_died, on_creature_died)
 
 ## Host: how far past `PlayerSlice.ATTACK_RANGE` a peer's swing may land, measured from the host's last record
 ## of that peer — covers the creature and the peer moving between the peer's aim and the packet.
@@ -68,6 +69,20 @@ func on_attack_intent(instance_id: String, player_id: String) -> bool:
 	_last_swing_ms[player_id] = now
 	GameBus.combat_round_requested.emit(player_id, instance_id)
 	return true
+
+## Host: a creature a peer killed. The peer's client resolves no rounds of its own, so it never sees the
+## `creature_died` its tutorial counts; the host tells only that peer, by species. Returns the peer told (0 none).
+func on_creature_died(entity_id: String, _pos: Vector3, killer_id: String, _landing: Vector3) -> int:
+	if root._is_client or killer_id == "" or killer_id == "player" or killer_id == root._registry.local_player_id:
+		return 0
+	var peer := root._registry.get_peer_id(killer_id)
+	if peer == 0:
+		return 0
+	var species: String = root._creature.get_instance_creature_id(entity_id) if root._creature != null else ""
+	if species == "":
+		species = entity_id if GameData.CREATURES.has(entity_id) else ""
+	root._networking.send_creature_killed(peer, species)
+	return peer
 
 ## Drop a departed player's swing clock (called from the peer-left path).
 func forget_swinger(player_id: String) -> void:

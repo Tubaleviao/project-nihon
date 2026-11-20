@@ -645,10 +645,14 @@ func client_attack_lands(h: Node) -> void:
 			await h._await_settle(0.5)
 			landed = int(rounds["n"]) > 0
 		GameBus.combat_hit_resolved.disconnect(on_hit)
-		# Let the client see the synced swing before the probe goes.
+		# The peer's kill notice (its tutorial's only word of a kill): sent the way the host's `creature_died`
+		# handler sends it, without killing the probe, so no carcass or loot outlives the step.
+		var told: int = h._root._combat_wiring.on_creature_died(ATTACK_PROBE_ID, Vector3.ZERO, pid, Vector3.ZERO) if landed else 0
+		# Let the client see the synced swing and the notice before the probe goes.
 		await h._await_settle(2.0 * h._time_scale)
 		h._root._creature.despawn_instance(ATTACK_PROBE_ID)
-		h._report("client_attack_lands", h.verdict(landed, true), "host_resolved" if landed else "swing_never_reached_host")
+		h._report("client_attack_lands", h.verdict(landed and told == peer, true),
+			"host_resolved" if landed and told == peer else ("swing_never_reached_host" if not landed else "kill_not_sent"))
 		return
 	var own_key := "p:%d" % h._root.multiplayer.get_unique_id()
 	var seen := { "hit": false }
@@ -656,6 +660,10 @@ func client_attack_lands(h: Node) -> void:
 		if attacker_key == own_key:
 			seen["hit"] = true
 	GameBus.combat_hit_synced.connect(on_synced)
+	var on_tut := func(kind: String, params: Dictionary) -> void:
+		if kind == "creature_killed" and str(params.get("creature", "")) == "ForestBoar":
+			seen["killed"] = true
+	GameBus.tutorial_event.connect(on_tut)
 	# The fold step left this client in a folded frame that would replay onto the host's creature positions (see
 	# `_step_creature_far_delta`): set it aside for the probe and put it back.
 	var folds: Array = h._root._creature._fold_log
@@ -675,4 +683,10 @@ func client_attack_lands(h: Node) -> void:
 	h._root._creature._fold_log = folds
 	h._report_actual = false
 	h._report_position()
-	h._report("client_attack_lands", h.verdict(got, true), "host_resolved" if got else "no_synced_swing-after-%d" % int(swung["n"]))
+	# The host's kill notice follows the landed swing; it reaches the tutorial as a species kill.
+	var killed := false
+	if got:
+		killed = await h._await_until(func() -> bool: return bool(seen.get("killed", false)), h._step_timeout())
+	GameBus.tutorial_event.disconnect(on_tut)
+	h._report("client_attack_lands", h.verdict(got and killed, true), "host_resolved" if got and killed else (
+		"no_synced_swing-after-%d" % int(swung["n"]) if not got else "kill_notice_missing"))
