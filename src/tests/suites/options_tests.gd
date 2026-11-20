@@ -4,6 +4,7 @@ extends "res://src/tests/test_support.gd"
 ## the file's other keys survive, and every label is in both catalog columns.
 
 const GameSettings := preload("res://src/core/game_settings.gd")
+const TreeMaterial := preload("res://src/world/tree_material.gd")
 const LocaleSettings := preload("res://src/core/locale_settings.gd")
 const OptionsWindow := preload("res://src/ui/options_window.gd")
 const TutorialState := preload("res://src/tutorial/tutorial_state.gd")
@@ -26,6 +27,7 @@ func _with_settings(fn: Callable) -> void:
 	var old_fps := Engine.max_fps
 	var old_rings: Variant = ProjectSettings.get_setting("nihon/graphics/lod_rings")
 	var old_quality: Variant = ProjectSettings.get_setting("nihon/graphics/terrain_quality")
+	var old_sway: Variant = ProjectSettings.get_setting("nihon/graphics/tree_sway", true)
 	var old_vol: Array = []
 	for b in BUSES:
 		old_vol.append(AudioServer.get_bus_volume_db(AudioServer.get_bus_index(b)))
@@ -42,6 +44,7 @@ func _with_settings(fn: Callable) -> void:
 	Engine.max_fps = old_fps
 	ProjectSettings.set_setting("nihon/graphics/lod_rings", old_rings)
 	ProjectSettings.set_setting("nihon/graphics/terrain_quality", old_quality)
+	ProjectSettings.set_setting("nihon/graphics/tree_sway", old_sway)
 	var i := 0
 	for b in BUSES:
 		var idx := AudioServer.get_bus_index(b)
@@ -76,6 +79,7 @@ func _test_round_trip() -> void:
 		assert_eq(Engine.max_fps, 120, "FPS cap applied")
 		assert_eq(int(ProjectSettings.get_setting("nihon/graphics/lod_rings")), 3, "view distance sets the LOD rings")
 		assert_eq(int(ProjectSettings.get_setting("nihon/graphics/terrain_quality")), 0, "terrain quality applied")
+		assert_false(TreeMaterial.sway_enabled(), "low terrain quality turns tree sway off (Phase 283)")
 		assert_eq(vp.scaling_3d_mode, Viewport.SCALING_3D_MODE_FSR2, "FSR 2 upscaling applied")
 		assert_true(is_equal_approx(vp.scaling_3d_scale, 0.75), "render scale applied")
 		assert_false(bool(TutorialState.load_state()["enabled"]), "the tutorial flag is saved where the tutorial reads it")
