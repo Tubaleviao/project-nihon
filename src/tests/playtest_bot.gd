@@ -1305,8 +1305,7 @@ func _step_mine() -> Array:
 	var held: float = await _hold_work("block", "", spot, true)
 	GameBus.block_mine_requested.emit(spot, Vector3.UP, "", {})
 	var ok: bool = await _until(func(): return _mined.size() > before, STEP_TIMEOUT_SECS)
-	if not ok or _work_bar_note != "":
-		return [false, _work_bar_note if ok else "no block_mined (work held %.1f s)" % held]
+	if not ok or _work_bar_note != "": return [false, _work_bar_note if ok else "no block_mined (work held %.1f s)" % held]
 	# Phase 263 — more digs beside it, so the step has an edit-to-visible p95: each is timed from its completion to
 	# its chunk's mesh attached. PR #648 review: each one held for its work time first, as a player digs (the dug
 	# chunk is built while the work runs, `EditPrebuild`).
@@ -1335,9 +1334,8 @@ func _hold_work(kind: String, tree_id: String, pos: Vector3, shoot := false) -> 
 	if not await _until(func(): return _work_secs > 0.0, STEP_TIMEOUT_SECS):
 		return -1.0
 	var t0 := Time.get_ticks_msec()
-	await _until(func(): return false, _work_secs * (0.5 if shoot else 1.0))
-	if shoot:   # Phase 289: the player's bar drawn and shot mid-hold, checked inside the viewport
-		_work_bar_note = await load("res://src/tests/playtest_work_bar.gd").shoot(self, _root._player._work_hold, _work_last, _work_secs, kind, t0)
+	await _until(func(): return false, _work_secs * (0.5 if shoot else 1.0))   # Phase 289: shoot = the bar drawn and shot mid-hold, checked inside the viewport
+	if shoot: _work_bar_note = await load("res://src/tests/playtest_work_bar.gd").shoot(self, _root._player._work_hold, _work_last, _work_secs, kind, t0)
 	return float(Time.get_ticks_msec() - t0) * 0.001
 
 func _standing_trees() -> Array:
