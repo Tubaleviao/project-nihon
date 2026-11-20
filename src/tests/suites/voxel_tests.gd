@@ -471,7 +471,7 @@ func _test_voxel_biome_border_blend() -> void:
 		assert_eq(VoxelSlice.blended_biome(inner, biomes, "TemperateForest"), "TemperateForest", "the interior keeps its biome")
 
 ## Phase 64 — the yield reads the biome the surface draws: for every tile of a border band the
-## instance accessor (what `_natural_yield` reads) equals `blended_biome` (what the mesher reads).
+## instance accessor (what `natural_yield` reads) equals `blended_biome` (what the mesher reads).
 func _test_voxel_yield_matches_blended_biome() -> void:
 	var v := VoxelSlice.new()
 	add_child(v)
@@ -1057,7 +1057,7 @@ func _test_voxel_surface_style_complete() -> void:
 		assert_false(style.is_empty(), "%s has a surface style" % key)
 		assert_true(str(style.get("material", "")) != "", "%s names a surface material" % key)
 		assert_true(float(style.get("depth", 0.0)) > 0.0, "%s has a topsoil depth" % key)
-	# Phase 49 — the biome's `soilMaterial` reaches the inventory VERBATIM (`_natural_yield`
+	# Phase 49 — the biome's `soilMaterial` reaches the inventory VERBATIM (`natural_yield`
 	# returns it as the mined material), so a typo would mint a phantom item nothing can use.
 	# The fabric cannot type it (a plain string, like `surfaceMaterial`), so pin it here.
 	for key in GameData.BIOMES:
@@ -1442,13 +1442,13 @@ func _test_mine_topsoil_yields_biome_soil() -> void:
 				continue
 			checked[biome] = true
 			var soil := str(b.get("soilMaterial"))
-			assert_eq(str(v._natural_yield(t, top_span)["material"]), soil,
+			assert_eq(str(v.natural_yield(t, top_span)["material"]), soil,
 				"%s topsoil yields its fabric soilMaterial (%s)" % [biome, soil])
 			# One unit below the topsoil, the same column is the host rock (when no vein sits there).
 			var depth := float(b.get("topsoilDepth"))
 			var deep_span := { "bottom": base - depth - 1.5, "top": base - depth - 1.0 }
 			if VoxelSlice._live_vein_at(p, VoxelSlice._run_depth(deep_span, base), v._world_seed(), v._vein_taken, {}).is_empty():
-				assert_eq(str(v._natural_yield(t, deep_span)["material"]), OreField.host_material(biome),
+				assert_eq(str(v.natural_yield(t, deep_span)["material"]), OreField.host_material(biome),
 					"%s below topsoilDepth yields host rock, not soil" % biome)
 	# Every cover the fabric names was actually mined, not just the temperate Grass.
 	for surface in ["Grass", "Moss", "Ash", "Void"]:

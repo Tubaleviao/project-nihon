@@ -295,7 +295,7 @@ static func _step_timeout(step: String) -> float:
 	if step == "tower":
 		return TOWER_TIMEOUT_SECS
 	if step == "mount":
-		return MOUNT_RIDE_SECS + 30.0   # the ride itself plus the mount, settle and dismount waits
+		return MOUNT_RIDE_SECS + 45.0   # + mount/dismount waits (STEP_TIMEOUT_SECS * 0.25 each) + 1.5 s settle: 121.5 s worst
 	return 480.0 if step == "revisit" else (STREAM_TIMEOUT_SECS if step == "stream" or step == "pole" or step == "flight" else STEP_TIMEOUT_SECS)
 
 static func step_names() -> Array:
@@ -1905,7 +1905,7 @@ func _bare_hands_tools() -> String:
 	_teleport_to(stand["chunk"], stand["local"])
 	await _until(func(): return _root._chunk_manager.is_chunk_built(stand["chunk"]), STEP_TIMEOUT_SECS)   # `_hold_work` heals
 	var runs: Array = _root._voxel.get_runs_at_tile(tile)
-	var depth := TutorialMarker.depth_of(tile, runs, "Ferrite", int(spot.get("max_blocks", 6)), func(t: Vector2i, sp: Dictionary) -> Dictionary: return _root._voxel._natural_yield(t, sp))
+	var depth := TutorialMarker.depth_of(tile, runs, "Ferrite", int(spot.get("max_blocks", 6)), func(t: Vector2i, sp: Dictionary) -> Dictionary: return _root._voxel.natural_yield(t, sp))
 	var held: Array = []   # seconds held per block, the last one the rock
 	for i in depth:
 		var here := TutorialMarker.tile_world_pos(tile, float((runs[-1] as Dictionary)["top"]) - float(i) * VoxelSlice.STEP_HEIGHT)
@@ -2113,8 +2113,8 @@ const MOUNT_RIDE_M := 200.0
 ## 60 s, not 45: a throw (the newcomer grounds' water) and the walk back to dry ground cost ~20 s of the ride.
 ## main passed at 203 m of 200 and PR #639 failed at 186 m with the same 8.9 m/s cruise; the speed check
 ## below is what judges the mount, the deadline only has to leave room for the 200 m.
-## Phase 276: 90 s. PR #655 failed at 191 m of 200 in 60 s with one throw into water and the same 8.9 m/s cruise
-## (a slow runner's wall-clock deadline, not a mount regression). The full 200 m is still required.
+## 90 s since PR #655's CI run (a CI note, not a Phase 276 rule): 191 m of 200 in 60 s with one throw into water and the
+## same 8.9 m/s cruise (a slow runner's wall-clock deadline, not a regression). The full 200 m is still required.
 const MOUNT_RIDE_SECS := 90.0
 const MOUNT_SPEED_SLACK := 0.9
 func _step_mount() -> Array:
@@ -2206,7 +2206,7 @@ func _step_mount() -> Array:
 	var off: bool = await _until(func(): return not _root._mount_wiring.slice.is_mounted(me), STEP_TIMEOUT_SECS * 0.25)
 	var need := factor * PlayerSlice.SPEED * MOUNT_SPEED_SLACK
 	var ok: bool = rode and off and factor > 1.0 and avg >= need and float(ridden[0]) < MOUNT_RIDE_M * 2.0
-	return [ok, "rode %.0f m (%.0f m from the start), cruising at %.1f m/s (need %.1f), dismounted %s, thrown %d times by %s, host answers %s" % [float(ridden[0]), metres, avg, need, str(off), int(throws[0]), str(hitters), str(answers)]]
+	return [ok, "rode %.0f m (%.0f m from the start), cruising at %.1f m/s (need %.1f, median of %d moving legs of %d), dismounted %s, thrown %d times by %s, host answers %s" % [float(ridden[0]), metres, avg, need, moving.size(), legs.size(), str(off), int(throws[0]), str(hitters), str(answers)]]
 
 ## Phase 164 — the horizon: find the nearest coast with open sea across four headings, stand there and
 ## look out at the shallowest pitch. Each heading's frame is drawn with the camera seeing only the

@@ -183,6 +183,9 @@ func _test_stress_mirrored_constants() -> void:
 		"tools/stress.sh climbs the same ladder")
 	assert_true(script_text.contains('PATTERNS="${STRESS_PATTERNS:-%s}"' % " ".join(StressRules.PATTERNS)),
 		"and runs the same patterns")
+	var ctl_text := FileAccess.get_file_as_string("res://tools/stress_ctl.py")
+	assert_true(ctl_text.contains("\nMAX_SIZE = %d\n" % StressRules.LADDER[StressRules.LADDER.size() - 1]),
+		"tools/stress_ctl.py refuses crowds over the ladder's top")
 	assert_true(StressRecorder.MAX_CLIENTS > StressRules.LADDER[StressRules.LADDER.size() - 1],
 		"the stress host takes the top of the ladder plus a watcher")
 

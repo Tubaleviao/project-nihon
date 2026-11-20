@@ -48,7 +48,7 @@ func resolve(player_id: String, kind: String, tree_id: String, pos: Vector3, nor
 	elif kind == "block":
 		if voxel_slice == null:
 			return {}
-		var tgt: Dictionary = voxel_slice._edit.work_target(pos, normal, exact)
+		var tgt: Dictionary = voxel_slice.work_target(pos, normal, exact)
 		if tgt.is_empty():
 			return {}
 		material = str(tgt["material"])
