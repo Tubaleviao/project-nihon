@@ -148,8 +148,8 @@ place, `application/config/version` in `project.godot` (the main menu shows it i
 4. Tag the merge commit and push the tag: `git tag v<version> <sha> && git push origin v<version>`. The
    workflow refuses a tag that does not match the project version, in its first job, before any build. It
    also refuses a tag whose `assets-prod` pointer is not the private assets repo's `main` HEAD
-   (`tools/check_assets_pin.sh`, reading that repo with the `ASSETS_READ_TOKEN` secret, a fine-grained token
-   with read-only Contents access to it), because players' `assets.pck` is built from the release's pin: bump
+   (`tools/check_assets_pin.sh`, reading that repo with the `ASSETS_DEPLOY_KEY` secret, the private half of
+   a read-only SSH deploy key on it), because players' `assets.pck` is built from the release's pin: bump
    the pointer in an `assets-prod:` pull request first. Run `tools/check_assets_pin.sh` before tagging to check.
 5. Watch the run (`gh run watch`). It builds the native library on three platforms, exports Linux, Windows
    and macOS, plays the bot's `create`, `walk` and `mine` steps on the Linux export under xvfb, and only

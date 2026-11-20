@@ -50,14 +50,14 @@ jobs:
 
       - name: The tag pins the newest art
         # Players' assets.pck is built from a release's assets-prod pin, so a tag must pin the private assets
-        # repo's main HEAD. ASSETS_READ_TOKEN is a fine-grained token with read-only Contents access to that
-        # repo and nothing else. Only a pushed v* tag is gated; pull requests and manual dry runs skip it.
+        # repo's main HEAD. ASSETS_DEPLOY_KEY is the private half of a read-only SSH deploy key on that repo
+        # and nothing else. Only a pushed v* tag is gated; pull requests and manual dry runs skip it.
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         env:
-          ASSETS_READ_TOKEN: ${{ secrets.ASSETS_READ_TOKEN }}
+          ASSETS_DEPLOY_KEY: ${{ secrets.ASSETS_DEPLOY_KEY }}
         run: |
-          if [ -z "$ASSETS_READ_TOKEN" ]; then
-            echo "::error::the ASSETS_READ_TOKEN secret is not set"
+          if [ -z "$ASSETS_DEPLOY_KEY" ]; then
+            echo "::error::the ASSETS_DEPLOY_KEY secret is not set"
             exit 1
           fi
           tools/check_assets_pin.sh

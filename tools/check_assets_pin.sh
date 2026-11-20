@@ -3,13 +3,15 @@
 # that commit), so a `v*` tag must pin the newest art: the pointer must equal the private assets repo's
 # `main` HEAD. release.yml runs this on a pushed tag, before any build.
 #
-#   ASSETS_READ_TOKEN=<read-only token> tools/check_assets_pin.sh [REF]   # default REF=HEAD
+#   ASSETS_DEPLOY_KEY="$(cat key)" tools/check_assets_pin.sh [REF]   # default REF=HEAD
 #   tools/check_assets_pin.sh --self-test
 #
-# Without ASSETS_READ_TOKEN it reads the assets repo with the caller's own git credentials.
+# ASSETS_DEPLOY_KEY is the private half of a read-only SSH deploy key on the assets repo. Without it the
+# script reads the assets repo over HTTPS with the caller's own git credentials.
 set -uo pipefail
 
 ASSETS_URL="https://github.com/Tubaleviao/project-nihon-assets.git"
+ASSETS_SSH="git@github.com:Tubaleviao/project-nihon-assets.git"
 
 pointer() { git -C "$1" ls-tree "$2" assets-prod 2>/dev/null | awk '$2=="commit"{print $3}'; }
 
@@ -31,14 +33,17 @@ check() {
 }
 
 remote_main() {
-  if [ -n "${ASSETS_READ_TOKEN:-}" ]; then
-    local auth
-    auth="$(printf 'x-access-token:%s' "$ASSETS_READ_TOKEN" | base64 -w0)"
-    GIT_TERMINAL_PROMPT=0 git -c credential.helper= -c "http.extraHeader=Authorization: Basic $auth" \
-      ls-remote "$ASSETS_URL" refs/heads/main
+  if [ -n "${ASSETS_DEPLOY_KEY:-}" ]; then
+    local d
+    d="$(mktemp -d)"
+    printf '%s\n' "$ASSETS_DEPLOY_KEY" > "$d/key"
+    chmod 600 "$d/key"
+    GIT_SSH_COMMAND="ssh -i $d/key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$d/known_hosts" \
+      git ls-remote "$ASSETS_SSH" refs/heads/main 2>/dev/null | awk '{print $1}'
+    rm -rf "$d"
   else
-    GIT_TERMINAL_PROMPT=0 git ls-remote "$ASSETS_URL" refs/heads/main
-  fi 2>/dev/null | awk '{print $1}'
+    GIT_TERMINAL_PROMPT=0 git ls-remote "$ASSETS_URL" refs/heads/main 2>/dev/null | awk '{print $1}'
+  fi
 }
 
 if [ "${1:-}" = "--self-test" ]; then
