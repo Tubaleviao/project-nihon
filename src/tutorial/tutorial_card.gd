@@ -5,6 +5,7 @@ extends PanelContainer
 
 const I18n := preload("res://src/core/i18n.gd")
 const Rules := preload("res://src/tutorial/tutorial_rules.gd")
+const InputLabels := preload("res://src/ui/input_labels.gd")
 
 var slice: Node = null
 ## The slice the `?` panel's controls drive (set by `bind`).
@@ -77,6 +78,14 @@ static func keys_for(step: Dictionary, rows: Array) -> String:
 				out.append(str(row["keys"]))
 	return " / ".join(out)
 
+## Phase 289 — a step's body. Bodies of timed-work steps (chop, dig, mine) carry `{0}`, the shared
+## `tutorial.hold_hint` naming the input to hold (Shift + click for a step that mines, a click otherwise); other
+## bodies have no placeholder and read unchanged.
+static func body_text(step: Dictionary) -> String:
+	var kind := "block" if (step.get("inputs", []) as Array).has("mine") else "tree"
+	var hold := I18n.t("tutorial.hold_hint", [InputLabels.work_input(kind)])
+	return I18n.t("tutorial.%s.body" % str(step["id"]), [hold])
+
 ## Redraw for the current step (a completed one keeps its check for CHECK_SECONDS first).
 func refresh() -> void:
 	if slice == null:
@@ -96,7 +105,7 @@ func refresh() -> void:
 	_chapter.text = I18n.t("tutorial.chapter.%s" % step["chapter"])
 	_title.text = I18n.t("tutorial.%s.title" % id)
 	var keys := keys_for(step, rows)
-	_body.text = I18n.t("tutorial.%s.body" % id) + ("\n" + keys if keys != "" else "")
+	_body.text = body_text(step) + ("\n" + keys if keys != "" else "")
 	var steps: Array = slice.steps()
 	var done: int = (slice.state["done"] as Array).size()
 	_counter.text = I18n.t("tutorial.counter", [mini(done + 1, steps.size()), steps.size()])

@@ -56,6 +56,12 @@ static func key_name(code: Key) -> String:
 	var key := "controls.key." + os_name.to_lower().replace(" ", "_")
 	return I18n.t(key) if I18n.has_key(key) else os_name
 
+## Phase 289 — the input held for timed work, named for the player: a tree is worked with the left mouse button,
+## a block (dig, mine) with Shift + the left mouse button (`PlayerSlice` input handling, the `?` legend's rows).
+static func work_input(kind: String) -> String:
+	var lmb := I18n.t("controls.key.lmb")
+	return lmb if kind == "tree" else key_name(KEY_SHIFT) + " + " + lmb
+
 ## The `?` legend (moved out of ui_slice.gd for its line cap, Phase 220; `UiSlice.controls_rows()` delegates here). Each row:
 ## { action, keys, desc, mouse } where `mouse` is a MouseButton for a drawn cue, or 0. `action` is the
 ## id a tutorial step names in `inputs` (Phase 184, `Tutorial.inputActions`), in this row order.
