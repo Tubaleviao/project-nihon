@@ -163,6 +163,13 @@ func trigger_attack(clip: String = "attack", duration: float = -1.0) -> void:
 	attack_clip = clip
 	swing_serial += 1
 
+## Phase 281 — end an attack/work pose now (the hold was released); a no-op in any other state.
+func end_attack() -> void:
+	if _state != State.ATTACK:
+		return
+	_timer = 0.0
+	_set_state(_ground_state(_speed))
+
 ## Phase 159 — start a gesture: a held pose (`hold`) stays until `end_gesture`, a one-shot lasts
 ## `duration` seconds and returns to locomotion. Bumps `gesture_serial` so a repeat restarts the clip.
 ## Ignored while dead.

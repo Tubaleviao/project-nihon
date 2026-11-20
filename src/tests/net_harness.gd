@@ -197,6 +197,7 @@ static func steps() -> Array:
 		{ "name": "fold_carries_creatures", "compare": true },
 		{ "name": "creature_far_delta", "compare": true },
 		{ "name": "peer_attack_animated", "compare": true },
+		{ "name": "work_anim_synced", "compare": true },
 		{ "name": "death_landing_synced", "compare": true },
 		{ "name": "gesture_synced", "compare": true },
 		{ "name": "carcass_synced", "compare": true },
@@ -460,6 +461,7 @@ func run(root: Node, role: String) -> void:
 	await _step_fold_carries_creatures()
 	await _step_creature_far_delta()
 	await _step_peer_attack_animated()
+	await _step_work_anim_synced()
 	await _step_death_landing_synced()
 	await _step_gesture_synced()
 	await _step_carcass_synced()
@@ -2154,6 +2156,23 @@ func _step_peer_attack_animated() -> void:
 	var base: int = loco.swing_serial
 	var got: bool = await _await_until(func(): return loco.swing_serial > base, _step_timeout())
 	_report("peer_attack_animated", verdict(got, true), "synced" if got else "no_swing")
+
+## Phase 281 — the host's own body works, and the client's copy of it plays `chop`, then `build` after the host
+## places a block: the host sends a `work_anim` packet to peers in range and the client plays the table's clip.
+func _step_work_anim_synced() -> void:
+	if _role == "host":
+		await _await_settle(1.0)
+		GameBus.work_anim_changed.emit(1, "chop")
+		await _await_settle(1.5)
+		GameBus.work_anim_changed.emit(1, "")
+		GameBus.block_place_requested.emit(Vector3.ZERO, Vector3.UP, "", "Soil", {})
+		await _await_settle(1.5)
+		_report("work_anim_synced", verdict(true, true), "synced")
+		return
+	var w = _root._work_anim_wiring
+	var chopped: bool = await _await_until(func(): return w.last_clip.get(1, "") == "chop", _step_timeout())
+	var built: bool = await _await_until(func(): return w.last_clip.get(1, "") == "build", _step_timeout())
+	_report("work_anim_synced", verdict(chopped and built, true), "synced" if chopped and built else ("no_chop" if not chopped else "no_build"))
 
 ## Phase 159 — a gesture the host accepts for the bound peer is seen seated on that peer's client, and a
 ## pose the host's own body holds reaches the peer as it (re)joins: the host re-runs its join handler,

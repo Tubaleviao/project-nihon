@@ -1295,6 +1295,7 @@ static func build_breakdown(parts_usec: Dictionary, chunks: int, window_radius: 
 	return rec
 
 ## Mine the ground block under the body through the player's own intent.
+var _work_clip := ""   # 281: the clip the body played when the last hold started
 var _work_secs := 0.0; var _work_last: Array = []; var _work_bar_note := ""   # 259: the host's answer to the last work start; 289: its [action, material], and "" or why the mid-hold bar was not in view
 
 func _step_mine() -> Array:
@@ -1308,6 +1309,7 @@ func _step_mine() -> Array:
 	GameBus.block_mine_requested.emit(spot, Vector3.UP, "", {})
 	var ok: bool = await _until(func(): return _mined.size() > before, STEP_TIMEOUT_SECS)
 	if not ok or _work_bar_note != "": return [false, _work_bar_note if ok else "no block_mined (work held %.1f s)" % held]
+	if _work_clip != "mine": return [false, "the mining hold played '%s', not 'mine' (Phase 281)" % _work_clip]
 	# Phase 263 — more digs beside it, so the step has an edit-to-visible p95: each is timed from its completion to
 	# its chunk's mesh attached. PR #648 review: each one held for its work time first, as a player digs (the dug
 	# chunk is built while the work runs, `EditPrebuild`).
@@ -1335,6 +1337,7 @@ func _hold_work(kind: String, tree_id: String, pos: Vector3, shoot := false, exa
 	GameBus.work_start_requested.emit(kind, tree_id, pos, Vector3.UP, exact, "")
 	if not await _until(func(): return _work_secs > 0.0, STEP_TIMEOUT_SECS):
 		return -1.0
+	_work_clip = str(_root._work_anim_wiring.last_clip.get(1, ""))   # Phase 281: the clip the hold played
 	var t0 := Time.get_ticks_msec()
 	await _until(func(): return false, _work_secs * (0.5 if shoot else 1.0))   # Phase 289: shoot = the bar drawn and shot mid-hold, checked inside the viewport
 	if shoot: _work_bar_note = await load("res://src/tests/playtest_work_bar.gd").shoot(self, _root._player._work_hold, _work_last, _work_secs, kind, t0)
@@ -1430,7 +1433,8 @@ func _step_gather() -> Array:
 	var held: float = await _hold_work("tree", target, Vector3.ZERO)
 	GameBus.tree_chop_requested.emit(target, "")
 	var ok: bool = await _until(func(): return _chopped.size() > before, STEP_TIMEOUT_SECS)
-	return [ok, "felled %s after holding work %.1f s" % [str(_chopped.back()), held] if ok else "chop %s gave nothing (work held %.1f s)" % [target, held]]
+	if ok and _work_clip != "chop": return [false, "the chop hold played '%s', not 'chop' (Phase 281)" % _work_clip]
+	return [ok, "felled %s after holding work %.1f s (clip %s)" % [str(_chopped.back()), held, _work_clip] if ok else "chop %s gave nothing (work held %.1f s)" % [target, held]]
 
 ## Research `tech_id` through the player's own intent (research points and materials granted first, the
 ## way a session would earn them). "" on success.
@@ -1647,7 +1651,9 @@ func _step_place() -> Array:
 		placed = await _place_with_keys("forge")
 		if placed > 0:
 			break
-	return [placed > 0, "placed %s" % str(_placed.back()[0]) if placed > 0 else "forge placement refused"]
+	if placed > 0 and str(_root._work_anim_wiring.last_clip.get(1, "")) != "build":
+		return [false, "placing played '%s', not 'build' (Phase 281)" % str(_root._work_anim_wiring.last_clip.get(1, ""))]
+	return [placed > 0, "placed %s (clip build)" % str(_placed.back()[0]) if placed > 0 else "forge placement refused"]
 
 ## Fight: a creature set down within reach loses HP to the player's melee round and is drawn as a model.
 func _step_fight() -> Array:

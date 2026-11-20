@@ -26,13 +26,16 @@ const SCALE_PARAM := "parameters/Locomotion/Scale/scale"
 ## listed in one of the two (the suite asserts the table covers every clip a rig ships).
 const LOOPING_CLIPS := ["idle", "walk", "run", "fall"]
 const ONE_SHOT_CLIPS := ["land", "attack", "attack_unarmed", "attack_1h", "attack_tool", "death", "hit",
-	"stagger", "death_back", "death_forward", "death_side", "idle_look", "idle_stretch", "sit", "sit_ground", "lie_down", "wave", "point", "bow", "cheer", "shrug", "clap", "kneel"]
+	"stagger", "death_back", "death_forward", "death_side", "idle_look", "idle_stretch", "sit", "sit_ground", "lie_down", "wave", "point", "bow", "cheer", "shrug", "clap", "kneel",
+	"chop", "mine", "dig", "build", "dissect"]
 
 ## The swing a body plays by what its main hand holds; a rig missing one plays `attack`.
 const ATTACK_DEFAULT := "attack"
 const ATTACK_UNARMED := "attack_unarmed"
 const ATTACK_ONE_HAND := "attack_1h"
 const ATTACK_TOOL := "attack_tool"
+## Phase 281 — one clip per kind of work (fabric `WorkClips`); played through the Attack node like a swing.
+const WORK_CLIPS := ["chop", "mine", "dig", "build", "dissect"]
 
 ## OneShot nodes inside the locomotion blend tree: the flinch (additive) and the idle variant
 ## (replaces the pose; aborted once the body moves).
@@ -121,7 +124,7 @@ static func prepare_library(player: AnimationPlayer) -> void:
 static func swing_lengths(player: AnimationPlayer) -> Dictionary:
 	var out := {}
 	for clip_name in player.get_animation_list():
-		if str(clip_name).begins_with("attack"):
+		if str(clip_name).begins_with("attack") or str(clip_name) in WORK_CLIPS:
 			out[str(clip_name)] = player.get_animation(clip_name).length
 	return out
 
