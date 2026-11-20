@@ -994,9 +994,11 @@ hand. Today `hotbar.selected_item()` only feeds station placement; held meshes e
   than the equipped main-hand item; an empty slot shows the equipped main hand (or nothing).
 - Two-handed carries and stations (Phase 268) keep their own pose; a station in the slot shows its carried
   form in both hands, not a full-size station.
-- The held item is shown to other players. The client sends the selected slot index; the host checks the slot
-  exists and is not empty in that player's inventory, rate-limits changes, and syncs the held item id to peers
-  in range. A client never names the item id itself (trust boundary).
+- The held item is shown to other players. The hotbar is client-side UI (`src/ui/hotbar.gd` `slots` holds item ids,
+  saved locally), so the host has no slot to check: the client sends the selected item id (or empty), and the host
+  checks the player holds at least one of it in their inventory and that it is holdable (an item, not a skill
+  entry), rate-limits changes, and syncs the held item id to peers in range. The host re-checks on inventory
+  change: when the held item leaves the inventory, the host clears it and syncs empty (trust boundary).
 - `RigTree.attack_clip_for` and the work swing (Phase 281) read the held item, so a pick held from the hotbar
   swings as a tool.
 - Each item's grip (offset and rotation at the socket) comes from the item's model (a `grip` node when present,
@@ -1006,8 +1008,9 @@ hand. Today `hotbar.selected_item()` only feeds station placement; held meshes e
 - Suite: selecting a slot with an item attaches that item's mesh under `socket_weapon_r`; selecting an empty slot
   restores the main-hand equipment mesh; a missing model key gives the box fallback; switching slots frees the old
   mesh (no orphans); a `grip` node offsets the mesh.
-- Suite (host): a selected-slot message naming an empty or out-of-range slot is refused and syncs nothing; more
-  changes than the rate limit in a second are dropped; the synced id is the inventory's, not a client value.
+- Suite (host): a held-item message naming an item the player does not have, an unknown id or a skill entry is
+  refused and syncs nothing; more changes than the rate limit in a second are dropped; dropping or using up the
+  last held item syncs empty.
 - Net harness step: client B sees client A's held item id change when A selects another slot.
 
 ## Phase 281 — Chopping you can see: a work swing while the hold runs
@@ -1038,7 +1041,7 @@ Owner's playtest, 2026-11-19: holding the work input on a tree plays no animatio
 ## Phase 282 — A felled tree falls, then goes
 
 Owner's playtest, 2026-11-19: a felled tree squashes into a dark stump in place (scale 0.7/0.18/0.7,
-`tree_slice.gd` ~1160–1172) and stays until it regrows. It should topple, and then disappear completely.
+`tree_slice.gd` `_stump_transform`) and stays until it regrows. It should topple, and then disappear completely.
 
 - On the felled event, clients play a fall: the tree rotates about its base, away from the feller, to the ground
   over about 2.5 s with an ease-in (a falling tree speeds up), a short bounce, then sinks and fades over 1.5 s
@@ -1049,7 +1052,9 @@ Owner's playtest, 2026-11-19: a felled tree squashes into a dark stump in place 
   mid-fall sees the tree already gone (no half-fall replays).
 - The falling tree is a single instance taken out of the MultiMesh into its own node for the fall, then freed;
   the MultiMesh slot is hidden. No collision during the fall (it never hits players).
-- The fall direction is seeded from the feller's position, so all clients agree.
+- The fall direction is chosen by the host (away from the feller's position at the felling) and carried in the
+  felled sync: `GameBus.tree_chopped(tree_id, wood, state, respawn_at)` carries no feller or position today, so it
+  gains a `fall_yaw` (radians) that clients use as-is, never computing it from their local copy of the feller.
 - No world-gen change (placement is untouched), so no `WORLDGEN_VERSION` bump.
 
 **Acceptance criteria**
@@ -1058,7 +1063,8 @@ Owner's playtest, 2026-11-19: a felled tree squashes into a dark stump in place 
   stump instance exists; orphan audit clean.
 - Suite: a chunk built with a tree already felled shows no tree; regrowth scales from sapling to full over the
   regrow window.
-- Net harness step: both clients see the tree removed after A fells it.
+- Suite (host): the felled sync's `fall_yaw` points away from the feller's position.
+- Net harness step: both clients see the tree removed after A fells it, and both received the same `fall_yaw`.
 
 ## Phase 283 — Trees that look like trees: closed faces, a trunk and a real crown
 
@@ -1067,8 +1073,10 @@ Owner's playtest, 2026-11-19: the upper part of a tree can be seen into and does
 seen from outside, which Godot 4 treats as back faces; with the default culling, the outside faces are culled and
 the inside shows. The voxel terrain hides the same winding with `CULL_DISABLED`; the tree material does not.
 
-- Fix `MeshUtil.add_box` (and any other `MeshUtil` builder) to Godot's front-face winding, and check every user of
-  it (trees, the loose-item fallback, any debug or placeholder boxes) still renders outward. The terrain's
+- Fix `MeshUtil.add_box` and `MeshUtil.add_box_arrays` (both built from the shared `_box_faces`) and any other
+  `MeshUtil` builder to Godot's front-face winding, and check every user still renders outward: trees, the
+  loose-item fallback, the rare-vein deposit markers (`add_box_arrays` in `voxel_mesh.gd` and `voxel_smooth.gd`),
+  and any debug or placeholder boxes. The terrain's
   `CULL_DISABLED` stays only where a mesh is truly two-sided.
 - Trees come from a model per tree species (`models/trees/<species>.glb.raw`, the species from the fabric's
   biome/flora tables), with up to two variants per species, chosen by the tree's seed. Placeholders for every
@@ -1079,8 +1087,8 @@ the inside shows. The voxel terrain hides the same winding with `CULL_DISABLED`;
 - No world-gen change (positions and species are untouched), so no `WORLDGEN_VERSION` bump. Art: assets A42.
 
 **Acceptance criteria**
-- Suite: every triangle `MeshUtil.add_box` emits has its face normal (from the winding Godot uses) pointing away
-  from the box centre; same for the tree fallback mesh.
+- Suite: every triangle `MeshUtil.add_box` and `MeshUtil.add_box_arrays` emit has its face normal (from the winding
+  Godot uses) pointing away from the box centre; same for the tree fallback mesh and a chunk's deposit markers.
 - Suite: each fabric tree species has a placeholder model at its key; a tree uses its species' model when it loads
   and the fallback otherwise; the variant pick is stable for a given tree seed.
 - Suite: the placeholder crown is closed (every edge shared by two triangles).
@@ -1108,14 +1116,18 @@ depends on each glb's origin matching the head, and the head size differs by bod
 
 ## Phase 285 — Grass without black spots
 
-Owner's playtest, 2026-11-19: the grass ground texture shows black spots. Suspects on the game side, in
-`src/terrain/terrain_material.gdshader`: `ALBEDO = col / sum` and `normalize(nrm)` give NaN (drawn black) when the
-weight sum or the normal is zero; the height blend uses albedo brightness, so dark texels in a layer lose to the
-others and the darkest texels can drive the sum toward zero where layers meet. On the art side, the prod
-`grass_albedo` may carry near-black texels that mipmaps spread (assets A44).
+Owner's playtest, 2026-11-19: the grass ground texture shows black spots. First suspect, on the art side: the prod
+`grass_albedo` may carry near-black texels that mipmaps spread (assets A44); check the prod map and its mipmaps
+before changing the shader. In `src/terrain/terrain_material.gdshader` the blend sum cannot reach zero from dark
+texels: the layer with the highest `height[i]` always adds `b = blend_depth`, so `sum >= blend_depth`. The shader
+can still draw black or NaN where `blend_depth` is set to 0 (`col / sum` with `sum == 0`), where the blended
+normals cancel (`normalize(nrm)` of a zero vector), and where every layer weight is at or below 0.002 (all
+heights −1, `col` stays zero, black albedo); a vertex with total weight under 0.01 takes the vertex `COLOR` path
+instead, so a dark vertex colour there also shows as a dark spot.
 
 - The shader guards both divisions (`max(sum, 1e-4)`, a fallback normal when the length is near zero) and never
-  outputs NaN.
+  outputs NaN; when no layer passes the 0.002 cut, the largest-weight layer is used alone instead of black.
+  `blend_depth` is clamped above zero (`hint_range` minimum > 0).
 - The blend height comes from a per-layer height value (the albedo luminance remapped and clamped to a floor per
   layer in the fabric `terrain_material` entity), not raw brightness, so no layer's dark texels all lose at once.
 - A GDScript mirror of the blend (`terrain_weights.gd` already mirrors the vertex side) computes the pixel weights
@@ -1126,7 +1138,8 @@ others and the darkest texels can drive the sum toward zero where layers meet. O
 **Acceptance criteria**
 - `npm run validate` / `check-drift` pass with the height floors; the validator rejects a floor outside 0–1.
 - Suite: the GDScript blend mirror returns finite weights summing to 1 for zero vertex weights, all-black
-  albedo and a zero normal; the shader source contains the two guards (source audit).
+  albedo and a zero normal, and picks the largest-weight layer when every weight is at or below 0.002; the shader
+  source contains the two guards and a `blend_depth` minimum above zero (source audit).
 - Suite: a synthetic map whose darkest 1% is black is rejected by the loader and the placeholder used; the public
   grass placeholder passes.
 
@@ -1167,6 +1180,10 @@ no link between the clip's strike and the damage, and the target barely reacts.
   to the base clip.
 - Impact timing: the host resolves the hit at the clip's `impact` marker time (from the fabric table, which
   mirrors the asset's marker), not at the click; the client plays hit effects and sound at the same frame.
+- At impact the host re-checks everything it checked at the click, with the state at impact: attacker and target
+  both alive, target in range of the attacker's current position, and the damage from the weapon and combo step
+  the swing started with (switching weapon mid-swing cancels it). The pending hit is cancelled if the attacker
+  dies, is staggered, or starts another action before impact; a cancelled hit deals nothing and sends no hit sync.
 - Upper-body attacks: attacking while moving plays the attack on the upper body over the walk/run (a bone-mask
   blend from the spine up), so the feet keep moving.
 - Hit reactions: a struck player or creature plays `hit` (light) or `stagger` (heavy, past a damage share set
@@ -1182,6 +1199,8 @@ no link between the clip's strike and the damage, and the target barely reacts.
   restarts at the first; a rig without a variant plays the base clip.
 - Suite (host): damage is applied at the impact time, not before; a hit above the stagger share plays `stagger`
   on the target, below it `hit`; the knock-back points away from the attacker.
+- Suite (host): a target that leaves range before impact takes no damage; a target that dies before impact takes
+  no further hit; an attacker who dies, is staggered or switches weapon before impact deals nothing.
 - Suite: attacking while walking keeps the lower body on `walk` (blend mask applied).
 - Playtest bot `fight` step passes and records the clip sequence.
 
