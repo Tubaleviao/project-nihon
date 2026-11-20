@@ -29,6 +29,7 @@ func register() -> void:
 	_run_test("work session: host timing",                      _test_work_session)
 	_run_test("work host: tree timing",                         _test_work_host_tree)
 	_run_test("work hold: same target",                         _test_work_hold_same_target)
+	_run_test("work hold: a dig asks for the next block in the frame it completes (Phase 290)", _test_work_hold_dig_chains)
 	_run_test("tree: stump regrows on its cooldown",            _test_tree_stump_regrows_on_cooldown)
 	_run_test("tree: despawn is per chunk",                     _test_tree_despawn_is_per_chunk)
 	_run_test("tree: chunk hop keeps the stump cooldown",       _test_tree_chunk_hop_keeps_stump_cooldown)
@@ -1623,3 +1624,55 @@ func _test_work_hold_same_target() -> void:
 	assert_true(Hold.same_target(b, { "kind": "block", "position": Vector3(1.4, 2, 3) }), "a nearby aim point is the same block")
 	assert_false(Hold.same_target(b, { "kind": "block", "position": Vector3(5, 2, 3) }), "a far aim point is a retarget")
 	assert_false(Hold.same_target(a, b), "a tree is not a block")
+
+## Phase 290 — a held dig carries on: the completion frame sends the mine request and, right after it, the start of
+## the block under (top face) or behind (side face) the dug one. A mine does not chain, nor does a released hold.
+func _test_work_hold_dig_chains() -> void:
+	var Hold := preload("res://src/player/work_hold.gd")
+	var VoxelConsts := preload("res://src/terrain/voxel_consts.gd")
+	var starts: Array = []
+	var mines: Array = []
+	var on_start := func(kind: String, _tree: String, pos: Vector3, _n: Vector3, exact: Dictionary, _pid: String) -> void:
+		starts.append([kind, pos, exact])
+	var on_mine := func(pos: Vector3, _n: Vector3, _pid: String, _exact: Dictionary) -> void:
+		mines.append(pos)
+	GameBus.work_start_requested.connect(on_start)
+	GameBus.block_mine_requested.connect(on_mine)
+	var hold := Hold.new()
+	add_child(hold)
+	var top := { "kind": "block", "position": Vector3(4.25, 2.0, 6.25), "normal": Vector3.UP,
+		"exact": { "chunk": Vector2i(3, -2), "local": Vector3(4.25, 2.0, 6.25) } }
+	hold.press(top)
+	assert_eq(starts.size(), 1, "the press asks to start")
+	GameBus.work_started.emit("block:a", 0.6, "dig", "Soil")
+	hold.tick(0.5, "", top)
+	assert_eq(mines.size(), 0, "not done before the duration")
+	hold.tick(0.2, "", top)
+	assert_eq(mines.size(), 1, "the dig completes")
+	assert_eq(starts.size(), 2, "and the next block's start goes out in the same frame")
+	if starts.size() == 2:
+		assert_true((starts[1][1] as Vector3).is_equal_approx(Vector3(4.25, 2.0 - VoxelConsts.STEP_HEIGHT, 6.25)), "one step under the dug top (%s)" % str(starts[1][1]))
+		assert_true(((starts[1][2] as Dictionary)["local"] as Vector3).is_equal_approx(Vector3(4.25, 2.0 - VoxelConsts.STEP_HEIGHT, 6.25)), "the exact record moves with it")
+	# The stale aim (the old top, mesh not rebuilt yet) is still the same target, so the chained work goes on.
+	GameBus.work_started.emit("block:b", 0.6, "dig", "Soil")
+	hold.tick(0.1, "", top)
+	assert_true(hold.progress() > 0.0, "the chained dig runs under the old aim")
+	hold.release()
+	# A side face continues one tile further in; the exact record crosses the chunk edge cleanly.
+	var side := { "kind": "block", "position": Vector3(0.1, 1.5, 3.0), "normal": Vector3(1, 0, 0),
+		"exact": { "chunk": Vector2i(5, 0), "local": Vector3(0.1, 1.5, 3.0) } }
+	var next: Dictionary = Hold.next_dig_target(side)
+	assert_true((next["position"] as Vector3).is_equal_approx(Vector3(0.1 - VoxelConsts.TILE_SIZE, 1.5, 3.0)), "a side dig goes one tile in")
+	assert_eq((next["exact"] as Dictionary)["chunk"], Vector2i(4, 0), "into the next chunk when it crosses")
+	# A mine (rock) does not chain.
+	starts.clear()
+	mines.clear()
+	hold.press(top)
+	GameBus.work_started.emit("block:c", 0.6, "mine", "Ferrite")
+	hold.tick(0.7, "", top)
+	assert_eq(mines.size(), 1, "the mine completes")
+	assert_eq(starts.size(), 1, "and asks for nothing more in that frame")
+	hold.release()
+	GameBus.work_start_requested.disconnect(on_start)
+	GameBus.block_mine_requested.disconnect(on_mine)
+	hold.free()

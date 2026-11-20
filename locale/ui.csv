@@ -497,6 +497,7 @@ tutorial.dig.body,"Dig into the ground with the shovel. {0} What you dig goes in
 tutorial.mine_stone.title,Mine rock,Minere rocha
 tutorial.mine_stone.body,"Dig through the soil and mine the rock under it with the pick. {0} Here the rock is ferrite ore, which the forge smelts.","Cave através da terra e minere a rocha embaixo dela com a picareta. {0} Aqui a rocha é minério de ferrita, que a forja funde."
 tutorial.hold_hint,Hold {0} until the bar fills.,Segure {0} até a barra encher.
+tutorial.marker.ore_near_surface,"{0} close under the soil, {1} m away","{0} logo abaixo do solo, a {1} m"
 tutorial.technology.title,Technology,Tecnologia
 tutorial.technology.body,Open the technology window. Research unlocks new recipes.,Abra a janela de tecnologia. A pesquisa libera novas receitas.
 tutorial.research_carpentry.title,Learn carpentry,Aprenda carpintaria

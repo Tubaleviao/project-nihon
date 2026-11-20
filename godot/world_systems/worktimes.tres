@@ -8,6 +8,6 @@ id = ""
 bareHandsSpeed = 0.25
 actions = {"dig":{"toolClass":"shovel","families":["soil"]},"mine":{"toolClass":"pick","families":["stone","metal"]},"chop":{"toolClass":"axe","families":["wood"]}}
 workSeconds = {"Grass":0.6,"Soil":0.8,"Sand":0.6,"Snow":0.5,"Ashite":2.5,"Lumenfite":3.5,"Ferrite":3,"Veilsteel":5,"Aethermite":7,"Voidite":9,"Concrete":4,"Steel":6,"Leyframe":6,"Thornwood":4,"Duskfiber":5}
-toolSpeeds = {"FerritePick":{"pick":1},"VeilsteelPick":{"pick":1.5},"CarpenterAxe":{"axe":1},"StonePick":{"pick":0.6},"StoneAxe":{"axe":0.6},"StoneShovel":{"shovel":0.6}}
+toolSpeeds = {"FerritePick":{"pick":1},"VeilsteelPick":{"pick":1.5},"CarpenterAxe":{"axe":1},"StonePick":{"pick":0.6},"StoneAxe":{"axe":0.6},"StoneShovel":{"shovel":1.2}}
 description = "How long gathering takes: a base time per material, the tool class each action wants, a speed per tool and class, and the slow factor of bare hands (also the speed of a tool of the wrong class)."
 tags = ["world-system"]

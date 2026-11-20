@@ -60,7 +60,16 @@ const WINDOWS = [
   'skills', 'map', 'settlement', 'gestures',
 ]
 
-const step = (id, chapter, inputs, requires, trigger) => ({ id, chapter, inputs, requires, trigger })
+const step = (id, chapter, inputs, requires, trigger, marker) => (marker ? { id, chapter, inputs, requires, trigger, marker } : { id, chapter, inputs, requires, trigger })
+
+// Phase 290 — a step's optional target marker: where in the world the step's work is, found by the client round
+// the player when the step comes up. The closed set of marker kinds and the params each needs:
+//   ore_near_surface — the nearest column within `radiusMetres` whose `item` lies at most `maxDepthBlocks` blocks
+//   under the surface (the first block is the surface block), read from the voxel columns the player sees.
+const MARKER_KINDS = {
+  ore_near_surface: ['item', 'maxDepthBlocks', 'radiusMetres'],
+}
+const markerKey = (kind) => `tutorial.marker.${kind}`
 
 const STEPS = [
   // Moving
@@ -80,7 +89,12 @@ const STEPS = [
   step('craft_pick', 'first_tools', [], ['craft_axe'], { kind: 'item_crafted', item: 'StonePick' }),
   step('craft_shovel', 'first_tools', [], ['craft_axe'], { kind: 'item_crafted', item: 'StoneShovel' }),
   step('dig', 'first_tools', ['mine'], ['craft_shovel'], { kind: 'item_gathered', item: 'Soil', count: 1 }),
-  step('mine_stone', 'first_tools', ['mine'], ['craft_pick'], { kind: 'item_gathered', item: 'Ferrite', count: 1 }),
+  // Phase 290: the topsoil is metres deep on the newcomer grounds (no column within 16 m of the pinned spawn has
+  // Ferrite 2 blocks down, nor within 30 m), so the step marks the nearest Ferrite within 30 m with at most 5 soil
+  // blocks over it: under 5 s of holding with the stone shovel (tools/check_tutorial.js ties the depth to that budget).
+  // One Ferrite completes it.
+  step('mine_stone', 'first_tools', ['mine'], ['craft_pick'], { kind: 'item_gathered', item: 'Ferrite', count: 1 },
+    { kind: 'ore_near_surface', item: 'Ferrite', maxDepthBlocks: 6, radiusMetres: 30 }),
   // First stations: research, the carpentry bench and its first recipe, then the forge and the first metal pick
   step('technology', 'first_stations', [], ['chop'], { kind: 'window_opened', window: 'technology' }),
   step('research_carpentry', 'first_stations', [], ['technology'], { kind: 'technology_researched', technology: 'TechBasicCarpentry' }),
@@ -132,6 +146,7 @@ function catalogKeys(data) {
   return [
     ...data.chapters.map(chapterKey),
     ...data.steps.flatMap((s) => [titleKey(s.id), bodyKey(s.id)]),
+    ...[...new Set(data.steps.filter((s) => s && s.marker && s.marker.kind).map((s) => markerKey(s.marker.kind)))],
   ]
 }
 
@@ -176,6 +191,7 @@ function tutorialProblems(data, refs) {
       else if (!seen.has(r)) p.push(`${at}: requires "${r}", which is not an earlier step`)
     }
     p.push(...triggerProblems(at, s.trigger, kinds, windows, refs))
+    if ('marker' in s) p.push(...markerProblems(at, s.marker, refs))
     if (typeof s.id === 'string' && !seen.has(s.id)) seen.set(s.id, i)
   })
   for (const c of data.chapters) if (!chapterUsed.has(c)) p.push(`chapter "${c}" has no step`)
@@ -215,6 +231,21 @@ function triggerProblems(at, t, kinds, windows, refs) {
   if ('slot' in t && !refs.slots.includes(t.slot)) p.push(`${at}: equipment slot "${t.slot}" does not exist`)
   if ('creature' in t && !refs.creatures.includes(t.creature)) p.push(`${at}: creature "${t.creature}" does not exist`)
   if ('technology' in t && !refs.technologies.includes(t.technology)) p.push(`${at}: technology "${t.technology}" does not exist`)
+  return p
+}
+
+// Phase 290 — a step marker's shape: a known kind, exactly its params, an existing item, a whole depth of 1 to 8
+// blocks and a radius of at most 64 m (the client searches every column inside it when the step comes up).
+function markerProblems(at, m, refs) {
+  if (!m || typeof m !== 'object' || Array.isArray(m)) return [`${at}: marker must be an object`]
+  const params = MARKER_KINDS[m.kind]
+  if (!params) return [`${at}: unknown marker kind "${m.kind}"`]
+  const p = []
+  for (const k of params) if (!(k in m)) p.push(`${at}: marker ${m.kind} needs "${k}"`)
+  for (const k of Object.keys(m)) if (k !== 'kind' && !params.includes(k)) p.push(`${at}: marker ${m.kind} takes no "${k}"`)
+  if ('item' in m && !refs.items.includes(m.item)) p.push(`${at}: marker item "${m.item}" does not exist`)
+  if ('maxDepthBlocks' in m && !(Number.isInteger(m.maxDepthBlocks) && m.maxDepthBlocks >= 1 && m.maxDepthBlocks <= 8)) p.push(`${at}: marker maxDepthBlocks must be an integer in 1..8, got ${m.maxDepthBlocks}`)
+  if ('radiusMetres' in m && !(typeof m.radiusMetres === 'number' && m.radiusMetres > 0 && m.radiusMetres <= 64)) p.push(`${at}: marker radiusMetres must be in (0, 64], got ${m.radiusMetres}`)
   return p
 }
 
@@ -287,7 +318,7 @@ const Tutorial = defineEntity({
     chapters: { type: 'json', description: 'Chapter ids in order; label tutorial.chapter.<id>', defaultValue: CHAPTERS },
     steps: {
       type: 'json',
-      description: 'Ordered steps: [{ id, chapter, inputs, requires, trigger: { kind, ...params } }]; text tutorial.<id>.title / .body',
+      description: 'Ordered steps: [{ id, chapter, inputs, requires, trigger: { kind, ...params }, marker?: { kind, ...params } }]; text tutorial.<id>.title / .body, marker label tutorial.marker.<kind>',
       defaultValue: STEPS,
     },
     triggerKinds: { type: 'json', description: 'The closed set of completion events: { <kind>: { required?, oneOf? } }', defaultValue: TRIGGER_KINDS },
@@ -308,6 +339,6 @@ const Tutorial = defineEntity({
 })
 
 module.exports = {
-  Tutorial, CHAPTERS, TRIGGER_KINDS, INPUT_ACTIONS, WINDOWS, STEPS,
+  Tutorial, CHAPTERS, TRIGGER_KINDS, MARKER_KINDS, markerKey, INPUT_ACTIONS, WINDOWS, STEPS,
   titleKey, bodyKey, chapterKey, catalogKeys, tutorialData, tutorialProblems, tutorialRefs, validateTutorial,
 }

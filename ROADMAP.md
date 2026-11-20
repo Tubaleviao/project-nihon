@@ -31,14 +31,13 @@ introductions of the arcs they belonged to, are archived in
 Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
 see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
 phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
-comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248–250, 252–256, 259–276, 289)
+comes next. A phase that needs an earlier one still waits for it. Done phases (238–243, 248–250, 252–256, 259–276, 289, 290)
 have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
 [Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
 others are not in it.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 6 | 290 | Digging that does not drag: a faster shovel on the way to rock |
 | 9 | 278 | Rocks and branches that look like rocks and branches |
 | 10 | 283 | Trees that look like trees: closed faces, a trunk and a real crown |
 | 11 | 282 | A felled tree falls, then goes |
@@ -360,7 +359,7 @@ A40–A46). The placeholder rule holds: each phase lands with public placeholder
 | 287 | Fighting that reads: combos, impact timing and hit reactions | Open |
 | 288 | Recipe cards you can read: a real icon area in the crafting window | Done |
 | 289 | Hold to work, told and shown: the work bar in view, and the tutorial says hold | Done |
-| 290 | Digging that does not drag: a faster shovel on the way to rock | Open |
+| 290 | Digging that does not drag: a faster shovel on the way to rock | Done |
 
 ## Phase 225 — The options window
 

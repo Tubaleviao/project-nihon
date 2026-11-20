@@ -16,7 +16,7 @@ The first-steps tutorial: an ordered list of small steps that teach a new player
 | Field | Type | Description |
 | ----- | ---- | ----------- |
 | chapters | json | Chapter ids in order; label tutorial.chapter.<id> |
-| steps | json | Ordered steps: [{ id, chapter, inputs, requires, trigger: { kind, ...params } }]; text tutorial.<id>.title / .body |
+| steps | json | Ordered steps: [{ id, chapter, inputs, requires, trigger: { kind, ...params }, marker?: { kind, ...params } }]; text tutorial.<id>.title / .body, marker label tutorial.marker.<kind> |
 | triggerKinds | json | The closed set of completion events: { <kind>: { required?, oneOf? } } |
 | inputActions | json | Input action ids a step can name, in \`?\` controls-row order |
 | windows | json | UI window keys a window_opened trigger can name |

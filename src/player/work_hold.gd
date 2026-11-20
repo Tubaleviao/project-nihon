@@ -3,10 +3,12 @@ extends Control
 ## answers with the duration it computed (`work_started`), and the bar fills while the input stays held on that
 ## target. Releasing, turning to another target or losing the target cancels (progress is lost, nothing is spent).
 ## On completion the existing chop / mine request runs unchanged, and holding on starts the next target under the
-## crosshair, so a trench is one hold. The host times the work independently and drops an early completion.
+## crosshair, so a trench is one hold (Phase 290: a dig asks for the block behind it in the same frame). The host times the work independently and drops an early completion.
 
 const I18n := preload("res://src/core/i18n.gd")
 const InputLabels := preload("res://src/ui/input_labels.gd")
+const VoxelConsts := preload("res://src/terrain/voxel_consts.gd")
+const WorldPos := preload("res://src/terrain/world_pos.gd")
 
 const GIVE_UP_SECONDS := 1.5   # no answer from the host: stop asking until the input is pressed again
 
@@ -219,6 +221,7 @@ func _cancel() -> void:
 
 func _complete() -> void:
 	var t := _target
+	var dug := _action == "dig"
 	_target = {}
 	_started = false
 	_chained = true
@@ -227,6 +230,24 @@ func _complete() -> void:
 		GameBus.tree_chop_requested.emit(str(t["tree_id"]), "")
 	else:
 		GameBus.block_mine_requested.emit(t["position"], t["normal"], "", t["exact"])
+		# Phase 290 — a dig hold carries straight on to the block behind the one just dug (under it for a top face),
+		# asked for in the same frame instead of after the crosshair has caught up with the new face, so a trench is
+		# one continuous dig. The host resolves the new target against the column with the dug block gone.
+		if dug and _held:
+			_begin(next_dig_target(t))
+
+## Phase 290 — the block a dig continues into once `t` is dug: one step down for a top face, one tile further in for
+## a side face. `exact` (the `{chunk, local}` world record) moves with it.
+static func next_dig_target(t: Dictionary) -> Dictionary:
+	var normal: Vector3 = t.get("normal", Vector3.UP)
+	var shift := Vector3(0.0, -VoxelConsts.STEP_HEIGHT, 0.0) if normal.y > 0.5 \
+		else -Vector3(normal.x, 0.0, normal.z).normalized() * VoxelConsts.TILE_SIZE
+	var next := t.duplicate()
+	next["position"] = (t["position"] as Vector3) + shift
+	var exact: Dictionary = t.get("exact", {})
+	if exact.has("chunk") and exact.has("local"):
+		next["exact"] = WorldPos.normalized({ "chunk": exact["chunk"], "local": (exact["local"] as Vector3) + shift })
+	return next
 
 func _refresh() -> void:
 	show_work(_action, _material, _duration, _elapsed, _kind)

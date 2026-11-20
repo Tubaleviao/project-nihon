@@ -7,6 +7,9 @@ extends "res://src/tests/test_support.gd"
 const CreationRules := preload("res://src/character/creation_rules.gd")
 const ShelterRule := preload("res://src/world/shelter_rule.gd")
 const StoneTools := preload("res://src/world/stone_tools.gd")
+const TutorialMarker := preload("res://src/tutorial/tutorial_marker.gd")
+const TutorialRules := preload("res://src/tutorial/tutorial_rules.gd")
+const WorkTime := preload("res://src/core/work_time.gd")
 
 ## fabric/gameplay/tutorial.js STEPS, in order.
 ## Phase 262: from bare hands — loose items, stone tools, then the stations.
@@ -34,6 +37,8 @@ func register() -> void:
 	_run_test("bed: the recipe is craftable in the first hour from gathered materials and early recipes", _test_bed_first_hour)
 	_run_test("stone tools: every one is reachable from an empty kit with only loose stones and branches", _test_stone_tools_first_hour)
 	_run_test("tutorial: the first stone tools come from the loose items, before the first station is placed", _test_bare_hands_order)
+	_run_test("tutorial: on the pinned playtest world, Ferrite is at most 2 blocks down round the spawn or the mine_stone marker names Ferrite within 30 m (Phase 290)", _test_mine_stone_marker_pinned, true)
+	_run_test("tutorial: a step marker is the first eligible step's, searched nearest first, and its beacon follows a rebase (Phase 290)", _test_marker_rules)
 	_run_test("shelter: a roofed room passes, an open spot and a roof alone do not", _test_shelter_rule)
 	_run_test("shelter: three closed sides are enough, two are not, and a low lip is no wall", _test_shelter_sides)
 
@@ -360,3 +365,115 @@ func _test_shelter_sides() -> void:
 	# A hillside is a wall: the natural ground rising beside the bed closes that side.
 	var hill := _world({ Vector2i(1, 0): [{ "bottom": 0.0, "top": 3.0 }] })
 	assert_eq(ShelterRule.closed_sides(bed, hill, r), 1, "a hillside closes a side")
+
+func _step(id: String) -> Dictionary:
+	for st in TutorialRules.steps():
+		if str(st["id"]) == id:
+			return st
+	return {}
+
+## Phase 290 — the rock the tutorial asks for is close: checked against world-gen on the pinned playtest world (the
+## 2,000 km planet the bot plays; no world-gen change). Either every column within 16 m of the newcomer spawn has
+## Ferrite at most 2 blocks down, or the `mine_stone` step's marker finds Ferrite within 30 m. World-gen does not give
+## 2 blocks there (the nearest such column is 30-40 m out), so the marker allows the soil the stone shovel digs in
+## under 5 s (fabric `maxDepthBlocks`).
+func _test_mine_stone_marker_pinned() -> void:
+	var Bot := load("res://src/tests/playtest_bot.gd")
+	var step := _step("mine_stone")
+	assert_eq((step.get("trigger", {}) as Dictionary).get("item", ""), "Ferrite", "mine_stone completes on Ferrite")
+	assert_eq(int((step.get("trigger", {}) as Dictionary).get("count", 0)), 1, "one Ferrite is enough")
+	var marker: Dictionary = step.get("marker", {})
+	assert_eq(str(marker.get("kind", "")), "ore_near_surface", "mine_stone carries a near-surface ore marker")
+	assert_eq(str(marker.get("item", "")), "Ferrite", "for Ferrite")
+	assert_true(float(marker.get("radiusMetres", 99.0)) <= 30.0, "within 30 m")
+	var soil_s := WorkTime.seconds("Soil", "dig", "StoneShovel")
+	assert_true(float(int(marker.get("maxDepthBlocks", 99)) - 1) * soil_s < 5.0, "the soil over the marked rock digs in under 5 s with the stone shovel")
+	var seed_v: int = Bot.WORLD_SEED
+	const NewcomerGrounds := preload("res://src/world/newcomer_grounds.gd")
+	NewcomerGrounds.clear_cache()   # the grounds of the modern (2,000 km) planet the bot plays, not a cached legacy one
+	var terrain := TerrainSlice.new()
+	_own(terrain)
+	terrain.set_world_seed(seed_v)
+	var height_fn := func(p: Vector2) -> float: return terrain.get_height_at(p)
+	SpawnFinderScript.prime_grounds(seed_v, height_fn)
+	var sp: Variant = SpawnFinderScript.find_start(seed_v, Bot.PLAYER_ID, null, height_fn)
+	assert_true(sp != null, "the pinned player has a newcomer spawn")
+	if sp == null:
+		NewcomerGrounds.clear_cache()
+		return
+	var v := VoxelSlice.new()
+	add_child(v)
+	v.terrain_slice = terrain
+	var origin := Vector2i(floori((sp as Vector3).x / VoxelSlice.TILE_SIZE), floori((sp as Vector3).z / VoxelSlice.TILE_SIZE))
+	var yield_fn := func(t: Vector2i, span: Dictionary) -> Dictionary: return v._natural_yield(t, span)
+	var all_close := true
+	var r := int(16.0 / VoxelSlice.TILE_SIZE)
+	for dx in range(-r, r + 1):
+		for dz in range(-r, r + 1):
+			if not all_close or dx * dx + dz * dz > r * r:
+				continue
+			var t := origin + Vector2i(dx, dz)
+			if TutorialMarker.depth_of(t, v.get_runs_at_tile(t), "Ferrite", 2, yield_fn) == 0:
+				all_close = false
+	var hit := TutorialMarker.find(marker, origin, v)
+	if not all_close:
+		assert_false(hit.is_empty(), "world-gen leaves soil deeper than 2 blocks round the spawn, so the marker finds Ferrite within 30 m")
+	if not hit.is_empty():
+		assert_true(float(hit["distance"]) <= 30.0, "the marked column is within 30 m (%.1f m)" % float(hit["distance"]))
+		assert_true(int(hit["depth_blocks"]) >= 1 and int(hit["depth_blocks"]) <= int(marker["maxDepthBlocks"]), "its Ferrite is at most %d blocks down (%d)" % [int(marker["maxDepthBlocks"]), int(hit["depth_blocks"])])
+		assert_true(float(int(hit["depth_blocks"]) - 1) * soil_s < 5.0, "dig-to-rock there is under 5 s of holding (%.2f s)" % (float(int(hit["depth_blocks"]) - 1) * soil_s))
+		# The column really yields Ferrite at that depth, block by block as the player mines it.
+		var t: Vector2i = hit["tile"]
+		var top := float(hit["top"])
+		var got := ""
+		for i in range(1, int(hit["depth_blocks"]) + 1):
+			got = str(v._natural_yield(t, { "bottom": top - i * VoxelSlice.STEP_HEIGHT, "top": top - (i - 1) * VoxelSlice.STEP_HEIGHT, "material": "" })["material"])
+		assert_eq(got, "Ferrite", "the marked block is Ferrite")
+	v.free()
+	NewcomerGrounds.clear_cache()
+
+func _test_marker_rules() -> void:
+	# The first eligible step with a marker; none when no eligible step has one.
+	var a := { "id": "a", "marker": {} }
+	var b := { "id": "b", "marker": { "kind": "ore_near_surface", "item": "Ferrite", "maxDepthBlocks": 2, "radiusMetres": 30 } }
+	var c := { "id": "c" }
+	assert_eq(TutorialMarker.marker_step([c, a, b]), b, "the first eligible step that has a marker")
+	assert_eq(TutorialMarker.marker_step([c, a]), {}, "none without one")
+	var state := { "enabled": true, "done": ["move", "jump", "look", "controls", "pick_branch", "pick_stone", "inventory",
+		"hotbar", "crafting", "craft_axe", "chop", "craft_pick"], "dismissed": [] }
+	assert_eq(str(TutorialMarker.marker_step(TutorialRules.eligible(state)).get("id", "")), "mine_stone", "with the pick made, mine_stone's marker shows")
+	(state["done"] as Array).append("mine_stone")
+	assert_eq(TutorialMarker.marker_step(TutorialRules.eligible(state)), {}, "and goes once it is done")
+	# Nearest first: Ferrite at (4, 0) two blocks down and at (2, 2) one block down; (2, 2) is nearer. The search reads
+	# every other tile each way, so (1, 1) alone is not seen.
+	var ore := { Vector2i(4, 0): 2, Vector2i(2, 2): 1, Vector2i(0, 10): 1, Vector2i(1, 1): 1 }
+	var runs_fn := func(_t: Vector2i) -> Array: return [{ "bottom": -96.0, "top": 2.0, "material": "" }]
+	var yield_fn := func(t: Vector2i, span: Dictionary) -> Dictionary:
+		var block := int(round((2.0 - float(span["top"])) / VoxelSlice.STEP_HEIGHT)) + 1
+		return { "material": "Ferrite" if int(ore.get(t, 0)) == block else "Soil" }
+	var m: Dictionary = b["marker"]
+	var hit := TutorialMarker.find_ore_near_surface(Vector2i.ZERO, m, runs_fn, yield_fn)
+	assert_eq(hit.get("tile", Vector2i(-1, -1)), Vector2i(2, 2), "the nearest column wins")
+	assert_eq(int(hit.get("depth_blocks", 0)), 1, "one block down")
+	assert_true(absf(float(hit.get("distance", 0.0)) - sqrt(8.0) * VoxelSlice.TILE_SIZE) < 0.001, "distance in metres")
+	assert_eq(TutorialMarker.find_ore_near_surface(Vector2i(1000, 1000), m, runs_fn, yield_fn), {}, "nothing within the radius: no marker")
+	# The client's search runs a slice a frame and ends on the same spot.
+	var srch := TutorialMarker.ore_search(Vector2i.ZERO, m, runs_fn, yield_fn)
+	var frames := 0
+	while not srch.step(0):
+		frames += 1
+	assert_true(frames > 1, "a zero budget reads one column a frame (%d frames)" % frames)
+	assert_eq(srch.hit, hit, "and finds the same spot")
+	var placed: Array = [{ "bottom": 1.0, "top": 2.0, "material": "Ferrite" }]
+	assert_eq(TutorialMarker.depth_of(Vector2i.ZERO, placed, "Ferrite", 2, yield_fn), 1, "a placed block is its own material")
+	# The beacon sits at the column from exact positions, so a far world or a rebase does not move it.
+	var beacon := TutorialMarker.new()
+	add_child(beacon)
+	beacon.set_target(b, { "tile": Vector2i(64 * 1000 + 3, -64 * 50 + 2), "top": 10.0 })
+	assert_eq(beacon.world_pos["chunk"], Vector2i(1000, -50), "the tile's chunk")
+	beacon.follow({ "chunk": Vector2i(1000, -50), "local": Vector3(0.0, 9.0, 0.0) }, Vector3(5.0, 9.0, 5.0))
+	assert_true(beacon.position.is_equal_approx(Vector3(5.0 + 3.5 * VoxelSlice.TILE_SIZE, 10.0, 5.0 + 2.5 * VoxelSlice.TILE_SIZE)), "beside the player by the exact offset (%s)" % str(beacon.position))
+	beacon.follow({ "chunk": Vector2i(999, -50), "local": Vector3(31.0, 9.0, 0.0) }, Vector3(0.0, 9.0, 0.0))
+	assert_true(beacon.position.is_equal_approx(Vector3(1.0 + 3.5 * VoxelSlice.TILE_SIZE, 10.0, 2.5 * VoxelSlice.TILE_SIZE)), "the same column from the next chunk over (%s)" % str(beacon.position))
+	assert_true(beacon._label.text.contains(I18nScript.content("item", "Ferrite")), "the label names the ore in the player's language")
+	beacon.free()

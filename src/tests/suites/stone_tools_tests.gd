@@ -17,6 +17,7 @@ func register() -> void:
 	_run_test("stone tools: placing a block needs a hammer in hand and does not wear it", _test_hammer_to_build)
 	_run_test("stone tools: every other tool is crafted and repaired at a station", _test_others_need_bench)
 	_run_test("stone tools: the shovel digs soil faster than the pick; the pick mines rock faster than the shovel", _test_shovel_vs_pick)
+	_run_test("stone tools: the host digs a soil block with the stone shovel at Mining novice in at most 0.7 s; hands and pick unchanged (Phase 290)", _test_fast_shovel)
 	_run_test("stone tools: digging soil wears a held shovel, mining rock wears the pick, host rock drops loose stones", _test_dig_wear_and_stones)
 	_run_test("stone tools: a loose stone is decided by the span's position at the fabric chance", _test_loose_stone_rate)
 	_run_test("stone tools: a felled tree drops branches beside its wood, bare-handed too", _test_fell_branches)
@@ -346,3 +347,44 @@ func _test_discovery_not_researched() -> void:
 	assert_true(long_arg.length() <= I18nScript.MAX_ARG_LEN, "the outputs argument always fits a message (%d)" % long_arg.length())
 	assert_true(long_arg.ends_with("…"), "and says when it was cut")
 	_free_tech_rig(r)
+
+## Phase 290 — the stone shovel works at 1.2, so a soil block takes 0.8 / 1.2 s; the base times did not move, so bare
+## hands and the picks keep the Phase 259/260 durations on soil and rock.
+func _test_fast_shovel() -> void:
+	var WorkHost := preload("res://src/core/work_host.gd")
+	var v := _make_voxel()
+	v.is_authoritative = true
+	var inv := InventorySlice.new()
+	add_child(inv)
+	inv._max_weight = 1.0e9
+	v.inventory_slice = inv
+	var host := WorkHost.new()
+	host.voxel_slice = v
+	var top := Vector3(16.25, 2.0, 16.25)
+	var bare := host.resolve("", "block", "", top, Vector3.UP, {})
+	assert_eq(str(bare.get("material", "")), "Soil", "the top block of the flat rig is soil")
+	assert_eq(str(bare.get("action", "")), "dig", "and it is dug")
+	assert_true(absf(float(bare.get("duration", 0.0)) - 0.8 / 0.25) < 0.001, "bare hands dig it in 3.2 s, as before (%.3f)" % float(bare.get("duration", 0.0)))
+	inv.add_item("StonePick", 1)
+	var pick := host.resolve("", "block", "", top, Vector3.UP, {})
+	assert_true(absf(float(pick.get("duration", 0.0)) - 3.2) < 0.001, "a pick digs soil at bare-hands speed, as before (%.3f)" % float(pick.get("duration", 0.0)))
+	inv.add_item("StoneShovel", 1)
+	var shovel := host.resolve("", "block", "", top, Vector3.UP, {})
+	var secs := float(shovel.get("duration", 0.0))
+	assert_true(secs > 0.0 and secs <= 0.7, "the host digs a soil block with the stone shovel at novice in at most 0.7 s (%.3f)" % secs)
+	assert_true(absf(secs - 0.8 / 1.2) < 0.001, "0.8 s over the shovel's 1.2 (%.3f)" % secs)
+	assert_eq(WorkTime.speed("dig", "StoneShovel"), 1.2, "the stone shovel works at 1.2")
+	# Unchanged: the base times and the other tools.
+	assert_true(absf(WorkTime.seconds("Grass", "dig", "") - 2.4) < 0.001, "bare hands on grass: 2.4 s")
+	assert_true(absf(WorkTime.seconds("Ferrite", "mine", "") - 12.0) < 0.001, "bare hands on Ferrite: 12 s")
+	assert_true(absf(WorkTime.seconds("Ferrite", "mine", "StonePick") - 5.0) < 0.001, "a stone pick on Ferrite: 5 s")
+	assert_true(absf(WorkTime.seconds("Ferrite", "mine", "FerritePick") - 3.0) < 0.001, "a ferrite pick on Ferrite: 3 s")
+	assert_true(absf(WorkTime.seconds("Ashite", "mine", "StonePick") - 2.5 / 0.6) < 0.001, "a stone pick on Ashite: unchanged")
+	assert_true(absf(WorkTime.seconds("Soil", "dig", "FerritePick") - 3.2) < 0.001, "a ferrite pick on soil: bare-hands speed")
+	# No other shovel digs slower than the stone one.
+	var speeds: Dictionary = GameData.WORLD_SYSTEMS["WorkTimes"].get("toolSpeeds")
+	for item in speeds:
+		if (speeds[item] as Dictionary).has("shovel"):
+			assert_true(float(speeds[item]["shovel"]) >= 1.2, "%s digs at least as fast as the stone shovel" % item)
+	v.free()
+	inv.free()
