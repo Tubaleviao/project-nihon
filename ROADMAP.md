@@ -1049,7 +1049,7 @@ own animation that reads as that work.
   `working` state (kind, target) to peers in range, and their copies play the same clip.
 - New clip keys `chop`, `mine`, `dig`, `build`, `dissect` get placeholder clips on the public `player_rig` first,
   each with the motion above in rough form (not a copy of `attack_tool`), so the public game shows the
-  difference without the art. Art: assets A41 (to be extended with `build` and `dissect`).
+  difference without the art. Art: assets A41.
 
 **Acceptance criteria**
 - `npm run validate` / `check-drift` pass with the work-clip table; the validator rejects a clip name not on the
