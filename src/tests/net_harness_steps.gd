@@ -632,19 +632,27 @@ func client_attack_lands(h: Node) -> void:
 			if attacker == pid:
 				rounds["n"] = int(rounds["n"]) + 1
 		GameBus.combat_hit_resolved.connect(on_hit)
+		# What arrived, for a failure's detail: the swings the peer forwarded and the last target it named.
+		var intents := { "n": 0, "last": "none" }
+		var on_intent := func(iid: String, who: String) -> void:
+			if who == pid:
+				intents["n"] = int(intents["n"]) + 1
+				intents["last"] = "probe" if iid == ATTACK_PROBE_ID else "other"
+		GameBus.attack_intent.connect(on_intent)
 		# Keep the probe pinned beside wherever the peer reports itself until a swing lands.
 		var landed := false
 		var deadline: int = Time.get_ticks_msec() + int(h._step_timeout() * 3.0 * 1000.0)
 		while Time.get_ticks_msec() < deadline and not landed:
 			# Exact `{chunk, local}`: earlier steps leave the peer far from the origin, where metres are float32-coarse.
 			var at: Dictionary = h._root._peer_wiring.peer_exact_pos(peer)
-			at = { "chunk": at["chunk"], "local": (at["local"] as Vector3) + Vector3(1.5, 0.0, 0.0) }
+			at = { "chunk": at["chunk"], "local": (at["local"] as Vector3) + Vector3(0.75, 0.0, 0.0) }
 			if not h._root._creature._instances.has(ATTACK_PROBE_ID):
 				h._root._creature.apply_creature_state(ATTACK_PROBE_ID, "ForestBoar", "idle", WorldPos.to_scene(at, Vector2i.ZERO))
 			h._root._creature.set_instance_pos(ATTACK_PROBE_ID, at)
 			await h._await_settle(0.5)
 			landed = int(rounds["n"]) > 0
 		GameBus.combat_hit_resolved.disconnect(on_hit)
+		GameBus.attack_intent.disconnect(on_intent)
 		# The peer's kill notice (its tutorial's only word of a kill): sent the way the host's `creature_died`
 		# handler sends it, without killing the probe, so no carcass or loot outlives the step.
 		var told: int = h._root._combat_wiring.on_creature_died(ATTACK_PROBE_ID, Vector3.ZERO, pid, Vector3.ZERO) if landed else 0
@@ -652,7 +660,8 @@ func client_attack_lands(h: Node) -> void:
 		await h._await_settle(2.0 * h._time_scale)
 		h._root._creature.despawn_instance(ATTACK_PROBE_ID)
 		h._report("client_attack_lands", h.verdict(landed and told == peer, true),
-			"host_resolved" if landed and told == peer else ("swing_never_reached_host" if not landed else "kill_not_sent"))
+			"host_resolved" if landed and told == peer else ("swing_never_reached_host-intents%d-%s" % [int(intents["n"]),
+			intents["last"]] if not landed else "kill_not_sent"))
 		return
 	var own_key := "p:%d" % h._root.multiplayer.get_unique_id()
 	var seen := { "hit": false }
@@ -677,6 +686,8 @@ func client_attack_lands(h: Node) -> void:
 		if Time.get_ticks_msec() - int(swung.get("at", 0)) >= 400 and h._root._player._alive:
 			swung["at"] = Time.get_ticks_msec()
 			swung["n"] = int(swung["n"]) + 1
+			var target: String = h._root._creature.nearest_creature(h._root._player.get_world_pos(), PlayerSlice.ATTACK_RANGE)
+			swung["target"] = "probe" if target == ATTACK_PROBE_ID else ("none" if target == "" else "other")
 			h._root._player._try_attack()
 		return false, h._step_timeout() * 3.0)
 	GameBus.combat_hit_synced.disconnect(on_synced)
@@ -689,7 +700,8 @@ func client_attack_lands(h: Node) -> void:
 		killed = await h._await_until(func() -> bool: return bool(seen.get("killed", false)), h._step_timeout())
 	GameBus.tutorial_event.disconnect(on_tut)
 	h._report("client_attack_lands", h.verdict(got and killed, true), "host_resolved" if got and killed else (
-		"no_synced_swing-after-%d" % int(swung["n"]) if not got else "kill_notice_missing"))
+		"no_synced_swing-after-%d-target_%s-probe%d-carrying%d" % [int(swung["n"]), str(swung.get("target", "none")),
+		int(h._root._creature._instances.has(ATTACK_PROBE_ID)), int(h._root._player.carrying)] if not got else "kill_notice_missing"))
 
 ## Ground loot across the wire. The host lays a pickup beside the peer; the client must see it, take it through
 ## the player's pickup request (the host checks reach and the bag, the pickup leaves both sides and the client's
