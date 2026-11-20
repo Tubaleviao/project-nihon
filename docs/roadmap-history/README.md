@@ -92,6 +92,7 @@ Completed phases moved out of [ROADMAP.md](../../ROADMAP.md) to keep it short. T
 | 241 | [phases-241.md](phases-241.md) |
 | 242 | [phases-242.md](phases-242.md) |
 | 243 | [phases-243.md](phases-243.md) |
+| 244 | [phases-244.md](phases-244.md) |
 | 248 | [phases-248.md](phases-248.md) |
 | 250 | [phases-250.md](phases-250.md) |
 | 252 | [phases-252.md](phases-252.md) |
@@ -340,6 +341,7 @@ Filed by the owner on 2026-11-10. The other phases of the arc are open in [ROADM
 | 241 | The native smooth mesher, and coarse chunks built smooth | Done | [phases-241.md](phases-241.md) |
 | 242 | Terrain materials: blend weights, a triplanar shader and CC0 textures | Done | [phases-242.md](phases-242.md) |
 | 243 | Level of detail past the window: voxel rings out to the distant ring, faded, under the haze | Done | [phases-243.md](phases-243.md) |
+| 244 | A chunk cache on disk: the host keeps generated chunks, the client keeps built meshes | Done | [phases-244.md](phases-244.md) |
 
 ### The first hour, from nothing (Phases 259–266)
 
