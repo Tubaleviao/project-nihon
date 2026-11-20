@@ -22,6 +22,25 @@ func _connect_all() -> void:
 	connect_bus(GameBus.block_place_requested, _on_place)
 	connect_bus(GameBus.station_placed_by_me, _on_station_placed_by_me)
 	connect_bus(GameBus.work_anim_changed, _on_anim_changed)
+	connect_bus(GameBus.harvest_started, _on_harvest_started)
+	connect_bus(GameBus.harvest_resolved, _on_harvest_resolved)
+
+## A carcass harvest (host only) is a hold of its own: it plays `dissect` on the harvester until it resolves.
+func _on_harvest_started(player_id: String, _carcass_id: String, _seconds: float) -> void:
+	_announce_player(player_id, "dissect")
+
+func _on_harvest_resolved(player_id: String, _carcass_id: String, _reason: String, _items: Array) -> void:
+	_announce_player(player_id, "")
+
+func _announce_player(player_id: String, kind: String) -> void:
+	if root._is_client:
+		return
+	var peer := 1
+	if player_id != "" and player_id != "player" and player_id != root._registry.local_player_id:
+		peer = root._registry.get_peer_id(player_id)
+		if peer <= 0:
+			return
+	_announce(peer, kind)
 
 func _local_peer() -> int:
 	return root.multiplayer.get_unique_id() if root._is_client and root.is_inside_tree() else 1
@@ -121,10 +140,17 @@ func _play(peer: int, kind: String) -> void:
 		length = 0.5
 	_active[peer] = { "kind": kind, "length": length, "t": 0.0, "struck": false, "loop": WorkAnim.is_loop(kind), "iid": iid }
 
+## A remote body whose stop packet never arrives (it left range or disconnected) stops after this many seconds.
+const REMOTE_LOOP_MAX_SECONDS := 30.0
+
 func tick(delta: float) -> void:
 	for peer in _active.keys():
 		var a: Dictionary = _active[peer]
 		a["t"] += delta
+		a["age"] = float(a.get("age", 0.0)) + delta
+		if peer != _local_peer() and a["age"] > REMOTE_LOOP_MAX_SECONDS:
+			_play(peer, "")
+			continue
 		if not a["struck"] and a["t"] >= WorkAnim.impact_time(a["kind"], a["length"]):
 			a["struck"] = true
 			strikes[peer] = int(strikes.get(peer, 0)) + 1

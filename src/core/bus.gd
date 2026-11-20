@@ -40,13 +40,13 @@ signal combat_round_resolved(result: Dictionary)
 ## outcome : String — "hit", "critical", "miss" or "kill"
 signal combat_hit_resolved(attacker_id: String, defender_id: String, outcome: String, damage: float)
 
-## Phase 156 — client side: the host's `combat_hit_resolved`, delivered over the wire with its ids turned
-## into wire keys ("p:<peer id>" for a player, "c:<id>" for a creature). Animation only.
 ## Phase 281 — a body started (`kind` is a work kind) or stopped (`""`) working; `peer` is 1 for the host's own body.
 ## The host emits it for every body (and sends it to peers in range); a client emits it from the host's packet.
 signal work_anim_changed(peer: int, kind: String)
 ## Phase 281 — a work strike landed (the clip's impact marker): the moment the tick's chips, sound and bar step.
 signal work_strike(peer: int, kind: String)
+## Phase 156 — client side: the host's `combat_hit_resolved`, delivered over the wire with its ids turned
+## into wire keys ("p:<peer id>" for a player, "c:<id>" for a creature). Animation only.
 signal combat_hit_synced(attacker_key: String, defender_key: String, outcome: String)
 
 ## Request a combat round (any system can fire this).
