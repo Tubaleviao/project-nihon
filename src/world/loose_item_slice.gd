@@ -49,7 +49,8 @@ var clock: Callable = Callable()
 var _taken: Dictionary = {}
 ## actor -> unix seconds of their last accepted pick (the host's rate limit).
 var _last_pick: Dictionary = {}
-var _mmi: MultiMeshInstance3D = null
+var _root: Node3D = null
+var _mmis: Dictionary = {}
 var _drawn_from := Vector2(INF, INF)
 
 func _ready() -> void:
@@ -359,31 +360,112 @@ func redraw() -> void:
 		ax = float((wp["chunk"] as Vector2i).x) * WorldPos.CHUNK_METERS + float((wp["local"] as Vector3).x)
 		az = float((wp["chunk"] as Vector2i).y) * WorldPos.CHUNK_METERS + float((wp["local"] as Vector3).z)
 	var anchor: Vector3 = scene_position.call() if scene_position.is_valid() else p
-	if _mmi == null:
-		_mmi = MultiMeshInstance3D.new()
-		var mm := MultiMesh.new()
-		mm.transform_format = MultiMesh.TRANSFORM_3D
-		mm.use_colors = true
-		var mesh := BoxMesh.new()
-		mesh.size = Vector3(0.35, 0.18, 0.35)
-		mm.mesh = mesh
-		_mmi.multimesh = mm
-		_mmi.top_level = true
-		add_child(_mmi)
-	_mmi.global_position = Vector3(anchor.x, 0.0, anchor.z)
-	var mm2: MultiMesh = _mmi.multimesh
-	mm2.instance_count = items.size()
-	for i in items.size():
-		var xz: Vector2 = items[i]["xz"]
-		var t: Vector2i = items[i]["tile"]
-		var jit: Vector2 = items[i]["jitter"]
-		var dx := float(t.x) * TILE + float(jit.x) - ax
-		var dz := float(t.y) * TILE + float(jit.y) - az
-		var y := float(height_fn.call(xz)) if height_fn.is_valid() else p.y
-		mm2.set_instance_transform(i, Transform3D(Basis(), Vector3(dx, y + 0.09, dz)))
-		mm2.set_instance_color(i, Color(0.45, 0.32, 0.18) if items[i]["kind"] == StoneTools.BRANCH else Color(0.55, 0.55, 0.58))
+	if _root == null:
+		_root = Node3D.new()
+		_root.top_level = true
+		add_child(_root)
+	_root.global_position = Vector3(anchor.x, 0.0, anchor.z)
+	# Group the items by (kind, variant): one MultiMesh per group, its mesh from the kind's model.
+	var groups: Dictionary = {}
+	for it in items:
+		var look := look_at_tile(it["tile"], str(it["kind"]), variant_keys(str(it["kind"])).size())
+		var gk := "%s#%d" % [it["kind"], look["variant"]]
+		if not groups.has(gk):
+			groups[gk] = []
+		groups[gk].append([it, look])
+	for gk in _mmis.keys():
+		if not groups.has(gk):
+			(_mmis[gk] as MultiMeshInstance3D).multimesh.instance_count = 0
+	for gk in groups.keys():
+		var list: Array = groups[gk]
+		var kind: String = list[0][0]["kind"]
+		var mmi: MultiMeshInstance3D = _mmis.get(gk, null)
+		if mmi == null:
+			mmi = MultiMeshInstance3D.new()
+			var mm := MultiMesh.new()
+			mm.transform_format = MultiMesh.TRANSFORM_3D
+			mm.use_colors = true
+			var model := loose_mesh(variant_keys(kind)[int(list[0][1]["variant"])], kind)
+			mm.mesh = model if model != null else fallback_box()
+			mmi.set_meta("fallback", model == null)
+			mmi.multimesh = mm
+			_root.add_child(mmi)
+			_mmis[gk] = mmi
+		var mm2: MultiMesh = mmi.multimesh
+		mm2.instance_count = list.size()
+		for i in list.size():
+			var it: Dictionary = list[i][0]
+			var look: Dictionary = list[i][1]
+			var xz: Vector2 = it["xz"]
+			var t: Vector2i = it["tile"]
+			var jit: Vector2 = it["jitter"]
+			var dx := float(t.x) * TILE + float(jit.x) - ax
+			var dz := float(t.y) * TILE + float(jit.y) - az
+			var y := float(height_fn.call(xz)) if height_fn.is_valid() else p.y
+			var basis := Basis(Vector3.UP, float(look["yaw"])).scaled(Vector3.ONE * float(look["scale"]))
+			mm2.set_instance_transform(i, Transform3D(basis, Vector3(dx, y + 0.09, dz)))
+			mm2.set_instance_color(i, _fallback_color(kind) if mmi.get_meta("fallback", false) else Color.WHITE)
+
+## The multimesh instances now drawn, by "kind#variant" (tests read the meshes through these).
+func drawn_multimeshes() -> Dictionary:
+	var out := {}
+	for gk in _mmis.keys():
+		var mm: MultiMesh = (_mmis[gk] as MultiMeshInstance3D).multimesh
+		if mm.instance_count > 0:
+			out[gk] = mm
+	return out
+
+static func _fallback_color(kind: String) -> Color:
+	return Color(0.45, 0.32, 0.18) if kind == StoneTools.BRANCH else Color(0.55, 0.55, 0.58)
+
+## Deterministic look of the item on a tile: yaw, scale jitter (0.85-1.15) and variant index into
+## `variant_keys` (host and client agree; the pick-up ray uses the logical position, not this).
+static func look_at_tile(tile: Vector2i, kind: String, variant_count: int) -> Dictionary:
+	var h := hash([tile.x, tile.y, kind, "loose_look"])
+	var yaw := float(posmod(h & 0xFFFF, 36000)) / 36000.0 * TAU
+	var sc := LOOK_SCALE_MIN + float(posmod((h >> 16) & 0xFFFF, 1000)) / 999.0 * (LOOK_SCALE_MAX - LOOK_SCALE_MIN)
+	var v := posmod(hash([tile.x, tile.y, kind, "loose_variant"]), maxi(variant_count, 1))
+	return { "yaw": yaw, "scale": sc, "variant": v }
+
+const LOOK_SCALE_MIN := 0.85
+const LOOK_SCALE_MAX := 1.15
+const MAX_VARIANTS := 2
+
+## Model keys usable for a kind: the base key first, then each `_v<n>` variant key that the
+## manifest lists (an absent variant is never picked). Keys are listed even if the base is missing
+## (the box fallback then draws every variant slot alike), so the base always comes first.
+static func variant_keys(kind: String) -> Array:
+	var out: Array = [AssetOverlay.item_model_key(kind)]
+	for n in range(1, MAX_VARIANTS + 1):
+		var key := "models/items/%s_v%d.glb.raw" % [kind, n]
+		if AssetOverlay.has_key("meshes", key):
+			out.append(key)
+	return out
+
+static var _loose_meshes: Dictionary = {}
+
+## The mesh for a model key, or the box (flagged via `fallback` meta by the caller) when the key
+## does not load. The box's material uses vertex colours so the two kinds still differ.
+static func loose_mesh(key: String, kind: String) -> Mesh:
+	if _loose_meshes.has(key):
+		return _loose_meshes[key]
+	var mesh: Mesh = null
+	if AssetOverlay.has_key("meshes", key):
+		mesh = AssetOverlay.load_mesh(key)
+	if mesh == null:
+		Diag.warn("[LooseItem] no usable model %s; using a box" % key)
+	_loose_meshes[key] = mesh
+	return mesh
+
+static func fallback_box() -> BoxMesh:
+	var box := BoxMesh.new()
+	box.size = Vector3(0.35, 0.18, 0.35)
+	var mat := StandardMaterial3D.new()
+	mat.vertex_color_use_as_albedo = true
+	box.material = mat
+	return box
 
 ## A rebase moved the scene by `shift`: the drawn instance moves with it (the items keep their world places).
 func shift_scene(shift: Vector3) -> void:
-	if _mmi != null:
-		_mmi.global_position += shift
+	if _root != null:
+		_root.global_position += shift

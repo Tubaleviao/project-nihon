@@ -1127,7 +1127,9 @@ func _test_asset_item_models() -> void:
 				var id: String = file.trim_suffix(dir_and_suffix[1])
 				# Icons of materials and harvest outputs share the directory (Phase 176).
 				var held: bool = dir_and_suffix[1] == ".png.raw" and HoldablesData.ids().has(id)
-				assert_true(GameData.ITEMS.has(id) or held, "%s/%s is for an item" % [dir_and_suffix[0], file])
+				# Phase 278: loose-item variant models `<Id>_v<n>` sit beside the base model.
+				var variant: bool = dir_and_suffix[1] == ".glb.raw" and GameData.ITEMS.has(id.rsplit("_v", true, 1)[0]) and id.contains("_v")
+				assert_true(GameData.ITEMS.has(id) or held or variant, "%s/%s is for an item" % [dir_and_suffix[0], file])
 
 ## Issue #318: `models/creatures/GraywolfPack.glb.raw` and its three textures stand in
 ## for the private wolf: a skin on the fabric QuadrupedSkeleton bones, a visible body, and
