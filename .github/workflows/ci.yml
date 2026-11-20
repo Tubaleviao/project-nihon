@@ -515,6 +515,9 @@ jobs:
       - name: Check the work-time validation rejects bad tables
         run: node tools/check_work_times.js
 
+      - name: Check the work-clip validation rejects bad tables
+        run: node tools/check_work_clips.js
+
       - name: Check the skill-focus validation rejects bad tables
         run: node tools/check_skill_focus.js
 
