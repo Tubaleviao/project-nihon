@@ -3,6 +3,7 @@ extends RefCounted
 ## the crown in the vertex shader. The sway is weighted by height, so the trunk's foot never moves, and is
 ## off on the low graphics path (`nihon/graphics/tree_sway` = 0), where the plain colour material is used.
 
+const Diag := preload("res://src/core/diag.gd")
 const SWAY_SETTING := "nihon/graphics/tree_sway"
 ## Metres of crown sway at the top of a tree; the weight rises from `SWAY_FROM` to `SWAY_TO` (a tree's height).
 const SWAY_AMPLITUDE := 0.06
@@ -26,6 +27,8 @@ void fragment() {
 """
 
 static var _shader: Shader = null
+const MAX_VARIANTS := 1
+static var _model_meshes: Dictionary = {}
 
 static func sway_enabled() -> bool:
 	return bool(ProjectSettings.get_setting(SWAY_SETTING, true))
@@ -46,3 +49,34 @@ static func make(sway: bool = true) -> Material:
 	mat.set_shader_parameter("sway_from", SWAY_FROM)
 	mat.set_shader_parameter("sway_to", SWAY_TO)
 	return mat
+
+## Model keys a species can draw: `models/trees/<Species>.glb.raw`, then `<Species>_v1` when the
+## manifest lists it (an absent variant is never picked).
+static func model_keys(species: String) -> Array:
+	var out: Array = ["models/trees/%s.glb.raw" % species]
+	for n in range(1, MAX_VARIANTS + 1):
+		var key := "models/trees/%s_v%d.glb.raw" % [species, n]
+		if AssetOverlay.has_key("meshes", key):
+			out.append(key)
+	return out
+
+## The model key a tree draws, stable for its id (host and client agree), or "" when the species has
+## no model at all.
+static func model_key_for(species: String, tree_id: String) -> String:
+	var keys := model_keys(species)
+	if not AssetOverlay.has_key("meshes", keys[0]):
+		return ""
+	return keys[posmod(hash([tree_id, "tree_variant"]), keys.size())]
+
+
+## The mesh for a model key, or null (cached, warned once) when it does not load.
+static func model_mesh(key: String) -> Mesh:
+	if _model_meshes.has(key):
+		return _model_meshes[key]
+	var mesh: Mesh = null
+	if AssetOverlay.has_key("meshes", key):
+		mesh = AssetOverlay.load_mesh(key)
+	if mesh == null:
+		Diag.warn("[Tree] no usable model %s; using the procedural tree" % key)
+	_model_meshes[key] = mesh
+	return mesh

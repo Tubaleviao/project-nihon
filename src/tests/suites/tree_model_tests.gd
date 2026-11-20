@@ -84,11 +84,11 @@ func _test_species_models() -> void:
 	var species := _species_in_fabric()
 	assert_true(species.size() >= 2, "the fabric has tree species")
 	for sp in species:
-		var keys: Array = TreeSlice.model_keys(sp)
+		var keys: Array = TreeMaterial.model_keys(sp)
 		assert_true(keys.size() >= 2, "%s has a base model and a variant" % sp)
 		for k in keys:
 			assert_true(AssetOverlay.has_key("meshes", k), "%s is in the manifest" % k)
-			assert_true(TreeSlice.model_mesh(k) != null, "%s loads" % k)
+			assert_true(TreeMaterial.model_mesh(k) != null, "%s loads" % k)
 
 func _test_model_or_fallback() -> void:
 	var t := _make_tree_slice()
@@ -100,36 +100,36 @@ func _test_model_or_fallback() -> void:
 		return
 	var tree: Dictionary = t.get_tree_record(str(trees[0]["tree_id"]))
 	var key := str(tree["pool_key"])
-	assert_eq(key, TreeSlice.model_key_for(str(tree["species"]), str(tree["tree_id"])), "the tree uses its species model")
+	assert_eq(key, TreeMaterial.model_key_for(str(tree["species"]), str(tree["tree_id"])), "the tree uses its species model")
 	assert_true(t._model_pools.has(key) and t._tree_pool(tree) == t._model_pools[key], "from the model's own pool")
 	t.free()
 	# A key that fails to load: the fallback pool draws the tree.
-	var keys: Array = TreeSlice.model_keys(str(tree["species"]))
-	var saved: Dictionary = TreeSlice._model_meshes.duplicate()
+	var keys: Array = TreeMaterial.model_keys(str(tree["species"]))
+	var saved: Dictionary = TreeMaterial._model_meshes.duplicate()
 	for k in keys:
-		TreeSlice._model_meshes[k] = null
+		TreeMaterial._model_meshes[k] = null
 	var t2 := _make_tree_slice()
 	t2.spawn_for_chunk(Vector2i(0, 0))
 	var rec: Dictionary = t2.get_tree_record(str(trees[0]["tree_id"]))
 	assert_eq(str(rec["pool_key"]), "", "an unloadable model falls back")
 	assert_true(t2._tree_pool(rec) == t2._pool, "to the procedural pool")
-	TreeSlice._model_meshes = saved
+	TreeMaterial._model_meshes = saved
 	t2.free()
 
 func _test_variant_stable() -> void:
 	var seen := {}
 	for i in 64:
 		var id := "tree_%d_0_%d" % [i, i % 8]
-		var a := TreeSlice.model_key_for("Thornwood", id)
-		assert_eq(a, TreeSlice.model_key_for("Thornwood", id), "the pick for %s is stable" % id)
+		var a := TreeMaterial.model_key_for("Thornwood", id)
+		assert_eq(a, TreeMaterial.model_key_for("Thornwood", id), "the pick for %s is stable" % id)
 		seen[a] = true
 	assert_eq(seen.size(), 2, "both variants are picked across trees")
-	assert_eq(TreeSlice.model_key_for("NoSuchSpecies", "tree_0_0_0"), "", "no model, no key")
+	assert_eq(TreeMaterial.model_key_for("NoSuchSpecies", "tree_0_0_0"), "", "no model, no key")
 
 func _test_crown_closed() -> void:
 	for sp in _species_in_fabric():
-		for k in TreeSlice.model_keys(sp):
-			var mesh: Mesh = TreeSlice.model_mesh(k)
+		for k in TreeMaterial.model_keys(sp):
+			var mesh: Mesh = TreeMaterial.model_mesh(k)
 			assert_true(mesh != null, "%s loads" % k)
 			if mesh == null:
 				continue

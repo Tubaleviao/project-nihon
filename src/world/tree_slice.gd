@@ -1378,40 +1378,6 @@ func _tree_mesh() -> Mesh:
 		Color(0.45, 0.95, 0.42))
 	return st.commit()
 
-## Model keys a species can draw: `models/trees/<Species>.glb.raw`, then `<Species>_v1` when the
-## manifest lists it (an absent variant is never picked).
-static func model_keys(species: String) -> Array:
-	var out: Array = ["models/trees/%s.glb.raw" % species]
-	for n in range(1, MAX_VARIANTS + 1):
-		var key := "models/trees/%s_v%d.glb.raw" % [species, n]
-		if AssetOverlay.has_key("meshes", key):
-			out.append(key)
-	return out
-
-## The model key a tree draws, stable for its id (host and client agree), or "" when the species has
-## no model at all.
-static func model_key_for(species: String, tree_id: String) -> String:
-	var keys := model_keys(species)
-	if not AssetOverlay.has_key("meshes", keys[0]):
-		return ""
-	return keys[posmod(hash([tree_id, "tree_variant"]), keys.size())]
-
-const MAX_VARIANTS := 1
-
-static var _model_meshes: Dictionary = {}
-
-## The mesh for a model key, or null (cached, warned once) when it does not load.
-static func model_mesh(key: String) -> Mesh:
-	if _model_meshes.has(key):
-		return _model_meshes[key]
-	var mesh: Mesh = null
-	if AssetOverlay.has_key("meshes", key):
-		mesh = AssetOverlay.load_mesh(key)
-	if mesh == null:
-		Diag.warn("[Tree] no usable model %s; using the procedural tree" % key)
-	_model_meshes[key] = mesh
-	return mesh
-
 ## The pool a tree's instance lives in: its model's pool, or the fallback pool; null headless.
 func _tree_pool(tree: Dictionary) -> Node:
 	var key: String = str(tree.get("pool_key", ""))
@@ -1430,11 +1396,11 @@ func _tree_color(tree: Dictionary) -> Color:
 func _alloc_visual(species: String, pos: Vector3, tree_id: String) -> Dictionary:
 	if _pool == null:
 		return {"mi": -1, "pool_key": ""}
-	var key := model_key_for(species, tree_id)
+	var key := TreeMaterial.model_key_for(species, tree_id)
 	var pool: Node = _pool
 	if key != "":
 		if not _model_pools.has(key):
-			var mesh := model_mesh(key)
+			var mesh := TreeMaterial.model_mesh(key)
 			_model_pools[key] = _make_pool("TreePool_" + key.get_file().get_basename().get_basename(), mesh) if mesh != null else null
 		if _model_pools[key] == null:
 			key = ""

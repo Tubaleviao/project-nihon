@@ -452,7 +452,7 @@ Dictionary NativeChunkBuilder::build_chunk_arrays(const Vector2i &p_chunk, const
 		}
 	}
 
-	// Deposit boxes (MeshUtil.add_box_arrays): geometry only, never collision.
+	// Deposit boxes (MeshUtil.add_box_arrays, clockwise from outside = Godot front face): geometry only, never collision.
 	std::vector<Vector3> dep_vertices, dep_normals;
 	std::vector<Color> dep_colors;
 	std::vector<int32_t> dep_indices;
@@ -479,9 +479,9 @@ Dictionary NativeChunkBuilder::build_chunk_arrays(const Vector2i &p_chunk, const
 			Vector3 n;
 		};
 		const Face faces[6] = {
-			{ 4, 7, 6, 5, Vector3(0, 1, 0) }, { 0, 1, 2, 3, Vector3(0, -1, 0) },
-			{ 3, 2, 6, 7, Vector3(0, 0, 1) }, { 0, 4, 5, 1, Vector3(0, 0, -1) },
-			{ 1, 5, 6, 2, Vector3(1, 0, 0) }, { 0, 3, 7, 4, Vector3(-1, 0, 0) },
+			{ 4, 5, 6, 7, Vector3(0, 1, 0) }, { 0, 3, 2, 1, Vector3(0, -1, 0) },
+			{ 3, 7, 6, 2, Vector3(0, 0, 1) }, { 0, 1, 5, 4, Vector3(0, 0, -1) },
+			{ 1, 2, 6, 5, Vector3(1, 0, 0) }, { 0, 4, 7, 3, Vector3(-1, 0, 0) },
 		};
 		for (const Face &f : faces) {
 			const int tris[2][3] = { { f.a, f.b, f.c }, { f.a, f.c, f.d } };
