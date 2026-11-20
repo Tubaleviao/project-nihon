@@ -323,7 +323,7 @@ func _ready() -> void:
 	GameBus.chest_intent.connect(_m2.forward_chest_intent)
 	GameBus.writing_intent.connect(_m2.forward_writing_intent)
 	# Phase 35 — taming is per-player as well (the flag and companion live on the tamer's record), so it travels the same way.
-	GameBus.tame_intent.connect(_on_tame_intent)
+	GameBus.tame_intent.connect(_on_tame_intent); GameBus.attack_intent.connect(_m2.forward_attack_intent)
 	# Phase 85 — chat lines travel client → host as an intent; the host's posts (chat, announcements,
 	# command replies) travel back.
 	GameBus.chat_intent.connect(_on_chat_intent)
@@ -1056,8 +1056,8 @@ func _on_carcass_drop_intent(_player_id: String) -> void:
 func send_combat_hit(attacker_key: String, defender_key: String, outcome: String, position: Vector3) -> void:
 	_m2.send_combat_hit(attacker_key, defender_key, outcome, position)
 
-func send_player_damaged(peer_id: int, damage: float, attacker_id: String) -> void:
-	_m2.send_player_damaged(peer_id, damage, attacker_id)
+func send_creature_killed(peer_id: int, creature_id: String) -> void: _m2.send_creature_killed(peer_id, creature_id)
+func send_player_damaged(peer_id: int, damage: float, attacker_id: String) -> void: _m2.send_player_damaged(peer_id, damage, attacker_id)
 
 func _on_void_burst_resolved(result: Dictionary) -> void:
 	_m3._on_void_burst_resolved(result)

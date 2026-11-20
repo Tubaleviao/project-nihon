@@ -26,6 +26,67 @@ func _connect_all() -> void:
 	connect_bus(GameBus.player_damaged, on_player_damaged)
 	connect_bus(GameBus.player_died, _on_player_died)
 	connect_bus(GameBus.player_respawned, _on_player_respawned)
+	connect_bus(GameBus.attack_intent, on_attack_intent)
+	connect_bus(GameBus.creature_died, on_creature_died)
+
+## Host: how far past `PlayerSlice.ATTACK_RANGE` a peer's swing may land, measured from the host's last record
+## of that peer — covers the creature and the peer moving between the peer's aim and the packet.
+const ATTACK_REACH_SLACK_M := 1.5
+## Host: the shortest gap between two of one peer's swings. A swing has no cooldown of its own yet, so this only
+## bounds a flooding client (the packet bucket alone allows 40 rounds a second).
+const ATTACK_MIN_INTERVAL_MS := 200
+## player id -> Time.get_ticks_msec() of that player's last accepted swing.
+var _last_swing_ms: Dictionary = {}
+
+## Host: a peer's swing (`attack_intent`, re-emitted by NetworkingSlice with the connection's player id). The
+## host checks everything it can know itself: the peer is connected and not downed or held, the target is a
+## living untamed creature, the host's record of the peer is within reach of it, and the swing rate. Then it
+## requests the round with the peer's player id as the attacker; BattleSlice applies `attack_blocked` (a
+## carried body) and resolves it, and `combat_hit_resolved` animates it for everyone. Returns whether the
+## round was requested (for tests).
+func on_attack_intent(instance_id: String, player_id: String) -> bool:
+	if root._is_client or player_id == "" or player_id == "player" or player_id == root._registry.local_player_id:
+		return false   # the local body's own swings come in as combat_round_requested("player", …)
+	var peer := root._registry.get_peer_id(player_id)
+	if peer == 0 or not root._networking.has_last_known_state(peer):
+		return false
+	if PlayerRegistry.is_downed(root._registry.get_hp(player_id)):
+		return false
+	if root._status != null and root._status.is_immobilized(player_id, status_now()):
+		return false
+	if root._creature == null:
+		return false
+	var state := root._creature.get_instance_state(instance_id)
+	if state == "" or state == "dead" or root._creature.is_tamed(instance_id):
+		return false
+	var reach := PlayerSlice.ATTACK_RANGE + ATTACK_REACH_SLACK_M
+	var gap: float = WorldPos.offset_between(root._peer_wiring.peer_exact_pos(peer), root._creature.get_instance_pos(instance_id)).length()
+	if gap > reach:
+		return false
+	var now := Time.get_ticks_msec()
+	if _last_swing_ms.has(player_id) and now - int(_last_swing_ms[player_id]) < ATTACK_MIN_INTERVAL_MS:
+		return false
+	_last_swing_ms[player_id] = now
+	GameBus.combat_round_requested.emit(player_id, instance_id)
+	return true
+
+## Host: a creature a peer killed. The peer's client resolves no rounds of its own, so it never sees the
+## `creature_died` its tutorial counts; the host tells only that peer, by species. Returns the peer told (0 none).
+func on_creature_died(entity_id: String, _pos: Vector3, killer_id: String, _landing: Vector3) -> int:
+	if root._is_client or killer_id == "" or killer_id == "player" or killer_id == root._registry.local_player_id:
+		return 0
+	var peer := root._registry.get_peer_id(killer_id)
+	if peer == 0:
+		return 0
+	var species: String = root._creature.get_instance_creature_id(entity_id) if root._creature != null else ""
+	if species == "":
+		species = entity_id if GameData.CREATURES.has(entity_id) else ""
+	root._networking.send_creature_killed(peer, species)
+	return peer
+
+## Drop a departed player's swing clock (called from the peer-left path).
+func forget_swinger(player_id: String) -> void:
+	_last_swing_ms.erase(player_id)
 
 ## Phase 192 — the local player's feet in scene coordinates (none before the body exists).
 func local_body_points() -> Array:

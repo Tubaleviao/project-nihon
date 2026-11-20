@@ -49,6 +49,14 @@ signal combat_hit_synced(attacker_key: String, defender_key: String, outcome: St
 ## defender_id : String — entity key from GameData.CREATURES or "player"
 signal combat_round_requested(attacker_id: String, defender_id: String)
 
+## A player's melee swing at a creature, client → host. On a client BattleSlice emits it (with player_id "")
+## in place of resolving the round, and NetworkingSlice forwards it; on the host NetworkingSlice re-emits it
+## with the identity bound to the sending connection, and CombatWiring checks it (target alive and untamed,
+## within reach of the host's own record of the sender, swing rate) before requesting the round.
+## instance_id : String — CreatureSlice instance id
+## player_id   : String — the attacker; "" on the client's outbound emit
+signal attack_intent(instance_id: String, player_id: String)
+
 # ---------------------------------------------------------------------------
 # Networking
 # ---------------------------------------------------------------------------
@@ -390,6 +398,25 @@ signal loot_expired(pickup_id: String)
 ## Request to pick up a world pickup (emitted by PlayerSlice when the player
 ## aims at a pickup and clicks). Carries the LootSlice pickup id.
 signal pickup_requested(pickup_id: String)
+
+## A ground pickup was taken (LootSlice, host). LootWiring tells the clients that could see it.
+signal loot_removed(pickup_id: String)
+
+## Client → host: take the ground pickup `pickup_id`. A client's InventorySlice emits it (player_id "") in place
+## of taking the pickup; NetworkingSlice re-emits it on the host with the connection's player, and LootWiring
+## checks reach and room in that player's bag.
+signal pickup_intent(pickup_id: String, player_id: String)
+
+## Client → host: drop `quantity` of `item_id`. Outbound (player_id "") `at` is the client's scene drop point
+## (ZERO: at the feet); LootWiring sends it as an offset from the body, and on the host (player_id bound to the
+## connection) `at` is that offset, which the host clamps before adding it to its own record of the dropper.
+signal drop_intent(item_id: String, quantity: int, at: Vector3, player_id: String)
+
+## Host → client: a ground pickup in this client's area of interest: { id, item_id, quantity, position }.
+signal peer_pickup_synced(record: Dictionary)
+
+## Host → client: that pickup is gone, or left this client's area of interest.
+signal peer_pickup_removed(pickup_id: String)
 
 ## The local player drags `quantity` of `item_id` out of the inventory onto the ground at `position`.
 ## InventorySlice (authoritative machines only) removes it and LootSlice spawns a pickup that keeps

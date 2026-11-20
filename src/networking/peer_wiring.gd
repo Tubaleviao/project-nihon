@@ -194,6 +194,7 @@ func _on_peer_disconnected(peer_id: int) -> void:
 		return
 	fold_last_known_state(peer_id, player_id)
 	root._combat_wiring.refresh_status_records()
+	root._combat_wiring.forget_swinger(player_id)
 	if root._status != null:
 		root._status.clear(player_id)
 		root._status.take_dirty()

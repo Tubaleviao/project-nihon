@@ -548,10 +548,16 @@ static func transfer(src: Node, dst: Node, give: Dictionary, receive: Variant = 
 # ---------------------------------------------------------------------------
 
 ## The local player drops goods on the ground. Only a machine that owns the inventory may do it: a
-## client's pack is the host's, so a local removal would be overwritten by the next sync and the
-## goods would exist twice. The pickup carries the units' exact durability (see `_on_pickup_requested`).
+## client's pack is the host's, so a client forwards a `drop_intent` instead (a local removal would be
+## overwritten by the next sync and the goods would exist twice). The pickup carries the units' exact durability (see `_on_pickup_requested`).
 func _on_item_drop_requested(item_id: String, quantity: int, position: Vector3) -> void:
-	if not is_authoritative or loot_slice == null or quantity <= 0:
+	if not owner_id in LOCAL_OWNER_LITERALS:
+		return   # the request is the local player's; a peer's bag held here (registry) is not it
+	if not is_authoritative:
+		if quantity > 0:
+			GameBus.drop_intent.emit(item_id, quantity, position, "")   # the host drops it from its copy of this bag
+		return
+	if loot_slice == null or quantity <= 0:
 		return
 	var take := mini(quantity, get_item_count(item_id))
 	if take <= 0:
@@ -563,6 +569,11 @@ func _on_item_drop_requested(item_id: String, quantity: int, position: Vector3) 
 	_is_full = false
 
 func _on_pickup_requested(pickup_id: String) -> void:
+	if not owner_id in LOCAL_OWNER_LITERALS:
+		return   # only the local player's bag answers its own click (a peer's bag held here would steal it)
+	if not is_authoritative:
+		GameBus.pickup_intent.emit(pickup_id, "")   # the host owns the pickup and this bag
+		return
 	if loot_slice == null:
 		return
 	var p: Dictionary = loot_slice.get_pickup(pickup_id)

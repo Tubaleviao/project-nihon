@@ -363,6 +363,27 @@ func _route_h2c(payload: Dictionary) -> void:
 					"entries": payload.get("entries", []) if payload.get("entries", []) is Array else [],
 					"carrier": str(payload.get("carrier", "")), "mode": str(payload.get("mode", "")),
 					"mass": float(payload.get("mass", 0.0)), "remaining": float(payload.get("remaining", 0.0)) })
+		"pickup":
+			# A ground pickup in our AOI; LootSlice keeps a view of it.
+			var lpos: Variant = payload.get("pos", [])
+			var lid: Variant = payload.get("id", "")
+			if sl._role == sl.Role.CLIENT and lid is String and lpos is Array and (lpos as Array).size() == 3:
+				GameBus.peer_pickup_synced.emit({ "id": lid, "item_id": str(payload.get("item", "")),
+					"quantity": int(payload.get("qty", 0)), "position": Vector3(float(lpos[0]), float(lpos[1]), float(lpos[2])) })
+		"pickup_result":
+			# Our pickup intent's answer: taken (the pickup sound and toast) or refused for a full bag.
+			if sl._role == sl.Role.CLIENT:
+				var r_item := str(payload.get("item", ""))
+				var r_qty: Variant = payload.get("qty", 0)
+				if bool(payload.get("ok", false)):
+					if (GameData.ITEMS.has(r_item) or GameData.MATERIALS.has(r_item)) and (r_qty is int or r_qty is float) \
+							and int(r_qty) > 0:
+						GameBus.item_picked_up.emit(r_item, mini(int(r_qty), 1000000))
+				elif str(payload.get("reason", "")) == "inventory_full":
+					GameBus.inventory_full.emit()
+		"pickup_removed":
+			if sl._role == sl.Role.CLIENT and payload.get("id", "") is String:
+				GameBus.peer_pickup_removed.emit(payload["id"])
 		"carcass_removed":
 			if sl._role == sl.Role.CLIENT and payload.get("id", "") is String:
 				GameBus.peer_carcass_removed.emit(payload["id"])
@@ -408,6 +429,12 @@ func _route_h2c(payload: Dictionary) -> void:
 				payload.get("contents", {}),
 				payload.get("durabilities", {})
 			)
+		"creature_killed":
+			# Our swing killed a creature on the host; only the tutorial reads it. An unknown species is dropped to "".
+			var species := str(payload.get("creature", ""))
+			if sl._role == sl.Role.CLIENT:
+				GameBus.tutorial_event.emit("creature_killed",
+					{ "creature": species if GameData.CREATURES.has(species) else "", "tags": ["creature"] })
 		"player_healed":
 			# Phase 196 — the host's restRegen for our own resting body; bounded, finite, positive.
 			var amount: Variant = payload.get("amount", 0.0)
