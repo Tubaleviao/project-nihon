@@ -1854,7 +1854,6 @@ func _jump_state() -> Dictionary:
 const LOOSE_SEARCH_M := 48.0
 ## The stone tools the tutorial's first-tools and first-hunt chapters craft, by recipe.
 const BARE_HANDS_RECIPES := ["RecipeStoneAxe", "RecipeStonePick", "RecipeStoneShovel", "RecipeStoneKnife"]
-## Depths under the natural surface (m) tried for the rock: past the temperate biomes' 3 m of topsoil.
 ## Phase 290 — holding budgets from the new speeds: soil down to the marked rock, and the rock's stone-pick time + slack.
 const DIG_TO_ROCK_BUDGET_S := 5.0
 const ROCK_BUDGET_SLACK := 1.5
@@ -1900,11 +1899,9 @@ func _bare_hands_tools() -> String:
 	# Phase 290 — where the `mine_stone` marker points, dig the soil, then mine the Ferrite, top face by top face.
 	await _settle_unharmed()
 	var had := [_root._inventory.get_item_count("Soil"), _root._inventory.get_item_count("Ferrite")]
-	var spot: Dictionary = TutorialMarker.spot_for("mine_stone", _root._tutorial_wiring.marker,
-		TutorialMarker.tile_of(_root._player.get_world_pos()), _root._voxel, TutorialRules.steps())
+	var spot: Dictionary = TutorialMarker.spot_for("mine_stone", _root._tutorial_wiring.marker, TutorialMarker.tile_of(_root._player.get_world_pos()), _root._voxel, TutorialRules.steps())
 	if spot.is_empty(): return "no mine_stone marker within reach of %s" % str(_root._player.get_world_pos())
-	var tile: Vector2i = spot["tile"]
-	var stand: Dictionary = TutorialMarker.tile_world_pos(tile, 0.0)
+	var tile: Vector2i = spot["tile"]; var stand: Dictionary = TutorialMarker.tile_world_pos(tile, 0.0)
 	_teleport_to(stand["chunk"], stand["local"])
 	await _until(func(): return _root._chunk_manager.is_chunk_built(stand["chunk"]), STEP_TIMEOUT_SECS)   # `_hold_work` heals
 	var runs: Array = _root._voxel.get_runs_at_tile(tile)

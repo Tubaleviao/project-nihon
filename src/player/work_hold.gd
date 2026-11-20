@@ -4,7 +4,7 @@ extends Control
 ## target. Releasing, turning to another target or losing the target cancels (progress is lost, nothing is spent).
 ## On completion the existing chop / mine request runs unchanged, and holding on starts the next target under the
 ## crosshair, so a trench is one hold (Phase 290: a dig asks for the next block in the same frame, the one under the
-## crosshair when it has moved to another tile, else the one behind the dug block). The host times the work
+## crosshair when it has moved to another block, else the one behind the dug block). The host times the work
 ## independently and drops an early completion.
 
 const I18n := preload("res://src/core/i18n.gd")
@@ -167,10 +167,11 @@ func tick(delta: float, aimed_tree: String, aimed_block: Dictionary) -> void:
 			_begin(aimed)
 		return
 	if not _chain_from.is_empty() and str(aimed.get("kind", "")) == "block":
-		# Phase 290 — a chained dig goes on while the crosshair stays on the dug tile (the aim has not caught up yet)
-		# or on the chained one; another tile is where the player wants the next block, so the chain follows it.
-		var tile := tile_of(aimed)
-		if tile != tile_of(_target) and tile != tile_of(_chain_from):
+		# Phase 290 — a chained dig goes on while the crosshair stays on the dug block (the aim has not caught up yet)
+		# or on the chained one; another block (another tile, or a step up or down the same one) is where the player
+		# wants the next dig, so the chain follows it.
+		var block := block_of(aimed)
+		if block != block_of(_target) and block != block_of(_chain_from):
 			_cancel()
 			if _workable(aimed):
 				_begin(aimed)
@@ -213,6 +214,14 @@ static func tile_of(t: Dictionary) -> Vector2i:
 		x -= n.x * VoxelConsts.TILE_SIZE * 0.5
 		z -= n.z * VoxelConsts.TILE_SIZE * 0.5
 	return Vector2i(floori(x / VoxelConsts.TILE_SIZE), floori(z / VoxelConsts.TILE_SIZE))
+
+## Phase 290 — the block a block target names: its tile and height step, as the host's `_mine_span` picks it. A side
+## face names the step its y is inside; a top face names the step under the plane it lies on.
+static func block_of(t: Dictionary) -> Vector3i:
+	var tile := tile_of(t)
+	var y: float = (t.get("position", Vector3.ZERO) as Vector3).y / VoxelConsts.STEP_HEIGHT
+	var n: Vector3 = t.get("normal", Vector3.UP)
+	return Vector3i(tile.x, roundi(y) - 1 if n.y > 0.5 else floori(y), tile.y)
 
 func progress() -> float:
 	return clampf(_elapsed / _duration, 0.0, 1.0) if _started and _duration > 0.0 else 0.0
@@ -273,12 +282,13 @@ func _complete() -> void:
 			_chain_dig(t)
 
 ## Phase 290 — a dig hold carries straight on, asked for in the same frame instead of after the crosshair has caught
-## up with the new face, so a trench is one continuous dig: to the block under the crosshair when it is on another
-## diggable tile (a sweep across a row), else to the block behind the dug one (under it for a top face). Neither
-## diggable (air behind a wall, bedrock, a closed site): nothing is asked, and the tick waits for a workable aim.
+## up with the new face, so a trench is one continuous dig: to the block under the crosshair when it is another
+## diggable block (a sweep across a row, a step up or down a wall), else to the block behind the dug one (under it
+## for a top face). Neither diggable (air behind a wall, bedrock, a closed site): nothing is asked, and the tick waits
+## for a workable aim.
 ## The host resolves the new target against the column with the dug block gone.
 func _chain_dig(dug: Dictionary) -> void:
-	if not _last_aim.is_empty() and tile_of(_last_aim) != tile_of(dug) and _workable(_last_aim, true):
+	if not _last_aim.is_empty() and block_of(_last_aim) != block_of(dug) and _workable(_last_aim, true):
 		_begin(_last_aim)
 		return
 	var next := next_dig_target(dug)

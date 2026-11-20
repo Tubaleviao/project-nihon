@@ -1736,6 +1736,30 @@ func _test_work_hold_dig_follows_aim() -> void:
 	assert_true(cancels[0] == 1 and (starts[-1] as Vector3).is_equal_approx(along["position"]), "aiming along the wall moves the dig along it")
 	hold.release()
 	hold.free()
+	# A step up or down the same wall tile is another block: the chain follows the crosshair there, both once the
+	# chained dig runs and in the completion frame; held still, it digs on into the wall at the dug height.
+	var wall := { "kind": "block", "position": Vector3(2.0, 1.5625, 3.25), "normal": Vector3(1, 0, 0), "exact": {} }
+	var deeper := Vector3(2.0 - VoxelConsts.TILE_SIZE, 1.5625, 3.25)
+	for dy in [VoxelConsts.STEP_HEIGHT, -VoxelConsts.STEP_HEIGHT]:
+		var step := { "kind": "block", "position": Vector3(2.0, 1.5625 + dy, 3.25), "normal": Vector3(1, 0, 0), "exact": {} }
+		starts.clear()
+		hold = _dig_once(wall, wall)
+		assert_true((starts[-1] as Vector3).is_equal_approx(deeper), "held still on the wall, the dig goes on in (%s)" % str(starts[-1]))
+		GameBus.work_started.emit("block:b", 0.6, "dig", "Soil")
+		cancels[0] = 0
+		hold.tick(0.1, "", wall)
+		assert_eq(cancels[0], 0, "the stale aim on the dug block keeps the chain")
+		hold.tick(0.1, "", step)
+		assert_true(cancels[0] == 1 and (starts[-1] as Vector3).is_equal_approx(step["position"]), "a step %+.3f on the same tile drops the deeper dig for that block" % dy)
+		hold.tick(0.1, "", step)
+		assert_eq(starts.size(), 3, "and keeps to it")
+		hold.release()
+		hold.free()
+		starts.clear()
+		hold = _dig_once(wall, step)
+		assert_true(starts.size() == 2 and (starts[-1] as Vector3).is_equal_approx(step["position"]), "a step %+.3f under the crosshair in the completion frame is the next block" % dy)
+		hold.release()
+		hold.free()
 	GameBus.work_start_requested.disconnect(on_start)
 	GameBus.work_cancel_requested.disconnect(on_cancel)
 
