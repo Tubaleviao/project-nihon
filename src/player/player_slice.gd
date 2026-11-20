@@ -206,6 +206,7 @@ var inventory_slice: Node = null
 ## Phase 268 — a station item selected in the hotbar: its ghost, rotation and placement request.
 const StationPlacer := preload("res://src/player/station_placer.gd")
 const CraftCatalog := preload("res://src/crafting/craft_catalog.gd")   # Phase 269
+const StepUpGate := preload("res://src/player/step_up_gate.gd")   # Phase 240
 var _station_placer: StationPlacer = StationPlacer.new()
 ## This machine's player id, for the ghost's refusal (the host's structure guard judges a placer by it).
 var local_player_id: String = ""
@@ -990,16 +991,14 @@ func _move(delta: float) -> void:
 	_vel.x = dir.x * speed
 	_vel.z = dir.z * speed
 
-	# Stair step-up. Voxel rises are quantised to STEP_HEIGHT (0.125), but the
-	# capsule's contact normal against a rise is mostly horizontal, so a bare
-	# `move_and_slide()` leaves the player stuck at the foot of every step. When
-	# we are grounded, pushing horizontally, and already touching a wall, ask the
-	# three-stage probe in `resolve_step_up` (rise, then forward) whether the step
-	# can be cleared; if it can, the body is lifted and advanced onto it and
-	# `move_and_slide()` (with `floor_snap_length = STEP_UP_HEIGHT`) settles it
-	# back down onto the new surface. Horizontal velocity is untouched and no
-	# vertical velocity is added, so the player WALKS up — never jumps.
-	if dir.length_squared() > 0.0 and _body.is_on_floor() and _body.is_on_wall() and preload("res://src/player/step_up_gate.gd").allowed(voxel_slice, _body.global_position, dir, _origin.value, _feet_world_y(), STEP_UP_HEIGHT):
+	# Stair step-up. Voxel rises are quantised to STEP_HEIGHT (0.125), but the capsule's contact normal against a
+	# rise is mostly horizontal, so a bare `move_and_slide()` leaves the player stuck at the foot of every step.
+	# When we are grounded, pushing horizontally, and already touching a wall, ask the three-stage probe in
+	# `resolve_step_up` (rise, then forward) whether the step can be cleared; if it can, the body is lifted and
+	# advanced onto it and `move_and_slide()` (with `floor_snap_length = STEP_UP_HEIGHT`) settles it back down
+	# onto the new surface. Horizontal velocity is untouched and no vertical velocity is added, so the player
+	# WALKS up — never jumps.
+	if dir.length_squared() > 0.0 and _body.is_on_floor() and _body.is_on_wall() and StepUpGate.allowed(voxel_slice, _body.global_position, dir, _origin.value, _feet_world_y(), STEP_UP_HEIGHT):
 		var climbed: Transform3D = resolve_step_up(
 			func(xform: Transform3D, motion: Vector3) -> bool: return _body.test_move(xform, motion),
 			_body.global_transform,
@@ -1265,7 +1264,7 @@ func _build_hud() -> void:
 	_refresh_build_hint()
 	_work_hold = preload("res://src/player/work_hold.gd").new()
 	_hud.add_child(_work_hold)
-	_work_hold.block_probe = func(t: Dictionary) -> Variant: return null if voxel_slice == null else str(voxel_slice.work_target(t["position"], t["normal"], t["exact"]).get("material", ""))
+	_work_hold.block_probe = func(t: Dictionary) -> Variant: return null if voxel_slice == null else voxel_slice.work_target(t["position"], t["normal"], t["exact"])
 	add_child(_hud)
 
 func _update_hp_bar() -> void:

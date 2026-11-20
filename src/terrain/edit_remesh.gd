@@ -73,6 +73,11 @@ func note_cost(key: String, usec: int) -> void:
 func is_priority(key: String) -> bool:
 	return _open.has(key)
 
+## #649 — true while `key` has a PRIMARY edit rebuild (this player's own edit) open: only those attach outside the
+## frame's attach budget; a NEIGHBOUR rebuild (another player's edit, a seam neighbour) goes first but counts.
+func is_primary(key: String) -> bool:
+	return _open.has(key) and bool(_open[key]["primary"])
+
 ## The chunks waiting for a worker, in order.
 func queued() -> Array:
 	return _queue.duplicate()
@@ -88,7 +93,7 @@ func dispatch(chunk: Vector2i, priority: int) -> void:
 	_prune(now)
 	if priority < PRIMARY:
 		prebuild.note_changed(chunk)   # another edit in the held chunk's ring
-	_open[key] = { "t0": now, "f0": Engine.get_process_frames(), "dispatched": -1, "primary": priority >= PRIMARY, "sync": false }
+	_open[key] = { "t0": now, "f0": Engine.get_process_frames(), "dispatched": -1, "primary": priority >= PRIMARY or is_primary(key), "sync": false }
 	# A deferred ordinary rebuild of the same chunk is this one now.
 	if sl._rebuild_pending.has(key):
 		sl._rebuild_pending.erase(key)

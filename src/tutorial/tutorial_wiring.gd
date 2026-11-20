@@ -48,6 +48,9 @@ var _marker_step := ""
 var _marker_clock: float = 0.0
 var _marker_from := Vector2i(1 << 30, 0)   ## the tile the last failed search ran from
 var _search: TutorialMarker.Search = null   ## the search running for the step, a slice a frame
+## The step whose marker is shown, recomputed only when the tutorial state changes (`tutorial_changed`).
+var _marker_target: Dictionary = {}
+var _marker_dirty := true
 
 func _connect_all() -> void:
 	connect_bus(GameBus.tutorial_event, _on_event)
@@ -64,6 +67,8 @@ func _connect_all() -> void:
 	connect_bus(GameBus.inventory_changed, _on_inventory_changed)
 	connect_bus(GameBus.waystones_synced, _on_waystones_synced)
 	connect_bus(GameBus.tutorial_changed, _on_changed)
+	connect_bus(GameBus.player_teleport, _on_teleport)
+	connect_bus(GameBus.waystone_travel_resolved, _on_waystone_travel)
 
 ## Build the slice and the card once the UI exists (not on a dedicated server).
 func attach() -> void:
@@ -132,7 +137,23 @@ func _on_event(kind: String, params: Dictionary) -> void:
 	_note(kind, params)
 
 func _on_changed() -> void:
-	pass
+	_marker_dirty = true
+
+## The player was moved (admin teleport, waystone travel, respawn): a marker found round the old spot may now be
+## far away, so search again round the new one.
+func _on_teleport(_pos: Dictionary) -> void:
+	relocate_marker()
+
+func _on_waystone_travel(player_id: String, ok: bool, _reason: String) -> void:
+	if ok and (player_id == "" or player_id == _local()):
+		relocate_marker()
+
+## Drop the shown marker and any running search, and search again for the same step on the next tick.
+func relocate_marker() -> void:
+	_search = null
+	_drop_marker()
+	_marker_clock = MARKER_RETRY_S
+	_marker_from = Vector2i(1 << 30, 0)
 
 func _on_craft_resolved(result: Dictionary) -> void:
 	if not bool(result.get("success", false)):
@@ -193,6 +214,7 @@ func _bed_sheltered(bed: Dictionary) -> bool:
 
 func _on_respawned(_pos: Vector3) -> void:
 	_note("respawned")
+	relocate_marker()
 
 func _on_chat(text: String, pid: String) -> void:
 	if pid == "" or pid == _local():
@@ -262,7 +284,10 @@ func tick(delta: float) -> void:
 ## up, MARKER_BUDGET_USEC a frame (again, while nothing was found, every MARKER_RETRY_S once the player has moved
 ## MARKER_RETRY_M), then kept where it is until the step is done.
 func _update_marker(delta: float) -> void:
-	var step := TutorialMarker.marker_step(Rules.eligible(slice.state, slice.steps()))
+	if _marker_dirty:
+		_marker_dirty = false
+		_marker_target = TutorialMarker.marker_step(Rules.eligible(slice.state, slice.steps()))
+	var step := _marker_target
 	var id := str(step.get("id", ""))
 	if id != _marker_step:
 		_marker_step = id

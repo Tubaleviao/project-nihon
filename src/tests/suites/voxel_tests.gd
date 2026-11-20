@@ -843,6 +843,11 @@ func _test_voxel_terrain_material_is_one_instance() -> void:
 # Phase 33 — player identity + server-side persistence
 # ---------------------------------------------------------------------------
 
+## Phase 241 — the block mesher's collision for a chunk: these tests read its wall planes, and the game's
+## mesher is now always the smooth one.
+func _block_faces(v: Node, chunk_pos: Vector2i, heightmap: Array) -> PackedVector3Array:
+	return VoxelMesh.build_chunk_arrays(chunk_pos, heightmap, v.collect_build_runs(chunk_pos, heightmap))["collision"]
+
 ## Phase 41 — a column carries a SPARSE list of solid runs, and a mid-column carve
 ## leaves TWO of them: a floor and a roof. Mining the roof must not touch the floor,
 ## and the collision soup the trimesh is built from must carry a downward face at the
@@ -852,11 +857,6 @@ func _test_voxel_terrain_material_is_one_instance() -> void:
 ## inside `GameRoot._ready()`, where a `move_and_slide()` never registers a collision
 ## (ROADMAP §Phase 39). What is asserted here is the geometry the trimesh is built
 ## from — the same triangles the mesh shows.
-## Phase 241 — the block mesher's collision for a chunk: these tests read its wall planes, and the game's
-## mesher is now always the smooth one.
-func _block_faces(v: Node, chunk_pos: Vector2i, heightmap: Array) -> PackedVector3Array:
-	return VoxelMesh.build_chunk_arrays(chunk_pos, heightmap, v.collect_build_runs(chunk_pos, heightmap))["collision"]
-
 func _test_voxel_tunnel_runs() -> void:
 	var v := _make_voxel()
 	var inv := _builder_inventory(v)

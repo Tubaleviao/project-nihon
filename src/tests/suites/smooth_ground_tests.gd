@@ -441,8 +441,15 @@ func _test_cliff_skirt() -> void:
 
 class _Column extends Node:
 	var runs: Dictionary = {}
+	var reads := 0
 	func get_runs_at_tile(tile: Vector2i) -> Array:
+		reads += 1
 		return runs.get(tile, [])
+
+## #612 — the voxel slice's answer: only a tile with edits (here, a listed one) can hold a placed run.
+class _EditedColumn extends _Column:
+	func has_edit_near(tile: Vector2i, _radius: int) -> bool:
+		return runs.has(tile)
 
 func _test_diagonal_step() -> void:
 	var voxel := _Column.new()
@@ -455,3 +462,11 @@ func _test_diagonal_step() -> void:
 	assert_true(StepUpGate.allowed(voxel, pos, Vector3(1, 0, 0), Vector3.ZERO, 4.0, PlayerSlice.STEP_UP_HEIGHT), "a straight push does too")
 	assert_false(StepUpGate.allowed(voxel, pos, Vector3(-1, 0, 1).normalized(), Vector3.ZERO, 4.0, PlayerSlice.STEP_UP_HEIGHT), "walking away from it does not")
 	voxel.free()
+	# #612 — against natural ground (no edited column ahead) the gate builds no runs at all.
+	var edited := _EditedColumn.new()
+	edited.runs[Vector2i(20, 16)] = [{ "bottom": 4.0, "top": 4.25, "material": "Stone", "color": STONE }]
+	assert_true(StepUpGate.allowed(edited, pos, diag, Vector3.ZERO, 4.0, PlayerSlice.STEP_UP_HEIGHT), "the edited column still allows the step-up")
+	edited.reads = 0
+	assert_false(StepUpGate.allowed(edited, pos, Vector3(-1, 0, 1).normalized(), Vector3.ZERO, 4.0, PlayerSlice.STEP_UP_HEIGHT), "natural ground ahead: no step-up")
+	assert_eq(edited.reads, 0, "and no column's runs were built for it")
+	edited.free()

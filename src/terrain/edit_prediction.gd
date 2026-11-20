@@ -65,6 +65,15 @@ func pending_count() -> int:
 func is_pending(seq: int) -> bool:
 	return _pending.has(seq)
 
+## #649 — blocks of `material` placed by predictions the host has not answered yet: the pack is debited only on the
+## host's confirmation, so they still count in it.
+func pending_places(material: String) -> int:
+	var n := 0
+	for e in _pending.values():
+		if str(e["action"]) == "place" and str(e["material"]) == material:
+			n += 1
+	return n
+
 ## Apply `action` ("mine" or "place") at the aimed point to this client's voxel data and return its number, or 0
 ## when there is nothing to predict (no span to mine, a placed block, a full cell, no material): the intent still
 ## goes to the host.
@@ -134,6 +143,7 @@ func on_host_edit(action: String, position: Vector3, normal: Vector3, material: 
 	_replay()
 	s._build.sink = null
 	_untrack_unused()
+	_rebuild_flipped_veins(veins_before)
 	var changed := _changed(before, _logs(watch))
 	if not own.is_empty() and changed.is_empty() and s._vein_taken == veins_before:
 		return true   # the host's edit is the prediction it confirmed: the ground already shows it
@@ -169,12 +179,14 @@ func rollback(seq: int, reason: String) -> void:
 	_note(seq, _pending[seq], false)
 	var watch: Array = _auth.keys()
 	var before := _logs(watch)
+	var veins_before: Dictionary = s._vein_taken.duplicate()
 	s._build.sink = {}
 	_rewind()
 	_pending.erase(seq)
 	_replay()
 	s._build.sink = null
 	_untrack_unused()
+	_rebuild_flipped_veins(veins_before)
 	for k in _changed(before, _logs(watch)):
 		s._rebuild_chunk_at_tile(s._key_to_tile(k), EditRemesh.PRIMARY)
 	GameBus.block_edit_rolled_back.emit(action, reason)
@@ -242,6 +254,22 @@ func _replay() -> void:
 	seqs.sort()
 	for q in seqs:
 		_apply(_pending[q], EditRemesh.PRIMARY)
+
+## #649 — the rewind and replay rebuild into a discarded sink, and the tiles whose log changed are rebuilt after; a
+## vein that was exhausted or made live again by them tints chunks beyond those tiles, so each vein whose state
+## flipped against `taken_before` (the depletion before the rewind) has its whole blob rebuilt.
+func _rebuild_flipped_veins(taken_before: Dictionary) -> void:
+	var ids: Dictionary = {}
+	for id in taken_before:
+		if int(taken_before[id]) != int(s._vein_taken.get(id, 0)):
+			ids[id] = true
+	for id in s._vein_taken:
+		if not taken_before.has(id):
+			ids[id] = true
+	for id in ids:
+		var vein: Dictionary = s._edit._vein_from_id(str(id))
+		if not vein.is_empty() and s.OreField.is_live(vein, taken_before) != s.OreField.is_live(vein, s._vein_taken):
+			s._edit._rebuild_vein_chunks(vein)
 
 ## Forget the host logs no pending prediction needs.
 func _untrack_unused() -> void:

@@ -168,6 +168,7 @@ var marker: Dictionary = {}
 var found: Dictionary = {}
 var world_pos: Dictionary = {}   ## the marked column's top centre, `{chunk, local}`
 var _label: Label3D = null
+var _shown_m := -1   ## the whole metres the label shows; the text is rebuilt only when they change
 
 func _init() -> void:
 	name = "TutorialMarker"
@@ -199,6 +200,7 @@ func set_target(step: Dictionary, hit: Dictionary) -> void:
 	step_id = str(step.get("id", ""))
 	marker = step.get("marker", {})
 	found = hit
+	_shown_m = -1
 	world_pos = tile_world_pos(hit["tile"], float(hit["top"]))
 
 ## Place the beacon in the scene from the player's exact and scene positions (so a rebase never shifts it), and
@@ -213,7 +215,10 @@ func follow(player_world: Dictionary, player_scene: Vector3) -> void:
 	var delta := Vector3(float(tc.x - pc.x) * WorldPos.CHUNK_METERS + (tl.x - pl.x), tl.y - pl.y,
 		float(tc.y - pc.y) * WorldPos.CHUNK_METERS + (tl.z - pl.z))
 	position = player_scene + delta
-	_label.text = label_text(marker, Vector2(delta.x, delta.z).length())
+	var metres := Vector2(delta.x, delta.z).length()
+	if int(round(metres)) != _shown_m:
+		_shown_m = int(round(metres))
+		_label.text = label_text(marker, metres)
 
 ## A `{chunk, local}` world record as a flat world Vector3 (float32: coarse far from the origin; the host resolves the
 ## tile from the record itself).

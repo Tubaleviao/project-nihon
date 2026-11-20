@@ -31,6 +31,7 @@ func register() -> void:
 	_run_test("work hold: same target",                         _test_work_hold_same_target)
 	_run_test("work hold: a dig asks for the next block in the frame it completes (Phase 290)", _test_work_hold_dig_chains)
 	_run_test("work hold: a held dig follows the crosshair to another tile (Phase 290)", _test_work_hold_dig_follows_aim)
+	_run_test("work hold: a chained dig waits for a stale column to catch up, and gives up after GIVE_UP_SECONDS (#698)", _test_work_hold_dig_waits_stale)
 	_run_test("work hold: a dig never chains into what cannot be dug, nor gives up (Phase 290)", _test_work_hold_dig_chain_checked)
 	_run_test("tree: stump regrows on its cooldown",            _test_tree_stump_regrows_on_cooldown)
 	_run_test("tree: despawn is per chunk",                     _test_tree_despawn_is_per_chunk)
@@ -1777,13 +1778,13 @@ func _test_work_hold_dig_chain_checked() -> void:
 	var solid := [true]
 	# Only the top layer is soil; under it lies nothing to dig (bedrock), and `solid` turns the whole world off.
 	var probe := func(t: Dictionary) -> Variant:
-		return "Soil" if solid[0] and (t["position"] as Vector3).y > 1.95 else ""
+		return { "material": "Soil" if solid[0] and (t["position"] as Vector3).y > 1.95 else "" }
 	var hold := _dig_once(top, top, probe)
 	assert_eq(starts.size(), 1, "no chain into the bedrock under the dug block")
 	hold.free()
 	starts.clear()
 	var rock := func(t: Dictionary) -> Variant:
-		return "Soil" if (t["position"] as Vector3).y > 1.95 else "Ferrite"
+		return { "material": "Soil" if (t["position"] as Vector3).y > 1.95 else "Ferrite" }
 	hold = _dig_once(top, top, rock)
 	assert_eq(starts.size(), 1, "nor into rock (a dig chain only digs)")
 	hold.free()
@@ -1797,6 +1798,46 @@ func _test_work_hold_dig_chain_checked() -> void:
 	hold.tick(0.1, "", east)
 	assert_eq(starts.size(), 2, "and once the crosshair is on a workable block it starts there, with no re-press")
 	assert_true((starts[-1] as Vector3).is_equal_approx(east["position"]), "on the block under the crosshair")
+	hold.release()
+	hold.free()
+	GameBus.work_start_requested.disconnect(on_start)
+
+## #698 — a placed block mined on a remote client is not predicted, so the column still shows it after the completion
+## frame. The chain waits for the host's edit instead of asking for the dug block again; with no edit, it gives up
+## after GIVE_UP_SECONDS like an unanswered start, and a fresh press works again.
+func _test_work_hold_dig_waits_stale() -> void:
+	var VoxelConsts := preload("res://src/terrain/voxel_consts.gd")
+	var Hold := preload("res://src/player/work_hold.gd")
+	var starts: Array = []
+	var on_start := func(_k: String, _tree: String, pos: Vector3, _n: Vector3, _e: Dictionary, _pid: String) -> void:
+		starts.append(pos)
+	GameBus.work_start_requested.connect(on_start)
+	var top := { "kind": "block", "position": Vector3(4.25, 2.0, 6.25), "normal": Vector3.UP, "exact": {} }
+	var dug := [false]   # whether the host's edit has reached this client's column
+	var probe := func(t: Dictionary) -> Variant:
+		var y := (t["position"] as Vector3).y
+		var top_y := 2.0 - (VoxelConsts.STEP_HEIGHT if dug[0] else 0.0)
+		return { "material": "Soil", "key": "block:4,6,%.2f" % (top_y - VoxelConsts.STEP_HEIGHT if y > top_y - 0.01 else y) }
+	var hold := _dig_once(top, top, probe)
+	assert_eq(starts.size(), 1, "the completion frame asks for nothing while the dug block still shows")
+	hold.tick(0.5, "", top)
+	assert_eq(starts.size(), 1, "nor while the column stays stale")
+	dug[0] = true
+	hold.tick(0.1, "", top)
+	assert_eq(starts.size(), 2, "the host's edit arrives: the chain goes on")
+	assert_true((starts[-1] as Vector3).is_equal_approx(Vector3(4.25, 2.0 - VoxelConsts.STEP_HEIGHT, 6.25)), "to the next block down")
+	hold.release()
+	hold.free()
+	starts.clear()
+	dug[0] = false
+	hold = _dig_once(top, top, probe)
+	for _i in 4:
+		hold.tick(0.5, "", top)
+	assert_eq(starts.size(), 1, "no edit within GIVE_UP_SECONDS (%.1f s): nothing more is asked" % Hold.GIVE_UP_SECONDS)
+	assert_true(hold._gave_up, "the hold gives up until the input is pressed again")
+	hold.release()
+	hold.press(top)
+	assert_eq(starts.size(), 2, "a fresh press asks again")
 	hold.release()
 	hold.free()
 	GameBus.work_start_requested.disconnect(on_start)
