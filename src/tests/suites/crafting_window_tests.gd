@@ -12,7 +12,7 @@ const I18n := preload("res://src/core/i18n.gd")
 const NEW_KEYS := ["win.station", "craft.search", "craft.cat.all", "craft.cat.tools", "craft.cat.weapons", "craft.cat.armor",
 	"craft.cat.building", "craft.cat.consumables", "craft.cat.materials", "craft.card_count", "craft.card_refused",
 	"craft.have_need", "craft.work_time", "craft.work_instant", "craft.trains", "craft.trains_none", "craft.quantity",
-	"craft.pick", "craft.none", "controls.row18"]
+	"craft.pick", "craft.none", "controls.row18", "craft.card_badge"]
 
 func register() -> void:
 	_run_test("crafting window: the hand window lists exactly the known recipes with no station", _test_hand_lists_stationless_known)
@@ -27,6 +27,11 @@ func register() -> void:
 	_run_test("crafting window: every new string is in both locales", _test_new_strings_in_both_locales)
 	_run_test("crafting window: a recipe learnt by research or a blueprint shows at once in an open station window", _test_research_redraws_station_window)
 	_run_test("crafting window: a closed window is not rebuilt, and is fresh when it opens", _test_closed_window_not_rebuilt)
+	_run_test("crafting window: the default hand window has a grid at least two card rows tall; the detail scrolls", _test_grid_two_rows)
+	_run_test("crafting window: every card's icon area is a square of at least 56 px, even with a long name", _test_card_icon_area)
+	_run_test("crafting window: the column count is the most cards that fit the grid's width, at three widths", _test_columns_follow_width)
+	_run_test("crafting window: a station window gets the same card layout; the detail's input icons are 32 px", _test_station_card_layout)
+	_run_test("crafting window: the selected card has a border, the others none", _test_selected_border)
 
 # ── rig ──────────────────────────────────────────────────────────────────
 
@@ -260,8 +265,10 @@ func _test_have_need_follows_bag() -> void:
 	ui.hand_window.select("RecipeStonePick")
 	var dimmed := false
 	for b: Node in _live_children(ui.hand_window.grid):
-		if (b as Button).text == str(card["name"]):
-			dimmed = (b as Button).modulate.a < 1.0
+		if str(b.get_meta("recipe_id", "")) == "RecipeStonePick":
+			dimmed = (b as Button).self_modulate.a < 1.0 and (b.get_node("Name") as Label).modulate.a < 1.0
+			# Phase 288 — the icon stays readable: opaque, only a little darker.
+			assert_eq((b.get_node("Icon") as Control).modulate.a, 1.0, "the dimmed card's icon stays opaque")
 	assert_true(dimmed, "the unaffordable card is dimmed")
 	var red := 0
 	for lbl: Node in ui.hand_window.detail.find_children("*", "Label", true, false):
@@ -433,4 +440,154 @@ func _test_closed_window_not_rebuilt() -> void:
 	assert_true(ui.open_station_window(forge), "the forge's window reopens")
 	assert_true(station_cards.all(func(c: Node) -> bool: return c.is_queued_for_deletion()), "opening rebuilds the station window")
 	assert_eq(_live_children(ui.station_window.grid).size(), ui.craft_cards("forge").size(), "one card per forge recipe")
+	_free(rig)
+
+# ── Phase 288: recipe cards you can read ────────────────────────────────
+
+## Lay a container tree out now: no frames elapse in the suite, so the deferred sorts never run.
+func _lay_out(c: Control) -> void:
+	if c is Container:
+		c.notification(Container.NOTIFICATION_SORT_CHILDREN)
+	for child in c.get_children():
+		if child is Control:
+			_lay_out(child)
+
+## Size `key`'s panel (its minimum on an axis `size` leaves at zero) and lay it out twice (the column fit runs on
+## the first pass's resize).
+func _size_panel(ui: UiSlice, key: String, size: Vector2 = Vector2.ZERO) -> Control:
+	var panel: Control = ui._panels[key]
+	var m := panel.get_combined_minimum_size()
+	panel.size = Vector2(maxf(size.x, m.x), maxf(size.y, m.y))
+	_lay_out(panel)
+	_lay_out(panel)
+	return panel
+
+func _two_rows() -> float:
+	return CraftWindow.MIN_ROWS * CraftWindow.CARD_SIZE.y + (CraftWindow.MIN_ROWS - 1) * CraftWindow.CARD_SEP
+
+func _test_grid_two_rows() -> void:
+	var rig := _rig(false)
+	var ui: UiSlice = rig["ui"]
+	(rig["craft"] as CraftingSlice).set_skill("Carpentry", "novice")
+	ui.refresh_crafting()
+	var hand = ui.hand_window
+	assert_true(CraftWindow.MIN_ROWS >= 2, "at least two rows")
+	_size_panel(ui, UiSlice.WINDOW_CRAFTING)
+	assert_true(hand.grid_scroll.size.y >= _two_rows(), "the default window's grid area is two card rows tall (%.0f)" % hand.grid_scroll.size.y)
+	var panel: Control = ui._panels[UiSlice.WINDOW_CRAFTING]
+	var before: float = panel.get_combined_minimum_size().y
+	for c: Dictionary in hand.shown_cards():
+		hand.select(str(c["id"]))
+		assert_eq(panel.get_combined_minimum_size().y, before,
+			"selecting %s never raises the window's minimum height: the detail scrolls" % str(c["id"]))
+	_size_panel(ui, UiSlice.WINDOW_CRAFTING)
+	assert_true(hand.grid_scroll.size.y >= _two_rows(), "with a card selected the grid keeps two rows (%.0f)" % hand.grid_scroll.size.y)
+	assert_true(hand.detail.get_parent() is ScrollContainer, "the detail sits in its own scroll area")
+	_free(rig)
+
+func _test_card_icon_area() -> void:
+	var rig := _rig(false)
+	var ui: UiSlice = rig["ui"]
+	(rig["craft"] as CraftingSlice).set_skill("Carpentry", "novice")
+	ui.refresh_crafting()
+	var hand = ui.hand_window
+	_size_panel(ui, UiSlice.WINDOW_CRAFTING)
+	var cards := _live_children(hand.grid)
+	assert_true(cards.size() > 0, "the hand window has cards")
+	for b: Node in cards:
+		var icon := b.get_node_or_null("Icon") as TextureRect
+		assert_true(icon != null, "every card has an icon area")
+		if icon == null:
+			continue
+		assert_eq(icon.stretch_mode, TextureRect.STRETCH_KEEP_ASPECT_CENTERED, "the icon keeps its aspect, centred")
+		assert_true(icon.size.x >= CraftWindow.ICON_MIN and icon.size.y >= CraftWindow.ICON_MIN and is_equal_approx(icon.size.x, icon.size.y),
+			"%s: the icon area is a square of at least 56 px (%s)" % [str(b.get_meta("recipe_id")), str(icon.size)])
+		assert_eq((b as Control).size, CraftWindow.CARD_SIZE, "the card keeps its size")
+	assert_eq(hand.undersized_icons(), [], "no undersized icon")
+	# A long localized name wraps to two lines with an ellipsis; the icon keeps its size.
+	var long_name := "Extraordinariamente comprida ferramenta de pedra polida e afiada com cabo de madeira"
+	var b: Button = hand._card_button({ "id": "RecipeLong", "name": long_name, "count": 12, "can_craft": false, "reason": "",
+		"icon_key": "" })
+	var icon := b.get_node("Icon") as Control
+	var name_lbl := b.get_node("Name") as Label
+	assert_eq(icon.size, Vector2(CraftWindow.ICON_SIZE, CraftWindow.ICON_SIZE), "a long name leaves the icon its size")
+	assert_true(icon.size.x >= CraftWindow.ICON_MIN, "and at least 56 px")
+	assert_eq(name_lbl.max_lines_visible, 2, "the name takes two lines at most")
+	assert_eq(name_lbl.text_overrun_behavior, TextServer.OVERRUN_TRIM_ELLIPSIS, "with an ellipsis")
+	assert_true(name_lbl.position.y >= icon.position.y + icon.size.y, "the name sits under the icon")
+	assert_true(name_lbl.position.y + name_lbl.size.y <= CraftWindow.CARD_SIZE.y + 0.5, "inside the card (%s)" % str(name_lbl.size))
+	assert_eq(b.get_combined_minimum_size(), CraftWindow.CARD_SIZE, "a long name does not grow the card")
+	var badge := b.get_node_or_null("Count") as Label
+	assert_true(badge != null and badge.text == I18n.t("craft.card_badge", [12]), "the count badge shows the count")
+	b.free()
+	_free(rig)
+
+func _test_columns_follow_width() -> void:
+	var rig := _rig(false)
+	var ui: UiSlice = rig["ui"]
+	(rig["craft"] as CraftingSlice).set_skill("Carpentry", "novice")
+	ui.refresh_crafting()
+	var hand = ui.hand_window
+	var panel := _size_panel(ui, UiSlice.WINDOW_CRAFTING)
+	var min_w := panel.size.x
+	var seen: Array = []
+	for w: float in [min_w, min_w + 260.0, min_w + 640.0]:
+		_size_panel(ui, UiSlice.WINDOW_CRAFTING, Vector2(w, 0))
+		var avail: float = hand.grid.size.x
+		var sep := float(hand.grid.get_theme_constant("h_separation"))
+		var n := 0
+		while (n + 1) * CraftWindow.CARD_SIZE.x + n * sep <= avail + 0.01:
+			n += 1
+		assert_eq(hand.grid.columns, maxi(1, n), "at %d px the grid (%.0f px) shows the most cards that fit" % [int(w), avail])
+		for b: Node in _live_children(hand.grid):
+			assert_eq((b as Control).size, CraftWindow.CARD_SIZE, "at %d px the cards keep their size" % int(w))
+		seen.append(hand.grid.columns)
+	assert_true(int(seen[0]) >= CraftWindow.MIN_COLUMNS, "the default width shows at least %d columns" % CraftWindow.MIN_COLUMNS)
+	assert_true(int(seen[0]) < int(seen[1]) and int(seen[1]) < int(seen[2]), "a wider window shows more columns (%s)" % str(seen))
+	_free(rig)
+
+func _test_station_card_layout() -> void:
+	var rig := _rig()
+	var ui: UiSlice = rig["ui"]
+	assert_eq((rig["tech"] as TechnologySlice).learn("technology", "TechBasicSmithing"), "", "basic smithing is learnt")
+	var forge := (rig["station"] as StationSlice).place_station("forge", Vector3.ZERO)
+	assert_true(ui.open_station_window(forge), "the forge's window opens")
+	var win = ui.station_window
+	_size_panel(ui, UiSlice.WINDOW_STATION)
+	var cards := _live_children(win.grid)
+	assert_true(cards.size() > 0, "the forge window has cards")
+	assert_true(win.grid_scroll.size.y >= _two_rows(), "the station grid area is two card rows tall")
+	assert_eq(win.undersized_icons(), [], "every station card's icon area is a square of at least 56 px")
+	for b: Node in cards:
+		assert_true(b.get_node_or_null("Icon") is TextureRect and b.get_node_or_null("Name") is Label, "the station card has the same layout")
+	var with_inputs: Dictionary = {}
+	for c: Dictionary in win.shown_cards():
+		if not (c["inputs"] as Array).is_empty():
+			with_inputs = c
+			break
+	assert_false(with_inputs.is_empty(), "a station recipe has inputs")
+	if not with_inputs.is_empty():
+		win.select(str(with_inputs["id"]))
+		var rects: Array = win.detail.find_children("InputIcon", "TextureRect", true, false)
+		assert_eq(rects.size(), (with_inputs["inputs"] as Array).size(), "one icon per input")
+		for r: Node in rects:
+			assert_eq((r as Control).custom_minimum_size, Vector2(32, 32), "the detail's input icons are 32 px")
+	_free(rig)
+
+func _test_selected_border() -> void:
+	var rig := _rig(false)
+	var ui: UiSlice = rig["ui"]
+	(rig["craft"] as CraftingSlice).set_skill("Carpentry", "novice")
+	ui.refresh_crafting()
+	var hand = ui.hand_window
+	hand.select("RecipeStonePick")
+	var bordered := 0
+	for b: Node in _live_children(hand.grid):
+		var c := b as Control
+		var box := c.get_theme_stylebox("normal") as StyleBoxFlat
+		var on := c.has_theme_stylebox_override("normal") and box != null and box.border_width_top > 0
+		if str(b.get_meta("recipe_id")) == "RecipeStonePick":
+			assert_true(on, "the selected card has a border")
+		bordered += 1 if on else 0
+	assert_eq(bordered, 1, "only the selected card has the border")
 	_free(rig)

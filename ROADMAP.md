@@ -40,7 +40,6 @@ others are not in it.
 |---|---|---|
 | 5 | 289 | Hold to work, told and shown: the work bar in view, and the tutorial says hold |
 | 6 | 290 | Digging that does not drag: a faster shovel on the way to rock |
-| 7 | 288 | Recipe cards you can read: a real icon area in the crafting window |
 | 9 | 278 | Rocks and branches that look like rocks and branches |
 | 10 | 283 | Trees that look like trees: closed faces, a trunk and a real crown |
 | 11 | 282 | A felled tree falls, then goes |
@@ -360,7 +359,7 @@ A40–A46). The placeholder rule holds: each phase lands with public placeholder
 | 285 | Grass without black spots | Open |
 | 286 | Men and women who look different | Open |
 | 287 | Fighting that reads: combos, impact timing and hit reactions | Open |
-| 288 | Recipe cards you can read: a real icon area in the crafting window | Open |
+| 288 | Recipe cards you can read: a real icon area in the crafting window | Done |
 | 289 | Hold to work, told and shown: the work bar in view, and the tutorial says hold | Open |
 | 290 | Digging that does not drag: a faster shovel on the way to rock | Open |
 
@@ -1250,12 +1249,12 @@ when the name wraps.
 - The detail panel's input icons grow from 24 to 32 px.
 - No new user-facing strings, or every new one is in both locales.
 
-**Acceptance criteria**
-- Suite: a hand window built with the default size has a grid area at least two card rows tall; every card's
+**Acceptance criteria** (done: `src/ui/craft_window.gd`, `src/tests/suites/crafting_window_tests.gd`, the bot's `craft` step)
+- [x] Suite: a hand window built with the default size has a grid area at least two card rows tall; every card's
   icon rect is at least 56×56 px and square; with a long localized name the icon rect keeps its size; the
   column count is the most cards (with the grid's separation) that fit the grid's width, at three window widths.
-- Suite: a station window (Phase 269) gets the same card layout; the detail panel's input icons are 32 px.
-- Playtest bot `craft` step screenshot is taken with the window open and the step checks the card icon sizes.
+- [x] Suite: a station window (Phase 269) gets the same card layout; the detail panel's input icons are 32 px.
+- [x] Playtest bot `craft` step screenshot is taken with the window open and the step checks the card icon sizes.
 
 ## Phase 289 — Hold to work, told and shown: the work bar in view, and the tutorial says hold
 

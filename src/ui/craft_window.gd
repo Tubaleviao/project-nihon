@@ -12,8 +12,24 @@ const CraftCatalog := preload("res://src/crafting/craft_catalog.gd")
 const SHORT_COLOR := Color(1.0, 0.45, 0.45)
 const OK_COLOR := Color(1.0, 1.0, 1.0)
 const DIM_COLOR := Color(1.0, 1.0, 1.0, 0.45)
-const CARD_SIZE := Vector2(92, 76)
-const COLUMNS := 4
+## Phase 288 — a card is a fixed layout: a square icon area, the name under it (two lines at most), a count badge.
+const CARD_SIZE := Vector2(100, 100)
+const ICON_SIZE := 60.0
+const ICON_MIN := 56.0
+const CARD_PAD := 4.0
+const NAME_FONT := 11
+## Gap between cards, both ways.
+const CARD_SEP := 6
+## The window is at least this many columns wide; a wider window shows more (`columns_for_width`).
+const MIN_COLUMNS := 4
+## Rows of cards the grid always has room for, whatever the detail below holds.
+const MIN_ROWS := 2
+## The detail panel's own scroll area: at least this tall, never taller (it scrolls instead).
+const DETAIL_HEIGHT := 150.0
+const INPUT_ICON := 32.0
+const SELECTED_BORDER := Color(1.0, 0.82, 0.3)
+## A card that cannot be made dims its frame and name; its icon stays opaque and only slightly darker.
+const ICON_DIM_COLOR := Color(0.8, 0.8, 0.8, 1.0)
 const ALL := "all"
 
 var ui: Node = null
@@ -29,6 +45,10 @@ var tabs: TabBar = null
 ## The scrolled list: the card grid, then `extra_box` (the hand window's repairs).
 var list_box: VBoxContainer = null
 var grid: GridContainer = null
+## The card grid's scroll area (at least `MIN_ROWS` card rows tall).
+var grid_scroll: ScrollContainer = null
+## The detail panel's scroll area.
+var detail_scroll: ScrollContainer = null
 var extra_box: VBoxContainer = null
 var detail: VBoxContainer = null
 var quantity: SpinBox = null
@@ -53,24 +73,67 @@ func setup(p_ui: Node, p_station_type: String = "") -> void:
 	tabs.clip_tabs = true
 	tabs.tab_changed.connect(_on_tab)
 	add_child(tabs)
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	# Phase 288 — the grid keeps room for MIN_ROWS full card rows and the window is wide enough for MIN_COLUMNS
+	# (plus a scroll bar), so the detail below can never squeeze it to a strip.
+	custom_minimum_size.x = grid_width(MIN_COLUMNS) + 16.0
+	grid_scroll = ScrollContainer.new()
+	grid_scroll.name = "CardScroll"
+	grid_scroll.custom_minimum_size = Vector2(0, MIN_ROWS * CARD_SIZE.y + (MIN_ROWS - 1) * CARD_SEP)
+	grid_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	grid_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	list_box = VBoxContainer.new()
 	list_box.add_theme_constant_override("separation", 4)
 	list_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(list_box)
-	add_child(scroll)
+	list_box.resized.connect(_fit_columns)
+	grid_scroll.add_child(list_box)
+	add_child(grid_scroll)
 	grid = GridContainer.new()
-	grid.columns = COLUMNS
+	grid.columns = MIN_COLUMNS
+	grid.add_theme_constant_override("h_separation", CARD_SEP)
+	grid.add_theme_constant_override("v_separation", CARD_SEP)
 	list_box.add_child(grid)
 	extra_box = VBoxContainer.new()
 	extra_box.add_theme_constant_override("separation", 4)
 	list_box.add_child(extra_box)
 	add_child(HSeparator.new())
+	detail_scroll = ScrollContainer.new()
+	detail_scroll.name = "DetailScroll"
+	detail_scroll.custom_minimum_size = Vector2(0, DETAIL_HEIGHT)
+	detail_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	detail = VBoxContainer.new()
 	detail.add_theme_constant_override("separation", 4)
-	add_child(detail)
+	detail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	detail_scroll.add_child(detail)
+	add_child(detail_scroll)
+
+## The width `n` card columns take, with the gaps between them.
+static func grid_width(n: int) -> float:
+	return n * CARD_SIZE.x + maxi(0, n - 1) * CARD_SEP
+
+## The most cards (with the gaps) that fit `width` px, at least one.
+static func columns_for_width(width: float) -> int:
+	return maxi(1, int(floor((width + CARD_SEP) / (CARD_SIZE.x + CARD_SEP))))
+
+## The column count follows the list's width: cards keep their size, a wider window shows more columns.
+func _fit_columns() -> void:
+	if grid == null or list_box == null or list_box.size.x <= 0.0:
+		return
+	var n := columns_for_width(list_box.size.x)
+	if grid.columns != n:
+		grid.columns = n
+
+## The shown cards whose icon area is not a square of at least ICON_MIN px, as "name WxH" (empty when all are).
+func undersized_icons() -> Array:
+	var out: Array = []
+	for card: Node in grid.get_children():
+		if card.is_queued_for_deletion():
+			continue
+		var icon := card.get_node_or_null("Icon") as Control
+		var sz: Vector2 = icon.size if icon != null else Vector2.ZERO
+		if sz.x < ICON_MIN or sz.y < ICON_MIN or not is_equal_approx(sz.x, sz.y):
+			var name_lbl := card.get_node_or_null("Name") as Label
+			out.append("%s %dx%d" % [name_lbl.text if name_lbl != null else str(card.get_meta("recipe_id", "")), int(sz.x), int(sz.y)])
+	return out
 
 ## Every card this window lists now, before the search and the tab: `UiSlice.craft_cards(station_type)`.
 func cards() -> Array:
@@ -103,6 +166,9 @@ func refresh() -> void:
 
 func select(recipe_id: String) -> void:
 	selected = recipe_id
+	for c: Node in grid.get_children():
+		if not c.is_queued_for_deletion():
+			_style_card(c as Button, str(c.get_meta("recipe_id", "")) == selected)
 	_refresh_detail()
 
 func set_category(cat: String) -> void:
@@ -162,25 +228,73 @@ func _refresh_tabs() -> void:
 	tabs.current_tab = keys.find(category)
 	tabs.set_block_signals(false)
 
+## Phase 288 — a card: a fixed layout on a flat button (not the button's own icon and text, which shrank the icon
+## to what a wrapped name left). The icon area is a square ICON_SIZE `TextureRect` at the top, the name under it on
+## up to two lines with an ellipsis, the count badge in the top-right corner.
 func _card_button(card: Dictionary) -> Button:
 	var b := Button.new()
 	b.custom_minimum_size = CARD_SIZE
-	b.clip_text = true
-	b.toggle_mode = true
-	b.button_pressed = str(card["id"]) == selected
-	var count := int(card["count"])
-	b.text = str(card["name"]) if count <= 1 else I18n.t("craft.card_count", [card["name"], count])
+	b.size = CARD_SIZE
+	b.set_meta("recipe_id", str(card["id"]))
 	b.tooltip_text = str(card["name"]) if bool(card["can_craft"]) else I18n.t("craft.card_refused", [card["name"], I18n.reason_text(str(card["reason"]))])
-	var tex: Texture2D = ui._load_item_icon(str(card["icon_key"])) if str(card["icon_key"]) != "" else null
-	if tex != null:
-		b.icon = tex
-		b.expand_icon = true
-		b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
-	b.add_theme_font_size_override("font_size", 11)
-	b.modulate = OK_COLOR if bool(card["can_craft"]) else DIM_COLOR
+	var can := bool(card["can_craft"])
+	var icon := TextureRect.new()
+	icon.name = "Icon"
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon.custom_minimum_size = Vector2(ICON_SIZE, ICON_SIZE)
+	icon.position = Vector2((CARD_SIZE.x - ICON_SIZE) * 0.5, CARD_PAD)
+	icon.size = Vector2(ICON_SIZE, ICON_SIZE)
+	icon.texture = ui._load_item_icon(str(card["icon_key"])) if str(card["icon_key"]) != "" else null
+	icon.modulate = OK_COLOR if can else ICON_DIM_COLOR
+	b.add_child(icon)
+	var name_lbl := Label.new()
+	name_lbl.name = "Name"
+	name_lbl.text = str(card["name"])
+	name_lbl.add_theme_font_size_override("font_size", NAME_FONT)
+	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	name_lbl.max_lines_visible = 2
+	name_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	name_lbl.clip_text = true
+	name_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var name_top := CARD_PAD + ICON_SIZE + 2.0
+	name_lbl.position = Vector2(CARD_PAD, name_top)
+	name_lbl.size = Vector2(CARD_SIZE.x - 2.0 * CARD_PAD, CARD_SIZE.y - name_top - CARD_PAD)
+	name_lbl.modulate = OK_COLOR if can else DIM_COLOR
+	b.add_child(name_lbl)
+	var count := int(card["count"])
+	if count > 1:
+		var badge := Label.new()
+		badge.name = "Count"
+		badge.text = I18n.t("craft.card_badge", [count])
+		badge.add_theme_font_size_override("font_size", NAME_FONT)
+		badge.add_theme_color_override("font_outline_color", Color.BLACK)
+		badge.add_theme_constant_override("outline_size", 3)
+		badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		badge.position = Vector2(CARD_PAD, CARD_PAD)
+		badge.size = Vector2(CARD_SIZE.x - 2.0 * CARD_PAD, 16)
+		b.add_child(badge)
+	b.self_modulate = OK_COLOR if can else DIM_COLOR
+	_style_card(b, str(card["id"]) == selected)
 	b.pressed.connect(select.bind(str(card["id"])))
 	return b
+
+## The selected card has a visible border; the others the theme's look.
+func _style_card(b: Button, on: bool) -> void:
+	for state: String in ["normal", "hover", "pressed", "focus"]:
+		b.remove_theme_stylebox_override(state)
+	if not on:
+		return
+	var box := StyleBoxFlat.new()
+	box.bg_color = Color(0.2, 0.2, 0.24, 0.9)
+	box.set_border_width_all(2)
+	box.border_color = SELECTED_BORDER
+	box.set_corner_radius_all(4)
+	for state: String in ["normal", "hover", "pressed", "focus"]:
+		b.add_theme_stylebox_override(state, box)
 
 func _refresh_detail() -> void:
 	for c in detail.get_children():
@@ -204,15 +318,14 @@ func _refresh_detail() -> void:
 	for e: Dictionary in card["inputs"]:
 		var cell := HBoxContainer.new()
 		cell.tooltip_text = str(e["name"])
-		var tex: Texture2D = ui._load_item_icon(str(e["icon_key"]))
-		if tex != null:
-			var rect := TextureRect.new()
-			rect.texture = tex
-			rect.custom_minimum_size = Vector2(24, 24)
-			rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-			rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-			rect.tooltip_text = str(e["name"])
-			cell.add_child(rect)
+		var rect := TextureRect.new()   # Phase 288 — 32 px (was 24); kept (empty) when the item has no icon
+		rect.name = "InputIcon"
+		rect.texture = ui._load_item_icon(str(e["icon_key"])) if str(e["icon_key"]) != "" else null
+		rect.custom_minimum_size = Vector2(INPUT_ICON, INPUT_ICON)
+		rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		rect.tooltip_text = str(e["name"])
+		cell.add_child(rect)
 		var lbl := Label.new()
 		lbl.text = I18n.t("craft.have_need", [int(e["have"]), int(e["need"])])
 		lbl.modulate = SHORT_COLOR if bool(e["short"]) else OK_COLOR
