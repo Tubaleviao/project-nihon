@@ -52,8 +52,7 @@ const ColonizationMap  := preload("res://src/world/colonization_map.gd")
 const WorldClock       := preload("res://src/world/world_clock.gd")
 const BootWiring := preload("res://src/core/boot_wiring.gd")
 const CombatWiring := preload("res://src/battle/combat_wiring.gd")
-const WorkAnimWiring := preload("res://src/character/work_anim_wiring.gd")   # Phase 281
-const WeatherWiring := preload("res://src/world/weather_wiring.gd")
+const WorkAnimWiring := preload("res://src/character/work_anim_wiring.gd"); const WeatherWiring := preload("res://src/world/weather_wiring.gd")
 const WaystoneWiring := preload("res://src/world/waystone_wiring.gd")
 const BedWiring := preload("res://src/world/bed_wiring.gd")
 const TutorialWiring := preload("res://src/tutorial/tutorial_wiring.gd")
@@ -83,8 +82,7 @@ var _combat_wiring := CombatWiring.new()
 var _weather_wiring := WeatherWiring.new()
 var _waystone_wiring := WaystoneWiring.new()
 var _bed_wiring := BedWiring.new()
-var _work_anim_wiring := WorkAnimWiring.new()   # Phase 281
-var _work_wiring := WorkWiring.new()   # Phase 259
+var _work_wiring := WorkWiring.new(); var _work_anim_wiring := WorkAnimWiring.new()   # Phase 259; 281
 var _tutorial_wiring := TutorialWiring.new()
 var _settlement_wiring := SettlementWiring.new()
 var _clan_wiring := ClanWiring.new()

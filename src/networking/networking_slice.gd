@@ -1056,9 +1056,6 @@ func _on_carcass_drop_intent(_player_id: String) -> void:
 func send_combat_hit(attacker_key: String, defender_key: String, outcome: String, position: Vector3) -> void:
 	_m2.send_combat_hit(attacker_key, defender_key, outcome, position)
 
-func send_work_anim(subject_peer: int, kind: String, position: Vector3) -> void:
-	_m2.send_work_anim(subject_peer, kind, position)
-
 func send_player_damaged(peer_id: int, damage: float, attacker_id: String) -> void:
 	_m2.send_player_damaged(peer_id, damage, attacker_id)
 

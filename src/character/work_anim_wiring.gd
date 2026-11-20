@@ -90,7 +90,7 @@ func _on_anim_changed(peer: int, kind: String) -> void:
 	if not root._is_client and root._networking != null and root._networking.is_host():
 		var at: Variant = _position_of(peer)
 		if at != null:
-			root._networking.send_work_anim(peer, kind, at)
+			root._networking._m2.send_work_anim(peer, kind, at)
 
 func _position_of(peer: int) -> Variant:
 	if peer == 1:

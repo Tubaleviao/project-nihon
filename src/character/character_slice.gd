@@ -758,18 +758,11 @@ func get_locomotion_state_name(instance_id: String) -> String:
 func trigger_attack(instance_id: String, clip: String = "") -> void:
 	_m2.trigger_attack(instance_id, clip)
 
-## Phase 281 — play work `kind`'s clip (see `WorkAnim`); returns the clip played.
-func trigger_work(instance_id: String, kind: String) -> String:
-	return _m2.trigger_work(instance_id, kind)
-
-func work_clip_length(instance_id: String, clip: String) -> float:
-	return float((_instances.get(instance_id, {}).get("swing_lengths", {}) as Dictionary).get(clip, 0.0))
-
-func face_toward(instance_id: String, target: Vector3) -> bool:
-	return _m2.face_toward(instance_id, target)
-
-func stop_work(instance_id: String) -> void:
-	_m2.stop_work(instance_id)
+## Phase 281 — work clips (see `WorkAnim`): play one, its length, turn to the target, stop.
+func trigger_work(instance_id: String, kind: String) -> String: return _m2.trigger_work(instance_id, kind)
+func work_clip_length(instance_id: String, clip: String) -> float: return float((_instances.get(instance_id, {}).get("swing_lengths", {}) as Dictionary).get(clip, 0.0))
+func face_toward(instance_id: String, target: Vector3) -> bool: return _m2.face_toward(instance_id, target)
+func stop_work(instance_id: String) -> void: _m2.stop_work(instance_id)
 
 func attack_clip_of(instance_id: String) -> String:
 	return _m2.attack_clip_of(instance_id)
