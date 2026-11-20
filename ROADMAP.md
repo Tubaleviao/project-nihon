@@ -69,7 +69,8 @@ Order notes that differ from the arcs' own order:
 
 - Phases 278–290 are the owner's third playtest set (2026-11-19, Phase 251), filed at high priority ahead of
   everything else open. 288–290 (the crafting cards, the work bar and the hold wording, the shovel speed) were
-  added to the set later the same day and go first: they are small, and 289 and 290 are on the tutorial's path. The key change (279) comes first because it is small and every later finding is
+  added to the set later the same day and go first: they are small, and 289 and 290 are on the tutorial's
+  path. Of the first ten, the key change (279) comes first because it is small and every later finding is
   played with it; trees (283) come before felling (282) because the fall animates the new tree mesh. The
   art each needs is in the assets repo's Phases A40–A46; each game phase lands with placeholders and does
   not wait for that art.
@@ -969,7 +970,8 @@ MultiMesh, and the per-instance colours (brown, grey) never show because no mate
   `vertex_color_use_as_albedo`; the same cell gives the same yaw, scale and variant on two builds; a variant key
   that is absent is never picked.
 - Suite: every loose kind in the fabric has a placeholder model at its key, and every variant key has one.
-- Playtest bot `gather` step still passes (pick-up by aim is unchanged).
+- Playtest bot `tutorial` step still passes: it picks up a branch and a loose stone (`_pick_loose`), and
+  pick-up by aim is unchanged.
 
 ## Phase 279 — Pick up with E
 
@@ -989,7 +991,8 @@ body"), and both keys are in `Hotbar.RESERVED_KEYS`.
   focused text field does neither; Alt+E still opens the inventory and does not pick up.
 - Suite: no `KEY_T` or `KEY_E` literal remains in the pick-up or equipment-toggle handlers (a source audit like the
   existing ones); the input labels for `pick_up` and `toggle_equipment` resolve to E and T.
-- Playtest bot `gather` and `tutorial` steps pass with E.
+- Playtest bot `tutorial` step passes with E (its `_pick_loose` helper presses `KEY_T` today; it moves to
+  the key bound to the `pick_up` action, not a literal).
 - Locale check: no new string in one locale only.
 
 ## Phase 280 — The hotbar item in the hand
@@ -1252,7 +1255,7 @@ when the name wraps.
 **Acceptance criteria**
 - Suite: a hand window built with the default size has a grid area at least two card rows tall; every card's
   icon rect is at least 56×56 px and square; with a long localized name the icon rect keeps its size; the
-  column count is `floor(width / card width)` at three window widths.
+  column count is the most cards (with the grid's separation) that fit the grid's width, at three window widths.
 - Suite: a station window (Phase 269) gets the same card layout; the detail panel's input icons are 32 px.
 - Playtest bot `craft` step screenshot is taken with the window open and the step checks the card icon sizes.
 
@@ -1273,6 +1276,7 @@ that point, so half of each is off screen.
   shows only while a hold runs.
 - While a hold runs, the label adds "Keep holding <input>" (the input name from `InputLabels`, a param); if the
   hold is released before the end, a short "Released too early: hold until the bar fills" hint shows for 2 s.
+  Both are new keys in `locale/ui.csv` with en and pt_BR text.
 - The tutorial's work steps say to hold: `tutorial.chop.body`, `tutorial.dig.body`, `tutorial.mine_stone.body`
   (and any other step that asks for timed work, such as carcass work) state that the button must be held until
   the bar fills, naming the input through a param, not a literal. Both locales.
@@ -1293,23 +1297,26 @@ grass 0.6 s at speed 1.0, the stone shovel works at 0.6 (1.33 s a soil block), a
 round trip with its own bar.
 
 - Digging soil is about twice as fast with the first shovel: the stone shovel's `shovel` speed goes from 0.6 to
-  1.2, and the forged tools' relative step above it is kept (a later shovel stays faster than the stone one).
-  Soil, grass, sand and snow base times are left as they are, so bare hands and the pick are unchanged.
+  1.2. The stone shovel is the only shovel today; a later (forged) shovel must work at 1.2 or more, and the
+  work-time validator rejects a shovel slower than the stone one. Soil, grass, sand and snow base times are left
+  as they are, so bare hands and the pick are unchanged.
 - A dig hold carries on to the next soil block under the crosshair without a gap: the next target's
   `work_start_requested` is sent when the current one completes, not on the next frame after the host answers,
   so a trench feels like one continuous dig.
-- The tutorial area guarantees rock close under the surface: within the newcomer grounds (Phase 261),
-  the soil above the first rock is at most 2 blocks at the player's spawn reach, checked against world-gen and
-  not changed by it (if it fails, the tutorial step points the player to an exposed rock instead; no
-  `WORLDGEN_VERSION` bump unless world-gen changes).
+- The tutorial area keeps the rock close under the surface: `tutorial.mine_stone` completes on one Ferrite
+  gathered (Ferrite is the host rock of most biomes, `ore_field.gd`), and within 16 m of the newcomer-grounds
+  spawn (Phase 261) the Ferrite under the soil is at most 2 blocks down. This is checked against world-gen, not
+  made by changing it, so there is no `WORLDGEN_VERSION` bump. If world-gen does not give it, the step's target
+  marker points to the nearest exposed Ferrite face within 30 m instead.
 - The work-time table records the change in its comment (Phase 290) so the balance history stays readable.
 
 **Acceptance criteria**
 - `npm run validate` / `check-drift` pass; `tools/check_work_times.js` still rejects bad tables.
 - Suite: the host's dig duration for a soil block with a stone shovel at Mining novice is at most 0.7 s; bare
-  hands and pick durations on soil and rock are unchanged; every shovel is at least as fast as the stone shovel.
-- Suite: on the pinned playtest world, the columns within reach of the spawn have rock at most 2 soil blocks
-  under the surface.
+  hands and pick durations on soil and rock are unchanged.
+- `tools/check_work_times.js`: a table with a shovel slower than `StoneShovel` is rejected.
+- Suite: on the pinned playtest world, either every column within 16 m of the newcomer spawn has Ferrite at
+  most 2 blocks under the surface, or the `mine_stone` step's marker names an exposed Ferrite face within 30 m.
 - Playtest bot `tutorial` step completes the dig and mine-rock steps within a time budget set from the new
   speed (dig-to-rock under 5 s of holding).
 
