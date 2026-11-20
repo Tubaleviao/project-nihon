@@ -616,7 +616,7 @@ static func skyline_spread(rows: Array) -> int:
 func _ready() -> void:
 	GameBus.block_mined.connect(func(material: String, quantity: int, _p: Vector3): _mined.append([material, quantity]))
 	GameBus.tree_chopped.connect(func(id: String, wood: String, state: String, _r: float): _chopped.append([id, wood, state]))
-	GameBus.work_started.connect(func(_k: String, duration: float, _a: String, _m: String): _work_secs = duration)
+	GameBus.work_started.connect(func(_k: String, duration: float, a: String, m: String): _work_secs = duration; _work_last = [a, m])
 	GameBus.craft_resolved.connect(func(result: Dictionary): _crafted.append(result))
 	GameBus.research_resolved.connect(func(result: Dictionary): _researched.append(result))
 	GameBus.station_placed.connect(func(id: String, type: String, _p: Vector3): _placed.append([id, type]))
@@ -830,7 +830,7 @@ func _run_step(step: String) -> Dictionary:
 	if _profiler != null:
 		rec["profile"] = ProcessProfiler.summarize(_profile_frames)
 		rec["profile_creatures"] = _profile_creatures
-	if step != "create" and step != "tower":   # Phase 181: create shoots the screen itself, before it closes; tower its two views
+	if step != "create" and step != "tower" and step != "mine":   # Phase 181: create shoots the screen itself, before it closes; tower its two views; mine mid-hold (289)
 		await _screenshot(step)
 	if step == "craft": _root._ui.close_window(_root._ui.WINDOW_STATION)   # Phase 288 — opened for the screenshot
 	print("[Playtest] %s %s %s" % [step, "ok" if bool(rec["ok"]) else "FAIL", rec["detail"]])
@@ -1292,7 +1292,7 @@ static func build_breakdown(parts_usec: Dictionary, chunks: int, window_radius: 
 	return rec
 
 ## Mine the ground block under the body through the player's own intent.
-var _work_secs := 0.0   # Phase 259 — the host's answer to the last work start
+var _work_secs := 0.0; var _work_last: Array = []; var _work_bar_note := ""   # 259: the host's answer to the last work start; 289: its [action, material], and "" or why the mid-hold bar was not in view
 
 func _step_mine() -> Array:
 	var p := _player_pos()
@@ -1301,11 +1301,10 @@ func _step_mine() -> Array:
 	var spot := Vector3(p.x, y - 0.1, p.z)
 	var remesh: RefCounted = _root._chunk_manager._m1.remesh
 	var n0: int = remesh.samples.size()
-	var held: float = await _hold_work("block", "", spot)
+	var held: float = await _hold_work("block", "", spot, true)
 	GameBus.block_mine_requested.emit(spot, Vector3.UP, "", {})
 	var ok: bool = await _until(func(): return _mined.size() > before, STEP_TIMEOUT_SECS)
-	if not ok:
-		return [false, "no block_mined (work held %.1f s)" % held]
+	if not ok or _work_bar_note != "": return [false, _work_bar_note if ok else "no block_mined (work held %.1f s)" % held]
 	# Phase 263 — more digs beside it, so the step has an edit-to-visible p95: each is timed from its completion to
 	# its chunk's mesh attached. PR #648 review: each one held for its work time first, as a player digs (the dug
 	# chunk is built while the work runs, `EditPrebuild`).
@@ -1325,7 +1324,7 @@ func _step_mine() -> Array:
 
 ## Phase 259 — hold work on a target the way the player does: ask the host to start it, wait for its duration, and
 ## return the seconds the work took (-1.0 when the host never answered). The completion request is the caller's.
-func _hold_work(kind: String, tree_id: String, pos: Vector3) -> float:
+func _hold_work(kind: String, tree_id: String, pos: Vector3, shoot := false) -> float:
 	# A hit cancels the work (and the spawn's wolf pack downed the body during a hold on CI): heal and clear first.
 	GameBus.admin_healed.emit()
 	_clear_creatures_near_body()
@@ -1334,7 +1333,8 @@ func _hold_work(kind: String, tree_id: String, pos: Vector3) -> float:
 	if not await _until(func(): return _work_secs > 0.0, STEP_TIMEOUT_SECS):
 		return -1.0
 	var t0 := Time.get_ticks_msec()
-	await _until(func(): return false, _work_secs)
+	await _until(func(): return false, _work_secs * (0.5 if shoot else 1.0))   # Phase 289: shoot = the bar drawn and shot mid-hold, checked inside the viewport
+	if shoot: _work_bar_note = await load("res://src/tests/playtest_work_bar.gd").shoot(self, _root._player._work_hold, _work_last, _work_secs, kind, t0)
 	return float(Time.get_ticks_msec() - t0) * 0.001
 
 func _standing_trees() -> Array:

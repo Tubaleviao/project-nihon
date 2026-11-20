@@ -49,6 +49,7 @@ controls.key.hold,Hold,Segurar
 controls.key.scroll,Scroll,Rolar
 controls.key.space,Space,Espaço
 controls.key.pad_south,Pad A,Botão A do controle
+controls.key.lmb,left mouse button,botão esquerdo do mouse
 controls.row0,Move,Mover
 controls.row1,Jump,Pular
 controls.row10,Next placeable block,Próximo bloco colocável
@@ -486,15 +487,16 @@ tutorial.crafting.body,"Open the crafting window. It lists the recipes you know 
 tutorial.craft_axe.title,A stone axe,Um machado de pedra
 tutorial.craft_axe.body,"Craft a stone axe from a branch and a loose stone, anywhere.","Crie um machado de pedra com um galho e uma pedra solta, em qualquer lugar."
 tutorial.chop.title,Chop a tree,Corte uma árvore
-tutorial.chop.body,"Hold the stone axe, click a tree trunk to chop it, and collect four logs. A felled tree drops branches too.","Segure o machado de pedra, clique no tronco de uma árvore para cortá-la e junte quatro toras. A árvore derrubada também solta galhos."
+tutorial.chop.body,"Hold the stone axe and aim at a tree trunk to chop it. {0} Collect four logs; a felled tree drops branches too.","Segure o machado de pedra e mire no tronco de uma árvore para cortá-la. {0} Junte quatro toras; a árvore derrubada também solta galhos."
 tutorial.craft_pick.title,A stone pick,Uma picareta de pedra
 tutorial.craft_pick.body,Craft a stone pick from a branch and loose stones. It mines rock.,Crie uma picareta de pedra com um galho e pedras soltas. Ela minera rocha.
 tutorial.craft_shovel.title,A stone shovel,Uma pá de pedra
 tutorial.craft_shovel.body,Craft a stone shovel from a branch and a loose stone. It digs soil and sand.,Crie uma pá de pedra com um galho e uma pedra solta. Ela cava terra e areia.
 tutorial.dig.title,Dig,Cave
-tutorial.dig.body,Dig into the ground with the shovel. What you dig goes into your pack.,Cave o chão com a pá. O que você cavar vai para a sua mochila.
+tutorial.dig.body,"Dig into the ground with the shovel. {0} What you dig goes into your pack.","Cave o chão com a pá. {0} O que você cavar vai para a sua mochila."
 tutorial.mine_stone.title,Mine rock,Minere rocha
-tutorial.mine_stone.body,"Dig through the soil and mine the rock under it with the pick. Here the rock is ferrite ore, which the forge smelts.","Cave através da terra e minere a rocha embaixo dela com a picareta. Aqui a rocha é minério de ferrita, que a forja funde."
+tutorial.mine_stone.body,"Dig through the soil and mine the rock under it with the pick. {0} Here the rock is ferrite ore, which the forge smelts.","Cave através da terra e minere a rocha embaixo dela com a picareta. {0} Aqui a rocha é minério de ferrita, que a forja funde."
+tutorial.hold_hint,Hold {0} until the bar fills.,Segure {0} até a barra encher.
 tutorial.technology.title,Technology,Tecnologia
 tutorial.technology.body,Open the technology window. Research unlocks new recipes.,Abra a janela de tecnologia. A pesquisa libera novas receitas.
 tutorial.research_carpentry.title,Learn carpentry,Aprenda carpintaria
@@ -869,6 +871,8 @@ work.tool.hands,Bare hands,Mãos nuas
 work.tool.pick,Pick,Picareta
 work.tool.axe,Axe,Machado
 work.tool.shovel,Shovel,Pá
+controls.work_keep_holding,Keep holding {0},Continue segurando {0}
+controls.work_released_early,Released too early: hold until the bar fills,Soltou cedo demais: segure até a barra encher
 win.station,{0},{0}
 craft.search,Search recipes,Buscar receitas
 craft.cat.all,All,Tudo
