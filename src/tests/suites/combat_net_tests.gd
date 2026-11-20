@@ -10,6 +10,7 @@ func register() -> void:
 	_run_test("combat net: a client's battle slice forwards its own swing and resolves nothing", _test_client_forwards_swing)
 	_run_test("combat net: the host binds a forwarded swing to the sending connection", _test_host_binds_attacker)
 	_run_test("combat net: the host resolves a peer's swing in reach and refuses the rest", _test_host_checks_swing)
+	_run_test("combat net: a peer's kill reaches only that peer's tutorial", _test_peer_kill_reaches_tutorial)
 
 func _test_client_forwards_swing() -> void:
 	var b := BattleSlice.new()
@@ -140,3 +141,46 @@ func _test_host_checks_swing() -> void:
 	GameBus.combat_round_requested.disconnect(on_round)
 	assert_eq(rounds.size(), 2, "only the two accepted swings became rounds")
 	_free_host_rig(r)
+
+## A client resolves no rounds, so its tutorial never sees `creature_died`: the host tells the killer, and only it.
+func _test_peer_kill_reaches_tutorial() -> void:
+	var r := _host_rig()
+	var c: CreatureSlice = r["c"]
+	var w: CombatWiring = r["w"]
+	var wire := MemoryTransport.new([5, 6])
+	r["n"].set_transport(wire)
+	var ids: Array = c._instances.keys()
+	assert_true(ids.size() >= 1, "the rig has a creature to kill")
+	if ids.is_empty():
+		_free_host_rig(r)
+		return
+	var iid: String = ids[0]
+	var species := c.get_instance_creature_id(iid)
+	assert_eq(w.on_creature_died(iid, Vector3.ZERO, "p5", Vector3.ZERO), 5, "the killer's peer is told")
+	var sent: Array = wire.outbox.filter(func(o): return str(o["payload"].get("type", "")) == "creature_killed")
+	assert_eq(sent.size(), 1, "one notice")
+	if sent.size() == 1:
+		assert_eq(int(sent[0]["peer_id"]), 5, "to the killer only")
+		assert_eq(str(sent[0]["payload"]["creature"]), species, "naming the species, not the instance")
+	wire.outbox.clear()
+	assert_eq(w.on_creature_died(iid, Vector3.ZERO, "player", Vector3.ZERO), 0, "the host's own kill is local")
+	assert_eq(w.on_creature_died(iid, Vector3.ZERO, "host", Vector3.ZERO), 0, "under either of its ids")
+	assert_eq(w.on_creature_died(iid, Vector3.ZERO, "p6", Vector3.ZERO), 0, "a player with no connection gets nothing")
+	assert_eq(w.on_creature_died(iid, Vector3.ZERO, "", Vector3.ZERO), 0, "nor does a nameless kill")
+	assert_eq(wire.outbox.size(), 0, "nothing else was sent")
+	_free_host_rig(r)
+	# The client side: the notice becomes the tutorial's kill; an unknown species is blanked.
+	var n := NetworkingSlice.new()
+	add_child(n)
+	n._role = NetworkingSlice.Role.CLIENT
+	var got: Array = []
+	var on_event := func(kind: String, params: Dictionary) -> void: got.append([kind, params])
+	GameBus.tutorial_event.connect(on_event)
+	n._route_h2c({ "type": "creature_killed", "creature": species })
+	n._route_h2c({ "type": "creature_killed", "creature": "no_such_species" })
+	GameBus.tutorial_event.disconnect(on_event)
+	assert_eq(got.size(), 2, "each notice is a tutorial kill")
+	if got.size() == 2:
+		assert_eq(got[0], ["creature_killed", { "creature": species, "tags": ["creature"] }], "with the species")
+		assert_eq(str(got[1][1]["creature"]), "", "an unknown species is not passed on")
+	n.free()

@@ -160,6 +160,14 @@ func send_player_healed(peer_id: int, amount: float) -> void:
 		return
 	sl._deliver(peer_id, { "type": "player_healed", "amount": amount })
 
+## Host → one peer: that peer's swing killed a creature of species `creature_id` ("" when unknown). Its client
+## resolves no rounds, so this is how its tutorial learns of the kill. Peer-scoped, never world state.
+func send_creature_killed(peer_id: int, creature_id: String) -> void:
+	if sl._role != sl.Role.HOST:
+		sl.Diag.warn("NetworkingSlice: send_creature_killed called on non-host — dropped")
+		return
+	sl._deliver(peer_id, { "type": "creature_killed", "creature": creature_id })
+
 func send_player_damaged(peer_id: int, damage: float, attacker_id: String) -> void:
 	if sl._role != sl.Role.HOST:
 		sl.Diag.warn("NetworkingSlice: send_player_damaged called on non-host — dropped")
