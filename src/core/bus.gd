@@ -627,7 +627,7 @@ signal work_started(key: String, duration: float, action: String, material: Stri
 ## wood       : String — the wood material felled (e.g. "Thornwood")
 ## state      : String — the tree's state after the chop ("stump")
 ## respawn_at : float  — wall-clock Unix seconds the stump regrows
-signal tree_chopped(tree_id: String, wood: String, state: String, respawn_at: float)
+signal tree_chopped(tree_id: String, wood: String, state: String, respawn_at: float, fall_yaw: float)
 
 ## Emitted by TreeSlice when a stump regrows into a standing tree.
 ## tree_id : String — TreeSlice tree id

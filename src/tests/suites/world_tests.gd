@@ -38,6 +38,12 @@ func register() -> void:
 	_run_test("tree: chunk hop keeps the stump cooldown",       _test_tree_chunk_hop_keeps_stump_cooldown)
 	_run_test("tree: shrinking budget drops surplus trees",     _test_tree_shrinking_budget_reconciles)
 	_run_test("tree: chunk index stays consistent",             _test_tree_index_is_consistent)
+	_run_test("tree: a felled tree topples away from the feller, then goes", _test_tree_fall)
+	_run_test("tree: a tree felled before its chunk loads shows no fall",  _test_tree_fall_late_load)
+	_run_test("tree: a regrown tree grows from a sapling",                _test_tree_sapling_growth)
+	_run_test("tree: the host's felled sync carries a yaw away from the feller", _test_tree_host_sync_yaw)
+	_run_test("tree: falling material tints and fades for both pool materials", _test_tree_fall_material)
+	_run_test("tree: client fall uses the host's fall_yaw",               _test_tree_fall_client_yaw)
 	_run_test("tree: client forwards then applies host chop",   _test_tree_client_forwards_then_applies_host_chop)
 	_run_test("tree: ids agree across peer spawn order",        _test_tree_ids_agree_across_peer_spawn_order)
 	_run_test("tree: ids survive a chunk reload",               _test_tree_ids_survive_chunk_reload)
@@ -632,6 +638,113 @@ func _test_tree_index_is_consistent() -> void:
 	assert_true(t.index_is_consistent(), "consistent after despawn")
 	t.free()
 
+## Phase 282 — a slice with one tree, a feller `dx` metres east of it (scene coordinates).
+func _fall_fixture(feller_dx: float) -> Array:
+	var t := _make_tree_slice()
+	t.spawn_for_chunk(Vector2i(0, 0))
+	var tid: String = str(t.get_all_trees()[0]["tree_id"])
+	var tpos: Vector3 = t.get_tree_record(tid)["position"]
+	t.feller_pos = func(_pid: String) -> Variant: return tpos + Vector3(feller_dx, 0.0, 0.0)
+	return [t, tid, tpos]
+
+func _test_tree_fall() -> void:
+	var fx := _fall_fixture(-4.0)   # the feller stands west, so the tree falls east (+x)
+	var t: Node = fx[0]
+	var tid: String = fx[1]
+	var seen := []
+	var l := func(_id, _w, _s, _r, yaw): seen.append(yaw)
+	GameBus.tree_chopped.connect(l)
+	t._set_chopped(tid, t._fall.yaw_for(tid, fx[2], ""))
+	GameBus.tree_chopped.disconnect(l)
+	assert_eq(seen.size(), 1, "one felled event")
+	assert_true(absf(float(seen[0]) - PI * 0.5) < 0.01, "the fall yaw points away from the feller (east)")
+	var node: Node3D = t._fall.fall_node(tid)
+	assert_true(node != null, "a falling node exists")
+	var pool: Node = t._tree_pool(t.get_tree_record(tid))
+	assert_false(pool.is_shown(int(t.get_tree_record(tid)["mi"])), "the MultiMesh slot is hidden for the fall")
+	t.step_visuals(1.25)
+	var mid: float = node.basis.y.angle_to(Vector3.UP)
+	assert_true(mid > deg_to_rad(10.0) and mid < deg_to_rad(40.0), "the fall eases in: slow at first")
+	t.step_visuals(1.25)
+	assert_true(node.basis.y.angle_to(Vector3.UP) >= deg_to_rad(85.0), "tilted at least 85 degrees by 2.5 s")
+	assert_true(node.basis.y.x > 0.9, "tilted toward the side away from the feller")
+	t.step_visuals(1.49)
+	assert_true(t._fall.fall_node(tid) != null, "still sinking before 4 s")
+	t.step_visuals(0.02)
+	assert_true(t._fall.fall_node(tid) == null, "freed by 4 s")
+	assert_false(pool.is_shown(int(t.get_tree_record(tid)["mi"])), "no stump instance remains")
+	assert_eq(t.get_children().filter(func(c): return c.name == "FallingTree").size(), 0, "no falling node left")
+	t.free()
+
+func _test_tree_fall_late_load() -> void:
+	var fx := _fall_fixture(-4.0)
+	var t: Node = fx[0]
+	var tid: String = fx[1]
+	t._set_chopped(tid, 1.0)
+	t.step_visuals(5.0)
+	t.despawn_for_chunk(Vector2i(0, 0))
+	t.spawn_for_chunk(Vector2i(0, 0))
+	assert_eq(str(t.get_tree_record(tid)["state"]), "stump", "the felled tree is still down after a reload")
+	assert_true(t._fall.fall_node(tid) == null, "a reload mid-regrowth replays no fall")
+	assert_false(t._tree_pool(t.get_tree_record(tid)).is_shown(int(t.get_tree_record(tid)["mi"])), "and shows no stump")
+	t.free()
+
+func _test_tree_sapling_growth() -> void:
+	var fx := _fall_fixture(-4.0)
+	var t: Node = fx[0]
+	var tid: String = fx[1]
+	t._set_chopped(tid, 0.0)
+	t._regrow(tid)
+	assert_true(absf(t._fall.growth_seconds(tid) - 0.0) < 0.001, "a regrown tree starts as a sapling")
+	assert_true(t._fall.growth_transform(tid, fx[2]).basis.get_scale().x < 0.2, "the sapling is small")
+	t.step_visuals(t.GROW_SECONDS * 0.5)
+	var half: float = t._fall.growth_transform(tid, fx[2]).basis.get_scale().x
+	assert_true(half > 0.3 and half < 0.9, "halfway grown")
+	t.step_visuals(t.GROW_SECONDS)
+	assert_true(absf(t._fall.growth_seconds(tid) - -1.0) < 0.001, "full size after the growth window")
+	assert_true(t._tree_pool(t.get_tree_record(tid)).is_shown(int(t.get_tree_record(tid)["mi"])), "visible again")
+	t.free()
+
+func _test_tree_host_sync_yaw() -> void:
+	var fx := _fall_fixture(3.0)   # the feller stands east, so the tree falls west (-x)
+	var t: Node = fx[0]
+	var tid: String = fx[1]
+	var seen := []
+	var l := func(_id, _w, _s, _r, yaw): seen.append(yaw)
+	GameBus.tree_chopped.connect(l)
+	var res: Dictionary = t.chop_tree(tid)
+	GameBus.tree_chopped.disconnect(l)
+	assert_true(bool(res["success"]), "the host fells the tree")
+	assert_true(seen.size() == 1 and absf(float(seen[0]) + PI * 0.5) < 0.01, "the synced yaw points away from the feller")
+	t.free()
+
+func _test_tree_fall_material() -> void:
+	var TM := preload("res://src/world/tree_material.gd")
+	for sway in [true, false]:
+		var base: Material = TM.make(sway)
+		var m: Material = TM.make_falling(base, Color(0.5, 0.25, 0.1))
+		assert_true(m != base, "private copy (sway %s)" % sway)
+		TM.set_fade(m, 0.25)
+		if m is ShaderMaterial:
+			assert_eq(float((m as ShaderMaterial).get_shader_parameter("alpha")), 0.25, "shader alpha")
+			assert_eq((m as ShaderMaterial).get_shader_parameter("tint"), Color(0.5, 0.25, 0.1), "shader tint")
+			assert_true((m as ShaderMaterial).shader.code.contains("ALPHA = alpha"), "falling shader writes alpha")
+		else:
+			assert_eq((m as StandardMaterial3D).albedo_color.a, 0.25, "standard alpha")
+		assert_true(not (base is ShaderMaterial) or not (base as ShaderMaterial).shader.code.contains("ALPHA"), "pool shader stays opaque")
+
+func _test_tree_fall_client_yaw() -> void:
+	var fx := _fall_fixture(0.0)
+	var t: Node = fx[0]
+	var tid: String = fx[1]
+	t.is_authoritative = false
+	GameBus.tree_chopped.emit(tid, "Thornwood", "stump", 99999999999.0, -1.0)
+	t.step_visuals(2.5)
+	var node: Node3D = t._fall.fall_node(tid)
+	var dir := Vector3(sin(-1.0), 0.0, cos(-1.0))
+	assert_true(node != null and node.basis.y.dot(dir) > 0.95, "a client uses the host's yaw as-is")
+	t.free()
+
 func _test_tree_client_forwards_then_applies_host_chop() -> void:
 	var t := _make_tree_slice()
 	t.spawn_for_chunk(Vector2i(0, 0))
@@ -645,7 +758,7 @@ func _test_tree_client_forwards_then_applies_host_chop() -> void:
 	assert_eq(str(forwarded.get("id", "")), tid, "the forwarded intent carries the tree id")
 	assert_eq(str(t.get_tree_record(tid)["state"]), "standing", "a client never chops locally")
 	# The host's authoritative chop arrives on the bus.
-	GameBus.tree_chopped.emit(tid, "Thornwood", "stump", 12345.0)
+	GameBus.tree_chopped.emit(tid, "Thornwood", "stump", 12345.0, 0.5)
 	var chopped: Dictionary = t.get_tree_record(tid)
 	assert_eq(str(chopped["state"]), "stump", "the client applies the host's chop")
 	assert_eq(float(chopped["respawn_at"]), 12345.0, "the host's regrowth deadline is kept")
