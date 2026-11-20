@@ -10,6 +10,9 @@ const WorkAnim := preload("res://src/character/work_anim.gd")
 var _active: Dictionary = {}
 ## peer -> the clip last played (the playtest bot and the suite read it).
 var last_clip: Dictionary = {}
+## peer -> the last few clips played, oldest first (the harness reads it: a slow link can land "build" before a
+## poll sees "chop").
+var clip_history: Dictionary = {}
 ## Strikes fired so far, by peer.
 var strikes: Dictionary = {}
 
@@ -118,6 +121,13 @@ func _position_of(peer: int) -> Variant:
 		return root._networking.get_last_known_state(peer)
 	return null
 
+func _remember(peer: int, clip: String) -> void:
+	var h: Array = clip_history.get(peer, [])
+	h.append(clip)
+	if h.size() > 8:
+		h.pop_front()
+	clip_history[peer] = h
+
 ## Start (`kind` != "") or stop (`""`) the work clip on `peer`'s body.
 func _play(peer: int, kind: String) -> void:
 	var iid := _character_of(peer)
@@ -129,10 +139,12 @@ func _play(peer: int, kind: String) -> void:
 	if not WorkAnim.has_kind(kind):
 		return
 	if iid == "":
-		last_clip[peer] = WorkAnim.clip_of(kind)   # no body drawn here (headless harness): the clip it would play
+		last_clip[peer] = WorkAnim.clip_of(kind)
+		_remember(peer, str(last_clip[peer]))   # no body drawn here (headless harness): the clip it would play
 		return
 	var clip: String = root._character.trigger_work(iid, kind)
 	last_clip[peer] = clip
+	_remember(peer, clip)
 	if peer == _local_peer() and _face_target != null and kind != "build":
 		root._character.face_toward(iid, _face_target)
 	var length := float(root._character.work_clip_length(iid, clip))

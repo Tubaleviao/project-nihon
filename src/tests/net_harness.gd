@@ -2317,7 +2317,7 @@ func _step_death_landing_synced() -> void:
 		# Beside the peer, so the creature is inside its area of interest.
 		var from: Vector3 = _root._networking.get_last_known_state(peer) + Vector3(3.0, 0.0, 0.0)
 		_root._creature.apply_creature_state(DEATH_PROBE_ID, "ForestBoar", "idle", from)
-		# Let the client learn the creature standing before it dies.
+		await _await_client_ready("death_landing", _root._networking.get_player_id(peer))   # a lagging wan_bad client has not reached the step: let it learn the creature standing before it dies
 		await _await_settle(2.0)
 		GameBus.creature_died.emit(DEATH_PROBE_ID, from, "harness", from + DEATH_PROBE_PUSH)
 		await _await_settle(2.0)
@@ -2327,9 +2327,9 @@ func _step_death_landing_synced() -> void:
 		_report("death_landing_synced", verdict(landed, true), "host-landed" if landed else "host_not_moved")
 		return
 	# The client saw the probe standing at `stood`, then dead exactly one push away from it.
-	var seen := {}
+	var seen := {}; var ann := {}
 	var got: bool = await _await_until(func():
-		var inst: Dictionary = _root._creature._instances.get(DEATH_PROBE_ID, {})
+		_announce_ready("death_landing", ann); var inst: Dictionary = _root._creature._instances.get(DEATH_PROBE_ID, {})
 		if inst.is_empty():
 			return false
 		if str(inst["state"]) != "dead":

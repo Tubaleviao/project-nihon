@@ -627,6 +627,6 @@ func work_anim_synced(h: Node) -> void:
 		h._report("work_anim_synced", h.verdict(true, true), "synced")
 		return
 	var w = h._root._work_anim_wiring
-	var chopped: bool = await h._await_until(func(): return w.last_clip.get(1, "") == "chop", h._step_timeout())
-	var built: bool = await h._await_until(func(): return w.last_clip.get(1, "") == "build", h._step_timeout())
+	var chopped: bool = await h._await_until(func(): return "chop" in w.clip_history.get(1, []), h._step_timeout())
+	var built: bool = await h._await_until(func(): return w.clip_history.get(1, []).slice(maxi(w.clip_history.get(1, []).rfind("chop"), 0)).has("build"), h._step_timeout())
 	h._report("work_anim_synced", h.verdict(chopped and built, true), "synced" if chopped and built else ("no_chop" if not chopped else "no_build"))

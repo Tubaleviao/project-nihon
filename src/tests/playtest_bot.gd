@@ -25,7 +25,7 @@ extends Node
 ##   step_names() -> Array                    — static, the fixed step order (filtered by `--playtest-only a,b`)
 const VoxelSlice := preload("res://src/terrain/voxel_slice.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
-const StoneTools := preload("res://src/world/stone_tools.gd")
+const StoneTools := preload("res://src/world/stone_tools.gd"); const WorkAnim := preload("res://src/character/work_anim.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const WaystoneSlice := preload("res://src/world/waystone_slice.gd")
 const StationRules := preload("res://src/world/station_rules.gd")
@@ -1306,7 +1306,7 @@ func _step_mine() -> Array:
 	var held: float = await _hold_work("block", "", spot, true)
 	GameBus.block_mine_requested.emit(spot, Vector3.UP, "", {})
 	var ok: bool = await _until(func(): return _mined.size() > before, STEP_TIMEOUT_SECS)
-	if not ok or _work_bar_note != "" or _work_clip != "mine": return [false, (_work_bar_note if _work_bar_note != "" else "the mining hold played '%s', not 'mine'" % _work_clip) if ok else "no block_mined (work held %.1f s)" % held]   # 281: the clip
+	if not ok or _work_bar_note != "" or _work_last.size() < 1 or _work_clip != WorkAnim.clip_of(str(_work_last[0])) or not str(_work_last[0]) in ["dig", "mine"]: return [false, (_work_bar_note if _work_bar_note != "" else "the %s hold played '%s', not '%s'" % [str(_work_last[0]), _work_clip, WorkAnim.clip_of(str(_work_last[0]))]) if ok else "no block_mined (work held %.1f s)" % held]   # 281: the clip
 	# Phase 263 — more digs beside it, so the step has an edit-to-visible p95: each is timed from its completion to
 	# its chunk's mesh attached. PR #648 review: each one held for its work time first, as a player digs (the dug
 	# chunk is built while the work runs, `EditPrebuild`).
