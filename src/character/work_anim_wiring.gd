@@ -13,6 +13,8 @@ var last_clip: Dictionary = {}
 ## peer -> the last few clips played, oldest first (the harness reads it: a slow link can land "build" before a
 ## poll sees "chop").
 var clip_history: Dictionary = {}
+## peer -> the kind last announced on the host (a stop is only broadcast for a body that has one running).
+var _announced: Dictionary = {}
 ## Strikes fired so far, by peer.
 var strikes: Dictionary = {}
 
@@ -43,6 +45,9 @@ func _announce_player(player_id: String, kind: String) -> void:
 		peer = root._registry.get_peer_id(player_id)
 		if peer <= 0:
 			return
+	# A refused or cancelled harvest also resolves: only a running dissect is stopped by it.
+	if kind == "" and _announced.get(peer, "") != "dissect":
+		return
 	_announce(peer, kind)
 
 func _local_peer() -> int:
@@ -107,7 +112,14 @@ func _announce(peer: int, kind: String) -> void:
 
 func _on_anim_changed(peer: int, kind: String) -> void:
 	if root._is_client and peer == _local_peer():
-		return   # played at once from the local hold
+		# Holds are played at once from the local hold; a dissect has no local hold, so the host's packet plays it.
+		var own_dissect: bool = kind == "dissect" or (kind == "" and str(_active.get(peer, {}).get("kind", "")) == "dissect")
+		if not own_dissect:
+			return
+	if not root._is_client:
+		if kind == "" and _announced.get(peer, "") == "":
+			return   # nothing running on that body: no stop to play or broadcast
+		_announced[peer] = kind
 	_play(peer, kind)
 	if not root._is_client and root._networking != null and root._networking.is_host():
 		var at: Variant = _position_of(peer)
@@ -116,7 +128,7 @@ func _on_anim_changed(peer: int, kind: String) -> void:
 
 func _position_of(peer: int) -> Variant:
 	if peer == 1:
-		return root._player.get_position()
+		return root._player.get_position() if root._player != null else null
 	if root._networking.has_last_known_state(peer):
 		return root._networking.get_last_known_state(peer)
 	return null
@@ -133,6 +145,8 @@ func _play(peer: int, kind: String) -> void:
 	var iid := _character_of(peer)
 	if kind == "":
 		_active.erase(peer)
+		if peer == _local_peer():
+			_face_target = null
 		if iid != "":
 			root._character.stop_work(iid)
 		return
@@ -147,6 +161,7 @@ func _play(peer: int, kind: String) -> void:
 	_remember(peer, clip)
 	if peer == _local_peer() and _face_target != null and kind != "build":
 		root._character.face_toward(iid, _face_target)
+		_face_target = null   # one start request turns the body once
 	var length := float(root._character.work_clip_length(iid, clip))
 	if length <= 0.0:
 		length = 0.5
