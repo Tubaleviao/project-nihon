@@ -84,9 +84,7 @@ func place() -> void:
 	var vp := get_viewport()
 	if vp == null:
 		return
-	var view := vp.get_visible_rect().size
-	position = Vector2.ZERO
-	size = view
+	var view := vp.get_visible_rect().size   # the full-rect anchors size this node to it; no size of its own here
 	var r := bar_rect(view)
 	_bar.position = r.position
 	_bar.size = r.size
