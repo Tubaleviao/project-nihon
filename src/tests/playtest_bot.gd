@@ -1163,8 +1163,8 @@ func _step_flight() -> Array:
 		return [true, note + " (report only: %s builder)" % NativeBuilder.mode()]
 	return [bool(_flight["ok"]), note]
 
-func _step_revisit() -> Array: return await preload("res://src/tests/playtest_revisit.gd").run(self)
-## One flight east from home: { under, ring } per-sample shares and the chunks attached after the warm-up.
+func _step_revisit() -> Array: return await preload("res://src/tests/playtest_revisit.gd").run(self)   # Phase 244
+## One flight east from home: { under, ring } per-sample shares, chunks attached after the warm-up, main-thread ms per chunk.
 func _fly_east(home_chunk: Vector2i, home_local: Vector3) -> Dictionary:
 	var cm = _root._chunk_manager
 	var m := WorldPos.CHUNK_METERS

@@ -403,13 +403,14 @@ func take_cache_hit(chunk_pos: Vector2i, key: String) -> bool:
 	}
 	return true
 
-## Phase 244 — opens the caches (`ChunkManager.start`). Not in the suite, which would write the player's cache.
+## Phase 244 — queued cache writes finish (`ChunkManager._exit_tree`, the playtest's revisit step).
 func flush_disk() -> void:
 	if disk_cache != null:
 		disk_cache.flush()
 	if gen_cache != null:
 		gen_cache.flush()
 
+## Phase 244 — opens the caches (`ChunkManager.start`). Not in the suite, which would write the player's cache.
 func enable_disk() -> void:
 	if disk_cache != null or gen_cache != null or sl.voxel_slice == null or "--run-tests" in OS.get_cmdline_user_args():
 		return
