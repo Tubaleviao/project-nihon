@@ -404,8 +404,14 @@ func take_cache_hit(chunk_pos: Vector2i, key: String) -> bool:
 	return true
 
 ## Phase 244 — opens the caches (`ChunkManager.start`). Not in the suite, which would write the player's cache.
+func flush_disk() -> void:
+	if disk_cache != null:
+		disk_cache.flush()
+	if gen_cache != null:
+		gen_cache.flush()
+
 func enable_disk() -> void:
-	if disk_cache != null or sl.voxel_slice == null or "--run-tests" in OS.get_cmdline_user_args():
+	if disk_cache != null or gen_cache != null or sl.voxel_slice == null or "--run-tests" in OS.get_cmdline_user_args():
 		return
 	if sl.keeps_render():
 		disk_cache = DiskChunkCache.new("user://cache/chunks/")
@@ -474,7 +480,7 @@ func take_disk_hit(chunk_pos: Vector2i, key: String, lod: int) -> bool:
 		var t0 := Time.get_ticks_usec()
 		var d: Dictionary = disk.decode(disk.read(layer, chunk_pos, dkey))
 		if d.is_empty():
-			disk.invalidate(layer, chunk_pos)   # unreadable: the retry builds it
+			disk.invalidate(layer, chunk_pos, dkey)   # unreadable: the retry builds it
 		else:
 			result[0] = d["arrays"]
 			result[1] = d["heightmap"]

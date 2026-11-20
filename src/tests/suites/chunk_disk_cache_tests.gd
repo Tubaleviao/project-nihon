@@ -14,6 +14,7 @@ func register() -> void:
 	_run_test("disk cache: encode and decode keep arrays, shapes and heightmap", _test_encode_roundtrip)
 	_run_test("disk cache: every key part changes the key", _test_key_parts)
 	_run_test("disk cache: the byte cap evicts the least recently used entries", _test_lru_cap)
+	_run_test("disk cache: invalidate with a key keeps a newer entry", _test_invalidate_keyed)
 	_run_test("disk cache: a revisit attaches from disk and matches a fresh build", _test_revisit_from_disk)
 	_run_test("disk cache: an edit makes the entry a miss", _test_edit_invalidates)
 	_run_test("disk cache: the world seed is part of the mesh key", _test_mesh_key_has_seed)
@@ -148,6 +149,19 @@ func _test_lru_cap() -> void:
 	assert_eq(reopened.entry_count(), 3, "a new session finds the entries on disk")
 	c.clear()
 	assert_eq(c.bytes(), 0, "clear empties it")
+	_rm(d)
+
+func _test_invalidate_keyed() -> void:
+	var d := _dir()
+	var c := DiskChunkCache.new(d)
+	var ch := Vector2i(2, 2)
+	c.write("mesh", ch, 21, _random_bytes(300))
+	c.write("mesh", ch, 22, _random_bytes(300))   # a newer build replaced it
+	c.invalidate("mesh", ch, 21)   # the reader of the old key found it damaged
+	assert_false(c.read("mesh", ch, 22).is_empty(), "the newer entry survives a stale invalidate")
+	c.invalidate("mesh", ch, 22)
+	assert_true(c.read("mesh", ch, 22).is_empty(), "the matching key drops it")
+	assert_eq(c.bytes(), 0, "bytes follow")
 	_rm(d)
 
 func _test_revisit_from_disk() -> void:

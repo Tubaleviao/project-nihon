@@ -2,11 +2,25 @@ extends RefCounted
 ## Phase 244 — one file per region and layer: a sector table and zstd-compressed entries.
 ##
 ## Layout ported (the algorithm, not the code) from Zylann/godot_voxel's `streams/region/region_file.cpp`
-## (MIT, © 2016-2024 Marc Gilleron; commit dfb0f81c7fd766f68d78715b2138f4e336cd9737, see `native/THIRD_PARTY.md`):
+## (commit dfb0f81c7fd766f68d78715b2138f4e336cd9737, see `native/THIRD_PARTY.md`; licence below):
 ## sector 0 is the header, one 32-bit entry per chunk of the 32×32 region (a 24-bit sector index above an
 ## 8-bit sector count, 0 for absent); entries start at sector boundaries. Each entry begins with its own
 ## 64-bit key, so a stale entry is a miss after reading 16 bytes. An entry that outgrows its sectors is moved
 ## to the end and the sectors after the old one close the gap.
+##
+##
+##   MIT License. Copyright (c) 2016-2024 Marc Gilleron.
+##   Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
+##   associated documentation files (the "Software"), to deal in the Software without restriction,
+##   including without limitation the rights to use, copy, modify, merge, publish, distribute,
+##   sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
+##   furnished to do so, subject to the following conditions: The above copyright notice and this
+##   permission notice shall be included in all copies or substantial portions of the Software.
+##   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT
+##   NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+##   NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES
+##   OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+##   CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ##
 ## A cache, never a source of truth: a short, torn or unreadable file is a miss, and the whole file is dropped.
 ## Every call takes the mutex, so a worker may read while the main thread writes.
@@ -86,6 +100,31 @@ func remove(idx: int) -> void:
 	_ensure()
 	_remove_entry(idx)
 	_mutex.unlock()
+
+## Drop entry `idx` while it carries `key` or its head is unreadable. True when it is gone afterwards.
+func remove_if_key(idx: int, key: int) -> bool:
+	_mutex.lock()
+	_ensure()
+	var gone := _table[idx] == 0
+	if not gone:
+		var cur := _head_key(idx)
+		if cur == 0 or cur == key:
+			_remove_entry(idx)
+			gone = true
+	_mutex.unlock()
+	return gone
+
+## Key stored in entry `idx`'s head (0 when unreadable). Caller holds the mutex.
+func _head_key(idx: int) -> int:
+	var e := _table[idx]
+	if e == 0 or not FileAccess.file_exists(path):
+		return 0
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		return 0
+	f.seek(_start(e) * SECTOR)
+	var h := f.get_buffer(8)
+	return h.decode_s64(0) if h.size() == 8 else 0
 
 ## Delete the file.
 func drop() -> void:

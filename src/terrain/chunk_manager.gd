@@ -1122,7 +1122,7 @@ func _exit_tree() -> void:
 	for task_id in _builds.keys():
 		if task_id >= 0:
 			WorkerThreadPool.wait_for_task_completion(task_id)
-	_builds.clear()
+	_builds.clear(); _m1.flush_disk()   # Phase 244: queued cache writes finish before exit
 	if _reads_async():
 		region_streamer.flush_reads()   # an unawaited worker task aborts the pool at exit
 	# Phase 114 — records created this session reach the disk before the process goes (a blocked or

@@ -129,15 +129,23 @@ func write(layer: String, chunk: Vector2i, key: int, data: PackedByteArray) -> b
 		e[0].remove(e[1])
 	return ok
 
-func invalidate(layer: String, chunk: Vector2i) -> void:
+## Drops the entry for `chunk`; with a `key` only while it still carries that key (a newer write is kept).
+func invalidate(layer: String, chunk: Vector2i, key: int = 0) -> void:
 	_mutex.lock()
 	var f := _file(layer, chunk)
+	_mutex.unlock()
+	var idx := RegionLayerFile.index_of(chunk)
+	if key != 0:
+		if not f.remove_if_key(idx, key):
+			return
+	else:
+		f.remove(idx)
+	_mutex.lock()
 	var k := _lru_key(layer, chunk)
 	if _lru.has(k):
 		_bytes -= int(_lru[k])
 		_lru.erase(k)
 	_mutex.unlock()
-	f.remove(RegionLayerFile.index_of(chunk))
 
 ## Entries to remove so the layer files fit `max_bytes`, oldest first, never `keep`. Caller holds the mutex.
 func _evict_over_cap(keep: String) -> Array:
