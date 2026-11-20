@@ -555,7 +555,7 @@ func _on_item_drop_requested(item_id: String, quantity: int, position: Vector3) 
 		return   # the request is the local player's; a peer's bag held here (registry) is not it
 	if not is_authoritative:
 		if quantity > 0:
-			GameBus.drop_intent.emit(item_id, quantity, "")   # the host drops it from its copy of this bag
+			GameBus.drop_intent.emit(item_id, quantity, position, "")   # the host drops it from its copy of this bag
 		return
 	if loot_slice == null or quantity <= 0:
 		return

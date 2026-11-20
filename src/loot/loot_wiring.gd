@@ -17,10 +17,19 @@ const PlayerRegistry := preload("res://src/persistence/player_registry.gd")
 const PICKUP_REACH_SLACK_M := 2.0
 ## Seconds between AOI scans (bodies moving in and out of view).
 const AOI_SCAN_INTERVAL := 1.0
+## Host: the shortest gap between two of one peer's pickups, and between two of its drops. Each accepted one
+## spawns or removes a pickup, fans out to every peer in view and syncs the bag: this bounds a flooding client
+## below the packet bucket (a person clicks no faster).
+const LOOT_MIN_INTERVAL_MS := 150
+## Host: how far from the dropper's body (the host's record) a drop may land.
+const DROP_MAX_OFFSET_M := 3.0
 
 ## peer id -> { pickup id: true } the peer has been sent and not withdrawn.
 var _seen: Dictionary = {}
 var _aoi_clock: float = 0.0
+## peer id -> Time.get_ticks_msec() of its last accepted pickup / drop.
+var _last_pickup_ms: Dictionary = {}
+var _last_drop_ms: Dictionary = {}
 
 func _connect_all() -> void:
 	connect_bus(GameBus.loot_dropped, _on_dropped)
@@ -65,6 +74,16 @@ func _on_removed(pickup_id: String) -> void:
 
 func _on_peer_disconnected(peer_id: int) -> void:
 	_seen.erase(peer_id)
+	_last_pickup_ms.erase(peer_id)
+	_last_drop_ms.erase(peer_id)
+
+## Host: whether `peer` may act again on `clock` (a pickup or drop table); stamps it when it may.
+static func _rate_ok(clock: Dictionary, peer: int) -> bool:
+	var now := Time.get_ticks_msec()
+	if clock.has(peer) and now - int(clock[peer]) < LOOT_MIN_INTERVAL_MS:
+		return false
+	clock[peer] = now
+	return true
 
 func tick(delta: float) -> void:
 	if not _is_host() or root._loot == null:
@@ -130,23 +149,35 @@ func on_pickup_intent(pickup_id: String, player_id: String) -> bool:
 	var gap: float = WorldPos.offset_between(root._peer_wiring.peer_exact_pos(peer), WorldPos.from_world(at.x, at.y, at.z)).length()
 	if gap > PlayerSlice.PICKUP_RANGE + PICKUP_REACH_SLACK_M:
 		return false
+	if not _rate_ok(_last_pickup_ms, peer):
+		return false
 	var inv: Node = root._registry.get_inventory(player_id)
 	var item := str(p["item_id"])
 	var qty := int(p["quantity"])
-	if inv == null or not inv.can_add_items({ item: qty }):
+	if inv == null:
+		return false
+	if not inv.can_add_items({ item: qty }):
+		root._networking._deliver(peer, { "type": "pickup_result", "ok": false, "reason": "inventory_full" })
 		return false
 	root._loot.consume_pickup(pickup_id)
 	if not inv.add_item(item, qty, p.get("durabilities", [])):
 		root._loot.spawn_pickup(item, qty, at, p.get("durabilities", []))   # cannot happen after can_add_items; never lose goods
 		return false
 	root._peer_wiring.sync_peer_own_state({ "success": true, "player_id": player_id })
+	root._networking._deliver(peer, { "type": "pickup_result", "ok": true, "item": item, "qty": qty })
 	return true
 
-## Host: a peer drops up to `quantity` of `item_id` at its own reported feet. True when something was dropped.
-func on_drop_intent(item_id: String, quantity: int, player_id: String) -> bool:
+## Host: a peer drops up to `quantity` of `item_id` at `at` from its reported body (clamped to
+## DROP_MAX_OFFSET_M). True when something was dropped.
+## On a client the same signal is the outbound one: `at` is the scene drop point, sent as an offset from the
+## body (scene frames differ between machines; the offset does not).
+func on_drop_intent(item_id: String, quantity: int, at: Vector3, player_id: String) -> bool:
 	if root._is_client:
 		if player_id == "" and root._networking != null:
-			root._networking._broadcast({ "type": "drop_intent", "id": item_id, "qty": quantity })
+			var off := Vector3.ZERO
+			if at != Vector3.ZERO and root._player != null:
+				off = at - root._player.get_position()
+			root._networking._broadcast({ "type": "drop_intent", "id": item_id, "qty": quantity, "off": [off.x, off.y, off.z] })
 		return false
 	var peer := _live_peer(player_id)
 	if peer == 0 or root._loot == null or quantity <= 0:
@@ -157,10 +188,13 @@ func on_drop_intent(item_id: String, quantity: int, player_id: String) -> bool:
 	var take := mini(quantity, int(inv.get_item_count(item_id)))
 	if take <= 0:
 		return false
+	if not _rate_ok(_last_drop_ms, peer):
+		return false
 	var res: Dictionary = inv.drop_item_returning(item_id, take)
 	if not bool(res.get("success", false)):
 		return false
-	root._loot.spawn_pickup(item_id, take, root._networking.get_last_known_state(peer), res.get("removed", []))
+	var offset := at.limit_length(DROP_MAX_OFFSET_M) if at.is_finite() else Vector3.ZERO
+	root._loot.spawn_pickup(item_id, take, root._networking.get_last_known_state(peer) + offset, res.get("removed", []))
 	root._peer_wiring.sync_peer_own_state({ "success": true, "player_id": player_id })
 	return true
 

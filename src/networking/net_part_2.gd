@@ -529,7 +529,9 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 			else:
 				var l_qty: Variant = payload.get("qty", 0)
 				if l_qty is int or l_qty is float:
-					GameBus.drop_intent.emit((l_id as String).left(64), clampi(int(l_qty), 0, 1000000), looter)
+					# The offset from the body is optional (absent: at the feet); LootWiring clamps its length.
+					GameBus.drop_intent.emit((l_id as String).left(64), clampi(int(l_qty), 0, 1000000),
+						_finite_vec3(payload.get("off", null)), looter)
 		"attack_intent":
 			# The attacker is the connection's player, never a name in the payload; CombatWiring checks the
 			# target, the reach (host's own record of the sender) and the swing rate.
@@ -867,12 +869,12 @@ func _on_peer_disconnected(id: int) -> void:
 	if sl._last_known_states.has(id):
 		sl._last_known_timestamps[id] = Time.get_ticks_msec()
 
-## Phase 162 — drop the per-peer receive channels (`"<peer>:<type>"` seq frontiers, dedup windows, gap
-## warning clocks) and the emulated link of a peer that left. They were kept for every peer that ever
+## Phase 162 — drop the per-peer channels (`"<peer>:<type>"` seq frontiers, dedup windows, gap warning
+## clocks, send counters) and the emulated link of a peer that left. They were kept for every peer that ever
 ## connected: the crowd stress run's `churn` pattern counts them as orphans.
 func forget_peer_channels(id: int) -> void:
 	var prefix := "%d:" % id
-	for table: Dictionary in [sl._recv_seq, sl._recv_seen, sl._seq_gap_warn_ms]:
+	for table: Dictionary in [sl._recv_seq, sl._recv_seen, sl._seq_gap_warn_ms, sl._send_seq]:
 		for key in table.keys():
 			if str(key).begins_with(prefix):
 				table.erase(key)
@@ -887,6 +889,15 @@ func forward_intent(type: String, action: String, args: Dictionary) -> void:
 
 func forward_clan_intent(action: String, args: Dictionary, _player_id: String) -> void:
 	forward_intent("clan_intent", action, args)
+
+## A wire `[x, y, z]` of finite numbers as a Vector3; anything else is ZERO.
+static func _finite_vec3(v: Variant) -> Vector3:
+	if not v is Array or (v as Array).size() != 3:
+		return Vector3.ZERO
+	for c in v:
+		if not (c is int or c is float) or not is_finite(float(c)):
+			return Vector3.ZERO
+	return Vector3(float(v[0]), float(v[1]), float(v[2]))
 
 ## Client → host: a melee swing at a creature. Like tame_intent it names only the target; the host binds the
 ## attacker to the connection and checks reach against its own record of where that player is.

@@ -407,8 +407,10 @@ signal loot_removed(pickup_id: String)
 ## checks reach and room in that player's bag.
 signal pickup_intent(pickup_id: String, player_id: String)
 
-## Client → host: drop `quantity` of `item_id` at the player's feet (player_id "" outbound; bound on the host).
-signal drop_intent(item_id: String, quantity: int, player_id: String)
+## Client → host: drop `quantity` of `item_id`. Outbound (player_id "") `at` is the client's scene drop point
+## (ZERO: at the feet); LootWiring sends it as an offset from the body, and on the host (player_id bound to the
+## connection) `at` is that offset, which the host clamps before adding it to its own record of the dropper.
+signal drop_intent(item_id: String, quantity: int, at: Vector3, player_id: String)
 
 ## Host → client: a ground pickup in this client's area of interest: { id, item_id, quantity, position }.
 signal peer_pickup_synced(record: Dictionary)

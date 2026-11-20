@@ -80,10 +80,11 @@ func _deliver(peer_id: int, payload: Dictionary) -> bool:
 		transport.send(peer_id, payload)
 		return true
 	var ptype: String = str(payload.get("type", "_"))
-	if not sl._send_seq.has(ptype):
-		sl._send_seq[ptype] = 0
-	payload["seq"] = sl._send_seq[ptype]
-	sl._send_seq[ptype] += 1
+	# One series per (recipient, type), like the receiver's `"<sender>:<type>"` frontier: a counter shared by
+	# every peer jumped by one per other recipient, so a broadcast or a peer-scoped send logged a false gap.
+	var seq_key := "%d:%s" % [peer_id, ptype]
+	payload["seq"] = int(sl._send_seq.get(seq_key, 0))
+	sl._send_seq[seq_key] = int(payload["seq"]) + 1
 	# A layout type wraps at SEQ_MOD whichever encoding the packet takes (a JSON fallback included), so a
 	# channel's seq is one lap-counted series and the receiver's wrap heuristic stays sound.
 	if sl.PacketCodec.has_layout(ptype):
@@ -360,6 +361,17 @@ func _route_h2c(payload: Dictionary) -> void:
 			if sl._role == sl.Role.CLIENT and lid is String and lpos is Array and (lpos as Array).size() == 3:
 				GameBus.peer_pickup_synced.emit({ "id": lid, "item_id": str(payload.get("item", "")),
 					"quantity": int(payload.get("qty", 0)), "position": Vector3(float(lpos[0]), float(lpos[1]), float(lpos[2])) })
+		"pickup_result":
+			# Our pickup intent's answer: taken (the pickup sound and toast) or refused for a full bag.
+			if sl._role == sl.Role.CLIENT:
+				var r_item := str(payload.get("item", ""))
+				var r_qty: Variant = payload.get("qty", 0)
+				if bool(payload.get("ok", false)):
+					if (GameData.ITEMS.has(r_item) or GameData.MATERIALS.has(r_item)) and (r_qty is int or r_qty is float) \
+							and int(r_qty) > 0:
+						GameBus.item_picked_up.emit(r_item, mini(int(r_qty), 1000000))
+				elif str(payload.get("reason", "")) == "inventory_full":
+					GameBus.inventory_full.emit()
 		"pickup_removed":
 			if sl._role == sl.Role.CLIENT and payload.get("id", "") is String:
 				GameBus.peer_pickup_removed.emit(payload["id"])
