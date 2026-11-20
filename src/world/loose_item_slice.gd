@@ -251,6 +251,7 @@ func _on_pick_requested(id: String, player_id: String) -> void:
 		var res := pick(id, player_id)
 		if not bool(res["success"]):
 			Diag.warn("[Loose] pick of %s by '%s' refused: %s" % [id, player_id, str(res["reason"])])
+			_tell(player_id, "hud.loose.refused." + str(res["reason"]))
 	elif networking != null and networking._role == networking.Role.CLIENT:
 		# The actor is dropped on purpose: the host binds it to the connection (a client naming one is only a claim).
 		networking._broadcast({ "type": "loose_pick_intent", "id": id })
@@ -265,6 +266,7 @@ func _on_pick_intent(peer: int, id: String) -> void:
 		return
 	var it := record_of(id)
 	if it.is_empty():
+		_tell(actor, "hud.loose.refused.no_item")
 		return
 	var xz: Vector2 = it["xz"]
 	var y := float(height_fn.call(xz)) if height_fn.is_valid() else 0.0
@@ -274,6 +276,15 @@ func _on_pick_intent(peer: int, id: String) -> void:
 		GameBus.loose_pick_requested.emit(id, actor)
 	else:
 		Diag.warn("[Loose] pick intent for %s from peer %d is out of reach — dropped" % [id, peer])
+		_tell(actor, "hud.loose.refused.out_of_reach")
+
+## A keyed line for `player_id` alone ("" = this machine's player, named by its id: an empty target is a
+## line the hosting networking slice broadcasts to every client).
+func _tell(player_id: String, key: String) -> void:
+	var target := player_id
+	if target == "" and player_registry != null and "local_player_id" in player_registry:
+		target = str(player_registry.local_player_id)
+	GameBus.system_message.emit(key, [], target)
 
 func _broadcast_state(msg: Dictionary) -> void:
 	if is_authoritative and networking != null and networking._role == networking.Role.HOST:
@@ -302,7 +313,7 @@ func _on_interact() -> void:
 	var p: Vector3 = local_position.call()
 	var it := nearest_pickable(Vector2(p.x, p.z))
 	if it.is_empty():
-		GameBus.system_message.emit("hud.loose.nothing", [], "")
+		_tell("", "hud.loose.nothing")
 		return
 	GameBus.loose_pick_requested.emit(str(it["id"]), "")
 
@@ -329,12 +340,22 @@ func taken_data() -> Dictionary:
 func apply_taken(data: Variant) -> void:
 	if is_authoritative or not (data is Dictionary):
 		return
+	_adopt_taken(data, -INF)
+
+## Host: the taken items of a saved world record (follow-up #634), so a restart does not regrow every picked
+## item at once. Entries whose regrow time has passed are dropped; the rest keep their deadline.
+func load_taken(data: Variant) -> void:
+	if not is_authoritative or not (data is Dictionary):
+		return
+	_adopt_taken(data, _now())
+
+func _adopt_taken(data: Dictionary, after: float) -> void:
 	_taken.clear()
 	for id in data:
 		if _taken.size() >= MAX_SYNCED_TAKEN:
 			break
 		var at: Variant = data[id]
-		if id is String and parse_id(id) != null and (at is float or at is int) and is_finite(float(at)):
+		if id is String and parse_id(id) != null and (at is float or at is int) and is_finite(float(at)) and float(at) > after:
 			_taken[id] = float(at)
 	if render_visuals:
 		redraw()

@@ -1235,7 +1235,7 @@ func _apply_build_entry(task_id: int) -> bool:
 	if result.size() > 1 and result[1] is Array and not (result[1] as Array).is_empty():
 		heightmap = result[1]
 	var attached := _attach_built(key, chunk, heightmap, arrays, int(entry["revision"]), entry)
-	if attached and bool(entry.get("cached", false)):
+	if attached and bool(entry.get("cached", false)) and not bool(entry.get("disk", false)):   # memory cache only
 		cache_attaches += 1
 	return attached
 

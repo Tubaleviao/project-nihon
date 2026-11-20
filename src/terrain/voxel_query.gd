@@ -71,7 +71,8 @@ func edit_digest(chunk_pos: Vector2i) -> int:
 	var parts: Array = []
 	for k in keys:
 		parts.append([k, s._edits.get(k)])
-	return str(parts).hash()
+	# 60 bits of sha256, as `DiskChunkCache.key_of`: a 32-bit `hash()` collision would reuse a stale mesh.
+	return maxi(1, str(parts).sha256_text().substr(0, 15).hex_to_int())
 
 ## Phase 116 — true when the chunk or the `radius` tiles around it hold any edit: one index lookup per
 ## chunk instead of `has_edit_near`'s string keys per tree. A false answer rules every tile of the chunk

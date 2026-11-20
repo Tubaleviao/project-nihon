@@ -146,6 +146,7 @@ func collect_save_job(incremental: bool) -> Dictionary:
 		# Phase 161 — the bodies kills left, with the time each has left.
 		"carcasses":       root._carcass.to_data() if root._carcass != null else {},
 		"weather":         root._weather.to_data() if root._weather != null else [],
+		"looseTaken":      root._loose.taken_data() if root._loose != null else {},   # #634: picked loose items keep regrowing
 		# Phase 138 — tree clears the host could not pin in a record yet (see TreeSlice._pending_spots).
 		"treeSpots":       root._tree.pending_spots_to_data() if root._tree != null else {},
 		# Phase 181 — every created name on the server, so uniqueness covers offline players.
@@ -516,6 +517,8 @@ func load_world_records() -> void:
 			root._carcass.from_data(root._loaded_world.get("carcasses", {}))
 		if root._waystones != null:
 			root._waystones.apply_exact_data(root._loaded_world.get("waystone_exact", {}))
+		if root._loose != null:
+			root._loose.load_taken(root._loaded_world.get("looseTaken", {}))
 		print("[Server] world loaded from %s" % root._persistence.world_path())
 	# A failed region migration hands the record back WITH its chunks: apply them and mark
 	# them dirty so the next save writes them to regions instead of dropping them. Phase 61 —

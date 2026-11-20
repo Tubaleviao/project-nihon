@@ -22,7 +22,7 @@ static func run(bot: Node) -> Array:
 	var speed: float = bot._root._player.admin_speed_factor
 	bot._step_restore = bot._restore_flight.bind(speed, was_flying, TickProbe.enabled)
 	GameBus.admin_moves_synced.emit(speed, true)
-	disk.clear()   # the first pass must build: what an earlier run left is not the step's to count on
+	disk.clear()   # the first pass must build (the bot's own cache folder, never the player's)
 	cm.chunk_cache().clear()
 	var first: Dictionary = await bot._fly_east(home_chunk, home_local)
 	var settled: bool = await bot._return_home(home_chunk, home_local)

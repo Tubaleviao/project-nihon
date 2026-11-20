@@ -30,6 +30,9 @@ const ENTRIES := REGION_SIZE * REGION_SIZE
 const SECTOR := 4096
 const MAX_SECTORS := 255
 const ENTRY_HEAD := 16   # key (8), compressed size (4), raw size (4)
+## Largest raw entry stored or read back: a damaged head whose key still matches must not ask `decompress`
+## for gigabytes.
+const MAX_RAW := 64 * 1024 * 1024
 
 var path: String
 var _table := PackedInt32Array()
@@ -188,7 +191,7 @@ func _read_entry(idx: int, key: int) -> PackedByteArray:
 	var csize := head.decode_u32(8)
 	var rsize := head.decode_u32(12)
 	var e := _table[idx]
-	if csize + ENTRY_HEAD > _count(e) * SECTOR:
+	if csize + ENTRY_HEAD > _count(e) * SECTOR or rsize <= 0 or rsize > MAX_RAW:
 		return PackedByteArray()
 	var f := FileAccess.open(path, FileAccess.READ)
 	if f == null:
@@ -210,6 +213,9 @@ func _end_sector() -> int:
 
 func _put_entry(idx: int, key: int, data: PackedByteArray) -> bool:
 	_ensure()
+	if data.size() > MAX_RAW:
+		_remove_entry(idx)
+		return false
 	var comp := data.compress(FileAccess.COMPRESSION_ZSTD)
 	var need := ceili(float(comp.size() + ENTRY_HEAD) / SECTOR)
 	if need > MAX_SECTORS or comp.is_empty():
