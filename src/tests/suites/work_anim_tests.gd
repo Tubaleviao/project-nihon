@@ -15,6 +15,7 @@ func register() -> void:
 	_run_test("work anim: one strike per cycle at the impact marker", _test_p281_strike_timing)
 	_run_test("work anim: the body turns to face the work target", _test_p281_face_target)
 	_run_test("work anim: another peer's work plays on its copy", _test_p281_peer_copy)
+	_run_test("work anim: a peer's copy with no rig still plays the kind's own clip", _test_p281_rigless_copy)
 
 
 func _fixture() -> Dictionary:
@@ -155,6 +156,25 @@ func _test_p281_peer_copy() -> void:
 	GameBus.peer_disconnected.emit(7)
 	assert_false(w.is_working(7) or w.last_clip.has(7) or w.clip_history.has(7) or w._announced.has(7),
 		"a peer that left takes its per-peer state with it")
+	ch.remove_character(peer_iid)
+	_free_fixture(f)
+
+## The client builds another player's copy without a rig; the net harness drew it in time on a slow runner and
+## saw `attack_tool` for a chop. Only a rig that lacks the clip falls back.
+func _test_p281_rigless_copy() -> void:
+	var f := _fixture()
+	var ch: CharacterSlice = f["ch"]
+	var w = f["w"]
+	var peer_iid: String = ch.create_character_from_recipe({"skeleton": "HumanoidSkeleton"}, Vector3.ZERO)
+	ch.bind_peer_character(7, peer_iid)
+	GameBus.work_anim_changed.emit(7, "chop")
+	assert_eq(str(w.last_clip.get(7, "")), "chop", "the rig-less copy plays chop, not attack_tool")
+	GameBus.work_anim_changed.emit(7, "")
+	ch._instances[peer_iid]["swing_lengths"] = {"attack_tool": 0.5}
+	GameBus.work_anim_changed.emit(7, "chop")
+	assert_eq(str(w.last_clip.get(7, "")), "attack_tool", "a rig without the clip still falls back")
+	GameBus.work_anim_changed.emit(7, "")
+	GameBus.peer_disconnected.emit(7)
 	ch.remove_character(peer_iid)
 	_free_fixture(f)
 
