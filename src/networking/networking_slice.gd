@@ -328,6 +328,7 @@ func _ready() -> void:
 	# command replies) travel back.
 	GameBus.chat_intent.connect(_on_chat_intent)
 	GameBus.gesture_intent.connect(_on_gesture_intent)
+	GameBus.held_item_intent.connect(_on_held_item_intent)
 	# Phase 181 — a creation travels client → host as an intent; a look travels host → the peers in AOI.
 	GameBus.character_creation_intent.connect(_on_character_creation_intent)
 	GameBus.player_look_changed.connect(_on_player_look_changed)
@@ -994,6 +995,21 @@ func send_gesture(subject_peer: int, gesture_id: String, position: Vector3, lift
 func send_peer_gestures_to(peer_id: int, poses: Dictionary, lifts: Dictionary = {}) -> void:
 	_m2.send_peer_gestures_to(peer_id, poses, lifts)
 func send_player_healed(peer_id: int, amount: float) -> void: _m2.send_player_healed(peer_id, amount)
+
+## Phase 280 — the longest item id a held-item packet may carry.
+const HELD_ID_MAX := 64
+
+func send_held_item(subject_peer: int, item_id: String, position: Vector3) -> void:
+	_m2.send_held_item(subject_peer, item_id, position)
+
+func send_peer_held_to(peer_id: int, held: Dictionary) -> void:
+	_m2.send_peer_held_to(peer_id, held)
+
+## Phase 280 — client: forward the selected hotbar item; the host binds it to the connection's player.
+func _on_held_item_intent(item_id: String, _player_id: String) -> void:
+	if _role != Role.CLIENT:
+		return
+	_broadcast({ "type": "held_intent", "i": item_id })
 
 ## Phase 159 — client: forward a gesture action; the host binds it to the connection's player.
 func _on_gesture_intent(gesture_id: String, _player_id: String) -> void:

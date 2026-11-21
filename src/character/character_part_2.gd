@@ -308,7 +308,11 @@ func gesture_clip_of(instance_id: String) -> String:
 ## The swing an instance plays by its main hand: bare hands punch, a tool (anything with a fabric
 ## `toolType`) uses the tool swing, any other held item swings one-handed.
 func attack_clip_of(instance_id: String) -> String:
-	return sl.RigTree.attack_clip_for(str(sl.get_equipment_set(instance_id).get("MainHand", "")), GameData.ITEMS)
+	# Phase 280 — a hotbar item in the hand swings in place of the equipped main hand.
+	var in_hand: String = sl.held_item_of(instance_id)
+	if in_hand == "":
+		in_hand = str(sl.get_equipment_set(instance_id).get("MainHand", ""))
+	return sl.RigTree.attack_clip_for(in_hand, GameData.ITEMS)
 
 func set_character_position(instance_id: String, pos: Vector3) -> bool:
 	if not sl._instances.has(instance_id):

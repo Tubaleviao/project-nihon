@@ -900,6 +900,18 @@ signal gesture_synced(player_id: String, gesture_id: String)
 ## Sit, -1 when none.
 signal peer_gesture_synced(peer_id: int, gesture_id: String, lift: float)
 
+## Phase 280 — the hotbar's selected item is held in the hand: `item_id`, or "" for an empty or skill box.
+## CLIENT -> host: emitted with an empty player_id and forwarded; the host re-emits nothing under a name,
+## it binds the connection's own player, checks the pack and syncs the result.
+signal held_item_intent(item_id: String, player_id: String)
+
+## Phase 280 — host: a player's held item changed (`item_id`, "" for none). Networking scopes it to the
+## peers whose area of interest holds that player.
+signal held_item_synced(player_id: String, item_id: String)
+
+## Phase 280 — client: the host says peer `peer_id` (this machine's own id included) holds `item_id` ("" none).
+signal peer_held_item_synced(peer_id: int, item_id: String)
+
 ## Phase 196 — client: the host's restRegen healed our own resting body by `amount` HP.
 signal player_rest_healed(amount: float)
 

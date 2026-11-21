@@ -199,6 +199,7 @@ static func steps() -> Array:
 		{ "name": "peer_attack_animated", "compare": true },
 		{ "name": "death_landing_synced", "compare": true },
 		{ "name": "gesture_synced", "compare": true },
+		{ "name": "held_item_synced", "compare": true },
 		{ "name": "carcass_synced", "compare": true },
 		{ "name": "admin_moves_synced", "compare": true },
 		{ "name": "attributes_synced", "compare": true },
@@ -462,6 +463,7 @@ func run(root: Node, role: String) -> void:
 	await _step_peer_attack_animated()
 	await _step_death_landing_synced()
 	await _step_gesture_synced()
+	await _step_held_item_synced()
 	await _step_carcass_synced()
 	await _step_admin_moves_synced()
 	await _step_attributes_synced()
@@ -2223,6 +2225,43 @@ func _step_gesture_synced() -> void:
 	var ok := own and same_lift and healed and late
 	_report("gesture_synced", verdict(ok, true), "seated" if ok else ("own_missing" if not own else (
 		"lift_%.2f" % lift if not same_lift else ("not_healed" if not healed else "late_join_missing"))))
+
+## Phase 280 — the held item is synced to peers in range: the host selects one hotbar item, then another, and the
+## client's view of the host's avatar holds each (the host's pack is checked by the host's own wiring).
+const HELD_FIRST := "StonePick"
+const HELD_SECOND := "Thornwood"
+
+func _step_held_item_synced() -> void:
+	if _role == "host":
+		var peers: PackedInt32Array = _root.multiplayer.get_peers()
+		var pid: String = _root._networking.get_player_id(peers[0]) if peers.size() > 0 else ""
+		if pid == "":
+			_report("held_item_synced", "fail", "no_connected_peer")
+			return
+		if not await _await_client_ready("held", pid):
+			_report("held_item_synced", "fail", "client_never_arrived")
+			return
+		_root._inventory.add_item(HELD_FIRST, 1)
+		_root._inventory.add_item(HELD_SECOND, 1)
+		GameBus.held_item_intent.emit(HELD_FIRST, "")
+		var first: bool = _root._held_item_wiring._held.get(_root._held_item_wiring._local_id(), "") == HELD_FIRST
+		await _await_settle(2.0)
+		GameBus.held_item_intent.emit(HELD_SECOND, "")
+		var second: bool = _root._held_item_wiring._held.get(_root._held_item_wiring._local_id(), "") == HELD_SECOND
+		await _await_settle(6.0)   # the client reads both before this process (the last step) exits
+		_report("held_item_synced", verdict(first and second, true), "held" if first and second else "host_refused")
+		return
+	var announced := {}
+	var seen: bool = await _await_until(func():
+		_announce_ready("held", announced)
+		return _root._held_item_wiring._pending.get(1, "") == HELD_SECOND, _step_timeout() * 4.0)
+	var shown: String = ""
+	if seen:
+		var avatar: String = _root._character.get_peer_character(1)
+		await _await_until(func(): return avatar != "" and _root._character.held_item_of(avatar) == HELD_SECOND, _step_timeout())
+		shown = _root._character.held_item_of(avatar) if avatar != "" else ""
+	var ok := seen and shown == HELD_SECOND
+	_report("held_item_synced", verdict(ok, true), "seen" if ok else ("never_synced" if not seen else "not_on_avatar"))
 
 ## Phase 161 — a carcass the host works loses those entries on the client, and a carcass the peer carries
 ## follows it. The host plants a body beside the peer, takes its knife entries, then hands it to the peer

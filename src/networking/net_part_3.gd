@@ -353,6 +353,11 @@ func _route_h2c(payload: Dictionary) -> void:
 				if (l is float or l is int) and is_finite(float(l)):
 					lift = clampf(float(l), 0.0, sl.GestureRules.SEAT_MAX_RISE) if float(l) >= 0.0 else -1.0
 				GameBus.peer_gesture_synced.emit(int(payload.get("peer_id", 0)), g, lift)
+		"held":
+			# Phase 280 — animation only: a peer id and a short item id ("" = empty hands).
+			var held_item: Variant = payload.get("i", "")
+			if sl._role == sl.Role.CLIENT and held_item is String and (held_item as String).length() <= sl.HELD_ID_MAX:
+				GameBus.peer_held_item_synced.emit(int(payload.get("peer_id", 0)), held_item)
 		"carcass":
 			# Phase 161 — a body in our AOI; the slice keeps a view of it.
 			var cpos: Variant = payload.get("pos", [])

@@ -208,6 +208,26 @@ func _gesture_packet(subject_peer: int, gesture_id: String, lift: float) -> Dict
 		packet["l"] = lift
 	return packet
 
+## Phase 280 — host → clients in range of `position`: peer `subject_peer` (the host's own body is peer 1)
+## holds `item_id` in the hand ("" for nothing). The holder's own client is in range of itself.
+func send_held_item(subject_peer: int, item_id: String, position: Vector3) -> void:
+	if sl._role != sl.Role.HOST:
+		sl.Diag.warn("NetworkingSlice: send_held_item called on non-host — dropped")
+		return
+	sl._broadcast_aoi({ "type": "held", "peer_id": subject_peer, "i": item_id }, position)
+
+## Phase 280 — host: a peer just bound its identity; tell it what the players inside its AOI hold
+## (`held` is peer id -> item id).
+func send_peer_held_to(peer_id: int, held: Dictionary) -> void:
+	if sl._role != sl.Role.HOST or not sl._connected():
+		return
+	var center = sl._joiner_aoi_center(peer_id)
+	for subject in held:
+		var o := int(subject)
+		if o == peer_id or not sl._has_subject_position(o) or center.distance_to(sl._subject_position(o)) > sl.AOI_RADIUS:
+			continue
+		sl._deliver(peer_id, { "type": "held", "peer_id": o, "i": str(held[subject]) })
+
 ## Phase 159 — host: a peer just bound its identity; tell it the poses held by the players inside its AOI
 ## (`poses` is peer id -> gesture id, the host's own body as peer 1), so a late joiner sees them seated.
 ## `lifts` (peer id -> seat rise, Phase 196) carries the host-resolved lift of a Sit.
@@ -575,6 +595,16 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 			var wanted: Variant = payload.get("g", "")
 			if wanted is String and (wanted as String).length() <= sl.GESTURE_ID_MAX:
 				GameBus.gesture_intent.emit(wanted, actor)
+		"held_intent":
+			# Phase 280 — the held item is for the connection's own player, never a name in the payload; the
+			# host's wiring checks the id, the pack and the rate.
+			var holder = sl._actor_id(sender)
+			if holder == "":
+				sl._refuse_unhandshaked(sender, "held_intent")
+				return
+			var held_id: Variant = payload.get("i", "")
+			if held_id is String and (held_id as String).length() <= sl.HELD_ID_MAX:
+				GameBus.held_item_intent.emit(held_id, holder)
 		"creation_intent":
 			# Phase 181 — a creation or skip is for the connection's own player, never a name in the payload; the
 			# registry validates every field, the name's uniqueness and the rate.
