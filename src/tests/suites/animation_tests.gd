@@ -8,6 +8,7 @@ const DeathPush := preload("res://src/battle/death_push.gd")
 const Bot := preload("res://src/tests/playtest_bot.gd")
 
 func register() -> void:
+	_run_test("animation: the host deals a player swing at the impact time, and a refused re-check deals nothing (Phase 287)", _test_battle_impact_timing)
 	_run_test("animation: a pending hit lands at impact and is cancelled by range, death, stagger or a weapon switch (Phase 287)", _test_pending_hits)
 	_run_test("animation: repeated attacks inside the window play the combo variants, a pause restarts, a missing variant falls back (Phase 287)", _test_combo_chain)
 	_run_test("gestures: GameData lists every gesture with its clip and chat command", _test_p158_gesture_data)
@@ -449,3 +450,36 @@ func _test_pending_hits() -> void:
 	assert_eq(PendingHit.reaction(30.0, 100.0, 0.25), "stagger", "a hit above the stagger share staggers")
 	assert_eq(PendingHit.reaction(10.0, 100.0, 0.25), "hit", "a lighter hit flinches")
 	assert_eq(PendingHit.knockback_direction(Vector3(0, 0, 0), Vector3(3, 1, 0)), Vector3(1, 0, 0), "the knock-back points away from the attacker")
+
+const BattleSliceP := preload("res://src/battle/battle_slice.gd")
+
+func _test_battle_impact_timing() -> void:
+	var b := BattleSliceP.new()
+	add_child(b)
+	var clock := [0.0]
+	b.now_fn = func(): return clock[0]
+	b.impact_queue = PendingHit.new()
+	b.impact_info_fn = func(_a): return { "weapon": "one_hand", "item": "X", "step": 0, "clip_length": 0.5 }
+	var world := { "alive": true, "target_alive": true, "gap": 1.0 }
+	b.impact_state_fn = func(_e): return { "attacker_alive": world["alive"], "attacker_staggered": false, "attacker_item": "X",
+		"target_alive": world["target_alive"], "gap": world["gap"], "reach": 3.0 }
+	b._hp_state["GraywolfPack"] = 10000.0
+	var hits := []
+	var cb := func(a, d, outcome, _dmg): hits.append([a, d, outcome])
+	GameBus.combat_hit_resolved.connect(cb)
+	GameBus.combat_round_requested.emit("player", "GraywolfPack")
+	assert_eq(hits.size(), 0, "nothing is dealt at the click")
+	clock[0] = 0.1
+	assert_eq(b.tick_impacts(), 0, "nor before the impact time")
+	clock[0] = 0.3
+	assert_eq(b.tick_impacts(), 1, "the hit lands at impact")
+	assert_eq(hits.size(), 1, "and one hit is announced")
+	# A target that left range before impact takes nothing and nothing is synced.
+	clock[0] = 1.0
+	GameBus.combat_round_requested.emit("player", "GraywolfPack")
+	world["gap"] = 9.0
+	clock[0] = 1.5
+	assert_eq(b.tick_impacts(), 0, "a target out of range at impact takes no damage")
+	assert_eq(hits.size(), 1, "and no hit sync is sent")
+	GameBus.combat_hit_resolved.disconnect(cb)
+	b.free()

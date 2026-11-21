@@ -11,8 +11,16 @@ const PlayerRegistry   := preload("res://src/persistence/player_registry.gd")
 const PlayerSlice      := preload("res://src/player/player_slice.gd")
 const StatusEffects    := preload("res://src/battle/status_effects.gd")
 const RigTree          := preload("res://src/character/rig_tree.gd")
+const PendingHit       := preload("res://src/battle/pending_hit.gd")
+const ComboChain       := preload("res://src/battle/combo_chain.gd")
+
+func tick(_delta: float) -> void:
+	if root._battle != null:
+		root._battle.tick_impacts()   # Phase 287: the hits whose impact time has come
 
 func _connect_all() -> void:
+	if root._battle != null and not root._is_client:
+		enable_impact_timing()
 	if root._battle != null:
 		root._battle.player_stat_fn = player_stat   # Phase 178 — a defending player's attribute stats
 	if root._creature != null:
@@ -88,6 +96,50 @@ func on_creature_died(entity_id: String, _pos: Vector3, killer_id: String, _land
 func forget_swinger(player_id: String) -> void:
 	_last_swing_ms.erase(player_id)
 
+## Phase 287 — host: turn on impact timing. A player's swing then plays its clip at the click and deals its damage at
+## the clip's impact time, after `impact_state` re-checked it.
+func enable_impact_timing() -> void:
+	root._battle.impact_queue = PendingHit.new()
+	root._battle.impact_info_fn = impact_info
+	root._battle.impact_state_fn = impact_state
+
+func _attacker_character(attacker_id: String) -> String:
+	return _character_for_key(_wire_key(attacker_id))
+
+func _main_hand(iid: String) -> String:
+	var held: String = root._character.held_item_of(iid)
+	return held if held != "" else str(root._character.get_equipment_set(iid).get("MainHand", ""))
+
+## The swing an attacker just started: plays its clip (advancing the combo) and reports weapon, step and clip length.
+func impact_info(attacker_id: String) -> Dictionary:
+	var iid := _attacker_character(attacker_id)
+	if iid == "":
+		return { "weapon": "unarmed", "item": "", "step": 0, "clip_length": 0.5 }
+	root._character.trigger_attack(iid)
+	var inst: Dictionary = root._character._instances[iid]
+	var combo: Dictionary = inst.get("combo", {})
+	var clip: String = ComboChain.clip_for(str(combo.get("weapon", "unarmed")), int(combo.get("step", 0)))
+	return { "weapon": str(combo.get("weapon", "unarmed")), "item": _main_hand(iid), "step": int(combo.get("step", 0)),
+		"clip_length": float((inst.get("swing_lengths", {}) as Dictionary).get(clip, 0.5)) }
+
+## The state at impact for `PendingHit.refusal`: both alive, the target within reach of the attacker's position now.
+func impact_state(entry: Dictionary) -> Dictionary:
+	var attacker: String = entry["attacker"]
+	var target: String = entry["target"]
+	var iid := _attacker_character(attacker)
+	var state := root._creature.get_instance_state(target) if root._creature != null else ""
+	var apos: Variant = death_attacker_pos(attacker)
+	var gap := INF
+	if apos is Vector3 and state != "":
+		gap = (apos as Vector3).distance_to(root._creature.get_instance_position(target))
+	var alive := true
+	if attacker == "player" or attacker == root._registry.local_player_id:
+		alive = root._player != null and not PlayerRegistry.is_downed(root._player.get_hp())
+	else:
+		alive = not PlayerRegistry.is_downed(root._registry.get_hp(attacker))
+	return { "attacker_alive": alive, "attacker_staggered": false, "attacker_item": _main_hand(iid) if iid != "" else str(entry["item"]),
+		"target_alive": state != "" and state != "dead", "gap": gap, "reach": PlayerSlice.ATTACK_RANGE + ATTACK_REACH_SLACK_M }
+
 ## Phase 192 — the local player's feet in scene coordinates (none before the body exists).
 func local_body_points() -> Array:
 	return [root._player.get_scene_position()] if root._player != null else []
@@ -138,7 +190,8 @@ func _character_for_key(key: String) -> String:
 	return root._character.get_peer_character(peer)
 
 func _animate_hit(a_key: String, d_key: String, outcome: String) -> void:
-	_swing(a_key)
+	if root._battle == null or root._battle.impact_queue == null or a_key.begins_with("c:"):
+		_swing(a_key)   # with impact timing a player's swing played at the click
 	# The local body flinches on `player_damaged` (which also covers burns and the like), so a hit on it
 	# is skipped here and nobody flinches twice.
 	var is_local_body := d_key.begins_with("p:") and _character_for_key(d_key) == root._character.get_player_character()

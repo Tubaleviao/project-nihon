@@ -40,6 +40,16 @@ var _round_seq: int = 0
 ## `attack_intent` and no round is resolved here.
 var is_authoritative: bool = true
 
+## Phase 287 — impact timing. With a queue set (a host boot), a player's swing is queued and resolved at the clip's
+## impact time by `tick_impacts`, after the re-checks at impact; unset (tests, creatures), rounds resolve at once.
+## `impact_info_fn(attacker_id) -> { weapon, item, step, clip_length }` is the swing the attacker started;
+## `impact_state_fn(entry) -> Dictionary` is the state at impact (see PendingHit.refusal).
+var impact_queue: RefCounted = null
+var impact_info_fn: Callable = Callable()
+var impact_state_fn: Callable = Callable()
+## Damage factor of the combo step being resolved (1 outside a combo).
+var _damage_mult: float = 1.0
+
 func _ready() -> void:
 	GameBus.combat_round_requested.connect(_on_combat_round_requested)
 	GameBus.creature_respawned.connect(_on_creature_respawned)
@@ -79,7 +89,7 @@ func resolve_round(attacker_id: String, defender_id: String) -> Dictionary:
 	_round_seq += 1
 	var now := _now()
 	if hit_roll < 0.8:
-		damage = base_dmg * randf_range(0.85, 1.15)
+		damage = base_dmg * randf_range(0.85, 1.15) * _damage_mult
 		# Phase 178 — Strength: a player's melee hit scales (1.0 at base 10).
 		if is_player_target(attacker_id):
 			damage *= _player_stat(attacker_id, "meleeDamageFactor", 1.0)
@@ -227,7 +237,28 @@ func _on_combat_round_requested(attacker_id: String, defender_id: String) -> voi
 		return
 	if attack_blocked.is_valid() and attack_blocked.call(attacker_id):
 		return   # e.g. the attacker is carrying a body (Phase 161): the host refuses, not only the client
+	if impact_queue != null and impact_info_fn.is_valid() and (attacker_id == "player" or is_player_target(attacker_id)):
+		var info: Dictionary = impact_info_fn.call(attacker_id)
+		impact_queue.start(attacker_id, defender_id, str(info.get("weapon", "unarmed")), str(info.get("item", "")),
+			int(info.get("step", 0)), _now(), float(info.get("clip_length", 0.5)))
+		return
 	resolve_round(attacker_id, defender_id)
+
+## Phase 287 — resolve the hits whose impact time has come. A hit the re-check refuses deals nothing and sends no sync.
+## Returns the number that landed.
+func tick_impacts() -> int:
+	if impact_queue == null or not impact_state_fn.is_valid():
+		return 0
+	var landed := 0
+	for r in impact_queue.resolve_due(_now(), impact_state_fn):
+		if str(r["reason"]) != "":
+			continue
+		var e: Dictionary = r["entry"]
+		_damage_mult = float(e["damage_multiplier"])
+		resolve_round(str(e["attacker"]), str(e["target"]))
+		_damage_mult = 1.0
+		landed += 1
+	return landed
 
 ## Clear tracked HP when a creature respawns so it doesn't re-enter combat with
 ## a stale 0 HP (which would cause an instant re-kill on the next round).
