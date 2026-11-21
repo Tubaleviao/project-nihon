@@ -31,14 +31,13 @@ introductions of the arcs they belonged to, are archived in
 Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
 see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
 phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
-comes next. A phase that needs an earlier one still waits for it. Done phases (238–244, 248–250, 252–256, 259–276, 289, 290, 283, 282, 280, 291, 281, 284, 286, 287, 292)
+comes next. A phase that needs an earlier one still waits for it. Done phases (238–244, 248–250, 252–256, 259–276, 289, 290, 283, 282, 280, 291, 281, 284, 286, 287, 292, 293)
 have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
 [Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
 others are not in it.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 20 | 293 | Other players look like people |
 | 21 | 294 | Other players and creatures walk instead of jumping |
 | 22 | 295 | Equipment categories and traits replace tools (fabric) |
 | 23 | 296 | Work and combat by trait: no more tools in the game |
@@ -374,7 +373,7 @@ of a category (knife, sword, axe, hammer, pick…), and what it can do follows f
 |---|---|---|
 | 291 | Right-click look puts the cursor back where it was | Done |
 | 292 | The market names the seller | Done |
-| 293 | Other players look like people | Open |
+| 293 | Other players look like people | Done |
 | 294 | Other players and creatures walk instead of jumping | Open |
 | 295 | Equipment categories and traits replace tools (fabric) | Open |
 | 296 | Work and combat by trait: no more tools in the game | Open |
@@ -1352,6 +1351,15 @@ the local player sees on themself are never drawn for anyone else.
 - Suite (host): the first `player_states` entry for a peer new to a client's AOI is followed by that peer's look in
   the same tick; an equipment change sends the look again.
 - Net harness step: two clients, each sees the other as a player rig with the other's chosen hair and body type.
+
+Done: `CharacterSlice.build_player_body(look, pos)` builds the client's own body at boot and every remote player;
+the host sends a peer's look just ahead of its first state in a client's AOI (relayed players through
+`RelayBatch.entered`, the host's own body through `introduce_host_body`), reading each look once (a cache replaced
+on `player_look_changed`), and the hand item on AOI entry (`aoi_pair_entered`). The creation look carries no gear,
+so an equipment change is not a second look: the existing `peer_equipment` sync carries it and the suite checks the
+remote body wears it. The harness has one client, so its step `remote_player_body` checks the client drawing the
+host's body in the host's look without asking for it, and the host pushing it; a listen host still draws its
+clients as capsule ghosts (not in this phase's scope).
 
 ## Phase 294 — Other players and creatures walk instead of jumping
 

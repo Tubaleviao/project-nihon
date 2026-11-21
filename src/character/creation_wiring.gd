@@ -131,6 +131,11 @@ func _dress_own(state: Dictionary) -> void:
 	if root._ui != null:
 		root._ui.set_creation_state(state)
 
+## Phase 293 — the look a client's own body is built in at boot ({} before a character is created: the default body).
+func boot_look(raw: Variant) -> Dictionary:
+	var state := CreationRules.sanitize_state(raw)
+	return CreationRules.look(state, "") if CreationRules.is_created(state) else {}
+
 ## The appearance recipe the local avatar starts in: the created look, else null (the caller keeps its own).
 ## `raw` is a creation state as a record or a snapshot carries it.
 func boot_recipe(raw: Variant) -> Variant:

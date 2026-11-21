@@ -4,6 +4,13 @@ extends RefCounted
 
 var sl: Node
 
+## Metres above an avatar's feet its nameplate floats when it has no rig to measure (the procedural body).
+const NAMEPLATE_HEIGHT := 2.3
+const NAMEPLATE_FONT_SIZE := 40
+const NAMEPLATE_PIXEL_SIZE := 0.005
+## Phase 293 — metres between the top of a rigged head (hair included) and the nameplate's baseline.
+const NAMEPLATE_CLEARANCE := 0.25
+
 func _init(slice: Node) -> void:
 	sl = slice
 
@@ -134,23 +141,86 @@ func set_nameplate(instance_id: String, text: String) -> void:
 		label.name = "Nameplate"
 		label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		label.no_depth_test = true
-		label.font_size = sl.NAMEPLATE_FONT_SIZE
-		label.pixel_size = sl.NAMEPLATE_PIXEL_SIZE
+		label.font_size = NAMEPLATE_FONT_SIZE
+		label.pixel_size = NAMEPLATE_PIXEL_SIZE
 		label.outline_size = 8
-		label.position = Vector3(0.0, sl.NAMEPLATE_HEIGHT, 0.0)
 		root.add_child(label)
 	label.text = text
+	place_nameplate(instance_id)
+
+## Phase 293 — the nameplate sits above the rig's head (the head bone, or the top of the head and hair meshes when
+## they reach higher), not at a fixed height; a body without a rig keeps NAMEPLATE_HEIGHT. Also shows the label
+## again: attaching a rig hides every child of the instance root.
+func place_nameplate(instance_id: String) -> void:
+	if not sl._instances.has(instance_id):
+		return
+	var inst: Dictionary = sl._instances[instance_id]
+	var label := (inst["root"] as Node3D).get_node_or_null("Nameplate") as Label3D
+	if label == null:
+		return
+	label.visible = true
+	label.position = Vector3(0.0, nameplate_height(inst), 0.0)
+
+## Height of an instance's nameplate above its feet (root space).
+func nameplate_height(inst: Dictionary) -> float:
+	var rig_node: Variant = inst.get("rig_node", null)
+	if rig_node == null or not is_instance_valid(rig_node):
+		return NAMEPLATE_HEIGHT
+	var root: Node3D = inst["root"]
+	var top := -INF
+	var skels: Array = (rig_node as Node).find_children("*", "Skeleton3D", true, false)
+	if not skels.is_empty():
+		var skel := skels[0] as Skeleton3D
+		var head := skel.find_bone("Head")
+		if head >= 0:
+			top = (_to_root(skel, root) * skel.get_bone_global_rest(head).origin).y
+	for n in (rig_node as Node).find_children("*", "MeshInstance3D", true, false):
+		var m := n as MeshInstance3D
+		# The body, head and hair only: worn gear and the hand item are attached at a socket and would move the
+		# plate whenever they change (a carried station, a raised weapon).
+		if m.mesh != null and not m.has_meta("socket"):
+			top = maxf(top, (_to_root(m, root) * m.mesh.get_aabb()).end.y)
+	return NAMEPLATE_HEIGHT if top == -INF else top + NAMEPLATE_CLEARANCE
+
+## The transform from `node`'s space to `root`'s, by walking the parents (no scene tree needed).
+static func _to_root(node: Node, root: Node) -> Transform3D:
+	var t := Transform3D.IDENTITY
+	var n: Node = node
+	while n != null and n != root:
+		if n is Node3D:
+			t = (n as Node3D).transform * t
+		n = n.get_parent()
+	return t
 
 ## Put `peer_id`'s stored look (if any) on its avatar instance: the body (rebuilt once per look) and the nameplate.
 func dress_peer(peer_id: int, instance_id: String) -> void:
 	var look: Dictionary = sl._peer_looks.get(peer_id, {})
 	if look.is_empty():
 		return
-	var body := look.duplicate()
-	body.erase("title")   # a title changes the nameplate only, never the body
-	var key := JSON.stringify(body)
+	var key := look_key(look)
 	if str((sl._instances.get(instance_id, {}) as Dictionary).get("look_key", "")) != key:
 		apply_look(instance_id, look)
 		if sl._instances.has(instance_id):
 			sl._instances[instance_id]["look_key"] = key
 	set_nameplate(instance_id, sl.TitleRules.nameplate(str(look.get("name", "")), str(look.get("title", ""))))
+
+## Phase 293 — the one builder of a player body from a look dictionary (`CreationRules.look`: name, gender, hair,
+## hairColor; {} or a look without hair is the default player body): the look's recipe on the player rig its body
+## type picks (Phase 286), hair on the head (Phase 284). The client's own body at boot and every remote player are
+## built here; the Character window's doll dresses the same recipe through `AvatarBuilder.build`. "" on failure.
+func build_player_body(look: Dictionary, pos: Vector3) -> String:
+	var recipe := creation_recipe(look)
+	if recipe.is_empty():
+		return ""
+	var iid: String = sl.create_character_from_recipe(recipe, pos)
+	if iid != "":
+		sl.attach_default_rig(iid)
+		if not look.is_empty():
+			sl._instances[iid]["look_key"] = look_key(look)   # already in this look: `dress_peer` must not rebuild it
+	return iid
+
+## The part of a look that shapes the body (everything but the title, which changes the nameplate only), as text.
+static func look_key(look: Dictionary) -> String:
+	var body := look.duplicate()
+	body.erase("title")
+	return JSON.stringify(body)

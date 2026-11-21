@@ -29,6 +29,7 @@ func _connect_all() -> void:
 	connect_bus(GameBus.player_left, _on_player_left)
 	connect_bus(GameBus.peer_disconnected, _forget_peer)
 	connect_bus(GameBus.peer_equipment_evicted, _forget_peer)
+	connect_bus(GameBus.aoi_pair_entered, _on_aoi_pair_entered)
 
 func _local_id() -> String:
 	return root._registry.local_player_id if not root._registry.local_player_id.is_empty() else "player"
@@ -116,6 +117,16 @@ func _on_inventory_synced(owner_id: String, contents: Dictionary, _durabilities:
 func _on_local_inventory_changed() -> void:
 	if not root._is_client:
 		_recheck(_local_id())
+
+## Phase 293 (follow-up #719) — host: a holder new to a viewer's AOI. The viewer is told what is in the holder's
+## hand now, not only at its next change.
+func _on_aoi_pair_entered(viewer: int, subject: int) -> void:
+	if root._is_client or root._networking == null:
+		return
+	var pid: String = _local_id() if subject == 1 else root._networking.get_player_id(subject)
+	var item := str(_held.get(pid, "")) if pid != "" else ""
+	if item != "":
+		root._networking._m2.send_peer_held_to(viewer, { subject: item })
 
 ## A late joiner learns what the players inside its AOI hold.
 func _on_player_joined(peer_id: int, _player_id: String, _reconnected: bool) -> void:

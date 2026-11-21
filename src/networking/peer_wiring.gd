@@ -300,18 +300,32 @@ func player_exact_targets() -> Dictionary:
 func _on_remote_avatar_state(peer_id: int, position: Vector3) -> void:
 	if not root._is_client or peer_id == root.multiplayer.get_unique_id():
 		return
+	ensure_remote_avatar(peer_id, position)
+
+## Phase 293 — look requests this client sent (the fallback); the harness checks a met peer needs none.
+var look_requests := 0
+
+## Move `peer_id`'s avatar to `position`, building it first when this client has none. Returns its instance id.
+func ensure_remote_avatar(peer_id: int, position: Vector3) -> String:
 	var iid: String = str(_remote_avatars.get(peer_id, ""))
 	if iid != "" and root._character.set_character_position(iid, position):
-		return
-	iid = root._character.create_character("TravellerHuman", position)
+		return iid
+	# Phase 293 — a player body (the player rig), never a creature: in the peer's look when the host already sent
+	# it (it follows the peer's first state in our AOI), else the default player body until it lands.
+	var look: Dictionary = root._character.get_peer_look(peer_id)
+	iid = root._character.build_player_body(look, position)
 	if iid == "":
-		return
+		return ""
 	_remote_avatars[peer_id] = iid
 	root._character.bind_peer_character(peer_id, iid)
 	# The avatar IS this peer now; the PlayerSlice capsule ghost would draw it a second time.
 	root._player.set_ghost_suppressed(peer_id, true)
-	# Phase 181 — and it needs that peer's name and look: asked for once per appearance in our AOI.
-	root._networking.request_peer_look(peer_id)
+	# Phase 181 fallback — the host pushes the look on the pair's first relay; ask only when none is stored (a look
+	# forgotten while the relay pair was still live).
+	if look.is_empty() and root._networking != null:
+		look_requests += 1
+		root._networking.request_peer_look(peer_id)
+	return iid
 
 ## A peer with nothing worn is never sent an evict, so a body that has drifted out of range
 ## is dropped here as well (the host stops reporting its state once it leaves our AOI).

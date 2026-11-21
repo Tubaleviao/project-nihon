@@ -37,6 +37,9 @@ var flushed_ms := -INF
 ## `PAIR_TTL_MS` without a relay.
 var _last: Dictionary = {}
 var _swept_ms := -INF
+## Phase 293 — recipient -> [subject, …] whose relay in the last `build` was the pair's first (new to the
+## recipient's AOI, or back after `PAIR_TTL_MS`). The slice sends those subjects' looks right after the batch.
+var entered: Dictionary = {}
 ## Counters for the suite: AOI queries run and pair relays queued by `build`, since construction.
 var scans := 0
 var relays := 0
@@ -64,6 +67,7 @@ func has_pending() -> bool:
 ## itself: its own client already knows where it is.
 func build(now_ms: float, connected: Dictionary, recipients_of: Callable, center_of: Callable) -> Dictionary:
 	var out := {}
+	entered = {}
 	# A changed report held back from a far recipient (`FAR_GAP_MS`) stays queued until it is due: the
 	# subject may not report again (a dead body stops ticking after its death push), and the far peer
 	# would keep the stale position for good.
@@ -92,6 +96,10 @@ func build(now_ms: float, connected: Dictionary, recipients_of: Callable, center
 				continue
 			seen[subject] = [now_ms, pk]
 			_last[rid] = seen
+			if prev == null:
+				if not entered.has(rid):
+					entered[rid] = []
+				(entered[rid] as Array).append(subject)
 			if not out.has(rid):
 				out[rid] = []
 			(out[rid] as Array).append_array([subject, pk])

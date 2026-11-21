@@ -1043,6 +1043,10 @@ signal character_creation_intent(action: String, creation: Dictionary, player_id
 ## refusal (`creation.refuse.<reason>`); `state` is the player's creation state after it.
 signal character_creation_resolved(player_id: String, action: String, reason: String, state: Dictionary)
 
+## Phase 293 — host: `subject` was relayed to `viewer` for the first time (new to the viewer's AOI, or back after
+## the relay pair expired). The subject's look has just been sent; per-pair state such as the hand item follows.
+signal aoi_pair_entered(viewer: int, subject: int)
+
 ## Host: a player's name or creation look changed. Networking scopes it to the peers whose AOI holds the player.
 signal player_look_changed(player_id: String, look: Dictionary)
 
