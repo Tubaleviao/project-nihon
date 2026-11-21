@@ -123,9 +123,12 @@ func _on_swing_started(attacker_id: String, defender_id: String) -> void:
 func _attacker_character(attacker_id: String) -> String:
 	return _character_for_key(_wire_key(attacker_id))
 
-## The main-hand item the host's registry holds for a player with no body here ("" for the local "player").
+## The held hotbar item (Phase 280) else the main-hand item the host's registry holds for a player with no body here ("" for the local "player").
 func _registry_main_hand(attacker_id: String) -> String:
-	return str(root._registry.get_equipment(attacker_id).get("MainHand", "")) if attacker_id != "player" else ""
+	if attacker_id == "player":
+		return ""
+	var held: String = root._held_item_wiring.held_of(attacker_id)
+	return held if held != "" else str(root._registry.get_equipment(attacker_id).get("MainHand", ""))
 
 func _main_hand(iid: String) -> String:
 	var held: String = root._character.held_item_of(iid)
