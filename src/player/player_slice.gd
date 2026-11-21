@@ -56,7 +56,6 @@ const VIEW_FAR_MARGIN := 1.1
 const CAMERA_Y_SMOOTH := 10.0
 const CAMERA_SNAP_DISTANCE := 3.0
 const SYNC_INTERVAL := 30     # physics ticks between network sync broadcasts
-const Pointer := preload("res://src/player/pointer.gd")
 const ATTACK_RANGE := 3.0     # metres — melee interaction radius
 ## Metres — how close the player must be to tame (Phase 35). Must match
 ## TamingSlice.TAME_RANGE, which re-checks it and is the authority.
@@ -125,7 +124,7 @@ var _sync_tick: int = 0
 var _alive: bool = true
 ## Phase 85 — right button held: the camera orbits and the mouse is captured.
 var _looking: bool = false
-var _look_restore_pos: Vector2 = Vector2.ZERO
+var _look_restore_pos: Vector2 = Vector2.ZERO; var look_viewport_override: Viewport = null   # override: suite only
 var look_degrees: float = 0.0   ## Phase 186 — degrees the look has turned the camera, for the tutorial
 
 ## Aim raycast state + HUD.
@@ -368,18 +367,13 @@ func jump_requested() -> bool:
 func is_looking() -> bool:
 	return _looking
 
-## The viewport whose pointer coordinates a look stores; the suite points it at a stretched SubViewport.
-var look_viewport_override: Viewport = null
-
-func _look_viewport() -> Viewport:
-	return look_viewport_override if look_viewport_override != null else get_viewport()
 
 ## Capture the mouse and start orbiting. Remembers where the pointer was so `_end_look` can put it back.
 func _begin_look() -> void:
 	if _looking or _camera == null:
 		return
 	_looking = true
-	_look_restore_pos = _look_viewport().get_mouse_position()
+	_look_restore_pos = (look_viewport_override if look_viewport_override != null else get_viewport()).get_mouse_position()
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 
 ## Release the mouse where it was before the look began.
@@ -388,7 +382,7 @@ func _end_look() -> void:
 		return
 	_looking = false
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
-	Pointer.warp(_look_viewport(), _look_restore_pos)   # Phase 291: window pixels, not viewport coordinates
+	preload("res://src/player/pointer.gd").warp((look_viewport_override if look_viewport_override != null else get_viewport()), _look_restore_pos)   # Phase 291: window pixels, not viewport coordinates
 
 func _physics_process(delta: float) -> void:
 	if not _alive:
