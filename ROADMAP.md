@@ -1231,8 +1231,8 @@ no link between the clip's strike and the damage, and the target barely reacts.
 
 **Progress (in progress, not done).** Done: the fabric `CombatCombos` table and its validator
 (`tools/check_combos.js`, CI step), `src/battle/combo_chain.gd` and the combo clips in `CharacterPart2.trigger_attack`
-(suite: variants, window, fallback), placeholder clips on `player_rig`. Open: host-side impact timing and
-re-checks at impact, upper-body attack mask, hit/stagger reactions with knock-back, camera shake and hit-stop with
+(suite: variants, window, fallback), placeholder clips on `player_rig`. Also done: `src/battle/pending_hit.gd` (the pure queue, the re-checks at impact, `hit`/`stagger`, knock-back direction; suite).
+Open: wiring the queue into `CombatWiring` so the host resolves at impact (it still resolves at the click), upper-body attack mask, hit/stagger reactions with knock-back, camera shake and hit-stop with
 their options keys, the playtest `fight` step.
 
 ## Phase 288 — Recipe cards you can read: a real icon area in the crafting window

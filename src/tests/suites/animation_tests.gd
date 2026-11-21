@@ -8,6 +8,7 @@ const DeathPush := preload("res://src/battle/death_push.gd")
 const Bot := preload("res://src/tests/playtest_bot.gd")
 
 func register() -> void:
+	_run_test("animation: a pending hit lands at impact and is cancelled by range, death, stagger or a weapon switch (Phase 287)", _test_pending_hits)
 	_run_test("animation: repeated attacks inside the window play the combo variants, a pause restarts, a missing variant falls back (Phase 287)", _test_combo_chain)
 	_run_test("gestures: GameData lists every gesture with its clip and chat command", _test_p158_gesture_data)
 	_run_test("gestures: every gesture name key is in both catalogs", _test_p158_gesture_catalog)
@@ -415,3 +416,36 @@ func _test_combo_chain() -> void:
 		for clip in ComboChain.chain(w)["clips"]:
 			assert_true(lengths.has(clip), "the player rig has %s" % clip)
 	ch.free()
+
+
+const PendingHit := preload("res://src/battle/pending_hit.gd")
+
+func _impact_state(over: Dictionary = {}) -> Callable:
+	var base := { "attacker_alive": true, "attacker_staggered": false, "attacker_item": "VeilsteelLongsword", "target_alive": true, "gap": 1.0, "reach": 2.5 }
+	base.merge(over, true)
+	return func(_entry): return base
+
+func _test_pending_hits() -> void:
+	var q := PendingHit.new()
+	var e := q.start("a", "w0", "two_hand", "VeilsteelLongsword", 0, 10.0, 0.6)
+	assert_true(absf(float(e["due"]) - (10.0 + 0.55 * 0.6)) < 1e-6, "the hit is due at the impact time, not the click")
+	assert_eq(q.resolve_due(10.2, _impact_state()).size(), 0, "no damage before the impact time")
+	var done := q.resolve_due(10.4, _impact_state())
+	assert_true(done.size() == 1 and done[0]["reason"] == "", "the hit lands at impact")
+	assert_eq(q.size(), 0, "and leaves the queue")
+	# Re-checks at impact, one reason each.
+	for case in [["a target that left range", { "gap": 9.0 }, "out_of_range"], ["a target that died", { "target_alive": false }, "target_dead"],
+			["an attacker who died", { "attacker_alive": false }, "attacker_dead"], ["an attacker who was staggered", { "attacker_staggered": true }, "attacker_staggered"],
+			["a weapon switch", { "attacker_item": "StoneAxe" }, "weapon_switched"]]:
+		q.start("a", "w0", "two_hand", "VeilsteelLongsword", 0, 0.0, 0.6)
+		var r := q.resolve_due(1.0, _impact_state(case[1]))
+		assert_eq(r[0]["reason"], case[2], "%s deals nothing (%s)" % [case[0], case[2]])
+	# Another action cancels the pending hit; a new swing replaces it.
+	q.start("a", "w0", "two_hand", "VeilsteelLongsword", 0, 0.0, 0.6)
+	assert_true(q.cancel("a") and q.resolve_due(5.0, _impact_state()).is_empty(), "a cancelled hit never lands")
+	q.start("a", "w0", "two_hand", "VeilsteelLongsword", 0, 0.0, 0.6)
+	q.start("a", "w1", "two_hand", "VeilsteelLongsword", 1, 0.5, 0.6)
+	assert_eq(q.size(), 1, "a new swing replaces the pending one")
+	assert_eq(PendingHit.reaction(30.0, 100.0, 0.25), "stagger", "a hit above the stagger share staggers")
+	assert_eq(PendingHit.reaction(10.0, 100.0, 0.25), "hit", "a lighter hit flinches")
+	assert_eq(PendingHit.knockback_direction(Vector3(0, 0, 0), Vector3(3, 1, 0)), Vector3(1, 0, 0), "the knock-back points away from the attacker")
