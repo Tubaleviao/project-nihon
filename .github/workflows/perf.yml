@@ -1,0 +1,505 @@
+name: Perf
+
+# The gates whose verdict is a machine-speed number: frame and worker budgets, build-rate ratios, the crowd
+# ladder, scenarios that race a deadline, the lossy link profiles. On a shared runner these fail at random
+# with no code change (gate health, Nov 2026: the loopback harness 16%, the playtest timing steps ~5%), so
+# they are off the pull-request path. They run on every push to main, nightly, by hand, and on a pull
+# request labelled `perf` — add the label to a PR that touches the host's hot path (src/networking,
+# src/terrain, src/persistence, src/world, src/core, the stress or playtest tooling).
+# `Gate health` reads this workflow too, so a regression or a newly flaky gate still shows within a day.
+on:
+  push:
+    branches: [main, master]
+    paths-ignore:
+      - README.md
+      - AGENTS.md
+      - CLAUDE.md
+      - characters.md
+      - ROADMAP.md
+      - docs/**
+      - assets/README.md
+      - native/README.md
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  schedule:
+    - cron: "41 3 * * *"
+  workflow_dispatch:
+    inputs:
+      stress_max:
+        description: "Crowd stress run: the largest crowd to try (16, 32, 64, 128 or 200)"
+        default: "64"
+      stress_profiles:
+        description: "Crowd stress run: link profiles, space-separated (lan, wan_br, wan_bad)"
+        default: "lan"
+
+concurrency:
+  group: perf-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  native-linux:
+    name: Native builder (linux)
+    # Its own job, not a leg of the matrix below: the jobs that run the Linux binary (native-suite,
+    # playtest, export-native) need only this one, so they no longer wait for the macOS build.
+    # Same job as ci.yml's: a workflow cannot read another workflow's artifacts, so this one builds its own.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'perf')
+    runs-on: ubuntu-latest
+    env:
+      # godot-cpp's SConstruct reads SCONS_CACHE: compiled objects are reused across runs, so only
+      # what changed is rebuilt (the godot-cpp bindings were most of the build time).
+      SCONS_CACHE: ${{ github.workspace }}/.scons-cache
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache godot-cpp
+        uses: actions/cache@v4
+        with:
+          path: native/godot-cpp
+          key: godot-cpp-godot-4.5-stable-ubuntu-latest
+
+      - name: Cache the SCons build
+        uses: actions/cache@v4
+        with:
+          path: .scons-cache
+          key: scons-godot-4.5-stable-ubuntu-latest-${{ hashFiles('native/src/**', 'native/SConstruct') }}
+          restore-keys: scons-godot-4.5-stable-ubuntu-latest-
+
+      - name: Fetch godot-cpp
+        shell: bash
+        run: tools/fetch_godot_cpp.sh
+
+      - name: Install SCons
+        run: python -m pip install scons
+
+      - name: Build the extension
+        shell: bash
+        working-directory: native
+        run: |
+          # Both targets: the editor binary loads the debug library, the exports the release one.
+          scons platform=linux arch=x86_64 target=template_debug -j4
+          scons platform=linux arch=x86_64 target=template_release -j4
+          ls bin
+
+      - name: Upload the binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-linux
+          path: native/bin/
+          if-no-files-found: error
+
+  net-harness-wan-bad:
+    name: Two-client network harness under wan_bad
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'perf')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        # Same submodule note as godot-tests: the public repo runs on the
+        # committed placeholders.
+
+      - name: Download Godot 4.7
+        run: |
+          mkdir -p /tmp/godot
+          curl -fsSL -o /tmp/godot/godot.zip \
+            https://github.com/godotengine/godot/releases/download/4.7-stable/Godot_v4.7-stable_linux.x86_64.zip
+          unzip -o /tmp/godot/godot.zip -d /tmp/godot
+          chmod +x /tmp/godot/Godot_v4.7-stable_linux.x86_64
+
+      - name: Run the two-client harness under the wan_bad profile
+        # Phase 135 — 200 ms ± 60 ms, 5% loss, 256 kbit/s on both processes' outbound packets; the log
+        # records the profile in use and the driver fails if either side ran another.
+        env:
+          GODOT: /tmp/godot/Godot_v4.7-stable_linux.x86_64
+          NET_HARNESS_LOGDIR: ${{ runner.temp }}/net-harness-wan-bad
+          NET_PROFILE: wan_bad
+        run: tools/net_harness.sh
+
+      - name: Upload harness logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: net-harness-wan-bad-logs
+          path: ${{ runner.temp }}/net-harness-wan-bad
+          if-no-files-found: ignore
+
+  net-harness-wan-br:
+    name: Network harness under wan_br with the native builder (Phase 263)
+    # Phase 263 — a client's predicted dig is on screen before the host's confirmation arrives (60 ms ± 15 ms, 1%
+    # loss), its chunk built ahead on a worker while the work ran (native builder), and a refused dig is rolled back
+    # (`predicted_edit`).
+    needs: native-linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-linux
+          path: native/bin
+
+      - name: Download Godot 4.7
+        run: |
+          mkdir -p /tmp/godot
+          curl -fsSL -o /tmp/godot/godot.zip \
+            https://github.com/godotengine/godot/releases/download/4.7-stable/Godot_v4.7-stable_linux.x86_64.zip
+          unzip -o /tmp/godot/godot.zip -d /tmp/godot
+          chmod +x /tmp/godot/Godot_v4.7-stable_linux.x86_64
+
+      - name: Run the two-client harness under the wan_br profile
+        env:
+          GODOT: /tmp/godot/Godot_v4.7-stable_linux.x86_64
+          NET_HARNESS_LOGDIR: ${{ runner.temp }}/net-harness-wan-br
+          NET_PROFILE: wan_br
+        run: |
+          tools/net_harness.sh || exit 1
+          # Print the predicted edit's timings for the log (report only: the step's verdict above already requires
+          # the edit on screen before the confirmation on the native build).
+          grep -h "\[Harness\] predicted_edit" "$NET_HARNESS_LOGDIR"/*.log || true
+
+      - name: Upload harness logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: net-harness-wan-br-logs
+          path: ${{ runner.temp }}/net-harness-wan-br
+          if-no-files-found: ignore
+
+  stress:
+    name: Crowd stress run and bottleneck report
+    # Phase 162 — main pushes, the nightly run, manual runs and pull requests labelled `perf` (label a PR that
+    # touches the host's hot path, so the baseline gate fails the PR, not main after the merge).
+    # A manual run can pass a bigger ceiling and other link profiles.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'perf')
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Godot 4.7
+        run: |
+          mkdir -p /tmp/godot
+          curl -fsSL -o /tmp/godot/godot.zip \
+            https://github.com/godotengine/godot/releases/download/4.7-stable/Godot_v4.7-stable_linux.x86_64.zip
+          unzip -o /tmp/godot/godot.zip -d /tmp/godot
+          chmod +x /tmp/godot/Godot_v4.7-stable_linux.x86_64
+
+      - name: Run the stress ladder
+        env:
+          GODOT: /tmp/godot/Godot_v4.7-stable_linux.x86_64
+          STRESS_MAX: ${{ github.event.inputs.stress_max || '64' }}
+          STRESS_PROFILES: ${{ github.event.inputs.stress_profiles || 'lan' }}
+        run: |
+          # Every pattern up to STRESS_MAX bots. Budgets are a report; the driver exits non-zero on a hard
+          # failure (a crash, a host or watcher frame over 2 s, a bot dropped by the host without a reason,
+          # a peer record left after churn) and, since Phase 163, when a pattern's largest passing size drops
+          # below the baseline's (`StressRules.BASELINE_LARGEST`, docs/perf/crowd-baseline.md).
+          tools/stress.sh
+
+      - name: The report names a largest passing size per pattern and the top hot spots
+        if: always()   # a hard failure still gets its report in the job summary
+        env:
+          STRESS_PROFILES: ${{ github.event.inputs.stress_profiles || 'lan' }}
+        run: |
+          test -s stress/report.json && test -s stress/report.md
+          cat stress/report.md >> "$GITHUB_STEP_SUMMARY"
+          want=$(( $(echo "$STRESS_PROFILES" | wc -w) * 5 ))
+          got=$(grep -c '^STRESS_LARGEST ' stress/report.log || true)
+          if [ "$got" -ne "$want" ]; then
+            echo "::error::the report names a largest passing size for $got series, expected $want"
+            exit 1
+          fi
+          if [ "$(grep -c '^STRESS_HOTSPOT ' stress/report.log || true)" -lt 3 ]; then
+            echo "::error::the report names fewer than three hot spots"
+            exit 1
+          fi
+
+      - name: Split mode on loopback (Phase 250)
+        if: always()
+        env:
+          GODOT: /tmp/godot/Godot_v4.7-stable_linux.x86_64
+        run: |
+          # The control channel's own round trip, then both roles on this runner over the real TCP side
+          # channel: one small pattern, a report with the machine fields filled for both roles.
+          python3 -I tools/stress_ctl.py selftest
+          STRESS_LOOPBACK_SPLIT=1 STRESS_OUT=stress/split STRESS_MAX=16 STRESS_PATTERNS=cluster \
+            STRESS_PROFILES=lan STRESS_SECONDS=8 tools/stress.sh
+          test -s stress/split/report.json
+          python3 -I - <<'PY'
+          import json
+          m = json.load(open("stress/split/machines.json"))
+          for role in ("bots", "server"):
+              f = m[role]
+              assert f["cpu"] and f["cores"] and f["ram_mb"] and f["os"] and f["godot"] and f["build"], (role, f)
+              assert isinstance(f["native"], bool), (role, f)
+          PY
+          grep -q '^## Machines' stress/split/report.md
+
+      - name: Upload the stress report and run logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stress
+          path: stress/
+          if-no-files-found: warn
+
+  clan-loop:
+    name: Clan loop (four bots found a clan, specialize, trade and build)
+    # Phase 202 — a dedicated server and headless bots, no display. Fails on any missing beat or world-record check.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'perf')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Godot 4.7
+        run: |
+          mkdir -p /tmp/godot
+          curl -fsSL -o /tmp/godot/godot.zip \
+            https://github.com/godotengine/godot/releases/download/4.7-stable/Godot_v4.7-stable_linux.x86_64.zip
+          unzip -o /tmp/godot/godot.zip -d /tmp/godot
+          chmod +x /tmp/godot/Godot_v4.7-stable_linux.x86_64
+
+      - name: Run the clan scenario
+        env:
+          GODOT: /tmp/godot/Godot_v4.7-stable_linux.x86_64
+          STRESS_OUT: stress-clan
+          # Under the job's 30 minutes (setup included), so a hung scenario still reaches the report steps.
+          CLAN_TIMEOUT: "1500"
+        run: tools/stress_clan.sh
+
+      - name: Clan report in the job summary
+        if: always()
+        run: |
+          if [ -f stress-clan/clan.md ]; then cat stress-clan/clan.md >> "$GITHUB_STEP_SUMMARY"; else echo "No clan report was written." >> "$GITHUB_STEP_SUMMARY"; fi
+
+      - name: Upload the clan report and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clan-loop
+          path: stress-clan/
+          if-no-files-found: warn
+
+  playtest-timing:
+    name: Playtest timing gates (3-run budget median, stream rate, slow machine)
+    # The timing half of the playtest: ci.yml's playtest job runs the same bot with
+    # `--playtest-timing-report-only` and gates only what does not depend on the runner's speed.
+    needs: native-linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download the Linux native builder
+        uses: actions/download-artifact@v4
+        with:
+          name: native-linux
+          path: native/bin
+
+      - name: Install a software renderer and X server
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0 mesa-vulkan-drivers \
+            libxcursor1 libxinerama1 libxi6 libxrandr2 libxkbcommon0 libasound2t64 libfontconfig1
+
+      - name: Download Godot 4.7
+        run: |
+          mkdir -p /tmp/godot
+          curl -fsSL -o /tmp/godot/godot.zip \
+            https://github.com/godotengine/godot/releases/download/4.7-stable/Godot_v4.7-stable_linux.x86_64.zip
+          unzip -o /tmp/godot/godot.zip -d /tmp/godot
+          chmod +x /tmp/godot/Godot_v4.7-stable_linux.x86_64
+
+      - name: Run the playtest bot
+        run: |
+          # `--playtest-bot` is a USER arg (after `--`). The bot plays the listen host with
+          # rendering, writes playtest/report.{json,md} and one PNG per step, and exits
+          # non-zero on a hard failure (step timeout, any frame over 2 s). Slow percentiles
+          # are a report, not a gate. A crash writes no report.json, which fails the check below.
+          set +e
+          # Phase 174: two extra report-only runs. The gate is the median of the three runs' p95
+          # process time (tools/check_playtest_budget.py), so one noisy shared-runner run does not fail a PR.
+          mkdir -p /tmp/pt-extra
+          for n in 1 2; do
+            rm -f playtest/report.json   # a crashed run must not hand its predecessor's report to the median
+            timeout 1500 xvfb-run -a -s "-screen 0 1280x720x24" \
+              /tmp/godot/Godot_v4.7-stable_linux.x86_64 --path . --rendering-driver opengl3 -- --playtest-bot --playtest-no-budget \
+              > /tmp/pt-extra/run$n.log 2>&1
+            cp playtest/report.json /tmp/pt-extra/report$n.json
+          done
+          timeout 1500 xvfb-run -a -s "-screen 0 1280x720x24" \
+            /tmp/godot/Godot_v4.7-stable_linux.x86_64 --path . --rendering-driver opengl3 -- --playtest-bot --playtest-no-budget \
+            2>&1 | tee /tmp/playtest.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ ! -f playtest/report.json ]; then
+            echo "::error::the bot wrote no report (crash or boot failure)"
+            exit 1
+          fi
+          cat playtest/report.md >> "$GITHUB_STEP_SUMMARY"
+          if grep -qE "SCRIPT ERROR|Parse Error|Compile Error" /tmp/playtest.log; then
+            echo "::error::script/parse/compile errors present"
+            exit 1
+          fi
+          for step in create walk stream flight mine gather craft character_sheet place fight travel horizon; do
+            if [ ! -s "playtest/$step.png" ]; then
+              echo "::error::missing screenshot for step $step"
+              exit 1
+            fi
+          done
+          cp playtest/report.json /tmp/pt-extra/report3.json
+          # Phase 189: the gate also compares the flight step's collision and contents ms per attached chunk
+          # with the record flight flown in the same run with the near ring off; prove that check first.
+          python3 tools/check_playtest_budget.py --self-test || exit 1
+          python3 tools/check_playtest_budget.py /tmp/pt-extra/report?.json || exit 1
+          exit "$status"
+
+      - name: Run the bot again on the GDScript fallback (Phase 169)
+        run: |
+          # Same commit, `--no-native`: the stream step's chunk build rate with the native builder
+          # must be at least double this run's, and the native run must not hitch more than this one.
+          # `--playtest-no-budget`: the Phase 174 process-time budget is the native builder's, gated above.
+          mkdir -p /tmp/playtest-native
+          cp playtest/report.json /tmp/playtest-native/report.json
+          mkdir -p /tmp/playtest-native-png
+          cp playtest/*.png /tmp/playtest-native-png/
+          set +e
+          timeout 1500 xvfb-run -a -s "-screen 0 1280x720x24" \
+            /tmp/godot/Godot_v4.7-stable_linux.x86_64 --path . --rendering-driver opengl3 -- --playtest-bot --no-native --playtest-no-budget \
+            2>&1 | tee /tmp/playtest-gdscript.log
+          fallback_status=${PIPESTATUS[0]}
+          set -e
+          if [ ! -f playtest/report.json ]; then
+            echo "::error::the fallback run wrote no report"
+            exit 1
+          fi
+          if grep -qE "SCRIPT ERROR|Parse Error|Compile Error" /tmp/playtest-gdscript.log; then
+            echo "::error::script/parse/compile errors in the fallback run"
+            exit 1
+          fi
+          if [ "$fallback_status" -ne 0 ]; then
+            echo "::error::the fallback run failed (exit $fallback_status)"
+            exit 1
+          fi
+          cp playtest/report.json /tmp/playtest-native/report-gdscript.json
+          cp /tmp/playtest-native/report.json playtest/report.json
+          cp /tmp/playtest-native-png/*.png playtest/   # keep the native run's screenshots with its report
+          cp /tmp/playtest-native/report-gdscript.json playtest/report-gdscript.json
+          python3 tools/check_stream_rate.py playtest/report.json playtest/report-gdscript.json | tee -a "$GITHUB_STEP_SUMMARY"
+          test "${PIPESTATUS[0]}" -eq 0
+
+      - name: Fly the slow-machine case, worker pool limited to 2 threads (Phase 191)
+        run: |
+          # A machine with two worker threads must still keep the ground under a body flying at the old
+          # 90 m/s (`/speed 10`). `override.cfg` beside project.godot limits the engine's worker pool; the bot
+          # plays only the flight step (`--playtest-only flight`) at that speed. The step's own verdict uses
+          # `FLIGHT_MIN_COVER` (0.5, the floor for CI runner spread); the >= 90% slow-machine rule is enforced by
+          # the check below, so a non-zero exit, a missing `ok` or a gated coverage under 90% fails the job.
+          mkdir -p /tmp/playtest-main
+          cp playtest/report.json /tmp/playtest-main/report.json
+          rm -f playtest/report.json   # a slow run that writes nothing must not be judged on the main run's report
+          printf '[threading]\nworker_pool/max_threads=2\n' > override.cfg
+          set +e
+          timeout 900 xvfb-run -a -s "-screen 0 1280x720x24" \
+            /tmp/godot/Godot_v4.7-stable_linux.x86_64 --path . --rendering-driver opengl3 -- --playtest-bot --playtest-no-budget \
+            --playtest-only flight --playtest-flight-speed 10 2>&1 | tee /tmp/playtest-slow.log
+          slow_status=${PIPESTATUS[0]}
+          set -e
+          rm -f override.cfg
+          # Phase 194 (#512): the main run's report goes back before any check below can fail, so the upload
+          # always carries it; the slow run's own report is kept beside it.
+          rm -f /tmp/playtest-slow.json
+          if [ -f playtest/report.json ]; then cp playtest/report.json /tmp/playtest-slow.json; fi
+          cp /tmp/playtest-main/report.json playtest/report.json
+          if [ -f /tmp/playtest-slow.json ]; then cp /tmp/playtest-slow.json playtest/report-slow.json; fi
+          if grep -qE "SCRIPT ERROR|Parse Error|Compile Error" /tmp/playtest-slow.log; then
+            echo "::error::script/parse/compile errors in the slow-machine run"
+            exit 1
+          fi
+          python3 - <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
+          import json, sys
+          r = json.load(open("/tmp/playtest-slow.json"))
+          f = [s for s in r["steps"] if s["step"] == "flight"]
+          if not f or "flight" not in f[0]:
+              print("::error::the slow-machine run recorded no flight step"); sys.exit(1)
+          fl = f[0]["flight"]
+          print("Slow machine (2 worker threads): %.0f m/s, ground under the body built in %.0f%% of %d samples (floor 90%%)" % (
+              fl["speed_mps"], 100 * fl["under_cover"], fl["samples"]))
+          if abs(fl["speed_mps"] - 90.0) > 0.5:
+              print("::error::the slow-machine flight did not fly at 90 m/s"); sys.exit(1)
+          if fl.get("gated") and fl["under_cover"] < 0.9:
+              print("::error::the slow machine lost the ground under the body"); sys.exit(1)
+          PY
+          test "${PIPESTATUS[0]}" -eq 0
+          test "$slow_status" -eq 0
+
+      - name: Upload the playtest report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playtest-timing
+          path: playtest/
+          if-no-files-found: warn
+
+  release-flight:
+    name: Release export plays the flight step (report only)
+    # Phase 248: every other playtest run uses the editor binary with the template_debug library. This
+    # one exports the Linux preset as a release build (template_release export template and native
+    # library) and plays the `flight` step once on it. Report only: the numbers go to the step summary
+    # and the uploaded report, beside the editor's in docs/perf/playtest-baseline.md; nothing is gated
+    # but a crash, a missing report or the release library not loading.
+    needs: native-linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-linux
+          path: native/bin
+
+      - name: Install a software renderer and X server
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0 mesa-vulkan-drivers \
+            libxcursor1 libxinerama1 libxi6 libxrandr2 libxkbcommon0 libasound2t64 libfontconfig1
+
+      - name: Download Godot 4.7 and its export templates
+        run: |
+          mkdir -p /tmp/godot
+          curl -fsSL -o /tmp/godot/godot.zip \
+            https://github.com/godotengine/godot/releases/download/4.7-stable/Godot_v4.7-stable_linux.x86_64.zip
+          unzip -o /tmp/godot/godot.zip -d /tmp/godot
+          chmod +x /tmp/godot/Godot_v4.7-stable_linux.x86_64
+          curl -fsSL -o /tmp/godot/templates.tpz \
+            https://github.com/godotengine/godot/releases/download/4.7-stable/Godot_v4.7-stable_export_templates.tpz
+          mkdir -p ~/.local/share/godot/export_templates/4.7.stable
+          unzip -o /tmp/godot/templates.tpz -d /tmp/godot/templates
+          cp -r /tmp/godot/templates/templates/* ~/.local/share/godot/export_templates/4.7.stable/
+
+      - name: Export a release build with the release library
+        # "Linux Playtest" is the Linux preset plus the `playtest` feature tag, the only thing that lets a
+        # release build run `--playtest-bot` (BootWiring.playtest_allowed); the shipped "Linux" preset ignores it.
+        run: |
+          mkdir -p build/release
+          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --import || true
+          /tmp/godot/Godot_v4.7-stable_linux.x86_64 --headless --path . --export-release "Linux Playtest" build/release/nihon.x86_64
+          test -s build/release/nihon.x86_64
+          test -s build/release/libnihon_native.linux.template_release.x86_64.so
+
+      - name: Fly the flight step on the release build
+        run: |
+          python3 tools/flight_report.py --self-test
+          # Shared with release.yml: report, native library and script-error gates; the bot's verdict is report only.
+          tools/run_export_playtest.sh --report-only build/release/nihon.x86_64 flight /tmp/release-flight.log
+          {
+            echo "### Release build: the flight step (Phase 248, report only)"
+            python3 tools/flight_report.py build/release/playtest/report.json
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          test "${PIPESTATUS[0]}" -eq 0
+
+      - name: Upload the release flight report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playtest-release
+          path: build/release/playtest/
+          if-no-files-found: warn

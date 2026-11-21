@@ -120,13 +120,35 @@ empties the host's memory of the old ground and tells every client to drop its c
 
 `main` is the stable branch. All work goes through pull requests; direct pushes to `main` are not permitted except for generated artifact updates (`bible/`, `wiki/`, `godot/`).
 
+## CI and perf workflows
+
+Pull requests run `ci.yml`: the gates whose verdict does not depend on how fast the runner is (the suite,
+fabric and drift checks, the boots, the loopback harness, the exports, and the playtest bot with
+`--playtest-timing-report-only`, which reports the flight coverage and the revisit worker share instead of
+failing on them). The loopback harness gets a 480 s deadline and one retry: a real bug fails both runs.
+
+`perf.yml` holds the machine-speed gates: the playtest's 3-run budget median, the native-vs-fallback stream
+rate and the slow-machine flight, the crowd stress ladder, the clan loop, the wan_bad and wan_br harness
+runs and the release-build flight. It runs on every push to `main`, nightly, by hand (the stress inputs
+are there), and on a pull request labelled `perf`. Label a PR that touches the host's hot path
+(`src/networking`, `src/terrain`, `src/persistence`, `src/world`, `src/core`, the stress or playtest
+tooling) so a regression fails the PR and not `main` after the merge.
+
+## Git hooks
+
+Run `tools/install_hooks.sh` once per clone (it sets `core.hooksPath` to `.githooks`, which worktrees
+share). The pre-commit hook runs `tools/check_uids.sh` on what is staged, so a new `.gd` or `.gdshader`
+without its `.uid` sidecar fails at commit time instead of in CI (the most frequent CI failure in
+November 2026). Generate missing sidecars with `godot --headless --path . --import` and stage them.
+
 ## Flaky gates
 
 A gate that fails three times on `main` with no code change that explains it is demoted to report-only
 the same day (its numbers still go in the report), and an issue is opened to make it decisive again.
 A gate that is red half the time stops meaning anything. `tools/check_gate_health.sh` prints the
-failure count per job over the last 40 `main` runs of `ci.yml`; the scheduled `Gate health` workflow
-runs it daily and fails when any job is over 10%.
+failure count per job over the last 40 `main` runs of `ci.yml` (`GATE_WORKFLOW=perf.yml` for the perf
+workflow); the scheduled `Gate health` workflow checks both daily and fails when any job is over 10%.
+A gate whose verdict is a machine-speed number belongs in `perf.yml`, not on the pull-request path.
 
 The playtest `walk` step is the worked example (Phase 253): its distance, ground and state checks are
 decisive, its gait numbers are report-only, and the clip itself is pinned by a suite test
