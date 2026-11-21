@@ -114,8 +114,10 @@ const PROPORTION_STEP := 0.05
 
 const CharacterPart1 := preload("res://src/character/character_part_1.gd")
 const CharacterPart2 := preload("res://src/character/character_part_2.gd")
+const HeldItem := preload("res://src/character/held_item.gd")
 var _m2 := CharacterPart2.new(self)
 var _m1 := CharacterPart1.new(self)
+var _held := HeldItem.new(self)
 const CharacterPart3 := preload("res://src/character/character_part_3.gd")
 var _m3 := CharacterPart3.new(self)
 
@@ -229,12 +231,19 @@ func get_character_position(instance_id: String) -> Variant:
 func get_character_yaw(instance_id: String) -> Variant:
 	return _m2.get_character_yaw(instance_id)
 
+## Phase 280 — the hotbar item in the hand (see held_item.gd): set, read its id, read its mesh.
+func set_held_item(instance_id: String, item_id: String) -> bool: return _held.set_held(instance_id, item_id)
+func refresh_held_item(instance_id: String) -> void: _held.refresh(instance_id)
+func held_item_of(instance_id: String) -> String: return _held.held_item_of(instance_id)
+func held_node_of(instance_id: String) -> Node3D: return _held.held_node_of(instance_id)
+
 ## Free an instance (its body and any peer binding to it). The player's own avatar stays
 ## selected only while it exists. False for an unknown instance.
 func remove_character(instance_id: String) -> bool:
 	if not _instances.has(instance_id):
 		return false
 	(_instances[instance_id]["root"] as Node3D).queue_free()
+	_held.forget(instance_id)
 	_instances.erase(instance_id)
 	for peer_id in _peer_characters.keys():
 		if str(_peer_characters[peer_id]) == instance_id:
@@ -623,6 +632,8 @@ func clear_equipment(instance_id: String, slot: String) -> bool:
 	# Un-equipping can lift a hideRegions hide another slot no longer shares
 	# (or the cleared slot could have been the last thing hiding a part).
 	_apply_lod(instance_id)
+	if slot == "MainHand":
+		refresh_held_item(instance_id)
 	GameBus.character_appearance_changed.emit(instance_id, app)
 	return true
 

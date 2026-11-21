@@ -776,3 +776,40 @@ func client_loot_synced(h: Node) -> void:
 				return true
 		return false, h._step_timeout() * 3.0)
 	h._report("client_loot_synced", h.verdict(dropped, true), "taken-and-dropped" if dropped else "drop_not_seen-bag%d" % (inv.get_item_count(LOOT_ITEM) - before))
+
+## Phase 280 — the held item is synced to peers in range: the host selects one hotbar item, then another, and the
+## client's view of the host's avatar holds each (the host's pack is checked by the host's own wiring).
+const HELD_FIRST := "StonePick"
+const HELD_SECOND := "Thornwood"
+
+func held_item_synced(h: Node) -> void:
+	if h._role == "host":
+		var peers: PackedInt32Array = h._root.multiplayer.get_peers()
+		var pid: String = h._root._networking.get_player_id(peers[0]) if peers.size() > 0 else ""
+		if pid == "":
+			h._report("held_item_synced", "fail", "no_connected_peer")
+			return
+		if not await h._await_client_ready("held", pid):
+			h._report("held_item_synced", "fail", "client_never_arrived")
+			return
+		h._root._inventory.add_item(HELD_FIRST, 1)
+		h._root._inventory.add_item(HELD_SECOND, 1)
+		GameBus.held_item_intent.emit(HELD_FIRST, "")
+		var first: bool = h._root._held_item_wiring._held.get(h._root._held_item_wiring._local_id(), "") == HELD_FIRST
+		await h._await_settle(2.0)
+		GameBus.held_item_intent.emit(HELD_SECOND, "")
+		var second: bool = h._root._held_item_wiring._held.get(h._root._held_item_wiring._local_id(), "") == HELD_SECOND
+		await h._await_settle(6.0)   # the client reads both before this process (the last step) exits
+		h._report("held_item_synced", h.verdict(first and second, true), "held" if first and second else "host_refused")
+		return
+	var announced := {}
+	var seen: bool = await h._await_until(func():
+		h._announce_ready("held", announced)
+		return h._root._held_item_wiring._pending.get(1, "") == HELD_SECOND, h._step_timeout() * 4.0)
+	# The avatar of the host may not be drawn yet this early (a headless client); when it is, it holds the item.
+	var avatar: String = h._root._character.get_peer_character(1) if seen else ""
+	if avatar != "":
+		await h._await_until(func(): return h._root._character.held_item_of(avatar) == HELD_SECOND, h._step_timeout())
+	var ok: bool = seen and (avatar == "" or h._root._character.held_item_of(avatar) == HELD_SECOND)
+	h._report("held_item_synced", h.verdict(ok, true), "seen" if ok else ("never_synced" if not seen else "not_on_avatar"))
+

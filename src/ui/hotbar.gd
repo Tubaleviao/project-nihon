@@ -332,6 +332,8 @@ func select_slot(index: int) -> void:
 func _announce_selection() -> void:
 	slot_selected.emit(selected, selected_item())
 	GameBus.hotbar_station_selected.emit(selected_item() if kind_at(selected) == KIND_STATION else "")
+	# Phase 280 — the selected item is the held item (a skill box holds nothing).
+	GameBus.held_item_intent.emit("" if kind_at(selected) in [KIND_SKILL, KIND_NONE] else selected_item(), "")
 
 ## Select the box holding `item_id`, without re-announcing when it already is selected.
 func select_item(item_id: String) -> bool:

@@ -327,7 +327,7 @@ func _ready() -> void:
 	# Phase 85 — chat lines travel client → host as an intent; the host's posts (chat, announcements,
 	# command replies) travel back.
 	GameBus.chat_intent.connect(_on_chat_intent)
-	GameBus.gesture_intent.connect(_on_gesture_intent)
+	GameBus.gesture_intent.connect(_on_gesture_intent); GameBus.held_item_intent.connect(_m2._on_held_item_intent)
 	# Phase 181 — a creation travels client → host as an intent; a look travels host → the peers in AOI.
 	GameBus.character_creation_intent.connect(_on_character_creation_intent)
 	GameBus.player_look_changed.connect(_on_player_look_changed)

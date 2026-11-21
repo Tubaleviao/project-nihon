@@ -436,7 +436,7 @@ func run(root: Node, role: String) -> void:
 	await _step_status_effect()
 	await _step_paralysis_holds()
 	await _step_station_needs_item()
-	await _step_inventory_owner()
+	await _step_inventory_owner(); await LateSteps.new().held_item_synced(self)
 	await _step_research_points_owner()
 	await _step_chat_relayed()
 	await _step_join_line_localized()
