@@ -13,7 +13,8 @@ var last_clip: Dictionary = {}
 ## peer -> the last few clips played, oldest first (the harness reads it: a slow link can land "build" before a
 ## poll sees "chop").
 var clip_history: Dictionary = {}
-## peer -> the kind last announced on the host (a stop is only broadcast for a body that has one running).
+## peer -> the loop last announced on the host (a stop is only broadcast for a body that has one running; a
+## single action ends on its own, so it leaves "" here).
 var _announced: Dictionary = {}
 ## Strikes fired so far, by peer.
 var strikes: Dictionary = {}
@@ -29,6 +30,12 @@ func _connect_all() -> void:
 	connect_bus(GameBus.work_anim_changed, _on_anim_changed)
 	connect_bus(GameBus.harvest_started, _on_harvest_started)
 	connect_bus(GameBus.harvest_resolved, _on_harvest_resolved)
+	connect_bus(GameBus.peer_disconnected, _on_peer_disconnected)
+
+## A peer that left takes its per-peer state with it (peer ids are not reused, so the maps would only grow).
+func _on_peer_disconnected(peer: int) -> void:
+	for m: Dictionary in [_active, last_clip, clip_history, _announced, strikes]:
+		m.erase(peer)
 
 ## A carcass harvest (host only) is a hold of its own: it plays `dissect` on the harvester until it resolves.
 func _on_harvest_started(player_id: String, _carcass_id: String, _seconds: float) -> void:
@@ -119,7 +126,7 @@ func _on_anim_changed(peer: int, kind: String) -> void:
 	if not root._is_client:
 		if kind == "" and _announced.get(peer, "") == "":
 			return   # nothing running on that body: no stop to play or broadcast
-		_announced[peer] = kind
+		_announced[peer] = kind if WorkAnim.is_loop(kind) else ""
 	_play(peer, kind)
 	if not root._is_client and root._networking != null and root._networking.is_host():
 		var at: Variant = _position_of(peer)

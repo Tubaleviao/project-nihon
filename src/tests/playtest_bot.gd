@@ -1306,7 +1306,7 @@ func _step_mine() -> Array:
 	var held: float = await _hold_work("block", "", spot, true)
 	GameBus.block_mine_requested.emit(spot, Vector3.UP, "", {})
 	var ok: bool = await _until(func(): return _mined.size() > before, STEP_TIMEOUT_SECS)
-	if not ok or _work_bar_note != "" or _work_last.size() < 1 or _work_clip != WorkAnim.clip_of(str(_work_last[0])) or not str(_work_last[0]) in ["dig", "mine"]: return [false, (_work_bar_note if _work_bar_note != "" else "the %s hold played '%s', not '%s'" % [str(_work_last[0]), _work_clip, WorkAnim.clip_of(str(_work_last[0]))]) if ok else "no block_mined (work held %.1f s)" % held]   # 281: the clip
+	var wk: String = str(_work_last[0]) if not _work_last.is_empty() else ""; if not ok or _work_bar_note != "" or not wk in ["dig", "mine"] or _work_clip != WorkAnim.clip_of(wk): return [false, (_work_bar_note if _work_bar_note != "" else "the '%s' hold played '%s', not '%s'" % [wk, _work_clip, WorkAnim.clip_of(wk)]) if ok else "no block_mined (work held %.1f s)" % held]   # 281: the clip
 	# Phase 263 — more digs beside it, so the step has an edit-to-visible p95: each is timed from its completion to
 	# its chunk's mesh attached. PR #648 review: each one held for its work time first, as a player digs (the dug
 	# chunk is built while the work runs, `EditPrebuild`).
@@ -1330,7 +1330,7 @@ func _hold_work(kind: String, tree_id: String, pos: Vector3, shoot := false, exa
 	# A hit cancels the work (and the spawn's wolf pack downed the body during a hold on CI): heal and clear first.
 	GameBus.admin_healed.emit()
 	_clear_creatures_near_body()
-	_work_secs = 0.0
+	_work_secs = 0.0; _work_clip = ""   # 281: a hold the host never answered leaves no clip from the last one
 	GameBus.work_start_requested.emit(kind, tree_id, pos, Vector3.UP, exact, "")
 	if not await _until(func(): return _work_secs > 0.0, STEP_TIMEOUT_SECS):
 		return -1.0
@@ -1639,7 +1639,7 @@ func _step_character_sheet() -> Array:
 
 ## Place a forge from the hotbar (Phase 268), a few metres from the bench so the two do not overlap.
 func _step_place() -> Array:
-	var placed := 0
+	var placed := 0; _root._work_anim_wiring.last_clip.erase(1)   # 281: only this step's placement counts
 	for attempt in range(3):
 		_key(KEY_W, true)
 		await _until(func(): return false, 1.0)

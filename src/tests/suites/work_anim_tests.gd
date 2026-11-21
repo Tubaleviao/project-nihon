@@ -110,6 +110,8 @@ func _test_p281_wiring() -> void:
 	GameBus.block_place_requested.emit(Vector3.ZERO, Vector3.UP, "", "Soil", {})
 	assert_eq(loco.attack_clip, "build", "placing a block plays build")
 	assert_false(w._active[1]["loop"], "and plays once")
+	GameBus.work_cancel_requested.emit("")
+	assert_true(w.is_working(1), "a stop with no loop running neither cuts the single action short nor is broadcast")
 	_free_fixture(f)
 
 func _test_p281_strike_timing() -> void:
@@ -131,19 +133,29 @@ func _test_p281_strike_timing() -> void:
 
 func _test_p281_peer_copy() -> void:
 	var f := _fixture()
-	var gr: Node = f["gr"]
-	var peer_iid: String = f["ch"].create_character_from_recipe({"skeleton": "HumanoidSkeleton"}, Vector3.ZERO)
-	f["ch"].attach_rig(peer_iid, "models/player_rig.glb.raw")
-	gr._registry.set_meta("x", 1)
+	var ch: CharacterSlice = f["ch"]
 	var w = f["w"]
+	var peer_iid: String = ch.create_character_from_recipe({"skeleton": "HumanoidSkeleton"}, Vector3.ZERO)
+	assert_true(ch.attach_rig(peer_iid, "models/player_rig.glb.raw"), "the peer's copy has the rig")
+	ch.bind_peer_character(7, peer_iid)
 	var seen := [""]
 	var cb := func(peer: int, kind: String) -> void: seen[0] = "%d:%s" % [peer, kind]
 	GameBus.work_anim_changed.connect(cb)
 	GameBus.work_anim_changed.emit(7, "chop")
-	assert_eq(seen[0], "7:chop", "the change is a bus signal other systems can read")
 	GameBus.work_anim_changed.disconnect(cb)
-	assert_false(w.is_working(7), "an unknown peer draws no copy and plays nothing")
-	f["ch"].free_character(peer_iid) if f["ch"].has_method("free_character") else null
+	assert_eq(seen[0], "7:chop", "the change is a bus signal other systems can read")
+	assert_eq(str(ch._instances[peer_iid]["locomotion"].attack_clip), "chop", "peer 7's copy plays chop")
+	assert_true(w.is_working(7), "and loops it")
+	assert_true(f["loco"].get_state() != Locomotion.State.ATTACK, "the local body is left alone")
+	GameBus.work_anim_changed.emit(7, "")
+	assert_false(w.is_working(7), "the stop ends the copy's loop")
+	GameBus.work_anim_changed.emit(8, "chop")
+	assert_false(w.is_working(8), "an unknown peer draws no copy and plays nothing")
+	GameBus.work_anim_changed.emit(7, "mine")
+	GameBus.peer_disconnected.emit(7)
+	assert_false(w.is_working(7) or w.last_clip.has(7) or w.clip_history.has(7) or w._announced.has(7),
+		"a peer that left takes its per-peer state with it")
+	ch.remove_character(peer_iid)
 	_free_fixture(f)
 
 func _test_p281_face_target() -> void:
