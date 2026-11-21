@@ -82,13 +82,15 @@ func _test_synced_swing_animates_peer() -> void:
 	f["gr"]._is_client = true
 	var peer_iid: String = f["ch"].create_character_from_recipe({"skeleton": "HumanoidSkeleton"}, Vector3(3, 0, 0))
 	f["ch"].bind_peer_character(5, peer_iid)
-	GameBus.combat_hit_synced.emit("p:5", "c:w0", "hit")
+	GameBus.combat_hit_synced.emit("p:5", "c:w0", "swing")   # the host announces a player's swing at the click
 	assert_eq(int(f["ch"]._instances[peer_iid]["locomotion"].swing_serial), 1, "the peer's avatar swung")
+	GameBus.combat_hit_synced.emit("p:5", "c:w0", "hit")
+	assert_eq(int(f["ch"]._instances[peer_iid]["locomotion"].swing_serial), 1, "its hit at impact does not swing again")
 	assert_eq(int(f["cr"].visuals().models["w0"]["tree"].get_meta("hit_shots", 0)), 1, "and the target flinched")
 	assert_eq(int(f["ch"]._instances[f["iid"]]["locomotion"].swing_serial), 0, "the local avatar did not")
 	# A host never plays a packet's animation twice: the synced signal only acts on a client.
 	f["gr"]._is_client = false
-	GameBus.combat_hit_synced.emit("p:5", "c:w0", "hit")
+	GameBus.combat_hit_synced.emit("p:5", "c:w0", "swing")
 	assert_eq(int(f["ch"]._instances[peer_iid]["locomotion"].swing_serial), 1, "a host ignores the synced signal")
 	_free_fixture(f)
 
@@ -484,6 +486,24 @@ func _test_battle_impact_timing() -> void:
 	clock[0] = 1.5
 	assert_eq(b.tick_impacts(), 0, "a target out of range at impact takes no damage")
 	assert_eq(hits.size(), 1, "and no hit sync is sent")
+	# A second click while a swing is in flight neither pushes its impact back nor starts another swing.
+	world["gap"] = 1.0
+	clock[0] = 2.0
+	var started := [0]
+	b.swing_started_fn = func(_a, _d): started[0] += 1
+	GameBus.combat_round_requested.emit("player", "GraywolfPack")
+	clock[0] = 2.2
+	GameBus.combat_round_requested.emit("player", "GraywolfPack")
+	assert_eq(started[0], 1, "a click during a swing in flight starts no second swing")
+	clock[0] = 2.4
+	assert_eq(b.tick_impacts(), 1, "so the first swing lands at its own impact time")
+	# An attacker staggered (immobilised) at impact deals nothing.
+	b.impact_state_fn = func(_e): return { "attacker_alive": true, "attacker_staggered": true, "attacker_item": "X",
+		"target_alive": true, "gap": 1.0, "reach": 3.0 }
+	clock[0] = 3.0
+	GameBus.combat_round_requested.emit("player", "GraywolfPack")
+	clock[0] = 3.5
+	assert_eq(b.tick_impacts(), 0, "a staggered attacker's hit is cancelled")
 	GameBus.combat_hit_resolved.disconnect(cb)
 	b.free()
 
@@ -522,6 +542,12 @@ func _test_upper_body_attack() -> void:
 	var still := Locomotion.new()
 	still.trigger_attack("attack_1h", 0.5)
 	assert_false(RigTree.swing_on_upper_body(tree, still), "a standing swing keeps its own state")
+	# The node is latched when the swing starts: stopping mid-swing keeps the swing on the upper body.
+	var moving_then_stopped := Locomotion.new()
+	moving_then_stopped.update(3.0, true, 0.0, 0.1)
+	moving_then_stopped.trigger_attack("attack_1h", 0.5)
+	RigTree.drive_shots(tree, null, moving_then_stopped)
+	assert_true(bool(tree.get_meta("swing_upper", false)), "a swing begun while moving is latched upper-body")
 	root.free()
 
 const HitFeel := preload("res://src/battle/hit_feel.gd")

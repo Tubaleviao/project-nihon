@@ -1230,11 +1230,13 @@ no link between the clip's strike and the damage, and the target barely reacts.
 
 **Done.** Fabric `CombatCombos` (validator, `tools/check_combos.js`, CI step); `combo_chain.gd` (variants, window,
 fallback); `pending_hit.gd` + `BattleSlice.tick_impacts` (the host deals a player swing at the clip's impact time
-after the re-checks; the swing clip plays at the click; a new swing replaces a pending hit); hit/stagger by the
-fabric share (knock-back direction is the pure `PendingHit.knockback_direction`; the body push itself is not wired);
+after the re-checks (alive, not immobilised or staggered, not carrying a body, target living, untamed and in reach by exact
+positions); the swing clip plays at the click and a click during a swing in flight is ignored); hit/stagger by the
+fabric share, with the struck creature pushed `knockbackLight`/`knockbackHeavy` metres away (`CombatWiring.push_struck`; a
+player's body is moved by its own client);
 the bone-masked `UpperAttack` one-shot; `HitFeel` camera shake and hit-stop with the `camera_shake` / `hit_stop`
-options (both locales); the playtest `fight` step records the clip sequence and waits out each impact. A remote
-client still sees a peer's swing when the host's hit sync arrives (at impact).
+options (both locales); the playtest `fight` step records the clip sequence and waits out each impact. The host
+announces a swing to clients in range at the click (`combat_hit` outcome `swing`), so observers see it then.
 
 ## Phase 288 — Recipe cards you can read: a real icon area in the crafting window
 

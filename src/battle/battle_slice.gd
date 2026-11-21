@@ -47,6 +47,8 @@ var is_authoritative: bool = true
 var impact_queue: RefCounted = null
 var impact_info_fn: Callable = Callable()
 var impact_state_fn: Callable = Callable()
+## `swing_started_fn(attacker_id, defender_id)`: called when a swing is queued (the host tells observers the clip).
+var swing_started_fn: Callable = Callable()
 ## Damage factor of the combo step being resolved (1 outside a combo).
 var _damage_mult: float = 1.0
 
@@ -238,9 +240,13 @@ func _on_combat_round_requested(attacker_id: String, defender_id: String) -> voi
 	if attack_blocked.is_valid() and attack_blocked.call(attacker_id):
 		return   # e.g. the attacker is carrying a body (Phase 161): the host refuses, not only the client
 	if impact_queue != null and impact_info_fn.is_valid() and (attacker_id == "player" or is_player_target(attacker_id)):
+		if impact_queue.has_pending(attacker_id):
+			return   # a swing is already in flight: a new click does not push its impact back (no swing, no combo step)
 		var info: Dictionary = impact_info_fn.call(attacker_id)
 		impact_queue.start(attacker_id, defender_id, str(info.get("weapon", "unarmed")), str(info.get("item", "")),
 			int(info.get("step", 0)), _now(), float(info.get("clip_length", 0.5)))
+		if swing_started_fn.is_valid():
+			swing_started_fn.call(attacker_id, defender_id)
 		return
 	resolve_round(attacker_id, defender_id)
 

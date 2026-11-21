@@ -15,8 +15,8 @@ func size() -> int:
 func has_pending(attacker_id: String) -> bool:
 	return _pending.has(attacker_id)
 
-## Queue the hit of a swing that started at `now` with a clip of `clip_length` seconds. A new swing, or any other
-## action, from the same attacker replaces (cancels) its previous pending hit.
+## Queue the hit of a swing that started at `now` with a clip of `clip_length` seconds. Starting again replaces
+## the attacker's previous pending hit (the caller refuses a new swing while one is in flight; `cancel` drops one).
 func start(attacker_id: String, target_id: String, weapon: String, item: String, step: int, now: float, clip_length: float) -> Dictionary:
 	var entry := {
 		"attacker": attacker_id, "target": target_id, "weapon": weapon, "item": item, "step": step,

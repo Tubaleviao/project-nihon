@@ -371,7 +371,11 @@ static func drive_shots(tree: Object, playback: Object, loco) -> void:
 	var swing: int = loco.swing_serial
 	if swing != int(tree.get_meta("swing_serial", 0)):
 		tree.set_meta("swing_serial", swing)
-		if swing_on_upper_body(tree, loco):
+		# The choice is made once, when the swing starts: a body that speeds up or stops mid-swing keeps the
+		# node it began on (re-deciding every frame cut a full-body swing short, or replayed a stale clip).
+		var upper := swing_on_upper_body(tree, loco)
+		tree.set_meta("swing_upper", upper)
+		if upper:
 			var clip: String = loco.attack_clip if tree.get_meta("clips", {}).has(loco.attack_clip) else ATTACK_DEFAULT
 			_fire_shot(tree, UPPER_NODE, UPPER_CLIP_NODE, UPPER_REQUEST_PARAM, clip, "upper_shots")
 		elif loco.get_state() == Locomotion.State.ATTACK:
@@ -408,5 +412,6 @@ static func drive(tree: AnimationTree, loco) -> void:
 	drive_shots(tree, playback, loco)
 	if loco.get_state() == Locomotion.State.DEATH and tree.get_meta("travel_node", "") != "Death":
 		set_death_clip(tree, loco.death_clip)
-	travel_once(tree, playback, NODE_LOCOMOTION if swing_on_upper_body(tree, loco) else node_for_state(loco.get_state()))
+	var on_upper: bool = loco.get_state() == Locomotion.State.ATTACK and bool(tree.get_meta("swing_upper", false))
+	travel_once(tree, playback, NODE_LOCOMOTION if on_upper else node_for_state(loco.get_state()))
 	apply_motion(tree, loco.get_speed(), loco.get_blend_weight())
