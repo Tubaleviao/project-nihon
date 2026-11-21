@@ -25,7 +25,10 @@ uniform bool detail = true;
 uniform bool surface_maps = true;
 uniform float detail_distance = 24.0;
 uniform float detail_repeat = 4.0;
-uniform float blend_depth = 0.2;
+// Phase 285: above zero, so the blend sum can never reach it.
+uniform float blend_depth : hint_range(0.01, 1.0) = 0.2;
+// Each layer's least blend height (the fabric `heightFloor`): the albedo luminance is clamped up to it.
+uniform float layer_height_floor[LAYERS];
 uniform float normal_strength = 1.0;
 uniform float plane_cut = 0.12;
 
@@ -132,11 +135,16 @@ void fragment() {
 		vec3 albedo[LAYERS];
 		float height[LAYERS];
 		float hmax = -1.0;
+		// The heaviest layer is always drawn: when every weight is at or under the cut the ground is that layer, not black.
+		int best = 0;
+		for (int i = 1; i < LAYERS; i++) {
+			if (layer_weight(i) > layer_weight(best)) best = i;
+		}
 		for (int i = 0; i < LAYERS; i++) {
 			float w = layer_weight(i) / total;
 			albedo[i] = vec3(0.0);
 			height[i] = -1.0;
-			if (w > 0.002) {
+			if (w > 0.002 || i == best) {
 				vec3 p = world_pos / layer_scale[i];
 				vec3 c = sample_albedo(p, bw, float(i)).rgb;
 				if (fade > 0.0) {
@@ -145,7 +153,7 @@ void fragment() {
 					c = mix(c, c * (0.6 + 0.8 * dl), fade * 0.5);
 				}
 				albedo[i] = c;
-				height[i] = dot(c, vec3(0.333)) + w;
+				height[i] = max(dot(c, vec3(0.333)), layer_height_floor[i]) + w;
 				hmax = max(hmax, height[i]);
 			}
 		}
@@ -165,10 +173,13 @@ void fragment() {
 				sum += b;
 			}
 		}
+		sum = max(sum, 1e-4);
 		ALBEDO = col / sum * tint.rgb;
 		if (surface_maps) {
 			ROUGHNESS = rough / sum;
-			NORMAL = normalize((VIEW_MATRIX * vec4(normalize(nrm), 0.0)).xyz);
+			// Blended normals can cancel: a near-zero vector falls back to the geometric normal.
+			vec3 blended = length(nrm) > 1e-4 ? normalize(nrm) : n;
+			NORMAL = normalize((VIEW_MATRIX * vec4(blended, 0.0)).xyz);
 		} else {
 			ROUGHNESS = 0.9;
 		}

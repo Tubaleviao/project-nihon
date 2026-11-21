@@ -63,7 +63,10 @@ static func build_table(materials: Dictionary, biomes: Dictionary) -> Dictionary
 		var m: Variant = materials[name]
 		var layer := int(_field(m, "layer", -1))
 		layers.append({ "name": str(name), "layer": layer, "key": str(_field(m, "textureKey", "")),
-			"scale": float(_field(m, "scale", 4.0)) })
+			"scale": float(_field(m, "scale", 4.0)),
+			"height_floor": float(_field(m, "heightFloor", 0.2)),
+			"min_mean": float(_field(m, "minMeanLuminance", 0.08)),
+			"min_dark": float(_field(m, "minDarkLuminance", 0.015)) })
 		for b in _field(m, "biomes", []):
 			if not biome_layer.has(str(b)):
 				biome_layer[str(b)] = layer

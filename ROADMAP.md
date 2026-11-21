@@ -40,7 +40,6 @@ others are not in it.
 |---|---|---|
 | 12 | 281 | Work you can see: chopping, mining, digging, building and dissecting animations |
 | 14 | 284 | Hair that sits on the head |
-| 15 | 285 | Grass without black spots |
 | 16 | 286 | Men and women who look different |
 | 17 | 287 | Fighting that reads: combos, impact timing and hit reactions |
 | 18 | 291 | Right-click look puts the cursor back where it was |
@@ -361,7 +360,7 @@ A40–A46). The placeholder rule holds: each phase lands with public placeholder
 | 282 | A felled tree falls, then goes | Done |
 | 283 | Trees that look like trees: closed faces, a trunk and a real crown | Done |
 | 284 | Hair that sits on the head | Open |
-| 285 | Grass without black spots | Open |
+| 285 | Grass without black spots | Done |
 | 286 | Men and women who look different | Open |
 | 287 | Fighting that reads: combos, impact timing and hit reactions | Open |
 | 288 | Recipe cards you can read: a real icon area in the crafting window | Done |
@@ -1167,6 +1166,12 @@ instead, so a dark vertex colour there also shows as a dark spot.
   source contains the two guards and a `blend_depth` minimum above zero (source audit).
 - Suite: a synthetic map whose darkest 1% is black is rejected by the loader and the placeholder used; the public
   grass placeholder passes.
+
+**Done.** Fabric `heightFloor`, `minMeanLuminance` and `minDarkLuminance` per terrain material (validated 0–1,
+`tools/check_terrain_materials.js`); the shader floors the blend height per layer, guards both divisions and the
+normal, always draws the heaviest layer and has `blend_depth` as `hint_range(0.01, 1.0)`; `src/terrain/terrain_blend.gd`
+mirrors the blend; `TerrainMaterial.checked_albedo` refuses a dark map for the placeholder. The art-side check of
+the production `grass_albedo` (assets A44) stays with the assets repo.
 
 ## Phase 286 — Men and women who look different
 

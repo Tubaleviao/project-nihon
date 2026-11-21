@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:62fe85d2f91e598faf982d163e9ab042d1f5273e577be940a3b68d265d366318",
+  "schemaHash": "sha256:04bec46f4162f7c9811a7d5e6f357f26985c4652fa5fe5c80453323afe5fc6a5",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -7918,6 +7918,33 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": -1
+          },
+          "heightFloor": {
+            "name": "heightFloor",
+            "type": "decimal",
+            "description": "Least blend height (0..1) of this layer: its albedo luminance is clamped up to it in the height blend (Phase 285)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.2
+          },
+          "minMeanLuminance": {
+            "name": "minMeanLuminance",
+            "type": "decimal",
+            "description": "Floor (0..1) for the mean luminance of this material's albedo map; a darker map is refused and the placeholder used (Phase 285)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.08
+          },
+          "minDarkLuminance": {
+            "name": "minDarkLuminance",
+            "type": "decimal",
+            "description": "Floor (0..1) for the luminance of the darkest 1% of this material's albedo texels (Phase 285)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.015
           }
         },
         "relations": {},
@@ -8004,6 +8031,33 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": -1
+          },
+          "heightFloor": {
+            "name": "heightFloor",
+            "type": "decimal",
+            "description": "Least blend height (0..1) of this layer: its albedo luminance is clamped up to it in the height blend (Phase 285)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.2
+          },
+          "minMeanLuminance": {
+            "name": "minMeanLuminance",
+            "type": "decimal",
+            "description": "Floor (0..1) for the mean luminance of this material's albedo map; a darker map is refused and the placeholder used (Phase 285)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.08
+          },
+          "minDarkLuminance": {
+            "name": "minDarkLuminance",
+            "type": "decimal",
+            "description": "Floor (0..1) for the luminance of the darkest 1% of this material's albedo texels (Phase 285)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.015
           }
         },
         "relations": {},
@@ -8090,6 +8144,33 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": -1
+          },
+          "heightFloor": {
+            "name": "heightFloor",
+            "type": "decimal",
+            "description": "Least blend height (0..1) of this layer: its albedo luminance is clamped up to it in the height blend (Phase 285)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.2
+          },
+          "minMeanLuminance": {
+            "name": "minMeanLuminance",
+            "type": "decimal",
+            "description": "Floor (0..1) for the mean luminance of this material's albedo map; a darker map is refused and the placeholder used (Phase 285)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.08
+          },
+          "minDarkLuminance": {
+            "name": "minDarkLuminance",
+            "type": "decimal",
+            "description": "Floor (0..1) for the luminance of the darkest 1% of this material's albedo texels (Phase 285)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.015
           }
         },
         "relations": {},
@@ -8176,6 +8257,33 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": -1
+          },
+          "heightFloor": {
+            "name": "heightFloor",
+            "type": "decimal",
+            "description": "Least blend height (0..1) of this layer: its albedo luminance is clamped up to it in the height blend (Phase 285)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.2
+          },
+          "minMeanLuminance": {
+            "name": "minMeanLuminance",
+            "type": "decimal",
+            "description": "Floor (0..1) for the mean luminance of this material's albedo map; a darker map is refused and the placeholder used (Phase 285)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.08
+          },
+          "minDarkLuminance": {
+            "name": "minDarkLuminance",
+            "type": "decimal",
+            "description": "Floor (0..1) for the luminance of the darkest 1% of this material's albedo texels (Phase 285)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.015
           }
         },
         "relations": {},
@@ -8264,6 +8372,33 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": -1
+          },
+          "heightFloor": {
+            "name": "heightFloor",
+            "type": "decimal",
+            "description": "Least blend height (0..1) of this layer: its albedo luminance is clamped up to it in the height blend (Phase 285)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.2
+          },
+          "minMeanLuminance": {
+            "name": "minMeanLuminance",
+            "type": "decimal",
+            "description": "Floor (0..1) for the mean luminance of this material's albedo map; a darker map is refused and the placeholder used (Phase 285)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.08
+          },
+          "minDarkLuminance": {
+            "name": "minDarkLuminance",
+            "type": "decimal",
+            "description": "Floor (0..1) for the luminance of the darkest 1% of this material's albedo texels (Phase 285)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.015
           }
         },
         "relations": {},
@@ -8351,6 +8486,33 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": -1
+          },
+          "heightFloor": {
+            "name": "heightFloor",
+            "type": "decimal",
+            "description": "Least blend height (0..1) of this layer: its albedo luminance is clamped up to it in the height blend (Phase 285)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.2
+          },
+          "minMeanLuminance": {
+            "name": "minMeanLuminance",
+            "type": "decimal",
+            "description": "Floor (0..1) for the mean luminance of this material's albedo map; a darker map is refused and the placeholder used (Phase 285)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.08
+          },
+          "minDarkLuminance": {
+            "name": "minDarkLuminance",
+            "type": "decimal",
+            "description": "Floor (0..1) for the luminance of the darkest 1% of this material's albedo texels (Phase 285)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.015
           }
         },
         "relations": {},
@@ -8435,6 +8597,33 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 3
+          },
+          "heightFloor": {
+            "name": "heightFloor",
+            "type": "decimal",
+            "description": "Least blend height (0..1) of this layer: its albedo luminance is clamped up to it in the height blend (Phase 285)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.2
+          },
+          "minMeanLuminance": {
+            "name": "minMeanLuminance",
+            "type": "decimal",
+            "description": "Floor (0..1) for the mean luminance of this material's albedo map; a darker map is refused and the placeholder used (Phase 285)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.08
+          },
+          "minDarkLuminance": {
+            "name": "minDarkLuminance",
+            "type": "decimal",
+            "description": "Floor (0..1) for the luminance of the darkest 1% of this material's albedo texels (Phase 285)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.015
           }
         },
         "relations": {},
