@@ -473,7 +473,7 @@ func _build_and_boot() -> void:
 		_ui.technology_slice      = _technology
 		_ui.market_slice          = _market
 		_ui.proposal_slice        = _proposal
-		_ui.trade_slice           = _trade; _ui.party_name_of = _registry.character_name   # Phase 292: names for the host's own rows
+		_ui.trade_slice           = _trade; _ui.party_name_of = func(p: String) -> String: return _registry.character_name(_registry.local_player_id if p == "player" else p)   # Phase 292
 		_ui.voxel_slice           = _voxel
 		_ui.player_slice          = _player; _ui.station_slice = _station   # Phase 269: the station window's stations
 		_ui.map_window.minimap       = _minimap

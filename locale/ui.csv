@@ -128,6 +128,7 @@ market.unknown_seller,unknown seller,vendedor desconhecido
 party.merchant,merchant,mercador
 party.unknown,unknown player,jogador desconhecido
 party.you,{0} (you),{0} (você)
+party.you_bare,(you),(você)
 msg.unknown,(unreadable message),(mensagem ilegível)
 proposal.body_ph,Proposal body (optional),Texto da proposta (opcional)
 proposal.list,Proposals:,Propostas:

@@ -4,6 +4,7 @@ extends "res://src/tests/test_support.gd"
 
 const PartyLabel := preload("res://src/ui/party_label.gd")
 const ClanPanel := preload("res://src/ui/clan_panel.gd")
+const NetHarnessSteps := preload("res://src/tests/net_harness_steps.gd")
 
 const ALICE := { "name": "Alice", "gender": "feminine", "hair": "hair_f_bob", "hairColor": 129 }
 const HOSTA := { "name": "Hosta", "gender": "masculine", "hair": "hair_m_spiky", "hairColor": 41 }
@@ -18,6 +19,7 @@ func register() -> void:
 	_run_test("party names: every UI string that formats a player field prints no handle", _test_player_fields_print_no_handle)
 	_run_test("party names: no UI file formats a player-field string except through PartyLabel", _test_player_field_audit)
 	_run_test("party names: the host's own UI names a remote seller from the registry", _test_host_ui_names_remote_seller)
+	_run_test("party names: an old-shaped host id never crosses the wire", _test_legacy_local_id_never_sent)
 
 # --- fixtures ---------------------------------------------------------------------------------------------
 
@@ -128,6 +130,9 @@ func _test_client_row_labels() -> void:
 	_with_locale("pt_BR", func() -> void:
 		assert_true(PartyLabel.listing_line(_row(ui, "listing_1"), "Bob").contains("vendedor desconhecido"), "and vendedor desconhecido (pt_BR)"))
 	assert_false(str(by_id["listing_1"]).contains(reg.public_handle(gone)), "never the handle")
+	var window := NetHarnessSteps.market_window_text(ui)
+	assert_true(window.contains("Alice") and window.contains("Hosta"), "the market window itself names both sellers")
+	assert_false(RegEx.create_from_string("p_[0-9a-f]{16}").search(window) != null, "and prints no handle")
 	ui.free()
 	bob.free()
 	# Alice's own client sees her listing marked as hers, in both locales.
@@ -292,12 +297,39 @@ func _test_host_ui_names_remote_seller() -> void:
 	market.apply_market_data({ "listing_0": _listing(alice), "listing_1": _listing(PartyLabel.SELF) })
 	var ui := _new_test_ui()
 	ui.market_slice = market
-	ui.party_name_of = reg.character_name
-	TranslationServer.set_locale("en")
-	var text := "\n".join(ui.market_rows().map(func(row: Dictionary) -> String: return PartyLabel.listing_line(row, "Hosta")))
-	assert_true(text.contains("Alice"), "the host's market window names the remote seller")
-	assert_true(text.contains("Hosta (you)"), "and marks its own listing")
-	assert_false(text.contains(alice) or text.contains(reg.public_handle(alice)), "with no id or handle")
+	# As game_root wires it: the host's own literal resolves through its local id.
+	ui.party_name_of = func(p: String) -> String: return reg.character_name(reg.local_player_id if p == "player" else p)
+	ui.set_own_handle(reg.public_handle(reg.local_player_id))
+	_with_locale("en", func() -> void:
+		var text := NetHarnessSteps.market_window_text(ui)
+		assert_true(text.contains("Alice"), "the host's market window names the remote seller")
+		assert_true(text.contains("Hosta (you)"), "and marks its own listing with its name")
+		assert_false(text.contains(alice) or text.contains(reg.public_handle(alice)), "with no id or handle"))
+	# A host that skipped creation: its own row reads a bare "(you)", never its handle.
+	ui.party_name_of = Callable()
+	_with_locale("en", func() -> void:
+		var text := NetHarnessSteps.market_window_text(ui)
+		assert_true(text.contains("(you)"), "a nameless own row still reads (you)")
+		assert_false(text.contains(reg.public_handle(reg.local_player_id)), "and never the handle own_display_name falls back to"))
 	ui.free()
 	market.free()
+	reg.free()
+
+## A host whose own id predates the minted shape (`looks_like_player_id` false, so `redact_for_client` passes it
+## through): its own listing still crosses as its handle, never the id.
+func _test_legacy_local_id_never_sent() -> void:
+	var reg := PlayerRegistry.new()
+	add_child(reg)
+	var legacy := "host_legacy_cafe"
+	reg.set_local_player(legacy)
+	var r := _host_net(reg)
+	var n: NetworkingSlice = r[0]
+	n._on_market_synced({ "listing_0": _listing(PartyLabel.SELF) })
+	var trade := { "id": "trade_0", "parties": [PartyLabel.SELF, "merchant"], "offers": { PartyLabel.SELF: { "give": {}, "want": {} } }, "accepted": {}, "state": "pending" }
+	n._on_trade_synced({ "trades": { "trade_0": trade }, "next_id": 1 })
+	for type in ["market_synced", "trade_synced"]:
+		var pkt := JSON.stringify(_sent(r[1], type))
+		assert_false(pkt.contains(legacy), "%s does not carry an old-shaped host id" % type)
+		assert_true(pkt.contains(reg.public_handle(legacy)), "%s names the host by its handle" % type)
+	n.free()
 	reg.free()

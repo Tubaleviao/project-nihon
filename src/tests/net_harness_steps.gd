@@ -847,6 +847,7 @@ func market_names_seller(h: Node) -> void:
 			h._report("market_names_seller", "fail", "no_connected_peer")
 			return
 		h._root._registry.get_inventory(pid).add_item(MARKET_ITEM, 2)
+		h._root._chest_wiring._push_inventory(pid)   # the client lists from its own copy of the bag
 		h._root._inventory.add_item(MARKET_ITEM, 1)
 		var theirs: bool = await h._await_until(func() -> bool:
 			return market.get_listings().any(func(l: Dictionary) -> bool: return str(l["seller"]) == pid), h._step_timeout() * 3.0)
@@ -867,11 +868,22 @@ func market_names_seller(h: Node) -> void:
 	var detail := _market_text_verdict(h, h.HOST_NAME) if both else "listings_not_synced"
 	h._report("market_names_seller", h.verdict(detail == "names-seen-no-handle", true), detail)
 
+## The text of the market window's rows as `UISlice.refresh_market` draws them (rows queued for deletion skipped).
+static func market_window_text(ui: Node) -> String:
+	ui.refresh_market()
+	var lines: Array = []
+	for row: Node in (ui._market_box.get_children() if ui._market_box != null else []):
+		if row.is_queued_for_deletion():
+			continue
+		for c: Node in row.get_children():
+			if c is Label:
+				lines.append((c as Label).text)
+	return "\n".join(lines)
+
 ## The market window's text on this side (every row as `UISlice.refresh_market` renders it): DETAIL when it names
 ## `other` and reads "(you)" on this side's own listing, with no public handle anywhere.
 func _market_text_verdict(h: Node, other: String) -> String:
-	var lines: Array = h._root._ui.market_rows().map(func(r: Dictionary) -> String: return PartyLabel.listing_line(r, h._root._ui.own_display_name()))
-	var text := "\n".join(lines)
+	var text := market_window_text(h._root._ui)
 	var you := I18n.t("party.you", [""]).strip_edges()
 	if RegEx.create_from_string("p_[0-9a-f]{16}").search(text) != null:
 		return "handle_shown"

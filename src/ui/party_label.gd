@@ -32,12 +32,20 @@ const PLAYER_FIELD_KEYS := {
 
 ## The label for `party` named `name`. `own_name` names the viewer when the row is theirs and carries no name;
 ## `unknown_key` is the string for a player with no name left.
+## A name that is only a handle (what `display_name` falls back to) counts as no name: it is never printed.
 static func label(party: String, name: String, own_name: String = "", unknown_key: String = "party.unknown") -> String:
+	var shown := name if not is_handle(name) else ""
 	if party == SELF:
-		return I18n.t("party.you", [name if name != "" else own_name])
+		if shown == "" and not is_handle(own_name):
+			shown = own_name
+		return I18n.t("party.you", [shown]) if shown != "" else I18n.t("party.you_bare")
 	if party == MERCHANT:
 		return I18n.t("party.merchant")
-	return name if name != "" and name != party else I18n.t(unknown_key)
+	return shown if shown != "" else I18n.t(unknown_key)
+
+## True for a public handle (`PlayerRegistry.HANDLE_PREFIX` + 16 hex), "" excluded.
+static func is_handle(s: String) -> bool:
+	return s.length() == 18 and s.begins_with("p_") and s.substr(2).is_valid_hex_number()
 
 ## A row's name: the one the host sent with it, else `resolve(party)` (the host's registry: the host's own blobs
 ## carry no names, they are added only to the copy a client is sent), else "".
