@@ -41,6 +41,16 @@ static func next_step(weapon: String, last_weapon: String, last_step: int, elaps
 		return 0
 	return (last_step + 1) % n
 
+## Length in seconds of each attack clip on the placeholder rig (`tools/gen_placeholder_glb.py`). A host that draws no
+## body for a peer times that peer's swing from this; a body that is drawn reports its own rig's real lengths.
+const PLACEHOLDER_LENGTHS := {
+	"attack": 0.5, "attack_unarmed": 0.4, "attack_unarmed_2": 0.4, "attack_1h": 0.5, "attack_1h_2": 0.5,
+	"attack_1h_3": 0.6, "attack_2h": 0.6, "attack_2h_2": 0.65, "attack_tool": 0.5,
+}
+
+static func placeholder_length(weapon: String, step: int) -> float:
+	return float(PLACEHOLDER_LENGTHS.get(clip_for(weapon, step), 0.5))
+
 ## The clip of a step: the table's, else (the rig lacks the variant) the chain's base clip, else `attack`.
 ## `available` is a Dictionary or an Array of the rig's clip names; null means "assume everything exists".
 static func clip_for(weapon: String, step: int, available: Variant = null) -> String:

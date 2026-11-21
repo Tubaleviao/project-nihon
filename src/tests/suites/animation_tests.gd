@@ -14,6 +14,7 @@ func register() -> void:
 	_run_test("animation: a peer with no body on the host still chains its combo and a stagger rides the wire (Phase 287)", _test_bodyless_combo_and_stagger)
 	_run_test("animation: the host deals a player swing at the impact time, and a refused re-check deals nothing (Phase 287)", _test_battle_impact_timing)
 	_run_test("animation: a pending hit lands at impact and is cancelled by range, death, stagger or a weapon switch (Phase 287)", _test_pending_hits)
+	_run_test("animation: a bodyless peer's swing is timed from the placeholder clip lengths, not a flat guess (Phase 287)", _test_placeholder_lengths)
 	_run_test("animation: repeated attacks inside the window play the combo variants, a pause restarts, a missing variant falls back (Phase 287)", _test_combo_chain)
 	_run_test("gestures: GameData lists every gesture with its clip and chat command", _test_p158_gesture_data)
 	_run_test("gestures: every gesture name key is in both catalogs", _test_p158_gesture_catalog)
@@ -396,6 +397,12 @@ func _test_player_death_clip_via_bus() -> void:
 # --- Phase 287: combos -------------------------------------------------------------------------------------------
 
 const ComboChain := preload("res://src/battle/combo_chain.gd")
+
+func _test_placeholder_lengths() -> void:
+	assert_true(is_equal_approx(ComboChain.placeholder_length("two_hand", 1), 0.65), "the second two-hander blow is 0.65 s")
+	assert_true(is_equal_approx(ComboChain.placeholder_length("unarmed", 0), 0.4), "an unarmed jab is 0.4 s")
+	for clip in ComboChain.PLACEHOLDER_LENGTHS:
+		assert_true(float(ComboChain.PLACEHOLDER_LENGTHS[clip]) > 0.0, "%s has a length" % clip)
 
 func _test_combo_chain() -> void:
 	var ch := CharacterSlice.new()

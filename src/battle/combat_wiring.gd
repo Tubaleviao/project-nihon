@@ -74,6 +74,8 @@ func on_attack_intent(instance_id: String, player_id: String) -> bool:
 	var gap: float = WorldPos.offset_between(root._peer_wiring.peer_exact_pos(peer), root._creature.get_instance_pos(instance_id)).length()
 	if gap > reach:
 		return false
+	if root._battle != null and root._battle.impact_queue != null and root._battle.impact_queue.has_pending(player_id):
+		return false   # a swing is already in flight: a dropped click must not restart the rate window
 	var now := Time.get_ticks_msec()
 	if _last_swing_ms.has(player_id) and now - int(_last_swing_ms[player_id]) < ATTACK_MIN_INTERVAL_MS:
 		return false
@@ -113,6 +115,7 @@ func enable_impact_timing() -> void:
 ## Host: a player's swing was queued. Its own clip already plays here; clients in range see it at the click, not
 ## when (or if) the hit lands.
 func _on_swing_started(attacker_id: String, defender_id: String) -> void:
+	root._gesture_wiring.note_action(attacker_id)   # a swing ends a pose at the click, hit or no hit
 	if root._networking == null or not root._networking.is_host():
 		return
 	var a_key := _wire_key(attacker_id)
@@ -146,7 +149,7 @@ func impact_info(attacker_id: String) -> Dictionary:
 		var last: Dictionary = _bodyless_combo.get(attacker_id, {})
 		var bstep: int = ComboChain.next_step(weapon, str(last.get("weapon", "")), int(last.get("step", -1)), now - float(last.get("at", -1e9)))
 		_bodyless_combo[attacker_id] = { "weapon": weapon, "step": bstep, "at": now }
-		return { "weapon": weapon, "item": item, "step": bstep, "clip_length": 0.5 }
+		return { "weapon": weapon, "item": item, "step": bstep, "clip_length": ComboChain.placeholder_length(weapon, bstep) }
 	root._character.trigger_attack(iid)
 	var inst: Dictionary = root._character._instances[iid]
 	var combo: Dictionary = inst.get("combo", {})
