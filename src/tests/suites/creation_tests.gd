@@ -155,7 +155,10 @@ func _test_head_ratio() -> void:
 
 
 ## Phase 266: the shipped placeholder meshes themselves (not just the fabric proportions) are chibi. The body
-## mesh is the whole figure (head box included), so its height is the figure's height.
+## mesh stops at the neck since Phase 286 (the head is its own mesh, origin at the Head joint 0.70 m up), so the figure's
+## height is the joint's plus the head's top.
+const HEAD_JOINT_Y := 0.70
+
 func _test_placeholder_mesh_ratio() -> void:
 	var d := _data()
 	var bounds: Dictionary = d.get("headRatio")
@@ -167,8 +170,8 @@ func _test_placeholder_mesh_ratio() -> void:
 		if body == null or head == null:
 			continue
 		var head_h: float = head.get_aabb().size.y
-		var total: float = body.get_aabb().size.y
-		assert_true(head_h <= total, "%s head mesh (%.3f m) is no taller than the body mesh (%.3f m): a mis-sized asset" % [g, head_h, total])
+		var total: float = HEAD_JOINT_Y + head.get_aabb().end.y
+		assert_true(head_h <= total and body.get_aabb().end.y <= total, "%s head mesh (%.3f m) is no taller than the figure (%.3f m): a mis-sized asset" % [g, head_h, total])
 		var ratio := head_h / total
 		assert_true(ratio >= float(bounds["min"]) and ratio <= float(bounds["max"]),
 			"%s placeholder mesh head ratio %.3f within %s..%s" % [g, ratio, bounds["min"], bounds["max"]])

@@ -31,7 +31,7 @@ introductions of the arcs they belonged to, are archived in
 Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
 see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
 phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
-comes next. A phase that needs an earlier one still waits for it. Done phases (238–244, 248–250, 252–256, 259–276, 289, 290, 283, 282, 280, 284)
+comes next. A phase that needs an earlier one still waits for it. Done phases (238–244, 248–250, 252–256, 259–276, 289, 290, 283, 282, 280, 284, 286)
 have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
 [Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
 others are not in it.
@@ -40,7 +40,6 @@ others are not in it.
 |---|---|---|
 | 12 | 281 | Work you can see: chopping, mining, digging, building and dissecting animations |
 | 15 | 285 | Grass without black spots |
-| 16 | 286 | Men and women who look different |
 | 17 | 287 | Fighting that reads: combos, impact timing and hit reactions |
 | 18 | 291 | Right-click look puts the cursor back where it was |
 | 19 | 292 | The market names the seller |
@@ -361,7 +360,7 @@ A40–A46). The placeholder rule holds: each phase lands with public placeholder
 | 283 | Trees that look like trees: closed faces, a trunk and a real crown | Done |
 | 284 | Hair that sits on the head | Done |
 | 285 | Grass without black spots | Open |
-| 286 | Men and women who look different | Open |
+| 286 | Men and women who look different | Done |
 | 287 | Fighting that reads: combos, impact timing and hit reactions | Open |
 | 288 | Recipe cards you can read: a real icon area in the crafting window | Done |
 | 289 | Hold to work, told and shown: the work bar in view, and the tutorial says hold | Done |
@@ -1196,6 +1195,13 @@ creation tests load them; the fabric presets differ only slightly (height 0.75 v
   differ; measured on the placeholders, the male's shoulder/hip width ratio is at least 15% above the female's.
 - Suite: every equipment slot's socket exists on both bodies; a chestplate attaches on both.
 - Character creation and playtest `create`/`character_sheet` steps pass; the doll renders each body.
+
+**Done (placeholders).** `AvatarBuilder.rig_key` picks `models/characters/bodies/<body>.glb.raw` when the manifest
+lists it (the single rig stays the fallback); that body has no head of its own, so `attach_head` puts
+`heads/<head>.glb.raw` on the Head bone. Male: broad shoulders, narrow hips, thick neck, square jaw, heavy brow.
+Female: narrow shoulders, wide hips, narrow waist, modest bust, soft jaw, lashes. Presets widened (male height 0.85,
+shoulders 1.1; female height 0.75, shoulders 0.9, the slider bounds). The optional per-body walk hip-sway weight is
+not done. The playtest `create`/`character_sheet` steps need a display and run in CI.
 
 ## Phase 287 — Fighting that reads: combos, impact timing and hit reactions
 

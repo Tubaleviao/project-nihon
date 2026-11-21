@@ -857,19 +857,21 @@ CHAR_DIR = OUT.parent / "characters"
 CREATION_JS = Path(__file__).resolve().parent.parent / "fabric" / "gameplay" / "characters" / "creation.js"
 
 
-def _chibi_tables(shoulder: float, hip: float) -> tuple:
-    """(joints, parts) of a chibi body; `shoulder` and `hip` scale the half-widths."""
+def _chibi_tables(shoulder: float, hip: float, waist: float = 1.0, neck: float = 1.0, bust: bool = False) -> tuple:
+    """(joints, parts) of a chibi body; `shoulder`, `hip`, `waist` and `neck` scale the widths, `bust` adds a modest
+    chest relief. The head is its own mesh (`heads/<head>.glb.raw`, Phase 286), so the body has no Head part."""
     joints = {
         "Root": (0.0, 0.0, 0.0), "Hips": (0.0, 0.42, 0.0), "Spine": (0.0, 0.50, 0.0),
         "Chest": (0.0, 0.58, 0.0), "Neck": (0.0, 0.68, 0.0), "Head": (0.0, 0.70, 0.0),
     }
     parts = [
         ("Hips", (0.0, 0.40, 0.0), (0.26 * hip, 0.10, 0.18)),
-        ("Spine", (0.0, 0.50, 0.0), (0.24, 0.12, 0.17)),
+        ("Spine", (0.0, 0.50, 0.0), (0.24 * waist, 0.12, 0.17)),
         ("Chest", (0.0, 0.60, 0.0), (0.30 * shoulder, 0.14, 0.20)),
-        ("Neck", (0.0, 0.68, 0.0), (0.08, 0.04, 0.08)),
-        ("Head", (0.0, 0.90, 0.0), (0.44, 0.40, 0.42)),
+        ("Neck", (0.0, 0.68, 0.0), (0.08 * neck, 0.04, 0.08 * neck)),
     ]
+    if bust:
+        parts += [("Chest", (sx * 0.065, 0.585, -0.115), (0.085, 0.075, 0.05)) for sx in (-1.0, 1.0)]
     for side, sx in (("L", -1.0), ("R", 1.0)):
         joints.update({
             "Shoulder_" + side: (sx * 0.03, 0.64, 0.0), "Arm_" + side: (sx * 0.14 * shoulder, 0.64, 0.0),
@@ -888,8 +890,20 @@ def _chibi_tables(shoulder: float, hip: float) -> tuple:
     return joints, parts
 
 
-CHIBI_BODIES = {"chibi_body_m": (1.0, 1.0), "chibi_body_f": (0.9, 1.08)}
+# Phase 286: the body type picks its own body and head. Male: broad shoulders, narrow hips, a thick neck, a square
+# jaw and a heavy brow. Female: narrow shoulders, wide hips, a narrow waist, a modest bust, a soft jaw and lashes.
+CHIBI_BODIES = {
+    "chibi_body_m": dict(shoulder=1.14, hip=0.92, waist=1.0, neck=1.45),
+    "chibi_body_f": dict(shoulder=0.86, hip=1.14, waist=0.80, neck=0.85, bust=True),
+}
 CHIBI_HEADS = {"chibi_head_m": (0.44, 0.40, 0.42), "chibi_head_f": (0.42, 0.40, 0.40)}
+# Extra boxes (centre, size) of each head, in head space, kept under the scalp top (y 0.40).
+HEAD_FEATURES = {
+    "chibi_head_m": [((0.0, 0.03, -0.005), (0.46, 0.08, 0.43)),        # a squarer, heavier jaw
+                     ((0.0, 0.265, -0.215), (0.46, 0.05, 0.05))],       # a heavy brow
+    "chibi_head_f": [((0.0, 0.17, -0.205), (0.36, 0.04, 0.02)),         # long lashes over the eyes
+                     ((0.0, 0.015, -0.01), (0.30, 0.05, 0.34))],        # a softer, narrower chin
+}
 
 # Hair shapes as boxes (centre, size) in head space: origin at the Head joint, the head box spans
 # x +-0.22, y 0..0.40, z +-0.21, the face looks down -Z. Every shape starts from a cap.
@@ -974,14 +988,14 @@ def build_static(boxes: list, name: str, anchor: tuple = None, anchor_name: str 
 def character_parts() -> dict:
     """{GLB path: bytes} for the creation bodies, heads and hair styles."""
     out = {}
-    for body, (shoulder, hip) in CHIBI_BODIES.items():
-        joints, parts = _chibi_tables(shoulder, hip)
+    for body, shape in CHIBI_BODIES.items():
+        joints, parts = _chibi_tables(**shape)
         out[CHAR_DIR / "bodies" / f"{body}.glb.raw"] = build_skinned_rig(
             SKELETON_TRES, "HumanoidSkeleton", joints, REST, parts, PLAYER_CLIPS, "ChibiRig",
             {"Head": ("hair_anchor", SCALP_TOP)})
     for head, size in CHIBI_HEADS.items():
         out[CHAR_DIR / "heads" / f"{head}.glb.raw"] = build_static(
-            [((0.0, 0.20, 0.0), size)], "Head", SCALP_TOP, "hair_anchor")
+            [((0.0, 0.20, 0.0), size)] + HEAD_FEATURES[head], "Head", SCALP_TOP, "hair_anchor")
     for hair, shape in sorted(read_hair_styles().items()):
         out[CHAR_DIR / "hair" / f"{hair}.glb.raw"] = build_static(
             HAIR_BOXES[shape], "Hair", SCALP_TOP, "anchor")
