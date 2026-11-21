@@ -56,6 +56,7 @@ const VIEW_FAR_MARGIN := 1.1
 const CAMERA_Y_SMOOTH := 10.0
 const CAMERA_SNAP_DISTANCE := 3.0
 const SYNC_INTERVAL := 30     # physics ticks between network sync broadcasts
+const Pointer := preload("res://src/player/pointer.gd")
 const ATTACK_RANGE := 3.0     # metres — melee interaction radius
 ## Metres — how close the player must be to tame (Phase 35). Must match
 ## TamingSlice.TAME_RANGE, which re-checks it and is the authority.
@@ -381,7 +382,7 @@ func _end_look() -> void:
 		return
 	_looking = false
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
-	Input.warp_mouse(_look_restore_pos)
+	Pointer.warp(get_viewport(), _look_restore_pos)   # Phase 291: window pixels, not viewport coordinates
 
 func _physics_process(delta: float) -> void:
 	if not _alive:
