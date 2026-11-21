@@ -57,6 +57,7 @@ func _ready() -> void:
 	GameBus.creature_respawned.connect(_on_creature_respawned)
 
 const DeathPush := preload("res://src/battle/death_push.gd")
+const PendingHit := preload("res://src/battle/pending_hit.gd")
 
 ## Phase 37 — the registry's id-SHAPE predicate, preloaded for the player/creature
 ## split: it is a pure static check on a string, so no registry needs to be in the tree
@@ -256,13 +257,20 @@ func tick_impacts() -> int:
 	if impact_queue == null or not impact_state_fn.is_valid():
 		return 0
 	var landed := 0
+	var killed := {}
 	for r in impact_queue.resolve_due(_now(), impact_state_fn):
 		if str(r["reason"]) != "":
 			continue
 		var e: Dictionary = r["entry"]
+		# resolve_due popped the whole batch and checked it up front: an earlier hit of this same tick may have
+		# killed the target or staggered the attacker since, so each hit is re-checked right before it lands.
+		if killed.has(str(e["target"])) or PendingHit.refusal(e, impact_state_fn.call(e)) != "":
+			continue
 		_damage_mult = float(e["damage_multiplier"])
-		resolve_round(str(e["attacker"]), str(e["target"]))
+		var res := resolve_round(str(e["attacker"]), str(e["target"]))
 		_damage_mult = 1.0
+		if str(res.get("outcome", "")) == "kill":
+			killed[str(e["target"])] = true
 		landed += 1
 	return landed
 

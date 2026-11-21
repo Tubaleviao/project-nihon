@@ -528,6 +528,20 @@ func _test_battle_impact_timing() -> void:
 	GameBus.combat_round_requested.emit("player", "GraywolfPack")
 	clock[0] = 3.5
 	assert_eq(b.tick_impacts(), 0, "a staggered attacker's hit is cancelled")
+	# Two hits due in the same tick on a creature that the first kills: the second must not kill it again.
+	b.impact_state_fn = func(_e): return { "attacker_alive": true, "attacker_staggered": false, "attacker_item": "X",
+		"target_alive": true, "gap": 1.0, "reach": 3.0 }
+	b._hp_state["GraywolfPack"] = 0.001
+	var outcomes := []
+	var cb2 := func(_a, _d, outcome, _dmg): outcomes.append(outcome)
+	GameBus.combat_hit_resolved.connect(cb2)
+	clock[0] = 5.0
+	b.impact_queue.start("player", "GraywolfPack", "one_hand", "X", 0, clock[0], 0.5)
+	b.impact_queue.start("player_1_1_1", "GraywolfPack", "one_hand", "X", 0, clock[0], 0.5)
+	clock[0] = 6.0
+	b.tick_impacts()
+	assert_false(outcomes.count("kill") > 1, "a creature killed in a tick is not killed again by a later hit of the same tick")
+	GameBus.combat_hit_resolved.disconnect(cb2)
 	GameBus.combat_hit_resolved.disconnect(cb)
 	b.free()
 
