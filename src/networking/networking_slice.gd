@@ -983,7 +983,7 @@ func _peer_for_inventory_owner(owner_id: String) -> int:
 
 ## Phase 156 — the longest key and the outcomes a `combat_hit` packet may carry.
 const COMBAT_KEY_MAX := 64
-const COMBAT_OUTCOMES := ["hit", "critical", "miss", "kill", "swing"]   # "swing": Phase 287, sent at the click
+const COMBAT_OUTCOMES := ["hit", "critical", "miss", "kill", "swing", "stagger"]   # Phase 287: "swing" is sent at the click, "stagger" is a landed hit that staggers
 
 ## Phase 159 — the longest gesture id a packet may carry.
 const GESTURE_ID_MAX := GestureRules.MAX_ID_CHARS

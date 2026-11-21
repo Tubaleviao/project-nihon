@@ -11,6 +11,7 @@ func register() -> void:
 	_run_test("animation: camera shake and hit-stop are options, on by default (Phase 287)", _test_hit_feel_options)
 	_run_test("animation: a swing while moving plays on the upper body through a bone mask and the feet keep moving (Phase 287)", _test_upper_body_attack)
 	_run_test("animation: a creature hit past the stagger share staggers, a light one flinches (Phase 287)", _test_creature_hit_clip_param)
+	_run_test("animation: a peer with no body on the host still chains its combo and a stagger rides the wire (Phase 287)", _test_bodyless_combo_and_stagger)
 	_run_test("animation: the host deals a player swing at the impact time, and a refused re-check deals nothing (Phase 287)", _test_battle_impact_timing)
 	_run_test("animation: a pending hit lands at impact and is cancelled by range, death, stagger or a weapon switch (Phase 287)", _test_pending_hits)
 	_run_test("animation: repeated attacks inside the window play the combo variants, a pause restarts, a missing variant falls back (Phase 287)", _test_combo_chain)
@@ -340,6 +341,19 @@ func _test_kill_no_flinch() -> void:
 	GameBus.combat_hit_synced.emit("c:w0", "p:5", "kill")
 	assert_eq(int(loco.hit_serial), 1, "the killing blow queues no flinch to replay on respawn")
 	assert_eq(int(f["cr"].visuals().models["w0"]["swing"]), 2, "the killer still swings")
+	_free_fixture(f)
+
+
+func _test_bodyless_combo_and_stagger() -> void:
+	var f := _fixture()
+	var cw = f["gr"]._combat_wiring
+	var a: Dictionary = cw.impact_info("peer-x")
+	var b: Dictionary = cw.impact_info("peer-x")
+	assert_eq(int(a["step"]), 0, "the first swing starts the chain")
+	assert_eq(int(b["step"]), 1 if ComboChain.chain(str(b["weapon"])).get("clips", []).size() > 1 else 0, "a quick second swing advances it")
+	cw.forget_swinger("peer-x")
+	assert_eq(int(cw.impact_info("peer-x")["step"]), 0, "a departed peer's chain is dropped")
+	assert_true("stagger" in NetworkingSlice.COMBAT_OUTCOMES, "a stagger is a valid wire outcome")
 	_free_fixture(f)
 
 

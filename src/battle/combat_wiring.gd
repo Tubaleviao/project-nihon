@@ -46,6 +46,8 @@ const ATTACK_REACH_SLACK_M := 1.5
 const ATTACK_MIN_INTERVAL_MS := 200
 ## player id -> Time.get_ticks_msec() of that player's last accepted swing.
 var _last_swing_ms: Dictionary = {}
+## Host: attacker id -> { weapon, step, at } for a peer drawn no body here (a dedicated host), so its combo advances.
+var _bodyless_combo: Dictionary = {}
 
 ## Host: a peer's swing (`attack_intent`, re-emitted by NetworkingSlice with the connection's player id). The
 ## host checks everything it can know itself: the peer is connected and not downed or held, the target is a
@@ -96,6 +98,9 @@ func on_creature_died(entity_id: String, _pos: Vector3, killer_id: String, _land
 ## Drop a departed player's swing clock (called from the peer-left path).
 func forget_swinger(player_id: String) -> void:
 	_last_swing_ms.erase(player_id)
+	_bodyless_combo.erase(player_id)
+	if root._battle != null and root._battle.impact_queue != null:
+		root._battle.impact_queue.cancel(player_id)
 
 ## Phase 287 — host: turn on impact timing. A player's swing then plays its clip at the click and deals its damage at
 ## the clip's impact time, after `impact_state` re-checked it.
@@ -118,6 +123,10 @@ func _on_swing_started(attacker_id: String, defender_id: String) -> void:
 func _attacker_character(attacker_id: String) -> String:
 	return _character_for_key(_wire_key(attacker_id))
 
+## The main-hand item the host's registry holds for a player with no body here ("" for the local "player").
+func _registry_main_hand(attacker_id: String) -> String:
+	return str(root._registry.get_equipment(attacker_id).get("MainHand", "")) if attacker_id != "player" else ""
+
 func _main_hand(iid: String) -> String:
 	var held: String = root._character.held_item_of(iid)
 	return held if held != "" else str(root._character.get_equipment_set(iid).get("MainHand", ""))
@@ -128,8 +137,13 @@ func _main_hand(iid: String) -> String:
 func impact_info(attacker_id: String) -> Dictionary:
 	var iid := _attacker_character(attacker_id)
 	if iid == "":
-		var item := str(root._registry.get_equipment(attacker_id).get("MainHand", "")) if attacker_id != "player" else ""
-		return { "weapon": ComboChain.weapon_class(item, GameData.ITEMS), "item": item, "step": 0, "clip_length": 0.5 }
+		var item := _registry_main_hand(attacker_id)
+		var weapon: String = ComboChain.weapon_class(item, GameData.ITEMS)
+		var now := Time.get_ticks_msec() / 1000.0
+		var last: Dictionary = _bodyless_combo.get(attacker_id, {})
+		var bstep: int = ComboChain.next_step(weapon, str(last.get("weapon", "")), int(last.get("step", -1)), now - float(last.get("at", -1e9)))
+		_bodyless_combo[attacker_id] = { "weapon": weapon, "step": bstep, "at": now }
+		return { "weapon": weapon, "item": item, "step": bstep, "clip_length": 0.5 }
 	root._character.trigger_attack(iid)
 	var inst: Dictionary = root._character._instances[iid]
 	var combo: Dictionary = inst.get("combo", {})
@@ -168,7 +182,7 @@ func impact_state(entry: Dictionary) -> Dictionary:
 	var stopped: bool = root._status != null and root._status.is_immobilized(attacker, status_now())
 	var blocked: bool = root._battle.attack_blocked.is_valid() and root._battle.attack_blocked.call(attacker)
 	return { "attacker_alive": alive, "attacker_staggered": stopped or blocked,
-		"attacker_item": _main_hand(iid) if iid != "" else str(entry["item"]),
+		"attacker_item": _main_hand(iid) if iid != "" else _registry_main_hand(attacker),
 		"target_alive": state != "" and state != "dead" and not root._creature.is_tamed(target), "gap": gap,
 		"reach": PlayerSlice.ATTACK_RANGE + ATTACK_REACH_SLACK_M }
 
@@ -183,16 +197,19 @@ func _on_combat_hit_resolved(attacker_id: String, defender_id: String, outcome: 
 		return
 	var a_key := _wire_key(attacker_id)
 	var d_key := _wire_key(defender_id)
-	_animate_hit(a_key, d_key, outcome, reaction_for(defender_id, _damage))
+	var reaction := reaction_for(defender_id, _damage)
+	_animate_hit(a_key, d_key, outcome, reaction)
 	if outcome != "miss" and (attacker_id == "player" or attacker_id == root._registry.local_player_id):
 		_hit_feel()
 	if outcome != "miss" and outcome != "kill":
-		push_struck(attacker_id, defender_id, reaction_for(defender_id, _damage))
+		push_struck(attacker_id, defender_id, reaction)
 	# Only a hosting machine has clients to tell; offline, the send would just warn on every swing.
 	if root._networking != null and root._networking.is_host():
 		var at: Variant = _event_position(a_key, d_key)
 		if at != null:   # no resolvable position: an AOI broadcast around the origin would be wrong
-			root._networking.send_combat_hit(a_key, d_key, outcome, at)
+			# A non-lethal heavy hit goes out as "stagger" so every client plays the stagger clip too.
+			var wire := "stagger" if reaction == "stagger" and (outcome == "hit" or outcome == "critical") else outcome
+			root._networking.send_combat_hit(a_key, d_key, wire, at)
 
 ## Phase 287 — host: a creature a player's landed (non-killing) hit struck is pushed a short way away from the
 ## attacker, the fabric's `knockbackLight` or (for a stagger) `knockbackHeavy` metres, stopping at ground it can
@@ -233,7 +250,11 @@ func _on_combat_hit_synced(attacker_key: String, defender_key: String, outcome: 
 		_swing(attacker_key)
 		return
 	# A player's swing played when the host announced it, at the click; only a creature's plays with its hit.
-	_animate_hit(attacker_key, defender_key, outcome, "hit", attacker_key.begins_with("c:"))
+	var reaction := "stagger" if outcome == "stagger" else "hit"
+	_animate_hit(attacker_key, defender_key, outcome, reaction, attacker_key.begins_with("c:"))
+	if outcome != "miss" and attacker_key.begins_with("p:") and _character_for_key(attacker_key) == root._character.get_player_character() \
+			and root._character.get_player_character() != "":
+		_hit_feel()
 
 ## The player's own mining swing (the tool swing), when the player strikes a block.
 func _on_mine_swing(_position: Vector3, _normal: Vector3, player_id: String, _exact: Dictionary) -> void:

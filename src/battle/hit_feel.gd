@@ -34,10 +34,13 @@ static func shake(camera: Camera3D, strength: float = SHAKE_METRES) -> bool:
 
 ## Freeze an animation tree for `HIT_STOP_SECONDS`. False when the option is off or the tree is not live.
 static func hit_stop(tree: AnimationTree) -> bool:
-	if tree == null or not tree.is_inside_tree() or not tree.active or not hit_stop_on():
+	if tree == null or not tree.is_inside_tree() or not tree.active or not hit_stop_on() \
+			or tree.callback_mode_process == AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL:
 		return false
-	tree.active = false
+	# Manual callback mode stops the tree advancing but keeps its state and pose (deactivating would clear them).
+	var mode := tree.callback_mode_process
+	tree.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
 	tree.get_tree().create_timer(HIT_STOP_SECONDS).timeout.connect(func() -> void:
 		if is_instance_valid(tree):
-			tree.active = true)
+			tree.callback_mode_process = mode)
 	return true

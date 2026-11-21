@@ -3,8 +3,9 @@ extends RefCounted
 
 var sl: Node
 
-## Seconds a one-shot gesture plays when the rig has no clip to measure (the procedural body).
 const ComboChain := preload("res://src/battle/combo_chain.gd")
+
+## Seconds a one-shot gesture plays when the rig has no clip to measure (the procedural body).
 const DEFAULT_GESTURE_SECONDS := 1.5
 
 func _init(slice: Node) -> void:
