@@ -54,10 +54,10 @@ func _on_intent(item_id: String, player_id: String) -> void:
 	if root._is_client:
 		return   # a client's own intent is forwarded by the networking slice
 	var pid := _local_id() if _is_local(player_id) else player_id
+	_deferred.erase(pid)   # the newest selection supersedes any rate-limited wish, an empty box included
 	if item_id == "":
 		_hold(pid, "")   # empty hands need no evidence
 		return
-	_deferred.erase(pid)
 	if not HeldItem.holdable(item_id, GameData.ITEMS, GameData.MATERIALS) \
 			or int(_contents_of(pid).get(item_id, 0)) < 1:
 		_hold(pid, "")   # the box selected now holds nothing usable: the old item must not stay in the hand
