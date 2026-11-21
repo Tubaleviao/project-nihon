@@ -1684,11 +1684,11 @@ func _step_fight() -> Array:
 	var y: float = _root._terrain.get_height_at(Vector2(p.x + FIGHT_RANGE_M, p.z))
 	_root._creature.set_instance_position(iid, Vector3(p.x + FIGHT_RANGE_M, y, p.z))
 	var rounds := 0
-	var ok := false
+	var ok := false; var clips: Array = []   # Phase 287: the combo's clips
 	while rounds < 20 and not ok:
-		GameBus.combat_round_requested.emit("player", iid)
-		rounds += 1
-		await _until(func(): return false, 0.2)
+		GameBus.combat_round_requested.emit("player", iid); rounds += 1
+		clips.append(str(_root._character._instances[_root._character.get_player_character()]["locomotion"].attack_clip))
+		await _until(func(): return false, 0.7)   # a new swing replaces a pending hit
 		var left: float = _root._battle.get_hp(iid)
 		ok = left >= 0.0 and left < float((GameData.CREATURES[cid] as Resource).get("baseHp"))
 	# Phase 143: the screenshot that follows shows the target as a rigged model, not a box.
@@ -1698,7 +1698,7 @@ func _step_fight() -> Array:
 	_root._creature.despawn_instance(iid)   # the bot's target must not outlive the step
 	# Phase 161: the kill leaves a body; a knife in hand takes its pelt and meat into the bag.
 	var harvested := await _harvest_after_kill(cid)
-	return [ok and modelled and harvested[0], "%s at %.0f hp after %d rounds, %s, player %.1f m from the surface; %s" % [cid, left_hp, rounds, why, gap, harvested[1]]]
+	return [ok and modelled and harvested[0], "%s at %.0f hp after %d rounds (clips %s), %s, player %.1f m from the surface; %s" % [cid, left_hp, rounds, ",".join(clips), why, gap, harvested[1]]]
 
 ## Kill `creature_key` beside the player through the real death path, harvest the body with a knife and
 ## check the bag holds what came off. Chances are pinned to 1 so the check does not depend on a roll.
