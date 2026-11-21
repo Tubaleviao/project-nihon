@@ -124,6 +124,11 @@ market.list,List,Anunciar
 market.list_failed,Couldn't list {0} — check you have the quantity.,Não foi possível anunciar {0} — confira se você tem a quantidade.
 market.list_prompt,List an item for sale (item · qty · price):,Anunciar um item à venda (item · qtd · preço):
 market.listed,Listed {0} ×{1} @ {2}.,{0} ×{1} anunciado por {2}.
+market.unknown_seller,unknown seller,vendedor desconhecido
+party.merchant,merchant,mercador
+party.unknown,unknown player,jogador desconhecido
+party.you,{0} (you),{0} (você)
+party.you_bare,(you),(você)
 msg.unknown,(unreadable message),(mensagem ilegível)
 proposal.body_ph,Proposal body (optional),Texto da proposta (opcional)
 proposal.list,Proposals:,Propostas:

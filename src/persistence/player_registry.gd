@@ -12,11 +12,9 @@ extends Node
 ##     already owns that record and no live peer holds it — i.e. a genuine
 ##     reconnect. Any other claim is ignored and a fresh id is minted, so a
 ##     spoofed id can never read or write another player's record
-##     (the ratified PlayerIdentityModel decision). A record is loaded from disk
-##     LAZILY, on the claim that asks for it (`set_record_loader`), not all at boot,
-##     and it is released again when the connection drops (`evict_player`) — the
-##     disk copy is the durable half, so the registry holds records only for the
-##     players who are actually online right now.
+##     (the ratified PlayerIdentityModel decision). A record is loaded from disk LAZILY, on the claim that asks
+##     for it (`set_record_loader`), not all at boot, and released again when the connection drops
+##     (`evict_player`): the disk copy is the durable half, so only online players' records are held.
 ##   • Health is written from EVIDENCE, never from a claim. The local player's HP
 ##     comes off the live body (`record_hp`); a remote peer's HP is written only
 ##     when the HOST itself resolved it (`record_simulated_hp`). A value that
@@ -1037,15 +1035,18 @@ const MAX_NAMES := 100000
 func creation_of(player_id: String) -> Dictionary:
 	return CreationRules.sanitize_state(get_record(player_id).get("creation", {}))
 
-## The name a player is shown by: their created name (from the record, else the server's name index, so an
-## offline player keeps theirs), else their public handle. The friend code stays the handle.
+## The name a player is shown by: their `character_name`, else their public handle. The friend code stays the handle.
 func display_name(player_id: String) -> String:
+	var name := character_name(player_id)
+	return public_handle(player_id) if name.is_empty() else name
+
+## Phase 292 — the created name alone (from the record, else the server's name index, so an offline player keeps
+## theirs); "" when the player has none (never created, or deleted). What another player is shown, never a handle.
+func character_name(player_id: String) -> String:
 	if player_id.is_empty():
 		return ""
 	var state := creation_of(player_id)
-	if CreationRules.is_created(state):
-		return str(state["name"])
-	return str(_names.get(player_id, public_handle(player_id)))
+	return str(state["name"]) if CreationRules.is_created(state) else str(_names.get(player_id, ""))
 
 ## What peers are told about a player's character: see `CreationRules.look`.
 func look_of(player_id: String) -> Dictionary:

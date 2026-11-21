@@ -82,7 +82,7 @@ const LAYOUT_PATH := "user://ui_layout.json"
 const UiIcons := preload("res://src/ui/ui_icons.gd")
 const SkillWheelLayout := preload("res://src/ui/skill_wheel_layout.gd")
 const SkillWheelView := preload("res://src/ui/skill_wheel_view.gd")
-const SkillsWindow := preload("res://src/ui/skills_window.gd")
+const SkillsWindow := preload("res://src/ui/skills_window.gd"); const PartyLabel := preload("res://src/ui/party_label.gd")
 const SkillPagePanel := preload("res://src/ui/skill_page_panel.gd")
 const SkillFocus := preload("res://src/character/skill_focus.gd")
 const ICON_KEY_FORMAT := "icons/items/%s.png.raw"
@@ -106,6 +106,7 @@ var technology_slice: Node = null
 var market_slice: Node = null
 var proposal_slice: Node = null
 var trade_slice: Node = null
+var party_name_of: Callable   ## Phase 292 — host: a player's character name (registry), for rows its own blobs leave unnamed
 ## The voxel slice owns the place-material selection the hotbar drives.
 var voxel_slice: Node = null
 
@@ -725,7 +726,7 @@ func repair_rows() -> Array:
 func technology_rows() -> Array:
 	return _m2.technology_rows()
 
-## One row per active market listing: { id, seller, item_id, quantity, price }.
+## One row per active market listing: { id, seller, seller_name, item_id, quantity, price }.
 func market_rows() -> Array:
 	var rows: Array = []
 	if market_slice == null:
@@ -734,7 +735,7 @@ func market_rows() -> Array:
 		var l: Dictionary = listing
 		rows.append({
 			"id": str(l["id"]),
-			"seller": str(l["seller"]),
+			"seller": str(l["seller"]), "seller_name": PartyLabel.name_for(l.get("seller_name"), str(l["seller"]), party_name_of),
 			"item_id": str(l["item_id"]),
 			"icon_key": item_icon_key(str(l["item_id"])),
 			"quantity": int(l["quantity"]),
@@ -742,7 +743,7 @@ func market_rows() -> Array:
 		})
 	return rows
 
-## One row per proposal: { id, title, author, state, for, against }.
+## One row per proposal: { id, title, author, author_name, state, for, against }.
 func proposal_rows() -> Array:
 	var rows: Array = []
 	if proposal_slice == null:
@@ -759,7 +760,7 @@ func proposal_rows() -> Array:
 		rows.append({
 			"id": str(p["id"]),
 			"title": str(p.get("title", "")),
-			"author": str(p.get("author", "")),
+			"author": str(p.get("author", "")), "author_name": PartyLabel.name_for(p.get("author_name"), str(p.get("author", "")), party_name_of),
 			"state": str(p.get("state", "proposed")),
 			"for": for_count,
 			"against": against_count,
@@ -1038,7 +1039,7 @@ func refresh_market() -> void:
 			hbox.add_child(btn)
 			_add_row_icon(hbox, str(r["icon_key"]))
 			var lbl := Label.new()
-			lbl.text = I18n.t("ui.listing", [r["id"], I18n.content("item", str(r["item_id"])), r["quantity"], I18n.number(r["price"], 2), r["seller"]])
+			lbl.text = PartyLabel.listing_line(r, own_display_name())
 			hbox.add_child(lbl)
 			_market_box.add_child(hbox)
 	_refresh_market_item_selector()
@@ -1064,7 +1065,7 @@ func refresh_proposals() -> void:
 		var hbox := HBoxContainer.new()
 		hbox.add_theme_constant_override("separation", 8)
 		var lbl := Label.new()
-		lbl.text = I18n.t("ui.proposal_line", [r["id"], r["state"], r["title"], r["for"], r["against"], r["author"]])
+		lbl.text = PartyLabel.proposal_line(r, own_display_name())
 		hbox.add_child(lbl)
 		if str(r["state"]) == "proposed":
 			var for_btn := Button.new()

@@ -830,3 +830,84 @@ func held_item_synced(h: Node) -> void:
 	var ok: bool = seen and (avatar == "" or h._root._character.held_item_of(avatar) == HELD_SECOND)
 	h._report("held_item_synced", h.verdict(ok, true), "seen" if ok else ("never_synced" if not seen else "not_on_avatar"))
 
+
+## Phase 292 — the market names the seller. The host gives the peer two Thornwood; the client lists one and the
+## host lists one of its own. The client's market window text then names the host's listing by character name
+## (`HOST_NAME`, created by the `create_character` step), its own listing reads "(you)", and no line prints a
+## public handle. The harness host is a dedicated server with no UI, so it checks the market copy it sends a
+## client instead: both listings carry their seller's name (`CLIENT_NAME`, `HOST_NAME`), and their rendered lines
+## print neither a handle nor a player id.
+const MARKET_ITEM := "Thornwood"
+const PartyLabel := preload("res://src/ui/party_label.gd")
+const I18n := preload("res://src/core/i18n.gd")
+func market_names_seller(h: Node) -> void:
+	const DETAIL := "names-seen-no-handle"
+	var market: Node = h._root._market
+	if h._role == "host":
+		var pid: String = h._live_bound_id()
+		if pid == "":
+			h._report("market_names_seller", "fail", "no_connected_peer")
+			return
+		h._root._registry.get_inventory(pid).add_item(MARKET_ITEM, 2)
+		h._root._chest_wiring._push_inventory(pid)   # the client lists from its own copy of the bag
+		h._root._inventory.add_item(MARKET_ITEM, 1)
+		var theirs: bool = await h._await_until(func() -> bool:
+			return market.get_listings().any(func(l: Dictionary) -> bool: return str(l["seller"]) == pid), h._step_timeout() * 3.0)
+		var mine: String = market.list_item(PartyLabel.SELF, MARKET_ITEM, 1, 5.0)
+		# The harness host is a dedicated server: it builds no market window, so it checks the copy it SENDS.
+		var verdict_detail := _sent_market_verdict(h) if theirs and mine != "" else ("client_never_listed" if not theirs else "host_list_refused")
+		await h._await_settle(3.0 * h._time_scale)   # the client reads the host's listing before the step moves on
+		h._report("market_names_seller", h.verdict(verdict_detail == DETAIL, true), verdict_detail)
+		return
+	var inv: Node = h._root._inventory
+	var stocked: bool = await h._await_until(func(): return inv.get_item_count(MARKET_ITEM) >= 1, h._step_timeout() * 3.0)
+	if not stocked:
+		h._report("market_names_seller", "fail", "never_stocked")
+		return
+	market.list_item(PartyLabel.SELF, MARKET_ITEM, 1, 5.0)
+	var both: bool = await h._await_until(func() -> bool:
+		var sellers: Array = market.get_listings().map(func(l: Dictionary) -> String: return str(l["seller"]))
+		return sellers.has(PartyLabel.SELF) and sellers.any(func(s: String) -> bool: return s.begins_with("p_")), h._step_timeout() * 3.0)
+	var detail := _market_text_verdict(h, h.HOST_NAME) if both else "listings_not_synced"
+	h._report("market_names_seller", h.verdict(detail == "names-seen-no-handle", true), detail)
+
+## The text of the market window's rows as `UISlice.refresh_market` draws them (rows queued for deletion skipped).
+static func market_window_text(ui: Node) -> String:
+	ui.refresh_market()
+	var lines: Array = []
+	for row: Node in (ui._market_box.get_children() if ui._market_box != null else []):
+		if row.is_queued_for_deletion():
+			continue
+		for c: Node in row.get_children():
+			if c is Label:
+				lines.append((c as Label).text)
+	return "\n".join(lines)
+
+## The market window's text on this side (every row as `UISlice.refresh_market` renders it): DETAIL when it names
+## `other` and reads "(you)" on this side's own listing, with no public handle anywhere.
+func _market_text_verdict(h: Node, other: String) -> String:
+	var text := market_window_text(h._root._ui)
+	var you := I18n.t("party.you", [""]).strip_edges()
+	if RegEx.create_from_string("p_[0-9a-f]{16}").search(text) != null:
+		return "handle_shown"
+	if not text.contains(other):
+		return "other_not_named"
+	return "names-seen-no-handle" if text.contains(you) else "own_not_marked"
+
+## Host side: the market blob a client is sent (`NetPart3.redact_blob`), each listing rendered as a client would
+## (`PartyLabel.listing_line`): DETAIL when both sellers are named and no handle or player id is printed.
+func _sent_market_verdict(h: Node) -> String:
+	var sent: Variant = h._root._networking._m3.redact_blob("market", h._root._market.get_market_data())
+	if not (sent is Dictionary):
+		return "nothing_sent"
+	var lines: Array = []
+	for id in sent:
+		var l: Dictionary = sent[id]
+		lines.append(PartyLabel.listing_line({ "id": str(id), "item_id": str(l["item_id"]), "quantity": int(l["quantity"]),
+			"price": float(l["price"]), "seller": str(l["seller"]), "seller_name": str(l.get("seller_name", "")) }))
+	var text := "\n".join(lines)
+	if RegEx.create_from_string("p_[0-9a-f]{16}|player_[0-9]").search(text) != null:
+		return "handle_shown"
+	if not text.contains(h.CLIENT_NAME) or not text.contains(h.HOST_NAME):
+		return "other_not_named"
+	return "names-seen-no-handle"

@@ -228,8 +228,84 @@ func redact_social_state(state: Dictionary) -> Dictionary:
 	var out := {}
 	for key in sl.IDENTIFIED_STATE_KEYS:
 		if state.has(key):
-			out[key] = sl.redact_for_client(state[key])
+			out[key] = redact_blob(key, state[key])
 	return out
+
+## Phase 292 — a replicated blob as a client is sent it: the players it shows are first named with their
+## character names (`seller_name`, a proposal's `author_name`, a trade's `names` keyed by party), read from the
+## registry NOW, so a rename shows at the next sync and an offline seller keeps the name the world record's
+## index holds; then every player id in it is redacted to its handle (`redact_for_client`). The names ride only
+## on the copy that is sent: the authoritative state and the save never hold one.
+##
+## The listen host's own player is stored as the literal "player" on the host; the copy writes it as the host's
+## HANDLE (never its id, whatever the id's shape), so it crosses as the host and not as the literal every client
+## reads as ITSELF.
+## `key` is an `IDENTIFIED_STATE_KEYS` name, or "trade_session" for one trade (`trade_completed`).
+func redact_blob(key: String, blob: Variant) -> Variant:
+	if sl.player_registry == null or not (blob is Dictionary):
+		return sl.redact_for_client(blob)
+	var out: Dictionary = (blob as Dictionary).duplicate(true)
+	match key:
+		"market":
+			for id in out:
+				if out[id] is Dictionary:
+					var l: Dictionary = out[id]
+					l["seller_name"] = party_name(str(l.get("seller", "")))
+					l["seller"] = _own_id(str(l.get("seller", "")))
+		"governance":
+			for id in (out.get("proposals") if out.get("proposals") is Dictionary else {}):
+				var p = out["proposals"][id]
+				if p is Dictionary:
+					p["author_name"] = party_name(str(p.get("author", "")))
+					p["author"] = _own_id(str(p.get("author", "")))
+					if p.get("votes") is Dictionary:
+						p["votes"] = _own_keys(p["votes"])
+			if out.get("decisions_log") is Array:
+				for e in out["decisions_log"]:
+					if e is Dictionary and e.has("author"):
+						e["author"] = _own_id(str(e["author"]))
+		"trade":
+			for id in (out.get("trades") if out.get("trades") is Dictionary else {}):
+				if out["trades"][id] is Dictionary:
+					_name_trade(out["trades"][id])
+		"trade_session":
+			_name_trade(out)
+	return sl.redact_for_client(out)
+
+## Phase 292 — the character name the host shows another player for `party`: "" for none (a deleted or never
+## created character, the NPC merchant), never a handle or an id.
+func party_name(party: String) -> String:
+	if not sl.player_registry.has_method("character_name"):
+		return ""
+	return str(sl.player_registry.character_name(_local_id() if party == "player" else party))
+
+func _local_id() -> String:
+	var local: Variant = sl.player_registry.get("local_player_id")
+	return str(local) if local != null else ""
+
+## The host's own player's public handle for the local literal "player" (a handle, not the id: an id of an older
+## shape would pass `redact_for_client` untouched); every other party as it is.
+func _own_id(party: String) -> String:
+	var local := _local_id()
+	return sl._public_handle(local) if party == "player" and local != "" else party
+
+func _own_keys(by_party: Dictionary) -> Dictionary:
+	var out := {}
+	for k in by_party:
+		out[_own_id(str(k))] = by_party[k]
+	return out
+
+## One trade's parties with the host's own literal as its handle (see `_own_id`), with `names` { party: character name } beside them.
+func _name_trade(t: Dictionary) -> void:
+	var names := {}
+	for p in (t.get("parties") if t.get("parties") is Array else []):
+		names[_own_id(str(p))] = party_name(str(p))
+	if t.get("parties") is Array:
+		t["parties"] = (t["parties"] as Array).map(func(p: Variant) -> String: return _own_id(str(p)))
+	for k in ["offers", "accepted"]:
+		if t.get(k) is Dictionary:
+			t[k] = _own_keys(t[k])
+	t["names"] = names
 
 ## Route a host → client packet. Only host-originated types are handled.
 func _route_h2c(payload: Dictionary) -> void:

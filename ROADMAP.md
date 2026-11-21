@@ -31,14 +31,13 @@ introductions of the arcs they belonged to, are archived in
 Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
 see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
 phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
-comes next. A phase that needs an earlier one still waits for it. Done phases (238–244, 248–250, 252–256, 259–276, 289, 290, 283, 282, 280, 291, 281, 284, 286, 287)
+comes next. A phase that needs an earlier one still waits for it. Done phases (238–244, 248–250, 252–256, 259–276, 289, 290, 283, 282, 280, 291, 281, 284, 286, 287, 292)
 have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
 [Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
 others are not in it.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 19 | 292 | The market names the seller |
 | 20 | 293 | Other players look like people |
 | 21 | 294 | Other players and creatures walk instead of jumping |
 | 22 | 295 | Equipment categories and traits replace tools (fabric) |
@@ -374,7 +373,7 @@ of a category (knife, sword, axe, hammer, pick…), and what it can do follows f
 | Phase | Title | Status |
 |---|---|---|
 | 291 | Right-click look puts the cursor back where it was | Done |
-| 292 | The market names the seller | Open |
+| 292 | The market names the seller | Done |
 | 293 | Other players look like people | Open |
 | 294 | Other players and creatures walk instead of jumping | Open |
 | 295 | Equipment categories and traits replace tools (fabric) | Open |
@@ -1310,6 +1309,15 @@ and `UISlice` prints that handle in `ui.listing` as it is.
 - The same rule for every replicated blob that shows a player to another player (trade, governance proposals and
   votes, clan rolls): a check lists the UI strings that format a player field and fails one that prints a handle.
 - The market window shows "(you)" on the viewer's own listings (new key in both locales).
+
+**Done.** `NetPart3.redact_blob` names the players in the copy a client is sent (a listing's `seller_name`, a
+proposal's `author_name`, a trade's `names` by party) from `PlayerRegistry.character_name` at send time, then
+redacts ids to handles; the market, governance and trade broadcasts and the join snapshot all go through it, and the
+listen host's own "player" literal crosses as the host's handle (a client used to read the host's listings as its own).
+`src/ui/party_label.gd` renders every player field (`PLAYER_FIELD_KEYS`: the listing, proposal, trade and clan roll
+lines): name, "<name> (you)", the merchant, or a localized "unknown seller" / "unknown player", never a handle. Suite
+`party_name_tests.gd` covers the wire, the client rows in `en` and `pt_BR`, a restart from saved listings and names, and
+an audit that no other UI file formats those strings; net harness step `market_names_seller`.
 
 **Acceptance criteria**
 - Suite (host): a listing created by Alice reaches Bob's client with `seller_name == "Alice"` and no raw player id

@@ -349,6 +349,7 @@ func _test_clan_panel() -> void:
 	var reg: PlayerRegistry = rig["reg"]
 	reg.add_skill_xp("p2", "Tailoring", 50)
 	reg.add_skill_xp("p3", "Tailoring", 400)
+	reg.note_name("p2", "Bea"); reg.note_name("p3", "Cid")   # Phase 292: a nameless member reads "unknown player"
 	s.found("host", "Oakhold")
 	for p in ["p2", "p3"]:
 		s.invite("host", p)
