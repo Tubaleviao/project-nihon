@@ -347,7 +347,8 @@ jobs:
             fi
           done
           cp playtest/report.json /tmp/pt-extra/report3.json
-          if [ "$(ls /tmp/pt-extra/report?.json | wc -l)" -ne 3 ]; then
+          reports=(/tmp/pt-extra/report?.json)
+          if [ "${#reports[@]}" -ne 3 ] || [ ! -f "${reports[0]}" ]; then
             echo "::error::an extra run wrote no report, so the median would be of fewer than 3 runs"
             exit 1
           fi
