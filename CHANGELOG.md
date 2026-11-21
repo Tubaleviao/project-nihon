@@ -5,6 +5,40 @@ Every release of Project Nihon, newest first. The version is `application/config
 (`tools/check_changelog.sh`). The release checklist is in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#releasing).
 Phase numbers point at [ROADMAP.md](ROADMAP.md) and [docs/roadmap-history/](docs/roadmap-history/README.md).
 
+## v0.2.0
+
+The first round after the owner's playtest of 2026-11-19 (Phases 278–290 filed), plus the network,
+terrain-cache and stress work that followed v0.1.0. **A v0.2.0 client cannot join a v0.1.0 host or the
+reverse:** the hot packets moved to a binary wire format.
+
+**Work that feels like work (Phases 279, 288–290).** Picking up moved to E (the equipment window to T),
+both rebindable input actions read by the controls legend and the tutorial cards. Holding to chop, dig or
+mine shows a bar under the crosshair that says to keep holding, with a hint after an early release. The
+stone shovel digs soil twice as fast, a held dig chains into the next block so a trench is one dig, and
+the tutorial marks the nearest ferrite under shallow soil with a beacon. Crafting recipes are cards with
+a real icon, the window opens wholly on screen and its columns follow its width.
+
+**A world that looks less like boxes (Phases 278, 282–283).** Trees draw from a model per species with a
+tapered trunk, a closed crown that sways (`nihon/graphics/tree_sway` turns it off) and faces wound the
+right way round; a felled tree topples away from the feller, then sinks and fades. Loose stones and
+branches draw with their own models, varied in turn, size and shape.
+
+**Flight that handles like flight (Phase 237).** Inertia, steering by the camera, and a view that lags
+and widens with speed.
+
+**Faster revisits and lighter packets (Phases 244, 256).** Built chunk meshes (client) and generated
+heightmaps (host) are cached on disk, keyed by world seed, generator, mesher and edits, so land seen
+before loads from disk on a worker. Player states and snapshot chunks travel in a fixed binary layout,
+compressed when large.
+
+**Measuring the server (Phase 250).** The stress run can put its bots on another machine over a
+token-checked control channel, and `docs/perf/server-ceiling.md` records the loopback numbers.
+
+**Fixes.** A remote client's melee swing now reaches the host, which checks range, rate and target before
+it lands. A refused pick-up says why. Sounds cap their polyphony. The tutorial marker searches again after
+a teleport or respawn. The production art pin is the newest, and a release tag now must pin the assets
+repo's newest `main` (`tools/check_assets_pin.sh`).
+
 ## v0.1.0
 
 The first public build: everything from Phase 1 to Phase 255. The downloads carry the public
