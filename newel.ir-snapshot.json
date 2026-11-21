@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:14a3b40f3642667ec6157d1ed225998c91b07c4b86aa91e6974ed56ba1f4a33a",
+  "schemaHash": "sha256:faa6c4500c6764f3c17d8c19cf84abebdc3283505918f3af158fe7451df1b9c5",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -42014,6 +42014,97 @@
               },
               "StoneShovel": {
                 "shovel": 1.2
+              }
+            }
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
+      "WorkClips": {
+        "name": "WorkClips",
+        "tags": [
+          "world-system"
+        ],
+        "description": "Which rig clip each kind of work plays (loop for a hold, once for a single action), and the fraction of the clip at which the strike lands.",
+        "goal": "Make work visible: every kind of work has its own motion, and other players see it (Phase 281)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "fallbackClip": {
+            "name": "fallbackClip",
+            "type": "string",
+            "description": "Clip a rig without the work clip plays",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "attack_tool"
+          },
+          "rigClips": {
+            "name": "rigClips",
+            "type": "json",
+            "description": "Clip names the player rig contract carries for work",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "chop",
+              "mine",
+              "dig",
+              "build",
+              "dissect",
+              "attack_tool"
+            ]
+          },
+          "clips": {
+            "name": "clips",
+            "type": "json",
+            "description": "{ <work kind>: { clip, mode: loop|once, impact } }",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "chop": {
+                "clip": "chop",
+                "mode": "loop",
+                "impact": 0.4
+              },
+              "mine": {
+                "clip": "mine",
+                "mode": "loop",
+                "impact": 0.4
+              },
+              "dig": {
+                "clip": "dig",
+                "mode": "loop",
+                "impact": 0.4
+              },
+              "dissect": {
+                "clip": "dissect",
+                "mode": "loop",
+                "impact": 0.4
+              },
+              "build": {
+                "clip": "build",
+                "mode": "once",
+                "impact": 0.4
+              },
+              "dismantle": {
+                "clip": "build",
+                "mode": "once",
+                "impact": 0.4
+              },
+              "repair": {
+                "clip": "build",
+                "mode": "once",
+                "impact": 0.4
               }
             }
           }

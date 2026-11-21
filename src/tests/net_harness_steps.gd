@@ -614,6 +614,23 @@ func title_choice(h: Node) -> void:
 	h._report("title_choice", h.verdict(ok, true), DETAIL if ok else ("nameplate_not_seen-%s" % h._root._character.get_nameplate(h._root._character.get_peer_character(host_id)).replace("\n", "/").replace(" ", "_") if not seen \
 		else ("not_unlocked" if not have else ("not_chosen" if not chosen else ("locked_not_refused" if not refused else "choice_changed")))))
 
+## Phase 281 — the host's own body works, and the client's copy of it plays `chop`, then `build` after the host
+## places a block: the host sends a `work_anim` packet to peers in range and the client plays the table's clip.
+func work_anim_synced(h: Node) -> void:
+	if h._role == "host":
+		await h._await_settle(1.0)
+		GameBus.work_anim_changed.emit(1, "chop")
+		await h._await_settle(1.5)
+		GameBus.work_anim_changed.emit(1, "")
+		GameBus.block_place_requested.emit(Vector3.ZERO, Vector3.UP, "", "Soil", {})
+		await h._await_settle(1.5)
+		h._report("work_anim_synced", h.verdict(true, true), "synced")
+		return
+	var w = h._root._work_anim_wiring
+	var chopped: bool = await h._await_until(func(): return "chop" in w.clip_history.get(1, []), h._step_timeout())
+	var built: bool = await h._await_until(func(): return w.clip_history.get(1, []).slice(maxi(w.clip_history.get(1, []).rfind("chop"), 0)).has("build"), h._step_timeout())
+	h._report("work_anim_synced", h.verdict(chopped and built, true), "synced" if chopped and built else ("no_chop" if not chopped else "no_build"))
+
 ## A client's own swing reaches the host. The host stands a probe creature beside the peer's reported body; the
 ## client swings with the player's real input path (`PlayerSlice._try_attack`), which on a client forwards an
 ## `attack_intent`. The host must resolve a round with the peer's player id as the attacker, and the client must
