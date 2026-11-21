@@ -4,6 +4,7 @@ extends "res://src/tests/test_support.gd"
 const HeldItem := preload("res://src/character/held_item.gd")
 const RigTree := preload("res://src/character/rig_tree.gd")
 const Hotbar := preload("res://src/ui/hotbar.gd")
+const StationRules := preload("res://src/world/station_rules.gd")
 
 const MAIN := "VeilsteelLongsword"
 const TOOL := "StonePick"
@@ -20,6 +21,7 @@ func register() -> void:
 	_run_test("held item: a refused box clears the hand, a rate-limited change lands later", _test_refused_clears_and_defers)
 	_run_test("held item: using up the held item syncs empty", _test_pack_empties)
 	_run_test("held item: the hotbar selection is the held item and a skill box holds nothing", _test_hotbar_emits)
+	_run_test("held item: a station is carried at the chest, shrunk to its carried size", _test_station_carried)
 
 
 func _char_fixture() -> Dictionary:
@@ -219,3 +221,31 @@ func _test_hotbar_emits() -> void:
 	GameBus.held_item_intent.disconnect(cb)
 	assert_eq(seen, ["Thornwood", "", ""], "a block is held, a skill box and an empty box hold nothing")
 	hb.free()
+
+
+## Follow-up #719: a station in the slot is its carried form (chest socket, longest edge at most CARRY_EXTENT), not a
+## full-size station in the right hand.
+func _test_station_carried() -> void:
+	var station := ""
+	for t: String in StationRules._stations():
+		var item := str((StationRules._stations()[t] as Dictionary).get("placementItem", ""))
+		if item != "":
+			station = item
+			break
+	assert_true(station != "", "the fabric has a station item")
+	assert_eq(HeldItem.carry_scale(Vector3(2.0, 1.0, 1.0)), HeldItem.CARRY_EXTENT / 2.0, "a 2 m station shrinks to the carry size")
+	assert_eq(HeldItem.carry_scale(Vector3(0.2, 0.1, 0.1)), 1.0, "a small one is not grown")
+	var f := _char_fixture()
+	var ch: CharacterSlice = f["ch"]
+	var iid: String = f["iid"]
+	assert_true(ch.set_held_item(iid, station), "a station is held")
+	var node := ch.held_node_of(iid) as MeshInstance3D
+	assert_true(node != null, "the carried mesh exists")
+	if node != null:
+		assert_eq(str(node.get_meta("socket", "")), HeldItem.CARRY_SOCKET, "a station sits at the chest socket")
+		assert_true(node.get_meta("carried", false), "the mesh is marked carried")
+		var size: Vector3 = node.get_aabb().size * node.scale
+		assert_true(maxf(size.x, maxf(size.y, size.z)) <= HeldItem.CARRY_EXTENT + 0.001, "carried size %s fits %s m" % [size, HeldItem.CARRY_EXTENT])
+	assert_true(ch.set_held_item(iid, TOOL), "a tool after the station")
+	assert_eq(str(ch.held_node_of(iid).get_meta("socket", "")), "socket_weapon_r", "a tool goes back to the right hand")
+	ch.free()

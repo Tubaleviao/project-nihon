@@ -2,6 +2,7 @@ extends RefCounted
 ## Phase 280 — the hotbar item in the hand. Pure rules (what may be held, the rate limit) and the view
 ## that attaches the held item's mesh to `socket_weapon_r`. `sl` is the owning CharacterSlice.
 
+const StationRules := preload("res://src/world/station_rules.gd")
 const SKILL_PREFIX := "skill:"
 ## The longest item id a held-item packet may carry.
 const MAX_ID_CHARS := 64
@@ -14,6 +15,10 @@ const FALLBACK_BOX := 0.25
 ## Metadata keys a model resource may carry for its grip (offset in metres, rotation in degrees).
 const GRIP_POS_META := "grip_pos"
 const GRIP_ROT_META := "grip_rot"
+## Phase 280 — a station in the slot is carried, not held: shrunk so its longest edge is CARRY_EXTENT metres and
+## held at the chest, in front of the body between both hands (follow-up #719), never a full-size station.
+const CARRY_SOCKET := "socket_chest"
+const CARRY_EXTENT := 0.45
 
 var sl: Node
 
@@ -75,14 +80,29 @@ func set_held(instance_id: String, item_id: String) -> bool:
 	else:
 		mesh = sl._make_box(Vector3(FALLBACK_BOX, FALLBACK_BOX, FALLBACK_BOX), 0)
 	mesh.name = "Held"
-	var bone: String = rig.socket_to_bone(SOCKET)
-	var offset: Vector3 = sl._socket_offset(rig, SOCKET, props) - rig.get_bone_global_rest(bone)
+	var carried := StationRules.is_station_item(item_id)
+	var socket: String = CARRY_SOCKET if carried else SOCKET
+	var bone: String = rig.socket_to_bone(socket)
+	var offset: Vector3 = sl._socket_offset(rig, socket, props) - rig.get_bone_global_rest(bone)
 	var grip := grip_of(model)
+	if carried:
+		# Centred on the chest and pushed forward to the hands' reach; no grip (both hands hold the body).
+		var s := carry_scale(mesh.get_aabb().size)
+		mesh.scale = Vector3(s, s, s)
+		var forward: float = sl._socket_offset(rig, SOCKET, props).z
+		grip = { "pos": Vector3(0.0, 0.0, forward) - mesh.get_aabb().get_center() * s, "rot": Vector3.ZERO }
 	mesh.rotation_degrees = grip["rot"]
-	rig.attach(SOCKET, mesh, "SKINNED", offset + grip["pos"])
+	rig.attach(socket, mesh, "SKINNED", offset + grip["pos"])
 	mesh.rotation_degrees = grip["rot"]
+	if carried:
+		mesh.set_meta("carried", true)
 	_held[instance_id] = { "node": mesh, "item": item_id }
 	return true
+
+## Uniform scale that shrinks a carried station whose bounds are `size` so its longest edge is CARRY_EXTENT (never grows it).
+static func carry_scale(size: Vector3) -> float:
+	var longest := maxf(size.x, maxf(size.y, size.z))
+	return 1.0 if longest <= CARRY_EXTENT else CARRY_EXTENT / longest
 
 ## The grip of a model from its resource metadata: { pos: Vector3, rot: Vector3 }, zero when it has none.
 static func grip_of(model: Mesh) -> Dictionary:
