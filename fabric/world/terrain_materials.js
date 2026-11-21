@@ -27,8 +27,18 @@ const MAX_LAYERS = 8
 // does not fit a chunk a whole number of times would jump at every rebase: `scale` must divide it.
 const CHUNK_METRES = 32
 
+// Phase 285 — no black ground. `heightFloor` is the least blend height a layer's texel gets (the albedo
+// luminance is clamped up to it), so a layer whose dark texels would all lose the height blend at once keeps
+// a fair share. `minMeanLuminance` / `minDarkLuminance` are the floors the map loader holds an albedo to: the
+// mean luminance of the map and the luminance of its darkest 1% of texels (0..1). A map under either is
+// refused (logged) and the placeholder used, so a broken production map cannot ship black ground.
+const HEIGHT_FLOOR = 0.2
+const MIN_MEAN_LUMINANCE = 0.08
+const MIN_DARK_LUMINANCE = 0.015
+
 function terrainMaterial({ description, goal, layer, textureKey, scale, biomes = [], slopeMin = -1,
-  aboveSnowLine = false, nearWater = -1 }) {
+  aboveSnowLine = false, nearWater = -1, heightFloor = HEIGHT_FLOOR, minMeanLuminance = MIN_MEAN_LUMINANCE,
+  minDarkLuminance = MIN_DARK_LUMINANCE }) {
   return defineEntity({
     tags: ['terrain_material'],
     description,
@@ -42,6 +52,9 @@ function terrainMaterial({ description, goal, layer, textureKey, scale, biomes =
       slopeMin:      { type: 'decimal', description: 'Degrees from flat above which ground is this material whatever the biome; -1 = never (Phase 242)', defaultValue: slopeMin },
       aboveSnowLine: { type: 'boolean', description: 'Whether this material covers ground above the biome\'s snowLine (Phase 242)', defaultValue: aboveSnowLine },
       nearWater:     { type: 'decimal', description: 'Metres from open water within which this material covers wet ground; -1 = never (Phase 242)', defaultValue: nearWater },
+      heightFloor:   { type: 'decimal', description: 'Least blend height (0..1) of this layer: its albedo luminance is clamped up to it in the height blend (Phase 285)', defaultValue: heightFloor },
+      minMeanLuminance: { type: 'decimal', description: 'Floor (0..1) for the mean luminance of this material\'s albedo map; a darker map is refused and the placeholder used (Phase 285)', defaultValue: minMeanLuminance },
+      minDarkLuminance: { type: 'decimal', description: 'Floor (0..1) for the luminance of the darkest 1% of this material\'s albedo texels (Phase 285)', defaultValue: minDarkLuminance },
     },
   })
 }
@@ -117,6 +130,10 @@ function terrainMaterialProblems(materials, biomes, assetsDir = ASSETS) {
     if (!(slope === -1 || (typeof slope === 'number' && slope > 0 && slope < 90))) problems.push(`terrain material ${name}: slopeMin must be -1 or in (0, 90) degrees`)
     const wet = value(m, 'nearWater')
     if (!(wet === -1 || (typeof wet === 'number' && wet > 0))) problems.push(`terrain material ${name}: nearWater must be -1 or a positive distance`)
+    for (const f of ['heightFloor', 'minMeanLuminance', 'minDarkLuminance']) {
+      const v = value(m, f)
+      if (!(typeof v === 'number' && v >= 0 && v <= 1)) problems.push(`terrain material ${name}: ${f} must be a number in 0..1`)
+    }
     const key = value(m, 'textureKey')
     if (typeof key !== 'string' || !key) problems.push(`terrain material ${name}: no textureKey`)
     else for (const map of MAPS) {

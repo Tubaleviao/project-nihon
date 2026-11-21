@@ -10,6 +10,8 @@ uniform sampler2DArray albedo_maps : source_color, filter_linear_mipmap, repeat_
 uniform sampler2DArray normal_maps : hint_normal, filter_linear_mipmap, repeat_enable;
 uniform sampler2DArray roughness_maps : hint_default_white, filter_linear_mipmap, repeat_enable;
 uniform float layer_scale[8];
+// Unused here (Phase 285); declared so both shaders take the same parameters.
+uniform float layer_height_floor[8];
 uniform vec4 tint : source_color = vec4(1.0);
 uniform bool biplanar = true;
 uniform bool detail = false;
@@ -61,7 +63,7 @@ void fragment() {
 		if (w_hi.w > wa) { wb = wa; ib = ia; wa = w_hi.w; ia = 7.0; } else if (w_hi.w > wb) { wb = w_hi.w; ib = 7.0; }
 		vec3 n = abs(normalize(world_nrm));
 		vec3 b = n * n;
-		b /= b.x + b.y + b.z;
+		b /= max(b.x + b.y + b.z, 1e-5);
 		float lo = min(b.x, min(b.y, b.z));
 		b = max(b - vec3(lo + plane_cut), vec3(0.0));
 		b /= max(b.x + b.y + b.z, 1e-5);

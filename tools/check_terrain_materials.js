@@ -50,6 +50,13 @@ expect('a scale that does not tile a chunk fails', problems(odd), /scale 6 must 
 const flat = fresh(); set(flat.materials.TerrainRock, 'slopeMin', 95);
 expect('a slope outside (0, 90) fails', problems(flat), /slopeMin must be -1 or in \(0, 90\)/);
 
+for (const f of ['heightFloor', 'minMeanLuminance', 'minDarkLuminance']) {
+  const hi = fresh(); set(hi.materials.TerrainGrass, f, 1.5);
+  expect(`a ${f} above 1 fails`, problems(hi), new RegExp(`${f} must be a number in 0..1`));
+  const lo = fresh(); set(lo.materials.TerrainGrass, f, -0.1);
+  expect(`a ${f} below 0 fails`, problems(lo), new RegExp(`${f} must be a number in 0..1`));
+}
+
 let threw = false;
 try { tm.validateTerrainMaterials(bare.materials, bare.biomes); } catch (e) { threw = /Terrain materials:/.test(e.message); }
 expect('validateTerrainMaterials throws on bad data', threw ? [] : ['did not throw'], null);
