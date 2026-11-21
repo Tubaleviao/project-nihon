@@ -441,7 +441,7 @@ def _norm(q: tuple) -> list:
 
 
 def build_skinned_rig(tres: Path, skin_name: str, joint_pos: dict, rest_rot: dict, parts: list, clips: list,
-                      root_name: str = "PlayerRig") -> bytes:
+                      root_name: str = "PlayerRig", anchors: dict = None) -> bytes:
     """A skinned box rig for one fabric skeleton: joints, rests, boxes and clips as the player rig's tables."""
     bones = fabric_bones(tres)
     names = [n for n, _ in bones]
@@ -544,6 +544,11 @@ def build_skinned_rig(tres: Path, skin_name: str, joint_pos: dict, rest_rot: dic
             samplers.append({"input": input_accessor, "output": output, "interpolation": "LINEAR"})
             channels.append({"sampler": len(samplers) - 1, "target": {"node": 2 + index[joint], "path": "rotation"}})
         animations.append({"name": clip, "samplers": samplers, "channels": channels})
+
+    # Empty marker nodes under a joint ({joint: (name, local position)}), e.g. a head's `hair_anchor`.
+    for joint, (marker, pos) in (anchors or {}).items():
+        nodes[2 + index[joint]].setdefault("children", []).append(len(nodes))
+        nodes.append({"name": marker, "translation": list(pos)})
 
     doc = {
         "asset": {"version": "2.0", "generator": "gen_placeholder_glb.py"},
@@ -923,8 +928,14 @@ def read_hair_styles() -> dict:
     return styles
 
 
-def build_static(boxes: list, name: str) -> bytes:
-    """One static mesh of boxes ((centre, size) pairs), on one node named `name`."""
+# Phase 284: the scalp top in head space (the head box spans y 0..0.40 above the Head joint). A head carries a
+# `hair_anchor` node here and every hair mesh an `anchor` node at the same point; the builder makes them coincide.
+SCALP_TOP = (0.0, 0.40, 0.0)
+
+
+def build_static(boxes: list, name: str, anchor: tuple = None, anchor_name: str = "") -> bytes:
+    """One static mesh of boxes ((centre, size) pairs), on one node named `name`, plus an optional empty node
+    `anchor_name` at `anchor`."""
     positions, normals, indices = [], [], []
     for (cx, cy, cz), (sx, sy, sz) in boxes:
         for normal, corners in CUBE_FACES:
@@ -949,8 +960,9 @@ def build_static(boxes: list, name: str) -> bytes:
     doc = {
         "asset": {"version": "2.0", "generator": "gen_placeholder_glb.py"},
         "scene": 0,
-        "scenes": [{"nodes": [0]}],
-        "nodes": [{"name": name, "mesh": 0}],
+        "scenes": [{"nodes": [0] + ([1] if anchor else [])}],
+        "nodes": [{"name": name, "mesh": 0}] + (
+            [{"name": anchor_name, "translation": list(anchor)}] if anchor else []),
         "meshes": [{"name": name, "primitives": [{"attributes": {"POSITION": 0, "NORMAL": 1}, "indices": 2, "mode": 4}]}],
         "buffers": [{"byteLength": len(blob.data)}],
         "bufferViews": blob.views,
@@ -965,11 +977,14 @@ def character_parts() -> dict:
     for body, (shoulder, hip) in CHIBI_BODIES.items():
         joints, parts = _chibi_tables(shoulder, hip)
         out[CHAR_DIR / "bodies" / f"{body}.glb.raw"] = build_skinned_rig(
-            SKELETON_TRES, "HumanoidSkeleton", joints, REST, parts, PLAYER_CLIPS, "ChibiRig")
+            SKELETON_TRES, "HumanoidSkeleton", joints, REST, parts, PLAYER_CLIPS, "ChibiRig",
+            {"Head": ("hair_anchor", SCALP_TOP)})
     for head, size in CHIBI_HEADS.items():
-        out[CHAR_DIR / "heads" / f"{head}.glb.raw"] = build_static([((0.0, 0.20, 0.0), size)], "Head")
+        out[CHAR_DIR / "heads" / f"{head}.glb.raw"] = build_static(
+            [((0.0, 0.20, 0.0), size)], "Head", SCALP_TOP, "hair_anchor")
     for hair, shape in sorted(read_hair_styles().items()):
-        out[CHAR_DIR / "hair" / f"{hair}.glb.raw"] = build_static(HAIR_BOXES[shape], "Hair")
+        out[CHAR_DIR / "hair" / f"{hair}.glb.raw"] = build_static(
+            HAIR_BOXES[shape], "Hair", SCALP_TOP, "anchor")
     return out
 
 

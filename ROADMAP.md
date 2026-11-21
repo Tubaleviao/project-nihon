@@ -31,7 +31,7 @@ introductions of the arcs they belonged to, are archived in
 Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
 see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
 phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
-comes next. A phase that needs an earlier one still waits for it. Done phases (238–244, 248–250, 252–256, 259–276, 289, 290, 283, 282, 280)
+comes next. A phase that needs an earlier one still waits for it. Done phases (238–244, 248–250, 252–256, 259–276, 289, 290, 283, 282, 280, 284)
 have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
 [Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
 others are not in it.
@@ -39,7 +39,6 @@ others are not in it.
 | Priority | Phase | Title |
 |---|---|---|
 | 12 | 281 | Work you can see: chopping, mining, digging, building and dissecting animations |
-| 14 | 284 | Hair that sits on the head |
 | 15 | 285 | Grass without black spots |
 | 16 | 286 | Men and women who look different |
 | 17 | 287 | Fighting that reads: combos, impact timing and hit reactions |
@@ -360,7 +359,7 @@ A40–A46). The placeholder rule holds: each phase lands with public placeholder
 | 281 | Work you can see: chopping, mining, digging, building and dissecting animations | Open |
 | 282 | A felled tree falls, then goes | Done |
 | 283 | Trees that look like trees: closed faces, a trunk and a real crown | Done |
-| 284 | Hair that sits on the head | Open |
+| 284 | Hair that sits on the head | Done |
 | 285 | Grass without black spots | Open |
 | 286 | Men and women who look different | Open |
 | 287 | Fighting that reads: combos, impact timing and hit reactions | Open |
@@ -1138,6 +1137,11 @@ depends on each glb's origin matching the head, and the head size differs by bod
   scalp gap is ≤ 1 cm; with head scale 1.2 the gap stays ≤ 1 cm.
 - Suite: a hair glb without an `anchor` node attaches as before (no crash, logged once).
 - Character creation tests (Phase 180/181) still pass.
+
+**Done (placeholders).** The chibi heads and bodies carry `hair_anchor` (scalp top, under the Head bone) and every
+hair mesh an `anchor`; `AvatarBuilder.attach_hair` fits by them (`fit_transform`) when the rig scene has a head
+anchor and keeps the old placement otherwise (logged once per style). The hair sits on the Head bone attachment,
+so it grows with a scaled head. The default `player_rig` has no head anchor until the art of assets A43 lands.
 
 ## Phase 285 — Grass without black spots
 

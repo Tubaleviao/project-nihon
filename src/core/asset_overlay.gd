@@ -271,6 +271,25 @@ func load_mesh(rel: String) -> Mesh:
 	return mesh
 
 
+## Position of the first node named `node_name` in a model, in the model root's space (an empty marker such as a
+## hair `anchor`, Phase 284). Null when the key does not load or has no such node.
+func load_marker(rel: String, node_name: String) -> Variant:
+	var root := _load_gltf_scene(rel)
+	if root == null:
+		return null
+	var out: Variant = null
+	var node := root.find_child(node_name, true, false)
+	if node is Node3D:
+		var t := Transform3D.IDENTITY
+		var n: Node = node
+		while n != null and n != root:
+			t = (n as Node3D).transform * t
+			n = n.get_parent()
+		out = t.origin
+	root.free()
+	return out
+
+
 ## Load a canonical key's clips as an AnimationLibrary. Empty library (with a
 ## warning) on failure, so callers can always attach the result.
 func load_animation_library(rel: String) -> AnimationLibrary:

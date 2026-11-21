@@ -23,6 +23,8 @@ func register() -> void:
 	_run_test("creation runtime: the world avatar, the creation rig and the doll are one body (Phase 265)", _test_one_body)
 	_run_test("creation runtime: every hair style loads its own mesh on the head socket and a change swaps it (Phase 265)", _test_hair_meshes)
 	_run_test("creation runtime: every hair key has a public placeholder (Phase 265)", _test_hair_placeholders)
+	_run_test("creation runtime: hair and head anchors coincide and the scalp gap stays within 1 cm, also at head scale 1.2 (Phase 284)", _test_hair_anchors_and_scalp_gap)
+	_run_test("creation runtime: hair is fitted by its anchors, and a rig without one keeps the old placement (Phase 284)", _test_hair_fit_and_fallback)
 	_run_test("creation runtime: every skin and icon key has a public placeholder at its size, and no orphan exists", _test_skin_placeholders)
 	_run_test("creation runtime: the screen builds from the public tree and sends what the player chose", _test_screen)
 	_run_test("creation runtime: the UI holds the body while the screen is up and the sheet offers it until created", _test_ui_flow)
@@ -604,3 +606,110 @@ func _test_catalog() -> void:
 	for loc in ["en", "pt_BR"]:
 		for k in keys:
 			assert_true(str((cats.get(loc, {}) as Dictionary).get(k, "")).strip_edges() != "", "%s has %s" % [loc, k])
+
+
+# --- Phase 284: hair sits on the scalp -------------------------------------------------------------------------
+
+const HEAD_KEY_FORMAT := "models/characters/heads/%s.glb.raw"
+const HEAD_IDS := ["chibi_head_m", "chibi_head_f"]
+const BODY_KEY := "models/characters/bodies/chibi_body_m.glb.raw"
+
+
+func _hair_ids() -> Array:
+	return (CreationRules.data().get("hairStyles") as Dictionary).keys()
+
+
+## Every triangle of a mesh as [a, b, c] in the mesh space, scaled by `s` about the origin and moved by `offset`.
+func _triangles(mesh: Mesh, offset: Vector3, s: float) -> Array:
+	var out := []
+	for surf in mesh.get_surface_count():
+		var arrays := mesh.surface_get_arrays(surf)
+		var v: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var idx: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+		for i in range(0, idx.size(), 3):
+			out.append([v[idx[i]] * s + offset, v[idx[i + 1]] * s + offset, v[idx[i + 2]] * s + offset])
+	return out
+
+
+## Heights at which the vertical line through (x, z) crosses the triangles.
+func _hits(tris: Array, x: float, z: float) -> Array:
+	var ys := []
+	for t in tris:
+		var a: Vector3 = t[0]
+		var b: Vector3 = t[1]
+		var c: Vector3 = t[2]
+		var d := (b.z - c.z) * (a.x - c.x) + (c.x - b.x) * (a.z - c.z)
+		if absf(d) < 1e-9:
+			continue
+		var l1 := ((b.z - c.z) * (x - c.x) + (c.x - b.x) * (z - c.z)) / d
+		var l2 := ((c.z - a.z) * (x - c.x) + (a.x - c.x) * (z - c.z)) / d
+		var l3 := 1.0 - l1 - l2
+		if l1 >= -1e-6 and l2 >= -1e-6 and l3 >= -1e-6:
+			ys.append(l1 * a.y + l2 * b.y + l3 * c.y)
+	return ys
+
+
+func _test_hair_anchors_and_scalp_gap() -> void:
+	for head in HEAD_IDS:
+		var head_key: String = HEAD_KEY_FORMAT % head
+		var head_anchor: Variant = AssetOverlay.load_marker(head_key, AvatarBuilder.HEAD_ANCHOR)
+		assert_true(head_anchor != null, "%s has a hair_anchor" % head)
+		var head_mesh := AssetOverlay.load_mesh(head_key)
+		if head_anchor == null or head_mesh == null:
+			continue
+		for id in _hair_ids():
+			var hair_key := AvatarBuilder.hair_key(str(id))
+			var hair_anchor: Variant = AssetOverlay.load_marker(hair_key, AvatarBuilder.HAIR_ANCHOR)
+			assert_true(hair_anchor != null, "%s has an anchor" % id)
+			var hair_mesh := AssetOverlay.load_mesh(hair_key)
+			if hair_anchor == null or hair_mesh == null:
+				continue
+			for s in [1.0, 1.2]:
+				var fit := AvatarBuilder.fit_transform(head_anchor, hair_anchor, s)
+				var head_tris := _triangles(head_mesh, Vector3.ZERO, s)
+				# Anchors coincide: the hair's marker lands on the head's marker (scaled with the head).
+				assert_true((fit * (hair_anchor as Vector3)).distance_to((head_anchor as Vector3) * s) <= 0.001,
+					"%s on %s at scale %s: the anchors coincide" % [id, head, s])
+				var hair_tris := _triangles(hair_mesh, fit.origin, s)
+				var top: float = (head_anchor as Vector3).y * s
+				var covered := 0
+				for p in [Vector2(0, 0), Vector2(0.22, 0.2), Vector2(-0.22, 0.2), Vector2(0.22, -0.2), Vector2(-0.22, -0.2)]:
+					var hits := _hits(hair_tris, p.x * s, p.y * s)
+					if hits.is_empty():
+						continue
+					covered += 1
+					var gap := maxf(0.0, float(hits.min()) - top)
+					var poke := maxf(0.0, top - float(hits.max()))
+					assert_true(gap <= 0.01, "%s on %s at scale %s: scalp gap %.3f m <= 1 cm" % [id, head, s, gap])
+					assert_true(poke <= 0.005, "%s on %s at scale %s: the scalp pokes %.3f m through" % [id, head, s, poke])
+				assert_true(covered > 0, "%s on %s: the hair covers part of the scalp" % [id, head])
+				assert_true(not head_tris.is_empty(), "%s: the head has triangles" % head)
+
+
+func _test_hair_fit_and_fallback() -> void:
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var app: Dictionary = ch.deserialize_appearance(ch.creation_recipe({ "gender": "masculine", "hair": "hair_m_crop", "hairColor": 129 }))
+	# A rig whose head carries the scalp anchor: the hair is fitted so the anchors coincide.
+	var body := AssetOverlay.load_rig_scene(BODY_KEY)
+	assert_true(body != null, "the chibi body loads")
+	if body != null:
+		var scalp: Variant = AvatarBuilder.head_anchor(body)
+		assert_true(scalp != null, "the chibi body's head anchor is under the Head bone")
+		var hair := AvatarBuilder.attach_hair(ch, body, app)
+		assert_true(hair != null, "the hair attaches")
+		if hair != null and scalp != null:
+			var marker: Variant = AssetOverlay.load_marker(AvatarBuilder.hair_key("hair_m_crop"), AvatarBuilder.HAIR_ANCHOR)
+			assert_true((hair.transform * (marker as Vector3)).distance_to(scalp as Vector3) <= 0.001, "the fitted hair's anchor is on the scalp")
+		body.free()
+	# A rig without a head anchor (the player rig): hair attaches as before, at the bone origin, no crash.
+	var rig := AssetOverlay.load_rig_scene(AssetOverlay.first_key("meshes", ch.DEFAULT_RIG_KEYS))
+	if rig != null:
+		assert_true(AvatarBuilder.head_anchor(rig) == null, "the default rig has no head anchor")
+		var plain := AvatarBuilder.attach_hair(ch, rig, app)
+		assert_true(plain != null and plain.transform == Transform3D.IDENTITY, "hair on an anchorless rig keeps its old placement")
+		rig.free()
+	# The fit moves the hair by the anchor difference and scales both with the head.
+	var t := AvatarBuilder.fit_transform(Vector3(0, 0.4, 0), Vector3(0, 0.3, 0), 1.2)
+	assert_true(t.origin.distance_to(Vector3(0, 0.12, 0)) < 1e-6 and is_equal_approx(t.basis.x.x, 1.2), "the fit offsets and scales")
+	ch.free()

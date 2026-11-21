@@ -8,10 +8,16 @@ extends RefCounted
 
 const RigTree := preload("res://src/character/rig_tree.gd")
 const CharacterMaterial := preload("res://src/character/character_material.gd")
+const Diag := preload("res://src/core/diag.gd")
 const HAIR_KEY_FORMAT := "models/characters/hair/%s.glb.raw"
 const HAIR_SOCKET := "HairSocket"
 const HAIR_NODE := "Hair"
 const HEAD_BONE := "Head"
+## Phase 284: the scalp-top marker a head carries (a node of the rig scene) and the matching marker of a hair mesh.
+const HEAD_ANCHOR := "hair_anchor"
+const HAIR_ANCHOR := "anchor"
+## Hair ids already logged for a missing `anchor`, so a style without one warns once.
+static var _warned_no_anchor := {}
 const IDLE_CLIP := "idle"
 ## Meta on the hair mesh: the style id it was loaded for.
 const HAIR_META := "hair_style"
@@ -22,6 +28,23 @@ static func hair_key(hair_id: String) -> String:
 		return ""
 	var key := HAIR_KEY_FORMAT % hair_id
 	return key if AssetOverlay.has_key("meshes", key) else ""
+
+## Where a hair mesh sits so its `anchor` lands on the head's `hair_anchor`, in the Head bone's space. `scale` is
+## the head's scale when the head is scaled outside the bone (an attachment on a scaled bone inherits it, so the
+## builder passes 1): the hair grows with the head and the two anchors still coincide.
+static func fit_transform(head_anchor: Vector3, hair_anchor: Vector3, scale: float = 1.0) -> Transform3D:
+	return Transform3D(Basis.from_scale(Vector3.ONE * scale), (head_anchor - hair_anchor) * scale)
+
+## The rig scene's scalp anchor in Head-bone space, null when the rig has none (the production rig until its art
+## lands) or the node is not under the Head bone.
+static func head_anchor(rig_scene: Node3D) -> Variant:
+	var node := rig_scene.find_child(HEAD_ANCHOR, true, false) as Node3D
+	if node == null:
+		return null
+	var parent := node.get_parent()
+	if parent is BoneAttachment3D and (parent as BoneAttachment3D).bone_name == HEAD_BONE:
+		return node.position
+	return null
 
 ## Give every mesh of a rig scene the character material, then put the appearance's hair on its head.
 static func dress(ch: Node, rig_scene: Node3D, appearance: Dictionary) -> void:
@@ -54,6 +77,14 @@ static func attach_hair(ch: Node, rig_scene: Node3D, appearance: Dictionary) -> 
 	node.name = HAIR_NODE
 	node.mesh = mesh
 	node.set_meta(HAIR_META, hair_id)
+	var scalp: Variant = head_anchor(rig_scene)
+	if scalp != null:
+		var anchor: Variant = AssetOverlay.load_marker(key, HAIR_ANCHOR)
+		if anchor != null:
+			node.transform = fit_transform(scalp, anchor)
+		elif not _warned_no_anchor.has(hair_id):
+			_warned_no_anchor[hair_id] = true
+			Diag.warn("[AvatarBuilder] hair %s has no '%s' node; placed at the bone origin" % [hair_id, HAIR_ANCHOR])
 	ch._finish_part(node, int(appearance.get("hairColor", 40)), {})
 	var skeleton: Skeleton3D = null
 	for n in rig_scene.find_children("*", "Skeleton3D", true, false):
