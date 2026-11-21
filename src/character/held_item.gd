@@ -97,6 +97,12 @@ static func grip_of(model: Mesh) -> Dictionary:
 			rot = r
 	return { "pos": pos, "rot": rot }
 
+## The worn main hand changed under a held item: show the right mesh again (the new worn mesh starts visible).
+func refresh(instance_id: String) -> void:
+	var item := held_item_of(instance_id)
+	if item != "":
+		set_held(instance_id, item)
+
 func held_item_of(instance_id: String) -> String:
 	return str(_held.get(instance_id, {}).get("item", ""))
 

@@ -13,6 +13,7 @@ func register() -> void:
 	_run_test("held item: a hotbar item attaches its mesh under socket_weapon_r and a missing model is a box", _test_attach_and_fallback)
 	_run_test("held item: an empty slot restores the main-hand mesh and switching frees the old mesh", _test_restore_and_free)
 	_run_test("held item: a grip on the model offsets the mesh", _test_grip)
+	_run_test("held item: a main hand worn or cleared under a held item keeps one mesh in the hand", _test_equip_under_held)
 	_run_test("held item: the swing reads the held item", _test_attack_clip)
 	_run_test("held item: the host refuses an item not in the pack, an unknown id and a skill entry", _test_host_refusals)
 	_run_test("held item: changes over the rate limit are dropped", _test_rate_limit)
@@ -69,6 +70,19 @@ func _test_restore_and_free() -> void:
 	assert_eq(ch.held_item_of(iid), "", "nothing is held")
 	ch.free()
 
+
+func _test_equip_under_held() -> void:
+	var f := _char_fixture()
+	var ch: CharacterSlice = f["ch"]
+	var iid: String = f["iid"]
+	ch.set_held_item(iid, TOOL)
+	assert_true(ch.apply_equipment(iid, "MainHand", MAIN), "a main hand is worn after the item is held")
+	var worn: Node3D = ch.get_part_node(iid, "MainHand")
+	assert_false(worn.visible, "the newly worn main hand stays hidden while another item is held")
+	assert_true(ch.held_node_of(iid) != null, "the held mesh is still in the hand")
+	ch.clear_equipment(iid, "MainHand")
+	assert_true(ch.held_node_of(iid) != null, "clearing the main hand keeps the held mesh")
+	ch.free()
 
 func _test_grip() -> void:
 	var f := _char_fixture()

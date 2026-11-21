@@ -233,6 +233,7 @@ func get_character_yaw(instance_id: String) -> Variant:
 
 ## Phase 280 — the hotbar item in the hand (see held_item.gd): set, read its id, read its mesh.
 func set_held_item(instance_id: String, item_id: String) -> bool: return _held.set_held(instance_id, item_id)
+func refresh_held_item(instance_id: String) -> void: _held.refresh(instance_id)
 func held_item_of(instance_id: String) -> String: return _held.held_item_of(instance_id)
 func held_node_of(instance_id: String) -> Node3D: return _held.held_node_of(instance_id)
 
@@ -631,6 +632,8 @@ func clear_equipment(instance_id: String, slot: String) -> bool:
 	# Un-equipping can lift a hideRegions hide another slot no longer shares
 	# (or the cleared slot could have been the last thing hiding a part).
 	_apply_lod(instance_id)
+	if slot == "MainHand":
+		refresh_held_item(instance_id)
 	GameBus.character_appearance_changed.emit(instance_id, app)
 	return true
 

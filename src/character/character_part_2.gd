@@ -57,6 +57,8 @@ func apply_equipment(instance_id: String, slot: String, item_key: String, state:
 	inst["lod"] = -1
 	inst.erase("_hidden")
 	sl._apply_lod(instance_id)
+	if slot == "MainHand":
+		sl.refresh_held_item(instance_id)   # Phase 280 — a held hotbar item keeps replacing the worn mesh
 	GameBus.character_appearance_changed.emit(instance_id, app)
 	return true
 
