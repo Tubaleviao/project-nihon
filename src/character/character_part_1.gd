@@ -46,6 +46,10 @@ func apply_appearance(instance_id: String, recipe: Dictionary) -> bool:
 	# it stayed visible whatever the distance until the next LOD transition).
 	var rig_key: String = str(inst.get("rig_key", ""))
 	if rig_key != "":
+		# Phase 286: a new look can change the body type, so a body rig (or the default one) is re-picked for it.
+		var pick: String = sl.AvatarBuilder.rig_key(sl, normalized)
+		if sl.AvatarBuilder.is_body_key(pick) or sl.AvatarBuilder.is_body_key(rig_key):
+			rig_key = pick
 		sl.attach_rig(instance_id, rig_key)
 	sl._apply_lod(instance_id)
 
