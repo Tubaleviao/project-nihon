@@ -911,3 +911,44 @@ func _sent_market_verdict(h: Node) -> String:
 	if not text.contains(h.CLIENT_NAME) or not text.contains(h.HOST_NAME):
 		return "other_not_named"
 	return "names-seen-no-handle"
+
+## Phase 293 — after `create_character` both players have a created look. The client draws the host as a player
+## body: the player rig (the feminine body rig the host's look picks), the host's chosen hair on its head, never the
+## `TravellerHuman` creature. The host's side: it holds the client's own chosen look and has pushed looks on its own
+## (a pair's first relay) rather than only answering requests. The harness has one client, so "each sees the other"
+## is the client drawing the host and the host sending the client's look to whoever meets it.
+func remote_player_body(h: Node) -> void:
+	const STEP := "remote_player_body"
+	if h._role == "host":
+		var peers: PackedInt32Array = h._root.multiplayer.get_peers()
+		var pid: String = h._root._networking.get_player_id(peers[0]) if peers.size() > 0 else ""
+		if pid == "":
+			h._report(STEP, "fail", "no_connected_peer")
+			return
+		var ready: bool = await h._await_client_ready("body", pid)
+		# Keep the host's body relayed while the client looks at it (a dedicated host's own body does not broadcast).
+		for i in 16:
+			var here: Vector3 = h._root._player.get_position()
+			GameBus.player_state_sync_requested.emit({ "position": here, "world_pos": WorldPos.from_world(here.x, here.y, here.z),
+				"hp": float(PlayerSlice.MAX_HP), "max_hp": float(PlayerSlice.MAX_HP) })
+			await h._await_settle(0.25)
+		var theirs: Dictionary = h._root._registry.look_of(pid)
+		var knows: bool = str(theirs.get("hair", "")) == "hair_m_spiky" and str(theirs.get("gender", "")) == "masculine"
+		var pushed: bool = h._root._networking._m1.looks_pushed >= 1
+		var ok := ready and knows and pushed
+		h._report(STEP, h.verdict(ok, true), "looks_pushed" if ok else ("client_never_arrived" if not ready else ("client_look_unknown" if not knows else "no_look_pushed")))
+		return
+	var announced := {}
+	var host_id: int = h._root._networking.HOST_PEER_ID
+	var dressed := func() -> bool:
+		h._announce_ready("body", announced)
+		var iid: String = h._root._character.get_peer_character(host_id)
+		if iid == "" or not h._root._character._instances.has(iid):
+			return false
+		var inst: Dictionary = h._root._character._instances[iid]
+		return inst.get("rig_node", null) != null and str(inst.get("rig_key", "")) == "models/characters/bodies/chibi_body_f.glb.raw" \
+			and str(h._root._character.get_appearance(iid).get("hair", "")) == str(h.HOST_LOOK["hair"])
+	var ok: bool = await h._await_until(dressed, h._step_timeout() * 4.0)
+	var iid: String = h._root._character.get_peer_character(host_id)
+	h._report(STEP, h.verdict(ok, true), "player_rig_in_look" if ok else ("no_avatar" if iid == "" else "body_%s_hair_%s" % [
+		str(h._root._character._instances.get(iid, {}).get("rig_key", "none")), str(h._root._character.get_appearance(iid).get("hair", ""))]))

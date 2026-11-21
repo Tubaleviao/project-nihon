@@ -2108,9 +2108,11 @@ func _test_net_harness_step_table() -> void:
 		"after damage to an owned structure seen and a stranger's placement refused (Phase 205)")
 	assert_eq(str(steps[steps.size() - 4].get("name", "")), "creation_button_synced",
 		"a created character's create button hidden on both sides follows the creation (Phase 221)")
-	assert_eq(str(steps[steps.size() - 7].get("name", "")), "creation_skip_button",
+	assert_eq(str(steps[steps.size() - 6].get("name", "")), "remote_player_body",
+		"each side drawing the other as a player body in its look, right after the creation (Phase 293)")
+	assert_eq(str(steps[steps.size() - 8].get("name", "")), "creation_skip_button",
 		"which a skipped client offered, just before it (Phase 221)")
-	steps = steps.filter(func(s: Dictionary) -> bool: return not str(s.get("name", "")) in ["creation_skip_button", "creation_button_synced", "title_choice"])
+	steps = steps.filter(func(s: Dictionary) -> bool: return not str(s.get("name", "")) in ["creation_skip_button", "creation_button_synced", "title_choice", "remote_player_body"])
 	assert_eq(str(steps[steps.size() - 3].get("name", "")), "world_regen_synced",
 		"after a regenerated world reaching a client (Phase 182)")
 	assert_eq(str(steps[steps.size() - 4].get("name", "")), "create_character",

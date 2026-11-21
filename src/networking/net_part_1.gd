@@ -283,13 +283,37 @@ func flush_relays(paced: bool = false) -> int:
 	var connected: Dictionary = sl._ensure_transport().peer_set() if sl._connected() else {}
 	var batches: Dictionary = sl._relays.build(now_ms, connected,
 			func(pos: Vector3) -> Array: return sl._peer_spatial.query_radius(pos, sl.AOI_RADIUS), Callable(sl, "get_aoi_center"))
+	# Phase 293 — a subject new to a recipient's AOI: its look goes in the same flush, just ahead of its first
+	# state, so the recipient builds the player body already dressed instead of asking for the look later.
+	for rid in sl._relays.entered:
+		for subject in sl._relays.entered[rid]:
+			send_look_to(int(rid), int(subject))
 	var sent := 0
 	for rid in batches:
 		for packet in sl.RelayBatch.packets(batches[rid]):
 			sl._deliver(int(rid), packet)
 			sent += 1
+	# Other per-pair state (the hand item) follows the state, through `aoi_pair_entered`.
+	for rid in sl._relays.entered:
+		for subject in sl._relays.entered[rid]:
+			GameBus.aoi_pair_entered.emit(int(rid), int(subject))
 	sl.TickProbe.end()
 	return sent
+
+## Phase 293 — looks the host sent on its own (a pair's first relay), for the suite.
+var looks_pushed: int = 0
+
+## Phase 293 — host: send `subject`'s look to `viewer` (the host's own body is peer 1). False when the subject has
+## no player behind it yet.
+func send_look_to(viewer: int, subject: int) -> bool:
+	if sl._role != sl.Role.HOST or sl.player_registry == null or subject == viewer:
+		return false
+	var owner_id: String = sl.player_registry.local_player_id if subject == sl.HOST_PEER_ID else sl.get_player_id(subject)
+	if owner_id == "":
+		return false
+	looks_pushed += 1
+	sl._deliver(viewer, { "type": "peer_look", "peer_id": subject, "look": sl.player_registry.look_of(owner_id) })
+	return true
 
 ## Peer ids (among `connected`) whose AOI contains `position`. Phase 195 — `connected` is the peer set
 ## (`Transport.peer_set()`, id -> true, reused until the peer list changes); an Array is still accepted and

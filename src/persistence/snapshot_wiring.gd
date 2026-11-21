@@ -335,11 +335,9 @@ func on_world_snapshot_received(data: Dictionary) -> void:
 		# forward equipment intents from.
 		if root._character.get_player_character() == "":
 			# Phase 181 — a created character starts in its look; anyone else in the default traveller.
-			var recipe: Variant = root._creation_wiring.boot_recipe(data.get("creation", {}))
-			var client_char: String = root._character.create_character_from_recipe(recipe, root._player.get_position()) if recipe != null \
-					else root._character.create_character("TravellerHuman", root._player.get_position())
+			# Phase 293 — through the same builder as every remote player.
+			var client_char: String = root._character.build_player_body(root._creation_wiring.boot_look(data.get("creation", {})), root._player.get_position())
 			root._character.set_player_character(client_char)
-			root._character.attach_default_rig(client_char)
 		root._character_wiring.apply_local_equipment(data["equipment"])
 	place_from_snapshot(data.get("player", {}))
 	root._creation_wiring.apply_own(data)

@@ -712,6 +712,7 @@ func attach_rig(instance_id: String, rig_key: String) -> bool:
 	rig_root.add_child(tree)
 	tree.anim_player = tree.get_path_to(player)
 	tree.active = true
+	_m3.place_nameplate(instance_id)   # Phase 293 — above this rig's head, and shown again (the rig hid the root's children)
 	inst["anim_tree"] = tree
 	inst["rig_node"] = rig_root
 	inst["rig_key"] = rig_key
@@ -921,14 +922,12 @@ func _equipment_def(item_id: String) -> Dictionary:
 
 ## The appearance a player without a created character keeps.
 const DEFAULT_APPEARANCE := "TravellerHuman"
-## Metres above an avatar's feet its nameplate floats.
-const NAMEPLATE_HEIGHT := 2.3
-const NAMEPLATE_FONT_SIZE := 40
-const NAMEPLATE_PIXEL_SIZE := 0.005
 
 ## Client: owner peer id -> the look the host sent for it (see `CreationRules.look`).
 var _peer_looks: Dictionary = {}
 
+## Phase 293 — the one builder of a player body from a look (local client boot, remote avatars): see part 3.
+func build_player_body(look: Dictionary, pos: Vector3) -> String: return _m3.build_player_body(look, pos)
 ## The appearance recipe of a look: the gender's chibi preset with the chosen hair and colour, or the default.
 func creation_recipe(look: Dictionary) -> Dictionary:
 	return _m3.creation_recipe(look)
