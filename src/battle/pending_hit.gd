@@ -1,6 +1,6 @@
 extends RefCounted
 ## Phase 287 — the host resolves a swing's hit at the clip's impact time, not at the click. This is the pure half:
-## the queue of pending hits (one per attacker; a new action cancels the old), the re-check at impact with the
+## the queue of pending hits (one per attacker; `cancel` drops one when the attacker staggers or starts another action), the re-check at impact with the
 ## state at impact, and the hit reaction (`hit` or `stagger`, and the knock-back direction away from the attacker).
 ## The damage a pending hit deals comes from the weapon and combo step the swing started with.
 
@@ -16,7 +16,7 @@ func has_pending(attacker_id: String) -> bool:
 	return _pending.has(attacker_id)
 
 ## Queue the hit of a swing that started at `now` with a clip of `clip_length` seconds. Starting again replaces
-## the attacker's previous pending hit (the caller refuses a new swing while one is in flight; `cancel` drops one).
+## the attacker's previous pending hit (the caller refuses a new swing while one is in flight).
 func start(attacker_id: String, target_id: String, weapon: String, item: String, step: int, now: float, clip_length: float) -> Dictionary:
 	var entry := {
 		"attacker": attacker_id, "target": target_id, "weapon": weapon, "item": item, "step": step,
@@ -29,6 +29,15 @@ func start(attacker_id: String, target_id: String, weapon: String, item: String,
 ## Cancel an attacker's pending hit (it died, was staggered, started another action): nothing is dealt.
 func cancel(attacker_id: String) -> bool:
 	return _pending.erase(attacker_id)
+
+## Drop every pending hit aimed at a target (it died or respawned under the same id).
+func cancel_target(target_id: String) -> int:
+	var n := 0
+	for attacker in _pending.keys():
+		if _pending[attacker]["target"] == target_id:
+			_pending.erase(attacker)
+			n += 1
+	return n
 
 ## Why a pending hit must not land with the state at impact; "" when it may. `state`: attacker_alive,
 ## attacker_staggered, attacker_item (the weapon in hand now), target_alive, gap (metres now), reach.

@@ -37,6 +37,8 @@ func _connect_all() -> void:
 	connect_bus(GameBus.player_respawned, _on_player_respawned)
 	connect_bus(GameBus.attack_intent, on_attack_intent)
 	connect_bus(GameBus.creature_died, on_creature_died)
+	connect_bus(GameBus.gesture_intent, _on_gesture_intent)
+	connect_bus(GameBus.creature_respawned, _on_creature_gone_pending)
 
 ## Host: how far past `PlayerSlice.ATTACK_RANGE` a peer's swing may land, measured from the host's last record
 ## of that peer — covers the creature and the peer moving between the peer's aim and the packet.
@@ -86,6 +88,7 @@ func on_attack_intent(instance_id: String, player_id: String) -> bool:
 ## Host: a creature a peer killed. The peer's client resolves no rounds of its own, so it never sees the
 ## `creature_died` its tutorial counts; the host tells only that peer, by species. Returns the peer told (0 none).
 func on_creature_died(entity_id: String, _pos: Vector3, killer_id: String, _landing: Vector3) -> int:
+	_cancel_pending_at(entity_id)
 	if root._is_client or killer_id == "" or killer_id == "player" or killer_id == root._registry.local_player_id:
 		return 0
 	var peer := root._registry.get_peer_id(killer_id)
@@ -96,6 +99,26 @@ func on_creature_died(entity_id: String, _pos: Vector3, killer_id: String, _land
 		species = entity_id if GameData.CREATURES.has(entity_id) else ""
 	root._networking.send_creature_killed(peer, species)
 	return peer
+
+## Phase 287 — host: a pending hit aimed at a creature that died or respawned is dropped (a respawn reuses the id,
+## so it would land on the new creature).
+func _cancel_pending_at(target_id: String) -> void:
+	if root._battle != null and root._battle.impact_queue != null:
+		root._battle.impact_queue.cancel_target(target_id)
+
+func _on_creature_gone_pending(instance_id: String, _creature_id: String) -> void:
+	_cancel_pending_at(instance_id)
+
+## Phase 287 — host: another action (a gesture, mining) started after the click cancels the swing's pending hit.
+func cancel_pending_swing(player_id: String) -> void:
+	if root._is_client or root._battle == null or root._battle.impact_queue == null:
+		return
+	root._battle.impact_queue.cancel("player" if player_id == "" else player_id)
+	if player_id == root._registry.local_player_id:
+		root._battle.impact_queue.cancel("player")
+
+func _on_gesture_intent(_gesture_id: String, player_id: String) -> void:
+	cancel_pending_swing(player_id)
 
 ## Drop a departed player's swing clock (called from the peer-left path).
 func forget_swinger(player_id: String) -> void:
@@ -209,6 +232,8 @@ func _on_combat_hit_resolved(attacker_id: String, defender_id: String, outcome: 
 		_hit_feel()
 	if outcome != "miss" and outcome != "kill":
 		push_struck(attacker_id, defender_id, reaction)
+		if reaction == "stagger" and BattleSlice.is_player_target(defender_id):
+			cancel_pending_swing(defender_id)   # a staggered player's swing in flight is lost
 	# Only a hosting machine has clients to tell; offline, the send would just warn on every swing.
 	if root._networking != null and root._networking.is_host():
 		var at: Variant = _event_position(a_key, d_key)
@@ -234,6 +259,7 @@ func push_struck(attacker_id: String, defender_id: String, reaction: String) -> 
 	var apos: Variant = death_attacker_pos(attacker_id)
 	if not apos is Vector3 or root._creature.get_instance_state(defender_id) in ["", "dead"]:
 		return 0.0
+	var tex: Dictionary = root._creature.get_instance_pos(defender_id)
 	var tpos: Vector3 = root._creature.get_instance_position(defender_id)
 	var dir := PendingHit.knockback_direction(apos, tpos)
 	var moved := 0.0
@@ -244,8 +270,10 @@ func push_struck(attacker_id: String, defender_id: String, reaction: String) -> 
 		moved += 0.1
 	if moved <= 0.0:
 		return 0.0
-	var spot := tpos + dir * moved
-	root._creature.set_instance_position(defender_id, Vector3(spot.x, death_ground(spot), spot.z))
+	# The push is added to the exact {chunk, local} position, so it survives far from the origin.
+	var spot: Vector3 = tex["local"] + dir * moved
+	root._creature.set_instance_pos(defender_id, WorldPos.normalized({"chunk": tex["chunk"],
+		"local": Vector3(spot.x, death_ground(tpos + dir * moved), spot.z)}))
 	return moved
 
 ## Client: the host's swing, animated on whatever bodies this client draws.
@@ -264,6 +292,7 @@ func _on_combat_hit_synced(attacker_key: String, defender_key: String, outcome: 
 
 ## The player's own mining swing (the tool swing), when the player strikes a block.
 func _on_mine_swing(_position: Vector3, _normal: Vector3, player_id: String, _exact: Dictionary) -> void:
+	cancel_pending_swing(player_id)
 	if player_id != "" and player_id != "player":
 		return
 	var iid: String = root._character.get_player_character()

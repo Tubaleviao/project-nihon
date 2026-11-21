@@ -1688,7 +1688,7 @@ func _step_fight() -> Array:
 	while rounds < 20 and not ok:
 		GameBus.combat_round_requested.emit("player", iid); rounds += 1
 		clips.append(str(_root._character._instances[_root._character.get_player_character()]["locomotion"].attack_clip))
-		await _until(func(): return false, 0.7)   # a new swing replaces a pending hit
+		await _until(func(): return false, 0.7)   # a click during a swing in flight is ignored, so wait for the impact
 		var left: float = _root._battle.get_hp(iid)
 		ok = left >= 0.0 and left < float((GameData.CREATURES[cid] as Resource).get("baseHp"))
 	# Phase 143: the screenshot that follows shows the target as a rigged model, not a box.
