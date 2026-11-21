@@ -25,7 +25,7 @@ const SCALE_PARAM := "parameters/Locomotion/Scale/scale"
 ## leaves every clip at LOOP_NONE, so `prepare_library` applies this table; a new clip must be
 ## listed in one of the two (the suite asserts the table covers every clip a rig ships).
 const LOOPING_CLIPS := ["idle", "walk", "run", "fall"]
-const ONE_SHOT_CLIPS := ["land", "attack", "attack_unarmed", "attack_1h", "attack_tool", "death", "hit",
+const ONE_SHOT_CLIPS := ["land", "attack", "attack_unarmed", "attack_1h", "attack_unarmed_2", "attack_1h_2", "attack_1h_3", "attack_2h", "attack_2h_2", "attack_tool", "death", "hit",
 	"stagger", "death_back", "death_forward", "death_side", "idle_look", "idle_stretch", "sit", "sit_ground", "lie_down", "wave", "point", "bow", "cheer", "shrug", "clap", "kneel"]
 
 ## The swing a body plays by what its main hand holds; a rig missing one plays `attack`.

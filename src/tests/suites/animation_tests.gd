@@ -8,6 +8,7 @@ const DeathPush := preload("res://src/battle/death_push.gd")
 const Bot := preload("res://src/tests/playtest_bot.gd")
 
 func register() -> void:
+	_run_test("animation: repeated attacks inside the window play the combo variants, a pause restarts, a missing variant falls back (Phase 287)", _test_combo_chain)
 	_run_test("gestures: GameData lists every gesture with its clip and chat command", _test_p158_gesture_data)
 	_run_test("gestures: every gesture name key is in both catalogs", _test_p158_gesture_catalog)
 	_run_test("animation: a creature's hit swings its model and flinches the player", _test_creature_hit_animates_both)
@@ -125,7 +126,7 @@ func _test_attack_variant_follows_hand() -> void:
 	loco.reset()
 	assert_true(f["ch"].apply_equipment(f["iid"], "MainHand", "VeilsteelLongsword"), "the sword equips")
 	f["ch"].trigger_attack(f["iid"])
-	assert_eq(loco.attack_clip, "attack_1h", "a sword-bearer swings one-handed")
+	assert_eq(loco.attack_clip, "attack_2h", "a two-handed sword swings two-handed (Phase 287)")
 	loco.reset()
 	GameBus.block_mine_requested.emit(Vector3.ZERO, Vector3.UP, "", {})
 	assert_eq(loco.attack_clip, "attack_tool", "mining a block plays the tool swing")
@@ -369,3 +370,48 @@ func _test_player_death_clip_via_bus() -> void:
 	assert_eq(loco.death_clip, expected, "playing that clip")
 	assert_true(f["ch"].get_character_yaw("missing") == null, "an unknown instance has no yaw")
 	_free_fixture(f)
+
+
+# --- Phase 287: combos -------------------------------------------------------------------------------------------
+
+const ComboChain := preload("res://src/battle/combo_chain.gd")
+
+func _test_combo_chain() -> void:
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid: String = ch.create_character_from_recipe({ "skeleton": "HumanoidSkeleton" }, Vector3.ZERO)
+	ch.attach_default_rig(iid)
+	assert_true(ch.apply_equipment(iid, "MainHand", "VeilsteelLongsword"), "the longsword equips")
+	var played := []
+	for t in [0.0, 0.5, 1.0]:
+		ch.trigger_attack(iid, "", t)
+		played.append(ch._instances[iid]["locomotion"].attack_clip)
+	assert_eq(played, ["attack_2h", "attack_2h_2", "attack_2h"], "swings inside the window cycle through the variants and wrap")
+	ch.trigger_attack(iid, "", 1.0 + 5.0)
+	assert_eq(ch._instances[iid]["locomotion"].attack_clip, "attack_2h", "a pause past the window restarts at the first")
+	var steps := []
+	var last := ""
+	var step := -1
+	for t in [0.0, 0.5, 1.0]:
+		step = ComboChain.next_step("one_hand", last, step, 0.5 if t > 0.0 else 0.0)
+		last = "one_hand"
+		steps.append(ComboChain.clip_for("one_hand", step))
+	assert_eq(steps, ["attack_1h", "attack_1h_2", "attack_1h_3"], "three one-handed swings inside the window play attack_1h, _2, _3")
+	# A rig without a variant plays the base clip.
+	assert_eq(ComboChain.clip_for("one_hand", 2, ["attack_1h", "attack"]), "attack_1h", "a missing variant falls back to the base clip")
+	assert_eq(ComboChain.clip_for("one_hand", 2, ["attack"]), "attack", "and to attack when the base is missing too")
+	# Another weapon class restarts the chain; unarmed and two-handed have their own clips.
+	assert_eq(ComboChain.next_step("unarmed", "one_hand", 1, 0.1), 0, "switching weapon class restarts")
+	assert_eq(ComboChain.next_step("unarmed", "unarmed", 1, 0.1), 0, "the chain wraps after its last step")
+	assert_eq(ComboChain.clip_for("unarmed", 1), "attack_unarmed_2", "unarmed has a second blow")
+	assert_eq(ComboChain.clip_for("two_hand", 1), "attack_2h_2", "two-handed has a second blow")
+	assert_eq(ComboChain.weapon_class("VeilsteelLongsword", GameData.ITEMS), "two_hand", "the longsword is two-handed")
+	assert_eq(ComboChain.weapon_class("FerritePick", GameData.ITEMS), "tool", "a pick is a tool")
+	assert_true(ComboChain.damage_multiplier("one_hand", 2) > ComboChain.damage_multiplier("one_hand", 0), "the third blow hits harder")
+	assert_true(absf(ComboChain.impact_seconds("one_hand", 0, 0.5) - 0.25) < 1e-6, "impact is a share of the clip length")
+	# Every chain clip exists on the public player rig.
+	var lengths: Dictionary = ch._instances[iid]["swing_lengths"]
+	for w in ["unarmed", "one_hand", "two_hand", "tool"]:
+		for clip in ComboChain.chain(w)["clips"]:
+			assert_true(lengths.has(clip), "the player rig has %s" % clip)
+	ch.free()

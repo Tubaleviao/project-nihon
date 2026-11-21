@@ -336,6 +336,7 @@ const WORLD_SYSTEMS: Dictionary = {
 		"ChestsAndDoors": preload("res://godot/world_systems/chestsanddoors.tres"),
 		"Clan": preload("res://godot/world_systems/clan.tres"),
 		"ClanTiers": preload("res://godot/world_systems/clantiers.tres"),
+		"CombatCombos": preload("res://godot/world_systems/combatcombos.tres"),
 		"CombatSystem": preload("res://godot/world_systems/combatsystem.tres"),
 		"GovernanceSystem": preload("res://godot/world_systems/governancesystem.tres"),
 		"MarketSystem": preload("res://godot/world_systems/marketsystem.tres"),

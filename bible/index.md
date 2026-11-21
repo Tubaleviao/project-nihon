@@ -340,6 +340,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [ChestsAndDoors](entities/chestsanddoors.md) — Chests and doors open for their owner only, their clan or everyone, as the owner sets
 - [Clan](entities/clan.md) — A group of players under a name one of them chose
 - [ClanTiers](entities/clantiers.md) — A clan's tier, from every building it owns wherever it stands, weighed by how durable and how rare each block's material is
+- [CombatCombos](entities/combatcombos.md) — Attack combos and hit timing: per weapon class the clip order, the window that keeps a chain going, the damage multiplier and impact time of each step, the stagger share and the knock-back of a struck target
 - [CombatSystem](entities/combatsystem.md) — Defines the rules governing all combat interactions — player vs creature, player vs player, and structure damage
 - [GovernanceSystem](entities/governancesystem.md) — Defines the rules of in-game community governance
 - [MarketSystem](entities/marketsystem.md) — Defines the rules of the persistent player-run market

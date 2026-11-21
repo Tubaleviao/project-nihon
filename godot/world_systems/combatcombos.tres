@@ -1,0 +1,15 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/world_systems/combatcombos.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+attackClips = ["attack","attack_unarmed","attack_unarmed_2","attack_1h","attack_1h_2","attack_1h_3","attack_2h","attack_2h_2","attack_tool"]
+chains = {"unarmed":{"clips":["attack_unarmed","attack_unarmed_2"],"windowSeconds":1.2,"damageMultipliers":[1,1.15],"impact":[0.4,0.45]},"one_hand":{"clips":["attack_1h","attack_1h_2","attack_1h_3"],"windowSeconds":1.2,"damageMultipliers":[1,1.1,1.3],"impact":[0.5,0.45,0.55]},"two_hand":{"clips":["attack_2h","attack_2h_2"],"windowSeconds":1.5,"damageMultipliers":[1,1.25],"impact":[0.55,0.6]},"tool":{"clips":["attack_tool"],"windowSeconds":1,"damageMultipliers":[1],"impact":[0.5]}}
+twoHandedItems = ["VeilsteelLongsword"]
+staggerShare = 0.25
+knockbackLight = 0.3
+knockbackHeavy = 0.8
+description = "Attack combos and hit timing: per weapon class the clip order, the window that keeps a chain going, the damage multiplier and impact time of each step, the stagger share and the knock-back of a struck target."
+tags = ["world-system"]
