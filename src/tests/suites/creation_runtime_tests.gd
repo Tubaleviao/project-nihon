@@ -26,6 +26,7 @@ func register() -> void:
 	_run_test("creation runtime: hair and head anchors coincide and the scalp gap stays within 1 cm, also at head scale 1.2 (Phase 284)", _test_hair_anchors_and_scalp_gap)
 	_run_test("creation runtime: a male and a female character attach their own body and head, the male's shoulder/hip ratio 15% above (Phase 286)", _test_body_types_differ)
 	_run_test("creation runtime: hair is fitted by its anchors, and a rig without one keeps the old placement (Phase 284)", _test_hair_fit_and_fallback)
+	_run_test("creation runtime: a new look with another body type swaps the attached body rig (Phase 286)", _test_look_change_swaps_body)
 	_run_test("creation runtime: every skin and icon key has a public placeholder at its size, and no orphan exists", _test_skin_placeholders)
 	_run_test("creation runtime: the screen builds from the public tree and sends what the player chose", _test_screen)
 	_run_test("creation runtime: the UI holds the body while the screen is up and the sheet offers it until created", _test_ui_flow)
@@ -758,4 +759,21 @@ func _test_body_types_differ() -> void:
 	var plain := ch.create_character_from_recipe({ "skeleton": "HumanoidSkeleton", "body": "no_such_body" }, Vector3.ZERO)
 	assert_true(ch.attach_default_rig(plain), "an unknown body id still gets a rig")
 	assert_eq(ch._instances[plain]["rig_key"], "models/player_rig.glb.raw", "the default rig is the fallback")
+	ch.free()
+
+
+func _test_look_change_swaps_body() -> void:
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid: String = ch.create_character_from_recipe(ch.creation_recipe({ "gender": "masculine", "hair": "hair_m_crop", "hairColor": 129 }), Vector3.ZERO)
+	assert_true(ch.attach_default_rig(iid), "a rig attaches")
+	assert_eq(ch._instances[iid]["rig_key"], "models/characters/bodies/chibi_body_m.glb.raw", "the male body")
+	assert_true(ch.apply_look(iid, { "gender": "feminine", "hair": "hair_f_bob", "hairColor": 129 }), "the look applies")
+	assert_eq(ch._instances[iid]["rig_key"], "models/characters/bodies/chibi_body_f.glb.raw", "the new look wears the female body")
+	assert_true(ch._instances[iid]["rig_node"].find_child(AvatarBuilder.HEAD_NODE, true, false) != null, "with its own head")
+	# A character on the default rig gets its body rig once its look names one.
+	var plain: String = ch.create_character_from_recipe({ "skeleton": "HumanoidSkeleton", "body": "no_such_body" }, Vector3.ZERO)
+	assert_true(ch.attach_default_rig(plain), "the default rig attaches")
+	assert_true(ch.apply_look(plain, { "gender": "masculine", "hair": "hair_m_crop", "hairColor": 129 }), "a created look applies")
+	assert_eq(ch._instances[plain]["rig_key"], "models/characters/bodies/chibi_body_m.glb.raw", "the created look wears its body")
 	ch.free()
