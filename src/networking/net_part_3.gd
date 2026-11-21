@@ -1,6 +1,7 @@
 extends RefCounted
 ## Methods moved verbatim out of `networking_slice.gd` (Phase 154). `sl` is the owning slice; each moved method keeps a forwarder there.
 
+const HeldItem := preload("res://src/character/held_item.gd")
 var sl: Node
 ## Phase 196 — the most HP one `player_healed` packet may restore (one regen interval at any sane rate).
 const MAX_REST_HEAL := 1000.0
@@ -356,7 +357,7 @@ func _route_h2c(payload: Dictionary) -> void:
 		"held":
 			# Phase 280 — animation only: a peer id and a short item id ("" = empty hands).
 			var held_item: Variant = payload.get("i", "")
-			if sl._role == sl.Role.CLIENT and held_item is String and (held_item as String).length() <= sl.HELD_ID_MAX:
+			if sl._role == sl.Role.CLIENT and held_item is String and (held_item as String).length() <= HeldItem.MAX_ID_CHARS:
 				GameBus.peer_held_item_synced.emit(int(payload.get("peer_id", 0)), held_item)
 		"carcass":
 			# Phase 161 — a body in our AOI; the slice keeps a view of it.

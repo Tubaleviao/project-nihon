@@ -1,6 +1,7 @@
 extends RefCounted
 ## Methods moved verbatim out of `networking_slice.gd` (Phase 154). `sl` is the owning slice; each moved method keeps a forwarder there.
 
+const HeldItem := preload("res://src/character/held_item.gd")
 var sl: Node
 
 func _init(slice: Node) -> void:
@@ -215,6 +216,11 @@ func send_held_item(subject_peer: int, item_id: String, position: Vector3) -> vo
 		sl.Diag.warn("NetworkingSlice: send_held_item called on non-host — dropped")
 		return
 	sl._broadcast_aoi({ "type": "held", "peer_id": subject_peer, "i": item_id }, position)
+
+## Phase 280 — client: forward the selected hotbar item; the host binds it to the connection's player.
+func _on_held_item_intent(item_id: String, _player_id: String) -> void:
+	if sl._role == sl.Role.CLIENT:
+		sl._broadcast({ "type": "held_intent", "i": item_id })
 
 ## Phase 280 — host: a peer just bound its identity; tell it what the players inside its AOI hold
 ## (`held` is peer id -> item id).
@@ -603,7 +609,7 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 				sl._refuse_unhandshaked(sender, "held_intent")
 				return
 			var held_id: Variant = payload.get("i", "")
-			if held_id is String and (held_id as String).length() <= sl.HELD_ID_MAX:
+			if held_id is String and (held_id as String).length() <= HeldItem.MAX_ID_CHARS:
 				GameBus.held_item_intent.emit(held_id, holder)
 		"creation_intent":
 			# Phase 181 — a creation or skip is for the connection's own player, never a name in the payload; the

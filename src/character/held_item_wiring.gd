@@ -81,7 +81,7 @@ func _hold(pid: String, item_id: String) -> void:
 	if net != null and net.is_host():
 		var at: Variant = _position_of(pid)
 		if at != null:
-			net.send_held_item(peer, item_id, at)
+			net._m2.send_held_item(peer, item_id, at)
 
 func _position_of(player_id: String) -> Variant:
 	if _is_local(player_id):
@@ -119,7 +119,7 @@ func _on_player_joined(peer_id: int, _player_id: String, _reconnected: bool) -> 
 		if peer != 0 and peer != peer_id:
 			out[peer] = _held[pid]
 	if not out.is_empty():
-		root._networking.send_peer_held_to(peer_id, out)
+		root._networking._m2.send_peer_held_to(peer_id, out)
 
 func _on_player_left(player_id: String) -> void:
 	_held.erase(player_id)
