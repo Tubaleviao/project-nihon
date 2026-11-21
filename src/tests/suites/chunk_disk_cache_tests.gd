@@ -6,6 +6,7 @@ extends "res://src/tests/test_support.gd"
 const RegionLayerFile := preload("res://src/persistence/region_layer_file.gd")
 const DiskChunkCache := preload("res://src/terrain/disk_chunk_cache.gd")
 const VoxelMesh := preload("res://src/terrain/voxel_mesh.gd")
+const ChunkPart1 := preload("res://src/terrain/chunk_part_1.gd")
 
 func register() -> void:
 	_run_test("disk cache: region file round trip, wrong key is a miss", _test_file_roundtrip)
@@ -19,6 +20,7 @@ func register() -> void:
 	_run_test("disk cache: an edit makes the entry a miss", _test_edit_invalidates)
 	_run_test("disk cache: the world seed is part of the mesh key", _test_mesh_key_has_seed)
 	_run_test("disk cache: a later session reads the generator's heightmap instead of generating", _test_gen_layer)
+	_run_test("disk cache: the playtest and each save get their own cache folders", _test_cache_dirs)
 
 func _dir() -> String:
 	var d := "user://test_chunk_disk_cache/%d/" % Time.get_ticks_usec()
@@ -109,6 +111,13 @@ func _test_file_damage() -> void:
 	h.store_buffer(_bytes(30, 5))   # garbage inside the compressed bytes
 	h.close()
 	assert_true(RegionLayerFile.new(d + "r.bin").get_entry(0, 1).is_empty(), "a damaged entry is a miss")
+	var k := RegionLayerFile.new(d + "r.bin")
+	k.put(0, 1, _bytes(100, 4))
+	var big := FileAccess.open(d + "r.bin", FileAccess.READ_WRITE)
+	big.seek(RegionLayerFile.SECTOR + 12)
+	big.store_32(0xFFFFFFF0)   # a raw size of ~4 GB under a key that still matches
+	big.close()
+	assert_true(RegionLayerFile.new(d + "r.bin").get_entry(0, 1).is_empty(), "a raw size over the cap is a miss, not a huge decompress")
 	_rm(d)
 
 func _test_encode_roundtrip() -> void:
@@ -147,6 +156,19 @@ func _test_lru_cap() -> void:
 	assert_false(c.read("mesh", Vector2i(3, 0), 13).is_empty(), "and the new one")
 	var reopened := DiskChunkCache.new(d, 3 * RegionLayerFile.SECTOR)
 	assert_eq(reopened.entry_count(), 3, "a new session finds the entries on disk")
+	reopened.write("mesh", Vector2i(4, 0), 14, _random_bytes(300))
+	assert_true(reopened.bytes() <= reopened.max_bytes and reopened.entry_count() == 3, "it evicts entries whose key it never wrote")
+	# An eviction decided before a rewrite of the same slot leaves the newer entry (follow-up #679).
+	var ch := Vector2i(4, 0)
+	reopened.max_bytes = 0
+	reopened._mutex.lock()
+	var evict: Array = reopened._evict_over_cap("")
+	reopened._mutex.unlock()
+	var mine: Array = evict.filter(func(e: Array) -> bool: return int(e[1]) == RegionLayerFile.index_of(ch))
+	assert_eq(int(mine[0][2]), 14, "the eviction carries the key it saw")
+	(mine[0][0] as RegionLayerFile).put(RegionLayerFile.index_of(ch), 15, _random_bytes(300))   # the racing rewrite
+	(mine[0][0] as RegionLayerFile).remove_if_key(mine[0][1], mine[0][2])
+	assert_false(reopened.read("mesh", ch, 15).is_empty(), "the newer entry survives the stale eviction")
 	c.clear()
 	assert_eq(c.bytes(), 0, "clear empties it")
 	_rm(d)
@@ -243,3 +265,9 @@ func _gen_once(dir: String, chunk: Vector2i) -> Array:
 	var hits: int = cm._m1.gen_cache.hits
 	_free_rig(rig)
 	return [hm, hits]
+
+func _test_cache_dirs() -> void:
+	assert_eq(ChunkPart1.mesh_cache_dir(PackedStringArray()), "user://cache/chunks/", "the player's mesh cache")
+	assert_eq(ChunkPart1.mesh_cache_dir(PackedStringArray(["--playtest-bot"])), "user://playtest/cache/chunks/", "the playtest never clears the player's cache")
+	assert_eq(ChunkPart1.gen_cache_dir("user://saves/server/regions/"), "user://saves/server/cache/gen/", "beside regions/, which /regen world moves aside")
+	assert_eq(ChunkPart1.gen_cache_dir("user://playtest/server/regions/"), "user://playtest/server/cache/gen/", "per save")

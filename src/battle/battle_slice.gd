@@ -4,6 +4,7 @@ extends Node
 ## Plug contract (GameBus signals consumed / emitted):
 ##   IN  : combat_round_requested(attacker_id, defender_id)
 ##   OUT : combat_round_resolved(result)
+##         attack_intent(instance_id, "")       — client only: its own swing, forwarded to the host
 ##         player_damaged(damage, attacker_id, target_id)
 ##
 ## Public API:
@@ -35,6 +36,9 @@ var attack_blocked: Callable = Callable()
 var player_stat_fn: Callable = Callable()
 ## Counts resolved rounds; the seed of the on-hit roll, so a replayed round rolls the same.
 var _round_seq: int = 0
+## False on a client: it owns no creature HP, so a swing of its own body is forwarded to the host as an
+## `attack_intent` and no round is resolved here.
+var is_authoritative: bool = true
 
 func _ready() -> void:
 	GameBus.combat_round_requested.connect(_on_combat_round_requested)
@@ -217,6 +221,10 @@ func reset_hp(entity_id: String) -> void:
 # ---------------------------------------------------------------------------
 
 func _on_combat_round_requested(attacker_id: String, defender_id: String) -> void:
+	if not is_authoritative:
+		if attacker_id == "player" and not is_player_target(defender_id):
+			GameBus.attack_intent.emit(defender_id, "")
+		return
 	if attack_blocked.is_valid() and attack_blocked.call(attacker_id):
 		return   # e.g. the attacker is carrying a body (Phase 161): the host refuses, not only the client
 	resolve_round(attacker_id, defender_id)

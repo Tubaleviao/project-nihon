@@ -27,6 +27,7 @@ var misses: int = 0
 var _mutex := Mutex.new()
 var _files: Dictionary = {}   # "layer/rx.rz" -> RegionLayerFile
 var _lru: Dictionary = {}     # "layer/rx.rz#idx" -> bytes; insertion order is recency, oldest first
+var _keys: Dictionary = {}    # "layer/rx.rz#idx" -> the key this cache last wrote there (absent after a scan)
 var _bytes: int = 0
 var _tasks: Array = []
 
@@ -71,9 +72,15 @@ func _scan() -> void:
 	var d := DirAccess.open(root)
 	if d == null:
 		return
+	# Least recently written files first, so a restart evicts what an earlier session touched last, not
+	# whatever the directory listing happens to put first.
+	var names: Array = []
 	for fname in d.get_files():
-		if not fname.ends_with(".bin"):
-			continue
+		if fname.ends_with(".bin"):
+			names.append([FileAccess.get_modified_time(root + fname), fname])
+	names.sort()
+	for pair in names:
+		var fname: String = pair[1]
 		var n := fname.trim_suffix(".bin")
 		var f := RegionLayerFile.new(root + fname)
 		_files[n] = f
@@ -120,13 +127,23 @@ func write(layer: String, chunk: Vector2i, key: int, data: PackedByteArray) -> b
 	if _lru.has(k):
 		_bytes -= int(_lru[k])
 		_lru.erase(k)
-	if ok and now > 0:
+	# What is on disk now is counted, also when the put failed and left the older entry in place.
+	if now > 0:
 		_lru[k] = now
 		_bytes += now
+		if ok:
+			_keys[k] = key
+	else:
+		_keys.erase(k)
 	var evict := _evict_over_cap(k)
 	_mutex.unlock()
+	# Removed only while the slot still holds the key the eviction chose: a rewrite that raced in between keeps
+	# its newer entry. An entry from an earlier session (its key unknown) is removed outright.
 	for e in evict:
-		e[0].remove(e[1])
+		if int(e[2]) != 0:
+			e[0].remove_if_key(e[1], e[2])
+		else:
+			e[0].remove(e[1])
 	return ok
 
 ## Drops the entry for `chunk`; with a `key` only while it still carries that key (a newer write is kept).
@@ -145,6 +162,7 @@ func invalidate(layer: String, chunk: Vector2i, key: int = 0) -> void:
 	if _lru.has(k):
 		_bytes -= int(_lru[k])
 		_lru.erase(k)
+	_keys.erase(k)
 	_mutex.unlock()
 
 ## Entries to remove so the layer files fit `max_bytes`, oldest first, never `keep`. Caller holds the mutex.
@@ -158,7 +176,8 @@ func _evict_over_cap(keep: String) -> Array:
 		var parts: PackedStringArray = (k as String).split("#")
 		_bytes -= int(_lru[k])
 		_lru.erase(k)
-		out.append([_files[parts[0]], int(parts[1])])
+		out.append([_files[parts[0]], int(parts[1]), int(_keys.get(k, 0))])
+		_keys.erase(k)
 	return out
 
 ## Queue `job` on a worker; `flush` waits for every one.
@@ -186,6 +205,7 @@ func clear() -> void:
 		(_files[n] as RegionLayerFile).drop()
 	_files.clear()
 	_lru.clear()
+	_keys.clear()
 	_bytes = 0
 
 # ---- encoding ------------------------------------------------------------------------------------

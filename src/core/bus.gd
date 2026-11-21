@@ -54,6 +54,14 @@ signal combat_hit_synced(attacker_key: String, defender_key: String, outcome: St
 ## defender_id : String — entity key from GameData.CREATURES or "player"
 signal combat_round_requested(attacker_id: String, defender_id: String)
 
+## A player's melee swing at a creature, client → host. On a client BattleSlice emits it (with player_id "")
+## in place of resolving the round, and NetworkingSlice forwards it; on the host NetworkingSlice re-emits it
+## with the identity bound to the sending connection, and CombatWiring checks it (target alive and untamed,
+## within reach of the host's own record of the sender, swing rate) before requesting the round.
+## instance_id : String — CreatureSlice instance id
+## player_id   : String — the attacker; "" on the client's outbound emit
+signal attack_intent(instance_id: String, player_id: String)
+
 # ---------------------------------------------------------------------------
 # Networking
 # ---------------------------------------------------------------------------
@@ -395,6 +403,25 @@ signal loot_expired(pickup_id: String)
 ## Request to pick up a world pickup (emitted by PlayerSlice when the player
 ## aims at a pickup and clicks). Carries the LootSlice pickup id.
 signal pickup_requested(pickup_id: String)
+
+## A ground pickup was taken (LootSlice, host). LootWiring tells the clients that could see it.
+signal loot_removed(pickup_id: String)
+
+## Client → host: take the ground pickup `pickup_id`. A client's InventorySlice emits it (player_id "") in place
+## of taking the pickup; NetworkingSlice re-emits it on the host with the connection's player, and LootWiring
+## checks reach and room in that player's bag.
+signal pickup_intent(pickup_id: String, player_id: String)
+
+## Client → host: drop `quantity` of `item_id`. Outbound (player_id "") `at` is the client's scene drop point
+## (ZERO: at the feet); LootWiring sends it as an offset from the body, and on the host (player_id bound to the
+## connection) `at` is that offset, which the host clamps before adding it to its own record of the dropper.
+signal drop_intent(item_id: String, quantity: int, at: Vector3, player_id: String)
+
+## Host → client: a ground pickup in this client's area of interest: { id, item_id, quantity, position }.
+signal peer_pickup_synced(record: Dictionary)
+
+## Host → client: that pickup is gone, or left this client's area of interest.
+signal peer_pickup_removed(pickup_id: String)
 
 ## The local player drags `quantity` of `item_id` out of the inventory onto the ground at `position`.
 ## InventorySlice (authoritative machines only) removes it and LootSlice spawns a pickup that keeps
@@ -877,6 +904,18 @@ signal gesture_synced(player_id: String, gesture_id: String)
 ## `gesture_id`, or stood up (""). Animation only. `lift` (Phase 196): the seat rise the host resolved for a
 ## Sit, -1 when none.
 signal peer_gesture_synced(peer_id: int, gesture_id: String, lift: float)
+
+## Phase 280 — the hotbar's selected item is held in the hand: `item_id`, or "" for an empty or skill box.
+## CLIENT -> host: emitted with an empty player_id and forwarded; the host re-emits nothing under a name,
+## it binds the connection's own player, checks the pack and syncs the result.
+signal held_item_intent(item_id: String, player_id: String)
+
+## Phase 280 — host: a player's held item changed (`item_id`, "" for none). Networking scopes it to the
+## peers whose area of interest holds that player.
+signal held_item_synced(player_id: String, item_id: String)
+
+## Phase 280 — client: the host says peer `peer_id` (this machine's own id included) holds `item_id` ("" none).
+signal peer_held_item_synced(peer_id: int, item_id: String)
 
 ## Phase 196 — client: the host's restRegen healed our own resting body by `amount` HP.
 signal player_rest_healed(amount: float)

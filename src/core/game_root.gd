@@ -27,6 +27,7 @@ const PlayerSlice      := preload("res://src/player/player_slice.gd")
 const LootSlice        := preload("res://src/loot/loot_slice.gd")
 const CarcassSlice     := preload("res://src/loot/carcass_slice.gd")
 const CarcassWiring    := preload("res://src/loot/carcass_wiring.gd")
+const LootWiring       := preload("res://src/loot/loot_wiring.gd")
 const MountWiring      := preload("res://src/creature/mount_wiring.gd")
 const InventorySlice   := preload("res://src/inventory/inventory_slice.gd")
 const CharacterSlice   := preload("res://src/character/character_slice.gd")
@@ -65,7 +66,7 @@ const StationWiring := preload("res://src/world/station_wiring.gd")
 const WritingWiring := preload("res://src/technology/writing_wiring.gd")
 const CraftingWiring := preload("res://src/crafting/crafting_wiring.gd")
 const CharacterWiring := preload("res://src/character/character_wiring.gd")
-const GestureWiring   := preload("res://src/character/gesture_wiring.gd")
+const GestureWiring   := preload("res://src/character/gesture_wiring.gd"); const HeldItemWiring := preload("res://src/character/held_item_wiring.gd")
 const CreationWiring  := preload("res://src/character/creation_wiring.gd"); const TitleWiring := preload("res://src/character/title_wiring.gd")
 const GestureSlice    := preload("res://src/character/gesture_slice.gd")
 const PeerWiring := preload("res://src/networking/peer_wiring.gd")
@@ -92,9 +93,9 @@ var _station_wiring := StationWiring.new()   # Phase 268 — stations placed fro
 var _writing_wiring := WritingWiring.new()
 var _crafting_wiring := CraftingWiring.new()
 var _character_wiring := CharacterWiring.new()
-var _gesture_wiring := GestureWiring.new()
+var _gesture_wiring := GestureWiring.new(); var _held_item_wiring := HeldItemWiring.new()   # Phase 280 held item
 var _creation_wiring := CreationWiring.new(); var _title_wiring := TitleWiring.new()
-var _carcass_wiring := CarcassWiring.new()
+var _carcass_wiring := CarcassWiring.new(); var _loot_wiring := LootWiring.new()
 var _mount_wiring := MountWiring.new()
 var _peer_wiring := PeerWiring.new()
 var _snapshot_wiring := SnapshotWiring.new()
@@ -268,7 +269,7 @@ var _handshake_retries: int = 0
 
 ## Phase 132 — wiring modules know their root from construction (the suite builds roots without `_ready`).
 func _init() -> void:
-	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _bed_wiring, _work_wiring, _work_anim_wiring, _tutorial_wiring, _settlement_wiring, _clan_wiring, _structure_wiring, _chest_wiring, _station_wiring, _writing_wiring, _crafting_wiring, _character_wiring, _gesture_wiring, _creation_wiring, _title_wiring, _carcass_wiring, _mount_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring, _admin_wiring, _menu_wiring, _audio_wiring]
+	_wirings = [_boot_wiring, _combat_wiring, _weather_wiring, _waystone_wiring, _bed_wiring, _work_wiring, _work_anim_wiring, _tutorial_wiring, _settlement_wiring, _clan_wiring, _structure_wiring, _chest_wiring, _station_wiring, _writing_wiring, _crafting_wiring, _character_wiring, _gesture_wiring, _held_item_wiring, _creation_wiring, _title_wiring, _carcass_wiring, _loot_wiring, _mount_wiring, _peer_wiring, _snapshot_wiring, _persistence_wiring, _admin_wiring, _menu_wiring, _audio_wiring]
 	for w in _wirings:
 		w.root = self
 
@@ -479,7 +480,6 @@ func _build_and_boot() -> void:
 		_ui.map_window.terrain_slice = _terrain
 		_ui.map_window.player_slice  = _player
 		_ui.map_window.waystone_slice = _waystones
-		_ui.drops_enabled         = not _is_client
 	_trade.inventory_slice    = _inventory
 	_market.inventory_slice   = _inventory
 	# Host-only, like the demo sequence in _boot_host(): the seeded counterparty
@@ -513,8 +513,8 @@ func _build_and_boot() -> void:
 	_creature.is_authoritative  = not _is_client
 	if not _is_client:
 		_creature.set_population_cap(CREATURE_POPULATION_CAP)
-	_creature_ai.is_authoritative = not _is_client
-	_tree.is_authoritative      = not _is_client; _loose.is_authoritative = not _is_client
+	_creature_ai.is_authoritative = not _is_client; _battle.is_authoritative = not _is_client   # a client's swing is an attack_intent
+	_tree.is_authoritative      = not _is_client; _loose.is_authoritative = not _is_client; _loot.is_authoritative = not _is_client
 	_market.is_authoritative    = not _is_client
 	_trade.is_authoritative     = not _is_client
 	_proposal.is_authoritative  = not _is_client

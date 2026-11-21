@@ -1,6 +1,7 @@
 extends RefCounted
 ## Methods moved verbatim out of `networking_slice.gd` (Phase 154). `sl` is the owning slice; each moved method keeps a forwarder there.
 
+const HeldItem := preload("res://src/character/held_item.gd")
 var sl: Node
 
 func _init(slice: Node) -> void:
@@ -160,6 +161,14 @@ func send_player_healed(peer_id: int, amount: float) -> void:
 		return
 	sl._deliver(peer_id, { "type": "player_healed", "amount": amount })
 
+## Host → one peer: that peer's swing killed a creature of species `creature_id` ("" when unknown). Its client
+## resolves no rounds, so this is how its tutorial learns of the kill. Peer-scoped, never world state.
+func send_creature_killed(peer_id: int, creature_id: String) -> void:
+	if sl._role != sl.Role.HOST:
+		sl.Diag.warn("NetworkingSlice: send_creature_killed called on non-host — dropped")
+		return
+	sl._deliver(peer_id, { "type": "creature_killed", "creature": creature_id })
+
 func send_player_damaged(peer_id: int, damage: float, attacker_id: String) -> void:
 	if sl._role != sl.Role.HOST:
 		sl.Diag.warn("NetworkingSlice: send_player_damaged called on non-host — dropped")
@@ -206,6 +215,31 @@ func _gesture_packet(subject_peer: int, gesture_id: String, lift: float) -> Dict
 	if lift >= 0.0:
 		packet["l"] = lift
 	return packet
+
+## Phase 280 — host → clients in range of `position`: peer `subject_peer` (the host's own body is peer 1)
+## holds `item_id` in the hand ("" for nothing). The holder's own client is in range of itself.
+func send_held_item(subject_peer: int, item_id: String, position: Vector3) -> void:
+	if sl._role != sl.Role.HOST:
+		sl.Diag.warn("NetworkingSlice: send_held_item called on non-host — dropped")
+		return
+	sl._broadcast_aoi({ "type": "held", "peer_id": subject_peer, "i": item_id }, position)
+
+## Phase 280 — client: forward the selected hotbar item; the host binds it to the connection's player.
+func _on_held_item_intent(item_id: String, _player_id: String) -> void:
+	if sl._role == sl.Role.CLIENT:
+		sl._broadcast({ "type": "held_intent", "i": item_id })
+
+## Phase 280 — host: a peer just bound its identity; tell it what the players inside its AOI hold
+## (`held` is peer id -> item id).
+func send_peer_held_to(peer_id: int, held: Dictionary) -> void:
+	if sl._role != sl.Role.HOST or not sl._connected():
+		return
+	var center = sl._joiner_aoi_center(peer_id)
+	for subject in held:
+		var o := int(subject)
+		if o == peer_id or not sl._has_subject_position(o) or center.distance_to(sl._subject_position(o)) > sl.AOI_RADIUS:
+			continue
+		sl._deliver(peer_id, { "type": "held", "peer_id": o, "i": str(held[subject]) })
 
 ## Phase 159 — host: a peer just bound its identity; tell it the poses held by the players inside its AOI
 ## (`poses` is peer id -> gesture id, the host's own body as peer 1), so a late joiner sees them seated.
@@ -514,6 +548,33 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 				sl._refuse_unhandshaked(sender, "tame_intent")
 				return
 			GameBus.tame_intent.emit(str(payload.get("instance_id", "")), tamer)
+		"pickup_intent", "drop_intent":
+			# The taker or dropper is the connection's player; LootWiring checks reach, the pickup and the bag.
+			var looter = sl._actor_id(sender)
+			if looter == "":
+				sl._refuse_unhandshaked(sender, str(payload["type"]))
+				return
+			var l_id: Variant = payload.get("id", "")
+			if not l_id is String:
+				return
+			if str(payload["type"]) == "pickup_intent":
+				GameBus.pickup_intent.emit((l_id as String).left(64), looter)
+			else:
+				var l_qty: Variant = payload.get("qty", 0)
+				if l_qty is int or l_qty is float:
+					# The offset from the body is optional (absent: at the feet); LootWiring clamps its length.
+					GameBus.drop_intent.emit((l_id as String).left(64), clampi(int(l_qty), 0, 1000000),
+						_finite_vec3(payload.get("off", null)), looter)
+		"attack_intent":
+			# The attacker is the connection's player, never a name in the payload; CombatWiring checks the
+			# target, the reach (host's own record of the sender) and the swing rate.
+			var striker = sl._actor_id(sender)
+			if striker == "":
+				sl._refuse_unhandshaked(sender, "attack_intent")
+				return
+			var a_iid: Variant = payload.get("instance_id", "")
+			if a_iid is String:
+				GameBus.attack_intent.emit((a_iid as String).left(64), striker)
 		"mount_intent":
 			# Phase 216 — the rider is the connection's player; the creature must be that player's own companion.
 			var rider = sl._actor_id(sender)
@@ -547,6 +608,16 @@ func _route_c2h(sender: int, payload: Dictionary) -> void:
 			var wanted: Variant = payload.get("g", "")
 			if wanted is String and (wanted as String).length() <= sl.GESTURE_ID_MAX:
 				GameBus.gesture_intent.emit(wanted, actor)
+		"held_intent":
+			# Phase 280 — the held item is for the connection's own player, never a name in the payload; the
+			# host's wiring checks the id, the pack and the rate.
+			var holder = sl._actor_id(sender)
+			if holder == "":
+				sl._refuse_unhandshaked(sender, "held_intent")
+				return
+			var held_id: Variant = payload.get("i", "")
+			if held_id is String and (held_id as String).length() <= HeldItem.MAX_ID_CHARS:
+				GameBus.held_item_intent.emit(held_id, holder)
 		"creation_intent":
 			# Phase 181 — a creation or skip is for the connection's own player, never a name in the payload; the
 			# registry validates every field, the name's uniqueness and the rate.
@@ -861,6 +932,22 @@ func forward_intent(type: String, action: String, args: Dictionary) -> void:
 
 func forward_clan_intent(action: String, args: Dictionary, _player_id: String) -> void:
 	forward_intent("clan_intent", action, args)
+
+## A wire `[x, y, z]` of finite numbers as a Vector3; anything else is ZERO.
+static func _finite_vec3(v: Variant) -> Vector3:
+	if not v is Array or (v as Array).size() != 3:
+		return Vector3.ZERO
+	for c in v:
+		if not (c is int or c is float) or not is_finite(float(c)):
+			return Vector3.ZERO
+	return Vector3(float(v[0]), float(v[1]), float(v[2]))
+
+## Client → host: a melee swing at a creature. Like tame_intent it names only the target; the host binds the
+## attacker to the connection and checks reach against its own record of where that player is.
+func forward_attack_intent(instance_id: String, _player_id: String) -> void:
+	if sl._role != sl.Role.CLIENT:
+		return
+	sl._broadcast({ "type": "attack_intent", "instance_id": instance_id })
 
 func forward_chest_intent(action: String, args: Dictionary, _player_id: String) -> void:
 	forward_intent("chest_intent", action, args)

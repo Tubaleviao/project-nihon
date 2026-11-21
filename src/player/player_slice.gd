@@ -1163,7 +1163,7 @@ func _try_attack() -> void:
 	if creature_slice == null:
 		Diag.warn("PlayerSlice: creature_slice not wired — cannot resolve attack target")
 		return
-	var target_id: String = creature_slice.nearest_creature(get_position(), ATTACK_RANGE)
+	var target_id: String = creature_slice.nearest_creature(get_world_pos(), ATTACK_RANGE)   # exact: metres are float32-coarse far out
 	if target_id == "":
 		if in_pose:   # Phase 196 — a swing at empty air still stands the body up (its own intent, host-ended)
 			GameBus.gesture_intent.emit("", "")
@@ -1423,7 +1423,7 @@ func _station_target() -> Vector3:
 func _try_tame() -> void:
 	if creature_slice == null or not creature_slice.has_method("nearest_creature"):
 		return
-	var iid := str(creature_slice.nearest_creature(get_position(), TAME_RANGE))
+	var iid := str(creature_slice.nearest_creature(get_world_pos(), TAME_RANGE))
 	if iid == "":
 		return
 	GameBus.tame_requested.emit(iid)

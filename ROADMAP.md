@@ -31,31 +31,42 @@ introductions of the arcs they belonged to, are archived in
 Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
 see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
 phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
-comes next. A phase that needs an earlier one still waits for it. Done phases (238–244, 248–250, 252–256, 259–276, 281, 282, 289, 290, 283)
+comes next. A phase that needs an earlier one still waits for it. Done phases (238–244, 248–250, 252–256, 259–276, 289, 290, 283, 282, 280, 281)
 have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
 [Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
 others are not in it.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 13 | 280 | The hotbar item in the hand |
 | 14 | 284 | Hair that sits on the head |
 | 15 | 285 | Grass without black spots |
 | 16 | 286 | Men and women who look different |
 | 17 | 287 | Fighting that reads: combos, impact timing and hit reactions |
-| 22 | 251 | A human playtest: what would make the game fun (a standing checkpoint) |
-| 23 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
-| 24 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
-| 25 | 226 | Several characters per player |
-| 26 | 229 | Skills capped by the gear |
-| 27 | 247 | Ground cover: grass and bushes by biome |
-| 28 | 235 | Roads |
-| 29 | 234 | Boats |
-| 30 | 257 | Split files named by what they do |
-| 31 | 258 | The public wiki and the community channels |
-| 32 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
+| 18 | 291 | Right-click look puts the cursor back where it was |
+| 19 | 292 | The market names the seller |
+| 20 | 293 | Other players look like people |
+| 21 | 294 | Other players and creatures walk instead of jumping |
+| 22 | 295 | Equipment categories and traits replace tools (fabric) |
+| 23 | 296 | Work and combat by trait: no more tools in the game |
+| 24 | 251 | A human playtest: what would make the game fun (a standing checkpoint) |
+| 25 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
+| 26 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
+| 27 | 226 | Several characters per player |
+| 28 | 229 | Skills capped by the gear |
+| 29 | 247 | Ground cover: grass and bushes by biome |
+| 30 | 235 | Roads |
+| 31 | 234 | Boats |
+| 32 | 257 | Split files named by what they do |
+| 33 | 258 | The public wiki and the community channels |
+| 34 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
 
 Order notes that differ from the arcs' own order:
+
+- Phases 291–296 are the owner's fourth playtest set (2026-11-20, Phase 251, the first with a second player),
+  placed after 287 and before 251. The two small bugs go first (291 the right-click cursor, 292 the seller's
+  name), then the remote players' look (293, after 280, 284 and 286, whose bodies it shows) and motion (294).
+  295–296 remove the tool concept: 295 is the fabric PR, 296 the runtime, and both come after 287 because
+  the attack clip follows the equipment category.
 
 - Phases 278–290 are the owner's third playtest set (2026-11-19, Phase 251), filed at high priority ahead of
   everything else open. 288–290 (the crafting cards, the work bar and the hold wording, the shovel speed) were
@@ -344,7 +355,7 @@ A40–A46). The placeholder rule holds: each phase lands with public placeholder
 |---|---|---|
 | 278 | Rocks and branches that look like rocks and branches | Open |
 | 279 | Pick up with E | Done |
-| 280 | The hotbar item in the hand | Open |
+| 280 | The hotbar item in the hand | Done |
 | 281 | Work you can see: chopping, mining, digging, building and dissecting animations | Done |
 | 282 | A felled tree falls, then goes | Done |
 | 283 | Trees that look like trees: closed faces, a trunk and a real crown | Done |
@@ -355,6 +366,24 @@ A40–A46). The placeholder rule holds: each phase lands with public placeholder
 | 288 | Recipe cards you can read: a real icon area in the crafting window | Done |
 | 289 | Hold to work, told and shown: the work bar in view, and the tutorial says hold | Done |
 | 290 | Digging that does not drag: a faster shovel on the way to rock | Done |
+
+### Next: the fourth playtest set (Phases 291–296)
+
+Filed by the owner on 2026-11-20 after playing `main` with a friend (Phase 251). What was found: another player is
+geometric shapes with a name above them, not a person; other players and creatures move in jumps instead of
+walking; every right click moves the mouse pointer up and to the left; the market shows the seller's id, not
+their name. And a design decision: there are no tools that cannot be used in combat. Every held item is equipment
+of a category (knife, sword, axe, hammer, pick…), and what it can do follows from its traits: Sharp with Blunt
+(heavy) fells trees, Piercing with Blunt mines, any knife dissects; picks are the weakest weapons.
+
+| Phase | Title | Status |
+|---|---|---|
+| 291 | Right-click look puts the cursor back where it was | Open |
+| 292 | The market names the seller | Open |
+| 293 | Other players look like people | Open |
+| 294 | Other players and creatures walk instead of jumping | Open |
+| 295 | Equipment categories and traits replace tools (fabric) | Open |
+| 296 | Work and combat by trait: no more tools in the game | Open |
 
 ## Phase 225 — The options window
 
@@ -770,6 +799,10 @@ findings come back as new phases.
   stack has no way to choose how many; the character is ugly and not the chibi style the owner
   wants; the creation screen does not show the chosen hair style; the Character window shows a
   different body from the one walking in the world.
+- 2026-11-20: the first session with a second player, filed as Phases 291–296 (after 287 in the priority
+  order). Findings: other players are drawn as shapes, not people; other players and creatures jump instead of
+  walking; a right click moves the pointer up-left; the market shows the seller's id. The owner also dropped
+  the tool concept for equipment categories and traits.
 
 ## Phase 257 — Split files named by what they do
 
@@ -1211,6 +1244,174 @@ round trip with its own bar.
   most 2 blocks under the surface, or the `mine_stone` step's marker names an exposed Ferrite face within 30 m.
 - Playtest bot `tutorial` step completes the dig and mine-rock steps within a time budget set from the new
   speed (dig-to-rock under 5 s of holding).
+
+## Phase 291 — Right-click look puts the cursor back where it was
+
+Owner's playtest with a second player, 2026-11-20 (Phase 251): every right click moves the mouse pointer up and to
+the left. Cause: `PlayerSlice._begin_look` stores `get_viewport().get_mouse_position()`, which is in the root
+viewport's coordinates, and `_end_look` hands it to `Input.warp_mouse`, which takes window pixels. With
+`window/stretch/mode="canvas_items"` the two differ by the stretch scale whenever the window is larger than the
+base size, so the pointer lands closer to the top-left corner on every release, by more the larger the window.
+
+- Store and restore the pointer in one coordinate space: read the window position (`DisplayServer.mouse_get_position`
+  minus the window position, or `get_window().get_mouse_position()`) and warp to it, or convert the stored viewport
+  position through the root viewport's final transform before warping. One helper does the conversion; nothing else
+  calls `warp_mouse` with a viewport position.
+- The same fix covers every other `warp_mouse` call (grep finds them), and the cursor is not moved at all when the
+  look ends because the window lost focus.
+- A right click that never becomes a look (pressed and released with no motion) leaves the pointer exactly where it
+  was.
+
+**Acceptance criteria**
+- Suite: with a stretch scale of 1.0, 1.5 and 2.0 (window size set against the base size), `_begin_look` then
+  `_end_look` restores a pointer stored at (100, 100), the window centre and the bottom-right corner to within 1 px
+  of where it started.
+- Suite: ten looks in a row leave the pointer where it started (no drift).
+- `tools/check_*.js` (or a suite grep test) rejects a `warp_mouse` call outside the helper.
+
+## Phase 292 — The market names the seller
+
+Owner's playtest, 2026-11-20: a market listing shows the seller's id, not their name. Cause: the host redacts a
+listing's `seller` to a handle before broadcast (`NetworkingSlice._on_market_synced` → `redact_for_client`, Phase 36),
+and `UISlice` prints that handle in `ui.listing` as it is.
+
+- The host adds the seller's character name to each listing it sends (`seller_name`), read from the registry at send
+  time, next to the redacted handle; the handle stays for actions (buy, cancel), the name is only shown. An offline
+  seller's listing shows the name saved with the character; a seller with no name left (deleted character) shows a
+  localized "unknown seller".
+- The same rule for every replicated blob that shows a player to another player (trade, governance proposals and
+  votes, clan rolls): a check lists the UI strings that format a player field and fails one that prints a handle.
+- The market window shows "(you)" on the viewer's own listings (new key in both locales).
+
+**Acceptance criteria**
+- Suite (host): a listing created by Alice reaches Bob's client with `seller_name == "Alice"` and no raw player id
+  anywhere in the packet.
+- Suite (client): the listing row shows "Alice", never the handle; a listing with no name shows the "unknown
+  seller" string in `en` and `pt_BR`.
+- Suite: a renamed or offline seller still shows a name after a host restart (saved listings).
+- Net harness step: two clients, one lists an item, the other's market window text contains the seller's name.
+
+## Phase 293 — Other players look like people
+
+Owner's playtest, 2026-11-20: another player is a set of geometric shapes with a name and title above it, not a
+person. Cause: `PeerWiring._on_remote_avatar_state` creates every remote player as the placeholder
+`TravellerHuman` creature and asks for the peer's look afterwards (Phase 181); the look either never reaches the
+body or the placeholder body has no chibi player rig to put it on, so the player rig, hair, clothing and held item
+the local player sees on themself are never drawn for anyone else.
+
+- A remote player is built from the same `player_rig` and the same body spec as the local player and the Character
+  window (Phase 266's one-body rule): body type (Phase 286), skin, hair (Phase 284), worn equipment and the hotbar
+  item in the hand (Phase 280). One function builds a player body from a look dictionary, and all three callers use it.
+- The host sends the look with the peer's first state in a client's AOI (not on a later request), and again when it
+  changes (equipment, hand item, hair); until it arrives the body is the default player body, never a creature.
+- The name and title plate stays, placed above the rig's head bone instead of a fixed height.
+- The placeholder rule holds: a world without the private art shows the public placeholder player rig, which is a
+  person (head, torso, arms, legs), not primitive shapes.
+
+**Acceptance criteria**
+- Suite: a remote avatar is built from the player rig, not the `TravellerHuman` creature; its body type, hair,
+  skin and equipment match the look dictionary it was given.
+- Suite: the local player, the Character window and a remote avatar built from the same look produce the same
+  mesh set and bone count.
+- Suite (host): the first `player_states` entry for a peer new to a client's AOI is followed by that peer's look in
+  the same tick; an equipment change sends the look again.
+- Net harness step: two clients, each sees the other as a player rig with the other's chosen hair and body type.
+
+## Phase 294 — Other players and creatures walk instead of jumping
+
+Owner's playtest, 2026-11-20: another player moves in jumps, as if teleporting, instead of walking; creatures do the
+same, less visibly because they are slower. Causes: a remote avatar's body is moved by `set_character_position`, which
+snaps the root to each new state as it arrives, so the jitter buffer's sampled position
+(`_sample_remote_state_at`) is not what is drawn; the body does not turn to face where it goes; and no walk or run
+clip plays from the speed. Creature states arrive through `relay_creature_state` and are applied the same way.
+
+- One remote-motion component for remote players and creatures: it keeps the host's last states (position, yaw,
+  move state, server time), samples them each rendered frame at playback time (now minus the jitter buffer), and
+  moves the body to the sample; it never snaps unless the gap is larger than a teleport distance set in the fabric
+  (a respawn, a bed, a portal), when it snaps once.
+- Past the newest state it extrapolates along the last velocity for at most one send interval, then holds.
+- The body turns to its movement direction (or the host's yaw when sent) with a turn rate, not at once.
+- The locomotion clip follows the sampled speed: idle, walk, run (thresholds from the fabric, the same ones the
+  local player uses), and jump/fall from the move state, so feet move with the ground covered.
+- The send rate and the jitter buffer length for players and creatures are fabric values, and a creature far from
+  every player may be sent less often without breaking the motion.
+
+**Acceptance criteria**
+- `npm run validate` / `check-drift` pass with the motion table (buffer length, teleport distance, extrapolation cap,
+  turn rate, speed thresholds).
+- Suite: states 100 ms apart, 1 m apart; a frame at every 16 ms between them draws the body at a position that moves
+  forward every frame, never back, never more than 0.25 m per frame.
+- Suite: a jump of more than the teleport distance snaps once and keeps interpolating afterwards.
+- Suite: no state for 300 ms: the body moves on for at most one send interval, then stops.
+- Suite: a remote body at walking speed plays `walk`, at running speed `run`, standing `idle`; it turns toward its
+  movement with the turn rate.
+- Suite: a creature driven by `relay_creature_state` uses the same component and passes the same frame test.
+- Net harness step: two clients; one walks a straight line, the other's recorded positions of it have no step above
+  the per-frame bound.
+
+## Phase 295 — Equipment categories and traits replace tools (fabric)
+
+Decided by the owner on 2026-11-20: there are no tools that cannot be used in combat. Every held item is equipment
+of a **category** (knife, sword, axe, hammer, mace, spear, pick, shovel, and so on), and what it can do in the world
+follows from its **traits**, not from a tool type. The `toolType` and `harvestTool` fields and the "tool" concept go
+away.
+
+- Fabric first (this phase is a fabric PR, no GDScript): an `EQUIPMENT_CATEGORIES` table (id, hands, the attack clip
+  family from Phase 287, default traits) and a `TRAITS` table: `Sharp`, `Blunt` with a `heavy` grade, `Piercing`,
+  and room for more. Each equipment item names its category and its traits; a material may add or raise a trait.
+- Damage: each trait maps to a damage type (slashing for Sharp, blunt for Blunt, piercing for Piercing), and an
+  item's combat damage is the sum of its traits' shares. Armour's existing blunt and slashing descriptions become
+  numbers against these types.
+- Work by trait, in one `WORK_TRAITS` table:
+  - **Felling a tree** needs `Sharp` together with `Blunt (heavy)`. Every axe has both, so any axe fells trees;
+    something with only one of the two fells nothing, or very slowly (the table says which).
+  - **Mining rock** needs `Piercing` together with `Blunt`, as a pick has.
+  - **Dissecting a creature** needs the knife category (every knife can dissect).
+  - Digging, lock picking and the rest of today's `toolType` uses get a rule each in the same table.
+  - The work speed comes from how strongly the item has the needed traits, with Phase 290's work times kept as the
+    baseline for the item that today does that job.
+- Picks are the weakest weapons: a pick has Blunt and Piercing but the lowest combat damage multiplier of any
+  category; the table sets each category's combat multiplier.
+- Every existing tool (stone and ferrite and veilsteel picks and axes, shovels, knives, bone tools, lockpicks) is
+  rewritten as equipment of a category with traits, keeping its recipe, durability and repair.
+- Validators: a work rule names only known traits or categories; every item that today has a `toolType` or
+  `harvestTool` can still do that job under the new rules (no regression in what a player can do); no item
+  declares `toolType` or `harvestTool`.
+
+**Acceptance criteria**
+- `npm run validate` / `check-drift` pass with the category, trait and work tables; generated docs list each
+  category, its traits and what it can do.
+- The validator rejects an item with `toolType` or `harvestTool`, a category or trait not in the tables, and a work
+  rule naming an unknown trait.
+- A check proves each former tool can still do its former job: every former axe fells, every former pick mines,
+  every former knife dissects.
+- A check proves picks have the lowest combat multiplier of all categories.
+- Generated content names (categories, traits) are in the in-project catalog in both `en` and `pt_BR`.
+
+## Phase 296 — Work and combat by trait: no more tools in the game
+
+Runtime for Phase 295. Everything that today asks for a `toolType` or `harvestTool` asks the work table instead.
+
+- One rules function, `EquipmentRules.can_do(item, work)` and `work_speed(item, work)`, read from the fabric tables;
+  `InventorySlice.find_tool`, `TreeSlice` felling, mining, digging, dissecting (`harvest`), chest lock picking,
+  crafting's tool checks, the tutorial's tool tags and `RigTree.attack_clip_for` all call it, and none of them reads
+  `toolType` again.
+- The held item's traits set its combat damage and damage type on the host; armour reduces by damage type.
+- The attack clip comes from the category (Phase 287's chains), not from whether the item is a tool.
+- UI: the item tooltip shows the category, the traits and what the item can do (fell, mine, dissect…), all
+  localized; the word "tool" is gone from the UI catalog.
+- Saves: an item saved before this phase loads as the same equipment.
+
+**Acceptance criteria**
+- A grep test fails on any `toolType` or `harvestTool` read in `src/`.
+- Suite: any axe fells a tree; an item with Sharp but not Blunt (heavy) does not (or does at the table's slow speed);
+  a pick mines rock; an item with Piercing but no Blunt does not; any knife dissects a creature; a sword does not
+  dissect unless it is in the knife category.
+- Suite (host): a pick's hit deals less damage than any other category's item of the same tier, and deals blunt and
+  piercing damage; armour with blunt protection reduces the blunt share.
+- Suite: an inventory saved before this phase loads with every item able to do what it did before.
+- Suite: tooltip strings exist in both locales; no UI string contains the word "tool" as a category.
+- Playtest bot `tutorial` and `fight` steps pass with the new rules.
 
 ---
 

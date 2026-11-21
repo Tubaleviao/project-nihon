@@ -356,6 +356,10 @@ func tile_of(pos: Vector3) -> Vector2i:
 	var ts := _tile_size()
 	return Vector2i(floori(pos.x / ts), floori(pos.z / ts))
 
+## An instance's state ("idle", "dead", …), "" when there is no such instance.
+func get_instance_state(instance_id: String) -> String:
+	return str(_instances[instance_id]["state"]) if _instances.has(instance_id) else ""
+
 ## Phase 171 — the exact `{chunk, local}` position of an instance (empty when unknown). `inst["position"]` is
 ## the world-metres Vector3 derived from it: exact near the origin, float32-coarse far from it.
 func get_instance_pos(instance_id: String) -> Dictionary:

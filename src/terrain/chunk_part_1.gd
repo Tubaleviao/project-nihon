@@ -410,14 +410,31 @@ func flush_disk() -> void:
 	if gen_cache != null:
 		gen_cache.flush()
 
-## Phase 244 — opens the caches (`ChunkManager.start`). Not in the suite, which would write the player's cache.
+## Phase 244 — opens the caches (`ChunkManager.start`). Not in the suite or the net harness, which would write
+## the player's cache. The playtest bot gets its own mesh cache (its revisit step clears it). The host's
+## generated heightmaps live beside the save's `regions/` folder (not inside it, which `/regen world` moves
+## aside), so a playtest or a second save never shares them.
 func enable_disk() -> void:
-	if disk_cache != null or gen_cache != null or sl.voxel_slice == null or "--run-tests" in OS.get_cmdline_user_args():
+	var args := OS.get_cmdline_user_args()
+	if disk_cache != null or gen_cache != null or sl.voxel_slice == null or "--run-tests" in args or "--net-harness" in args:
 		return
 	if sl.keeps_render():
-		disk_cache = DiskChunkCache.new("user://cache/chunks/")
-	if bool(sl.voxel_slice.get("is_authoritative")):
-		gen_cache = DiskChunkCache.new("user://saves/server/regions/cache/", 256 * 1024 * 1024)
+		disk_cache = DiskChunkCache.new(mesh_cache_dir(args))
+	var store = sl.record_store
+	if bool(sl.voxel_slice.get("is_authoritative")) and store != null:
+		gen_cache = DiskChunkCache.new(gen_cache_dir(store.dir), 256 * 1024 * 1024)
+
+static func mesh_cache_dir(args: PackedStringArray) -> String:
+	return "user://playtest/cache/chunks/" if "--playtest-bot" in args else "user://cache/chunks/"
+
+## `<save>/cache/gen/` for a regions folder `<save>/regions/`.
+static func gen_cache_dir(regions_dir: String) -> String:
+	return regions_dir.trim_suffix("/").get_base_dir() + "/cache/gen/"
+
+## `/regen world`: the old world's generated heightmaps go with it.
+func clear_gen_cache() -> void:
+	if gen_cache != null:
+		gen_cache.clear()
 
 ## Phase 244 — what a build of `chunk` at `lod` reads, as content rather than session counters: the level, a
 ## world seed (the mesh and its biome weights depend on it), a digest of the edits of the chunk and its eight neighbours (their strips shape its seams) and the chunk's own

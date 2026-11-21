@@ -31,8 +31,8 @@ func make_slice(ctx: GameRoot) -> Node:
 	m.player_pos = _player_position
 	m.local_body = root._player
 	m.input_allowed = func() -> bool: return root._player != null and root._player.world_input_allowed()
-	m.nearest_to = func(at: Vector3, within: float) -> String: return str(root._creature.nearest_tamed_by(at, within, str(root._registry.local_player_id)))
-	m.own_position = func() -> Vector3: return root._player.get_position()
+	m.nearest_to = func(at: Variant, within: float) -> String: return str(root._creature.nearest_tamed_by(at, within, str(root._registry.local_player_id)))
+	m.own_position = func() -> Variant: return root._player.get_world_pos()   # exact: metres are float32-coarse far out
 	m.local_player_id = func() -> String: return str(root._registry.local_player_id)
 	return m
 

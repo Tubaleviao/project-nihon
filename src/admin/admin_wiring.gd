@@ -78,6 +78,7 @@ func regen_world(save := true) -> String:
 		return "backup_failed"
 	# Forget the old ground everywhere it is held.
 	root._chunk_manager.discard_pending_records()
+	root._chunk_manager._m1.clear_gen_cache()
 	root._chunk_manager.restream()
 	if root._chunk_manager.region_streamer != null:
 		root._chunk_manager.region_streamer.reset()

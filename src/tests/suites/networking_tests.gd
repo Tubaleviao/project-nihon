@@ -2084,6 +2084,8 @@ func _test_net_harness_step_table() -> void:
 	assert_eq(str(steps[steps.size() - 1].get("name", "")), "menu_join",
 		"and ends with a client re-joining through the main menu's join path (Phase 223)")
 	steps = steps.slice(0, steps.size() - 1)
+	assert_eq(str(steps.pop_back().get("name", "")), "client_loot_synced", "after ground loot taken and dropped by a client")
+	assert_eq(str(steps.pop_back().get("name", "")), "client_attack_lands", "after a client's own swing reaching the host and coming back as the synced hit")
 	assert_eq(str(steps.pop_back().get("name", "")), "predicted_edit", "after a client's predicted dig kept and a refused one rolled back (Phase 263)")
 	assert_eq(str(steps.pop_back().get("name", "")), "station_craft", "after a client crafting at a station and refused away from it (Phase 269)")
 	assert_eq(str(steps.pop_back().get("name", "")), "station_from_hotbar", "after a station crafted, placed from the hotbar and refused without its item (Phase 268)")

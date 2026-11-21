@@ -630,3 +630,203 @@ func work_anim_synced(h: Node) -> void:
 	var chopped: bool = await h._await_until(func(): return "chop" in w.clip_history.get(1, []), h._step_timeout())
 	var built: bool = await h._await_until(func(): return w.clip_history.get(1, []).slice(maxi(w.clip_history.get(1, []).rfind("chop"), 0)).has("build"), h._step_timeout())
 	h._report("work_anim_synced", h.verdict(chopped and built, true), "synced" if chopped and built else ("no_chop" if not chopped else "no_build"))
+
+## A client's own swing reaches the host. The host stands a probe creature beside the peer's reported body; the
+## client swings with the player's real input path (`PlayerSlice._try_attack`), which on a client forwards an
+## `attack_intent`. The host must resolve a round with the peer's player id as the attacker, and the client must
+## see that swing come back as the synced hit. Before the fix, a client resolved its swings on its own copy of
+## the creature and the host never heard of them.
+const ATTACK_PROBE_ID := "creature_harness_attack_probe"
+## The client's position report interval while it swings (the host's bucket refills 40 packets a second).
+const REPORT_INTERVAL_MS := 200
+func client_attack_lands(h: Node) -> void:
+	if h._role == "host":
+		var peer: int = h._peer_id()
+		var pid: String = h._root._networking.get_player_id(peer)
+		if pid == "" or not await h._await_until(func(): return h._root._networking.has_last_known_state(peer), h._step_timeout()):
+			h._report("client_attack_lands", "fail", "no_peer_position")
+			return
+		# Steps have no barrier: a probe laid before the client sets its fold log aside reaches it replayed into
+		# the folded frame, metres off, and a pinned probe sends no later delta to correct it.
+		if not await h._await_client_ready("client_attack", pid):
+			h._report("client_attack_lands", "fail", "client_never_ready")
+			return
+		var rounds := { "n": 0 }
+		var on_hit := func(attacker: String, _defender: String, _outcome: String, _dmg: float) -> void:
+			if attacker == pid:
+				rounds["n"] = int(rounds["n"]) + 1
+		GameBus.combat_hit_resolved.connect(on_hit)
+		# What arrived, for a failure's detail: the swings the peer forwarded and the last target it named.
+		var intents := { "n": 0, "last": "none" }
+		var on_intent := func(iid: String, who: String) -> void:
+			if who == pid:
+				intents["n"] = int(intents["n"]) + 1
+				intents["last"] = "probe" if iid == ATTACK_PROBE_ID else "other"
+		GameBus.attack_intent.connect(on_intent)
+		# Keep the probe pinned beside wherever the peer reports itself until a swing lands.
+		var landed := false
+		var deadline: int = Time.get_ticks_msec() + int(h._step_timeout() * 3.0 * 1000.0)
+		while Time.get_ticks_msec() < deadline and not landed:
+			# Exact `{chunk, local}`: earlier steps leave the peer far from the origin, where metres are float32-coarse.
+			var at: Dictionary = h._root._peer_wiring.peer_exact_pos(peer)
+			at = { "chunk": at["chunk"], "local": (at["local"] as Vector3) + Vector3(0.75, 0.0, 0.0) }
+			if not h._root._creature._instances.has(ATTACK_PROBE_ID):
+				h._root._creature.apply_creature_state(ATTACK_PROBE_ID, "ForestBoar", "idle", WorldPos.to_scene(at, Vector2i.ZERO))
+			# Re-pinned every frame, not once per lap: the host's AI reacts to a player this close (a flee runs
+			# 4.5 m/s), so a probe pinned twice a second spent most of the lap out of the client's 3 m reach.
+			var lap_end: int = Time.get_ticks_msec() + 500
+			while Time.get_ticks_msec() < lap_end and int(rounds["n"]) == 0:
+				h._root._creature.set_instance_pos(ATTACK_PROBE_ID, at)
+				await h.get_tree().process_frame
+			landed = int(rounds["n"]) > 0
+		GameBus.combat_hit_resolved.disconnect(on_hit)
+		GameBus.attack_intent.disconnect(on_intent)
+		# The peer's kill notice (its tutorial's only word of a kill): sent the way the host's `creature_died`
+		# handler sends it, without killing the probe, so no carcass or loot outlives the step.
+		var told: int = h._root._combat_wiring.on_creature_died(ATTACK_PROBE_ID, Vector3.ZERO, pid, Vector3.ZERO) if landed else 0
+		# Let the client see the synced swing and the notice before the probe goes.
+		await h._await_settle(2.0 * h._time_scale)
+		h._root._creature.despawn_instance(ATTACK_PROBE_ID)
+		h._report("client_attack_lands", h.verdict(landed and told == peer, true),
+			"host_resolved" if landed and told == peer else ("swing_never_reached_host-intents%d-%s" % [int(intents["n"]),
+			intents["last"]] if not landed else "kill_not_sent"))
+		return
+	var own_key := "p:%d" % h._root.multiplayer.get_unique_id()
+	var seen := { "hit": false }
+	var on_synced := func(attacker_key: String, _defender_key: String, _outcome: String) -> void:
+		if attacker_key == own_key:
+			seen["hit"] = true
+	GameBus.combat_hit_synced.connect(on_synced)
+	var on_tut := func(kind: String, params: Dictionary) -> void:
+		if kind == "creature_killed" and str(params.get("creature", "")) == "ForestBoar":
+			seen["killed"] = true
+	GameBus.tutorial_event.connect(on_tut)
+	# The fold step left this client in a folded frame that would replay onto the host's creature positions (see
+	# `_step_creature_far_delta`): set it aside for the probe and put it back.
+	var folds: Array = h._root._creature._fold_log
+	h._root._creature._fold_log = []
+	h._report_actual = true
+	var swung := { "n": 0 }
+	var announced := {}
+	var got: bool = await h._await_until(func() -> bool:
+		if bool(seen["hit"]):
+			return true
+		h._announce_ready("client_attack", announced)   # the host lays the probe only after this
+		# Paced like the other steps' reports: one per poll frame outruns the host's client packet bucket on a
+		# slow link (retransmits bunch packets up), and the host then drops this peer's reports and swings alike.
+		if Time.get_ticks_msec() - int(swung.get("reported", 0)) >= REPORT_INTERVAL_MS:
+			swung["reported"] = Time.get_ticks_msec()
+			h._report_position()
+		if Time.get_ticks_msec() - int(swung.get("at", 0)) >= 400 and h._root._player._alive:
+			swung["at"] = Time.get_ticks_msec()
+			swung["n"] = int(swung["n"]) + 1
+			var target: String = h._root._creature.nearest_creature(h._root._player.get_world_pos(), PlayerSlice.ATTACK_RANGE)
+			swung["target"] = "probe" if target == ATTACK_PROBE_ID else ("none" if target == "" else "other")
+			h._root._player._try_attack()
+		return false, h._step_timeout() * 3.0)
+	GameBus.combat_hit_synced.disconnect(on_synced)
+	h._root._creature._fold_log = folds
+	h._report_actual = false
+	h._report_position()
+	# The host's kill notice follows the landed swing; it reaches the tutorial as a species kill.
+	var killed := false
+	if got:
+		killed = await h._await_until(func() -> bool: return bool(seen.get("killed", false)), h._step_timeout())
+	GameBus.tutorial_event.disconnect(on_tut)
+	h._report("client_attack_lands", h.verdict(got and killed, true), "host_resolved" if got and killed else (
+		"no_synced_swing-after-%d-target_%s-probe%d-carrying%d" % [int(swung["n"]), str(swung.get("target", "none")),
+		int(h._root._creature._instances.has(ATTACK_PROBE_ID)), int(h._root._player.carrying)] if not got else "kill_notice_missing"))
+
+## Ground loot across the wire. The host lays a pickup beside the peer; the client must see it, take it through
+## the player's pickup request (the host checks reach and the bag, the pickup leaves both sides and the client's
+## bag gains it), then drop one through the UI's drop request: the host takes it off the peer's bag and lays it
+## at the peer's feet, and the client sees that pickup too. Before this, pickups lived only on the host.
+const LOOT_ITEM := "Duskfiber"   # no other step moves it
+func client_loot_synced(h: Node) -> void:
+	var loot: Node = h._root._loot
+	if h._role == "host":
+		var peer: int = h._peer_id()
+		var pid: String = h._root._networking.get_player_id(peer)
+		if pid == "" or not await h._await_until(func(): return h._root._networking.has_last_known_state(peer), h._step_timeout()):
+			h._report("client_loot_synced", "fail", "no_peer_position")
+			return
+		var bag: Node = h._root._registry.get_inventory(pid)
+		var before: int = bag.get_item_count(LOOT_ITEM)
+		var laid: String = loot.spawn_pickup(LOOT_ITEM, 2, h._root._networking.get_last_known_state(peer) + Vector3(2.0, 0.0, 0.0))
+		var taken: bool = await h._await_until(func(): return loot.get_pickup(laid).is_empty() and bag.get_item_count(LOOT_ITEM) == before + 2, h._step_timeout() * 3.0)
+		var dropped: bool = taken and await h._await_until(func():
+			if bag.get_item_count(LOOT_ITEM) != before + 1:
+				return false
+			for id in loot.ids():
+				if str(loot.get_pickup(str(id))["item_id"]) == LOOT_ITEM:
+					return true
+			return false, h._step_timeout() * 3.0)
+		# Let the client see the dropped pickup before the step moves on.
+		await h._await_settle(2.0 * h._time_scale)
+		for id in loot.ids():
+			loot.consume_pickup(str(id))
+		h._report("client_loot_synced", h.verdict(taken and dropped, true), "taken-and-dropped" if taken and dropped else ("not_taken" if not taken else "not_dropped"))
+		return
+	var inv: Node = h._root._inventory
+	var seen := { "id": "" }
+	var got: bool = await h._await_until(func() -> bool:
+		for id in loot.ids():
+			if str(loot.get_pickup(str(id))["item_id"]) == LOOT_ITEM:
+				seen["id"] = str(id)
+				return true
+		return false, h._step_timeout() * 3.0)
+	if not got:
+		h._report("client_loot_synced", "fail", "pickup_never_seen")
+		return
+	var before: int = inv.get_item_count(LOOT_ITEM)
+	GameBus.pickup_requested.emit(str(seen["id"]))
+	var taken: bool = await h._await_until(func(): return inv.get_item_count(LOOT_ITEM) == before + 2 and loot.get_pickup(str(seen["id"])).is_empty(), h._step_timeout() * 3.0)
+	if not taken:
+		h._report("client_loot_synced", "fail", "not_taken-bag%d-view%s" % [inv.get_item_count(LOOT_ITEM) - before, str(not loot.get_pickup(str(seen["id"])).is_empty())])
+		return
+	GameBus.item_drop_requested.emit(LOOT_ITEM, 1, Vector3.ZERO)
+	var dropped: bool = await h._await_until(func() -> bool:
+		if inv.get_item_count(LOOT_ITEM) != before + 1:
+			return false
+		for id in loot.ids():
+			if str(id) != str(seen["id"]) and str(loot.get_pickup(str(id))["item_id"]) == LOOT_ITEM:
+				return true
+		return false, h._step_timeout() * 3.0)
+	h._report("client_loot_synced", h.verdict(dropped, true), "taken-and-dropped" if dropped else "drop_not_seen-bag%d" % (inv.get_item_count(LOOT_ITEM) - before))
+
+## Phase 280 — the held item is synced to peers in range: the host selects one hotbar item, then another, and the
+## client's view of the host's avatar holds each (the host's pack is checked by the host's own wiring).
+const HELD_FIRST := "StonePick"
+const HELD_SECOND := "Thornwood"
+
+func held_item_synced(h: Node) -> void:
+	if h._role == "host":
+		var peers: PackedInt32Array = h._root.multiplayer.get_peers()
+		var pid: String = h._root._networking.get_player_id(peers[0]) if peers.size() > 0 else ""
+		if pid == "":
+			h._report("held_item_synced", "fail", "no_connected_peer")
+			return
+		if not await h._await_client_ready("held", pid):
+			h._report("held_item_synced", "fail", "client_never_arrived")
+			return
+		h._root._inventory.add_item(HELD_FIRST, 1)
+		h._root._inventory.add_item(HELD_SECOND, 1)
+		GameBus.held_item_intent.emit(HELD_FIRST, "")
+		var first: bool = h._root._held_item_wiring._held.get(h._root._held_item_wiring._local_id(), "") == HELD_FIRST
+		await h._await_settle(2.0)
+		GameBus.held_item_intent.emit(HELD_SECOND, "")
+		var second: bool = h._root._held_item_wiring._held.get(h._root._held_item_wiring._local_id(), "") == HELD_SECOND
+		await h._await_settle(6.0)   # the client reads both before this process (the last step) exits
+		h._report("held_item_synced", h.verdict(first and second, true), "held" if first and second else "host_refused")
+		return
+	var announced := {}
+	var seen: bool = await h._await_until(func():
+		h._announce_ready("held", announced)
+		return h._root._held_item_wiring._pending.get(1, "") == HELD_SECOND, h._step_timeout() * 4.0)
+	# The avatar of the host may not be drawn yet this early (a headless client); when it is, it holds the item.
+	var avatar: String = h._root._character.get_peer_character(1) if seen else ""
+	if avatar != "":
+		await h._await_until(func(): return h._root._character.held_item_of(avatar) == HELD_SECOND, h._step_timeout())
+	var ok: bool = seen and (avatar == "" or h._root._character.held_item_of(avatar) == HELD_SECOND)
+	h._report("held_item_synced", h.verdict(ok, true), "seen" if ok else ("never_synced" if not seen else "not_on_avatar"))
+
