@@ -423,18 +423,30 @@ func _test_native_files_present() -> void:
 
 func _test_native_speed_gate_wired() -> void:
 	assert_eq(NativeBuilder.NO_NATIVE_ARG, "--no-native", "the fallback switch the speed gate passes")
-	assert_true(FileAccess.file_exists("res://tools/check_stream_rate.py") or not FileAccess.file_exists("res://.github/workflows/ci.yml"), "the stream-rate gate script is in the tree")
-	var f := FileAccess.open("res://.github/workflows/ci.yml", FileAccess.READ)
+	assert_true(FileAccess.file_exists("res://tools/check_stream_rate.py") or not FileAccess.file_exists("res://.github/workflows/perf.yml"), "the stream-rate gate script is in the tree")
+	var live := _workflow_live("perf.yml")
+	if live.is_empty():
+		return   # an export does not carry .github
+	# The rate comparison is a timing gate: perf.yml (main, nightly, `perf` PRs), not the PR path.
+	assert_true(live.contains("--playtest-bot --no-native"), "the perf workflow runs the playtest bot on the GDScript fallback")
+	assert_true(live.contains("check_stream_rate.py playtest/report.json playtest/report-gdscript.json"), "the perf workflow checks the native rate against the fallback's")
+	assert_true(live.contains("fallback_status"), "the perf workflow reads the fallback run's exit status")
+	var ci := _workflow_live("ci.yml")
+	assert_true(ci.contains("--no-native"), "CI still plays the fallback on every PR")
+	assert_true(ci.contains("fallback_status"), "CI reads the fallback run's exit status")
+	assert_true(ci.contains("--playtest-timing-report-only"), "CI's playtest reports the timing verdicts instead of gating them")
+	assert_false(ci.contains("check_playtest_budget.py"), "the 3-run budget median is perf.yml's, not the PR path's")
+
+## A workflow file with its comment lines dropped; empty when the tree has no .github (an export).
+func _workflow_live(file_name: String) -> String:
+	var f := FileAccess.open("res://.github/workflows/" + file_name, FileAccess.READ)
 	if f == null:
-		return
-	var text := f.get_as_text()
+		return ""
 	var live := ""
-	for line in text.split("\n"):
+	for line in f.get_as_text().split("\n"):
 		if not line.strip_edges().begins_with("#"):
 			live += line + "\n"
-	assert_true(live.contains("--playtest-bot --no-native"), "CI runs the playtest bot on the GDScript fallback")
-	assert_true(live.contains("check_stream_rate.py playtest/report.json playtest/report-gdscript.json"), "CI checks the native rate against the fallback's")
-	assert_true(live.contains("fallback_status"), "CI reads the fallback run's exit status")
+	return live
 
 func _test_native_build_breakdown() -> void:
 	var PB := preload("res://src/tests/playtest_bot.gd")
@@ -491,16 +503,12 @@ func _test_gate_health_wired() -> void:
 ## Phase 248 — a CI job exports a release build with the release library and plays the `flight` step on it,
 ## report only, and the baseline doc carries a release column.
 func _test_native_release_flight_wired() -> void:
-	var f := FileAccess.open("res://.github/workflows/ci.yml", FileAccess.READ)
-	if f == null:
+	var live := _workflow_live("perf.yml")
+	if live.is_empty():
 		return   # an export does not carry .github; the suite runs from the project tree
-	var live := ""
-	for line in f.get_as_text().split("\n"):
-		if not line.strip_edges().begins_with("#"):
-			live += line + "\n"
 	var at := live.find("  release-flight:")
-	assert_true(at >= 0, "CI has the release-flight job")
-	var job := live.substr(at, live.find("\n  build:", at) - at)
+	assert_true(at >= 0, "the perf workflow has the release-flight job")
+	var job := live.substr(at)
 	assert_true(job.contains("--export-release \"Linux Playtest\""), "the job exports the Linux Playtest preset as a release build")
 	assert_true(job.contains("libnihon_native.linux.template_release.x86_64.so"), "the export carries the release library")
 	assert_true(job.contains("tools/run_export_playtest.sh --report-only build/release/nihon.x86_64 flight"), "the job plays only the flight step, report only")

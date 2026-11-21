@@ -19,8 +19,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check the last 40 runs of main
+      - name: Check the last 40 runs of main (CI)
         env:
           GH_TOKEN: ${{ github.token }}
           GATE_REPO: ${{ github.repository }}
+        run: tools/check_gate_health.sh
+
+      - name: Check the last 40 runs of main (Perf, the timing gates)
+        # Runs even when CI's check failed, so one red run reports both workflows.
+        if: success() || failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GATE_REPO: ${{ github.repository }}
+          GATE_WORKFLOW: perf.yml
         run: tools/check_gate_health.sh
