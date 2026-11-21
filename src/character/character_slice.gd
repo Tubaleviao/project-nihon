@@ -756,18 +756,13 @@ func attach_default_rig(instance_id: String) -> bool:
 	return key != "" and attach_rig(instance_id, key)
 
 func get_locomotion_state(instance_id: String) -> int:
-	if not _instances.has(instance_id):
-		return -1
-	return _instances[instance_id]["locomotion"].get_state()
+	return _instances[instance_id]["locomotion"].get_state() if _instances.has(instance_id) else -1
 
 func get_locomotion_state_name(instance_id: String) -> String:
-	if not _instances.has(instance_id):
-		return ""
-	return _instances[instance_id]["locomotion"].state_name()
+	return _instances[instance_id]["locomotion"].state_name() if _instances.has(instance_id) else ""
 
 ## Play the attack animation on an instance; `clip` "" picks the variant for the main hand.
-func trigger_attack(instance_id: String, clip: String = "") -> void:
-	_m2.trigger_attack(instance_id, clip)
+func trigger_attack(instance_id: String, clip: String = "") -> void: _m2.trigger_attack(instance_id, clip)
 
 ## Phase 281 — work clips (see `WorkAnim`): play one, its length, turn to the target, stop.
 func trigger_work(instance_id: String, kind: String) -> String: return _m2.trigger_work(instance_id, kind)
@@ -775,8 +770,7 @@ func work_clip_length(instance_id: String, clip: String) -> float: return float(
 func face_toward(instance_id: String, target: Vector3) -> bool: return _m2.face_toward(instance_id, target)
 func stop_work(instance_id: String) -> void: _m2.stop_work(instance_id)
 
-func attack_clip_of(instance_id: String) -> String:
-	return _m2.attack_clip_of(instance_id)
+func attack_clip_of(instance_id: String) -> String: return _m2.attack_clip_of(instance_id)
 
 func trigger_hit(instance_id: String, stagger: bool = false) -> void:
 	_m2.trigger_hit(instance_id, stagger)
