@@ -1662,27 +1662,24 @@ func _step_fight() -> Array:
 			cid = str(k)
 	if cid == "":
 		return [false, "no creature in GameData"]
-	# Placed in the creature slice's own frame, from the camera that draws it, so the model range check
-	# and the screenshot see the same distance whatever the scene origin or float32 rounding did to the body.
-	var p := _player_pos()
 	if absf(_ground_gap()) > FIGHT_MAX_GROUND_GAP_M:
 		# The body is not on the surface (it fell while ground streamed in): stand it back on it.
 		var here: Dictionary = _root._player.get_world_pos()
 		_teleport_to(here["chunk"], here["local"])
 		await _until(func(): return absf(_ground_gap()) <= FIGHT_MAX_GROUND_GAP_M, STEP_TIMEOUT_SECS)
 		await _until(func(): return false, 0.3)
-		p = _player_pos()
 	var gap := _ground_gap()
 	if absf(gap) > FIGHT_MAX_GROUND_GAP_M:
 		return [false, "the player is %.1f m from the terrain surface (limit %.1f)" % [gap, FIGHT_MAX_GROUND_GAP_M]]
-	var cam := get_viewport().get_camera_3d()
-	if cam != null:
-		p = cam.global_position - _root._creature.scene_offset()
 	var iid: String = _root._creature._spawn(cid, Vector2i(9000, 9000), 0)
 	if iid == "":
 		return [false, "spawn refused"]
-	var y: float = _root._terrain.get_height_at(Vector2(p.x + FIGHT_RANGE_M, p.z))
-	_root._creature.set_instance_position(iid, Vector3(p.x + FIGHT_RANGE_M, y, p.z))
+	# Placed beside the BODY in exact world coordinates, not beside the camera: since Phase 287 the host re-checks
+	# the reach (from the body) at impact, and a rendered run's follow camera sits about 11 m behind the body, so a
+	# target set beside the camera was out of reach for every swing (it then downed the player).
+	var body: Dictionary = _root._player.get_world_pos()
+	var at: Dictionary = WorldPos.normalized({"chunk": body["chunk"], "local": (body["local"] as Vector3) + Vector3(FIGHT_RANGE_M, 0.0, 0.0)})
+	_root._creature.set_instance_pos(iid, at)   # stood on the surface there by the slice
 	var rounds := 0
 	var ok := false; var clips: Array = []   # Phase 287: the combo's clips
 	while rounds < 20 and not ok:
