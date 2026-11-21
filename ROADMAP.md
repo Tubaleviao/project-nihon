@@ -31,14 +31,13 @@ introductions of the arcs they belonged to, are archived in
 Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
 see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
 phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
-comes next. A phase that needs an earlier one still waits for it. Done phases (238–244, 248–250, 252–256, 259–276, 289, 290, 283, 282, 280, 291, 281, 284, 286)
+comes next. A phase that needs an earlier one still waits for it. Done phases (238–244, 248–250, 252–256, 259–276, 289, 290, 283, 282, 280, 291, 281, 284, 286, 287)
 have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
 [Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
 others are not in it.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 17 | 287 | Fighting that reads: combos, impact timing and hit reactions |
 | 19 | 292 | The market names the seller |
 | 20 | 293 | Other players look like people |
 | 21 | 294 | Other players and creatures walk instead of jumping |
@@ -358,7 +357,7 @@ A40–A46). The placeholder rule holds: each phase lands with public placeholder
 | 284 | Hair that sits on the head | Done |
 | 285 | Grass without black spots | Done |
 | 286 | Men and women who look different | Done |
-| 287 | Fighting that reads: combos, impact timing and hit reactions | Open |
+| 287 | Fighting that reads: combos, impact timing and hit reactions | Done |
 | 288 | Recipe cards you can read: a real icon area in the crafting window | Done |
 | 289 | Hold to work, told and shown: the work bar in view, and the tutorial says hold | Done |
 | 290 | Digging that does not drag: a faster shovel on the way to rock | Done |
@@ -1200,6 +1199,16 @@ no link between the clip's strike and the damage, and the target barely reacts.
   no further hit; an attacker who dies, is staggered or switches weapon before impact deals nothing.
 - Suite: attacking while walking keeps the lower body on `walk` (blend mask applied).
 - Playtest bot `fight` step passes and records the clip sequence.
+
+**Done.** Fabric `CombatCombos` (validator, `tools/check_combos.js`, CI step); `combo_chain.gd` (variants, window,
+fallback); `pending_hit.gd` + `BattleSlice.tick_impacts` (the host deals a player swing at the clip's impact time
+after the re-checks (alive, not immobilised or staggered, not carrying a body, target living, untamed and in reach by exact
+positions); the swing clip plays at the click and a click during a swing in flight is ignored); hit/stagger by the
+fabric share, with the struck creature pushed `knockbackLight`/`knockbackHeavy` metres away (`CombatWiring.push_struck`; a
+player's body is moved by its own client);
+the bone-masked `UpperAttack` one-shot; `HitFeel` camera shake and hit-stop with the `camera_shake` / `hit_stop`
+options (both locales); the playtest `fight` step records the clip sequence and waits out each impact. The host
+announces a swing to clients in range at the click (`combat_hit` outcome `swing`), so observers see it then.
 
 ## Phase 288 — Recipe cards you can read: a real icon area in the crafting window
 

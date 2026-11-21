@@ -693,8 +693,8 @@ func client_attack_lands(h: Node) -> void:
 		return
 	var own_key := "p:%d" % h._root.multiplayer.get_unique_id()
 	var seen := { "hit": false }
-	var on_synced := func(attacker_key: String, _defender_key: String, _outcome: String) -> void:
-		if attacker_key == own_key:
+	var on_synced := func(attacker_key: String, _defender_key: String, outcome: String) -> void:
+		if attacker_key == own_key and outcome != "swing":   # Phase 287: "swing" is the click's announcement; the hit lands later
 			seen["hit"] = true
 	GameBus.combat_hit_synced.connect(on_synced)
 	var on_tut := func(kind: String, params: Dictionary) -> void:

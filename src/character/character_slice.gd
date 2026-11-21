@@ -762,7 +762,7 @@ func get_locomotion_state_name(instance_id: String) -> String:
 	return _instances[instance_id]["locomotion"].state_name() if _instances.has(instance_id) else ""
 
 ## Play the attack animation on an instance; `clip` "" picks the variant for the main hand.
-func trigger_attack(instance_id: String, clip: String = "") -> void: _m2.trigger_attack(instance_id, clip)
+func trigger_attack(instance_id: String, clip: String = "", now: float = -1.0) -> void: _m2.trigger_attack(instance_id, clip, now)
 
 ## Phase 281 — work clips (see `WorkAnim`): play one, its length, turn to the target, stop.
 func trigger_work(instance_id: String, kind: String) -> String: return _m2.trigger_work(instance_id, kind)

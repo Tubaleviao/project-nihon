@@ -8,6 +8,14 @@ const DeathPush := preload("res://src/battle/death_push.gd")
 const Bot := preload("res://src/tests/playtest_bot.gd")
 
 func register() -> void:
+	_run_test("animation: camera shake and hit-stop are options, on by default (Phase 287)", _test_hit_feel_options)
+	_run_test("animation: a swing while moving plays on the upper body through a bone mask and the feet keep moving (Phase 287)", _test_upper_body_attack)
+	_run_test("animation: a creature hit past the stagger share staggers, a light one flinches (Phase 287)", _test_creature_hit_clip_param)
+	_run_test("animation: a peer with no body on the host still chains its combo and a stagger rides the wire (Phase 287)", _test_bodyless_combo_and_stagger)
+	_run_test("animation: the host deals a player swing at the impact time, and a refused re-check deals nothing (Phase 287)", _test_battle_impact_timing)
+	_run_test("animation: a pending hit lands at impact and is cancelled by range, death, stagger or a weapon switch (Phase 287)", _test_pending_hits)
+	_run_test("animation: a bodyless peer's swing is timed from the placeholder clip lengths, not a flat guess (Phase 287)", _test_placeholder_lengths)
+	_run_test("animation: repeated attacks inside the window play the combo variants, a pause restarts, a missing variant falls back (Phase 287)", _test_combo_chain)
 	_run_test("gestures: GameData lists every gesture with its clip and chat command", _test_p158_gesture_data)
 	_run_test("gestures: every gesture name key is in both catalogs", _test_p158_gesture_catalog)
 	_run_test("animation: a creature's hit swings its model and flinches the player", _test_creature_hit_animates_both)
@@ -76,13 +84,15 @@ func _test_synced_swing_animates_peer() -> void:
 	f["gr"]._is_client = true
 	var peer_iid: String = f["ch"].create_character_from_recipe({"skeleton": "HumanoidSkeleton"}, Vector3(3, 0, 0))
 	f["ch"].bind_peer_character(5, peer_iid)
-	GameBus.combat_hit_synced.emit("p:5", "c:w0", "hit")
+	GameBus.combat_hit_synced.emit("p:5", "c:w0", "swing")   # the host announces a player's swing at the click
 	assert_eq(int(f["ch"]._instances[peer_iid]["locomotion"].swing_serial), 1, "the peer's avatar swung")
+	GameBus.combat_hit_synced.emit("p:5", "c:w0", "hit")
+	assert_eq(int(f["ch"]._instances[peer_iid]["locomotion"].swing_serial), 1, "its hit at impact does not swing again")
 	assert_eq(int(f["cr"].visuals().models["w0"]["tree"].get_meta("hit_shots", 0)), 1, "and the target flinched")
 	assert_eq(int(f["ch"]._instances[f["iid"]]["locomotion"].swing_serial), 0, "the local avatar did not")
 	# A host never plays a packet's animation twice: the synced signal only acts on a client.
 	f["gr"]._is_client = false
-	GameBus.combat_hit_synced.emit("p:5", "c:w0", "hit")
+	GameBus.combat_hit_synced.emit("p:5", "c:w0", "swing")
 	assert_eq(int(f["ch"]._instances[peer_iid]["locomotion"].swing_serial), 1, "a host ignores the synced signal")
 	_free_fixture(f)
 
@@ -125,7 +135,7 @@ func _test_attack_variant_follows_hand() -> void:
 	loco.reset()
 	assert_true(f["ch"].apply_equipment(f["iid"], "MainHand", "VeilsteelLongsword"), "the sword equips")
 	f["ch"].trigger_attack(f["iid"])
-	assert_eq(loco.attack_clip, "attack_1h", "a sword-bearer swings one-handed")
+	assert_eq(loco.attack_clip, "attack_2h", "a two-handed sword swings two-handed (Phase 287)")
 	loco.reset()
 	GameBus.block_mine_requested.emit(Vector3.ZERO, Vector3.UP, "", {})
 	assert_eq(loco.attack_clip, "attack_tool", "mining a block plays the tool swing")
@@ -335,6 +345,19 @@ func _test_kill_no_flinch() -> void:
 	_free_fixture(f)
 
 
+func _test_bodyless_combo_and_stagger() -> void:
+	var f := _fixture()
+	var cw = f["gr"]._combat_wiring
+	var a: Dictionary = cw.impact_info("peer-x")
+	var b: Dictionary = cw.impact_info("peer-x")
+	assert_eq(int(a["step"]), 0, "the first swing starts the chain")
+	assert_eq(int(b["step"]), 1 if ComboChain.chain(str(b["weapon"])).get("clips", []).size() > 1 else 0, "a quick second swing advances it")
+	cw.forget_swinger("peer-x")
+	assert_eq(int(cw.impact_info("peer-x")["step"]), 0, "a departed peer's chain is dropped")
+	assert_true("stagger" in NetworkingSlice.COMBAT_OUTCOMES, "a stagger is a valid wire outcome")
+	_free_fixture(f)
+
+
 func _test_death_attacker_pos_guards() -> void:
 	var f := _fixture()
 	var cw = f["gr"]._combat_wiring
@@ -369,3 +392,215 @@ func _test_player_death_clip_via_bus() -> void:
 	assert_eq(loco.death_clip, expected, "playing that clip")
 	assert_true(f["ch"].get_character_yaw("missing") == null, "an unknown instance has no yaw")
 	_free_fixture(f)
+
+
+# --- Phase 287: combos -------------------------------------------------------------------------------------------
+
+const ComboChain := preload("res://src/battle/combo_chain.gd")
+
+func _test_placeholder_lengths() -> void:
+	assert_true(is_equal_approx(ComboChain.placeholder_length("two_hand", 1), 0.65), "the second two-hander blow is 0.65 s")
+	assert_true(is_equal_approx(ComboChain.placeholder_length("unarmed", 0), 0.4), "an unarmed jab is 0.4 s")
+	for clip in ComboChain.PLACEHOLDER_LENGTHS:
+		assert_true(float(ComboChain.PLACEHOLDER_LENGTHS[clip]) > 0.0, "%s has a length" % clip)
+
+func _test_combo_chain() -> void:
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var iid: String = ch.create_character_from_recipe({ "skeleton": "HumanoidSkeleton" }, Vector3.ZERO)
+	ch.attach_default_rig(iid)
+	assert_true(ch.apply_equipment(iid, "MainHand", "VeilsteelLongsword"), "the longsword equips")
+	var played := []
+	for t in [0.0, 0.5, 1.0]:
+		ch.trigger_attack(iid, "", t)
+		played.append(ch._instances[iid]["locomotion"].attack_clip)
+	assert_eq(played, ["attack_2h", "attack_2h_2", "attack_2h"], "swings inside the window cycle through the variants and wrap")
+	ch.trigger_attack(iid, "", 1.0 + 5.0)
+	assert_eq(ch._instances[iid]["locomotion"].attack_clip, "attack_2h", "a pause past the window restarts at the first")
+	var steps := []
+	var last := ""
+	var step := -1
+	for t in [0.0, 0.5, 1.0]:
+		step = ComboChain.next_step("one_hand", last, step, 0.5 if t > 0.0 else 0.0)
+		last = "one_hand"
+		steps.append(ComboChain.clip_for("one_hand", step))
+	assert_eq(steps, ["attack_1h", "attack_1h_2", "attack_1h_3"], "three one-handed swings inside the window play attack_1h, _2, _3")
+	# A rig without a variant plays the base clip.
+	assert_eq(ComboChain.clip_for("one_hand", 2, ["attack_1h", "attack"]), "attack_1h", "a missing variant falls back to the base clip")
+	assert_eq(ComboChain.clip_for("one_hand", 2, ["attack"]), "attack", "and to attack when the base is missing too")
+	# Another weapon class restarts the chain; unarmed and two-handed have their own clips.
+	assert_eq(ComboChain.next_step("unarmed", "one_hand", 1, 0.1), 0, "switching weapon class restarts")
+	assert_eq(ComboChain.next_step("unarmed", "unarmed", 1, 0.1), 0, "the chain wraps after its last step")
+	assert_eq(ComboChain.clip_for("unarmed", 1), "attack_unarmed_2", "unarmed has a second blow")
+	assert_eq(ComboChain.clip_for("two_hand", 1), "attack_2h_2", "two-handed has a second blow")
+	assert_eq(ComboChain.weapon_class("VeilsteelLongsword", GameData.ITEMS), "two_hand", "the longsword is two-handed")
+	assert_eq(ComboChain.weapon_class("FerritePick", GameData.ITEMS), "tool", "a pick is a tool")
+	assert_true(ComboChain.damage_multiplier("one_hand", 2) > ComboChain.damage_multiplier("one_hand", 0), "the third blow hits harder")
+	assert_true(absf(ComboChain.impact_seconds("one_hand", 0, 0.5) - 0.25) < 1e-6, "impact is a share of the clip length")
+	# Every chain clip exists on the public player rig.
+	var lengths: Dictionary = ch._instances[iid]["swing_lengths"]
+	for w in ["unarmed", "one_hand", "two_hand", "tool"]:
+		for clip in ComboChain.chain(w)["clips"]:
+			assert_true(lengths.has(clip), "the player rig has %s" % clip)
+	ch.free()
+
+
+const PendingHit := preload("res://src/battle/pending_hit.gd")
+
+func _impact_state(over: Dictionary = {}) -> Callable:
+	var base := { "attacker_alive": true, "attacker_staggered": false, "attacker_item": "VeilsteelLongsword", "target_alive": true, "gap": 1.0, "reach": 2.5 }
+	base.merge(over, true)
+	return func(_entry): return base
+
+func _test_pending_hits() -> void:
+	var q := PendingHit.new()
+	var e := q.start("a", "w0", "two_hand", "VeilsteelLongsword", 0, 10.0, 0.6)
+	assert_true(absf(float(e["due"]) - (10.0 + 0.55 * 0.6)) < 1e-6, "the hit is due at the impact time, not the click")
+	assert_eq(q.resolve_due(10.2, _impact_state()).size(), 0, "no damage before the impact time")
+	var done := q.resolve_due(10.4, _impact_state())
+	assert_true(done.size() == 1 and done[0]["reason"] == "", "the hit lands at impact")
+	assert_eq(q.size(), 0, "and leaves the queue")
+	# Re-checks at impact, one reason each.
+	for case in [["a target that left range", { "gap": 9.0 }, "out_of_range"], ["a target that died", { "target_alive": false }, "target_dead"],
+			["an attacker who died", { "attacker_alive": false }, "attacker_dead"], ["an attacker who was staggered", { "attacker_staggered": true }, "attacker_staggered"],
+			["a weapon switch", { "attacker_item": "StoneAxe" }, "weapon_switched"]]:
+		q.start("a", "w0", "two_hand", "VeilsteelLongsword", 0, 0.0, 0.6)
+		var r := q.resolve_due(1.0, _impact_state(case[1]))
+		assert_eq(r[0]["reason"], case[2], "%s deals nothing (%s)" % [case[0], case[2]])
+	# Another action cancels the pending hit; a new swing replaces it.
+	q.start("a", "w0", "two_hand", "VeilsteelLongsword", 0, 0.0, 0.6)
+	assert_true(q.cancel("a") and q.resolve_due(5.0, _impact_state()).is_empty(), "a cancelled hit never lands")
+	q.start("a", "w0", "two_hand", "VeilsteelLongsword", 0, 0.0, 0.6)
+	q.start("a", "w1", "two_hand", "VeilsteelLongsword", 1, 0.5, 0.6)
+	assert_eq(q.size(), 1, "a new swing replaces the pending one")
+	q.start("b", "w1", "two_hand", "VeilsteelLongsword", 0, 0.0, 0.6)
+	assert_eq(q.cancel_target("w1"), 2, "cancel_target drops every hit aimed at a creature that died or respawned")
+	assert_eq(q.size(), 0, "and leaves none")
+	assert_eq(PendingHit.reaction(30.0, 100.0, 0.25), "stagger", "a hit above the stagger share staggers")
+	assert_eq(PendingHit.reaction(10.0, 100.0, 0.25), "hit", "a lighter hit flinches")
+	assert_eq(PendingHit.knockback_direction(Vector3(0, 0, 0), Vector3(3, 1, 0)), Vector3(1, 0, 0), "the knock-back points away from the attacker")
+
+const BattleSliceP := preload("res://src/battle/battle_slice.gd")
+
+func _test_battle_impact_timing() -> void:
+	var b := BattleSliceP.new()
+	add_child(b)
+	var clock := [0.0]
+	b.now_fn = func(): return clock[0]
+	b.impact_queue = PendingHit.new()
+	b.impact_info_fn = func(_a): return { "weapon": "one_hand", "item": "X", "step": 0, "clip_length": 0.5 }
+	var world := { "alive": true, "target_alive": true, "gap": 1.0 }
+	b.impact_state_fn = func(_e): return { "attacker_alive": world["alive"], "attacker_staggered": false, "attacker_item": "X",
+		"target_alive": world["target_alive"], "gap": world["gap"], "reach": 3.0 }
+	b._hp_state["GraywolfPack"] = 10000.0
+	var hits := []
+	var cb := func(a, d, outcome, _dmg): hits.append([a, d, outcome])
+	GameBus.combat_hit_resolved.connect(cb)
+	GameBus.combat_round_requested.emit("player", "GraywolfPack")
+	assert_eq(hits.size(), 0, "nothing is dealt at the click")
+	clock[0] = 0.1
+	assert_eq(b.tick_impacts(), 0, "nor before the impact time")
+	clock[0] = 0.3
+	assert_eq(b.tick_impacts(), 1, "the hit lands at impact")
+	assert_eq(hits.size(), 1, "and one hit is announced")
+	# A target that left range before impact takes nothing and nothing is synced.
+	clock[0] = 1.0
+	GameBus.combat_round_requested.emit("player", "GraywolfPack")
+	world["gap"] = 9.0
+	clock[0] = 1.5
+	assert_eq(b.tick_impacts(), 0, "a target out of range at impact takes no damage")
+	assert_eq(hits.size(), 1, "and no hit sync is sent")
+	# A second click while a swing is in flight neither pushes its impact back nor starts another swing.
+	world["gap"] = 1.0
+	clock[0] = 2.0
+	var started := [0]
+	b.swing_started_fn = func(_a, _d): started[0] += 1
+	GameBus.combat_round_requested.emit("player", "GraywolfPack")
+	clock[0] = 2.2
+	GameBus.combat_round_requested.emit("player", "GraywolfPack")
+	assert_eq(started[0], 1, "a click during a swing in flight starts no second swing")
+	clock[0] = 2.4
+	assert_eq(b.tick_impacts(), 1, "so the first swing lands at its own impact time")
+	# An attacker staggered (immobilised) at impact deals nothing.
+	b.impact_state_fn = func(_e): return { "attacker_alive": true, "attacker_staggered": true, "attacker_item": "X",
+		"target_alive": true, "gap": 1.0, "reach": 3.0 }
+	clock[0] = 3.0
+	GameBus.combat_round_requested.emit("player", "GraywolfPack")
+	clock[0] = 3.5
+	assert_eq(b.tick_impacts(), 0, "a staggered attacker's hit is cancelled")
+	# Two hits due in the same tick on a creature that the first kills: the second must not kill it again.
+	b.impact_state_fn = func(_e): return { "attacker_alive": true, "attacker_staggered": false, "attacker_item": "X",
+		"target_alive": true, "gap": 1.0, "reach": 3.0 }
+	b._hp_state["GraywolfPack"] = 0.001
+	var outcomes := []
+	var cb2 := func(_a, _d, outcome, _dmg): outcomes.append(outcome)
+	GameBus.combat_hit_resolved.connect(cb2)
+	clock[0] = 5.0
+	b.impact_queue.start("player", "GraywolfPack", "one_hand", "X", 0, clock[0], 0.5)
+	b.impact_queue.start("player_1_1_1", "GraywolfPack", "one_hand", "X", 0, clock[0], 0.5)
+	clock[0] = 6.0
+	b.tick_impacts()
+	assert_false(outcomes.count("kill") > 1, "a creature killed in a tick is not killed again by a later hit of the same tick")
+	GameBus.combat_hit_resolved.disconnect(cb2)
+	GameBus.combat_hit_resolved.disconnect(cb)
+	b.free()
+
+func _test_creature_hit_clip_param() -> void:
+	var f := _fixture()
+	f["gr"]._battle = BattleSliceP.new()
+	add_child(f["gr"]._battle)
+	assert_true(f["gr"]._combat_wiring.reaction_for("GraywolfPack", 1.0) == "hit", "a light hit on a creature is a hit")
+	assert_true(f["gr"]._combat_wiring.reaction_for("GraywolfPack", 1000.0) == "stagger", "a heavy hit on a creature staggers it")
+	f["gr"]._battle.free()
+	f["gr"]._battle = null
+	_free_fixture(f)
+
+func _test_upper_body_attack() -> void:
+	var root := AssetOverlay.load_rig_scene("models/player_rig.glb.raw")
+	var player := root.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	RigTree.prepare_library(player)
+	var tree := RigTree.build_tree(player)
+	root.add_child(tree)
+	var loco_tree: AnimationNodeBlendTree = tree.get_meta("loco_tree")
+	assert_true(loco_tree.has_node(RigTree.UPPER_NODE), "the rig has an upper-body attack node")
+	var shot := loco_tree.get_node(RigTree.UPPER_NODE) as AnimationNodeOneShot
+	assert_true(shot.filter_enabled, "the node is filtered (a bone mask)")
+	var paths := RigTree.upper_body_paths(player)
+	assert_true(not paths.is_empty(), "the mask names the upper-body bones")
+	for p in paths:
+		assert_true(shot.is_path_filtered(p), "%s is masked in" % p)
+		assert_false(str(p).ends_with(":Leg_L") or str(p).ends_with(":Shin_L") or str(p).ends_with(":Foot_L"), "no leg bone is masked in")
+	var loco := Locomotion.new()
+	loco.update(3.0, true, 0.0, 0.1)
+	loco.trigger_attack("attack_1h", 0.5)
+	assert_true(loco.get_state() == Locomotion.State.ATTACK and loco.get_speed() > RigTree.UPPER_ATTACK_MIN_SPEED, "a swing while running keeps its speed")
+	assert_true(RigTree.swing_on_upper_body(tree, loco), "it plays on the upper body")
+	RigTree.drive_shots(tree, null, loco)
+	assert_eq(int(tree.get_meta("upper_shots", 0)), 1, "the upper-body one-shot fired")
+	var still := Locomotion.new()
+	still.trigger_attack("attack_1h", 0.5)
+	assert_false(RigTree.swing_on_upper_body(tree, still), "a standing swing keeps its own state")
+	# The node is latched when the swing starts: stopping mid-swing keeps the swing on the upper body.
+	var moving_then_stopped := Locomotion.new()
+	moving_then_stopped.update(3.0, true, 0.0, 0.1)
+	moving_then_stopped.trigger_attack("attack_1h", 0.5)
+	RigTree.drive_shots(tree, null, moving_then_stopped)
+	assert_true(bool(tree.get_meta("swing_upper", false)), "a swing begun while moving is latched upper-body")
+	root.free()
+
+const HitFeel := preload("res://src/battle/hit_feel.gd")
+const GameSettings := preload("res://src/core/game_settings.gd")
+
+func _test_hit_feel_options() -> void:
+	assert_true(GameSettings.SPEC.has("camera_shake") and GameSettings.SPEC.has("hit_stop"), "both switches are options")
+	assert_true(GameSettings.SPEC["camera_shake"]["default"] and GameSettings.SPEC["hit_stop"]["default"], "on by default")
+	var cam := Camera3D.new()
+	add_child(cam)
+	var before: bool = GameSettings.get_value("camera_shake")
+	GameSettings.set_value("camera_shake", true, null, false)
+	assert_true(HitFeel.shake(cam), "a landed hit shakes the camera")
+	GameSettings.set_value("camera_shake", false, null, false)
+	assert_false(HitFeel.shake(cam), "and not with the option off")
+	GameSettings.set_value("camera_shake", before, null, false)
+	cam.free()
+	assert_false(HitFeel.hit_stop(null), "no tree, no hit-stop")

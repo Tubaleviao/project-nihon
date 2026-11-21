@@ -858,6 +858,8 @@ options.terrain_quality,Terrain quality,Qualidade do terreno
 options.tutorial,Tutorial,Tutorial
 options.mouse_sensitivity,Mouse sensitivity,Sensibilidade do mouse
 options.invert_y,Invert vertical look,Inverter o olhar vertical
+options.camera_shake,Camera shake on hits,Tremor da câmera nos golpes
+options.hit_stop,Hit-stop on hits,Pausa de impacto nos golpes
 options.language,Language,Idioma
 options.tutorial_reset,Reset tutorial,Reiniciar o tutorial
 options.close,Close,Fechar

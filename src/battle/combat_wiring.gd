@@ -11,8 +11,17 @@ const PlayerRegistry   := preload("res://src/persistence/player_registry.gd")
 const PlayerSlice      := preload("res://src/player/player_slice.gd")
 const StatusEffects    := preload("res://src/battle/status_effects.gd")
 const RigTree          := preload("res://src/character/rig_tree.gd")
+const PendingHit       := preload("res://src/battle/pending_hit.gd")
+const HitFeel          := preload("res://src/battle/hit_feel.gd")
+const ComboChain       := preload("res://src/battle/combo_chain.gd")
+
+func tick(_delta: float) -> void:
+	if root._battle != null:
+		root._battle.tick_impacts()   # Phase 287: the hits whose impact time has come
 
 func _connect_all() -> void:
+	if root._battle != null and not root._is_client:
+		enable_impact_timing()
 	if root._battle != null:
 		root._battle.player_stat_fn = player_stat   # Phase 178 — a defending player's attribute stats
 	if root._creature != null:
@@ -28,6 +37,8 @@ func _connect_all() -> void:
 	connect_bus(GameBus.player_respawned, _on_player_respawned)
 	connect_bus(GameBus.attack_intent, on_attack_intent)
 	connect_bus(GameBus.creature_died, on_creature_died)
+	connect_bus(GameBus.gesture_intent, _on_gesture_intent)
+	connect_bus(GameBus.creature_respawned, _on_creature_gone_pending)
 
 ## Host: how far past `PlayerSlice.ATTACK_RANGE` a peer's swing may land, measured from the host's last record
 ## of that peer — covers the creature and the peer moving between the peer's aim and the packet.
@@ -37,6 +48,8 @@ const ATTACK_REACH_SLACK_M := 1.5
 const ATTACK_MIN_INTERVAL_MS := 200
 ## player id -> Time.get_ticks_msec() of that player's last accepted swing.
 var _last_swing_ms: Dictionary = {}
+## Host: attacker id -> { weapon, step, at } for a peer drawn no body here (a dedicated host), so its combo advances.
+var _bodyless_combo: Dictionary = {}
 
 ## Host: a peer's swing (`attack_intent`, re-emitted by NetworkingSlice with the connection's player id). The
 ## host checks everything it can know itself: the peer is connected and not downed or held, the target is a
@@ -63,6 +76,8 @@ func on_attack_intent(instance_id: String, player_id: String) -> bool:
 	var gap: float = WorldPos.offset_between(root._peer_wiring.peer_exact_pos(peer), root._creature.get_instance_pos(instance_id)).length()
 	if gap > reach:
 		return false
+	if root._battle != null and root._battle.impact_queue != null and root._battle.impact_queue.has_pending(player_id):
+		return false   # a swing is already in flight: a dropped click must not restart the rate window
 	var now := Time.get_ticks_msec()
 	if _last_swing_ms.has(player_id) and now - int(_last_swing_ms[player_id]) < ATTACK_MIN_INTERVAL_MS:
 		return false
@@ -73,6 +88,7 @@ func on_attack_intent(instance_id: String, player_id: String) -> bool:
 ## Host: a creature a peer killed. The peer's client resolves no rounds of its own, so it never sees the
 ## `creature_died` its tutorial counts; the host tells only that peer, by species. Returns the peer told (0 none).
 func on_creature_died(entity_id: String, _pos: Vector3, killer_id: String, _landing: Vector3) -> int:
+	_cancel_pending_at(entity_id)
 	if root._is_client or killer_id == "" or killer_id == "player" or killer_id == root._registry.local_player_id:
 		return 0
 	var peer := root._registry.get_peer_id(killer_id)
@@ -84,9 +100,120 @@ func on_creature_died(entity_id: String, _pos: Vector3, killer_id: String, _land
 	root._networking.send_creature_killed(peer, species)
 	return peer
 
+## Phase 287 — host: a pending hit aimed at a creature that died or respawned is dropped (a respawn reuses the id,
+## so it would land on the new creature).
+func _cancel_pending_at(target_id: String) -> void:
+	if root._battle != null and root._battle.impact_queue != null:
+		root._battle.impact_queue.cancel_target(target_id)
+
+func _on_creature_gone_pending(instance_id: String, _creature_id: String) -> void:
+	_cancel_pending_at(instance_id)
+
+## Phase 287 — host: another action (a gesture, mining) started after the click cancels the swing's pending hit.
+func cancel_pending_swing(player_id: String) -> void:
+	if root._is_client or root._battle == null or root._battle.impact_queue == null:
+		return
+	root._battle.impact_queue.cancel("player" if player_id == "" else player_id)
+	if player_id == root._registry.local_player_id:
+		root._battle.impact_queue.cancel("player")
+
+func _on_gesture_intent(_gesture_id: String, player_id: String) -> void:
+	cancel_pending_swing(player_id)
+
 ## Drop a departed player's swing clock (called from the peer-left path).
 func forget_swinger(player_id: String) -> void:
 	_last_swing_ms.erase(player_id)
+	_bodyless_combo.erase(player_id)
+	if root._battle != null and root._battle.impact_queue != null:
+		root._battle.impact_queue.cancel(player_id)
+
+## Phase 287 — host: turn on impact timing. A player's swing then plays its clip at the click and deals its damage at
+## the clip's impact time, after `impact_state` re-checked it.
+func enable_impact_timing() -> void:
+	root._battle.impact_queue = PendingHit.new()
+	root._battle.impact_info_fn = impact_info
+	root._battle.impact_state_fn = impact_state
+	root._battle.swing_started_fn = _on_swing_started
+
+## Host: a player's swing was queued. Its own clip already plays here; clients in range see it at the click, not
+## when (or if) the hit lands.
+func _on_swing_started(attacker_id: String, defender_id: String) -> void:
+	root._gesture_wiring.note_action(attacker_id)   # a swing ends a pose at the click, hit or no hit
+	if root._networking == null or not root._networking.is_host():
+		return
+	var a_key := _wire_key(attacker_id)
+	var at: Variant = _event_position(a_key, _wire_key(defender_id))
+	if at != null:
+		root._networking.send_combat_hit(a_key, _wire_key(defender_id), "swing", at)
+
+func _attacker_character(attacker_id: String) -> String:
+	return _character_for_key(_wire_key(attacker_id))
+
+## The held hotbar item (Phase 280) else the main-hand item the host's registry holds for a player with no body here ("" for the local "player").
+func _registry_main_hand(attacker_id: String) -> String:
+	if attacker_id == "player":
+		return ""
+	var held: String = root._held_item_wiring.held_of(attacker_id)
+	return held if held != "" else str(root._registry.get_equipment(attacker_id).get("MainHand", ""))
+
+func _main_hand(iid: String) -> String:
+	var held: String = root._character.held_item_of(iid)
+	return held if held != "" else str(root._character.get_equipment_set(iid).get("MainHand", ""))
+
+## The swing an attacker just started: plays its clip (advancing the combo) and reports weapon, step and the length
+## of the clip that actually played. An attacker with no body here (a dedicated host draws none for a peer) takes
+## its weapon from the registry's equipment and starts its chain at step 0.
+func impact_info(attacker_id: String) -> Dictionary:
+	var iid := _attacker_character(attacker_id)
+	if iid == "":
+		var item := _registry_main_hand(attacker_id)
+		var weapon: String = ComboChain.weapon_class(item, GameData.ITEMS)
+		var now := Time.get_ticks_msec() / 1000.0
+		var last: Dictionary = _bodyless_combo.get(attacker_id, {})
+		var bstep: int = ComboChain.next_step(weapon, str(last.get("weapon", "")), int(last.get("step", -1)), now - float(last.get("at", -1e9)))
+		_bodyless_combo[attacker_id] = { "weapon": weapon, "step": bstep, "at": now }
+		return { "weapon": weapon, "item": item, "step": bstep, "clip_length": ComboChain.placeholder_length(weapon, bstep) }
+	root._character.trigger_attack(iid)
+	var inst: Dictionary = root._character._instances[iid]
+	var combo: Dictionary = inst.get("combo", {})
+	var lengths: Dictionary = inst.get("swing_lengths", {})
+	var weapon := str(combo.get("weapon", "unarmed"))
+	var step := int(combo.get("step", 0))
+	var clip: String = ComboChain.clip_for(weapon, step, lengths if not lengths.is_empty() else null)
+	if not lengths.has(clip):
+		clip = RigTree.ATTACK_DEFAULT   # the clip `trigger_attack` played
+	return { "weapon": weapon, "item": _main_hand(iid), "step": step, "clip_length": float(lengths.get(clip, 0.5)) }
+
+## The state at impact for `PendingHit.refusal`, with the same checks as the click: both alive, the attacker not
+## immobilised (a stagger or paralysis), not carrying a body, the target living and untamed, and the target within
+## reach of the attacker's exact position now.
+func impact_state(entry: Dictionary) -> Dictionary:
+	var attacker: String = entry["attacker"]
+	var target: String = entry["target"]
+	var iid := _attacker_character(attacker)
+	var state := root._creature.get_instance_state(target) if root._creature != null else ""
+	var is_local := attacker == "player" or attacker == root._registry.local_player_id
+	var gap := INF
+	var apos: Variant = null
+	if is_local:
+		apos = root._player.get_world_pos() if root._player != null else null
+	else:
+		var peer: int = root._registry.get_peer_id(attacker)
+		if peer != 0 and root._networking.has_last_known_state(peer):
+			apos = root._peer_wiring.peer_exact_pos(peer)
+	if apos is Dictionary and state != "":
+		gap = WorldPos.offset_between(apos, root._creature.get_instance_pos(target)).length()
+	var alive := true
+	if is_local:
+		alive = root._player != null and not PlayerRegistry.is_downed(root._player.get_hp())
+	else:
+		alive = not PlayerRegistry.is_downed(root._registry.get_hp(attacker))
+	var stopped: bool = root._status != null and root._status.is_immobilized(attacker, status_now())
+	var blocked: bool = root._battle.attack_blocked.is_valid() and root._battle.attack_blocked.call(attacker)
+	return { "attacker_alive": alive, "attacker_staggered": stopped or blocked,
+		"attacker_item": _main_hand(iid) if iid != "" else _registry_main_hand(attacker),
+		"target_alive": state != "" and state != "dead" and not root._creature.is_tamed(target), "gap": gap,
+		"reach": PlayerSlice.ATTACK_RANGE + ATTACK_REACH_SLACK_M }
 
 ## Phase 192 — the local player's feet in scene coordinates (none before the body exists).
 func local_body_points() -> Array:
@@ -99,20 +226,73 @@ func _on_combat_hit_resolved(attacker_id: String, defender_id: String, outcome: 
 		return
 	var a_key := _wire_key(attacker_id)
 	var d_key := _wire_key(defender_id)
-	_animate_hit(a_key, d_key, outcome)
+	var reaction := reaction_for(defender_id, _damage)
+	_animate_hit(a_key, d_key, outcome, reaction)
+	if outcome != "miss" and (attacker_id == "player" or attacker_id == root._registry.local_player_id):
+		_hit_feel()
+	if outcome != "miss" and outcome != "kill":
+		push_struck(attacker_id, defender_id, reaction)
+		if reaction == "stagger" and BattleSlice.is_player_target(defender_id):
+			cancel_pending_swing(defender_id)   # a staggered player's swing in flight is lost
 	# Only a hosting machine has clients to tell; offline, the send would just warn on every swing.
 	if root._networking != null and root._networking.is_host():
 		var at: Variant = _event_position(a_key, d_key)
 		if at != null:   # no resolvable position: an AOI broadcast around the origin would be wrong
-			root._networking.send_combat_hit(a_key, d_key, outcome, at)
+			# A non-lethal heavy hit goes out as "stagger" so every client plays the stagger clip too.
+			var wire := "stagger" if reaction == "stagger" and (outcome == "hit" or outcome == "critical") else outcome
+			root._networking.send_combat_hit(a_key, d_key, wire, at)
+
+## Phase 287 — host: a creature a player's landed (non-killing) hit struck is pushed a short way away from the
+## attacker, the fabric's `knockbackLight` or (for a stagger) `knockbackHeavy` metres, stopping at ground it can
+## step onto. Returns the metres moved (0 when nothing moved). Only with impact timing on, and only a creature:
+## a player's body is moved by its own client.
+func push_struck(attacker_id: String, defender_id: String, reaction: String) -> float:
+	if root._battle == null or root._battle.impact_queue == null or BattleSlice.is_player_target(defender_id) \
+			or root._creature == null or root._voxel == null:
+		return 0.0
+	if attacker_id != "player" and not BattleSlice.is_player_target(attacker_id):
+		return 0.0
+	var res: Resource = GameData.WORLD_SYSTEMS.get("CombatCombos", null)
+	if res == null:
+		return 0.0
+	var metres := float(res.get("knockbackHeavy" if reaction == "stagger" else "knockbackLight"))
+	var apos: Variant = death_attacker_pos(attacker_id)
+	if not apos is Vector3 or root._creature.get_instance_state(defender_id) in ["", "dead"]:
+		return 0.0
+	var tex: Dictionary = root._creature.get_instance_pos(defender_id)
+	var tpos: Vector3 = root._creature.get_instance_position(defender_id)
+	var dir := PendingHit.knockback_direction(apos, tpos)
+	var moved := 0.0
+	while moved + 0.1 <= metres + 0.0001 and dir != Vector3.ZERO:
+		var probe := tpos + dir * (moved + 0.1)
+		if not death_walkable(Vector3(probe.x, tpos.y, probe.z)):
+			break
+		moved += 0.1
+	if moved <= 0.0:
+		return 0.0
+	# The push is added to the exact {chunk, local} position, so it survives far from the origin.
+	var spot: Vector3 = tex["local"] + dir * moved
+	root._creature.set_instance_pos(defender_id, WorldPos.normalized({"chunk": tex["chunk"],
+		"local": Vector3(spot.x, death_ground(tpos + dir * moved), spot.z)}))
+	return moved
 
 ## Client: the host's swing, animated on whatever bodies this client draws.
 func _on_combat_hit_synced(attacker_key: String, defender_key: String, outcome: String) -> void:
-	if root._is_client:
-		_animate_hit(attacker_key, defender_key, outcome)
+	if not root._is_client:
+		return
+	if outcome == "swing":
+		_swing(attacker_key)
+		return
+	# A player's swing played when the host announced it, at the click; only a creature's plays with its hit.
+	var reaction := "stagger" if outcome == "stagger" else "hit"
+	_animate_hit(attacker_key, defender_key, outcome, reaction, attacker_key.begins_with("c:"))
+	if outcome != "miss" and attacker_key.begins_with("p:") and _character_for_key(attacker_key) == root._character.get_player_character() \
+			and root._character.get_player_character() != "":
+		_hit_feel()
 
 ## The player's own mining swing (the tool swing), when the player strikes a block.
 func _on_mine_swing(_position: Vector3, _normal: Vector3, player_id: String, _exact: Dictionary) -> void:
+	cancel_pending_swing(player_id)
 	if player_id != "" and player_id != "player":
 		return
 	var iid: String = root._character.get_player_character()
@@ -137,23 +317,45 @@ func _character_for_key(key: String) -> String:
 		return root._character.get_player_character()
 	return root._character.get_peer_character(peer)
 
-func _animate_hit(a_key: String, d_key: String, outcome: String) -> void:
-	_swing(a_key)
+## Phase 287 — the local attacker's landed hit: camera shake and a 40 ms hit-stop (each an option).
+func _hit_feel() -> void:
+	if root._player != null:
+		HitFeel.shake(root._player._camera)
+	var iid: String = root._character.get_player_character()
+	if iid != "":
+		HitFeel.hit_stop(root._character._instances[iid].get("anim_tree", null))
+
+## Phase 287 — "stagger" for a hit past the fabric's share of the defender's max health, else "hit".
+func reaction_for(defender_id: String, damage: float) -> String:
+	var max_hp := 0.0
+	if BattleSlice.is_player_target(defender_id):
+		if defender_id == "player" or defender_id == root._registry.local_player_id:
+			max_hp = root._player.max_hp if root._player != null else 0.0
+		else:
+			max_hp = root._registry.max_hp_of(defender_id)   # the host's own model of that peer
+	elif root._battle != null:
+		max_hp = root._battle._field(root._battle._lookup(defender_id), "baseHp", 0.0)
+	var res: Resource = GameData.WORLD_SYSTEMS.get("CombatCombos", null)
+	return PendingHit.reaction(damage, max_hp, float(res.get("staggerShare")) if res != null else 0.25)
+
+func _animate_hit(a_key: String, d_key: String, outcome: String, reaction: String = "hit", swing: bool = true) -> void:
+	if swing and (root._battle == null or root._battle.impact_queue == null or a_key.begins_with("c:")):
+		_swing(a_key)   # with impact timing a player's swing played at the click
 	# The local body flinches on `player_damaged` (which also covers burns and the like), so a hit on it
 	# is skipped here and nobody flinches twice.
 	var is_local_body := d_key.begins_with("p:") and _character_for_key(d_key) == root._character.get_player_character()
 	# A body killed by this blow (creature or player) goes to its death pose; a queued flinch would
 	# replay on respawn.
 	if outcome != "miss" and outcome != "kill" and not is_local_body:
-		_flinch(d_key)
+		_flinch(d_key, reaction)
 
 ## The local body took damage, from any source: flinch.
-func _on_local_player_damaged(_damage: float, _attacker_id: String, target_id: String) -> void:
+func _on_local_player_damaged(damage: float, _attacker_id: String, target_id: String) -> void:
 	if target_id != "" and target_id != "player" and target_id != root._registry.local_player_id:
 		return
 	var iid: String = root._character.get_player_character()
 	if iid != "":
-		root._character.trigger_hit(iid)
+		root._character.trigger_hit(iid, reaction_for("player", damage) == "stagger")
 
 func _swing(key: String) -> void:
 	if key.begins_with("c:"):
@@ -163,13 +365,13 @@ func _swing(key: String) -> void:
 	if iid != "":
 		root._character.trigger_attack(iid)
 
-func _flinch(key: String) -> void:
+func _flinch(key: String, reaction: String = "hit") -> void:
 	if key.begins_with("c:"):
-		root._creature.trigger_hit_animation(key.substr(2))
+		root._creature.trigger_hit_animation(key.substr(2), reaction)
 		return
 	var iid := _character_for_key(key)
 	if iid != "":
-		root._character.trigger_hit(iid)
+		root._character.trigger_hit(iid, reaction == "stagger")
 
 ## Where a swing happened, for the packet's area of interest: the attacker's body, else the target's.
 func _event_position(a_key: String, d_key: String) -> Variant:

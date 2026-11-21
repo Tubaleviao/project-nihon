@@ -101,6 +101,10 @@ func _recheck(pid: String) -> void:
 	if item != "" and int(_contents_of(pid).get(item, 0)) < 1:
 		_hold(pid, "")
 
+## The item a player holds on the host ("" for empty hands); the id is the registry id ("player" = local).
+func held_of(player_id: String) -> String:
+	return str(_held.get(_local_id() if _is_local(player_id) else player_id, ""))
+
 func _on_inventory_synced(owner_id: String, contents: Dictionary, _durabilities: Dictionary = {}) -> void:
 	if root._is_client:
 		return

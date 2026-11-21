@@ -180,6 +180,10 @@ func _on_combat_hit(attacker_id: String, _defender_id: String, _outcome: String,
 func _on_mine_requested(_position: Vector3, _normal: Vector3, player_id: String, _exact: Dictionary) -> void:
 	_note_action(player_id)
 
+## A swing was queued (Phase 287: it lands later, or never): the pose ends now.
+func note_action(player_id: String) -> void:
+	_note_action(player_id)
+
 func _note_action(player_id: String) -> void:
 	if root._is_client or root._gesture == null:
 		return

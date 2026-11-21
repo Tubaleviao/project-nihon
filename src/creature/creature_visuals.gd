@@ -164,11 +164,11 @@ func trigger_attack(id: String) -> bool:
 
 
 ## Play the hit flinch on a modelled creature (see `trigger_attack` for `id`).
-func trigger_hit(id: String) -> bool:
+func trigger_hit(id: String, clip: String = "hit") -> bool:
 	var iid := _model_for(id)
 	if iid == "":
 		return false
-	return RigTree.fire_hit(models[iid]["tree"])
+	return RigTree.fire_hit(models[iid]["tree"], clip)
 
 
 func _attack_length(m: Dictionary) -> float:

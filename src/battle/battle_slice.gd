@@ -40,11 +40,24 @@ var _round_seq: int = 0
 ## `attack_intent` and no round is resolved here.
 var is_authoritative: bool = true
 
+## Phase 287 — impact timing. With a queue set (a host boot), a player's swing is queued and resolved at the clip's
+## impact time by `tick_impacts`, after the re-checks at impact; unset (tests, creatures), rounds resolve at once.
+## `impact_info_fn(attacker_id) -> { weapon, item, step, clip_length }` is the swing the attacker started;
+## `impact_state_fn(entry) -> Dictionary` is the state at impact (see PendingHit.refusal).
+var impact_queue: RefCounted = null
+var impact_info_fn: Callable = Callable()
+var impact_state_fn: Callable = Callable()
+## `swing_started_fn(attacker_id, defender_id)`: called when a swing is queued (the host tells observers the clip).
+var swing_started_fn: Callable = Callable()
+## Damage factor of the combo step being resolved (1 outside a combo).
+var _damage_mult: float = 1.0
+
 func _ready() -> void:
 	GameBus.combat_round_requested.connect(_on_combat_round_requested)
 	GameBus.creature_respawned.connect(_on_creature_respawned)
 
 const DeathPush := preload("res://src/battle/death_push.gd")
+const PendingHit := preload("res://src/battle/pending_hit.gd")
 
 ## Phase 37 — the registry's id-SHAPE predicate, preloaded for the player/creature
 ## split: it is a pure static check on a string, so no registry needs to be in the tree
@@ -79,7 +92,7 @@ func resolve_round(attacker_id: String, defender_id: String) -> Dictionary:
 	_round_seq += 1
 	var now := _now()
 	if hit_roll < 0.8:
-		damage = base_dmg * randf_range(0.85, 1.15)
+		damage = base_dmg * randf_range(0.85, 1.15) * _damage_mult
 		# Phase 178 — Strength: a player's melee hit scales (1.0 at base 10).
 		if is_player_target(attacker_id):
 			damage *= _player_stat(attacker_id, "meleeDamageFactor", 1.0)
@@ -227,7 +240,39 @@ func _on_combat_round_requested(attacker_id: String, defender_id: String) -> voi
 		return
 	if attack_blocked.is_valid() and attack_blocked.call(attacker_id):
 		return   # e.g. the attacker is carrying a body (Phase 161): the host refuses, not only the client
+	if impact_queue != null and impact_info_fn.is_valid() and (attacker_id == "player" or is_player_target(attacker_id)):
+		if impact_queue.has_pending(attacker_id):
+			return   # a swing is already in flight: a new click does not push its impact back (no swing, no combo step)
+		var info: Dictionary = impact_info_fn.call(attacker_id)
+		impact_queue.start(attacker_id, defender_id, str(info.get("weapon", "unarmed")), str(info.get("item", "")),
+			int(info.get("step", 0)), _now(), float(info.get("clip_length", 0.5)))
+		if swing_started_fn.is_valid():
+			swing_started_fn.call(attacker_id, defender_id)
+		return
 	resolve_round(attacker_id, defender_id)
+
+## Phase 287 — resolve the hits whose impact time has come. A hit the re-check refuses deals nothing and sends no sync.
+## Returns the number that landed.
+func tick_impacts() -> int:
+	if impact_queue == null or not impact_state_fn.is_valid():
+		return 0
+	var landed := 0
+	var killed := {}
+	for r in impact_queue.resolve_due(_now(), impact_state_fn):
+		if str(r["reason"]) != "":
+			continue
+		var e: Dictionary = r["entry"]
+		# resolve_due popped the whole batch and checked it up front: an earlier hit of this same tick may have
+		# killed the target or staggered the attacker since, so each hit is re-checked right before it lands.
+		if killed.has(str(e["target"])) or PendingHit.refusal(e, impact_state_fn.call(e)) != "":
+			continue
+		_damage_mult = float(e["damage_multiplier"])
+		var res := resolve_round(str(e["attacker"]), str(e["target"]))
+		_damage_mult = 1.0
+		if str(res.get("outcome", "")) == "kill":
+			killed[str(e["target"])] = true
+		landed += 1
+	return landed
 
 ## Clear tracked HP when a creature respawns so it doesn't re-enter combat with
 ## a stale 0 HP (which would cause an instant re-kill on the next round).

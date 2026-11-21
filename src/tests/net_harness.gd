@@ -2141,7 +2141,7 @@ func _step_peer_attack_animated() -> void:
 			return
 		# Let the client read its baseline before the swing lands.
 		await _await_settle(1.0)
-		GameBus.combat_hit_resolved.emit(pid, "harness_dummy", "hit", 0.0)
+		_root._combat_wiring._on_swing_started(pid, "harness_dummy"); GameBus.combat_hit_resolved.emit(pid, "harness_dummy", "hit", 0.0)   # Phase 287: the swing is announced at the click
 		await _await_settle(1.0)
 		_report("peer_attack_animated", verdict(true, true), "synced")
 		return

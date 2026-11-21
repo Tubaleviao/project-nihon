@@ -47,6 +47,8 @@ signal work_anim_changed(peer: int, kind: String)
 signal work_strike(peer: int, kind: String)
 ## Phase 156 — client side: the host's `combat_hit_resolved`, delivered over the wire with its ids turned
 ## into wire keys ("p:<peer id>" for a player, "c:<id>" for a creature). Animation only.
+## outcome : String — as `combat_hit_resolved`, plus "swing" (Phase 287: a player's swing started, no hit yet) and
+## "stagger" (a non-lethal "hit" or "critical" that staggers the target; the critical flag is not carried).
 signal combat_hit_synced(attacker_key: String, defender_key: String, outcome: String)
 
 ## Request a combat round (any system can fire this).

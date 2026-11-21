@@ -3,6 +3,8 @@ extends RefCounted
 
 var sl: Node
 
+const ComboChain := preload("res://src/battle/combo_chain.gd")
+
 ## Seconds a one-shot gesture plays when the rig has no clip to measure (the procedural body).
 const DEFAULT_GESTURE_SECONDS := 1.5
 const WorkAnim := preload("res://src/character/work_anim.gd")
@@ -234,15 +236,30 @@ func _make_visual(instance_id: String, appearance: Dictionary) -> Dictionary:
 
 ## Play an attack swing on an instance. `clip` is the variant ("" for the one the main hand picks); the
 ## hold time follows the clip that will actually play (a variant the rig lacks plays `attack`).
-func trigger_attack(instance_id: String, clip: String = "") -> void:
+func trigger_attack(instance_id: String, clip: String = "", now: float = -1.0) -> void:
 	if not sl._instances.has(instance_id):
 		return
 	var inst: Dictionary = sl._instances[instance_id]
-	if clip == "":
-		clip = attack_clip_of(instance_id)
 	var lengths: Dictionary = inst.get("swing_lengths", {})
+	if clip == "":
+		clip = combo_clip(inst, instance_id, lengths, now)
 	var played: String = clip if lengths.has(clip) else sl.RigTree.ATTACK_DEFAULT
 	inst["locomotion"].trigger_attack(clip, float(lengths.get(played, -1.0)))
+
+## Phase 287 — the clip of the next swing: repeated swings inside the weapon class's window step through its variants
+## (`ComboChain`), a pause or another weapon restarts the chain, a rig without a variant plays the base clip.
+## `now` is the swing's time in seconds (the clock when negative); `inst["combo"]` keeps the chain's state.
+func combo_clip(inst: Dictionary, instance_id: String, lengths: Dictionary, now: float = -1.0) -> String:
+	var held: String = sl.held_item_of(instance_id)
+	if held == "":
+		held = str(sl.get_equipment_set(instance_id).get("MainHand", ""))
+	var weapon: String = ComboChain.weapon_class(held, GameData.ITEMS)
+	if now < 0.0:
+		now = Time.get_ticks_msec() / 1000.0
+	var last: Dictionary = inst.get("combo", {})
+	var step: int = ComboChain.next_step(weapon, str(last.get("weapon", "")), int(last.get("step", -1)), now - float(last.get("at", -1e9)))
+	inst["combo"] = { "weapon": weapon, "step": step, "at": now }
+	return ComboChain.clip_for(weapon, step, lengths if not lengths.is_empty() else null)
 
 ## Phase 281 — play the clip of work `kind` on an instance (its own clip, `attack_tool` when the rig lacks it).
 ## Returns the clip played ("" when the instance is unknown). A body with no rig yet (a peer's copy is built

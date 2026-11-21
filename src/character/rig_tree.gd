@@ -25,7 +25,7 @@ const SCALE_PARAM := "parameters/Locomotion/Scale/scale"
 ## leaves every clip at LOOP_NONE, so `prepare_library` applies this table; a new clip must be
 ## listed in one of the two (the suite asserts the table covers every clip a rig ships).
 const LOOPING_CLIPS := ["idle", "walk", "run", "fall"]
-const ONE_SHOT_CLIPS := ["land", "attack", "attack_unarmed", "attack_1h", "attack_tool", "death", "hit",
+const ONE_SHOT_CLIPS := ["land", "attack", "attack_unarmed", "attack_1h", "attack_unarmed_2", "attack_1h_2", "attack_1h_3", "attack_2h", "attack_2h_2", "attack_tool", "death", "hit",
 	"stagger", "death_back", "death_forward", "death_side", "idle_look", "idle_stretch", "sit", "sit_ground", "lie_down", "wave", "point", "bow", "cheer", "shrug", "clap", "kneel",
 	"chop", "mine", "dig", "build", "dissect"]
 
@@ -43,6 +43,15 @@ const HIT_NODE := "Hit"
 const HIT_CLIP_NODE := "HitClip"
 const IDLE_NODE := "IdleVariant"
 const IDLE_CLIP_NODE := "IdleVariantClip"
+## Phase 287 — a swing while moving plays on the upper body over the walk or run: a one-shot filtered to the
+## bones from the spine up, so the feet keep moving.
+const UPPER_NODE := "UpperAttack"
+const UPPER_CLIP_NODE := "UpperAttackClip"
+const UPPER_REQUEST_PARAM := "parameters/Locomotion/UpperAttack/request"
+const UPPER_BONES := ["Spine", "Chest", "Neck", "Head", "Shoulder_L", "Shoulder_R", "Arm_L", "Arm_R",
+	"Forearm_L", "Forearm_R", "Hand_L", "Hand_R"]
+## Ground speed (m/s) above which a swing is played over the locomotion instead of in its own state.
+const UPPER_ATTACK_MIN_SPEED := 0.3
 const HIT_REQUEST_PARAM := "parameters/Locomotion/Hit/request"
 const IDLE_REQUEST_PARAM := "parameters/Locomotion/IdleVariant/request"
 
@@ -191,10 +200,15 @@ static func build_tree(player: AnimationPlayer) -> AnimationTree:
 	var tail := SCALE_NODE
 	# The idle variant replaces the pose; the flinch adds to it, so it comes last. A rig without the
 	# clip simply has no node (a flinch or a variant is skipped, not faked with another clip).
-	for spec in [[IDLE_NODE, IDLE_CLIP_NODE, "idle_look", false], [HIT_NODE, HIT_CLIP_NODE, "hit", true]]:
+	for spec in [[IDLE_NODE, IDLE_CLIP_NODE, "idle_look", false], [HIT_NODE, HIT_CLIP_NODE, "hit", true],
+			[UPPER_NODE, UPPER_CLIP_NODE, ATTACK_UNARMED if player.has_animation(ATTACK_UNARMED) else ATTACK_DEFAULT, false]]:
 		if not player.has_animation(spec[2]):
 			continue
 		var shot := AnimationNodeOneShot.new()
+		if spec[0] == UPPER_NODE:
+			shot.filter_enabled = true
+			for path in upper_body_paths(player):
+				shot.set_filter_path(path, true)
 		shot.fadein_time = 0.05
 		shot.fadeout_time = 0.1
 		if spec[3]:
@@ -241,6 +255,27 @@ static func build_tree(player: AnimationPlayer) -> AnimationTree:
 	tree.set_meta("gesture_node", sm.get_node("Gesture"))
 	return tree
 
+
+## The animation track paths of the bones from the spine up (`UPPER_BONES`), read from the rig's clips.
+static func upper_body_paths(player: AnimationPlayer) -> Array:
+	var seen := {}
+	for clip_name in player.get_animation_list():
+		var anim := player.get_animation(clip_name)
+		for t in anim.get_track_count():
+			var path := str(anim.track_get_path(t))
+			if path.contains(":") and path.get_slice(":", 1) in UPPER_BONES:
+				seen[path] = true
+	var out := []
+	for path in seen:
+		out.append(NodePath(path))
+	return out
+
+
+## Is this swing played over the locomotion (the body is moving and the rig has the upper-body node)?
+static func swing_on_upper_body(tree: Object, loco) -> bool:
+	var loco_tree: AnimationNodeBlendTree = tree.get_meta("loco_tree", null)
+	return loco_tree != null and loco_tree.has_node(UPPER_NODE) and loco.get_state() == Locomotion.State.ATTACK \
+		and loco.get_speed() > UPPER_ATTACK_MIN_SPEED
 
 ## Travel to `node` unless the tree is already heading there: `drive` runs per frame per avatar, and
 ## re-issuing the same travel hides real transition bugs. `playback` is the tree's state machine
@@ -339,7 +374,14 @@ static func drive_shots(tree: Object, playback: Object, loco) -> void:
 	var swing: int = loco.swing_serial
 	if swing != int(tree.get_meta("swing_serial", 0)):
 		tree.set_meta("swing_serial", swing)
-		if loco.get_state() == Locomotion.State.ATTACK:
+		# The choice is made once, when the swing starts: a body that speeds up or stops mid-swing keeps the
+		# node it began on (re-deciding every frame cut a full-body swing short, or replayed a stale clip).
+		var upper := swing_on_upper_body(tree, loco)
+		tree.set_meta("swing_upper", upper)
+		if upper:
+			var clip: String = loco.attack_clip if tree.get_meta("clips", {}).has(loco.attack_clip) else ATTACK_DEFAULT
+			_fire_shot(tree, UPPER_NODE, UPPER_CLIP_NODE, UPPER_REQUEST_PARAM, clip, "upper_shots")
+		elif loco.get_state() == Locomotion.State.ATTACK:
 			set_attack_clip(tree, loco.attack_clip)
 			if playback != null and tree.get_meta("travel_node", "") == "Attack":
 				playback.start("Attack")
@@ -373,5 +415,6 @@ static func drive(tree: AnimationTree, loco) -> void:
 	drive_shots(tree, playback, loco)
 	if loco.get_state() == Locomotion.State.DEATH and tree.get_meta("travel_node", "") != "Death":
 		set_death_clip(tree, loco.death_clip)
-	travel_once(tree, playback, node_for_state(loco.get_state()))
+	var on_upper: bool = loco.get_state() == Locomotion.State.ATTACK and bool(tree.get_meta("swing_upper", false))
+	travel_once(tree, playback, NODE_LOCOMOTION if on_upper else node_for_state(loco.get_state()))
 	apply_motion(tree, loco.get_speed(), loco.get_blend_weight())
