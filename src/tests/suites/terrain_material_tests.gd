@@ -22,6 +22,10 @@ func register() -> void:
 	_run_test("terrain materials: a built chunk carries CUSTOM0/CUSTOM1 on every vertex, zero on placed blocks", _test_chunk_arrays)
 	_run_test("terrain materials: the native weights equal the GDScript reference on 16 chunks, local and absolute, wet and dry", _test_native_parity, true)
 	_run_test("terrain materials: the shader material compiles with every texture array set", _test_shader)
+	_run_test("terrain materials: the blend mirror stays finite and sums to 1 on zero weights, black albedo and a zero normal (Phase 285)", _test_blend_mirror)
+	_run_test("terrain materials: the shader source holds the guards and a blend_depth minimum above zero (Phase 285)", _test_shader_source_guards)
+	_run_test("terrain materials: every layer has height and luminance floors in 0..1 and the material binds them (Phase 285)", _test_height_floors_table)
+	_run_test("terrain materials: a map whose darkest 1% is black is rejected for the placeholder, the public maps pass (Phase 285)", _test_dark_map_rejected)
 	_run_test("terrain materials: the low quality setting drops to biplanar with no detail, and auto is low on the Compatibility renderer", _test_low_quality)
 
 func _near(a: float, b: float, tol: float, msg: String) -> void:
@@ -287,3 +291,127 @@ func _test_native_parity() -> void:
 	var native := func(verts, normals, natural, params, _c, _biomes, _sv, _local) -> Array:
 		return NativeBuilder.builder().call("terrain_weights", verts, normals, natural, params)
 	assert_native_parity("NativeChunkBuilder", "terrain_weights", cases, reference, native, "terrain_weights")
+
+
+# --- Phase 285: ground without black spots ------------------------------------------------------------------------
+
+const TerrainBlend := preload("res://src/terrain/terrain_blend.gd")
+
+func _grey_layers(v: float) -> Array:
+	var a := []
+	for i in TerrainBlend.LAYERS:
+		a.append(Vector3(v, v, v))
+	return a
+
+func _up_normals() -> Array:
+	var a := []
+	for i in TerrainBlend.LAYERS:
+		a.append(Vector3.UP)
+	return a
+
+func _floors(v: float) -> Array:
+	var a := []
+	for i in TerrainBlend.LAYERS:
+		a.append(v)
+	return a
+
+func _finite_unit_sum(r: Dictionary, label: String) -> void:
+	var total := 0.0
+	var finite := true
+	for w in r["weights"] as PackedFloat32Array:
+		finite = finite and is_finite(w)
+		total += w
+	var n: Vector3 = r["normal"]
+	var a: Vector3 = r["albedo"]
+	assert_true(finite and absf(total - 1.0) < 1e-4, "%s: finite weights summing to 1 (%f)" % [label, total])
+	assert_true(is_finite(n.x) and is_finite(n.y) and is_finite(n.z) and absf(n.length() - 1.0) < 1e-4, "%s: a unit normal" % label)
+	assert_true(is_finite(a.x) and is_finite(a.y) and is_finite(a.z), "%s: a finite albedo" % label)
+
+func _test_blend_mirror() -> void:
+	var zeros := []
+	zeros.resize(TerrainBlend.LAYERS)
+	zeros.fill(0.0)
+	_finite_unit_sum(TerrainBlend.blend(zeros, _grey_layers(0.5), _up_normals(), _floors(0.2), 0.2), "zero vertex weights")
+	var grass := zeros.duplicate()
+	grass[0] = 1.0
+	var black := TerrainBlend.blend(grass, _grey_layers(0.0), _up_normals(), _floors(0.2), 0.2)
+	_finite_unit_sum(black, "all-black albedo")
+	assert_true(black["weights"][0] > 0.99, "all-black albedo: the layer with weight still wins")
+	var cancel := _up_normals()
+	cancel[0] = Vector3.UP
+	cancel[1] = Vector3.DOWN
+	var two := zeros.duplicate()
+	two[0] = 0.5
+	two[1] = 0.5
+	var flat := TerrainBlend.blend(two, _grey_layers(0.5), cancel, _floors(0.2), 0.2, Vector3(0, 0.8, 0.6))
+	_finite_unit_sum(flat, "cancelling normals")
+	assert_true((flat["normal"] as Vector3).distance_to(Vector3(0, 0.8, 0.6)) < 1e-4, "a zero normal falls back to the geometric one")
+	_finite_unit_sum(TerrainBlend.blend(grass, _grey_layers(0.0), [Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, Vector3.ZERO,
+		Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, Vector3.ZERO], _floors(0.0), 0.0), "zero normal, zero floor, zero depth")
+	# Every weight at or below the cut: the heaviest layer is drawn alone, not black.
+	var faint := zeros.duplicate()
+	faint[1] = 0.4
+	faint[2] = 0.3
+	faint[3] = 0.3
+	var albedos := _grey_layers(0.5)
+	albedos[1] = Vector3(0.2, 0.6, 0.2)
+	var r := TerrainBlend.blend(faint, albedos, _up_normals(), _floors(0.2), 0.01, Vector3.UP, 0.5)
+	_finite_unit_sum(r, "every weight at or below the cut")
+	assert_eq(TerrainBlend.heaviest(faint), 1, "the heaviest layer is layer 1")
+	assert_true(r["weights"][1] > 0.99 and (r["albedo"] as Vector3).distance_to(albedos[1]) < 1e-4, "that layer is drawn alone")
+	# A dark layer with a height floor keeps its share against a brighter one.
+	var both := zeros.duplicate()
+	both[0] = 0.5
+	both[1] = 0.5
+	var mixed := _grey_layers(0.9)
+	mixed[0] = Vector3.ZERO
+	var kept := TerrainBlend.blend(both, mixed, _up_normals(), _floors(0.9), 0.2)
+	assert_true(kept["weights"][0] > 0.1, "a floored dark layer still counts in the blend")
+
+func _test_shader_source_guards() -> void:
+	var src := FileAccess.get_file_as_string("res://src/terrain/terrain_material.gdshader")
+	assert_true(src.contains("sum = max(sum, 1e-4);"), "the blend sum is guarded")
+	assert_true(src.contains("length(nrm) > 1e-4 ? normalize(nrm) : n"), "a cancelled normal falls back")
+	assert_true(src.contains("i == best"), "the heaviest layer passes the weight cut")
+	var re := RegEx.create_from_string("uniform float blend_depth\\s*:\\s*hint_range\\(\\s*([0-9.]+)")
+	var m := re.search(src)
+	assert_true(m != null and float(m.get_string(1)) > 0.0, "blend_depth has a minimum above zero")
+	assert_true(src.contains("layer_height_floor[i]"), "the blend height is floored per layer")
+	var low := FileAccess.get_file_as_string("res://src/terrain/terrain_material_low.gdshader")
+	assert_false(low.contains("b /= b.x + b.y + b.z;"), "the low shader divides guarded")
+
+func _test_height_floors_table() -> void:
+	for e in _t()["layers"]:
+		for f in ["height_floor", "min_mean", "min_dark"]:
+			var v := float(e[f])
+			assert_true(v >= 0.0 and v <= 1.0, "%s: %s is in 0..1" % [e["name"], f])
+	var mat := TerrainMaterial.make()
+	var floors: PackedFloat32Array = mat.get_shader_parameter("layer_height_floor")
+	assert_eq(floors.size(), TerrainWeights.LAYERS, "the material carries a floor per layer")
+
+func _test_dark_map_rejected() -> void:
+	var grass: Dictionary = {}
+	for e in _t()["layers"]:
+		if str(e["name"]) == "TerrainGrass":
+			grass = e
+	var rel := "%s_albedo.jpg.raw" % grass["key"]
+	var placeholder := Image.new()
+	assert_eq(placeholder.load_jpg_from_buffer(FileAccess.get_file_as_bytes("res://assets/" + rel)), OK, "the grass placeholder decodes")
+	assert_eq(TerrainMaterial.map_rejection(placeholder, float(grass["min_mean"]), float(grass["min_dark"])), "", "the public grass placeholder passes")
+	for e in _t()["layers"]:
+		var img := Image.new()
+		img.load_jpg_from_buffer(FileAccess.get_file_as_bytes("res://assets/%s_albedo.jpg.raw" % e["key"]))
+		assert_eq(TerrainMaterial.map_rejection(img, float(e["min_mean"]), float(e["min_dark"])), "", "the public %s placeholder passes" % e["name"])
+	# A synthetic map, bright but with 2% black texels: refused, the placeholder is used.
+	var broken := Image.create(256, 256, false, Image.FORMAT_RGB8)
+	broken.fill(Color(0.4, 0.6, 0.3))
+	broken.fill_rect(Rect2i(0, 0, 256, 6), Color.BLACK)
+	assert_true(TerrainMaterial.map_rejection(broken, float(grass["min_mean"]), float(grass["min_dark"])).contains("darkest 1%"), "black darkest 1% is rejected")
+	var used := TerrainMaterial.checked_albedo(broken, rel, float(grass["min_mean"]), float(grass["min_dark"]))
+	assert_eq([used.get_width(), used.get_height()], [placeholder.get_width(), placeholder.get_height()], "the placeholder replaces it")
+	assert_true(used != broken, "not the broken image")
+	# A map that is dark overall is refused too; a good map passes through untouched.
+	var dim := Image.create(64, 64, false, Image.FORMAT_RGB8)
+	dim.fill(Color(0.02, 0.02, 0.02))
+	assert_true(TerrainMaterial.map_rejection(dim, float(grass["min_mean"]), 0.0).contains("mean luminance"), "a dark map is rejected on its mean")
+	assert_true(TerrainMaterial.checked_albedo(placeholder, rel, float(grass["min_mean"]), float(grass["min_dark"])) == placeholder, "a good map is kept")
