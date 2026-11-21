@@ -32,6 +32,7 @@ const bed          = require('./gameplay/bed')
 const tutorial     = require('./gameplay/tutorial')
 const work         = require('./gameplay/work')
 const workTimes    = require('./gameplay/work_times')
+const workClips    = require('./gameplay/work_clips')
 const stoneTools   = require('./gameplay/stone_tools')
 const newcomer     = require('./gameplay/newcomer_grounds')
 const clan         = require('./gameplay/clan')
@@ -66,6 +67,7 @@ chests.validateChests(chests.chestsData(), chests.chestsRefs())
 writing.validateWriting(writing.writingData(), writing.writingRefs())
 work.validateWork(work.workData(), work.workRefs())
 workTimes.validateWorkTimes(workTimes.workTimesData(), workTimes.workTimesRefs()) // Phase 259
+workClips.validateWorkClips(workClips.workClipsData()) // Phase 281
 skillWheel.validateSkillWheel(skillWheel.skillWheelData(), skillWheel.skillWheelRefs()) // Phase 271
 skillFocus.validateSkillFocus(skillFocus.skillFocusData()) // Phase 272
 titles.validateTitles(titles.titlesData(), titles.titlesRefs()) // Phase 273
@@ -379,6 +381,7 @@ module.exports = defineFabric({
       Blueprint:           writing.Blueprint,
       WorkSkills:          work.WorkSkills,
       WorkTimes:           workTimes.WorkTimes,
+      WorkClips:           workClips.WorkClips,
       SkillWheel:          skillWheel.SkillWheel,
       SkillFocus:          skillFocus.SkillFocus,
       Titles:              titles.Titles,
