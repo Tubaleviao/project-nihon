@@ -31,7 +31,7 @@ introductions of the arcs they belonged to, are archived in
 Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
 see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
 phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
-comes next. A phase that needs an earlier one still waits for it. Done phases (238–244, 248–250, 252–256, 259–276, 289, 290, 283, 282, 280, 281)
+comes next. A phase that needs an earlier one still waits for it. Done phases (238–244, 248–250, 252–256, 259–276, 289, 290, 283, 282, 280, 291, 281)
 have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
 [Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
 others are not in it.
@@ -42,7 +42,6 @@ others are not in it.
 | 15 | 285 | Grass without black spots |
 | 16 | 286 | Men and women who look different |
 | 17 | 287 | Fighting that reads: combos, impact timing and hit reactions |
-| 18 | 291 | Right-click look puts the cursor back where it was |
 | 19 | 292 | The market names the seller |
 | 20 | 293 | Other players look like people |
 | 21 | 294 | Other players and creatures walk instead of jumping |
@@ -378,7 +377,7 @@ of a category (knife, sword, axe, hammer, pick…), and what it can do follows f
 
 | Phase | Title | Status |
 |---|---|---|
-| 291 | Right-click look puts the cursor back where it was | Open |
+| 291 | Right-click look puts the cursor back where it was | Done |
 | 292 | The market names the seller | Open |
 | 293 | Other players look like people | Open |
 | 294 | Other players and creatures walk instead of jumping | Open |
@@ -1261,6 +1260,11 @@ base size, so the pointer lands closer to the top-left corner on every release, 
   look ends because the window lost focus.
 - A right click that never becomes a look (pressed and released with no motion) leaves the pointer exactly where it
   was.
+
+**Done.** `src/player/pointer.gd` is the only `warp_mouse` caller: it converts the stored viewport position through
+the viewport's final transform and does not warp when the window lost focus. The suite checks the round trip at
+scales 1.0/1.5/2.0 through `_begin_look`/`_end_look` on a stretched SubViewport (the stored position is set directly, since an unparented viewport has no pointer), ten looks without
+drift and a grep for stray `warp_mouse` calls.
 
 **Acceptance criteria**
 - Suite: with a stretch scale of 1.0, 1.5 and 2.0 (window size set against the base size), `_begin_look` then
