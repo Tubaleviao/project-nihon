@@ -2,12 +2,11 @@ extends "res://src/tests/test_support.gd"
 ## Phase 293 — other players look like people: a remote avatar is a player body built from the player rig and the
 ## peer's look (never the `TravellerHuman` creature), the same body the local player and the Character window
 ## build from that look, its nameplate above the rig's head; the host sends a peer's look in the same flush as
-## that peer's first state in a client's AOI, and again when its equipment changes.
+## that peer's first state in a client's AOI; an equipment change reaches the viewers' copy of the body.
 
 const GameRoot := preload("res://src/core/game_root.gd")
 const PeerWiring := preload("res://src/networking/peer_wiring.gd")
 const HeldItemWiring := preload("res://src/character/held_item_wiring.gd")
-const CreationWiring := preload("res://src/character/creation_wiring.gd")
 const CreationRules := preload("res://src/character/creation_rules.gd")
 const RelayBatch := preload("res://src/networking/relay_batch.gd")
 const AvatarBuilder := preload("res://src/character/avatar_builder.gd")
@@ -23,7 +22,10 @@ func register() -> void:
 	_run_test("remote body: the local player, the Character window and a remote avatar of one look are one body", _test_same_body)
 	_run_test("remote body: the nameplate sits above the rig's head, not at the fixed height", _test_nameplate_on_head)
 	_run_test("remote body: the host sends a peer's look with its first state in a client's AOI, once per pair", _test_host_first_state_look)
-	_run_test("remote body: an equipment change sends the look again", _test_equipment_resends_look)
+	_run_test("remote body: an equipment change reaches the viewers and the remote body wears it", _test_equipment_resends_look)
+	_run_test("remote body: a remote avatar in a known look is built once", _test_built_once)
+	_run_test("remote body: the host's own body sends its look ahead of its first state to each new viewer", _test_host_body_look)
+	_run_test("remote body: the host reads a look once per player for a crowd of new pairs", _test_look_cache)
 	_run_test("remote body: a holder new to a viewer's AOI is shown with its hand item (#719)", _test_held_on_entry)
 
 
@@ -213,24 +215,60 @@ func _test_host_first_state_look() -> void:
 	n.free()
 	h["reg"].free()
 
+## The equipment half of a peer's look: a change on the host reaches the viewers in the peer's AOI, and the client's
+## copy of the body wears it (the creation look itself carries no gear, so it is not resent).
 func _test_equipment_resends_look() -> void:
 	var h := _host_rig()
 	var n: NetworkingSlice = h["n"]
 	var wire: MemoryTransport = h["wire"]
 	n.remember_player_state(4, Vector3(0, 10, 0))
 	n.remember_player_state(6, Vector3(5, 10, 0))
-	var root: GameRoot = GameRoot.new()
-	root._registry = h["reg"]
-	root._networking = n
-	root._is_client = false
-	var w := CreationWiring.new()
-	w.wire(root)
 	wire.outbox.clear()
 	GameBus.equipment_changed.emit(str(h["pids"][6]), { "Chest": "NoviceTunic" })
-	assert_true(_sent_to(wire, 4).has(["look", 6]), "peer 4 is sent peer 6's look after its equipment changed")
-	assert_false(_sent_to(wire, 6).has(["look", 6]), "the owner is not sent its own")
-	w.unwire()
-	root.free()
+	var worn: Variant = null
+	for o in wire.outbox:
+		if int(o["peer_id"]) == 4 and str(o["payload"]["type"]) == "peer_equipment" and int(o["payload"]["peer_id"]) == 6:
+			worn = o["payload"]["worn"]
+	assert_true(worn is Dictionary, "peer 4 is sent peer 6's new worn set")
+	for o in wire.outbox:
+		assert_false(int(o["peer_id"]) == 6, "the owner is not sent its own")
+	n.free()
+	h["reg"].free()
+	# The client applies it to the remote body it built from the look.
+	var r := _client_rig()
+	var ch: CharacterSlice = r["ch"]
+	ch.set_peer_look(6, LOOK_M)
+	var iid: String = r["w"].ensure_remote_avatar(6, Vector3.ZERO)
+	ch.set_peer_equipment(6, worn if worn is Dictionary else {})
+	assert_eq(ch.get_equipment_set(iid).get("Chest", ""), "NoviceTunic", "the remote body wears the change")
+	assert_true(ch._instances[iid].get("rig_node", null) != null, "still on its player rig")
+	_free_client(r)
+
+## A remote avatar built in a known look is built once: binding it does not rebuild it in the same look.
+func _test_built_once() -> void:
+	var r := _client_rig()
+	var ch: CharacterSlice = r["ch"]
+	ch.set_peer_look(5, LOOK)
+	var built := [0]
+	var on_built := func(_iid: String, _app: Dictionary) -> void: built[0] += 1
+	GameBus.character_appearance_changed.connect(on_built)
+	var iid: String = r["w"].ensure_remote_avatar(5, Vector3.ZERO)
+	GameBus.character_appearance_changed.disconnect(on_built)
+	assert_eq(built[0], 0, "no rebuild through dress_peer after the body was built in its look")
+	assert_eq(str(ch._instances[iid].get("look_key", "")), Part3.look_key(LOOK), "the look key is recorded")
+	_free_client(r)
+
+## The host reads each player's look once for a crowd of new pairs, and a changed look replaces it.
+func _test_look_cache() -> void:
+	var h := _host_rig()
+	var n: NetworkingSlice = h["n"]
+	var pid6: String = h["pids"][6]
+	var first: Dictionary = n._m1.cached_look(pid6)
+	assert_eq(str(first.get("hair", "")), "hair_m_spiky", "the cache holds the registry's look")
+	n._m1._look_cache[pid6] = { "name": "stale" }
+	assert_eq(str(n._m1.cached_look(pid6).get("name", "")), "stale", "a second read is served from the cache")
+	n._m1.push_look(pid6, h["reg"].look_of(pid6))
+	assert_eq(str(n._m1.cached_look(pid6).get("hair", "")), "hair_m_spiky", "a pushed look change replaces it")
 	n.free()
 	h["reg"].free()
 
@@ -259,3 +297,35 @@ func _test_held_on_entry() -> void:
 	root.free()
 	n.free()
 	h["reg"].free()
+
+func _test_host_body_look() -> void:
+	var h := _host_rig()
+	var n: NetworkingSlice = h["n"]
+	var wire: MemoryTransport = h["wire"]
+	var reg: PlayerRegistry = h["reg"]
+	reg.set_local_player("host")
+	reg.ensure_player("host")
+	n.remember_player_state(4, Vector3(0, 10, 0))
+	n.remember_player_state(6, Vector3(NetworkingSlice.AOI_RADIUS * 3.0, 10, 0))
+	var entered: Array = []
+	var on_entered := func(viewer: int, subject: int) -> void: entered.append([viewer, subject])
+	GameBus.aoi_pair_entered.connect(on_entered)
+	wire.outbox.clear()
+	var at := Vector3(2, 10, 0)
+	GameBus.player_state_sync_requested.emit({ "position": at, "world_pos": WorldPos.from_world(at.x, at.y, at.z), "hp": 100.0, "max_hp": 100.0 })
+	var kinds: Array = []
+	for o in wire.outbox:
+		if int(o["peer_id"]) == 4:
+			kinds.append(str(o["payload"]["type"]))
+	assert_true(kinds.find("peer_look") >= 0 and kinds.find("peer_look") < kinds.find("player_moved"), "peer 4 gets the host's look, then its state: %s" % [kinds])
+	for o in wire.outbox:
+		assert_false(int(o["peer_id"]) == 6, "a peer outside the host's AOI is sent nothing")
+	assert_eq(entered, [[4, 1]], "the meeting is announced once, for the hand item")
+	wire.outbox.clear()
+	GameBus.player_state_sync_requested.emit({ "position": at, "world_pos": WorldPos.from_world(at.x, at.y, at.z), "hp": 100.0, "max_hp": 100.0 })
+	for o in wire.outbox:
+		assert_false(str(o["payload"]["type"]) == "peer_look", "a later state carries no look")
+	assert_eq(n._m1.introduce_host_body(at, Time.get_ticks_msec() + RelayBatch.PAIR_TTL_MS * 2.0), 1, "after the pair lapses the look goes again")
+	GameBus.aoi_pair_entered.disconnect(on_entered)
+	n.free()
+	reg.free()

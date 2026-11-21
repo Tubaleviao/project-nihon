@@ -118,7 +118,6 @@ func _on_local_inventory_changed() -> void:
 	if not root._is_client:
 		_recheck(_local_id())
 
-## A late joiner learns what the players inside its AOI hold.
 ## Phase 293 (follow-up #719) — host: a holder new to a viewer's AOI. The viewer is told what is in the holder's
 ## hand now, not only at its next change.
 func _on_aoi_pair_entered(viewer: int, subject: int) -> void:
@@ -129,6 +128,7 @@ func _on_aoi_pair_entered(viewer: int, subject: int) -> void:
 	if item != "":
 		root._networking._m2.send_peer_held_to(viewer, { subject: item })
 
+## A late joiner learns what the players inside its AOI hold.
 func _on_player_joined(peer_id: int, _player_id: String, _reconnected: bool) -> void:
 	if root._is_client or root._networking == null:
 		return

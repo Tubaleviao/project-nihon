@@ -66,7 +66,39 @@ func _on_player_state_sync_requested(payload: Dictionary) -> void:
 		"hp":       payload.get("hp",     100.0),
 		"max_hp":   payload.get("max_hp", 100.0),
 	}
+	if sl._role == sl.Role.HOST:
+		introduce_host_body(pos, float(Time.get_ticks_msec()))
 	sl._broadcast_aoi(packet, pos)
+	if sl._role == sl.Role.HOST:
+		for rid in _host_entered:
+			GameBus.aoi_pair_entered.emit(int(rid), sl.HOST_PEER_ID)
+		_host_entered = []
+
+## Phase 293 — the host's own body is not relayed through `RelayBatch` (it is broadcast straight to the AOI), so
+## its first meetings are tracked here: recipient -> ms of the last state it was sent. A recipient that has not
+## been sent one for `RelayBatch.PAIR_TTL_MS` (or never) is meeting the host anew and gets the look first.
+var _host_seen: Dictionary = {}
+## Recipients meeting the host in the current broadcast (their `aoi_pair_entered` goes after the state).
+var _host_entered: Array = []
+
+## Send the host's look to every AOI recipient of a host state at `pos` meeting the host anew; returns how many.
+func introduce_host_body(pos: Vector3, now_ms: float) -> int:
+	_host_entered = []
+	if not sl._connected():
+		return 0
+	var live: Dictionary = sl._ensure_transport().peer_set()
+	for rid in _host_seen.keys():
+		if not live.has(int(rid)):
+			_host_seen.erase(rid)   # gone: forgotten, so the map stays as small as the peer list
+	for rid in sl.aoi_recipients(pos, live):
+		var r := int(rid)
+		if r == sl.HOST_PEER_ID:
+			continue
+		if now_ms - float(_host_seen.get(r, -INF)) >= sl.RelayBatch.PAIR_TTL_MS:
+			send_look_to(r, sl.HOST_PEER_ID)
+			_host_entered.append(r)
+		_host_seen[r] = now_ms
+	return _host_entered.size()
 
 ## Phase 47 — host: a peer just bound its identity; tell it the worn sets of the other
 ## connected players (the host's own included) inside its AOI, because
@@ -312,8 +344,21 @@ func send_look_to(viewer: int, subject: int) -> bool:
 	if owner_id == "":
 		return false
 	looks_pushed += 1
-	sl._deliver(viewer, { "type": "peer_look", "peer_id": subject, "look": sl.player_registry.look_of(owner_id) })
+	sl._deliver(viewer, { "type": "peer_look", "peer_id": subject, "look": cached_look(owner_id).duplicate() })
 	return true
+
+## Phase 293 — player id -> the look last read from the registry. A crowd meeting at once (a restart, a teleport
+## into a town) makes many pairs new in one flush; each player's look is built once, not once per viewer. Replaced
+## by `push_look` (the only way a look changes: a creation or a title), dropped when it outgrows LOOK_CACHE_MAX.
+const LOOK_CACHE_MAX := 4096
+var _look_cache: Dictionary = {}
+
+func cached_look(player_id: String) -> Dictionary:
+	if not _look_cache.has(player_id):
+		if _look_cache.size() >= LOOK_CACHE_MAX:
+			_look_cache.clear()
+		_look_cache[player_id] = sl.player_registry.look_of(player_id)
+	return _look_cache[player_id]
 
 ## Peer ids (among `connected`) whose AOI contains `position`. Phase 195 — `connected` is the peer set
 ## (`Transport.peer_set()`, id -> true, reused until the peer list changes); an Array is still accepted and
@@ -421,9 +466,11 @@ func _take_look_token(viewer: int, now_ms: float) -> bool:
 	b["tokens"] = float(b["tokens"]) - 1.0
 	return true
 
-## Phase 181 — host: a player's look changed (a creation). It goes to the peers whose AOI holds that player,
-## named by the owner's peer id; peers that meet the player later ask for it (`answer_look_request`).
+## Phase 181 — host: a player's look changed (a creation, a title). It goes to the peers whose AOI holds that
+## player, named by the owner's peer id; peers that meet the player later are sent it with its first state
+## (Phase 293, `send_look_to`), and `answer_look_request` stays as the client's fallback.
 func push_look(player_id: String, look: Dictionary) -> void:
+	_look_cache.erase(player_id)
 	if sl._role != sl.Role.HOST or not sl._connected() or sl.player_registry == null:
 		return
 	var owner_peer: int = sl._equipment_owner(player_id)

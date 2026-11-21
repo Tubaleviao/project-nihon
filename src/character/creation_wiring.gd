@@ -23,14 +23,6 @@ var offered: bool = false
 func _connect_all() -> void:
 	connect_bus(GameBus.character_creation_intent, _on_creation_intent)
 	connect_bus(GameBus.peer_look_synced, _on_peer_look_synced)
-	connect_bus(GameBus.equipment_changed, _on_equipment_changed)
-
-## Phase 293 — host: worn equipment changed; the player's look goes again to the peers whose AOI holds them, so
-## their copy of the body is rebuilt with the new gear.
-func _on_equipment_changed(player_id: String, _worn: Dictionary) -> void:
-	if root._is_client or root._networking == null or root._registry == null or player_id == "":
-		return
-	root._networking._m1.push_look(player_id, root._registry.look_of(player_id))
 
 ## This machine's own creation state.
 func own_state() -> Dictionary:
@@ -139,13 +131,13 @@ func _dress_own(state: Dictionary) -> void:
 	if root._ui != null:
 		root._ui.set_creation_state(state)
 
-## The appearance recipe the local avatar starts in: the created look, else null (the caller keeps its own).
-## `raw` is a creation state as a record or a snapshot carries it.
 ## Phase 293 — the look a client's own body is built in at boot ({} before a character is created: the default body).
 func boot_look(raw: Variant) -> Dictionary:
 	var state := CreationRules.sanitize_state(raw)
 	return CreationRules.look(state, "") if CreationRules.is_created(state) else {}
 
+## The appearance recipe the local avatar starts in: the created look, else null (the caller keeps its own).
+## `raw` is a creation state as a record or a snapshot carries it.
 func boot_recipe(raw: Variant) -> Variant:
 	var state := CreationRules.sanitize_state(raw)
 	if not CreationRules.is_created(state):

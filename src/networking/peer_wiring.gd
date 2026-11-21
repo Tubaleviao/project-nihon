@@ -302,6 +302,9 @@ func _on_remote_avatar_state(peer_id: int, position: Vector3) -> void:
 		return
 	ensure_remote_avatar(peer_id, position)
 
+## Phase 293 — look requests this client sent (the fallback); the harness checks a met peer needs none.
+var look_requests := 0
+
 ## Move `peer_id`'s avatar to `position`, building it first when this client has none. Returns its instance id.
 func ensure_remote_avatar(peer_id: int, position: Vector3) -> String:
 	var iid: String = str(_remote_avatars.get(peer_id, ""))
@@ -320,6 +323,7 @@ func ensure_remote_avatar(peer_id: int, position: Vector3) -> String:
 	# Phase 181 fallback — the host pushes the look on the pair's first relay; ask only when none is stored (a look
 	# forgotten while the relay pair was still live).
 	if look.is_empty() and root._networking != null:
+		look_requests += 1
 		root._networking.request_peer_look(peer_id)
 	return iid
 

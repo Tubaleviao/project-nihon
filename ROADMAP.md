@@ -1353,10 +1353,13 @@ the local player sees on themself are never drawn for anyone else.
 - Net harness step: two clients, each sees the other as a player rig with the other's chosen hair and body type.
 
 Done: `CharacterSlice.build_player_body(look, pos)` builds the client's own body at boot and every remote player;
-the host sends a peer's look in the same flush as (just ahead of) its first state in a client's AOI, again on an
-equipment change, and the hand item on AOI entry (`aoi_pair_entered`). The harness has one client, so its step
-`remote_player_body` checks the client drawing the host's body in the host's look and the host pushing looks; a
-listen host still draws its clients as capsule ghosts (not in this phase's scope).
+the host sends a peer's look just ahead of its first state in a client's AOI (relayed players through
+`RelayBatch.entered`, the host's own body through `introduce_host_body`), reading each look once (a cache replaced
+on `player_look_changed`), and the hand item on AOI entry (`aoi_pair_entered`). The creation look carries no gear,
+so an equipment change is not a second look: the existing `peer_equipment` sync carries it and the suite checks the
+remote body wears it. The harness has one client, so its step `remote_player_body` checks the client drawing the
+host's body in the host's look without asking for it, and the host pushing it; a listen host still draws its
+clients as capsule ghosts (not in this phase's scope).
 
 ## Phase 294 — Other players and creatures walk instead of jumping
 

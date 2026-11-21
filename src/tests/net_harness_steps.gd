@@ -912,11 +912,11 @@ func _sent_market_verdict(h: Node) -> String:
 		return "other_not_named"
 	return "names-seen-no-handle"
 
-## Phase 293 — after `create_character` both players have a created look. The client draws the host as a player
-## body: the player rig (the feminine body rig the host's look picks), the host's chosen hair on its head, never the
-## `TravellerHuman` creature. The host's side: it holds the client's own chosen look and has pushed looks on its own
-## (a pair's first relay) rather than only answering requests. The harness has one client, so "each sees the other"
-## is the client drawing the host and the host sending the client's look to whoever meets it.
+## Phase 293 — after `create_character` both players have a created look. The client drops its copy of the host
+## (avatar and look) and the host forgets having sent it its body, so the host's next state is a first meeting: the host must
+## push its look in that flush, and the client builds the host as a player body (the feminine body rig the host's
+## look picks, the host's hair) without asking for the look. The host also holds the client's chosen look. The
+## harness has one client, so "each sees the other" is the client drawing the host and the host knowing the client.
 func remote_player_body(h: Node) -> void:
 	const STEP := "remote_player_body"
 	if h._role == "host":
@@ -926,7 +926,9 @@ func remote_player_body(h: Node) -> void:
 			h._report(STEP, "fail", "no_connected_peer")
 			return
 		var ready: bool = await h._await_client_ready("body", pid)
-		# Keep the host's body relayed while the client looks at it (a dedicated host's own body does not broadcast).
+		var pushed_before: int = h._root._networking._m1.looks_pushed
+		h._root._networking._m1._host_seen.erase(peers[0])   # the client meets this host's body anew
+		# Relay the host's body (a dedicated host's own body does not broadcast on its own).
 		for i in 16:
 			var here: Vector3 = h._root._player.get_position()
 			GameBus.player_state_sync_requested.emit({ "position": here, "world_pos": WorldPos.from_world(here.x, here.y, here.z),
@@ -934,12 +936,15 @@ func remote_player_body(h: Node) -> void:
 			await h._await_settle(0.25)
 		var theirs: Dictionary = h._root._registry.look_of(pid)
 		var knows: bool = str(theirs.get("hair", "")) == "hair_m_spiky" and str(theirs.get("gender", "")) == "masculine"
-		var pushed: bool = h._root._networking._m1.looks_pushed >= 1
+		var pushed: bool = h._root._networking._m1.looks_pushed > pushed_before
 		var ok := ready and knows and pushed
-		h._report(STEP, h.verdict(ok, true), "looks_pushed" if ok else ("client_never_arrived" if not ready else ("client_look_unknown" if not knows else "no_look_pushed")))
+		h._report(STEP, h.verdict(ok, true), "player_rig_in_look" if ok else ("client_never_arrived" if not ready else ("client_look_unknown" if not knows else "no_look_pushed")))
 		return
-	var announced := {}
 	var host_id: int = h._root._networking.HOST_PEER_ID
+	h._root._peer_wiring._remove_remote_avatar(host_id)
+	h._root._character._peer_looks.erase(host_id)   # the look only: the worn set stays as the host sent it
+	var asked_before: int = h._root._peer_wiring.look_requests
+	var announced := {}
 	var dressed := func() -> bool:
 		h._announce_ready("body", announced)
 		var iid: String = h._root._character.get_peer_character(host_id)
@@ -949,6 +954,7 @@ func remote_player_body(h: Node) -> void:
 		return inst.get("rig_node", null) != null and str(inst.get("rig_key", "")) == "models/characters/bodies/chibi_body_f.glb.raw" \
 			and str(h._root._character.get_appearance(iid).get("hair", "")) == str(h.HOST_LOOK["hair"])
 	var ok: bool = await h._await_until(dressed, h._step_timeout() * 4.0)
+	var asked: int = h._root._peer_wiring.look_requests - asked_before
 	var iid: String = h._root._character.get_peer_character(host_id)
-	h._report(STEP, h.verdict(ok, true), "player_rig_in_look" if ok else ("no_avatar" if iid == "" else "body_%s_hair_%s" % [
-		str(h._root._character._instances.get(iid, {}).get("rig_key", "none")), str(h._root._character.get_appearance(iid).get("hair", ""))]))
+	h._report(STEP, h.verdict(ok and asked == 0, true), "player_rig_in_look" if ok and asked == 0 else ("asked_for_look-%d" % asked if ok else ("no_avatar" if iid == "" else "body_%s_hair_%s" % [
+		str(h._root._character._instances.get(iid, {}).get("rig_key", "none")), str(h._root._character.get_appearance(iid).get("hair", ""))])))

@@ -712,10 +712,10 @@ func attach_rig(instance_id: String, rig_key: String) -> bool:
 	rig_root.add_child(tree)
 	tree.anim_player = tree.get_path_to(player)
 	tree.active = true
-	_m3.place_nameplate(instance_id)   # Phase 293 — above this rig's head, and shown again (the rig hid the root's children)
 	inst["anim_tree"] = tree
 	inst["rig_node"] = rig_root
 	inst["rig_key"] = rig_key
+	_m3.place_nameplate(instance_id)   # Phase 293 — above this rig's head, and shown again (the rig hid the root's children)
 	# Re-run the LOD pass: the early-out would otherwise skip it, leaving the rig showing at
 	# whatever level this instance already resolved to.
 	inst["lod"] = -1

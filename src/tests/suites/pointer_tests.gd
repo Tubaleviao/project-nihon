@@ -66,7 +66,8 @@ func _test_click_no_motion() -> void:
 	var got: Array = []
 	p.look_pointer.warp_sink = func(w: Vector2) -> void: got.append(w)
 	p._begin_look()
-	var at: Vector2 = sub.get_final_transform() * p.look_pointer.restore_pos   # where the pointer is in window pixels
+	p.look_pointer.restore_pos = Vector2(321, 123)   # an unparented SubViewport cannot be given a pointer position
+	var at := Vector2(321, 123) * 1.5   # that pointer's window pixel at stretch 1.5
 	p._end_look()
 	p._end_look()   # a second release is a no-op
 	assert_eq(got.size(), 1, "one warp for one click")
