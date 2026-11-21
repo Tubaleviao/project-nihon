@@ -5,8 +5,8 @@
 set -uo pipefail
 root="$(git rev-parse --show-toplevel)"
 
-# Phase 254: every staged .gd / .gdshader needs its .uid sidecar staged too. The check reads the index, so it
-# sees exactly what this commit records. The most frequent CI failure in Nov 2026 was this one.
+# Phase 254: every .gd / .gdshader in the index needs its .uid sidecar in the index too. It checks the whole
+# index, not only this commit's files; CI keeps main clean, so a failure is almost always the new file. The most frequent CI failure in Nov 2026 was this one.
 if ! "$root/tools/check_uids.sh" >/dev/null; then
   echo >&2
   echo "pre-commit: a script or shader has no tracked .uid (or a .uid lost its script)." >&2

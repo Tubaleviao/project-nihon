@@ -325,6 +325,7 @@ jobs:
               > /tmp/pt-extra/run$n.log 2>&1
             cp playtest/report.json /tmp/pt-extra/report$n.json
           done
+          rm -f playtest/report.json   # the gated run must not be judged on run 2's report if it crashes
           timeout 1500 xvfb-run -a -s "-screen 0 1280x720x24" \
             /tmp/godot/Godot_v4.7-stable_linux.x86_64 --path . --rendering-driver opengl3 -- --playtest-bot --playtest-no-budget \
             2>&1 | tee /tmp/playtest.log
@@ -346,6 +347,10 @@ jobs:
             fi
           done
           cp playtest/report.json /tmp/pt-extra/report3.json
+          if [ "$(ls /tmp/pt-extra/report?.json | wc -l)" -ne 3 ]; then
+            echo "::error::an extra run wrote no report, so the median would be of fewer than 3 runs"
+            exit 1
+          fi
           # Phase 189: the gate also compares the flight step's collision and contents ms per attached chunk
           # with the record flight flown in the same run with the near ring off; prove that check first.
           python3 tools/check_playtest_budget.py --self-test || exit 1

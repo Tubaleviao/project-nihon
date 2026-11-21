@@ -1159,8 +1159,8 @@ func _step_flight() -> Array:
 	# The gate is the native builder's: the GDScript fallback (CI's `--no-native` run) builds about 7× slower
 	# and cannot hold 90 m/s, so that run reports the coverage without failing on it.
 	_flight["gated"] = NativeBuilder.mode() == NativeBuilder.MODE_NATIVE
-	if not bool(_flight["gated"]) or preload("res://src/tests/playtest_revisit.gd").timing_report_only():   # PR runs: perf.yml gates the timing
-		return [true, note + " (report only: %s)" % ("timing, gated in perf.yml" if bool(_flight["gated"]) else NativeBuilder.mode() + " builder")]
+	if not bool(_flight["gated"]) or preload("res://src/tests/playtest_revisit.gd").timing_report_only():   # PR runs: perf.yml gates the coverage
+		return [int(_flight["samples"]) > 0 or not bool(_flight["gated"]), note + " (report only: %s)" % ("timing, gated in perf.yml" if bool(_flight["gated"]) else NativeBuilder.mode() + " builder")]
 	return [bool(_flight["ok"]), note]
 
 func _step_revisit() -> Array: return await preload("res://src/tests/playtest_revisit.gd").run(self)   # Phase 244

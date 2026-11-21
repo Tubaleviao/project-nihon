@@ -580,16 +580,18 @@ jobs:
           # 300 s was the deadline most slow-runner failures hit (`host did not finish within 300s`).
           NET_HARNESS_TIMEOUT: "480"
         # One retry: a real regression fails both runs, a slow shared runner rarely does. The first run's
-        # errors stay in the log (and its logs in the artifact), so a pass on the retry is still visible.
+        # errors stay in the log and its logs are uploaded, so a pass on the retry is still visible.
+        id: harness
         run: |
           tools/net_harness.sh && exit 0
+          echo "retried=true" >> "$GITHUB_OUTPUT"
           echo "::warning::net-harness failed once; retrying (a real bug fails twice)"
           NET_HARNESS_LOGDIR="$NET_HARNESS_LOGDIR-retry" tools/net_harness.sh
 
       - name: Upload harness logs
         # Diagnostics only: the driver has already failed the job by this point, and the
         # two processes' logs are what says WHICH step broke.
-        if: failure()
+        if: failure() || steps.harness.outputs.retried == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: net-harness-logs
