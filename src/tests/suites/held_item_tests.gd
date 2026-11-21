@@ -17,6 +17,7 @@ func register() -> void:
 	_run_test("held item: the swing reads the held item", _test_attack_clip)
 	_run_test("held item: the host refuses an item not in the pack, an unknown id and a skill entry", _test_host_refusals)
 	_run_test("held item: changes over the rate limit are dropped", _test_rate_limit)
+	_run_test("held item: a refused box clears the hand, a rate-limited change lands later", _test_refused_clears_and_defers)
 	_run_test("held item: using up the held item syncs empty", _test_pack_empties)
 	_run_test("held item: the hotbar selection is the held item and a skill box holds nothing", _test_hotbar_emits)
 
@@ -169,6 +170,23 @@ func _test_rate_limit() -> void:
 		stamps = HeldItem.admit(stamps, 1000 + i)
 	assert_true(HeldItem.admit(stamps, 1500).is_empty(), "the pure limit refuses inside the window")
 	assert_false(HeldItem.admit(stamps, 1000 + HeldItem.RATE_WINDOW_MS + HeldItem.RATE_LIMIT).is_empty(), "and admits after it")
+	_free_host(f)
+
+
+func _test_refused_clears_and_defers() -> void:
+	var f := _host_fixture()
+	f["inv"].add_item(TOOL, 1)
+	GameBus.held_item_intent.emit(TOOL, "p1")
+	GameBus.held_item_intent.emit("skill:Mining", "p1")
+	assert_eq(str((f["seen"] as Array)[-1][1]), "", "a refused selection empties the hand")
+	var w = f["gr"]._held_item_wiring
+	w._stamps["p1"] = [Time.get_ticks_msec(), Time.get_ticks_msec(), Time.get_ticks_msec(), Time.get_ticks_msec(), Time.get_ticks_msec(), Time.get_ticks_msec()]
+	GameBus.held_item_intent.emit(TOOL, "p1")
+	assert_eq(w._deferred.get("p1", ""), TOOL, "a rate-limited change waits")
+	w._stamps["p1"] = []
+	w.tick(0.0)
+	assert_eq(str((f["seen"] as Array)[-1][1]), TOOL, "and lands once the window frees")
+	assert_false(w._deferred.has("p1"), "the wait is cleared")
 	_free_host(f)
 
 

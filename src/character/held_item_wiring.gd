@@ -13,6 +13,8 @@ const HeldItem := preload("res://src/character/held_item.gd")
 var _held: Dictionary = {}
 ## Player id -> msec stamps of recent changes (host, rate limit).
 var _stamps: Dictionary = {}
+## Player id -> the latest item a rate-limited change asked for (host); retried on tick once the window frees.
+var _deferred: Dictionary = {}
 ## Peer id -> item id still to show on that peer's avatar (client, and a listen host's view of its clients).
 var _pending: Dictionary = {}
 ## Peer id -> "instance|item" already on the avatar.
@@ -55,13 +57,15 @@ func _on_intent(item_id: String, player_id: String) -> void:
 	if item_id == "":
 		_hold(pid, "")   # empty hands need no evidence
 		return
-	if not HeldItem.holdable(item_id, GameData.ITEMS, GameData.MATERIALS):
+	_deferred.erase(pid)
+	if not HeldItem.holdable(item_id, GameData.ITEMS, GameData.MATERIALS) \
+			or int(_contents_of(pid).get(item_id, 0)) < 1:
+		_hold(pid, "")   # the box selected now holds nothing usable: the old item must not stay in the hand
 		return
-	if int(_contents_of(pid).get(item_id, 0)) < 1:
-		return   # the player does not have it: nothing changes, nothing syncs
 	var kept := HeldItem.admit(_stamps.get(pid, []), Time.get_ticks_msec())
 	if kept.is_empty():
-		return   # over the rate limit: dropped
+		_deferred[pid] = item_id   # over the rate limit: the latest wish waits, so a fast scroll ends on its last box
+		return
 	_stamps[pid] = kept
 	_hold(pid, item_id)
 
@@ -122,6 +126,7 @@ func _on_player_joined(peer_id: int, _player_id: String, _reconnected: bool) -> 
 		root._networking._m2.send_peer_held_to(peer_id, out)
 
 func _on_player_left(player_id: String) -> void:
+	_deferred.erase(player_id)
 	_held.erase(player_id)
 	_stamps.erase(player_id)
 
@@ -162,5 +167,11 @@ func _forget_peer(peer_id: int) -> void:
 	_applied.erase(peer_id)
 
 func tick(_delta: float) -> void:
+	if not _deferred.is_empty() and not root._is_client:
+		for pid in _deferred.keys():
+			var wanted := str(_deferred[pid])
+			if HeldItem.admit(_stamps.get(pid, []), Time.get_ticks_msec()).is_empty():
+				continue
+			_on_intent(wanted, str(pid))   # re-validates against the pack and re-applies the limit
 	if root._character != null and not _pending.is_empty():
 		_apply_pending()
