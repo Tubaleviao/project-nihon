@@ -8,6 +8,7 @@ const BASE := Vector2(1280, 720)
 
 func register() -> void:
 	_run_test("pointer: a look restores the pointer to within 1 px at stretch scales 1.0, 1.5 and 2.0", _test_restore)
+	_run_test("pointer: _begin_look then _end_look warps back to the pointer's window pixel", _test_live_look)
 	_run_test("pointer: ten looks in a row leave the pointer where it started", _test_no_drift)
 	_run_test("pointer: no warp_mouse call outside the helper", _test_only_helper_warps)
 
@@ -24,6 +25,33 @@ func _test_restore() -> void:
 		for w: Vector2 in [Vector2(100, 100) * scale, win * 0.5, win - Vector2(1, 1)]:
 			var back := _round_trip(scale, w)
 			assert_true(back.distance_to(w) <= 1.0, "scale %s: %s comes back as %s" % [scale, w, back])
+
+## Through the real `_begin_look`/`_end_look` in a viewport stretched by `scale` (size_2d_override), capturing the warp.
+func _live_look(scale: float, vp_pos: Vector2) -> Vector2:
+	var sub := SubViewport.new()
+	sub.size = Vector2i(BASE * scale)
+	sub.size_2d_override = Vector2i(BASE)
+	sub.size_2d_override_stretch = true
+	var p := PlayerSlice.new()
+	p._camera = Camera3D.new()
+	p.look_viewport_override = sub
+	var got := [Vector2(-1, -1)]
+	Pointer.warp_sink = func(w: Vector2) -> void: got[0] = w
+	p._begin_look()
+	p._look_restore_pos = vp_pos   # an unparented SubViewport cannot be given a pointer position
+	p._end_look()
+	Pointer.warp_sink = Callable()
+	var expect: Vector2 = sub.get_final_transform() * vp_pos
+	sub.free()
+	p._camera.free()
+	p.free()
+	return got[0] - expect
+
+func _test_live_look() -> void:
+	for scale: float in [1.0, 1.5, 2.0]:
+		for vp in [Vector2(100, 100), BASE * 0.5, BASE - Vector2(1, 1)]:
+			var d := _live_look(scale, vp)
+			assert_true(d.length() <= 1.0, "scale %s: look at %s warps %s off" % [scale, vp, d])
 
 func _test_no_drift() -> void:
 	for scale: float in [1.0, 1.5, 2.0]:

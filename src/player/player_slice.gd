@@ -368,12 +368,18 @@ func jump_requested() -> bool:
 func is_looking() -> bool:
 	return _looking
 
+## The viewport whose pointer coordinates a look stores; the suite points it at a stretched SubViewport.
+var look_viewport_override: Viewport = null
+
+func _look_viewport() -> Viewport:
+	return look_viewport_override if look_viewport_override != null else get_viewport()
+
 ## Capture the mouse and start orbiting. Remembers where the pointer was so `_end_look` can put it back.
 func _begin_look() -> void:
 	if _looking or _camera == null:
 		return
 	_looking = true
-	_look_restore_pos = get_viewport().get_mouse_position()
+	_look_restore_pos = _look_viewport().get_mouse_position()
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 
 ## Release the mouse where it was before the look began.
@@ -382,7 +388,7 @@ func _end_look() -> void:
 		return
 	_looking = false
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
-	Pointer.warp(get_viewport(), _look_restore_pos)   # Phase 291: window pixels, not viewport coordinates
+	Pointer.warp(_look_viewport(), _look_restore_pos)   # Phase 291: window pixels, not viewport coordinates
 
 func _physics_process(delta: float) -> void:
 	if not _alive:

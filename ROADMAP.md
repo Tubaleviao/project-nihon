@@ -1305,7 +1305,7 @@ base size, so the pointer lands closer to the top-left corner on every release, 
 
 **Done.** `src/player/pointer.gd` is the only `warp_mouse` caller: it converts the stored viewport position through
 the viewport's final transform and does not warp when the window lost focus. The suite checks the round trip at
-scales 1.0/1.5/2.0 on the helper's transform maths (not through a live `_begin_look`/`_end_look`), ten looks without
+scales 1.0/1.5/2.0 through `_begin_look`/`_end_look` on a stretched SubViewport (the stored position is set directly, since an unparented viewport has no pointer), ten looks without
 drift and a grep for stray `warp_mouse` calls.
 
 **Acceptance criteria**
