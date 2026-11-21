@@ -23,10 +23,9 @@ extends Node
 ##   build_report(steps) -> Dictionary        — static: steps + run verdict + hard failures
 ##   report_markdown(report) -> String        — static
 ##   step_names() -> Array                    — static, the fixed step order (filtered by `--playtest-only a,b`)
-
 const VoxelSlice := preload("res://src/terrain/voxel_slice.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
-const StoneTools := preload("res://src/world/stone_tools.gd")
+const StoneTools := preload("res://src/world/stone_tools.gd"); const WorkAnim := preload("res://src/character/work_anim.gd")
 const TerrainSlice := preload("res://src/terrain/terrain_slice.gd")
 const WaystoneSlice := preload("res://src/world/waystone_slice.gd")
 const StationRules := preload("res://src/world/station_rules.gd")
@@ -1159,8 +1158,8 @@ func _step_flight() -> Array:
 	# The gate is the native builder's: the GDScript fallback (CI's `--no-native` run) builds about 7× slower
 	# and cannot hold 90 m/s, so that run reports the coverage without failing on it.
 	_flight["gated"] = NativeBuilder.mode() == NativeBuilder.MODE_NATIVE
-	if not bool(_flight["gated"]):
-		return [true, note + " (report only: %s builder)" % NativeBuilder.mode()]
+	if not bool(_flight["gated"]) or preload("res://src/tests/playtest_revisit.gd").timing_report_only():   # PR runs: perf.yml gates the coverage
+		return [int(_flight["samples"]) > 0 or not bool(_flight["gated"]), note + " (report only: %s)" % ("timing, gated in perf.yml" if bool(_flight["gated"]) else NativeBuilder.mode() + " builder")]
 	return [bool(_flight["ok"]), note]
 
 func _step_revisit() -> Array: return await preload("res://src/tests/playtest_revisit.gd").run(self)   # Phase 244
@@ -1295,7 +1294,7 @@ static func build_breakdown(parts_usec: Dictionary, chunks: int, window_radius: 
 	return rec
 
 ## Mine the ground block under the body through the player's own intent.
-var _work_secs := 0.0; var _work_last: Array = []; var _work_bar_note := ""   # 259: the host's answer to the last work start; 289: its [action, material], and "" or why the mid-hold bar was not in view
+var _work_clip := ""; var _work_secs := 0.0; var _work_last: Array = []; var _work_bar_note := ""   # 259: the host's answer to the last work start; 289: its [action, material], and "" or why the mid-hold bar was not in view
 
 func _step_mine() -> Array:
 	var p := _player_pos()
@@ -1307,7 +1306,7 @@ func _step_mine() -> Array:
 	var held: float = await _hold_work("block", "", spot, true)
 	GameBus.block_mine_requested.emit(spot, Vector3.UP, "", {})
 	var ok: bool = await _until(func(): return _mined.size() > before, STEP_TIMEOUT_SECS)
-	if not ok or _work_bar_note != "": return [false, _work_bar_note if ok else "no block_mined (work held %.1f s)" % held]
+	var wk: String = str(_work_last[0]) if not _work_last.is_empty() else ""; if not ok or _work_bar_note != "" or not wk in ["dig", "mine"] or _work_clip != WorkAnim.clip_of(wk): return [false, (_work_bar_note if _work_bar_note != "" else "the '%s' hold played '%s', not '%s'" % [wk, _work_clip, WorkAnim.clip_of(wk)]) if ok else "no block_mined (work held %.1f s)" % held]   # 281: the clip
 	# Phase 263 — more digs beside it, so the step has an edit-to-visible p95: each is timed from its completion to
 	# its chunk's mesh attached. PR #648 review: each one held for its work time first, as a player digs (the dug
 	# chunk is built while the work runs, `EditPrebuild`).
@@ -1331,11 +1330,11 @@ func _hold_work(kind: String, tree_id: String, pos: Vector3, shoot := false, exa
 	# A hit cancels the work (and the spawn's wolf pack downed the body during a hold on CI): heal and clear first.
 	GameBus.admin_healed.emit()
 	_clear_creatures_near_body()
-	_work_secs = 0.0
+	_work_secs = 0.0; _work_clip = ""   # 281: a hold the host never answered leaves no clip from the last one
 	GameBus.work_start_requested.emit(kind, tree_id, pos, Vector3.UP, exact, "")
 	if not await _until(func(): return _work_secs > 0.0, STEP_TIMEOUT_SECS):
 		return -1.0
-	var t0 := Time.get_ticks_msec()
+	_work_clip = str(_root._work_anim_wiring.last_clip.get(1, "")); var t0 := Time.get_ticks_msec()   # Phase 281: the clip the hold played
 	await _until(func(): return false, _work_secs * (0.5 if shoot else 1.0))   # Phase 289: shoot = the bar drawn and shot mid-hold, checked inside the viewport
 	if shoot: _work_bar_note = await load("res://src/tests/playtest_work_bar.gd").shoot(self, _root._player._work_hold, _work_last, _work_secs, kind, t0)
 	return float(Time.get_ticks_msec() - t0) * 0.001
@@ -1430,7 +1429,8 @@ func _step_gather() -> Array:
 	var held: float = await _hold_work("tree", target, Vector3.ZERO)
 	GameBus.tree_chop_requested.emit(target, "")
 	var ok: bool = await _until(func(): return _chopped.size() > before, STEP_TIMEOUT_SECS)
-	return [ok, "felled %s after holding work %.1f s" % [str(_chopped.back()), held] if ok else "chop %s gave nothing (work held %.1f s)" % [target, held]]
+	if ok and _work_clip != "chop": return [false, "the chop hold played '%s', not 'chop'" % _work_clip]
+	return [ok, "felled %s after holding work %.1f s (clip %s)" % [str(_chopped.back()), held, _work_clip] if ok else "chop %s gave nothing (work held %.1f s)" % [target, held]]
 
 ## Research `tech_id` through the player's own intent (research points and materials granted first, the
 ## way a session would earn them). "" on success.
@@ -1639,7 +1639,7 @@ func _step_character_sheet() -> Array:
 
 ## Place a forge from the hotbar (Phase 268), a few metres from the bench so the two do not overlap.
 func _step_place() -> Array:
-	var placed := 0
+	var placed := 0; _root._work_anim_wiring.last_clip.erase(1)   # 281: only this step's placement counts
 	for attempt in range(3):
 		_key(KEY_W, true)
 		await _until(func(): return false, 1.0)
@@ -1647,7 +1647,7 @@ func _step_place() -> Array:
 		placed = await _place_with_keys("forge")
 		if placed > 0:
 			break
-	return [placed > 0, "placed %s" % str(_placed.back()[0]) if placed > 0 else "forge placement refused"]
+	var built: String = str(_root._work_anim_wiring.last_clip.get(1, "")); return [placed > 0 and built == "build", "placed %s (clip %s)" % [str(_placed.back()[0]), built] if placed > 0 else "forge placement refused"]
 
 ## Fight: a creature set down within reach loses HP to the player's melee round and is drawn as a model.
 func _step_fight() -> Array:

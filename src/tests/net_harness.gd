@@ -54,7 +54,6 @@ extends Node
 ## `run()` audits its OWN source for a bare `_await_…` call before it boots either peer
 ## (see `unawaited_waits`): that mistake compiles, runs, and turns this scenario's waits
 ## into no-ops, and the synchronous suite cannot see it because it cannot host a pump.
-
 const BedStore := preload("res://src/world/bed_store.gd")
 const LateSteps := preload("res://src/tests/net_harness_steps.gd")
 const I18n := preload("res://src/core/i18n.gd")
@@ -196,7 +195,7 @@ static func steps() -> Array:
 		{ "name": "frontier_record_synced", "compare": true },
 		{ "name": "fold_carries_creatures", "compare": true },
 		{ "name": "creature_far_delta", "compare": true },
-		{ "name": "peer_attack_animated", "compare": true },
+		{ "name": "peer_attack_animated", "compare": true }, { "name": "work_anim_synced", "compare": true },
 		{ "name": "death_landing_synced", "compare": true },
 		{ "name": "gesture_synced", "compare": true },
 		{ "name": "carcass_synced", "compare": true },
@@ -460,6 +459,7 @@ func run(root: Node, role: String) -> void:
 	await _step_fold_carries_creatures()
 	await _step_creature_far_delta()
 	await _step_peer_attack_animated()
+	await LateSteps.new().work_anim_synced(self)
 	await _step_death_landing_synced()
 	await _step_gesture_synced()
 	await _step_carcass_synced()
@@ -2317,7 +2317,7 @@ func _step_death_landing_synced() -> void:
 		# Beside the peer, so the creature is inside its area of interest.
 		var from: Vector3 = _root._networking.get_last_known_state(peer) + Vector3(3.0, 0.0, 0.0)
 		_root._creature.apply_creature_state(DEATH_PROBE_ID, "ForestBoar", "idle", from)
-		# Let the client learn the creature standing before it dies.
+		await _await_client_ready("death_landing", _root._networking.get_player_id(peer))   # a lagging wan_bad client has not reached the step: let it learn the creature standing before it dies
 		await _await_settle(2.0)
 		GameBus.creature_died.emit(DEATH_PROBE_ID, from, "harness", from + DEATH_PROBE_PUSH)
 		await _await_settle(2.0)
@@ -2327,9 +2327,9 @@ func _step_death_landing_synced() -> void:
 		_report("death_landing_synced", verdict(landed, true), "host-landed" if landed else "host_not_moved")
 		return
 	# The client saw the probe standing at `stood`, then dead exactly one push away from it.
-	var seen := {}
+	var seen := {}; var ann := {}
 	var got: bool = await _await_until(func():
-		var inst: Dictionary = _root._creature._instances.get(DEATH_PROBE_ID, {})
+		_announce_ready("death_landing", ann); var inst: Dictionary = _root._creature._instances.get(DEATH_PROBE_ID, {})
 		if inst.is_empty():
 			return false
 		if str(inst["state"]) != "dead":

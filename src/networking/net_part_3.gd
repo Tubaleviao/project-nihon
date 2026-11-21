@@ -328,6 +328,12 @@ func _route_h2c(payload: Dictionary) -> void:
 			if sl._role == sl.Role.CLIENT and a.length() <= sl.COMBAT_KEY_MAX and d.length() <= sl.COMBAT_KEY_MAX \
 					and o in sl.COMBAT_OUTCOMES:
 				GameBus.combat_hit_synced.emit(a, d, o)
+		"work_anim":
+			# Phase 281 — animation only. Peer ids and kinds are bounded; an unknown kind is dropped by the wiring.
+			var wp := int(payload.get("p", 0))
+			var wk := str(payload.get("k", ""))
+			if sl._role == sl.Role.CLIENT and wp > 0 and wk.length() <= sl.COMBAT_KEY_MAX:
+				GameBus.work_anim_changed.emit(wp, wk)
 		"remote_player_state":
 			sl._route_remote_player_state(payload)
 		"player_states":

@@ -2124,16 +2124,17 @@ func _test_net_harness_step_table() -> void:
 		"after a seated pose agreed on across the wire (Phase 159)")
 	assert_eq(str(steps[steps.size() - 9].get("name", "")), "death_landing_synced",
 		"after a killed creature's landing agreed on a client (Phase 157)")
-	assert_eq(str(steps[steps.size() - 10].get("name", "")), "peer_attack_animated",
+	assert_eq(str(steps[steps.size() - 10].get("name", "")), "work_anim_synced", "after a peer's swing (Phase 281)")
+	assert_eq(str(steps[steps.size() - 11].get("name", "")), "peer_attack_animated",
 		"after a peer's swing animated on a client (Phase 156)")
-	assert_eq(str(steps[steps.size() - 11].get("name", "")), "creature_far_delta",
+	assert_eq(str(steps[steps.size() - 12].get("name", "")), "creature_far_delta",
 		"after a far creature delta kept to the centimetre (Phase 171)")
-	assert_eq(str(steps[steps.size() - 12].get("name", "")), "fold_carries_creatures",
+	assert_eq(str(steps[steps.size() - 13].get("name", "")), "fold_carries_creatures",
 		"after a creature carried across a client's fold (Phase 145)")
-	assert_eq(str(steps[steps.size() - 13].get("name", "")), "frontier_record_synced",
+	assert_eq(str(steps[steps.size() - 14].get("name", "")), "frontier_record_synced",
 		"after a frontier record reaching the client (Phase 113), after the generation record (Phase 109)")
-	assert_eq(str(steps[steps.size() - 14].get("name", "")), "chunk_record_synced", "which follows the generation record")
-	assert_eq(str(steps[steps.size() - 15].get("name", "")), "spawn_near_friend", "after the friend-code spawn (Phase 53)")
+	assert_eq(str(steps[steps.size() - 15].get("name", "")), "chunk_record_synced", "which follows the generation record")
+	assert_eq(str(steps[steps.size() - 16].get("name", "")), "spawn_near_friend", "after the friend-code spawn (Phase 53)")
 
 ## Phase 39 — the wire is a text channel between two processes, so the line format and its
 ## parser are load-bearing: if they disagreed, the driver would silently compare nothing

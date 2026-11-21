@@ -5,6 +5,7 @@ var sl: Node
 
 ## Seconds a one-shot gesture plays when the rig has no clip to measure (the procedural body).
 const DEFAULT_GESTURE_SECONDS := 1.5
+const WorkAnim := preload("res://src/character/work_anim.gd")
 
 func _init(slice: Node) -> void:
 	sl = slice
@@ -242,6 +243,34 @@ func trigger_attack(instance_id: String, clip: String = "") -> void:
 	var lengths: Dictionary = inst.get("swing_lengths", {})
 	var played: String = clip if lengths.has(clip) else sl.RigTree.ATTACK_DEFAULT
 	inst["locomotion"].trigger_attack(clip, float(lengths.get(played, -1.0)))
+
+## Phase 281 — play the clip of work `kind` on an instance (its own clip, `attack_tool` when the rig lacks it).
+## Returns the clip played ("" when the instance is unknown).
+func trigger_work(instance_id: String, kind: String) -> String:
+	if not sl._instances.has(instance_id):
+		return ""
+	var inst: Dictionary = sl._instances[instance_id]
+	var lengths: Dictionary = inst.get("swing_lengths", {})
+	var clip: String = WorkAnim.resolve(kind, lengths)
+	inst["locomotion"].trigger_attack(clip, float(lengths.get(clip, -1.0)))
+	inst["work_clip"] = clip
+	return clip
+
+## Phase 281 — turn the body to face `target` (the work target) at once; the horizontal offset only.
+func face_toward(instance_id: String, target: Vector3) -> bool:
+	if not sl._instances.has(instance_id):
+		return false
+	var inst: Dictionary = sl._instances[instance_id]
+	var d: Vector3 = target - (inst["position"] as Vector3)
+	if Vector2(d.x, d.z).length() < 0.05:
+		return false
+	(inst["root"] as Node3D).rotation.y = atan2(-d.x, -d.z)   # the face is -Z, as in the movement turn
+	return true
+
+## Phase 281 — the hold ended: back to idle/locomotion.
+func stop_work(instance_id: String) -> void:
+	if sl._instances.has(instance_id):
+		sl._instances[instance_id]["locomotion"].end_attack()
 
 ## Phase 159 — see `CharacterSlice.trigger_gesture`.
 func trigger_gesture(instance_id: String, clip: String, hold: bool, seat_lift: float = 0.0) -> bool:
