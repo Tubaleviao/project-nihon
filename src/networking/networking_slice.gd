@@ -1081,17 +1081,17 @@ func _on_market_synced(data: Dictionary) -> void:
 		return
 	# Phase 36 — the listings name their sellers; ids are redacted to handles here
 	# (see redact_for_client) because the wire has no business carrying a bearer token.
-	_broadcast({ "type": "market_synced", "data": redact_for_client(data) })
+	_broadcast({ "type": "market_synced", "data": _m3.redact_blob("market", data) })   # Phase 292: named
 
 func _on_governance_synced(data: Dictionary) -> void:
 	if _role != Role.HOST:
 		return
-	_broadcast({ "type": "governance_synced", "data": redact_for_client(data) })
+	_broadcast({ "type": "governance_synced", "data": _m3.redact_blob("governance", data) })
 
 func _on_trade_completed(trade: Dictionary) -> void:
 	if _role != Role.HOST:
 		return
-	_broadcast({ "type": "trade_completed", "trade": redact_for_client(trade) })
+	_broadcast({ "type": "trade_completed", "trade": _m3.redact_blob("trade_session", trade) })
 
 func _on_market_list_intent(seller: String, item_id: String, quantity: int, price: float) -> void:
 	if _role != Role.CLIENT:
@@ -1121,7 +1121,7 @@ func _on_proposal_supersede_intent(proposal_id: String, replacement_id: String) 
 func _on_trade_synced(data: Dictionary) -> void:
 	if _role != Role.HOST:
 		return
-	_broadcast({ "type": "trade_synced", "data": redact_for_client(data) })
+	_broadcast({ "type": "trade_synced", "data": _m3.redact_blob("trade", data) })
 
 func _on_trade_start_intent(party_a: String, party_b: String) -> void:
 	if _role != Role.CLIENT:

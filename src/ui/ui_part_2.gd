@@ -332,12 +332,12 @@ func refresh_trade() -> void:
 		hbox.add_theme_constant_override("separation", 8)
 		sl._add_row_icon(hbox, str(row["icon_key"]))
 		var lbl := Label.new()
-		lbl.text = sl.I18n.t("trade.entry", [row["party"], sl.I18n.t("trade.side_give" if row["side"] == "give" else "trade.side_want"), sl.I18n.content("item", str(row["item_id"])), row["quantity"]])
+		lbl.text = sl.PartyLabel.trade_line(row, sl.own_display_name())
 		hbox.add_child(lbl)
 		trade_box.add_child(hbox)
 
-## One row per item in the active trade's offers: { party, side ("give" | "want"), item_id,
-## quantity, icon_key }. Empty with no open trade.
+## One row per item in the active trade's offers: { party, party_name (Phase 292), side ("give" | "want"),
+## item_id, quantity, icon_key }. Empty with no open trade.
 func trade_rows() -> Array:
 	var rows: Array = []
 	if sl.trade_slice == null or sl._active_trade_id == "":
@@ -346,12 +346,14 @@ func trade_rows() -> Array:
 	if str(trade.get("state", "pending")) in ["completed", "rejected"]:
 		return rows
 	var offers: Dictionary = trade.get("offers", {})
+	var names: Dictionary = trade.get("names", {}) if trade.get("names") is Dictionary else {}
 	for party in offers:
 		for side in ["give", "want"]:
 			var stacks: Dictionary = offers[party].get(side, {})
 			for item_id in stacks:
 				rows.append({
-					"party": str(party), "side": side, "item_id": str(item_id),
+					"party": str(party), "party_name": sl.PartyLabel.name_for(names.get(party), str(party), sl.party_name_of),
+					"side": side, "item_id": str(item_id),
 					"quantity": int(stacks[item_id]), "icon_key": sl.item_icon_key(str(item_id)),
 				})
 	return rows

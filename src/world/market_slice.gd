@@ -283,6 +283,9 @@ func apply_market_data(data: Dictionary) -> void:
 			"expires_at": float(e.get("expires_at", 0.0)),
 			"durability": (e.get("durability", []) as Array).duplicate(),
 		}
+		# Phase 292 — a client keeps the seller's name the host sent beside the handle (shown, never acted on).
+		if e.has("seller_name"):
+			_listings[str(id)]["seller_name"] = str(e["seller_name"]).left(64)
 	_next_id = _max_listing_suffix() + 1
 
 ## Largest numeric suffix among existing listing ids (-1 when none).

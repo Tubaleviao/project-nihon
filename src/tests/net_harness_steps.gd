@@ -830,3 +830,51 @@ func held_item_synced(h: Node) -> void:
 	var ok: bool = seen and (avatar == "" or h._root._character.held_item_of(avatar) == HELD_SECOND)
 	h._report("held_item_synced", h.verdict(ok, true), "seen" if ok else ("never_synced" if not seen else "not_on_avatar"))
 
+
+## Phase 292 — the market names the seller. The host gives the peer two Thornwood; the client lists one and the
+## host lists one of its own. Each side's market window text then names the OTHER seller by character name
+## (`HOST_NAME` / `CLIENT_NAME`, both created by the `create_character` step), its own listing reads "(you)", and
+## no line on either side prints a public handle.
+const MARKET_ITEM := "Thornwood"
+const PartyLabel := preload("res://src/ui/party_label.gd")
+const I18n := preload("res://src/core/i18n.gd")
+func market_names_seller(h: Node) -> void:
+	const DETAIL := "names-seen-no-handle"
+	var market: Node = h._root._market
+	if h._role == "host":
+		var pid: String = h._live_bound_id()
+		if pid == "":
+			h._report("market_names_seller", "fail", "no_connected_peer")
+			return
+		h._root._registry.get_inventory(pid).add_item(MARKET_ITEM, 2)
+		h._root._inventory.add_item(MARKET_ITEM, 1)
+		var theirs: bool = await h._await_until(func() -> bool:
+			return market.get_listings().any(func(l: Dictionary) -> bool: return str(l["seller"]) == pid), h._step_timeout() * 3.0)
+		var mine: String = market.list_item(PartyLabel.SELF, MARKET_ITEM, 1, 5.0)
+		var verdict_detail := _market_text_verdict(h, h.CLIENT_NAME) if theirs and mine != "" else ("client_never_listed" if not theirs else "host_list_refused")
+		await h._await_settle(3.0 * h._time_scale)   # the client reads the host's listing before the step moves on
+		h._report("market_names_seller", h.verdict(verdict_detail == DETAIL, true), verdict_detail)
+		return
+	var inv: Node = h._root._inventory
+	var stocked: bool = await h._await_until(func(): return inv.get_item_count(MARKET_ITEM) >= 1, h._step_timeout() * 3.0)
+	if not stocked:
+		h._report("market_names_seller", "fail", "never_stocked")
+		return
+	market.list_item(PartyLabel.SELF, MARKET_ITEM, 1, 5.0)
+	var both: bool = await h._await_until(func() -> bool:
+		var sellers: Array = market.get_listings().map(func(l: Dictionary) -> String: return str(l["seller"]))
+		return sellers.has(PartyLabel.SELF) and sellers.any(func(s: String) -> bool: return s.begins_with("p_")), h._step_timeout() * 3.0)
+	var detail := _market_text_verdict(h, h.HOST_NAME) if both else "listings_not_synced"
+	h._report("market_names_seller", h.verdict(detail == "names-seen-no-handle", true), detail)
+
+## The market window's text on this side (every row as `UISlice.refresh_market` renders it): DETAIL when it names
+## `other` and reads "(you)" on this side's own listing, with no public handle anywhere.
+func _market_text_verdict(h: Node, other: String) -> String:
+	var lines: Array = h._root._ui.market_rows().map(func(r: Dictionary) -> String: return PartyLabel.listing_line(r, h._root._ui.own_display_name()))
+	var text := "\n".join(lines)
+	var you := I18n.t("party.you", [""]).strip_edges()
+	if RegEx.create_from_string("p_[0-9a-f]{16}").search(text) != null:
+		return "handle_shown"
+	if not text.contains(other):
+		return "other_not_named"
+	return "names-seen-no-handle" if text.contains(you) else "own_not_marked"

@@ -6,6 +6,7 @@ extends VBoxContainer
 
 const I18n := preload("res://src/core/i18n.gd")
 const ClanSlice := preload("res://src/clan/clan_slice.gd")
+const PartyLabel := preload("res://src/ui/party_label.gd")
 const REFRESH_SEC := 1.0
 const ROLES := ["elder", "member", "guest"]
 
@@ -180,7 +181,7 @@ static func roster_lines(roster: Array, skill: String) -> Array:
 			for k: Variant in best.slice(0, 3):
 				parts.append("%s %d" % [skill_label(str(k)), int((skills[k] as Dictionary).get("xp", 0))])
 			detail = ", ".join(parts)
-		out.append(I18n.t("clan.member_line", [str(m.get("name", "")), I18n.t("clan.role." + str(m.get("role", "guest"))),
+		out.append(I18n.t("clan.member_line", [PartyLabel.member(m), I18n.t("clan.role." + str(m.get("role", "guest"))),
 			I18n.t("clan.online" if bool(m.get("online", false)) else "clan.offline"), detail]))
 	return out
 
