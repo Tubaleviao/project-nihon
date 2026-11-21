@@ -18,9 +18,10 @@ static func hit_stop_on() -> bool:
 static func shake(camera: Camera3D, strength: float = SHAKE_METRES) -> bool:
 	if camera == null or not camera.is_inside_tree() or not shake_on():
 		return false
-	var previous: Variant = camera.get_meta("shake_tween", null)
-	if previous is Tween and (previous as Tween).is_valid():
-		(previous as Tween).kill()   # two quick hits: the first's reset must not cut the second shake short
+	if camera.has_meta("shake_tween"):
+		var previous: Variant = camera.get_meta("shake_tween")
+		if previous is Tween and (previous as Tween).is_valid():
+			(previous as Tween).kill()   # two quick hits: the first's reset must not cut the second shake short
 	var tween := camera.create_tween()
 	camera.set_meta("shake_tween", tween)
 	tween.tween_method(func(t: float) -> void:
