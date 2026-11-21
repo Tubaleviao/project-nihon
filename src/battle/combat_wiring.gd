@@ -151,7 +151,7 @@ func _on_combat_hit_resolved(attacker_id: String, defender_id: String, outcome: 
 		return
 	var a_key := _wire_key(attacker_id)
 	var d_key := _wire_key(defender_id)
-	_animate_hit(a_key, d_key, outcome)
+	_animate_hit(a_key, d_key, outcome, reaction_for(defender_id, _damage))
 	# Only a hosting machine has clients to tell; offline, the send would just warn on every swing.
 	if root._networking != null and root._networking.is_host():
 		var at: Variant = _event_position(a_key, d_key)
@@ -189,7 +189,17 @@ func _character_for_key(key: String) -> String:
 		return root._character.get_player_character()
 	return root._character.get_peer_character(peer)
 
-func _animate_hit(a_key: String, d_key: String, outcome: String) -> void:
+## Phase 287 — "stagger" for a hit past the fabric's share of the defender's max health, else "hit".
+func reaction_for(defender_id: String, damage: float) -> String:
+	var max_hp := 0.0
+	if BattleSlice.is_player_target(defender_id):
+		max_hp = root._player.max_hp if root._player != null else 0.0
+	elif root._battle != null:
+		max_hp = root._battle._field(root._battle._lookup(defender_id), "baseHp", 0.0)
+	var res: Resource = GameData.WORLD_SYSTEMS.get("CombatCombos", null)
+	return PendingHit.reaction(damage, max_hp, float(res.get("staggerShare")) if res != null else 0.25)
+
+func _animate_hit(a_key: String, d_key: String, outcome: String, reaction: String = "hit") -> void:
 	if root._battle == null or root._battle.impact_queue == null or a_key.begins_with("c:"):
 		_swing(a_key)   # with impact timing a player's swing played at the click
 	# The local body flinches on `player_damaged` (which also covers burns and the like), so a hit on it
@@ -198,15 +208,15 @@ func _animate_hit(a_key: String, d_key: String, outcome: String) -> void:
 	# A body killed by this blow (creature or player) goes to its death pose; a queued flinch would
 	# replay on respawn.
 	if outcome != "miss" and outcome != "kill" and not is_local_body:
-		_flinch(d_key)
+		_flinch(d_key, reaction)
 
 ## The local body took damage, from any source: flinch.
-func _on_local_player_damaged(_damage: float, _attacker_id: String, target_id: String) -> void:
+func _on_local_player_damaged(damage: float, _attacker_id: String, target_id: String) -> void:
 	if target_id != "" and target_id != "player" and target_id != root._registry.local_player_id:
 		return
 	var iid: String = root._character.get_player_character()
 	if iid != "":
-		root._character.trigger_hit(iid)
+		root._character.trigger_hit(iid, reaction_for("player", damage) == "stagger")
 
 func _swing(key: String) -> void:
 	if key.begins_with("c:"):
@@ -216,13 +226,13 @@ func _swing(key: String) -> void:
 	if iid != "":
 		root._character.trigger_attack(iid)
 
-func _flinch(key: String) -> void:
+func _flinch(key: String, reaction: String = "hit") -> void:
 	if key.begins_with("c:"):
-		root._creature.trigger_hit_animation(key.substr(2))
+		root._creature.trigger_hit_animation(key.substr(2), reaction)
 		return
 	var iid := _character_for_key(key)
 	if iid != "":
-		root._character.trigger_hit(iid)
+		root._character.trigger_hit(iid, reaction == "stagger")
 
 ## Where a swing happened, for the packet's area of interest: the attacker's body, else the target's.
 func _event_position(a_key: String, d_key: String) -> Variant:

@@ -8,6 +8,8 @@ const DeathPush := preload("res://src/battle/death_push.gd")
 const Bot := preload("res://src/tests/playtest_bot.gd")
 
 func register() -> void:
+	_run_test("animation: a swing while moving plays on the upper body through a bone mask and the feet keep moving (Phase 287)", _test_upper_body_attack)
+	_run_test("animation: a creature hit past the stagger share staggers, a light one flinches (Phase 287)", _test_creature_hit_clip_param)
 	_run_test("animation: the host deals a player swing at the impact time, and a refused re-check deals nothing (Phase 287)", _test_battle_impact_timing)
 	_run_test("animation: a pending hit lands at impact and is cancelled by range, death, stagger or a weapon switch (Phase 287)", _test_pending_hits)
 	_run_test("animation: repeated attacks inside the window play the combo variants, a pause restarts, a missing variant falls back (Phase 287)", _test_combo_chain)
@@ -483,3 +485,40 @@ func _test_battle_impact_timing() -> void:
 	assert_eq(hits.size(), 1, "and no hit sync is sent")
 	GameBus.combat_hit_resolved.disconnect(cb)
 	b.free()
+
+func _test_creature_hit_clip_param() -> void:
+	var f := _fixture()
+	f["gr"]._battle = BattleSliceP.new()
+	add_child(f["gr"]._battle)
+	assert_true(f["gr"]._combat_wiring.reaction_for("GraywolfPack", 1.0) == "hit", "a light hit on a creature is a hit")
+	assert_true(f["gr"]._combat_wiring.reaction_for("GraywolfPack", 1000.0) == "stagger", "a heavy hit on a creature staggers it")
+	f["gr"]._battle.free()
+	f["gr"]._battle = null
+	_free_fixture(f)
+
+func _test_upper_body_attack() -> void:
+	var root := AssetOverlay.load_rig_scene("models/player_rig.glb.raw")
+	var player := root.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	RigTree.prepare_library(player)
+	var tree := RigTree.build_tree(player)
+	root.add_child(tree)
+	var loco_tree: AnimationNodeBlendTree = tree.get_meta("loco_tree")
+	assert_true(loco_tree.has_node(RigTree.UPPER_NODE), "the rig has an upper-body attack node")
+	var shot := loco_tree.get_node(RigTree.UPPER_NODE) as AnimationNodeOneShot
+	assert_true(shot.filter_enabled, "the node is filtered (a bone mask)")
+	var paths := RigTree.upper_body_paths(player)
+	assert_true(not paths.is_empty(), "the mask names the upper-body bones")
+	for p in paths:
+		assert_true(shot.is_path_filtered(p), "%s is masked in" % p)
+		assert_false(str(p).ends_with(":Leg_L") or str(p).ends_with(":Shin_L") or str(p).ends_with(":Foot_L"), "no leg bone is masked in")
+	var loco := Locomotion.new()
+	loco.update(3.0, true, 0.0, 0.1)
+	loco.trigger_attack("attack_1h", 0.5)
+	assert_true(loco.get_state() == Locomotion.State.ATTACK and loco.get_speed() > RigTree.UPPER_ATTACK_MIN_SPEED, "a swing while running keeps its speed")
+	assert_true(RigTree.swing_on_upper_body(tree, loco), "it plays on the upper body")
+	RigTree.drive_shots(tree, null, loco)
+	assert_eq(int(tree.get_meta("upper_shots", 0)), 1, "the upper-body one-shot fired")
+	var still := Locomotion.new()
+	still.trigger_attack("attack_1h", 0.5)
+	assert_false(RigTree.swing_on_upper_body(tree, still), "a standing swing keeps its own state")
+	root.free()

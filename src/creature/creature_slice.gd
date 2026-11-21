@@ -472,8 +472,8 @@ func _turned_back_at_ground(instance_id: String, cur: Dictionary, delta: Vector3
 func trigger_attack_animation(id: String) -> bool:
 	return _visuals != null and _visuals.trigger_attack(id)
 
-func trigger_hit_animation(id: String) -> bool:
-	return _visuals != null and _visuals.trigger_hit(id)
+func trigger_hit_animation(id: String, clip: String = "hit") -> bool:
+	return _visuals != null and _visuals.trigger_hit(id, clip)
 
 func get_all_instances() -> Array:
 	var out: Array = []
