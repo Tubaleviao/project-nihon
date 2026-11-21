@@ -12,6 +12,7 @@ const PlayerSlice      := preload("res://src/player/player_slice.gd")
 const StatusEffects    := preload("res://src/battle/status_effects.gd")
 const RigTree          := preload("res://src/character/rig_tree.gd")
 const PendingHit       := preload("res://src/battle/pending_hit.gd")
+const HitFeel          := preload("res://src/battle/hit_feel.gd")
 const ComboChain       := preload("res://src/battle/combo_chain.gd")
 
 func tick(_delta: float) -> void:
@@ -152,6 +153,8 @@ func _on_combat_hit_resolved(attacker_id: String, defender_id: String, outcome: 
 	var a_key := _wire_key(attacker_id)
 	var d_key := _wire_key(defender_id)
 	_animate_hit(a_key, d_key, outcome, reaction_for(defender_id, _damage))
+	if outcome != "miss" and (attacker_id == "player" or attacker_id == root._registry.local_player_id):
+		_hit_feel()
 	# Only a hosting machine has clients to tell; offline, the send would just warn on every swing.
 	if root._networking != null and root._networking.is_host():
 		var at: Variant = _event_position(a_key, d_key)
@@ -188,6 +191,14 @@ func _character_for_key(key: String) -> String:
 	if peer == local_peer:
 		return root._character.get_player_character()
 	return root._character.get_peer_character(peer)
+
+## Phase 287 — the local attacker's landed hit: camera shake and a 40 ms hit-stop (each an option).
+func _hit_feel() -> void:
+	if root._player != null:
+		HitFeel.shake(root._player._camera)
+	var iid: String = root._character.get_player_character()
+	if iid != "":
+		HitFeel.hit_stop(root._character._instances[iid].get("anim_tree", null))
 
 ## Phase 287 — "stagger" for a hit past the fabric's share of the defender's max health, else "hit".
 func reaction_for(defender_id: String, damage: float) -> String:

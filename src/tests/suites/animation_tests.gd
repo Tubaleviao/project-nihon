@@ -8,6 +8,7 @@ const DeathPush := preload("res://src/battle/death_push.gd")
 const Bot := preload("res://src/tests/playtest_bot.gd")
 
 func register() -> void:
+	_run_test("animation: camera shake and hit-stop are options, on by default (Phase 287)", _test_hit_feel_options)
 	_run_test("animation: a swing while moving plays on the upper body through a bone mask and the feet keep moving (Phase 287)", _test_upper_body_attack)
 	_run_test("animation: a creature hit past the stagger share staggers, a light one flinches (Phase 287)", _test_creature_hit_clip_param)
 	_run_test("animation: the host deals a player swing at the impact time, and a refused re-check deals nothing (Phase 287)", _test_battle_impact_timing)
@@ -522,3 +523,20 @@ func _test_upper_body_attack() -> void:
 	still.trigger_attack("attack_1h", 0.5)
 	assert_false(RigTree.swing_on_upper_body(tree, still), "a standing swing keeps its own state")
 	root.free()
+
+const HitFeel := preload("res://src/battle/hit_feel.gd")
+const GameSettings := preload("res://src/core/game_settings.gd")
+
+func _test_hit_feel_options() -> void:
+	assert_true(GameSettings.SPEC.has("camera_shake") and GameSettings.SPEC.has("hit_stop"), "both switches are options")
+	assert_true(GameSettings.SPEC["camera_shake"]["default"] and GameSettings.SPEC["hit_stop"]["default"], "on by default")
+	var cam := Camera3D.new()
+	add_child(cam)
+	var before: bool = GameSettings.get_value("camera_shake")
+	GameSettings.set_value("camera_shake", true, null, false)
+	assert_true(HitFeel.shake(cam), "a landed hit shakes the camera")
+	GameSettings.set_value("camera_shake", false, null, false)
+	assert_false(HitFeel.shake(cam), "and not with the option off")
+	GameSettings.set_value("camera_shake", before, null, false)
+	cam.free()
+	assert_false(HitFeel.hit_stop(null), "no tree, no hit-stop")

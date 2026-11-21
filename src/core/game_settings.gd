@@ -51,6 +51,8 @@ const SPEC := {
 	"tutorial": { "tab": "game", "type": "bool", "default": true },
 	"mouse_sensitivity": { "tab": "game", "type": "float", "default": 1.0, "min": 0.2, "max": 3.0 },
 	"invert_y": { "tab": "game", "type": "bool", "default": false },
+	"camera_shake": { "tab": "game", "type": "bool", "default": true },   # Phase 287 — a landed hit shakes the camera
+	"hit_stop": { "tab": "game", "type": "bool", "default": true },       # Phase 287 — a landed hit freezes the attacker 40 ms
 }
 
 ## The values in effect; `load_values` replaces them from the file.

@@ -59,6 +59,7 @@ func _test_round_trip() -> void:
 			"volume_ui": 0.6, "window_mode": "windowed",
 			"resolution": "1600x900", "vsync": false, "view_distance": 3, "fps_cap": 120, "render_scale": 0.75,
 			"scale_mode": "fsr2", "terrain_quality": "low", "tutorial": false, "mouse_sensitivity": 1.5, "invert_y": true,
+			"camera_shake": false, "hit_stop": false,
 		}
 		assert_eq(changes.size(), GameSettings.SPEC.size(), "the test changes every setting")
 		var vp := SubViewport.new()
