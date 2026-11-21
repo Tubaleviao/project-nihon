@@ -693,6 +693,7 @@ func attach_rig(instance_id: String, rig_key: String) -> bool:
 		rig_root.free()
 		return false
 	rig_root.name = "RigScene"
+	rig_root.set_meta(AvatarBuilder.OWN_HEAD_META, AvatarBuilder.is_body_key(rig_key))
 	var root: Node3D = inst["root"]
 	# The rig replaces the procedural box body: hide it (the limb swing stops too, see
 	# `_animate_limbs`) so both do not render over each other.
@@ -752,7 +753,8 @@ func build_avatar(instance_id: String, appearance: Dictionary) -> Dictionary: re
 ## Attach the first default rig the manifest lists. False (the procedural body stays)
 ## when none is listed or the scene fails to load.
 func attach_default_rig(instance_id: String) -> bool:
-	var key: String = AssetOverlay.first_key("meshes", DEFAULT_RIG_KEYS)
+	var appearance: Dictionary = _instances[instance_id]["appearance"] if _instances.has(instance_id) else {}
+	var key: String = AvatarBuilder.rig_key(self, appearance)   # Phase 286: the body type's own mesh, else the default
 	return key != "" and attach_rig(instance_id, key)
 
 func get_locomotion_state(instance_id: String) -> int:

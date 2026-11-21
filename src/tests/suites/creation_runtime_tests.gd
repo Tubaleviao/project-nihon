@@ -24,6 +24,7 @@ func register() -> void:
 	_run_test("creation runtime: every hair style loads its own mesh on the head socket and a change swaps it (Phase 265)", _test_hair_meshes)
 	_run_test("creation runtime: every hair key has a public placeholder (Phase 265)", _test_hair_placeholders)
 	_run_test("creation runtime: hair and head anchors coincide and the scalp gap stays within 1 cm, also at head scale 1.2 (Phase 284)", _test_hair_anchors_and_scalp_gap)
+	_run_test("creation runtime: a male and a female character attach their own body and head, the male's shoulder/hip ratio 15% above (Phase 286)", _test_body_types_differ)
 	_run_test("creation runtime: hair is fitted by its anchors, and a rig without one keeps the old placement (Phase 284)", _test_hair_fit_and_fallback)
 	_run_test("creation runtime: every skin and icon key has a public placeholder at its size, and no orphan exists", _test_skin_placeholders)
 	_run_test("creation runtime: the screen builds from the public tree and sends what the player chose", _test_screen)
@@ -712,4 +713,49 @@ func _test_hair_fit_and_fallback() -> void:
 	# The fit moves the hair by the anchor difference and scales both with the head.
 	var t := AvatarBuilder.fit_transform(Vector3(0, 0.4, 0), Vector3(0, 0.3, 0), 1.2)
 	assert_true(t.origin.distance_to(Vector3(0, 0.12, 0)) < 1e-6 and is_equal_approx(t.basis.x.x, 1.2), "the fit offsets and scales")
+	ch.free()
+
+
+# --- Phase 286: men and women who look different ------------------------------------------------------------------
+
+func _joint_x(scene: Node3D, bone: String) -> float:
+	var skeleton := scene.find_children("*", "Skeleton3D", true, false)[0] as Skeleton3D
+	return absf(skeleton.get_bone_global_rest(skeleton.find_bone(bone)).origin.x)
+
+
+func _test_body_types_differ() -> void:
+	var ch := CharacterSlice.new()
+	add_child(ch)
+	var ratios := {}
+	var meshes := {}
+	for g in ["masculine", "feminine"]:
+		var recipe: Dictionary = ch.creation_recipe({ "gender": g, "hair": "hair_m_crop" if g == "masculine" else "hair_f_bob", "hairColor": 129 })
+		var iid: String = ch.create_character_from_recipe(recipe, Vector3.ZERO)
+		assert_true(ch.attach_default_rig(iid), "%s: a rig attaches" % g)
+		var want := "models/characters/bodies/%s.glb.raw" % ("chibi_body_m" if g == "masculine" else "chibi_body_f")
+		assert_eq(ch._instances[iid]["rig_key"], want, "%s: the body type's own mesh" % g)
+		var scene: Node3D = ch._instances[iid]["rig_node"]
+		assert_true(scene.find_child(AvatarBuilder.HEAD_NODE, true, false) != null, "%s: its own head mesh is on the Head bone" % g)
+		# Shoulder joint span over hip joint span, measured on the placeholder skeleton.
+		ratios[g] = _joint_x(scene, "Arm_L") / _joint_x(scene, "Leg_L")
+		var body: MeshInstance3D = null
+		for m in scene.find_children("*", "MeshInstance3D", true, false):
+			if (m as MeshInstance3D).name == "Body":
+				body = m
+		assert_true(body != null, "%s: a body mesh" % g)
+		meshes[g] = [body.mesh.get_aabb(), (scene.find_child(AvatarBuilder.HEAD_NODE, true, false) as MeshInstance3D).mesh.get_aabb()]
+		# Every equipment socket resolves to a bone of this body's skeleton, and a chestplate attaches.
+		var skeleton := scene.find_children("*", "Skeleton3D", true, false)[0] as Skeleton3D
+		for socket in ["socket_head", "socket_chest", "socket_weapon_r", "socket_weapon_l", "socket_shield", "socket_back",
+				"socket_hip_r", "socket_hip_l", "socket_cape"]:
+			var bone: String = ch._instances[iid]["rig"].socket_to_bone(socket)
+			assert_true(bone != "" and skeleton.find_bone(bone) != -1, "%s: %s is a bone of the body (%s)" % [g, socket, bone])
+		assert_true(ch.apply_equipment(iid, "Chest", "VeilsteelChestplate"), "%s: a chestplate attaches" % g)
+		assert_true(ch.get_part_node(iid, "Chest") != null, "%s: the chestplate is on" % g)
+	assert_true(ratios["masculine"] >= ratios["feminine"] * 1.15, "the male shoulder/hip ratio is >= 15%% above the female's (%.2f vs %.2f)" % [ratios["masculine"], ratios["feminine"]])
+	assert_true(meshes["masculine"] != meshes["feminine"], "the attached meshes differ")
+	# Without a body mesh in the manifest the single rig stays as the fallback.
+	var plain := ch.create_character_from_recipe({ "skeleton": "HumanoidSkeleton", "body": "no_such_body" }, Vector3.ZERO)
+	assert_true(ch.attach_default_rig(plain), "an unknown body id still gets a rig")
+	assert_eq(ch._instances[plain]["rig_key"], "models/player_rig.glb.raw", "the default rig is the fallback")
 	ch.free()

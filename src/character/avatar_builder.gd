@@ -13,6 +13,13 @@ const HAIR_KEY_FORMAT := "models/characters/hair/%s.glb.raw"
 const HAIR_SOCKET := "HairSocket"
 const HAIR_NODE := "Hair"
 const HEAD_BONE := "Head"
+## Phase 286: the body type's own meshes on the shared skeleton and clips.
+const BODY_KEY_FORMAT := "models/characters/bodies/%s.glb.raw"
+const HEAD_KEY_FORMAT := "models/characters/heads/%s.glb.raw"
+const HEAD_SOCKET := "HeadSocket"
+const HEAD_NODE := "HeadMesh"
+## Meta on a rig scene whose body has no head of its own mesh: the builder attaches the head's mesh.
+const OWN_HEAD_META := "own_head"
 ## Phase 284: the scalp-top marker a head carries (a node of the rig scene) and the matching marker of a hair mesh.
 const HEAD_ANCHOR := "hair_anchor"
 const HAIR_ANCHOR := "anchor"
@@ -21,6 +28,52 @@ static var _warned_no_anchor := {}
 const IDLE_CLIP := "idle"
 ## Meta on the hair mesh: the style id it was loaded for.
 const HAIR_META := "hair_style"
+
+## The rig a character wears: its body type's own mesh (`models/characters/bodies/<body>.glb.raw`) when the manifest
+## lists one, else the first default rig (the single rig mesh stays as the fallback). The body id is an
+## unvalidated string, so only a key the manifest lists is ever loaded.
+static func rig_key(ch: Node, appearance: Dictionary) -> String:
+	var body := str(appearance.get("body", ""))
+	if body != "":
+		var key := BODY_KEY_FORMAT % body
+		if AssetOverlay.has_key("meshes", key):
+			return key
+	return AssetOverlay.first_key("meshes", ch.DEFAULT_RIG_KEYS)
+
+static func is_body_key(key: String) -> bool:
+	return key.begins_with("models/characters/bodies/")
+
+## The manifest key of the head mesh for an appearance, "" when none is listed. `head` falls back to the body id's
+## sibling (`chibi_body_m` -> `chibi_head_m`).
+static func head_key(appearance: Dictionary) -> String:
+	var head := str(appearance.get("head", ""))
+	if head == "" or not AssetOverlay.has_key("meshes", HEAD_KEY_FORMAT % head):
+		head = str(appearance.get("body", "")).replace("body", "head")
+	var key := HEAD_KEY_FORMAT % head
+	return key if head != "" and AssetOverlay.has_key("meshes", key) else ""
+
+## Put the appearance's head mesh on the Head bone of a rig scene marked `own_head`. Returns the mesh node or null.
+static func attach_head(rig_scene: Node3D, appearance: Dictionary) -> MeshInstance3D:
+	for old in rig_scene.find_children(HEAD_SOCKET, "BoneAttachment3D", true, false):
+		old.get_parent().remove_child(old)
+		old.free()
+	var key := head_key(appearance)
+	var mesh: Mesh = AssetOverlay.load_mesh(key) if key != "" else null
+	var skeleton: Skeleton3D = null
+	for n in rig_scene.find_children("*", "Skeleton3D", true, false):
+		skeleton = n as Skeleton3D
+		break
+	if mesh == null or skeleton == null or skeleton.find_bone(HEAD_BONE) == -1:
+		return null
+	var node := MeshInstance3D.new()
+	node.name = HEAD_NODE
+	node.mesh = mesh
+	var socket := BoneAttachment3D.new()
+	socket.name = HEAD_SOCKET
+	socket.bone_name = HEAD_BONE
+	skeleton.add_child(socket)
+	socket.add_child(node)
+	return node
 
 ## The manifest key of a hair style's mesh, "" when the style has none (or none is listed).
 static func hair_key(hair_id: String) -> String:
@@ -51,6 +104,8 @@ static func dress(ch: Node, rig_scene: Node3D, appearance: Dictionary) -> void:
 	var sheets: Dictionary = ch._sheets_for_body(str(appearance.get("body", "")))
 	var mat := CharacterMaterial.body_material(ch._palette_colors(), str(sheets["id"]))
 	CharacterMaterial.bind_rig_textures(mat, sheets["detail"], sheets["color_mask"], sheets["channel"])
+	if rig_scene.get_meta(OWN_HEAD_META, false):
+		attach_head(rig_scene, appearance)
 	var skin: int = int(appearance.get("skinColor", 12))   # mask: primary hair, secondary eye, accent beard
 	for node in rig_scene.find_children("*", "MeshInstance3D", true, false):
 		var mesh := node as MeshInstance3D
@@ -119,7 +174,7 @@ static func hair_node(root: Node) -> MeshInstance3D:
 ## dressing `attach_rig` gives a world instance. `built["rig_node"]` is the scene (absent on the fallback).
 static func build(ch: Node, instance_id: String, appearance: Dictionary) -> Dictionary:
 	var built: Dictionary = ch._make_visual(instance_id, appearance)
-	var key: String = AssetOverlay.first_key("meshes", ch.DEFAULT_RIG_KEYS)
+	var key: String = rig_key(ch, appearance)
 	if key == "" or not built.has("root"):
 		return built
 	var scene := AssetOverlay.load_rig_scene(key)
@@ -130,6 +185,7 @@ static func build(ch: Node, instance_id: String, appearance: Dictionary) -> Dict
 		scene.free()
 		return built
 	scene.name = "RigScene"
+	scene.set_meta(OWN_HEAD_META, is_body_key(key))
 	var root: Node3D = built["root"]
 	var impostor: Variant = built.get("impostor", null)
 	for child in root.get_children():
