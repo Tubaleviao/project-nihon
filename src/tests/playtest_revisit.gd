@@ -8,6 +8,12 @@ const NativeBuilder := preload("res://src/terrain/native_builder.gd")
 const TickProbe := preload("res://src/core/tick_probe.gd")
 ## CI runners spread worker time by about 15%: 0.5 failed a run at 4.4 ms against 8.1 (a ratio of 0.54).
 const MAX_SHARE := 0.65
+## Pull requests pass this to the bot: verdicts that are a machine-speed number (this step's worker share, the
+## flight step's coverage) are reported, not gated. perf.yml gates them on main, nightly and `perf` PRs.
+const TIMING_REPORT_ONLY_ARG := "--playtest-timing-report-only"
+
+static func timing_report_only() -> bool:
+	return TIMING_REPORT_ONLY_ARG in OS.get_cmdline_user_args()
 
 ## `bot` is the PlaytestBot; returns the step's `[ok, note]`.
 static func run(bot: Node) -> Array:
@@ -47,4 +53,7 @@ static func run(bot: Node) -> Array:
 		return [false, note + "; the start chunk never rebuilt"]
 	if NativeBuilder.mode() != NativeBuilder.MODE_NATIVE:
 		return [true, note + " (report only: %s builder)" % NativeBuilder.mode()]
+	if timing_report_only():
+		# A pull request run: the disk cache must still have served the second pass; only the worker share is report-only.
+		return [from_disk > 0, note + " (worker share report only: timing gates run in perf.yml)"]
 	return [from_disk > 0 and b <= a * MAX_SHARE, note]

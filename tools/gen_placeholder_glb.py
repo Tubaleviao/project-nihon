@@ -863,6 +863,46 @@ GESTURE_CLIPS = [
 ]
 PLAYER_CLIPS.extend(GESTURE_CLIPS)
 
+# Phase 281 — one clip per kind of work (fabric/gameplay/work_clips.js), each a rough version of the motion the
+# roadmap describes, none a copy of attack_tool. The strike lands at the clip's 40% mark (`impact` marker).
+WORK_CLIPS = [
+    # chop: a side swing from the shoulder at chest height, both hands on the haft.
+    ("chop", [0.0, 0.2, 0.4, 0.7], {
+        "Spine": [(0, 0, 0), (0, -25, 0), (6, 20, 0), (0, 0, 0)],
+        "Arm_R": [(0, 0, 0), (60, 0, -55), (70, 0, 35), (0, 0, 0)],
+        "Arm_L": [(0, 0, 0), (60, 0, -35), (70, 0, 20), (0, 0, 0)],
+        "Forearm_R": [(0, 0, 0), (50, 0, 0), (30, 0, 0), (0, 0, 0)]}),
+    # mine: an overhead two-handed swing driving the pick down and forward, a small recoil after.
+    ("mine", [0.0, 0.25, 0.4, 0.55, 0.8], {
+        "Spine": [(0, 0, 0), (-18, 0, 0), (24, 0, 0), (12, 0, 0), (0, 0, 0)],
+        "Arm_R": [(0, 0, 0), (175, 0, 0), (55, 0, 0), (75, 0, 0), (0, 0, 0)],
+        "Arm_L": [(0, 0, 0), (170, 0, 0), (50, 0, 0), (70, 0, 0), (0, 0, 0)],
+        "Forearm_R": [(0, 0, 0), (60, 0, 0), (5, 0, 0), (20, 0, 0), (0, 0, 0)]}),
+    # dig: the shovel pushed in with a foot on the blade, levered back, the load tossed aside.
+    ("dig", [0.0, 0.25, 0.55, 0.85, 1.1], {
+        "Spine": [(0, 0, 0), (30, 0, 0), (-10, 0, 10), (5, 0, -25), (0, 0, 0)],
+        "Arm_R": [(0, 0, 0), (35, 0, 0), (70, 0, 0), (45, 0, -50), (0, 0, 0)],
+        "Arm_L": [(0, 0, 0), (35, 0, 0), (60, 0, 0), (40, 0, -30), (0, 0, 0)],
+        "Leg_R": [(0, 0, 0), (45, 0, 0), (10, 0, 0), (0, 0, 0), (0, 0, 0)],
+        "Shin_R": [(0, 0, 0), (-30, 0, 0), (-5, 0, 0), (0, 0, 0), (0, 0, 0)]}),
+    # build: a short hammering loop, two to three strikes, the off hand steadying the piece.
+    ("build", [0.0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9], {
+        "Spine": [(0, 0, 0), (10, 0, 0), (10, 0, 0), (10, 0, 0), (10, 0, 0), (10, 0, 0), (0, 0, 0)],
+        "Arm_R": [(0, 0, 0), (120, 0, 0), (60, 0, 0), (120, 0, 0), (60, 0, 0), (120, 0, 0), (0, 0, 0)],
+        "Forearm_R": [(0, 0, 0), (70, 0, 0), (10, 0, 0), (70, 0, 0), (10, 0, 0), (70, 0, 0), (0, 0, 0)],
+        "Arm_L": [(0, 0, 0), (50, 0, 0), (50, 0, 0), (50, 0, 0), (50, 0, 0), (50, 0, 0), (0, 0, 0)]}),
+    # dissect: kneeling by the carcass, a cutting loop with the knife low and in front. Hips drop 45 cm.
+    ("dissect", [0.0, 0.4, 0.7, 1.0, 1.3, 1.6], {
+        "Root:t": [(0, 0, 0), (0, -0.45, 0), (0, -0.45, 0), (0, -0.45, 0), (0, -0.45, 0), (0, -0.45, 0)],
+        "Leg_L": [(0, 0, 0), (80, 0, 0), (80, 0, 0), (80, 0, 0), (80, 0, 0), (80, 0, 0)],
+        "Shin_L": [(0, 0, 0), (-80, 0, 0), (-80, 0, 0), (-80, 0, 0), (-80, 0, 0), (-80, 0, 0)],
+        "Shin_R": [(0, 0, 0), (-140, 0, 0), (-140, 0, 0), (-140, 0, 0), (-140, 0, 0), (-140, 0, 0)],
+        "Spine": [(0, 0, 0), (35, 0, 0), (40, 0, 0), (35, 0, 0), (40, 0, 0), (35, 0, 0)],
+        "Arm_R": [(0, 0, 0), (50, 0, 0), (20, 0, 20), (50, 0, 0), (20, 0, 20), (50, 0, 0)],
+        "Forearm_R": [(0, 0, 0), (60, 0, 0), (90, 0, 0), (60, 0, 0), (90, 0, 0), (60, 0, 0)]}),
+]
+PLAYER_CLIPS.extend(WORK_CLIPS)
+
 # ---------------------------------------------------------------------------
 # Phase 180 — character creation: chibi bodies, heads and hair
 # ---------------------------------------------------------------------------

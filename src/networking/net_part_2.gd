@@ -194,6 +194,13 @@ func send_combat_hit(attacker_key: String, defender_key: String, outcome: String
 		"o":    outcome,
 	}, position)
 
+## Phase 281 — host → clients in range of `position`: peer `subject_peer` (the host's own body is peer 1) started
+## working (`kind` is a work kind) or stopped (""). Animation only.
+func send_work_anim(subject_peer: int, kind: String, position: Vector3) -> void:
+	if sl._role != sl.Role.HOST:
+		return
+	sl._broadcast_aoi({ "type": "work_anim", "p": subject_peer, "k": kind }, position)
+
 ## Phase 159 — host → clients in range of `position`: peer `subject_peer` (the host's own body is peer 1)
 ## started `gesture_id`, or stood up (""). Animation only; the actor's own client is in range of itself.
 ## Phase 196 — `lift` (>= 0) is the seat rise the host resolved for a Sit, so every viewer shows the same one.
@@ -972,6 +979,7 @@ func _work_claimed(sender: int, kind: String, tree_id: String, pos: Vector3, nor
 	if t.is_empty() or not host.claim(actor, str(t["key"]), Time.get_ticks_msec() * 0.001):
 		sl.Diag.warn("NetworkingSlice: %s completion from peer %d before the host's timer — dropped" % [kind, sender])
 		return false
+	GameBus.work_anim_changed.emit(sender, "")
 	return true
 
 func _work_intent(sender: int, payload: Dictionary) -> void:
@@ -981,6 +989,7 @@ func _work_intent(sender: int, payload: Dictionary) -> void:
 		return
 	if str(payload.get("type", "")) == "work_cancel_intent":
 		host.cancel(actor)
+		GameBus.work_anim_changed.emit(sender, "")
 		return
 	var kind := str(payload.get("work", ""))
 	var tree_id := str(payload.get("tree_id", ""))
@@ -1001,6 +1010,7 @@ func _work_intent(sender: int, payload: Dictionary) -> void:
 		return
 	var r: Dictionary = host.start(actor, kind, tree_id, pos, sl._vec3(payload.get("normal", [0, 1, 0])), exact, Time.get_ticks_msec() * 0.001)
 	if bool(r["ok"]):
+		GameBus.work_anim_changed.emit(sender, str(r["action"]))   # Phase 281: the host's copy, then peers in range
 		sl._deliver(sender, { "type": "work_started", "key": r["key"], "duration": r["duration"], "action": r["action"], "material": r["material"] })
 
 # --- Phase 263: answers to a client's predicted edit ---
