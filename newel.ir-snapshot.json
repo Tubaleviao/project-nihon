@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:e826483289e011830ca3d7364d5a81a542f6d9bf30e30fa6da13b8eccecf30c3",
+  "schemaHash": "sha256:7d7937a6395b5a4704cb45ec7b0d6f5d4736f17e622ab6210dd8e75e6304751f",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -53832,9 +53832,9 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
-              "height": 0.8,
+              "height": 0.85,
               "bodyMass": 1.1,
-              "shoulderWidth": 1,
+              "shoulderWidth": 1.1,
               "armLength": 0.7,
               "legLength": 0.55,
               "headScale": 2.6
@@ -53972,7 +53972,7 @@
             "defaultValue": {
               "height": 0.75,
               "bodyMass": 1.05,
-              "shoulderWidth": 0.95,
+              "shoulderWidth": 0.9,
               "armLength": 0.7,
               "legLength": 0.55,
               "headScale": 2.6

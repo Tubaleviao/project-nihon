@@ -245,13 +245,14 @@ func trigger_attack(instance_id: String, clip: String = "") -> void:
 	inst["locomotion"].trigger_attack(clip, float(lengths.get(played, -1.0)))
 
 ## Phase 281 — play the clip of work `kind` on an instance (its own clip, `attack_tool` when the rig lacks it).
-## Returns the clip played ("" when the instance is unknown).
+## Returns the clip played ("" when the instance is unknown). A body with no rig yet (a peer's copy is built
+## procedural) has no clip list to miss from, so it gets the kind's own clip, as a body not drawn at all does.
 func trigger_work(instance_id: String, kind: String) -> String:
 	if not sl._instances.has(instance_id):
 		return ""
 	var inst: Dictionary = sl._instances[instance_id]
 	var lengths: Dictionary = inst.get("swing_lengths", {})
-	var clip: String = WorkAnim.resolve(kind, lengths)
+	var clip: String = WorkAnim.resolve(kind, lengths) if inst.has("swing_lengths") else WorkAnim.clip_of(kind)
 	inst["locomotion"].trigger_attack(clip, float(lengths.get(clip, -1.0)))
 	inst["work_clip"] = clip
 	return clip

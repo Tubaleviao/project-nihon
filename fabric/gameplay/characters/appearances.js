@@ -57,12 +57,13 @@ module.exports = {
 
   NoviceMasculine: novicePreset({
     gender: 'masculine', body: 'chibi_body_m', head: 'chibi_head_m', eyes: 'chibi_eyes_m', hair: 'hair_m_crop',
-    proportions: CHIBI_PROPORTIONS,
+    // Phase 286: broader than the shared chibi base, so the two bodies read apart at gameplay distance.
+    proportions: { ...CHIBI_PROPORTIONS, height: 0.85, shoulderWidth: 1.1 },
   }),
 
   NoviceFeminine: novicePreset({
     gender: 'feminine', body: 'chibi_body_f', head: 'chibi_head_f', eyes: 'chibi_eyes_f', hair: 'hair_f_bob',
-    proportions: { ...CHIBI_PROPORTIONS, height: 0.75, bodyMass: 1.05, shoulderWidth: 0.95 },
+    proportions: { ...CHIBI_PROPORTIONS, height: 0.75, bodyMass: 1.05, shoulderWidth: 0.9 },
   }),
 
   TravellerHuman: defineEntity({
