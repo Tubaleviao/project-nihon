@@ -1497,8 +1497,8 @@ This phase is the base the server list (298, 299) builds on.
   `1.2.3.4:port`, `[v6]:port`, and a bare IPv6 literal, which never carries a port (`2001:db8::1` is the whole
   host). No port means `DEFAULT_PORT`. A host takes `--port <n>` (default 7777).
 - **Dual-stack.** A listen host and a dedicated server keep the default `*` bind (dual-stack, and IPv4 alone
-  where the OS has no IPv6), now covered by a test. `--bind <addr>` overrides it. The Join screen accepts IPv6 literals (`[2001:db8::1]:7777` and bare `2001:db8::1`), and a host
-  name that resolves to both families is tried IPv6 first, then IPv4 after 250 ms (Happy Eyeballs, RFC 8305),
+  where the OS has no IPv6), now covered by a test. `--bind <addr>` overrides it. The Join screen accepts IPv6
+  literals (`[2001:db8::1]:7777` and bare `2001:db8::1`), and a host name that resolves to both families is tried IPv6 first, then IPv4 after 250 ms (Happy Eyeballs, RFC 8305),
   keeping whichever answers first. IPv6 does not lower latency; it matters because a self-hoster behind IPv4
   CGNAT, common in Brazil, can be reached on IPv6 with only a firewall rule and no port forward.
 - **Status port.** Every host answers a small UDP status query on a second port (default the game port + 1,
@@ -1569,8 +1569,8 @@ public servers.
 
 ## Phase 299 — Many registries: signed entries, gossip and no single owner
 
-Needs Phase 298 and parked Phase 227 (the key algorithm). The list should survive any one registry going away and be hard to fake, in keeping with an
-open-source game anyone can host.
+Needs Phase 298 and parked Phase 227 (the key algorithm). The list should survive any one registry going away
+and be hard to fake, in keeping with an open-source game anyone can host.
 
 - **Host key.** Every host gets its own signing key and a world id, as Phase 228 specifies (`user://` for a
   listen host, the save folder for a dedicated server); this phase brings that part of 228 forward, and 228
