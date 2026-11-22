@@ -24,6 +24,12 @@ const { SKILL_TIERS } = require('./skills/shared')
 //                 weapons (Unarmed: the body is the weapon). The equipped weapon must be of a listed category.
 // REFUSALS        the localized reason keys the host sends when gear is below the tier.
 //
+// Hammers come in three tiers only (stone novice, ferrite apprentice, veilsteel master). So the journeyman arcane
+// forge recipes and the expert void-shielded workshop one need the Veilsteel Hammer, which a smith makes at a master
+// forge: an arcanist or void-smith trades for it or learns smithing. That dependency between professions is
+// intended for now; journeyman and expert hammers (Aethermite, Voidite) are later content. The climb below checks
+// the world as a whole (one character with every skill), not one profession's path.
+//
 // The host decides: combat from the skill tier and the equipped weapon's tier; crafting from the skill guards, the
 // tool tier and the tier of the placed station, read from its own structure record. Skill XP grows with any gear;
 // only use is capped.
@@ -108,10 +114,13 @@ function gearTiersRefs() {
     if (s.category !== undefined) out.equipment[k] = { category: s.category, material: s.material, tier: dv(items[k], 'tier') }
   }
   for (const [k, e] of Object.entries(items)) {
-    if ((e.tags || []).includes('station')) out.stationItems[k] = { tier: dv(e, 'tier') }
+    if ((e.tags || []).includes('station')) out.stationItems[k] = { tier: dv(e, 'tier'), declared: Object.hasOwn(e.fields || {}, 'tier') }
   }
   for (const [t, row] of Object.entries(require('./stations').STATIONS.stations)) out.placement[t] = row.placementItem
-  for (const [k, e] of Object.entries({ ...require('./recipes'), RecipeHearth: settlement.RecipeHearth })) {
+  // Recipes live in ./recipes and settlement (the hearth); tools/check_gear_tiers.js proves this set is every
+  // recipe-tagged entity in the fabric, so a recipe added elsewhere cannot skip these checks.
+  for (const [k, e] of Object.entries({ ...require('./recipes'), ...settlement })) {
+    if (!e || !(e.tags || []).includes('recipe')) continue
     const r = dv(e, 'recipe')
     if (r) out.recipes[k] = clone(r)
   }
@@ -119,8 +128,9 @@ function gearTiersRefs() {
     if (!e || !(e.tags || []).includes('skill') || dv(e, 'category') !== 'combat') continue
     const behaviors = {}
     for (const [b, def] of Object.entries(e.behaviors || {})) {
-      const t = (def.rules || []).map((r) => ruleTier(r, k)).find((x) => x)
-      if (t && b !== 'advanceTier') behaviors[b] = t
+      if (b === 'advanceTier') continue
+      // Every other behavior of a combat skill is an ability; null when no rule names its tier.
+      behaviors[b] = (def.rules || []).map((r) => ruleTier(r, k)).find((x) => x) || null
     }
     out.combatSkills[k] = behaviors
   }
@@ -149,6 +159,7 @@ function climb(d, refs) {
     if (r.requiredTier === d.floor) return true
     const cat = d.stationTools[r.station || '']
     if (cat === null) return true
+    // An unknown station (cat undefined) is rejected before the climb runs; kept so climb() is safe on its own.
     return cat !== undefined && (tools[cat] ?? -1) >= rank(r.requiredTier)
   }
   let changed = true
@@ -158,6 +169,7 @@ function climb(d, refs) {
       if (craftable.has(k)) continue
       const st = r.station || ''
       if (st && !stations.has(st)) continue
+      // Also rejected before the climb; kept so climb() is safe on its own (it is exported).
       if (st && !(rank(stTiers[st]) >= rank(r.requiredTier))) continue
       if (!toolOk(r)) continue
       craftable.add(k); changed = true
@@ -219,6 +231,10 @@ function gearTiersProblems(d, refs) {
     else tierOk(item, t)
     if (!Object.hasOwn(d.stationTools, st)) p.push(`stationTools["${st}"] is missing: say which tool its recipes use (or null)`)
   }
+  const crafting = new Set(Object.keys(stTiers).map((st) => refs.placement[st]))
+  for (const [k, row] of Object.entries(refs.stationItems)) {
+    if (!crafting.has(k) && row.declared) p.push(`${k} carries a tier, but no recipe is made at its station: only crafting stations have one`)
+  }
   for (const [st, cat] of Object.entries(d.stationTools)) {
     if (!Object.hasOwn(stTiers, st)) p.push(`stationTools["${st}"]: no recipe is made at it`)
     if (cat !== null && !refs.categories.includes(cat)) p.push(`stationTools["${st}"]: "${cat}" is not an equipment category`)
@@ -255,6 +271,7 @@ function gearTiersProblems(d, refs) {
     for (const [a, t] of Object.entries(row.abilities)) {
       if (!Object.hasOwn(refs.combatSkills[skill], a)) { p.push(`abilities.${skill}.${a} is not an ability of ${skill}`); continue }
       if (!tierOk(`abilities.${skill}.${a}`, t)) continue
+      if (row.weapons.length && refs.combatSkills[skill][a] === null) { p.push(`${skill}.${a}: no rule "Requires ${skill}: <Tier>" names the tier it needs`); continue }
       const want = row.weapons.length ? refs.combatSkills[skill][a] : d.floor
       if (t !== want) p.push(`abilities.${skill}.${a} must need ${want} gear (${row.weapons.length ? 'the tier its skill rule names' : 'no weapon: the floor'}), got ${t}`)
     }

@@ -391,7 +391,7 @@ module.exports = {
 
 
   // ─── RecipeFerriteHammer ─────────────────────────────────────────────────
-  // Phase 229 — the novice-tier hammer; smithing above novice needs a hammer of that tier in hand or pack.
+  // Phase 229 — the apprentice-tier Ferrite Hammer (a novice recipe); smithing above novice needs a hammer of at least that tier in hand or pack.
   RecipeFerriteHammer: defineEntity({
     tags: ['recipe'],
     description: 'Forge a ferrite hammer from two ferrite ingots and one thornwood plank.',
@@ -428,7 +428,7 @@ module.exports = {
   }),
 
   // ─── RecipeVeilsteelHammer ───────────────────────────────────────────────
-  // Phase 229 — the apprentice-tier hammer; smithing above novice needs a hammer of that tier in hand or pack.
+  // Phase 229 — the master-tier Veilsteel Hammer (an apprentice recipe); smithing above novice needs a hammer of at least that tier in hand or pack.
   RecipeVeilsteelHammer: defineEntity({
     tags: ['recipe'],
     description: 'Forge a veilsteel hammer from two veilsteel ingots and one thornwood plank.',

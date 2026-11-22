@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:dcd692593566479dc20a3bcaf3ede10e2ba02a388f2153d4cb28fbcaf4986e8e",
+  "schemaHash": "sha256:f4e20ffca8be9e8c27eb413dcf42f97fe6a8bdedbde6f0a3883c91ff693a5a44",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -34733,7 +34733,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -34833,7 +34833,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -34942,7 +34942,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -35042,7 +35042,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -35151,7 +35151,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -35259,7 +35259,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -35367,7 +35367,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -35475,7 +35475,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -35584,7 +35584,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -35693,7 +35693,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -35802,7 +35802,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -35911,7 +35911,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -36011,7 +36011,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -36111,7 +36111,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -36225,7 +36225,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -36326,7 +36326,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -36448,7 +36448,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -36561,7 +36561,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -36672,7 +36672,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -36778,7 +36778,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -36878,7 +36878,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -36987,7 +36987,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -37110,7 +37110,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -37210,7 +37210,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -37310,7 +37310,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -37410,7 +37410,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -37510,7 +37510,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -37619,7 +37619,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -37719,7 +37719,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -37828,7 +37828,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -37928,7 +37928,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -38036,7 +38036,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -38144,7 +38144,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -38253,7 +38253,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -38362,7 +38362,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -38471,7 +38471,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -38580,7 +38580,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -38689,7 +38689,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -38798,7 +38798,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -38907,7 +38907,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -39016,7 +39016,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -39125,7 +39125,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -39234,7 +39234,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -39343,7 +39343,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -42053,7 +42053,7 @@
           "recipe": {
             "name": "recipe",
             "type": "json",
-            "description": "Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
+            "description": "Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier).",
             "nullable": false,
             "primaryKey": false,
             "pii": false,

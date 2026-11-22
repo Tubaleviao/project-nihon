@@ -51,6 +51,13 @@ expect('a weapon category that does not exist fails', (d) => { d.abilities.Arche
 expect('a non-combat skill row fails', (d) => { d.abilities.Smithing = { weapons: [], abilities: {} }; }, /abilities\.Smithing is not a combat skill/);
 expect('a refusal that is not a key fails', (d) => { d.refusals.tool = 'You need a better hammer'; }, /refusals\.tool must be a locale key/);
 
+// Review of the fabric PR: silent skips closed.
+expect('a combat ability whose rule names no tier fails', (d, r) => { r.combatSkills.Archery.executeVolley = null; d.abilities.Archery.abilities.executeVolley = 'expert'; }, /Archery\.executeVolley: no rule "Requires Archery: <Tier>"/);
+expect('a combat ability with a reworded rule is still listed', (d, r) => { r.combatSkills.Archery.executeVolley = null; }, /Archery\.executeVolley is a combat ability with no requiredTier/);
+expect('a station item tier that is not a skill tier fails', (d, r) => { r.stationItems.Forge.tier = 'legendary'; }, /Forge: tier "legendary" is not a skill tier/);
+expect('a non-crafting station carrying a tier fails', (d, r) => { r.stationItems.Bed = { tier: 'novice', declared: true }; }, /Bed carries a tier, but no recipe is made at its station/);
+expect('a null tool rule on the master forge lets its recipes climb with no hammer', (d, r) => { d.stationTools['master forge'] = null; d.stationTools['masonry bench'] = null; d.stationTools['arcane forge'] = null; d.stationTools['void-shielded workshop'] = null; r.equipment.FerriteHammer.tier = 'novice'; r.equipment.FerriteHammer.material = 'Ashite'; }, null);
+
 // The climb: with no hammer above stone, the apprentice recipes at the master forge can never be made.
 expect('a recipe no climb reaches fails', (d, r) => { r.equipment.FerriteHammer.tier = 'novice'; r.equipment.FerriteHammer.material = 'Ashite'; },
   /RecipeVeilsteelIngot can never be crafted/);
@@ -58,6 +65,11 @@ expect('a tool only made with itself fails', (d, r) => { r.recipes.RecipeVeilste
   /RecipeVeilsteelHammer can never be crafted/);
 
 // The shipped data.
+// Every recipe-tagged entity in the fabric is in the refs (a recipe defined elsewhere would skip every check).
+const fabric = require('../fabric');
+const allRecipes = Object.entries(fabric.entities).filter(([, e]) => (e.tags || []).includes('recipe') && e.fields && e.fields.recipe).map(([k]) => k).sort();
+const seen = Object.keys(refs.recipes).sort();
+report('the refs hold every recipe in the fabric', JSON.stringify(allRecipes) === JSON.stringify(seen), allRecipes.filter((k) => !seen.includes(k)));
 const d = g.gearTiersData();
 const { craftable, tools } = g.climb(d, refs);
 report('every recipe is reachable from bare hands', Object.keys(refs.recipes).every((k) => craftable.has(k)), Object.keys(refs.recipes).filter((k) => !craftable.has(k)));

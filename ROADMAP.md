@@ -438,7 +438,9 @@ research, clan membership and owned structures all key on the player id.
   ladder from bare hands and fails on any recipe no reachable tool and station can make, so two hammers
   join the game: the Ferrite Hammer (apprentice, forge) and the Veilsteel Hammer (master, master forge).
   `abilityGaps` lists the abilities no weapon reaches yet (an expert bow, journeyman and expert shields);
-  they stay refused until such gear exists. Refusal keys: `GearTiers.refusals`.
+  they stay refused until such gear exists. Refusal keys: `GearTiers.refusals`. With hammers at three tiers only, the
+  journeyman arcane-forge and expert workshop recipes need the Veilsteel Hammer a smith makes, so an
+  arcanist trades for it or learns smithing; journeyman and expert hammers are later content.
 - The weapon, tool, station, ability and recipe tiers load through `GameData`.
 - **Combat:** the host decides whether an ability can be used from the skill tier **and** the
   equipped weapon's tier. An ability above the weapon's tier is refused with a localized reason key

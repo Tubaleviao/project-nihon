@@ -17,7 +17,7 @@ Build a plank table and line its bowls with aethermite dust at a carpentry bench
 | ----- | ---- | ----------- |
 | domain | `smithing`, `alchemy`, `arcane`, `carpentry` | Crafting station required |
 | outputCount | integer | Number of output items produced per craft |
-| recipe | json | Structured craft recipe: crafting domain, required station, input items with quantities, output items with quantities, and skill guards (skill key + minimum tier). |
+| recipe | json | Structured craft recipe: crafting domain, required station, requiredTier (the gear tier its tool and station must reach, Phase 229 GearTiers), input items with quantities, output items with quantities, and skill guards (skill key + minimum tier). |
 
 ## Related
 
