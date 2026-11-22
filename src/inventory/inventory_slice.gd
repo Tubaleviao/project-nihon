@@ -24,7 +24,7 @@ extends Node
 ##   can_add_items(counts)            -> bool
 ##   drop_item(item_id, quantity)     -> bool
 ##   drop_item_returning(item_id, quantity) -> { success, removed }
-##   find_tool(tool_type)             -> String
+##   find_for_work(work)              -> String  (Phase 296: the fastest held item for a work)
 ##   is_durable(item_id)              -> bool
 ##   get_durability(item_id)          -> float   (worst instance, -1 if none)
 ##   get_max_durability(item_id)      -> float
@@ -37,6 +37,7 @@ extends Node
 ##   transfer(src, dst, counts)       -> Dictionary { success, reason }  (static)
 const Diag := preload("res://src/core/diag.gd")
 const CarcassRules := preload("res://src/loot/carcass_rules.gd")
+const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 
 ## Inventory capacity comes from the Inventory entity in the fabric
 ## (GameData.PLAYERS["Inventory"].maxSlots / maxWeightKg), loaded in _ready().
@@ -331,31 +332,21 @@ func can_add_items(counts: Dictionary) -> bool:
 		return false
 	return true
 
-## Find the first held durable tool whose fabric `toolType` matches `tool_type`
-## (e.g. "pick" for mining, "axe" for chopping). Broken tools (durability == 0)
-## are skipped. Returns the item_id, or "" when no usable tool is held.
-##
-## Phase 260 — with several held (a stone pick and a ferrite pick), the fastest one for its class in the fabric
-## `WorkTimes.toolSpeeds` wins, so a forged tool is used as soon as it is in the pack; ties keep fabric order.
-func find_tool(tool_type: String) -> String:
+## Phase 296 — the held durable item that does `work` (an `Equipment.workTraits` work: "mine", "fell", "dig",
+## "build", "pickLock", "dissect", "cutBone") fastest, by `EquipmentRules.work_speed`; broken items (durability 0)
+## are skipped and ties keep the pack's order. Returns the item_id, or "" when nothing held can do it. With a stone
+## pick and a ferrite pick held, the ferrite one wins as soon as it is in the pack.
+func find_for_work(work: String) -> String:
 	var best := ""
-	var best_speed := -1.0
-	var speeds: Dictionary = {}
-	var wt: Resource = GameData.WORLD_SYSTEMS.get("WorkTimes", null)
-	if wt != null and wt.get("toolSpeeds") is Dictionary:
-		speeds = wt.get("toolSpeeds")
+	var best_speed := 0.0
 	for item_id in _item_durability_cache:
 		if get_item_count(item_id) <= 0:
 			continue
-		var res: Resource = GameData.ITEMS.get(item_id, null)
-		if res == null or str(res.get("toolType")) != tool_type:
+		var sp := EquipmentRules.work_speed(str(item_id), work)
+		if sp <= best_speed or not _has_usable_instance(item_id):
 			continue
-		if not _has_usable_instance(item_id):
-			continue
-		var sp := float((speeds.get(item_id, {}) as Dictionary).get(tool_type, 0.0))
-		if sp > best_speed:
-			best = str(item_id)
-			best_speed = sp
+		best = str(item_id)
+		best_speed = sp
 	return best
 
 ## Whether `item_id` has a durability field in the fabric (tools/weapons/armor).

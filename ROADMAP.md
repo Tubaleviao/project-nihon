@@ -39,26 +39,25 @@ work in order.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 1 | 296 | Work and combat by trait: no more tools in the game |
-| 2 | 229 | Skills capped by the gear |
-| 3 | 226 | Several characters per player |
-| 4 | 297 | Finding servers nearby: dual-stack IPv6, a status port and LAN discovery |
-| 5 | 298 | The server list: a registry and the Join screen's public list |
-| 6 | 257 | Split files named by what they do |
-| 7 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
-| 8 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
-| 9 | 247 | Ground cover: grass and bushes by biome |
-| 10 | 235 | Roads |
-| 11 | 234 | Boats |
-| 12 | 258 | The public wiki and the community channels |
-| 13 | 299 | Many registries: signed entries, gossip and no single owner |
-| 14 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
-| 15 | 251 | A human playtest: what would make the game fun (a standing checkpoint, when the owner has time) |
+| 1 | 229 | Skills capped by the gear |
+| 2 | 226 | Several characters per player |
+| 3 | 297 | Finding servers nearby: dual-stack IPv6, a status port and LAN discovery |
+| 4 | 298 | The server list: a registry and the Join screen's public list |
+| 5 | 257 | Split files named by what they do |
+| 6 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
+| 7 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
+| 8 | 247 | Ground cover: grass and bushes by biome |
+| 9 | 235 | Roads |
+| 10 | 234 | Boats |
+| 11 | 258 | The public wiki and the community channels |
+| 12 | 299 | Many registries: signed entries, gossip and no single owner |
+| 13 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
+| 14 | 251 | A human playtest: what would make the game fun (a standing checkpoint, when the owner has time) |
 
 Why this order:
 
-- **296 first.** The last open finding of the owner's fourth playtest (2026-11-20): 295 (done) was the
-  fabric PR, 296 is the runtime. They change what equipment is, so everything that reads gear waits for them.
+- **295–296 done.** The last findings of the owner's fourth playtest (2026-11-20): 295 was the fabric PR,
+  296 the runtime. They change what equipment is, so everything that reads gear waits for them.
 - **229 right after.** Skill tiers gated by gear build on the equipment categories 295–296 introduce;
   its spec's "tool" tiers become trait/equipment tiers when it is picked up. It used to take its tiers
   from parked Phase 227 and carries its own fabric PR instead.
@@ -356,7 +355,7 @@ of a category (knife, sword, axe, hammer, pick…), and what it can do follows f
 | 293 | Other players look like people | Done |
 | 294 | Other players and creatures walk instead of jumping | Done |
 | 295 | Equipment categories and traits replace tools (fabric) | Done |
-| 296 | Work and combat by trait: no more tools in the game | Open |
+| 296 | Work and combat by trait: no more tools in the game | Done |
 
 ## Phase 225 — The options window
 
@@ -1477,6 +1476,24 @@ Runtime for Phase 295. Everything that today asks for a `toolType` or `harvestTo
 - Suite: an inventory saved before this phase loads with every item able to do what it did before.
 - Suite: tooltip strings exist in both locales; no UI string contains the word "tool" as a category.
 - Playtest bot `tutorial` and `fight` steps pass with the new rules.
+
+Done (2026-11-22). `EquipmentRules` (`src/character/equipment_rules.gd`) reads the fabric's `Equipment` tables:
+`spec_of`, `can_do(item, work)`, `work_speed(item, work)` (the same way-matching as the fabric, material raise
+included), `works_of`, `harvest_work`, `combat_damage`, `clip_family`, `player_hit`, `creature_hit`, `protection` and
+`armour_factor`. `InventorySlice.find_for_work(work)` replaces `find_tool` (the fastest usable held item for a work);
+felling, mining and digging (`WorkTime.actions[..].work`, the item's work speed, else bare hands), building
+(`Structure.buildWork`, refusal `build_required`), lock picking (`ChestsAndDoors.locks.work`), the chest destruction
+method, harvesting (`CarcassRules.tools_of`, `Equipment.harvestWorks`), the tutorial's tags (the equipment category),
+the crafting window's `work_gear` tab and `ComboChain.weapon_class` / `RigTree.attack_clip_for` (the category's clip
+family; `CombatCombos.twoHandedItems` is gone) all go through it. The Phase 295 bridge is removed: no item carries
+`toolType`, `harvestTool` or `efficiency`, `WorkTimes.toolSpeeds` is gone, and the work-time, stone-tool, chest,
+tutorial and harvest validators read the items' `works`. On the host a player's hit deals the held item's
+`combatDamage` × `Equipment.combatScale` (2.5), empty hands `Equipment.unarmed` (4 blunt; every item hits harder, the
+validator checks), a creature's `baseDamage` split by `Equipment.creatureDamageShares`; a hit on a player keeps
+Σ share × (1 − protection) of each type, the protection from the registry's worn set (host-validated at equip).
+The inventory tooltip shows the category, the traits with their grades and what the item can do (`ui.tip_*`, en and
+pt_BR), and the UI catalog no longer calls anything a tool (the suite checks both columns). Suite
+`equipment_trait_tests.gd` covers the criteria, including a grep of `src/` for `toolType`/`harvestTool`.
 
 ## Phase 297 — Finding servers nearby: dual-stack IPv6, a status port and LAN discovery
 

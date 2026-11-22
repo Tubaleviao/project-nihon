@@ -35,7 +35,10 @@ expect('an item declaring toolType fails', withAuthoredField('FerritePick', 'too
 expect('an item declaring harvestTool fails', withAuthoredField('BoneSaw', 'harvestTool', 'bonetool'), /BoneSaw declares harvestTool/);
 expect('a held item with no category fails', (d, r) => { r.items.FerriteShield.category = undefined; r.items.FerriteShield.traits = undefined; }, /FerriteShield is held/);
 expect('worn armour with no protection fails', (d, r) => { r.items.NoviceTunic.protection = undefined; }, /NoviceTunic is worn/);
-expect('an item doing two harvest works fails (the Phase 295 bridge)', (d, r) => { r.items.SkinningKnife.traits.Blunt = { strength: 1, grade: 'heavy' }; }, /SkinningKnife can dissect and cutBone/);
+expect('a fist as strong as an item fails', (d) => { d.unarmed = { blunt: 100 }; }, /not above empty hands/);
+expect('creature damage shares not summing to 1 fails', (d) => { d.creatureDamageShares.blunt = 0.9; }, /creatureDamageShares must sum to 1/);
+expect('an unknown unarmed damage type fails', (d) => { d.unarmed = { fire: 3 }; }, /unarmed\.fire is not a damage type/);
+expect('a harvest tool naming no work fails', (d) => { d.harvestWorks.knife = 'skin'; }, /harvestWorks\.knife: "skin" is not a work/);
 expect('a pick with no peer of its material fails', (d, r) => { r.items.VeilsteelPick.material = 'Lumenfite'; }, /VeilsteelPick: no other equipment of its material/);
 expect('an unknown category fails', (d, r) => { r.items.CarpenterAxe.category = 'spoon'; }, /CarpenterAxe: equipmentCategory "spoon" is not in the category table/);
 expect('an unknown item trait fails', (d, r) => { r.items.SkinningKnife.traits.Glowing = { strength: 1 }; }, /SkinningKnife\.traits: trait "Glowing" is not in the trait table/);
@@ -50,7 +53,7 @@ expect('a former axe that no longer fells fails', (d) => { d.workTraits.fell.way
 expect('a former pick that got slower fails', (d) => { d.workTraits.mine.ways[0].speed = 0.5; }, /FerritePick does mine at 0\.5, slower than before/);
 expect('an unknown clip family fails', (d) => { d.categories.mace.clipFamily = 'flail'; }, /category mace: clip family "flail"/);
 expect('armour missing a damage type fails', (d, r) => { delete r.items.FerriteHelmet.protection.piercing; }, /FerriteHelmet\.protection\.piercing must be a share/);
-expect('an item doing two old tool classes fails (the Phase 295 bridge)', (d, r) => { r.items.StonePick.traits.Broad = { strength: 1 }; }, /StonePick can mine and dig/);
+expect('a harvest work no item does fails', (d) => { d.workTraits.cutBone.ways = [{ category: 'mace', traits: {}, speed: 1 }]; }, /harvestWorks\.bonetool: no item can cutBone/);
 
 // Every item that had a toolType or harvestTool on main before this phase (frozen here, apart from FORMER_JOBS, so
 // dropping a FORMER_JOBS row cannot switch its no-regression check off unnoticed).

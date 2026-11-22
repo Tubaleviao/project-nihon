@@ -30,7 +30,7 @@ expect('zero branches per felled tree fails', (d) => { d.yields.fellBranches = 0
 expect('a loose-stone chance above 1 fails', (d) => { d.yields.looseStoneChance = 1.5; }, /looseStoneChance/);
 expect('a forged tool crafted without a station fails', (d, r) => { r.recipes.RecipeFerritePick.station = ''; }, /FerritePick is not a stone tool, so it is crafted at a station/);
 expect('a forged tool repaired without a station fails', (d, r) => { r.tools.CarpenterAxe.repairStation = ''; }, /CarpenterAxe: not a stone tool, so it is repaired at a station/);
-expect('a build tool no stone tool provides fails', (d, r) => { r.buildTool = 'chisel'; }, /no stone tool is a chisel/);
-expect('a missing build tool fails', (d, r) => { r.buildTool = ''; }, /buildTool is missing/);
+expect('a build work no stone tool does fails', (d, r) => { r.buildWork = 'carve'; }, /no stone tool can carve/);
+expect('a missing build work fails', (d, r) => { r.buildWork = ''; }, /buildWork is missing/);
 if (failed) { console.error(`${failed} check(s) failed`); process.exit(1); }
 console.log('all stone-tool checks passed');

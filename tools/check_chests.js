@@ -28,7 +28,7 @@ expect('a lock multiplier below 1 fails', (d) => { d.locks.materials.Thornwood =
 expect('a station placed by a non-station item fails', (d) => { d.stations.chest.placementItem = 'FerritePick'; }, /not an item tagged station/);
 expect('two stations placed by one item fail', (d) => { d.stations.door.placementItem = 'Chest'; }, /places two station types/);
 expect('a lock of no lock material fails', (d) => { d.stations.door.lockMaterial = 'Grass'; }, /lockMaterial "Grass" is not a lock material/);
-expect('a lock no tool picks fails', (d) => { d.locks.toolType = 'hairpin'; }, /no lock could be picked/);
+expect('a lock no item picks fails', (d) => { d.locks.work = 'hairpin'; }, /no lock could be picked/);
 expect('a lock that opens instantly fails', (d) => { d.locks.skillSpeedup = 1; }, /no lock opens instantly/);
 
 let threw = false;

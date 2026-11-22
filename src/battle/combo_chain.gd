@@ -4,6 +4,7 @@ extends RefCounted
 ## through the weapon class's variants; a pause past the window, or another weapon class, restarts at the first.
 
 const GameDataReader := preload("res://src/core/game_data_reader.gd")
+const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 
 const FALLBACK_CLIP := "attack"
 
@@ -15,18 +16,10 @@ static func _chains() -> Dictionary:
 	var v: Variant = res.get("chains") if res != null else null
 	return v if v is Dictionary else {}
 
-## "unarmed", "tool", "two_hand" or "one_hand" for a main-hand item (the swing classes of the fabric table).
+## "unarmed", "tool", "two_hand" or "one_hand" for a main-hand item: its equipment category's chain (Phase 296:
+## `Equipment.categories[..].clipFamily`), one-handed for a held item that is not equipment.
 static func weapon_class(item_key: String, items: Dictionary) -> String:
-	if item_key == "":
-		return "unarmed"
-	var res := _res()
-	var two: Variant = res.get("twoHandedItems") if res != null else null
-	if two is Array and item_key in two:
-		return "two_hand"
-	var item: Resource = items.get(item_key, null)
-	if item != null and GameDataReader.str_field(item, "toolType", "") != "":
-		return "tool"
-	return "one_hand"
+	return EquipmentRules.clip_family(item_key, items)
 
 static func chain(weapon: String) -> Dictionary:
 	var c: Variant = _chains().get(weapon, null)

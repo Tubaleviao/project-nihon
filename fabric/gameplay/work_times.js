@@ -2,16 +2,17 @@ const { defineEntity } = require('@newel/core')
 const work = require('./work')
 
 // Phase 259 — work takes time. Every gathering action (dig, mine, chop) is timed work: a material has a base
-// `workSeconds`; the action names the tool class that suits it; a tool has a `workSpeed` per class it serves;
-// bare hands (and a tool of the wrong class) work at `bareHandsSpeed`. Seconds = workSeconds / speed.
+// `workSeconds`; the action names the work of the equipment table (Phase 296: Equipment.workTraits) that suits it,
+// and the held item's speed at that work is its speed; bare hands (and an item that cannot do the work) work at
+// `bareHandsSpeed`. Seconds = workSeconds / speed.
 // The host computes the duration from this table, never from a client message.
 const BARE_HANDS_SPEED = 0.25 // about 4x the base time, so the first stone tool (Phase 260) is a real step
 
-/** action -> { toolClass, families } : which tool class suits the action, and which material families it works. */
+/** action -> { work, families } : which work (Equipment.workTraits) suits the action, and which material families it works. */
 const ACTIONS = {
-  dig:  { toolClass: 'shovel', families: ['soil'] },
-  mine: { toolClass: 'pick',   families: ['stone', 'metal'] },
-  chop: { toolClass: 'axe',    families: ['wood'] },
+  dig:  { work: 'dig',  families: ['soil'] },
+  mine: { work: 'mine', families: ['stone', 'metal'] },
+  chop: { work: 'fell', families: ['wood'] },
 }
 
 /** Base seconds at speed 1.0, per material: soil and sand low, host rock higher, ores by tier, woods by tree. */
@@ -23,57 +24,42 @@ const WORK_SECONDS = {
   Thornwood: 4.0, Duskfiber: 5.0,
 }
 
-/** Phase 295 — which work of the equipment table (equipment.js WORK_TRAITS) each tool class stands for. */
-const CLASS_WORK = { pick: 'mine', axe: 'fell', shovel: 'dig' }
-
 /**
- * item -> { <class>: speed }, derived from the equipment work table (Phase 295): an item's speed for a class is its
- * speed at that class's work. Speed 1.0 is the base time. The numbers are Phase 259/260/290's: a forged pick and axe
- * work at 1.0, the veilsteel pick at 1.5, the stone pick and axe at 0.6 (between bare hands at 0.25 and the forged
- * tools), and the stone shovel at 1.2 since Phase 290 (soil 0.67 s a block), the floor for every later shovel
- * (`workTimesProblems` rejects a slower one). Equipment.formerJobs pins them.
+ * Item speeds come from the equipment work table (Phase 296): an item's speed at an action is its speed at the
+ * action's work. The numbers are Phase 259/260/290's: a forged pick and axe at 1.0, the veilsteel pick at 1.5, the
+ * stone pick and axe at 0.6 (between bare hands at 0.25 and the forged tools), and the stone shovel at 1.2 since
+ * Phase 290 (soil 0.67 s a block), the floor for every later digger (`workTimesProblems` rejects a slower one).
  */
-function toolSpeeds() {
-  const items = require('./items')
-  const out = {}
-  for (const [k, e] of Object.entries(items)) {
-    const works = (e && e.fields && e.fields.works && e.fields.works.defaultValue) || {}
-    const row = {}
-    for (const [cls, w] of Object.entries(CLASS_WORK)) if (works[w] > 0) row[cls] = works[w]
-    if (Object.keys(row).length) out[k] = row
-  }
-  return out
-}
-
 /** Phase 290 — the shovel every other shovel must match or beat. */
 const SHOVEL_FLOOR_TOOL = 'StoneShovel'
 
-const WORK_CLASSES = ['pick', 'axe', 'shovel']
 
 function workTimesData() {
   return JSON.parse(JSON.stringify({
-    bareHandsSpeed: BARE_HANDS_SPEED, actions: ACTIONS, workSeconds: WORK_SECONDS, toolSpeeds: toolSpeeds(),
+    bareHandsSpeed: BARE_HANDS_SPEED, actions: ACTIONS, workSeconds: WORK_SECONDS,
   }))
 }
 
 function workTimesRefs() {
   const items = require('./items')
-  const tools = {}
+  const equipment = require('./equipment')
+  const speeds = {}
   for (const [k, e] of Object.entries(items)) {
-    const t = e && e.fields && e.fields.toolType && e.fields.toolType.defaultValue
-    if (t) tools[k] = t
+    const w = e && e.fields && e.fields.works && e.fields.works.defaultValue
+    if (w && Object.keys(w).length) speeds[k] = w
   }
-  return { materials: Object.keys(work.FAMILIES), families: work.FAMILIES, toolTypes: tools }
+  const d = equipment.equipmentData()
+  return { materials: Object.keys(work.FAMILIES), families: work.FAMILIES, itemWorks: speeds, works: d.workTraits }
 }
 
 /** Problems with the work-time tables, as strings. */
 function workTimesProblems(d, refs) {
   const p = []
   if (!(d.bareHandsSpeed > 0 && d.bareHandsSpeed < 1)) p.push('bareHandsSpeed must be in (0, 1)')
-  const classes = new Set()
   for (const [a, row] of Object.entries(d.actions || {})) {
-    if (!WORK_CLASSES.includes(row.toolClass)) p.push(`actions.${a}.toolClass "${row.toolClass}" is not a tool class`)
-    else classes.add(row.toolClass)
+    const rule = (refs.works || {})[row.work]
+    if (!rule) p.push(`actions.${a}.work "${row.work}" is not a work of the equipment table`)
+    else if (rule.bareHands !== true) p.push(`actions.${a}.work "${row.work}" cannot be done by bare hands, so an action without the right item would never end`)
   }
   const covered = new Set(Object.values(d.actions || {}).flatMap((r) => r.families || []))
   for (const m of refs.materials) {
@@ -82,24 +68,19 @@ function workTimesProblems(d, refs) {
     if (!covered.has(refs.families[m])) p.push(`${m}: no action works the ${refs.families[m]} family`)
   }
   for (const m of Object.keys(d.workSeconds || {})) if (!refs.materials.includes(m)) p.push(`workSeconds.${m} is not a material`)
-  for (const [item, cls] of Object.entries(refs.toolTypes)) {
-    if (!WORK_CLASSES.includes(cls)) continue
-    const sp = (d.toolSpeeds || {})[item]
-    if (!sp || !(sp[cls] > 0)) p.push(`${item}: tool of class ${cls} has no workSpeed for it`)
-  }
-  for (const [item, row] of Object.entries(d.toolSpeeds || {})) {
-    if (!(item in refs.toolTypes)) p.push(`toolSpeeds.${item} is not a tool item`)
-    for (const [cls, v] of Object.entries(row)) {
-      if (!WORK_CLASSES.includes(cls)) p.push(`toolSpeeds.${item}.${cls} is not a tool class`)
-      else if (!(v > d.bareHandsSpeed)) p.push(`toolSpeeds.${item}.${cls} (${v}) must beat bare hands (${d.bareHandsSpeed})`)
+  const actionWorks = new Set(Object.values(d.actions || {}).map((r) => r.work))
+  for (const [item, works] of Object.entries(refs.itemWorks || {})) {
+    for (const [w, v] of Object.entries(works)) {
+      if (actionWorks.has(w) && !(v > d.bareHandsSpeed)) p.push(`${item} does ${w} at ${v}: it must beat bare hands (${d.bareHandsSpeed})`)
     }
   }
-  // Phase 290 — no shovel digs slower than the stone one: the first shovel's speed is the floor of the class.
-  const floor = ((d.toolSpeeds || {})[SHOVEL_FLOOR_TOOL] || {}).shovel
-  if (typeof floor === 'number') {
-    for (const [item, row] of Object.entries(d.toolSpeeds || {})) {
-      if (item !== SHOVEL_FLOOR_TOOL && typeof row.shovel === 'number' && row.shovel < floor) {
-        p.push(`toolSpeeds.${item}.shovel (${row.shovel}) is slower than ${SHOVEL_FLOOR_TOOL} (${floor}): a later shovel must dig at least as fast`)
+  // Phase 290 — nothing digs slower than the stone shovel: its speed is the floor of digging.
+  const floor = ((refs.itemWorks || {})[SHOVEL_FLOOR_TOOL] || {}).dig
+  if (!(typeof floor === 'number')) p.push(`${SHOVEL_FLOOR_TOOL} cannot dig: it is the floor of digging (Phase 290)`)
+  else {
+    for (const [item, works] of Object.entries(refs.itemWorks || {})) {
+      if (item !== SHOVEL_FLOOR_TOOL && typeof works.dig === 'number' && works.dig < floor) {
+        p.push(`${item} digs at ${works.dig}, slower than ${SHOVEL_FLOOR_TOOL} (${floor}): a later shovel must dig at least as fast`)
       }
     }
   }
@@ -114,16 +95,15 @@ function validateWorkTimes(d, refs) {
 const WorkTimes = defineEntity({
   tags: ['world-system'],
   description:
-    'How long gathering takes: a base time per material, the tool class each action wants, a speed per tool ' +
-    'and class, and the slow factor of bare hands (also the speed of a tool of the wrong class).',
-  goal: 'Make a better tool a felt step: timed, held work instead of one-click gathering (Phase 259)',
+    'How long gathering takes: a base time per material, the work each action wants (the held item\'s speed at it comes ' +
+    'from Equipment.workTraits), and the slow factor of bare hands (also the speed of an item that cannot do the work).',
+  goal: 'Make better equipment a felt step: timed, held work instead of one-click gathering (Phase 259)',
   fields: {
     id:             { type: 'uuid', primaryKey: true },
-    bareHandsSpeed: { type: 'decimal', description: 'Speed multiplier of bare hands and of a wrong-class tool (1.0 = a right tool at base speed)', defaultValue: BARE_HANDS_SPEED },
-    actions:        { type: 'json', description: '{ <dig|mine|chop>: { toolClass, families } }', defaultValue: ACTIONS },
+    bareHandsSpeed: { type: 'decimal', description: 'Speed multiplier of bare hands and of an item that cannot do the work (1.0 = the baseline item)', defaultValue: BARE_HANDS_SPEED },
+    actions:        { type: 'json', description: '{ <dig|mine|chop>: { work, families } }', defaultValue: ACTIONS },
     workSeconds:    { type: 'json', description: '{ <material>: base seconds at speed 1.0 }', defaultValue: WORK_SECONDS },
-    toolSpeeds:     { type: 'json', description: 'Derived from Equipment.workTraits (Phase 295): { <item>: { <class>: speed } }', defaultValue: toolSpeeds() },
   },
 })
 
-module.exports = { BARE_HANDS_SPEED, SHOVEL_FLOOR_TOOL, ACTIONS, WORK_SECONDS, CLASS_WORK, toolSpeeds, workTimesData, workTimesRefs, workTimesProblems, validateWorkTimes, WorkTimes }
+module.exports = { BARE_HANDS_SPEED, SHOVEL_FLOOR_TOOL, ACTIONS, WORK_SECONDS, workTimesData, workTimesRefs, workTimesProblems, validateWorkTimes, WorkTimes }

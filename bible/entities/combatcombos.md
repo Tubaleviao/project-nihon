@@ -14,7 +14,6 @@ Attack combos and hit timing: per weapon class the clip order, the window that k
 | `id` | uuid | yes |  |
 | `attackClips` | json | yes | The attack clips a rig may play (the rig contract) |
 | `chains` | json | yes | { <unarmed\|one_hand\|two_hand\|tool>: { clips, windowSeconds, damageMultipliers, impact } } |
-| `twoHandedItems` | json | yes | Main-hand items swung with both hands (the two_hand chain) |
 | `staggerShare` | decimal | yes | A hit of at least this share of the target's max health staggers it; a lighter one plays hit |
 | `knockbackLight` | decimal | yes | Metres a target is pushed away by a light hit |
 | `knockbackHeavy` | decimal | yes | Metres a target is pushed away by a staggering hit |

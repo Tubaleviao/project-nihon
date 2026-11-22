@@ -10,6 +10,7 @@ extends RefCounted
 const Locomotion := preload("res://src/character/locomotion.gd")
 const Diag := preload("res://src/core/diag.gd")
 const GameDataReader := preload("res://src/core/game_data_reader.gd")
+const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 
 ## Tree node name per state. IDLE/WALK/RUN all live in the "Locomotion" blend
 ## space; the rest are single clips named after the state.
@@ -76,13 +77,13 @@ const XFADE_FROM_LAND := 0.1
 const XFADE_STAND_UP := 0.3
 
 
-## The attack clip for a main-hand item (`""` for empty hands): unarmed, a tool (anything the fabric
-## gives a `toolType`) or a one-handed weapon. `items` is the item table (`GameData.ITEMS`).
+## The attack clip for a main-hand item (`""` for empty hands): unarmed, the work swing for a category whose
+## Phase 287 chain is `tool` (axe, pick, shovel, hammer: `Equipment.categories[..].clipFamily`, Phase 296) or a
+## one-handed swing. `items` is the item table (`GameData.ITEMS`).
 static func attack_clip_for(item_key: String, items: Dictionary) -> String:
 	if item_key == "":
 		return ATTACK_UNARMED
-	var res: Resource = items.get(item_key, null)
-	if res != null and GameDataReader.str_field(res, "toolType", "") != "":
+	if EquipmentRules.clip_family(item_key, items) == "tool":
 		return ATTACK_TOOL
 	return ATTACK_ONE_HAND
 

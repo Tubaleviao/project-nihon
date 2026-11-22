@@ -23,7 +23,6 @@ Rough-hewn mining pick forged from ferrite ingots and a thornwood handle. The st
 | `repair` | json | yes | Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier). |
 | `works` | json | yes | Derived from the work table (Phase 295): { <work>: speed } for every work this item can do |
 | `combatDamage` | json | yes | Derived (Phase 295): combat damage per damage type, the category multiplier times its traits' shares |
-| `toolType` | string | yes | Derived (Phase 295 bridge, removed by Phase 296) from the work table: the old tool class the runtime reads |
 
 ## Relations
 

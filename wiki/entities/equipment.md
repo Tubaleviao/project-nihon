@@ -19,6 +19,10 @@ Equipment categories and traits (Phase 295): every held item is equipment of a c
 | traits | json | { <Trait>: { damageType, damage } \| { damageType, grades: { <grade>: { damage } } } }, grades weakest first |
 | categories | json | { <category>: { hands, clipFamily, combatMultiplier, defaultTraits } } |
 | materialTraits | json | { <material>: { raise: { <Trait>: +strength }, add: { <Trait>: { strength, grade? } } } } for the working part |
-| workTraits | json | { <work>: { bareHands, ways: [{ category?, traits: { <Trait>: { grade? } }, speed }] } } |
+| workTraits | json | { <work>: { bareHands, ways: [{ category?, traits: { <Trait>: { grade? } }, minStrength?, speed }] } } |
+| combatScale | decimal | Phase 296: a player's hit deals the held item's combatDamage times this |
+| unarmed | json | Phase 296: what empty hands (or a held item that is not equipment) deal, per damage type |
+| creatureDamageShares | json | Phase 296: how a creature's baseDamage splits across damage types (sums to 1), for armour |
+| harvestWorks | json | { <harvest entry tool>: <work> }: knife entries need dissect, bonetool entries cutBone (Phase 296) |
 | categorySummary | json | Derived: per category its hands, traits, what it can do and its combat multiplier |
 

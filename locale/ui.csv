@@ -199,6 +199,16 @@ ui.tech_cost,"Cost: {0} research points, {1}","Custo: {0} pontos de pesquisa, {1
 ui.tech_time,Time: {0} s,Tempo: {0} s
 ui.tech_requires,Requires: {0},Requer: {0}
 ui.tech_unlocks,Unlocks:,Libera:
+ui.tip_category,"
+Category: {0}","
+Categoria: {0}"
+ui.tip_traits,"
+Traits: {0}","
+Traços: {0}"
+ui.tip_trait_grade,{0} ({1}),{0} ({1})
+ui.tip_can_do,"
+Can: {0}","
+Serve para: {0}"
 ui.tip_durability,"
 Durability: {0}","
 Durabilidade: {0}"
@@ -280,7 +290,7 @@ settlement.refused.over_limit,Over your daily withdraw limit.,Acima do seu limit
 settlement.refused.no_inventory,No pack to use.,Sem mochila para usar.
 settlement.refused.too_far,Too far away.,Longe demais.
 settlement.refused.unknown_action,Unknown action.,Ação desconhecida.
-settlement.refused.durable,Worn tools cannot be stored.,Ferramentas gastas não podem ser guardadas.
+settlement.refused.durable,Worn gear cannot be stored.,Equipamentos gastos não podem ser guardados.
 settlement.join,Join,Entrar
 settlement.invited,Invited to: {0},Convite para: {0}
 settlement.refused.unknown_project,No such project.,Esse projeto não existe.
@@ -346,7 +356,7 @@ hud.carcass.needs,Needs a {0} to work this body · Z: carry,Precisa de {0} para 
 hud.carcass.carrying,Z: put the body down,Z: largar o corpo
 hud.carcass.empty,Nothing left to take · Z: carry,Nada mais a aproveitar · Z: carregar
 hud.carcass.refused.out_of_range,Too far from the body.,Longe demais do corpo.
-hud.carcass.refused.no_tool,You have no tool for that.,Você não tem a ferramenta para isso.
+hud.carcass.refused.no_tool,Nothing you carry can do that.,Nada do que você carrega serve para isso.
 hud.carcass.refused.empty,Nothing left to take.,Nada mais a aproveitar.
 hud.carcass.refused.too_heavy,Too heavy to carry.,Pesado demais para carregar.
 hud.carcass.refused.carrying,You are already carrying a body.,Você já está carregando um corpo.
@@ -363,7 +373,7 @@ hud.gesture.refused.dead,You cannot do that while down.,Você não pode fazer is
 hud.gesture.refused.rate,Too many gestures — wait a moment.,Gestos demais — espere um momento.
 hud.gesture.refused.unknown,That gesture does not exist.,Esse gesto não existe.
 tool.knife,knife,faca
-tool.bonetool,bone tool,ferramenta de osso
+tool.bonetool,bone saw,serra de ossos
 chat.usage.time,/time <hh:mm> | /time +<hours> — set the time of day,/time <hh:mm> | /time +<horas> — define a hora do dia
 chat.usage.speed,/speed <factor> [player] — walking speed multiplier (0.1–30),/speed <fator> [jogador] — multiplicador da velocidade de caminhada (0.1–30)
 chat.usage.fly,/fly [player] — toggle flying (Space up · Ctrl down),/fly [jogador] — liga ou desliga o voo (Espaço sobe · Ctrl desce)
@@ -463,7 +473,7 @@ bed.lost,"Your bed is gone, so you will come back at the world spawn.","Sua cama
 tutorial.chapter.moving,Moving,Movimento
 tutorial.chapter.gathering,Gathering,Coleta
 tutorial.chapter.first_stations,First stations,Primeiras estações
-tutorial.chapter.first_tools,First tools,Primeiras ferramentas
+tutorial.chapter.first_tools,First gear,Primeiros equipamentos
 tutorial.chapter.shelter,Shelter,Abrigo
 tutorial.chapter.first_hunt,First hunt,Primeira caçada
 tutorial.chapter.staying_alive,Staying alive,Sobrevivência
@@ -488,7 +498,7 @@ tutorial.inventory.body,You start with nothing. Open the inventory to see what y
 tutorial.hotbar.title,The bottom bar,A barra inferior
 tutorial.hotbar.body,"Expand the bottom bar and drag an item onto a box. Press the box's key to use it.","Expanda a barra inferior e arraste um item para uma caixa. Pressione a tecla da caixa para usá-lo."
 tutorial.crafting.title,Crafting,Criação
-tutorial.crafting.body,"Open the crafting window. It lists the recipes you know that need no station, like stone tools, and what each needs. A station's recipes are in its own window: use the station (U).","Abra a janela de criação. Ela lista as receitas que você conhece e que não precisam de estação, como ferramentas de pedra, e o que cada uma exige. As receitas de uma estação ficam na janela dela: use a estação (U)."
+tutorial.crafting.body,"Open the crafting window. It lists the recipes you know that need no station, like a stone axe or pick, and what each needs. A station's recipes are in its own window: use the station (U).","Abra a janela de criação. Ela lista as receitas que você conhece e que não precisam de estação, como um machado ou uma picareta de pedra, e o que cada uma exige. As receitas de uma estação ficam na janela dela: use a estação (U)."
 tutorial.craft_axe.title,A stone axe,Um machado de pedra
 tutorial.craft_axe.body,"Craft a stone axe from a branch and a loose stone, anywhere.","Crie um machado de pedra com um galho e uma pedra solta, em qualquer lugar."
 tutorial.chop.title,Chop a tree,Corte uma árvore
@@ -516,13 +526,13 @@ tutorial.craft_planks.body,"Stand by your bench and use it (U) to open its recip
 tutorial.craft_forge.title,Make a forge,Faça uma forja
 tutorial.craft_forge.body,"Use the carpentry bench (U) to open its recipes and build a forge from loose stones and planks.","Use a bancada de carpintaria (U) para abrir as receitas dela e construa uma forja com pedras soltas e tábuas."
 tutorial.place_forge.title,Place the forge,Coloque a forja
-tutorial.place_forge.body,Select the forge in the bottom bar and place it. Metal tools and weapons are made at a forge.,Selecione a forja na barra inferior e coloque-a. Ferramentas e armas de metal são feitas na forja.
+tutorial.place_forge.body,"Select the forge in the bottom bar and place it. Metal picks, axes and weapons are made at a forge.","Selecione a forja na barra inferior e coloque-a. Picaretas, machados e armas de metal são feitos na forja."
 tutorial.research_smithing.title,Learn smithing,Aprenda ferraria
-tutorial.research_smithing.body,"Research Basic Smithing to unlock the forge, ingots and the first metal tools.","Pesquise Ferraria Básica para liberar a forja, os lingotes e as primeiras ferramentas de metal."
+tutorial.research_smithing.body,"Research Basic Smithing to unlock the forge, ingots and the first metal gear.","Pesquise Ferraria Básica para liberar a forja, os lingotes e os primeiros equipamentos de metal."
 tutorial.craft_tool.title,A metal pick,Uma picareta de metal
 tutorial.craft_tool.body,"At the forge, smelt the ferrite ore into ingots and craft a ferrite pick. Its tooltip shows how much use it has left.","Na forja, funda o minério de ferrita em lingotes e crie uma picareta de ferrita. A dica dela mostra quanto uso ainda resta."
-tutorial.use_tool.title,Better tools,Ferramentas melhores
-tutorial.use_tool.body,Dig with the pick in your pack. A better tool digs faster and wears out with use.,Cave com a picareta na mochila. Uma ferramenta melhor cava mais rápido e se desgasta com o uso.
+tutorial.use_tool.title,Better gear,Equipamento melhor
+tutorial.use_tool.body,Dig with the pick in your pack. A better pick digs faster and wears out with use.,Cave com a picareta na mochila. Uma picareta melhor cava mais rápido e se desgasta com o uso.
 tutorial.craft_bed.title,A bed,Uma cama
 tutorial.craft_bed.body,Craft a bed from planks. It needs no station.,Crie uma cama com tábuas. Ela não precisa de estação.
 tutorial.place_bed.title,Place your bed,Coloque sua cama
@@ -562,7 +572,7 @@ tutorial.found_village.body,"Craft a Hearth, select it in the bottom bar and pla
 tutorial.start_project.title,Start a project,Comece um projeto
 tutorial.start_project.body,"In the settlement window, pick a project and start it where it should stand.","Na janela de assentamento, escolha um projeto e comece-o onde ele deve ficar."
 tutorial.contribute_project.title,Build together,Construam juntos
-tutorial.contribute_project.body,"Give the project materials from your pack or the stockpile, then work at its site with a tool.","Entregue materiais ao projeto da mochila ou do estoque e depois trabalhe no local com uma ferramenta."
+tutorial.contribute_project.body,"Give the project materials from your pack or the stockpile, then work at its site with the right gear.",Entregue materiais ao projeto da mochila ou do estoque e depois trabalhe no local com o equipamento certo.
 bed.refuse_no_item,You have no bed to place.,Você não tem uma cama para colocar.
 bed.refuse_far,That spot is too far away.,Esse lugar está longe demais.
 bed.refuse_not_yours,That is someone else's bed.,Essa é a cama de outra pessoa.
@@ -672,7 +682,7 @@ structure.refused.foreign_circle,Only that clan's members build this close to it
 structure.refused.no_permission,Your clan role may not do that.,Seu papel no clã não permite isso.
 structure.refused.structures_full,The world holds no more structures.,O mundo não comporta mais estruturas.
 structure.refused.no_clan,You are in no clan.,Você não está em nenhum clã.
-structure.refused.hammer_required,You need a hammer in hand to build. A stone hammer is a branch and a stone.,Você precisa de um martelo na mão para construir. Um martelo de pedra é um galho e uma pedra.
+structure.refused.build_required,You need a hammer in hand to build. A stone hammer is a branch and a stone.,Você precisa de um martelo na mão para construir. Um martelo de pedra é um galho e uma pedra.
 structure.refused.newcomer_ground,Nothing may be built on the heart of a newcomer ground. Build a little further out.,Nada pode ser construído no centro de um terreno de recém-chegados. Construa um pouco mais longe.
 hud.loose.picked,You pick up {0}.,Você pega {0}.
 hud.loose.nothing,Nothing to pick up here.,Nada para pegar aqui.
@@ -733,7 +743,7 @@ chest.refused.bad_mode,That is not an access mode.,Esse não é um modo de acess
 chest.refused.bad_args,That cannot be done.,Isso não pode ser feito.
 chest.refused.no_stock,There is not that much of it.,Não há tanto disso.
 chest.refused.full,There is no room for it.,Não há espaço para isso.
-chest.refused.durable,Tools and gear wear; a chest keeps only things that do not.,Ferramentas e equipamentos se desgastam; um baú guarda só o que não se desgasta.
+chest.refused.durable,Gear wears; a chest keeps only things that do not.,Equipamentos se desgastam; um baú guarda só o que não se desgasta.
 chest.refused.no_tool,You need a lockpick.,Você precisa de uma gazua.
 chest.refused.busy,You are already picking a lock.,Você já está arrombando uma fechadura.
 chest.refused.not_locked,It already opens for you.,Já abre para você.
@@ -889,7 +899,7 @@ controls.work_released_early,Released too early: hold until the bar fills,Soltou
 win.station,{0},{0}
 craft.search,Search recipes,Buscar receitas
 craft.cat.all,All,Tudo
-craft.cat.tools,Tools,Ferramentas
+craft.cat.work_gear,Work gear,Equipamento de trabalho
 craft.cat.weapons,Weapons,Armas
 craft.cat.armor,Armor,Armaduras
 craft.cat.building,Building,Construção

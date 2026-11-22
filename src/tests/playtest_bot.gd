@@ -2669,7 +2669,7 @@ static func tower_tiles(corner: Vector2i, side: int) -> Array:
 ## rose by the block, else the host's refusal reason ("not placed" when it gave none).
 func _place_top(tile: Vector2i, material: String) -> String:
 	var v = _root._voxel
-	if str(_root._inventory.find_tool("hammer")) == "":   # Phase 260 — building needs a hammer; a downed body may have lost it
+	if str(_root._inventory.find_for_work("build")) == "":   # Phase 260 — building needs a hammer; a downed body may have lost it
 		_root._inventory.add_item("StoneHammer", 1)
 	var top: float = v.column_top_at_tile(tile)
 	var exact := tile_exact(tile, top)

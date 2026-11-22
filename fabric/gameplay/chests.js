@@ -13,8 +13,8 @@ const { defineEntity } = require('@newel/core')
 //             (`none` when they know none of them). Its durability = the material's durability ×
 //             `durabilityFactor` × the same technology multiplier. A pick takes `pickSeconds` × difficulty,
 //             shortened by (1 − `skillSpeedup` × Lockpicking level / levelCap); a failed pick breaks the tool
-//             with `breakChance` / difficulty… capped at 1, and the owner is told. A pick needs an item whose
-//             `toolType` is `toolType` (Phase 208, the Lockpick).
+//             with `breakChance` / difficulty… capped at 1, and the owner is told. A pick needs an item that can do
+//             `work` (Phase 208, the Lockpick; Phase 296: Equipment.workTraits.pickLock).
 const CHESTS_AND_DOORS = {
   accessModes: ['owner', 'clan', 'everyone'],
   defaultMode: 'owner',
@@ -30,7 +30,7 @@ const CHESTS_AND_DOORS = {
     pickSeconds: 6,
     skillSpeedup: 0.6,
     breakChance: 0.3,
-    toolType: 'lockpick',
+    work: 'pickLock',
   },
 }
 
@@ -46,7 +46,7 @@ function chestsRefs() {
     materials: tagged(require('../world/materials'), 'material'),
     technologies: tagged(require('./technology'), 'technology'),
     stationItems: tagged(items, 'station'),
-    toolTypes: [...new Set(Object.values(items).map((e) => e && e.fields && e.fields.toolType && e.fields.toolType.defaultValue).filter(Boolean))],
+    itemWorks: [...new Set(Object.values(items).flatMap((e) => Object.keys((e && e.fields && e.fields.works && e.fields.works.defaultValue) || {})))],
   }
 }
 
@@ -86,7 +86,7 @@ function chestsProblems(d, refs) {
   for (const k of ['durabilityFactor', 'pickSeconds']) if (!isNum(l[k]) || l[k] <= 0) p.push(`ChestsAndDoors.locks.${k} must be > 0`)
   if (!isNum(l.skillSpeedup) || l.skillSpeedup < 0 || l.skillSpeedup >= 1) p.push('ChestsAndDoors.locks.skillSpeedup must be in [0, 1): no lock opens instantly')
   if (!isNum(l.breakChance) || l.breakChance < 0 || l.breakChance > 1) p.push('ChestsAndDoors.locks.breakChance must be in [0, 1]')
-  if (!(refs.toolTypes || []).includes(l.toolType)) p.push(`ChestsAndDoors.locks.toolType "${l.toolType}" is no item's toolType: no lock could be picked`)
+  if (!(refs.itemWorks || []).includes(l.work)) p.push(`ChestsAndDoors.locks.work "${l.work}" is no item's work: no lock could be picked`)
   return p
 }
 

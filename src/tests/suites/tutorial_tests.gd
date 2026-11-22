@@ -91,13 +91,13 @@ func _test_requires_and_inputs() -> void:
 
 
 ## Every id a tag names: the GameData table of an entity tag (the generator groups entities by their first
-## tag, and the generated resources do not keep `tags`), and items whose toolType is the tag.
+## tag, and the generated resources do not keep `tags`), and items whose equipment category is the tag (Phase 296).
 func _tag_members(tag: String) -> Array:
 	var tables := { "item": GameData.ITEMS, "material": GameData.MATERIALS, "creature": GameData.CREATURES }
 	var out: Array = (tables[tag] as Dictionary).keys() if tables.has(tag) else []
 	for key in GameData.ITEMS:
-		var tool = GameData.ITEMS[key].get("toolType")
-		if tool != null and str(tool) == tag:
+		var cat := GameDataReader.str_field(GameData.ITEMS[key], "equipmentCategory", "")
+		if cat != "" and cat == tag:
 			out.append(key)
 	return out
 
@@ -257,7 +257,8 @@ func _first_hour_items(kit: Variant = null, extra: Variant = null) -> Dictionary
 func _has_axe(have: Dictionary) -> bool:
 	for item in have:
 		var res: Resource = GameData.ITEMS.get(str(item), null)
-		if res != null and str(res.get("toolType") if res.get("toolType") != null else "") == "axe":
+		# Phase 296 — an item that can fell (the axe category's work).
+		if res != null and EquipmentRules.can_do(str(item), "fell"):
 			return true
 	return false
 

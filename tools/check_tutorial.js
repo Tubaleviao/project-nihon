@@ -80,7 +80,7 @@ const mineStone = (s) => s.find((x) => x.id === 'mine_stone');
 const workTimes = require('../fabric/gameplay/work_times');
 expect('the mine_stone step marks Ferrite within 30 m, under 5 s of stone-shovel digging down', (() => {
   const m = mineStone(fresh().steps).marker || {};
-  const soilSecs = (m.maxDepthBlocks - 1) * workTimes.WORK_SECONDS.Soil / workTimes.toolSpeeds().StoneShovel.shovel;
+  const soilSecs = (m.maxDepthBlocks - 1) * workTimes.WORK_SECONDS.Soil / require('../fabric/gameplay/items').StoneShovel.fields.works.defaultValue.dig;
   return m.kind === 'ore_near_surface' && m.item === 'Ferrite' && m.radiusMetres <= 30 && soilSecs < 5 ? [] : [JSON.stringify(m), soilSecs];
 })(), null);
 expect('an unknown marker kind fails', check(withStep((s) => { mineStone(s).marker = { kind: 'treasure' } })), /unknown marker kind "treasure"/);

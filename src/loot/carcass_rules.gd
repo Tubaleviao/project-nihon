@@ -1,11 +1,14 @@
 extends RefCounted
 ## Pure carcass rules (Phase 161): what a body can still give, what a tool can take, how a Skinning level
 ## scales a harvest, and what a body weighs against a carrier's capacity. Everything is read from the
-## fabric (`GameData.CREATURES`, `SKILLS["Skinning"]`, `HARVESTS["HarvestRules"]`, item `harvestTool`); no
+## fabric (`GameData.CREATURES`, `SKILLS["Skinning"]`, `HARVESTS["HarvestRules"]`, `Equipment.harvestWorks`); no
 ## number lives here.
 
 const SKILL := "Skinning"
 const I18n := preload("res://src/core/i18n.gd")
+const EquipmentRules := preload("res://src/character/equipment_rules.gd")
+## The harvest entry tool categories (Phase 160): `knife` (pelt, meat, organs) and `bonetool` (bone, tusk, horn, fang).
+const TOOL_CATEGORIES := ["knife", "bonetool"]
 const CARRY_RULES := ["carry", "drag", "immovable"]
 
 static func rules() -> Resource:
@@ -67,15 +70,17 @@ static func effective_level(level: int, efficiency: float) -> int:
 	var eff := int(floor(float(level) * clampf(efficiency, 0.0, 1.0)))
 	return clampi(eff, 0, int(s.get("levelCap"))) if s != null else maxi(eff, 0)
 
-## The harvest category an item provides and how well: `{ tool, efficiency }`, or `{}` for a non-tool.
-static func tool_of(item_id: String) -> Dictionary:
-	var res: Resource = GameData.ITEMS.get(item_id, null)
-	if res == null:
-		return {}
-	var t = res.get("harvestTool")
-	if t == null or str(t) == "":
-		return {}
-	return { "tool": str(t), "efficiency": float(res.get("efficiency")) }
+## Phase 296 — the harvest categories an item works and how well: [{ tool, efficiency }] for each category whose work
+## (`Equipment.harvestWorks`: knife → dissect, bonetool → cutBone) the item can do, its work speed as the efficiency
+## (capped at 1); [] for an item that works none.
+static func tools_of(item_id: String) -> Array:
+	var out: Array = []
+	for cat in TOOL_CATEGORIES:
+		var work := EquipmentRules.harvest_work(cat)
+		var s := EquipmentRules.work_speed(item_id, work) if work != "" else 0.0
+		if s > 0.0:
+			out.append({ "tool": cat, "efficiency": minf(1.0, s) })
+	return out
 
 ## Whether `category` can work an entry needing `entry_tool` (`none` entries need no tool at all).
 static func entry_workable(entry: Dictionary, category: String) -> bool:

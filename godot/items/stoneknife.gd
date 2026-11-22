@@ -29,5 +29,3 @@ enum Condition {
 @export var repair: Dictionary
 @export var works: Dictionary
 @export var combatDamage: Dictionary
-@export var harvestTool: String
-@export var efficiency: float

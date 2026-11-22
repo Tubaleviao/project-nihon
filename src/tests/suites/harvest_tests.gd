@@ -51,22 +51,23 @@ func _test_creature_tables() -> void:
 func _test_tools_provided() -> void:
 	var provided := {"none": true}
 	for id: String in GameData.ITEMS:
-		var tool = GameData.ITEMS[id].get("harvestTool")
-		if tool != null:
-			provided[String(tool)] = true
-			var eff := float(GameData.ITEMS[id].get("efficiency"))
+		for t: Dictionary in CarcassRules.tools_of(id):
+			provided[str(t["tool"])] = true
+			var eff := float(t["efficiency"])
 			assert_true(eff > 0.0 and eff <= 1.0, "%s efficiency is in (0, 1]" % id)
 	for creature: String in GameData.CREATURES:
 		for e: Dictionary in _drops(creature):
 			assert_true(provided.has(String(e["tool"])), "%s %s: some item provides %s" % [creature, e["item"], e["tool"]])
 			assert_true(GameData.SKILLS.has(String(e["skill"])), "%s %s: skill %s exists" % [creature, e["item"], e["skill"]])
-	assert_eq(str(GameData.ITEMS["CarpenterAxe"].get("harvestTool")), "bonetool", "an axe also works bone")
-	assert_true(float(GameData.ITEMS["CarpenterAxe"].get("efficiency")) < 1.0, "as a poor bone tool")
+	var axe := CarcassRules.tools_of("CarpenterAxe")
+	assert_eq(axe.size(), 1, "an axe works one harvest category")
+	assert_eq(str(axe[0]["tool"]) if not axe.is_empty() else "", "bonetool", "an axe also works bone")
+	assert_true(not axe.is_empty() and float(axe[0]["efficiency"]) < 1.0, "as a poor bone tool")
 
 
 func _test_harvest_tools() -> void:
-	assert_eq(str(GameData.ITEMS["SkinningKnife"].get("harvestTool")), "knife", "SkinningKnife is a knife")
-	assert_eq(str(GameData.ITEMS["BoneSaw"].get("harvestTool")), "bonetool", "BoneSaw is a bone tool")
+	assert_eq(CarcassRules.tools_of("SkinningKnife"), [{ "tool": "knife", "efficiency": 1.0 }], "SkinningKnife is a knife")
+	assert_eq(CarcassRules.tools_of("BoneSaw"), [{ "tool": "bonetool", "efficiency": 1.0 }], "BoneSaw is a bone tool")
 	var tech: Array = GameData.TECHNOLOGIES["TechBasicSmithing"].tech["unlocks"]
 	for pair in [["SkinningKnife", "RecipeSkinningKnife"], ["BoneSaw", "RecipeBoneSaw"]]:
 		var recipe: Dictionary = GameData.RECIPES[pair[1]].recipe

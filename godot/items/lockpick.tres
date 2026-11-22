@@ -15,7 +15,6 @@ equipmentCategory = "lockpick"
 traits = {"Piercing":{"strength":1}}
 works = {"pickLock":1}
 combatDamage = {"piercing":4}
-toolType = "lockpick"
 state_machine_field = "condition"
 initial_state = "pristine"
 description = "A bent ferrite pin on a thornwood grip. Picks the lock of a chest or door; a failed pick can snap it."

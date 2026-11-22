@@ -31,6 +31,7 @@ func inventory_rows() -> Array:
 		var tip = sl.I18n.t("ui.tip_quantity", [sl.I18n.content("item", iid), qty])
 		if dur != "":
 			tip += sl.I18n.t("ui.tip_durability", [dur.trim_prefix("[").trim_suffix("]")])
+		tip += ItemTooltip.equipment_lines(iid)   # Phase 296: category, traits, what it can do
 		var desc = sl.item_description(iid)
 		if desc != "":
 			tip += "\n" + desc

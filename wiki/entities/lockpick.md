@@ -25,7 +25,6 @@ A bent ferrite pin on a thornwood grip. Picks the lock of a chest or door; a fai
 | traits | json | Traits and strengths (Phase 295): { <Trait>: { strength, grade? } }; the working part's material may raise them |
 | works | json | Derived from the work table (Phase 295): { <work>: speed } for every work this item can do |
 | combatDamage | json | Derived (Phase 295): combat damage per damage type, the category multiplier times its traits' shares |
-| toolType | string | Derived (Phase 295 bridge, removed by Phase 296) from the work table: the old tool class the runtime reads |
 
 ## Related
 

@@ -16,7 +16,6 @@ traits = {"Broad":{"strength":1.2},"Blunt":{"strength":0.6,"grade":"light"}}
 repair = {"station":"","materials":[{"item":"LooseStone","quantity":1}],"skillGuards":[{"skill":"Carpentry","tier":"novice"}]}
 works = {"dig":1.2}
 combatDamage = {"blunt":2.88}
-toolType = "shovel"
 state_machine_field = "condition"
 initial_state = "pristine"
 description = "A flat stone tied to a long branch. Digs soil, sand and gravel faster than any pick."

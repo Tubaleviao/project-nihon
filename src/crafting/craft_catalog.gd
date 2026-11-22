@@ -9,12 +9,13 @@ extends RefCounted
 ## is unchanged: these lists only stop the window offering what the host would refuse.
 
 const GameDataReader := preload("res://src/core/game_data_reader.gd")
+const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 const WorkSkills := preload("res://src/character/work_skills.gd")
 const StationRules := preload("res://src/world/station_rules.gd")
 
 ## The category tabs, in tab order. A recipe's category is the one its structured `recipe` field names
 ## (`category`), else the category of what it makes (see `category`).
-const CATEGORIES := ["tools", "weapons", "armor", "building", "consumables", "materials"]
+const CATEGORIES := ["work_gear", "weapons", "armor", "building", "consumables", "materials"]
 ## Item shapes that are weapons when the item names no equipment slot of its own.
 const WEAPON_ARCHETYPES := ["sword", "longsword", "bow"]
 const CONSUMABLE_ARCHETYPES := ["potion"]
@@ -89,8 +90,9 @@ static func category(recipe_id: String) -> String:
 	var shape: Variant = GameDataReader.json_field(it, "shape", {})
 	var archetype := str((shape as Dictionary).get("archetype", "")) if shape is Dictionary else ""
 	var slot := GameDataReader.str_field(it, "equipmentSlot", "")
-	if GameDataReader.str_field(it, "toolType", "") != "" or GameDataReader.str_field(it, "harvestTool", "") != "":
-		return "tools"
+	# Phase 296 — equipment that does some work (fells, mines, digs, builds, picks a lock, harvests) is work gear.
+	if not EquipmentRules.works_of(item).is_empty():
+		return "work_gear"
 	if slot == "MainHand" or WEAPON_ARCHETYPES.has(archetype):
 		return "weapons"
 	if slot != "":

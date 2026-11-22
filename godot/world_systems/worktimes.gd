@@ -7,4 +7,3 @@ extends Resource
 @export var bareHandsSpeed: float
 @export var actions: Dictionary
 @export var workSeconds: Dictionary
-@export var toolSpeeds: Dictionary

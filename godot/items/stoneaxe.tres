@@ -16,7 +16,6 @@ traits = {"Sharp":{"strength":0.6},"Blunt":{"strength":0.6,"grade":"heavy"}}
 repair = {"station":"","materials":[{"item":"LooseStone","quantity":1}],"skillGuards":[{"skill":"Carpentry","tier":"novice"}]}
 works = {"fell":0.6}
 combatDamage = {"slashing":3.6,"blunt":3}
-toolType = "axe"
 state_machine_field = "condition"
 initial_state = "pristine"
 description = "A knapped stone lashed into a split branch. Fells a tree, slowly."

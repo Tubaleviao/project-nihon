@@ -9,4 +9,8 @@ extends Resource
 @export var categories: Dictionary
 @export var materialTraits: Dictionary
 @export var workTraits: Dictionary
+@export var combatScale: float
+@export var unarmed: Dictionary
+@export var creatureDamageShares: Dictionary
+@export var harvestWorks: Dictionary
 @export var categorySummary: Dictionary

@@ -4,6 +4,7 @@ extends "res://src/core/wiring.gd"
 ## and shows the card. It sends nothing to the host and changes no game state.
 
 const WorldPos := preload("res://src/terrain/world_pos.gd")
+const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 const Rules := preload("res://src/tutorial/tutorial_rules.gd")
 const TutorialSlice := preload("res://src/tutorial/tutorial_slice.gd")
 const TutorialCard := preload("res://src/tutorial/tutorial_card.gd")
@@ -117,14 +118,15 @@ func seed_from_player() -> void:
 				facts["technologies"].append(str(k))
 	slice.mark_done_silently(Rules.ids_satisfied(facts, slice.steps()))
 
-## The tags an item or material carries for the trigger tables: `material`, its tool type, `creature` is not one.
+## The tags an item or material carries for the trigger tables: `material`, its equipment category (Phase 296: axe,
+## pick, knife…, `EquipmentRules.category_of`); `creature` is not one.
 static func _tags_of(key: String) -> Array:
 	var tags: Array = []
 	if GameData.MATERIALS.has(key):
 		tags.append("material")
-	var res: Resource = GameData.ITEMS.get(key, null)
-	if res != null and res.get("toolType") != null:
-		tags.append(str(res.get("toolType")))
+	var cat := EquipmentRules.category_of(key)
+	if cat != "":
+		tags.append(cat)
 	return tags
 
 func _note(kind: String, params: Dictionary = {}) -> void:

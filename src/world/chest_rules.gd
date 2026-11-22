@@ -50,8 +50,9 @@ static func _locks() -> Dictionary:
 	var l: Variant = rules().get("locks", {})
 	return l if l is Dictionary else {}
 
-static func tool_type() -> String:
-	return str(_locks().get("toolType", "lockpick"))
+## Phase 296 — the work (Equipment.workTraits) an item must do to pick a lock: `pickLock`, a lockpick's.
+static func lock_work() -> String:
+	return str(_locks().get("work", "pickLock"))
 
 ## The lock technologies from weakest to strongest (`none` first).
 static func technologies() -> Array:

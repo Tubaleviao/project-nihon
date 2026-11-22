@@ -143,14 +143,14 @@ func tool_for(player_id: String, carcass_id: String) -> Dictionary:
 				candidates.append(item)
 	var best := {}
 	for item in candidates:
-		var t := CarcassRules.tool_of(str(item))
-		if t.is_empty() or not _usable(inv, str(item)):
+		if not _usable(inv, str(item)):
 			continue
-		if not _needs_category(carcass_id, str(t["tool"])):
-			continue
-		var cand := { "item": str(item), "tool": t["tool"], "efficiency": t["efficiency"] }
-		if best.is_empty() or float(cand["efficiency"]) > float(best["efficiency"]):
-			best = cand
+		for t: Dictionary in CarcassRules.tools_of(str(item)):
+			if not _needs_category(carcass_id, str(t["tool"])):
+				continue
+			var cand := { "item": str(item), "tool": t["tool"], "efficiency": t["efficiency"] }
+			if best.is_empty() or float(cand["efficiency"]) > float(best["efficiency"]):
+				best = cand
 	return best
 
 # ---------------------------------------------------------------------------

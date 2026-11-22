@@ -9,8 +9,9 @@ const attributes = require('./attributes')
 //   skill   the skill whose level scales the entry (every creature uses `Skinning`).
 //   Quantity runs from minQty at level 0 to maxQty at the cap along Skinning.yieldCurve; `chance` rises
 //   by Skinning.chanceCurve (capped at 1.0).
-// Tool: an item with `harvestTool` provides that category at `efficiency` (1.0 = full, below 1.0 = a
-//   poor substitute such as an axe as a bone tool). Effective level for yield and quality is
+// Tool (Phase 296): an item works the entries of a tool category when it can do the category's work
+//   (Equipment.harvestWorks: knife → dissect, bonetool → cutBone) at its work speed as `efficiency` (1.0 = full,
+//   below 1.0 = a poor substitute such as an axe as a bone tool). Effective level for yield and quality is
 //   floor(level * efficiency).
 // Carcass: `carcassMassKg`, `corpseSeconds` and `carryRule` per creature. `carry` bodies fit the carry
 //   capacity, `drag` bodies exceed it but fit capacity * dragCapacityFactor, `immovable` bodies cannot move.
@@ -76,15 +77,17 @@ const HarvestRules = defineEntity({
 
 /** Problems with harvest data, as strings.
  *  data: { creatures: { Name: { drops, carcassMassKg, corpseSeconds, carryRule } },
- *          tools: { Item: { harvestTool, efficiency } }, skills: [names], skinning, rules, baseCapacityKg } */
+ *          tools: { Item: { <knife|bonetool>: efficiency } }, skills: [names], skinning, rules, baseCapacityKg } */
 function harvestProblems(data) {
   const problems = []
   const { creatures, tools, skills, skinning: s, rules: r, baseCapacityKg } = data
   const provided = new Set(['none'])
-  for (const [item, t] of Object.entries(tools)) {
-    if (!HARVEST_TOOLS.includes(t.harvestTool) || t.harvestTool === 'none') problems.push(`${item}.harvestTool must be one of knife, bonetool, got "${t.harvestTool}"`)
-    else provided.add(t.harvestTool)
-    if (!(typeof t.efficiency === 'number' && t.efficiency > 0 && t.efficiency <= 1)) problems.push(`${item}.efficiency must be in (0, 1], got ${t.efficiency}`)
+  for (const [item, row] of Object.entries(tools)) {
+    for (const [cat, eff] of Object.entries(row)) {
+      if (!HARVEST_TOOLS.includes(cat) || cat === 'none') problems.push(`${item} provides harvest tool "${cat}": must be one of knife, bonetool`)
+      else provided.add(cat)
+      if (!(typeof eff === 'number' && eff > 0 && eff <= 1)) problems.push(`${item}.${cat} efficiency must be in (0, 1], got ${eff}`)
+    }
   }
 
   // Skinning curves: one entry per level 0..cap, never falling with level.
@@ -145,10 +148,14 @@ const defaults = (e) => Object.fromEntries(Object.entries((e && e.fields) || {})
 
 /** Builds the harvestProblems input from fabric entities. */
 function harvestData({ creatures, items, skills, rules = HarvestRules, skinning = skills.Skinning, attributeSystem = attributes.AttributeSystem }) {
+  // Phase 296: what an item can harvest comes from its works (Equipment.harvestWorks maps each tool category to a work).
+  const harvestWorks = require('./equipment').HARVEST_WORKS
   const tools = {}
   for (const [name, e] of Object.entries(items)) {
-    const f = defaults(e)
-    if ('harvestTool' in f) tools[name] = { harvestTool: f.harvestTool, efficiency: f.efficiency }
+    const works = defaults(e).works || {}
+    const row = {}
+    for (const [cat, w] of Object.entries(harvestWorks)) if (works[w] > 0) row[cat] = Math.min(1, works[w])
+    if (Object.keys(row).length) tools[name] = row
   }
   const cs = {}
   for (const [name, e] of Object.entries(creatures)) {

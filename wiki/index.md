@@ -368,7 +368,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [WeatherSystem](entities/weathersystem.md) — Simulates weather across biomes as an emergent world system
 - [WorkClips](entities/workclips.md) — Which rig clip each kind of work plays (loop for a hold, once for a single action), and the fraction of the clip at which the strike lands
 - [WorkSkills](entities/workskills.md) — Which skill each kind of work grows, and by how much: crafting in each domain, gathering each family of material, plants and carcasses, building, dismantling, repairing and picking locks
-- [WorkTimes](entities/worktimes.md) — How long gathering takes: a base time per material, the tool class each action wants, a speed per tool and class, and the slow factor of bare hands (also the speed of a tool of the wrong class)
+- [WorkTimes](entities/worktimes.md) — How long gathering takes: a base time per material, the work each action wants (the held item's speed at it comes from Equipment.workTraits), and the slow factor of bare hands (also the speed of an item that cannot do the work)
 - [WorldSystem](entities/worldsystem.md) — The planet as a fact of the fabric
 
 ## Writing
