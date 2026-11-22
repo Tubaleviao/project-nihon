@@ -1485,7 +1485,14 @@ Runtime for Phase 295. Everything that today asks for a `toolType` or `harvestTo
 ## Phase 297 — Finding servers nearby: dual-stack IPv6, a status port and LAN discovery
 
 Filed by the owner on 2026-11-22. Today a player joins by typing an address (main menu → Join server) and the
-host binds IPv4 only by default. This phase is the base the server list (298, 299) builds on.
+host binds IPv4 only by default. The port is fixed: the client always dials `DEFAULT_PORT` (7777), and an
+address typed as `10.0.0.2:7777` passes the Join form's rule but is then handed to ENet whole, as a host name.
+This phase is the base the server list (298, 299) builds on.
+
+- **Address and port.** One parser (replacing `RecentServers.valid_address`, still shared by the Join form,
+  `--client` and the recent-servers file) splits an address into host and port: `host`, `host:port`,
+  `1.2.3.4:port`, `[v6]:port`, and a bare IPv6 literal, which never carries a port (`2001:db8::1` is the whole
+  host). No port means `DEFAULT_PORT`. A host takes `--port <n>` (default 7777).
 
 - **Dual-stack.** A listen host and a dedicated server bind ENet on both IPv4 and IPv6 (Godot's `*` bind
   address, IPv6 with v6-only off, and an explicit IPv4 fallback where the OS has no IPv6). `--bind <addr>`
@@ -1494,8 +1501,8 @@ host binds IPv4 only by default. This phase is the base the server list (298, 29
   keeping whichever answers first. IPv6 does not lower latency; it matters because a self-hoster behind IPv4
   CGNAT, common in Brazil, can be reached on IPv6 with only a firewall rule and no port forward.
 - **Status port.** Every host answers a small UDP status query on a second port (default the game port + 1,
-  `--status-port`, `0` turns it off). The answer: protocol version, game version, a world name, players online,
-  max players, and whether a friend code is needed. Names are the host's text, so they are shown as given, never
+  `--status-port`, `0` turns it off). The answer: protocol version, game version, the game port, a world name,
+  players online and max players. Names are the host's text, so they are shown as given, never
   translated; every label around them is an `I18n.t()` key. Anti-abuse: a query must be padded to at least the
   answer's size so the port cannot amplify a spoofed request; answers are rate-limited per source address; the
   answer has a fixed size cap; malformed queries are dropped without a reply.
@@ -1503,13 +1510,18 @@ host binds IPv4 only by default. This phase is the base the server list (298, 29
   join a host whose version it does not speak and says so with a reason key (today an old client connects and
   misbehaves).
 - **LAN discovery.** The Join screen sends the status query to the IPv4 broadcast address and the IPv6
-  all-nodes link-local multicast group (`ff02::1`) on the default status port, and lists every host that answers
-  under "On this network", with its players and round-trip time. A row joins on click.
+  all-nodes link-local multicast group (`ff02::1`) on the default status port (broadcast enabled on the socket; the
+  multicast query sent once per interface from `IP.get_local_interfaces()`, since a link-local group needs a
+  scope), and lists every host that answers under "On this network", with its players and round-trip time,
+  once per host even when it answers on both families. A row joins on click, using the game port from the
+  answer.
 - **Client round-trip.** The same query, sent to a known address, gives the ping shown beside each recent server.
 
 **Acceptance criteria**
-- Suite: the address parser accepts IPv4, bracketed and bare IPv6 with and without a port, and host names, and
-  rejects malformed input with the existing error key.
+- Suite: the address parser accepts IPv4 and host names with and without a port, bracketed IPv6 with and
+  without a port, and bare IPv6 (no port), returning the host and port for each; it rejects malformed input
+  (a bad port, unclosed brackets, a scheme or path) with the existing `menu.join.error_address` key; `--client`,
+  the Join form and the recent-servers loader agree on every case (the Phase 223 one-rule test).
 - Suite: the status codec round-trips; a query smaller than the answer gets no reply; a query over the size cap
   or with a bad version gets no reply; the per-address rate limit drops the excess.
 - Suite: a client with protocol version N refuses a host advertising N+1 with a reason key present in `en` and
@@ -1528,9 +1540,11 @@ public servers.
   maintain). It keeps an in-memory table of public servers and answers list queries over TCP with
   length-prefixed JSON, every message size-capped.
 - **Heartbeat.** A dedicated server started with `--public` (and a listen host that ticks "Show in server list")
-  sends a heartbeat every 30 s: status port, world name, region tag, protocol version, players, max players.
-  The registry takes the address from the heartbeat's source, never from its body, and lists a server only
-  after it answers a status query sent back to that address (so a heartbeat cannot list someone else's IP).
+  sends a heartbeat every 30 s over TCP (so its source address cannot be spoofed): game port, status port,
+  world name, region tag, protocol version, players, max players. A dual-stack host heartbeats over IPv4 and
+  over IPv6, and the registry lists each family's address it has verified. The registry takes the IP from the
+  heartbeat's source, never from its body, and lists a server only after it answers a status query sent back
+  to that IP and status port (so a heartbeat cannot list someone else's IP).
   An entry missing three heartbeats is dropped. Heartbeats are rate-limited per address, with a cap on servers
   per address.
 - **Registry list.** The registries a client and a server use are a list in settings, seeded from a file in the
@@ -1563,6 +1577,11 @@ open-source game anyone can host.
   `Crypto` (no GDExtension).
 - **Signed entries.** A heartbeat carries the entry signed by the host key with a sequence number. Registries
   store and pass on the signed entry; a client verifies the signature and shows the key's short fingerprint.
+  The entry does not carry the host's address (a host behind NAT does not know it), so a copied entry could be
+  announced from another machine. To close that, the status query carries a random nonce and a host with a key
+  signs `status | nonce | key fingerprint` in its answer: a registry's back-probe and the client's own status
+  query both check that the address answers for the entry's key, and an address that cannot is not listed.
+  The signature counts toward the status answer's size cap and the query's padding.
   Recent servers remember the fingerprint, and a known address that later answers with another key is shown
   with a warning instead of joined silently.
 - **Many registries.** A server heartbeats to every registry in its list; a client queries all of them and
@@ -1579,6 +1598,9 @@ open-source game anyone can host.
 **Acceptance criteria**
 - Suite: a valid signed entry verifies; an entry with a changed field, another key's signature or a lower
   sequence number is rejected.
+- Suite: a registry back-probe and a client status query reject an address whose status answer is unsigned,
+  signed over another nonce, or signed by a key other than the entry's (a copied entry replayed from another
+  host).
 - Suite: merging two registry answers keeps one entry per host key, the highest sequence.
 - Suite: a recent server whose key changed is flagged; the warning key exists in both locales.
 - Net harness: two registries and one `--public` host announced to only the first; within two gossip rounds
@@ -1636,7 +1658,8 @@ Design-only (a fabric PR, no GDScript). Everything after it reads from this phas
   by the user where the OS allows it) and reuses it after that. Losing the file means a new player,
   as losing a save does.
 - Every host gets its own signing key here (`user://` for a listen host, the save folder for a
-  dedicated server) and a world id; Phase 230 reuses them.
+  dedicated server) and a world id; Phase 230 reuses them. If Phase 299 is done first, it has already
+  made them: reuse its key and world id instead of minting new ones.
 - The join handshake: the client sends its public key, the host replies with its own public key and
   a single-use nonce with an expiry, and the client signs `join | host key fingerprint | nonce`.
   Binding the host's key into the signed message stops a malicious host from relaying a nonce from
