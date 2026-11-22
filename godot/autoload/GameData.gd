@@ -342,6 +342,7 @@ const WORLD_SYSTEMS: Dictionary = {
 		"MarketSystem": preload("res://godot/world_systems/marketsystem.tres"),
 		"NewcomerGrounds": preload("res://godot/world_systems/newcomergrounds.tres"),
 		"PersistenceSystem": preload("res://godot/world_systems/persistencesystem.tres"),
+		"RemoteMotion": preload("res://godot/world_systems/remotemotion.tres"),
 		"ResearchPointRule": preload("res://godot/world_systems/researchpointrule.tres"),
 		"SelfRespawn": preload("res://godot/world_systems/selfrespawn.tres"),
 		"Settlement": preload("res://godot/world_systems/settlement.tres"),

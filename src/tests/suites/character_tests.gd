@@ -641,9 +641,9 @@ func _test_character_blend_curve() -> void:
 	# The blend weight is a continuous 0..1 curve over speed (idle → walk → run),
 	# replacing the old per-state magic constants (WALK → 0, RUN → 1).
 	assert_eq(Locomotion.blend_curve(0.0), 0.0, "idle speed → blend 0")
-	assert_eq(Locomotion.blend_curve(Locomotion.WALK_SPEED), 0.0, "walk threshold → blend 0")
-	assert_eq(Locomotion.blend_curve(Locomotion.RUN_SPEED), 1.0, "run threshold → blend 1")
-	var mid: float = (Locomotion.WALK_SPEED + Locomotion.RUN_SPEED) / 2.0
+	assert_eq(Locomotion.blend_curve(Locomotion.walk_speed()), 0.0, "walk threshold → blend 0")
+	assert_eq(Locomotion.blend_curve(Locomotion.run_speed()), 1.0, "run threshold → blend 1")
+	var mid: float = (Locomotion.walk_speed() + Locomotion.run_speed()) / 2.0
 	assert_true(is_equal_approx(Locomotion.blend_curve(mid), 0.5), "mid-band speed → blend 0.5")
 	assert_true(Locomotion.blend_curve(0.0) < Locomotion.blend_curve(mid), "blend rises through the walk band")
 	var loco := Locomotion.new()

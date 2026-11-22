@@ -33,10 +33,10 @@ const BASELINE_LARGEST := {
 	"lan/churn": 0,
 }
 
-## Mirrors `PlayerSlice.SPEED` (m/s on foot) and the client's report interval
-## (`PlayerSlice.SYNC_INTERVAL` physics ticks at 60 Hz), so a bot walks and reports like a player.
+## Mirrors `PlayerSlice.SPEED` (m/s on foot) and the client's report interval (the fabric's
+## `RemoteMotion.players.sendIntervalMs`, Phase 294), so a bot walks and reports like a player.
 const WALK_SPEED := 4.5
-const SEND_INTERVAL := 0.5
+const SEND_INTERVAL := 0.1
 ## Mirrors `RelayBatch.NEAR_RADIUS`: only relays of subjects this close to the watcher count toward the
 ## relay lag. Farther ones are thinned on purpose (one per `FAR_GAP_MS`, a held change sent once due),
 ## so their arrival trails the send by design, not by load.

@@ -47,7 +47,7 @@ func leave() -> void:
 	if _peer != null and _peer.get_connection_status() != MultiplayerPeer.CONNECTION_DISCONNECTED:
 		_peer.disconnect_peer(1)
 
-## The movement report a client sends every `SYNC_INTERVAL` physics ticks, for `exact`.
+## The movement report a client sends every `RemoteMotion.players.sendIntervalMs`, for `exact`.
 ## Returns the key the watcher will see this position under (`TickProbe.position_key`).
 func report(exact: Dictionary) -> String:
 	_on_player_state_sync_requested({

@@ -328,7 +328,8 @@ func advance_gesture(instance_id: String, delta: float) -> void:
 	if not sl._instances.has(instance_id):
 		return
 	var inst: Dictionary = sl._instances[instance_id]
-	if not inst["locomotion"].is_gesturing():
+	# Phase 294 — a body `drive_remote_body` moves is stepped there (once per frame), not here as well.
+	if bool(inst.get("remote_driven", false)) or not inst["locomotion"].is_gesturing():
 		return
 	sl.update_locomotion(instance_id, 0.0, true, 0.0, delta)
 	if not inst["locomotion"].is_gesturing():
@@ -362,6 +363,24 @@ func attack_clip_of(instance_id: String) -> String:
 	if in_hand == "":
 		in_hand = str(sl.get_equipment_set(instance_id).get("MainHand", ""))
 	return sl.RigTree.attack_clip_for(in_hand, GameData.ITEMS)
+
+## Phase 294 — one rendered frame of a remote player's body from its `RemoteMotion` track: stand it at `pos` (feet,
+## world metres), face `yaw`, and step its locomotion with the played-back `speed` (horizontal m/s), `grounded` and
+## `velocity_y`, so the clip (idle, walk, run, fall) follows the ground it covers. A seated pose keeps its lift.
+func drive_remote_body(instance_id: String, pos: Vector3, yaw: float, speed: float, grounded: bool, velocity_y: float, delta: float) -> bool:
+	if not sl._instances.has(instance_id):
+		return false
+	var inst: Dictionary = sl._instances[instance_id]
+	inst["remote_driven"] = true
+	var root: Node3D = inst["root"]
+	inst["position"] = pos
+	root.position = pos + sl._origin.value
+	root.rotation.y = yaw
+	sl.update_locomotion(instance_id, speed, grounded, velocity_y, delta)
+	apply_seat_lift(inst, root)
+	if inst.has("anim_tree") and is_instance_valid(inst["anim_tree"]):
+		sl.RigTree.drive(inst["anim_tree"], inst["locomotion"])
+	return true
 
 func set_character_position(instance_id: String, pos: Vector3) -> bool:
 	if not sl._instances.has(instance_id):

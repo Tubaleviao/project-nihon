@@ -16,6 +16,7 @@ const TextFocus := preload("res://src/ui/text_focus.gd")
 const InputLabels := preload("res://src/ui/input_labels.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const Diag := preload("res://src/core/diag.gd")
+const RemoteMotionRules := preload("res://src/networking/remote_motion_rules.gd")
 const I18n := preload("res://src/core/i18n.gd")
 const UiIcons := preload("res://src/ui/ui_icons.gd")
 const CarcassRules := preload("res://src/loot/carcass_rules.gd")
@@ -55,7 +56,6 @@ const VIEW_FAR_MARGIN := 1.1
 ## (a respawn, a teleport) snaps instead of sweeping across the world.
 const CAMERA_Y_SMOOTH := 10.0
 const CAMERA_SNAP_DISTANCE := 3.0
-const SYNC_INTERVAL := 30     # physics ticks between network sync broadcasts
 const ATTACK_RANGE := 3.0     # metres — melee interaction radius
 ## Metres — how close the player must be to tame (Phase 35). Must match
 ## TamingSlice.TAME_RANGE, which re-checks it and is the authority.
@@ -120,7 +120,7 @@ var _hp:     float = MAX_HP
 var attributes: Dictionary = AttributeRules.defaults()
 var max_hp: float = MAX_HP
 var _vel:    Vector3 = Vector3.ZERO
-var _sync_tick: int = 0
+var _sync_accum: float = 0.0   # Phase 294 — s since the last movement report (fabric `RemoteMotion.players`)
 var _alive: bool = true
 ## Phase 85 — right button held: the camera orbits and the mouse is captured.
 var _looking: bool = false
@@ -398,9 +398,10 @@ func _physics_process(delta: float) -> void:
 	# the ground under it is there.
 	if render_visuals and not _world_input_frozen and not ground_hold:
 		_move(delta)
-	_sync_tick += 1
-	if _sync_tick >= SYNC_INTERVAL:
-		_sync_tick = 0
+	_sync_accum += delta
+	var interval := RemoteMotionRules.player_send_interval_s()
+	if _sync_accum >= interval:   # the remainder carries, so the rate holds; a hitch sends no burst
+		_sync_accum = fmod(_sync_accum, interval) if _sync_accum < 2.0 * interval else 0.0
 		_broadcast_state()
 
 func _process(delta: float) -> void:

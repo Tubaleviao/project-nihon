@@ -7,7 +7,7 @@ extends RefCounted
 ## recipient (`[subject, pk, subject, pk, …]`), sent as one `player_states` packet. A pair is relayed by
 ## `due`: a neighbour within `NEAR_RADIUS` gets every report, a farther one inside the AOI at most one per
 ## `FAR_GAP_MS`, and a position that did not change only as a `KEEPALIVE_MS` refresh. With the client's
-## 0.5 s report interval every pair in the AOI still hears at least once a second.
+## report interval (the fabric's `RemoteMotion.players.sendIntervalMs`) every pair in the AOI still hears at least once a second.
 
 const PACKET_TYPE := "player_states"
 ## Metres between recipient and subject inside which every report is relayed.

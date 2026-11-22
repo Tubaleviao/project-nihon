@@ -157,7 +157,7 @@ static func clip_ground_speeds(player: AnimationPlayer) -> Vector2:
 ## clip pair covers at scale 1 at blend position `blend` (walk clip at 0.5, run at 1.0).
 ## 1.0 while standing (the idle clip is not a stride).
 static func time_scale(speed: float, blend: float, clip_speeds: Vector2) -> float:
-	if speed < Locomotion.WALK_SPEED:
+	if speed < Locomotion.walk_speed():
 		return 1.0
 	var covered := clip_speeds.x
 	if blend > 0.5:

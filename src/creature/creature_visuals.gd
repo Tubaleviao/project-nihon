@@ -107,9 +107,9 @@ static func loco_state(state: String, speed: float) -> int:
 	if state == "dead":
 		return Locomotion.State.DEATH
 	var moving := Locomotion.State.IDLE
-	if speed >= Locomotion.RUN_SPEED:
+	if speed >= Locomotion.run_speed():
 		moving = Locomotion.State.RUN
-	elif speed >= Locomotion.WALK_SPEED:
+	elif speed >= Locomotion.walk_speed():
 		moving = Locomotion.State.WALK
 	match state:
 		"fleeing":
@@ -141,9 +141,9 @@ static func yaw_for_direction(dir: Vector3) -> float:
 
 ## Pure: blend position in the Locomotion space (idle 0, walk 0.5, run 1) for a speed.
 static func blend_for_speed(speed: float) -> float:
-	if speed >= Locomotion.RUN_SPEED:
+	if speed >= Locomotion.run_speed():
 		return 1.0
-	if speed >= Locomotion.WALK_SPEED:
+	if speed >= Locomotion.walk_speed():
 		return 0.5
 	return 0.0
 
@@ -205,8 +205,12 @@ func shift_scene(shift: Vector3) -> void:
 	frame_chunk -= whole
 	frame_shift += shift - Vector3(float(whole.x) * cm, 0.0, float(whole.y) * cm)
 
-## The scene position of an instance record: from its exact position when it has one.
+## The scene position of an instance record: from its exact position when it has one. Phase 294 — on a client
+## the position its motion track plays back (`inst["draw"]`, see `CreatureSlice.tick_motion`) comes first.
 func scene_of(inst: Dictionary) -> Vector3:
+	var draw: Variant = inst.get("draw", null)
+	if draw is Dictionary:
+		return WorldPos.to_scene((draw as Dictionary)["pos"], frame_chunk) + frame_shift
 	if inst.has("pos"):
 		return WorldPos.to_scene(inst["pos"], frame_chunk) + frame_shift
 	return (inst["position"] as Vector3) + frame_shift - Vector3(float(frame_chunk.x) * WorldPos.CHUNK_METERS, 0.0, float(frame_chunk.y) * WorldPos.CHUNK_METERS)
@@ -387,10 +391,12 @@ func _update_model(iid: String, inst: Dictionary, delta: float) -> void:
 	var last: Vector3 = m["last_pos"]
 	# Speed and heading come from the exact displacement since the last update, so a rebase (which moves every
 	# scene position at once) is not read as a sprint and a 0.1 m step far from the origin is 0.1 m.
+	var draw: Variant = inst.get("draw", null)
+	var exact_now: Dictionary = (draw as Dictionary)["pos"] if draw is Dictionary else inst.get("pos", {})
 	var last_exact: Dictionary = m.get("last_exact", {})
-	if not last_exact.is_empty() and inst.has("pos"):
-		last = pos - WorldPos.offset_between(last_exact, inst["pos"])
-	m["last_exact"] = inst.get("pos", {})
+	if not last_exact.is_empty() and not exact_now.is_empty():
+		last = pos - WorldPos.offset_between(last_exact, exact_now)
+	m["last_exact"] = exact_now
 	if m["state"] == "dead" and state != "dead":
 		# Leaving death is a respawn: the body was put back at its spawn point, however near, so
 		# the move is not a run and the model does not turn toward it.
@@ -406,7 +412,12 @@ func _update_model(iid: String, inst: Dictionary, delta: float) -> void:
 		var inst_speed := flat.length() / delta
 		m["speed"] = lerpf(float(m["speed"]), inst_speed, minf(1.0, delta * 14.0))
 	m["last_pos"] = pos
-	if flat.length() > 0.0 and float(m["speed"]) >= FACE_SPEED and state != "dead":
+	if draw is Dictionary and state != "dead":
+		# Phase 294 — a client creature: speed and facing are its motion track's (played-back speed, turned at
+		# the fabric's turn rate), the same component a remote player's body uses.
+		m["speed"] = float((draw as Dictionary)["speed"])
+		m["yaw"] = float((draw as Dictionary)["yaw"])
+	elif flat.length() > 0.0 and float(m["speed"]) >= FACE_SPEED and state != "dead":
 		m["yaw"] = yaw_for_direction(flat.normalized())
 	var node: Node3D = m["node"]
 	if state == "dead" and prev_state != "dead":

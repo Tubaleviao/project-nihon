@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:7e626535593420a3bb0a7f30960ea301bcd4ce4419b527a8c372429591a03610",
+  "schemaHash": "sha256:d6a1108516e0aef3da7b18c8bda4c246a225be1238d48051c923a8890c926113",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -51449,6 +51449,68 @@
               "The record must be durable on disk before it is evicted; the next claim re-loads it",
               "Never evict the local player, whose record and inventory are this process own",
               "Never evict an ONLINE player"
+            ],
+            "auth": {
+              "roles": [
+                "maintainer"
+              ]
+            }
+          }
+        },
+        "pii": [],
+        "gdpr": {}
+      },
+      "RemoteMotion": {
+        "name": "RemoteMotion",
+        "tags": [
+          "world-system"
+        ],
+        "description": "How a client draws bodies it does not simulate (other players, creatures): it keeps the host's last states, plays them back a buffer behind, moves the body between them every frame, extrapolates a late state for at most one send interval, snaps only across a teleport, turns the body at a turn rate and picks idle, walk or run from the speed played back.",
+        "goal": "Other players and creatures walk instead of jumping (Phase 294)",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "rules": {
+            "name": "rules",
+            "type": "json",
+            "description": "Motion table: { players: { sendIntervalMs, bufferMs, extrapolateMaxMs }, creatures: { sendIntervalMs, bufferMs, extrapolateMaxMs, farSendIntervalMs, farDistanceM }, teleportDistanceM, turnRateRadPerSec, walkSpeed, runSpeed } (validated at fabric load)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "players": {
+                "sendIntervalMs": 100,
+                "bufferMs": 150,
+                "extrapolateMaxMs": 100
+              },
+              "creatures": {
+                "sendIntervalMs": 100,
+                "bufferMs": 150,
+                "extrapolateMaxMs": 100,
+                "farSendIntervalMs": 400,
+                "farDistanceM": 96
+              },
+              "teleportDistanceM": 30,
+              "turnRateRadPerSec": 10,
+              "walkSpeed": 0.2,
+              "runSpeed": 3
+            }
+          }
+        },
+        "relations": {},
+        "behaviors": {
+          "playBack": {
+            "name": "playBack",
+            "description": "Each rendered frame, draw a remote body at its states sampled at now minus the buffer",
+            "rules": [
+              "Between two states the body is interpolated; it never moves back along its path",
+              "Past the newest state it extrapolates for at most extrapolateMaxMs, then holds",
+              "A gap above teleportDistanceM snaps once"
             ],
             "auth": {
               "roles": [

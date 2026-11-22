@@ -7,6 +7,7 @@ const StressBotSlice := preload("res://src/tests/stress_bot_slice.gd")
 const StressRecorder := preload("res://src/tests/stress_recorder.gd")
 const StressClanRules := preload("res://src/tests/stress_clan_rules.gd")
 const StressBots := preload("res://src/tests/stress_bots.gd")
+const RemoteMotionRules := preload("res://src/networking/remote_motion_rules.gd")
 const TickProbe := preload("res://src/core/tick_probe.gd")
 const RelayBatch := preload("res://src/networking/relay_batch.gd")
 
@@ -174,7 +175,7 @@ func _test_stress_pattern_shapes() -> void:
 
 func _test_stress_mirrored_constants() -> void:
 	assert_eq(StressRules.WALK_SPEED, PlayerSlice.SPEED, "a bot walks at the player's speed")
-	assert_true(is_equal_approx(StressRules.SEND_INTERVAL, float(PlayerSlice.SYNC_INTERVAL) / float(Engine.physics_ticks_per_second)),
+	assert_true(is_equal_approx(StressRules.SEND_INTERVAL, RemoteMotionRules.player_send_interval_s()),
 		"and reports as often as a client")
 	assert_eq(StressRules.RELAY_NEAR_M, RelayBatch.NEAR_RADIUS, "the lag counts the relays the host never thins")
 	assert_eq(StressRules.LADDER, [16, 32, 64, 128, 200], "the ladder is the roadmap's")
