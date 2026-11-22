@@ -131,7 +131,7 @@ static func station_tier(station_type: String) -> String:
 static func check_recipe(recipe: Dictionary, tool_tier: String, station_type: String) -> String:
 	var need := recipe_tier(recipe)
 	var station := str(recipe.get("station", ""))
-	if station == "":
+	if station == "" or need == floor_tier():
 		return ""
 	var tool := station_tool(station)
 	if tool != "" and not reaches(tool_tier, need):
@@ -208,7 +208,29 @@ static func ability_rows(skill: String, skill_tier: String, weapon: String) -> A
 			"reason": reason, "tier_needed": "" if reason == "" else str(row["tier"]) })
 	return out
 
-## The highest ability of `skill` the skill tier reaches (what a hotbar skill box fires), or "".
+## What a hotbar skill box fires: the highest ability of `skill` that the skill tier and `weapon` both reach, else
+## the highest the skill tier reaches (so the refusal says which weapon tier is missing), else "".
+static func best_usable(skill: String, skill_tier: String, weapon: String) -> String:
+	var best := ""
+	for row: Dictionary in abilities_of(skill):
+		if check_ability(str(row["ability"]), skill_tier, weapon) == "":
+			best = str(row["ability"])
+	return best if best != "" else best_ability(skill, skill_tier)
+
+## Whether a carried item still works: a durable item with every instance worn out does not (an item the
+## inventory does not hold, or one without durability, does).
+static func has_wear_left(inv: Object, item: String) -> bool:
+	if inv == null or item == "" or not inv.has_method("is_durable") or not inv.is_durable(item):
+		return true
+	var values: Array = inv.get_durability_values(item)
+	if values.is_empty():
+		return true
+	for v in values:
+		if float(v) > 0.0:
+			return true
+	return false
+
+## The highest ability of `skill` the skill tier reaches, or "".
 static func best_ability(skill: String, skill_tier: String) -> String:
 	var best := ""
 	for row: Dictionary in abilities_of(skill):

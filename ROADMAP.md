@@ -459,11 +459,14 @@ research, clan membership and owned structures all key on the player id.
   (`combat.refuse.skill_tier`) and the wielded weapon's tier (`combat.refuse.weapon_tier`; bare hands and another
   skill's weapon are novice) from the host's own records, tells the user why in their locale, and runs an
   accepted ability as a swing through the plain attack checks (the abilities' own effects are later content).
-  A hotbar skill box fires its skill's highest reached ability at the nearest creature, and is dimmed with the
-  refusal in its tooltip when the weapon is below it; the skill page lists every ability with its tier and what
-  it needs. `CraftingSlice._check_gear_gate` (after the station gate, in `craft` and `can_craft`) refuses with
+  A worn-out weapon counts as bare hands, as a worn-out tool does for crafting. A hotbar skill box fires the
+  highest ability its skill tier and the wielded weapon both reach at the nearest creature, and is dimmed with the
+  refusal in its tooltip when the weapon reaches none (redrawn on `held_item_synced` / `equipment_changed`); the
+  skill page lists every ability with its tier and what it needs. `CraftingSlice._check_gear_gate` (after the station gate, in `craft` and `can_craft`) refuses with
   `craft.refuse.tool_tier:<category>:<tier>` (best usable item of the station's tool category, worn or carried)
-  or `craft.refuse.station_tier:<type>:<tier>` (the host's own record of the nearby station); crafting rows and
+  or `craft.refuse.station_tier:<type>:<tier>` (the host's own record of the nearby station; stations match by
+  exact type and the validator keeps `requiredTier` at or below the station's tier, so this refusal is defensive
+  until a station can be made at more than one tier); a novice recipe skips both checks; crafting rows and
   cards carry `required_tier` and `tier_needed`. `I18n.reason_text` renders a dotted reason head as its own key
   and tiers through `ui.tier_*`. Suite `gear_tier_tests.gd` covers the criteria.
 

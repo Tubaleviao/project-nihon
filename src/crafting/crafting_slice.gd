@@ -671,8 +671,8 @@ func _check_station_gate(recipe: Dictionary, pid: String = "") -> String:
 ## never from the client. Runs after the station and profession gates, so a needed station is already present.
 func _check_gear_gate(recipe: Dictionary, pid: String = "") -> String:
 	var station := str(recipe.get("station", ""))
-	if station == "":
-		return ""
+	if station == "" or GearTiers.recipe_tier(recipe) == GearTiers.floor_tier():
+		return ""   # a novice recipe needs nothing: skip the pack scan (the crafting window asks for every recipe)
 	var tool := GearTiers.station_tool(station)
 	var tool_tier := GearTiers.best_tier_of(tool, tool_items_of(pid)) if tool != "" else GearTiers.floor_tier()
 	return GearTiers.check_recipe(recipe, tool_tier, _station_type_near(station, pid))
@@ -680,11 +680,11 @@ func _check_gear_gate(recipe: Dictionary, pid: String = "") -> String:
 ## The items a player could work with: the worn main hand and every usable item in the pack.
 func tool_items_of(pid: String) -> Array:
 	var out: Array = []
+	var inv := inventory_for(pid)
 	if pid != "" and player_registry != null and player_registry.has_method("get_equipment"):
 		var worn := str((player_registry.get_equipment(pid) as Dictionary).get("MainHand", ""))
-		if worn != "":
+		if worn != "" and GearTiers.has_wear_left(inv, worn):
 			out.append(worn)
-	var inv := inventory_for(pid)
 	if inv == null:
 		return out
 	if not inv.has_method("get_contents"):
@@ -693,19 +693,15 @@ func tool_items_of(pid: String) -> Array:
 		var item := str(k)
 		if out.has(item) or (inv.has_method("get_item_count") and int(inv.get_item_count(item)) <= 0):
 			continue
-		if inv.has_method("is_durable") and inv.is_durable(item) and not _has_wear_left(inv, item):
+		if not GearTiers.has_wear_left(inv, item):
 			continue
 		out.append(item)
 	return out
 
-func _has_wear_left(inv: Node, item: String) -> bool:
-	for v in inv.get_durability_values(item):
-		if float(v) > 0.0:
-			return true
-	return false
-
 ## The type of the host's own record of the `station` near the crafter ("" when none is found or no station
-## slice is wired: the recipe's own station type then stands in, as the station gate already passed).
+## slice is wired: the recipe's own station type then stands in, as the station gate already passed). Station
+## matching is by exact type, so today this is the recipe's own type and the station-tier refusal is defensive:
+## the fabric validator keeps every `requiredTier` at or below its station's tier.
 func _station_type_near(station: String, pid: String) -> String:
 	if station_slice == null or not station_slice.has_method("nearest_station"):
 		return ""

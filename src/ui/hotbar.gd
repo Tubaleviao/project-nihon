@@ -102,6 +102,9 @@ func _init() -> void:
 		binds.append(0)
 
 func build() -> void:
+	# Phase 229 — the skill boxes dim by the wielded weapon: redraw when the held item or the worn set changes.
+	GameBus.held_item_synced.connect(_on_gear_changed)
+	GameBus.equipment_changed.connect(_on_gear_changed)
 	# Row 1 (keys 1-9) is created first so `_buttons[i]` is box i; it is always visible and the
 	# optional second row sits below it. The arrow's column is mirrored by a spacer so the rows align.
 	_row1 = _make_row(0, COLUMNS)
@@ -272,12 +275,13 @@ static func hint_for(entry: String, kind: String, tier: String = "") -> String:
 	return entry
 
 ## Phase 229 — a skill box's state: { available, ability, tier_needed, reason }. A combat skill fires its highest
-## ability the skill tier reaches; the box is unavailable when no ability is reached or the weapon is below that
-## ability's tier (`tier_needed` is then the ability's tier). Any other skill is always available.
+## ability the skill tier and the weapon both reach (`GearTiers.best_usable`); the box is unavailable when the
+## skill reaches none, or the weapon reaches none of those it does (`tier_needed` is then the tier the box would
+## need). Any other skill is always available.
 static func skill_box_state(skill: String, tier: String, weapon: String) -> Dictionary:
 	if not GearTiers.is_combat_skill(skill):
 		return { "available": true, "ability": "", "tier_needed": "", "reason": "" }
-	var ability := GearTiers.best_ability(skill, tier)
+	var ability := GearTiers.best_usable(skill, tier, weapon)
 	if ability == "":
 		var rows: Array = GearTiers.abilities_of(skill)
 		var first: String = str((rows[0] as Dictionary)["tier"]) if not rows.is_empty() else ""
@@ -558,6 +562,10 @@ func _key_text(index: int) -> String:
 	return OS.get_keycode_string(k) if k != 0 else ""
 
 ## The language changed: re-render the tooltips.
+func _on_gear_changed(_player_id: String, _what: Variant) -> void:
+	if not _buttons.is_empty():
+		_render()
+
 func relocalize() -> void:
 	if _menu != null:
 		_menu.set_item_text(0, I18n.t("hotbar.menu_set"))

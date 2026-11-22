@@ -106,7 +106,7 @@ func on_ability_intent(ability: String, instance_id: String, player_id: String) 
 	var spec := GearTiers.ability_spec(ability)
 	var reason := "unknown_ability"
 	if not spec.is_empty():
-		reason = GearTiers.check_ability(ability, _skill_tier_of(pid, str(spec["skill"])), _registry_main_hand(pid))
+		reason = GearTiers.check_ability(ability, _skill_tier_of(pid, str(spec["skill"])), _wielded_weapon(pid, local))
 	if reason == "":
 		var ok := _local_ability_round(instance_id) if local else on_attack_intent(instance_id, pid)
 		if not ok:
@@ -130,6 +130,13 @@ static func refusal_message(reason: String) -> Dictionary:
 		var kind: String = str(kinds[i - 1]) if i - 1 < kinds.size() else ""
 		args.append(I18n.ref(kind, parts[i]) if kind != "" else parts[i])
 	return I18n.msg(key, args)
+
+## The weapon a player's ability is judged with, from the host's records: the held item, else the worn main hand
+## (`_registry_main_hand`); a worn-out one counts as bare hands, as a worn-out tool does for crafting.
+func _wielded_weapon(pid: String, local: bool) -> String:
+	var weapon := _registry_main_hand(pid)
+	var inv: Object = root._inventory if local else root._registry.get_inventory(pid)
+	return weapon if GearTiers.has_wear_left(inv, weapon) else ""
 
 ## The tier a player holds in a skill, as crafting and the hotbar read it.
 func _skill_tier_of(pid: String, skill: String) -> String:
@@ -155,12 +162,13 @@ func _local_ability_round(instance_id: String) -> bool:
 	return true
 
 ## Phase 229 — a hotbar skill box (this machine's player): a combat skill fires its highest ability the skill
-## tier reaches (its first when none is, so the host says which tier is missing) at the nearest creature in
-## reach. The host decides; a client's intent is forwarded by NetworkingSlice.
+## tier and the wielded weapon both reach (else the highest the skill reaches, else its first, so the host says
+## which tier is missing) at the nearest creature in reach. The host decides; a client's intent is forwarded by
+## NetworkingSlice.
 func on_skill_slot_triggered(_slot: int, skill: String) -> void:
 	if not GearTiers.is_combat_skill(skill) or root._player == null or root._creature == null:
 		return
-	var ability := GearTiers.best_ability(skill, _skill_tier_of("", skill))
+	var ability := GearTiers.best_usable(skill, _skill_tier_of("", skill), GearTiers.wielded(root._character))
 	if ability == "":
 		ability = str((GearTiers.abilities_of(skill)[0] as Dictionary)["ability"])
 	var target: String = root._creature.nearest_creature(root._player.get_world_pos(), PlayerSlice.ATTACK_RANGE)

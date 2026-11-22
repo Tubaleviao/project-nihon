@@ -21,7 +21,7 @@ func register() -> void:
 	_run_test("gear tiers: master Swordsmanship with a novice sword uses only novice abilities; a master sword all", _test_sword_tiers)
 	_run_test("gear tiers: a master recipe needs a master tool and a master station; a refused craft takes nothing", _test_craft_tiers)
 	_run_test("gear tiers: the host refuses a peer's ability above its weapon and deals no damage", _test_host_refuses_peer_ability)
-	_run_test("gear tiers: a craft intent cannot claim a station tier; the host reads its own record", _test_craft_intent_station_from_record)
+	_run_test("gear tiers: a craft intent cannot claim a station tier; the host judges the station it finds", _test_craft_intent_station_from_record)
 	_run_test("gear tiers: hotbar, skill page and crafting window mark what the gear cannot reach, with the tier", _test_projections)
 	_run_test("gear tiers: refusal and tier labels are keys in en and pt_BR", _test_keys_in_both_locales)
 
@@ -73,8 +73,20 @@ func _test_sword_tiers() -> void:
 		assert_true(str(res["reason"]).begins_with("combat.refuse.weapon_tier"), "%s: combat.refuse.weapon_tier" % a)
 	assert_eq(rounds.size(), 1, "only the novice ability became a round")
 	r["reg"].record_equipment("host", { "MainHand": "VeilsteelLongsword" })
+	var inv := InventorySlice.new()   # the host's own pack: a worn-out sword in it counts as bare hands
+	add_child(inv)
+	r["root"]._inventory = inv
+	inv.add_item("VeilsteelLongsword", 1, [0.0])
+	r["reg"].record_equipment("host", { "MainHand": "VeilsteelLongsword" })
+	assert_eq(w._registry_main_hand("host"), "VeilsteelLongsword", "the worn-out sword is the one wielded")
+	assert_true(str(w.on_ability_intent("executePowerStrike", iid, "")["reason"]).begins_with("combat.refuse.weapon_tier"), "a worn-out master sword is no sword")
+	inv.consume_items({ "VeilsteelLongsword": 1 })
+	r["root"]._inventory = null
+	r["reg"].record_equipment("host", { "MainHand": "VeilsteelLongsword" })   # the pack change took the sword off
+	inv.free()
 	for a in SWORD_ABILITIES:
-		assert_true(bool(w.on_ability_intent(a, iid, "")["success"]), "%s resolves with a master sword" % a)
+		var ok_res: Dictionary = w.on_ability_intent(a, iid, "")
+		assert_true(bool(ok_res["success"]), "%s resolves with a master sword (%s)" % [a, ok_res["reason"]])
 	assert_eq(rounds.size(), 4, "every ability became a round with the master sword")
 	GameBus.combat_round_requested.disconnect(on_round)
 	_free_host_rig(r)
@@ -124,7 +136,8 @@ func _test_host_refuses_peer_ability() -> void:
 	r["reg"].record_equipment("p5", { "MainHand": "StoneKnife" })
 	var iid: String = r["c"]._instances.keys()[0]
 	n.remember_player_state(5, r["c"].get_instance_position(iid) + Vector3(1.0, 0.0, 0.0))
-	var hp_before: Variant = r["c"].get_instance_state(iid)
+	var battle := BattleSlice.new()   # the host's HP book: a refused ability must leave it untouched
+	add_child(battle)
 	var rounds: Array = []
 	var msgs: Array = []
 	var on_round := func(a: String, d: String) -> void: rounds.append([a, d])
@@ -136,7 +149,8 @@ func _test_host_refuses_peer_ability() -> void:
 	n._player_ids[5] = "p5"
 	n._route_c2h(5, { "type": "ability_intent", "ability": "executeWhirlwindBlade", "instance_id": iid, "player_id": "host" })
 	assert_true(rounds.is_empty(), "an ability above the peer's weapon requests no round: no damage")
-	assert_eq(r["c"].get_instance_state(iid), hp_before, "the creature is untouched")
+	assert_false(battle._hp_state.has(iid), "the creature's HP is untouched")
+	battle.free()
 	assert_eq(msgs.size(), 1, "the peer is told why")
 	if msgs.size() == 1:
 		assert_eq(msgs[0][0], "combat.refuse.weapon_tier", "as combat.refuse.weapon_tier")
@@ -189,6 +203,24 @@ func _test_projections() -> void:
 	assert_eq(str(st["ability"]), "executeWhirlwindBlade", "it would fire the highest ability the skill reaches")
 	assert_eq(str(st["tier_needed"]), "expert", "and carries the tier needed")
 	assert_true(bool(Hotbar.skill_box_state("Swordsmanship", "master", "VeilsteelLongsword")["available"]), "a master sword makes it available")
+	var apprentice := Hotbar.skill_box_state("Swordsmanship", "master", "FerriteShortSword")
+	assert_true(bool(apprentice["available"]), "an apprentice sword still uses what it reaches")
+	assert_eq(str(apprentice["ability"]), "executePowerStrike", "the box fires the highest ability the sword reaches")
+	# The drawn bar: the box dims with the weapon and lights when a better one is wielded.
+	var bar := Hotbar.new()
+	var wield := { "item": "StoneKnife" }
+	bar.tier_provider = func() -> Dictionary: return { "Swordsmanship": "master" }
+	bar.weapon_provider = func() -> String: return str(wield["item"])
+	bar.build()
+	bar.slots[0] = "skill:Swordsmanship"
+	bar._render()
+	var box: Button = bar._buttons[0]
+	assert_eq(box.modulate, Hotbar.DIMMED, "a novice sword dims the Swordsmanship box")
+	assert_true(box.tooltip_text.contains(I18n.t("combat.refuse.weapon_tier", [I18n.t("ui.tier_expert")])), "its tooltip says the tier needed")
+	wield["item"] = "VeilsteelLongsword"
+	GameBus.held_item_synced.emit("host", "VeilsteelLongsword")
+	assert_eq(box.modulate, Color.WHITE, "wielding a master sword lights it again on the held-item sync")
+	bar.free()
 	assert_true(bool(Hotbar.skill_box_state("Unarmed", "novice", "")["available"]), "Unarmed needs nothing")
 	assert_true(bool(Hotbar.skill_box_state("Smithing", "novice", "")["available"]), "a non-combat skill is never gear-capped")
 	# Skill page rows.
@@ -208,9 +240,15 @@ func _test_projections() -> void:
 		craft.set_skill(sk, "master")
 	rig["station"].place_station("arcane forge", Vector3.ZERO)
 	var row := _row(ui.crafting_rows(), "RecipeEnchantedAethermiteShard")
-	if not row.is_empty() and str(row["required_tier"]) != "novice":
-		assert_false(bool(row["can_craft"]), "a journeyman arcane-forge recipe with no hammer is unavailable")
-		assert_eq(str(row["tier_needed"]), str(row["required_tier"]), "and carries the tier needed")
+	assert_eq(str(row.get("required_tier", "")), "journeyman", "the shard is a journeyman arcane-forge recipe")
+	assert_false(bool(row.get("can_craft", true)), "with no hammer it is unavailable")
+	assert_eq(str(row.get("reason", "")), "craft.refuse.tool_tier:hammer:journeyman", "refused by the tool tier")
+	assert_eq(str(row.get("tier_needed", "")), "journeyman", "and carries the tier needed")
+	rig["inv"].add_item("VeilsteelHammer", 1)
+	row = _row(ui.crafting_rows(), "RecipeEnchantedAethermiteShard")
+	assert_eq(str(row.get("tier_needed", "x")), "", "a master hammer clears the gear refusal")
+	assert_eq(str(row.get("reason", "")), "missing_inputs", "and the next rule is the inputs")
+	rig["inv"].consume_items({ "VeilsteelHammer": 1 })
 	var any_gear := false
 	for r: Dictionary in ui.crafting_rows():
 		if str(r["reason"]).begins_with("craft.refuse.tool_tier"):
@@ -233,6 +271,11 @@ func _test_keys_in_both_locales() -> void:
 		for row: Dictionary in GearTiers.abilities_of(str(skill)):
 			for loc in ["en", "pt_BR"]:
 				assert_true(str((cats[loc] as Dictionary).get("ui.ability." + str(row["ability"]), "")) != "", "%s names %s" % [loc, row["ability"]])
+	var tool_line := I18n.reason_text("craft.refuse.tool_tier:hammer:master")
+	assert_true(tool_line.contains(I18n.content("equipment", "hammer")) and not tool_line.contains("⟨"), "the tool refusal names the tool: %s" % tool_line)
+	assert_true(tool_line.contains(I18n.t("ui.tier_master")), "and the tier")
+	var station_line := I18n.reason_text("craft.refuse.station_tier:forge:master")
+	assert_true(station_line.contains(I18n.content("station", "forge")) and not station_line.contains("⟨"), "the station refusal names the station")
 	for code in ["craft.refuse.tool_tier:hammer:master", "craft.refuse.station_tier:forge:master", "combat.refuse.weapon_tier:expert",
 			"combat.refuse.skill_tier:Swordsmanship:apprentice", "unknown_ability"]:
 		assert_false(I18n.reason_text(code).contains(code), "%s renders as text, not the code" % code)

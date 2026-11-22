@@ -231,7 +231,7 @@ const REASON_PARAM_KINDS := {
 	"requires_profession": ["profession"],
 	"skill_requirement": ["skill"],
 	# Phase 229 — gear tier refusals carry their own catalog key (a dotted code head) and name a tier.
-	"craft.refuse.tool_tier": ["category", "tier"],
+	"craft.refuse.tool_tier": ["equipment", "tier"],
 	"craft.refuse.station_tier": ["station", "tier"],
 	"combat.refuse.weapon_tier": ["tier"],
 	"combat.refuse.skill_tier": ["skill", "tier"],
