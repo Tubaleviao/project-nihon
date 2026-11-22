@@ -17,7 +17,7 @@ module.exports = {
       stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory', defaultValue: false },
       shape: itemShape({ archetype: 'pick', parts: { head: 'Ferrite', handle: 'Thornwood' } }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 80 },
-      ...equipmentFields({ category: 'pick', traits: { Piercing: { strength: 1.0 }, Blunt: { strength: 1.0, grade: 'light' } } }),
+      ...equipmentFields({ category: 'pick', traits: { Piercing: { strength: 1.0 }, Blunt: { strength: 1.0, grade: 'light' } }, tier: 'apprentice' }),
       repair: repairData({
         station: 'forge',
         materials: [{ item: 'FerriteIngot', quantity: 1 }],
@@ -61,7 +61,7 @@ module.exports = {
       stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory', defaultValue: false },
       shape: itemShape({ archetype: 'pick', parts: { head: 'Veilsteel', handle: 'Thornwood' } }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 160 },
-      ...equipmentFields({ category: 'pick', traits: { Piercing: { strength: 1.0 }, Blunt: { strength: 1.0, grade: 'light' } } }),
+      ...equipmentFields({ category: 'pick', traits: { Piercing: { strength: 1.0 }, Blunt: { strength: 1.0, grade: 'light' } }, tier: 'master' }),
       repair: repairData({
         station: 'master forge',
         materials: [{ item: 'VeilsteelIngot', quantity: 1 }],
@@ -108,7 +108,7 @@ module.exports = {
       stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory', defaultValue: false },
       shape: itemShape({ archetype: 'axe', parts: { head: 'Ferrite', handle: 'Thornwood' }, unshown: ['Duskfiber'] }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 90 },
-      ...equipmentFields({ category: 'axe', traits: { Sharp: { strength: 1.0 }, Blunt: { strength: 1.0, grade: 'heavy' } } }),
+      ...equipmentFields({ category: 'axe', traits: { Sharp: { strength: 1.0 }, Blunt: { strength: 1.0, grade: 'heavy' } }, tier: 'apprentice' }),
       repair: repairData({
         station: 'forge',
         materials: [{ item: 'FerriteIngot', quantity: 1 }],
@@ -149,7 +149,7 @@ module.exports = {
       stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory', defaultValue: false },
       shape: itemShape({ archetype: 'knife', parts: { blade: 'Ferrite', grip: 'Thornwood' } }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 60 },
-      ...equipmentFields({ category: 'knife', traits: { Sharp: { strength: 1.0 }, Piercing: { strength: 1.0 } } }),
+      ...equipmentFields({ category: 'knife', traits: { Sharp: { strength: 1.0 }, Piercing: { strength: 1.0 } }, tier: 'apprentice' }),
       repair: repairData({
         station: 'forge',
         materials: [{ item: 'FerriteIngot', quantity: 1 }],
@@ -189,7 +189,7 @@ module.exports = {
       stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory', defaultValue: false },
       shape: itemShape({ archetype: 'saw', parts: { blade: 'Ferrite', grip: 'Thornwood' } }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 70 },
-      ...equipmentFields({ category: 'saw', traits: { Sharp: { strength: 1.0 } } }),
+      ...equipmentFields({ category: 'saw', traits: { Sharp: { strength: 1.0 } }, tier: 'apprentice' }),
       repair: repairData({
         station: 'forge',
         materials: [{ item: 'FerriteIngot', quantity: 1 }],
@@ -230,7 +230,7 @@ module.exports = {
       stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory', defaultValue: false },
       shape: itemShape({ archetype: 'lockpick', parts: { pin: 'Ferrite', grip: 'Thornwood' } }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 20 },
-      ...equipmentFields({ category: 'lockpick', traits: { Piercing: { strength: 1.0 } } }),
+      ...equipmentFields({ category: 'lockpick', traits: { Piercing: { strength: 1.0 } }, tier: 'apprentice' }),
     },
     relations: {
       ferrite:   { name: 'ferrite',   kind: 'hasOne', target: 'Ferrite' },
@@ -246,6 +246,88 @@ module.exports = {
       repair: {
         description: 'Re-file a worn lockpick at a forge',
         rules: ['Requires a forge; no additional materials consumed'],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
+  // ─── FerriteHammer ───────────────────────────────────────────────────────
+  // Phase 229 — a forging hammer of its tier: smithing at a higher station needs a hammer of that tier (GearTiers).
+  FerriteHammer: defineEntity({
+    tags: ['item'],
+    description:
+      'A ferrite head on a thornwood handle, square-faced for the anvil. Forges at a forge or masonry bench what a stone hammer cannot.',
+    goal: 'The apprentice-tier hammer: smithing and masonry above novice need it (Phase 229)',
+    fields: {
+      id:        { type: 'uuid', primaryKey: true },
+      condition: { type: 'enum', values: DURABILITY_STATES },
+      weight:    { type: 'decimal', description: 'kg; affects carry capacity', defaultValue: 1.6 },
+      rarity:    { type: 'enum', values: RARITIES, defaultValue: 'common' },
+      stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory', defaultValue: false },
+      shape: itemShape({ archetype: 'hammer', parts: { head: 'Ferrite', handle: 'Thornwood' } }),
+      durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 90 },
+      ...equipmentFields({ category: 'hammer', traits: { Blunt: { strength: 1.0, grade: 'heavy' } }, tier: 'apprentice' }),
+      repair: repairData({
+        station: 'forge',
+        materials: [{ item: 'FerriteIngot', quantity: 1 }],
+        skillGuards: [{ skill: 'Smithing', tier: 'novice' }],
+      }),
+    },
+    relations: {
+      ferrite: { name: 'ferrite', kind: 'hasOne', target: 'Ferrite' },
+      thornwood: { name: 'thornwood', kind: 'hasOne', target: 'Thornwood' },
+    },
+    stateMachine: itemStateMachine(),
+    behaviors: {
+      degrade: {
+        description: 'Reduce durability after each craft or build it is used for',
+        rules: ['Each finished craft at a station consumes durability points'],
+        auth: { roles: ['maintainer'] },
+      },
+      repair: {
+        description: 'Restore to pristine condition at a forge',
+        rules: ['Repair costs one ferrite ingot'],
+        auth: { roles: ['maintainer'] },
+      },
+    },
+  }),
+
+  // ─── VeilsteelHammer ─────────────────────────────────────────────────────
+  // Phase 229 — a forging hammer of its tier: smithing at a higher station needs a hammer of that tier (GearTiers).
+  VeilsteelHammer: defineEntity({
+    tags: ['item'],
+    description:
+      'A veilsteel hammer balanced for the master forge. Works every forging tier, up to master.',
+    goal: 'The master-tier hammer: the highest smithing and arcane forging recipes need it (Phase 229)',
+    fields: {
+      id:        { type: 'uuid', primaryKey: true },
+      condition: { type: 'enum', values: DURABILITY_STATES },
+      weight:    { type: 'decimal', description: 'kg; affects carry capacity', defaultValue: 2.2 },
+      rarity:    { type: 'enum', values: RARITIES, defaultValue: 'uncommon' },
+      stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory', defaultValue: false },
+      shape: itemShape({ archetype: 'hammer', parts: { head: 'Veilsteel', handle: 'Thornwood' } }),
+      durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 180 },
+      ...equipmentFields({ category: 'hammer', traits: { Blunt: { strength: 1.0, grade: 'heavy' } }, tier: 'master' }),
+      repair: repairData({
+        station: 'master forge',
+        materials: [{ item: 'VeilsteelIngot', quantity: 1 }],
+        skillGuards: [{ skill: 'Smithing', tier: 'journeyman' }],
+      }),
+    },
+    relations: {
+      veilsteel: { name: 'veilsteel', kind: 'hasOne', target: 'Veilsteel' },
+      thornwood: { name: 'thornwood', kind: 'hasOne', target: 'Thornwood' },
+    },
+    stateMachine: itemStateMachine(),
+    behaviors: {
+      degrade: {
+        description: 'Reduce durability after each craft or build it is used for',
+        rules: ['Each finished craft at a station consumes durability points'],
+        auth: { roles: ['maintainer'] },
+      },
+      repair: {
+        description: 'Restore to pristine condition at a master forge',
+        rules: ['Repair costs one veilsteel ingot'],
         auth: { roles: ['maintainer'] },
       },
     },

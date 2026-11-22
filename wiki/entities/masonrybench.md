@@ -21,6 +21,7 @@ A stone slab on a plank frame for cutting blocks and mixing cement. Placed from 
 | stackable | boolean | False; one masonry bench per slot |
 | shape | json | Item shape: archetype, material per named part, and uniform scale (Phase 151) |
 | durability | integer | Structural integrity |
+| tier | string | Gear tier of a masonry bench (Phase 229): the highest recipe tier crafted at it |
 
 ## Related
 

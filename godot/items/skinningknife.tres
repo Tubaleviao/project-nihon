@@ -13,6 +13,7 @@ shape = {"archetype":"knife","parts":{"blade":"Ferrite","grip":"Thornwood"},"sca
 durability = 60
 equipmentCategory = "knife"
 traits = {"Sharp":{"strength":1},"Piercing":{"strength":1}}
+tier = "apprentice"
 repair = {"station":"forge","materials":[{"item":"FerriteIngot","quantity":1}],"skillGuards":[{"skill":"Smithing","tier":"novice"}]}
 works = {"dissect":1}
 combatDamage = {"slashing":4.8,"piercing":4}

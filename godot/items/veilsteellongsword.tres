@@ -13,6 +13,7 @@ shape = {"archetype":"longsword","parts":{"blade":"Veilsteel","grip":"Ashite"},"
 durability = 200
 equipmentCategory = "greatsword"
 traits = {"Sharp":{"strength":1},"Piercing":{"strength":1}}
+tier = "master"
 repair = {"station":"master forge","materials":[{"item":"VeilsteelIngot","quantity":1}],"skillGuards":[{"skill":"Smithing","tier":"journeyman"}]}
 equipmentSlot = "MainHand"
 deformationMode = "RIGID"

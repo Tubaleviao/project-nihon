@@ -1,0 +1,12 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://godot/recipes/recipeferritehammer.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = ""
+domain = 0
+outputCount = 0
+recipe = {"domain":"smithing","station":"forge","requiredTier":"novice","inputs":[{"item":"FerriteIngot","quantity":2},{"item":"ThornwoodPlank","quantity":1}],"outputs":[{"item":"FerriteHammer","quantity":1}],"skillGuards":[{"skill":"Smithing","tier":"novice"}]}
+description = "Forge a ferrite hammer from two ferrite ingots and one thornwood plank."
+tags = ["recipe"]

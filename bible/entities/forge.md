@@ -18,6 +18,7 @@ A stone hearth with a plank bellows, hot enough to smelt ferrite. Placed from th
 | `stackable` | boolean | yes | False; one forge per slot |
 | `shape` | json | yes | Item shape: archetype, material per named part, and uniform scale (Phase 151) |
 | `durability` | integer | yes | Structural integrity |
+| `tier` | string | yes | Gear tier of a forge (Phase 229): the highest recipe tier crafted at it |
 
 ## Relations
 

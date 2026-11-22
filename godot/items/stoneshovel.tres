@@ -13,6 +13,7 @@ shape = {"archetype":"shovel","parts":{"head":"Ashite","handle":"Thornwood"},"sc
 durability = 40
 equipmentCategory = "shovel"
 traits = {"Broad":{"strength":1.2},"Blunt":{"strength":0.6,"grade":"light"}}
+tier = "novice"
 repair = {"station":"","materials":[{"item":"LooseStone","quantity":1}],"skillGuards":[{"skill":"Carpentry","tier":"novice"}]}
 works = {"dig":1.2}
 combatDamage = {"blunt":2.88}

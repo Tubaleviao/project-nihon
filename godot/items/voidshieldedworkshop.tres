@@ -11,6 +11,7 @@ rarity = 0
 stackable = false
 shape = {"archetype":"chest","parts":{"box":"Veilsteel","band":"Voidite"},"scale":1}
 durability = 400
+tier = "expert"
 state_machine_field = "condition"
 initial_state = "pristine"
 description = "A veilsteel cabinet lined with refined voidite, shielded for void work. Placed from the hotbar as a void-shielded workshop station; its owner can pick it up again."

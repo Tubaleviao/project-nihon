@@ -7,6 +7,6 @@ script = ExtResource("1")
 id = ""
 domain = 0
 outputCount = 0
-recipe = {"domain":"smithing","station":"forge","inputs":[{"item":"FerriteIngot","quantity":6},{"item":"AshiteBlock","quantity":4}],"outputs":[{"item":"MasterForge","quantity":1}],"skillGuards":[{"skill":"Smithing","tier":"apprentice"}]}
+recipe = {"domain":"smithing","station":"forge","requiredTier":"novice","inputs":[{"item":"FerriteIngot","quantity":6},{"item":"AshiteBlock","quantity":4}],"outputs":[{"item":"MasterForge","quantity":1}],"skillGuards":[{"skill":"Smithing","tier":"apprentice"}]}
 description = "Clad a cut-stone hearth in six ferrite ingots at a forge."
 tags = ["recipe"]

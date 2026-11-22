@@ -23,6 +23,7 @@ Two-handed longsword of veilsteel. Heavy and slow but capable of cracking enchan
 | durability | integer | Remaining durability points before condition degrades |
 | equipmentCategory | string | Equipment category (Phase 295): knife, sword, axe, hammer, pick, shovel… |
 | traits | json | Traits and strengths (Phase 295): { <Trait>: { strength, grade? } }; the working part's material may raise them |
+| tier | string | Gear tier (Phase 229, a skill tier): the highest ability or recipe tier this item allows (GearTiers) |
 | repair | json | Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier). |
 | equipmentSlot | string | Equipment slot — what is equipped (§6) |
 | deformationMode | string | SKINNED \| RIGID \| HYBRID (§10) |

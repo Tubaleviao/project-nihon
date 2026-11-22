@@ -18,6 +18,7 @@ A work top of lashed branches on stone feet, where logs become planks. Placed fr
 | `stackable` | boolean | yes | False; one carpentry bench per slot |
 | `shape` | json | yes | Item shape: archetype, material per named part, and uniform scale (Phase 151) |
 | `durability` | integer | yes | Structural integrity |
+| `tier` | string | yes | Gear tier of a carpentry bench (Phase 229): the highest recipe tier crafted at it |
 
 ## Relations
 

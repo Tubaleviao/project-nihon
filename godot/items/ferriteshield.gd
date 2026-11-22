@@ -27,6 +27,7 @@ enum Condition {
 @export var protection: Dictionary
 @export var equipmentCategory: String
 @export var traits: Dictionary
+@export var tier: String
 @export var repair: Dictionary
 @export var equipmentSlot: String
 @export var deformationMode: String

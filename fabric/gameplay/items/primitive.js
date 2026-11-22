@@ -20,7 +20,7 @@ function stoneTool({ archetype, parts, category, traits, weight, durability, des
       stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory', defaultValue: false },
       shape: itemShape({ archetype, parts }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: durability },
-      ...equipmentFields({ category, traits }),
+      ...equipmentFields({ category, traits, tier: 'novice' }),
       repair: repairData({
         station: '',
         materials: [{ item: 'LooseStone', quantity: 1 }],

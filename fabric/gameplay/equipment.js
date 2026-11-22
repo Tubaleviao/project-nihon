@@ -204,6 +204,7 @@ function itemSpecs(items) {
       traits: dv(e, 'traits'),
       material: workingMaterial(dv(e, 'shape')),
       protection: dv(e, 'protection'),
+      defense: dv(e, 'defense'),
       slot: dv(e, 'equipmentSlot'),
       archetype: (dv(e, 'shape') || {}).archetype,
       declared: ['toolType', 'harvestTool', 'efficiency'].filter((n) => n in f),
@@ -230,8 +231,8 @@ function equipmentProblems(d, refs) {
     if (!isObj(v)) { p.push(`${where}.${t} must be an object`); return }
     if (needStrength && !(typeof v.strength === 'number' && v.strength > 0)) p.push(`${where}.${t}.strength must be > 0, got ${v.strength}`)
     if (def.grades) {
-      if (needStrength && !(v.grade in def.grades)) p.push(`${where}.${t} needs a grade (${Object.keys(def.grades).join(', ')}), got "${v.grade}"`)
-      else if (v.grade !== undefined && !(v.grade in def.grades)) p.push(`${where}.${t}: unknown grade "${v.grade}"`)
+      if (needStrength && !Object.hasOwn(def.grades, v.grade ?? '')) p.push(`${where}.${t} needs a grade (${Object.keys(def.grades).join(', ')}), got "${v.grade}"`)
+      else if (v.grade !== undefined && !Object.hasOwn(def.grades, v.grade)) p.push(`${where}.${t}: unknown grade "${v.grade}"`)
     } else if (v.grade !== undefined) p.push(`${where}.${t} has no grades, got "${v.grade}"`)
   }
 
@@ -258,6 +259,9 @@ function equipmentProblems(d, refs) {
     if (!/^[a-z][a-z_]*$/.test(c)) p.push(`category "${c}" must be lower snake_case`)
     if (![1, 2].includes(cat.hands)) p.push(`category ${c}: hands must be 1 or 2, got ${cat.hands}`)
     if (!refs.clipFamilies.includes(cat.clipFamily)) p.push(`category ${c}: clip family "${cat.clipFamily}" is not a CombatCombos chain`)
+    // A two-handed chain needs both hands; a one-handed category never swings it (a bow is two-handed but has no
+    // melee chain of its own, so it may swing one-handed).
+    if (cat.clipFamily === 'two_hand' && cat.hands !== 2) p.push(`category ${c}: swings the two_hand chain, so it needs hands 2, got ${cat.hands}`)
     if (!(cat.combatMultiplier > 0)) p.push(`category ${c}: combatMultiplier must be > 0`)
     if (!isObj(cat.defaultTraits) || !Object.keys(cat.defaultTraits).length) p.push(`category ${c}: needs at least one default trait`)
     else for (const [t, v] of Object.entries(cat.defaultTraits)) traitOk(`category ${c}.defaultTraits`, t, v, false)
@@ -330,6 +334,16 @@ function equipmentProblems(d, refs) {
     for (const dt of Object.keys(s.protection)) if (!d.damageTypes.includes(dt)) p.push(`${k}.protection.${dt} is not a damage type`)
   }
 
+  // The Character window's `defense` number (Phase 47) sums worn pieces; combat applies `protection`. The two must
+  // agree in order: a piece that takes more off a hit in total never shows less defense.
+  const worn = Object.entries(specs).filter(([, s]) => isObj(s.protection) && typeof s.defense === 'number')
+  const protSum = (s) => d.damageTypes.reduce((a, dt) => a + (s.protection[dt] || 0), 0)
+  for (const [k, s] of worn) {
+    for (const [o, so] of worn) {
+      if (protSum(s) > protSum(so) + 1e-9 && s.defense < so.defense) p.push(`${k} takes more off a hit than ${o} (protection ${round(protSum(s))} > ${round(protSum(so))}) but shows less defense (${s.defense} < ${so.defense})`)
+    }
+  }
+
   // No regression: every former tool still does its former job, at least as fast.
   for (const [k, jobs] of Object.entries(d.formerJobs)) {
     const s = specs[k]
@@ -341,7 +355,9 @@ function equipmentProblems(d, refs) {
       else if (now < speed) p.push(`${k} does ${w} at ${now}, slower than before (${speed})`)
     }
   }
-  // Picks deal the least: a pick's damage is below every other item's with the same working material.
+  // Picks deal the least: a pick's damage is below every other item's with the same working material. Only the same
+  // material (= the same gear tier, GearTiers.materialTiers): a better material is a better weapon whatever its
+  // category, so a veilsteel pick may out-hit a ferrite saw, shield or bow by design.
   for (const [k, s] of Object.entries(specs)) {
     if (s.category !== 'pick' || !d.categories.pick) continue
     const mine = totalDamage(combatDamage(s, d))
@@ -390,7 +406,8 @@ function validateEquipment(d, refs) {
   if (problems.length) throw new Error('Equipment is invalid:\n  ' + problems.join('\n  '))
 }
 
-/** The categories with what an item of the category can do at least (from its default traits at strength 1). */
+/** The categories with what an item of the category can do at full strength (its default traits at strength 1). A
+ *  weaker item of the category may do less: a stone axe (strength 0.6) does not cut bone. */
 function categorySummary(d = equipmentData()) {
   const out = {}
   for (const [c, cat] of Object.entries(d.categories)) {
@@ -411,7 +428,7 @@ function categoryProse(d = equipmentData()) {
     }).join(' + ')
     return `${c} (${r.hands}-handed, ${traits}, combat x${r.combatMultiplier}): ${r.canDo.length ? r.canDo.join(', ') : 'combat only'}`
   })
-  return 'Categories: ' + rows.join('; ') + '.'
+  return 'Categories (what an item of each can do at full strength; a weaker one, such as a stone axe, may do less): ' + rows.join('; ') + '.'
 }
 
 const Equipment = defineEntity({

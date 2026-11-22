@@ -14,6 +14,7 @@ module.exports = {
       recipe: recipeData({
         domain: 'carpentry',
         station: 'carpentry bench',
+        requiredTier: 'novice',
         inputs: [{ item: 'Thornwood', quantity: 2 }],
         outputs: [{ item: 'ThornwoodPlank', quantity: 3 }],
         skillGuards: [{ skill: 'Carpentry', tier: 'novice' }],
@@ -48,6 +49,7 @@ module.exports = {
       recipe: recipeData({
         domain: 'carpentry',
         station: 'carpentry bench',
+        requiredTier: 'novice',
         inputs: [{ item: 'ThornwoodPlank', quantity: 4 }, { item: 'FerriteIngot', quantity: 2 }],
         outputs: [{ item: 'Waystone', quantity: 1 }],
         skillGuards: [{ skill: 'Carpentry', tier: 'apprentice' }],
@@ -84,6 +86,7 @@ module.exports = {
       recipe: recipeData({
         domain: 'carpentry',
         station: 'carpentry bench',
+        requiredTier: 'novice',
         inputs: [{ item: 'FerriteIngot', quantity: 1 }, { item: 'ThornwoodPlank', quantity: 1 }, { item: 'Duskfiber', quantity: 1 }],
         outputs: [{ item: 'CarpenterAxe', quantity: 1 }],
         skillGuards: [{ skill: 'Carpentry', tier: 'apprentice' }, { skill: 'Smithing', tier: 'novice' }],
@@ -121,6 +124,7 @@ module.exports = {
       recipe: recipeData({
         domain: 'carpentry',
         station: 'carpentry bench',
+        requiredTier: 'novice',
         inputs: [{ item: 'Duskfiber', quantity: 3 }],
         outputs: [{ item: 'DuskfiberCloak', quantity: 1 }],
         skillGuards: [{ skill: 'Carpentry', tier: 'apprentice' }],
@@ -155,6 +159,7 @@ module.exports = {
       recipe: recipeData({
         domain: 'tailoring',
         station: 'carpentry bench',
+        requiredTier: 'novice',
         inputs: [{ item: 'Duskfiber', quantity: 2 }],
         outputs: [{ item: 'NoviceTunic', quantity: 1 }],
         skillGuards: [{ skill: 'Tailoring', tier: 'novice' }],
@@ -190,6 +195,7 @@ module.exports = {
       recipe: recipeData({
         domain: 'carpentry',
         station: 'masonry bench',
+        requiredTier: 'apprentice',
         inputs: [{ item: 'Ashite', quantity: 3 }],
         outputs: [{ item: 'AshiteBlock', quantity: 2 }],
         skillGuards: [{ skill: 'Carpentry', tier: 'journeyman' }],
@@ -226,6 +232,7 @@ module.exports = {
       recipe: recipeData({
         domain: 'carpentry',
         station: '',
+        requiredTier: 'novice',
         inputs: [{ item: 'ThornwoodPlank', quantity: 6 }],
         outputs: [{ item: 'Bed', quantity: 1 }],
         skillGuards: [{ skill: 'Carpentry', tier: 'novice' }],
@@ -261,6 +268,7 @@ module.exports = {
       recipe: recipeData({
         domain: 'carpentry',
         station: '',
+        requiredTier: 'novice',
         inputs: [{ item: 'ThornwoodPlank', quantity: 8 }, { item: 'FerriteIngot', quantity: 1 }],
         outputs: [{ item: 'Chest', quantity: 1 }],
         skillGuards: [{ skill: 'Carpentry', tier: 'novice' }],
@@ -293,6 +301,7 @@ module.exports = {
       recipe: recipeData({
         domain: 'carpentry',
         station: '',
+        requiredTier: 'novice',
         inputs: [{ item: 'ThornwoodPlank', quantity: 6 }, { item: 'FerriteIngot', quantity: 1 }],
         outputs: [{ item: 'Door', quantity: 1 }],
         skillGuards: [{ skill: 'Carpentry', tier: 'novice' }],
@@ -324,6 +333,7 @@ module.exports = {
       recipe: recipeData({
         domain: 'carpentry',
         station: 'masonry bench',
+        requiredTier: 'novice',
         inputs: [{ item: 'Ashite', quantity: 2 }],
         outputs: [{ item: 'Cement', quantity: 2 }],
         skillGuards: [{ skill: 'Carpentry', tier: 'apprentice' }],
@@ -359,6 +369,7 @@ module.exports = {
       recipe: recipeData({
         domain: 'carpentry',
         station: 'masonry bench',
+        requiredTier: 'apprentice',
         inputs: [{ item: 'Cement', quantity: 2 }, { item: 'Soil', quantity: 1 }],
         outputs: [{ item: 'Concrete', quantity: 4 }],
         skillGuards: [{ skill: 'Carpentry', tier: 'journeyman' }],

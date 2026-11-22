@@ -13,6 +13,7 @@ shape = {"archetype":"axe","parts":{"head":"Ferrite","handle":"Thornwood"},"scal
 durability = 90
 equipmentCategory = "axe"
 traits = {"Sharp":{"strength":1},"Blunt":{"strength":1,"grade":"heavy"}}
+tier = "apprentice"
 repair = {"station":"forge","materials":[{"item":"FerriteIngot","quantity":1}],"skillGuards":[{"skill":"Smithing","tier":"novice"}]}
 works = {"fell":1,"cutBone":0.5}
 combatDamage = {"slashing":6,"blunt":5}

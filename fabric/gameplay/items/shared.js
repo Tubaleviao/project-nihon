@@ -83,10 +83,11 @@ function equipmentVisualFields({ slot, deformationMode, masks, hideRegions, atta
 // Phase 295 — an equipment item's category and traits (fabric/gameplay/equipment.js). What it can do in the world
 // follows from them by the work table; no item declares a tool type.
 //   traits: { <Trait>: { strength, grade? } }, strength 1.0 = the baseline of the item that did the job before.
-function equipmentFields({ category, traits }) {
+function equipmentFields({ category, traits, tier }) {
   return {
     equipmentCategory: { type: 'string', description: 'Equipment category (Phase 295): knife, sword, axe, hammer, pick, shovel…', defaultValue: category },
     traits:            { type: 'json', description: 'Traits and strengths (Phase 295): { <Trait>: { strength, grade? } }; the working part\'s material may raise them', defaultValue: traits },
+    tier:              { type: 'string', description: 'Gear tier (Phase 229, a skill tier): the highest ability or recipe tier this item allows (GearTiers)', defaultValue: tier },
   }
 }
 

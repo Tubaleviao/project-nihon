@@ -13,6 +13,7 @@ shape = {"archetype":"pick","parts":{"head":"Ashite","handle":"Thornwood"},"scal
 durability = 30
 equipmentCategory = "pick"
 traits = {"Piercing":{"strength":0.6},"Blunt":{"strength":0.6,"grade":"light"}}
+tier = "novice"
 repair = {"station":"","materials":[{"item":"LooseStone","quantity":1}],"skillGuards":[{"skill":"Carpentry","tier":"novice"}]}
 works = {"mine":0.6}
 combatDamage = {"piercing":1.5,"blunt":0.6}

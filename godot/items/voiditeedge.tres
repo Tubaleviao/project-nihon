@@ -13,6 +13,7 @@ shape = {"archetype":"sword","parts":{"blade":"Voidite","grip":"Duskfiber"},"sca
 durability = 120
 equipmentCategory = "sword"
 traits = {"Sharp":{"strength":1},"Piercing":{"strength":1}}
+tier = "expert"
 works = {}
 combatDamage = {"slashing":6,"piercing":5}
 state_machine_field = "condition"

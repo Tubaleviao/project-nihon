@@ -424,6 +424,21 @@ research, clan membership and owned structures all key on the player id.
   combat ability and each recipe a `requiredTier`, with a `tools/check_*.js` that rejects a weapon,
   tool or station with no tier and an ability or recipe with no `requiredTier`. Identity, travel and
   cosmetics stay in Phase 227.
+  **Done** (the fabric PR, `fabric/gameplay/gear_tiers.js`, `tools/check_gear_tiers.js`): the
+  `GearTiers` world system. Equipment carries `tier`, which must be its working part's material tier
+  (`materialTiers`: Ashite novice, Ferrite apprentice, Aethermite journeyman, Voidite expert, Veilsteel
+  master); each crafting station's item carries `tier` (carpentry bench and forge novice, masonry and
+  alchemy benches apprentice, arcane forge journeyman, void-shielded workshop expert, master forge
+  master). A recipe's `requiredTier` is at most its highest skill guard and its station's tier, and a
+  hand recipe is novice. The tool a recipe uses is set by its station (`stationTools`: forges and the
+  masonry bench a hammer, the carpentry bench an axe, the alchemy bench none). **Novice is the floor:**
+  empty hands and a missing tool count as novice gear, so every novice recipe and ability needs nothing
+  and nothing playable today is lost. Combat abilities are listed per combat skill with their weapon
+  categories; an ability's tier is its skill rule's tier (Unarmed: the floor). The validator climbs the
+  ladder from bare hands and fails on any recipe no reachable tool and station can make, so two hammers
+  join the game: the Ferrite Hammer (apprentice, forge) and the Veilsteel Hammer (master, master forge).
+  `abilityGaps` lists the abilities no weapon reaches yet (an expert bow, journeyman and expert shields);
+  they stay refused until such gear exists. Refusal keys: `GearTiers.refusals`.
 - The weapon, tool, station, ability and recipe tiers load through `GameData`.
 - **Combat:** the host decides whether an ability can be used from the skill tier **and** the
   equipped weapon's tier. An ability above the weapon's tier is refused with a localized reason key

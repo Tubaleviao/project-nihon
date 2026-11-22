@@ -15,6 +15,7 @@ module.exports = {
       recipe: recipeData({
         domain: 'arcane',
         station: 'arcane forge',
+        requiredTier: 'journeyman',
         inputs: [{ item: 'Aethermite', quantity: 1 }],
         outputs: [{ item: 'EnchantedAethermiteShard', quantity: 1 }],
         skillGuards: [{ skill: 'ArcaneForging', tier: 'journeyman' }],
@@ -51,6 +52,7 @@ module.exports = {
       recipe: recipeData({
         domain: 'arcane',
         station: 'arcane forge',
+        requiredTier: 'apprentice',
         inputs: [{ item: 'ThornwoodPlank', quantity: 1 }, { item: 'AethermiteDust', quantity: 1 }, { item: 'Duskfiber', quantity: 1 }],
         outputs: [{ item: 'AethermiteBow', quantity: 1 }],
         skillGuards: [{ skill: 'Carpentry', tier: 'apprentice' }, { skill: 'ArcaneForging', tier: 'apprentice' }],
@@ -88,6 +90,7 @@ module.exports = {
       recipe: recipeData({
         domain: 'arcane',
         station: 'arcane forge',
+        requiredTier: 'apprentice',
         inputs: [{ item: 'Lumenfite', quantity: 1 }, { item: 'EnchantedAethermiteShard', quantity: 1 }],
         outputs: [{ item: 'LumenfiteOrb', quantity: 1 }],
         skillGuards: [{ skill: 'Enchanting', tier: 'journeyman' }, { skill: 'ArcaneForging', tier: 'apprentice' }],
@@ -124,6 +127,7 @@ module.exports = {
       recipe: recipeData({
         domain: 'arcane',
         station: 'void-shielded workshop',
+        requiredTier: 'expert',
         inputs: [{ item: 'RefinedVoiditeShard', quantity: 1 }, { item: 'LumenfiteOrb', quantity: 1 }],
         outputs: [{ item: 'VoidRuneTablet', quantity: 1 }],
         skillGuards: [{ skill: 'VoidSmithing', tier: 'expert' }],
@@ -162,6 +166,7 @@ module.exports = {
       recipe: recipeData({
         domain: 'arcane',
         station: 'arcane forge',
+        requiredTier: 'journeyman',
         inputs: [{ item: 'Steel', quantity: 2 }, { item: 'Aethermite', quantity: 2 }],
         outputs: [{ item: 'Leyframe', quantity: 2 }],
         skillGuards: [{ skill: 'ArcaneForging', tier: 'journeyman' }],

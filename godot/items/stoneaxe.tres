@@ -13,6 +13,7 @@ shape = {"archetype":"axe","parts":{"head":"Ashite","handle":"Thornwood"},"scale
 durability = 30
 equipmentCategory = "axe"
 traits = {"Sharp":{"strength":0.6},"Blunt":{"strength":0.6,"grade":"heavy"}}
+tier = "novice"
 repair = {"station":"","materials":[{"item":"LooseStone","quantity":1}],"skillGuards":[{"skill":"Carpentry","tier":"novice"}]}
 works = {"fell":0.6}
 combatDamage = {"slashing":3.6,"blunt":3}

@@ -17,7 +17,7 @@ module.exports = {
       stackable: { type: 'boolean', description: 'Always false for weapons', defaultValue: false },
       shape: itemShape({ archetype: 'sword', parts: { blade: 'Ferrite', grip: 'Thornwood' } }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 100 },
-      ...equipmentFields({ category: 'sword', traits: { Sharp: { strength: 1.0 }, Piercing: { strength: 1.0 } } }),
+      ...equipmentFields({ category: 'sword', traits: { Sharp: { strength: 1.0 }, Piercing: { strength: 1.0 } }, tier: 'apprentice' }),
       repair: repairData({
         station: 'forge',
         materials: [{ item: 'FerriteIngot', quantity: 1 }],
@@ -60,7 +60,7 @@ module.exports = {
       stackable: { type: 'boolean', description: 'Always false for weapons', defaultValue: false },
       shape: itemShape({ archetype: 'longsword', parts: { blade: 'Veilsteel', grip: 'Ashite' } }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 200 },
-      ...equipmentFields({ category: 'greatsword', traits: { Sharp: { strength: 1.0 }, Piercing: { strength: 1.0 } } }),
+      ...equipmentFields({ category: 'greatsword', traits: { Sharp: { strength: 1.0 }, Piercing: { strength: 1.0 } }, tier: 'master' }),
       repair: repairData({
         station: 'master forge',
         materials: [{ item: 'VeilsteelIngot', quantity: 1 }],
@@ -118,7 +118,7 @@ module.exports = {
       stackable: { type: 'boolean', description: 'Always false for weapons', defaultValue: false },
       shape: itemShape({ archetype: 'bow', parts: { limb: 'Thornwood', grip: 'Duskfiber', tip: 'Aethermite' } }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 150 },
-      ...equipmentFields({ category: 'bow', traits: { Piercing: { strength: 1.0 } } }),
+      ...equipmentFields({ category: 'bow', traits: { Piercing: { strength: 1.0 } }, tier: 'journeyman' }),
       repair: repairData({
         station: 'arcane forge',
         materials: [{ item: 'ThornwoodPlank', quantity: 1 }, { item: 'AethermiteDust', quantity: 1 }],
@@ -167,7 +167,7 @@ module.exports = {
       stackable: { type: 'boolean', description: 'Always false for weapons', defaultValue: false },
       shape: itemShape({ archetype: 'sword', parts: { blade: 'Voidite', grip: 'Duskfiber' } }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 120 },
-      ...equipmentFields({ category: 'sword', traits: { Sharp: { strength: 1.0 }, Piercing: { strength: 1.0 } } }),
+      ...equipmentFields({ category: 'sword', traits: { Sharp: { strength: 1.0 }, Piercing: { strength: 1.0 } }, tier: 'expert' }),
     },
     relations: {
       voidite: { name: 'voidite', kind: 'hasOne', target: 'Voidite' },

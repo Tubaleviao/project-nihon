@@ -519,6 +519,9 @@ jobs:
       - name: Check the equipment validation rejects bad tables (Phase 295)
         run: node tools/check_equipment.js
 
+      - name: Check the gear-tier validation rejects bad tables (Phase 229)
+        run: node tools/check_gear_tiers.js
+
       - name: Check the combo-table validation rejects bad tables
         run: node tools/check_combos.js
       - name: Check the work-clip validation rejects bad tables

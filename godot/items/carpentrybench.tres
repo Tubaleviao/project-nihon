@@ -11,6 +11,7 @@ rarity = 0
 stackable = false
 shape = {"archetype":"chest","parts":{"box":"Thornwood","band":"Ashite"},"scale":1}
 durability = 400
+tier = "novice"
 state_machine_field = "condition"
 initial_state = "pristine"
 description = "A work top of lashed branches on stone feet, where logs become planks. Placed from the hotbar as a carpentry bench station; its owner can pick it up again."

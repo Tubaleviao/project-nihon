@@ -13,6 +13,7 @@ shape = {"archetype":"pick","parts":{"head":"Veilsteel","handle":"Thornwood"},"s
 durability = 160
 equipmentCategory = "pick"
 traits = {"Piercing":{"strength":1},"Blunt":{"strength":1,"grade":"light"}}
+tier = "master"
 repair = {"station":"master forge","materials":[{"item":"VeilsteelIngot","quantity":1}],"skillGuards":[{"skill":"Smithing","tier":"journeyman"}]}
 works = {"mine":1.5}
 combatDamage = {"piercing":3.75,"blunt":1.5}
