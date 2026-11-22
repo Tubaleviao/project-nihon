@@ -3,7 +3,7 @@
 
 **Tags:** `world-system`
 
-Equipment categories and traits (Phase 295): every held item is equipment of a category, and what it can do in the world (fell, mine, dig, build, pick a lock, dissect, cut bone) follows from its traits by the work table. There are no tools that cannot be used in combat; picks are the weakest weapons.
+Equipment categories and traits (Phase 295): every held item is equipment of a category, and what it can do in the world (fell, mine, dig, build, pick a lock, dissect, cut bone) follows from its traits by the work table. There are no tools that cannot be used in combat; picks are the weakest weapons. Categories: knife (1-handed, Sharp + Piercing, combat x0.8): dissect; sword (1-handed, Sharp + Piercing, combat x1): combat only; greatsword (2-handed, Sharp + Piercing, combat x1.2): combat only; axe (1-handed, Sharp + Blunt (heavy), combat x1): fell, cutBone; hammer (1-handed, Blunt (heavy), combat x0.8): build; mace (1-handed, Blunt (heavy), combat x1.1): combat only; spear (2-handed, Piercing, combat x1): combat only; pick (1-handed, Piercing + Blunt (light), combat x0.5): mine; shovel (1-handed, Broad + Blunt (light), combat x0.6): dig; saw (1-handed, Sharp, combat x0.7): cutBone; lockpick (1-handed, Piercing, combat x0.8): pickLock; bow (2-handed, Piercing, combat x0.6): combat only; shield (1-handed, Blunt (heavy), combat x0.8): combat only.
 
 > **Goal:** One rule for what a held item can do, in work and in combat, instead of a tool type per item
 

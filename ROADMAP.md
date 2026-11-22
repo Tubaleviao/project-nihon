@@ -1441,13 +1441,14 @@ Every former tool and weapon declares `equipmentCategory` and `traits` (`{ <Trai
 1.0 = the forged item); armour declares `protection` per damage type. Each equipment item gets the derived `works`
 and `combatDamage` fields. Until Phase 296 the runtime still reads `toolType`, `harvestTool`, `efficiency` and
 `WorkTimes.toolSpeeds`: `items/index.js` derives them from the work table (the bridge; the validator reads the
-authored items from `items/authored.js`, where none is declared). The derived values are today's, with one
-addition the rules imply: an axe cuts bone at half its Sharp strength, so the stone axe now does at 0.3. The
+authored items from `items/authored.js`, where none is declared). The derived values are exactly today's (an axe
+cuts bone at half speed only from strength 1.0, so the stone axe still does not). Every held item is equipment (the
+ferrite shield is a `shield`) and every worn piece has protection numbers. The
 validator (and `tools/check_equipment.js` in CI) rejects a declared `toolType`/`harvestTool`, an unknown category or
 trait, a work rule naming an unknown trait or category, a category whose multiplier is not above the pick's, a pick
 that out-hits another item of its working material, a former tool slower at its former job (`formerJobs`), and an
-item doing two old tool classes (the bridge reads one). `equipment.*`, `trait.*` and `work.*` names are in
-`locale/content.csv` (en, pt_BR).
+item doing two old tool classes (the bridge reads one). `equipment.*`, `trait.*`, `work.*`, `grade.*` and `damage.*` names are
+in `locale/content.csv` (en, pt_BR). The generated Equipment page lists each category, its traits and what it can do.
 
 ## Phase 296 — Work and combat by trait: no more tools in the game
 

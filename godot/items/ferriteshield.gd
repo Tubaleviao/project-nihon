@@ -25,6 +25,8 @@ enum Condition {
 @export var shape: Dictionary
 @export var durability: int
 @export var protection: Dictionary
+@export var equipmentCategory: String
+@export var traits: Dictionary
 @export var repair: Dictionary
 @export var equipmentSlot: String
 @export var deformationMode: String
@@ -37,3 +39,5 @@ enum Condition {
 @export var emissionColor: int
 @export var compatibleTags: Array
 @export var defense: int
+@export var works: Dictionary
+@export var combatDamage: Dictionary

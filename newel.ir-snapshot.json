@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:a16ebfb33cb10268ae36a9b29e3ab3d06e12360202290332dd6a0e58a443a2a0",
+  "schemaHash": "sha256:ebb9764412c8445e6381ad554008dd4c48469bb13f94e99bb70cf8f332e1dd36",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -17753,8 +17753,7 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": {
-              "fell": 0.6,
-              "cutBone": 0.3
+              "fell": 0.6
             }
           },
           "combatDamage": {
@@ -17777,24 +17776,6 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": "axe"
-          },
-          "harvestTool": {
-            "name": "harvestTool",
-            "type": "string",
-            "description": "Derived (Phase 295 bridge, removed by Phase 296) from the work table: knife (dissect) or bonetool (cutBone)",
-            "nullable": false,
-            "primaryKey": false,
-            "pii": false,
-            "defaultValue": "bonetool"
-          },
-          "efficiency": {
-            "name": "efficiency",
-            "type": "decimal",
-            "description": "Derived (Phase 295 bridge, removed by Phase 296): the harvest work speed, in (0, 1]",
-            "nullable": false,
-            "primaryKey": false,
-            "pii": false,
-            "defaultValue": 0.3
           }
         },
         "relations": {
@@ -21898,6 +21879,29 @@
               "piercing": 0.3
             }
           },
+          "equipmentCategory": {
+            "name": "equipmentCategory",
+            "type": "string",
+            "description": "Equipment category (Phase 295): knife, sword, axe, hammer, pick, shovel…",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "shield"
+          },
+          "traits": {
+            "name": "traits",
+            "type": "json",
+            "description": "Traits and strengths (Phase 295): { <Trait>: { strength, grade? } }; the working part's material may raise them",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "Blunt": {
+                "strength": 1,
+                "grade": "heavy"
+              }
+            }
+          },
           "repair": {
             "name": "repair",
             "type": "json",
@@ -22036,6 +22040,26 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 6
+          },
+          "works": {
+            "name": "works",
+            "type": "json",
+            "description": "Derived from the work table (Phase 295): { <work>: speed } for every work this item can do",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {}
+          },
+          "combatDamage": {
+            "name": "combatDamage",
+            "type": "json",
+            "description": "Derived (Phase 295): combat damage per damage type, the category multiplier times its traits' shares",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "blunt": 4
+            }
           }
         },
         "relations": {
@@ -42892,7 +42916,7 @@
         "tags": [
           "world-system"
         ],
-        "description": "Equipment categories and traits (Phase 295): every held item is equipment of a category, and what it can do in the world (fell, mine, dig, build, pick a lock, dissect, cut bone) follows from its traits by the work table. There are no tools that cannot be used in combat; picks are the weakest weapons.",
+        "description": "Equipment categories and traits (Phase 295): every held item is equipment of a category, and what it can do in the world (fell, mine, dig, build, pick a lock, dissect, cut bone) follows from its traits by the work table. There are no tools that cannot be used in combat; picks are the weakest weapons. Categories: knife (1-handed, Sharp + Piercing, combat x0.8): dissect; sword (1-handed, Sharp + Piercing, combat x1): combat only; greatsword (2-handed, Sharp + Piercing, combat x1.2): combat only; axe (1-handed, Sharp + Blunt (heavy), combat x1): fell, cutBone; hammer (1-handed, Blunt (heavy), combat x0.8): build; mace (1-handed, Blunt (heavy), combat x1.1): combat only; spear (2-handed, Piercing, combat x1): combat only; pick (1-handed, Piercing + Blunt (light), combat x0.5): mine; shovel (1-handed, Broad + Blunt (light), combat x0.6): dig; saw (1-handed, Sharp, combat x0.7): cutBone; lockpick (1-handed, Piercing, combat x0.8): pickLock; bow (2-handed, Piercing, combat x0.6): combat only; shield (1-handed, Blunt (heavy), combat x0.8): combat only.",
         "goal": "One rule for what a held item can do, in work and in combat, instead of a tool type per item",
         "fields": {
           "id": {
@@ -43067,6 +43091,16 @@
                 "defaultTraits": {
                   "Piercing": {}
                 }
+              },
+              "shield": {
+                "hands": 1,
+                "clipFamily": "one_hand",
+                "combatMultiplier": 0.8,
+                "defaultTraits": {
+                  "Blunt": {
+                    "grade": "heavy"
+                  }
+                }
               }
             }
           },
@@ -43182,6 +43216,7 @@
                         "grade": "heavy"
                       }
                     },
+                    "minStrength": 1,
                     "speed": 0.5
                   }
                 ]
@@ -43312,6 +43347,14 @@
                 ],
                 "canDo": [],
                 "combatMultiplier": 0.6
+              },
+              "shield": {
+                "hands": 1,
+                "traits": [
+                  "Blunt"
+                ],
+                "canDo": [],
+                "combatMultiplier": 0.8
               }
             }
           }

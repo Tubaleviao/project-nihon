@@ -1,4 +1,4 @@
-const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine, equipmentVisualFields, repairData, itemShape, protectionField } = require('./shared')
+const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine, equipmentVisualFields, repairData, itemShape, protectionField, equipmentFields } = require('./shared')
 
 module.exports = {
 
@@ -238,6 +238,7 @@ module.exports = {
       shape: itemShape({ archetype: 'shield', parts: { face: 'Ferrite', rim: 'Ferrite' } }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 180 },
       ...protectionField({ slashing: 0.35, blunt: 0.35, piercing: 0.3 }),
+      ...equipmentFields({ category: 'shield', traits: { Blunt: { strength: 1.0, grade: 'heavy' } } }),
       repair: repairData({
         station: 'forge',
         materials: [{ item: 'FerriteIngot', quantity: 1 }],

@@ -14,9 +14,9 @@ const { defineEntity } = require('@newel/core')
 // MATERIAL_TRAITS { <material>: { raise: { <Trait>: +strength }, add: { <Trait>: { strength, grade? } } } }: the
 //                 material of an item's working part (head, blade or pin) raises the traits it already has, or adds
 //                 one it lacks.
-// WORK_TRAITS     { <work>: { ways: [{ category?, traits: { <Trait>: { grade? } }, speed }], bareHands } }. An item
-//                 can do a work when it matches one way: of the way's category (if named) and with every listed
-//                 trait (at least the listed grade). Its speed is `way.speed` × the weakest of the listed traits'
+// WORK_TRAITS     { <work>: { ways: [{ category?, traits: { <Trait>: { grade? } }, minStrength?, speed }], bareHands } }.
+//                 An item can do a work when it matches one way: of the way's category (if named) and with every
+//                 listed trait (at least the listed grade, and at least `minStrength` strong when it is set). Its speed is `way.speed` × the weakest of the listed traits'
 //                 strengths (1 when the way lists none); the best way wins. An item that matches no way works as
 //                 bare hands where `bareHands` is true (WorkTimes.bareHandsSpeed) and not at all where it is false.
 //                 The speeds keep Phase 259/290's work times: the item that did a job before does it at its old speed.
@@ -51,6 +51,8 @@ const CATEGORIES = {
   lockpick:   { hands: 1, clipFamily: 'one_hand', combatMultiplier: 0.8, defaultTraits: { Piercing: {} } },
   // A bow has no melee chain of its own yet; struck with, it swings one-handed (ranged fire is its own system).
   bow:        { hands: 2, clipFamily: 'one_hand', combatMultiplier: 0.6, defaultTraits: { Piercing: {} } },
+  // Held in the off hand; struck with, a shield bashes.
+  shield:     { hands: 1, clipFamily: 'one_hand', combatMultiplier: 0.8, defaultTraits: { Blunt: { grade: 'heavy' } } },
 }
 
 const MATERIAL_TRAITS = {
@@ -66,7 +68,8 @@ const WORK_TRAITS = {
   dissect:  { bareHands: false, ways: [{ category: 'knife', traits: { Sharp: {} }, speed: 1.0 }] },
   cutBone:  { bareHands: false, ways: [
     { category: 'saw', traits: { Sharp: {} }, speed: 1.0 },
-    { traits: { Sharp: {}, Blunt: { grade: 'heavy' } }, speed: 0.5 }, // an axe is a poor bone saw
+    // A forged axe is a poor bone saw; a stone one (strength 0.6) is not one at all, as before this phase.
+    { traits: { Sharp: {}, Blunt: { grade: 'heavy' } }, minStrength: 1.0, speed: 0.5 },
   ] },
 }
 
@@ -93,7 +96,12 @@ const LEGACY_TOOL_TYPE = { fell: 'axe', mine: 'pick', dig: 'shovel', build: 'ham
 const LEGACY_HARVEST_TOOL = { dissect: 'knife', cutBone: 'bonetool' }
 
 // The part of a shape whose material sets the item's tier and raises its traits.
-const WORKING_PARTS = ['head', 'blade', 'pin', 'tip', 'limb']
+const WORKING_PARTS = ['head', 'blade', 'pin', 'tip', 'limb', 'face']
+
+// Every held item is equipment (it has a category); every worn piece is armour (it has protection numbers).
+const HELD_SLOTS = ['MainHand', 'OffHand']
+const HELD_ARCHETYPES = ['pick', 'axe', 'sword', 'longsword', 'knife', 'saw', 'bow', 'shield', 'lockpick', 'shovel', 'hammer']
+const WORN_SLOTS = ['Head', 'Chest', 'Cape', 'Legs', 'Feet', 'Hands']
 
 const clone = (v) => JSON.parse(JSON.stringify(v))
 const round = (x) => Math.round(x * 1000) / 1000
@@ -126,6 +134,7 @@ function wayMatches(way, spec, traits, d) {
     const have = traits[t]
     if (!have || !(have.strength > 0)) return false
     if (need.grade && gradeIndex(t, have.grade, d.traits) < gradeIndex(t, need.grade, d.traits)) return false
+    if (way.minStrength !== undefined && have.strength < way.minStrength) return false
   }
   return true
 }
@@ -201,6 +210,8 @@ function itemSpecs(items) {
       traits: dv(e, 'traits'),
       material: workingMaterial(dv(e, 'shape')),
       protection: dv(e, 'protection'),
+      slot: dv(e, 'equipmentSlot'),
+      archetype: (dv(e, 'shape') || {}).archetype,
       declared: ['toolType', 'harvestTool', 'efficiency'].filter((n) => n in f),
     }
   }
@@ -288,6 +299,7 @@ function equipmentProblems(d, refs) {
       else for (const [t, v] of Object.entries(way.traits)) traitOk(`${where}.traits`, t, v, false)
       if (way.category === undefined && !Object.keys(way.traits || {}).length) p.push(`${where}: names neither a category nor a trait, so anything would do it`)
       if (!(way.speed > 0)) p.push(`${where}.speed must be > 0`)
+      if (way.minStrength !== undefined && !(way.minStrength > 0 && Object.keys(way.traits || {}).length)) p.push(`${where}.minStrength must be > 0 and needs listed traits`)
     })
   }
 
@@ -305,6 +317,12 @@ function equipmentProblems(d, refs) {
       if (!have) p.push(`${k}: every ${s.category} has ${t}, and it lacks it`)
       else if (need.grade && gradeIndex(t, have.grade, d.traits) < gradeIndex(t, need.grade, d.traits)) p.push(`${k}: every ${s.category} has ${t} (${need.grade}), it has ${have.grade}`)
     }
+  }
+
+  // Every held item is equipment, every worn piece has protection numbers.
+  for (const [k, s] of Object.entries(specs)) {
+    if ((HELD_SLOTS.includes(s.slot) || HELD_ARCHETYPES.includes(s.archetype)) && s.category === undefined) p.push(`${k} is held (${s.slot || s.archetype}), so it is equipment: give it an equipmentCategory and traits`)
+    if (WORN_SLOTS.includes(s.slot) && s.protection === undefined) p.push(`${k} is worn (${s.slot}), so it needs protection numbers per damage type`)
   }
 
   // Armour: what each piece takes off each damage type, a number per type (Phase 295; was prose).
@@ -327,12 +345,18 @@ function equipmentProblems(d, refs) {
       const now = workSpeed(s, w, d)
       if (!(now > 0)) p.push(`${k} can no longer ${w}: a former tool must keep its job`)
       else if (now < speed) p.push(`${k} does ${w} at ${now}, slower than before (${speed})`)
+      // What the runtime reads until Phase 296 (the bridge) must say the same.
+      const legacy = legacyToolFields(s, d)
+      if (LEGACY_TOOL_TYPE[w] && legacy.toolType !== LEGACY_TOOL_TYPE[w]) p.push(`${k}: the bridge gives toolType "${legacy.toolType}", the runtime needs "${LEGACY_TOOL_TYPE[w]}" for ${w}`)
+      if (LEGACY_HARVEST_TOOL[w] && (legacy.harvestTool !== LEGACY_HARVEST_TOOL[w] || !(legacy.efficiency >= Math.min(1, speed)))) p.push(`${k}: the bridge gives harvestTool "${legacy.harvestTool}" at ${legacy.efficiency}, the runtime needs "${LEGACY_HARVEST_TOOL[w]}" at ${speed} for ${w}`)
     }
   }
   // Picks deal the least: a pick's damage is below every other item's with the same working material.
   for (const [k, s] of Object.entries(specs)) {
     if (s.category !== 'pick' || !d.categories.pick) continue
     const mine = totalDamage(combatDamage(s, d))
+    const peers = Object.entries(specs).filter(([o, so]) => o !== k && so.category && so.category !== 'pick' && so.material === s.material && d.categories[so.category])
+    if (!peers.length) p.push(`${k}: no other equipment of its material (${s.material || 'none'}) to prove a pick deals the least`)
     for (const [o, so] of Object.entries(specs)) {
       if (o === k || !so.category || so.category === 'pick' || so.material !== s.material || !d.categories[so.category]) continue
       const theirs = totalDamage(combatDamage(so, d))
@@ -345,6 +369,8 @@ function equipmentProblems(d, refs) {
     const works = worksOf(s, d)
     const legacy = Object.keys(LEGACY_TOOL_TYPE).filter((w) => works[w])
     if (legacy.length > 1) p.push(`${k} can ${legacy.join(' and ')}: the runtime reads one tool class per item until Phase 296`)
+    const harvest = Object.keys(LEGACY_HARVEST_TOOL).filter((w) => works[w])
+    if (harvest.length > 1) p.push(`${k} can ${harvest.join(' and ')}: the runtime reads one harvest tool per item until Phase 296`)
   }
   return p
 }
@@ -366,12 +392,24 @@ function categorySummary(d = equipmentData()) {
   return out
 }
 
+/** Prose for the generated docs: each category with its traits and what it can do. */
+function categoryProse(d = equipmentData()) {
+  const rows = Object.entries(categorySummary(d)).map(([c, r]) => {
+    const traits = r.traits.map((t) => {
+      const g = d.categories[c].defaultTraits[t].grade
+      return g ? `${t} (${g})` : t
+    }).join(' + ')
+    return `${c} (${r.hands}-handed, ${traits}, combat x${r.combatMultiplier}): ${r.canDo.length ? r.canDo.join(', ') : 'combat only'}`
+  })
+  return 'Categories: ' + rows.join('; ') + '.'
+}
+
 const Equipment = defineEntity({
   tags: ['world-system'],
   description:
     'Equipment categories and traits (Phase 295): every held item is equipment of a category, and what it can do in ' +
     'the world (fell, mine, dig, build, pick a lock, dissect, cut bone) follows from its traits by the work table. ' +
-    'There are no tools that cannot be used in combat; picks are the weakest weapons.',
+    'There are no tools that cannot be used in combat; picks are the weakest weapons. ' + categoryProse(),
   goal: 'One rule for what a held item can do, in work and in combat, instead of a tool type per item',
   fields: {
     id:             { type: 'uuid', primaryKey: true },
@@ -387,5 +425,5 @@ const Equipment = defineEntity({
 module.exports = {
   DAMAGE_TYPES, TRAITS, CATEGORIES, MATERIAL_TRAITS, WORK_TRAITS, FORMER_JOBS, LEGACY_TOOL_TYPE, LEGACY_HARVEST_TOOL,
   equipmentData, equipmentRefs, equipmentProblems, validateEquipment, itemSpecs, workingMaterial,
-  effectiveTraits, workSpeed, worksOf, combatDamage, totalDamage, legacyToolFields, categorySummary, Equipment,
+  effectiveTraits, workSpeed, worksOf, combatDamage, totalDamage, legacyToolFields, categorySummary, categoryProse, HELD_SLOTS, HELD_ARCHETYPES, WORN_SLOTS, Equipment,
 }

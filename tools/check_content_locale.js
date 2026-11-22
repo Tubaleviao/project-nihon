@@ -12,8 +12,9 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const CATALOG = path.join(ROOT, 'locale', 'content.csv');
 // Phase 274 — `category.<id>.name` names each skill category (skills/shared.js SKILL_CATEGORIES).
-// Phase 295 — `equipment.<category>.name`, `trait.<Trait>.name` and `work.<work>.name` name the equipment tables.
-const FIELDS = { item: ['name', 'desc'], recipe: ['name'], tech: ['name', 'desc'], skill: ['name', 'desc'], profession: ['name'], station: ['name'], category: ['name'], title: ['name'], equipment: ['name'], trait: ['name'], work: ['name'] };
+// Phase 295 — `equipment.<category>.name`, `trait.<Trait>.name`, `work.<work>.name`, `grade.<grade>.name` and
+// `damage.<type>.name` name the equipment tables.
+const FIELDS = { item: ['name', 'desc'], recipe: ['name'], tech: ['name', 'desc'], skill: ['name', 'desc'], profession: ['name'], station: ['name'], category: ['name'], title: ['name'], equipment: ['name'], trait: ['name'], work: ['name'], grade: ['name'], damage: ['name'] };
 
 // RFC 4180: quoted cells may hold commas, quotes ("") and newlines.
 function parseCsv(text) {
@@ -92,7 +93,8 @@ function fabricRefs() {
     title: new Set(Object.keys(require('../fabric/gameplay/titles').titlesData().titles)),
     ...(() => {
       const eq = require('../fabric/gameplay/equipment').equipmentData();
-      return { equipment: new Set(Object.keys(eq.categories)), trait: new Set(Object.keys(eq.traits)), work: new Set(Object.keys(eq.workTraits)) };
+      const grades = Object.values(eq.traits).flatMap((t) => Object.keys(t.grades || {}));
+      return { equipment: new Set(Object.keys(eq.categories)), trait: new Set(Object.keys(eq.traits)), work: new Set(Object.keys(eq.workTraits)), grade: new Set(grades), damage: new Set(eq.damageTypes) };
     })(),
   };
 }
@@ -112,7 +114,7 @@ function contentLocaleProblems(cat, refs) {
   }
   const named = (key, l) => have.has(key) && have.get(key)[l];
   for (const l of cat.locales) {
-    for (const kind of ['item', 'tech', 'skill', 'profession', 'station', 'category', 'title', 'equipment', 'trait', 'work']) {
+    for (const kind of ['item', 'tech', 'skill', 'profession', 'station', 'category', 'title', 'equipment', 'trait', 'work', 'grade', 'damage']) {
       for (const id of refs[kind]) if (!named(`${kind}.${id}.name`, l)) problems.push(`${kind}.${id}.name: no ${l} name`);
     }
     for (const [id, out] of refs.recipe) {
@@ -146,6 +148,8 @@ if (require.main === module) {
   expect('an equipment category with no name fails', (c) => { c.rows = c.rows.filter((r) => r.key !== 'equipment.pick.name'); }, /equipment\.pick\.name: no en name/);
   expect('a trait with no pt_BR name fails', (c) => { row(c, 'trait.Sharp.name').cells.pt_BR = ''; }, /trait\.Sharp\.name: (no pt_BR name|empty pt_BR cell)/);
   expect('a work with no name fails', (c) => { c.rows = c.rows.filter((r) => r.key !== 'work.fell.name'); }, /work\.fell\.name: no en name/);
+  expect('a trait grade with no name fails', (c) => { c.rows = c.rows.filter((r) => r.key !== 'grade.heavy.name'); }, /grade\.heavy\.name: no en name/);
+  expect('a damage type with no name fails', (c) => { c.rows = c.rows.filter((r) => r.key !== 'damage.piercing.name'); }, /damage\.piercing\.name: no en name/);
   expect('a station with no name fails', (c) => { c.rows = c.rows.filter((r) => r.key !== 'station.master_forge.name'); }, /station\.master_forge\.name: no en name/);
   expect('a recipe with neither its own nor its output name fails', (c) => {
     c.rows = c.rows.filter((r) => r.key !== 'recipe.RecipeHealthPotion.name' && r.key !== 'item.AlchemyPotion.name');

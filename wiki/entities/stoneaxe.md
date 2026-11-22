@@ -27,8 +27,6 @@ A knapped stone lashed into a split branch. Fells a tree, slowly.
 | works | json | Derived from the work table (Phase 295): { <work>: speed } for every work this item can do |
 | combatDamage | json | Derived (Phase 295): combat damage per damage type, the category multiplier times its traits' shares |
 | toolType | string | Derived (Phase 295 bridge, removed by Phase 296) from the work table: the old tool class the runtime reads |
-| harvestTool | string | Derived (Phase 295 bridge, removed by Phase 296) from the work table: knife (dissect) or bonetool (cutBone) |
-| efficiency | decimal | Derived (Phase 295 bridge, removed by Phase 296): the harvest work speed, in (0, 1] |
 
 ## Related
 

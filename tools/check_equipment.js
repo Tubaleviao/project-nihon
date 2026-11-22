@@ -23,8 +23,20 @@ function expect(label, mutate, pattern) {
 }
 
 expect('the shipped tables are valid', () => {}, null);
-expect('an item declaring toolType fails', (d, r) => { r.items.FerritePick.declared = ['toolType']; }, /FerritePick declares toolType/);
-expect('an item declaring harvestTool fails', (d, r) => { r.items.BoneSaw.declared = ['harvestTool']; }, /BoneSaw declares harvestTool/);
+// Declared fields are read off the entity by itemSpecs, so these go through it on a cloned authored item.
+function withAuthoredField(name, field, value) {
+  return (d, r) => {
+    const e = clone(require('../fabric/gameplay/items/authored')[name]);
+    e.fields[field] = { type: 'string', description: 'x', defaultValue: value };
+    r.items[name] = eq.itemSpecs({ [name]: e })[name];
+  };
+}
+expect('an item declaring toolType fails', withAuthoredField('FerritePick', 'toolType', 'pick'), /FerritePick declares toolType/);
+expect('an item declaring harvestTool fails', withAuthoredField('BoneSaw', 'harvestTool', 'bonetool'), /BoneSaw declares harvestTool/);
+expect('a held item with no category fails', (d, r) => { r.items.FerriteShield.category = undefined; r.items.FerriteShield.traits = undefined; }, /FerriteShield is held/);
+expect('worn armour with no protection fails', (d, r) => { r.items.NoviceTunic.protection = undefined; }, /NoviceTunic is worn/);
+expect('an item doing two harvest works fails (the Phase 295 bridge)', (d, r) => { r.items.SkinningKnife.traits.Blunt = { strength: 1, grade: 'heavy' }; }, /SkinningKnife can dissect and cutBone/);
+expect('a pick with no peer of its material fails', (d, r) => { r.items.VeilsteelPick.material = 'Lumenfite'; }, /VeilsteelPick: no other equipment of its material/);
 expect('an unknown category fails', (d, r) => { r.items.CarpenterAxe.category = 'spoon'; }, /CarpenterAxe: equipmentCategory "spoon" is not in the category table/);
 expect('an unknown item trait fails', (d, r) => { r.items.SkinningKnife.traits.Glowing = { strength: 1 }; }, /SkinningKnife\.traits: trait "Glowing" is not in the trait table/);
 expect('a work rule naming an unknown trait fails', (d) => { d.workTraits.mine.ways[0].traits.Hard = {}; }, /work mine\.ways\[0\]\.traits: trait "Hard" is not in the trait table/);
@@ -39,6 +51,15 @@ expect('a former pick that got slower fails', (d) => { d.workTraits.mine.ways[0]
 expect('an unknown clip family fails', (d) => { d.categories.mace.clipFamily = 'flail'; }, /category mace: clip family "flail"/);
 expect('armour missing a damage type fails', (d, r) => { delete r.items.FerriteHelmet.protection.piercing; }, /FerriteHelmet\.protection\.piercing must be a share/);
 expect('an item doing two old tool classes fails (the Phase 295 bridge)', (d, r) => { r.items.StonePick.traits.Broad = { strength: 1 }; }, /StonePick can mine and dig/);
+
+// Every item that had a toolType or harvestTool on main before this phase (frozen here, apart from FORMER_JOBS, so
+// dropping a FORMER_JOBS row cannot switch its no-regression check off unnoticed).
+const FORMER_TOOLS = ['FerritePick', 'VeilsteelPick', 'CarpenterAxe', 'SkinningKnife', 'BoneSaw', 'Lockpick',
+  'StoneAxe', 'StonePick', 'StoneShovel', 'StoneHammer', 'StoneKnife'];
+{
+  const missing = FORMER_TOOLS.filter((k) => !eq.FORMER_JOBS[k]);
+  report('FORMER_JOBS covers every former tool', missing.length === 0, missing);
+}
 
 // The shipped data, read off the derived items.
 const d = eq.equipmentData();
@@ -60,6 +81,8 @@ for (const [k, jobs] of Object.entries(d.formerJobs)) {
   report('Piercing without Blunt does not mine', noBlunt === 0, noBlunt);
   const noHeavy = eq.workSpeed({ category: 'sword', traits: { Sharp: { strength: 1 }, Blunt: { strength: 1, grade: 'light' } } }, 'fell', d);
   report('Sharp without Blunt (heavy) does not fell', noHeavy === 0, noHeavy);
+  const stoneBone = eq.workSpeed(refs.items.StoneAxe, 'cutBone', d);
+  report('a stone axe does not cut bone (as before this phase)', stoneBone === 0, stoneBone);
   const pick = d.categories.pick.combatMultiplier;
   const weaker = Object.entries(d.categories).filter(([c, cat]) => c !== 'pick' && !(cat.combatMultiplier > pick)).map(([c]) => c);
   report('picks have the lowest combat multiplier of all categories', weaker.length === 0, weaker);

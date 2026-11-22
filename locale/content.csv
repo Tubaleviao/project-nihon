@@ -380,3 +380,9 @@ work.build.name,Build,Construir
 work.pickLock.name,Pick locks,Arrombar fechaduras
 work.dissect.name,Dissect,Dissecar
 work.cutBone.name,Cut bone,Cortar ossos
+equipment.shield.name,Shield,Escudo
+grade.light.name,Light,Leve
+grade.heavy.name,Heavy,Pesado
+damage.slashing.name,Slashing,Cortante
+damage.blunt.name,Blunt,Contundente
+damage.piercing.name,Piercing,Perfurante

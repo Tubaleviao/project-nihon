@@ -22,6 +22,8 @@ Round shield of ferrite-plated hardwood. Blocks melee and missile strikes at the
 | shape | json | Item shape: archetype, material per named part, and uniform scale (Phase 151) |
 | durability | integer | Remaining durability points before condition degrades |
 | protection | json | Share of each damage type this piece takes off a hit (Phase 295): { slashing, blunt, piercing } |
+| equipmentCategory | string | Equipment category (Phase 295): knife, sword, axe, hammer, pick, shovel… |
+| traits | json | Traits and strengths (Phase 295): { <Trait>: { strength, grade? } }; the working part's material may raise them |
 | repair | json | Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier). |
 | equipmentSlot | string | Equipment slot — what is equipped (§6) |
 | deformationMode | string | SKINNED \| RIGID \| HYBRID (§10) |
@@ -34,6 +36,8 @@ Round shield of ferrite-plated hardwood. Blocks melee and missile strikes at the
 | emissionColor | integer | Palette index in the emission region (192–223) for emissive regions (§22) |
 | compatibleTags | json | Semantic tags required to equip (§39) |
 | defense | integer | Defense contributed to the character window total while worn (Phase 47); the panel sums this field, never prose |
+| works | json | Derived from the work table (Phase 295): { <work>: speed } for every work this item can do |
+| combatDamage | json | Derived (Phase 295): combat damage per damage type, the category multiplier times its traits' shares |
 
 ## Related
 
