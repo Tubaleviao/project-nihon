@@ -23,8 +23,6 @@ Broad-backed ferrite saw on a thornwood grip. Cuts bone, tusk, horn and fang fre
 | `repair` | json | yes | Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier). |
 | `works` | json | yes | Derived from the work table (Phase 295): { <work>: speed } for every work this item can do |
 | `combatDamage` | json | yes | Derived (Phase 295): combat damage per damage type, the category multiplier times its traits' shares |
-| `harvestTool` | string | yes | Derived (Phase 295 bridge, removed by Phase 296) from the work table: knife (dissect) or bonetool (cutBone) |
-| `efficiency` | decimal | yes | Derived (Phase 295 bridge, removed by Phase 296): the harvest work speed, in (0, 1] |
 
 ## Relations
 

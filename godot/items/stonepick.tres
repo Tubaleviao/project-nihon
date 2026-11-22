@@ -16,7 +16,6 @@ traits = {"Piercing":{"strength":0.6},"Blunt":{"strength":0.6,"grade":"light"}}
 repair = {"station":"","materials":[{"item":"LooseStone","quantity":1}],"skillGuards":[{"skill":"Carpentry","tier":"novice"}]}
 works = {"mine":0.6}
 combatDamage = {"piercing":1.5,"blunt":0.6}
-toolType = "pick"
 state_machine_field = "condition"
 initial_state = "pristine"
 description = "A pointed stone bound across a branch. Breaks rock faster than bare hands; ore wears it fast."

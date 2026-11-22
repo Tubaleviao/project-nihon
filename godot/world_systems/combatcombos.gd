@@ -6,7 +6,6 @@ extends Resource
 @export var id: String
 @export var attackClips: Array
 @export var chains: Dictionary
-@export var twoHandedItems: Array
 @export var staggerShare: float
 @export var knockbackLight: float
 @export var knockbackHeavy: float

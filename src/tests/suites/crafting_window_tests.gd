@@ -9,7 +9,7 @@ const CraftCatalog := preload("res://src/crafting/craft_catalog.gd")
 const CraftWindow := preload("res://src/ui/craft_window.gd")
 const I18n := preload("res://src/core/i18n.gd")
 
-const NEW_KEYS := ["win.station", "craft.search", "craft.cat.all", "craft.cat.tools", "craft.cat.weapons", "craft.cat.armor",
+const NEW_KEYS := ["win.station", "craft.search", "craft.cat.all", "craft.cat.work_gear", "craft.cat.weapons", "craft.cat.armor",
 	"craft.cat.building", "craft.cat.consumables", "craft.cat.materials", "craft.card_count", "craft.card_refused",
 	"craft.have_need", "craft.work_time", "craft.work_instant", "craft.trains", "craft.trains_none", "craft.quantity",
 	"craft.pick", "craft.none", "controls.row18", "craft.card_badge"]
@@ -327,7 +327,7 @@ func _test_no_entity_ids() -> void:
 	_free(rig)
 
 func _test_categories_and_search() -> void:
-	var expect := { "RecipeStoneAxe": "tools", "RecipeSkinningKnife": "tools", "RecipeFerriteShortSword": "weapons",
+	var expect := { "RecipeStoneAxe": "work_gear", "RecipeSkinningKnife": "work_gear", "RecipeFerriteShortSword": "weapons",
 		"RecipeAethermiteBow": "weapons", "RecipeNoviceTunic": "armor", "RecipeForge": "building", "RecipeChest": "building",
 		"RecipeAshiteBlock": "building", "RecipeHealthPotion": "consumables", "RecipeFerriteIngot": "materials",
 		"RecipeThornwoodPlank": "materials" }
@@ -342,12 +342,12 @@ func _test_categories_and_search() -> void:
 	var all := hand.shown_cards().size()
 	assert_eq(all, ui.craft_cards("").size(), "the All tab shows every card")
 	assert_eq(hand._tab_keys[0], "all", "All is the first tab")
-	assert_true(hand._tab_keys.has("tools") and hand._tab_keys.has("building"), "the hand window has tools and building tabs")
+	assert_true(hand._tab_keys.has("work_gear") and hand._tab_keys.has("building"), "the hand window has work gear and building tabs")
 	assert_false(hand._tab_keys.has("weapons"), "and no empty tab")
-	hand.set_category("tools")
+	hand.set_category("work_gear")
 	assert_true(hand.shown_cards().size() > 0 and hand.shown_cards().size() < all, "the tools tab narrows the grid")
 	for c: Dictionary in hand.shown_cards():
-		assert_eq(str(c["category"]), "tools", "only tools under Tools")
+		assert_eq(str(c["category"]), "work_gear", "only work gear under Work gear")
 	assert_eq(_live_children(hand.grid).size(), hand.shown_cards().size(), "the grid shows the tab's cards")
 	hand.set_category("all")
 	var before := TranslationServer.get_locale()

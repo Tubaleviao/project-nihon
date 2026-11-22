@@ -148,7 +148,7 @@ func _test_discovery_partial() -> void:
 
 func _test_discovery_toast() -> void:
 	assert_true(I18nScript.has_key("notice.tech_discovered"), "the notice is in the catalog")
-	assert_true(I18nScript.has_key("structure.refused.hammer_required"), "so is the hammer refusal")
+	assert_true(I18nScript.has_key("structure.refused.build_required"), "so is the hammer refusal")
 	var r := _tech_rig()
 	var ui := _new_test_ui()
 	ui.technology_slice = r["tech"]
@@ -279,7 +279,8 @@ func _test_fell_branches() -> void:
 	reg.free()
 
 func _test_hammer_to_build() -> void:
-	assert_eq(VoxelEdit.build_tool_class(), "hammer", "the fabric names the hammer")
+	assert_eq(VoxelEdit.build_work(), "build", "the fabric names the build work")
+	assert_true(EquipmentRules.can_do("StoneHammer", "build"), "the stone hammer builds")
 	var v := _make_voxel()
 	var inv := InventorySlice.new()
 	add_child(inv)
@@ -290,7 +291,7 @@ func _test_hammer_to_build() -> void:
 	GameBus.structure_resolved.connect(on_res)
 	assert_false(v.place_block(Vector3(16.0, 2.0, 16.0), Vector3.UP, "Ashite"), "no hammer: refused")
 	GameBus.structure_resolved.disconnect(on_res)
-	assert_eq(reasons, [["place", false, "hammer_required"]], "the builder is told why")
+	assert_eq(reasons, [["place", false, "build_required"]], "the builder is told why")
 	assert_eq(inv.get_item_count("Ashite"), 2, "nothing was spent")
 	inv.add_item("StoneHammer", 1)
 	var dur := inv.get_durability("StoneHammer")
@@ -306,7 +307,7 @@ func _test_others_need_bench() -> void:
 		var recipe: Dictionary = GameData.RECIPES[key].get("recipe")
 		for o in recipe.get("outputs", []):
 			var res: Resource = GameData.ITEMS.get(str(o["item"]), null)
-			if res == null or (res.get("toolType") == null and res.get("harvestTool") == null):
+			if res == null or EquipmentRules.works_of(str(o["item"])).is_empty():
 				continue
 			if stone.has(str(o["item"])):
 				assert_eq(str(recipe.get("station", "")), "", "%s needs no bench" % key)
@@ -315,7 +316,7 @@ func _test_others_need_bench() -> void:
 	for item in GameData.ITEMS:
 		var res: Resource = GameData.ITEMS[item]
 		var rep: Variant = res.get("repair")
-		if (res.get("toolType") == null and res.get("harvestTool") == null) or not (rep is Dictionary):
+		if EquipmentRules.works_of(str(item)).is_empty() or not (rep is Dictionary):
 			continue
 		if stone.has(str(item)):
 			assert_eq(str(rep.get("station", "")), "", "%s is repaired by hand" % item)
@@ -326,11 +327,11 @@ func _test_fastest_tool() -> void:
 	var inv := InventorySlice.new()
 	add_child(inv)
 	inv.add_item("StonePick", 1)
-	assert_eq(inv.find_tool("pick"), "StonePick", "the stone pick alone is used")
+	assert_eq(inv.find_for_work("mine"), "StonePick", "the stone pick alone is used")
 	inv.add_item("FerritePick", 1)
-	assert_eq(inv.find_tool("pick"), "FerritePick", "the ferrite pick wins once it is in the pack")
+	assert_eq(inv.find_for_work("mine"), "FerritePick", "the ferrite pick wins once it is in the pack")
 	inv.add_item("StoneShovel", 1)
-	assert_eq(inv.find_tool("shovel"), "StoneShovel", "the shovel is its own class")
+	assert_eq(inv.find_for_work("dig"), "StoneShovel", "the shovel digs")
 	inv.free()
 
 func _test_discovery_not_researched() -> void:
@@ -382,11 +383,11 @@ func _test_fast_shovel() -> void:
 	assert_true(absf(WorkTime.seconds("Ferrite", "mine", "FerritePick") - 3.0) < 0.001, "a ferrite pick on Ferrite: 3 s")
 	assert_true(absf(WorkTime.seconds("Ashite", "mine", "StonePick") - 2.5 / 0.6) < 0.001, "a stone pick on Ashite: unchanged")
 	assert_true(absf(WorkTime.seconds("Soil", "dig", "FerritePick") - 3.2) < 0.001, "a ferrite pick on soil: bare-hands speed")
-	# No other shovel digs slower than the stone one.
-	var speeds: Dictionary = GameData.WORLD_SYSTEMS["WorkTimes"].get("toolSpeeds")
-	for item in speeds:
-		if (speeds[item] as Dictionary).has("shovel"):
-			assert_true(float(speeds[item]["shovel"]) >= 1.2, "%s digs at least as fast as the stone shovel" % item)
+	# Nothing digs slower than the stone shovel.
+	for item in GameData.ITEMS:
+		var d := EquipmentRules.work_speed(str(item), "dig")
+		if d > 0.0:
+			assert_true(d >= 1.2, "%s digs at least as fast as the stone shovel" % item)
 	v.free()
 	inv.free()
 

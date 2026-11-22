@@ -20,8 +20,6 @@ const CHAINS = {
   tool:     { clips: ['attack_tool'], windowSeconds: 1.0, damageMultipliers: [1.0], impact: [0.5] },
 }
 
-/** Items swung with both hands: their chain is `two_hand`. */
-const TWO_HANDED_ITEMS = ['VeilsteelLongsword']
 
 const STAGGER_SHARE = 0.25
 const KNOCKBACK_LIGHT = 0.3
@@ -29,7 +27,7 @@ const KNOCKBACK_HEAVY = 0.8
 
 function combosData() {
   return JSON.parse(JSON.stringify({
-    attackClips: ATTACK_CLIPS, chains: CHAINS, twoHandedItems: TWO_HANDED_ITEMS, staggerShare: STAGGER_SHARE,
+    attackClips: ATTACK_CLIPS, chains: CHAINS, staggerShare: STAGGER_SHARE,
     knockbackLight: KNOCKBACK_LIGHT, knockbackHeavy: KNOCKBACK_HEAVY,
   }))
 }
@@ -68,7 +66,6 @@ const CombatCombos = defineEntity({
     id:             { type: 'uuid', primaryKey: true },
     attackClips:    { type: 'json', description: 'The attack clips a rig may play (the rig contract)', defaultValue: ATTACK_CLIPS },
     chains:         { type: 'json', description: '{ <unarmed|one_hand|two_hand|tool>: { clips, windowSeconds, damageMultipliers, impact } }', defaultValue: CHAINS },
-    twoHandedItems: { type: 'json', description: 'Main-hand items swung with both hands (the two_hand chain)', defaultValue: TWO_HANDED_ITEMS },
     staggerShare:   { type: 'decimal', description: 'A hit of at least this share of the target\'s max health staggers it; a lighter one plays hit', defaultValue: STAGGER_SHARE },
     knockbackLight: { type: 'decimal', description: 'Metres a target is pushed away by a light hit', defaultValue: KNOCKBACK_LIGHT },
     knockbackHeavy: { type: 'decimal', description: 'Metres a target is pushed away by a staggering hit', defaultValue: KNOCKBACK_HEAVY },

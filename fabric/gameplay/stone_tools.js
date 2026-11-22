@@ -33,21 +33,19 @@ function stoneToolsRefs() {
     const t = e && e.fields && e.fields.tech && e.fields.tech.defaultValue
     if (t) techRows[k] = { ...t, researchCost: e.fields.researchCost.defaultValue }
   }
-  // Every tool (an item with a tool class or a harvest tool) and its repair station, for the bench rule.
+  // Every item that does some work (Phase 296: Equipment.workTraits) and its repair station, for the bench rule.
   const toolItems = {}
+  const itemWorks = {}
   for (const [k, e] of Object.entries(items)) {
     const f = (e && e.fields) || {}
-    if (!f.toolType && !f.harvestTool) continue
+    const works = (f.works && f.works.defaultValue) || {}
+    if (!Object.keys(works).length) continue
+    itemWorks[k] = works
     toolItems[k] = { repairStation: f.repair ? f.repair.defaultValue.station : null }
   }
   const structure = require('./structure').Structure
-  const toolTypes = {}
-  for (const [k, e] of Object.entries(items)) {
-    const t = e && e.fields && e.fields.toolType && e.fields.toolType.defaultValue
-    if (t) toolTypes[k] = t
-  }
-  return { items: Object.keys(items), recipes: recipeRows, technologies: techRows, tools: toolItems, toolTypes,
-    buildTool: structure.fields.buildTool.defaultValue }
+  return { items: Object.keys(items), recipes: recipeRows, technologies: techRows, tools: toolItems, itemWorks,
+    buildWork: structure.fields.buildWork.defaultValue }
 }
 
 /** Problems with the stone-tool table against the fabric, as strings. */
@@ -84,8 +82,8 @@ function stoneToolsProblems(d, refs) {
     if (row.repairStation === '') p.push(`${tool}: not a stone tool, so it is repaired at a station`)
   }
   // The build tool is one a newcomer can make: some stone tool has its class.
-  if (!refs.buildTool) p.push('Structure.buildTool is missing')
-  else if (!(d.tools || []).some((t) => refs.toolTypes[t] === refs.buildTool)) p.push(`no stone tool is a ${refs.buildTool}, the class a builder holds`)
+  if (!refs.buildWork) p.push('Structure.buildWork is missing')
+  else if (!(d.tools || []).some((t) => ((refs.itemWorks || {})[t] || {})[refs.buildWork] > 0)) p.push(`no stone tool can ${refs.buildWork}, the work a builder needs`)
   return p
 }
 

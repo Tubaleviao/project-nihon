@@ -24,9 +24,11 @@ const { defineEntity } = require('@newel/core')
 // An item's effective traits: its own `traits` ({ <Trait>: { strength, grade? } }), then its material's raise/add.
 // Its combat damage per damage type: combatMultiplier × Σ strength × (grade's or trait's) damage.
 //
-// Until Phase 296 moves the runtime onto these tables, items/index.js derives the old `toolType`, `harvestTool` and
-// `efficiency` fields from them (the Phase 295 bridge, `legacyToolFields`), so the game keeps working; no item
-// declares them any more.
+// HARVEST_WORKS   { <harvest entry tool>: <work> }: a creature body's harvest entries name `knife` or `bonetool`
+//                 (Phase 160); the item that works such an entry is one that can do this work, at its work speed.
+//
+// Phase 296: the runtime reads these tables through EquipmentRules (src/character/equipment_rules.gd); no item
+// carries a tool type, and no runtime code reads one.
 
 const DAMAGE_TYPES = ['slashing', 'blunt', 'piercing']
 
@@ -89,11 +91,14 @@ const FORMER_JOBS = {
   BoneSaw:       { cutBone: 1.0 },
 }
 
-// Phase 295 bridge: the runtime (until Phase 296) reads one `toolType` per item and a `harvestTool` with an
-// `efficiency`. Each work below maps to the old name; build reads Structure.buildTool, pickLock
-// ChestsAndDoors.locks.toolType, the others WorkTimes.actions.
-const LEGACY_TOOL_TYPE = { fell: 'axe', mine: 'pick', dig: 'shovel', build: 'hammer', pickLock: 'lockpick' }
-const LEGACY_HARVEST_TOOL = { dissect: 'knife', cutBone: 'bonetool' }
+const HARVEST_WORKS = { knife: 'dissect', bonetool: 'cutBone' }
+
+// Phase 296 — combat on the host. A player's hit deals its held item's combatDamage × COMBAT_SCALE, split by damage
+// type; empty hands (or a held item that is not equipment) deal UNARMED; a creature's `baseDamage` is split by
+// CREATURE_DAMAGE_SHARES. Worn armour's `protection` takes its share off each type's part of a hit on a player.
+const COMBAT_SCALE = 2.5
+const UNARMED = { blunt: 4 }
+const CREATURE_DAMAGE_SHARES = { slashing: 0.4, blunt: 0.4, piercing: 0.2 }
 
 // The part of a shape whose material sets the item's tier and raises its traits.
 const WORKING_PARTS = ['head', 'blade', 'pin', 'tip', 'limb', 'face']
@@ -180,22 +185,11 @@ function combatDamage(spec, d = equipmentData()) {
 
 const totalDamage = (dmg) => round(Object.values(dmg).reduce((a, b) => a + b, 0))
 
-/** Phase 295 bridge: the old fields the runtime still reads, derived from the work table. */
-function legacyToolFields(spec, d = equipmentData()) {
-  const works = worksOf(spec, d)
-  const out = {}
-  const types = Object.keys(LEGACY_TOOL_TYPE).filter((w) => works[w])
-  if (types.length) out.toolType = LEGACY_TOOL_TYPE[types[0]]
-  for (const w of Object.keys(LEGACY_HARVEST_TOOL)) {
-    if (works[w]) { out.harvestTool = LEGACY_HARVEST_TOOL[w]; out.efficiency = Math.min(1, works[w]); break }
-  }
-  return out
-}
-
 function equipmentData() {
   return clone({
     damageTypes: DAMAGE_TYPES, traits: TRAITS, categories: CATEGORIES, materialTraits: MATERIAL_TRAITS,
-    workTraits: WORK_TRAITS, formerJobs: FORMER_JOBS,
+    workTraits: WORK_TRAITS, harvestWorks: HARVEST_WORKS, formerJobs: FORMER_JOBS,
+    combatScale: COMBAT_SCALE, unarmed: UNARMED, creatureDamageShares: CREATURE_DAMAGE_SHARES,
   })
 }
 
@@ -345,10 +339,6 @@ function equipmentProblems(d, refs) {
       const now = workSpeed(s, w, d)
       if (!(now > 0)) p.push(`${k} can no longer ${w}: a former tool must keep its job`)
       else if (now < speed) p.push(`${k} does ${w} at ${now}, slower than before (${speed})`)
-      // What the runtime reads until Phase 296 (the bridge) must say the same.
-      const legacy = legacyToolFields(s, d)
-      if (LEGACY_TOOL_TYPE[w] && legacy.toolType !== LEGACY_TOOL_TYPE[w]) p.push(`${k}: the bridge gives toolType "${legacy.toolType}", the runtime needs "${LEGACY_TOOL_TYPE[w]}" for ${w}`)
-      if (LEGACY_HARVEST_TOOL[w] && (legacy.harvestTool !== LEGACY_HARVEST_TOOL[w] || !(legacy.efficiency >= Math.min(1, speed)))) p.push(`${k}: the bridge gives harvestTool "${legacy.harvestTool}" at ${legacy.efficiency}, the runtime needs "${LEGACY_HARVEST_TOOL[w]}" at ${speed} for ${w}`)
     }
   }
   // Picks deal the least: a pick's damage is below every other item's with the same working material.
@@ -363,14 +353,34 @@ function equipmentProblems(d, refs) {
       if (!(theirs > mine)) p.push(`${k} (${mine}) must deal less than ${o} (${theirs}): picks are the weakest weapons`)
     }
   }
-  // Phase 295 bridge: the runtime reads one toolType per item until Phase 296.
-  for (const [k, s] of Object.entries(specs)) {
-    if (!s.category || !d.categories[s.category]) continue
-    const works = worksOf(s, d)
-    const legacy = Object.keys(LEGACY_TOOL_TYPE).filter((w) => works[w])
-    if (legacy.length > 1) p.push(`${k} can ${legacy.join(' and ')}: the runtime reads one tool class per item until Phase 296`)
-    const harvest = Object.keys(LEGACY_HARVEST_TOOL).filter((w) => works[w])
-    if (harvest.length > 1) p.push(`${k} can ${harvest.join(' and ')}: the runtime reads one harvest tool per item until Phase 296`)
+  // Combat (Phase 296): the scale, empty hands below every item, creature shares summing to 1.
+  if (!(d.combatScale > 0)) p.push(`combatScale must be > 0, got ${d.combatScale}`)
+  const typed = (where, row) => {
+    if (!isObj(row) || !Object.keys(row).length) { p.push(`${where} must name at least one damage type`); return }
+    for (const [dt, v] of Object.entries(row)) {
+      if (!d.damageTypes.includes(dt)) p.push(`${where}.${dt} is not a damage type`)
+      if (!(typeof v === 'number' && v > 0)) p.push(`${where}.${dt} must be > 0, got ${v}`)
+    }
+  }
+  typed('unarmed', d.unarmed)
+  typed('creatureDamageShares', d.creatureDamageShares)
+  if (isObj(d.creatureDamageShares)) {
+    const sum = Object.values(d.creatureDamageShares).reduce((a, b) => a + b, 0)
+    if (Math.abs(sum - 1) > 1e-9) p.push(`creatureDamageShares must sum to 1, got ${sum}`)
+  }
+  if (isObj(d.unarmed) && d.combatScale > 0) {
+    const fist = totalDamage(d.unarmed)
+    for (const [k, s] of Object.entries(specs)) {
+      if (!s.category || !d.categories[s.category]) continue
+      const hit = round(totalDamage(combatDamage(s, d)) * d.combatScale)
+      if (!(hit > fist)) p.push(`${k} hits for ${hit}, not above empty hands (${fist}): any equipment is a better weapon than a fist`)
+    }
+  }
+
+  // Harvest: each harvest entry tool names a work, and some item does it.
+  for (const [tool, w] of Object.entries(d.harvestWorks || {})) {
+    if (!d.workTraits[w]) p.push(`harvestWorks.${tool}: "${w}" is not a work`)
+    else if (!Object.values(specs).some((s) => s.category && d.categories[s.category] && workSpeed(s, w, d) > 0)) p.push(`harvestWorks.${tool}: no item can ${w}`)
   }
   return p
 }
@@ -417,13 +427,17 @@ const Equipment = defineEntity({
     traits:         { type: 'json', description: '{ <Trait>: { damageType, damage } | { damageType, grades: { <grade>: { damage } } } }, grades weakest first', defaultValue: TRAITS },
     categories:     { type: 'json', description: '{ <category>: { hands, clipFamily, combatMultiplier, defaultTraits } }', defaultValue: CATEGORIES },
     materialTraits: { type: 'json', description: '{ <material>: { raise: { <Trait>: +strength }, add: { <Trait>: { strength, grade? } } } } for the working part', defaultValue: MATERIAL_TRAITS },
-    workTraits:     { type: 'json', description: '{ <work>: { bareHands, ways: [{ category?, traits: { <Trait>: { grade? } }, speed }] } }', defaultValue: WORK_TRAITS },
+    workTraits:     { type: 'json', description: '{ <work>: { bareHands, ways: [{ category?, traits: { <Trait>: { grade? } }, minStrength?, speed }] } }', defaultValue: WORK_TRAITS },
+    combatScale:    { type: 'decimal', description: 'Phase 296: a player\'s hit deals the held item\'s combatDamage times this', defaultValue: COMBAT_SCALE },
+    unarmed:        { type: 'json', description: 'Phase 296: what empty hands (or a held item that is not equipment) deal, per damage type', defaultValue: UNARMED },
+    creatureDamageShares: { type: 'json', description: 'Phase 296: how a creature\'s baseDamage splits across damage types (sums to 1), for armour', defaultValue: CREATURE_DAMAGE_SHARES },
+    harvestWorks:   { type: 'json', description: '{ <harvest entry tool>: <work> }: knife entries need dissect, bonetool entries cutBone (Phase 296)', defaultValue: HARVEST_WORKS },
     categorySummary: { type: 'json', description: 'Derived: per category its hands, traits, what it can do and its combat multiplier', defaultValue: categorySummary() },
   },
 })
 
 module.exports = {
-  DAMAGE_TYPES, TRAITS, CATEGORIES, MATERIAL_TRAITS, WORK_TRAITS, FORMER_JOBS, LEGACY_TOOL_TYPE, LEGACY_HARVEST_TOOL,
+  DAMAGE_TYPES, TRAITS, CATEGORIES, MATERIAL_TRAITS, WORK_TRAITS, FORMER_JOBS, HARVEST_WORKS, COMBAT_SCALE, UNARMED, CREATURE_DAMAGE_SHARES,
   equipmentData, equipmentRefs, equipmentProblems, validateEquipment, itemSpecs, workingMaterial,
-  effectiveTraits, workSpeed, worksOf, combatDamage, totalDamage, legacyToolFields, categorySummary, categoryProse, HELD_SLOTS, HELD_ARCHETYPES, WORN_SLOTS, Equipment,
+  effectiveTraits, workSpeed, worksOf, combatDamage, totalDamage, categorySummary, categoryProse, HELD_SLOTS, HELD_ARCHETYPES, WORN_SLOTS, Equipment,
 }

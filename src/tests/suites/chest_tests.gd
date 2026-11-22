@@ -117,7 +117,7 @@ func _test_rules() -> void:
 	assert_eq(ChestRules.placement_item("chest"), "Chest", "a chest is placed from a Chest")
 	assert_eq(ChestRules.placement_item("door"), "Door", "a door from a Door")
 	assert_true(GameData.ITEMS.has("Chest") and GameData.ITEMS.has("Door") and GameData.ITEMS.has("Lockpick"), "the three items exist")
-	assert_eq(str(GameData.ITEMS["Lockpick"].get("toolType")), ChestRules.tool_type(), "the Lockpick is the lock tool")
+	assert_true(EquipmentRules.can_do("Lockpick", ChestRules.lock_work()), "the Lockpick picks locks")
 	assert_eq(ChestRules.default_mode(), "owner", "a new chest opens for its owner only")
 	var stations := StationSlice.new()
 	assert_true(stations.placeable_station_types().has("chest") and stations.placeable_station_types().has("door"), "both are placeable")

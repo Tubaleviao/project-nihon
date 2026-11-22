@@ -450,7 +450,7 @@ func _may_use_items(pid: String, id: String, item: String, qty: int) -> String:
 		return "no_inventory"
 	return ""
 
-## Start picking the lock of `id` with a tool of `ChestRules.tool_type()` from the pack. Takes
+## Start picking the lock of `id` with an item from the pack that can do `ChestRules.lock_work()` (a lockpick). Takes
 ## `ChestRules.pick_seconds` (harder locks longer, a better Lockpicking level shorter); `tick` finishes it.
 func start_pick(player_id: String, id: String) -> String:
 	var pid := _pid(player_id)
@@ -463,7 +463,7 @@ func start_pick(player_id: String, id: String) -> String:
 	if may_open(pid, id):
 		return "not_locked"
 	var inv := _inventory(pid)
-	var tool := str(inv.find_tool(ChestRules.tool_type())) if inv != null and inv.has_method("find_tool") else ""
+	var tool := str(inv.find_for_work(ChestRules.lock_work())) if inv != null and inv.has_method("find_for_work") else ""
 	if tool == "":
 		return "no_tool"
 	var diff := difficulty(id)
@@ -559,14 +559,15 @@ func hit(player_id: String, id: String, method: String) -> String:
 ## else bare hands. With `wear` the tool wears as it would mining.
 func held_method(pid: String, wear: bool) -> String:
 	var inv := _inventory(pid)
-	if inv == null or not inv.has_method("find_tool"):
+	if inv == null or not inv.has_method("find_for_work"):
 		return "hand"
-	for pair: Array in [["pick", "mine"], ["axe", "chop"]]:
-		var tool := str(inv.find_tool(pair[0]))
+	# [method, the work that makes an item that method (Phase 296), the wear action]
+	for row: Array in [["pick", "mine", "mine"], ["axe", "fell", "chop"]]:
+		var tool := str(inv.find_for_work(row[1]))
 		if tool != "":
 			if wear and inv.has_method("use_item"):
-				inv.use_item(tool, pair[1])
-			return str(pair[0])
+				inv.use_item(tool, row[2])
+			return str(row[0])
 	return "hand"
 
 ## Hits `method` needs to break a lock of `id` from full (the destroy time the suite compares).

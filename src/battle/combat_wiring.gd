@@ -3,6 +3,7 @@ extends "res://src/core/wiring.gd"
 ## Moved out of game_root.gd; `root` is the GameRoot that owns the slices.
 
 const DeathPush := preload("res://src/battle/death_push.gd")
+const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 const WorldPos := preload("res://src/terrain/world_pos.gd")
 const TerrainSlice     := preload("res://src/terrain/terrain_slice.gd")
 const BattleSlice      := preload("res://src/battle/battle_slice.gd")
@@ -24,6 +25,7 @@ func _connect_all() -> void:
 		enable_impact_timing()
 	if root._battle != null:
 		root._battle.player_stat_fn = player_stat   # Phase 178 — a defending player's attribute stats
+		root._battle.armour_fn = armour_of   # Phase 296 — a defending player's worn protection by damage type
 	if root._creature != null:
 		root._creature.player_points = local_body_points   # Phase 192 — creature models squash against the player
 	connect_bus(GameBus.knockback_requested, _on_knockback_requested)
@@ -449,6 +451,12 @@ func on_player_damaged(damage: float, attacker_id: String, target_id: String) ->
 func player_stat(target_id: String, stat_id: String) -> float:
 	var pid: String = root._registry.local_player_id if (target_id == "" or target_id == "player") else target_id
 	return root._registry.stat_of(pid, stat_id)
+
+## Phase 296 — host: the protection per damage type a player wears, from the registry's worn set (host-validated
+## against the pack by `equip_allowed`, never the client's claim).
+func armour_of(target_id: String) -> Dictionary:
+	var pid: String = root._registry.local_player_id if (target_id == "" or target_id == "player") else target_id
+	return EquipmentRules.protection(root._registry.get_equipment(pid), GameData.ITEMS)
 
 func status_now() -> float:
 	return float(root.status_clock.call()) if root.status_clock.is_valid() else float(Time.get_ticks_msec()) / 1000.0

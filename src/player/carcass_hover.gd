@@ -75,9 +75,11 @@ static func prompt(carcasses: Node, cid: String, inventory: Node) -> String:
 		# A fully worn tool does not count: the host refuses it too.
 		var worn: Dictionary = inventory.get_durability_data()
 		for item in inventory.get_contents():
-			var t := CarcassRules.tool_of(str(item))
-			if not t.is_empty() and has_usable_copy(worn, str(item)):
-				held.append(t["tool"])
+			if not has_usable_copy(worn, str(item)):
+				continue
+			for t: Dictionary in CarcassRules.tools_of(str(item)):
+				if not held.has(t["tool"]):
+					held.append(t["tool"])
 	var p: Array = CarcassRules.prompt_for(carcasses.view_of(cid)["entries"], held, false)
 	var args: Array = []
 	for a in p[1]:

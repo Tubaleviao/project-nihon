@@ -270,8 +270,9 @@ function tutorialRefs() {
     creature: keysTagged(creatures, 'creature'),
   }
   for (const k of itemKeys) {
-    const tool = def(allItems[k], 'toolType')
-    if (typeof tool === 'string' && tool) (tags[tool] = tags[tool] || []).push(k)
+    // Phase 296: an item's equipment category is its tag (axe, pick, knife…), as TutorialWiring._tags_of gives it.
+    const cat = def(allItems[k], 'equipmentCategory')
+    if (typeof cat === 'string' && cat) (tags[cat] = tags[cat] || []).push(k)
   }
   // Placeable station types, as StationSlice.placeable_station_types derives them.
   const stationTypes = new Set()

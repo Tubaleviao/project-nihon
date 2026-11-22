@@ -7,7 +7,7 @@ extends Node
 ## deterministically inside each loaded chunk — the position and the id derive
 ## from the chunk coordinate, the species, and an index, so host and client agree
 ## on both with no snapshot for placement — sit on the terrain surface like
-## creatures, and are felled with an axe (`toolType: "axe"`): the wood lands in
+## creatures, and are felled with an item that can do `fell` (an axe, Phase 296): the wood lands in
 ## the inventory and the stump regrows after a cooldown.
 ##
 ## Only *state* is replicated: chopping is authoritative (a client forwards the
@@ -564,7 +564,7 @@ func trees_in_chunk(chunk_pos: Vector2i) -> Array:
 # Chopping
 # ---------------------------------------------------------------------------
 
-## Fell a standing tree. Requires a held axe (`toolType: "axe"` from the fabric),
+## Fell a standing tree. Requires a held item that can fell (an axe, by the fabric's work table),
 ## spends one point of its durability per chop, yields the tree's wood into the
 ## inventory, and leaves a stump that regrows after RESPAWN_SECONDS. On a client
 ## the intent is forwarded and the host's authoritative state is applied instead.
@@ -1220,12 +1220,11 @@ func _regrow(tree_id: String) -> void:
 	_fall.begin_growth(tree_id)
 	GameBus.tree_respawned.emit(tree_id)
 
-## The held axe's item id, or "" when `inventory` holds none. Delegates to the
-## inventory's fabric-driven tool lookup ("axe" → CarpenterAxe today).
+## The held item that fells fastest (Phase 296: `EquipmentRules.can_do(item, "fell")`, any axe), or "".
 func _held_axe(inventory: Node) -> String:
-	if inventory == null or not inventory.has_method("find_tool"):
+	if inventory == null or not inventory.has_method("find_for_work"):
 		return ""
-	return str(inventory.find_tool("axe"))
+	return str(inventory.find_for_work("fell"))
 
 ## Wall-clock seconds since the Unix epoch. NOT `Time.get_ticks_msec()` — that is
 ## process uptime, which makes a saved regrowth deadline meaningless after a

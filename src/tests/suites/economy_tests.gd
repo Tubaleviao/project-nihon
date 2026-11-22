@@ -33,8 +33,8 @@ func register() -> void:
 	_run_test("durability: broken tool emits item_broke",             _test_durability_broken_emits)
 	_run_test("durability: stackable materials excluded",             _test_durability_stackable_excluded)
 	_run_test("durability: drop and repick resets to full",           _test_durability_drop_repick_resets)
-	_run_test("durability: find_tool returns held pick",              _test_durability_find_tool)
-	_run_test("durability: find_tool skips broken, returns working",  _test_durability_find_tool_skips_broken)
+	_run_test("durability: find_for_work returns held pick",              _test_durability_find_tool)
+	_run_test("durability: find_for_work skips broken, returns working",  _test_durability_find_tool_skips_broken)
 	_run_test("durability: values round-trip (sync/trade/market)",    _test_durability_values_round_trip)
 	_run_test("durability: sync/load copy, not move",                _test_durability_sync_is_copy_not_move)
 	_run_test("durability: host sync overwrites worn with pristine",  _test_sync_pristine_over_worn)
@@ -727,17 +727,17 @@ func _test_durability_drop_repick_resets() -> void:
 func _test_durability_find_tool() -> void:
 	var inv := InventorySlice.new()
 	add_child(inv)
-	assert_eq(inv.find_tool("pick"), "", "no tool held when inventory empty")
+	assert_eq(inv.find_for_work("mine"), "", "no tool held when inventory empty")
 	inv.add_item("FerritePick", 1)
 	inv.add_item("VeilsteelPick", 1)
 	inv.add_item("CarpenterAxe", 1)
-	# find_tool matches on the fabric toolType, not the item name.
-	# Phase 260 — of several held picks the fastest (WorkTimes.toolSpeeds) is used.
-	assert_eq(inv.find_tool("pick"), "VeilsteelPick", "find_tool returns the fastest held pick")
-	assert_eq(inv.find_tool("axe"), "CarpenterAxe", "find_tool returns the held axe")
-	# A non-tool durable item (a weapon) has no toolType and never matches.
+	# find_for_work matches on what the item can do (Equipment.workTraits), not its name.
+	# Phase 260 — of several held picks the fastest is used.
+	assert_eq(inv.find_for_work("mine"), "VeilsteelPick", "find_tool returns the fastest held pick")
+	assert_eq(inv.find_for_work("fell"), "CarpenterAxe", "find_tool returns the held axe")
+	# A weapon that cannot mine never matches.
 	inv.add_item("FerriteShortSword", 1)
-	assert_eq(inv.find_tool("pick"), "VeilsteelPick", "a weapon is not a mining tool")
+	assert_eq(inv.find_for_work("mine"), "VeilsteelPick", "a weapon is not a mining tool")
 	inv.free()
 
 func _test_durability_find_tool_skips_broken() -> void:
@@ -748,11 +748,11 @@ func _test_durability_find_tool_skips_broken() -> void:
 	# Break both picks via use_item — find_tool must return "".
 	_break_item(inv, "VeilsteelPick")
 	_break_item(inv, "FerritePick")
-	var none := inv.find_tool("pick")
+	var none := inv.find_for_work("mine")
 	assert_eq(none, "", "find_tool returns empty when all picks are broken")
 	# Restore one pick's durability — find_tool must return it now.
 	inv.repair_item("FerritePick")
-	var found := inv.find_tool("pick")
+	var found := inv.find_for_work("mine")
 	assert_eq(found, "FerritePick", "find_tool returns FerritePick once restored")
 	inv.free()
 
@@ -2297,7 +2297,7 @@ func _test_trade_pristine_to_broken_holder() -> void:
 	assert_eq(inv_b.get_item_count("FerritePick"), 2, "holder now has two picks")
 	# The broken copy is preserved — the pristine transfer must not overwrite it.
 	assert_eq(inv_b.get_condition("FerritePick"), "broken", "broken copy still broken, not overwritten")
-	assert_eq(inv_b.find_tool("pick"), "FerritePick", "a usable pristine instance is still present")
+	assert_eq(inv_b.find_for_work("mine"), "FerritePick", "a usable pristine instance is still present")
 	t.free()
 	inv_a.free()
 	inv_b.free()

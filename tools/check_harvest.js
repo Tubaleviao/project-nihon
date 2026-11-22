@@ -23,7 +23,7 @@ const spoon = fresh(); spoon.creatures.ForestBoar.drops[0].tool = 'spoon';
 expect("tool 'spoon' fails", harvest.harvestProblems(spoon), /tool must be one of/);
 
 // Phase 295: every item whose traits cut bone provides bonetool (the saw, and the axes at a poor speed).
-const nobody = fresh(); for (const [k, t] of Object.entries(nobody.tools)) if (t.harvestTool === 'bonetool') delete nobody.tools[k];
+const nobody = fresh(); for (const t of Object.values(nobody.tools)) delete t.bonetool;
 expect('a category no item provides fails', harvest.harvestProblems(nobody), /no item provides tool "bonetool"/);
 
 const mass = fresh(); delete mass.creatures.ForestBoar.carcassMassKg;
@@ -44,8 +44,8 @@ expect('a quality grade that falls with level fails', harvest.harvestProblems(gr
 const heavy = fresh(); heavy.creatures.GlimmerFox.carcassMassKg = 500;
 expect('a carry body over the capacity fails', harvest.harvestProblems(heavy), /GlimmerFox: carryRule carry but/);
 
-const weak = fresh(); weak.tools.CarpenterAxe.efficiency = 1.5;
-expect('a tool efficiency above 1 fails', harvest.harvestProblems(weak), /CarpenterAxe\.efficiency/);
+const weak = fresh(); weak.tools.CarpenterAxe.bonetool = 1.5;
+expect('a tool efficiency above 1 fails', harvest.harvestProblems(weak), /CarpenterAxe\.bonetool efficiency/);
 
 const drag = fresh(); drag.creatures.ForestBoar.carcassMassKg = 10;
 expect('a drag body that fits the base capacity fails', harvest.harvestProblems(drag), /ForestBoar: carryRule drag but 10 kg fits/);
@@ -77,8 +77,10 @@ expect('Skinning maxLevel differing from levelCap fails', harvest.harvestProblem
 const big = fresh(); big.creatures.ForestBoar.carcassMassKg = 1000;
 expect('a drag body over the drag limit fails', harvest.harvestProblems(big), /ForestBoar: carryRule drag but 1000 kg exceeds/);
 
-const none = fresh(); none.tools.BoneSaw.harvestTool = 'none';
-expect("an item with harvestTool 'none' fails", harvest.harvestProblems(none), /BoneSaw\.harvestTool must be one of/);
+const none = fresh(); none.tools.BoneSaw = { none: 1 };
+expect("an item providing harvest tool 'none' fails", harvest.harvestProblems(none), /BoneSaw provides harvest tool "none"/);
+const eff = fresh(); eff.tools.BoneSaw.bonetool = 0;
+expect('an efficiency of 0 fails', harvest.harvestProblems(eff), /BoneSaw\.bonetool efficiency must be in \(0, 1\]/);
 
 const qty = fresh(); qty.creatures.ForestBoar.drops[0].maxQty = 0; qty.creatures.ForestBoar.drops[0].minQty = 0;
 expect('maxQty 0 fails', harvest.harvestProblems(qty), /needs 0 <= minQty <= maxQty/);

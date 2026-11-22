@@ -17,7 +17,7 @@ A connected set of placed blocks and the stations on them, owned by its builder 
 | `floorHeight` | decimal | yes | Metres per floor: 24 blocks of 0.125 m |
 | `maxFloors` | integer | yes | Floors of the tallest structure (the top structural class) |
 | `rules` | json | yes | Structure table: { ownership, circle, floorHeight, maxFloors, classes, shapes, existingBuilds } (validated at fabric load) |
-| `buildTool` | string | yes | Phase 260 — the tool class a builder must hold to place a block (a shelter); placing a station (a bench) needs none. Holding it does not wear it. |
+| `buildWork` | string | yes | Phase 260/296 — the work (Equipment.workTraits) a builder must be able to do with an item in the pack to place a block (a shelter): a hammer; placing a station (a bench) needs none. Holding it does not wear it. |
 
 ## Relations
 

@@ -51,6 +51,10 @@ var impact_state_fn: Callable = Callable()
 var swing_started_fn: Callable = Callable()
 ## Damage factor of the combo step being resolved (1 outside a combo).
 var _damage_mult: float = 1.0
+## Phase 296 — the item the landing hit was swung with (the impact entry's, host-derived); "" = empty hands.
+## Phase 296 — (defender_id) -> { <damage type>: share taken off }: the host's view of what a player wears
+## (`EquipmentRules.protection` over the registry's worn set). Unset: no armour.
+var armour_fn: Callable = Callable()
 
 func _ready() -> void:
 	GameBus.combat_round_requested.connect(_on_combat_round_requested)
@@ -58,6 +62,7 @@ func _ready() -> void:
 
 const DeathPush := preload("res://src/battle/death_push.gd")
 const PendingHit := preload("res://src/battle/pending_hit.gd")
+const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 
 ## Phase 37 — the registry's id-SHAPE predicate, preloaded for the player/creature
 ## split: it is a pure static check on a string, so no registry needs to be in the tree
@@ -77,12 +82,19 @@ static func is_player_target(defender_id: String) -> bool:
 	return defender_id == "player" or PlayerRegistry.looks_like_player_id(defender_id)
 
 ## Resolve a single combat round synchronously and emit the result.
-func resolve_round(attacker_id: String, defender_id: String) -> Dictionary:
+func resolve_round(attacker_id: String, defender_id: String, held_item: String = "") -> Dictionary:
 	var attacker_res := _lookup(attacker_id)
 	var defender_res := _lookup(defender_id)
 
-	var base_dmg: float = _field(attacker_res, "baseDamage", 10.0)
 	var max_hp:   float = _field(defender_res, "baseHp",     100.0)
+	# Phase 296 — a player's hit deals its held item's trait damage (empty hands: Equipment.unarmed), a creature's its
+	# baseDamage; either is split by damage type for the defender's armour.
+	var hit: Dictionary
+	if attacker_res == null and is_player_target(attacker_id):
+		hit = EquipmentRules.player_hit(held_item)
+	else:
+		hit = EquipmentRules.creature_hit(_field(attacker_res, "baseDamage", 10.0))
+	var base_dmg: float = float(hit["total"])
 
 	# Hit roll: base 80 % hit rate, modified by tier difference
 	var hit_roll := randf()
@@ -119,6 +131,10 @@ func resolve_round(attacker_id: String, defender_id: String) -> Dictionary:
 		if outcome != "miss":
 			# Resistance shaves the damage.
 			damage *= clampf(1.0 - _player_stat(defender_id, "damageReduction", 0.0), 0.0, 1.0)
+			# Phase 296 — worn armour takes its share off each damage type's part of the hit.
+			if armour_fn.is_valid():
+				var prot: Variant = armour_fn.call(defender_id)
+				damage *= EquipmentRules.armour_factor(hit["shares"], prot if prot is Dictionary else {})
 			# Phase 129 — a knocked-down body takes more; the hit may leave an effect on it.
 			if status_effects != null:
 				damage *= status_effects.damage_factor(defender_id, now)
@@ -249,7 +265,10 @@ func _on_combat_round_requested(attacker_id: String, defender_id: String) -> voi
 		if swing_started_fn.is_valid():
 			swing_started_fn.call(attacker_id, defender_id)
 		return
-	resolve_round(attacker_id, defender_id)
+	var held := ""
+	if impact_info_fn.is_valid() and (attacker_id == "player" or is_player_target(attacker_id)):
+		held = str(impact_info_fn.call(attacker_id).get("item", ""))
+	resolve_round(attacker_id, defender_id, held)
 
 ## Phase 287 — resolve the hits whose impact time has come. A hit the re-check refuses deals nothing and sends no sync.
 ## Returns the number that landed.
@@ -267,7 +286,7 @@ func tick_impacts() -> int:
 		if killed.has(str(e["target"])) or PendingHit.refusal(e, impact_state_fn.call(e)) != "":
 			continue
 		_damage_mult = float(e["damage_multiplier"])
-		var res := resolve_round(str(e["attacker"]), str(e["target"]))
+		var res := resolve_round(str(e["attacker"]), str(e["target"]), str(e.get("item", "")))
 		_damage_mult = 1.0
 		if str(res.get("outcome", "")) == "kill":
 			killed[str(e["target"])] = true

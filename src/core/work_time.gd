@@ -3,12 +3,14 @@ extends RefCounted
 ## fabric's `WorkTimes` world system (`GameData.WORLD_SYSTEMS["WorkTimes"]`). The host computes every duration
 ## here from its own state (material, action, held tool), never from a client message.
 ##
-## seconds = workSeconds[material] / (speed * skill), where speed is the held tool's `toolSpeeds[tool][class]` when the
-## tool's class is the one the action wants, else the bare-hands speed (a wrong-class tool counts as bare hands), and
+## seconds = workSeconds[material] / (speed * skill), where speed is the held item's speed at the work the action wants
+## (Phase 296: `EquipmentRules.work_speed`, from the fabric's `Equipment.workTraits`), else the bare-hands speed (an
+## item that cannot do the work counts as bare hands), and
 ## skill is the worker's tier factor in the gathering skill the action grows (Phase 274: `WorkSkills.bonuses`, 1 for
 ## a novice).
 
 const WorkSkills := preload("res://src/character/work_skills.gd")
+const EquipmentRules := preload("res://src/character/equipment_rules.gd")
 
 const ACTIONS := ["dig", "mine", "chop"]
 
@@ -34,17 +36,17 @@ static func action_for_material(material: String) -> String:
 			return str(action)
 	return ""
 
-## The tool class an action wants ("" for an unknown action).
-static func tool_class(action: String) -> String:
-	return str((_dict("actions").get(action, {}) as Dictionary).get("toolClass", ""))
+## The work (Equipment.workTraits) an action wants: dig → dig, mine → mine, chop → fell ("" for an unknown action).
+static func action_work(action: String) -> String:
+	return str((_dict("actions").get(action, {}) as Dictionary).get("work", ""))
 
-## Speed of `tool_item` ("" = bare hands) at `action`: its speed for the action's class, else bare hands.
+## Speed of `tool_item` ("" = bare hands) at `action`: its speed at the action's work, else bare hands.
 static func speed(action: String, tool_item: String) -> float:
-	var cls := tool_class(action)
-	if tool_item != "" and cls != "":
-		var row: Dictionary = _dict("toolSpeeds").get(tool_item, {})
-		if row.has(cls):
-			return float(row[cls])
+	var work := action_work(action)
+	if tool_item != "" and work != "":
+		var s := EquipmentRules.work_speed(tool_item, work)
+		if s > 0.0:
+			return s
 	return bare_hands_speed()
 
 ## Phase 274 — the speed factor a worker at `tier` gets on `action` from the gathering skill whose tiers speed it
@@ -86,9 +88,9 @@ static func duration(material: String, action: String, tool_item: String = "", t
 	var s := speed(action, tool_item) * skill_speed(skill_action if skill_action != "" else action, tier)
 	return FALLBACK_SECONDS / s if s > 0.0 else 0.0
 
-## The tool the player holds for `action`'s class ("" = bare hands): the inventory's first usable tool of it.
+## The item the player holds for `action`'s work ("" = bare hands): the inventory's fastest usable item for it.
 static func held_tool(inventory: Node, action: String) -> String:
-	var cls := tool_class(action)
-	if inventory == null or cls == "" or not inventory.has_method("find_tool"):
+	var work := action_work(action)
+	if inventory == null or work == "" or not inventory.has_method("find_for_work"):
 		return ""
-	return str(inventory.find_tool(cls))
+	return str(inventory.find_for_work(work))

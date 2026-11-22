@@ -7,16 +7,15 @@ title: "WorkTimes"
 
 `world-system`
 
-How long gathering takes: a base time per material, the tool class each action wants, a speed per tool and class, and the slow factor of bare hands (also the speed of a tool of the wrong class).
+How long gathering takes: a base time per material, the work each action wants (the held item's speed at it comes from Equipment.workTraits), and the slow factor of bare hands (also the speed of an item that cannot do the work).
 
-> Make a better tool a felt step: timed, held work instead of one-click gathering (Phase 259)
+> Make better equipment a felt step: timed, held work instead of one-click gathering (Phase 259)
 
 ## Attributes
 
 | Field | Type | Description |
 | ----- | ---- | ----------- |
-| bareHandsSpeed | decimal | Speed multiplier of bare hands and of a wrong-class tool (1.0 = a right tool at base speed) |
-| actions | json | { <dig\|mine\|chop>: { toolClass, families } } |
+| bareHandsSpeed | decimal | Speed multiplier of bare hands and of an item that cannot do the work (1.0 = the baseline item) |
+| actions | json | { <dig\|mine\|chop>: { work, families } } |
 | workSeconds | json | { <material>: base seconds at speed 1.0 } |
-| toolSpeeds | json | Derived from Equipment.workTraits (Phase 295): { <item>: { <class>: speed } } |
 

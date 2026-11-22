@@ -7,6 +7,7 @@ var trade_box: VBoxContainer = null
 const AdminPanelScript := preload("res://src/ui/admin_panel.gd")
 const WritingRules := preload("res://src/technology/writing_rules.gd")
 const TechTreeView := preload("res://src/ui/tech_tree_view.gd")
+const ItemTooltip := preload("res://src/ui/item_tooltip.gd")
 
 func _init(slice: Node) -> void:
 	sl = slice
@@ -31,6 +32,7 @@ func inventory_rows() -> Array:
 		var tip = sl.I18n.t("ui.tip_quantity", [sl.I18n.content("item", iid), qty])
 		if dur != "":
 			tip += sl.I18n.t("ui.tip_durability", [dur.trim_prefix("[").trim_suffix("]")])
+		tip += ItemTooltip.equipment_lines(iid)   # Phase 296: category, traits, what it can do
 		var desc = sl.item_description(iid)
 		if desc != "":
 			tip += "\n" + desc

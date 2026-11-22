@@ -3,7 +3,7 @@ const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine, repairData,
 // Phase 260 — stone tools. A newcomer with nothing picks up branches and loose stones and lashes them into
 // an axe, a pick, a shovel, a knife and a hammer by hand: no station, no research points, no starting kit.
 // They are slower than the forged tools and wear out fast; the forge is the next step, not the first one.
-// The hammer is what a builder holds to place blocks (Structure `buildTool`); stations need none.
+// The hammer is what a builder needs to place blocks (Structure `buildWork`: build); stations need none.
 
 // Phase 295 — each is equipment of a category with traits; a stone head has 0.6 of a forged one's strength (the
 // stone axe and pick work at 0.6), the shovel's broad head digs at 1.2 (Phase 290) and the knife cuts at 0.5.

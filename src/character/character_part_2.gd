@@ -355,8 +355,8 @@ func gesture_clip_of(instance_id: String) -> String:
 	var loco = sl._instances[instance_id]["locomotion"]
 	return loco.gesture_clip if loco.is_gesturing() else ""
 
-## The swing an instance plays by its main hand: bare hands punch, a tool (anything with a fabric
-## `toolType`) uses the tool swing, any other held item swings one-handed.
+## The swing an instance plays by its main hand: bare hands punch, an item whose equipment category swings the `tool`
+## chain (axe, pick, shovel, hammer; Phase 296) uses the work swing, any other held item swings one-handed.
 func attack_clip_of(instance_id: String) -> String:
 	# Phase 280 — a hotbar item in the hand swings in place of the equipped main hand.
 	var in_hand: String = sl.held_item_of(instance_id)
