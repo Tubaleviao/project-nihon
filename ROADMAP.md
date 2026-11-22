@@ -1498,8 +1498,8 @@ This phase is the base the server list (298, 299) builds on.
   host). No port means `DEFAULT_PORT`. A host takes `--port <n>` (default 7777).
 - **Dual-stack.** A listen host and a dedicated server keep the default `*` bind (dual-stack, and IPv4 alone
   where the OS has no IPv6), now covered by a test. `--bind <addr>` overrides it. The Join screen accepts IPv6
-  literals (`[2001:db8::1]:7777` and bare `2001:db8::1`), and a host name that resolves to both families is tried IPv6 first, then IPv4 after 250 ms (Happy Eyeballs, RFC 8305),
-  keeping whichever answers first. IPv6 does not lower latency; it matters because a self-hoster behind IPv4
+  literals (`[2001:db8::1]:7777` and bare `2001:db8::1`), and a host name that resolves to both families is
+  tried IPv6 first, then IPv4 after 250 ms (Happy Eyeballs, RFC 8305), keeping whichever answers first. IPv6 does not lower latency; it matters because a self-hoster behind IPv4
   CGNAT, common in Brazil, can be reached on IPv6 with only a firewall rule and no port forward.
 - **Status port.** Every host answers a small UDP status query on a second port (default the game port + 1,
   `--status-port`, `0` turns it off). The answer: protocol version, game version, the game port, a world name,
