@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:d6a1108516e0aef3da7b18c8bda4c246a225be1238d48051c923a8890c926113",
+  "schemaHash": "sha256:c77e27a71a1ec45410f28ed8a5760b6a2aada1900c42bd738e1c1fb4cfe2aa72",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -51485,7 +51485,7 @@
             "defaultValue": {
               "players": {
                 "sendIntervalMs": 100,
-                "bufferMs": 150,
+                "bufferMs": 200,
                 "extrapolateMaxMs": 100
               },
               "creatures": {
@@ -51495,7 +51495,7 @@
                 "farSendIntervalMs": 400,
                 "farDistanceM": 96
               },
-              "teleportDistanceM": 30,
+              "teleportDistanceM": 100,
               "turnRateRadPerSec": 10,
               "walkSpeed": 0.2,
               "runSpeed": 3

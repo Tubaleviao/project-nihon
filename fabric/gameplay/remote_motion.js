@@ -10,20 +10,25 @@ const { defineEntity } = require('@newel/core')
 //                      creature deltas this often).
 //   `bufferMs`         ms a client plays states back behind the newest one. At least one send interval, so a
 //                      state on time is always there before it is needed. A body whose states arrive less often
-//                      (a far one) is played back later still, by the gap the client measures.
+//                      (a far one) is played back later still, by the gap the client measures. Players' is two
+//                      intervals: the host relays reports on its own 100 ms flush, so two may share one flush
+//                      and the next arrive up to two intervals later.
 //   `extrapolateMaxMs` ms a body keeps moving along its last velocity past the newest state when the next one is
 //                      late, then it holds. At most one send interval.
 // `creatures.farSendIntervalMs` / `creatures.farDistanceM`: a creature farther than `farDistanceM` from every
 //   player is sent at most once per `farSendIntervalMs` (nobody is near enough to see the steps).
 // `teleportDistanceM`: a new state farther than this from the last one is a teleport (a respawn, a bed, a portal):
-//   the body is put there at once, once, and plays on from there.
+//   the body is put there at once, once, and plays on from there. It must exceed what the fastest body
+//   (`FASTEST_MPS`, an admin flight) covers over the longest gap between two of its states
+//   (`LONGEST_GAP_MS`: the host relays a player beyond 24 m at most every 750 ms, `RelayBatch.FAR_GAP_MS`, and
+//   a far creature every `creatures.farSendIntervalMs`), or a far flier would snap on every state.
 // `turnRateRadPerSec`: how fast a remote body turns toward where it goes.
 // `walkSpeed` / `runSpeed`: horizontal m/s at or above which a body plays `walk` / `run`; below `walkSpeed` it
 //   stands (`idle`). The local player's locomotion reads the same two numbers.
 const MOTION = {
-  players:   { sendIntervalMs: 100, bufferMs: 150, extrapolateMaxMs: 100 },
+  players:   { sendIntervalMs: 100, bufferMs: 200, extrapolateMaxMs: 100 },
   creatures: { sendIntervalMs: 100, bufferMs: 150, extrapolateMaxMs: 100, farSendIntervalMs: 400, farDistanceM: 96 },
-  teleportDistanceM: 30,
+  teleportDistanceM: 100,
   turnRateRadPerSec: 10,
   walkSpeed: 0.2,
   runSpeed: 3.0,
@@ -35,6 +40,10 @@ const GROUP_FIELDS = {
 }
 const TOP_FIELDS = ['players', 'creatures', 'teleportDistanceM', 'turnRateRadPerSec', 'walkSpeed', 'runSpeed']
 const MAX_INTERVAL_MS = 5000
+// Mirrors `RelayBatch.FAR_GAP_MS` (the suite checks it) and the fastest flight (Phase 187: the playtest bot flies
+// at 90 m/s with admin /fly and /speed).
+const RELAY_FAR_GAP_MS = 750
+const FASTEST_MPS = 90
 const num = (v) => typeof v === 'number' && Number.isFinite(v)
 
 /** Problems with a remote-motion table, as strings. */
@@ -60,11 +69,12 @@ function motionProblems(m) {
   if (!num(m.turnRateRadPerSec) || !(m.turnRateRadPerSec > 0)) p.push(`RemoteMotion.turnRateRadPerSec must be > 0, got ${m.turnRateRadPerSec}`)
   if (!num(m.walkSpeed) || !(m.walkSpeed > 0)) p.push(`RemoteMotion.walkSpeed must be > 0, got ${m.walkSpeed}`)
   if (!num(m.runSpeed) || !(num(m.walkSpeed) && m.runSpeed > m.walkSpeed)) p.push(`RemoteMotion.runSpeed must be greater than walkSpeed (${m.walkSpeed}), got ${m.runSpeed}`)
-  // A body running between two states must not read as a teleport: the run speed over the longest gap a near
-  // body's states can have stays inside the teleport distance.
-  if (num(m.teleportDistanceM) && num(m.runSpeed) && m.players && num(m.players.sendIntervalMs)
-      && m.runSpeed * m.players.sendIntervalMs / 1000 >= m.teleportDistanceM) {
-    p.push(`RemoteMotion.teleportDistanceM (${m.teleportDistanceM}) must exceed runSpeed × players.sendIntervalMs`)
+  // The fastest body between its two farthest-apart states must not read as a teleport.
+  if (num(m.teleportDistanceM) && m.players && m.creatures) {
+    const gap = Math.max(RELAY_FAR_GAP_MS, Number(m.players.sendIntervalMs) || 0, Number(m.creatures.farSendIntervalMs) || 0)
+    if (FASTEST_MPS * gap / 1000 >= m.teleportDistanceM) {
+      p.push(`RemoteMotion.teleportDistanceM (${m.teleportDistanceM}) must exceed ${FASTEST_MPS} m/s × the longest gap between two states (${gap} ms)`)
+    }
   }
   return p
 }
@@ -103,4 +113,4 @@ const RemoteMotion = defineEntity({
   },
 })
 
-module.exports = { MOTION, RemoteMotion, motionProblems, validateMotion }
+module.exports = { MOTION, RemoteMotion, motionProblems, validateMotion, RELAY_FAR_GAP_MS, FASTEST_MPS }

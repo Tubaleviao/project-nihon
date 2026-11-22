@@ -5,6 +5,6 @@
 [resource]
 script = ExtResource("1")
 id = ""
-rules = {"players":{"sendIntervalMs":100,"bufferMs":150,"extrapolateMaxMs":100},"creatures":{"sendIntervalMs":100,"bufferMs":150,"extrapolateMaxMs":100,"farSendIntervalMs":400,"farDistanceM":96},"teleportDistanceM":30,"turnRateRadPerSec":10,"walkSpeed":0.2,"runSpeed":3}
+rules = {"players":{"sendIntervalMs":100,"bufferMs":200,"extrapolateMaxMs":100},"creatures":{"sendIntervalMs":100,"bufferMs":150,"extrapolateMaxMs":100,"farSendIntervalMs":400,"farDistanceM":96},"teleportDistanceM":100,"turnRateRadPerSec":10,"walkSpeed":0.2,"runSpeed":3}
 description = "How a client draws bodies it does not simulate (other players, creatures): it keeps the host's last states, plays them back a buffer behind, moves the body between them every frame, extrapolates a late state for at most one send interval, snaps only across a teleport, turns the body at a turn rate and picks idle, walk or run from the speed played back."
 tags = ["world-system"]

@@ -1396,12 +1396,16 @@ Done: the fabric's `RemoteMotion` world system (`fabric/gameplay/remote_motion.j
 holds the send intervals, buffers, extrapolation caps, teleport distance, turn rate and the walk/run thresholds, which
 `Locomotion` now reads for the local player as well. One track, `src/networking/remote_motion.gd`, plays the host's
 states back a buffer behind on a playback clock that only moves forward (it follows the measured gap between arrivals,
-so a far body's sparser states stay smooth), extrapolates at most `extrapolateMaxMs`, starts the next segment from
-where the body stands when playback had run past the newest state, and snaps once past `teleportDistanceM`. Remote
+so a far body's sparser states stay smooth; a pause is not a gap), extrapolates at most `extrapolateMaxMs`, and
+treats the carried distance as a correction that eases out (so a stop followed by the relay's keepalive never turns
+the body round, and a creature the host stops sending eases back to its last state), and snaps once past
+`teleportDistanceM` (100 m, validated against a 90 m/s flier over the relay's 750 ms far gap). Facing and the
+locomotion speed come only from segments between two host states. Remote
 avatars are driven every frame by `PeerWiring.tick_remote_avatars` (position, yaw at the turn rate, locomotion from
 the played-back speed); client creatures by `CreatureSlice.tick_motion` (box and model, in an exact anchored frame).
 The client used to report its body every 30 physics ticks (0.5 s) against a 100 ms buffer, so a remote body held and
-then jumped; it now reports every `players.sendIntervalMs` (100 ms; the crowd stress bots follow). A creature farther
+then jumped; it now reports every `players.sendIntervalMs` (100 ms, buffered 200 ms since the host's relay flush is
+also 100 ms; the crowd stress bots follow), an unchanged report only every 500 ms. A creature farther
 than `farDistanceM` from every player is sent at most every `farSendIntervalMs`. The player relay carries positions
 only (a fixed binary entry), so `fall` on a remote player is inferred from a steep, fast drop rather than a sent move
 state; the track already takes an air flag for when the wire carries one. The harness has one client, so its step

@@ -964,7 +964,9 @@ func remote_player_body(h: Node) -> void:
 ## per-frame bound". The harness has one client, so the host is the walker: it reports its body walking +X at
 ## `WALK_MPS` every `RemoteMotion.players.sendIntervalMs` for `WALK_STATES` states, then steps back. The client
 ## records its avatar of the host every rendered frame and checks no frame moved it more than `MAX_STEP_M` per
-## 16 ms of frame time (a slow frame may cover more ground, never faster than that), and that it walked the line.
+## 16 ms of frame time (a slow frame may cover more ground, never faster than that), none moved it back along the
+## line, and that it walked the line. The host's own body is broadcast straight to its AOI, so the relay's thinning
+## (`RelayBatch`) is covered by the suite's track tests (keepalives, sparse and late states), not here.
 const WALK_STATES := 30
 const WALK_MPS := 4.5
 const WALK_MAX_STEP_M := 0.25
@@ -992,7 +994,7 @@ func remote_walk_smooth(h: Node) -> void:
 		return
 	var host_id: int = h._root._networking.HOST_PEER_ID
 	var announced := {}
-	var rec := { "start": null, "prev": null, "us": 0, "worst": 0.0, "frames": 0, "far": 0.0, "still_us": 0 }
+	var rec := { "start": null, "prev": null, "us": 0, "worst": 0.0, "frames": 0, "far": 0.0, "still_us": 0, "back": 0 }
 	var walked := func() -> bool:
 		h._announce_ready("walk", announced)
 		var iid: String = h._root._character.get_peer_character(host_id)
@@ -1007,6 +1009,10 @@ func remote_walk_smooth(h: Node) -> void:
 			var step: float = (at as Vector3).distance_to(rec["prev"])
 			rec["worst"] = maxf(float(rec["worst"]), step * 16.0 / frame_ms)
 			rec["frames"] = int(rec["frames"]) + 1
+			# The walk is along +X: a frame back along it is a fault, until the last metre, where the body carried
+			# past the final state (at most one send interval) eases back to it once the host stops.
+			if (at as Vector3).x < (rec["prev"] as Vector3).x - 0.001 and float(rec["far"]) < WALK_MPS * interval * float(WALK_STATES) - 1.0:
+				rec["back"] = int(rec["back"]) + 1
 			rec["still_us"] = int(rec["still_us"]) + (now - int(rec["us"])) if step < 0.0001 else 0
 		rec["prev"] = at
 		rec["us"] = now
@@ -1014,6 +1020,6 @@ func remote_walk_smooth(h: Node) -> void:
 		# Done once the avatar walked most of the line and has stood still for half a second.
 		return float(rec["far"]) >= WALK_MPS * interval * float(WALK_STATES) * 0.8 and int(rec["still_us"]) >= 500000
 	var done: bool = await h._await_until(walked, h._step_timeout() * 4.0)
-	var smooth: bool = float(rec["worst"]) <= WALK_MAX_STEP_M
+	var smooth: bool = float(rec["worst"]) <= WALK_MAX_STEP_M and int(rec["back"]) == 0
 	h._report(STEP, h.verdict(done and smooth, true), "walked_smooth" if done and smooth else (
-		"not_walked_%.1fm" % float(rec["far"]) if not done else "step_%.3fm_per_16ms_in_%d_frames" % [float(rec["worst"]), int(rec["frames"])]))
+		"not_walked_%.1fm" % float(rec["far"]) if not done else "step_%.3fm_per_16ms_back_%d_in_%d_frames" % [float(rec["worst"]), int(rec["back"]), int(rec["frames"])]))

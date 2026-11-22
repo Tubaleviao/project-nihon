@@ -25,8 +25,8 @@ expect('extrapolating past one send interval fails', motion.motionProblems(ex), 
 const run = fresh(); run.runSpeed = 0.1;
 expect('a run speed not above the walk speed fails', motion.motionProblems(run), /runSpeed must be greater than walkSpeed/);
 
-const tp = fresh(); tp.teleportDistanceM = 0.2;
-expect('a teleport distance a runner covers between two states fails', motion.motionProblems(tp), /teleportDistanceM \(0\.2\) must exceed/);
+const tp = fresh(); tp.teleportDistanceM = 30;
+expect('a teleport distance a flier covers between two far relays fails', motion.motionProblems(tp), /teleportDistanceM \(30\) must exceed/);
 
 const far = fresh(); far.creatures.farSendIntervalMs = 50;
 expect('a far send interval below the near one fails', motion.motionProblems(far), /farSendIntervalMs must be in sendIntervalMs/);

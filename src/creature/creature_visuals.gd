@@ -429,7 +429,10 @@ func _update_model(iid: String, inst: Dictionary, delta: float) -> void:
 		m["fall_t"] = 0.0
 		var tree_d: AnimationTree = m["tree"]
 		# A displacement under the push's minimum is the creature's own motion, not a throw: plain `death`.
-		var thrown := pos - fall_start(m)
+		# Phase 294 — on a client the push is measured from the host's last live state (`death_from`), not the
+		# drawn body, which trails the host by the playback delay.
+		var from_v: Variant = inst.get("death_from", null)
+		var thrown := pos - (WorldPos.to_scene(from_v, frame_chunk) + frame_shift if from_v is Dictionary else fall_start(m))
 		var hit_dir := thrown if Vector2(thrown.x, thrown.z).length() >= DeathPush.MIN_PUSH_M * 0.5 else Vector3.ZERO
 		RigTree.set_death_clip(tree_d, DeathPush.variant(hit_dir, float(m["yaw"])))
 	var draw_pos := pos

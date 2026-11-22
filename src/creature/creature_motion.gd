@@ -54,7 +54,12 @@ func note(iid: String, state: String, pos: Dictionary, now: float) -> void:
 	if state == "dead":
 		tracks.erase(iid)
 		if sl._instances.has(iid):
-			sl._instances[iid].erase("draw")
+			var inst: Dictionary = sl._instances[iid]
+			inst.erase("draw")
+			# The blow's push is measured from the host's last live state, not the drawn body (which trails it by
+			# the playback delay): the creature's own travel must not read as a throw.
+			if inst["state"] != "dead" and inst.has("pos"):
+				inst["death_from"] = (inst["pos"] as Dictionary).duplicate()
 		return
 	var entry: Dictionary = tracks.get(iid, {})
 	if entry.is_empty():
@@ -76,16 +81,30 @@ func tick(delta: float, now: float = -1.0) -> void:
 			continue
 		var entry: Dictionary = tracks[iid]
 		var track: RemoteMotion = entry["track"]
-		if track.settled and bool(entry.get("drawn_settled", false)):
+		if bool(entry.get("drawn_settled", false)) and track.at_rest():
 			continue
 		track.step(now, delta)
 		if not track.has_position:
 			continue
 		var anchor: Dictionary = entry["anchor"]
 		var exact := WorldPos.normalized({ "chunk": anchor["chunk"], "local": (anchor["local"] as Vector3) + track.position })
-		inst["draw"] = { "pos": exact, "speed": track.speed, "yaw": track.yaw }
-		entry["drawn_settled"] = track.settled
+		var draw: Variant = inst.get("draw", null)
+		if draw is Dictionary:
+			draw["pos"] = exact
+			draw["speed"] = track.speed
+			draw["yaw"] = track.yaw
+		else:
+			inst["draw"] = { "pos": exact, "speed": track.speed, "yaw": track.yaw }
+		entry["drawn_settled"] = track.at_rest()
 		sl._place_box(iid, WorldPos.to_scene(exact, Vector2i.ZERO))
+
+## Client: a fold moved every held creature into another frame (a pole fold also turns directions): drop the
+## tracks and drawn positions, so each creature is drawn at its folded state and its next state starts afresh.
+func clear() -> void:
+	for iid in tracks:
+		if sl._instances.has(iid):
+			sl._instances[iid].erase("draw")
+	tracks.clear()
 
 func track_of(iid: String) -> RemoteMotion:
 	return (tracks.get(iid, {}) as Dictionary).get("track", null)

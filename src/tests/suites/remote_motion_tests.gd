@@ -9,6 +9,7 @@ const RemoteMotion := preload("res://src/networking/remote_motion.gd")
 const RemoteMotionRules := preload("res://src/networking/remote_motion_rules.gd")
 const GameRoot := preload("res://src/core/game_root.gd")
 const PeerWiring := preload("res://src/networking/peer_wiring.gd")
+const RelayBatch := preload("res://src/networking/relay_batch.gd")
 
 ## The roadmap's frame: 16 ms; the most a body may move in one.
 const FRAME_MS := 16.0
@@ -20,6 +21,10 @@ func register() -> void:
 	_run_test("remote motion: states 100 ms and 1 m apart draw a body moving forward every 16 ms frame, never back, at most 0.25 m", _test_smooth_forward)
 	_run_test("remote motion: a jump past the teleport distance snaps once and interpolation carries on", _test_teleport_snaps_once)
 	_run_test("remote motion: no state for 300 ms moves the body on for at most one send interval, then it stops", _test_extrapolation_capped)
+	_run_test("remote motion: a stop followed by keepalives at the same spot never turns the body round", _test_stop_keepalive)
+	_run_test("remote motion: a pause does not stretch the playback delay of the next walk", _test_pause_not_a_gap)
+	_run_test("remote motion: a non-finite state is dropped", _test_non_finite_dropped)
+	_run_test("remote motion: the teleport check's relay gap mirrors RelayBatch.FAR_GAP_MS", _test_far_gap_mirrored)
 	_run_test("remote motion: a late state behind the carried body does not pull it back", _test_late_state_never_back)
 	_run_test("remote motion: a body whose states come less often is played back later, still smooth", _test_sparse_states_smooth)
 	_run_test("remote motion: the state list stays bounded", _test_bounded_states)
@@ -27,6 +32,7 @@ func register() -> void:
 	_run_test("remote motion: a remote avatar is not moved by a state, only by its playback", _test_avatar_state_does_not_snap)
 	_run_test("remote motion: a creature driven by the host's creature states uses the same track and passes the frame test", _test_creature_same_track)
 	_run_test("remote motion: the host sends a creature far from every player less often", _test_far_creature_throttled)
+	_run_test("remote motion: a client fold drops the creatures' tracks and drawn positions", _test_fold_clears_tracks)
 
 
 func _track() -> RemoteMotion:
@@ -94,7 +100,7 @@ func _test_smooth_forward() -> void:
 
 func _test_teleport_snaps_once() -> void:
 	var t := _track()
-	var far := Vector3(100.0, 0.0, 0.0)
+	var far := Vector3(t.teleport_m + 50.0, 0.0, 0.0)
 	var states := _line(0.0, 6, 100.0, 1.0)
 	states.append_array(_line(600.0, 10, 100.0, 1.0, far))
 	var drawn := _play(t, states, 1600.0)
@@ -119,7 +125,7 @@ func _test_teleport_snaps_once() -> void:
 func _test_extrapolation_capped() -> void:
 	var t := _track()
 	var states := _line(0.0, 11, 100.0, 1.0)   # last state at 1000 ms, 10 m; then 300 ms and more of nothing
-	var drawn := _play(t, states, 2000.0)
+	var drawn := _play(t, states, 3000.0)
 	var last_x := 10.0
 	var cap := t.extrapolate_ms / 100.0   # 1 m per 100 ms
 	var most := 0.0
@@ -133,7 +139,8 @@ func _test_extrapolation_capped() -> void:
 		if not (p as Vector3).is_equal_approx(tail[0]):
 			stopped = false
 	assert_true(stopped, "then it stops")
-	assert_true(t.settled, "and the track reads as settled")
+	assert_true((tail[0] as Vector3).is_equal_approx(Vector3(last_x, 0, 0)), "where the last state put it, once nothing more came (%.3f)" % (tail[0] as Vector3).x)
+	assert_true(t.settled and t.at_rest(), "and the track reads as settled")
 	assert_eq(t.speed, 0.0, "standing: no speed")
 
 
@@ -343,4 +350,77 @@ func _test_far_creature_throttled() -> void:
 	c._broadcast_creature_states(gap + 101.0)
 	assert_true(sent.has(iid), "a creature near a player is sent at the full rate")
 	GameBus.creature_state_changed.disconnect(cb)
+	c.free()
+
+
+func _test_stop_keepalive() -> void:
+	var t := _track()
+	# Walk +X at 4 m/s, stop at 1000 ms (4 m), then the relay's keepalive at the same spot every 1000 ms.
+	var states: Array = []
+	for k in 11:
+		states.append([float(k) * 100.0, Vector3(0.4 * float(k), 0.0, 0.0)])
+	for k in range(1, 5):
+		states.append([1000.0 + 1000.0 * float(k), Vector3(4.0, 0.0, 0.0)])
+	var facing := atan2(-1.0, 0.0)
+	var i := 0
+	var tm := 0.0
+	var turned := false
+	var walked_back := false
+	while tm <= 6000.0:
+		while i < states.size() and float(states[i][0]) <= tm:
+			t.push(float(states[i][0]), states[i][1])
+			i += 1
+		t.step(tm, FRAME_MS / 1000.0)
+		if tm > 1000.0 and absf(angle_difference(t.yaw, facing)) > 0.01:
+			turned = true
+		if tm > 1300.0 and t.speed >= Locomotion.walk_speed():
+			walked_back = true
+		tm += FRAME_MS
+	assert_false(turned, "the body keeps facing the way it walked")
+	assert_false(walked_back, "and plays no walk while it settles")
+	assert_true(t.position.is_equal_approx(Vector3(4.0, 0, 0)), "it ends on the host's spot (%.3f)" % t.position.x)
+	assert_true(t.delay_ms() <= t.buffer_ms + 0.001, "keepalives do not stretch the delay (%.0f ms)" % t.delay_ms())
+
+
+func _test_pause_not_a_gap() -> void:
+	var t := RemoteMotion.new(RemoteMotionRules.group("creatures"))
+	# A creature walks, stands 5 s (the host sends nothing for an unchanged creature), then walks again.
+	var states := _line(0.0, 6, 100.0, 0.4)
+	states.append_array(_line(5500.0, 10, 100.0, 0.4, Vector3(2.0, 0, 0)))
+	_play(t, states, 7000.0)
+	assert_true(t.delay_ms() <= t.buffer_ms + 0.001, "the pause is not a gap between moving states (%.0f ms)" % t.delay_ms())
+
+
+func _test_non_finite_dropped() -> void:
+	var t := _track()
+	t.push(0.0, Vector3.ZERO)
+	t.push(100.0, Vector3(NAN, 0, 0))
+	t.push(200.0, Vector3(INF, 0, 0))
+	assert_eq(t.state_count(), 1, "a NaN or infinite position is not queued")
+	t.step(300.0, 0.016)
+	assert_true(t.position.is_finite() and is_finite(t.yaw), "the body stays drawable")
+
+
+func _test_far_gap_mirrored() -> void:
+	# `fabric/gameplay/remote_motion.js` checks teleportDistanceM against RELAY_FAR_GAP_MS = 750.
+	assert_eq(RelayBatch.FAR_GAP_MS, 750.0, "the fabric validator's relay gap is the relay's")
+	assert_true(float(RemoteMotionRules.rules()["teleportDistanceM"]) > 90.0 * RelayBatch.FAR_GAP_MS / 1000.0,
+		"a 90 m/s flier relayed far does not snap on every state")
+
+
+func _test_fold_clears_tracks() -> void:
+	var c := CreatureSlice.new()
+	add_child(c)
+	c.is_authoritative = false
+	var clock := [0.0]
+	c._motion.clock = func() -> float: return clock[0]
+	c._on_creature_state_changed("boar-fold", "ForestBoar", "wandering", WorldPos.from_world(1.0, 0.0, 1.0))
+	c.tick_motion(0.016, 0.0)
+	assert_true(c.motion_of("boar-fold") != null and c._instances["boar-fold"].has("draw"), "a client creature is drawn from its track")
+	c.fold_contents(false, 0)
+	assert_true(c.motion_of("boar-fold") == null, "a fold drops the track (it was in the old frame)")
+	assert_false(c._instances["boar-fold"].has("draw"), "and the drawn position, so the folded state is drawn")
+	clock[0] = 100.0
+	c._on_creature_state_changed("boar-fold", "ForestBoar", "wandering", WorldPos.from_world(2.0, 0.0, 1.0))
+	assert_true(c.motion_of("boar-fold") != null, "the next state starts a new track")
 	c.free()

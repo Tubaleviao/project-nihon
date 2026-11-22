@@ -836,6 +836,7 @@ func fold_contents(turned: bool, pole_sign: int) -> void:
 	if not is_authoritative:
 		# A client's later host deltas arrive in the host's frame: replay this fold on them.
 		_log_fold(turned, pole_sign)
+		_motion.clear()   # Phase 294 — the tracks were in the old frame
 	_invalidate_view()
 
 ## Append a fold to `_fold_log`, kept minimal: a pole fold is its own inverse (crossing the same pole

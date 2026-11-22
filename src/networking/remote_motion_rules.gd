@@ -4,9 +4,9 @@ extends RefCounted
 ## fabric does not carry (or carries with the wrong type) keeps its default here, so a stripped GameData still runs.
 
 const DEFAULT_RULES := {
-	"players":   { "sendIntervalMs": 100.0, "bufferMs": 150.0, "extrapolateMaxMs": 100.0 },
+	"players":   { "sendIntervalMs": 100.0, "bufferMs": 200.0, "extrapolateMaxMs": 100.0 },
 	"creatures": { "sendIntervalMs": 100.0, "bufferMs": 150.0, "extrapolateMaxMs": 100.0, "farSendIntervalMs": 400.0, "farDistanceM": 96.0 },
-	"teleportDistanceM": 30.0,
+	"teleportDistanceM": 100.0,
 	"turnRateRadPerSec": 10.0,
 	"walkSpeed": 0.2,
 	"runSpeed": 3.0,
