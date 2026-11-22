@@ -209,6 +209,9 @@ static func resolve_arg(a: Variant) -> Variant:
 		return a
 	var kind := body.substr(0, colon)
 	var ids := body.substr(colon + 1)
+	if kind == "tier":
+		# Phase 229 — a skill/gear tier, named by the UI catalog's tier labels.
+		return t("ui.tier_" + ids) if has_key("ui.tier_" + ids) else t(CONTENT_UNKNOWN_KEY)
 	if kind == "project":
 		# A settlement project (a blueprint teaches one) is named by the UI catalog.
 		return t("settlement.project." + ids) if has_key("settlement.project." + ids) else t(CONTENT_UNKNOWN_KEY)
@@ -227,19 +230,25 @@ const REASON_PARAM_KINDS := {
 	"station_required": ["station"],
 	"requires_profession": ["profession"],
 	"skill_requirement": ["skill"],
+	# Phase 229 — gear tier refusals carry their own catalog key (a dotted code head) and name a tier.
+	"craft.refuse.tool_tier": ["category", "tier"],
+	"craft.refuse.station_tier": ["station", "tier"],
+	"combat.refuse.weapon_tier": ["tier"],
+	"combat.refuse.skill_tier": ["skill", "tier"],
 }
 
 ## A slice `reason` code (`missing_inputs`, `station_required:forge`) as text in the active locale:
 ## the part before the first `:` picks the `reason.<code>` key and the rest are its `{0}`.. params.
 static func reason_text(code: String) -> String:
 	var parts := code.split(":")
-	var key := "reason." + parts[0]
+	# A dotted head (`craft.refuse.tool_tier`) is a catalog key of its own; a plain one is a `reason.<code>`.
+	var key: String = parts[0] if parts[0].contains(".") else "reason." + parts[0]
 	if parts[0] == "" or not has_key(key):
 		return t("reason.unknown", [code])
 	var params: Array = Array(parts.slice(1))
 	var kinds: Array = REASON_PARAM_KINDS.get(parts[0], [])
 	for i in mini(kinds.size(), params.size()):
-		params[i] = content(str(kinds[i]), str(params[i]))
+		params[i] = resolve_arg(ref("tier", str(params[i]))) if str(kinds[i]) == "tier" else content(str(kinds[i]), str(params[i]))
 	return t(key, params)
 
 ## A host message as it travels: key + args, no rendered text.

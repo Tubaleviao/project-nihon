@@ -324,6 +324,7 @@ func _ready() -> void:
 	GameBus.writing_intent.connect(_m2.forward_writing_intent)
 	# Phase 35 — taming is per-player as well (the flag and companion live on the tamer's record), so it travels the same way.
 	GameBus.tame_intent.connect(_on_tame_intent); GameBus.attack_intent.connect(_m2.forward_attack_intent)
+	GameBus.ability_intent.connect(_m2.forward_ability_intent)   # Phase 229
 	# Phase 85 — chat lines travel client → host as an intent; the host's posts (chat, announcements,
 	# command replies) travel back.
 	GameBus.chat_intent.connect(_on_chat_intent)
