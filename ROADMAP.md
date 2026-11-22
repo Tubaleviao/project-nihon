@@ -59,7 +59,8 @@ Order notes that differ from the arcs' own order:
 
 - Phases 297–299 (owner, 2026-11-22) let players find servers: LAN discovery and IPv6 first, then a registry and
   the public list, then many registries with signed entries. Filed at the end of the order; move them up to
-  have a public list sooner. Phase 299 brings the host-key part of parked Phase 228 forward.
+  have a public list sooner. Phase 299 brings the host-key part of parked Phase 228 forward and needs parked
+  Phase 227 (design-only) first.
 
 - Phases 291–296 are the owner's fourth playtest set (2026-11-20, Phase 251, the first with a second player),
   placed after 287 and before 251. The two small bugs go first (291 the right-click cursor, 292 the seller's
@@ -1484,8 +1485,10 @@ Runtime for Phase 295. Everything that today asks for a `toolType` or `harvestTo
 
 ## Phase 297 — Finding servers nearby: dual-stack IPv6, a status port and LAN discovery
 
-Filed by the owner on 2026-11-22. Today a player joins by typing an address (main menu → Join server) and the
-host binds IPv4 only by default. The port is fixed: the client always dials `DEFAULT_PORT` (7777), and an
+Filed by the owner on 2026-11-22. Today a player joins by typing an address (main menu → Join server). The host
+already listens on IPv4 and IPv6: `create_server` binds Godot's default `*` address as one dual-stack socket
+(checked on Godot 4.7: a client reaches it on `::1`), but nothing tests that, and a bracketed IPv6 address
+does not pass the Join form's rule. The port is fixed: the client always dials `DEFAULT_PORT` (7777), and an
 address typed as `10.0.0.2:7777` passes the Join form's rule but is then handed to ENet whole, as a host name.
 This phase is the base the server list (298, 299) builds on.
 
@@ -1493,10 +1496,8 @@ This phase is the base the server list (298, 299) builds on.
   `--client` and the recent-servers file) splits an address into host and port: `host`, `host:port`,
   `1.2.3.4:port`, `[v6]:port`, and a bare IPv6 literal, which never carries a port (`2001:db8::1` is the whole
   host). No port means `DEFAULT_PORT`. A host takes `--port <n>` (default 7777).
-
-- **Dual-stack.** A listen host and a dedicated server bind ENet on both IPv4 and IPv6 (Godot's `*` bind
-  address, IPv6 with v6-only off, and an explicit IPv4 fallback where the OS has no IPv6). `--bind <addr>`
-  overrides it. The Join screen accepts IPv6 literals (`[2001:db8::1]:7777` and bare `2001:db8::1`), and a host
+- **Dual-stack.** A listen host and a dedicated server keep the default `*` bind (dual-stack, and IPv4 alone
+  where the OS has no IPv6), now covered by a test. `--bind <addr>` overrides it. The Join screen accepts IPv6 literals (`[2001:db8::1]:7777` and bare `2001:db8::1`), and a host
   name that resolves to both families is tried IPv6 first, then IPv4 after 250 ms (Happy Eyeballs, RFC 8305),
   keeping whichever answers first. IPv6 does not lower latency; it matters because a self-hoster behind IPv4
   CGNAT, common in Brazil, can be reached on IPv6 with only a firewall rule and no port forward.
@@ -1568,13 +1569,14 @@ public servers.
 
 ## Phase 299 — Many registries: signed entries, gossip and no single owner
 
-Needs Phase 298. The list should survive any one registry going away and be hard to fake, in keeping with an
+Needs Phase 298 and parked Phase 227 (the key algorithm). The list should survive any one registry going away and be hard to fake, in keeping with an
 open-source game anyone can host.
 
 - **Host key.** Every host gets its own signing key and a world id, as Phase 228 specifies (`user://` for a
   listen host, the save folder for a dedicated server); this phase brings that part of 228 forward, and 228
-  reuses it when un-parked. The algorithm is the one Phase 227 decides; until then, RSA through Godot's
-  `Crypto` (no GDExtension).
+  reuses it when un-parked. Needs Phase 227's algorithm decision first (design-only, a fabric PR): a key
+  minted with a stand-in algorithm would have to be replaced when 228 lands, and every recent server would
+  then trip the changed-key warning below.
 - **Signed entries.** A heartbeat carries the entry signed by the host key with a sequence number. Registries
   store and pass on the signed entry; a client verifies the signature and shows the key's short fingerprint.
   The entry does not carry the host's address (a host behind NAT does not know it), so a copied entry could be
