@@ -80,6 +80,24 @@ function equipmentVisualFields({ slot, deformationMode, masks, hideRegions, atta
   }
 }
 
+// Phase 295 — an equipment item's category and traits (fabric/gameplay/equipment.js). What it can do in the world
+// follows from them by the work table; no item declares a tool type.
+//   traits: { <Trait>: { strength, grade? } }, strength 1.0 = the baseline of the item that did the job before.
+function equipmentFields({ category, traits }) {
+  return {
+    equipmentCategory: { type: 'string', description: 'Equipment category (Phase 295): knife, sword, axe, hammer, pick, shovel…', defaultValue: category },
+    traits:            { type: 'json', description: 'Traits and strengths (Phase 295): { <Trait>: { strength, grade? } }; the working part\'s material may raise them', defaultValue: traits },
+  }
+}
+
+// Phase 295 — what a piece of armour takes off each damage type (Equipment.damageTypes): a share in [0, 1) of
+// that type's part of a hit. The runtime applies it in Phase 296.
+function protectionField({ slashing, blunt, piercing }) {
+  return {
+    protection: { type: 'json', description: 'Share of each damage type this piece takes off a hit (Phase 295): { slashing, blunt, piercing }', defaultValue: { slashing, blunt, piercing } },
+  }
+}
+
 const { itemShape } = require('./shape')
 
-module.exports = { itemShape, defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine, consumableStateMachine, equipmentVisualFields, repairData }
+module.exports = { itemShape, defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine, consumableStateMachine, equipmentVisualFields, equipmentFields, protectionField, repairData }

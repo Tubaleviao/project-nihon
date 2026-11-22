@@ -12,7 +12,8 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const CATALOG = path.join(ROOT, 'locale', 'content.csv');
 // Phase 274 — `category.<id>.name` names each skill category (skills/shared.js SKILL_CATEGORIES).
-const FIELDS = { item: ['name', 'desc'], recipe: ['name'], tech: ['name', 'desc'], skill: ['name', 'desc'], profession: ['name'], station: ['name'], category: ['name'], title: ['name'] };
+// Phase 295 — `equipment.<category>.name`, `trait.<Trait>.name` and `work.<work>.name` name the equipment tables.
+const FIELDS = { item: ['name', 'desc'], recipe: ['name'], tech: ['name', 'desc'], skill: ['name', 'desc'], profession: ['name'], station: ['name'], category: ['name'], title: ['name'], equipment: ['name'], trait: ['name'], work: ['name'] };
 
 // RFC 4180: quoted cells may hold commas, quotes ("") and newlines.
 function parseCsv(text) {
@@ -89,6 +90,10 @@ function fabricRefs() {
     station: new Set([...stations].map(stationKey)),
     category: new Set(require('../fabric/gameplay/skills/shared').SKILL_CATEGORIES),
     title: new Set(Object.keys(require('../fabric/gameplay/titles').titlesData().titles)),
+    ...(() => {
+      const eq = require('../fabric/gameplay/equipment').equipmentData();
+      return { equipment: new Set(Object.keys(eq.categories)), trait: new Set(Object.keys(eq.traits)), work: new Set(Object.keys(eq.workTraits)) };
+    })(),
   };
 }
 
@@ -107,7 +112,7 @@ function contentLocaleProblems(cat, refs) {
   }
   const named = (key, l) => have.has(key) && have.get(key)[l];
   for (const l of cat.locales) {
-    for (const kind of ['item', 'tech', 'skill', 'profession', 'station', 'category', 'title']) {
+    for (const kind of ['item', 'tech', 'skill', 'profession', 'station', 'category', 'title', 'equipment', 'trait', 'work']) {
       for (const id of refs[kind]) if (!named(`${kind}.${id}.name`, l)) problems.push(`${kind}.${id}.name: no ${l} name`);
     }
     for (const [id, out] of refs.recipe) {
@@ -138,6 +143,9 @@ if (require.main === module) {
   expect('an unknown kind fails', (c) => { c.rows.push({ key: 'creature.ForestBoar.name', cells: { en: 'Boar', pt_BR: 'Javali' } }); }, /not <kind>/);
   expect('a duplicate key fails', (c) => { c.rows.push({ ...row(c, 'tech.TechSteel.name') }); }, /tech\.TechSteel\.name: duplicate key/);
   expect('a skill category with no name fails', (c) => { c.rows = c.rows.filter((r) => r.key !== 'category.gathering.name'); }, /category\.gathering\.name: no en name/);
+  expect('an equipment category with no name fails', (c) => { c.rows = c.rows.filter((r) => r.key !== 'equipment.pick.name'); }, /equipment\.pick\.name: no en name/);
+  expect('a trait with no pt_BR name fails', (c) => { row(c, 'trait.Sharp.name').cells.pt_BR = ''; }, /trait\.Sharp\.name: (no pt_BR name|empty pt_BR cell)/);
+  expect('a work with no name fails', (c) => { c.rows = c.rows.filter((r) => r.key !== 'work.fell.name'); }, /work\.fell\.name: no en name/);
   expect('a station with no name fails', (c) => { c.rows = c.rows.filter((r) => r.key !== 'station.master_forge.name'); }, /station\.master_forge\.name: no en name/);
   expect('a recipe with neither its own nor its output name fails', (c) => {
     c.rows = c.rows.filter((r) => r.key !== 'recipe.RecipeHealthPotion.name' && r.key !== 'item.AlchemyPotion.name');

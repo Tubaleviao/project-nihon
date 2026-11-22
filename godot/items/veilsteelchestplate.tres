@@ -11,6 +11,7 @@ rarity = 1
 stackable = false
 shape = {"archetype":"chestplate","parts":{"plate":"Veilsteel","under":"Ferrite"},"scale":1}
 durability = 250
+protection = {"slashing":0.45,"blunt":0.4,"piercing":0.35}
 repair = {"station":"master forge","materials":[{"item":"VeilsteelIngot","quantity":1},{"item":"FerriteIngot","quantity":1}],"skillGuards":[{"skill":"Smithing","tier":"journeyman"}]}
 equipmentSlot = "Chest"
 deformationMode = "HYBRID"

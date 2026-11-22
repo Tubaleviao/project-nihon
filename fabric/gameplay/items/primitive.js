@@ -1,13 +1,13 @@
-const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine, repairData, itemShape } = require('./shared')
+const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine, repairData, itemShape, equipmentFields } = require('./shared')
 
 // Phase 260 — stone tools. A newcomer with nothing picks up branches and loose stones and lashes them into
 // an axe, a pick, a shovel, a knife and a hammer by hand: no station, no research points, no starting kit.
 // They are slower than the forged tools and wear out fast; the forge is the next step, not the first one.
 // The hammer is what a builder holds to place blocks (Structure `buildTool`); stations need none.
 
-const TOOL_TYPE_DESC = 'Tool class — the action this tool performs. "pick" mines, "axe" chops, "shovel" digs, "hammer" builds.'
-
-function stoneTool({ archetype, parts, toolType, weight, durability, description, goal, extra = {} }) {
+// Phase 295 — each is equipment of a category with traits; a stone head has 0.6 of a forged one's strength (the
+// stone axe and pick work at 0.6), the shovel's broad head digs at 1.2 (Phase 290) and the knife cuts at 0.5.
+function stoneTool({ archetype, parts, category, traits, weight, durability, description, goal }) {
   return defineEntity({
     tags: ['item'],
     description,
@@ -20,8 +20,7 @@ function stoneTool({ archetype, parts, toolType, weight, durability, description
       stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory', defaultValue: false },
       shape: itemShape({ archetype, parts }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: durability },
-      ...(toolType ? { toolType: { type: 'string', description: TOOL_TYPE_DESC, defaultValue: toolType } } : {}),
-      ...extra,
+      ...equipmentFields({ category, traits }),
       repair: repairData({
         station: '',
         materials: [{ item: 'LooseStone', quantity: 1 }],
@@ -86,40 +85,36 @@ module.exports = {
 
   // ─── StoneAxe ─────────────────────────────────────────────────────────────
   StoneAxe: stoneTool({
-    archetype: 'axe', parts: { head: 'Ashite', handle: 'Thornwood' }, toolType: 'axe', weight: 1.4, durability: 30,
+    archetype: 'axe', parts: { head: 'Ashite', handle: 'Thornwood' }, category: 'axe', traits: { Sharp: { strength: 0.6 }, Blunt: { strength: 0.6, grade: 'heavy' } }, weight: 1.4, durability: 30,
     description: 'A knapped stone lashed into a split branch. Fells a tree, slowly.',
     goal: 'The first axe, made by hand from a branch and a stone (Phase 260)',
   }),
 
   // ─── StonePick ────────────────────────────────────────────────────────────
   StonePick: stoneTool({
-    archetype: 'pick', parts: { head: 'Ashite', handle: 'Thornwood' }, toolType: 'pick', weight: 1.6, durability: 30,
+    archetype: 'pick', parts: { head: 'Ashite', handle: 'Thornwood' }, category: 'pick', traits: { Piercing: { strength: 0.6 }, Blunt: { strength: 0.6, grade: 'light' } }, weight: 1.6, durability: 30,
     description: 'A pointed stone bound across a branch. Breaks rock faster than bare hands; ore wears it fast.',
     goal: 'The first pick, made by hand from a branch and two stones (Phase 260)',
   }),
 
   // ─── StoneShovel ──────────────────────────────────────────────────────────
   StoneShovel: stoneTool({
-    archetype: 'shovel', parts: { head: 'Ashite', handle: 'Thornwood' }, toolType: 'shovel', weight: 1.5, durability: 40,
+    archetype: 'shovel', parts: { head: 'Ashite', handle: 'Thornwood' }, category: 'shovel', traits: { Broad: { strength: 1.2 }, Blunt: { strength: 0.6, grade: 'light' } }, weight: 1.5, durability: 40,
     description: 'A flat stone tied to a long branch. Digs soil, sand and gravel faster than any pick.',
-    goal: 'The shovel tool class: the fastest way through soft ground (Phase 260)',
+    goal: 'The first shovel: the fastest way through soft ground (Phase 260)',
   }),
 
   // ─── StoneHammer ──────────────────────────────────────────────────────────
   StoneHammer: stoneTool({
-    archetype: 'hammer', parts: { head: 'Ashite', handle: 'Thornwood' }, toolType: 'hammer', weight: 1.2, durability: 40,
+    archetype: 'hammer', parts: { head: 'Ashite', handle: 'Thornwood' }, category: 'hammer', traits: { Blunt: { strength: 0.6, grade: 'heavy' } }, weight: 1.2, durability: 40,
     description: 'A heavy round stone bound to a short branch. Held to build walls, floors and roofs; benches need none.',
     goal: 'The building tool: a shelter needs a hammer in hand, a bench does not (Phase 260)',
   }),
 
   // ─── StoneKnife ───────────────────────────────────────────────────────────
   StoneKnife: stoneTool({
-    archetype: 'knife', parts: { blade: 'Ashite', grip: 'Thornwood' }, toolType: '', weight: 0.3, durability: 25,
+    archetype: 'knife', parts: { blade: 'Ashite', grip: 'Thornwood' }, category: 'knife', traits: { Sharp: { strength: 0.5 }, Piercing: { strength: 0.5 } }, weight: 0.3, durability: 25,
     description: 'A sharp flake of stone in a branch grip. Skins and butchers, poorly.',
     goal: 'A first knife for harvesting a kill before the forge (Phase 260)',
-    extra: {
-      harvestTool: { type: 'string', description: 'Harvest tool category this item provides (Phase 160): knife or bonetool', defaultValue: 'knife' },
-      efficiency:  { type: 'decimal', description: 'How well it works that category, in (0, 1]; below 1.0 is a poor substitute', defaultValue: 0.5 },
-    },
   }),
 }

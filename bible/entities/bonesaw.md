@@ -18,9 +18,13 @@ Broad-backed ferrite saw on a thornwood grip. Cuts bone, tusk, horn and fang fre
 | `stackable` | boolean | yes | Whether multiple instances stack in inventory |
 | `shape` | json | yes | Item shape: archetype, material per named part, and uniform scale (Phase 151) |
 | `durability` | integer | yes | Remaining durability points before condition degrades |
-| `harvestTool` | string | yes | Harvest tool category this item provides (Phase 160): knife or bonetool |
-| `efficiency` | decimal | yes | How well it works that category, in (0, 1]; below 1.0 is a poor substitute |
+| `equipmentCategory` | string | yes | Equipment category (Phase 295): knife, sword, axe, hammer, pick, shovel… |
+| `traits` | json | yes | Traits and strengths (Phase 295): { <Trait>: { strength, grade? } }; the working part's material may raise them |
 | `repair` | json | yes | Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier). |
+| `works` | json | yes | Derived from the work table (Phase 295): { <work>: speed } for every work this item can do |
+| `combatDamage` | json | yes | Derived (Phase 295): combat damage per damage type, the category multiplier times its traits' shares |
+| `harvestTool` | string | yes | Derived (Phase 295 bridge, removed by Phase 296) from the work table: knife (dissect) or bonetool (cutBone) |
+| `efficiency` | decimal | yes | Derived (Phase 295 bridge, removed by Phase 296): the harvest work speed, in (0, 1] |
 
 ## Relations
 

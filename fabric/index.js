@@ -46,6 +46,7 @@ const sounds       = require('./gameplay/sounds')
 const skillWheel   = require('./gameplay/skill_wheel')
 const skillFocus   = require('./gameplay/skill_focus')
 const titles       = require('./gameplay/titles')
+const equipment    = require('./gameplay/equipment')
 
 // Phase 125 — the travel cost must name a real item; throwing fails `npm run validate`.
 waystone.validateTravel(waystone.TRAVEL, Object.keys(items))
@@ -68,6 +69,7 @@ structure.validateStructure(structure.structureData(), structure.structureRefs()
 chests.validateChests(chests.chestsData(), chests.chestsRefs())
 writing.validateWriting(writing.writingData(), writing.writingRefs())
 work.validateWork(work.workData(), work.workRefs())
+equipment.validateEquipment(equipment.equipmentData(), equipment.equipmentRefs()) // Phase 295
 workTimes.validateWorkTimes(workTimes.workTimesData(), workTimes.workTimesRefs()) // Phase 259
 combos.validateCombos(combos.combosData()) // Phase 287
 workClips.validateWorkClips(workClips.workClipsData()) // Phase 281
@@ -386,6 +388,7 @@ module.exports = defineFabric({
       Book:                writing.Book,
       Blueprint:           writing.Blueprint,
       WorkSkills:          work.WorkSkills,
+      Equipment:           equipment.Equipment,
       WorkTimes:           workTimes.WorkTimes,
       CombatCombos:        combos.CombatCombos,
       WorkClips:           workClips.WorkClips,

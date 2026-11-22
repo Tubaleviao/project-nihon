@@ -1,5 +1,5 @@
 {
-  "schemaHash": "sha256:c77e27a71a1ec45410f28ed8a5760b6a2aada1900c42bd738e1c1fb4cfe2aa72",
+  "schemaHash": "sha256:a16ebfb33cb10268ae36a9b29e3ab3d06e12360202290332dd6a0e58a443a2a0",
   "schema": {
     "version": "3.0.0",
     "meta": {
@@ -15780,14 +15780,31 @@
             "pii": false,
             "defaultValue": 80
           },
-          "toolType": {
-            "name": "toolType",
+          "equipmentCategory": {
+            "name": "equipmentCategory",
             "type": "string",
-            "description": "Tool class — the action this tool performs. \"pick\" mines, \"axe\" chops.",
+            "description": "Equipment category (Phase 295): knife, sword, axe, hammer, pick, shovel…",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": "pick"
+          },
+          "traits": {
+            "name": "traits",
+            "type": "json",
+            "description": "Traits and strengths (Phase 295): { <Trait>: { strength, grade? } }; the working part's material may raise them",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "Piercing": {
+                "strength": 1
+              },
+              "Blunt": {
+                "strength": 1,
+                "grade": "light"
+              }
+            }
           },
           "repair": {
             "name": "repair",
@@ -15811,6 +15828,38 @@
                 }
               ]
             }
+          },
+          "works": {
+            "name": "works",
+            "type": "json",
+            "description": "Derived from the work table (Phase 295): { <work>: speed } for every work this item can do",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "mine": 1
+            }
+          },
+          "combatDamage": {
+            "name": "combatDamage",
+            "type": "json",
+            "description": "Derived (Phase 295): combat damage per damage type, the category multiplier times its traits' shares",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "piercing": 2.5,
+              "blunt": 1
+            }
+          },
+          "toolType": {
+            "name": "toolType",
+            "type": "string",
+            "description": "Derived (Phase 295 bridge, removed by Phase 296) from the work table: the old tool class the runtime reads",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "pick"
           }
         },
         "relations": {
@@ -16026,14 +16075,31 @@
             "pii": false,
             "defaultValue": 160
           },
-          "toolType": {
-            "name": "toolType",
+          "equipmentCategory": {
+            "name": "equipmentCategory",
             "type": "string",
-            "description": "Tool class — the action this tool performs. \"pick\" mines, \"axe\" chops.",
+            "description": "Equipment category (Phase 295): knife, sword, axe, hammer, pick, shovel…",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": "pick"
+          },
+          "traits": {
+            "name": "traits",
+            "type": "json",
+            "description": "Traits and strengths (Phase 295): { <Trait>: { strength, grade? } }; the working part's material may raise them",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "Piercing": {
+                "strength": 1
+              },
+              "Blunt": {
+                "strength": 1,
+                "grade": "light"
+              }
+            }
           },
           "repair": {
             "name": "repair",
@@ -16057,6 +16123,38 @@
                 }
               ]
             }
+          },
+          "works": {
+            "name": "works",
+            "type": "json",
+            "description": "Derived from the work table (Phase 295): { <work>: speed } for every work this item can do",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "mine": 1.5
+            }
+          },
+          "combatDamage": {
+            "name": "combatDamage",
+            "type": "json",
+            "description": "Derived (Phase 295): combat damage per damage type, the category multiplier times its traits' shares",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "piercing": 3.75,
+              "blunt": 1.5
+            }
+          },
+          "toolType": {
+            "name": "toolType",
+            "type": "string",
+            "description": "Derived (Phase 295 bridge, removed by Phase 296) from the work table: the old tool class the runtime reads",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "pick"
           }
         },
         "relations": {
@@ -16276,32 +16374,31 @@
             "pii": false,
             "defaultValue": 90
           },
-          "toolType": {
-            "name": "toolType",
+          "equipmentCategory": {
+            "name": "equipmentCategory",
             "type": "string",
-            "description": "Tool class — the action this tool performs. \"pick\" mines, \"axe\" chops.",
+            "description": "Equipment category (Phase 295): knife, sword, axe, hammer, pick, shovel…",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": "axe"
           },
-          "harvestTool": {
-            "name": "harvestTool",
-            "type": "string",
-            "description": "Harvest tool category this item provides (Phase 160): knife or bonetool",
+          "traits": {
+            "name": "traits",
+            "type": "json",
+            "description": "Traits and strengths (Phase 295): { <Trait>: { strength, grade? } }; the working part's material may raise them",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
-            "defaultValue": "bonetool"
-          },
-          "efficiency": {
-            "name": "efficiency",
-            "type": "decimal",
-            "description": "How well it works that category, in (0, 1]; below 1.0 is a poor substitute",
-            "nullable": false,
-            "primaryKey": false,
-            "pii": false,
-            "defaultValue": 0.5
+            "defaultValue": {
+              "Sharp": {
+                "strength": 1
+              },
+              "Blunt": {
+                "strength": 1,
+                "grade": "heavy"
+              }
+            }
           },
           "repair": {
             "name": "repair",
@@ -16325,6 +16422,57 @@
                 }
               ]
             }
+          },
+          "works": {
+            "name": "works",
+            "type": "json",
+            "description": "Derived from the work table (Phase 295): { <work>: speed } for every work this item can do",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "fell": 1,
+              "cutBone": 0.5
+            }
+          },
+          "combatDamage": {
+            "name": "combatDamage",
+            "type": "json",
+            "description": "Derived (Phase 295): combat damage per damage type, the category multiplier times its traits' shares",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "slashing": 6,
+              "blunt": 5
+            }
+          },
+          "toolType": {
+            "name": "toolType",
+            "type": "string",
+            "description": "Derived (Phase 295 bridge, removed by Phase 296) from the work table: the old tool class the runtime reads",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "axe"
+          },
+          "harvestTool": {
+            "name": "harvestTool",
+            "type": "string",
+            "description": "Derived (Phase 295 bridge, removed by Phase 296) from the work table: knife (dissect) or bonetool (cutBone)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "bonetool"
+          },
+          "efficiency": {
+            "name": "efficiency",
+            "type": "decimal",
+            "description": "Derived (Phase 295 bridge, removed by Phase 296): the harvest work speed, in (0, 1]",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
           }
         },
         "relations": {
@@ -16541,23 +16689,30 @@
             "pii": false,
             "defaultValue": 60
           },
-          "harvestTool": {
-            "name": "harvestTool",
+          "equipmentCategory": {
+            "name": "equipmentCategory",
             "type": "string",
-            "description": "Harvest tool category this item provides (Phase 160): knife or bonetool",
+            "description": "Equipment category (Phase 295): knife, sword, axe, hammer, pick, shovel…",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": "knife"
           },
-          "efficiency": {
-            "name": "efficiency",
-            "type": "decimal",
-            "description": "How well it works that category, in (0, 1]; below 1.0 is a poor substitute",
+          "traits": {
+            "name": "traits",
+            "type": "json",
+            "description": "Traits and strengths (Phase 295): { <Trait>: { strength, grade? } }; the working part's material may raise them",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
-            "defaultValue": 1
+            "defaultValue": {
+              "Sharp": {
+                "strength": 1
+              },
+              "Piercing": {
+                "strength": 1
+              }
+            }
           },
           "repair": {
             "name": "repair",
@@ -16581,6 +16736,47 @@
                 }
               ]
             }
+          },
+          "works": {
+            "name": "works",
+            "type": "json",
+            "description": "Derived from the work table (Phase 295): { <work>: speed } for every work this item can do",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "dissect": 1
+            }
+          },
+          "combatDamage": {
+            "name": "combatDamage",
+            "type": "json",
+            "description": "Derived (Phase 295): combat damage per damage type, the category multiplier times its traits' shares",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "slashing": 4.8,
+              "piercing": 4
+            }
+          },
+          "harvestTool": {
+            "name": "harvestTool",
+            "type": "string",
+            "description": "Derived (Phase 295 bridge, removed by Phase 296) from the work table: knife (dissect) or bonetool (cutBone)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "knife"
+          },
+          "efficiency": {
+            "name": "efficiency",
+            "type": "decimal",
+            "description": "Derived (Phase 295 bridge, removed by Phase 296): the harvest work speed, in (0, 1]",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
           }
         },
         "relations": {
@@ -16792,23 +16988,27 @@
             "pii": false,
             "defaultValue": 70
           },
-          "harvestTool": {
-            "name": "harvestTool",
+          "equipmentCategory": {
+            "name": "equipmentCategory",
             "type": "string",
-            "description": "Harvest tool category this item provides (Phase 160): knife or bonetool",
+            "description": "Equipment category (Phase 295): knife, sword, axe, hammer, pick, shovel…",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
-            "defaultValue": "bonetool"
+            "defaultValue": "saw"
           },
-          "efficiency": {
-            "name": "efficiency",
-            "type": "decimal",
-            "description": "How well it works that category, in (0, 1]; below 1.0 is a poor substitute",
+          "traits": {
+            "name": "traits",
+            "type": "json",
+            "description": "Traits and strengths (Phase 295): { <Trait>: { strength, grade? } }; the working part's material may raise them",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
-            "defaultValue": 1
+            "defaultValue": {
+              "Sharp": {
+                "strength": 1
+              }
+            }
           },
           "repair": {
             "name": "repair",
@@ -16832,6 +17032,46 @@
                 }
               ]
             }
+          },
+          "works": {
+            "name": "works",
+            "type": "json",
+            "description": "Derived from the work table (Phase 295): { <work>: speed } for every work this item can do",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "cutBone": 1
+            }
+          },
+          "combatDamage": {
+            "name": "combatDamage",
+            "type": "json",
+            "description": "Derived (Phase 295): combat damage per damage type, the category multiplier times its traits' shares",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "slashing": 4.2
+            }
+          },
+          "harvestTool": {
+            "name": "harvestTool",
+            "type": "string",
+            "description": "Derived (Phase 295 bridge, removed by Phase 296) from the work table: knife (dissect) or bonetool (cutBone)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "bonetool"
+          },
+          "efficiency": {
+            "name": "efficiency",
+            "type": "decimal",
+            "description": "Derived (Phase 295 bridge, removed by Phase 296): the harvest work speed, in (0, 1]",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 1
           }
         },
         "relations": {
@@ -17043,10 +17283,54 @@
             "pii": false,
             "defaultValue": 20
           },
+          "equipmentCategory": {
+            "name": "equipmentCategory",
+            "type": "string",
+            "description": "Equipment category (Phase 295): knife, sword, axe, hammer, pick, shovel…",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "lockpick"
+          },
+          "traits": {
+            "name": "traits",
+            "type": "json",
+            "description": "Traits and strengths (Phase 295): { <Trait>: { strength, grade? } }; the working part's material may raise them",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "Piercing": {
+                "strength": 1
+              }
+            }
+          },
+          "works": {
+            "name": "works",
+            "type": "json",
+            "description": "Derived from the work table (Phase 295): { <work>: speed } for every work this item can do",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "pickLock": 1
+            }
+          },
+          "combatDamage": {
+            "name": "combatDamage",
+            "type": "json",
+            "description": "Derived (Phase 295): combat damage per damage type, the category multiplier times its traits' shares",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "piercing": 4
+            }
+          },
           "toolType": {
             "name": "toolType",
             "type": "string",
-            "description": "Tool class — \"lockpick\" picks locks (ChestsAndDoors.locks.toolType)",
+            "description": "Derived (Phase 295 bridge, removed by Phase 296) from the work table: the old tool class the runtime reads",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -17412,14 +17696,31 @@
             "pii": false,
             "defaultValue": 30
           },
-          "toolType": {
-            "name": "toolType",
+          "equipmentCategory": {
+            "name": "equipmentCategory",
             "type": "string",
-            "description": "Tool class — the action this tool performs. \"pick\" mines, \"axe\" chops, \"shovel\" digs, \"hammer\" builds.",
+            "description": "Equipment category (Phase 295): knife, sword, axe, hammer, pick, shovel…",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": "axe"
+          },
+          "traits": {
+            "name": "traits",
+            "type": "json",
+            "description": "Traits and strengths (Phase 295): { <Trait>: { strength, grade? } }; the working part's material may raise them",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "Sharp": {
+                "strength": 0.6
+              },
+              "Blunt": {
+                "strength": 0.6,
+                "grade": "heavy"
+              }
+            }
           },
           "repair": {
             "name": "repair",
@@ -17443,6 +17744,57 @@
                 }
               ]
             }
+          },
+          "works": {
+            "name": "works",
+            "type": "json",
+            "description": "Derived from the work table (Phase 295): { <work>: speed } for every work this item can do",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "fell": 0.6,
+              "cutBone": 0.3
+            }
+          },
+          "combatDamage": {
+            "name": "combatDamage",
+            "type": "json",
+            "description": "Derived (Phase 295): combat damage per damage type, the category multiplier times its traits' shares",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "slashing": 3.6,
+              "blunt": 3
+            }
+          },
+          "toolType": {
+            "name": "toolType",
+            "type": "string",
+            "description": "Derived (Phase 295 bridge, removed by Phase 296) from the work table: the old tool class the runtime reads",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "axe"
+          },
+          "harvestTool": {
+            "name": "harvestTool",
+            "type": "string",
+            "description": "Derived (Phase 295 bridge, removed by Phase 296) from the work table: knife (dissect) or bonetool (cutBone)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "bonetool"
+          },
+          "efficiency": {
+            "name": "efficiency",
+            "type": "decimal",
+            "description": "Derived (Phase 295 bridge, removed by Phase 296): the harvest work speed, in (0, 1]",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.3
           }
         },
         "relations": {
@@ -17658,14 +18010,31 @@
             "pii": false,
             "defaultValue": 30
           },
-          "toolType": {
-            "name": "toolType",
+          "equipmentCategory": {
+            "name": "equipmentCategory",
             "type": "string",
-            "description": "Tool class — the action this tool performs. \"pick\" mines, \"axe\" chops, \"shovel\" digs, \"hammer\" builds.",
+            "description": "Equipment category (Phase 295): knife, sword, axe, hammer, pick, shovel…",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": "pick"
+          },
+          "traits": {
+            "name": "traits",
+            "type": "json",
+            "description": "Traits and strengths (Phase 295): { <Trait>: { strength, grade? } }; the working part's material may raise them",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "Piercing": {
+                "strength": 0.6
+              },
+              "Blunt": {
+                "strength": 0.6,
+                "grade": "light"
+              }
+            }
           },
           "repair": {
             "name": "repair",
@@ -17689,6 +18058,38 @@
                 }
               ]
             }
+          },
+          "works": {
+            "name": "works",
+            "type": "json",
+            "description": "Derived from the work table (Phase 295): { <work>: speed } for every work this item can do",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "mine": 0.6
+            }
+          },
+          "combatDamage": {
+            "name": "combatDamage",
+            "type": "json",
+            "description": "Derived (Phase 295): combat damage per damage type, the category multiplier times its traits' shares",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "piercing": 1.5,
+              "blunt": 0.6
+            }
+          },
+          "toolType": {
+            "name": "toolType",
+            "type": "string",
+            "description": "Derived (Phase 295 bridge, removed by Phase 296) from the work table: the old tool class the runtime reads",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "pick"
           }
         },
         "relations": {
@@ -17824,7 +18225,7 @@
           "item"
         ],
         "description": "A flat stone tied to a long branch. Digs soil, sand and gravel faster than any pick.",
-        "goal": "The shovel tool class: the fastest way through soft ground (Phase 260)",
+        "goal": "The first shovel: the fastest way through soft ground (Phase 260)",
         "fields": {
           "id": {
             "name": "id",
@@ -17904,14 +18305,31 @@
             "pii": false,
             "defaultValue": 40
           },
-          "toolType": {
-            "name": "toolType",
+          "equipmentCategory": {
+            "name": "equipmentCategory",
             "type": "string",
-            "description": "Tool class — the action this tool performs. \"pick\" mines, \"axe\" chops, \"shovel\" digs, \"hammer\" builds.",
+            "description": "Equipment category (Phase 295): knife, sword, axe, hammer, pick, shovel…",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": "shovel"
+          },
+          "traits": {
+            "name": "traits",
+            "type": "json",
+            "description": "Traits and strengths (Phase 295): { <Trait>: { strength, grade? } }; the working part's material may raise them",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "Broad": {
+                "strength": 1.2
+              },
+              "Blunt": {
+                "strength": 0.6,
+                "grade": "light"
+              }
+            }
           },
           "repair": {
             "name": "repair",
@@ -17935,6 +18353,37 @@
                 }
               ]
             }
+          },
+          "works": {
+            "name": "works",
+            "type": "json",
+            "description": "Derived from the work table (Phase 295): { <work>: speed } for every work this item can do",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "dig": 1.2
+            }
+          },
+          "combatDamage": {
+            "name": "combatDamage",
+            "type": "json",
+            "description": "Derived (Phase 295): combat damage per damage type, the category multiplier times its traits' shares",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "blunt": 2.88
+            }
+          },
+          "toolType": {
+            "name": "toolType",
+            "type": "string",
+            "description": "Derived (Phase 295 bridge, removed by Phase 296) from the work table: the old tool class the runtime reads",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "shovel"
           }
         },
         "relations": {
@@ -18150,23 +18599,30 @@
             "pii": false,
             "defaultValue": 25
           },
-          "harvestTool": {
-            "name": "harvestTool",
+          "equipmentCategory": {
+            "name": "equipmentCategory",
             "type": "string",
-            "description": "Harvest tool category this item provides (Phase 160): knife or bonetool",
+            "description": "Equipment category (Phase 295): knife, sword, axe, hammer, pick, shovel…",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": "knife"
           },
-          "efficiency": {
-            "name": "efficiency",
-            "type": "decimal",
-            "description": "How well it works that category, in (0, 1]; below 1.0 is a poor substitute",
+          "traits": {
+            "name": "traits",
+            "type": "json",
+            "description": "Traits and strengths (Phase 295): { <Trait>: { strength, grade? } }; the working part's material may raise them",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
-            "defaultValue": 0.5
+            "defaultValue": {
+              "Sharp": {
+                "strength": 0.5
+              },
+              "Piercing": {
+                "strength": 0.5
+              }
+            }
           },
           "repair": {
             "name": "repair",
@@ -18190,6 +18646,47 @@
                 }
               ]
             }
+          },
+          "works": {
+            "name": "works",
+            "type": "json",
+            "description": "Derived from the work table (Phase 295): { <work>: speed } for every work this item can do",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "dissect": 0.5
+            }
+          },
+          "combatDamage": {
+            "name": "combatDamage",
+            "type": "json",
+            "description": "Derived (Phase 295): combat damage per damage type, the category multiplier times its traits' shares",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "slashing": 2.4,
+              "piercing": 2
+            }
+          },
+          "harvestTool": {
+            "name": "harvestTool",
+            "type": "string",
+            "description": "Derived (Phase 295 bridge, removed by Phase 296) from the work table: knife (dissect) or bonetool (cutBone)",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "knife"
+          },
+          "efficiency": {
+            "name": "efficiency",
+            "type": "decimal",
+            "description": "Derived (Phase 295 bridge, removed by Phase 296): the harvest work speed, in (0, 1]",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": 0.5
           }
         },
         "relations": {
@@ -18405,14 +18902,28 @@
             "pii": false,
             "defaultValue": 40
           },
-          "toolType": {
-            "name": "toolType",
+          "equipmentCategory": {
+            "name": "equipmentCategory",
             "type": "string",
-            "description": "Tool class — the action this tool performs. \"pick\" mines, \"axe\" chops, \"shovel\" digs, \"hammer\" builds.",
+            "description": "Equipment category (Phase 295): knife, sword, axe, hammer, pick, shovel…",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
             "defaultValue": "hammer"
+          },
+          "traits": {
+            "name": "traits",
+            "type": "json",
+            "description": "Traits and strengths (Phase 295): { <Trait>: { strength, grade? } }; the working part's material may raise them",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "Blunt": {
+                "strength": 0.6,
+                "grade": "heavy"
+              }
+            }
           },
           "repair": {
             "name": "repair",
@@ -18436,6 +18947,37 @@
                 }
               ]
             }
+          },
+          "works": {
+            "name": "works",
+            "type": "json",
+            "description": "Derived from the work table (Phase 295): { <work>: speed } for every work this item can do",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "build": 1
+            }
+          },
+          "combatDamage": {
+            "name": "combatDamage",
+            "type": "json",
+            "description": "Derived (Phase 295): combat damage per damage type, the category multiplier times its traits' shares",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "blunt": 2.4
+            }
+          },
+          "toolType": {
+            "name": "toolType",
+            "type": "string",
+            "description": "Derived (Phase 295 bridge, removed by Phase 296) from the work table: the old tool class the runtime reads",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "hammer"
           }
         },
         "relations": {
@@ -18651,6 +19193,31 @@
             "pii": false,
             "defaultValue": 100
           },
+          "equipmentCategory": {
+            "name": "equipmentCategory",
+            "type": "string",
+            "description": "Equipment category (Phase 295): knife, sword, axe, hammer, pick, shovel…",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "sword"
+          },
+          "traits": {
+            "name": "traits",
+            "type": "json",
+            "description": "Traits and strengths (Phase 295): { <Trait>: { strength, grade? } }; the working part's material may raise them",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "Sharp": {
+                "strength": 1
+              },
+              "Piercing": {
+                "strength": 1
+              }
+            }
+          },
           "repair": {
             "name": "repair",
             "type": "json",
@@ -18672,6 +19239,27 @@
                   "tier": "novice"
                 }
               ]
+            }
+          },
+          "works": {
+            "name": "works",
+            "type": "json",
+            "description": "Derived from the work table (Phase 295): { <work>: speed } for every work this item can do",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {}
+          },
+          "combatDamage": {
+            "name": "combatDamage",
+            "type": "json",
+            "description": "Derived (Phase 295): combat damage per damage type, the category multiplier times its traits' shares",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "slashing": 6,
+              "piercing": 5
             }
           }
         },
@@ -18883,6 +19471,31 @@
             "pii": false,
             "defaultValue": 200
           },
+          "equipmentCategory": {
+            "name": "equipmentCategory",
+            "type": "string",
+            "description": "Equipment category (Phase 295): knife, sword, axe, hammer, pick, shovel…",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "greatsword"
+          },
+          "traits": {
+            "name": "traits",
+            "type": "json",
+            "description": "Traits and strengths (Phase 295): { <Trait>: { strength, grade? } }; the working part's material may raise them",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "Sharp": {
+                "strength": 1
+              },
+              "Piercing": {
+                "strength": 1
+              }
+            }
+          },
           "repair": {
             "name": "repair",
             "type": "json",
@@ -19022,6 +19635,27 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 0
+          },
+          "works": {
+            "name": "works",
+            "type": "json",
+            "description": "Derived from the work table (Phase 295): { <work>: speed } for every work this item can do",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {}
+          },
+          "combatDamage": {
+            "name": "combatDamage",
+            "type": "json",
+            "description": "Derived (Phase 295): combat damage per damage type, the category multiplier times its traits' shares",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "slashing": 10.8,
+              "piercing": 9
+            }
           }
         },
         "relations": {
@@ -19242,6 +19876,28 @@
             "pii": false,
             "defaultValue": 150
           },
+          "equipmentCategory": {
+            "name": "equipmentCategory",
+            "type": "string",
+            "description": "Equipment category (Phase 295): knife, sword, axe, hammer, pick, shovel…",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "bow"
+          },
+          "traits": {
+            "name": "traits",
+            "type": "json",
+            "description": "Traits and strengths (Phase 295): { <Trait>: { strength, grade? } }; the working part's material may raise them",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "Piercing": {
+                "strength": 1
+              }
+            }
+          },
           "repair": {
             "name": "repair",
             "type": "json",
@@ -19267,6 +19923,26 @@
                   "tier": "apprentice"
                 }
               ]
+            }
+          },
+          "works": {
+            "name": "works",
+            "type": "json",
+            "description": "Derived from the work table (Phase 295): { <work>: speed } for every work this item can do",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {}
+          },
+          "combatDamage": {
+            "name": "combatDamage",
+            "type": "json",
+            "description": "Derived (Phase 295): combat damage per damage type, the category multiplier times its traits' shares",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "piercing": 3
             }
           }
         },
@@ -19491,6 +20167,52 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 120
+          },
+          "equipmentCategory": {
+            "name": "equipmentCategory",
+            "type": "string",
+            "description": "Equipment category (Phase 295): knife, sword, axe, hammer, pick, shovel…",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": "sword"
+          },
+          "traits": {
+            "name": "traits",
+            "type": "json",
+            "description": "Traits and strengths (Phase 295): { <Trait>: { strength, grade? } }; the working part's material may raise them",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "Sharp": {
+                "strength": 1
+              },
+              "Piercing": {
+                "strength": 1
+              }
+            }
+          },
+          "works": {
+            "name": "works",
+            "type": "json",
+            "description": "Derived from the work table (Phase 295): { <work>: speed } for every work this item can do",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {}
+          },
+          "combatDamage": {
+            "name": "combatDamage",
+            "type": "json",
+            "description": "Derived (Phase 295): combat damage per damage type, the category multiplier times its traits' shares",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "slashing": 6,
+              "piercing": 5
+            }
           }
         },
         "relations": {
@@ -19704,6 +20426,19 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 120
+          },
+          "protection": {
+            "name": "protection",
+            "type": "json",
+            "description": "Share of each damage type this piece takes off a hit (Phase 295): { slashing, blunt, piercing }",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "slashing": 0.3,
+              "blunt": 0.3,
+              "piercing": 0.15
+            }
           },
           "repair": {
             "name": "repair",
@@ -20050,6 +20785,19 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 250
+          },
+          "protection": {
+            "name": "protection",
+            "type": "json",
+            "description": "Share of each damage type this piece takes off a hit (Phase 295): { slashing, blunt, piercing }",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "slashing": 0.45,
+              "blunt": 0.4,
+              "piercing": 0.35
+            }
           },
           "repair": {
             "name": "repair",
@@ -20415,6 +21163,19 @@
             "pii": false,
             "defaultValue": 80
           },
+          "protection": {
+            "name": "protection",
+            "type": "json",
+            "description": "Share of each damage type this piece takes off a hit (Phase 295): { slashing, blunt, piercing }",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "slashing": 0.1,
+              "blunt": 0.05,
+              "piercing": 0.05
+            }
+          },
           "repair": {
             "name": "repair",
             "type": "json",
@@ -20761,6 +21522,19 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 60
+          },
+          "protection": {
+            "name": "protection",
+            "type": "json",
+            "description": "Share of each damage type this piece takes off a hit (Phase 295): { slashing, blunt, piercing }",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "slashing": 0.05,
+              "blunt": 0.05,
+              "piercing": 0.05
+            }
           },
           "repair": {
             "name": "repair",
@@ -21110,6 +21884,19 @@
             "primaryKey": false,
             "pii": false,
             "defaultValue": 180
+          },
+          "protection": {
+            "name": "protection",
+            "type": "json",
+            "description": "Share of each damage type this piece takes off a hit (Phase 295): { slashing, blunt, piercing }",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "slashing": 0.35,
+              "blunt": 0.35,
+              "piercing": 0.3
+            }
           },
           "repair": {
             "name": "repair",
@@ -42100,6 +42887,440 @@
         "pii": [],
         "gdpr": {}
       },
+      "Equipment": {
+        "name": "Equipment",
+        "tags": [
+          "world-system"
+        ],
+        "description": "Equipment categories and traits (Phase 295): every held item is equipment of a category, and what it can do in the world (fell, mine, dig, build, pick a lock, dissect, cut bone) follows from its traits by the work table. There are no tools that cannot be used in combat; picks are the weakest weapons.",
+        "goal": "One rule for what a held item can do, in work and in combat, instead of a tool type per item",
+        "fields": {
+          "id": {
+            "name": "id",
+            "type": "uuid",
+            "nullable": false,
+            "primaryKey": true,
+            "pii": false
+          },
+          "damageTypes": {
+            "name": "damageTypes",
+            "type": "json",
+            "description": "The combat damage types a trait deals",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": [
+              "slashing",
+              "blunt",
+              "piercing"
+            ]
+          },
+          "traits": {
+            "name": "traits",
+            "type": "json",
+            "description": "{ <Trait>: { damageType, damage } | { damageType, grades: { <grade>: { damage } } } }, grades weakest first",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "Sharp": {
+                "damageType": "slashing",
+                "damage": 6
+              },
+              "Blunt": {
+                "damageType": "blunt",
+                "grades": {
+                  "light": {
+                    "damage": 2
+                  },
+                  "heavy": {
+                    "damage": 5
+                  }
+                }
+              },
+              "Piercing": {
+                "damageType": "piercing",
+                "damage": 5
+              },
+              "Broad": {
+                "damageType": "blunt",
+                "damage": 3
+              }
+            }
+          },
+          "categories": {
+            "name": "categories",
+            "type": "json",
+            "description": "{ <category>: { hands, clipFamily, combatMultiplier, defaultTraits } }",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "knife": {
+                "hands": 1,
+                "clipFamily": "one_hand",
+                "combatMultiplier": 0.8,
+                "defaultTraits": {
+                  "Sharp": {},
+                  "Piercing": {}
+                }
+              },
+              "sword": {
+                "hands": 1,
+                "clipFamily": "one_hand",
+                "combatMultiplier": 1,
+                "defaultTraits": {
+                  "Sharp": {},
+                  "Piercing": {}
+                }
+              },
+              "greatsword": {
+                "hands": 2,
+                "clipFamily": "two_hand",
+                "combatMultiplier": 1.2,
+                "defaultTraits": {
+                  "Sharp": {},
+                  "Piercing": {}
+                }
+              },
+              "axe": {
+                "hands": 1,
+                "clipFamily": "tool",
+                "combatMultiplier": 1,
+                "defaultTraits": {
+                  "Sharp": {},
+                  "Blunt": {
+                    "grade": "heavy"
+                  }
+                }
+              },
+              "hammer": {
+                "hands": 1,
+                "clipFamily": "tool",
+                "combatMultiplier": 0.8,
+                "defaultTraits": {
+                  "Blunt": {
+                    "grade": "heavy"
+                  }
+                }
+              },
+              "mace": {
+                "hands": 1,
+                "clipFamily": "one_hand",
+                "combatMultiplier": 1.1,
+                "defaultTraits": {
+                  "Blunt": {
+                    "grade": "heavy"
+                  }
+                }
+              },
+              "spear": {
+                "hands": 2,
+                "clipFamily": "two_hand",
+                "combatMultiplier": 1,
+                "defaultTraits": {
+                  "Piercing": {}
+                }
+              },
+              "pick": {
+                "hands": 1,
+                "clipFamily": "tool",
+                "combatMultiplier": 0.5,
+                "defaultTraits": {
+                  "Piercing": {},
+                  "Blunt": {
+                    "grade": "light"
+                  }
+                }
+              },
+              "shovel": {
+                "hands": 1,
+                "clipFamily": "tool",
+                "combatMultiplier": 0.6,
+                "defaultTraits": {
+                  "Broad": {},
+                  "Blunt": {
+                    "grade": "light"
+                  }
+                }
+              },
+              "saw": {
+                "hands": 1,
+                "clipFamily": "one_hand",
+                "combatMultiplier": 0.7,
+                "defaultTraits": {
+                  "Sharp": {}
+                }
+              },
+              "lockpick": {
+                "hands": 1,
+                "clipFamily": "one_hand",
+                "combatMultiplier": 0.8,
+                "defaultTraits": {
+                  "Piercing": {}
+                }
+              },
+              "bow": {
+                "hands": 2,
+                "clipFamily": "one_hand",
+                "combatMultiplier": 0.6,
+                "defaultTraits": {
+                  "Piercing": {}
+                }
+              }
+            }
+          },
+          "materialTraits": {
+            "name": "materialTraits",
+            "type": "json",
+            "description": "{ <material>: { raise: { <Trait>: +strength }, add: { <Trait>: { strength, grade? } } } } for the working part",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "Veilsteel": {
+                "raise": {
+                  "Sharp": 0.5,
+                  "Piercing": 0.5,
+                  "Blunt": 0.5
+                },
+                "add": {}
+              }
+            }
+          },
+          "workTraits": {
+            "name": "workTraits",
+            "type": "json",
+            "description": "{ <work>: { bareHands, ways: [{ category?, traits: { <Trait>: { grade? } }, speed }] } }",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "fell": {
+                "bareHands": true,
+                "ways": [
+                  {
+                    "traits": {
+                      "Sharp": {},
+                      "Blunt": {
+                        "grade": "heavy"
+                      }
+                    },
+                    "speed": 1
+                  }
+                ]
+              },
+              "mine": {
+                "bareHands": true,
+                "ways": [
+                  {
+                    "traits": {
+                      "Piercing": {},
+                      "Blunt": {}
+                    },
+                    "speed": 1
+                  }
+                ]
+              },
+              "dig": {
+                "bareHands": true,
+                "ways": [
+                  {
+                    "traits": {
+                      "Broad": {}
+                    },
+                    "speed": 1
+                  }
+                ]
+              },
+              "build": {
+                "bareHands": false,
+                "ways": [
+                  {
+                    "category": "hammer",
+                    "traits": {},
+                    "speed": 1
+                  }
+                ]
+              },
+              "pickLock": {
+                "bareHands": false,
+                "ways": [
+                  {
+                    "category": "lockpick",
+                    "traits": {},
+                    "speed": 1
+                  }
+                ]
+              },
+              "dissect": {
+                "bareHands": false,
+                "ways": [
+                  {
+                    "category": "knife",
+                    "traits": {
+                      "Sharp": {}
+                    },
+                    "speed": 1
+                  }
+                ]
+              },
+              "cutBone": {
+                "bareHands": false,
+                "ways": [
+                  {
+                    "category": "saw",
+                    "traits": {
+                      "Sharp": {}
+                    },
+                    "speed": 1
+                  },
+                  {
+                    "traits": {
+                      "Sharp": {},
+                      "Blunt": {
+                        "grade": "heavy"
+                      }
+                    },
+                    "speed": 0.5
+                  }
+                ]
+              }
+            }
+          },
+          "categorySummary": {
+            "name": "categorySummary",
+            "type": "json",
+            "description": "Derived: per category its hands, traits, what it can do and its combat multiplier",
+            "nullable": false,
+            "primaryKey": false,
+            "pii": false,
+            "defaultValue": {
+              "knife": {
+                "hands": 1,
+                "traits": [
+                  "Sharp",
+                  "Piercing"
+                ],
+                "canDo": [
+                  "dissect"
+                ],
+                "combatMultiplier": 0.8
+              },
+              "sword": {
+                "hands": 1,
+                "traits": [
+                  "Sharp",
+                  "Piercing"
+                ],
+                "canDo": [],
+                "combatMultiplier": 1
+              },
+              "greatsword": {
+                "hands": 2,
+                "traits": [
+                  "Sharp",
+                  "Piercing"
+                ],
+                "canDo": [],
+                "combatMultiplier": 1.2
+              },
+              "axe": {
+                "hands": 1,
+                "traits": [
+                  "Sharp",
+                  "Blunt"
+                ],
+                "canDo": [
+                  "fell",
+                  "cutBone"
+                ],
+                "combatMultiplier": 1
+              },
+              "hammer": {
+                "hands": 1,
+                "traits": [
+                  "Blunt"
+                ],
+                "canDo": [
+                  "build"
+                ],
+                "combatMultiplier": 0.8
+              },
+              "mace": {
+                "hands": 1,
+                "traits": [
+                  "Blunt"
+                ],
+                "canDo": [],
+                "combatMultiplier": 1.1
+              },
+              "spear": {
+                "hands": 2,
+                "traits": [
+                  "Piercing"
+                ],
+                "canDo": [],
+                "combatMultiplier": 1
+              },
+              "pick": {
+                "hands": 1,
+                "traits": [
+                  "Piercing",
+                  "Blunt"
+                ],
+                "canDo": [
+                  "mine"
+                ],
+                "combatMultiplier": 0.5
+              },
+              "shovel": {
+                "hands": 1,
+                "traits": [
+                  "Broad",
+                  "Blunt"
+                ],
+                "canDo": [
+                  "dig"
+                ],
+                "combatMultiplier": 0.6
+              },
+              "saw": {
+                "hands": 1,
+                "traits": [
+                  "Sharp"
+                ],
+                "canDo": [
+                  "cutBone"
+                ],
+                "combatMultiplier": 0.7
+              },
+              "lockpick": {
+                "hands": 1,
+                "traits": [
+                  "Piercing"
+                ],
+                "canDo": [
+                  "pickLock"
+                ],
+                "combatMultiplier": 0.8
+              },
+              "bow": {
+                "hands": 2,
+                "traits": [
+                  "Piercing"
+                ],
+                "canDo": [],
+                "combatMultiplier": 0.6
+              }
+            }
+          }
+        },
+        "relations": {},
+        "behaviors": {},
+        "pii": [],
+        "gdpr": {}
+      },
       "WorkTimes": {
         "name": "WorkTimes",
         "tags": [
@@ -42181,7 +43402,7 @@
           "toolSpeeds": {
             "name": "toolSpeeds",
             "type": "json",
-            "description": "{ <tool item>: { <class>: speed } }",
+            "description": "Derived from Equipment.workTraits (Phase 295): { <item>: { <class>: speed } }",
             "nullable": false,
             "primaryKey": false,
             "pii": false,
@@ -42195,11 +43416,11 @@
               "CarpenterAxe": {
                 "axe": 1
               },
-              "StonePick": {
-                "pick": 0.6
-              },
               "StoneAxe": {
                 "axe": 0.6
+              },
+              "StonePick": {
+                "pick": 0.6
               },
               "StoneShovel": {
                 "shovel": 1.2

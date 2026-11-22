@@ -21,6 +21,7 @@ Full torso armour forged from veilsteel plates over a ferrite under-layer. Excep
 | stackable | boolean | Always false for armour pieces |
 | shape | json | Item shape: archetype, material per named part, and uniform scale (Phase 151) |
 | durability | integer | Remaining durability points before condition degrades |
+| protection | json | Share of each damage type this piece takes off a hit (Phase 295): { slashing, blunt, piercing } |
 | repair | json | Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier). |
 | equipmentSlot | string | Equipment slot — what is equipped (§6) |
 | deformationMode | string | SKINNED \| RIGID \| HYBRID (§10) |

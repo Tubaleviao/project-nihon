@@ -21,7 +21,11 @@ Recurve bow with an aethermite-treated thornwood stave and duskfiber string. Arr
 | stackable | boolean | Always false for weapons |
 | shape | json | Item shape: archetype, material per named part, and uniform scale (Phase 151) |
 | durability | integer | Remaining durability points before condition degrades |
+| equipmentCategory | string | Equipment category (Phase 295): knife, sword, axe, hammer, pick, shovel… |
+| traits | json | Traits and strengths (Phase 295): { <Trait>: { strength, grade? } }; the working part's material may raise them |
 | repair | json | Structured repair spec: required station, materials consumed on repair, and skill guards (skill key + minimum tier). |
+| works | json | Derived from the work table (Phase 295): { <work>: speed } for every work this item can do |
+| combatDamage | json | Derived (Phase 295): combat damage per damage type, the category multiplier times its traits' shares |
 
 ## Related
 

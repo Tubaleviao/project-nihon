@@ -39,27 +39,26 @@ work in order.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 1 | 295 | Equipment categories and traits replace tools (fabric) |
-| 2 | 296 | Work and combat by trait: no more tools in the game |
-| 3 | 229 | Skills capped by the gear |
-| 4 | 226 | Several characters per player |
-| 5 | 297 | Finding servers nearby: dual-stack IPv6, a status port and LAN discovery |
-| 6 | 298 | The server list: a registry and the Join screen's public list |
-| 7 | 257 | Split files named by what they do |
-| 8 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
-| 9 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
-| 10 | 247 | Ground cover: grass and bushes by biome |
-| 11 | 235 | Roads |
-| 12 | 234 | Boats |
-| 13 | 258 | The public wiki and the community channels |
-| 14 | 299 | Many registries: signed entries, gossip and no single owner |
-| 15 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
-| 16 | 251 | A human playtest: what would make the game fun (a standing checkpoint, when the owner has time) |
+| 1 | 296 | Work and combat by trait: no more tools in the game |
+| 2 | 229 | Skills capped by the gear |
+| 3 | 226 | Several characters per player |
+| 4 | 297 | Finding servers nearby: dual-stack IPv6, a status port and LAN discovery |
+| 5 | 298 | The server list: a registry and the Join screen's public list |
+| 6 | 257 | Split files named by what they do |
+| 7 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
+| 8 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
+| 9 | 247 | Ground cover: grass and bushes by biome |
+| 10 | 235 | Roads |
+| 11 | 234 | Boats |
+| 12 | 258 | The public wiki and the community channels |
+| 13 | 299 | Many registries: signed entries, gossip and no single owner |
+| 14 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
+| 15 | 251 | A human playtest: what would make the game fun (a standing checkpoint, when the owner has time) |
 
 Why this order:
 
-- **295–296 first.** The last open findings of the owner's fourth playtest (2026-11-20): 295 is the
-  fabric PR, 296 the runtime. They change what equipment is, so everything that reads gear waits for them.
+- **296 first.** The last open finding of the owner's fourth playtest (2026-11-20): 295 (done) was the
+  fabric PR, 296 is the runtime. They change what equipment is, so everything that reads gear waits for them.
 - **229 right after.** Skill tiers gated by gear build on the equipment categories 295–296 introduce;
   its spec's "tool" tiers become trait/equipment tiers when it is picked up. It used to take its tiers
   from parked Phase 227 and carries its own fabric PR instead.
@@ -356,7 +355,7 @@ of a category (knife, sword, axe, hammer, pick…), and what it can do follows f
 | 292 | The market names the seller | Done |
 | 293 | Other players look like people | Done |
 | 294 | Other players and creatures walk instead of jumping | Done |
-| 295 | Equipment categories and traits replace tools (fabric) | Open |
+| 295 | Equipment categories and traits replace tools (fabric) | Done |
 | 296 | Work and combat by trait: no more tools in the game | Open |
 
 ## Phase 225 — The options window
@@ -1432,6 +1431,24 @@ away.
 - A check proves picks have the lowest combat multiplier of all categories.
 - Generated content names (categories, traits) are in the in-project catalog in both `en` and `pt_BR`.
 
+Done (2026-11-22). `fabric/gameplay/equipment.js` holds the `Equipment` world system: `traits` (Sharp → slashing,
+Blunt with a `light`/`heavy` grade → blunt, Piercing → piercing, and Broad, a shovel's flat head, → blunt),
+`categories` (knife, sword, greatsword, axe, hammer, mace, spear, pick, shovel, saw, lockpick, bow: hands, Phase 287
+clip family, combat multiplier, default traits), `materialTraits` (veilsteel raises the traits of its working part by
+0.5) and `workTraits` (fell, mine, dig, build, pickLock, dissect, cutBone; each a list of ways, a category and/or
+traits with a minimum grade, and a speed; an item that matches no way works as bare hands where bare hands can).
+Every former tool and weapon declares `equipmentCategory` and `traits` (`{ <Trait>: { strength, grade? } }`, strength
+1.0 = the forged item); armour declares `protection` per damage type. Each equipment item gets the derived `works`
+and `combatDamage` fields. Until Phase 296 the runtime still reads `toolType`, `harvestTool`, `efficiency` and
+`WorkTimes.toolSpeeds`: `items/index.js` derives them from the work table (the bridge; the validator reads the
+authored items from `items/authored.js`, where none is declared). The derived values are today's, with one
+addition the rules imply: an axe cuts bone at half its Sharp strength, so the stone axe now does at 0.3. The
+validator (and `tools/check_equipment.js` in CI) rejects a declared `toolType`/`harvestTool`, an unknown category or
+trait, a work rule naming an unknown trait or category, a category whose multiplier is not above the pick's, a pick
+that out-hits another item of its working material, a former tool slower at its former job (`formerJobs`), and an
+item doing two old tool classes (the bridge reads one). `equipment.*`, `trait.*` and `work.*` names are in
+`locale/content.csv` (en, pt_BR).
+
 ## Phase 296 — Work and combat by trait: no more tools in the game
 
 Runtime for Phase 295. Everything that today asks for a `toolType` or `harvestTool` asks the work table instead.
@@ -1445,6 +1462,9 @@ Runtime for Phase 295. Everything that today asks for a `toolType` or `harvestTo
 - UI: the item tooltip shows the category, the traits and what the item can do (fell, mine, dissect…), all
   localized; the word "tool" is gone from the UI catalog.
 - Saves: an item saved before this phase loads as the same equipment.
+- Remove the Phase 295 bridge: `items/index.js` stops deriving `toolType`, `harvestTool` and `efficiency`, and
+  `WorkTimes.toolSpeeds` gives way to `Equipment.workTraits`; the fabric validators that still read the bridge
+  (work times, stone tools, chests, tutorial, harvest) read the work table instead.
 
 **Acceptance criteria**
 - A grep test fails on any `toolType` or `harvestTool` read in `src/`.
