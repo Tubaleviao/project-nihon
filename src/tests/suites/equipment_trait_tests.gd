@@ -9,6 +9,7 @@ const ChestRules := preload("res://src/world/chest_rules.gd")
 const CraftCatalog := preload("res://src/crafting/craft_catalog.gd")
 const ComboChain := preload("res://src/battle/combo_chain.gd")
 const RigTree := preload("res://src/character/rig_tree.gd")
+const ItemTooltip := preload("res://src/ui/item_tooltip.gd")
 
 ## What each former tool did before Phase 295, with its speed (a save from then must still do it).
 const FORMER_JOBS := {

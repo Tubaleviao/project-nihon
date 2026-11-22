@@ -1,4 +1,3 @@
-class_name ItemTooltip
 extends RefCounted
 ## Inventory tooltip text for an item that is equipment (Phase 296), kept out of `ui_slice.gd` for the line cap.
 

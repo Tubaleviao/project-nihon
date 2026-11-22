@@ -7,6 +7,7 @@ var trade_box: VBoxContainer = null
 const AdminPanelScript := preload("res://src/ui/admin_panel.gd")
 const WritingRules := preload("res://src/technology/writing_rules.gd")
 const TechTreeView := preload("res://src/ui/tech_tree_view.gd")
+const ItemTooltip := preload("res://src/ui/item_tooltip.gd")
 
 func _init(slice: Node) -> void:
 	sl = slice
