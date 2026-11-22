@@ -28,80 +28,54 @@ introductions of the arcs they belonged to, are archived in
 
 ### Priority order
 
-Set by the owner on 2026-11-10 and revised on 2026-11-12 after a repository review (Phases 252–258,
-see [the review arc](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
+Reordered by the owner on 2026-11-22 (first set on 2026-11-10, revised on 2026-11-12 after the
+[repository review](#next-a-licence-a-green-main-and-a-first-release-phases-252258)). Work the open
 phases top to bottom; the arc tables below keep their numbers and specs, but this list decides what
-comes next. A phase that needs an earlier one still waits for it. Done phases (238–244, 248–250, 252–256, 259–276, 289, 290, 283, 282, 280, 291, 281, 284, 286, 287, 292, 293, 294)
-have left the list. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
-[Parked phases](#parked-phases)). Phase 236 keeps its place in the list for when it is un-parked; the
-others are not in it.
+comes next. A phase that needs an earlier one still waits for it. The list is renumbered from 1 whenever
+it changes, and done phases leave it. Phases 227, 228, 230, 231, 233, 236 and 246 are parked (see
+[Parked phases](#parked-phases)). Phase 236 keeps a place for when it is un-parked; the others are not
+in it. Phase 251 is last: it is a standing checkpoint played when the owner has time, not a phase to
+work in order.
 
 | Priority | Phase | Title |
 |---|---|---|
-| 22 | 295 | Equipment categories and traits replace tools (fabric) |
-| 23 | 296 | Work and combat by trait: no more tools in the game |
-| 24 | 251 | A human playtest: what would make the game fun (a standing checkpoint) |
-| 25 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
-| 26 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
-| 27 | 226 | Several characters per player |
-| 28 | 229 | Skills capped by the gear |
-| 29 | 247 | Ground cover: grass and bushes by biome |
-| 30 | 235 | Roads |
-| 31 | 234 | Boats |
-| 32 | 257 | Split files named by what they do |
-| 33 | 258 | The public wiki and the community channels |
-| 34 | 297 | Finding servers nearby: dual-stack IPv6, a status port and LAN discovery |
-| 35 | 298 | The server list: a registry and the Join screen's public list |
-| 36 | 299 | Many registries: signed entries, gossip and no single owner |
-| 37 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
+| 1 | 295 | Equipment categories and traits replace tools (fabric) |
+| 2 | 296 | Work and combat by trait: no more tools in the game |
+| 3 | 229 | Skills capped by the gear |
+| 4 | 226 | Several characters per player |
+| 5 | 297 | Finding servers nearby: dual-stack IPv6, a status port and LAN discovery |
+| 6 | 298 | The server list: a registry and the Join screen's public list |
+| 7 | 257 | Split files named by what they do |
+| 8 | 245 | The planet bake: continents, rivers with flow, erosion and biomes at 2 km |
+| 9 | 232 | Water that holds up: lake shores, the river seam and mounts at fords |
+| 10 | 247 | Ground cover: grass and bushes by biome |
+| 11 | 235 | Roads |
+| 12 | 234 | Boats |
+| 13 | 258 | The public wiki and the community channels |
+| 14 | 299 | Many registries: signed entries, gossip and no single owner |
+| 15 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
+| 16 | 251 | A human playtest: what would make the game fun (a standing checkpoint, when the owner has time) |
 
-Order notes that differ from the arcs' own order:
+Why this order:
 
-- Phases 297–299 (owner, 2026-11-22) let players find servers: LAN discovery and IPv6 first, then a registry and
-  the public list, then many registries with signed entries. Filed at the end of the order; move them up to
-  have a public list sooner. Phase 299 brings the host-key part of parked Phase 228 forward and needs parked
-  Phase 227 (design-only) first.
-
-- Phases 291–296 are the owner's fourth playtest set (2026-11-20, Phase 251, the first with a second player),
-  placed after 287 and before 251. The two small bugs go first (291 the right-click cursor, 292 the seller's
-  name), then the remote players' look (293, after 280, 284 and 286, whose bodies it shows) and motion (294).
-  295–296 remove the tool concept: 295 is the fabric PR, 296 the runtime, and both come after 287 because
-  the attack clip follows the equipment category.
-
-- Phases 278–290 are the owner's third playtest set (2026-11-19, Phase 251), filed at high priority ahead of
-  everything else open. 288–290 (the crafting cards, the work bar and the hold wording, the shovel speed) were
-  added to the set later the same day and go first: they are small, and 289 and 290 are on the tutorial's
-  path. Of the first ten, the key change (279) comes first because it is small and every later finding is
-  played with it; trees (283) come before felling (282) because the fall animates the new tree mesh. The
-  art each needs is in the assets repo's Phases A40–A46; each game phase lands with placeholders and does
-  not wait for that art.
-
-- Phases 259–276 are done. 259–266 were the owner's playtest findings of 2026-11-13 (Phase 251): a new
-  player starts with nothing and grows from bare hands, in a gentle area, with work that shows its
-  progress, digging that shows at once, a drop that asks how many, and a character that looks the same
-  everywhere. 267–274 were the second set (2026-11-14): crafted stations, a crafting window that lists
-  every station's recipes, and skills, technology and crafting windows with names and a tree.
-- Phase 251 moved five places down on 2026-11-13, behind 225, 256, 250 and 237 (and 244, done), instead of
-  being closed. It is a standing checkpoint: it is never closed, and each session's findings become
-  new phases placed where the owner says.
-
-- Phases 252–255 come first because each is small and each unblocks something no feature phase can:
-  252 makes the "open-source" claim true, 253 makes a red `main` mean something again, 254 removes
-  the ways a routine commit damages the repository, and 255 gives Phase 251 a build to play.
-- Phase 251 moved from last to fifth on 2026-11-12. The owner's one session on 2026-11-06 produced
-  four bugs and three menus (Phases 219–224) in an evening; nothing else on the list finds problems
-  that cheaply. It repeats: after every five feature phases, a new playtest issue is opened from the
-  same checklist. (Moved again on 2026-11-13, see above.)
-- Phase 256 comes before Phase 250. The stress report's first two hot spots are `remote_player_state`
-  (611% of the per-peer bandwidth budget at 200 bots) and `snapshot_chunk` (229%), both JSON text.
-  Phase 256 is done: the same two (now `player_states` and `snapshot_chunk`) are 46% and 54% at 200 bots (`docs/perf/crowd-baseline.md`).
-  Measuring the server's ceiling before the encoding changes would measure the encoding.
-- Phase 242's low-end fallback and Phase 243's view distance are options of Phase 225, which now
-  comes after them. They ship as project settings first, and Phase 225 puts them in the window.
-- Phase 245 replaces Phase 217's river trace and now comes before Phase 232. Phase 232's river-seam
-  fix applies to the baked rivers instead, and its lake-shore and ford work stays as written.
-- Phase 229 used to take its tiers from Phase 227, which is parked. It now carries its own fabric PR
-  (see its spec).
+- **295–296 first.** The last open findings of the owner's fourth playtest (2026-11-20): 295 is the
+  fabric PR, 296 the runtime. They change what equipment is, so everything that reads gear waits for them.
+- **229 right after.** Skill tiers gated by gear build on the equipment categories 295–296 introduce;
+  its spec's "tool" tiers become trait/equipment tiers when it is picked up. It used to take its tiers
+  from parked Phase 227 and carries its own fabric PR instead.
+- **226, 297, 298: playing with others.** The 2026-11-20 session was the first with a second player.
+  Several characters per player, then finding a server on the LAN and from a public list, make that the
+  normal way to play instead of typing an address.
+- **257 before the big world work.** A rename of the numbered `*_part_N.gd` files is cheap now and makes
+  the terrain and net code easier to read for 245 onward.
+- **245 → 232 → 247 → 235 → 234: the world.** Phase 245 replaces Phase 217's river trace, so 232's
+  river-seam fix applies to the baked rivers (its lake-shore and ford work stays as written). Ground
+  cover, roads and boats sit on the baked terrain and water.
+- **258 late.** A public wiki and Discussions matter once there are players to read them.
+- **299 near the end.** It brings the host-key part of parked Phase 228 forward and needs parked Phase
+  227 (design-only) first.
+- **251 last.** A standing checkpoint, never closed. Each session's findings become new phases placed
+  where the owner says (past sets: 219–224, 259–276, 278–290, 291–296).
 
 ### Next: playtest fixes and the game's front door (Phases 219–226)
 
@@ -1615,8 +1589,8 @@ and be hard to fake, in keeping with an open-source game anyone can host.
 ## Parked phases
 
 Parked by the owner on 2026-11-10. Their specs are kept as written so a phase can be picked up
-again; check each against the phases done since before un-parking it. Phase 236 is also the
-last entry of the priority order, which it keeps when un-parked.
+again; check each against the phases done since before un-parking it. Phase 236 also keeps a
+place near the end of the priority order (before Phase 251) for when it is un-parked.
 
 ## Phase 227 — Identity and portability in the fabric
 
