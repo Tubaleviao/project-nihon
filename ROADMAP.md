@@ -50,9 +50,16 @@ others are not in it.
 | 31 | 234 | Boats |
 | 32 | 257 | Split files named by what they do |
 | 33 | 258 | The public wiki and the community channels |
-| 34 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
+| 34 | 297 | Finding servers nearby: dual-stack IPv6, a status port and LAN discovery |
+| 35 | 298 | The server list: a registry and the Join screen's public list |
+| 36 | 299 | Many registries: signed entries, gossip and no single owner |
+| 37 | 236 | Changing hair style and colour (parked: picked up only when un-parked) |
 
 Order notes that differ from the arcs' own order:
+
+- Phases 297–299 (owner, 2026-11-22) let players find servers: LAN discovery and IPv6 first, then a registry and
+  the public list, then many registries with signed entries. Filed at the end of the order; move them up to
+  have a public list sooner. Phase 299 brings the host-key part of parked Phase 228 forward.
 
 - Phases 291–296 are the owner's fourth playtest set (2026-11-20, Phase 251, the first with a second player),
   placed after 287 and before 251. The two small bugs go first (291 the right-click cursor, 292 the seller's
@@ -1474,6 +1481,109 @@ Runtime for Phase 295. Everything that today asks for a `toolType` or `harvestTo
 - Suite: an inventory saved before this phase loads with every item able to do what it did before.
 - Suite: tooltip strings exist in both locales; no UI string contains the word "tool" as a category.
 - Playtest bot `tutorial` and `fight` steps pass with the new rules.
+
+## Phase 297 — Finding servers nearby: dual-stack IPv6, a status port and LAN discovery
+
+Filed by the owner on 2026-11-22. Today a player joins by typing an address (main menu → Join server) and the
+host binds IPv4 only by default. This phase is the base the server list (298, 299) builds on.
+
+- **Dual-stack.** A listen host and a dedicated server bind ENet on both IPv4 and IPv6 (Godot's `*` bind
+  address, IPv6 with v6-only off, and an explicit IPv4 fallback where the OS has no IPv6). `--bind <addr>`
+  overrides it. The Join screen accepts IPv6 literals (`[2001:db8::1]:7777` and bare `2001:db8::1`), and a host
+  name that resolves to both families is tried IPv6 first, then IPv4 after 250 ms (Happy Eyeballs, RFC 8305),
+  keeping whichever answers first. IPv6 does not lower latency; it matters because a self-hoster behind IPv4
+  CGNAT, common in Brazil, can be reached on IPv6 with only a firewall rule and no port forward.
+- **Status port.** Every host answers a small UDP status query on a second port (default the game port + 1,
+  `--status-port`, `0` turns it off). The answer: protocol version, game version, a world name, players online,
+  max players, and whether a friend code is needed. Names are the host's text, so they are shown as given, never
+  translated; every label around them is an `I18n.t()` key. Anti-abuse: a query must be padded to at least the
+  answer's size so the port cannot amplify a spoofed request; answers are rate-limited per source address; the
+  answer has a fixed size cap; malformed queries are dropped without a reply.
+- **Protocol version.** The status answer and the join handshake carry a protocol version. A client refuses to
+  join a host whose version it does not speak and says so with a reason key (today an old client connects and
+  misbehaves).
+- **LAN discovery.** The Join screen sends the status query to the IPv4 broadcast address and the IPv6
+  all-nodes link-local multicast group (`ff02::1`) on the default status port, and lists every host that answers
+  under "On this network", with its players and round-trip time. A row joins on click.
+- **Client round-trip.** The same query, sent to a known address, gives the ping shown beside each recent server.
+
+**Acceptance criteria**
+- Suite: the address parser accepts IPv4, bracketed and bare IPv6 with and without a port, and host names, and
+  rejects malformed input with the existing error key.
+- Suite: the status codec round-trips; a query smaller than the answer gets no reply; a query over the size cap
+  or with a bad version gets no reply; the per-address rate limit drops the excess.
+- Suite: a client with protocol version N refuses a host advertising N+1 with a reason key present in `en` and
+  `pt_BR`.
+- Net harness: a host and a client on `::1` (IPv6 loopback) connect and play the existing harness steps; the
+  same on `127.0.0.1`. A LAN discovery query on loopback finds the harness host. Skipped with a logged reason on
+  a runner without IPv6.
+- Every new UI string is in `locale/ui.csv` in both columns.
+
+## Phase 298 — The server list: a registry and the Join screen's public list
+
+Needs Phase 297. A server that wants to be public announces itself to a registry, and the Join screen lists the
+public servers.
+
+- **Registry role.** A new headless boot role, `--registry [port]`, in the same Godot build (no second stack to
+  maintain). It keeps an in-memory table of public servers and answers list queries over TCP with
+  length-prefixed JSON, every message size-capped.
+- **Heartbeat.** A dedicated server started with `--public` (and a listen host that ticks "Show in server list")
+  sends a heartbeat every 30 s: status port, world name, region tag, protocol version, players, max players.
+  The registry takes the address from the heartbeat's source, never from its body, and lists a server only
+  after it answers a status query sent back to that address (so a heartbeat cannot list someone else's IP).
+  An entry missing three heartbeats is dropped. Heartbeats are rate-limited per address, with a cap on servers
+  per address.
+- **Registry list.** The registries a client and a server use are a list in settings, seeded from a file in the
+  repository (`config/registries.json`) so a community can run its own; empty means no public list.
+- **Join screen.** A "Public servers" tab: the client fetches the list, then queries each server's status port
+  itself (bounded parallelism, timeouts) and shows name, players, ping, version and a "can't join: other
+  version" mark. Sort by ping or players, filter by text and "hide full". Clicking a row fills the address and
+  joins. The list is cached on disk and shown at once on the next open while it refreshes.
+- Region tags and every column header, filter and error are `I18n.t()` keys; dates and numbers go through the
+  locale formatter.
+
+**Acceptance criteria**
+- Suite: the registry table adds an entry only after a successful back-probe; drops it after three missed
+  heartbeats; ignores an address in the heartbeat body; enforces the per-address cap and rate limit; caps
+  message size.
+- Suite: list codec round-trip; a list over the cap is truncated, not trusted.
+- Net harness: a registry, two `--public` hosts and a client on loopback; the client's list shows both hosts
+  with players and ping; one host stops and drops out of the list within 100 s; the client joins the other
+  from the list.
+- Suite: every new key exists in both `en` and `pt_BR`.
+
+## Phase 299 — Many registries: signed entries, gossip and no single owner
+
+Needs Phase 298. The list should survive any one registry going away and be hard to fake, in keeping with an
+open-source game anyone can host.
+
+- **Host key.** Every host gets its own signing key and a world id, as Phase 228 specifies (`user://` for a
+  listen host, the save folder for a dedicated server); this phase brings that part of 228 forward, and 228
+  reuses it when un-parked. The algorithm is the one Phase 227 decides; until then, RSA through Godot's
+  `Crypto` (no GDExtension).
+- **Signed entries.** A heartbeat carries the entry signed by the host key with a sequence number. Registries
+  store and pass on the signed entry; a client verifies the signature and shows the key's short fingerprint.
+  Recent servers remember the fingerprint, and a known address that later answers with another key is shown
+  with a warning instead of joined silently.
+- **Many registries.** A server heartbeats to every registry in its list; a client queries all of them and
+  merges by host key, keeping the highest sequence number.
+- **Gossip.** Registries exchange their signed entries with the other registries they know every few minutes
+  (bounded batch, rate-limited), and each back-probes an entry before listing it, so a server announced to one
+  registry appears on the others and a dead registry loses nothing.
+- **Fallback.** If no registry answers, the client shows its cached list and the LAN list; if a public server
+  is configured with a `--peer-list` it can also answer list queries for the servers it has seen, so the list
+  can be bootstrapped from any known server.
+- A full DHT (as BitTorrent's) was considered and not adopted: it needs bootstrap nodes anyway, is harder to
+  protect from fake entries, and the server count does not need it.
+
+**Acceptance criteria**
+- Suite: a valid signed entry verifies; an entry with a changed field, another key's signature or a lower
+  sequence number is rejected.
+- Suite: merging two registry answers keeps one entry per host key, the highest sequence.
+- Suite: a recent server whose key changed is flagged; the warning key exists in both locales.
+- Net harness: two registries and one `--public` host announced to only the first; within two gossip rounds
+  the second lists it; the first registry stops and the client still lists the host from the second.
+- Net harness: a client with every registry down shows the cached list and joins from it.
 
 ---
 
