@@ -1,4 +1,4 @@
-const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine, repairData, itemShape } = require('./shared')
+const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine, repairData, itemShape, equipmentFields } = require('./shared')
 
 module.exports = {
 
@@ -17,7 +17,7 @@ module.exports = {
       stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory', defaultValue: false },
       shape: itemShape({ archetype: 'pick', parts: { head: 'Ferrite', handle: 'Thornwood' } }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 80 },
-      toolType:   { type: 'string', description: 'Tool class — the action this tool performs. "pick" mines, "axe" chops.', defaultValue: 'pick' },
+      ...equipmentFields({ category: 'pick', traits: { Piercing: { strength: 1.0 }, Blunt: { strength: 1.0, grade: 'light' } } }),
       repair: repairData({
         station: 'forge',
         materials: [{ item: 'FerriteIngot', quantity: 1 }],
@@ -61,7 +61,7 @@ module.exports = {
       stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory', defaultValue: false },
       shape: itemShape({ archetype: 'pick', parts: { head: 'Veilsteel', handle: 'Thornwood' } }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 160 },
-      toolType:   { type: 'string', description: 'Tool class — the action this tool performs. "pick" mines, "axe" chops.', defaultValue: 'pick' },
+      ...equipmentFields({ category: 'pick', traits: { Piercing: { strength: 1.0 }, Blunt: { strength: 1.0, grade: 'light' } } }),
       repair: repairData({
         station: 'master forge',
         materials: [{ item: 'VeilsteelIngot', quantity: 1 }],
@@ -108,9 +108,7 @@ module.exports = {
       stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory', defaultValue: false },
       shape: itemShape({ archetype: 'axe', parts: { head: 'Ferrite', handle: 'Thornwood' }, unshown: ['Duskfiber'] }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 90 },
-      toolType:   { type: 'string', description: 'Tool class — the action this tool performs. "pick" mines, "axe" chops.', defaultValue: 'axe' },
-      harvestTool: { type: 'string', description: 'Harvest tool category this item provides (Phase 160): knife or bonetool', defaultValue: 'bonetool' },
-      efficiency:  { type: 'decimal', description: 'How well it works that category, in (0, 1]; below 1.0 is a poor substitute', defaultValue: 0.5 },
+      ...equipmentFields({ category: 'axe', traits: { Sharp: { strength: 1.0 }, Blunt: { strength: 1.0, grade: 'heavy' } } }),
       repair: repairData({
         station: 'forge',
         materials: [{ item: 'FerriteIngot', quantity: 1 }],
@@ -151,8 +149,7 @@ module.exports = {
       stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory', defaultValue: false },
       shape: itemShape({ archetype: 'knife', parts: { blade: 'Ferrite', grip: 'Thornwood' } }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 60 },
-      harvestTool: { type: 'string', description: 'Harvest tool category this item provides (Phase 160): knife or bonetool', defaultValue: 'knife' },
-      efficiency:  { type: 'decimal', description: 'How well it works that category, in (0, 1]; below 1.0 is a poor substitute', defaultValue: 1.0 },
+      ...equipmentFields({ category: 'knife', traits: { Sharp: { strength: 1.0 }, Piercing: { strength: 1.0 } } }),
       repair: repairData({
         station: 'forge',
         materials: [{ item: 'FerriteIngot', quantity: 1 }],
@@ -192,8 +189,7 @@ module.exports = {
       stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory', defaultValue: false },
       shape: itemShape({ archetype: 'saw', parts: { blade: 'Ferrite', grip: 'Thornwood' } }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 70 },
-      harvestTool: { type: 'string', description: 'Harvest tool category this item provides (Phase 160): knife or bonetool', defaultValue: 'bonetool' },
-      efficiency:  { type: 'decimal', description: 'How well it works that category, in (0, 1]; below 1.0 is a poor substitute', defaultValue: 1.0 },
+      ...equipmentFields({ category: 'saw', traits: { Sharp: { strength: 1.0 } } }),
       repair: repairData({
         station: 'forge',
         materials: [{ item: 'FerriteIngot', quantity: 1 }],
@@ -220,7 +216,7 @@ module.exports = {
   }),
 
   // ─── Lockpick ─────────────────────────────────────────────────────
-  // Phase 208 — the tool a lock is picked with (ChestsAndDoors.locks.toolType); a failed pick can break it.
+  // Phase 208 — what a lock is picked with (the lockpick category, Phase 295); a failed pick can break it.
   Lockpick: defineEntity({
     tags: ['item'],
     description:
@@ -234,7 +230,7 @@ module.exports = {
       stackable: { type: 'boolean', description: 'Whether multiple instances stack in inventory', defaultValue: false },
       shape: itemShape({ archetype: 'lockpick', parts: { pin: 'Ferrite', grip: 'Thornwood' } }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 20 },
-      toolType:   { type: 'string', description: 'Tool class — "lockpick" picks locks (ChestsAndDoors.locks.toolType)', defaultValue: 'lockpick' },
+      ...equipmentFields({ category: 'lockpick', traits: { Piercing: { strength: 1.0 } } }),
     },
     relations: {
       ferrite:   { name: 'ferrite',   kind: 'hasOne', target: 'Ferrite' },

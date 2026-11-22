@@ -18,5 +18,5 @@ How long gathering takes: a base time per material, the tool class each action w
 | bareHandsSpeed | decimal | Speed multiplier of bare hands and of a wrong-class tool (1.0 = a right tool at base speed) |
 | actions | json | { <dig\|mine\|chop>: { toolClass, families } } |
 | workSeconds | json | { <material>: base seconds at speed 1.0 } |
-| toolSpeeds | json | { <tool item>: { <class>: speed } } |
+| toolSpeeds | json | Derived from Equipment.workTraits (Phase 295): { <item>: { <class>: speed } } |
 

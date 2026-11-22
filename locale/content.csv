@@ -357,3 +357,32 @@ title.MasterSkinning.name,Master Skinner,Mestre Esfolador
 title.MasterBuilding.name,Master Builder,Mestre Construtor
 title.MasterTailoring.name,Master Tailor,Mestre Alfaiate
 title.MasterLockpicking.name,Master Lockpicker,Mestre Arrombador
+equipment.knife.name,Knife,Faca
+equipment.sword.name,Sword,Espada
+equipment.greatsword.name,Greatsword,Espadão
+equipment.axe.name,Axe,Machado
+equipment.hammer.name,Hammer,Martelo
+equipment.mace.name,Mace,Maça
+equipment.spear.name,Spear,Lança
+equipment.pick.name,Pick,Picareta
+equipment.shovel.name,Shovel,Pá
+equipment.saw.name,Saw,Serra
+equipment.lockpick.name,Lockpick,Gazua
+equipment.bow.name,Bow,Arco
+trait.Sharp.name,Sharp,Afiado
+trait.Blunt.name,Blunt,Contundente
+trait.Piercing.name,Piercing,Perfurante
+trait.Broad.name,Broad,Largo
+work.fell.name,Fell trees,Derrubar árvores
+work.mine.name,Mine rock,Minerar rocha
+work.dig.name,Dig,Cavar
+work.build.name,Build,Construir
+work.pickLock.name,Pick locks,Arrombar fechaduras
+work.dissect.name,Dissect,Dissecar
+work.cutBone.name,Cut bone,Cortar ossos
+equipment.shield.name,Shield,Escudo
+grade.light.name,Light,Leve
+grade.heavy.name,Heavy,Pesado
+damage.slashing.name,Slashing,Cortante
+damage.blunt.name,Blunt,Contundente
+damage.piercing.name,Piercing,Perfurante

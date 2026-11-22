@@ -24,6 +24,7 @@ enum Condition {
 @export var stackable: bool
 @export var shape: Dictionary
 @export var durability: int
+@export var protection: Dictionary
 @export var repair: Dictionary
 @export var equipmentSlot: String
 @export var deformationMode: String

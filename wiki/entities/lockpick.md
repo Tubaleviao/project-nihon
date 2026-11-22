@@ -21,7 +21,11 @@ A bent ferrite pin on a thornwood grip. Picks the lock of a chest or door; a fai
 | stackable | boolean | Whether multiple instances stack in inventory |
 | shape | json | Item shape: archetype, material per named part, and uniform scale (Phase 151) |
 | durability | integer | Remaining durability points before condition degrades |
-| toolType | string | Tool class — "lockpick" picks locks (ChestsAndDoors.locks.toolType) |
+| equipmentCategory | string | Equipment category (Phase 295): knife, sword, axe, hammer, pick, shovel… |
+| traits | json | Traits and strengths (Phase 295): { <Trait>: { strength, grade? } }; the working part's material may raise them |
+| works | json | Derived from the work table (Phase 295): { <work>: speed } for every work this item can do |
+| combatDamage | json | Derived (Phase 295): combat damage per damage type, the category multiplier times its traits' shares |
+| toolType | string | Derived (Phase 295 bridge, removed by Phase 296) from the work table: the old tool class the runtime reads |
 
 ## Related
 

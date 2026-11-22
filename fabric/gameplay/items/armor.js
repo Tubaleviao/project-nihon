@@ -1,4 +1,4 @@
-const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine, equipmentVisualFields, repairData, itemShape } = require('./shared')
+const { defineEntity, RARITIES, DURABILITY_STATES, itemStateMachine, equipmentVisualFields, repairData, itemShape, protectionField, equipmentFields } = require('./shared')
 
 module.exports = {
 
@@ -17,6 +17,7 @@ module.exports = {
       stackable: { type: 'boolean', description: 'Always false for armour pieces', defaultValue: false },
       shape: itemShape({ archetype: 'helmet', parts: { shell: 'Ferrite', trim: 'Ferrite' } }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 120 },
+      ...protectionField({ slashing: 0.3, blunt: 0.3, piercing: 0.15 }),
       repair: repairData({
         station: 'forge',
         materials: [{ item: 'FerriteIngot', quantity: 1 }],
@@ -68,6 +69,7 @@ module.exports = {
       stackable: { type: 'boolean', description: 'Always false for armour pieces', defaultValue: false },
       shape: itemShape({ archetype: 'chestplate', parts: { plate: 'Veilsteel', under: 'Ferrite' } }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 250 },
+      ...protectionField({ slashing: 0.45, blunt: 0.4, piercing: 0.35 }),
       repair: repairData({
         station: 'master forge',
         materials: [{ item: 'VeilsteelIngot', quantity: 1 }, { item: 'FerriteIngot', quantity: 1 }],
@@ -128,6 +130,7 @@ module.exports = {
       stackable: { type: 'boolean', description: 'Always false for armour pieces', defaultValue: false },
       shape: itemShape({ archetype: 'chestplate', parts: { plate: 'Duskfiber', under: 'Duskfiber' } }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 60 },
+      ...protectionField({ slashing: 0.05, blunt: 0.05, piercing: 0.05 }),
       repair: repairData({
         station: 'carpentry bench',
         materials: [{ item: 'Duskfiber', quantity: 1 }],
@@ -179,6 +182,7 @@ module.exports = {
       stackable: { type: 'boolean', description: 'Always false for armour pieces', defaultValue: false },
       shape: itemShape({ archetype: 'cloak', parts: { body: 'Duskfiber', trim: 'Duskfiber' } }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 80 },
+      ...protectionField({ slashing: 0.1, blunt: 0.05, piercing: 0.05 }),
       repair: repairData({
         station: 'carpentry bench',
         materials: [{ item: 'Duskfiber', quantity: 2 }],
@@ -233,6 +237,8 @@ module.exports = {
       stackable: { type: 'boolean', description: 'Always false for shields', defaultValue: false },
       shape: itemShape({ archetype: 'shield', parts: { face: 'Ferrite', rim: 'Ferrite' } }),
       durability: { type: 'integer', description: 'Remaining durability points before condition degrades', defaultValue: 180 },
+      ...protectionField({ slashing: 0.35, blunt: 0.35, piercing: 0.3 }),
+      ...equipmentFields({ category: 'shield', traits: { Blunt: { strength: 1.0, grade: 'heavy' } } }),
       repair: repairData({
         station: 'forge',
         materials: [{ item: 'FerriteIngot', quantity: 1 }],

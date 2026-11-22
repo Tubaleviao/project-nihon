@@ -22,7 +22,8 @@ expect('the shipped fabric is valid', harvest.harvestProblems(fresh()), null);
 const spoon = fresh(); spoon.creatures.ForestBoar.drops[0].tool = 'spoon';
 expect("tool 'spoon' fails", harvest.harvestProblems(spoon), /tool must be one of/);
 
-const nobody = fresh(); delete nobody.tools.BoneSaw; delete nobody.tools.CarpenterAxe;
+// Phase 295: every item whose traits cut bone provides bonetool (the saw, and the axes at a poor speed).
+const nobody = fresh(); for (const [k, t] of Object.entries(nobody.tools)) if (t.harvestTool === 'bonetool') delete nobody.tools[k];
 expect('a category no item provides fails', harvest.harvestProblems(nobody), /no item provides tool "bonetool"/);
 
 const mass = fresh(); delete mass.creatures.ForestBoar.carcassMassKg;

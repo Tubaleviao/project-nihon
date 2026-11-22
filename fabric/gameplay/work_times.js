@@ -23,20 +23,26 @@ const WORK_SECONDS = {
   Thornwood: 4.0, Duskfiber: 5.0,
 }
 
-/** tool item -> { <class>: speed }. Speed 1.0 is the base time. Only tools that work a class appear. */
-const TOOL_SPEEDS = {
-  FerritePick:   { pick: 1.0 },
-  VeilsteelPick: { pick: 1.5 },
-  CarpenterAxe:  { axe: 1.0 },
-  // Phase 260 — the stone pick and axe sit between bare hands (0.25) and the forged tools (1.0); the stone
-  // shovel is above 1.0 since Phase 290 (below).
-  StonePick:     { pick: 0.6 },
-  StoneAxe:      { axe: 0.6 },
-  // Phase 290 — the stone shovel digs at 1.2 (was 0.6): soil 0.67 s a block instead of 1.33 s, so digging down to
-  // the rock the tutorial asks for does not drag. It is the floor for shovels: a later (forged) shovel works at 1.2
-  // or more (`workTimesProblems` rejects a shovel slower than this one). Base times are unchanged, so bare hands and
-  // the pick on soil and rock keep their durations.
-  StoneShovel:   { shovel: 1.2 },
+/** Phase 295 — which work of the equipment table (equipment.js WORK_TRAITS) each tool class stands for. */
+const CLASS_WORK = { pick: 'mine', axe: 'fell', shovel: 'dig' }
+
+/**
+ * item -> { <class>: speed }, derived from the equipment work table (Phase 295): an item's speed for a class is its
+ * speed at that class's work. Speed 1.0 is the base time. The numbers are Phase 259/260/290's: a forged pick and axe
+ * work at 1.0, the veilsteel pick at 1.5, the stone pick and axe at 0.6 (between bare hands at 0.25 and the forged
+ * tools), and the stone shovel at 1.2 since Phase 290 (soil 0.67 s a block), the floor for every later shovel
+ * (`workTimesProblems` rejects a slower one). Equipment.formerJobs pins them.
+ */
+function toolSpeeds() {
+  const items = require('./items')
+  const out = {}
+  for (const [k, e] of Object.entries(items)) {
+    const works = (e && e.fields && e.fields.works && e.fields.works.defaultValue) || {}
+    const row = {}
+    for (const [cls, w] of Object.entries(CLASS_WORK)) if (works[w] > 0) row[cls] = works[w]
+    if (Object.keys(row).length) out[k] = row
+  }
+  return out
 }
 
 /** Phase 290 — the shovel every other shovel must match or beat. */
@@ -46,7 +52,7 @@ const WORK_CLASSES = ['pick', 'axe', 'shovel']
 
 function workTimesData() {
   return JSON.parse(JSON.stringify({
-    bareHandsSpeed: BARE_HANDS_SPEED, actions: ACTIONS, workSeconds: WORK_SECONDS, toolSpeeds: TOOL_SPEEDS,
+    bareHandsSpeed: BARE_HANDS_SPEED, actions: ACTIONS, workSeconds: WORK_SECONDS, toolSpeeds: toolSpeeds(),
   }))
 }
 
@@ -116,8 +122,8 @@ const WorkTimes = defineEntity({
     bareHandsSpeed: { type: 'decimal', description: 'Speed multiplier of bare hands and of a wrong-class tool (1.0 = a right tool at base speed)', defaultValue: BARE_HANDS_SPEED },
     actions:        { type: 'json', description: '{ <dig|mine|chop>: { toolClass, families } }', defaultValue: ACTIONS },
     workSeconds:    { type: 'json', description: '{ <material>: base seconds at speed 1.0 }', defaultValue: WORK_SECONDS },
-    toolSpeeds:     { type: 'json', description: '{ <tool item>: { <class>: speed } }', defaultValue: TOOL_SPEEDS },
+    toolSpeeds:     { type: 'json', description: 'Derived from Equipment.workTraits (Phase 295): { <item>: { <class>: speed } }', defaultValue: toolSpeeds() },
   },
 })
 
-module.exports = { BARE_HANDS_SPEED, SHOVEL_FLOOR_TOOL, ACTIONS, WORK_SECONDS, TOOL_SPEEDS, workTimesData, workTimesRefs, workTimesProblems, validateWorkTimes, WorkTimes }
+module.exports = { BARE_HANDS_SPEED, SHOVEL_FLOOR_TOOL, ACTIONS, WORK_SECONDS, CLASS_WORK, toolSpeeds, workTimesData, workTimesRefs, workTimesProblems, validateWorkTimes, WorkTimes }

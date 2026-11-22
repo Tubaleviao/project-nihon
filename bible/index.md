@@ -342,6 +342,7 @@ Open-source sandbox MMORPG where players build a civilization. The world is pers
 - [ClanTiers](entities/clantiers.md) — A clan's tier, from every building it owns wherever it stands, weighed by how durable and how rare each block's material is
 - [CombatCombos](entities/combatcombos.md) — Attack combos and hit timing: per weapon class the clip order, the window that keeps a chain going, the damage multiplier and impact time of each step, the stagger share and the knock-back of a struck target
 - [CombatSystem](entities/combatsystem.md) — Defines the rules governing all combat interactions — player vs creature, player vs player, and structure damage
+- [Equipment](entities/equipment.md) — Equipment categories and traits (Phase 295): every held item is equipment of a category, and what it can do in the world (fell, mine, dig, build, pick a lock, dissect, cut bone) follows from its traits by the work table
 - [GovernanceSystem](entities/governancesystem.md) — Defines the rules of in-game community governance
 - [MarketSystem](entities/marketsystem.md) — Defines the rules of the persistent player-run market
 - [NewcomerGrounds](entities/newcomergrounds.md) — Where a new character starts: a few large, gentle grounds on the open continent with trees, rock and soil in reach, only weak creatures, loose stones and branches on the ground, and a protected centre
